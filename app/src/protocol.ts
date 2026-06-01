@@ -1,0 +1,94 @@
+// Client mirror of the server's WebSocket protocol (server/src/protocol.ts).
+// Keep these in sync. (Phase 1: duplicated; later we can extract a shared pkg.)
+
+export interface ClubRef {
+  id: number;
+  name: string;
+  logoUrl: string | null;
+}
+
+export interface SpellInfo {
+  clubId: number;
+  clubName: string;
+  logoUrl: string | null;
+  startYear: number | null;
+  endYear: number | null;
+}
+
+export type VerifyReason = 'both' | 'not_both' | 'no_match' | 'timeout';
+
+export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
+
+export type Difficulty = 'easy' | 'medium' | 'hard';
+
+export type Scope =
+  | { type: 'all' }
+  | { type: 'league'; value: string }
+  | { type: 'country'; value: string };
+
+export interface GameOptions {
+  scope?: Scope;
+  difficulty?: Difficulty;
+}
+
+export interface ScopeOption {
+  value: string;
+  count: number;
+}
+export interface ScopesList {
+  leagues: ScopeOption[];
+  countries: ScopeOption[];
+}
+
+export interface PlayerView {
+  id: string;
+  name: string;
+  score: number;
+  isHost: boolean;
+  connected: boolean;
+}
+
+export interface RoomView {
+  code: string;
+  status: RoomStatus;
+  players: PlayerView[];
+  youId: string;
+}
+
+export interface RoundResult {
+  correct: boolean;
+  reason: VerifyReason;
+  autocorrected: boolean;
+  answeredById: string | null;
+  answeredByName: string | null;
+  guess: string;
+  teamA: ClubRef;
+  teamB: ClubRef;
+  matchedPlayerName: string | null;
+  spellsA: SpellInfo[];
+  spellsB: SpellInfo[];
+  allClubs: SpellInfo[];
+}
+
+export type ClientMsg =
+  | { type: 'create_room'; name: string; options?: GameOptions }
+  | { type: 'create_solo'; name: string; options?: GameOptions }
+  | { type: 'join_room'; code: string; name: string }
+  | { type: 'start' }
+  | { type: 'pick_team'; clubId: number }
+  | { type: 'submit_guess'; text: string }
+  | { type: 'play_again' }
+  | { type: 'search_clubs'; reqId: string; q: string };
+
+export type ServerMsg =
+  | { type: 'room_state'; room: RoomView }
+  | { type: 'countdown'; n: number }
+  | { type: 'pick_phase' }
+  | { type: 'team_picked'; playerId: string }
+  | { type: 'reveal_teams'; teamA: ClubRef; teamB: ClubRef }
+  | { type: 'guess_phase'; endsAt: number }
+  | { type: 'guess_locked'; byId: string; byName: string }
+  | { type: 'result'; result: RoundResult; players: PlayerView[] }
+  | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
+  | { type: 'opponent_left' }
+  | { type: 'error'; message: string };

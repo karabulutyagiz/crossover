@@ -1,0 +1,80 @@
+// WebSocket message protocol shared between the game server and clients.
+// JSON messages discriminated by `type`. (The RN app mirrors these types.)
+
+import type { SpellInfo, VerifyReason } from './game/verify.ts';
+
+export interface ClubRef {
+  id: number;
+  name: string;
+  logoUrl: string | null;
+}
+
+export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
+
+export type Difficulty = 'easy' | 'medium' | 'hard';
+
+// Which clubs are allowed in a game.
+export type Scope =
+  | { type: 'all' }
+  | { type: 'league'; value: string }
+  | { type: 'country'; value: string };
+
+export interface GameOptions {
+  scope?: Scope;
+  difficulty?: Difficulty; // bot difficulty (solo only)
+}
+
+export interface PlayerView {
+  id: string;
+  name: string;
+  score: number;
+  isHost: boolean;
+  connected: boolean;
+}
+
+export interface RoomView {
+  code: string;
+  status: RoomStatus;
+  players: PlayerView[];
+  youId: string;
+}
+
+// ---- Client -> Server ----
+export type ClientMsg =
+  | { type: 'create_room'; name: string; options?: GameOptions }
+  | { type: 'create_solo'; name: string; options?: GameOptions } // play vs an in-app practice bot
+  | { type: 'join_room'; code: string; name: string }
+  | { type: 'start' }
+  | { type: 'pick_team'; clubId: number }
+  | { type: 'submit_guess'; text: string }
+  | { type: 'play_again' }
+  | { type: 'search_clubs'; reqId: string; q: string };
+
+// ---- Server -> Client ----
+export interface RoundResult {
+  correct: boolean;
+  reason: VerifyReason | 'timeout';
+  autocorrected: boolean;
+  answeredById: string | null;
+  answeredByName: string | null;
+  guess: string;
+  teamA: ClubRef;
+  teamB: ClubRef;
+  matchedPlayerName: string | null;
+  spellsA: SpellInfo[];
+  spellsB: SpellInfo[];
+  allClubs: SpellInfo[];
+}
+
+export type ServerMsg =
+  | { type: 'room_state'; room: RoomView }
+  | { type: 'countdown'; n: number }
+  | { type: 'pick_phase' }
+  | { type: 'team_picked'; playerId: string } // a player locked in their team (name hidden)
+  | { type: 'reveal_teams'; teamA: ClubRef; teamB: ClubRef }
+  | { type: 'guess_phase'; endsAt: number }
+  | { type: 'guess_locked'; byId: string; byName: string }
+  | { type: 'result'; result: RoundResult; players: PlayerView[] }
+  | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
+  | { type: 'opponent_left' }
+  | { type: 'error'; message: string };

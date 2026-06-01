@@ -1,0 +1,65 @@
+-- Crossover — football data schema (Phase 2)
+-- Source: Wikidata. Identifiers are Wikidata QIDs (numeric part).
+
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
+-- Clubs / teams a player can be a member of (P54).
+CREATE TABLE IF NOT EXISTS clubs (
+  id          BIGINT PRIMARY KEY,            -- Wikidata QID numeric part
+  name        TEXT   NOT NULL,               -- display label (en/tr)
+  name_norm   TEXT   NOT NULL,               -- normalized for fuzzy search
+  country     TEXT,
+  is_national BOOLEAN NOT NULL DEFAULT FALSE, -- national team (excluded from club play)
+  aliases     TEXT[] NOT NULL DEFAULT '{}',
+  logo_url    TEXT                            -- Wikimedia Commons logo (raster thumb)
+);
+
+-- For databases created before these columns existed.
+ALTER TABLE clubs ADD COLUMN IF NOT EXISTS logo_url TEXT;
+ALTER TABLE clubs ADD COLUMN IF NOT EXISTS league TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_clubs_league ON clubs (league);
+CREATE INDEX IF NOT EXISTS idx_clubs_country ON clubs (country);
+
+-- Football players.
+CREATE TABLE IF NOT EXISTS players (
+  id           BIGINT PRIMARY KEY,           -- Wikidata QID numeric part
+  name         TEXT   NOT NULL,
+  name_norm    TEXT   NOT NULL,
+  aliases      TEXT[] NOT NULL DEFAULT '{}',
+  birth_year   INT,
+  nationality  TEXT
+);
+
+-- Player <-> club spells (one row per membership statement).
+CREATE TABLE IF NOT EXISTS player_clubs (
+  player_id  BIGINT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  club_id    BIGINT NOT NULL REFERENCES clubs(id)   ON DELETE CASCADE,
+  start_year INT,
+  end_year   INT
+);
+
+-- A player can have multiple distinct spells at the same club (loans, returns),
+-- so we key on the start year. start_year may be NULL -> coalesce to a sentinel
+-- because NULLs are not comparable in a unique constraint.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_player_clubs
+  ON player_clubs (player_id, club_id, (COALESCE(start_year, -1)));
+
+CREATE INDEX IF NOT EXISTS idx_player_clubs_club ON player_clubs (club_id);
+CREATE INDEX IF NOT EXISTS idx_player_clubs_player ON player_clubs (player_id);
+
+-- Trigram indexes power fuzzy name lookups.
+CREATE INDEX IF NOT EXISTS idx_players_name_norm_trgm
+  ON players USING gin (name_norm gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_clubs_name_norm_trgm
+  ON clubs USING gin (name_norm gin_trgm_ops);
+
+-- Bookkeeping for ingest runs.
+CREATE TABLE IF NOT EXISTS ingest_log (
+  id          BIGSERIAL PRIMARY KEY,
+  seed_club   TEXT,
+  qid         BIGINT,
+  rows_seen   INT,
+  finished_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
