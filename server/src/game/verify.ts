@@ -38,7 +38,7 @@ export interface VerifyResult {
   autocorrected: boolean; // true when a typo was auto-corrected to the matched player
   teamA: ClubHit;
   teamB: ClubHit;
-  matchedPlayer: { id: number; name: string; sim: number } | null;
+  matchedPlayer: { id: number; name: string; sim: number; imageUrl: string | null } | null;
   spellsA: SpellInfo[]; // matched player's spell(s) at team A
   spellsB: SpellInfo[]; // matched player's spell(s) at team B
   allClubs: SpellInfo[]; // matched player's full club history (used on a wrong guess)
@@ -82,10 +82,80 @@ export async function searchClubs(
   return rows.map((r) => ({ id: Number(r.id), name: r.name, logoUrl: r.logo_url }));
 }
 
-/** A random recognizable (has-logo) club within the scope — used by the bot. */
-export async function randomClub(scope: Scope = { type: 'all' }): Promise<ClubHit | null> {
+// Exact DB IDs — zero chance of wrong fuzzy match.
+// Easy: clubs that even non-football fans know.
+const EASY_CLUB_IDS = [
+  18656,  // Manchester United
+  50602,  // Manchester City
+  1130849,// Liverpool
+  9617,   // Arsenal
+  9616,   // Chelsea
+  8682,   // Real Madrid
+  7156,   // Barcelona
+  8701,   // Atletico Madrid
+  1422,   // Juventus
+  1543,   // AC Milan
+  631,    // Inter Milan
+  2641,   // Napoli
+  15789,  // Bayern Munich
+  41420,  // Borussia Dortmund
+  483020, // PSG
+  495299, // Galatasaray
+  6601875,// Fenerbahce
+  18741,  // Tottenham
+];
+
+// Medium: well-known clubs (easy + more).
+const MEDIUM_CLUB_IDS = [
+  ...EASY_CLUB_IDS,
+  18716,  // Newcastle
+  18711,  // Aston Villa
+  18747,  // West Ham
+  5794,   // Everton
+  19481,  // Leicester
+  10329,  // Sevilla
+  10333,  // Valencia
+  12297,  // Villarreal
+  2739,   // Roma
+  2609,   // Lazio
+  2052,   // Fiorentina
+  1886,   // Atalanta
+  132885, // Marseille
+  704,    // Lyon
+  180305, // Monaco
+  131499, // Benfica
+  128446, // Porto
+  81888,  // Ajax
+  192641, // Trabzonspor
+];
+
+/**
+ * A random club for the bot. Difficulty controls which pool:
+ * - 'easy': ~18 mega-famous clubs (everyone knows them)
+ * - 'medium': ~37 well-known clubs
+ * - 'hard' / default: any club with a logo in scope
+ */
+export async function randomClub(
+  scope: Scope = { type: 'all' },
+  difficulty: 'easy' | 'medium' | 'hard' = 'hard',
+): Promise<ClubHit | null> {
+  if (difficulty === 'easy' || difficulty === 'medium') {
+    const ids = difficulty === 'easy' ? EASY_CLUB_IDS : MEDIUM_CLUB_IDS;
+    // Shuffle and try each until one exists in scope
+    const shuffled = [...ids].sort(() => Math.random() - 0.5);
+    for (const id of shuffled) {
+      const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
+        `SELECT c.id, c.name, c.logo_url FROM clubs c
+          WHERE c.id = $1
+            AND c.is_national = false
+            ${scope.type === 'league' ? 'AND c.league = $2' : scope.type === 'country' ? 'AND c.country = $2' : ''}`,
+        scope.type === 'all' ? [id] : [id, scope.value],
+      );
+      if (rows[0]) return { id: Number(rows[0].id), name: rows[0].name, logoUrl: rows[0].logo_url };
+    }
+    // Fallback to any club with logo in scope
+  }
   const params: unknown[] = [];
-  // scopeClause references "c."; the query aliases clubs as c.
   const scopeSql = scopeClause(scope, params);
   const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
     `SELECT c.id, c.name, c.logo_url
@@ -105,6 +175,59 @@ export async function randomClub(scope: Scope = { type: 'all' }): Promise<ClubHi
 export interface ScopeOption {
   value: string;
   count: number;
+  logoUrl?: string | null;
+}
+
+// API-Football league IDs for logo URLs.
+const LEAGUE_LOGOS: Record<string, number> = {
+  'Premier League': 39, Championship: 40, 'La Liga': 140, 'La Liga 2': 141,
+  'Serie A': 135, 'Serie B': 136, Bundesliga: 78, 'Bundesliga 2': 79,
+  'Ligue 1': 61, 'Ligue 2': 62, Eredivisie: 88, 'Primeira Liga': 94,
+  'Süper Lig': 203, 'TFF 1. Lig': 204, 'Belgian Pro League': 144,
+  'Scottish Premiership': 179, 'Swiss Super League': 207, 'Austrian Bundesliga': 218,
+  'Greek Super League': 197, 'Russian Premier League': 235, 'Ukrainian Premier League': 333,
+  MLS: 253, 'Liga MX': 262, 'Brazil Serie A': 71, 'Brazil Serie B': 72,
+  'Argentine Liga Profesional': 128, 'Saudi Pro League': 307, 'League One': 41,
+  'League Two': 42, 'Scottish Championship': 180, 'Liga Portugal 2': 95,
+  'Danish Superliga': 119, Eliteserien: 103, Allsvenskan: 113, Ekstraklasa: 106,
+  'Czech First League': 345, 'Croatian HNL': 210, 'Serbian SuperLiga': 286,
+  'Romanian Liga I': 283, 'Colombian Primera A': 239, 'Chilean Primera': 265,
+  'Uruguayan Primera': 270, 'J1 League': 98, 'K League 1': 292,
+  'Chinese Super League': 169, 'A-League': 188, 'Egyptian Premier League': 233,
+  'Qatar Stars League': 305, 'UAE Pro League': 301,
+};
+
+function leagueLogoUrl(name: string): string | null {
+  const id = LEAGUE_LOGOS[name];
+  return id ? `https://media.api-sports.io/football/leagues/${id}.png` : null;
+}
+
+// ISO 3166-1 alpha-2 country code → flag emoji conversion.
+const COUNTRY_FLAGS: Record<string, string> = {
+  TR: '🇹🇷', EN: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', ES: '🇪🇸', IT: '🇮🇹', DE: '🇩🇪', FR: '🇫🇷', PT: '🇵🇹',
+  NL: '🇳🇱', BE: '🇧🇪', Scotland: '🏴󠁧󠁢󠁳󠁣󠁴󠁿', CH: '🇨🇭', AT: '🇦🇹', GR: '🇬🇷',
+  RU: '🇷🇺', UA: '🇺🇦', US: '🇺🇸', MX: '🇲🇽', BR: '🇧🇷', AR: '🇦🇷',
+  SA: '🇸🇦', DK: '🇩🇰', NO: '🇳🇴', SE: '🇸🇪', PL: '🇵🇱', CZ: '🇨🇿',
+  HR: '🇭🇷', RS: '🇷🇸', RO: '🇷🇴', CO: '🇨🇴', CL: '🇨🇱', UY: '🇺🇾',
+  JP: '🇯🇵', KR: '🇰🇷', CN: '🇨🇳', AU: '🇦🇺', EG: '🇪🇬', QA: '🇶🇦', AE: '🇦🇪',
+  // Full country names (as stored in DB from API-Football)
+  Turkey: '🇹🇷', England: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', Spain: '🇪🇸', Italy: '🇮🇹', Germany: '🇩🇪',
+  France: '🇫🇷', Portugal: '🇵🇹', Netherlands: '🇳🇱', Belgium: '🇧🇪', Switzerland: '🇨🇭',
+  Austria: '🇦🇹', Greece: '🇬🇷', Russia: '🇷🇺', Ukraine: '🇺🇦', USA: '🇺🇸',
+  Mexico: '🇲🇽', Brazil: '🇧🇷', Argentina: '🇦🇷', 'Saudi-Arabia': '🇸🇦',
+  'Saudi Arabia': '🇸🇦', Denmark: '🇩🇰', Norway: '🇳🇴', Sweden: '🇸🇪',
+  Poland: '🇵🇱', 'Czech-Republic': '🇨🇿', Croatia: '🇭🇷', Serbia: '🇷🇸',
+  Romania: '🇷🇴', Colombia: '🇨🇴', Chile: '🇨🇱', Uruguay: '🇺🇾',
+  Japan: '🇯🇵', 'Korea-South': '🇰🇷', 'South-Korea': '🇰🇷', China: '🇨🇳',
+  Australia: '🇦🇺', Egypt: '🇪🇬', Qatar: '🇶🇦', 'United-Arab-Emirates': '🇦🇪',
+  Ireland: '🇮🇪', Wales: '🏴󠁧󠁢󠁷󠁬󠁳󠁿', 'Northern-Ireland': '🇬🇧',
+  Hungary: '🇭🇺', Bulgaria: '🇧🇬', Slovakia: '🇸🇰', Slovenia: '🇸🇮',
+  Finland: '🇫🇮', Iceland: '🇮🇸', Paraguay: '🇵🇾', Peru: '🇵🇪',
+  Ecuador: '🇪🇨', Venezuela: '🇻🇪', Bolivia: '🇧🇴',
+};
+
+function countryFlag(name: string): string | null {
+  return COUNTRY_FLAGS[name] ?? null;
 }
 
 /** Available leagues and countries (for the scope picker). */
@@ -118,8 +241,16 @@ export async function listScopes(): Promise<{ leagues: ScopeOption[]; countries:
       WHERE country IS NOT NULL GROUP BY country ORDER BY country`,
   );
   return {
-    leagues: leagues.rows.map((r) => ({ value: r.value, count: Number(r.count) })),
-    countries: countries.rows.map((r) => ({ value: r.value, count: Number(r.count) })),
+    leagues: leagues.rows.map((r) => ({
+      value: r.value,
+      count: Number(r.count),
+      logoUrl: leagueLogoUrl(r.value),
+    })),
+    countries: countries.rows.map((r) => ({
+      value: r.value,
+      count: Number(r.count),
+      logoUrl: countryFlag(r.value),
+    })),
   };
 }
 
@@ -143,6 +274,29 @@ export async function commonPlayers(
     [teamAId, teamBId, limit],
   );
   return rows.map((r) => r.name);
+}
+
+export interface CommonPlayerInfo {
+  name: string;
+  imageUrl: string | null;
+}
+
+/** Players who played for BOTH teams — with photo URLs for display. */
+export async function commonPlayersDetailed(
+  teamAId: number,
+  teamBId: number,
+  limit = 5,
+): Promise<CommonPlayerInfo[]> {
+  const { rows } = await pool.query<{ name: string; image_url: string | null }>(
+    `SELECT p.name, p.image_url
+       FROM players p
+      WHERE EXISTS (SELECT 1 FROM player_clubs a WHERE a.player_id = p.id AND a.club_id = $1)
+        AND EXISTS (SELECT 1 FROM player_clubs b WHERE b.player_id = p.id AND b.club_id = $2)
+      ORDER BY (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC
+      LIMIT $3`,
+    [teamAId, teamBId, limit],
+  );
+  return rows.map((r) => ({ name: r.name, imageUrl: r.image_url }));
 }
 
 async function getClub(id: number): Promise<ClubHit | null> {
@@ -215,8 +369,8 @@ export async function verifyGuess(
   // surname ("Sneijder") matches the full stored name ("Wesley Sneijder"), and
   // misspellings still match. (At prototype scale ~20k players a scan is fine;
   // at full scale we'd add the `<%` trigram operator + index for the coarse net.)
-  const { rows: cands } = await pool.query<{ id: string; name: string; sim: number }>(
-    `SELECT id, name, word_similarity($1, name_norm) AS sim
+  const { rows: cands } = await pool.query<{ id: string; name: string; sim: number; image_url: string | null }>(
+    `SELECT id, name, image_url, word_similarity($1, name_norm) AS sim
        FROM players
       WHERE word_similarity($1, name_norm) >= $2
       ORDER BY sim DESC
@@ -224,7 +378,7 @@ export async function verifyGuess(
     [norm, config.verifyMatchThreshold],
   );
 
-  const eligible = cands.map((c) => ({ id: Number(c.id), name: c.name, sim: Number(c.sim) }));
+  const eligible = cands.map((c) => ({ id: Number(c.id), name: c.name, sim: Number(c.sim), imageUrl: c.image_url }));
 
   if (eligible.length === 0) {
     return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
@@ -292,7 +446,7 @@ export async function verifyGuess(
     autocorrected,
     teamA,
     teamB,
-    matchedPlayer: { id: matched.id, name: matched.name, sim: matched.sim },
+    matchedPlayer: { id: matched.id, name: matched.name, sim: matched.sim, imageUrl: matched.imageUrl },
     spellsA,
     spellsB,
     allClubs,

@@ -16,9 +16,9 @@ import { pool, closePool } from '../db/pool.ts';
 import { normalize } from '../game/normalize.ts';
 
 const KEY = process.env.API_FOOTBALL_KEY ?? '';
-const SEASON = Number(process.env.API_FOOTBALL_SEASON ?? '2023');
+const SEASON = Number(process.env.API_FOOTBALL_SEASON ?? '2024');
 const HOST = 'v3.football.api-sports.io';
-const MATCH_MIN = 0.6;
+const MATCH_MIN = 0.35;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Major leagues (API-Football league IDs). Extend as needed.
@@ -95,19 +95,25 @@ async function fetchLeagueTeams(leagueId: number): Promise<ApiTeam[]> {
   return json.response.map((r) => ({ name: r.team.name, logo: r.team.logo, country: r.team.country ?? null }));
 }
 
-/** Best confident club match for an API team name, or null. */
-async function matchClub(apiName: string): Promise<number | null> {
+/** Best confident club match for an API team name, or null.
+ *  Uses similarity() (full-string) so "Manchester United" doesn't match
+ *  "Jeju United". Ranks by member count to prefer the canonical entity. */
+async function matchClub(apiName: string, country: string | null): Promise<number | null> {
   const norm = normalize(apiName);
   if (!norm) return null;
-  const { rows } = await pool.query<{ id: string }>(
-    `SELECT id, word_similarity($1, name_norm) AS ws,
+  // Try exact-ish match first (similarity >= 0.45), preferring same country + most members.
+  const { rows } = await pool.query<{ id: string; sim: number }>(
+    `SELECT id, similarity(name_norm, $1) AS sim,
             (SELECT count(*) FROM player_clubs pc WHERE pc.club_id = clubs.id) AS members
        FROM clubs
       WHERE is_national = false
-        AND word_similarity($1, name_norm) >= $2
-      ORDER BY ws DESC, members DESC
+        AND similarity(name_norm, $1) >= $2
+      ORDER BY
+        (CASE WHEN country = $3 THEN 1 ELSE 0 END) DESC,
+        sim DESC,
+        members DESC
       LIMIT 1`,
-    [norm, MATCH_MIN],
+    [norm, MATCH_MIN, country],
   );
   return rows[0] ? Number(rows[0].id) : null;
 }
@@ -134,7 +140,7 @@ async function run(): Promise<void> {
     let hit = 0;
     for (const t of teams) {
       seen += 1;
-      const clubId = await matchClub(t.name);
+      const clubId = await matchClub(t.name, t.country);
       if (clubId) {
         await pool.query(
           `UPDATE clubs SET logo_url = COALESCE($2, logo_url), country = COALESCE($3, country), league = $4 WHERE id = $1`,

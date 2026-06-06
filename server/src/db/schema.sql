@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS players (
   nationality  TEXT
 );
 
+-- For databases created before this column existed.
+ALTER TABLE players ADD COLUMN IF NOT EXISTS image_url TEXT;
+
 -- Player <-> club spells (one row per membership statement).
 CREATE TABLE IF NOT EXISTS player_clubs (
   player_id  BIGINT NOT NULL REFERENCES players(id) ON DELETE CASCADE,

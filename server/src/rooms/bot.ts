@@ -1,9 +1,6 @@
 import type { Room, Transport } from './room.ts';
 import type { ClientMsg, ClubRef, Difficulty, ServerMsg, Scope } from '../protocol.ts';
-import { randomClub, searchClubs, commonPlayers } from '../game/verify.ts';
-
-// Fallback club names if a scope yields no random club.
-const POPULAR = ['Real Madrid', 'Barcelona', 'Bayern Munich', 'Manchester United', 'Liverpool'];
+import { randomClub, commonPlayers } from '../game/verify.ts';
 
 // Bot answer delay (ms) per difficulty — how long you get to beat it.
 const DELAYS: Record<Difficulty, [number, number]> = {
@@ -33,9 +30,11 @@ export class BotPlayer implements Transport {
   private readonly minDelayMs: number;
   private readonly maxDelayMs: number;
   private readonly scope: Scope;
+  private readonly difficulty: Difficulty;
 
   constructor(opts: BotOptions = {}) {
-    const [min, max] = DELAYS[opts.difficulty ?? 'medium'];
+    this.difficulty = opts.difficulty ?? 'medium';
+    const [min, max] = DELAYS[this.difficulty];
     this.minDelayMs = min;
     this.maxDelayMs = max;
     this.scope = opts.scope ?? { type: 'all' };
@@ -72,11 +71,7 @@ export class BotPlayer implements Transport {
   }
 
   private async pick(): Promise<void> {
-    let club = await randomClub(this.scope);
-    if (!club) {
-      const name = POPULAR[Math.floor(Math.random() * POPULAR.length)]!;
-      club = (await searchClubs(name, this.scope, 1))[0] ?? null;
-    }
+    const club = await randomClub(this.scope, this.difficulty);
     if (club) this.act({ type: 'pick_team', clubId: club.id });
   }
 

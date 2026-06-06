@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { pool } from '../db/pool.ts';
-import { verifyGuess, searchClubs } from '../game/verify.ts';
+import { verifyGuess, searchClubs, commonPlayersDetailed } from '../game/verify.ts';
 import type {
   ClientMsg,
   ServerMsg,
@@ -202,6 +202,9 @@ export class Room {
     const p = this.players.get(playerId);
     if (v.correct && p) p.score += 1;
 
+    // Always show common players so users learn who played for both teams
+    const common = await commonPlayersDetailed(this.round.teamA.id, this.round.teamB.id, 5);
+
     this.finishRound({
       correct: v.correct,
       reason: v.reason,
@@ -212,14 +215,22 @@ export class Room {
       teamA: v.teamA,
       teamB: v.teamB,
       matchedPlayerName: v.matchedPlayer?.name ?? null,
+      matchedPlayerImageUrl: v.matchedPlayer?.imageUrl ?? null,
       spellsA: v.spellsA,
       spellsB: v.spellsB,
       allClubs: v.allClubs,
+      commonPlayers: common,
     });
   }
 
   private endRoundTimeout(): void {
     if (!this.round || this.round.finished || !this.round.teamA || !this.round.teamB) return;
+    void this.endRoundTimeoutAsync();
+  }
+
+  private async endRoundTimeoutAsync(): Promise<void> {
+    if (!this.round || this.round.finished || !this.round.teamA || !this.round.teamB) return;
+    const common = await commonPlayersDetailed(this.round.teamA.id, this.round.teamB.id, 5);
     this.finishRound({
       correct: false,
       reason: 'timeout',
@@ -230,9 +241,11 @@ export class Room {
       teamA: this.round.teamA,
       teamB: this.round.teamB,
       matchedPlayerName: null,
+      matchedPlayerImageUrl: null,
       spellsA: [],
       spellsB: [],
       allClubs: [],
+      commonPlayers: common,
     });
   }
 

@@ -34,6 +34,7 @@ export interface GameOptions {
 export interface ScopeOption {
   value: string;
   count: number;
+  logoUrl?: string | null;
 }
 export interface ScopesList {
   leagues: ScopeOption[];
@@ -65,9 +66,11 @@ export interface RoundResult {
   teamA: ClubRef;
   teamB: ClubRef;
   matchedPlayerName: string | null;
+  matchedPlayerImageUrl: string | null;
   spellsA: SpellInfo[];
   spellsB: SpellInfo[];
   allClubs: SpellInfo[];
+  commonPlayers: { name: string; imageUrl: string | null }[];
 }
 
 export type ClientMsg =

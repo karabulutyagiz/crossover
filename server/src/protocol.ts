@@ -61,9 +61,11 @@ export interface RoundResult {
   teamA: ClubRef;
   teamB: ClubRef;
   matchedPlayerName: string | null;
+  matchedPlayerImageUrl: string | null;
   spellsA: SpellInfo[];
   spellsB: SpellInfo[];
   allClubs: SpellInfo[];
+  commonPlayers: { name: string; imageUrl: string | null }[];
 }
 
 export type ServerMsg =

@@ -284,7 +284,14 @@ function PickerModal({
                     style={styles.modalRow}
                     onPress={() => onScope({ type: picker === 'league' ? 'league' : 'country', value: o.value })}
                   >
-                    <Text style={styles.modalRowText}>{o.value}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                      {picker === 'league' && o.logoUrl ? (
+                        <Image source={{ uri: o.logoUrl }} style={{ width: 24, height: 24 }} resizeMode="contain" />
+                      ) : picker === 'country' && o.logoUrl ? (
+                        <Text style={{ fontSize: 20 }}>{o.logoUrl}</Text>
+                      ) : null}
+                      <Text style={[styles.modalRowText, { flex: 1 }]} numberOfLines={1}>{o.value}</Text>
+                    </View>
                     <Text style={styles.modalCount}>{o.count}</Text>
                   </Pressable>
                 ))}
@@ -513,32 +520,35 @@ export function ResultScreen({ state, actions }: Props) {
 
   return (
     <Screen>
-      <View style={styles.center}>
-        <Ionicons name={icon} size={64} color={color} />
-        <Text style={[styles.h1, { color }]}>{headline}</Text>
-        {r.matchedPlayerName ? <Text style={styles.matched}>{r.matchedPlayerName}</Text> : null}
-        {r.answeredByName ? (
-          <Text style={styles.muted}>
-            {r.answeredByName} • “{r.guess}”
-          </Text>
-        ) : null}
-        {r.autocorrected ? (
-          <View style={styles.fixRow}>
-            <Ionicons name="swap-horizontal" size={13} color={theme.accent} />
-            <Text style={styles.fixText}>otomatik düzeltildi</Text>
-          </View>
-        ) : null}
-      </View>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
+        <View style={styles.center}>
+          <Ionicons name={icon} size={64} color={color} />
+          <Text style={[styles.h1, { color }]}>{headline}</Text>
+          {r.matchedPlayerImageUrl ? (
+            <Image source={{ uri: r.matchedPlayerImageUrl }} style={styles.playerPhoto} />
+          ) : null}
+          {r.matchedPlayerName ? <Text style={styles.matched}>{r.matchedPlayerName}</Text> : null}
+          {r.answeredByName ? (
+            <Text style={styles.muted}>
+              {r.answeredByName} • "{r.guess}"
+            </Text>
+          ) : null}
+          {r.autocorrected ? (
+            <View style={styles.fixRow}>
+              <Ionicons name="swap-horizontal" size={13} color={theme.accent} />
+              <Text style={styles.fixText}>otomatik düzeltildi</Text>
+            </View>
+          ) : null}
+        </View>
 
-      <View style={styles.teamResultRow}>
-        <TeamResultCard team={r.teamA} spells={r.spellsA} played={playedA} />
-        <TeamResultCard team={r.teamB} spells={r.spellsB} played={playedB} />
-      </View>
+        <View style={styles.teamResultRow}>
+          <TeamResultCard team={r.teamA} spells={r.spellsA} played={playedA} />
+          <TeamResultCard team={r.teamB} spells={r.spellsB} played={playedB} />
+        </View>
 
-      {r.allClubs.length ? (
-        <>
-          <Text style={styles.sectionLabel}>KARİYER</Text>
-          <ScrollView style={styles.careerList} keyboardShouldPersistTaps="handled">
+        {r.allClubs.length ? (
+          <>
+            <Text style={styles.sectionLabel}>KARİYER</Text>
             {r.allClubs.map((s, i) => (
               <CareerRow
                 key={`${s.clubId}-${i}`}
@@ -546,28 +556,68 @@ export function ResultScreen({ state, actions }: Props) {
                 highlight={s.clubId === r.teamA.id || s.clubId === r.teamB.id}
               />
             ))}
-          </ScrollView>
-        </>
-      ) : null}
+          </>
+        ) : null}
 
-      <View style={styles.scoreRow}>
-        {room.players.map((p) => (
-          <View key={p.id} style={styles.scoreChip}>
-            <Ionicons name={p.name === 'Bot' ? 'game-controller' : 'person'} size={14} color={theme.muted} />
-            <Text style={styles.scoreText}>
-              {p.name} {p.score}
-            </Text>
-          </View>
-        ))}
-      </View>
+        {!r.correct ? (
+          <>
+            <Text style={styles.sectionLabel}>İKİ TAKIMDA DA OYNAMIŞ OYUNCULAR</Text>
+            {r.commonPlayers && r.commonPlayers.length > 0 ? (
+              r.commonPlayers.map((cp, i) => (
+                <View key={i} style={styles.commonRow}>
+                  {cp.imageUrl ? (
+                    <Image source={{ uri: cp.imageUrl }} style={styles.commonPhoto} resizeMode="cover" />
+                  ) : (
+                    <View style={[styles.commonPhoto, { backgroundColor: badgeColor(cp.name), alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>{initial(cp.name)}</Text>
+                    </View>
+                  )}
+                  <Text style={styles.commonName}>{cp.name}</Text>
+                </View>
+              ))
+            ) : (
+              <Text style={[styles.muted, { marginTop: 6 }]}>
+                Bu iki takımda ortak oynamış oyuncu bulunamadı
+              </Text>
+            )}
+          </>
+        ) : r.commonPlayers && r.commonPlayers.length > 1 ? (
+          <>
+            <Text style={styles.sectionLabel}>DİĞER ORTAK OYUNCULAR</Text>
+            {r.commonPlayers.filter(cp => cp.name !== r.matchedPlayerName).map((cp, i) => (
+              <View key={i} style={styles.commonRow}>
+                {cp.imageUrl ? (
+                  <Image source={{ uri: cp.imageUrl }} style={styles.commonPhoto} resizeMode="cover" />
+                ) : (
+                  <View style={[styles.commonPhoto, { backgroundColor: badgeColor(cp.name), alignItems: 'center', justifyContent: 'center' }]}>
+                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>{initial(cp.name)}</Text>
+                  </View>
+                )}
+                <Text style={styles.commonName}>{cp.name}</Text>
+              </View>
+            ))}
+          </>
+        ) : null}
 
-      {isHost ? (
-        <Btn label="Tekrar Oyna" kind="accent" icon="refresh" onPress={actions.playAgain} />
-      ) : (
-        <Text style={styles.muted}>Oda sahibi yeni tur başlatabilir…</Text>
-      )}
-      <View style={{ height: 10 }} />
-      <Btn label="Çık" kind="ghost" icon="close" onPress={actions.leave} />
+        <View style={styles.scoreRow}>
+          {room.players.map((p) => (
+            <View key={p.id} style={styles.scoreChip}>
+              <Ionicons name={p.name === 'Bot' ? 'game-controller' : 'person'} size={14} color={theme.muted} />
+              <Text style={styles.scoreText}>
+                {p.name} {p.score}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        {isHost ? (
+          <Btn label="Tekrar Oyna" kind="accent" icon="refresh" onPress={actions.playAgain} />
+        ) : (
+          <Text style={styles.muted}>Oda sahibi yeni tur başlatabilir…</Text>
+        )}
+        <View style={{ height: 10 }} />
+        <Btn label="Çık" kind="ghost" icon="close" onPress={actions.leave} />
+      </ScrollView>
     </Screen>
   );
 }
@@ -575,24 +625,24 @@ export function ResultScreen({ state, actions }: Props) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.bg, padding: 22, justifyContent: 'center' },
   center: { alignItems: 'center', gap: 6 },
-  logo: { color: theme.primary, fontSize: 42, fontWeight: '900', textAlign: 'center', letterSpacing: 2, marginTop: 6 },
-  tagline: { color: theme.muted, textAlign: 'center', marginBottom: 24, marginTop: 6 },
-  h1: { color: theme.text, fontSize: 22, fontWeight: '800', textAlign: 'center', marginVertical: 8 },
-  label: { color: theme.muted, fontSize: 12, letterSpacing: 2, textAlign: 'center' },
-  sectionLabel: { color: theme.muted, fontSize: 11, letterSpacing: 2, marginTop: 14, marginBottom: 6 },
-  code: { color: theme.accent, fontSize: 46, fontWeight: '900', textAlign: 'center', letterSpacing: 6 },
-  big: { color: theme.text, fontSize: 96, fontWeight: '900' },
-  muted: { color: theme.muted, textAlign: 'center' },
-  error: { color: theme.danger, textAlign: 'center', marginTop: 14 },
+  logo: { color: theme.primary, fontSize: 28, fontWeight: '900', textAlign: 'center', letterSpacing: 2, marginTop: 6 },
+  tagline: { color: theme.muted, textAlign: 'center', marginBottom: 20, marginTop: 4, fontSize: 12 },
+  h1: { color: theme.text, fontSize: 16, fontWeight: '800', textAlign: 'center', marginVertical: 6 },
+  label: { color: theme.muted, fontSize: 10, letterSpacing: 2, textAlign: 'center' },
+  sectionLabel: { color: theme.muted, fontSize: 10, letterSpacing: 2, marginTop: 12, marginBottom: 4 },
+  code: { color: theme.accent, fontSize: 32, fontWeight: '900', textAlign: 'center', letterSpacing: 4 },
+  big: { color: theme.text, fontSize: 64, fontWeight: '900' },
+  muted: { color: theme.muted, textAlign: 'center', fontSize: 12 },
+  error: { color: theme.danger, textAlign: 'center', marginTop: 10, fontSize: 12 },
   input: {
     backgroundColor: theme.card,
     color: theme.text,
     borderColor: theme.border,
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 18,
-    marginVertical: 8,
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    marginVertical: 6,
   },
   searchBox: {
     flexDirection: 'row',
@@ -605,20 +655,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     marginVertical: 8,
   },
-  searchInput: { flex: 1, color: theme.text, paddingVertical: 14, fontSize: 18 },
+  searchInput: { flex: 1, color: theme.text, paddingVertical: 12, fontSize: 14 },
   btn: {
     flexDirection: 'row',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 10,
+    padding: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 6,
+    marginVertical: 4,
     borderColor: theme.border,
   },
-  btnText: { fontSize: 18, fontWeight: '800' },
+  btnText: { fontSize: 14, fontWeight: '800' },
   divider: { height: 1, backgroundColor: theme.border, marginVertical: 16, alignSelf: 'stretch' },
   lobbyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginVertical: 5 },
-  lobbyName: { color: theme.text, fontSize: 18 },
+  lobbyName: { color: theme.text, fontSize: 14 },
   clubRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -628,19 +678,20 @@ const styles = StyleSheet.create({
     padding: 12,
     marginVertical: 4,
   },
-  clubText: { color: theme.text, fontSize: 16, flex: 1 },
+  clubText: { color: theme.text, fontSize: 13, flex: 1 },
   teamsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   teamCard: { flex: 1, backgroundColor: theme.card, borderRadius: 14, padding: 14, alignItems: 'center', gap: 8 },
-  teamName: { color: theme.text, fontSize: 16, fontWeight: '700', textAlign: 'center' },
-  plus: { color: theme.accent, fontSize: 28, fontWeight: '900' },
-  timer: { color: theme.accent, fontSize: 28, fontWeight: '900', textAlign: 'center', marginTop: 10 },
-  matched: { color: theme.text, fontSize: 24, fontWeight: '800', textAlign: 'center', marginTop: 2 },
+  teamName: { color: theme.text, fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  plus: { color: theme.accent, fontSize: 22, fontWeight: '900' },
+  timer: { color: theme.accent, fontSize: 22, fontWeight: '900', textAlign: 'center', marginTop: 8 },
+  playerPhoto: { width: 80, height: 80, borderRadius: 40, marginTop: 8, borderWidth: 2, borderColor: theme.border },
+  matched: { color: theme.text, fontSize: 18, fontWeight: '800', textAlign: 'center', marginTop: 2 },
   fixRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   fixText: { color: theme.accent, fontSize: 12, fontWeight: '600' },
   teamResultRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
   teamResult: { flex: 1, backgroundColor: theme.card, borderRadius: 14, borderWidth: 1.5, padding: 12, alignItems: 'center', gap: 6 },
-  teamResultName: { color: theme.text, fontSize: 14, fontWeight: '700', textAlign: 'center' },
-  teamResultYears: { color: theme.muted, fontSize: 12, textAlign: 'center' },
+  teamResultName: { color: theme.text, fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  teamResultYears: { color: theme.muted, fontSize: 10, textAlign: 'center' },
   careerList: { alignSelf: 'stretch', maxHeight: 220 },
   careerRow: {
     flexDirection: 'row',
@@ -652,8 +703,12 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.border,
   },
   careerRowHi: { backgroundColor: 'rgba(61,220,132,0.10)', borderRadius: 8 },
-  careerClub: { color: theme.text, fontSize: 15, flex: 1 },
-  careerYears: { color: theme.muted, fontSize: 13 },
+  careerClub: { color: theme.text, fontSize: 12, flex: 1 },
+  careerYears: { color: theme.muted, fontSize: 11 },
+  commonList: { alignSelf: 'stretch', marginTop: 4 },
+  commonRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: theme.border },
+  commonPhoto: { width: 32, height: 32, borderRadius: 16, overflow: 'hidden' },
+  commonName: { color: theme.text, fontSize: 13, fontWeight: '600', flex: 1 },
   scoreRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginVertical: 14 },
   scoreChip: {
     flexDirection: 'row',
@@ -664,7 +719,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 14,
   },
-  scoreText: { color: theme.text, fontSize: 15, fontWeight: '700' },
+  scoreText: { color: theme.text, fontSize: 12, fontWeight: '700' },
   optRow: { flexDirection: 'row', gap: 8, marginBottom: 4 },
   optChip: {
     flex: 1,
@@ -678,7 +733,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
   },
-  optChipText: { color: theme.text, fontSize: 14, fontWeight: '600', flex: 1 },
+  optChipText: { color: theme.text, fontSize: 12, fontWeight: '600', flex: 1 },
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalCard: {
     backgroundColor: theme.card,
@@ -689,7 +744,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: theme.border,
   },
-  modalTitle: { color: theme.text, fontSize: 18, fontWeight: '800', marginBottom: 10 },
+  modalTitle: { color: theme.text, fontSize: 15, fontWeight: '800', marginBottom: 8 },
   modalRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -698,6 +753,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.border,
   },
-  modalRowText: { color: theme.text, fontSize: 16 },
-  modalCount: { color: theme.muted, fontSize: 13 },
+  modalRowText: { color: theme.text, fontSize: 13 },
+  modalCount: { color: theme.muted, fontSize: 11 },
 });
