@@ -4,6 +4,8 @@ import { View } from 'react-native';
 import { useCrossover } from './src/useCrossover';
 import {
   HomeScreen,
+  LeaderboardScreen,
+  SearchingScreen,
   LobbyScreen,
   CountdownScreen,
   PickTeamScreen,
@@ -18,6 +20,12 @@ export default function App() {
 
   let screen: ReactNode;
   switch (state.phase) {
+    case 'leaderboard':
+      screen = <LeaderboardScreen {...props} />;
+      break;
+    case 'searching':
+      screen = <SearchingScreen {...props} />;
+      break;
     case 'lobby':
       screen = <LobbyScreen {...props} />;
       break;

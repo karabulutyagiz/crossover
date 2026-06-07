@@ -1,16 +1,28 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SERVER_URL, HTTP_URL } from './config';
 import type {
+  ArenaView,
   ClientMsg,
   ClubRef,
   GameOptions,
+  ProfileView,
   RoomView,
   RoundResult,
   ScopesList,
   ServerMsg,
 } from './protocol';
 
-export type Phase = 'home' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
+export type Phase = 'home' | 'leaderboard' | 'searching' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
+
+export interface LeaderboardEntry {
+  rank: number;
+  displayName: string;
+  trophies: number;
+  wins: number;
+  losses: number;
+  arena: { name: string; icon: string; minTrophies: number };
+}
 
 export interface GameState {
   connected: boolean;
@@ -25,6 +37,9 @@ export interface GameState {
   result: RoundResult | null;
   clubResults: ClubRef[];
   scopes: ScopesList | null;
+  profile: ProfileView | null;
+  trophyDelta: { trophies: number; delta: number; arena: ArenaView } | null;
+  leaderboard: LeaderboardEntry[];
 }
 
 const initialState: GameState = {
@@ -40,38 +55,64 @@ const initialState: GameState = {
   result: null,
   clubResults: [],
   scopes: null,
+  profile: null,
+  trophyDelta: null,
+  leaderboard: [],
 };
 
-// Local actions are prefixed with "_" to distinguish them from server messages.
+const PROFILE_KEY = '@crossover_profile';
+
 type Action =
   | ServerMsg
   | { type: '_connected'; value: boolean }
   | { type: '_reset' }
   | { type: '_picked' }
-  | { type: '_scopes'; scopes: ScopesList };
+  | { type: '_scopes'; scopes: ScopesList }
+  | { type: '_leaderboard'; entries: LeaderboardEntry[] }
+  | { type: '_phase'; phase: Phase }
+  | { type: '_load_profile'; profile: ProfileView };
 
 function reducer(state: GameState, action: Action): GameState {
   switch (action.type) {
     case '_connected':
       return { ...state, connected: action.value };
     case '_reset':
-      return { ...initialState, scopes: state.scopes };
+      return { ...initialState, scopes: state.scopes, profile: state.profile };
     case '_picked':
       return { ...state, picked: true };
     case '_scopes':
       return { ...state, scopes: action.scopes };
+    case '_leaderboard':
+      return { ...state, leaderboard: action.entries, phase: 'leaderboard' };
+    case '_phase':
+      return { ...state, phase: action.phase };
+    case '_load_profile':
+      return { ...state, profile: action.profile };
+
+    case 'searching':
+      return { ...state, phase: 'searching' };
+    case 'profile':
+      return { ...state, profile: action.profile };
+    case 'name_changed':
+      return { ...state, profile: action.profile };
+    case 'trophy_update':
+      return {
+        ...state,
+        trophyDelta: { trophies: action.trophies, delta: action.delta, arena: action.arena },
+        profile: state.profile
+          ? { ...state.profile, trophies: action.trophies, arena: action.arena }
+          : state.profile,
+      };
 
     case 'room_state':
       return {
         ...state,
         room: action.room,
-        // Only the first room_state moves us out of "home"; phase transitions
-        // afterwards are driven by the explicit phase events below.
         phase: state.phase === 'home' ? 'lobby' : state.phase,
         error: state.phase === 'home' ? null : state.error,
       };
     case 'countdown':
-      return { ...state, phase: 'countdown', countdown: action.n, result: null, teams: null, locked: null };
+      return { ...state, phase: 'countdown', countdown: action.n, result: null, teams: null, locked: null, trophyDelta: null };
     case 'pick_phase':
       return { ...state, phase: 'pick', picked: false, teams: null, locked: null, result: null, clubResults: [] };
     case 'reveal_teams':
@@ -98,9 +139,35 @@ function reducer(state: GameState, action: Action): GameState {
   }
 }
 
+// Persist profile to AsyncStorage whenever it changes.
+function saveProfile(profile: ProfileView): void {
+  AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(profile)).catch(() => {});
+}
+
 export function useCrossover() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const wsRef = useRef<WebSocket | null>(null);
+
+  // On mount: load saved profile from AsyncStorage.
+  useEffect(() => {
+    AsyncStorage.getItem(PROFILE_KEY)
+      .then((raw) => {
+        if (raw) {
+          const profile = JSON.parse(raw) as ProfileView;
+          dispatch({ type: '_load_profile', profile });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Persist profile whenever it changes from server messages.
+  const prevProfile = useRef<ProfileView | null>(null);
+  useEffect(() => {
+    if (state.profile && state.profile !== prevProfile.current) {
+      prevProfile.current = state.profile;
+      saveProfile(state.profile);
+    }
+  }, [state.profile]);
 
   const connectAndSend = useCallback((first: ClientMsg) => {
     wsRef.current?.close();
@@ -141,11 +208,34 @@ export function useCrossover() {
   }, []);
 
   const actions = {
+    openLeaderboard: () => {
+      fetch(`${HTTP_URL}/leaderboard`)
+        .then((r) => r.json())
+        .then((entries: LeaderboardEntry[]) => dispatch({ type: '_leaderboard', entries }))
+        .catch(() => {});
+    },
+    closeLeaderboard: () => dispatch({ type: '_phase', phase: 'home' }),
+    register: (name: string, gameCenterId?: string) => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        send({ type: 'register', name, gameCenterId });
+      } else {
+        connectAndSend({ type: 'register', name, gameCenterId });
+      }
+    },
+    changeName: (newName: string) => send({ type: 'change_name', newName }),
+    findMatch: (options?: GameOptions) =>
+      connectAndSend({ type: 'find_match', options }),
+    cancelSearch: () => {
+      wsRef.current?.close();
+      wsRef.current = null;
+      dispatch({ type: '_reset' });
+    },
     createRoom: (name: string, options?: GameOptions) =>
       connectAndSend({ type: 'create_room', name, options }),
     createSolo: (name: string, options?: GameOptions) =>
       connectAndSend({ type: 'create_solo', name, options }),
-    joinRoom: (code: string, name: string) => connectAndSend({ type: 'join_room', code: code.toUpperCase(), name }),
+    joinRoom: (code: string, name: string) =>
+      connectAndSend({ type: 'join_room', code: code.toUpperCase(), name }),
     start: () => send({ type: 'start' }),
     pickTeam: (clubId: number) => {
       send({ type: 'pick_team', clubId });

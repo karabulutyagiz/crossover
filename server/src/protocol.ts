@@ -24,12 +24,30 @@ export interface GameOptions {
   difficulty?: Difficulty; // bot difficulty (solo only)
 }
 
+export interface ArenaView {
+  name: string;
+  icon: string;
+  minTrophies: number;
+}
+
+export interface ProfileView {
+  userId: string;
+  displayName: string;
+  trophies: number;
+  diamonds: number;
+  wins: number;
+  losses: number;
+  arena: ArenaView;
+}
+
 export interface PlayerView {
   id: string;
   name: string;
   score: number;
   isHost: boolean;
   connected: boolean;
+  trophies?: number;
+  arena?: ArenaView;
 }
 
 export interface RoomView {
@@ -42,8 +60,11 @@ export interface RoomView {
 // ---- Client -> Server ----
 export type ClientMsg =
   | { type: 'create_room'; name: string; options?: GameOptions }
-  | { type: 'create_solo'; name: string; options?: GameOptions } // play vs an in-app practice bot
+  | { type: 'create_solo'; name: string; options?: GameOptions }
   | { type: 'join_room'; code: string; name: string }
+  | { type: 'register'; name: string; gameCenterId?: string }
+  | { type: 'change_name'; newName: string }
+  | { type: 'find_match'; options?: GameOptions } // ranked matchmaking
   | { type: 'start' }
   | { type: 'pick_team'; clubId: number }
   | { type: 'submit_guess'; text: string }
@@ -70,13 +91,17 @@ export interface RoundResult {
 
 export type ServerMsg =
   | { type: 'room_state'; room: RoomView }
+  | { type: 'profile'; profile: ProfileView }
+  | { type: 'name_changed'; profile: ProfileView }
   | { type: 'countdown'; n: number }
   | { type: 'pick_phase' }
-  | { type: 'team_picked'; playerId: string } // a player locked in their team (name hidden)
+  | { type: 'team_picked'; playerId: string }
   | { type: 'reveal_teams'; teamA: ClubRef; teamB: ClubRef }
   | { type: 'guess_phase'; endsAt: number }
   | { type: 'guess_locked'; byId: string; byName: string }
   | { type: 'result'; result: RoundResult; players: PlayerView[] }
+  | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView }
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
+  | { type: 'searching' }
   | { type: 'opponent_left' }
   | { type: 'error'; message: string };

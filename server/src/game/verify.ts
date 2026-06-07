@@ -267,9 +267,12 @@ export async function commonPlayers(
   const { rows } = await pool.query<{ name: string }>(
     `SELECT p.name
        FROM players p
-      WHERE EXISTS (SELECT 1 FROM player_clubs a WHERE a.player_id = p.id AND a.club_id = $1)
-        AND EXISTS (SELECT 1 FROM player_clubs b WHERE b.player_id = p.id AND b.club_id = $2)
-      ORDER BY (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC
+      WHERE EXISTS (SELECT 1 FROM player_clubs a WHERE a.player_id = p.id AND a.club_id = $1
+                     AND (a.start_year IS NOT NULL OR a.end_year IS NOT NULL))
+        AND EXISTS (SELECT 1 FROM player_clubs b WHERE b.player_id = p.id AND b.club_id = $2
+                     AND (b.start_year IS NOT NULL OR b.end_year IS NOT NULL))
+      ORDER BY (p.image_url IS NOT NULL) DESC,
+               (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC
       LIMIT $3`,
     [teamAId, teamBId, limit],
   );
@@ -281,7 +284,8 @@ export interface CommonPlayerInfo {
   imageUrl: string | null;
 }
 
-/** Players who played for BOTH teams — with photo URLs for display. */
+/** Players who played for BOTH teams — with photo URLs for display.
+ *  Only counts dated spells (official first-team stints). */
 export async function commonPlayersDetailed(
   teamAId: number,
   teamBId: number,
@@ -290,9 +294,12 @@ export async function commonPlayersDetailed(
   const { rows } = await pool.query<{ name: string; image_url: string | null }>(
     `SELECT p.name, p.image_url
        FROM players p
-      WHERE EXISTS (SELECT 1 FROM player_clubs a WHERE a.player_id = p.id AND a.club_id = $1)
-        AND EXISTS (SELECT 1 FROM player_clubs b WHERE b.player_id = p.id AND b.club_id = $2)
-      ORDER BY (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC
+      WHERE EXISTS (SELECT 1 FROM player_clubs a WHERE a.player_id = p.id AND a.club_id = $1
+                     AND (a.start_year IS NOT NULL OR a.end_year IS NOT NULL))
+        AND EXISTS (SELECT 1 FROM player_clubs b WHERE b.player_id = p.id AND b.club_id = $2
+                     AND (b.start_year IS NOT NULL OR b.end_year IS NOT NULL))
+      ORDER BY (p.image_url IS NOT NULL) DESC,
+               (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC
       LIMIT $3`,
     [teamAId, teamBId, limit],
   );
@@ -365,15 +372,16 @@ export async function verifyGuess(
     return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
   }
 
-  // 1) Fuzzy candidates by name. We use word_similarity so that typing just a
-  // surname ("Sneijder") matches the full stored name ("Wesley Sneijder"), and
-  // misspellings still match. (At prototype scale ~20k players a scan is fine;
-  // at full scale we'd add the `<%` trigram operator + index for the coarse net.)
+  // 1) Fuzzy candidates by name. word_similarity lets "Sneijder" match
+  // "Wesley Sneijder". When similarity scores are equal, prefer the most
+  // notable player (more clubs = bigger career, has photo = Wikipedia-notable).
   const { rows: cands } = await pool.query<{ id: string; name: string; sim: number; image_url: string | null }>(
-    `SELECT id, name, image_url, word_similarity($1, name_norm) AS sim
-       FROM players
-      WHERE word_similarity($1, name_norm) >= $2
-      ORDER BY sim DESC
+    `SELECT p.id, p.name, p.image_url, word_similarity($1, p.name_norm) AS sim
+       FROM players p
+      WHERE word_similarity($1, p.name_norm) >= $2
+      ORDER BY sim DESC,
+               (p.image_url IS NOT NULL) DESC,
+               (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC
       LIMIT 25`,
     [norm, config.verifyMatchThreshold],
   );
@@ -385,6 +393,9 @@ export async function verifyGuess(
   }
 
   // 2) Which eligible candidates played for both teams?
+  // Only count spells that have at least a start_year or end_year — this
+  // filters out youth/trial entries that have no dated record, meaning the
+  // player never had an official first-team stint at that club.
   const ids = eligible.map((c) => c.id);
   const { rows: membership } = await pool.query<{
     player_id: string;
@@ -392,8 +403,8 @@ export async function verifyGuess(
     in_b: boolean;
   }>(
     `SELECT player_id,
-            bool_or(club_id = $2) AS in_a,
-            bool_or(club_id = $3) AS in_b
+            bool_or(club_id = $2 AND (start_year IS NOT NULL OR end_year IS NOT NULL)) AS in_a,
+            bool_or(club_id = $3 AND (start_year IS NOT NULL OR end_year IS NOT NULL)) AS in_b
        FROM player_clubs
       WHERE player_id = ANY($1::bigint[])
       GROUP BY player_id`,

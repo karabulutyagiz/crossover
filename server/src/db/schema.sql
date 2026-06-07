@@ -58,6 +58,22 @@ CREATE INDEX IF NOT EXISTS idx_players_name_norm_trgm
 CREATE INDEX IF NOT EXISTS idx_clubs_name_norm_trgm
   ON clubs USING gin (name_norm gin_trgm_ops);
 
+-- ---- User accounts & ranking ----
+
+CREATE TABLE IF NOT EXISTS users (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  display_name   TEXT NOT NULL,
+  game_center_id TEXT UNIQUE,              -- Apple Game Center player ID
+  trophies       INT NOT NULL DEFAULT 0,   -- Clash Royale-style cups
+  diamonds       INT NOT NULL DEFAULT 50,  -- in-game currency (start with 50 free)
+  wins           INT NOT NULL DEFAULT 0,
+  losses         INT NOT NULL DEFAULT 0,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_trophies ON users (trophies DESC);
+CREATE INDEX IF NOT EXISTS idx_users_game_center ON users (game_center_id);
+
 -- Bookkeeping for ingest runs.
 CREATE TABLE IF NOT EXISTS ingest_log (
   id          BIGSERIAL PRIMARY KEY,

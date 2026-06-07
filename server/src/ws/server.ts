@@ -3,12 +3,14 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomManager } from '../rooms/manager.ts';
 import { BotPlayer } from '../rooms/bot.ts';
 import { listScopes } from '../game/verify.ts';
+import { findOrCreateUser, changeDisplayName, getLeaderboard, type UserProfile } from '../game/rank.ts';
 import type { Room, Transport } from '../rooms/room.ts';
 import type { ClientMsg, ServerMsg } from '../protocol.ts';
 
 interface ConnCtx {
   room: Room;
   playerId: string;
+  userProfile?: UserProfile;
 }
 
 function wsTransport(ws: WebSocket): Transport {
@@ -20,8 +22,18 @@ function wsTransport(ws: WebSocket): Transport {
   };
 }
 
+interface QueueEntry {
+  transport: Transport;
+  ws: WebSocket;
+  name: string;
+  userProfile?: UserProfile;
+  options?: import('../protocol.ts').GameOptions;
+  setCtx: (c: ConnCtx) => void;
+}
+
 export function startServer(port: number): Server {
   const manager = new RoomManager();
+  const matchQueue: QueueEntry[] = [];
   const http = createServer((req, res) => {
     const cors = { 'content-type': 'application/json', 'access-control-allow-origin': '*' };
     if (req.url === '/health') {
@@ -41,6 +53,18 @@ export function startServer(port: number): Server {
         });
       return;
     }
+    if (req.url === '/leaderboard') {
+      getLeaderboard(50)
+        .then((lb) => {
+          res.writeHead(200, cors);
+          res.end(JSON.stringify(lb));
+        })
+        .catch(() => {
+          res.writeHead(500, cors);
+          res.end(JSON.stringify([]));
+        });
+      return;
+    }
     res.writeHead(404);
     res.end();
   });
@@ -49,6 +73,7 @@ export function startServer(port: number): Server {
 
   wss.on('connection', (ws: WebSocket) => {
     let ctx: ConnCtx | null = null;
+    let userProfile: UserProfile | undefined;
     const transport = wsTransport(ws);
 
     ws.on('message', (data) => {
@@ -59,20 +84,101 @@ export function startServer(port: number): Server {
         return transport.send({ type: 'error', message: 'Invalid JSON' });
       }
 
-      // First message must establish the connection (create / solo / join).
+      // Register creates/loads a user profile (can happen before or without a room).
+      if (msg.type === 'register') {
+        void (async () => {
+          const profile = await findOrCreateUser(msg.gameCenterId ?? null, msg.name);
+          userProfile = profile;
+          transport.send({
+            type: 'profile',
+            profile: {
+              userId: profile.id,
+              displayName: profile.displayName,
+              trophies: profile.trophies,
+              diamonds: profile.diamonds,
+              wins: profile.wins,
+              losses: profile.losses,
+              arena: profile.arena,
+            },
+          });
+        })();
+        return;
+      }
+
+      if (msg.type === 'change_name') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Register first' });
+        void (async () => {
+          const result = await changeDisplayName(userProfile!.id, msg.newName);
+          if (!result.ok) return transport.send({ type: 'error', message: result.error });
+          userProfile = result.profile;
+          transport.send({
+            type: 'name_changed',
+            profile: {
+              userId: result.profile.id,
+              displayName: result.profile.displayName,
+              trophies: result.profile.trophies,
+              diamonds: result.profile.diamonds,
+              wins: result.profile.wins,
+              losses: result.profile.losses,
+              arena: result.profile.arena,
+            },
+          });
+        })();
+        return;
+      }
+
+      // First message must establish the connection (create / solo / join / find_match).
       if (!ctx) {
+        if (msg.type === 'find_match') {
+          const name = userProfile?.displayName ?? 'Oyuncu';
+          // Remove stale entries for this ws (if they spammed the button)
+          for (let i = matchQueue.length - 1; i >= 0; i--) {
+            if (matchQueue[i]!.ws === ws) matchQueue.splice(i, 1);
+          }
+          // Try to pair with someone already waiting
+          const partner = matchQueue.shift();
+          if (partner && partner.ws.readyState === partner.ws.OPEN) {
+            // Create room and add both
+            const room = manager.createRoom();
+            if (msg.options?.scope) room.scope = msg.options.scope;
+            const resA = room.addPlayer(partner.name, partner.transport, true);
+            const resB = room.addPlayer(name, transport, false);
+            if (resA.ok) partner.setCtx({ room, playerId: resA.id, userProfile: partner.userProfile });
+            if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
+            // Auto-start after a short delay
+            setTimeout(() => {
+              if (room.size === 2) room.handle(resA.ok ? resA.id : '', { type: 'start' });
+            }, 1500);
+          } else {
+            // No partner yet — wait in queue
+            const entry: QueueEntry = {
+              transport,
+              ws,
+              name,
+              userProfile,
+              options: msg.options,
+              setCtx: (c) => { ctx = c; },
+            };
+            matchQueue.push(entry);
+            transport.send({ type: 'searching' as any });
+          }
+          return;
+        }
+
         if (msg.type === 'create_room') {
           const room = manager.createRoom();
           if (msg.options?.scope) room.scope = msg.options.scope;
-          const res = room.addPlayer(msg.name, transport, true);
-          if (res.ok) ctx = { room, playerId: res.id };
+          const name = userProfile?.displayName ?? msg.name;
+          const res = room.addPlayer(name, transport, true);
+          if (res.ok) ctx = { room, playerId: res.id, userProfile };
           return;
         }
         if (msg.type === 'create_solo') {
           const room = manager.createRoom();
           if (msg.options?.scope) room.scope = msg.options.scope;
-          const res = room.addPlayer(msg.name, transport, true);
-          if (res.ok) ctx = { room, playerId: res.id };
+          const name = userProfile?.displayName ?? msg.name;
+          const res = room.addPlayer(name, transport, true);
+          if (res.ok) ctx = { room, playerId: res.id, userProfile };
           const bot = new BotPlayer({ difficulty: msg.options?.difficulty, scope: room.scope });
           const botRes = room.addPlayer('Bot', bot, false);
           if (botRes.ok) bot.bind(room, botRes.id);
@@ -81,9 +187,10 @@ export function startServer(port: number): Server {
         if (msg.type === 'join_room') {
           const room = manager.get(msg.code);
           if (!room) return transport.send({ type: 'error', message: 'Room not found' });
-          const res = room.addPlayer(msg.name, transport, false);
+          const name = userProfile?.displayName ?? msg.name;
+          const res = room.addPlayer(name, transport, false);
           if (!res.ok) return transport.send({ type: 'error', message: res.error });
-          ctx = { room, playerId: res.id };
+          ctx = { room, playerId: res.id, userProfile };
           return;
         }
         return transport.send({ type: 'error', message: 'Create or join a room first' });
@@ -93,9 +200,16 @@ export function startServer(port: number): Server {
     });
 
     ws.on('close', () => {
+      // Remove from matchmaking queue if waiting
+      for (let i = matchQueue.length - 1; i >= 0; i--) {
+        if (matchQueue[i]!.ws === ws) matchQueue.splice(i, 1);
+      }
       if (ctx) ctx.room.handleClose(ctx.playerId);
     });
     ws.on('error', () => {
+      for (let i = matchQueue.length - 1; i >= 0; i--) {
+        if (matchQueue[i]!.ws === ws) matchQueue.splice(i, 1);
+      }
       if (ctx) ctx.room.handleClose(ctx.playerId);
     });
   });

@@ -13,9 +13,15 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from './theme';
 import type { GameState } from './useCrossover';
-import type { ClubRef, Difficulty, GameOptions, Scope, SpellInfo } from './protocol';
+import type { ClubRef, Difficulty, GameOptions, ProfileView, Scope, SpellInfo } from './protocol';
 
 type Actions = {
+  register: (name: string, gameCenterId?: string) => void;
+  changeName: (newName: string) => void;
+  openLeaderboard: () => void;
+  closeLeaderboard: () => void;
+  findMatch: (options?: GameOptions) => void;
+  cancelSearch: () => void;
   createRoom: (name: string, options?: GameOptions) => void;
   createSolo: (name: string, options?: GameOptions) => void;
   joinRoom: (code: string, name: string) => void;
@@ -141,6 +147,33 @@ function scopeLabel(scope: Scope): string {
 
 type Picker = null | 'difficulty' | 'scopeType' | 'league' | 'country';
 
+function ProfileCard({ profile }: { profile: ProfileView }) {
+  return (
+    <View style={styles.profileCard}>
+      <View style={styles.profileRow}>
+        <Text style={{ fontSize: 22 }}>{profile.arena.icon}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.profileName}>{profile.displayName}</Text>
+          <Text style={styles.profileArena}>{profile.arena.name}</Text>
+        </View>
+        <View style={styles.profileStat}>
+          <Text style={styles.profileStatIcon}>🏆</Text>
+          <Text style={styles.profileStatVal}>{profile.trophies}</Text>
+        </View>
+        <View style={styles.profileStat}>
+          <Text style={styles.profileStatIcon}>💎</Text>
+          <Text style={styles.profileStatVal}>{profile.diamonds}</Text>
+        </View>
+      </View>
+      <View style={styles.profileWL}>
+        <Text style={[styles.muted, { fontSize: 11 }]}>
+          {profile.wins}G / {profile.losses}M
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export function HomeScreen({ actions, state }: Props) {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
@@ -148,64 +181,94 @@ export function HomeScreen({ actions, state }: Props) {
   const [scope, setScope] = useState<Scope>({ type: 'all' });
   const [picker, setPicker] = useState<Picker>(null);
   const opts: GameOptions = { scope, difficulty };
+  const profile = state.profile;
 
   return (
     <Screen>
-      <View style={styles.center}>
-        <Ionicons name="football" size={44} color={theme.primary} />
-      </View>
-      <Text style={styles.logo}>CROSSOVER</Text>
-      <Text style={styles.tagline}>İki takımda da oynamış futbolcuyu ilk bilen kazanır</Text>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
+        <View style={styles.center}>
+          <Ionicons name="football" size={36} color={theme.primary} />
+        </View>
+        <Text style={styles.logo}>CROSSOVER</Text>
+        <Text style={styles.tagline}>{"İki takımda da oynamış futbolcuyu ilk bilen kazanır"}</Text>
 
-      <TextInput
-        placeholder="Adın"
-        placeholderTextColor={theme.muted}
-        value={name}
-        onChangeText={setName}
-        style={styles.input}
-      />
+        {profile ? (
+          <ProfileCard profile={profile} />
+        ) : (
+          <>
+            <TextInput
+              placeholder="Adın"
+              placeholderTextColor={theme.muted}
+              value={name}
+              onChangeText={setName}
+              style={styles.input}
+            />
+            <Btn
+              label="Kayıt Ol"
+              icon="person-add"
+              kind="primary"
+              onPress={() => actions.register(name || 'Oyuncu')}
+              disabled={!name.trim()}
+            />
+          </>
+        )}
 
-      {/* Settings chips */}
-      <View style={styles.optRow}>
-        <Pressable style={styles.optChip} onPress={() => setPicker('scopeType')}>
-          <Ionicons name="globe-outline" size={15} color={theme.accent} />
-          <Text style={styles.optChipText} numberOfLines={1}>
-            {scopeLabel(scope)}
-          </Text>
-          <Ionicons name="chevron-down" size={14} color={theme.muted} />
-        </Pressable>
-        <Pressable style={styles.optChip} onPress={() => setPicker('difficulty')}>
-          <Ionicons name="speedometer-outline" size={15} color={theme.accent} />
-          <Text style={styles.optChipText}>Bot: {DIFF_LABEL[difficulty]}</Text>
-          <Ionicons name="chevron-down" size={14} color={theme.muted} />
-        </Pressable>
-      </View>
+        <Btn
+          label="Hemen Oyna"
+          icon="flash"
+          kind="primary"
+          onPress={() => actions.findMatch({ scope })}
+          disabled={!profile}
+        />
+        <Btn label="Lider Tablosu" icon="trophy" kind="ghost" onPress={actions.openLeaderboard} />
 
-      <Btn label="Oda Kur" icon="add-circle" onPress={() => actions.createRoom(name || 'Oyuncu', opts)} disabled={!name.trim()} />
-      <Btn
-        label="Bot'a Karşı Oyna"
-        kind="accent"
-        icon="game-controller"
-        onPress={() => actions.createSolo(name || 'Oyuncu', opts)}
-        disabled={!name.trim()}
-      />
-      <View style={styles.divider} />
-      <TextInput
-        placeholder="ODA KODU"
-        placeholderTextColor={theme.muted}
-        value={code}
-        autoCapitalize="characters"
-        onChangeText={(t) => setCode(t.toUpperCase())}
-        style={styles.input}
-      />
-      <Btn
-        label="Odaya Katıl"
-        kind="ghost"
-        icon="enter"
-        onPress={() => actions.joinRoom(code, name || 'Oyuncu')}
-        disabled={!name.trim() || code.trim().length < 4}
-      />
-      {state.error ? <Text style={styles.error}>{state.error}</Text> : null}
+        {/* Settings chips */}
+        <View style={styles.optRow}>
+          <Pressable style={styles.optChip} onPress={() => setPicker('scopeType')}>
+            <Ionicons name="globe-outline" size={15} color={theme.accent} />
+            <Text style={styles.optChipText} numberOfLines={1}>
+              {scopeLabel(scope)}
+            </Text>
+            <Ionicons name="chevron-down" size={14} color={theme.muted} />
+          </Pressable>
+          <Pressable style={styles.optChip} onPress={() => setPicker('difficulty')}>
+            <Ionicons name="speedometer-outline" size={15} color={theme.accent} />
+            <Text style={styles.optChipText}>Bot: {DIFF_LABEL[difficulty]}</Text>
+            <Ionicons name="chevron-down" size={14} color={theme.muted} />
+          </Pressable>
+        </View>
+
+        <Btn
+          label="Oda Kur"
+          icon="add-circle"
+          onPress={() => actions.createRoom(profile?.displayName ?? (name || 'Oyuncu'), opts)}
+          disabled={!profile && !name.trim()}
+        />
+        <Btn
+          label="Bot'a Karşı Oyna"
+          kind="accent"
+          icon="game-controller"
+          onPress={() => actions.createSolo(profile?.displayName ?? (name || 'Oyuncu'), opts)}
+          disabled={!profile && !name.trim()}
+        />
+        <View style={styles.divider} />
+        <TextInput
+          placeholder="ODA KODU"
+          placeholderTextColor={theme.muted}
+          value={code}
+          autoCapitalize="characters"
+          onChangeText={(t) => setCode(t.toUpperCase())}
+          style={styles.input}
+        />
+        <Btn
+          label="Odaya Katıl"
+          kind="ghost"
+          icon="enter"
+          onPress={() => actions.joinRoom(code, profile?.displayName ?? (name || 'Oyuncu'))}
+          disabled={(!profile && !name.trim()) || code.trim().length < 4}
+        />
+        {state.error ? <Text style={styles.error}>{state.error}</Text> : null}
+      </ScrollView>
 
       <PickerModal
         picker={picker}
@@ -310,11 +373,21 @@ export function LobbyScreen({ state, actions }: Props) {
   const room = state.room!;
   const you = room.players.find((p) => p.id === room.youId);
   const canStart = !!you?.isHost && room.players.length === 2;
+  const hasBot = room.players.some((p) => p.name === 'Bot');
   return (
     <Screen>
-      <Text style={styles.label}>ODA KODU</Text>
-      <Text style={styles.code}>{room.code}</Text>
-      <Text style={styles.muted}>Arkadaşına bu kodu gönder</Text>
+      {!hasBot ? (
+        <>
+          <Text style={styles.label}>ODA KODU</Text>
+          <Text style={styles.code}>{room.code}</Text>
+          <Text style={styles.muted}>Arkadaşına bu kodu gönder</Text>
+        </>
+      ) : (
+        <>
+          <Ionicons name="game-controller" size={44} color={theme.accent} style={{ alignSelf: 'center' }} />
+          <Text style={styles.h1}>Bot Maçı</Text>
+        </>
+      )}
       <View style={styles.divider} />
       {room.players.map((p) => (
         <View key={p.id} style={styles.lobbyRow}>
@@ -481,6 +554,100 @@ export function GuessScreen({ state, actions }: Props) {
   );
 }
 
+// ---- Searching ----
+const FUN_FACTS = [
+  { icon: '🇧🇷', text: 'Pele, kariyeri boyunca 1.281 gol attı ve bu rekor hâlâ tartışılıyor.' },
+  { icon: '🏟️', text: "Camp Nou, Avrupa'nın en büyük stadyumu olarak 99.354 kişi kapasitesine sahiptir." },
+  { icon: '🇦🇷', text: "Messi, tek bir takvim yılında 91 gol atarak Gerd Müller'in rekorunu kırdı (2012)." },
+  { icon: '🇹🇷', text: "Galatasaray, 2000 yılında UEFA Kupası'nı kazanan ilk Türk takımı oldu." },
+  { icon: '🏆', text: "Real Madrid, 15 Şampiyonlar Ligi kupasıyla en çok kazanan takımdır." },
+  { icon: '🇮🇹', text: "Paolo Maldini, 25 yıl boyunca yalnızca AC Milan forması giydi." },
+  { icon: '⚽', text: "İlk FIFA Dünya Kupası 1930'da Uruguay'da düzenlendi ve ev sahibi Uruguay şampiyon oldu." },
+  { icon: '🇫🇷', text: "Zinedine Zidane, 2006 Dünya Kupası finalinde kafa attığı anla tarihe geçti." },
+  { icon: '🇩🇪', text: "Bundesliga'da ayakta seyirci bölümleri sayesinde bilet fiyatları Avrupa'nın en düşüğüdür." },
+  { icon: '🇳🇱', text: "Johan Cruyff, 'toplam futbol' felsefesinin mimarı olarak kabul edilir." },
+  { icon: '🇵🇹', text: "Cristiano Ronaldo, uluslararası arenada en çok gol atan futbolcudur." },
+  { icon: '🇪🇸', text: "Barcelona, 2008-2012 arasında tiki-taka stiliyle futbol tarihini değiştirdi." },
+  { icon: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', text: "Premier Lig, dünyanın en çok izlenen futbol ligidir; 212 ülkede yayınlanır." },
+  { icon: '🇭🇷', text: "Luka Modric, 2018'de Ballon d'Or'u kazanarak Messi-Ronaldo hegemonyasını kırdı." },
+  { icon: '🇹🇷', text: "Hakan Şükür, 2002 Dünya Kupası'nda tarihin en erken golünü 11. saniyede attı." },
+  { icon: '🧤', text: "Gianluigi Buffon, 40 yaşını geçtikten sonra bile üst düzey kaleciliğe devam etti." },
+  { icon: '🇲🇽', text: "Azteca Stadyumu, iki Dünya Kupası finaline ev sahipliği yapan tek stadyumdur." },
+  { icon: '🇪🇬', text: "Mohamed Salah, Premier Lig'de tek sezonda 32 gol atarak rekoru kırdı (2017-18)." },
+  { icon: '🏅', text: "Alex Ferguson, Manchester United'da 26 yıl teknik direktörlük yaptı ve 38 kupa kazandı." },
+  { icon: '🇯🇵', text: "Japonya, 2002'de Güney Kore ile birlikte Dünya Kupası'na ev sahipliği yapan ilk Asya ülkesiydi." },
+];
+
+export function SearchingScreen({ actions }: Props) {
+  const [factIdx, setFactIdx] = useState(Math.floor(Math.random() * FUN_FACTS.length));
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setFactIdx((prev) => (prev + 1) % FUN_FACTS.length);
+    }, 6000);
+    return () => clearInterval(id);
+  }, []);
+
+  const fact = FUN_FACTS[factIdx]!;
+
+  return (
+    <Screen>
+      <View style={styles.center}>
+        <Ionicons name="flash" size={44} color={theme.primary} />
+        <Text style={styles.h1}>Rakip Aranıyor</Text>
+        <View style={{ height: 20 }} />
+        <ActivityIndicator size="large" color={theme.primary} />
+        <View style={{ height: 12 }} />
+        <Text style={styles.muted}>{"Çevrim içi bir rakip bekleniyor..."}</Text>
+      </View>
+
+      <View style={styles.factCard}>
+        <Text style={styles.factIcon}>{fact.icon}</Text>
+        <Text style={styles.factText}>{fact.text}</Text>
+      </View>
+
+      <Btn label="Vazgeç" kind="ghost" icon="close" onPress={actions.cancelSearch} />
+    </Screen>
+  );
+}
+
+// ---- Leaderboard ----
+const RANK_COLORS = ['#FFD700', '#C0C0C0', '#CD7F32']; // gold, silver, bronze
+
+export function LeaderboardScreen({ state, actions }: Props) {
+  const lb = state.leaderboard;
+  return (
+    <Screen>
+      <View style={styles.center}>
+        <Ionicons name="trophy" size={36} color={theme.accent} />
+        <Text style={styles.h1}>Lider Tablosu</Text>
+      </View>
+      <ScrollView style={{ flex: 1, marginTop: 10 }} showsVerticalScrollIndicator={false}>
+        {lb.map((entry) => (
+          <View key={entry.rank} style={styles.lbRow}>
+            <Text style={[styles.lbRank, entry.rank <= 3 ? { color: RANK_COLORS[entry.rank - 1] } : null]}>
+              {entry.rank}
+            </Text>
+            <Text style={{ fontSize: 18 }}>{entry.arena.icon}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.lbName} numberOfLines={1}>{entry.displayName}</Text>
+              <Text style={styles.lbArena}>{entry.arena.name}</Text>
+            </View>
+            <View style={styles.lbTrophyBox}>
+              <Text style={{ fontSize: 12 }}>🏆</Text>
+              <Text style={styles.lbTrophies}>{entry.trophies}</Text>
+            </View>
+            <Text style={styles.lbWL}>{entry.wins}G {entry.losses}M</Text>
+          </View>
+        ))}
+        {lb.length === 0 ? <Text style={styles.muted}>Henüz oyuncu yok</Text> : null}
+      </ScrollView>
+      <View style={{ height: 10 }} />
+      <Btn label="Geri" kind="ghost" icon="arrow-back" onPress={actions.closeLeaderboard} />
+    </Screen>
+  );
+}
+
 // ---- Result ----
 function TeamResultCard({ team, spells, played }: { team: ClubRef; spells: SpellInfo[]; played: boolean }) {
   return (
@@ -561,7 +728,7 @@ export function ResultScreen({ state, actions }: Props) {
 
         {!r.correct ? (
           <>
-            <Text style={styles.sectionLabel}>İKİ TAKIMDA DA OYNAMIŞ OYUNCULAR</Text>
+            <Text style={styles.sectionLabel}>{"İKİ TAKIMDA DA OYNAMIŞ OYUNCULAR"}</Text>
             {r.commonPlayers && r.commonPlayers.length > 0 ? (
               r.commonPlayers.map((cp, i) => (
                 <View key={i} style={styles.commonRow}>
@@ -577,7 +744,7 @@ export function ResultScreen({ state, actions }: Props) {
               ))
             ) : (
               <Text style={[styles.muted, { marginTop: 6 }]}>
-                Bu iki takımda ortak oynamış oyuncu bulunamadı
+                {"Bu iki takımda ortak oynamış oyuncu bulunamadı"}
               </Text>
             )}
           </>
@@ -705,6 +872,24 @@ const styles = StyleSheet.create({
   careerRowHi: { backgroundColor: 'rgba(61,220,132,0.10)', borderRadius: 8 },
   careerClub: { color: theme.text, fontSize: 12, flex: 1 },
   careerYears: { color: theme.muted, fontSize: 11 },
+  factCard: { backgroundColor: theme.card, borderRadius: 12, padding: 16, marginVertical: 24, borderWidth: 1, borderColor: theme.border, alignItems: 'center', gap: 10 },
+  factIcon: { fontSize: 28 },
+  factText: { color: theme.text, fontSize: 13, textAlign: 'center', lineHeight: 20 },
+  lbRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.card, borderRadius: 10, padding: 10, marginVertical: 3, borderWidth: 1, borderColor: theme.border },
+  lbRank: { color: theme.muted, fontSize: 15, fontWeight: '900', width: 24, textAlign: 'center' },
+  lbName: { color: theme.text, fontSize: 13, fontWeight: '700' },
+  lbArena: { color: theme.accent, fontSize: 10 },
+  lbTrophyBox: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  lbTrophies: { color: theme.accent, fontSize: 13, fontWeight: '800' },
+  lbWL: { color: theme.muted, fontSize: 10, width: 40, textAlign: 'right' },
+  profileCard: { backgroundColor: theme.card, borderRadius: 12, padding: 12, marginVertical: 8, borderWidth: 1, borderColor: theme.border },
+  profileRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  profileName: { color: theme.text, fontSize: 15, fontWeight: '800' },
+  profileArena: { color: theme.accent, fontSize: 11, fontWeight: '600' },
+  profileStat: { alignItems: 'center', gap: 2 },
+  profileStatIcon: { fontSize: 14 },
+  profileStatVal: { color: theme.text, fontSize: 13, fontWeight: '700' },
+  profileWL: { alignItems: 'flex-end', marginTop: 4 },
   commonList: { alignSelf: 'stretch', marginTop: 4 },
   commonRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: theme.border },
   commonPhoto: { width: 32, height: 32, borderRadius: 16, overflow: 'hidden' },
