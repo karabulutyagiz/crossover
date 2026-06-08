@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { pool } from '../db/pool.ts';
 import { verifyGuess, searchClubs, commonPlayersDetailed, randomClub } from '../game/verify.ts';
+import { applyMatchResult } from '../game/rank.ts';
 import type {
   ClientMsg,
   ServerMsg,
@@ -32,6 +33,7 @@ interface Player {
   score: number;
   isHost: boolean;
   connected: boolean;
+  userId?: string; // DB user ID for trophy updates
 }
 
 interface Round {
@@ -63,6 +65,7 @@ export class Room {
     name: string,
     transport: Transport,
     asHost: boolean,
+    userId?: string,
   ): { ok: true; id: string } | { ok: false; error: string } {
     if (this.players.size >= MAX_PLAYERS) return { ok: false, error: 'Room is full' };
     const id = randomUUID();
@@ -73,6 +76,7 @@ export class Room {
       score: 0,
       isHost: asHost,
       connected: true,
+      userId,
     });
     this.broadcastState();
     return { ok: true, id };
@@ -343,8 +347,29 @@ export class Room {
         if (this.status === 'result' && !this.matchOver) this.beginCountdown();
       }, INTER_ROUND_MS);
       this.timers.push(t);
+    } else {
+      // Match is over — update trophies for players with a DB account.
+      void this.updateTrophies(winner!);
     }
-    // If the match IS over we wait for a rematch request instead.
+  }
+
+  // ---- trophy updates ----
+  private async updateTrophies(winner: Player): Promise<void> {
+    for (const p of this.players.values()) {
+      if (p.transport.isBot || !p.userId) continue;
+      const won = p.id === winner.id;
+      try {
+        const { profile, delta } = await applyMatchResult(p.userId, won);
+        p.transport.send({
+          type: 'trophy_update',
+          trophies: profile.trophies,
+          delta,
+          arena: profile.arena,
+        });
+      } catch {
+        // DB error — skip silently
+      }
+    }
   }
 
   // ---- rematch (only after a match ends) ----

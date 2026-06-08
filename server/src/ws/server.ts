@@ -143,8 +143,8 @@ export function startServer(port: number): Server {
             // Create room and add both
             const room = manager.createRoom();
             if (msg.options?.scope) room.scope = msg.options.scope;
-            const resA = room.addPlayer(partner.name, partner.transport, true);
-            const resB = room.addPlayer(name, transport, false);
+            const resA = room.addPlayer(partner.name, partner.transport, true, partner.userProfile?.id);
+            const resB = room.addPlayer(name, transport, false, userProfile?.id);
             if (resA.ok) partner.setCtx({ room, playerId: resA.id, userProfile: partner.userProfile });
             if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
             // Auto-start after a short delay
@@ -171,7 +171,7 @@ export function startServer(port: number): Server {
           const room = manager.createRoom();
           if (msg.options?.scope) room.scope = msg.options.scope;
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, true);
+          const res = room.addPlayer(name, transport, true, userProfile?.id);
           if (res.ok) ctx = { room, playerId: res.id, userProfile };
           return;
         }
@@ -179,7 +179,7 @@ export function startServer(port: number): Server {
           const room = manager.createRoom();
           if (msg.options?.scope) room.scope = msg.options.scope;
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, true);
+          const res = room.addPlayer(name, transport, true, userProfile?.id);
           if (res.ok) ctx = { room, playerId: res.id, userProfile };
           const bot = new BotPlayer({ difficulty: msg.options?.difficulty, scope: room.scope });
           const botRes = room.addPlayer('Bot', bot, false);
@@ -190,7 +190,7 @@ export function startServer(port: number): Server {
           const room = manager.get(msg.code);
           if (!room) return transport.send({ type: 'error', message: 'Room not found' });
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, false);
+          const res = room.addPlayer(name, transport, false, userProfile?.id);
           if (!res.ok) return transport.send({ type: 'error', message: res.error });
           ctx = { room, playerId: res.id, userProfile };
           return;
