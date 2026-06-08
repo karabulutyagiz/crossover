@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nasıl oynanır — Crossover</title>
+<meta name="description" content="Crossover bir tur: 3·2·1 geri sayım, takım seç, ortak oyuncuyu ilk yazan ol, sonuç ve skor." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<div class="bg-fx"><span class="blob a"></span><span class="blob b"></span><span class="blob c"></span></div>
+<div class="grid-overlay"></div>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="/"><svg class="mark" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="x" cx="9" cy="12" r="6.2"/><circle class="x" cx="15" cy="12" r="6.2"/><circle class="c1" cx="9" cy="12" r="6.2" stroke-width="1.8"/><circle class="c2" cx="15" cy="12" r="6.2" stroke-width="1.8"/></svg> CROSSOVER</a>
+    <div class="nav-links" id="navLinks">
+      <a href="/nasil-oynanir/">Nasıl oynanır</a>
+      <a href="/dogrulama/">Doğrulama</a>
+      <a href="/ozellikler/">Özellikler</a>
+    </div>
+    <div class="nav-right">
+      <a class="nav-cta" href="/indir/">Hemen Oyna</a>
+      <button class="menu-btn" id="menuBtn" aria-label="Menü"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    </div>
+  </div>
+</nav>
+
+<header class="wrap page-head">
+  <span class="eyebrow reveal">Nasıl oynanır</span>
+  <h1 class="reveal d1">Dört adımda <span class="grad">bir tur</span></h1>
+  <p class="sub reveal d2">Oda kur, geri sayımla başla, takımını seç, ortak oyuncuyu ilk yazan ol.</p>
+</header>
+
+<section class="block" style="padding-top:30px">
+  <div class="wrap steps">
+    <div class="step reveal">
+      <div class="ph"><div class="phone"><div class="screen"><img src="/screens/countdown3.png" alt="Geri sayım"></div><div class="glare"></div></div></div>
+      <div class="cap"><div class="num">01</div><h3>3·2·1 Hazır ol</h3><p>Her iki oyuncu için senkron geri sayım başlar.</p></div>
+    </div>
+    <div class="step reveal d1">
+      <div class="ph"><div class="phone"><div class="screen"><img src="/screens/pick.png" alt="Takım seç"></div><div class="glare"></div></div></div>
+      <div class="cap"><div class="num">02</div><h3>Takımını seç</h3><p>Otomatik tamamlamalı arama; gerçek kulüp logoları.</p></div>
+    </div>
+    <div class="step reveal d2">
+      <div class="ph"><div class="phone"><div class="screen"><img src="/screens/guess.png" alt="Tahmin"></div><div class="glare"></div></div></div>
+      <div class="cap"><div class="num">03</div><h3>Ortak oyuncuyu yaz</h3><p>İki takım açıklanır, süre işler — ilk doğru kilitler.</p></div>
+    </div>
+    <div class="step reveal d3">
+      <div class="ph"><div class="phone"><div class="screen"><img src="/screens/correct.png" alt="Sonuç"></div><div class="glare"></div></div></div>
+      <div class="cap"><div class="num">04</div><h3>Sonuç & skor</h3><p>Doğru/yanlış, oyuncunun tüm kariyeri ve güncel skor.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="countdown">
+  <div class="wrap center">
+    <span class="eyebrow reveal">Tansiyon yükseliyor</span>
+    <h2 class="reveal d1">3… 2… 1… Başla!</h2>
+    <p class="sub reveal d2">Her turdan önce iki oyuncunun ekranında aynı anda işleyen geri sayım.</p>
+  </div>
+  <div class="wrap strip">
+    <div class="reveal"><div class="phone"><div class="screen"><img src="/screens/countdown3.png" alt="3"></div><div class="glare"></div></div></div>
+    <div class="reveal d1"><div class="phone"><div class="screen"><img src="/screens/countdown2.png" alt="2"></div><div class="glare"></div></div></div>
+    <div class="reveal d2"><div class="phone"><div class="screen"><img src="/screens/countdown1.png" alt="1"></div><div class="glare"></div></div></div>
+  </div>
+  <div class="wrap center" style="margin-top:46px">
+    <a class="btn primary" href="/dogrulama/"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg> Doğrulama nasıl çalışır?</a>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="/"><svg class="mark" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="x" cx="9" cy="12" r="6.2"/><circle class="x" cx="15" cy="12" r="6.2"/><circle class="c1" cx="9" cy="12" r="6.2" stroke-width="1.8"/><circle class="c2" cx="15" cy="12" r="6.2" stroke-width="1.8"/></svg> CROSSOVER</a>
+    <div>© 2026 Crossover · React Native · Node.js · PostgreSQL · Wikidata</div>
+  </div>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>

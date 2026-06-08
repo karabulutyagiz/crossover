@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Doğrulama — Crossover</title>
+<meta name="description" content="Sunucu, futbolcunun her iki takımda da oynayıp oynamadığını gerçek verilerle anında kontrol eder." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<div class="bg-fx"><span class="blob a"></span><span class="blob b"></span><span class="blob c"></span></div>
+<div class="grid-overlay"></div>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="/"><svg class="mark" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="x" cx="9" cy="12" r="6.2"/><circle class="x" cx="15" cy="12" r="6.2"/><circle class="c1" cx="9" cy="12" r="6.2" stroke-width="1.8"/><circle class="c2" cx="15" cy="12" r="6.2" stroke-width="1.8"/></svg> CROSSOVER</a>
+    <div class="nav-links" id="navLinks">
+      <a href="/nasil-oynanir/">Nasıl oynanır</a>
+      <a href="/dogrulama/">Doğrulama</a>
+      <a href="/ozellikler/">Özellikler</a>
+    </div>
+    <div class="nav-right">
+      <a class="nav-cta" href="/indir/">Hemen Oyna</a>
+      <button class="menu-btn" id="menuBtn" aria-label="Menü"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    </div>
+  </div>
+</nav>
+
+<header class="wrap page-head">
+  <span class="eyebrow reveal">Anında doğrulama</span>
+  <h1 class="reveal d1">Doğru mu, <span class="grad">yanlış mı?</span></h1>
+  <p class="sub reveal d2">Sunucu, futbolcunun her iki takımda da oynayıp oynamadığını gerçek verilerle anında kontrol eder. Türkçe/aksan duyarsız bulanık eşleştirme yazım hatalarını otomatik düzeltir.</p>
+</header>
+
+<section class="block" style="padding-top:30px">
+  <div class="wrap vs">
+    <div class="vs-card ok reveal">
+      <span class="badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg> DOĞRU</span>
+      <h3>Sneijder — Galatasaray + Inter</h3>
+      <p>İkisinde de oynamış. Tam kariyer dökümü ekranda.</p>
+      <div class="ph"><div class="phone"><div class="screen"><img src="/screens/correct.png" alt="Doğru cevap"></div><div class="glare"></div></div></div>
+    </div>
+    <div class="vs-card no reveal d2">
+      <span class="badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg> YANLIŞ</span>
+      <h3>Drogba — sadece Galatasaray</h3>
+      <p>Inter'de oynamadı. Nerede oynadığını görürsün.</p>
+      <div class="ph"><div class="phone"><div class="screen"><img src="/screens/wrong.png" alt="Yanlış cevap"></div><div class="glare"></div></div></div>
+    </div>
+  </div>
+  <div class="wrap center" style="margin-top:50px">
+    <a class="btn primary" href="/ozellikler/"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg> Tüm özellikleri gör</a>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="/"><svg class="mark" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="x" cx="9" cy="12" r="6.2"/><circle class="x" cx="15" cy="12" r="6.2"/><circle class="c1" cx="9" cy="12" r="6.2" stroke-width="1.8"/><circle class="c2" cx="15" cy="12" r="6.2" stroke-width="1.8"/></svg> CROSSOVER</a>
+    <div>© 2026 Crossover · React Native · Node.js · PostgreSQL · Wikidata</div>
+  </div>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>

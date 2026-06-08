@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Crossover — İki takımda da oynamış futbolcuyu ilk bilen kazanır</title>
+<meta name="description" content="İki kişilik, gerçek zamanlı futbol bilgi oyunu. İki kulüp seçin, ikisinde de oynamış futbolcuyu ilk yazan kazanır." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<div class="bg-fx"><span class="blob a"></span><span class="blob b"></span><span class="blob c"></span></div>
+<div class="grid-overlay"></div>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="/"><svg class="mark" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="x" cx="9" cy="12" r="6.2"/><circle class="x" cx="15" cy="12" r="6.2"/><circle class="c1" cx="9" cy="12" r="6.2" stroke-width="1.8"/><circle class="c2" cx="15" cy="12" r="6.2" stroke-width="1.8"/></svg> CROSSOVER</a>
+    <div class="nav-links" id="navLinks">
+      <a href="/nasil-oynanir/">Nasıl oynanır</a>
+      <a href="/dogrulama/">Doğrulama</a>
+      <a href="/ozellikler/">Özellikler</a>
+    </div>
+    <div class="nav-right">
+      <a class="nav-cta" href="/indir/">Hemen Oyna</a>
+      <button class="menu-btn" id="menuBtn" aria-label="Menü"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header class="wrap hero">
+  <div>
+    <span class="tag"><span class="dot"></span> Gerçek zamanlı • 2 oyuncu • Bot modu</span>
+    <h1 class="title">İki takımda da oynamış futbolcuyu <span class="grad">ilk bilen kazanır.</span></h1>
+    <p class="lede">İki kulüp seçilir, ikiniz de o iki takımda oynamış bir futbolcuyu yazmaya yarışırsınız. İlk doğru cevap turu kilitler. 52.000+ oyuncu, 12.000+ kulüp — gerçek Wikidata verisiyle.</p>
+    <div class="cta-row">
+      <a class="btn primary" href="/indir/"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg> Oynamaya Başla</a>
+      <a class="btn ghost" href="/nasil-oynanir/">Nasıl oynanır?</a>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="n"><span class="grad">52K+</span></div><div class="l">Futbolcu</div></div>
+      <div class="stat"><div class="n"><span class="grad">12K+</span></div><div class="l">Kulüp</div></div>
+      <div class="stat"><div class="n"><span class="grad">350K+</span></div><div class="l">Transfer kaydı</div></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="float-chip fc1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4.5 13.5H11l-1 8.5L18.5 10.5H12l1-8.5z"/></svg> İlk yazan kazanır</div>
+    <div class="float-chip fc2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="7" width="14" height="12" rx="2"/><path d="M12 7V4M9 12h.01M15 12h.01M9.5 16h5M2.5 12H5M19 12h2.5"/></svg> Bot'a karşı oyna</div>
+    <div class="float-chip fc3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.7 4.9L18.5 9.5 13.7 11 12 16l-1.7-5L5.5 9.5l4.8-1.6z"/></svg> Akıllı isim eşleştirme</div>
+    <div class="phone" id="heroPhone">
+      <div class="screen"><img src="/screens/guess.png" alt="Crossover tahmin ekranı" /></div>
+      <div class="glare"></div>
+    </div>
+    <div class="reflect"></div>
+  </div>
+</header>
+
+<!-- LOGO MARQUEE -->
+<section class="block" style="padding:30px 0">
+  <div class="wrap center"><p class="sub reveal" style="margin-inline:auto">Avrupa'nın ve dünyanın en büyük kulüpleri</p></div>
+  <div class="marquee"><div class="track" id="track"></div></div>
+</section>
+
+<!-- HUB: keşfet -->
+<section class="block" id="kesfet">
+  <div class="wrap center">
+    <span class="eyebrow reveal">Keşfet</span>
+    <h2 class="reveal d1">Daha fazlası</h2>
+    <p class="sub reveal d2">Oyunu adım adım gör, doğrulama motorunu incele veya hemen indir.</p>
+  </div>
+  <div class="wrap feat">
+    <a class="card reveal" href="/nasil-oynanir/">
+      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4l14 8-14 8z"/></svg></div>
+      <h3>Nasıl oynanır <span class="arrow">→</span></h3>
+      <p>Geri sayımdan sonuca: bir turun dört adımı, gerçek ekranlarla.</p>
+    </a>
+    <a class="card reveal d1" href="/dogrulama/">
+      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg></div>
+      <h3>Doğrulama <span class="arrow">→</span></h3>
+      <p>“Bu futbolcu iki takımda da oynadı mı?” — anında, adil, sıfır maliyetle.</p>
+    </a>
+    <a class="card reveal d2" href="/ozellikler/">
+      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l2.4 7.4H22l-6 4.5 2.3 7.1L12 16.6 5.7 21l2.3-7.1-6-4.5h7.6z"/></svg></div>
+      <h3>Özellikler <span class="arrow">→</span></h3>
+      <p>Gerçek zamanlı mimari, akıllı eşleştirme, bot modu ve kapsam seçimi.</p>
+    </a>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="/"><svg class="mark" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="x" cx="9" cy="12" r="6.2"/><circle class="x" cx="15" cy="12" r="6.2"/><circle class="c1" cx="9" cy="12" r="6.2" stroke-width="1.8"/><circle class="c2" cx="15" cy="12" r="6.2" stroke-width="1.8"/></svg> CROSSOVER</a>
+    <div>© 2026 Crossover · React Native · Node.js · PostgreSQL · Wikidata</div>
+  </div>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>
