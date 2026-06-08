@@ -64,17 +64,18 @@ export type ClientMsg =
   | { type: 'join_room'; code: string; name: string }
   | { type: 'register'; name: string; gameCenterId?: string }
   | { type: 'change_name'; newName: string }
-  | { type: 'find_match'; options?: GameOptions } // ranked matchmaking
+  | { type: 'find_match'; name?: string; options?: GameOptions } // ranked matchmaking
   | { type: 'start' }
   | { type: 'pick_team'; clubId: number }
   | { type: 'submit_guess'; text: string }
-  | { type: 'play_again' }
+  | { type: 'play_again' } // request a rematch after the match ends
+  | { type: 'rematch_response'; accept: boolean }
   | { type: 'search_clubs'; reqId: string; q: string };
 
 // ---- Server -> Client ----
 export interface RoundResult {
   correct: boolean;
-  reason: VerifyReason | 'timeout';
+  reason: VerifyReason | 'timeout' | 'no_common'; // no_common: no player played for both → round skipped
   autocorrected: boolean;
   answeredById: string | null;
   answeredByName: string | null;
@@ -99,7 +100,19 @@ export type ServerMsg =
   | { type: 'reveal_teams'; teamA: ClubRef; teamB: ClubRef }
   | { type: 'guess_phase'; endsAt: number }
   | { type: 'guess_locked'; byId: string; byName: string }
-  | { type: 'result'; result: RoundResult; players: PlayerView[] }
+  // matchOver: a player reached `target` wins → the match is over (offer rematch).
+  | {
+      type: 'result';
+      result: RoundResult;
+      players: PlayerView[];
+      matchOver: boolean;
+      winnerId: string | null;
+      winnerName: string | null;
+      target: number;
+    }
+  | { type: 'rematch_requested'; byId: string; byName: string } // opponent wants to play again
+  | { type: 'rematch_waiting' } // your rematch request was sent, waiting for opponent
+  | { type: 'rematch_declined' } // opponent declined your rematch request
   | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView }
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
   | { type: 'searching' }

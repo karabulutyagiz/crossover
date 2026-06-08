@@ -57,6 +57,10 @@ export class BotPlayer implements Transport {
       case 'guess_phase':
         this.scheduleGuess();
         break;
+      case 'rematch_requested':
+        // The human wants to play again — a practice bot always says yes.
+        this.act({ type: 'rematch_response', accept: true });
+        break;
       case 'result':
       case 'opponent_left':
         this.reset();

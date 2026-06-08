@@ -16,6 +16,8 @@ const COUNTDOWN_FROM = 3;
 const PICK_MS = 10_000;
 const GUESS_MS = 30_000;
 const MAX_PLAYERS = 2;
+const WIN_TARGET = 3; // first to this many round wins takes the match
+const INTER_ROUND_MS = 5_000; // pause on the result screen before the next round auto-starts
 
 // A player's link to the outside world: a real WebSocket client, or a bot.
 export interface Transport {
@@ -48,6 +50,8 @@ export class Room {
   private round: Round | null = null;
   private timers: NodeJS.Timeout[] = [];
   private onEmpty: (code: string) => void;
+  private matchOver = false; // true once a player reaches WIN_TARGET
+  private rematchBy: string | null = null; // who requested a rematch (waiting for the other)
 
   constructor(code: string, onEmpty: (code: string) => void) {
     this.code = code;
@@ -89,6 +93,8 @@ export class Room {
     }
     this.status = 'lobby';
     this.round = null;
+    this.matchOver = false;
+    this.rematchBy = null;
     this.broadcast({ type: 'opponent_left' });
     this.broadcastState();
   }
@@ -103,7 +109,9 @@ export class Room {
       case 'submit_guess':
         return this.handleGuess(playerId, msg.text);
       case 'play_again':
-        return this.playAgain();
+        return this.requestRematch(playerId);
+      case 'rematch_response':
+        return this.respondRematch(playerId, msg.accept);
       case 'search_clubs':
         return void this.handleSearch(playerId, msg.reqId, msg.q);
       default:
@@ -119,6 +127,14 @@ export class Room {
       return this.sendTo(playerId, { type: 'error', message: 'Need 2 players to start' });
     if (this.status !== 'lobby' && this.status !== 'result')
       return this.sendTo(playerId, { type: 'error', message: 'Game already in progress' });
+    this.startMatch();
+  }
+
+  // Begin a brand-new match: reset both players' scores, then count down.
+  private startMatch(): void {
+    this.matchOver = false;
+    this.rematchBy = null;
+    for (const p of this.players.values()) p.score = 0;
     this.beginCountdown();
   }
 
@@ -189,8 +205,42 @@ export class Room {
     this.status = 'reveal';
     this.broadcastState();
     this.broadcast({ type: 'reveal_teams', teamA: a, teamB: b });
-    const t = setTimeout(() => this.beginGuess(), 2000);
-    this.timers.push(t);
+    void this.afterReveal(a, b);
+  }
+
+  // After revealing, check there IS a common player. If none exists, the round
+  // can't be won by anyone → skip it (no points) and auto-advance.
+  private async afterReveal(a: ClubRef, b: ClubRef): Promise<void> {
+    const common = await commonPlayersDetailed(a.id, b.id, 5);
+    if (!this.round || this.round.finished || this.status !== 'reveal') return;
+    if (common.length === 0) {
+      const t = setTimeout(() => this.skipNoCommon(), 2200);
+      this.timers.push(t);
+    } else {
+      const t = setTimeout(() => this.beginGuess(), 2000);
+      this.timers.push(t);
+    }
+  }
+
+  // No player ever played for both clubs → pass the round, award nobody.
+  private skipNoCommon(): void {
+    if (!this.round || this.round.finished || !this.round.teamA || !this.round.teamB) return;
+    this.finishRound({
+      correct: false,
+      reason: 'no_common',
+      autocorrected: false,
+      answeredById: null,
+      answeredByName: null,
+      guess: '',
+      teamA: this.round.teamA,
+      teamB: this.round.teamB,
+      matchedPlayerName: null,
+      matchedPlayerImageUrl: null,
+      spellsA: [],
+      spellsB: [],
+      allClubs: [],
+      commonPlayers: [],
+    });
   }
 
   private beginGuess(): void {
@@ -271,13 +321,55 @@ export class Room {
     this.round.finished = true;
     this.clearTimers();
     this.status = 'result';
-    this.broadcast({ type: 'result', result, players: this.playerViews() });
+
+    // Did someone reach the win target? If so the whole match is over.
+    const winner = [...this.players.values()].find((p) => p.score >= WIN_TARGET) ?? null;
+    this.matchOver = Boolean(winner);
+
+    this.broadcast({
+      type: 'result',
+      result,
+      players: this.playerViews(),
+      matchOver: this.matchOver,
+      winnerId: winner?.id ?? null,
+      winnerName: winner?.name ?? null,
+      target: WIN_TARGET,
+    });
     this.broadcastState();
+
+    // Match not decided yet → auto-advance to the next round after a short pause.
+    if (!this.matchOver) {
+      const t = setTimeout(() => {
+        if (this.status === 'result' && !this.matchOver) this.beginCountdown();
+      }, INTER_ROUND_MS);
+      this.timers.push(t);
+    }
+    // If the match IS over we wait for a rematch request instead.
   }
 
-  private playAgain(): void {
-    if (this.status !== 'result') return;
-    this.beginCountdown();
+  // ---- rematch (only after a match ends) ----
+  private requestRematch(playerId: string): void {
+    if (this.status !== 'result' || !this.matchOver) return;
+    // If the other player already asked, this press means "yes, let's go".
+    if (this.rematchBy && this.rematchBy !== playerId) return this.startMatch();
+    this.rematchBy = playerId;
+    const p = this.players.get(playerId);
+    this.sendTo(playerId, { type: 'rematch_waiting' });
+    for (const [id, other] of this.players) {
+      if (id === playerId) continue;
+      other.transport.send({ type: 'rematch_requested', byId: playerId, byName: p?.name ?? '' });
+    }
+  }
+
+  private respondRematch(playerId: string, accept: boolean): void {
+    // Only the player who did NOT initiate can respond.
+    if (!this.rematchBy || this.rematchBy === playerId) return;
+    if (accept) {
+      this.startMatch();
+    } else {
+      this.sendTo(this.rematchBy, { type: 'rematch_declined' });
+      this.rematchBy = null;
+    }
   }
 
   private async handleSearch(playerId: string, reqId: string, q: string): Promise<void> {

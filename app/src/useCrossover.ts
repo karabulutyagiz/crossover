@@ -41,6 +41,13 @@ export interface GameState {
   profile: ProfileView | null;
   trophyDelta: { trophies: number; delta: number; arena: ArenaView } | null;
   leaderboard: LeaderboardEntry[];
+  // match (first to `winTarget` round wins) + rematch flow
+  matchOver: boolean;
+  matchWinnerId: string | null;
+  matchWinnerName: string | null;
+  winTarget: number;
+  rematchState: 'idle' | 'waiting' | 'incoming' | 'declined';
+  rematchByName: string | null;
 }
 
 const initialState: GameState = {
@@ -60,6 +67,12 @@ const initialState: GameState = {
   profile: null,
   trophyDelta: null,
   leaderboard: [],
+  matchOver: false,
+  matchWinnerId: null,
+  matchWinnerName: null,
+  winTarget: 3,
+  rematchState: 'idle',
+  rematchByName: null,
 };
 
 const PROFILE_KEY = '@crossover_profile';
@@ -114,7 +127,20 @@ function reducer(state: GameState, action: Action): GameState {
         error: state.phase === 'home' ? null : state.error,
       };
     case 'countdown':
-      return { ...state, phase: 'countdown', countdown: action.n, result: null, teams: null, locked: null, trophyDelta: null };
+      return {
+        ...state,
+        phase: 'countdown',
+        countdown: action.n,
+        result: null,
+        teams: null,
+        locked: null,
+        trophyDelta: null,
+        matchOver: false,
+        matchWinnerId: null,
+        matchWinnerName: null,
+        rematchState: 'idle',
+        rematchByName: null,
+      };
     case 'pick_phase':
       return { ...state, phase: 'pick', picked: false, pickEndsAt: action.endsAt, teams: null, locked: null, result: null, clubResults: [] };
     case 'reveal_teams':
@@ -129,7 +155,19 @@ function reducer(state: GameState, action: Action): GameState {
         phase: 'result',
         result: action.result,
         room: state.room ? { ...state.room, players: action.players } : state.room,
+        matchOver: action.matchOver,
+        matchWinnerId: action.winnerId,
+        matchWinnerName: action.winnerName,
+        winTarget: action.target,
+        rematchState: 'idle',
+        rematchByName: null,
       };
+    case 'rematch_waiting':
+      return { ...state, rematchState: 'waiting' };
+    case 'rematch_requested':
+      return { ...state, rematchState: 'incoming', rematchByName: action.byName };
+    case 'rematch_declined':
+      return { ...state, rematchState: 'declined' };
     case 'club_results':
       return { ...state, clubResults: action.clubs };
     case 'opponent_left':
@@ -234,7 +272,9 @@ export function useCrossover() {
     },
     changeName: (newName: string) => send({ type: 'change_name', newName }),
     findMatch: (options?: GameOptions) =>
-      connectAndSend({ type: 'find_match', options }),
+      // Carry the registered name: this fresh socket hasn't sent `register`,
+      // so without it the server would label the player "Oyuncu".
+      connectAndSend({ type: 'find_match', name: state.profile?.displayName, options }),
     cancelSearch: () => {
       wsRef.current?.close();
       wsRef.current = null;
@@ -253,7 +293,9 @@ export function useCrossover() {
     },
     searchClubs: (q: string) => send({ type: 'search_clubs', reqId: 'q', q }),
     submitGuess: (text: string) => send({ type: 'submit_guess', text }),
-    playAgain: () => send({ type: 'play_again' }),
+    playAgain: () => send({ type: 'play_again' }), // request a rematch
+    acceptRematch: () => send({ type: 'rematch_response', accept: true }),
+    declineRematch: () => send({ type: 'rematch_response', accept: false }),
     leave: () => {
       wsRef.current?.close();
       wsRef.current = null;

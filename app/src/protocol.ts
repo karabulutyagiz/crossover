@@ -15,7 +15,7 @@ export interface SpellInfo {
   endYear: number | null;
 }
 
-export type VerifyReason = 'both' | 'not_both' | 'no_match' | 'timeout';
+export type VerifyReason = 'both' | 'not_both' | 'no_match' | 'timeout' | 'no_common';
 
 export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
 
@@ -98,11 +98,12 @@ export type ClientMsg =
   | { type: 'join_room'; code: string; name: string }
   | { type: 'register'; name: string; gameCenterId?: string }
   | { type: 'change_name'; newName: string }
-  | { type: 'find_match'; options?: GameOptions }
+  | { type: 'find_match'; name?: string; options?: GameOptions }
   | { type: 'start' }
   | { type: 'pick_team'; clubId: number }
   | { type: 'submit_guess'; text: string }
-  | { type: 'play_again' }
+  | { type: 'play_again' } // request a rematch after the match ends
+  | { type: 'rematch_response'; accept: boolean }
   | { type: 'search_clubs'; reqId: string; q: string };
 
 export type ServerMsg =
@@ -115,7 +116,18 @@ export type ServerMsg =
   | { type: 'reveal_teams'; teamA: ClubRef; teamB: ClubRef }
   | { type: 'guess_phase'; endsAt: number }
   | { type: 'guess_locked'; byId: string; byName: string }
-  | { type: 'result'; result: RoundResult; players: PlayerView[] }
+  | {
+      type: 'result';
+      result: RoundResult;
+      players: PlayerView[];
+      matchOver: boolean;
+      winnerId: string | null;
+      winnerName: string | null;
+      target: number;
+    }
+  | { type: 'rematch_requested'; byId: string; byName: string }
+  | { type: 'rematch_waiting' }
+  | { type: 'rematch_declined' }
   | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView }
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
   | { type: 'searching' }

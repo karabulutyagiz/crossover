@@ -130,7 +130,9 @@ export function startServer(port: number): Server {
       // First message must establish the connection (create / solo / join / find_match).
       if (!ctx) {
         if (msg.type === 'find_match') {
-          const name = userProfile?.displayName ?? 'Oyuncu';
+          // Prefer the registered profile name; fall back to the name the client
+          // sent with the request (the matchmaking socket may not have registered).
+          const name = userProfile?.displayName ?? msg.name ?? 'Oyuncu';
           // Remove stale entries for this ws (if they spammed the button)
           for (let i = matchQueue.length - 1; i >= 0; i--) {
             if (matchQueue[i]!.ws === ws) matchQueue.splice(i, 1);

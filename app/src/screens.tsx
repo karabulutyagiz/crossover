@@ -30,6 +30,8 @@ type Actions = {
   searchClubs: (q: string) => void;
   submitGuess: (text: string) => void;
   playAgain: () => void;
+  acceptRematch: () => void;
+  declineRematch: () => void;
   leave: () => void;
 };
 
@@ -39,6 +41,18 @@ interface Props {
 }
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
+
+// Map a trophy arena to a vector icon (emojis don't render on every device).
+function arenaIcon(arena: { minTrophies: number }): IoniconName {
+  const t = arena.minTrophies;
+  if (t >= 5000) return 'flame';
+  if (t >= 3500) return 'trophy';
+  if (t >= 2000) return 'ribbon';
+  if (t >= 1000) return 'medal';
+  if (t >= 500) return 'medal-outline';
+  if (t >= 200) return 'football';
+  return 'football-outline';
+}
 
 // ---- shared primitives ----
 function Btn({
@@ -151,17 +165,17 @@ function ProfileCard({ profile }: { profile: ProfileView }) {
   return (
     <View style={styles.profileCard}>
       <View style={styles.profileRow}>
-        <Text style={{ fontSize: 22 }}>{profile.arena.icon}</Text>
+        <Ionicons name={arenaIcon(profile.arena)} size={24} color={theme.accent} />
         <View style={{ flex: 1 }}>
           <Text style={styles.profileName}>{profile.displayName}</Text>
           <Text style={styles.profileArena}>{profile.arena.name}</Text>
         </View>
         <View style={styles.profileStat}>
-          <Text style={styles.profileStatIcon}>🏆</Text>
+          <Ionicons name="trophy" size={15} color={theme.accent} />
           <Text style={styles.profileStatVal}>{profile.trophies}</Text>
         </View>
         <View style={styles.profileStat}>
-          <Text style={styles.profileStatIcon}>💎</Text>
+          <Ionicons name="diamond" size={15} color="#5BC8FF" />
           <Text style={styles.profileStatVal}>{profile.diamonds}</Text>
         </View>
       </View>
@@ -375,8 +389,8 @@ function PickerModal({
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
                       {picker === 'league' && o.logoUrl ? (
                         <Image source={{ uri: o.logoUrl }} style={{ width: 24, height: 24 }} resizeMode="contain" />
-                      ) : picker === 'country' && o.logoUrl ? (
-                        <Text style={{ fontSize: 20 }}>{o.logoUrl}</Text>
+                      ) : picker === 'country' ? (
+                        <Ionicons name="flag" size={18} color={theme.muted} />
                       ) : null}
                       <Text style={[styles.modalRowText, { flex: 1 }]} numberOfLines={1}>{o.displayName ?? o.value}</Text>
                     </View>
@@ -647,7 +661,7 @@ export function SearchingScreen({ actions }: Props) {
       </View>
 
       <View style={styles.factCard}>
-        <Text style={styles.factIcon}>{fact.icon}</Text>
+        <Ionicons name="bulb" size={26} color={theme.accent} />
         <Text style={styles.factText}>{fact.text}</Text>
       </View>
 
@@ -673,13 +687,13 @@ export function LeaderboardScreen({ state, actions }: Props) {
             <Text style={[styles.lbRank, entry.rank <= 3 ? { color: RANK_COLORS[entry.rank - 1] } : null]}>
               {entry.rank}
             </Text>
-            <Text style={{ fontSize: 18 }}>{entry.arena.icon}</Text>
+            <Ionicons name={arenaIcon(entry.arena)} size={18} color={theme.accent} />
             <View style={{ flex: 1 }}>
               <Text style={styles.lbName} numberOfLines={1}>{entry.displayName}</Text>
               <Text style={styles.lbArena}>{entry.arena.name}</Text>
             </View>
             <View style={styles.lbTrophyBox}>
-              <Text style={{ fontSize: 12 }}>🏆</Text>
+              <Ionicons name="trophy" size={12} color={theme.accent} />
               <Text style={styles.lbTrophies}>{entry.trophies}</Text>
             </View>
             <Text style={styles.lbWL}>{entry.wins}G {entry.losses}M</Text>
@@ -717,9 +731,13 @@ export function ResultScreen({ state, actions }: Props) {
   const r = state.result!;
   const room = state.room!;
   const you = room.players.find((p) => p.id === room.youId);
-  const isHost = !!you?.isHost;
+  const opp = room.players.find((p) => p.id !== room.youId);
+  const matchOver = state.matchOver;
+  const youWon = state.matchWinnerId != null && state.matchWinnerId === room.youId;
 
   const { icon, color, headline } = useMemo(() => {
+    if (r.reason === 'no_common')
+      return { icon: 'information-circle-outline' as IoniconName, color: theme.accent, headline: 'EL GEÇİLDİ' };
     if (r.reason === 'timeout')
       return { icon: 'time' as IoniconName, color: theme.muted, headline: 'Süre doldu' };
     return r.correct
@@ -734,80 +752,107 @@ export function ResultScreen({ state, actions }: Props) {
     <Screen>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
         <View style={styles.center}>
-          <Ionicons name={icon} size={64} color={color} />
-          <Text style={[styles.h1, { color }]}>{headline}</Text>
-          {r.matchedPlayerImageUrl ? (
-            <Image source={{ uri: r.matchedPlayerImageUrl }} style={styles.playerPhoto} />
-          ) : null}
-          {r.matchedPlayerName ? <Text style={styles.matched}>{r.matchedPlayerName}</Text> : null}
-          {r.answeredByName ? (
-            <Text style={styles.muted}>
-              {r.answeredByName} • "{r.guess}"
-            </Text>
-          ) : null}
-          {r.autocorrected ? (
-            <View style={styles.fixRow}>
-              <Ionicons name="swap-horizontal" size={13} color={theme.accent} />
-              <Text style={styles.fixText}>otomatik düzeltildi</Text>
-            </View>
-          ) : null}
-        </View>
-
-        <View style={styles.teamResultRow}>
-          <TeamResultCard team={r.teamA} spells={r.spellsA} played={playedA} />
-          <TeamResultCard team={r.teamB} spells={r.spellsB} played={playedB} />
-        </View>
-
-        {r.allClubs.length ? (
-          <>
-            <Text style={styles.sectionLabel}>KARİYER</Text>
-            {r.allClubs.map((s, i) => (
-              <CareerRow
-                key={`${s.clubId}-${i}`}
-                spell={s}
-                highlight={s.clubId === r.teamA.id || s.clubId === r.teamB.id}
-              />
-            ))}
-          </>
-        ) : null}
-
-        {!r.correct ? (
-          <>
-            <Text style={styles.sectionLabel}>{"İKİ TAKIMDA DA OYNAMIŞ OYUNCULAR"}</Text>
-            {r.commonPlayers && r.commonPlayers.length > 0 ? (
-              r.commonPlayers.map((cp, i) => (
-                <View key={i} style={styles.commonRow}>
-                  {cp.imageUrl ? (
-                    <Image source={{ uri: cp.imageUrl }} style={styles.commonPhoto} resizeMode="cover" />
-                  ) : (
-                    <View style={[styles.commonPhoto, { backgroundColor: badgeColor(cp.name), alignItems: 'center', justifyContent: 'center' }]}>
-                      <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>{initial(cp.name)}</Text>
-                    </View>
-                  )}
-                  <Text style={styles.commonName}>{cp.name}</Text>
-                </View>
-              ))
-            ) : (
-              <Text style={[styles.muted, { marginTop: 6 }]}>
-                {"Bu iki takımda ortak oynamış oyuncu bulunamadı"}
+          {matchOver ? (
+            <>
+              <Ionicons name={youWon ? 'trophy' : 'sad-outline'} size={64} color={youWon ? theme.accent : theme.muted} />
+              <Text style={[styles.h1, { color: youWon ? theme.accent : theme.text }]}>
+                {youWon ? 'MAÇI KAZANDIN!' : 'MAÇI KAYBETTİN'}
               </Text>
-            )}
-          </>
-        ) : r.commonPlayers && r.commonPlayers.length > 1 ? (
+              <Text style={styles.matchScore}>
+                {(you?.score ?? 0)} - {(opp?.score ?? 0)}
+              </Text>
+              {!youWon && state.matchWinnerName ? (
+                <Text style={styles.muted}>{state.matchWinnerName} kazandı</Text>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <Ionicons name={icon} size={64} color={color} />
+              <Text style={[styles.h1, { color }]}>{headline}</Text>
+              {r.reason === 'no_common' ? (
+                <Text style={[styles.muted, { marginTop: 2 }]}>
+                  {"Bu iki takımda ortak oynamış oyuncu yok — kimseye puan yok"}
+                </Text>
+              ) : null}
+              {r.matchedPlayerImageUrl ? (
+                <Image source={{ uri: r.matchedPlayerImageUrl }} style={styles.playerPhoto} />
+              ) : null}
+              {r.matchedPlayerName ? <Text style={styles.matched}>{r.matchedPlayerName}</Text> : null}
+              {r.answeredByName ? (
+                <Text style={styles.muted}>
+                  {r.answeredByName} • "{r.guess}"
+                </Text>
+              ) : null}
+              {r.autocorrected ? (
+                <View style={styles.fixRow}>
+                  <Ionicons name="swap-horizontal" size={13} color={theme.accent} />
+                  <Text style={styles.fixText}>otomatik düzeltildi</Text>
+                </View>
+              ) : null}
+            </>
+          )}
+        </View>
+
+        {/* Per-round detail (only between rounds; not for skipped/no-common rounds or the match-over screen) */}
+        {!matchOver && r.reason !== 'no_common' ? (
           <>
-            <Text style={styles.sectionLabel}>DİĞER ORTAK OYUNCULAR</Text>
-            {r.commonPlayers.filter(cp => cp.name !== r.matchedPlayerName).map((cp, i) => (
-              <View key={i} style={styles.commonRow}>
-                {cp.imageUrl ? (
-                  <Image source={{ uri: cp.imageUrl }} style={styles.commonPhoto} resizeMode="cover" />
+            <View style={styles.teamResultRow}>
+              <TeamResultCard team={r.teamA} spells={r.spellsA} played={playedA} />
+              <TeamResultCard team={r.teamB} spells={r.spellsB} played={playedB} />
+            </View>
+
+            {r.allClubs.length ? (
+              <>
+                <Text style={styles.sectionLabel}>KARİYER</Text>
+                {r.allClubs.map((s, i) => (
+                  <CareerRow
+                    key={`${s.clubId}-${i}`}
+                    spell={s}
+                    highlight={s.clubId === r.teamA.id || s.clubId === r.teamB.id}
+                  />
+                ))}
+              </>
+            ) : null}
+
+            {!r.correct ? (
+              <>
+                <Text style={styles.sectionLabel}>{"İKİ TAKIMDA DA OYNAMIŞ OYUNCULAR"}</Text>
+                {r.commonPlayers && r.commonPlayers.length > 0 ? (
+                  r.commonPlayers.map((cp, i) => (
+                    <View key={i} style={styles.commonRow}>
+                      {cp.imageUrl ? (
+                        <Image source={{ uri: cp.imageUrl }} style={styles.commonPhoto} resizeMode="cover" />
+                      ) : (
+                        <View style={[styles.commonPhoto, { backgroundColor: badgeColor(cp.name), alignItems: 'center', justifyContent: 'center' }]}>
+                          <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>{initial(cp.name)}</Text>
+                        </View>
+                      )}
+                      <Text style={styles.commonName}>{cp.name}</Text>
+                    </View>
+                  ))
                 ) : (
-                  <View style={[styles.commonPhoto, { backgroundColor: badgeColor(cp.name), alignItems: 'center', justifyContent: 'center' }]}>
-                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>{initial(cp.name)}</Text>
-                  </View>
+                  <Text style={[styles.muted, { marginTop: 6 }]}>
+                    {"Bu iki takımda ortak oynamış oyuncu bulunamadı"}
+                  </Text>
                 )}
-                <Text style={styles.commonName}>{cp.name}</Text>
-              </View>
-            ))}
+              </>
+            ) : r.commonPlayers && r.commonPlayers.length > 1 ? (
+              <>
+                <Text style={styles.sectionLabel}>DİĞER ORTAK OYUNCULAR</Text>
+                {r.commonPlayers.filter((cp) => cp.name !== r.matchedPlayerName).map((cp, i) => (
+                  <View key={i} style={styles.commonRow}>
+                    {cp.imageUrl ? (
+                      <Image source={{ uri: cp.imageUrl }} style={styles.commonPhoto} resizeMode="cover" />
+                    ) : (
+                      <View style={[styles.commonPhoto, { backgroundColor: badgeColor(cp.name), alignItems: 'center', justifyContent: 'center' }]}>
+                        <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>{initial(cp.name)}</Text>
+                      </View>
+                    )}
+                    <Text style={styles.commonName}>{cp.name}</Text>
+                  </View>
+                ))}
+              </>
+            ) : null}
           </>
         ) : null}
 
@@ -816,16 +861,39 @@ export function ResultScreen({ state, actions }: Props) {
             <View key={p.id} style={styles.scoreChip}>
               <Ionicons name={p.name === 'Bot' ? 'game-controller' : 'person'} size={14} color={theme.muted} />
               <Text style={styles.scoreText}>
-                {p.name} {p.score}
+                {p.name} {p.score}/{state.winTarget}
               </Text>
             </View>
           ))}
         </View>
 
-        {isHost ? (
-          <Btn label="Tekrar Oyna" kind="accent" icon="refresh" onPress={actions.playAgain} />
+        {matchOver ? (
+          state.rematchState === 'incoming' ? (
+            <>
+              <Text style={[styles.muted, { marginBottom: 4 }]}>
+                {state.rematchByName} tekrar oynamak istiyor
+              </Text>
+              <Btn label="Kabul Et" kind="accent" icon="checkmark-circle" onPress={actions.acceptRematch} />
+              <Btn label="Reddet" kind="ghost" icon="close" onPress={actions.declineRematch} />
+            </>
+          ) : state.rematchState === 'waiting' ? (
+            <View style={styles.center}>
+              <ActivityIndicator color={theme.primary} />
+              <Text style={styles.muted}>{"İstek gönderildi, kabul bekleniyor…"}</Text>
+            </View>
+          ) : state.rematchState === 'declined' ? (
+            <>
+              <Text style={[styles.muted, { color: theme.danger }]}>Tekrar oynama isteğin reddedildi</Text>
+              <Btn label="Tekrar Dene" kind="accent" icon="refresh" onPress={actions.playAgain} />
+            </>
+          ) : (
+            <Btn label="Tekrar Oyna" kind="accent" icon="refresh" onPress={actions.playAgain} />
+          )
         ) : (
-          <Text style={styles.muted}>Oda sahibi yeni tur başlatabilir…</Text>
+          <View style={styles.center}>
+            <ActivityIndicator color={theme.primary} />
+            <Text style={styles.muted}>{"Sıradaki tur başlıyor…"}</Text>
+          </View>
         )}
         <View style={{ height: 10 }} />
         <Btn label="Çık" kind="ghost" icon="close" onPress={actions.leave} />
@@ -898,6 +966,7 @@ const styles = StyleSheet.create({
   timer: { color: theme.accent, fontSize: 22, fontWeight: '900', textAlign: 'center', marginTop: 8 },
   playerPhoto: { width: 80, height: 80, borderRadius: 40, marginTop: 8, borderWidth: 2, borderColor: theme.border },
   matched: { color: theme.text, fontSize: 18, fontWeight: '800', textAlign: 'center', marginTop: 2 },
+  matchScore: { color: theme.text, fontSize: 44, fontWeight: '900', letterSpacing: 3, marginTop: 6 },
   fixRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   fixText: { color: theme.accent, fontSize: 12, fontWeight: '600' },
   teamResultRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
