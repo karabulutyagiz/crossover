@@ -81,17 +81,24 @@ async function resolveTeamById(smTeamId: number, smTeamName?: string): Promise<n
   return null;
 }
 
-async function resolvePlayer(name: string): Promise<number | null> {
+/**
+ * SAFE player matching: requires the player to already have a spell at one of
+ * the given clubs. This prevents "Kartal Yılmaz" matching to "Burak Yılmaz".
+ */
+async function resolvePlayerSafe(name: string, knownClubIds: number[]): Promise<number | null> {
   const norm = normalize(name);
-  if (!norm) return null;
+  if (!norm || knownClubIds.length === 0) return null;
   const { rows } = await pool.query<{ id: string }>(
-    `SELECT id FROM players
-      WHERE word_similarity($1, name_norm) >= 0.4
-      ORDER BY word_similarity($1, name_norm) DESC,
-               (image_url IS NOT NULL) DESC,
-               (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = players.id) DESC
+    `SELECT p.id FROM players p
+      WHERE word_similarity($1, p.name_norm) >= 0.4
+        AND EXISTS (
+          SELECT 1 FROM player_clubs pc
+          WHERE pc.player_id = p.id AND pc.club_id = ANY($2::bigint[])
+        )
+      ORDER BY word_similarity($1, p.name_norm) DESC,
+               (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC
       LIMIT 1`,
-    [norm],
+    [norm, knownClubIds],
   );
   return rows[0] ? Number(rows[0].id) : null;
 }
@@ -155,19 +162,25 @@ async function run(): Promise<void> {
       continue;
     }
 
+    // Resolve this team's DB club ID for safe matching
+    const teamName = teamMap.get(tid);
+    const ourTeamClubId = teamName ? await resolveClub(teamName) : null;
+
     for (const entry of squad) {
       const player = entry.player;
       if (!player || processedPlayerIds.has(player.id)) continue;
       processedPlayerIds.add(player.id);
 
-      const ourPlayerId = await resolvePlayer(player.display_name ?? player.name ?? '');
+      // SAFE: require player to already have a spell at this team's club
+      const knownClubs = ourTeamClubId ? [ourTeamClubId] : [];
+      const ourPlayerId = await resolvePlayerSafe(player.display_name ?? player.name ?? '', knownClubs);
       if (!ourPlayerId) continue;
 
-      // Update photo if available
+      // Update photo only for safely matched players
       if (player.image_path) {
         await pool.query(
-          'UPDATE players SET image_url = $2 WHERE id = $1 AND (image_url IS NULL OR image_url NOT LIKE $3)',
-          [ourPlayerId, player.image_path, '%sportmonks%'],
+          'UPDATE players SET image_url = $2 WHERE id = $1 AND image_url IS NULL',
+          [ourPlayerId, player.image_path],
         );
         photosUpdated++;
       }

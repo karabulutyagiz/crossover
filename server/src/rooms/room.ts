@@ -18,7 +18,9 @@ const PICK_MS = 10_000;
 const GUESS_MS = 30_000;
 const MAX_PLAYERS = 2;
 const WIN_TARGET = 3; // first to this many round wins takes the match
+const MAX_WRONG = 3; // 3 wrong answers → opponent wins the match
 const INTER_ROUND_MS = 5_000; // pause on the result screen before the next round auto-starts
+const READY_TIMEOUT_MS = 20_000; // total time to wait for ready (10s voluntary + 10s countdown)
 
 // A player's link to the outside world: a real WebSocket client, or a bot.
 export interface Transport {
@@ -31,6 +33,7 @@ interface Player {
   name: string;
   transport: Transport;
   score: number;
+  wrongCount: number; // wrong answers this match
   isHost: boolean;
   connected: boolean;
   userId?: string; // DB user ID for trophy updates
@@ -54,6 +57,7 @@ export class Room {
   private onEmpty: (code: string) => void;
   private matchOver = false; // true once a player reaches WIN_TARGET
   private rematchBy: string | null = null; // who requested a rematch (waiting for the other)
+  private readyPlayers = new Set<string>(); // players who pressed "ready" for next round
 
   constructor(code: string, onEmpty: (code: string) => void) {
     this.code = code;
@@ -74,6 +78,7 @@ export class Room {
       name: name.trim() || 'Player',
       transport,
       score: 0,
+      wrongCount: 0,
       isHost: asHost,
       connected: true,
       userId,
@@ -112,6 +117,8 @@ export class Room {
         return this.handlePick(playerId, msg.clubId);
       case 'submit_guess':
         return this.handleGuess(playerId, msg.text);
+      case 'ready':
+        return this.handleReady(playerId);
       case 'play_again':
         return this.requestRematch(playerId);
       case 'rematch_response':
@@ -138,7 +145,7 @@ export class Room {
   private startMatch(): void {
     this.matchOver = false;
     this.rematchBy = null;
-    for (const p of this.players.values()) p.score = 0;
+    for (const p of this.players.values()) { p.score = 0; p.wrongCount = 0; }
     this.beginCountdown();
   }
 
@@ -271,7 +278,16 @@ export class Room {
     this.clearTimers();
     const v = await verifyGuess(this.round.teamA.id, this.round.teamB.id, text);
     const p = this.players.get(playerId);
-    if (v.correct && p) p.score += 1;
+    if (v.correct && p) {
+      p.score += 1;
+    } else if (!v.correct && p) {
+      p.wrongCount += 1;
+      // 3 wrong answers → opponent wins the entire match
+      if (p.wrongCount >= MAX_WRONG) {
+        const opponent = [...this.players.values()].find((o) => o.id !== p.id);
+        if (opponent) opponent.score = WIN_TARGET;
+      }
+    }
 
     // Always show common players so users learn who played for both teams
     const common = await commonPlayersDetailed(this.round.teamA.id, this.round.teamB.id, 5);
@@ -341,15 +357,37 @@ export class Room {
     });
     this.broadcastState();
 
-    // Match not decided yet → auto-advance to the next round after a short pause.
+    // Match not decided yet → wait for both players to press "ready".
+    // After 10s of inactivity, start a 10s forced countdown.
     if (!this.matchOver) {
+      this.readyPlayers.clear();
+      this.broadcast({ type: 'waiting_ready' as any });
       const t = setTimeout(() => {
-        if (this.status === 'result' && !this.matchOver) this.beginCountdown();
-      }, INTER_ROUND_MS);
+        if (this.status === 'result' && !this.matchOver) {
+          // 10s passed without both ready → start forced 10s countdown
+          this.broadcast({ type: 'ready_countdown' as any, endsAt: Date.now() + 10_000 });
+          const t2 = setTimeout(() => {
+            if (this.status === 'result' && !this.matchOver) this.beginCountdown();
+          }, 10_000);
+          this.timers.push(t2);
+        }
+      }, 10_000);
       this.timers.push(t);
     } else {
       // Match is over — update trophies for players with a DB account.
       void this.updateTrophies(winner!);
+    }
+  }
+
+  // ---- ready system ----
+  private handleReady(playerId: string): void {
+    if (this.status !== 'result' || this.matchOver) return;
+    this.readyPlayers.add(playerId);
+    this.broadcast({ type: 'player_ready' as any, playerId });
+    // Both ready → start immediately
+    if (this.readyPlayers.size >= this.players.size) {
+      this.clearTimers();
+      this.beginCountdown();
     }
   }
 
@@ -417,6 +455,7 @@ export class Room {
       id: p.id,
       name: p.name,
       score: p.score,
+      wrongCount: p.wrongCount,
       isHost: p.isHost,
       connected: p.connected,
     }));

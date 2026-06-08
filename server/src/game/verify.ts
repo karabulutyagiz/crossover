@@ -72,9 +72,9 @@ export async function searchClubs(
       WHERE c.is_national = false
         AND (c.name_norm LIKE '%' || $1 || '%' OR c.name_norm % $1)
         ${scopeSql}
-      ORDER BY members DESC,
-               (c.name_norm = $1) DESC,
+      ORDER BY (c.name_norm = $1) DESC,
                sim DESC,
+               members DESC,
                length(c.name) ASC
       LIMIT $${limitIdx}`,
     params,

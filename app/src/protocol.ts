@@ -62,6 +62,7 @@ export interface PlayerView {
   id: string;
   name: string;
   score: number;
+  wrongCount: number;
   isHost: boolean;
   connected: boolean;
   trophies?: number;
@@ -102,7 +103,8 @@ export type ClientMsg =
   | { type: 'start' }
   | { type: 'pick_team'; clubId: number }
   | { type: 'submit_guess'; text: string }
-  | { type: 'play_again' } // request a rematch after the match ends
+  | { type: 'ready' }
+  | { type: 'play_again' }
   | { type: 'rematch_response'; accept: boolean }
   | { type: 'search_clubs'; reqId: string; q: string };
 
@@ -125,6 +127,9 @@ export type ServerMsg =
       winnerName: string | null;
       target: number;
     }
+  | { type: 'waiting_ready' }
+  | { type: 'ready_countdown'; endsAt: number }
+  | { type: 'player_ready'; playerId: string }
   | { type: 'rematch_requested'; byId: string; byName: string }
   | { type: 'rematch_waiting' }
   | { type: 'rematch_declined' }

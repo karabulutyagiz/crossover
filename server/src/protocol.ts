@@ -44,6 +44,7 @@ export interface PlayerView {
   id: string;
   name: string;
   score: number;
+  wrongCount: number;
   isHost: boolean;
   connected: boolean;
   trophies?: number;
@@ -68,6 +69,7 @@ export type ClientMsg =
   | { type: 'start' }
   | { type: 'pick_team'; clubId: number }
   | { type: 'submit_guess'; text: string }
+  | { type: 'ready' } // ready for next round
   | { type: 'play_again' } // request a rematch after the match ends
   | { type: 'rematch_response'; accept: boolean }
   | { type: 'search_clubs'; reqId: string; q: string };
@@ -110,6 +112,9 @@ export type ServerMsg =
       winnerName: string | null;
       target: number;
     }
+  | { type: 'waiting_ready' } // waiting for players to press ready
+  | { type: 'ready_countdown'; endsAt: number } // forced countdown started
+  | { type: 'player_ready'; playerId: string } // a player pressed ready
   | { type: 'rematch_requested'; byId: string; byName: string } // opponent wants to play again
   | { type: 'rematch_waiting' } // your rematch request was sent, waiting for opponent
   | { type: 'rematch_declined' } // opponent declined your rematch request

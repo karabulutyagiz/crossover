@@ -57,8 +57,11 @@ export class BotPlayer implements Transport {
       case 'guess_phase':
         this.scheduleGuess();
         break;
+      case 'waiting_ready' as any:
+        // Bot is always ready for the next round.
+        setTimeout(() => this.act({ type: 'ready' }), 500);
+        break;
       case 'rematch_requested':
-        // The human wants to play again — a practice bot always says yes.
         this.act({ type: 'rematch_response', accept: true });
         break;
       case 'result':

@@ -18,6 +18,8 @@ import type { ClubRef, Difficulty, GameOptions, ProfileView, Scope, SpellInfo } 
 type Actions = {
   register: (name: string, gameCenterId?: string) => void;
   changeName: (newName: string) => void;
+  openArenas: () => void;
+  closeArenas: () => void;
   openLeaderboard: () => void;
   closeLeaderboard: () => void;
   findMatch: (options?: GameOptions) => void;
@@ -29,6 +31,7 @@ type Actions = {
   pickTeam: (clubId: number) => void;
   searchClubs: (q: string) => void;
   submitGuess: (text: string) => void;
+  ready: () => void;
   playAgain: () => void;
   acceptRematch: () => void;
   declineRematch: () => void;
@@ -161,9 +164,9 @@ function scopeLabel(scope: Scope): string {
 
 type Picker = null | 'difficulty' | 'scopeType' | 'league' | 'country';
 
-function ProfileCard({ profile }: { profile: ProfileView }) {
+function ProfileCard({ profile, onPress }: { profile: ProfileView; onPress?: () => void }) {
   return (
-    <View style={styles.profileCard}>
+    <Pressable style={styles.profileCard} onPress={onPress}>
       <View style={styles.profileRow}>
         <Ionicons name={arenaIcon(profile.arena)} size={24} color={theme.accent} />
         <View style={{ flex: 1 }}>
@@ -184,7 +187,7 @@ function ProfileCard({ profile }: { profile: ProfileView }) {
           {profile.wins}G / {profile.losses}M
         </Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -207,7 +210,7 @@ export function HomeScreen({ actions, state }: Props) {
         <Text style={styles.tagline}>{"İki takımda da oynamış futbolcuyu ilk bilen kazanır"}</Text>
 
         {profile ? (
-          <ProfileCard profile={profile} />
+          <ProfileCard profile={profile} onPress={actions.openArenas} />
         ) : (
           <>
             <TextInput
@@ -613,6 +616,398 @@ export function GuessScreen({ state, actions }: Props) {
   );
 }
 
+// ---- Store ----
+const DIAMOND_PACKS = [
+  { id: 'pack1', amount: 100, price: '₺29,99', icon: 'diamond', color: '#5BC8FF', best: false },
+  { id: 'pack2', amount: 500, price: '₺99,99', icon: 'diamond', color: '#5BC8FF', best: true },
+  { id: 'pack3', amount: 1200, price: '₺199,99', icon: 'diamond', color: '#5BC8FF', best: false },
+  { id: 'pack4', amount: 5000, price: '₺699,99', icon: 'diamond', color: '#A855F7', best: false },
+];
+
+function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
+  visible: boolean;
+  diamonds: number;
+  onClose: () => void;
+  onConfirm: (name: string) => void;
+}) {
+  const [newName, setNewName] = useState('');
+  const cost = 100;
+  const canAfford = diamonds >= cost;
+
+  useEffect(() => { if (visible) setNewName(''); }, [visible]);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalBg} onPress={onClose}>
+        <Pressable style={styles.nameModalCard} onPress={() => {}}>
+          <Ionicons name="create" size={32} color={theme.accent} />
+          <Text style={styles.modalTitle}>İsim Değiştir</Text>
+
+          <TextInput
+            placeholder="Yeni isim"
+            placeholderTextColor={theme.muted}
+            value={newName}
+            onChangeText={setNewName}
+            style={styles.input}
+            autoFocus
+            maxLength={20}
+          />
+
+          <View style={styles.nameModalCost}>
+            <Text style={styles.muted}>Maliyet:</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Text style={{ color: canAfford ? '#5BC8FF' : theme.danger, fontWeight: '800', fontSize: 15 }}>{cost}</Text>
+              <Ionicons name="diamond" size={14} color={canAfford ? '#5BC8FF' : theme.danger} />
+            </View>
+            <Text style={styles.muted}>Bakiye:</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>{diamonds}</Text>
+              <Ionicons name="diamond" size={14} color="#5BC8FF" />
+            </View>
+          </View>
+
+          {!canAfford ? (
+            <Text style={{ color: theme.danger, fontSize: 12, textAlign: 'center', marginBottom: 8 }}>
+              Yetersiz elmas! Mağazadan elmas satın alabilirsin.
+            </Text>
+          ) : null}
+
+          <Btn
+            label="Değiştir"
+            kind="accent"
+            icon="checkmark"
+            onPress={() => onConfirm(newName.trim())}
+            disabled={!canAfford || newName.trim().length < 2}
+          />
+          <View style={{ height: 6 }} />
+          <Btn label="Vazgeç" kind="ghost" icon="close" onPress={onClose} />
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const AD_COOLDOWN_MS = 3 * 60 * 60 * 1000; // 3 saat
+const AD_STORAGE_KEY = '@crossover_ad_state';
+
+function useAdState() {
+  const [adsWatched, setAdsWatched] = useState(0);
+  const [nextAdAt, setNextAdAt] = useState<number | null>(null);
+  const [cooldownLeft, setCooldownLeft] = useState('');
+
+  // Load from AsyncStorage on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+        const raw = await AsyncStorage.getItem(AD_STORAGE_KEY);
+        if (raw) {
+          const data = JSON.parse(raw);
+          const today = new Date().toDateString();
+          if (data.date === today) {
+            setAdsWatched(data.watched);
+            if (data.nextAdAt) setNextAdAt(data.nextAdAt);
+          }
+        }
+      } catch {}
+    })();
+  }, []);
+
+  // Countdown timer
+  useEffect(() => {
+    if (!nextAdAt) return;
+    const tick = () => {
+      const diff = nextAdAt - Date.now();
+      if (diff <= 0) {
+        setCooldownLeft('');
+        setNextAdAt(null);
+        return;
+      }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setCooldownLeft(`${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [nextAdAt]);
+
+  const watchAd = async () => {
+    if (adsWatched >= 2) return;
+    if (nextAdAt && Date.now() < nextAdAt) return;
+    const newCount = adsWatched + 1;
+    const newNextAt = newCount < 2 ? Date.now() + AD_COOLDOWN_MS : null;
+    setAdsWatched(newCount);
+    setNextAdAt(newNextAt);
+    setCooldownLeft('');
+    try {
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      await AsyncStorage.setItem(AD_STORAGE_KEY, JSON.stringify({
+        date: new Date().toDateString(),
+        watched: newCount,
+        nextAdAt: newNextAt,
+      }));
+    } catch {}
+  };
+
+  const canWatch = adsWatched < 2 && (!nextAdAt || Date.now() >= nextAdAt);
+  return { adsWatched, canWatch, cooldownLeft, watchAd };
+}
+
+export function StoreScreen({ state, actions }: Props) {
+  const profile = state.profile;
+  const { adsWatched, canWatch, cooldownLeft, watchAd } = useAdState();
+  const [showNameModal, setShowNameModal] = useState(false);
+
+  return (
+    <Screen>
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+        <View style={styles.center}>
+          <Ionicons name="diamond" size={36} color="#5BC8FF" />
+          <Text style={styles.h1}>Elmas Mağazası</Text>
+          {profile ? (
+            <View style={styles.storeBalance}>
+              <Ionicons name="diamond" size={18} color="#5BC8FF" />
+              <Text style={styles.storeBalanceText}>{profile.diamonds}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* Free diamonds - watch ads */}
+        <Text style={styles.sectionLabel}>ÜCRETSİZ ELMAS</Text>
+        <View style={styles.storeAdCard}>
+          <Ionicons name="play-circle" size={32} color={theme.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.storeAdTitle}>Video İzle, Elmas Kazan</Text>
+            <Text style={styles.muted}>Her gün 2 video hakkı</Text>
+          </View>
+          <View style={{ alignItems: 'center' }}>
+            <Text style={styles.storeAdReward}>+25 💎</Text>
+            {adsWatched >= 2 ? (
+              <Btn label="Tamamlandı" kind="ghost" icon="checkmark-circle" onPress={() => {}} disabled />
+            ) : cooldownLeft ? (
+              <View style={styles.storeCooldown}>
+                <Ionicons name="time-outline" size={14} color={theme.accent} />
+                <Text style={styles.storeCooldownText}>{cooldownLeft}</Text>
+              </View>
+            ) : (
+              <Btn label="İzle" kind="primary" icon="play" onPress={watchAd} />
+            )}
+            <Text style={[styles.muted, { fontSize: 10, marginTop: 2 }]}>{adsWatched}/2</Text>
+          </View>
+        </View>
+
+        {/* Diamond packs */}
+        <Text style={styles.sectionLabel}>ELMAS PAKETLERI</Text>
+        {DIAMOND_PACKS.map((pack) => (
+          <Pressable key={pack.id} style={[styles.storePackCard, pack.best && styles.storePackBest]}>
+            {pack.best ? (
+              <View style={styles.storePackBadge}>
+                <Text style={styles.storePackBadgeText}>EN POPÜLER</Text>
+              </View>
+            ) : null}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={[styles.storePackIcon, { backgroundColor: pack.color + '22' }]}>
+                <Ionicons name={pack.icon as any} size={28} color={pack.color} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.storePackAmount}>{pack.amount.toLocaleString('tr-TR')} Elmas</Text>
+              </View>
+              <View style={styles.storePackPriceBox}>
+                <Text style={styles.storePackPrice}>{pack.price}</Text>
+              </View>
+            </View>
+          </Pressable>
+        ))}
+
+        {/* İsim değiştirme */}
+        <Text style={styles.sectionLabel}>DİĞER</Text>
+        <Pressable style={styles.storeAdCard} onPress={() => setShowNameModal(true)}>
+          <Ionicons name="create-outline" size={24} color={theme.accent} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.storeAdTitle}>İsim Değiştir</Text>
+            <Text style={styles.muted}>100 elmas karşılığında ismini değiştir</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 13 }}>100</Text>
+            <Ionicons name="diamond" size={14} color="#5BC8FF" />
+          </View>
+        </Pressable>
+      </ScrollView>
+
+      {/* İsim değiştirme popup */}
+      <ChangeNameModal
+        visible={showNameModal}
+        diamonds={profile?.diamonds ?? 0}
+        onClose={() => setShowNameModal(false)}
+        onConfirm={(newName) => {
+          actions.changeName(newName);
+          setShowNameModal(false);
+        }}
+      />
+    </Screen>
+  );
+}
+
+// ---- Friends ----
+export function FriendsScreen({ state }: Props) {
+  const [friendCode, setFriendCode] = useState('');
+  const profile = state.profile;
+
+  return (
+    <Screen>
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+        <View style={styles.center}>
+          <Ionicons name="people" size={36} color={theme.primary} />
+          <Text style={styles.h1}>Arkadaşlar</Text>
+        </View>
+
+        {/* Add friend */}
+        <Text style={styles.sectionLabel}>ARKADAŞ EKLE</Text>
+        <View style={styles.friendAddCard}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.friendLabel}>Senin Kodun</Text>
+            <Text style={styles.friendCode}>{profile?.userId?.slice(0, 8).toUpperCase() ?? '...'}</Text>
+          </View>
+          <View style={styles.friendDivider} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.friendLabel}>Arkadaş Kodu</Text>
+            <TextInput
+              placeholder="Kodu gir"
+              placeholderTextColor={theme.muted}
+              value={friendCode}
+              onChangeText={setFriendCode}
+              autoCapitalize="characters"
+              style={styles.friendInput}
+            />
+          </View>
+        </View>
+        <Btn label="Arkadaş Ekle" icon="person-add" kind="primary" onPress={() => {}} disabled={friendCode.trim().length < 4} />
+
+        {/* Friends list */}
+        <Text style={styles.sectionLabel}>ARKADAŞLARIM</Text>
+        <View style={styles.friendEmpty}>
+          <Ionicons name="people-outline" size={48} color={theme.border} />
+          <Text style={styles.muted}>Henüz arkadaşın yok</Text>
+          <Text style={[styles.muted, { fontSize: 11 }]}>Kodunu paylaşarak arkadaş ekle</Text>
+        </View>
+      </ScrollView>
+    </Screen>
+  );
+}
+
+// ---- Arenas ----
+const ARENA_DATA = [
+  { name: 'GOAT', min: 5000, max: 99999, color: '#FF4500', icon: 'flame' as IoniconName, win: '+15', loss: '-35', desc: 'Efsanelerin zirvesi. Sadece en iyiler ayakta kalır.' },
+  { name: 'Dünya Kupası', min: 3500, max: 4999, color: '#FFD700', icon: 'trophy' as IoniconName, win: '+18', loss: '-30', desc: 'Dünya sahnesinde mücadele. Her hata çok ağır.' },
+  { name: 'Efsaneler Arası', min: 2000, max: 3499, color: '#C0C0C0', icon: 'ribbon' as IoniconName, win: '+20', loss: '-26', desc: 'Efsaneler burada. Kayıplar acıtıyor.' },
+  { name: 'Şampiyonlar Ligi', min: 1000, max: 1999, color: '#1E90FF', icon: 'medal' as IoniconName, win: '+22', loss: '-22', desc: 'Avrupa\'nın en prestijli arenası. Dengeli mücadele.' },
+  { name: 'Profesyonel Lig', min: 500, max: 999, color: '#32CD32', icon: 'medal-outline' as IoniconName, win: '+25', loss: '-18', desc: 'Profesyonel seviye. Artık gerçek bir rakipsin.' },
+  { name: 'Amatör Lig', min: 200, max: 499, color: '#FF8C00', icon: 'football' as IoniconName, win: '+28', loss: '-14', desc: 'İlk adımları attın. Yükselmeye devam!' },
+  { name: 'Mahalle Sahası', min: 0, max: 199, color: '#8B4513', icon: 'football-outline' as IoniconName, win: '+30', loss: '-10', desc: 'Herkesin başladığı yer. Kolay tırmanış.' },
+];
+
+export function ArenasScreen({ state, actions }: Props) {
+  const trophies = state.profile?.trophies ?? 0;
+  const currentArenaIdx = ARENA_DATA.findIndex((a) => trophies >= a.min && trophies <= a.max);
+  const scrollRef = useRef<ScrollView>(null);
+
+  // Scroll to current arena on mount
+  useEffect(() => {
+    if (currentArenaIdx >= 0) {
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({ y: Math.max(0, (ARENA_DATA.length - 1 - currentArenaIdx) * 160 - 200), animated: true });
+      }, 300);
+    }
+  }, [currentArenaIdx]);
+
+  // Progress within current arena (0..1)
+  const currentArena = ARENA_DATA[currentArenaIdx] ?? ARENA_DATA[ARENA_DATA.length - 1]!;
+  const range = currentArena.max - currentArena.min;
+  const progress = range > 0 ? Math.min(1, (trophies - currentArena.min) / range) : 1;
+
+  return (
+    <Screen>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <Pressable onPress={actions.closeArenas}>
+          <Ionicons name="arrow-back" size={24} color={theme.text} />
+        </Pressable>
+        <Text style={styles.h1}>Arenalar</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Ionicons name="trophy" size={16} color={theme.accent} />
+          <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 15 }}>{trophies}</Text>
+        </View>
+      </View>
+
+      <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
+        {/* Arenas listed top-to-bottom (highest first) */}
+        {ARENA_DATA.map((arena, idx) => {
+          const isCurrent = idx === currentArenaIdx;
+          const isLocked = trophies < arena.min;
+          const isPassed = trophies > arena.max;
+
+          return (
+            <View key={arena.name}>
+              {/* Connector line (not on first item) */}
+              {idx > 0 ? (
+                <View style={{ alignItems: 'center', height: 24 }}>
+                  <View style={{ width: 3, flex: 1, backgroundColor: isPassed || isCurrent ? theme.primary : theme.border }} />
+                </View>
+              ) : null}
+
+              <View style={[
+                styles.arenaCard,
+                { borderColor: isCurrent ? arena.color : isLocked ? theme.border : theme.primary, opacity: isLocked ? 0.5 : 1 },
+                isCurrent && { borderWidth: 2, shadowColor: arena.color, shadowOpacity: 0.3, shadowRadius: 8 },
+              ]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <View style={[styles.arenaIconBox, { backgroundColor: arena.color + '22' }]}>
+                    <Ionicons name={arena.icon} size={28} color={arena.color} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.arenaName, { color: isCurrent ? arena.color : isLocked ? theme.muted : theme.text }]}>
+                      {arena.name}
+                    </Text>
+                    <Text style={styles.arenaTrophyRange}>
+                      {arena.min} - {arena.max === 99999 ? '∞' : arena.max} 🏆
+                    </Text>
+                    <Text style={[styles.muted, { fontSize: 11, marginTop: 2 }]}>{arena.desc}</Text>
+                  </View>
+                </View>
+
+
+                {/* Progress bar for current arena */}
+                {isCurrent ? (
+                  <View style={styles.arenaProgressOuter}>
+                    <View style={[styles.arenaProgressInner, { width: `${progress * 100}%`, backgroundColor: arena.color }]} />
+                    <Text style={styles.arenaProgressText}>{trophies} / {arena.max === 99999 ? '∞' : arena.max}</Text>
+                  </View>
+                ) : null}
+
+                {/* Status badge */}
+                {isCurrent ? (
+                  <View style={[styles.arenaBadge, { backgroundColor: arena.color }]}>
+                    <Text style={styles.arenaBadgeText}>BURADSIN</Text>
+                  </View>
+                ) : isPassed ? (
+                  <View style={[styles.arenaBadge, { backgroundColor: theme.primary }]}>
+                    <Ionicons name="checkmark" size={12} color="#fff" />
+                  </View>
+                ) : isLocked ? (
+                  <View style={[styles.arenaBadge, { backgroundColor: theme.border }]}>
+                    <Ionicons name="lock-closed" size={12} color={theme.muted} />
+                  </View>
+                ) : null}
+              </View>
+            </View>
+          );
+        })}
+      </ScrollView>
+    </Screen>
+  );
+}
+
 // ---- Searching ----
 const FUN_FACTS = [
   { icon: '🇧🇷', text: 'Pele, kariyeri boyunca 1.281 gol attı ve bu rekor hâlâ tartışılıyor.' },
@@ -727,6 +1122,27 @@ function TeamResultCard({ team, spells, played }: { team: ClubRef; spells: Spell
   );
 }
 
+function ReadyButton({ state, onPress }: { state: GameState; onPress: () => void }) {
+  const [secs, setSecs] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!state.readyCountdownEndsAt) return;
+    const tick = () => setSecs(Math.max(0, Math.ceil((state.readyCountdownEndsAt! - Date.now()) / 1000)));
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [state.readyCountdownEndsAt]);
+
+  return (
+    <Btn
+      label={secs !== null ? `Hazır (${secs})` : 'Hazır'}
+      kind="primary"
+      icon="checkmark"
+      onPress={onPress}
+    />
+  );
+}
+
 export function ResultScreen({ state, actions }: Props) {
   const r = state.result!;
   const room = state.room!;
@@ -751,50 +1167,34 @@ export function ResultScreen({ state, actions }: Props) {
   return (
     <Screen>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
+        {/* Always show round result first */}
         <View style={styles.center}>
-          {matchOver ? (
-            <>
-              <Ionicons name={youWon ? 'trophy' : 'sad-outline'} size={64} color={youWon ? theme.accent : theme.muted} />
-              <Text style={[styles.h1, { color: youWon ? theme.accent : theme.text }]}>
-                {youWon ? 'MAÇI KAZANDIN!' : 'MAÇI KAYBETTİN'}
-              </Text>
-              <Text style={styles.matchScore}>
-                {(you?.score ?? 0)} - {(opp?.score ?? 0)}
-              </Text>
-              {!youWon && state.matchWinnerName ? (
-                <Text style={styles.muted}>{state.matchWinnerName} kazandı</Text>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <Ionicons name={icon} size={64} color={color} />
-              <Text style={[styles.h1, { color }]}>{headline}</Text>
-              {r.reason === 'no_common' ? (
-                <Text style={[styles.muted, { marginTop: 2 }]}>
-                  {"Bu iki takımda ortak oynamış oyuncu yok — kimseye puan yok"}
-                </Text>
-              ) : null}
-              {r.matchedPlayerImageUrl ? (
-                <Image source={{ uri: r.matchedPlayerImageUrl }} style={styles.playerPhoto} />
-              ) : null}
-              {r.matchedPlayerName ? <Text style={styles.matched}>{r.matchedPlayerName}</Text> : null}
-              {r.answeredByName ? (
-                <Text style={styles.muted}>
-                  {r.answeredByName} • "{r.guess}"
-                </Text>
-              ) : null}
-              {r.autocorrected ? (
-                <View style={styles.fixRow}>
-                  <Ionicons name="swap-horizontal" size={13} color={theme.accent} />
-                  <Text style={styles.fixText}>otomatik düzeltildi</Text>
-                </View>
-              ) : null}
-            </>
-          )}
+          <Ionicons name={icon} size={64} color={color} />
+          <Text style={[styles.h1, { color }]}>{headline}</Text>
+          {r.reason === 'no_common' ? (
+            <Text style={[styles.muted, { marginTop: 2 }]}>
+              {"Bu iki takımda ortak oynamış oyuncu yok — kimseye puan yok"}
+            </Text>
+          ) : null}
+          {r.matchedPlayerImageUrl ? (
+            <Image source={{ uri: r.matchedPlayerImageUrl }} style={styles.playerPhoto} />
+          ) : null}
+          {r.matchedPlayerName ? <Text style={styles.matched}>{r.matchedPlayerName}</Text> : null}
+          {r.answeredByName ? (
+            <Text style={styles.muted}>
+              {r.answeredByName} • "{r.guess}"
+            </Text>
+          ) : null}
+          {r.autocorrected ? (
+            <View style={styles.fixRow}>
+              <Ionicons name="swap-horizontal" size={13} color={theme.accent} />
+              <Text style={styles.fixText}>otomatik düzeltildi</Text>
+            </View>
+          ) : null}
         </View>
 
-        {/* Per-round detail (only between rounds; not for skipped/no-common rounds or the match-over screen) */}
-        {!matchOver && r.reason !== 'no_common' ? (
+        {/* Per-round detail (always shown, including the match-winning round) */}
+        {r.reason !== 'no_common' ? (
           <>
             <View style={styles.teamResultRow}>
               <TeamResultCard team={r.teamA} spells={r.spellsA} played={playedA} />
@@ -868,31 +1268,53 @@ export function ResultScreen({ state, actions }: Props) {
         </View>
 
         {matchOver ? (
-          state.rematchState === 'incoming' ? (
-            <>
-              <Text style={[styles.muted, { marginBottom: 4 }]}>
-                {state.rematchByName} tekrar oynamak istiyor
+          <>
+            {/* Match result banner */}
+            <View style={[styles.matchBanner, { borderColor: youWon ? theme.accent : theme.muted }]}>
+              <Ionicons name={youWon ? 'trophy' : 'sad-outline'} size={32} color={youWon ? theme.accent : theme.muted} />
+              <Text style={[styles.h1, { color: youWon ? theme.accent : theme.text }]}>
+                {youWon ? 'MAÇI KAZANDIN!' : 'MAÇI KAYBETTİN'}
               </Text>
-              <Btn label="Kabul Et" kind="accent" icon="checkmark-circle" onPress={actions.acceptRematch} />
-              <Btn label="Reddet" kind="ghost" icon="close" onPress={actions.declineRematch} />
-            </>
-          ) : state.rematchState === 'waiting' ? (
-            <View style={styles.center}>
-              <ActivityIndicator color={theme.primary} />
-              <Text style={styles.muted}>{"İstek gönderildi, kabul bekleniyor…"}</Text>
+              <Text style={styles.matchScore}>
+                {(you?.score ?? 0)} - {(opp?.score ?? 0)}
+              </Text>
             </View>
-          ) : state.rematchState === 'declined' ? (
-            <>
-              <Text style={[styles.muted, { color: theme.danger }]}>Tekrar oynama isteğin reddedildi</Text>
-              <Btn label="Tekrar Dene" kind="accent" icon="refresh" onPress={actions.playAgain} />
-            </>
+
+            {state.rematchState === 'incoming' ? (
+              <>
+                <Text style={[styles.muted, { marginBottom: 4 }]}>
+                  {state.rematchByName} tekrar oynamak istiyor
+                </Text>
+                <Btn label="Kabul Et" kind="accent" icon="checkmark-circle" onPress={actions.acceptRematch} />
+                <Btn label="Reddet" kind="ghost" icon="close" onPress={actions.declineRematch} />
+              </>
+            ) : state.rematchState === 'waiting' ? (
+              <View style={styles.center}>
+                <ActivityIndicator color={theme.primary} />
+                <Text style={styles.muted}>{"İstek gönderildi, kabul bekleniyor..."}</Text>
+              </View>
+            ) : state.rematchState === 'declined' ? (
+              <>
+                <Text style={[styles.muted, { color: theme.danger }]}>Tekrar oynama isteğin reddedildi</Text>
+                <Btn label="Tekrar Dene" kind="accent" icon="refresh" onPress={actions.playAgain} />
+              </>
+            ) : (
+              <Btn label="Tekrar Oyna" kind="accent" icon="refresh" onPress={actions.playAgain} />
+            )}
+          </>
+        ) : state.waitingReady ? (
+          state.iReady ? (
+            <View style={styles.center}>
+              <Ionicons name="checkmark-circle" size={28} color={theme.primary} />
+              <Text style={styles.muted}>{"Hazırsın! Rakip bekleniyor..."}</Text>
+            </View>
           ) : (
-            <Btn label="Tekrar Oyna" kind="accent" icon="refresh" onPress={actions.playAgain} />
+            <ReadyButton state={state} onPress={actions.ready} />
           )
         ) : (
           <View style={styles.center}>
             <ActivityIndicator color={theme.primary} />
-            <Text style={styles.muted}>{"Sıradaki tur başlıyor…"}</Text>
+            <Text style={styles.muted}>{"Sıradaki tur başlıyor..."}</Text>
           </View>
         )}
         <View style={{ height: 10 }} />
@@ -986,6 +1408,41 @@ const styles = StyleSheet.create({
   careerRowHi: { backgroundColor: 'rgba(61,220,132,0.10)', borderRadius: 8 },
   careerClub: { color: theme.text, fontSize: 12, flex: 1 },
   careerYears: { color: theme.muted, fontSize: 11 },
+  nameModalCard: { backgroundColor: theme.card, borderRadius: 20, padding: 24, marginHorizontal: 30, alignItems: 'center' as const, gap: 10, borderWidth: 1, borderColor: theme.border },
+  nameModalCost: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, marginVertical: 6 },
+  storeBalance: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.card, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14, marginTop: 6, borderWidth: 1, borderColor: theme.border },
+  storeBalanceText: { color: '#5BC8FF', fontSize: 18, fontWeight: '800' },
+  storeAdCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.card, borderRadius: 12, padding: 14, marginVertical: 4, borderWidth: 1, borderColor: theme.border },
+  storeAdTitle: { color: theme.text, fontSize: 14, fontWeight: '700' },
+  storeAdReward: { color: '#5BC8FF', fontSize: 14, fontWeight: '800', marginBottom: 4 },
+  storeCooldown: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.bg, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10, marginVertical: 4 },
+  storeCooldownText: { color: theme.accent, fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  storePackCard: { backgroundColor: theme.card, borderRadius: 12, padding: 14, marginVertical: 4, borderWidth: 1, borderColor: theme.border, position: 'relative' as const },
+  storePackBest: { borderColor: '#5BC8FF', borderWidth: 2 },
+  storePackBadge: { position: 'absolute' as const, top: -10, right: 12, backgroundColor: '#5BC8FF', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
+  storePackBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+  storePackIcon: { width: 48, height: 48, borderRadius: 12, alignItems: 'center' as const, justifyContent: 'center' as const },
+  storePackAmount: { color: theme.text, fontSize: 16, fontWeight: '800' },
+  storePackPriceBox: { backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
+  storePackPrice: { color: '#06131F', fontSize: 14, fontWeight: '800' },
+  friendAddCard: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: theme.card, borderRadius: 12, padding: 14, marginVertical: 4, borderWidth: 1, borderColor: theme.border },
+  friendDivider: { width: 1, height: 40, backgroundColor: theme.border, marginHorizontal: 10 },
+  friendLabel: { color: theme.muted, fontSize: 10, fontWeight: '600', marginBottom: 4 },
+  friendCode: { color: theme.accent, fontSize: 16, fontWeight: '900', letterSpacing: 2 },
+  friendInput: { color: theme.text, fontSize: 14, fontWeight: '700', borderBottomWidth: 1, borderBottomColor: theme.border, paddingBottom: 4 },
+  friendEmpty: { alignItems: 'center' as const, gap: 8, paddingVertical: 30 },
+  arenaCard: { backgroundColor: theme.card, borderRadius: 14, borderWidth: 1, borderColor: theme.border, padding: 14, position: 'relative' },
+  arenaIconBox: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  arenaName: { color: theme.text, fontSize: 16, fontWeight: '900' },
+  arenaTrophyRange: { color: theme.muted, fontSize: 12, marginTop: 2 },
+  arenaStats: { flexDirection: 'row', gap: 16, marginTop: 8 },
+  arenaStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  arenaProgressOuter: { height: 8, backgroundColor: theme.border, borderRadius: 4, marginTop: 10, overflow: 'hidden', position: 'relative' },
+  arenaProgressInner: { height: '100%', borderRadius: 4 },
+  arenaProgressText: { position: 'absolute', right: 0, top: -16, color: theme.muted, fontSize: 10, fontWeight: '600' },
+  arenaBadge: { position: 'absolute', top: 10, right: 10, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  arenaBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+  matchBanner: { alignItems: 'center', gap: 4, backgroundColor: theme.card, borderRadius: 14, borderWidth: 2, padding: 16, marginVertical: 12 },
   pickTimerBox: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.card, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14, marginTop: 6, borderWidth: 1, borderColor: theme.border },
   pickTimerText: { color: theme.accent, fontSize: 22, fontWeight: '900' },
   factCard: { backgroundColor: theme.card, borderRadius: 12, padding: 16, marginVertical: 24, borderWidth: 1, borderColor: theme.border, alignItems: 'center', gap: 10 },

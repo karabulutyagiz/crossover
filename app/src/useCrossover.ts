@@ -13,7 +13,7 @@ import type {
   ServerMsg,
 } from './protocol';
 
-export type Phase = 'home' | 'leaderboard' | 'searching' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
+export type Phase = 'home' | 'arenas' | 'leaderboard' | 'searching' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
 
 export interface LeaderboardEntry {
   rank: number;
@@ -48,6 +48,9 @@ export interface GameState {
   winTarget: number;
   rematchState: 'idle' | 'waiting' | 'incoming' | 'declined';
   rematchByName: string | null;
+  waitingReady: boolean;
+  readyCountdownEndsAt: number | null;
+  iReady: boolean;
 }
 
 const initialState: GameState = {
@@ -73,6 +76,9 @@ const initialState: GameState = {
   winTarget: 3,
   rematchState: 'idle',
   rematchByName: null,
+  waitingReady: false,
+  readyCountdownEndsAt: null,
+  iReady: false,
 };
 
 const PROFILE_KEY = '@crossover_profile';
@@ -85,7 +91,8 @@ type Action =
   | { type: '_scopes'; scopes: ScopesList }
   | { type: '_leaderboard'; entries: LeaderboardEntry[] }
   | { type: '_phase'; phase: Phase }
-  | { type: '_load_profile'; profile: ProfileView };
+  | { type: '_load_profile'; profile: ProfileView }
+  | { type: '_ready' };
 
 function reducer(state: GameState, action: Action): GameState {
   switch (action.type) {
@@ -103,6 +110,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, phase: action.phase };
     case '_load_profile':
       return { ...state, profile: action.profile };
+    case '_ready':
+      return { ...state, iReady: true };
 
     case 'searching':
       return { ...state, phase: 'searching' };
@@ -140,6 +149,9 @@ function reducer(state: GameState, action: Action): GameState {
         matchWinnerName: null,
         rematchState: 'idle',
         rematchByName: null,
+        waitingReady: false,
+        readyCountdownEndsAt: null,
+        iReady: false,
       };
     case 'pick_phase':
       return { ...state, phase: 'pick', picked: false, pickEndsAt: action.endsAt, teams: null, locked: null, result: null, clubResults: [] };
@@ -162,6 +174,12 @@ function reducer(state: GameState, action: Action): GameState {
         rematchState: 'idle',
         rematchByName: null,
       };
+    case 'waiting_ready':
+      return { ...state, waitingReady: true, readyCountdownEndsAt: null, iReady: false };
+    case 'ready_countdown':
+      return { ...state, readyCountdownEndsAt: action.endsAt };
+    case 'player_ready':
+      return state;
     case 'rematch_waiting':
       return { ...state, rematchState: 'waiting' };
     case 'rematch_requested':
@@ -263,6 +281,8 @@ export function useCrossover() {
         .catch(() => {});
     },
     closeLeaderboard: () => dispatch({ type: '_phase', phase: 'home' }),
+    openArenas: () => dispatch({ type: '_phase', phase: 'arenas' }),
+    closeArenas: () => dispatch({ type: '_phase', phase: 'home' }),
     register: (name: string, gameCenterId?: string) => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         send({ type: 'register', name, gameCenterId });
@@ -293,7 +313,11 @@ export function useCrossover() {
     },
     searchClubs: (q: string) => send({ type: 'search_clubs', reqId: 'q', q }),
     submitGuess: (text: string) => send({ type: 'submit_guess', text }),
-    playAgain: () => send({ type: 'play_again' }), // request a rematch
+    ready: () => {
+      send({ type: 'ready' });
+      dispatch({ type: '_ready' as any });
+    },
+    playAgain: () => send({ type: 'play_again' }),
     acceptRematch: () => send({ type: 'rematch_response', accept: true }),
     declineRematch: () => send({ type: 'rematch_response', accept: false }),
     leave: () => {
