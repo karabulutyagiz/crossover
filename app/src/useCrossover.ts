@@ -32,6 +32,7 @@ export interface GameState {
   countdown: number | null;
   teams: { teamA: ClubRef; teamB: ClubRef } | null;
   picked: boolean;
+  pickEndsAt: number | null;
   guessEndsAt: number | null;
   locked: { byId: string; byName: string } | null;
   result: RoundResult | null;
@@ -50,6 +51,7 @@ const initialState: GameState = {
   countdown: null,
   teams: null,
   picked: false,
+  pickEndsAt: null,
   guessEndsAt: null,
   locked: null,
   result: null,
@@ -114,7 +116,7 @@ function reducer(state: GameState, action: Action): GameState {
     case 'countdown':
       return { ...state, phase: 'countdown', countdown: action.n, result: null, teams: null, locked: null, trophyDelta: null };
     case 'pick_phase':
-      return { ...state, phase: 'pick', picked: false, teams: null, locked: null, result: null, clubResults: [] };
+      return { ...state, phase: 'pick', picked: false, pickEndsAt: action.endsAt, teams: null, locked: null, result: null, clubResults: [] };
     case 'reveal_teams':
       return { ...state, phase: 'reveal', teams: { teamA: action.teamA, teamB: action.teamB } };
     case 'guess_phase':
@@ -184,13 +186,21 @@ export function useCrossover() {
         /* ignore malformed */
       }
     };
-    ws.onclose = () => dispatch({ type: '_connected', value: false });
+    ws.onclose = () => {
+      dispatch({ type: '_connected', value: false });
+    };
     ws.onerror = () => dispatch({ type: 'error', message: 'Sunucuya bağlanılamadı' });
   }, []);
 
   const send = useCallback((msg: ClientMsg) => {
     const ws = wsRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(msg));
+    } else {
+      // Connection lost — reset to home so user can start fresh
+      dispatch({ type: 'error', message: 'Bağlantı koptu' });
+      dispatch({ type: '_reset' });
+    }
   }, []);
 
   // Load available leagues/countries once for the scope picker.

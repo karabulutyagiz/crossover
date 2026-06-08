@@ -33,6 +33,7 @@ export interface GameOptions {
 
 export interface ScopeOption {
   value: string;
+  displayName?: string;
   count: number;
   logoUrl?: string | null;
 }
@@ -109,7 +110,7 @@ export type ServerMsg =
   | { type: 'profile'; profile: ProfileView }
   | { type: 'name_changed'; profile: ProfileView }
   | { type: 'countdown'; n: number }
-  | { type: 'pick_phase' }
+  | { type: 'pick_phase'; endsAt: number }
   | { type: 'team_picked'; playerId: string }
   | { type: 'reveal_teams'; teamA: ClubRef; teamB: ClubRef }
   | { type: 'guess_phase'; endsAt: number }

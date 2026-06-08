@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { pool } from '../db/pool.ts';
-import { verifyGuess, searchClubs, commonPlayersDetailed } from '../game/verify.ts';
+import { verifyGuess, searchClubs, commonPlayersDetailed, randomClub } from '../game/verify.ts';
 import type {
   ClientMsg,
   ServerMsg,
@@ -13,6 +13,7 @@ import type {
 } from '../protocol.ts';
 
 const COUNTDOWN_FROM = 3;
+const PICK_MS = 10_000;
 const GUESS_MS = 30_000;
 const MAX_PLAYERS = 2;
 
@@ -144,7 +145,23 @@ export class Room {
   private beginPick(): void {
     this.status = 'pick';
     this.broadcastState();
-    this.broadcast({ type: 'pick_phase' });
+    const endsAt = Date.now() + PICK_MS;
+    this.broadcast({ type: 'pick_phase', endsAt });
+    const t = setTimeout(() => this.autoPickRemaining(), PICK_MS);
+    this.timers.push(t);
+  }
+
+  private async autoPickRemaining(): Promise<void> {
+    if (this.status !== 'pick' || !this.round) return;
+    for (const [id] of this.players) {
+      if (this.round.picks.has(id)) continue;
+      const club = await randomClub(this.scope, 'medium');
+      if (club) {
+        this.round.picks.set(id, club);
+        this.broadcast({ type: 'team_picked', playerId: id });
+      }
+    }
+    if (this.round.picks.size === MAX_PLAYERS) this.beginReveal();
   }
 
   private handlePick(playerId: string, clubId: number): void {

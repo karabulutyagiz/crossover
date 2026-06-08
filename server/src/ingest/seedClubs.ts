@@ -15,7 +15,7 @@ export interface SeedClub {
 }
 
 export const SEED_CLUBS: SeedClub[] = [
-  // ---- Türkiye ----
+  // ---- Türkiye (Süper Lig + 1. Lig + tarihî) ----
   { name: 'Galatasaray S.K.', qid: 'Q495299' },
   { name: 'Fenerbahçe S.K.' },
   { name: 'Beşiktaş J.K.' },
@@ -28,6 +28,27 @@ export const SEED_CLUBS: SeedClub[] = [
   { name: 'Bursaspor' },
   { name: 'Gaziantep FK' },
   { name: 'Alanyaspor' },
+  { name: 'Çaykur Rizespor', qid: 'Q272712' },
+  { name: 'Kasımpaşa S.K.' },
+  { name: 'Hatayspor' },
+  { name: 'Fatih Karagümrük S.K.' },
+  { name: 'Adana Demirspor' },
+  { name: 'Gaziantepspor', qid: 'Q285722' },
+  { name: 'MKE Ankaragücü' },
+  { name: 'Gençlerbirliği S.K.' },
+  { name: 'Samsunspor' },
+  { name: 'Giresunspor' },
+  { name: 'Pendikspor' },
+  { name: 'Bodrum FK' },
+  { name: 'Eyüpspor' },
+  { name: 'Sakaryaspor' },
+  { name: 'Eskişehirspor' },
+  { name: 'Akhisarspor' },
+  { name: 'Osmanlıspor FK' },
+  { name: 'Yeni Malatyaspor' },
+  { name: 'Denizlispor' },
+  { name: 'Göztepe S.K.' },
+  { name: 'Altay S.K.' },
 
   // ---- England ----
   { name: 'Manchester United F.C.' },

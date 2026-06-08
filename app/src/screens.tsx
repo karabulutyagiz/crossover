@@ -304,8 +304,17 @@ function PickerModal({
   goto: (p: Picker) => void;
 }) {
   const visible = picker !== null;
-  const list =
+  const allList =
     picker === 'league' ? scopes?.leagues ?? [] : picker === 'country' ? scopes?.countries ?? [] : [];
+
+  const [search, setSearch] = useState('');
+
+  // Reset search when picker changes
+  useEffect(() => { setSearch(''); }, [picker]);
+
+  const filtered = search.trim()
+    ? allList.filter((o) => (o.displayName ?? o.value).toLowerCase().includes(search.toLowerCase()))
+    : allList;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -326,13 +335,13 @@ function PickerModal({
             <>
               <Text style={styles.modalTitle}>Kapsam</Text>
               <Pressable style={styles.modalRow} onPress={() => onScope({ type: 'all' })}>
-                <Text style={styles.modalRowText}>Tüm takımlar</Text>
+                <Text style={styles.modalRowText}>{"Tüm takımlar"}</Text>
               </Pressable>
               <Pressable style={styles.modalRow} onPress={() => goto('league')}>
-                <Text style={styles.modalRowText}>Lig seç ›</Text>
+                <Text style={styles.modalRowText}>{"Lig seç ›"}</Text>
               </Pressable>
               <Pressable style={styles.modalRow} onPress={() => goto('country')}>
-                <Text style={styles.modalRowText}>Ülke seç ›</Text>
+                <Text style={styles.modalRowText}>{"Ülke seç ›"}</Text>
               </Pressable>
             </>
           )}
@@ -340,8 +349,24 @@ function PickerModal({
           {(picker === 'league' || picker === 'country') && (
             <>
               <Text style={styles.modalTitle}>{picker === 'league' ? 'Lig seç' : 'Ülke seç'}</Text>
-              <ScrollView style={{ maxHeight: 360 }}>
-                {list.map((o) => (
+              <View style={styles.modalSearchBox}>
+                <Ionicons name="search" size={16} color={theme.muted} />
+                <TextInput
+                  placeholder={picker === 'league' ? 'Lig ara...' : 'Ülke ara...'}
+                  placeholderTextColor={theme.muted}
+                  value={search}
+                  onChangeText={setSearch}
+                  style={styles.modalSearchInput}
+                  autoFocus
+                />
+                {search.length > 0 ? (
+                  <Pressable onPress={() => setSearch('')}>
+                    <Ionicons name="close-circle" size={16} color={theme.muted} />
+                  </Pressable>
+                ) : null}
+              </View>
+              <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
+                {filtered.map((o) => (
                   <Pressable
                     key={o.value}
                     style={styles.modalRow}
@@ -353,12 +378,15 @@ function PickerModal({
                       ) : picker === 'country' && o.logoUrl ? (
                         <Text style={{ fontSize: 20 }}>{o.logoUrl}</Text>
                       ) : null}
-                      <Text style={[styles.modalRowText, { flex: 1 }]} numberOfLines={1}>{o.value}</Text>
+                      <Text style={[styles.modalRowText, { flex: 1 }]} numberOfLines={1}>{o.displayName ?? o.value}</Text>
                     </View>
                     <Text style={styles.modalCount}>{o.count}</Text>
                   </Pressable>
                 ))}
-                {list.length === 0 ? <Text style={styles.muted}>Yükleniyor…</Text> : null}
+                {filtered.length === 0 && search.trim() ? (
+                  <Text style={[styles.muted, { marginTop: 12 }]}>{"Sonuç bulunamadı"}</Text>
+                ) : null}
+                {allList.length === 0 ? <Text style={styles.muted}>{"Yükleniyor…"}</Text> : null}
               </ScrollView>
             </>
           )}
@@ -435,6 +463,15 @@ export function CountdownScreen({ state }: Props) {
 export function PickTeamScreen({ state, actions }: Props) {
   const [q, setQ] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pickSecs, setPickSecs] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!state.pickEndsAt) return;
+    const tick = () => setPickSecs(Math.max(0, Math.ceil((state.pickEndsAt! - Date.now()) / 1000)));
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [state.pickEndsAt]);
 
   const onChange = (text: string) => {
     setQ(text);
@@ -447,7 +484,7 @@ export function PickTeamScreen({ state, actions }: Props) {
       <Screen>
         <View style={styles.center}>
           <ActivityIndicator color={theme.primary} />
-          <Text style={styles.muted}>Takımın seçildi. Rakip bekleniyor…</Text>
+          <Text style={styles.muted}>{"Takımın seçildi. Rakip bekleniyor\u2026"}</Text>
         </View>
       </Screen>
     );
@@ -455,7 +492,15 @@ export function PickTeamScreen({ state, actions }: Props) {
 
   return (
     <Screen>
-      <Text style={styles.h1}>Bir takım seç</Text>
+      <View style={{ alignItems: 'center', marginBottom: 8 }}>
+        <Text style={styles.h1}>{"Bir takım seç"}</Text>
+        <View style={styles.pickTimerBox}>
+          <Ionicons name="time-outline" size={18} color={pickSecs !== null && pickSecs <= 3 ? theme.danger : theme.accent} />
+          <Text style={[styles.pickTimerText, pickSecs !== null && pickSecs <= 3 ? { color: theme.danger } : null]}>
+            {pickSecs !== null ? pickSecs : 10}
+          </Text>
+        </View>
+      </View>
       <View style={styles.searchBox}>
         <Ionicons name="search" size={18} color={theme.muted} />
         <TextInput
@@ -872,6 +917,8 @@ const styles = StyleSheet.create({
   careerRowHi: { backgroundColor: 'rgba(61,220,132,0.10)', borderRadius: 8 },
   careerClub: { color: theme.text, fontSize: 12, flex: 1 },
   careerYears: { color: theme.muted, fontSize: 11 },
+  pickTimerBox: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.card, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14, marginTop: 6, borderWidth: 1, borderColor: theme.border },
+  pickTimerText: { color: theme.accent, fontSize: 22, fontWeight: '900' },
   factCard: { backgroundColor: theme.card, borderRadius: 12, padding: 16, marginVertical: 24, borderWidth: 1, borderColor: theme.border, alignItems: 'center', gap: 10 },
   factIcon: { fontSize: 28 },
   factText: { color: theme.text, fontSize: 13, textAlign: 'center', lineHeight: 20 },
@@ -929,6 +976,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: theme.border,
   },
+  modalSearchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.bg, borderRadius: 10, paddingHorizontal: 12, marginBottom: 8 },
+  modalSearchInput: { flex: 1, color: theme.text, paddingVertical: 10, fontSize: 13 },
   modalTitle: { color: theme.text, fontSize: 15, fontWeight: '800', marginBottom: 8 },
   modalRow: {
     flexDirection: 'row',

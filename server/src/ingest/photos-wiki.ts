@@ -50,7 +50,7 @@ async function fetchPageImages(
     query?: {
       pages?: Record<
         string,
-        { title?: string; thumbnail?: { source: string } }
+        { title?: string; thumbnail?: { source: string; width: number; height: number } }
       >;
       normalized?: Array<{ from: string; to: string }>;
     };
@@ -58,8 +58,13 @@ async function fetchPageImages(
 
   const pages = json.query?.pages ?? {};
   for (const page of Object.values(pages)) {
-    if (page.title && page.thumbnail?.source) {
-      result.set(page.title, page.thumbnail.source);
+    const t = page.thumbnail;
+    if (!page.title || !t?.source) continue;
+    // Only accept portrait-oriented images (height >= width).
+    // Landscape images are almost always action/stadium shots where
+    // the player's face is not clearly visible.
+    if (t.height >= t.width) {
+      result.set(page.title, t.source);
     }
   }
   // Handle normalized titles (Wikipedia normalizes "alexis_sánchez" -> "Alexis Sánchez")

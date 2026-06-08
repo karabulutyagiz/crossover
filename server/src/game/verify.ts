@@ -129,11 +129,25 @@ const MEDIUM_CLUB_IDS = [
   192641, // Trabzonspor
 ];
 
+// First-division leagues only (no 2nd/3rd divisions). Used by hard mode.
+const FIRST_DIVISION_LEAGUES = [
+  'Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1',
+  'Eredivisie', 'Primeira Liga', 'Süper Lig', 'Belgian Pro League',
+  'Scottish Premiership', 'Swiss Super League', 'Austrian Bundesliga',
+  'Greek Super League', 'Russian Premier League', 'Ukrainian Premier League',
+  'MLS', 'Liga MX', 'Brazil Serie A', 'Argentine Liga Profesional',
+  'Saudi Pro League', 'Danish Superliga', 'Eliteserien', 'Allsvenskan',
+  'Ekstraklasa', 'Czech First League', 'Croatian HNL', 'Serbian SuperLiga',
+  'Romanian Liga I', 'Colombian Primera A', 'Chilean Primera',
+  'Uruguayan Primera', 'J1 League', 'K League 1', 'Chinese Super League',
+  'A-League', 'Egyptian Premier League', 'Qatar Stars League', 'UAE Pro League',
+];
+
 /**
  * A random club for the bot. Difficulty controls which pool:
  * - 'easy': ~18 mega-famous clubs (everyone knows them)
  * - 'medium': ~37 well-known clubs
- * - 'hard' / default: any club with a logo in scope
+ * - 'hard': any first-division club with a logo in scope
  */
 export async function randomClub(
   scope: Scope = { type: 'all' },
@@ -141,7 +155,6 @@ export async function randomClub(
 ): Promise<ClubHit | null> {
   if (difficulty === 'easy' || difficulty === 'medium') {
     const ids = difficulty === 'easy' ? EASY_CLUB_IDS : MEDIUM_CLUB_IDS;
-    // Shuffle and try each until one exists in scope
     const shuffled = [...ids].sort(() => Math.random() - 0.5);
     for (const id of shuffled) {
       const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
@@ -153,15 +166,16 @@ export async function randomClub(
       );
       if (rows[0]) return { id: Number(rows[0].id), name: rows[0].name, logoUrl: rows[0].logo_url };
     }
-    // Fallback to any club with logo in scope
   }
-  const params: unknown[] = [];
+  // Hard mode: only first-division leagues
+  const params: unknown[] = [FIRST_DIVISION_LEAGUES];
   const scopeSql = scopeClause(scope, params);
   const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
     `SELECT c.id, c.name, c.logo_url
        FROM clubs c
       WHERE c.is_national = false
         AND c.logo_url IS NOT NULL
+        AND c.league = ANY($1::text[])
         AND EXISTS (SELECT 1 FROM player_clubs pc WHERE pc.club_id = c.id)
         ${scopeSql}
       ORDER BY random()
@@ -174,6 +188,7 @@ export async function randomClub(
 
 export interface ScopeOption {
   value: string;
+  displayName?: string;
   count: number;
   logoUrl?: string | null;
 }
@@ -224,11 +239,32 @@ const COUNTRY_FLAGS: Record<string, string> = {
   Hungary: '🇭🇺', Bulgaria: '🇧🇬', Slovakia: '🇸🇰', Slovenia: '🇸🇮',
   Finland: '🇫🇮', Iceland: '🇮🇸', Paraguay: '🇵🇾', Peru: '🇵🇪',
   Ecuador: '🇪🇨', Venezuela: '🇻🇪', Bolivia: '🇧🇴',
+  Canada: '🇨🇦', CA: '🇨🇦', 'New-Zealand': '🇳🇿', 'New Zealand': '🇳🇿', NZ: '🇳🇿',
 };
 
 function countryFlag(name: string): string | null {
   return COUNTRY_FLAGS[name] ?? null;
 }
+
+const COUNTRY_NAME_TR: Record<string, string> = {
+  Turkey: 'Türkiye', England: 'İngiltere', Spain: 'İspanya', Italy: 'İtalya',
+  Germany: 'Almanya', France: 'Fransa', Portugal: 'Portekiz', Netherlands: 'Hollanda',
+  Belgium: 'Belçika', Scotland: 'İskoçya', Switzerland: 'İsviçre', Austria: 'Avusturya',
+  Greece: 'Yunanistan', Russia: 'Rusya', Ukraine: 'Ukrayna', USA: 'ABD',
+  Mexico: 'Meksika', Brazil: 'Brezilya', Argentina: 'Arjantin',
+  'Saudi-Arabia': 'Suudi Arabistan', 'Saudi Arabia': 'Suudi Arabistan',
+  Denmark: 'Danimarka', Norway: 'Norveç', Sweden: 'İsveç', Poland: 'Polonya',
+  'Czech-Republic': 'Çekya', Croatia: 'Hırvatistan', Serbia: 'Sırbistan',
+  Romania: 'Romanya', Colombia: 'Kolombiya', Chile: 'Şili', Uruguay: 'Uruguay',
+  Japan: 'Japonya', 'Korea-South': 'Güney Kore', 'South-Korea': 'Güney Kore',
+  China: 'Çin', Australia: 'Avustralya', Egypt: 'Mısır', Qatar: 'Katar',
+  'United-Arab-Emirates': 'BAE', Ireland: 'İrlanda', Wales: 'Galler',
+  'Northern-Ireland': 'Kuzey İrlanda', Hungary: 'Macaristan', Bulgaria: 'Bulgaristan',
+  Slovakia: 'Slovakya', Slovenia: 'Slovenya', Finland: 'Finlandiya', Iceland: 'İzlanda',
+  Paraguay: 'Paraguay', Peru: 'Peru', Ecuador: 'Ekvador', Venezuela: 'Venezuela',
+  Bolivia: 'Bolivya', Canada: 'Kanada', 'New-Zealand': 'Yeni Zelanda',
+  'New Zealand': 'Yeni Zelanda',
+};
 
 /** Available leagues and countries (for the scope picker). */
 export async function listScopes(): Promise<{ leagues: ScopeOption[]; countries: ScopeOption[] }> {
@@ -248,6 +284,7 @@ export async function listScopes(): Promise<{ leagues: ScopeOption[]; countries:
     })),
     countries: countries.rows.map((r) => ({
       value: r.value,
+      displayName: COUNTRY_NAME_TR[r.value] ?? r.value,
       count: Number(r.count),
       logoUrl: countryFlag(r.value),
     })),
@@ -267,10 +304,8 @@ export async function commonPlayers(
   const { rows } = await pool.query<{ name: string }>(
     `SELECT p.name
        FROM players p
-      WHERE EXISTS (SELECT 1 FROM player_clubs a WHERE a.player_id = p.id AND a.club_id = $1
-                     AND (a.start_year IS NOT NULL OR a.end_year IS NOT NULL))
-        AND EXISTS (SELECT 1 FROM player_clubs b WHERE b.player_id = p.id AND b.club_id = $2
-                     AND (b.start_year IS NOT NULL OR b.end_year IS NOT NULL))
+      WHERE EXISTS (SELECT 1 FROM player_clubs a WHERE a.player_id = p.id AND a.club_id = $1)
+        AND EXISTS (SELECT 1 FROM player_clubs b WHERE b.player_id = p.id AND b.club_id = $2)
       ORDER BY (p.image_url IS NOT NULL) DESC,
                (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC
       LIMIT $3`,
@@ -284,8 +319,7 @@ export interface CommonPlayerInfo {
   imageUrl: string | null;
 }
 
-/** Players who played for BOTH teams — with photo URLs for display.
- *  Only counts dated spells (official first-team stints). */
+/** Players who played for BOTH teams — with photo URLs for display. */
 export async function commonPlayersDetailed(
   teamAId: number,
   teamBId: number,
@@ -294,10 +328,8 @@ export async function commonPlayersDetailed(
   const { rows } = await pool.query<{ name: string; image_url: string | null }>(
     `SELECT p.name, p.image_url
        FROM players p
-      WHERE EXISTS (SELECT 1 FROM player_clubs a WHERE a.player_id = p.id AND a.club_id = $1
-                     AND (a.start_year IS NOT NULL OR a.end_year IS NOT NULL))
-        AND EXISTS (SELECT 1 FROM player_clubs b WHERE b.player_id = p.id AND b.club_id = $2
-                     AND (b.start_year IS NOT NULL OR b.end_year IS NOT NULL))
+      WHERE EXISTS (SELECT 1 FROM player_clubs a WHERE a.player_id = p.id AND a.club_id = $1)
+        AND EXISTS (SELECT 1 FROM player_clubs b WHERE b.player_id = p.id AND b.club_id = $2)
       ORDER BY (p.image_url IS NOT NULL) DESC,
                (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC
       LIMIT $3`,
@@ -393,9 +425,6 @@ export async function verifyGuess(
   }
 
   // 2) Which eligible candidates played for both teams?
-  // Only count spells that have at least a start_year or end_year — this
-  // filters out youth/trial entries that have no dated record, meaning the
-  // player never had an official first-team stint at that club.
   const ids = eligible.map((c) => c.id);
   const { rows: membership } = await pool.query<{
     player_id: string;
@@ -403,8 +432,8 @@ export async function verifyGuess(
     in_b: boolean;
   }>(
     `SELECT player_id,
-            bool_or(club_id = $2 AND (start_year IS NOT NULL OR end_year IS NOT NULL)) AS in_a,
-            bool_or(club_id = $3 AND (start_year IS NOT NULL OR end_year IS NOT NULL)) AS in_b
+            bool_or(club_id = $2) AS in_a,
+            bool_or(club_id = $3) AS in_b
        FROM player_clubs
       WHERE player_id = ANY($1::bigint[])
       GROUP BY player_id`,
