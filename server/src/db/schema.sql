@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS users (
   owned_emotes   TEXT[] NOT NULL DEFAULT '{}',  -- premium emote ids the user has bought
   apple_sub      TEXT UNIQUE,              -- Sign in with Apple subject id
   google_sub     TEXT UNIQUE,              -- Google account subject id
+  facebook_sub   TEXT UNIQUE,              -- Facebook (Limited Login) subject id
   email          TEXT,                     -- from the auth provider (may be null/private)
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -79,12 +80,14 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS owned_emotes TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS apple_sub TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS facebook_sub TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_users_trophies ON users (trophies DESC);
 CREATE INDEX IF NOT EXISTS idx_users_game_center ON users (game_center_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_apple_sub ON users (apple_sub) WHERE apple_sub IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users (google_sub) WHERE google_sub IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_facebook_sub ON users (facebook_sub) WHERE facebook_sub IS NOT NULL;
 
 -- Bookkeeping for ingest runs.
 CREATE TABLE IF NOT EXISTS ingest_log (

@@ -4,7 +4,7 @@ import { RoomManager } from '../rooms/manager.ts';
 import { BotPlayer } from '../rooms/bot.ts';
 import { listScopes } from '../game/verify.ts';
 import { findOrCreateUser, findOrCreateUserByProvider, getUser, changeDisplayName, buyEmote, getLeaderboard, type UserProfile } from '../game/rank.ts';
-import { verifyAppleToken, verifyGoogleToken } from '../game/auth.ts';
+import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
 import type { Room, Transport } from '../rooms/room.ts';
 import type { ClientMsg, ServerMsg } from '../protocol.ts';
 
@@ -120,7 +120,9 @@ export function startServer(port: number): Server {
             const verified =
               msg.provider === 'apple'
                 ? await verifyAppleToken(msg.token)
-                : await verifyGoogleToken(msg.token);
+                : msg.provider === 'facebook'
+                  ? await verifyFacebookToken(msg.token)
+                  : await verifyGoogleToken(msg.token);
             const name =
               msg.name?.trim() || verified.name || verified.email?.split('@')[0] || 'Oyuncu';
             const profile = await findOrCreateUserByProvider(

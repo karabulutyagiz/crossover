@@ -92,3 +92,19 @@ export async function verifyGoogleToken(idToken: string): Promise<VerifiedToken>
   });
   return { sub: String(payload.sub), email: payload.email, name: payload.name };
 }
+
+// aud for Facebook Limited Login is the Facebook App ID.
+const FACEBOOK_AUD = (process.env.FACEBOOK_APP_ID ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+export async function verifyFacebookToken(idToken: string): Promise<VerifiedToken> {
+  if (FACEBOOK_AUD.length === 0) throw new Error('FACEBOOK_APP_ID env not configured');
+  // Facebook "Limited Login" issues an OIDC JWT verifiable via its JWKS.
+  const payload = await verifyJwt(idToken, 'https://limited.facebook.com/.well-known/oauth/openid/jwks/', {
+    iss: ['https://www.facebook.com', 'https://facebook.com'],
+    aud: FACEBOOK_AUD,
+  });
+  return { sub: String(payload.sub), email: payload.email, name: payload.name };
+}
