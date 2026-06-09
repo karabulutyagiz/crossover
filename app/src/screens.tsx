@@ -808,6 +808,33 @@ function useAdState() {
     })();
   }, []);
 
+  // Reset at midnight (00:00)
+  useEffect(() => {
+    const check = () => {
+      const now = new Date();
+      const storedDate = new Date().toDateString();
+      // If adsWatched > 0 but date changed, reset
+      if (adsWatched > 0) {
+        (async () => {
+          try {
+            const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+            const raw = await AsyncStorage.getItem(AD_STORAGE_KEY);
+            if (raw) {
+              const data = JSON.parse(raw);
+              if (data.date !== storedDate) {
+                setAdsWatched(0);
+                setNextAdAt(null);
+                setCooldownLeft('');
+              }
+            }
+          } catch {}
+        })();
+      }
+    };
+    const id = setInterval(check, 60_000); // check every minute
+    return () => clearInterval(id);
+  }, [adsWatched]);
+
   // Countdown timer
   useEffect(() => {
     if (!nextAdAt) return;
@@ -1279,6 +1306,8 @@ export function ResultScreen({ state, actions }: Props) {
   const youWon = state.matchWinnerId != null && state.matchWinnerId === room.youId;
 
   const { icon, color, headline } = useMemo(() => {
+    if (r.reason === 'same_team')
+      return { icon: 'swap-horizontal' as IoniconName, color: theme.accent, headline: 'EL GEÇİLDİ' };
     if (r.reason === 'no_common')
       return { icon: 'information-circle-outline' as IoniconName, color: theme.accent, headline: 'EL GEÇİLDİ' };
     if (r.reason === 'timeout')
@@ -1322,7 +1351,11 @@ export function ResultScreen({ state, actions }: Props) {
         <View style={styles.center}>
           <Ionicons name={icon} size={matchOver ? 44 : 64} color={color} />
           <Text style={[styles.h1, { color }]}>{headline}</Text>
-          {r.reason === 'no_common' ? (
+          {r.reason === 'same_team' ? (
+            <Text style={[styles.muted, { marginTop: 2 }]}>
+              {"İki taraf da aynı takımı seçtiği için bu tur pas geçildi"}
+            </Text>
+          ) : r.reason === 'no_common' ? (
             <Text style={[styles.muted, { marginTop: 2 }]}>
               {"Bu iki takımda ortak oynamış oyuncu yok — kimseye puan yok"}
             </Text>
@@ -1344,8 +1377,8 @@ export function ResultScreen({ state, actions }: Props) {
           ) : null}
         </View>
 
-        {/* Per-round detail (team cards + career + common); skipped only for no-common rounds */}
-        {r.reason !== 'no_common' ? (
+        {/* Per-round detail (always shown, including the match-winning round) */}
+        {r.reason !== 'no_common' && r.reason !== 'same_team' ? (
           <>
             <View style={styles.teamResultRow}>
               <TeamResultCard team={r.teamA} spells={r.spellsA} played={playedA} />

@@ -80,7 +80,7 @@ export type ClientMsg =
 // ---- Server -> Client ----
 export interface RoundResult {
   correct: boolean;
-  reason: VerifyReason | 'timeout' | 'no_common'; // no_common: no player played for both → round skipped
+  reason: VerifyReason | 'timeout' | 'no_common' | 'same_team';
   autocorrected: boolean;
   answeredById: string | null;
   answeredByName: string | null;

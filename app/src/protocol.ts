@@ -15,7 +15,7 @@ export interface SpellInfo {
   endYear: number | null;
 }
 
-export type VerifyReason = 'both' | 'not_both' | 'no_match' | 'timeout' | 'no_common';
+export type VerifyReason = 'both' | 'not_both' | 'no_match' | 'timeout' | 'no_common' | 'same_team';
 
 export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
 

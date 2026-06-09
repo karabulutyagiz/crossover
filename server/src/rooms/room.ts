@@ -222,9 +222,17 @@ export class Room {
     void this.afterReveal(a, b);
   }
 
-  // After revealing, check there IS a common player. If none exists, the round
-  // can't be won by anyone → skip it (no points) and auto-advance.
+  // After revealing, check for same-team or no common player → skip round.
   private async afterReveal(a: ClubRef, b: ClubRef): Promise<void> {
+    if (!this.round || this.round.finished || this.status !== 'reveal') return;
+
+    // Same team picked by both players → skip
+    if (a.id === b.id) {
+      const t = setTimeout(() => this.skipSameTeam(), 2200);
+      this.timers.push(t);
+      return;
+    }
+
     const common = await commonPlayersDetailed(a.id, b.id, 5);
     if (!this.round || this.round.finished || this.status !== 'reveal') return;
     if (common.length === 0) {
@@ -237,6 +245,26 @@ export class Room {
   }
 
   // No player ever played for both clubs → pass the round, award nobody.
+  private skipSameTeam(): void {
+    if (!this.round || this.round.finished || !this.round.teamA || !this.round.teamB) return;
+    this.finishRound({
+      correct: false,
+      reason: 'same_team',
+      autocorrected: false,
+      answeredById: null,
+      answeredByName: null,
+      guess: '',
+      teamA: this.round.teamA,
+      teamB: this.round.teamB,
+      matchedPlayerName: null,
+      matchedPlayerImageUrl: null,
+      spellsA: [],
+      spellsB: [],
+      allClubs: [],
+      commonPlayers: [],
+    });
+  }
+
   private skipNoCommon(): void {
     if (!this.round || this.round.finished || !this.round.teamA || !this.round.teamB) return;
     this.finishRound({
