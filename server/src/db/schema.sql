@@ -69,14 +69,22 @@ CREATE TABLE IF NOT EXISTS users (
   wins           INT NOT NULL DEFAULT 0,
   losses         INT NOT NULL DEFAULT 0,
   owned_emotes   TEXT[] NOT NULL DEFAULT '{}',  -- premium emote ids the user has bought
+  apple_sub      TEXT UNIQUE,              -- Sign in with Apple subject id
+  google_sub     TEXT UNIQUE,              -- Google account subject id
+  email          TEXT,                     -- from the auth provider (may be null/private)
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Add owned_emotes to pre-existing databases (no-op once the column exists).
+-- Add columns to pre-existing databases (no-ops once they exist).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS owned_emotes TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS apple_sub TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_users_trophies ON users (trophies DESC);
 CREATE INDEX IF NOT EXISTS idx_users_game_center ON users (game_center_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_apple_sub ON users (apple_sub) WHERE apple_sub IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users (google_sub) WHERE google_sub IS NOT NULL;
 
 -- Bookkeeping for ingest runs.
 CREATE TABLE IF NOT EXISTS ingest_log (

@@ -3,7 +3,8 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomManager } from '../rooms/manager.ts';
 import { BotPlayer } from '../rooms/bot.ts';
 import { listScopes } from '../game/verify.ts';
-import { findOrCreateUser, getUser, changeDisplayName, buyEmote, getLeaderboard, type UserProfile } from '../game/rank.ts';
+import { findOrCreateUser, findOrCreateUserByProvider, getUser, changeDisplayName, buyEmote, getLeaderboard, type UserProfile } from '../game/rank.ts';
+import { verifyAppleToken, verifyGoogleToken } from '../game/auth.ts';
 import type { Room, Transport } from '../rooms/room.ts';
 import type { ClientMsg, ServerMsg } from '../protocol.ts';
 
@@ -107,6 +108,44 @@ export function startServer(port: number): Server {
               arena: profile.arena,
             },
           });
+        })();
+        return;
+      }
+
+      // Sign in with Apple / Continue with Google: verify the provider's identity
+      // token, then find or create the matching account.
+      if (msg.type === 'auth') {
+        void (async () => {
+          try {
+            const verified =
+              msg.provider === 'apple'
+                ? await verifyAppleToken(msg.token)
+                : await verifyGoogleToken(msg.token);
+            const name =
+              msg.name?.trim() || verified.name || verified.email?.split('@')[0] || 'Oyuncu';
+            const profile = await findOrCreateUserByProvider(
+              msg.provider,
+              verified.sub,
+              verified.email ?? null,
+              name,
+            );
+            userProfile = profile;
+            transport.send({
+              type: 'profile',
+              profile: {
+                userId: profile.id,
+                displayName: profile.displayName,
+                trophies: profile.trophies,
+                diamonds: profile.diamonds,
+                wins: profile.wins,
+                losses: profile.losses,
+                ownedEmotes: profile.ownedEmotes,
+                arena: profile.arena,
+              },
+            });
+          } catch (err) {
+            transport.send({ type: 'error', message: 'Giriş doğrulanamadı' });
+          }
         })();
         return;
       }

@@ -65,6 +65,7 @@ export type ClientMsg =
   | { type: 'create_solo'; name: string; userId?: string; options?: GameOptions }
   | { type: 'join_room'; code: string; name: string; userId?: string }
   | { type: 'register'; name: string; gameCenterId?: string; userId?: string }
+  | { type: 'auth'; provider: 'apple' | 'google'; token: string; name?: string } // Sign in with Apple / Google
   | { type: 'change_name'; newName: string }
   | { type: 'find_match'; name?: string; userId?: string; options?: GameOptions } // ranked matchmaking
   | { type: 'start' }

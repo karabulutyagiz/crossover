@@ -81,6 +81,24 @@ export async function findOrCreateUser(
   return toProfile(rows[0]!);
 }
 
+// Find (or create) a user by their Apple/Google identity. The subject id is the
+// stable per-provider account key; we never store passwords or tokens.
+export async function findOrCreateUserByProvider(
+  provider: 'apple' | 'google',
+  sub: string,
+  email: string | null,
+  displayName: string,
+): Promise<UserProfile> {
+  const col = provider === 'apple' ? 'apple_sub' : 'google_sub';
+  const found = await pool.query<DbUser>(`SELECT * FROM users WHERE ${col} = $1`, [sub]);
+  if (found.rows[0]) return toProfile(found.rows[0]);
+  const { rows } = await pool.query<DbUser>(
+    `INSERT INTO users (display_name, ${col}, email) VALUES ($1, $2, $3) RETURNING *`,
+    [displayName.trim() || 'Oyuncu', sub, email],
+  );
+  return toProfile(rows[0]!);
+}
+
 export async function getUser(userId: string): Promise<UserProfile | null> {
   const { rows } = await pool.query<DbUser>(
     'SELECT * FROM users WHERE id = $1',

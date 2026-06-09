@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNo
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   Modal,
   Pressable,
   ScrollView,
@@ -100,7 +101,14 @@ function Btn({
 }
 
 function Screen({ children }: { children: ReactNode }) {
-  return <View style={styles.screen}>{children}</View>;
+  // Tapping any empty area dismisses the keyboard. Children that handle their
+  // own touches (buttons, inputs, scroll views) consume the tap first, so this
+  // only fires for taps on blank space.
+  return (
+    <Pressable style={styles.screen} onPress={Keyboard.dismiss} accessible={false}>
+      {children}
+    </Pressable>
+  );
 }
 
 // ---- Emotes (Clash-Royale-style in-match reactions) ----
@@ -296,7 +304,7 @@ export function HomeScreen({ actions, state }: Props) {
 
   return (
     <Screen>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.center}>
           <Ionicons name="football" size={36} color={theme.primary} />
         </View>
@@ -310,6 +318,7 @@ export function HomeScreen({ actions, state }: Props) {
             <TextInput
               placeholder={t('home.namePlaceholder')}
               placeholderTextColor={theme.muted}
+          keyboardAppearance="light"
               value={name}
               onChangeText={setName}
               style={styles.input}
@@ -366,6 +375,7 @@ export function HomeScreen({ actions, state }: Props) {
         <TextInput
           placeholder={t('home.codePlaceholder')}
           placeholderTextColor={theme.muted}
+          keyboardAppearance="light"
           value={code}
           autoCapitalize="characters"
           onChangeText={(v) => setCode(v.toUpperCase())}
@@ -465,6 +475,7 @@ function PickerModal({
                 <TextInput
                   placeholder={picker === 'league' ? t('scope.searchLeague') : t('scope.searchCountry')}
                   placeholderTextColor={theme.muted}
+          keyboardAppearance="light"
                   value={search}
                   onChangeText={setSearch}
                   style={styles.modalSearchInput}
@@ -617,6 +628,7 @@ export function PickTeamScreen({ state, actions }: Props) {
         <TextInput
           placeholder={t('pick.search')}
           placeholderTextColor={theme.muted}
+          keyboardAppearance="light"
           value={q}
           onChangeText={onChange}
           style={styles.searchInput}
@@ -690,6 +702,7 @@ export function GuessScreen({ state, actions }: Props) {
               <TextInput
                 placeholder={t('guess.placeholder')}
                 placeholderTextColor={theme.muted}
+          keyboardAppearance="light"
                 value={text}
                 onChangeText={setText}
                 style={styles.input}
@@ -742,6 +755,7 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
           <TextInput
             placeholder={t('store.newName')}
             placeholderTextColor={theme.muted}
+          keyboardAppearance="light"
             value={newName}
             onChangeText={setNewName}
             style={styles.input}
@@ -885,7 +899,7 @@ export function StoreScreen({ state, actions }: Props) {
 
   return (
     <Screen>
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
         <View style={styles.center}>
           <Ionicons name="diamond" size={36} color="#5BC8FF" />
           <Text style={styles.h1}>{t('store.title')}</Text>
@@ -1012,7 +1026,7 @@ export function FriendsScreen({ state }: Props) {
 
   return (
     <Screen>
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
         <View style={styles.center}>
           <Ionicons name="people" size={36} color={theme.primary} />
           <Text style={styles.h1}>{t('friends.title')}</Text>
@@ -1031,6 +1045,7 @@ export function FriendsScreen({ state }: Props) {
             <TextInput
               placeholder={t('friends.enterCode')}
               placeholderTextColor={theme.muted}
+          keyboardAppearance="light"
               value={friendCode}
               onChangeText={setFriendCode}
               autoCapitalize="characters"
