@@ -284,28 +284,30 @@ export function useCrossover() {
     openArenas: () => dispatch({ type: '_phase', phase: 'arenas' }),
     closeArenas: () => dispatch({ type: '_phase', phase: 'home' }),
     register: (name: string, gameCenterId?: string) => {
+      const userId = state.profile?.userId;
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        send({ type: 'register', name, gameCenterId });
+        send({ type: 'register', name, gameCenterId, userId });
       } else {
-        connectAndSend({ type: 'register', name, gameCenterId });
+        connectAndSend({ type: 'register', name, gameCenterId, userId });
       }
     },
     changeName: (newName: string) => send({ type: 'change_name', newName }),
     findMatch: (options?: GameOptions) =>
-      // Carry the registered name: this fresh socket hasn't sent `register`,
-      // so without it the server would label the player "Oyuncu".
-      connectAndSend({ type: 'find_match', name: state.profile?.displayName, options }),
+      // Carry the registered name + account id: this fresh socket hasn't sent
+      // `register`, so without them the player would be a nameless "Oyuncu" with
+      // no trophies awarded.
+      connectAndSend({ type: 'find_match', name: state.profile?.displayName, userId: state.profile?.userId, options }),
     cancelSearch: () => {
       wsRef.current?.close();
       wsRef.current = null;
       dispatch({ type: '_reset' });
     },
     createRoom: (name: string, options?: GameOptions) =>
-      connectAndSend({ type: 'create_room', name, options }),
+      connectAndSend({ type: 'create_room', name, userId: state.profile?.userId, options }),
     createSolo: (name: string, options?: GameOptions) =>
-      connectAndSend({ type: 'create_solo', name, options }),
+      connectAndSend({ type: 'create_solo', name, userId: state.profile?.userId, options }),
     joinRoom: (code: string, name: string) =>
-      connectAndSend({ type: 'join_room', code: code.toUpperCase(), name }),
+      connectAndSend({ type: 'join_room', code: code.toUpperCase(), name, userId: state.profile?.userId }),
     start: () => send({ type: 'start' }),
     pickTeam: (clubId: number) => {
       send({ type: 'pick_team', clubId });

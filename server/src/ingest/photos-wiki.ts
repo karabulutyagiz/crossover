@@ -77,9 +77,11 @@ async function fetchPageImages(
 }
 
 async function run(): Promise<void> {
-  // All players (re-fetch for everyone to get better portraits)
+  // Most-traveled players first (proxy for fame) so popular players — the ones
+  // most likely to come up in a round — get their portraits earliest.
   const { rows } = await pool.query<{ id: string }>(
-    'SELECT id FROM players ORDER BY id',
+    `SELECT p.id FROM players p
+      ORDER BY (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC, p.id`,
   );
   const ids = rows.map((r) => Number(r.id));
   console.log(`Fetching Wikipedia portraits for ${ids.length} players...`);

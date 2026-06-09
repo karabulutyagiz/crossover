@@ -36,7 +36,7 @@ interface Player {
   wrongCount: number; // wrong answers this match
   isHost: boolean;
   connected: boolean;
-  userId?: string; // DB user ID for trophy updates
+  userId?: string; // persistent account id, for awarding trophies
 }
 
 interface Round {

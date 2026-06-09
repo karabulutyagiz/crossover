@@ -52,15 +52,18 @@ async function resolveClub(c: Client, reqId: string, q: string): Promise<number>
   return res.clubs[0].id;
 }
 
-// Play one round: A picks Galatasaray, B picks Inter, A answers "Sneijder" (correct).
+// Play one round: A picks Galatasaray, B picks Inter Milan, A answers "Icardi"
+// (Mauro Icardi played for both — a verified common player for these two clubs).
+// Use exact club names so search resolves unambiguously (plain "Inter" matches a
+// futsal side by trigram similarity, which shares no players with Galatasaray).
 async function playRound(A: Client, B: Client): Promise<Extract<ServerMsg, { type: 'result' }>> {
   await A.wait('pick_phase');
   const gala = await resolveClub(A, 'a', 'Galatasaray');
-  const inter = await resolveClub(B, 'b', 'Inter');
+  const inter = await resolveClub(B, 'b', 'Inter Milan');
   A.send({ type: 'pick_team', clubId: gala });
   B.send({ type: 'pick_team', clubId: inter });
   await A.wait('guess_phase');
-  A.send({ type: 'submit_guess', text: 'Sneijder' });
+  A.send({ type: 'submit_guess', text: 'Icardi' });
   await sleep(40);
   B.send({ type: 'submit_guess', text: 'zzzznobody' });
   return A.wait('result');
@@ -72,17 +75,17 @@ async function main() {
   const B = new Client('B');
   await A.open(); await B.open();
 
-  // Register names
+  // Register names (capture userId so trophies can be awarded)
   A.send({ type: 'register', name: 'Ali' });
-  await A.wait('profile');
+  const aProf = (await A.wait('profile')).profile;
   B.send({ type: 'register', name: 'Veli' });
-  await B.wait('profile');
+  const bProf = (await B.wait('profile')).profile;
 
   // Room code path
-  A.send({ type: 'create_room', name: 'Ali' });
+  A.send({ type: 'create_room', name: 'Ali', userId: aProf.userId });
   const st = await A.wait('room_state');
   const code = st.room.code;
-  B.send({ type: 'join_room', code, name: 'Veli' });
+  B.send({ type: 'join_room', code, name: 'Veli', userId: bProf.userId });
   await B.wait('room_state');
 
   A.send({ type: 'start' });
@@ -96,7 +99,11 @@ async function main() {
     check(names === 'Ali,Veli', `round ${i}: names are registered (Ali,Veli) — got ${names}`);
     last = result;
     if (result.matchOver) break;
-    await A.wait('countdown'); // auto-advance to next round
+    // Between rounds the server waits for both players to press "ready".
+    await A.wait('waiting_ready');
+    A.send({ type: 'ready' });
+    B.send({ type: 'ready' });
+    await A.wait('countdown'); // both ready → next round counts down
   }
 
   check(last!.matchOver === true, 'match ended automatically');
@@ -104,6 +111,11 @@ async function main() {
   check(last!.winnerName === 'Ali', `winner is Ali — got ${last!.winnerName}`);
   const aliScore = last!.players.find((p) => p.name === 'Ali')?.score ?? 0;
   check(aliScore === 3, `Ali reached 3 — got ${aliScore}`);
+
+  // Trophies awarded to the winner after the match ends.
+  const tu = await A.wait('trophy_update');
+  check(tu.delta > 0, `winner gained trophies — got ${tu.delta}`);
+  check(tu.trophies > 0, `winner trophy total updated — got ${tu.trophies}`);
 
   // Rematch: A requests, B should get the request, B accepts → new match.
   A.send({ type: 'play_again' });

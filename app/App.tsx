@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   Dimensions,
@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Ionicons, type ComponentProps } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useCrossover } from './src/useCrossover';
 import {
   HomeScreen,

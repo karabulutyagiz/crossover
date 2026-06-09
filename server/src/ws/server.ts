@@ -3,7 +3,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomManager } from '../rooms/manager.ts';
 import { BotPlayer } from '../rooms/bot.ts';
 import { listScopes } from '../game/verify.ts';
-import { findOrCreateUser, changeDisplayName, getLeaderboard, type UserProfile } from '../game/rank.ts';
+import { findOrCreateUser, getUser, changeDisplayName, getLeaderboard, type UserProfile } from '../game/rank.ts';
 import type { Room, Transport } from '../rooms/room.ts';
 import type { ClientMsg, ServerMsg } from '../protocol.ts';
 
@@ -26,6 +26,7 @@ interface QueueEntry {
   transport: Transport;
   ws: WebSocket;
   name: string;
+  userId?: string;
   userProfile?: UserProfile;
   options?: import('../protocol.ts').GameOptions;
   setCtx: (c: ConnCtx) => void;
@@ -87,7 +88,11 @@ export function startServer(port: number): Server {
       // Register creates/loads a user profile (can happen before or without a room).
       if (msg.type === 'register') {
         void (async () => {
-          const profile = await findOrCreateUser(msg.gameCenterId ?? null, msg.name);
+          // Reuse the saved account if the client sent its userId (keeps trophies
+          // across app launches); otherwise look up by Game Center id or create.
+          const profile =
+            (msg.userId ? await getUser(msg.userId) : null) ??
+            (await findOrCreateUser(msg.gameCenterId ?? null, msg.name));
           userProfile = profile;
           transport.send({
             type: 'profile',
@@ -143,8 +148,8 @@ export function startServer(port: number): Server {
             // Create room and add both
             const room = manager.createRoom();
             if (msg.options?.scope) room.scope = msg.options.scope;
-            const resA = room.addPlayer(partner.name, partner.transport, true, partner.userProfile?.id);
-            const resB = room.addPlayer(name, transport, false, userProfile?.id);
+            const resA = room.addPlayer(partner.name, partner.transport, true, partner.userId);
+            const resB = room.addPlayer(name, transport, false, msg.userId ?? userProfile?.id);
             if (resA.ok) partner.setCtx({ room, playerId: resA.id, userProfile: partner.userProfile });
             if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
             // Auto-start after a short delay
@@ -157,6 +162,7 @@ export function startServer(port: number): Server {
               transport,
               ws,
               name,
+              userId: msg.userId ?? userProfile?.id,
               userProfile,
               options: msg.options,
               setCtx: (c) => { ctx = c; },
@@ -171,7 +177,7 @@ export function startServer(port: number): Server {
           const room = manager.createRoom();
           if (msg.options?.scope) room.scope = msg.options.scope;
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, true, userProfile?.id);
+          const res = room.addPlayer(name, transport, true, msg.userId ?? userProfile?.id);
           if (res.ok) ctx = { room, playerId: res.id, userProfile };
           return;
         }
@@ -179,7 +185,7 @@ export function startServer(port: number): Server {
           const room = manager.createRoom();
           if (msg.options?.scope) room.scope = msg.options.scope;
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, true, userProfile?.id);
+          const res = room.addPlayer(name, transport, true, msg.userId ?? userProfile?.id);
           if (res.ok) ctx = { room, playerId: res.id, userProfile };
           const bot = new BotPlayer({ difficulty: msg.options?.difficulty, scope: room.scope });
           const botRes = room.addPlayer('Bot', bot, false);
@@ -190,7 +196,7 @@ export function startServer(port: number): Server {
           const room = manager.get(msg.code);
           if (!room) return transport.send({ type: 'error', message: 'Room not found' });
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, false, userProfile?.id);
+          const res = room.addPlayer(name, transport, false, msg.userId ?? userProfile?.id);
           if (!res.ok) return transport.send({ type: 'error', message: res.error });
           ctx = { room, playerId: res.id, userProfile };
           return;

@@ -60,12 +60,12 @@ export interface RoomView {
 
 // ---- Client -> Server ----
 export type ClientMsg =
-  | { type: 'create_room'; name: string; options?: GameOptions }
-  | { type: 'create_solo'; name: string; options?: GameOptions }
-  | { type: 'join_room'; code: string; name: string }
-  | { type: 'register'; name: string; gameCenterId?: string }
+  | { type: 'create_room'; name: string; userId?: string; options?: GameOptions }
+  | { type: 'create_solo'; name: string; userId?: string; options?: GameOptions }
+  | { type: 'join_room'; code: string; name: string; userId?: string }
+  | { type: 'register'; name: string; gameCenterId?: string; userId?: string }
   | { type: 'change_name'; newName: string }
-  | { type: 'find_match'; name?: string; options?: GameOptions } // ranked matchmaking
+  | { type: 'find_match'; name?: string; userId?: string; options?: GameOptions } // ranked matchmaking
   | { type: 'start' }
   | { type: 'pick_team'; clubId: number }
   | { type: 'submit_guess'; text: string }

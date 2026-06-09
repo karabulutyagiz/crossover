@@ -1167,9 +1167,33 @@ export function ResultScreen({ state, actions }: Props) {
   return (
     <Screen>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
-        {/* Always show round result first */}
+        {/* Match-over banner (the round detail below still shows the deciding answer) */}
+        {matchOver ? (
+          <View style={styles.matchBanner}>
+            <Ionicons name={youWon ? 'trophy' : 'sad-outline'} size={40} color={youWon ? theme.accent : theme.muted} />
+            <Text style={[styles.h1, { color: youWon ? theme.accent : theme.text, marginTop: 2 }]}>
+              {youWon ? 'MAÇI KAZANDIN!' : 'MAÇI KAYBETTİN'}
+            </Text>
+            <Text style={styles.matchScore}>
+              {(you?.score ?? 0)} - {(opp?.score ?? 0)}
+            </Text>
+            {!youWon && state.matchWinnerName ? (
+              <Text style={styles.muted}>{state.matchWinnerName} kazandı</Text>
+            ) : null}
+            {state.trophyDelta ? (
+              <View style={styles.trophyDeltaRow}>
+                <Ionicons name="trophy" size={14} color={theme.accent} />
+                <Text style={[styles.trophyDeltaText, { color: state.trophyDelta.delta >= 0 ? theme.primary : theme.danger }]}>
+                  {state.trophyDelta.delta >= 0 ? '+' : ''}{state.trophyDelta.delta} → {state.trophyDelta.trophies}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* Round verdict — always shown, so even on the deciding round you see who/what the answer was */}
         <View style={styles.center}>
-          <Ionicons name={icon} size={64} color={color} />
+          <Ionicons name={icon} size={matchOver ? 44 : 64} color={color} />
           <Text style={[styles.h1, { color }]}>{headline}</Text>
           {r.reason === 'no_common' ? (
             <Text style={[styles.muted, { marginTop: 2 }]}>
@@ -1193,7 +1217,7 @@ export function ResultScreen({ state, actions }: Props) {
           ) : null}
         </View>
 
-        {/* Per-round detail (always shown, including the match-winning round) */}
+        {/* Per-round detail (team cards + career + common); skipped only for no-common rounds */}
         {r.reason !== 'no_common' ? (
           <>
             <View style={styles.teamResultRow}>
@@ -1389,6 +1413,9 @@ const styles = StyleSheet.create({
   playerPhoto: { width: 80, height: 80, borderRadius: 40, marginTop: 8, borderWidth: 2, borderColor: theme.border },
   matched: { color: theme.text, fontSize: 18, fontWeight: '800', textAlign: 'center', marginTop: 2 },
   matchScore: { color: theme.text, fontSize: 44, fontWeight: '900', letterSpacing: 3, marginTop: 6 },
+  matchBanner: { alignItems: 'center', gap: 2, backgroundColor: theme.card, borderRadius: 16, borderWidth: 1, borderColor: theme.border, paddingVertical: 16, paddingHorizontal: 14, marginBottom: 14 },
+  trophyDeltaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
+  trophyDeltaText: { fontSize: 14, fontWeight: '800' },
   fixRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   fixText: { color: theme.accent, fontSize: 12, fontWeight: '600' },
   teamResultRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
@@ -1442,7 +1469,6 @@ const styles = StyleSheet.create({
   arenaProgressText: { position: 'absolute', right: 0, top: -16, color: theme.muted, fontSize: 10, fontWeight: '600' },
   arenaBadge: { position: 'absolute', top: 10, right: 10, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
   arenaBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
-  matchBanner: { alignItems: 'center', gap: 4, backgroundColor: theme.card, borderRadius: 14, borderWidth: 2, padding: 16, marginVertical: 12 },
   pickTimerBox: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.card, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14, marginTop: 6, borderWidth: 1, borderColor: theme.border },
   pickTimerText: { color: theme.accent, fontSize: 22, fontWeight: '900' },
   factCard: { backgroundColor: theme.card, borderRadius: 12, padding: 16, marginVertical: 24, borderWidth: 1, borderColor: theme.border, alignItems: 'center', gap: 10 },
