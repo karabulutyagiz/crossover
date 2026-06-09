@@ -99,11 +99,7 @@ async function main() {
     check(names === 'Ali,Veli', `round ${i}: names are registered (Ali,Veli) — got ${names}`);
     last = result;
     if (result.matchOver) break;
-    // Between rounds the server waits for both players to press "ready".
-    await A.wait('waiting_ready');
-    A.send({ type: 'ready' });
-    B.send({ type: 'ready' });
-    await A.wait('countdown'); // both ready → next round counts down
+    await A.wait('countdown'); // rounds auto-advance after a short pause
   }
 
   check(last!.matchOver === true, 'match ended automatically');

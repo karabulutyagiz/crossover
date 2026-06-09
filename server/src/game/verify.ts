@@ -53,6 +53,15 @@ export interface VerifyResult {
  * (how many players link to it) — this reliably picks the real club over empty
  * duplicates like "Galatasaray SK" vs "Galatasaray S.K." or "Real Madrid C".
  */
+// Keep only senior men's "A" teams: drop women's sides, youth/age categories,
+// and reserve/B teams. Pattern-based on the normalized name (lowercase, accents
+// stripped). Reused by both search and random pick.
+const A_TEAM_ONLY = `
+  AND c.name_norm !~* '(women|femen|femin|femmin|frauen|kadin|ladies)'
+  AND c.name_norm !~* '(^|[^a-z])(u-?1[2-9]|u-?2[0-3]|sub-?[0-9]|youth|jugend|primavera|juvenil|altyapi|akademi|academy|junior|jeugd)([^a-z]|$)'
+  AND c.name_norm !~* '( b| ii| iii| reserves?| castilla)$'
+`;
+
 export async function searchClubs(
   query: string,
   scope: Scope = { type: 'all' },
@@ -64,6 +73,10 @@ export async function searchClubs(
   const scopeSql = scopeClause(scope, params);
   params.push(limit);
   const limitIdx = params.length;
+  // Rank: exact name, then names that START with the query, then by popularity
+  // (player count) so well-known clubs surface first (e.g. "bar" → Barcelona),
+  // then fuzzy similarity. Popularity beats raw trigram score to avoid obscure
+  // clubs outranking famous ones.
   const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
     `SELECT c.id, c.name, c.logo_url,
             similarity(c.name_norm, $1) AS sim,
@@ -71,10 +84,12 @@ export async function searchClubs(
        FROM clubs c
       WHERE c.is_national = false
         AND (c.name_norm LIKE '%' || $1 || '%' OR c.name_norm % $1)
+        ${A_TEAM_ONLY}
         ${scopeSql}
       ORDER BY (c.name_norm = $1) DESC,
-               sim DESC,
                members DESC,
+               (c.name_norm LIKE $1 || '%') DESC,
+               sim DESC,
                length(c.name) ASC
       LIMIT $${limitIdx}`,
     params,
@@ -177,6 +192,7 @@ export async function randomClub(
         AND c.logo_url IS NOT NULL
         AND c.league = ANY($1::text[])
         AND EXISTS (SELECT 1 FROM player_clubs pc WHERE pc.club_id = c.id)
+        ${A_TEAM_ONLY}
         ${scopeSql}
       ORDER BY random()
       LIMIT 1`,

@@ -388,21 +388,12 @@ export class Room {
     });
     this.broadcastState();
 
-    // Match not decided yet → wait for both players to press "ready".
-    // After 10s of inactivity, start a 10s forced countdown.
+    // Match not decided yet → auto-advance to the next round after a short pause
+    // (no "ready" button; the result screen shows a brief countdown).
     if (!this.matchOver) {
-      this.readyPlayers.clear();
-      this.broadcast({ type: 'waiting_ready' as any });
       const t = setTimeout(() => {
-        if (this.status === 'result' && !this.matchOver) {
-          // 10s passed without both ready → start forced 10s countdown
-          this.broadcast({ type: 'ready_countdown' as any, endsAt: Date.now() + 10_000 });
-          const t2 = setTimeout(() => {
-            if (this.status === 'result' && !this.matchOver) this.beginCountdown();
-          }, 10_000);
-          this.timers.push(t2);
-        }
-      }, 10_000);
+        if (this.status === 'result' && !this.matchOver) this.beginCountdown();
+      }, INTER_ROUND_MS);
       this.timers.push(t);
     } else {
       // Match is over — update trophies for players with a DB account.
