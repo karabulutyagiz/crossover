@@ -1,15 +1,18 @@
 {
   "expo": {
-    "name": "app",
-    "slug": "app",
+    "name": "Crossover",
+    "slug": "crossover",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.crossover.football",
+      "buildNumber": "1"
     },
     "android": {
+      "package": "com.crossover.football",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -23,6 +26,12 @@
     },
     "plugins": [
       "expo-localization"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "fff58543-c2d6-4a7d-85af-5bd2da3a6a3f"
+      }
+    },
+    "owner": "ygzkrblt"
   }
 }
