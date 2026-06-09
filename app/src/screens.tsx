@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Animated, Easing } from 'react-native';
 import { theme } from './theme';
+import { t } from './i18n';
 import type { GameState } from './useCrossover';
 import type { ClubRef, Difficulty, GameOptions, ProfileView, Scope, SpellInfo } from './protocol';
 import {
@@ -158,7 +159,7 @@ function EmoteLayer({ state, actions, fab = 'bottom-right' }: Props & { fab?: 'b
         <Pressable style={styles.emoteSheetBackdrop} onPress={() => setOpen(false)}>
           <Pressable style={styles.emoteSheet} onPress={() => {}}>
             <View style={styles.emoteSheetHandle} />
-            <Text style={styles.emoteSheetTitle}>İfade Gönder</Text>
+            <Text style={styles.emoteSheetTitle}>{t('emote.send')}</Text>
             <View style={styles.emoteGrid}>
               {emotes.map((e) => (
                 <Pressable
@@ -176,7 +177,7 @@ function EmoteLayer({ state, actions, fab = 'bottom-right' }: Props & { fab?: 'b
                 </Pressable>
               ))}
             </View>
-            <Text style={styles.emoteHint}>Daha fazla ifade için Mağaza'ya göz at</Text>
+            <Text style={styles.emoteHint}>{t('emote.moreInStore')}</Text>
           </Pressable>
         </Pressable>
       </Modal>
@@ -252,7 +253,7 @@ function CareerRow({ spell, highlight }: { spell: SpellInfo; highlight?: boolean
 const DIFF_LABEL: Record<Difficulty, string> = { easy: 'Kolay', medium: 'Orta', hard: 'Zor' };
 
 function scopeLabel(scope: Scope): string {
-  return scope.type === 'all' ? 'Tüm takımlar' : scope.value;
+  return scope.type === 'all' ? t('scope.all') : scope.value;
 }
 
 type Picker = null | 'difficulty' | 'scopeType' | 'league' | 'country';
@@ -300,21 +301,21 @@ export function HomeScreen({ actions, state }: Props) {
           <Ionicons name="football" size={36} color={theme.primary} />
         </View>
         <Text style={styles.logo}>CROSSOVER</Text>
-        <Text style={styles.tagline}>{"İki takımda da oynamış futbolcuyu ilk bilen kazanır"}</Text>
+        <Text style={styles.tagline}>{t('home.tagline')}</Text>
 
         {profile ? (
           <ProfileCard profile={profile} onPress={actions.openArenas} />
         ) : (
           <>
             <TextInput
-              placeholder="Adın"
+              placeholder={t('home.namePlaceholder')}
               placeholderTextColor={theme.muted}
               value={name}
               onChangeText={setName}
               style={styles.input}
             />
             <Btn
-              label="Kayıt Ol"
+              label={t('home.register')}
               icon="person-add"
               kind="primary"
               onPress={() => actions.register(name || 'Oyuncu')}
@@ -324,13 +325,13 @@ export function HomeScreen({ actions, state }: Props) {
         )}
 
         <Btn
-          label="Hemen Oyna"
+          label={t('home.quickMatch')}
           icon="flash"
           kind="primary"
           onPress={() => actions.findMatch({ scope })}
           disabled={!profile}
         />
-        <Btn label="Lider Tablosu" icon="trophy" kind="ghost" onPress={actions.openLeaderboard} />
+        <Btn label={t('home.leaderboard')} icon="trophy" kind="ghost" onPress={actions.openLeaderboard} />
 
         {/* Settings chips */}
         <View style={styles.optRow}>
@@ -349,13 +350,13 @@ export function HomeScreen({ actions, state }: Props) {
         </View>
 
         <Btn
-          label="Oda Kur"
+          label={t('home.createRoom')}
           icon="add-circle"
           onPress={() => actions.createRoom(profile?.displayName ?? (name || 'Oyuncu'), opts)}
           disabled={!profile && !name.trim()}
         />
         <Btn
-          label="Bot'a Karşı Oyna"
+          label={t('home.solo')}
           kind="accent"
           icon="game-controller"
           onPress={() => actions.createSolo(profile?.displayName ?? (name || 'Oyuncu'), opts)}
@@ -363,15 +364,15 @@ export function HomeScreen({ actions, state }: Props) {
         />
         <View style={styles.divider} />
         <TextInput
-          placeholder="ODA KODU"
+          placeholder={t('home.codePlaceholder')}
           placeholderTextColor={theme.muted}
           value={code}
           autoCapitalize="characters"
-          onChangeText={(t) => setCode(t.toUpperCase())}
+          onChangeText={(v) => setCode(v.toUpperCase())}
           style={styles.input}
         />
         <Btn
-          label="Odaya Katıl"
+          label={t('home.joinRoom')}
           kind="ghost"
           icon="enter"
           onPress={() => actions.joinRoom(code, profile?.displayName ?? (name || 'Oyuncu'))}
@@ -445,24 +446,24 @@ function PickerModal({
             <>
               <Text style={styles.modalTitle}>Kapsam</Text>
               <Pressable style={styles.modalRow} onPress={() => onScope({ type: 'all' })}>
-                <Text style={styles.modalRowText}>{"Tüm takımlar"}</Text>
+                <Text style={styles.modalRowText}>{t('scope.all')}</Text>
               </Pressable>
               <Pressable style={styles.modalRow} onPress={() => goto('league')}>
-                <Text style={styles.modalRowText}>{"Lig seç ›"}</Text>
+                <Text style={styles.modalRowText}>{t('scope.pickLeagueRow')}</Text>
               </Pressable>
               <Pressable style={styles.modalRow} onPress={() => goto('country')}>
-                <Text style={styles.modalRowText}>{"Ülke seç ›"}</Text>
+                <Text style={styles.modalRowText}>{t('scope.pickCountryRow')}</Text>
               </Pressable>
             </>
           )}
 
           {(picker === 'league' || picker === 'country') && (
             <>
-              <Text style={styles.modalTitle}>{picker === 'league' ? 'Lig seç' : 'Ülke seç'}</Text>
+              <Text style={styles.modalTitle}>{picker === 'league' ? t('scope.pickLeague') : t('scope.pickCountry')}</Text>
               <View style={styles.modalSearchBox}>
                 <Ionicons name="search" size={16} color={theme.muted} />
                 <TextInput
-                  placeholder={picker === 'league' ? 'Lig ara...' : 'Ülke ara...'}
+                  placeholder={picker === 'league' ? t('scope.searchLeague') : t('scope.searchCountry')}
                   placeholderTextColor={theme.muted}
                   value={search}
                   onChangeText={setSearch}
@@ -494,9 +495,9 @@ function PickerModal({
                   </Pressable>
                 ))}
                 {filtered.length === 0 && search.trim() ? (
-                  <Text style={[styles.muted, { marginTop: 12 }]}>{"Sonuç bulunamadı"}</Text>
+                  <Text style={[styles.muted, { marginTop: 12 }]}>{t('common.noResults')}</Text>
                 ) : null}
-                {allList.length === 0 ? <Text style={styles.muted}>{"Yükleniyor…"}</Text> : null}
+                {allList.length === 0 ? <Text style={styles.muted}>{t('common.loading')}</Text> : null}
               </ScrollView>
             </>
           )}
@@ -516,14 +517,14 @@ export function LobbyScreen({ state, actions }: Props) {
     <Screen>
       {!hasBot ? (
         <>
-          <Text style={styles.label}>ODA KODU</Text>
+          <Text style={styles.label}>{t('lobby.code')}</Text>
           <Text style={styles.code}>{room.code}</Text>
-          <Text style={styles.muted}>Arkadaşına bu kodu gönder</Text>
+          <Text style={styles.muted}>{t('lobby.shareCode')}</Text>
         </>
       ) : (
         <>
           <Ionicons name="game-controller" size={44} color={theme.accent} style={{ alignSelf: 'center' }} />
-          <Text style={styles.h1}>Bot Maçı</Text>
+          <Text style={styles.h1}>{t('lobby.botMatch')}</Text>
         </>
       )}
       <View style={styles.divider} />
@@ -536,7 +537,7 @@ export function LobbyScreen({ state, actions }: Props) {
           />
           <Text style={styles.lobbyName}>
             {p.name}
-            {p.id === room.youId ? ' (sen)' : ''}
+            {p.id === room.youId ? t('lobby.youSuffix') : ''}
           </Text>
         </View>
       ))}
@@ -544,15 +545,15 @@ export function LobbyScreen({ state, actions }: Props) {
       {room.players.length < 2 ? (
         <View style={styles.center}>
           <ActivityIndicator color={theme.primary} />
-          <Text style={styles.muted}>Rakip bekleniyor…</Text>
+          <Text style={styles.muted}>{t('lobby.waiting')}</Text>
         </View>
       ) : canStart ? (
-        <Btn label="Başlat" icon="play" onPress={actions.start} />
+        <Btn label={t('lobby.start')} icon="play" onPress={actions.start} />
       ) : (
-        <Text style={styles.muted}>Oda sahibinin başlatması bekleniyor…</Text>
+        <Text style={styles.muted}>{t('lobby.waitHost')}</Text>
       )}
       <View style={{ height: 16 }} />
-      <Btn label="Çık" kind="ghost" icon="close" onPress={actions.leave} />
+      <Btn label={t('result.leave')} kind="ghost" icon="close" onPress={actions.leave} />
     </Screen>
   );
 }
@@ -563,7 +564,7 @@ export function CountdownScreen({ state }: Props) {
     <Screen>
       <View style={styles.center}>
         <Text style={styles.big}>{state.countdown ?? ''}</Text>
-        <Text style={styles.muted}>Hazır ol!</Text>
+        <Text style={styles.muted}>{t('getReady')}</Text>
       </View>
     </Screen>
   );
@@ -594,7 +595,7 @@ export function PickTeamScreen({ state, actions }: Props) {
       <Screen>
         <View style={styles.center}>
           <ActivityIndicator color={theme.primary} />
-          <Text style={styles.muted}>{"Takımın seçildi. Rakip bekleniyor\u2026"}</Text>
+          <Text style={styles.muted}>{t('pick.picked')}</Text>
         </View>
       </Screen>
     );
@@ -603,7 +604,7 @@ export function PickTeamScreen({ state, actions }: Props) {
   return (
     <Screen>
       <View style={{ alignItems: 'center', marginBottom: 8 }}>
-        <Text style={styles.h1}>{"Bir takım seç"}</Text>
+        <Text style={styles.h1}>{t('pick.title')}</Text>
         <View style={styles.pickTimerBox}>
           <Ionicons name="time-outline" size={18} color={pickSecs !== null && pickSecs <= 3 ? theme.danger : theme.accent} />
           <Text style={[styles.pickTimerText, pickSecs !== null && pickSecs <= 3 ? { color: theme.danger } : null]}>
@@ -614,7 +615,7 @@ export function PickTeamScreen({ state, actions }: Props) {
       <View style={styles.searchBox}>
         <Ionicons name="search" size={18} color={theme.muted} />
         <TextInput
-          placeholder="Takım ara (ör. Galatasaray)"
+          placeholder={t('pick.search')}
           placeholderTextColor={theme.muted}
           value={q}
           onChangeText={onChange}
@@ -674,7 +675,7 @@ export function GuessScreen({ state, actions }: Props) {
       </View>
 
       {state.phase === 'reveal' ? (
-        <Text style={styles.h1}>Hazır ol…</Text>
+        <Text style={styles.h1}>{t('getReadyWait')}</Text>
       ) : (
         <>
           <Text style={styles.timer}>{secs !== null ? `${secs}s` : ''}</Text>
@@ -687,7 +688,7 @@ export function GuessScreen({ state, actions }: Props) {
             <>
               <Text style={styles.h1}>Ortak oyuncuyu yaz!</Text>
               <TextInput
-                placeholder="Futbolcu adı"
+                placeholder={t('guess.placeholder')}
                 placeholderTextColor={theme.muted}
                 value={text}
                 onChangeText={setText}
@@ -697,7 +698,7 @@ export function GuessScreen({ state, actions }: Props) {
                 onSubmitEditing={() => text.trim() && actions.submitGuess(text.trim())}
               />
               <Btn
-                label="Gönder"
+                label={t('guess.send')}
                 icon="send"
                 onPress={() => actions.submitGuess(text.trim())}
                 disabled={!text.trim() || youAnswered}
@@ -736,10 +737,10 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
       <Pressable style={styles.modalBg} onPress={onClose}>
         <Pressable style={styles.nameModalCard} onPress={() => {}}>
           <Ionicons name="create" size={32} color={theme.accent} />
-          <Text style={styles.modalTitle}>İsim Değiştir</Text>
+          <Text style={styles.modalTitle}>{t('store.changeName')}</Text>
 
           <TextInput
-            placeholder="Yeni isim"
+            placeholder={t('store.newName')}
             placeholderTextColor={theme.muted}
             value={newName}
             onChangeText={setNewName}
@@ -749,12 +750,12 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
           />
 
           <View style={styles.nameModalCost}>
-            <Text style={styles.muted}>Maliyet:</Text>
+            <Text style={styles.muted}>{t('store.cost')}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <Text style={{ color: canAfford ? '#5BC8FF' : theme.danger, fontWeight: '800', fontSize: 15 }}>{cost}</Text>
               <Ionicons name="diamond" size={14} color={canAfford ? '#5BC8FF' : theme.danger} />
             </View>
-            <Text style={styles.muted}>Bakiye:</Text>
+            <Text style={styles.muted}>{t('store.balance')}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>{diamonds}</Text>
               <Ionicons name="diamond" size={14} color="#5BC8FF" />
@@ -763,19 +764,19 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
 
           {!canAfford ? (
             <Text style={{ color: theme.danger, fontSize: 12, textAlign: 'center', marginBottom: 8 }}>
-              Yetersiz elmas! Mağazadan elmas satın alabilirsin.
+              {t('store.changeNameInsufficient')}
             </Text>
           ) : null}
 
           <Btn
-            label="Değiştir"
+            label={t('store.changeNameConfirm')}
             kind="accent"
             icon="checkmark"
             onPress={() => onConfirm(newName.trim())}
             disabled={!canAfford || newName.trim().length < 2}
           />
           <View style={{ height: 6 }} />
-          <Btn label="Vazgeç" kind="ghost" icon="close" onPress={onClose} />
+          <Btn label={t('store.cancel')} kind="ghost" icon="close" onPress={onClose} />
         </Pressable>
       </Pressable>
     </Modal>
@@ -887,7 +888,7 @@ export function StoreScreen({ state, actions }: Props) {
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
         <View style={styles.center}>
           <Ionicons name="diamond" size={36} color="#5BC8FF" />
-          <Text style={styles.h1}>Elmas Mağazası</Text>
+          <Text style={styles.h1}>{t('store.title')}</Text>
           {profile ? (
             <View style={styles.storeBalance}>
               <Ionicons name="diamond" size={18} color="#5BC8FF" />
@@ -897,36 +898,36 @@ export function StoreScreen({ state, actions }: Props) {
         </View>
 
         {/* Free diamonds - watch ads */}
-        <Text style={styles.sectionLabel}>ÜCRETSİZ ELMAS</Text>
+        <Text style={styles.sectionLabel}>{t('store.freeDiamonds')}</Text>
         <View style={styles.storeAdCard}>
           <Ionicons name="play-circle" size={32} color={theme.primary} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.storeAdTitle}>Video İzle, Elmas Kazan</Text>
-            <Text style={styles.muted}>Her gün 2 video hakkı</Text>
+            <Text style={styles.storeAdTitle}>{t('store.watchAd')}</Text>
+            <Text style={styles.muted}>{t('store.adsDaily')}</Text>
           </View>
           <View style={{ alignItems: 'center' }}>
-            <Text style={styles.storeAdReward}>+25 💎</Text>
+            <Text style={styles.storeAdReward}>{t('store.adReward')}</Text>
             {adsWatched >= 2 ? (
-              <Btn label="Tamamlandı" kind="ghost" icon="checkmark-circle" onPress={() => {}} disabled />
+              <Btn label={t('store.done')} kind="ghost" icon="checkmark-circle" onPress={() => {}} disabled />
             ) : cooldownLeft ? (
               <View style={styles.storeCooldown}>
                 <Ionicons name="time-outline" size={14} color={theme.accent} />
                 <Text style={styles.storeCooldownText}>{cooldownLeft}</Text>
               </View>
             ) : (
-              <Btn label="İzle" kind="primary" icon="play" onPress={watchAd} />
+              <Btn label={t('store.watch')} kind="primary" icon="play" onPress={watchAd} />
             )}
             <Text style={[styles.muted, { fontSize: 10, marginTop: 2 }]}>{adsWatched}/2</Text>
           </View>
         </View>
 
         {/* Diamond packs */}
-        <Text style={styles.sectionLabel}>ELMAS PAKETLERI</Text>
+        <Text style={styles.sectionLabel}>{t('store.packs')}</Text>
         {DIAMOND_PACKS.map((pack) => (
           <Pressable key={pack.id} style={[styles.storePackCard, pack.best && styles.storePackBest]}>
             {pack.best ? (
               <View style={styles.storePackBadge}>
-                <Text style={styles.storePackBadgeText}>EN POPÜLER</Text>
+                <Text style={styles.storePackBadgeText}>{t('store.popular')}</Text>
               </View>
             ) : null}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -934,7 +935,7 @@ export function StoreScreen({ state, actions }: Props) {
                 <Ionicons name={pack.icon as any} size={28} color={pack.color} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.storePackAmount}>{pack.amount.toLocaleString('tr-TR')} Elmas</Text>
+                <Text style={styles.storePackAmount}>{t('store.diamonds', { n: pack.amount.toLocaleString('tr-TR') })}</Text>
               </View>
               <View style={styles.storePackPriceBox}>
                 <Text style={styles.storePackPrice}>{pack.price}</Text>
@@ -944,7 +945,7 @@ export function StoreScreen({ state, actions }: Props) {
         ))}
 
         {/* İfadeler (maç içi emote) */}
-        <Text style={styles.sectionLabel}>İFADELER</Text>
+        <Text style={styles.sectionLabel}>{t('store.emotes')}</Text>
         {PREMIUM_EMOTES.map((e) => {
           const owned = ownsEmote(profile, e.id);
           const canAfford = (profile?.diamonds ?? 0) >= (e.premium?.price ?? 0);
@@ -960,7 +961,7 @@ export function StoreScreen({ state, actions }: Props) {
               {owned ? (
                 <View style={styles.storeEmoteOwned}>
                   <Ionicons name="checkmark-circle" size={16} color={theme.primary} />
-                  <Text style={styles.storeEmoteOwnedText}>Sahipsin</Text>
+                  <Text style={styles.storeEmoteOwnedText}>{t('store.owned')}</Text>
                 </View>
               ) : (
                 <Pressable
@@ -976,12 +977,12 @@ export function StoreScreen({ state, actions }: Props) {
         })}
 
         {/* İsim değiştirme */}
-        <Text style={styles.sectionLabel}>DİĞER</Text>
+        <Text style={styles.sectionLabel}>{t('store.other')}</Text>
         <Pressable style={styles.storeAdCard} onPress={() => setShowNameModal(true)}>
           <Ionicons name="create-outline" size={24} color={theme.accent} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.storeAdTitle}>İsim Değiştir</Text>
-            <Text style={styles.muted}>100 elmas karşılığında ismini değiştir</Text>
+            <Text style={styles.storeAdTitle}>{t('store.changeName')}</Text>
+            <Text style={styles.muted}>{t('store.changeNameDesc')}</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 13 }}>100</Text>
@@ -1014,21 +1015,21 @@ export function FriendsScreen({ state }: Props) {
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
         <View style={styles.center}>
           <Ionicons name="people" size={36} color={theme.primary} />
-          <Text style={styles.h1}>Arkadaşlar</Text>
+          <Text style={styles.h1}>{t('friends.title')}</Text>
         </View>
 
         {/* Add friend */}
-        <Text style={styles.sectionLabel}>ARKADAŞ EKLE</Text>
+        <Text style={styles.sectionLabel}>{t('friends.addSection')}</Text>
         <View style={styles.friendAddCard}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.friendLabel}>Senin Kodun</Text>
+            <Text style={styles.friendLabel}>{t('friends.yourCode')}</Text>
             <Text style={styles.friendCode}>{profile?.userId?.slice(0, 8).toUpperCase() ?? '...'}</Text>
           </View>
           <View style={styles.friendDivider} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.friendLabel}>Arkadaş Kodu</Text>
+            <Text style={styles.friendLabel}>{t('friends.friendCode')}</Text>
             <TextInput
-              placeholder="Kodu gir"
+              placeholder={t('friends.enterCode')}
               placeholderTextColor={theme.muted}
               value={friendCode}
               onChangeText={setFriendCode}
@@ -1037,14 +1038,14 @@ export function FriendsScreen({ state }: Props) {
             />
           </View>
         </View>
-        <Btn label="Arkadaş Ekle" icon="person-add" kind="primary" onPress={() => {}} disabled={friendCode.trim().length < 4} />
+        <Btn label={t('friends.add')} icon="person-add" kind="primary" onPress={() => {}} disabled={friendCode.trim().length < 4} />
 
         {/* Friends list */}
-        <Text style={styles.sectionLabel}>ARKADAŞLARIM</Text>
+        <Text style={styles.sectionLabel}>{t('friends.myFriends')}</Text>
         <View style={styles.friendEmpty}>
           <Ionicons name="people-outline" size={48} color={theme.border} />
-          <Text style={styles.muted}>Henüz arkadaşın yok</Text>
-          <Text style={[styles.muted, { fontSize: 11 }]}>Kodunu paylaşarak arkadaş ekle</Text>
+          <Text style={styles.muted}>{t('friends.empty')}</Text>
+          <Text style={[styles.muted, { fontSize: 11 }]}>{t('friends.shareHint')}</Text>
         </View>
       </ScrollView>
     </Screen>
@@ -1206,7 +1207,7 @@ export function SearchingScreen({ actions }: Props) {
         <View style={{ height: 20 }} />
         <ActivityIndicator size="large" color={theme.primary} />
         <View style={{ height: 12 }} />
-        <Text style={styles.muted}>{"Çevrim içi bir rakip bekleniyor..."}</Text>
+        <Text style={styles.muted}>{t('searching.title')}</Text>
       </View>
 
       <View style={styles.factCard}>
@@ -1214,7 +1215,7 @@ export function SearchingScreen({ actions }: Props) {
         <Text style={styles.factText}>{fact.text}</Text>
       </View>
 
-      <Btn label="Vazgeç" kind="ghost" icon="close" onPress={actions.cancelSearch} />
+      <Btn label={t('searching.cancel')} kind="ghost" icon="close" onPress={actions.cancelSearch} />
     </Screen>
   );
 }
@@ -1251,7 +1252,7 @@ export function LeaderboardScreen({ state, actions }: Props) {
         {lb.length === 0 ? <Text style={styles.muted}>Henüz oyuncu yok</Text> : null}
       </ScrollView>
       <View style={{ height: 10 }} />
-      <Btn label="Geri" kind="ghost" icon="arrow-back" onPress={actions.closeLeaderboard} />
+      <Btn label={t('common.back')} kind="ghost" icon="arrow-back" onPress={actions.closeLeaderboard} />
     </Screen>
   );
 }
@@ -1270,7 +1271,7 @@ function TeamResultCard({ team, spells, played }: { team: ClubRef; spells: Spell
         color={played ? theme.primary : theme.danger}
       />
       <Text style={styles.teamResultYears}>
-        {played ? spells.map(yearsText).filter(Boolean).join(', ') || 'oynadı' : 'oynamadı'}
+        {played ? spells.map(yearsText).filter(Boolean).join(', ') || t('career.played') : t('career.notPlayed')}
       </Text>
     </View>
   );
@@ -1289,7 +1290,7 @@ function ReadyButton({ state, onPress }: { state: GameState; onPress: () => void
 
   return (
     <Btn
-      label={secs !== null ? `Hazır (${secs})` : 'Hazır'}
+      label={secs !== null ? t('ready.labelSecs', { secs }) : t('ready.label')}
       kind="primary"
       icon="checkmark"
       onPress={onPress}
@@ -1307,14 +1308,14 @@ export function ResultScreen({ state, actions }: Props) {
 
   const { icon, color, headline } = useMemo(() => {
     if (r.reason === 'same_team')
-      return { icon: 'swap-horizontal' as IoniconName, color: theme.accent, headline: 'EL GEÇİLDİ' };
+      return { icon: 'swap-horizontal' as IoniconName, color: theme.accent, headline: t('result.roundSkipped') };
     if (r.reason === 'no_common')
-      return { icon: 'information-circle-outline' as IoniconName, color: theme.accent, headline: 'EL GEÇİLDİ' };
+      return { icon: 'information-circle-outline' as IoniconName, color: theme.accent, headline: t('result.roundSkipped') };
     if (r.reason === 'timeout')
-      return { icon: 'time' as IoniconName, color: theme.muted, headline: 'Süre doldu' };
+      return { icon: 'time' as IoniconName, color: theme.muted, headline: t('result.timeUp') };
     return r.correct
-      ? { icon: 'checkmark-circle' as IoniconName, color: theme.primary, headline: 'DOĞRU' }
-      : { icon: 'close-circle' as IoniconName, color: theme.danger, headline: 'YANLIŞ' };
+      ? { icon: 'checkmark-circle' as IoniconName, color: theme.primary, headline: t('result.correct') }
+      : { icon: 'close-circle' as IoniconName, color: theme.danger, headline: t('result.wrong') };
   }, [r]);
 
   const playedA = r.spellsA.length > 0;
@@ -1328,13 +1329,13 @@ export function ResultScreen({ state, actions }: Props) {
           <View style={styles.matchBanner}>
             <Ionicons name={youWon ? 'trophy' : 'sad-outline'} size={40} color={youWon ? theme.accent : theme.muted} />
             <Text style={[styles.h1, { color: youWon ? theme.accent : theme.text, marginTop: 2 }]}>
-              {youWon ? 'MAÇI KAZANDIN!' : 'MAÇI KAYBETTİN'}
+              {youWon ? t('result.youWon') : t('result.youLost')}
             </Text>
             <Text style={styles.matchScore}>
               {(you?.score ?? 0)} - {(opp?.score ?? 0)}
             </Text>
             {!youWon && state.matchWinnerName ? (
-              <Text style={styles.muted}>{state.matchWinnerName} kazandı</Text>
+              <Text style={styles.muted}>{t('result.winnerTook', { name: state.matchWinnerName })}</Text>
             ) : null}
             {state.trophyDelta ? (
               <View style={styles.trophyDeltaRow}>
@@ -1352,13 +1353,9 @@ export function ResultScreen({ state, actions }: Props) {
           <Ionicons name={icon} size={matchOver ? 44 : 64} color={color} />
           <Text style={[styles.h1, { color }]}>{headline}</Text>
           {r.reason === 'same_team' ? (
-            <Text style={[styles.muted, { marginTop: 2 }]}>
-              {"İki taraf da aynı takımı seçtiği için bu tur pas geçildi"}
-            </Text>
+            <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.sameTeam')}</Text>
           ) : r.reason === 'no_common' ? (
-            <Text style={[styles.muted, { marginTop: 2 }]}>
-              {"Bu iki takımda ortak oynamış oyuncu yok — kimseye puan yok"}
-            </Text>
+            <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.noCommon')}</Text>
           ) : null}
           {r.matchedPlayerImageUrl ? (
             <Image source={{ uri: r.matchedPlayerImageUrl }} style={styles.playerPhoto} />
@@ -1372,7 +1369,7 @@ export function ResultScreen({ state, actions }: Props) {
           {r.autocorrected ? (
             <View style={styles.fixRow}>
               <Ionicons name="swap-horizontal" size={13} color={theme.accent} />
-              <Text style={styles.fixText}>otomatik düzeltildi</Text>
+              <Text style={styles.fixText}>{t('result.autocorrected')}</Text>
             </View>
           ) : null}
         </View>
@@ -1387,7 +1384,7 @@ export function ResultScreen({ state, actions }: Props) {
 
             {r.allClubs.length ? (
               <>
-                <Text style={styles.sectionLabel}>KARİYER</Text>
+                <Text style={styles.sectionLabel}>{t('result.career')}</Text>
                 {r.allClubs.map((s, i) => (
                   <CareerRow
                     key={`${s.clubId}-${i}`}
@@ -1400,7 +1397,7 @@ export function ResultScreen({ state, actions }: Props) {
 
             {!r.correct ? (
               <>
-                <Text style={styles.sectionLabel}>{"İKİ TAKIMDA DA OYNAMIŞ OYUNCULAR"}</Text>
+                <Text style={styles.sectionLabel}>{t('result.commonPlayers')}</Text>
                 {r.commonPlayers && r.commonPlayers.length > 0 ? (
                   r.commonPlayers.map((cp, i) => (
                     <View key={i} style={styles.commonRow}>
@@ -1415,14 +1412,12 @@ export function ResultScreen({ state, actions }: Props) {
                     </View>
                   ))
                 ) : (
-                  <Text style={[styles.muted, { marginTop: 6 }]}>
-                    {"Bu iki takımda ortak oynamış oyuncu bulunamadı"}
-                  </Text>
+                  <Text style={[styles.muted, { marginTop: 6 }]}>{t('result.noCommonFound')}</Text>
                 )}
               </>
             ) : r.commonPlayers && r.commonPlayers.length > 1 ? (
               <>
-                <Text style={styles.sectionLabel}>DİĞER ORTAK OYUNCULAR</Text>
+                <Text style={styles.sectionLabel}>{t('result.otherCommon')}</Text>
                 {r.commonPlayers.filter((cp) => cp.name !== r.matchedPlayerName).map((cp, i) => (
                   <View key={i} style={styles.commonRow}>
                     {cp.imageUrl ? (
@@ -1457,7 +1452,7 @@ export function ResultScreen({ state, actions }: Props) {
             <View style={[styles.matchBanner, { borderColor: youWon ? theme.accent : theme.muted }]}>
               <Ionicons name={youWon ? 'trophy' : 'sad-outline'} size={32} color={youWon ? theme.accent : theme.muted} />
               <Text style={[styles.h1, { color: youWon ? theme.accent : theme.text }]}>
-                {youWon ? 'MAÇI KAZANDIN!' : 'MAÇI KAYBETTİN'}
+                {youWon ? t('result.youWon') : t('result.youLost')}
               </Text>
               <Text style={styles.matchScore}>
                 {(you?.score ?? 0)} - {(opp?.score ?? 0)}
@@ -1467,30 +1462,30 @@ export function ResultScreen({ state, actions }: Props) {
             {state.rematchState === 'incoming' ? (
               <>
                 <Text style={[styles.muted, { marginBottom: 4 }]}>
-                  {state.rematchByName} tekrar oynamak istiyor
+                  {t('result.rematchIncoming', { name: state.rematchByName ?? '' })}
                 </Text>
-                <Btn label="Kabul Et" kind="accent" icon="checkmark-circle" onPress={actions.acceptRematch} />
-                <Btn label="Reddet" kind="ghost" icon="close" onPress={actions.declineRematch} />
+                <Btn label={t('result.accept')} kind="accent" icon="checkmark-circle" onPress={actions.acceptRematch} />
+                <Btn label={t('result.decline')} kind="ghost" icon="close" onPress={actions.declineRematch} />
               </>
             ) : state.rematchState === 'waiting' ? (
               <View style={styles.center}>
                 <ActivityIndicator color={theme.primary} />
-                <Text style={styles.muted}>{"İstek gönderildi, kabul bekleniyor..."}</Text>
+                <Text style={styles.muted}>{t('result.rematchWaiting')}</Text>
               </View>
             ) : state.rematchState === 'declined' ? (
               <>
-                <Text style={[styles.muted, { color: theme.danger }]}>Tekrar oynama isteğin reddedildi</Text>
-                <Btn label="Tekrar Dene" kind="accent" icon="refresh" onPress={actions.playAgain} />
+                <Text style={[styles.muted, { color: theme.danger }]}>{t('result.rematchDeclined')}</Text>
+                <Btn label={t('result.tryAgain')} kind="accent" icon="refresh" onPress={actions.playAgain} />
               </>
             ) : (
-              <Btn label="Tekrar Oyna" kind="accent" icon="refresh" onPress={actions.playAgain} />
+              <Btn label={t('result.playAgain')} kind="accent" icon="refresh" onPress={actions.playAgain} />
             )}
           </>
         ) : state.waitingReady ? (
           state.iReady ? (
             <View style={styles.center}>
               <Ionicons name="checkmark-circle" size={28} color={theme.primary} />
-              <Text style={styles.muted}>{"Hazırsın! Rakip bekleniyor..."}</Text>
+              <Text style={styles.muted}>{t('result.readyWaiting')}</Text>
             </View>
           ) : (
             <ReadyButton state={state} onPress={actions.ready} />
@@ -1498,11 +1493,11 @@ export function ResultScreen({ state, actions }: Props) {
         ) : (
           <View style={styles.center}>
             <ActivityIndicator color={theme.primary} />
-            <Text style={styles.muted}>{"Sıradaki tur başlıyor..."}</Text>
+            <Text style={styles.muted}>{t('result.nextRound')}</Text>
           </View>
         )}
         <View style={{ height: 10 }} />
-        <Btn label="Çık" kind="ghost" icon="close" onPress={actions.leave} />
+        <Btn label={t('result.leave')} kind="ghost" icon="close" onPress={actions.leave} />
       </ScrollView>
       <EmoteLayer state={state} actions={actions} fab="top-right" />
     </Screen>

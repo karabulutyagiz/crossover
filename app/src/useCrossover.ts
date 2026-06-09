@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SERVER_URL, HTTP_URL } from './config';
+import { t } from './i18n';
 import type {
   ArenaView,
   ClientMsg,
@@ -201,7 +202,7 @@ function reducer(state: GameState, action: Action): GameState {
     case 'club_results':
       return { ...state, clubResults: action.clubs };
     case 'opponent_left':
-      return { ...state, phase: 'lobby', error: 'Rakip ayrıldı', teams: null, result: null, locked: null };
+      return { ...state, phase: 'lobby', error: t('error.opponentLeft'), teams: null, result: null, locked: null };
     case 'error':
       return { ...state, error: action.message };
     default:
@@ -257,7 +258,7 @@ export function useCrossover() {
     ws.onclose = () => {
       dispatch({ type: '_connected', value: false });
     };
-    ws.onerror = () => dispatch({ type: 'error', message: 'Sunucuya bağlanılamadı' });
+    ws.onerror = () => dispatch({ type: 'error', message: t('error.connect') });
   }, []);
 
   const send = useCallback((msg: ClientMsg) => {
@@ -266,7 +267,7 @@ export function useCrossover() {
       ws.send(JSON.stringify(msg));
     } else {
       // Connection lost — reset to home so user can start fresh
-      dispatch({ type: 'error', message: 'Bağlantı koptu' });
+      dispatch({ type: 'error', message: t('error.disconnected') });
       dispatch({ type: '_reset' });
     }
   }, []);

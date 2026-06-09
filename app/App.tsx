@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useCrossover } from './src/useCrossover';
+import { t } from './src/i18n';
 import {
   HomeScreen,
   ArenasScreen,
@@ -29,9 +30,9 @@ type IoniconName = ComponentProps<typeof Ionicons>['name'];
 const { width: SCREEN_W } = Dimensions.get('window');
 
 const TABS: { key: string; label: string; icon: IoniconName; activeIcon: IoniconName }[] = [
-  { key: 'store', label: 'Mağaza', icon: 'diamond-outline', activeIcon: 'diamond' },
-  { key: 'home', label: 'Oyun', icon: 'football-outline', activeIcon: 'football' },
-  { key: 'friends', label: 'Arkadaşlar', icon: 'people-outline', activeIcon: 'people' },
+  { key: 'store', label: t('tab.store'), icon: 'diamond-outline', activeIcon: 'diamond' },
+  { key: 'home', label: t('tab.game'), icon: 'football-outline', activeIcon: 'football' },
+  { key: 'friends', label: t('tab.friends'), icon: 'people-outline', activeIcon: 'people' },
 ];
 
 // Phases that show the main tab bar (non-game screens)

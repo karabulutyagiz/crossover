@@ -9,6 +9,7 @@ import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { theme } from './theme';
+import { t } from './i18n';
 import type { ProfileView } from './protocol';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -23,34 +24,34 @@ export interface EmoteMeta {
 }
 
 export const FREE_EMOTES: EmoteMeta[] = [
-  { id: 'congrats', kind: 'text', phrase: 'Tebrikler!', icon: 'trophy', color: theme.accent },
-  { id: 'luck', kind: 'text', phrase: 'Bol şanslar!', icon: 'sparkles', color: theme.primary },
-  { id: 'gg', kind: 'text', phrase: 'İyi oyundu!', icon: 'thumbs-up', color: theme.primary },
-  { id: 'bring_it', kind: 'text', phrase: 'Hadi bakalım!', icon: 'flame', color: theme.danger },
-  { id: 'gotcha', kind: 'text', phrase: 'Yakaladım!', icon: 'flash', color: theme.accent },
+  { id: 'congrats', kind: 'text', phrase: t('emote.congrats'), icon: 'trophy', color: theme.accent },
+  { id: 'luck', kind: 'text', phrase: t('emote.luck'), icon: 'sparkles', color: theme.primary },
+  { id: 'gg', kind: 'text', phrase: t('emote.gg'), icon: 'thumbs-up', color: theme.primary },
+  { id: 'bring_it', kind: 'text', phrase: t('emote.bringIt'), icon: 'flame', color: theme.danger },
+  { id: 'gotcha', kind: 'text', phrase: t('emote.gotcha'), icon: 'flash', color: theme.accent },
 ];
 
 export const PREMIUM_EMOTES: EmoteMeta[] = [
   {
     id: 'jersey10',
     kind: 'animated',
-    phrase: 'Şampiyonluk!',
+    phrase: t('emote.jersey10.phrase'),
     color: '#1E50C8',
-    premium: { name: 'Forma Kaldırma', price: 250, desc: 'Mavili-kırmızılı formayı gururla havaya kaldır' },
+    premium: { name: t('emote.jersey10.name'), price: 250, desc: t('emote.jersey10.desc') },
   },
   {
     id: 'goal',
     kind: 'animated',
-    phrase: 'Süper Gol!',
+    phrase: t('emote.goal.phrase'),
     color: theme.primary,
-    premium: { name: 'Gol Sevinci', price: 150, desc: 'Topu fileye gönder, coş!' },
+    premium: { name: t('emote.goal.name'), price: 150, desc: t('emote.goal.desc') },
   },
   {
     id: 'champion',
     kind: 'animated',
-    phrase: 'Şampiyon!',
+    phrase: t('emote.champion.phrase'),
     color: theme.accent,
-    premium: { name: 'Kupa Şenliği', price: 300, desc: 'Kupayı kaldır, zaferi kutla' },
+    premium: { name: t('emote.champion.name'), price: 300, desc: t('emote.champion.desc') },
   },
 ];
 
