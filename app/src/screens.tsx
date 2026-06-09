@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNo
 import {
   ActivityIndicator,
   Image,
-  Keyboard,
   Modal,
   Pressable,
   ScrollView,
@@ -101,14 +100,7 @@ function Btn({
 }
 
 function Screen({ children }: { children: ReactNode }) {
-  // Tapping any empty area dismisses the keyboard. Children that handle their
-  // own touches (buttons, inputs, scroll views) consume the tap first, so this
-  // only fires for taps on blank space.
-  return (
-    <Pressable style={styles.screen} onPress={Keyboard.dismiss} accessible={false}>
-      {children}
-    </Pressable>
-  );
+  return <View style={styles.screen}>{children}</View>;
 }
 
 // ---- Emotes (Clash-Royale-style in-match reactions) ----
