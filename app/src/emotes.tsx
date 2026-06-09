@@ -61,8 +61,13 @@ export function getEmote(id: string): EmoteMeta | undefined {
   return BY_ID.get(id);
 }
 
+// TEMPORARY: unlock every emote (incl. premium) so they can be tried without
+// buying. Set back to false to restore store-gated ownership.
+const UNLOCK_ALL_EMOTES = true;
+
 // Free emotes are available to everyone; premium ones must be purchased.
 export function ownsEmote(profile: ProfileView | null, id: string): boolean {
+  if (UNLOCK_ALL_EMOTES) return Boolean(getEmote(id));
   if (FREE_EMOTES.some((e) => e.id === id)) return true;
   return Boolean(profile?.ownedEmotes?.includes(id));
 }
