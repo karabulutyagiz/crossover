@@ -11,9 +11,15 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Animated, Easing } from 'react-native';
+import { Animated, Easing, Platform } from 'react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
 import { theme } from './theme';
 import { t } from './i18n';
+import { GOOGLE_IOS_CLIENT_ID } from './config';
+
+WebBrowser.maybeCompleteAuthSession();
 import type { GameState } from './useCrossover';
 import type { ClubRef, Difficulty, GameOptions, ProfileView, Scope, SpellInfo } from './protocol';
 import {
@@ -27,6 +33,7 @@ import {
 
 type Actions = {
   register: (name: string, gameCenterId?: string) => void;
+  authWith: (provider: 'apple' | 'google' | 'facebook', token: string, name?: string) => void;
   changeName: (newName: string) => void;
   openArenas: () => void;
   closeArenas: () => void;
@@ -282,6 +289,73 @@ function ProfileCard({ profile, onPress }: { profile: ProfileView; onPress?: () 
         </Text>
       </View>
     </Pressable>
+  );
+}
+
+// Login gate: shown until the user signs in. No guest play — the app is locked
+// behind Apple/Google (Facebook coming soon) sign-in.
+export function LoginScreen({ state, actions }: Props) {
+  const [appleAvailable, setAppleAvailable] = useState(false);
+  useEffect(() => {
+    AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(() => setAppleAvailable(false));
+  }, []);
+
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    iosClientId: GOOGLE_IOS_CLIENT_ID,
+  });
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const idToken = response.params?.id_token ?? response.authentication?.idToken;
+      if (idToken) actions.authWith('google', idToken);
+    }
+  }, [response]);
+
+  const signInApple = async () => {
+    try {
+      const cred = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (cred.identityToken) {
+        const given = cred.fullName?.givenName ?? '';
+        const family = cred.fullName?.familyName ?? '';
+        const name = `${given} ${family}`.trim() || undefined;
+        actions.authWith('apple', cred.identityToken, name);
+      }
+    } catch {
+      /* user canceled the Apple sheet */
+    }
+  };
+
+  return (
+    <Screen>
+      <View style={{ flex: 1, justifyContent: 'center', gap: 12 }}>
+        <View style={styles.center}>
+          <Ionicons name="football" size={56} color={theme.primary} />
+          <Text style={styles.logo}>CROSSOVER</Text>
+          <Text style={styles.tagline}>{t('home.tagline')}</Text>
+        </View>
+
+        <View style={{ height: 12 }} />
+
+        {Platform.OS === 'ios' && appleAvailable ? (
+          <AppleAuthentication.AppleAuthenticationButton
+            buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+            cornerRadius={10}
+            style={{ height: 50 }}
+            onPress={signInApple}
+          />
+        ) : null}
+
+        <Btn label={t('login.google')} icon="logo-google" kind="accent" onPress={() => promptAsync()} disabled={!request} />
+
+        {state.error ? <Text style={styles.error}>{state.error}</Text> : null}
+        <Text style={[styles.muted, { marginTop: 12 }]}>{t('login.hint')}</Text>
+      </View>
+    </Screen>
   );
 }
 

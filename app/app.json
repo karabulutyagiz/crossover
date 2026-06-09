@@ -2,6 +2,7 @@
   "expo": {
     "name": "Crossover Football",
     "slug": "crossover",
+    "scheme": "crossover",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -9,9 +10,17 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.crossover.football",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "CFBundleDisplayName": "COF"
+        "CFBundleDisplayName": "COF",
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.85689499254-iu4ap4sl6rqhpeonj00avg390pnhnlsn"
+            ]
+          }
+        ]
       }
     },
     "android": {
@@ -28,7 +37,9 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-localization"
+      "expo-localization",
+      "expo-web-browser",
+      "expo-apple-authentication"
     ],
     "extra": {
       "eas": {

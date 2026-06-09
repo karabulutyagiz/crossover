@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCrossover } from './src/useCrossover';
 import { t } from './src/i18n';
 import {
+  LoginScreen,
   HomeScreen,
   ArenasScreen,
   LeaderboardScreen,
@@ -43,6 +44,16 @@ export default function App() {
   const props = { state, actions };
   const scrollRef = useRef<ScrollView>(null);
   const [activeTab, setActiveTab] = useState(1); // start on Home (index 1)
+
+  // Login gate: nothing is accessible until the user signs in (Apple/Google).
+  if (!state.profile) {
+    return (
+      <View style={s.root}>
+        <StatusBar style="light" />
+        <LoginScreen state={state} actions={actions} />
+      </View>
+    );
+  }
 
   const showTabs = TAB_PHASES.has(state.phase);
 

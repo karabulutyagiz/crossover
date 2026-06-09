@@ -14,6 +14,12 @@ type Params = Record<string, string | number>;
 
 // ---- Turkish (base) ----
 const tr = {
+  // login
+  'login.google': 'Google ile devam et',
+  'login.facebook': 'Facebook ile devam et',
+  'login.hint': 'Oynamak için giriş yapmalısın. Devam ederek bir hesap oluşturulur.',
+  'login.failed': 'Giriş başarısız. Tekrar dene.',
+
   // tabs
   'tab.store': 'Mağaza',
   'tab.game': 'Oyun',
@@ -179,6 +185,11 @@ const tr = {
 
 // ---- English (fallback) ----
 const en: typeof tr = {
+  'login.google': 'Continue with Google',
+  'login.facebook': 'Continue with Facebook',
+  'login.hint': 'You must sign in to play. By continuing, an account is created.',
+  'login.failed': 'Sign-in failed. Please try again.',
+
   'tab.store': 'Store',
   'tab.game': 'Play',
   'tab.friends': 'Friends',

@@ -304,6 +304,15 @@ export function useCrossover() {
         connectAndSend({ type: 'register', name, gameCenterId, userId });
       }
     },
+    // Sign in with Apple / Google / Facebook: send the provider's identity token
+    // to the server, which verifies it and returns the account profile.
+    authWith: (provider: 'apple' | 'google' | 'facebook', token: string, name?: string) => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        send({ type: 'auth', provider, token, name });
+      } else {
+        connectAndSend({ type: 'auth', provider, token, name });
+      }
+    },
     changeName: (newName: string) => send({ type: 'change_name', newName }),
     findMatch: (options?: GameOptions) =>
       // Carry the registered name + account id: this fresh socket hasn't sent
