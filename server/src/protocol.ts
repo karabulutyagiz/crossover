@@ -37,6 +37,7 @@ export interface ProfileView {
   diamonds: number;
   wins: number;
   losses: number;
+  ownedEmotes: string[];
   arena: ArenaView;
 }
 
@@ -72,6 +73,8 @@ export type ClientMsg =
   | { type: 'ready' } // ready for next round
   | { type: 'play_again' } // request a rematch after the match ends
   | { type: 'rematch_response'; accept: boolean }
+  | { type: 'send_emote'; emoteId: string } // show an emote to the opponent during a match
+  | { type: 'buy_emote'; emoteId: string } // purchase a premium emote with diamonds
   | { type: 'search_clubs'; reqId: string; q: string };
 
 // ---- Server -> Client ----
@@ -119,6 +122,8 @@ export type ServerMsg =
   | { type: 'rematch_waiting' } // your rematch request was sent, waiting for opponent
   | { type: 'rematch_declined' } // opponent declined your rematch request
   | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView }
+  | { type: 'emote'; fromId: string; emoteId: string } // a player in the room sent an emote
+  | { type: 'emote_purchased'; profile: ProfileView; emoteId: string } // store purchase succeeded
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
   | { type: 'searching' }
   | { type: 'opponent_left' }

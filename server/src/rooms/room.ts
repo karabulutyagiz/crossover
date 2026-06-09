@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { pool } from '../db/pool.ts';
 import { verifyGuess, searchClubs, commonPlayersDetailed, randomClub } from '../game/verify.ts';
 import { applyMatchResult } from '../game/rank.ts';
+import { isEmote } from '../game/emotes.ts';
 import type {
   ClientMsg,
   ServerMsg,
@@ -123,6 +124,8 @@ export class Room {
         return this.requestRematch(playerId);
       case 'rematch_response':
         return this.respondRematch(playerId, msg.accept);
+      case 'send_emote':
+        return this.relayEmote(playerId, msg.emoteId);
       case 'search_clubs':
         return void this.handleSearch(playerId, msg.reqId, msg.q);
       default:
@@ -433,6 +436,14 @@ export class Room {
       this.sendTo(this.rematchBy, { type: 'rematch_declined' });
       this.rematchBy = null;
     }
+  }
+
+  // Relay an emote to everyone in the room (sender included, so the UI can show
+  // your own emote too). Cosmetic only — ownership is enforced client-side and at
+  // purchase time, so an unknown id is simply ignored.
+  private relayEmote(playerId: string, emoteId: string): void {
+    if (!isEmote(emoteId)) return;
+    this.broadcast({ type: 'emote', fromId: playerId, emoteId });
   }
 
   private async handleSearch(playerId: string, reqId: string, q: string): Promise<void> {

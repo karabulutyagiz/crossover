@@ -55,6 +55,7 @@ export interface ProfileView {
   diamonds: number;
   wins: number;
   losses: number;
+  ownedEmotes: string[];
   arena: ArenaView;
 }
 
@@ -106,6 +107,8 @@ export type ClientMsg =
   | { type: 'ready' }
   | { type: 'play_again' }
   | { type: 'rematch_response'; accept: boolean }
+  | { type: 'send_emote'; emoteId: string }
+  | { type: 'buy_emote'; emoteId: string }
   | { type: 'search_clubs'; reqId: string; q: string };
 
 export type ServerMsg =
@@ -134,6 +137,8 @@ export type ServerMsg =
   | { type: 'rematch_waiting' }
   | { type: 'rematch_declined' }
   | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView }
+  | { type: 'emote'; fromId: string; emoteId: string }
+  | { type: 'emote_purchased'; profile: ProfileView; emoteId: string }
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
   | { type: 'searching' }
   | { type: 'opponent_left' }

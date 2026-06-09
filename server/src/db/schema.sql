@@ -68,8 +68,12 @@ CREATE TABLE IF NOT EXISTS users (
   diamonds       INT NOT NULL DEFAULT 50,  -- in-game currency (start with 50 free)
   wins           INT NOT NULL DEFAULT 0,
   losses         INT NOT NULL DEFAULT 0,
+  owned_emotes   TEXT[] NOT NULL DEFAULT '{}',  -- premium emote ids the user has bought
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Add owned_emotes to pre-existing databases (no-op once the column exists).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS owned_emotes TEXT[] NOT NULL DEFAULT '{}';
 
 CREATE INDEX IF NOT EXISTS idx_users_trophies ON users (trophies DESC);
 CREATE INDEX IF NOT EXISTS idx_users_game_center ON users (game_center_id);

@@ -3,7 +3,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomManager } from '../rooms/manager.ts';
 import { BotPlayer } from '../rooms/bot.ts';
 import { listScopes } from '../game/verify.ts';
-import { findOrCreateUser, getUser, changeDisplayName, getLeaderboard, type UserProfile } from '../game/rank.ts';
+import { findOrCreateUser, getUser, changeDisplayName, buyEmote, getLeaderboard, type UserProfile } from '../game/rank.ts';
 import type { Room, Transport } from '../rooms/room.ts';
 import type { ClientMsg, ServerMsg } from '../protocol.ts';
 
@@ -103,6 +103,7 @@ export function startServer(port: number): Server {
               diamonds: profile.diamonds,
               wins: profile.wins,
               losses: profile.losses,
+              ownedEmotes: profile.ownedEmotes,
               arena: profile.arena,
             },
           });
@@ -125,6 +126,32 @@ export function startServer(port: number): Server {
               diamonds: result.profile.diamonds,
               wins: result.profile.wins,
               losses: result.profile.losses,
+              ownedEmotes: result.profile.ownedEmotes,
+              arena: result.profile.arena,
+            },
+          });
+        })();
+        return;
+      }
+
+      // Buy a premium emote (needs the account, not a room).
+      if (msg.type === 'buy_emote') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce kayıt ol' });
+        void (async () => {
+          const result = await buyEmote(userProfile!.id, msg.emoteId);
+          if (!result.ok) return transport.send({ type: 'error', message: result.error });
+          userProfile = result.profile;
+          transport.send({
+            type: 'emote_purchased',
+            emoteId: msg.emoteId,
+            profile: {
+              userId: result.profile.id,
+              displayName: result.profile.displayName,
+              trophies: result.profile.trophies,
+              diamonds: result.profile.diamonds,
+              wins: result.profile.wins,
+              losses: result.profile.losses,
+              ownedEmotes: result.profile.ownedEmotes,
               arena: result.profile.arena,
             },
           });

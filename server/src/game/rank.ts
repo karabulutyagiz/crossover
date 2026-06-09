@@ -1,4 +1,5 @@
 import { pool } from '../db/pool.ts';
+import { emotePrice, isFreeEmote } from './emotes.ts';
 
 // ---- Trophy arenas (Clash Royale style) ----
 export interface Arena {
@@ -51,6 +52,7 @@ export interface UserProfile {
   diamonds: number;
   wins: number;
   losses: number;
+  ownedEmotes: string[];
   arena: Arena;
 }
 
@@ -127,6 +129,34 @@ export async function changeDisplayName(
   return { ok: true, profile: toProfile(rows[0]) };
 }
 
+// Buy a premium emote: charge diamonds once and append it to owned_emotes.
+// The whole thing is one atomic UPDATE guarded on balance + not-already-owned,
+// so double taps or races can never double-charge.
+export async function buyEmote(
+  userId: string,
+  emoteId: string,
+): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
+  const price = emotePrice(emoteId);
+  if (price === null) return { ok: false, error: 'Geçersiz ifade' };
+  if (isFreeEmote(emoteId)) return { ok: false, error: 'Bu ifade zaten herkeste' };
+
+  const user = await getUser(userId);
+  if (!user) return { ok: false, error: 'Kullanıcı bulunamadı' };
+  if (user.ownedEmotes.includes(emoteId)) return { ok: false, error: 'Bu ifadeye zaten sahipsin' };
+  if (user.diamonds < price) return { ok: false, error: `Yetersiz elmas (${user.diamonds}/${price})` };
+
+  const { rows } = await pool.query<DbUser>(
+    `UPDATE users
+        SET diamonds = diamonds - $2,
+            owned_emotes = array_append(owned_emotes, $3)
+      WHERE id = $1 AND diamonds >= $2 AND NOT ($3 = ANY(owned_emotes))
+      RETURNING *`,
+    [userId, price, emoteId],
+  );
+  if (!rows[0]) return { ok: false, error: 'Satın alma başarısız' };
+  return { ok: true, profile: toProfile(rows[0]) };
+}
+
 // ---- Leaderboard ----
 
 export interface LeaderboardEntry {
@@ -182,6 +212,7 @@ interface DbUser {
   diamonds: number;
   wins: number;
   losses: number;
+  owned_emotes: string[] | null;
   created_at: string;
 }
 
@@ -194,6 +225,7 @@ function toProfile(row: DbUser): UserProfile {
     diamonds: row.diamonds,
     wins: row.wins,
     losses: row.losses,
+    ownedEmotes: row.owned_emotes ?? [],
     arena: getArena(row.trophies),
   };
 }

@@ -51,6 +51,10 @@ export interface GameState {
   waitingReady: boolean;
   readyCountdownEndsAt: number | null;
   iReady: boolean;
+  // emotes currently shown over the match, keyed by the player who sent them.
+  // `n` increases on every emote so the UI can re-trigger the same one.
+  emotes: Record<string, { emoteId: string; n: number }>;
+  emoteSeq: number;
 }
 
 const initialState: GameState = {
@@ -79,6 +83,8 @@ const initialState: GameState = {
   waitingReady: false,
   readyCountdownEndsAt: null,
   iReady: false,
+  emotes: {},
+  emoteSeq: 0,
 };
 
 const PROFILE_KEY = '@crossover_profile';
@@ -127,6 +133,12 @@ function reducer(state: GameState, action: Action): GameState {
           ? { ...state.profile, trophies: action.trophies, arena: action.arena }
           : state.profile,
       };
+    case 'emote': {
+      const n = state.emoteSeq + 1;
+      return { ...state, emoteSeq: n, emotes: { ...state.emotes, [action.fromId]: { emoteId: action.emoteId, n } } };
+    }
+    case 'emote_purchased':
+      return { ...state, profile: action.profile };
 
     case 'room_state':
       return {
@@ -322,6 +334,8 @@ export function useCrossover() {
     playAgain: () => send({ type: 'play_again' }),
     acceptRematch: () => send({ type: 'rematch_response', accept: true }),
     declineRematch: () => send({ type: 'rematch_response', accept: false }),
+    sendEmote: (emoteId: string) => send({ type: 'send_emote', emoteId }),
+    buyEmote: (emoteId: string) => send({ type: 'buy_emote', emoteId }),
     leave: () => {
       wsRef.current?.close();
       wsRef.current = null;

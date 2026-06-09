@@ -11,9 +11,18 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Animated, Easing } from 'react-native';
 import { theme } from './theme';
 import type { GameState } from './useCrossover';
 import type { ClubRef, Difficulty, GameOptions, ProfileView, Scope, SpellInfo } from './protocol';
+import {
+  EmoteCallout,
+  EmoteSticker,
+  PREMIUM_EMOTES,
+  availableEmotes,
+  getEmote,
+  ownsEmote,
+} from './emotes';
 
 type Actions = {
   register: (name: string, gameCenterId?: string) => void;
@@ -35,6 +44,8 @@ type Actions = {
   playAgain: () => void;
   acceptRematch: () => void;
   declineRematch: () => void;
+  sendEmote: (emoteId: string) => void;
+  buyEmote: (emoteId: string) => void;
   leave: () => void;
 };
 
@@ -89,6 +100,88 @@ function Btn({
 
 function Screen({ children }: { children: ReactNode }) {
   return <View style={styles.screen}>{children}</View>;
+}
+
+// ---- Emotes (Clash-Royale-style in-match reactions) ----
+
+// One emote pop: springs in, holds, fades out. Re-mounted (via `key={n}`) on
+// every new emote so the same sticker can replay.
+function TransientCallout({ emoteId }: { emoteId: string }) {
+  const a = useRef(new Animated.Value(0)).current;
+  const [gone, setGone] = useState(false);
+  useEffect(() => {
+    setGone(false);
+    Animated.spring(a, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }).start();
+    const t = setTimeout(() => {
+      Animated.timing(a, { toValue: 0, duration: 240, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(
+        ({ finished }) => finished && setGone(true),
+      );
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [a, emoteId]);
+  if (gone) return null;
+  return (
+    <Animated.View style={{ opacity: a, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }) }] }}>
+      <EmoteCallout id={emoteId} />
+    </Animated.View>
+  );
+}
+
+// Floating emote button + picker sheet + the opponent/self callouts. Drop into
+// any in-match screen; positions itself absolutely over the screen.
+function EmoteLayer({ state, actions, fab = 'bottom-right' }: Props & { fab?: 'bottom-right' | 'top-right' }) {
+  const [open, setOpen] = useState(false);
+  const room = state.room;
+  const youId = room?.youId;
+  const oppId = room?.players.find((p) => p.id !== youId)?.id;
+  const mine = youId ? state.emotes[youId] : undefined;
+  const theirs = oppId ? state.emotes[oppId] : undefined;
+  const emotes = availableEmotes(state.profile);
+
+  return (
+    <>
+      <View pointerEvents="none" style={styles.emoteTop}>
+        {theirs ? <TransientCallout key={`opp-${theirs.n}`} emoteId={theirs.emoteId} /> : null}
+      </View>
+      <View pointerEvents="none" style={styles.emoteBottom}>
+        {mine ? <TransientCallout key={`you-${mine.n}`} emoteId={mine.emoteId} /> : null}
+      </View>
+
+      <Pressable
+        style={[styles.emoteFab, fab === 'top-right' ? styles.emoteFabTop : styles.emoteFabBottom]}
+        onPress={() => setOpen(true)}
+      >
+        <Ionicons name="happy" size={26} color="#06131F" />
+      </Pressable>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable style={styles.emoteSheetBackdrop} onPress={() => setOpen(false)}>
+          <Pressable style={styles.emoteSheet} onPress={() => {}}>
+            <View style={styles.emoteSheetHandle} />
+            <Text style={styles.emoteSheetTitle}>İfade Gönder</Text>
+            <View style={styles.emoteGrid}>
+              {emotes.map((e) => (
+                <Pressable
+                  key={e.id}
+                  style={styles.emoteCell}
+                  onPress={() => {
+                    actions.sendEmote(e.id);
+                    setOpen(false);
+                  }}
+                >
+                  <EmoteSticker id={e.id} size={52} />
+                  <Text style={styles.emoteCellLabel} numberOfLines={1}>
+                    {e.phrase}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={styles.emoteHint}>Daha fazla ifade için Mağaza'ya göz at</Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
 }
 
 const BADGE_COLORS = ['#E63946', '#457B9D', '#2A9D8F', '#E9C46A', '#F4A261', '#A06CD5', '#06D6A0', '#EF476F'];
@@ -540,6 +633,7 @@ export function PickTeamScreen({ state, actions }: Props) {
           </Pressable>
         ))}
       </ScrollView>
+      <EmoteLayer state={state} actions={actions} fab="top-right" />
     </Screen>
   );
 }
@@ -612,6 +706,7 @@ export function GuessScreen({ state, actions }: Props) {
           )}
         </>
       )}
+      <EmoteLayer state={state} actions={actions} fab="top-right" />
     </Screen>
   );
 }
@@ -820,6 +915,38 @@ export function StoreScreen({ state, actions }: Props) {
             </View>
           </Pressable>
         ))}
+
+        {/* İfadeler (maç içi emote) */}
+        <Text style={styles.sectionLabel}>İFADELER</Text>
+        {PREMIUM_EMOTES.map((e) => {
+          const owned = ownsEmote(profile, e.id);
+          const canAfford = (profile?.diamonds ?? 0) >= (e.premium?.price ?? 0);
+          return (
+            <View key={e.id} style={styles.storeEmoteCard}>
+              <View style={{ width: 56, height: 56 }}>
+                <EmoteSticker id={e.id} size={56} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.storeEmoteName}>{e.premium?.name}</Text>
+                <Text style={styles.storeEmoteDesc} numberOfLines={2}>{e.premium?.desc}</Text>
+              </View>
+              {owned ? (
+                <View style={styles.storeEmoteOwned}>
+                  <Ionicons name="checkmark-circle" size={16} color={theme.primary} />
+                  <Text style={styles.storeEmoteOwnedText}>Sahipsin</Text>
+                </View>
+              ) : (
+                <Pressable
+                  style={[styles.storeEmoteBuy, !canAfford && { opacity: 0.5 }]}
+                  onPress={() => canAfford && actions.buyEmote(e.id)}
+                >
+                  <Text style={styles.storeEmoteBuyText}>{e.premium?.price}</Text>
+                  <Ionicons name="diamond" size={13} color="#06131F" />
+                </Pressable>
+              )}
+            </View>
+          );
+        })}
 
         {/* İsim değiştirme */}
         <Text style={styles.sectionLabel}>DİĞER</Text>
@@ -1344,6 +1471,7 @@ export function ResultScreen({ state, actions }: Props) {
         <View style={{ height: 10 }} />
         <Btn label="Çık" kind="ghost" icon="close" onPress={actions.leave} />
       </ScrollView>
+      <EmoteLayer state={state} actions={actions} fab="top-right" />
     </Screen>
   );
 }
@@ -1541,4 +1669,66 @@ const styles = StyleSheet.create({
   },
   modalRowText: { color: theme.text, fontSize: 13 },
   modalCount: { color: theme.muted, fontSize: 11 },
+  // emotes
+  emoteTop: { position: 'absolute', top: 16, left: 0, right: 0, alignItems: 'center', zIndex: 30 },
+  emoteBottom: { position: 'absolute', bottom: 90, left: 0, right: 0, alignItems: 'center', zIndex: 30 },
+  emoteFab: {
+    position: 'absolute',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: theme.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 40,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
+  },
+  emoteFabBottom: { right: 18, bottom: 28 },
+  emoteFabTop: { right: 18, top: 8 },
+  emoteSheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  emoteSheet: {
+    backgroundColor: theme.card,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: 18,
+    paddingBottom: 34,
+    borderTopWidth: 1,
+    borderColor: theme.border,
+  },
+  emoteSheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: theme.border, marginBottom: 12 },
+  emoteSheetTitle: { color: theme.text, fontSize: 15, fontWeight: '800', marginBottom: 12, textAlign: 'center' },
+  emoteGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6 },
+  emoteCell: {
+    width: '30%',
+    alignItems: 'center',
+    backgroundColor: theme.bg,
+    borderRadius: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  emoteCellLabel: { color: theme.text, fontSize: 11, fontWeight: '600', marginTop: 2 },
+  emoteHint: { color: theme.muted, fontSize: 11, textAlign: 'center', marginTop: 14 },
+  // store emotes
+  storeEmoteCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: theme.card,
+    borderRadius: 12,
+    padding: 12,
+    marginVertical: 4,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  storeEmoteName: { color: theme.text, fontSize: 14, fontWeight: '800' },
+  storeEmoteDesc: { color: theme.muted, fontSize: 11, marginTop: 2 },
+  storeEmoteBuy: { backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  storeEmoteBuyText: { color: '#06131F', fontSize: 13, fontWeight: '800' },
+  storeEmoteOwned: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8 },
+  storeEmoteOwnedText: { color: theme.primary, fontSize: 12, fontWeight: '700' },
 });
