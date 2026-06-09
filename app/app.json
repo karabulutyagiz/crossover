@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Crossover",
+    "name": "Crossover Football",
     "slug": "crossover",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,7 +10,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.crossover.football",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleDisplayName": "COF"
       }
     },
     "android": {
