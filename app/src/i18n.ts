@@ -14,6 +14,13 @@ type Params = Record<string, string | number>;
 
 // ---- Turkish (base) ----
 const tr = {
+  // username
+  'username.title': 'Kullanıcı Adı Oluştur',
+  'username.subtitle': 'Bu ad herkese görünür ve yalnızca bir kez seçilir.',
+  'username.placeholder': 'Kullanıcı adın',
+  'username.create': 'Oluştur',
+  'username.rules': '3-16 karakter • harf, rakam ve _',
+
   // login
   'login.google': 'Google ile devam et',
   'login.facebook': 'Facebook ile devam et',
@@ -196,6 +203,12 @@ const tr = {
 
 // ---- English (fallback) ----
 const en: typeof tr = {
+  'username.title': 'Create Username',
+  'username.subtitle': 'This name is public and chosen only once.',
+  'username.placeholder': 'Your username',
+  'username.create': 'Create',
+  'username.rules': '3-16 chars • letters, digits and _',
+
   'login.google': 'Continue with Google',
   'login.facebook': 'Continue with Facebook',
   'login.hint': 'You must sign in to play. By continuing, an account is created.',

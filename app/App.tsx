@@ -13,6 +13,7 @@ import { useCrossover } from './src/useCrossover';
 import { t } from './src/i18n';
 import {
   LoginScreen,
+  UsernameScreen,
   HomeScreen,
   ArenasScreen,
   LeaderboardScreen,
@@ -64,6 +65,16 @@ export default function App() {
       <View style={s.root}>
         <StatusBar style="light" />
         <LoginScreen state={state} actions={actions} />
+      </View>
+    );
+  }
+
+  // Signed in but no username yet → one-time username creation, before anything else.
+  if (!state.profile.usernameSet) {
+    return (
+      <View style={s.root}>
+        <StatusBar style="light" />
+        <UsernameScreen state={state} actions={actions} />
       </View>
     );
   }

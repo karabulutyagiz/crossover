@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS users (
   google_sub     TEXT UNIQUE,              -- Google account subject id
   facebook_sub   TEXT UNIQUE,              -- Facebook (Limited Login) subject id
   email          TEXT,                     -- from the auth provider (may be null/private)
+  username_set   BOOLEAN NOT NULL DEFAULT false, -- has the user chosen their unique username?
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -82,6 +83,11 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS apple_sub TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS facebook_sub TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS username_set BOOLEAN NOT NULL DEFAULT false;
+
+-- Usernames are unique case-insensitively, once chosen.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower
+  ON users (lower(display_name)) WHERE username_set = true;
 
 CREATE INDEX IF NOT EXISTS idx_users_trophies ON users (trophies DESC);
 CREATE INDEX IF NOT EXISTS idx_users_game_center ON users (game_center_id);

@@ -3,7 +3,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomManager } from '../rooms/manager.ts';
 import { BotPlayer } from '../rooms/bot.ts';
 import { listScopes, listNationalities } from '../game/verify.ts';
-import { findOrCreateUser, findOrCreateUserByProvider, getUser, changeDisplayName, buyEmote, getLeaderboard, type UserProfile } from '../game/rank.ts';
+import { findOrCreateUser, findOrCreateUserByProvider, getUser, changeDisplayName, setUsername, buyEmote, getLeaderboard, type UserProfile } from '../game/rank.ts';
 import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
 import type { Room, Transport } from '../rooms/room.ts';
 import type { ClientMsg, ServerMsg } from '../protocol.ts';
@@ -105,6 +105,7 @@ export function startServer(port: number): Server {
               wins: profile.wins,
               losses: profile.losses,
               ownedEmotes: profile.ownedEmotes,
+              usernameSet: profile.usernameSet,
               arena: profile.arena,
             },
           });
@@ -142,6 +143,7 @@ export function startServer(port: number): Server {
                 wins: profile.wins,
                 losses: profile.losses,
                 ownedEmotes: profile.ownedEmotes,
+                usernameSet: profile.usernameSet,
                 arena: profile.arena,
               },
             });
@@ -169,6 +171,32 @@ export function startServer(port: number): Server {
               wins: result.profile.wins,
               losses: result.profile.losses,
               ownedEmotes: result.profile.ownedEmotes,
+              usernameSet: result.profile.usernameSet,
+              arena: result.profile.arena,
+            },
+          });
+        })();
+        return;
+      }
+
+      // One-time unique username pick after sign-in.
+      if (msg.type === 'set_username') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          const result = await setUsername(userProfile!.id, msg.username);
+          if (!result.ok) return transport.send({ type: 'error', message: result.error });
+          userProfile = result.profile;
+          transport.send({
+            type: 'profile',
+            profile: {
+              userId: result.profile.id,
+              displayName: result.profile.displayName,
+              trophies: result.profile.trophies,
+              diamonds: result.profile.diamonds,
+              wins: result.profile.wins,
+              losses: result.profile.losses,
+              ownedEmotes: result.profile.ownedEmotes,
+              usernameSet: result.profile.usernameSet,
               arena: result.profile.arena,
             },
           });
@@ -194,6 +222,7 @@ export function startServer(port: number): Server {
               wins: result.profile.wins,
               losses: result.profile.losses,
               ownedEmotes: result.profile.ownedEmotes,
+              usernameSet: result.profile.usernameSet,
               arena: result.profile.arena,
             },
           });

@@ -1,5 +1,6 @@
 import { pool } from '../db/pool.ts';
 import { emotePrice, isFreeEmote } from './emotes.ts';
+import { validateUsername } from './username.ts';
 
 // ---- Trophy arenas (Clash Royale style) ----
 export interface Arena {
@@ -53,6 +54,7 @@ export interface UserProfile {
   wins: number;
   losses: number;
   ownedEmotes: string[];
+  usernameSet: boolean;
   arena: Arena;
 }
 
@@ -98,6 +100,33 @@ export async function findOrCreateUserByProvider(
     [displayName.trim() || 'Oyuncu', sub, email],
   );
   return toProfile(rows[0]!);
+}
+
+// One-time username pick after sign-in. Validates format + profanity, enforces
+// case-insensitive uniqueness, then sets display_name and marks username_set.
+export async function setUsername(
+  userId: string,
+  username: string,
+): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
+  const v = validateUsername(username);
+  if (!v.ok) return { ok: false, error: v.error ?? 'Geçersiz kullanıcı adı' };
+  const name = username.trim();
+  const taken = await pool.query(
+    `SELECT 1 FROM users WHERE lower(display_name) = lower($1) AND username_set = true AND id <> $2 LIMIT 1`,
+    [name, userId],
+  );
+  if (taken.rows[0]) return { ok: false, error: 'Bu kullanıcı adı alınmış' };
+  try {
+    const { rows } = await pool.query<DbUser>(
+      `UPDATE users SET display_name = $2, username_set = true WHERE id = $1 RETURNING *`,
+      [userId, name],
+    );
+    if (!rows[0]) return { ok: false, error: 'Kullanıcı bulunamadı' };
+    return { ok: true, profile: toProfile(rows[0]) };
+  } catch {
+    // unique index race → someone took it a moment ago
+    return { ok: false, error: 'Bu kullanıcı adı alınmış' };
+  }
 }
 
 export async function getUser(userId: string): Promise<UserProfile | null> {
@@ -232,6 +261,7 @@ interface DbUser {
   wins: number;
   losses: number;
   owned_emotes: string[] | null;
+  username_set: boolean | null;
   created_at: string;
 }
 
@@ -245,6 +275,7 @@ function toProfile(row: DbUser): UserProfile {
     wins: row.wins,
     losses: row.losses,
     ownedEmotes: row.owned_emotes ?? [],
+    usernameSet: row.username_set ?? false,
     arena: getArena(row.trophies),
   };
 }

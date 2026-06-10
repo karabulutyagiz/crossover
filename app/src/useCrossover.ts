@@ -332,6 +332,13 @@ export function useCrossover() {
       }
     },
     changeName: (newName: string) => send({ type: 'change_name', newName }),
+    setUsername: (username: string) => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        send({ type: 'set_username', username });
+      } else {
+        connectAndSend({ type: 'set_username', username });
+      }
+    },
     findMatch: (options?: GameOptions) =>
       // Carry the registered name + account id: this fresh socket hasn't sent
       // `register`, so without them the player would be a nameless "Oyuncu" with

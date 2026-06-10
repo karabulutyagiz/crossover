@@ -35,6 +35,7 @@ import {
 type Actions = {
   register: (name: string, gameCenterId?: string) => void;
   authWith: (provider: 'apple' | 'google' | 'facebook', token: string, name?: string) => void;
+  setUsername: (username: string) => void;
   changeName: (newName: string) => void;
   openArenas: () => void;
   closeArenas: () => void;
@@ -367,6 +368,48 @@ export function LoginScreen({ state, actions }: Props) {
 
         {state.error ? <Text style={styles.error}>{state.error}</Text> : null}
         <Text style={[styles.muted, { marginTop: 12 }]}>{t('login.hint')}</Text>
+      </View>
+    </Screen>
+  );
+}
+
+// One-time unique username pick, shown after sign-in before anything else.
+export function UsernameScreen({ state, actions }: Props) {
+  const [name, setName] = useState('');
+  const trimmed = name.trim();
+  const valid =
+    trimmed.length >= 3 &&
+    trimmed.length <= 16 &&
+    /^[A-Za-z0-9_çğıöşüÇĞİÖŞÜ]+$/.test(trimmed);
+  return (
+    <Screen>
+      <View style={{ flex: 1, justifyContent: 'center', gap: 12 }}>
+        <View style={styles.center}>
+          <Ionicons name="person-circle-outline" size={56} color={theme.primary} />
+          <Text style={styles.h1}>{t('username.title')}</Text>
+          <Text style={styles.muted}>{t('username.subtitle')}</Text>
+        </View>
+        <TextInput
+          placeholder={t('username.placeholder')}
+          placeholderTextColor={theme.muted}
+          keyboardAppearance="light"
+          value={name}
+          onChangeText={setName}
+          autoCapitalize="none"
+          autoCorrect={false}
+          maxLength={16}
+          style={styles.input}
+          autoFocus
+        />
+        <Text style={[styles.muted, { fontSize: 11 }]}>{t('username.rules')}</Text>
+        <Btn
+          label={t('username.create')}
+          icon="checkmark"
+          kind="primary"
+          onPress={() => actions.setUsername(trimmed)}
+          disabled={!valid}
+        />
+        {state.error ? <Text style={styles.error}>{state.error}</Text> : null}
       </View>
     </Screen>
   );

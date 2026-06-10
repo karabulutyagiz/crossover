@@ -45,6 +45,7 @@ export interface ProfileView {
   wins: number;
   losses: number;
   ownedEmotes: string[];
+  usernameSet: boolean;
   arena: ArenaView;
 }
 
@@ -74,6 +75,7 @@ export type ClientMsg =
   | { type: 'register'; name: string; gameCenterId?: string; userId?: string }
   | { type: 'auth'; provider: 'apple' | 'google' | 'facebook'; token: string; name?: string }
   | { type: 'change_name'; newName: string }
+  | { type: 'set_username'; username: string } // one-time unique username after sign-in
   | { type: 'find_match'; name?: string; userId?: string; options?: GameOptions } // ranked matchmaking
   | { type: 'start' }
   | { type: 'pick_team'; clubId: number }
