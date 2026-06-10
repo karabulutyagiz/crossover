@@ -63,48 +63,44 @@ async function verifyJwt(
   return payload;
 }
 
-// aud for Apple native sign-in is the app's bundle identifier.
-const APPLE_AUD = (process.env.APPLE_BUNDLE_ID ?? 'com.crossover.football')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+// Read allowed audiences LAZILY (inside the verify calls), not at module load:
+// dotenv may not have populated process.env yet when this module is first
+// imported, which would otherwise leave GOOGLE_CLIENT_IDS empty forever.
+const splitEnv = (v: string | undefined) =>
+  (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
-// aud for Google is the OAuth client id(s) the token was minted for (iOS client
-// id, and/or web client id). Comma-separated in GOOGLE_CLIENT_IDS.
-const GOOGLE_AUD = (process.env.GOOGLE_CLIENT_IDS ?? '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+// aud for Apple native sign-in is the app's bundle identifier.
+const appleAud = () => splitEnv(process.env.APPLE_BUNDLE_ID || 'com.crossover.football');
+// aud for Google: the OAuth client id(s) the token was minted for (iOS + web).
+const googleAud = () => splitEnv(process.env.GOOGLE_CLIENT_IDS);
+// aud for Facebook Limited Login: the Facebook App ID.
+const facebookAud = () => splitEnv(process.env.FACEBOOK_APP_ID);
 
 export async function verifyAppleToken(idToken: string): Promise<VerifiedToken> {
   const payload = await verifyJwt(idToken, 'https://appleid.apple.com/auth/keys', {
     iss: ['https://appleid.apple.com'],
-    aud: APPLE_AUD,
+    aud: appleAud(),
   });
   return { sub: String(payload.sub), email: payload.email };
 }
 
 export async function verifyGoogleToken(idToken: string): Promise<VerifiedToken> {
-  if (GOOGLE_AUD.length === 0) throw new Error('GOOGLE_CLIENT_IDS env not configured');
+  const aud = googleAud();
+  if (aud.length === 0) throw new Error('GOOGLE_CLIENT_IDS env not configured');
   const payload = await verifyJwt(idToken, 'https://www.googleapis.com/oauth2/v3/certs', {
     iss: ['accounts.google.com', 'https://accounts.google.com'],
-    aud: GOOGLE_AUD,
+    aud,
   });
   return { sub: String(payload.sub), email: payload.email, name: payload.name };
 }
 
-// aud for Facebook Limited Login is the Facebook App ID.
-const FACEBOOK_AUD = (process.env.FACEBOOK_APP_ID ?? '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
-
 export async function verifyFacebookToken(idToken: string): Promise<VerifiedToken> {
-  if (FACEBOOK_AUD.length === 0) throw new Error('FACEBOOK_APP_ID env not configured');
+  const aud = facebookAud();
+  if (aud.length === 0) throw new Error('FACEBOOK_APP_ID env not configured');
   // Facebook "Limited Login" issues an OIDC JWT verifiable via its JWKS.
   const payload = await verifyJwt(idToken, 'https://limited.facebook.com/.well-known/oauth/openid/jwks/', {
     iss: ['https://www.facebook.com', 'https://facebook.com'],
-    aud: FACEBOOK_AUD,
+    aud,
   });
   return { sub: String(payload.sub), email: payload.email, name: payload.name };
 }

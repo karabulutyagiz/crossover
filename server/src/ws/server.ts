@@ -146,6 +146,7 @@ export function startServer(port: number): Server {
               },
             });
           } catch (err) {
+            console.error(`[auth:${msg.provider}] verify failed:`, err instanceof Error ? err.message : err);
             transport.send({ type: 'error', message: 'Giriş doğrulanamadı' });
           }
         })();
