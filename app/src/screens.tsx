@@ -116,7 +116,18 @@ function Btn({
 }
 
 function Screen({ children }: { children: ReactNode }) {
-  return <View style={styles.screen}>{children}</View>;
+  // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
+  // behavior 'padding' lifts content above the keyboard; the 44px offset matches
+  // the app root's top padding so the avoided height is computed correctly.
+  return (
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 44 : 0}
+    >
+      {children}
+    </KeyboardAvoidingView>
+  );
 }
 
 // ---- Emotes (Clash-Royale-style in-match reactions) ----
@@ -350,7 +361,6 @@ export function LoginScreen({ state, actions }: Props) {
 
   return (
     <Screen>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={40}>
       <View style={{ flex: 1, justifyContent: 'center', gap: 12 }}>
         <View style={styles.center}>
           <Ionicons name="football" size={56} color={theme.primary} />
@@ -375,7 +385,6 @@ export function LoginScreen({ state, actions }: Props) {
         {state.error ? <Text style={styles.error}>{state.error}</Text> : null}
         <Text style={[styles.muted, { marginTop: 12 }]}>{t('login.hint')}</Text>
       </View>
-      </KeyboardAvoidingView>
     </Screen>
   );
 }
@@ -390,7 +399,6 @@ export function UsernameScreen({ state, actions }: Props) {
     /^[A-Za-z0-9_çğıöşüÇĞİÖŞÜ]+$/.test(trimmed);
   return (
     <Screen>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={40}>
       <View style={{ flex: 1, justifyContent: 'center', gap: 12 }}>
         <View style={styles.center}>
           <Ionicons name="person-circle-outline" size={56} color={theme.primary} />
@@ -419,7 +427,6 @@ export function UsernameScreen({ state, actions }: Props) {
         />
         {state.error ? <Text style={styles.error}>{state.error}</Text> : null}
       </View>
-      </KeyboardAvoidingView>
     </Screen>
   );
 }
