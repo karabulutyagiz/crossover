@@ -60,6 +60,9 @@ type Actions = {
   declineRematch: () => void;
   sendEmote: (emoteId: string) => void;
   buyEmote: (emoteId: string) => void;
+  loadFriends: () => void;
+  addFriend: (code: string) => Promise<{ ok: boolean; error?: string }>;
+  removeFriend: (friendId: string) => Promise<void>;
   leave: () => void;
 };
 
@@ -1277,10 +1280,33 @@ export function StoreScreen({ state, actions }: Props) {
 }
 
 // ---- Friends ----
-export function FriendsScreen({ state }: Props) {
+export function FriendsScreen({ state, actions }: Props) {
   const [friendCode, setFriendCode] = useState('');
   const [copied, setCopied] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [adding, setAdding] = useState(false);
   const profile = state.profile;
+  const friends = state.friends;
+
+  // Refresh the friends list whenever we have an account.
+  useEffect(() => {
+    if (profile?.userId) actions.loadFriends();
+  }, [profile?.userId]);
+
+  const onAdd = async () => {
+    const code = friendCode.trim();
+    if (code.length < 3 || adding) return;
+    setAdding(true);
+    const r = await actions.addFriend(code);
+    setAdding(false);
+    if (r.ok) {
+      setFriendCode('');
+      setMsg({ ok: true, text: t('friends.added') });
+    } else {
+      setMsg({ ok: false, text: r.error ?? '' });
+    }
+    setTimeout(() => setMsg(null), 2500);
+  };
 
   return (
     <Screen>
@@ -1319,23 +1345,53 @@ export function FriendsScreen({ state }: Props) {
             <TextInput
               placeholder={t('friends.enterCode')}
               placeholderTextColor={theme.muted}
-          keyboardAppearance="dark"
+              keyboardAppearance="dark"
               value={friendCode}
               onChangeText={setFriendCode}
               autoCapitalize="characters"
+              autoCorrect={false}
+              onSubmitEditing={onAdd}
               style={styles.friendInput}
             />
           </View>
         </View>
-        <Btn label={t('friends.add')} icon="person-add" kind="primary" onPress={() => {}} disabled={friendCode.trim().length < 4} />
+        <Btn label={t('friends.add')} icon="person-add" kind="primary" onPress={onAdd} disabled={friendCode.trim().length < 3 || adding} />
+        {msg ? (
+          <Text style={{ color: msg.ok ? theme.primary : '#ff6b6b', textAlign: 'center', marginTop: 8, fontWeight: '600', fontSize: 13 }}>
+            {msg.text}
+          </Text>
+        ) : null}
 
         {/* Friends list */}
         <Text style={styles.sectionLabel}>{t('friends.myFriends')}</Text>
-        <View style={styles.friendEmpty}>
-          <Ionicons name="people-outline" size={48} color={theme.border} />
-          <Text style={styles.muted}>{t('friends.empty')}</Text>
-          <Text style={[styles.muted, { fontSize: 11 }]}>{t('friends.shareHint')}</Text>
-        </View>
+        {friends.length === 0 ? (
+          <View style={styles.friendEmpty}>
+            <Ionicons name="people-outline" size={48} color={theme.border} />
+            <Text style={styles.muted}>{t('friends.empty')}</Text>
+            <Text style={[styles.muted, { fontSize: 11 }]}>{t('friends.shareHint')}</Text>
+          </View>
+        ) : (
+          friends.map((f) => (
+            <View
+              key={f.userId}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 12,
+                backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 8,
+                borderWidth: 1, borderColor: theme.border,
+              }}
+            >
+              <Ionicons name="person-circle" size={36} color={theme.accent} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>{f.displayName}</Text>
+                <Text style={{ color: theme.muted, fontSize: 11 }}>{f.arena.name}</Text>
+              </View>
+              <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 14 }}>🏆 {f.trophies}</Text>
+              <Pressable onPress={() => actions.removeFriend(f.userId)} hitSlop={8} style={{ marginLeft: 4 }}>
+                <Ionicons name="close-circle" size={20} color={theme.muted} />
+              </Pressable>
+            </View>
+          ))
+        )}
       </ScrollView>
     </Screen>
   );

@@ -95,6 +95,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_apple_sub ON users (apple_sub) WHERE
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users (google_sub) WHERE google_sub IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_facebook_sub ON users (facebook_sub) WHERE facebook_sub IS NOT NULL;
 
+-- ---- Friendships (mutual: a row is stored in both directions on add) ----
+CREATE TABLE IF NOT EXISTS friendships (
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  friend_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, friend_id)
+);
+CREATE INDEX IF NOT EXISTS idx_friendships_user ON friendships (user_id);
+
 -- Bookkeeping for ingest runs.
 CREATE TABLE IF NOT EXISTS ingest_log (
   id          BIGSERIAL PRIMARY KEY,

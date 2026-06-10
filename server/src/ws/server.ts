@@ -3,7 +3,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomManager } from '../rooms/manager.ts';
 import { BotPlayer } from '../rooms/bot.ts';
 import { listScopes, listNationalities } from '../game/verify.ts';
-import { findOrCreateUser, findOrCreateUserByProvider, getUser, changeDisplayName, setUsername, buyEmote, getLeaderboard, type UserProfile } from '../game/rank.ts';
+import { findOrCreateUser, findOrCreateUserByProvider, getUser, changeDisplayName, setUsername, buyEmote, getLeaderboard, addFriend, listFriends, removeFriend, type UserProfile } from '../game/rank.ts';
 import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
 import type { Room, Transport } from '../rooms/room.ts';
 import type { ClientMsg, ServerMsg } from '../protocol.ts';
@@ -67,6 +67,46 @@ export function startServer(port: number): Server {
         });
       return;
     }
+    // ---- Friends (over HTTP — no persistent socket on the Friends screen) ----
+    const path = (req.url ?? '').split('?')[0];
+    const query = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, { ...cors, 'access-control-allow-methods': 'GET,POST', 'access-control-allow-headers': 'content-type' });
+      res.end();
+      return;
+    }
+
+    if (path === '/friends' && req.method === 'GET') {
+      const userId = query.get('userId');
+      if (!userId) { res.writeHead(400, cors); res.end(JSON.stringify({ error: 'userId gerekli' })); return; }
+      listFriends(userId)
+        .then((friends) => { res.writeHead(200, cors); res.end(JSON.stringify({ friends })); })
+        .catch(() => { res.writeHead(500, cors); res.end(JSON.stringify({ friends: [] })); });
+      return;
+    }
+
+    if ((path === '/friends/add' || path === '/friends/remove') && req.method === 'POST') {
+      let body = '';
+      req.on('data', (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+      req.on('end', () => {
+        let p: any = {};
+        try { p = JSON.parse(body || '{}'); } catch { /* ignore */ }
+        const userId = p.userId ? String(p.userId) : '';
+        if (!userId) { res.writeHead(400, cors); res.end(JSON.stringify({ error: 'Önce giriş yap' })); return; }
+        const work = path === '/friends/add'
+          ? addFriend(userId, String(p.code ?? p.name ?? ''))
+          : removeFriend(userId, String(p.friendId ?? '')).then((friends) => ({ ok: true as const, friends }));
+        Promise.resolve(work)
+          .then((r) => {
+            if ('ok' in r && !r.ok) { res.writeHead(400, cors); res.end(JSON.stringify({ error: r.error })); return; }
+            res.writeHead(200, cors); res.end(JSON.stringify({ friends: (r as any).friends }));
+          })
+          .catch(() => { res.writeHead(500, cors); res.end(JSON.stringify({ error: 'Sunucu hatası' })); });
+      });
+      return;
+    }
+
     res.writeHead(404);
     res.end();
   });

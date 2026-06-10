@@ -231,6 +231,86 @@ export async function getLeaderboard(limit = 50): Promise<LeaderboardEntry[]> {
   }));
 }
 
+// ---- Friends ----
+
+export interface FriendView {
+  userId: string;
+  displayName: string;
+  trophies: number;
+  wins: number;
+  losses: number;
+  arena: Arena;
+}
+
+// Resolve a user from what's typed into "Friend Code": either the 8-char code
+// (first 8 chars of the UUID, as shown in the app) or an exact username.
+async function resolveUserByCodeOrName(codeOrName: string): Promise<DbUser | null> {
+  const c = codeOrName.trim();
+  if (!c) return null;
+  // Friend code = first 8 hex chars of the uuid.
+  if (/^[0-9a-fA-F]{8}$/.test(c)) {
+    const byCode = await pool.query<DbUser>(
+      `SELECT * FROM users WHERE left(id::text, 8) = lower($1) LIMIT 2`,
+      [c],
+    );
+    if (byCode.rows.length === 1) return byCode.rows[0]!;
+    if (byCode.rows.length > 1) return null; // ambiguous code → fall through to name fails too
+  }
+  // Otherwise treat it as a username (case-insensitive).
+  const byName = await pool.query<DbUser>(
+    `SELECT * FROM users WHERE lower(display_name) = lower($1) AND username_set = true LIMIT 1`,
+    [c],
+  );
+  return byName.rows[0] ?? null;
+}
+
+export async function listFriends(userId: string): Promise<FriendView[]> {
+  const { rows } = await pool.query<DbUser>(
+    `SELECT u.* FROM friendships f
+       JOIN users u ON u.id = f.friend_id
+      WHERE f.user_id = $1
+      ORDER BY u.trophies DESC, u.display_name ASC`,
+    [userId],
+  );
+  return rows.map((r) => ({
+    userId: r.id,
+    displayName: r.display_name,
+    trophies: r.trophies,
+    wins: r.wins,
+    losses: Number(r.losses),
+    arena: getArena(r.trophies),
+  }));
+}
+
+export async function addFriend(
+  userId: string,
+  codeOrName: string,
+): Promise<{ ok: true; friends: FriendView[] } | { ok: false; error: string }> {
+  if (!userId) return { ok: false, error: 'Önce giriş yap' };
+  const me = await pool.query('SELECT 1 FROM users WHERE id = $1', [userId]);
+  if (!me.rows[0]) return { ok: false, error: 'Önce giriş yap' };
+
+  const target = await resolveUserByCodeOrName(codeOrName);
+  if (!target) return { ok: false, error: 'Kullanıcı bulunamadı' };
+  if (target.id === userId) return { ok: false, error: 'Kendini ekleyemezsin' };
+
+  // Mutual friendship: store both directions so each sees the other.
+  await pool.query(
+    `INSERT INTO friendships (user_id, friend_id) VALUES ($1, $2), ($2, $1)
+     ON CONFLICT DO NOTHING`,
+    [userId, target.id],
+  );
+  return { ok: true, friends: await listFriends(userId) };
+}
+
+export async function removeFriend(userId: string, friendId: string): Promise<FriendView[]> {
+  await pool.query(
+    `DELETE FROM friendships WHERE (user_id = $1 AND friend_id = $2) OR (user_id = $2 AND friend_id = $1)`,
+    [userId, friendId],
+  );
+  return listFriends(userId);
+}
+
 // ---- Matchmaking ----
 
 export async function findMatch(

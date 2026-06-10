@@ -27,6 +27,15 @@ export interface LeaderboardEntry {
   arena: { name: string; icon: string; minTrophies: number };
 }
 
+export interface FriendInfo {
+  userId: string;
+  displayName: string;
+  trophies: number;
+  wins: number;
+  losses: number;
+  arena: { name: string; icon: string; minTrophies: number };
+}
+
 export interface GameState {
   connected: boolean;
   phase: Phase;
@@ -44,6 +53,7 @@ export interface GameState {
   profile: ProfileView | null;
   trophyDelta: { trophies: number; delta: number; arena: ArenaView } | null;
   leaderboard: LeaderboardEntry[];
+  friends: FriendInfo[];
   // match (first to `winTarget` round wins) + rematch flow
   matchOver: boolean;
   matchWinnerId: string | null;
@@ -82,6 +92,7 @@ const initialState: GameState = {
   profile: null,
   trophyDelta: null,
   leaderboard: [],
+  friends: [],
   matchOver: false,
   matchWinnerId: null,
   matchWinnerName: null,
@@ -110,6 +121,7 @@ type Action =
   | { type: '_leaderboard'; entries: LeaderboardEntry[] }
   | { type: '_phase'; phase: Phase }
   | { type: '_load_profile'; profile: ProfileView }
+  | { type: '_friends'; friends: FriendInfo[] }
   | { type: '_ready' };
 
 function reducer(state: GameState, action: Action): GameState {
@@ -117,7 +129,7 @@ function reducer(state: GameState, action: Action): GameState {
     case '_connected':
       return { ...state, connected: action.value };
     case '_reset':
-      return { ...initialState, scopes: state.scopes, profile: state.profile };
+      return { ...initialState, scopes: state.scopes, profile: state.profile, friends: state.friends };
     case '_picked':
       return { ...state, picked: true };
     case '_scopes':
@@ -128,6 +140,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, phase: action.phase };
     case '_load_profile':
       return { ...state, profile: action.profile };
+    case '_friends':
+      return { ...state, friends: action.friends };
     case '_ready':
       return { ...state, iReady: true };
 
@@ -380,6 +394,45 @@ export function useCrossover() {
     declineRematch: () => send({ type: 'rematch_response', accept: false }),
     sendEmote: (emoteId: string) => send({ type: 'send_emote', emoteId }),
     buyEmote: (emoteId: string) => send({ type: 'buy_emote', emoteId }),
+    // Friends — over HTTP (no persistent socket on the Friends screen).
+    loadFriends: () => {
+      const userId = state.profile?.userId;
+      if (!userId) return;
+      fetch(`${HTTP_URL}/friends?userId=${encodeURIComponent(userId)}`)
+        .then((r) => r.json())
+        .then((d: { friends?: FriendInfo[] }) => dispatch({ type: '_friends', friends: d.friends ?? [] }))
+        .catch(() => {});
+    },
+    addFriend: async (code: string): Promise<{ ok: boolean; error?: string }> => {
+      const userId = state.profile?.userId;
+      if (!userId) return { ok: false, error: t('friends.loginFirst') };
+      try {
+        const r = await fetch(`${HTTP_URL}/friends/add`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ userId, code: code.trim() }),
+        });
+        const d = await r.json();
+        if (!r.ok) return { ok: false, error: d?.error ?? t('error.connect') };
+        dispatch({ type: '_friends', friends: d.friends ?? [] });
+        return { ok: true };
+      } catch {
+        return { ok: false, error: t('error.connect') };
+      }
+    },
+    removeFriend: async (friendId: string) => {
+      const userId = state.profile?.userId;
+      if (!userId) return;
+      try {
+        const r = await fetch(`${HTTP_URL}/friends/remove`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ userId, friendId }),
+        });
+        const d = await r.json();
+        if (r.ok) dispatch({ type: '_friends', friends: d.friends ?? [] });
+      } catch {}
+    },
     leave: () => {
       wsRef.current?.close();
       wsRef.current = null;

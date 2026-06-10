@@ -181,6 +181,9 @@ const tr = {
   'friends.myFriends': 'ARKADAŞLARIM',
   'friends.empty': 'Henüz arkadaşın yok',
   'friends.shareHint': 'Kodunu paylaşarak arkadaş ekle',
+  'friends.added': 'Arkadaş eklendi! ✓',
+  'friends.loginFirst': 'Önce giriş yap',
+  'friends.remove': 'Çıkar',
 
   // emote picker
   'emote.send': 'İfade Gönder',
@@ -364,6 +367,9 @@ const en: typeof tr = {
   'friends.myFriends': 'MY FRIENDS',
   'friends.empty': 'No friends yet',
   'friends.shareHint': 'Share your code to add friends',
+  'friends.added': 'Friend added! ✓',
+  'friends.loginFirst': 'Sign in first',
+  'friends.remove': 'Remove',
 
   'emote.send': 'Send Emote',
   'emote.moreInStore': 'Check the Store for more emotes',
