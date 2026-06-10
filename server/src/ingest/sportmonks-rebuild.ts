@@ -147,8 +147,9 @@ async function run(): Promise<void> {
   }
   await setup();
 
-  let url = await getState('cursor');
-  if (!url) url = `/players?include=statistics.team;statistics.season&per_page=25`;
+  let url: string =
+    (await getState('cursor')) ??
+    `/players?include=statistics.team;statistics.season&per_page=25`;
   let kept = Number((await getState('kept')) ?? 0);
   let seen = Number((await getState('seen')) ?? 0);
 
