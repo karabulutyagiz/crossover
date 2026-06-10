@@ -32,6 +32,7 @@ import {
   getEmote,
   ownsEmote,
 } from './emotes';
+import { NATIONALITIES } from './nationalities';
 
 type Actions = {
   register: (name: string, gameCenterId?: string) => void;
@@ -657,6 +658,8 @@ function PickerModal({
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
                       {picker === 'league' && o.logoUrl ? (
                         <Image source={{ uri: o.logoUrl }} style={{ width: 24, height: 24 }} resizeMode="contain" />
+                      ) : picker === 'country' && o.logoUrl ? (
+                        <Text style={{ fontSize: 20 }}>{o.logoUrl}</Text>
                       ) : picker === 'country' ? (
                         <Ionicons name="flag" size={18} color={theme.muted} />
                       ) : null}
@@ -817,10 +820,12 @@ export function PickTeamScreen({ state, actions }: Props) {
 
   // ---- Country picker ----
   if (role === 'country') {
-    const nationalities = state.scopes?.nationalities ?? [];
     const filtered = countryQ.trim()
-      ? nationalities.filter((n) => n.value.toLowerCase().includes(countryQ.toLowerCase()))
-      : nationalities;
+      ? NATIONALITIES.filter((n) =>
+          n.displayName.toLowerCase().includes(countryQ.toLowerCase()) ||
+          n.value.toLowerCase().includes(countryQ.toLowerCase()),
+        )
+      : NATIONALITIES;
     return (
       <Screen>
         <View style={{ alignItems: 'center', marginBottom: 8 }}>
@@ -842,13 +847,12 @@ export function PickTeamScreen({ state, actions }: Props) {
         <ScrollView style={{ alignSelf: 'stretch' }} keyboardShouldPersistTaps="handled">
           {filtered.map((n) => (
             <Pressable key={n.value} style={styles.clubRow} onPress={() => actions.pickCountry(n.value)}>
-              <Ionicons name="flag" size={24} color={theme.accent} />
-              <Text style={styles.clubText} numberOfLines={1}>{n.value}</Text>
-              <Text style={styles.muted}>{n.count}</Text>
+              <Text style={{ fontSize: 24 }}>{n.flag}</Text>
+              <Text style={styles.clubText} numberOfLines={1}>{n.displayName}</Text>
+              <Ionicons name="chevron-forward" size={18} color={theme.muted} />
             </Pressable>
           ))}
           {filtered.length === 0 && countryQ.trim() ? <Text style={styles.muted}>{t('common.noResults')}</Text> : null}
-          {nationalities.length === 0 ? <Text style={styles.muted}>{t('common.loading')}</Text> : null}
         </ScrollView>
         <EmoteLayer state={state} actions={actions} fab="top-right" />
       </Screen>
@@ -912,14 +916,16 @@ export function GuessScreen({ state, actions }: Props) {
       <View style={styles.teamsRow}>
         <View style={styles.teamCard}>
           {state.revealMode === 'country-team' ? (
-            <Ionicons name="flag" size={44} color={theme.accent} />
+            <Text style={{ fontSize: 40 }}>{NATIONALITIES.find((n) => n.value === state.revealCountry)?.flag ?? '🏳️'}</Text>
           ) : state.revealMode === 'letter-team' ? (
             <Text style={{ color: theme.accent, fontSize: 36, fontWeight: '900' }}>{teams?.teamA.name ?? '?'}</Text>
           ) : (
             <ClubBadge name={teams?.teamA.name ?? '?'} size={44} logoUrl={teams?.teamA.logoUrl ?? null} />
           )}
           <Text style={styles.teamName} numberOfLines={2}>
-            {teams?.teamA.name ?? '…'}
+            {state.revealMode === 'country-team'
+              ? NATIONALITIES.find((n) => n.value === state.revealCountry)?.displayName ?? teams?.teamA.name ?? '…'
+              : teams?.teamA.name ?? '…'}
           </Text>
         </View>
         <Ionicons name="add" size={26} color={theme.accent} />
@@ -945,7 +951,7 @@ export function GuessScreen({ state, actions }: Props) {
             <>
               <Text style={styles.h1}>
                 {state.revealMode === 'country-team' && state.revealCountry && teams?.teamB
-                  ? t('guess.titleCountry', { country: state.revealCountry, team: teams.teamB.name })
+                  ? t('guess.titleCountry', { country: NATIONALITIES.find((n) => n.value === state.revealCountry)?.displayName ?? state.revealCountry, team: teams.teamB.name })
                   : state.revealMode === 'letter-team' && state.revealLetter && teams?.teamB
                   ? t('guess.titleLetter', { letter: state.revealLetter, team: teams.teamB.name })
                   : t('guess.title')}
@@ -1273,6 +1279,7 @@ export function StoreScreen({ state, actions }: Props) {
 // ---- Friends ----
 export function FriendsScreen({ state }: Props) {
   const [friendCode, setFriendCode] = useState('');
+  const [copied, setCopied] = useState(false);
   const profile = state.profile;
 
   return (
@@ -1293,12 +1300,17 @@ export function FriendsScreen({ state }: Props) {
               <Pressable
                 onPress={() => {
                   const code = profile?.userId?.slice(0, 8).toUpperCase();
-                  if (code) Clipboard.setStringAsync(code);
+                  if (code) {
+                    Clipboard.setStringAsync(code);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }
                 }}
                 hitSlop={8}
               >
-                <Ionicons name="copy-outline" size={18} color={theme.accent} />
+                <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={18} color={copied ? theme.primary : theme.accent} />
               </Pressable>
+              {copied ? <Text style={{ color: theme.primary, fontSize: 10, fontWeight: '600' }}>{t('copied')}</Text> : null}
             </View>
           </View>
           <View style={styles.friendDivider} />
@@ -1632,7 +1644,11 @@ export function ResultScreen({ state, actions }: Props) {
           {r.reason === 'same_team' ? (
             <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.sameTeam')}</Text>
           ) : r.reason === 'no_common' ? (
-            <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.noCommon')}</Text>
+            <Text style={[styles.muted, { marginTop: 2 }]}>
+              {state.revealMode === 'country-team' ? t('result.noCommonCountry')
+                : state.revealMode === 'letter-team' ? t('result.noCommonLetter')
+                : t('result.noCommon')}
+            </Text>
           ) : null}
           {r.matchedPlayerImageUrl ? (
             <Image source={{ uri: r.matchedPlayerImageUrl }} style={styles.playerPhoto} />
@@ -1672,43 +1688,56 @@ export function ResultScreen({ state, actions }: Props) {
               </>
             ) : null}
 
-            {!r.correct ? (
-              <>
-                <Text style={styles.sectionLabel}>{t('result.commonPlayers')}</Text>
-                {r.commonPlayers && r.commonPlayers.length > 0 ? (
-                  r.commonPlayers.map((cp, i) => (
-                    <View key={i} style={styles.commonRow}>
-                      {cp.imageUrl ? (
-                        <Image source={{ uri: cp.imageUrl }} style={styles.commonPhoto} resizeMode="cover" />
-                      ) : (
-                        <View style={[styles.commonPhoto, { backgroundColor: badgeColor(cp.name), alignItems: 'center', justifyContent: 'center' }]}>
-                          <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>{initial(cp.name)}</Text>
-                        </View>
-                      )}
-                      <Text style={styles.commonName}>{cp.name}</Text>
+            {(() => {
+              const countryName = state.revealCountry
+                ? NATIONALITIES.find((n) => n.value === state.revealCountry)?.displayName ?? state.revealCountry
+                : '';
+              const teamName = r.teamB.name;
+              const letterVal = state.revealLetter ?? '';
+              const commonLabel =
+                state.revealMode === 'country-team' ? t('result.commonPlayersCountry', { country: countryName, team: teamName })
+                : state.revealMode === 'letter-team' ? t('result.commonPlayersLetter', { letter: letterVal, team: teamName })
+                : t('result.commonPlayers');
+              const otherLabel =
+                state.revealMode === 'country-team' ? t('result.otherCommonCountry', { country: countryName })
+                : state.revealMode === 'letter-team' ? t('result.otherCommonLetter', { letter: letterVal })
+                : t('result.otherCommon');
+              const emptyLabel =
+                state.revealMode === 'country-team' ? t('result.noCommonFoundCountry')
+                : state.revealMode === 'letter-team' ? t('result.noCommonFoundLetter')
+                : t('result.noCommonFound');
+              const renderList = (list: typeof r.commonPlayers) => list.map((cp, i) => (
+                <View key={i} style={styles.commonRow}>
+                  {cp.imageUrl ? (
+                    <Image source={{ uri: cp.imageUrl }} style={styles.commonPhoto} resizeMode="cover" />
+                  ) : (
+                    <View style={[styles.commonPhoto, { backgroundColor: badgeColor(cp.name), alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>{initial(cp.name)}</Text>
                     </View>
-                  ))
-                ) : (
-                  <Text style={[styles.muted, { marginTop: 6 }]}>{t('result.noCommonFound')}</Text>
-                )}
-              </>
-            ) : r.commonPlayers && r.commonPlayers.length > 1 ? (
-              <>
-                <Text style={styles.sectionLabel}>{t('result.otherCommon')}</Text>
-                {r.commonPlayers.filter((cp) => cp.name !== r.matchedPlayerName).map((cp, i) => (
-                  <View key={i} style={styles.commonRow}>
-                    {cp.imageUrl ? (
-                      <Image source={{ uri: cp.imageUrl }} style={styles.commonPhoto} resizeMode="cover" />
-                    ) : (
-                      <View style={[styles.commonPhoto, { backgroundColor: badgeColor(cp.name), alignItems: 'center', justifyContent: 'center' }]}>
-                        <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>{initial(cp.name)}</Text>
-                      </View>
-                    )}
-                    <Text style={styles.commonName}>{cp.name}</Text>
-                  </View>
-                ))}
-              </>
-            ) : null}
+                  )}
+                  <Text style={styles.commonName}>{cp.name}</Text>
+                </View>
+              ));
+              if (!r.correct) {
+                return (
+                  <>
+                    <Text style={styles.sectionLabel}>{commonLabel}</Text>
+                    {r.commonPlayers && r.commonPlayers.length > 0
+                      ? renderList(r.commonPlayers)
+                      : <Text style={[styles.muted, { marginTop: 6 }]}>{emptyLabel}</Text>}
+                  </>
+                );
+              }
+              if (r.commonPlayers && r.commonPlayers.length > 1) {
+                return (
+                  <>
+                    <Text style={styles.sectionLabel}>{otherLabel}</Text>
+                    {renderList(r.commonPlayers.filter((cp) => cp.name !== r.matchedPlayerName))}
+                  </>
+                );
+              }
+              return null;
+            })()}
           </>
         ) : null}
 

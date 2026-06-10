@@ -551,10 +551,21 @@ export class Room {
     this.broadcastState();
 
     if (!this.matchOver) {
-      const t = setTimeout(() => {
-        if (this.status === 'result' && !this.matchOver) this.beginCountdown();
-      }, INTER_ROUND_MS);
-      this.timers.push(t);
+      // Ready system: wait for both players to press "ready", then advance.
+      // After 10s voluntary period, start a 10s forced countdown.
+      this.readyPlayers = new Set();
+      this.broadcast({ type: 'waiting_ready' });
+      const t1 = setTimeout(() => {
+        if (this.status !== 'result' || this.matchOver) return;
+        if (this.readyPlayers.size >= this.players.size) return; // already advanced
+        const endsAt = Date.now() + 10_000;
+        this.broadcast({ type: 'ready_countdown', endsAt });
+        const t2 = setTimeout(() => {
+          if (this.status === 'result' && !this.matchOver) this.beginCountdown();
+        }, 10_000);
+        this.timers.push(t2);
+      }, 10_000);
+      this.timers.push(t1);
     } else {
       const hasBot = [...this.players.values()].some((p) => p.transport.isBot);
       if (!hasBot) {
