@@ -82,21 +82,36 @@ async function resolveTeamById(smTeamId: number, smTeamName?: string): Promise<n
 }
 
 /**
- * SAFE player matching: requires the player to already have a spell at one of
- * the given clubs. This prevents "Kartal Yılmaz" matching to "Burak Yılmaz".
+ * SAFE player matching that can ALSO add a genuinely missing current club.
+ *
+ * The previous version required the player to already have a spell at the squad's
+ * club — a catch-22 that made it impossible to add the very club that was missing
+ * (e.g. Uğurcan Çakır's Galatasaray spell, the whole reason we run this). Since
+ * Sportmonks gives full names (display_name), we match exact full names directly:
+ *
+ *   1) exact normalized full-name match, UNIQUE  -> trust it (adds missing clubs)
+ *   2) otherwise fuzzy, but only if it overlaps a club we already know for this
+ *      player (prevents "Kartal Yılmaz" -> "Burak Yılmaz"); never guess otherwise.
  */
 async function resolvePlayerSafe(name: string, knownClubIds: number[]): Promise<number | null> {
   const norm = normalize(name);
-  if (!norm || knownClubIds.length === 0) return null;
+  if (!norm) return null;
+
+  const exact = await pool.query<{ id: string }>(
+    `SELECT id FROM players WHERE name_norm = $1 LIMIT 3`,
+    [norm],
+  );
+  if (exact.rows.length === 1) return Number(exact.rows[0]!.id);
+
+  if (knownClubIds.length === 0) return null;
   const { rows } = await pool.query<{ id: string }>(
     `SELECT p.id FROM players p
-      WHERE word_similarity($1, p.name_norm) >= 0.4
+      WHERE word_similarity($1, p.name_norm) >= 0.5
         AND EXISTS (
           SELECT 1 FROM player_clubs pc
           WHERE pc.player_id = p.id AND pc.club_id = ANY($2::bigint[])
         )
-      ORDER BY word_similarity($1, p.name_norm) DESC,
-               (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC
+      ORDER BY word_similarity($1, p.name_norm) DESC
       LIMIT 1`,
     [norm, knownClubIds],
   );
