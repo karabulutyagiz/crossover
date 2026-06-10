@@ -64,14 +64,25 @@ const tr = {
   'lobby.botMatch': 'Bot Maçı',
   'lobby.waitHost': 'Oda sahibinin başlatması bekleniyor…',
 
+  // game modes
+  'mode.teamTeam': 'Takım-Takım',
+  'mode.countryTeam': 'Ülke-Takım',
+  'mode.letterTeam': 'Harf-Takım',
+  'mode.select': 'Mod Seç',
+
   // countdown / pick
   'pick.title': 'Bir takım seç',
+  'pick.titleCountry': 'Bir ülke seç',
+  'pick.titleLetter': 'Bir harf seç',
   'pick.search': 'Takım ara (ör. Galatasaray)',
-  'pick.picked': 'Takımın seçildi. Rakip bekleniyor…',
+  'pick.searchCountry': 'Ülke ara...',
+  'pick.picked': 'Seçimin yapıldı. Rakip bekleniyor…',
   'getReady': 'Hazır ol!',
 
   // guess
   'guess.title': 'Ortak oyuncu kim?',
+  'guess.titleCountry': '{country} ülkesinden {team} takımında oynamış oyuncu kim?',
+  'guess.titleLetter': '{letter} harfiyle başlayan {team} takımında oynamış oyuncu kim?',
   'guess.placeholder': 'Futbolcu adı',
   'guess.send': 'Gönder',
   'guess.locked': '{name} cevaplıyor…',
@@ -230,12 +241,22 @@ const en: typeof tr = {
   'lobby.botMatch': 'Bot Match',
   'lobby.waitHost': 'Waiting for the host to start…',
 
+  'mode.teamTeam': 'Team-Team',
+  'mode.countryTeam': 'Country-Team',
+  'mode.letterTeam': 'Letter-Team',
+  'mode.select': 'Select Mode',
+
   'pick.title': 'Pick a team',
+  'pick.titleCountry': 'Pick a country',
+  'pick.titleLetter': 'Pick a letter',
   'pick.search': 'Search team (e.g. Galatasaray)',
-  'pick.picked': 'Team picked. Waiting for opponent…',
+  'pick.searchCountry': 'Search country...',
+  'pick.picked': 'Your pick is in. Waiting for opponent…',
   'getReady': 'Get ready!',
 
   'guess.title': 'Who is the shared player?',
+  'guess.titleCountry': 'Name a {country} player who played for {team}',
+  'guess.titleLetter': 'Name a player starting with {letter} who played for {team}',
   'guess.placeholder': 'Type a player name',
   'guess.send': 'Send',
   'guess.locked': '{name} is answering…',

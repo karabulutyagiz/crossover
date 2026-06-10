@@ -13,6 +13,12 @@ export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | '
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
+// Game mode: determines what each player picks and how the guess is verified.
+export type GameMode = 'team-team' | 'country-team' | 'letter-team';
+
+// What a player should pick during the pick phase.
+export type PickRole = 'team' | 'country' | 'letter';
+
 // Which clubs are allowed in a game.
 export type Scope =
   | { type: 'all' }
@@ -22,6 +28,7 @@ export type Scope =
 export interface GameOptions {
   scope?: Scope;
   difficulty?: Difficulty; // bot difficulty (solo only)
+  mode?: GameMode;         // game mode (default: 'team-team')
 }
 
 export interface ArenaView {
@@ -70,6 +77,8 @@ export type ClientMsg =
   | { type: 'find_match'; name?: string; userId?: string; options?: GameOptions } // ranked matchmaking
   | { type: 'start' }
   | { type: 'pick_team'; clubId: number }
+  | { type: 'pick_country'; country: string }  // country-team mode: pick a nationality
+  | { type: 'pick_letter'; letter: string }     // letter-team mode: pick a letter (A-Z)
   | { type: 'submit_guess'; text: string }
   | { type: 'ready' } // ready for next round
   | { type: 'play_again' } // request a rematch after the match ends
@@ -101,9 +110,9 @@ export type ServerMsg =
   | { type: 'profile'; profile: ProfileView }
   | { type: 'name_changed'; profile: ProfileView }
   | { type: 'countdown'; n: number }
-  | { type: 'pick_phase'; endsAt: number }
+  | { type: 'pick_phase'; endsAt: number; pickRole?: PickRole }
   | { type: 'team_picked'; playerId: string }
-  | { type: 'reveal_teams'; teamA: ClubRef; teamB: ClubRef }
+  | { type: 'reveal_teams'; teamA: ClubRef; teamB: ClubRef; mode?: GameMode; country?: string; letter?: string }
   | { type: 'guess_phase'; endsAt: number }
   | { type: 'guess_locked'; byId: string; byName: string }
   // matchOver: a player reached `target` wins → the match is over (offer rematch).

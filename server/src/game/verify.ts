@@ -354,6 +354,236 @@ export async function commonPlayersDetailed(
   return rows.map((r) => ({ name: r.name, imageUrl: r.image_url }));
 }
 
+// ---- Country-Team & Letter-Team helpers ----
+
+/** Players who played for the club AND have the given nationality. */
+export async function commonPlayersCountryTeam(
+  clubId: number,
+  country: string,
+  limit = 5,
+): Promise<CommonPlayerInfo[]> {
+  const { rows } = await pool.query<{ name: string; image_url: string | null }>(
+    `SELECT p.name, p.image_url
+       FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id
+      WHERE pc.club_id = $1 AND p.nationality = $2
+      ORDER BY (p.image_url IS NOT NULL) DESC,
+               (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) DESC
+      LIMIT $3`,
+    [clubId, country, limit],
+  );
+  return rows.map((r) => ({ name: r.name, imageUrl: r.image_url }));
+}
+
+/** Players who played for the club AND whose normalized name starts with the letter. */
+export async function commonPlayersLetterTeam(
+  clubId: number,
+  letter: string,
+  limit = 5,
+): Promise<CommonPlayerInfo[]> {
+  const prefix = letter.toLowerCase();
+  const { rows } = await pool.query<{ name: string; image_url: string | null }>(
+    `SELECT p.name, p.image_url
+       FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id
+      WHERE pc.club_id = $1 AND p.name_norm LIKE $2 || '%'
+      ORDER BY (p.image_url IS NOT NULL) DESC,
+               (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) DESC
+      LIMIT $3`,
+    [clubId, prefix, limit],
+  );
+  return rows.map((r) => ({ name: r.name, imageUrl: r.image_url }));
+}
+
+/** Are there any valid players for a country-team combination? */
+export async function hasPlayersCountryTeam(clubId: number, country: string): Promise<boolean> {
+  const { rows } = await pool.query<{ n: string }>(
+    `SELECT count(*) AS n FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id
+      WHERE pc.club_id = $1 AND p.nationality = $2
+      LIMIT 1`,
+    [clubId, country],
+  );
+  return Number(rows[0]?.n ?? 0) > 0;
+}
+
+/** Are there any valid players for a letter-team combination? */
+export async function hasPlayersLetterTeam(clubId: number, letter: string): Promise<boolean> {
+  const prefix = letter.toLowerCase();
+  const { rows } = await pool.query<{ n: string }>(
+    `SELECT count(*) AS n FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id
+      WHERE pc.club_id = $1 AND p.name_norm LIKE $2 || '%'
+      LIMIT 1`,
+    [clubId, prefix],
+  );
+  return Number(rows[0]?.n ?? 0) > 0;
+}
+
+/**
+ * Verify a guess in country-team mode: the player must have played for the club
+ * AND be of the given nationality.
+ */
+export async function verifyCountryTeamGuess(
+  clubId: number,
+  country: string,
+  guess: string,
+): Promise<VerifyResult> {
+  const club = await getClub(clubId);
+  if (!club) throw new Error('Unknown club id');
+
+  const pseudoCountry: ClubHit = { id: 0, name: country, logoUrl: null };
+  const norm = normalize(guess);
+  const empty: Omit<VerifyResult, 'correct' | 'reason' | 'matchedPlayer'> = {
+    autocorrected: false,
+    teamA: pseudoCountry,
+    teamB: club,
+    spellsA: [],
+    spellsB: [],
+    allClubs: [],
+  };
+  if (!norm) return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
+
+  // Fuzzy candidates among players who played for the club AND have the nationality
+  const { rows: cands } = await pool.query<{ id: string; name: string; sim: number; image_url: string | null }>(
+    `SELECT p.id, p.name, p.image_url, word_similarity($1, p.name_norm) AS sim
+       FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id
+      WHERE pc.club_id = $2
+        AND p.nationality = $3
+        AND word_similarity($1, p.name_norm) >= $4
+      ORDER BY sim DESC,
+               (p.image_url IS NOT NULL) DESC,
+               (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) DESC
+      LIMIT 15`,
+    [norm, clubId, country, config.verifyMatchThreshold],
+  );
+
+  const eligible = cands.map((c) => ({ id: Number(c.id), name: c.name, sim: Number(c.sim), imageUrl: c.image_url }));
+  if (eligible.length === 0) {
+    return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
+  }
+
+  let matched = eligible[0]!;
+  let correct: boolean;
+  let autocorrected = false;
+
+  const exactCluster = eligible.filter((c) => c.sim >= config.verifyExactThreshold);
+  if (exactCluster.length > 0) {
+    matched = exactCluster[0]!;
+    correct = true;
+  } else {
+    matched = eligible[0]!;
+    correct = true;
+    autocorrected = true;
+  }
+
+  const allClubs = await getPlayerSpells(matched.id);
+  const spellsB = allClubs.filter((s) => s.clubId === clubId);
+
+  return {
+    correct,
+    reason: 'both',
+    autocorrected,
+    teamA: pseudoCountry,
+    teamB: club,
+    matchedPlayer: { id: matched.id, name: matched.name, sim: matched.sim, imageUrl: matched.imageUrl },
+    spellsA: [],
+    spellsB,
+    allClubs,
+  };
+}
+
+/**
+ * Verify a guess in letter-team mode: the player must have played for the club
+ * AND their normalized name must start with the given letter.
+ */
+export async function verifyLetterTeamGuess(
+  clubId: number,
+  letter: string,
+  guess: string,
+): Promise<VerifyResult> {
+  const club = await getClub(clubId);
+  if (!club) throw new Error('Unknown club id');
+
+  const prefix = letter.toLowerCase();
+  const pseudoLetter: ClubHit = { id: 0, name: letter.toUpperCase(), logoUrl: null };
+  const norm = normalize(guess);
+  const empty: Omit<VerifyResult, 'correct' | 'reason' | 'matchedPlayer'> = {
+    autocorrected: false,
+    teamA: pseudoLetter,
+    teamB: club,
+    spellsA: [],
+    spellsB: [],
+    allClubs: [],
+  };
+  if (!norm) return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
+
+  // Fuzzy candidates among players who played for the club AND whose name starts with the letter
+  const { rows: cands } = await pool.query<{ id: string; name: string; sim: number; image_url: string | null }>(
+    `SELECT p.id, p.name, p.image_url, word_similarity($1, p.name_norm) AS sim
+       FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id
+      WHERE pc.club_id = $2
+        AND p.name_norm LIKE $3 || '%'
+        AND word_similarity($1, p.name_norm) >= $4
+      ORDER BY sim DESC,
+               (p.image_url IS NOT NULL) DESC,
+               (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) DESC
+      LIMIT 15`,
+    [norm, clubId, prefix, config.verifyMatchThreshold],
+  );
+
+  const eligible = cands.map((c) => ({ id: Number(c.id), name: c.name, sim: Number(c.sim), imageUrl: c.image_url }));
+  if (eligible.length === 0) {
+    return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
+  }
+
+  let matched = eligible[0]!;
+  let correct: boolean;
+  let autocorrected = false;
+
+  const exactCluster = eligible.filter((c) => c.sim >= config.verifyExactThreshold);
+  if (exactCluster.length > 0) {
+    matched = exactCluster[0]!;
+    correct = true;
+  } else {
+    matched = eligible[0]!;
+    correct = true;
+    autocorrected = true;
+  }
+
+  const allClubs = await getPlayerSpells(matched.id);
+  const spellsB = allClubs.filter((s) => s.clubId === clubId);
+
+  return {
+    correct,
+    reason: 'both',
+    autocorrected,
+    teamA: pseudoLetter,
+    teamB: club,
+    matchedPlayer: { id: matched.id, name: matched.name, sim: matched.sim, imageUrl: matched.imageUrl },
+    spellsA: [],
+    spellsB,
+    allClubs,
+  };
+}
+
+/** Available nationalities for the country picker (countries with enough players). */
+export async function listNationalities(minPlayers = 10): Promise<{ value: string; count: number }[]> {
+  const { rows } = await pool.query<{ nationality: string; count: string }>(
+    `SELECT p.nationality, count(DISTINCT p.id) AS count
+       FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id
+      WHERE p.nationality IS NOT NULL
+      GROUP BY p.nationality
+     HAVING count(DISTINCT p.id) >= $1
+      ORDER BY count DESC`,
+    [minPlayers],
+  );
+  return rows.map((r) => ({ value: r.nationality, count: Number(r.count) }));
+}
+
 async function getClub(id: number): Promise<ClubHit | null> {
   const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
     'SELECT id, name, logo_url FROM clubs WHERE id = $1',

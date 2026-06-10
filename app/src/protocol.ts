@@ -21,6 +21,10 @@ export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | '
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
+export type GameMode = 'team-team' | 'country-team' | 'letter-team';
+
+export type PickRole = 'team' | 'country' | 'letter';
+
 export type Scope =
   | { type: 'all' }
   | { type: 'league'; value: string }
@@ -29,6 +33,7 @@ export type Scope =
 export interface GameOptions {
   scope?: Scope;
   difficulty?: Difficulty;
+  mode?: GameMode;
 }
 
 export interface ScopeOption {
@@ -40,6 +45,7 @@ export interface ScopeOption {
 export interface ScopesList {
   leagues: ScopeOption[];
   countries: ScopeOption[];
+  nationalities?: { value: string; count: number }[];
 }
 
 export interface ArenaView {
@@ -104,6 +110,8 @@ export type ClientMsg =
   | { type: 'find_match'; name?: string; userId?: string; options?: GameOptions }
   | { type: 'start' }
   | { type: 'pick_team'; clubId: number }
+  | { type: 'pick_country'; country: string }
+  | { type: 'pick_letter'; letter: string }
   | { type: 'submit_guess'; text: string }
   | { type: 'ready' }
   | { type: 'play_again' }
@@ -117,9 +125,9 @@ export type ServerMsg =
   | { type: 'profile'; profile: ProfileView }
   | { type: 'name_changed'; profile: ProfileView }
   | { type: 'countdown'; n: number }
-  | { type: 'pick_phase'; endsAt: number }
+  | { type: 'pick_phase'; endsAt: number; pickRole?: PickRole }
   | { type: 'team_picked'; playerId: string }
-  | { type: 'reveal_teams'; teamA: ClubRef; teamB: ClubRef }
+  | { type: 'reveal_teams'; teamA: ClubRef; teamB: ClubRef; mode?: GameMode; country?: string; letter?: string }
   | { type: 'guess_phase'; endsAt: number }
   | { type: 'guess_locked'; byId: string; byName: string }
   | {

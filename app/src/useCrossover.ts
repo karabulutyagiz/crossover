@@ -6,7 +6,9 @@ import type {
   ArenaView,
   ClientMsg,
   ClubRef,
+  GameMode,
   GameOptions,
+  PickRole,
   ProfileView,
   RoomView,
   RoundResult,
@@ -52,6 +54,11 @@ export interface GameState {
   waitingReady: boolean;
   readyCountdownEndsAt: number | null;
   iReady: boolean;
+  // Game mode & pick role for the current round
+  pickRole: PickRole | null;
+  revealMode: GameMode | null;
+  revealCountry: string | null;
+  revealLetter: string | null;
   // emotes currently shown over the match, keyed by the player who sent them.
   // `n` increases on every emote so the UI can re-trigger the same one.
   emotes: Record<string, { emoteId: string; n: number }>;
@@ -84,6 +91,10 @@ const initialState: GameState = {
   waitingReady: false,
   readyCountdownEndsAt: null,
   iReady: false,
+  pickRole: null,
+  revealMode: null,
+  revealCountry: null,
+  revealLetter: null,
   emotes: {},
   emoteSeq: 0,
 };
@@ -167,9 +178,16 @@ function reducer(state: GameState, action: Action): GameState {
         iReady: false,
       };
     case 'pick_phase':
-      return { ...state, phase: 'pick', picked: false, pickEndsAt: action.endsAt, teams: null, locked: null, result: null, clubResults: [] };
+      return { ...state, phase: 'pick', picked: false, pickEndsAt: action.endsAt, pickRole: (action as any).pickRole ?? 'team', teams: null, locked: null, result: null, clubResults: [] };
     case 'reveal_teams':
-      return { ...state, phase: 'reveal', teams: { teamA: action.teamA, teamB: action.teamB } };
+      return {
+        ...state,
+        phase: 'reveal',
+        teams: { teamA: action.teamA, teamB: action.teamB },
+        revealMode: (action as any).mode ?? 'team-team',
+        revealCountry: (action as any).country ?? null,
+        revealLetter: (action as any).letter ?? null,
+      };
     case 'guess_phase':
       return { ...state, phase: 'guess', guessEndsAt: action.endsAt };
     case 'guess_locked':
@@ -333,6 +351,14 @@ export function useCrossover() {
     start: () => send({ type: 'start' }),
     pickTeam: (clubId: number) => {
       send({ type: 'pick_team', clubId });
+      dispatch({ type: '_picked' });
+    },
+    pickCountry: (country: string) => {
+      send({ type: 'pick_country', country });
+      dispatch({ type: '_picked' });
+    },
+    pickLetter: (letter: string) => {
+      send({ type: 'pick_letter', letter });
       dispatch({ type: '_picked' });
     },
     searchClubs: (q: string) => send({ type: 'search_clubs', reqId: 'q', q }),

@@ -10,6 +10,10 @@ const BATCH = 150;
 const THUMB_WIDTH = 160;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Clubs whose logos are manually pinned (set in schema.sql). Skip them so
+// Wikidata re-ingest never overwrites the correct badge.
+const PINNED_LOGO_IDS = new Set([18656 /* Manchester United */, 8701 /* Atletico Madrid */]);
+
 function toThumb(logoUrl: string): string {
   const https = logoUrl.replace(/^http:\/\//, 'https://');
   return https.includes('?') ? `${https}&width=${THUMB_WIDTH}` : `${https}?width=${THUMB_WIDTH}`;
@@ -54,6 +58,7 @@ async function run(): Promise<void> {
     }
 
     for (const [id, url] of byClub) {
+      if (PINNED_LOGO_IDS.has(id)) continue;
       await pool.query('UPDATE clubs SET logo_url = $2 WHERE id = $1', [id, url]);
       withLogo += 1;
     }

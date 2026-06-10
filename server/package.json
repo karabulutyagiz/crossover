@@ -18,6 +18,7 @@
     "ingest:transfers": "tsx src/ingest/transfers-apifootball.ts",
     "ingest:transfers:tr": "tsx src/ingest/transfers-turkey.ts",
     "ingest:sportmonks": "tsx src/ingest/sportmonks.ts",
+    "ingest:nationalities": "tsx src/ingest/nationalities.ts",
     "verify": "tsx src/cli/verify.ts",
     "playtest": "tsx src/cli/playtest.ts",
     "bot": "tsx src/cli/bot.ts",

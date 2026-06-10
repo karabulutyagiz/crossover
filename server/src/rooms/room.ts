@@ -1,6 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { pool } from '../db/pool.ts';
-import { verifyGuess, searchClubs, commonPlayersDetailed, randomClub } from '../game/verify.ts';
+import {
+  verifyGuess,
+  verifyCountryTeamGuess,
+  verifyLetterTeamGuess,
+  searchClubs,
+  commonPlayersDetailed,
+  commonPlayersCountryTeam,
+  commonPlayersLetterTeam,
+  hasPlayersCountryTeam,
+  hasPlayersLetterTeam,
+  randomClub,
+} from '../game/verify.ts';
 import { applyMatchResult } from '../game/rank.ts';
 import { isEmote } from '../game/emotes.ts';
 import type {
@@ -12,6 +23,8 @@ import type {
   ClubRef,
   RoundResult,
   Scope,
+  GameMode,
+  PickRole,
 } from '../protocol.ts';
 
 const COUNTDOWN_FROM = 3;
@@ -21,7 +34,7 @@ const MAX_PLAYERS = 2;
 const WIN_TARGET = 3; // first to this many round wins takes the match
 const MAX_WRONG = 3; // 3 wrong answers → opponent wins the match
 const INTER_ROUND_MS = 5_000; // pause on the result screen before the next round auto-starts
-const READY_TIMEOUT_MS = 20_000; // total time to wait for ready (10s voluntary + 10s countdown)
+const READY_TIMEOUT_MS = 20_000;
 
 // A player's link to the outside world: a real WebSocket client, or a bot.
 export interface Transport {
@@ -42,6 +55,9 @@ interface Player {
 
 interface Round {
   picks: Map<string, ClubRef>;
+  // For country-team / letter-team: the non-team pick value
+  countryPick?: string;   // the nationality picked (country-team)
+  letterPick?: string;    // the letter picked (letter-team)
   teamA?: ClubRef;
   teamB?: ClubRef;
   answeredBy?: string;
@@ -51,14 +67,16 @@ interface Round {
 export class Room {
   readonly code: string;
   scope: Scope = { type: 'all' }; // which clubs are allowed (set at creation)
+  gameMode: GameMode = 'team-team'; // game mode (set at creation)
   private players = new Map<string, Player>();
   status: RoomStatus = 'lobby';
   private round: Round | null = null;
+  private roundNumber = 0; // tracks rounds for role alternation
   private timers: NodeJS.Timeout[] = [];
   private onEmpty: (code: string) => void;
   private matchOver = false; // true once a player reaches WIN_TARGET
-  private rematchBy: string | null = null; // who requested a rematch (waiting for the other)
-  private readyPlayers = new Set<string>(); // players who pressed "ready" for next round
+  private rematchBy: string | null = null;
+  private readyPlayers = new Set<string>();
 
   constructor(code: string, onEmpty: (code: string) => void) {
     this.code = code;
@@ -94,7 +112,6 @@ export class Room {
     this.clearTimers();
     this.players.delete(playerId);
 
-    // If nobody human is left, tear the room (and its bot) down.
     const humansLeft = [...this.players.values()].some((pl) => !pl.transport.isBot);
     if (this.players.size === 0 || !humansLeft) {
       this.players.clear();
@@ -109,6 +126,25 @@ export class Room {
     this.broadcastState();
   }
 
+  // ---- role assignment for non-team-team modes ----
+  // Returns which role each player has this round. Roles swap every round.
+  // Player order is stable (Map insertion order).
+  private pickRoles(): Map<string, PickRole> {
+    const ids = [...this.players.keys()];
+    const roles = new Map<string, PickRole>();
+    if (this.gameMode === 'team-team') {
+      for (const id of ids) roles.set(id, 'team');
+      return roles;
+    }
+    const nonTeamRole: PickRole = this.gameMode === 'country-team' ? 'country' : 'letter';
+    // Even rounds: first player picks non-team, second picks team.
+    // Odd rounds: swap.
+    const firstPicksNonTeam = this.roundNumber % 2 === 0;
+    roles.set(ids[0]!, firstPicksNonTeam ? nonTeamRole : 'team');
+    roles.set(ids[1]!, firstPicksNonTeam ? 'team' : nonTeamRole);
+    return roles;
+  }
+
   // ---- message routing ----
   handle(playerId: string, msg: ClientMsg): void {
     switch (msg.type) {
@@ -116,6 +152,10 @@ export class Room {
         return this.start(playerId);
       case 'pick_team':
         return this.handlePick(playerId, msg.clubId);
+      case 'pick_country':
+        return this.handlePickCountry(playerId, msg.country);
+      case 'pick_letter':
+        return this.handlePickLetter(playerId, msg.letter);
       case 'submit_guess':
         return this.handleGuess(playerId, msg.text);
       case 'ready':
@@ -144,10 +184,10 @@ export class Room {
     this.startMatch();
   }
 
-  // Begin a brand-new match: reset both players' scores, then count down.
   private startMatch(): void {
     this.matchOver = false;
     this.rematchBy = null;
+    this.roundNumber = 0;
     for (const p of this.players.values()) { p.score = 0; p.wrongCount = 0; }
     this.beginCountdown();
   }
@@ -176,28 +216,78 @@ export class Room {
     this.status = 'pick';
     this.broadcastState();
     const endsAt = Date.now() + PICK_MS;
-    this.broadcast({ type: 'pick_phase', endsAt });
+    const roles = this.pickRoles();
+    // Send each player their specific pickRole
+    for (const [id, role] of roles) {
+      this.sendTo(id, { type: 'pick_phase', endsAt, pickRole: role });
+    }
     const t = setTimeout(() => this.autoPickRemaining(), PICK_MS);
     this.timers.push(t);
   }
 
   private async autoPickRemaining(): Promise<void> {
     if (this.status !== 'pick' || !this.round) return;
-    for (const [id] of this.players) {
-      if (this.round.picks.has(id)) continue;
-      const club = await randomClub(this.scope, 'medium');
-      if (club) {
-        this.round.picks.set(id, club);
+    const roles = this.pickRoles();
+    for (const [id, role] of roles) {
+      if (this.round.picks.has(id) || (role === 'country' && this.round.countryPick) || (role === 'letter' && this.round.letterPick)) continue;
+      if (role === 'team') {
+        const club = await randomClub(this.scope, 'medium');
+        if (club) {
+          this.round.picks.set(id, club);
+          this.broadcast({ type: 'team_picked', playerId: id });
+        }
+      } else if (role === 'country') {
+        // Auto-pick a popular country
+        this.round.countryPick = 'Turkey';
+        this.broadcast({ type: 'team_picked', playerId: id });
+      } else if (role === 'letter') {
+        // Auto-pick a random letter
+        const letters = 'ABCDEFGHIJKLMNOPRSTUVYZ';
+        this.round.letterPick = letters[Math.floor(Math.random() * letters.length)]!;
         this.broadcast({ type: 'team_picked', playerId: id });
       }
     }
-    if (this.round.picks.size === MAX_PLAYERS) this.beginReveal();
+    if (this.allPicked()) this.beginReveal();
+  }
+
+  // Check if all players have made their pick
+  private allPicked(): boolean {
+    if (!this.round) return false;
+    const roles = this.pickRoles();
+    for (const [id, role] of roles) {
+      if (role === 'team' && !this.round.picks.has(id)) return false;
+      if (role === 'country' && !this.round.countryPick) return false;
+      if (role === 'letter' && !this.round.letterPick) return false;
+    }
+    return true;
   }
 
   private handlePick(playerId: string, clubId: number): void {
     if (this.status !== 'pick' || !this.round) return;
+    const roles = this.pickRoles();
+    if (roles.get(playerId) !== 'team') return; // wrong role
     if (this.round.picks.has(playerId)) return;
     void this.lockPick(playerId, clubId);
+  }
+
+  private handlePickCountry(playerId: string, country: string): void {
+    if (this.status !== 'pick' || !this.round) return;
+    const roles = this.pickRoles();
+    if (roles.get(playerId) !== 'country') return;
+    if (this.round.countryPick) return; // already picked
+    this.round.countryPick = country;
+    this.broadcast({ type: 'team_picked', playerId });
+    if (this.allPicked()) this.beginReveal();
+  }
+
+  private handlePickLetter(playerId: string, letter: string): void {
+    if (this.status !== 'pick' || !this.round) return;
+    const roles = this.pickRoles();
+    if (roles.get(playerId) !== 'letter') return;
+    if (this.round.letterPick) return;
+    this.round.letterPick = letter.toUpperCase().charAt(0);
+    this.broadcast({ type: 'team_picked', playerId });
+    if (this.allPicked()) this.beginReveal();
   }
 
   private async lockPick(playerId: string, clubId: number): Promise<void> {
@@ -206,33 +296,61 @@ export class Room {
     if (!this.round || this.status !== 'pick' || this.round.picks.has(playerId)) return;
     this.round.picks.set(playerId, club);
     this.broadcast({ type: 'team_picked', playerId });
-    if (this.round.picks.size === MAX_PLAYERS) this.beginReveal();
+    if (this.allPicked()) this.beginReveal();
   }
 
   private beginReveal(): void {
     if (!this.round) return;
-    const ids = [...this.players.keys()];
-    const a = this.round.picks.get(ids[0]!)!;
-    const b = this.round.picks.get(ids[1]!)!;
-    this.round.teamA = a;
-    this.round.teamB = b;
-    this.status = 'reveal';
-    this.broadcastState();
-    this.broadcast({ type: 'reveal_teams', teamA: a, teamB: b });
-    void this.afterReveal(a, b);
+
+    if (this.gameMode === 'team-team') {
+      // Original behavior: both picks are teams
+      const ids = [...this.players.keys()];
+      const a = this.round.picks.get(ids[0]!)!;
+      const b = this.round.picks.get(ids[1]!)!;
+      this.round.teamA = a;
+      this.round.teamB = b;
+      this.status = 'reveal';
+      this.broadcastState();
+      this.broadcast({ type: 'reveal_teams', teamA: a, teamB: b, mode: 'team-team' });
+      void this.afterRevealTeamTeam(a, b);
+    } else if (this.gameMode === 'country-team') {
+      const country = this.round.countryPick!;
+      // Find the team pick (the player with role 'team')
+      const roles = this.pickRoles();
+      const teamPlayerId = [...roles.entries()].find(([, r]) => r === 'team')![0];
+      const club = this.round.picks.get(teamPlayerId)!;
+      const pseudoCountry: ClubRef = { id: 0, name: country, logoUrl: null };
+      this.round.teamA = pseudoCountry;
+      this.round.teamB = club;
+      this.status = 'reveal';
+      this.broadcastState();
+      this.broadcast({ type: 'reveal_teams', teamA: pseudoCountry, teamB: club, mode: 'country-team', country });
+      void this.afterRevealCountryTeam(club, country);
+    } else {
+      // letter-team
+      const letter = this.round.letterPick!;
+      const roles = this.pickRoles();
+      const teamPlayerId = [...roles.entries()].find(([, r]) => r === 'team')![0];
+      const club = this.round.picks.get(teamPlayerId)!;
+      const pseudoLetter: ClubRef = { id: 0, name: letter, logoUrl: null };
+      this.round.teamA = pseudoLetter;
+      this.round.teamB = club;
+      this.status = 'reveal';
+      this.broadcastState();
+      this.broadcast({ type: 'reveal_teams', teamA: pseudoLetter, teamB: club, mode: 'letter-team', letter });
+      void this.afterRevealLetterTeam(club, letter);
+    }
   }
 
-  // After revealing, check for same-team or no common player → skip round.
-  private async afterReveal(a: ClubRef, b: ClubRef): Promise<void> {
-    if (!this.round || this.round.finished || this.status !== 'reveal') return;
+  // ---- after-reveal checks per mode ----
 
-    // Same team picked by both players → skip
+  private async afterRevealTeamTeam(a: ClubRef, b: ClubRef): Promise<void> {
+    if (!this.round || this.round.finished || this.status !== 'reveal') return;
     if (a.id === b.id) {
       const t = setTimeout(() => this.skipSameTeam(), 2200);
       this.timers.push(t);
       return;
     }
-
     const common = await commonPlayersDetailed(a.id, b.id, 5);
     if (!this.round || this.round.finished || this.status !== 'reveal') return;
     if (common.length === 0) {
@@ -244,7 +362,32 @@ export class Room {
     }
   }
 
-  // No player ever played for both clubs → pass the round, award nobody.
+  private async afterRevealCountryTeam(club: ClubRef, country: string): Promise<void> {
+    if (!this.round || this.round.finished || this.status !== 'reveal') return;
+    const has = await hasPlayersCountryTeam(club.id, country);
+    if (!this.round || this.round.finished || this.status !== 'reveal') return;
+    if (!has) {
+      const t = setTimeout(() => this.skipNoCommon(), 2200);
+      this.timers.push(t);
+    } else {
+      const t = setTimeout(() => this.beginGuess(), 2000);
+      this.timers.push(t);
+    }
+  }
+
+  private async afterRevealLetterTeam(club: ClubRef, letter: string): Promise<void> {
+    if (!this.round || this.round.finished || this.status !== 'reveal') return;
+    const has = await hasPlayersLetterTeam(club.id, letter);
+    if (!this.round || this.round.finished || this.status !== 'reveal') return;
+    if (!has) {
+      const t = setTimeout(() => this.skipNoCommon(), 2200);
+      this.timers.push(t);
+    } else {
+      const t = setTimeout(() => this.beginGuess(), 2000);
+      this.timers.push(t);
+    }
+  }
+
   private skipSameTeam(): void {
     if (!this.round || this.round.finished || !this.round.teamA || !this.round.teamB) return;
     this.finishRound({
@@ -297,7 +440,7 @@ export class Room {
 
   private handleGuess(playerId: string, text: string): void {
     if (this.status !== 'guess' || !this.round || this.round.finished) return;
-    if (this.round.answeredBy) return; // first answer locks the round
+    if (this.round.answeredBy) return;
     this.round.answeredBy = playerId;
     const p = this.players.get(playerId);
     this.broadcast({ type: 'guess_locked', byId: playerId, byName: p?.name ?? '' });
@@ -307,21 +450,31 @@ export class Room {
   private async evaluate(playerId: string, text: string): Promise<void> {
     if (!this.round?.teamA || !this.round.teamB) return;
     this.clearTimers();
-    const v = await verifyGuess(this.round.teamA.id, this.round.teamB.id, text);
+
+    let v;
+    let common: { name: string; imageUrl: string | null }[];
+
+    if (this.gameMode === 'country-team' && this.round.countryPick) {
+      v = await verifyCountryTeamGuess(this.round.teamB.id, this.round.countryPick, text);
+      common = await commonPlayersCountryTeam(this.round.teamB.id, this.round.countryPick, 5);
+    } else if (this.gameMode === 'letter-team' && this.round.letterPick) {
+      v = await verifyLetterTeamGuess(this.round.teamB.id, this.round.letterPick, text);
+      common = await commonPlayersLetterTeam(this.round.teamB.id, this.round.letterPick, 5);
+    } else {
+      v = await verifyGuess(this.round.teamA.id, this.round.teamB.id, text);
+      common = await commonPlayersDetailed(this.round.teamA.id, this.round.teamB.id, 5);
+    }
+
     const p = this.players.get(playerId);
     if (v.correct && p) {
       p.score += 1;
     } else if (!v.correct && p) {
       p.wrongCount += 1;
-      // 3 wrong answers → opponent wins the entire match
       if (p.wrongCount >= MAX_WRONG) {
         const opponent = [...this.players.values()].find((o) => o.id !== p.id);
         if (opponent) opponent.score = WIN_TARGET;
       }
     }
-
-    // Always show common players so users learn who played for both teams
-    const common = await commonPlayersDetailed(this.round.teamA.id, this.round.teamB.id, 5);
 
     this.finishRound({
       correct: v.correct,
@@ -348,7 +501,16 @@ export class Room {
 
   private async endRoundTimeoutAsync(): Promise<void> {
     if (!this.round || this.round.finished || !this.round.teamA || !this.round.teamB) return;
-    const common = await commonPlayersDetailed(this.round.teamA.id, this.round.teamB.id, 5);
+
+    let common: { name: string; imageUrl: string | null }[];
+    if (this.gameMode === 'country-team' && this.round.countryPick) {
+      common = await commonPlayersCountryTeam(this.round.teamB.id, this.round.countryPick, 5);
+    } else if (this.gameMode === 'letter-team' && this.round.letterPick) {
+      common = await commonPlayersLetterTeam(this.round.teamB.id, this.round.letterPick, 5);
+    } else {
+      common = await commonPlayersDetailed(this.round.teamA.id, this.round.teamB.id, 5);
+    }
+
     this.finishRound({
       correct: false,
       reason: 'timeout',
@@ -372,8 +534,8 @@ export class Room {
     this.round.finished = true;
     this.clearTimers();
     this.status = 'result';
+    this.roundNumber += 1;
 
-    // Did someone reach the win target? If so the whole match is over.
     const winner = [...this.players.values()].find((p) => p.score >= WIN_TARGET) ?? null;
     this.matchOver = Boolean(winner);
 
@@ -388,16 +550,16 @@ export class Room {
     });
     this.broadcastState();
 
-    // Match not decided yet → auto-advance to the next round after a short pause
-    // (no "ready" button; the result screen shows a brief countdown).
     if (!this.matchOver) {
       const t = setTimeout(() => {
         if (this.status === 'result' && !this.matchOver) this.beginCountdown();
       }, INTER_ROUND_MS);
       this.timers.push(t);
     } else {
-      // Match is over — update trophies for players with a DB account.
-      void this.updateTrophies(winner!);
+      const hasBot = [...this.players.values()].some((p) => p.transport.isBot);
+      if (!hasBot) {
+        void this.updateTrophies(winner!);
+      }
     }
   }
 
@@ -406,7 +568,6 @@ export class Room {
     if (this.status !== 'result' || this.matchOver) return;
     this.readyPlayers.add(playerId);
     this.broadcast({ type: 'player_ready' as any, playerId });
-    // Both ready → start immediately
     if (this.readyPlayers.size >= this.players.size) {
       this.clearTimers();
       this.beginCountdown();
@@ -432,10 +593,9 @@ export class Room {
     }
   }
 
-  // ---- rematch (only after a match ends) ----
+  // ---- rematch ----
   private requestRematch(playerId: string): void {
     if (this.status !== 'result' || !this.matchOver) return;
-    // If the other player already asked, this press means "yes, let's go".
     if (this.rematchBy && this.rematchBy !== playerId) return this.startMatch();
     this.rematchBy = playerId;
     const p = this.players.get(playerId);
@@ -447,7 +607,6 @@ export class Room {
   }
 
   private respondRematch(playerId: string, accept: boolean): void {
-    // Only the player who did NOT initiate can respond.
     if (!this.rematchBy || this.rematchBy === playerId) return;
     if (accept) {
       this.startMatch();
@@ -457,9 +616,6 @@ export class Room {
     }
   }
 
-  // Relay an emote to everyone in the room (sender included, so the UI can show
-  // your own emote too). Cosmetic only — ownership is enforced client-side and at
-  // purchase time, so an unknown id is simply ignored.
   private relayEmote(playerId: string, emoteId: string): void {
     if (!isEmote(emoteId)) return;
     this.broadcast({ type: 'emote', fromId: playerId, emoteId });

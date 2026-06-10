@@ -97,3 +97,10 @@ CREATE TABLE IF NOT EXISTS ingest_log (
   rows_seen   INT,
   finished_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ---- Logo overrides ----
+-- Wikidata logos for some major clubs are wrong or point to a coat-of-arms /
+-- city emblem instead of the actual football badge. Pin them to the correct
+-- API-Football CDN URLs so they survive re-ingest.
+UPDATE clubs SET logo_url = 'https://media.api-sports.io/football/teams/33.png'  WHERE id = 18656;  -- Manchester United
+UPDATE clubs SET logo_url = 'https://media.api-sports.io/football/teams/530.png' WHERE id = 8701;   -- Atletico Madrid

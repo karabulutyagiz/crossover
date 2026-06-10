@@ -2,7 +2,7 @@ import { createServer, type Server } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomManager } from '../rooms/manager.ts';
 import { BotPlayer } from '../rooms/bot.ts';
-import { listScopes } from '../game/verify.ts';
+import { listScopes, listNationalities } from '../game/verify.ts';
 import { findOrCreateUser, findOrCreateUserByProvider, getUser, changeDisplayName, buyEmote, getLeaderboard, type UserProfile } from '../game/rank.ts';
 import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
 import type { Room, Transport } from '../rooms/room.ts';
@@ -44,14 +44,14 @@ export function startServer(port: number): Server {
       return;
     }
     if (req.url === '/scopes') {
-      listScopes()
-        .then((scopes) => {
+      Promise.all([listScopes(), listNationalities()])
+        .then(([scopes, nationalities]) => {
           res.writeHead(200, cors);
-          res.end(JSON.stringify(scopes));
+          res.end(JSON.stringify({ ...scopes, nationalities }));
         })
         .catch(() => {
           res.writeHead(500, cors);
-          res.end(JSON.stringify({ leagues: [], countries: [] }));
+          res.end(JSON.stringify({ leagues: [], countries: [], nationalities: [] }));
         });
       return;
     }
@@ -212,11 +212,17 @@ export function startServer(port: number): Server {
             if (matchQueue[i]!.ws === ws) matchQueue.splice(i, 1);
           }
           // Try to pair with someone already waiting
-          const partner = matchQueue.shift();
+          // Match by game mode: only pair players with the same mode
+          const requestedMode = msg.options?.mode ?? 'team-team';
+          const partnerIdx = matchQueue.findIndex(
+            (e) => e.ws.readyState === e.ws.OPEN && (e.options?.mode ?? 'team-team') === requestedMode,
+          );
+          const partner = partnerIdx >= 0 ? matchQueue.splice(partnerIdx, 1)[0]! : undefined;
           if (partner && partner.ws.readyState === partner.ws.OPEN) {
             // Create room and add both
             const room = manager.createRoom();
             if (msg.options?.scope) room.scope = msg.options.scope;
+            room.gameMode = requestedMode;
             const resA = room.addPlayer(partner.name, partner.transport, true, partner.userId);
             const resB = room.addPlayer(name, transport, false, msg.userId ?? userProfile?.id);
             if (resA.ok) partner.setCtx({ room, playerId: resA.id, userProfile: partner.userProfile });
@@ -245,6 +251,7 @@ export function startServer(port: number): Server {
         if (msg.type === 'create_room') {
           const room = manager.createRoom();
           if (msg.options?.scope) room.scope = msg.options.scope;
+          if (msg.options?.mode) room.gameMode = msg.options.mode;
           const name = userProfile?.displayName ?? msg.name;
           const res = room.addPlayer(name, transport, true, msg.userId ?? userProfile?.id);
           if (res.ok) ctx = { room, playerId: res.id, userProfile };
@@ -253,10 +260,11 @@ export function startServer(port: number): Server {
         if (msg.type === 'create_solo') {
           const room = manager.createRoom();
           if (msg.options?.scope) room.scope = msg.options.scope;
+          if (msg.options?.mode) room.gameMode = msg.options.mode;
           const name = userProfile?.displayName ?? msg.name;
           const res = room.addPlayer(name, transport, true, msg.userId ?? userProfile?.id);
           if (res.ok) ctx = { room, playerId: res.id, userProfile };
-          const bot = new BotPlayer({ difficulty: msg.options?.difficulty, scope: room.scope });
+          const bot = new BotPlayer({ difficulty: msg.options?.difficulty, scope: room.scope, mode: room.gameMode });
           const botRes = room.addPlayer('Bot', bot, false);
           if (botRes.ok) bot.bind(room, botRes.id);
           return;

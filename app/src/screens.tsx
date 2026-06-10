@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Animated, Easing, Platform } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
@@ -21,7 +22,7 @@ import { GOOGLE_IOS_CLIENT_ID } from './config';
 
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState } from './useCrossover';
-import type { ClubRef, Difficulty, GameOptions, ProfileView, Scope, SpellInfo } from './protocol';
+import type { ClubRef, Difficulty, GameMode, GameOptions, ProfileView, Scope, SpellInfo } from './protocol';
 import {
   EmoteCallout,
   EmoteSticker,
@@ -46,6 +47,8 @@ type Actions = {
   joinRoom: (code: string, name: string) => void;
   start: () => void;
   pickTeam: (clubId: number) => void;
+  pickCountry: (country: string) => void;
+  pickLetter: (letter: string) => void;
   searchClubs: (q: string) => void;
   submitGuess: (text: string) => void;
   ready: () => void;
@@ -258,12 +261,22 @@ function CareerRow({ spell, highlight }: { spell: SpellInfo; highlight?: boolean
 
 // ---- Home ----
 const DIFF_LABEL: Record<Difficulty, string> = { easy: 'Kolay', medium: 'Orta', hard: 'Zor' };
+const MODE_LABEL: Record<GameMode, string> = {
+  'team-team': t('mode.teamTeam'),
+  'country-team': t('mode.countryTeam'),
+  'letter-team': t('mode.letterTeam'),
+};
+const MODE_ICON: Record<GameMode, IoniconName> = {
+  'team-team': 'football',
+  'country-team': 'flag',
+  'letter-team': 'text',
+};
 
 function scopeLabel(scope: Scope): string {
   return scope.type === 'all' ? t('scope.all') : scope.value;
 }
 
-type Picker = null | 'difficulty' | 'scopeType' | 'league' | 'country';
+type Picker = null | 'difficulty' | 'scopeType' | 'league' | 'country' | 'mode';
 
 function ProfileCard({ profile, onPress }: { profile: ProfileView; onPress?: () => void }) {
   return (
@@ -364,8 +377,9 @@ export function HomeScreen({ actions, state }: Props) {
   const [code, setCode] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [scope, setScope] = useState<Scope>({ type: 'all' });
+  const [mode, setMode] = useState<GameMode>('team-team');
   const [picker, setPicker] = useState<Picker>(null);
-  const opts: GameOptions = { scope, difficulty };
+  const opts: GameOptions = { scope, difficulty, mode };
   const profile = state.profile;
 
   return (
@@ -399,13 +413,25 @@ export function HomeScreen({ actions, state }: Props) {
           </>
         )}
 
-        <Btn
-          label={t('home.quickMatch')}
-          icon="flash"
-          kind="primary"
-          onPress={() => actions.findMatch({ scope })}
-          disabled={!profile}
-        />
+        {/* Quick Match + Mode selector */}
+        <View style={{ flexDirection: 'row', gap: 8, marginVertical: 4 }}>
+          <Pressable
+            style={[styles.btn, { backgroundColor: theme.primary, flex: 1, padding: 16, opacity: !profile ? 0.4 : 1 }]}
+            onPress={!profile ? undefined : () => actions.findMatch(opts)}
+          >
+            <Ionicons name="flash" size={22} color="#06131F" style={{ marginRight: 8 }} />
+            <Text style={[styles.btnText, { color: '#06131F', fontSize: 16 }]}>{t('home.quickMatch')}</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.btn, { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, paddingHorizontal: 14, padding: 16 }]}
+            onPress={() => setPicker('mode')}
+          >
+            <Ionicons name={MODE_ICON[mode]} size={20} color={theme.accent} />
+            <Ionicons name="chevron-down" size={14} color={theme.muted} style={{ marginLeft: 4 }} />
+          </Pressable>
+        </View>
+        <Text style={[styles.muted, { marginBottom: 6, fontSize: 11 }]}>{MODE_LABEL[mode]}</Text>
+
         <Btn label={t('home.leaderboard')} icon="trophy" kind="ghost" onPress={actions.openLeaderboard} />
 
         {/* Settings chips */}
@@ -469,6 +495,10 @@ export function HomeScreen({ actions, state }: Props) {
           setScope(s);
           setPicker(null);
         }}
+        onMode={(m) => {
+          setMode(m);
+          setPicker(null);
+        }}
         goto={setPicker}
       />
     </Screen>
@@ -481,6 +511,7 @@ function PickerModal({
   onClose,
   onDifficulty,
   onScope,
+  onMode,
   goto,
 }: {
   picker: Picker;
@@ -488,6 +519,7 @@ function PickerModal({
   onClose: () => void;
   onDifficulty: (d: Difficulty) => void;
   onScope: (s: Scope) => void;
+  onMode: (m: GameMode) => void;
   goto: (p: Picker) => void;
 }) {
   const visible = picker !== null;
@@ -513,6 +545,20 @@ function PickerModal({
               {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
                 <Pressable key={d} style={styles.modalRow} onPress={() => onDifficulty(d)}>
                   <Text style={styles.modalRowText}>{DIFF_LABEL[d]}</Text>
+                </Pressable>
+              ))}
+            </>
+          )}
+
+          {picker === 'mode' && (
+            <>
+              <Text style={styles.modalTitle}>{t('mode.select')}</Text>
+              {(['team-team', 'country-team', 'letter-team'] as GameMode[]).map((m) => (
+                <Pressable key={m} style={styles.modalRow} onPress={() => onMode(m)}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Ionicons name={MODE_ICON[m]} size={18} color={theme.accent} />
+                    <Text style={styles.modalRowText}>{MODE_LABEL[m]}</Text>
+                  </View>
                 </Pressable>
               ))}
             </>
@@ -647,19 +693,34 @@ export function CountdownScreen({ state }: Props) {
   );
 }
 
-// ---- Pick team ----
-export function PickTeamScreen({ state, actions }: Props) {
-  const [q, setQ] = useState('');
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [pickSecs, setPickSecs] = useState<number | null>(null);
+// ---- Pick (team / country / letter) ----
 
+const PICK_LETTERS = 'ABCDEFGHIJKLMNOPRSTUVYZ'.split('');
+
+function PickTimer({ pickEndsAt }: { pickEndsAt: number | null }) {
+  const [pickSecs, setPickSecs] = useState<number | null>(null);
   useEffect(() => {
-    if (!state.pickEndsAt) return;
-    const tick = () => setPickSecs(Math.max(0, Math.ceil((state.pickEndsAt! - Date.now()) / 1000)));
+    if (!pickEndsAt) return;
+    const tick = () => setPickSecs(Math.max(0, Math.ceil((pickEndsAt - Date.now()) / 1000)));
     tick();
     const id = setInterval(tick, 250);
     return () => clearInterval(id);
-  }, [state.pickEndsAt]);
+  }, [pickEndsAt]);
+  return (
+    <View style={styles.pickTimerBox}>
+      <Ionicons name="time-outline" size={18} color={pickSecs !== null && pickSecs <= 3 ? theme.danger : theme.accent} />
+      <Text style={[styles.pickTimerText, pickSecs !== null && pickSecs <= 3 ? { color: theme.danger } : null]}>
+        {pickSecs !== null ? pickSecs : 10}
+      </Text>
+    </View>
+  );
+}
+
+export function PickTeamScreen({ state, actions }: Props) {
+  const [q, setQ] = useState('');
+  const [countryQ, setCountryQ] = useState('');
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const role = state.pickRole ?? 'team';
 
   const onChange = (text: string) => {
     setQ(text);
@@ -678,16 +739,80 @@ export function PickTeamScreen({ state, actions }: Props) {
     );
   }
 
+  // ---- Letter picker ----
+  if (role === 'letter') {
+    return (
+      <Screen>
+        <View style={{ alignItems: 'center', marginBottom: 8 }}>
+          <Text style={styles.h1}>{t('pick.titleLetter')}</Text>
+          <PickTimer pickEndsAt={state.pickEndsAt} />
+        </View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 12 }}>
+          {PICK_LETTERS.map((l) => (
+            <Pressable
+              key={l}
+              style={{
+                width: 48, height: 48, borderRadius: 12,
+                backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border,
+                alignItems: 'center', justifyContent: 'center',
+              }}
+              onPress={() => actions.pickLetter(l)}
+            >
+              <Text style={{ color: theme.text, fontSize: 20, fontWeight: '900' }}>{l}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <EmoteLayer state={state} actions={actions} fab="top-right" />
+      </Screen>
+    );
+  }
+
+  // ---- Country picker ----
+  if (role === 'country') {
+    const nationalities = state.scopes?.nationalities ?? [];
+    const filtered = countryQ.trim()
+      ? nationalities.filter((n) => n.value.toLowerCase().includes(countryQ.toLowerCase()))
+      : nationalities;
+    return (
+      <Screen>
+        <View style={{ alignItems: 'center', marginBottom: 8 }}>
+          <Text style={styles.h1}>{t('pick.titleCountry')}</Text>
+          <PickTimer pickEndsAt={state.pickEndsAt} />
+        </View>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={18} color={theme.muted} />
+          <TextInput
+            placeholder={t('pick.searchCountry')}
+            placeholderTextColor={theme.muted}
+            keyboardAppearance="light"
+            value={countryQ}
+            onChangeText={setCountryQ}
+            style={styles.searchInput}
+            autoFocus
+          />
+        </View>
+        <ScrollView style={{ alignSelf: 'stretch' }} keyboardShouldPersistTaps="handled">
+          {filtered.map((n) => (
+            <Pressable key={n.value} style={styles.clubRow} onPress={() => actions.pickCountry(n.value)}>
+              <Ionicons name="flag" size={24} color={theme.accent} />
+              <Text style={styles.clubText} numberOfLines={1}>{n.value}</Text>
+              <Text style={styles.muted}>{n.count}</Text>
+            </Pressable>
+          ))}
+          {filtered.length === 0 && countryQ.trim() ? <Text style={styles.muted}>{t('common.noResults')}</Text> : null}
+          {nationalities.length === 0 ? <Text style={styles.muted}>{t('common.loading')}</Text> : null}
+        </ScrollView>
+        <EmoteLayer state={state} actions={actions} fab="top-right" />
+      </Screen>
+    );
+  }
+
+  // ---- Team picker (default) ----
   return (
     <Screen>
       <View style={{ alignItems: 'center', marginBottom: 8 }}>
         <Text style={styles.h1}>{t('pick.title')}</Text>
-        <View style={styles.pickTimerBox}>
-          <Ionicons name="time-outline" size={18} color={pickSecs !== null && pickSecs <= 3 ? theme.danger : theme.accent} />
-          <Text style={[styles.pickTimerText, pickSecs !== null && pickSecs <= 3 ? { color: theme.danger } : null]}>
-            {pickSecs !== null ? pickSecs : 10}
-          </Text>
-        </View>
+        <PickTimer pickEndsAt={state.pickEndsAt} />
       </View>
       <View style={styles.searchBox}>
         <Ionicons name="search" size={18} color={theme.muted} />
@@ -738,7 +863,13 @@ export function GuessScreen({ state, actions }: Props) {
     <Screen>
       <View style={styles.teamsRow}>
         <View style={styles.teamCard}>
-          <ClubBadge name={teams?.teamA.name ?? '?'} size={44} logoUrl={teams?.teamA.logoUrl ?? null} />
+          {state.revealMode === 'country-team' ? (
+            <Ionicons name="flag" size={44} color={theme.accent} />
+          ) : state.revealMode === 'letter-team' ? (
+            <Text style={{ color: theme.accent, fontSize: 36, fontWeight: '900' }}>{teams?.teamA.name ?? '?'}</Text>
+          ) : (
+            <ClubBadge name={teams?.teamA.name ?? '?'} size={44} logoUrl={teams?.teamA.logoUrl ?? null} />
+          )}
           <Text style={styles.teamName} numberOfLines={2}>
             {teams?.teamA.name ?? '…'}
           </Text>
@@ -764,7 +895,13 @@ export function GuessScreen({ state, actions }: Props) {
             </View>
           ) : (
             <>
-              <Text style={styles.h1}>Ortak oyuncuyu yaz!</Text>
+              <Text style={styles.h1}>
+                {state.revealMode === 'country-team' && state.revealCountry && teams?.teamB
+                  ? t('guess.titleCountry', { country: state.revealCountry, team: teams.teamB.name })
+                  : state.revealMode === 'letter-team' && state.revealLetter && teams?.teamB
+                  ? t('guess.titleLetter', { letter: state.revealLetter, team: teams.teamB.name })
+                  : t('guess.title')}
+              </Text>
               <TextInput
                 placeholder={t('guess.placeholder')}
                 placeholderTextColor={theme.muted}
@@ -1103,7 +1240,18 @@ export function FriendsScreen({ state }: Props) {
         <View style={styles.friendAddCard}>
           <View style={{ flex: 1 }}>
             <Text style={styles.friendLabel}>{t('friends.yourCode')}</Text>
-            <Text style={styles.friendCode}>{profile?.userId?.slice(0, 8).toUpperCase() ?? '...'}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.friendCode}>{profile?.userId?.slice(0, 8).toUpperCase() ?? '...'}</Text>
+              <Pressable
+                onPress={() => {
+                  const code = profile?.userId?.slice(0, 8).toUpperCase();
+                  if (code) Clipboard.setStringAsync(code);
+                }}
+                hitSlop={8}
+              >
+                <Ionicons name="copy-outline" size={18} color={theme.accent} />
+              </Pressable>
+            </View>
           </View>
           <View style={styles.friendDivider} />
           <View style={{ flex: 1 }}>
