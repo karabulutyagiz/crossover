@@ -53,7 +53,8 @@ async function verifyJwt(
   if (!jwk) throw new Error('Signing key not found');
 
   const pubKey = crypto.createPublicKey({ key: jwk as unknown as crypto.JsonWebKey, format: 'jwk' });
-  const ok = crypto.verify('RS256', Buffer.from(`${h}.${p}`), pubKey, Buffer.from(s, 'base64url'));
+  // RS256 = RSASSA-PKCS1-v1_5 over SHA-256; Node wants the DIGEST name here.
+  const ok = crypto.verify('sha256', Buffer.from(`${h}.${p}`), pubKey, Buffer.from(s, 'base64url'));
   if (!ok) throw new Error('Invalid signature');
 
   if (!opts.iss.includes(payload.iss)) throw new Error('Unexpected issuer');
