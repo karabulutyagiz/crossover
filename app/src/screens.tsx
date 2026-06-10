@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNo
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Pressable,
   ScrollView,
@@ -345,6 +346,7 @@ export function LoginScreen({ state, actions }: Props) {
 
   return (
     <Screen>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={40}>
       <View style={{ flex: 1, justifyContent: 'center', gap: 12 }}>
         <View style={styles.center}>
           <Ionicons name="football" size={56} color={theme.primary} />
@@ -369,6 +371,7 @@ export function LoginScreen({ state, actions }: Props) {
         {state.error ? <Text style={styles.error}>{state.error}</Text> : null}
         <Text style={[styles.muted, { marginTop: 12 }]}>{t('login.hint')}</Text>
       </View>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
@@ -383,6 +386,7 @@ export function UsernameScreen({ state, actions }: Props) {
     /^[A-Za-z0-9_çğıöşüÇĞİÖŞÜ]+$/.test(trimmed);
   return (
     <Screen>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={40}>
       <View style={{ flex: 1, justifyContent: 'center', gap: 12 }}>
         <View style={styles.center}>
           <Ionicons name="person-circle-outline" size={56} color={theme.primary} />
@@ -392,7 +396,7 @@ export function UsernameScreen({ state, actions }: Props) {
         <TextInput
           placeholder={t('username.placeholder')}
           placeholderTextColor={theme.muted}
-          keyboardAppearance="light"
+          keyboardAppearance="dark"
           value={name}
           onChangeText={setName}
           autoCapitalize="none"
@@ -411,6 +415,7 @@ export function UsernameScreen({ state, actions }: Props) {
         />
         {state.error ? <Text style={styles.error}>{state.error}</Text> : null}
       </View>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
@@ -441,7 +446,7 @@ export function HomeScreen({ actions, state }: Props) {
             <TextInput
               placeholder={t('home.namePlaceholder')}
               placeholderTextColor={theme.muted}
-          keyboardAppearance="light"
+          keyboardAppearance="dark"
               value={name}
               onChangeText={setName}
               style={styles.input}
@@ -510,7 +515,7 @@ export function HomeScreen({ actions, state }: Props) {
         <TextInput
           placeholder={t('home.codePlaceholder')}
           placeholderTextColor={theme.muted}
-          keyboardAppearance="light"
+          keyboardAppearance="dark"
           value={code}
           autoCapitalize="characters"
           onChangeText={(v) => setCode(v.toUpperCase())}
@@ -630,7 +635,7 @@ function PickerModal({
                 <TextInput
                   placeholder={picker === 'league' ? t('scope.searchLeague') : t('scope.searchCountry')}
                   placeholderTextColor={theme.muted}
-          keyboardAppearance="light"
+          keyboardAppearance="dark"
                   value={search}
                   onChangeText={setSearch}
                   style={styles.modalSearchInput}
@@ -827,7 +832,7 @@ export function PickTeamScreen({ state, actions }: Props) {
           <TextInput
             placeholder={t('pick.searchCountry')}
             placeholderTextColor={theme.muted}
-            keyboardAppearance="light"
+            keyboardAppearance="dark"
             value={countryQ}
             onChangeText={setCountryQ}
             style={styles.searchInput}
@@ -862,7 +867,7 @@ export function PickTeamScreen({ state, actions }: Props) {
         <TextInput
           placeholder={t('pick.search')}
           placeholderTextColor={theme.muted}
-          keyboardAppearance="light"
+          keyboardAppearance="dark"
           value={q}
           onChangeText={onChange}
           style={styles.searchInput}
@@ -948,7 +953,7 @@ export function GuessScreen({ state, actions }: Props) {
               <TextInput
                 placeholder={t('guess.placeholder')}
                 placeholderTextColor={theme.muted}
-          keyboardAppearance="light"
+          keyboardAppearance="dark"
                 value={text}
                 onChangeText={setText}
                 style={styles.input}
@@ -1001,7 +1006,7 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
           <TextInput
             placeholder={t('store.newName')}
             placeholderTextColor={theme.muted}
-          keyboardAppearance="light"
+          keyboardAppearance="dark"
             value={newName}
             onChangeText={setNewName}
             style={styles.input}
@@ -1302,7 +1307,7 @@ export function FriendsScreen({ state }: Props) {
             <TextInput
               placeholder={t('friends.enterCode')}
               placeholderTextColor={theme.muted}
-          keyboardAppearance="light"
+          keyboardAppearance="dark"
               value={friendCode}
               onChangeText={setFriendCode}
               autoCapitalize="characters"

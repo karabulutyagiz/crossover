@@ -333,10 +333,11 @@ export function useCrossover() {
     },
     changeName: (newName: string) => send({ type: 'change_name', newName }),
     setUsername: (username: string) => {
+      const userId = state.profile?.userId;
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        send({ type: 'set_username', username });
+        send({ type: 'set_username', username, userId });
       } else {
-        connectAndSend({ type: 'set_username', username });
+        connectAndSend({ type: 'set_username', username, userId });
       }
     },
     findMatch: (options?: GameOptions) =>

@@ -179,11 +179,13 @@ export function startServer(port: number): Server {
         return;
       }
 
-      // One-time unique username pick after sign-in.
+      // One-time unique username pick after sign-in. Accept the account id from
+      // the connection's profile OR the message (persisted login re-using userId).
       if (msg.type === 'set_username') {
-        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        const uid = userProfile?.id ?? msg.userId;
+        if (!uid) return transport.send({ type: 'error', message: 'Önce giriş yap' });
         void (async () => {
-          const result = await setUsername(userProfile!.id, msg.username);
+          const result = await setUsername(uid, msg.username);
           if (!result.ok) return transport.send({ type: 'error', message: result.error });
           userProfile = result.profile;
           transport.send({
