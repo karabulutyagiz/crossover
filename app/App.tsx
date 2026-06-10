@@ -45,18 +45,6 @@ export default function App() {
   const scrollRef = useRef<ScrollView>(null);
   const [activeTab, setActiveTab] = useState(1); // start on Home (index 1)
 
-  // Login gate: nothing is accessible until the user signs in (Apple/Google).
-  if (!state.profile) {
-    return (
-      <View style={s.root}>
-        <StatusBar style="light" />
-        <LoginScreen state={state} actions={actions} />
-      </View>
-    );
-  }
-
-  const showTabs = TAB_PHASES.has(state.phase);
-
   const goToTab = useCallback((idx: number) => {
     scrollRef.current?.scrollTo({ x: idx * SCREEN_W, animated: true });
     setActiveTab(idx);
@@ -67,6 +55,20 @@ export default function App() {
     const idx = Math.round(x / SCREEN_W);
     setActiveTab(idx);
   }, []);
+
+  // Login gate: nothing is accessible until the user signs in (Apple/Google).
+  // MUST come AFTER all hooks above — an early return before useCallback changes
+  // the hook count between renders (Rules of Hooks) and crashes right after login.
+  if (!state.profile) {
+    return (
+      <View style={s.root}>
+        <StatusBar style="light" />
+        <LoginScreen state={state} actions={actions} />
+      </View>
+    );
+  }
+
+  const showTabs = TAB_PHASES.has(state.phase);
 
   // Game screens (no tab bar)
   if (!showTabs) {
