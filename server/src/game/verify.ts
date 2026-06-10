@@ -83,6 +83,8 @@ export async function searchClubs(
             (SELECT count(*) FROM player_clubs pc WHERE pc.club_id = c.id) AS members
        FROM clubs c
       WHERE c.is_national = false
+        AND c.logo_url IS NOT NULL
+        AND EXISTS (SELECT 1 FROM player_clubs pc WHERE pc.club_id = c.id)
         AND (c.name_norm LIKE '%' || $1 || '%' OR c.name_norm % $1)
         ${A_TEAM_ONLY}
         ${scopeSql}
