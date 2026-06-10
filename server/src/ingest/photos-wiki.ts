@@ -77,10 +77,12 @@ async function fetchPageImages(
 }
 
 async function run(): Promise<void> {
-  // Most-traveled players first (proxy for fame) so popular players — the ones
-  // most likely to come up in a round — get their portraits earliest.
+  // Only players still missing a photo (so re-runs continue where they left off).
+  // Most-traveled players first (they're the ones most likely to be the shared
+  // player in a round) so the highest-impact portraits land earliest.
   const { rows } = await pool.query<{ id: string }>(
     `SELECT p.id FROM players p
+      WHERE p.image_url IS NULL
       ORDER BY (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC, p.id`,
   );
   const ids = rows.map((r) => Number(r.id));
