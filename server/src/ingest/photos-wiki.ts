@@ -60,12 +60,11 @@ async function fetchPageImages(
   for (const page of Object.values(pages)) {
     const t = page.thumbnail;
     if (!page.title || !t?.source) continue;
-    // Only accept portrait-oriented images (height >= width).
-    // Landscape images are almost always action/stadium shots where
-    // the player's face is not clearly visible.
-    if (t.height >= t.width) {
-      result.set(page.title, t.source);
-    }
+    // Accept any infobox image (the page's main image is almost always the
+    // player). We no longer require portrait orientation — that rejected many
+    // players whose Wikipedia photo happens to be landscape, leaving them with
+    // no photo at all. A landscape headshot is better than none.
+    result.set(page.title, t.source);
   }
   // Handle normalized titles (Wikipedia normalizes "alexis_sánchez" -> "Alexis Sánchez")
   const normalizations = json.query?.normalized ?? [];
