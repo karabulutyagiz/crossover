@@ -830,11 +830,16 @@ export function PickTeamScreen({ state, actions }: Props) {
 
   // ---- Country picker ----
   if (role === 'country') {
+    // Turkish-insensitive search: normalize İ→i, Ş→s, Ü→u, Ö→o, Ç→c, Ğ→g, ı→i
+    const trLower = (s: string) =>
+      s.replace(/İ/g, 'i').replace(/I/g, 'i').replace(/ı/g, 'i')
+        .replace(/[ŞşŞ]/g, 's').replace(/[ÜüÜ]/g, 'u').replace(/[ÖöÖ]/g, 'o')
+        .replace(/[ÇçÇ]/g, 'c').replace(/[ĞğĞ]/g, 'g').toLowerCase();
     const filtered = countryQ.trim()
-      ? NATIONALITIES.filter((n) =>
-          n.displayName.toLowerCase().includes(countryQ.toLowerCase()) ||
-          n.value.toLowerCase().includes(countryQ.toLowerCase()),
-        )
+      ? NATIONALITIES.filter((n) => {
+          const q = trLower(countryQ);
+          return trLower(n.displayName).includes(q) || trLower(n.value).includes(q);
+        })
       : NATIONALITIES;
     return (
       <Screen>

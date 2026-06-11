@@ -77,14 +77,16 @@ export async function searchClubs(
   // (player count) so well-known clubs surface first (e.g. "bar" → Barcelona),
   // then fuzzy similarity. Popularity beats raw trigram score to avoid obscure
   // clubs outranking famous ones.
+  // Only show clubs from allowed leagues
+  params.push(ALLOWED_LEAGUES);
+  const leagueIdx = params.length;
   const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
     `SELECT c.id, c.name, c.logo_url,
             similarity(c.name_norm, $1) AS sim,
             (SELECT count(*) FROM player_clubs pc WHERE pc.club_id = c.id) AS members
        FROM clubs c
       WHERE c.is_national = false
-        AND c.logo_url IS NOT NULL
-        AND EXISTS (SELECT 1 FROM player_clubs pc WHERE pc.club_id = c.id)
+        AND c.league = ANY($${leagueIdx}::text[])
         AND (c.name_norm LIKE '%' || $1 || '%' OR c.name_norm % $1)
         ${A_TEAM_ONLY}
         ${scopeSql}
@@ -146,19 +148,36 @@ const MEDIUM_CLUB_IDS = [
   192641, // Trabzonspor
 ];
 
-// First-division leagues only (no 2nd/3rd divisions). Used by hard mode.
-const FIRST_DIVISION_LEAGUES = [
-  'Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1',
-  'Eredivisie', 'Primeira Liga', 'Süper Lig', 'Belgian Pro League',
-  'Scottish Premiership', 'Swiss Super League', 'Austrian Bundesliga',
-  'Greek Super League', 'Russian Premier League', 'Ukrainian Premier League',
-  'MLS', 'Liga MX', 'Brazil Serie A', 'Argentine Liga Profesional',
-  'Saudi Pro League', 'Danish Superliga', 'Eliteserien', 'Allsvenskan',
-  'Ekstraklasa', 'Czech First League', 'Croatian HNL', 'Serbian SuperLiga',
-  'Romanian Liga I', 'Colombian Primera A', 'Chilean Primera',
-  'Uruguayan Primera', 'J1 League', 'K League 1', 'Chinese Super League',
-  'A-League', 'Egyptian Premier League', 'Qatar Stars League', 'UAE Pro League',
+// Allowed leagues in the game. 5 major leagues get their 2nd divisions too,
+// plus Turkey, Netherlands, Brazil, Portugal, and England Championship.
+// Other countries only their first division.
+const ALLOWED_LEAGUES = [
+  // 5 major leagues + their second divisions
+  'Premier League', 'Championship',
+  'La Liga', 'La Liga 2',
+  'Serie A', 'Serie B',
+  'Bundesliga', 'Bundesliga 2',
+  'Ligue 1', 'Ligue 2',
+  // Turkey
+  'Süper Lig', 'TFF 1. Lig',
+  // Netherlands, Brazil, Portugal
+  'Eredivisie', 'Brazil Serie A', 'Brazil Serie B', 'Primeira Liga',
+  // Other countries — first division only
+  'Belgian Pro League', 'Scottish Premiership', 'Swiss Super League',
+  'Austrian Bundesliga', 'Greek Super League', 'Russian Premier League',
+  'Ukrainian Premier League', 'MLS', 'Liga MX',
+  'Argentine Liga Profesional', 'Saudi Pro League', 'Danish Superliga',
+  'Eliteserien', 'Allsvenskan', 'Ekstraklasa', 'Czech First League',
+  'Croatian HNL', 'Serbian SuperLiga', 'Romanian Liga I',
+  'Colombian Primera A', 'Chilean Primera', 'Uruguayan Primera',
+  'J1 League', 'K League 1', 'Chinese Super League', 'A-League',
+  'Egyptian Premier League', 'Qatar Stars League', 'UAE Pro League',
 ];
+
+// Hard mode: only first-division leagues (no 2nd divisions).
+const FIRST_DIVISION_LEAGUES = ALLOWED_LEAGUES.filter(
+  (l) => !['Championship', 'La Liga 2', 'Serie B', 'Bundesliga 2', 'Ligue 2', 'TFF 1. Lig', 'Brazil Serie B'].includes(l),
+);
 
 /**
  * A random club for the bot. Difficulty controls which pool:
@@ -284,15 +303,18 @@ const COUNTRY_NAME_TR: Record<string, string> = {
   'New Zealand': 'Yeni Zelanda',
 };
 
-/** Available leagues and countries (for the scope picker). */
+/** Available leagues and countries (for the scope picker). Only allowed leagues. */
 export async function listScopes(): Promise<{ leagues: ScopeOption[]; countries: ScopeOption[] }> {
   const leagues = await pool.query<{ value: string; count: string }>(
     `SELECT league AS value, count(*) AS count FROM clubs
-      WHERE league IS NOT NULL GROUP BY league ORDER BY league`,
+      WHERE league = ANY($1::text[]) GROUP BY league ORDER BY league`,
+    [ALLOWED_LEAGUES],
   );
   const countries = await pool.query<{ value: string; count: string }>(
     `SELECT country AS value, count(*) AS count FROM clubs
-      WHERE country IS NOT NULL GROUP BY country ORDER BY country`,
+      WHERE country IS NOT NULL AND league = ANY($1::text[])
+      GROUP BY country ORDER BY country`,
+    [ALLOWED_LEAGUES],
   );
   return {
     leagues: leagues.rows.map((r) => ({
