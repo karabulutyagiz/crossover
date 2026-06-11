@@ -143,9 +143,9 @@ CREATE TABLE IF NOT EXISTS ingest_log (
   finished_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- ---- Club popularity ----
--- popularity = number of players we have for the club. Drives bot difficulty
--- (easy = most popular clubs) and search ranking (famous clubs first). Refreshed
--- by the data pipeline (see tm-swap.sql).
-ALTER TABLE clubs ADD COLUMN IF NOT EXISTS popularity INT NOT NULL DEFAULT 0;
-CREATE INDEX IF NOT EXISTS idx_clubs_popularity ON clubs (popularity DESC);
+-- ---- Logo overrides ----
+-- Wikidata logos for some major clubs are wrong or point to a coat-of-arms /
+-- city emblem instead of the actual football badge. Pin them to the correct
+-- API-Football CDN URLs so they survive re-ingest.
+UPDATE clubs SET logo_url = 'https://media.api-sports.io/football/teams/33.png'  WHERE id = 18656;  -- Manchester United
+UPDATE clubs SET logo_url = 'https://media.api-sports.io/football/teams/530.png' WHERE id = 8701;   -- Atletico Madrid

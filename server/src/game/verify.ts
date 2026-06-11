@@ -73,23 +73,24 @@ export async function searchClubs(
   const scopeSql = scopeClause(scope, params);
   params.push(limit);
   const limitIdx = params.length;
-  // Every club is searchable (incl. lower divisions) as long as it has a logo and
-  // players. Rank: exact name, then real-league clubs (over reserves/obscure with
-  // no league), then popularity (player count) so famous clubs surface first
-  // (e.g. "bar" → Barcelona, not "FC Barcelona Atlètic"), then prefix, similarity.
+  // Rank: exact name, then names that START with the query, then by popularity
+  // (player count) so well-known clubs surface first (e.g. "bar" → Barcelona),
+  // then fuzzy similarity. Popularity beats raw trigram score to avoid obscure
+  // clubs outranking famous ones.
+  // Only show clubs from allowed leagues
+  params.push(ALLOWED_LEAGUES);
+  const leagueIdx = params.length;
   const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
     `SELECT c.id, c.name, c.logo_url,
             similarity(c.name_norm, $1) AS sim,
-            c.popularity AS members
+            (SELECT count(*) FROM player_clubs pc WHERE pc.club_id = c.id) AS members
        FROM clubs c
       WHERE c.is_national = false
-        AND c.logo_url IS NOT NULL
-        AND EXISTS (SELECT 1 FROM player_clubs pc WHERE pc.club_id = c.id)
+        AND c.league = ANY($${leagueIdx}::text[])
         AND (c.name_norm LIKE '%' || $1 || '%' OR c.name_norm % $1)
         ${A_TEAM_ONLY}
         ${scopeSql}
       ORDER BY (c.name_norm = $1) DESC,
-               (c.league IS NOT NULL) DESC,
                members DESC,
                (c.name_norm LIKE $1 || '%') DESC,
                sim DESC,
@@ -99,6 +100,53 @@ export async function searchClubs(
   );
   return rows.map((r) => ({ id: Number(r.id), name: r.name, logoUrl: r.logo_url }));
 }
+
+// Exact DB IDs — zero chance of wrong fuzzy match.
+// Easy: clubs that even non-football fans know.
+const EASY_CLUB_IDS = [
+  18656,  // Manchester United
+  50602,  // Manchester City
+  1130849,// Liverpool
+  9617,   // Arsenal
+  9616,   // Chelsea
+  8682,   // Real Madrid
+  7156,   // Barcelona
+  8701,   // Atletico Madrid
+  1422,   // Juventus
+  1543,   // AC Milan
+  631,    // Inter Milan
+  2641,   // Napoli
+  15789,  // Bayern Munich
+  41420,  // Borussia Dortmund
+  483020, // PSG
+  495299, // Galatasaray
+  6601875,// Fenerbahce
+  18741,  // Tottenham
+];
+
+// Medium: well-known clubs (easy + more).
+const MEDIUM_CLUB_IDS = [
+  ...EASY_CLUB_IDS,
+  18716,  // Newcastle
+  18711,  // Aston Villa
+  18747,  // West Ham
+  5794,   // Everton
+  19481,  // Leicester
+  10329,  // Sevilla
+  10333,  // Valencia
+  12297,  // Villarreal
+  2739,   // Roma
+  2609,   // Lazio
+  2052,   // Fiorentina
+  1886,   // Atalanta
+  132885, // Marseille
+  704,    // Lyon
+  180305, // Monaco
+  131499, // Benfica
+  128446, // Porto
+  81888,  // Ajax
+  192641, // Trabzonspor
+];
 
 // Allowed leagues in the game. 5 major leagues get their 2nd divisions too,
 // plus Turkey, Netherlands, Brazil, Portugal, and England Championship.
@@ -126,36 +174,51 @@ const ALLOWED_LEAGUES = [
   'Egyptian Premier League', 'Qatar Stars League', 'UAE Pro League',
 ];
 
-/**
- * A random club for the bot, chosen by POPULARITY (clubs.popularity = player
- * count). Data-driven — no hardcoded ids, no league whitelist — so every famous
- * club is reachable and it survives data rebuilds.
- * - 'easy':   random among the ~120 most popular clubs (mega-famous)
- * - 'medium': random among the ~700 most popular (well-known)
- * - 'hard':   any club with a logo + players in scope (incl. obscure / lower divisions)
- */
-const EASY_TOP = 120;
-const MEDIUM_TOP = 700;
+// Hard mode: only first-division leagues (no 2nd divisions).
+const FIRST_DIVISION_LEAGUES = ALLOWED_LEAGUES.filter(
+  (l) => !['Championship', 'La Liga 2', 'Serie B', 'Bundesliga 2', 'Ligue 2', 'TFF 1. Lig', 'Brazil Serie B'].includes(l),
+);
 
+/**
+ * A random club for the bot. Difficulty controls which pool:
+ * - 'easy': ~18 mega-famous clubs (everyone knows them)
+ * - 'medium': ~37 well-known clubs
+ * - 'hard': any first-division club with a logo in scope
+ */
 export async function randomClub(
   scope: Scope = { type: 'all' },
   difficulty: 'easy' | 'medium' | 'hard' = 'hard',
 ): Promise<ClubHit | null> {
-  const params: unknown[] = [];
+  if (difficulty === 'easy' || difficulty === 'medium') {
+    const ids = difficulty === 'easy' ? EASY_CLUB_IDS : MEDIUM_CLUB_IDS;
+    const shuffled = [...ids].sort(() => Math.random() - 0.5);
+    for (const id of shuffled) {
+      const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
+        `SELECT c.id, c.name, c.logo_url FROM clubs c
+          WHERE c.id = $1
+            AND c.is_national = false
+            ${scope.type === 'league' ? 'AND c.league = $2' : scope.type === 'country' ? 'AND c.country = $2' : ''}`,
+        scope.type === 'all' ? [id] : [id, scope.value],
+      );
+      if (rows[0]) return { id: Number(rows[0].id), name: rows[0].name, logoUrl: rows[0].logo_url };
+    }
+  }
+  // Hard mode: only first-division leagues
+  const params: unknown[] = [FIRST_DIVISION_LEAGUES];
   const scopeSql = scopeClause(scope, params);
-  const base = `
-    SELECT c.id, c.name, c.logo_url, c.popularity
-      FROM clubs c
-     WHERE c.is_national = false
-       AND c.logo_url IS NOT NULL
-       AND EXISTS (SELECT 1 FROM player_clubs pc WHERE pc.club_id = c.id)
-       ${A_TEAM_ONLY}
-       ${scopeSql}`;
-  const topN = difficulty === 'easy' ? EASY_TOP : difficulty === 'medium' ? MEDIUM_TOP : null;
-  const sql = topN
-    ? `SELECT id, name, logo_url FROM (${base} ORDER BY c.popularity DESC LIMIT ${topN}) t ORDER BY random() LIMIT 1`
-    : `${base} ORDER BY random() LIMIT 1`;
-  const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(sql, params);
+  const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
+    `SELECT c.id, c.name, c.logo_url
+       FROM clubs c
+      WHERE c.is_national = false
+        AND c.logo_url IS NOT NULL
+        AND c.league = ANY($1::text[])
+        AND EXISTS (SELECT 1 FROM player_clubs pc WHERE pc.club_id = c.id)
+        ${A_TEAM_ONLY}
+        ${scopeSql}
+      ORDER BY random()
+      LIMIT 1`,
+    params,
+  );
   const r = rows[0];
   return r ? { id: Number(r.id), name: r.name, logoUrl: r.logo_url } : null;
 }
