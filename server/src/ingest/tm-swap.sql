@@ -30,6 +30,29 @@ JOIN players pl ON pl.id = pc.player_id
 JOIN clubs cl ON cl.id = pc.club_id
 ON CONFLICT (player_id, club_id, (COALESCE(start_year, -1))) DO NOTHING;
 
+-- Restore Turkish characters (Transfermarkt's English site ASCII-izes them).
+UPDATE clubs SET name =
+  replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(
+  replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(
+  replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(
+   name,
+   'Besiktas','Beşiktaş'),'Fenerbahce','Fenerbahçe'),'Caykur','Çaykur'),
+   'Genclerbirligi','Gençlerbirliği'),'Basaksehir','Başakşehir'),'Kasimpasa','Kasımpaşa'),
+   'Eskisehir','Eskişehir'),'Eyupspor','Eyüpspor'),'Elazig','Elazığ'),
+   'Karsiyaka','Karşıyaka'),'Sariyer','Sarıyer'),'Diyarbakir','Diyarbakır'),
+   'Canakkale','Çanakkale'),'Bakirköy','Bakırköy'),'Bartin','Bartın'),
+   'Gaziosmanpasa','Gaziosmanpaşa'),'Kusadasi','Kuşadası'),'Mugla','Muğla'),
+   'Corum','Çorum'),'Umraniye','Ümraniye'),'Bandirma','Bandırma'),
+   'Sanliurfa','Şanlıurfa'),'Igdir','Iğdır'),'Keciorengucu','Keçiörengücü'),
+   'Kahramanmaras','Kahramanmaraş'),'Usakspor','Uşakspor'),'Aydinspor','Aydınspor'),
+   'Balikesir','Balıkesir'),'Kirklareli','Kırklareli'),'Inegöl','İnegöl')
+WHERE country = 'Türkiye';
+
+-- Popularity = number of players per club (bot difficulty + search ranking).
+UPDATE clubs SET popularity = sub.n
+FROM (SELECT club_id, count(*) AS n FROM player_clubs GROUP BY club_id) sub
+WHERE clubs.id = sub.club_id;
+
 -- Summary
 SELECT
   (SELECT count(*) FROM clubs)        AS clubs,
