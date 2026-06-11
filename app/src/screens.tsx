@@ -1348,7 +1348,6 @@ export function FriendsScreen({ state, actions }: Props) {
               >
                 <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={18} color={copied ? theme.primary : theme.accent} />
               </Pressable>
-              {copied ? <Text style={{ color: theme.primary, fontSize: 10, fontWeight: '600' }}>{t('copied')}</Text> : null}
             </View>
           </View>
           <View style={styles.friendDivider} />
@@ -1739,7 +1738,18 @@ export function ResultScreen({ state, actions }: Props) {
         {r.reason !== 'no_common' && r.reason !== 'same_team' ? (
           <>
             <View style={styles.teamResultRow}>
-              <TeamResultCard team={r.teamA} spells={r.spellsA} played={playedA} />
+              {state.revealMode === 'country-team' ? (
+                /* Country card: flag + name + checkmark only */
+                <View style={[styles.teamResult, { borderColor: theme.primary }]}>
+                  <Text style={{ fontSize: 36 }}>{NATIONALITIES.find((n) => n.value === state.revealCountry)?.flag ?? '🏳️'}</Text>
+                  <Text style={styles.teamResultName} numberOfLines={2}>
+                    {NATIONALITIES.find((n) => n.value === state.revealCountry)?.displayName ?? r.teamA.name}
+                  </Text>
+                  <Ionicons name="checkmark-circle" size={20} color={theme.primary} />
+                </View>
+              ) : state.revealMode === 'letter-team' ? null : (
+                <TeamResultCard team={r.teamA} spells={r.spellsA} played={playedA} />
+              )}
               <TeamResultCard team={r.teamB} spells={r.spellsB} played={playedB} />
             </View>
 
