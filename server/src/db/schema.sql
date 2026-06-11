@@ -95,7 +95,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_apple_sub ON users (apple_sub) WHERE
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users (google_sub) WHERE google_sub IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_facebook_sub ON users (facebook_sub) WHERE facebook_sub IS NOT NULL;
 
--- ---- Friendships (mutual: a row is stored in both directions on add) ----
+-- Social pack subscription (unlocks country-team & letter-team in friend matches).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS social_pack_until TIMESTAMPTZ;
+
+-- ---- Friend requests (pending invitations) ----
+CREATE TABLE IF NOT EXISTS friend_requests (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  from_user   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  to_user     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (from_user, to_user)
+);
+CREATE INDEX IF NOT EXISTS idx_friend_requests_to ON friend_requests (to_user);
+
+-- ---- Friendships (mutual: a row is stored in both directions on accept) ----
 CREATE TABLE IF NOT EXISTS friendships (
   user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   friend_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -103,6 +116,23 @@ CREATE TABLE IF NOT EXISTS friendships (
   PRIMARY KEY (user_id, friend_id)
 );
 CREATE INDEX IF NOT EXISTS idx_friendships_user ON friendships (user_id);
+
+-- ---- Match history (one row per player per match) ----
+CREATE TABLE IF NOT EXISTS match_history (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  player_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  opponent_id     UUID,                            -- NULL for bot matches
+  opponent_name   TEXT NOT NULL,
+  player_score    INT NOT NULL,
+  opponent_score  INT NOT NULL,
+  won             BOOLEAN NOT NULL,
+  player_trophies INT NOT NULL DEFAULT 0,
+  opponent_trophies INT NOT NULL DEFAULT 0,
+  game_mode       TEXT NOT NULL DEFAULT 'team-team',
+  rounds          JSONB NOT NULL DEFAULT '[]',     -- winning rounds only: [{teamA, teamB, player, answeredBy}]
+  played_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_match_history_player ON match_history (player_id, played_at DESC);
 
 -- Bookkeeping for ingest runs.
 CREATE TABLE IF NOT EXISTS ingest_log (

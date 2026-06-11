@@ -3,15 +3,37 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomManager } from '../rooms/manager.ts';
 import { BotPlayer } from '../rooms/bot.ts';
 import { listScopes, listNationalities } from '../game/verify.ts';
-import { findOrCreateUser, findOrCreateUserByProvider, getUser, changeDisplayName, setUsername, buyEmote, getLeaderboard, addFriend, listFriends, removeFriend, type UserProfile } from '../game/rank.ts';
+import {
+  findOrCreateUser, findOrCreateUserByProvider, getUser, changeDisplayName,
+  setUsername, buyEmote, getLeaderboard,
+  listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
+  removeFriend, searchUsers, getMatchHistory,
+  type UserProfile,
+} from '../game/rank.ts';
 import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
 import type { Room, Transport } from '../rooms/room.ts';
-import type { ClientMsg, ServerMsg } from '../protocol.ts';
+import type { ClientMsg, ProfileView, ServerMsg } from '../protocol.ts';
 
 interface ConnCtx {
   room: Room;
   playerId: string;
   userProfile?: UserProfile;
+}
+
+/** Build a ProfileView from a UserProfile (used in all profile-sending paths). */
+function toProfileView(p: UserProfile): ProfileView {
+  return {
+    userId: p.id,
+    displayName: p.displayName,
+    trophies: p.trophies,
+    diamonds: p.diamonds,
+    wins: p.wins,
+    losses: p.losses,
+    ownedEmotes: p.ownedEmotes,
+    usernameSet: p.usernameSet,
+    socialPackUntil: p.socialPackUntil,
+    arena: p.arena,
+  };
 }
 
 function wsTransport(ws: WebSocket): Transport {
@@ -31,6 +53,27 @@ interface QueueEntry {
   userProfile?: UserProfile;
   options?: import('../protocol.ts').GameOptions;
   setCtx: (c: ConnCtx) => void;
+}
+
+// Track online users for real-time friend notifications.
+const onlineUsers = new Map<string, WebSocket>(); // userId → WebSocket
+
+function sendToUser(userId: string, msg: ServerMsg): void {
+  const ws = onlineUsers.get(userId);
+  if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+}
+
+/** Build a friends_list message with online status. */
+async function getFriendsData(userId: string): Promise<ServerMsg & { type: 'friends_list' }> {
+  const [rawFriends, requests] = await Promise.all([
+    listFriends(userId),
+    listFriendRequests(userId),
+  ]);
+  const friends = rawFriends.map((f) => ({
+    ...f,
+    online: onlineUsers.has(f.userId),
+  }));
+  return { type: 'friends_list', friends, requests };
 }
 
 export function startServer(port: number): Server {
@@ -77,33 +120,10 @@ export function startServer(port: number): Server {
       return;
     }
 
-    if (path === '/friends' && req.method === 'GET') {
-      const userId = query.get('userId');
-      if (!userId) { res.writeHead(400, cors); res.end(JSON.stringify({ error: 'userId gerekli' })); return; }
-      listFriends(userId)
-        .then((friends) => { res.writeHead(200, cors); res.end(JSON.stringify({ friends })); })
-        .catch(() => { res.writeHead(500, cors); res.end(JSON.stringify({ friends: [] })); });
-      return;
-    }
-
-    if ((path === '/friends/add' || path === '/friends/remove') && req.method === 'POST') {
-      let body = '';
-      req.on('data', (c) => { body += c; if (body.length > 1e4) req.destroy(); });
-      req.on('end', () => {
-        let p: any = {};
-        try { p = JSON.parse(body || '{}'); } catch { /* ignore */ }
-        const userId = p.userId ? String(p.userId) : '';
-        if (!userId) { res.writeHead(400, cors); res.end(JSON.stringify({ error: 'Önce giriş yap' })); return; }
-        const work = path === '/friends/add'
-          ? addFriend(userId, String(p.code ?? p.name ?? ''))
-          : removeFriend(userId, String(p.friendId ?? '')).then((friends) => ({ ok: true as const, friends }));
-        Promise.resolve(work)
-          .then((r) => {
-            if ('ok' in r && !r.ok) { res.writeHead(400, cors); res.end(JSON.stringify({ error: r.error })); return; }
-            res.writeHead(200, cors); res.end(JSON.stringify({ friends: (r as any).friends }));
-          })
-          .catch(() => { res.writeHead(500, cors); res.end(JSON.stringify({ error: 'Sunucu hatası' })); });
-      });
+    // Friends are now managed over WebSocket (send_friend_request, list_friends, etc.)
+    if (path === '/friends' || path === '/friends/add' || path === '/friends/remove') {
+      res.writeHead(200, cors);
+      res.end(JSON.stringify({ friends: [] }));
       return;
     }
 
@@ -135,19 +155,10 @@ export function startServer(port: number): Server {
             (msg.userId ? await getUser(msg.userId) : null) ??
             (await findOrCreateUser(msg.gameCenterId ?? null, msg.name));
           userProfile = profile;
+          onlineUsers.set(profile.id, ws);
           transport.send({
             type: 'profile',
-            profile: {
-              userId: profile.id,
-              displayName: profile.displayName,
-              trophies: profile.trophies,
-              diamonds: profile.diamonds,
-              wins: profile.wins,
-              losses: profile.losses,
-              ownedEmotes: profile.ownedEmotes,
-              usernameSet: profile.usernameSet,
-              arena: profile.arena,
-            },
+            profile: toProfileView(profile),
           });
         })();
         return;
@@ -173,20 +184,8 @@ export function startServer(port: number): Server {
               name,
             );
             userProfile = profile;
-            transport.send({
-              type: 'profile',
-              profile: {
-                userId: profile.id,
-                displayName: profile.displayName,
-                trophies: profile.trophies,
-                diamonds: profile.diamonds,
-                wins: profile.wins,
-                losses: profile.losses,
-                ownedEmotes: profile.ownedEmotes,
-                usernameSet: profile.usernameSet,
-                arena: profile.arena,
-              },
-            });
+            onlineUsers.set(profile.id, ws);
+            transport.send({ type: 'profile', profile: toProfileView(profile) });
           } catch (err) {
             console.error(`[auth:${msg.provider}] verify failed:`, err instanceof Error ? err.message : err);
             transport.send({ type: 'error', message: 'Giriş doğrulanamadı' });
@@ -203,17 +202,7 @@ export function startServer(port: number): Server {
           userProfile = result.profile;
           transport.send({
             type: 'name_changed',
-            profile: {
-              userId: result.profile.id,
-              displayName: result.profile.displayName,
-              trophies: result.profile.trophies,
-              diamonds: result.profile.diamonds,
-              wins: result.profile.wins,
-              losses: result.profile.losses,
-              ownedEmotes: result.profile.ownedEmotes,
-              usernameSet: result.profile.usernameSet,
-              arena: result.profile.arena,
-            },
+            profile: toProfileView(result.profile),
           });
         })();
         return;
@@ -230,17 +219,7 @@ export function startServer(port: number): Server {
           userProfile = result.profile;
           transport.send({
             type: 'profile',
-            profile: {
-              userId: result.profile.id,
-              displayName: result.profile.displayName,
-              trophies: result.profile.trophies,
-              diamonds: result.profile.diamonds,
-              wins: result.profile.wins,
-              losses: result.profile.losses,
-              ownedEmotes: result.profile.ownedEmotes,
-              usernameSet: result.profile.usernameSet,
-              arena: result.profile.arena,
-            },
+            profile: toProfileView(result.profile),
           });
         })();
         return;
@@ -256,18 +235,81 @@ export function startServer(port: number): Server {
           transport.send({
             type: 'emote_purchased',
             emoteId: msg.emoteId,
-            profile: {
-              userId: result.profile.id,
-              displayName: result.profile.displayName,
-              trophies: result.profile.trophies,
-              diamonds: result.profile.diamonds,
-              wins: result.profile.wins,
-              losses: result.profile.losses,
-              ownedEmotes: result.profile.ownedEmotes,
-              usernameSet: result.profile.usernameSet,
-              arena: result.profile.arena,
-            },
+            profile: toProfileView(result.profile),
           });
+        })();
+        return;
+      }
+
+      // ---- Friend system (works with or without a room) ----
+      if (msg.type === 'send_friend_request') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          const result = await sendFriendRequest(userProfile!.id, msg.targetCode, msg.targetUsername);
+          if (!result.ok) return transport.send({ type: 'error', message: result.error });
+          transport.send({ type: 'friend_request_sent' });
+          // Notify the target in real-time if they're online
+          sendToUser(result.toUserId, {
+            type: 'friend_request_received',
+            requestId: '', // the receiver will refresh their list
+            fromId: userProfile!.id,
+            fromName: userProfile!.displayName,
+          });
+        })();
+        return;
+      }
+      if (msg.type === 'respond_friend_request') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          const result = await respondFriendRequest(userProfile!.id, msg.requestId, msg.accept);
+          if (!result.ok) return transport.send({ type: 'error', message: result.error });
+          transport.send({ type: 'friend_request_responded', requestId: msg.requestId, accepted: msg.accept });
+          // Refresh both users' friend lists
+          const myData = await getFriendsData(userProfile!.id);
+          transport.send(myData);
+        })();
+        return;
+      }
+      if (msg.type === 'list_friends') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          const data = await getFriendsData(userProfile!.id);
+          transport.send(data);
+        })();
+        return;
+      }
+      if (msg.type === 'search_users') {
+        void (async () => {
+          const users = await searchUsers(msg.query);
+          transport.send({ type: 'user_search_results', users });
+        })();
+        return;
+      }
+      if (msg.type === 'remove_friend') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          await removeFriend(userProfile!.id, msg.friendId);
+          transport.send({ type: 'friend_removed', friendId: msg.friendId });
+          const data = await getFriendsData(userProfile!.id);
+          transport.send(data);
+        })();
+        return;
+      }
+      if (msg.type === 'invite_friend_match') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        sendToUser(msg.friendId, {
+          type: 'match_invite_received',
+          fromId: userProfile.id,
+          fromName: userProfile.displayName,
+          options: msg.options,
+        });
+        return;
+      }
+      if (msg.type === 'list_match_history') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          const matches = await getMatchHistory(userProfile!.id);
+          transport.send({ type: 'match_history_list', matches });
         })();
         return;
       }
@@ -356,6 +398,8 @@ export function startServer(port: number): Server {
     });
 
     ws.on('close', () => {
+      // Remove from online users tracking
+      if (userProfile) onlineUsers.delete(userProfile.id);
       // Remove from matchmaking queue if waiting
       for (let i = matchQueue.length - 1; i >= 0; i--) {
         if (matchQueue[i]!.ws === ws) matchQueue.splice(i, 1);

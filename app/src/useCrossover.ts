@@ -6,8 +6,11 @@ import type {
   ArenaView,
   ClientMsg,
   ClubRef,
+  FriendRequestView,
+  FriendView,
   GameMode,
   GameOptions,
+  MatchHistoryView,
   PickRole,
   ProfileView,
   RoomView,
@@ -16,7 +19,7 @@ import type {
   ServerMsg,
 } from './protocol';
 
-export type Phase = 'home' | 'arenas' | 'leaderboard' | 'searching' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
+export type Phase = 'home' | 'arenas' | 'leaderboard' | 'matchHistory' | 'searching' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
 
 export interface LeaderboardEntry {
   rank: number;
@@ -27,14 +30,7 @@ export interface LeaderboardEntry {
   arena: { name: string; icon: string; minTrophies: number };
 }
 
-export interface FriendInfo {
-  userId: string;
-  displayName: string;
-  trophies: number;
-  wins: number;
-  losses: number;
-  arena: { name: string; icon: string; minTrophies: number };
-}
+export type FriendInfo = FriendView;
 
 export interface GameState {
   connected: boolean;
@@ -54,6 +50,10 @@ export interface GameState {
   trophyDelta: { trophies: number; delta: number; arena: ArenaView } | null;
   leaderboard: LeaderboardEntry[];
   friends: FriendInfo[];
+  friendRequests: FriendRequestView[];
+  userSearchResults: { userId: string; displayName: string }[];
+  matchInvite: { fromId: string; fromName: string; options?: GameOptions } | null;
+  matchHistory: MatchHistoryView[];
   // match (first to `winTarget` round wins) + rematch flow
   matchOver: boolean;
   matchWinnerId: string | null;
@@ -93,6 +93,10 @@ const initialState: GameState = {
   trophyDelta: null,
   leaderboard: [],
   friends: [],
+  friendRequests: [],
+  userSearchResults: [],
+  matchInvite: null,
+  matchHistory: [],
   matchOver: false,
   matchWinnerId: null,
   matchWinnerName: null,
@@ -144,6 +148,28 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, friends: action.friends };
     case '_ready':
       return { ...state, iReady: true };
+
+    case 'friends_list':
+      return { ...state, friends: (action as any).friends ?? [], friendRequests: (action as any).requests ?? [] };
+    case 'friend_request_received':
+      return { ...state, friendRequests: [
+        { requestId: (action as any).requestId, fromId: (action as any).fromId, fromName: (action as any).fromName, createdAt: new Date().toISOString() },
+        ...state.friendRequests,
+      ]};
+    case 'friend_request_sent':
+      return state;
+    case 'friend_request_responded':
+      return { ...state, friendRequests: state.friendRequests.filter((r) => r.requestId !== (action as any).requestId) };
+    case 'user_search_results':
+      return { ...state, userSearchResults: (action as any).users ?? [] };
+    case 'friend_removed':
+      return { ...state, friends: state.friends.filter((f) => f.userId !== (action as any).friendId) };
+    case 'match_invite_received':
+      return { ...state, matchInvite: { fromId: (action as any).fromId, fromName: (action as any).fromName, options: (action as any).options } };
+    case 'match_history_list':
+      return { ...state, matchHistory: (action as any).matches ?? [] };
+    case '_dismiss_invite' as any:
+      return { ...state, matchInvite: null };
 
     case 'searching':
       return { ...state, phase: 'searching' };
@@ -328,6 +354,11 @@ export function useCrossover() {
     closeLeaderboard: () => dispatch({ type: '_phase', phase: 'home' }),
     openArenas: () => dispatch({ type: '_phase', phase: 'arenas' }),
     closeArenas: () => dispatch({ type: '_phase', phase: 'home' }),
+    openMatchHistory: () => {
+      send({ type: 'list_match_history' });
+      dispatch({ type: '_phase', phase: 'matchHistory' });
+    },
+    closeMatchHistory: () => dispatch({ type: '_phase', phase: 'home' }),
     register: (name: string, gameCenterId?: string) => {
       const userId = state.profile?.userId;
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -394,45 +425,17 @@ export function useCrossover() {
     declineRematch: () => send({ type: 'rematch_response', accept: false }),
     sendEmote: (emoteId: string) => send({ type: 'send_emote', emoteId }),
     buyEmote: (emoteId: string) => send({ type: 'buy_emote', emoteId }),
-    // Friends — over HTTP (no persistent socket on the Friends screen).
-    loadFriends: () => {
-      const userId = state.profile?.userId;
-      if (!userId) return;
-      fetch(`${HTTP_URL}/friends?userId=${encodeURIComponent(userId)}`)
-        .then((r) => r.json())
-        .then((d: { friends?: FriendInfo[] }) => dispatch({ type: '_friends', friends: d.friends ?? [] }))
-        .catch(() => {});
-    },
-    addFriend: async (code: string): Promise<{ ok: boolean; error?: string }> => {
-      const userId = state.profile?.userId;
-      if (!userId) return { ok: false, error: t('friends.loginFirst') };
-      try {
-        const r = await fetch(`${HTTP_URL}/friends/add`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ userId, code: code.trim() }),
-        });
-        const d = await r.json();
-        if (!r.ok) return { ok: false, error: d?.error ?? t('error.connect') };
-        dispatch({ type: '_friends', friends: d.friends ?? [] });
-        return { ok: true };
-      } catch {
-        return { ok: false, error: t('error.connect') };
-      }
-    },
-    removeFriend: async (friendId: string) => {
-      const userId = state.profile?.userId;
-      if (!userId) return;
-      try {
-        const r = await fetch(`${HTTP_URL}/friends/remove`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ userId, friendId }),
-        });
-        const d = await r.json();
-        if (r.ok) dispatch({ type: '_friends', friends: d.friends ?? [] });
-      } catch {}
-    },
+    // Friends — via WebSocket for real-time notifications.
+    loadFriends: () => send({ type: 'list_friends' }),
+    sendFriendRequest: (targetCode?: string, targetUsername?: string) =>
+      send({ type: 'send_friend_request', targetCode, targetUsername }),
+    respondFriendRequest: (requestId: string, accept: boolean) =>
+      send({ type: 'respond_friend_request', requestId, accept }),
+    removeFriend: (friendId: string) => send({ type: 'remove_friend', friendId }),
+    searchUsers: (query: string) => send({ type: 'search_users', query }),
+    inviteFriendMatch: (friendId: string, options?: GameOptions) =>
+      send({ type: 'invite_friend_match', friendId, options }),
+    dismissMatchInvite: () => dispatch({ type: '_dismiss_invite' as any }),
     leave: () => {
       wsRef.current?.close();
       wsRef.current = null;

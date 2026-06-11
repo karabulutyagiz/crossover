@@ -55,6 +55,7 @@ export interface UserProfile {
   losses: number;
   ownedEmotes: string[];
   usernameSet: boolean;
+  socialPackUntil: string | null; // ISO date or null
   arena: Arena;
 }
 
@@ -237,9 +238,15 @@ export interface FriendView {
   userId: string;
   displayName: string;
   trophies: number;
-  wins: number;
-  losses: number;
   arena: Arena;
+  online: boolean; // set by the caller (ws layer tracks connections)
+}
+
+export interface FriendRequestView {
+  requestId: string;
+  fromId: string;
+  fromName: string;
+  createdAt: string;
 }
 
 // Resolve a user from what's typed into "Friend Code": either the 8-char code
@@ -264,7 +271,8 @@ async function resolveUserByCodeOrName(codeOrName: string): Promise<DbUser | nul
   return byName.rows[0] ?? null;
 }
 
-export async function listFriends(userId: string): Promise<FriendView[]> {
+/** List accepted friends (online status set by caller). */
+export async function listFriends(userId: string): Promise<Omit<FriendView, 'online'>[]> {
   const { rows } = await pool.query<DbUser>(
     `SELECT u.* FROM friendships f
        JOIN users u ON u.id = f.friend_id
@@ -276,39 +284,130 @@ export async function listFriends(userId: string): Promise<FriendView[]> {
     userId: r.id,
     displayName: r.display_name,
     trophies: r.trophies,
-    wins: r.wins,
-    losses: Number(r.losses),
     arena: getArena(r.trophies),
   }));
 }
 
-export async function addFriend(
-  userId: string,
-  codeOrName: string,
-): Promise<{ ok: true; friends: FriendView[] } | { ok: false; error: string }> {
-  if (!userId) return { ok: false, error: 'Önce giriş yap' };
-  const me = await pool.query('SELECT 1 FROM users WHERE id = $1', [userId]);
-  if (!me.rows[0]) return { ok: false, error: 'Önce giriş yap' };
-
-  const target = await resolveUserByCodeOrName(codeOrName);
-  if (!target) return { ok: false, error: 'Kullanıcı bulunamadı' };
-  if (target.id === userId) return { ok: false, error: 'Kendini ekleyemezsin' };
-
-  // Mutual friendship: store both directions so each sees the other.
-  await pool.query(
-    `INSERT INTO friendships (user_id, friend_id) VALUES ($1, $2), ($2, $1)
-     ON CONFLICT DO NOTHING`,
-    [userId, target.id],
+/** List pending friend requests TO this user. */
+export async function listFriendRequests(userId: string): Promise<FriendRequestView[]> {
+  const { rows } = await pool.query<{ id: string; from_user: string; display_name: string; created_at: string }>(
+    `SELECT fr.id, fr.from_user, u.display_name, fr.created_at
+       FROM friend_requests fr
+       JOIN users u ON u.id = fr.from_user
+      WHERE fr.to_user = $1
+      ORDER BY fr.created_at DESC`,
+    [userId],
   );
-  return { ok: true, friends: await listFriends(userId) };
+  return rows.map((r) => ({
+    requestId: r.id,
+    fromId: r.from_user,
+    fromName: r.display_name,
+    createdAt: r.created_at,
+  }));
 }
 
-export async function removeFriend(userId: string, friendId: string): Promise<FriendView[]> {
+/** Send a friend request. Returns the target user id or an error. */
+export async function sendFriendRequest(
+  fromUserId: string,
+  targetCode?: string,
+  targetUsername?: string,
+): Promise<{ ok: true; toUserId: string; toName: string } | { ok: false; error: string }> {
+  if (!fromUserId) return { ok: false, error: 'Önce giriş yap' };
+
+  let target: { id: string; display_name: string } | null = null;
+  if (targetCode) {
+    const { rows } = await pool.query<{ id: string; display_name: string }>(
+      `SELECT id, display_name FROM users WHERE lower(left(id::text, 8)) = lower($1)`,
+      [targetCode],
+    );
+    target = rows[0] ?? null;
+  } else if (targetUsername) {
+    const { rows } = await pool.query<{ id: string; display_name: string }>(
+      `SELECT id, display_name FROM users WHERE lower(display_name) = lower($1) AND username_set = true`,
+      [targetUsername],
+    );
+    target = rows[0] ?? null;
+  }
+  if (!target) return { ok: false, error: 'Kullanıcı bulunamadı' };
+  if (target.id === fromUserId) return { ok: false, error: 'Kendine istek gönderemezsin' };
+
+  // Already friends?
+  const already = await pool.query(
+    `SELECT 1 FROM friendships WHERE user_id = $1 AND friend_id = $2`,
+    [fromUserId, target.id],
+  );
+  if (already.rows[0]) return { ok: false, error: 'Zaten arkadaşsınız' };
+
+  // Already pending?
+  const pending = await pool.query(
+    `SELECT 1 FROM friend_requests WHERE from_user = $1 AND to_user = $2`,
+    [fromUserId, target.id],
+  );
+  if (pending.rows[0]) return { ok: false, error: 'İstek zaten gönderildi' };
+
+  // If the target already sent US a request, auto-accept both ways
+  const reverse = await pool.query(
+    `SELECT id FROM friend_requests WHERE from_user = $1 AND to_user = $2`,
+    [target.id, fromUserId],
+  );
+  if (reverse.rows[0]) {
+    // Accept the reverse request (mutual add)
+    await pool.query(`DELETE FROM friend_requests WHERE id = $1`, [reverse.rows[0].id]);
+    await pool.query(
+      `INSERT INTO friendships (user_id, friend_id) VALUES ($1, $2), ($2, $1) ON CONFLICT DO NOTHING`,
+      [fromUserId, target.id],
+    );
+    return { ok: true, toUserId: target.id, toName: target.display_name };
+  }
+
+  await pool.query(
+    `INSERT INTO friend_requests (from_user, to_user) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+    [fromUserId, target.id],
+  );
+  return { ok: true, toUserId: target.id, toName: target.display_name };
+}
+
+/** Accept or reject a friend request. */
+export async function respondFriendRequest(
+  userId: string,
+  requestId: string,
+  accept: boolean,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { rows } = await pool.query<{ from_user: string; to_user: string }>(
+    `SELECT from_user, to_user FROM friend_requests WHERE id = $1`,
+    [requestId],
+  );
+  const req = rows[0];
+  if (!req || req.to_user !== userId) return { ok: false, error: 'İstek bulunamadı' };
+
+  await pool.query(`DELETE FROM friend_requests WHERE id = $1`, [requestId]);
+
+  if (accept) {
+    await pool.query(
+      `INSERT INTO friendships (user_id, friend_id) VALUES ($1, $2), ($2, $1) ON CONFLICT DO NOTHING`,
+      [req.from_user, req.to_user],
+    );
+  }
+  return { ok: true };
+}
+
+export async function removeFriend(userId: string, friendId: string): Promise<void> {
   await pool.query(
     `DELETE FROM friendships WHERE (user_id = $1 AND friend_id = $2) OR (user_id = $2 AND friend_id = $1)`,
     [userId, friendId],
   );
-  return listFriends(userId);
+}
+
+/** Search users by exact username match. */
+export async function searchUsers(query: string): Promise<{ userId: string; displayName: string }[]> {
+  if (!query || query.trim().length < 2) return [];
+  const { rows } = await pool.query<{ id: string; display_name: string }>(
+    `SELECT id, display_name FROM users
+      WHERE username_set = true AND lower(display_name) = lower($1)
+      LIMIT 10`,
+    [query.trim()],
+  );
+  return rows.map((r) => ({ userId: r.id, displayName: r.display_name }));
 }
 
 // ---- Matchmaking ----
@@ -342,6 +441,7 @@ interface DbUser {
   losses: number;
   owned_emotes: string[] | null;
   username_set: boolean | null;
+  social_pack_until: string | null;
   created_at: string;
 }
 
@@ -356,6 +456,79 @@ function toProfile(row: DbUser): UserProfile {
     losses: row.losses,
     ownedEmotes: row.owned_emotes ?? [],
     usernameSet: row.username_set ?? false,
+    socialPackUntil: row.social_pack_until ?? null,
     arena: getArena(row.trophies),
   };
+}
+
+// ---- Match History ----
+
+export interface MatchRound {
+  teamA: string;
+  teamB: string;
+  player: string;      // the correct player name
+  answeredBy: string;   // who answered this round
+}
+
+export interface MatchHistoryEntry {
+  id: string;
+  opponentName: string;
+  playerScore: number;
+  opponentScore: number;
+  won: boolean;
+  playerTrophies: number;
+  opponentTrophies: number;
+  gameMode: string;
+  rounds: MatchRound[];
+  playedAt: string;
+}
+
+export async function saveMatchHistory(
+  playerId: string,
+  playerName: string,
+  playerTrophies: number,
+  opponentId: string | null,
+  opponentName: string,
+  opponentTrophies: number,
+  playerScore: number,
+  opponentScore: number,
+  won: boolean,
+  gameMode: string,
+  rounds: MatchRound[],
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO match_history (player_id, opponent_id, opponent_name, player_score, opponent_score,
+       won, player_trophies, opponent_trophies, game_mode, rounds)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [playerId, opponentId, opponentName, playerScore, opponentScore, won,
+     playerTrophies, opponentTrophies, gameMode, JSON.stringify(rounds)],
+  );
+}
+
+export async function getMatchHistory(userId: string, limit = 30): Promise<MatchHistoryEntry[]> {
+  const { rows } = await pool.query<{
+    id: string; opponent_name: string; player_score: number; opponent_score: number;
+    won: boolean; player_trophies: number; opponent_trophies: number;
+    game_mode: string; rounds: string; played_at: string;
+  }>(
+    `SELECT id, opponent_name, player_score, opponent_score, won,
+            player_trophies, opponent_trophies, game_mode, rounds, played_at
+       FROM match_history
+      WHERE player_id = $1
+      ORDER BY played_at DESC
+      LIMIT $2`,
+    [userId, limit],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    opponentName: r.opponent_name,
+    playerScore: r.player_score,
+    opponentScore: r.opponent_score,
+    won: r.won,
+    playerTrophies: r.player_trophies,
+    opponentTrophies: r.opponent_trophies,
+    gameMode: r.game_mode,
+    rounds: typeof r.rounds === 'string' ? JSON.parse(r.rounds) : r.rounds ?? [],
+    playedAt: r.played_at,
+  }));
 }

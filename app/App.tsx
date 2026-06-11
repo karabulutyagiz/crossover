@@ -1,7 +1,8 @@
-import { useCallback, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   Dimensions,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,6 +18,7 @@ import {
   HomeScreen,
   ArenasScreen,
   LeaderboardScreen,
+  MatchHistoryScreen,
   SearchingScreen,
   StoreScreen,
   FriendsScreen,
@@ -38,13 +40,19 @@ const TABS: { key: string; label: string; icon: IoniconName; activeIcon: Ionicon
 ];
 
 // Phases that show the main tab bar (non-game screens)
-const TAB_PHASES = new Set(['home', 'arenas', 'leaderboard']);
+const TAB_PHASES = new Set(['home', 'arenas', 'leaderboard', 'matchHistory']);
 
 export default function App() {
   const { state, actions } = useCrossover();
   const props = { state, actions };
   const scrollRef = useRef<ScrollView>(null);
   const [activeTab, setActiveTab] = useState(1); // start on Home (index 1)
+  const [splash, setSplash] = useState(true);
+
+  useEffect(() => {
+    const t = setTimeout(() => setSplash(false), 1500);
+    return () => clearTimeout(t);
+  }, []);
 
   const goToTab = useCallback((idx: number) => {
     scrollRef.current?.scrollTo({ x: idx * SCREEN_W, animated: true });
@@ -56,6 +64,16 @@ export default function App() {
     const idx = Math.round(x / SCREEN_W);
     setActiveTab(idx);
   }, []);
+
+  // Splash screen: show COF logo for 1.5 seconds on launch.
+  if (splash) {
+    return (
+      <View style={s.splash}>
+        <StatusBar style="light" />
+        <Image source={require('./assets/icon.png')} style={s.splashLogo} />
+      </View>
+    );
+  }
 
   // Login gate: nothing is accessible until the user signs in (Apple/Google).
   // MUST come AFTER all hooks above — an early return before useCallback changes
@@ -120,6 +138,8 @@ export default function App() {
     ? <ArenasScreen {...props} />
     : state.phase === 'leaderboard'
     ? <LeaderboardScreen {...props} />
+    : state.phase === 'matchHistory'
+    ? <MatchHistoryScreen {...props} />
     : <HomeScreen {...props} />;
 
   return (
@@ -170,6 +190,8 @@ export default function App() {
 }
 
 const s = StyleSheet.create({
+  splash: { flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' },
+  splashLogo: { width: 120, height: 120, borderRadius: 28 },
   root: { flex: 1, backgroundColor: theme.bg, paddingTop: 44 },
   tabBar: {
     flexDirection: 'row',

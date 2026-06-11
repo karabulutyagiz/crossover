@@ -46,6 +46,7 @@ export interface ProfileView {
   losses: number;
   ownedEmotes: string[];
   usernameSet: boolean;
+  socialPackUntil: string | null; // ISO date or null
   arena: ArenaView;
 }
 
@@ -87,7 +88,15 @@ export type ClientMsg =
   | { type: 'rematch_response'; accept: boolean }
   | { type: 'send_emote'; emoteId: string } // show an emote to the opponent during a match
   | { type: 'buy_emote'; emoteId: string } // purchase a premium emote with diamonds
-  | { type: 'search_clubs'; reqId: string; q: string };
+  | { type: 'search_clubs'; reqId: string; q: string }
+  // ---- Friends ----
+  | { type: 'send_friend_request'; targetCode?: string; targetUsername?: string }
+  | { type: 'respond_friend_request'; requestId: string; accept: boolean }
+  | { type: 'list_friends' }
+  | { type: 'search_users'; query: string }
+  | { type: 'remove_friend'; friendId: string }
+  | { type: 'invite_friend_match'; friendId: string; options?: GameOptions }
+  | { type: 'list_match_history' };
 
 // ---- Server -> Client ----
 export interface RoundResult {
@@ -139,4 +148,41 @@ export type ServerMsg =
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
   | { type: 'searching' }
   | { type: 'opponent_left' }
+  // ---- Friends ----
+  | { type: 'friend_request_received'; requestId: string; fromId: string; fromName: string }
+  | { type: 'friend_request_sent' }
+  | { type: 'friend_request_responded'; requestId: string; accepted: boolean }
+  | { type: 'friends_list'; friends: FriendView[]; requests: FriendRequestView[] }
+  | { type: 'user_search_results'; users: { userId: string; displayName: string }[] }
+  | { type: 'friend_removed'; friendId: string }
+  | { type: 'match_invite_received'; fromId: string; fromName: string; options?: GameOptions }
+  | { type: 'match_history_list'; matches: MatchHistoryView[] }
   | { type: 'error'; message: string };
+
+export interface MatchHistoryView {
+  id: string;
+  opponentName: string;
+  playerScore: number;
+  opponentScore: number;
+  won: boolean;
+  playerTrophies: number;
+  opponentTrophies: number;
+  gameMode: string;
+  rounds: { teamA: string; teamB: string; player: string; answeredBy: string }[];
+  playedAt: string;
+}
+
+export interface FriendView {
+  userId: string;
+  displayName: string;
+  trophies: number;
+  arena: ArenaView;
+  online: boolean;
+}
+
+export interface FriendRequestView {
+  requestId: string;
+  fromId: string;
+  fromName: string;
+  createdAt: string;
+}

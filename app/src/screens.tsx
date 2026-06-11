@@ -43,6 +43,8 @@ type Actions = {
   closeArenas: () => void;
   openLeaderboard: () => void;
   closeLeaderboard: () => void;
+  openMatchHistory: () => void;
+  closeMatchHistory: () => void;
   findMatch: (options?: GameOptions) => void;
   cancelSearch: () => void;
   createRoom: (name: string, options?: GameOptions) => void;
@@ -61,8 +63,12 @@ type Actions = {
   sendEmote: (emoteId: string) => void;
   buyEmote: (emoteId: string) => void;
   loadFriends: () => void;
-  addFriend: (code: string) => Promise<{ ok: boolean; error?: string }>;
-  removeFriend: (friendId: string) => Promise<void>;
+  sendFriendRequest: (targetCode?: string, targetUsername?: string) => void;
+  respondFriendRequest: (requestId: string, accept: boolean) => void;
+  removeFriend: (friendId: string) => void;
+  searchUsers: (query: string) => void;
+  inviteFriendMatch: (friendId: string, options?: GameOptions) => void;
+  dismissMatchInvite: () => void;
   leave: () => void;
 };
 
@@ -438,11 +444,32 @@ export function HomeScreen({ actions, state }: Props) {
   const [scope, setScope] = useState<Scope>({ type: 'all' });
   const [mode, setMode] = useState<GameMode>('team-team');
   const [picker, setPicker] = useState<Picker>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const opts: GameOptions = { scope, difficulty, mode };
   const profile = state.profile;
 
   return (
     <Screen>
+      {/* Hamburger menu (top right) */}
+      <Pressable style={{ position: 'absolute', top: 4, right: 16, zIndex: 50 }} onPress={() => setMenuOpen(true)}>
+        <Ionicons name="menu" size={26} color={theme.text} />
+      </Pressable>
+      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+        <Pressable style={styles.modalBg} onPress={() => setMenuOpen(false)}>
+          <View style={{ position: 'absolute', top: 60, right: 20, backgroundColor: theme.card, borderRadius: 14, borderWidth: 1, borderColor: theme.border, padding: 6, minWidth: 200 }}>
+            <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 14 }} onPress={() => { setMenuOpen(false); actions.openMatchHistory(); }}>
+              <Ionicons name="time" size={20} color={theme.accent} />
+              <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>{t('menu.matchHistory')}</Text>
+            </Pressable>
+            <View style={{ height: 1, backgroundColor: theme.border }} />
+            <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 14 }} onPress={() => { setMenuOpen(false); actions.openLeaderboard(); }}>
+              <Ionicons name="trophy" size={20} color={theme.accent} />
+              <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>{t('menu.leaderboard')}</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.center}>
           <Ionicons name="football" size={36} color={theme.primary} />
@@ -490,8 +517,6 @@ export function HomeScreen({ actions, state }: Props) {
           </Pressable>
         </View>
         <Text style={[styles.muted, { marginBottom: 6, fontSize: 11 }]}>{MODE_LABEL[mode]}</Text>
-
-        <Btn label={t('home.leaderboard')} icon="trophy" kind="ghost" onPress={actions.openLeaderboard} />
 
         {/* Settings chips */}
         <View style={styles.optRow}>
@@ -960,7 +985,7 @@ export function GuessScreen({ state, actions }: Props) {
           {someoneElseAnswered ? (
             <View style={styles.center}>
               <Ionicons name="lock-closed" size={28} color={theme.muted} />
-              <Text style={styles.muted}>{state.locked?.byName} cevapladı, bekle…</Text>
+              <Text style={styles.muted}>{t('guess.locked', { name: state.locked?.byName ?? '' })}</Text>
             </View>
           ) : (
             <>
@@ -1262,6 +1287,33 @@ export function StoreScreen({ state, actions }: Props) {
           );
         })}
 
+        {/* Sosyal Paket */}
+        <Text style={styles.sectionLabel}>SOSYAL PAKET</Text>
+        <View style={[styles.storePackCard, { borderColor: theme.accent, borderWidth: 2 }]}>
+          <View style={styles.storePackBadge}>
+            <Text style={styles.storePackBadgeText}>YENİ</Text>
+          </View>
+          <View style={{ gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Ionicons name="people" size={24} color={theme.accent} />
+              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>Sosyal Paket</Text>
+            </View>
+            <Text style={{ color: theme.muted, fontSize: 12 }}>
+              Arkadaşlarınla Ülke-Takım ve Harf-Takım modlarında dostluk maçı oyna.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+              <View style={[styles.storePackPriceBox, { flex: 1, alignItems: 'center' as const }]}>
+                <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>Haftalık</Text>
+                <Text style={styles.storePackPrice}>₺24,99</Text>
+              </View>
+              <View style={[styles.storePackPriceBox, { flex: 1, alignItems: 'center' as const, backgroundColor: theme.accent }]}>
+                <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>Aylık</Text>
+                <Text style={styles.storePackPrice}>₺89,99</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
         {/* İsim değiştirme */}
         <Text style={styles.sectionLabel}>{t('store.other')}</Text>
         <Pressable style={styles.storeAdCard} onPress={() => setShowNameModal(true)}>
@@ -1293,31 +1345,29 @@ export function StoreScreen({ state, actions }: Props) {
 
 // ---- Friends ----
 export function FriendsScreen({ state, actions }: Props) {
-  const [friendCode, setFriendCode] = useState('');
+  const [addInput, setAddInput] = useState('');
+  const [searchMode, setSearchMode] = useState<'code' | 'username'>('code');
   const [copied, setCopied] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [matchModal, setMatchModal] = useState<string | null>(null); // friendId
+  const [socialPackPopup, setSocialPackPopup] = useState(false);
   const profile = state.profile;
+  const hasSocialPack = profile?.socialPackUntil ? new Date(profile.socialPackUntil) > new Date() : false;
   const friends = state.friends;
+  const requests = state.friendRequests;
 
-  // Refresh the friends list whenever we have an account.
   useEffect(() => {
     if (profile?.userId) actions.loadFriends();
   }, [profile?.userId]);
 
-  const onAdd = async () => {
-    const code = friendCode.trim();
-    if (code.length < 3 || adding) return;
-    setAdding(true);
-    const r = await actions.addFriend(code);
-    setAdding(false);
-    if (r.ok) {
-      setFriendCode('');
-      setMsg({ ok: true, text: t('friends.added') });
+  const onSendRequest = () => {
+    const val = addInput.trim();
+    if (val.length < 3) return;
+    if (searchMode === 'code') {
+      actions.sendFriendRequest(val, undefined);
     } else {
-      setMsg({ ok: false, text: r.error ?? '' });
+      actions.sendFriendRequest(undefined, val);
     }
-    setTimeout(() => setMsg(null), 2500);
+    setAddInput('');
   };
 
   return (
@@ -1328,49 +1378,86 @@ export function FriendsScreen({ state, actions }: Props) {
           <Text style={styles.h1}>{t('friends.title')}</Text>
         </View>
 
+        {/* Your code */}
+        <Text style={styles.sectionLabel}>{t('friends.yourCode')}</Text>
+        <View style={[styles.friendAddCard, { justifyContent: 'center', gap: 10 }]}>
+          <Text style={styles.friendCode}>{profile?.userId?.slice(0, 8).toUpperCase() ?? '...'}</Text>
+          <Pressable
+            onPress={() => {
+              const code = profile?.userId?.slice(0, 8).toUpperCase();
+              if (code) {
+                Clipboard.setStringAsync(code);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }
+            }}
+            hitSlop={8}
+          >
+            <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={18} color={copied ? theme.primary : theme.accent} />
+          </Pressable>
+        </View>
+
         {/* Add friend */}
         <Text style={styles.sectionLabel}>{t('friends.addSection')}</Text>
-        <View style={styles.friendAddCard}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.friendLabel}>{t('friends.yourCode')}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={styles.friendCode}>{profile?.userId?.slice(0, 8).toUpperCase() ?? '...'}</Text>
-              <Pressable
-                onPress={() => {
-                  const code = profile?.userId?.slice(0, 8).toUpperCase();
-                  if (code) {
-                    Clipboard.setStringAsync(code);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 2000);
-                  }
-                }}
-                hitSlop={8}
-              >
-                <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={18} color={copied ? theme.primary : theme.accent} />
-              </Pressable>
-            </View>
-          </View>
-          <View style={styles.friendDivider} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.friendLabel}>{t('friends.friendCode')}</Text>
-            <TextInput
-              placeholder={t('friends.enterCode')}
-              placeholderTextColor={theme.muted}
-              keyboardAppearance="dark"
-              value={friendCode}
-              onChangeText={setFriendCode}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              onSubmitEditing={onAdd}
-              style={styles.friendInput}
-            />
-          </View>
+        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
+          <Pressable
+            style={[styles.optChip, searchMode === 'code' && { borderColor: theme.primary }]}
+            onPress={() => setSearchMode('code')}
+          >
+            <Ionicons name="key-outline" size={14} color={searchMode === 'code' ? theme.primary : theme.muted} />
+            <Text style={[styles.optChipText, searchMode === 'code' && { color: theme.primary }]}>Kod ile</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.optChip, searchMode === 'username' && { borderColor: theme.primary }]}
+            onPress={() => setSearchMode('username')}
+          >
+            <Ionicons name="person-outline" size={14} color={searchMode === 'username' ? theme.primary : theme.muted} />
+            <Text style={[styles.optChipText, searchMode === 'username' && { color: theme.primary }]}>İsim ile</Text>
+          </Pressable>
         </View>
-        <Btn label={t('friends.add')} icon="person-add" kind="primary" onPress={onAdd} disabled={friendCode.trim().length < 3 || adding} />
-        {msg ? (
-          <Text style={{ color: msg.ok ? theme.primary : '#ff6b6b', textAlign: 'center', marginTop: 8, fontWeight: '600', fontSize: 13 }}>
-            {msg.text}
-          </Text>
+        <TextInput
+          placeholder={searchMode === 'code' ? t('friends.enterCode') : 'Kullanıcı adı yaz'}
+          placeholderTextColor={theme.muted}
+          keyboardAppearance="dark"
+          value={addInput}
+          onChangeText={setAddInput}
+          autoCapitalize={searchMode === 'code' ? 'characters' : 'none'}
+          autoCorrect={false}
+          onSubmitEditing={onSendRequest}
+          style={styles.input}
+        />
+        <Btn label="Arkadaşlık İsteği Gönder" icon="paper-plane" kind="primary" onPress={onSendRequest} disabled={addInput.trim().length < 3} />
+
+        {/* Friend requests */}
+        {requests.length > 0 ? (
+          <>
+            <Text style={styles.sectionLabel}>ARKADAŞLIK İSTEKLERİ</Text>
+            {requests.map((req) => (
+              <View key={req.requestId || req.fromId} style={{
+                flexDirection: 'row', alignItems: 'center', gap: 10,
+                backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 6,
+                borderWidth: 1, borderColor: theme.accent,
+              }}>
+                <Ionicons name="person-add" size={24} color={theme.accent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14 }}>{req.fromName}</Text>
+                  <Text style={{ color: theme.muted, fontSize: 11 }}>Seninle arkadaş olmak istiyor</Text>
+                </View>
+                <Pressable
+                  onPress={() => actions.respondFriendRequest(req.requestId, true)}
+                  style={{ backgroundColor: theme.primary, borderRadius: 20, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Ionicons name="checkmark" size={20} color="#06131F" />
+                </Pressable>
+                <Pressable
+                  onPress={() => actions.respondFriendRequest(req.requestId, false)}
+                  style={{ backgroundColor: theme.danger, borderRadius: 20, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Ionicons name="close" size={20} color="#fff" />
+                </Pressable>
+              </View>
+            ))}
+          </>
         ) : null}
 
         {/* Friends list */}
@@ -1383,27 +1470,81 @@ export function FriendsScreen({ state, actions }: Props) {
           </View>
         ) : (
           friends.map((f) => (
-            <View
-              key={f.userId}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 12,
-                backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 8,
-                borderWidth: 1, borderColor: theme.border,
-              }}
-            >
-              <Ionicons name="person-circle" size={36} color={theme.accent} />
+            <View key={f.userId} style={{
+              flexDirection: 'row', alignItems: 'center', gap: 12,
+              backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 8,
+              borderWidth: 1, borderColor: theme.border,
+            }}>
+              <View style={{ position: 'relative' }}>
+                <Ionicons name="person-circle" size={36} color={theme.accent} />
+                {f.online ? <View style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>{f.displayName}</Text>
                 <Text style={{ color: theme.muted, fontSize: 11 }}>{f.arena.name}</Text>
               </View>
-              <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 14 }}>🏆 {f.trophies}</Text>
-              <Pressable onPress={() => actions.removeFriend(f.userId)} hitSlop={8} style={{ marginLeft: 4 }}>
+              <Pressable
+                onPress={() => setMatchModal(f.userId)}
+                style={{ backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 }}
+              >
+                <Ionicons name="game-controller" size={16} color="#06131F" />
+              </Pressable>
+              <Pressable onPress={() => actions.removeFriend(f.userId)} hitSlop={8}>
                 <Ionicons name="close-circle" size={20} color={theme.muted} />
               </Pressable>
             </View>
           ))
         )}
       </ScrollView>
+
+      {/* Match mode selection modal */}
+      <Modal visible={matchModal !== null} transparent animationType="fade" onRequestClose={() => setMatchModal(null)}>
+        <Pressable style={styles.modalBg} onPress={() => setMatchModal(null)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>Dostluk Maçı - Mod Seç</Text>
+            {(['team-team', 'country-team', 'letter-team'] as GameMode[]).map((m) => {
+              const locked = m !== 'team-team' && !hasSocialPack;
+              return (
+                <Pressable
+                  key={m}
+                  style={[styles.modalRow, locked && { opacity: 0.4 }]}
+                  onPress={() => {
+                    if (locked) {
+                      setMatchModal(null);
+                      setSocialPackPopup(true);
+                      return;
+                    }
+                    actions.inviteFriendMatch(matchModal!, { mode: m });
+                    setMatchModal(null);
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Ionicons name={MODE_ICON[m]} size={18} color={locked ? theme.muted : theme.accent} />
+                    <Text style={[styles.modalRowText, locked && { color: theme.muted }]}>{MODE_LABEL[m]}</Text>
+                  </View>
+                  {locked ? <Ionicons name="lock-closed" size={16} color={theme.muted} /> : null}
+                </Pressable>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Social pack popup */}
+      <Modal visible={socialPackPopup} transparent animationType="fade" onRequestClose={() => setSocialPackPopup(false)}>
+        <Pressable style={styles.modalBg} onPress={() => setSocialPackPopup(false)}>
+          <Pressable style={styles.nameModalCard} onPress={() => {}}>
+            <Ionicons name="lock-closed" size={32} color={theme.accent} />
+            <Text style={styles.modalTitle}>Sosyal Paket Gerekli</Text>
+            <Text style={[styles.muted, { marginBottom: 12 }]}>
+              Ülke-Takım ve Harf-Takım modlarını dostluk maçlarında kullanmak için Sosyal Paket satın almalısın.
+            </Text>
+            <Btn label="Mağazaya Git" kind="accent" icon="diamond" onPress={() => { setSocialPackPopup(false); /* navigate to store tab */ }} />
+            <View style={{ height: 6 }} />
+            <Btn label="Vazgeç" kind="ghost" icon="close" onPress={() => setSocialPackPopup(false)} />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 }
@@ -1499,7 +1640,7 @@ export function ArenasScreen({ state, actions }: Props) {
                 {/* Status badge */}
                 {isCurrent ? (
                   <View style={[styles.arenaBadge, { backgroundColor: arena.color }]}>
-                    <Text style={styles.arenaBadgeText}>BURADSIN</Text>
+                    <Text style={styles.arenaBadgeText}>BURADASIN</Text>
                   </View>
                 ) : isPassed ? (
                   <View style={[styles.arenaBadge, { backgroundColor: theme.primary }]}>
@@ -1579,6 +1720,94 @@ export function SearchingScreen({ actions }: Props) {
 // ---- Leaderboard ----
 const RANK_COLORS = ['#FFD700', '#C0C0C0', '#CD7F32']; // gold, silver, bronze
 
+// ---- Match History ----
+export function MatchHistoryScreen({ state, actions }: Props) {
+  const history = state.matchHistory;
+  const myName = state.profile?.displayName ?? '';
+
+  return (
+    <Screen>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <Pressable onPress={actions.closeMatchHistory}>
+          <Ionicons name="arrow-back" size={24} color={theme.text} />
+        </Pressable>
+        <Text style={styles.h1}>{t('matchHistory.title')}</Text>
+        <View style={{ width: 24 }} />
+      </View>
+
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
+        {history.length === 0 ? (
+          <View style={styles.center}>
+            <Ionicons name="time-outline" size={48} color={theme.border} />
+            <Text style={styles.muted}>{t('matchHistory.empty')}</Text>
+          </View>
+        ) : (
+          history.map((m) => {
+            const myRounds = m.rounds.filter((r) => r.answeredBy === myName);
+            const oppRounds = m.rounds.filter((r) => r.answeredBy !== myName);
+            return (
+              <View key={m.id} style={{
+                backgroundColor: theme.card, borderRadius: 14, borderWidth: 1,
+                borderColor: m.won ? theme.primary : theme.danger, padding: 14, marginBottom: 10,
+              }}>
+                {/* Header: score + badge */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Ionicons name={m.won ? 'trophy' : 'sad-outline'} size={20} color={m.won ? theme.accent : theme.muted} />
+                    <Text style={{ color: m.won ? theme.primary : theme.danger, fontWeight: '900', fontSize: 13 }}>
+                      {m.won ? t('matchHistory.won') : t('matchHistory.lost')}
+                    </Text>
+                  </View>
+                  <Text style={{ color: theme.text, fontSize: 22, fontWeight: '900', letterSpacing: 2 }}>
+                    {m.playerScore} - {m.opponentScore}
+                  </Text>
+                  <Text style={{ color: theme.muted, fontSize: 10 }}>
+                    {MODE_LABEL[(m.gameMode as GameMode) ?? 'team-team'] ?? m.gameMode}
+                  </Text>
+                </View>
+
+                {/* Players side by side */}
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  {/* My side */}
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                      <Ionicons name="person" size={14} color={theme.primary} />
+                      <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12 }} numberOfLines={1}>{myName}</Text>
+                    </View>
+                    {myRounds.length > 0 ? myRounds.map((r, i) => (
+                      <View key={i} style={{ backgroundColor: theme.bg, borderRadius: 8, padding: 6, marginBottom: 4 }}>
+                        <Text style={{ color: theme.muted, fontSize: 9 }}>{r.teamA} + {r.teamB}</Text>
+                        <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 11 }}>{r.player}</Text>
+                      </View>
+                    )) : <Text style={{ color: theme.muted, fontSize: 10 }}>—</Text>}
+                  </View>
+
+                  <View style={{ width: 1, backgroundColor: theme.border }} />
+
+                  {/* Opponent side */}
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                      <Ionicons name="person" size={14} color={theme.danger} />
+                      <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12 }} numberOfLines={1}>{m.opponentName}</Text>
+                    </View>
+                    {oppRounds.length > 0 ? oppRounds.map((r, i) => (
+                      <View key={i} style={{ backgroundColor: theme.bg, borderRadius: 8, padding: 6, marginBottom: 4 }}>
+                        <Text style={{ color: theme.muted, fontSize: 9 }}>{r.teamA} + {r.teamB}</Text>
+                        <Text style={{ color: theme.danger, fontWeight: '700', fontSize: 11 }}>{r.player}</Text>
+                      </View>
+                    )) : <Text style={{ color: theme.muted, fontSize: 10 }}>—</Text>}
+                  </View>
+                </View>
+              </View>
+            );
+          })
+        )}
+      </ScrollView>
+    </Screen>
+  );
+}
+
+// ---- Leaderboard ----
 export function LeaderboardScreen({ state, actions }: Props) {
   const lb = state.leaderboard;
   return (
@@ -1605,7 +1834,7 @@ export function LeaderboardScreen({ state, actions }: Props) {
             <Text style={styles.lbWL}>{entry.wins}G {entry.losses}M</Text>
           </View>
         ))}
-        {lb.length === 0 ? <Text style={styles.muted}>Henüz oyuncu yok</Text> : null}
+        {lb.length === 0 ? <Text style={styles.muted}>{t('leaderboard.empty')}</Text> : null}
       </ScrollView>
       <View style={{ height: 10 }} />
       <Btn label={t('common.back')} kind="ghost" icon="arrow-back" onPress={actions.closeLeaderboard} />

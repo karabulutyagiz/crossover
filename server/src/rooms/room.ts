@@ -12,7 +12,7 @@ import {
   hasPlayersLetterTeam,
   randomClub,
 } from '../game/verify.ts';
-import { applyMatchResult } from '../game/rank.ts';
+import { applyMatchResult, saveMatchHistory, type MatchRound } from '../game/rank.ts';
 import { isEmote } from '../game/emotes.ts';
 import type {
   ClientMsg,
@@ -77,6 +77,7 @@ export class Room {
   private matchOver = false; // true once a player reaches WIN_TARGET
   private rematchBy: string | null = null;
   private readyPlayers = new Set<string>();
+  private matchRounds: { teamA: string; teamB: string; player: string; answeredBy: string }[] = [];
 
   constructor(code: string, onEmpty: (code: string) => void) {
     this.code = code;
@@ -188,6 +189,7 @@ export class Room {
     this.matchOver = false;
     this.rematchBy = null;
     this.roundNumber = 0;
+    this.matchRounds = [];
     for (const p of this.players.values()) { p.score = 0; p.wrongCount = 0; }
     this.beginCountdown();
   }
@@ -536,6 +538,16 @@ export class Room {
     this.status = 'result';
     this.roundNumber += 1;
 
+    // Collect winning round info (only rounds where someone scored)
+    if (result.correct && result.answeredById && result.matchedPlayerName) {
+      this.matchRounds.push({
+        teamA: result.teamA.name,
+        teamB: result.teamB.name,
+        player: result.matchedPlayerName,
+        answeredBy: result.answeredByName ?? '',
+      });
+    }
+
     const winner = [...this.players.values()].find((p) => p.score >= WIN_TARGET) ?? null;
     this.matchOver = Boolean(winner);
 
@@ -571,6 +583,33 @@ export class Room {
       if (!hasBot) {
         void this.updateTrophies(winner!);
       }
+      void this.saveHistory();
+    }
+  }
+
+  private async saveHistory(): Promise<void> {
+    const players = [...this.players.values()];
+    if (players.length < 2) return;
+    const [a, b] = players;
+    for (const p of players) {
+      if (p.transport.isBot || !p.userId) continue;
+      const opp = p === a ? b! : a!;
+      const myRounds = this.matchRounds
+        .filter((r) => r.answeredBy === p.name)
+        .map((r) => ({ teamA: r.teamA, teamB: r.teamB, player: r.player, answeredBy: r.answeredBy }));
+      const oppRounds = this.matchRounds
+        .filter((r) => r.answeredBy === opp.name)
+        .map((r) => ({ teamA: r.teamA, teamB: r.teamB, player: r.player, answeredBy: r.answeredBy }));
+      try {
+        await saveMatchHistory(
+          p.userId, p.name, 0,
+          opp.userId ?? null, opp.name, 0,
+          p.score, opp.score,
+          p.score > opp.score,
+          this.gameMode,
+          [...myRounds, ...oppRounds],
+        );
+      } catch { /* DB error — skip silently */ }
     }
   }
 
