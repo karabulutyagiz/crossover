@@ -143,9 +143,10 @@ CREATE TABLE IF NOT EXISTS ingest_log (
   finished_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- ---- Logo overrides ----
--- Wikidata logos for some major clubs are wrong or point to a coat-of-arms /
--- city emblem instead of the actual football badge. Pin them to the correct
--- API-Football CDN URLs so they survive re-ingest.
-UPDATE clubs SET logo_url = 'https://media.api-sports.io/football/teams/33.png'  WHERE id = 18656;  -- Manchester United
-UPDATE clubs SET logo_url = 'https://media.api-sports.io/football/teams/530.png' WHERE id = 8701;   -- Atletico Madrid
+-- ---- Club popularity ----
+-- popularity = a fame score = the club's Transfermarkt squad market value (EUR),
+-- far better than raw player count (which measures squad churn). Drives bot
+-- difficulty (easy = most popular) and search ranking. Filled by tm-marketvalue.ts.
+ALTER TABLE clubs ADD COLUMN IF NOT EXISTS popularity BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE clubs ADD COLUMN IF NOT EXISTS market_value BIGINT;
+CREATE INDEX IF NOT EXISTS idx_clubs_popularity ON clubs (popularity DESC);
