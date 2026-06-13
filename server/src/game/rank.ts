@@ -1,5 +1,5 @@
 import { pool } from '../db/pool.ts';
-import { emotePrice, isFreeEmote } from './emotes.ts';
+import { emotePrice, isFreeEmote, isVisualEmote, MAX_EQUIPPED } from './emotes.ts';
 import { validateUsername } from './username.ts';
 
 // ---- Trophy arenas (Clash Royale style) ----
@@ -54,6 +54,7 @@ export interface UserProfile {
   wins: number;
   losses: number;
   ownedEmotes: string[];
+  equippedEmotes: string[]; // visual emotes in the match loadout (max 3)
   usernameSet: boolean;
   socialPackUntil: string | null; // ISO date or null
   arena: Arena;
@@ -203,6 +204,22 @@ export async function buyEmote(
     [userId, price, emoteId],
   );
   if (!rows[0]) return { ok: false, error: 'Satın alma başarısız' };
+  return { ok: true, profile: toProfile(rows[0]) };
+}
+
+// Set the player's equipped visual-emote loadout (max 3). Keeps only valid
+// visual emote ids, dedupes, and caps at MAX_EQUIPPED.
+export async function setEquippedEmotes(
+  userId: string,
+  ids: string[],
+): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
+  if (!userId) return { ok: false, error: 'Önce giriş yap' };
+  const clean = [...new Set(ids)].filter(isVisualEmote).slice(0, MAX_EQUIPPED);
+  const { rows } = await pool.query<DbUser>(
+    `UPDATE users SET equipped_emotes = $2 WHERE id = $1 RETURNING *`,
+    [userId, clean],
+  );
+  if (!rows[0]) return { ok: false, error: 'Kullanıcı bulunamadı' };
   return { ok: true, profile: toProfile(rows[0]) };
 }
 
@@ -440,6 +457,7 @@ interface DbUser {
   wins: number;
   losses: number;
   owned_emotes: string[] | null;
+  equipped_emotes: string[] | null;
   username_set: boolean | null;
   social_pack_until: string | null;
   created_at: string;
@@ -455,6 +473,7 @@ function toProfile(row: DbUser): UserProfile {
     wins: row.wins,
     losses: row.losses,
     ownedEmotes: row.owned_emotes ?? [],
+    equippedEmotes: row.equipped_emotes ?? [],
     usernameSet: row.username_set ?? false,
     socialPackUntil: row.social_pack_until ?? null,
     arena: getArena(row.trophies),

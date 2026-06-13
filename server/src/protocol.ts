@@ -45,6 +45,7 @@ export interface ProfileView {
   wins: number;
   losses: number;
   ownedEmotes: string[];
+  equippedEmotes: string[];
   usernameSet: boolean;
   socialPackUntil: string | null; // ISO date or null
   arena: ArenaView;
@@ -88,6 +89,7 @@ export type ClientMsg =
   | { type: 'rematch_response'; accept: boolean }
   | { type: 'send_emote'; emoteId: string } // show an emote to the opponent during a match
   | { type: 'buy_emote'; emoteId: string } // purchase a premium emote with diamonds
+  | { type: 'equip_emotes'; emoteIds: string[] } // set the match loadout (max 3 visual)
   | { type: 'search_clubs'; reqId: string; q: string }
   // ---- Friends ----
   | { type: 'send_friend_request'; targetCode?: string; targetUsername?: string }

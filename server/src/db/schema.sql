@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- Add columns to pre-existing databases (no-ops once they exist).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS owned_emotes TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS equipped_emotes TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS apple_sub TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS facebook_sub TEXT;

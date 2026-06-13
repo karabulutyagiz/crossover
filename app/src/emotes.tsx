@@ -18,8 +18,9 @@ export interface EmoteMeta {
   id: string;
   kind: 'text' | 'animated';
   phrase: string; // Turkish caption shown with the emote
-  icon?: IoniconName; // text emotes
+  icon?: IoniconName; // text + generic animated emotes
   color: string;
+  week?: number; // visual emotes: which weekly store drop it belongs to
   premium?: { name: string; price: number; desc: string };
 }
 
@@ -32,11 +33,13 @@ export const FREE_EMOTES: EmoteMeta[] = [
 ];
 
 export const PREMIUM_EMOTES: EmoteMeta[] = [
+  // ---- Week 1 ----
   {
     id: 'jersey10',
     kind: 'animated',
     phrase: t('emote.jersey10.phrase'),
     color: '#1E50C8',
+    week: 1,
     premium: { name: t('emote.jersey10.name'), price: 250, desc: t('emote.jersey10.desc') },
   },
   {
@@ -44,6 +47,7 @@ export const PREMIUM_EMOTES: EmoteMeta[] = [
     kind: 'animated',
     phrase: t('emote.goal.phrase'),
     color: theme.primary,
+    week: 1,
     premium: { name: t('emote.goal.name'), price: 150, desc: t('emote.goal.desc') },
   },
   {
@@ -51,9 +55,51 @@ export const PREMIUM_EMOTES: EmoteMeta[] = [
     kind: 'animated',
     phrase: t('emote.champion.phrase'),
     color: theme.accent,
+    week: 1,
     premium: { name: t('emote.champion.name'), price: 300, desc: t('emote.champion.desc') },
   },
+  // ---- Week 2 ---- (generic animated sticker: a springy icon)
+  {
+    id: 'redcard',
+    kind: 'animated',
+    phrase: 'Kırmızı kart! 🟥',
+    icon: 'square',
+    color: '#E0263A',
+    week: 2,
+    premium: { name: 'Kırmızı Kart', price: 150, desc: 'Rakibe kırmızı göster' },
+  },
+  {
+    id: 'penalty',
+    kind: 'animated',
+    phrase: 'Penaltı! 🎯',
+    icon: 'football',
+    color: theme.primary,
+    week: 2,
+    premium: { name: 'Penaltı', price: 180, desc: 'Baskı anı' },
+  },
+  {
+    id: 'hattrick',
+    kind: 'animated',
+    phrase: 'Hat-trick! ⚽⚽⚽',
+    icon: 'flame',
+    color: theme.accent,
+    week: 2,
+    premium: { name: 'Hat-trick', price: 220, desc: 'Üç gol coşkusu' },
+  },
 ];
+
+// Visual (premium) emotes grouped by their weekly drop, newest first.
+export function emoteWeeks(): { week: number; emotes: EmoteMeta[] }[] {
+  const byWeek = new Map<number, EmoteMeta[]>();
+  for (const e of PREMIUM_EMOTES) {
+    const w = e.week ?? 1;
+    if (!byWeek.has(w)) byWeek.set(w, []);
+    byWeek.get(w)!.push(e);
+  }
+  return [...byWeek.entries()].sort((a, b) => b[0] - a[0]).map(([week, emotes]) => ({ week, emotes }));
+}
+
+export const LATEST_WEEK = Math.max(...PREMIUM_EMOTES.map((e) => e.week ?? 1));
 
 const ALL = [...FREE_EMOTES, ...PREMIUM_EMOTES];
 const BY_ID = new Map(ALL.map((e) => [e.id, e]));
@@ -73,7 +119,16 @@ export function ownsEmote(profile: ProfileView | null, id: string): boolean {
   return Boolean(profile?.ownedEmotes?.includes(id));
 }
 
-// Emotes the player can currently pick from in a match.
+// Emotes the player can currently pick from in a match: free text quick-chats
+// (always) + the equipped visual emotes (the max-3 loadout).
+export function loadoutEmotes(profile: ProfileView | null): EmoteMeta[] {
+  const equipped = (profile?.equippedEmotes ?? [])
+    .map((id) => getEmote(id))
+    .filter((e): e is EmoteMeta => Boolean(e));
+  return [...FREE_EMOTES, ...equipped];
+}
+
+// Owned emotes (for the store / inventory ownership display).
 export function availableEmotes(profile: ProfileView | null): EmoteMeta[] {
   return ALL.filter((e) => ownsEmote(profile, e.id));
 }
@@ -218,6 +273,30 @@ function ChampionEmote({ size }: { size: number }) {
 
 // Renders an emote's visual at the given size (no caption). Used in previews,
 // the picker, and the in-match overlay.
+// Generic springy sticker for visual emotes without a bespoke animation.
+function GenericAnimatedEmote({ size, icon, color }: { size: number; icon: IoniconName; color: string }) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(a, { toValue: 1, duration: 550, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(a, { toValue: 0, duration: 550, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [a]);
+  const scale = a.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1.12] });
+  const rotate = a.interpolate({ inputRange: [0, 1], outputRange: ['-9deg', '9deg'] });
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View style={{ width: size * 0.82, height: size * 0.82, borderRadius: size * 0.41, backgroundColor: color + '22', borderWidth: 3, borderColor: color, alignItems: 'center', justifyContent: 'center', transform: [{ scale }, { rotate }] }}>
+        <Ionicons name={icon} size={size * 0.44} color={color} />
+      </Animated.View>
+    </View>
+  );
+}
+
 export function EmoteSticker({ id, size }: { id: string; size: number }) {
   const meta = getEmote(id);
   if (!meta) return null;
@@ -225,6 +304,7 @@ export function EmoteSticker({ id, size }: { id: string; size: number }) {
     if (id === 'jersey10') return <JerseyLiftEmote size={size} />;
     if (id === 'goal') return <GoalEmote size={size} />;
     if (id === 'champion') return <ChampionEmote size={size} />;
+    return <GenericAnimatedEmote size={size} icon={meta.icon ?? 'star'} color={meta.color} />;
   }
   // text emote: icon badge
   return (

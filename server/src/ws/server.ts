@@ -5,7 +5,7 @@ import { BotPlayer } from '../rooms/bot.ts';
 import { listScopes, listNationalities } from '../game/verify.ts';
 import {
   findOrCreateUser, findOrCreateUserByProvider, getUser, changeDisplayName,
-  setUsername, buyEmote, getLeaderboard,
+  setUsername, buyEmote, setEquippedEmotes, getLeaderboard,
   listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
   removeFriend, searchUsers, getMatchHistory,
   type UserProfile,
@@ -30,6 +30,7 @@ function toProfileView(p: UserProfile): ProfileView {
     wins: p.wins,
     losses: p.losses,
     ownedEmotes: p.ownedEmotes,
+    equippedEmotes: p.equippedEmotes,
     usernameSet: p.usernameSet,
     socialPackUntil: p.socialPackUntil,
     arena: p.arena,
@@ -237,6 +238,18 @@ export function startServer(port: number): Server {
             emoteId: msg.emoteId,
             profile: toProfileView(result.profile),
           });
+        })();
+        return;
+      }
+
+      // Equip up to 3 visual emotes into the match loadout.
+      if (msg.type === 'equip_emotes') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          const result = await setEquippedEmotes(userProfile!.id, msg.emoteIds);
+          if (!result.ok) return transport.send({ type: 'error', message: result.error });
+          userProfile = result.profile;
+          transport.send({ type: 'profile', profile: toProfileView(result.profile) });
         })();
         return;
       }

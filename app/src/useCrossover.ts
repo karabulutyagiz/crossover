@@ -425,6 +425,7 @@ export function useCrossover() {
     declineRematch: () => send({ type: 'rematch_response', accept: false }),
     sendEmote: (emoteId: string) => send({ type: 'send_emote', emoteId }),
     buyEmote: (emoteId: string) => send({ type: 'buy_emote', emoteId }),
+    equipEmotes: (emoteIds: string[]) => send({ type: 'equip_emotes', emoteIds }),
     // Friends — via WebSocket for real-time notifications.
     loadFriends: () => send({ type: 'list_friends' }),
     sendFriendRequest: (targetCode?: string, targetUsername?: string) =>

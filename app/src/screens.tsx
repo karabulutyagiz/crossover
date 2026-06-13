@@ -29,6 +29,9 @@ import {
   EmoteSticker,
   PREMIUM_EMOTES,
   availableEmotes,
+  loadoutEmotes,
+  emoteWeeks,
+  LATEST_WEEK,
   getEmote,
   ownsEmote,
 } from './emotes';
@@ -62,6 +65,7 @@ type Actions = {
   declineRematch: () => void;
   sendEmote: (emoteId: string) => void;
   buyEmote: (emoteId: string) => void;
+  equipEmotes: (emoteIds: string[]) => void;
   loadFriends: () => void;
   sendFriendRequest: (targetCode?: string, targetUsername?: string) => void;
   respondFriendRequest: (requestId: string, accept: boolean) => void;
@@ -394,7 +398,7 @@ function EmoteLayer({ state, actions, fab = 'bottom-right' }: Props & { fab?: 'b
   const oppId = room?.players.find((p) => p.id !== youId)?.id;
   const mine = youId ? state.emotes[youId] : undefined;
   const theirs = oppId ? state.emotes[oppId] : undefined;
-  const emotes = availableEmotes(state.profile);
+  const emotes = loadoutEmotes(state.profile);
 
   return (
     <>
@@ -1405,6 +1409,11 @@ export function StoreScreen({ state, actions }: Props) {
   const profile = state.profile;
   const { adsWatched, canWatch, cooldownLeft, watchAd } = useAdState();
   const [showNameModal, setShowNameModal] = useState(false);
+  const equipped = profile?.equippedEmotes ?? [];
+  const toggleEquip = (id: string) => {
+    if (equipped.includes(id)) actions.equipEmotes(equipped.filter((x) => x !== id));
+    else if (equipped.length < 3) actions.equipEmotes([...equipped, id]);
+  };
 
   return (
     <Screen>
@@ -1467,37 +1476,82 @@ export function StoreScreen({ state, actions }: Props) {
           </Pressable>
         ))}
 
-        {/* İfadeler (maç içi emote) */}
-        <Text style={styles.sectionLabel}>{t('store.emotes')}</Text>
-        {PREMIUM_EMOTES.map((e) => {
-          const owned = ownsEmote(profile, e.id);
-          const canAfford = (profile?.diamonds ?? 0) >= (e.premium?.price ?? 0);
-          return (
-            <View key={e.id} style={styles.storeEmoteCard}>
-              <View style={{ width: 56, height: 56 }}>
-                <EmoteSticker id={e.id} size={56} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.storeEmoteName}>{e.premium?.name}</Text>
-                <Text style={styles.storeEmoteDesc} numberOfLines={2}>{e.premium?.desc}</Text>
-              </View>
-              {owned ? (
-                <View style={styles.storeEmoteOwned}>
-                  <Ionicons name="checkmark-circle" size={16} color={theme.primary} />
-                  <Text style={styles.storeEmoteOwnedText}>{t('store.owned')}</Text>
+        {/* İfade envanterim — maçta kullanılacak 3 slot */}
+        <Text style={styles.sectionLabel}>İFADE ENVANTERİM · MAÇTA (MAX 3)</Text>
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 4 }}>
+          {[0, 1, 2].map((i) => {
+            const id = equipped[i];
+            return (
+              <Pressable
+                key={i}
+                onPress={() => id && toggleEquip(id)}
+                style={{
+                  flex: 1, aspectRatio: 1, borderRadius: 14, borderWidth: 2,
+                  borderStyle: id ? 'solid' : 'dashed', borderColor: id ? theme.primary : theme.border,
+                  backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                {id ? <EmoteSticker id={id} size={50} /> : <Ionicons name="add" size={28} color={theme.border} />}
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text style={[styles.muted, { fontSize: 11, marginBottom: 6 }]}>Slota dokununca çıkarırsın. Aşağıdan ifade kuşan.</Text>
+
+        {/* Haftalık ifade dükkanı */}
+        {emoteWeeks().map(({ week, emotes }) => (
+          <View key={week}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={styles.sectionLabel}>{week === LATEST_WEEK ? 'BU HAFTA' : `${week}. HAFTA İFADELERİ`}</Text>
+              {week === LATEST_WEEK ? (
+                <View style={{ backgroundColor: theme.danger, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1, marginBottom: 4 }}>
+                  <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900' }}>YENİ</Text>
                 </View>
-              ) : (
-                <Pressable
-                  style={[styles.storeEmoteBuy, !canAfford && { opacity: 0.5 }]}
-                  onPress={() => canAfford && actions.buyEmote(e.id)}
-                >
-                  <Text style={styles.storeEmoteBuyText}>{e.premium?.price}</Text>
-                  <Ionicons name="diamond" size={13} color="#06131F" />
-                </Pressable>
-              )}
+              ) : null}
             </View>
-          );
-        })}
+            {emotes.map((e) => {
+              const owned = ownsEmote(profile, e.id);
+              const isEquipped = equipped.includes(e.id);
+              const canAfford = (profile?.diamonds ?? 0) >= (e.premium?.price ?? 0);
+              return (
+                <View key={e.id} style={styles.storeEmoteCard}>
+                  <View style={{ width: 56, height: 56 }}>
+                    <EmoteSticker id={e.id} size={56} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.storeEmoteName}>{e.premium?.name}</Text>
+                    <Text style={styles.storeEmoteDesc} numberOfLines={2}>{e.premium?.desc}</Text>
+                  </View>
+                  {!owned ? (
+                    <Pressable
+                      style={[styles.storeEmoteBuy, !canAfford && { opacity: 0.5 }]}
+                      onPress={() => canAfford && actions.buyEmote(e.id)}
+                    >
+                      <Text style={styles.storeEmoteBuyText}>{e.premium?.price}</Text>
+                      <Ionicons name="diamond" size={13} color="#06131F" />
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      onPress={() => toggleEquip(e.id)}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 10,
+                        paddingHorizontal: 12, paddingVertical: 8,
+                        backgroundColor: isEquipped ? theme.primary : 'transparent',
+                        borderWidth: 1, borderColor: isEquipped ? theme.primary : theme.border,
+                        opacity: !isEquipped && equipped.length >= 3 ? 0.45 : 1,
+                      }}
+                    >
+                      <Ionicons name={isEquipped ? 'checkmark' : 'add'} size={14} color={isEquipped ? '#06131F' : theme.text} />
+                      <Text style={{ color: isEquipped ? '#06131F' : theme.text, fontWeight: '800', fontSize: 12 }}>
+                        {isEquipped ? 'Kuşanıldı' : 'Kuşan'}
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        ))}
 
         {/* Sosyal Paket */}
         <Text style={styles.sectionLabel}>SOSYAL PAKET</Text>

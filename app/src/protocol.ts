@@ -62,6 +62,7 @@ export interface ProfileView {
   wins: number;
   losses: number;
   ownedEmotes: string[];
+  equippedEmotes: string[];
   usernameSet: boolean;
   socialPackUntil: string | null;
   arena: ArenaView;
@@ -136,6 +137,7 @@ export type ClientMsg =
   | { type: 'rematch_response'; accept: boolean }
   | { type: 'send_emote'; emoteId: string }
   | { type: 'buy_emote'; emoteId: string }
+  | { type: 'equip_emotes'; emoteIds: string[] }
   | { type: 'search_clubs'; reqId: string; q: string }
   | { type: 'send_friend_request'; targetCode?: string; targetUsername?: string }
   | { type: 'respond_friend_request'; requestId: string; accept: boolean }
