@@ -88,6 +88,7 @@ export default function App() {
   const [splash, setSplash] = useState(true);
   const [tutorialSeen, setTutorialSeen] = useState<boolean | null>(null);
   const [loaded, setLoaded] = useState(false); // Clash-Royale-style entry loading (warms logo cache)
+  const [storeSection, setStoreSection] = useState<'socialPack' | 'diamonds' | null>(null);
   const [fontsLoaded, fontError] = useFonts({
     'Poppins-Black': require('./assets/fonts/Poppins-Black.ttf'),
     'Poppins-ExtraBold': require('./assets/fonts/Poppins-ExtraBold.ttf'),
@@ -258,7 +259,7 @@ export default function App() {
             <Ionicons name="trophy" size={18} color={theme.accent} />
             <Text style={s.trophyText}>{state.profile.trophies}</Text>
           </View>
-          <Pressable style={s.diamondPill} onPress={() => goToTab(0)}>
+          <Pressable style={s.diamondPill} onPress={() => { setStoreSection('diamonds'); goToTab(0); }}>
             <GemIcon size={20} />
             <Text style={s.diamondText}>{state.profile.diamonds}</Text>
             <View style={s.diamondPlus}>
@@ -280,7 +281,7 @@ export default function App() {
         style={{ flex: 1 }}
       >
         <View style={{ width: SCREEN_W, flex: 1 }}>
-          <StoreScreen {...props} />
+          <StoreScreen {...props} scrollToSection={storeSection} />
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
           <CollectionScreen {...props} />
@@ -289,7 +290,7 @@ export default function App() {
           {homeContent}
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
-          <FriendsScreen {...props} onGoToStore={() => goToTab(0)} />
+          <FriendsScreen {...props} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
         </View>
       </ScrollView>
 
