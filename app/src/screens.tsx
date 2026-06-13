@@ -21,6 +21,7 @@ import { theme } from './theme';
 import { t } from './i18n';
 import { GOOGLE_IOS_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
+import Svg, { Rect, Circle, Line, Path as SvgPath } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState } from './useCrossover';
@@ -85,6 +86,7 @@ type Actions = {
 interface Props {
   state: GameState;
   actions: Actions;
+  onGoToStore?: () => void;
 }
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -728,10 +730,6 @@ function ProfileCard({ profile, onPress }: { profile: ProfileView; onPress?: () 
           <Ionicons name="trophy" size={15} color={theme.accent} />
           <Text style={styles.profileStatVal}>{profile.trophies}</Text>
         </View>
-        <View style={styles.profileStat}>
-          <GemIcon size={15} />
-          <Text style={styles.profileStatVal}>{profile.diamonds}</Text>
-        </View>
       </View>
       <View style={styles.profileWL}>
         <Text style={[styles.muted, { fontSize: 11 }]}>
@@ -894,6 +892,37 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
   );
 }
 
+/** Subtle football pitch background — rectangular with penalty areas, centre circle, arcs. */
+function FootballField() {
+  const w = 300;
+  const h = 440;
+  const s = '#1a2a1a';
+  const sw = 1.2;
+  const o = 0.25;
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', alignSelf: 'center', top: '8%', opacity: 0.5 }}>
+      <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+        <Rect x={10} y={10} width={w - 20} height={h - 20} rx={4} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <Line x1={10} y1={h / 2} x2={w - 10} y2={h / 2} stroke={s} strokeWidth={sw} opacity={o} />
+        <Circle cx={w / 2} cy={h / 2} r={40} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <Circle cx={w / 2} cy={h / 2} r={3} fill={s} opacity={o} />
+        <Rect x={70} y={10} width={w - 140} height={65} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <Rect x={105} y={10} width={w - 210} height={28} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <SvgPath d={`M ${w / 2 - 30} 75 A 30 30 0 0 0 ${w / 2 + 30} 75`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <Circle cx={w / 2} cy={58} r={2.5} fill={s} opacity={o} />
+        <Rect x={70} y={h - 75} width={w - 140} height={65} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <Rect x={105} y={h - 38} width={w - 210} height={28} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <SvgPath d={`M ${w / 2 - 30} ${h - 75} A 30 30 0 0 1 ${w / 2 + 30} ${h - 75}`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <Circle cx={w / 2} cy={h - 58} r={2.5} fill={s} opacity={o} />
+        <SvgPath d="M 10 18 A 8 8 0 0 0 18 10" stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <SvgPath d={`M ${w - 10} 18 A 8 8 0 0 1 ${w - 18} 10`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <SvgPath d={`M 10 ${h - 18} A 8 8 0 0 1 18 ${h - 10}`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <SvgPath d={`M ${w - 10} ${h - 18} A 8 8 0 0 0 ${w - 18} ${h - 10}`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+      </Svg>
+    </View>
+  );
+}
+
 export function HomeScreen({ actions, state }: Props) {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
@@ -910,6 +939,7 @@ export function HomeScreen({ actions, state }: Props) {
 
   return (
     <Screen>
+      <FootballField />
       {/* Top bar: profile avatar (→ profile) · diamonds · leaderboard */}
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
         <Pressable onPress={actions.openProfile} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.card, borderRadius: 22, paddingVertical: 4, paddingLeft: 4, paddingRight: 12, borderWidth: 1, borderColor: theme.border, maxWidth: '60%' }}>
@@ -2010,12 +2040,13 @@ export function CollectionScreen({ state, actions }: Props) {
 }
 
 // ---- Friends ----
-export function FriendsScreen({ state, actions }: Props) {
+export function FriendsScreen({ state, actions, onGoToStore }: Props) {
   const [addInput, setAddInput] = useState('');
   const [searchMode, setSearchMode] = useState<'code' | 'username'>('code');
   const [friendTab, setFriendTab] = useState<'friends' | 'requests'>('friends');
   const [copied, setCopied] = useState(false);
-  const [matchModal, setMatchModal] = useState<string | null>(null); // friendId
+  const [matchModal, setMatchModal] = useState<string | null>(null); // friendId — mode picker
+  const [pendingInvite, setPendingInvite] = useState<{ friendId: string; friendName: string; online: boolean } | null>(null);
   const [socialPackPopup, setSocialPackPopup] = useState(false);
   const profile = state.profile;
   const hasSocialPack = profile?.socialPackUntil ? new Date(profile.socialPackUntil) > new Date() : false;
@@ -2025,6 +2056,11 @@ export function FriendsScreen({ state, actions }: Props) {
   useEffect(() => {
     if (profile?.userId) actions.loadFriends();
   }, [profile?.userId]);
+
+  // Clear pending invite when we enter a game
+  useEffect(() => {
+    if (state.phase !== 'home') setPendingInvite(null);
+  }, [state.phase]);
 
   const onSendRequest = () => {
     const val = addInput.trim();
@@ -2205,8 +2241,11 @@ export function FriendsScreen({ state, actions }: Props) {
                       setSocialPackPopup(true);
                       return;
                     }
-                    actions.inviteFriendMatch(matchModal!, { mode: m });
+                    const fId = matchModal!;
+                    const friend = friends?.find((f) => f.userId === fId);
+                    actions.inviteFriendMatch(fId, { mode: m });
                     setMatchModal(null);
+                    setPendingInvite({ friendId: fId, friendName: friend?.displayName ?? '', online: friend?.online ?? false });
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -2221,6 +2260,35 @@ export function FriendsScreen({ state, actions }: Props) {
         </Pressable>
       </Modal>
 
+      {/* Pending invite overlay — blocks entire screen */}
+      <Modal visible={pendingInvite !== null} transparent animationType="fade" onRequestClose={() => setPendingInvite(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-start', paddingTop: 100 }}>
+          <View style={{
+            marginHorizontal: 30, backgroundColor: theme.card, borderRadius: 18,
+            padding: 18, borderWidth: 1, borderColor: theme.border,
+            flexDirection: 'row', alignItems: 'center', gap: 12,
+          }}>
+            <Ionicons name="game-controller" size={28} color={theme.accent} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: theme.muted, fontSize: 11 }}>Dostluk Maçı</Text>
+              <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>{pendingInvite?.friendName} bekleniyor</Text>
+              <Text style={{ color: pendingInvite?.online ? theme.primary : theme.muted, fontSize: 11, marginTop: 2 }}>
+                {pendingInvite?.online ? 'Çevrimiçi' : 'Çevrimdışı'}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => setPendingInvite(null)}
+              style={{
+                backgroundColor: theme.danger, borderRadius: 10,
+                paddingHorizontal: 12, paddingVertical: 8,
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>İptal</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
       {/* Social pack popup */}
       <Modal visible={socialPackPopup} transparent animationType="fade" onRequestClose={() => setSocialPackPopup(false)}>
         <Pressable style={styles.modalBg} onPress={() => setSocialPackPopup(false)}>
@@ -2230,7 +2298,7 @@ export function FriendsScreen({ state, actions }: Props) {
             <Text style={[styles.muted, { marginBottom: 12 }]}>
               Ülke-Takım ve Harf-Takım modlarını dostluk maçlarında kullanmak için Sosyal Paket satın almalısın.
             </Text>
-            <Btn label="Mağazaya Git" kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); /* navigate to store tab */ }} />
+            <Btn label="Mağazaya Git" kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); onGoToStore?.(); }} />
             <View style={{ height: 6 }} />
             <Btn label="Vazgeç" kind="ghost" icon="close" onPress={() => setSocialPackPopup(false)} />
           </Pressable>
