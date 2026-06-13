@@ -979,8 +979,8 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
   }, [zoom]);
   const scale = zoom.interpolate({ inputRange: [0, 1], outputRange: [1.02, 1.1] });
   return (
-    <Pressable onPress={onPress} style={{ marginVertical: 8 }}>
-      <View style={{ height: 156, borderRadius: 16, overflow: 'hidden', backgroundColor: theme.card }}>
+    <Pressable onPress={onPress} style={{ marginVertical: 8, alignItems: 'center' }}>
+      <View style={{ width: '72%', aspectRatio: 1, borderRadius: 20, overflow: 'hidden', backgroundColor: theme.card }}>
         <Animated.Image source={tier.img} style={{ width: '100%', height: '100%', transform: [{ scale }] }} resizeMode="cover" />
         <PitchLeaves />
         {/* "ARENALAR ›" hint */}
