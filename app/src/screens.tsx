@@ -1475,6 +1475,33 @@ export function StoreScreen({ state, actions }: Props) {
           ) : null}
         </View>
 
+        {/* Sosyal Paket */}
+        <Text style={styles.sectionLabel}>SOSYAL PAKET</Text>
+        <View style={[styles.storePackCard, { borderColor: theme.accent, borderWidth: 2 }]}>
+          <View style={styles.storePackBadge}>
+            <Text style={styles.storePackBadgeText}>YENİ</Text>
+          </View>
+          <View style={{ gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Ionicons name="people" size={24} color={theme.accent} />
+              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>Sosyal Paket</Text>
+            </View>
+            <Text style={{ color: theme.muted, fontSize: 12 }}>
+              Arkadaşlarınla Ülke-Takım ve Harf-Takım modlarında dostluk maçı oyna.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+              <View style={[styles.storePackPriceBox, { flex: 1, alignItems: 'center' as const }]}>
+                <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>Haftalık</Text>
+                <Text style={styles.storePackPrice}>₺24,99</Text>
+              </View>
+              <View style={[styles.storePackPriceBox, { flex: 1, alignItems: 'center' as const, backgroundColor: theme.accent }]}>
+                <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>Aylık</Text>
+                <Text style={styles.storePackPrice}>₺89,99</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
         {/* Free diamonds - watch ads */}
         <Text style={styles.sectionLabel}>{t('store.freeDiamonds')}</Text>
         <View style={styles.storeAdCard}>
@@ -1643,33 +1670,6 @@ export function StoreScreen({ state, actions }: Props) {
           </View>
         </>
         )}
-
-        {/* Sosyal Paket */}
-        <Text style={styles.sectionLabel}>SOSYAL PAKET</Text>
-        <View style={[styles.storePackCard, { borderColor: theme.accent, borderWidth: 2 }]}>
-          <View style={styles.storePackBadge}>
-            <Text style={styles.storePackBadgeText}>YENİ</Text>
-          </View>
-          <View style={{ gap: 8 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Ionicons name="people" size={24} color={theme.accent} />
-              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>Sosyal Paket</Text>
-            </View>
-            <Text style={{ color: theme.muted, fontSize: 12 }}>
-              Arkadaşlarınla Ülke-Takım ve Harf-Takım modlarında dostluk maçı oyna.
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-              <View style={[styles.storePackPriceBox, { flex: 1, alignItems: 'center' as const }]}>
-                <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>Haftalık</Text>
-                <Text style={styles.storePackPrice}>₺24,99</Text>
-              </View>
-              <View style={[styles.storePackPriceBox, { flex: 1, alignItems: 'center' as const, backgroundColor: theme.accent }]}>
-                <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>Aylık</Text>
-                <Text style={styles.storePackPrice}>₺89,99</Text>
-              </View>
-            </View>
-          </View>
-        </View>
 
         {/* İsim değiştirme */}
         <Text style={styles.sectionLabel}>{t('store.other')}</Text>

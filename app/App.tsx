@@ -182,6 +182,23 @@ export default function App() {
     <View style={s.root}>
       <StatusBar style="light" />
 
+      {/* Top bar — trophies (left, standalone) + diamonds pill (right) */}
+      {state.profile ? (
+        <View style={s.resourceBar}>
+          <View style={s.trophyGroup}>
+            <Ionicons name="trophy" size={16} color={theme.accent} />
+            <Text style={s.trophyText}>{state.profile.trophies}</Text>
+          </View>
+          <Pressable style={s.diamondPill} onPress={() => goToTab(0)}>
+            <Ionicons name="diamond" size={14} color="#5BC8FF" />
+            <Text style={s.diamondText}>{state.profile.diamonds}</Text>
+            <View style={s.diamondPlus}>
+              <Ionicons name="add" size={12} color="#fff" />
+            </View>
+          </Pressable>
+        </View>
+      ) : null}
+
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -239,4 +256,46 @@ const s = StyleSheet.create({
   },
   tab: { flex: 1, alignItems: 'center', gap: 2 },
   tabLabel: { color: theme.muted, fontSize: 10, fontWeight: '600' },
+  resourceBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+  },
+  trophyGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  trophyText: {
+    color: '#F5C518',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  diamondPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#151C30',
+    borderRadius: 14,
+    paddingLeft: 8,
+    paddingRight: 2,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#26304A',
+  },
+  diamondText: {
+    color: '#5BC8FF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  diamondPlus: {
+    backgroundColor: '#3DDC84',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
