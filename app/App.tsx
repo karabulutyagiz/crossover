@@ -15,6 +15,7 @@ import { useCrossover } from './src/useCrossover';
 import { t } from './src/i18n';
 import {
   IntroScreen,
+  TutorialScreen,
   LoginScreen,
   UsernameScreen,
   HomeScreen,
@@ -51,12 +52,16 @@ export default function App() {
   const [activeTab, setActiveTab] = useState(1); // start on Home (index 1)
   const [splash, setSplash] = useState(true);
   const [introSeen, setIntroSeen] = useState<boolean | null>(null); // null = still loading
+  const [tutorialSeen, setTutorialSeen] = useState<boolean | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 1500);
     AsyncStorage.getItem('@crossover_intro_seen')
       .then((v) => setIntroSeen(v === '1'))
       .catch(() => setIntroSeen(true));
+    AsyncStorage.getItem('@crossover_tutorial_seen')
+      .then((v) => setTutorialSeen(v === '1'))
+      .catch(() => setTutorialSeen(true));
     return () => clearTimeout(t);
   }, []);
 
@@ -112,6 +117,18 @@ export default function App() {
         <StatusBar style="light" />
         <UsernameScreen state={state} actions={actions} />
       </View>
+    );
+  }
+
+  // First-time interactive tutorial (after sign-in + username, before the game).
+  if (tutorialSeen === false) {
+    return (
+      <TutorialScreen
+        onDone={() => {
+          setTutorialSeen(true);
+          AsyncStorage.setItem('@crossover_tutorial_seen', '1').catch(() => {});
+        }}
+      />
     );
   }
 

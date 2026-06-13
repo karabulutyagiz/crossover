@@ -154,6 +154,23 @@ function Btn({
   );
 }
 
+// Compact option chip (mode / scope / difficulty) for the home screen.
+function Chip({ icon, label, onPress }: { icon: IoniconName; label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+        backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border,
+        borderRadius: 12, paddingVertical: 11, paddingHorizontal: 6,
+      }}
+    >
+      <Ionicons name={icon} size={14} color={theme.accent} />
+      <Text style={{ color: theme.text, fontSize: 11, fontWeight: '700' }} numberOfLines={1}>{label}</Text>
+    </Pressable>
+  );
+}
+
 function Screen({ children }: { children: ReactNode }) {
   // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
   // behavior 'padding' lifts content above the keyboard; the 44px offset matches
@@ -204,8 +221,12 @@ export function IntroScreen({ onDone }: { onDone: () => void }) {
     if (page < last) scRef.current?.scrollTo({ x: (page + 1) * SCREEN_W, animated: true });
     else onDone();
   };
+  const tint = INTRO_SLIDES[page]?.color ?? theme.primary;
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: 44 }}>
+      {/* Soft color glow that spreads to the sides and shifts hue per slide */}
+      <View pointerEvents="none" style={{ position: 'absolute', top: '12%', alignSelf: 'center', width: SCREEN_W * 1.7, height: SCREEN_W * 1.7, borderRadius: SCREEN_W * 0.85, backgroundColor: tint, opacity: 0.1 }} />
+      <View pointerEvents="none" style={{ position: 'absolute', top: '22%', alignSelf: 'center', width: SCREEN_W * 1.05, height: SCREEN_W * 1.05, borderRadius: SCREEN_W * 0.53, backgroundColor: tint, opacity: 0.14 }} />
       <Pressable onPress={onDone} style={{ position: 'absolute', top: 50, right: 22, zIndex: 10 }} hitSlop={12}>
         <Text style={{ color: theme.muted, fontWeight: '700', fontSize: 14 }}>Atla</Text>
       </Pressable>
@@ -234,6 +255,107 @@ export function IntroScreen({ onDone }: { onDone: () => void }) {
       <View style={{ paddingHorizontal: 28, paddingBottom: 40 }}>
         <Btn label={page === last ? 'BAŞLA' : 'İLERİ'} icon={page === last ? 'rocket' : 'arrow-forward'} kind="primary" big onPress={next} />
       </View>
+    </View>
+  );
+}
+
+// ---- Interactive first-time tutorial (101 Plus-style guided simulation) ----
+const TUT_TEAMS = ['Galatasaray', 'Fenerbahçe', 'Beşiktaş', 'Trabzonspor', 'Real Madrid', 'Barcelona'];
+
+export function TutorialScreen({ onDone }: { onDone: () => void }) {
+  const [step, setStep] = useState(0);
+  const bubble = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    bubble.setValue(0);
+    Animated.spring(bubble, { toValue: 1, useNativeDriver: true, friction: 7, tension: 80 }).start();
+  }, [step]);
+  const next = () => setStep((s) => s + 1);
+
+  const TEXTS: { text: string; cta?: string }[] = [
+    { text: "Crossover'a hoş geldin! 👋 Sana 30 saniyede nasıl oynanacağını göstereyim.", cta: 'DEVAM' },
+    { text: 'Önce bir takım seçersin. Hadi, parlayan Galatasaray\'a dokun 👆' },
+    { text: 'Rakibin de takımını seçti: Real Madrid. Şimdi iki takımda da oynamış bir futbolcu bulmalısın.', cta: 'DEVAM' },
+    { text: 'İpucu: Hollandalı yıldız Wesley Sneijder hem Real Madrid hem Galatasaray\'da oynadı. Onu yazardın!', cta: 'DEVAM' },
+    { text: 'Doğru! 🎉 Rakipten önce bilen turu kazanır. İlk 3 turu kazanan maçı ve kupayı alır.', cta: 'DEVAM' },
+    { text: 'Harika, artık hazırsın! Bol şans ⚽', cta: 'BAŞLA' },
+  ];
+  const cur = TEXTS[Math.min(step, TEXTS.length - 1)]!;
+
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: 50, paddingHorizontal: 22, paddingBottom: 34 }}>
+      <Pressable onPress={onDone} style={{ position: 'absolute', top: 50, right: 20, zIndex: 20 }} hitSlop={12}>
+        <Text style={{ color: theme.muted, fontWeight: '700', fontSize: 14 }}>Atla</Text>
+      </Pressable>
+
+      {/* Simulation stage */}
+      <View style={{ flex: 1, justifyContent: 'center' }}>
+        {step <= 0 ? (
+          <View style={{ alignItems: 'center', gap: 14 }}>
+            <Ionicons name="school" size={72} color={theme.primary} />
+            <Text style={{ color: theme.text, fontSize: 22, fontWeight: '900' }}>Nasıl Oynanır?</Text>
+          </View>
+        ) : step === 1 ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 }}>
+            {TUT_TEAMS.map((tname) => {
+              const target = tname === 'Galatasaray';
+              return (
+                <Pressable
+                  key={tname}
+                  onPress={() => { if (target) next(); }}
+                  style={{
+                    width: '30%', alignItems: 'center', gap: 6, paddingVertical: 14,
+                    backgroundColor: theme.card, borderRadius: 14,
+                    borderWidth: 2, borderColor: target ? theme.primary : theme.border,
+                    opacity: target ? 1 : 0.45,
+                  }}
+                >
+                  <ClubBadge name={tname} size={42} logoUrl={null} />
+                  <Text style={{ color: theme.text, fontSize: 10.5, fontWeight: '600', textAlign: 'center' }} numberOfLines={1}>{tname}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : (
+          <View style={{ alignItems: 'center', gap: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18 }}>
+              <View style={{ alignItems: 'center', gap: 6 }}>
+                <ClubBadge name="Galatasaray" size={58} logoUrl={null} />
+                <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>Galatasaray</Text>
+              </View>
+              <Text style={{ color: theme.accent, fontSize: 22, fontWeight: '900' }}>✕</Text>
+              <View style={{ alignItems: 'center', gap: 6 }}>
+                <ClubBadge name="Real Madrid" size={58} logoUrl={null} />
+                <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>Real Madrid</Text>
+              </View>
+            </View>
+            {step >= 3 ? (
+              <View style={{
+                backgroundColor: theme.card, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 22,
+                alignItems: 'center', gap: 4, borderWidth: 2, borderColor: step >= 4 ? theme.primary : theme.border,
+              }}>
+                <Text style={{ color: step >= 4 ? theme.primary : theme.text, fontSize: 18, fontWeight: '900' }}>Wesley Sneijder</Text>
+                <Text style={{ color: step >= 4 ? theme.primary : theme.muted, fontSize: 12 }}>
+                  {step >= 4 ? '✓ İki takımda da oynadı!' : '… ortak oyuncu'}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        )}
+      </View>
+
+      {/* Coach bubble */}
+      <Animated.View style={{ transform: [{ scale: bubble }], opacity: bubble, backgroundColor: theme.card, borderRadius: 18, borderWidth: 1, borderColor: theme.primary, padding: 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <Ionicons name="football" size={18} color={theme.primary} />
+          <Text style={{ color: theme.primary, fontWeight: '900', fontSize: 12, letterSpacing: 1 }}>KOÇ</Text>
+        </View>
+        <Text style={{ color: theme.text, fontSize: 15, lineHeight: 22 }}>{cur.text}</Text>
+        {cur.cta ? (
+          <View style={{ marginTop: 12 }}>
+            <Btn label={cur.cta} kind="primary" icon={cur.cta === 'BAŞLA' ? 'rocket' : 'arrow-forward'} onPress={cur.cta === 'BAŞLA' ? onDone : next} />
+          </View>
+        ) : null}
+      </Animated.View>
     </View>
   );
 }
@@ -547,8 +669,10 @@ export function HomeScreen({ actions, state }: Props) {
   const [mode, setMode] = useState<GameMode>('team-team');
   const [picker, setPicker] = useState<Picker>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(false);
   const opts: GameOptions = { scope, difficulty, mode };
   const profile = state.profile;
+  const playerName = profile?.displayName ?? (name || 'Oyuncu');
 
   return (
     <Screen>
@@ -572,102 +696,65 @@ export function HomeScreen({ actions, state }: Props) {
         </Pressable>
       </Modal>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <View style={styles.center}>
-          <Ionicons name="football" size={36} color={theme.primary} />
-        </View>
-        <Text style={styles.logo}>CROSSOVER</Text>
-        <Text style={styles.tagline}>{t('home.tagline')}</Text>
-
-        {profile ? (
-          <ProfileCard profile={profile} onPress={actions.openArenas} />
-        ) : (
-          <>
-            <TextInput
-              placeholder={t('home.namePlaceholder')}
-              placeholderTextColor={theme.muted}
-          keyboardAppearance="dark"
-              value={name}
-              onChangeText={setName}
-              style={styles.input}
-            />
-            <Btn
-              label={t('home.register')}
-              icon="person-add"
-              kind="primary"
-              onPress={() => actions.register(name || 'Oyuncu')}
-              disabled={!name.trim()}
-            />
-          </>
-        )}
-
-        {/* Quick Match + Mode selector */}
-        <View style={{ flexDirection: 'row', gap: 8, marginVertical: 4 }}>
-          <Pressable
-            style={[styles.btn, { backgroundColor: theme.primary, flex: 1, padding: 16, opacity: !profile ? 0.4 : 1 }]}
-            onPress={!profile ? undefined : () => actions.findMatch(opts)}
-          >
-            <Ionicons name="flash" size={22} color="#06131F" style={{ marginRight: 8 }} />
-            <Text style={[styles.btnText, { color: '#06131F', fontSize: 16 }]}>{t('home.quickMatch')}</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.btn, { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, paddingHorizontal: 14, padding: 16 }]}
-            onPress={() => setPicker('mode')}
-          >
-            <Ionicons name={MODE_ICON[mode]} size={20} color={theme.accent} />
-            <Ionicons name="chevron-down" size={14} color={theme.muted} style={{ marginLeft: 4 }} />
-          </Pressable>
-        </View>
-        <Text style={[styles.muted, { marginBottom: 6, fontSize: 11 }]}>{MODE_LABEL[mode]}</Text>
-
-        {/* Settings chips */}
-        <View style={styles.optRow}>
-          <Pressable style={styles.optChip} onPress={() => setPicker('scopeType')}>
-            <Ionicons name="globe-outline" size={15} color={theme.accent} />
-            <Text style={styles.optChipText} numberOfLines={1}>
-              {scopeLabel(scope)}
-            </Text>
-            <Ionicons name="chevron-down" size={14} color={theme.muted} />
-          </Pressable>
-          <Pressable style={styles.optChip} onPress={() => setPicker('difficulty')}>
-            <Ionicons name="speedometer-outline" size={15} color={theme.accent} />
-            <Text style={styles.optChipText}>Bot: {DIFF_LABEL[difficulty]}</Text>
-            <Ionicons name="chevron-down" size={14} color={theme.muted} />
-          </Pressable>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <View style={{ alignItems: 'center', marginTop: 2, marginBottom: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Ionicons name="football" size={28} color={theme.primary} />
+            <Text style={[styles.logo, { marginTop: 0 }]}>CROSSOVER</Text>
+          </View>
         </View>
 
-        <Btn
-          label={t('home.createRoom')}
-          icon="add-circle"
-          onPress={() => actions.createRoom(profile?.displayName ?? (name || 'Oyuncu'), opts)}
-          disabled={!profile && !name.trim()}
-        />
-        <Btn
-          label={t('home.solo')}
-          kind="accent"
-          icon="game-controller"
-          onPress={() => actions.createSolo(profile?.displayName ?? (name || 'Oyuncu'), opts)}
-          disabled={!profile && !name.trim()}
-        />
-        <View style={styles.divider} />
-        <TextInput
-          placeholder={t('home.codePlaceholder')}
-          placeholderTextColor={theme.muted}
-          keyboardAppearance="dark"
-          value={code}
-          autoCapitalize="characters"
-          onChangeText={(v) => setCode(v.toUpperCase())}
-          style={styles.input}
-        />
-        <Btn
-          label={t('home.joinRoom')}
-          kind="ghost"
-          icon="enter"
-          onPress={() => actions.joinRoom(code, profile?.displayName ?? (name || 'Oyuncu'))}
-          disabled={(!profile && !name.trim()) || code.trim().length < 4}
-        />
+        {profile ? <ProfileCard profile={profile} onPress={actions.openArenas} /> : null}
+
+        {/* Game options — one tidy row */}
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, marginBottom: 14 }}>
+          <Chip icon={MODE_ICON[mode]} label={MODE_LABEL[mode]} onPress={() => setPicker('mode')} />
+          <Chip icon="globe-outline" label={scopeLabel(scope)} onPress={() => setPicker('scopeType')} />
+          <Chip icon="speedometer-outline" label={DIFF_LABEL[difficulty]} onPress={() => setPicker('difficulty')} />
+        </View>
+
+        {/* Primary action */}
+        <Btn label={t('home.quickMatch')} icon="flash" kind="primary" big onPress={() => actions.findMatch(opts)} />
+
+        {/* Secondary actions — even 2-up grid + join */}
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Btn label={t('home.createRoom')} icon="add-circle" kind="blue" onPress={() => actions.createRoom(playerName, opts)} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Btn label={t('home.solo')} icon="game-controller" kind="accent" onPress={() => actions.createSolo(playerName, opts)} />
+          </View>
+        </View>
+        <Btn label={t('home.joinRoom')} icon="enter" kind="ghost" onPress={() => setJoinOpen(true)} />
+
         {state.error ? <Text style={styles.error}>{state.error}</Text> : null}
       </ScrollView>
+
+      {/* Join-by-code sheet (kept off the main screen to reduce clutter) */}
+      <Modal visible={joinOpen} transparent animationType="slide" onRequestClose={() => setJoinOpen(false)}>
+        <Pressable style={styles.modalBg} onPress={() => setJoinOpen(false)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>{t('home.joinRoom')}</Text>
+            <TextInput
+              placeholder={t('home.codePlaceholder')}
+              placeholderTextColor={theme.muted}
+              keyboardAppearance="dark"
+              value={code}
+              autoCapitalize="characters"
+              onChangeText={(v) => setCode(v.toUpperCase())}
+              style={styles.input}
+              autoFocus
+            />
+            <Btn
+              label={t('home.joinRoom')}
+              icon="enter"
+              kind="primary"
+              disabled={code.trim().length < 4}
+              onPress={() => { setJoinOpen(false); actions.joinRoom(code, playerName); }}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <PickerModal
         picker={picker}
@@ -1472,6 +1559,7 @@ export function StoreScreen({ state, actions }: Props) {
 export function FriendsScreen({ state, actions }: Props) {
   const [addInput, setAddInput] = useState('');
   const [searchMode, setSearchMode] = useState<'code' | 'username'>('code');
+  const [friendTab, setFriendTab] = useState<'friends' | 'requests'>('friends');
   const [copied, setCopied] = useState(false);
   const [matchModal, setMatchModal] = useState<string | null>(null); // friendId
   const [socialPackPopup, setSocialPackPopup] = useState(false);
@@ -1552,12 +1640,40 @@ export function FriendsScreen({ state, actions }: Props) {
           style={styles.input}
         />
         <Btn label="Arkadaşlık İsteği Gönder" icon="paper-plane" kind="primary" onPress={onSendRequest} disabled={addInput.trim().length < 3} />
+        {state.error ? <Text style={[styles.error, { marginTop: 6 }]}>{state.error}</Text> : null}
 
-        {/* Friend requests */}
-        {requests.length > 0 ? (
-          <>
-            <Text style={styles.sectionLabel}>ARKADAŞLIK İSTEKLERİ</Text>
-            {requests.map((req) => (
+        {/* Tabs: Arkadaşlarım | Arkadaşlık İstekleri */}
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 18, marginBottom: 12 }}>
+          {([['friends', 'people', 'Arkadaşlarım'], ['requests', 'person-add', 'İstekler']] as const).map(([key, icon, label]) => {
+            const active = friendTab === key;
+            const badge = key === 'requests' && requests.length > 0 ? ` (${requests.length})` : '';
+            return (
+              <Pressable
+                key={key}
+                onPress={() => setFriendTab(key)}
+                style={{
+                  flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  paddingVertical: 11, borderRadius: 12,
+                  backgroundColor: active ? theme.primary : theme.card,
+                  borderWidth: 1, borderColor: active ? theme.primary : theme.border,
+                }}
+              >
+                <Ionicons name={icon} size={16} color={active ? '#06131F' : theme.muted} />
+                <Text style={{ color: active ? '#06131F' : theme.text, fontWeight: '800', fontSize: 13 }}>{label}{badge}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* Requests tab */}
+        {friendTab === 'requests' ? (
+          requests.length === 0 ? (
+            <View style={styles.friendEmpty}>
+              <Ionicons name="mail-open-outline" size={48} color={theme.border} />
+              <Text style={styles.muted}>Bekleyen istek yok</Text>
+            </View>
+          ) : (
+            requests.map((req) => (
               <View key={req.requestId || req.fromId} style={{
                 flexDirection: 'row', alignItems: 'center', gap: 10,
                 backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 6,
@@ -1581,13 +1697,9 @@ export function FriendsScreen({ state, actions }: Props) {
                   <Ionicons name="close" size={20} color="#fff" />
                 </Pressable>
               </View>
-            ))}
-          </>
-        ) : null}
-
-        {/* Friends list */}
-        <Text style={styles.sectionLabel}>{t('friends.myFriends')}</Text>
-        {friends.length === 0 ? (
+            ))
+          )
+        ) : /* Friends tab */ friends.length === 0 ? (
           <View style={styles.friendEmpty}>
             <Ionicons name="people-outline" size={48} color={theme.border} />
             <Text style={styles.muted}>{t('friends.empty')}</Text>
