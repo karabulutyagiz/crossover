@@ -5,7 +5,6 @@ import {
   Dimensions,
   Easing,
   Image,
-  Modal,
   PanResponder,
   Pressable,
   ScrollView,
@@ -111,6 +110,13 @@ export default function App() {
       .catch(() => setTutorialSeen(true));
     return () => clearTimeout(t);
   }, []);
+
+  // Auto-hide the "coming soon" text after a moment.
+  useEffect(() => {
+    if (!comingSoon) return;
+    const id = setTimeout(() => setComingSoon(false), 1600);
+    return () => clearTimeout(id);
+  }, [comingSoon]);
 
   // When switching away from the home tab, reset sub-screens (arenas, leaderboard, matchHistory) to home
   const resetHomePhase = useCallback(() => {
@@ -341,15 +347,14 @@ export default function App() {
         </Pressable>
       </View>
 
-      <Modal visible={comingSoon} transparent animationType="fade" onRequestClose={() => setComingSoon(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: 'rgba(6,10,28,0.45)', alignItems: 'center', justifyContent: 'center', padding: 32 }} onPress={() => setComingSoon(false)}>
-          <View style={{ backgroundColor: theme.card, borderRadius: 18, borderWidth: 1.5, borderColor: theme.border, paddingVertical: 26, paddingHorizontal: 30, alignItems: 'center', gap: 8 }}>
-            <Ionicons name="trophy" size={40} color={theme.accent} />
-            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 19 }}>Turnuvalar</Text>
-            <Text style={{ color: theme.muted, fontSize: 13.5, fontWeight: '600' }}>Çok yakında!</Text>
-          </View>
-        </Pressable>
-      </Modal>
+      {/* Tournaments → plain "coming soon" text on screen (no icon, no frame) */}
+      {comingSoon ? (
+        <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: '46%', alignItems: 'center' }}>
+          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 22, textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 6 }}>
+            Çok yakında
+          </Text>
+        </View>
+      ) : null}
 
       {state.matchInvite ? (
         <InviteBanner
