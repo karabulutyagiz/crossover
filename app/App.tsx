@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFonts } from 'expo-font';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCrossover } from './src/useCrossover';
-import { t } from './src/i18n';
+import { t, setLanguage } from './src/i18n';
 import {
   SplashScreen,
   LoadingScreen,
@@ -96,8 +96,12 @@ export default function App() {
   });
   const fontsReady = fontsLoaded || !!fontError; // don't get stuck if a font fails
 
+  const [langKey, setLangKey] = useState(0); // increment to force full remount after language change
+
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 1900);
+    // Read saved language
+    AsyncStorage.getItem('@crossover_lang').then((v) => { if (v) setLanguage(v); }).catch(() => {});
     AsyncStorage.getItem('@crossover_tutorial_seen')
       .then((v) => setTutorialSeen(v === '1'))
       .catch(() => setTutorialSeen(true));
@@ -244,12 +248,12 @@ export default function App() {
     ? <MatchHistoryScreen {...props} />
     : state.phase === 'profile'
     ? <ProfileScreen {...props} />
-    : <HomeScreen {...props} />;
+    : <HomeScreen {...props} onLanguageChange={() => { setLoaded(false); setLangKey((k) => k + 1); }} />;
   // A sub-screen is open in the home slot → swipe dismisses it (pager paging off).
   const subScreen = state.phase !== 'home' && TAB_PHASES.has(state.phase);
 
   return (
-    <View style={s.root}>
+    <View key={`app-${langKey}`} style={s.root}>
       <StatusBar style="light" />
 
       {/* Top bar — trophies (left) + gems pill (right) */}
