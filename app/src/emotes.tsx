@@ -135,78 +135,243 @@ export function availableEmotes(profile: ProfileView | null): EmoteMeta[] {
 
 // ============================ The animated stickers ============================
 
-// Flagship premium emote: a stylized footballer lifting a blue/red striped jersey
-// (number 10) from behind their shoulders — a 1.5s proud-lift loop.
+// Flagship premium emote: a character holding a striped #10 jersey, turning head
+// to the side with a smug raised-eyebrow expression. 2s loop.
+//
+// Timeline:
+//   0.0s — Jersey held, neutral face, looking forward
+//   0.3s — Eyes glance right
+//   0.6s — Head turns right
+//   0.9s — Left eyebrow rises
+//   1.2s — Mouth shifts to one-sided smirk
+//   1.5s — Smug look holds
+//   2.0s — Return to neutral / loop
 function JerseyLiftEmote({ size }: { size: number }) {
   const t = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const loop = Animated.loop(
-      Animated.timing(t, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(t, { toValue: 1, duration: 2000, easing: Easing.linear, useNativeDriver: true }),
     );
     loop.start();
     return () => loop.stop();
   }, [t]);
 
-  const headSize = size * 0.32;
-  const bodyW = size * 0.5;
-  const bodyH = size * 0.46;
+  const h = size * 0.30; // head size
+  const skin = '#D4956A';
+  const hair = '#3B2314';
+  const beard = '#4A3020';
+  const jerseyW = size * 0.42;
+  const jerseyH = size * 0.40;
 
-  // Jersey rises from behind the shoulders, holds proudly, then tucks back to loop.
-  const jerseyY = t.interpolate({ inputRange: [0, 0.4, 0.78, 1], outputRange: [size * 0.34, -size * 0.04, -size * 0.02, size * 0.34] });
-  const jerseyScaleX = t.interpolate({ inputRange: [0, 0.4, 0.78, 1], outputRange: [0.55, 1.06, 1, 0.55] });
-  const jerseyScaleY = t.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0.7, 1, 0.7] });
-  const armLiftL = t.interpolate({ inputRange: [0, 0.4, 0.78, 1], outputRange: ['8deg', '-26deg', '-22deg', '8deg'] });
-  const armLiftR = t.interpolate({ inputRange: [0, 0.4, 0.78, 1], outputRange: ['-8deg', '26deg', '22deg', '-8deg'] });
-  const headBob = t.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, -size * 0.02, 0] });
+  // Head rotation: 0→stays→turns right→holds→returns
+  const headRot = t.interpolate({
+    inputRange: [0, 0.15, 0.30, 0.75, 0.90, 1],
+    outputRange: ['0deg', '0deg', '-14deg', '-14deg', '0deg', '0deg'],
+  });
+  // Head tilt (slight lean when smirking)
+  const headTilt = t.interpolate({
+    inputRange: [0, 0.30, 0.45, 0.75, 0.90, 1],
+    outputRange: ['0deg', '0deg', '5deg', '5deg', '0deg', '0deg'],
+  });
+  // Eye glance (moves slightly before head)
+  const eyeX = t.interpolate({
+    inputRange: [0, 0.10, 0.25, 0.75, 0.88, 1],
+    outputRange: [0, 0, -h * 0.08, -h * 0.08, 0, 0],
+  });
+  // Left eyebrow raise
+  const browLY = t.interpolate({
+    inputRange: [0, 0.35, 0.45, 0.75, 0.88, 1],
+    outputRange: [0, 0, -h * 0.10, -h * 0.10, 0, 0],
+  });
+  // Smirk: right side of mouth goes up
+  const smirkY = t.interpolate({
+    inputRange: [0, 0.50, 0.60, 0.75, 0.88, 1],
+    outputRange: [0, 0, -h * 0.04, -h * 0.04, 0, 0],
+  });
+  const smirkRot = t.interpolate({
+    inputRange: [0, 0.50, 0.60, 0.75, 0.88, 1],
+    outputRange: ['0deg', '0deg', '-8deg', '-8deg', '0deg', '0deg'],
+  });
+  // Jersey gentle sway
+  const jerseySway = t.interpolate({
+    inputRange: [0, 0.25, 0.5, 0.75, 1],
+    outputRange: ['0deg', '2deg', '0deg', '-2deg', '0deg'],
+  });
+  // Left arm (holding jersey) — slight up/down
+  const armLY = t.interpolate({
+    inputRange: [0, 0.3, 0.75, 1],
+    outputRange: [0, -size * 0.01, -size * 0.01, 0],
+  });
+  // Right arm pointing up
+  const fingerBob = t.interpolate({
+    inputRange: [0, 0.25, 0.5, 0.75, 1],
+    outputRange: [0, -size * 0.02, 0, -size * 0.02, 0],
+  });
 
-  const STRIPES = ['#1E50C8', '#E0263A', '#1E50C8', '#E0263A', '#1E50C8'];
+  const STRIPES = ['#1E50C8', '#A31545', '#1E50C8', '#A31545', '#1E50C8'];
 
   return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      {/* Jersey (behind the head) */}
-      <Animated.View
-        style={{
-          position: 'absolute',
-          top: size * 0.16,
-          transform: [{ translateY: jerseyY }, { scaleX: jerseyScaleX }, { scaleY: jerseyScaleY }],
-        }}
-      >
-        {/* sleeves */}
-        <View style={{ position: 'absolute', left: -size * 0.08, top: size * 0.02, width: size * 0.16, height: size * 0.14, backgroundColor: '#1E50C8', borderRadius: 6, transform: [{ rotate: '24deg' }] }} />
-        <View style={{ position: 'absolute', right: -size * 0.08, top: size * 0.02, width: size * 0.16, height: size * 0.14, backgroundColor: '#E0263A', borderRadius: 6, transform: [{ rotate: '-24deg' }] }} />
-        {/* body with vertical stripes */}
-        <View style={{ width: bodyW, height: bodyH, borderRadius: 12, overflow: 'hidden', flexDirection: 'row', borderWidth: 2, borderColor: 'rgba(0,0,0,0.18)' }}>
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'flex-end' }}>
+      {/* ── Torso (dark blue shirt) ── */}
+      <View style={{
+        position: 'absolute', bottom: 0, width: size * 0.52, height: size * 0.36,
+        backgroundColor: '#1A2B5C', borderTopLeftRadius: size * 0.14, borderTopRightRadius: size * 0.14,
+        borderBottomLeftRadius: 4, borderBottomRightRadius: 4,
+      }} />
+
+      {/* ── Left arm + jersey ── */}
+      <Animated.View style={{
+        position: 'absolute', left: size * 0.04, bottom: size * 0.18,
+        alignItems: 'center', transform: [{ translateY: armLY }],
+      }}>
+        {/* Upper arm */}
+        <View style={{ width: size * 0.10, height: size * 0.22, backgroundColor: '#1A2B5C', borderRadius: size * 0.05, transform: [{ rotate: '15deg' }] }} />
+        {/* Hand */}
+        <View style={{ width: size * 0.08, height: size * 0.06, backgroundColor: skin, borderRadius: size * 0.03, marginTop: -2 }} />
+      </Animated.View>
+
+      {/* ── Jersey (held by left hand) ── */}
+      <Animated.View style={{
+        position: 'absolute', left: -size * 0.02, bottom: size * 0.08,
+        transform: [{ rotate: jerseySway }],
+      }}>
+        <View style={{
+          width: jerseyW, height: jerseyH, borderRadius: 8, overflow: 'hidden',
+          flexDirection: 'row', borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.2)',
+        }}>
           {STRIPES.map((c, i) => (
             <View key={i} style={{ flex: 1, backgroundColor: c }} />
           ))}
-          {/* collar notch */}
-          <View style={{ position: 'absolute', top: 0, alignSelf: 'center', width: bodyW * 0.28, height: bodyH * 0.12, backgroundColor: '#F2F4F8', borderBottomLeftRadius: 8, borderBottomRightRadius: 8 }} />
-          {/* number */}
+          {/* Collar */}
+          <View style={{
+            position: 'absolute', top: 0, left: jerseyW * 0.32, width: jerseyW * 0.36,
+            height: jerseyH * 0.10, backgroundColor: '#E8E8E8',
+            borderBottomLeftRadius: 6, borderBottomRightRadius: 6,
+          }} />
+          {/* Number 10 */}
           <View style={StyleSheet.absoluteFill as any}>
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color: '#FFFFFF', fontSize: bodyH * 0.5, fontWeight: '900', textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 3 }}>10</Text>
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: jerseyH * 0.06 }}>
+              <Text style={{
+                color: '#FFD700', fontSize: jerseyH * 0.42, fontWeight: '900',
+                textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 2,
+              }}>10</Text>
             </View>
           </View>
         </View>
+        {/* Left sleeve */}
+        <View style={{
+          position: 'absolute', left: -size * 0.04, top: size * 0.01,
+          width: size * 0.10, height: size * 0.10, backgroundColor: '#1E50C8',
+          borderRadius: 5, transform: [{ rotate: '20deg' }],
+        }} />
+        {/* Right sleeve */}
+        <View style={{
+          position: 'absolute', right: -size * 0.04, top: size * 0.01,
+          width: size * 0.10, height: size * 0.10, backgroundColor: '#A31545',
+          borderRadius: 5, transform: [{ rotate: '-20deg' }],
+        }} />
       </Animated.View>
 
-      {/* Arms reaching up behind the head to hold the jersey */}
-      <Animated.View style={{ position: 'absolute', left: size * 0.2, top: size * 0.44, width: size * 0.1, height: size * 0.3, backgroundColor: '#E8B58A', borderRadius: size * 0.05, transformOrigin: 'bottom', transform: [{ rotate: armLiftL }] }} />
-      <Animated.View style={{ position: 'absolute', right: size * 0.2, top: size * 0.44, width: size * 0.1, height: size * 0.3, backgroundColor: '#E8B58A', borderRadius: size * 0.05, transformOrigin: 'bottom', transform: [{ rotate: armLiftR }] }} />
+      {/* ── Right arm pointing up ── */}
+      <Animated.View style={{
+        position: 'absolute', right: size * 0.06, bottom: size * 0.38,
+        alignItems: 'center', transform: [{ translateY: fingerBob }],
+      }}>
+        {/* Upper arm */}
+        <View style={{
+          width: size * 0.09, height: size * 0.20, backgroundColor: '#1A2B5C',
+          borderRadius: size * 0.05, transform: [{ rotate: '-10deg' }],
+        }} />
+        {/* Forearm */}
+        <View style={{
+          width: size * 0.07, height: size * 0.14, backgroundColor: skin,
+          borderRadius: size * 0.035, marginTop: -2,
+        }} />
+        {/* Pointing finger */}
+        <View style={{
+          width: size * 0.04, height: size * 0.08, backgroundColor: skin,
+          borderRadius: size * 0.02, marginTop: -1,
+        }} />
+      </Animated.View>
 
-      {/* Head (front) */}
-      <Animated.View style={{ position: 'absolute', top: size * 0.28, alignItems: 'center', transform: [{ translateY: headBob }] }}>
-        {/* hair */}
-        <View style={{ width: headSize * 1.04, height: headSize * 0.6, backgroundColor: '#2A2118', borderTopLeftRadius: headSize, borderTopRightRadius: headSize, marginBottom: -headSize * 0.42, zIndex: 2 }} />
-        {/* face */}
-        <View style={{ width: headSize, height: headSize, borderRadius: headSize / 2, backgroundColor: '#F0C19B', alignItems: 'center', justifyContent: 'center' }}>
-          <View style={{ flexDirection: 'row', gap: headSize * 0.18, marginTop: headSize * 0.18 }}>
-            <View style={{ width: headSize * 0.1, height: headSize * 0.12, borderRadius: headSize * 0.05, backgroundColor: '#2A2118' }} />
-            <View style={{ width: headSize * 0.1, height: headSize * 0.12, borderRadius: headSize * 0.05, backgroundColor: '#2A2118' }} />
-          </View>
-          {/* determined smile */}
-          <View style={{ width: headSize * 0.38, height: headSize * 0.18, borderBottomLeftRadius: headSize * 0.2, borderBottomRightRadius: headSize * 0.2, borderWidth: headSize * 0.05, borderTopWidth: 0, borderColor: '#7A4B2B', marginTop: headSize * 0.08 }} />
+      {/* ── Head ── */}
+      <Animated.View style={{
+        position: 'absolute', top: size * 0.02, right: size * 0.18,
+        alignItems: 'center',
+        transform: [{ rotate: headRot }, { rotate: headTilt }],
+      }}>
+        {/* Hair (spiky top) */}
+        <View style={{
+          width: h * 1.06, height: h * 0.55, backgroundColor: hair,
+          borderTopLeftRadius: h * 0.4, borderTopRightRadius: h * 0.2,
+          marginBottom: -h * 0.35, zIndex: 2,
+        }}>
+          {/* Spiky strand */}
+          <View style={{
+            position: 'absolute', top: -h * 0.08, right: h * 0.12,
+            width: h * 0.20, height: h * 0.22, backgroundColor: hair,
+            borderTopLeftRadius: h * 0.15, borderTopRightRadius: h * 0.05,
+            transform: [{ rotate: '10deg' }],
+          }} />
         </View>
+
+        {/* Face */}
+        <View style={{
+          width: h, height: h * 1.05, borderRadius: h * 0.42,
+          backgroundColor: skin, alignItems: 'center', overflow: 'visible',
+        }}>
+          {/* Eyebrows */}
+          <View style={{ flexDirection: 'row', gap: h * 0.20, marginTop: h * 0.22 }}>
+            {/* Left eyebrow (the one that raises) */}
+            <Animated.View style={{
+              width: h * 0.16, height: h * 0.05, backgroundColor: hair,
+              borderRadius: 2, transform: [{ translateY: browLY }],
+            }} />
+            {/* Right eyebrow */}
+            <View style={{ width: h * 0.16, height: h * 0.05, backgroundColor: hair, borderRadius: 2 }} />
+          </View>
+
+          {/* Eyes */}
+          <Animated.View style={{
+            flexDirection: 'row', gap: h * 0.18, marginTop: h * 0.04,
+            transform: [{ translateX: eyeX }],
+          }}>
+            <View style={{ width: h * 0.12, height: h * 0.10, borderRadius: h * 0.06, backgroundColor: '#1A1108' }} />
+            <View style={{ width: h * 0.12, height: h * 0.10, borderRadius: h * 0.06, backgroundColor: '#1A1108' }} />
+          </Animated.View>
+
+          {/* Nose */}
+          <View style={{
+            width: h * 0.08, height: h * 0.08, backgroundColor: '#C0825A',
+            borderRadius: h * 0.04, marginTop: h * 0.04,
+          }} />
+
+          {/* Mouth (neutral → smirk) */}
+          <Animated.View style={{
+            marginTop: h * 0.04,
+            transform: [{ translateY: smirkY }, { rotate: smirkRot }],
+          }}>
+            <View style={{
+              width: h * 0.28, height: h * 0.06,
+              borderBottomLeftRadius: h * 0.08, borderBottomRightRadius: h * 0.08,
+              backgroundColor: '#8B4D30',
+            }} />
+          </Animated.View>
+
+          {/* Beard */}
+          <View style={{
+            position: 'absolute', bottom: -h * 0.02, width: h * 0.70, height: h * 0.28,
+            backgroundColor: beard, borderBottomLeftRadius: h * 0.25, borderBottomRightRadius: h * 0.25,
+            opacity: 0.65,
+          }} />
+        </View>
+
+        {/* Side hair / sideburn (right side, visible when turning) */}
+        <View style={{
+          position: 'absolute', right: -h * 0.02, top: h * 0.30,
+          width: h * 0.10, height: h * 0.30, backgroundColor: hair,
+          borderBottomRightRadius: h * 0.08,
+        }} />
       </Animated.View>
     </View>
   );
