@@ -22,7 +22,7 @@ import { t, currentLang, setLanguage, LANGUAGES } from './i18n';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GOOGLE_IOS_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
-import Svg, { Rect, Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
+import Svg, { Rect, Circle, Line, Pattern, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState, FriendInfo } from './useCrossover';
@@ -237,20 +237,27 @@ function Chip({ icon, label, onPress }: { icon: IoniconName; label: string; onPr
 
 // Clean, inviting background — a soft sky-like vertical gradient (lighter at top)
 // with two faint warm/cool glows. Replaces the old football-pitch pattern.
+// Full-screen patterned background (navy, Clash-Royale-like): deep-blue gradient
+// + a faint diagonal stripe pattern + soft glows. Sits behind every screen.
+const BG_TOP = '#15244F';
 function ScreenBg() {
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <Svg width="100%" height="100%">
         <Defs>
-          <SvgGradient id="screenbg" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#2B4A86" />
-            <Stop offset="0.55" stopColor="#16244A" />
-            <Stop offset="1" stopColor="#0C1330" />
+          <SvgGradient id="screenbg" x1="0" y1="0" x2="0.35" y2="1">
+            <Stop offset="0" stopColor={BG_TOP} />
+            <Stop offset="0.5" stopColor="#0F1A3C" />
+            <Stop offset="1" stopColor="#0A1330" />
           </SvgGradient>
+          <Pattern id="diag" patternUnits="userSpaceOnUse" width={48} height={48} patternTransform="rotate(45)">
+            <Line x1={0} y1={0} x2={0} y2={48} stroke="#5C7AC8" strokeWidth={3} opacity={0.05} />
+          </Pattern>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#screenbg)" />
-        <Circle cx="16%" cy="12%" r={140} fill={theme.primary} opacity={0.07} />
-        <Circle cx="90%" cy="86%" r={150} fill={theme.accent} opacity={0.05} />
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#diag)" />
+        <Circle cx="16%" cy="10%" r={160} fill={theme.primary} opacity={0.06} />
+        <Circle cx="90%" cy="82%" r={170} fill={theme.accent} opacity={0.045} />
       </Svg>
     </View>
   );

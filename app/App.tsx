@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
-  Animated,
   Dimensions,
-  Easing,
   Image,
-  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -139,27 +136,6 @@ export default function App() {
     if (idx !== 2) resetHomePhase();
   }, [resetHomePhase]);
 
-  // Swipe (any horizontal direction) to dismiss a sub-screen back to home, with
-  // an animated slide/fade transition (no abrupt "refresh" jump). Keep the latest
-  // action in a ref so the once-created PanResponder never goes stale.
-  const slide = useRef(new Animated.Value(0)).current; // -1 entering-from-left · 0 idle · 1 leaving-right
-  const backActionRef = useRef<() => void>(() => {});
-  backActionRef.current = () => {
-    Animated.timing(slide, { toValue: 1, duration: 170, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(() => {
-      actions.closeArenas(); // phase → home (content swaps to HomeScreen)
-      slide.setValue(-1);
-      Animated.timing(slide, { toValue: 0, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
-    });
-  };
-  const slotTx = slide.interpolate({ inputRange: [-1, 0, 1], outputRange: [-SCREEN_W * 0.28, 0, SCREEN_W * 0.28] });
-  const slotOpacity = slide.interpolate({ inputRange: [-1, 0, 1], outputRange: [0, 1, 0] });
-  const backSwipe = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 26 && Math.abs(g.dx) > Math.abs(g.dy) * 1.6,
-      onPanResponderRelease: (_e, g) => { if (Math.abs(g.dx) > 55) backActionRef.current(); },
-    }),
-  ).current;
-
   // Splash screen: show COF logo on launch.
   if (splash || !fontsReady) {
     return (
@@ -268,8 +244,6 @@ export default function App() {
     : state.phase === 'profile'
     ? <ProfileScreen {...props} />
     : <HomeScreen {...props} onLanguageChange={() => { setLoaded(false); setLangKey((k) => k + 1); }} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />;
-  // A sub-screen is open in the home slot → swipe dismisses it (pager paging off).
-  const subScreen = state.phase !== 'home' && TAB_PHASES.has(state.phase);
 
   return (
     <View key={`app-${langKey}`} style={s.root}>
@@ -298,9 +272,12 @@ export default function App() {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onScrollEnd}
+        onScroll={(e) => {
+          const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+          if (idx !== activeTab) setActiveTab(idx);
+        }}
         scrollEventThrottle={16}
         contentOffset={{ x: 2 * SCREEN_W, y: 0 }}
-        scrollEnabled={!subScreen}
         style={{ flex: 1 }}
       >
         <View style={{ width: SCREEN_W, flex: 1 }}>
@@ -309,10 +286,8 @@ export default function App() {
         <View style={{ width: SCREEN_W, flex: 1 }}>
           <CollectionScreen {...props} />
         </View>
-        <View style={{ width: SCREEN_W, flex: 1 }} {...(subScreen ? backSwipe.panHandlers : {})}>
-          <Animated.View style={{ flex: 1, opacity: slotOpacity, transform: [{ translateX: slotTx }] }}>
-            {homeContent}
-          </Animated.View>
+        <View style={{ width: SCREEN_W, flex: 1 }}>
+          {homeContent}
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
           <FriendsScreen {...props} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
@@ -331,7 +306,7 @@ export default function App() {
                   size={active ? 25 : 22}
                   color={active ? theme.primary : theme.muted}
                 />
-                <Text style={[s.tabLabel, active && s.tabLabelActive]}>
+                <Text style={[s.tabLabel, active && s.tabLabelActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
                   {tab.label}
                 </Text>
               </View>
@@ -342,7 +317,7 @@ export default function App() {
         <Pressable style={s.tab} onPress={() => setComingSoon(true)}>
           <View style={s.tabInner}>
             <Ionicons name="trophy-outline" size={22} color={theme.border} />
-            <Text style={[s.tabLabel, { color: theme.border }]}>Turnuvalar</Text>
+            <Text style={[s.tabLabel, { color: theme.border }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>Turnuvalar</Text>
           </View>
         </Pressable>
       </View>
@@ -370,7 +345,7 @@ export default function App() {
 const s = StyleSheet.create({
   splash: { flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' },
   splashLogo: { width: 120, height: 120, borderRadius: 28 },
-  root: { flex: 1, backgroundColor: '#2B4A86', paddingTop: 44 }, // matches the screen gradient's top → no dark header seam
+  root: { flex: 1, backgroundColor: '#15244F', paddingTop: 44 }, // matches the screen gradient's top → no header seam
   tabBar: {
     flexDirection: 'row',
     borderTopWidth: 1,
@@ -380,9 +355,9 @@ const s = StyleSheet.create({
     paddingTop: 8,
   },
   tab: { flex: 1, alignItems: 'center' },
-  tabInner: { alignItems: 'center', justifyContent: 'center', gap: 2, paddingVertical: 6, paddingHorizontal: 18, borderRadius: 16 },
+  tabInner: { alignItems: 'center', justifyContent: 'center', gap: 2, paddingVertical: 6, paddingHorizontal: 4, borderRadius: 14, alignSelf: 'stretch' },
   tabInnerActive: { backgroundColor: theme.bg2, borderWidth: 1, borderColor: theme.border },
-  tabLabel: { color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold' },
+  tabLabel: { color: theme.muted, fontSize: 9.5, fontFamily: 'Poppins-SemiBold' },
   tabLabelActive: { color: theme.primary },
   inviteBanner: {
     position: 'absolute', top: 50, left: 10, right: 10, zIndex: 100,
