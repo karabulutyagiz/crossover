@@ -164,7 +164,7 @@ export async function changeDisplayName(
   userId: string,
   newName: string,
 ): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
-  const COST = 100; // diamonds
+  const COST = 1000; // diamonds
   const user = await getUser(userId);
   if (!user) return { ok: false, error: 'Kullanıcı bulunamadı' };
   if (user.diamonds < COST) return { ok: false, error: `Yetersiz elmas (${user.diamonds}/${COST})` };

@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Animated, Easing, Platform, Dimensions } from 'react-native';
+import { Animated, Easing, Platform, Dimensions, Linking } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
@@ -985,10 +985,26 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
   );
 }
 
+// External info links (placeholders — swap for the real URLs when ready).
+const INFO_LINKS = {
+  help: 'https://crossover.gg/yardim',
+  privacy: 'https://crossover.gg/gizlilik',
+  parents: 'https://crossover.gg/ebeveyn',
+  terms: 'https://crossover.gg/kosullar',
+  founders: 'https://crossover.gg/kurucular',
+};
+const openLink = (url: string) => { Linking.openURL(url).catch(() => {}); };
+
 // ---- Settings Panel (inside hamburger menu) ----
-function SettingsPanel({ onLanguageChange }: { onLanguageChange: () => void }) {
+function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamonds }: {
+  onLanguageChange: () => void;
+  diamonds: number;
+  onChangeName: (name: string) => void;
+  onNeedDiamonds: () => void;
+}) {
   const [langPicker, setLangPicker] = useState(false);
   const [confirmLang, setConfirmLang] = useState<string | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
   const activeLang = currentLang();
   const activeName = LANGUAGES.find((l) => l.code === activeLang)?.name ?? activeLang;
 
@@ -1009,6 +1025,48 @@ function SettingsPanel({ onLanguageChange }: { onLanguageChange: () => void }) {
       >
         <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{activeName}</Text>
         <Ionicons name="chevron-down" size={18} color={theme.muted} />
+      </Pressable>
+
+      {/* Ad Değiştir (1000 elmas) */}
+      <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '700', marginTop: 16, marginBottom: 8 }}>AD</Text>
+      <Pressable
+        onPress={() => { if (diamonds < 1000) onNeedDiamonds(); else setRenameOpen(true); }}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.bg, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 14 }}
+      >
+        <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>Ad Değiştir</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 14 }}>1000</Text>
+          <GemIcon size={14} />
+        </View>
+      </Pressable>
+
+      <ChangeNameModal
+        visible={renameOpen}
+        diamonds={diamonds}
+        onClose={() => setRenameOpen(false)}
+        onConfirm={(newName) => { onChangeName(newName); setRenameOpen(false); }}
+      />
+
+      {/* ── Yardım & Bilgiler ── */}
+      <View style={{ height: 1, backgroundColor: theme.border, marginTop: 22, marginBottom: 14 }} />
+      <View style={{ flexDirection: 'row' }}>
+        <Pressable style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }} onPress={() => openLink(INFO_LINKS.help)}>
+          <Text style={{ color: theme.muted, fontSize: 13, fontWeight: '700' }}>Yardım ve Bilgiler</Text>
+        </Pressable>
+        <Pressable style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }} onPress={() => openLink(INFO_LINKS.privacy)}>
+          <Text style={{ color: theme.muted, fontSize: 13, fontWeight: '700' }}>Gizlilik</Text>
+        </Pressable>
+      </View>
+      <View style={{ flexDirection: 'row', marginTop: 4 }}>
+        <Pressable style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }} onPress={() => openLink(INFO_LINKS.parents)}>
+          <Text style={{ color: theme.muted, fontSize: 13, fontWeight: '700' }}>Ebeveyn Kılavuzu</Text>
+        </Pressable>
+        <Pressable style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }} onPress={() => openLink(INFO_LINKS.terms)}>
+          <Text style={{ color: theme.muted, fontSize: 13, fontWeight: '700' }}>Hizmet Koşulları</Text>
+        </Pressable>
+      </View>
+      <Pressable style={{ alignItems: 'center', paddingVertical: 12, marginTop: 4 }} onPress={() => openLink(INFO_LINKS.founders)}>
+        <Text style={{ color: theme.muted, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 }}>Kurucular</Text>
       </Pressable>
 
       <Modal visible={langPicker} transparent animationType="fade" onRequestClose={() => setLangPicker(false)}>
@@ -1069,7 +1127,7 @@ function SettingsPanel({ onLanguageChange }: { onLanguageChange: () => void }) {
   );
 }
 
-export function HomeScreen({ actions, state, onLanguageChange }: Props) {
+export function HomeScreen({ actions, state, onLanguageChange, onGoToStore }: Props) {
   const [name, setName] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [scope, setScope] = useState<Scope>({ type: 'all' });
@@ -1191,7 +1249,12 @@ export function HomeScreen({ actions, state, onLanguageChange }: Props) {
                 <View style={{ height: 16 }} />
               </ScrollView>
             ) : menuSub === 'settings' ? (
-              <SettingsPanel onLanguageChange={() => { setMenuOpen(false); setMenuSub(null); onLanguageChange?.(); }} />
+              <SettingsPanel
+                onLanguageChange={() => { setMenuOpen(false); setMenuSub(null); onLanguageChange?.(); }}
+                diamonds={profile?.diamonds ?? 0}
+                onChangeName={(newName) => actions.changeName(newName)}
+                onNeedDiamonds={() => { setMenuOpen(false); setMenuSub(null); onGoToStore?.('diamonds'); }}
+              />
             ) : null}
           </View>
         </View>
@@ -1768,7 +1831,7 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
   onConfirm: (name: string) => void;
 }) {
   const [newName, setNewName] = useState('');
-  const cost = 100;
+  const cost = 1000;
   const canAfford = diamonds >= cost;
 
   useEffect(() => { if (visible) setNewName(''); }, [visible]);

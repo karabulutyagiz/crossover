@@ -261,7 +261,7 @@ export default function App() {
     ? <MatchHistoryScreen {...props} />
     : state.phase === 'profile'
     ? <ProfileScreen {...props} />
-    : <HomeScreen {...props} onLanguageChange={() => { setLoaded(false); setLangKey((k) => k + 1); }} />;
+    : <HomeScreen {...props} onLanguageChange={() => { setLoaded(false); setLangKey((k) => k + 1); }} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />;
   // A sub-screen is open in the home slot → swipe dismisses it (pager paging off).
   const subScreen = state.phase !== 'home' && TAB_PHASES.has(state.phase);
 
