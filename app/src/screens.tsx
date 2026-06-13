@@ -2012,6 +2012,31 @@ export function SearchingScreen({ actions }: Props) {
 const RANK_COLORS = ['#FFD700', '#C0C0C0', '#CD7F32']; // gold, silver, bronze
 
 // ---- Match History ----
+
+function arenaForTrophies(trophies: number): { name: string; icon: IoniconName; color: string } {
+  if (trophies >= 5000) return { name: 'GOAT', icon: 'flame', color: '#FF4500' };
+  if (trophies >= 3500) return { name: 'Dünya Kupası', icon: 'trophy', color: '#FFD700' };
+  if (trophies >= 2000) return { name: 'Efsaneler Arası', icon: 'ribbon', color: '#C0C0C0' };
+  if (trophies >= 1000) return { name: 'Şampiyonlar Ligi', icon: 'medal', color: '#1E90FF' };
+  if (trophies >= 500) return { name: 'Profesyonel Lig', icon: 'medal-outline', color: '#32CD32' };
+  if (trophies >= 200) return { name: 'Amatör Lig', icon: 'football', color: '#FF8C00' };
+  return { name: 'Mahalle Sahası', icon: 'football-outline', color: '#8B4513' };
+}
+
+function ClubLogo({ uri, size = 22 }: { uri: string | null; size?: number }) {
+  if (!uri) return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: theme.border }} />;
+  return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
+}
+
+function PlayerPhoto({ uri, size = 32 }: { uri: string | null; size?: number }) {
+  if (!uri) return (
+    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
+      <Ionicons name="person" size={size * 0.5} color={theme.muted} />
+    </View>
+  );
+  return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
+}
+
 export function MatchHistoryScreen({ state, actions }: Props) {
   const history = state.matchHistory;
   const myName = state.profile?.displayName ?? '';
@@ -2036,57 +2061,109 @@ export function MatchHistoryScreen({ state, actions }: Props) {
           history.map((m) => {
             const myRounds = m.rounds.filter((r) => r.answeredBy === myName);
             const oppRounds = m.rounds.filter((r) => r.answeredBy !== myName);
+            const pArena = arenaForTrophies(m.playerTrophies);
+            const oArena = arenaForTrophies(m.opponentTrophies);
+            const borderColor = m.won ? theme.primary : theme.danger;
+            const date = new Date(m.playedAt);
+            const dateStr = `${date.getDate().toString().padStart(2, '0')}.${(date.getMonth() + 1).toString().padStart(2, '0')}.${date.getFullYear()}`;
+
             return (
               <View key={m.id} style={{
-                backgroundColor: theme.card, borderRadius: 14, borderWidth: 1,
-                borderColor: m.won ? theme.primary : theme.danger, padding: 14, marginBottom: 10,
+                backgroundColor: theme.card, borderRadius: 16, borderWidth: 1.5,
+                borderColor, marginBottom: 14, overflow: 'hidden',
               }}>
-                {/* Header: score + badge */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Ionicons name={m.won ? 'trophy' : 'sad-outline'} size={20} color={m.won ? theme.accent : theme.muted} />
-                    <Text style={{ color: m.won ? theme.primary : theme.danger, fontWeight: '900', fontSize: 13 }}>
+                {/* ── Top bar: result badge + score + mode + date ── */}
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                  paddingHorizontal: 14, paddingVertical: 8,
+                  backgroundColor: m.won ? 'rgba(61,220,132,0.08)' : 'rgba(255,90,95,0.08)',
+                }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons name={m.won ? 'trophy' : 'close-circle'} size={16} color={m.won ? theme.accent : theme.danger} />
+                    <Text style={{ color: m.won ? theme.primary : theme.danger, fontWeight: '900', fontSize: 12 }}>
                       {m.won ? t('matchHistory.won') : t('matchHistory.lost')}
                     </Text>
                   </View>
-                  <Text style={{ color: theme.text, fontSize: 22, fontWeight: '900', letterSpacing: 2 }}>
+                  <Text style={{ color: theme.text, fontSize: 24, fontWeight: '900', letterSpacing: 3 }}>
                     {m.playerScore} - {m.opponentScore}
                   </Text>
-                  <Text style={{ color: theme.muted, fontSize: 10 }}>
-                    {MODE_LABEL[(m.gameMode as GameMode) ?? 'team-team'] ?? m.gameMode}
-                  </Text>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ color: theme.muted, fontSize: 9 }}>{MODE_LABEL[(m.gameMode as GameMode) ?? 'team-team'] ?? m.gameMode}</Text>
+                    <Text style={{ color: theme.muted, fontSize: 9 }}>{dateStr}</Text>
+                  </View>
                 </View>
 
-                {/* Players side by side */}
-                <View style={{ flexDirection: 'row', gap: 10 }}>
+                {/* ── Players head-to-head ── */}
+                <View style={{ flexDirection: 'row', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 6 }}>
                   {/* My side */}
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                      <Ionicons name="person" size={14} color={theme.primary} />
-                      <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12 }} numberOfLines={1}>{myName}</Text>
+                  <View style={{ flex: 1, alignItems: 'center' }}>
+                    <Text style={{ color: theme.text, fontWeight: '900', fontSize: 16 }} numberOfLines={1}>{m.playerName || myName}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                      <Ionicons name={pArena.icon} size={12} color={pArena.color} />
+                      <Text style={{ color: pArena.color, fontSize: 10, fontWeight: '700' }}>{m.playerTrophies}</Text>
                     </View>
-                    {myRounds.length > 0 ? myRounds.map((r, i) => (
-                      <View key={i} style={{ backgroundColor: theme.bg, borderRadius: 8, padding: 6, marginBottom: 4 }}>
-                        <Text style={{ color: theme.muted, fontSize: 9 }}>{r.teamA} + {r.teamB}</Text>
-                        <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 11 }}>{r.player}</Text>
-                      </View>
-                    )) : <Text style={{ color: theme.muted, fontSize: 10 }}>—</Text>}
+                    <Text style={{ color: theme.muted, fontSize: 9, marginTop: 1 }}>{pArena.name}</Text>
                   </View>
 
-                  <View style={{ width: 1, backgroundColor: theme.border }} />
+                  {/* VS */}
+                  <View style={{ justifyContent: 'center', paddingHorizontal: 8 }}>
+                    <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '900' }}>VS</Text>
+                  </View>
 
                   {/* Opponent side */}
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                      <Ionicons name="person" size={14} color={theme.danger} />
-                      <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12 }} numberOfLines={1}>{m.opponentName}</Text>
+                  <View style={{ flex: 1, alignItems: 'center' }}>
+                    <Text style={{ color: theme.text, fontWeight: '900', fontSize: 16 }} numberOfLines={1}>{m.opponentName}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                      <Ionicons name={oArena.icon} size={12} color={oArena.color} />
+                      <Text style={{ color: oArena.color, fontSize: 10, fontWeight: '700' }}>{m.opponentTrophies}</Text>
                     </View>
-                    {oppRounds.length > 0 ? oppRounds.map((r, i) => (
-                      <View key={i} style={{ backgroundColor: theme.bg, borderRadius: 8, padding: 6, marginBottom: 4 }}>
-                        <Text style={{ color: theme.muted, fontSize: 9 }}>{r.teamA} + {r.teamB}</Text>
-                        <Text style={{ color: theme.danger, fontWeight: '700', fontSize: 11 }}>{r.player}</Text>
+                    <Text style={{ color: theme.muted, fontSize: 9, marginTop: 1 }}>{oArena.name}</Text>
+                  </View>
+                </View>
+
+                {/* ── Rounds detail ── */}
+                <View style={{ flexDirection: 'row', paddingHorizontal: 10, paddingBottom: 12, gap: 6 }}>
+                  {/* My rounds */}
+                  <View style={{ flex: 1 }}>
+                    {myRounds.length > 0 ? myRounds.map((r, i) => (
+                      <View key={i} style={{
+                        backgroundColor: theme.bg, borderRadius: 10, padding: 8, marginBottom: 4,
+                        borderLeftWidth: 3, borderLeftColor: theme.primary,
+                      }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                          <ClubLogo uri={r.teamALogo} size={18} />
+                          <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
+                          <ClubLogo uri={r.teamBLogo} size={18} />
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                          <PlayerPhoto uri={r.playerImageUrl} size={24} />
+                          <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 11, flex: 1 }} numberOfLines={1}>{r.player}</Text>
+                        </View>
                       </View>
-                    )) : <Text style={{ color: theme.muted, fontSize: 10 }}>—</Text>}
+                    )) : <Text style={{ color: theme.muted, fontSize: 10, textAlign: 'center', marginTop: 8 }}>—</Text>}
+                  </View>
+
+                  {/* Divider */}
+                  <View style={{ width: 1, backgroundColor: theme.border, marginVertical: 4 }} />
+
+                  {/* Opponent rounds */}
+                  <View style={{ flex: 1 }}>
+                    {oppRounds.length > 0 ? oppRounds.map((r, i) => (
+                      <View key={i} style={{
+                        backgroundColor: theme.bg, borderRadius: 10, padding: 8, marginBottom: 4,
+                        borderLeftWidth: 3, borderLeftColor: theme.danger,
+                      }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                          <ClubLogo uri={r.teamALogo} size={18} />
+                          <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
+                          <ClubLogo uri={r.teamBLogo} size={18} />
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                          <PlayerPhoto uri={r.playerImageUrl} size={24} />
+                          <Text style={{ color: theme.danger, fontWeight: '800', fontSize: 11, flex: 1 }} numberOfLines={1}>{r.player}</Text>
+                        </View>
+                      </View>
+                    )) : <Text style={{ color: theme.muted, fontSize: 10, textAlign: 'center', marginTop: 8 }}>—</Text>}
                   </View>
                 </View>
               </View>

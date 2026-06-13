@@ -484,13 +484,17 @@ function toProfile(row: DbUser): UserProfile {
 
 export interface MatchRound {
   teamA: string;
+  teamALogo: string | null;
   teamB: string;
+  teamBLogo: string | null;
   player: string;      // the correct player name
+  playerImageUrl: string | null;
   answeredBy: string;   // who answered this round
 }
 
 export interface MatchHistoryEntry {
   id: string;
+  playerName: string;
   opponentName: string;
   playerScore: number;
   opponentScore: number;
@@ -516,21 +520,21 @@ export async function saveMatchHistory(
   rounds: MatchRound[],
 ): Promise<void> {
   await pool.query(
-    `INSERT INTO match_history (player_id, opponent_id, opponent_name, player_score, opponent_score,
+    `INSERT INTO match_history (player_id, player_name, opponent_id, opponent_name, player_score, opponent_score,
        won, player_trophies, opponent_trophies, game_mode, rounds)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-    [playerId, opponentId, opponentName, playerScore, opponentScore, won,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+    [playerId, playerName, opponentId, opponentName, playerScore, opponentScore, won,
      playerTrophies, opponentTrophies, gameMode, JSON.stringify(rounds)],
   );
 }
 
 export async function getMatchHistory(userId: string, limit = 30): Promise<MatchHistoryEntry[]> {
   const { rows } = await pool.query<{
-    id: string; opponent_name: string; player_score: number; opponent_score: number;
+    id: string; player_name: string; opponent_name: string; player_score: number; opponent_score: number;
     won: boolean; player_trophies: number; opponent_trophies: number;
     game_mode: string; rounds: string; played_at: string;
   }>(
-    `SELECT id, opponent_name, player_score, opponent_score, won,
+    `SELECT id, player_name, opponent_name, player_score, opponent_score, won,
             player_trophies, opponent_trophies, game_mode, rounds, played_at
        FROM match_history
       WHERE player_id = $1
@@ -540,6 +544,7 @@ export async function getMatchHistory(userId: string, limit = 30): Promise<Match
   );
   return rows.map((r) => ({
     id: r.id,
+    playerName: r.player_name,
     opponentName: r.opponent_name,
     playerScore: r.player_score,
     opponentScore: r.opponent_score,

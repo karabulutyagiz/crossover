@@ -163,6 +163,7 @@ export type ServerMsg =
 
 export interface MatchHistoryView {
   id: string;
+  playerName: string;
   opponentName: string;
   playerScore: number;
   opponentScore: number;
@@ -170,7 +171,12 @@ export interface MatchHistoryView {
   playerTrophies: number;
   opponentTrophies: number;
   gameMode: string;
-  rounds: { teamA: string; teamB: string; player: string; answeredBy: string }[];
+  rounds: {
+    teamA: string; teamALogo: string | null;
+    teamB: string; teamBLogo: string | null;
+    player: string; playerImageUrl: string | null;
+    answeredBy: string;
+  }[];
   playedAt: string;
 }
 

@@ -122,6 +122,7 @@ CREATE INDEX IF NOT EXISTS idx_friendships_user ON friendships (user_id);
 CREATE TABLE IF NOT EXISTS match_history (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   player_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  player_name     TEXT NOT NULL DEFAULT '',
   opponent_id     UUID,                            -- NULL for bot matches
   opponent_name   TEXT NOT NULL,
   player_score    INT NOT NULL,
@@ -130,10 +131,17 @@ CREATE TABLE IF NOT EXISTS match_history (
   player_trophies INT NOT NULL DEFAULT 0,
   opponent_trophies INT NOT NULL DEFAULT 0,
   game_mode       TEXT NOT NULL DEFAULT 'team-team',
-  rounds          JSONB NOT NULL DEFAULT '[]',     -- winning rounds only: [{teamA, teamB, player, answeredBy}]
+  rounds          JSONB NOT NULL DEFAULT '[]',     -- winning rounds: [{teamA, teamALogo, teamB, teamBLogo, player, playerImageUrl, answeredBy}]
   played_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_match_history_player ON match_history (player_id, played_at DESC);
+
+-- Migration: add player_name column if missing
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'match_history' AND column_name = 'player_name') THEN
+    ALTER TABLE match_history ADD COLUMN player_name TEXT NOT NULL DEFAULT '';
+  END IF;
+END $$;
 
 -- Bookkeeping for ingest runs.
 CREATE TABLE IF NOT EXISTS ingest_log (
