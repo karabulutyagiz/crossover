@@ -22,7 +22,7 @@ import { t, currentLang, setLanguage, LANGUAGES } from './i18n';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GOOGLE_IOS_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
-import Svg, { Rect, Circle, Line, Path as SvgPath } from 'react-native-svg';
+import Svg, { Rect, Circle, Line, Path as SvgPath, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState, FriendInfo } from './useCrossover';
@@ -112,15 +112,17 @@ function arenaIcon(arena: { minTrophies: number }): IoniconName {
 }
 
 // ---- shared primitives ----
-// Chunky, game-style (Clash Royale-ish) button: a darker bottom "lip" gives 3D
-// depth, and pressing translates the face down into the lip for a tactile click.
-const BTN_PALETTE: Record<string, [string, string]> = {
-  primary: [theme.primary, theme.primaryDark],
-  accent: [theme.accent, theme.accentDark],
-  blue: [theme.blue, theme.blueDark],
-  danger: [theme.danger, theme.dangerDark],
-  ghost: ['transparent', theme.border],
+// Standard mobile-game button: a real top→bottom gradient (SVG) over a darker
+// bottom edge ("sit"), soft shadow, bold label. Press sinks the face onto the edge.
+// Palette: [gradientTop, gradientBottom, bottomEdge].
+const BTN_PALETTE: Record<string, [string, string, string]> = {
+  primary: ['#3DF29A', '#1FBE76', '#0E8C53'],
+  accent: ['#FFD968', '#F5B81F', '#C68A0E'],
+  blue: ['#5FB8FF', '#2E93F0', '#1E6FD4'],
+  danger: ['#FF6E80', '#ED3F55', '#B82B3F'],
+  ghost: ['transparent', 'transparent', theme.border],
 };
+let _btnSeq = 0;
 
 function Btn({
   label,
@@ -138,12 +140,13 @@ function Btn({
   big?: boolean;
 }) {
   const press = useRef(new Animated.Value(0)).current;
-  const [bg, lip] = BTN_PALETTE[kind] ?? BTN_PALETTE.primary!;
+  const gid = useRef(`btng${_btnSeq++}`).current; // unique per instance (SVG gradient ids are global)
+  const [gradTop, gradBottom, edge] = BTN_PALETTE[kind] ?? BTN_PALETTE.primary!;
   const ghost = kind === 'ghost';
   const fg = ghost ? theme.text : '#06131F';
-  const depth = ghost ? 0 : 6;
+  const depth = ghost ? 0 : 5;
   const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, depth] });
-  const radius = big ? 16 : 14;
+  const radius = big ? 14 : 12;
   return (
     <Pressable
       disabled={disabled}
@@ -152,65 +155,57 @@ function Btn({
       onPress={disabled ? undefined : onPress}
       style={{ opacity: disabled ? 0.5 : 1, marginVertical: 6 }}
     >
-      {/* darker bottom "lip" + drop shadow gives the chunky 3D base */}
+      {/* darker bottom edge + soft shadow */}
       <View
         style={{
-          backgroundColor: ghost ? 'transparent' : lip,
-          borderRadius: radius,
+          backgroundColor: ghost ? 'transparent' : edge,
+          borderRadius: radius + 1,
           paddingBottom: depth,
           shadowColor: '#000',
-          shadowOpacity: ghost ? 0 : 0.4,
-          shadowRadius: 9,
-          shadowOffset: { width: 0, height: 6 },
-          elevation: ghost ? 0 : 7,
+          shadowOpacity: ghost ? 0 : 0.3,
+          shadowRadius: 7,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: ghost ? 0 : 6,
         }}
       >
         <Animated.View
           style={{
             transform: [{ translateY: ty }],
-            backgroundColor: bg,
+            backgroundColor: ghost ? 'transparent' : gradBottom,
             borderRadius: radius,
-            paddingVertical: big ? 18 : 14,
+            paddingVertical: big ? 17 : 13,
             paddingHorizontal: 18,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
-            borderWidth: ghost ? 2 : 2.5,
-            borderColor: ghost ? theme.border : lip, // thick beveled outline
+            borderWidth: ghost ? 2 : 0,
+            borderColor: ghost ? theme.border : 'transparent',
             overflow: 'hidden',
           }}
         >
-          {/* subtle top sheen + crisp highlight line + bottom inner shade (premium, not toy) */}
+          {/* real vertical gradient fill */}
           {!ghost ? (
-            <>
-              <View
-                pointerEvents="none"
-                style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '42%', backgroundColor: 'rgba(255,255,255,0.13)', borderTopLeftRadius: radius - 2, borderTopRightRadius: radius - 2 }}
-              />
-              <View
-                pointerEvents="none"
-                style={{ position: 'absolute', top: 0, left: 6, right: 6, height: 1.5, backgroundColor: 'rgba(255,255,255,0.45)', borderRadius: 2 }}
-              />
-              <View
-                pointerEvents="none"
-                style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '26%', backgroundColor: 'rgba(0,0,0,0.10)' }}
-              />
-            </>
+            <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
+              <Defs>
+                <SvgGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor={gradTop} />
+                  <Stop offset="1" stopColor={gradBottom} />
+                </SvgGradient>
+              </Defs>
+              <Rect x="0" y="0" width="100%" height="100%" rx={radius} fill={`url(#${gid})`} />
+            </Svg>
           ) : null}
-          {icon ? <Ionicons name={icon} size={big ? 24 : 20} color={fg} style={{ marginRight: 9 }} /> : null}
+          {icon ? <Ionicons name={icon} size={big ? 23 : 19} color={fg} style={{ marginRight: 9 }} /> : null}
           <Text
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.75}
             style={{
               color: fg,
-              fontSize: big ? 19 : 16,
+              fontSize: big ? 18 : 15,
               fontFamily: 'Poppins-ExtraBold',
-              letterSpacing: 0.5,
+              letterSpacing: 0.3,
               flexShrink: 1,
-              textShadowColor: ghost ? 'transparent' : 'rgba(0,0,0,0.18)',
-              textShadowOffset: { width: 0, height: 1 },
-              textShadowRadius: 1,
             }}
           >
             {label}
@@ -930,39 +925,64 @@ function arenaColor(name: string): string {
 
 // Animated arena crest (Clash Royale-style): floating emblem, glow, slow spinning
 // dashed ring. Tap → arenas screen.
-function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon: string }; trophies: number; onPress: () => void }) {
-  const float = useRef(new Animated.Value(0)).current;
-  const spin = useRef(new Animated.Value(0)).current;
+// Leaves drifting right→left across the pitch image (the only in-image motion).
+function PitchLeaves() {
+  const leaves = useRef(
+    Array.from({ length: 6 }, (_, i) => ({
+      v: new Animated.Value(0),
+      top: 10 + ((i * 31) % 110),
+      dur: 5200 + ((i * 760) % 3600),
+      delay: (i * 820) % 4200,
+      size: 12 + (i % 3) * 4,
+    })),
+  ).current;
   useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(float, { toValue: 1, duration: 1900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(float, { toValue: 0, duration: 1900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      ]),
-    ).start();
-    Animated.loop(Animated.timing(spin, { toValue: 1, duration: 11000, easing: Easing.linear, useNativeDriver: true })).start();
-  }, [float, spin]);
-  const ty = float.interpolate({ inputRange: [0, 1], outputRange: [0, -12] });
-  const rot = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-  const color = arenaColor(arena.name);
+    const loops: Animated.CompositeAnimation[] = [];
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    leaves.forEach((l) => {
+      const loop = Animated.loop(Animated.timing(l.v, { toValue: 1, duration: l.dur, easing: Easing.linear, useNativeDriver: true }));
+      loops.push(loop);
+      timers.push(setTimeout(() => loop.start(), l.delay));
+    });
+    return () => { loops.forEach((lp) => lp.stop()); timers.forEach(clearTimeout); };
+  }, [leaves]);
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {leaves.map((l, i) => {
+        const tx = l.v.interpolate({ inputRange: [0, 1], outputRange: [SCREEN_W, -44] });
+        const ty = l.v.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 14, 0] });
+        const rot = l.v.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '240deg'] });
+        const op = l.v.interpolate({ inputRange: [0, 0.12, 0.88, 1], outputRange: [0, 0.55, 0.55, 0] });
+        return (
+          <Animated.View key={i} style={{ position: 'absolute', top: l.top, left: 0, opacity: op, transform: [{ translateX: tx }, { translateY: ty }, { rotate: rot }] }}>
+            <Ionicons name="leaf" size={l.size} color="#A6E08C" />
+          </Animated.View>
+        );
+      })}
+    </View>
+  );
+}
+
+function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon: string }; trophies: number; onPress: () => void }) {
   const tier = ARENA_DATA.find((a) => trophies >= a.min && trophies <= a.max) ?? ARENA_DATA[ARENA_DATA.length - 1]!;
   return (
-    <Pressable onPress={onPress} style={{ alignItems: 'center', marginVertical: 6 }}>
-      <View pointerEvents="none" style={{ position: 'absolute', width: 230, height: 230, borderRadius: 115, backgroundColor: color, opacity: 0.13, top: 0 }} />
-      <Animated.View style={{ transform: [{ translateY: ty }], alignItems: 'center' }}>
-        <Animated.View pointerEvents="none" style={{ position: 'absolute', top: -8, width: 184, height: 184, borderRadius: 92, borderWidth: 2, borderColor: color + '55', borderStyle: 'dashed', transform: [{ rotate: rot }] }} />
-        <View style={{ width: 156, height: 156, borderRadius: 78, backgroundColor: theme.card, borderWidth: 4, borderColor: color, alignItems: 'center', justifyContent: 'center', shadowColor: color, shadowOpacity: 0.6, shadowRadius: 20, shadowOffset: { width: 0, height: 0 }, elevation: 14 }}>
-          <View style={{ width: 128, height: 128, borderRadius: 64, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: color + '55', overflow: 'hidden' }}>
-            <Image source={tier.img} style={{ width: 128, height: 128 }} resizeMode="cover" />
+    <Pressable onPress={onPress} style={{ marginVertical: 8 }}>
+      <View style={{ height: 156, borderRadius: 16, overflow: 'hidden', backgroundColor: theme.card }}>
+        <Image source={tier.img} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+        <PitchLeaves />
+        {/* "ARENALAR ›" hint */}
+        <View style={{ position: 'absolute', top: 8, right: 10, backgroundColor: 'rgba(0,0,0,0.42)', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 3 }}>
+          <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>ARENALAR ›</Text>
+        </View>
+        {/* Bottom strip: arena name + trophies */}
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: 'rgba(6,10,28,0.58)' }}>
+          <Text style={{ color: '#fff', fontFamily: 'Poppins-ExtraBold', fontSize: 18 }} numberOfLines={1}>{arena.name}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 }}>
+            <Ionicons name="trophy" size={14} color={theme.gold} />
+            <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 15 }}>{trophies}</Text>
           </View>
         </View>
-      </Animated.View>
-      <Text style={{ color: theme.text, fontSize: 19, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5, marginTop: 16 }}>{arena.name}</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 5, marginTop: 6, borderWidth: 1, borderColor: color + '66' }}>
-        <Text style={{ fontSize: 14 }}>🏆</Text>
-        <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 16 }}>{trophies}</Text>
       </View>
-      <Text style={{ color: theme.muted, fontSize: 10.5, marginTop: 6, fontWeight: '700' }}>ARENALAR ›</Text>
     </Pressable>
   );
 }
