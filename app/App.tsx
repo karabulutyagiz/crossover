@@ -102,16 +102,26 @@ export default function App() {
     return () => clearTimeout(t);
   }, []);
 
+  // When switching away from the home tab, reset sub-screens (arenas, leaderboard, matchHistory) to home
+  const resetHomePhase = useCallback(() => {
+    const p = state.phase;
+    if (p === 'arenas' || p === 'leaderboard' || p === 'matchHistory') {
+      actions.closeArenas(); // all three close* actions do the same: _phase → home
+    }
+  }, [state.phase, actions]);
+
   const goToTab = useCallback((idx: number) => {
     scrollRef.current?.scrollTo({ x: idx * SCREEN_W, animated: true });
     setActiveTab(idx);
-  }, []);
+    if (idx !== 1) resetHomePhase();
+  }, [resetHomePhase]);
 
   const onScrollEnd = useCallback((e: any) => {
     const x = e.nativeEvent.contentOffset.x;
     const idx = Math.round(x / SCREEN_W);
     setActiveTab(idx);
-  }, []);
+    if (idx !== 1) resetHomePhase();
+  }, [resetHomePhase]);
 
   // Splash screen: show COF logo on launch.
   if (splash || !fontsReady) {
@@ -226,15 +236,15 @@ export default function App() {
     <View style={s.root}>
       <StatusBar style="light" />
 
-      {/* Top bar — trophies (left, standalone) + diamonds pill (right) */}
+      {/* Top bar — trophies (left) + gems pill (right) */}
       {state.profile ? (
         <View style={s.resourceBar}>
-          <View style={s.trophyGroup}>
-            <Ionicons name="trophy" size={16} color={theme.accent} />
+          <View style={s.trophyPill}>
+            <Ionicons name="trophy" size={18} color={theme.accent} />
             <Text style={s.trophyText}>{state.profile.trophies}</Text>
           </View>
           <Pressable style={s.diamondPill} onPress={() => goToTab(0)}>
-            <GemIcon size={16} />
+            <GemIcon size={20} />
             <Text style={s.diamondText}>{state.profile.diamonds}</Text>
             <View style={s.diamondPlus}>
               <Ionicons name="add" size={12} color="#fff" />
@@ -263,7 +273,7 @@ export default function App() {
           {homeContent}
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
-          <FriendsScreen {...props} />
+          <FriendsScreen {...props} onGoToStore={() => goToTab(0)} />
         </View>
       </ScrollView>
 
@@ -331,40 +341,47 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingBottom: 4,
+    paddingTop: 6,
+    paddingBottom: 8,
   },
-  trophyGroup: {
+  trophyPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
+    backgroundColor: '#151C30',
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#26304A',
   },
   trophyText: {
     color: '#F5C518',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '900',
   },
   diamondPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
     backgroundColor: '#151C30',
-    borderRadius: 14,
+    borderRadius: 16,
     paddingLeft: 8,
-    paddingRight: 2,
-    paddingVertical: 4,
+    paddingRight: 3,
+    paddingVertical: 5,
     borderWidth: 1,
     borderColor: '#26304A',
   },
   diamondText: {
     color: '#C084FC',
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '800',
   },
   diamondPlus: {
     backgroundColor: '#3DDC84',
-    borderRadius: 10,
-    width: 20,
-    height: 20,
+    borderRadius: 11,
+    width: 22,
+    height: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },

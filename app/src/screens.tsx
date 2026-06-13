@@ -21,6 +21,7 @@ import { theme } from './theme';
 import { t } from './i18n';
 import { GOOGLE_IOS_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
+import Svg, { Rect, Circle, Line, Path as SvgPath } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState } from './useCrossover';
@@ -89,6 +90,7 @@ type Actions = {
 interface Props {
   state: GameState;
   actions: Actions;
+  onGoToStore?: () => void;
 }
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -186,35 +188,6 @@ function Chip({ icon, label, onPress }: { icon: IoniconName; label: string; onPr
 }
 
 // Subtle football-pitch lines behind every screen for a stadium feel.
-function PitchBackground() {
-  const stroke = { borderColor: theme.border } as const;
-  return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      {/* mowed-turf stripes */}
-      {[0, 1, 2, 3, 4, 5].map((i) => (
-        <View
-          key={i}
-          style={{ position: 'absolute', left: 0, right: 0, top: `${i * 16.66}%`, height: '8.4%', backgroundColor: theme.bg2, opacity: i % 2 === 0 ? 0.16 : 0 }}
-        />
-      ))}
-      {/* center line + circle + spot */}
-      <View style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 2, backgroundColor: theme.border, opacity: 0.28 }} />
-      <View style={{ position: 'absolute', top: '50%', alignSelf: 'center', width: 132, height: 132, borderRadius: 66, borderWidth: 2, ...stroke, opacity: 0.3, marginTop: -66 }} />
-      <View style={{ position: 'absolute', top: '50%', alignSelf: 'center', width: 8, height: 8, borderRadius: 4, backgroundColor: theme.border, opacity: 0.4, marginTop: -4 }} />
-      {/* top penalty + goal box */}
-      <View style={{ position: 'absolute', top: 0, alignSelf: 'center', width: '64%', height: 92, borderWidth: 2, borderTopWidth: 0, ...stroke, opacity: 0.26, borderBottomLeftRadius: 6, borderBottomRightRadius: 6 }} />
-      <View style={{ position: 'absolute', top: 0, alignSelf: 'center', width: '34%', height: 42, borderWidth: 2, borderTopWidth: 0, ...stroke, opacity: 0.26 }} />
-      {/* bottom penalty + goal box */}
-      <View style={{ position: 'absolute', bottom: 0, alignSelf: 'center', width: '64%', height: 92, borderWidth: 2, borderBottomWidth: 0, ...stroke, opacity: 0.26, borderTopLeftRadius: 6, borderTopRightRadius: 6 }} />
-      <View style={{ position: 'absolute', bottom: 0, alignSelf: 'center', width: '34%', height: 42, borderWidth: 2, borderBottomWidth: 0, ...stroke, opacity: 0.26 }} />
-      {/* corner arcs */}
-      <View style={{ position: 'absolute', top: -15, left: -15, width: 30, height: 30, borderRadius: 15, borderWidth: 2, ...stroke, opacity: 0.3 }} />
-      <View style={{ position: 'absolute', top: -15, right: -15, width: 30, height: 30, borderRadius: 15, borderWidth: 2, ...stroke, opacity: 0.3 }} />
-      <View style={{ position: 'absolute', bottom: -15, left: -15, width: 30, height: 30, borderRadius: 15, borderWidth: 2, ...stroke, opacity: 0.3 }} />
-      <View style={{ position: 'absolute', bottom: -15, right: -15, width: 30, height: 30, borderRadius: 15, borderWidth: 2, ...stroke, opacity: 0.3 }} />
-    </View>
-  );
-}
 
 function Screen({ children }: { children: ReactNode }) {
   // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
@@ -224,7 +197,7 @@ function Screen({ children }: { children: ReactNode }) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 44 : 0}
     >
-      <PitchBackground />
+      <FootballField />
       {children}
     </KeyboardAvoidingView>
   );
@@ -376,7 +349,7 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
-      <PitchBackground />
+      <FootballField />
       <View style={{ alignItems: 'center', gap: 14 }}>
         <View style={{ width: 96, height: 96, borderRadius: 24, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.primary }}>
           <Ionicons name="football" size={54} color={theme.primary} />
@@ -732,10 +705,6 @@ function ProfileCard({ profile, onPress }: { profile: ProfileView; onPress?: () 
           <Ionicons name="trophy" size={15} color={theme.accent} />
           <Text style={styles.profileStatVal}>{profile.trophies}</Text>
         </View>
-        <View style={styles.profileStat}>
-          <GemIcon size={15} />
-          <Text style={styles.profileStatVal}>{profile.diamonds}</Text>
-        </View>
       </View>
       <View style={styles.profileWL}>
         <Text style={[styles.muted, { fontSize: 11 }]}>
@@ -895,6 +864,37 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
       </View>
       <Text style={{ color: theme.muted, fontSize: 10.5, marginTop: 6, fontWeight: '700' }}>ARENALAR ›</Text>
     </Pressable>
+  );
+}
+
+/** Subtle football pitch background — rectangular with penalty areas, centre circle, arcs. */
+function FootballField() {
+  const w = 300;
+  const h = 440;
+  const s = '#1a2a1a';
+  const sw = 1.2;
+  const o = 0.25;
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', alignSelf: 'center', top: '8%', opacity: 0.5 }}>
+      <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+        <Rect x={10} y={10} width={w - 20} height={h - 20} rx={4} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <Line x1={10} y1={h / 2} x2={w - 10} y2={h / 2} stroke={s} strokeWidth={sw} opacity={o} />
+        <Circle cx={w / 2} cy={h / 2} r={40} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <Circle cx={w / 2} cy={h / 2} r={3} fill={s} opacity={o} />
+        <Rect x={70} y={10} width={w - 140} height={65} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <Rect x={105} y={10} width={w - 210} height={28} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <SvgPath d={`M ${w / 2 - 30} 75 A 30 30 0 0 0 ${w / 2 + 30} 75`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <Circle cx={w / 2} cy={58} r={2.5} fill={s} opacity={o} />
+        <Rect x={70} y={h - 75} width={w - 140} height={65} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <Rect x={105} y={h - 38} width={w - 210} height={28} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <SvgPath d={`M ${w / 2 - 30} ${h - 75} A 30 30 0 0 1 ${w / 2 + 30} ${h - 75}`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <Circle cx={w / 2} cy={h - 58} r={2.5} fill={s} opacity={o} />
+        <SvgPath d="M 10 18 A 8 8 0 0 0 18 10" stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <SvgPath d={`M ${w - 10} 18 A 8 8 0 0 1 ${w - 18} 10`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <SvgPath d={`M 10 ${h - 18} A 8 8 0 0 1 18 ${h - 10}`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+        <SvgPath d={`M ${w - 10} ${h - 18} A 8 8 0 0 0 ${w - 18} ${h - 10}`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
+      </Svg>
+    </View>
   );
 }
 
@@ -2075,12 +2075,12 @@ function FriendProfileModal({ profile, onClose }: { profile: PublicProfile | nul
 }
 
 // ---- Friends ----
-export function FriendsScreen({ state, actions }: Props) {
+export function FriendsScreen({ state, actions, onGoToStore }: Props) {
   const [addInput, setAddInput] = useState('');
   const [searchMode, setSearchMode] = useState<'code' | 'username'>('code');
   const [friendTab, setFriendTab] = useState<'friends' | 'requests'>('friends');
   const [copied, setCopied] = useState(false);
-  const [matchModal, setMatchModal] = useState<string | null>(null); // friendId
+  const [matchModal, setMatchModal] = useState<string | null>(null); // friendId — mode picker
   const [socialPackPopup, setSocialPackPopup] = useState(false);
   const profile = state.profile;
   const hasSocialPack = profile?.socialPackUntil ? new Date(profile.socialPackUntil) > new Date() : false;
@@ -2298,7 +2298,7 @@ export function FriendsScreen({ state, actions }: Props) {
             <Text style={[styles.muted, { marginBottom: 12 }]}>
               Ülke-Takım ve Harf-Takım modlarını dostluk maçlarında kullanmak için Sosyal Paket satın almalısın.
             </Text>
-            <Btn label="Mağazaya Git" kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); /* navigate to store tab */ }} />
+            <Btn label="Mağazaya Git" kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); onGoToStore?.(); }} />
             <View style={{ height: 6 }} />
             <Btn label="Vazgeç" kind="ghost" icon="close" onPress={() => setSocialPackPopup(false)} />
           </Pressable>
