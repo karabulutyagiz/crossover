@@ -112,9 +112,8 @@ function arenaIcon(arena: { minTrophies: number }): IoniconName {
 }
 
 // ---- shared primitives ----
-// Standard mobile-game button: a real top→bottom gradient (SVG) over a darker
-// bottom edge ("sit"), soft shadow, bold label. Press sinks the face onto the edge.
-// Palette: [gradientTop, gradientBottom, bottomEdge].
+// Flat, simple button: solid colour, subtle scale press feedback. Palette index
+// [1] is the solid fill (other entries kept for tonal reference).
 const BTN_PALETTE: Record<string, [string, string, string]> = {
   primary: ['#3DF29A', '#1FBE76', '#0E8C53'],
   accent: ['#FFD968', '#F5B81F', '#C68A0E'],
@@ -122,7 +121,6 @@ const BTN_PALETTE: Record<string, [string, string, string]> = {
   danger: ['#FF6E80', '#ED3F55', '#B82B3F'],
   ghost: ['transparent', 'transparent', theme.border],
 };
-let _btnSeq = 0;
 
 function Btn({
   label,
@@ -139,79 +137,50 @@ function Btn({
   icon?: IoniconName;
   big?: boolean;
 }) {
-  const press = useRef(new Animated.Value(0)).current;
-  const gid = useRef(`btng${_btnSeq++}`).current; // unique per instance (SVG gradient ids are global)
-  const [gradTop, gradBottom, edge] = BTN_PALETTE[kind] ?? BTN_PALETTE.primary!;
+  const press = useRef(new Animated.Value(1)).current;
+  const [, base] = BTN_PALETTE[kind] ?? BTN_PALETTE.primary!;
   const ghost = kind === 'ghost';
   const fg = ghost ? theme.text : '#06131F';
-  const depth = ghost ? 0 : 5;
-  const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, depth] });
   const radius = big ? 14 : 12;
   return (
     <Pressable
       disabled={disabled}
-      onPressIn={() => Animated.timing(press, { toValue: 1, duration: 55, useNativeDriver: true }).start()}
-      onPressOut={() => Animated.timing(press, { toValue: 0, duration: 120, useNativeDriver: true }).start()}
+      onPressIn={() => Animated.timing(press, { toValue: 0.96, duration: 60, useNativeDriver: true }).start()}
+      onPressOut={() => Animated.timing(press, { toValue: 1, duration: 110, useNativeDriver: true }).start()}
       onPress={disabled ? undefined : onPress}
       style={{ opacity: disabled ? 0.5 : 1, marginVertical: 6 }}
     >
-      {/* darker bottom edge + soft shadow */}
-      <View
+      {/* flat solid button — no gradient, no bevel */}
+      <Animated.View
         style={{
-          backgroundColor: ghost ? 'transparent' : edge,
-          borderRadius: radius + 1,
-          paddingBottom: depth,
-          shadowColor: '#000',
-          shadowOpacity: ghost ? 0 : 0.3,
-          shadowRadius: 7,
-          shadowOffset: { width: 0, height: 4 },
-          elevation: ghost ? 0 : 6,
+          transform: [{ scale: press }],
+          backgroundColor: ghost ? 'transparent' : base,
+          borderRadius: radius,
+          paddingVertical: big ? 16 : 13,
+          paddingHorizontal: 18,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderWidth: ghost ? 2 : 0,
+          borderColor: ghost ? theme.border : 'transparent',
         }}
       >
-        <Animated.View
+        {icon ? <Ionicons name={icon} size={big ? 23 : 19} color={fg} style={{ marginRight: 9 }} /> : null}
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
           style={{
-            transform: [{ translateY: ty }],
-            backgroundColor: ghost ? 'transparent' : gradBottom,
-            borderRadius: radius,
-            paddingVertical: big ? 17 : 13,
-            paddingHorizontal: 18,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: ghost ? 2 : 0,
-            borderColor: ghost ? theme.border : 'transparent',
-            overflow: 'hidden',
+            color: fg,
+            fontSize: big ? 18 : 15,
+            fontFamily: 'Poppins-ExtraBold',
+            letterSpacing: 0.3,
+            flexShrink: 1,
           }}
         >
-          {/* real vertical gradient fill */}
-          {!ghost ? (
-            <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
-              <Defs>
-                <SvgGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0" stopColor={gradTop} />
-                  <Stop offset="1" stopColor={gradBottom} />
-                </SvgGradient>
-              </Defs>
-              <Rect x="0" y="0" width="100%" height="100%" rx={radius} fill={`url(#${gid})`} />
-            </Svg>
-          ) : null}
-          {icon ? <Ionicons name={icon} size={big ? 23 : 19} color={fg} style={{ marginRight: 9 }} /> : null}
-          <Text
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.75}
-            style={{
-              color: fg,
-              fontSize: big ? 18 : 15,
-              fontFamily: 'Poppins-ExtraBold',
-              letterSpacing: 0.3,
-              flexShrink: 1,
-            }}
-          >
-            {label}
-          </Text>
-        </Animated.View>
-      </View>
+          {label}
+        </Text>
+      </Animated.View>
     </Pressable>
   );
 }
@@ -239,8 +208,8 @@ function Chip({ icon, label, onPress }: { icon: IoniconName; label: string; onPr
 // with two faint warm/cool glows. Replaces the old football-pitch pattern.
 // Full-screen patterned background (navy, Clash-Royale-like): deep-blue gradient
 // + a faint diagonal stripe pattern + soft glows. Sits behind every screen.
-const BG_TOP = '#15244F';
-function ScreenBg() {
+export const BG_TOP = '#15244F';
+export function ScreenBg() {
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <Svg width="100%" height="100%">
@@ -271,7 +240,6 @@ function Screen({ children }: { children: ReactNode; noPitch?: boolean }) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 44 : 0}
     >
-      <ScreenBg />
       {children}
     </KeyboardAvoidingView>
   );
@@ -971,15 +939,16 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
   const scale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.035] });
   const ty = breathe.interpolate({ inputRange: [0, 1], outputRange: [0, -5] });
   return (
-    <Pressable onPress={onPress} style={{ marginVertical: 4, alignItems: 'center' }}>
-      {/* Small floating cut-out arena (square, 2.5D top-view) */}
-      <Animated.Image
-        source={tier.img}
-        resizeMode="contain"
-        style={{ width: 150, height: 150, transform: [{ scale }, { translateY: ty }] }}
-      />
-      {/* Ground contact shadow — the "base" it sits on */}
-      <View pointerEvents="none" style={{ width: 64, height: 9, borderRadius: 5, backgroundColor: '#000', opacity: 0.3, marginTop: -6, transform: [{ scaleX: 1.5 }] }} />
+    <Pressable onPress={onPress} style={{ marginVertical: 6, alignItems: 'center' }}>
+      {/* Floating cut-out arena (square, 2.5D top-view) with a full soft ground shadow */}
+      <View style={{ alignItems: 'center', justifyContent: 'flex-end' }}>
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: 14, width: 150, height: 30, borderRadius: 15, backgroundColor: '#000', opacity: 0.4, shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, transform: [{ scaleX: 1.25 }] }} />
+        <Animated.Image
+          source={tier.img}
+          resizeMode="contain"
+          style={{ width: 188, height: 188, transform: [{ scale }, { translateY: ty }] }}
+        />
+      </View>
       {/* Nameplate below */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: theme.card, borderRadius: 13, borderWidth: 1.5, borderColor: color + 'AA', paddingHorizontal: 14, paddingVertical: 7, marginTop: 8 }}>
         <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15 }} numberOfLines={1}>{arena.name}</Text>
@@ -1222,7 +1191,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore }: Pr
             ) : menuSub === 'leaderboard' ? (
               <ScrollView style={{ maxHeight: 400, paddingHorizontal: 14, paddingTop: 8 }} showsVerticalScrollIndicator={false}>
                 {state.leaderboard.length === 0 ? (
-                  <Text style={[styles.muted, { textAlign: 'center', paddingVertical: 30 }]}>{t('leaderboard.empty')}</Text>
+                  <View style={{ alignItems: 'center', paddingVertical: 30 }}><ActivityIndicator color={theme.primary} /></View>
                 ) : state.leaderboard.map((entry) => (
                   <View key={entry.rank} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: theme.border }}>
                     <Text style={{ color: entry.rank <= 3 ? ['#FFD700','#C0C0C0','#CD7F32'][entry.rank-1] : theme.muted, fontWeight: '900', fontSize: 14, width: 26 }}>{entry.rank}</Text>
@@ -3385,7 +3354,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.bg, padding: 22, justifyContent: 'center' },
+  screen: { flex: 1, backgroundColor: 'transparent', padding: 22, justifyContent: 'center' },
   center: { alignItems: 'center', gap: 6 },
   logo: { color: theme.primary, fontSize: 28, fontFamily: 'Poppins-Black', textAlign: 'center', letterSpacing: 2, marginRight: -2, marginTop: 6 },
   tagline: { color: theme.muted, textAlign: 'center', marginBottom: 20, marginTop: 4, fontSize: 12, fontFamily: 'Poppins-SemiBold' },

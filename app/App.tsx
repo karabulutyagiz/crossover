@@ -17,6 +17,7 @@ import { t, setLanguage } from './src/i18n';
 import {
   SplashScreen,
   LoadingScreen,
+  ScreenBg,
   TutorialScreen,
   LoginScreen,
   UsernameScreen,
@@ -153,6 +154,7 @@ export default function App() {
     return (
       <View style={s.root}>
         <StatusBar style="light" />
+        <ScreenBg />
         <LoginScreen state={state} actions={actions} />
       </View>
     );
@@ -163,6 +165,7 @@ export default function App() {
     return (
       <View style={s.root}>
         <StatusBar style="light" />
+        <ScreenBg />
         <UsernameScreen state={state} actions={actions} />
       </View>
     );
@@ -186,6 +189,7 @@ export default function App() {
     return (
       <View style={s.root}>
         <StatusBar style="light" />
+        <ScreenBg />
         <LoadingScreen state={state} actions={actions} onReady={() => setLoaded(true)} />
       </View>
     );
@@ -222,6 +226,7 @@ export default function App() {
     return (
       <View style={s.root}>
         <StatusBar style="light" />
+        <ScreenBg />
         {screen}
         {state.matchInvite ? (
           <InviteBanner
