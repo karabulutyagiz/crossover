@@ -19,7 +19,7 @@ import type {
   ServerMsg,
 } from './protocol';
 
-export type Phase = 'home' | 'arenas' | 'leaderboard' | 'matchHistory' | 'searching' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
+export type Phase = 'home' | 'arenas' | 'leaderboard' | 'matchHistory' | 'profile' | 'searching' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
 
 export interface LeaderboardEntry {
   rank: number;
@@ -376,6 +376,8 @@ export function useCrossover() {
     closeLeaderboard: () => dispatch({ type: '_phase', phase: 'home' }),
     openArenas: () => dispatch({ type: '_phase', phase: 'arenas' }),
     closeArenas: () => dispatch({ type: '_phase', phase: 'home' }),
+    openProfile: () => dispatch({ type: '_phase', phase: 'profile' }),
+    closeProfile: () => dispatch({ type: '_phase', phase: 'home' }),
     openMatchHistory: () => {
       send({ type: 'list_match_history' });
       dispatch({ type: '_phase', phase: 'matchHistory' });

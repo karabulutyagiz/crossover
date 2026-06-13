@@ -46,6 +46,8 @@ type Actions = {
   changeName: (newName: string) => void;
   openArenas: () => void;
   closeArenas: () => void;
+  openProfile: () => void;
+  closeProfile: () => void;
   openLeaderboard: () => void;
   closeLeaderboard: () => void;
   openMatchHistory: () => void;
@@ -735,6 +737,48 @@ export function UsernameScreen({ state, actions }: Props) {
   );
 }
 
+function arenaColor(name: string): string {
+  return ARENA_DATA.find((a) => a.name === name)?.color ?? theme.primary;
+}
+
+// Animated arena crest (Clash Royale-style): floating emblem, glow, slow spinning
+// dashed ring. Tap → arenas screen.
+function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon: string }; trophies: number; onPress: () => void }) {
+  const float = useRef(new Animated.Value(0)).current;
+  const spin = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(float, { toValue: 1, duration: 1900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(float, { toValue: 0, duration: 1900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ]),
+    ).start();
+    Animated.loop(Animated.timing(spin, { toValue: 1, duration: 11000, easing: Easing.linear, useNativeDriver: true })).start();
+  }, [float, spin]);
+  const ty = float.interpolate({ inputRange: [0, 1], outputRange: [0, -12] });
+  const rot = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const color = arenaColor(arena.name);
+  return (
+    <Pressable onPress={onPress} style={{ alignItems: 'center', marginVertical: 6 }}>
+      <View pointerEvents="none" style={{ position: 'absolute', width: 230, height: 230, borderRadius: 115, backgroundColor: color, opacity: 0.13, top: 0 }} />
+      <Animated.View style={{ transform: [{ translateY: ty }], alignItems: 'center' }}>
+        <Animated.View pointerEvents="none" style={{ position: 'absolute', top: -8, width: 184, height: 184, borderRadius: 92, borderWidth: 2, borderColor: color + '55', borderStyle: 'dashed', transform: [{ rotate: rot }] }} />
+        <View style={{ width: 156, height: 156, borderRadius: 78, backgroundColor: theme.card, borderWidth: 4, borderColor: color, alignItems: 'center', justifyContent: 'center', shadowColor: color, shadowOpacity: 0.6, shadowRadius: 20, shadowOffset: { width: 0, height: 0 }, elevation: 14 }}>
+          <View style={{ width: 128, height: 128, borderRadius: 64, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: color + '55' }}>
+            <Text style={{ fontSize: 66 }}>{arena.icon}</Text>
+          </View>
+        </View>
+      </Animated.View>
+      <Text style={{ color: theme.text, fontSize: 19, fontWeight: '900', letterSpacing: 0.5, marginTop: 16 }}>{arena.name}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 5, marginTop: 6, borderWidth: 1, borderColor: color + '66' }}>
+        <Text style={{ fontSize: 14 }}>🏆</Text>
+        <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 16 }}>{trophies}</Text>
+      </View>
+      <Text style={{ color: theme.muted, fontSize: 10.5, marginTop: 6, fontWeight: '700' }}>ARENALAR ›</Text>
+    </Pressable>
+  );
+}
+
 export function HomeScreen({ actions, state }: Props) {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
@@ -750,35 +794,28 @@ export function HomeScreen({ actions, state }: Props) {
 
   return (
     <Screen>
-      {/* Hamburger menu (top right) */}
-      <Pressable style={{ position: 'absolute', top: 4, right: 16, zIndex: 50 }} onPress={() => setMenuOpen(true)}>
-        <Ionicons name="menu" size={26} color={theme.text} />
-      </Pressable>
-      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
-        <Pressable style={styles.modalBg} onPress={() => setMenuOpen(false)}>
-          <View style={{ position: 'absolute', top: 60, right: 20, backgroundColor: theme.card, borderRadius: 14, borderWidth: 1, borderColor: theme.border, padding: 6, minWidth: 200 }}>
-            <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 14 }} onPress={() => { setMenuOpen(false); actions.openMatchHistory(); }}>
-              <Ionicons name="time" size={20} color={theme.accent} />
-              <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>{t('menu.matchHistory')}</Text>
-            </Pressable>
-            <View style={{ height: 1, backgroundColor: theme.border }} />
-            <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 14 }} onPress={() => { setMenuOpen(false); actions.openLeaderboard(); }}>
-              <Ionicons name="trophy" size={20} color={theme.accent} />
-              <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>{t('menu.leaderboard')}</Text>
-            </Pressable>
+      {/* Top bar: profile avatar (→ profile) · diamonds · leaderboard */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+        <Pressable onPress={actions.openProfile} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.card, borderRadius: 22, paddingVertical: 4, paddingLeft: 4, paddingRight: 12, borderWidth: 1, borderColor: theme.border, maxWidth: '60%' }}>
+          <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.primary }}>
+            <Ionicons name="person" size={18} color={theme.primary} />
           </View>
+          <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13 }} numberOfLines={1}>{profile?.displayName ?? 'Oyuncu'}</Text>
         </Pressable>
-      </Modal>
-
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 6, paddingBottom: 20 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <View style={{ alignItems: 'center', marginTop: 2, marginBottom: 10 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Ionicons name="football" size={28} color={theme.primary} />
-            <Text style={[styles.logo, { marginTop: 0 }]}>CROSSOVER</Text>
-          </View>
+        <View style={{ flex: 1 }} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.card, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: theme.border }}>
+          <Ionicons name="diamond" size={15} color="#5BC8FF" />
+          <Text style={{ color: theme.text, fontWeight: '900', fontSize: 13 }}>{profile?.diamonds ?? 0}</Text>
         </View>
+        <Pressable onPress={actions.openLeaderboard} style={{ marginLeft: 8, width: 34, height: 34, borderRadius: 17, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.border }}>
+          <Ionicons name="podium" size={18} color={theme.accent} />
+        </Pressable>
+      </View>
 
-        {profile ? <ProfileCard profile={profile} onPress={actions.openArenas} /> : null}
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 4, paddingBottom: 20 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <Text style={[styles.logo, { marginTop: 2, fontSize: 22, marginBottom: 8 }]}>CROSSOVER</Text>
+
+        {profile ? <ArenaCrest arena={profile.arena} trophies={profile.trophies} onPress={actions.openArenas} /> : null}
 
         {/* Game options — one tidy row */}
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, marginBottom: 14 }}>
@@ -1990,6 +2027,61 @@ export function FriendsScreen({ state, actions }: Props) {
           </Pressable>
         </Pressable>
       </Modal>
+    </Screen>
+  );
+}
+
+// ---- Profile ----
+function StatCard({ icon, color, label, value }: { icon: IoniconName; color: string; label: string; value: number | string }) {
+  return (
+    <View style={{ flex: 1, alignItems: 'center', gap: 4, backgroundColor: theme.card, borderRadius: 16, paddingVertical: 16, borderWidth: 1, borderColor: theme.border }}>
+      <Ionicons name={icon} size={22} color={color} />
+      <Text style={{ color: theme.text, fontSize: 22, fontWeight: '900' }}>{value}</Text>
+      <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '600' }}>{label}</Text>
+    </View>
+  );
+}
+
+export function ProfileScreen({ state, actions }: Props) {
+  const p = state.profile;
+  if (!p) return <Screen><View style={styles.center}><Text style={styles.muted}>—</Text></View></Screen>;
+  const total = p.wins + p.losses;
+  const winRate = total ? Math.round((p.wins / total) * 100) : 0;
+  const color = arenaColor(p.arena.name);
+  return (
+    <Screen>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+        <Pressable onPress={actions.closeProfile} hitSlop={10} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Ionicons name="chevron-back" size={22} color={theme.text} />
+          <Text style={{ color: theme.text, fontWeight: '700' }}>{t('common.back')}</Text>
+        </Pressable>
+      </View>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+        <View style={{ alignItems: 'center', gap: 8, marginVertical: 10 }}>
+          <View style={{ width: 100, height: 100, borderRadius: 50, backgroundColor: theme.card, borderWidth: 3, borderColor: color, alignItems: 'center', justifyContent: 'center', shadowColor: color, shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 0 }, elevation: 10 }}>
+            <Ionicons name="person" size={50} color={color} />
+          </View>
+          <Text style={{ color: theme.text, fontSize: 23, fontWeight: '900' }}>{p.displayName}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: color + '66' }}>
+            <Text style={{ fontSize: 17 }}>{p.arena.icon}</Text>
+            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>{p.arena.name}</Text>
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+          <StatCard icon="trophy" color={theme.gold} label="Kupa" value={p.trophies} />
+          <StatCard icon="diamond" color="#5BC8FF" label="Elmas" value={p.diamonds} />
+        </View>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+          <StatCard icon="checkmark-circle" color={theme.primary} label="Galibiyet" value={p.wins} />
+          <StatCard icon="close-circle" color={theme.danger} label="Mağlubiyet" value={p.losses} />
+          <StatCard icon="stats-chart" color={theme.purple} label="Kazanma" value={`%${winRate}`} />
+        </View>
+
+        <View style={{ marginTop: 16 }}>
+          <Btn label={t('menu.matchHistory')} icon="time" kind="blue" onPress={actions.openMatchHistory} />
+        </View>
+      </ScrollView>
     </Screen>
   );
 }

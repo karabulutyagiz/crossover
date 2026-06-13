@@ -21,6 +21,7 @@ import {
   UsernameScreen,
   HomeScreen,
   ArenasScreen,
+  ProfileScreen,
   LeaderboardScreen,
   MatchHistoryScreen,
   SearchingScreen,
@@ -44,7 +45,7 @@ const TABS: { key: string; label: string; icon: IoniconName; activeIcon: Ionicon
 ];
 
 // Phases that show the main tab bar (non-game screens)
-const TAB_PHASES = new Set(['home', 'arenas', 'leaderboard', 'matchHistory']);
+const TAB_PHASES = new Set(['home', 'arenas', 'leaderboard', 'matchHistory', 'profile']);
 
 export default function App() {
   const { state, actions } = useCrossover();
@@ -176,6 +177,8 @@ export default function App() {
     ? <LeaderboardScreen {...props} />
     : state.phase === 'matchHistory'
     ? <MatchHistoryScreen {...props} />
+    : state.phase === 'profile'
+    ? <ProfileScreen {...props} />
     : <HomeScreen {...props} />;
 
   return (

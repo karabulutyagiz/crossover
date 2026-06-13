@@ -1,21 +1,23 @@
 export const theme = {
-  // base
-  bg: '#0B1020',
-  bg2: '#121A33', // lighter panel for layered/gradient-ish backgrounds
-  card: '#1A2238',
-  cardLip: '#10162A', // darker bottom edge for card depth
-  // accents
-  primary: '#36D27A', // green
-  primaryDark: '#1C9E55', // green button "lip"/shadow
-  accent: '#FFC83D', // gold
-  accentDark: '#C8941A', // gold lip
-  blue: '#3DA0FF',
-  blueDark: '#235FA8',
-  danger: '#FF5A5F',
-  dangerDark: '#C63B43',
-  gold: '#FFD24A',
+  // base — richer, blue-tinted "arena" palette (Clash Royale vibe)
+  bg: '#0C1234',
+  bg2: '#17224F', // lighter blue panel for layered/gradient-ish backgrounds
+  card: '#1C2A57',
+  cardLip: '#0F1838', // darker bottom edge for card depth
+  // accents — vibrant + glowy
+  primary: '#27E58B', // vivid mint-green
+  primaryDark: '#12A862', // green button "lip"/shadow
+  accent: '#FFCE3A', // bright gold
+  accentDark: '#CF9A12', // gold lip
+  blue: '#37A8FF', // vivid blue
+  blueDark: '#1E6FD4',
+  purple: '#9B6BFF', // royal purple
+  purpleDark: '#6A3CD6',
+  danger: '#FF5468',
+  dangerDark: '#CB3346',
+  gold: '#FFD740',
   // text
   text: '#FFFFFF',
-  muted: '#8A93A6',
-  border: '#2A3654',
+  muted: '#98A4CE', // blue-tinted muted
+  border: '#33437E', // blue-tinted border
 };
