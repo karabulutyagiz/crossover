@@ -10,6 +10,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.crossover.football",
+      "buildNumber": "30",
       "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -44,9 +45,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "fff58543-c2d6-4a7d-85af-5bd2da3a6a3f"
+        "projectId": "a4d757a9-39bc-4806-a64a-0d671b946bbe"
       }
     },
-    "owner": "ygzkrblt"
+    "owner": "ygzkrblt1"
   }
 }
