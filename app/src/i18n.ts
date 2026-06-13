@@ -145,8 +145,16 @@ const tr = {
   'store.changeNameConfirm': 'Değiştir',
 
   // menu
+  'menu.title': 'Menü',
   'menu.matchHistory': 'Müsabaka Geçmişi',
   'menu.leaderboard': 'Lider Tablosu',
+
+  // settings
+  'settings.title': 'Ayarlar',
+  'settings.language': 'Dil',
+  'settings.changeLangConfirm': 'Dil ayarlarını değiştirmek istediğine emin misin?',
+  'settings.cancel': 'İptal',
+  'settings.confirm': 'Tamam',
 
   // match history
   'matchHistory.title': 'Müsabaka Geçmişi',
@@ -350,8 +358,15 @@ const en: typeof tr = {
   'ready.labelSecs': 'Ready ({secs})',
   'store.changeNameConfirm': 'Change',
 
+  'menu.title': 'Menu',
   'menu.matchHistory': 'Match History',
   'menu.leaderboard': 'Leaderboard',
+
+  'settings.title': 'Settings',
+  'settings.language': 'Language',
+  'settings.changeLangConfirm': 'Are you sure you want to change the language?',
+  'settings.cancel': 'Cancel',
+  'settings.confirm': 'OK',
 
   'matchHistory.title': 'Match History',
   'matchHistory.empty': 'No matches yet',
@@ -428,8 +443,14 @@ export type MessageKey = keyof typeof tr;
 
 const DICTS: Record<string, Partial<typeof tr>> = { tr, en };
 
+/** Available languages with their native display names. */
+export const LANGUAGES: { code: string; name: string }[] = [
+  { code: 'tr', name: 'Türkçe' },
+  { code: 'en', name: 'English' },
+];
+
 // Resolve the active language once at startup from the device locale.
-function resolveLang(): keyof typeof DICTS {
+function resolveLang(): string {
   try {
     const code = getLocales()[0]?.languageCode?.toLowerCase();
     if (code && DICTS[code]) return code;
@@ -439,12 +460,26 @@ function resolveLang(): keyof typeof DICTS {
   return 'en';
 }
 
-const LANG = resolveLang();
+let currentLanguage = resolveLang();
+
+/** Get the current language code. */
+export function currentLang(): string {
+  return currentLanguage;
+}
+
+/**
+ * Set the active language. Call this after reading from AsyncStorage at startup,
+ * or when the user picks a new language in settings. The caller is responsible
+ * for forcing a re-render (e.g. by navigating to the loading screen).
+ */
+export function setLanguage(code: string): void {
+  if (DICTS[code]) currentLanguage = code;
+}
 
 // Translate a key, optionally interpolating {placeholders}. Falls back to
 // English, then to the key itself, so a missing translation never crashes.
 export function t(key: MessageKey, params?: Params): string {
-  const dict = DICTS[LANG] ?? en;
+  const dict = DICTS[currentLanguage] ?? en;
   let str = dict[key] ?? en[key] ?? tr[key] ?? key;
   if (params) {
     for (const [k, v] of Object.entries(params)) {
@@ -453,5 +488,3 @@ export function t(key: MessageKey, params?: Params): string {
   }
   return str;
 }
-
-export const currentLang = LANG;
