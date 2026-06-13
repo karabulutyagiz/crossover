@@ -235,7 +235,7 @@ function Chip({ icon, label, onPress }: { icon: IoniconName; label: string; onPr
 
 // Subtle football-pitch lines behind every screen for a stadium feel.
 
-function Screen({ children }: { children: ReactNode }) {
+function Screen({ children, noPitch }: { children: ReactNode; noPitch?: boolean }) {
   // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
   return (
     <KeyboardAvoidingView
@@ -243,7 +243,7 @@ function Screen({ children }: { children: ReactNode }) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 44 : 0}
     >
-      <FootballField />
+      {!noPitch ? <FootballField /> : null}
       {children}
     </KeyboardAvoidingView>
   );
@@ -978,9 +978,10 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
     return () => loop.stop();
   }, [zoom]);
   const scale = zoom.interpolate({ inputRange: [0, 1], outputRange: [1.02, 1.1] });
+  const color = arenaColor(arena.name);
   return (
     <Pressable onPress={onPress} style={{ marginVertical: 8, alignItems: 'center' }}>
-      <View style={{ width: '72%', aspectRatio: 1, borderRadius: 20, overflow: 'hidden', backgroundColor: theme.card }}>
+      <View style={{ width: '62%', aspectRatio: 1, borderRadius: 22, overflow: 'hidden', backgroundColor: theme.card, borderWidth: 3, borderColor: color, shadowColor: color, shadowOpacity: 0.55, shadowRadius: 18, shadowOffset: { width: 0, height: 0 }, elevation: 12 }}>
         <Animated.Image source={tier.img} style={{ width: '100%', height: '100%', transform: [{ scale }] }} resizeMode="cover" />
         <PitchLeaves />
         {/* "ARENALAR ›" hint */}
@@ -1129,7 +1130,7 @@ export function HomeScreen({ actions, state, onLanguageChange }: Props) {
   const playerName = profile?.displayName ?? (name || 'Oyuncu');
 
   return (
-    <Screen>
+    <Screen noPitch>
       {/* Top bar: profile avatar (→ profile) · leaderboard (gems live in the global resource bar) */}
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
         <Pressable onPress={actions.openProfile} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.card, borderRadius: 22, paddingVertical: 4, paddingLeft: 4, paddingRight: 12, borderWidth: 1, borderColor: theme.border, maxWidth: '60%' }}>
