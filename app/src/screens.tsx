@@ -325,7 +325,7 @@ export function SplashScreen() {
       ))}
       <Animated.View style={{ opacity: fade, alignItems: 'center', gap: 12 }}>
         <Ionicons name="football" size={66} color={theme.primary} />
-        <Text style={{ color: theme.text, fontSize: 36, fontFamily: 'Poppins-Black', letterSpacing: 3 }}>CROSSOVER</Text>
+        <Text style={{ color: theme.text, fontSize: 36, fontFamily: 'Poppins-Black', letterSpacing: 3, marginRight: -3, textAlign: 'center' }}>CROSSOVER</Text>
       </Animated.View>
       <Animated.Text style={{ position: 'absolute', bottom: 44, color: theme.muted, fontSize: 12, letterSpacing: 3, fontFamily: 'Poppins-ExtraBold', opacity: fade }}>
         BY GAMES
@@ -334,20 +334,89 @@ export function SplashScreen() {
   );
 }
 
+// ---- Loading screen (Clash-Royale-style bar) shown on entry; warms the logo cache ----
+const LOADING_TIPS = [
+  'İki takımda da oynamış futbolcuyu ilk bilen kazanır.',
+  'Rakipten önce yaz — hız kadar bilgi de önemli.',
+  'Pas mı? İki taraf da pas geçerse el atlanır, puan gitmez.',
+  'İlk 3 turu kazanan maçı ve kupayı alır.',
+];
+export function LoadingScreen({ state, actions, onReady }: Props & { onReady: () => void }) {
+  const [pct, setPct] = useState(0);
+  const done = useRef(false);
+  const prefetched = useRef(false);
+  const tip = useRef(LOADING_TIPS[Math.floor((state.profile?.trophies ?? 0) % LOADING_TIPS.length)] ?? LOADING_TIPS[0]!).current;
+
+  // Pull the popular clubs so their crests warm the image cache before pick time.
+  useEffect(() => { actions.searchClubs(''); }, []);
+  useEffect(() => {
+    if (prefetched.current) return;
+    const urls = state.clubResults.map((c) => c.logoUrl).filter(Boolean) as string[];
+    if (urls.length) {
+      prefetched.current = true;
+      urls.forEach((u) => { Image.prefetch(u).catch(() => {}); });
+    }
+  }, [state.clubResults]);
+
+  // Fill the bar 0→100 over ~2.2s, then enter the home panel.
+  useEffect(() => {
+    const id = setInterval(() => {
+      setPct((p) => {
+        const next = Math.min(100, p + 4);
+        if (next >= 100 && !done.current) { done.current = true; setTimeout(onReady, 280); }
+        return next;
+      });
+    }, 80);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
+      <PitchBackground />
+      <View style={{ alignItems: 'center', gap: 14 }}>
+        <View style={{ width: 96, height: 96, borderRadius: 24, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.primary }}>
+          <Ionicons name="football" size={54} color={theme.primary} />
+        </View>
+        <Text style={{ color: theme.text, fontSize: 30, fontFamily: 'Poppins-Black', letterSpacing: 3, marginRight: -3, textAlign: 'center' }}>CROSSOVER</Text>
+      </View>
+
+      <View style={{ position: 'absolute', left: 32, right: 32, bottom: 64, alignItems: 'center', gap: 10 }}>
+        <Text style={{ color: theme.muted, fontSize: 12.5, textAlign: 'center', lineHeight: 18 }}>{tip}</Text>
+        <View style={{ width: '100%', height: 16, borderRadius: 10, backgroundColor: theme.cardLip, borderWidth: 1, borderColor: theme.border, overflow: 'hidden' }}>
+          <View style={{ width: `${pct}%`, height: '100%', borderRadius: 10, backgroundColor: theme.primary }} />
+        </View>
+        <Text style={{ color: theme.primary, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>{pct}%</Text>
+      </View>
+    </View>
+  );
+}
+
 // ---- Interactive first-time tutorial (101 Plus-style guided simulation) ----
 const TUT_TEAMS = ['Galatasaray', 'Fenerbahçe', 'Beşiktaş', 'Trabzonspor', 'Real Madrid', 'Barcelona'];
 
+// Real club crests (Transfermarkt CDN) so the simulation looks like the real game.
+const TM = (id: number) => `https://tmssl.akamaized.net/images/wappen/head/${id}.png`;
 // Fake data driving the real match screens during the tutorial.
 const TUT_CLUBS: ClubRef[] = [
-  { id: 1, name: 'Galatasaray', logoUrl: null },
-  { id: 2, name: 'Fenerbahçe', logoUrl: null },
-  { id: 3, name: 'Beşiktaş', logoUrl: null },
-  { id: 4, name: 'Real Madrid', logoUrl: null },
-  { id: 5, name: 'Barcelona', logoUrl: null },
-  { id: 6, name: 'Trabzonspor', logoUrl: null },
+  { id: 141, name: 'Galatasaray', logoUrl: TM(141) },
+  { id: 36, name: 'Fenerbahçe', logoUrl: TM(36) },
+  { id: 114, name: 'Beşiktaş', logoUrl: TM(114) },
+  { id: 418, name: 'Real Madrid', logoUrl: TM(418) },
+  { id: 131, name: 'Barcelona', logoUrl: TM(131) },
+  { id: 449, name: 'Trabzonspor', logoUrl: TM(449) },
 ];
-const TUT_A: ClubRef = { id: 1, name: 'Galatasaray', logoUrl: null };
-const TUT_B: ClubRef = { id: 4, name: 'Real Madrid', logoUrl: null };
+const TUT_A: ClubRef = { id: 141, name: 'Galatasaray', logoUrl: TM(141) };
+const TUT_B: ClubRef = { id: 418, name: 'Real Madrid', logoUrl: TM(418) };
+// Wesley Sneijder's career — shown on the tutorial result screen.
+const TUT_CAREER = [
+  { clubId: 610, clubName: 'Ajax', logoUrl: TM(610), startYear: 2002, endYear: 2007 },
+  { clubId: 418, clubName: 'Real Madrid', logoUrl: TM(418), startYear: 2007, endYear: 2009 },
+  { clubId: 46, clubName: 'Inter', logoUrl: TM(46), startYear: 2009, endYear: 2013 },
+  { clubId: 141, clubName: 'Galatasaray', logoUrl: TM(141), startYear: 2013, endYear: 2017 },
+  { clubId: 417, clubName: 'Nice', logoUrl: TM(417), startYear: 2017, endYear: 2018 },
+];
+const TUT_SPELL_A = [TUT_CAREER[3]!]; // Galatasaray
+const TUT_SPELL_B = [TUT_CAREER[1]!]; // Real Madrid
 const TUT_PROFILE = {
   userId: 'you', displayName: 'Sen', trophies: 0, diamonds: 0, wins: 0, losses: 0,
   ownedEmotes: [], equippedEmotes: [], usernameSet: true, socialPackUntil: null,
@@ -359,11 +428,12 @@ const TUT_PROFILE = {
 // when the player does the real action (pick a team, submit a guess).
 export function TutorialScreen({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0); // 0 pick · 1 guess · 2 result
+  const [wrong, setWrong] = useState(false); // typed a wrong guess in the sim
   const bubble = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     bubble.setValue(0);
     Animated.spring(bubble, { toValue: 1, useNativeDriver: true, friction: 7, tension: 80 }).start();
-  }, [step]);
+  }, [step, wrong]);
 
   const future = Date.now() + 9_999_999;
   const room = {
@@ -395,13 +465,14 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
           answeredById: 'you', answeredByName: 'Sen', guess: 'Wesley Sneijder',
           teamA: TUT_A, teamB: TUT_B,
           matchedPlayerName: 'Wesley Sneijder', matchedPlayerImageUrl: null,
-          spellsA: [], spellsB: [], allClubs: [],
+          spellsA: TUT_SPELL_A, spellsB: TUT_SPELL_B, allClubs: TUT_CAREER,
           commonPlayers: [{ name: 'Wesley Sneijder', imageUrl: null }],
         }
       : null,
   };
 
   // Real actions are replaced with no-ops; the key ones advance the simulation.
+  // submitGuess actually checks the typed answer so the sim behaves like the game.
   const fakeActions = useMemo(
     () =>
       new Proxy(
@@ -409,7 +480,11 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
         {
           get(_t, prop) {
             if (prop === 'pickTeam') return () => setStep(1);
-            if (prop === 'submitGuess') return () => setStep(2);
+            if (prop === 'submitGuess')
+              return (text: string) => {
+                const ok = String(text ?? '').toLocaleLowerCase('tr').replace(/[^a-zçğıöşü]/g, '').includes('sneijder');
+                if (ok) { setWrong(false); setStep(2); } else { setWrong(true); }
+              };
             if (prop === 'leave' || prop === 'playAgain' || prop === 'acceptRematch' || prop === 'ready') return onDone;
             return () => {};
           },
@@ -420,8 +495,10 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
 
   const COACH: { text: string; cta?: string }[] = [
     { text: "Hoş geldin! 👋 Önce bir takım seç — Galatasaray'a dokun 👇" },
-    { text: 'Rakibin Real Madrid seçti. İki takımda da oynamış oyuncuyu yaz. İpucu: Wesley Sneijder — sonra Gönder’e bas.' },
-    { text: 'Doğru! 🎉 Rakipten önce bilen turu kazanır; ilk 3 turu kazanan maçı ve kupayı alır. Hazırsın!', cta: 'BAŞLA' },
+    { text: wrong
+        ? 'Olmadı 🙈 İki takımda da oynayan oyuncu Wesley Sneijder. Aynen yaz ve Gönder’e bas.'
+        : 'Rakibin Real Madrid seçti. İki takımda da oynamış oyuncuyu yaz — yazman gereken: Wesley Sneijder, sonra Gönder’e bas.' },
+    { text: 'Doğru! 🎉 Sneijder hem Galatasaray hem Real Madrid forması giydi. Rakipten önce bilen turu kazanır; ilk 3 turu alan maçı ve kupayı kazanır!', cta: 'BAŞLA' },
   ];
   const cur = COACH[Math.min(step, COACH.length - 1)]!;
 
@@ -443,7 +520,12 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
         </Pressable>
         <Animated.View
           pointerEvents="box-none"
-          style={{ position: 'absolute', left: 16, right: 16, bottom: 28, transform: [{ scale: bubble }], opacity: bubble, backgroundColor: theme.card, borderRadius: 18, borderWidth: 1.5, borderColor: theme.primary, padding: 16 }}
+          style={{
+            position: 'absolute', left: 16, right: 16,
+            // Guess step: keep the coach at the TOP so the keyboard never hides it.
+            ...(step === 1 ? { top: 92 } : { bottom: 28 }),
+            transform: [{ scale: bubble }], opacity: bubble, backgroundColor: theme.card, borderRadius: 18, borderWidth: 1.5, borderColor: wrong ? theme.danger : theme.primary, padding: 16, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 10,
+          }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <Ionicons name="football" size={18} color={theme.primary} />
@@ -2901,7 +2983,7 @@ export function ResultScreen({ state, actions }: Props) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.bg, padding: 22, justifyContent: 'center' },
   center: { alignItems: 'center', gap: 6 },
-  logo: { color: theme.primary, fontSize: 28, fontFamily: 'Poppins-Black', textAlign: 'center', letterSpacing: 2, marginTop: 6 },
+  logo: { color: theme.primary, fontSize: 28, fontFamily: 'Poppins-Black', textAlign: 'center', letterSpacing: 2, marginRight: -2, marginTop: 6 },
   tagline: { color: theme.muted, textAlign: 'center', marginBottom: 20, marginTop: 4, fontSize: 12, fontFamily: 'Poppins-SemiBold' },
   h1: { color: theme.text, fontSize: 16, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginVertical: 6 },
   label: { color: theme.muted, fontSize: 10, letterSpacing: 2, textAlign: 'center' },

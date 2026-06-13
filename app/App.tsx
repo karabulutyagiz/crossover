@@ -16,7 +16,7 @@ import { useCrossover } from './src/useCrossover';
 import { t } from './src/i18n';
 import {
   SplashScreen,
-  IntroScreen,
+  LoadingScreen,
   TutorialScreen,
   LoginScreen,
   UsernameScreen,
@@ -57,8 +57,8 @@ export default function App() {
   const scrollRef = useRef<ScrollView>(null);
   const [activeTab, setActiveTab] = useState(2); // start on Home (store=0, collection=1, home=2)
   const [splash, setSplash] = useState(true);
-  const [introSeen, setIntroSeen] = useState<boolean | null>(null); // null = still loading
   const [tutorialSeen, setTutorialSeen] = useState<boolean | null>(null);
+  const [loaded, setLoaded] = useState(false); // Clash-Royale-style entry loading (warms logo cache)
   const [fontsLoaded, fontError] = useFonts({
     'Poppins-Black': require('./assets/fonts/Poppins-Black.ttf'),
     'Poppins-ExtraBold': require('./assets/fonts/Poppins-ExtraBold.ttf'),
@@ -68,9 +68,6 @@ export default function App() {
 
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 1900);
-    AsyncStorage.getItem('@crossover_intro_seen')
-      .then((v) => setIntroSeen(v === '1'))
-      .catch(() => setIntroSeen(true));
     AsyncStorage.getItem('@crossover_tutorial_seen')
       .then((v) => setTutorialSeen(v === '1'))
       .catch(() => setTutorialSeen(true));
@@ -88,25 +85,13 @@ export default function App() {
     setActiveTab(idx);
   }, []);
 
-  // Splash screen: show COF logo on launch (also while we read the intro flag).
-  if (splash || introSeen === null || !fontsReady) {
+  // Splash screen: show COF logo on launch.
+  if (splash || !fontsReady) {
     return (
       <View style={{ flex: 1 }}>
         <StatusBar style="light" />
         <SplashScreen />
       </View>
-    );
-  }
-
-  // First launch: swipeable intro / onboarding. Shown once.
-  if (introSeen === false) {
-    return (
-      <IntroScreen
-        onDone={() => {
-          setIntroSeen(true);
-          AsyncStorage.setItem('@crossover_intro_seen', '1').catch(() => {});
-        }}
-      />
     );
   }
 
@@ -141,6 +126,17 @@ export default function App() {
           AsyncStorage.setItem('@crossover_tutorial_seen', '1').catch(() => {});
         }}
       />
+    );
+  }
+
+  // Entry loading bar (once per launch) — fills to 100% while popular club
+  // crests are prefetched, so the team picker has logos ready immediately.
+  if (!loaded) {
+    return (
+      <View style={s.root}>
+        <StatusBar style="light" />
+        <LoadingScreen state={state} actions={actions} onReady={() => setLoaded(true)} />
+      </View>
     );
   }
 
