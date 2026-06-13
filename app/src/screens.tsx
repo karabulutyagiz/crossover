@@ -20,6 +20,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { theme } from './theme';
 import { t } from './i18n';
 import { GOOGLE_IOS_CLIENT_ID } from './config';
+import { GemIcon, GEM_COLOR } from './GemIcon';
 
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState } from './useCrossover';
@@ -626,7 +627,7 @@ function ProfileCard({ profile, onPress }: { profile: ProfileView; onPress?: () 
           <Text style={styles.profileStatVal}>{profile.trophies}</Text>
         </View>
         <View style={styles.profileStat}>
-          <Ionicons name="diamond" size={15} color="#5BC8FF" />
+          <GemIcon size={15} />
           <Text style={styles.profileStatVal}>{profile.diamonds}</Text>
         </View>
       </View>
@@ -799,7 +800,8 @@ export function HomeScreen({ actions, state }: Props) {
   const [picker, setPicker] = useState<Picker>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
-  const opts: GameOptions = { scope, difficulty, mode };
+  const [botOpen, setBotOpen] = useState(false);
+  const opts: GameOptions = { scope, mode };
   const profile = state.profile;
   const playerName = profile?.displayName ?? (name || 'Oyuncu');
 
@@ -832,7 +834,6 @@ export function HomeScreen({ actions, state }: Props) {
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, marginBottom: 14 }}>
           <Chip icon={MODE_ICON[mode]} label={MODE_LABEL[mode]} onPress={() => setPicker('mode')} />
           <Chip icon="globe-outline" label={scopeLabel(scope)} onPress={() => setPicker('scopeType')} />
-          <Chip icon="speedometer-outline" label={DIFF_LABEL[difficulty]} onPress={() => setPicker('difficulty')} />
         </View>
 
         {/* Primary action */}
@@ -844,7 +845,7 @@ export function HomeScreen({ actions, state }: Props) {
             <Btn label={t('home.createRoom')} icon="add-circle" kind="blue" onPress={() => actions.createRoom(playerName, opts)} />
           </View>
           <View style={{ flex: 1 }}>
-            <Btn label={t('home.solo')} icon="game-controller" kind="accent" onPress={() => actions.createSolo(playerName, opts)} />
+            <Btn label={t('home.solo')} icon="game-controller" kind="accent" onPress={() => setBotOpen(true)} />
           </View>
         </View>
         <Btn label={t('home.joinRoom')} icon="enter" kind="ghost" onPress={() => setJoinOpen(true)} />
@@ -878,6 +879,37 @@ export function HomeScreen({ actions, state }: Props) {
             </Pressable>
           </Pressable>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Bot difficulty picker */}
+      <Modal visible={botOpen} transparent animationType="fade" onRequestClose={() => setBotOpen(false)}>
+        <Pressable style={styles.modalBg} onPress={() => setBotOpen(false)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>{t('home.solo')}</Text>
+            <Text style={[styles.muted, { marginBottom: 10 }]}>Zorluk seç</Text>
+            {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
+              <Pressable
+                key={d}
+                onPress={() => {
+                  setDifficulty(d);
+                  setBotOpen(false);
+                  actions.createSolo(playerName, { ...opts, difficulty: d });
+                }}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 14,
+                  borderBottomWidth: 1, borderBottomColor: theme.border,
+                }}
+              >
+                <Ionicons
+                  name={d === 'easy' ? 'happy-outline' : d === 'medium' ? 'flash-outline' : 'skull-outline'}
+                  size={20}
+                  color={d === 'easy' ? theme.primary : d === 'medium' ? theme.accent : theme.danger}
+                />
+                <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{DIFF_LABEL[d]}</Text>
+              </Pressable>
+            ))}
+          </Pressable>
+        </Pressable>
       </Modal>
 
       <PickerModal
@@ -1386,10 +1418,10 @@ export function GuessScreen({ state, actions }: Props) {
 
 // ---- Store ----
 const DIAMOND_PACKS = [
-  { id: 'pack1', amount: 100, price: '₺29,99', icon: 'diamond', color: '#5BC8FF', best: false },
-  { id: 'pack2', amount: 500, price: '₺99,99', icon: 'diamond', color: '#5BC8FF', best: true },
-  { id: 'pack3', amount: 1200, price: '₺199,99', icon: 'diamond', color: '#5BC8FF', best: false },
-  { id: 'pack4', amount: 5000, price: '₺699,99', icon: 'diamond', color: '#A855F7', best: false },
+  { id: 'pack1', amount: 100, price: '₺29,99', color: '#A855F7', best: false },
+  { id: 'pack2', amount: 500, price: '₺99,99', color: '#C084FC', best: true },
+  { id: 'pack3', amount: 1200, price: '₺199,99', color: '#A855F7', best: false },
+  { id: 'pack4', amount: 5000, price: '₺699,99', color: '#7C3AED', best: false },
 ];
 
 function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
@@ -1425,13 +1457,13 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
           <View style={styles.nameModalCost}>
             <Text style={styles.muted}>{t('store.cost')}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Text style={{ color: canAfford ? '#5BC8FF' : theme.danger, fontWeight: '800', fontSize: 15 }}>{cost}</Text>
-              <Ionicons name="diamond" size={14} color={canAfford ? '#5BC8FF' : theme.danger} />
+              <Text style={{ color: canAfford ? GEM_COLOR : theme.danger, fontWeight: '800', fontSize: 15 }}>{cost}</Text>
+              <GemIcon size={14} />
             </View>
             <Text style={styles.muted}>{t('store.balance')}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>{diamonds}</Text>
-              <Ionicons name="diamond" size={14} color="#5BC8FF" />
+              <GemIcon size={14} />
             </View>
           </View>
 
@@ -1599,14 +1631,41 @@ export function StoreScreen({ state, actions }: Props) {
     <Screen>
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
         <View style={styles.center}>
-          <Ionicons name="diamond" size={36} color="#5BC8FF" />
+          <GemIcon size={36} />
           <Text style={styles.h1}>{t('store.title')}</Text>
           {profile ? (
             <View style={styles.storeBalance}>
-              <Ionicons name="diamond" size={18} color="#5BC8FF" />
+              <GemIcon size={18} />
               <Text style={styles.storeBalanceText}>{profile.diamonds}</Text>
             </View>
           ) : null}
+        </View>
+
+        {/* Sosyal Paket */}
+        <Text style={styles.sectionLabel}>SOSYAL PAKET</Text>
+        <View style={[styles.storePackCard, { borderColor: theme.accent, borderWidth: 2 }]}>
+          <View style={styles.storePackBadge}>
+            <Text style={styles.storePackBadgeText}>YENİ</Text>
+          </View>
+          <View style={{ gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Ionicons name="people" size={24} color={theme.accent} />
+              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>Sosyal Paket</Text>
+            </View>
+            <Text style={{ color: theme.muted, fontSize: 12 }}>
+              Arkadaşlarınla Ülke-Takım ve Harf-Takım modlarında dostluk maçı oyna.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+              <View style={[styles.storePackPriceBox, { flex: 1, alignItems: 'center' as const }]}>
+                <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>Haftalık</Text>
+                <Text style={styles.storePackPrice}>₺24,99</Text>
+              </View>
+              <View style={[styles.storePackPriceBox, { flex: 1, alignItems: 'center' as const, backgroundColor: theme.accent }]}>
+                <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>Aylık</Text>
+                <Text style={styles.storePackPrice}>₺89,99</Text>
+              </View>
+            </View>
+          </View>
         </View>
 
         {/* Free diamonds - watch ads */}
@@ -1644,7 +1703,7 @@ export function StoreScreen({ state, actions }: Props) {
             ) : null}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={[styles.storePackIcon, { backgroundColor: pack.color + '22' }]}>
-                <Ionicons name={pack.icon as any} size={28} color={pack.color} />
+                <GemIcon size={28} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.storePackAmount}>{t('store.diamonds', { n: pack.amount.toLocaleString('tr-TR') })}</Text>
@@ -1724,7 +1783,7 @@ export function StoreScreen({ state, actions }: Props) {
                       onPress={() => canAfford && actions.buyEmote(e.id)}
                     >
                       <Text style={styles.storeEmoteBuyText}>{e.premium?.price}</Text>
-                      <Ionicons name="diamond" size={13} color="#06131F" />
+                      <GemIcon size={13} />
                     </Pressable>
                   ) : (
                     <Pressable
@@ -1781,33 +1840,6 @@ export function StoreScreen({ state, actions }: Props) {
         </>
         )}
 
-        {/* Sosyal Paket */}
-        <Text style={styles.sectionLabel}>SOSYAL PAKET</Text>
-        <View style={[styles.storePackCard, { borderColor: theme.accent, borderWidth: 2 }]}>
-          <View style={styles.storePackBadge}>
-            <Text style={styles.storePackBadgeText}>YENİ</Text>
-          </View>
-          <View style={{ gap: 8 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Ionicons name="people" size={24} color={theme.accent} />
-              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>Sosyal Paket</Text>
-            </View>
-            <Text style={{ color: theme.muted, fontSize: 12 }}>
-              Arkadaşlarınla Ülke-Takım ve Harf-Takım modlarında dostluk maçı oyna.
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-              <View style={[styles.storePackPriceBox, { flex: 1, alignItems: 'center' as const }]}>
-                <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>Haftalık</Text>
-                <Text style={styles.storePackPrice}>₺24,99</Text>
-              </View>
-              <View style={[styles.storePackPriceBox, { flex: 1, alignItems: 'center' as const, backgroundColor: theme.accent }]}>
-                <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>Aylık</Text>
-                <Text style={styles.storePackPrice}>₺89,99</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
         {/* İsim değiştirme */}
         <Text style={styles.sectionLabel}>{t('store.other')}</Text>
         <Pressable style={styles.storeAdCard} onPress={() => setShowNameModal(true)}>
@@ -1818,7 +1850,7 @@ export function StoreScreen({ state, actions }: Props) {
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 13 }}>100</Text>
-            <Ionicons name="diamond" size={14} color="#5BC8FF" />
+            <GemIcon size={14} />
           </View>
         </Pressable>
       </ScrollView>
@@ -2058,7 +2090,7 @@ export function FriendsScreen({ state, actions }: Props) {
             <Text style={[styles.muted, { marginBottom: 12 }]}>
               Ülke-Takım ve Harf-Takım modlarını dostluk maçlarında kullanmak için Sosyal Paket satın almalısın.
             </Text>
-            <Btn label="Mağazaya Git" kind="accent" icon="diamond" onPress={() => { setSocialPackPopup(false); /* navigate to store tab */ }} />
+            <Btn label="Mağazaya Git" kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); /* navigate to store tab */ }} />
             <View style={{ height: 6 }} />
             <Btn label="Vazgeç" kind="ghost" icon="close" onPress={() => setSocialPackPopup(false)} />
           </Pressable>
@@ -2894,15 +2926,15 @@ const styles = StyleSheet.create({
   nameModalCard: { backgroundColor: theme.card, borderRadius: 20, padding: 24, marginHorizontal: 30, alignItems: 'center' as const, gap: 10, borderWidth: 1, borderColor: theme.border },
   nameModalCost: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, marginVertical: 6 },
   storeBalance: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.card, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14, marginTop: 6, borderWidth: 1, borderColor: theme.border },
-  storeBalanceText: { color: '#5BC8FF', fontSize: 18, fontWeight: '800' },
+  storeBalanceText: { color: '#C084FC', fontSize: 18, fontWeight: '800' },
   storeAdCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.card, borderRadius: 12, padding: 14, marginVertical: 4, borderWidth: 1, borderColor: theme.border },
   storeAdTitle: { color: theme.text, fontSize: 14, fontWeight: '700' },
-  storeAdReward: { color: '#5BC8FF', fontSize: 14, fontWeight: '800', marginBottom: 4 },
+  storeAdReward: { color: '#C084FC', fontSize: 14, fontWeight: '800', marginBottom: 4 },
   storeCooldown: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.bg, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10, marginVertical: 4 },
   storeCooldownText: { color: theme.accent, fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
   storePackCard: { backgroundColor: theme.card, borderRadius: 12, padding: 14, marginVertical: 4, borderWidth: 1, borderColor: theme.border, position: 'relative' as const },
-  storePackBest: { borderColor: '#5BC8FF', borderWidth: 2 },
-  storePackBadge: { position: 'absolute' as const, top: -10, right: 12, backgroundColor: '#5BC8FF', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
+  storePackBest: { borderColor: '#A855F7', borderWidth: 2 },
+  storePackBadge: { position: 'absolute' as const, top: -10, right: 12, backgroundColor: '#A855F7', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
   storePackBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
   storePackIcon: { width: 48, height: 48, borderRadius: 12, alignItems: 'center' as const, justifyContent: 'center' as const },
   storePackAmount: { color: theme.text, fontSize: 16, fontWeight: '800' },

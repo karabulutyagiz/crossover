@@ -35,12 +35,13 @@ import {
   ResultScreen,
 } from './src/screens';
 import { theme } from './src/theme';
+import { GemIcon, GEM_COLOR } from './src/GemIcon';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 const { width: SCREEN_W } = Dimensions.get('window');
 
 const TABS: { key: string; label: string; icon: IoniconName; activeIcon: IoniconName }[] = [
-  { key: 'store', label: t('tab.store'), icon: 'diamond-outline', activeIcon: 'diamond' },
+  { key: 'store', label: t('tab.store'), icon: 'storefront-outline', activeIcon: 'storefront' },
   { key: 'home', label: t('tab.game'), icon: 'football-outline', activeIcon: 'football' },
   { key: 'friends', label: t('tab.friends'), icon: 'people-outline', activeIcon: 'people' },
 ];
@@ -192,6 +193,23 @@ export default function App() {
     <View style={s.root}>
       <StatusBar style="light" />
 
+      {/* Top bar — trophies (left, standalone) + diamonds pill (right) */}
+      {state.profile ? (
+        <View style={s.resourceBar}>
+          <View style={s.trophyGroup}>
+            <Ionicons name="trophy" size={16} color={theme.accent} />
+            <Text style={s.trophyText}>{state.profile.trophies}</Text>
+          </View>
+          <Pressable style={s.diamondPill} onPress={() => goToTab(0)}>
+            <GemIcon size={16} />
+            <Text style={s.diamondText}>{state.profile.diamonds}</Text>
+            <View style={s.diamondPlus}>
+              <Ionicons name="add" size={12} color="#fff" />
+            </View>
+          </Pressable>
+        </View>
+      ) : null}
+
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -254,4 +272,46 @@ const s = StyleSheet.create({
   tabInnerActive: { backgroundColor: theme.bg2, borderWidth: 1, borderColor: theme.border },
   tabLabel: { color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold' },
   tabLabelActive: { color: theme.primary },
+  resourceBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+  },
+  trophyGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  trophyText: {
+    color: '#F5C518',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  diamondPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#151C30',
+    borderRadius: 14,
+    paddingLeft: 8,
+    paddingRight: 2,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#26304A',
+  },
+  diamondText: {
+    color: '#C084FC',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  diamondPlus: {
+    backgroundColor: '#3DDC84',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

@@ -119,42 +119,19 @@ export async function searchClubs(
   return rows.map((r) => ({ id: Number(r.id), name: r.name, logoUrl: r.logo_url }));
 }
 
-// Allowed leagues in the game. 5 major leagues get their 2nd divisions too,
-// plus Turkey, Netherlands, Brazil, Portugal, and England Championship.
-// Other countries only their first division.
-const ALLOWED_LEAGUES = [
-  // 5 major leagues + their second divisions
-  'Premier League', 'Championship',
-  'La Liga', 'La Liga 2',
-  'Serie A', 'Serie B',
-  'Bundesliga', 'Bundesliga 2',
-  'Ligue 1', 'Ligue 2',
-  // Turkey
-  'Süper Lig', 'TFF 1. Lig',
-  // Netherlands, Brazil, Portugal
-  'Eredivisie', 'Brazil Serie A', 'Brazil Serie B', 'Primeira Liga',
-  // Other countries — first division only
-  'Belgian Pro League', 'Scottish Premiership', 'Swiss Super League',
-  'Austrian Bundesliga', 'Greek Super League', 'Russian Premier League',
-  'Ukrainian Premier League', 'MLS', 'Liga MX',
-  'Argentine Liga Profesional', 'Saudi Pro League', 'Danish Superliga',
-  'Eliteserien', 'Allsvenskan', 'Ekstraklasa', 'Czech First League',
-  'Croatian HNL', 'Serbian SuperLiga', 'Romanian Liga I',
-  'Colombian Primera A', 'Chilean Primera', 'Uruguayan Primera',
-  'J1 League', 'K League 1', 'Chinese Super League', 'A-League',
-  'Egyptian Premier League', 'Qatar Stars League', 'UAE Pro League',
-];
+// Reference list of known league names — used only for documentation.
+// All leagues in the DB are now included in the scope picker automatically.
 
 /**
  * A random club for the bot, chosen by POPULARITY (clubs.popularity = squad
  * market value). Data-driven — no hardcoded ids, no league whitelist — so every
  * famous club is reachable and it survives data rebuilds.
- * - 'easy':   random among the ~120 most popular clubs (mega-famous)
- * - 'medium': random among the ~700 most popular (well-known)
+ * - 'easy':   top ~20 mega-famous clubs everyone knows (Real Madrid, Barcelona, etc.)
+ * - 'medium': top ~60 well-known clubs (Atalanta, Villarreal, Marseille level)
  * - 'hard':   any club with a logo + players in scope (incl. obscure / lower divisions)
  */
-const EASY_TOP = 120;
-const MEDIUM_TOP = 700;
+const EASY_TOP = 20;
+const MEDIUM_TOP = 60;
 
 export async function randomClub(
   scope: Scope = { type: 'all' },
@@ -188,9 +165,9 @@ export interface ScopeOption {
 
 // API-Football league IDs for logo URLs.
 const LEAGUE_LOGOS: Record<string, number> = {
-  'Premier League': 39, Championship: 40, 'La Liga': 140, 'La Liga 2': 141,
+  'Premier League': 39, Championship: 40, 'La Liga': 140, LaLiga: 140, 'La Liga 2': 141,
   'Serie A': 135, 'Serie B': 136, Bundesliga: 78, 'Bundesliga 2': 79,
-  'Ligue 1': 61, 'Ligue 2': 62, Eredivisie: 88, 'Primeira Liga': 94,
+  'Ligue 1': 61, 'Ligue 2': 62, Eredivisie: 88, 'Primeira Liga': 94, 'Liga Portugal': 94,
   'Süper Lig': 203, 'TFF 1. Lig': 204, 'Belgian Pro League': 144,
   'Scottish Premiership': 179, 'Swiss Super League': 207, 'Austrian Bundesliga': 218,
   'Greek Super League': 197, 'Russian Premier League': 235, 'Ukrainian Premier League': 333,
@@ -259,18 +236,17 @@ const COUNTRY_NAME_TR: Record<string, string> = {
   'New Zealand': 'Yeni Zelanda',
 };
 
-/** Available leagues and countries (for the scope picker). Only allowed leagues. */
+/** Available leagues and countries (for the scope picker). All leagues in the DB. */
 export async function listScopes(): Promise<{ leagues: ScopeOption[]; countries: ScopeOption[] }> {
   const leagues = await pool.query<{ value: string; count: string }>(
     `SELECT league AS value, count(*) AS count FROM clubs
-      WHERE league = ANY($1::text[]) GROUP BY league ORDER BY league`,
-    [ALLOWED_LEAGUES],
+      WHERE league IS NOT NULL
+      GROUP BY league ORDER BY count(*) DESC, league`,
   );
   const countries = await pool.query<{ value: string; count: string }>(
     `SELECT country AS value, count(*) AS count FROM clubs
-      WHERE country IS NOT NULL AND league = ANY($1::text[])
-      GROUP BY country ORDER BY country`,
-    [ALLOWED_LEAGUES],
+      WHERE country IS NOT NULL AND league IS NOT NULL
+      GROUP BY country ORDER BY count(*) DESC, country`,
   );
   return {
     leagues: leagues.rows.map((r) => ({

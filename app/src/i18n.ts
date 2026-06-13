@@ -38,7 +38,7 @@ const tr = {
   'home.quickMatch': 'Hemen Oyna',
   'home.createRoom': 'Oda Kur',
   'home.joinRoom': 'Odaya Katıl',
-  'home.solo': "Bot'a Karşı Oyna",
+  'home.solo': 'Bot Maçı',
   'home.leaderboard': 'Lider Tablosu',
   'home.arenas': 'Arenalar',
   'home.namePlaceholder': 'Adın',
