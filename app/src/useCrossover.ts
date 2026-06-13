@@ -59,6 +59,8 @@ export interface GameState {
   outgoingInvite: { toId: string; toName: string; expiresAt: number } | null;
   // A friend's public profile I'm currently viewing.
   viewProfile: PublicProfile | null;
+  // Transient success notice (e.g. "friend request sent"), shown green then cleared.
+  notice: string | null;
   matchHistory: MatchHistoryView[];
   // match (first to `winTarget` round wins) + rematch flow
   matchOver: boolean;
@@ -105,6 +107,7 @@ export const initialState: GameState = {
   matchInvite: null,
   outgoingInvite: null,
   viewProfile: null,
+  notice: null,
   matchHistory: [],
   matchOver: false,
   matchWinnerId: null,
@@ -138,6 +141,7 @@ type Action =
   | { type: '_set_outgoing'; invite: GameState['outgoingInvite'] }
   | { type: '_close_profile' }
   | { type: '_dismiss_invite' }
+  | { type: '_clear_notice' }
   | { type: '_ready' };
 
 function reducer(state: GameState, action: Action): GameState {
@@ -169,7 +173,7 @@ function reducer(state: GameState, action: Action): GameState {
         ...state.friendRequests,
       ]};
     case 'friend_request_sent':
-      return state;
+      return { ...state, notice: 'Arkadaşlık isteği gönderildi' };
     case 'friend_request_responded':
       return { ...state, friendRequests: state.friendRequests.filter((r) => r.requestId !== (action as any).requestId) };
     case 'user_search_results':
@@ -192,6 +196,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, outgoingInvite: (action as any).invite };
     case '_close_profile' as any:
       return { ...state, viewProfile: null };
+    case '_clear_notice' as any:
+      return { ...state, notice: null };
 
     case 'searching':
       return { ...state, phase: 'searching' };
@@ -501,6 +507,7 @@ export function useCrossover() {
     },
     getUserProfile: (userId: string) => send({ type: 'get_user_profile', userId }),
     closeUserProfile: () => dispatch({ type: '_close_profile' }),
+    clearNotice: () => dispatch({ type: '_clear_notice' }),
     dismissMatchInvite: () => dispatch({ type: '_dismiss_invite' }),
     leave: () => {
       wsRef.current?.close();

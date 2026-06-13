@@ -24,7 +24,7 @@ import { GemIcon, GEM_COLOR } from './GemIcon';
 import Svg, { Rect, Circle, Line, Path as SvgPath } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
-import type { GameState } from './useCrossover';
+import type { GameState, FriendInfo } from './useCrossover';
 import { initialState } from './useCrossover';
 import type { ClubRef, Difficulty, GameMode, GameOptions, ProfileView, PublicProfile, RoomView, Scope, SpellInfo } from './protocol';
 import {
@@ -83,6 +83,7 @@ type Actions = {
   cancelMatchInvite: (toId: string) => void;
   getUserProfile: (userId: string) => void;
   closeUserProfile: () => void;
+  clearNotice: () => void;
   dismissMatchInvite: () => void;
   leave: () => void;
 };
@@ -1009,7 +1010,7 @@ export function HomeScreen({ actions, state }: Props) {
 
   return (
     <Screen>
-      {/* Top bar: profile avatar (→ profile) · diamonds · leaderboard */}
+      {/* Top bar: profile avatar (→ profile) · leaderboard (gems live in the global resource bar) */}
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
         <Pressable onPress={actions.openProfile} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.card, borderRadius: 22, paddingVertical: 4, paddingLeft: 4, paddingRight: 12, borderWidth: 1, borderColor: theme.border, maxWidth: '60%' }}>
           <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.primary }}>
@@ -2146,10 +2147,19 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
   const [friendTab, setFriendTab] = useState<'friends' | 'requests'>('friends');
   const [copied, setCopied] = useState(false);
   const [matchModal, setMatchModal] = useState<string | null>(null); // friendId — mode picker
+  const [menuFriend, setMenuFriend] = useState<FriendInfo | null>(null); // tapped friend → actions menu
+  const [confirmRemove, setConfirmRemove] = useState<FriendInfo | null>(null); // remove confirmation
   const [socialPackPopup, setSocialPackPopup] = useState(false);
   const profile = state.profile;
   const hasSocialPack = profile?.socialPackUntil ? new Date(profile.socialPackUntil) > new Date() : false;
   const friends = state.friends;
+
+  // Auto-clear the transient "request sent" notice.
+  useEffect(() => {
+    if (!state.notice) return;
+    const id = setTimeout(() => actions.clearNotice(), 2600);
+    return () => clearTimeout(id);
+  }, [state.notice]);
   const requests = state.friendRequests;
 
   useEffect(() => {
@@ -2225,6 +2235,12 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
         />
         <Btn label="Arkadaşlık İsteği Gönder" icon="paper-plane" kind="primary" onPress={onSendRequest} disabled={addInput.trim().length < 3} />
         {state.error ? <Text style={[styles.error, { marginTop: 6 }]}>{state.error}</Text> : null}
+        {state.notice ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 6 }}>
+            <Ionicons name="checkmark-circle" size={15} color={theme.primary} />
+            <Text style={{ color: theme.primary, fontSize: 12.5, fontWeight: '700' }}>{state.notice}</Text>
+          </View>
+        ) : null}
 
         {/* Tabs: Arkadaşlarım | Arkadaşlık İstekleri */}
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 18, marginBottom: 12 }}>
@@ -2291,35 +2307,66 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
           </View>
         ) : (
           friends.map((f) => (
-            <View key={f.userId} style={{
-              flexDirection: 'row', alignItems: 'center', gap: 12,
-              backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 8,
-              borderWidth: 1, borderColor: theme.border,
-            }}>
-              <Pressable onPress={() => actions.getUserProfile(f.userId)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-                <View style={{ position: 'relative' }}>
-                  <Ionicons name="person-circle" size={36} color={theme.accent} />
-                  {f.online ? <View style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>{f.displayName}</Text>
-                  <Text style={{ color: theme.muted, fontSize: 11 }}>{f.online ? 'Çevrimiçi' : f.arena.name}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={theme.muted} />
-              </Pressable>
-              <Pressable
-                onPress={() => setMatchModal(f.userId)}
-                style={{ backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 }}
-              >
-                <Text style={{ color: '#06131F', fontWeight: '800', fontSize: 10 }}>Dostluk Maçı</Text>
-              </Pressable>
-              <Pressable onPress={() => actions.removeFriend(f.userId)} hitSlop={8}>
-                <Ionicons name="close-circle" size={20} color={theme.muted} />
-              </Pressable>
-            </View>
+            <Pressable
+              key={f.userId}
+              onPress={() => setMenuFriend(f)}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 12,
+                backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 8,
+                borderWidth: 1, borderColor: theme.border,
+              }}
+            >
+              <View style={{ position: 'relative' }}>
+                <Ionicons name="person-circle" size={38} color={theme.accent} />
+                {f.online ? <View style={{ position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: 6, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }} numberOfLines={1}>{f.displayName}</Text>
+                <Text style={{ color: f.online ? theme.primary : theme.muted, fontSize: 11, fontWeight: '600' }}>{f.online ? 'Çevrimiçi' : f.arena.name}</Text>
+              </View>
+              {/* Trophy on the far right */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.bg2, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5, borderWidth: 1, borderColor: theme.border }}>
+                <Ionicons name="trophy" size={13} color={theme.gold} />
+                <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 13 }}>{f.trophies}</Text>
+              </View>
+              <Ionicons name="ellipsis-vertical" size={18} color={theme.muted} />
+            </Pressable>
           ))
         )}
       </ScrollView>
+
+      {/* Friend actions menu (tap a friend row) */}
+      <Modal visible={menuFriend !== null} transparent animationType="fade" onRequestClose={() => setMenuFriend(null)}>
+        <Pressable style={styles.modalBg} onPress={() => setMenuFriend(null)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <View style={{ alignItems: 'center', marginBottom: 6 }}>
+              <Ionicons name="person-circle" size={52} color={theme.accent} />
+              <Text style={styles.modalTitle}>{menuFriend?.displayName}</Text>
+              <Text style={styles.muted}>{menuFriend?.online ? 'Çevrimiçi' : (menuFriend?.arena.name ?? '')}</Text>
+            </View>
+            <Btn label="Dostluk Savaşı" kind="primary" icon="game-controller" onPress={() => { const id = menuFriend!.userId; setMenuFriend(null); setMatchModal(id); }} />
+            <Btn label="Profili Görüntüle" kind="blue" icon="person" onPress={() => { const id = menuFriend!.userId; setMenuFriend(null); actions.getUserProfile(id); }} />
+            <Btn label="Arkadaşlıktan Kaldır" kind="danger" icon="person-remove" onPress={() => { const f = menuFriend!; setMenuFriend(null); setConfirmRemove(f); }} />
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Remove-friend confirmation */}
+      <Modal visible={confirmRemove !== null} transparent animationType="fade" onRequestClose={() => setConfirmRemove(null)}>
+        <Pressable style={styles.modalBg} onPress={() => setConfirmRemove(null)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Ionicons name="warning" size={34} color={theme.danger} />
+            <Text style={styles.modalTitle}>{confirmRemove?.displayName} Kaldırılsın mı?</Text>
+            <Text style={[styles.muted, { textAlign: 'center', marginBottom: 14 }]}>
+              {confirmRemove?.displayName} adlı kişiyi arkadaşlarından çıkarmak istediğine emin misin?
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}><Btn label="İptal" kind="danger" icon="close" onPress={() => setConfirmRemove(null)} /></View>
+              <View style={{ flex: 1 }}><Btn label="Tamam" kind="blue" icon="checkmark" onPress={() => { actions.removeFriend(confirmRemove!.userId); setConfirmRemove(null); }} /></View>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Match mode selection modal */}
       <Modal visible={matchModal !== null} transparent animationType="fade" onRequestClose={() => setMatchModal(null)}>
