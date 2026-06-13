@@ -75,7 +75,7 @@ export interface GameState {
   emoteSeq: number;
 }
 
-const initialState: GameState = {
+export const initialState: GameState = {
   connected: false,
   phase: 'home',
   room: null,

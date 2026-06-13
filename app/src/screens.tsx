@@ -23,7 +23,8 @@ import { GOOGLE_IOS_CLIENT_ID } from './config';
 
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState } from './useCrossover';
-import type { ClubRef, Difficulty, GameMode, GameOptions, ProfileView, Scope, SpellInfo } from './protocol';
+import { initialState } from './useCrossover';
+import type { ClubRef, Difficulty, GameMode, GameOptions, ProfileView, RoomView, Scope, SpellInfo } from './protocol';
 import {
   EmoteCallout,
   EmoteSticker,
@@ -302,100 +303,126 @@ export function SplashScreen() {
 // ---- Interactive first-time tutorial (101 Plus-style guided simulation) ----
 const TUT_TEAMS = ['Galatasaray', 'Fenerbahçe', 'Beşiktaş', 'Trabzonspor', 'Real Madrid', 'Barcelona'];
 
+// Fake data driving the real match screens during the tutorial.
+const TUT_CLUBS: ClubRef[] = [
+  { id: 1, name: 'Galatasaray', logoUrl: null },
+  { id: 2, name: 'Fenerbahçe', logoUrl: null },
+  { id: 3, name: 'Beşiktaş', logoUrl: null },
+  { id: 4, name: 'Real Madrid', logoUrl: null },
+  { id: 5, name: 'Barcelona', logoUrl: null },
+  { id: 6, name: 'Trabzonspor', logoUrl: null },
+];
+const TUT_A: ClubRef = { id: 1, name: 'Galatasaray', logoUrl: null };
+const TUT_B: ClubRef = { id: 4, name: 'Real Madrid', logoUrl: null };
+const TUT_PROFILE = {
+  userId: 'you', displayName: 'Sen', trophies: 0, diamonds: 0, wins: 0, losses: 0,
+  ownedEmotes: [], equippedEmotes: [], usernameSet: true, socialPackUntil: null,
+  arena: { name: 'Mahalle Sahası', icon: '🏟️', minTrophies: 0 },
+};
+
+// Guided first-time tutorial that drives the REAL match screens (PickTeam → Guess
+// → Result) with scripted fake data, plus a coach overlay + skip. Step advances
+// when the player does the real action (pick a team, submit a guess).
 export function TutorialScreen({ onDone }: { onDone: () => void }) {
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(0); // 0 pick · 1 guess · 2 result
   const bubble = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     bubble.setValue(0);
     Animated.spring(bubble, { toValue: 1, useNativeDriver: true, friction: 7, tension: 80 }).start();
   }, [step]);
-  const next = () => setStep((s) => s + 1);
 
-  const TEXTS: { text: string; cta?: string }[] = [
-    { text: "Crossover'a hoş geldin! 👋 Sana 30 saniyede nasıl oynanacağını göstereyim.", cta: 'DEVAM' },
-    { text: 'Önce bir takım seçersin. Hadi, parlayan Galatasaray\'a dokun 👆' },
-    { text: 'Rakibin de takımını seçti: Real Madrid. Şimdi iki takımda da oynamış bir futbolcu bulmalısın.', cta: 'DEVAM' },
-    { text: 'İpucu: Hollandalı yıldız Wesley Sneijder hem Real Madrid hem Galatasaray\'da oynadı. Onu yazardın!', cta: 'DEVAM' },
-    { text: 'Doğru! 🎉 Rakipten önce bilen turu kazanır. İlk 3 turu kazanan maçı ve kupayı alır.', cta: 'DEVAM' },
-    { text: 'Harika, artık hazırsın! Bol şans ⚽', cta: 'BAŞLA' },
+  const future = Date.now() + 9_999_999;
+  const room = {
+    code: '', status: (step === 0 ? 'pick' : step === 1 ? 'guess' : 'result') as RoomView['status'],
+    youId: 'you',
+    players: [
+      { id: 'you', name: 'Sen', score: step >= 2 ? 1 : 0, wrongCount: 0, isHost: true, connected: true },
+      { id: 'opp', name: 'Rakip', score: 0, wrongCount: 0, isHost: false, connected: true },
+    ],
+  } as RoomView;
+
+  const fakeState: GameState = {
+    ...initialState,
+    connected: true,
+    profile: TUT_PROFILE as GameState['profile'],
+    room,
+    phase: step === 0 ? 'pick' : step === 1 ? 'guess' : 'result',
+    pickRole: 'team',
+    picked: false,
+    pickEndsAt: future,
+    guessEndsAt: future,
+    clubResults: TUT_CLUBS,
+    teams: { teamA: TUT_A, teamB: TUT_B },
+    revealMode: 'team-team',
+    matchOver: false,
+    result: step >= 2
+      ? {
+          correct: true, reason: 'both', autocorrected: false,
+          answeredById: 'you', answeredByName: 'Sen', guess: 'Wesley Sneijder',
+          teamA: TUT_A, teamB: TUT_B,
+          matchedPlayerName: 'Wesley Sneijder', matchedPlayerImageUrl: null,
+          spellsA: [], spellsB: [], allClubs: [],
+          commonPlayers: [{ name: 'Wesley Sneijder', imageUrl: null }],
+        }
+      : null,
+  };
+
+  // Real actions are replaced with no-ops; the key ones advance the simulation.
+  const fakeActions = useMemo(
+    () =>
+      new Proxy(
+        {},
+        {
+          get(_t, prop) {
+            if (prop === 'pickTeam') return () => setStep(1);
+            if (prop === 'submitGuess') return () => setStep(2);
+            if (prop === 'leave' || prop === 'playAgain' || prop === 'acceptRematch' || prop === 'ready') return onDone;
+            return () => {};
+          },
+        },
+      ) as unknown as Actions,
+    [onDone],
+  );
+
+  const COACH: { text: string; cta?: string }[] = [
+    { text: "Hoş geldin! 👋 Önce bir takım seç — Galatasaray'a dokun 👇" },
+    { text: 'Rakibin Real Madrid seçti. İki takımda da oynamış oyuncuyu yaz. İpucu: Wesley Sneijder — sonra Gönder’e bas.' },
+    { text: 'Doğru! 🎉 Rakipten önce bilen turu kazanır; ilk 3 turu kazanan maçı ve kupayı alır. Hazırsın!', cta: 'BAŞLA' },
   ];
-  const cur = TEXTS[Math.min(step, TEXTS.length - 1)]!;
+  const cur = COACH[Math.min(step, COACH.length - 1)]!;
+
+  const screen =
+    step === 0 ? <PickTeamScreen state={fakeState} actions={fakeActions} />
+    : step === 1 ? <GuessScreen state={fakeState} actions={fakeActions} />
+    : <ResultScreen state={fakeState} actions={fakeActions} />;
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: 50, paddingHorizontal: 22, paddingBottom: 34 }}>
-      <Pressable onPress={onDone} style={{ position: 'absolute', top: 50, right: 20, zIndex: 20 }} hitSlop={12}>
-        <Text style={{ color: theme.muted, fontWeight: '700', fontSize: 14 }}>Atla</Text>
-      </Pressable>
-
-      {/* Simulation stage */}
-      <View style={{ flex: 1, justifyContent: 'center' }}>
-        {step <= 0 ? (
-          <View style={{ alignItems: 'center', gap: 14 }}>
-            <Ionicons name="school" size={72} color={theme.primary} />
-            <Text style={{ color: theme.text, fontSize: 22, fontWeight: '900' }}>Nasıl Oynanır?</Text>
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      {screen}
+      <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+        <Pressable
+          onPress={onDone}
+          style={{ position: 'absolute', top: 50, right: 16, zIndex: 30, backgroundColor: theme.card, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: theme.border }}
+          hitSlop={10}
+        >
+          <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13 }}>Atla ›</Text>
+        </Pressable>
+        <Animated.View
+          pointerEvents="box-none"
+          style={{ position: 'absolute', left: 16, right: 16, bottom: 28, transform: [{ scale: bubble }], opacity: bubble, backgroundColor: theme.card, borderRadius: 18, borderWidth: 1.5, borderColor: theme.primary, padding: 16 }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Ionicons name="football" size={18} color={theme.primary} />
+            <Text style={{ color: theme.primary, fontWeight: '900', fontSize: 12, letterSpacing: 1 }}>KOÇ · ADIM {step + 1}/3</Text>
           </View>
-        ) : step === 1 ? (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 }}>
-            {TUT_TEAMS.map((tname) => {
-              const target = tname === 'Galatasaray';
-              return (
-                <Pressable
-                  key={tname}
-                  onPress={() => { if (target) next(); }}
-                  style={{
-                    width: '30%', alignItems: 'center', gap: 6, paddingVertical: 14,
-                    backgroundColor: theme.card, borderRadius: 14,
-                    borderWidth: 2, borderColor: target ? theme.primary : theme.border,
-                    opacity: target ? 1 : 0.45,
-                  }}
-                >
-                  <ClubBadge name={tname} size={42} logoUrl={null} />
-                  <Text style={{ color: theme.text, fontSize: 10.5, fontWeight: '600', textAlign: 'center' }} numberOfLines={1}>{tname}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : (
-          <View style={{ alignItems: 'center', gap: 20 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18 }}>
-              <View style={{ alignItems: 'center', gap: 6 }}>
-                <ClubBadge name="Galatasaray" size={58} logoUrl={null} />
-                <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>Galatasaray</Text>
-              </View>
-              <Text style={{ color: theme.accent, fontSize: 22, fontWeight: '900' }}>✕</Text>
-              <View style={{ alignItems: 'center', gap: 6 }}>
-                <ClubBadge name="Real Madrid" size={58} logoUrl={null} />
-                <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>Real Madrid</Text>
-              </View>
+          <Text style={{ color: theme.text, fontSize: 15, lineHeight: 22 }}>{cur.text}</Text>
+          {cur.cta ? (
+            <View style={{ marginTop: 12 }}>
+              <Btn label={cur.cta} kind="primary" icon="rocket" onPress={onDone} />
             </View>
-            {step >= 3 ? (
-              <View style={{
-                backgroundColor: theme.card, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 22,
-                alignItems: 'center', gap: 4, borderWidth: 2, borderColor: step >= 4 ? theme.primary : theme.border,
-              }}>
-                <Text style={{ color: step >= 4 ? theme.primary : theme.text, fontSize: 18, fontWeight: '900' }}>Wesley Sneijder</Text>
-                <Text style={{ color: step >= 4 ? theme.primary : theme.muted, fontSize: 12 }}>
-                  {step >= 4 ? '✓ İki takımda da oynadı!' : '… ortak oyuncu'}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        )}
+          ) : null}
+        </Animated.View>
       </View>
-
-      {/* Coach bubble */}
-      <Animated.View style={{ transform: [{ scale: bubble }], opacity: bubble, backgroundColor: theme.card, borderRadius: 18, borderWidth: 1, borderColor: theme.primary, padding: 16 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-          <Ionicons name="football" size={18} color={theme.primary} />
-          <Text style={{ color: theme.primary, fontWeight: '900', fontSize: 12, letterSpacing: 1 }}>KOÇ</Text>
-        </View>
-        <Text style={{ color: theme.text, fontSize: 15, lineHeight: 22 }}>{cur.text}</Text>
-        {cur.cta ? (
-          <View style={{ marginTop: 12 }}>
-            <Btn label={cur.cta} kind="primary" icon={cur.cta === 'BAŞLA' ? 'rocket' : 'arrow-forward'} onPress={cur.cta === 'BAŞLA' ? onDone : next} />
-          </View>
-        ) : null}
-      </Animated.View>
     </View>
   );
 }
