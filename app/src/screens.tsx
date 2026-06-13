@@ -91,6 +91,7 @@ interface Props {
   state: GameState;
   actions: Actions;
   onGoToStore?: () => void;
+  tutorial?: boolean; // running inside the guided simulation → no emotes, no keyboard autofocus
 }
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -453,11 +454,12 @@ const TUT_PROFILE = {
 export function TutorialScreen({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0); // 0 pick · 1 guess · 2 result
   const [wrong, setWrong] = useState(false); // typed a wrong guess in the sim
+  const [gateOpen, setGateOpen] = useState(true); // centered coach card blocks interaction until "Devam Et"
   const bubble = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     bubble.setValue(0);
     Animated.spring(bubble, { toValue: 1, useNativeDriver: true, friction: 7, tension: 80 }).start();
-  }, [step, wrong]);
+  }, [step, wrong, gateOpen]);
 
   const future = Date.now() + 9_999_999;
   const room = {
@@ -496,18 +498,19 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
   };
 
   // Real actions are replaced with no-ops; the key ones advance the simulation.
-  // submitGuess actually checks the typed answer so the sim behaves like the game.
+  // After each real action we re-open the centered coach gate for the next step.
   const fakeActions = useMemo(
     () =>
       new Proxy(
         {},
         {
           get(_t, prop) {
-            if (prop === 'pickTeam') return () => setStep(1);
+            if (prop === 'pickTeam') return () => { setWrong(false); setStep(1); setGateOpen(true); };
             if (prop === 'submitGuess')
               return (text: string) => {
                 const ok = String(text ?? '').toLocaleLowerCase('tr').replace(/[^a-zçğıöşü]/g, '').includes('sneijder');
-                if (ok) { setWrong(false); setStep(2); } else { setWrong(true); }
+                if (ok) { setWrong(false); setStep(2); setGateOpen(true); }
+                else { setWrong(true); setGateOpen(true); }
               };
             if (prop === 'leave' || prop === 'playAgain' || prop === 'acceptRematch' || prop === 'ready') return onDone;
             return () => {};
@@ -517,52 +520,83 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
     [onDone],
   );
 
-  const COACH: { text: string; cta?: string }[] = [
-    { text: "Hoş geldin! 👋 Önce bir takım seç — Galatasaray'a dokun 👇" },
-    { text: wrong
-        ? 'Olmadı 🙈 İki takımda da oynayan oyuncu Wesley Sneijder. Aynen yaz ve Gönder’e bas.'
-        : 'Rakibin Real Madrid seçti. İki takımda da oynamış oyuncuyu yaz — yazman gereken: Wesley Sneijder, sonra Gönder’e bas.' },
-    { text: 'Doğru! 🎉 Sneijder hem Galatasaray hem Real Madrid forması giydi. Rakipten önce bilen turu kazanır; ilk 3 turu alan maçı ve kupayı kazanır!', cta: 'BAŞLA' },
+  // Per step: the centered coach text (shown until "Devam Et"), the slim top
+  // hint (shown while interacting), and the gate button label.
+  const STEPS = [
+    {
+      gate: "Hoş geldin! 👋 Hızlı bir alıştırma yapalım. İki takımda da oynamış futbolcuyu bulacaksın.\n\nDevam Et'e bas, sonra Galatasaray'a dokun.",
+      hint: '👇 Galatasaray’a dokun',
+      cta: 'Devam Et',
+    },
+    {
+      gate: wrong
+        ? "Olmadı 🙈 Doğru cevap: Wesley Sneijder.\n\nDevam Et'e bas ve aynen yaz."
+        : "Sıra sende! Galatasaray ve Real Madrid'in ikisinde de oynayan futbolcu: Wesley Sneijder.\n\nDevam Et'e bas, yaz ve Gönder'e bas.",
+      hint: '⌨️ “Wesley Sneijder” yaz ve Gönder’e bas',
+      cta: 'Devam Et',
+    },
+    {
+      gate: 'Doğru! 🎉 Sneijder hem Galatasaray hem Real Madrid forması giydi.\n\nRakipten önce bilen turu kazanır; ilk 3 turu alan kupayı kazanır!',
+      hint: '',
+      cta: 'BAŞLA',
+    },
   ];
-  const cur = COACH[Math.min(step, COACH.length - 1)]!;
+  const cur = STEPS[Math.min(step, STEPS.length - 1)]!;
 
   const screen =
-    step === 0 ? <PickTeamScreen state={fakeState} actions={fakeActions} />
-    : step === 1 ? <GuessScreen state={fakeState} actions={fakeActions} />
-    : <ResultScreen state={fakeState} actions={fakeActions} />;
+    step === 0 ? <PickTeamScreen state={fakeState} actions={fakeActions} tutorial />
+    : step === 1 ? <GuessScreen state={fakeState} actions={fakeActions} tutorial />
+    : <ResultScreen state={fakeState} actions={fakeActions} tutorial />;
+
+  const onGate = () => { if (step >= 2) onDone(); else setGateOpen(false); };
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       {screen}
-      <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-        <Pressable
-          onPress={onDone}
-          style={{ position: 'absolute', top: 50, right: 16, zIndex: 30, backgroundColor: theme.card, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: theme.border }}
-          hitSlop={10}
-        >
-          <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13 }}>Atla ›</Text>
-        </Pressable>
-        <Animated.View
-          pointerEvents="box-none"
-          style={{
-            position: 'absolute', left: 16, right: 16,
-            // Guess step: keep the coach at the TOP so the keyboard never hides it.
-            ...(step === 1 ? { top: 92 } : { bottom: 28 }),
-            transform: [{ scale: bubble }], opacity: bubble, backgroundColor: theme.card, borderRadius: 18, borderWidth: 1.5, borderColor: wrong ? theme.danger : theme.primary, padding: 16, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 10,
-          }}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <Ionicons name="football" size={18} color={theme.primary} />
-            <Text style={{ color: theme.primary, fontWeight: '900', fontSize: 12, letterSpacing: 1 }}>KOÇ · ADIM {step + 1}/3</Text>
+
+      {/* Slim top hint while the player is interacting (gate closed) */}
+      {!gateOpen && cur.hint ? (
+        <View pointerEvents="none" style={{ position: 'absolute', top: 96, left: 16, right: 16, alignItems: 'center' }}>
+          <View style={{ backgroundColor: theme.card, borderRadius: 14, borderWidth: 1.5, borderColor: theme.primary, paddingVertical: 9, paddingHorizontal: 14, maxWidth: '100%' }}>
+            <Text style={{ color: theme.text, fontSize: 13.5, fontWeight: '700', textAlign: 'center' }}>{cur.hint}</Text>
           </View>
-          <Text style={{ color: theme.text, fontSize: 15, lineHeight: 22 }}>{cur.text}</Text>
-          {cur.cta ? (
-            <View style={{ marginTop: 12 }}>
-              <Btn label={cur.cta} kind="primary" icon="rocket" onPress={onDone} />
+        </View>
+      ) : null}
+
+      {/* Result step: keep the win + career fully visible, celebration card at the bottom */}
+      {step >= 2 ? (
+        <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16 }}>
+          <Animated.View style={{ transform: [{ scale: bubble }], opacity: bubble, backgroundColor: theme.card, borderRadius: 20, borderWidth: 2, borderColor: theme.primary, padding: 18, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 14 }}>
+            <Text style={{ color: theme.text, fontSize: 14.5, lineHeight: 22, textAlign: 'center', marginBottom: 14 }}>{cur.gate}</Text>
+            <View style={{ width: '100%' }}>
+              <Btn label={cur.cta} kind="primary" icon="rocket" onPress={onGate} big />
             </View>
-          ) : null}
-        </Animated.View>
-      </View>
+          </Animated.View>
+        </View>
+      ) : gateOpen ? (
+        /* Pick/Guess step: centered coach gate — blocks interaction until "Devam Et" */
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(6,10,28,0.82)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }}>
+          <Animated.View style={{ width: '100%', transform: [{ scale: bubble }], opacity: bubble, backgroundColor: theme.card, borderRadius: 22, borderWidth: 2, borderColor: wrong ? theme.danger : theme.primary, padding: 22, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 16 }}>
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: wrong ? theme.danger : theme.primary, marginBottom: 12 }}>
+              <Ionicons name={wrong ? 'alert' : 'football'} size={28} color={wrong ? theme.danger : theme.primary} />
+            </View>
+            <Text style={{ color: theme.muted, fontWeight: '900', fontSize: 11, letterSpacing: 1.5, marginBottom: 8 }}>KOÇ · ADIM {step + 1}/3</Text>
+            <Text style={{ color: theme.text, fontSize: 15.5, lineHeight: 23, textAlign: 'center', marginBottom: 18 }}>{cur.gate}</Text>
+            <View style={{ width: '100%' }}>
+              <Btn label={cur.cta} kind="primary" icon="arrow-forward" onPress={onGate} big />
+            </View>
+          </Animated.View>
+        </View>
+      ) : null}
+
+      {/* Skip — always reachable, on top */}
+      <Pressable
+        onPress={onDone}
+        style={{ position: 'absolute', top: 50, right: 16, zIndex: 40, backgroundColor: theme.card, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: theme.border }}
+        hitSlop={10}
+      >
+        <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13 }}>Atla ›</Text>
+      </Pressable>
     </View>
   );
 }
@@ -1328,7 +1362,7 @@ function PickTimer({ pickEndsAt }: { pickEndsAt: number | null }) {
   );
 }
 
-export function PickTeamScreen({ state, actions }: Props) {
+export function PickTeamScreen({ state, actions, tutorial }: Props) {
   const [q, setQ] = useState('');
   const [countryQ, setCountryQ] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1382,7 +1416,7 @@ export function PickTeamScreen({ state, actions }: Props) {
             </Pressable>
           ))}
         </View>
-        <EmoteLayer state={state} actions={actions} fab="top-right" />
+        {!tutorial ? <EmoteLayer state={state} actions={actions} fab="top-right" /> : null}
       </Screen>
     );
   }
@@ -1415,7 +1449,7 @@ export function PickTeamScreen({ state, actions }: Props) {
             value={countryQ}
             onChangeText={setCountryQ}
             style={styles.searchInput}
-            autoFocus
+            autoFocus={!tutorial}
           />
         </View>
         <ScrollView style={{ alignSelf: 'stretch' }} keyboardShouldPersistTaps="handled">
@@ -1428,7 +1462,7 @@ export function PickTeamScreen({ state, actions }: Props) {
           ))}
           {filtered.length === 0 && countryQ.trim() ? <Text style={styles.muted}>{t('common.noResults')}</Text> : null}
         </ScrollView>
-        <EmoteLayer state={state} actions={actions} fab="top-right" />
+        {!tutorial ? <EmoteLayer state={state} actions={actions} fab="top-right" /> : null}
       </Screen>
     );
   }
@@ -1449,7 +1483,7 @@ export function PickTeamScreen({ state, actions }: Props) {
           value={q}
           onChangeText={onChange}
           style={styles.searchInput}
-          autoFocus
+          autoFocus={!tutorial}
         />
       </View>
       <ScrollView
@@ -1478,13 +1512,13 @@ export function PickTeamScreen({ state, actions }: Props) {
           <Text style={[styles.muted, { width: '100%', marginTop: 20 }]}>{t('common.noResults')}</Text>
         ) : null}
       </ScrollView>
-      <EmoteLayer state={state} actions={actions} fab="top-right" />
+      {!tutorial ? <EmoteLayer state={state} actions={actions} fab="top-right" /> : null}
     </Screen>
   );
 }
 
 // ---- Reveal + Guess ----
-export function GuessScreen({ state, actions }: Props) {
+export function GuessScreen({ state, actions, tutorial }: Props) {
   const [text, setText] = useState('');
   const teams = state.teams;
   const room = state.room!;
@@ -1580,7 +1614,7 @@ export function GuessScreen({ state, actions }: Props) {
                 value={text}
                 onChangeText={setText}
                 style={styles.input}
-                autoFocus
+                autoFocus={!tutorial}
                 editable={!youAnswered}
                 onSubmitEditing={() => text.trim() && actions.submitGuess(text.trim())}
               />
@@ -1602,7 +1636,7 @@ export function GuessScreen({ state, actions }: Props) {
           )}
         </>
       )}
-      <EmoteLayer state={state} actions={actions} fab="top-right" />
+      {!tutorial ? <EmoteLayer state={state} actions={actions} fab="top-right" /> : null}
     </Screen>
   );
 }
@@ -2881,7 +2915,7 @@ function Confetti() {
   );
 }
 
-export function ResultScreen({ state, actions }: Props) {
+export function ResultScreen({ state, actions, tutorial }: Props) {
   const r = state.result!;
   const room = state.room!;
   const you = room.players.find((p) => p.id === room.youId);
@@ -3115,7 +3149,7 @@ export function ResultScreen({ state, actions }: Props) {
         <Btn label={t('result.leave')} kind="ghost" icon="close" onPress={actions.leave} />
       </ScrollView>
       {matchOver && youWon ? <Confetti /> : null}
-      <EmoteLayer state={state} actions={actions} fab="top-right" />
+      {!tutorial ? <EmoteLayer state={state} actions={actions} fab="top-right" /> : null}
     </Screen>
   );
 }
