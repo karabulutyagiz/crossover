@@ -137,33 +137,70 @@ function Btn({
   const [bg, lip] = BTN_PALETTE[kind] ?? BTN_PALETTE.primary!;
   const ghost = kind === 'ghost';
   const fg = ghost ? theme.text : '#06131F';
-  const depth = ghost ? 0 : 5;
+  const depth = ghost ? 0 : 6;
   const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, depth] });
+  const radius = big ? 20 : 17;
   return (
     <Pressable
       disabled={disabled}
-      onPressIn={() => Animated.timing(press, { toValue: 1, duration: 60, useNativeDriver: true }).start()}
-      onPressOut={() => Animated.timing(press, { toValue: 0, duration: 110, useNativeDriver: true }).start()}
+      onPressIn={() => Animated.timing(press, { toValue: 1, duration: 55, useNativeDriver: true }).start()}
+      onPressOut={() => Animated.timing(press, { toValue: 0, duration: 120, useNativeDriver: true }).start()}
       onPress={disabled ? undefined : onPress}
-      style={{ opacity: disabled ? 0.45 : 1, marginVertical: 6 }}
+      style={{ opacity: disabled ? 0.5 : 1, marginVertical: 6 }}
     >
-      <View style={{ backgroundColor: ghost ? 'transparent' : lip, borderRadius: 16, paddingBottom: depth }}>
+      {/* darker bottom "lip" + drop shadow gives the chunky 3D base */}
+      <View
+        style={{
+          backgroundColor: ghost ? 'transparent' : lip,
+          borderRadius: radius,
+          paddingBottom: depth,
+          shadowColor: '#000',
+          shadowOpacity: ghost ? 0 : 0.4,
+          shadowRadius: 9,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: ghost ? 0 : 7,
+        }}
+      >
         <Animated.View
           style={{
             transform: [{ translateY: ty }],
             backgroundColor: bg,
-            borderRadius: 16,
+            borderRadius: radius,
             paddingVertical: big ? 18 : 14,
             paddingHorizontal: 18,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
-            borderWidth: ghost ? 2 : 0,
-            borderColor: theme.border,
+            borderWidth: ghost ? 2 : 2.5,
+            borderColor: ghost ? theme.border : lip, // thick beveled outline
+            overflow: 'hidden',
           }}
         >
+          {/* glossy top sheen */}
+          {!ghost ? (
+            <View
+              pointerEvents="none"
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '46%', backgroundColor: 'rgba(255,255,255,0.28)', borderTopLeftRadius: radius - 2, borderTopRightRadius: radius - 2 }}
+            />
+          ) : null}
           {icon ? <Ionicons name={icon} size={big ? 24 : 20} color={fg} style={{ marginRight: 9 }} /> : null}
-          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: fg, fontSize: big ? 18 : 15, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5, flexShrink: 1 }}>{label}</Text>
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+            style={{
+              color: fg,
+              fontSize: big ? 19 : 16,
+              fontFamily: 'Poppins-ExtraBold',
+              letterSpacing: 0.5,
+              flexShrink: 1,
+              textShadowColor: ghost ? 'transparent' : 'rgba(255,255,255,0.4)',
+              textShadowOffset: { width: 0, height: 1 },
+              textShadowRadius: 0,
+            }}
+          >
+            {label}
+          </Text>
         </Animated.View>
       </View>
     </Pressable>
@@ -525,21 +562,37 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
 // One emote pop: springs in, holds, fades out. Re-mounted (via `key={n}`) on
 // every new emote so the same sticker can replay.
 function TransientCallout({ emoteId }: { emoteId: string }) {
-  const a = useRef(new Animated.Value(0)).current;
+  const a = useRef(new Animated.Value(0)).current; // entrance 0→1
+  const bob = useRef(new Animated.Value(0)).current; // idle bob while held
   const [gone, setGone] = useState(false);
   useEffect(() => {
     setGone(false);
-    Animated.spring(a, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }).start();
-    const t = setTimeout(() => {
-      Animated.timing(a, { toValue: 0, duration: 240, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(
+    a.setValue(0);
+    bob.setValue(0);
+    // Punchy bounce-in (overshoot), then a gentle living bob, then pop out.
+    Animated.spring(a, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }).start();
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(bob, { toValue: 1, duration: 720, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(bob, { toValue: 0, duration: 720, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    const tm = setTimeout(() => {
+      loop.stop();
+      Animated.timing(a, { toValue: 0, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(
         ({ finished }) => finished && setGone(true),
       );
     }, 3000);
-    return () => clearTimeout(t);
-  }, [a, emoteId]);
+    return () => { clearTimeout(tm); loop.stop(); };
+  }, [a, bob, emoteId]);
   if (gone) return null;
+  const scale = a.interpolate({ inputRange: [0, 0.7, 1], outputRange: [0.3, 1.14, 1] });
+  const rot = a.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['-11deg', '5deg', '0deg'] });
+  const by = bob.interpolate({ inputRange: [0, 1], outputRange: [0, -7] });
+  const op = a.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0, 1, 1] });
   return (
-    <Animated.View style={{ opacity: a, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }) }] }}>
+    <Animated.View style={{ opacity: op, transform: [{ scale }, { rotate: rot }, { translateY: by }] }}>
       <EmoteCallout id={emoteId} />
     </Animated.View>
   );
