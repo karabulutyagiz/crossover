@@ -62,6 +62,17 @@ export class BotPlayer implements Transport {
       case 'guess_phase':
         this.scheduleGuess();
         break;
+      case 'pass_locked':
+        // Opponent passed. Agree to pass too (voiding the round) with a
+        // difficulty-based chance — easier bots skip along more readily.
+        if (msg.byId !== this.id) {
+          const agreeChance = this.difficulty === 'easy' ? 0.8 : this.difficulty === 'medium' ? 0.5 : 0.25;
+          if (Math.random() < agreeChance) {
+            this.clearTimer();
+            this.act({ type: 'pass' });
+          }
+        }
+        break;
       case 'waiting_ready' as any:
         setTimeout(() => this.act({ type: 'ready' }), 500);
         break;

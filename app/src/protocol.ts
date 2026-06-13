@@ -15,7 +15,7 @@ export interface SpellInfo {
   endYear: number | null;
 }
 
-export type VerifyReason = 'both' | 'not_both' | 'no_match' | 'timeout' | 'no_common' | 'same_team';
+export type VerifyReason = 'both' | 'not_both' | 'no_match' | 'timeout' | 'no_common' | 'same_team' | 'passed';
 
 export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
 
@@ -132,6 +132,7 @@ export type ClientMsg =
   | { type: 'pick_country'; country: string }
   | { type: 'pick_letter'; letter: string }
   | { type: 'submit_guess'; text: string }
+  | { type: 'pass' }
   | { type: 'ready' }
   | { type: 'play_again' }
   | { type: 'rematch_response'; accept: boolean }
@@ -157,6 +158,7 @@ export type ServerMsg =
   | { type: 'reveal_teams'; teamA: ClubRef; teamB: ClubRef; mode?: GameMode; country?: string; letter?: string }
   | { type: 'guess_phase'; endsAt: number }
   | { type: 'guess_locked'; byId: string; byName: string }
+  | { type: 'pass_locked'; byId: string; byName: string }
   | {
       type: 'result';
       result: RoundResult;

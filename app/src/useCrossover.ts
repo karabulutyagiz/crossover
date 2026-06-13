@@ -43,6 +43,7 @@ export interface GameState {
   pickEndsAt: number | null;
   guessEndsAt: number | null;
   locked: { byId: string; byName: string } | null;
+  passedBy: string[]; // player ids who passed this round
   result: RoundResult | null;
   clubResults: ClubRef[];
   scopes: ScopesList | null;
@@ -86,6 +87,7 @@ export const initialState: GameState = {
   pickEndsAt: null,
   guessEndsAt: null,
   locked: null,
+  passedBy: [],
   result: null,
   clubResults: [],
   scopes: null,
@@ -207,6 +209,7 @@ function reducer(state: GameState, action: Action): GameState {
         result: null,
         teams: null,
         locked: null,
+        passedBy: [],
         trophyDelta: null,
         matchOver: false,
         matchWinnerId: null,
@@ -218,7 +221,7 @@ function reducer(state: GameState, action: Action): GameState {
         iReady: false,
       };
     case 'pick_phase':
-      return { ...state, phase: 'pick', picked: false, pickEndsAt: action.endsAt, pickRole: (action as any).pickRole ?? 'team', teams: null, locked: null, result: null, clubResults: [] };
+      return { ...state, phase: 'pick', picked: false, pickEndsAt: action.endsAt, pickRole: (action as any).pickRole ?? 'team', teams: null, locked: null, passedBy: [], result: null, clubResults: [] };
     case 'reveal_teams':
       return {
         ...state,
@@ -232,6 +235,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, phase: 'guess', guessEndsAt: action.endsAt };
     case 'guess_locked':
       return { ...state, locked: { byId: action.byId, byName: action.byName } };
+    case 'pass_locked':
+      return { ...state, passedBy: state.passedBy.includes(action.byId) ? state.passedBy : [...state.passedBy, action.byId] };
     case 'result':
       return {
         ...state,
@@ -440,6 +445,7 @@ export function useCrossover() {
     },
     searchClubs: (q: string) => send({ type: 'search_clubs', reqId: 'q', q }),
     submitGuess: (text: string) => send({ type: 'submit_guess', text }),
+    pass: () => send({ type: 'pass' }),
     ready: () => {
       send({ type: 'ready' });
       dispatch({ type: '_ready' as any });

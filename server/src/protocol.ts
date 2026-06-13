@@ -84,6 +84,7 @@ export type ClientMsg =
   | { type: 'pick_country'; country: string }  // country-team mode: pick a nationality
   | { type: 'pick_letter'; letter: string }     // letter-team mode: pick a letter (A-Z)
   | { type: 'submit_guess'; text: string }
+  | { type: 'pass' } // skip this round; if both players pass, the round is voided (no points)
   | { type: 'ready' } // ready for next round
   | { type: 'play_again' } // request a rematch after the match ends
   | { type: 'rematch_response'; accept: boolean }
@@ -103,7 +104,7 @@ export type ClientMsg =
 // ---- Server -> Client ----
 export interface RoundResult {
   correct: boolean;
-  reason: VerifyReason | 'timeout' | 'no_common' | 'same_team';
+  reason: VerifyReason | 'timeout' | 'no_common' | 'same_team' | 'passed';
   autocorrected: boolean;
   answeredById: string | null;
   answeredByName: string | null;
@@ -128,6 +129,7 @@ export type ServerMsg =
   | { type: 'reveal_teams'; teamA: ClubRef; teamB: ClubRef; mode?: GameMode; country?: string; letter?: string }
   | { type: 'guess_phase'; endsAt: number }
   | { type: 'guess_locked'; byId: string; byName: string }
+  | { type: 'pass_locked'; byId: string; byName: string } // a player chose to pass this round
   // matchOver: a player reached `target` wins → the match is over (offer rematch).
   | {
       type: 'result';

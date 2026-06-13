@@ -64,6 +64,7 @@ type Actions = {
   pickLetter: (letter: string) => void;
   searchClubs: (q: string) => void;
   submitGuess: (text: string) => void;
+  pass: () => void;
   ready: () => void;
   playAgain: () => void;
   acceptRematch: () => void;
@@ -1340,6 +1341,8 @@ export function GuessScreen({ state, actions }: Props) {
   const room = state.room!;
   const youAnswered = state.locked?.byId === room.youId;
   const someoneElseAnswered = state.locked && state.locked.byId !== room.youId;
+  const youPassed = state.passedBy.includes(room.youId);
+  const oppPassed = state.passedBy.some((id) => id !== room.youId);
 
   const [secs, setSecs] = useState<number | null>(null);
   useEffect(() => {
@@ -1401,6 +1404,11 @@ export function GuessScreen({ state, actions }: Props) {
               <Ionicons name="lock-closed" size={28} color={theme.muted} />
               <Text style={styles.muted}>{t('guess.locked', { name: state.locked?.byName ?? '' })}</Text>
             </View>
+          ) : youPassed ? (
+            <View style={styles.center}>
+              <Ionicons name="play-skip-forward" size={30} color={theme.accent} />
+              <Text style={styles.muted}>{t('guess.youPassed')}</Text>
+            </View>
           ) : (
             <>
               <Text style={styles.h1}>
@@ -1410,6 +1418,12 @@ export function GuessScreen({ state, actions }: Props) {
                   ? t('guess.titleLetter', { letter: state.revealLetter, team: teams.teamB.name })
                   : t('guess.title')}
               </Text>
+              {oppPassed ? (
+                <View style={styles.passHint}>
+                  <Ionicons name="play-skip-forward" size={14} color={theme.accent} />
+                  <Text style={styles.passHintText}>{t('guess.oppPassed')}</Text>
+                </View>
+              ) : null}
               <TextInput
                 placeholder={t('guess.placeholder')}
                 placeholderTextColor={theme.muted}
@@ -1426,6 +1440,14 @@ export function GuessScreen({ state, actions }: Props) {
                 icon="send"
                 onPress={() => actions.submitGuess(text.trim())}
                 disabled={!text.trim() || youAnswered}
+              />
+              <View style={{ height: 8 }} />
+              <Btn
+                label={t('guess.pass')}
+                kind="ghost"
+                icon="play-skip-forward"
+                onPress={actions.pass}
+                disabled={youAnswered}
               />
             </>
           )}
@@ -2650,6 +2672,8 @@ export function ResultScreen({ state, actions }: Props) {
       return { icon: 'swap-horizontal' as IoniconName, color: theme.accent, headline: t('result.roundSkipped') };
     if (r.reason === 'no_common')
       return { icon: 'information-circle-outline' as IoniconName, color: theme.accent, headline: t('result.roundSkipped') };
+    if (r.reason === 'passed')
+      return { icon: 'play-skip-forward' as IoniconName, color: theme.accent, headline: t('result.roundSkipped') };
     if (r.reason === 'timeout')
       return { icon: 'time' as IoniconName, color: theme.muted, headline: t('result.timeUp') };
     return r.correct
@@ -2699,6 +2723,8 @@ export function ResultScreen({ state, actions }: Props) {
                 : state.revealMode === 'letter-team' ? t('result.noCommonLetter')
                 : t('result.noCommon')}
             </Text>
+          ) : r.reason === 'passed' ? (
+            <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.passed')}</Text>
           ) : null}
           {r.matchedPlayerImageUrl ? (
             <Image source={{ uri: r.matchedPlayerImageUrl }} style={styles.playerPhoto} />
@@ -2718,7 +2744,7 @@ export function ResultScreen({ state, actions }: Props) {
         </View>
 
         {/* Per-round detail (always shown, including the match-winning round) */}
-        {r.reason !== 'no_common' && r.reason !== 'same_team' ? (
+        {r.reason !== 'no_common' && r.reason !== 'same_team' && r.reason !== 'passed' ? (
           <>
             <View style={styles.teamResultRow}>
               {state.revealMode === 'country-team' ? (
@@ -2934,6 +2960,8 @@ const styles = StyleSheet.create({
   teamName: { color: theme.text, fontSize: 13, fontWeight: '700', textAlign: 'center' },
   plus: { color: theme.accent, fontSize: 22, fontWeight: '900' },
   timer: { color: theme.accent, fontSize: 22, fontWeight: '900', textAlign: 'center', marginTop: 8 },
+  passHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: theme.accent + '1F', borderRadius: 12, paddingVertical: 7, paddingHorizontal: 12, marginBottom: 8, borderWidth: 1, borderColor: theme.accent + '55' },
+  passHintText: { color: theme.accent, fontSize: 12, fontWeight: '700', flexShrink: 1 },
   playerPhoto: { width: 104, height: 104, borderRadius: 52, marginTop: 10, borderWidth: 3, borderColor: theme.primary, backgroundColor: theme.card },
   matched: { color: theme.text, fontSize: 19, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginTop: 4 },
   matchScore: { color: theme.text, fontSize: 44, fontWeight: '900', letterSpacing: 3, marginTop: 6 },

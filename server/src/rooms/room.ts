@@ -61,6 +61,7 @@ interface Round {
   teamA?: ClubRef;
   teamB?: ClubRef;
   answeredBy?: string;
+  passedBy?: Set<string>; // players who chose to pass this round
   finished: boolean;
 }
 
@@ -159,6 +160,8 @@ export class Room {
         return this.handlePickLetter(playerId, msg.letter);
       case 'submit_guess':
         return this.handleGuess(playerId, msg.text);
+      case 'pass':
+        return this.handlePass(playerId);
       case 'ready':
         return this.handleReady(playerId);
       case 'play_again':
@@ -443,10 +446,44 @@ export class Room {
   private handleGuess(playerId: string, text: string): void {
     if (this.status !== 'guess' || !this.round || this.round.finished) return;
     if (this.round.answeredBy) return;
+    if (this.round.passedBy?.has(playerId)) return; // you already passed this round
     this.round.answeredBy = playerId;
     const p = this.players.get(playerId);
     this.broadcast({ type: 'guess_locked', byId: playerId, byName: p?.name ?? '' });
     void this.evaluate(playerId, text);
+  }
+
+  // A player passes. If every player passes, the round is voided (no points)
+  // and play moves on to a fresh team pick.
+  private handlePass(playerId: string): void {
+    if (this.status !== 'guess' || !this.round || this.round.finished) return;
+    if (this.round.answeredBy) return; // someone already buzzed in
+    if (!this.round.passedBy) this.round.passedBy = new Set();
+    if (this.round.passedBy.has(playerId)) return;
+    this.round.passedBy.add(playerId);
+    const p = this.players.get(playerId);
+    this.broadcast({ type: 'pass_locked', byId: playerId, byName: p?.name ?? '' });
+    if (this.round.passedBy.size >= this.players.size) this.skipPassed();
+  }
+
+  private skipPassed(): void {
+    if (!this.round || this.round.finished || !this.round.teamA || !this.round.teamB) return;
+    this.finishRound({
+      correct: false,
+      reason: 'passed',
+      autocorrected: false,
+      answeredById: null,
+      answeredByName: null,
+      guess: '',
+      teamA: this.round.teamA,
+      teamB: this.round.teamB,
+      matchedPlayerName: null,
+      matchedPlayerImageUrl: null,
+      spellsA: [],
+      spellsB: [],
+      allClubs: [],
+      commonPlayers: [],
+    });
   }
 
   private async evaluate(playerId: string, text: string): Promise<void> {
