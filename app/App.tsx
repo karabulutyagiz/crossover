@@ -33,12 +33,13 @@ import {
   ResultScreen,
 } from './src/screens';
 import { theme } from './src/theme';
+import { GemIcon, GEM_COLOR } from './src/GemIcon';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 const { width: SCREEN_W } = Dimensions.get('window');
 
 const TABS: { key: string; label: string; icon: IoniconName; activeIcon: IoniconName }[] = [
-  { key: 'store', label: t('tab.store'), icon: 'diamond-outline', activeIcon: 'diamond' },
+  { key: 'store', label: t('tab.store'), icon: 'storefront-outline', activeIcon: 'storefront' },
   { key: 'home', label: t('tab.game'), icon: 'football-outline', activeIcon: 'football' },
   { key: 'friends', label: t('tab.friends'), icon: 'people-outline', activeIcon: 'people' },
 ];
@@ -190,7 +191,7 @@ export default function App() {
             <Text style={s.trophyText}>{state.profile.trophies}</Text>
           </View>
           <Pressable style={s.diamondPill} onPress={() => goToTab(0)}>
-            <Ionicons name="diamond" size={14} color="#5BC8FF" />
+            <GemIcon size={16} />
             <Text style={s.diamondText}>{state.profile.diamonds}</Text>
             <View style={s.diamondPlus}>
               <Ionicons name="add" size={12} color="#fff" />
@@ -286,7 +287,7 @@ const s = StyleSheet.create({
     borderColor: '#26304A',
   },
   diamondText: {
-    color: '#5BC8FF',
+    color: '#C084FC',
     fontSize: 13,
     fontWeight: '800',
   },
