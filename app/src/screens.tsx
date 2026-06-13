@@ -95,9 +95,9 @@ function arenaIcon(arena: { minTrophies: number }): IoniconName {
   if (t >= 3500) return 'trophy';
   if (t >= 2000) return 'ribbon';
   if (t >= 1000) return 'medal';
-  if (t >= 500) return 'medal-outline';
-  if (t >= 200) return 'football';
-  return 'football-outline';
+  if (t >= 500) return 'shield';
+  if (t >= 200) return 'shield-half';
+  return 'shield-outline';
 }
 
 // ---- shared primitives ----
@@ -182,12 +182,31 @@ function Chip({ icon, label, onPress }: { icon: IoniconName; label: string; onPr
 
 // Subtle football-pitch lines behind every screen for a stadium feel.
 function PitchBackground() {
+  const stroke = { borderColor: theme.border } as const;
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      <View style={{ position: 'absolute', top: '8%', alignSelf: 'center', width: 220, height: 220, borderRadius: 110, borderWidth: 2, borderColor: theme.border, opacity: 0.4 }} />
-      <View style={{ position: 'absolute', top: '50%', left: 18, right: 18, height: 2, backgroundColor: theme.border, opacity: 0.35 }} />
-      <View style={{ position: 'absolute', top: '50%', alignSelf: 'center', width: 120, height: 120, borderRadius: 60, borderWidth: 2, borderColor: theme.border, opacity: 0.35, marginTop: -60 }} />
-      <View style={{ position: 'absolute', bottom: '8%', alignSelf: 'center', width: 220, height: 220, borderRadius: 110, borderWidth: 2, borderColor: theme.border, opacity: 0.4 }} />
+      {/* mowed-turf stripes */}
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <View
+          key={i}
+          style={{ position: 'absolute', left: 0, right: 0, top: `${i * 16.66}%`, height: '8.4%', backgroundColor: theme.bg2, opacity: i % 2 === 0 ? 0.16 : 0 }}
+        />
+      ))}
+      {/* center line + circle + spot */}
+      <View style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 2, backgroundColor: theme.border, opacity: 0.28 }} />
+      <View style={{ position: 'absolute', top: '50%', alignSelf: 'center', width: 132, height: 132, borderRadius: 66, borderWidth: 2, ...stroke, opacity: 0.3, marginTop: -66 }} />
+      <View style={{ position: 'absolute', top: '50%', alignSelf: 'center', width: 8, height: 8, borderRadius: 4, backgroundColor: theme.border, opacity: 0.4, marginTop: -4 }} />
+      {/* top penalty + goal box */}
+      <View style={{ position: 'absolute', top: 0, alignSelf: 'center', width: '64%', height: 92, borderWidth: 2, borderTopWidth: 0, ...stroke, opacity: 0.26, borderBottomLeftRadius: 6, borderBottomRightRadius: 6 }} />
+      <View style={{ position: 'absolute', top: 0, alignSelf: 'center', width: '34%', height: 42, borderWidth: 2, borderTopWidth: 0, ...stroke, opacity: 0.26 }} />
+      {/* bottom penalty + goal box */}
+      <View style={{ position: 'absolute', bottom: 0, alignSelf: 'center', width: '64%', height: 92, borderWidth: 2, borderBottomWidth: 0, ...stroke, opacity: 0.26, borderTopLeftRadius: 6, borderTopRightRadius: 6 }} />
+      <View style={{ position: 'absolute', bottom: 0, alignSelf: 'center', width: '34%', height: 42, borderWidth: 2, borderBottomWidth: 0, ...stroke, opacity: 0.26 }} />
+      {/* corner arcs */}
+      <View style={{ position: 'absolute', top: -15, left: -15, width: 30, height: 30, borderRadius: 15, borderWidth: 2, ...stroke, opacity: 0.3 }} />
+      <View style={{ position: 'absolute', top: -15, right: -15, width: 30, height: 30, borderRadius: 15, borderWidth: 2, ...stroke, opacity: 0.3 }} />
+      <View style={{ position: 'absolute', bottom: -15, left: -15, width: 30, height: 30, borderRadius: 15, borderWidth: 2, ...stroke, opacity: 0.3 }} />
+      <View style={{ position: 'absolute', bottom: -15, right: -15, width: 30, height: 30, borderRadius: 15, borderWidth: 2, ...stroke, opacity: 0.3 }} />
     </View>
   );
 }
@@ -770,6 +789,7 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
   const ty = float.interpolate({ inputRange: [0, 1], outputRange: [0, -12] });
   const rot = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
   const color = arenaColor(arena.name);
+  const tier = ARENA_DATA.find((a) => trophies >= a.min && trophies <= a.max) ?? ARENA_DATA[ARENA_DATA.length - 1]!;
   return (
     <Pressable onPress={onPress} style={{ alignItems: 'center', marginVertical: 6 }}>
       <View pointerEvents="none" style={{ position: 'absolute', width: 230, height: 230, borderRadius: 115, backgroundColor: color, opacity: 0.13, top: 0 }} />
@@ -777,7 +797,7 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
         <Animated.View pointerEvents="none" style={{ position: 'absolute', top: -8, width: 184, height: 184, borderRadius: 92, borderWidth: 2, borderColor: color + '55', borderStyle: 'dashed', transform: [{ rotate: rot }] }} />
         <View style={{ width: 156, height: 156, borderRadius: 78, backgroundColor: theme.card, borderWidth: 4, borderColor: color, alignItems: 'center', justifyContent: 'center', shadowColor: color, shadowOpacity: 0.6, shadowRadius: 20, shadowOffset: { width: 0, height: 0 }, elevation: 14 }}>
           <View style={{ width: 128, height: 128, borderRadius: 64, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: color + '55' }}>
-            <Text style={{ fontSize: 66 }}>{arena.icon}</Text>
+            <Ionicons name={tier.icon} size={70} color={color} />
           </View>
         </View>
       </Animated.View>
@@ -1620,12 +1640,6 @@ export function StoreScreen({ state, actions }: Props) {
   const profile = state.profile;
   const { adsWatched, canWatch, cooldownLeft, watchAd } = useAdState();
   const [showNameModal, setShowNameModal] = useState(false);
-  const [emoteTab, setEmoteTab] = useState<'inventory' | 'collection'>('inventory');
-  const equipped = profile?.equippedEmotes ?? [];
-  const toggleEquip = (id: string) => {
-    if (equipped.includes(id)) actions.equipEmotes(equipped.filter((x) => x !== id));
-    else if (equipped.length < 3) actions.equipEmotes([...equipped, id]);
-  };
 
   return (
     <Screen>
@@ -1714,6 +1728,53 @@ export function StoreScreen({ state, actions }: Props) {
             </View>
           </Pressable>
         ))}
+
+        {/* İsim değiştirme */}
+        <Text style={styles.sectionLabel}>{t('store.other')}</Text>
+        <Pressable style={styles.storeAdCard} onPress={() => setShowNameModal(true)}>
+          <Ionicons name="create-outline" size={24} color={theme.accent} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.storeAdTitle}>{t('store.changeName')}</Text>
+            <Text style={styles.muted}>{t('store.changeNameDesc')}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 13 }}>100</Text>
+            <GemIcon size={14} />
+          </View>
+        </Pressable>
+      </ScrollView>
+
+      {/* İsim değiştirme popup */}
+      <ChangeNameModal
+        visible={showNameModal}
+        diamonds={profile?.diamonds ?? 0}
+        onClose={() => setShowNameModal(false)}
+        onConfirm={(newName) => {
+          actions.changeName(newName);
+          setShowNameModal(false);
+        }}
+      />
+    </Screen>
+  );
+}
+
+// ---- Collection (emotes / loadout) ----
+export function CollectionScreen({ state, actions }: Props) {
+  const profile = state.profile;
+  const [emoteTab, setEmoteTab] = useState<'inventory' | 'collection'>('inventory');
+  const equipped = profile?.equippedEmotes ?? [];
+  const toggleEquip = (id: string) => {
+    if (equipped.includes(id)) actions.equipEmotes(equipped.filter((x) => x !== id));
+    else if (equipped.length < 3) actions.equipEmotes([...equipped, id]);
+  };
+
+  return (
+    <Screen>
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
+        <View style={styles.center}>
+          <Ionicons name="albums" size={36} color={theme.primary} />
+          <Text style={styles.h1}>Koleksiyon</Text>
+        </View>
 
         {/* İfadeler: Envanterim / Koleksiyonum sekmeleri */}
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, marginBottom: 10 }}>
@@ -1839,32 +1900,7 @@ export function StoreScreen({ state, actions }: Props) {
           </View>
         </>
         )}
-
-        {/* İsim değiştirme */}
-        <Text style={styles.sectionLabel}>{t('store.other')}</Text>
-        <Pressable style={styles.storeAdCard} onPress={() => setShowNameModal(true)}>
-          <Ionicons name="create-outline" size={24} color={theme.accent} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.storeAdTitle}>{t('store.changeName')}</Text>
-            <Text style={styles.muted}>{t('store.changeNameDesc')}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 13 }}>100</Text>
-            <GemIcon size={14} />
-          </View>
-        </Pressable>
       </ScrollView>
-
-      {/* İsim değiştirme popup */}
-      <ChangeNameModal
-        visible={showNameModal}
-        diamonds={profile?.diamonds ?? 0}
-        onClose={() => setShowNameModal(false)}
-        onConfirm={(newName) => {
-          actions.changeName(newName);
-          setShowNameModal(false);
-        }}
-      />
     </Screen>
   );
 }
@@ -2161,9 +2197,9 @@ const ARENA_DATA = [
   { name: 'Dünya Kupası', min: 3500, max: 4999, color: '#FFD700', icon: 'trophy' as IoniconName, win: '+18', loss: '-30', desc: 'Dünya sahnesinde mücadele. Her hata çok ağır.' },
   { name: 'Efsaneler Arası', min: 2000, max: 3499, color: '#C0C0C0', icon: 'ribbon' as IoniconName, win: '+20', loss: '-26', desc: 'Efsaneler burada. Kayıplar acıtıyor.' },
   { name: 'Şampiyonlar Ligi', min: 1000, max: 1999, color: '#1E90FF', icon: 'medal' as IoniconName, win: '+22', loss: '-22', desc: 'Avrupa\'nın en prestijli arenası. Dengeli mücadele.' },
-  { name: 'Profesyonel Lig', min: 500, max: 999, color: '#32CD32', icon: 'medal-outline' as IoniconName, win: '+25', loss: '-18', desc: 'Profesyonel seviye. Artık gerçek bir rakipsin.' },
-  { name: 'Amatör Lig', min: 200, max: 499, color: '#FF8C00', icon: 'football' as IoniconName, win: '+28', loss: '-14', desc: 'İlk adımları attın. Yükselmeye devam!' },
-  { name: 'Mahalle Sahası', min: 0, max: 199, color: '#8B4513', icon: 'football-outline' as IoniconName, win: '+30', loss: '-10', desc: 'Herkesin başladığı yer. Kolay tırmanış.' },
+  { name: 'Profesyonel Lig', min: 500, max: 999, color: '#32CD32', icon: 'shield' as IoniconName, win: '+25', loss: '-18', desc: 'Profesyonel seviye. Artık gerçek bir rakipsin.' },
+  { name: 'Amatör Lig', min: 200, max: 499, color: '#FF8C00', icon: 'shield-half' as IoniconName, win: '+28', loss: '-14', desc: 'İlk adımları attın. Yükselmeye devam!' },
+  { name: 'Mahalle Sahası', min: 0, max: 199, color: '#8B4513', icon: 'shield-outline' as IoniconName, win: '+30', loss: '-10', desc: 'Herkesin başladığı yer. Kolay tırmanış.' },
 ];
 
 export function ArenasScreen({ state, actions }: Props) {

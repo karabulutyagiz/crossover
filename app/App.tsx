@@ -27,6 +27,7 @@ import {
   MatchHistoryScreen,
   SearchingScreen,
   StoreScreen,
+  CollectionScreen,
   FriendsScreen,
   LobbyScreen,
   CountdownScreen,
@@ -42,6 +43,7 @@ const { width: SCREEN_W } = Dimensions.get('window');
 
 const TABS: { key: string; label: string; icon: IoniconName; activeIcon: IoniconName }[] = [
   { key: 'store', label: t('tab.store'), icon: 'storefront-outline', activeIcon: 'storefront' },
+  { key: 'collection', label: t('tab.collection'), icon: 'albums-outline', activeIcon: 'albums' },
   { key: 'home', label: t('tab.game'), icon: 'football-outline', activeIcon: 'football' },
   { key: 'friends', label: t('tab.friends'), icon: 'people-outline', activeIcon: 'people' },
 ];
@@ -53,7 +55,7 @@ export default function App() {
   const { state, actions } = useCrossover();
   const props = { state, actions };
   const scrollRef = useRef<ScrollView>(null);
-  const [activeTab, setActiveTab] = useState(1); // start on Home (index 1)
+  const [activeTab, setActiveTab] = useState(2); // start on Home (store=0, collection=1, home=2)
   const [splash, setSplash] = useState(true);
   const [introSeen, setIntroSeen] = useState<boolean | null>(null); // null = still loading
   const [tutorialSeen, setTutorialSeen] = useState<boolean | null>(null);
@@ -217,11 +219,14 @@ export default function App() {
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onScrollEnd}
         scrollEventThrottle={16}
-        contentOffset={{ x: SCREEN_W, y: 0 }}
+        contentOffset={{ x: 2 * SCREEN_W, y: 0 }}
         style={{ flex: 1 }}
       >
         <View style={{ width: SCREEN_W, flex: 1 }}>
           <StoreScreen {...props} />
+        </View>
+        <View style={{ width: SCREEN_W, flex: 1 }}>
+          <CollectionScreen {...props} />
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
           {homeContent}

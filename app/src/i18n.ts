@@ -29,6 +29,7 @@ const tr = {
 
   // tabs
   'tab.store': 'Mağaza',
+  'tab.collection': 'Koleksiyon',
   'tab.game': 'Oyun',
   'tab.friends': 'Arkadaşlar',
 
@@ -237,6 +238,7 @@ const en: typeof tr = {
   'login.failed': 'Sign-in failed. Please try again.',
 
   'tab.store': 'Store',
+  'tab.collection': 'Collection',
   'tab.game': 'Play',
   'tab.friends': 'Friends',
 
