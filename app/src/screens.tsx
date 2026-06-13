@@ -152,7 +152,7 @@ function Btn({
           }}
         >
           {icon ? <Ionicons name={icon} size={big ? 24 : 20} color={fg} style={{ marginRight: 9 }} /> : null}
-          <Text style={{ color: fg, fontSize: big ? 18 : 15, fontWeight: '900', letterSpacing: 0.5 }}>{label}</Text>
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: fg, fontSize: big ? 18 : 15, fontWeight: '900', letterSpacing: 0.5, flexShrink: 1 }}>{label}</Text>
         </Animated.View>
       </View>
     </Pressable>
@@ -743,7 +743,7 @@ export function HomeScreen({ actions, state }: Props) {
         </Pressable>
       </Modal>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16, flexGrow: 1, justifyContent: 'center' }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 6, paddingBottom: 20 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={{ alignItems: 'center', marginTop: 2, marginBottom: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Ionicons name="football" size={28} color={theme.primary} />
@@ -1450,6 +1450,39 @@ function useAdState() {
   return { adsWatched, canWatch, cooldownLeft, watchAd };
 }
 
+// Next weekly drop reset = upcoming Monday 00:00 local.
+function nextWeeklyReset(): number {
+  const d = new Date();
+  const daysUntilMon = (8 - d.getDay()) % 7 || 7;
+  d.setDate(d.getDate() + daysUntilMon);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+// Valorant-style countdown pill: "X gün Y saat" normally, "Xsa Ydk Zsn" under a day.
+function WeeklyCountdown() {
+  const [now, setNow] = useState(() => Date.now());
+  const [target, setTarget] = useState(() => nextWeeklyReset());
+  useEffect(() => {
+    const iv = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(iv);
+  }, []);
+  let ms = target - now;
+  if (ms <= 0) { const t = nextWeeklyReset(); setTarget(t); ms = t - now; }
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(s / 86400);
+  const hh = Math.floor((s % 86400) / 3600);
+  const mm = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  const label = days >= 1 ? `${days} gün ${hh} saat` : `${hh}sa ${mm}dk ${ss}sn`;
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.bg, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: theme.danger, marginBottom: 4 }}>
+      <Ionicons name="time-outline" size={12} color={theme.danger} />
+      <Text style={{ color: theme.danger, fontSize: 10, fontWeight: '800' }}>{label} kaldı</Text>
+    </View>
+  );
+}
+
 export function StoreScreen({ state, actions }: Props) {
   const profile = state.profile;
   const { adsWatched, canWatch, cooldownLeft, watchAd } = useAdState();
@@ -1560,12 +1593,15 @@ export function StoreScreen({ state, actions }: Props) {
         {/* Haftalık ifade dükkanı */}
         {emoteWeeks().map(({ week, emotes }) => (
           <View key={week}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <Text style={styles.sectionLabel}>{week === LATEST_WEEK ? 'BU HAFTA' : `${week}. HAFTA İFADELERİ`}</Text>
               {week === LATEST_WEEK ? (
-                <View style={{ backgroundColor: theme.danger, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1, marginBottom: 4 }}>
-                  <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900' }}>YENİ</Text>
-                </View>
+                <>
+                  <View style={{ backgroundColor: theme.danger, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1, marginBottom: 4 }}>
+                    <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900' }}>YENİ</Text>
+                  </View>
+                  <WeeklyCountdown />
+                </>
               ) : null}
             </View>
             {emotes.map((e) => {
