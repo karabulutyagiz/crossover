@@ -90,7 +90,7 @@ type Actions = {
 interface Props {
   state: GameState;
   actions: Actions;
-  onGoToStore?: () => void;
+  onGoToStore?: (section?: 'socialPack' | 'diamonds') => void;
 }
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -953,13 +953,11 @@ function FootballField() {
 
 export function HomeScreen({ actions, state }: Props) {
   const [name, setName] = useState('');
-  const [code, setCode] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [scope, setScope] = useState<Scope>({ type: 'all' });
   const [mode, setMode] = useState<GameMode>('team-team');
   const [picker, setPicker] = useState<Picker>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [joinOpen, setJoinOpen] = useState(false);
   const [botOpen, setBotOpen] = useState(false);
   const opts: GameOptions = { scope, mode };
   const profile = state.profile;
@@ -976,11 +974,7 @@ export function HomeScreen({ actions, state }: Props) {
           <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13 }} numberOfLines={1}>{profile?.displayName ?? 'Oyuncu'}</Text>
         </Pressable>
         <View style={{ flex: 1 }} />
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.card, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: theme.border }}>
-          <Ionicons name="diamond" size={15} color="#5BC8FF" />
-          <Text style={{ color: theme.text, fontWeight: '900', fontSize: 13 }}>{profile?.diamonds ?? 0}</Text>
-        </View>
-        <Pressable onPress={actions.openLeaderboard} style={{ marginLeft: 8, width: 34, height: 34, borderRadius: 17, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.border }}>
+        <Pressable onPress={actions.openLeaderboard} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.border }}>
           <Ionicons name="podium" size={18} color={theme.accent} />
         </Pressable>
       </View>
@@ -999,47 +993,11 @@ export function HomeScreen({ actions, state }: Props) {
         {/* Primary action */}
         <Btn label={t('home.quickMatch')} icon="flash" kind="primary" big onPress={() => actions.findMatch(opts)} />
 
-        {/* Secondary actions — even 2-up grid + join */}
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <View style={{ flex: 1 }}>
-            <Btn label={t('home.createRoom')} icon="add-circle" kind="blue" onPress={() => actions.createRoom(playerName, opts)} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Btn label={t('home.solo')} icon="game-controller" kind="accent" onPress={() => setBotOpen(true)} />
-          </View>
-        </View>
-        <Btn label={t('home.joinRoom')} icon="enter" kind="ghost" onPress={() => setJoinOpen(true)} />
+        {/* Bot match */}
+        <Btn label={t('home.solo')} icon="game-controller" kind="accent" onPress={() => setBotOpen(true)} />
 
         {state.error ? <Text style={styles.error}>{state.error}</Text> : null}
       </ScrollView>
-
-      {/* Join-by-code sheet (kept off the main screen to reduce clutter) */}
-      <Modal visible={joinOpen} transparent animationType="slide" onRequestClose={() => setJoinOpen(false)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <Pressable style={styles.modalBg} onPress={() => setJoinOpen(false)}>
-            <Pressable style={styles.modalCard} onPress={() => {}}>
-              <Text style={styles.modalTitle}>{t('home.joinRoom')}</Text>
-              <TextInput
-                placeholder={t('home.codePlaceholder')}
-                placeholderTextColor={theme.muted}
-                keyboardAppearance="dark"
-                value={code}
-                autoCapitalize="characters"
-                onChangeText={(v) => setCode(v.toUpperCase())}
-                style={styles.input}
-                autoFocus
-              />
-              <Btn
-                label={t('home.joinRoom')}
-                icon="enter"
-                kind="primary"
-                disabled={code.trim().length < 4}
-                onPress={() => { setJoinOpen(false); actions.joinRoom(code, playerName); }}
-              />
-            </Pressable>
-          </Pressable>
-        </KeyboardAvoidingView>
-      </Modal>
 
       {/* Bot difficulty picker */}
       <Modal visible={botOpen} transparent animationType="fade" onRequestClose={() => setBotOpen(false)}>
@@ -1797,26 +1755,32 @@ function WeeklyCountdown() {
   );
 }
 
-export function StoreScreen({ state, actions }: Props) {
+export function StoreScreen({ state, actions, scrollToSection }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | null }) {
   const profile = state.profile;
   const { adsWatched, canWatch, cooldownLeft, watchAd } = useAdState();
   const [showNameModal, setShowNameModal] = useState(false);
+  const storeScrollRef = useRef<ScrollView>(null);
+  const sectionYRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    if (scrollToSection && storeScrollRef.current) {
+      const y = sectionYRef.current[scrollToSection];
+      if (y !== undefined) {
+        setTimeout(() => storeScrollRef.current?.scrollTo({ y, animated: true }), 150);
+      }
+    }
+  }, [scrollToSection]);
 
   return (
     <Screen>
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={storeScrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
         <View style={styles.center}>
-          <GemIcon size={36} />
+          <Ionicons name="storefront" size={32} color={theme.primary} />
           <Text style={styles.h1}>{t('store.title')}</Text>
-          {profile ? (
-            <View style={styles.storeBalance}>
-              <GemIcon size={18} />
-              <Text style={styles.storeBalanceText}>{profile.diamonds}</Text>
-            </View>
-          ) : null}
         </View>
 
         {/* Sosyal Paket */}
+        <View onLayout={(e) => { sectionYRef.current['socialPack'] = e.nativeEvent.layout.y; }} />
         <Text style={styles.sectionLabel}>SOSYAL PAKET</Text>
         <View style={[styles.storePackCard, { borderColor: theme.accent, borderWidth: 2 }]}>
           <View style={styles.storePackBadge}>
@@ -1852,7 +1816,10 @@ export function StoreScreen({ state, actions }: Props) {
             <Text style={styles.muted}>{t('store.adsDaily')}</Text>
           </View>
           <View style={{ alignItems: 'center' }}>
-            <Text style={styles.storeAdReward}>{t('store.adReward')}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 4 }}>
+              <Text style={styles.storeAdReward}>+25</Text>
+              <GemIcon size={14} />
+            </View>
             {adsWatched >= 2 ? (
               <Btn label={t('store.done')} kind="ghost" icon="checkmark-circle" onPress={() => {}} disabled />
             ) : cooldownLeft ? (
@@ -1868,6 +1835,7 @@ export function StoreScreen({ state, actions }: Props) {
         </View>
 
         {/* Diamond packs */}
+        <View onLayout={(e) => { sectionYRef.current['diamonds'] = e.nativeEvent.layout.y; }} />
         <Text style={styles.sectionLabel}>{t('store.packs')}</Text>
         {DIAMOND_PACKS.map((pack) => (
           <Pressable key={pack.id} style={[styles.storePackCard, pack.best && styles.storePackBest]}>
@@ -2299,7 +2267,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
                 onPress={() => setMatchModal(f.userId)}
                 style={{ backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 }}
               >
-                <Ionicons name="game-controller" size={16} color="#06131F" />
+                <Text style={{ color: '#06131F', fontWeight: '800', fontSize: 10 }}>Dostluk Maçı</Text>
               </Pressable>
               <Pressable onPress={() => actions.removeFriend(f.userId)} hitSlop={8}>
                 <Ionicons name="close-circle" size={20} color={theme.muted} />
@@ -2351,7 +2319,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
             <Text style={[styles.muted, { marginBottom: 12 }]}>
               Ülke-Takım ve Harf-Takım modlarını dostluk maçlarında kullanmak için Sosyal Paket satın almalısın.
             </Text>
-            <Btn label="Mağazaya Git" kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); onGoToStore?.(); }} />
+            <Btn label="Mağazaya Git" kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); onGoToStore?.('socialPack'); }} />
             <View style={{ height: 6 }} />
             <Btn label="Vazgeç" kind="ghost" icon="close" onPress={() => setSocialPackPopup(false)} />
           </Pressable>
