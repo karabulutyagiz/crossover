@@ -51,6 +51,34 @@ const TABS: { key: string; label: string; icon: IoniconName; activeIcon: Ionicon
 // Phases that show the main tab bar (non-game screens)
 const TAB_PHASES = new Set(['home', 'arenas', 'leaderboard', 'matchHistory', 'profile']);
 
+// Top notification banner for an incoming friend match invite. Stays until
+// the user accepts or rejects; rendered over every screen.
+function InviteBanner({
+  invite,
+  onAccept,
+  onReject,
+}: {
+  invite: { fromId: string; fromName: string };
+  onAccept: () => void;
+  onReject: () => void;
+}) {
+  return (
+    <View style={s.inviteBanner}>
+      <Ionicons name="game-controller" size={26} color={theme.primary} />
+      <View style={{ flex: 1 }}>
+        <Text style={s.inviteName} numberOfLines={1}>{invite.fromName}</Text>
+        <Text style={s.inviteSub}>Seni dostluk maçına davet etti</Text>
+      </View>
+      <Pressable onPress={onAccept} style={[s.inviteBtn, { backgroundColor: theme.primary }]} hitSlop={6}>
+        <Ionicons name="checkmark" size={20} color="#06131F" />
+      </Pressable>
+      <Pressable onPress={onReject} style={[s.inviteBtn, { backgroundColor: theme.danger }]} hitSlop={6}>
+        <Ionicons name="close" size={20} color="#fff" />
+      </Pressable>
+    </View>
+  );
+}
+
 export default function App() {
   const { state, actions } = useCrossover();
   const props = { state, actions };
@@ -172,6 +200,13 @@ export default function App() {
       <View style={s.root}>
         <StatusBar style="light" />
         {screen}
+        {state.matchInvite ? (
+          <InviteBanner
+            invite={state.matchInvite}
+            onAccept={() => actions.respondMatchInvite(state.matchInvite!.fromId, true)}
+            onReject={() => actions.respondMatchInvite(state.matchInvite!.fromId, false)}
+          />
+        ) : null}
       </View>
     );
   }
@@ -252,6 +287,14 @@ export default function App() {
           );
         })}
       </View>
+
+      {state.matchInvite ? (
+        <InviteBanner
+          invite={state.matchInvite}
+          onAccept={() => actions.respondMatchInvite(state.matchInvite!.fromId, true)}
+          onReject={() => actions.respondMatchInvite(state.matchInvite!.fromId, false)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -273,6 +316,16 @@ const s = StyleSheet.create({
   tabInnerActive: { backgroundColor: theme.bg2, borderWidth: 1, borderColor: theme.border },
   tabLabel: { color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold' },
   tabLabelActive: { color: theme.primary },
+  inviteBanner: {
+    position: 'absolute', top: 50, left: 10, right: 10, zIndex: 100,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: theme.card, borderRadius: 16, padding: 12,
+    borderWidth: 1.5, borderColor: theme.primary,
+    shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 14,
+  },
+  inviteName: { color: theme.text, fontWeight: '800', fontSize: 15 },
+  inviteSub: { color: theme.muted, fontSize: 11.5 },
+  inviteBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   resourceBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',

@@ -25,7 +25,7 @@ import { GemIcon, GEM_COLOR } from './GemIcon';
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState } from './useCrossover';
 import { initialState } from './useCrossover';
-import type { ClubRef, Difficulty, GameMode, GameOptions, ProfileView, RoomView, Scope, SpellInfo } from './protocol';
+import type { ClubRef, Difficulty, GameMode, GameOptions, ProfileView, PublicProfile, RoomView, Scope, SpellInfo } from './protocol';
 import {
   EmoteCallout,
   EmoteSticker,
@@ -77,7 +77,11 @@ type Actions = {
   respondFriendRequest: (requestId: string, accept: boolean) => void;
   removeFriend: (friendId: string) => void;
   searchUsers: (query: string) => void;
-  inviteFriendMatch: (friendId: string, options?: GameOptions) => void;
+  inviteFriendMatch: (friendId: string, friendName: string, options?: GameOptions) => void;
+  respondMatchInvite: (fromId: string, accept: boolean) => void;
+  cancelMatchInvite: (toId: string) => void;
+  getUserProfile: (userId: string) => void;
+  closeUserProfile: () => void;
   dismissMatchInvite: () => void;
   leave: () => void;
 };
@@ -2009,6 +2013,67 @@ export function CollectionScreen({ state, actions }: Props) {
   );
 }
 
+// Waiting overlay shown to the inviter while the friend decides (30s window).
+function InviteWaitingModal({ invite, onCancel }: { invite: GameState['outgoingInvite']; onCancel: () => void }) {
+  const [left, setLeft] = useState(30);
+  useEffect(() => {
+    if (!invite) return;
+    const tick = () => {
+      const s = Math.max(0, Math.ceil((invite.expiresAt - Date.now()) / 1000));
+      setLeft(s);
+      if (s <= 0) onCancel();
+    };
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [invite?.toId, invite?.expiresAt]);
+  return (
+    <Modal visible={!!invite} transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={styles.modalBg}>
+        <View style={styles.modalCard}>
+          <ActivityIndicator color={theme.primary} size="large" />
+          <Text style={styles.modalTitle}>{invite?.toName}</Text>
+          <Text style={[styles.muted, { textAlign: 'center', marginBottom: 6 }]}>Kabul etmesi bekleniyor…</Text>
+          <Text style={{ color: theme.accent, fontFamily: 'Poppins-Black', fontSize: 36 }}>{left}s</Text>
+          <View style={{ height: 12 }} />
+          <Btn label="Vazgeç" kind="ghost" icon="close" onPress={onCancel} />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// A friend's public profile (tapped from the friends list).
+function FriendProfileModal({ profile, onClose }: { profile: PublicProfile | null; onClose: () => void }) {
+  const total = (profile?.wins ?? 0) + (profile?.losses ?? 0);
+  const winRate = total ? Math.round(((profile?.wins ?? 0) / total) * 100) : 0;
+  const color = profile ? arenaColor(profile.arena.name) : theme.primary;
+  return (
+    <Modal visible={!!profile} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalBg} onPress={onClose}>
+        <Pressable style={styles.modalCard} onPress={() => {}}>
+          <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: color }}>
+            <Ionicons name="person" size={42} color={color} />
+          </View>
+          <Text style={styles.modalTitle}>{profile?.displayName}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 14 }}>
+            <Ionicons name="trophy" size={15} color={theme.gold} />
+            <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 15 }}>{profile?.trophies ?? 0}</Text>
+            <Text style={styles.muted}> · {profile?.arena.name ?? ''}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8, width: '100%' }}>
+            <StatCard icon="trophy" color={theme.primary} label="Galibiyet" value={profile?.wins ?? 0} />
+            <StatCard icon="skull-outline" color={theme.danger} label="Mağlubiyet" value={profile?.losses ?? 0} />
+            <StatCard icon="stats-chart" color={theme.blue} label="Kazanma %" value={`${winRate}%`} />
+          </View>
+          <View style={{ height: 14 }} />
+          <Btn label="Kapat" kind="ghost" icon="close" onPress={onClose} />
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 // ---- Friends ----
 export function FriendsScreen({ state, actions }: Props) {
   const [addInput, setAddInput] = useState('');
@@ -2166,14 +2231,17 @@ export function FriendsScreen({ state, actions }: Props) {
               backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 8,
               borderWidth: 1, borderColor: theme.border,
             }}>
-              <View style={{ position: 'relative' }}>
-                <Ionicons name="person-circle" size={36} color={theme.accent} />
-                {f.online ? <View style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>{f.displayName}</Text>
-                <Text style={{ color: theme.muted, fontSize: 11 }}>{f.arena.name}</Text>
-              </View>
+              <Pressable onPress={() => actions.getUserProfile(f.userId)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+                <View style={{ position: 'relative' }}>
+                  <Ionicons name="person-circle" size={36} color={theme.accent} />
+                  {f.online ? <View style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>{f.displayName}</Text>
+                  <Text style={{ color: theme.muted, fontSize: 11 }}>{f.online ? 'Çevrimiçi' : f.arena.name}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={theme.muted} />
+              </Pressable>
               <Pressable
                 onPress={() => setMatchModal(f.userId)}
                 style={{ backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 }}
@@ -2205,7 +2273,7 @@ export function FriendsScreen({ state, actions }: Props) {
                       setSocialPackPopup(true);
                       return;
                     }
-                    actions.inviteFriendMatch(matchModal!, { mode: m });
+                    actions.inviteFriendMatch(matchModal!, friends.find((f) => f.userId === matchModal)?.displayName ?? 'Arkadaş', { mode: m });
                     setMatchModal(null);
                   }}
                 >
@@ -2236,6 +2304,15 @@ export function FriendsScreen({ state, actions }: Props) {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Outgoing invite — waiting for the friend to accept (30s) */}
+      <InviteWaitingModal
+        invite={state.outgoingInvite}
+        onCancel={() => { if (state.outgoingInvite) actions.cancelMatchInvite(state.outgoingInvite.toId); }}
+      />
+
+      {/* Tapped a friend → their public profile */}
+      <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
     </Screen>
   );
 }

@@ -389,7 +389,7 @@ export async function respondFriendRequest(
   userId: string,
   requestId: string,
   accept: boolean,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; fromUserId: string } | { ok: false; error: string }> {
   const { rows } = await pool.query<{ from_user: string; to_user: string }>(
     `SELECT from_user, to_user FROM friend_requests WHERE id = $1`,
     [requestId],
@@ -405,7 +405,7 @@ export async function respondFriendRequest(
       [req.from_user, req.to_user],
     );
   }
-  return { ok: true };
+  return { ok: true, fromUserId: req.from_user };
 }
 
 export async function removeFriend(userId: string, friendId: string): Promise<void> {

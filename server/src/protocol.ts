@@ -99,6 +99,9 @@ export type ClientMsg =
   | { type: 'search_users'; query: string }
   | { type: 'remove_friend'; friendId: string }
   | { type: 'invite_friend_match'; friendId: string; options?: GameOptions }
+  | { type: 'respond_match_invite'; fromId: string; accept: boolean } // accept/decline a friend's match invite
+  | { type: 'cancel_match_invite'; toId: string } // inviter cancels (or 30s timeout)
+  | { type: 'get_user_profile'; userId: string } // view a friend's public profile
   | { type: 'list_match_history' };
 
 // ---- Server -> Client ----
@@ -160,8 +163,20 @@ export type ServerMsg =
   | { type: 'user_search_results'; users: { userId: string; displayName: string }[] }
   | { type: 'friend_removed'; friendId: string }
   | { type: 'match_invite_received'; fromId: string; fromName: string; options?: GameOptions }
+  | { type: 'match_invite_declined'; byId: string } // your invite was declined (sent to inviter)
+  | { type: 'match_invite_cancelled' } // the invite was cancelled/expired (sent to invitee)
+  | { type: 'user_profile'; profile: PublicProfile }
   | { type: 'match_history_list'; matches: MatchHistoryView[] }
   | { type: 'error'; message: string };
+
+export interface PublicProfile {
+  userId: string;
+  displayName: string;
+  trophies: number;
+  wins: number;
+  losses: number;
+  arena: ArenaView;
+}
 
 export interface MatchHistoryView {
   id: string;

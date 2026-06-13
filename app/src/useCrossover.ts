@@ -13,6 +13,7 @@ import type {
   MatchHistoryView,
   PickRole,
   ProfileView,
+  PublicProfile,
   RoomView,
   RoundResult,
   ScopesList,
@@ -54,6 +55,10 @@ export interface GameState {
   friendRequests: FriendRequestView[];
   userSearchResults: { userId: string; displayName: string }[];
   matchInvite: { fromId: string; fromName: string; options?: GameOptions } | null;
+  // An invite I sent that's awaiting the friend's answer (30s window).
+  outgoingInvite: { toId: string; toName: string; expiresAt: number } | null;
+  // A friend's public profile I'm currently viewing.
+  viewProfile: PublicProfile | null;
   matchHistory: MatchHistoryView[];
   // match (first to `winTarget` round wins) + rematch flow
   matchOver: boolean;
@@ -98,6 +103,8 @@ export const initialState: GameState = {
   friendRequests: [],
   userSearchResults: [],
   matchInvite: null,
+  outgoingInvite: null,
+  viewProfile: null,
   matchHistory: [],
   matchOver: false,
   matchWinnerId: null,
@@ -128,6 +135,9 @@ type Action =
   | { type: '_phase'; phase: Phase }
   | { type: '_load_profile'; profile: ProfileView }
   | { type: '_friends'; friends: FriendInfo[] }
+  | { type: '_set_outgoing'; invite: GameState['outgoingInvite'] }
+  | { type: '_close_profile' }
+  | { type: '_dismiss_invite' }
   | { type: '_ready' };
 
 function reducer(state: GameState, action: Action): GameState {
@@ -168,10 +178,20 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, friends: state.friends.filter((f) => f.userId !== (action as any).friendId) };
     case 'match_invite_received':
       return { ...state, matchInvite: { fromId: (action as any).fromId, fromName: (action as any).fromName, options: (action as any).options } };
+    case 'match_invite_declined':
+      return { ...state, outgoingInvite: null, error: t('friends.inviteDeclined') };
+    case 'match_invite_cancelled':
+      return { ...state, matchInvite: null };
+    case 'user_profile':
+      return { ...state, viewProfile: (action as any).profile };
     case 'match_history_list':
       return { ...state, matchHistory: (action as any).matches ?? [] };
     case '_dismiss_invite' as any:
       return { ...state, matchInvite: null };
+    case '_set_outgoing' as any:
+      return { ...state, outgoingInvite: (action as any).invite };
+    case '_close_profile' as any:
+      return { ...state, viewProfile: null };
 
     case 'searching':
       return { ...state, phase: 'searching' };
@@ -200,6 +220,9 @@ function reducer(state: GameState, action: Action): GameState {
         room: action.room,
         phase: state.phase === 'home' ? 'lobby' : state.phase,
         error: state.phase === 'home' ? null : state.error,
+        // A friend match just began — clear any lingering invite UI on both sides.
+        outgoingInvite: null,
+        matchInvite: null,
       };
     case 'countdown':
       return {
@@ -464,9 +487,21 @@ export function useCrossover() {
       send({ type: 'respond_friend_request', requestId, accept }),
     removeFriend: (friendId: string) => send({ type: 'remove_friend', friendId }),
     searchUsers: (query: string) => send({ type: 'search_users', query }),
-    inviteFriendMatch: (friendId: string, options?: GameOptions) =>
-      send({ type: 'invite_friend_match', friendId, options }),
-    dismissMatchInvite: () => dispatch({ type: '_dismiss_invite' as any }),
+    inviteFriendMatch: (friendId: string, friendName: string, options?: GameOptions) => {
+      send({ type: 'invite_friend_match', friendId, options });
+      dispatch({ type: '_set_outgoing', invite: { toId: friendId, toName: friendName, expiresAt: Date.now() + 30_000 } });
+    },
+    cancelMatchInvite: (toId: string) => {
+      send({ type: 'cancel_match_invite', toId });
+      dispatch({ type: '_set_outgoing', invite: null });
+    },
+    respondMatchInvite: (fromId: string, accept: boolean) => {
+      send({ type: 'respond_match_invite', fromId, accept });
+      dispatch({ type: '_dismiss_invite' });
+    },
+    getUserProfile: (userId: string) => send({ type: 'get_user_profile', userId }),
+    closeUserProfile: () => dispatch({ type: '_close_profile' }),
+    dismissMatchInvite: () => dispatch({ type: '_dismiss_invite' }),
     leave: () => {
       wsRef.current?.close();
       wsRef.current = null;

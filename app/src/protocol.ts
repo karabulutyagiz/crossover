@@ -146,6 +146,9 @@ export type ClientMsg =
   | { type: 'search_users'; query: string }
   | { type: 'remove_friend'; friendId: string }
   | { type: 'invite_friend_match'; friendId: string; options?: GameOptions }
+  | { type: 'respond_match_invite'; fromId: string; accept: boolean }
+  | { type: 'cancel_match_invite'; toId: string }
+  | { type: 'get_user_profile'; userId: string }
   | { type: 'list_match_history' };
 
 export type ServerMsg =
@@ -187,8 +190,20 @@ export type ServerMsg =
   | { type: 'user_search_results'; users: { userId: string; displayName: string }[] }
   | { type: 'friend_removed'; friendId: string }
   | { type: 'match_invite_received'; fromId: string; fromName: string; options?: GameOptions }
+  | { type: 'match_invite_declined'; byId: string }
+  | { type: 'match_invite_cancelled' }
+  | { type: 'user_profile'; profile: PublicProfile }
   | { type: 'match_history_list'; matches: MatchHistoryView[] }
   | { type: 'error'; message: string };
+
+export interface PublicProfile {
+  userId: string;
+  displayName: string;
+  trophies: number;
+  wins: number;
+  losses: number;
+  arena: ArenaView;
+}
 
 export interface MatchHistoryView {
   id: string;

@@ -56,6 +56,20 @@ interface QueueEntry {
   setCtx: (c: ConnCtx) => void;
 }
 
+// A friend match invite awaiting the invitee's response. Holds the inviter's
+// connection bits so we can drop both players into a shared room on accept.
+interface PendingInvite {
+  fromUserId: string;
+  toUserId: string;
+  fromName: string;
+  transport: Transport;
+  ws: WebSocket;
+  userProfile?: UserProfile;
+  options?: import('../protocol.ts').GameOptions;
+  setCtx: (c: ConnCtx) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
 // Track online users for real-time friend notifications.
 const onlineUsers = new Map<string, WebSocket>(); // userId → WebSocket
 
@@ -80,6 +94,7 @@ async function getFriendsData(userId: string): Promise<ServerMsg & { type: 'frie
 export function startServer(port: number): Server {
   const manager = new RoomManager();
   const matchQueue: QueueEntry[] = [];
+  const pendingInvites = new Map<string, PendingInvite>(); // `${fromUserId}:${toUserId}`
   const http = createServer((req, res) => {
     const cors = { 'content-type': 'application/json', 'access-control-allow-origin': '*' };
     if (req.url === '/health') {
@@ -277,9 +292,15 @@ export function startServer(port: number): Server {
           const result = await respondFriendRequest(userProfile!.id, msg.requestId, msg.accept);
           if (!result.ok) return transport.send({ type: 'error', message: result.error });
           transport.send({ type: 'friend_request_responded', requestId: msg.requestId, accepted: msg.accept });
-          // Refresh both users' friend lists
+          // Refresh my friend list…
           const myData = await getFriendsData(userProfile!.id);
           transport.send(myData);
+          // …and push a fresh list to the original requester in real time so the
+          // new friend appears for them instantly (no app restart needed).
+          if (msg.accept) {
+            const theirData = await getFriendsData(result.fromUserId);
+            sendToUser(result.fromUserId, theirData);
+          }
         })();
         return;
       }
@@ -310,12 +331,78 @@ export function startServer(port: number): Server {
       }
       if (msg.type === 'invite_friend_match') {
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        const fromId = userProfile.id;
+        const key = `${fromId}:${msg.friendId}`;
+        // Replace any prior pending invite to the same friend.
+        const prev = pendingInvites.get(key);
+        if (prev) clearTimeout(prev.timer);
+        // Auto-expire after 30s so it can't hang forever.
+        const timer = setTimeout(() => {
+          if (pendingInvites.get(key)) {
+            pendingInvites.delete(key);
+            sendToUser(msg.friendId, { type: 'match_invite_cancelled' });
+          }
+        }, 30_000);
+        pendingInvites.set(key, {
+          fromUserId: fromId,
+          toUserId: msg.friendId,
+          fromName: userProfile.displayName,
+          transport,
+          ws,
+          userProfile,
+          options: msg.options,
+          setCtx: (c) => { ctx = c; },
+          timer,
+        });
         sendToUser(msg.friendId, {
           type: 'match_invite_received',
-          fromId: userProfile.id,
+          fromId,
           fromName: userProfile.displayName,
           options: msg.options,
         });
+        return;
+      }
+      if (msg.type === 'respond_match_invite') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        const key = `${msg.fromId}:${userProfile.id}`;
+        const inv = pendingInvites.get(key);
+        if (!inv) { transport.send({ type: 'match_invite_cancelled' }); return; }
+        clearTimeout(inv.timer);
+        pendingInvites.delete(key);
+        if (!msg.accept) {
+          sendToUser(inv.fromUserId, { type: 'match_invite_declined', byId: userProfile.id });
+          return;
+        }
+        // Accepted — drop both players into a fresh room and auto-start.
+        if (inv.ws.readyState !== inv.ws.OPEN) { transport.send({ type: 'match_invite_cancelled' }); return; }
+        const room = manager.createRoom();
+        if (inv.options?.scope) room.scope = inv.options.scope;
+        room.gameMode = inv.options?.mode ?? 'team-team';
+        const resA = room.addPlayer(inv.fromName, inv.transport, true, inv.fromUserId);
+        const resB = room.addPlayer(userProfile.displayName, transport, false, userProfile.id);
+        if (resA.ok) inv.setCtx({ room, playerId: resA.id, userProfile: inv.userProfile });
+        if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
+        setTimeout(() => { if (room.size === 2) room.handle(resA.ok ? resA.id : '', { type: 'start' }); }, 1200);
+        return;
+      }
+      if (msg.type === 'cancel_match_invite') {
+        if (!userProfile) return;
+        const key = `${userProfile.id}:${msg.toId}`;
+        const inv = pendingInvites.get(key);
+        if (inv) { clearTimeout(inv.timer); pendingInvites.delete(key); }
+        sendToUser(msg.toId, { type: 'match_invite_cancelled' });
+        return;
+      }
+      if (msg.type === 'get_user_profile') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          const u = await getUser(msg.userId);
+          if (!u) return transport.send({ type: 'error', message: 'Kullanıcı bulunamadı' });
+          transport.send({
+            type: 'user_profile',
+            profile: { userId: u.id, displayName: u.displayName, trophies: u.trophies, wins: u.wins, losses: u.losses, arena: u.arena },
+          });
+        })();
         return;
       }
       if (msg.type === 'list_match_history') {
@@ -411,8 +498,17 @@ export function startServer(port: number): Server {
     });
 
     ws.on('close', () => {
-      // Remove from online users tracking
-      if (userProfile) onlineUsers.delete(userProfile.id);
+      // Remove from online users tracking — but only if THIS socket is the one
+      // registered (a fresh reconnect may have already replaced it).
+      if (userProfile && onlineUsers.get(userProfile.id) === ws) onlineUsers.delete(userProfile.id);
+      // Drop any pending match invites involving this socket.
+      for (const [key, inv] of pendingInvites) {
+        if (inv.ws === ws) {
+          clearTimeout(inv.timer);
+          pendingInvites.delete(key);
+          sendToUser(inv.toUserId, { type: 'match_invite_cancelled' });
+        }
+      }
       // Remove from matchmaking queue if waiting
       for (let i = matchQueue.length - 1; i >= 0; i--) {
         if (matchQueue[i]!.ws === ws) matchQueue.splice(i, 1);
