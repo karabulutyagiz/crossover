@@ -139,7 +139,7 @@ function Btn({
   const fg = ghost ? theme.text : '#06131F';
   const depth = ghost ? 0 : 6;
   const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, depth] });
-  const radius = big ? 20 : 17;
+  const radius = big ? 16 : 14;
   return (
     <Pressable
       disabled={disabled}
@@ -176,12 +176,22 @@ function Btn({
             overflow: 'hidden',
           }}
         >
-          {/* glossy top sheen */}
+          {/* subtle top sheen + crisp highlight line + bottom inner shade (premium, not toy) */}
           {!ghost ? (
-            <View
-              pointerEvents="none"
-              style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '46%', backgroundColor: 'rgba(255,255,255,0.28)', borderTopLeftRadius: radius - 2, borderTopRightRadius: radius - 2 }}
-            />
+            <>
+              <View
+                pointerEvents="none"
+                style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '42%', backgroundColor: 'rgba(255,255,255,0.13)', borderTopLeftRadius: radius - 2, borderTopRightRadius: radius - 2 }}
+              />
+              <View
+                pointerEvents="none"
+                style={{ position: 'absolute', top: 0, left: 6, right: 6, height: 1.5, backgroundColor: 'rgba(255,255,255,0.45)', borderRadius: 2 }}
+              />
+              <View
+                pointerEvents="none"
+                style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '26%', backgroundColor: 'rgba(0,0,0,0.10)' }}
+              />
+            </>
           ) : null}
           {icon ? <Ionicons name={icon} size={big ? 24 : 20} color={fg} style={{ marginRight: 9 }} /> : null}
           <Text
@@ -194,9 +204,9 @@ function Btn({
               fontFamily: 'Poppins-ExtraBold',
               letterSpacing: 0.5,
               flexShrink: 1,
-              textShadowColor: ghost ? 'transparent' : 'rgba(255,255,255,0.4)',
+              textShadowColor: ghost ? 'transparent' : 'rgba(0,0,0,0.18)',
               textShadowOffset: { width: 0, height: 1 },
-              textShadowRadius: 0,
+              textShadowRadius: 1,
             }}
           >
             {label}
@@ -905,8 +915,8 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
       <Animated.View style={{ transform: [{ translateY: ty }], alignItems: 'center' }}>
         <Animated.View pointerEvents="none" style={{ position: 'absolute', top: -8, width: 184, height: 184, borderRadius: 92, borderWidth: 2, borderColor: color + '55', borderStyle: 'dashed', transform: [{ rotate: rot }] }} />
         <View style={{ width: 156, height: 156, borderRadius: 78, backgroundColor: theme.card, borderWidth: 4, borderColor: color, alignItems: 'center', justifyContent: 'center', shadowColor: color, shadowOpacity: 0.6, shadowRadius: 20, shadowOffset: { width: 0, height: 0 }, elevation: 14 }}>
-          <View style={{ width: 128, height: 128, borderRadius: 64, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: color + '55' }}>
-            <Ionicons name={tier.icon} size={70} color={color} />
+          <View style={{ width: 128, height: 128, borderRadius: 64, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: color + '55', overflow: 'hidden' }}>
+            <Image source={tier.img} style={{ width: 128, height: 128 }} resizeMode="cover" />
           </View>
         </View>
       </Animated.View>
@@ -920,16 +930,16 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
   );
 }
 
-/** Subtle football pitch background — rectangular with penalty areas, centre circle, arcs. */
+/** Full-bleed rectangular football pitch — fills the whole screen behind content. */
 function FootballField() {
   const w = 300;
   const h = 440;
-  const s = '#1a2a1a';
-  const sw = 1.2;
-  const o = 0.25;
+  const s = '#41538F'; // line color — slightly lighter than the navy bg, reads as a real pitch
+  const sw = 1.4;
+  const o = 0.55;
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', alignSelf: 'center', top: '8%', opacity: 0.5 }}>
-      <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <Svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid slice">
         <Rect x={10} y={10} width={w - 20} height={h - 20} rx={4} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
         <Line x1={10} y1={h / 2} x2={w - 10} y2={h / 2} stroke={s} strokeWidth={sw} opacity={o} />
         <Circle cx={w / 2} cy={h / 2} r={40} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
@@ -2427,13 +2437,13 @@ export function ProfileScreen({ state, actions }: Props) {
 
 // ---- Arenas ----
 const ARENA_DATA = [
-  { name: 'GOAT', min: 5000, max: 99999, color: '#FF4500', icon: 'flame' as IoniconName, win: '+15', loss: '-35', desc: 'Efsanelerin zirvesi. Sadece en iyiler ayakta kalır.' },
-  { name: 'Dünya Kupası', min: 3500, max: 4999, color: '#FFD700', icon: 'trophy' as IoniconName, win: '+18', loss: '-30', desc: 'Dünya sahnesinde mücadele. Her hata çok ağır.' },
-  { name: 'Efsaneler Arası', min: 2000, max: 3499, color: '#C0C0C0', icon: 'ribbon' as IoniconName, win: '+20', loss: '-26', desc: 'Efsaneler burada. Kayıplar acıtıyor.' },
-  { name: 'Şampiyonlar Ligi', min: 1000, max: 1999, color: '#1E90FF', icon: 'medal' as IoniconName, win: '+22', loss: '-22', desc: 'Avrupa\'nın en prestijli arenası. Dengeli mücadele.' },
-  { name: 'Profesyonel Lig', min: 500, max: 999, color: '#32CD32', icon: 'shield' as IoniconName, win: '+25', loss: '-18', desc: 'Profesyonel seviye. Artık gerçek bir rakipsin.' },
-  { name: 'Amatör Lig', min: 200, max: 499, color: '#FF8C00', icon: 'shield-half' as IoniconName, win: '+28', loss: '-14', desc: 'İlk adımları attın. Yükselmeye devam!' },
-  { name: 'Mahalle Sahası', min: 0, max: 199, color: '#8B4513', icon: 'shield-outline' as IoniconName, win: '+30', loss: '-10', desc: 'Herkesin başladığı yer. Kolay tırmanış.' },
+  { name: 'GOAT', min: 5000, max: 99999, color: '#FF4500', icon: 'flame' as IoniconName, img: require('../assets/arenas/goat.png'), win: '+15', loss: '-35', desc: 'Efsanelerin zirvesi. Sadece en iyiler ayakta kalır.' },
+  { name: 'Dünya Kupası', min: 3500, max: 4999, color: '#FFD700', icon: 'trophy' as IoniconName, img: require('../assets/arenas/dunya.png'), win: '+18', loss: '-30', desc: 'Dünya sahnesinde mücadele. Her hata çok ağır.' },
+  { name: 'Efsaneler Arası', min: 2000, max: 3499, color: '#C0C0C0', icon: 'ribbon' as IoniconName, img: require('../assets/arenas/efsaneler.png'), win: '+20', loss: '-26', desc: 'Efsaneler burada. Kayıplar acıtıyor.' },
+  { name: 'Şampiyonlar Ligi', min: 1000, max: 1999, color: '#1E90FF', icon: 'medal' as IoniconName, img: require('../assets/arenas/sampiyonlar.png'), win: '+22', loss: '-22', desc: 'Avrupa\'nın en prestijli arenası. Dengeli mücadele.' },
+  { name: 'Profesyonel Lig', min: 500, max: 999, color: '#32CD32', icon: 'shield' as IoniconName, img: require('../assets/arenas/profesyonel.png'), win: '+25', loss: '-18', desc: 'Profesyonel seviye. Artık gerçek bir rakipsin.' },
+  { name: 'Amatör Lig', min: 200, max: 499, color: '#FF8C00', icon: 'shield-half' as IoniconName, img: require('../assets/arenas/amator.png'), win: '+28', loss: '-14', desc: 'İlk adımları attın. Yükselmeye devam!' },
+  { name: 'Mahalle Sahası', min: 0, max: 199, color: '#8B4513', icon: 'shield-outline' as IoniconName, img: require('../assets/arenas/mahalle.png'), win: '+30', loss: '-10', desc: 'Herkesin başladığı yer. Kolay tırmanış.' },
 ];
 
 export function ArenasScreen({ state, actions }: Props) {
@@ -2490,8 +2500,8 @@ export function ArenasScreen({ state, actions }: Props) {
                 isCurrent && { borderWidth: 2, shadowColor: arena.color, shadowOpacity: 0.3, shadowRadius: 8 },
               ]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View style={[styles.arenaIconBox, { backgroundColor: arena.color + '22' }]}>
-                    <Ionicons name={arena.icon} size={28} color={arena.color} />
+                  <View style={[styles.arenaIconBox, { borderWidth: 2, borderColor: arena.color, overflow: 'hidden' }, isLocked && { opacity: 0.65 }]}>
+                    <Image source={arena.img} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.arenaName, { color: isCurrent ? arena.color : isLocked ? theme.muted : theme.text }]}>
@@ -3223,7 +3233,7 @@ const styles = StyleSheet.create({
   friendInput: { color: theme.text, fontSize: 14, fontWeight: '700', borderBottomWidth: 1, borderBottomColor: theme.border, paddingBottom: 4 },
   friendEmpty: { alignItems: 'center' as const, gap: 8, paddingVertical: 30 },
   arenaCard: { backgroundColor: theme.card, borderRadius: 14, borderWidth: 1, borderColor: theme.border, padding: 14, position: 'relative' },
-  arenaIconBox: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  arenaIconBox: { width: 62, height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   arenaName: { color: theme.text, fontSize: 16, fontWeight: '900' },
   arenaTrophyRange: { color: theme.muted, fontSize: 12, marginTop: 2 },
   arenaStats: { flexDirection: 'row', gap: 16, marginTop: 8 },
