@@ -22,7 +22,7 @@ import { t, currentLang, setLanguage, LANGUAGES } from './i18n';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GOOGLE_IOS_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
-import Svg, { Rect, Circle, Line, Path as SvgPath, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
+import Svg, { Rect, Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState, FriendInfo } from './useCrossover';
@@ -235,7 +235,28 @@ function Chip({ icon, label, onPress }: { icon: IoniconName; label: string; onPr
 
 // Subtle football-pitch lines behind every screen for a stadium feel.
 
-function Screen({ children, noPitch }: { children: ReactNode; noPitch?: boolean }) {
+// Clean, inviting background — a soft sky-like vertical gradient (lighter at top)
+// with two faint warm/cool glows. Replaces the old football-pitch pattern.
+function ScreenBg() {
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <Svg width="100%" height="100%">
+        <Defs>
+          <SvgGradient id="screenbg" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#2B4A86" />
+            <Stop offset="0.55" stopColor="#16244A" />
+            <Stop offset="1" stopColor="#0C1330" />
+          </SvgGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#screenbg)" />
+        <Circle cx="16%" cy="12%" r={140} fill={theme.primary} opacity={0.07} />
+        <Circle cx="90%" cy="86%" r={150} fill={theme.accent} opacity={0.05} />
+      </Svg>
+    </View>
+  );
+}
+
+function Screen({ children }: { children: ReactNode; noPitch?: boolean }) {
   // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
   return (
     <KeyboardAvoidingView
@@ -243,7 +264,7 @@ function Screen({ children, noPitch }: { children: ReactNode; noPitch?: boolean 
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 44 : 0}
     >
-      {!noPitch ? <FootballField /> : null}
+      <ScreenBg />
       {children}
     </KeyboardAvoidingView>
   );
@@ -395,7 +416,7 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
-      <FootballField />
+      <ScreenBg />
       <View style={{ alignItems: 'center', gap: 14 }}>
         <View style={{ width: 96, height: 96, borderRadius: 24, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.primary }}>
           <Ionicons name="football" size={54} color={theme.primary} />
@@ -1048,37 +1069,6 @@ function SettingsPanel({ onLanguageChange }: { onLanguageChange: () => void }) {
   );
 }
 
-/** Full-bleed rectangular football pitch — fills the whole screen behind content. */
-function FootballField() {
-  const w = 300;
-  const h = 440;
-  const s = '#41538F'; // line color — slightly lighter than the navy bg, reads as a real pitch
-  const sw = 1.4;
-  const o = 0.55;
-  return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      <Svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid slice">
-        <Rect x={10} y={10} width={w - 20} height={h - 20} rx={4} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <Line x1={10} y1={h / 2} x2={w - 10} y2={h / 2} stroke={s} strokeWidth={sw} opacity={o} />
-        <Circle cx={w / 2} cy={h / 2} r={40} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <Circle cx={w / 2} cy={h / 2} r={3} fill={s} opacity={o} />
-        <Rect x={70} y={10} width={w - 140} height={65} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <Rect x={105} y={10} width={w - 210} height={28} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <SvgPath d={`M ${w / 2 - 30} 75 A 30 30 0 0 0 ${w / 2 + 30} 75`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <Circle cx={w / 2} cy={58} r={2.5} fill={s} opacity={o} />
-        <Rect x={70} y={h - 75} width={w - 140} height={65} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <Rect x={105} y={h - 38} width={w - 210} height={28} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <SvgPath d={`M ${w / 2 - 30} ${h - 75} A 30 30 0 0 1 ${w / 2 + 30} ${h - 75}`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <Circle cx={w / 2} cy={h - 58} r={2.5} fill={s} opacity={o} />
-        <SvgPath d="M 10 18 A 8 8 0 0 0 18 10" stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <SvgPath d={`M ${w - 10} 18 A 8 8 0 0 1 ${w - 18} 10`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <SvgPath d={`M 10 ${h - 18} A 8 8 0 0 1 18 ${h - 10}`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <SvgPath d={`M ${w - 10} ${h - 18} A 8 8 0 0 0 ${w - 18} ${h - 10}`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-      </Svg>
-    </View>
-  );
-}
-
 export function HomeScreen({ actions, state, onLanguageChange }: Props) {
   const [name, setName] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
@@ -1093,7 +1083,7 @@ export function HomeScreen({ actions, state, onLanguageChange }: Props) {
   const playerName = profile?.displayName ?? (name || 'Oyuncu');
 
   return (
-    <Screen noPitch>
+    <Screen>
       {/* Top bar: profile avatar (→ profile) · leaderboard (gems live in the global resource bar) */}
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
         <Pressable onPress={actions.openProfile} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.card, borderRadius: 22, paddingVertical: 4, paddingLeft: 4, paddingRight: 12, borderWidth: 1, borderColor: theme.border, maxWidth: '60%' }}>
@@ -1966,7 +1956,6 @@ function WeeklyCountdown() {
 export function StoreScreen({ state, actions, scrollToSection }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | null }) {
   const profile = state.profile;
   const { adsWatched, canWatch, cooldownLeft, watchAd } = useAdState();
-  const [showNameModal, setShowNameModal] = useState(false);
   const storeScrollRef = useRef<ScrollView>(null);
   const sectionYRef = useRef<Record<string, number>>({});
 
@@ -2065,32 +2054,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
             </View>
           </Pressable>
         ))}
-
-        {/* İsim değiştirme */}
-        <Text style={styles.sectionLabel}>{t('store.other')}</Text>
-        <Pressable style={styles.storeAdCard} onPress={() => setShowNameModal(true)}>
-          <Ionicons name="create-outline" size={24} color={theme.accent} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.storeAdTitle}>{t('store.changeName')}</Text>
-            <Text style={styles.muted}>{t('store.changeNameDesc')}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 13 }}>100</Text>
-            <GemIcon size={14} />
-          </View>
-        </Pressable>
       </ScrollView>
-
-      {/* İsim değiştirme popup */}
-      <ChangeNameModal
-        visible={showNameModal}
-        diamonds={profile?.diamonds ?? 0}
-        onClose={() => setShowNameModal(false)}
-        onConfirm={(newName) => {
-          actions.changeName(newName);
-          setShowNameModal(false);
-        }}
-      />
     </Screen>
   );
 }

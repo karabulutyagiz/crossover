@@ -168,7 +168,7 @@ const tr = {
   'leaderboard.empty': 'Henüz sıralama yok',
 
   // store
-  'store.title': 'Elmas Mağazası',
+  'store.title': 'Mağaza',
   'store.freeDiamonds': 'ÜCRETSİZ ELMAS',
   'store.watchAd': 'Video İzle, Elmas Kazan',
   'store.adsDaily': 'Her gün 2 video hakkı',
@@ -377,7 +377,7 @@ const en: typeof tr = {
   'leaderboard.back': 'Back',
   'leaderboard.empty': 'No rankings yet',
 
-  'store.title': 'Diamond Store',
+  'store.title': 'Store',
   'store.freeDiamonds': 'FREE DIAMONDS',
   'store.watchAd': 'Watch a video, earn diamonds',
   'store.adsDaily': '2 videos per day',

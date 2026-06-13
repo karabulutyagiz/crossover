@@ -5,6 +5,7 @@ import {
   Dimensions,
   Easing,
   Image,
+  Modal,
   PanResponder,
   Pressable,
   ScrollView,
@@ -91,6 +92,7 @@ export default function App() {
   const [tutorialSeen, setTutorialSeen] = useState<boolean | null>(null);
   const [loaded, setLoaded] = useState(false); // Clash-Royale-style entry loading (warms logo cache)
   const [storeSection, setStoreSection] = useState<'socialPack' | 'diamonds' | null>(null);
+  const [comingSoon, setComingSoon] = useState(false); // Turnuvalar — greyed "coming soon"
   const [fontsLoaded, fontError] = useFonts({
     'Poppins-Black': require('./assets/fonts/Poppins-Black.ttf'),
     'Poppins-ExtraBold': require('./assets/fonts/Poppins-ExtraBold.ttf'),
@@ -330,7 +332,24 @@ export default function App() {
             </Pressable>
           );
         })}
+        {/* Tournaments — greyed, coming soon */}
+        <Pressable style={s.tab} onPress={() => setComingSoon(true)}>
+          <View style={s.tabInner}>
+            <Ionicons name="trophy-outline" size={22} color={theme.border} />
+            <Text style={[s.tabLabel, { color: theme.border }]}>Turnuvalar</Text>
+          </View>
+        </Pressable>
       </View>
+
+      <Modal visible={comingSoon} transparent animationType="fade" onRequestClose={() => setComingSoon(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(6,10,28,0.45)', alignItems: 'center', justifyContent: 'center', padding: 32 }} onPress={() => setComingSoon(false)}>
+          <View style={{ backgroundColor: theme.card, borderRadius: 18, borderWidth: 1.5, borderColor: theme.border, paddingVertical: 26, paddingHorizontal: 30, alignItems: 'center', gap: 8 }}>
+            <Ionicons name="trophy" size={40} color={theme.accent} />
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 19 }}>Turnuvalar</Text>
+            <Text style={{ color: theme.muted, fontSize: 13.5, fontWeight: '600' }}>Çok yakında!</Text>
+          </View>
+        </Pressable>
+      </Modal>
 
       {state.matchInvite ? (
         <InviteBanner
