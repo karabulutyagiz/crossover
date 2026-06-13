@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFonts } from 'expo-font';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCrossover } from './src/useCrossover';
 import { t } from './src/i18n';
@@ -55,6 +56,12 @@ export default function App() {
   const [splash, setSplash] = useState(true);
   const [introSeen, setIntroSeen] = useState<boolean | null>(null); // null = still loading
   const [tutorialSeen, setTutorialSeen] = useState<boolean | null>(null);
+  const [fontsLoaded, fontError] = useFonts({
+    'Poppins-Black': require('./assets/fonts/Poppins-Black.ttf'),
+    'Poppins-ExtraBold': require('./assets/fonts/Poppins-ExtraBold.ttf'),
+    'Poppins-SemiBold': require('./assets/fonts/Poppins-SemiBold.ttf'),
+  });
+  const fontsReady = fontsLoaded || !!fontError; // don't get stuck if a font fails
 
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 1900);
@@ -79,7 +86,7 @@ export default function App() {
   }, []);
 
   // Splash screen: show COF logo on launch (also while we read the intro flag).
-  if (splash || introSeen === null) {
+  if (splash || introSeen === null || !fontsReady) {
     return (
       <View style={{ flex: 1 }}>
         <StatusBar style="light" />
@@ -212,14 +219,16 @@ export default function App() {
           const active = idx === activeTab;
           return (
             <Pressable key={tab.key} style={s.tab} onPress={() => goToTab(idx)}>
-              <Ionicons
-                name={active ? tab.activeIcon : tab.icon}
-                size={22}
-                color={active ? theme.primary : theme.muted}
-              />
-              <Text style={[s.tabLabel, active && { color: theme.primary }]}>
-                {tab.label}
-              </Text>
+              <View style={[s.tabInner, active && s.tabInnerActive]}>
+                <Ionicons
+                  name={active ? tab.activeIcon : tab.icon}
+                  size={active ? 25 : 22}
+                  color={active ? theme.primary : theme.muted}
+                />
+                <Text style={[s.tabLabel, active && s.tabLabelActive]}>
+                  {tab.label}
+                </Text>
+              </View>
             </Pressable>
           );
         })}
@@ -240,6 +249,9 @@ const s = StyleSheet.create({
     paddingBottom: 20,
     paddingTop: 8,
   },
-  tab: { flex: 1, alignItems: 'center', gap: 2 },
-  tabLabel: { color: theme.muted, fontSize: 10, fontWeight: '600' },
+  tab: { flex: 1, alignItems: 'center' },
+  tabInner: { alignItems: 'center', justifyContent: 'center', gap: 2, paddingVertical: 6, paddingHorizontal: 18, borderRadius: 16 },
+  tabInnerActive: { backgroundColor: theme.bg2, borderWidth: 1, borderColor: theme.border },
+  tabLabel: { color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold' },
+  tabLabelActive: { color: theme.primary },
 });

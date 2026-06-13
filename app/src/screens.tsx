@@ -155,7 +155,7 @@ function Btn({
           }}
         >
           {icon ? <Ionicons name={icon} size={big ? 24 : 20} color={fg} style={{ marginRight: 9 }} /> : null}
-          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: fg, fontSize: big ? 18 : 15, fontWeight: '900', letterSpacing: 0.5, flexShrink: 1 }}>{label}</Text>
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: fg, fontSize: big ? 18 : 15, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5, flexShrink: 1 }}>{label}</Text>
         </Animated.View>
       </View>
     </Pressable>
@@ -179,16 +179,27 @@ function Chip({ icon, label, onPress }: { icon: IoniconName; label: string; onPr
   );
 }
 
+// Subtle football-pitch lines behind every screen for a stadium feel.
+function PitchBackground() {
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <View style={{ position: 'absolute', top: '8%', alignSelf: 'center', width: 220, height: 220, borderRadius: 110, borderWidth: 2, borderColor: theme.border, opacity: 0.4 }} />
+      <View style={{ position: 'absolute', top: '50%', left: 18, right: 18, height: 2, backgroundColor: theme.border, opacity: 0.35 }} />
+      <View style={{ position: 'absolute', top: '50%', alignSelf: 'center', width: 120, height: 120, borderRadius: 60, borderWidth: 2, borderColor: theme.border, opacity: 0.35, marginTop: -60 }} />
+      <View style={{ position: 'absolute', bottom: '8%', alignSelf: 'center', width: 220, height: 220, borderRadius: 110, borderWidth: 2, borderColor: theme.border, opacity: 0.4 }} />
+    </View>
+  );
+}
+
 function Screen({ children }: { children: ReactNode }) {
   // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
-  // behavior 'padding' lifts content above the keyboard; the 44px offset matches
-  // the app root's top padding so the avoided height is computed correctly.
   return (
     <KeyboardAvoidingView
       style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 44 : 0}
     >
+      <PitchBackground />
       {children}
     </KeyboardAvoidingView>
   );
@@ -293,9 +304,9 @@ export function SplashScreen() {
       ))}
       <Animated.View style={{ opacity: fade, alignItems: 'center', gap: 12 }}>
         <Ionicons name="football" size={66} color={theme.primary} />
-        <Text style={{ color: theme.text, fontSize: 34, fontWeight: '900', letterSpacing: 3 }}>CROSSOVER</Text>
+        <Text style={{ color: theme.text, fontSize: 36, fontFamily: 'Poppins-Black', letterSpacing: 3 }}>CROSSOVER</Text>
       </Animated.View>
-      <Animated.Text style={{ position: 'absolute', bottom: 44, color: theme.muted, fontSize: 12, letterSpacing: 3, fontWeight: '800', opacity: fade }}>
+      <Animated.Text style={{ position: 'absolute', bottom: 44, color: theme.muted, fontSize: 12, letterSpacing: 3, fontFamily: 'Poppins-ExtraBold', opacity: fade }}>
         BY GAMES
       </Animated.Text>
     </View>
@@ -769,7 +780,7 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
           </View>
         </View>
       </Animated.View>
-      <Text style={{ color: theme.text, fontSize: 19, fontWeight: '900', letterSpacing: 0.5, marginTop: 16 }}>{arena.name}</Text>
+      <Text style={{ color: theme.text, fontSize: 19, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5, marginTop: 16 }}>{arena.name}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 5, marginTop: 6, borderWidth: 1, borderColor: color + '66' }}>
         <Text style={{ fontSize: 14 }}>🏆</Text>
         <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 16 }}>{trophies}</Text>
@@ -1071,11 +1082,22 @@ export function LobbyScreen({ state, actions }: Props) {
 
 // ---- Countdown ----
 export function CountdownScreen({ state }: Props) {
+  const n = state.countdown ?? 0;
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    a.setValue(0);
+    Animated.spring(a, { toValue: 1, useNativeDriver: true, friction: 5, tension: 120 }).start();
+  }, [n, a]);
+  const scale = a.interpolate({ inputRange: [0, 1], outputRange: [2.4, 1] });
   return (
     <Screen>
       <View style={styles.center}>
-        <Text style={styles.big}>{state.countdown ?? ''}</Text>
-        <Text style={styles.muted}>{t('getReady')}</Text>
+        <View style={{ width: 168, height: 168, borderRadius: 84, borderWidth: 5, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.card, shadowColor: theme.primary, shadowOpacity: 0.6, shadowRadius: 26, shadowOffset: { width: 0, height: 0 }, elevation: 16 }}>
+          <Animated.Text style={{ color: theme.text, fontSize: n > 0 ? 92 : 52, fontFamily: 'Poppins-Black', transform: [{ scale }], opacity: a }}>
+            {n > 0 ? n : 'GO!'}
+          </Animated.Text>
+        </View>
+        <Text style={{ color: theme.muted, marginTop: 20, fontFamily: 'Poppins-ExtraBold', fontSize: 14, letterSpacing: 1 }}>{t('getReady')}</Text>
       </View>
     </Screen>
   );
@@ -1276,30 +1298,45 @@ export function GuessScreen({ state, actions }: Props) {
     return () => clearInterval(id);
   }, [state.phase, state.guessEndsAt]);
 
+  // Reveal animation: teams slide in from the sides, the VS badge pops.
+  const reveal = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!teams) return;
+    reveal.setValue(0);
+    Animated.spring(reveal, { toValue: 1, useNativeDriver: true, friction: 6, tension: 70 }).start();
+  }, [teams?.teamA?.id, teams?.teamB?.id]);
+  const leftX = reveal.interpolate({ inputRange: [0, 1], outputRange: [-70, 0] });
+  const rightX = reveal.interpolate({ inputRange: [0, 1], outputRange: [70, 0] });
+  const vsScale = reveal.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0, 0, 1] });
+
   return (
     <Screen>
       <View style={styles.teamsRow}>
-        <View style={styles.teamCard}>
+        <Animated.View style={[styles.teamCard, { transform: [{ translateX: leftX }], opacity: reveal }]}>
           {state.revealMode === 'country-team' ? (
-            <Text style={{ fontSize: 40 }}>{NATIONALITIES.find((n) => n.value === state.revealCountry)?.flag ?? '🏳️'}</Text>
+            <Text style={{ fontSize: 52 }}>{NATIONALITIES.find((n) => n.value === state.revealCountry)?.flag ?? '🏳️'}</Text>
           ) : state.revealMode === 'letter-team' ? (
-            <Text style={{ color: theme.accent, fontSize: 36, fontWeight: '900' }}>{teams?.teamA.name ?? '?'}</Text>
+            <Text style={{ color: theme.accent, fontSize: 48, fontFamily: 'Poppins-Black' }}>{teams?.teamA.name ?? '?'}</Text>
           ) : (
-            <ClubBadge name={teams?.teamA.name ?? '?'} size={44} logoUrl={teams?.teamA.logoUrl ?? null} />
+            <ClubBadge name={teams?.teamA.name ?? '?'} size={62} logoUrl={teams?.teamA.logoUrl ?? null} />
           )}
           <Text style={styles.teamName} numberOfLines={2}>
             {state.revealMode === 'country-team'
               ? NATIONALITIES.find((n) => n.value === state.revealCountry)?.displayName ?? teams?.teamA.name ?? '…'
               : teams?.teamA.name ?? '…'}
           </Text>
-        </View>
-        <Ionicons name="add" size={26} color={theme.accent} />
-        <View style={styles.teamCard}>
-          <ClubBadge name={teams?.teamB.name ?? '?'} size={44} logoUrl={teams?.teamB.logoUrl ?? null} />
+        </Animated.View>
+        <Animated.View style={{ transform: [{ scale: vsScale }], marginHorizontal: 4 }}>
+          <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: theme.accentDark }}>
+            <Text style={{ color: '#06131F', fontFamily: 'Poppins-Black', fontSize: 15 }}>VS</Text>
+          </View>
+        </Animated.View>
+        <Animated.View style={[styles.teamCard, { transform: [{ translateX: rightX }], opacity: reveal }]}>
+          <ClubBadge name={teams?.teamB.name ?? '?'} size={62} logoUrl={teams?.teamB.logoUrl ?? null} />
           <Text style={styles.teamName} numberOfLines={2}>
             {teams?.teamB.name ?? '…'}
           </Text>
-        </View>
+        </Animated.View>
       </View>
 
       {state.phase === 'reveal' ? (
@@ -2497,6 +2534,41 @@ function ReadyButton({ state, onPress }: { state: GameState; onPress: () => void
   );
 }
 
+// Falling confetti for the victory screen (pure RN Animated, no deps).
+function Confetti() {
+  const COLORS = [theme.primary, theme.accent, theme.blue, theme.purple, theme.danger, theme.gold];
+  const pieces = useRef(
+    Array.from({ length: 32 }, (_, i) => ({
+      x: (i * 53) % 100,
+      delay: (i * 71) % 900,
+      color: COLORS[i % COLORS.length]!,
+      v: new Animated.Value(0),
+    })),
+  ).current;
+  useEffect(() => {
+    pieces.forEach((p) =>
+      Animated.loop(
+        Animated.timing(p.v, { toValue: 1, duration: 2400, delay: p.delay, easing: Easing.linear, useNativeDriver: true }),
+      ).start(),
+    );
+  }, [pieces]);
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {pieces.map((p, i) => {
+        const ty = p.v.interpolate({ inputRange: [0, 1], outputRange: [-30, 820] });
+        const rot = p.v.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '720deg'] });
+        const op = p.v.interpolate({ inputRange: [0, 0.08, 0.85, 1], outputRange: [0, 1, 1, 0] });
+        return (
+          <Animated.View
+            key={i}
+            style={{ position: 'absolute', left: `${p.x}%`, top: 0, width: 8, height: 13, borderRadius: 2, backgroundColor: p.color, opacity: op, transform: [{ translateY: ty }, { rotate: rot }] }}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
 export function ResultScreen({ state, actions }: Props) {
   const r = state.result!;
   const room = state.room!;
@@ -2726,6 +2798,7 @@ export function ResultScreen({ state, actions }: Props) {
         <View style={{ height: 10 }} />
         <Btn label={t('result.leave')} kind="ghost" icon="close" onPress={actions.leave} />
       </ScrollView>
+      {matchOver && youWon ? <Confetti /> : null}
       <EmoteLayer state={state} actions={actions} fab="top-right" />
     </Screen>
   );
@@ -2734,13 +2807,13 @@ export function ResultScreen({ state, actions }: Props) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.bg, padding: 22, justifyContent: 'center' },
   center: { alignItems: 'center', gap: 6 },
-  logo: { color: theme.primary, fontSize: 28, fontWeight: '900', textAlign: 'center', letterSpacing: 2, marginTop: 6 },
-  tagline: { color: theme.muted, textAlign: 'center', marginBottom: 20, marginTop: 4, fontSize: 12 },
-  h1: { color: theme.text, fontSize: 16, fontWeight: '800', textAlign: 'center', marginVertical: 6 },
+  logo: { color: theme.primary, fontSize: 28, fontFamily: 'Poppins-Black', textAlign: 'center', letterSpacing: 2, marginTop: 6 },
+  tagline: { color: theme.muted, textAlign: 'center', marginBottom: 20, marginTop: 4, fontSize: 12, fontFamily: 'Poppins-SemiBold' },
+  h1: { color: theme.text, fontSize: 16, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginVertical: 6 },
   label: { color: theme.muted, fontSize: 10, letterSpacing: 2, textAlign: 'center' },
-  sectionLabel: { color: theme.muted, fontSize: 10, letterSpacing: 2, marginTop: 12, marginBottom: 4 },
-  code: { color: theme.accent, fontSize: 32, fontWeight: '900', textAlign: 'center', letterSpacing: 4 },
-  big: { color: theme.text, fontSize: 64, fontWeight: '900' },
+  sectionLabel: { color: theme.muted, fontSize: 10, letterSpacing: 2, marginTop: 12, marginBottom: 4, fontFamily: 'Poppins-ExtraBold' },
+  code: { color: theme.accent, fontSize: 32, fontFamily: 'Poppins-Black', textAlign: 'center', letterSpacing: 4 },
+  big: { color: theme.text, fontSize: 64, fontFamily: 'Poppins-Black' },
   muted: { color: theme.muted, textAlign: 'center', fontSize: 12 },
   error: { color: theme.danger, textAlign: 'center', marginTop: 10, fontSize: 12 },
   input: {
@@ -2793,8 +2866,8 @@ const styles = StyleSheet.create({
   teamName: { color: theme.text, fontSize: 13, fontWeight: '700', textAlign: 'center' },
   plus: { color: theme.accent, fontSize: 22, fontWeight: '900' },
   timer: { color: theme.accent, fontSize: 22, fontWeight: '900', textAlign: 'center', marginTop: 8 },
-  playerPhoto: { width: 80, height: 80, borderRadius: 40, marginTop: 8, borderWidth: 2, borderColor: theme.border },
-  matched: { color: theme.text, fontSize: 18, fontWeight: '800', textAlign: 'center', marginTop: 2 },
+  playerPhoto: { width: 104, height: 104, borderRadius: 52, marginTop: 10, borderWidth: 3, borderColor: theme.primary, backgroundColor: theme.card },
+  matched: { color: theme.text, fontSize: 19, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginTop: 4 },
   matchScore: { color: theme.text, fontSize: 44, fontWeight: '900', letterSpacing: 3, marginTop: 6 },
   matchBanner: { alignItems: 'center', gap: 2, backgroundColor: theme.card, borderRadius: 16, borderWidth: 1, borderColor: theme.border, paddingVertical: 16, paddingHorizontal: 14, marginBottom: 14 },
   trophyDeltaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
@@ -2913,7 +2986,7 @@ const styles = StyleSheet.create({
   },
   modalSearchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.bg, borderRadius: 10, paddingHorizontal: 12, marginBottom: 8 },
   modalSearchInput: { flex: 1, color: theme.text, paddingVertical: 10, fontSize: 13 },
-  modalTitle: { color: theme.text, fontSize: 15, fontWeight: '800', marginBottom: 8 },
+  modalTitle: { color: theme.text, fontSize: 15, fontFamily: 'Poppins-ExtraBold', marginBottom: 8 },
   modalRow: {
     flexDirection: 'row',
     alignItems: 'center',
