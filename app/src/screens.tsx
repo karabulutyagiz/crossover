@@ -2281,27 +2281,39 @@ function FriendProfileModal({ profile, onClose }: { profile: PublicProfile | nul
   const winRate = total ? Math.round(((profile?.wins ?? 0) / total) * 100) : 0;
   const color = profile ? arenaColor(profile.arena.name) : theme.primary;
   return (
-    <Modal visible={!!profile} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.modalBg} onPress={onClose}>
-        <Pressable style={styles.modalCard} onPress={() => {}}>
-          <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: color }}>
-            <Ionicons name="person" size={42} color={color} />
+    <Modal visible={!!profile} animationType="slide" onRequestClose={onClose} presentationStyle="overFullScreen" transparent>
+      <View style={{ flex: 1, backgroundColor: BG_TOP }}>
+        <ScreenBg />
+        <View style={{ flex: 1, paddingTop: 56, paddingHorizontal: 20 }}>
+          {/* Header with back */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
+            <Pressable onPress={onClose} hitSlop={10} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.border }}>
+              <Ionicons name="arrow-back" size={20} color={theme.text} />
+            </Pressable>
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18, marginLeft: 12 }}>Profil</Text>
           </View>
-          <Text style={styles.modalTitle}>{profile?.displayName}</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 14 }}>
-            <Ionicons name="trophy" size={15} color={theme.gold} />
-            <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 15 }}>{profile?.trophies ?? 0}</Text>
-            <Text style={styles.muted}> · {profile?.arena.name ?? ''}</Text>
+
+          {/* Avatar + name + arena */}
+          <View style={{ alignItems: 'center', marginBottom: 26 }}>
+            <View style={{ width: 110, height: 110, borderRadius: 55, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: color, shadowColor: color, shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 0 }, elevation: 10 }}>
+              <Ionicons name="person" size={56} color={color} />
+            </View>
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 24, marginTop: 14 }}>{profile?.displayName}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, backgroundColor: theme.card, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: color + '66' }}>
+              <Ionicons name="trophy" size={15} color={theme.gold} />
+              <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 16 }}>{profile?.trophies ?? 0}</Text>
+              <Text style={styles.muted}> · {profile?.arena.name ?? ''}</Text>
+            </View>
           </View>
-          <View style={{ flexDirection: 'row', gap: 8, width: '100%' }}>
+
+          {/* Stats */}
+          <View style={{ flexDirection: 'row', gap: 10 }}>
             <StatCard icon="trophy" color={theme.primary} label="Galibiyet" value={profile?.wins ?? 0} />
             <StatCard icon="skull-outline" color={theme.danger} label="Mağlubiyet" value={profile?.losses ?? 0} />
             <StatCard icon="stats-chart" color={theme.blue} label="Kazanma %" value={`${winRate}%`} />
           </View>
-          <View style={{ height: 14 }} />
-          <Btn label="Kapat" kind="ghost" icon="close" onPress={onClose} />
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -2851,8 +2863,12 @@ function arenaForTrophies(trophies: number): { name: string; icon: IoniconName; 
   return { name: 'Mahalle Sahası', icon: 'football-outline', color: '#8B4513' };
 }
 
-function ClubLogo({ uri, size = 22 }: { uri: string | null; size?: number }) {
-  if (!uri) return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: theme.border }} />;
+function ClubLogo({ uri, name, size = 22 }: { uri: string | null; name?: string; size?: number }) {
+  if (!uri) return (
+    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: name ? badgeColor(name) : theme.border, alignItems: 'center', justifyContent: 'center' }}>
+      {name ? <Text style={{ color: '#fff', fontWeight: '800', fontSize: size * 0.42 }}>{initial(name)}</Text> : null}
+    </View>
+  );
   return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
 }
 
@@ -2959,9 +2975,9 @@ export function MatchHistoryScreen({ state, actions }: Props) {
                         borderLeftWidth: 3, borderLeftColor: theme.primary,
                       }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                          <ClubLogo uri={r.teamALogo} size={18} />
+                          <ClubLogo uri={r.teamALogo} name={r.teamA} size={18} />
                           <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
-                          <ClubLogo uri={r.teamBLogo} size={18} />
+                          <ClubLogo uri={r.teamBLogo} name={r.teamB} size={18} />
                         </View>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                           <PlayerPhoto uri={r.playerImageUrl} size={24} />
@@ -2982,9 +2998,9 @@ export function MatchHistoryScreen({ state, actions }: Props) {
                         borderLeftWidth: 3, borderLeftColor: theme.danger,
                       }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                          <ClubLogo uri={r.teamALogo} size={18} />
+                          <ClubLogo uri={r.teamALogo} name={r.teamA} size={18} />
                           <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
-                          <ClubLogo uri={r.teamBLogo} size={18} />
+                          <ClubLogo uri={r.teamBLogo} name={r.teamB} size={18} />
                         </View>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                           <PlayerPhoto uri={r.playerImageUrl} size={24} />
