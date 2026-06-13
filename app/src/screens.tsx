@@ -964,23 +964,23 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
   const scale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.035] });
   const ty = breathe.interpolate({ inputRange: [0, 1], outputRange: [0, -5] });
   return (
-    <Pressable onPress={onPress} style={{ marginVertical: 6, alignItems: 'center' }}>
-      {/* Floating cut-out arena */}
+    <Pressable onPress={onPress} style={{ marginVertical: 4, alignItems: 'center' }}>
+      {/* Small floating cut-out arena (square, 2.5D top-view) */}
       <Animated.Image
         source={tier.img}
         resizeMode="contain"
-        style={{ width: '70%', aspectRatio: 1, transform: [{ scale }, { translateY: ty }] }}
+        style={{ width: 150, height: 150, transform: [{ scale }, { translateY: ty }] }}
       />
       {/* Ground contact shadow — the "base" it sits on */}
-      <View pointerEvents="none" style={{ width: '32%', height: 12, borderRadius: 6, backgroundColor: '#000', opacity: 0.32, marginTop: -8, transform: [{ scaleX: 1.6 }] }} />
+      <View pointerEvents="none" style={{ width: 64, height: 9, borderRadius: 5, backgroundColor: '#000', opacity: 0.3, marginTop: -6, transform: [{ scaleX: 1.5 }] }} />
       {/* Nameplate below */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: theme.card, borderRadius: 14, borderWidth: 1.5, borderColor: color + 'AA', paddingHorizontal: 16, paddingVertical: 8, marginTop: 10, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 5 }}>
-        <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 17 }} numberOfLines={1}>{arena.name}</Text>
-        <View style={{ width: 1, height: 18, backgroundColor: theme.border }} />
-        <Ionicons name="trophy" size={14} color={theme.gold} />
-        <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 15 }}>{trophies}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: theme.card, borderRadius: 13, borderWidth: 1.5, borderColor: color + 'AA', paddingHorizontal: 14, paddingVertical: 7, marginTop: 8 }}>
+        <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15 }} numberOfLines={1}>{arena.name}</Text>
+        <View style={{ width: 1, height: 16, backgroundColor: theme.border }} />
+        <Ionicons name="trophy" size={13} color={theme.gold} />
+        <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 14 }}>{trophies}</Text>
       </View>
-      <Text style={{ color: theme.muted, fontSize: 10.5, fontWeight: '700', marginTop: 6 }}>ARENALAR ›</Text>
+      <Text style={{ color: theme.muted, fontSize: 10, fontWeight: '700', marginTop: 5 }}>ARENALAR ›</Text>
     </Pressable>
   );
 }
