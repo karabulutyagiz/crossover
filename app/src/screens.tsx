@@ -980,22 +980,25 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
   const scale = zoom.interpolate({ inputRange: [0, 1], outputRange: [1.02, 1.1] });
   const color = arenaColor(arena.name);
   return (
-    <Pressable onPress={onPress} style={{ marginVertical: 8, alignItems: 'center' }}>
-      <View style={{ width: '62%', aspectRatio: 1, borderRadius: 22, overflow: 'hidden', backgroundColor: theme.card, borderWidth: 3, borderColor: color, shadowColor: color, shadowOpacity: 0.55, shadowRadius: 18, shadowOffset: { width: 0, height: 0 }, elevation: 12 }}>
-        <Animated.Image source={tier.img} style={{ width: '100%', height: '100%', transform: [{ scale }] }} resizeMode="cover" />
-        <PitchLeaves />
-        {/* "ARENALAR ›" hint */}
-        <View style={{ position: 'absolute', top: 8, right: 10, backgroundColor: 'rgba(0,0,0,0.42)', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 3 }}>
-          <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>ARENALAR ›</Text>
-        </View>
-        {/* Bottom strip: arena name + trophies */}
-        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: 'rgba(6,10,28,0.58)' }}>
-          <Text style={{ color: '#fff', fontFamily: 'Poppins-ExtraBold', fontSize: 18 }} numberOfLines={1}>{arena.name}</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 }}>
-            <Ionicons name="trophy" size={14} color={theme.gold} />
-            <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 15 }}>{trophies}</Text>
+    <Pressable onPress={onPress} style={{ marginVertical: 10, alignItems: 'center' }}>
+      {/* Arena art — floats with a soft drop shadow (3D "sitting" feel like Clash Royale) */}
+      <View style={{ width: '62%', aspectRatio: 1, borderRadius: 22, shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 12, shadowOffset: { width: 0, height: 14 }, elevation: 14 }}>
+        <View style={{ flex: 1, borderRadius: 22, overflow: 'hidden', backgroundColor: theme.card, borderWidth: 2, borderColor: color }}>
+          <Animated.Image source={tier.img} style={{ width: '100%', height: '100%', transform: [{ scale }] }} resizeMode="cover" />
+          <PitchLeaves />
+          <View style={{ position: 'absolute', top: 8, right: 10, backgroundColor: 'rgba(0,0,0,0.42)', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 3 }}>
+            <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>ARENALAR ›</Text>
           </View>
         </View>
+      </View>
+      {/* Ground contact shadow — the arena "base" */}
+      <View pointerEvents="none" style={{ width: '40%', height: 14, borderRadius: 7, backgroundColor: '#000', opacity: 0.28, marginTop: 4, transform: [{ scaleX: 1.5 }] }} />
+      {/* Nameplate banner below (Clash-Royale-style) */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: theme.card, borderRadius: 14, borderWidth: 1.5, borderColor: color + 'AA', paddingHorizontal: 16, paddingVertical: 8, marginTop: 8, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 5 }}>
+        <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 17 }} numberOfLines={1}>{arena.name}</Text>
+        <View style={{ width: 1, height: 18, backgroundColor: theme.border }} />
+        <Ionicons name="trophy" size={14} color={theme.gold} />
+        <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 15 }}>{trophies}</Text>
       </View>
     </Pressable>
   );
