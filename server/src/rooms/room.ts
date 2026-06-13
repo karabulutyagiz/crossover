@@ -679,7 +679,7 @@ export class Room {
   }
 
   private async handleSearch(playerId: string, reqId: string, q: string): Promise<void> {
-    const clubs = await searchClubs(q, this.scope, 24);
+    const clubs = await searchClubs(q, this.scope, 60);
     this.sendTo(playerId, { type: 'club_results', reqId, clubs });
   }
 

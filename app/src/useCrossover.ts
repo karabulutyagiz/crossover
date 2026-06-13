@@ -308,7 +308,13 @@ export function useCrossover() {
     };
     ws.onmessage = (e) => {
       try {
-        dispatch(JSON.parse(String(e.data)) as ServerMsg);
+        const m = JSON.parse(String(e.data)) as ServerMsg;
+        dispatch(m);
+        // A friend request just arrived in real time — pull the authoritative
+        // list so it shows with a real requestId (accept/reject works instantly).
+        if ((m as { type?: string }).type === 'friend_request_received' && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'list_friends' }));
+        }
       } catch {
         /* ignore malformed */
       }
@@ -329,6 +335,22 @@ export function useCrossover() {
       dispatch({ type: '_reset' });
     }
   }, []);
+
+  // Presence: keep an authenticated socket open whenever signed in (cold start +
+  // after matches) so friend requests arrive in real time. Reconnects if dropped.
+  useEffect(() => {
+    const uid = state.profile?.userId;
+    const name = state.profile?.displayName;
+    if (!uid || !name) return;
+    const ensure = () => {
+      const ws = wsRef.current;
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+      connectAndSend({ type: 'register', name, userId: uid });
+    };
+    ensure();
+    const iv = setInterval(ensure, 7000);
+    return () => clearInterval(iv);
+  }, [state.profile?.userId, state.profile?.displayName, connectAndSend]);
 
   // Load available leagues/countries once for the scope picker.
   useEffect(() => {

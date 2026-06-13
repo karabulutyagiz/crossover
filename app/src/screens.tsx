@@ -28,6 +28,7 @@ import {
   EmoteCallout,
   EmoteSticker,
   PREMIUM_EMOTES,
+  FREE_EMOTES,
   availableEmotes,
   loadoutEmotes,
   emoteWeeks,
@@ -263,6 +264,41 @@ export function IntroScreen({ onDone }: { onDone: () => void }) {
   );
 }
 
+// ---- Animated branded splash (rings expand outward → CROSSOVER → BY GAMES) ----
+export function SplashScreen() {
+  const ring = useRef(new Animated.Value(0)).current;
+  const fade = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(ring, { toValue: 1, duration: 950, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(fade, { toValue: 1, duration: 450, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+    ]).start();
+  }, [ring, fade]);
+  const scale = ring.interpolate({ inputRange: [0, 1], outputRange: [0.15, 1] });
+  const ringOpacity = ring.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0.45, 0.16] });
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+      {[1.8, 1.25, 0.8].map((m, i) => (
+        <Animated.View
+          key={i}
+          style={{
+            position: 'absolute', width: SCREEN_W * m, height: SCREEN_W * m, borderRadius: (SCREEN_W * m) / 2,
+            backgroundColor: i === 1 ? theme.accent : theme.primary,
+            opacity: ringOpacity, transform: [{ scale }],
+          }}
+        />
+      ))}
+      <Animated.View style={{ opacity: fade, alignItems: 'center', gap: 12 }}>
+        <Ionicons name="football" size={66} color={theme.primary} />
+        <Text style={{ color: theme.text, fontSize: 34, fontWeight: '900', letterSpacing: 3 }}>CROSSOVER</Text>
+      </Animated.View>
+      <Animated.Text style={{ position: 'absolute', bottom: 44, color: theme.muted, fontSize: 12, letterSpacing: 3, fontWeight: '800', opacity: fade }}>
+        BY GAMES
+      </Animated.Text>
+    </View>
+  );
+}
+
 // ---- Interactive first-time tutorial (101 Plus-style guided simulation) ----
 const TUT_TEAMS = ['Galatasaray', 'Fenerbahçe', 'Beşiktaş', 'Trabzonspor', 'Real Madrid', 'Barcelona'];
 
@@ -416,25 +452,32 @@ function EmoteLayer({ state, actions, fab = 'bottom-right' }: Props & { fab?: 'b
         <Ionicons name="happy" size={26} color="#06131F" />
       </Pressable>
 
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.emoteSheetBackdrop} onPress={() => setOpen(false)}>
-          <Pressable style={styles.emoteSheet} onPress={() => {}}>
-            <View style={styles.emoteSheetHandle} />
-            <Text style={styles.emoteSheetTitle}>{t('emote.send')}</Text>
-            <View style={styles.emoteGrid}>
+          <Pressable
+            style={{
+              backgroundColor: theme.card, borderTopLeftRadius: 26, borderTopRightRadius: 26,
+              paddingTop: 10, paddingBottom: 34, paddingHorizontal: 18,
+              borderTopWidth: 1, borderColor: theme.border,
+            }}
+            onPress={() => {}}
+          >
+            <View style={{ width: 42, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: 'center', marginBottom: 14 }} />
+            <Text style={{ color: theme.text, fontWeight: '900', fontSize: 15, textAlign: 'center', marginBottom: 16 }}>{t('emote.send')}</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 16 }}>
               {emotes.map((e) => (
                 <Pressable
                   key={e.id}
-                  style={styles.emoteCell}
-                  onPress={() => {
-                    actions.sendEmote(e.id);
-                    setOpen(false);
-                  }}
+                  onPress={() => { actions.sendEmote(e.id); setOpen(false); }}
+                  style={{ alignItems: 'center', width: 72 }}
                 >
-                  <EmoteSticker id={e.id} size={52} />
-                  <Text style={styles.emoteCellLabel} numberOfLines={1}>
-                    {e.phrase}
-                  </Text>
+                  <View style={{
+                    width: 70, height: 70, borderRadius: 35, backgroundColor: theme.bg,
+                    borderWidth: 2.5, borderColor: e.color, alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <EmoteSticker id={e.id} size={56} />
+                  </View>
+                  <Text style={{ color: theme.muted, fontSize: 9.5, marginTop: 5, textAlign: 'center' }} numberOfLines={1}>{e.phrase}</Text>
                 </Pressable>
               ))}
             </View>
@@ -700,7 +743,7 @@ export function HomeScreen({ actions, state }: Props) {
         </Pressable>
       </Modal>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16, flexGrow: 1, justifyContent: 'center' }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={{ alignItems: 'center', marginTop: 2, marginBottom: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Ionicons name="football" size={28} color={theme.primary} />
@@ -736,28 +779,30 @@ export function HomeScreen({ actions, state }: Props) {
 
       {/* Join-by-code sheet (kept off the main screen to reduce clutter) */}
       <Modal visible={joinOpen} transparent animationType="slide" onRequestClose={() => setJoinOpen(false)}>
-        <Pressable style={styles.modalBg} onPress={() => setJoinOpen(false)}>
-          <Pressable style={styles.modalCard} onPress={() => {}}>
-            <Text style={styles.modalTitle}>{t('home.joinRoom')}</Text>
-            <TextInput
-              placeholder={t('home.codePlaceholder')}
-              placeholderTextColor={theme.muted}
-              keyboardAppearance="dark"
-              value={code}
-              autoCapitalize="characters"
-              onChangeText={(v) => setCode(v.toUpperCase())}
-              style={styles.input}
-              autoFocus
-            />
-            <Btn
-              label={t('home.joinRoom')}
-              icon="enter"
-              kind="primary"
-              disabled={code.trim().length < 4}
-              onPress={() => { setJoinOpen(false); actions.joinRoom(code, playerName); }}
-            />
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <Pressable style={styles.modalBg} onPress={() => setJoinOpen(false)}>
+            <Pressable style={styles.modalCard} onPress={() => {}}>
+              <Text style={styles.modalTitle}>{t('home.joinRoom')}</Text>
+              <TextInput
+                placeholder={t('home.codePlaceholder')}
+                placeholderTextColor={theme.muted}
+                keyboardAppearance="dark"
+                value={code}
+                autoCapitalize="characters"
+                onChangeText={(v) => setCode(v.toUpperCase())}
+                style={styles.input}
+                autoFocus
+              />
+              <Btn
+                label={t('home.joinRoom')}
+                icon="enter"
+                kind="primary"
+                disabled={code.trim().length < 4}
+                onPress={() => { setJoinOpen(false); actions.joinRoom(code, playerName); }}
+              />
+            </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       <PickerModal
@@ -1409,6 +1454,7 @@ export function StoreScreen({ state, actions }: Props) {
   const profile = state.profile;
   const { adsWatched, canWatch, cooldownLeft, watchAd } = useAdState();
   const [showNameModal, setShowNameModal] = useState(false);
+  const [emoteTab, setEmoteTab] = useState<'inventory' | 'collection'>('inventory');
   const equipped = profile?.equippedEmotes ?? [];
   const toggleEquip = (id: string) => {
     if (equipped.includes(id)) actions.equipEmotes(equipped.filter((x) => x !== id));
@@ -1476,8 +1522,21 @@ export function StoreScreen({ state, actions }: Props) {
           </Pressable>
         ))}
 
-        {/* İfade envanterim — maçta kullanılacak 3 slot */}
-        <Text style={styles.sectionLabel}>İFADE ENVANTERİM · MAÇTA (MAX 3)</Text>
+        {/* İfadeler: Envanterim / Koleksiyonum sekmeleri */}
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, marginBottom: 10 }}>
+          {(([['inventory', 'İfade Envanterim'], ['collection', 'Koleksiyonum']]) as const).map(([k, label]) => {
+            const active = emoteTab === k;
+            return (
+              <Pressable key={k} onPress={() => setEmoteTab(k)} style={{ flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 12, backgroundColor: active ? theme.primary : theme.card, borderWidth: 1, borderColor: active ? theme.primary : theme.border }}>
+                <Text style={{ color: active ? '#06131F' : theme.text, fontWeight: '800', fontSize: 13 }}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {emoteTab === 'inventory' ? (
+        <>
+        <Text style={styles.sectionLabel}>MAÇ LOADOUT'U (MAX 3)</Text>
         <View style={{ flexDirection: 'row', gap: 10, marginBottom: 4 }}>
           {[0, 1, 2].map((i) => {
             const id = equipped[i];
@@ -1552,6 +1611,38 @@ export function StoreScreen({ state, actions }: Props) {
             })}
           </View>
         ))}
+        </>
+        ) : (
+        <>
+          <Text style={styles.sectionLabel}>TÜM İFADELER</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {[...FREE_EMOTES, ...PREMIUM_EMOTES].map((e) => {
+              const owned = ownsEmote(profile, e.id);
+              return (
+                <View
+                  key={e.id}
+                  style={{
+                    width: '31.5%', alignItems: 'center', gap: 5, paddingVertical: 12,
+                    backgroundColor: theme.card, borderRadius: 14,
+                    borderWidth: 1, borderColor: owned ? theme.border : 'transparent',
+                    opacity: owned ? 1 : 0.5,
+                  }}
+                >
+                  <EmoteSticker id={e.id} size={48} />
+                  <Text style={{ color: theme.text, fontSize: 10, fontWeight: '600', textAlign: 'center' }} numberOfLines={1}>
+                    {e.premium?.name ?? e.phrase}
+                  </Text>
+                  {owned ? (
+                    <Ionicons name="checkmark-circle" size={12} color={theme.primary} />
+                  ) : (
+                    <Ionicons name="lock-closed" size={11} color={theme.muted} />
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        </>
+        )}
 
         {/* Sosyal Paket */}
         <Text style={styles.sectionLabel}>SOSYAL PAKET</Text>

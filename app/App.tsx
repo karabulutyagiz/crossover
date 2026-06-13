@@ -14,6 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCrossover } from './src/useCrossover';
 import { t } from './src/i18n';
 import {
+  SplashScreen,
   IntroScreen,
   TutorialScreen,
   LoginScreen,
@@ -55,7 +56,7 @@ export default function App() {
   const [tutorialSeen, setTutorialSeen] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const t = setTimeout(() => setSplash(false), 1500);
+    const t = setTimeout(() => setSplash(false), 1900);
     AsyncStorage.getItem('@crossover_intro_seen')
       .then((v) => setIntroSeen(v === '1'))
       .catch(() => setIntroSeen(true));
@@ -79,9 +80,9 @@ export default function App() {
   // Splash screen: show COF logo on launch (also while we read the intro flag).
   if (splash || introSeen === null) {
     return (
-      <View style={s.splash}>
+      <View style={{ flex: 1 }}>
         <StatusBar style="light" />
-        <Image source={require('./assets/icon.png')} style={s.splashLogo} />
+        <SplashScreen />
       </View>
     );
   }
