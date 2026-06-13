@@ -965,10 +965,23 @@ function PitchLeaves() {
 
 function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon: string }; trophies: number; onPress: () => void }) {
   const tier = ARENA_DATA.find((a) => trophies >= a.min && trophies <= a.max) ?? ARENA_DATA[ARENA_DATA.length - 1]!;
+  // Slow cinematic zoom in/out (Ken Burns) — gentle in-image life.
+  const zoom = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(zoom, { toValue: 1, duration: 6500, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(zoom, { toValue: 0, duration: 6500, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [zoom]);
+  const scale = zoom.interpolate({ inputRange: [0, 1], outputRange: [1.02, 1.1] });
   return (
     <Pressable onPress={onPress} style={{ marginVertical: 8 }}>
       <View style={{ height: 156, borderRadius: 16, overflow: 'hidden', backgroundColor: theme.card }}>
-        <Image source={tier.img} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+        <Animated.Image source={tier.img} style={{ width: '100%', height: '100%', transform: [{ scale }] }} resizeMode="cover" />
         <PitchLeaves />
         {/* "ARENALAR ›" hint */}
         <View style={{ position: 'absolute', top: 8, right: 10, backgroundColor: 'rgba(0,0,0,0.42)', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 3 }}>
@@ -2336,7 +2349,8 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
   const [friendTab, setFriendTab] = useState<'friends' | 'requests'>('friends');
   const [copied, setCopied] = useState(false);
   const [matchModal, setMatchModal] = useState<string | null>(null); // friendId — mode picker
-  const [menuFriend, setMenuFriend] = useState<FriendInfo | null>(null); // tapped friend → actions menu
+  const [menuFriend, setMenuFriend] = useState<FriendInfo | null>(null); // tapped friend → actions popover
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 }); // tap anchor for the popover
   const [confirmRemove, setConfirmRemove] = useState<FriendInfo | null>(null); // remove confirmation
   const [socialPackPopup, setSocialPackPopup] = useState(false);
   const profile = state.profile;
@@ -2498,7 +2512,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
           friends.map((f) => (
             <Pressable
               key={f.userId}
-              onPress={() => setMenuFriend(f)}
+              onPress={(e) => { setMenuPos({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY }); setMenuFriend(f); }}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 12,
                 backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 8,
@@ -2524,19 +2538,38 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
         )}
       </ScrollView>
 
-      {/* Friend actions menu (tap a friend row) */}
+      {/* Friend actions — small Clash-Royale-style popover above the tapped row */}
       <Modal visible={menuFriend !== null} transparent animationType="fade" onRequestClose={() => setMenuFriend(null)}>
-        <Pressable style={styles.modalBg} onPress={() => setMenuFriend(null)}>
-          <Pressable style={styles.modalCard} onPress={() => {}}>
-            <View style={{ alignItems: 'center', marginBottom: 6 }}>
-              <Ionicons name="person-circle" size={52} color={theme.accent} />
-              <Text style={styles.modalTitle}>{menuFriend?.displayName}</Text>
-              <Text style={styles.muted}>{menuFriend?.online ? 'Çevrimiçi' : (menuFriend?.arena.name ?? '')}</Text>
-            </View>
-            <Btn label="Dostluk Savaşı" kind="primary" icon="game-controller" onPress={() => { const id = menuFriend!.userId; setMenuFriend(null); setMatchModal(id); }} />
-            <Btn label="Profili Görüntüle" kind="blue" icon="person" onPress={() => { const id = menuFriend!.userId; setMenuFriend(null); actions.getUserProfile(id); }} />
-            <Btn label="Arkadaşlıktan Kaldır" kind="danger" icon="person-remove" onPress={() => { const f = menuFriend!; setMenuFriend(null); setConfirmRemove(f); }} />
-          </Pressable>
+        <Pressable style={{ flex: 1 }} onPress={() => setMenuFriend(null)}>
+          {menuFriend ? (() => {
+            const W = 226;
+            const H = 168; // header + 3 rows (approx)
+            const left = Math.max(8, Math.min(menuPos.x - W / 2, SCREEN_W - W - 8));
+            const top = Math.max(56, menuPos.y - H - 14);
+            const tailLeft = Math.min(Math.max(menuPos.x - left - 8, 18), W - 34);
+            const Row = ({ icon, color, label, onPress }: { icon: IoniconName; color: string; label: string; onPress: () => void }) => (
+              <Pressable onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, paddingHorizontal: 14 }}>
+                <Ionicons name={icon} size={18} color={color} />
+                <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14 }}>{label}</Text>
+              </Pressable>
+            );
+            return (
+              <View style={{ position: 'absolute', left, top, width: W }}>
+                <View style={{ backgroundColor: theme.card, borderRadius: 14, borderWidth: 1, borderColor: theme.border, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 16 }}>
+                  <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '900', letterSpacing: 0.5, textAlign: 'center', paddingTop: 9, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: theme.border }} numberOfLines={1}>
+                    {menuFriend.displayName}
+                  </Text>
+                  <Row icon="game-controller" color={theme.primary} label="Dostluk Savaşı" onPress={() => { const id = menuFriend.userId; setMenuFriend(null); setMatchModal(id); }} />
+                  <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
+                  <Row icon="person" color={theme.blue} label="Profili Görüntüle" onPress={() => { const id = menuFriend.userId; setMenuFriend(null); actions.getUserProfile(id); }} />
+                  <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
+                  <Row icon="person-remove" color={theme.danger} label="Arkadaşlıktan Kaldır" onPress={() => { const f = menuFriend; setMenuFriend(null); setConfirmRemove(f); }} />
+                </View>
+                {/* downward tail pointing at the row */}
+                <View style={{ position: 'absolute', bottom: -7, left: tailLeft, width: 15, height: 15, backgroundColor: theme.card, transform: [{ rotate: '45deg' }], borderRightWidth: 1, borderBottomWidth: 1, borderColor: theme.border }} />
+              </View>
+            );
+          })() : null}
         </Pressable>
       </Modal>
 
