@@ -923,83 +923,43 @@ function arenaColor(name: string): string {
   return ARENA_DATA.find((a) => a.name === name)?.color ?? theme.primary;
 }
 
-// Animated arena crest (Clash Royale-style): floating emblem, glow, slow spinning
-// dashed ring. Tap → arenas screen.
-// Leaves drifting right→left across the pitch image (the only in-image motion).
-function PitchLeaves() {
-  const leaves = useRef(
-    Array.from({ length: 6 }, (_, i) => ({
-      v: new Animated.Value(0),
-      top: 10 + ((i * 31) % 110),
-      dur: 5200 + ((i * 760) % 3600),
-      delay: (i * 820) % 4200,
-      size: 12 + (i % 3) * 4,
-    })),
-  ).current;
-  useEffect(() => {
-    const loops: Animated.CompositeAnimation[] = [];
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    leaves.forEach((l) => {
-      const loop = Animated.loop(Animated.timing(l.v, { toValue: 1, duration: l.dur, easing: Easing.linear, useNativeDriver: true }));
-      loops.push(loop);
-      timers.push(setTimeout(() => loop.start(), l.delay));
-    });
-    return () => { loops.forEach((lp) => lp.stop()); timers.forEach(clearTimeout); };
-  }, [leaves]);
-  return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      {leaves.map((l, i) => {
-        const tx = l.v.interpolate({ inputRange: [0, 1], outputRange: [SCREEN_W, -44] });
-        const ty = l.v.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 14, 0] });
-        const rot = l.v.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '240deg'] });
-        const op = l.v.interpolate({ inputRange: [0, 0.12, 0.88, 1], outputRange: [0, 0.55, 0.55, 0] });
-        return (
-          <Animated.View key={i} style={{ position: 'absolute', top: l.top, left: 0, opacity: op, transform: [{ translateX: tx }, { translateY: ty }, { rotate: rot }] }}>
-            <Ionicons name="leaf" size={l.size} color="#A6E08C" />
-          </Animated.View>
-        );
-      })}
-    </View>
-  );
-}
-
+// Arena crest (Clash-Royale-style): the cut-out isometric arena floats with a
+// ground shadow + a nameplate below. Tap → arenas screen.
 function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon: string }; trophies: number; onPress: () => void }) {
   const tier = ARENA_DATA.find((a) => trophies >= a.min && trophies <= a.max) ?? ARENA_DATA[ARENA_DATA.length - 1]!;
-  // Slow cinematic zoom in/out (Ken Burns) — gentle in-image life.
-  const zoom = useRef(new Animated.Value(0)).current;
+  const color = arenaColor(arena.name);
+  // Gentle idle breathing so the floating arena feels alive.
+  const breathe = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(zoom, { toValue: 1, duration: 6500, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(zoom, { toValue: 0, duration: 6500, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(breathe, { toValue: 1, duration: 2600, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(breathe, { toValue: 0, duration: 2600, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
       ]),
     );
     loop.start();
     return () => loop.stop();
-  }, [zoom]);
-  const scale = zoom.interpolate({ inputRange: [0, 1], outputRange: [1.02, 1.1] });
-  const color = arenaColor(arena.name);
+  }, [breathe]);
+  const scale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.035] });
+  const ty = breathe.interpolate({ inputRange: [0, 1], outputRange: [0, -5] });
   return (
-    <Pressable onPress={onPress} style={{ marginVertical: 10, alignItems: 'center' }}>
-      {/* Arena art — floats with a soft drop shadow (3D "sitting" feel like Clash Royale) */}
-      <View style={{ width: '62%', aspectRatio: 1, borderRadius: 22, shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 12, shadowOffset: { width: 0, height: 14 }, elevation: 14 }}>
-        <View style={{ flex: 1, borderRadius: 22, overflow: 'hidden', backgroundColor: theme.card, borderWidth: 2, borderColor: color }}>
-          <Animated.Image source={tier.img} style={{ width: '100%', height: '100%', transform: [{ scale }] }} resizeMode="cover" />
-          <PitchLeaves />
-          <View style={{ position: 'absolute', top: 8, right: 10, backgroundColor: 'rgba(0,0,0,0.42)', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 3 }}>
-            <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>ARENALAR ›</Text>
-          </View>
-        </View>
-      </View>
-      {/* Ground contact shadow — the arena "base" */}
-      <View pointerEvents="none" style={{ width: '40%', height: 14, borderRadius: 7, backgroundColor: '#000', opacity: 0.28, marginTop: 4, transform: [{ scaleX: 1.5 }] }} />
-      {/* Nameplate banner below (Clash-Royale-style) */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: theme.card, borderRadius: 14, borderWidth: 1.5, borderColor: color + 'AA', paddingHorizontal: 16, paddingVertical: 8, marginTop: 8, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 5 }}>
+    <Pressable onPress={onPress} style={{ marginVertical: 6, alignItems: 'center' }}>
+      {/* Floating cut-out arena */}
+      <Animated.Image
+        source={tier.img}
+        resizeMode="contain"
+        style={{ width: '70%', aspectRatio: 1, transform: [{ scale }, { translateY: ty }] }}
+      />
+      {/* Ground contact shadow — the "base" it sits on */}
+      <View pointerEvents="none" style={{ width: '32%', height: 12, borderRadius: 6, backgroundColor: '#000', opacity: 0.32, marginTop: -8, transform: [{ scaleX: 1.6 }] }} />
+      {/* Nameplate below */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: theme.card, borderRadius: 14, borderWidth: 1.5, borderColor: color + 'AA', paddingHorizontal: 16, paddingVertical: 8, marginTop: 10, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 5 }}>
         <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 17 }} numberOfLines={1}>{arena.name}</Text>
         <View style={{ width: 1, height: 18, backgroundColor: theme.border }} />
         <Ionicons name="trophy" size={14} color={theme.gold} />
         <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 15 }}>{trophies}</Text>
       </View>
+      <Text style={{ color: theme.muted, fontSize: 10.5, fontWeight: '700', marginTop: 6 }}>ARENALAR ›</Text>
     </Pressable>
   );
 }
@@ -2775,8 +2735,8 @@ export function ArenasScreen({ state, actions }: Props) {
                 isCurrent && { borderWidth: 2, shadowColor: arena.color, shadowOpacity: 0.3, shadowRadius: 8 },
               ]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View style={[styles.arenaIconBox, { borderWidth: 2, borderColor: arena.color, overflow: 'hidden' }, isLocked && { opacity: 0.65 }]}>
-                    <Image source={arena.img} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                  <View style={[styles.arenaIconBox, isLocked && { opacity: 0.55 }]}>
+                    <Image source={arena.img} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.arenaName, { color: isCurrent ? arena.color : isLocked ? theme.muted : theme.text }]}>
@@ -3508,7 +3468,7 @@ const styles = StyleSheet.create({
   friendInput: { color: theme.text, fontSize: 14, fontWeight: '700', borderBottomWidth: 1, borderBottomColor: theme.border, paddingBottom: 4 },
   friendEmpty: { alignItems: 'center' as const, gap: 8, paddingVertical: 30 },
   arenaCard: { backgroundColor: theme.card, borderRadius: 14, borderWidth: 1, borderColor: theme.border, padding: 14, position: 'relative' },
-  arenaIconBox: { width: 62, height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  arenaIconBox: { width: 66, height: 60, alignItems: 'center', justifyContent: 'center' },
   arenaName: { color: theme.text, fontSize: 16, fontWeight: '900' },
   arenaTrophyRange: { color: theme.muted, fontSize: 12, marginTop: 2 },
   arenaStats: { flexDirection: 'row', gap: 16, marginTop: 8 },
