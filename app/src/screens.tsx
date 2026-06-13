@@ -913,8 +913,16 @@ export function PickTeamScreen({ state, actions }: Props) {
   const onChange = (text: string) => {
     setQ(text);
     if (timer.current) clearTimeout(timer.current);
-    if (text.trim().length >= 2) timer.current = setTimeout(() => actions.searchClubs(text), 180);
+    // Search on every keystroke (incl. empty → popular teams), so the logo grid
+    // filters live and is never empty.
+    timer.current = setTimeout(() => actions.searchClubs(text.trim()), 140);
   };
+
+  // Fill the team grid with popular teams as soon as the team picker opens.
+  useEffect(() => {
+    if (role === 'team') actions.searchClubs('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
 
   if (state.picked) {
     return (
@@ -1020,16 +1028,31 @@ export function PickTeamScreen({ state, actions }: Props) {
           autoFocus
         />
       </View>
-      <ScrollView style={{ alignSelf: 'stretch' }} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        style={{ alignSelf: 'stretch' }}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', gap: 8, paddingVertical: 8 }}
+        showsVerticalScrollIndicator={false}
+      >
         {state.clubResults.map((c: ClubRef) => (
-          <Pressable key={c.id} style={styles.clubRow} onPress={() => actions.pickTeam(c.id)}>
-            <ClubBadge name={c.name} size={32} logoUrl={c.logoUrl} />
-            <Text style={styles.clubText} numberOfLines={1}>
+          <Pressable
+            key={c.id}
+            onPress={() => actions.pickTeam(c.id)}
+            style={{
+              width: '31.5%', alignItems: 'center', gap: 7,
+              backgroundColor: theme.card, borderRadius: 14,
+              borderWidth: 1, borderColor: theme.border, paddingVertical: 12, paddingHorizontal: 4,
+            }}
+          >
+            <ClubBadge name={c.name} size={46} logoUrl={c.logoUrl} />
+            <Text style={{ color: theme.text, fontSize: 10.5, fontWeight: '600', textAlign: 'center' }} numberOfLines={2}>
               {c.name}
             </Text>
-            <Ionicons name="chevron-forward" size={18} color={theme.muted} />
           </Pressable>
         ))}
+        {state.clubResults.length === 0 && q.trim() ? (
+          <Text style={[styles.muted, { width: '100%', marginTop: 20 }]}>{t('common.noResults')}</Text>
+        ) : null}
       </ScrollView>
       <EmoteLayer state={state} actions={actions} fab="top-right" />
     </Screen>

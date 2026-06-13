@@ -65,10 +65,29 @@ const A_TEAM_ONLY = `
 export async function searchClubs(
   query: string,
   scope: Scope = { type: 'all' },
-  limit = 8,
+  limit = 24,
 ): Promise<ClubHit[]> {
   const norm = normalize(query);
-  if (!norm) return [];
+  // Empty query → the most popular teams, so the picker's logo grid opens full
+  // (no empty gap) and then filters down as the user types.
+  if (!norm) {
+    const p: unknown[] = [];
+    const sSql = scopeClause(scope, p);
+    p.push(limit);
+    const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
+      `SELECT c.id, c.name, c.logo_url
+         FROM clubs c
+        WHERE c.is_national = false
+          AND c.logo_url IS NOT NULL
+          AND EXISTS (SELECT 1 FROM player_clubs pc WHERE pc.club_id = c.id)
+          ${A_TEAM_ONLY}
+          ${sSql}
+        ORDER BY c.popularity DESC
+        LIMIT $${p.length}`,
+      p,
+    );
+    return rows.map((r) => ({ id: Number(r.id), name: r.name, logoUrl: r.logo_url }));
+  }
   const params: unknown[] = [norm];
   const scopeSql = scopeClause(scope, params);
   params.push(limit);
