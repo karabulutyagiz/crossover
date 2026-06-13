@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import {
   Dimensions,
   Image,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -113,15 +114,27 @@ export default function App() {
   const goToTab = useCallback((idx: number) => {
     scrollRef.current?.scrollTo({ x: idx * SCREEN_W, animated: true });
     setActiveTab(idx);
-    if (idx !== 1) resetHomePhase();
+    if (idx !== 2) resetHomePhase(); // home lives at index 2 (store=0, collection=1, home=2, friends=3)
   }, [resetHomePhase]);
 
   const onScrollEnd = useCallback((e: any) => {
     const x = e.nativeEvent.contentOffset.x;
     const idx = Math.round(x / SCREEN_W);
     setActiveTab(idx);
-    if (idx !== 1) resetHomePhase();
+    if (idx !== 2) resetHomePhase();
   }, [resetHomePhase]);
+
+  // Swipe (any horizontal direction) to dismiss a sub-screen back to home —
+  // instead of paging to the next tab. Keep the latest goHome in a ref so the
+  // once-created PanResponder never goes stale.
+  const goHomeRef = useRef<() => void>(() => {});
+  goHomeRef.current = () => { actions.closeArenas(); }; // all close* actions reset phase → home
+  const backSwipe = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 26 && Math.abs(g.dx) > Math.abs(g.dy) * 1.6,
+      onPanResponderRelease: (_e, g) => { if (Math.abs(g.dx) > 55) goHomeRef.current(); },
+    }),
+  ).current;
 
   // Splash screen: show COF logo on launch.
   if (splash || !fontsReady) {
@@ -231,6 +244,8 @@ export default function App() {
     : state.phase === 'profile'
     ? <ProfileScreen {...props} />
     : <HomeScreen {...props} />;
+  // A sub-screen is open in the home slot → swipe dismisses it (pager paging off).
+  const subScreen = state.phase !== 'home' && TAB_PHASES.has(state.phase);
 
   return (
     <View style={s.root}>
@@ -261,6 +276,7 @@ export default function App() {
         onMomentumScrollEnd={onScrollEnd}
         scrollEventThrottle={16}
         contentOffset={{ x: 2 * SCREEN_W, y: 0 }}
+        scrollEnabled={!subScreen}
         style={{ flex: 1 }}
       >
         <View style={{ width: SCREEN_W, flex: 1 }}>
@@ -269,7 +285,7 @@ export default function App() {
         <View style={{ width: SCREEN_W, flex: 1 }}>
           <CollectionScreen {...props} />
         </View>
-        <View style={{ width: SCREEN_W, flex: 1 }}>
+        <View style={{ width: SCREEN_W, flex: 1 }} {...(subScreen ? backSwipe.panHandlers : {})}>
           {homeContent}
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>

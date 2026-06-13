@@ -3292,7 +3292,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   optChipText: { color: theme.text, fontSize: 12, fontWeight: '600', flex: 1 },
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalBg: { flex: 1, backgroundColor: 'rgba(6,10,28,0.28)', justifyContent: 'flex-end' },
   modalCard: {
     backgroundColor: theme.card,
     borderTopLeftRadius: 20,
