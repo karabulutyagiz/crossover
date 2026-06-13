@@ -1146,22 +1146,19 @@ export function HomeScreen({ actions, state, onLanguageChange }: Props) {
             {/* Content */}
             {menuSub === null ? (
               <View style={{ padding: 12 }}>
-                <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, paddingHorizontal: 14, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => { setMenuSub('leaderboard'); actions.openLeaderboard(); }}>
-                  <Ionicons name="podium" size={22} color={theme.accent} />
+                <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => { setMenuSub('leaderboard'); actions.openLeaderboard(); }}>
                   <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{t('menu.leaderboard')}</Text>
                   <View style={{ flex: 1 }} />
                   <Ionicons name="chevron-forward" size={18} color={theme.muted} />
                 </Pressable>
                 <View style={{ height: 8 }} />
-                <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, paddingHorizontal: 14, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => { setMenuSub('matchHistory'); actions.openMatchHistory(); }}>
-                  <Ionicons name="time" size={22} color={theme.primary} />
+                <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => { setMenuSub('matchHistory'); actions.openMatchHistory(); }}>
                   <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{t('menu.matchHistory')}</Text>
                   <View style={{ flex: 1 }} />
                   <Ionicons name="chevron-forward" size={18} color={theme.muted} />
                 </Pressable>
                 <View style={{ height: 8 }} />
-                <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, paddingHorizontal: 14, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => setMenuSub('settings')}>
-                  <Ionicons name="settings" size={22} color={theme.muted} />
+                <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => setMenuSub('settings')}>
                   <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{t('settings.title')}</Text>
                   <View style={{ flex: 1 }} />
                   <Ionicons name="chevron-forward" size={18} color={theme.muted} />
@@ -2496,7 +2493,6 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
                 <Ionicons name="trophy" size={13} color={theme.gold} />
                 <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 13 }}>{f.trophies}</Text>
               </View>
-              <Ionicons name="ellipsis-vertical" size={18} color={theme.muted} />
             </Pressable>
           ))
         )}
@@ -2511,10 +2507,9 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
             const left = Math.max(8, Math.min(menuPos.x - W / 2, SCREEN_W - W - 8));
             const top = Math.max(56, menuPos.y - H - 14);
             const tailLeft = Math.min(Math.max(menuPos.x - left - 8, 18), W - 34);
-            const Row = ({ icon, color, label, onPress }: { icon: IoniconName; color: string; label: string; onPress: () => void }) => (
-              <Pressable onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, paddingHorizontal: 14 }}>
-                <Ionicons name={icon} size={18} color={color} />
-                <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14 }}>{label}</Text>
+            const Row = ({ color, label, onPress }: { color: string; label: string; onPress: () => void }) => (
+              <Pressable onPress={onPress} style={{ paddingVertical: 12, paddingHorizontal: 14, alignItems: 'center' }}>
+                <Text style={{ color, fontWeight: '800', fontSize: 14.5 }}>{label}</Text>
               </Pressable>
             );
             return (
@@ -2523,11 +2518,11 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
                   <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '900', letterSpacing: 0.5, textAlign: 'center', paddingTop: 9, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: theme.border }} numberOfLines={1}>
                     {menuFriend.displayName}
                   </Text>
-                  <Row icon="game-controller" color={theme.primary} label="Dostluk Savaşı" onPress={() => { const id = menuFriend.userId; setMenuFriend(null); setMatchModal(id); }} />
+                  <Row color={theme.text} label="Dostluk Savaşı" onPress={() => { const id = menuFriend.userId; setMenuFriend(null); setMatchModal(id); }} />
                   <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
-                  <Row icon="person" color={theme.blue} label="Profili Görüntüle" onPress={() => { const id = menuFriend.userId; setMenuFriend(null); actions.getUserProfile(id); }} />
+                  <Row color={theme.text} label="Profili Görüntüle" onPress={() => { const id = menuFriend.userId; setMenuFriend(null); actions.getUserProfile(id); }} />
                   <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
-                  <Row icon="person-remove" color={theme.danger} label="Arkadaşlıktan Kaldır" onPress={() => { const f = menuFriend; setMenuFriend(null); setConfirmRemove(f); }} />
+                  <Row color={theme.danger} label="Arkadaşlıktan Kaldır" onPress={() => { const f = menuFriend; setMenuFriend(null); setConfirmRemove(f); }} />
                 </View>
                 {/* downward tail pointing at the row */}
                 <View style={{ position: 'absolute', bottom: -7, left: tailLeft, width: 15, height: 15, backgroundColor: theme.card, transform: [{ rotate: '45deg' }], borderRightWidth: 1, borderBottomWidth: 1, borderColor: theme.border }} />

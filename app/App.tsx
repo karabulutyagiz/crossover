@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
+  Animated,
   Dimensions,
+  Easing,
   Image,
   PanResponder,
   Pressable,
@@ -129,15 +131,24 @@ export default function App() {
     if (idx !== 2) resetHomePhase();
   }, [resetHomePhase]);
 
-  // Swipe (any horizontal direction) to dismiss a sub-screen back to home —
-  // instead of paging to the next tab. Keep the latest goHome in a ref so the
-  // once-created PanResponder never goes stale.
-  const goHomeRef = useRef<() => void>(() => {});
-  goHomeRef.current = () => { actions.closeArenas(); }; // all close* actions reset phase → home
+  // Swipe (any horizontal direction) to dismiss a sub-screen back to home, with
+  // an animated slide/fade transition (no abrupt "refresh" jump). Keep the latest
+  // action in a ref so the once-created PanResponder never goes stale.
+  const slide = useRef(new Animated.Value(0)).current; // -1 entering-from-left · 0 idle · 1 leaving-right
+  const backActionRef = useRef<() => void>(() => {});
+  backActionRef.current = () => {
+    Animated.timing(slide, { toValue: 1, duration: 170, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(() => {
+      actions.closeArenas(); // phase → home (content swaps to HomeScreen)
+      slide.setValue(-1);
+      Animated.timing(slide, { toValue: 0, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+    });
+  };
+  const slotTx = slide.interpolate({ inputRange: [-1, 0, 1], outputRange: [-SCREEN_W * 0.28, 0, SCREEN_W * 0.28] });
+  const slotOpacity = slide.interpolate({ inputRange: [-1, 0, 1], outputRange: [0, 1, 0] });
   const backSwipe = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 26 && Math.abs(g.dx) > Math.abs(g.dy) * 1.6,
-      onPanResponderRelease: (_e, g) => { if (Math.abs(g.dx) > 55) goHomeRef.current(); },
+      onPanResponderRelease: (_e, g) => { if (Math.abs(g.dx) > 55) backActionRef.current(); },
     }),
   ).current;
 
@@ -291,7 +302,9 @@ export default function App() {
           <CollectionScreen {...props} />
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }} {...(subScreen ? backSwipe.panHandlers : {})}>
-          {homeContent}
+          <Animated.View style={{ flex: 1, opacity: slotOpacity, transform: [{ translateX: slotTx }] }}>
+            {homeContent}
+          </Animated.View>
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
           <FriendsScreen {...props} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
