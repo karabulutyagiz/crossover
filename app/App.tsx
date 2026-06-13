@@ -365,7 +365,7 @@ export default function App() {
 const s = StyleSheet.create({
   splash: { flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' },
   splashLogo: { width: 120, height: 120, borderRadius: 28 },
-  root: { flex: 1, backgroundColor: theme.bg, paddingTop: 44 },
+  root: { flex: 1, backgroundColor: '#2B4A86', paddingTop: 44 }, // matches the screen gradient's top → no dark header seam
   tabBar: {
     flexDirection: 'row',
     borderTopWidth: 1,
