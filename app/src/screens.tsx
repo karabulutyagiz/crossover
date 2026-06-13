@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Animated, Easing, Platform } from 'react-native';
+import { Animated, Easing, Platform, Dimensions } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
@@ -92,31 +92,64 @@ function arenaIcon(arena: { minTrophies: number }): IoniconName {
 }
 
 // ---- shared primitives ----
+// Chunky, game-style (Clash Royale-ish) button: a darker bottom "lip" gives 3D
+// depth, and pressing translates the face down into the lip for a tactile click.
+const BTN_PALETTE: Record<string, [string, string]> = {
+  primary: [theme.primary, theme.primaryDark],
+  accent: [theme.accent, theme.accentDark],
+  blue: [theme.blue, theme.blueDark],
+  danger: [theme.danger, theme.dangerDark],
+  ghost: ['transparent', theme.border],
+};
+
 function Btn({
   label,
   onPress,
   kind = 'primary',
   disabled,
   icon,
+  big,
 }: {
   label: string;
   onPress: () => void;
-  kind?: 'primary' | 'ghost' | 'accent';
+  kind?: 'primary' | 'ghost' | 'accent' | 'blue' | 'danger';
   disabled?: boolean;
   icon?: IoniconName;
+  big?: boolean;
 }) {
-  const bg = kind === 'primary' ? theme.primary : kind === 'accent' ? theme.accent : 'transparent';
-  const fg = kind === 'ghost' ? theme.text : '#06131F';
+  const press = useRef(new Animated.Value(0)).current;
+  const [bg, lip] = BTN_PALETTE[kind] ?? BTN_PALETTE.primary!;
+  const ghost = kind === 'ghost';
+  const fg = ghost ? theme.text : '#06131F';
+  const depth = ghost ? 0 : 5;
+  const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, depth] });
   return (
     <Pressable
+      disabled={disabled}
+      onPressIn={() => Animated.timing(press, { toValue: 1, duration: 60, useNativeDriver: true }).start()}
+      onPressOut={() => Animated.timing(press, { toValue: 0, duration: 110, useNativeDriver: true }).start()}
       onPress={disabled ? undefined : onPress}
-      style={[
-        styles.btn,
-        { backgroundColor: bg, opacity: disabled ? 0.4 : 1, borderWidth: kind === 'ghost' ? 1 : 0 },
-      ]}
+      style={{ opacity: disabled ? 0.45 : 1, marginVertical: 6 }}
     >
-      {icon ? <Ionicons name={icon} size={20} color={fg} style={{ marginRight: 8 }} /> : null}
-      <Text style={[styles.btnText, { color: fg }]}>{label}</Text>
+      <View style={{ backgroundColor: ghost ? 'transparent' : lip, borderRadius: 16, paddingBottom: depth }}>
+        <Animated.View
+          style={{
+            transform: [{ translateY: ty }],
+            backgroundColor: bg,
+            borderRadius: 16,
+            paddingVertical: big ? 18 : 14,
+            paddingHorizontal: 18,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: ghost ? 2 : 0,
+            borderColor: theme.border,
+          }}
+        >
+          {icon ? <Ionicons name={icon} size={big ? 24 : 20} color={fg} style={{ marginRight: 9 }} /> : null}
+          <Text style={{ color: fg, fontSize: big ? 18 : 15, fontWeight: '900', letterSpacing: 0.5 }}>{label}</Text>
+        </Animated.View>
+      </View>
     </Pressable>
   );
 }
@@ -133,6 +166,75 @@ function Screen({ children }: { children: ReactNode }) {
     >
       {children}
     </KeyboardAvoidingView>
+  );
+}
+
+// ---- Swipeable intro / onboarding (shown on first launch) ----
+const SCREEN_W = Dimensions.get('window').width;
+
+const INTRO_SLIDES = [
+  { icon: 'football' as IoniconName, color: theme.primary, title: 'CROSSOVER', desc: 'İki takımda da oynamış futbolcuyu bul. İlk bilen kazanır!' },
+  { icon: 'flash' as IoniconName, color: theme.accent, title: 'RAKİBİNLE YARIŞ', desc: 'Ortak oyuncuyu ilk doğru yazan turu alır. Hızlı düşün!' },
+  { icon: 'trophy' as IoniconName, color: theme.gold, title: 'KUPALARI TOPLA', desc: 'Maç kazan, kupa kazan, arenalarda zirveye tırman.' },
+];
+
+function IntroSlide({ slide, index, scrollX }: { slide: (typeof INTRO_SLIDES)[number]; index: number; scrollX: Animated.Value }) {
+  const inputRange = [(index - 1) * SCREEN_W, index * SCREEN_W, (index + 1) * SCREEN_W];
+  const scale = scrollX.interpolate({ inputRange, outputRange: [0.55, 1, 0.55], extrapolate: 'clamp' });
+  const opacity = scrollX.interpolate({ inputRange, outputRange: [0.25, 1, 0.25], extrapolate: 'clamp' });
+  return (
+    <View style={{ width: SCREEN_W, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36 }}>
+      <Animated.View style={{ transform: [{ scale }], opacity, alignItems: 'center' }}>
+        <View style={{ width: 150, height: 150, borderRadius: 75, backgroundColor: theme.card, borderWidth: 3, borderColor: slide.color, alignItems: 'center', justifyContent: 'center', marginBottom: 30, shadowColor: slide.color, shadowOpacity: 0.55, shadowRadius: 22, shadowOffset: { width: 0, height: 0 }, elevation: 12 }}>
+          <Ionicons name={slide.icon} size={72} color={slide.color} />
+        </View>
+        <Text style={{ color: theme.text, fontSize: 26, fontWeight: '900', letterSpacing: 1, textAlign: 'center', marginBottom: 12 }}>{slide.title}</Text>
+        <Text style={{ color: theme.muted, fontSize: 15, textAlign: 'center', lineHeight: 23 }}>{slide.desc}</Text>
+      </Animated.View>
+    </View>
+  );
+}
+
+export function IntroScreen({ onDone }: { onDone: () => void }) {
+  const [page, setPage] = useState(0);
+  const scRef = useRef<ScrollView>(null);
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const last = INTRO_SLIDES.length - 1;
+  const next = () => {
+    if (page < last) scRef.current?.scrollTo({ x: (page + 1) * SCREEN_W, animated: true });
+    else onDone();
+  };
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: 44 }}>
+      <Pressable onPress={onDone} style={{ position: 'absolute', top: 50, right: 22, zIndex: 10 }} hitSlop={12}>
+        <Text style={{ color: theme.muted, fontWeight: '700', fontSize: 14 }}>Atla</Text>
+      </Pressable>
+      <Animated.ScrollView
+        ref={scRef as never}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
+          useNativeDriver: true,
+          listener: (e: { nativeEvent: { contentOffset: { x: number } } }) =>
+            setPage(Math.round(e.nativeEvent.contentOffset.x / SCREEN_W)),
+        })}
+        style={{ flex: 1 }}
+      >
+        {INTRO_SLIDES.map((s, i) => (
+          <IntroSlide key={i} slide={s} index={i} scrollX={scrollX} />
+        ))}
+      </Animated.ScrollView>
+      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 16 }}>
+        {INTRO_SLIDES.map((_, i) => (
+          <View key={i} style={{ width: i === page ? 24 : 8, height: 8, borderRadius: 4, backgroundColor: i === page ? theme.primary : theme.border }} />
+        ))}
+      </View>
+      <View style={{ paddingHorizontal: 28, paddingBottom: 40 }}>
+        <Btn label={page === last ? 'BAŞLA' : 'İLERİ'} icon={page === last ? 'rocket' : 'arrow-forward'} kind="primary" big onPress={next} />
+      </View>
+    </View>
   );
 }
 

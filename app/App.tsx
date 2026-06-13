@@ -10,9 +10,11 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCrossover } from './src/useCrossover';
 import { t } from './src/i18n';
 import {
+  IntroScreen,
   LoginScreen,
   UsernameScreen,
   HomeScreen,
@@ -48,9 +50,13 @@ export default function App() {
   const scrollRef = useRef<ScrollView>(null);
   const [activeTab, setActiveTab] = useState(1); // start on Home (index 1)
   const [splash, setSplash] = useState(true);
+  const [introSeen, setIntroSeen] = useState<boolean | null>(null); // null = still loading
 
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 1500);
+    AsyncStorage.getItem('@crossover_intro_seen')
+      .then((v) => setIntroSeen(v === '1'))
+      .catch(() => setIntroSeen(true));
     return () => clearTimeout(t);
   }, []);
 
@@ -65,13 +71,25 @@ export default function App() {
     setActiveTab(idx);
   }, []);
 
-  // Splash screen: show COF logo for 1.5 seconds on launch.
-  if (splash) {
+  // Splash screen: show COF logo on launch (also while we read the intro flag).
+  if (splash || introSeen === null) {
     return (
       <View style={s.splash}>
         <StatusBar style="light" />
         <Image source={require('./assets/icon.png')} style={s.splashLogo} />
       </View>
+    );
+  }
+
+  // First launch: swipeable intro / onboarding. Shown once.
+  if (introSeen === false) {
+    return (
+      <IntroScreen
+        onDone={() => {
+          setIntroSeen(true);
+          AsyncStorage.setItem('@crossover_intro_seen', '1').catch(() => {});
+        }}
+      />
     );
   }
 
