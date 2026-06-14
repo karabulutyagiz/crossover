@@ -147,7 +147,8 @@ type Action =
 function reducer(state: GameState, action: Action): GameState {
   switch (action.type) {
     case '_connected':
-      return { ...state, connected: action.value };
+      // A fresh (re)connect clears any lingering "couldn't connect" error.
+      return { ...state, connected: action.value, error: action.value ? null : state.error };
     case '_reset':
       return { ...initialState, scopes: state.scopes, profile: state.profile, friends: state.friends };
     case '_picked':
@@ -296,6 +297,9 @@ function reducer(state: GameState, action: Action): GameState {
     case 'opponent_left':
       return { ...state, phase: 'lobby', error: t('error.opponentLeft'), teams: null, result: null, locked: null };
     case 'error':
+      // Internal protocol noise (sent when a stray message reaches the server with no
+      // active room) — never surface it to the user.
+      if (action.message === 'Create or join a room first') return state;
       return { ...state, error: action.message };
     default:
       return state;
@@ -332,7 +336,7 @@ export function useCrossover() {
     }
   }, [state.profile]);
 
-  const connectAndSend = useCallback((first: ClientMsg) => {
+  const connectAndSend = useCallback((first: ClientMsg, opts?: { silent?: boolean }) => {
     wsRef.current?.close();
     const ws = new WebSocket(SERVER_URL);
     wsRef.current = ws;
@@ -356,7 +360,9 @@ export function useCrossover() {
     ws.onclose = () => {
       dispatch({ type: '_connected', value: false });
     };
-    ws.onerror = () => dispatch({ type: 'error', message: t('error.connect') });
+    // Background keepalive reconnects must stay silent — only surface a connection
+    // error when the user actively triggered this connection (find_match, etc.).
+    ws.onerror = () => { if (!opts?.silent) dispatch({ type: 'error', message: t('error.connect') }); };
   }, []);
 
   const send = useCallback((msg: ClientMsg) => {
@@ -379,7 +385,7 @@ export function useCrossover() {
     const ensure = () => {
       const ws = wsRef.current;
       if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
-      connectAndSend({ type: 'register', name, userId: uid });
+      connectAndSend({ type: 'register', name, userId: uid }, { silent: true });
     };
     ensure();
     const iv = setInterval(ensure, 7000);

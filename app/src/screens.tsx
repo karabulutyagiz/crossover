@@ -1095,18 +1095,17 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
   const color = arenaColor(arena.name);
   return (
     <Pressable onPress={onPress} style={{ marginVertical: 6, alignItems: 'center' }}>
-      {/* Planted top-view arena (Clash-Royale board): NO float / NO bob. A firm layered
-          ground shadow sits directly under the base so the arena rests on the ground. */}
+      {/* Planted top-view arena (Clash-Royale board): NO float / NO bob. The shadow is the
+          arena's OWN silhouette cast down + to the sides (left/right/bottom) so it reads as
+          seated on the ground — not a single ellipse directly beneath (that looked airborne). */}
       <View style={{ alignItems: 'center', justifyContent: 'flex-end' }}>
         <ArenaHaze />
-        {/* wide soft ground shadow — the arena's footprint on the ground */}
-        <View pointerEvents="none" style={{ position: 'absolute', bottom: 6, width: 212, height: 28, borderRadius: 14, backgroundColor: '#060A18', opacity: 0.5, shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 18, shadowOffset: { width: 0, height: 3 }, transform: [{ scaleX: 1.38 }] }} />
-        {/* tight dark core right under the base — anchors it firmly */}
-        <View pointerEvents="none" style={{ position: 'absolute', bottom: 12, width: 150, height: 15, borderRadius: 8, backgroundColor: '#000', opacity: 0.45, transform: [{ scaleX: 1.5 }] }} />
+        {/* faint wide ground darkening so the base meets the floor */}
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: 14, width: 196, height: 22, borderRadius: 11, backgroundColor: '#02030B', opacity: 0.3, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 16, shadowOffset: { width: 0, height: 2 }, transform: [{ scaleX: 1.35 }] }} />
         <Image
           source={tier.img}
           resizeMode="contain"
-          style={{ width: 250, height: 218 }}
+          style={{ width: 250, height: 218, shadowColor: '#01030B', shadowOpacity: 0.6, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }}
         />
       </View>
       {/* Nameplate below */}
@@ -2299,15 +2298,40 @@ export function CollectionScreen({ state, actions }: Props) {
     else if (equipped.length < 3) actions.equipEmotes([...equipped, id]);
   };
   const all = [...FREE_EMOTES, ...PREMIUM_EMOTES];
+  const COL_GAP = 8;
+  const COL_W = Math.floor((SCREEN_W - 44 - COL_GAP * 3) / 4); // 4 columns inside Screen's 22px padding
 
   return (
     <Screen>
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
         <ScreenHeader title="Koleksiyon" icon="albums" underline={theme.primary} />
-        <Text style={[styles.muted, { textAlign: 'center', marginBottom: 6 }]}>Maçta kuşanılan {equipped.length}/3</Text>
+        <Text style={[styles.muted, { textAlign: 'center', marginBottom: 10 }]}>Maçta kuşanılan {equipped.length}/3</Text>
 
-        {/* All emotes as square cards, equip with "Kuşan" below each */}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 14 }}>
+        {/* Equipped loadout — 3 slots at the very top (empty = dashed placeholder) */}
+        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16, marginBottom: 18 }}>
+          {[0, 1, 2].map((i) => {
+            const id = equipped[i];
+            const em = id ? all.find((e) => e.id === id) : null;
+            return (
+              <Pressable
+                key={`slot${i}`}
+                onPress={() => { if (id) toggleEquip(id); }}
+                style={{
+                  width: 82, height: 82, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: em ? theme.card : theme.panelInnerFill,
+                  borderWidth: 2, borderColor: em ? theme.primary : theme.border,
+                  borderStyle: em ? 'solid' : 'dashed',
+                  shadowColor: em ? theme.primary : 'transparent', shadowOpacity: em ? 0.5 : 0, shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
+                }}
+              >
+                {em ? <EmoteSticker id={em.id} size={62} /> : <Ionicons name="add" size={26} color={theme.muted} />}
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* All emotes — 4-column grid (less scrolling), equip with the button below each */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP }}>
           {all.map((e) => {
             const owned = ownsEmote(profile, e.id);
             const isEquipped = equipped.includes(e.id);
@@ -2316,30 +2340,24 @@ export function CollectionScreen({ state, actions }: Props) {
               <View
                 key={e.id}
                 style={{
-                  width: '48%', marginBottom: 12, paddingVertical: 14, paddingHorizontal: 10,
-                  backgroundColor: theme.card, borderRadius: 16, alignItems: 'center',
+                  width: COL_W, paddingVertical: 9, paddingHorizontal: 4,
+                  backgroundColor: theme.card, borderRadius: 13, alignItems: 'center',
                   borderWidth: 1.5, borderColor: isEquipped ? theme.primary : theme.border,
-                  opacity: owned ? 1 : 0.55,
+                  opacity: owned ? 1 : 0.5,
                 }}
               >
-                <View style={{ width: 74, height: 74, alignItems: 'center', justifyContent: 'center' }}>
-                  <EmoteSticker id={e.id} size={74} />
-                </View>
-                <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700', textAlign: 'center', marginTop: 6 }} numberOfLines={1}>
-                  {e.premium?.name ?? e.phrase}
-                </Text>
-                <View style={{ height: 8 }} />
+                <EmoteSticker id={e.id} size={50} />
+                <View style={{ height: 7 }} />
                 {owned ? (
                   <Pressable
                     onPress={() => { if (!full) toggleEquip(e.id); }}
-                    style={{ width: '100%', alignItems: 'center', paddingVertical: 9, borderRadius: 10, backgroundColor: isEquipped ? theme.primary : theme.bg2, borderWidth: 1, borderColor: isEquipped ? theme.primary : theme.border, opacity: full ? 0.45 : 1 }}
+                    style={{ width: '100%', alignItems: 'center', paddingVertical: 6, borderRadius: 9, backgroundColor: isEquipped ? theme.primary : theme.bg2, borderWidth: 1, borderColor: isEquipped ? theme.primary : theme.border, opacity: full ? 0.4 : 1 }}
                   >
-                    <Text style={{ color: isEquipped ? '#06131F' : theme.text, fontWeight: '800', fontSize: 12 }}>{isEquipped ? 'Kuşanıldı' : 'Kuşan'}</Text>
+                    <Text style={{ color: isEquipped ? '#06131F' : theme.text, fontWeight: '800', fontSize: 10 }} numberOfLines={1} adjustsFontSizeToFit>{isEquipped ? 'Kuşanıldı' : 'Kuşan'}</Text>
                   </Pressable>
                 ) : (
-                  <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 10, backgroundColor: theme.bg2, borderWidth: 1, borderColor: theme.border }}>
-                    <Ionicons name="lock-closed" size={12} color={theme.muted} />
-                    <Text style={{ color: theme.muted, fontWeight: '700', fontSize: 11 }}>Kilitli</Text>
+                  <View style={{ width: '100%', alignItems: 'center', paddingVertical: 6, borderRadius: 9, backgroundColor: theme.bg2, borderWidth: 1, borderColor: theme.border }}>
+                    <Ionicons name="lock-closed" size={13} color={theme.muted} />
                   </View>
                 )}
               </View>

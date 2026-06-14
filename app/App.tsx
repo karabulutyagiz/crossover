@@ -86,6 +86,7 @@ export default function App() {
   const { state, actions } = useCrossover();
   const props = { state, actions };
   const scrollRef = useRef<ScrollView>(null);
+  const programmaticScroll = useRef(false); // true while a tab tap animates — ignore intermediate scroll events
   const [activeTab, setActiveTab] = useState(2); // start on Home (store=0, collection=1, home=2)
   const [splash, setSplash] = useState(true);
   const [tutorialSeen, setTutorialSeen] = useState<boolean | null>(null);
@@ -130,12 +131,16 @@ export default function App() {
   }, [state.phase, actions]);
 
   const goToTab = useCallback((idx: number) => {
-    scrollRef.current?.scrollTo({ x: idx * SCREEN_W, animated: true });
+    // Jump the active indicator straight to the target and ignore the intermediate
+    // pages the animated scroll passes over (otherwise the green pill flickers across tabs).
+    programmaticScroll.current = true;
     setActiveTab(idx);
+    scrollRef.current?.scrollTo({ x: idx * SCREEN_W, animated: true });
     if (idx !== 2) resetHomePhase(); // home lives at index 2 (store=0, collection=1, home=2, friends=3)
   }, [resetHomePhase]);
 
   const onScrollEnd = useCallback((e: any) => {
+    programmaticScroll.current = false; // animation/drag settled — resume live updates
     const x = e.nativeEvent.contentOffset.x;
     const idx = Math.round(x / SCREEN_W);
     setActiveTab(idx);
@@ -287,6 +292,7 @@ export default function App() {
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onScrollEnd}
         onScroll={(e) => {
+          if (programmaticScroll.current) return; // tab tap in progress — don't flicker through pages
           const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
           if (idx !== activeTab) setActiveTab(idx);
         }}
@@ -416,24 +422,22 @@ const s = StyleSheet.create({
   trophyPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    minWidth: 100,
+    gap: 8,
+    minWidth: 148, // longer left↔right
     justifyContent: 'center',
-    backgroundColor: '#151C30',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 7,
-    borderTopWidth: 2,
-    borderTopColor: '#465284', // lit top edge
-    borderLeftWidth: 2,
-    borderLeftColor: '#3A4570',
-    borderRightWidth: 2,
-    borderRightColor: '#222B49',
-    borderBottomWidth: 4,
-    borderBottomColor: theme.cardLip, // dark lip = depth
+    backgroundColor: 'rgba(14,24,52,0.5)', // frosted translucent glass
+    borderRadius: 19,
+    paddingHorizontal: 24,
+    paddingVertical: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(173,200,255,0.35)', // cool glass rim
+    borderTopWidth: 1.5,
+    borderTopColor: 'rgba(255,255,255,0.55)', // bright top sheen
+    borderBottomWidth: 3,
+    borderBottomColor: 'rgba(0,0,0,0.32)',
     shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowRadius: 7,
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
@@ -446,24 +450,23 @@ const s = StyleSheet.create({
   diamondPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    minWidth: 100,
-    backgroundColor: '#151C30',
-    borderRadius: 16,
-    paddingLeft: 14,
-    paddingRight: 4,
+    gap: 8,
+    minWidth: 148, // longer left↔right
+    justifyContent: 'center',
+    backgroundColor: 'rgba(14,24,52,0.5)', // frosted translucent glass
+    borderRadius: 19,
+    paddingLeft: 20,
+    paddingRight: 5,
     paddingVertical: 5,
-    borderTopWidth: 2,
-    borderTopColor: '#465284',
-    borderLeftWidth: 2,
-    borderLeftColor: '#3A4570',
-    borderRightWidth: 2,
-    borderRightColor: '#222B49',
-    borderBottomWidth: 4,
-    borderBottomColor: theme.cardLip,
+    borderWidth: 1.5,
+    borderColor: 'rgba(173,200,255,0.35)', // cool glass rim
+    borderTopWidth: 1.5,
+    borderTopColor: 'rgba(255,255,255,0.55)', // bright top sheen
+    borderBottomWidth: 3,
+    borderBottomColor: 'rgba(0,0,0,0.32)',
     shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowRadius: 7,
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
