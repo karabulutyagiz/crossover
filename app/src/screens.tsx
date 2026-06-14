@@ -17,12 +17,12 @@ import * as Clipboard from 'expo-clipboard';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
-import { theme } from './theme';
+import { theme, engrave } from './theme';
 import { t, currentLang, setLanguage, LANGUAGES } from './i18n';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GOOGLE_IOS_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
-import Svg, { Rect, Circle, Line, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
+import Svg, { Rect, Circle, Line, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState, FriendInfo } from './useCrossover';
@@ -137,50 +137,55 @@ function Btn({
   icon?: IoniconName;
   big?: boolean;
 }) {
-  const press = useRef(new Animated.Value(1)).current;
-  const [, base] = BTN_PALETTE[kind] ?? BTN_PALETTE.primary!;
+  const press = useRef(new Animated.Value(0)).current;
+  const pal = BTN_PALETTE[kind] ?? BTN_PALETTE.primary!;
+  const face = pal[1];
+  const lip = pal[2];
   const ghost = kind === 'ghost';
-  const fg = ghost ? theme.text : '#06131F';
+  const fg = ghost ? theme.text : theme.ink;
   const radius = big ? 14 : 12;
+  const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, ghost ? 2 : 4] });
+  const glow = big && (kind === 'primary' || kind === 'accent') && !disabled;
+  const content = (
+    <>
+      {icon ? <Ionicons name={icon} size={big ? 23 : 19} color={fg} style={{ marginRight: 9 }} /> : null}
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: fg, fontSize: big ? 18 : 15, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.3, flexShrink: 1 }}>{label}</Text>
+    </>
+  );
   return (
     <Pressable
       disabled={disabled}
-      onPressIn={() => Animated.timing(press, { toValue: 0.96, duration: 60, useNativeDriver: true }).start()}
-      onPressOut={() => Animated.timing(press, { toValue: 1, duration: 110, useNativeDriver: true }).start()}
+      onPressIn={() => Animated.timing(press, { toValue: 1, duration: 60, useNativeDriver: true }).start()}
+      onPressOut={() => Animated.timing(press, { toValue: 0, duration: 110, useNativeDriver: true }).start()}
       onPress={disabled ? undefined : onPress}
-      style={{ opacity: disabled ? 0.5 : 1, marginVertical: 6 }}
+      style={{
+        marginVertical: 6, opacity: disabled ? 0.5 : 1, borderRadius: radius + 2,
+        ...(glow ? { shadowColor: face, shadowOpacity: 0.5, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 10 } : {}),
+      }}
     >
-      {/* flat solid button — no gradient, no bevel */}
-      <Animated.View
-        style={{
-          transform: [{ scale: press }],
-          backgroundColor: ghost ? 'transparent' : base,
-          borderRadius: radius,
-          paddingVertical: big ? 16 : 13,
-          paddingHorizontal: 18,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderWidth: ghost ? 2 : 0,
-          borderColor: ghost ? theme.border : 'transparent',
-        }}
-      >
-        {icon ? <Ionicons name={icon} size={big ? 23 : 19} color={fg} style={{ marginRight: 9 }} /> : null}
-        <Text
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.75}
+      {ghost ? (
+        <Animated.View
           style={{
-            color: fg,
-            fontSize: big ? 18 : 15,
-            fontFamily: 'Poppins-ExtraBold',
-            letterSpacing: 0.3,
-            flexShrink: 1,
+            transform: [{ translateY: ty }], backgroundColor: theme.glowSoft, borderRadius: radius, borderWidth: 2, borderColor: theme.primary,
+            paddingVertical: big ? 14 : 11, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+            shadowColor: theme.primary, shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 4,
           }}
         >
-          {label}
-        </Text>
-      </Animated.View>
+          {content}
+        </Animated.View>
+      ) : (
+        // chunky 3D button: darker bottom "lip" + face that depresses onto it when pressed
+        <View style={{ backgroundColor: lip, borderRadius: radius + 1, paddingBottom: disabled ? 0 : 4, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
+          <Animated.View
+            style={{
+              transform: [{ translateY: ty }], backgroundColor: face, borderRadius: radius, paddingVertical: big ? 15 : 12, paddingHorizontal: 18,
+              borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.30)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            {content}
+          </Animated.View>
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -202,6 +207,125 @@ function Chip({ icon, label, onPress }: { icon: IoniconName; label: string; onPr
   );
 }
 
+// Darken a hex color (for tinted frame bottom-edges).
+function darken(hex: string, amt = 0.34): string {
+  const h = hex.replace('#', '');
+  if (h.length !== 6) return hex;
+  const n = parseInt(h, 16);
+  const r = Math.round(((n >> 16) & 255) * (1 - amt));
+  const g = Math.round(((n >> 8) & 255) * (1 - amt));
+  const b = Math.round((n & 255) * (1 - amt));
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+}
+
+// ---- Game design kit: framed panel + centered pop-in modal + rank badge ----
+let _gpSeq = 0;
+// Reusable Clash-Royale-style framed surface: outer frame ring → beveled face
+// (+ optional top-lit gloss for hero panels) → optional left accent stripe.
+function GamePanel({ children, hero = false, tint, accentStripe, compact = false, style, bodyStyle }: {
+  children: ReactNode; hero?: boolean; tint?: string; accentStripe?: string; compact?: boolean; style?: any; bodyStyle?: any;
+}) {
+  const gid = useRef(`gp${_gpSeq++}`).current;
+  const r = compact ? 14 : 18;
+  const fr = compact ? 12 : 16;
+  const frameColor = tint ?? (hero ? theme.frameGold : theme.border);
+  const frameBot = tint ? darken(tint) : (hero ? theme.accentDark : theme.cardLip);
+  return (
+    <View style={[{ backgroundColor: hero ? theme.panelInk : theme.bg2, borderRadius: r, padding: 2, borderWidth: 2, borderColor: frameColor, borderBottomColor: frameBot, shadowColor: tint ?? '#000', shadowOpacity: tint ? 0.45 : 0.4, shadowRadius: compact ? 6 : 12, shadowOffset: { width: 0, height: compact ? 4 : 6 }, elevation: compact ? 5 : 9 }, style]}>
+      <View style={[{ backgroundColor: theme.card, borderRadius: fr, borderTopWidth: 1, borderTopColor: theme.panelTopGloss, borderBottomWidth: 3, borderBottomColor: theme.cardLip, overflow: 'hidden', padding: 12 }, bodyStyle]}>
+        {hero ? (
+          <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
+            <Defs>
+              <SvgGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={theme.panelTop} />
+                <Stop offset="0.5" stopColor={theme.card} />
+                <Stop offset="1" stopColor={theme.panelBot} />
+              </SvgGradient>
+            </Defs>
+            <Rect width="100%" height="100%" fill={`url(#${gid})`} />
+            <Rect width="100%" height="50%" fill="#FFFFFF" opacity={0.05} />
+          </Svg>
+        ) : null}
+        {accentStripe ? <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: accentStripe, borderTopLeftRadius: fr, borderBottomLeftRadius: fr }} /> : null}
+        {children}
+      </View>
+    </View>
+  );
+}
+
+// Centered pop-in modal with a gold banner header + close gem (Clash-Royale dialog).
+function GameModal({ visible, onClose, title, icon, danger = false, coach = false, children }: {
+  visible: boolean; onClose: () => void; title?: string; icon?: IoniconName; danger?: boolean; coach?: boolean; children: ReactNode;
+}) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (visible) Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
+    else a.setValue(0);
+  }, [visible, a]);
+  const frameColor = coach ? theme.primary : theme.frameGold;
+  const frameBot = coach ? theme.primaryDark : theme.frameGoldDark;
+  const bannerBg = danger ? theme.danger : theme.accent;
+  const bannerBot = danger ? theme.dangerDark : theme.accentDark;
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: theme.scrim, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }} onPress={onClose}>
+        <Animated.View style={{ width: '100%', maxWidth: 360, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) }], opacity: a, backgroundColor: theme.panelInk, borderRadius: 22, padding: 2, borderWidth: 2, borderColor: frameColor, borderBottomColor: frameBot, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 24, shadowOffset: { width: 0, height: 14 }, elevation: 24 }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: theme.card, borderRadius: 20, overflow: 'hidden', borderBottomWidth: 3, borderBottomColor: theme.cardLip }}>
+            {title ? (
+              <View style={{ height: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 46, backgroundColor: bannerBg, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.35)', borderBottomWidth: 3, borderBottomColor: bannerBot }}>
+                {icon ? <Ionicons name={icon} size={18} color={danger ? theme.text : theme.ink} /> : null}
+                <Text numberOfLines={1} style={{ color: danger ? theme.text : theme.ink, fontFamily: 'Poppins-ExtraBold', fontSize: 16, letterSpacing: 0.5, textTransform: 'uppercase' }}>{title}</Text>
+              </View>
+            ) : null}
+            <View style={{ padding: 20, paddingTop: title ? 16 : 20, gap: 12 }}>{children}</View>
+            <Pressable onPress={onClose} hitSlop={8} style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: theme.cardLip, borderWidth: 2, borderColor: theme.accentDark, alignItems: 'center', justifyContent: 'center', zIndex: 5 }}>
+              <Ionicons name="close" size={16} color={theme.accent} />
+            </Pressable>
+          </Pressable>
+        </Animated.View>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// Beveled rank badge (1/2/3 = gold/silver/bronze with glow; 4+ = plain).
+function RankBadge({ rank, size = 28 }: { rank: number; size?: number }) {
+  if (rank <= 3) {
+    const c = [theme.gold, theme.silver, theme.bronze][rank - 1]!;
+    return (
+      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.6)', borderBottomWidth: 2, borderBottomColor: darken(c), alignItems: 'center', justifyContent: 'center', shadowColor: c, shadowOpacity: 0.5, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 5 }}>
+        <Text style={{ color: theme.ink, fontFamily: 'Poppins-Black', fontSize: size * 0.46 }}>{rank}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.border }}>
+      <Text style={{ color: theme.muted, fontFamily: 'Poppins-ExtraBold', fontSize: size * 0.42 }}>{rank}</Text>
+    </View>
+  );
+}
+
+// Framed screen header bar with a real back mini-button + engraved title.
+function ScreenHeader({ title, onBack, icon, right, underline }: {
+  title: string; onBack?: () => void; icon?: IoniconName; right?: ReactNode; underline?: string;
+}) {
+  return (
+    <View style={{ alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 14, backgroundColor: theme.bg2, borderBottomWidth: 2, borderBottomColor: theme.cardLip, marginBottom: 12 }}>
+      {onBack ? (
+        <Pressable onPress={onBack} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: theme.card, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="chevron-back" size={22} color={theme.text} />
+        </Pressable>
+      ) : <View style={{ width: 40 }} />}
+      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
+        {icon ? <Ionicons name={icon} size={18} color={theme.accent} /> : null}
+        <Text numberOfLines={1} style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18, letterSpacing: 0.5, textTransform: 'uppercase', ...engrave('lg') }}>{title}</Text>
+      </View>
+      {right ?? <View style={{ width: 40 }} />}
+      {underline ? <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: underline, opacity: 0.55 }} /> : null}
+    </View>
+  );
+}
+
 // Subtle football-pitch lines behind every screen for a stadium feel.
 
 // Clean, inviting background — a soft sky-like vertical gradient (lighter at top)
@@ -211,13 +335,15 @@ function Chip({ icon, label, onPress }: { icon: IoniconName; label: string; onPr
 const SCREEN_W = Dimensions.get('window').width;
 const SCREEN_H = Dimensions.get('window').height;
 export const BG_TOP = '#15244F';
-// Explicit diagonal stripes (no <Pattern> — that doesn't render reliably on device).
-const BG_STRIPES = (() => {
+// Explicit crossing diagonal weave (no <Pattern> — that doesn't render reliably on device).
+const BG_STRIPES_R = (() => {
   const out: { x1: number; y1: number; x2: number; y2: number }[] = [];
-  const step = 46;
-  for (let x = -SCREEN_H; x < SCREEN_W + SCREEN_H; x += step) {
-    out.push({ x1: x, y1: 0, x2: x + SCREEN_H, y2: SCREEN_H }); // 45° down-right
-  }
+  for (let x = -SCREEN_H; x < SCREEN_W + SCREEN_H; x += 46) out.push({ x1: x, y1: 0, x2: x + SCREEN_H, y2: SCREEN_H }); // down-right
+  return out;
+})();
+const BG_STRIPES_L = (() => {
+  const out: { x1: number; y1: number; x2: number; y2: number }[] = [];
+  for (let x = SCREEN_W + SCREEN_H; x > -SCREEN_H; x -= 46) out.push({ x1: x - 23, y1: 0, x2: x - 23 - SCREEN_H, y2: SCREEN_H }); // down-left, offset
   return out;
 })();
 export function ScreenBg() {
@@ -228,15 +354,24 @@ export function ScreenBg() {
           <SvgGradient id="screenbg" x1="0" y1="0" x2="0.35" y2="1">
             <Stop offset="0" stopColor={BG_TOP} />
             <Stop offset="0.5" stopColor="#0F1A3C" />
-            <Stop offset="1" stopColor="#0A1330" />
+            <Stop offset="1" stopColor="#091230" />
           </SvgGradient>
+          <RadialGradient id="vig" cx="50%" cy="42%" r="75%">
+            <Stop offset="0.55" stopColor={theme.vignetteEdge} stopOpacity={0} />
+            <Stop offset="1" stopColor={theme.vignetteEdge} stopOpacity={1} />
+          </RadialGradient>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#screenbg)" />
-        {BG_STRIPES.map((l, i) => (
-          <Line key={i} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="#6E8CD8" strokeWidth={2} opacity={0.07} />
+        {BG_STRIPES_R.map((l, i) => (
+          <Line key={`r${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke={theme.stripe} strokeWidth={2} opacity={0.12} />
         ))}
-        <Circle cx="16%" cy="10%" r={160} fill={theme.primary} opacity={0.07} />
-        <Circle cx="90%" cy="82%" r={170} fill={theme.accent} opacity={0.05} />
+        {BG_STRIPES_L.map((l, i) => (
+          <Line key={`l${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke={theme.stripe2} strokeWidth={1.5} opacity={0.06} />
+        ))}
+        <Circle cx="16%" cy="9%" r={180} fill={theme.primary} opacity={0.11} />
+        <Circle cx="90%" cy="84%" r={190} fill={theme.accent} opacity={0.09} />
+        <Circle cx="80%" cy="12%" r={120} fill={theme.blue} opacity={0.06} />
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#vig)" />
       </Svg>
     </View>
   );
@@ -3351,13 +3486,16 @@ const styles = StyleSheet.create({
   muted: { color: theme.muted, textAlign: 'center', fontSize: 12 },
   error: { color: theme.danger, textAlign: 'center', marginTop: 10, fontSize: 12 },
   input: {
-    backgroundColor: theme.card,
+    backgroundColor: theme.panelInnerFill, // recessed inner well
     color: theme.text,
     borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
+    borderWidth: 2,
+    borderTopColor: theme.cardLip, // dark top edge = sunken
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
     fontSize: 14,
+    fontFamily: 'Poppins-ExtraBold',
     marginVertical: 6,
   },
   searchBox: {
