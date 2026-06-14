@@ -219,8 +219,9 @@ export function ScreenBg() {
             <Stop offset="0.5" stopColor="#0F1A3C" />
             <Stop offset="1" stopColor="#0A1330" />
           </SvgGradient>
-          <Pattern id="diag" patternUnits="userSpaceOnUse" width={48} height={48} patternTransform="rotate(45)">
-            <Line x1={0} y1={0} x2={0} y2={48} stroke="#5C7AC8" strokeWidth={3} opacity={0.05} />
+          <Pattern id="diag" patternUnits="userSpaceOnUse" width={46} height={46} patternTransform="rotate(45)">
+            <Line x1={0} y1={0} x2={0} y2={46} stroke="#6E8CD8" strokeWidth={2} opacity={0.08} />
+            <Line x1={0} y1={0} x2={46} y2={0} stroke="#6E8CD8" strokeWidth={2} opacity={0.08} />
           </Pattern>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#screenbg)" />
@@ -940,9 +941,9 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
   const ty = breathe.interpolate({ inputRange: [0, 1], outputRange: [0, -5] });
   return (
     <Pressable onPress={onPress} style={{ marginVertical: 6, alignItems: 'center' }}>
-      {/* Floating cut-out arena (square, 2.5D top-view) with a full soft ground shadow */}
+      {/* Floating cut-out arena (square, 2.5D top-view) with a tight contact shadow */}
       <View style={{ alignItems: 'center', justifyContent: 'flex-end' }}>
-        <View pointerEvents="none" style={{ position: 'absolute', bottom: 14, width: 150, height: 30, borderRadius: 15, backgroundColor: '#000', opacity: 0.4, shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, transform: [{ scaleX: 1.25 }] }} />
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: 16, width: 96, height: 13, borderRadius: 7, backgroundColor: '#000', opacity: 0.3, transform: [{ scaleX: 1.3 }] }} />
         <Animated.Image
           source={tier.img}
           resizeMode="contain"
