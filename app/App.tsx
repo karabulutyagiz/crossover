@@ -324,7 +324,18 @@ export default function App() {
         {TABS.map((tab, idx) => {
           const active = idx === activeTab;
           return (
-            <Pressable key={tab.key} style={s.tab} onPress={() => goToTab(idx)}>
+            <Pressable
+              key={tab.key}
+              style={s.tab}
+              onPress={() => {
+                // Re-tapping the active Oyna tab opens/closes the Arenas screen (trophy ladder).
+                if (idx === 2 && activeTab === 2) {
+                  if (state.phase === 'home') { actions.openArenas(); return; }
+                  if (state.phase === 'arenas') { actions.closeArenas(); return; }
+                }
+                goToTab(idx);
+              }}
+            >
               <View style={[s.tabInner, active && s.tabInnerActive]}>
                 <Ionicons
                   name={active ? tab.activeIcon : tab.icon}
