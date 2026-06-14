@@ -368,7 +368,7 @@ export default function App() {
 const s = StyleSheet.create({
   splash: { flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' },
   splashLogo: { width: 120, height: 120, borderRadius: 28 },
-  root: { flex: 1, backgroundColor: '#3461A8', paddingTop: 44 }, // matches the airy screen gradient top → no header seam
+  root: { flex: 1, backgroundColor: '#79A943', paddingTop: 44 }, // matches the green field background top → no header seam
   tabBar: {
     flexDirection: 'row',
     borderTopWidth: 2,
@@ -380,7 +380,7 @@ const s = StyleSheet.create({
   tab: { flex: 1, alignItems: 'center' },
   tabInner: { alignItems: 'center', justifyContent: 'center', gap: 2, paddingVertical: 6, paddingHorizontal: 4, borderRadius: 14, alignSelf: 'stretch' },
   tabInnerActive: {
-    backgroundColor: '#0E1838',
+    backgroundColor: '#0B2413',
     borderWidth: 1,
     borderColor: theme.primary,
     shadowColor: theme.primary,
@@ -415,16 +415,16 @@ const s = StyleSheet.create({
     gap: 7,
     minWidth: 100,
     justifyContent: 'center',
-    backgroundColor: '#151C30',
+    backgroundColor: '#13301C',
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 7,
     borderTopWidth: 2,
-    borderTopColor: '#465284', // lit top edge
+    borderTopColor: '#3E7A4D', // lit top edge
     borderLeftWidth: 2,
-    borderLeftColor: '#3A4570',
+    borderLeftColor: '#356A42',
     borderRightWidth: 2,
-    borderRightColor: '#222B49',
+    borderRightColor: '#1A4128',
     borderBottomWidth: 4,
     borderBottomColor: theme.cardLip, // dark lip = depth
     shadowColor: '#000',
@@ -444,17 +444,17 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 7,
     minWidth: 100,
-    backgroundColor: '#151C30',
+    backgroundColor: '#13301C',
     borderRadius: 16,
     paddingLeft: 14,
     paddingRight: 4,
     paddingVertical: 5,
     borderTopWidth: 2,
-    borderTopColor: '#465284',
+    borderTopColor: '#3E7A4D',
     borderLeftWidth: 2,
-    borderLeftColor: '#3A4570',
+    borderLeftColor: '#356A42',
     borderRightWidth: 2,
-    borderRightColor: '#222B49',
+    borderRightColor: '#1A4128',
     borderBottomWidth: 4,
     borderBottomColor: theme.cardLip,
     shadowColor: '#000',

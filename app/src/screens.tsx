@@ -334,43 +334,27 @@ function ScreenHeader({ title, onBack, icon, right, underline }: {
 // + a faint diagonal stripe pattern + soft glows. Sits behind every screen.
 const SCREEN_W = Dimensions.get('window').width;
 const SCREEN_H = Dimensions.get('window').height;
-export const BG_TOP = '#3461A8'; // bright, airy sky-blue (less "iç kapatıcı")
-// Explicit crossing diagonal weave (no <Pattern> — that doesn't render reliably on device).
-const BG_STRIPES_R = (() => {
-  const out: { x1: number; y1: number; x2: number; y2: number }[] = [];
-  for (let x = -SCREEN_H; x < SCREEN_W + SCREEN_H; x += 46) out.push({ x1: x, y1: 0, x2: x + SCREEN_H, y2: SCREEN_H }); // down-right
-  return out;
-})();
-const BG_STRIPES_L = (() => {
-  const out: { x1: number; y1: number; x2: number; y2: number }[] = [];
-  for (let x = SCREEN_W + SCREEN_H; x > -SCREEN_H; x -= 46) out.push({ x1: x - 23, y1: 0, x2: x - 23 - SCREEN_H, y2: SCREEN_H }); // down-left, offset
-  return out;
-})();
+export const BG_TOP = '#79A943'; // matches the green field background image (header strip blends)
+const BG_IMG = require('../assets/bg.png');
+// Full-screen green field background image + a soft vignette so the UI reads on top.
 export function ScreenBg() {
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <Image source={BG_IMG} style={StyleSheet.absoluteFill} resizeMode="cover" />
       <Svg width="100%" height="100%">
         <Defs>
-          <SvgGradient id="screenbg" x1="0" y1="0" x2="0.35" y2="1">
-            <Stop offset="0" stopColor={BG_TOP} />
-            <Stop offset="0.55" stopColor="#264A88" />
-            <Stop offset="1" stopColor="#1A356A" />
+          <SvgGradient id="bgshade" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#0A1A0C" stopOpacity={0.34} />
+            <Stop offset="0.28" stopColor="#0A1A0C" stopOpacity={0.12} />
+            <Stop offset="0.72" stopColor="#0A1A0C" stopOpacity={0.12} />
+            <Stop offset="1" stopColor="#0A1A0C" stopOpacity={0.4} />
           </SvgGradient>
-          <RadialGradient id="vig" cx="50%" cy="40%" r="78%">
-            <Stop offset="0.6" stopColor="#0E1F46" stopOpacity={0} />
-            <Stop offset="1" stopColor="#0E1F46" stopOpacity={0.35} />
+          <RadialGradient id="vig" cx="50%" cy="42%" r="80%">
+            <Stop offset="0.55" stopColor="#08160A" stopOpacity={0} />
+            <Stop offset="1" stopColor="#08160A" stopOpacity={0.45} />
           </RadialGradient>
         </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#screenbg)" />
-        {BG_STRIPES_R.map((l, i) => (
-          <Line key={`r${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="#FFFFFF" strokeWidth={2} opacity={0.06} />
-        ))}
-        {BG_STRIPES_L.map((l, i) => (
-          <Line key={`l${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="#FFFFFF" strokeWidth={1.5} opacity={0.035} />
-        ))}
-        <Circle cx="16%" cy="9%" r={190} fill={theme.primary} opacity={0.12} />
-        <Circle cx="90%" cy="84%" r={200} fill={theme.accent} opacity={0.10} />
-        <Circle cx="82%" cy="12%" r={130} fill="#7FC4FF" opacity={0.10} />
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#bgshade)" />
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#vig)" />
       </Svg>
     </View>
@@ -1063,7 +1047,7 @@ function arenaColor(name: string): string {
   return ARENA_DATA.find((a) => a.name === name)?.color ?? theme.primary;
 }
 
-// Soft gray-blue atmospheric haze behind the arena — drifting fog so the arena
+// Soft warm sunlit haze behind the arena — drifting fog so the arena
 // stands out from the background (low opacity, non-distracting).
 function ArenaHaze() {
   const drift = useRef(new Animated.Value(0)).current;
@@ -1083,8 +1067,8 @@ function ArenaHaze() {
       <Svg width="100%" height="100%">
         <Defs>
           <RadialGradient id="haze" cx="50%" cy="50%" r="50%">
-            <Stop offset="0" stopColor="#BFD0EE" stopOpacity={0.20} />
-            <Stop offset="1" stopColor="#BFD0EE" stopOpacity={0} />
+            <Stop offset="0" stopColor="#EAF6C4" stopOpacity={0.22} />
+            <Stop offset="1" stopColor="#EAF6C4" stopOpacity={0} />
           </RadialGradient>
           <RadialGradient id="hazeLight" cx="50%" cy="50%" r="50%">
             <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.16} />
