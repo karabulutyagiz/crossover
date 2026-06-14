@@ -3450,8 +3450,9 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
           ) : null}
         </View>
 
-        {/* Per-round detail (always shown, including the match-winning round) */}
-        {r.reason !== 'no_common' && r.reason !== 'same_team' && r.reason !== 'passed' ? (
+        {/* Per-round detail (also shown on a passed round so both players see who the
+            common player(s) were — the two team cards + "who played for both"). */}
+        {r.reason !== 'no_common' && r.reason !== 'same_team' ? (
           <>
             <View style={styles.teamResultRow}>
               {state.revealMode === 'country-team' ? (

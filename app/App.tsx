@@ -88,7 +88,8 @@ export default function App() {
   const { state, actions } = useCrossover();
   const props = { state, actions };
   const scrollRef = useRef<ScrollView>(null);
-  const programmaticScroll = useRef(false); // true while a tab tap animates — ignore intermediate scroll events
+  const programmaticScroll = useRef(false); // true right after a tab tap — ignore scroll events
+  const tabGuardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeTab, setActiveTab] = useState(2); // start on Home (store=0, collection=1, home=2)
   const [splash, setSplash] = useState(true);
   const [tutorialSeen, setTutorialSeen] = useState<boolean | null>(null);
@@ -134,16 +135,21 @@ export default function App() {
   }, [state.phase, actions]);
 
   const goToTab = useCallback((idx: number) => {
-    // Jump the active indicator straight to the target and ignore the intermediate
-    // pages the animated scroll passes over (otherwise the green pill flickers across tabs).
+    // Tab taps jump INSTANTLY (no animated slide) so rapid tapping never flickers the
+    // green pill across in-between pages. The guard ignores the stray scroll event the
+    // jump fires, and a timer (reset on every tap) re-enables live swipe tracking once
+    // the user stops tapping — onMomentumScrollEnd doesn't fire for instant scrolls.
     programmaticScroll.current = true;
+    if (tabGuardTimer.current) clearTimeout(tabGuardTimer.current);
+    tabGuardTimer.current = setTimeout(() => { programmaticScroll.current = false; }, 260);
     setActiveTab(idx);
-    scrollRef.current?.scrollTo({ x: idx * SCREEN_W, animated: true });
+    scrollRef.current?.scrollTo({ x: idx * SCREEN_W, animated: false });
     if (idx !== 2) resetHomePhase(); // home lives at index 2 (store=0, collection=1, home=2, friends=3)
   }, [resetHomePhase]);
 
   const onScrollEnd = useCallback((e: any) => {
-    programmaticScroll.current = false; // animation/drag settled — resume live updates
+    if (tabGuardTimer.current) clearTimeout(tabGuardTimer.current);
+    programmaticScroll.current = false; // drag settled — resume live updates
     const x = e.nativeEvent.contentOffset.x;
     const idx = Math.round(x / SCREEN_W);
     setActiveTab(idx);
