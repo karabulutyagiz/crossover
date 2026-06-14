@@ -1084,13 +1084,14 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
   const ty = breathe.interpolate({ inputRange: [0, 1], outputRange: [0, -5] });
   return (
     <Pressable onPress={onPress} style={{ marginVertical: 6, alignItems: 'center' }}>
-      {/* Floating cut-out arena (square, 2.5D top-view) with a tight contact shadow */}
+      {/* Floating cut-out arena (2.5D top-view): soft elliptical ground shadow +
+          a real silhouette drop shadow on the image itself (iOS) — grounds it like CR. */}
       <View style={{ alignItems: 'center', justifyContent: 'flex-end' }}>
-        <View pointerEvents="none" style={{ position: 'absolute', bottom: 18, width: 124, height: 18, borderRadius: 9, backgroundColor: '#000', opacity: 0.45, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, transform: [{ scaleX: 1.35 }] }} />
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: 20, width: 130, height: 20, borderRadius: 10, backgroundColor: '#000', opacity: 0.4, shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 12, shadowOffset: { width: 0, height: 2 }, transform: [{ scaleX: 1.4 }] }} />
         <Animated.Image
           source={tier.img}
           resizeMode="contain"
-          style={{ width: 188, height: 188, transform: [{ scale }, { translateY: ty }] }}
+          style={{ width: 188, height: 188, transform: [{ scale }, { translateY: ty }], shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 10, shadowOffset: { width: 0, height: 9 } }}
         />
       </View>
       {/* Nameplate below */}
