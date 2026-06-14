@@ -2590,8 +2590,9 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
             requests.map((req) => (
               <View key={req.requestId || req.fromId} style={{
                 flexDirection: 'row', alignItems: 'center', gap: 10,
-                backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 6,
-                borderWidth: 1, borderColor: theme.accent,
+                backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 8,
+                borderWidth: 2, borderColor: theme.accent, borderBottomWidth: 3, borderBottomColor: theme.accentDark,
+                shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4,
               }}>
                 <Ionicons name="person-add" size={24} color={theme.accent} />
                 <View style={{ flex: 1 }}>
@@ -2627,12 +2628,13 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 12,
                 backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 8,
-                borderWidth: 1, borderColor: theme.border,
+                borderWidth: 2, borderColor: f.online ? theme.primary : theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip,
+                shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4,
               }}
             >
               <View style={{ position: 'relative' }}>
                 <Ionicons name="person-circle" size={38} color={theme.accent} />
-                {f.online ? <View style={{ position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: 6, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
+                {f.online ? <View style={{ position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: 6, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card, shadowColor: theme.primary, shadowOpacity: 0.7, shadowRadius: 4, shadowOffset: { width: 0, height: 0 } }} /> : null}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }} numberOfLines={1}>{f.displayName}</Text>
@@ -2683,21 +2685,15 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
       </Modal>
 
       {/* Remove-friend confirmation */}
-      <Modal visible={confirmRemove !== null} transparent animationType="fade" onRequestClose={() => setConfirmRemove(null)}>
-        <Pressable style={styles.modalBg} onPress={() => setConfirmRemove(null)}>
-          <Pressable style={styles.modalCard} onPress={() => {}}>
-            <Ionicons name="warning" size={34} color={theme.danger} />
-            <Text style={styles.modalTitle}>{confirmRemove?.displayName} Kaldırılsın mı?</Text>
-            <Text style={[styles.muted, { textAlign: 'center', marginBottom: 14 }]}>
-              {confirmRemove?.displayName} adlı kişiyi arkadaşlarından çıkarmak istediğine emin misin?
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <View style={{ flex: 1 }}><Btn label="İptal" kind="danger" icon="close" onPress={() => setConfirmRemove(null)} /></View>
-              <View style={{ flex: 1 }}><Btn label="Tamam" kind="blue" icon="checkmark" onPress={() => { actions.removeFriend(confirmRemove!.userId); setConfirmRemove(null); }} /></View>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <GameModal visible={confirmRemove !== null} onClose={() => setConfirmRemove(null)} title="Kaldırılsın mı?" icon="warning" danger>
+        <Text style={[styles.muted, { textAlign: 'center', marginBottom: 6 }]}>
+          {confirmRemove?.displayName} adlı kişiyi arkadaşlarından çıkarmak istediğine emin misin?
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}><Btn label="İptal" kind="danger" icon="close" onPress={() => setConfirmRemove(null)} /></View>
+          <View style={{ flex: 1 }}><Btn label="Tamam" kind="blue" icon="checkmark" onPress={() => { actions.removeFriend(confirmRemove!.userId); setConfirmRemove(null); }} /></View>
+        </View>
+      </GameModal>
 
       {/* Match mode selection modal */}
       <Modal visible={matchModal !== null} transparent animationType="fade" onRequestClose={() => setMatchModal(null)}>
