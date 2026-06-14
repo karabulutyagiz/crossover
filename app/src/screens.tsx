@@ -2885,9 +2885,9 @@ export function ArenasScreen({ state, actions }: Props) {
         onBack={actions.closeArenas}
         underline={theme.accent}
         right={(
-          <View style={{ width: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+          <View style={{ minWidth: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, paddingLeft: 4 }}>
             <Ionicons name="trophy" size={15} color={theme.accent} />
-            <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 14, ...engrave('sm') }}>{trophies}</Text>
+            <Text numberOfLines={1} style={{ color: theme.gold, fontWeight: '900', fontSize: 14, ...engrave('sm') }}>{trophies}</Text>
           </View>
         )}
       />
