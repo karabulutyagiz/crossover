@@ -275,10 +275,12 @@ export default function App() {
       {state.profile ? (
         <View style={s.resourceBar}>
           <View style={s.trophyPill}>
+            <View style={s.glassSheen} pointerEvents="none" />
             <Ionicons name="trophy" size={18} color={theme.accent} />
             <Text style={s.trophyText}>{state.profile.trophies}</Text>
           </View>
           <Pressable style={s.diamondPill} onPress={() => { setStoreSection('diamonds'); goToTab(0); }}>
+            <View style={s.glassSheen} pointerEvents="none" />
             <GemIcon size={20} />
             <Text style={s.diamondText}>{state.profile.diamonds}</Text>
             <View style={s.diamondPlus}>
@@ -426,22 +428,33 @@ const s = StyleSheet.create({
     paddingTop: 18, // moved down — was sitting too high under the notch
     paddingBottom: 8,
   },
+  glassSheen: {
+    // Top-half highlight that fakes light reflecting off curved glass.
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '52%',
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+  },
   trophyPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     minWidth: 148, // longer left↔right
     justifyContent: 'center',
-    backgroundColor: 'rgba(14,24,52,0.5)', // frosted translucent glass
+    backgroundColor: 'rgba(228,238,255,0.13)', // true glass — bg pattern shows through
     borderRadius: 19,
     paddingHorizontal: 24,
     paddingVertical: 8,
     borderWidth: 1.5,
-    borderColor: 'rgba(173,200,255,0.35)', // cool glass rim
+    borderColor: 'rgba(255,255,255,0.5)', // bright glass rim
     borderTopWidth: 1.5,
-    borderTopColor: 'rgba(255,255,255,0.55)', // bright top sheen
+    borderTopColor: 'rgba(255,255,255,0.95)', // top edge catches the most light
     borderBottomWidth: 3,
-    borderBottomColor: 'rgba(0,0,0,0.32)',
+    borderBottomColor: 'rgba(255,255,255,0.18)',
     shadowColor: '#000',
     shadowOpacity: 0.35,
     shadowRadius: 8,
@@ -460,17 +473,17 @@ const s = StyleSheet.create({
     gap: 8,
     minWidth: 148, // longer left↔right
     justifyContent: 'center',
-    backgroundColor: 'rgba(14,24,52,0.5)', // frosted translucent glass
+    backgroundColor: 'rgba(228,238,255,0.13)', // true glass — bg pattern shows through
     borderRadius: 19,
     paddingLeft: 20,
     paddingRight: 5,
     paddingVertical: 5,
     borderWidth: 1.5,
-    borderColor: 'rgba(173,200,255,0.35)', // cool glass rim
+    borderColor: 'rgba(255,255,255,0.5)', // bright glass rim
     borderTopWidth: 1.5,
-    borderTopColor: 'rgba(255,255,255,0.55)', // bright top sheen
+    borderTopColor: 'rgba(255,255,255,0.95)', // top edge catches the most light
     borderBottomWidth: 3,
-    borderBottomColor: 'rgba(0,0,0,0.32)',
+    borderBottomColor: 'rgba(255,255,255,0.18)',
     shadowColor: '#000',
     shadowOpacity: 0.35,
     shadowRadius: 8,
