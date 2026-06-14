@@ -1832,11 +1832,13 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
             style={{
               width: '31.5%', alignItems: 'center', gap: 7,
               backgroundColor: theme.card, borderRadius: 14,
-              borderWidth: 1, borderColor: theme.border, paddingVertical: 12, paddingHorizontal: 4,
+              borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip,
+              paddingVertical: 12, paddingHorizontal: 4,
+              shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: 4,
             }}
           >
             <ClubBadge name={c.name} size={46} logoUrl={c.logoUrl} />
-            <Text style={{ color: theme.text, fontSize: 10.5, fontWeight: '600', textAlign: 'center' }} numberOfLines={2}>
+            <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }} numberOfLines={2}>
               {c.name}
             </Text>
           </Pressable>
@@ -1898,8 +1900,8 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
           </Text>
         </Animated.View>
         <Animated.View style={{ transform: [{ scale: vsScale }], marginHorizontal: 4 }}>
-          <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: theme.accentDark }}>
-            <Text style={{ color: '#06131F', fontFamily: 'Poppins-Black', fontSize: 15 }}>VS</Text>
+          <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', borderTopWidth: 2, borderTopColor: 'rgba(255,255,255,0.55)', borderBottomWidth: 4, borderBottomColor: theme.accentDark, shadowColor: theme.accent, shadowOpacity: 0.6, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 8 }}>
+            <Text style={{ color: theme.ink, fontFamily: 'Poppins-Black', fontSize: 15, ...engrave('sm') }}>VS</Text>
           </View>
         </Animated.View>
         <Animated.View style={[styles.teamCard, { transform: [{ translateX: rightX }], opacity: reveal }]}>
@@ -3573,23 +3575,23 @@ const styles = StyleSheet.create({
   },
   clubText: { color: theme.text, fontSize: 13, flex: 1 },
   teamsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
-  teamCard: { flex: 1, backgroundColor: theme.card, borderRadius: 14, padding: 14, alignItems: 'center', gap: 8 },
-  teamName: { color: theme.text, fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  teamCard: { flex: 1, backgroundColor: theme.card, borderRadius: 16, padding: 14, alignItems: 'center', gap: 8, borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss, borderBottomWidth: 4, borderBottomColor: theme.cardLip, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 5 }, elevation: 7 },
+  teamName: { color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') },
   plus: { color: theme.accent, fontSize: 22, fontWeight: '900' },
   timer: { color: theme.accent, fontSize: 22, fontWeight: '900', textAlign: 'center', marginTop: 8 },
   passHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: theme.accent + '1F', borderRadius: 12, paddingVertical: 7, paddingHorizontal: 12, marginBottom: 8, borderWidth: 1, borderColor: theme.accent + '55' },
   passHintText: { color: theme.accent, fontSize: 12, fontWeight: '700', flexShrink: 1 },
   playerPhoto: { width: 104, height: 104, borderRadius: 52, marginTop: 10, borderWidth: 3, borderColor: theme.primary, backgroundColor: theme.card },
   matched: { color: theme.text, fontSize: 19, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginTop: 4 },
-  matchScore: { color: theme.text, fontSize: 44, fontWeight: '900', letterSpacing: 3, marginTop: 6 },
-  matchBanner: { alignItems: 'center', gap: 2, backgroundColor: theme.card, borderRadius: 16, borderWidth: 1, borderColor: theme.border, paddingVertical: 16, paddingHorizontal: 14, marginBottom: 14 },
+  matchScore: { color: theme.text, fontSize: 46, fontFamily: 'Poppins-Black', letterSpacing: 3, marginTop: 6, ...engrave('lg') },
+  matchBanner: { alignItems: 'center', gap: 2, backgroundColor: theme.card, borderRadius: 20, borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark, paddingVertical: 18, paddingHorizontal: 14, marginBottom: 14, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 12 },
   trophyDeltaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
   trophyDeltaText: { fontSize: 14, fontWeight: '800' },
   fixRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   fixText: { color: theme.accent, fontSize: 12, fontWeight: '600' },
   teamResultRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  teamResult: { flex: 1, backgroundColor: theme.card, borderRadius: 14, borderWidth: 1.5, padding: 12, alignItems: 'center', gap: 6 },
-  teamResultName: { color: theme.text, fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  teamResult: { flex: 1, backgroundColor: theme.card, borderRadius: 16, borderWidth: 2, borderBottomWidth: 4, borderBottomColor: theme.cardLip, padding: 12, alignItems: 'center', gap: 6, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+  teamResultName: { color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') },
   teamResultYears: { color: theme.muted, fontSize: 10, textAlign: 'center' },
   careerList: { alignSelf: 'stretch', maxHeight: 220 },
   careerRow: {
