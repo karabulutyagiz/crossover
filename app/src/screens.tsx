@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNo
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Pressable,
@@ -377,7 +378,11 @@ function Screen({ children }: { children: ReactNode; noPitch?: boolean }) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 44 : 0}
     >
-      {children}
+      {/* Tapping any empty area dismisses the keyboard (taps on inputs/buttons still
+          reach them — Pressable only fires for taps no child handled). */}
+      <Pressable style={{ flex: 1 }} onPress={() => Keyboard.dismiss()} accessible={false}>
+        {children}
+      </Pressable>
     </KeyboardAvoidingView>
   );
 }

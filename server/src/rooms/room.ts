@@ -242,8 +242,9 @@ export class Room {
           this.broadcast({ type: 'team_picked', playerId: id });
         }
       } else if (role === 'country') {
-        // Auto-pick a popular country
-        this.round.countryPick = 'Turkey';
+        // Auto-pick a RANDOM popular footballing nation (was hardcoded to Turkey).
+        const popular = ['Turkey', 'Brazil', 'France', 'Argentina', 'Germany', 'Spain', 'Italy', 'Portugal', 'Netherlands', 'England'];
+        this.round.countryPick = popular[Math.floor(Math.random() * popular.length)]!;
         this.broadcast({ type: 'team_picked', playerId: id });
       } else if (role === 'letter') {
         // Auto-pick a random letter
