@@ -156,7 +156,8 @@ function reducer(state: GameState, action: Action): GameState {
     case '_scopes':
       return { ...state, scopes: action.scopes };
     case '_leaderboard':
-      return { ...state, leaderboard: action.entries, phase: 'leaderboard' };
+      // Data only — the leaderboard now shows as a centered popup, not a fullscreen phase.
+      return { ...state, leaderboard: action.entries };
     case '_phase':
       return { ...state, phase: action.phase };
     case '_load_profile':
@@ -419,8 +420,8 @@ export function useCrossover() {
     openProfile: () => dispatch({ type: '_phase', phase: 'profile' }),
     closeProfile: () => dispatch({ type: '_phase', phase: 'home' }),
     openMatchHistory: () => {
+      // Data only — match history now shows as a centered popup, not a fullscreen phase.
       send({ type: 'list_match_history' });
-      dispatch({ type: '_phase', phase: 'matchHistory' });
     },
     closeMatchHistory: () => dispatch({ type: '_phase', phase: 'home' }),
     register: (name: string, gameCenterId?: string) => {

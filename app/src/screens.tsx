@@ -95,6 +95,8 @@ interface Props {
   onGoToStore?: (section?: 'socialPack' | 'diamonds') => void;
   tutorial?: boolean; // running inside the guided simulation → no emotes, no keyboard autofocus
   onLanguageChange?: () => void;
+  onOpenLeaderboard?: () => void; // open the centered leaderboard popup (App-level overlay)
+  onOpenMatchHistory?: () => void; // open the centered match-history popup (App-level overlay)
 }
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -1151,6 +1153,14 @@ function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamond
     onLanguageChange();
   };
 
+  const linkChip = {
+    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7,
+    paddingVertical: 11, paddingHorizontal: 11, borderRadius: 12,
+    backgroundColor: theme.bg, borderWidth: 1.5, borderColor: theme.border,
+    borderBottomWidth: 3, borderBottomColor: theme.cardLip,
+  };
+  const linkTxt = { color: theme.text, fontSize: 12, fontWeight: '700' as const, flex: 1 };
+
   return (
     <View style={{ padding: 14 }}>
       <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '700', marginBottom: 8 }}>{t('settings.language')}</Text>
@@ -1182,57 +1192,55 @@ function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamond
         onConfirm={(newName) => { onChangeName(newName); setRenameOpen(false); }}
       />
 
-      {/* ── Yardım & Bilgiler ── */}
+      {/* ── Yardım & Bilgiler — framed link chips ── */}
       <View style={{ height: 1, backgroundColor: theme.border, marginTop: 22, marginBottom: 14 }} />
-      <View style={{ flexDirection: 'row' }}>
-        <Pressable style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }} onPress={() => openLink(INFO_LINKS.help)}>
-          <Text style={{ color: theme.muted, fontSize: 13, fontWeight: '700' }}>Yardım ve Bilgiler</Text>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Pressable style={[linkChip, { flex: 1 }]} onPress={() => openLink(INFO_LINKS.help)}>
+          <Ionicons name="help-circle-outline" size={15} color={theme.muted} />
+          <Text style={linkTxt} numberOfLines={1}>Yardım ve Bilgiler</Text>
         </Pressable>
-        <Pressable style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }} onPress={() => openLink(INFO_LINKS.privacy)}>
-          <Text style={{ color: theme.muted, fontSize: 13, fontWeight: '700' }}>Gizlilik</Text>
-        </Pressable>
-      </View>
-      <View style={{ flexDirection: 'row', marginTop: 4 }}>
-        <Pressable style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }} onPress={() => openLink(INFO_LINKS.parents)}>
-          <Text style={{ color: theme.muted, fontSize: 13, fontWeight: '700' }}>Ebeveyn Kılavuzu</Text>
-        </Pressable>
-        <Pressable style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }} onPress={() => openLink(INFO_LINKS.terms)}>
-          <Text style={{ color: theme.muted, fontSize: 13, fontWeight: '700' }}>Hizmet Koşulları</Text>
+        <Pressable style={[linkChip, { flex: 1 }]} onPress={() => openLink(INFO_LINKS.privacy)}>
+          <Ionicons name="shield-checkmark-outline" size={15} color={theme.muted} />
+          <Text style={linkTxt} numberOfLines={1}>Gizlilik</Text>
         </Pressable>
       </View>
-      <Pressable style={{ alignItems: 'center', paddingVertical: 12, marginTop: 4 }} onPress={() => openLink(INFO_LINKS.founders)}>
-        <Text style={{ color: theme.muted, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 }}>Kurucular</Text>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+        <Pressable style={[linkChip, { flex: 1 }]} onPress={() => openLink(INFO_LINKS.parents)}>
+          <Ionicons name="people-outline" size={15} color={theme.muted} />
+          <Text style={linkTxt} numberOfLines={1}>Ebeveyn Kılavuzu</Text>
+        </Pressable>
+        <Pressable style={[linkChip, { flex: 1 }]} onPress={() => openLink(INFO_LINKS.terms)}>
+          <Ionicons name="document-text-outline" size={15} color={theme.muted} />
+          <Text style={linkTxt} numberOfLines={1}>Hizmet Koşulları</Text>
+        </Pressable>
+      </View>
+      <Pressable style={[linkChip, { marginTop: 8, justifyContent: 'center' }]} onPress={() => openLink(INFO_LINKS.founders)}>
+        <Ionicons name="star-outline" size={15} color={theme.accent} />
+        <Text style={[linkTxt, { flex: 0, color: theme.text, fontWeight: '800', letterSpacing: 0.5 }]}>Kurucular</Text>
       </Pressable>
 
-      <Modal visible={langPicker} transparent animationType="fade" onRequestClose={() => setLangPicker(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 40 }}>
-          <View style={{ backgroundColor: theme.card, borderRadius: 16, borderWidth: 1, borderColor: theme.border, padding: 16 }}>
-            <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900', marginBottom: 12, textAlign: 'center' }}>{t('settings.language')}</Text>
-            {LANGUAGES.map((lang) => (
-              <Pressable
-                key={lang.code}
-                onPress={() => {
-                  if (lang.code === activeLang) { setLangPicker(false); return; }
-                  setConfirmLang(lang.code);
-                }}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 12,
-                  borderRadius: 10, backgroundColor: lang.code === activeLang ? theme.primary + '22' : 'transparent',
-                  borderWidth: lang.code === activeLang ? 1 : 0, borderColor: theme.primary,
-                  marginBottom: 4,
-                }}
-              >
-                <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{lang.name}</Text>
-                {lang.code === activeLang ? <Ionicons name="checkmark" size={18} color={theme.primary} /> : null}
-              </Pressable>
-            ))}
-            <View style={{ height: 8 }} />
-            <Pressable onPress={() => setLangPicker(false)} style={{ alignItems: 'center', paddingVertical: 10 }}>
-              <Text style={{ color: theme.muted, fontWeight: '700' }}>{t('settings.cancel')}</Text>
+      <PopupCard visible={langPicker} title={t('settings.language')} icon="language" onClose={() => setLangPicker(false)}>
+        <ScrollView style={{ maxHeight: 430 }} contentContainerStyle={{ padding: 12 }} showsVerticalScrollIndicator={false}>
+          {LANGUAGES.map((lang) => (
+            <Pressable
+              key={lang.code}
+              onPress={() => {
+                if (lang.code === activeLang) { setLangPicker(false); return; }
+                setConfirmLang(lang.code);
+              }}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, paddingHorizontal: 12,
+                borderRadius: 10, backgroundColor: lang.code === activeLang ? theme.primary + '22' : theme.bg,
+                borderWidth: 1.5, borderColor: lang.code === activeLang ? theme.primary : theme.border,
+                marginBottom: 6,
+              }}
+            >
+              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700', flex: 1 }}>{lang.name}</Text>
+              {lang.code === activeLang ? <Ionicons name="checkmark" size={18} color={theme.primary} /> : null}
             </Pressable>
-          </View>
-        </View>
-      </Modal>
+          ))}
+        </ScrollView>
+      </PopupCard>
 
       <Modal visible={confirmLang !== null} transparent animationType="fade" onRequestClose={() => setConfirmLang(null)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 40 }}>
@@ -1262,14 +1270,96 @@ function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamond
   );
 }
 
-export function HomeScreen({ actions, state, onLanguageChange, onGoToStore }: Props) {
+// Centered "letter" popup shell — gold-framed card, title + top-right X, scrollable
+// body. Everything that used to open fullscreen (leaderboard, match history) now uses
+// this so it pops in the middle of the screen instead of taking it over.
+function PopupCard({ visible, title, icon, onClose, children }: {
+  visible: boolean; title: string; icon: IoniconName; onClose: () => void; children: ReactNode;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: theme.scrim, justifyContent: 'center', paddingHorizontal: 18 }} onPress={onClose}>
+        <Pressable
+          style={{ backgroundColor: theme.card, borderRadius: 22, borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark, maxHeight: '78%', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 20 }}
+          onPress={() => {}}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 11 }}>
+            <Ionicons name={icon} size={20} color={theme.accent} />
+            <Text style={[{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 17, marginLeft: 8, flex: 1 }, engrave('sm')]} numberOfLines={1}>{title}</Text>
+            <Pressable onPress={onClose} hitSlop={10} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: theme.panelInnerFill, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.border }}>
+              <Ionicons name="close" size={18} color={theme.text} />
+            </Pressable>
+          </View>
+          <View style={{ height: 1, backgroundColor: theme.border }} />
+          {children}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+export function LeaderboardModal({ visible, entries, onClose }: { visible: boolean; entries: GameState['leaderboard']; onClose: () => void }) {
+  return (
+    <PopupCard visible={visible} title={t('menu.leaderboard')} icon="podium" onClose={onClose}>
+      <ScrollView style={{ maxHeight: 460 }} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10 }} showsVerticalScrollIndicator={false}>
+        {entries.length === 0 ? (
+          <View style={{ alignItems: 'center', paddingVertical: 36 }}><ActivityIndicator color={theme.primary} /></View>
+        ) : entries.map((entry) => (
+          <View key={entry.rank} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: theme.border }}>
+            <Text style={{ color: entry.rank <= 3 ? ['#FFD700', '#C0C0C0', '#CD7F32'][entry.rank - 1] : theme.muted, fontWeight: '900', fontSize: 15, width: 28 }}>{entry.rank}</Text>
+            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14, flex: 1 }} numberOfLines={1}>{entry.displayName}</Text>
+            <Ionicons name="trophy" size={13} color={theme.accent} />
+            <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 14 }}>{entry.trophies}</Text>
+          </View>
+        ))}
+      </ScrollView>
+    </PopupCard>
+  );
+}
+
+export function MatchHistoryModal({ visible, history, myName, onClose }: { visible: boolean; history: GameState['matchHistory']; myName: string; onClose: () => void }) {
+  return (
+    <PopupCard visible={visible} title={t('menu.matchHistory')} icon="time" onClose={onClose}>
+      <ScrollView style={{ maxHeight: 460 }} contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 12 }} showsVerticalScrollIndicator={false}>
+        {history.length === 0 ? (
+          <View style={{ alignItems: 'center', paddingVertical: 36 }}>
+            <Ionicons name="time-outline" size={42} color={theme.border} />
+            <Text style={[styles.muted, { marginTop: 8 }]}>{t('matchHistory.empty')}</Text>
+          </View>
+        ) : history.map((m) => {
+          const date = new Date(m.playedAt);
+          const dateStr = `${date.getDate().toString().padStart(2, '0')}.${(date.getMonth() + 1).toString().padStart(2, '0')}.${date.getFullYear()}`;
+          const borderColor = m.won ? theme.primary : theme.danger;
+          return (
+            <View key={m.id} style={{ backgroundColor: theme.panelInnerFill, borderRadius: 14, borderWidth: 1.5, borderColor, marginBottom: 10, overflow: 'hidden' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 7, backgroundColor: m.won ? 'rgba(39,229,139,0.10)' : 'rgba(255,84,104,0.10)' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name={m.won ? 'trophy' : 'close-circle'} size={15} color={m.won ? theme.accent : theme.danger} />
+                  <Text style={{ color: m.won ? theme.primary : theme.danger, fontWeight: '900', fontSize: 12 }}>{m.won ? t('matchHistory.won') : t('matchHistory.lost')}</Text>
+                </View>
+                <Text style={{ color: theme.muted, fontSize: 9 }}>{dateStr}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9 }}>
+                <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13, flex: 1, textAlign: 'right' }} numberOfLines={1}>{m.playerName || myName}</Text>
+                <Text style={{ color: theme.text, fontWeight: '900', fontSize: 18, paddingHorizontal: 12, letterSpacing: 1 }}>{m.playerScore}-{m.opponentScore}</Text>
+                <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13, flex: 1 }} numberOfLines={1}>{m.opponentName}</Text>
+              </View>
+            </View>
+          );
+        })}
+      </ScrollView>
+    </PopupCard>
+  );
+}
+
+export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory }: Props) {
   const [name, setName] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [scope, setScope] = useState<Scope>({ type: 'all' });
   const [mode, setMode] = useState<GameMode>('team-team');
   const [picker, setPicker] = useState<Picker>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [menuSub, setMenuSub] = useState<'leaderboard' | 'matchHistory' | 'settings' | null>(null);
+  const [menuSub, setMenuSub] = useState<'settings' | null>(null);
   const [botOpen, setBotOpen] = useState(false);
   const opts: GameOptions = { scope, mode };
   const profile = state.profile;
@@ -1318,7 +1408,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore }: Pr
             {/* Header */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 16, paddingBottom: 10 }}>
               <Text style={{ color: theme.text, fontSize: 18, fontWeight: '900' }}>
-                {menuSub === 'leaderboard' ? t('menu.leaderboard') : menuSub === 'matchHistory' ? t('menu.matchHistory') : menuSub === 'settings' ? t('settings.title') : t('menu.title')}
+                {menuSub === 'settings' ? t('settings.title') : t('menu.title')}
               </Text>
               <Pressable onPress={() => { if (menuSub) setMenuSub(null); else setMenuOpen(false); }} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name={menuSub ? 'arrow-back' : 'close'} size={18} color={theme.text} />
@@ -1329,13 +1419,13 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore }: Pr
             {/* Content */}
             {menuSub === null ? (
               <View style={{ padding: 12 }}>
-                <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => { setMenuSub('leaderboard'); actions.openLeaderboard(); }}>
+                <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => { setMenuOpen(false); setMenuSub(null); onOpenLeaderboard?.(); }}>
                   <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{t('menu.leaderboard')}</Text>
                   <View style={{ flex: 1 }} />
                   <Ionicons name="chevron-forward" size={18} color={theme.muted} />
                 </Pressable>
                 <View style={{ height: 8 }} />
-                <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => { setMenuSub('matchHistory'); actions.openMatchHistory(); }}>
+                <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => { setMenuOpen(false); setMenuSub(null); onOpenMatchHistory?.(); }}>
                   <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{t('menu.matchHistory')}</Text>
                   <View style={{ flex: 1 }} />
                   <Ionicons name="chevron-forward" size={18} color={theme.muted} />
@@ -1347,50 +1437,14 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore }: Pr
                   <Ionicons name="chevron-forward" size={18} color={theme.muted} />
                 </Pressable>
               </View>
-            ) : menuSub === 'leaderboard' ? (
-              <ScrollView style={{ maxHeight: 400, paddingHorizontal: 14, paddingTop: 8 }} showsVerticalScrollIndicator={false}>
-                {state.leaderboard.length === 0 ? (
-                  <View style={{ alignItems: 'center', paddingVertical: 30 }}><ActivityIndicator color={theme.primary} /></View>
-                ) : state.leaderboard.map((entry) => (
-                  <View key={entry.rank} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: theme.border }}>
-                    <Text style={{ color: entry.rank <= 3 ? ['#FFD700','#C0C0C0','#CD7F32'][entry.rank-1] : theme.muted, fontWeight: '900', fontSize: 14, width: 26 }}>{entry.rank}</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }} numberOfLines={1}>{entry.displayName}</Text>
-                    </View>
-                    <Ionicons name="trophy" size={12} color={theme.accent} />
-                    <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 13 }}>{entry.trophies}</Text>
-                  </View>
-                ))}
-                <View style={{ height: 16 }} />
-              </ScrollView>
-            ) : menuSub === 'matchHistory' ? (
-              <ScrollView style={{ maxHeight: 400, paddingHorizontal: 14, paddingTop: 8 }} showsVerticalScrollIndicator={false}>
-                {state.matchHistory.length === 0 ? (
-                  <Text style={[styles.muted, { textAlign: 'center', paddingVertical: 30 }]}>{t('matchHistory.empty')}</Text>
-                ) : state.matchHistory.map((m) => {
-                  const date = new Date(m.playedAt);
-                  const dateStr = `${date.getDate().toString().padStart(2,'0')}.${(date.getMonth()+1).toString().padStart(2,'0')}`;
-                  return (
-                    <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
-                      <Ionicons name={m.won ? 'trophy' : 'close-circle'} size={16} color={m.won ? theme.primary : theme.danger} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>{m.playerName || '?'} vs {m.opponentName}</Text>
-                      </View>
-                      <Text style={{ color: theme.text, fontWeight: '900', fontSize: 14 }}>{m.playerScore}-{m.opponentScore}</Text>
-                      <Text style={{ color: theme.muted, fontSize: 10 }}>{dateStr}</Text>
-                    </View>
-                  );
-                })}
-                <View style={{ height: 16 }} />
-              </ScrollView>
-            ) : menuSub === 'settings' ? (
+            ) : (
               <SettingsPanel
                 onLanguageChange={() => { setMenuOpen(false); setMenuSub(null); onLanguageChange?.(); }}
                 diamonds={profile?.diamonds ?? 0}
                 onChangeName={(newName) => actions.changeName(newName)}
                 onNeedDiamonds={() => { setMenuOpen(false); setMenuSub(null); onGoToStore?.('diamonds'); }}
               />
-            ) : null}
+            )}
           </View>
         </View>
       </Modal>
@@ -2755,7 +2809,7 @@ function StatCard({ icon, color, label, value }: { icon: IoniconName; color: str
   );
 }
 
-export function ProfileScreen({ state, actions }: Props) {
+export function ProfileScreen({ state, actions, onOpenMatchHistory }: Props) {
   const p = state.profile;
   if (!p) return <Screen><View style={styles.center}><Text style={styles.muted}>—</Text></View></Screen>;
   const total = p.wins + p.losses;
@@ -2787,7 +2841,7 @@ export function ProfileScreen({ state, actions }: Props) {
         </View>
 
         <View style={{ marginTop: 16 }}>
-          <Btn label={t('menu.matchHistory')} icon="time" kind="blue" onPress={actions.openMatchHistory} />
+          <Btn label={t('menu.matchHistory')} icon="time" kind="blue" onPress={() => onOpenMatchHistory?.()} />
         </View>
       </ScrollView>
     </Screen>

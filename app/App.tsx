@@ -37,6 +37,8 @@ import {
   PickTeamScreen,
   GuessScreen,
   ResultScreen,
+  LeaderboardModal,
+  MatchHistoryModal,
 } from './src/screens';
 import { theme, engrave } from './src/theme';
 import { GemIcon, GEM_COLOR } from './src/GemIcon';
@@ -93,6 +95,7 @@ export default function App() {
   const [loaded, setLoaded] = useState(false); // Clash-Royale-style entry loading (warms logo cache)
   const [storeSection, setStoreSection] = useState<'socialPack' | 'diamonds' | null>(null);
   const [comingSoon, setComingSoon] = useState(false); // Turnuvalar — greyed "coming soon"
+  const [overlay, setOverlay] = useState<'leaderboard' | 'matchHistory' | null>(null); // centered popups
   const csAnim = useRef(new Animated.Value(0)).current; // coming-soon pop/float
   const [fontsLoaded, fontError] = useFonts({
     'Poppins-Black': require('./assets/fonts/Poppins-Black.ttf'),
@@ -146,6 +149,10 @@ export default function App() {
     setActiveTab(idx);
     if (idx !== 2) resetHomePhase();
   }, [resetHomePhase]);
+
+  // Leaderboard / match-history open as centered popups (App-level overlay), not fullscreen.
+  const openLeaderboard = useCallback(() => { actions.openLeaderboard(); setOverlay('leaderboard'); }, [actions]);
+  const openMatchHistory = useCallback(() => { actions.openMatchHistory(); setOverlay('matchHistory'); }, [actions]);
 
   // Splash screen: show COF logo on launch.
   if (splash || !fontsReady) {
@@ -252,13 +259,9 @@ export default function App() {
   // Main menu with tab bar + swipe
   const homeContent = state.phase === 'arenas'
     ? <ArenasScreen {...props} />
-    : state.phase === 'leaderboard'
-    ? <LeaderboardScreen {...props} />
-    : state.phase === 'matchHistory'
-    ? <MatchHistoryScreen {...props} />
     : state.phase === 'profile'
-    ? <ProfileScreen {...props} />
-    : <HomeScreen {...props} onLanguageChange={() => { setLoaded(false); setLangKey((k) => k + 1); }} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />;
+    ? <ProfileScreen {...props} onOpenMatchHistory={openMatchHistory} />
+    : <HomeScreen {...props} onLanguageChange={() => { setLoaded(false); setLangKey((k) => k + 1); }} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} onOpenLeaderboard={openLeaderboard} onOpenMatchHistory={openMatchHistory} />;
 
   // Per-tab background: Oyna/home = blue arena backdrop, Mağaza = violet, others = calm navy.
   const bgVariant = (activeTab === 0 ? 'store' : activeTab === 2 && state.phase === 'home' ? 'home' : 'menu') as 'store' | 'home' | 'menu';
@@ -371,6 +374,10 @@ export default function App() {
           onReject={() => actions.respondMatchInvite(state.matchInvite!.fromId, false)}
         />
       ) : null}
+
+      {/* Centered popups (leaderboard / match history) — open over everything, not fullscreen */}
+      <LeaderboardModal visible={overlay === 'leaderboard'} entries={state.leaderboard} onClose={() => setOverlay(null)} />
+      <MatchHistoryModal visible={overlay === 'matchHistory'} history={state.matchHistory} myName={state.profile?.displayName ?? ''} onClose={() => setOverlay(null)} />
     </View>
   );
 }

@@ -443,10 +443,31 @@ export type MessageKey = keyof typeof tr;
 
 const DICTS: Record<string, Partial<typeof tr>> = { tr, en };
 
-/** Available languages with their native display names. */
+/** Available languages with their native display names.
+ *  Only tr/en have full dictionaries today; the rest fall back to English
+ *  via t() until their translations land. */
 export const LANGUAGES: { code: string; name: string }[] = [
-  { code: 'tr', name: 'Türkçe' },
   { code: 'en', name: 'English' },
+  { code: 'tr', name: 'Türkçe' },
+  { code: 'pt', name: 'Português' },
+  { code: 'es', name: 'Español' },
+  { code: 'fr', name: 'Français' },
+  { code: 'de', name: 'Deutsch' },
+  { code: 'it', name: 'Italiano' },
+  { code: 'nl', name: 'Nederlands' },
+  { code: 'no', name: 'Norsk' },
+  { code: 'fi', name: 'Suomi' },
+  { code: 'ru', name: 'Русский' },
+  { code: 'zh-Hans', name: '简体中文' },
+  { code: 'zh-Hant', name: '繁體中文' },
+  { code: 'ko', name: '한국어' },
+  { code: 'ja', name: '日本語' },
+  { code: 'ar', name: 'العربية' },
+  { code: 'fa', name: 'فارسی' },
+  { code: 'ms', name: 'Bahasa Melayu' },
+  { code: 'id', name: 'Bahasa Indonesia' },
+  { code: 'th', name: 'ไทย' },
+  { code: 'vi', name: 'Tiếng Việt' },
 ];
 
 // Resolve the active language once at startup from the device locale.
@@ -473,7 +494,9 @@ export function currentLang(): string {
  * for forcing a re-render (e.g. by navigating to the loading screen).
  */
 export function setLanguage(code: string): void {
-  if (DICTS[code]) currentLanguage = code;
+  // Accept any listed language; t() falls back to English for codes without a
+  // dictionary yet, so the choice still persists and shows as selected.
+  if (LANGUAGES.some((l) => l.code === code)) currentLanguage = code;
 }
 
 // Translate a key, optionally interpolating {placeholders}. Falls back to
