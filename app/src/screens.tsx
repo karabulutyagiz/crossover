@@ -1226,7 +1226,7 @@ function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamond
               key={lang.code}
               onPress={() => {
                 if (lang.code === activeLang) { setLangPicker(false); return; }
-                setConfirmLang(lang.code);
+                doChangeLang(lang.code); // apply immediately (the confirm modal sat behind the picker → unselectable)
               }}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, paddingHorizontal: 12,
@@ -1278,11 +1278,11 @@ function PopupCard({ visible, title, icon, onClose, children }: {
 }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: theme.scrim, justifyContent: 'center', paddingHorizontal: 18 }} onPress={onClose}>
-        <Pressable
-          style={{ backgroundColor: theme.card, borderRadius: 22, borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark, maxHeight: '78%', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 20 }}
-          onPress={() => {}}
-        >
+      <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 18 }}>
+        {/* Backdrop catches outside taps. It is a SIBLING of the card (not a parent),
+            so it never swallows the inner ScrollView's scroll gestures. */}
+        <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim }]} onPress={onClose} />
+        <View style={{ backgroundColor: theme.card, borderRadius: 22, borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark, maxHeight: '80%', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 20 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 11 }}>
             <Ionicons name={icon} size={20} color={theme.accent} />
             <Text style={[{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 17, marginLeft: 8, flex: 1 }, engrave('sm')]} numberOfLines={1}>{title}</Text>
@@ -1292,8 +1292,8 @@ function PopupCard({ visible, title, icon, onClose, children }: {
           </View>
           <View style={{ height: 1, backgroundColor: theme.border }} />
           {children}
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -1320,29 +1320,85 @@ export function LeaderboardModal({ visible, entries, onClose }: { visible: boole
 export function MatchHistoryModal({ visible, history, myName, onClose }: { visible: boolean; history: GameState['matchHistory']; myName: string; onClose: () => void }) {
   return (
     <PopupCard visible={visible} title={t('menu.matchHistory')} icon="time" onClose={onClose}>
-      <ScrollView style={{ maxHeight: 460 }} contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 12 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ maxHeight: 500 }} contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 12 }} showsVerticalScrollIndicator={false}>
         {history.length === 0 ? (
           <View style={{ alignItems: 'center', paddingVertical: 36 }}>
             <Ionicons name="time-outline" size={42} color={theme.border} />
             <Text style={[styles.muted, { marginTop: 8 }]}>{t('matchHistory.empty')}</Text>
           </View>
         ) : history.map((m) => {
+          const myRounds = m.rounds.filter((r) => r.answeredBy === myName);
+          const oppRounds = m.rounds.filter((r) => r.answeredBy !== myName);
+          const pArena = arenaForTrophies(m.playerTrophies);
+          const oArena = arenaForTrophies(m.opponentTrophies);
+          const borderColor = m.won ? theme.primary : theme.danger;
           const date = new Date(m.playedAt);
           const dateStr = `${date.getDate().toString().padStart(2, '0')}.${(date.getMonth() + 1).toString().padStart(2, '0')}.${date.getFullYear()}`;
-          const borderColor = m.won ? theme.primary : theme.danger;
           return (
-            <View key={m.id} style={{ backgroundColor: theme.panelInnerFill, borderRadius: 14, borderWidth: 1.5, borderColor, marginBottom: 10, overflow: 'hidden' }}>
+            <View key={m.id} style={{ backgroundColor: theme.panelInnerFill, borderRadius: 14, borderWidth: 1.5, borderColor, marginBottom: 12, overflow: 'hidden' }}>
+              {/* result + score + mode + date */}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 7, backgroundColor: m.won ? 'rgba(39,229,139,0.10)' : 'rgba(255,84,104,0.10)' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Ionicons name={m.won ? 'trophy' : 'close-circle'} size={15} color={m.won ? theme.accent : theme.danger} />
                   <Text style={{ color: m.won ? theme.primary : theme.danger, fontWeight: '900', fontSize: 12 }}>{m.won ? t('matchHistory.won') : t('matchHistory.lost')}</Text>
                 </View>
-                <Text style={{ color: theme.muted, fontSize: 9 }}>{dateStr}</Text>
+                <Text style={{ color: theme.text, fontSize: 20, fontWeight: '900', letterSpacing: 2 }}>{m.playerScore} - {m.opponentScore}</Text>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ color: theme.muted, fontSize: 8 }}>{MODE_LABEL((m.gameMode as GameMode) ?? 'team-team')}</Text>
+                  <Text style={{ color: theme.muted, fontSize: 8 }}>{dateStr}</Text>
+                </View>
               </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9 }}>
-                <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13, flex: 1, textAlign: 'right' }} numberOfLines={1}>{m.playerName || myName}</Text>
-                <Text style={{ color: theme.text, fontWeight: '900', fontSize: 18, paddingHorizontal: 12, letterSpacing: 1 }}>{m.playerScore}-{m.opponentScore}</Text>
-                <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13, flex: 1 }} numberOfLines={1}>{m.opponentName}</Text>
+              {/* head-to-head */}
+              <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 }}>
+                <View style={{ flex: 1, alignItems: 'center' }}>
+                  <Text style={{ color: theme.text, fontWeight: '900', fontSize: 14 }} numberOfLines={1}>{m.playerName || myName}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                    <Ionicons name={pArena.icon} size={11} color={pArena.color} />
+                    <Text style={{ color: pArena.color, fontSize: 9, fontWeight: '700' }}>{m.playerTrophies}</Text>
+                  </View>
+                </View>
+                <View style={{ justifyContent: 'center', paddingHorizontal: 8 }}><Text style={{ color: theme.muted, fontSize: 11, fontWeight: '900' }}>VS</Text></View>
+                <View style={{ flex: 1, alignItems: 'center' }}>
+                  <Text style={{ color: theme.text, fontWeight: '900', fontSize: 14 }} numberOfLines={1}>{m.opponentName}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                    <Ionicons name={oArena.icon} size={11} color={oArena.color} />
+                    <Text style={{ color: oArena.color, fontSize: 9, fontWeight: '700' }}>{m.opponentTrophies}</Text>
+                  </View>
+                </View>
+              </View>
+              {/* who answered which player (two club logos + player photo/name) */}
+              <View style={{ flexDirection: 'row', paddingHorizontal: 10, paddingTop: 4, paddingBottom: 12, gap: 6 }}>
+                <View style={{ flex: 1 }}>
+                  {myRounds.length > 0 ? myRounds.map((r, i) => (
+                    <View key={i} style={{ backgroundColor: theme.bg, borderRadius: 10, padding: 7, marginBottom: 4, borderLeftWidth: 3, borderLeftColor: theme.primary }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                        <ClubLogo uri={r.teamALogo} name={r.teamA} size={17} />
+                        <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
+                        <ClubLogo uri={r.teamBLogo} name={r.teamB} size={17} />
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <PlayerPhoto uri={r.playerImageUrl} size={22} />
+                        <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 10.5, flex: 1 }} numberOfLines={1}>{r.player}</Text>
+                      </View>
+                    </View>
+                  )) : <Text style={{ color: theme.muted, fontSize: 10, textAlign: 'center', marginTop: 8 }}>—</Text>}
+                </View>
+                <View style={{ width: 1, backgroundColor: theme.border, marginVertical: 4 }} />
+                <View style={{ flex: 1 }}>
+                  {oppRounds.length > 0 ? oppRounds.map((r, i) => (
+                    <View key={i} style={{ backgroundColor: theme.bg, borderRadius: 10, padding: 7, marginBottom: 4, borderLeftWidth: 3, borderLeftColor: theme.danger }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                        <ClubLogo uri={r.teamALogo} name={r.teamA} size={17} />
+                        <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
+                        <ClubLogo uri={r.teamBLogo} name={r.teamB} size={17} />
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <PlayerPhoto uri={r.playerImageUrl} size={22} />
+                        <Text style={{ color: theme.danger, fontWeight: '800', fontSize: 10.5, flex: 1 }} numberOfLines={1}>{r.player}</Text>
+                      </View>
+                    </View>
+                  )) : <Text style={{ color: theme.muted, fontSize: 10, textAlign: 'center', marginTop: 8 }}>—</Text>}
+                </View>
               </View>
             </View>
           );
@@ -2384,37 +2440,38 @@ export function CollectionScreen({ state, actions }: Props) {
           })}
         </View>
 
-        {/* All emotes — 4-column grid (less scrolling), equip with the button below each */}
+        {/* All emotes — 4-column grid. The WHOLE card is tappable → equips directly. */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP }}>
           {all.map((e) => {
             const owned = ownsEmote(profile, e.id);
             const isEquipped = equipped.includes(e.id);
             const full = equipped.length >= 3 && !isEquipped;
             return (
-              <View
+              <Pressable
                 key={e.id}
+                disabled={!owned}
+                onPress={() => { if (owned && !full) toggleEquip(e.id); }}
                 style={{
-                  width: COL_W, paddingVertical: 9, paddingHorizontal: 4,
-                  backgroundColor: theme.card, borderRadius: 13, alignItems: 'center',
-                  borderWidth: 1.5, borderColor: isEquipped ? theme.primary : theme.border,
-                  opacity: owned ? 1 : 0.5,
+                  width: COL_W, paddingTop: 11, paddingBottom: 9, paddingHorizontal: 4,
+                  backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
+                  borderWidth: 2, borderColor: isEquipped ? theme.primary : theme.border,
+                  borderBottomWidth: 3, borderBottomColor: isEquipped ? theme.primaryDark : theme.cardLip,
+                  opacity: owned ? (full ? 0.65 : 1) : 0.5,
                 }}
               >
-                <EmoteSticker id={e.id} size={50} />
-                <View style={{ height: 7 }} />
-                {owned ? (
-                  <Pressable
-                    onPress={() => { if (!full) toggleEquip(e.id); }}
-                    style={{ width: '100%', alignItems: 'center', paddingVertical: 6, borderRadius: 9, backgroundColor: isEquipped ? theme.primary : theme.bg2, borderWidth: 1, borderColor: isEquipped ? theme.primary : theme.border, opacity: full ? 0.4 : 1 }}
-                  >
-                    <Text style={{ color: isEquipped ? '#06131F' : theme.text, fontWeight: '800', fontSize: 10 }} numberOfLines={1} adjustsFontSizeToFit>{isEquipped ? 'Kuşanıldı' : 'Kuşan'}</Text>
-                  </Pressable>
-                ) : (
-                  <View style={{ width: '100%', alignItems: 'center', paddingVertical: 6, borderRadius: 9, backgroundColor: theme.bg2, borderWidth: 1, borderColor: theme.border }}>
-                    <Ionicons name="lock-closed" size={13} color={theme.muted} />
+                {isEquipped ? (
+                  <View style={{ position: 'absolute', top: 4, right: 4, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>
+                    <Ionicons name="checkmark" size={12} color="#06131F" />
                   </View>
+                ) : null}
+                <EmoteSticker id={e.id} size={58} />
+                <View style={{ height: 6 }} />
+                {owned ? (
+                  <Text style={{ color: isEquipped ? theme.primary : theme.muted, fontWeight: '800', fontSize: 10.5 }} numberOfLines={1} adjustsFontSizeToFit>{isEquipped ? 'Kuşanıldı' : 'Kuşan'}</Text>
+                ) : (
+                  <Ionicons name="lock-closed" size={13} color={theme.muted} />
                 )}
-              </View>
+              </Pressable>
             );
           })}
         </View>
