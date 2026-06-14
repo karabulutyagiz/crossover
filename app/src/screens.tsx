@@ -486,9 +486,9 @@ export function SplashScreen() {
           }}
         />
       ))}
-      <Animated.View style={{ opacity: fade, alignItems: 'center', gap: 12 }}>
+      <Animated.View style={{ opacity: fade, alignItems: 'center', gap: 12, alignSelf: 'stretch', paddingHorizontal: 20 }}>
         <Ionicons name="football" size={66} color={theme.primary} />
-        <Text numberOfLines={1} style={{ color: theme.text, fontSize: 36, fontFamily: 'Poppins-Black', letterSpacing: 3, paddingRight: 6, textAlign: 'center' }}>CROSSOVER</Text>
+        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: theme.text, fontSize: 34, fontFamily: 'Poppins-Black', letterSpacing: 2, textAlign: 'center', alignSelf: 'stretch', includeFontPadding: false }}>CROSSOVER</Text>
       </Animated.View>
       <Animated.Text style={{ position: 'absolute', bottom: 44, color: theme.muted, fontSize: 12, letterSpacing: 3, fontFamily: 'Poppins-ExtraBold', opacity: fade }}>
         BY GAMES
@@ -536,11 +536,11 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
       <ScreenBg />
-      <View style={{ alignItems: 'center', gap: 14 }}>
+      <View style={{ alignItems: 'center', gap: 14, alignSelf: 'stretch', paddingHorizontal: 24 }}>
         <View style={{ width: 96, height: 96, borderRadius: 24, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.primary }}>
           <Ionicons name="football" size={54} color={theme.primary} />
         </View>
-        <Text numberOfLines={1} style={{ color: theme.text, fontSize: 30, fontFamily: 'Poppins-Black', letterSpacing: 3, paddingRight: 6, textAlign: 'center' }}>CROSSOVER</Text>
+        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: theme.text, fontSize: 30, fontFamily: 'Poppins-Black', letterSpacing: 2, textAlign: 'center', alignSelf: 'stretch', includeFontPadding: false }}>CROSSOVER</Text>
       </View>
 
       <View style={{ position: 'absolute', left: 32, right: 32, bottom: 64, alignItems: 'center', gap: 10 }}>
