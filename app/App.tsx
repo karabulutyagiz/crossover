@@ -347,24 +347,32 @@ export default function App() {
         </Pressable>
       </View>
 
-      {/* Tournaments → floating "coming soon" text with a top-view ground shadow */}
+      {/* Tournaments → a raised rectangular "coming soon" badge that pops in with a deep shadow */}
       {comingSoon ? (
-        <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: '44%', alignItems: 'center' }}>
+        <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: '42%', alignItems: 'center' }}>
           <Animated.View
             style={{
-              alignItems: 'center',
               opacity: csAnim,
               transform: [
-                { scale: csAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) },
-                { translateY: csAnim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) },
+                { scale: csAnim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) },
+                { translateY: csAnim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) },
               ],
             }}
           >
-            <Text style={{ color: '#fff', fontFamily: 'Poppins-ExtraBold', fontSize: 26, letterSpacing: 0.5, textShadowColor: 'rgba(0,0,0,0.75)', textShadowOffset: { width: 0, height: 3 }, textShadowRadius: 8 }}>
-              Çok Yakında
-            </Text>
-            {/* top-view ground shadow under the text */}
-            <View style={{ width: 120, height: 12, borderRadius: 6, backgroundColor: '#000', opacity: 0.3, marginTop: 8, transform: [{ scaleX: 1.4 }] }} />
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', gap: 11,
+              backgroundColor: theme.card, borderRadius: 16,
+              paddingVertical: 16, paddingHorizontal: 26,
+              borderWidth: 2, borderColor: theme.frameGold,
+              borderBottomWidth: 5, borderBottomColor: theme.frameGoldDark,
+              borderTopColor: theme.panelTopGloss,
+              shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 22, shadowOffset: { width: 0, height: 16 }, elevation: 24,
+            }}>
+              <Ionicons name="time" size={22} color={theme.accent} />
+              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 21, letterSpacing: 0.5, textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 }}>
+                Çok Yakında
+              </Text>
+            </View>
           </Animated.View>
         </View>
       ) : null}
