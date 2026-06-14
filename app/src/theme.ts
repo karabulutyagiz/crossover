@@ -1,18 +1,18 @@
 export const theme = {
-  // base — dark forest-green "field" palette (harmonizes with the green field background image)
-  bg: '#0B1A11',
-  bg2: '#16331F', // lighter green panel for layered/gradient-ish backgrounds
-  card: '#173A23',
-  cardLip: '#0C2113', // darker bottom edge for card depth
+  // base — navy/royal-blue "arena" palette (harmonizes with the blue arena backdrop backgrounds)
+  bg: '#0B1838', // flat solid used for match screens (no patterned bg there)
+  bg2: '#17224F', // lighter blue panel for layered/gradient-ish backgrounds
+  card: '#1C2A57',
+  cardLip: '#0F1838', // darker bottom edge for card depth
   // ---- game-frame tokens (Clash-Royale-style panels/modals) ----
-  panelInk: '#07140B', // outer frame-ring base (sunken dark outline under gold rim)
+  panelInk: '#091029', // outer frame-ring base (sunken dark outline under gold rim)
   panelTopGloss: 'rgba(255,255,255,0.12)', // 1px top highlight on bevels
-  panelTop: '#214E2F', // top stop of hero-panel gloss gradient
-  panelBot: '#12301C', // bottom stop of hero-panel gloss gradient
-  panelInnerFill: '#102A18', // recessed inner well (inputs, troughs, chips)
-  // accents — vibrant + glowy (pop on dark-green panels & green field)
-  primary: '#2BE38C', // vivid mint-green
-  primaryDark: '#13A861', // green button "lip"/shadow
+  panelTop: '#26376E', // top stop of hero-panel gloss gradient
+  panelBot: '#16224A', // bottom stop of hero-panel gloss gradient
+  panelInnerFill: '#14204A', // recessed inner well (inputs, troughs, chips)
+  // accents — vibrant + glowy
+  primary: '#27E58B', // vivid mint-green
+  primaryDark: '#12A862', // green button "lip"/shadow
   accent: '#FFCE3A', // bright gold
   accentDark: '#CF9A12', // gold lip
   frameGold: '#FFCE3A', // ornamental hero-frame ring (= accent, named for intent)
@@ -29,16 +29,16 @@ export const theme = {
   gemText: '#C9A6FF', // diamond count text on dark pill
   // text
   text: '#FFFFFF',
-  ink: '#06140A', // dark text/icon on bright (primary/accent/gold) faces
-  muted: '#9FBE9B', // green-tinted muted
-  border: '#2E5A39', // green-tinted border (inner dividers + ordinary panel rings)
+  ink: '#06131F', // dark text/icon on bright (primary/accent/gold) faces
+  muted: '#98A4CE', // blue-tinted muted
+  border: '#33437E', // blue-tinted border (inner dividers + ordinary panel rings)
   // effects
-  textShadow: 'rgba(4,15,8,0.85)', // engraved text shadow under bold titles/numbers
-  scrim: 'rgba(5,15,8,0.64)', // the single modal backdrop scrim
-  vignetteEdge: 'rgba(5,14,8,0.55)', // full-screen radial vignette rim
-  glowSoft: 'rgba(43,227,140,0.16)', // standard soft glow (ghost fill, focus halo, hints)
-  stripe: '#5C9E55', // background weave (down-right)
-  stripe2: '#4E8A48', // background weave (down-left)
+  textShadow: 'rgba(6,11,28,0.85)', // engraved text shadow under bold titles/numbers
+  scrim: 'rgba(6,10,28,0.62)', // the single modal backdrop scrim
+  vignetteEdge: 'rgba(6,11,28,0.55)', // full-screen radial vignette rim
+  glowSoft: 'rgba(39,229,139,0.16)', // standard soft glow (ghost fill, focus halo, hints)
+  stripe: '#6E8CD8', // background weave (down-right)
+  stripe2: '#5A77C8', // background weave (down-left)
 };
 
 // Engraved text shadow — the cheap universal game-ifier for bold titles & numbers.

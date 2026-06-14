@@ -334,28 +334,32 @@ function ScreenHeader({ title, onBack, icon, right, underline }: {
 // + a faint diagonal stripe pattern + soft glows. Sits behind every screen.
 const SCREEN_W = Dimensions.get('window').width;
 const SCREEN_H = Dimensions.get('window').height;
-export const BG_TOP = '#79A943'; // matches the green field background image (header strip blends)
-const BG_IMG = require('../assets/bg.png');
-// Full-screen green field background image + a soft vignette so the UI reads on top.
-export function ScreenBg() {
+export const BG_TOP = '#0E2347'; // navy shown behind the bg image (frame before load / root)
+export type BgVariant = 'home' | 'store' | 'menu' | 'match';
+const BG_HOME = require('../assets/bg-home.png');   // royal-blue arena backdrop (Oyna/home only)
+const BG_STORE = require('../assets/bg-store.png');  // violet gem-shop backdrop (Mağaza)
+const BG_MENU = require('../assets/bg-menu.png');    // calm navy backdrop (collection/friends/sub-screens)
+const BG_VARIANT = { home: BG_HOME, store: BG_STORE, menu: BG_MENU } as const;
+// Per-screen background. 'match' = flat solid colour (no pattern). The image variants
+// already bake a radial vignette + faint diamond weave; we only add a top/bottom shade
+// so the resource bar and tab bar stay readable.
+export function ScreenBg({ variant = 'menu' }: { variant?: BgVariant }) {
+  if (variant === 'match') {
+    return <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: theme.bg }]} />;
+  }
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      <Image source={BG_IMG} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      <Image source={BG_VARIANT[variant]} style={StyleSheet.absoluteFill} resizeMode="cover" />
       <Svg width="100%" height="100%">
         <Defs>
           <SvgGradient id="bgshade" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#0A1A0C" stopOpacity={0.34} />
-            <Stop offset="0.28" stopColor="#0A1A0C" stopOpacity={0.12} />
-            <Stop offset="0.72" stopColor="#0A1A0C" stopOpacity={0.12} />
-            <Stop offset="1" stopColor="#0A1A0C" stopOpacity={0.4} />
+            <Stop offset="0" stopColor="#04060F" stopOpacity={0.32} />
+            <Stop offset="0.22" stopColor="#04060F" stopOpacity={0.04} />
+            <Stop offset="0.80" stopColor="#04060F" stopOpacity={0.04} />
+            <Stop offset="1" stopColor="#04060F" stopOpacity={0.44} />
           </SvgGradient>
-          <RadialGradient id="vig" cx="50%" cy="42%" r="80%">
-            <Stop offset="0.55" stopColor="#08160A" stopOpacity={0} />
-            <Stop offset="1" stopColor="#08160A" stopOpacity={0.45} />
-          </RadialGradient>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#bgshade)" />
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#vig)" />
       </Svg>
     </View>
   );
@@ -1063,7 +1067,7 @@ function ArenaHaze() {
   }, [drift]);
   const tx = drift.interpolate({ inputRange: [0, 1], outputRange: [-12, 12] });
   return (
-    <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 2, width: 280, height: 180, transform: [{ translateX: tx }] }}>
+    <Animated.View pointerEvents="none" style={{ position: 'absolute', top: -6, width: 330, height: 210, transform: [{ translateX: tx }] }}>
       <Svg width="100%" height="100%">
         <Defs>
           <RadialGradient id="haze" cx="50%" cy="50%" r="50%">
@@ -1089,30 +1093,20 @@ function ArenaHaze() {
 function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon: string }; trophies: number; onPress: () => void }) {
   const tier = ARENA_DATA.find((a) => trophies >= a.min && trophies <= a.max) ?? ARENA_DATA[ARENA_DATA.length - 1]!;
   const color = arenaColor(arena.name);
-  // Gentle idle breathing so the floating arena feels alive.
-  const breathe = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(breathe, { toValue: 1, duration: 2600, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(breathe, { toValue: 0, duration: 2600, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [breathe]);
-  const scale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.02] });
   return (
     <Pressable onPress={onPress} style={{ marginVertical: 6, alignItems: 'center' }}>
-      {/* Arena planted ON the ground: a firm wide contact shadow right under the base
-          (NOT a lifted drop shadow) so it sits, not floats. */}
+      {/* Planted top-view arena (Clash-Royale board): NO float / NO bob. A firm layered
+          ground shadow sits directly under the base so the arena rests on the ground. */}
       <View style={{ alignItems: 'center', justifyContent: 'flex-end' }}>
         <ArenaHaze />
-        <View pointerEvents="none" style={{ position: 'absolute', bottom: 14, width: 138, height: 18, borderRadius: 9, backgroundColor: '#000', opacity: 0.5, shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 10, shadowOffset: { width: 0, height: 1 }, transform: [{ scaleX: 1.5 }] }} />
-        <Animated.Image
+        {/* wide soft ground shadow — the arena's footprint on the ground */}
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: 6, width: 212, height: 28, borderRadius: 14, backgroundColor: '#060A18', opacity: 0.5, shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 18, shadowOffset: { width: 0, height: 3 }, transform: [{ scaleX: 1.38 }] }} />
+        {/* tight dark core right under the base — anchors it firmly */}
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: 12, width: 150, height: 15, borderRadius: 8, backgroundColor: '#000', opacity: 0.45, transform: [{ scaleX: 1.5 }] }} />
+        <Image
           source={tier.img}
           resizeMode="contain"
-          style={{ width: 188, height: 188, transform: [{ scale }], shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 5, shadowOffset: { width: 0, height: 3 } }}
+          style={{ width: 250, height: 218 }}
         />
       </View>
       {/* Nameplate below */}
