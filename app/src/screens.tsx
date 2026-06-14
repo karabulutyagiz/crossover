@@ -611,7 +611,7 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
     picked: false,
     pickEndsAt: future,
     guessEndsAt: future,
-    clubResults: TUT_CLUBS,
+    clubResults: [TUT_A], // tutorial team-select shows ONLY Galatasaray ("Galatasaray'a dokun")
     teams: { teamA: TUT_A, teamB: TUT_B },
     revealMode: 'team-team',
     matchOver: false,
