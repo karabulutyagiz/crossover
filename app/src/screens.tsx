@@ -22,7 +22,7 @@ import { t, currentLang, setLanguage, LANGUAGES } from './i18n';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GOOGLE_IOS_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
-import Svg, { Rect, Circle, Line, Pattern, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
+import Svg, { Rect, Circle, Line, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState, FriendInfo } from './useCrossover';
@@ -208,7 +208,18 @@ function Chip({ icon, label, onPress }: { icon: IoniconName; label: string; onPr
 // with two faint warm/cool glows. Replaces the old football-pitch pattern.
 // Full-screen patterned background (navy, Clash-Royale-like): deep-blue gradient
 // + a faint diagonal stripe pattern + soft glows. Sits behind every screen.
+const SCREEN_W = Dimensions.get('window').width;
+const SCREEN_H = Dimensions.get('window').height;
 export const BG_TOP = '#15244F';
+// Explicit diagonal stripes (no <Pattern> — that doesn't render reliably on device).
+const BG_STRIPES = (() => {
+  const out: { x1: number; y1: number; x2: number; y2: number }[] = [];
+  const step = 46;
+  for (let x = -SCREEN_H; x < SCREEN_W + SCREEN_H; x += step) {
+    out.push({ x1: x, y1: 0, x2: x + SCREEN_H, y2: SCREEN_H }); // 45° down-right
+  }
+  return out;
+})();
 export function ScreenBg() {
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -219,15 +230,13 @@ export function ScreenBg() {
             <Stop offset="0.5" stopColor="#0F1A3C" />
             <Stop offset="1" stopColor="#0A1330" />
           </SvgGradient>
-          <Pattern id="diag" patternUnits="userSpaceOnUse" width={46} height={46} patternTransform="rotate(45)">
-            <Line x1={0} y1={0} x2={0} y2={46} stroke="#6E8CD8" strokeWidth={2} opacity={0.08} />
-            <Line x1={0} y1={0} x2={46} y2={0} stroke="#6E8CD8" strokeWidth={2} opacity={0.08} />
-          </Pattern>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#screenbg)" />
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#diag)" />
-        <Circle cx="16%" cy="10%" r={160} fill={theme.primary} opacity={0.06} />
-        <Circle cx="90%" cy="82%" r={170} fill={theme.accent} opacity={0.045} />
+        {BG_STRIPES.map((l, i) => (
+          <Line key={i} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="#6E8CD8" strokeWidth={2} opacity={0.07} />
+        ))}
+        <Circle cx="16%" cy="10%" r={160} fill={theme.primary} opacity={0.07} />
+        <Circle cx="90%" cy="82%" r={170} fill={theme.accent} opacity={0.05} />
       </Svg>
     </View>
   );
@@ -247,7 +256,6 @@ function Screen({ children }: { children: ReactNode; noPitch?: boolean }) {
 }
 
 // ---- Swipeable intro / onboarding (shown on first launch) ----
-const SCREEN_W = Dimensions.get('window').width;
 
 const INTRO_SLIDES = [
   { icon: 'football' as IoniconName, color: theme.primary, title: 'CROSSOVER', desc: 'İki takımda da oynamış futbolcuyu bul. İlk bilen kazanır!' },
@@ -345,7 +353,7 @@ export function SplashScreen() {
       ))}
       <Animated.View style={{ opacity: fade, alignItems: 'center', gap: 12 }}>
         <Ionicons name="football" size={66} color={theme.primary} />
-        <Text style={{ color: theme.text, fontSize: 36, fontFamily: 'Poppins-Black', letterSpacing: 3, marginRight: -3, textAlign: 'center' }}>CROSSOVER</Text>
+        <Text numberOfLines={1} style={{ color: theme.text, fontSize: 36, fontFamily: 'Poppins-Black', letterSpacing: 3, paddingRight: 6, textAlign: 'center' }}>CROSSOVER</Text>
       </Animated.View>
       <Animated.Text style={{ position: 'absolute', bottom: 44, color: theme.muted, fontSize: 12, letterSpacing: 3, fontFamily: 'Poppins-ExtraBold', opacity: fade }}>
         BY GAMES
@@ -397,7 +405,7 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
         <View style={{ width: 96, height: 96, borderRadius: 24, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.primary }}>
           <Ionicons name="football" size={54} color={theme.primary} />
         </View>
-        <Text style={{ color: theme.text, fontSize: 30, fontFamily: 'Poppins-Black', letterSpacing: 3, marginRight: -3, textAlign: 'center' }}>CROSSOVER</Text>
+        <Text numberOfLines={1} style={{ color: theme.text, fontSize: 30, fontFamily: 'Poppins-Black', letterSpacing: 3, paddingRight: 6, textAlign: 'center' }}>CROSSOVER</Text>
       </View>
 
       <View style={{ position: 'absolute', left: 32, right: 32, bottom: 64, alignItems: 'center', gap: 10 }}>
@@ -943,7 +951,7 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
     <Pressable onPress={onPress} style={{ marginVertical: 6, alignItems: 'center' }}>
       {/* Floating cut-out arena (square, 2.5D top-view) with a tight contact shadow */}
       <View style={{ alignItems: 'center', justifyContent: 'flex-end' }}>
-        <View pointerEvents="none" style={{ position: 'absolute', bottom: 16, width: 96, height: 13, borderRadius: 7, backgroundColor: '#000', opacity: 0.3, transform: [{ scaleX: 1.3 }] }} />
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: 18, width: 124, height: 18, borderRadius: 9, backgroundColor: '#000', opacity: 0.45, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, transform: [{ scaleX: 1.35 }] }} />
         <Animated.Image
           source={tier.img}
           resizeMode="contain"
@@ -2094,65 +2102,8 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
             </View>
           </Pressable>
         ))}
-      </ScrollView>
-    </Screen>
-  );
-}
 
-// ---- Collection (emotes / loadout) ----
-export function CollectionScreen({ state, actions }: Props) {
-  const profile = state.profile;
-  const [emoteTab, setEmoteTab] = useState<'inventory' | 'collection'>('inventory');
-  const equipped = profile?.equippedEmotes ?? [];
-  const toggleEquip = (id: string) => {
-    if (equipped.includes(id)) actions.equipEmotes(equipped.filter((x) => x !== id));
-    else if (equipped.length < 3) actions.equipEmotes([...equipped, id]);
-  };
-
-  return (
-    <Screen>
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
-        <View style={styles.center}>
-          <Ionicons name="albums" size={36} color={theme.primary} />
-          <Text style={styles.h1}>Koleksiyon</Text>
-        </View>
-
-        {/* İfadeler: Envanterim / Koleksiyonum sekmeleri */}
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, marginBottom: 10 }}>
-          {(([['inventory', 'İfade Envanterim'], ['collection', 'Koleksiyonum']]) as const).map(([k, label]) => {
-            const active = emoteTab === k;
-            return (
-              <Pressable key={k} onPress={() => setEmoteTab(k)} style={{ flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 12, backgroundColor: active ? theme.primary : theme.card, borderWidth: 1, borderColor: active ? theme.primary : theme.border }}>
-                <Text style={{ color: active ? '#06131F' : theme.text, fontWeight: '800', fontSize: 13 }}>{label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {emoteTab === 'inventory' ? (
-        <>
-        <Text style={styles.sectionLabel}>MAÇ LOADOUT'U (MAX 3)</Text>
-        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 4 }}>
-          {[0, 1, 2].map((i) => {
-            const id = equipped[i];
-            return (
-              <Pressable
-                key={i}
-                onPress={() => id && toggleEquip(id)}
-                style={{
-                  flex: 1, aspectRatio: 1, borderRadius: 14, borderWidth: 2,
-                  borderStyle: id ? 'solid' : 'dashed', borderColor: id ? theme.primary : theme.border,
-                  backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                {id ? <EmoteSticker id={id} size={50} /> : <Ionicons name="add" size={28} color={theme.border} />}
-              </Pressable>
-            );
-          })}
-        </View>
-        <Text style={[styles.muted, { fontSize: 11, marginBottom: 6 }]}>Slota dokununca çıkarırsın. Aşağıdan ifade kuşan.</Text>
-
-        {/* Haftalık ifade dükkanı */}
+        {/* Haftalık ifade dükkanı (satışlar burada — koleksiyonda değil) */}
         {emoteWeeks().map(({ week, emotes }) => (
           <View key={week}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -2168,7 +2119,6 @@ export function CollectionScreen({ state, actions }: Props) {
             </View>
             {emotes.map((e) => {
               const owned = ownsEmote(profile, e.id);
-              const isEquipped = equipped.includes(e.id);
               const canAfford = (profile?.diamonds ?? 0) >= (e.premium?.price ?? 0);
               return (
                 <View key={e.id} style={styles.storeEmoteCard}>
@@ -2179,29 +2129,15 @@ export function CollectionScreen({ state, actions }: Props) {
                     <Text style={styles.storeEmoteName}>{e.premium?.name}</Text>
                     <Text style={styles.storeEmoteDesc} numberOfLines={2}>{e.premium?.desc}</Text>
                   </View>
-                  {!owned ? (
-                    <Pressable
-                      style={[styles.storeEmoteBuy, !canAfford && { opacity: 0.5 }]}
-                      onPress={() => canAfford && actions.buyEmote(e.id)}
-                    >
+                  {owned ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8 }}>
+                      <Ionicons name="checkmark-circle" size={16} color={theme.primary} />
+                      <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 12 }}>Sahipsin</Text>
+                    </View>
+                  ) : (
+                    <Pressable style={[styles.storeEmoteBuy, !canAfford && { opacity: 0.5 }]} onPress={() => canAfford && actions.buyEmote(e.id)}>
                       <Text style={styles.storeEmoteBuyText}>{e.premium?.price}</Text>
                       <GemIcon size={13} />
-                    </Pressable>
-                  ) : (
-                    <Pressable
-                      onPress={() => toggleEquip(e.id)}
-                      style={{
-                        flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 10,
-                        paddingHorizontal: 12, paddingVertical: 8,
-                        backgroundColor: isEquipped ? theme.primary : 'transparent',
-                        borderWidth: 1, borderColor: isEquipped ? theme.primary : theme.border,
-                        opacity: !isEquipped && equipped.length >= 3 ? 0.45 : 1,
-                      }}
-                    >
-                      <Ionicons name={isEquipped ? 'checkmark' : 'add'} size={14} color={isEquipped ? '#06131F' : theme.text} />
-                      <Text style={{ color: isEquipped ? '#06131F' : theme.text, fontWeight: '800', fontSize: 12 }}>
-                        {isEquipped ? 'Kuşanıldı' : 'Kuşan'}
-                      </Text>
                     </Pressable>
                   )}
                 </View>
@@ -2209,38 +2145,70 @@ export function CollectionScreen({ state, actions }: Props) {
             })}
           </View>
         ))}
-        </>
-        ) : (
-        <>
-          <Text style={styles.sectionLabel}>TÜM İFADELER</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {[...FREE_EMOTES, ...PREMIUM_EMOTES].map((e) => {
-              const owned = ownsEmote(profile, e.id);
-              return (
-                <View
-                  key={e.id}
-                  style={{
-                    width: '31.5%', alignItems: 'center', gap: 5, paddingVertical: 12,
-                    backgroundColor: theme.card, borderRadius: 14,
-                    borderWidth: 1, borderColor: owned ? theme.border : 'transparent',
-                    opacity: owned ? 1 : 0.5,
-                  }}
-                >
-                  <EmoteSticker id={e.id} size={48} />
-                  <Text style={{ color: theme.text, fontSize: 10, fontWeight: '600', textAlign: 'center' }} numberOfLines={1}>
-                    {e.premium?.name ?? e.phrase}
-                  </Text>
-                  {owned ? (
-                    <Ionicons name="checkmark-circle" size={12} color={theme.primary} />
-                  ) : (
-                    <Ionicons name="lock-closed" size={11} color={theme.muted} />
-                  )}
+      </ScrollView>
+    </Screen>
+  );
+}
+
+// ---- Collection (emotes / loadout) ----
+export function CollectionScreen({ state, actions }: Props) {
+  const profile = state.profile;
+  const equipped = profile?.equippedEmotes ?? [];
+  const toggleEquip = (id: string) => {
+    if (equipped.includes(id)) actions.equipEmotes(equipped.filter((x) => x !== id));
+    else if (equipped.length < 3) actions.equipEmotes([...equipped, id]);
+  };
+  const all = [...FREE_EMOTES, ...PREMIUM_EMOTES];
+
+  return (
+    <Screen>
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+        <View style={styles.center}>
+          <Ionicons name="albums" size={36} color={theme.primary} />
+          <Text style={styles.h1}>Koleksiyon</Text>
+          <Text style={styles.muted}>Maçta kuşanılan {equipped.length}/3</Text>
+        </View>
+
+        {/* All emotes as square cards, equip with "Kuşan" below each */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 14 }}>
+          {all.map((e) => {
+            const owned = ownsEmote(profile, e.id);
+            const isEquipped = equipped.includes(e.id);
+            const full = equipped.length >= 3 && !isEquipped;
+            return (
+              <View
+                key={e.id}
+                style={{
+                  width: '48%', marginBottom: 12, paddingVertical: 14, paddingHorizontal: 10,
+                  backgroundColor: theme.card, borderRadius: 16, alignItems: 'center',
+                  borderWidth: 1.5, borderColor: isEquipped ? theme.primary : theme.border,
+                  opacity: owned ? 1 : 0.55,
+                }}
+              >
+                <View style={{ width: 74, height: 74, alignItems: 'center', justifyContent: 'center' }}>
+                  <EmoteSticker id={e.id} size={74} />
                 </View>
-              );
-            })}
-          </View>
-        </>
-        )}
+                <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700', textAlign: 'center', marginTop: 6 }} numberOfLines={1}>
+                  {e.premium?.name ?? e.phrase}
+                </Text>
+                <View style={{ height: 8 }} />
+                {owned ? (
+                  <Pressable
+                    onPress={() => { if (!full) toggleEquip(e.id); }}
+                    style={{ width: '100%', alignItems: 'center', paddingVertical: 9, borderRadius: 10, backgroundColor: isEquipped ? theme.primary : theme.bg2, borderWidth: 1, borderColor: isEquipped ? theme.primary : theme.border, opacity: full ? 0.45 : 1 }}
+                  >
+                    <Text style={{ color: isEquipped ? '#06131F' : theme.text, fontWeight: '800', fontSize: 12 }}>{isEquipped ? 'Kuşanıldı' : 'Kuşan'}</Text>
+                  </Pressable>
+                ) : (
+                  <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 10, backgroundColor: theme.bg2, borderWidth: 1, borderColor: theme.border }}>
+                    <Ionicons name="lock-closed" size={12} color={theme.muted} />
+                    <Text style={{ color: theme.muted, fontWeight: '700', fontSize: 11 }}>Kilitli</Text>
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </View>
       </ScrollView>
     </Screen>
   );
@@ -3373,7 +3341,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent', padding: 22, justifyContent: 'center' },
   center: { alignItems: 'center', gap: 6 },
-  logo: { color: theme.primary, fontSize: 28, fontFamily: 'Poppins-Black', textAlign: 'center', letterSpacing: 2, marginRight: -2, marginTop: 6 },
+  logo: { color: theme.primary, fontSize: 28, fontFamily: 'Poppins-Black', textAlign: 'center', letterSpacing: 2, paddingRight: 4, marginTop: 6 },
   tagline: { color: theme.muted, textAlign: 'center', marginBottom: 20, marginTop: 4, fontSize: 12, fontFamily: 'Poppins-SemiBold' },
   h1: { color: theme.text, fontSize: 16, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginVertical: 6 },
   label: { color: theme.muted, fontSize: 10, letterSpacing: 2, textAlign: 'center' },
@@ -3542,14 +3510,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   optChipText: { color: theme.text, fontSize: 12, fontWeight: '600', flex: 1 },
-  modalBg: { flex: 1, backgroundColor: 'rgba(6,10,28,0.28)', justifyContent: 'flex-end' },
+  modalBg: { flex: 1, backgroundColor: 'rgba(6,10,28,0.45)', justifyContent: 'center', paddingHorizontal: 22 },
   modalCard: {
     backgroundColor: theme.card,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderRadius: 20,
     padding: 20,
-    paddingBottom: 34,
-    borderTopWidth: 1,
+    borderWidth: 1,
     borderColor: theme.border,
   },
   modalSearchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.bg, borderRadius: 10, paddingHorizontal: 12, marginBottom: 8 },
