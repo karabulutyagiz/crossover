@@ -8,7 +8,12 @@
 //     EQUIPS up to 3 into their loadout (users.equipped_emotes) for matches.
 // Keep these ids in sync with app/src/emotes.tsx.
 
-export const FREE_EMOTES: readonly string[] = ['congrats', 'luck', 'gg', 'bring_it', 'gotcha'];
+export const FREE_EMOTES: readonly string[] = [
+  // quick-chat text
+  'congrats', 'luck', 'gg', 'bring_it', 'gotcha',
+  // the 4 character faces (Clash-Royale style) — free for everyone
+  'smile', 'cry', 'angry', 'ok',
+];
 
 // Max visual emotes a player can equip at once (loadout slots).
 export const MAX_EQUIPPED = 3;

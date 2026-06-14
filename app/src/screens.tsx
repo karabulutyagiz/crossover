@@ -33,6 +33,8 @@ import {
   EmoteSticker,
   PREMIUM_EMOTES,
   FREE_EMOTES,
+  TEXT_EMOTES,
+  FACE_EMOTES,
   availableEmotes,
   loadoutEmotes,
   emoteWeeks,
@@ -779,7 +781,9 @@ function EmoteLayer({ state, actions, fab = 'bottom-right' }: Props & { fab?: 'b
   const oppId = room?.players.find((p) => p.id !== youId)?.id;
   const mine = youId ? state.emotes[youId] : undefined;
   const theirs = oppId ? state.emotes[oppId] : undefined;
-  const emotes = loadoutEmotes(state.profile);
+  const allEmotes = loadoutEmotes(state.profile);
+  const textEmotes = allEmotes.filter((e) => e.kind === 'text');   // quick-chat messages
+  const stickerEmotes = allEmotes.filter((e) => e.kind !== 'text'); // the 4 faces + equipped visual
 
   return (
     <>
@@ -794,7 +798,7 @@ function EmoteLayer({ state, actions, fab = 'bottom-right' }: Props & { fab?: 'b
         style={[styles.emoteFab, fab === 'top-right' ? styles.emoteFabTop : styles.emoteFabBottom]}
         onPress={() => setOpen(true)}
       >
-        <Ionicons name="happy" size={26} color="#06131F" />
+        <Ionicons name="chatbubble-ellipses" size={24} color="#06131F" />
       </Pressable>
 
       <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
@@ -807,10 +811,27 @@ function EmoteLayer({ state, actions, fab = 'bottom-right' }: Props & { fab?: 'b
             }}
             onPress={() => {}}
           >
-            <View style={{ width: 42, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: 'center', marginBottom: 14 }} />
-            <Text style={{ color: theme.text, fontWeight: '900', fontSize: 15, textAlign: 'center', marginBottom: 16 }}>{t('emote.send')}</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 16 }}>
-              {emotes.map((e) => (
+            <View style={{ width: 42, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: 'center', marginBottom: 16 }} />
+
+            {/* Quick-chat text messages (no emoji — just text, Clash-Royale style) */}
+            <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '800', letterSpacing: 0.5, marginBottom: 9, marginLeft: 2 }}>{t('emote.quickChat')}</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
+              {textEmotes.map((e) => (
+                <Pressable
+                  key={e.id}
+                  onPress={() => { actions.sendEmote(e.id); setOpen(false); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.bg, borderRadius: 22, paddingVertical: 11, paddingHorizontal: 16, borderWidth: 1.5, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip }}
+                >
+                  <Ionicons name="chatbubble-ellipses" size={14} color={theme.primary} />
+                  <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13.5 }}>{e.phrase}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {/* Character emotes (smiling / crying / angry / OK) + any equipped visual emotes */}
+            <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '800', letterSpacing: 0.5, marginBottom: 10, marginLeft: 2 }}>{t('emote.faces')}</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 14 }}>
+              {stickerEmotes.map((e) => (
                 <Pressable
                   key={e.id}
                   onPress={() => { actions.sendEmote(e.id); setOpen(false); }}
@@ -826,7 +847,6 @@ function EmoteLayer({ state, actions, fab = 'bottom-right' }: Props & { fab?: 'b
                 </Pressable>
               ))}
             </View>
-            <Text style={styles.emoteHint}>{t('emote.moreInStore')}</Text>
           </Pressable>
         </Pressable>
       </Modal>

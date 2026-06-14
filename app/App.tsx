@@ -328,7 +328,7 @@ export default function App() {
               <View style={[s.tabInner, active && s.tabInnerActive]}>
                 <Ionicons
                   name={active ? tab.activeIcon : tab.icon}
-                  size={active ? 25 : 22}
+                  size={active ? 30 : 26}
                   color={active ? theme.primary : theme.muted}
                 />
                 <Text style={[s.tabLabel, active && s.tabLabelActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
@@ -341,7 +341,7 @@ export default function App() {
         {/* Tournaments — greyed, coming soon */}
         <Pressable style={s.tab} onPress={() => setComingSoon(true)}>
           <View style={s.tabInner}>
-            <Ionicons name="trophy-outline" size={22} color={theme.border} />
+            <Ionicons name="trophy-outline" size={26} color={theme.border} />
             <Text style={[s.tabLabel, { color: theme.border }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>Turnuvalar</Text>
           </View>
         </Pressable>
@@ -393,11 +393,11 @@ const s = StyleSheet.create({
     borderTopWidth: 2,
     borderTopColor: theme.cardLip,
     backgroundColor: theme.bg2,
-    paddingBottom: 20,
-    paddingTop: 8,
+    paddingBottom: 24,
+    paddingTop: 13,
   },
   tab: { flex: 1, alignItems: 'center' },
-  tabInner: { alignItems: 'center', justifyContent: 'center', gap: 2, paddingVertical: 6, paddingHorizontal: 4, borderRadius: 14, alignSelf: 'stretch' },
+  tabInner: { alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 9, paddingHorizontal: 4, borderRadius: 16, alignSelf: 'stretch' },
   tabInnerActive: {
     backgroundColor: '#0E1838',
     borderWidth: 1,
@@ -408,7 +408,7 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     elevation: 4,
   },
-  tabLabel: { color: theme.muted, fontSize: 9.5, fontFamily: 'Poppins-SemiBold' },
+  tabLabel: { color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' },
   tabLabelActive: { color: theme.primary },
   inviteBanner: {
     position: 'absolute', top: 50, left: 10, right: 10, zIndex: 100,

@@ -16,21 +16,33 @@ type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 export interface EmoteMeta {
   id: string;
-  kind: 'text' | 'animated';
+  kind: 'text' | 'animated' | 'face';
   phrase: string; // Turkish caption shown with the emote
   icon?: IoniconName; // text + generic animated emotes
+  expr?: 'smile' | 'cry' | 'angry' | 'ok'; // face emotes: which expression to draw
   color: string;
   week?: number; // visual emotes: which weekly store drop it belongs to
   premium?: { name: string; price: number; desc: string };
 }
 
-export const FREE_EMOTES: EmoteMeta[] = [
-  { id: 'congrats', kind: 'text', phrase: t('emote.congrats'), icon: 'trophy', color: theme.accent },
-  { id: 'luck', kind: 'text', phrase: t('emote.luck'), icon: 'sparkles', color: theme.primary },
-  { id: 'gg', kind: 'text', phrase: t('emote.gg'), icon: 'thumbs-up', color: theme.primary },
-  { id: 'bring_it', kind: 'text', phrase: t('emote.bringIt'), icon: 'flame', color: theme.danger },
-  { id: 'gotcha', kind: 'text', phrase: t('emote.gotcha'), icon: 'flash', color: theme.accent },
+// Quick-chat TEXT messages — Clash-Royale style. Sent from the message icon, no emoji.
+export const TEXT_EMOTES: EmoteMeta[] = [
+  { id: 'gg', kind: 'text', phrase: t('emote.gg'), icon: 'chatbubble-ellipses', color: theme.primary },
+  { id: 'congrats', kind: 'text', phrase: t('emote.congrats'), icon: 'chatbubble-ellipses', color: theme.accent },
+  { id: 'luck', kind: 'text', phrase: t('emote.luck'), icon: 'chatbubble-ellipses', color: theme.blue },
+  { id: 'gotcha', kind: 'text', phrase: t('emote.thanks'), icon: 'chatbubble-ellipses', color: theme.purple },
 ];
+
+// The 4 character emotes (Clash-Royale style): smiling / crying / angry / OK-sign.
+export const FACE_EMOTES: EmoteMeta[] = [
+  { id: 'smile', kind: 'face', expr: 'smile', phrase: t('emote.face.smile'), color: theme.accent },
+  { id: 'cry', kind: 'face', expr: 'cry', phrase: t('emote.face.cry'), color: theme.blue },
+  { id: 'angry', kind: 'face', expr: 'angry', phrase: t('emote.face.angry'), color: theme.danger },
+  { id: 'ok', kind: 'face', expr: 'ok', phrase: t('emote.face.ok'), color: theme.primary },
+];
+
+// All free (always-available) emotes = quick-chat text + the 4 character faces.
+export const FREE_EMOTES: EmoteMeta[] = [...TEXT_EMOTES, ...FACE_EMOTES];
 
 export const PREMIUM_EMOTES: EmoteMeta[] = [
   // ---- Week 1 ----
@@ -462,9 +474,83 @@ function GenericAnimatedEmote({ size, icon, color }: { size: number; icon: Ionic
   );
 }
 
+// The 4 character emotes (smiling / crying / angry / OK-sign), drawn with plain RN
+// Views + a gentle bob/tilt loop — no assets, runs in Expo Go.
+function FaceEmote({ size, expr }: { size: number; expr: 'smile' | 'cry' | 'angry' | 'ok' }) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(a, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(a, { toValue: 0, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [a]);
+  const bob = a.interpolate({ inputRange: [0, 1], outputRange: [0, -size * 0.04] });
+  const rot = a.interpolate({ inputRange: [0, 1], outputRange: [expr === 'angry' ? '-5deg' : '-3deg', expr === 'angry' ? '5deg' : '3deg'] });
+
+  const D = size * 0.80;
+  const skin = expr === 'angry' ? '#F0A062' : '#F8CB80';
+  const eyeC = '#2A2233';
+  const mouth = '#7A2E2E';
+  const eyeT = D * 0.36;
+  const eyeW = D * 0.12;
+  return (
+    <Animated.View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', transform: [{ translateY: bob }, { rotate: rot }] }}>
+      <View style={{ width: D, height: D, borderRadius: D / 2, backgroundColor: skin, borderWidth: 2, borderColor: 'rgba(0,0,0,0.16)' }}>
+        {/* eyebrows */}
+        {expr === 'angry' && (<>
+          <View style={{ position: 'absolute', top: eyeT - D * 0.11, left: D * 0.18, width: D * 0.22, height: D * 0.06, backgroundColor: eyeC, borderRadius: 2, transform: [{ rotate: '24deg' }] }} />
+          <View style={{ position: 'absolute', top: eyeT - D * 0.11, right: D * 0.18, width: D * 0.22, height: D * 0.06, backgroundColor: eyeC, borderRadius: 2, transform: [{ rotate: '-24deg' }] }} />
+        </>)}
+        {expr === 'cry' && (<>
+          <View style={{ position: 'absolute', top: eyeT - D * 0.09, left: D * 0.18, width: D * 0.18, height: D * 0.05, backgroundColor: eyeC, borderRadius: 2, transform: [{ rotate: '-18deg' }] }} />
+          <View style={{ position: 'absolute', top: eyeT - D * 0.09, right: D * 0.18, width: D * 0.18, height: D * 0.05, backgroundColor: eyeC, borderRadius: 2, transform: [{ rotate: '18deg' }] }} />
+        </>)}
+        {/* eyes */}
+        {expr === 'ok' ? (<>
+          <View style={{ position: 'absolute', top: eyeT, left: D * 0.24, width: eyeW, height: eyeW, borderRadius: eyeW / 2, backgroundColor: eyeC }} />
+          {/* winking eye */}
+          <View style={{ position: 'absolute', top: eyeT + eyeW * 0.35, right: D * 0.22, width: eyeW * 1.3, height: D * 0.035, borderRadius: 2, backgroundColor: eyeC }} />
+        </>) : (<>
+          <View style={{ position: 'absolute', top: eyeT, left: D * 0.24, width: eyeW, height: expr === 'angry' ? eyeW * 0.78 : eyeW, borderRadius: eyeW / 2, backgroundColor: eyeC }} />
+          <View style={{ position: 'absolute', top: eyeT, right: D * 0.24, width: eyeW, height: expr === 'angry' ? eyeW * 0.78 : eyeW, borderRadius: eyeW / 2, backgroundColor: eyeC }} />
+        </>)}
+        {/* tears */}
+        {expr === 'cry' && (<>
+          <View style={{ position: 'absolute', top: eyeT + eyeW * 1.1, left: D * 0.25, width: D * 0.10, height: D * 0.22, backgroundColor: '#5AB8FF', borderTopLeftRadius: D * 0.05, borderTopRightRadius: D * 0.05, borderBottomLeftRadius: D * 0.06, borderBottomRightRadius: D * 0.06, opacity: 0.92 }} />
+          <View style={{ position: 'absolute', top: eyeT + eyeW * 1.1, right: D * 0.25, width: D * 0.10, height: D * 0.16, backgroundColor: '#5AB8FF', borderTopLeftRadius: D * 0.05, borderTopRightRadius: D * 0.05, borderBottomLeftRadius: D * 0.06, borderBottomRightRadius: D * 0.06, opacity: 0.92 }} />
+        </>)}
+        {/* mouth */}
+        {(expr === 'smile' || expr === 'ok') && (
+          <View style={{ position: 'absolute', bottom: D * 0.18, left: D * 0.29, width: D * 0.42, height: D * 0.22, borderBottomLeftRadius: D * 0.22, borderBottomRightRadius: D * 0.22, backgroundColor: mouth }} />
+        )}
+        {expr === 'angry' && (
+          <View style={{ position: 'absolute', bottom: D * 0.20, left: D * 0.34, width: D * 0.32, height: D * 0.15, borderTopLeftRadius: D * 0.16, borderTopRightRadius: D * 0.16, backgroundColor: mouth }} />
+        )}
+        {expr === 'cry' && (
+          <View style={{ position: 'absolute', bottom: D * 0.15, left: D * 0.36, width: D * 0.28, height: D * 0.20, borderRadius: D * 0.12, borderWidth: D * 0.045, borderColor: mouth, backgroundColor: '#3A1414' }} />
+        )}
+      </View>
+      {/* OK-sign hand */}
+      {expr === 'ok' && (
+        <View style={{ position: 'absolute', right: size * 0.0, bottom: size * 0.12 }}>
+          <View style={{ width: size * 0.20, height: size * 0.20, borderRadius: size * 0.10, borderWidth: size * 0.055, borderColor: skin, backgroundColor: 'transparent' }} />
+          <View style={{ position: 'absolute', right: -size * 0.015, top: -size * 0.07, flexDirection: 'row', gap: size * 0.012 }}>
+            <View style={{ width: size * 0.028, height: size * 0.10, borderRadius: size * 0.014, backgroundColor: skin }} />
+            <View style={{ width: size * 0.028, height: size * 0.12, borderRadius: size * 0.014, backgroundColor: skin }} />
+            <View style={{ width: size * 0.028, height: size * 0.09, borderRadius: size * 0.014, backgroundColor: skin }} />
+          </View>
+        </View>
+      )}
+    </Animated.View>
+  );
+}
+
 export function EmoteSticker({ id, size }: { id: string; size: number }) {
   const meta = getEmote(id);
   if (!meta) return null;
+  if (meta.kind === 'face') return <FaceEmote size={size} expr={meta.expr ?? 'smile'} />;
   if (meta.kind === 'animated') {
     if (id === 'jersey10') return <JerseyLiftEmote size={size} />;
     if (id === 'goal') return <GoalEmote size={size} />;
