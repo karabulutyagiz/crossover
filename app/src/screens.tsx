@@ -334,7 +334,7 @@ function ScreenHeader({ title, onBack, icon, right, underline }: {
 // + a faint diagonal stripe pattern + soft glows. Sits behind every screen.
 const SCREEN_W = Dimensions.get('window').width;
 const SCREEN_H = Dimensions.get('window').height;
-export const BG_TOP = '#15244F';
+export const BG_TOP = '#3461A8'; // bright, airy sky-blue (less "iç kapatıcı")
 // Explicit crossing diagonal weave (no <Pattern> — that doesn't render reliably on device).
 const BG_STRIPES_R = (() => {
   const out: { x1: number; y1: number; x2: number; y2: number }[] = [];
@@ -353,24 +353,24 @@ export function ScreenBg() {
         <Defs>
           <SvgGradient id="screenbg" x1="0" y1="0" x2="0.35" y2="1">
             <Stop offset="0" stopColor={BG_TOP} />
-            <Stop offset="0.5" stopColor="#0F1A3C" />
-            <Stop offset="1" stopColor="#091230" />
+            <Stop offset="0.55" stopColor="#264A88" />
+            <Stop offset="1" stopColor="#1A356A" />
           </SvgGradient>
-          <RadialGradient id="vig" cx="50%" cy="42%" r="75%">
-            <Stop offset="0.55" stopColor={theme.vignetteEdge} stopOpacity={0} />
-            <Stop offset="1" stopColor={theme.vignetteEdge} stopOpacity={1} />
+          <RadialGradient id="vig" cx="50%" cy="40%" r="78%">
+            <Stop offset="0.6" stopColor="#0E1F46" stopOpacity={0} />
+            <Stop offset="1" stopColor="#0E1F46" stopOpacity={0.35} />
           </RadialGradient>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#screenbg)" />
         {BG_STRIPES_R.map((l, i) => (
-          <Line key={`r${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke={theme.stripe} strokeWidth={2} opacity={0.12} />
+          <Line key={`r${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="#FFFFFF" strokeWidth={2} opacity={0.06} />
         ))}
         {BG_STRIPES_L.map((l, i) => (
-          <Line key={`l${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke={theme.stripe2} strokeWidth={1.5} opacity={0.06} />
+          <Line key={`l${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="#FFFFFF" strokeWidth={1.5} opacity={0.035} />
         ))}
-        <Circle cx="16%" cy="9%" r={180} fill={theme.primary} opacity={0.11} />
-        <Circle cx="90%" cy="84%" r={190} fill={theme.accent} opacity={0.09} />
-        <Circle cx="80%" cy="12%" r={120} fill={theme.blue} opacity={0.06} />
+        <Circle cx="16%" cy="9%" r={190} fill={theme.primary} opacity={0.12} />
+        <Circle cx="90%" cy="84%" r={200} fill={theme.accent} opacity={0.10} />
+        <Circle cx="82%" cy="12%" r={130} fill="#7FC4FF" opacity={0.10} />
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#vig)" />
       </Svg>
     </View>
@@ -3567,7 +3567,7 @@ const styles = StyleSheet.create({
   careerRowHi: { backgroundColor: 'rgba(61,220,132,0.10)', borderRadius: 8 },
   careerClub: { color: theme.text, fontSize: 12, flex: 1 },
   careerYears: { color: theme.muted, fontSize: 11 },
-  nameModalCard: { width: '100%' as const, maxWidth: 360, backgroundColor: theme.card, borderRadius: 20, padding: 24, alignItems: 'center' as const, gap: 10, borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark, shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 20 },
+  nameModalCard: { width: '100%' as const, maxWidth: 360, backgroundColor: theme.card, borderRadius: 26, padding: 24, alignItems: 'center' as const, gap: 10, borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark, shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 20 },
   nameModalCost: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, marginVertical: 6 },
   storeBalance: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.card, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14, marginTop: 6, borderWidth: 1, borderColor: theme.border },
   storeBalanceText: { color: '#C084FC', fontSize: 18, fontWeight: '800' },
@@ -3655,7 +3655,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 360,
     backgroundColor: theme.card,
-    borderRadius: 20,
+    borderRadius: 26,
     padding: 20,
     borderWidth: 2,
     borderColor: theme.frameGold, // gold game frame
