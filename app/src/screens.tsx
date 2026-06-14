@@ -2194,10 +2194,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
   return (
     <Screen>
       <ScrollView ref={storeScrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
-        <View style={styles.center}>
-          <Ionicons name="storefront" size={32} color={theme.primary} />
-          <Text style={styles.h1}>{t('store.title')}</Text>
-        </View>
+        <ScreenHeader title={t('store.title')} icon="storefront" underline={theme.accent} />
 
         {/* Sosyal Paket */}
         <View onLayout={(e) => { sectionYRef.current['socialPack'] = e.nativeEvent.layout.y; }} />
@@ -2338,11 +2335,8 @@ export function CollectionScreen({ state, actions }: Props) {
   return (
     <Screen>
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-        <View style={styles.center}>
-          <Ionicons name="albums" size={36} color={theme.primary} />
-          <Text style={styles.h1}>Koleksiyon</Text>
-          <Text style={styles.muted}>Maçta kuşanılan {equipped.length}/3</Text>
-        </View>
+        <ScreenHeader title="Koleksiyon" icon="albums" underline={theme.primary} />
+        <Text style={[styles.muted, { textAlign: 'center', marginBottom: 6 }]}>Maçta kuşanılan {equipped.length}/3</Text>
 
         {/* All emotes as square cards, equip with "Kuşan" below each */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 14 }}>
@@ -2503,10 +2497,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
   return (
     <Screen>
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
-        <View style={styles.center}>
-          <Ionicons name="people" size={36} color={theme.primary} />
-          <Text style={styles.h1}>{t('friends.title')}</Text>
-        </View>
+        <ScreenHeader title={t('friends.title')} icon="people" underline={theme.primary} />
 
         {/* Your code */}
         <Text style={styles.sectionLabel}>{t('friends.yourCode')}</Text>
@@ -2790,18 +2781,13 @@ export function ProfileScreen({ state, actions }: Props) {
   const color = arenaColor(p.arena.name);
   return (
     <Screen>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-        <Pressable onPress={actions.closeProfile} hitSlop={10} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <Ionicons name="chevron-back" size={22} color={theme.text} />
-          <Text style={{ color: theme.text, fontWeight: '700' }}>{t('common.back')}</Text>
-        </Pressable>
-      </View>
+      <ScreenHeader title="Profil" icon="person" onBack={actions.closeProfile} underline={color} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
         <View style={{ alignItems: 'center', gap: 8, marginVertical: 10 }}>
-          <View style={{ width: 100, height: 100, borderRadius: 50, backgroundColor: theme.card, borderWidth: 3, borderColor: color, alignItems: 'center', justifyContent: 'center', shadowColor: color, shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 0 }, elevation: 10 }}>
-            <Ionicons name="person" size={50} color={color} />
+          <View style={{ width: 104, height: 104, borderRadius: 52, backgroundColor: theme.bg2, borderWidth: 4, borderColor: color, alignItems: 'center', justifyContent: 'center', shadowColor: color, shadowOpacity: 0.6, shadowRadius: 18, shadowOffset: { width: 0, height: 0 }, elevation: 12 }}>
+            <Ionicons name="person" size={54} color={color} />
           </View>
-          <Text style={{ color: theme.text, fontSize: 23, fontWeight: '900' }}>{p.displayName}</Text>
+          <Text style={{ color: theme.text, fontSize: 24, fontFamily: 'Poppins-ExtraBold', ...engrave('lg') }}>{p.displayName}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: color + '66' }}>
             <Text style={{ fontSize: 17 }}>{p.arena.icon}</Text>
             <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>{p.arena.name}</Text>
@@ -2858,16 +2844,17 @@ export function ArenasScreen({ state, actions }: Props) {
 
   return (
     <Screen>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <Pressable onPress={actions.closeArenas}>
-          <Ionicons name="arrow-back" size={24} color={theme.text} />
-        </Pressable>
-        <Text style={styles.h1}>Arenalar</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <Ionicons name="trophy" size={16} color={theme.accent} />
-          <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 15 }}>{trophies}</Text>
-        </View>
-      </View>
+      <ScreenHeader
+        title="Arenalar"
+        onBack={actions.closeArenas}
+        underline={theme.accent}
+        right={(
+          <View style={{ width: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+            <Ionicons name="trophy" size={15} color={theme.accent} />
+            <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 14, ...engrave('sm') }}>{trophies}</Text>
+          </View>
+        )}
+      />
 
       <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
         {/* Arenas listed top-to-bottom (highest first) */}
@@ -3033,13 +3020,7 @@ export function MatchHistoryScreen({ state, actions }: Props) {
 
   return (
     <Screen>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <Pressable onPress={actions.closeMatchHistory}>
-          <Ionicons name="arrow-back" size={24} color={theme.text} />
-        </Pressable>
-        <Text style={styles.h1}>{t('matchHistory.title')}</Text>
-        <View style={{ width: 24 }} />
-      </View>
+      <ScreenHeader title={t('matchHistory.title')} icon="time" onBack={actions.closeMatchHistory} underline={theme.primary} />
 
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
         {history.length === 0 ? (
@@ -3170,10 +3151,7 @@ export function LeaderboardScreen({ state, actions }: Props) {
   const lb = state.leaderboard;
   return (
     <Screen>
-      <View style={styles.center}>
-        <Ionicons name="trophy" size={36} color={theme.accent} />
-        <Text style={styles.h1}>Lider Tablosu</Text>
-      </View>
+      <ScreenHeader title="Lider Tablosu" icon="trophy" onBack={actions.closeLeaderboard} underline={theme.accent} />
       <ScrollView style={{ flex: 1, marginTop: 10 }} showsVerticalScrollIndicator={false}>
         {lb.map((entry) => (
           <View key={entry.rank} style={{ marginBottom: 8 }}>
