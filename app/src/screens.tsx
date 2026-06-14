@@ -2997,7 +2997,7 @@ export function ArenasScreen({ state, actions }: Props) {
               ]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   <View style={[styles.arenaIconBox, isLocked && { opacity: 0.55 }]}>
-                    <Image source={arena.img} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+                    <Image source={arena.img} resizeMode="contain" style={{ width: '100%', height: '100%', shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 4, shadowOffset: { width: 0, height: 3 } }} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.arenaName, { color: isCurrent ? arena.color : isLocked ? theme.muted : theme.text }]}>
