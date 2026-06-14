@@ -1606,21 +1606,23 @@ export function LobbyScreen({ state, actions }: Props) {
   const hasBot = room.players.some((p) => p.name === 'Bot');
   return (
     <Screen>
-      {!hasBot ? (
-        <>
-          <Text style={styles.label}>{t('lobby.code')}</Text>
-          <Text style={styles.code}>{room.code}</Text>
-          <Text style={styles.muted}>{t('lobby.shareCode')}</Text>
-        </>
-      ) : (
-        <>
-          <Ionicons name="game-controller" size={44} color={theme.accent} style={{ alignSelf: 'center' }} />
-          <Text style={styles.h1}>{t('lobby.botMatch')}</Text>
-        </>
-      )}
-      <View style={styles.divider} />
+      <GamePanel hero tint={theme.frameGold} bodyStyle={{ alignItems: 'center', paddingVertical: 18 }}>
+        {!hasBot ? (
+          <>
+            <Text style={styles.label}>{t('lobby.code')}</Text>
+            <Text style={[styles.code, engrave('lg')]}>{room.code}</Text>
+            <Text style={styles.muted}>{t('lobby.shareCode')}</Text>
+          </>
+        ) : (
+          <>
+            <Ionicons name="game-controller" size={44} color={theme.accent} />
+            <Text style={styles.h1}>{t('lobby.botMatch')}</Text>
+          </>
+        )}
+      </GamePanel>
+      <View style={{ height: 14 }} />
       {room.players.map((p) => (
-        <View key={p.id} style={styles.lobbyRow}>
+        <GamePanel key={p.id} compact accentStripe={p.isHost ? theme.accent : theme.primary} style={{ marginBottom: 8 }} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingLeft: 14 }}>
           <Ionicons
             name={p.name === 'Bot' ? 'game-controller' : p.isHost ? 'star' : 'person'}
             size={18}
@@ -1630,9 +1632,9 @@ export function LobbyScreen({ state, actions }: Props) {
             {p.name}
             {p.id === room.youId ? t('lobby.youSuffix') : ''}
           </Text>
-        </View>
+        </GamePanel>
       ))}
-      <View style={{ height: 24 }} />
+      <View style={{ height: 18 }} />
       {room.players.length < 2 ? (
         <View style={styles.center}>
           <ActivityIndicator color={theme.primary} />
