@@ -2732,11 +2732,13 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
 // ---- Profile ----
 function StatCard({ icon, color, label, value }: { icon: IoniconName; color: string; label: string; value: number | string }) {
   return (
-    <View style={{ flex: 1, alignItems: 'center', gap: 4, backgroundColor: theme.card, borderRadius: 16, paddingVertical: 16, borderWidth: 1, borderColor: theme.border }}>
-      <Ionicons name={icon} size={22} color={color} />
-      <Text style={{ color: theme.text, fontSize: 22, fontWeight: '900' }}>{value}</Text>
+    <GamePanel compact accentStripe={color} style={{ flex: 1 }} bodyStyle={{ alignItems: 'center', gap: 4, paddingVertical: 16 }}>
+      <View style={{ shadowColor: color, shadowOpacity: 0.5, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } }}>
+        <Ionicons name={icon} size={22} color={color} />
+      </View>
+      <Text style={{ color: theme.text, fontSize: 24, fontFamily: 'Poppins-Black', ...engrave('sm') }}>{value}</Text>
       <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '600' }}>{label}</Text>
-    </View>
+    </GamePanel>
   );
 }
 
@@ -3134,20 +3136,19 @@ export function LeaderboardScreen({ state, actions }: Props) {
       </View>
       <ScrollView style={{ flex: 1, marginTop: 10 }} showsVerticalScrollIndicator={false}>
         {lb.map((entry) => (
-          <View key={entry.rank} style={styles.lbRow}>
-            <Text style={[styles.lbRank, entry.rank <= 3 ? { color: RANK_COLORS[entry.rank - 1] } : null]}>
-              {entry.rank}
-            </Text>
-            <Ionicons name={arenaIcon(entry.arena)} size={18} color={theme.accent} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.lbName} numberOfLines={1}>{entry.displayName}</Text>
-              <Text style={styles.lbArena}>{entry.arena.name}</Text>
-            </View>
-            <View style={styles.lbTrophyBox}>
-              <Ionicons name="trophy" size={12} color={theme.accent} />
-              <Text style={styles.lbTrophies}>{entry.trophies}</Text>
-            </View>
-            <Text style={styles.lbWL}>{entry.wins}G {entry.losses}M</Text>
+          <View key={entry.rank} style={{ marginBottom: 8 }}>
+            <GamePanel compact accentStripe={entry.rank <= 3 ? RANK_COLORS[entry.rank - 1] : undefined} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingLeft: 12 }}>
+              <RankBadge rank={entry.rank} size={28} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.lbName} numberOfLines={1}>{entry.displayName}</Text>
+                <Text style={styles.lbArena}>{entry.arena.name}</Text>
+              </View>
+              <View style={styles.lbTrophyBox}>
+                <Ionicons name="trophy" size={12} color={theme.accent} />
+                <Text style={styles.lbTrophies}>{entry.trophies}</Text>
+              </View>
+              <Text style={styles.lbWL}>{entry.wins}G {entry.losses}M</Text>
+            </GamePanel>
           </View>
         ))}
         {lb.length === 0 ? <Text style={styles.muted}>{t('leaderboard.empty')}</Text> : null}
@@ -3478,7 +3479,7 @@ const styles = StyleSheet.create({
   center: { alignItems: 'center', gap: 6 },
   logo: { color: theme.primary, fontSize: 28, fontFamily: 'Poppins-Black', textAlign: 'center', letterSpacing: 2, paddingRight: 4, marginTop: 6 },
   tagline: { color: theme.muted, textAlign: 'center', marginBottom: 20, marginTop: 4, fontSize: 12, fontFamily: 'Poppins-SemiBold' },
-  h1: { color: theme.text, fontSize: 16, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginVertical: 6 },
+  h1: { color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginVertical: 6, letterSpacing: 0.5, ...engrave('lg') },
   label: { color: theme.muted, fontSize: 10, letterSpacing: 2, textAlign: 'center' },
   sectionLabel: { color: theme.muted, fontSize: 10, letterSpacing: 2, marginTop: 12, marginBottom: 4, fontFamily: 'Poppins-ExtraBold' },
   code: { color: theme.accent, fontSize: 32, fontFamily: 'Poppins-Black', textAlign: 'center', letterSpacing: 4 },
@@ -3569,12 +3570,12 @@ const styles = StyleSheet.create({
   nameModalCost: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, marginVertical: 6 },
   storeBalance: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.card, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14, marginTop: 6, borderWidth: 1, borderColor: theme.border },
   storeBalanceText: { color: '#C084FC', fontSize: 18, fontWeight: '800' },
-  storeAdCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.card, borderRadius: 12, padding: 14, marginVertical: 4, borderWidth: 1, borderColor: theme.border },
+  storeAdCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.card, borderRadius: 14, padding: 14, marginVertical: 5, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
   storeAdTitle: { color: theme.text, fontSize: 14, fontWeight: '700' },
   storeAdReward: { color: '#C084FC', fontSize: 14, fontWeight: '800', marginBottom: 4 },
   storeCooldown: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.bg, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10, marginVertical: 4 },
   storeCooldownText: { color: theme.accent, fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  storePackCard: { backgroundColor: theme.card, borderRadius: 12, padding: 14, marginVertical: 4, borderWidth: 1, borderColor: theme.border, position: 'relative' as const },
+  storePackCard: { backgroundColor: theme.card, borderRadius: 14, padding: 14, marginVertical: 5, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, position: 'relative' as const, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
   storePackBest: { borderColor: '#A855F7', borderWidth: 2 },
   storePackBadge: { position: 'absolute' as const, top: -10, right: 12, backgroundColor: '#A855F7', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
   storePackBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
@@ -3582,13 +3583,13 @@ const styles = StyleSheet.create({
   storePackAmount: { color: theme.text, fontSize: 16, fontWeight: '800' },
   storePackPriceBox: { backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
   storePackPrice: { color: '#06131F', fontSize: 14, fontWeight: '800' },
-  friendAddCard: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: theme.card, borderRadius: 12, padding: 14, marginVertical: 4, borderWidth: 1, borderColor: theme.border },
+  friendAddCard: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: theme.card, borderRadius: 14, padding: 14, marginVertical: 5, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip },
   friendDivider: { width: 1, height: 40, backgroundColor: theme.border, marginHorizontal: 10 },
   friendLabel: { color: theme.muted, fontSize: 10, fontWeight: '600', marginBottom: 4 },
   friendCode: { color: theme.accent, fontSize: 16, fontWeight: '900', letterSpacing: 2 },
   friendInput: { color: theme.text, fontSize: 14, fontWeight: '700', borderBottomWidth: 1, borderBottomColor: theme.border, paddingBottom: 4 },
   friendEmpty: { alignItems: 'center' as const, gap: 8, paddingVertical: 30 },
-  arenaCard: { backgroundColor: theme.card, borderRadius: 14, borderWidth: 1, borderColor: theme.border, padding: 14, position: 'relative' },
+  arenaCard: { backgroundColor: theme.card, borderRadius: 16, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, padding: 14, position: 'relative', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
   arenaIconBox: { width: 66, height: 60, alignItems: 'center', justifyContent: 'center' },
   arenaName: { color: theme.text, fontSize: 16, fontWeight: '900' },
   arenaTrophyRange: { color: theme.muted, fontSize: 12, marginTop: 2 },
