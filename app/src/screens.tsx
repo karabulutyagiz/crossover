@@ -1419,35 +1419,21 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore }: Pr
       </Modal>
 
       {/* Bot difficulty picker */}
-      <Modal visible={botOpen} transparent animationType="fade" onRequestClose={() => setBotOpen(false)}>
-        <Pressable style={styles.modalBg} onPress={() => setBotOpen(false)}>
-          <Pressable style={styles.modalCard} onPress={() => {}}>
-            <Text style={styles.modalTitle}>{t('home.solo')}</Text>
-            <Text style={[styles.muted, { marginBottom: 10 }]}>Zorluk seç</Text>
-            {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
-              <Pressable
-                key={d}
-                onPress={() => {
-                  setDifficulty(d);
-                  setBotOpen(false);
-                  actions.createSolo(playerName, { ...opts, difficulty: d });
-                }}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 14,
-                  borderBottomWidth: 1, borderBottomColor: theme.border,
-                }}
-              >
-                <Ionicons
-                  name={d === 'easy' ? 'happy-outline' : d === 'medium' ? 'flash-outline' : 'skull-outline'}
-                  size={20}
-                  color={d === 'easy' ? theme.primary : d === 'medium' ? theme.accent : theme.danger}
-                />
-                <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{DIFF_LABEL(d)}</Text>
-              </Pressable>
-            ))}
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <GameModal visible={botOpen} onClose={() => setBotOpen(false)} title={t('home.solo')} icon="game-controller">
+        {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => {
+          const c = d === 'easy' ? theme.primary : d === 'medium' ? theme.accent : theme.danger;
+          return (
+            <Pressable
+              key={d}
+              onPress={() => { setDifficulty(d); setBotOpen(false); actions.createSolo(playerName, { ...opts, difficulty: d }); }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, paddingHorizontal: 14, borderRadius: 12, backgroundColor: theme.panelInnerFill, borderWidth: 1.5, borderColor: theme.border, borderLeftWidth: 4, borderLeftColor: c }}
+            >
+              <Ionicons name={d === 'easy' ? 'happy' : d === 'medium' ? 'flash' : 'skull'} size={20} color={c} />
+              <Text style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-ExtraBold' }}>{DIFF_LABEL(d)}</Text>
+            </Pressable>
+          );
+        })}
+      </GameModal>
 
       <PickerModal
         picker={picker}
