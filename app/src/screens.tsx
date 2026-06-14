@@ -1063,8 +1063,45 @@ function arenaColor(name: string): string {
   return ARENA_DATA.find((a) => a.name === name)?.color ?? theme.primary;
 }
 
-// Arena crest (Clash-Royale-style): the cut-out isometric arena floats with a
-// ground shadow + a nameplate below. Tap → arenas screen.
+// Soft gray-blue atmospheric haze behind the arena — drifting fog so the arena
+// stands out from the background (low opacity, non-distracting).
+function ArenaHaze() {
+  const drift = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(drift, { toValue: 1, duration: 9000, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(drift, { toValue: 0, duration: 9000, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [drift]);
+  const tx = drift.interpolate({ inputRange: [0, 1], outputRange: [-12, 12] });
+  return (
+    <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 2, width: 280, height: 180, transform: [{ translateX: tx }] }}>
+      <Svg width="100%" height="100%">
+        <Defs>
+          <RadialGradient id="haze" cx="50%" cy="50%" r="50%">
+            <Stop offset="0" stopColor="#BFD0EE" stopOpacity={0.20} />
+            <Stop offset="1" stopColor="#BFD0EE" stopOpacity={0} />
+          </RadialGradient>
+          <RadialGradient id="hazeLight" cx="50%" cy="50%" r="50%">
+            <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.16} />
+            <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Circle cx="38%" cy="56%" r={86} fill="url(#haze)" />
+        <Circle cx="64%" cy="46%" r={74} fill="url(#haze)" />
+        <Circle cx="52%" cy="64%" r={96} fill="url(#haze)" />
+        <Circle cx="34%" cy="34%" r={60} fill="url(#hazeLight)" />
+      </Svg>
+    </Animated.View>
+  );
+}
+
+// Arena crest (Clash-Royale-style): the cut-out isometric arena sits planted with a
+// contact shadow + drifting haze behind it + a nameplate below. Tap → arenas screen.
 function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon: string }; trophies: number; onPress: () => void }) {
   const tier = ARENA_DATA.find((a) => trophies >= a.min && trophies <= a.max) ?? ARENA_DATA[ARENA_DATA.length - 1]!;
   const color = arenaColor(arena.name);
@@ -1086,6 +1123,7 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
       {/* Arena planted ON the ground: a firm wide contact shadow right under the base
           (NOT a lifted drop shadow) so it sits, not floats. */}
       <View style={{ alignItems: 'center', justifyContent: 'flex-end' }}>
+        <ArenaHaze />
         <View pointerEvents="none" style={{ position: 'absolute', bottom: 14, width: 138, height: 18, borderRadius: 9, backgroundColor: '#000', opacity: 0.5, shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 10, shadowOffset: { width: 0, height: 1 }, transform: [{ scaleX: 1.5 }] }} />
         <Animated.Image
           source={tier.img}
