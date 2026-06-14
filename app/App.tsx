@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
+  Animated,
   Dimensions,
+  Easing,
   Image,
   Pressable,
   ScrollView,
@@ -90,6 +92,7 @@ export default function App() {
   const [loaded, setLoaded] = useState(false); // Clash-Royale-style entry loading (warms logo cache)
   const [storeSection, setStoreSection] = useState<'socialPack' | 'diamonds' | null>(null);
   const [comingSoon, setComingSoon] = useState(false); // Turnuvalar — greyed "coming soon"
+  const csAnim = useRef(new Animated.Value(0)).current; // coming-soon pop/float
   const [fontsLoaded, fontError] = useFonts({
     'Poppins-Black': require('./assets/fonts/Poppins-Black.ttf'),
     'Poppins-ExtraBold': require('./assets/fonts/Poppins-ExtraBold.ttf'),
@@ -109,12 +112,14 @@ export default function App() {
     return () => clearTimeout(t);
   }, []);
 
-  // Auto-hide the "coming soon" text after a moment.
+  // Pop the "coming soon" badge in, then auto-hide.
   useEffect(() => {
     if (!comingSoon) return;
-    const id = setTimeout(() => setComingSoon(false), 1600);
+    csAnim.setValue(0);
+    Animated.spring(csAnim, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }).start();
+    const id = setTimeout(() => setComingSoon(false), 1700);
     return () => clearTimeout(id);
-  }, [comingSoon]);
+  }, [comingSoon, csAnim]);
 
   // When switching away from the home tab, reset sub-screens (arenas, leaderboard, matchHistory) to home
   const resetHomePhase = useCallback(() => {
@@ -327,12 +332,25 @@ export default function App() {
         </Pressable>
       </View>
 
-      {/* Tournaments → plain "coming soon" text on screen (no icon, no frame) */}
+      {/* Tournaments → floating "coming soon" text with a top-view ground shadow */}
       {comingSoon ? (
-        <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: '46%', alignItems: 'center' }}>
-          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 22, textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 6 }}>
-            Çok yakında
-          </Text>
+        <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: '44%', alignItems: 'center' }}>
+          <Animated.View
+            style={{
+              alignItems: 'center',
+              opacity: csAnim,
+              transform: [
+                { scale: csAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) },
+                { translateY: csAnim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) },
+              ],
+            }}
+          >
+            <Text style={{ color: '#fff', fontFamily: 'Poppins-ExtraBold', fontSize: 26, letterSpacing: 0.5, textShadowColor: 'rgba(0,0,0,0.75)', textShadowOffset: { width: 0, height: 3 }, textShadowRadius: 8 }}>
+              Çok Yakında
+            </Text>
+            {/* top-view ground shadow under the text */}
+            <View style={{ width: 120, height: 12, borderRadius: 6, backgroundColor: '#000', opacity: 0.3, marginTop: 8, transform: [{ scaleX: 1.4 }] }} />
+          </Animated.View>
         </View>
       ) : null}
 
