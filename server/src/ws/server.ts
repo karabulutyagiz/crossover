@@ -12,6 +12,7 @@ import {
   type UserProfile,
 } from '../game/rank.ts';
 import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
+import { verifyApplePurchase } from '../game/iap.ts';
 import type { Room, Transport } from '../rooms/room.ts';
 import type { ClientMsg, ProfileView, ServerMsg } from '../protocol.ts';
 
@@ -266,6 +267,18 @@ export function startServer(port: number): Server {
           if (!result.ok) return transport.send({ type: 'error', message: result.error });
           userProfile = result.profile;
           transport.send({ type: 'profile', profile: toProfileView(result.profile) });
+        })();
+        return;
+      }
+
+      // Validate an Apple IAP receipt and grant diamonds (server-authoritative).
+      if (msg.type === 'verify_purchase') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce kayıt ol' });
+        void (async () => {
+          const result = await verifyApplePurchase(userProfile!.id, msg.receipt);
+          if (!result.ok) return transport.send({ type: 'error', message: result.error });
+          userProfile = result.profile;
+          transport.send({ type: 'diamonds_granted', granted: result.granted, profile: toProfileView(result.profile) });
         })();
         return;
       }

@@ -24,4 +24,8 @@ export const config = {
   // from being auto-corrected into "Ronaldo". Below it, a guess is treated as an
   // approximate spelling and auto-corrected to the closest both-teams player.
   verifyExactThreshold: Number(process.env.VERIFY_EXACT_THRESHOLD ?? '0.85'),
+  // Apple In-App Purchase: app-specific shared secret (App Store Connect → App
+  // Information → App-Specific Shared Secret). Used to validate consumable receipts
+  // with Apple before granting diamonds. Empty = IAP grants are refused.
+  iapSharedSecret: process.env.IAP_SHARED_SECRET ?? '',
 } as const;
