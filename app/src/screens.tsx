@@ -2934,7 +2934,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory }: Props) {
 // ---- Arenas ----
 const ARENA_DATA = [
   { name: 'GOAT', min: 5000, max: 99999, color: '#FF4500', icon: 'flame' as IoniconName, img: require('../assets/arenas/goat.png'), win: '+15', loss: '-35', desc: 'Efsanelerin zirvesi. Sadece en iyiler ayakta kalır.' },
-  { name: 'Dünya Kupası', min: 3500, max: 4999, color: '#FFD700', icon: 'trophy' as IoniconName, img: require('../assets/arenas/dunya.png'), win: '+18', loss: '-30', desc: 'Dünya sahnesinde mücadele. Her hata çok ağır.' },
+  { name: 'Dünya Klasmanı', min: 3500, max: 4999, color: '#FFD700', icon: 'trophy' as IoniconName, img: require('../assets/arenas/dunya.png'), win: '+18', loss: '-30', desc: 'Dünya sahnesinde mücadele. Her hata çok ağır.' },
   { name: 'Efsaneler Arası', min: 2000, max: 3499, color: '#C0C0C0', icon: 'ribbon' as IoniconName, img: require('../assets/arenas/efsaneler.png'), win: '+20', loss: '-26', desc: 'Efsaneler burada. Kayıplar acıtıyor.' },
   { name: 'Şampiyonlar Ligi', min: 1000, max: 1999, color: '#1E90FF', icon: 'medal' as IoniconName, img: require('../assets/arenas/sampiyonlar.png'), win: '+22', loss: '-22', desc: 'Avrupa\'nın en prestijli arenası. Dengeli mücadele.' },
   { name: 'Profesyonel Lig', min: 500, max: 999, color: '#32CD32', icon: 'shield' as IoniconName, img: require('../assets/arenas/profesyonel.png'), win: '+25', loss: '-18', desc: 'Profesyonel seviye. Artık gerçek bir rakipsin.' },
@@ -3107,7 +3107,7 @@ const RANK_COLORS = ['#FFD700', '#C0C0C0', '#CD7F32']; // gold, silver, bronze
 
 function arenaForTrophies(trophies: number): { name: string; icon: IoniconName; color: string } {
   if (trophies >= 5000) return { name: 'GOAT', icon: 'flame', color: '#FF4500' };
-  if (trophies >= 3500) return { name: 'Dünya Kupası', icon: 'trophy', color: '#FFD700' };
+  if (trophies >= 3500) return { name: 'Dünya Klasmanı', icon: 'trophy', color: '#FFD700' };
   if (trophies >= 2000) return { name: 'Efsaneler Arası', icon: 'ribbon', color: '#C0C0C0' };
   if (trophies >= 1000) return { name: 'Şampiyonlar Ligi', icon: 'medal', color: '#1E90FF' };
   if (trophies >= 500) return { name: 'Profesyonel Lig', icon: 'medal-outline', color: '#32CD32' };

@@ -15,7 +15,7 @@ export const ARENAS: Arena[] = [
   { name: 'Profesyonel Lig',   minTrophies: 500,  icon: '🥉' },
   { name: 'Şampiyonlar Ligi',  minTrophies: 1000, icon: '🥈' },
   { name: 'Efsaneler Arası',   minTrophies: 2000, icon: '🥇' },
-  { name: 'Dünya Kupası',      minTrophies: 3500, icon: '🏆' },
+  { name: 'Dünya Klasmanı',    minTrophies: 3500, icon: '🏆' },
   { name: 'GOAT',              minTrophies: 5000, icon: '🐐' },
 ];
 
