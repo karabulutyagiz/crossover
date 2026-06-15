@@ -45,7 +45,21 @@ import {
   ownsEmote,
 } from './emotes';
 import { NATIONALITIES } from './nationalities';
-import { useIAP, getReceiptIOS, finishTransaction as iapFinishTransaction, type Purchase } from 'react-native-iap';
+// react-native-iap requires a native module (StoreKit). When running in Expo
+// Go or a simulator without the custom dev client the import crashes the app.
+// Wrap in a try/catch so the rest of the app still loads.
+let useIAP: any = () => ({ connected: false, products: [], requestPurchase: () => {}, fetchProducts: () => Promise.resolve([]) });
+let getReceiptIOS: any = () => Promise.resolve('');
+let iapFinishTransaction: any = () => Promise.resolve();
+type Purchase = any;
+try {
+  const iap = require('react-native-iap');
+  useIAP = iap.useIAP;
+  getReceiptIOS = iap.getReceiptIOS;
+  iapFinishTransaction = iap.finishTransaction;
+} catch {
+  // native module not available — IAP features disabled gracefully
+}
 
 type Actions = {
   register: (name: string, gameCenterId?: string) => void;
