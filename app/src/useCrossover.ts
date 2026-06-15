@@ -232,12 +232,13 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, profile: action.profile };
 
     case 'room_state': {
-      // When a quick match or friend invite fills the room (2 players), show matchup screen
-      const isAutoMatch = state.isQuickMatch || state.matchInvite !== null || state.outgoingInvite !== null;
+      // When a non-bot room fills to 2 players, show the matchup reveal screen.
+      // This covers: quick match (both sides), friend invite (both sides).
       const roomFull = action.room.players.length === 2;
       const hasBot = action.room.players.some((p) => p.name === 'Bot');
+      const preGame = state.phase === 'searching' || state.phase === 'lobby' || state.phase === 'home';
       let nextPhase = state.phase === 'home' ? 'lobby' as Phase : state.phase;
-      if (isAutoMatch && roomFull && !hasBot && (state.phase === 'searching' || state.phase === 'lobby' || state.phase === 'home')) {
+      if (roomFull && !hasBot && preGame) {
         nextPhase = 'matchup';
       }
       return {

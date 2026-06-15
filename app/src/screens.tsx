@@ -751,7 +751,7 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
 
 // One emote pop: springs in, holds, fades out. Re-mounted (via `key={n}`) on
 // every new emote so the same sticker can replay.
-function TransientCallout({ emoteId }: { emoteId: string }) {
+function TransientCallout({ emoteId, onDone }: { emoteId: string; onDone?: () => void }) {
   const a = useRef(new Animated.Value(0)).current; // entrance 0→1
   const bob = useRef(new Animated.Value(0)).current; // idle bob while held
   const [gone, setGone] = useState(false);
@@ -771,7 +771,7 @@ function TransientCallout({ emoteId }: { emoteId: string }) {
     const tm = setTimeout(() => {
       loop.stop();
       Animated.timing(a, { toValue: 0, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(
-        ({ finished }) => finished && setGone(true),
+        ({ finished }) => { if (finished) { setGone(true); onDone?.(); } },
       );
     }, 3000);
     return () => { clearTimeout(tm); loop.stop(); };
@@ -802,14 +802,18 @@ function EmoteLayer({ state, actions, fab = 'bottom-right', hideFab, externalOpe
   const allEmotes = loadoutEmotes(state.profile);
   const textEmotes = allEmotes.filter((e) => e.kind === 'text');   // quick-chat messages
   const stickerEmotes = allEmotes.filter((e) => e.kind !== 'text'); // the 4 faces + equipped visual
+  // Track which emote instances have finished animating so they don't reappear on re-renders.
+  const dismissed = useRef(new Set<number>()).current;
+  const showTheirs = theirs && !dismissed.has(theirs.n);
+  const showMine = mine && !dismissed.has(mine.n);
 
   return (
     <>
       <View pointerEvents="none" style={styles.emoteTop}>
-        {theirs ? <TransientCallout key={`opp-${theirs.n}`} emoteId={theirs.emoteId} /> : null}
+        {showTheirs ? <TransientCallout key={`opp-${theirs.n}`} emoteId={theirs.emoteId} onDone={() => dismissed.add(theirs.n)} /> : null}
       </View>
       <View pointerEvents="none" style={styles.emoteBottom}>
-        {mine ? <TransientCallout key={`you-${mine.n}`} emoteId={mine.emoteId} /> : null}
+        {showMine ? <TransientCallout key={`you-${mine.n}`} emoteId={mine.emoteId} onDone={() => dismissed.add(mine.n)} /> : null}
       </View>
 
       {!hideFab ? (
@@ -1543,10 +1547,10 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
 
       {/* Bot difficulty picker */}
       <GameModal visible={botOpen} onClose={() => setBotOpen(false)} title={t('home.solo')} icon="game-controller">
-        {/* Mode & scope chips */}
+        {/* Mode & scope chips — close bot modal first so picker modal can open */}
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-          <Chip icon={MODE_ICON[mode]} label={MODE_LABEL(mode)} onPress={() => setPicker('mode')} />
-          <Chip icon="globe-outline" label={scopeLabel(scope)} onPress={() => setPicker('scopeType')} />
+          <Chip icon={MODE_ICON[mode]} label={MODE_LABEL(mode)} onPress={() => { setBotOpen(false); setTimeout(() => setPicker('mode'), 350); }} />
+          <Chip icon="globe-outline" label={scopeLabel(scope)} onPress={() => { setBotOpen(false); setTimeout(() => setPicker('scopeType'), 350); }} />
         </View>
 
         {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => {
@@ -1567,18 +1571,21 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       <PickerModal
         picker={picker}
         scopes={state.scopes}
-        onClose={() => setPicker(null)}
+        onClose={() => { setPicker(null); setTimeout(() => setBotOpen(true), 350); }}
         onDifficulty={(d) => {
           setDifficulty(d);
           setPicker(null);
+          setTimeout(() => setBotOpen(true), 350);
         }}
         onScope={(s) => {
           setScope(s);
           setPicker(null);
+          setTimeout(() => setBotOpen(true), 350);
         }}
         onMode={(m) => {
           setMode(m);
           setPicker(null);
+          setTimeout(() => setBotOpen(true), 350);
         }}
         goto={setPicker}
       />
@@ -2026,11 +2033,6 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   const hasBot = state.room?.players.some((p) => p.name === 'Bot');
   const handleLeave = () => hasBot ? actions.leave() : setShowLeaveConfirm(true);
   const room = state.room;
-  const oppPlayer = room?.players.find((p) => p.id !== room.youId);
-  const youPlayer = room?.players.find((p) => p.id === room.youId);
-  const [emoteOpen, setEmoteOpen] = useState(false);
-  const oppEmote = room ? state.emotes[room.players.find((p) => p.id !== room.youId)?.id ?? ''] : undefined;
-  const myEmote = room ? state.emotes[room.youId] : undefined;
 
   const onChange = (text: string) => {
     setQ(text);
@@ -2049,12 +2051,10 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   if (state.picked) {
     return (
       <Screen>
-        <PlayerBar player={oppPlayer} emoteId={oppEmote?.emoteId} emoteN={oppEmote?.n} />
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 6 }}>
           <ActivityIndicator color={theme.primary} />
           <Text style={styles.muted}>{t('pick.picked')}</Text>
         </View>
-        <PlayerBar player={youPlayer} isYou emoteId={myEmote?.emoteId} emoteN={myEmote?.n} />
         <Pressable onPress={handleLeave} style={{ position: 'absolute', top: 54, left: 18, zIndex: 20 }}>
           <Ionicons name="close-circle" size={32} color={theme.muted} />
         </Pressable>
@@ -2067,7 +2067,6 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   if (role === 'letter') {
     return (
       <Screen>
-        <PlayerBar player={oppPlayer} emoteId={oppEmote?.emoteId} emoteN={oppEmote?.n} />
         <View style={{ alignItems: 'center', marginBottom: 8, marginTop: 8 }}>
           <Text style={styles.h1}>{t('pick.titleLetter')}</Text>
           <PickTimer pickEndsAt={state.pickEndsAt} />
@@ -2088,12 +2087,11 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
           ))}
         </View>
         <View style={{ flex: 1 }} />
-        <PlayerBar player={youPlayer} isYou onEmotePress={() => setEmoteOpen(true)} emoteId={myEmote?.emoteId} emoteN={myEmote?.n} />
         <Pressable onPress={handleLeave} style={{ position: 'absolute', top: 54, left: 18, zIndex: 20 }}>
           <Ionicons name="close-circle" size={32} color={theme.muted} />
         </Pressable>
         <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
-        {!tutorial ? <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} /> : null}
+        {!tutorial ? <EmoteLayer state={state} actions={actions} /> : null}
       </Screen>
     );
   }
@@ -2113,7 +2111,6 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
       : NATIONALITIES;
     return (
       <Screen>
-        <PlayerBar player={oppPlayer} emoteId={oppEmote?.emoteId} emoteN={oppEmote?.n} />
         <View style={{ alignItems: 'center', marginBottom: 8, marginTop: 8 }}>
           <Text style={styles.h1}>{t('pick.titleCountry')}</Text>
           <PickTimer pickEndsAt={state.pickEndsAt} />
@@ -2140,12 +2137,11 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
           ))}
           {filtered.length === 0 && countryQ.trim() ? <Text style={styles.muted}>{t('common.noResults')}</Text> : null}
         </ScrollView>
-        <PlayerBar player={youPlayer} isYou onEmotePress={() => setEmoteOpen(true)} emoteId={myEmote?.emoteId} emoteN={myEmote?.n} />
         <Pressable onPress={handleLeave} style={{ position: 'absolute', top: 54, left: 18, zIndex: 20 }}>
           <Ionicons name="close-circle" size={32} color={theme.muted} />
         </Pressable>
         <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
-        {!tutorial ? <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} /> : null}
+        {!tutorial ? <EmoteLayer state={state} actions={actions} /> : null}
       </Screen>
     );
   }
@@ -2153,7 +2149,6 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   // ---- Team picker (default) ----
   return (
     <Screen>
-      <PlayerBar player={oppPlayer} emoteId={oppEmote?.emoteId} emoteN={oppEmote?.n} />
       <View style={{ alignItems: 'center', marginBottom: 8, marginTop: 8 }}>
         <Text style={styles.h1}>{t('pick.title')}</Text>
         <PickTimer pickEndsAt={state.pickEndsAt} />
@@ -2198,12 +2193,11 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
           <Text style={[styles.muted, { width: '100%', marginTop: 20 }]}>{t('common.noResults')}</Text>
         ) : null}
       </ScrollView>
-      <PlayerBar player={youPlayer} isYou onEmotePress={() => setEmoteOpen(true)} emoteId={myEmote?.emoteId} emoteN={myEmote?.n} />
       <Pressable onPress={handleLeave} style={{ position: 'absolute', top: 54, left: 18, zIndex: 20 }}>
         <Ionicons name="close-circle" size={32} color={theme.muted} />
       </Pressable>
       <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
-      {!tutorial ? <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} /> : null}
+      {!tutorial ? <EmoteLayer state={state} actions={actions} /> : null}
     </Screen>
   );
 }
@@ -2220,11 +2214,6 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const hasBot = room.players.some((p) => p.name === 'Bot');
   const handleLeave = () => hasBot ? actions.leave() : setShowLeaveConfirm(true);
-  const oppPlayer = room.players.find((p) => p.id !== room.youId);
-  const youPlayer = room.players.find((p) => p.id === room.youId);
-  const [emoteOpen, setEmoteOpen] = useState(false);
-  const oppEmote = state.emotes[room.players.find((p) => p.id !== room.youId)?.id ?? ''];
-  const myEmote = state.emotes[room.youId];
 
   const [secs, setSecs] = useState<number | null>(null);
   useEffect(() => {
@@ -2248,8 +2237,6 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
 
   return (
     <Screen scroll>
-      <PlayerBar player={oppPlayer} emoteId={oppEmote?.emoteId} emoteN={oppEmote?.n} />
-      <View style={{ height: 8 }} />
       <View style={styles.teamsRow}>
         <Animated.View style={[styles.teamCard, { transform: [{ translateX: leftX }], opacity: reveal }]}>
           {state.revealMode === 'country-team' ? (
@@ -2337,13 +2324,11 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
           )}
         </>
       )}
-      <View style={{ height: 8 }} />
-      <PlayerBar player={youPlayer} isYou onEmotePress={() => setEmoteOpen(true)} emoteId={myEmote?.emoteId} emoteN={myEmote?.n} />
       <Pressable onPress={handleLeave} style={{ position: 'absolute', top: 54, left: 18, zIndex: 20 }}>
         <Ionicons name="close-circle" size={32} color={theme.muted} />
       </Pressable>
       <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
-      {!tutorial ? <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} /> : null}
+      {!tutorial ? <EmoteLayer state={state} actions={actions} /> : null}
     </Screen>
   );
 }
@@ -2862,6 +2847,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
   const [matchMode, setMatchMode] = useState<GameMode>('team-team');
   const [matchScope, setMatchScope] = useState<Scope>({ type: 'all' });
   const [matchPicker, setMatchPicker] = useState<'scopeType' | 'league' | 'country' | null>(null);
+  const matchFriendRef = useRef<string | null>(null); // keep friendId when matchModal closes for picker
   const [menuFriend, setMenuFriend] = useState<FriendInfo | null>(null); // tapped friend → actions popover
   const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 }); // tap anchor for the popover
   const [confirmRemove, setConfirmRemove] = useState<FriendInfo | null>(null); // remove confirmation
@@ -3069,7 +3055,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
                   <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '900', letterSpacing: 0.5, textAlign: 'center', paddingTop: 9, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: theme.border }} numberOfLines={1}>
                     {menuFriend.displayName}
                   </Text>
-                  <Row color={theme.text} label="Dostluk Savaşı" onPress={() => { const id = menuFriend.userId; setMenuFriend(null); setMatchModal(id); }} />
+                  <Row color={theme.text} label="Dostluk Savaşı" onPress={() => { const id = menuFriend.userId; matchFriendRef.current = id; setMenuFriend(null); setMatchModal(id); }} />
                   <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
                   <Row color={theme.text} label="Profili Görüntüle" onPress={() => { const id = menuFriend.userId; setMenuFriend(null); actions.getUserProfile(id); }} />
                   <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
@@ -3151,7 +3137,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
                 </Pressable>
                 <Pressable
                   style={styles.modalRow}
-                  onPress={() => setMatchPicker('league')}
+                  onPress={() => { setMatchModal(null); setTimeout(() => setMatchPicker('league'), 350); }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                     <Ionicons name="trophy-outline" size={18} color={theme.accent} />
@@ -3161,7 +3147,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
                 </Pressable>
                 <Pressable
                   style={styles.modalRow}
-                  onPress={() => setMatchPicker('country')}
+                  onPress={() => { setMatchModal(null); setTimeout(() => setMatchPicker('country'), 350); }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                     <Ionicons name="flag-outline" size={18} color={theme.blue} />
@@ -3181,10 +3167,12 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
         scopes={state.scopes}
         onClose={() => setMatchPicker(null)}
         onScope={(s) => {
+          const fId = matchFriendRef.current;
           setMatchScope(s);
           setMatchPicker(null);
-          actions.inviteFriendMatch(matchModal!, friends.find((f) => f.userId === matchModal)?.displayName ?? 'Arkadaş', { mode: matchMode, scope: s });
-          setMatchModal(null);
+          if (fId) {
+            actions.inviteFriendMatch(fId, friends.find((f) => f.userId === fId)?.displayName ?? 'Arkadaş', { mode: matchMode, scope: s });
+          }
           setMatchStep('mode');
         }}
         onMode={() => {}}
