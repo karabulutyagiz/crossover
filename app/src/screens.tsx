@@ -2932,12 +2932,36 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
           onSubmitEditing={onSendRequest}
           style={styles.input}
         />
-        <Btn label="Arkadaşlık İsteği Gönder" icon="paper-plane" kind="primary" onPress={onSendRequest} disabled={addInput.trim().length < 3} />
+        {searchMode === 'code' ? (
+          <Btn label="Arkadaşlık İsteği Gönder" icon="paper-plane" kind="primary" onPress={onSendRequest} disabled={addInput.trim().length < 3} />
+        ) : (
+          <Btn label="Ara" icon="search" kind="primary" onPress={() => { if (addInput.trim().length >= 3) actions.searchUsers(addInput.trim()); }} disabled={addInput.trim().length < 3} />
+        )}
         {state.error ? <Text style={[styles.error, { marginTop: 6 }]}>{state.error}</Text> : null}
         {state.notice ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 6 }}>
             <Ionicons name="checkmark-circle" size={15} color={theme.primary} />
             <Text style={{ color: theme.primary, fontSize: 12.5, fontWeight: '700' }}>{state.notice}</Text>
+          </View>
+        ) : null}
+
+        {/* Username search results */}
+        {searchMode === 'username' && state.userSearchResults.length > 0 ? (
+          <View style={{ marginTop: 10, gap: 6 }}>
+            {state.userSearchResults.map((u) => (
+              <View key={u.userId} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.card, borderRadius: 12, borderWidth: 1, borderColor: theme.border, paddingVertical: 8, paddingHorizontal: 12, gap: 10 }}>
+                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="person" size={16} color={theme.primary} />
+                </View>
+                <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13, flex: 1 }} numberOfLines={1}>{u.displayName}</Text>
+                <Pressable onPress={() => actions.getUserProfile(u.userId)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: theme.bg2, borderWidth: 1, borderColor: theme.border }}>
+                  <Ionicons name="eye-outline" size={16} color={theme.accent} />
+                </Pressable>
+                <Pressable onPress={() => { actions.sendFriendRequest(undefined, u.displayName); }} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: theme.primary }}>
+                  <Ionicons name="person-add" size={16} color="#06131F" />
+                </Pressable>
+              </View>
+            ))}
           </View>
         ) : null}
 
