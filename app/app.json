@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.crossover.football",
-      "buildNumber": "52",
+      "buildNumber": "54",
       "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -42,8 +42,7 @@
       "expo-web-browser",
       "expo-apple-authentication",
       "expo-font",
-      "expo-sqlite",
-      "react-native-iap"
+      "expo-sqlite"
     ],
     "extra": {
       "eas": {

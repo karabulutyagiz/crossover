@@ -45,21 +45,15 @@ import {
   ownsEmote,
 } from './emotes';
 import { NATIONALITIES } from './nationalities';
-// react-native-iap requires a native module (StoreKit). When running in Expo
-// Go or a simulator without the custom dev client the import crashes the app.
-// Wrap in a try/catch so the rest of the app still loads.
-let useIAP: any = () => ({ connected: false, products: [], requestPurchase: () => {}, fetchProducts: () => Promise.resolve([]) });
-let getReceiptIOS: any = () => Promise.resolve('');
-let iapFinishTransaction: any = () => Promise.resolve();
+// react-native-iap v15 (Nitro/StoreKit2) corrupted the Hermes heap on RN 0.85,
+// crashing the app at launch (HadesGC SIGSEGV — confirmed via device crash logs).
+// Temporarily removed; IAP is stubbed so the Store shows "coming soon" and the app
+// runs. Re-add via a stable build (react-native-iap v12, non-Nitro) and restore the
+// require here. ASC products + server receipt validation are already live.
+const useIAP: any = () => ({ connected: false, products: [], subscriptions: [], requestPurchase: () => {}, fetchProducts: () => Promise.resolve([]) });
+const getReceiptIOS: any = () => Promise.resolve('');
+const iapFinishTransaction: any = () => Promise.resolve();
 type Purchase = any;
-try {
-  const iap = require('react-native-iap');
-  useIAP = iap.useIAP;
-  getReceiptIOS = iap.getReceiptIOS;
-  iapFinishTransaction = iap.finishTransaction;
-} catch {
-  // native module not available — IAP features disabled gracefully
-}
 
 type Actions = {
   register: (name: string, gameCenterId?: string) => void;
@@ -2598,7 +2592,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
     fetchProducts({ skus: SOCIAL_PACK_IDS, type: 'subs' }).catch(() => {});
     // Re-validate on open so an auto-renewed Social Pack refreshes its expiry on the server
     // (granted-0 → no toast; see the reducer). Silent if there's no receipt yet.
-    getReceiptIOS().then((r) => { if (r) return actions.verifyPurchase(r); }).catch(() => {});
+    getReceiptIOS().then((r: string) => { if (r) return actions.verifyPurchase(r); }).catch(() => {});
   }, [connected, fetchProducts, actions]);
   const priceFor = (productId: string, fallback: string) =>
     (([...(products as { id?: string; displayPrice?: string }[]), ...(subscriptions as { id?: string; displayPrice?: string }[])]).find((p) => p.id === productId)?.displayPrice) ?? fallback;
