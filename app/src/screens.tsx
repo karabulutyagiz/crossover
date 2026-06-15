@@ -378,11 +378,12 @@ function Screen({ children }: { children: ReactNode; noPitch?: boolean }) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 44 : 0}
     >
-      {/* Tapping any empty area dismisses the keyboard (taps on inputs/buttons still
-          reach them — Pressable only fires for taps no child handled). */}
-      <Pressable style={{ flex: 1 }} onPress={() => Keyboard.dismiss()} accessible={false}>
-        {children}
-      </Pressable>
+      {/* Keyboard dismiss: a backdrop Pressable BEHIND the content. It never wraps the
+          children (so no layout shift) and sits under the ScrollViews (so it never
+          intercepts scroll); tapping empty background area still dismisses. Scroll-area
+          taps are handled by each ScrollView's keyboardShouldPersistTaps="handled". */}
+      <Pressable style={StyleSheet.absoluteFill} onPress={() => Keyboard.dismiss()} accessible={false} />
+      {children}
     </KeyboardAvoidingView>
   );
 }
