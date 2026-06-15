@@ -505,8 +505,15 @@ export async function verifyLetterTeamGuess(
     correct = true;
   } else {
     matched = eligible[0]!;
-    correct = true;
-    autocorrected = true;
+    // Only autocorrect genuine typos — NOT a bare prefix like "c"/"cri". You picked the
+    // letter, so a single letter (or tiny stub) sharing it must not win the round.
+    const matchedNorm = normalize(matched.name);
+    if (norm.length >= 4 && norm.length >= matchedNorm.length * 0.5) {
+      correct = true;
+      autocorrected = true;
+    } else {
+      return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
+    }
   }
 
   const allClubs = await getPlayerSpells(matched.id);

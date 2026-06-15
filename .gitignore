@@ -5,3 +5,9 @@ dist/
 .env.local
 .DS_Store
 tmp/
+# secrets / signing keys (defense-in-depth — also covered in app/.gitignore)
+*.p8
+*.p12
+*.pem
+*.key
+*.mobileprovision

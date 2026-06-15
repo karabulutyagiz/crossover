@@ -326,6 +326,8 @@ export function startServer(port: number): Server {
           transport.send({ type: 'friend_removed', friendId: msg.friendId });
           const data = await getFriendsData(userProfile!.id);
           transport.send(data);
+          // Push a fresh list to the other person too — they lose the friend live.
+          sendToUser(msg.friendId, await getFriendsData(msg.friendId));
         })();
         return;
       }

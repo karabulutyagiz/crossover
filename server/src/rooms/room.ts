@@ -276,8 +276,9 @@ export class Room {
           this.broadcast({ type: 'team_picked', playerId: id });
         }
       } else if (role === 'country') {
-        // Auto-pick a popular country
-        this.round.countryPick = 'Turkey';
+        // Auto-pick a RANDOM popular footballing nation (was hardcoded to Turkey).
+        const popular = ['Turkey', 'Brazil', 'France', 'Argentina', 'Germany', 'Spain', 'Italy', 'Portugal', 'Netherlands', 'England'];
+        this.round.countryPick = popular[Math.floor(Math.random() * popular.length)]!;
         this.broadcast({ type: 'team_picked', playerId: id });
       } else if (role === 'letter') {
         // Auto-pick a random letter
@@ -497,11 +498,21 @@ export class Room {
     this.round.passedBy.add(playerId);
     const p = this.players.get(playerId);
     this.broadcast({ type: 'pass_locked', byId: playerId, byName: p?.name ?? '' });
-    if (this.round.passedBy.size >= this.players.size) this.skipPassed();
+    if (this.round.passedBy.size >= this.players.size) void this.skipPassed();
   }
 
-  private skipPassed(): void {
+  private async skipPassed(): Promise<void> {
     if (!this.round || this.round.finished || !this.round.teamA || !this.round.teamB) return;
+    // Reveal who actually played for both (the answer) so both players learn it.
+    let common: { name: string; imageUrl: string | null }[];
+    if (this.gameMode === 'country-team' && this.round.countryPick) {
+      common = await commonPlayersCountryTeam(this.round.teamB.id, this.round.countryPick, 5);
+    } else if (this.gameMode === 'letter-team' && this.round.letterPick) {
+      common = await commonPlayersLetterTeam(this.round.teamB.id, this.round.letterPick, 5);
+    } else {
+      common = await commonPlayersDetailed(this.round.teamA.id, this.round.teamB.id, 5);
+    }
+    if (!this.round || this.round.finished || !this.round.teamA || !this.round.teamB) return; // ended mid-await
     this.finishRound({
       correct: false,
       reason: 'passed',
@@ -516,7 +527,7 @@ export class Room {
       spellsA: [],
       spellsB: [],
       allClubs: [],
-      commonPlayers: [],
+      commonPlayers: common,
     });
   }
 

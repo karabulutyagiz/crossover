@@ -170,7 +170,7 @@ const tr = {
   'leaderboard.empty': 'Henüz sıralama yok',
 
   // store
-  'store.title': 'Elmas Mağazası',
+  'store.title': 'Mağaza',
   'store.freeDiamonds': 'ÜCRETSİZ ELMAS',
   'store.watchAd': 'Video İzle, Elmas Kazan',
   'store.adsDaily': 'Her gün 2 video hakkı',
@@ -223,6 +223,13 @@ const tr = {
   'emote.gg': 'İyi oyundu!',
   'emote.bringIt': 'Hadi bakalım!',
   'emote.gotcha': 'Yakaladım!',
+  'emote.thanks': 'Teşekkürler!',
+  'emote.quickChat': 'Hızlı Mesaj',
+  'emote.faces': 'İfadeler',
+  'emote.face.smile': 'Keyifli!',
+  'emote.face.cry': 'Çok yazık...',
+  'emote.face.angry': 'Hadi ama!',
+  'emote.face.ok': 'Tamamdır!',
   // emote phrases (premium)
   'emote.jersey10.phrase': 'Şampiyonluk!',
   'emote.goal.phrase': 'Süper Gol!',
@@ -394,7 +401,7 @@ const en: typeof tr = {
   'leaderboard.back': 'Back',
   'leaderboard.empty': 'No rankings yet',
 
-  'store.title': 'Diamond Store',
+  'store.title': 'Store',
   'store.freeDiamonds': 'FREE DIAMONDS',
   'store.watchAd': 'Watch a video, earn diamonds',
   'store.adsDaily': '2 videos per day',
@@ -443,6 +450,13 @@ const en: typeof tr = {
   'emote.gg': 'Good game!',
   'emote.bringIt': 'Bring it on!',
   'emote.gotcha': 'Gotcha!',
+  'emote.thanks': 'Thanks!',
+  'emote.quickChat': 'Quick Chat',
+  'emote.faces': 'Emotes',
+  'emote.face.smile': 'Nice!',
+  'emote.face.cry': 'So sad...',
+  'emote.face.angry': 'Come on!',
+  'emote.face.ok': 'All good!',
   'emote.jersey10.phrase': 'Champion!',
   'emote.goal.phrase': 'What a goal!',
   'emote.champion.phrase': 'Champion!',
@@ -471,10 +485,31 @@ export type MessageKey = keyof typeof tr;
 
 const DICTS: Record<string, Partial<typeof tr>> = { tr, en };
 
-/** Available languages with their native display names. */
+/** Available languages with their native display names.
+ *  Only tr/en have full dictionaries today; the rest fall back to English
+ *  via t() until their translations land. */
 export const LANGUAGES: { code: string; name: string }[] = [
-  { code: 'tr', name: 'Türkçe' },
   { code: 'en', name: 'English' },
+  { code: 'tr', name: 'Türkçe' },
+  { code: 'pt', name: 'Português' },
+  { code: 'es', name: 'Español' },
+  { code: 'fr', name: 'Français' },
+  { code: 'de', name: 'Deutsch' },
+  { code: 'it', name: 'Italiano' },
+  { code: 'nl', name: 'Nederlands' },
+  { code: 'no', name: 'Norsk' },
+  { code: 'fi', name: 'Suomi' },
+  { code: 'ru', name: 'Русский' },
+  { code: 'zh-Hans', name: '简体中文' },
+  { code: 'zh-Hant', name: '繁體中文' },
+  { code: 'ko', name: '한국어' },
+  { code: 'ja', name: '日本語' },
+  { code: 'ar', name: 'العربية' },
+  { code: 'fa', name: 'فارسی' },
+  { code: 'ms', name: 'Bahasa Melayu' },
+  { code: 'id', name: 'Bahasa Indonesia' },
+  { code: 'th', name: 'ไทย' },
+  { code: 'vi', name: 'Tiếng Việt' },
 ];
 
 // Resolve the active language once at startup from the device locale.
@@ -501,7 +536,9 @@ export function currentLang(): string {
  * for forcing a re-render (e.g. by navigating to the loading screen).
  */
 export function setLanguage(code: string): void {
-  if (DICTS[code]) currentLanguage = code;
+  // Accept any listed language; t() falls back to English for codes without a
+  // dictionary yet, so the choice still persists and shows as selected.
+  if (LANGUAGES.some((l) => l.code === code)) currentLanguage = code;
 }
 
 // Translate a key, optionally interpolating {placeholders}. Falls back to

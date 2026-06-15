@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
+  Animated,
   Dimensions,
+  Easing,
   Image,
-  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,6 +19,7 @@ import { t, setLanguage } from './src/i18n';
 import {
   SplashScreen,
   LoadingScreen,
+  ScreenBg,
   TutorialScreen,
   LoginScreen,
   UsernameScreen,
@@ -37,8 +39,10 @@ import {
   GuessScreen,
   ResultScreen,
   OpponentForfeitModal,
+  LeaderboardModal,
+  MatchHistoryModal,
 } from './src/screens';
-import { theme } from './src/theme';
+import { theme, engrave } from './src/theme';
 import { GemIcon, GEM_COLOR } from './src/GemIcon';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -100,11 +104,16 @@ export default function App() {
   const { state, actions } = useCrossover();
   const props = { state, actions };
   const scrollRef = useRef<ScrollView>(null);
+  const programmaticScroll = useRef(false); // true right after a tab tap — ignore scroll events
+  const tabGuardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeTab, setActiveTab] = useState(2); // start on Home (store=0, collection=1, home=2)
   const [splash, setSplash] = useState(true);
   const [tutorialSeen, setTutorialSeen] = useState<boolean | null>(null);
   const [loaded, setLoaded] = useState(false); // Clash-Royale-style entry loading (warms logo cache)
   const [storeSection, setStoreSection] = useState<'socialPack' | 'diamonds' | null>(null);
+  const [comingSoon, setComingSoon] = useState(false); // Turnuvalar — greyed "coming soon"
+  const [overlay, setOverlay] = useState<'leaderboard' | 'matchHistory' | null>(null); // centered popups
+  const csAnim = useRef(new Animated.Value(0)).current; // coming-soon pop/float
   const [fontsLoaded, fontError] = useFonts({
     'Poppins-Black': require('./assets/fonts/Poppins-Black.ttf'),
     'Poppins-ExtraBold': require('./assets/fonts/Poppins-ExtraBold.ttf'),
@@ -124,6 +133,15 @@ export default function App() {
     return () => clearTimeout(t);
   }, []);
 
+  // Pop the "coming soon" badge in, then auto-hide.
+  useEffect(() => {
+    if (!comingSoon) return;
+    csAnim.setValue(0);
+    Animated.spring(csAnim, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }).start();
+    const id = setTimeout(() => setComingSoon(false), 1700);
+    return () => clearTimeout(id);
+  }, [comingSoon, csAnim]);
+
   // When switching away from the home tab, reset sub-screens (arenas, leaderboard, matchHistory) to home
   const resetHomePhase = useCallback(() => {
     const p = state.phase;
@@ -133,29 +151,30 @@ export default function App() {
   }, [state.phase, actions]);
 
   const goToTab = useCallback((idx: number) => {
-    scrollRef.current?.scrollTo({ x: idx * SCREEN_W, animated: true });
+    // Tab taps jump INSTANTLY (no animated slide) so rapid tapping never flickers the
+    // green pill across in-between pages. The guard ignores the stray scroll event the
+    // jump fires, and a timer (reset on every tap) re-enables live swipe tracking once
+    // the user stops tapping — onMomentumScrollEnd doesn't fire for instant scrolls.
+    programmaticScroll.current = true;
+    if (tabGuardTimer.current) clearTimeout(tabGuardTimer.current);
+    tabGuardTimer.current = setTimeout(() => { programmaticScroll.current = false; }, 260);
     setActiveTab(idx);
+    scrollRef.current?.scrollTo({ x: idx * SCREEN_W, animated: false });
     if (idx !== 2) resetHomePhase(); // home lives at index 2 (store=0, collection=1, home=2, friends=3)
   }, [resetHomePhase]);
 
   const onScrollEnd = useCallback((e: any) => {
+    if (tabGuardTimer.current) clearTimeout(tabGuardTimer.current);
+    programmaticScroll.current = false; // drag settled — resume live updates
     const x = e.nativeEvent.contentOffset.x;
     const idx = Math.round(x / SCREEN_W);
     setActiveTab(idx);
     if (idx !== 2) resetHomePhase();
   }, [resetHomePhase]);
 
-  // Swipe (any horizontal direction) to dismiss a sub-screen back to home —
-  // instead of paging to the next tab. Keep the latest goHome in a ref so the
-  // once-created PanResponder never goes stale.
-  const goHomeRef = useRef<() => void>(() => {});
-  goHomeRef.current = () => { actions.closeArenas(); }; // all close* actions reset phase → home
-  const backSwipe = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 26 && Math.abs(g.dx) > Math.abs(g.dy) * 1.6,
-      onPanResponderRelease: (_e, g) => { if (Math.abs(g.dx) > 55) goHomeRef.current(); },
-    }),
-  ).current;
+  // Leaderboard / match-history open as centered popups (App-level overlay), not fullscreen.
+  const openLeaderboard = useCallback(() => { actions.openLeaderboard(); setOverlay('leaderboard'); }, [actions]);
+  const openMatchHistory = useCallback(() => { actions.openMatchHistory(); setOverlay('matchHistory'); }, [actions]);
 
   // Splash screen: show COF logo on launch.
   if (splash || !fontsReady) {
@@ -174,6 +193,7 @@ export default function App() {
     return (
       <View style={s.root}>
         <StatusBar style="light" />
+        <ScreenBg />
         <LoginScreen state={state} actions={actions} />
       </View>
     );
@@ -184,6 +204,7 @@ export default function App() {
     return (
       <View style={s.root}>
         <StatusBar style="light" />
+        <ScreenBg />
         <UsernameScreen state={state} actions={actions} />
       </View>
     );
@@ -207,6 +228,7 @@ export default function App() {
     return (
       <View style={s.root}>
         <StatusBar style="light" />
+        <ScreenBg />
         <LoadingScreen state={state} actions={actions} onReady={() => setLoaded(true)} />
       </View>
     );
@@ -246,6 +268,7 @@ export default function App() {
     return (
       <View style={s.root}>
         <StatusBar style="light" />
+        <ScreenBg variant="match" />
         {screen}
         {state.matchInvite ? (
           <InviteBanner
@@ -266,28 +289,28 @@ export default function App() {
   // Main menu with tab bar + swipe
   const homeContent = state.phase === 'arenas'
     ? <ArenasScreen {...props} />
-    : state.phase === 'leaderboard'
-    ? <LeaderboardScreen {...props} />
-    : state.phase === 'matchHistory'
-    ? <MatchHistoryScreen {...props} />
     : state.phase === 'profile'
-    ? <ProfileScreen {...props} />
-    : <HomeScreen {...props} onLanguageChange={() => { setLoaded(false); setLangKey((k) => k + 1); }} />;
-  // A sub-screen is open in the home slot → swipe dismisses it (pager paging off).
-  const subScreen = state.phase !== 'home' && TAB_PHASES.has(state.phase);
+    ? <ProfileScreen {...props} onOpenMatchHistory={openMatchHistory} />
+    : <HomeScreen {...props} onLanguageChange={() => { setLoaded(false); setLangKey((k) => k + 1); }} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} onOpenLeaderboard={openLeaderboard} onOpenMatchHistory={openMatchHistory} />;
+
+  // Per-tab background: Oyna/home = blue arena backdrop, Mağaza = violet, others = calm navy.
+  const bgVariant = (activeTab === 0 ? 'store' : activeTab === 2 && state.phase === 'home' ? 'home' : 'menu') as 'store' | 'home' | 'menu';
 
   return (
     <View key={`app-${langKey}`} style={s.root}>
       <StatusBar style="light" />
+      <ScreenBg variant={bgVariant} />
 
       {/* Top bar — trophies (left) + gems pill (right) */}
       {state.profile ? (
         <View style={s.resourceBar}>
           <View style={s.trophyPill}>
+            <View style={s.glassSheen} pointerEvents="none" />
             <Ionicons name="trophy" size={18} color={theme.accent} />
             <Text style={s.trophyText}>{state.profile.trophies}</Text>
           </View>
           <Pressable style={s.diamondPill} onPress={() => { setStoreSection('diamonds'); goToTab(0); }}>
+            <View style={s.glassSheen} pointerEvents="none" />
             <GemIcon size={20} />
             <Text style={s.diamondText}>{state.profile.diamonds}</Text>
             <View style={s.diamondPlus}>
@@ -303,9 +326,13 @@ export default function App() {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onScrollEnd}
+        onScroll={(e) => {
+          if (programmaticScroll.current) return; // tab tap in progress — don't flicker through pages
+          const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+          if (idx !== activeTab) setActiveTab(idx);
+        }}
         scrollEventThrottle={16}
         contentOffset={{ x: 2 * SCREEN_W, y: 0 }}
-        scrollEnabled={!subScreen}
         style={{ flex: 1 }}
       >
         <View style={{ width: SCREEN_W, flex: 1 }}>
@@ -314,7 +341,7 @@ export default function App() {
         <View style={{ width: SCREEN_W, flex: 1 }}>
           <CollectionScreen {...props} />
         </View>
-        <View style={{ width: SCREEN_W, flex: 1 }} {...(subScreen ? backSwipe.panHandlers : {})}>
+        <View style={{ width: SCREEN_W, flex: 1 }}>
           {homeContent}
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
@@ -327,21 +354,69 @@ export default function App() {
         {TABS.map((tab, idx) => {
           const active = idx === activeTab;
           return (
-            <Pressable key={tab.key} style={s.tab} onPress={() => goToTab(idx)}>
+            <Pressable
+              key={tab.key}
+              style={s.tab}
+              onPress={() => {
+                // Re-tapping the active Oyna tab opens/closes the Arenas screen (trophy ladder).
+                if (idx === 2 && activeTab === 2) {
+                  if (state.phase === 'home') { actions.openArenas(); return; }
+                  if (state.phase === 'arenas') { actions.closeArenas(); return; }
+                }
+                goToTab(idx);
+              }}
+            >
               <View style={[s.tabInner, active && s.tabInnerActive]}>
                 <Ionicons
                   name={active ? tab.activeIcon : tab.icon}
-                  size={active ? 25 : 22}
+                  size={active ? 30 : 26}
                   color={active ? theme.primary : theme.muted}
                 />
-                <Text style={[s.tabLabel, active && s.tabLabelActive]}>
+                <Text style={[s.tabLabel, active && s.tabLabelActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
                   {tab.label}
                 </Text>
               </View>
             </Pressable>
           );
         })}
+        {/* Tournaments — greyed, coming soon */}
+        <Pressable style={s.tab} onPress={() => setComingSoon(true)}>
+          <View style={s.tabInner}>
+            <Ionicons name="trophy-outline" size={26} color={theme.border} />
+            <Text style={[s.tabLabel, { color: theme.border }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>Turnuvalar</Text>
+          </View>
+        </Pressable>
       </View>
+
+      {/* Tournaments → a raised rectangular "coming soon" badge that pops in with a deep shadow */}
+      {comingSoon ? (
+        <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: '42%', alignItems: 'center' }}>
+          <Animated.View
+            style={{
+              opacity: csAnim,
+              transform: [
+                { scale: csAnim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) },
+                { translateY: csAnim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) },
+              ],
+            }}
+          >
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', gap: 11,
+              backgroundColor: theme.card, borderRadius: 16,
+              paddingVertical: 16, paddingHorizontal: 26,
+              borderWidth: 2, borderColor: theme.frameGold,
+              borderBottomWidth: 5, borderBottomColor: theme.frameGoldDark,
+              borderTopColor: theme.panelTopGloss,
+              shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 22, shadowOffset: { width: 0, height: 16 }, elevation: 24,
+            }}>
+              <Ionicons name="time" size={22} color={theme.accent} />
+              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 21, letterSpacing: 0.5, textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 }}>
+                Çok Yakında
+              </Text>
+            </View>
+          </Animated.View>
+        </View>
+      ) : null}
 
       {state.matchInvite ? (
         <InviteBanner
@@ -350,6 +425,10 @@ export default function App() {
           onReject={() => actions.respondMatchInvite(state.matchInvite!.fromId, false)}
         />
       ) : null}
+
+      {/* Centered popups (leaderboard / match history) — open over everything, not fullscreen */}
+      <LeaderboardModal visible={overlay === 'leaderboard'} entries={state.leaderboard} onClose={() => setOverlay(null)} />
+      <MatchHistoryModal visible={overlay === 'matchHistory'} history={state.matchHistory} myName={state.profile?.displayName ?? ''} onClose={() => setOverlay(null)} />
     </View>
   );
 }
@@ -357,26 +436,35 @@ export default function App() {
 const s = StyleSheet.create({
   splash: { flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' },
   splashLogo: { width: 120, height: 120, borderRadius: 28 },
-  root: { flex: 1, backgroundColor: theme.bg, paddingTop: 44 },
+  root: { flex: 1, backgroundColor: '#0E2347', paddingTop: 44 }, // navy behind the patterned ScreenBg (no header seam)
   tabBar: {
     flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: theme.border,
-    backgroundColor: theme.card,
-    paddingBottom: 20,
-    paddingTop: 8,
+    borderTopWidth: 2,
+    borderTopColor: theme.cardLip,
+    backgroundColor: theme.bg2,
+    paddingBottom: 24,
+    paddingTop: 13,
   },
   tab: { flex: 1, alignItems: 'center' },
-  tabInner: { alignItems: 'center', justifyContent: 'center', gap: 2, paddingVertical: 6, paddingHorizontal: 18, borderRadius: 16 },
-  tabInnerActive: { backgroundColor: theme.bg2, borderWidth: 1, borderColor: theme.border },
-  tabLabel: { color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold' },
+  tabInner: { alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 9, paddingHorizontal: 4, borderRadius: 16, alignSelf: 'stretch' },
+  tabInnerActive: {
+    backgroundColor: '#0E1838',
+    borderWidth: 1,
+    borderColor: theme.primary,
+    shadowColor: theme.primary,
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
+  },
+  tabLabel: { color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' },
   tabLabelActive: { color: theme.primary },
   inviteBanner: {
     position: 'absolute', top: 50, left: 10, right: 10, zIndex: 100,
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: theme.card, borderRadius: 16, padding: 12,
-    borderWidth: 1.5, borderColor: theme.primary,
-    shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 14,
+    borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark,
+    shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 16,
   },
   inviteName: { color: theme.text, fontWeight: '800', fontSize: 15 },
   inviteSub: { color: theme.muted, fontSize: 11.5 },
@@ -386,47 +474,86 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 6,
+    paddingTop: 18, // moved down — was sitting too high under the notch
     paddingBottom: 8,
+  },
+  glassSheen: {
+    // Top-half highlight that fakes light reflecting off curved glass.
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '52%',
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
   },
   trophyPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    backgroundColor: '#151C30',
-    borderRadius: 16,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: '#26304A',
+    gap: 8,
+    minWidth: 148, // longer left↔right
+    justifyContent: 'center',
+    backgroundColor: 'rgba(228,238,255,0.13)', // true glass — bg pattern shows through
+    borderRadius: 19,
+    paddingHorizontal: 24,
+    paddingVertical: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.5)', // bright glass rim
+    borderTopWidth: 1.5,
+    borderTopColor: 'rgba(255,255,255,0.95)', // top edge catches the most light
+    borderBottomWidth: 3,
+    borderBottomColor: 'rgba(255,255,255,0.18)',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
   trophyText: {
-    color: '#F5C518',
+    color: theme.gold,
     fontSize: 15,
-    fontWeight: '900',
+    fontFamily: 'Poppins-Black',
+    ...engrave('sm'),
   },
   diamondPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    backgroundColor: '#151C30',
-    borderRadius: 16,
-    paddingLeft: 8,
-    paddingRight: 3,
+    gap: 8,
+    minWidth: 148, // longer left↔right
+    justifyContent: 'center',
+    backgroundColor: 'rgba(228,238,255,0.13)', // true glass — bg pattern shows through
+    borderRadius: 19,
+    paddingLeft: 20,
+    paddingRight: 5,
     paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: '#26304A',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.5)', // bright glass rim
+    borderTopWidth: 1.5,
+    borderTopColor: 'rgba(255,255,255,0.95)', // top edge catches the most light
+    borderBottomWidth: 3,
+    borderBottomColor: 'rgba(255,255,255,0.18)',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
   diamondText: {
-    color: '#C084FC',
+    color: theme.gemText,
     fontSize: 15,
-    fontWeight: '800',
+    fontFamily: 'Poppins-ExtraBold',
+    ...engrave('sm'),
   },
   diamondPlus: {
-    backgroundColor: '#3DDC84',
+    backgroundColor: theme.primary,
     borderRadius: 11,
     width: 22,
     height: 22,
+    borderTopWidth: 1.5,
+    borderTopColor: 'rgba(255,255,255,0.6)',
+    borderBottomWidth: 2,
+    borderBottomColor: theme.primaryDark,
     alignItems: 'center',
     justifyContent: 'center',
   },

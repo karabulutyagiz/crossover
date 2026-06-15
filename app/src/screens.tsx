@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNo
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Pressable,
@@ -12,20 +13,20 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Animated, Easing, Platform, Dimensions } from 'react-native';
+import { Animated, Easing, Platform, Dimensions, Linking } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
-import { theme } from './theme';
+import { theme, engrave } from './theme';
 import { t, currentLang, setLanguage, LANGUAGES } from './i18n';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GOOGLE_IOS_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
-import Svg, { Rect, Circle, Line, Path as SvgPath } from 'react-native-svg';
+import Svg, { Rect, Circle, Line, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
-import type { GameState } from './useCrossover';
+import type { GameState, FriendInfo } from './useCrossover';
 import { initialState } from './useCrossover';
 import type { ClubRef, Difficulty, GameMode, GameOptions, ProfileView, PublicProfile, RoomView, Scope, SpellInfo } from './protocol';
 import {
@@ -33,6 +34,8 @@ import {
   EmoteSticker,
   PREMIUM_EMOTES,
   FREE_EMOTES,
+  TEXT_EMOTES,
+  FACE_EMOTES,
   availableEmotes,
   loadoutEmotes,
   emoteWeeks,
@@ -84,6 +87,7 @@ type Actions = {
   cancelMatchInvite: (toId: string) => void;
   getUserProfile: (userId: string) => void;
   closeUserProfile: () => void;
+  clearNotice: () => void;
   dismissMatchInvite: () => void;
   findMatchAgain: () => void;
   leave: () => void;
@@ -95,6 +99,8 @@ interface Props {
   onGoToStore?: (section?: 'socialPack' | 'diamonds') => void;
   tutorial?: boolean; // running inside the guided simulation → no emotes, no keyboard autofocus
   onLanguageChange?: () => void;
+  onOpenLeaderboard?: () => void; // open the centered leaderboard popup (App-level overlay)
+  onOpenMatchHistory?: () => void; // open the centered match-history popup (App-level overlay)
 }
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -112,14 +118,14 @@ function arenaIcon(arena: { minTrophies: number }): IoniconName {
 }
 
 // ---- shared primitives ----
-// Chunky, game-style (Clash Royale-ish) button: a darker bottom "lip" gives 3D
-// depth, and pressing translates the face down into the lip for a tactile click.
-const BTN_PALETTE: Record<string, [string, string]> = {
-  primary: [theme.primary, theme.primaryDark],
-  accent: [theme.accent, theme.accentDark],
-  blue: [theme.blue, theme.blueDark],
-  danger: [theme.danger, theme.dangerDark],
-  ghost: ['transparent', theme.border],
+// Flat, simple button: solid colour, subtle scale press feedback. Palette index
+// [1] is the solid fill (other entries kept for tonal reference).
+const BTN_PALETTE: Record<string, [string, string, string]> = {
+  primary: ['#3DF29A', '#1FBE76', '#0E8C53'],
+  accent: ['#FFD968', '#F5B81F', '#C68A0E'],
+  blue: ['#5FB8FF', '#2E93F0', '#1E6FD4'],
+  danger: ['#FF6E80', '#ED3F55', '#B82B3F'],
+  ghost: ['transparent', 'transparent', theme.border],
 };
 
 function Btn({
@@ -138,85 +144,54 @@ function Btn({
   big?: boolean;
 }) {
   const press = useRef(new Animated.Value(0)).current;
-  const [bg, lip] = BTN_PALETTE[kind] ?? BTN_PALETTE.primary!;
+  const pal = BTN_PALETTE[kind] ?? BTN_PALETTE.primary!;
+  const face = pal[1];
+  const lip = pal[2];
   const ghost = kind === 'ghost';
-  const fg = ghost ? theme.text : '#06131F';
-  const depth = ghost ? 0 : 6;
-  const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, depth] });
-  const radius = big ? 16 : 14;
+  const fg = ghost ? theme.text : theme.ink;
+  const radius = big ? 14 : 12;
+  const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, ghost ? 2 : 4] });
+  const glow = big && (kind === 'primary' || kind === 'accent') && !disabled;
+  const content = (
+    <>
+      {icon ? <Ionicons name={icon} size={big ? 23 : 19} color={fg} style={{ marginRight: 9 }} /> : null}
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: fg, fontSize: big ? 18 : 15, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.3, flexShrink: 1 }}>{label}</Text>
+    </>
+  );
   return (
     <Pressable
       disabled={disabled}
-      onPressIn={() => Animated.timing(press, { toValue: 1, duration: 55, useNativeDriver: true }).start()}
-      onPressOut={() => Animated.timing(press, { toValue: 0, duration: 120, useNativeDriver: true }).start()}
+      onPressIn={() => Animated.timing(press, { toValue: 1, duration: 60, useNativeDriver: true }).start()}
+      onPressOut={() => Animated.timing(press, { toValue: 0, duration: 110, useNativeDriver: true }).start()}
       onPress={disabled ? undefined : onPress}
-      style={{ opacity: disabled ? 0.5 : 1, marginVertical: 6 }}
+      style={{
+        marginVertical: 6, opacity: disabled ? 0.5 : 1, borderRadius: radius + 2,
+        ...(glow ? { shadowColor: face, shadowOpacity: 0.5, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 10 } : {}),
+      }}
     >
-      {/* darker bottom "lip" + drop shadow gives the chunky 3D base */}
-      <View
-        style={{
-          backgroundColor: ghost ? 'transparent' : lip,
-          borderRadius: radius,
-          paddingBottom: depth,
-          shadowColor: '#000',
-          shadowOpacity: ghost ? 0 : 0.4,
-          shadowRadius: 9,
-          shadowOffset: { width: 0, height: 6 },
-          elevation: ghost ? 0 : 7,
-        }}
-      >
+      {ghost ? (
         <Animated.View
           style={{
-            transform: [{ translateY: ty }],
-            backgroundColor: bg,
-            borderRadius: radius,
-            paddingVertical: big ? 18 : 14,
-            paddingHorizontal: 18,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: ghost ? 2 : 2.5,
-            borderColor: ghost ? theme.border : lip, // thick beveled outline
-            overflow: 'hidden',
+            transform: [{ translateY: ty }], backgroundColor: theme.glowSoft, borderRadius: radius, borderWidth: 2, borderColor: theme.primary,
+            paddingVertical: big ? 14 : 11, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+            shadowColor: theme.primary, shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 4,
           }}
         >
-          {/* subtle top sheen + crisp highlight line + bottom inner shade (premium, not toy) */}
-          {!ghost ? (
-            <>
-              <View
-                pointerEvents="none"
-                style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '42%', backgroundColor: 'rgba(255,255,255,0.13)', borderTopLeftRadius: radius - 2, borderTopRightRadius: radius - 2 }}
-              />
-              <View
-                pointerEvents="none"
-                style={{ position: 'absolute', top: 0, left: 6, right: 6, height: 1.5, backgroundColor: 'rgba(255,255,255,0.45)', borderRadius: 2 }}
-              />
-              <View
-                pointerEvents="none"
-                style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '26%', backgroundColor: 'rgba(0,0,0,0.10)' }}
-              />
-            </>
-          ) : null}
-          {icon ? <Ionicons name={icon} size={big ? 24 : 20} color={fg} style={{ marginRight: 9 }} /> : null}
-          <Text
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.75}
+          {content}
+        </Animated.View>
+      ) : (
+        // chunky 3D button: darker bottom "lip" + face that depresses onto it when pressed
+        <View style={{ backgroundColor: lip, borderRadius: radius + 1, paddingBottom: disabled ? 0 : 4, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
+          <Animated.View
             style={{
-              color: fg,
-              fontSize: big ? 19 : 16,
-              fontFamily: 'Poppins-ExtraBold',
-              letterSpacing: 0.5,
-              flexShrink: 1,
-              textShadowColor: ghost ? 'transparent' : 'rgba(0,0,0,0.18)',
-              textShadowOffset: { width: 0, height: 1 },
-              textShadowRadius: 1,
+              transform: [{ translateY: ty }], backgroundColor: face, borderRadius: radius, paddingVertical: big ? 15 : 12, paddingHorizontal: 18,
+              borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.30)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
             }}
           >
-            {label}
-          </Text>
-        </Animated.View>
-      </View>
+            {content}
+          </Animated.View>
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -238,9 +213,165 @@ function Chip({ icon, label, onPress }: { icon: IoniconName; label: string; onPr
   );
 }
 
+// Darken a hex color (for tinted frame bottom-edges).
+function darken(hex: string, amt = 0.34): string {
+  const h = hex.replace('#', '');
+  if (h.length !== 6) return hex;
+  const n = parseInt(h, 16);
+  const r = Math.round(((n >> 16) & 255) * (1 - amt));
+  const g = Math.round(((n >> 8) & 255) * (1 - amt));
+  const b = Math.round((n & 255) * (1 - amt));
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+}
+
+// ---- Game design kit: framed panel + centered pop-in modal + rank badge ----
+let _gpSeq = 0;
+// Reusable Clash-Royale-style framed surface: outer frame ring → beveled face
+// (+ optional top-lit gloss for hero panels) → optional left accent stripe.
+function GamePanel({ children, hero = false, tint, accentStripe, compact = false, style, bodyStyle }: {
+  children: ReactNode; hero?: boolean; tint?: string; accentStripe?: string; compact?: boolean; style?: any; bodyStyle?: any;
+}) {
+  const gid = useRef(`gp${_gpSeq++}`).current;
+  const r = compact ? 14 : 18;
+  const fr = compact ? 12 : 16;
+  const frameColor = tint ?? (hero ? theme.frameGold : theme.border);
+  const frameBot = tint ? darken(tint) : (hero ? theme.accentDark : theme.cardLip);
+  return (
+    <View style={[{ backgroundColor: hero ? theme.panelInk : theme.bg2, borderRadius: r, padding: 2, borderWidth: 2, borderColor: frameColor, borderBottomColor: frameBot, shadowColor: tint ?? '#000', shadowOpacity: tint ? 0.45 : 0.4, shadowRadius: compact ? 6 : 12, shadowOffset: { width: 0, height: compact ? 4 : 6 }, elevation: compact ? 5 : 9 }, style]}>
+      <View style={[{ backgroundColor: theme.card, borderRadius: fr, borderTopWidth: 1, borderTopColor: theme.panelTopGloss, borderBottomWidth: 3, borderBottomColor: theme.cardLip, overflow: 'hidden', padding: 12 }, bodyStyle]}>
+        {hero ? (
+          <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
+            <Defs>
+              <SvgGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={theme.panelTop} />
+                <Stop offset="0.5" stopColor={theme.card} />
+                <Stop offset="1" stopColor={theme.panelBot} />
+              </SvgGradient>
+            </Defs>
+            <Rect width="100%" height="100%" fill={`url(#${gid})`} />
+            <Rect width="100%" height="50%" fill="#FFFFFF" opacity={0.05} />
+          </Svg>
+        ) : null}
+        {accentStripe ? <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: accentStripe, borderTopLeftRadius: fr, borderBottomLeftRadius: fr }} /> : null}
+        {children}
+      </View>
+    </View>
+  );
+}
+
+// Centered pop-in modal with a gold banner header + close gem (Clash-Royale dialog).
+function GameModal({ visible, onClose, title, icon, danger = false, coach = false, children }: {
+  visible: boolean; onClose: () => void; title?: string; icon?: IoniconName; danger?: boolean; coach?: boolean; children: ReactNode;
+}) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (visible) Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
+    else a.setValue(0);
+  }, [visible, a]);
+  const frameColor = coach ? theme.primary : theme.frameGold;
+  const frameBot = coach ? theme.primaryDark : theme.frameGoldDark;
+  const bannerBg = danger ? theme.danger : theme.accent;
+  const bannerBot = danger ? theme.dangerDark : theme.accentDark;
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: theme.scrim, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }} onPress={onClose}>
+        <Animated.View style={{ width: '100%', maxWidth: 360, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) }], opacity: a, backgroundColor: theme.panelInk, borderRadius: 22, padding: 2, borderWidth: 2, borderColor: frameColor, borderBottomColor: frameBot, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 24, shadowOffset: { width: 0, height: 14 }, elevation: 24 }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: theme.card, borderRadius: 20, overflow: 'hidden', borderBottomWidth: 3, borderBottomColor: theme.cardLip }}>
+            {title ? (
+              <View style={{ height: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 46, backgroundColor: bannerBg, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.35)', borderBottomWidth: 3, borderBottomColor: bannerBot }}>
+                {icon ? <Ionicons name={icon} size={18} color={danger ? theme.text : theme.ink} /> : null}
+                <Text numberOfLines={1} style={{ color: danger ? theme.text : theme.ink, fontFamily: 'Poppins-ExtraBold', fontSize: 16, letterSpacing: 0.5, textTransform: 'uppercase' }}>{title}</Text>
+              </View>
+            ) : null}
+            <View style={{ padding: 20, paddingTop: title ? 16 : 20, gap: 12 }}>{children}</View>
+            <Pressable onPress={onClose} hitSlop={8} style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: theme.cardLip, borderWidth: 2, borderColor: theme.accentDark, alignItems: 'center', justifyContent: 'center', zIndex: 5 }}>
+              <Ionicons name="close" size={16} color={theme.accent} />
+            </Pressable>
+          </Pressable>
+        </Animated.View>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// Beveled rank badge (1/2/3 = gold/silver/bronze with glow; 4+ = plain).
+function RankBadge({ rank, size = 28 }: { rank: number; size?: number }) {
+  if (rank <= 3) {
+    const c = [theme.gold, theme.silver, theme.bronze][rank - 1]!;
+    return (
+      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.6)', borderBottomWidth: 2, borderBottomColor: darken(c), alignItems: 'center', justifyContent: 'center', shadowColor: c, shadowOpacity: 0.5, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 5 }}>
+        <Text style={{ color: theme.ink, fontFamily: 'Poppins-Black', fontSize: size * 0.46 }}>{rank}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.border }}>
+      <Text style={{ color: theme.muted, fontFamily: 'Poppins-ExtraBold', fontSize: size * 0.42 }}>{rank}</Text>
+    </View>
+  );
+}
+
+// Framed screen header bar with a real back mini-button + engraved title.
+function ScreenHeader({ title, onBack, icon, right, underline }: {
+  title: string; onBack?: () => void; icon?: IoniconName; right?: ReactNode; underline?: string;
+}) {
+  return (
+    <View style={{ alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 14, backgroundColor: theme.bg2, borderBottomWidth: 2, borderBottomColor: theme.cardLip, marginBottom: 12 }}>
+      {onBack ? (
+        <Pressable onPress={onBack} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: theme.card, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="chevron-back" size={22} color={theme.text} />
+        </Pressable>
+      ) : <View style={{ width: 40 }} />}
+      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
+        {icon ? <Ionicons name={icon} size={18} color={theme.accent} /> : null}
+        <Text numberOfLines={1} style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18, letterSpacing: 0.5, textTransform: 'uppercase', ...engrave('lg') }}>{title}</Text>
+      </View>
+      {right ?? <View style={{ width: 40 }} />}
+      {underline ? <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: underline, opacity: 0.55 }} /> : null}
+    </View>
+  );
+}
+
 // Subtle football-pitch lines behind every screen for a stadium feel.
 
-function Screen({ children, scroll }: { children: ReactNode; scroll?: boolean }) {
+// Clean, inviting background — a soft sky-like vertical gradient (lighter at top)
+// with two faint warm/cool glows. Replaces the old football-pitch pattern.
+// Full-screen patterned background (navy, Clash-Royale-like): deep-blue gradient
+// + a faint diagonal stripe pattern + soft glows. Sits behind every screen.
+const SCREEN_W = Dimensions.get('window').width;
+const SCREEN_H = Dimensions.get('window').height;
+export const BG_TOP = '#0E2347'; // navy shown behind the bg image (frame before load / root)
+export type BgVariant = 'home' | 'store' | 'menu' | 'match';
+const BG_HOME = require('../assets/bg-home.png');   // royal-blue arena backdrop (Oyna/home only)
+const BG_STORE = require('../assets/bg-store.png');  // violet gem-shop backdrop (Mağaza)
+const BG_MENU = require('../assets/bg-menu.png');    // calm navy backdrop (collection/friends/sub-screens)
+const BG_VARIANT = { home: BG_HOME, store: BG_STORE, menu: BG_MENU } as const;
+// Per-screen background. 'match' = flat solid colour (no pattern). The image variants
+// already bake a radial vignette + faint diamond weave; we only add a top/bottom shade
+// so the resource bar and tab bar stay readable.
+export function ScreenBg({ variant = 'menu' }: { variant?: BgVariant }) {
+  if (variant === 'match') {
+    return <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: theme.bg }]} />;
+  }
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <Image source={BG_VARIANT[variant]} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      <Svg width="100%" height="100%">
+        <Defs>
+          <SvgGradient id="bgshade" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#04060F" stopOpacity={0.32} />
+            <Stop offset="0.22" stopColor="#04060F" stopOpacity={0.04} />
+            <Stop offset="0.80" stopColor="#04060F" stopOpacity={0.04} />
+            <Stop offset="1" stopColor="#04060F" stopOpacity={0.44} />
+          </SvgGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#bgshade)" />
+      </Svg>
+    </View>
+  );
+}
+
+function Screen({ children, scroll }: { children: ReactNode; scroll?: boolean; noPitch?: boolean }) {
   // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
   return (
     <KeyboardAvoidingView
@@ -248,7 +379,11 @@ function Screen({ children, scroll }: { children: ReactNode; scroll?: boolean })
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 44 : 0}
     >
-      <FootballField />
+      {/* Keyboard dismiss: a backdrop Pressable BEHIND the content. It never wraps the
+          children (so no layout shift) and sits under the ScrollViews (so it never
+          intercepts scroll); tapping empty background area still dismisses. Scroll-area
+          taps are handled by each ScrollView's keyboardShouldPersistTaps="handled". */}
+      <Pressable style={StyleSheet.absoluteFill} onPress={() => Keyboard.dismiss()} accessible={false} />
       {scroll ? (
         <ScrollView
           style={{ flex: 1 }}
@@ -264,7 +399,6 @@ function Screen({ children, scroll }: { children: ReactNode; scroll?: boolean })
 }
 
 // ---- Swipeable intro / onboarding (shown on first launch) ----
-const SCREEN_W = Dimensions.get('window').width;
 
 const INTRO_SLIDES = [
   { icon: 'football' as IoniconName, color: theme.primary, title: 'CROSSOVER', desc: 'İki takımda da oynamış futbolcuyu bul. İlk bilen kazanır!' },
@@ -360,9 +494,9 @@ export function SplashScreen() {
           }}
         />
       ))}
-      <Animated.View style={{ opacity: fade, alignItems: 'center', gap: 12 }}>
+      <Animated.View style={{ opacity: fade, alignItems: 'center', gap: 12, alignSelf: 'stretch', paddingHorizontal: 20 }}>
         <Ionicons name="football" size={66} color={theme.primary} />
-        <Text style={{ color: theme.text, fontSize: 36, fontFamily: 'Poppins-Black', letterSpacing: 3, marginRight: -3, textAlign: 'center' }}>CROSSOVER</Text>
+        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: theme.text, fontSize: 34, fontFamily: 'Poppins-Black', letterSpacing: 2, textAlign: 'center', alignSelf: 'stretch', includeFontPadding: false }}>CROSSOVER</Text>
       </Animated.View>
       <Animated.Text style={{ position: 'absolute', bottom: 44, color: theme.muted, fontSize: 12, letterSpacing: 3, fontFamily: 'Poppins-ExtraBold', opacity: fade }}>
         BY GAMES
@@ -409,12 +543,12 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
-      <FootballField />
-      <View style={{ alignItems: 'center', gap: 14 }}>
+      <ScreenBg />
+      <View style={{ alignItems: 'center', gap: 14, alignSelf: 'stretch', paddingHorizontal: 24 }}>
         <View style={{ width: 96, height: 96, borderRadius: 24, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.primary }}>
           <Ionicons name="football" size={54} color={theme.primary} />
         </View>
-        <Text style={{ color: theme.text, fontSize: 30, fontFamily: 'Poppins-Black', letterSpacing: 3, marginRight: -3, textAlign: 'center' }}>CROSSOVER</Text>
+        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: theme.text, fontSize: 30, fontFamily: 'Poppins-Black', letterSpacing: 2, textAlign: 'center', alignSelf: 'stretch', includeFontPadding: false }}>CROSSOVER</Text>
       </View>
 
       <View style={{ position: 'absolute', left: 32, right: 32, bottom: 64, alignItems: 'center', gap: 10 }}>
@@ -493,7 +627,7 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
     picked: false,
     pickEndsAt: future,
     guessEndsAt: future,
-    clubResults: TUT_CLUBS,
+    clubResults: [TUT_A], // tutorial team-select shows ONLY Galatasaray ("Galatasaray'a dokun")
     teams: { teamA: TUT_A, teamB: TUT_B },
     revealMode: 'team-team',
     matchOver: false,
@@ -662,16 +796,28 @@ function EmoteLayer({ state, actions, fab = 'bottom-right', hideFab, externalOpe
   const setOpen = (v: boolean) => { setInternalOpen(v); onOpenChange?.(v); };
   const room = state.room;
   const youId = room?.youId;
-  const emotes = loadoutEmotes(state.profile);
+  const oppId = room?.players.find((p) => p.id !== youId)?.id;
+  const mine = youId ? state.emotes[youId] : undefined;
+  const theirs = oppId ? state.emotes[oppId] : undefined;
+  const allEmotes = loadoutEmotes(state.profile);
+  const textEmotes = allEmotes.filter((e) => e.kind === 'text');   // quick-chat messages
+  const stickerEmotes = allEmotes.filter((e) => e.kind !== 'text'); // the 4 faces + equipped visual
 
   return (
     <>
+      <View pointerEvents="none" style={styles.emoteTop}>
+        {theirs ? <TransientCallout key={`opp-${theirs.n}`} emoteId={theirs.emoteId} /> : null}
+      </View>
+      <View pointerEvents="none" style={styles.emoteBottom}>
+        {mine ? <TransientCallout key={`you-${mine.n}`} emoteId={mine.emoteId} /> : null}
+      </View>
+
       {!hideFab ? (
         <Pressable
           style={[styles.emoteFab, fab === 'top-right' ? styles.emoteFabTop : styles.emoteFabBottom]}
           onPress={() => setOpen(true)}
         >
-          <Ionicons name="happy" size={26} color="#06131F" />
+          <Ionicons name="chatbubble-ellipses" size={24} color="#06131F" />
         </Pressable>
       ) : null}
 
@@ -685,10 +831,27 @@ function EmoteLayer({ state, actions, fab = 'bottom-right', hideFab, externalOpe
             }}
             onPress={() => {}}
           >
-            <View style={{ width: 42, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: 'center', marginBottom: 14 }} />
-            <Text style={{ color: theme.text, fontWeight: '900', fontSize: 15, textAlign: 'center', marginBottom: 16 }}>{t('emote.send')}</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 16 }}>
-              {emotes.map((e) => (
+            <View style={{ width: 42, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: 'center', marginBottom: 16 }} />
+
+            {/* Quick-chat text messages (no emoji — just text, Clash-Royale style) */}
+            <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '800', letterSpacing: 0.5, marginBottom: 9, marginLeft: 2 }}>{t('emote.quickChat')}</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
+              {textEmotes.map((e) => (
+                <Pressable
+                  key={e.id}
+                  onPress={() => { actions.sendEmote(e.id); setOpen(false); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.bg, borderRadius: 22, paddingVertical: 11, paddingHorizontal: 16, borderWidth: 1.5, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip }}
+                >
+                  <Ionicons name="chatbubble-ellipses" size={14} color={theme.primary} />
+                  <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13.5 }}>{e.phrase}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {/* Character emotes (smiling / crying / angry / OK) + any equipped visual emotes */}
+            <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '800', letterSpacing: 0.5, marginBottom: 10, marginLeft: 2 }}>{t('emote.faces')}</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 14 }}>
+              {stickerEmotes.map((e) => (
                 <Pressable
                   key={e.id}
                   onPress={() => { actions.sendEmote(e.id); setOpen(false); }}
@@ -704,7 +867,6 @@ function EmoteLayer({ state, actions, fab = 'bottom-right', hideFab, externalOpe
                 </Pressable>
               ))}
             </View>
-            <Text style={styles.emoteHint}>{t('emote.moreInStore')}</Text>
           </Pressable>
         </Pressable>
       </Modal>
@@ -931,49 +1093,95 @@ function arenaColor(name: string): string {
   return ARENA_DATA.find((a) => a.name === name)?.color ?? theme.primary;
 }
 
-// Animated arena crest (Clash Royale-style): floating emblem, glow, slow spinning
-// dashed ring. Tap → arenas screen.
-function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon: string }; trophies: number; onPress: () => void }) {
-  const float = useRef(new Animated.Value(0)).current;
-  const spin = useRef(new Animated.Value(0)).current;
+// Soft warm sunlit haze behind the arena — drifting fog so the arena
+// stands out from the background (low opacity, non-distracting).
+function ArenaHaze() {
+  const drift = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.loop(
+    const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(float, { toValue: 1, duration: 1900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(float, { toValue: 0, duration: 1900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(drift, { toValue: 1, duration: 9000, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(drift, { toValue: 0, duration: 9000, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
       ]),
-    ).start();
-    Animated.loop(Animated.timing(spin, { toValue: 1, duration: 11000, easing: Easing.linear, useNativeDriver: true })).start();
-  }, [float, spin]);
-  const ty = float.interpolate({ inputRange: [0, 1], outputRange: [0, -12] });
-  const rot = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-  const color = arenaColor(arena.name);
-  const tier = ARENA_DATA.find((a) => trophies >= a.min && trophies <= a.max) ?? ARENA_DATA[ARENA_DATA.length - 1]!;
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [drift]);
+  const tx = drift.interpolate({ inputRange: [0, 1], outputRange: [-12, 12] });
   return (
-    <Pressable onPress={onPress} style={{ alignItems: 'center', marginVertical: 6 }}>
-      <View pointerEvents="none" style={{ position: 'absolute', width: 230, height: 230, borderRadius: 115, backgroundColor: color, opacity: 0.13, top: 0 }} />
-      <Animated.View style={{ transform: [{ translateY: ty }], alignItems: 'center' }}>
-        <Animated.View pointerEvents="none" style={{ position: 'absolute', top: -8, width: 184, height: 184, borderRadius: 92, borderWidth: 2, borderColor: color + '55', borderStyle: 'dashed', transform: [{ rotate: rot }] }} />
-        <View style={{ width: 156, height: 156, borderRadius: 78, backgroundColor: theme.card, borderWidth: 4, borderColor: color, alignItems: 'center', justifyContent: 'center', shadowColor: color, shadowOpacity: 0.6, shadowRadius: 20, shadowOffset: { width: 0, height: 0 }, elevation: 14 }}>
-          <View style={{ width: 128, height: 128, borderRadius: 64, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: color + '55', overflow: 'hidden' }}>
-            <Image source={tier.img} style={{ width: 128, height: 128 }} resizeMode="cover" />
-          </View>
-        </View>
-      </Animated.View>
-      <Text style={{ color: theme.text, fontSize: 19, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5, marginTop: 16 }}>{arena.name}</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 5, marginTop: 6, borderWidth: 1, borderColor: color + '66' }}>
-        <Text style={{ fontSize: 14 }}>🏆</Text>
-        <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 16 }}>{trophies}</Text>
+    <Animated.View pointerEvents="none" style={{ position: 'absolute', top: -6, width: 330, height: 210, transform: [{ translateX: tx }] }}>
+      <Svg width="100%" height="100%">
+        <Defs>
+          <RadialGradient id="haze" cx="50%" cy="50%" r="50%">
+            <Stop offset="0" stopColor="#EAF6C4" stopOpacity={0.22} />
+            <Stop offset="1" stopColor="#EAF6C4" stopOpacity={0} />
+          </RadialGradient>
+          <RadialGradient id="hazeLight" cx="50%" cy="50%" r="50%">
+            <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.16} />
+            <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Circle cx="38%" cy="56%" r={86} fill="url(#haze)" />
+        <Circle cx="64%" cy="46%" r={74} fill="url(#haze)" />
+        <Circle cx="52%" cy="64%" r={96} fill="url(#haze)" />
+        <Circle cx="34%" cy="34%" r={60} fill="url(#hazeLight)" />
+      </Svg>
+    </Animated.View>
+  );
+}
+
+// Arena crest (Clash-Royale-style): the cut-out isometric arena sits planted with a
+// contact shadow + drifting haze behind it + a nameplate below. Tap → arenas screen.
+function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon: string }; trophies: number; onPress: () => void }) {
+  const tier = ARENA_DATA.find((a) => trophies >= a.min && trophies <= a.max) ?? ARENA_DATA[ARENA_DATA.length - 1]!;
+  const color = arenaColor(arena.name);
+  return (
+    <Pressable onPress={onPress} style={{ marginVertical: 6, alignItems: 'center' }}>
+      {/* Planted top-view arena (Clash-Royale board): NO float / NO bob. The shadow is the
+          arena's OWN silhouette cast down + to the sides (left/right/bottom) so it reads as
+          seated on the ground — not a single ellipse directly beneath (that looked airborne). */}
+      <View style={{ alignItems: 'center', justifyContent: 'flex-end' }}>
+        <ArenaHaze />
+        {/* faint wide ground darkening so the base meets the floor */}
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: 14, width: 196, height: 22, borderRadius: 11, backgroundColor: '#02030B', opacity: 0.3, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 16, shadowOffset: { width: 0, height: 2 }, transform: [{ scaleX: 1.35 }] }} />
+        <Image
+          source={tier.img}
+          resizeMode="contain"
+          style={{ width: 250, height: 218, shadowColor: '#01030B', shadowOpacity: 0.6, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }}
+        />
       </View>
-      <Text style={{ color: theme.muted, fontSize: 10.5, marginTop: 6, fontWeight: '700' }}>ARENALAR ›</Text>
+      {/* Nameplate below */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: theme.card, borderRadius: 13, borderWidth: 1.5, borderColor: color + 'AA', paddingHorizontal: 14, paddingVertical: 7, marginTop: 8 }}>
+        <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15 }} numberOfLines={1}>{arena.name}</Text>
+        <View style={{ width: 1, height: 16, backgroundColor: theme.border }} />
+        <Ionicons name="trophy" size={13} color={theme.gold} />
+        <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 14 }}>{trophies}</Text>
+      </View>
+      <Text style={{ color: theme.muted, fontSize: 10, fontWeight: '700', marginTop: 5 }}>ARENALAR ›</Text>
     </Pressable>
   );
 }
 
+// External info links (placeholders — swap for the real URLs when ready).
+const INFO_LINKS = {
+  help: 'https://crossover.gg/yardim',
+  privacy: 'https://crossover.gg/gizlilik',
+  parents: 'https://crossover.gg/ebeveyn',
+  terms: 'https://crossover.gg/kosullar',
+  founders: 'https://crossover.gg/kurucular',
+};
+const openLink = (url: string) => { Linking.openURL(url).catch(() => {}); };
+
 // ---- Settings Panel (inside hamburger menu) ----
-function SettingsPanel({ onLanguageChange }: { onLanguageChange: () => void }) {
+function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamonds }: {
+  onLanguageChange: () => void;
+  diamonds: number;
+  onChangeName: (name: string) => void;
+  onNeedDiamonds: () => void;
+}) {
   const [langPicker, setLangPicker] = useState(false);
   const [confirmLang, setConfirmLang] = useState<string | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
   const activeLang = currentLang();
   const activeName = LANGUAGES.find((l) => l.code === activeLang)?.name ?? activeLang;
 
@@ -984,6 +1192,14 @@ function SettingsPanel({ onLanguageChange }: { onLanguageChange: () => void }) {
     setLangPicker(false);
     onLanguageChange();
   };
+
+  const linkChip = {
+    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7,
+    paddingVertical: 11, paddingHorizontal: 11, borderRadius: 12,
+    backgroundColor: theme.bg, borderWidth: 1.5, borderColor: theme.border,
+    borderBottomWidth: 3, borderBottomColor: theme.cardLip,
+  };
+  const linkTxt = { color: theme.text, fontSize: 12, fontWeight: '700' as const, flex: 1 };
 
   return (
     <View style={{ padding: 14 }}>
@@ -996,35 +1212,75 @@ function SettingsPanel({ onLanguageChange }: { onLanguageChange: () => void }) {
         <Ionicons name="chevron-down" size={18} color={theme.muted} />
       </Pressable>
 
-      <Modal visible={langPicker} transparent animationType="fade" onRequestClose={() => setLangPicker(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 40 }}>
-          <View style={{ backgroundColor: theme.card, borderRadius: 16, borderWidth: 1, borderColor: theme.border, padding: 16 }}>
-            <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900', marginBottom: 12, textAlign: 'center' }}>{t('settings.language')}</Text>
-            {LANGUAGES.map((lang) => (
-              <Pressable
-                key={lang.code}
-                onPress={() => {
-                  if (lang.code === activeLang) { setLangPicker(false); return; }
-                  setConfirmLang(lang.code);
-                }}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 12,
-                  borderRadius: 10, backgroundColor: lang.code === activeLang ? theme.primary + '22' : 'transparent',
-                  borderWidth: lang.code === activeLang ? 1 : 0, borderColor: theme.primary,
-                  marginBottom: 4,
-                }}
-              >
-                <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{lang.name}</Text>
-                {lang.code === activeLang ? <Ionicons name="checkmark" size={18} color={theme.primary} /> : null}
-              </Pressable>
-            ))}
-            <View style={{ height: 8 }} />
-            <Pressable onPress={() => setLangPicker(false)} style={{ alignItems: 'center', paddingVertical: 10 }}>
-              <Text style={{ color: theme.muted, fontWeight: '700' }}>{t('settings.cancel')}</Text>
-            </Pressable>
-          </View>
+      {/* Ad Değiştir (1000 elmas) */}
+      <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '700', marginTop: 16, marginBottom: 8 }}>AD</Text>
+      <Pressable
+        onPress={() => { if (diamonds < 1000) onNeedDiamonds(); else setRenameOpen(true); }}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.bg, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 14 }}
+      >
+        <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>Ad Değiştir</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 14 }}>1000</Text>
+          <GemIcon size={14} />
         </View>
-      </Modal>
+      </Pressable>
+
+      <ChangeNameModal
+        visible={renameOpen}
+        diamonds={diamonds}
+        onClose={() => setRenameOpen(false)}
+        onConfirm={(newName) => { onChangeName(newName); setRenameOpen(false); }}
+      />
+
+      {/* ── Yardım & Bilgiler — framed link chips ── */}
+      <View style={{ height: 1, backgroundColor: theme.border, marginTop: 22, marginBottom: 14 }} />
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Pressable style={[linkChip, { flex: 1 }]} onPress={() => openLink(INFO_LINKS.help)}>
+          <Ionicons name="help-circle-outline" size={15} color={theme.muted} />
+          <Text style={linkTxt} numberOfLines={1}>Yardım ve Bilgiler</Text>
+        </Pressable>
+        <Pressable style={[linkChip, { flex: 1 }]} onPress={() => openLink(INFO_LINKS.privacy)}>
+          <Ionicons name="shield-checkmark-outline" size={15} color={theme.muted} />
+          <Text style={linkTxt} numberOfLines={1}>Gizlilik</Text>
+        </Pressable>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+        <Pressable style={[linkChip, { flex: 1 }]} onPress={() => openLink(INFO_LINKS.parents)}>
+          <Ionicons name="people-outline" size={15} color={theme.muted} />
+          <Text style={linkTxt} numberOfLines={1}>Ebeveyn Kılavuzu</Text>
+        </Pressable>
+        <Pressable style={[linkChip, { flex: 1 }]} onPress={() => openLink(INFO_LINKS.terms)}>
+          <Ionicons name="document-text-outline" size={15} color={theme.muted} />
+          <Text style={linkTxt} numberOfLines={1}>Hizmet Koşulları</Text>
+        </Pressable>
+      </View>
+      <Pressable style={[linkChip, { marginTop: 8, justifyContent: 'center' }]} onPress={() => openLink(INFO_LINKS.founders)}>
+        <Ionicons name="star-outline" size={15} color={theme.accent} />
+        <Text style={[linkTxt, { flex: 0, color: theme.text, fontWeight: '800', letterSpacing: 0.5 }]}>Kurucular</Text>
+      </Pressable>
+
+      <PopupCard visible={langPicker} title={t('settings.language')} icon="language" onClose={() => setLangPicker(false)}>
+        <ScrollView style={{ maxHeight: 430 }} contentContainerStyle={{ padding: 12 }} showsVerticalScrollIndicator={false}>
+          {LANGUAGES.map((lang) => (
+            <Pressable
+              key={lang.code}
+              onPress={() => {
+                if (lang.code === activeLang) { setLangPicker(false); return; }
+                doChangeLang(lang.code); // apply immediately (the confirm modal sat behind the picker → unselectable)
+              }}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, paddingHorizontal: 12,
+                borderRadius: 10, backgroundColor: lang.code === activeLang ? theme.primary + '22' : theme.bg,
+                borderWidth: 1.5, borderColor: lang.code === activeLang ? theme.primary : theme.border,
+                marginBottom: 6,
+              }}
+            >
+              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700', flex: 1 }}>{lang.name}</Text>
+              {lang.code === activeLang ? <Ionicons name="checkmark" size={18} color={theme.primary} /> : null}
+            </Pressable>
+          ))}
+        </ScrollView>
+      </PopupCard>
 
       <Modal visible={confirmLang !== null} transparent animationType="fade" onRequestClose={() => setConfirmLang(null)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 40 }}>
@@ -1054,45 +1310,152 @@ function SettingsPanel({ onLanguageChange }: { onLanguageChange: () => void }) {
   );
 }
 
-/** Full-bleed rectangular football pitch — fills the whole screen behind content. */
-function FootballField() {
-  const w = 300;
-  const h = 440;
-  const s = '#41538F'; // line color — slightly lighter than the navy bg, reads as a real pitch
-  const sw = 1.4;
-  const o = 0.55;
+// Centered "letter" popup shell — gold-framed card, title + top-right X, scrollable
+// body. Everything that used to open fullscreen (leaderboard, match history) now uses
+// this so it pops in the middle of the screen instead of taking it over.
+function PopupCard({ visible, title, icon, onClose, children }: {
+  visible: boolean; title: string; icon: IoniconName; onClose: () => void; children: ReactNode;
+}) {
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      <Svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid slice">
-        <Rect x={10} y={10} width={w - 20} height={h - 20} rx={4} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <Line x1={10} y1={h / 2} x2={w - 10} y2={h / 2} stroke={s} strokeWidth={sw} opacity={o} />
-        <Circle cx={w / 2} cy={h / 2} r={40} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <Circle cx={w / 2} cy={h / 2} r={3} fill={s} opacity={o} />
-        <Rect x={70} y={10} width={w - 140} height={65} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <Rect x={105} y={10} width={w - 210} height={28} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <SvgPath d={`M ${w / 2 - 30} 75 A 30 30 0 0 0 ${w / 2 + 30} 75`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <Circle cx={w / 2} cy={58} r={2.5} fill={s} opacity={o} />
-        <Rect x={70} y={h - 75} width={w - 140} height={65} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <Rect x={105} y={h - 38} width={w - 210} height={28} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <SvgPath d={`M ${w / 2 - 30} ${h - 75} A 30 30 0 0 1 ${w / 2 + 30} ${h - 75}`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <Circle cx={w / 2} cy={h - 58} r={2.5} fill={s} opacity={o} />
-        <SvgPath d="M 10 18 A 8 8 0 0 0 18 10" stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <SvgPath d={`M ${w - 10} 18 A 8 8 0 0 1 ${w - 18} 10`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <SvgPath d={`M 10 ${h - 18} A 8 8 0 0 1 18 ${h - 10}`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-        <SvgPath d={`M ${w - 10} ${h - 18} A 8 8 0 0 0 ${w - 18} ${h - 10}`} stroke={s} strokeWidth={sw} fill="none" opacity={o} />
-      </Svg>
-    </View>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 18 }}>
+        {/* Backdrop catches outside taps. It is a SIBLING of the card (not a parent),
+            so it never swallows the inner ScrollView's scroll gestures. */}
+        <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim }]} onPress={onClose} />
+        <View style={{ backgroundColor: theme.card, borderRadius: 22, borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark, maxHeight: '80%', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 20 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 11 }}>
+            <Ionicons name={icon} size={20} color={theme.accent} />
+            <Text style={[{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 17, marginLeft: 8, flex: 1 }, engrave('sm')]} numberOfLines={1}>{title}</Text>
+            <Pressable onPress={onClose} hitSlop={10} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: theme.panelInnerFill, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.border }}>
+              <Ionicons name="close" size={18} color={theme.text} />
+            </Pressable>
+          </View>
+          <View style={{ height: 1, backgroundColor: theme.border }} />
+          {children}
+        </View>
+      </View>
+    </Modal>
   );
 }
 
-export function HomeScreen({ actions, state, onLanguageChange }: Props) {
+export function LeaderboardModal({ visible, entries, onClose }: { visible: boolean; entries: GameState['leaderboard']; onClose: () => void }) {
+  return (
+    <PopupCard visible={visible} title={t('menu.leaderboard')} icon="podium" onClose={onClose}>
+      <ScrollView style={{ maxHeight: 460 }} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10 }} showsVerticalScrollIndicator={false}>
+        {entries.length === 0 ? (
+          <View style={{ alignItems: 'center', paddingVertical: 36 }}><ActivityIndicator color={theme.primary} /></View>
+        ) : entries.map((entry) => (
+          <View key={entry.rank} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: theme.border }}>
+            <Text style={{ color: entry.rank <= 3 ? ['#FFD700', '#C0C0C0', '#CD7F32'][entry.rank - 1] : theme.muted, fontWeight: '900', fontSize: 15, width: 28 }}>{entry.rank}</Text>
+            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14, flex: 1 }} numberOfLines={1}>{entry.displayName}</Text>
+            <Ionicons name="trophy" size={13} color={theme.accent} />
+            <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 14 }}>{entry.trophies}</Text>
+          </View>
+        ))}
+      </ScrollView>
+    </PopupCard>
+  );
+}
+
+export function MatchHistoryModal({ visible, history, myName, onClose }: { visible: boolean; history: GameState['matchHistory']; myName: string; onClose: () => void }) {
+  return (
+    <PopupCard visible={visible} title={t('menu.matchHistory')} icon="time" onClose={onClose}>
+      <ScrollView style={{ maxHeight: 500 }} contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 12 }} showsVerticalScrollIndicator={false}>
+        {history.length === 0 ? (
+          <View style={{ alignItems: 'center', paddingVertical: 36 }}>
+            <Ionicons name="time-outline" size={42} color={theme.border} />
+            <Text style={[styles.muted, { marginTop: 8 }]}>{t('matchHistory.empty')}</Text>
+          </View>
+        ) : history.map((m) => {
+          const myRounds = m.rounds.filter((r) => r.answeredBy === myName);
+          const oppRounds = m.rounds.filter((r) => r.answeredBy !== myName);
+          const pArena = arenaForTrophies(m.playerTrophies);
+          const oArena = arenaForTrophies(m.opponentTrophies);
+          const borderColor = m.won ? theme.primary : theme.danger;
+          const date = new Date(m.playedAt);
+          const dateStr = `${date.getDate().toString().padStart(2, '0')}.${(date.getMonth() + 1).toString().padStart(2, '0')}.${date.getFullYear()}`;
+          return (
+            <View key={m.id} style={{ backgroundColor: theme.panelInnerFill, borderRadius: 14, borderWidth: 1.5, borderColor, marginBottom: 12, overflow: 'hidden' }}>
+              {/* result + score + mode + date */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 7, backgroundColor: m.won ? 'rgba(39,229,139,0.10)' : 'rgba(255,84,104,0.10)' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name={m.won ? 'trophy' : 'close-circle'} size={15} color={m.won ? theme.accent : theme.danger} />
+                  <Text style={{ color: m.won ? theme.primary : theme.danger, fontWeight: '900', fontSize: 12 }}>{m.won ? t('matchHistory.won') : t('matchHistory.lost')}</Text>
+                </View>
+                <Text style={{ color: theme.text, fontSize: 20, fontWeight: '900', letterSpacing: 2 }}>{m.playerScore} - {m.opponentScore}</Text>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ color: theme.muted, fontSize: 8 }}>{MODE_LABEL((m.gameMode as GameMode) ?? 'team-team')}</Text>
+                  <Text style={{ color: theme.muted, fontSize: 8 }}>{dateStr}</Text>
+                </View>
+              </View>
+              {/* head-to-head */}
+              <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 }}>
+                <View style={{ flex: 1, alignItems: 'center' }}>
+                  <Text style={{ color: theme.text, fontWeight: '900', fontSize: 14 }} numberOfLines={1}>{m.playerName || myName}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                    <Ionicons name={pArena.icon} size={11} color={pArena.color} />
+                    <Text style={{ color: pArena.color, fontSize: 9, fontWeight: '700' }}>{m.playerTrophies}</Text>
+                  </View>
+                </View>
+                <View style={{ justifyContent: 'center', paddingHorizontal: 8 }}><Text style={{ color: theme.muted, fontSize: 11, fontWeight: '900' }}>VS</Text></View>
+                <View style={{ flex: 1, alignItems: 'center' }}>
+                  <Text style={{ color: theme.text, fontWeight: '900', fontSize: 14 }} numberOfLines={1}>{m.opponentName}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                    <Ionicons name={oArena.icon} size={11} color={oArena.color} />
+                    <Text style={{ color: oArena.color, fontSize: 9, fontWeight: '700' }}>{m.opponentTrophies}</Text>
+                  </View>
+                </View>
+              </View>
+              {/* who answered which player (two club logos + player photo/name) */}
+              <View style={{ flexDirection: 'row', paddingHorizontal: 10, paddingTop: 4, paddingBottom: 12, gap: 6 }}>
+                <View style={{ flex: 1 }}>
+                  {myRounds.length > 0 ? myRounds.map((r, i) => (
+                    <View key={i} style={{ backgroundColor: theme.bg, borderRadius: 10, padding: 7, marginBottom: 4, borderLeftWidth: 3, borderLeftColor: theme.primary }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                        <ClubLogo uri={r.teamALogo} name={r.teamA} size={17} />
+                        <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
+                        <ClubLogo uri={r.teamBLogo} name={r.teamB} size={17} />
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <PlayerPhoto uri={r.playerImageUrl} size={22} />
+                        <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 10.5, flex: 1 }} numberOfLines={1}>{r.player}</Text>
+                      </View>
+                    </View>
+                  )) : <Text style={{ color: theme.muted, fontSize: 10, textAlign: 'center', marginTop: 8 }}>—</Text>}
+                </View>
+                <View style={{ width: 1, backgroundColor: theme.border, marginVertical: 4 }} />
+                <View style={{ flex: 1 }}>
+                  {oppRounds.length > 0 ? oppRounds.map((r, i) => (
+                    <View key={i} style={{ backgroundColor: theme.bg, borderRadius: 10, padding: 7, marginBottom: 4, borderLeftWidth: 3, borderLeftColor: theme.danger }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                        <ClubLogo uri={r.teamALogo} name={r.teamA} size={17} />
+                        <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
+                        <ClubLogo uri={r.teamBLogo} name={r.teamB} size={17} />
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <PlayerPhoto uri={r.playerImageUrl} size={22} />
+                        <Text style={{ color: theme.danger, fontWeight: '800', fontSize: 10.5, flex: 1 }} numberOfLines={1}>{r.player}</Text>
+                      </View>
+                    </View>
+                  )) : <Text style={{ color: theme.muted, fontSize: 10, textAlign: 'center', marginTop: 8 }}>—</Text>}
+                </View>
+              </View>
+            </View>
+          );
+        })}
+      </ScrollView>
+    </PopupCard>
+  );
+}
+
+export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory }: Props) {
   const [name, setName] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [scope, setScope] = useState<Scope>({ type: 'all' });
   const [mode, setMode] = useState<GameMode>('team-team');
   const [picker, setPicker] = useState<Picker>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [menuSub, setMenuSub] = useState<'leaderboard' | 'matchHistory' | 'settings' | null>(null);
+  const [menuSub, setMenuSub] = useState<'settings' | null>(null);
   const [botOpen, setBotOpen] = useState(false);
   const opts: GameOptions = { scope, mode };
   const profile = state.profile;
@@ -1100,16 +1463,16 @@ export function HomeScreen({ actions, state, onLanguageChange }: Props) {
 
   return (
     <Screen>
-      {/* Top bar: profile avatar (→ profile) · diamonds · leaderboard */}
+      {/* Top bar: profile avatar (→ profile) · leaderboard (gems live in the global resource bar) */}
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-        <Pressable onPress={actions.openProfile} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.card, borderRadius: 22, paddingVertical: 4, paddingLeft: 4, paddingRight: 12, borderWidth: 1, borderColor: theme.border, maxWidth: '60%' }}>
-          <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.primary }}>
+        <Pressable onPress={actions.openProfile} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.card, borderRadius: 22, paddingVertical: 4, paddingLeft: 4, paddingRight: 12, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, maxWidth: '60%', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: 4 }}>
+          <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.primary, shadowColor: theme.primary, shadowOpacity: 0.5, shadowRadius: 5, shadowOffset: { width: 0, height: 0 } }}>
             <Ionicons name="person" size={18} color={theme.primary} />
           </View>
-          <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13 }} numberOfLines={1}>{profile?.displayName ?? 'Oyuncu'}</Text>
+          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13 }} numberOfLines={1}>{profile?.displayName ?? 'Oyuncu'}</Text>
         </Pressable>
         <View style={{ flex: 1 }} />
-        <Pressable onPress={() => setMenuOpen(true)} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.border }}>
+        <Pressable onPress={() => setMenuOpen(true)} style={{ width: 38, height: 38, borderRadius: 14, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip }}>
           <Ionicons name="menu" size={20} color={theme.text} />
         </Pressable>
       </View>
@@ -1137,7 +1500,7 @@ export function HomeScreen({ actions, state, onLanguageChange }: Props) {
             {/* Header */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 16, paddingBottom: 10 }}>
               <Text style={{ color: theme.text, fontSize: 18, fontWeight: '900' }}>
-                {menuSub === 'leaderboard' ? t('menu.leaderboard') : menuSub === 'matchHistory' ? t('menu.matchHistory') : menuSub === 'settings' ? t('settings.title') : t('menu.title')}
+                {menuSub === 'settings' ? t('settings.title') : t('menu.title')}
               </Text>
               <Pressable onPress={() => { if (menuSub) setMenuSub(null); else setMenuOpen(false); }} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name={menuSub ? 'arrow-back' : 'close'} size={18} color={theme.text} />
@@ -1148,107 +1511,58 @@ export function HomeScreen({ actions, state, onLanguageChange }: Props) {
             {/* Content */}
             {menuSub === null ? (
               <View style={{ padding: 12 }}>
-                <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, paddingHorizontal: 14, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => { setMenuSub('leaderboard'); actions.openLeaderboard(); }}>
-                  <Ionicons name="podium" size={22} color={theme.accent} />
+                <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => { setMenuOpen(false); setMenuSub(null); onOpenLeaderboard?.(); }}>
                   <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{t('menu.leaderboard')}</Text>
                   <View style={{ flex: 1 }} />
                   <Ionicons name="chevron-forward" size={18} color={theme.muted} />
                 </Pressable>
                 <View style={{ height: 8 }} />
-                <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, paddingHorizontal: 14, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => { setMenuSub('matchHistory'); actions.openMatchHistory(); }}>
-                  <Ionicons name="time" size={22} color={theme.primary} />
+                <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => { setMenuOpen(false); setMenuSub(null); onOpenMatchHistory?.(); }}>
                   <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{t('menu.matchHistory')}</Text>
                   <View style={{ flex: 1 }} />
                   <Ionicons name="chevron-forward" size={18} color={theme.muted} />
                 </Pressable>
                 <View style={{ height: 8 }} />
-                <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, paddingHorizontal: 14, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => setMenuSub('settings')}>
-                  <Ionicons name="settings" size={22} color={theme.muted} />
+                <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => setMenuSub('settings')}>
                   <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{t('settings.title')}</Text>
                   <View style={{ flex: 1 }} />
                   <Ionicons name="chevron-forward" size={18} color={theme.muted} />
                 </Pressable>
               </View>
-            ) : menuSub === 'leaderboard' ? (
-              <ScrollView style={{ maxHeight: 400, paddingHorizontal: 14, paddingTop: 8 }} showsVerticalScrollIndicator={false}>
-                {state.leaderboard.length === 0 ? (
-                  <Text style={[styles.muted, { textAlign: 'center', paddingVertical: 30 }]}>{t('leaderboard.empty')}</Text>
-                ) : state.leaderboard.map((entry) => (
-                  <View key={entry.rank} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: theme.border }}>
-                    <Text style={{ color: entry.rank <= 3 ? ['#FFD700','#C0C0C0','#CD7F32'][entry.rank-1] : theme.muted, fontWeight: '900', fontSize: 14, width: 26 }}>{entry.rank}</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }} numberOfLines={1}>{entry.displayName}</Text>
-                    </View>
-                    <Ionicons name="trophy" size={12} color={theme.accent} />
-                    <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 13 }}>{entry.trophies}</Text>
-                  </View>
-                ))}
-                <View style={{ height: 16 }} />
-              </ScrollView>
-            ) : menuSub === 'matchHistory' ? (
-              <ScrollView style={{ maxHeight: 400, paddingHorizontal: 14, paddingTop: 8 }} showsVerticalScrollIndicator={false}>
-                {state.matchHistory.length === 0 ? (
-                  <Text style={[styles.muted, { textAlign: 'center', paddingVertical: 30 }]}>{t('matchHistory.empty')}</Text>
-                ) : state.matchHistory.map((m) => {
-                  const date = new Date(m.playedAt);
-                  const dateStr = `${date.getDate().toString().padStart(2,'0')}.${(date.getMonth()+1).toString().padStart(2,'0')}`;
-                  return (
-                    <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
-                      <Ionicons name={m.won ? 'trophy' : 'close-circle'} size={16} color={m.won ? theme.primary : theme.danger} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>{m.playerName || '?'} vs {m.opponentName}</Text>
-                      </View>
-                      <Text style={{ color: theme.text, fontWeight: '900', fontSize: 14 }}>{m.playerScore}-{m.opponentScore}</Text>
-                      <Text style={{ color: theme.muted, fontSize: 10 }}>{dateStr}</Text>
-                    </View>
-                  );
-                })}
-                <View style={{ height: 16 }} />
-              </ScrollView>
-            ) : menuSub === 'settings' ? (
-              <SettingsPanel onLanguageChange={() => { setMenuOpen(false); setMenuSub(null); onLanguageChange?.(); }} />
-            ) : null}
+            ) : (
+              <SettingsPanel
+                onLanguageChange={() => { setMenuOpen(false); setMenuSub(null); onLanguageChange?.(); }}
+                diamonds={profile?.diamonds ?? 0}
+                onChangeName={(newName) => actions.changeName(newName)}
+                onNeedDiamonds={() => { setMenuOpen(false); setMenuSub(null); onGoToStore?.('diamonds'); }}
+              />
+            )}
           </View>
         </View>
       </Modal>
 
       {/* Bot difficulty picker */}
-      <Modal visible={botOpen} transparent animationType="fade" onRequestClose={() => setBotOpen(false)}>
-        <Pressable style={styles.modalBg} onPress={() => setBotOpen(false)}>
-          <Pressable style={styles.modalCard} onPress={() => {}}>
-            <Text style={styles.modalTitle}>{t('home.solo')}</Text>
+      <GameModal visible={botOpen} onClose={() => setBotOpen(false)} title={t('home.solo')} icon="game-controller">
+        {/* Mode & scope chips */}
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <Chip icon={MODE_ICON[mode]} label={MODE_LABEL(mode)} onPress={() => setPicker('mode')} />
+          <Chip icon="globe-outline" label={scopeLabel(scope)} onPress={() => setPicker('scopeType')} />
+        </View>
 
-            {/* Mode & scope chips */}
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-              <Chip icon={MODE_ICON[mode]} label={MODE_LABEL(mode)} onPress={() => setPicker('mode')} />
-              <Chip icon="globe-outline" label={scopeLabel(scope)} onPress={() => setPicker('scopeType')} />
-            </View>
-
-            <Text style={[styles.muted, { marginBottom: 10 }]}>Zorluk seç</Text>
-            {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
-              <Pressable
-                key={d}
-                onPress={() => {
-                  setDifficulty(d);
-                  setBotOpen(false);
-                  actions.createSolo(playerName, { scope, mode, difficulty: d });
-                }}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 14,
-                  borderBottomWidth: 1, borderBottomColor: theme.border,
-                }}
-              >
-                <Ionicons
-                  name={d === 'easy' ? 'happy-outline' : d === 'medium' ? 'flash-outline' : 'skull-outline'}
-                  size={20}
-                  color={d === 'easy' ? theme.primary : d === 'medium' ? theme.accent : theme.danger}
-                />
-                <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{DIFF_LABEL(d)}</Text>
-              </Pressable>
-            ))}
-          </Pressable>
-        </Pressable>
-      </Modal>
+        {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => {
+          const c = d === 'easy' ? theme.primary : d === 'medium' ? theme.accent : theme.danger;
+          return (
+            <Pressable
+              key={d}
+              onPress={() => { setDifficulty(d); setBotOpen(false); actions.createSolo(playerName, { ...opts, difficulty: d }); }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, paddingHorizontal: 14, borderRadius: 12, backgroundColor: theme.panelInnerFill, borderWidth: 1.5, borderColor: theme.border, borderLeftWidth: 4, borderLeftColor: c }}
+            >
+              <Ionicons name={d === 'easy' ? 'happy' : d === 'medium' ? 'flash' : 'skull'} size={20} color={c} />
+              <Text style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-ExtraBold' }}>{DIFF_LABEL(d)}</Text>
+            </Pressable>
+          );
+        })}
+      </GameModal>
 
       <PickerModal
         picker={picker}
@@ -1471,26 +1785,28 @@ export function LobbyScreen({ state, actions }: Props) {
   const needConfirm = !hasBot && room.players.length === 2;
   return (
     <Screen scroll>
-      {!hideCode ? (
-        <>
-          <Text style={styles.label}>{t('lobby.code')}</Text>
-          <Text style={styles.code}>{room.code}</Text>
-          <Text style={styles.muted}>{t('lobby.shareCode')}</Text>
-        </>
-      ) : hasBot ? (
-        <>
-          <Ionicons name="game-controller" size={44} color={theme.accent} style={{ alignSelf: 'center' }} />
-          <Text style={styles.h1}>{t('lobby.botMatch')}</Text>
-        </>
-      ) : (
-        <>
-          <Ionicons name="flash" size={44} color={theme.primary} style={{ alignSelf: 'center' }} />
-          <Text style={styles.h1}>{t('home.quickMatch')}</Text>
-        </>
-      )}
-      <View style={styles.divider} />
+      <GamePanel hero tint={theme.frameGold} bodyStyle={{ alignItems: 'center', paddingVertical: 18 }}>
+        {!hideCode ? (
+          <>
+            <Text style={styles.label}>{t('lobby.code')}</Text>
+            <Text style={[styles.code, engrave('lg')]}>{room.code}</Text>
+            <Text style={styles.muted}>{t('lobby.shareCode')}</Text>
+          </>
+        ) : hasBot ? (
+          <>
+            <Ionicons name="game-controller" size={44} color={theme.accent} />
+            <Text style={styles.h1}>{t('lobby.botMatch')}</Text>
+          </>
+        ) : (
+          <>
+            <Ionicons name="flash" size={44} color={theme.primary} style={{ alignSelf: 'center' }} />
+            <Text style={styles.h1}>{t('home.quickMatch')}</Text>
+          </>
+        )}
+      </GamePanel>
+      <View style={{ height: 14 }} />
       {room.players.map((p) => (
-        <View key={p.id} style={styles.lobbyRow}>
+        <GamePanel key={p.id} compact accentStripe={p.isHost ? theme.accent : theme.primary} style={{ marginBottom: 8 }} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingLeft: 14 }}>
           <Ionicons
             name={p.name === 'Bot' ? 'game-controller' : p.isHost ? 'star' : 'person'}
             size={18}
@@ -1500,9 +1816,9 @@ export function LobbyScreen({ state, actions }: Props) {
             {p.name}
             {p.id === room.youId ? t('lobby.youSuffix') : ''}
           </Text>
-        </View>
+        </GamePanel>
       ))}
-      <View style={{ height: 24 }} />
+      <View style={{ height: 18 }} />
       {room.players.length < 2 ? (
         <View style={styles.center}>
           <ActivityIndicator color={theme.primary} />
@@ -1664,11 +1980,13 @@ export function CountdownScreen({ state }: Props) {
   const scale = a.interpolate({ inputRange: [0, 1], outputRange: [2.4, 1] });
   return (
     <Screen>
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <View style={{ width: 168, height: 168, borderRadius: 84, borderWidth: 5, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.card, shadowColor: theme.primary, shadowOpacity: 0.6, shadowRadius: 26, shadowOffset: { width: 0, height: 0 }, elevation: 16 }}>
-          <Animated.Text style={{ color: theme.text, fontSize: n > 0 ? 92 : 52, fontFamily: 'Poppins-Black', transform: [{ scale }], opacity: a }}>
-            {n > 0 ? n : 'GO!'}
-          </Animated.Text>
+      <View style={styles.center}>
+        <View style={{ width: 172, height: 172, borderRadius: 86, borderWidth: 5, borderColor: theme.primary, borderTopColor: '#7CF3BC', borderBottomColor: theme.primaryDark, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.panelInk, shadowColor: theme.primary, shadowOpacity: 0.65, shadowRadius: 28, shadowOffset: { width: 0, height: 0 }, elevation: 18 }}>
+          <View style={{ width: 140, height: 140, borderRadius: 70, backgroundColor: theme.card, borderWidth: 2, borderColor: theme.primary + '55', alignItems: 'center', justifyContent: 'center' }}>
+            <Animated.Text style={{ color: theme.text, fontSize: n > 0 ? 88 : 50, fontFamily: 'Poppins-Black', transform: [{ scale }], opacity: a, ...engrave('lg') }}>
+              {n > 0 ? n : 'GO!'}
+            </Animated.Text>
+          </View>
         </View>
         <Text style={{ color: theme.muted, marginTop: 20, fontFamily: 'Poppins-ExtraBold', fontSize: 14, letterSpacing: 1 }}>{t('getReady')}</Text>
       </View>
@@ -1865,11 +2183,13 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
             style={{
               width: '31.5%', alignItems: 'center', gap: 7,
               backgroundColor: theme.card, borderRadius: 14,
-              borderWidth: 1, borderColor: theme.border, paddingVertical: 12, paddingHorizontal: 4,
+              borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip,
+              paddingVertical: 12, paddingHorizontal: 4,
+              shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: 4,
             }}
           >
             <ClubBadge name={c.name} size={46} logoUrl={c.logoUrl} />
-            <Text style={{ color: theme.text, fontSize: 10.5, fontWeight: '600', textAlign: 'center' }} numberOfLines={2}>
+            <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }} numberOfLines={2}>
               {c.name}
             </Text>
           </Pressable>
@@ -1946,8 +2266,8 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
           </Text>
         </Animated.View>
         <Animated.View style={{ transform: [{ scale: vsScale }], marginHorizontal: 4 }}>
-          <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: theme.accentDark }}>
-            <Text style={{ color: '#06131F', fontFamily: 'Poppins-Black', fontSize: 15 }}>VS</Text>
+          <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', borderTopWidth: 2, borderTopColor: 'rgba(255,255,255,0.55)', borderBottomWidth: 4, borderBottomColor: theme.accentDark, shadowColor: theme.accent, shadowOpacity: 0.6, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 8 }}>
+            <Text style={{ color: theme.ink, fontFamily: 'Poppins-Black', fontSize: 15, ...engrave('sm') }}>VS</Text>
           </View>
         </Animated.View>
         <Animated.View style={[styles.teamCard, { transform: [{ translateX: rightX }], opacity: reveal }]}>
@@ -2043,7 +2363,7 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
   onConfirm: (name: string) => void;
 }) {
   const [newName, setNewName] = useState('');
-  const cost = 100;
+  const cost = 1000;
   const canAfford = diamonds >= cost;
 
   useEffect(() => { if (visible) setNewName(''); }, [visible]);
@@ -2231,7 +2551,6 @@ function WeeklyCountdown() {
 export function StoreScreen({ state, actions, scrollToSection }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | null }) {
   const profile = state.profile;
   const { adsWatched, canWatch, cooldownLeft, watchAd } = useAdState();
-  const [showNameModal, setShowNameModal] = useState(false);
   const storeScrollRef = useRef<ScrollView>(null);
   const sectionYRef = useRef<Record<string, number>>({});
 
@@ -2247,10 +2566,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
   return (
     <Screen>
       <ScrollView ref={storeScrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
-        <View style={styles.center}>
-          <Ionicons name="storefront" size={32} color={theme.primary} />
-          <Text style={styles.h1}>{t('store.title')}</Text>
-        </View>
+        <ScreenHeader title={t('store.title')} icon="storefront" underline={theme.accent} />
 
         {/* Sosyal Paket */}
         <View onLayout={(e) => { sectionYRef.current['socialPack'] = e.nativeEvent.layout.y; }} />
@@ -2331,89 +2647,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
           </Pressable>
         ))}
 
-        {/* İsim değiştirme */}
-        <Text style={styles.sectionLabel}>{t('store.other')}</Text>
-        <Pressable style={styles.storeAdCard} onPress={() => setShowNameModal(true)}>
-          <Ionicons name="create-outline" size={24} color={theme.accent} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.storeAdTitle}>{t('store.changeName')}</Text>
-            <Text style={styles.muted}>{t('store.changeNameDesc')}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 13 }}>100</Text>
-            <GemIcon size={14} />
-          </View>
-        </Pressable>
-      </ScrollView>
-
-      {/* İsim değiştirme popup */}
-      <ChangeNameModal
-        visible={showNameModal}
-        diamonds={profile?.diamonds ?? 0}
-        onClose={() => setShowNameModal(false)}
-        onConfirm={(newName) => {
-          actions.changeName(newName);
-          setShowNameModal(false);
-        }}
-      />
-    </Screen>
-  );
-}
-
-// ---- Collection (emotes / loadout) ----
-export function CollectionScreen({ state, actions }: Props) {
-  const profile = state.profile;
-  const [emoteTab, setEmoteTab] = useState<'inventory' | 'collection'>('inventory');
-  const equipped = profile?.equippedEmotes ?? [];
-  const toggleEquip = (id: string) => {
-    if (equipped.includes(id)) actions.equipEmotes(equipped.filter((x) => x !== id));
-    else if (equipped.length < 3) actions.equipEmotes([...equipped, id]);
-  };
-
-  return (
-    <Screen>
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
-        <View style={styles.center}>
-          <Ionicons name="albums" size={36} color={theme.primary} />
-          <Text style={styles.h1}>Koleksiyon</Text>
-        </View>
-
-        {/* İfadeler: Envanterim / Koleksiyonum sekmeleri */}
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, marginBottom: 10 }}>
-          {(([['inventory', 'İfade Envanterim'], ['collection', 'Koleksiyonum']]) as const).map(([k, label]) => {
-            const active = emoteTab === k;
-            return (
-              <Pressable key={k} onPress={() => setEmoteTab(k)} style={{ flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 12, backgroundColor: active ? theme.primary : theme.card, borderWidth: 1, borderColor: active ? theme.primary : theme.border }}>
-                <Text style={{ color: active ? '#06131F' : theme.text, fontWeight: '800', fontSize: 13 }}>{label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {emoteTab === 'inventory' ? (
-        <>
-        <Text style={styles.sectionLabel}>MAÇ LOADOUT'U (MAX 3)</Text>
-        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 4 }}>
-          {[0, 1, 2].map((i) => {
-            const id = equipped[i];
-            return (
-              <Pressable
-                key={i}
-                onPress={() => id && toggleEquip(id)}
-                style={{
-                  flex: 1, aspectRatio: 1, borderRadius: 14, borderWidth: 2,
-                  borderStyle: id ? 'solid' : 'dashed', borderColor: id ? theme.primary : theme.border,
-                  backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                {id ? <EmoteSticker id={id} size={50} /> : <Ionicons name="add" size={28} color={theme.border} />}
-              </Pressable>
-            );
-          })}
-        </View>
-        <Text style={[styles.muted, { fontSize: 11, marginBottom: 6 }]}>Slota dokununca çıkarırsın. Aşağıdan ifade kuşan.</Text>
-
-        {/* Haftalık ifade dükkanı */}
+        {/* Haftalık ifade dükkanı (satışlar burada — koleksiyonda değil) */}
         {emoteWeeks().map(({ week, emotes }) => (
           <View key={week}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -2429,7 +2663,6 @@ export function CollectionScreen({ state, actions }: Props) {
             </View>
             {emotes.map((e) => {
               const owned = ownsEmote(profile, e.id);
-              const isEquipped = equipped.includes(e.id);
               const canAfford = (profile?.diamonds ?? 0) >= (e.premium?.price ?? 0);
               return (
                 <View key={e.id} style={styles.storeEmoteCard}>
@@ -2440,29 +2673,15 @@ export function CollectionScreen({ state, actions }: Props) {
                     <Text style={styles.storeEmoteName}>{e.premium?.name}</Text>
                     <Text style={styles.storeEmoteDesc} numberOfLines={2}>{e.premium?.desc}</Text>
                   </View>
-                  {!owned ? (
-                    <Pressable
-                      style={[styles.storeEmoteBuy, !canAfford && { opacity: 0.5 }]}
-                      onPress={() => canAfford && actions.buyEmote(e.id)}
-                    >
+                  {owned ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8 }}>
+                      <Ionicons name="checkmark-circle" size={16} color={theme.primary} />
+                      <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 12 }}>Sahipsin</Text>
+                    </View>
+                  ) : (
+                    <Pressable style={[styles.storeEmoteBuy, !canAfford && { opacity: 0.5 }]} onPress={() => canAfford && actions.buyEmote(e.id)}>
                       <Text style={styles.storeEmoteBuyText}>{e.premium?.price}</Text>
                       <GemIcon size={13} />
-                    </Pressable>
-                  ) : (
-                    <Pressable
-                      onPress={() => toggleEquip(e.id)}
-                      style={{
-                        flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 10,
-                        paddingHorizontal: 12, paddingVertical: 8,
-                        backgroundColor: isEquipped ? theme.primary : 'transparent',
-                        borderWidth: 1, borderColor: isEquipped ? theme.primary : theme.border,
-                        opacity: !isEquipped && equipped.length >= 3 ? 0.45 : 1,
-                      }}
-                    >
-                      <Ionicons name={isEquipped ? 'checkmark' : 'add'} size={14} color={isEquipped ? '#06131F' : theme.text} />
-                      <Text style={{ color: isEquipped ? '#06131F' : theme.text, fontWeight: '800', fontSize: 12 }}>
-                        {isEquipped ? 'Kuşanıldı' : 'Kuşan'}
-                      </Text>
                     </Pressable>
                   )}
                 </View>
@@ -2470,38 +2689,90 @@ export function CollectionScreen({ state, actions }: Props) {
             })}
           </View>
         ))}
-        </>
-        ) : (
-        <>
-          <Text style={styles.sectionLabel}>TÜM İFADELER</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {[...FREE_EMOTES, ...PREMIUM_EMOTES].map((e) => {
-              const owned = ownsEmote(profile, e.id);
-              return (
-                <View
-                  key={e.id}
-                  style={{
-                    width: '31.5%', alignItems: 'center', gap: 5, paddingVertical: 12,
-                    backgroundColor: theme.card, borderRadius: 14,
-                    borderWidth: 1, borderColor: owned ? theme.border : 'transparent',
-                    opacity: owned ? 1 : 0.5,
-                  }}
-                >
-                  <EmoteSticker id={e.id} size={48} />
-                  <Text style={{ color: theme.text, fontSize: 10, fontWeight: '600', textAlign: 'center' }} numberOfLines={1}>
-                    {e.premium?.name ?? e.phrase}
-                  </Text>
-                  {owned ? (
-                    <Ionicons name="checkmark-circle" size={12} color={theme.primary} />
-                  ) : (
-                    <Ionicons name="lock-closed" size={11} color={theme.muted} />
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        </>
-        )}
+      </ScrollView>
+    </Screen>
+  );
+}
+
+// ---- Collection (emotes / loadout) ----
+export function CollectionScreen({ state, actions }: Props) {
+  const profile = state.profile;
+  const equipped = profile?.equippedEmotes ?? [];
+  const toggleEquip = (id: string) => {
+    if (equipped.includes(id)) actions.equipEmotes(equipped.filter((x) => x !== id));
+    else if (equipped.length < 3) actions.equipEmotes([...equipped, id]);
+  };
+  // Only VISUAL (premium) emotes can be equipped into the 3 loadout slots — the free
+  // quick-chat + character faces are always available in matches, so they're not shown
+  // here (tapping them did nothing because the server rejects equipping free emotes).
+  const all = PREMIUM_EMOTES;
+  const COL_GAP = 8;
+  const COL_W = Math.floor((SCREEN_W - 44 - COL_GAP * 3) / 4); // 4 columns inside Screen's 22px padding
+
+  return (
+    <Screen>
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+        <ScreenHeader title="Koleksiyon" icon="albums" underline={theme.primary} />
+        <Text style={[styles.muted, { textAlign: 'center', marginBottom: 10 }]}>Maçta kuşanılan {equipped.length}/3</Text>
+
+        {/* Equipped loadout — 3 slots at the very top (empty = dashed placeholder) */}
+        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16, marginBottom: 18 }}>
+          {[0, 1, 2].map((i) => {
+            const id = equipped[i];
+            const em = id ? all.find((e) => e.id === id) : null;
+            return (
+              <Pressable
+                key={`slot${i}`}
+                onPress={() => { if (id) toggleEquip(id); }}
+                style={{
+                  width: 82, height: 82, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: em ? theme.card : theme.panelInnerFill,
+                  borderWidth: 2, borderColor: em ? theme.primary : theme.border,
+                  borderStyle: em ? 'solid' : 'dashed',
+                  shadowColor: em ? theme.primary : 'transparent', shadowOpacity: em ? 0.5 : 0, shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
+                }}
+              >
+                {em ? <EmoteSticker id={em.id} size={62} /> : <Ionicons name="add" size={26} color={theme.muted} />}
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* All emotes — 4-column grid. The WHOLE card is tappable → equips directly. */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP }}>
+          {all.map((e) => {
+            const owned = ownsEmote(profile, e.id);
+            const isEquipped = equipped.includes(e.id);
+            const full = equipped.length >= 3 && !isEquipped;
+            return (
+              <Pressable
+                key={e.id}
+                disabled={!owned}
+                onPress={() => { if (owned && !full) toggleEquip(e.id); }}
+                style={{
+                  width: COL_W, paddingTop: 11, paddingBottom: 9, paddingHorizontal: 4,
+                  backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
+                  borderWidth: 2, borderColor: isEquipped ? theme.primary : theme.border,
+                  borderBottomWidth: 3, borderBottomColor: isEquipped ? theme.primaryDark : theme.cardLip,
+                  opacity: owned ? (full ? 0.65 : 1) : 0.5,
+                }}
+              >
+                {isEquipped ? (
+                  <View style={{ position: 'absolute', top: 4, right: 4, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>
+                    <Ionicons name="checkmark" size={12} color="#06131F" />
+                  </View>
+                ) : null}
+                <EmoteSticker id={e.id} size={58} />
+                <View style={{ height: 6 }} />
+                {owned ? (
+                  <Text style={{ color: isEquipped ? theme.primary : theme.muted, fontWeight: '800', fontSize: 10.5 }} numberOfLines={1} adjustsFontSizeToFit>{isEquipped ? 'Kuşanıldı' : 'Kuşan'}</Text>
+                ) : (
+                  <Ionicons name="lock-closed" size={13} color={theme.muted} />
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
       </ScrollView>
     </Screen>
   );
@@ -2543,27 +2814,39 @@ function FriendProfileModal({ profile, onClose }: { profile: PublicProfile | nul
   const winRate = total ? Math.round(((profile?.wins ?? 0) / total) * 100) : 0;
   const color = profile ? arenaColor(profile.arena.name) : theme.primary;
   return (
-    <Modal visible={!!profile} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.modalBg} onPress={onClose}>
-        <Pressable style={styles.modalCard} onPress={() => {}}>
-          <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: color }}>
-            <Ionicons name="person" size={42} color={color} />
+    <Modal visible={!!profile} animationType="slide" onRequestClose={onClose} presentationStyle="overFullScreen" transparent>
+      <View style={{ flex: 1, backgroundColor: BG_TOP }}>
+        <ScreenBg />
+        <View style={{ flex: 1, paddingTop: 56, paddingHorizontal: 20 }}>
+          {/* Header with back */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
+            <Pressable onPress={onClose} hitSlop={10} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.border }}>
+              <Ionicons name="arrow-back" size={20} color={theme.text} />
+            </Pressable>
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18, marginLeft: 12 }}>Profil</Text>
           </View>
-          <Text style={styles.modalTitle}>{profile?.displayName}</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 14 }}>
-            <Ionicons name="trophy" size={15} color={theme.gold} />
-            <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 15 }}>{profile?.trophies ?? 0}</Text>
-            <Text style={styles.muted}> · {profile?.arena.name ?? ''}</Text>
+
+          {/* Avatar + name + arena */}
+          <View style={{ alignItems: 'center', marginBottom: 26 }}>
+            <View style={{ width: 110, height: 110, borderRadius: 55, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: color, shadowColor: color, shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 0 }, elevation: 10 }}>
+              <Ionicons name="person" size={56} color={color} />
+            </View>
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 24, marginTop: 14 }}>{profile?.displayName}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, backgroundColor: theme.card, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: color + '66' }}>
+              <Ionicons name="trophy" size={15} color={theme.gold} />
+              <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 16 }}>{profile?.trophies ?? 0}</Text>
+              <Text style={styles.muted}> · {profile?.arena.name ?? ''}</Text>
+            </View>
           </View>
-          <View style={{ flexDirection: 'row', gap: 8, width: '100%' }}>
+
+          {/* Stats */}
+          <View style={{ flexDirection: 'row', gap: 10 }}>
             <StatCard icon="trophy" color={theme.primary} label="Galibiyet" value={profile?.wins ?? 0} />
             <StatCard icon="skull-outline" color={theme.danger} label="Mağlubiyet" value={profile?.losses ?? 0} />
             <StatCard icon="stats-chart" color={theme.blue} label="Kazanma %" value={`${winRate}%`} />
           </View>
-          <View style={{ height: 14 }} />
-          <Btn label="Kapat" kind="ghost" icon="close" onPress={onClose} />
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -2579,10 +2862,20 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
   const [matchMode, setMatchMode] = useState<GameMode>('team-team');
   const [matchScope, setMatchScope] = useState<Scope>({ type: 'all' });
   const [matchPicker, setMatchPicker] = useState<'scopeType' | 'league' | 'country' | null>(null);
+  const [menuFriend, setMenuFriend] = useState<FriendInfo | null>(null); // tapped friend → actions popover
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 }); // tap anchor for the popover
+  const [confirmRemove, setConfirmRemove] = useState<FriendInfo | null>(null); // remove confirmation
   const [socialPackPopup, setSocialPackPopup] = useState(false);
   const profile = state.profile;
   const hasSocialPack = profile?.socialPackUntil ? new Date(profile.socialPackUntil) > new Date() : false;
   const friends = state.friends;
+
+  // Auto-clear the transient "request sent" notice.
+  useEffect(() => {
+    if (!state.notice) return;
+    const id = setTimeout(() => actions.clearNotice(), 2600);
+    return () => clearTimeout(id);
+  }, [state.notice]);
   const requests = state.friendRequests;
 
   useEffect(() => {
@@ -2603,10 +2896,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
   return (
     <Screen>
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
-        <View style={styles.center}>
-          <Ionicons name="people" size={36} color={theme.primary} />
-          <Text style={styles.h1}>{t('friends.title')}</Text>
-        </View>
+        <ScreenHeader title={t('friends.title')} icon="people" underline={theme.primary} />
 
         {/* Your code */}
         <Text style={styles.sectionLabel}>{t('friends.yourCode')}</Text>
@@ -2658,6 +2948,12 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
         />
         <Btn label="Arkadaşlık İsteği Gönder" icon="paper-plane" kind="primary" onPress={onSendRequest} disabled={addInput.trim().length < 3} />
         {state.error ? <Text style={[styles.error, { marginTop: 6 }]}>{state.error}</Text> : null}
+        {state.notice ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 6 }}>
+            <Ionicons name="checkmark-circle" size={15} color={theme.primary} />
+            <Text style={{ color: theme.primary, fontSize: 12.5, fontWeight: '700' }}>{state.notice}</Text>
+          </View>
+        ) : null}
 
         {/* Tabs: Arkadaşlarım | Arkadaşlık İstekleri */}
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 18, marginBottom: 12 }}>
@@ -2693,8 +2989,9 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
             requests.map((req) => (
               <View key={req.requestId || req.fromId} style={{
                 flexDirection: 'row', alignItems: 'center', gap: 10,
-                backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 6,
-                borderWidth: 1, borderColor: theme.accent,
+                backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 8,
+                borderWidth: 2, borderColor: theme.accent, borderBottomWidth: 3, borderBottomColor: theme.accentDark,
+                shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4,
               }}>
                 <Ionicons name="person-add" size={24} color={theme.accent} />
                 <View style={{ flex: 1 }}>
@@ -2724,35 +3021,78 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
           </View>
         ) : (
           friends.map((f) => (
-            <View key={f.userId} style={{
-              flexDirection: 'row', alignItems: 'center', gap: 12,
-              backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 8,
-              borderWidth: 1, borderColor: theme.border,
-            }}>
-              <Pressable onPress={() => actions.getUserProfile(f.userId)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-                <View style={{ position: 'relative' }}>
-                  <Ionicons name="person-circle" size={36} color={theme.accent} />
-                  {f.online ? <View style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>{f.displayName}</Text>
-                  <Text style={{ color: theme.muted, fontSize: 11 }}>{f.online ? 'Çevrimiçi' : f.arena.name}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={theme.muted} />
-              </Pressable>
-              <Pressable
-                onPress={() => setMatchModal(f.userId)}
-                style={{ backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 }}
-              >
-                <Text style={{ color: '#06131F', fontWeight: '800', fontSize: 10 }}>Dostluk Maçı</Text>
-              </Pressable>
-              <Pressable onPress={() => actions.removeFriend(f.userId)} hitSlop={8}>
-                <Ionicons name="close-circle" size={20} color={theme.muted} />
-              </Pressable>
-            </View>
+            <Pressable
+              key={f.userId}
+              onPress={(e) => { setMenuPos({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY }); setMenuFriend(f); }}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 12,
+                backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 8,
+                borderWidth: 2, borderColor: f.online ? theme.primary : theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip,
+                shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4,
+              }}
+            >
+              <View style={{ position: 'relative' }}>
+                <Ionicons name="person-circle" size={38} color={theme.accent} />
+                {f.online ? <View style={{ position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: 6, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card, shadowColor: theme.primary, shadowOpacity: 0.7, shadowRadius: 4, shadowOffset: { width: 0, height: 0 } }} /> : null}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }} numberOfLines={1}>{f.displayName}</Text>
+                <Text style={{ color: f.online ? theme.primary : theme.muted, fontSize: 11, fontWeight: '600' }}>{f.online ? 'Çevrimiçi' : f.arena.name}</Text>
+              </View>
+              {/* Trophy on the far right */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.bg2, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5, borderWidth: 1, borderColor: theme.border }}>
+                <Ionicons name="trophy" size={13} color={theme.gold} />
+                <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 13 }}>{f.trophies}</Text>
+              </View>
+            </Pressable>
           ))
         )}
       </ScrollView>
+
+      {/* Friend actions — small Clash-Royale-style popover above the tapped row */}
+      <Modal visible={menuFriend !== null} transparent animationType="fade" onRequestClose={() => setMenuFriend(null)}>
+        <Pressable style={{ flex: 1 }} onPress={() => setMenuFriend(null)}>
+          {menuFriend ? (() => {
+            const W = 226;
+            const H = 168; // header + 3 rows (approx)
+            const left = Math.max(8, Math.min(menuPos.x - W / 2, SCREEN_W - W - 8));
+            const top = Math.max(56, menuPos.y - H - 14);
+            const tailLeft = Math.min(Math.max(menuPos.x - left - 8, 18), W - 34);
+            const Row = ({ color, label, onPress }: { color: string; label: string; onPress: () => void }) => (
+              <Pressable onPress={onPress} style={{ paddingVertical: 12, paddingHorizontal: 14, alignItems: 'center' }}>
+                <Text style={{ color, fontWeight: '800', fontSize: 14.5 }}>{label}</Text>
+              </Pressable>
+            );
+            return (
+              <View style={{ position: 'absolute', left, top, width: W }}>
+                <View style={{ backgroundColor: theme.card, borderRadius: 14, borderWidth: 1, borderColor: theme.border, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 16 }}>
+                  <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '900', letterSpacing: 0.5, textAlign: 'center', paddingTop: 9, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: theme.border }} numberOfLines={1}>
+                    {menuFriend.displayName}
+                  </Text>
+                  <Row color={theme.text} label="Dostluk Savaşı" onPress={() => { const id = menuFriend.userId; setMenuFriend(null); setMatchModal(id); }} />
+                  <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
+                  <Row color={theme.text} label="Profili Görüntüle" onPress={() => { const id = menuFriend.userId; setMenuFriend(null); actions.getUserProfile(id); }} />
+                  <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
+                  <Row color={theme.danger} label="Arkadaşlıktan Kaldır" onPress={() => { const f = menuFriend; setMenuFriend(null); setConfirmRemove(f); }} />
+                </View>
+                {/* downward tail pointing at the row */}
+                <View style={{ position: 'absolute', bottom: -7, left: tailLeft, width: 15, height: 15, backgroundColor: theme.card, transform: [{ rotate: '45deg' }], borderRightWidth: 1, borderBottomWidth: 1, borderColor: theme.border }} />
+              </View>
+            );
+          })() : null}
+        </Pressable>
+      </Modal>
+
+      {/* Remove-friend confirmation */}
+      <GameModal visible={confirmRemove !== null} onClose={() => setConfirmRemove(null)} title="Kaldırılsın mı?" icon="warning" danger>
+        <Text style={[styles.muted, { textAlign: 'center', marginBottom: 6 }]}>
+          {confirmRemove?.displayName} adlı kişiyi arkadaşlarından çıkarmak istediğine emin misin?
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}><Btn label="İptal" kind="danger" icon="close" onPress={() => setConfirmRemove(null)} /></View>
+          <View style={{ flex: 1 }}><Btn label="Tamam" kind="blue" icon="checkmark" onPress={() => { actions.removeFriend(confirmRemove!.userId); setConfirmRemove(null); }} /></View>
+        </View>
+      </GameModal>
 
       {/* Match mode + scope selection modal */}
       <Modal visible={matchModal !== null} transparent animationType="fade" onRequestClose={() => { setMatchModal(null); setMatchStep('mode'); }}>
@@ -2883,15 +3223,17 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
 // ---- Profile ----
 function StatCard({ icon, color, label, value }: { icon: IoniconName; color: string; label: string; value: number | string }) {
   return (
-    <View style={{ flex: 1, alignItems: 'center', gap: 4, backgroundColor: theme.card, borderRadius: 16, paddingVertical: 16, borderWidth: 1, borderColor: theme.border }}>
-      <Ionicons name={icon} size={22} color={color} />
-      <Text style={{ color: theme.text, fontSize: 22, fontWeight: '900' }}>{value}</Text>
+    <GamePanel compact accentStripe={color} style={{ flex: 1 }} bodyStyle={{ alignItems: 'center', gap: 4, paddingVertical: 16 }}>
+      <View style={{ shadowColor: color, shadowOpacity: 0.5, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } }}>
+        <Ionicons name={icon} size={22} color={color} />
+      </View>
+      <Text style={{ color: theme.text, fontSize: 24, fontFamily: 'Poppins-Black', ...engrave('sm') }}>{value}</Text>
       <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '600' }}>{label}</Text>
-    </View>
+    </GamePanel>
   );
 }
 
-export function ProfileScreen({ state, actions }: Props) {
+export function ProfileScreen({ state, actions, onOpenMatchHistory }: Props) {
   const p = state.profile;
   if (!p) return <Screen><View style={styles.center}><Text style={styles.muted}>—</Text></View></Screen>;
   const total = p.wins + p.losses;
@@ -2899,18 +3241,13 @@ export function ProfileScreen({ state, actions }: Props) {
   const color = arenaColor(p.arena.name);
   return (
     <Screen>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-        <Pressable onPress={actions.closeProfile} hitSlop={10} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <Ionicons name="chevron-back" size={22} color={theme.text} />
-          <Text style={{ color: theme.text, fontWeight: '700' }}>{t('common.back')}</Text>
-        </Pressable>
-      </View>
+      <ScreenHeader title="Profil" icon="person" onBack={actions.closeProfile} underline={color} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
         <View style={{ alignItems: 'center', gap: 8, marginVertical: 10 }}>
-          <View style={{ width: 100, height: 100, borderRadius: 50, backgroundColor: theme.card, borderWidth: 3, borderColor: color, alignItems: 'center', justifyContent: 'center', shadowColor: color, shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 0 }, elevation: 10 }}>
-            <Ionicons name="person" size={50} color={color} />
+          <View style={{ width: 104, height: 104, borderRadius: 52, backgroundColor: theme.bg2, borderWidth: 4, borderColor: color, alignItems: 'center', justifyContent: 'center', shadowColor: color, shadowOpacity: 0.6, shadowRadius: 18, shadowOffset: { width: 0, height: 0 }, elevation: 12 }}>
+            <Ionicons name="person" size={54} color={color} />
           </View>
-          <Text style={{ color: theme.text, fontSize: 23, fontWeight: '900' }}>{p.displayName}</Text>
+          <Text style={{ color: theme.text, fontSize: 24, fontFamily: 'Poppins-ExtraBold', ...engrave('lg') }}>{p.displayName}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: color + '66' }}>
             <Text style={{ fontSize: 17 }}>{p.arena.icon}</Text>
             <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>{p.arena.name}</Text>
@@ -2928,7 +3265,7 @@ export function ProfileScreen({ state, actions }: Props) {
         </View>
 
         <View style={{ marginTop: 16 }}>
-          <Btn label={t('menu.matchHistory')} icon="time" kind="blue" onPress={actions.openMatchHistory} />
+          <Btn label={t('menu.matchHistory')} icon="time" kind="blue" onPress={() => onOpenMatchHistory?.()} />
         </View>
       </ScrollView>
     </Screen>
@@ -2938,7 +3275,7 @@ export function ProfileScreen({ state, actions }: Props) {
 // ---- Arenas ----
 const ARENA_DATA = [
   { name: 'GOAT', min: 5000, max: 99999, color: '#FF4500', icon: 'flame' as IoniconName, img: require('../assets/arenas/goat.png'), win: '+15', loss: '-35', desc: 'Efsanelerin zirvesi. Sadece en iyiler ayakta kalır.' },
-  { name: 'Dünya Kupası', min: 3500, max: 4999, color: '#FFD700', icon: 'trophy' as IoniconName, img: require('../assets/arenas/dunya.png'), win: '+18', loss: '-30', desc: 'Dünya sahnesinde mücadele. Her hata çok ağır.' },
+  { name: 'Dünya Klasmanı', min: 3500, max: 4999, color: '#FFD700', icon: 'trophy' as IoniconName, img: require('../assets/arenas/dunya.png'), win: '+18', loss: '-30', desc: 'Dünya sahnesinde mücadele. Her hata çok ağır.' },
   { name: 'Efsaneler Arası', min: 2000, max: 3499, color: '#C0C0C0', icon: 'ribbon' as IoniconName, img: require('../assets/arenas/efsaneler.png'), win: '+20', loss: '-26', desc: 'Efsaneler burada. Kayıplar acıtıyor.' },
   { name: 'Şampiyonlar Ligi', min: 1000, max: 1999, color: '#1E90FF', icon: 'medal' as IoniconName, img: require('../assets/arenas/sampiyonlar.png'), win: '+22', loss: '-22', desc: 'Avrupa\'nın en prestijli arenası. Dengeli mücadele.' },
   { name: 'Profesyonel Lig', min: 500, max: 999, color: '#32CD32', icon: 'shield' as IoniconName, img: require('../assets/arenas/profesyonel.png'), win: '+25', loss: '-18', desc: 'Profesyonel seviye. Artık gerçek bir rakipsin.' },
@@ -2965,18 +3302,27 @@ export function ArenasScreen({ state, actions }: Props) {
   const range = currentArena.max - currentArena.min;
   const progress = range > 0 ? Math.min(1, (trophies - currentArena.min) / range) : 1;
 
+  // Slide up from the bottom when opened (e.g. re-tapping the Oyna tab).
+  const slide = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(slide, { toValue: 1, friction: 10, tension: 72, useNativeDriver: true }).start();
+  }, [slide]);
+  const slideY = slide.interpolate({ inputRange: [0, 1], outputRange: [SCREEN_H * 0.5, 0] });
+
   return (
     <Screen>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <Pressable onPress={actions.closeArenas}>
-          <Ionicons name="arrow-back" size={24} color={theme.text} />
-        </Pressable>
-        <Text style={styles.h1}>Arenalar</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <Ionicons name="trophy" size={16} color={theme.accent} />
-          <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 15 }}>{trophies}</Text>
-        </View>
-      </View>
+      <Animated.View style={{ flex: 1, transform: [{ translateY: slideY }], opacity: slide }}>
+      <ScreenHeader
+        title="Arenalar"
+        onBack={actions.closeArenas}
+        underline={theme.accent}
+        right={(
+          <View style={{ minWidth: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, paddingLeft: 4 }}>
+            <Ionicons name="trophy" size={15} color={theme.accent} />
+            <Text numberOfLines={1} style={{ color: theme.gold, fontWeight: '900', fontSize: 14, ...engrave('sm') }}>{trophies}</Text>
+          </View>
+        )}
+      />
 
       <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
         {/* Arenas listed top-to-bottom (highest first) */}
@@ -3000,8 +3346,8 @@ export function ArenasScreen({ state, actions }: Props) {
                 isCurrent && { borderWidth: 2, shadowColor: arena.color, shadowOpacity: 0.3, shadowRadius: 8 },
               ]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View style={[styles.arenaIconBox, { borderWidth: 2, borderColor: arena.color, overflow: 'hidden' }, isLocked && { opacity: 0.65 }]}>
-                    <Image source={arena.img} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                  <View style={[styles.arenaIconBox, isLocked && { opacity: 0.55 }]}>
+                    <Image source={arena.img} resizeMode="contain" style={{ width: '100%', height: '100%', shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 4, shadowOffset: { width: 0, height: 3 } }} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.arenaName, { color: isCurrent ? arena.color : isLocked ? theme.muted : theme.text }]}>
@@ -3042,6 +3388,7 @@ export function ArenasScreen({ state, actions }: Props) {
           );
         })}
       </ScrollView>
+      </Animated.View>
     </Screen>
   );
 }
@@ -3110,7 +3457,7 @@ const RANK_COLORS = ['#FFD700', '#C0C0C0', '#CD7F32']; // gold, silver, bronze
 
 function arenaForTrophies(trophies: number): { name: string; icon: IoniconName; color: string } {
   if (trophies >= 5000) return { name: 'GOAT', icon: 'flame', color: '#FF4500' };
-  if (trophies >= 3500) return { name: 'Dünya Kupası', icon: 'trophy', color: '#FFD700' };
+  if (trophies >= 3500) return { name: 'Dünya Klasmanı', icon: 'trophy', color: '#FFD700' };
   if (trophies >= 2000) return { name: 'Efsaneler Arası', icon: 'ribbon', color: '#C0C0C0' };
   if (trophies >= 1000) return { name: 'Şampiyonlar Ligi', icon: 'medal', color: '#1E90FF' };
   if (trophies >= 500) return { name: 'Profesyonel Lig', icon: 'medal-outline', color: '#32CD32' };
@@ -3118,10 +3465,10 @@ function arenaForTrophies(trophies: number): { name: string; icon: IoniconName; 
   return { name: 'Mahalle Sahası', icon: 'football-outline', color: '#8B4513' };
 }
 
-function ClubLogo({ uri, size = 22, name }: { uri: string | null; size?: number; name?: string }) {
+function ClubLogo({ uri, name, size = 22 }: { uri: string | null; name?: string; size?: number }) {
   if (!uri) return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: name ? badgeColor(name) : theme.border, alignItems: 'center', justifyContent: 'center' }}>
-      {name ? <Text style={{ color: '#fff', fontSize: size * 0.45, fontWeight: '900' }}>{initial(name)}</Text> : null}
+      {name ? <Text style={{ color: '#fff', fontWeight: '900', fontSize: size * 0.45 }}>{initial(name)}</Text> : null}
     </View>
   );
   return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
@@ -3142,13 +3489,7 @@ export function MatchHistoryScreen({ state, actions }: Props) {
 
   return (
     <Screen>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <Pressable onPress={actions.closeMatchHistory}>
-          <Ionicons name="arrow-back" size={24} color={theme.text} />
-        </Pressable>
-        <Text style={styles.h1}>{t('matchHistory.title')}</Text>
-        <View style={{ width: 24 }} />
-      </View>
+      <ScreenHeader title={t('matchHistory.title')} icon="time" onBack={actions.closeMatchHistory} underline={theme.primary} />
 
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
         {history.length === 0 ? (
@@ -3301,26 +3642,22 @@ export function LeaderboardScreen({ state, actions }: Props) {
   const lb = state.leaderboard;
   return (
     <Screen>
-      <View style={styles.center}>
-        <Ionicons name="trophy" size={36} color={theme.accent} />
-        <Text style={styles.h1}>Lider Tablosu</Text>
-      </View>
+      <ScreenHeader title="Lider Tablosu" icon="trophy" onBack={actions.closeLeaderboard} underline={theme.accent} />
       <ScrollView style={{ flex: 1, marginTop: 10 }} showsVerticalScrollIndicator={false}>
         {lb.map((entry) => (
-          <View key={entry.rank} style={styles.lbRow}>
-            <Text style={[styles.lbRank, entry.rank <= 3 ? { color: RANK_COLORS[entry.rank - 1] } : null]}>
-              {entry.rank}
-            </Text>
-            <Ionicons name={arenaIcon(entry.arena)} size={18} color={theme.accent} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.lbName} numberOfLines={1}>{entry.displayName}</Text>
-              <Text style={styles.lbArena}>{entry.arena.name}</Text>
-            </View>
-            <View style={styles.lbTrophyBox}>
-              <Ionicons name="trophy" size={12} color={theme.accent} />
-              <Text style={styles.lbTrophies}>{entry.trophies}</Text>
-            </View>
-            <Text style={styles.lbWL}>{entry.wins}G {entry.losses}M</Text>
+          <View key={entry.rank} style={{ marginBottom: 8 }}>
+            <GamePanel compact accentStripe={entry.rank <= 3 ? RANK_COLORS[entry.rank - 1] : undefined} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingLeft: 12 }}>
+              <RankBadge rank={entry.rank} size={28} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.lbName} numberOfLines={1}>{entry.displayName}</Text>
+                <Text style={styles.lbArena}>{entry.arena.name}</Text>
+              </View>
+              <View style={styles.lbTrophyBox}>
+                <Ionicons name="trophy" size={12} color={theme.accent} />
+                <Text style={styles.lbTrophies}>{entry.trophies}</Text>
+              </View>
+              <Text style={styles.lbWL}>{entry.wins}G {entry.losses}M</Text>
+            </GamePanel>
           </View>
         ))}
         {lb.length === 0 ? <Text style={styles.muted}>{t('leaderboard.empty')}</Text> : null}
@@ -3491,8 +3828,9 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
           ) : null}
         </View>
 
-        {/* Per-round detail (always shown, including the match-winning round) */}
-        {r.reason !== 'no_common' && r.reason !== 'same_team' && r.reason !== 'passed' ? (
+        {/* Per-round detail (also shown on a passed round so both players see who the
+            common player(s) were — the two team cards + "who played for both"). */}
+        {r.reason !== 'no_common' && r.reason !== 'same_team' ? (
           <>
             <View style={styles.teamResultRow}>
               {state.revealMode === 'country-team' ? (
@@ -3647,11 +3985,11 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.bg, padding: 22, justifyContent: 'center' },
+  screen: { flex: 1, backgroundColor: 'transparent', padding: 22, justifyContent: 'center' },
   center: { alignItems: 'center', gap: 6 },
-  logo: { color: theme.primary, fontSize: 28, fontFamily: 'Poppins-Black', textAlign: 'center', letterSpacing: 2, marginRight: -2, marginTop: 6 },
+  logo: { color: theme.primary, fontSize: 28, fontFamily: 'Poppins-Black', textAlign: 'center', letterSpacing: 2, paddingRight: 4, marginTop: 6 },
   tagline: { color: theme.muted, textAlign: 'center', marginBottom: 20, marginTop: 4, fontSize: 12, fontFamily: 'Poppins-SemiBold' },
-  h1: { color: theme.text, fontSize: 16, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginVertical: 6 },
+  h1: { color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginVertical: 6, letterSpacing: 0.5, ...engrave('lg') },
   label: { color: theme.muted, fontSize: 10, letterSpacing: 2, textAlign: 'center' },
   sectionLabel: { color: theme.muted, fontSize: 10, letterSpacing: 2, marginTop: 12, marginBottom: 4, fontFamily: 'Poppins-ExtraBold' },
   code: { color: theme.accent, fontSize: 32, fontFamily: 'Poppins-Black', textAlign: 'center', letterSpacing: 4 },
@@ -3659,13 +3997,16 @@ const styles = StyleSheet.create({
   muted: { color: theme.muted, textAlign: 'center', fontSize: 12 },
   error: { color: theme.danger, textAlign: 'center', marginTop: 10, fontSize: 12 },
   input: {
-    backgroundColor: theme.card,
+    backgroundColor: theme.panelInnerFill, // recessed inner well
     color: theme.text,
     borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
+    borderWidth: 2,
+    borderTopColor: theme.cardLip, // dark top edge = sunken
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
     fontSize: 14,
+    fontFamily: 'Poppins-ExtraBold',
     marginVertical: 6,
   },
   searchBox: {
@@ -3704,23 +4045,23 @@ const styles = StyleSheet.create({
   },
   clubText: { color: theme.text, fontSize: 13, flex: 1 },
   teamsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
-  teamCard: { flex: 1, backgroundColor: theme.card, borderRadius: 14, padding: 14, alignItems: 'center', gap: 8 },
-  teamName: { color: theme.text, fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  teamCard: { flex: 1, backgroundColor: theme.card, borderRadius: 16, padding: 14, alignItems: 'center', gap: 8, borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss, borderBottomWidth: 4, borderBottomColor: theme.cardLip, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 5 }, elevation: 7 },
+  teamName: { color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') },
   plus: { color: theme.accent, fontSize: 22, fontWeight: '900' },
   timer: { color: theme.accent, fontSize: 22, fontWeight: '900', textAlign: 'center', marginTop: 8 },
   passHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: theme.accent + '1F', borderRadius: 12, paddingVertical: 7, paddingHorizontal: 12, marginBottom: 8, borderWidth: 1, borderColor: theme.accent + '55' },
   passHintText: { color: theme.accent, fontSize: 12, fontWeight: '700', flexShrink: 1 },
   playerPhoto: { width: 104, height: 104, borderRadius: 52, marginTop: 10, borderWidth: 3, borderColor: theme.primary, backgroundColor: theme.card },
   matched: { color: theme.text, fontSize: 19, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginTop: 4 },
-  matchScore: { color: theme.text, fontSize: 44, fontWeight: '900', letterSpacing: 3, marginTop: 6 },
-  matchBanner: { alignItems: 'center', gap: 2, backgroundColor: theme.card, borderRadius: 16, borderWidth: 1, borderColor: theme.border, paddingVertical: 16, paddingHorizontal: 14, marginBottom: 14 },
+  matchScore: { color: theme.text, fontSize: 46, fontFamily: 'Poppins-Black', letterSpacing: 3, marginTop: 6, ...engrave('lg') },
+  matchBanner: { alignItems: 'center', gap: 2, backgroundColor: theme.card, borderRadius: 20, borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark, paddingVertical: 18, paddingHorizontal: 14, marginBottom: 14, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 12 },
   trophyDeltaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
   trophyDeltaText: { fontSize: 14, fontWeight: '800' },
   fixRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   fixText: { color: theme.accent, fontSize: 12, fontWeight: '600' },
   teamResultRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  teamResult: { flex: 1, backgroundColor: theme.card, borderRadius: 14, borderWidth: 1.5, padding: 12, alignItems: 'center', gap: 6 },
-  teamResultName: { color: theme.text, fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  teamResult: { flex: 1, backgroundColor: theme.card, borderRadius: 16, borderWidth: 2, borderBottomWidth: 4, borderBottomColor: theme.cardLip, padding: 12, alignItems: 'center', gap: 6, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+  teamResultName: { color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') },
   teamResultYears: { color: theme.muted, fontSize: 10, textAlign: 'center' },
   careerList: { alignSelf: 'stretch', maxHeight: 220 },
   careerRow: {
@@ -3735,16 +4076,16 @@ const styles = StyleSheet.create({
   careerRowHi: { backgroundColor: 'rgba(61,220,132,0.10)', borderRadius: 8 },
   careerClub: { color: theme.text, fontSize: 12, flex: 1 },
   careerYears: { color: theme.muted, fontSize: 11 },
-  nameModalCard: { backgroundColor: theme.card, borderRadius: 20, padding: 24, marginHorizontal: 30, alignItems: 'center' as const, gap: 10, borderWidth: 1, borderColor: theme.border },
+  nameModalCard: { width: '100%' as const, maxWidth: 360, backgroundColor: theme.card, borderRadius: 26, padding: 24, alignItems: 'center' as const, gap: 10, borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark, shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 20 },
   nameModalCost: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, marginVertical: 6 },
   storeBalance: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.card, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14, marginTop: 6, borderWidth: 1, borderColor: theme.border },
   storeBalanceText: { color: '#C084FC', fontSize: 18, fontWeight: '800' },
-  storeAdCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.card, borderRadius: 12, padding: 14, marginVertical: 4, borderWidth: 1, borderColor: theme.border },
+  storeAdCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.card, borderRadius: 14, padding: 14, marginVertical: 5, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
   storeAdTitle: { color: theme.text, fontSize: 14, fontWeight: '700' },
   storeAdReward: { color: '#C084FC', fontSize: 14, fontWeight: '800', marginBottom: 4 },
   storeCooldown: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.bg, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10, marginVertical: 4 },
   storeCooldownText: { color: theme.accent, fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  storePackCard: { backgroundColor: theme.card, borderRadius: 12, padding: 14, marginVertical: 4, borderWidth: 1, borderColor: theme.border, position: 'relative' as const },
+  storePackCard: { backgroundColor: theme.card, borderRadius: 14, padding: 14, marginVertical: 5, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, position: 'relative' as const, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
   storePackBest: { borderColor: '#A855F7', borderWidth: 2 },
   storePackBadge: { position: 'absolute' as const, top: -10, right: 12, backgroundColor: '#A855F7', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
   storePackBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
@@ -3752,14 +4093,14 @@ const styles = StyleSheet.create({
   storePackAmount: { color: theme.text, fontSize: 16, fontWeight: '800' },
   storePackPriceBox: { backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
   storePackPrice: { color: '#06131F', fontSize: 14, fontWeight: '800' },
-  friendAddCard: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: theme.card, borderRadius: 12, padding: 14, marginVertical: 4, borderWidth: 1, borderColor: theme.border },
+  friendAddCard: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: theme.card, borderRadius: 14, padding: 14, marginVertical: 5, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip },
   friendDivider: { width: 1, height: 40, backgroundColor: theme.border, marginHorizontal: 10 },
   friendLabel: { color: theme.muted, fontSize: 10, fontWeight: '600', marginBottom: 4 },
   friendCode: { color: theme.accent, fontSize: 16, fontWeight: '900', letterSpacing: 2 },
   friendInput: { color: theme.text, fontSize: 14, fontWeight: '700', borderBottomWidth: 1, borderBottomColor: theme.border, paddingBottom: 4 },
   friendEmpty: { alignItems: 'center' as const, gap: 8, paddingVertical: 30 },
-  arenaCard: { backgroundColor: theme.card, borderRadius: 14, borderWidth: 1, borderColor: theme.border, padding: 14, position: 'relative' },
-  arenaIconBox: { width: 62, height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  arenaCard: { backgroundColor: theme.card, borderRadius: 16, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, padding: 14, position: 'relative', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+  arenaIconBox: { width: 66, height: 60, alignItems: 'center', justifyContent: 'center' },
   arenaName: { color: theme.text, fontSize: 16, fontWeight: '900' },
   arenaTrophyRange: { color: theme.muted, fontSize: 12, marginTop: 2 },
   arenaStats: { flexDirection: 'row', gap: 16, marginTop: 8 },
@@ -3818,19 +4159,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   optChipText: { color: theme.text, fontSize: 12, fontWeight: '600', flex: 1 },
-  modalBg: { flex: 1, backgroundColor: 'rgba(6,10,28,0.28)', justifyContent: 'flex-end' },
+  modalBg: { flex: 1, backgroundColor: theme.scrim, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 22 },
   modalCard: {
+    width: '100%',
+    maxWidth: 360,
     backgroundColor: theme.card,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderRadius: 26,
     padding: 20,
-    paddingBottom: 34,
-    borderTopWidth: 1,
-    borderColor: theme.border,
+    borderWidth: 2,
+    borderColor: theme.frameGold, // gold game frame
+    borderBottomWidth: 4,
+    borderBottomColor: theme.frameGoldDark,
+    shadowColor: '#000',
+    shadowOpacity: 0.6,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 20,
   },
   modalSearchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.bg, borderRadius: 10, paddingHorizontal: 12, marginBottom: 8 },
   modalSearchInput: { flex: 1, color: theme.text, paddingVertical: 10, fontSize: 13 },
-  modalTitle: { color: theme.text, fontSize: 15, fontFamily: 'Poppins-ExtraBold', marginBottom: 8 },
+  modalTitle: { color: theme.text, fontSize: 17, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5, marginBottom: 8, textShadowColor: theme.textShadow, textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 3 },
   modalRow: {
     flexDirection: 'row',
     alignItems: 'center',

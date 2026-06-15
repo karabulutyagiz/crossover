@@ -15,7 +15,7 @@ export const ARENAS: Arena[] = [
   { name: 'Profesyonel Lig',   minTrophies: 500,  icon: '🥉' },
   { name: 'Şampiyonlar Ligi',  minTrophies: 1000, icon: '🥈' },
   { name: 'Efsaneler Arası',   minTrophies: 2000, icon: '🥇' },
-  { name: 'Dünya Kupası',      minTrophies: 3500, icon: '🏆' },
+  { name: 'Dünya Klasmanı',    minTrophies: 3500, icon: '🏆' },
   { name: 'GOAT',              minTrophies: 5000, icon: '🐐' },
 ];
 
@@ -164,7 +164,7 @@ export async function changeDisplayName(
   userId: string,
   newName: string,
 ): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
-  const COST = 100; // diamonds
+  const COST = 1000; // diamonds
   const user = await getUser(userId);
   if (!user) return { ok: false, error: 'Kullanıcı bulunamadı' };
   if (user.diamonds < COST) return { ok: false, error: `Yetersiz elmas (${user.diamonds}/${COST})` };

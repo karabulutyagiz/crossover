@@ -59,6 +59,8 @@ export interface GameState {
   outgoingInvite: { toId: string; toName: string; expiresAt: number } | null;
   // A friend's public profile I'm currently viewing.
   viewProfile: PublicProfile | null;
+  // Transient success notice (e.g. "friend request sent"), shown green then cleared.
+  notice: string | null;
   matchHistory: MatchHistoryView[];
   // match (first to `winTarget` round wins) + rematch flow
   matchOver: boolean;
@@ -108,6 +110,7 @@ export const initialState: GameState = {
   matchInvite: null,
   outgoingInvite: null,
   viewProfile: null,
+  notice: null,
   matchHistory: [],
   matchOver: false,
   matchWinnerId: null,
@@ -144,13 +147,15 @@ type Action =
   | { type: '_set_outgoing'; invite: GameState['outgoingInvite'] }
   | { type: '_close_profile' }
   | { type: '_dismiss_invite' }
+  | { type: '_clear_notice' }
   | { type: '_ready' }
   | { type: '_set_game_options'; options: GameOptions | null };
 
 function reducer(state: GameState, action: Action): GameState {
   switch (action.type) {
     case '_connected':
-      return { ...state, connected: action.value };
+      // A fresh (re)connect clears any lingering "couldn't connect" error.
+      return { ...state, connected: action.value, error: action.value ? null : state.error };
     case '_reset':
       return { ...initialState, scopes: state.scopes, profile: state.profile, friends: state.friends, isQuickMatch: false, opponentForfeit: false };
     case '_picked':
@@ -158,7 +163,8 @@ function reducer(state: GameState, action: Action): GameState {
     case '_scopes':
       return { ...state, scopes: action.scopes };
     case '_leaderboard':
-      return { ...state, leaderboard: action.entries, phase: 'leaderboard' };
+      // Data only — the leaderboard now shows as a centered popup, not a fullscreen phase.
+      return { ...state, leaderboard: action.entries };
     case '_phase':
       return { ...state, phase: action.phase };
     case '_load_profile':
@@ -178,7 +184,7 @@ function reducer(state: GameState, action: Action): GameState {
         ...state.friendRequests,
       ]};
     case 'friend_request_sent':
-      return state;
+      return { ...state, notice: 'Arkadaşlık isteği gönderildi' };
     case 'friend_request_responded':
       return { ...state, friendRequests: state.friendRequests.filter((r) => r.requestId !== (action as any).requestId) };
     case 'user_search_results':
@@ -201,6 +207,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, outgoingInvite: (action as any).invite };
     case '_close_profile' as any:
       return { ...state, viewProfile: null };
+    case '_clear_notice' as any:
+      return { ...state, notice: null };
 
     case 'searching':
       return { ...state, phase: 'searching', isQuickMatch: true, opponentForfeit: false };
@@ -311,6 +319,9 @@ function reducer(state: GameState, action: Action): GameState {
       }
       return { ...state, phase: 'lobby', error: t('error.opponentLeft'), teams: null, result: null, locked: null };
     case 'error':
+      // Internal protocol noise (sent when a stray message reaches the server with no
+      // active room) — never surface it to the user.
+      if (action.message === 'Create or join a room first') return state;
       return { ...state, error: action.message };
     default:
       return state;
@@ -347,7 +358,7 @@ export function useCrossover() {
     }
   }, [state.profile]);
 
-  const connectAndSend = useCallback((first: ClientMsg) => {
+  const connectAndSend = useCallback((first: ClientMsg, opts?: { silent?: boolean }) => {
     wsRef.current?.close();
     const ws = new WebSocket(SERVER_URL);
     wsRef.current = ws;
@@ -371,7 +382,9 @@ export function useCrossover() {
     ws.onclose = () => {
       dispatch({ type: '_connected', value: false });
     };
-    ws.onerror = () => dispatch({ type: 'error', message: t('error.connect') });
+    // Background keepalive reconnects must stay silent — only surface a connection
+    // error when the user actively triggered this connection (find_match, etc.).
+    ws.onerror = () => { if (!opts?.silent) dispatch({ type: 'error', message: t('error.connect') }); };
   }, []);
 
   const send = useCallback((msg: ClientMsg) => {
@@ -394,7 +407,7 @@ export function useCrossover() {
     const ensure = () => {
       const ws = wsRef.current;
       if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
-      connectAndSend({ type: 'register', name, userId: uid });
+      connectAndSend({ type: 'register', name, userId: uid }, { silent: true });
     };
     ensure();
     const iv = setInterval(ensure, 7000);
@@ -428,8 +441,8 @@ export function useCrossover() {
     openProfile: () => dispatch({ type: '_phase', phase: 'profile' }),
     closeProfile: () => dispatch({ type: '_phase', phase: 'home' }),
     openMatchHistory: () => {
+      // Data only — match history now shows as a centered popup, not a fullscreen phase.
       send({ type: 'list_match_history' });
-      dispatch({ type: '_phase', phase: 'matchHistory' });
     },
     closeMatchHistory: () => dispatch({ type: '_phase', phase: 'home' }),
     register: (name: string, gameCenterId?: string) => {
@@ -524,6 +537,7 @@ export function useCrossover() {
     },
     getUserProfile: (userId: string) => send({ type: 'get_user_profile', userId }),
     closeUserProfile: () => dispatch({ type: '_close_profile' }),
+    clearNotice: () => dispatch({ type: '_clear_notice' }),
     dismissMatchInvite: () => dispatch({ type: '_dismiss_invite' }),
     findMatchAgain: () => {
       const options = state.lastGameOptions ?? undefined;
