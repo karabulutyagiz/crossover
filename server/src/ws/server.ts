@@ -8,6 +8,7 @@ import {
   setUsername, buyEmote, setEquippedEmotes, getLeaderboard,
   listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
   removeFriend, searchUsers, getMatchHistory,
+  getArena,
   type UserProfile,
 } from '../game/rank.ts';
 import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
@@ -419,47 +420,58 @@ export function startServer(port: number): Server {
       // First message must establish the connection (create / solo / join / find_match).
       if (!ctx) {
         if (msg.type === 'find_match') {
-          // Prefer the registered profile name; fall back to the name the client
-          // sent with the request (the matchmaking socket may not have registered).
-          const name = userProfile?.displayName ?? msg.name ?? 'Oyuncu';
-          // Remove stale entries for this ws (if they spammed the button)
-          for (let i = matchQueue.length - 1; i >= 0; i--) {
-            if (matchQueue[i]!.ws === ws) matchQueue.splice(i, 1);
-          }
-          // Try to pair with someone already waiting
-          // Match by game mode: only pair players with the same mode
-          const requestedMode = msg.options?.mode ?? 'team-team';
-          const partnerIdx = matchQueue.findIndex(
-            (e) => e.ws.readyState === e.ws.OPEN && (e.options?.mode ?? 'team-team') === requestedMode,
-          );
-          const partner = partnerIdx >= 0 ? matchQueue.splice(partnerIdx, 1)[0]! : undefined;
-          if (partner && partner.ws.readyState === partner.ws.OPEN) {
-            // Create room and add both
-            const room = manager.createRoom();
-            if (msg.options?.scope) room.scope = msg.options.scope;
-            room.gameMode = requestedMode;
-            const resA = room.addPlayer(partner.name, partner.transport, true, partner.userId, partner.userProfile?.trophies, partner.userProfile?.arena);
-            const resB = room.addPlayer(name, transport, false, msg.userId ?? userProfile?.id, userProfile?.trophies, userProfile?.arena);
-            if (resA.ok) partner.setCtx({ room, playerId: resA.id, userProfile: partner.userProfile });
-            if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
-            // Auto-start after matchup reveal delay
-            setTimeout(() => {
-              if (room.size === 2) room.handle(resA.ok ? resA.id : '', { type: 'start' });
-            }, 3500);
-          } else {
-            // No partner yet — wait in queue
-            const entry: QueueEntry = {
-              transport,
-              ws,
-              name,
-              userId: msg.userId ?? userProfile?.id,
-              userProfile,
-              options: msg.options,
-              setCtx: (c) => { ctx = c; },
-            };
-            matchQueue.push(entry);
-            transport.send({ type: 'searching' as any });
-          }
+          void (async () => {
+            // If this is a fresh socket (no register/auth yet), look up the profile
+            // from the userId the client sent so trophies/arena are available.
+            if (!userProfile && msg.userId) {
+              const u = await getUser(msg.userId);
+              if (u) { userProfile = u; onlineUsers.set(u.id, ws); }
+            }
+            // Prefer the registered profile name; fall back to the name the client
+            // sent with the request (the matchmaking socket may not have registered).
+            const name = userProfile?.displayName ?? msg.name ?? 'Oyuncu';
+            // Remove stale entries for this ws (if they spammed the button)
+            for (let i = matchQueue.length - 1; i >= 0; i--) {
+              if (matchQueue[i]!.ws === ws) matchQueue.splice(i, 1);
+            }
+            // Try to pair with someone already waiting
+            // Match by game mode AND arena: only pair players in the same arena
+            const requestedMode = msg.options?.mode ?? 'team-team';
+            const myArena = getArena(userProfile?.trophies ?? 0).name;
+            const partnerIdx = matchQueue.findIndex(
+              (e) => e.ws.readyState === e.ws.OPEN
+                && (e.options?.mode ?? 'team-team') === requestedMode
+                && getArena(e.userProfile?.trophies ?? 0).name === myArena,
+            );
+            const partner = partnerIdx >= 0 ? matchQueue.splice(partnerIdx, 1)[0]! : undefined;
+            if (partner && partner.ws.readyState === partner.ws.OPEN) {
+              // Create room and add both
+              const room = manager.createRoom();
+              if (msg.options?.scope) room.scope = msg.options.scope;
+              room.gameMode = requestedMode;
+              const resA = room.addPlayer(partner.name, partner.transport, true, partner.userId, partner.userProfile?.trophies, partner.userProfile?.arena);
+              const resB = room.addPlayer(name, transport, false, msg.userId ?? userProfile?.id, userProfile?.trophies, userProfile?.arena);
+              if (resA.ok) partner.setCtx({ room, playerId: resA.id, userProfile: partner.userProfile });
+              if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
+              // Auto-start after matchup reveal delay
+              setTimeout(() => {
+                if (room.size === 2) room.handle(resA.ok ? resA.id : '', { type: 'start' });
+              }, 3500);
+            } else {
+              // No partner yet — wait in queue
+              const entry: QueueEntry = {
+                transport,
+                ws,
+                name,
+                userId: msg.userId ?? userProfile?.id,
+                userProfile,
+                options: msg.options,
+                setCtx: (c) => { ctx = c; },
+              };
+              matchQueue.push(entry);
+              transport.send({ type: 'searching' as any });
+            }
+          })();
           return;
         }
 
