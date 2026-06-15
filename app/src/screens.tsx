@@ -2590,10 +2590,16 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
     (([...(products as { id?: string; displayPrice?: string }[]), ...(subscriptions as { id?: string; displayPrice?: string }[])]).find((p) => p.id === productId)?.displayPrice) ?? fallback;
   const buy = useCallback((productId: string) => {
     if (buying) return;
+    // Until the product exists in App Store Connect it won't load — show a gentle
+    // "coming soon" instead of a payment error (e.g. in builds before IAP is set up).
+    const loaded = [...products, ...subscriptions].some((p) => (p as { id?: string }).id === productId);
+    if (!loaded) { Alert.alert('Çok yakında', 'Satın alma yakında aktifleşecek.'); return; }
     const isSub = SOCIAL_PACK_IDS.includes(productId);
     setBuying(productId);
-    Promise.resolve(requestPurchase({ request: { apple: { sku: productId } }, type: isSub ? 'subs' : 'in-app' })).catch(() => setBuying(null));
-  }, [buying, requestPurchase]);
+    // appAccountToken ties the purchase (and its future renewal notifications) to our user.
+    const apple = { sku: productId, appAccountToken: profile?.userId ?? undefined };
+    Promise.resolve(requestPurchase({ request: { apple }, type: isSub ? 'subs' : 'in-app' })).catch(() => setBuying(null));
+  }, [buying, requestPurchase, products, subscriptions, profile?.userId]);
 
   useEffect(() => {
     if (scrollToSection && storeScrollRef.current) {
