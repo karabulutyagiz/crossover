@@ -651,21 +651,16 @@ export class Room {
     this.broadcastState();
 
     if (!this.matchOver) {
-      // Ready system: wait for both players to press "ready", then advance.
-      // After 10s voluntary period, start a 10s forced countdown.
+      // One 10s countdown shown immediately (10 → 0). At 0 the next round starts
+      // automatically; if both players press "Hazır" sooner, it advances right away.
       this.readyPlayers = new Set();
+      const endsAt = Date.now() + 10_000;
       this.broadcast({ type: 'waiting_ready' });
-      const t1 = setTimeout(() => {
-        if (this.status !== 'result' || this.matchOver) return;
-        if (this.readyPlayers.size >= this.players.size) return; // already advanced
-        const endsAt = Date.now() + 10_000;
-        this.broadcast({ type: 'ready_countdown', endsAt });
-        const t2 = setTimeout(() => {
-          if (this.status === 'result' && !this.matchOver) this.beginCountdown();
-        }, 10_000);
-        this.timers.push(t2);
+      this.broadcast({ type: 'ready_countdown', endsAt });
+      const t = setTimeout(() => {
+        if (this.status === 'result' && !this.matchOver) this.beginCountdown();
       }, 10_000);
-      this.timers.push(t1);
+      this.timers.push(t);
     } else {
       const hasBot = [...this.players.values()].some((p) => p.transport.isBot);
       if (!hasBot) {
