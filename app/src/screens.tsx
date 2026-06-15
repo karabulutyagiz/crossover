@@ -805,18 +805,20 @@ function EmoteLayer({ state, actions, fab = 'bottom-right', hideFab, externalOpe
   const allEmotes = loadoutEmotes(state.profile);
   const textEmotes = allEmotes.filter((e) => e.kind === 'text');   // quick-chat messages
   const stickerEmotes = allEmotes.filter((e) => e.kind !== 'text'); // the 4 faces + equipped visual
-  // Track which emote instances have finished animating so they don't reappear on re-renders.
-  const dismissed = useRef(new Set<number>()).current;
-  const showTheirs = theirs && !dismissed.has(theirs.n);
-  const showMine = mine && !dismissed.has(mine.n);
+  // Track which emote seq numbers have finished so they don't re-appear.
+  // When a NEW emote arrives (higher n), it's shown; when animation ends, n is dismissed.
+  const dismissedOpp = useRef(-1);
+  const dismissedMine = useRef(-1);
+  const showTheirs = theirs && theirs.n > dismissedOpp.current;
+  const showMine = mine && mine.n > dismissedMine.current;
 
   return (
     <>
       <View pointerEvents="none" style={styles.emoteTop}>
-        {showTheirs ? <TransientCallout key={`opp-${theirs.n}`} emoteId={theirs.emoteId} onDone={() => dismissed.add(theirs.n)} /> : null}
+        {showTheirs ? <TransientCallout key={`opp-${theirs.n}`} emoteId={theirs.emoteId} onDone={() => { dismissedOpp.current = theirs.n; }} /> : null}
       </View>
       <View pointerEvents="none" style={styles.emoteBottom}>
-        {showMine ? <TransientCallout key={`you-${mine.n}`} emoteId={mine.emoteId} onDone={() => dismissed.add(mine.n)} /> : null}
+        {showMine ? <TransientCallout key={`you-${mine.n}`} emoteId={mine.emoteId} onDone={() => { dismissedMine.current = mine.n; }} /> : null}
       </View>
 
       {!hideFab ? (
