@@ -18,10 +18,17 @@ const DIAMOND_PRODUCTS: Record<string, number> = {
   'com.crossover.diamonds.5000': 5000,
 };
 
+// Auto-renewable subscriptions (the Social Pack). Granting = set social_pack_until to
+// the subscription's latest expiry from the receipt (renewals extend it automatically).
+const SOCIAL_PACK_PRODUCTS = new Set<string>([
+  'com.crossover.socialpack.weekly',
+  'com.crossover.socialpack.monthly',
+]);
+
 const PROD_URL = 'https://buy.itunes.apple.com/verifyReceipt';
 const SANDBOX_URL = 'https://sandbox.itunes.apple.com/verifyReceipt';
 
-interface AppleInApp { product_id: string; transaction_id: string; original_transaction_id?: string }
+interface AppleInApp { product_id: string; transaction_id: string; original_transaction_id?: string; expires_date_ms?: string }
 interface AppleResp { status: number; receipt?: { in_app?: AppleInApp[] }; latest_receipt_info?: AppleInApp[] }
 
 async function verifyWithApple(receipt: string): Promise<AppleResp | null> {
@@ -59,23 +66,35 @@ export async function verifyApplePurchase(
 
   // Consider every transaction the receipt carries; idempotency handles duplicates.
   const items = [...(resp.latest_receipt_info ?? []), ...(resp.receipt?.in_app ?? [])];
-  let granted = 0;
+  let granted = 0;            // diamonds credited this call
+  let socialExpiryMs = 0;     // latest Social Pack subscription expiry in the receipt
   const seen = new Set<string>();
   for (const it of items) {
+    // Diamonds: consumable — credit each new transaction once (idempotent via PK).
     const amount = DIAMOND_PRODUCTS[it.product_id];
-    const txnId = it.transaction_id;
-    if (!amount || !txnId || seen.has(txnId)) continue;
-    seen.add(txnId);
-    const ins = await pool.query(
-      `INSERT INTO processed_transactions (transaction_id, user_id, product_id, diamonds)
-         VALUES ($1, $2, $3, $4)
-       ON CONFLICT (transaction_id) DO NOTHING`,
-      [txnId, userId, it.product_id, amount],
-    );
-    if (ins.rowCount && ins.rowCount > 0) {
-      await pool.query(`UPDATE users SET diamonds = diamonds + $2 WHERE id = $1`, [userId, amount]);
-      granted += amount;
+    if (amount && it.transaction_id && !seen.has(it.transaction_id)) {
+      seen.add(it.transaction_id);
+      const ins = await pool.query(
+        `INSERT INTO processed_transactions (transaction_id, user_id, product_id, diamonds)
+           VALUES ($1, $2, $3, $4)
+         ON CONFLICT (transaction_id) DO NOTHING`,
+        [it.transaction_id, userId, it.product_id, amount],
+      );
+      if (ins.rowCount && ins.rowCount > 0) {
+        await pool.query(`UPDATE users SET diamonds = diamonds + $2 WHERE id = $1`, [userId, amount]);
+        granted += amount;
+      }
     }
+    // Social Pack: auto-renewable subscription — track the latest expiry.
+    if (SOCIAL_PACK_PRODUCTS.has(it.product_id) && it.expires_date_ms) {
+      const e = Number(it.expires_date_ms);
+      if (e > socialExpiryMs) socialExpiryMs = e;
+    }
+  }
+
+  // Set the Social Pack entitlement to the subscription's latest (future) expiry.
+  if (socialExpiryMs > Date.now()) {
+    await pool.query(`UPDATE users SET social_pack_until = $2 WHERE id = $1`, [userId, new Date(socialExpiryMs).toISOString()]);
   }
 
   const profile = await getUser(userId);
