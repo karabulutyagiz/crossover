@@ -41,7 +41,8 @@
       "expo-localization",
       "expo-web-browser",
       "expo-apple-authentication",
-      "expo-font"
+      "expo-font",
+      "react-native-iap"
     ],
     "extra": {
       "eas": {

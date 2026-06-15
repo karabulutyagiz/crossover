@@ -139,6 +139,7 @@ export type ClientMsg =
   | { type: 'send_emote'; emoteId: string }
   | { type: 'buy_emote'; emoteId: string }
   | { type: 'equip_emotes'; emoteIds: string[] }
+  | { type: 'verify_purchase'; receipt: string }
   | { type: 'search_clubs'; reqId: string; q: string }
   | { type: 'send_friend_request'; targetCode?: string; targetUsername?: string }
   | { type: 'respond_friend_request'; requestId: string; accept: boolean }
@@ -180,6 +181,7 @@ export type ServerMsg =
   | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView }
   | { type: 'emote'; fromId: string; emoteId: string }
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string }
+  | { type: 'diamonds_granted'; profile: ProfileView; granted: number }
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
   | { type: 'searching' }
   | { type: 'opponent_left'; forfeit?: boolean }

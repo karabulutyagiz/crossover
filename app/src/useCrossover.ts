@@ -230,6 +230,8 @@ function reducer(state: GameState, action: Action): GameState {
     }
     case 'emote_purchased':
       return { ...state, profile: action.profile };
+    case 'diamonds_granted':
+      return { ...state, profile: (action as any).profile, notice: `+${(action as any).granted} 💎` };
 
     case 'room_state': {
       // When a non-bot room fills to 2 players, show the matchup reveal screen.
@@ -359,6 +361,10 @@ export function useCrossover() {
     }
   }, [state.profile]);
 
+  // A pending Apple IAP verification — resolved when the server confirms the grant
+  // (diamonds_granted) or rejected on error, so we only finishTransaction once paid.
+  const pendingVerify = useRef<{ resolve: () => void; reject: (e: Error) => void } | null>(null);
+
   const connectAndSend = useCallback((first: ClientMsg, opts?: { silent?: boolean }) => {
     wsRef.current?.close();
     const ws = new WebSocket(SERVER_URL);
@@ -371,9 +377,13 @@ export function useCrossover() {
       try {
         const m = JSON.parse(String(e.data)) as ServerMsg;
         dispatch(m);
+        const mt = (m as { type?: string }).type;
+        // Resolve/reject a pending IAP verification.
+        if (mt === 'diamonds_granted') { pendingVerify.current?.resolve(); pendingVerify.current = null; }
+        else if (mt === 'error' && pendingVerify.current) { pendingVerify.current.reject(new Error((m as { message?: string }).message ?? 'error')); pendingVerify.current = null; }
         // A friend request just arrived in real time — pull the authoritative
         // list so it shows with a real requestId (accept/reject works instantly).
-        if ((m as { type?: string }).type === 'friend_request_received' && ws.readyState === WebSocket.OPEN) {
+        if (mt === 'friend_request_received' && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'list_friends' }));
         }
       } catch {
@@ -430,6 +440,17 @@ export function useCrossover() {
   }, []);
 
   const actions = {
+    // Send an Apple IAP receipt to the server for validation; resolves when the
+    // server confirms diamonds were granted (diamonds_granted), rejects otherwise.
+    verifyPurchase: (receipt: string) => new Promise<void>((resolve, reject) => {
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) { reject(new Error('disconnected')); return; }
+      pendingVerify.current = { resolve, reject };
+      ws.send(JSON.stringify({ type: 'verify_purchase', receipt }));
+      setTimeout(() => {
+        if (pendingVerify.current) { pendingVerify.current.reject(new Error('timeout')); pendingVerify.current = null; }
+      }, 20000);
+    }),
     openLeaderboard: () => {
       fetch(`${HTTP_URL}/leaderboard`)
         .then((r) => r.json())

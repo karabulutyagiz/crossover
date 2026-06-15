@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -44,6 +45,7 @@ import {
   ownsEmote,
 } from './emotes';
 import { NATIONALITIES } from './nationalities';
+import { useIAP, getReceiptIOS, finishTransaction as iapFinishTransaction, type Purchase } from 'react-native-iap';
 
 type Actions = {
   register: (name: string, gameCenterId?: string) => void;
@@ -77,6 +79,7 @@ type Actions = {
   sendEmote: (emoteId: string) => void;
   buyEmote: (emoteId: string) => void;
   equipEmotes: (emoteIds: string[]) => void;
+  verifyPurchase: (receipt: string) => Promise<void>;
   loadFriends: () => void;
   sendFriendRequest: (targetCode?: string, targetUsername?: string) => void;
   respondFriendRequest: (requestId: string, accept: boolean) => void;
@@ -2334,12 +2337,16 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
 }
 
 // ---- Store ----
+// `productId` must match the Consumable products created in App Store Connect (and
+// server/src/game/iap.ts DIAMOND_PRODUCTS). `price` is a fallback shown until the
+// real localized App Store price is fetched.
 const DIAMOND_PACKS = [
-  { id: 'pack1', amount: 100, price: '₺29,99', color: '#A855F7', best: false },
-  { id: 'pack2', amount: 500, price: '₺99,99', color: '#C084FC', best: true },
-  { id: 'pack3', amount: 1200, price: '₺199,99', color: '#A855F7', best: false },
-  { id: 'pack4', amount: 5000, price: '₺699,99', color: '#7C3AED', best: false },
+  { id: 'pack1', amount: 100, price: '₺29,99', color: '#A855F7', best: false, productId: 'com.crossover.diamonds.100' },
+  { id: 'pack2', amount: 500, price: '₺99,99', color: '#C084FC', best: true, productId: 'com.crossover.diamonds.500' },
+  { id: 'pack3', amount: 1200, price: '₺199,99', color: '#A855F7', best: false, productId: 'com.crossover.diamonds.1200' },
+  { id: 'pack4', amount: 5000, price: '₺699,99', color: '#7C3AED', best: false, productId: 'com.crossover.diamonds.5000' },
 ];
+const DIAMOND_PRODUCT_IDS = DIAMOND_PACKS.map((p) => p.productId);
 
 function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
   visible: boolean;
@@ -2539,6 +2546,38 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
   const storeScrollRef = useRef<ScrollView>(null);
   const sectionYRef = useRef<Record<string, number>>({});
 
+  // ── Apple In-App Purchase (StoreKit) for diamond packs ──
+  const [buying, setBuying] = useState<string | null>(null); // productId mid-purchase
+  const onPurchaseSuccess = useCallback(async (purchase: Purchase) => {
+    try {
+      const receipt = await getReceiptIOS();
+      await actions.verifyPurchase(receipt);                       // server validates + grants
+      await iapFinishTransaction({ purchase, isConsumable: true });
+    } catch {
+      // Verify/grant failed → leave the transaction UNFINISHED so StoreKit replays it
+      // on next launch and we grant then (server is idempotent — no double-charge/grant).
+      Alert.alert('Satın alma', 'Elmasların birazdan eklenecek. Sorun sürerse uygulamayı yeniden aç.');
+    } finally {
+      setBuying(null);
+    }
+  }, [actions]);
+  const onPurchaseError = useCallback((err: { code?: string }) => {
+    setBuying(null);
+    const code = err?.code ?? '';
+    if (!/cancel/i.test(code)) Alert.alert('Satın alma başarısız', 'Ödeme tamamlanamadı, tekrar dene.');
+  }, []);
+  const { connected, products, requestPurchase, fetchProducts } = useIAP({ onPurchaseSuccess, onPurchaseError });
+  useEffect(() => {
+    if (connected) fetchProducts({ skus: DIAMOND_PRODUCT_IDS, type: 'in-app' }).catch(() => {});
+  }, [connected, fetchProducts]);
+  const priceFor = (productId: string, fallback: string) =>
+    ((products as { id?: string; displayPrice?: string }[]).find((p) => p.id === productId)?.displayPrice) ?? fallback;
+  const buy = useCallback((productId: string) => {
+    if (buying) return;
+    setBuying(productId);
+    Promise.resolve(requestPurchase({ request: { apple: { sku: productId } }, type: 'in-app' })).catch(() => setBuying(null));
+  }, [buying, requestPurchase]);
+
   useEffect(() => {
     if (scrollToSection && storeScrollRef.current) {
       const y = sectionYRef.current[scrollToSection];
@@ -2611,8 +2650,15 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
         {/* Diamond packs */}
         <View onLayout={(e) => { sectionYRef.current['diamonds'] = e.nativeEvent.layout.y; }} />
         <Text style={styles.sectionLabel}>{t('store.packs')}</Text>
-        {DIAMOND_PACKS.map((pack) => (
-          <Pressable key={pack.id} style={[styles.storePackCard, pack.best && styles.storePackBest]}>
+        {DIAMOND_PACKS.map((pack) => {
+          const busy = buying === pack.productId;
+          return (
+          <Pressable
+            key={pack.id}
+            disabled={!!buying}
+            onPress={() => buy(pack.productId)}
+            style={[styles.storePackCard, pack.best && styles.storePackBest, !!buying && !busy && { opacity: 0.5 }]}
+          >
             {pack.best ? (
               <View style={styles.storePackBadge}>
                 <Text style={styles.storePackBadgeText}>{t('store.popular')}</Text>
@@ -2626,11 +2672,12 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
                 <Text style={styles.storePackAmount}>{t('store.diamonds', { n: pack.amount.toLocaleString('tr-TR') })}</Text>
               </View>
               <View style={styles.storePackPriceBox}>
-                <Text style={styles.storePackPrice}>{pack.price}</Text>
+                {busy ? <ActivityIndicator color="#06131F" /> : <Text style={styles.storePackPrice}>{priceFor(pack.productId, pack.price)}</Text>}
               </View>
             </View>
           </Pressable>
-        ))}
+          );
+        })}
 
         {/* Haftalık ifade dükkanı (satışlar burada — koleksiyonda değil) */}
         {emoteWeeks().map(({ week, emotes }) => (

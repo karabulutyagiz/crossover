@@ -159,3 +159,15 @@ CREATE TABLE IF NOT EXISTS ingest_log (
 ALTER TABLE clubs ADD COLUMN IF NOT EXISTS popularity BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE clubs ADD COLUMN IF NOT EXISTS market_value BIGINT;
 CREATE INDEX IF NOT EXISTS idx_clubs_popularity ON clubs (popularity DESC);
+
+-- ---- In-App Purchases (Apple StoreKit) ----
+-- One row per Apple transaction we've already granted, so a receipt can never be
+-- redeemed twice (the PK enforces idempotency). diamonds/product_id are recorded
+-- for audit. The receipt itself is validated with Apple before insert.
+CREATE TABLE IF NOT EXISTS processed_transactions (
+  transaction_id TEXT PRIMARY KEY,        -- Apple's original_transaction_id / transaction_id
+  user_id        UUID NOT NULL REFERENCES users(id),
+  product_id     TEXT NOT NULL,
+  diamonds       INT  NOT NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
