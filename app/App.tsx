@@ -31,10 +31,12 @@ import {
   CollectionScreen,
   FriendsScreen,
   LobbyScreen,
+  MatchupScreen,
   CountdownScreen,
   PickTeamScreen,
   GuessScreen,
   ResultScreen,
+  OpponentForfeitModal,
 } from './src/screens';
 import { theme } from './src/theme';
 import { GemIcon, GEM_COLOR } from './src/GemIcon';
@@ -59,16 +61,30 @@ function InviteBanner({
   onAccept,
   onReject,
 }: {
-  invite: { fromId: string; fromName: string };
+  invite: { fromId: string; fromName: string; options?: { scope?: { type: string; value?: string }; mode?: string } };
   onAccept: () => void;
   onReject: () => void;
 }) {
+  // Build scope description for the banner
+  let scopeDesc = '';
+  const scope = invite.options?.scope;
+  if (scope && scope.type !== 'all' && scope.value) {
+    scopeDesc = scope.value;
+  }
+  const mode = invite.options?.mode;
+  const modeLabel = mode === 'country-team' ? 'Ülke-Takım' : mode === 'letter-team' ? 'Harf-Takım' : '';
+
+  const subtitle = scopeDesc
+    ? t('friends.inviteMsgScope', { scope: scopeDesc })
+    : t('friends.inviteMsg');
+
   return (
     <View style={s.inviteBanner}>
       <Ionicons name="game-controller" size={26} color={theme.primary} />
       <View style={{ flex: 1 }}>
         <Text style={s.inviteName} numberOfLines={1}>{invite.fromName}</Text>
-        <Text style={s.inviteSub}>Seni dostluk maçına davet etti</Text>
+        <Text style={s.inviteSub} numberOfLines={2}>{subtitle}</Text>
+        {modeLabel ? <Text style={[s.inviteSub, { color: theme.accent, fontSize: 10, marginTop: 1 }]}>{modeLabel}</Text> : null}
       </View>
       <Pressable onPress={onAccept} style={[s.inviteBtn, { backgroundColor: theme.primary }]} hitSlop={6}>
         <Ionicons name="checkmark" size={20} color="#06131F" />
@@ -208,6 +224,9 @@ export default function App() {
       case 'lobby':
         screen = <LobbyScreen {...props} />;
         break;
+      case 'matchup':
+        screen = <MatchupScreen {...props} />;
+        break;
       case 'countdown':
         screen = <CountdownScreen {...props} />;
         break;
@@ -235,6 +254,11 @@ export default function App() {
             onReject={() => actions.respondMatchInvite(state.matchInvite!.fromId, false)}
           />
         ) : null}
+        <OpponentForfeitModal
+          visible={state.opponentForfeit}
+          onFindNew={actions.findMatchAgain}
+          onGoHome={actions.leave}
+        />
       </View>
     );
   }

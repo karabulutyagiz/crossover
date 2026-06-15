@@ -182,7 +182,7 @@ export type ServerMsg =
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string }
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
   | { type: 'searching' }
-  | { type: 'opponent_left' }
+  | { type: 'opponent_left'; forfeit?: boolean }
   | { type: 'friend_request_received'; requestId: string; fromId: string; fromName: string }
   | { type: 'friend_request_sent' }
   | { type: 'friend_request_responded'; requestId: string; accepted: boolean }
@@ -220,6 +220,7 @@ export interface MatchHistoryView {
     teamB: string; teamBLogo: string | null;
     player: string; playerImageUrl: string | null;
     answeredBy: string;
+    mode?: string; country?: string; letter?: string;
   }[];
   playedAt: string;
 }

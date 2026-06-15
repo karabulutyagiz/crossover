@@ -86,6 +86,8 @@ const tr = {
   'pick.searchCountry': 'Ülke ara...',
   'pick.picked': 'Seçimin yapıldı. Rakip bekleniyor…',
   'getReady': 'Hazır ol!',
+  'matchup.vs': 'VS',
+  'matchup.title': 'MÜSABAKA',
 
   // guess
   'guess.title': 'Ortak oyuncu kim?',
@@ -208,6 +210,8 @@ const tr = {
   'friends.added': 'Arkadaş eklendi! ✓',
   'friends.loginFirst': 'Önce giriş yap',
   'friends.remove': 'Çıkar',
+  'friends.inviteMsg': 'seni dostluk maçına davet etti',
+  'friends.inviteMsgScope': 'seni {scope} dostluk maçına davet etti',
 
   // emote picker
   'emote.send': 'İfade Gönder',
@@ -230,6 +234,17 @@ const tr = {
   'emote.goal.desc': 'Topu fileye gönder, coş!',
   'emote.champion.name': 'Kupa Şenliği',
   'emote.champion.desc': 'Kupayı kaldır, zaferi kutla',
+
+  // leave confirmation
+  'leave.confirmTitle': 'Çıkış yapmak istediğinize emin misiniz?',
+  'leave.confirmBody': 'Çıkış yaptığınız halde kupa kaybedeceksiniz.',
+  'leave.confirm': 'Evet, Çık',
+  'leave.cancel': 'Vazgeç',
+
+  // opponent left popup
+  'opponent.leftTitle': 'Rakibiniz maçtan ayrıldı',
+  'opponent.findNew': 'Yeni Rakip Bul',
+  'opponent.goHome': 'Ana Sayfaya Dön',
 
   // connection errors (client-side)
   'error.connect': 'Sunucuya bağlanılamadı',
@@ -303,6 +318,8 @@ const en: typeof tr = {
   'pick.searchCountry': 'Search country...',
   'pick.picked': 'Your pick is in. Waiting for opponent…',
   'getReady': 'Get ready!',
+  'matchup.vs': 'VS',
+  'matchup.title': 'MATCH',
 
   'guess.title': 'Who is the shared player?',
   'guess.titleCountry': 'Name a {country} player who played for {team}',
@@ -415,6 +432,8 @@ const en: typeof tr = {
   'friends.added': 'Friend added! ✓',
   'friends.loginFirst': 'Sign in first',
   'friends.remove': 'Remove',
+  'friends.inviteMsg': 'invited you to a friendly match',
+  'friends.inviteMsgScope': 'invited you to a {scope} friendly match',
 
   'emote.send': 'Send Emote',
   'emote.moreInStore': 'Check the Store for more emotes',
@@ -433,6 +452,15 @@ const en: typeof tr = {
   'emote.goal.desc': 'Send it into the net and celebrate!',
   'emote.champion.name': 'Trophy Party',
   'emote.champion.desc': 'Lift the trophy, celebrate the win',
+
+  'leave.confirmTitle': 'Are you sure you want to leave?',
+  'leave.confirmBody': 'You will lose trophies if you leave.',
+  'leave.confirm': 'Yes, Leave',
+  'leave.cancel': 'Cancel',
+
+  'opponent.leftTitle': 'Your opponent left the match',
+  'opponent.findNew': 'Find New Opponent',
+  'opponent.goHome': 'Go Home',
 
   'error.connect': 'Could not connect to the server',
   'error.disconnected': 'Connection lost',

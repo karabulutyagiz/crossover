@@ -20,7 +20,7 @@ import type {
   ServerMsg,
 } from './protocol';
 
-export type Phase = 'home' | 'arenas' | 'leaderboard' | 'matchHistory' | 'profile' | 'searching' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
+export type Phase = 'home' | 'arenas' | 'leaderboard' | 'matchHistory' | 'profile' | 'searching' | 'matchup' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
 
 export interface LeaderboardEntry {
   rank: number;
@@ -79,6 +79,9 @@ export interface GameState {
   // `n` increases on every emote so the UI can re-trigger the same one.
   emotes: Record<string, { emoteId: string; n: number }>;
   emoteSeq: number;
+  isQuickMatch: boolean;
+  opponentForfeit: boolean;
+  lastGameOptions: GameOptions | null;
 }
 
 export const initialState: GameState = {
@@ -121,6 +124,9 @@ export const initialState: GameState = {
   revealLetter: null,
   emotes: {},
   emoteSeq: 0,
+  isQuickMatch: false,
+  opponentForfeit: false,
+  lastGameOptions: null,
 };
 
 const PROFILE_KEY = '@crossover_profile';
@@ -138,14 +144,15 @@ type Action =
   | { type: '_set_outgoing'; invite: GameState['outgoingInvite'] }
   | { type: '_close_profile' }
   | { type: '_dismiss_invite' }
-  | { type: '_ready' };
+  | { type: '_ready' }
+  | { type: '_set_game_options'; options: GameOptions | null };
 
 function reducer(state: GameState, action: Action): GameState {
   switch (action.type) {
     case '_connected':
       return { ...state, connected: action.value };
     case '_reset':
-      return { ...initialState, scopes: state.scopes, profile: state.profile, friends: state.friends };
+      return { ...initialState, scopes: state.scopes, profile: state.profile, friends: state.friends, isQuickMatch: false, opponentForfeit: false };
     case '_picked':
       return { ...state, picked: true };
     case '_scopes':
@@ -160,6 +167,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, friends: action.friends };
     case '_ready':
       return { ...state, iReady: true };
+    case '_set_game_options':
+      return { ...state, lastGameOptions: (action as any).options };
 
     case 'friends_list':
       return { ...state, friends: (action as any).friends ?? [], friendRequests: (action as any).requests ?? [] };
@@ -194,7 +203,7 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, viewProfile: null };
 
     case 'searching':
-      return { ...state, phase: 'searching' };
+      return { ...state, phase: 'searching', isQuickMatch: true, opponentForfeit: false };
     case 'profile':
       return { ...state, profile: action.profile };
     case 'name_changed':
@@ -214,16 +223,25 @@ function reducer(state: GameState, action: Action): GameState {
     case 'emote_purchased':
       return { ...state, profile: action.profile };
 
-    case 'room_state':
+    case 'room_state': {
+      // When a quick match or friend invite fills the room (2 players), show matchup screen
+      const isAutoMatch = state.isQuickMatch || state.matchInvite !== null || state.outgoingInvite !== null;
+      const roomFull = action.room.players.length === 2;
+      const hasBot = action.room.players.some((p) => p.name === 'Bot');
+      let nextPhase = state.phase === 'home' ? 'lobby' as Phase : state.phase;
+      if (isAutoMatch && roomFull && !hasBot && (state.phase === 'searching' || state.phase === 'lobby' || state.phase === 'home')) {
+        nextPhase = 'matchup';
+      }
       return {
         ...state,
         room: action.room,
-        phase: state.phase === 'home' ? 'lobby' : state.phase,
+        phase: nextPhase,
         error: state.phase === 'home' ? null : state.error,
         // A friend match just began — clear any lingering invite UI on both sides.
         outgoingInvite: null,
         matchInvite: null,
       };
+    }
     case 'countdown':
       return {
         ...state,
@@ -288,6 +306,9 @@ function reducer(state: GameState, action: Action): GameState {
     case 'club_results':
       return { ...state, clubResults: action.clubs };
     case 'opponent_left':
+      if (action.forfeit) {
+        return { ...state, opponentForfeit: true };
+      }
       return { ...state, phase: 'lobby', error: t('error.opponentLeft'), teams: null, result: null, locked: null };
     case 'error':
       return { ...state, error: action.message };
@@ -437,11 +458,13 @@ export function useCrossover() {
         connectAndSend({ type: 'set_username', username, userId });
       }
     },
-    findMatch: (options?: GameOptions) =>
+    findMatch: (options?: GameOptions) => {
       // Carry the registered name + account id: this fresh socket hasn't sent
       // `register`, so without them the player would be a nameless "Oyuncu" with
       // no trophies awarded.
-      connectAndSend({ type: 'find_match', name: state.profile?.displayName, userId: state.profile?.userId, options }),
+      dispatch({ type: '_set_game_options', options: options ?? null } as any);
+      connectAndSend({ type: 'find_match', name: state.profile?.displayName, userId: state.profile?.userId, options });
+    },
     cancelSearch: () => {
       wsRef.current?.close();
       wsRef.current = null;
@@ -502,6 +525,11 @@ export function useCrossover() {
     getUserProfile: (userId: string) => send({ type: 'get_user_profile', userId }),
     closeUserProfile: () => dispatch({ type: '_close_profile' }),
     dismissMatchInvite: () => dispatch({ type: '_dismiss_invite' }),
+    findMatchAgain: () => {
+      const options = state.lastGameOptions ?? undefined;
+      dispatch({ type: '_set_game_options', options: options ?? null } as any);
+      connectAndSend({ type: 'find_match', name: state.profile?.displayName, userId: state.profile?.userId, options });
+    },
     leave: () => {
       wsRef.current?.close();
       wsRef.current = null;

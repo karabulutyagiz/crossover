@@ -85,6 +85,7 @@ type Actions = {
   getUserProfile: (userId: string) => void;
   closeUserProfile: () => void;
   dismissMatchInvite: () => void;
+  findMatchAgain: () => void;
   leave: () => void;
 };
 
@@ -239,7 +240,7 @@ function Chip({ icon, label, onPress }: { icon: IoniconName; label: string; onPr
 
 // Subtle football-pitch lines behind every screen for a stadium feel.
 
-function Screen({ children }: { children: ReactNode }) {
+function Screen({ children, scroll }: { children: ReactNode; scroll?: boolean }) {
   // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
   return (
     <KeyboardAvoidingView
@@ -248,7 +249,16 @@ function Screen({ children }: { children: ReactNode }) {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 44 : 0}
     >
       <FootballField />
-      {children}
+      {scroll ? (
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {children}
+        </ScrollView>
+      ) : children}
     </KeyboardAvoidingView>
   );
 }
@@ -646,30 +656,24 @@ function TransientCallout({ emoteId }: { emoteId: string }) {
 
 // Floating emote button + picker sheet + the opponent/self callouts. Drop into
 // any in-match screen; positions itself absolutely over the screen.
-function EmoteLayer({ state, actions, fab = 'bottom-right' }: Props & { fab?: 'bottom-right' | 'top-right' }) {
-  const [open, setOpen] = useState(false);
+function EmoteLayer({ state, actions, fab = 'bottom-right', hideFab, externalOpen, onOpenChange }: Props & { fab?: 'bottom-right' | 'top-right'; hideFab?: boolean; externalOpen?: boolean; onOpenChange?: (open: boolean) => void }) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = externalOpen ?? internalOpen;
+  const setOpen = (v: boolean) => { setInternalOpen(v); onOpenChange?.(v); };
   const room = state.room;
   const youId = room?.youId;
-  const oppId = room?.players.find((p) => p.id !== youId)?.id;
-  const mine = youId ? state.emotes[youId] : undefined;
-  const theirs = oppId ? state.emotes[oppId] : undefined;
   const emotes = loadoutEmotes(state.profile);
 
   return (
     <>
-      <View pointerEvents="none" style={styles.emoteTop}>
-        {theirs ? <TransientCallout key={`opp-${theirs.n}`} emoteId={theirs.emoteId} /> : null}
-      </View>
-      <View pointerEvents="none" style={styles.emoteBottom}>
-        {mine ? <TransientCallout key={`you-${mine.n}`} emoteId={mine.emoteId} /> : null}
-      </View>
-
-      <Pressable
-        style={[styles.emoteFab, fab === 'top-right' ? styles.emoteFabTop : styles.emoteFabBottom]}
-        onPress={() => setOpen(true)}
-      >
-        <Ionicons name="happy" size={26} color="#06131F" />
-      </Pressable>
+      {!hideFab ? (
+        <Pressable
+          style={[styles.emoteFab, fab === 'top-right' ? styles.emoteFabTop : styles.emoteFabBottom]}
+          onPress={() => setOpen(true)}
+        >
+          <Ionicons name="happy" size={26} color="#06131F" />
+        </Pressable>
+      ) : null}
 
       <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.emoteSheetBackdrop} onPress={() => setOpen(false)}>
@@ -1115,14 +1119,10 @@ export function HomeScreen({ actions, state, onLanguageChange }: Props) {
 
         {profile ? <ArenaCrest arena={profile.arena} trophies={profile.trophies} onPress={actions.openArenas} /> : null}
 
-        {/* Game options — one tidy row */}
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, marginBottom: 14 }}>
-          <Chip icon={MODE_ICON[mode]} label={MODE_LABEL(mode)} onPress={() => setPicker('mode')} />
-          <Chip icon="globe-outline" label={scopeLabel(scope)} onPress={() => setPicker('scopeType')} />
-        </View>
+        <View style={{ height: 16 }} />
 
-        {/* Primary action */}
-        <Btn label={t('home.quickMatch')} icon="flash" kind="primary" big onPress={() => actions.findMatch(opts)} />
+        {/* Primary action — quick match always all teams, team-team mode */}
+        <Btn label={t('home.quickMatch')} icon="flash" kind="primary" big onPress={() => actions.findMatch({ mode: 'team-team' })} />
 
         {/* Bot match */}
         <Btn label={t('home.solo')} icon="game-controller" kind="accent" onPress={() => setBotOpen(true)} />
@@ -1217,6 +1217,13 @@ export function HomeScreen({ actions, state, onLanguageChange }: Props) {
         <Pressable style={styles.modalBg} onPress={() => setBotOpen(false)}>
           <Pressable style={styles.modalCard} onPress={() => {}}>
             <Text style={styles.modalTitle}>{t('home.solo')}</Text>
+
+            {/* Mode & scope chips */}
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+              <Chip icon={MODE_ICON[mode]} label={MODE_LABEL(mode)} onPress={() => setPicker('mode')} />
+              <Chip icon="globe-outline" label={scopeLabel(scope)} onPress={() => setPicker('scopeType')} />
+            </View>
+
             <Text style={[styles.muted, { marginBottom: 10 }]}>Zorluk seç</Text>
             {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
               <Pressable
@@ -1224,7 +1231,7 @@ export function HomeScreen({ actions, state, onLanguageChange }: Props) {
                 onPress={() => {
                   setDifficulty(d);
                   setBotOpen(false);
-                  actions.createSolo(playerName, { ...opts, difficulty: d });
+                  actions.createSolo(playerName, { scope, mode, difficulty: d });
                 }}
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 14,
@@ -1393,23 +1400,92 @@ function PickerModal({
 }
 
 // ---- Lobby ----
+function LeaveConfirmModal({ visible, onCancel, onConfirm }: { visible: boolean; onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', paddingHorizontal: 36 }}>
+        <View style={{ backgroundColor: theme.card, borderRadius: 18, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: 'center' }}>
+          <Ionicons name="warning" size={44} color={theme.danger} />
+          <Text style={{ color: theme.text, fontSize: 16, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginTop: 14 }}>
+            {t('leave.confirmTitle')}
+          </Text>
+          <Text style={{ color: theme.muted, fontSize: 13, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginTop: 6, marginBottom: 20 }}>
+            {t('leave.confirmBody')}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
+            <Pressable
+              onPress={onCancel}
+              style={{ flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, alignItems: 'center' }}
+            >
+              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14 }}>{t('leave.cancel')}</Text>
+            </Pressable>
+            <Pressable
+              onPress={onConfirm}
+              style={{ flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: theme.danger, alignItems: 'center' }}
+            >
+              <Text style={{ color: '#fff', fontFamily: 'Poppins-ExtraBold', fontSize: 14 }}>{t('leave.confirm')}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+export function OpponentForfeitModal({ visible, onFindNew, onGoHome }: { visible: boolean; onFindNew: () => void; onGoHome: () => void }) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onGoHome}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', paddingHorizontal: 36 }}>
+        <View style={{ backgroundColor: theme.card, borderRadius: 18, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: 'center' }}>
+          <Ionicons name="exit-outline" size={48} color={theme.accent} />
+          <Text style={{ color: theme.text, fontSize: 16, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginTop: 14, marginBottom: 20 }}>
+            {t('opponent.leftTitle')}
+          </Text>
+          <View style={{ gap: 10, width: '100%' }}>
+            <Pressable
+              onPress={onFindNew}
+              style={{ paddingVertical: 14, borderRadius: 12, backgroundColor: theme.primary, alignItems: 'center' }}
+            >
+              <Text style={{ color: '#06131F', fontFamily: 'Poppins-ExtraBold', fontSize: 14 }}>{t('opponent.findNew')}</Text>
+            </Pressable>
+            <Pressable
+              onPress={onGoHome}
+              style={{ paddingVertical: 14, borderRadius: 12, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, alignItems: 'center' }}
+            >
+              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14 }}>{t('opponent.goHome')}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export function LobbyScreen({ state, actions }: Props) {
   const room = state.room!;
   const you = room.players.find((p) => p.id === room.youId);
   const canStart = !!you?.isHost && room.players.length === 2;
   const hasBot = room.players.some((p) => p.name === 'Bot');
+  const hideCode = hasBot || state.isQuickMatch;
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const needConfirm = !hasBot && room.players.length === 2;
   return (
-    <Screen>
-      {!hasBot ? (
+    <Screen scroll>
+      {!hideCode ? (
         <>
           <Text style={styles.label}>{t('lobby.code')}</Text>
           <Text style={styles.code}>{room.code}</Text>
           <Text style={styles.muted}>{t('lobby.shareCode')}</Text>
         </>
-      ) : (
+      ) : hasBot ? (
         <>
           <Ionicons name="game-controller" size={44} color={theme.accent} style={{ alignSelf: 'center' }} />
           <Text style={styles.h1}>{t('lobby.botMatch')}</Text>
+        </>
+      ) : (
+        <>
+          <Ionicons name="flash" size={44} color={theme.primary} style={{ alignSelf: 'center' }} />
+          <Text style={styles.h1}>{t('home.quickMatch')}</Text>
         </>
       )}
       <View style={styles.divider} />
@@ -1438,8 +1514,142 @@ export function LobbyScreen({ state, actions }: Props) {
         <Text style={styles.muted}>{t('lobby.waitHost')}</Text>
       )}
       <View style={{ height: 16 }} />
-      <Btn label={t('result.leave')} kind="ghost" icon="close" onPress={actions.leave} />
+      <Btn label={t('result.leave')} kind="ghost" icon="close" onPress={() => needConfirm ? setShowLeaveConfirm(true) : actions.leave()} />
+      <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
     </Screen>
+  );
+}
+
+// ---- Matchup (pre-match player reveal) ----
+export function MatchupScreen({ state }: Props) {
+  const room = state.room;
+  const you = room?.players.find((p) => p.id === room.youId);
+  const opp = room?.players.find((p) => p.id !== room.youId);
+
+  // Entrance animation: slide + scale + fade in
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    anim.setValue(0);
+    Animated.spring(anim, { toValue: 1, useNativeDriver: true, friction: 6, tension: 60 }).start();
+  }, [anim]);
+
+  const oppSlide = anim.interpolate({ inputRange: [0, 1], outputRange: [-80, 0] });
+  const youSlide = anim.interpolate({ inputRange: [0, 1], outputRange: [80, 0] });
+  const vsScale = anim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0, 1] });
+
+  const oppColor = opp?.arena ? arenaColor(opp.arena.name) : theme.muted;
+  const youColor = you?.arena ? arenaColor(you.arena.name) : theme.primary;
+
+  const renderPlayer = (p: typeof you, color: string, slideY: Animated.AnimatedInterpolation<number>) => (
+    <Animated.View style={{ transform: [{ translateY: slideY }], opacity: anim, alignItems: 'center', gap: 6 }}>
+      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.card, borderWidth: 3, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name={p?.name === 'Bot' ? 'game-controller' : 'person'} size={30} color={color} />
+      </View>
+      <Text style={{ color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold' }} numberOfLines={1}>{p?.name ?? '?'}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+        <Ionicons name="trophy" size={15} color={theme.accent} />
+        <Text style={{ color: theme.accent, fontSize: 14, fontFamily: 'Poppins-SemiBold' }}>{p?.trophies ?? 0}</Text>
+      </View>
+      {p?.arena ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.bg2, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 3, borderWidth: 1, borderColor: color + '55' }}>
+          <Text style={{ fontSize: 13 }}>{p.arena.icon}</Text>
+          <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>{p.arena.name}</Text>
+        </View>
+      ) : null}
+    </Animated.View>
+  );
+
+  return (
+    <Screen>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 }}>
+        <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 3 }}>{t('matchup.title')}</Text>
+        {renderPlayer(opp, oppColor, oppSlide)}
+        <Animated.View style={{ transform: [{ scale: vsScale }] }}>
+          <View style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: theme.accentDark }}>
+            <Text style={{ color: '#06131F', fontFamily: 'Poppins-Black', fontSize: 16 }}>{t('matchup.vs')}</Text>
+          </View>
+        </Animated.View>
+        {renderPlayer(you, youColor, youSlide)}
+      </View>
+    </Screen>
+  );
+}
+
+// ---- Thought bubble callout (appears next to player bar) ----
+function ThoughtBubble({ emoteId, emoteN, position }: { emoteId?: string; emoteN?: number; position: 'top' | 'bottom' }) {
+  const a = useRef(new Animated.Value(0)).current;
+  const [gone, setGone] = useState(true);
+  const [currentEmote, setCurrentEmote] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!emoteId || !emoteN) return;
+    setCurrentEmote(emoteId);
+    setGone(false);
+    a.setValue(0);
+    Animated.spring(a, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }).start();
+    const tm = setTimeout(() => {
+      Animated.timing(a, { toValue: 0, duration: 250, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(
+        ({ finished }) => finished && setGone(true),
+      );
+    }, 3000);
+    return () => clearTimeout(tm);
+  }, [emoteId, emoteN, a]);
+
+  if (gone || !currentEmote) return null;
+  const scale = a.interpolate({ inputRange: [0, 0.7, 1], outputRange: [0.2, 1.1, 1] });
+  const op = a.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 1, 1] });
+  const dotOp = a.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0.6, 1] });
+
+  return (
+    <Animated.View style={{
+      position: 'absolute', right: 6, [position === 'top' ? 'top' : 'bottom']: -60,
+      opacity: op, transform: [{ scale }], zIndex: 50,
+      alignItems: 'flex-end',
+    }}>
+      {/* Main bubble */}
+      <View style={{
+        backgroundColor: theme.card, borderRadius: 18, borderWidth: 1.5, borderColor: theme.border,
+        paddingHorizontal: 8, paddingVertical: 6, minWidth: 60, alignItems: 'center',
+        shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 8,
+      }}>
+        <EmoteSticker id={currentEmote} size={40} />
+      </View>
+      {/* Small dots (thought bubble tail) */}
+      <Animated.View style={{ opacity: dotOp, alignItems: 'flex-end', marginRight: 10 }}>
+        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, marginTop: 3 }} />
+        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, marginTop: 2, marginRight: 4 }} />
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
+// ---- Shared in-match player bar (opponent top, you bottom) ----
+function PlayerBar({ player, isYou, onEmotePress, emoteId, emoteN }: {
+  player: { name: string; trophies?: number; arena?: { name: string; icon: string; minTrophies: number } } | undefined;
+  isYou?: boolean;
+  onEmotePress?: () => void;
+  emoteId?: string;
+  emoteN?: number;
+}) {
+  if (!player) return null;
+  const color = player.arena ? arenaColor(player.arena.name) : theme.muted;
+  return (
+    <View style={{ position: 'relative', alignSelf: 'stretch' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.card, borderRadius: 14, paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: isYou ? theme.primary + '44' : theme.border }}>
+        <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: theme.bg2, borderWidth: 2, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name={player.name === 'Bot' ? 'game-controller' : 'person'} size={14} color={color} />
+        </View>
+        <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', flex: 1 }} numberOfLines={1}>{player.name}</Text>
+        <Ionicons name="trophy" size={13} color={theme.accent} />
+        <Text style={{ color: theme.accent, fontSize: 12, fontFamily: 'Poppins-SemiBold' }}>{player.trophies ?? 0}</Text>
+        {isYou && onEmotePress ? (
+          <Pressable onPress={onEmotePress} style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}>
+            <Ionicons name="happy" size={18} color="#06131F" />
+          </Pressable>
+        ) : null}
+      </View>
+      <ThoughtBubble emoteId={emoteId} emoteN={emoteN} position={isYou ? 'bottom' : 'top'} />
+    </View>
   );
 }
 
@@ -1454,7 +1664,7 @@ export function CountdownScreen({ state }: Props) {
   const scale = a.interpolate({ inputRange: [0, 1], outputRange: [2.4, 1] });
   return (
     <Screen>
-      <View style={styles.center}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
         <View style={{ width: 168, height: 168, borderRadius: 84, borderWidth: 5, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.card, shadowColor: theme.primary, shadowOpacity: 0.6, shadowRadius: 26, shadowOffset: { width: 0, height: 0 }, elevation: 16 }}>
           <Animated.Text style={{ color: theme.text, fontSize: n > 0 ? 92 : 52, fontFamily: 'Poppins-Black', transform: [{ scale }], opacity: a }}>
             {n > 0 ? n : 'GO!'}
@@ -1494,6 +1704,15 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   const [countryQ, setCountryQ] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const role = state.pickRole ?? 'team';
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const hasBot = state.room?.players.some((p) => p.name === 'Bot');
+  const handleLeave = () => hasBot ? actions.leave() : setShowLeaveConfirm(true);
+  const room = state.room;
+  const oppPlayer = room?.players.find((p) => p.id !== room.youId);
+  const youPlayer = room?.players.find((p) => p.id === room.youId);
+  const [emoteOpen, setEmoteOpen] = useState(false);
+  const oppEmote = room ? state.emotes[room.players.find((p) => p.id !== room.youId)?.id ?? ''] : undefined;
+  const myEmote = room ? state.emotes[room.youId] : undefined;
 
   const onChange = (text: string) => {
     setQ(text);
@@ -1512,10 +1731,16 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   if (state.picked) {
     return (
       <Screen>
-        <View style={styles.center}>
+        <PlayerBar player={oppPlayer} emoteId={oppEmote?.emoteId} emoteN={oppEmote?.n} />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 6 }}>
           <ActivityIndicator color={theme.primary} />
           <Text style={styles.muted}>{t('pick.picked')}</Text>
         </View>
+        <PlayerBar player={youPlayer} isYou emoteId={myEmote?.emoteId} emoteN={myEmote?.n} />
+        <Pressable onPress={handleLeave} style={{ position: 'absolute', top: 54, left: 18, zIndex: 20 }}>
+          <Ionicons name="close-circle" size={32} color={theme.muted} />
+        </Pressable>
+        <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
       </Screen>
     );
   }
@@ -1524,7 +1749,8 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   if (role === 'letter') {
     return (
       <Screen>
-        <View style={{ alignItems: 'center', marginBottom: 8 }}>
+        <PlayerBar player={oppPlayer} emoteId={oppEmote?.emoteId} emoteN={oppEmote?.n} />
+        <View style={{ alignItems: 'center', marginBottom: 8, marginTop: 8 }}>
           <Text style={styles.h1}>{t('pick.titleLetter')}</Text>
           <PickTimer pickEndsAt={state.pickEndsAt} />
         </View>
@@ -1543,7 +1769,13 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
             </Pressable>
           ))}
         </View>
-        {!tutorial ? <EmoteLayer state={state} actions={actions} fab="top-right" /> : null}
+        <View style={{ flex: 1 }} />
+        <PlayerBar player={youPlayer} isYou onEmotePress={() => setEmoteOpen(true)} emoteId={myEmote?.emoteId} emoteN={myEmote?.n} />
+        <Pressable onPress={handleLeave} style={{ position: 'absolute', top: 54, left: 18, zIndex: 20 }}>
+          <Ionicons name="close-circle" size={32} color={theme.muted} />
+        </Pressable>
+        <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
+        {!tutorial ? <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} /> : null}
       </Screen>
     );
   }
@@ -1563,7 +1795,8 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
       : NATIONALITIES;
     return (
       <Screen>
-        <View style={{ alignItems: 'center', marginBottom: 8 }}>
+        <PlayerBar player={oppPlayer} emoteId={oppEmote?.emoteId} emoteN={oppEmote?.n} />
+        <View style={{ alignItems: 'center', marginBottom: 8, marginTop: 8 }}>
           <Text style={styles.h1}>{t('pick.titleCountry')}</Text>
           <PickTimer pickEndsAt={state.pickEndsAt} />
         </View>
@@ -1579,7 +1812,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
             autoFocus={!tutorial}
           />
         </View>
-        <ScrollView style={{ alignSelf: 'stretch' }} keyboardShouldPersistTaps="handled">
+        <ScrollView style={{ alignSelf: 'stretch', flex: 1 }} keyboardShouldPersistTaps="handled">
           {filtered.map((n) => (
             <Pressable key={n.value} style={styles.clubRow} onPress={() => actions.pickCountry(n.value)}>
               <Text style={{ fontSize: 24 }}>{n.flag}</Text>
@@ -1589,7 +1822,12 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
           ))}
           {filtered.length === 0 && countryQ.trim() ? <Text style={styles.muted}>{t('common.noResults')}</Text> : null}
         </ScrollView>
-        {!tutorial ? <EmoteLayer state={state} actions={actions} fab="top-right" /> : null}
+        <PlayerBar player={youPlayer} isYou onEmotePress={() => setEmoteOpen(true)} emoteId={myEmote?.emoteId} emoteN={myEmote?.n} />
+        <Pressable onPress={handleLeave} style={{ position: 'absolute', top: 54, left: 18, zIndex: 20 }}>
+          <Ionicons name="close-circle" size={32} color={theme.muted} />
+        </Pressable>
+        <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
+        {!tutorial ? <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} /> : null}
       </Screen>
     );
   }
@@ -1597,7 +1835,8 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   // ---- Team picker (default) ----
   return (
     <Screen>
-      <View style={{ alignItems: 'center', marginBottom: 8 }}>
+      <PlayerBar player={oppPlayer} emoteId={oppEmote?.emoteId} emoteN={oppEmote?.n} />
+      <View style={{ alignItems: 'center', marginBottom: 8, marginTop: 8 }}>
         <Text style={styles.h1}>{t('pick.title')}</Text>
         <PickTimer pickEndsAt={state.pickEndsAt} />
       </View>
@@ -1614,7 +1853,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
         />
       </View>
       <ScrollView
-        style={{ alignSelf: 'stretch' }}
+        style={{ alignSelf: 'stretch', flex: 1 }}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', gap: 8, paddingVertical: 8 }}
         showsVerticalScrollIndicator={false}
@@ -1639,7 +1878,12 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
           <Text style={[styles.muted, { width: '100%', marginTop: 20 }]}>{t('common.noResults')}</Text>
         ) : null}
       </ScrollView>
-      {!tutorial ? <EmoteLayer state={state} actions={actions} fab="top-right" /> : null}
+      <PlayerBar player={youPlayer} isYou onEmotePress={() => setEmoteOpen(true)} emoteId={myEmote?.emoteId} emoteN={myEmote?.n} />
+      <Pressable onPress={handleLeave} style={{ position: 'absolute', top: 54, left: 18, zIndex: 20 }}>
+        <Ionicons name="close-circle" size={32} color={theme.muted} />
+      </Pressable>
+      <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
+      {!tutorial ? <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} /> : null}
     </Screen>
   );
 }
@@ -1653,6 +1897,14 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
   const someoneElseAnswered = state.locked && state.locked.byId !== room.youId;
   const youPassed = state.passedBy.includes(room.youId);
   const oppPassed = state.passedBy.some((id) => id !== room.youId);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const hasBot = room.players.some((p) => p.name === 'Bot');
+  const handleLeave = () => hasBot ? actions.leave() : setShowLeaveConfirm(true);
+  const oppPlayer = room.players.find((p) => p.id !== room.youId);
+  const youPlayer = room.players.find((p) => p.id === room.youId);
+  const [emoteOpen, setEmoteOpen] = useState(false);
+  const oppEmote = state.emotes[room.players.find((p) => p.id !== room.youId)?.id ?? ''];
+  const myEmote = state.emotes[room.youId];
 
   const [secs, setSecs] = useState<number | null>(null);
   useEffect(() => {
@@ -1675,7 +1927,9 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
   const vsScale = reveal.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0, 0, 1] });
 
   return (
-    <Screen>
+    <Screen scroll>
+      <PlayerBar player={oppPlayer} emoteId={oppEmote?.emoteId} emoteN={oppEmote?.n} />
+      <View style={{ height: 8 }} />
       <View style={styles.teamsRow}>
         <Animated.View style={[styles.teamCard, { transform: [{ translateX: leftX }], opacity: reveal }]}>
           {state.revealMode === 'country-team' ? (
@@ -1763,7 +2017,13 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
           )}
         </>
       )}
-      {!tutorial ? <EmoteLayer state={state} actions={actions} fab="top-right" /> : null}
+      <View style={{ height: 8 }} />
+      <PlayerBar player={youPlayer} isYou onEmotePress={() => setEmoteOpen(true)} emoteId={myEmote?.emoteId} emoteN={myEmote?.n} />
+      <Pressable onPress={handleLeave} style={{ position: 'absolute', top: 54, left: 18, zIndex: 20 }}>
+        <Ionicons name="close-circle" size={32} color={theme.muted} />
+      </Pressable>
+      <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
+      {!tutorial ? <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} /> : null}
     </Screen>
   );
 }
@@ -2315,6 +2575,10 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
   const [friendTab, setFriendTab] = useState<'friends' | 'requests'>('friends');
   const [copied, setCopied] = useState(false);
   const [matchModal, setMatchModal] = useState<string | null>(null); // friendId — mode picker
+  const [matchStep, setMatchStep] = useState<'mode' | 'scope'>('mode');
+  const [matchMode, setMatchMode] = useState<GameMode>('team-team');
+  const [matchScope, setMatchScope] = useState<Scope>({ type: 'all' });
+  const [matchPicker, setMatchPicker] = useState<'scopeType' | 'league' | 'country' | null>(null);
   const [socialPackPopup, setSocialPackPopup] = useState(false);
   const profile = state.profile;
   const hasSocialPack = profile?.socialPackUntil ? new Date(profile.socialPackUntil) > new Date() : false;
@@ -2490,38 +2754,103 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
         )}
       </ScrollView>
 
-      {/* Match mode selection modal */}
-      <Modal visible={matchModal !== null} transparent animationType="fade" onRequestClose={() => setMatchModal(null)}>
-        <Pressable style={styles.modalBg} onPress={() => setMatchModal(null)}>
+      {/* Match mode + scope selection modal */}
+      <Modal visible={matchModal !== null} transparent animationType="fade" onRequestClose={() => { setMatchModal(null); setMatchStep('mode'); }}>
+        <Pressable style={styles.modalBg} onPress={() => { setMatchModal(null); setMatchStep('mode'); }}>
           <Pressable style={styles.modalCard} onPress={() => {}}>
-            <Text style={styles.modalTitle}>Dostluk Maçı - Mod Seç</Text>
-            {(['team-team', 'country-team', 'letter-team'] as GameMode[]).map((m) => {
-              const locked = m !== 'team-team' && !hasSocialPack;
-              return (
+            {matchStep === 'mode' ? (
+              <>
+                <Text style={styles.modalTitle}>Dostluk Maçı - Mod Seç</Text>
+                {(['team-team', 'country-team', 'letter-team'] as GameMode[]).map((m) => {
+                  const locked = m !== 'team-team' && !hasSocialPack;
+                  return (
+                    <Pressable
+                      key={m}
+                      style={[styles.modalRow, locked && { opacity: 0.4 }]}
+                      onPress={() => {
+                        if (locked) {
+                          setMatchModal(null);
+                          setMatchStep('mode');
+                          setSocialPackPopup(true);
+                          return;
+                        }
+                        setMatchMode(m);
+                        setMatchStep('scope');
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <Ionicons name={MODE_ICON[m]} size={18} color={locked ? theme.muted : theme.accent} />
+                        <Text style={[styles.modalRowText, locked && { color: theme.muted }]}>{MODE_LABEL(m)}</Text>
+                      </View>
+                      {locked ? <Ionicons name="lock-closed" size={16} color={theme.muted} /> : null}
+                    </Pressable>
+                  );
+                })}
+              </>
+            ) : (
+              <>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <Pressable onPress={() => setMatchStep('mode')} hitSlop={8}>
+                    <Ionicons name="arrow-back" size={20} color={theme.text} />
+                  </Pressable>
+                  <Text style={[styles.modalTitle, { flex: 1, marginBottom: 0 }]}>Kapsam Seç</Text>
+                </View>
                 <Pressable
-                  key={m}
-                  style={[styles.modalRow, locked && { opacity: 0.4 }]}
+                  style={styles.modalRow}
                   onPress={() => {
-                    if (locked) {
-                      setMatchModal(null);
-                      setSocialPackPopup(true);
-                      return;
-                    }
-                    actions.inviteFriendMatch(matchModal!, friends.find((f) => f.userId === matchModal)?.displayName ?? 'Arkadaş', { mode: m });
+                    actions.inviteFriendMatch(matchModal!, friends.find((f) => f.userId === matchModal)?.displayName ?? 'Arkadaş', { mode: matchMode });
                     setMatchModal(null);
+                    setMatchStep('mode');
+                    setMatchScope({ type: 'all' });
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <Ionicons name={MODE_ICON[m]} size={18} color={locked ? theme.muted : theme.accent} />
-                    <Text style={[styles.modalRowText, locked && { color: theme.muted }]}>{MODE_LABEL(m)}</Text>
+                    <Ionicons name="globe-outline" size={18} color={theme.primary} />
+                    <Text style={styles.modalRowText}>{t('scope.all')}</Text>
                   </View>
-                  {locked ? <Ionicons name="lock-closed" size={16} color={theme.muted} /> : null}
                 </Pressable>
-              );
-            })}
+                <Pressable
+                  style={styles.modalRow}
+                  onPress={() => setMatchPicker('league')}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Ionicons name="trophy-outline" size={18} color={theme.accent} />
+                    <Text style={styles.modalRowText}>{t('scope.pickLeague')}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={theme.muted} />
+                </Pressable>
+                <Pressable
+                  style={styles.modalRow}
+                  onPress={() => setMatchPicker('country')}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Ionicons name="flag-outline" size={18} color={theme.blue} />
+                    <Text style={styles.modalRowText}>{t('scope.pickCountry')}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={theme.muted} />
+                </Pressable>
+              </>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* League/country picker for friend match scope */}
+      <PickerModal
+        picker={matchPicker}
+        scopes={state.scopes}
+        onClose={() => setMatchPicker(null)}
+        onScope={(s) => {
+          setMatchScope(s);
+          setMatchPicker(null);
+          actions.inviteFriendMatch(matchModal!, friends.find((f) => f.userId === matchModal)?.displayName ?? 'Arkadaş', { mode: matchMode, scope: s });
+          setMatchModal(null);
+          setMatchStep('mode');
+        }}
+        onMode={() => {}}
+        onDifficulty={() => {}}
+        goto={() => {}}
+      />
 
       {/* Social pack popup */}
       <Modal visible={socialPackPopup} transparent animationType="fade" onRequestClose={() => setSocialPackPopup(false)}>
@@ -2789,8 +3118,12 @@ function arenaForTrophies(trophies: number): { name: string; icon: IoniconName; 
   return { name: 'Mahalle Sahası', icon: 'football-outline', color: '#8B4513' };
 }
 
-function ClubLogo({ uri, size = 22 }: { uri: string | null; size?: number }) {
-  if (!uri) return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: theme.border }} />;
+function ClubLogo({ uri, size = 22, name }: { uri: string | null; size?: number; name?: string }) {
+  if (!uri) return (
+    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: name ? badgeColor(name) : theme.border, alignItems: 'center', justifyContent: 'center' }}>
+      {name ? <Text style={{ color: '#fff', fontSize: size * 0.45, fontWeight: '900' }}>{initial(name)}</Text> : null}
+    </View>
+  );
   return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
 }
 
@@ -2891,22 +3224,33 @@ export function MatchHistoryScreen({ state, actions }: Props) {
                 <View style={{ flexDirection: 'row', paddingHorizontal: 10, paddingBottom: 12, gap: 6 }}>
                   {/* My rounds */}
                   <View style={{ flex: 1 }}>
-                    {myRounds.length > 0 ? myRounds.map((r, i) => (
-                      <View key={i} style={{
-                        backgroundColor: theme.bg, borderRadius: 10, padding: 8, marginBottom: 4,
-                        borderLeftWidth: 3, borderLeftColor: theme.primary,
-                      }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                          <ClubLogo uri={r.teamALogo} size={18} />
-                          <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
-                          <ClubLogo uri={r.teamBLogo} size={18} />
+                    {myRounds.length > 0 ? myRounds.map((r, i) => {
+                      const rMode = r.mode ?? m.gameMode ?? 'team-team';
+                      return (
+                        <View key={i} style={{
+                          backgroundColor: theme.bg, borderRadius: 10, padding: 8, marginBottom: 4,
+                          borderLeftWidth: 3, borderLeftColor: theme.primary,
+                        }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                            {rMode === 'country-team' && r.country ? (
+                              <Text style={{ fontSize: 16 }}>{NATIONALITIES.find((n) => n.value === r.country)?.flag ?? '🏳️'}</Text>
+                            ) : rMode === 'letter-team' && r.letter ? (
+                              <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' }}>
+                                <Text style={{ color: '#06131F', fontSize: 11, fontWeight: '900' }}>{r.letter}</Text>
+                              </View>
+                            ) : (
+                              <ClubLogo uri={r.teamALogo} size={18} name={r.teamA} />
+                            )}
+                            <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
+                            <ClubLogo uri={r.teamBLogo} size={18} name={r.teamB} />
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                            <PlayerPhoto uri={r.playerImageUrl} size={24} />
+                            <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 11, flex: 1 }} numberOfLines={1}>{r.player}</Text>
+                          </View>
                         </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                          <PlayerPhoto uri={r.playerImageUrl} size={24} />
-                          <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 11, flex: 1 }} numberOfLines={1}>{r.player}</Text>
-                        </View>
-                      </View>
-                    )) : <Text style={{ color: theme.muted, fontSize: 10, textAlign: 'center', marginTop: 8 }}>—</Text>}
+                      );
+                    }) : <Text style={{ color: theme.muted, fontSize: 10, textAlign: 'center', marginTop: 8 }}>—</Text>}
                   </View>
 
                   {/* Divider */}
@@ -2914,22 +3258,33 @@ export function MatchHistoryScreen({ state, actions }: Props) {
 
                   {/* Opponent rounds */}
                   <View style={{ flex: 1 }}>
-                    {oppRounds.length > 0 ? oppRounds.map((r, i) => (
-                      <View key={i} style={{
-                        backgroundColor: theme.bg, borderRadius: 10, padding: 8, marginBottom: 4,
-                        borderLeftWidth: 3, borderLeftColor: theme.danger,
-                      }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                          <ClubLogo uri={r.teamALogo} size={18} />
-                          <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
-                          <ClubLogo uri={r.teamBLogo} size={18} />
+                    {oppRounds.length > 0 ? oppRounds.map((r, i) => {
+                      const rMode = r.mode ?? m.gameMode ?? 'team-team';
+                      return (
+                        <View key={i} style={{
+                          backgroundColor: theme.bg, borderRadius: 10, padding: 8, marginBottom: 4,
+                          borderLeftWidth: 3, borderLeftColor: theme.danger,
+                        }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                            {rMode === 'country-team' && r.country ? (
+                              <Text style={{ fontSize: 16 }}>{NATIONALITIES.find((n) => n.value === r.country)?.flag ?? '🏳️'}</Text>
+                            ) : rMode === 'letter-team' && r.letter ? (
+                              <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' }}>
+                                <Text style={{ color: '#06131F', fontSize: 11, fontWeight: '900' }}>{r.letter}</Text>
+                              </View>
+                            ) : (
+                              <ClubLogo uri={r.teamALogo} size={18} name={r.teamA} />
+                            )}
+                            <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
+                            <ClubLogo uri={r.teamBLogo} size={18} name={r.teamB} />
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                            <PlayerPhoto uri={r.playerImageUrl} size={24} />
+                            <Text style={{ color: theme.danger, fontWeight: '800', fontSize: 11, flex: 1 }} numberOfLines={1}>{r.player}</Text>
+                          </View>
                         </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                          <PlayerPhoto uri={r.playerImageUrl} size={24} />
-                          <Text style={{ color: theme.danger, fontWeight: '800', fontSize: 11, flex: 1 }} numberOfLines={1}>{r.player}</Text>
-                        </View>
-                      </View>
-                    )) : <Text style={{ color: theme.muted, fontSize: 10, textAlign: 'center', marginTop: 8 }}>—</Text>}
+                      );
+                    }) : <Text style={{ color: theme.muted, fontSize: 10, textAlign: 'center', marginTop: 8 }}>—</Text>}
                   </View>
                 </View>
               </View>

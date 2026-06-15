@@ -490,6 +490,9 @@ export interface MatchRound {
   player: string;      // the correct player name
   playerImageUrl: string | null;
   answeredBy: string;   // who answered this round
+  mode?: string;        // 'team-team' | 'country-team' | 'letter-team'
+  country?: string;     // nationality value (country-team mode)
+  letter?: string;      // letter (letter-team mode)
 }
 
 export interface MatchHistoryEntry {

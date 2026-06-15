@@ -51,6 +51,8 @@ interface Player {
   isHost: boolean;
   connected: boolean;
   userId?: string; // persistent account id, for awarding trophies
+  trophies?: number;
+  arena?: { name: string; icon: string; minTrophies: number };
 }
 
 interface Round {
@@ -78,7 +80,7 @@ export class Room {
   private matchOver = false; // true once a player reaches WIN_TARGET
   private rematchBy: string | null = null;
   private readyPlayers = new Set<string>();
-  private matchRounds: { teamA: string; teamALogo: string | null; teamB: string; teamBLogo: string | null; player: string; playerImageUrl: string | null; answeredBy: string }[] = [];
+  private matchRounds: MatchRound[] = [];
 
   constructor(code: string, onEmpty: (code: string) => void) {
     this.code = code;
@@ -91,6 +93,8 @@ export class Room {
     transport: Transport,
     asHost: boolean,
     userId?: string,
+    trophies?: number,
+    arena?: { name: string; icon: string; minTrophies: number },
   ): { ok: true; id: string } | { ok: false; error: string } {
     if (this.players.size >= MAX_PLAYERS) return { ok: false, error: 'Room is full' };
     const id = randomUUID();
@@ -103,6 +107,8 @@ export class Room {
       isHost: asHost,
       connected: true,
       userId,
+      trophies,
+      arena,
     });
     this.broadcastState();
     return { ok: true, id };
@@ -112,6 +118,10 @@ export class Room {
     const p = this.players.get(playerId);
     if (!p) return;
     this.clearTimers();
+
+    const wasInMatch = this.status !== 'lobby';
+    const hasBot = p.transport.isBot || [...this.players.values()].some((pl) => pl.id !== playerId && pl.transport.isBot);
+
     this.players.delete(playerId);
 
     const humansLeft = [...this.players.values()].some((pl) => !pl.transport.isBot);
@@ -120,12 +130,36 @@ export class Room {
       this.onEmpty(this.code);
       return;
     }
-    this.status = 'lobby';
-    this.round = null;
-    this.matchOver = false;
-    this.rematchBy = null;
-    this.broadcast({ type: 'opponent_left' });
-    this.broadcastState();
+
+    // If the player left during an active match (not lobby), the remaining
+    // player wins 3-0 by forfeit and trophies are updated.
+    if (wasInMatch && !hasBot) {
+      const winner = [...this.players.values()][0]!;
+      winner.score = WIN_TARGET;
+      this.matchOver = true;
+      this.status = 'result';
+      this.broadcast({ type: 'opponent_left', forfeit: true });
+      // Award trophies: winner wins, leaver loses
+      void (async () => {
+        try {
+          if (winner.userId) {
+            const { profile, delta } = await applyMatchResult(winner.userId, true);
+            winner.transport.send({ type: 'trophy_update', trophies: profile.trophies, delta, arena: profile.arena });
+          }
+          if (p.userId) {
+            await applyMatchResult(p.userId, false);
+          }
+        } catch { /* DB error — skip silently */ }
+      })();
+      this.broadcastState();
+    } else {
+      this.status = 'lobby';
+      this.round = null;
+      this.matchOver = false;
+      this.rematchBy = null;
+      this.broadcast({ type: 'opponent_left' });
+      this.broadcastState();
+    }
   }
 
   // ---- role assignment for non-team-team modes ----
@@ -585,6 +619,9 @@ export class Room {
         player: result.matchedPlayerName,
         playerImageUrl: result.matchedPlayerImageUrl,
         answeredBy: result.answeredByName ?? '',
+        mode: this.gameMode,
+        country: this.round?.countryPick,
+        letter: this.round?.letterPick,
       });
     }
 
@@ -634,11 +671,12 @@ export class Room {
     for (const p of players) {
       if (p.transport.isBot || !p.userId) continue;
       const opp = p === a ? b! : a!;
-      const mapRound = (r: typeof this.matchRounds[number]) => ({
+      const mapRound = (r: MatchRound) => ({
         teamA: r.teamA, teamALogo: r.teamALogo,
         teamB: r.teamB, teamBLogo: r.teamBLogo,
         player: r.player, playerImageUrl: r.playerImageUrl,
         answeredBy: r.answeredBy,
+        mode: r.mode, country: r.country, letter: r.letter,
       });
       const myRounds = this.matchRounds.filter((r) => r.answeredBy === p.name).map(mapRound);
       const oppRounds = this.matchRounds.filter((r) => r.answeredBy === opp.name).map(mapRound);
@@ -738,6 +776,8 @@ export class Room {
       wrongCount: p.wrongCount,
       isHost: p.isHost,
       connected: p.connected,
+      trophies: p.trophies,
+      arena: p.arena,
     }));
   }
 

@@ -154,7 +154,7 @@ export type ServerMsg =
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string } // store purchase succeeded
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
   | { type: 'searching' }
-  | { type: 'opponent_left' }
+  | { type: 'opponent_left'; forfeit?: boolean }
   // ---- Friends ----
   | { type: 'friend_request_received'; requestId: string; fromId: string; fromName: string }
   | { type: 'friend_request_sent' }
