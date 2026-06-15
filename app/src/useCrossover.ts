@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
 import { SERVER_URL, HTTP_URL } from './config';
 import { t } from './i18n';
+import { OfflineRoom } from './offline/room';
+import { initOfflineDB } from './offline/db';
 import type {
   ArenaView,
   ClientMsg,
@@ -343,6 +346,10 @@ function saveProfile(profile: ProfileView): void {
 export function useCrossover() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const wsRef = useRef<WebSocket | null>(null);
+  const offlineRoomRef = useRef<OfflineRoom | null>(null);
+
+  // Initialize offline DB on mount (runs in background, non-blocking)
+  useEffect(() => { initOfflineDB().catch(() => {}); }, []);
 
   // On mount: load saved profile from AsyncStorage.
   useEffect(() => {
@@ -511,12 +518,42 @@ export function useCrossover() {
     },
     createRoom: (name: string, options?: GameOptions) =>
       connectAndSend({ type: 'create_room', name, userId: state.profile?.userId, options }),
-    createSolo: (name: string, options?: GameOptions) =>
-      connectAndSend({ type: 'create_solo', name, userId: state.profile?.userId, options }),
+    createSolo: (name: string, options?: GameOptions) => {
+      // Try online first; fall back to offline if no network
+      NetInfo.fetch().then((netState) => {
+        if (netState.isConnected) {
+          connectAndSend({ type: 'create_solo', name, userId: state.profile?.userId, options });
+        } else {
+          // Offline bot match
+          const room = new OfflineRoom({
+            dispatch,
+            difficulty: options?.difficulty ?? 'medium',
+            scope: options?.scope ?? { type: 'all' },
+            gameMode: options?.mode ?? 'team-team',
+            playerName: name,
+            playerTrophies: state.profile?.trophies ?? 0,
+            playerArena: state.profile?.arena ?? { name: 'Mahalle Sahası', icon: '🏟️', minTrophies: 0 },
+          });
+          offlineRoomRef.current = room;
+          room.start();
+        }
+      }).catch(() => {
+        // NetInfo failed — try online anyway
+        connectAndSend({ type: 'create_solo', name, userId: state.profile?.userId, options });
+      });
+    },
     joinRoom: (code: string, name: string) =>
       connectAndSend({ type: 'join_room', code: code.toUpperCase(), name, userId: state.profile?.userId }),
-    start: () => send({ type: 'start' }),
+    start: () => {
+      if (offlineRoomRef.current) return offlineRoomRef.current.start();
+      send({ type: 'start' });
+    },
     pickTeam: (clubId: number) => {
+      if (offlineRoomRef.current) {
+        dispatch({ type: '_picked' });
+        offlineRoomRef.current.handlePick(clubId);
+        return;
+      }
       send({ type: 'pick_team', clubId });
       dispatch({ type: '_picked' });
     },
@@ -528,10 +565,24 @@ export function useCrossover() {
       send({ type: 'pick_letter', letter });
       dispatch({ type: '_picked' });
     },
-    searchClubs: (q: string) => send({ type: 'search_clubs', reqId: 'q', q }),
-    submitGuess: (text: string) => send({ type: 'submit_guess', text }),
-    pass: () => send({ type: 'pass' }),
+    searchClubs: (q: string) => {
+      if (offlineRoomRef.current) return offlineRoomRef.current.searchClubs(q);
+      send({ type: 'search_clubs', reqId: 'q', q });
+    },
+    submitGuess: (text: string) => {
+      if (offlineRoomRef.current) return void offlineRoomRef.current.submitGuess(text);
+      send({ type: 'submit_guess', text });
+    },
+    pass: () => {
+      if (offlineRoomRef.current) return offlineRoomRef.current.pass();
+      send({ type: 'pass' });
+    },
     ready: () => {
+      if (offlineRoomRef.current) {
+        dispatch({ type: '_ready' as any });
+        offlineRoomRef.current.ready();
+        return;
+      }
       send({ type: 'ready' });
       dispatch({ type: '_ready' as any });
     },
@@ -571,6 +622,10 @@ export function useCrossover() {
       connectAndSend({ type: 'find_match', name: state.profile?.displayName, userId: state.profile?.userId, options });
     },
     leave: () => {
+      if (offlineRoomRef.current) {
+        offlineRoomRef.current.leave();
+        offlineRoomRef.current = null;
+      }
       wsRef.current?.close();
       wsRef.current = null;
       dispatch({ type: '_reset' });

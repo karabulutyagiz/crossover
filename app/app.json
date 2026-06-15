@@ -42,6 +42,7 @@
       "expo-web-browser",
       "expo-apple-authentication",
       "expo-font",
+      "expo-sqlite",
       "react-native-iap"
     ],
     "extra": {
