@@ -2364,6 +2364,14 @@ const DIAMOND_PACKS = [
 ];
 const DIAMOND_PRODUCT_IDS = DIAMOND_PACKS.map((p) => p.productId);
 
+// Social Pack = auto-renewable subscriptions (unlock Country-Team & Letter-Team in
+// friend matches). productId must match the ASC subscription products + server.
+const SOCIAL_PACK = [
+  { id: 'weekly', label: 'Haftalık', price: '₺24,99', productId: 'com.crossover.socialpack.weekly' },
+  { id: 'monthly', label: 'Aylık', price: '₺89,99', productId: 'com.crossover.socialpack.monthly' },
+];
+const SOCIAL_PACK_IDS = SOCIAL_PACK.map((s) => s.productId);
+
 function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
   visible: boolean;
   diamonds: number;
@@ -2562,17 +2570,18 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
   const storeScrollRef = useRef<ScrollView>(null);
   const sectionYRef = useRef<Record<string, number>>({});
 
-  // ── Apple In-App Purchase (StoreKit) for diamond packs ──
+  // ── Apple In-App Purchase (StoreKit): consumable diamond packs + auto-renewable Social Pack ──
   const [buying, setBuying] = useState<string | null>(null); // productId mid-purchase
   const onPurchaseSuccess = useCallback(async (purchase: Purchase) => {
+    const isSub = SOCIAL_PACK_IDS.includes(purchase.productId);
     try {
       const receipt = await getReceiptIOS();
       await actions.verifyPurchase(receipt);                       // server validates + grants
-      await iapFinishTransaction({ purchase, isConsumable: true });
+      await iapFinishTransaction({ purchase, isConsumable: !isSub }); // subs are NOT consumable
     } catch {
       // Verify/grant failed → leave the transaction UNFINISHED so StoreKit replays it
       // on next launch and we grant then (server is idempotent — no double-charge/grant).
-      Alert.alert('Satın alma', 'Elmasların birazdan eklenecek. Sorun sürerse uygulamayı yeniden aç.');
+      Alert.alert('Satın alma', 'Birazdan hesabına işlenecek. Sorun sürerse uygulamayı yeniden aç.');
     } finally {
       setBuying(null);
     }
@@ -2582,17 +2591,29 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
     const code = err?.code ?? '';
     if (!/cancel/i.test(code)) Alert.alert('Satın alma başarısız', 'Ödeme tamamlanamadı, tekrar dene.');
   }, []);
-  const { connected, products, requestPurchase, fetchProducts } = useIAP({ onPurchaseSuccess, onPurchaseError });
+  const { connected, products, subscriptions, requestPurchase, fetchProducts } = useIAP({ onPurchaseSuccess, onPurchaseError });
   useEffect(() => {
-    if (connected) fetchProducts({ skus: DIAMOND_PRODUCT_IDS, type: 'in-app' }).catch(() => {});
-  }, [connected, fetchProducts]);
+    if (!connected) return;
+    fetchProducts({ skus: DIAMOND_PRODUCT_IDS, type: 'in-app' }).catch(() => {});
+    fetchProducts({ skus: SOCIAL_PACK_IDS, type: 'subs' }).catch(() => {});
+    // Re-validate on open so an auto-renewed Social Pack refreshes its expiry on the server
+    // (granted-0 → no toast; see the reducer). Silent if there's no receipt yet.
+    getReceiptIOS().then((r) => { if (r) return actions.verifyPurchase(r); }).catch(() => {});
+  }, [connected, fetchProducts, actions]);
   const priceFor = (productId: string, fallback: string) =>
-    ((products as { id?: string; displayPrice?: string }[]).find((p) => p.id === productId)?.displayPrice) ?? fallback;
+    (([...(products as { id?: string; displayPrice?: string }[]), ...(subscriptions as { id?: string; displayPrice?: string }[])]).find((p) => p.id === productId)?.displayPrice) ?? fallback;
   const buy = useCallback((productId: string) => {
     if (buying) return;
+    // Until the product exists in App Store Connect it won't load — show a gentle
+    // "coming soon" instead of a payment error (e.g. in builds before IAP is set up).
+    const loaded = [...products, ...subscriptions].some((p) => (p as { id?: string }).id === productId);
+    if (!loaded) { Alert.alert('Çok yakında', 'Satın alma yakında aktifleşecek.'); return; }
+    const isSub = SOCIAL_PACK_IDS.includes(productId);
     setBuying(productId);
-    Promise.resolve(requestPurchase({ request: { apple: { sku: productId } }, type: 'in-app' })).catch(() => setBuying(null));
-  }, [buying, requestPurchase]);
+    // appAccountToken ties the purchase (and its future renewal notifications) to our user.
+    const apple = { sku: productId, appAccountToken: profile?.userId ?? undefined };
+    Promise.resolve(requestPurchase({ request: { apple }, type: isSub ? 'subs' : 'in-app' })).catch(() => setBuying(null));
+  }, [buying, requestPurchase, products, subscriptions, profile?.userId]);
 
   useEffect(() => {
     if (scrollToSection && storeScrollRef.current) {
@@ -2623,15 +2644,33 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
             <Text style={{ color: theme.muted, fontSize: 12 }}>
               Arkadaşlarınla Ülke-Takım ve Harf-Takım modlarında dostluk maçı oyna.
             </Text>
+            {profile?.socialPackUntil && new Date(profile.socialPackUntil) > new Date() ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.primary + '22', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10, borderWidth: 1, borderColor: theme.primary, marginTop: 2 }}>
+                <Ionicons name="checkmark-circle" size={16} color={theme.primary} />
+                <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 12 }}>
+                  Aktif — bitiş {new Date(profile.socialPackUntil).toLocaleDateString('tr-TR')}
+                </Text>
+              </View>
+            ) : null}
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-              <View style={[styles.storePackPriceBox, { flex: 1, alignItems: 'center' as const }]}>
-                <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>Haftalık</Text>
-                <Text style={styles.storePackPrice}>₺24,99</Text>
-              </View>
-              <View style={[styles.storePackPriceBox, { flex: 1, alignItems: 'center' as const, backgroundColor: theme.accent }]}>
-                <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>Aylık</Text>
-                <Text style={styles.storePackPrice}>₺89,99</Text>
-              </View>
+              {SOCIAL_PACK.map((sp, i) => {
+                const busy = buying === sp.productId;
+                return (
+                  <Pressable
+                    key={sp.id}
+                    disabled={!!buying}
+                    onPress={() => buy(sp.productId)}
+                    style={[styles.storePackPriceBox, { flex: 1, alignItems: 'center', minHeight: 46, justifyContent: 'center' }, i === 1 && { backgroundColor: theme.accent }, !!buying && !busy && { opacity: 0.5 }]}
+                  >
+                    {busy ? <ActivityIndicator color="#06131F" /> : (
+                      <>
+                        <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>{sp.label}</Text>
+                        <Text style={styles.storePackPrice}>{priceFor(sp.productId, sp.price)}</Text>
+                      </>
+                    )}
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
         </View>

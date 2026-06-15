@@ -233,8 +233,12 @@ function reducer(state: GameState, action: Action): GameState {
     }
     case 'emote_purchased':
       return { ...state, profile: action.profile };
-    case 'diamonds_granted':
-      return { ...state, profile: (action as any).profile, notice: `+${(action as any).granted} 💎` };
+    case 'diamonds_granted': {
+      const g = (action as { granted?: number }).granted ?? 0;
+      // Diamonds → toast; Social Pack / silent re-validate (granted 0) → no toast, the
+      // store's "Aktif" badge reflects it. Always refresh the profile.
+      return { ...state, profile: (action as { profile: ProfileView }).profile, notice: g > 0 ? `+${g} 💎` : state.notice };
+    }
 
     case 'room_state': {
       // When a non-bot room fills to 2 players, show the matchup reveal screen.
