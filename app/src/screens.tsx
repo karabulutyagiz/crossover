@@ -2433,7 +2433,10 @@ export function CollectionScreen({ state, actions }: Props) {
     if (equipped.includes(id)) actions.equipEmotes(equipped.filter((x) => x !== id));
     else if (equipped.length < 3) actions.equipEmotes([...equipped, id]);
   };
-  const all = [...FREE_EMOTES, ...PREMIUM_EMOTES];
+  // Only VISUAL (premium) emotes can be equipped into the 3 loadout slots — the free
+  // quick-chat + character faces are always available in matches, so they're not shown
+  // here (tapping them did nothing because the server rejects equipping free emotes).
+  const all = PREMIUM_EMOTES;
   const COL_GAP = 8;
   const COL_W = Math.floor((SCREEN_W - 44 - COL_GAP * 3) / 4); // 4 columns inside Screen's 22px padding
 
@@ -2961,8 +2964,16 @@ export function ArenasScreen({ state, actions }: Props) {
   const range = currentArena.max - currentArena.min;
   const progress = range > 0 ? Math.min(1, (trophies - currentArena.min) / range) : 1;
 
+  // Slide up from the bottom when opened (e.g. re-tapping the Oyna tab).
+  const slide = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(slide, { toValue: 1, friction: 10, tension: 72, useNativeDriver: true }).start();
+  }, [slide]);
+  const slideY = slide.interpolate({ inputRange: [0, 1], outputRange: [SCREEN_H * 0.5, 0] });
+
   return (
     <Screen>
+      <Animated.View style={{ flex: 1, transform: [{ translateY: slideY }], opacity: slide }}>
       <ScreenHeader
         title="Arenalar"
         onBack={actions.closeArenas}
@@ -3039,6 +3050,7 @@ export function ArenasScreen({ state, actions }: Props) {
           );
         })}
       </ScrollView>
+      </Animated.View>
     </Screen>
   );
 }
