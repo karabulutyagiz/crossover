@@ -34,8 +34,5 @@
     "ios": "expo run:ios",
     "web": "expo start --web"
   },
-  "overrides": {
-    "hermes-compiler": "0.15.0"
-  },
   "private": true
 }

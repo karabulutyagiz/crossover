@@ -42,11 +42,7 @@
       "expo-web-browser",
       "expo-apple-authentication",
       "expo-font",
-      "expo-sqlite",
-      [
-        "expo-build-properties",
-        { "ios": { "useHermesV1": false, "buildReactNativeFromSource": true } }
-      ]
+      "expo-sqlite"
     ],
     "extra": {
       "eas": {
