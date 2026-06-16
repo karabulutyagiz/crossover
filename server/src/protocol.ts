@@ -106,7 +106,11 @@ export type ClientMsg =
   | { type: 'list_match_history' }
   // ---- Direct Messages ----
   | { type: 'send_message'; toUserId: string; body: string }
-  | { type: 'list_messages'; withUserId: string; before?: string }; // before = ISO cursor for pagination
+  | { type: 'list_messages'; withUserId: string; before?: string }
+  | { type: 'list_conversations' }           // get all chats with last message + unread count
+  | { type: 'mark_read'; fromUserId: string } // mark all messages from this user as read
+  | { type: 'typing_start'; toUserId: string }
+  | { type: 'typing_stop'; toUserId: string };
 
 // ---- Server -> Client ----
 export interface RoundResult {
@@ -175,6 +179,9 @@ export type ServerMsg =
   // ---- Direct Messages ----
   | { type: 'message_received'; message: MessageView }
   | { type: 'message_list'; messages: MessageView[]; withUserId: string }
+  | { type: 'conversation_list'; conversations: ConversationView[] }
+  | { type: 'messages_marked_read'; fromUserId: string }
+  | { type: 'typing'; fromUserId: string; isTyping: boolean }
   | { type: 'error'; message: string };
 
 export interface MessageView {
@@ -184,6 +191,15 @@ export interface MessageView {
   toId: string;
   body: string;
   createdAt: string;
+}
+
+export interface ConversationView {
+  userId: string;
+  displayName: string;
+  online: boolean;
+  lastMessage: string;
+  lastMessageAt: string;
+  unreadCount: number;
 }
 
 export interface PublicProfile {

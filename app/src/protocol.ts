@@ -152,7 +152,11 @@ export type ClientMsg =
   | { type: 'get_user_profile'; userId: string }
   | { type: 'list_match_history' }
   | { type: 'send_message'; toUserId: string; body: string }
-  | { type: 'list_messages'; withUserId: string; before?: string };
+  | { type: 'list_messages'; withUserId: string; before?: string }
+  | { type: 'list_conversations' }
+  | { type: 'mark_read'; fromUserId: string }
+  | { type: 'typing_start'; toUserId: string }
+  | { type: 'typing_stop'; toUserId: string };
 
 export type ServerMsg =
   | { type: 'room_state'; room: RoomView }
@@ -200,6 +204,9 @@ export type ServerMsg =
   | { type: 'match_history_list'; matches: MatchHistoryView[] }
   | { type: 'message_received'; message: MessageView }
   | { type: 'message_list'; messages: MessageView[]; withUserId: string }
+  | { type: 'conversation_list'; conversations: ConversationView[] }
+  | { type: 'messages_marked_read'; fromUserId: string }
+  | { type: 'typing'; fromUserId: string; isTyping: boolean }
   | { type: 'error'; message: string };
 
 export interface MessageView {
@@ -209,6 +216,15 @@ export interface MessageView {
   toId: string;
   body: string;
   createdAt: string;
+}
+
+export interface ConversationView {
+  userId: string;
+  displayName: string;
+  online: boolean;
+  lastMessage: string;
+  lastMessageAt: string;
+  unreadCount: number;
 }
 
 export interface PublicProfile {

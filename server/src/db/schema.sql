@@ -178,7 +178,10 @@ CREATE TABLE IF NOT EXISTS messages (
   from_user   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   to_user     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   body        TEXT NOT NULL,
+  read_at     TIMESTAMPTZ,                    -- NULL = unread
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_messages_conversation
   ON messages (LEAST(from_user, to_user), GREATEST(from_user, to_user), created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_unread ON messages (to_user, read_at) WHERE read_at IS NULL;

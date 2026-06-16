@@ -107,9 +107,13 @@ type Actions = {
   clearNotice: () => void;
   dismissMatchInvite: () => void;
   findMatchAgain: () => void;
+  loadConversations: () => void;
   openChat: (userId: string) => void;
   closeChat: () => void;
   sendMessage: (toUserId: string, body: string) => void;
+  markRead: (fromUserId: string) => void;
+  typingStart: (toUserId: string) => void;
+  typingStop: (toUserId: string) => void;
   leave: () => void;
 };
 
@@ -2945,7 +2949,8 @@ function FriendProfileModal({ profile, onClose }: { profile: PublicProfile | nul
 export function FriendsScreen({ state, actions, onGoToStore }: Props) {
   const [addInput, setAddInput] = useState('');
   const [searchMode, setSearchMode] = useState<'code' | 'username'>('code');
-  const [friendTab, setFriendTab] = useState<'friends' | 'requests'>('friends');
+  const [friendTab, setFriendTab] = useState<'friends' | 'requests' | 'messages'>('friends');
+  const [msgSearch, setMsgSearch] = useState('');
   const [copied, setCopied] = useState(false);
   const [matchModal, setMatchModal] = useState<string | null>(null); // friendId — mode picker
   const [matchStep, setMatchStep] = useState<'mode' | 'scope'>('mode');
@@ -3070,24 +3075,37 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
           </View>
         ) : null}
 
-        {/* Tabs: Arkadaşlarım | Arkadaşlık İstekleri */}
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 18, marginBottom: 12 }}>
-          {([['friends', 'people', 'Arkadaşlarım'], ['requests', 'person-add', 'İstekler']] as const).map(([key, icon, label]) => {
+        {/* Tabs: Arkadaşlarım | İstekler | Mesajlar */}
+        <View style={{ flexDirection: 'row', gap: 6, marginTop: 18, marginBottom: 12 }}>
+          {([
+            ['friends', 'people', 'Arkadaşlar'],
+            ['requests', 'person-add', 'İstekler'],
+            ['messages', 'chatbubbles', 'Mesajlar'],
+          ] as const).map(([key, icon, label]) => {
             const active = friendTab === key;
-            const badge = key === 'requests' && requests.length > 0 ? ` (${requests.length})` : '';
+            const badgeNum = key === 'requests' ? requests.length : key === 'messages' ? state.totalUnread : 0;
             return (
               <Pressable
                 key={key}
-                onPress={() => setFriendTab(key)}
+                onPress={() => {
+                  setFriendTab(key);
+                  if (key === 'messages') actions.loadConversations();
+                }}
                 style={{
-                  flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  paddingVertical: 11, borderRadius: 12,
+                  flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+                  paddingVertical: 10, borderRadius: 12,
                   backgroundColor: active ? theme.primary : theme.card,
                   borderWidth: 1, borderColor: active ? theme.primary : theme.border,
+                  position: 'relative',
                 }}
               >
-                <Ionicons name={icon} size={16} color={active ? '#06131F' : theme.muted} />
-                <Text style={{ color: active ? '#06131F' : theme.text, fontWeight: '800', fontSize: 13 }}>{label}{badge}</Text>
+                <Ionicons name={icon as any} size={15} color={active ? '#06131F' : theme.muted} />
+                <Text style={{ color: active ? '#06131F' : theme.text, fontWeight: '800', fontSize: 12 }}>{label}</Text>
+                {badgeNum > 0 ? (
+                  <View style={{ position: 'absolute', top: -6, right: -2, backgroundColor: theme.danger, borderRadius: 9, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
+                    <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>{badgeNum}</Text>
+                  </View>
+                ) : null}
               </Pressable>
             );
           })}
@@ -3128,6 +3146,79 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
               </View>
             ))
           )
+        ) : friendTab === 'messages' ? (
+          <>
+            {/* Search bar for starting a new chat */}
+            <View style={[styles.searchBox, { marginBottom: 10 }]}>
+              <Ionicons name="search" size={16} color={theme.muted} />
+              <TextInput
+                placeholder="Arkadaş ara..."
+                placeholderTextColor={theme.muted}
+                keyboardAppearance="dark"
+                value={msgSearch}
+                onChangeText={setMsgSearch}
+                style={[styles.searchInput, { fontSize: 13 }]}
+              />
+            </View>
+            {/* Search results — friends not in conversations yet */}
+            {msgSearch.trim().length >= 2 ? (() => {
+              const q = msgSearch.trim().toLowerCase();
+              const matches = friends.filter(f => f.displayName.toLowerCase().includes(q) && !state.conversations.some(c => c.userId === f.userId));
+              return matches.length > 0 ? matches.map(f => (
+                <Pressable key={f.userId} onPress={() => { setMsgSearch(''); actions.openChat(f.userId); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: theme.card, borderRadius: 12, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: theme.border }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="person" size={16} color={theme.primary} />
+                  </View>
+                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14, flex: 1 }} numberOfLines={1}>{f.displayName}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 }}>
+                    <Ionicons name="chatbubble" size={12} color="#06131F" />
+                    <Text style={{ color: '#06131F', fontWeight: '800', fontSize: 11 }}>Mesaj Gönder</Text>
+                  </View>
+                </Pressable>
+              )) : null;
+            })() : null}
+            {/* Conversation list */}
+            {state.conversations.length === 0 && !msgSearch.trim() ? (
+              <View style={styles.friendEmpty}>
+                <Ionicons name="chatbubbles-outline" size={48} color={theme.border} />
+                <Text style={styles.muted}>Henüz sohbet yok</Text>
+                <Text style={[styles.muted, { fontSize: 11 }]}>Yukarıdan bir arkadaşını arayarak mesaj gönder</Text>
+              </View>
+            ) : state.conversations.map(c => (
+              <Pressable
+                key={c.userId}
+                onPress={() => actions.openChat(c.userId)}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 10,
+                  backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 8,
+                  borderWidth: 1, borderColor: c.unreadCount > 0 ? theme.primary + '66' : theme.border,
+                }}
+              >
+                <View style={{ position: 'relative' }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: theme.bg2, borderWidth: 2, borderColor: c.online ? theme.primary : theme.border, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="person" size={20} color={c.online ? theme.primary : theme.muted} />
+                  </View>
+                  {c.online ? <View style={{ position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14 }} numberOfLines={1}>{c.displayName}</Text>
+                  <Text style={{ color: c.unreadCount > 0 ? theme.text : theme.muted, fontSize: 12, fontWeight: c.unreadCount > 0 ? '600' : '400' }} numberOfLines={1}>
+                    {state.typingFrom[c.userId] ? 'yazıyor...' : c.lastMessage}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                  <Text style={{ color: theme.muted, fontSize: 10 }}>
+                    {(() => { const d = new Date(c.lastMessageAt); const now = new Date(); return d.toDateString() === now.toDateString() ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : `${d.getDate()}.${d.getMonth()+1}`; })()}
+                  </Text>
+                  {c.unreadCount > 0 ? (
+                    <View style={{ backgroundColor: theme.danger, borderRadius: 10, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}>
+                      <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>{c.unreadCount}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </Pressable>
+            ))}
+          </>
         ) : /* Friends tab */ friends.length === 0 ? (
           <View style={styles.friendEmpty}>
             <Ionicons name="people-outline" size={48} color={theme.border} />
@@ -3154,14 +3245,6 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
                 <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }} numberOfLines={1}>{f.displayName}</Text>
                 <Text style={{ color: f.online ? theme.primary : theme.muted, fontSize: 11, fontWeight: '600' }}>{f.online ? 'Çevrimiçi' : f.arena.name}</Text>
               </View>
-              {/* Message icon */}
-              <Pressable
-                onPress={(e) => { e.stopPropagation(); actions.openChat(f.userId); }}
-                hitSlop={6}
-                style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: theme.bg2, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}
-              >
-                <Ionicons name="mail-outline" size={17} color={theme.accent} />
-              </Pressable>
               {/* Trophy on the far right */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.bg2, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5, borderWidth: 1, borderColor: theme.border }}>
                 <Ionicons name="trophy" size={13} color={theme.gold} />
@@ -3350,6 +3433,26 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
   );
 }
 
+// ---- Typing dot (animated) ----
+function TypingDot({ delay }: { delay: number }) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(a, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(a, { toValue: 0, duration: 300, useNativeDriver: true }),
+        Animated.delay(400 - delay),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [a, delay]);
+  const scale = a.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
+  const opacity = a.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] });
+  return <Animated.View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: theme.muted, transform: [{ scale }], opacity }} />;
+}
+
 // ---- Chat Screen (WhatsApp-style) ----
 function ChatScreen({ state, actions }: Props) {
   const [text, setText] = useState('');
@@ -3358,16 +3461,46 @@ function ChatScreen({ state, actions }: Props) {
   const friend = state.friends.find(f => f.userId === chatWith);
   const myId = state.profile?.userId;
   const messages = state.chatMessages;
+  const isTyping = chatWith ? state.typingFrom[chatWith] : false;
+  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wasTyping = useRef(false);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new messages arrive or typing changes
   useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-  }, [messages.length]);
+  }, [messages.length, isTyping]);
+
+  // Mark messages as read when chat opens
+  useEffect(() => {
+    if (chatWith) actions.markRead(chatWith);
+  }, [chatWith, messages.length]);
+
+  const onChangeText = (t: string) => {
+    setText(t);
+    if (!chatWith) return;
+    // Send typing_start when user starts typing, typing_stop after 2s idle
+    if (t.trim() && !wasTyping.current) {
+      wasTyping.current = true;
+      actions.typingStart(chatWith);
+    }
+    if (typingTimer.current) clearTimeout(typingTimer.current);
+    typingTimer.current = setTimeout(() => {
+      if (wasTyping.current && chatWith) {
+        wasTyping.current = false;
+        actions.typingStop(chatWith);
+      }
+    }, 2000);
+  };
 
   const onSend = () => {
     if (!text.trim() || !chatWith) return;
     actions.sendMessage(chatWith, text.trim());
     setText('');
+    if (wasTyping.current) {
+      wasTyping.current = false;
+      actions.typingStop(chatWith);
+    }
+    if (typingTimer.current) clearTimeout(typingTimer.current);
   };
 
   return (
@@ -3386,7 +3519,9 @@ function ChatScreen({ state, actions }: Props) {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15 }} numberOfLines={1}>{friend?.displayName ?? '...'}</Text>
-          <Text style={{ color: friend?.online ? theme.primary : theme.muted, fontSize: 11 }}>{friend?.online ? 'Çevrimiçi' : 'Çevrimdışı'}</Text>
+          <Text style={{ color: isTyping ? theme.primary : friend?.online ? theme.primary : theme.muted, fontSize: 11 }}>
+            {isTyping ? 'yazıyor...' : friend?.online ? 'Çevrimiçi' : 'Çevrimdışı'}
+          </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Ionicons name="trophy" size={13} color={theme.accent} />
@@ -3433,6 +3568,19 @@ function ChatScreen({ state, actions }: Props) {
             </View>
           );
         })}
+        {/* Typing indicator — three bouncing dots */}
+        {isTyping ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: theme.card, borderWidth: 1.5, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="person" size={13} color={theme.muted} />
+            </View>
+            <View style={{ backgroundColor: theme.card, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: theme.border, flexDirection: 'row', gap: 4 }}>
+              <TypingDot delay={0} />
+              <TypingDot delay={150} />
+              <TypingDot delay={300} />
+            </View>
+          </View>
+        ) : null}
       </ScrollView>
 
       {/* Input bar */}
@@ -3447,7 +3595,7 @@ function ChatScreen({ state, actions }: Props) {
             placeholderTextColor={theme.muted}
             keyboardAppearance="dark"
             value={text}
-            onChangeText={setText}
+            onChangeText={onChangeText}
             onSubmitEditing={onSend}
             style={{
               flex: 1, backgroundColor: theme.bg, color: theme.text,

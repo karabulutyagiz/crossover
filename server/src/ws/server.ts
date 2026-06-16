@@ -15,7 +15,7 @@ import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../gam
 import { verifyApplePurchase } from '../game/iap.ts';
 import { pool } from '../db/pool.ts';
 import type { Room, Transport } from '../rooms/room.ts';
-import type { MessageView } from '../protocol.ts';
+import type { MessageView, ConversationView } from '../protocol.ts';
 import type { ClientMsg, ProfileView, ServerMsg } from '../protocol.ts';
 
 interface ConnCtx {
@@ -487,6 +487,68 @@ export function startServer(port: number): Server {
           }));
           transport.send({ type: 'message_list', messages: messages.reverse(), withUserId: msg.withUserId });
         })();
+        return;
+      }
+      if (msg.type === 'list_conversations') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          // Get distinct conversation partners with last message + unread count
+          const { rows } = await pool.query<{
+            partner_id: string; partner_name: string; last_body: string; last_at: string; unread: string;
+          }>(`
+            WITH convos AS (
+              SELECT
+                CASE WHEN from_user = $1 THEN to_user ELSE from_user END AS partner_id,
+                body, created_at,
+                ROW_NUMBER() OVER (PARTITION BY LEAST(from_user, to_user), GREATEST(from_user, to_user) ORDER BY created_at DESC) AS rn
+              FROM messages
+              WHERE from_user = $1 OR to_user = $1
+            )
+            SELECT
+              c.partner_id,
+              u.display_name AS partner_name,
+              c.body AS last_body,
+              c.created_at AS last_at,
+              COALESCE((SELECT COUNT(*) FROM messages WHERE from_user = c.partner_id AND to_user = $1 AND read_at IS NULL), 0) AS unread
+            FROM convos c
+            JOIN users u ON u.id = c.partner_id
+            WHERE c.rn = 1
+            ORDER BY c.created_at DESC
+            LIMIT 50
+          `, [userProfile!.id]);
+          const conversations = rows.map(r => ({
+            userId: r.partner_id,
+            displayName: r.partner_name,
+            online: onlineUsers.has(r.partner_id),
+            lastMessage: r.last_body,
+            lastMessageAt: r.last_at,
+            unreadCount: Number(r.unread),
+          }));
+          transport.send({ type: 'conversation_list', conversations });
+        })();
+        return;
+      }
+      if (msg.type === 'mark_read') {
+        if (!userProfile) return;
+        void (async () => {
+          await pool.query(
+            `UPDATE messages SET read_at = now() WHERE from_user = $1 AND to_user = $2 AND read_at IS NULL`,
+            [msg.fromUserId, userProfile!.id],
+          );
+          transport.send({ type: 'messages_marked_read', fromUserId: msg.fromUserId });
+          // Notify the sender their messages were read
+          sendToUser(msg.fromUserId, { type: 'messages_marked_read', fromUserId: userProfile!.id });
+        })();
+        return;
+      }
+      if (msg.type === 'typing_start') {
+        if (!userProfile) return;
+        sendToUser(msg.toUserId, { type: 'typing', fromUserId: userProfile!.id, isTyping: true });
+        return;
+      }
+      if (msg.type === 'typing_stop') {
+        if (!userProfile) return;
+        sendToUser(msg.toUserId, { type: 'typing', fromUserId: userProfile!.id, isTyping: false });
         return;
       }
 
