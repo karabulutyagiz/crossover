@@ -103,7 +103,10 @@ export type ClientMsg =
   | { type: 'respond_match_invite'; fromId: string; accept: boolean } // accept/decline a friend's match invite
   | { type: 'cancel_match_invite'; toId: string } // inviter cancels (or 30s timeout)
   | { type: 'get_user_profile'; userId: string } // view a friend's public profile
-  | { type: 'list_match_history' };
+  | { type: 'list_match_history' }
+  // ---- Direct Messages ----
+  | { type: 'send_message'; toUserId: string; body: string }
+  | { type: 'list_messages'; withUserId: string; before?: string }; // before = ISO cursor for pagination
 
 // ---- Server -> Client ----
 export interface RoundResult {
@@ -169,7 +172,19 @@ export type ServerMsg =
   | { type: 'match_invite_cancelled' } // the invite was cancelled/expired (sent to invitee)
   | { type: 'user_profile'; profile: PublicProfile }
   | { type: 'match_history_list'; matches: MatchHistoryView[] }
+  // ---- Direct Messages ----
+  | { type: 'message_received'; message: MessageView }
+  | { type: 'message_list'; messages: MessageView[]; withUserId: string }
   | { type: 'error'; message: string };
+
+export interface MessageView {
+  id: string;
+  fromId: string;
+  fromName: string;
+  toId: string;
+  body: string;
+  createdAt: string;
+}
 
 export interface PublicProfile {
   userId: string;

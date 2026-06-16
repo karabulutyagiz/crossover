@@ -171,3 +171,14 @@ CREATE TABLE IF NOT EXISTS processed_transactions (
   diamonds       INT  NOT NULL,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ---- Direct messages between friends ----
+CREATE TABLE IF NOT EXISTS messages (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  from_user   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  to_user     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body        TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation
+  ON messages (LEAST(from_user, to_user), GREATEST(from_user, to_user), created_at DESC);

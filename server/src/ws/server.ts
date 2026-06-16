@@ -13,7 +13,9 @@ import {
 } from '../game/rank.ts';
 import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
 import { verifyApplePurchase } from '../game/iap.ts';
+import { pool } from '../db/pool.ts';
 import type { Room, Transport } from '../rooms/room.ts';
+import type { MessageView } from '../protocol.ts';
 import type { ClientMsg, ProfileView, ServerMsg } from '../protocol.ts';
 
 interface ConnCtx {
@@ -426,6 +428,64 @@ export function startServer(port: number): Server {
         void (async () => {
           const matches = await getMatchHistory(userProfile!.id);
           transport.send({ type: 'match_history_list', matches });
+        })();
+        return;
+      }
+
+      // ---- Direct Messages ----
+      if (msg.type === 'send_message') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        const body = (msg.body ?? '').trim();
+        if (!body || body.length > 500) return;
+        void (async () => {
+          const { rows } = await pool.query<{ id: string; created_at: string }>(
+            `INSERT INTO messages (from_user, to_user, body) VALUES ($1, $2, $3) RETURNING id, created_at`,
+            [userProfile!.id, msg.toUserId, body],
+          );
+          const row = rows[0];
+          if (!row) return;
+          const mv: MessageView = {
+            id: row.id,
+            fromId: userProfile!.id,
+            fromName: userProfile!.displayName,
+            toId: msg.toUserId,
+            body,
+            createdAt: row.created_at,
+          };
+          // Send to sender as confirmation
+          transport.send({ type: 'message_received', message: mv });
+          // Send to recipient if online
+          sendToUser(msg.toUserId, { type: 'message_received', message: mv });
+        })();
+        return;
+      }
+      if (msg.type === 'list_messages') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          const beforeClause = msg.before ? `AND m.created_at < $3` : '';
+          const params: any[] = [userProfile!.id, msg.withUserId];
+          if (msg.before) params.push(msg.before);
+          const { rows } = await pool.query<{
+            id: string; from_user: string; to_user: string; body: string; created_at: string; from_name: string;
+          }>(
+            `SELECT m.id, m.from_user, m.to_user, m.body, m.created_at, u.display_name as from_name
+             FROM messages m
+             JOIN users u ON u.id = m.from_user
+             WHERE ((m.from_user = $1 AND m.to_user = $2) OR (m.from_user = $2 AND m.to_user = $1))
+             ${beforeClause}
+             ORDER BY m.created_at DESC
+             LIMIT 50`,
+            params,
+          );
+          const messages: MessageView[] = rows.map(r => ({
+            id: r.id,
+            fromId: r.from_user,
+            fromName: r.from_name,
+            toId: r.to_user,
+            body: r.body,
+            createdAt: r.created_at,
+          }));
+          transport.send({ type: 'message_list', messages: messages.reverse(), withUserId: msg.withUserId });
         })();
         return;
       }

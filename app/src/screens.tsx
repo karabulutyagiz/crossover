@@ -107,6 +107,9 @@ type Actions = {
   clearNotice: () => void;
   dismissMatchInvite: () => void;
   findMatchAgain: () => void;
+  openChat: (userId: string) => void;
+  closeChat: () => void;
+  sendMessage: (toUserId: string, body: string) => void;
   leave: () => void;
 };
 
@@ -3151,6 +3154,14 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
                 <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }} numberOfLines={1}>{f.displayName}</Text>
                 <Text style={{ color: f.online ? theme.primary : theme.muted, fontSize: 11, fontWeight: '600' }}>{f.online ? 'Çevrimiçi' : f.arena.name}</Text>
               </View>
+              {/* Message icon */}
+              <Pressable
+                onPress={(e) => { e.stopPropagation(); actions.openChat(f.userId); }}
+                hitSlop={6}
+                style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: theme.bg2, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Ionicons name="mail-outline" size={17} color={theme.accent} />
+              </Pressable>
               {/* Trophy on the far right */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.bg2, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5, borderWidth: 1, borderColor: theme.border }}>
                 <Ionicons name="trophy" size={13} color={theme.gold} />
@@ -3330,7 +3341,136 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
 
       {/* Tapped a friend → their public profile */}
       <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
+
+      {/* Chat screen — WhatsApp style */}
+      <Modal visible={state.chatWith !== null} animationType="slide" onRequestClose={actions.closeChat}>
+        <ChatScreen state={state} actions={actions} />
+      </Modal>
     </Screen>
+  );
+}
+
+// ---- Chat Screen (WhatsApp-style) ----
+function ChatScreen({ state, actions }: Props) {
+  const [text, setText] = useState('');
+  const scrollRef = useRef<ScrollView>(null);
+  const chatWith = state.chatWith;
+  const friend = state.friends.find(f => f.userId === chatWith);
+  const myId = state.profile?.userId;
+  const messages = state.chatMessages;
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+  }, [messages.length]);
+
+  const onSend = () => {
+    if (!text.trim() || !chatWith) return;
+    actions.sendMessage(chatWith, text.trim());
+    setText('');
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      {/* Header */}
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', gap: 12,
+        paddingTop: 54, paddingBottom: 12, paddingHorizontal: 16,
+        backgroundColor: theme.card, borderBottomWidth: 1, borderBottomColor: theme.border,
+      }}>
+        <Pressable onPress={actions.closeChat} hitSlop={10}>
+          <Ionicons name="arrow-back" size={24} color={theme.text} />
+        </Pressable>
+        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="person" size={18} color={theme.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15 }} numberOfLines={1}>{friend?.displayName ?? '...'}</Text>
+          <Text style={{ color: friend?.online ? theme.primary : theme.muted, fontSize: 11 }}>{friend?.online ? 'Çevrimiçi' : 'Çevrimdışı'}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Ionicons name="trophy" size={13} color={theme.accent} />
+          <Text style={{ color: theme.accent, fontFamily: 'Poppins-SemiBold', fontSize: 12 }}>{friend?.trophies ?? 0}</Text>
+        </View>
+      </View>
+
+      {/* Messages */}
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 12, paddingBottom: 8 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        {messages.length === 0 ? (
+          <View style={{ alignItems: 'center', marginTop: 40 }}>
+            <Ionicons name="chatbubbles-outline" size={48} color={theme.border} />
+            <Text style={{ color: theme.muted, fontSize: 13, marginTop: 8 }}>Henüz mesaj yok</Text>
+          </View>
+        ) : messages.map((m) => {
+          const isMe = m.fromId === myId;
+          return (
+            <View key={m.id} style={{ alignItems: isMe ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
+              <View style={{ flexDirection: isMe ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 6, maxWidth: '80%' }}>
+                {/* Avatar */}
+                <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: isMe ? theme.primary + '33' : theme.card, borderWidth: 1.5, borderColor: isMe ? theme.primary : theme.border, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="person" size={13} color={isMe ? theme.primary : theme.muted} />
+                </View>
+                {/* Bubble */}
+                <View style={{
+                  backgroundColor: isMe ? theme.primary : theme.card,
+                  borderRadius: 16,
+                  borderBottomRightRadius: isMe ? 4 : 16,
+                  borderBottomLeftRadius: isMe ? 16 : 4,
+                  paddingHorizontal: 14, paddingVertical: 9,
+                  borderWidth: isMe ? 0 : 1, borderColor: theme.border,
+                }}>
+                  <Text style={{ color: isMe ? '#06131F' : theme.text, fontSize: 14 }}>{m.body}</Text>
+                  <Text style={{ color: isMe ? 'rgba(6,19,31,0.5)' : theme.muted, fontSize: 9, marginTop: 3, textAlign: 'right' }}>
+                    {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          );
+        })}
+      </ScrollView>
+
+      {/* Input bar */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', gap: 8,
+          paddingHorizontal: 12, paddingVertical: 8, paddingBottom: 34,
+          backgroundColor: theme.card, borderTopWidth: 1, borderTopColor: theme.border,
+        }}>
+          <TextInput
+            placeholder="Mesaj yaz..."
+            placeholderTextColor={theme.muted}
+            keyboardAppearance="dark"
+            value={text}
+            onChangeText={setText}
+            onSubmitEditing={onSend}
+            style={{
+              flex: 1, backgroundColor: theme.bg, color: theme.text,
+              borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10,
+              fontSize: 14, borderWidth: 1, borderColor: theme.border,
+            }}
+            multiline
+            maxLength={500}
+          />
+          <Pressable
+            onPress={onSend}
+            style={{
+              width: 42, height: 42, borderRadius: 21,
+              backgroundColor: text.trim() ? theme.primary : theme.border,
+              alignItems: 'center', justifyContent: 'center',
+            }}
+            disabled={!text.trim()}
+          >
+            <Ionicons name="send" size={20} color={text.trim() ? '#06131F' : theme.muted} />
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 

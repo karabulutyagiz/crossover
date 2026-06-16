@@ -21,6 +21,7 @@ import type {
   RoundResult,
   ScopesList,
   ServerMsg,
+  MessageView,
 } from './protocol';
 
 export type Phase = 'home' | 'arenas' | 'leaderboard' | 'matchHistory' | 'profile' | 'searching' | 'matchup' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
@@ -87,6 +88,9 @@ export interface GameState {
   isQuickMatch: boolean;
   opponentForfeit: boolean;
   lastGameOptions: GameOptions | null;
+  // Direct messages
+  chatWith: string | null;       // userId of the friend we're chatting with
+  chatMessages: MessageView[];   // messages in the current conversation
 }
 
 export const initialState: GameState = {
@@ -133,6 +137,8 @@ export const initialState: GameState = {
   isQuickMatch: false,
   opponentForfeit: false,
   lastGameOptions: null,
+  chatWith: null,
+  chatMessages: [],
 };
 
 const PROFILE_KEY = '@crossover_profile';
@@ -212,6 +218,22 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, viewProfile: null };
     case '_clear_notice' as any:
       return { ...state, notice: null };
+    case '_open_chat' as any:
+      return { ...state, chatWith: (action as any).userId, chatMessages: [] };
+    case '_close_chat' as any:
+      return { ...state, chatWith: null, chatMessages: [] };
+    case 'message_received': {
+      const msg = (action as any).message as MessageView;
+      // Only add to current chat if it's from/to the user we're chatting with
+      if (state.chatWith && (msg.fromId === state.chatWith || msg.toId === state.chatWith)) {
+        // Deduplicate by id
+        if (state.chatMessages.some(m => m.id === msg.id)) return state;
+        return { ...state, chatMessages: [...state.chatMessages, msg] };
+      }
+      return state;
+    }
+    case 'message_list':
+      return { ...state, chatMessages: (action as any).messages ?? [] };
 
     case 'searching':
       return { ...state, phase: 'searching', isQuickMatch: true, opponentForfeit: false };
@@ -329,9 +351,10 @@ function reducer(state: GameState, action: Action): GameState {
       }
       return { ...state, phase: 'lobby', error: t('error.opponentLeft'), teams: null, result: null, locked: null };
     case 'error':
-      // Internal protocol noise (sent when a stray message reaches the server with no
-      // active room) — never surface it to the user.
+      // Internal protocol noise — never surface to the user.
       if (action.message === 'Create or join a room first') return state;
+      // IAP receipt validation errors (sandbox/production mismatch) — silent.
+      if (/receipt|makbuz|21002|21007|21008/i.test(action.message ?? '')) return state;
       return { ...state, error: action.message };
     default:
       return state;
@@ -620,6 +643,16 @@ export function useCrossover() {
       const options = state.lastGameOptions ?? undefined;
       dispatch({ type: '_set_game_options', options: options ?? null } as any);
       connectAndSend({ type: 'find_match', name: state.profile?.displayName, userId: state.profile?.userId, options });
+    },
+    // ---- Direct Messages ----
+    openChat: (userId: string) => {
+      dispatch({ type: '_open_chat', userId } as any);
+      send({ type: 'list_messages', withUserId: userId });
+    },
+    closeChat: () => dispatch({ type: '_close_chat' } as any),
+    sendMessage: (toUserId: string, body: string) => {
+      if (!body.trim()) return;
+      send({ type: 'send_message', toUserId, body: body.trim() });
     },
     leave: () => {
       if (offlineRoomRef.current) {
