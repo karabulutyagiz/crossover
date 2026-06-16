@@ -13,11 +13,7 @@
       "ios": { "simulator": false }
     },
     "production": {
-      "autoIncrement": false,
-      "env": {
-        "USE_THIRD_PARTY_JSC": "1",
-        "USE_HERMES": "0"
-      }
+      "autoIncrement": false
     }
   },
   "submit": {

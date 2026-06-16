@@ -7,11 +7,10 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "jsEngine": "jsc",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.crossover.football",
-      "buildNumber": "56",
+      "buildNumber": "57",
       "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -43,7 +42,11 @@
       "expo-web-browser",
       "expo-apple-authentication",
       "expo-font",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-build-properties",
+        { "ios": { "useHermesV1": false, "buildReactNativeFromSource": true } }
+      ]
     ],
     "extra": {
       "eas": {
