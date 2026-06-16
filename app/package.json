@@ -21,7 +21,8 @@
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-native": "0.83.6",
-    "react-native-iap": "^13.0.4",
+    "react-native-iap": "^15.3.2",
+    "react-native-nitro-modules": "^0.35.9",
     "react-native-svg": "15.15.3",
     "react-native-web": "^0.21.2"
   },

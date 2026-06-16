@@ -45,11 +45,11 @@ import {
   ownsEmote,
 } from './emotes';
 import { NATIONALITIES } from './nationalities';
-// react-native-iap v13 (non-Nitro/StoreKit) — needs a native module, absent in Expo Go.
-// Wrap the require in try/catch so the app still loads in Expo Go (Store shows "coming
-// soon"); the real module is present in dev/prod builds. (v14/v15 use Nitro = heavy JSI;
-// we stay on stable v13 after the iOS 26 Hermes ordeal.)
-let useIAP: any = () => ({ connected: false, products: [], subscriptions: [], getProducts: () => Promise.resolve(), getSubscriptions: () => Promise.resolve(), requestPurchase: () => Promise.resolve(), requestSubscription: () => Promise.resolve() });
+// react-native-iap v15 (StoreKit2) — native module, absent in Expo Go. Wrap the require
+// in try/catch so the app still loads in Expo Go (Store shows "coming soon"); the real
+// module is present in dev/prod builds. v15 is the version compatible with RN's prebuilt-
+// dependencies model (v13 needs the old standalone RCT-Folly pod → won't build on RN 0.83+).
+let useIAP: any = () => ({ connected: false, products: [], subscriptions: [], requestPurchase: () => {}, fetchProducts: () => Promise.resolve([]) });
 let getReceiptIOS: any = () => Promise.resolve('');
 let iapFinishTransaction: any = () => Promise.resolve();
 type Purchase = any;
@@ -2592,28 +2592,28 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
     const code = err?.code ?? '';
     if (!/cancel/i.test(code)) Alert.alert('Satın alma başarısız', 'Ödeme tamamlanamadı, tekrar dene.');
   }, []);
-  const { connected, products, subscriptions, requestPurchase, requestSubscription, getProducts, getSubscriptions } = useIAP({ onPurchaseSuccess, onPurchaseError });
+  const { connected, products, subscriptions, requestPurchase, fetchProducts } = useIAP({ onPurchaseSuccess, onPurchaseError });
   useEffect(() => {
     if (!connected) return;
-    getProducts({ skus: DIAMOND_PRODUCT_IDS }).catch(() => {});       // consumables
-    getSubscriptions({ skus: SOCIAL_PACK_IDS }).catch(() => {});      // auto-renewable
+    fetchProducts({ skus: DIAMOND_PRODUCT_IDS, type: 'in-app' }).catch(() => {});  // consumables
+    fetchProducts({ skus: SOCIAL_PACK_IDS, type: 'subs' }).catch(() => {});         // auto-renewable
     // Re-validate on open so an auto-renewed Social Pack refreshes its expiry on the server
     // (granted-0 → no toast; see the reducer). Silent if there's no receipt yet.
     getReceiptIOS().then((r: string) => { if (r) return actions.verifyPurchase(r); }).catch(() => {});
-  }, [connected, getProducts, getSubscriptions, actions]);
+  }, [connected, fetchProducts, actions]);
   const priceFor = (productId: string, fallback: string) =>
-    (([...(products as { productId?: string; localizedPrice?: string }[]), ...(subscriptions as { productId?: string; localizedPrice?: string }[])]).find((p) => p.productId === productId)?.localizedPrice) ?? fallback;
+    (([...(products as { id?: string; displayPrice?: string }[]), ...(subscriptions as { id?: string; displayPrice?: string }[])]).find((p) => p.id === productId)?.displayPrice) ?? fallback;
   const buy = useCallback((productId: string) => {
     if (buying) return;
     // Until the product exists in App Store Connect it won't load — show a gentle
     // "coming soon" instead of a payment error (e.g. in builds before IAP is set up).
-    const loaded = [...products, ...subscriptions].some((p) => (p as { productId?: string }).productId === productId);
+    const loaded = [...products, ...subscriptions].some((p) => (p as { id?: string }).id === productId);
     if (!loaded) { Alert.alert('Çok yakında', 'Satın alma yakında aktifleşecek.'); return; }
     const isSub = SOCIAL_PACK_IDS.includes(productId);
     setBuying(productId);
-    const req = isSub ? requestSubscription({ sku: productId }) : requestPurchase({ sku: productId });
-    Promise.resolve(req).catch(() => setBuying(null));
-  }, [buying, requestPurchase, requestSubscription, products, subscriptions]);
+    const apple = { sku: productId, appAccountToken: profile?.userId ?? undefined };
+    Promise.resolve(requestPurchase({ request: { apple }, type: isSub ? 'subs' : 'in-app' })).catch(() => setBuying(null));
+  }, [buying, requestPurchase, products, subscriptions, profile?.userId]);
 
   useEffect(() => {
     if (scrollToSection && storeScrollRef.current) {
