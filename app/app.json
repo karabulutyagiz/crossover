@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.crossover.football",
-      "buildNumber": "58",
+      "buildNumber": "59",
       "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -42,13 +42,14 @@
       "expo-web-browser",
       "expo-apple-authentication",
       "expo-font",
-      "expo-sqlite"
+      "expo-sqlite",
+      "react-native-iap"
     ],
+    "owner": "ygzkrblt3s-team",
     "extra": {
       "eas": {
-        "projectId": "de94d973-a8c9-41e4-980e-d0014639a340"
+        "projectId": "493d1832-3923-4468-b443-7c256bacd3d3"
       }
-    },
-    "owner": "ygzkrblt2s-team"
+    }
   }
 }
