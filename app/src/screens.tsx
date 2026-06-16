@@ -1170,7 +1170,7 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
         <Image
           source={tier.img}
           resizeMode="contain"
-          style={{ width: 250, height: 218, shadowColor: '#01030B', shadowOpacity: 0.6, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }}
+          style={{ width: 270, height: 230, shadowColor: '#01030B', shadowOpacity: 0.6, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }}
         />
       </View>
       {/* Nameplate below */}
@@ -4214,7 +4214,7 @@ const styles = StyleSheet.create({
   friendInput: { color: theme.text, fontSize: 14, fontWeight: '700', borderBottomWidth: 1, borderBottomColor: theme.border, paddingBottom: 4 },
   friendEmpty: { alignItems: 'center' as const, gap: 8, paddingVertical: 30 },
   arenaCard: { backgroundColor: theme.card, borderRadius: 16, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, padding: 14, position: 'relative', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
-  arenaIconBox: { width: 66, height: 60, alignItems: 'center', justifyContent: 'center' },
+  arenaIconBox: { width: 74, height: 68, alignItems: 'center', justifyContent: 'center' },
   arenaName: { color: theme.text, fontSize: 16, fontWeight: '900' },
   arenaTrophyRange: { color: theme.muted, fontSize: 12, marginTop: 2 },
   arenaStats: { flexDirection: 'row', gap: 16, marginTop: 8 },
