@@ -85,44 +85,28 @@ export async function initOfflineDB(): Promise<void> {
     )
   `);
 
-  // Batch insert — use transactions for speed
-  const BATCH = 500;
-
-  await db.execAsync('BEGIN');
-  for (let i = 0; i < raw.clubs.length; i += BATCH) {
-    const batch = raw.clubs.slice(i, i + BATCH);
-    for (const c of batch) {
-      await db.runAsync(
-        'INSERT OR REPLACE INTO clubs VALUES (?,?,?,?,?,?)',
-        [c.id, c.name, c.norm, c.country, c.league, c.logo],
-      );
+  // Bulk insert: multi-row INSERTs (chunked under SQLite's ~999 variable limit) collapse
+  // ~165k bridge round-trips into a few hundred. WAL + synchronous=OFF speed the one-time
+  // seed; yielding every few chunks keeps the UI responsive while it loads in background.
+  await db.execAsync('PRAGMA journal_mode=WAL; PRAGMA synchronous=OFF;');
+  const d = db; // non-null here
+  const bulk = async (table: string, cols: number, rows: unknown[], toRow: (r: never) => (string | number | null)[], orReplace = true) => {
+    if (!rows.length) return;
+    const perChunk = Math.max(1, Math.floor(800 / cols));
+    const ph = '(' + Array(cols).fill('?').join(',') + ')';
+    const verb = orReplace ? 'INSERT OR REPLACE INTO' : 'INSERT INTO';
+    await d.execAsync('BEGIN');
+    for (let i = 0; i < rows.length; i += perChunk) {
+      const chunk = rows.slice(i, i + perChunk);
+      const params = chunk.flatMap(toRow as (r: unknown) => (string | number | null)[]);
+      await d.runAsync(`${verb} ${table} VALUES ${chunk.map(() => ph).join(',')}`, params);
+      if (((i / perChunk) | 0) % 25 === 0) await new Promise((r) => setTimeout(r, 0)); // yield to UI
     }
-  }
-  await db.execAsync('COMMIT');
-
-  await db.execAsync('BEGIN');
-  for (let i = 0; i < raw.players.length; i += BATCH) {
-    const batch = raw.players.slice(i, i + BATCH);
-    for (const p of batch) {
-      await db.runAsync(
-        'INSERT OR REPLACE INTO players VALUES (?,?,?,?,?)',
-        [p.id, p.name, p.norm, p.nat, p.img],
-      );
-    }
-  }
-  await db.execAsync('COMMIT');
-
-  await db.execAsync('BEGIN');
-  for (let i = 0; i < raw.spells.length; i += BATCH) {
-    const batch = raw.spells.slice(i, i + BATCH);
-    for (const s of batch) {
-      await db.runAsync(
-        'INSERT INTO spells VALUES (?,?,?,?)',
-        [s.p, s.c, s.s, s.e],
-      );
-    }
-  }
-  await db.execAsync('COMMIT');
+    await d.execAsync('COMMIT');
+  };
+  await bulk('clubs', 6, raw.clubs, (c: ExClub) => [c.id, c.name, c.norm, c.country, c.league, c.logo]);
+  await bulk('players', 5, raw.players, (p: ExPlayer) => [p.id, p.name, p.norm, p.nat, p.img]);
+  await bulk('spells', 4, raw.spells, (s: ExSpell) => [s.p, s.c, s.s, s.e], false);
 
   // Indexes for fast lookups
   await db.execAsync('CREATE INDEX IF NOT EXISTS idx_spells_club ON spells(club_id)');

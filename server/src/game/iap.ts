@@ -1,16 +1,22 @@
-// Apple In-App Purchase (StoreKit) receipt validation + diamond granting.
+// Apple In-App Purchase validation (StoreKit 2 / react-native-iap v15).
 //
-// The app sends the StoreKit receipt after a successful purchase; we validate it
-// directly with Apple (verifyReceipt) using the app-specific shared secret, then
-// credit diamonds for any NEW (not-yet-processed) consumable transactions. The
-// processed_transactions table makes granting idempotent — re-sending a receipt
-// (or a receipt that accumulates past purchases) never double-credits.
+// The app sends the per-transaction JWS (signed transaction) after a purchase. We verify
+// the JWS signature against Apple's root CAs (offline, no shared secret / no verifyReceipt
+// — that legacy endpoint is being retired), decode the transaction, and credit diamonds /
+// extend the Social Pack. processed_transactions makes consumable grants idempotent, so a
+// replayed transaction (StoreKit2 re-delivers unfinished ones) never double-credits.
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { SignedDataVerifier, Environment } from '@apple/app-store-server-library';
 import { pool } from '../db/pool.ts';
-import { config } from '../config.ts';
 import { getUser, type UserProfile } from './rank.ts';
 
-// Server-authoritative product → diamonds map. Keep the IDs in sync with the app
-// (DIAMOND_PACKS in app/src/screens.tsx) and the App Store Connect products.
+const BUNDLE_ID = 'com.crossover.football';
+const APP_APPLE_ID = 6778542426;
+
+// Server-authoritative product → diamonds map. Keep in sync with the app (DIAMOND_PACKS)
+// and the App Store Connect products.
 const DIAMOND_PRODUCTS: Record<string, number> = {
   'com.crossover.diamonds.100': 100,
   'com.crossover.diamonds.500': 500,
@@ -18,83 +24,81 @@ const DIAMOND_PRODUCTS: Record<string, number> = {
   'com.crossover.diamonds.5000': 5000,
 };
 
-// Auto-renewable subscriptions (the Social Pack). Granting = set social_pack_until to
-// the subscription's latest expiry from the receipt (renewals extend it automatically).
+// Auto-renewable subscriptions (the Social Pack) → set social_pack_until to the JWS expiry.
 const SOCIAL_PACK_PRODUCTS = new Set<string>([
   'com.crossover.socialpack.weekly',
   'com.crossover.socialpack.monthly',
 ]);
 
-const PROD_URL = 'https://buy.itunes.apple.com/verifyReceipt';
-const SANDBOX_URL = 'https://sandbox.itunes.apple.com/verifyReceipt';
+// Apple root CAs (public certs) for JWS signature verification.
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const certsDir = join(__dirname, '../../certs');
+const appleRootCAs: Buffer[] = [];
+for (const f of ['AppleRootCA-G3.cer', 'AppleRootCA-G2.cer', 'AppleComputerRootCertificate.cer']) {
+  try { appleRootCAs.push(readFileSync(join(certsDir, f))); } catch { /* cert missing — skip */ }
+}
 
-interface AppleInApp { product_id: string; transaction_id: string; original_transaction_id?: string; expires_date_ms?: string }
-interface AppleResp { status: number; receipt?: { in_app?: AppleInApp[] }; latest_receipt_info?: AppleInApp[] }
+function makeVerifier(env: Environment): SignedDataVerifier | null {
+  try { return new SignedDataVerifier(appleRootCAs, false, env, BUNDLE_ID, APP_APPLE_ID); }
+  catch { return null; }
+}
+const prodVerifier = makeVerifier(Environment.PRODUCTION);
+const sandboxVerifier = makeVerifier(Environment.SANDBOX);
 
-async function verifyWithApple(receipt: string): Promise<AppleResp | null> {
-  const body = JSON.stringify({
-    'receipt-data': receipt,
-    password: config.iapSharedSecret,
-    'exclude-old-transactions': false,
-  });
-  const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body };
-  try {
-    let r = await fetch(PROD_URL, opts);
-    let j = (await r.json()) as AppleResp;
-    // 21007 = a sandbox receipt was sent to the production endpoint → retry sandbox.
-    if (j.status === 21007) {
-      r = await fetch(SANDBOX_URL, opts);
-      j = (await r.json()) as AppleResp;
-    }
-    return j;
-  } catch {
-    return null;
+// Verify a signed transaction JWS. Try Production first; sandbox transactions fail there
+// (environment mismatch) so fall back to the Sandbox verifier (replaces the old 21007 dance).
+async function decodeTransaction(jws: string) {
+  if (prodVerifier) {
+    try { return await prodVerifier.verifyAndDecodeTransaction(jws); } catch { /* try sandbox */ }
   }
+  if (sandboxVerifier) {
+    return await sandboxVerifier.verifyAndDecodeTransaction(jws);
+  }
+  throw new Error('no verifier');
 }
 
 export async function verifyApplePurchase(
   userId: string,
-  receipt: string,
+  jws: string,
 ): Promise<{ ok: true; profile: UserProfile; granted: number } | { ok: false; error: string }> {
   if (!userId) return { ok: false, error: 'Önce giriş yap' };
-  if (!config.iapSharedSecret) return { ok: false, error: 'Satın alma şu an kapalı' };
-  if (!receipt) return { ok: false, error: 'Makbuz bulunamadı' };
+  if (!jws) return { ok: false, error: 'Makbuz bulunamadı' };
+  if (!appleRootCAs.length) return { ok: false, error: 'Satın alma şu an kapalı' };
 
-  const resp = await verifyWithApple(receipt);
-  if (!resp) return { ok: false, error: 'Apple sunucusuna ulaşılamadı, tekrar dene' };
-  if (resp.status !== 0) return { ok: false, error: `Makbuz geçersiz (kod ${resp.status})` };
+  let tx;
+  try {
+    tx = await decodeTransaction(jws);
+  } catch {
+    return { ok: false, error: 'Makbuz doğrulanamadı, tekrar dene' };
+  }
+  if (!tx || tx.bundleId !== BUNDLE_ID || !tx.productId || !tx.transactionId) {
+    return { ok: false, error: 'Makbuz geçersiz' };
+  }
 
-  // Consider every transaction the receipt carries; idempotency handles duplicates.
-  const items = [...(resp.latest_receipt_info ?? []), ...(resp.receipt?.in_app ?? [])];
-  let granted = 0;            // diamonds credited this call
-  let socialExpiryMs = 0;     // latest Social Pack subscription expiry in the receipt
-  const seen = new Set<string>();
-  for (const it of items) {
-    // Diamonds: consumable — credit each new transaction once (idempotent via PK).
-    const amount = DIAMOND_PRODUCTS[it.product_id];
-    if (amount && it.transaction_id && !seen.has(it.transaction_id)) {
-      seen.add(it.transaction_id);
-      const ins = await pool.query(
-        `INSERT INTO processed_transactions (transaction_id, user_id, product_id, diamonds)
-           VALUES ($1, $2, $3, $4)
-         ON CONFLICT (transaction_id) DO NOTHING`,
-        [it.transaction_id, userId, it.product_id, amount],
-      );
-      if (ins.rowCount && ins.rowCount > 0) {
-        await pool.query(`UPDATE users SET diamonds = diamonds + $2 WHERE id = $1`, [userId, amount]);
-        granted += amount;
-      }
-    }
-    // Social Pack: auto-renewable subscription — track the latest expiry.
-    if (SOCIAL_PACK_PRODUCTS.has(it.product_id) && it.expires_date_ms) {
-      const e = Number(it.expires_date_ms);
-      if (e > socialExpiryMs) socialExpiryMs = e;
+  let granted = 0; // diamonds credited this call
+  const pid = tx.productId;
+
+  // Diamonds (consumable) — credit once per transaction (idempotent via PK).
+  const amount = DIAMOND_PRODUCTS[pid];
+  if (amount) {
+    const ins = await pool.query(
+      `INSERT INTO processed_transactions (transaction_id, user_id, product_id, diamonds)
+         VALUES ($1, $2, $3, $4)
+       ON CONFLICT (transaction_id) DO NOTHING`,
+      [tx.transactionId, userId, pid, amount],
+    );
+    if (ins.rowCount && ins.rowCount > 0) {
+      await pool.query(`UPDATE users SET diamonds = diamonds + $2 WHERE id = $1`, [userId, amount]);
+      granted += amount;
     }
   }
 
-  // Set the Social Pack entitlement to the subscription's latest (future) expiry.
-  if (socialExpiryMs > Date.now()) {
-    await pool.query(`UPDATE users SET social_pack_until = $2 WHERE id = $1`, [userId, new Date(socialExpiryMs).toISOString()]);
+  // Social Pack (auto-renewable) — set entitlement to the transaction's expiry if future.
+  if (SOCIAL_PACK_PRODUCTS.has(pid) && tx.expiresDate) {
+    const e = Number(tx.expiresDate);
+    if (e > Date.now()) {
+      await pool.query(`UPDATE users SET social_pack_until = $2 WHERE id = $1`, [userId, new Date(e).toISOString()]);
+    }
   }
 
   const profile = await getUser(userId);

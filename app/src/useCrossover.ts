@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
+import { InteractionManager } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { SERVER_URL, HTTP_URL } from './config';
@@ -348,8 +349,12 @@ export function useCrossover() {
   const wsRef = useRef<WebSocket | null>(null);
   const offlineRoomRef = useRef<OfflineRoom | null>(null);
 
-  // Initialize offline DB on mount (runs in background, non-blocking)
-  useEffect(() => { initOfflineDB().catch(() => {}); }, []);
+  // Seed the offline DB only AFTER first paint + interactions settle, so the one-time 8MB
+  // load never blocks/janks app launch. (Only runs once; subsequent launches no-op.)
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => { initOfflineDB().catch(() => {}); });
+    return () => task.cancel?.();
+  }, []);
 
   // On mount: load saved profile from AsyncStorage.
   useEffect(() => {
