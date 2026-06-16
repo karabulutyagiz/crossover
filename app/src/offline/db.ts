@@ -49,7 +49,7 @@ function similarity(a: string, b: string): number {
 // ---------- DB singleton ----------
 const DB_NAME = 'crossover_offline.db';
 const DATA_VERSION_KEY = '@offline_data_v';
-const CURRENT_VERSION = '1'; // bump when data.json changes
+const CURRENT_VERSION = '2'; // bump when data.json changes
 
 let db: SQLite.SQLiteDatabase | null = null;
 

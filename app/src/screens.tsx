@@ -2598,7 +2598,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
     fetchProducts({ skus: SOCIAL_PACK_IDS, type: 'subs' }).catch(() => {});
     // Re-validate on open so an auto-renewed Social Pack refreshes its expiry on the server
     // (granted-0 → no toast; see the reducer). Silent if there's no receipt yet.
-    getReceiptIOS().then((r) => { if (r) return actions.verifyPurchase(r); }).catch(() => {});
+    getReceiptIOS().then((r: string) => { if (r) return actions.verifyPurchase(r); }).catch(() => {});
   }, [connected, fetchProducts, actions]);
   const priceFor = (productId: string, fallback: string) =>
     (([...(products as { id?: string; displayPrice?: string }[]), ...(subscriptions as { id?: string; displayPrice?: string }[])]).find((p) => p.id === productId)?.displayPrice) ?? fallback;
