@@ -807,7 +807,7 @@ function TransientCallout({ emoteId, onDone }: { emoteId: string; onDone?: () =>
 
 // Floating emote button + picker sheet + the opponent/self callouts. Drop into
 // any in-match screen; positions itself absolutely over the screen.
-function EmoteLayer({ state, actions, fab = 'bottom-right', hideFab, externalOpen, onOpenChange }: Props & { fab?: 'bottom-right' | 'top-right'; hideFab?: boolean; externalOpen?: boolean; onOpenChange?: (open: boolean) => void }) {
+function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, onOpenChange }: Props & { fab?: 'bottom-right' | 'top-right'; hideFab?: boolean; externalOpen?: boolean; onOpenChange?: (open: boolean) => void }) {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = externalOpen ?? internalOpen;
   const setOpen = (v: boolean) => { setInternalOpen(v); onOpenChange?.(v); };
