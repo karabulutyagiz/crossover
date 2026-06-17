@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Animated, Easing, Platform, Dimensions, Linking } from 'react-native';
+import { Animated, Easing, PanResponder, Platform, Dimensions, Linking } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
@@ -3079,7 +3079,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
 
   return (
     <Screen>
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <ScreenHeader title={t('friends.title')} icon="people" underline={theme.primary} />
 
         {/* Your code */}
@@ -3546,6 +3546,23 @@ function ChatScreen({ state, actions }: Props) {
   const [text, setText] = useState('');
   const scrollRef = useRef<ScrollView>(null);
   const chatWith = state.chatWith;
+
+  // Swipe-back: drag right to close
+  const swipeX = useRef(new Animated.Value(0)).current;
+  const panResponder = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => g.dx > 15 && Math.abs(g.dy) < 30 && g.moveX < 40,
+    onPanResponderMove: (_, g) => { if (g.dx > 0) swipeX.setValue(g.dx); },
+    onPanResponderRelease: (_, g) => {
+      if (g.dx > 100) {
+        Animated.timing(swipeX, { toValue: Dimensions.get('window').width, duration: 200, useNativeDriver: true }).start(() => {
+          swipeX.setValue(0);
+          actions.closeChat();
+        });
+      } else {
+        Animated.spring(swipeX, { toValue: 0, useNativeDriver: true, friction: 8 }).start();
+      }
+    },
+  })).current;
   const friend = state.friends.find(f => f.userId === chatWith);
   const myId = state.profile?.userId;
   const messages = state.chatMessages;
@@ -3592,7 +3609,8 @@ function ChatScreen({ state, actions }: Props) {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+    <Animated.View style={{ flex: 1, transform: [{ translateX: swipeX }] }} {...panResponder.panHandlers}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       {/* Header */}
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -3704,6 +3722,7 @@ function ChatScreen({ state, actions }: Props) {
           </Pressable>
       </View>
     </KeyboardAvoidingView>
+    </Animated.View>
   );
 }
 
@@ -4269,7 +4288,12 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
             <Text style={styles.matchScore}>
               {(you?.score ?? 0)} - {(opp?.score ?? 0)}
             </Text>
-            {!youWon && state.matchWinnerName ? (
+            {/* 3 wrong answers explanation */}
+            {(you?.wrongCount ?? 0) >= 3 ? (
+              <Text style={[styles.muted, { color: theme.danger, marginTop: 4 }]}>{t('result.youLost3Wrong')}</Text>
+            ) : (opp?.wrongCount ?? 0) >= 3 ? (
+              <Text style={[styles.muted, { color: theme.primary, marginTop: 4 }]}>{t('result.youWon3Wrong')}</Text>
+            ) : !youWon && state.matchWinnerName ? (
               <Text style={styles.muted}>{t('result.winnerTook', { name: state.matchWinnerName })}</Text>
             ) : null}
             {state.trophyDelta ? (
@@ -4460,17 +4484,6 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
 
         {matchOver ? (
           <>
-            {/* Match result banner */}
-            <View style={[styles.matchBanner, { borderColor: youWon ? theme.accent : theme.muted }]}>
-              <Ionicons name={youWon ? 'trophy' : 'sad-outline'} size={32} color={youWon ? theme.accent : theme.muted} />
-              <Text style={[styles.h1, { color: youWon ? theme.accent : theme.text }]}>
-                {youWon ? t('result.youWon') : t('result.youLost')}
-              </Text>
-              <Text style={styles.matchScore}>
-                {(you?.score ?? 0)} - {(opp?.score ?? 0)}
-              </Text>
-            </View>
-
             {state.rematchState === 'incoming' ? (
               <>
                 <Text style={[styles.muted, { marginBottom: 4 }]}>
