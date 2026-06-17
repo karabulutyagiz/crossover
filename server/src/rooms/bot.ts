@@ -1,6 +1,6 @@
 import type { Room, Transport } from './room.ts';
 import type { ClientMsg, ClubRef, Difficulty, GameMode, ServerMsg, Scope } from '../protocol.ts';
-import { randomClub, commonPlayers, commonPlayersCountryTeam, commonPlayersLetterTeam } from '../game/verify.ts';
+import { randomClub, randomPlayer, commonPlayers, commonPlayersCountryTeam, commonPlayersLetterTeam, commonClubs } from '../game/verify.ts';
 
 // Bot answer delay (ms) per difficulty — how long you get to beat it.
 const DELAYS: Record<Difficulty, [number, number]> = {
@@ -102,6 +102,9 @@ export class BotPlayer implements Transport {
     } else if (role === 'letter') {
       const letter = LETTERS[Math.floor(Math.random() * LETTERS.length)]!;
       this.act({ type: 'pick_letter', letter });
+    } else if (role === 'player') {
+      const player = await randomPlayer(this.difficulty);
+      if (player) this.act({ type: 'pick_player', playerId: player.id });
     }
   }
 
@@ -109,7 +112,11 @@ export class BotPlayer implements Transport {
     if (!this.teams) return;
 
     let names: string[];
-    if (this.revealCountry && this.teams.teamB) {
+    if (this.mode === 'player-player') {
+      // Player-player: teamA/teamB ids are actually player ids; answer is a club name
+      const clubs = await commonClubs(this.teams.teamA.id, this.teams.teamB.id, 6);
+      names = clubs.map((c) => c.name);
+    } else if (this.revealCountry && this.teams.teamB) {
       // Country-team: find players of that country who played for the team
       const players = await commonPlayersCountryTeam(this.teams.teamB.id, this.revealCountry, 6);
       names = players.map((p) => p.name);

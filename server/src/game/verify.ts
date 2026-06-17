@@ -1,7 +1,7 @@
 import { pool } from '../db/pool.ts';
 import { config } from '../config.ts';
 import { normalize } from './normalize.ts';
-import type { Scope } from '../protocol.ts';
+import type { Scope, PlayerRef } from '../protocol.ts';
 
 // Build a scope WHERE-fragment + push its param. Returns '' for 'all'.
 function scopeClause(scope: Scope, params: unknown[]): string {
@@ -700,4 +700,155 @@ export async function verifyGuess(
     spellsB,
     allClubs,
   };
+}
+
+// ======================= PLAYER-PLAYER MODE =======================
+
+/** Fuzzy search for players by name. */
+export async function searchPlayers(query: string, limit = 30): Promise<PlayerRef[]> {
+  const norm = normalize(query);
+  if (!norm) return [];
+  const { rows } = await pool.query<{ id: string; name: string; image_url: string | null; sim: number }>(
+    `SELECT p.id, p.name, p.image_url,
+            word_similarity($1, p.name_norm) AS sim
+     FROM players p
+     WHERE word_similarity($1, p.name_norm) >= 0.25
+     ORDER BY sim DESC, (p.image_url IS NOT NULL) DESC
+     LIMIT $2`,
+    [norm, limit],
+  );
+  return rows.map(r => ({ id: Number(r.id), name: r.name, imageUrl: r.image_url }));
+}
+
+/** Pick a random player who has spells at multiple clubs (so there's a crossover answer). */
+export async function randomPlayer(difficulty: 'easy' | 'medium' | 'hard'): Promise<PlayerRef | null> {
+  const minClubs = difficulty === 'easy' ? 4 : difficulty === 'medium' ? 3 : 2;
+  const { rows } = await pool.query<{ id: string; name: string; image_url: string | null }>(
+    `SELECT p.id, p.name, p.image_url
+     FROM players p
+     WHERE (SELECT COUNT(DISTINCT pc.club_id) FROM player_clubs pc
+            JOIN clubs c ON c.id = pc.club_id AND c.is_national = false
+            WHERE pc.player_id = p.id) >= $1
+       AND p.image_url IS NOT NULL
+     ORDER BY random()
+     LIMIT 1`,
+    [minClubs],
+  );
+  if (rows.length === 0) return null;
+  const r = rows[0]!;
+  return { id: Number(r.id), name: r.name, imageUrl: r.image_url };
+}
+
+/** Check if two players share at least one non-national club. */
+export async function hasCommonClubs(playerAId: number, playerBId: number): Promise<boolean> {
+  const { rows } = await pool.query<{ cnt: string }>(
+    `SELECT COUNT(*) AS cnt FROM (
+       SELECT pa.club_id FROM player_clubs pa
+       JOIN player_clubs pb ON pb.club_id = pa.club_id AND pb.player_id = $2
+       JOIN clubs c ON c.id = pa.club_id AND c.is_national = false
+       WHERE pa.player_id = $1
+       LIMIT 1
+     ) x`,
+    [playerAId, playerBId],
+  );
+  return Number(rows[0]?.cnt ?? 0) > 0;
+}
+
+/** Find clubs where both players played. */
+export async function commonClubs(
+  playerAId: number, playerBId: number, limit = 5,
+): Promise<{ id: number; name: string; logoUrl: string | null }[]> {
+  const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
+    `SELECT c.id, c.name, c.logo_url
+     FROM clubs c
+     WHERE c.is_national = false
+       AND EXISTS (SELECT 1 FROM player_clubs WHERE player_id = $1 AND club_id = c.id)
+       AND EXISTS (SELECT 1 FROM player_clubs WHERE player_id = $2 AND club_id = c.id)
+     ORDER BY c.popularity DESC NULLS LAST
+     LIMIT $3`,
+    [playerAId, playerBId, limit],
+  );
+  return rows.map(r => ({ id: Number(r.id), name: r.name, logoUrl: r.logo_url }));
+}
+
+export interface VerifyPlayerPlayerResult {
+  correct: boolean;
+  matchedClubId: number | null;
+  matchedClubName: string | null;
+  matchedClubLogo: string | null;
+  autocorrected: boolean;
+  /** Each player's spells at the matched club */
+  spellsA: SpellInfo[];
+  spellsB: SpellInfo[];
+}
+
+/** Verify a club name guess for player-player mode. */
+export async function verifyPlayerPlayerGuess(
+  playerAId: number, playerBId: number, guess: string,
+): Promise<VerifyPlayerPlayerResult> {
+  const norm = normalize(guess);
+  if (!norm) return { correct: false, matchedClubId: null, matchedClubName: null, matchedClubLogo: null, autocorrected: false, spellsA: [], spellsB: [] };
+
+  // Fuzzy-find club candidates
+  const { rows: candidates } = await pool.query<{ id: string; name: string; name_norm: string; logo_url: string | null; sim: number }>(
+    `SELECT c.id, c.name, c.name_norm, c.logo_url,
+            word_similarity($1, c.name_norm) AS sim
+     FROM clubs c
+     WHERE c.is_national = false AND word_similarity($1, c.name_norm) >= ${config.verifyMatchThreshold}
+     ORDER BY sim DESC
+     LIMIT 25`,
+    [norm],
+  );
+  if (candidates.length === 0) return { correct: false, matchedClubId: null, matchedClubName: null, matchedClubLogo: null, autocorrected: false, spellsA: [], spellsB: [] };
+
+  const top = candidates[0]!;
+  const isExact = top.sim >= config.verifyExactThreshold;
+
+  if (isExact) {
+    // Strict: check THIS specific club
+    const clubId = Number(top.id);
+    const bothPlayed = await bothPlayedAtClub(clubId, playerAId, playerBId);
+    if (bothPlayed) {
+      return await buildPlayerPlayerResult(clubId, top.name, top.logo_url, playerAId, playerBId, false);
+    }
+    return { correct: false, matchedClubId: null, matchedClubName: null, matchedClubLogo: null, autocorrected: false, spellsA: [], spellsB: [] };
+  }
+
+  // Approximate: find best club where both played
+  for (const c of candidates) {
+    const clubId = Number(c.id);
+    const bothPlayed = await bothPlayedAtClub(clubId, playerAId, playerBId);
+    if (bothPlayed) {
+      return await buildPlayerPlayerResult(clubId, c.name, c.logo_url, playerAId, playerBId, clubId !== Number(top.id));
+    }
+  }
+  return { correct: false, matchedClubId: null, matchedClubName: null, matchedClubLogo: null, autocorrected: false, spellsA: [], spellsB: [] };
+}
+
+async function bothPlayedAtClub(clubId: number, playerAId: number, playerBId: number): Promise<boolean> {
+  const { rows } = await pool.query<{ cnt: string }>(
+    `SELECT COUNT(DISTINCT player_id) AS cnt FROM player_clubs
+     WHERE club_id = $1 AND player_id = ANY($2)`,
+    [clubId, [playerAId, playerBId]],
+  );
+  return Number(rows[0]?.cnt ?? 0) >= 2;
+}
+
+async function buildPlayerPlayerResult(
+  clubId: number, clubName: string, clubLogo: string | null,
+  playerAId: number, playerBId: number, autocorrected: boolean,
+): Promise<VerifyPlayerPlayerResult> {
+  const [spellsA, spellsB] = await Promise.all([
+    getPlayerSpellsAtClub(playerAId, clubId, clubName, clubLogo),
+    getPlayerSpellsAtClub(playerBId, clubId, clubName, clubLogo),
+  ]);
+  return { correct: true, matchedClubId: clubId, matchedClubName: clubName, matchedClubLogo: clubLogo, autocorrected, spellsA, spellsB };
+}
+
+async function getPlayerSpellsAtClub(playerId: number, clubId: number, clubName: string, clubLogo: string | null): Promise<SpellInfo[]> {
+  const { rows } = await pool.query<{ start_year: number | null; end_year: number | null }>(
+    `SELECT start_year, end_year FROM player_clubs WHERE player_id = $1 AND club_id = $2`,
+    [playerId, clubId],
+  );
+  return rows.map(r => ({ clubId, clubName, logoUrl: clubLogo, startYear: r.start_year, endYear: r.end_year }));
 }

@@ -15,6 +15,7 @@ import type {
   GameOptions,
   MatchHistoryView,
   PickRole,
+  PlayerRef,
   ProfileView,
   PublicProfile,
   RoomView,
@@ -52,6 +53,7 @@ export interface GameState {
   passedBy: string[]; // player ids who passed this round
   result: RoundResult | null;
   clubResults: ClubRef[];
+  playerResults: PlayerRef[];
   scopes: ScopesList | null;
   profile: ProfileView | null;
   trophyDelta: { trophies: number; delta: number; arena: ArenaView } | null;
@@ -111,6 +113,7 @@ export const initialState: GameState = {
   passedBy: [],
   result: null,
   clubResults: [],
+  playerResults: [],
   scopes: null,
   profile: null,
   trophyDelta: null,
@@ -398,6 +401,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, rematchState: 'declined' };
     case 'club_results':
       return { ...state, clubResults: action.clubs };
+    case 'player_results':
+      return { ...state, playerResults: (action as any).players ?? [] };
     case 'opponent_left':
       if (action.forfeit) {
         return { ...state, opponentForfeit: true };
@@ -644,6 +649,11 @@ export function useCrossover() {
     searchClubs: (q: string) => {
       if (offlineRoomRef.current) return offlineRoomRef.current.searchClubs(q);
       send({ type: 'search_clubs', reqId: 'q', q });
+    },
+    searchPlayers: (q: string) => send({ type: 'search_players', q }),
+    pickPlayer: (playerId: number) => {
+      send({ type: 'pick_player', playerId });
+      dispatch({ type: '_picked' });
     },
     submitGuess: (text: string) => {
       if (offlineRoomRef.current) return void offlineRoomRef.current.submitGuess(text);

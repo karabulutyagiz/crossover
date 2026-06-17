@@ -29,7 +29,7 @@ import Svg, { Rect, Circle, Line, Defs, LinearGradient as SvgGradient, RadialGra
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState, FriendInfo } from './useCrossover';
 import { initialState } from './useCrossover';
-import type { ClubRef, Difficulty, GameMode, GameOptions, ProfileView, PublicProfile, RoomView, Scope, SpellInfo } from './protocol';
+import type { ClubRef, Difficulty, GameMode, GameOptions, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, SpellInfo } from './protocol';
 import {
   EmoteCallout,
   EmoteSticker,
@@ -84,6 +84,8 @@ type Actions = {
   pickCountry: (country: string) => void;
   pickLetter: (letter: string) => void;
   searchClubs: (q: string) => void;
+  searchPlayers: (q: string) => void;
+  pickPlayer: (playerId: number) => void;
   submitGuess: (text: string) => void;
   pass: () => void;
   ready: () => void;
@@ -2090,6 +2092,56 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
     );
   }
 
+  // ---- Player picker ----
+  if (role === 'player') {
+    const onPlayerChange = (text: string) => {
+      setQ(text);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => actions.searchPlayers(text.trim()), 140);
+    };
+    return (
+      <Screen>
+        <View style={{ alignItems: 'center', marginBottom: 8, marginTop: 8 }}>
+          <Text style={styles.h1}>{t('pick.titlePlayer')}</Text>
+          <PickTimer pickEndsAt={state.pickEndsAt} />
+        </View>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={18} color={theme.muted} />
+          <TextInput
+            placeholder={t('pick.searchPlayer')}
+            placeholderTextColor={theme.muted}
+            keyboardAppearance="dark"
+            value={q}
+            onChangeText={onPlayerChange}
+            style={styles.searchInput}
+            autoFocus={!tutorial}
+          />
+        </View>
+        <ScrollView style={{ alignSelf: 'stretch', flex: 1 }} keyboardShouldPersistTaps="handled">
+          {state.playerResults.map((p: PlayerRef) => (
+            <Pressable key={p.id} style={styles.clubRow} onPress={() => actions.pickPlayer(p.id)}>
+              {p.imageUrl ? (
+                <Image source={{ uri: p.imageUrl }} style={{ width: 40, height: 40, borderRadius: 20 }} resizeMode="cover" />
+              ) : (
+                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: badgeColor(p.name), alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="person" size={20} color="#fff" />
+                </View>
+              )}
+              <Text style={styles.clubText} numberOfLines={1}>{p.name}</Text>
+              <Ionicons name="chevron-forward" size={18} color={theme.muted} />
+            </Pressable>
+          ))}
+          {state.playerResults.length === 0 && q.trim() ? <Text style={styles.muted}>{t('common.noResults')}</Text> : null}
+        </ScrollView>
+        <Pressable onPress={handleLeave} style={{ position: 'absolute', top: 54, left: 18, zIndex: 20 }}>
+          <Ionicons name="close-circle" size={32} color={theme.muted} />
+        </Pressable>
+        <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
+        {!tutorial ? <EmoteLayer state={state} actions={actions} /> : null}
+      </Screen>
+    );
+  }
+
   // ---- Letter picker ----
   if (role === 'letter') {
     return (
@@ -2266,7 +2318,15 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
     <Screen scroll>
       <View style={styles.teamsRow}>
         <Animated.View style={[styles.teamCard, { transform: [{ translateX: leftX }], opacity: reveal }]}>
-          {state.revealMode === 'country-team' ? (
+          {state.revealMode === 'player-player' ? (
+            teams?.teamA.logoUrl ? (
+              <Image source={{ uri: teams.teamA.logoUrl }} style={{ width: 62, height: 62, borderRadius: 31 }} resizeMode="cover" />
+            ) : (
+              <View style={{ width: 62, height: 62, borderRadius: 31, backgroundColor: badgeColor(teams?.teamA.name ?? '?'), alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="person" size={30} color="#fff" />
+              </View>
+            )
+          ) : state.revealMode === 'country-team' ? (
             <Text style={{ fontSize: 52 }}>{NATIONALITIES.find((n) => n.value === state.revealCountry)?.flag ?? '🏳️'}</Text>
           ) : state.revealMode === 'letter-team' ? (
             <Text style={{ color: theme.accent, fontSize: 48, fontFamily: 'Poppins-Black' }}>{teams?.teamA.name ?? '?'}</Text>
@@ -2285,7 +2345,17 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
           </View>
         </Animated.View>
         <Animated.View style={[styles.teamCard, { transform: [{ translateX: rightX }], opacity: reveal }]}>
-          <ClubBadge name={teams?.teamB.name ?? '?'} size={62} logoUrl={teams?.teamB.logoUrl ?? null} />
+          {state.revealMode === 'player-player' ? (
+            teams?.teamB.logoUrl ? (
+              <Image source={{ uri: teams.teamB.logoUrl }} style={{ width: 62, height: 62, borderRadius: 31 }} resizeMode="cover" />
+            ) : (
+              <View style={{ width: 62, height: 62, borderRadius: 31, backgroundColor: badgeColor(teams?.teamB.name ?? '?'), alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="person" size={30} color="#fff" />
+              </View>
+            )
+          ) : (
+            <ClubBadge name={teams?.teamB.name ?? '?'} size={62} logoUrl={teams?.teamB.logoUrl ?? null} />
+          )}
           <Text style={styles.teamName} numberOfLines={2}>
             {teams?.teamB.name ?? '…'}
           </Text>
@@ -2310,7 +2380,9 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
           ) : (
             <>
               <Text style={styles.h1}>
-                {state.revealMode === 'country-team' && state.revealCountry && teams?.teamB
+                {state.revealMode === 'player-player'
+                  ? t('guess.titlePlayerPlayer')
+                  : state.revealMode === 'country-team' && state.revealCountry && teams?.teamB
                   ? t('guess.titleCountry', { country: NATIONALITIES.find((n) => n.value === state.revealCountry)?.displayName ?? state.revealCountry, team: teams.teamB.name })
                   : state.revealMode === 'letter-team' && state.revealLetter && teams?.teamB
                   ? t('guess.titleLetter', { letter: state.revealLetter, team: teams.teamB.name })
@@ -2323,7 +2395,7 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
                 </View>
               ) : null}
               <TextInput
-                placeholder={t('guess.placeholder')}
+                placeholder={state.revealMode === 'player-player' ? t('guess.placeholderClub') : t('guess.placeholder')}
                 placeholderTextColor={theme.muted}
           keyboardAppearance="dark"
                 value={text}
@@ -4214,10 +4286,21 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
           ) : r.reason === 'passed' ? (
             <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.passed')}</Text>
           ) : null}
-          {r.matchedPlayerImageUrl ? (
-            <Image source={{ uri: r.matchedPlayerImageUrl }} style={styles.playerPhoto} />
-          ) : null}
-          {r.matchedPlayerName ? <Text style={styles.matched}>{r.matchedPlayerName}</Text> : null}
+          {state.revealMode === 'player-player' && r.correct ? (
+            <>
+              {r.matchedClubLogo ? (
+                <ClubBadge name={r.matchedClubName ?? '?'} size={104} logoUrl={r.matchedClubLogo} />
+              ) : null}
+              {r.matchedClubName ? <Text style={styles.matched}>{r.matchedClubName}</Text> : null}
+            </>
+          ) : (
+            <>
+              {r.matchedPlayerImageUrl ? (
+                <Image source={{ uri: r.matchedPlayerImageUrl }} style={styles.playerPhoto} />
+              ) : null}
+              {r.matchedPlayerName ? <Text style={styles.matched}>{r.matchedPlayerName}</Text> : null}
+            </>
+          )}
           {r.answeredByName ? (
             <Text style={styles.muted}>
               {r.answeredByName} • "{r.guess}"
@@ -4236,7 +4319,38 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
         {r.reason !== 'no_common' && r.reason !== 'same_team' ? (
           <>
             <View style={styles.teamResultRow}>
-              {state.revealMode === 'country-team' ? (
+              {state.revealMode === 'player-player' ? (
+                <>
+                  <View style={[styles.teamResult, { borderColor: playedA ? theme.primary : theme.danger }]}>
+                    {r.teamA.logoUrl ? (
+                      <Image source={{ uri: r.teamA.logoUrl }} style={{ width: 40, height: 40, borderRadius: 20 }} resizeMode="cover" />
+                    ) : (
+                      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: badgeColor(r.teamA.name), alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name="person" size={20} color="#fff" />
+                      </View>
+                    )}
+                    <Text style={styles.teamResultName} numberOfLines={2}>{r.teamA.name}</Text>
+                    <Ionicons name={playedA ? 'checkmark-circle' : 'close-circle'} size={20} color={playedA ? theme.primary : theme.danger} />
+                    <Text style={styles.teamResultYears}>
+                      {playedA ? r.spellsA.map(yearsText).filter(Boolean).join(', ') || t('career.played') : t('career.notPlayed')}
+                    </Text>
+                  </View>
+                  <View style={[styles.teamResult, { borderColor: playedB ? theme.primary : theme.danger }]}>
+                    {r.teamB.logoUrl ? (
+                      <Image source={{ uri: r.teamB.logoUrl }} style={{ width: 40, height: 40, borderRadius: 20 }} resizeMode="cover" />
+                    ) : (
+                      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: badgeColor(r.teamB.name), alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name="person" size={20} color="#fff" />
+                      </View>
+                    )}
+                    <Text style={styles.teamResultName} numberOfLines={2}>{r.teamB.name}</Text>
+                    <Ionicons name={playedB ? 'checkmark-circle' : 'close-circle'} size={20} color={playedB ? theme.primary : theme.danger} />
+                    <Text style={styles.teamResultYears}>
+                      {playedB ? r.spellsB.map(yearsText).filter(Boolean).join(', ') || t('career.played') : t('career.notPlayed')}
+                    </Text>
+                  </View>
+                </>
+              ) : state.revealMode === 'country-team' ? (
                 /* Country card: flag + name + checkmark only */
                 <View style={[styles.teamResult, { borderColor: theme.primary }]}>
                   <Text style={{ fontSize: 36 }}>{NATIONALITIES.find((n) => n.value === state.revealCountry)?.flag ?? '🏳️'}</Text>
@@ -4248,7 +4362,9 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
               ) : state.revealMode === 'letter-team' ? null : (
                 <TeamResultCard team={r.teamA} spells={r.spellsA} played={playedA} />
               )}
-              <TeamResultCard team={r.teamB} spells={r.spellsB} played={playedB} />
+              {state.revealMode !== 'player-player' ? (
+                <TeamResultCard team={r.teamB} spells={r.spellsB} played={playedB} />
+              ) : null}
             </View>
 
             {r.allClubs.length ? (
@@ -4258,7 +4374,9 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
                   <CareerRow
                     key={`${s.clubId}-${i}`}
                     spell={s}
-                    highlight={s.clubId === r.teamA.id || s.clubId === r.teamB.id}
+                    highlight={state.revealMode === 'player-player'
+                      ? r.matchedClubName ? s.clubName === r.matchedClubName : false
+                      : s.clubId === r.teamA.id || s.clubId === r.teamB.id}
                   />
                 ))}
               </>
