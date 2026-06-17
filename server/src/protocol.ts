@@ -14,10 +14,16 @@ export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | '
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
 // Game mode: determines what each player picks and how the guess is verified.
-export type GameMode = 'team-team' | 'country-team' | 'letter-team';
+export type GameMode = 'team-team' | 'country-team' | 'letter-team' | 'player-player';
 
 // What a player should pick during the pick phase.
-export type PickRole = 'team' | 'country' | 'letter';
+export type PickRole = 'team' | 'country' | 'letter' | 'player';
+
+export interface PlayerRef {
+  id: number;
+  name: string;
+  imageUrl: string | null;
+}
 
 // Which clubs are allowed in a game.
 export type Scope =
@@ -93,6 +99,8 @@ export type ClientMsg =
   | { type: 'equip_emotes'; emoteIds: string[] } // set the match loadout (max 3 visual)
   | { type: 'verify_purchase'; receipt: string } // validate an Apple IAP receipt → grant diamonds
   | { type: 'search_clubs'; reqId: string; q: string }
+  | { type: 'pick_player'; playerId: number }
+  | { type: 'search_players'; q: string }
   // ---- Friends ----
   | { type: 'send_friend_request'; targetCode?: string; targetUsername?: string }
   | { type: 'respond_friend_request'; requestId: string; accept: boolean }
@@ -124,6 +132,8 @@ export interface RoundResult {
   teamB: ClubRef;
   matchedPlayerName: string | null;
   matchedPlayerImageUrl: string | null;
+  matchedClubName?: string | null;
+  matchedClubLogo?: string | null;
   spellsA: SpellInfo[];
   spellsB: SpellInfo[];
   allClubs: SpellInfo[];
@@ -162,6 +172,7 @@ export type ServerMsg =
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string } // store purchase succeeded
   | { type: 'diamonds_granted'; profile: ProfileView; granted: number } // IAP validated → diamonds added
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
+  | { type: 'player_results'; players: PlayerRef[] }
   | { type: 'searching' }
   | { type: 'opponent_left'; forfeit?: boolean }
   // ---- Friends ----

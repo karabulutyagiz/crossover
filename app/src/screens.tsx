@@ -973,12 +973,13 @@ function DIFF_LABEL(d: Difficulty): string {
   return { easy: 'Kolay', medium: 'Orta', hard: 'Zor' }[d];
 }
 function MODE_LABEL(m: GameMode): string {
-  return { 'team-team': t('mode.teamTeam'), 'country-team': t('mode.countryTeam'), 'letter-team': t('mode.letterTeam') }[m];
+  return { 'team-team': t('mode.teamTeam'), 'country-team': t('mode.countryTeam'), 'letter-team': t('mode.letterTeam'), 'player-player': t('mode.playerPlayer') }[m];
 }
 const MODE_ICON: Record<GameMode, IoniconName> = {
   'team-team': 'football',
   'country-team': 'flag',
   'letter-team': 'text',
+  'player-player': 'people',
 };
 
 function scopeLabel(scope: Scope): string {

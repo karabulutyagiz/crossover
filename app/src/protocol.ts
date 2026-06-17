@@ -21,9 +21,15 @@ export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | '
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
-export type GameMode = 'team-team' | 'country-team' | 'letter-team';
+export type GameMode = 'team-team' | 'country-team' | 'letter-team' | 'player-player';
 
-export type PickRole = 'team' | 'country' | 'letter';
+export type PickRole = 'team' | 'country' | 'letter' | 'player';
+
+export interface PlayerRef {
+  id: number;
+  name: string;
+  imageUrl: string | null;
+}
 
 export type Scope =
   | { type: 'all' }
@@ -112,6 +118,8 @@ export interface RoundResult {
   teamB: ClubRef;
   matchedPlayerName: string | null;
   matchedPlayerImageUrl: string | null;
+  matchedClubName?: string | null;
+  matchedClubLogo?: string | null;
   spellsA: SpellInfo[];
   spellsB: SpellInfo[];
   allClubs: SpellInfo[];
@@ -141,6 +149,8 @@ export type ClientMsg =
   | { type: 'equip_emotes'; emoteIds: string[] }
   | { type: 'verify_purchase'; receipt: string }
   | { type: 'search_clubs'; reqId: string; q: string }
+  | { type: 'pick_player'; playerId: number }
+  | { type: 'search_players'; q: string }
   | { type: 'send_friend_request'; targetCode?: string; targetUsername?: string }
   | { type: 'respond_friend_request'; requestId: string; accept: boolean }
   | { type: 'list_friends' }
@@ -189,6 +199,7 @@ export type ServerMsg =
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string }
   | { type: 'diamonds_granted'; profile: ProfileView; granted: number }
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
+  | { type: 'player_results'; players: PlayerRef[] }
   | { type: 'searching' }
   | { type: 'opponent_left'; forfeit?: boolean }
   | { type: 'friend_request_received'; requestId: string; fromId: string; fromName: string }
