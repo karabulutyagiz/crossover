@@ -100,92 +100,6 @@ function InviteBanner({
   );
 }
 
-// Arena reel data (bottom to top: Mahalle → GOAT)
-const REEL_ARENAS = [
-  { name: 'Mahalle Sahası', color: '#8B4513', icon: '🏟️' },
-  { name: 'Amatör Lig', color: '#FF8C00', icon: '⚽' },
-  { name: 'Profesyonel Lig', color: '#32CD32', icon: '🥉' },
-  { name: 'Şampiyonlar Ligi', color: '#1E90FF', icon: '🥈' },
-  { name: 'Efsaneler Arası', color: '#C0C0C0', icon: '🥇' },
-  { name: 'Dünya Klasmanı', color: '#FFD700', icon: '🏆' },
-  { name: 'GOAT', color: '#FF4500', icon: '🐐' },
-];
-
-const REEL_ITEM_H = 70;
-
-function ArenaReel({ visible, trophies, onDone }: { visible: boolean; trophies: number; onDone: () => void }) {
-  const anim = useRef(new Animated.Value(0)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
-
-  // Find current arena index (in bottom-to-top order)
-  const currentIdx = (() => {
-    const thresholds = [0, 200, 500, 1000, 2000, 3500, 5000];
-    for (let i = thresholds.length - 1; i >= 0; i--) {
-      if (trophies >= thresholds[i]!) return i;
-    }
-    return 0;
-  })();
-
-  useEffect(() => {
-    if (!visible) return;
-    anim.setValue(0);
-    opacity.setValue(1);
-    // Scroll through all arenas from bottom, landing on current arena.
-    // Total travel = (total items) * REEL_ITEM_H, target = currentIdx * REEL_ITEM_H
-    // We'll do 2 full loops + land on current for a slot-machine feel
-    const totalTravel = REEL_ARENAS.length * 2 + currentIdx;
-    Animated.timing(anim, {
-      toValue: totalTravel,
-      duration: 1200,
-      easing: Easing.out(Easing.cubic), // fast start, smooth deceleration
-      useNativeDriver: true,
-    }).start(() => {
-      // Hold for a moment, then fade out
-      setTimeout(() => {
-        Animated.timing(opacity, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => onDone());
-      }, 600);
-    });
-  }, [visible]);
-
-  if (!visible) return null;
-
-  // Build the reel strip: repeat arenas 3x so we have enough to scroll through
-  const strip = [...REEL_ARENAS, ...REEL_ARENAS, ...REEL_ARENAS];
-  const translateY = anim.interpolate({
-    inputRange: [0, strip.length],
-    outputRange: [0, -strip.length * REEL_ITEM_H],
-  });
-
-  return (
-    <Animated.View style={{
-      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.7)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      zIndex: 200,
-      opacity,
-    }}>
-      <View style={{
-        height: REEL_ITEM_H, width: 260, overflow: 'hidden',
-        borderRadius: 18, borderWidth: 2, borderColor: theme.accent,
-        backgroundColor: theme.card,
-      }}>
-        <Animated.View style={{ transform: [{ translateY }] }}>
-          {strip.map((a, i) => (
-            <View key={i} style={{
-              height: REEL_ITEM_H, flexDirection: 'row', alignItems: 'center',
-              gap: 12, paddingHorizontal: 18,
-            }}>
-              <Text style={{ fontSize: 28 }}>{a.icon}</Text>
-              <Text style={{ color: a.color, fontFamily: 'Poppins-ExtraBold', fontSize: 16 }}>{a.name}</Text>
-            </View>
-          ))}
-        </Animated.View>
-      </View>
-    </Animated.View>
-  );
-}
-
 export default function App() {
   const { state, actions } = useCrossover();
   const props = { state, actions };
@@ -199,7 +113,6 @@ export default function App() {
   const [storeSection, setStoreSection] = useState<'socialPack' | 'diamonds' | null>(null);
   const [comingSoon, setComingSoon] = useState(false); // Turnuvalar — greyed "coming soon"
   const [overlay, setOverlay] = useState<'leaderboard' | 'matchHistory' | null>(null); // centered popups
-  const [arenaReel, setArenaReel] = useState(false); // arena scroll-through animation
   const csAnim = useRef(new Animated.Value(0)).current; // coming-soon pop/float
   const [fontsLoaded, fontError] = useFonts({
     'Poppins-Black': require('./assets/fonts/Poppins-Black.ttf'),
@@ -445,10 +358,10 @@ export default function App() {
               key={tab.key}
               style={s.tab}
               onPress={() => {
-                // Re-tapping the active Oyna tab triggers the arena reel animation.
-                if (idx === 2 && activeTab === 2 && state.phase === 'home') {
-                  setArenaReel(true);
-                  return;
+                // Re-tapping the active Oyna tab opens Arenas (Clash Royale style).
+                if (idx === 2 && activeTab === 2) {
+                  if (state.phase === 'home') { actions.openArenas(); return; }
+                  if (state.phase === 'arenas') { actions.closeArenas(); return; }
                 }
                 goToTab(idx);
               }}
@@ -517,7 +430,6 @@ export default function App() {
       <LeaderboardModal visible={overlay === 'leaderboard'} entries={state.leaderboard} onClose={() => setOverlay(null)} />
       <MatchHistoryModal visible={overlay === 'matchHistory'} history={state.matchHistory} myName={state.profile?.displayName ?? ''} onClose={() => setOverlay(null)} />
 
-      <ArenaReel visible={arenaReel} trophies={state.profile?.trophies ?? 0} onDone={() => setArenaReel(false)} />
     </View>
   );
 }

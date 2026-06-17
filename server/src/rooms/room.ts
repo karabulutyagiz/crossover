@@ -11,6 +11,11 @@ import {
   hasPlayersCountryTeam,
   hasPlayersLetterTeam,
   randomClub,
+  searchPlayers,
+  randomPlayer,
+  verifyPlayerPlayerGuess,
+  commonClubs,
+  hasCommonClubs,
 } from '../game/verify.ts';
 import { applyMatchResult, getUser, saveMatchHistory, type MatchRound } from '../game/rank.ts';
 import { isEmote } from '../game/emotes.ts';
@@ -21,6 +26,7 @@ import type {
   RoomStatus,
   RoomView,
   ClubRef,
+  PlayerRef,
   RoundResult,
   Scope,
   GameMode,
@@ -60,6 +66,9 @@ interface Round {
   // For country-team / letter-team: the non-team pick value
   countryPick?: string;   // the nationality picked (country-team)
   letterPick?: string;    // the letter picked (letter-team)
+  // For player-player: each player's footballer pick
+  playerAPick?: { id: number; name: string; imageUrl: string | null };
+  playerBPick?: { id: number; name: string; imageUrl: string | null };
   teamA?: ClubRef;
   teamB?: ClubRef;
   answeredBy?: string;
@@ -172,6 +181,10 @@ export class Room {
       for (const id of ids) roles.set(id, 'team');
       return roles;
     }
+    if (this.gameMode === 'player-player') {
+      for (const id of ids) roles.set(id, 'player');
+      return roles;
+    }
     const nonTeamRole: PickRole = this.gameMode === 'country-team' ? 'country' : 'letter';
     // Even rounds: first player picks non-team, second picks team.
     // Odd rounds: swap.
@@ -204,6 +217,10 @@ export class Room {
         return this.respondRematch(playerId, msg.accept);
       case 'send_emote':
         return this.relayEmote(playerId, msg.emoteId);
+      case 'pick_player':
+        return this.handlePickPlayer(playerId, msg.playerId);
+      case 'search_players':
+        return void this.handleSearchPlayers(playerId, msg.q);
       case 'search_clubs':
         return void this.handleSearch(playerId, msg.reqId, msg.q);
       default:
@@ -269,6 +286,19 @@ export class Room {
     const roles = this.pickRoles();
     for (const [id, role] of roles) {
       if (this.round.picks.has(id) || (role === 'country' && this.round.countryPick) || (role === 'letter' && this.round.letterPick)) continue;
+      if (role === 'player') {
+        // player-player: auto-pick if this player hasn't picked yet
+        const isFirst = !this.round.playerAPick;
+        if (isFirst && this.round.playerAPick) continue;
+        if (!isFirst && this.round.playerBPick) continue;
+        const p = await randomPlayer('medium');
+        if (p) {
+          if (isFirst) this.round.playerAPick = p;
+          else this.round.playerBPick = p;
+          this.broadcast({ type: 'team_picked', playerId: id });
+        }
+        continue;
+      }
       if (role === 'team') {
         const club = await randomClub(this.scope, 'medium');
         if (club) {
@@ -293,6 +323,9 @@ export class Room {
   // Check if all players have made their pick
   private allPicked(): boolean {
     if (!this.round) return false;
+    if (this.gameMode === 'player-player') {
+      return Boolean(this.round.playerAPick && this.round.playerBPick);
+    }
     const roles = this.pickRoles();
     for (const [id, role] of roles) {
       if (role === 'team' && !this.round.picks.has(id)) return false;
@@ -330,6 +363,34 @@ export class Room {
     if (this.allPicked()) this.beginReveal();
   }
 
+  private handlePickPlayer(playerId: string, playerQID: number): void {
+    if (this.status !== 'pick' || !this.round) return;
+    const roles = this.pickRoles();
+    if (roles.get(playerId) !== 'player') return;
+    void this.lockPickPlayer(playerId, playerQID);
+  }
+
+  private async lockPickPlayer(playerId: string, playerQID: number): Promise<void> {
+    const player = await this.playerById(playerQID);
+    if (!player) return this.sendTo(playerId, { type: 'error', message: 'Unknown player' });
+    if (!this.round || this.status !== 'pick') return;
+    // First pick goes to A, second to B
+    if (!this.round.playerAPick) {
+      this.round.playerAPick = player;
+    } else if (!this.round.playerBPick) {
+      this.round.playerBPick = player;
+    } else {
+      return; // both already picked
+    }
+    this.broadcast({ type: 'team_picked', playerId });
+    if (this.allPicked()) this.beginReveal();
+  }
+
+  private async handleSearchPlayers(playerId: string, q: string): Promise<void> {
+    const players = await searchPlayers(q, 30);
+    this.sendTo(playerId, { type: 'player_results', players });
+  }
+
   private async lockPick(playerId: string, clubId: number): Promise<void> {
     const club = await this.clubById(clubId);
     if (!club) return this.sendTo(playerId, { type: 'error', message: 'Unknown club' });
@@ -342,7 +403,18 @@ export class Room {
   private beginReveal(): void {
     if (!this.round) return;
 
-    if (this.gameMode === 'team-team') {
+    if (this.gameMode === 'player-player') {
+      const playerA = this.round.playerAPick!;
+      const playerB = this.round.playerBPick!;
+      const pseudoA: ClubRef = { id: playerA.id, name: playerA.name, logoUrl: playerA.imageUrl };
+      const pseudoB: ClubRef = { id: playerB.id, name: playerB.name, logoUrl: playerB.imageUrl };
+      this.round.teamA = pseudoA;
+      this.round.teamB = pseudoB;
+      this.status = 'reveal';
+      this.broadcastState();
+      this.broadcast({ type: 'reveal_teams', teamA: pseudoA, teamB: pseudoB, mode: 'player-player' });
+      void this.afterRevealPlayerPlayer(playerA, playerB);
+    } else if (this.gameMode === 'team-team') {
       // Original behavior: both picks are teams
       const ids = [...this.players.keys()];
       const a = this.round.picks.get(ids[0]!)!;
@@ -418,6 +490,22 @@ export class Room {
   private async afterRevealLetterTeam(club: ClubRef, letter: string): Promise<void> {
     if (!this.round || this.round.finished || this.status !== 'reveal') return;
     const has = await hasPlayersLetterTeam(club.id, letter);
+    if (!this.round || this.round.finished || this.status !== 'reveal') return;
+    if (!has) {
+      const t = setTimeout(() => this.skipNoCommon(), 2200);
+      this.timers.push(t);
+    } else {
+      const t = setTimeout(() => this.beginGuess(), 2000);
+      this.timers.push(t);
+    }
+  }
+
+  private async afterRevealPlayerPlayer(
+    playerA: { id: number; name: string; imageUrl: string | null },
+    playerB: { id: number; name: string; imageUrl: string | null },
+  ): Promise<void> {
+    if (!this.round || this.round.finished || this.status !== 'reveal') return;
+    const has = await hasCommonClubs(playerA.id, playerB.id);
     if (!this.round || this.round.finished || this.status !== 'reveal') return;
     if (!has) {
       const t = setTimeout(() => this.skipNoCommon(), 2200);
@@ -505,7 +593,10 @@ export class Room {
     if (!this.round || this.round.finished || !this.round.teamA || !this.round.teamB) return;
     // Reveal who actually played for both (the answer) so both players learn it.
     let common: { name: string; imageUrl: string | null }[];
-    if (this.gameMode === 'country-team' && this.round.countryPick) {
+    if (this.gameMode === 'player-player' && this.round.playerAPick && this.round.playerBPick) {
+      const clubs = await commonClubs(this.round.playerAPick.id, this.round.playerBPick.id, 5);
+      common = clubs.map((c) => ({ name: c.name, imageUrl: c.logoUrl }));
+    } else if (this.gameMode === 'country-team' && this.round.countryPick) {
       common = await commonPlayersCountryTeam(this.round.teamB.id, this.round.countryPick, 5);
     } else if (this.gameMode === 'letter-team' && this.round.letterPick) {
       common = await commonPlayersLetterTeam(this.round.teamB.id, this.round.letterPick, 5);
@@ -534,6 +625,44 @@ export class Room {
   private async evaluate(playerId: string, text: string): Promise<void> {
     if (!this.round?.teamA || !this.round.teamB) return;
     this.clearTimers();
+
+    // ---- player-player mode: guess is a club name ----
+    if (this.gameMode === 'player-player' && this.round.playerAPick && this.round.playerBPick) {
+      const ppv = await verifyPlayerPlayerGuess(this.round.playerAPick.id, this.round.playerBPick.id, text);
+      const clubs = await commonClubs(this.round.playerAPick.id, this.round.playerBPick.id, 5);
+      const common: { name: string; imageUrl: string | null }[] = clubs.map((c) => ({ name: c.name, imageUrl: c.logoUrl }));
+
+      const p = this.players.get(playerId);
+      if (ppv.correct && p) {
+        p.score += 1;
+      } else if (!ppv.correct && p) {
+        p.wrongCount += 1;
+        if (p.wrongCount >= MAX_WRONG) {
+          const opponent = [...this.players.values()].find((o) => o.id !== p.id);
+          if (opponent) opponent.score = WIN_TARGET;
+        }
+      }
+
+      this.finishRound({
+        correct: ppv.correct,
+        reason: ppv.correct ? 'both' : 'no_match',
+        autocorrected: ppv.autocorrected,
+        answeredById: playerId,
+        answeredByName: p?.name ?? null,
+        guess: text,
+        teamA: this.round.teamA,
+        teamB: this.round.teamB,
+        matchedPlayerName: null,
+        matchedPlayerImageUrl: null,
+        matchedClubName: ppv.matchedClubName,
+        matchedClubLogo: ppv.matchedClubLogo,
+        spellsA: ppv.spellsA,
+        spellsB: ppv.spellsB,
+        allClubs: [],
+        commonPlayers: common,
+      });
+      return;
+    }
 
     let v;
     let common: { name: string; imageUrl: string | null }[];
@@ -587,7 +716,10 @@ export class Room {
     if (!this.round || this.round.finished || !this.round.teamA || !this.round.teamB) return;
 
     let common: { name: string; imageUrl: string | null }[];
-    if (this.gameMode === 'country-team' && this.round.countryPick) {
+    if (this.gameMode === 'player-player' && this.round.playerAPick && this.round.playerBPick) {
+      const clubs = await commonClubs(this.round.playerAPick.id, this.round.playerBPick.id, 5);
+      common = clubs.map((c) => ({ name: c.name, imageUrl: c.logoUrl }));
+    } else if (this.gameMode === 'country-team' && this.round.countryPick) {
       common = await commonPlayersCountryTeam(this.round.teamB.id, this.round.countryPick, 5);
     } else if (this.gameMode === 'letter-team' && this.round.letterPick) {
       common = await commonPlayersLetterTeam(this.round.teamB.id, this.round.letterPick, 5);
@@ -621,19 +753,28 @@ export class Room {
     this.roundNumber += 1;
 
     // Collect winning round info (only rounds where someone scored)
-    if (result.correct && result.answeredById && result.matchedPlayerName) {
-      this.matchRounds.push({
-        teamA: result.teamA.name,
-        teamALogo: result.teamA.logoUrl,
-        teamB: result.teamB.name,
-        teamBLogo: result.teamB.logoUrl,
-        player: result.matchedPlayerName,
-        playerImageUrl: result.matchedPlayerImageUrl,
-        answeredBy: result.answeredByName ?? '',
-        mode: this.gameMode,
-        country: this.round?.countryPick,
-        letter: this.round?.letterPick,
-      });
+    if (result.correct && result.answeredById) {
+      // player-player: the "answer" is a club, not a player
+      const playerName = this.gameMode === 'player-player'
+        ? (result.matchedClubName ?? '')
+        : (result.matchedPlayerName ?? '');
+      const playerImage = this.gameMode === 'player-player'
+        ? (result.matchedClubLogo ?? null)
+        : (result.matchedPlayerImageUrl ?? null);
+      if (playerName) {
+        this.matchRounds.push({
+          teamA: result.teamA.name,
+          teamALogo: result.teamA.logoUrl,
+          teamB: result.teamB.name,
+          teamBLogo: result.teamB.logoUrl,
+          player: playerName,
+          playerImageUrl: playerImage,
+          answeredBy: result.answeredByName ?? '',
+          mode: this.gameMode,
+          country: this.round?.countryPick,
+          letter: this.round?.letterPick,
+        });
+      }
     }
 
     const winner = [...this.players.values()].find((p) => p.score >= WIN_TARGET) ?? null;
@@ -772,6 +913,15 @@ export class Room {
     );
     const r = rows[0];
     return r ? { id: Number(r.id), name: r.name, logoUrl: r.logo_url } : null;
+  }
+
+  private async playerById(id: number): Promise<{ id: number; name: string; imageUrl: string | null } | null> {
+    const { rows } = await pool.query<{ id: string; name: string; image_url: string | null }>(
+      'SELECT id, name, image_url FROM players WHERE id = $1',
+      [id],
+    );
+    const r = rows[0];
+    return r ? { id: Number(r.id), name: r.name, imageUrl: r.image_url } : null;
   }
 
   private playerViews(): PlayerView[] {

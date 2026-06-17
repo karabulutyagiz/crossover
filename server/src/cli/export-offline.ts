@@ -93,7 +93,7 @@ async function main() {
     name: r.name,
     norm: r.name_norm,
     nat: r.nationality,
-    img: null, // omit image URLs to save space — offline mode doesn't need photos
+    img: r.image_url,
   }));
   console.log(`  ${players.length} players`);
 

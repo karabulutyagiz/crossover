@@ -14,10 +14,16 @@ export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | '
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
 // Game mode: determines what each player picks and how the guess is verified.
-export type GameMode = 'team-team' | 'country-team' | 'letter-team';
+export type GameMode = 'team-team' | 'country-team' | 'letter-team' | 'player-player';
 
 // What a player should pick during the pick phase.
-export type PickRole = 'team' | 'country' | 'letter';
+export type PickRole = 'team' | 'country' | 'letter' | 'player';
+
+export interface PlayerRef {
+  id: number;
+  name: string;
+  imageUrl: string | null;
+}
 
 // Which clubs are allowed in a game.
 export type Scope =
@@ -93,6 +99,8 @@ export type ClientMsg =
   | { type: 'equip_emotes'; emoteIds: string[] } // set the match loadout (max 3 visual)
   | { type: 'verify_purchase'; receipt: string } // validate an Apple IAP receipt → grant diamonds
   | { type: 'search_clubs'; reqId: string; q: string }
+  | { type: 'pick_player'; playerId: number }
+  | { type: 'search_players'; q: string }
   // ---- Friends ----
   | { type: 'send_friend_request'; targetCode?: string; targetUsername?: string }
   | { type: 'respond_friend_request'; requestId: string; accept: boolean }
@@ -103,7 +111,14 @@ export type ClientMsg =
   | { type: 'respond_match_invite'; fromId: string; accept: boolean } // accept/decline a friend's match invite
   | { type: 'cancel_match_invite'; toId: string } // inviter cancels (or 30s timeout)
   | { type: 'get_user_profile'; userId: string } // view a friend's public profile
-  | { type: 'list_match_history' };
+  | { type: 'list_match_history' }
+  // ---- Direct Messages ----
+  | { type: 'send_message'; toUserId: string; body: string }
+  | { type: 'list_messages'; withUserId: string; before?: string }
+  | { type: 'list_conversations' }           // get all chats with last message + unread count
+  | { type: 'mark_read'; fromUserId: string } // mark all messages from this user as read
+  | { type: 'typing_start'; toUserId: string }
+  | { type: 'typing_stop'; toUserId: string };
 
 // ---- Server -> Client ----
 export interface RoundResult {
@@ -117,6 +132,8 @@ export interface RoundResult {
   teamB: ClubRef;
   matchedPlayerName: string | null;
   matchedPlayerImageUrl: string | null;
+  matchedClubName?: string | null;
+  matchedClubLogo?: string | null;
   spellsA: SpellInfo[];
   spellsB: SpellInfo[];
   allClubs: SpellInfo[];
@@ -155,6 +172,7 @@ export type ServerMsg =
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string } // store purchase succeeded
   | { type: 'diamonds_granted'; profile: ProfileView; granted: number } // IAP validated → diamonds added
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
+  | { type: 'player_results'; players: PlayerRef[] }
   | { type: 'searching' }
   | { type: 'opponent_left'; forfeit?: boolean }
   // ---- Friends ----
@@ -169,7 +187,31 @@ export type ServerMsg =
   | { type: 'match_invite_cancelled' } // the invite was cancelled/expired (sent to invitee)
   | { type: 'user_profile'; profile: PublicProfile }
   | { type: 'match_history_list'; matches: MatchHistoryView[] }
+  // ---- Direct Messages ----
+  | { type: 'message_received'; message: MessageView }
+  | { type: 'message_list'; messages: MessageView[]; withUserId: string }
+  | { type: 'conversation_list'; conversations: ConversationView[] }
+  | { type: 'messages_marked_read'; fromUserId: string }
+  | { type: 'typing'; fromUserId: string; isTyping: boolean }
   | { type: 'error'; message: string };
+
+export interface MessageView {
+  id: string;
+  fromId: string;
+  fromName: string;
+  toId: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface ConversationView {
+  userId: string;
+  displayName: string;
+  online: boolean;
+  lastMessage: string;
+  lastMessageAt: string;
+  unreadCount: number;
+}
 
 export interface PublicProfile {
   userId: string;

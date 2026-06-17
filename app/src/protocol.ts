@@ -21,9 +21,15 @@ export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | '
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
-export type GameMode = 'team-team' | 'country-team' | 'letter-team';
+export type GameMode = 'team-team' | 'country-team' | 'letter-team' | 'player-player';
 
-export type PickRole = 'team' | 'country' | 'letter';
+export type PickRole = 'team' | 'country' | 'letter' | 'player';
+
+export interface PlayerRef {
+  id: number;
+  name: string;
+  imageUrl: string | null;
+}
 
 export type Scope =
   | { type: 'all' }
@@ -112,6 +118,8 @@ export interface RoundResult {
   teamB: ClubRef;
   matchedPlayerName: string | null;
   matchedPlayerImageUrl: string | null;
+  matchedClubName?: string | null;
+  matchedClubLogo?: string | null;
   spellsA: SpellInfo[];
   spellsB: SpellInfo[];
   allClubs: SpellInfo[];
@@ -141,6 +149,8 @@ export type ClientMsg =
   | { type: 'equip_emotes'; emoteIds: string[] }
   | { type: 'verify_purchase'; receipt: string }
   | { type: 'search_clubs'; reqId: string; q: string }
+  | { type: 'pick_player'; playerId: number }
+  | { type: 'search_players'; q: string }
   | { type: 'send_friend_request'; targetCode?: string; targetUsername?: string }
   | { type: 'respond_friend_request'; requestId: string; accept: boolean }
   | { type: 'list_friends' }
@@ -150,7 +160,13 @@ export type ClientMsg =
   | { type: 'respond_match_invite'; fromId: string; accept: boolean }
   | { type: 'cancel_match_invite'; toId: string }
   | { type: 'get_user_profile'; userId: string }
-  | { type: 'list_match_history' };
+  | { type: 'list_match_history' }
+  | { type: 'send_message'; toUserId: string; body: string }
+  | { type: 'list_messages'; withUserId: string; before?: string }
+  | { type: 'list_conversations' }
+  | { type: 'mark_read'; fromUserId: string }
+  | { type: 'typing_start'; toUserId: string }
+  | { type: 'typing_stop'; toUserId: string };
 
 export type ServerMsg =
   | { type: 'room_state'; room: RoomView }
@@ -183,6 +199,7 @@ export type ServerMsg =
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string }
   | { type: 'diamonds_granted'; profile: ProfileView; granted: number }
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
+  | { type: 'player_results'; players: PlayerRef[] }
   | { type: 'searching' }
   | { type: 'opponent_left'; forfeit?: boolean }
   | { type: 'friend_request_received'; requestId: string; fromId: string; fromName: string }
@@ -196,7 +213,30 @@ export type ServerMsg =
   | { type: 'match_invite_cancelled' }
   | { type: 'user_profile'; profile: PublicProfile }
   | { type: 'match_history_list'; matches: MatchHistoryView[] }
+  | { type: 'message_received'; message: MessageView }
+  | { type: 'message_list'; messages: MessageView[]; withUserId: string }
+  | { type: 'conversation_list'; conversations: ConversationView[] }
+  | { type: 'messages_marked_read'; fromUserId: string }
+  | { type: 'typing'; fromUserId: string; isTyping: boolean }
   | { type: 'error'; message: string };
+
+export interface MessageView {
+  id: string;
+  fromId: string;
+  fromName: string;
+  toId: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface ConversationView {
+  userId: string;
+  displayName: string;
+  online: boolean;
+  lastMessage: string;
+  lastMessageAt: string;
+  unreadCount: number;
+}
 
 export interface PublicProfile {
   userId: string;

@@ -29,7 +29,7 @@ import Svg, { Rect, Circle, Line, Defs, LinearGradient as SvgGradient, RadialGra
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState, FriendInfo } from './useCrossover';
 import { initialState } from './useCrossover';
-import type { ClubRef, Difficulty, GameMode, GameOptions, ProfileView, PublicProfile, RoomView, Scope, SpellInfo } from './protocol';
+import type { ClubRef, Difficulty, GameMode, GameOptions, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, SpellInfo } from './protocol';
 import {
   EmoteCallout,
   EmoteSticker,
@@ -88,6 +88,8 @@ type Actions = {
   pickCountry: (country: string) => void;
   pickLetter: (letter: string) => void;
   searchClubs: (q: string) => void;
+  searchPlayers: (q: string) => void;
+  pickPlayer: (playerId: number) => void;
   submitGuess: (text: string) => void;
   pass: () => void;
   ready: () => void;
@@ -111,6 +113,13 @@ type Actions = {
   clearNotice: () => void;
   dismissMatchInvite: () => void;
   findMatchAgain: () => void;
+  loadConversations: () => void;
+  openChat: (userId: string) => void;
+  closeChat: () => void;
+  sendMessage: (toUserId: string, body: string) => void;
+  markRead: (fromUserId: string) => void;
+  typingStart: (toUserId: string) => void;
+  typingStop: (toUserId: string) => void;
   leave: () => void;
 };
 
@@ -811,7 +820,7 @@ function TransientCallout({ emoteId, onDone }: { emoteId: string; onDone?: () =>
 
 // Floating emote button + picker sheet + the opponent/self callouts. Drop into
 // any in-match screen; positions itself absolutely over the screen.
-function EmoteLayer({ state, actions, fab = 'bottom-right', hideFab, externalOpen, onOpenChange }: Props & { fab?: 'bottom-right' | 'top-right'; hideFab?: boolean; externalOpen?: boolean; onOpenChange?: (open: boolean) => void }) {
+function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, onOpenChange }: Props & { fab?: 'bottom-right' | 'top-right'; hideFab?: boolean; externalOpen?: boolean; onOpenChange?: (open: boolean) => void }) {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = externalOpen ?? internalOpen;
   const setOpen = (v: boolean) => { setInternalOpen(v); onOpenChange?.(v); };
@@ -970,12 +979,13 @@ function DIFF_LABEL(d: Difficulty): string {
   return { easy: 'Kolay', medium: 'Orta', hard: 'Zor' }[d];
 }
 function MODE_LABEL(m: GameMode): string {
-  return { 'team-team': t('mode.teamTeam'), 'country-team': t('mode.countryTeam'), 'letter-team': t('mode.letterTeam') }[m];
+  return { 'team-team': t('mode.teamTeam'), 'country-team': t('mode.countryTeam'), 'letter-team': t('mode.letterTeam'), 'player-player': t('mode.playerPlayer') }[m];
 }
 const MODE_ICON: Record<GameMode, IoniconName> = {
   'team-team': 'football',
   'country-team': 'flag',
   'letter-team': 'text',
+  'player-player': 'people',
 };
 
 function scopeLabel(scope: Scope): string {
@@ -1174,7 +1184,7 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
         <Image
           source={tier.img}
           resizeMode="contain"
-          style={{ width: 250, height: 218, shadowColor: '#01030B', shadowOpacity: 0.6, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }}
+          style={{ width: 270, height: 230, shadowColor: '#01030B', shadowOpacity: 0.6, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }}
         />
       </View>
       {/* Nameplate below */}
@@ -2086,6 +2096,56 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
     );
   }
 
+  // ---- Player picker ----
+  if (role === 'player') {
+    const onPlayerChange = (text: string) => {
+      setQ(text);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => actions.searchPlayers(text.trim()), 140);
+    };
+    return (
+      <Screen>
+        <View style={{ alignItems: 'center', marginBottom: 8, marginTop: 8 }}>
+          <Text style={styles.h1}>{t('pick.titlePlayer')}</Text>
+          <PickTimer pickEndsAt={state.pickEndsAt} />
+        </View>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={18} color={theme.muted} />
+          <TextInput
+            placeholder={t('pick.searchPlayer')}
+            placeholderTextColor={theme.muted}
+            keyboardAppearance="dark"
+            value={q}
+            onChangeText={onPlayerChange}
+            style={styles.searchInput}
+            autoFocus={!tutorial}
+          />
+        </View>
+        <ScrollView style={{ alignSelf: 'stretch', flex: 1 }} keyboardShouldPersistTaps="handled">
+          {state.playerResults.map((p: PlayerRef) => (
+            <Pressable key={p.id} style={styles.clubRow} onPress={() => actions.pickPlayer(p.id)}>
+              {p.imageUrl ? (
+                <Image source={{ uri: p.imageUrl }} style={{ width: 40, height: 40, borderRadius: 20 }} resizeMode="cover" />
+              ) : (
+                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: badgeColor(p.name), alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="person" size={20} color="#fff" />
+                </View>
+              )}
+              <Text style={styles.clubText} numberOfLines={1}>{p.name}</Text>
+              <Ionicons name="chevron-forward" size={18} color={theme.muted} />
+            </Pressable>
+          ))}
+          {state.playerResults.length === 0 && q.trim() ? <Text style={styles.muted}>{t('common.noResults')}</Text> : null}
+        </ScrollView>
+        <Pressable onPress={handleLeave} style={{ position: 'absolute', top: 54, left: 18, zIndex: 20 }}>
+          <Ionicons name="close-circle" size={32} color={theme.muted} />
+        </Pressable>
+        <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
+        {!tutorial ? <EmoteLayer state={state} actions={actions} /> : null}
+      </Screen>
+    );
+  }
+
   // ---- Letter picker ----
   if (role === 'letter') {
     return (
@@ -2262,7 +2322,15 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
     <Screen scroll>
       <View style={styles.teamsRow}>
         <Animated.View style={[styles.teamCard, { transform: [{ translateX: leftX }], opacity: reveal }]}>
-          {state.revealMode === 'country-team' ? (
+          {state.revealMode === 'player-player' ? (
+            teams?.teamA.logoUrl ? (
+              <Image source={{ uri: teams.teamA.logoUrl }} style={{ width: 62, height: 62, borderRadius: 31 }} resizeMode="cover" />
+            ) : (
+              <View style={{ width: 62, height: 62, borderRadius: 31, backgroundColor: badgeColor(teams?.teamA.name ?? '?'), alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="person" size={30} color="#fff" />
+              </View>
+            )
+          ) : state.revealMode === 'country-team' ? (
             <Text style={{ fontSize: 52 }}>{NATIONALITIES.find((n) => n.value === state.revealCountry)?.flag ?? '🏳️'}</Text>
           ) : state.revealMode === 'letter-team' ? (
             <Text style={{ color: theme.accent, fontSize: 48, fontFamily: 'Poppins-Black' }}>{teams?.teamA.name ?? '?'}</Text>
@@ -2281,7 +2349,17 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
           </View>
         </Animated.View>
         <Animated.View style={[styles.teamCard, { transform: [{ translateX: rightX }], opacity: reveal }]}>
-          <ClubBadge name={teams?.teamB.name ?? '?'} size={62} logoUrl={teams?.teamB.logoUrl ?? null} />
+          {state.revealMode === 'player-player' ? (
+            teams?.teamB.logoUrl ? (
+              <Image source={{ uri: teams.teamB.logoUrl }} style={{ width: 62, height: 62, borderRadius: 31 }} resizeMode="cover" />
+            ) : (
+              <View style={{ width: 62, height: 62, borderRadius: 31, backgroundColor: badgeColor(teams?.teamB.name ?? '?'), alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="person" size={30} color="#fff" />
+              </View>
+            )
+          ) : (
+            <ClubBadge name={teams?.teamB.name ?? '?'} size={62} logoUrl={teams?.teamB.logoUrl ?? null} />
+          )}
           <Text style={styles.teamName} numberOfLines={2}>
             {teams?.teamB.name ?? '…'}
           </Text>
@@ -2306,7 +2384,9 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
           ) : (
             <>
               <Text style={styles.h1}>
-                {state.revealMode === 'country-team' && state.revealCountry && teams?.teamB
+                {state.revealMode === 'player-player'
+                  ? t('guess.titlePlayerPlayer')
+                  : state.revealMode === 'country-team' && state.revealCountry && teams?.teamB
                   ? t('guess.titleCountry', { country: NATIONALITIES.find((n) => n.value === state.revealCountry)?.displayName ?? state.revealCountry, team: teams.teamB.name })
                   : state.revealMode === 'letter-team' && state.revealLetter && teams?.teamB
                   ? t('guess.titleLetter', { letter: state.revealLetter, team: teams.teamB.name })
@@ -2319,7 +2399,7 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
                 </View>
               ) : null}
               <TextInput
-                placeholder={t('guess.placeholder')}
+                placeholder={state.revealMode === 'player-player' ? t('guess.placeholderClub') : t('guess.placeholder')}
                 placeholderTextColor={theme.muted}
           keyboardAppearance="dark"
                 value={text}
@@ -2957,7 +3037,8 @@ function FriendProfileModal({ profile, onClose }: { profile: PublicProfile | nul
 export function FriendsScreen({ state, actions, onGoToStore }: Props) {
   const [addInput, setAddInput] = useState('');
   const [searchMode, setSearchMode] = useState<'code' | 'username'>('code');
-  const [friendTab, setFriendTab] = useState<'friends' | 'requests'>('friends');
+  const [friendTab, setFriendTab] = useState<'friends' | 'requests' | 'messages'>('friends');
+  const [msgSearch, setMsgSearch] = useState('');
   const [copied, setCopied] = useState(false);
   const [matchModal, setMatchModal] = useState<string | null>(null); // friendId — mode picker
   const [matchStep, setMatchStep] = useState<'mode' | 'scope'>('mode');
@@ -3082,24 +3163,37 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
           </View>
         ) : null}
 
-        {/* Tabs: Arkadaşlarım | Arkadaşlık İstekleri */}
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 18, marginBottom: 12 }}>
-          {([['friends', 'people', 'Arkadaşlarım'], ['requests', 'person-add', 'İstekler']] as const).map(([key, icon, label]) => {
+        {/* Tabs: Arkadaşlarım | İstekler | Mesajlar */}
+        <View style={{ flexDirection: 'row', gap: 6, marginTop: 18, marginBottom: 12 }}>
+          {([
+            ['friends', 'people', 'Arkadaşlar'],
+            ['requests', 'person-add', 'İstekler'],
+            ['messages', 'chatbubbles', 'Mesajlar'],
+          ] as const).map(([key, icon, label]) => {
             const active = friendTab === key;
-            const badge = key === 'requests' && requests.length > 0 ? ` (${requests.length})` : '';
+            const badgeNum = key === 'requests' ? requests.length : key === 'messages' ? state.totalUnread : 0;
             return (
               <Pressable
                 key={key}
-                onPress={() => setFriendTab(key)}
+                onPress={() => {
+                  setFriendTab(key);
+                  if (key === 'messages') actions.loadConversations();
+                }}
                 style={{
-                  flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  paddingVertical: 11, borderRadius: 12,
+                  flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+                  paddingVertical: 10, borderRadius: 12,
                   backgroundColor: active ? theme.primary : theme.card,
                   borderWidth: 1, borderColor: active ? theme.primary : theme.border,
+                  position: 'relative',
                 }}
               >
-                <Ionicons name={icon} size={16} color={active ? '#06131F' : theme.muted} />
-                <Text style={{ color: active ? '#06131F' : theme.text, fontWeight: '800', fontSize: 13 }}>{label}{badge}</Text>
+                <Ionicons name={icon as any} size={15} color={active ? '#06131F' : theme.muted} />
+                <Text style={{ color: active ? '#06131F' : theme.text, fontWeight: '800', fontSize: 12 }}>{label}</Text>
+                {badgeNum > 0 ? (
+                  <View style={{ position: 'absolute', top: -6, right: -2, backgroundColor: theme.danger, borderRadius: 9, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
+                    <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>{badgeNum}</Text>
+                  </View>
+                ) : null}
               </Pressable>
             );
           })}
@@ -3140,6 +3234,79 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
               </View>
             ))
           )
+        ) : friendTab === 'messages' ? (
+          <>
+            {/* Search bar for starting a new chat */}
+            <View style={[styles.searchBox, { marginBottom: 10 }]}>
+              <Ionicons name="search" size={16} color={theme.muted} />
+              <TextInput
+                placeholder="Arkadaş ara..."
+                placeholderTextColor={theme.muted}
+                keyboardAppearance="dark"
+                value={msgSearch}
+                onChangeText={setMsgSearch}
+                style={[styles.searchInput, { fontSize: 13 }]}
+              />
+            </View>
+            {/* Search results — friends not in conversations yet */}
+            {msgSearch.trim().length >= 2 ? (() => {
+              const q = msgSearch.trim().toLowerCase();
+              const matches = friends.filter(f => f.displayName.toLowerCase().includes(q) && !state.conversations.some(c => c.userId === f.userId));
+              return matches.length > 0 ? matches.map(f => (
+                <Pressable key={f.userId} onPress={() => { setMsgSearch(''); actions.openChat(f.userId); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: theme.card, borderRadius: 12, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: theme.border }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="person" size={16} color={theme.primary} />
+                  </View>
+                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14, flex: 1 }} numberOfLines={1}>{f.displayName}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 }}>
+                    <Ionicons name="chatbubble" size={12} color="#06131F" />
+                    <Text style={{ color: '#06131F', fontWeight: '800', fontSize: 11 }}>Mesaj Gönder</Text>
+                  </View>
+                </Pressable>
+              )) : null;
+            })() : null}
+            {/* Conversation list */}
+            {state.conversations.length === 0 && !msgSearch.trim() ? (
+              <View style={styles.friendEmpty}>
+                <Ionicons name="chatbubbles-outline" size={48} color={theme.border} />
+                <Text style={styles.muted}>Henüz sohbet yok</Text>
+                <Text style={[styles.muted, { fontSize: 11 }]}>Yukarıdan bir arkadaşını arayarak mesaj gönder</Text>
+              </View>
+            ) : state.conversations.map(c => (
+              <Pressable
+                key={c.userId}
+                onPress={() => actions.openChat(c.userId)}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 10,
+                  backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 8,
+                  borderWidth: 1, borderColor: c.unreadCount > 0 ? theme.primary + '66' : theme.border,
+                }}
+              >
+                <View style={{ position: 'relative' }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: theme.bg2, borderWidth: 2, borderColor: c.online ? theme.primary : theme.border, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="person" size={20} color={c.online ? theme.primary : theme.muted} />
+                  </View>
+                  {c.online ? <View style={{ position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14 }} numberOfLines={1}>{c.displayName}</Text>
+                  <Text style={{ color: c.unreadCount > 0 ? theme.text : theme.muted, fontSize: 12, fontWeight: c.unreadCount > 0 ? '600' : '400' }} numberOfLines={1}>
+                    {state.typingFrom[c.userId] ? 'yazıyor...' : c.lastMessage}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                  <Text style={{ color: theme.muted, fontSize: 10 }}>
+                    {(() => { const d = new Date(c.lastMessageAt); const now = new Date(); return d.toDateString() === now.toDateString() ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : `${d.getDate()}.${d.getMonth()+1}`; })()}
+                  </Text>
+                  {c.unreadCount > 0 ? (
+                    <View style={{ backgroundColor: theme.danger, borderRadius: 10, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}>
+                      <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>{c.unreadCount}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </Pressable>
+            ))}
+          </>
         ) : /* Friends tab */ friends.length === 0 ? (
           <View style={styles.friendEmpty}>
             <Ionicons name="people-outline" size={48} color={theme.border} />
@@ -3345,7 +3512,201 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
 
       {/* Tapped a friend → their public profile */}
       <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
+
+      {/* Chat screen — WhatsApp style */}
+      <Modal visible={state.chatWith !== null} animationType="slide" onRequestClose={actions.closeChat}>
+        <ChatScreen state={state} actions={actions} />
+      </Modal>
     </Screen>
+  );
+}
+
+// ---- Typing dot (animated) ----
+function TypingDot({ delay }: { delay: number }) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(a, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(a, { toValue: 0, duration: 300, useNativeDriver: true }),
+        Animated.delay(400 - delay),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [a, delay]);
+  const scale = a.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
+  const opacity = a.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] });
+  return <Animated.View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: theme.muted, transform: [{ scale }], opacity }} />;
+}
+
+// ---- Chat Screen (WhatsApp-style) ----
+function ChatScreen({ state, actions }: Props) {
+  const [text, setText] = useState('');
+  const scrollRef = useRef<ScrollView>(null);
+  const chatWith = state.chatWith;
+  const friend = state.friends.find(f => f.userId === chatWith);
+  const myId = state.profile?.userId;
+  const messages = state.chatMessages;
+  const isTyping = chatWith ? state.typingFrom[chatWith] : false;
+  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wasTyping = useRef(false);
+
+  // Auto-scroll to bottom when new messages arrive or typing changes
+  useEffect(() => {
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+  }, [messages.length, isTyping]);
+
+  // Mark messages as read when chat opens
+  useEffect(() => {
+    if (chatWith) actions.markRead(chatWith);
+  }, [chatWith, messages.length]);
+
+  const onChangeText = (t: string) => {
+    setText(t);
+    if (!chatWith) return;
+    // Send typing_start when user starts typing, typing_stop after 2s idle
+    if (t.trim() && !wasTyping.current) {
+      wasTyping.current = true;
+      actions.typingStart(chatWith);
+    }
+    if (typingTimer.current) clearTimeout(typingTimer.current);
+    typingTimer.current = setTimeout(() => {
+      if (wasTyping.current && chatWith) {
+        wasTyping.current = false;
+        actions.typingStop(chatWith);
+      }
+    }, 2000);
+  };
+
+  const onSend = () => {
+    if (!text.trim() || !chatWith) return;
+    actions.sendMessage(chatWith, text.trim());
+    setText('');
+    if (wasTyping.current) {
+      wasTyping.current = false;
+      actions.typingStop(chatWith);
+    }
+    if (typingTimer.current) clearTimeout(typingTimer.current);
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      {/* Header */}
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', gap: 12,
+        paddingTop: 54, paddingBottom: 12, paddingHorizontal: 16,
+        backgroundColor: theme.card, borderBottomWidth: 1, borderBottomColor: theme.border,
+      }}>
+        <Pressable onPress={actions.closeChat} hitSlop={10}>
+          <Ionicons name="arrow-back" size={24} color={theme.text} />
+        </Pressable>
+        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="person" size={18} color={theme.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15 }} numberOfLines={1}>{friend?.displayName ?? '...'}</Text>
+          <Text style={{ color: isTyping ? theme.primary : friend?.online ? theme.primary : theme.muted, fontSize: 11 }}>
+            {isTyping ? 'yazıyor...' : friend?.online ? 'Çevrimiçi' : 'Çevrimdışı'}
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Ionicons name="trophy" size={13} color={theme.accent} />
+          <Text style={{ color: theme.accent, fontFamily: 'Poppins-SemiBold', fontSize: 12 }}>{friend?.trophies ?? 0}</Text>
+        </View>
+      </View>
+
+      {/* Messages */}
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 12, paddingBottom: 8 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        {messages.length === 0 ? (
+          <View style={{ alignItems: 'center', marginTop: 40 }}>
+            <Ionicons name="chatbubbles-outline" size={48} color={theme.border} />
+            <Text style={{ color: theme.muted, fontSize: 13, marginTop: 8 }}>Henüz mesaj yok</Text>
+          </View>
+        ) : messages.map((m) => {
+          const isMe = m.fromId === myId;
+          return (
+            <View key={m.id} style={{ alignItems: isMe ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
+              <View style={{ flexDirection: isMe ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 6, maxWidth: '80%' }}>
+                {/* Avatar */}
+                <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: isMe ? theme.primary + '33' : theme.card, borderWidth: 1.5, borderColor: isMe ? theme.primary : theme.border, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="person" size={13} color={isMe ? theme.primary : theme.muted} />
+                </View>
+                {/* Bubble */}
+                <View style={{
+                  backgroundColor: isMe ? theme.primary : theme.card,
+                  borderRadius: 16,
+                  borderBottomRightRadius: isMe ? 4 : 16,
+                  borderBottomLeftRadius: isMe ? 16 : 4,
+                  paddingHorizontal: 14, paddingVertical: 9,
+                  borderWidth: isMe ? 0 : 1, borderColor: theme.border,
+                }}>
+                  <Text style={{ color: isMe ? '#06131F' : theme.text, fontSize: 14 }}>{m.body}</Text>
+                  <Text style={{ color: isMe ? 'rgba(6,19,31,0.5)' : theme.muted, fontSize: 9, marginTop: 3, textAlign: 'right' }}>
+                    {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          );
+        })}
+        {/* Typing indicator — three bouncing dots */}
+        {isTyping ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: theme.card, borderWidth: 1.5, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="person" size={13} color={theme.muted} />
+            </View>
+            <View style={{ backgroundColor: theme.card, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: theme.border, flexDirection: 'row', gap: 4 }}>
+              <TypingDot delay={0} />
+              <TypingDot delay={150} />
+              <TypingDot delay={300} />
+            </View>
+          </View>
+        ) : null}
+      </ScrollView>
+
+      {/* Input bar */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', gap: 8,
+          paddingHorizontal: 12, paddingVertical: 8, paddingBottom: 34,
+          backgroundColor: theme.card, borderTopWidth: 1, borderTopColor: theme.border,
+        }}>
+          <TextInput
+            placeholder="Mesaj yaz..."
+            placeholderTextColor={theme.muted}
+            keyboardAppearance="dark"
+            value={text}
+            onChangeText={onChangeText}
+            onSubmitEditing={onSend}
+            style={{
+              flex: 1, backgroundColor: theme.bg, color: theme.text,
+              borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10,
+              fontSize: 14, borderWidth: 1, borderColor: theme.border,
+            }}
+            multiline
+            maxLength={500}
+          />
+          <Pressable
+            onPress={onSend}
+            style={{
+              width: 42, height: 42, borderRadius: 21,
+              backgroundColor: text.trim() ? theme.primary : theme.border,
+              alignItems: 'center', justifyContent: 'center',
+            }}
+            disabled={!text.trim()}
+          >
+            <Ionicons name="send" size={20} color={text.trim() ? '#06131F' : theme.muted} />
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -3940,10 +4301,21 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
           ) : r.reason === 'passed' ? (
             <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.passed')}</Text>
           ) : null}
-          {r.matchedPlayerImageUrl ? (
-            <Image source={{ uri: r.matchedPlayerImageUrl }} style={styles.playerPhoto} />
-          ) : null}
-          {r.matchedPlayerName ? <Text style={styles.matched}>{r.matchedPlayerName}</Text> : null}
+          {state.revealMode === 'player-player' && r.correct ? (
+            <>
+              {r.matchedClubLogo ? (
+                <ClubBadge name={r.matchedClubName ?? '?'} size={104} logoUrl={r.matchedClubLogo} />
+              ) : null}
+              {r.matchedClubName ? <Text style={styles.matched}>{r.matchedClubName}</Text> : null}
+            </>
+          ) : (
+            <>
+              {r.matchedPlayerImageUrl ? (
+                <Image source={{ uri: r.matchedPlayerImageUrl }} style={styles.playerPhoto} />
+              ) : null}
+              {r.matchedPlayerName ? <Text style={styles.matched}>{r.matchedPlayerName}</Text> : null}
+            </>
+          )}
           {r.answeredByName ? (
             <Text style={styles.muted}>
               {r.answeredByName} • "{r.guess}"
@@ -3962,7 +4334,38 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
         {r.reason !== 'no_common' && r.reason !== 'same_team' ? (
           <>
             <View style={styles.teamResultRow}>
-              {state.revealMode === 'country-team' ? (
+              {state.revealMode === 'player-player' ? (
+                <>
+                  <View style={[styles.teamResult, { borderColor: playedA ? theme.primary : theme.danger }]}>
+                    {r.teamA.logoUrl ? (
+                      <Image source={{ uri: r.teamA.logoUrl }} style={{ width: 40, height: 40, borderRadius: 20 }} resizeMode="cover" />
+                    ) : (
+                      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: badgeColor(r.teamA.name), alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name="person" size={20} color="#fff" />
+                      </View>
+                    )}
+                    <Text style={styles.teamResultName} numberOfLines={2}>{r.teamA.name}</Text>
+                    <Ionicons name={playedA ? 'checkmark-circle' : 'close-circle'} size={20} color={playedA ? theme.primary : theme.danger} />
+                    <Text style={styles.teamResultYears}>
+                      {playedA ? r.spellsA.map(yearsText).filter(Boolean).join(', ') || t('career.played') : t('career.notPlayed')}
+                    </Text>
+                  </View>
+                  <View style={[styles.teamResult, { borderColor: playedB ? theme.primary : theme.danger }]}>
+                    {r.teamB.logoUrl ? (
+                      <Image source={{ uri: r.teamB.logoUrl }} style={{ width: 40, height: 40, borderRadius: 20 }} resizeMode="cover" />
+                    ) : (
+                      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: badgeColor(r.teamB.name), alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name="person" size={20} color="#fff" />
+                      </View>
+                    )}
+                    <Text style={styles.teamResultName} numberOfLines={2}>{r.teamB.name}</Text>
+                    <Ionicons name={playedB ? 'checkmark-circle' : 'close-circle'} size={20} color={playedB ? theme.primary : theme.danger} />
+                    <Text style={styles.teamResultYears}>
+                      {playedB ? r.spellsB.map(yearsText).filter(Boolean).join(', ') || t('career.played') : t('career.notPlayed')}
+                    </Text>
+                  </View>
+                </>
+              ) : state.revealMode === 'country-team' ? (
                 /* Country card: flag + name + checkmark only */
                 <View style={[styles.teamResult, { borderColor: theme.primary }]}>
                   <Text style={{ fontSize: 36 }}>{NATIONALITIES.find((n) => n.value === state.revealCountry)?.flag ?? '🏳️'}</Text>
@@ -3974,7 +4377,9 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
               ) : state.revealMode === 'letter-team' ? null : (
                 <TeamResultCard team={r.teamA} spells={r.spellsA} played={playedA} />
               )}
-              <TeamResultCard team={r.teamB} spells={r.spellsB} played={playedB} />
+              {state.revealMode !== 'player-player' ? (
+                <TeamResultCard team={r.teamB} spells={r.spellsB} played={playedB} />
+              ) : null}
             </View>
 
             {r.allClubs.length ? (
@@ -3984,7 +4389,9 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
                   <CareerRow
                     key={`${s.clubId}-${i}`}
                     spell={s}
-                    highlight={s.clubId === r.teamA.id || s.clubId === r.teamB.id}
+                    highlight={state.revealMode === 'player-player'
+                      ? r.matchedClubName ? s.clubName === r.matchedClubName : false
+                      : s.clubId === r.teamA.id || s.clubId === r.teamB.id}
                   />
                 ))}
               </>
@@ -4229,7 +4636,7 @@ const styles = StyleSheet.create({
   friendInput: { color: theme.text, fontSize: 14, fontWeight: '700', borderBottomWidth: 1, borderBottomColor: theme.border, paddingBottom: 4 },
   friendEmpty: { alignItems: 'center' as const, gap: 8, paddingVertical: 30 },
   arenaCard: { backgroundColor: theme.card, borderRadius: 16, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, padding: 14, position: 'relative', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
-  arenaIconBox: { width: 66, height: 60, alignItems: 'center', justifyContent: 'center' },
+  arenaIconBox: { width: 74, height: 68, alignItems: 'center', justifyContent: 'center' },
   arenaName: { color: theme.text, fontSize: 16, fontWeight: '900' },
   arenaTrophyRange: { color: theme.muted, fontSize: 12, marginTop: 2 },
   arenaStats: { flexDirection: 'row', gap: 16, marginTop: 8 },

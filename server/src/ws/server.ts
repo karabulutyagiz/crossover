@@ -13,7 +13,9 @@ import {
 } from '../game/rank.ts';
 import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
 import { verifyApplePurchase } from '../game/iap.ts';
+import { pool } from '../db/pool.ts';
 import type { Room, Transport } from '../rooms/room.ts';
+import type { MessageView, ConversationView } from '../protocol.ts';
 import type { ClientMsg, ProfileView, ServerMsg } from '../protocol.ts';
 
 interface ConnCtx {
@@ -427,6 +429,126 @@ export function startServer(port: number): Server {
           const matches = await getMatchHistory(userProfile!.id);
           transport.send({ type: 'match_history_list', matches });
         })();
+        return;
+      }
+
+      // ---- Direct Messages ----
+      if (msg.type === 'send_message') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        const body = (msg.body ?? '').trim();
+        if (!body || body.length > 500) return;
+        void (async () => {
+          const { rows } = await pool.query<{ id: string; created_at: string }>(
+            `INSERT INTO messages (from_user, to_user, body) VALUES ($1, $2, $3) RETURNING id, created_at`,
+            [userProfile!.id, msg.toUserId, body],
+          );
+          const row = rows[0];
+          if (!row) return;
+          const mv: MessageView = {
+            id: row.id,
+            fromId: userProfile!.id,
+            fromName: userProfile!.displayName,
+            toId: msg.toUserId,
+            body,
+            createdAt: row.created_at,
+          };
+          // Send to sender as confirmation
+          transport.send({ type: 'message_received', message: mv });
+          // Send to recipient if online
+          sendToUser(msg.toUserId, { type: 'message_received', message: mv });
+        })();
+        return;
+      }
+      if (msg.type === 'list_messages') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          const beforeClause = msg.before ? `AND m.created_at < $3` : '';
+          const params: any[] = [userProfile!.id, msg.withUserId];
+          if (msg.before) params.push(msg.before);
+          const { rows } = await pool.query<{
+            id: string; from_user: string; to_user: string; body: string; created_at: string; from_name: string;
+          }>(
+            `SELECT m.id, m.from_user, m.to_user, m.body, m.created_at, u.display_name as from_name
+             FROM messages m
+             JOIN users u ON u.id = m.from_user
+             WHERE ((m.from_user = $1 AND m.to_user = $2) OR (m.from_user = $2 AND m.to_user = $1))
+             ${beforeClause}
+             ORDER BY m.created_at DESC
+             LIMIT 50`,
+            params,
+          );
+          const messages: MessageView[] = rows.map(r => ({
+            id: r.id,
+            fromId: r.from_user,
+            fromName: r.from_name,
+            toId: r.to_user,
+            body: r.body,
+            createdAt: r.created_at,
+          }));
+          transport.send({ type: 'message_list', messages: messages.reverse(), withUserId: msg.withUserId });
+        })();
+        return;
+      }
+      if (msg.type === 'list_conversations') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          // Get distinct conversation partners with last message + unread count
+          const { rows } = await pool.query<{
+            partner_id: string; partner_name: string; last_body: string; last_at: string; unread: string;
+          }>(`
+            WITH convos AS (
+              SELECT
+                CASE WHEN from_user = $1 THEN to_user ELSE from_user END AS partner_id,
+                body, created_at,
+                ROW_NUMBER() OVER (PARTITION BY LEAST(from_user, to_user), GREATEST(from_user, to_user) ORDER BY created_at DESC) AS rn
+              FROM messages
+              WHERE from_user = $1 OR to_user = $1
+            )
+            SELECT
+              c.partner_id,
+              u.display_name AS partner_name,
+              c.body AS last_body,
+              c.created_at AS last_at,
+              COALESCE((SELECT COUNT(*) FROM messages WHERE from_user = c.partner_id AND to_user = $1 AND read_at IS NULL), 0) AS unread
+            FROM convos c
+            JOIN users u ON u.id = c.partner_id
+            WHERE c.rn = 1
+            ORDER BY c.created_at DESC
+            LIMIT 50
+          `, [userProfile!.id]);
+          const conversations = rows.map(r => ({
+            userId: r.partner_id,
+            displayName: r.partner_name,
+            online: onlineUsers.has(r.partner_id),
+            lastMessage: r.last_body,
+            lastMessageAt: r.last_at,
+            unreadCount: Number(r.unread),
+          }));
+          transport.send({ type: 'conversation_list', conversations });
+        })();
+        return;
+      }
+      if (msg.type === 'mark_read') {
+        if (!userProfile) return;
+        void (async () => {
+          await pool.query(
+            `UPDATE messages SET read_at = now() WHERE from_user = $1 AND to_user = $2 AND read_at IS NULL`,
+            [msg.fromUserId, userProfile!.id],
+          );
+          transport.send({ type: 'messages_marked_read', fromUserId: msg.fromUserId });
+          // Notify the sender their messages were read
+          sendToUser(msg.fromUserId, { type: 'messages_marked_read', fromUserId: userProfile!.id });
+        })();
+        return;
+      }
+      if (msg.type === 'typing_start') {
+        if (!userProfile) return;
+        sendToUser(msg.toUserId, { type: 'typing', fromUserId: userProfile!.id, isTyping: true });
+        return;
+      }
+      if (msg.type === 'typing_stop') {
+        if (!userProfile) return;
+        sendToUser(msg.toUserId, { type: 'typing', fromUserId: userProfile!.id, isTyping: false });
         return;
       }
 

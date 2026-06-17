@@ -16,12 +16,15 @@ import type {
   GameOptions,
   MatchHistoryView,
   PickRole,
+  PlayerRef,
   ProfileView,
   PublicProfile,
   RoomView,
   RoundResult,
   ScopesList,
   ServerMsg,
+  MessageView,
+  ConversationView,
 } from './protocol';
 
 export type Phase = 'home' | 'arenas' | 'leaderboard' | 'matchHistory' | 'profile' | 'searching' | 'matchup' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
@@ -51,6 +54,7 @@ export interface GameState {
   passedBy: string[]; // player ids who passed this round
   result: RoundResult | null;
   clubResults: ClubRef[];
+  playerResults: PlayerRef[];
   scopes: ScopesList | null;
   profile: ProfileView | null;
   trophyDelta: { trophies: number; delta: number; arena: ArenaView } | null;
@@ -88,6 +92,12 @@ export interface GameState {
   isQuickMatch: boolean;
   opponentForfeit: boolean;
   lastGameOptions: GameOptions | null;
+  // Direct messages
+  chatWith: string | null;
+  chatMessages: MessageView[];
+  conversations: ConversationView[];
+  totalUnread: number;
+  typingFrom: Record<string, boolean>;  // userId → isTyping
 }
 
 export const initialState: GameState = {
@@ -104,6 +114,7 @@ export const initialState: GameState = {
   passedBy: [],
   result: null,
   clubResults: [],
+  playerResults: [],
   scopes: null,
   profile: null,
   trophyDelta: null,
@@ -134,6 +145,11 @@ export const initialState: GameState = {
   isQuickMatch: false,
   opponentForfeit: false,
   lastGameOptions: null,
+  chatWith: null,
+  chatMessages: [],
+  conversations: [],
+  totalUnread: 0,
+  typingFrom: {},
 };
 
 const PROFILE_KEY = '@crossover_profile';
@@ -213,6 +229,68 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, viewProfile: null };
     case '_clear_notice' as any:
       return { ...state, notice: null };
+    case '_open_chat' as any:
+      return { ...state, chatWith: (action as any).userId, chatMessages: [] };
+    case '_close_chat' as any:
+      return { ...state, chatWith: null, chatMessages: [] };
+    case 'message_received': {
+      const msg = (action as any).message as MessageView;
+      let nextMessages = state.chatMessages;
+      let nextConvos = state.conversations;
+      let nextUnread = state.totalUnread;
+      const myId = state.profile?.userId;
+      const partnerId = msg.fromId === myId ? msg.toId : msg.fromId;
+
+      // Add to current chat if open with this partner
+      if (state.chatWith && (msg.fromId === state.chatWith || msg.toId === state.chatWith)) {
+        if (!state.chatMessages.some(m => m.id === msg.id)) {
+          nextMessages = [...state.chatMessages, msg];
+        }
+      }
+
+      // Update conversation list
+      const existingIdx = nextConvos.findIndex(c => c.userId === partnerId);
+      if (existingIdx >= 0) {
+        const updated = { ...nextConvos[existingIdx]!, lastMessage: msg.body, lastMessageAt: msg.createdAt };
+        // Increment unread if message is from the partner and we're NOT in that chat
+        if (msg.fromId !== myId && state.chatWith !== partnerId) {
+          updated.unreadCount = (updated.unreadCount ?? 0) + 1;
+          nextUnread = nextUnread + 1;
+        }
+        nextConvos = [updated, ...nextConvos.filter((_, i) => i !== existingIdx)];
+      } else {
+        const isIncoming = msg.fromId !== myId;
+        nextConvos = [{
+          userId: partnerId, displayName: msg.fromId === myId ? '' : msg.fromName,
+          online: true, lastMessage: msg.body, lastMessageAt: msg.createdAt,
+          unreadCount: isIncoming && state.chatWith !== partnerId ? 1 : 0,
+        }, ...nextConvos];
+        if (isIncoming && state.chatWith !== partnerId) nextUnread++;
+      }
+      // Clear typing indicator for sender
+      const nextTyping = { ...state.typingFrom };
+      delete nextTyping[msg.fromId];
+
+      return { ...state, chatMessages: nextMessages, conversations: nextConvos, totalUnread: nextUnread, typingFrom: nextTyping };
+    }
+    case 'message_list':
+      return { ...state, chatMessages: (action as any).messages ?? [] };
+    case 'conversation_list': {
+      const convos = (action as any).conversations as ConversationView[] ?? [];
+      return { ...state, conversations: convos, totalUnread: convos.reduce((s: number, c: ConversationView) => s + c.unreadCount, 0) };
+    }
+    case 'messages_marked_read':
+      return {
+        ...state,
+        conversations: state.conversations.map(c =>
+          c.userId === (action as any).fromUserId ? { ...c, unreadCount: 0 } : c
+        ),
+        totalUnread: state.conversations.reduce((s, c) =>
+          s + (c.userId === (action as any).fromUserId ? 0 : c.unreadCount), 0
+        ),
+      };
+    case 'typing':
+      return { ...state, typingFrom: { ...state.typingFrom, [(action as any).fromUserId]: (action as any).isTyping } };
 
     case 'searching':
       return { ...state, phase: 'searching', isQuickMatch: true, opponentForfeit: false };
@@ -324,15 +402,18 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, rematchState: 'declined' };
     case 'club_results':
       return { ...state, clubResults: action.clubs };
+    case 'player_results':
+      return { ...state, playerResults: (action as any).players ?? [] };
     case 'opponent_left':
       if (action.forfeit) {
         return { ...state, opponentForfeit: true };
       }
       return { ...state, phase: 'lobby', error: t('error.opponentLeft'), teams: null, result: null, locked: null };
     case 'error':
-      // Internal protocol noise (sent when a stray message reaches the server with no
-      // active room) — never surface it to the user.
+      // Internal protocol noise — never surface to the user.
       if (action.message === 'Create or join a room first') return state;
+      // IAP receipt validation errors (sandbox/production mismatch) — silent.
+      if (/receipt|makbuz|21002|21007|21008/i.test(action.message ?? '')) return state;
       return { ...state, error: action.message };
     default:
       return state;
@@ -574,6 +655,11 @@ export function useCrossover() {
       if (offlineRoomRef.current) return offlineRoomRef.current.searchClubs(q);
       send({ type: 'search_clubs', reqId: 'q', q });
     },
+    searchPlayers: (q: string) => send({ type: 'search_players', q }),
+    pickPlayer: (playerId: number) => {
+      send({ type: 'pick_player', playerId });
+      dispatch({ type: '_picked' });
+    },
     submitGuess: (text: string) => {
       if (offlineRoomRef.current) return void offlineRoomRef.current.submitGuess(text);
       send({ type: 'submit_guess', text });
@@ -626,6 +712,21 @@ export function useCrossover() {
       dispatch({ type: '_set_game_options', options: options ?? null } as any);
       connectAndSend({ type: 'find_match', name: state.profile?.displayName, userId: state.profile?.userId, options });
     },
+    // ---- Direct Messages ----
+    loadConversations: () => send({ type: 'list_conversations' }),
+    openChat: (userId: string) => {
+      dispatch({ type: '_open_chat', userId } as any);
+      send({ type: 'list_messages', withUserId: userId });
+      send({ type: 'mark_read', fromUserId: userId });
+    },
+    closeChat: () => dispatch({ type: '_close_chat' } as any),
+    sendMessage: (toUserId: string, body: string) => {
+      if (!body.trim()) return;
+      send({ type: 'send_message', toUserId, body: body.trim() });
+    },
+    markRead: (fromUserId: string) => send({ type: 'mark_read', fromUserId }),
+    typingStart: (toUserId: string) => send({ type: 'typing_start', toUserId }),
+    typingStop: (toUserId: string) => send({ type: 'typing_stop', toUserId }),
     leave: () => {
       if (offlineRoomRef.current) {
         offlineRoomRef.current.leave();
