@@ -12,6 +12,7 @@ import {
   type UserProfile,
 } from '../game/rank.ts';
 import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
+import { censorMessage } from '../game/username.ts';
 import { verifyApplePurchase } from '../game/iap.ts';
 import { pool } from '../db/pool.ts';
 import type { Room, Transport } from '../rooms/room.ts';
@@ -75,11 +76,27 @@ interface PendingInvite {
 }
 
 // Track online users for real-time friend notifications.
-const onlineUsers = new Map<string, WebSocket>(); // userId → WebSocket
+const onlineUsers = new Map<string, Set<WebSocket>>(); // userId → all open sockets
+
+function addOnline(userId: string, ws: WebSocket): void {
+  let set = onlineUsers.get(userId);
+  if (!set) { set = new Set(); onlineUsers.set(userId, set); }
+  set.add(ws);
+}
+function removeOnline(userId: string, ws: WebSocket): void {
+  const set = onlineUsers.get(userId);
+  if (!set) return;
+  set.delete(ws);
+  if (set.size === 0) onlineUsers.delete(userId);
+}
 
 function sendToUser(userId: string, msg: ServerMsg): void {
-  const ws = onlineUsers.get(userId);
-  if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+  const set = onlineUsers.get(userId);
+  if (!set) return;
+  const data = JSON.stringify(msg);
+  for (const ws of set) {
+    if (ws.readyState === ws.OPEN) ws.send(data);
+  }
 }
 
 /** Build a friends_list message with online status. */
@@ -175,7 +192,7 @@ export function startServer(port: number): Server {
             (msg.userId ? await getUser(msg.userId) : null) ??
             (await findOrCreateUser(msg.gameCenterId ?? null, msg.name));
           userProfile = profile;
-          onlineUsers.set(profile.id, ws);
+          addOnline(profile.id, ws);
           transport.send({
             type: 'profile',
             profile: toProfileView(profile),
@@ -204,7 +221,7 @@ export function startServer(port: number): Server {
               name,
             );
             userProfile = profile;
-            onlineUsers.set(profile.id, ws);
+            addOnline(profile.id, ws);
             transport.send({ type: 'profile', profile: toProfileView(profile) });
           } catch (err) {
             console.error(`[auth:${msg.provider}] verify failed:`, err instanceof Error ? err.message : err);
@@ -435,8 +452,9 @@ export function startServer(port: number): Server {
       // ---- Direct Messages ----
       if (msg.type === 'send_message') {
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
-        const body = (msg.body ?? '').trim();
-        if (!body || body.length > 500) return;
+        const rawBody = (msg.body ?? '').trim();
+        if (!rawBody || rawBody.length > 500) return;
+        const body = censorMessage(rawBody);
         void (async () => {
           const { rows } = await pool.query<{ id: string; created_at: string }>(
             `INSERT INTO messages (from_user, to_user, body) VALUES ($1, $2, $3) RETURNING id, created_at`,
@@ -560,7 +578,7 @@ export function startServer(port: number): Server {
             // from the userId the client sent so trophies/arena are available.
             if (!userProfile && msg.userId) {
               const u = await getUser(msg.userId);
-              if (u) { userProfile = u; onlineUsers.set(u.id, ws); }
+              if (u) { userProfile = u; addOnline(u.id, ws); }
             }
             // Prefer the registered profile name; fall back to the name the client
             // sent with the request (the matchmaking socket may not have registered).
@@ -649,7 +667,7 @@ export function startServer(port: number): Server {
     ws.on('close', () => {
       // Remove from online users tracking — but only if THIS socket is the one
       // registered (a fresh reconnect may have already replaced it).
-      if (userProfile && onlineUsers.get(userProfile.id) === ws) onlineUsers.delete(userProfile.id);
+      if (userProfile) removeOnline(userProfile.id, ws);
       // Drop any pending match invites involving this socket.
       for (const [key, inv] of pendingInvites) {
         if (inv.ws === ws) {

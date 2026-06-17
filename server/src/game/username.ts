@@ -42,6 +42,27 @@ export interface UsernameCheck {
   error?: string;
 }
 
+/** Censor profanity in a message body: replace banned substrings with asterisks. */
+export function censorMessage(text: string): string {
+  const norm = normalizeForFilter(text);
+  let result = text;
+  for (const w of BANNED_SUBSTR) {
+    let idx = norm.indexOf(w);
+    while (idx !== -1) {
+      // Map normalized index back to original text — replace same char range with '*'
+      const stars = '*'.repeat(w.length);
+      result = result.slice(0, idx) + stars + result.slice(idx + w.length);
+      idx = norm.indexOf(w, idx + w.length);
+    }
+  }
+  // Short exact words: replace only if the whole word matches (word-boundary)
+  for (const w of SHORT_EXACT) {
+    const re = new RegExp(`\\b${w}\\b`, 'gi');
+    result = result.replace(re, '*'.repeat(w.length));
+  }
+  return result;
+}
+
 export function validateUsername(raw: string): UsernameCheck {
   const name = raw.trim();
   if (name.length < 3) return { ok: false, error: 'Kullanıcı adı en az 3 karakter olmalı' };

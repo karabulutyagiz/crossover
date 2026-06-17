@@ -82,7 +82,7 @@ export async function searchClubs(
           AND EXISTS (SELECT 1 FROM player_clubs pc WHERE pc.club_id = c.id)
           ${A_TEAM_ONLY}
           ${sSql}
-        ORDER BY c.popularity DESC
+        ORDER BY COALESCE(NULLIF(c.popularity, 0), (SELECT COUNT(*) FROM player_clubs pc2 WHERE pc2.club_id = c.id)) DESC
         LIMIT $${p.length}`,
       p,
     );
@@ -99,7 +99,7 @@ export async function searchClubs(
   const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
     `SELECT c.id, c.name, c.logo_url,
             similarity(c.name_norm, $1) AS sim,
-            c.popularity AS members
+            COALESCE(NULLIF(c.popularity, 0), (SELECT COUNT(*) FROM player_clubs pc2 WHERE pc2.club_id = c.id)) AS members
        FROM clubs c
       WHERE c.is_national = false
         AND c.logo_url IS NOT NULL
@@ -140,7 +140,8 @@ export async function randomClub(
   const params: unknown[] = [];
   const scopeSql = scopeClause(scope, params);
   const base = `
-    SELECT c.id, c.name, c.logo_url, c.popularity
+    SELECT c.id, c.name, c.logo_url,
+           COALESCE(NULLIF(c.popularity, 0), (SELECT COUNT(*) FROM player_clubs pc2 WHERE pc2.club_id = c.id)) AS pop
       FROM clubs c
      WHERE c.is_national = false
        AND c.logo_url IS NOT NULL
@@ -149,7 +150,7 @@ export async function randomClub(
        ${scopeSql}`;
   const topN = difficulty === 'easy' ? EASY_TOP : difficulty === 'medium' ? MEDIUM_TOP : null;
   const sql = topN
-    ? `SELECT id, name, logo_url FROM (${base} ORDER BY c.popularity DESC LIMIT ${topN}) t ORDER BY random() LIMIT 1`
+    ? `SELECT id, name, logo_url FROM (${base} ORDER BY pop DESC LIMIT ${topN}) t ORDER BY random() LIMIT 1`
     : `${base} ORDER BY random() LIMIT 1`;
   const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(sql, params);
   const r = rows[0];

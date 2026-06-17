@@ -1600,7 +1600,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       <PickerModal
         picker={picker}
         scopes={state.scopes}
-        onClose={() => { setPicker(null); setTimeout(() => setBotOpen(true), 350); }}
+        onClose={() => setPicker(null)}
         onDifficulty={(d) => {
           setDifficulty(d);
           setPicker(null);
@@ -3499,7 +3499,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
       <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
 
       {/* Chat screen — WhatsApp style */}
-      <Modal visible={state.chatWith !== null} animationType="slide" onRequestClose={actions.closeChat}>
+      <Modal visible={state.chatWith !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={actions.closeChat}>
         <ChatScreen state={state} actions={actions} />
       </Modal>
     </Screen>
@@ -3577,7 +3577,7 @@ function ChatScreen({ state, actions }: Props) {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
       {/* Header */}
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -3596,10 +3596,6 @@ function ChatScreen({ state, actions }: Props) {
             {isTyping ? 'yazıyor...' : friend?.online ? 'Çevrimiçi' : 'Çevrimdışı'}
           </Text>
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <Ionicons name="trophy" size={13} color={theme.accent} />
-          <Text style={{ color: theme.accent, fontFamily: 'Poppins-SemiBold', fontSize: 12 }}>{friend?.trophies ?? 0}</Text>
-        </View>
       </View>
 
       {/* Messages */}
@@ -3608,6 +3604,7 @@ function ChatScreen({ state, actions }: Props) {
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 12, paddingBottom: 8 }}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
       >
         {messages.length === 0 ? (
           <View style={{ alignItems: 'center', marginTop: 40 }}>
@@ -3657,27 +3654,28 @@ function ChatScreen({ state, actions }: Props) {
       </ScrollView>
 
       {/* Input bar */}
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
-        <View style={{
-          flexDirection: 'row', alignItems: 'center', gap: 8,
-          paddingHorizontal: 12, paddingVertical: 8, paddingBottom: 34,
-          backgroundColor: theme.card, borderTopWidth: 1, borderTopColor: theme.border,
-        }}>
-          <TextInput
-            placeholder="Mesaj yaz..."
-            placeholderTextColor={theme.muted}
-            keyboardAppearance="dark"
-            value={text}
-            onChangeText={onChangeText}
-            onSubmitEditing={onSend}
-            style={{
-              flex: 1, backgroundColor: theme.bg, color: theme.text,
-              borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10,
-              fontSize: 14, borderWidth: 1, borderColor: theme.border,
-            }}
-            multiline
-            maxLength={500}
-          />
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', gap: 8,
+        paddingHorizontal: 12, paddingVertical: 8, paddingBottom: 34,
+        backgroundColor: theme.card, borderTopWidth: 1, borderTopColor: theme.border,
+      }}>
+        <TextInput
+          placeholder="Mesaj yaz..."
+          placeholderTextColor={theme.muted}
+          keyboardAppearance="dark"
+          value={text}
+          onChangeText={onChangeText}
+          blurOnSubmit={false}
+          returnKeyType="send"
+          onSubmitEditing={onSend}
+          style={{
+            flex: 1, backgroundColor: theme.bg, color: theme.text,
+            borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10,
+            fontSize: 14, borderWidth: 1, borderColor: theme.border,
+          }}
+          multiline
+          maxLength={500}
+        />
           <Pressable
             onPress={onSend}
             style={{
@@ -3689,9 +3687,8 @@ function ChatScreen({ state, actions }: Props) {
           >
             <Ionicons name="send" size={20} color={text.trim() ? '#06131F' : theme.muted} />
           </Pressable>
-        </View>
-      </KeyboardAvoidingView>
-    </View>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -3731,7 +3728,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory }: Props) {
 
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
           <StatCard icon="trophy" color={theme.gold} label="Kupa" value={p.trophies} />
-          <StatCard icon="diamond" color="#5BC8FF" label="Elmas" value={p.diamonds} />
+          <StatCard icon="diamond" color={GEM_COLOR} label="Elmas" value={p.diamonds} />
         </View>
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
           <StatCard icon="checkmark-circle" color={theme.primary} label="Galibiyet" value={p.wins} />
