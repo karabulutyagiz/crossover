@@ -45,20 +45,24 @@ import {
   ownsEmote,
 } from './emotes';
 import { NATIONALITIES } from './nationalities';
-// react-native-iap requires a native module (StoreKit). When running in Expo
-// Go or a simulator without the custom dev client the import crashes the app.
-// Wrap in a try/catch so the rest of the app still loads.
-let useIAP: any = () => ({ connected: false, products: [], requestPurchase: () => {}, fetchProducts: () => Promise.resolve([]) });
-let getReceiptIOS: any = () => Promise.resolve('');
+// react-native-iap v15 (StoreKit2) — native module, absent in Expo Go. Wrap the require
+// in try/catch so the app still loads in Expo Go (Store shows "coming soon"); the real
+// module is present in dev/prod builds. v15 is the version compatible with RN's prebuilt-
+// dependencies model (v13 needs the old standalone RCT-Folly pod → won't build on RN 0.83+).
+let useIAP: any = () => ({ connected: false, products: [], subscriptions: [], requestPurchase: () => {}, fetchProducts: () => Promise.resolve([]) });
+let getTransactionJwsIOS: any = (_pid?: string) => Promise.resolve(null);
+let getAvailablePurchases: any = () => Promise.resolve([]);
 let iapFinishTransaction: any = () => Promise.resolve();
 type Purchase = any;
 try {
   const iap = require('react-native-iap');
   useIAP = iap.useIAP;
-  getReceiptIOS = iap.getReceiptIOS;
+  // StoreKit2: validate the per-transaction JWS (legacy getReceiptIOS is empty post-purchase in v15).
+  getTransactionJwsIOS = iap.getTransactionJwsIOS;
+  getAvailablePurchases = iap.getAvailablePurchases;
   iapFinishTransaction = iap.finishTransaction;
 } catch {
-  // native module not available — IAP features disabled gracefully
+  // native module unavailable (Expo Go) — IAP disabled gracefully
 }
 
 type Actions = {
@@ -2655,12 +2659,14 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
   const onPurchaseSuccess = useCallback(async (purchase: Purchase) => {
     const isSub = SOCIAL_PACK_IDS.includes(purchase.productId);
     try {
-      const receipt = await getReceiptIOS();
-      await actions.verifyPurchase(receipt);                       // server validates + grants
-      await iapFinishTransaction({ purchase, isConsumable: !isSub }); // subs are NOT consumable
+      // StoreKit2: send the signed transaction JWS (the unified purchaseToken, or fetch it).
+      const jws = purchase.purchaseToken ?? (await getTransactionJwsIOS(purchase.productId));
+      if (!jws) throw new Error('no-jws');
+      await actions.verifyPurchase(jws);                            // server verifies JWS + grants
+      await iapFinishTransaction({ purchase, isConsumable: !isSub }); // finish only after grant
     } catch {
-      // Verify/grant failed → leave the transaction UNFINISHED so StoreKit replays it
-      // on next launch and we grant then (server is idempotent — no double-charge/grant).
+      // Verify/grant failed → leave the transaction UNFINISHED so StoreKit replays it on next
+      // launch and we grant then (server is idempotent — no double-charge/grant).
       Alert.alert('Satın alma', 'Birazdan hesabına işlenecek. Sorun sürerse uygulamayı yeniden aç.');
     } finally {
       setBuying(null);
@@ -2674,11 +2680,21 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
   const { connected, products, subscriptions, requestPurchase, fetchProducts } = useIAP({ onPurchaseSuccess, onPurchaseError });
   useEffect(() => {
     if (!connected) return;
-    fetchProducts({ skus: DIAMOND_PRODUCT_IDS, type: 'in-app' }).catch(() => {});
-    fetchProducts({ skus: SOCIAL_PACK_IDS, type: 'subs' }).catch(() => {});
-    // Re-validate on open so an auto-renewed Social Pack refreshes its expiry on the server
-    // (granted-0 → no toast; see the reducer). Silent if there's no receipt yet.
-    getReceiptIOS().then((r: string) => { if (r) return actions.verifyPurchase(r); }).catch(() => {});
+    fetchProducts({ skus: DIAMOND_PRODUCT_IDS, type: 'in-app' }).catch(() => {});  // consumables
+    fetchProducts({ skus: SOCIAL_PACK_IDS, type: 'subs' }).catch(() => {});         // auto-renewable
+    // Replay any unfinished/available transactions (auto-renewed Social Pack, restores, or a
+    // purchase whose grant failed before) — verify each by its JWS so the server grants + we
+    // can finish them. granted-0 → no toast (see the reducer).
+    getAvailablePurchases().then(async (ps: Purchase[]) => {
+      for (const p of ps ?? []) {
+        const jws = p.purchaseToken ?? (await getTransactionJwsIOS(p.productId));
+        if (!jws) continue;
+        try {
+          await actions.verifyPurchase(jws);
+          await iapFinishTransaction({ purchase: p, isConsumable: !SOCIAL_PACK_IDS.includes(p.productId) });
+        } catch { /* leave unfinished; retried next launch */ }
+      }
+    }).catch(() => {});
   }, [connected, fetchProducts, actions]);
   const priceFor = (productId: string, fallback: string) =>
     (([...(products as { id?: string; displayPrice?: string }[]), ...(subscriptions as { id?: string; displayPrice?: string }[])]).find((p) => p.id === productId)?.displayPrice) ?? fallback;
@@ -2690,7 +2706,6 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
     if (!loaded) { Alert.alert('Çok yakında', 'Satın alma yakında aktifleşecek.'); return; }
     const isSub = SOCIAL_PACK_IDS.includes(productId);
     setBuying(productId);
-    // appAccountToken ties the purchase (and its future renewal notifications) to our user.
     const apple = { sku: productId, appAccountToken: profile?.userId ?? undefined };
     Promise.resolve(requestPurchase({ request: { apple }, type: isSub ? 'subs' : 'in-app' })).catch(() => setBuying(null));
   }, [buying, requestPurchase, products, subscriptions, profile?.userId]);

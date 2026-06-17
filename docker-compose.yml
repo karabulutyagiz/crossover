@@ -1,0 +1,63 @@
+# Crossover — isolated stack for a server that ALREADY runs another project
+# (transyol) whose Caddy owns :80/:443.
+#
+# Isolation:
+#   * Project name `crossover` prefixes everything (crossover-db-1, crossover_pgdata...).
+#   * Own Postgres — separate container/volume/credentials from transyol's DB.
+#   * No host ports published here -> zero chance of clashing with transyol.
+#   * The app joins transyol's existing `shared-net` ONLY so transyol-caddy can
+#     reverse-proxy 168-222-180-190.nip.io -> crossover-app-1:8080. Nothing else
+#     is shared; the DB sits on a private `internal` network transyol can't see.
+name: crossover
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: crossover-db-1
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-crossover}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-crossover}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Auto-loaded ONLY on a fresh volume (full dump from the old AWS server).
+      - ./deploy/seed:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-crossover} -d ${POSTGRES_DB:-crossover}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - internal
+
+  app:
+    build: ./server
+    image: crossover-app:latest
+    container_name: crossover-app-1
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      DATABASE_URL: postgres://${POSTGRES_USER:-crossover}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-crossover}
+      WIKIDATA_USER_AGENT: ${WIKIDATA_USER_AGENT:-CrossoverGame/1.0 (prod; yagizkarabulutmedya@gmail.com)}
+      IAP_SHARED_SECRET: ${IAP_SHARED_SECRET:-}
+      APPLE_BUNDLE_ID: ${APPLE_BUNDLE_ID:-com.crossover.football}
+      GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
+      FACEBOOK_APP_ID: ${FACEBOOK_APP_ID:-}
+      VERIFY_MATCH_THRESHOLD: ${VERIFY_MATCH_THRESHOLD:-0.3}
+      VERIFY_EXACT_THRESHOLD: ${VERIFY_EXACT_THRESHOLD:-0.85}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal      # reach own Postgres
+      - shared-net    # be reachable by transyol-caddy for TLS termination
+
+networks:
+  internal:
+  # transyol's pre-existing external bridge network (carries the proxy traffic).
+  shared-net:
+    external: true
+
+volumes:
+  pgdata:

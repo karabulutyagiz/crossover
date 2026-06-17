@@ -5,6 +5,9 @@ dist/
 .env.local
 .DS_Store
 tmp/
+# DB seed dump for Docker migration — real user data, kept out of git (3.9MB).
+# Still shipped to the new server via rsync (see deploy/README.md).
+deploy/seed/*.sql.gz
 # secrets / signing keys (defense-in-depth — also covered in app/.gitignore)
 *.p8
 *.p12
