@@ -99,6 +99,7 @@ type Actions = {
   acceptRematch: () => void;
   declineRematch: () => void;
   sendEmote: (emoteId: string) => void;
+  clearEmote: (playerId: string) => void;
   buyEmote: (emoteId: string) => void;
   equipEmotes: (emoteIds: string[]) => void;
   verifyPurchase: (receipt: string) => Promise<void>;
@@ -844,10 +845,10 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
   return (
     <>
       <View pointerEvents="none" style={styles.emoteTop}>
-        {showTheirs ? <TransientCallout key={`opp-${theirs.n}`} emoteId={theirs.emoteId} onDone={() => { dismissedOpp.current = theirs.n; }} /> : null}
+        {showTheirs ? <TransientCallout key={`opp-${theirs.n}`} emoteId={theirs.emoteId} onDone={() => { dismissedOpp.current = theirs.n; if (oppId) actions.clearEmote(oppId); }} /> : null}
       </View>
       <View pointerEvents="none" style={styles.emoteBottom}>
-        {showMine ? <TransientCallout key={`you-${mine.n}`} emoteId={mine.emoteId} onDone={() => { dismissedMine.current = mine.n; }} /> : null}
+        {showMine ? <TransientCallout key={`you-${mine.n}`} emoteId={mine.emoteId} onDone={() => { dismissedMine.current = mine.n; if (youId) actions.clearEmote(youId); }} /> : null}
       </View>
 
       {!hideFab ? (

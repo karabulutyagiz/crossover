@@ -106,12 +106,13 @@ export const PREMIUM_EMOTES: EmoteMeta[] = [
 // NOT sold in the store (no `premium`, never in emoteWeeks) — added to the emote
 // system and granted to specific accounts. Keep ids in sync with
 // server/src/game/emotes.ts (ANIM_EMOTES).
+// phrase intentionally empty — animated emotes are shown as just the animation, no caption.
 export const ANIM_EMOTES: EmoteMeta[] = [
-  { id: 'footballer', kind: 'lottie', phrase: 'Topla oynar! ⚽', color: theme.primary, anim: require('../assets/emotes/footballer.webp') },
-  { id: 'worldcup',   kind: 'lottie', phrase: 'Dünya Kupası! 🏆', color: theme.gold,    anim: require('../assets/emotes/worldcup.webp') },
-  { id: 'kick',       kind: 'lottie', phrase: 'Şut! 🥅',          color: theme.blue,    anim: require('../assets/emotes/kick.webp') },
-  { id: 'squad',      kind: 'lottie', phrase: 'Takım! 🤝',        color: theme.accent,  anim: require('../assets/emotes/squad.webp') },
-  { id: 'pitch',      kind: 'lottie', phrase: 'Taktik! 📋',       color: theme.purple,  anim: require('../assets/emotes/pitch.webp') },
+  { id: 'footballer', kind: 'lottie', phrase: '', color: theme.primary, anim: require('../assets/emotes/footballer.webp') },
+  { id: 'worldcup',   kind: 'lottie', phrase: '', color: theme.gold,    anim: require('../assets/emotes/worldcup.webp') },
+  { id: 'kick',       kind: 'lottie', phrase: '', color: theme.blue,    anim: require('../assets/emotes/kick.webp') },
+  { id: 'squad',      kind: 'lottie', phrase: '', color: theme.accent,  anim: require('../assets/emotes/squad.webp') },
+  { id: 'pitch',      kind: 'lottie', phrase: '', color: theme.purple,  anim: require('../assets/emotes/pitch.webp') },
 ];
 
 // Visual (premium) emotes grouped by their weekly drop, newest first.
@@ -592,10 +593,14 @@ export function EmoteCallout({ id, size = 88 }: { id: string; size?: number }) {
   const meta = getEmote(id);
   const caption = useMemo(() => meta?.phrase ?? '', [meta]);
   if (!meta) return null;
+  // Animated (Lottie) emotes are shown as JUST the animation — no card, no caption.
+  if (meta.kind === 'lottie') {
+    return <EmoteSticker id={id} size={Math.round(size * 1.3)} />;
+  }
   return (
     <View style={styles.callout}>
       <EmoteSticker id={id} size={size} />
-      <Text style={[styles.calloutText, { color: meta.color }]}>{caption}</Text>
+      {caption ? <Text style={[styles.calloutText, { color: meta.color }]}>{caption}</Text> : null}
     </View>
   );
 }

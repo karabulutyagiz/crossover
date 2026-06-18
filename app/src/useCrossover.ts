@@ -171,7 +171,8 @@ type Action =
   | { type: '_dismiss_invite' }
   | { type: '_clear_notice' }
   | { type: '_ready' }
-  | { type: '_set_game_options'; options: GameOptions | null };
+  | { type: '_set_game_options'; options: GameOptions | null }
+  | { type: '_clear_emote'; playerId: string };
 
 function reducer(state: GameState, action: Action): GameState {
   switch (action.type) {
@@ -308,6 +309,14 @@ function reducer(state: GameState, action: Action): GameState {
           ? { ...state.profile, trophies: action.trophies, arena: action.arena }
           : state.profile,
       };
+    case '_clear_emote': {
+      // Remove a shown emote so it doesn't persist in state and re-appear when the
+      // match screen (and its EmoteLayer) remounts on a phase change.
+      if (!state.emotes[action.playerId]) return state;
+      const next = { ...state.emotes };
+      delete next[action.playerId];
+      return { ...state, emotes: next };
+    }
     case 'emote': {
       const n = state.emoteSeq + 1;
       return { ...state, emoteSeq: n, emotes: { ...state.emotes, [action.fromId]: { emoteId: action.emoteId, n } } };
@@ -459,6 +468,16 @@ export function useCrossover() {
       saveProfile(state.profile);
     }
   }, [state.profile]);
+
+  // Auto-clear shown emotes ~3.5s after the latest one arrives. Emotes are
+  // one-shot: leaving them in state made a sent emote re-appear every time a
+  // match screen (and its EmoteLayer) remounted on a phase change.
+  useEffect(() => {
+    const ids = Object.keys(state.emotes);
+    if (ids.length === 0) return;
+    const timers = ids.map((pid) => setTimeout(() => dispatch({ type: '_clear_emote', playerId: pid }), 3500));
+    return () => timers.forEach(clearTimeout);
+  }, [state.emoteSeq]);
 
   // A pending Apple IAP verification — resolved when the server confirms the grant
   // (diamonds_granted) or rejected on error, so we only finishTransaction once paid.
@@ -688,6 +707,7 @@ export function useCrossover() {
     acceptRematch: () => send({ type: 'rematch_response', accept: true }),
     declineRematch: () => send({ type: 'rematch_response', accept: false }),
     sendEmote: (emoteId: string) => send({ type: 'send_emote', emoteId }),
+    clearEmote: (playerId: string) => dispatch({ type: '_clear_emote', playerId }),
     buyEmote: (emoteId: string) => send({ type: 'buy_emote', emoteId }),
     equipEmotes: (emoteIds: string[]) => send({ type: 'equip_emotes', emoteIds }),
     // Friends — via WebSocket for real-time notifications.
