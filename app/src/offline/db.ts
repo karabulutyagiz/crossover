@@ -8,7 +8,8 @@
  * Public API mirrors the server's verify.ts functions:
  *   searchClubs, verifyGuess, commonPlayers, randomClub
  */
-import * as SQLite from 'expo-sqlite';
+// expo-sqlite may not be available in Expo Go
+let SQLite: any; try { SQLite = require('expo-sqlite'); } catch { /* native module unavailable */ }
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ---------- types matching the JSON export ----------
@@ -51,10 +52,11 @@ const DB_NAME = 'crossover_offline.db';
 const DATA_VERSION_KEY = '@offline_data_v';
 const CURRENT_VERSION = '2'; // bump when data.json changes
 
-let db: SQLite.SQLiteDatabase | null = null;
+let db: any = null;
 
 export async function initOfflineDB(): Promise<void> {
   if (db) return;
+  if (!SQLite) return;
   db = await SQLite.openDatabaseAsync(DB_NAME);
   const stored = await AsyncStorage.getItem(DATA_VERSION_KEY);
   if (stored === CURRENT_VERSION) return; // already populated
@@ -116,7 +118,7 @@ export async function initOfflineDB(): Promise<void> {
   console.log('[offline] DB ready');
 }
 
-function getDB(): SQLite.SQLiteDatabase {
+function getDB(): any {
   if (!db) throw new Error('Offline DB not initialized — call initOfflineDB first');
   return db;
 }
@@ -133,32 +135,32 @@ export async function searchClubs(query: string, limit = 30): Promise<OfflineClu
   const d = getDB();
   if (!query.trim()) {
     // Return popular clubs (those with the most spells)
-    const rows = await d.getAllAsync<{ id: number; name: string; logo: string | null }>(
+    const rows = await d.getAllAsync(
       `SELECT c.id, c.name, c.logo FROM clubs c
        JOIN spells s ON s.club_id = c.id
        GROUP BY c.id ORDER BY COUNT(*) DESC LIMIT ?`,
       [limit],
     );
-    return rows.map(r => ({ id: r.id, name: r.name, logoUrl: r.logo }));
+    return rows.map((r: any) => ({ id: r.id, name: r.name, logoUrl: r.logo }));
   }
   const norm = normalize(query);
   // SQLite doesn't have pg_trgm — use LIKE + in-memory similarity ranking
-  const rows = await d.getAllAsync<{ id: number; name: string; norm: string; logo: string | null }>(
+  const rows = await d.getAllAsync(
     `SELECT id, name, norm, logo FROM clubs WHERE norm LIKE ? LIMIT 200`,
     [`%${norm}%`],
   );
   // Rank by similarity
   const ranked = rows
-    .map(r => ({ ...r, sim: similarity(norm, r.norm) }))
-    .sort((a, b) => b.sim - a.sim)
+    .map((r: any) => ({ ...r, sim: similarity(norm, r.norm) }))
+    .sort((a: any, b: any) => b.sim - a.sim)
     .slice(0, limit);
-  return ranked.map(r => ({ id: r.id, name: r.name, logoUrl: r.logo }));
+  return ranked.map((r: any) => ({ id: r.id, name: r.name, logoUrl: r.logo }));
 }
 
 export async function randomClub(difficulty: 'easy' | 'medium' | 'hard'): Promise<OfflineClub | null> {
   const d = getDB();
   const topN = difficulty === 'easy' ? 20 : difficulty === 'medium' ? 60 : 200;
-  const rows = await d.getAllAsync<{ id: number; name: string; logo: string | null }>(
+  const rows = await d.getAllAsync(
     `SELECT c.id, c.name, c.logo FROM clubs c
      JOIN spells s ON s.club_id = c.id
      GROUP BY c.id ORDER BY COUNT(*) DESC LIMIT ?`,
@@ -188,7 +190,7 @@ export async function verifyGuess(teamAId: number, teamBId: number, guess: strin
   if (!norm) return emptyResult();
 
   // Find candidate players by LIKE search
-  const candidates = await d.getAllAsync<{ id: number; name: string; norm: string; img: string | null }>(
+  const candidates = await d.getAllAsync(
     `SELECT id, name, norm, img FROM players WHERE norm LIKE ? LIMIT 50`,
     [`%${norm}%`],
   );
@@ -196,9 +198,9 @@ export async function verifyGuess(teamAId: number, teamBId: number, guess: strin
 
   // Score each candidate by similarity
   const scored = candidates
-    .map(c => ({ ...c, sim: similarity(norm, c.norm) }))
-    .filter(c => c.sim >= MATCH_THRESHOLD)
-    .sort((a, b) => b.sim - a.sim);
+    .map((c: any) => ({ ...c, sim: similarity(norm, c.norm) }))
+    .filter((c: any) => c.sim >= MATCH_THRESHOLD)
+    .sort((a: any, b: any) => b.sim - a.sim);
 
   if (scored.length === 0) return emptyResult();
 
@@ -223,8 +225,8 @@ export async function verifyGuess(teamAId: number, teamBId: number, guess: strin
   return emptyResult();
 }
 
-async function playedBothClubs(d: SQLite.SQLiteDatabase, playerId: number, clubA: number, clubB: number): Promise<boolean> {
-  const row = await d.getFirstAsync<{ cnt: number }>(
+async function playedBothClubs(d: any, playerId: number, clubA: number, clubB: number): Promise<boolean> {
+  const row = await d.getFirstAsync(
     `SELECT COUNT(DISTINCT club_id) as cnt FROM spells
      WHERE player_id = ? AND club_id IN (?, ?)`,
     [playerId, clubA, clubB],
@@ -233,29 +235,29 @@ async function playedBothClubs(d: SQLite.SQLiteDatabase, playerId: number, clubA
 }
 
 async function buildResult(
-  d: SQLite.SQLiteDatabase, playerId: number, playerName: string, playerImg: string | null,
+  d: any, playerId: number, playerName: string, playerImg: string | null,
   teamAId: number, teamBId: number, autocorrected: boolean,
 ): Promise<VerifyResult> {
-  const spells = await d.getAllAsync<{ club_id: number; start_year: number | null; end_year: number | null }>(
+  const spells = await d.getAllAsync(
     'SELECT club_id, start_year, end_year FROM spells WHERE player_id = ?',
     [playerId],
   );
-  const clubIds = [...new Set(spells.map(s => s.club_id))];
+  const clubIds = [...new Set(spells.map((s: any) => s.club_id))];
   const clubs = clubIds.length > 0
-    ? await d.getAllAsync<{ id: number; name: string; logo: string | null }>(
+    ? await d.getAllAsync(
         `SELECT id, name, logo FROM clubs WHERE id IN (${clubIds.map(() => '?').join(',')})`,
         clubIds,
       )
     : [];
-  const clubMap = new Map(clubs.map(c => [c.id, c]));
+  const clubMap = new Map<number, any>(clubs.map((c: any) => [c.id, c]));
 
-  const spellsA = spells.filter(s => s.club_id === teamAId).map(s => ({
+  const spellsA = spells.filter((s: any) => s.club_id === teamAId).map((s: any) => ({
     clubId: teamAId, clubName: clubMap.get(teamAId)?.name ?? '', logoUrl: clubMap.get(teamAId)?.logo ?? null, startYear: s.start_year, endYear: s.end_year,
   }));
-  const spellsB = spells.filter(s => s.club_id === teamBId).map(s => ({
+  const spellsB = spells.filter((s: any) => s.club_id === teamBId).map((s: any) => ({
     clubId: teamBId, clubName: clubMap.get(teamBId)?.name ?? '', logoUrl: clubMap.get(teamBId)?.logo ?? null, startYear: s.start_year, endYear: s.end_year,
   }));
-  const allClubs = spells.map(s => ({
+  const allClubs = spells.map((s: any) => ({
     clubId: s.club_id,
     clubName: clubMap.get(s.club_id)?.name ?? '',
     logoUrl: clubMap.get(s.club_id)?.logo ?? null,
@@ -272,19 +274,19 @@ function emptyResult(): VerifyResult {
 
 export async function commonPlayers(teamAId: number, teamBId: number, limit = 5): Promise<{ name: string; imageUrl: string | null }[]> {
   const d = getDB();
-  const rows = await d.getAllAsync<{ name: string; img: string | null }>(
+  const rows = await d.getAllAsync(
     `SELECT DISTINCT p.name, p.img FROM players p
      JOIN spells s1 ON s1.player_id = p.id AND s1.club_id = ?
      JOIN spells s2 ON s2.player_id = p.id AND s2.club_id = ?
      LIMIT ?`,
     [teamAId, teamBId, limit],
   );
-  return rows.map(r => ({ name: r.name, imageUrl: r.img }));
+  return rows.map((r: any) => ({ name: r.name, imageUrl: r.img }));
 }
 
 export async function hasCommonPlayers(teamAId: number, teamBId: number): Promise<boolean> {
   const d = getDB();
-  const row = await d.getFirstAsync<{ cnt: number }>(
+  const row = await d.getFirstAsync(
     `SELECT COUNT(*) as cnt FROM (
        SELECT DISTINCT s1.player_id FROM spells s1
        JOIN spells s2 ON s2.player_id = s1.player_id AND s2.club_id = ?

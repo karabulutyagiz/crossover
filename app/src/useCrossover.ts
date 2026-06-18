@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { InteractionManager } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import NetInfo from '@react-native-community/netinfo';
+// NetInfo may not be available in Expo Go — graceful fallback
+let NetInfo: any;
+try { NetInfo = require('@react-native-community/netinfo').default; } catch { NetInfo = null; }
 import { SERVER_URL, HTTP_URL } from './config';
 import { t } from './i18n';
 import { OfflineRoom } from './offline/room';
@@ -610,7 +612,8 @@ export function useCrossover() {
       connectAndSend({ type: 'create_room', name, userId: state.profile?.userId, options }),
     createSolo: (name: string, options?: GameOptions) => {
       // Try online first; fall back to offline if no network
-      NetInfo.fetch().then((netState) => {
+      const checkNet = NetInfo ? NetInfo.fetch() : Promise.resolve({ isConnected: true });
+      checkNet.then((netState: any) => {
         if (netState.isConnected) {
           connectAndSend({ type: 'create_solo', name, userId: state.profile?.userId, options });
         } else {
