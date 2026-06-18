@@ -6,6 +6,7 @@
 // Keep these ids in sync with server/src/game/emotes.ts.
 import { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { theme } from './theme';
@@ -16,13 +17,14 @@ type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 export interface EmoteMeta {
   id: string;
-  kind: 'text' | 'animated' | 'face';
+  kind: 'text' | 'animated' | 'face' | 'lottie';
   phrase: string; // Turkish caption shown with the emote
   icon?: IoniconName; // text + generic animated emotes
   expr?: 'smile' | 'cry' | 'angry' | 'ok'; // face emotes: which expression to draw
   color: string;
   week?: number; // visual emotes: which weekly store drop it belongs to
   premium?: { name: string; price: number; desc: string };
+  anim?: number; // 'lottie' emotes: the bundled animated WebP (require result)
 }
 
 // Quick-chat TEXT messages — Clash-Royale style. Sent from the message icon, no emoji.
@@ -100,6 +102,18 @@ export const PREMIUM_EMOTES: EmoteMeta[] = [
   },
 ];
 
+// Animated emotes (rendered from the downloaded Lottie files into looping WebPs).
+// NOT sold in the store (no `premium`, never in emoteWeeks) — added to the emote
+// system and granted to specific accounts. Keep ids in sync with
+// server/src/game/emotes.ts (ANIM_EMOTES).
+export const ANIM_EMOTES: EmoteMeta[] = [
+  { id: 'footballer', kind: 'lottie', phrase: 'Topla oynar! ⚽', color: theme.primary, anim: require('../assets/emotes/footballer.webp') },
+  { id: 'worldcup',   kind: 'lottie', phrase: 'Dünya Kupası! 🏆', color: theme.gold,    anim: require('../assets/emotes/worldcup.webp') },
+  { id: 'kick',       kind: 'lottie', phrase: 'Şut! 🥅',          color: theme.blue,    anim: require('../assets/emotes/kick.webp') },
+  { id: 'squad',      kind: 'lottie', phrase: 'Takım! 🤝',        color: theme.accent,  anim: require('../assets/emotes/squad.webp') },
+  { id: 'pitch',      kind: 'lottie', phrase: 'Taktik! 📋',       color: theme.purple,  anim: require('../assets/emotes/pitch.webp') },
+];
+
 // Visual (premium) emotes grouped by their weekly drop, newest first.
 export function emoteWeeks(): { week: number; emotes: EmoteMeta[] }[] {
   const byWeek = new Map<number, EmoteMeta[]>();
@@ -113,7 +127,7 @@ export function emoteWeeks(): { week: number; emotes: EmoteMeta[] }[] {
 
 export const LATEST_WEEK = Math.max(...PREMIUM_EMOTES.map((e) => e.week ?? 1));
 
-const ALL = [...FREE_EMOTES, ...PREMIUM_EMOTES];
+const ALL = [...FREE_EMOTES, ...PREMIUM_EMOTES, ...ANIM_EMOTES];
 const BY_ID = new Map(ALL.map((e) => [e.id, e]));
 
 export function getEmote(id: string): EmoteMeta | undefined {
@@ -551,6 +565,11 @@ export function EmoteSticker({ id, size }: { id: string; size: number }) {
   const meta = getEmote(id);
   if (!meta) return null;
   if (meta.kind === 'face') return <FaceEmote size={size} expr={meta.expr ?? 'smile'} />;
+  if (meta.kind === 'lottie' && meta.anim != null) {
+    // Looping animated WebP, rendered at the standard emote size and `contain`-fit
+    // so non-square scenes never overflow the bubble.
+    return <ExpoImage source={meta.anim} style={{ width: size, height: size }} contentFit="contain" autoplay />;
+  }
   if (meta.kind === 'animated') {
     if (id === 'jersey10') return <JerseyLiftEmote size={size} />;
     if (id === 'goal') return <GoalEmote size={size} />;

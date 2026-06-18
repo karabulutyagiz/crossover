@@ -4,7 +4,8 @@ import { RoomManager } from '../rooms/manager.ts';
 import { BotPlayer } from '../rooms/bot.ts';
 import { listScopes, listNationalities } from '../game/verify.ts';
 import {
-  findOrCreateUser, findOrCreateUserByProvider, getUser, changeDisplayName,
+  findOrCreateUser, findOrCreateUserByProvider, createGuestUser, getUser, changeDisplayName,
+  grantDevEmotesIfNeeded,
   setUsername, buyEmote, setEquippedEmotes, getLeaderboard,
   listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
   removeFriend, searchUsers, getMatchHistory,
@@ -188,9 +189,10 @@ export function startServer(port: number): Server {
         void (async () => {
           // Reuse the saved account if the client sent its userId (keeps trophies
           // across app launches); otherwise look up by Game Center id or create.
-          const profile =
+          const loaded =
             (msg.userId ? await getUser(msg.userId) : null) ??
             (await findOrCreateUser(msg.gameCenterId ?? null, msg.name));
+          const profile = await grantDevEmotesIfNeeded(loaded);
           userProfile = profile;
           addOnline(profile.id, ws);
           transport.send({
@@ -214,18 +216,37 @@ export function startServer(port: number): Server {
                   : await verifyGoogleToken(msg.token);
             const name =
               msg.name?.trim() || verified.name || verified.email?.split('@')[0] || 'Oyuncu';
-            const profile = await findOrCreateUserByProvider(
+            const profile = await grantDevEmotesIfNeeded(await findOrCreateUserByProvider(
               msg.provider,
               verified.sub,
               verified.email ?? null,
               name,
-            );
+            ));
             userProfile = profile;
             addOnline(profile.id, ws);
             transport.send({ type: 'profile', profile: toProfileView(profile) });
           } catch (err) {
             console.error(`[auth:${msg.provider}] verify failed:`, err instanceof Error ? err.message : err);
             transport.send({ type: 'error', message: 'Giriş doğrulanamadı' });
+          }
+        })();
+        return;
+      }
+
+      // Guest login: create a throwaway account with an auto-assigned "M"+9-digit
+      // username (no provider, no username picker). The client persists the
+      // returned userId and re-registers with it on later launches, so the same
+      // guest account — and its progress — is restored.
+      if (msg.type === 'guest') {
+        void (async () => {
+          try {
+            const profile = await createGuestUser();
+            userProfile = profile;
+            addOnline(profile.id, ws);
+            transport.send({ type: 'profile', profile: toProfileView(profile) });
+          } catch (err) {
+            console.error('[guest] create failed:', err instanceof Error ? err.message : err);
+            transport.send({ type: 'error', message: 'Misafir girişi başarısız' });
           }
         })();
         return;

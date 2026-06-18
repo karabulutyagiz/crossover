@@ -42,25 +42,27 @@ export interface UsernameCheck {
   error?: string;
 }
 
-/** Censor profanity in a message body: replace banned substrings with asterisks. */
+/**
+ * Censor profanity in a message body. Works per WORD: if a word's normalized
+ * form contains any banned term (or equals a short exact one), the ENTIRE word
+ * is masked with asterisks. This means inflections/affixes are fully censored —
+ * "siktirgit", "amklar", "fucking" all become "******…" — instead of leaving the
+ * non-offensive remainder visible. Processing per word also avoids the old
+ * normalized-index-to-original mapping bug (spaces/punctuation shifted offsets).
+ */
 export function censorMessage(text: string): string {
-  const norm = normalizeForFilter(text);
-  let result = text;
-  for (const w of BANNED_SUBSTR) {
-    let idx = norm.indexOf(w);
-    while (idx !== -1) {
-      // Map normalized index back to original text — replace same char range with '*'
-      const stars = '*'.repeat(w.length);
-      result = result.slice(0, idx) + stars + result.slice(idx + w.length);
-      idx = norm.indexOf(w, idx + w.length);
-    }
-  }
-  // Short exact words: replace only if the whole word matches (word-boundary)
-  for (const w of SHORT_EXACT) {
-    const re = new RegExp(`\\b${w}\\b`, 'gi');
-    result = result.replace(re, '*'.repeat(w.length));
-  }
-  return result;
+  return text.replace(/\S+/g, (word) => {
+    const norm = normalizeForFilter(word);
+    if (!norm) return word;
+    // Short roots (≤4) match only at the word START so suffix inflections are
+    // caught ("amklar", "fucking") without false-positiving on innocent words
+    // that merely contain them mid-string ("akşamki", "küçücük", "grape").
+    // Longer roots (≥5) are distinctive enough for a plain contains check.
+    const offensive =
+      SHORT_EXACT.has(norm) ||
+      BANNED_SUBSTR.some((w) => (w.length <= 4 ? norm.startsWith(w) : norm.includes(w)));
+    return offensive ? '*'.repeat(word.length) : word;
+  });
 }
 
 export function validateUsername(raw: string): UsernameCheck {

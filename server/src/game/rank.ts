@@ -1,5 +1,5 @@
 import { pool } from '../db/pool.ts';
-import { emotePrice, isFreeEmote, isVisualEmote, MAX_EQUIPPED } from './emotes.ts';
+import { emotePrice, isFreeEmote, isEquippableEmote, MAX_EQUIPPED, ALL_COLLECTIBLE_EMOTES } from './emotes.ts';
 import { validateUsername } from './username.ts';
 
 // ---- Trophy arenas (Clash Royale style) ----
@@ -102,6 +102,53 @@ export async function findOrCreateUserByProvider(
     [displayName.trim() || 'Oyuncu', sub, email],
   );
   return toProfile(rows[0]!);
+}
+
+// Guest account: no provider/credentials. Auto-assigns a unique username of the
+// form "M" + a 9-digit number (e.g. M345678901) and marks it set, so guests skip
+// the username picker. Persistence works exactly like any account — the client
+// stores the returned userId and re-registers with it, so progress is kept as
+// long as the device keeps its saved profile.
+export async function createGuestUser(): Promise<UserProfile> {
+  for (let attempt = 0; attempt < 12; attempt++) {
+    // First digit 1-9 so it is a genuine 9-digit number (no leading zero).
+    let digits = String(1 + Math.floor(Math.random() * 9));
+    for (let i = 0; i < 8; i++) digits += Math.floor(Math.random() * 10);
+    const username = `M${digits}`;
+    const taken = await pool.query(
+      'SELECT 1 FROM users WHERE lower(display_name) = lower($1) LIMIT 1',
+      [username],
+    );
+    if (taken.rows.length) continue;
+    try {
+      const { rows } = await pool.query<DbUser>(
+        `INSERT INTO users (display_name, username_set) VALUES ($1, true) RETURNING *`,
+        [username],
+      );
+      return toProfile(rows[0]!);
+    } catch (e) {
+      // Lost a race to another guest on the same random number (the partial
+      // unique index on lower(display_name) WHERE username_set fires) — re-roll.
+      if ((e as { code?: string })?.code === '23505') continue;
+      throw e;
+    }
+  }
+  throw new Error('guest username generation exhausted');
+}
+
+// Owner/dev accounts that always have the full emote collection (incl. the
+// not-for-sale animated emotes). Applied on every register/auth/guest load, so a
+// freshly-created `bloodsucker` is topped up automatically too.
+const DEV_ACCOUNTS = new Set(['yagiz', 'bloodsucker']);
+export async function grantDevEmotesIfNeeded(profile: UserProfile): Promise<UserProfile> {
+  if (!DEV_ACCOUNTS.has(profile.displayName.trim().toLowerCase())) return profile;
+  const owned = new Set(profile.ownedEmotes);
+  if (ALL_COLLECTIBLE_EMOTES.every((id) => owned.has(id))) return profile; // already complete
+  const { rows } = await pool.query<DbUser>(
+    `UPDATE users SET owned_emotes = $2 WHERE id = $1 RETURNING *`,
+    [profile.id, [...ALL_COLLECTIBLE_EMOTES]],
+  );
+  return rows[0] ? toProfile(rows[0]) : profile;
 }
 
 // One-time username pick after sign-in. Validates format + profanity, enforces
@@ -214,7 +261,7 @@ export async function setEquippedEmotes(
   ids: string[],
 ): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
   if (!userId) return { ok: false, error: 'Önce giriş yap' };
-  const clean = [...new Set(ids)].filter(isVisualEmote).slice(0, MAX_EQUIPPED);
+  const clean = [...new Set(ids)].filter(isEquippableEmote).slice(0, MAX_EQUIPPED);
   const { rows } = await pool.query<DbUser>(
     `UPDATE users SET equipped_emotes = $2 WHERE id = $1 RETURNING *`,
     [userId, clean],

@@ -572,6 +572,10 @@ export function useCrossover() {
         connectAndSend({ type: 'register', name, gameCenterId, userId });
       }
     },
+    // Guest login: the server creates a fresh account with an auto "M"+9-digit
+    // username and returns its profile, which is persisted like any other — so the
+    // same guest account (and its progress) comes back on the next launch.
+    guestLogin: () => connectAndSend({ type: 'guest' }),
     // Sign in with Apple / Google / Facebook: send the provider's identity token
     // to the server, which verifies it and returns the account profile.
     authWith: (provider: 'apple' | 'google' | 'facebook', token: string, name?: string) => {

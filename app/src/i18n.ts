@@ -26,6 +26,7 @@ const tr = {
   'login.facebook': 'Facebook ile devam et',
   'login.hint': 'Oynamak için giriş yapmalısın. Devam ederek bir hesap oluşturulur.',
   'login.failed': 'Giriş başarısız. Tekrar dene.',
+  'login.guest': 'Misafir Girişi',
 
   // tabs
   'tab.store': 'Mağaza',
@@ -278,6 +279,7 @@ const en: typeof tr = {
   'login.facebook': 'Continue with Facebook',
   'login.hint': 'You must sign in to play. By continuing, an account is created.',
   'login.failed': 'Sign-in failed. Please try again.',
+  'login.guest': 'Guest Login',
 
   'tab.store': 'Store',
   'tab.collection': 'Collection',

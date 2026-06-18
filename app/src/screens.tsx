@@ -34,6 +34,7 @@ import {
   EmoteCallout,
   EmoteSticker,
   PREMIUM_EMOTES,
+  ANIM_EMOTES,
   FREE_EMOTES,
   TEXT_EMOTES,
   FACE_EMOTES,
@@ -67,6 +68,7 @@ try {
 
 type Actions = {
   register: (name: string, gameCenterId?: string) => void;
+  guestLogin: () => void;
   authWith: (provider: 'apple' | 'google' | 'facebook', token: string, name?: string) => void;
   setUsername: (username: string) => void;
   changeName: (newName: string) => void;
@@ -1080,6 +1082,14 @@ export function LoginScreen({ state, actions }: Props) {
         {state.error ? <Text style={styles.error}>{state.error}</Text> : null}
         <Text style={[styles.muted, { marginTop: 12 }]}>{t('login.hint')}</Text>
       </View>
+
+      {/* Guest login — pinned at the very bottom, subtle gray. Creates an
+          auto-named ("M"+9 digits) account that persists on this device. */}
+      <Pressable onPress={actions.guestLogin} hitSlop={10} style={{ alignItems: 'center', paddingVertical: 18 }}>
+        <Text style={{ color: theme.muted, fontSize: 14, fontWeight: '600', textDecorationLine: 'underline' }}>
+          {t('login.guest')}
+        </Text>
+      </Pressable>
     </Screen>
   );
 }
@@ -2656,6 +2666,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
 
   // ── Apple In-App Purchase (StoreKit): consumable diamond packs + auto-renewable Social Pack ──
   const [buying, setBuying] = useState<string | null>(null); // productId mid-purchase
+  const [activeSubId, setActiveSubId] = useState<string | null>(null); // active Social Pack plan id (StoreKit entitlement)
   const onPurchaseSuccess = useCallback(async (purchase: Purchase) => {
     const isSub = SOCIAL_PACK_IDS.includes(purchase.productId);
     try {
@@ -2686,6 +2697,10 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
     // purchase whose grant failed before) — verify each by its JWS so the server grants + we
     // can finish them. granted-0 → no toast (see the reducer).
     getAvailablePurchases().then(async (ps: Purchase[]) => {
+      // Which Social Pack plan (if any) the user currently owns — used to show
+      // "extend / upgrade / switch" instead of a first-time purchase.
+      const sub = (ps ?? []).find((p) => SOCIAL_PACK_IDS.includes(p.productId));
+      setActiveSubId(sub ? sub.productId : null);
       for (const p of ps ?? []) {
         const jws = p.purchaseToken ?? (await getTransactionJwsIOS(p.productId));
         if (!jws) continue;
@@ -2719,6 +2734,9 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
     }
   }, [scrollToSection]);
 
+  // Does the user have a Social Pack right now (server-authoritative expiry)?
+  const hasActivePack = !!(profile?.socialPackUntil && new Date(profile.socialPackUntil) > new Date());
+
   return (
     <Screen>
       <ScrollView ref={storeScrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
@@ -2729,7 +2747,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
         <Text style={styles.sectionLabel}>SOSYAL PAKET</Text>
         <View style={[styles.storePackCard, { borderColor: theme.accent, borderWidth: 2 }]}>
           <View style={styles.storePackBadge}>
-            <Text style={styles.storePackBadgeText}>YENİ</Text>
+            <Text style={styles.storePackBadgeText}>{hasActivePack ? 'AKTİF' : 'YENİ'}</Text>
           </View>
           <View style={{ gap: 8 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -2739,7 +2757,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
             <Text style={{ color: theme.muted, fontSize: 12 }}>
               Arkadaşlarınla Ülke-Takım ve Harf-Takım modlarında dostluk maçı oyna.
             </Text>
-            {profile?.socialPackUntil && new Date(profile.socialPackUntil) > new Date() ? (
+            {hasActivePack && profile?.socialPackUntil ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.primary + '22', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10, borderWidth: 1, borderColor: theme.primary, marginTop: 2 }}>
                 <Ionicons name="checkmark-circle" size={16} color={theme.primary} />
                 <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 12 }}>
@@ -2750,16 +2768,23 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
               {SOCIAL_PACK.map((sp, i) => {
                 const busy = buying === sp.productId;
+                // When a pack is active AND we know the current plan (from StoreKit),
+                // relabel the buttons: same plan → "Süreyi Uzat", other plan →
+                // upgrade/switch. Otherwise keep the first-purchase plan name.
+                const isCurrent = !!activeSubId && activeSubId === sp.productId;
+                const actionLabel = (hasActivePack && activeSubId)
+                  ? (isCurrent ? 'Süreyi Uzat' : (sp.id === 'monthly' ? 'Aylığa Yükselt' : 'Haftalığa Geç'))
+                  : sp.label;
                 return (
                   <Pressable
                     key={sp.id}
                     disabled={!!buying}
                     onPress={() => buy(sp.productId)}
-                    style={[styles.storePackPriceBox, { flex: 1, alignItems: 'center', minHeight: 46, justifyContent: 'center' }, i === 1 && { backgroundColor: theme.accent }, !!buying && !busy && { opacity: 0.5 }]}
+                    style={[styles.storePackPriceBox, { flex: 1, alignItems: 'center', minHeight: 46, justifyContent: 'center' }, i === 1 && { backgroundColor: theme.accent }, isCurrent && { borderWidth: 1.5, borderColor: theme.primary }, !!buying && !busy && { opacity: 0.5 }]}
                   >
                     {busy ? <ActivityIndicator color="#06131F" /> : (
                       <>
-                        <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>{sp.label}</Text>
+                        <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>{actionLabel}</Text>
                         <Text style={styles.storePackPrice}>{priceFor(sp.productId, sp.price)}</Text>
                       </>
                     )}
@@ -2884,10 +2909,10 @@ export function CollectionScreen({ state, actions }: Props) {
     if (equipped.includes(id)) actions.equipEmotes(equipped.filter((x) => x !== id));
     else if (equipped.length < 3) actions.equipEmotes([...equipped, id]);
   };
-  // Only VISUAL (premium) emotes can be equipped into the 3 loadout slots — the free
-  // quick-chat + character faces are always available in matches, so they're not shown
-  // here (tapping them did nothing because the server rejects equipping free emotes).
-  const all = PREMIUM_EMOTES;
+  // Equippable into the 3 loadout slots: VISUAL (premium store) emotes + the
+  // animated (Lottie→WebP) emotes. Free quick-chat + character faces are always
+  // available in matches, so they're not shown here.
+  const all = [...PREMIUM_EMOTES, ...ANIM_EMOTES];
   const COL_GAP = 8;
   const COL_W = Math.floor((SCREEN_W - 44 - COL_GAP * 3) / 4); // 4 columns inside Screen's 22px padding
 
@@ -3547,13 +3572,16 @@ function ChatScreen({ state, actions }: Props) {
   const scrollRef = useRef<ScrollView>(null);
   const chatWith = state.chatWith;
 
-  // Swipe-back: drag right to close
+  // Swipe-back: a left-to-right drag ANYWHERE on the screen closes the chat
+  // (acts as a back button). We claim the gesture only when it's clearly
+  // horizontal (dx dominates dy) so vertical message scrolling still works.
   const swipeX = useRef(new Animated.Value(0)).current;
   const panResponder = useRef(PanResponder.create({
-    onMoveShouldSetPanResponder: (_, g) => g.dx > 15 && Math.abs(g.dy) < 30 && g.moveX < 40,
+    onMoveShouldSetPanResponder: (_, g) => g.dx > 18 && g.dx > Math.abs(g.dy) * 1.5,
     onPanResponderMove: (_, g) => { if (g.dx > 0) swipeX.setValue(g.dx); },
     onPanResponderRelease: (_, g) => {
-      if (g.dx > 100) {
+      // Far enough OR a quick rightward flick → go back.
+      if (g.dx > 90 || g.vx > 0.5) {
         Animated.timing(swipeX, { toValue: Dimensions.get('window').width, duration: 200, useNativeDriver: true }).start(() => {
           swipeX.setValue(0);
           actions.closeChat();
@@ -3727,11 +3755,11 @@ function ChatScreen({ state, actions }: Props) {
 }
 
 // ---- Profile ----
-function StatCard({ icon, color, label, value }: { icon: IoniconName; color: string; label: string; value: number | string }) {
+function StatCard({ icon, color, label, value, gem }: { icon?: IoniconName; color: string; label: string; value: number | string; gem?: boolean }) {
   return (
     <GamePanel compact accentStripe={color} style={{ flex: 1 }} bodyStyle={{ alignItems: 'center', gap: 4, paddingVertical: 16 }}>
       <View style={{ shadowColor: color, shadowOpacity: 0.5, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } }}>
-        <Ionicons name={icon} size={22} color={color} />
+        {gem ? <GemIcon size={24} /> : icon ? <Ionicons name={icon} size={22} color={color} /> : null}
       </View>
       <Text style={{ color: theme.text, fontSize: 24, fontFamily: 'Poppins-Black', ...engrave('sm') }}>{value}</Text>
       <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '600' }}>{label}</Text>
@@ -3762,7 +3790,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory }: Props) {
 
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
           <StatCard icon="trophy" color={theme.gold} label="Kupa" value={p.trophies} />
-          <StatCard icon="diamond" color={GEM_COLOR} label="Elmas" value={p.diamonds} />
+          <StatCard gem color={GEM_COLOR} label="Elmas" value={p.diamonds} />
         </View>
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
           <StatCard icon="checkmark-circle" color={theme.primary} label="Galibiyet" value={p.wins} />

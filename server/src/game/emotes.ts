@@ -31,13 +31,19 @@ const VISUAL_EMOTES: readonly VisualDef[] = [
 
 const VISUAL_IDS = new Set(VISUAL_EMOTES.map((e) => e.id));
 
+// Animated (Lottie→WebP) emotes. NOT sold in the store (no price, never in the
+// weekly drops) but they ARE equippable like visual emotes. Granted to specific
+// accounts (see the owned_emotes grant). Keep ids in sync with app/src/emotes.tsx.
+export const ANIM_EMOTES: readonly string[] = ['footballer', 'worldcup', 'kick', 'squad', 'pitch'];
+const ANIM_IDS = new Set(ANIM_EMOTES);
+
 const PRICE = new Map<string, number>([
   ...FREE_EMOTES.map((id) => [id, 0] as const),
   ...VISUAL_EMOTES.map((e) => [e.id, e.price] as const),
 ]);
 
 export function isEmote(id: string): boolean {
-  return PRICE.has(id);
+  return PRICE.has(id) || ANIM_IDS.has(id);
 }
 
 export function isFreeEmote(id: string): boolean {
@@ -47,6 +53,18 @@ export function isFreeEmote(id: string): boolean {
 export function isVisualEmote(id: string): boolean {
   return VISUAL_IDS.has(id);
 }
+
+// Equippable into the loadout = visual (store) emotes + animated emotes.
+export function isEquippableEmote(id: string): boolean {
+  return VISUAL_IDS.has(id) || ANIM_IDS.has(id);
+}
+
+// All non-free, collectible emote ids (store visuals + animated) — used to grant
+// "every emote" to specific accounts.
+export const ALL_COLLECTIBLE_EMOTES: readonly string[] = [
+  ...VISUAL_EMOTES.map((e) => e.id),
+  ...ANIM_EMOTES,
+];
 
 // null = unknown emote id.
 export function emotePrice(id: string): number | null {

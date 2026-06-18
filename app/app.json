@@ -43,7 +43,8 @@
       "expo-apple-authentication",
       "expo-font",
       "expo-sqlite",
-      "react-native-iap"
+      "react-native-iap",
+      "expo-image"
     ],
     "owner": "ygzkrblt3s-team",
     "extra": {

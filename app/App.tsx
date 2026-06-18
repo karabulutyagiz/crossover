@@ -142,11 +142,13 @@ export default function App() {
     return () => clearTimeout(id);
   }, [comingSoon, csAnim]);
 
-  // When switching away from the home tab, reset sub-screens (arenas, leaderboard, matchHistory) to home
+  // When switching away from the home tab, reset any home-slot sub-screen
+  // (arenas, leaderboard, matchHistory, profile) back to the main home screen —
+  // so swiping to Collection/Friends and back never leaves Profile open.
   const resetHomePhase = useCallback(() => {
     const p = state.phase;
-    if (p === 'arenas' || p === 'leaderboard' || p === 'matchHistory') {
-      actions.closeArenas(); // all three close* actions do the same: _phase → home
+    if (p === 'arenas' || p === 'leaderboard' || p === 'matchHistory' || p === 'profile') {
+      actions.closeArenas(); // all close* actions do the same: _phase → home
     }
   }, [state.phase, actions]);
 
@@ -358,10 +360,12 @@ export default function App() {
               key={tab.key}
               style={s.tab}
               onPress={() => {
-                // Re-tapping the active Oyna tab opens Arenas (Clash Royale style).
                 if (idx === 2 && activeTab === 2) {
+                  // Re-tapping the active Oyna tab opens Arenas (Clash Royale style);
+                  // from any other home-slot sub-screen (Profile, Arenas) it returns
+                  // to the main home screen instead of staying put.
                   if (state.phase === 'home') { actions.openArenas(); return; }
-                  if (state.phase === 'arenas') { actions.closeArenas(); return; }
+                  resetHomePhase(); return;
                 }
                 goToTab(idx);
               }}
