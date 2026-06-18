@@ -593,9 +593,14 @@ export function EmoteCallout({ id, size = 88 }: { id: string; size?: number }) {
   const meta = getEmote(id);
   const caption = useMemo(() => meta?.phrase ?? '', [meta]);
   if (!meta) return null;
-  // Animated (Lottie) emotes are shown as JUST the animation — no card, no caption.
+  // Animated (Lottie) emotes: keep the frame but make it SQUARE (not the rounded
+  // pill), and show NO caption — just the looping animation inside.
   if (meta.kind === 'lottie') {
-    return <EmoteSticker id={id} size={Math.round(size * 1.3)} />;
+    return (
+      <View style={[styles.callout, { borderRadius: 16, paddingVertical: 8, paddingHorizontal: 8, borderWidth: 1.5, borderColor: meta.color }]}>
+        <EmoteSticker id={id} size={size} />
+      </View>
+    );
   }
   return (
     <View style={styles.callout}>

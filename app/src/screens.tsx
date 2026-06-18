@@ -897,8 +897,8 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
                   style={{ alignItems: 'center', width: 72 }}
                 >
                   <View style={{
-                    width: 70, height: 70, borderRadius: 35, backgroundColor: theme.bg,
-                    borderWidth: 2.5, borderColor: e.color, alignItems: 'center', justifyContent: 'center',
+                    width: 70, height: 70, borderRadius: e.kind === 'lottie' ? 14 : 35, backgroundColor: theme.bg,
+                    borderWidth: 2.5, borderColor: e.color, alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
                   }}>
                     <EmoteSticker id={e.id} size={56} />
                   </View>
@@ -1973,9 +1973,9 @@ function ThoughtBubble({ emoteId, emoteN, position }: { emoteId?: string; emoteN
       opacity: op, transform: [{ scale }], zIndex: 50,
       alignItems: 'flex-end',
     }}>
-      {/* Main bubble */}
+      {/* Main bubble — square frame for animated (lottie) emotes, rounded otherwise */}
       <View style={{
-        backgroundColor: theme.card, borderRadius: 18, borderWidth: 1.5, borderColor: theme.border,
+        backgroundColor: theme.card, borderRadius: getEmote(currentEmote)?.kind === 'lottie' ? 12 : 18, borderWidth: 1.5, borderColor: theme.border,
         paddingHorizontal: 8, paddingVertical: 6, minWidth: 60, alignItems: 'center',
         shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 8,
       }}>
