@@ -688,6 +688,7 @@ export function useCrossover() {
             playerName: name,
             playerTrophies: state.profile?.trophies ?? 0,
             playerArena: state.profile?.arena ?? { name: 'Mahalle Sahası', icon: '🏟️', minTrophies: 0 },
+            playerAvatar: state.profile?.avatar ?? null,
           });
           offlineRoomRef.current = room;
           room.start();

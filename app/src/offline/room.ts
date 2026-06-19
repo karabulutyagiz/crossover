@@ -35,6 +35,7 @@ interface OfflinePlayer {
   isHost: boolean;
   trophies: number;
   arena: { name: string; icon: string; minTrophies: number };
+  avatar?: string | null;
 }
 
 export class OfflineRoom {
@@ -65,6 +66,7 @@ export class OfflineRoom {
     playerName: string;
     playerTrophies: number;
     playerArena: { name: string; icon: string; minTrophies: number };
+    playerAvatar?: string | null;
   }) {
     this.dispatch = opts.dispatch;
     this.difficulty = opts.difficulty;
@@ -74,7 +76,7 @@ export class OfflineRoom {
     this.botId = 'bot';
     this.you = {
       id: this.youId, name: opts.playerName, score: 0, wrongCount: 0, isHost: true,
-      trophies: opts.playerTrophies, arena: opts.playerArena,
+      trophies: opts.playerTrophies, arena: opts.playerArena, avatar: opts.playerAvatar ?? null,
     };
     this.bot = {
       id: this.botId, name: 'Bot', score: 0, wrongCount: 0, isHost: false,
@@ -90,7 +92,7 @@ export class OfflineRoom {
   private playerViews(): PlayerView[] {
     return [this.you, this.bot].map(p => ({
       id: p.id, name: p.name, score: p.score, wrongCount: p.wrongCount,
-      isHost: p.isHost, connected: true, trophies: p.trophies, arena: p.arena,
+      isHost: p.isHost, connected: true, trophies: p.trophies, arena: p.arena, avatar: p.avatar ?? null,
     }));
   }
 
