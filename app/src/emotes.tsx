@@ -4,13 +4,14 @@
 // emotes are sold in the store and rendered as looping RN-`Animated` stickers —
 // no GIF/sprite assets and no extra native deps, so they run fine in Expo Go.
 // Keep these ids in sync with server/src/game/emotes.ts.
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { theme } from './theme';
 import { t } from './i18n';
+import type { MessageKey } from './i18n';
 import type { ProfileView } from './protocol';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -18,7 +19,8 @@ type IoniconName = ComponentProps<typeof Ionicons>['name'];
 export interface EmoteMeta {
   id: string;
   kind: 'text' | 'animated' | 'face' | 'lottie';
-  phrase: string; // Turkish caption shown with the emote
+  phrase?: string; // static caption (premium emotes); prefer phraseKey for i18n
+  phraseKey?: MessageKey; // i18n key — resolved at render time so it follows language changes
   icon?: IoniconName; // text + generic animated emotes
   expr?: 'smile' | 'cry' | 'angry' | 'ok'; // face emotes: which expression to draw
   color: string;
@@ -27,20 +29,29 @@ export interface EmoteMeta {
   anim?: number; // 'lottie' emotes: the bundled animated WebP (require result)
 }
 
+// Resolve an emote's caption at render time (so it follows live language changes).
+export function emotePhrase(e: EmoteMeta | undefined | null): string {
+  if (!e) return '';
+  if (e.phraseKey) return t(e.phraseKey);
+  return e.phrase ?? '';
+}
+
 // Quick-chat TEXT messages — Clash-Royale style. Sent from the message icon, no emoji.
+// Never collectible/equippable; always available in a match as a framed text line.
 export const TEXT_EMOTES: EmoteMeta[] = [
-  { id: 'gg', kind: 'text', phrase: t('emote.gg'), icon: 'chatbubble-ellipses', color: theme.primary },
-  { id: 'congrats', kind: 'text', phrase: t('emote.congrats'), icon: 'chatbubble-ellipses', color: theme.accent },
-  { id: 'luck', kind: 'text', phrase: t('emote.luck'), icon: 'chatbubble-ellipses', color: theme.blue },
-  { id: 'gotcha', kind: 'text', phrase: t('emote.thanks'), icon: 'chatbubble-ellipses', color: theme.purple },
+  { id: 'gg', kind: 'text', phraseKey: 'emote.gg', icon: 'chatbubble-ellipses', color: theme.primary },
+  { id: 'congrats', kind: 'text', phraseKey: 'emote.congrats', icon: 'chatbubble-ellipses', color: theme.accent },
+  { id: 'luck', kind: 'text', phraseKey: 'emote.luck', icon: 'chatbubble-ellipses', color: theme.blue },
+  { id: 'gotcha', kind: 'text', phraseKey: 'emote.thanks', icon: 'chatbubble-ellipses', color: theme.purple },
 ];
 
 // The 4 character emotes (Clash-Royale style): smiling / crying / angry / OK-sign.
+// Free for everyone, but COLLECTIBLE/EQUIPPABLE into the 6 loadout slots.
 export const FACE_EMOTES: EmoteMeta[] = [
-  { id: 'smile', kind: 'face', expr: 'smile', phrase: t('emote.face.smile'), color: theme.accent },
-  { id: 'cry', kind: 'face', expr: 'cry', phrase: t('emote.face.cry'), color: theme.blue },
-  { id: 'angry', kind: 'face', expr: 'angry', phrase: t('emote.face.angry'), color: theme.danger },
-  { id: 'ok', kind: 'face', expr: 'ok', phrase: t('emote.face.ok'), color: theme.primary },
+  { id: 'smile', kind: 'face', expr: 'smile', phraseKey: 'emote.face.smile', color: theme.accent },
+  { id: 'cry', kind: 'face', expr: 'cry', phraseKey: 'emote.face.cry', color: theme.blue },
+  { id: 'angry', kind: 'face', expr: 'angry', phraseKey: 'emote.face.angry', color: theme.danger },
+  { id: 'ok', kind: 'face', expr: 'ok', phraseKey: 'emote.face.ok', color: theme.primary },
 ];
 
 // All free (always-available) emotes = quick-chat text + the 4 character faces.
@@ -92,13 +103,15 @@ export function ownsEmote(profile: ProfileView | null, id: string): boolean {
   return Boolean(profile?.ownedEmotes?.includes(id));
 }
 
-// Emotes the player can currently pick from in a match: free text quick-chats
-// (always) + the equipped visual emotes (the max-3 loadout).
+// Emotes the player can currently pick from in a match: the free text quick-chats
+// (always) + the equipped sticker loadout (up to MAX_EQUIPPED faces/anim/premium).
+// If the player hasn't set up a loadout yet, default the stickers to the 4 faces.
 export function loadoutEmotes(profile: ProfileView | null): EmoteMeta[] {
   const equipped = (profile?.equippedEmotes ?? [])
     .map((id) => getEmote(id))
     .filter((e): e is EmoteMeta => Boolean(e));
-  return [...FREE_EMOTES, ...equipped];
+  const stickers = equipped.length ? equipped : FACE_EMOTES;
+  return [...TEXT_EMOTES, ...stickers];
 }
 
 // Owned emotes (for the store / inventory ownership display).
@@ -202,8 +215,13 @@ export function EmoteSticker({ id, size }: { id: string; size: number }) {
 // match when a player reacts.
 export function EmoteCallout({ id, size = 88 }: { id: string; size?: number }) {
   const meta = getEmote(id);
-  const caption = useMemo(() => meta?.phrase ?? '', [meta]);
+  const caption = emotePhrase(meta);
   if (!meta) return null;
+  // Quick-chat TEXT phrases ("Good game!"): NOT a round bubble — just the phrase
+  // inside a frame sized to the text, Clash-Royale style.
+  if (meta.kind === 'text') {
+    return <TextEmoteFrame text={caption} color={meta.color} fontSize={17} />;
+  }
   // Animated (Lottie) emotes: keep the frame but make it SQUARE (not the rounded
   // pill), and show NO caption — just the looping animation inside.
   if (meta.kind === 'lottie') {
@@ -217,6 +235,27 @@ export function EmoteCallout({ id, size = 88 }: { id: string; size?: number }) {
     <View style={styles.callout}>
       <EmoteSticker id={id} size={size} />
       {caption ? <Text style={[styles.calloutText, { color: meta.color }]}>{caption}</Text> : null}
+    </View>
+  );
+}
+
+// A framed plain-text emote (Clash-Royale quick-chat style): the phrase sits in a
+// card whose width hugs the text, with a colored frame + bottom lip.
+export function TextEmoteFrame({ text, color, fontSize = 16 }: { text: string; color: string; fontSize?: number }) {
+  return (
+    <View style={{
+      alignSelf: 'flex-start',
+      backgroundColor: theme.card,
+      borderRadius: 16,
+      borderWidth: 2.5,
+      borderColor: color,
+      borderBottomWidth: 4,
+      borderBottomColor: theme.cardLip,
+      paddingHorizontal: 16,
+      paddingVertical: 9,
+      shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 8,
+    }}>
+      <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize }}>{text}</Text>
     </View>
   );
 }

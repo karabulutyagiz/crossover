@@ -285,6 +285,51 @@ const tr = {
   'error.connect': 'Sunucuya bağlanılamadı',
   'error.disconnected': 'Bağlantı koptu',
   'error.opponentLeft': 'Rakip ayrıldı',
+
+  // tabs (extra) + common
+  'tab.tournaments': 'Turnuvalar',
+  'common.comingSoon': 'Çok Yakında',
+  'common.online': 'Çevrimiçi',
+  'common.offline': 'Çevrimdışı',
+  'profile.title': 'Profil',
+  'chat.placeholder': 'Mesaj yaz...',
+  'chat.typing': 'yazıyor...',
+
+  // arena names
+  'arena.mahalle': 'Mahalle Sahası',
+  'arena.amator': 'Amatör Lig',
+  'arena.profesyonel': 'Profesyonel Lig',
+  'arena.sampiyonlar': 'Şampiyonlar Ligi',
+  'arena.efsaneler': 'Efsaneler Arası',
+  'arena.dunya': 'Dünya Klasmanı',
+  'arena.goat': 'GOAT',
+  // arena descriptions
+  'arena.mahalle.desc': 'Herkesin başladığı yer. Kolay tırmanış.',
+  'arena.amator.desc': 'İlk adımları attın. Yükselmeye devam!',
+  'arena.profesyonel.desc': 'Profesyonel seviye. Artık gerçek bir rakipsin.',
+  'arena.sampiyonlar.desc': 'Avrupa\'nın en prestijli arenası. Dengeli mücadele.',
+  'arena.efsaneler.desc': 'Efsaneler burada. Kayıplar acıtıyor.',
+  'arena.dunya.desc': 'Dünya sahnesinde mücadele. Her hata çok ağır.',
+  'arena.goat.desc': 'Efsanelerin zirvesi. Sadece en iyiler ayakta kalır.',
+
+  // stats labels
+  'stats.wins': 'Galibiyet',
+  'stats.losses': 'Mağlubiyet',
+  'stats.winRate': 'Kazanma %',
+  'stats.winRateShort': 'Kazanma',
+  'stats.trophies': 'Kupa',
+  'stats.diamonds': 'Elmas',
+
+  // collection (loadout)
+  'collection.loadout': 'KUŞANILANLAR',
+  'collection.loadoutHint': '{n}/{max} slot — istediğin ifadeleri ekle',
+  'collection.yourEmotes': 'İFADELERİN',
+  'collection.equip': 'Kuşan',
+  'collection.equipped': 'Kuşanıldı',
+
+  // store — purchase popup
+  'store.purchaseSuccess': 'Satın Alma Başarılı!',
+  'store.gotIt': 'Harika!',
 };
 
 // ---- English (fallback) ----
@@ -515,6 +560,45 @@ const en: typeof tr = {
   'error.connect': 'Could not connect to the server',
   'error.disconnected': 'Connection lost',
   'error.opponentLeft': 'Opponent left',
+
+  'tab.tournaments': 'Tournaments',
+  'common.comingSoon': 'Coming Soon',
+  'common.online': 'Online',
+  'common.offline': 'Offline',
+  'profile.title': 'Profile',
+  'chat.placeholder': 'Type a message...',
+  'chat.typing': 'typing...',
+
+  'arena.mahalle': 'Local Pitch',
+  'arena.amator': 'Amateur League',
+  'arena.profesyonel': 'Pro League',
+  'arena.sampiyonlar': 'Champions League',
+  'arena.efsaneler': 'Among Legends',
+  'arena.dunya': 'World Class',
+  'arena.goat': 'GOAT',
+  'arena.mahalle.desc': 'Where everyone starts. An easy climb.',
+  'arena.amator.desc': 'You\'ve taken your first steps. Keep climbing!',
+  'arena.profesyonel.desc': 'Pro level. You\'re a real contender now.',
+  'arena.sampiyonlar.desc': 'Europe\'s most prestigious arena. A balanced battle.',
+  'arena.efsaneler.desc': 'Legends gather here. Losses sting.',
+  'arena.dunya.desc': 'Compete on the world stage. Every mistake is costly.',
+  'arena.goat.desc': 'The summit of legends. Only the best survive.',
+
+  'stats.wins': 'Wins',
+  'stats.losses': 'Losses',
+  'stats.winRate': 'Win %',
+  'stats.winRateShort': 'Win Rate',
+  'stats.trophies': 'Trophies',
+  'stats.diamonds': 'Diamonds',
+
+  'collection.loadout': 'LOADOUT',
+  'collection.loadoutHint': '{n}/{max} slots — add any emotes you like',
+  'collection.yourEmotes': 'YOUR EMOTES',
+  'collection.equip': 'Equip',
+  'collection.equipped': 'Equipped',
+
+  'store.purchaseSuccess': 'Purchase Successful!',
+  'store.gotIt': 'Awesome!',
 };
 
 export type MessageKey = keyof typeof tr;

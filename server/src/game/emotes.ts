@@ -8,15 +8,19 @@
 //     EQUIPS up to 3 into their loadout (users.equipped_emotes) for matches.
 // Keep these ids in sync with app/src/emotes.tsx.
 
-export const FREE_EMOTES: readonly string[] = [
-  // quick-chat text
-  'congrats', 'luck', 'gg', 'bring_it', 'gotcha',
-  // the 4 character faces (Clash-Royale style) — free for everyone
-  'smile', 'cry', 'angry', 'ok',
-];
+// Quick-chat TEXT phrases — free, always available in a match, NOT collectible
+// and NOT equippable (they show as a framed text line, Clash-Royale style).
+export const TEXT_EMOTES: readonly string[] = ['congrats', 'luck', 'gg', 'bring_it', 'gotcha'];
 
-// Max visual emotes a player can equip at once (loadout slots).
-export const MAX_EQUIPPED = 3;
+// The 4 character faces — free for everyone, but now COLLECTIBLE/EQUIPPABLE into
+// the loadout slots like any other sticker emote.
+export const FACE_EMOTES: readonly string[] = ['smile', 'cry', 'angry', 'ok'];
+const FACE_IDS = new Set(FACE_EMOTES);
+
+export const FREE_EMOTES: readonly string[] = [...TEXT_EMOTES, ...FACE_EMOTES];
+
+// Max sticker emotes a player can equip at once (loadout slots).
+export const MAX_EQUIPPED = 6;
 
 // Visual emotes, grouped by weekly drop (`week`). Add 3 new each week.
 interface VisualDef { id: string; price: number; week: number }
@@ -49,9 +53,10 @@ export function isVisualEmote(id: string): boolean {
   return VISUAL_IDS.has(id);
 }
 
-// Equippable into the loadout = visual (store) emotes + animated emotes.
+// Equippable into the loadout = character faces + visual (store) emotes + animated
+// emotes. (Quick-chat TEXT phrases are never equipped.)
 export function isEquippableEmote(id: string): boolean {
-  return VISUAL_IDS.has(id) || ANIM_IDS.has(id);
+  return FACE_IDS.has(id) || VISUAL_IDS.has(id) || ANIM_IDS.has(id);
 }
 
 // All non-free, collectible emote ids (store visuals + animated) — used to grant

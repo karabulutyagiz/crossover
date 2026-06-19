@@ -16,6 +16,7 @@ import { useFonts } from 'expo-font';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCrossover } from './src/useCrossover';
 import { t, setLanguage } from './src/i18n';
+import { setGemTarget } from './src/gemTarget';
 import {
   SplashScreen,
   LoadingScreen,
@@ -104,6 +105,12 @@ export default function App() {
   const { state, actions } = useCrossover();
   const props = { state, actions };
   const scrollRef = useRef<ScrollView>(null);
+  const diamondPillRef = useRef<View>(null); // measured so purchase animations fly gems onto it
+  const measureDiamondPill = useCallback(() => {
+    diamondPillRef.current?.measureInWindow((x, y, w, h) => {
+      if (w > 0 && h > 0) setGemTarget(x + w / 2, y + h / 2);
+    });
+  }, []);
   const programmaticScroll = useRef(false); // true right after a tab tap — ignore scroll events
   const tabGuardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeTab, setActiveTab] = useState(2); // start on Home (store=0, collection=1, home=2)
@@ -311,7 +318,7 @@ export default function App() {
             <Ionicons name="trophy" size={18} color={theme.accent} />
             <Text style={s.trophyText}>{state.profile.trophies}</Text>
           </View>
-          <Pressable style={s.diamondPill} onPress={() => { setStoreSection('diamonds'); goToTab(0); }}>
+          <Pressable ref={diamondPillRef} onLayout={measureDiamondPill} style={s.diamondPill} onPress={() => { setStoreSection('diamonds'); goToTab(0); }}>
             <View style={s.glassSheen} pointerEvents="none" />
             <GemIcon size={20} />
             <Text style={s.diamondText}>{state.profile.diamonds}</Text>
@@ -387,7 +394,7 @@ export default function App() {
         <Pressable style={s.tab} onPress={() => setComingSoon(true)}>
           <View style={s.tabInner}>
             <Ionicons name="trophy-outline" size={26} color={theme.border} />
-            <Text style={[s.tabLabel, { color: theme.border }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>Turnuvalar</Text>
+            <Text style={[s.tabLabel, { color: theme.border }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{t('tab.tournaments')}</Text>
           </View>
         </Pressable>
       </View>
@@ -415,7 +422,7 @@ export default function App() {
             }}>
               <Ionicons name="time" size={22} color={theme.accent} />
               <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 21, letterSpacing: 0.5, textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 }}>
-                Çok Yakında
+                {t('common.comingSoon')}
               </Text>
             </View>
           </Animated.View>

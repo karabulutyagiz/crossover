@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
-import { InteractionManager } from 'react-native';
+import { AppState, type AppStateStatus, InteractionManager } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // NetInfo may not be available in Expo Go — graceful fallback
 let NetInfo: any;
@@ -439,6 +439,7 @@ function saveProfile(profile: ProfileView): void {
 export function useCrossover() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const wsRef = useRef<WebSocket | null>(null);
+  const connectingSince = useRef(0); // when the current socket started CONNECTING (0 = not connecting)
   const offlineRoomRef = useRef<OfflineRoom | null>(null);
 
   // Seed the offline DB only AFTER first paint + interactions settle, so the one-time 8MB
@@ -484,10 +485,22 @@ export function useCrossover() {
   const pendingVerify = useRef<{ resolve: () => void; reject: (e: Error) => void } | null>(null);
 
   const connectAndSend = useCallback((first: ClientMsg, opts?: { silent?: boolean }) => {
-    wsRef.current?.close();
+    // Detach the previous socket's handlers BEFORE closing it. Otherwise its
+    // onclose fires a tick later (after we've already created the new socket) and
+    // clobbers the shared connectingSince timestamp — defeating the stuck-CONNECTING
+    // grace window and thrashing the fresh socket. Detaching also stops a stale
+    // onmessage from dispatching after we've moved on.
+    const prev = wsRef.current;
+    if (prev) {
+      prev.onopen = null; prev.onmessage = null; prev.onclose = null; prev.onerror = null;
+      try { prev.close(); } catch { /* ignore */ }
+    }
     const ws = new WebSocket(SERVER_URL);
     wsRef.current = ws;
+    connectingSince.current = Date.now();
     ws.onopen = () => {
+      if (wsRef.current !== ws) return; // superseded by a newer socket
+      connectingSince.current = 0;
       dispatch({ type: '_connected', value: true });
       ws.send(JSON.stringify(first));
     };
@@ -509,6 +522,8 @@ export function useCrossover() {
       }
     };
     ws.onclose = () => {
+      if (wsRef.current !== ws) return; // an old, superseded socket closing — ignore
+      connectingSince.current = 0;
       dispatch({ type: '_connected', value: false });
     };
     // Background keepalive reconnects must stay silent — only surface a connection
@@ -535,12 +550,25 @@ export function useCrossover() {
     if (!uid || !name) return;
     const ensure = () => {
       const ws = wsRef.current;
-      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+      if (ws && ws.readyState === WebSocket.OPEN) return;
+      // A socket stuck in CONNECTING (e.g. suspended while the app was backgrounded)
+      // never opens or closes — the old code treated that as "fine" and so never
+      // reconnected, leaving the app frozen until a restart. Treat a CONNECTING
+      // socket older than 12s as dead and force a fresh connection.
+      if (ws && ws.readyState === WebSocket.CONNECTING && Date.now() - connectingSince.current < 12000) return;
       connectAndSend({ type: 'register', name, userId: uid }, { silent: true });
     };
     ensure();
     const iv = setInterval(ensure, 7000);
-    return () => clearInterval(iv);
+    // Re-check the connection the moment the app returns to the foreground. iOS
+    // suspends in-flight sockets when backgrounded (e.g. after a home-indicator
+    // swipe away); on resume `ensure()` reconnects a dead/stuck socket right away
+    // instead of waiting for the next interval tick — while its 12s grace avoids
+    // killing a connect that's still legitimately in progress (iOS can fire several
+    // 'active' events in quick succession around foregrounding).
+    const onAppState = (s: AppStateStatus) => { if (s === 'active') ensure(); };
+    const appSub = AppState.addEventListener('change', onAppState);
+    return () => { clearInterval(iv); appSub.remove(); };
   }, [state.profile?.userId, state.profile?.displayName, connectAndSend]);
 
   // Load available leagues/countries once for the scope picker.

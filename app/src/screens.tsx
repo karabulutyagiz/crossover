@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  type ImageSourcePropType,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -21,9 +22,11 @@ import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import { theme, engrave } from './theme';
 import { t, currentLang, setLanguage, LANGUAGES } from './i18n';
+import type { MessageKey } from './i18n';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GOOGLE_IOS_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
+import { gemTarget } from './gemTarget';
 import Svg, { Rect, Circle, Line, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -33,10 +36,10 @@ import type { ClubRef, Difficulty, GameMode, GameOptions, PlayerRef, ProfileView
 import {
   EmoteCallout,
   EmoteSticker,
+  TextEmoteFrame,
+  emotePhrase,
   PREMIUM_EMOTES,
   ANIM_EMOTES,
-  FREE_EMOTES,
-  TEXT_EMOTES,
   FACE_EMOTES,
   availableEmotes,
   loadoutEmotes,
@@ -45,6 +48,7 @@ import {
   getEmote,
   ownsEmote,
 } from './emotes';
+import type { EmoteMeta } from './emotes';
 import { NATIONALITIES } from './nationalities';
 // react-native-iap v15 (StoreKit2) — native module, absent in Expo Go. Wrap the require
 // in try/catch so the app still loads in Expo Go (Store shows "coming soon"); the real
@@ -882,7 +886,7 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.bg, borderRadius: 22, paddingVertical: 11, paddingHorizontal: 16, borderWidth: 1.5, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip }}
                 >
                   <Ionicons name="chatbubble-ellipses" size={14} color={theme.primary} />
-                  <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13.5 }}>{e.phrase}</Text>
+                  <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13.5 }}>{emotePhrase(e)}</Text>
                 </Pressable>
               ))}
             </View>
@@ -902,7 +906,7 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
                   }}>
                     <EmoteSticker id={e.id} size={56} />
                   </View>
-                  <Text style={{ color: theme.muted, fontSize: 9.5, marginTop: 5, textAlign: 'center' }} numberOfLines={1}>{e.phrase}</Text>
+                  <Text style={{ color: theme.muted, fontSize: 9.5, marginTop: 5, textAlign: 'center' }} numberOfLines={1}>{emotePhrase(e)}</Text>
                 </Pressable>
               ))}
             </View>
@@ -1004,7 +1008,7 @@ function ProfileCard({ profile, onPress }: { profile: ProfileView; onPress?: () 
         <Ionicons name={arenaIcon(profile.arena)} size={24} color={theme.accent} />
         <View style={{ flex: 1 }}>
           <Text style={styles.profileName}>{profile.displayName}</Text>
-          <Text style={styles.profileArena}>{profile.arena.name}</Text>
+          <Text style={styles.profileArena}>{arenaLabel(profile.arena.name)}</Text>
         </View>
         <View style={styles.profileStat}>
           <Ionicons name="trophy" size={15} color={theme.accent} />
@@ -1200,7 +1204,7 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
       </View>
       {/* Nameplate below */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: theme.card, borderRadius: 13, borderWidth: 1.5, borderColor: color + 'AA', paddingHorizontal: 14, paddingVertical: 7, marginTop: 8 }}>
-        <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15 }} numberOfLines={1}>{arena.name}</Text>
+        <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15 }} numberOfLines={1}>{arenaLabel(arena.name)}</Text>
         <View style={{ width: 1, height: 16, backgroundColor: theme.border }} />
         <Ionicons name="trophy" size={13} color={theme.gold} />
         <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 14 }}>{trophies}</Text>
@@ -1920,7 +1924,7 @@ export function MatchupScreen({ state }: Props) {
       {p?.arena ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.bg2, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 3, borderWidth: 1, borderColor: color + '55' }}>
           <Text style={{ fontSize: 13 }}>{p.arena.icon}</Text>
-          <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>{p.arena.name}</Text>
+          <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>{arenaLabel(p.arena.name)}</Text>
         </View>
       ) : null}
     </Animated.View>
@@ -1966,6 +1970,19 @@ function ThoughtBubble({ emoteId, emoteN, position }: { emoteId?: string; emoteN
   const scale = a.interpolate({ inputRange: [0, 0.7, 1], outputRange: [0.2, 1.1, 1] });
   const op = a.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 1, 1] });
   const dotOp = a.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0.6, 1] });
+  const cm = getEmote(currentEmote);
+
+  // Quick-chat TEXT phrase: framed plain text (Clash-Royale), no bubble/tail.
+  if (cm?.kind === 'text') {
+    return (
+      <Animated.View style={{
+        position: 'absolute', right: 6, [position === 'top' ? 'top' : 'bottom']: -54,
+        opacity: op, transform: [{ scale }], zIndex: 50, alignItems: 'flex-end',
+      }}>
+        <TextEmoteFrame text={emotePhrase(cm)} color={cm.color} fontSize={13.5} />
+      </Animated.View>
+    );
+  }
 
   return (
     <Animated.View style={{
@@ -1975,7 +1992,7 @@ function ThoughtBubble({ emoteId, emoteN, position }: { emoteId?: string; emoteN
     }}>
       {/* Main bubble — square frame for animated (lottie) emotes, rounded otherwise */}
       <View style={{
-        backgroundColor: theme.card, borderRadius: getEmote(currentEmote)?.kind === 'lottie' ? 12 : 18, borderWidth: 1.5, borderColor: theme.border,
+        backgroundColor: theme.card, borderRadius: cm?.kind === 'lottie' ? 12 : 18, borderWidth: 1.5, borderColor: theme.border,
         paddingHorizontal: 8, paddingVertical: 6, minWidth: 60, alignItems: 'center',
         shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 8,
       }}>
@@ -2448,144 +2465,143 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
 }
 
 // ---- Diamond Purchase Celebration ----
-// Full-screen overlay: diamond bar slides in from top → gems fly from center into
-// the bar → "+N" count pops → bar slides back up. Triggered after a successful IAP.
-const GEM_COUNT = 8; // number of flying gem particles
+// Two phases: (1) a centered popup card with the pack image + "+N" and a close X.
+// (2) When the user closes it, gems fly from the card up into the top-right gem
+// counter, then the overlay dismisses. Triggered after a successful IAP.
+const GEM_COUNT = 10; // number of flying gem particles
 
-function DiamondCelebration({ amount, currentDiamonds, onDone }: { amount: number; currentDiamonds: number; onDone: () => void }) {
-  // Phase timeline (ms): 0→barIn  400→gemsLaunch  1800→countPop  3000→barOut  3500→done
-  const barY = useRef(new Animated.Value(-80)).current;         // bar slide position
+function DiamondCelebration({ amount, img, onDone }: { amount: number; img?: ImageSourcePropType; onDone: () => void }) {
+  const [flying, setFlying] = useState(false);
+  const cardScale = useRef(new Animated.Value(0)).current;
+  const cardOpacity = useRef(new Animated.Value(0)).current;
   const gemAnims = useRef(Array.from({ length: GEM_COUNT }, () => ({
     x: new Animated.Value(0),
     y: new Animated.Value(0),
     scale: new Animated.Value(0),
     opacity: new Animated.Value(0),
   }))).current;
-  const countOpacity = useRef(new Animated.Value(0)).current;
-  const countScale = useRef(new Animated.Value(0.5)).current;
-  const barGlow = useRef(new Animated.Value(0)).current;
 
-  // Screen center → bar target (top-right area)
   const screenW = Dimensions.get('window').width;
   const screenH = Dimensions.get('window').height;
-  const centerX = screenW / 2;
-  const centerY = screenH * 0.4;
-  const targetX = screenW - 80;   // where the diamond pill sits (right side)
-  const targetY = 36;              // bar's vertical center when slid in
+  const originX = screenW / 2;        // gems launch from the card centre
+  const originY = screenH * 0.46;
+  // Fly into the real diamond counter (measured by App.tsx). Fall back to the
+  // top-right corner if it hasn't been measured yet.
+  const targetX = gemTarget.measured ? gemTarget.x : screenW - 86;
+  const targetY = gemTarget.measured ? gemTarget.y : 78;
 
+  // Pop the card in on mount.
   useEffect(() => {
-    // 1) Bar slides in from above
-    Animated.spring(barY, { toValue: 0, friction: 7, tension: 80, useNativeDriver: true }).start();
+    Animated.parallel([
+      Animated.spring(cardScale, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }),
+      Animated.timing(cardOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+    ]).start();
+  }, [cardScale, cardOpacity]);
 
-    // 2) After 400ms, launch gems one by one from center toward the bar
-    const gemDelay = 400;
-    const perGem = 120; // stagger between each gem launch
+  // Close → fade the card, then fly the gems into the counter, then finish.
+  const handleClose = () => {
+    if (flying) return;
+    setFlying(true);
+    Animated.parallel([
+      Animated.timing(cardScale, { toValue: 0.55, duration: 220, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      Animated.timing(cardOpacity, { toValue: 0, duration: 220, useNativeDriver: true }),
+    ]).start();
+
+    const perGem = 70;
     gemAnims.forEach((g, i) => {
-      const delay = gemDelay + i * perGem;
-      // Random spread around center
-      const startOffX = (Math.random() - 0.5) * 60;
-      const startOffY = (Math.random() - 0.5) * 40;
-      g.x.setValue(centerX + startOffX);
-      g.y.setValue(centerY + startOffY);
-
+      const startOffX = (Math.random() - 0.5) * 90;
+      const startOffY = (Math.random() - 0.5) * 70;
+      g.x.setValue(originX + startOffX);
+      g.y.setValue(originY + startOffY);
       setTimeout(() => {
-        // Pop in
-        Animated.parallel([
-          Animated.timing(g.opacity, { toValue: 1, duration: 100, useNativeDriver: true }),
-          Animated.spring(g.scale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }),
-        ]).start();
-
-        // After pop, fly to bar
-        setTimeout(() => {
+        Animated.sequence([
           Animated.parallel([
-            Animated.timing(g.x, { toValue: targetX, duration: 500, easing: Easing.in(Easing.quad), useNativeDriver: true }),
-            Animated.timing(g.y, { toValue: targetY, duration: 500, easing: Easing.in(Easing.quad), useNativeDriver: true }),
-            Animated.timing(g.scale, { toValue: 0.3, duration: 500, useNativeDriver: true }),
-            Animated.timing(g.opacity, { toValue: 0, duration: 400, delay: 100, useNativeDriver: true }),
-          ]).start();
-        }, 200);
-      }, delay);
+            Animated.timing(g.opacity, { toValue: 1, duration: 90, useNativeDriver: true }),
+            Animated.spring(g.scale, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(g.x, { toValue: targetX, duration: 540, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.y, { toValue: targetY, duration: 540, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.scale, { toValue: 0.3, duration: 540, useNativeDriver: true }),
+            Animated.timing(g.opacity, { toValue: 0, duration: 420, delay: 140, useNativeDriver: true }),
+          ]),
+        ]).start();
+      }, i * perGem);
     });
 
-    // 3) Bar glow pulse when gems arrive
-    setTimeout(() => {
-      Animated.sequence([
-        Animated.timing(barGlow, { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.timing(barGlow, { toValue: 0.4, duration: 300, useNativeDriver: true }),
-        Animated.timing(barGlow, { toValue: 0.8, duration: 200, useNativeDriver: true }),
-      ]).start();
-    }, gemDelay + GEM_COUNT * perGem + 300);
-
-    // 4) "+N" count pops in
-    const countDelay = gemDelay + GEM_COUNT * perGem + 600;
-    setTimeout(() => {
-      Animated.parallel([
-        Animated.spring(countScale, { toValue: 1, friction: 5, tension: 100, useNativeDriver: true }),
-        Animated.timing(countOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-      ]).start();
-    }, countDelay);
-
-    // 5) Bar slides back up + done
-    const outDelay = countDelay + 1200;
-    setTimeout(() => {
-      Animated.timing(barY, { toValue: -80, duration: 350, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(() => {
-        onDone();
-      });
-    }, outDelay);
-  }, []);
-
-  const newTotal = currentDiamonds; // profile already updated by the time we render
+    setTimeout(onDone, (GEM_COUNT - 1) * perGem + 90 + 540 + 120);
+  };
 
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      {/* Semi-transparent backdrop flash */}
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(88,28,135,0.15)', opacity: barGlow }]} />
+    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={handleClose}>
+      <View style={StyleSheet.absoluteFill}>
+        {/* Dim backdrop — tap to close (same as the X) while the card is up */}
+        <Pressable
+          style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(6,10,20,0.74)' }]}
+          onPress={flying ? undefined : handleClose}
+        />
 
-      {/* Diamond bar — slides from top */}
-      <Animated.View style={{
-        position: 'absolute', top: 50, right: 16,
-        transform: [{ translateY: barY }],
-        flexDirection: 'row', alignItems: 'center', gap: 8,
-        backgroundColor: 'rgba(228,238,255,0.13)',
-        borderRadius: 19, paddingLeft: 20, paddingRight: 12, paddingVertical: 8,
-        borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.5)',
-        borderBottomWidth: 3, borderBottomColor: 'rgba(255,255,255,0.18)',
-        shadowColor: '#A855F7', shadowOpacity: 0.6, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
-        elevation: 10,
-      }}>
-        <GemIcon size={20} />
-        <Text style={{ color: theme.gemText, fontSize: 15, fontFamily: 'Poppins-ExtraBold' }}>{newTotal.toLocaleString('tr-TR')}</Text>
-        {/* +N badge */}
-        <Animated.View style={{
-          marginLeft: 4, opacity: countOpacity,
-          transform: [{ scale: countScale }],
-        }}>
-          <View style={{
-            backgroundColor: theme.primary, borderRadius: 12,
-            paddingHorizontal: 8, paddingVertical: 2,
-          }}>
-            <Text style={{ color: '#06131F', fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>
-              +{amount.toLocaleString('tr-TR')}
+        {/* Centered popup card */}
+        <View pointerEvents="box-none" style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36 }}>
+          <Animated.View
+            pointerEvents={flying ? 'none' : 'auto'}
+            style={{
+              width: '100%', maxWidth: 320, alignItems: 'center',
+              backgroundColor: theme.card, borderRadius: 26,
+              borderWidth: 2, borderColor: GEM_COLOR + '88',
+              borderBottomWidth: 5, borderBottomColor: theme.cardLip,
+              paddingTop: 30, paddingBottom: 22, paddingHorizontal: 22,
+              opacity: cardOpacity, transform: [{ scale: cardScale }],
+              shadowColor: GEM_COLOR, shadowOpacity: 0.55, shadowRadius: 22, shadowOffset: { width: 0, height: 8 }, elevation: 16,
+            }}
+          >
+            {/* Close X (top-right) */}
+            <Pressable onPress={handleClose} hitSlop={12} style={{
+              position: 'absolute', top: 10, right: 10, width: 32, height: 32, borderRadius: 16,
+              backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center',
+              borderWidth: 1, borderColor: theme.border, zIndex: 3,
+            }}>
+              <Ionicons name="close" size={19} color={theme.muted} />
+            </Pressable>
+
+            {img ? (
+              <Image source={img} style={{ width: 150, height: 150 }} resizeMode="contain" />
+            ) : (
+              <View style={{ width: 150, height: 150, alignItems: 'center', justifyContent: 'center' }}>
+                <GemIcon size={104} />
+              </View>
+            )}
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18, marginTop: 6, textAlign: 'center' }}>
+              {t('store.purchaseSuccess')}
             </Text>
-          </View>
-        </Animated.View>
-      </Animated.View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, backgroundColor: theme.bg2, borderRadius: 16, paddingHorizontal: 18, paddingVertical: 9, borderWidth: 1.5, borderColor: GEM_COLOR + '55' }}>
+              <GemIcon size={24} />
+              <Text style={{ color: theme.gemText, fontFamily: 'Poppins-Black', fontSize: 22 }}>+{amount.toLocaleString('tr-TR')}</Text>
+            </View>
+            <Pressable onPress={handleClose} style={{
+              marginTop: 20, alignSelf: 'stretch', backgroundColor: theme.primary, borderRadius: 16,
+              paddingVertical: 13, alignItems: 'center',
+              borderBottomWidth: 4, borderBottomColor: theme.primaryDark,
+            }}>
+              <Text style={{ color: '#06131F', fontFamily: 'Poppins-ExtraBold', fontSize: 15 }}>{t('store.gotIt')}</Text>
+            </Pressable>
+          </Animated.View>
+        </View>
 
-      {/* Flying gem particles */}
-      {gemAnims.map((g, i) => (
-        <Animated.View key={i} style={{
-          position: 'absolute', left: -12, top: -12, width: 24, height: 24,
-          transform: [
-            { translateX: g.x },
-            { translateY: g.y },
-            { scale: g.scale },
-          ],
-          opacity: g.opacity,
-        }}>
-          <GemIcon size={24} />
-        </Animated.View>
-      ))}
-    </View>
+        {/* Flying gem particles (toward the top-right counter) */}
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          {gemAnims.map((g, i) => (
+            <Animated.View key={i} style={{
+              position: 'absolute', left: -12, top: -12, width: 24, height: 24,
+              transform: [{ translateX: g.x }, { translateY: g.y }, { scale: g.scale }],
+              opacity: g.opacity,
+            }}>
+              <GemIcon size={24} />
+            </Animated.View>
+          ))}
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -2810,7 +2826,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
   const sectionYRef = useRef<Record<string, number>>({});
 
   // ── Diamond purchase celebration animation ──
-  const [celebration, setCelebration] = useState<{ amount: number } | null>(null);
+  const [celebration, setCelebration] = useState<{ amount: number; img?: ImageSourcePropType } | null>(null);
 
   // ── Apple In-App Purchase (StoreKit): consumable diamond packs + auto-renewable Social Pack ──
   const [buying, setBuying] = useState<string | null>(null); // productId mid-purchase
@@ -2825,7 +2841,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
       // Trigger celebration animation for diamond purchases
       if (!isSub) {
         const pack = DIAMOND_PACKS.find((p) => p.productId === purchase.productId);
-        if (pack) setCelebration({ amount: pack.amount });
+        if (pack) setCelebration({ amount: pack.amount, img: pack.img });
       }
     } catch {
       Alert.alert('Satın alma', 'Birazdan hesabına işlenecek. Sorun sürerse uygulamayı yeniden aç.');
@@ -3054,7 +3070,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
       {celebration ? (
         <DiamondCelebration
           amount={celebration.amount}
-          currentDiamonds={profile?.diamonds ?? 0}
+          img={celebration.img}
           onDone={() => setCelebration(null)}
         />
       ) : null}
@@ -3063,35 +3079,41 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
 }
 
 // ---- Collection (emotes / loadout) ----
+const EMOTE_SLOTS = 6;
 export function CollectionScreen({ state, actions }: Props) {
   const profile = state.profile;
   const equipped = profile?.equippedEmotes ?? [];
   const toggleEquip = (id: string) => {
     if (equipped.includes(id)) actions.equipEmotes(equipped.filter((x) => x !== id));
-    else if (equipped.length < 3) actions.equipEmotes([...equipped, id]);
+    else if (equipped.length < EMOTE_SLOTS) actions.equipEmotes([...equipped, id]);
   };
 
-  // Inventory: free emotes (always owned, cannot be removed) + purchased premium + anim emotes
-  const freeEmotes = FREE_EMOTES;
-  const ownedPremium = [...PREMIUM_EMOTES.filter((e) => ownsEmote(profile, e.id)), ...ANIM_EMOTES];
+  // Collectible sticker emotes the player owns: the 4 character faces (free) + any
+  // owned premium + the animated emotes they've been granted. Quick-chat TEXT
+  // phrases are NOT collectible and never appear here. Nothing is "pinned" — the
+  // player chooses which ones fill the 6 loadout slots.
+  const collectible: EmoteMeta[] = [
+    ...FACE_EMOTES,
+    ...PREMIUM_EMOTES.filter((e) => ownsEmote(profile, e.id)),
+    ...ANIM_EMOTES.filter((e) => ownsEmote(profile, e.id)),
+  ];
   const COL_GAP = 8;
   const COL_W = Math.floor((SCREEN_W - 44 - COL_GAP * 3) / 4);
+  const full = equipped.length >= EMOTE_SLOTS;
 
-  const renderEmoteCard = (e: typeof FREE_EMOTES[number], isFree: boolean) => {
+  const renderEmoteCard = (e: EmoteMeta) => {
     const isEquipped = equipped.includes(e.id);
-    const canEquip = !isFree && (PREMIUM_EMOTES.some((p) => p.id === e.id) || ANIM_EMOTES.some((a) => a.id === e.id));
-    const full = equipped.length >= 3 && !isEquipped;
+    const blocked = full && !isEquipped;
     return (
       <Pressable
         key={e.id}
-        disabled={!canEquip}
-        onPress={() => { if (canEquip && !full) toggleEquip(e.id); }}
+        onPress={() => { if (!blocked) toggleEquip(e.id); }}
         style={{
           width: COL_W, paddingTop: 11, paddingBottom: 9, paddingHorizontal: 4,
           backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
           borderWidth: 2, borderColor: isEquipped ? theme.primary : theme.border,
           borderBottomWidth: 3, borderBottomColor: isEquipped ? theme.primaryDark : theme.cardLip,
-          opacity: canEquip ? (full ? 0.65 : 1) : 1,
+          opacity: blocked ? 0.55 : 1,
         }}
       >
         {isEquipped ? (
@@ -3101,15 +3123,10 @@ export function CollectionScreen({ state, actions }: Props) {
         ) : null}
         <EmoteSticker id={e.id} size={58} />
         <View style={{ height: 6 }} />
-        {isFree ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-            <Ionicons name="lock-closed" size={10} color={theme.accent} />
-            <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 10 }}>Sabit</Text>
-          </View>
-        ) : isEquipped ? (
-          <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 10.5 }} numberOfLines={1} adjustsFontSizeToFit>Kuşanıldı</Text>
+        {isEquipped ? (
+          <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 10.5 }} numberOfLines={1} adjustsFontSizeToFit>{t('collection.equipped')}</Text>
         ) : (
-          <Text style={{ color: theme.muted, fontWeight: '800', fontSize: 10.5 }} numberOfLines={1} adjustsFontSizeToFit>Kuşan</Text>
+          <Text style={{ color: theme.muted, fontWeight: '800', fontSize: 10.5 }} numberOfLines={1} adjustsFontSizeToFit>{t('collection.equip')}</Text>
         )}
       </Pressable>
     );
@@ -3118,54 +3135,38 @@ export function CollectionScreen({ state, actions }: Props) {
   return (
     <Screen>
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-        <ScreenHeader title="Koleksiyon" icon="albums" underline={theme.primary} />
+        <ScreenHeader title={t('tab.collection')} icon="albums" underline={theme.primary} />
 
-        {/* Section: Free emotes — always in inventory, marked "Sabit" */}
-        <Text style={{ color: theme.accent, fontFamily: 'Poppins-ExtraBold', fontSize: 13, letterSpacing: 0.5, marginBottom: 8, marginLeft: 4 }}>TEMEL İFADELER</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP, marginBottom: 20 }}>
-          {freeEmotes.map((e) => renderEmoteCard(e, true))}
+        {/* Loadout — 6 slots the player fills with any emotes they choose */}
+        <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 13, letterSpacing: 0.5, marginBottom: 4, marginLeft: 4 }}>{t('collection.loadout')}</Text>
+        <Text style={{ color: theme.muted, fontSize: 11, marginBottom: 10, marginLeft: 4 }}>{t('collection.loadoutHint', { n: String(equipped.length), max: String(EMOTE_SLOTS) })}</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12, marginBottom: 22 }}>
+          {Array.from({ length: EMOTE_SLOTS }).map((_, i) => {
+            const id = equipped[i];
+            const em = id ? (collectible.find((e) => e.id === id) ?? getEmote(id)) : null;
+            return (
+              <Pressable
+                key={`slot${i}`}
+                onPress={() => { if (id) toggleEquip(id); }}
+                style={{
+                  width: 72, height: 72, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: em ? theme.card : theme.panelInnerFill,
+                  borderWidth: 2, borderColor: em ? theme.primary : theme.border,
+                  borderStyle: em ? 'solid' : 'dashed',
+                  shadowColor: em ? theme.primary : 'transparent', shadowOpacity: em ? 0.5 : 0, shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
+                }}
+              >
+                {em ? <EmoteSticker id={em.id} size={54} /> : <Ionicons name="add" size={26} color={theme.muted} />}
+              </Pressable>
+            );
+          })}
         </View>
 
-        {/* Section: Purchased premium emotes */}
-        {ownedPremium.length > 0 ? (
-          <>
-            <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 13, letterSpacing: 0.5, marginBottom: 4, marginLeft: 4 }}>SATIN ALINAN İFADELER</Text>
-            <Text style={{ color: theme.muted, fontSize: 11, marginBottom: 8, marginLeft: 4 }}>Kuşanılan {equipped.length}/3</Text>
-
-            {/* Equipped loadout — 3 slots */}
-            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16, marginBottom: 18 }}>
-              {[0, 1, 2].map((i) => {
-                const id = equipped[i];
-                const em = id ? ownedPremium.find((e) => e.id === id) : null;
-                return (
-                  <Pressable
-                    key={`slot${i}`}
-                    onPress={() => { if (id) toggleEquip(id); }}
-                    style={{
-                      width: 82, height: 82, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
-                      backgroundColor: em ? theme.card : theme.panelInnerFill,
-                      borderWidth: 2, borderColor: em ? theme.primary : theme.border,
-                      borderStyle: em ? 'solid' : 'dashed',
-                      shadowColor: em ? theme.primary : 'transparent', shadowOpacity: em ? 0.5 : 0, shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
-                    }}
-                  >
-                    {em ? <EmoteSticker id={em.id} size={62} /> : <Ionicons name="add" size={26} color={theme.muted} />}
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP }}>
-              {ownedPremium.map((e) => renderEmoteCard(e, false))}
-            </View>
-          </>
-        ) : (
-          <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 24, gap: 6 }}>
-            <Ionicons name="bag-outline" size={36} color={theme.border} />
-            <Text style={{ color: theme.muted, fontSize: 12 }}>Henüz satın alınan ifade yok</Text>
-            <Text style={{ color: theme.muted, fontSize: 11 }}>Mağazadan yeni ifadeler satın alabilirsin</Text>
-          </View>
-        )}
+        {/* All collectible emotes — tap to equip/unequip */}
+        <Text style={{ color: theme.accent, fontFamily: 'Poppins-ExtraBold', fontSize: 13, letterSpacing: 0.5, marginBottom: 10, marginLeft: 4 }}>{t('collection.yourEmotes')}</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP }}>
+          {collectible.map((e) => renderEmoteCard(e))}
+        </View>
       </ScrollView>
     </Screen>
   );
@@ -3216,7 +3217,7 @@ function FriendProfileModal({ profile, onClose }: { profile: PublicProfile | nul
             <Pressable onPress={onClose} hitSlop={10} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.border }}>
               <Ionicons name="arrow-back" size={20} color={theme.text} />
             </Pressable>
-            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18, marginLeft: 12 }}>Profil</Text>
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18, marginLeft: 12 }}>{t('profile.title')}</Text>
           </View>
 
           {/* Avatar + name + arena */}
@@ -3228,15 +3229,15 @@ function FriendProfileModal({ profile, onClose }: { profile: PublicProfile | nul
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, backgroundColor: theme.card, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: color + '66' }}>
               <Ionicons name="trophy" size={15} color={theme.gold} />
               <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 16 }}>{profile?.trophies ?? 0}</Text>
-              <Text style={styles.muted}> · {profile?.arena.name ?? ''}</Text>
+              <Text style={styles.muted}> · {profile?.arena ? arenaLabel(profile.arena.name) : ''}</Text>
             </View>
           </View>
 
           {/* Stats */}
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <StatCard icon="trophy" color={theme.primary} label="Galibiyet" value={profile?.wins ?? 0} />
-            <StatCard icon="skull-outline" color={theme.danger} label="Mağlubiyet" value={profile?.losses ?? 0} />
-            <StatCard icon="stats-chart" color={theme.blue} label="Kazanma %" value={`${winRate}%`} />
+            <StatCard icon="trophy" color={theme.primary} label={t('stats.wins')} value={profile?.wins ?? 0} />
+            <StatCard icon="skull-outline" color={theme.danger} label={t('stats.losses')} value={profile?.losses ?? 0} />
+            <StatCard icon="stats-chart" color={theme.blue} label={t('stats.winRate')} value={`${winRate}%`} />
           </View>
         </View>
       </View>
@@ -3542,7 +3543,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }} numberOfLines={1}>{f.displayName}</Text>
-                <Text style={{ color: f.online ? theme.primary : theme.muted, fontSize: 11, fontWeight: '600' }}>{f.online ? 'Çevrimiçi' : f.arena.name}</Text>
+                <Text style={{ color: f.online ? theme.primary : theme.muted, fontSize: 11, fontWeight: '600' }}>{f.online ? t('common.online') : arenaLabel(f.arena.name)}</Text>
               </View>
               {/* Trophy on the far right */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.bg2, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5, borderWidth: 1, borderColor: theme.border }}>
@@ -3760,6 +3761,7 @@ function TypingDot({ delay }: { delay: number }) {
 // auto-scroll to the bottom on new messages and keyboard open.
 function ChatScreen({ state, actions }: Props) {
   const [text, setText] = useState('');
+  const [kbOpen, setKbOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
   const chatWith = state.chatWith;
@@ -3782,13 +3784,15 @@ function ChatScreen({ state, actions }: Props) {
     if (chatWith) actions.markRead(chatWith);
   }, [chatWith, messages.length]);
 
-  // Scroll on keyboard show (iOS fires before the layout change)
+  // Track keyboard open/close: collapse the input bar's home-indicator padding
+  // while the keyboard is up (so it sits flush above it, Instagram-style — no jump)
+  // and keep the latest message in view.
   useEffect(() => {
-    const sub = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      () => setTimeout(scrollToBottom, 50),
-    );
-    return () => sub.remove();
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const onShow = Keyboard.addListener(showEvt, () => { setKbOpen(true); setTimeout(scrollToBottom, 50); });
+    const onHide = Keyboard.addListener(hideEvt, () => setKbOpen(false));
+    return () => { onShow.remove(); onHide.remove(); };
   }, [scrollToBottom]);
 
   const onChangeText = (t: string) => {
@@ -3824,6 +3828,7 @@ function ChatScreen({ state, actions }: Props) {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
       >
         {/* Header — safe area top is handled by paddingTop:54 (status bar) */}
         <View style={{
@@ -3840,7 +3845,7 @@ function ChatScreen({ state, actions }: Props) {
           <View style={{ flex: 1 }}>
             <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15 }} numberOfLines={1}>{friend?.displayName ?? '...'}</Text>
             <Text style={{ color: isTyping ? theme.primary : friend?.online ? theme.primary : theme.muted, fontSize: 11 }}>
-              {isTyping ? 'yazıyor...' : friend?.online ? 'Çevrimiçi' : 'Çevrimdışı'}
+              {isTyping ? t('chat.typing') : friend?.online ? t('common.online') : t('common.offline')}
             </Text>
           </View>
         </View>
@@ -3851,7 +3856,6 @@ function ChatScreen({ state, actions }: Props) {
           style={{ flex: 1 }}
           contentContainerStyle={{ padding: 12, paddingBottom: 4 }}
           keyboardShouldPersistTaps="always"
-          keyboardDismissMode="interactive"
           onContentSizeChange={scrollToBottom}
           onLayout={scrollToBottom}
         >
@@ -3899,15 +3903,17 @@ function ChatScreen({ state, actions }: Props) {
           ) : null}
         </ScrollView>
 
-        {/* Input bar — sits inside KAV so it moves up with the keyboard */}
+        {/* Input bar — sits inside KAV so it moves up with the keyboard. While the
+            keyboard is up it sits flush above it (small padding); when closed it
+            clears the home indicator (paddingBottom 34). */}
         <View style={{
           flexDirection: 'row', alignItems: 'flex-end', gap: 8,
-          paddingHorizontal: 12, paddingTop: 8, paddingBottom: 34,
+          paddingHorizontal: 12, paddingTop: 8, paddingBottom: kbOpen ? 10 : 34,
           backgroundColor: theme.card, borderTopWidth: 1, borderTopColor: theme.border,
         }}>
           <TextInput
             ref={inputRef}
-            placeholder="Mesaj yaz..."
+            placeholder={t('chat.placeholder')}
             placeholderTextColor={theme.muted}
             keyboardAppearance="dark"
             value={text}
@@ -3973,7 +3979,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory }: Props) {
           <Text style={{ color: theme.text, fontSize: 24, fontFamily: 'Poppins-ExtraBold', ...engrave('lg') }}>{p.displayName}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: color + '66' }}>
             <Text style={{ fontSize: 17 }}>{p.arena.icon}</Text>
-            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>{p.arena.name}</Text>
+            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>{arenaLabel(p.arena.name)}</Text>
           </View>
         </View>
 
@@ -3982,9 +3988,9 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory }: Props) {
           <StatCard gem color={GEM_COLOR} label="Elmas" value={p.diamonds} />
         </View>
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-          <StatCard icon="checkmark-circle" color={theme.primary} label="Galibiyet" value={p.wins} />
-          <StatCard icon="close-circle" color={theme.danger} label="Mağlubiyet" value={p.losses} />
-          <StatCard icon="stats-chart" color={theme.purple} label="Kazanma" value={`%${winRate}`} />
+          <StatCard icon="checkmark-circle" color={theme.primary} label={t('stats.wins')} value={p.wins} />
+          <StatCard icon="close-circle" color={theme.danger} label={t('stats.losses')} value={p.losses} />
+          <StatCard icon="stats-chart" color={theme.purple} label={t('stats.winRateShort')} value={`%${winRate}`} />
         </View>
 
         <View style={{ marginTop: 16 }}>
@@ -4036,7 +4042,7 @@ export function ArenasScreen({ state, actions }: Props) {
     <Screen>
       <Animated.View style={{ flex: 1, transform: [{ translateY: slideY }], opacity: slide }}>
       <ScreenHeader
-        title="Arenalar"
+        title={t('home.arenas')}
         onBack={actions.closeArenas}
         underline={theme.accent}
         right={(
@@ -4074,12 +4080,12 @@ export function ArenasScreen({ state, actions }: Props) {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.arenaName, { color: isCurrent ? arena.color : isLocked ? theme.muted : theme.text }]}>
-                      {arena.name}
+                      {arenaLabel(arena.name)}
                     </Text>
                     <Text style={styles.arenaTrophyRange}>
                       {arena.min} - {arena.max === 99999 ? '∞' : arena.max} 🏆
                     </Text>
-                    <Text style={[styles.muted, { fontSize: 11, marginTop: 2 }]}>{arena.desc}</Text>
+                    <Text style={[styles.muted, { fontSize: 11, marginTop: 2 }]}>{arenaDesc(arena.name)}</Text>
                   </View>
                 </View>
 
@@ -4188,6 +4194,30 @@ function arenaForTrophies(trophies: number): { name: string; icon: IoniconName; 
   return { name: 'Mahalle Sahası', icon: 'football-outline', color: '#8B4513' };
 }
 
+// Map an arena's canonical (Turkish) name — as stored on the server & in ARENA_DATA
+// — to its localized label / description. Resolved at render time so it follows
+// live language changes. Unknown names pass through unchanged.
+function arenaKeyFromName(name: string): 'mahalle' | 'amator' | 'profesyonel' | 'sampiyonlar' | 'efsaneler' | 'dunya' | 'goat' | null {
+  switch (name) {
+    case 'Mahalle Sahası': return 'mahalle';
+    case 'Amatör Lig': return 'amator';
+    case 'Profesyonel Lig': return 'profesyonel';
+    case 'Şampiyonlar Ligi': return 'sampiyonlar';
+    case 'Efsaneler Arası': return 'efsaneler';
+    case 'Dünya Klasmanı': return 'dunya';
+    case 'GOAT': return 'goat';
+    default: return null;
+  }
+}
+function arenaLabel(name: string): string {
+  const k = arenaKeyFromName(name);
+  return k ? t(`arena.${k}` as MessageKey) : name;
+}
+function arenaDesc(name: string): string {
+  const k = arenaKeyFromName(name);
+  return k ? t(`arena.${k}.desc` as MessageKey) : '';
+}
+
 function ClubLogo({ uri, name, size = 22 }: { uri: string | null; name?: string; size?: number }) {
   if (!uri) return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: name ? badgeColor(name) : theme.border, alignItems: 'center', justifyContent: 'center' }}>
@@ -4265,7 +4295,7 @@ export function MatchHistoryScreen({ state, actions }: Props) {
                       <Ionicons name={pArena.icon} size={12} color={pArena.color} />
                       <Text style={{ color: pArena.color, fontSize: 10, fontWeight: '700' }}>{m.playerTrophies}</Text>
                     </View>
-                    <Text style={{ color: theme.muted, fontSize: 9, marginTop: 1 }}>{pArena.name}</Text>
+                    <Text style={{ color: theme.muted, fontSize: 9, marginTop: 1 }}>{arenaLabel(pArena.name)}</Text>
                   </View>
 
                   {/* VS */}
@@ -4280,7 +4310,7 @@ export function MatchHistoryScreen({ state, actions }: Props) {
                       <Ionicons name={oArena.icon} size={12} color={oArena.color} />
                       <Text style={{ color: oArena.color, fontSize: 10, fontWeight: '700' }}>{m.opponentTrophies}</Text>
                     </View>
-                    <Text style={{ color: theme.muted, fontSize: 9, marginTop: 1 }}>{oArena.name}</Text>
+                    <Text style={{ color: theme.muted, fontSize: 9, marginTop: 1 }}>{arenaLabel(oArena.name)}</Text>
                   </View>
                 </View>
 
@@ -4373,7 +4403,7 @@ export function LeaderboardScreen({ state, actions }: Props) {
               <RankBadge rank={entry.rank} size={28} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.lbName} numberOfLines={1}>{entry.displayName}</Text>
-                <Text style={styles.lbArena}>{entry.arena.name}</Text>
+                <Text style={styles.lbArena}>{arenaLabel(entry.arena.name)}</Text>
               </View>
               <View style={styles.lbTrophyBox}>
                 <Ionicons name="trophy" size={12} color={theme.accent} />
