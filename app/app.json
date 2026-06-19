@@ -16,9 +16,15 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSUserTrackingUsageDescription": "Reklam deneyimini kişiselleştirmek için izin istiyoruz.",
         "SKAdNetworkItems": [
-          { "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork" },
-          { "SKAdNetworkIdentifier": "4fzdc2evr5.skadnetwork" },
-          { "SKAdNetworkIdentifier": "2fnua5tdw4.skadnetwork" }
+          {
+            "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork"
+          },
+          {
+            "SKAdNetworkIdentifier": "4fzdc2evr5.skadnetwork"
+          },
+          {
+            "SKAdNetworkIdentifier": "2fnua5tdw4.skadnetwork"
+          }
         ],
         "CFBundleDisplayName": "COF",
         "CFBundleURLTypes": [
@@ -60,10 +66,10 @@
         }
       ]
     ],
-    "owner": "ygzkrblt3s-team",
+    "owner": "baturalparslln",
     "extra": {
       "eas": {
-        "projectId": "493d1832-3923-4468-b443-7c256bacd3d3"
+        "projectId": "8925d5e2-a0ff-4873-b7f5-4689c3cff547"
       }
     }
   }
