@@ -236,5 +236,9 @@
   "common.offline": "Offline",
   "profile.title": "Profil",
   "chat.placeholder": "Nachricht schreiben...",
-  "chat.typing": "schreibt..."
+  "chat.typing": "schreibt...",
+  "profile.choosePicture": "Profilbild",
+  "profile.applyPicture": "Bild festlegen",
+  "notif.friendRequest": "hat dir eine Freundschaftsanfrage gesendet",
+  "notif.newMessage": "hat dir eine Nachricht gesendet"
 }

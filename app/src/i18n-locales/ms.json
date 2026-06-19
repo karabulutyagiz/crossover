@@ -236,5 +236,9 @@
   "common.offline": "Luar Talian",
   "profile.title": "Profil",
   "chat.placeholder": "Taip mesej...",
-  "chat.typing": "menaip..."
+  "chat.typing": "menaip...",
+  "profile.choosePicture": "Gambar Profil",
+  "profile.applyPicture": "Tetapkan Gambar",
+  "notif.friendRequest": "menghantar permintaan rakan kepada anda",
+  "notif.newMessage": "menghantar mesej kepada anda"
 }

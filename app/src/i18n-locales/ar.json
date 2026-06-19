@@ -236,5 +236,9 @@
   "common.offline": "غير متصل",
   "profile.title": "الملف الشخصي",
   "chat.placeholder": "اكتب رسالة...",
-  "chat.typing": "يكتب..."
+  "chat.typing": "يكتب...",
+  "profile.choosePicture": "صورة الملف الشخصي",
+  "profile.applyPicture": "تعيين الصورة",
+  "notif.friendRequest": "أرسل إليك طلب صداقة",
+  "notif.newMessage": "أرسل إليك رسالة"
 }

@@ -236,5 +236,9 @@
   "common.offline": "ออฟไลน์",
   "profile.title": "โปรไฟล์",
   "chat.placeholder": "พิมพ์ข้อความ...",
-  "chat.typing": "กำลังพิมพ์..."
+  "chat.typing": "กำลังพิมพ์...",
+  "profile.choosePicture": "รูปโปรไฟล์",
+  "profile.applyPicture": "ตั้งรูป",
+  "notif.friendRequest": "ส่งคำขอเป็นเพื่อนถึงคุณ",
+  "notif.newMessage": "ส่งข้อความถึงคุณ"
 }

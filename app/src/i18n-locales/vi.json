@@ -236,5 +236,9 @@
   "common.offline": "Ngoại tuyến",
   "profile.title": "Hồ sơ",
   "chat.placeholder": "Nhập tin nhắn...",
-  "chat.typing": "đang nhập..."
+  "chat.typing": "đang nhập...",
+  "profile.choosePicture": "Ảnh đại diện",
+  "profile.applyPicture": "Đặt ảnh",
+  "notif.friendRequest": "đã gửi cho bạn lời mời kết bạn",
+  "notif.newMessage": "đã gửi cho bạn một tin nhắn"
 }

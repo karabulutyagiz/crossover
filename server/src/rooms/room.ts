@@ -59,6 +59,7 @@ interface Player {
   userId?: string; // persistent account id, for awarding trophies
   trophies?: number;
   arena?: { name: string; icon: string; minTrophies: number };
+  avatar?: string | null; // chosen profile-picture id
 }
 
 interface Round {
@@ -104,6 +105,7 @@ export class Room {
     userId?: string,
     trophies?: number,
     arena?: { name: string; icon: string; minTrophies: number },
+    avatar?: string | null,
   ): { ok: true; id: string } | { ok: false; error: string } {
     if (this.players.size >= MAX_PLAYERS) return { ok: false, error: 'Room is full' };
     const id = randomUUID();
@@ -118,9 +120,20 @@ export class Room {
       userId,
       trophies,
       arena,
+      avatar: avatar ?? null,
     });
     this.broadcastState();
     return { ok: true, id };
+  }
+
+  // Update a player's avatar mid-match (by persistent userId) and push fresh state
+  // so the opponent sees the new profile picture instantly.
+  setAvatarFor(userId: string, avatar: string | null): void {
+    let changed = false;
+    for (const p of this.players.values()) {
+      if (p.userId === userId && p.avatar !== avatar) { p.avatar = avatar; changed = true; }
+    }
+    if (changed) this.broadcastState();
   }
 
   handleClose(playerId: string): void {
@@ -934,6 +947,7 @@ export class Room {
       connected: p.connected,
       trophies: p.trophies,
       arena: p.arena,
+      avatar: p.avatar,
     }));
   }
 

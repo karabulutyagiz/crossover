@@ -236,5 +236,9 @@
   "common.offline": "Не в сети",
   "profile.title": "Профиль",
   "chat.placeholder": "Напишите сообщение...",
-  "chat.typing": "печатает..."
+  "chat.typing": "печатает...",
+  "profile.choosePicture": "Фото профиля",
+  "profile.applyPicture": "Установить",
+  "notif.friendRequest": "отправил вам заявку в друзья",
+  "notif.newMessage": "отправил вам сообщение"
 }

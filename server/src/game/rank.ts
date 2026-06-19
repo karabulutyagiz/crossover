@@ -58,6 +58,7 @@ export interface UserProfile {
   usernameSet: boolean;
   socialPackUntil: string | null; // ISO date or null
   arena: Arena;
+  avatar: string | null; // chosen profile-picture id (e.g. 'pp7') or null
 }
 
 // ---- User CRUD ----
@@ -226,6 +227,23 @@ export async function changeDisplayName(
   return { ok: true, profile: toProfile(rows[0]) };
 }
 
+// Set the player's profile picture (free). `avatar` is an id like 'pp7', or null
+// to clear back to the default.
+const VALID_AVATARS = new Set(Array.from({ length: 20 }, (_, i) => `pp${i + 1}`));
+export async function setAvatar(
+  userId: string,
+  avatar: string | null,
+): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
+  if (!userId) return { ok: false, error: 'Önce giriş yap' };
+  const clean = avatar && VALID_AVATARS.has(avatar) ? avatar : null;
+  const { rows } = await pool.query<DbUser>(
+    `UPDATE users SET avatar = $2 WHERE id = $1 RETURNING *`,
+    [userId, clean],
+  );
+  if (!rows[0]) return { ok: false, error: 'Kullanıcı bulunamadı' };
+  return { ok: true, profile: toProfile(rows[0]) };
+}
+
 // Buy a premium emote: charge diamonds once and append it to owned_emotes.
 // The whole thing is one atomic UPDATE guarded on balance + not-already-owned,
 // so double taps or races can never double-charge.
@@ -280,6 +298,7 @@ export interface LeaderboardEntry {
   wins: number;
   losses: number;
   arena: Arena;
+  avatar: string | null;
 }
 
 export async function getLeaderboard(limit = 50): Promise<LeaderboardEntry[]> {
@@ -295,6 +314,7 @@ export async function getLeaderboard(limit = 50): Promise<LeaderboardEntry[]> {
     wins: r.wins,
     losses: Number(r.losses),
     arena: getArena(r.trophies),
+    avatar: r.avatar ?? null,
   }));
 }
 
@@ -351,6 +371,7 @@ export async function listFriends(userId: string): Promise<Omit<FriendView, 'onl
     displayName: r.display_name,
     trophies: r.trophies,
     arena: getArena(r.trophies),
+    avatar: r.avatar ?? null,
   }));
 }
 
@@ -495,6 +516,7 @@ interface DbUser {
   equipped_emotes: string[] | null;
   username_set: boolean | null;
   social_pack_until: string | null;
+  avatar: string | null;
   created_at: string;
 }
 
@@ -512,6 +534,7 @@ function toProfile(row: DbUser): UserProfile {
     usernameSet: row.username_set ?? false,
     socialPackUntil: row.social_pack_until ?? null,
     arena: getArena(row.trophies),
+    avatar: row.avatar ?? null,
   };
 }
 

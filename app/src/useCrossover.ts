@@ -39,6 +39,7 @@ export interface LeaderboardEntry {
   wins: number;
   losses: number;
   arena: { name: string; icon: string; minTrophies: number };
+  avatar?: string | null;
 }
 
 export type FriendInfo = FriendView;
@@ -101,6 +102,8 @@ export interface GameState {
   conversations: ConversationView[];
   totalUnread: number;
   typingFrom: Record<string, boolean>;  // userId → isTyping
+  // Transient top banner notification (friend request / new message). Auto-dismisses.
+  banner: { id: number; kind: 'friend_request' | 'message'; name: string; body?: string; userId?: string } | null;
 }
 
 export const initialState: GameState = {
@@ -153,6 +156,7 @@ export const initialState: GameState = {
   conversations: [],
   totalUnread: 0,
   typingFrom: {},
+  banner: null,
 };
 
 const PROFILE_KEY = '@crossover_profile';
@@ -171,6 +175,7 @@ type Action =
   | { type: '_close_profile' }
   | { type: '_dismiss_invite' }
   | { type: '_clear_notice' }
+  | { type: '_clear_banner' }
   | { type: '_ready' }
   | { type: '_set_game_options'; options: GameOptions | null }
   | { type: '_clear_emote'; playerId: string };
@@ -206,7 +211,7 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, friendRequests: [
         { requestId: (action as any).requestId, fromId: (action as any).fromId, fromName: (action as any).fromName, createdAt: new Date().toISOString() },
         ...state.friendRequests,
-      ]};
+      ], banner: { id: (state.banner?.id ?? 0) + 1, kind: 'friend_request', name: (action as any).fromName, userId: (action as any).fromId } };
     case 'friend_request_sent':
       return { ...state, notice: 'Arkadaşlık isteği gönderildi' };
     case 'friend_request_responded':
@@ -233,6 +238,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, viewProfile: null };
     case '_clear_notice' as any:
       return { ...state, notice: null };
+    case '_clear_banner' as any:
+      return { ...state, banner: null };
     case '_open_chat' as any:
       return { ...state, chatWith: (action as any).userId, chatMessages: [] };
     case '_close_chat' as any:
@@ -268,6 +275,7 @@ function reducer(state: GameState, action: Action): GameState {
           userId: partnerId, displayName: msg.fromId === myId ? '' : msg.fromName,
           online: true, lastMessage: msg.body, lastMessageAt: msg.createdAt,
           unreadCount: isIncoming && state.chatWith !== partnerId ? 1 : 0,
+          avatar: state.friends.find(f => f.userId === partnerId)?.avatar ?? null,
         }, ...nextConvos];
         if (isIncoming && state.chatWith !== partnerId) nextUnread++;
       }
@@ -275,7 +283,13 @@ function reducer(state: GameState, action: Action): GameState {
       const nextTyping = { ...state.typingFrom };
       delete nextTyping[msg.fromId];
 
-      return { ...state, chatMessages: nextMessages, conversations: nextConvos, totalUnread: nextUnread, typingFrom: nextTyping };
+      // Top banner for an incoming message while NOT viewing that chat.
+      const showBanner = msg.fromId !== myId && state.chatWith !== partnerId;
+      const nextBanner = showBanner
+        ? { id: (state.banner?.id ?? 0) + 1, kind: 'message' as const, name: msg.fromName, body: msg.body, userId: msg.fromId }
+        : state.banner;
+
+      return { ...state, chatMessages: nextMessages, conversations: nextConvos, totalUnread: nextUnread, typingFrom: nextTyping, banner: nextBanner };
     }
     case 'message_list':
       return { ...state, chatMessages: (action as any).messages ?? [] };
@@ -739,6 +753,7 @@ export function useCrossover() {
     clearEmote: (playerId: string) => dispatch({ type: '_clear_emote', playerId }),
     buyEmote: (emoteId: string) => send({ type: 'buy_emote', emoteId }),
     equipEmotes: (emoteIds: string[]) => send({ type: 'equip_emotes', emoteIds }),
+    setAvatar: (avatar: string | null) => send({ type: 'set_avatar', avatar }),
     // Friends — via WebSocket for real-time notifications.
     loadFriends: () => send({ type: 'list_friends' }),
     sendFriendRequest: (targetCode?: string, targetUsername?: string) =>
@@ -762,6 +777,7 @@ export function useCrossover() {
     getUserProfile: (userId: string) => send({ type: 'get_user_profile', userId }),
     closeUserProfile: () => dispatch({ type: '_close_profile' }),
     clearNotice: () => dispatch({ type: '_clear_notice' }),
+    clearBanner: () => dispatch({ type: '_clear_banner' }),
     dismissMatchInvite: () => dispatch({ type: '_dismiss_invite' }),
     findMatchAgain: () => {
       const options = state.lastGameOptions ?? undefined;

@@ -236,5 +236,9 @@
   "common.offline": "オフライン",
   "profile.title": "プロフィール",
   "chat.placeholder": "メッセージを入力...",
-  "chat.typing": "入力中..."
+  "chat.typing": "入力中...",
+  "profile.choosePicture": "プロフィール写真",
+  "profile.applyPicture": "設定する",
+  "notif.friendRequest": "さんからフレンド申請が届きました",
+  "notif.newMessage": "さんからメッセージが届きました"
 }

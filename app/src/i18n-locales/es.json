@@ -236,5 +236,9 @@
   "common.offline": "Desconectado",
   "profile.title": "Perfil",
   "chat.placeholder": "Escribe un mensaje...",
-  "chat.typing": "escribiendo..."
+  "chat.typing": "escribiendo...",
+  "profile.choosePicture": "Foto de perfil",
+  "profile.applyPicture": "Aplicar foto",
+  "notif.friendRequest": "te envió una solicitud de amistad",
+  "notif.newMessage": "te envió un mensaje"
 }

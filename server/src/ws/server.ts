@@ -6,7 +6,7 @@ import { listScopes, listNationalities } from '../game/verify.ts';
 import {
   findOrCreateUser, findOrCreateUserByProvider, createGuestUser, getUser, changeDisplayName,
   grantDevEmotesIfNeeded,
-  setUsername, buyEmote, setEquippedEmotes, getLeaderboard,
+  setUsername, buyEmote, setEquippedEmotes, setAvatar, getLeaderboard,
   listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
   removeFriend, searchUsers, getMatchHistory,
   getArena,
@@ -40,6 +40,7 @@ function toProfileView(p: UserProfile): ProfileView {
     usernameSet: p.usernameSet,
     socialPackUntil: p.socialPackUntil,
     arena: p.arena,
+    avatar: p.avatar,
   };
 }
 
@@ -311,6 +312,25 @@ export function startServer(port: number): Server {
         return;
       }
 
+      // Choose a profile picture. Updates the account, then pushes the change live
+      // to the current match opponent and to every online friend so it shows
+      // instantly without a refresh.
+      if (msg.type === 'set_avatar') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          const result = await setAvatar(userProfile!.id, msg.avatar ?? null);
+          if (!result.ok) return transport.send({ type: 'error', message: result.error });
+          userProfile = result.profile;
+          transport.send({ type: 'profile', profile: toProfileView(result.profile) });
+          // In a match → update the opponent's view of me immediately.
+          if (ctx?.room) ctx.room.setAvatarFor(userProfile!.id, result.profile.avatar);
+          // Online friends → refresh their friend list so my new picture appears.
+          const friends = await listFriends(userProfile!.id);
+          for (const f of friends) sendToUser(f.userId, await getFriendsData(f.userId));
+        })();
+        return;
+      }
+
       // Validate an Apple IAP receipt and grant diamonds (server-authoritative).
       if (msg.type === 'verify_purchase') {
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce kayıt ol' });
@@ -434,8 +454,8 @@ export function startServer(port: number): Server {
         const room = manager.createRoom();
         if (inv.options?.scope) room.scope = inv.options.scope;
         room.gameMode = inv.options?.mode ?? 'team-team';
-        const resA = room.addPlayer(inv.fromName, inv.transport, true, inv.fromUserId, inv.userProfile?.trophies, inv.userProfile?.arena);
-        const resB = room.addPlayer(userProfile.displayName, transport, false, userProfile.id, userProfile.trophies, userProfile.arena);
+        const resA = room.addPlayer(inv.fromName, inv.transport, true, inv.fromUserId, inv.userProfile?.trophies, inv.userProfile?.arena, inv.userProfile?.avatar);
+        const resB = room.addPlayer(userProfile.displayName, transport, false, userProfile.id, userProfile.trophies, userProfile.arena, userProfile.avatar);
         if (resA.ok) inv.setCtx({ room, playerId: resA.id, userProfile: inv.userProfile });
         if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
         setTimeout(() => { if (room.size === 2) room.handle(resA.ok ? resA.id : '', { type: 'start' }); }, 3500);
@@ -456,7 +476,7 @@ export function startServer(port: number): Server {
           if (!u) return transport.send({ type: 'error', message: 'Kullanıcı bulunamadı' });
           transport.send({
             type: 'user_profile',
-            profile: { userId: u.id, displayName: u.displayName, trophies: u.trophies, wins: u.wins, losses: u.losses, arena: u.arena },
+            profile: { userId: u.id, displayName: u.displayName, trophies: u.trophies, wins: u.wins, losses: u.losses, arena: u.arena, avatar: u.avatar },
           });
         })();
         return;
@@ -533,7 +553,7 @@ export function startServer(port: number): Server {
         void (async () => {
           // Get distinct conversation partners with last message + unread count
           const { rows } = await pool.query<{
-            partner_id: string; partner_name: string; last_body: string; last_at: string; unread: string;
+            partner_id: string; partner_name: string; partner_avatar: string | null; last_body: string; last_at: string; unread: string;
           }>(`
             WITH convos AS (
               SELECT
@@ -546,6 +566,7 @@ export function startServer(port: number): Server {
             SELECT
               c.partner_id,
               u.display_name AS partner_name,
+              u.avatar AS partner_avatar,
               c.body AS last_body,
               c.created_at AS last_at,
               COALESCE((SELECT COUNT(*) FROM messages WHERE from_user = c.partner_id AND to_user = $1 AND read_at IS NULL), 0) AS unread
@@ -562,6 +583,7 @@ export function startServer(port: number): Server {
             lastMessage: r.last_body,
             lastMessageAt: r.last_at,
             unreadCount: Number(r.unread),
+            avatar: r.partner_avatar ?? null,
           }));
           transport.send({ type: 'conversation_list', conversations });
         })();
@@ -623,8 +645,8 @@ export function startServer(port: number): Server {
               const room = manager.createRoom();
               if (msg.options?.scope) room.scope = msg.options.scope;
               room.gameMode = requestedMode;
-              const resA = room.addPlayer(partner.name, partner.transport, true, partner.userId, partner.userProfile?.trophies, partner.userProfile?.arena);
-              const resB = room.addPlayer(name, transport, false, msg.userId ?? userProfile?.id, userProfile?.trophies, userProfile?.arena);
+              const resA = room.addPlayer(partner.name, partner.transport, true, partner.userId, partner.userProfile?.trophies, partner.userProfile?.arena, partner.userProfile?.avatar);
+              const resB = room.addPlayer(name, transport, false, msg.userId ?? userProfile?.id, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
               if (resA.ok) partner.setCtx({ room, playerId: resA.id, userProfile: partner.userProfile });
               if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
               // Auto-start after matchup reveal delay
@@ -654,7 +676,7 @@ export function startServer(port: number): Server {
           if (msg.options?.scope) room.scope = msg.options.scope;
           if (msg.options?.mode) room.gameMode = msg.options.mode;
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, true, msg.userId ?? userProfile?.id, userProfile?.trophies, userProfile?.arena);
+          const res = room.addPlayer(name, transport, true, msg.userId ?? userProfile?.id, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
           if (res.ok) ctx = { room, playerId: res.id, userProfile };
           return;
         }
@@ -663,7 +685,7 @@ export function startServer(port: number): Server {
           if (msg.options?.scope) room.scope = msg.options.scope;
           if (msg.options?.mode) room.gameMode = msg.options.mode;
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, true, msg.userId ?? userProfile?.id, userProfile?.trophies, userProfile?.arena);
+          const res = room.addPlayer(name, transport, true, msg.userId ?? userProfile?.id, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
           if (res.ok) ctx = { room, playerId: res.id, userProfile };
           const bot = new BotPlayer({ difficulty: msg.options?.difficulty, scope: room.scope, mode: room.gameMode });
           const botRes = room.addPlayer('Bot', bot, false);
@@ -674,7 +696,7 @@ export function startServer(port: number): Server {
           const room = manager.get(msg.code);
           if (!room) return transport.send({ type: 'error', message: 'Room not found' });
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, false, msg.userId ?? userProfile?.id, userProfile?.trophies, userProfile?.arena);
+          const res = room.addPlayer(name, transport, false, msg.userId ?? userProfile?.id, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
           if (!res.ok) return transport.send({ type: 'error', message: res.error });
           ctx = { room, playerId: res.id, userProfile };
           return;

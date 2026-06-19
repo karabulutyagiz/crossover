@@ -236,5 +236,9 @@
   "common.offline": "离线",
   "profile.title": "个人资料",
   "chat.placeholder": "输入消息...",
-  "chat.typing": "正在输入..."
+  "chat.typing": "正在输入...",
+  "profile.choosePicture": "头像",
+  "profile.applyPicture": "设为头像",
+  "notif.friendRequest": "向你发送了好友请求",
+  "notif.newMessage": "给你发送了一条消息"
 }

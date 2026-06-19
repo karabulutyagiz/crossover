@@ -236,5 +236,9 @@
   "common.offline": "آفلاین",
   "profile.title": "پروفایل",
   "chat.placeholder": "پیامی بنویس...",
-  "chat.typing": "در حال نوشتن..."
+  "chat.typing": "در حال نوشتن...",
+  "profile.choosePicture": "تصویر پروفایل",
+  "profile.applyPicture": "ثبت تصویر",
+  "notif.friendRequest": "برای شما درخواست دوستی فرستاد",
+  "notif.newMessage": "برای شما پیام فرستاد"
 }

@@ -236,5 +236,9 @@
   "common.offline": "오프라인",
   "profile.title": "프로필",
   "chat.placeholder": "메시지를 입력하세요...",
-  "chat.typing": "입력 중..."
+  "chat.typing": "입력 중...",
+  "profile.choosePicture": "프로필 사진",
+  "profile.applyPicture": "사진 설정",
+  "notif.friendRequest": "님이 친구 요청을 보냈습니다",
+  "notif.newMessage": "님이 메시지를 보냈습니다"
 }

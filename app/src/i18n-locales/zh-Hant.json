@@ -236,5 +236,9 @@
   "common.offline": "離線",
   "profile.title": "個人檔案",
   "chat.placeholder": "輸入訊息...",
-  "chat.typing": "輸入中..."
+  "chat.typing": "輸入中...",
+  "profile.choosePicture": "個人頭像",
+  "profile.applyPicture": "設為頭像",
+  "notif.friendRequest": "向你發送了好友邀請",
+  "notif.newMessage": "向你發送了一則訊息"
 }

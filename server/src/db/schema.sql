@@ -99,6 +99,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_facebook_sub ON users (facebook_sub)
 -- Social pack subscription (unlocks country-team & letter-team in friend matches).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS social_pack_until TIMESTAMPTZ;
 
+-- Chosen profile-picture id (e.g. 'pp7'); null = default person icon.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT;
+
 -- ---- Friend requests (pending invitations) ----
 CREATE TABLE IF NOT EXISTS friend_requests (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

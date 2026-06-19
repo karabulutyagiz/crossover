@@ -292,6 +292,10 @@ const tr = {
   'common.online': 'Çevrimiçi',
   'common.offline': 'Çevrimdışı',
   'profile.title': 'Profil',
+  'profile.choosePicture': 'Profil Fotoğrafı',
+  'profile.applyPicture': 'Profili Değiştir',
+  'notif.friendRequest': 'sana arkadaşlık isteği gönderdi',
+  'notif.newMessage': 'sana mesaj gönderdi',
   'chat.placeholder': 'Mesaj yaz...',
   'chat.typing': 'yazıyor...',
 
@@ -566,6 +570,10 @@ const en: typeof tr = {
   'common.online': 'Online',
   'common.offline': 'Offline',
   'profile.title': 'Profile',
+  'profile.choosePicture': 'Profile Picture',
+  'profile.applyPicture': 'Set Picture',
+  'notif.friendRequest': 'sent you a friend request',
+  'notif.newMessage': 'sent you a message',
   'chat.placeholder': 'Type a message...',
   'chat.typing': 'typing...',
 

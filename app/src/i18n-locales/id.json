@@ -236,5 +236,9 @@
   "common.offline": "Offline",
   "profile.title": "Profil",
   "chat.placeholder": "Tulis pesan...",
-  "chat.typing": "sedang mengetik..."
+  "chat.typing": "sedang mengetik...",
+  "profile.choosePicture": "Foto Profil",
+  "profile.applyPicture": "Atur Foto",
+  "notif.friendRequest": "mengirimi Anda permintaan pertemanan",
+  "notif.newMessage": "mengirimi Anda pesan"
 }

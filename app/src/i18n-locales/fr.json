@@ -236,5 +236,9 @@
   "common.offline": "Hors ligne",
   "profile.title": "Profil",
   "chat.placeholder": "Écris un message...",
-  "chat.typing": "en train d'écrire..."
+  "chat.typing": "en train d'écrire...",
+  "profile.choosePicture": "Photo de profil",
+  "profile.applyPicture": "Définir la photo",
+  "notif.friendRequest": "vous a envoyé une demande d'ami",
+  "notif.newMessage": "vous a envoyé un message"
 }

@@ -236,5 +236,9 @@
   "common.offline": "Frakoblet",
   "profile.title": "Profil",
   "chat.placeholder": "Skriv en melding...",
-  "chat.typing": "skriver..."
+  "chat.typing": "skriver...",
+  "profile.choosePicture": "Profilbilde",
+  "profile.applyPicture": "Bruk bilde",
+  "notif.friendRequest": "sendte deg en venneforespørsel",
+  "notif.newMessage": "sendte deg en melding"
 }

@@ -236,5 +236,9 @@
   "common.offline": "Offline",
   "profile.title": "Perfil",
   "chat.placeholder": "Digite uma mensagem...",
-  "chat.typing": "digitando..."
+  "chat.typing": "digitando...",
+  "profile.choosePicture": "Foto do Perfil",
+  "profile.applyPicture": "Definir Foto",
+  "notif.friendRequest": "enviou um pedido de amizade",
+  "notif.newMessage": "enviou uma mensagem"
 }

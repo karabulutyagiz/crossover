@@ -27,6 +27,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
 import { gemTarget } from './gemTarget';
+import { Avatar, AVATAR_IDS } from './Avatar';
 import Svg, { Rect, Circle, Line, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -106,6 +107,7 @@ type Actions = {
   clearEmote: (playerId: string) => void;
   buyEmote: (emoteId: string) => void;
   equipEmotes: (emoteIds: string[]) => void;
+  setAvatar: (avatar: string | null) => void;
   verifyPurchase: (receipt: string) => Promise<void>;
   loadFriends: () => void;
   sendFriendRequest: (targetCode?: string, targetUsername?: string) => void;
@@ -628,7 +630,7 @@ const TUT_SPELL_B = [TUT_CAREER[1]!]; // Real Madrid
 const TUT_PROFILE = {
   userId: 'you', displayName: 'Sen', trophies: 0, diamonds: 0, wins: 0, losses: 0,
   ownedEmotes: [], equippedEmotes: [], usernameSet: true, socialPackUntil: null,
-  arena: { name: 'Mahalle Sahası', icon: '🏟️', minTrophies: 0 },
+  arena: { name: 'Mahalle Sahası', icon: '🏟️', minTrophies: 0 }, avatar: null,
 };
 
 // Guided first-time tutorial that drives the REAL match screens (PickTeam → Guess
@@ -1414,13 +1416,7 @@ export function LeaderboardModal({ visible, entries, onClose, onViewProfile, onS
             style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: theme.border }}
           >
             <Text style={{ color: entry.rank <= 3 ? ['#FFD700', '#C0C0C0', '#CD7F32'][entry.rank - 1] : theme.muted, fontWeight: '900', fontSize: 15, width: 28 }}>{entry.rank}</Text>
-            <View style={{
-              width: 28, height: 28, borderRadius: 14,
-              backgroundColor: theme.bg2, borderWidth: 1.5, borderColor: theme.primary,
-              alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Ionicons name="person" size={13} color={theme.primary} />
-            </View>
+            <Avatar avatar={entry.avatar} name={entry.displayName} size={28} ring={theme.primary} ringWidth={1.5} iconColor={theme.primary} iconSize={13} />
             <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14, flex: 1 }} numberOfLines={1}>{entry.displayName}</Text>
             <Ionicons name="trophy" size={13} color={theme.accent} />
             <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 14 }}>{entry.trophies}</Text>
@@ -1572,8 +1568,8 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       {/* Top bar: profile avatar (→ profile) · leaderboard (gems live in the global resource bar) */}
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
         <Pressable onPress={actions.openProfile} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.card, borderRadius: 22, paddingVertical: 4, paddingLeft: 4, paddingRight: 12, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, maxWidth: '60%', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: 4 }}>
-          <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.primary, shadowColor: theme.primary, shadowOpacity: 0.5, shadowRadius: 5, shadowOffset: { width: 0, height: 0 } }}>
-            <Ionicons name="person" size={18} color={theme.primary} />
+          <View style={{ borderRadius: 17, shadowColor: theme.primary, shadowOpacity: 0.5, shadowRadius: 5, shadowOffset: { width: 0, height: 0 } }}>
+            <Avatar avatar={profile?.avatar} name={profile?.displayName} size={34} ring={theme.primary} iconColor={theme.primary} iconSize={18} />
           </View>
           <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13 }} numberOfLines={1}>{profile?.displayName ?? 'Oyuncu'}</Text>
         </Pressable>
@@ -1916,11 +1912,7 @@ export function LobbyScreen({ state, actions }: Props) {
       <View style={{ height: 14 }} />
       {room.players.map((p) => (
         <GamePanel key={p.id} compact accentStripe={p.isHost ? theme.accent : theme.primary} style={{ marginBottom: 8 }} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingLeft: 14 }}>
-          <Ionicons
-            name={p.name === 'Bot' ? 'game-controller' : p.isHost ? 'star' : 'person'}
-            size={18}
-            color={p.isHost ? theme.accent : theme.muted}
-          />
+          <Avatar avatar={p.avatar} name={p.name} size={32} ring={p.isHost ? theme.accent : theme.primary} iconColor={p.isHost ? theme.accent : theme.muted} iconSize={18} />
           <Text style={styles.lobbyName}>
             {p.name}
             {p.id === room.youId ? t('lobby.youSuffix') : ''}
@@ -1967,9 +1959,7 @@ export function MatchupScreen({ state }: Props) {
 
   const renderPlayer = (p: typeof you, color: string, slideY: Animated.AnimatedInterpolation<number>) => (
     <Animated.View style={{ transform: [{ translateY: slideY }], opacity: anim, alignItems: 'center', gap: 6 }}>
-      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.card, borderWidth: 3, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name={p?.name === 'Bot' ? 'game-controller' : 'person'} size={30} color={color} />
-      </View>
+      <Avatar avatar={p?.avatar} name={p?.name} size={64} ring={color} ringWidth={3} bg={theme.card} iconColor={color} iconSize={30} />
       <Text style={{ color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold' }} numberOfLines={1}>{p?.name ?? '?'}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
         <Ionicons name="trophy" size={15} color={theme.accent} />
@@ -2063,7 +2053,7 @@ function ThoughtBubble({ emoteId, emoteN, position }: { emoteId?: string; emoteN
 
 // ---- Shared in-match player bar (opponent top, you bottom) ----
 function PlayerBar({ player, isYou, onEmotePress, emoteId, emoteN }: {
-  player: { name: string; trophies?: number; arena?: { name: string; icon: string; minTrophies: number } } | undefined;
+  player: { name: string; trophies?: number; arena?: { name: string; icon: string; minTrophies: number }; avatar?: string | null } | undefined;
   isYou?: boolean;
   onEmotePress?: () => void;
   emoteId?: string;
@@ -2074,9 +2064,7 @@ function PlayerBar({ player, isYou, onEmotePress, emoteId, emoteN }: {
   return (
     <View style={{ position: 'relative', alignSelf: 'stretch' }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.card, borderRadius: 14, paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: isYou ? theme.primary + '44' : theme.border }}>
-        <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: theme.bg2, borderWidth: 2, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name={player.name === 'Bot' ? 'game-controller' : 'person'} size={14} color={color} />
-        </View>
+        <Avatar avatar={player.avatar} name={player.name} size={28} ring={color} ringWidth={2} iconColor={color} iconSize={14} />
         <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', flex: 1 }} numberOfLines={1}>{player.name}</Text>
         <Ionicons name="trophy" size={13} color={theme.accent} />
         <Text style={{ color: theme.accent, fontSize: 12, fontFamily: 'Poppins-SemiBold' }}>{player.trophies ?? 0}</Text>
@@ -3270,8 +3258,8 @@ export function FriendProfileModal({ profile, onClose }: { profile: PublicProfil
 
           {/* Avatar + name + arena */}
           <View style={{ alignItems: 'center', marginBottom: 26 }}>
-            <View style={{ width: 110, height: 110, borderRadius: 55, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: color, shadowColor: color, shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 0 }, elevation: 10 }}>
-              <Ionicons name="person" size={56} color={color} />
+            <View style={{ borderRadius: 55, shadowColor: color, shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 0 }, elevation: 10 }}>
+              <Avatar avatar={profile?.avatar} name={profile?.displayName} size={110} ring={color} ringWidth={4} iconColor={color} iconSize={56} />
             </View>
             <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 24, marginTop: 14 }}>{profile?.displayName}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, backgroundColor: theme.card, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: color + '66' }}>
@@ -3514,9 +3502,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
               const matches = friends.filter(f => f.displayName.toLowerCase().includes(q) && !state.conversations.some(c => c.userId === f.userId));
               return matches.length > 0 ? matches.map(f => (
                 <Pressable key={f.userId} onPress={() => { setMsgSearch(''); actions.openChat(f.userId); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: theme.card, borderRadius: 12, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: theme.border }}>
-                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons name="person" size={16} color={theme.primary} />
-                  </View>
+                  <Avatar avatar={f.avatar} name={f.displayName} size={36} ring={theme.primary} iconColor={theme.primary} iconSize={16} />
                   <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14, flex: 1 }} numberOfLines={1}>{f.displayName}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 }}>
                     <Ionicons name="chatbubble" size={12} color="#06131F" />
@@ -3543,9 +3529,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
                 }}
               >
                 <View style={{ position: 'relative' }}>
-                  <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: theme.bg2, borderWidth: 2, borderColor: c.online ? theme.primary : theme.border, alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons name="person" size={20} color={c.online ? theme.primary : theme.muted} />
-                  </View>
+                  <Avatar avatar={c.avatar} name={c.displayName} size={44} ring={c.online ? theme.primary : theme.border} iconColor={c.online ? theme.primary : theme.muted} iconSize={20} />
                   {c.online ? <View style={{ position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
                 </View>
                 <View style={{ flex: 1 }}>
@@ -3586,7 +3570,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
               }}
             >
               <View style={{ position: 'relative' }}>
-                <Ionicons name="person-circle" size={38} color={theme.accent} />
+                <Avatar avatar={f.avatar} name={f.displayName} size={38} ring={theme.accent} iconColor={theme.accent} iconSize={22} />
                 {f.online ? <View style={{ position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: 6, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card, shadowColor: theme.primary, shadowOpacity: 0.7, shadowRadius: 4, shadowOffset: { width: 0, height: 0 } }} /> : null}
               </View>
               <View style={{ flex: 1 }}>
@@ -3892,7 +3876,9 @@ function ChatScreen({ state, actions }: Props) {
   const inputRef = useRef<TextInput>(null);
   const chatWith = state.chatWith;
 
-  const friend = state.friends.find(f => f.userId === chatWith);
+  // Partner may be a friend OR just a conversation partner (DMs with non-friends).
+  // Both carry displayName/online/avatar, so fall back to the conversation row.
+  const friend = state.friends.find(f => f.userId === chatWith) ?? state.conversations.find(c => c.userId === chatWith);
   const myId = state.profile?.userId;
   const messages = state.chatMessages;
   const isTyping = chatWith ? state.typingFrom[chatWith] : false;
@@ -3965,9 +3951,7 @@ function ChatScreen({ state, actions }: Props) {
           <Pressable onPress={actions.closeChat} hitSlop={10}>
             <Ionicons name="arrow-back" size={24} color={theme.text} />
           </Pressable>
-          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="person" size={18} color={theme.primary} />
-          </View>
+          <Avatar avatar={friend?.avatar} name={friend?.displayName} size={36} ring={theme.primary} iconColor={theme.primary} iconSize={18} />
           <View style={{ flex: 1 }}>
             <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15 }} numberOfLines={1}>{friend?.displayName ?? '...'}</Text>
             <Text style={{ color: isTyping ? theme.primary : friend?.online ? theme.primary : theme.muted, fontSize: 11 }}>
@@ -3996,9 +3980,7 @@ function ChatScreen({ state, actions }: Props) {
             return (
               <View key={m.id} style={{ alignItems: isMe ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
                 <View style={{ flexDirection: isMe ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 6, maxWidth: '80%' }}>
-                  <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: isMe ? theme.primary + '33' : theme.card, borderWidth: 1.5, borderColor: isMe ? theme.primary : theme.border, alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons name="person" size={13} color={isMe ? theme.primary : theme.muted} />
-                  </View>
+                  <Avatar avatar={isMe ? state.profile?.avatar : friend?.avatar} name={isMe ? state.profile?.displayName : friend?.displayName} size={28} ring={isMe ? theme.primary : theme.border} ringWidth={1.5} bg={isMe ? theme.primary + '33' : theme.card} iconColor={isMe ? theme.primary : theme.muted} iconSize={13} />
                   <View style={{
                     backgroundColor: isMe ? theme.primary : theme.card,
                     borderRadius: 16,
@@ -4018,9 +4000,7 @@ function ChatScreen({ state, actions }: Props) {
           })}
           {isTyping ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-              <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: theme.card, borderWidth: 1.5, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="person" size={13} color={theme.muted} />
-              </View>
+              <Avatar avatar={friend?.avatar} name={friend?.displayName} size={28} ring={theme.border} ringWidth={1.5} bg={theme.card} iconColor={theme.muted} iconSize={13} />
               <View style={{ backgroundColor: theme.card, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: theme.border, flexDirection: 'row', gap: 4 }}>
                 <TypingDot delay={0} />
                 <TypingDot delay={150} />
@@ -4092,6 +4072,7 @@ function StatCard({ icon, color, label, value, gem }: { icon?: IoniconName; colo
 
 export function ProfileScreen({ state, actions, onOpenMatchHistory }: Props) {
   const p = state.profile;
+  const [avatarPicker, setAvatarPicker] = useState(false);
   if (!p) return <Screen><View style={styles.center}><Text style={styles.muted}>—</Text></View></Screen>;
   const total = p.wins + p.losses;
   const winRate = total ? Math.round((p.wins / total) * 100) : 0;
@@ -4101,9 +4082,13 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory }: Props) {
       <ScreenHeader title="Profil" icon="person" onBack={actions.closeProfile} underline={color} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
         <View style={{ alignItems: 'center', gap: 8, marginVertical: 10 }}>
-          <View style={{ width: 104, height: 104, borderRadius: 52, backgroundColor: theme.bg2, borderWidth: 4, borderColor: color, alignItems: 'center', justifyContent: 'center', shadowColor: color, shadowOpacity: 0.6, shadowRadius: 18, shadowOffset: { width: 0, height: 0 }, elevation: 12 }}>
-            <Ionicons name="person" size={54} color={color} />
-          </View>
+          <Pressable onPress={() => setAvatarPicker(true)} style={{ borderRadius: 52, shadowColor: color, shadowOpacity: 0.6, shadowRadius: 18, shadowOffset: { width: 0, height: 0 }, elevation: 12 }}>
+            <Avatar avatar={p.avatar} name={p.displayName} size={104} ring={color} ringWidth={4} iconColor={color} iconSize={54} />
+            {/* edit badge */}
+            <View style={{ position: 'absolute', bottom: 0, right: 0, width: 32, height: 32, borderRadius: 16, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: theme.bg }}>
+              <Ionicons name="camera" size={15} color="#06131F" />
+            </View>
+          </Pressable>
           <Text style={{ color: theme.text, fontSize: 24, fontFamily: 'Poppins-ExtraBold', ...engrave('lg') }}>{p.displayName}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: color + '66' }}>
             <Text style={{ fontSize: 17 }}>{p.arena.icon}</Text>
@@ -4125,7 +4110,71 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory }: Props) {
           <Btn label={t('menu.matchHistory')} icon="time" kind="blue" onPress={() => onOpenMatchHistory?.()} />
         </View>
       </ScrollView>
+      <AvatarPickerModal
+        visible={avatarPicker}
+        current={p.avatar}
+        onClose={() => setAvatarPicker(false)}
+        onApply={(id) => actions.setAvatar(id)}
+      />
     </Screen>
+  );
+}
+
+// Profile-picture chooser: a grid of the 20 avatars; tap to select, then apply.
+function AvatarPickerModal({ visible, current, onClose, onApply }: {
+  visible: boolean;
+  current?: string | null;
+  onClose: () => void;
+  onApply: (id: string) => void;
+}) {
+  const [sel, setSel] = useState<string | null>(current ?? null);
+  useEffect(() => { if (visible) setSel(current ?? null); }, [visible, current]);
+  const GAP = 12;
+  const W = Math.floor((SCREEN_W - 36 - GAP * 3) / 4);
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.emoteSheetBackdrop} onPress={onClose}>
+        <Pressable
+          onPress={() => {}}
+          style={{
+            backgroundColor: theme.card, borderTopLeftRadius: 26, borderTopRightRadius: 26,
+            paddingTop: 12, paddingBottom: 28, paddingHorizontal: 18,
+            borderTopWidth: 1, borderColor: theme.border, maxHeight: '82%',
+          }}
+        >
+          <View style={{ width: 42, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: 'center', marginBottom: 14 }} />
+          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 17, marginBottom: 12, marginLeft: 2 }}>{t('profile.choosePicture')}</Text>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, paddingBottom: 8 }}>
+              {AVATAR_IDS.map((id) => {
+                const selected = sel === id;
+                return (
+                  <Pressable
+                    key={id}
+                    onPress={() => setSel(id)}
+                    style={{
+                      width: W, height: W, borderRadius: W / 2,
+                      borderWidth: 3, borderColor: selected ? theme.primary : 'transparent',
+                      shadowColor: selected ? theme.primary : 'transparent', shadowOpacity: selected ? 0.6 : 0, shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
+                      alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    <Avatar avatar={id} size={W - 8} />
+                    {selected ? (
+                      <View style={{ position: 'absolute', top: -2, right: -2, width: 22, height: 22, borderRadius: 11, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.card }}>
+                        <Ionicons name="checkmark" size={13} color="#06131F" />
+                      </View>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+          <View style={{ height: 12 }} />
+          <Btn label={t('profile.applyPicture')} icon="checkmark-circle" kind="primary" onPress={() => { if (sel) onApply(sel); onClose(); }} />
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -4849,7 +4898,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
         <View style={styles.scoreRow}>
           {room.players.map((p) => (
             <View key={p.id} style={styles.scoreChip}>
-              <Ionicons name={p.name === 'Bot' ? 'game-controller' : 'person'} size={14} color={theme.muted} />
+              <Avatar avatar={p.avatar} name={p.name} size={20} iconColor={theme.muted} iconSize={14} />
               <Text style={styles.scoreText}>
                 {p.name} {p.score}/{state.winTarget}
               </Text>

@@ -55,6 +55,7 @@ export interface ProfileView {
   usernameSet: boolean;
   socialPackUntil: string | null; // ISO date or null
   arena: ArenaView;
+  avatar: string | null; // chosen profile-picture id (e.g. 'pp7') or null
 }
 
 export interface PlayerView {
@@ -66,6 +67,7 @@ export interface PlayerView {
   connected: boolean;
   trophies?: number;
   arena?: ArenaView;
+  avatar?: string | null;
 }
 
 export interface RoomView {
@@ -98,6 +100,7 @@ export type ClientMsg =
   | { type: 'send_emote'; emoteId: string } // show an emote to the opponent during a match
   | { type: 'buy_emote'; emoteId: string } // purchase a premium emote with diamonds
   | { type: 'equip_emotes'; emoteIds: string[] } // set the match loadout (max 3 visual)
+  | { type: 'set_avatar'; avatar: string | null } // choose profile picture ('pp7' or null)
   | { type: 'verify_purchase'; receipt: string } // validate an Apple IAP receipt → grant diamonds
   | { type: 'search_clubs'; reqId: string; q: string }
   | { type: 'pick_player'; playerId: number }
@@ -212,6 +215,7 @@ export interface ConversationView {
   lastMessage: string;
   lastMessageAt: string;
   unreadCount: number;
+  avatar?: string | null;
 }
 
 export interface PublicProfile {
@@ -221,6 +225,7 @@ export interface PublicProfile {
   wins: number;
   losses: number;
   arena: ArenaView;
+  avatar?: string | null;
 }
 
 export interface MatchHistoryView {
@@ -248,6 +253,7 @@ export interface FriendView {
   trophies: number;
   arena: ArenaView;
   online: boolean;
+  avatar?: string | null;
 }
 
 export interface FriendRequestView {

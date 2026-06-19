@@ -236,5 +236,9 @@
   "common.offline": "Poissa",
   "profile.title": "Profiili",
   "chat.placeholder": "Kirjoita viesti...",
-  "chat.typing": "kirjoittaa..."
+  "chat.typing": "kirjoittaa...",
+  "profile.choosePicture": "Profiilikuva",
+  "profile.applyPicture": "Aseta kuva",
+  "notif.friendRequest": "lähetti sinulle kaveripyynnön",
+  "notif.newMessage": "lähetti sinulle viestin"
 }

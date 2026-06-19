@@ -72,6 +72,7 @@ export interface ProfileView {
   usernameSet: boolean;
   socialPackUntil: string | null;
   arena: ArenaView;
+  avatar: string | null;
 }
 
 export interface FriendView {
@@ -80,6 +81,7 @@ export interface FriendView {
   trophies: number;
   arena: ArenaView;
   online: boolean;
+  avatar?: string | null;
 }
 
 export interface FriendRequestView {
@@ -98,6 +100,7 @@ export interface PlayerView {
   connected: boolean;
   trophies?: number;
   arena?: ArenaView;
+  avatar?: string | null;
 }
 
 export interface RoomView {
@@ -148,6 +151,7 @@ export type ClientMsg =
   | { type: 'send_emote'; emoteId: string }
   | { type: 'buy_emote'; emoteId: string }
   | { type: 'equip_emotes'; emoteIds: string[] }
+  | { type: 'set_avatar'; avatar: string | null }
   | { type: 'verify_purchase'; receipt: string }
   | { type: 'search_clubs'; reqId: string; q: string }
   | { type: 'pick_player'; playerId: number }
@@ -237,6 +241,7 @@ export interface ConversationView {
   lastMessage: string;
   lastMessageAt: string;
   unreadCount: number;
+  avatar?: string | null;
 }
 
 export interface PublicProfile {
@@ -246,6 +251,7 @@ export interface PublicProfile {
   wins: number;
   losses: number;
   arena: ArenaView;
+  avatar?: string | null;
 }
 
 export interface MatchHistoryView {

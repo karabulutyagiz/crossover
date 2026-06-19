@@ -236,5 +236,9 @@
   "common.offline": "Offline",
   "profile.title": "Profiel",
   "chat.placeholder": "Typ een bericht...",
-  "chat.typing": "aan het typen..."
+  "chat.typing": "aan het typen...",
+  "profile.choosePicture": "Profielfoto",
+  "profile.applyPicture": "Foto instellen",
+  "notif.friendRequest": "heeft je een vriendschapsverzoek gestuurd",
+  "notif.newMessage": "heeft je een bericht gestuurd"
 }

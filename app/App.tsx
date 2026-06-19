@@ -102,6 +102,49 @@ function InviteBanner({
   );
 }
 
+// Transient top banner: slides down on a new friend request / message, auto-hides
+// after a few seconds. Tapping it jumps to the relevant screen.
+function TopBanner({
+  banner,
+  onPress,
+  onClose,
+}: {
+  banner: { id: number; kind: 'friend_request' | 'message'; name: string; body?: string; userId?: string } | null;
+  onPress: () => void;
+  onClose: () => void;
+}) {
+  const y = useRef(new Animated.Value(-160)).current;
+  const id = banner?.id;
+  useEffect(() => {
+    if (id == null) return;
+    y.setValue(-160);
+    Animated.spring(y, { toValue: 0, friction: 8, tension: 70, useNativeDriver: true }).start();
+    const tm = setTimeout(() => {
+      Animated.timing(y, { toValue: -160, duration: 250, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(() => onClose());
+    }, 4200);
+    return () => clearTimeout(tm);
+  }, [id]);
+  if (!banner) return null;
+  const isFr = banner.kind === 'friend_request';
+  const sub = isFr ? t('notif.friendRequest') : (banner.body || t('notif.newMessage'));
+  return (
+    <Animated.View style={[s.topBanner, { transform: [{ translateY: y }] }]}>
+      <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }} onPress={() => { onClose(); onPress(); }}>
+        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.primary }}>
+          <Ionicons name={isFr ? 'person-add' : 'chatbubble-ellipses'} size={20} color={theme.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.inviteName} numberOfLines={1}>{banner.name}</Text>
+          <Text style={s.inviteSub} numberOfLines={1}>{sub}</Text>
+        </View>
+      </Pressable>
+      <Pressable onPress={onClose} hitSlop={8} style={{ paddingHorizontal: 4 }}>
+        <Ionicons name="close" size={18} color={theme.muted} />
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 export default function App() {
   const { state, actions } = useCrossover();
   const props = { state, actions };
@@ -287,6 +330,11 @@ export default function App() {
             onReject={() => actions.respondMatchInvite(state.matchInvite!.fromId, false)}
           />
         ) : null}
+        <TopBanner
+          banner={state.banner}
+          onClose={actions.clearBanner}
+          onPress={() => goToTab(3)}
+        />
         <OpponentForfeitModal
           visible={state.opponentForfeit}
           onFindNew={actions.findMatchAgain}
@@ -437,6 +485,11 @@ export default function App() {
           onReject={() => actions.respondMatchInvite(state.matchInvite!.fromId, false)}
         />
       ) : null}
+      <TopBanner
+        banner={state.banner}
+        onClose={actions.clearBanner}
+        onPress={() => { const b = state.banner; if (!b) return; if (b.kind === 'friend_request') goToTab(3); else if (b.userId) actions.openChat(b.userId); }}
+      />
 
       {/* Centered popups (leaderboard / match history) — open over everything, not fullscreen */}
       <LeaderboardModal visible={overlay === 'leaderboard'} entries={state.leaderboard} onClose={() => setOverlay(null)} onViewProfile={(userId) => actions.getUserProfile(userId)} onSendFriendRequest={(userId) => actions.sendFriendRequest(userId.slice(0, 8))} />
@@ -479,6 +532,13 @@ const s = StyleSheet.create({
     backgroundColor: theme.card, borderRadius: 16, padding: 12,
     borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark,
     shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 16,
+  },
+  topBanner: {
+    position: 'absolute', top: 50, left: 10, right: 10, zIndex: 110,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: theme.card, borderRadius: 16, paddingVertical: 10, paddingHorizontal: 12,
+    borderWidth: 2, borderColor: theme.primary, borderBottomWidth: 4, borderBottomColor: theme.primaryDark,
+    shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 18,
   },
   inviteName: { color: theme.text, fontWeight: '800', fontSize: 15 },
   inviteSub: { color: theme.muted, fontSize: 11.5 },
