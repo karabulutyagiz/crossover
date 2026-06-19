@@ -2598,9 +2598,9 @@ function DiamondCelebration({ amount, onDone }: { amount: number; onDone: () => 
 const DIAMOND_PACKS = [
   { id: 'pack1', amount: 100,   price: '₺29,99',   label: 'Elmas Kesesi',      color: '#A855F7', best: false, productId: 'com.crossover.diamonds.100',   img: require('../assets/store/diamonds-100.png') },
   { id: 'pack2', amount: 500,   price: '₺79,99',   label: 'Elmas Çuvalı',      color: '#C084FC', best: false, productId: 'com.crossover.diamonds.500',   img: require('../assets/store/diamonds-500.png') },
-  { id: 'pack3', amount: 1200,  price: '₺149,99',  label: 'Elmas Sandığı',     color: '#A855F7', best: true,  productId: 'com.crossover.diamonds.1200',  img: require('../assets/store/diamonds-1200.png') },
-  { id: 'pack4', amount: 5000,  price: '₺449,99',  label: 'Büyük Elmas Kasası', color: '#7C3AED', best: false, productId: 'com.crossover.diamonds.5000',  img: require('../assets/store/diamonds-5000.png') },
-  { id: 'pack5', amount: 15000, price: '₺999,99',  label: 'Kraliyet Hazinesi', color: '#9333EA', best: false, productId: 'com.crossover.diamonds.15000', img: require('../assets/store/diamonds-15000.png') },
+  { id: 'pack3', amount: 1200,  price: '₺149,99',  label: 'Büyük Elmas Çuvalı', color: '#A855F7', best: true,  productId: 'com.crossover.diamonds.1200',  img: require('../assets/store/diamonds-1200.png') },
+  { id: 'pack4', amount: 5000,  price: '₺449,99',  label: 'Elmas Sandığı',     color: '#7C3AED', best: false, productId: 'com.crossover.diamonds.5000',  img: require('../assets/store/diamonds-5000.png') },
+  { id: 'pack5', amount: 15000, price: '₺999,99',  label: 'Kraliyet Sandığı',  color: '#9333EA', best: false, productId: 'com.crossover.diamonds.15000', img: require('../assets/store/diamonds-15000.png') },
   { id: 'pack6', amount: 50000, price: '₺2.499,99', label: 'Elmas Dağı',       color: '#6B21A8', best: false, productId: 'com.crossover.diamonds.50000', img: require('../assets/store/diamonds-50000.png') },
 ];
 const DIAMOND_PRODUCT_IDS = DIAMOND_PACKS.map((p) => p.productId);
