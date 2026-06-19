@@ -293,7 +293,7 @@ export default function App() {
     ? <ArenasScreen {...props} />
     : state.phase === 'profile'
     ? <ProfileScreen {...props} onOpenMatchHistory={openMatchHistory} />
-    : <HomeScreen {...props} onLanguageChange={() => { setLoaded(false); setLangKey((k) => k + 1); }} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} onOpenLeaderboard={openLeaderboard} onOpenMatchHistory={openMatchHistory} />;
+    : <HomeScreen {...props} onLanguageChange={() => { setLangKey((k) => k + 1); }} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} onOpenLeaderboard={openLeaderboard} onOpenMatchHistory={openMatchHistory} />;
 
   // Per-tab background: Oyna/home = blue arena backdrop, Mağaza = violet, others = calm navy.
   const bgVariant = (activeTab === 0 ? 'store' : activeTab === 2 && state.phase === 'home' ? 'home' : 'menu') as 'store' | 'home' | 'menu';

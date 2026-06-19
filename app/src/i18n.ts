@@ -9,6 +9,26 @@
 // Server-originated text (error messages, arena names) stays as the server
 // sends it for now; that needs message codes from the server to localize.
 import { getLocales } from 'expo-localization';
+// Per-language dictionaries (translated from the English base). One JSON per language.
+import pt from './i18n-locales/pt.json';
+import es from './i18n-locales/es.json';
+import fr from './i18n-locales/fr.json';
+import de from './i18n-locales/de.json';
+import it from './i18n-locales/it.json';
+import nl from './i18n-locales/nl.json';
+import no from './i18n-locales/no.json';
+import fi from './i18n-locales/fi.json';
+import ru from './i18n-locales/ru.json';
+import zhHans from './i18n-locales/zh-Hans.json';
+import zhHant from './i18n-locales/zh-Hant.json';
+import ko from './i18n-locales/ko.json';
+import ja from './i18n-locales/ja.json';
+import ar from './i18n-locales/ar.json';
+import fa from './i18n-locales/fa.json';
+import ms from './i18n-locales/ms.json';
+import id from './i18n-locales/id.json';
+import th from './i18n-locales/th.json';
+import vi from './i18n-locales/vi.json';
 
 type Params = Record<string, string | number>;
 
@@ -499,7 +519,12 @@ const en: typeof tr = {
 
 export type MessageKey = keyof typeof tr;
 
-const DICTS: Record<string, Partial<typeof tr>> = { tr, en };
+const DICTS: Record<string, Partial<typeof tr>> = {
+  tr, en,
+  pt, es, fr, de, it, nl, no, fi, ru,
+  'zh-Hans': zhHans, 'zh-Hant': zhHant,
+  ko, ja, ar, fa, ms, id, th, vi,
+};
 
 /** Available languages with their native display names.
  *  Only tr/en have full dictionaries today; the rest fall back to English
