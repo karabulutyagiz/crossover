@@ -24,7 +24,7 @@ import { theme, engrave } from './theme';
 import { t, currentLang, setLanguage, LANGUAGES } from './i18n';
 import type { MessageKey } from './i18n';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { GOOGLE_IOS_CLIENT_ID } from './config';
+import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
 import { gemTarget } from './gemTarget';
 import Svg, { Rect, Circle, Line, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
@@ -1034,6 +1034,8 @@ export function LoginScreen({ state, actions }: Props) {
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     iosClientId: GOOGLE_IOS_CLIENT_ID,
+    androidClientId: GOOGLE_WEB_CLIENT_ID,
+    webClientId: GOOGLE_WEB_CLIENT_ID,
   });
   useEffect(() => {
     if (response?.type === 'success') {
@@ -1426,13 +1428,15 @@ export function LeaderboardModal({ visible, entries, onClose, onViewProfile, onS
         ))}
       </ScrollView>
 
-      {/* Popup menu — same style as FriendsScreen's friend popup */}
+      {/* Popup menu — same style as FriendsScreen's friend popup with tail arrow */}
       <Modal visible={menuEntry !== null} transparent animationType="fade" onRequestClose={() => setMenuEntry(null)}>
         <Pressable style={{ flex: 1 }} onPress={() => setMenuEntry(null)}>
           {menuEntry ? (() => {
             const W = 220;
+            const H = 120;
             const left = Math.max(8, Math.min(menuPos.x - W / 2, SCREEN_W - W - 8));
-            const top = Math.max(56, menuPos.y - 120);
+            const top = Math.max(56, menuPos.y - H - 14);
+            const tailLeft = Math.min(Math.max(menuPos.x - left - 8, 18), W - 34);
             const LbRow = ({ color, label, onPress }: { color: string; label: string; onPress: () => void }) => (
               <Pressable onPress={onPress} style={{ paddingVertical: 12, paddingHorizontal: 14, alignItems: 'center' }}>
                 <Text style={{ color, fontWeight: '800', fontSize: 14.5 }}>{label}</Text>
@@ -1448,6 +1452,8 @@ export function LeaderboardModal({ visible, entries, onClose, onViewProfile, onS
                   <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
                   <LbRow color={theme.primary} label="Arkadaşlık İsteği Gönder" onPress={() => { const e = menuEntry; setMenuEntry(null); onSendFriendRequest?.(e.userId, e.displayName); }} />
                 </View>
+                {/* Downward tail pointing at the tapped row */}
+                <View style={{ position: 'absolute', bottom: -7, left: tailLeft, width: 15, height: 15, backgroundColor: theme.card, transform: [{ rotate: '45deg' }], borderRightWidth: 1, borderBottomWidth: 1, borderColor: theme.border }} />
               </View>
             );
           })() : null}
@@ -3767,9 +3773,11 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
       {/* Tapped a friend → their public profile */}
       <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
 
-      {/* Chat screen — WhatsApp style (fullScreen so KeyboardAvoidingView works correctly) */}
+      {/* Chat screen — WhatsApp style, swipe-back enabled */}
       <Modal visible={state.chatWith !== null} animationType="slide" presentationStyle="fullScreen" onRequestClose={actions.closeChat}>
-        <ChatScreen state={state} actions={actions} />
+        <SwipeBackWrap onBack={actions.closeChat}>
+          <ChatScreen state={state} actions={actions} />
+        </SwipeBackWrap>
       </Modal>
     </Screen>
   );
@@ -3793,6 +3801,82 @@ function TypingDot({ delay }: { delay: number }) {
   const scale = a.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
   const opacity = a.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] });
   return <Animated.View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: theme.muted, transform: [{ scale }], opacity }} />;
+}
+
+// ---- Swipe-back wrapper (WhatsApp-style left-edge → right gesture) ----
+// Wraps any fullScreen content. Dragging from the left 30px edge slides the
+// page right; past 35% of screen width it completes the back navigation,
+// otherwise it springs back. A dim overlay behind the sliding page fades in
+// to simulate depth. Vertical scrolls are never intercepted.
+const SWIPE_THRESHOLD = 0.35; // fraction of screen width to trigger back
+const EDGE_WIDTH = 30;        // px from left edge that starts the gesture
+
+function SwipeBackWrap({ children, onBack }: { children: ReactNode; onBack: () => void }) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const screenW = Dimensions.get('window').width;
+
+  const panResponder = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (evt, g) => {
+      // Only claim if: started near left edge, moving right, clearly horizontal
+      return evt.nativeEvent.pageX < EDGE_WIDTH && g.dx > 8 && g.dx > Math.abs(g.dy) * 1.8;
+    },
+    onPanResponderGrant: () => {
+      // Dismiss keyboard when swipe starts so it doesn't interfere
+      Keyboard.dismiss();
+    },
+    onPanResponderMove: (_, g) => {
+      if (g.dx > 0) translateX.setValue(g.dx);
+    },
+    onPanResponderRelease: (_, g) => {
+      const pastThreshold = g.dx > screenW * SWIPE_THRESHOLD;
+      const fastFlick = g.vx > 0.4 && g.dx > 40;
+      if (pastThreshold || fastFlick) {
+        // Complete: slide off screen then call onBack
+        Animated.timing(translateX, {
+          toValue: screenW,
+          duration: 200,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }).start(() => {
+          translateX.setValue(0);
+          onBack();
+        });
+      } else {
+        // Cancel: spring back to origin
+        Animated.spring(translateX, {
+          toValue: 0,
+          useNativeDriver: true,
+          friction: 8,
+          tension: 80,
+        }).start();
+      }
+    },
+  })).current;
+
+  // Dim overlay opacity: 0 when not swiping, 0.5 at full drag
+  const overlayOpacity = translateX.interpolate({
+    inputRange: [0, screenW],
+    outputRange: [0, 0.5],
+    extrapolate: 'clamp',
+  });
+
+  // Slight parallax: background shifts left a bit (like iOS)
+  const bgTranslateX = translateX.interpolate({
+    inputRange: [0, screenW],
+    outputRange: [-screenW * 0.3, 0],
+    extrapolate: 'clamp',
+  });
+
+  return (
+    <View style={{ flex: 1, backgroundColor: '#000' }} {...panResponder.panHandlers}>
+      {/* Dim background layer */}
+      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#000', opacity: overlayOpacity }]} pointerEvents="none" />
+      {/* Foreground page that slides */}
+      <Animated.View style={{ flex: 1, transform: [{ translateX }], shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: -10, height: 0 }, elevation: 16 }}>
+        {children}
+      </Animated.View>
+    </View>
+  );
 }
 
 // ---- Chat Screen (WhatsApp-style) ----
@@ -3898,6 +3982,7 @@ function ChatScreen({ state, actions }: Props) {
           style={{ flex: 1 }}
           contentContainerStyle={{ padding: 12, paddingBottom: 4 }}
           keyboardShouldPersistTaps="always"
+          keyboardDismissMode="none"
           onContentSizeChange={scrollToBottom}
           onLayout={scrollToBottom}
         >
@@ -3974,7 +4059,7 @@ function ChatScreen({ state, actions }: Props) {
             maxLength={500}
           />
           <Pressable
-            onPress={onSend}
+            onPressIn={onSend}
             hitSlop={8}
             style={{
               width: 42, height: 42, borderRadius: 21,

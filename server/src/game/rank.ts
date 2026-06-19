@@ -404,28 +404,14 @@ export async function sendFriendRequest(
   );
   if (already.rows[0]) return { ok: false, error: 'Zaten arkadaşsınız' };
 
-  // Already pending?
+  // Already pending (either direction)?
   const pending = await pool.query(
-    `SELECT 1 FROM friend_requests WHERE from_user = $1 AND to_user = $2`,
+    `SELECT 1 FROM friend_requests WHERE (from_user = $1 AND to_user = $2) OR (from_user = $2 AND to_user = $1)`,
     [fromUserId, target.id],
   );
   if (pending.rows[0]) return { ok: false, error: 'İstek zaten gönderildi' };
 
-  // If the target already sent US a request, auto-accept both ways
-  const reverse = await pool.query(
-    `SELECT id FROM friend_requests WHERE from_user = $1 AND to_user = $2`,
-    [target.id, fromUserId],
-  );
-  if (reverse.rows[0]) {
-    // Accept the reverse request (mutual add)
-    await pool.query(`DELETE FROM friend_requests WHERE id = $1`, [reverse.rows[0].id]);
-    await pool.query(
-      `INSERT INTO friendships (user_id, friend_id) VALUES ($1, $2), ($2, $1) ON CONFLICT DO NOTHING`,
-      [fromUserId, target.id],
-    );
-    return { ok: true, toUserId: target.id, toName: target.display_name };
-  }
-
+  // Create a pending request — the target must explicitly accept or reject
   await pool.query(
     `INSERT INTO friend_requests (from_user, to_user) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
     [fromUserId, target.id],

@@ -126,12 +126,21 @@ export async function searchClubs(
  * A random club for the bot, chosen by POPULARITY (clubs.popularity = squad
  * market value). Data-driven — no hardcoded ids, no league whitelist — so every
  * famous club is reachable and it survives data rebuilds.
- * - 'easy':   top ~20 mega-famous clubs everyone knows (Real Madrid, Barcelona, etc.)
- * - 'medium': top ~60 well-known clubs (Atalanta, Villarreal, Marseille level)
- * - 'hard':   any club with a logo + players in scope (incl. obscure / lower divisions)
+ *
+ * Difficulty tiers pick from DISTINCT popularity bands so each level feels
+ * noticeably different:
+ * - 'easy':   top ~20 mega-famous clubs EVERYONE knows
+ *             (Real Madrid, Barcelona, Man City, Bayern, Liverpool, etc.)
+ * - 'medium': ranks 21–80 — well-known but not top-tier
+ *             (Atalanta, Leipzig, Villarreal, Marseille, Feyenoord, etc.)
+ * - 'hard':   ranks 81–250 — recognizable but harder to recall transfers for
+ *             (Montpellier, Augsburg, Sassuolo, Kasımpaşa, etc.)
  */
-const EASY_TOP = 20;
-const MEDIUM_TOP = 60;
+const EASY_TOP = 20;    // top 20 only
+const MEDIUM_FROM = 21; // skip the mega-famous
+const MEDIUM_TO = 80;
+const HARD_FROM = 81;
+const HARD_TO = 250;
 
 export async function randomClub(
   scope: Scope = { type: 'all' },
@@ -148,10 +157,25 @@ export async function randomClub(
        AND EXISTS (SELECT 1 FROM player_clubs pc WHERE pc.club_id = c.id)
        ${A_TEAM_ONLY}
        ${scopeSql}`;
-  const topN = difficulty === 'easy' ? EASY_TOP : difficulty === 'medium' ? MEDIUM_TOP : null;
-  const sql = topN
-    ? `SELECT id, name, logo_url FROM (${base} ORDER BY pop DESC LIMIT ${topN}) t ORDER BY random() LIMIT 1`
-    : `${base} ORDER BY random() LIMIT 1`;
+
+  let sql: string;
+  if (difficulty === 'easy') {
+    // Top 20 most popular — everyone knows them
+    sql = `SELECT id, name, logo_url FROM (${base} ORDER BY pop DESC LIMIT ${EASY_TOP}) t ORDER BY random() LIMIT 1`;
+  } else if (difficulty === 'medium') {
+    // Ranks 21–80: skip the super-famous, pick from the well-known middle tier
+    sql = `SELECT id, name, logo_url FROM (
+      SELECT id, name, logo_url, ROW_NUMBER() OVER (ORDER BY pop DESC) AS rn
+      FROM (${base}) sub
+    ) ranked WHERE rn BETWEEN ${MEDIUM_FROM} AND ${MEDIUM_TO} ORDER BY random() LIMIT 1`;
+  } else {
+    // Ranks 81–250: less well-known but still have logos and data
+    sql = `SELECT id, name, logo_url FROM (
+      SELECT id, name, logo_url, ROW_NUMBER() OVER (ORDER BY pop DESC) AS rn
+      FROM (${base}) sub
+    ) ranked WHERE rn BETWEEN ${HARD_FROM} AND ${HARD_TO} ORDER BY random() LIMIT 1`;
+  }
+
   const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(sql, params);
   const r = rows[0];
   return r ? { id: Number(r.id), name: r.name, logoUrl: r.logo_url } : null;

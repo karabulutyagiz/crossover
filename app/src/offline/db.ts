@@ -159,13 +159,30 @@ export async function searchClubs(query: string, limit = 30): Promise<OfflineClu
 
 export async function randomClub(difficulty: 'easy' | 'medium' | 'hard'): Promise<OfflineClub | null> {
   const d = getDB();
-  const topN = difficulty === 'easy' ? 20 : difficulty === 'medium' ? 60 : 200;
-  const rows = await d.getAllAsync(
-    `SELECT c.id, c.name, c.logo FROM clubs c
-     JOIN spells s ON s.club_id = c.id
-     GROUP BY c.id ORDER BY COUNT(*) DESC LIMIT ?`,
-    [topN],
-  );
+  // Distinct popularity bands so each difficulty feels different:
+  // easy = top 20 mega-famous, medium = ranks 21-80, hard = ranks 81-250
+  let rows: any[];
+  if (difficulty === 'easy') {
+    rows = await d.getAllAsync(
+      `SELECT c.id, c.name, c.logo FROM clubs c
+       JOIN spells s ON s.club_id = c.id
+       GROUP BY c.id ORDER BY COUNT(*) DESC LIMIT 20`,
+    );
+  } else if (difficulty === 'medium') {
+    rows = await d.getAllAsync(
+      `SELECT id, name, logo FROM (
+         SELECT c.id, c.name, c.logo, ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC) AS rn
+         FROM clubs c JOIN spells s ON s.club_id = c.id GROUP BY c.id
+       ) WHERE rn BETWEEN 21 AND 80`,
+    );
+  } else {
+    rows = await d.getAllAsync(
+      `SELECT id, name, logo FROM (
+         SELECT c.id, c.name, c.logo, ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC) AS rn
+         FROM clubs c JOIN spells s ON s.club_id = c.id GROUP BY c.id
+       ) WHERE rn BETWEEN 81 AND 250`,
+    );
+  }
   if (rows.length === 0) return null;
   const r = rows[Math.floor(Math.random() * rows.length)]!;
   return { id: r.id, name: r.name, logoUrl: r.logo };
