@@ -1386,34 +1386,69 @@ function PopupCard({ visible, title, icon, onClose, children }: {
   );
 }
 
-export function LeaderboardModal({ visible, entries, onClose, onViewProfile }: { visible: boolean; entries: GameState['leaderboard']; onClose: () => void; onViewProfile?: (userId: string) => void }) {
+export function LeaderboardModal({ visible, entries, onClose, onViewProfile, onSendFriendRequest }: {
+  visible: boolean;
+  entries: GameState['leaderboard'];
+  onClose: () => void;
+  onViewProfile?: (userId: string) => void;
+  onSendFriendRequest?: (userId: string, displayName: string) => void;
+}) {
+  const [menuEntry, setMenuEntry] = useState<GameState['leaderboard'][number] | null>(null);
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
+
   return (
-    <PopupCard visible={visible} title={t('menu.leaderboard')} icon="podium" onClose={onClose}>
+    <PopupCard visible={visible} title={t('menu.leaderboard')} icon="podium" onClose={() => { setMenuEntry(null); onClose(); }}>
       <ScrollView style={{ maxHeight: 460 }} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10 }} showsVerticalScrollIndicator={false}>
         {entries.length === 0 ? (
           <View style={{ alignItems: 'center', paddingVertical: 36 }}><ActivityIndicator color={theme.primary} /></View>
         ) : entries.map((entry) => (
-          <View key={entry.rank} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: theme.border }}>
+          <Pressable
+            key={entry.rank}
+            onPress={(e) => { setMenuPos({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY }); setMenuEntry(entry); }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: theme.border }}
+          >
             <Text style={{ color: entry.rank <= 3 ? ['#FFD700', '#C0C0C0', '#CD7F32'][entry.rank - 1] : theme.muted, fontWeight: '900', fontSize: 15, width: 28 }}>{entry.rank}</Text>
+            <View style={{
+              width: 28, height: 28, borderRadius: 14,
+              backgroundColor: theme.bg2, borderWidth: 1.5, borderColor: theme.primary,
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Ionicons name="person" size={13} color={theme.primary} />
+            </View>
             <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14, flex: 1 }} numberOfLines={1}>{entry.displayName}</Text>
             <Ionicons name="trophy" size={13} color={theme.accent} />
-            <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 14, marginRight: 6 }}>{entry.trophies}</Text>
-            {onViewProfile ? (
-              <Pressable
-                onPress={() => onViewProfile(entry.userId)}
-                hitSlop={6}
-                style={{
-                  width: 30, height: 30, borderRadius: 15,
-                  backgroundColor: theme.card, borderWidth: 1.5, borderColor: theme.primary,
-                  alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                <Ionicons name="person" size={14} color={theme.primary} />
-              </Pressable>
-            ) : null}
-          </View>
+            <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 14 }}>{entry.trophies}</Text>
+          </Pressable>
         ))}
       </ScrollView>
+
+      {/* Popup menu — same style as FriendsScreen's friend popup */}
+      <Modal visible={menuEntry !== null} transparent animationType="fade" onRequestClose={() => setMenuEntry(null)}>
+        <Pressable style={{ flex: 1 }} onPress={() => setMenuEntry(null)}>
+          {menuEntry ? (() => {
+            const W = 220;
+            const left = Math.max(8, Math.min(menuPos.x - W / 2, SCREEN_W - W - 8));
+            const top = Math.max(56, menuPos.y - 120);
+            const LbRow = ({ color, label, onPress }: { color: string; label: string; onPress: () => void }) => (
+              <Pressable onPress={onPress} style={{ paddingVertical: 12, paddingHorizontal: 14, alignItems: 'center' }}>
+                <Text style={{ color, fontWeight: '800', fontSize: 14.5 }}>{label}</Text>
+              </Pressable>
+            );
+            return (
+              <View style={{ position: 'absolute', left, top, width: W }}>
+                <View style={{ backgroundColor: theme.card, borderRadius: 14, borderWidth: 1, borderColor: theme.border, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 16 }}>
+                  <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '900', letterSpacing: 0.5, textAlign: 'center', paddingTop: 9, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: theme.border }} numberOfLines={1}>
+                    {menuEntry.displayName}
+                  </Text>
+                  <LbRow color={theme.text} label="Profili Görüntüle" onPress={() => { const id = menuEntry.userId; setMenuEntry(null); onViewProfile?.(id); }} />
+                  <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
+                  <LbRow color={theme.primary} label="Arkadaşlık İsteği Gönder" onPress={() => { const e = menuEntry; setMenuEntry(null); onSendFriendRequest?.(e.userId, e.displayName); }} />
+                </View>
+              </View>
+            );
+          })() : null}
+        </Pressable>
+      </Modal>
     </PopupCard>
   );
 }
