@@ -42,6 +42,7 @@ import {
   OpponentForfeitModal,
   LeaderboardModal,
   MatchHistoryModal,
+  FriendProfileModal,
 } from './src/screens';
 import { theme, engrave } from './src/theme';
 import { GemIcon, GEM_COLOR } from './src/GemIcon';
@@ -438,8 +439,9 @@ export default function App() {
       ) : null}
 
       {/* Centered popups (leaderboard / match history) — open over everything, not fullscreen */}
-      <LeaderboardModal visible={overlay === 'leaderboard'} entries={state.leaderboard} onClose={() => setOverlay(null)} />
+      <LeaderboardModal visible={overlay === 'leaderboard'} entries={state.leaderboard} onClose={() => setOverlay(null)} onViewProfile={(userId) => actions.getUserProfile(userId)} onSendFriendRequest={(userId) => actions.sendFriendRequest(userId.slice(0, 8))} />
       <MatchHistoryModal visible={overlay === 'matchHistory'} history={state.matchHistory} myName={state.profile?.displayName ?? ''} onClose={() => setOverlay(null)} />
+      <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
 
     </View>
   );

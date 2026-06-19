@@ -1390,21 +1390,69 @@ function PopupCard({ visible, title, icon, onClose, children }: {
   );
 }
 
-export function LeaderboardModal({ visible, entries, onClose }: { visible: boolean; entries: GameState['leaderboard']; onClose: () => void }) {
+export function LeaderboardModal({ visible, entries, onClose, onViewProfile, onSendFriendRequest }: {
+  visible: boolean;
+  entries: GameState['leaderboard'];
+  onClose: () => void;
+  onViewProfile?: (userId: string) => void;
+  onSendFriendRequest?: (userId: string, displayName: string) => void;
+}) {
+  const [menuEntry, setMenuEntry] = useState<GameState['leaderboard'][number] | null>(null);
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
+
   return (
-    <PopupCard visible={visible} title={t('menu.leaderboard')} icon="podium" onClose={onClose}>
+    <PopupCard visible={visible} title={t('menu.leaderboard')} icon="podium" onClose={() => { setMenuEntry(null); onClose(); }}>
       <ScrollView style={{ maxHeight: 460 }} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10 }} showsVerticalScrollIndicator={false}>
         {entries.length === 0 ? (
           <View style={{ alignItems: 'center', paddingVertical: 36 }}><ActivityIndicator color={theme.primary} /></View>
         ) : entries.map((entry) => (
-          <View key={entry.rank} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: theme.border }}>
+          <Pressable
+            key={entry.rank}
+            onPress={(e) => { setMenuPos({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY }); setMenuEntry(entry); }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: theme.border }}
+          >
             <Text style={{ color: entry.rank <= 3 ? ['#FFD700', '#C0C0C0', '#CD7F32'][entry.rank - 1] : theme.muted, fontWeight: '900', fontSize: 15, width: 28 }}>{entry.rank}</Text>
+            <View style={{
+              width: 28, height: 28, borderRadius: 14,
+              backgroundColor: theme.bg2, borderWidth: 1.5, borderColor: theme.primary,
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Ionicons name="person" size={13} color={theme.primary} />
+            </View>
             <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14, flex: 1 }} numberOfLines={1}>{entry.displayName}</Text>
             <Ionicons name="trophy" size={13} color={theme.accent} />
             <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 14 }}>{entry.trophies}</Text>
-          </View>
+          </Pressable>
         ))}
       </ScrollView>
+
+      {/* Popup menu — same style as FriendsScreen's friend popup */}
+      <Modal visible={menuEntry !== null} transparent animationType="fade" onRequestClose={() => setMenuEntry(null)}>
+        <Pressable style={{ flex: 1 }} onPress={() => setMenuEntry(null)}>
+          {menuEntry ? (() => {
+            const W = 220;
+            const left = Math.max(8, Math.min(menuPos.x - W / 2, SCREEN_W - W - 8));
+            const top = Math.max(56, menuPos.y - 120);
+            const LbRow = ({ color, label, onPress }: { color: string; label: string; onPress: () => void }) => (
+              <Pressable onPress={onPress} style={{ paddingVertical: 12, paddingHorizontal: 14, alignItems: 'center' }}>
+                <Text style={{ color, fontWeight: '800', fontSize: 14.5 }}>{label}</Text>
+              </Pressable>
+            );
+            return (
+              <View style={{ position: 'absolute', left, top, width: W }}>
+                <View style={{ backgroundColor: theme.card, borderRadius: 14, borderWidth: 1, borderColor: theme.border, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 16 }}>
+                  <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '900', letterSpacing: 0.5, textAlign: 'center', paddingTop: 9, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: theme.border }} numberOfLines={1}>
+                    {menuEntry.displayName}
+                  </Text>
+                  <LbRow color={theme.text} label="Profili Görüntüle" onPress={() => { const id = menuEntry.userId; setMenuEntry(null); onViewProfile?.(id); }} />
+                  <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
+                  <LbRow color={theme.primary} label="Arkadaşlık İsteği Gönder" onPress={() => { const e = menuEntry; setMenuEntry(null); onSendFriendRequest?.(e.userId, e.displayName); }} />
+                </View>
+              </View>
+            );
+          })() : null}
+        </Pressable>
+      </Modal>
     </PopupCard>
   );
 }
@@ -2612,9 +2660,9 @@ function DiamondCelebration({ amount, img, onDone }: { amount: number; img?: Ima
 const DIAMOND_PACKS = [
   { id: 'pack1', amount: 100,   price: '₺29,99',   label: 'Elmas Kesesi',      color: '#A855F7', best: false, productId: 'com.crossover.diamonds.100',   img: require('../assets/store/diamonds-100.png') },
   { id: 'pack2', amount: 500,   price: '₺79,99',   label: 'Elmas Çuvalı',      color: '#C084FC', best: false, productId: 'com.crossover.diamonds.500',   img: require('../assets/store/diamonds-500.png') },
-  { id: 'pack3', amount: 1200,  price: '₺149,99',  label: 'Elmas Sandığı',     color: '#A855F7', best: true,  productId: 'com.crossover.diamonds.1200',  img: require('../assets/store/diamonds-1200.png') },
-  { id: 'pack4', amount: 5000,  price: '₺449,99',  label: 'Büyük Elmas Kasası', color: '#7C3AED', best: false, productId: 'com.crossover.diamonds.5000',  img: require('../assets/store/diamonds-5000.png') },
-  { id: 'pack5', amount: 15000, price: '₺999,99',  label: 'Kraliyet Hazinesi', color: '#9333EA', best: false, productId: 'com.crossover.diamonds.15000', img: require('../assets/store/diamonds-15000.png') },
+  { id: 'pack3', amount: 1200,  price: '₺149,99',  label: 'Büyük Elmas Çuvalı', color: '#A855F7', best: true,  productId: 'com.crossover.diamonds.1200',  img: require('../assets/store/diamonds-1200.png') },
+  { id: 'pack4', amount: 5000,  price: '₺449,99',  label: 'Elmas Sandığı',     color: '#7C3AED', best: false, productId: 'com.crossover.diamonds.5000',  img: require('../assets/store/diamonds-5000.png') },
+  { id: 'pack5', amount: 15000, price: '₺999,99',  label: 'Kraliyet Sandığı',  color: '#9333EA', best: false, productId: 'com.crossover.diamonds.15000', img: require('../assets/store/diamonds-15000.png') },
   { id: 'pack6', amount: 50000, price: '₺2.499,99', label: 'Elmas Dağı',       color: '#6B21A8', best: false, productId: 'com.crossover.diamonds.50000', img: require('../assets/store/diamonds-50000.png') },
 ];
 const DIAMOND_PRODUCT_IDS = DIAMOND_PACKS.map((p) => p.productId);
@@ -2691,99 +2739,96 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
   );
 }
 
-const AD_COOLDOWN_MS = 3 * 60 * 60 * 1000; // 3 saat
 const AD_STORAGE_KEY = '@crossover_ad_state';
+const AD_REWARD_DIAMONDS = 5;
 
-function useAdState() {
+// AdMob Rewarded Ad Unit IDs
+const REWARDED_AD_IOS = 'ca-app-pub-5118403349234305/6758433311';
+const REWARDED_AD_ANDROID = 'ca-app-pub-5118403349234305/3118571202';
+const REWARDED_AD_UNIT = Platform.OS === 'ios' ? REWARDED_AD_IOS : REWARDED_AD_ANDROID;
+
+// Load AdMob SDK — native module, absent in Expo Go.
+let RewardedAd: any = null;
+let RewardedAdEventType: any = null;
+let AdEventType: any = null;
+try {
+  const ads = require('react-native-google-mobile-ads');
+  RewardedAd = ads.RewardedAd;
+  RewardedAdEventType = ads.RewardedAdEventType;
+  AdEventType = ads.AdEventType;
+} catch {
+  // native module unavailable (Expo Go) — ads disabled gracefully
+}
+
+function useAdState(onReward?: () => void) {
   const [adsWatched, setAdsWatched] = useState(0);
-  const [nextAdAt, setNextAdAt] = useState<number | null>(null);
-  const [cooldownLeft, setCooldownLeft] = useState('');
+  const [adLoading, setAdLoading] = useState(false);
+  const onRewardRef = useRef(onReward);
+  onRewardRef.current = onReward;
 
-  // Load from AsyncStorage on mount
+  // Load today's count from AsyncStorage
   useEffect(() => {
     (async () => {
       try {
-        const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
         const raw = await AsyncStorage.getItem(AD_STORAGE_KEY);
         if (raw) {
           const data = JSON.parse(raw);
-          const today = new Date().toDateString();
-          if (data.date === today) {
-            setAdsWatched(data.watched);
-            if (data.nextAdAt) setNextAdAt(data.nextAdAt);
-          }
+          if (data.date === new Date().toDateString()) setAdsWatched(data.watched);
         }
       } catch {}
     })();
   }, []);
 
-  // Reset at midnight (00:00)
-  useEffect(() => {
-    const check = () => {
-      const now = new Date();
-      const storedDate = new Date().toDateString();
-      // If adsWatched > 0 but date changed, reset
-      if (adsWatched > 0) {
-        (async () => {
-          try {
-            const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-            const raw = await AsyncStorage.getItem(AD_STORAGE_KEY);
-            if (raw) {
-              const data = JSON.parse(raw);
-              if (data.date !== storedDate) {
-                setAdsWatched(0);
-                setNextAdAt(null);
-                setCooldownLeft('');
-              }
-            }
-          } catch {}
-        })();
-      }
-    };
-    const id = setInterval(check, 60_000); // check every minute
-    return () => clearInterval(id);
-  }, [adsWatched]);
-
-  // Countdown timer
-  useEffect(() => {
-    if (!nextAdAt) return;
-    const tick = () => {
-      const diff = nextAdAt - Date.now();
-      if (diff <= 0) {
-        setCooldownLeft('');
-        setNextAdAt(null);
-        return;
-      }
-      const h = Math.floor(diff / 3600000);
-      const m = Math.floor((diff % 3600000) / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setCooldownLeft(`${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [nextAdAt]);
-
-  const watchAd = async () => {
-    if (adsWatched >= 2) return;
-    if (nextAdAt && Date.now() < nextAdAt) return;
-    const newCount = adsWatched + 1;
-    const newNextAt = newCount < 2 ? Date.now() + AD_COOLDOWN_MS : null;
-    setAdsWatched(newCount);
-    setNextAdAt(newNextAt);
-    setCooldownLeft('');
+  const saveState = async (watched: number) => {
     try {
-      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-      await AsyncStorage.setItem(AD_STORAGE_KEY, JSON.stringify({
-        date: new Date().toDateString(),
-        watched: newCount,
-        nextAdAt: newNextAt,
-      }));
+      await AsyncStorage.setItem(AD_STORAGE_KEY, JSON.stringify({ date: new Date().toDateString(), watched }));
     } catch {}
   };
 
-  const canWatch = adsWatched < 2 && (!nextAdAt || Date.now() >= nextAdAt);
-  return { adsWatched, canWatch, cooldownLeft, watchAd };
+  const watchAd = async () => {
+    // No AdMob SDK → grant reward directly (dev/Expo Go fallback)
+    if (!RewardedAd) {
+      const n = adsWatched + 1;
+      setAdsWatched(n);
+      await saveState(n);
+      onRewardRef.current?.();
+      return;
+    }
+
+    // Load and show a rewarded ad
+    setAdLoading(true);
+    const ad = RewardedAd.createForAdRequest(REWARDED_AD_UNIT, {
+      requestNonPersonalizedAdsOnly: true,
+    });
+
+    const unsubs: (() => void)[] = [];
+    const cleanup = () => { unsubs.forEach((u) => u()); setAdLoading(false); };
+
+    unsubs.push(ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, async () => {
+      const n = adsWatched + 1;
+      setAdsWatched(n);
+      await saveState(n);
+      onRewardRef.current?.();
+    }));
+
+    unsubs.push(ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
+      ad.show();
+    }));
+
+    unsubs.push(ad.addAdEventListener(AdEventType.ERROR, () => {
+      cleanup();
+      Alert.alert('Reklam', 'Reklam yüklenemedi, biraz sonra tekrar dene.');
+    }));
+
+    unsubs.push(ad.addAdEventListener(AdEventType.CLOSED, () => {
+      cleanup();
+    }));
+
+    ad.load();
+  };
+
+  const canWatch = !adLoading;
+  return { adsWatched, canWatch, watchAd, adLoading };
 }
 
 // Next weekly drop reset = upcoming Monday 00:00 local.
@@ -2821,7 +2866,13 @@ function WeeklyCountdown() {
 
 export function StoreScreen({ state, actions, scrollToSection }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | null }) {
   const profile = state.profile;
-  const { adsWatched, canWatch, cooldownLeft, watchAd } = useAdState();
+  const adReward = useCallback(() => {
+    // Grant diamonds after watching a rewarded ad — uses the same
+    // server-side verify flow (silent re-validate grants 0 + refreshes profile).
+    // For ad rewards we just credit locally; the server doesn't track ad views.
+    setCelebration({ amount: AD_REWARD_DIAMONDS });
+  }, []);
+  const { adsWatched, canWatch, watchAd, adLoading } = useAdState(adReward);
   const storeScrollRef = useRef<ScrollView>(null);
   const sectionYRef = useRef<Record<string, number>>({});
 
@@ -2961,30 +3012,21 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
           </View>
         </View>
 
-        {/* Free diamonds - watch ads */}
+        {/* Free diamonds - watch ads (unlimited) */}
         <Text style={styles.sectionLabel}>{t('store.freeDiamonds')}</Text>
         <View style={styles.storeAdCard}>
           <Ionicons name="play-circle" size={32} color={theme.primary} />
           <View style={{ flex: 1 }}>
             <Text style={styles.storeAdTitle}>{t('store.watchAd')}</Text>
-            <Text style={styles.muted}>{t('store.adsDaily')}</Text>
+            <Text style={styles.muted}>Sınırsız izle, her seferinde +5 elmas</Text>
           </View>
           <View style={{ alignItems: 'center' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 4 }}>
-              <Text style={styles.storeAdReward}>+25</Text>
+              <Text style={styles.storeAdReward}>+5</Text>
               <GemIcon size={14} />
             </View>
-            {adsWatched >= 2 ? (
-              <Btn label={t('store.done')} kind="ghost" icon="checkmark-circle" onPress={() => {}} disabled />
-            ) : cooldownLeft ? (
-              <View style={styles.storeCooldown}>
-                <Ionicons name="time-outline" size={14} color={theme.accent} />
-                <Text style={styles.storeCooldownText}>{cooldownLeft}</Text>
-              </View>
-            ) : (
-              <Btn label={t('store.watch')} kind="primary" icon="play" onPress={watchAd} />
-            )}
-            <Text style={[styles.muted, { fontSize: 10, marginTop: 2 }]}>{adsWatched}/2</Text>
+            <Btn label={adLoading ? 'Yükleniyor...' : t('store.watch')} kind="primary" icon={adLoading ? 'hourglass' : 'play'} onPress={watchAd} disabled={adLoading} />
+            {adsWatched > 0 ? <Text style={[styles.muted, { fontSize: 10, marginTop: 2 }]}>Bugün {adsWatched} izledin</Text> : null}
           </View>
         </View>
 
@@ -3203,7 +3245,7 @@ function InviteWaitingModal({ invite, onCancel }: { invite: GameState['outgoingI
 }
 
 // A friend's public profile (tapped from the friends list).
-function FriendProfileModal({ profile, onClose }: { profile: PublicProfile | null; onClose: () => void }) {
+export function FriendProfileModal({ profile, onClose }: { profile: PublicProfile | null; onClose: () => void }) {
   const total = (profile?.wins ?? 0) + (profile?.losses ?? 0);
   const winRate = total ? Math.round(((profile?.wins ?? 0) / total) * 100) : 0;
   const color = profile ? arenaColor(profile.arena.name) : theme.primary;
@@ -3920,6 +3962,7 @@ function ChatScreen({ state, actions }: Props) {
             onChangeText={onChangeText}
             blurOnSubmit={false}
             returnKeyType="send"
+            submitBehavior="submit"
             onSubmitEditing={onSend}
             style={{
               flex: 1, backgroundColor: theme.bg, color: theme.text,
