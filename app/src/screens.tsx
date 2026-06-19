@@ -1386,7 +1386,7 @@ function PopupCard({ visible, title, icon, onClose, children }: {
   );
 }
 
-export function LeaderboardModal({ visible, entries, onClose }: { visible: boolean; entries: GameState['leaderboard']; onClose: () => void }) {
+export function LeaderboardModal({ visible, entries, onClose, onViewProfile }: { visible: boolean; entries: GameState['leaderboard']; onClose: () => void; onViewProfile?: (userId: string) => void }) {
   return (
     <PopupCard visible={visible} title={t('menu.leaderboard')} icon="podium" onClose={onClose}>
       <ScrollView style={{ maxHeight: 460 }} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10 }} showsVerticalScrollIndicator={false}>
@@ -1397,7 +1397,20 @@ export function LeaderboardModal({ visible, entries, onClose }: { visible: boole
             <Text style={{ color: entry.rank <= 3 ? ['#FFD700', '#C0C0C0', '#CD7F32'][entry.rank - 1] : theme.muted, fontWeight: '900', fontSize: 15, width: 28 }}>{entry.rank}</Text>
             <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14, flex: 1 }} numberOfLines={1}>{entry.displayName}</Text>
             <Ionicons name="trophy" size={13} color={theme.accent} />
-            <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 14 }}>{entry.trophies}</Text>
+            <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 14, marginRight: 6 }}>{entry.trophies}</Text>
+            {onViewProfile ? (
+              <Pressable
+                onPress={() => onViewProfile(entry.userId)}
+                hitSlop={6}
+                style={{
+                  width: 30, height: 30, borderRadius: 15,
+                  backgroundColor: theme.card, borderWidth: 1.5, borderColor: theme.primary,
+                  alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="person" size={14} color={theme.primary} />
+              </Pressable>
+            ) : null}
           </View>
         ))}
       </ScrollView>
@@ -2448,13 +2461,12 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
 }
 
 // ---- Diamond Purchase Celebration ----
-// Full-screen overlay: diamond bar slides in from top → gems fly from center into
-// the bar → "+N" count pops → bar slides back up. Triggered after a successful IAP.
-const GEM_COUNT = 8; // number of flying gem particles
+// Gems fly from screen center toward the existing diamond pill (top-right of
+// App.tsx's resource bar), then a "+N" badge pops next to the pill. No extra bar
+// is created — the real one is already visible.
+const GEM_COUNT = 8;
 
-function DiamondCelebration({ amount, currentDiamonds, onDone }: { amount: number; currentDiamonds: number; onDone: () => void }) {
-  // Phase timeline (ms): 0→barIn  400→gemsLaunch  1800→countPop  3000→barOut  3500→done
-  const barY = useRef(new Animated.Value(-80)).current;         // bar slide position
+function DiamondCelebration({ amount, onDone }: { amount: number; onDone: () => void }) {
   const gemAnims = useRef(Array.from({ length: GEM_COUNT }, () => ({
     x: new Animated.Value(0),
     y: new Animated.Value(0),
@@ -2463,123 +2475,113 @@ function DiamondCelebration({ amount, currentDiamonds, onDone }: { amount: numbe
   }))).current;
   const countOpacity = useRef(new Animated.Value(0)).current;
   const countScale = useRef(new Animated.Value(0.5)).current;
-  const barGlow = useRef(new Animated.Value(0)).current;
+  const flashOpacity = useRef(new Animated.Value(0)).current;
+  const pillPulse = useRef(new Animated.Value(1)).current;
 
-  // Screen center → bar target (top-right area)
   const screenW = Dimensions.get('window').width;
   const screenH = Dimensions.get('window').height;
   const centerX = screenW / 2;
-  const centerY = screenH * 0.4;
-  const targetX = screenW - 80;   // where the diamond pill sits (right side)
-  const targetY = 36;              // bar's vertical center when slid in
+  const centerY = screenH * 0.38;
+  // Target = the existing diamond pill in App.tsx's resource bar (top-right)
+  const targetX = screenW - 90;
+  const targetY = 76;
 
   useEffect(() => {
-    // 1) Bar slides in from above
-    Animated.spring(barY, { toValue: 0, friction: 7, tension: 80, useNativeDriver: true }).start();
+    const perGem = 100;
 
-    // 2) After 400ms, launch gems one by one from center toward the bar
-    const gemDelay = 400;
-    const perGem = 120; // stagger between each gem launch
+    // Launch gems from center toward the existing pill
     gemAnims.forEach((g, i) => {
-      const delay = gemDelay + i * perGem;
-      // Random spread around center
-      const startOffX = (Math.random() - 0.5) * 60;
-      const startOffY = (Math.random() - 0.5) * 40;
+      const delay = i * perGem;
+      const startOffX = (Math.random() - 0.5) * 80;
+      const startOffY = (Math.random() - 0.5) * 60;
       g.x.setValue(centerX + startOffX);
       g.y.setValue(centerY + startOffY);
 
       setTimeout(() => {
-        // Pop in
+        // Pop in at center
         Animated.parallel([
-          Animated.timing(g.opacity, { toValue: 1, duration: 100, useNativeDriver: true }),
-          Animated.spring(g.scale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }),
+          Animated.timing(g.opacity, { toValue: 1, duration: 80, useNativeDriver: true }),
+          Animated.spring(g.scale, { toValue: 1.2, friction: 5, tension: 140, useNativeDriver: true }),
         ]).start();
 
-        // After pop, fly to bar
+        // Fly to pill
         setTimeout(() => {
           Animated.parallel([
-            Animated.timing(g.x, { toValue: targetX, duration: 500, easing: Easing.in(Easing.quad), useNativeDriver: true }),
-            Animated.timing(g.y, { toValue: targetY, duration: 500, easing: Easing.in(Easing.quad), useNativeDriver: true }),
-            Animated.timing(g.scale, { toValue: 0.3, duration: 500, useNativeDriver: true }),
-            Animated.timing(g.opacity, { toValue: 0, duration: 400, delay: 100, useNativeDriver: true }),
+            Animated.timing(g.x, { toValue: targetX + (Math.random() - 0.5) * 20, duration: 450, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.y, { toValue: targetY + (Math.random() - 0.5) * 10, duration: 450, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.scale, { toValue: 0.2, duration: 450, useNativeDriver: true }),
+            Animated.timing(g.opacity, { toValue: 0, duration: 350, delay: 100, useNativeDriver: true }),
           ]).start();
-        }, 200);
+        }, 150);
       }, delay);
     });
 
-    // 3) Bar glow pulse when gems arrive
+    // Pill pulse + flash when gems start arriving
+    const arriveAt = GEM_COUNT * perGem + 300;
     setTimeout(() => {
+      // Flash
       Animated.sequence([
-        Animated.timing(barGlow, { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.timing(barGlow, { toValue: 0.4, duration: 300, useNativeDriver: true }),
-        Animated.timing(barGlow, { toValue: 0.8, duration: 200, useNativeDriver: true }),
+        Animated.timing(flashOpacity, { toValue: 0.25, duration: 150, useNativeDriver: true }),
+        Animated.timing(flashOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),
       ]).start();
-    }, gemDelay + GEM_COUNT * perGem + 300);
+      // Pill scale bounce
+      Animated.sequence([
+        Animated.timing(pillPulse, { toValue: 1.15, duration: 150, useNativeDriver: true }),
+        Animated.spring(pillPulse, { toValue: 1, friction: 4, tension: 100, useNativeDriver: true }),
+      ]).start();
+    }, arriveAt);
 
-    // 4) "+N" count pops in
-    const countDelay = gemDelay + GEM_COUNT * perGem + 600;
+    // "+N" badge pops
     setTimeout(() => {
       Animated.parallel([
         Animated.spring(countScale, { toValue: 1, friction: 5, tension: 100, useNativeDriver: true }),
-        Animated.timing(countOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.timing(countOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
       ]).start();
-    }, countDelay);
+    }, arriveAt + 200);
 
-    // 5) Bar slides back up + done
-    const outDelay = countDelay + 1200;
+    // Fade out "+N" and finish
     setTimeout(() => {
-      Animated.timing(barY, { toValue: -80, duration: 350, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(() => {
-        onDone();
-      });
-    }, outDelay);
+      Animated.timing(countOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start(() => onDone());
+    }, arriveAt + 2000);
   }, []);
-
-  const newTotal = currentDiamonds; // profile already updated by the time we render
 
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      {/* Semi-transparent backdrop flash */}
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(88,28,135,0.15)', opacity: barGlow }]} />
+      {/* Brief purple flash */}
+      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(88,28,135,0.2)', opacity: flashOpacity }]} />
 
-      {/* Diamond bar — slides from top */}
+      {/* Pill pulse overlay — sits exactly over the real diamond pill */}
       <Animated.View style={{
-        position: 'absolute', top: 50, right: 16,
-        transform: [{ translateY: barY }],
-        flexDirection: 'row', alignItems: 'center', gap: 8,
-        backgroundColor: 'rgba(228,238,255,0.13)',
-        borderRadius: 19, paddingLeft: 20, paddingRight: 12, paddingVertical: 8,
-        borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.5)',
-        borderBottomWidth: 3, borderBottomColor: 'rgba(255,255,255,0.18)',
-        shadowColor: '#A855F7', shadowOpacity: 0.6, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
-        elevation: 10,
+        position: 'absolute', top: 62, right: 16,
+        transform: [{ scale: pillPulse }],
+        width: 148, height: 38, borderRadius: 19,
+        backgroundColor: 'transparent',
+        borderWidth: 2, borderColor: '#A855F7',
+        shadowColor: '#A855F7', shadowOpacity: 0.8, shadowRadius: 16, shadowOffset: { width: 0, height: 0 },
+        opacity: pillPulse.interpolate({ inputRange: [1, 1.15], outputRange: [0, 1] }),
+      }} />
+
+      {/* "+N" badge next to the pill */}
+      <Animated.View style={{
+        position: 'absolute', top: 58, right: 6,
+        opacity: countOpacity, transform: [{ scale: countScale }],
       }}>
-        <GemIcon size={20} />
-        <Text style={{ color: theme.gemText, fontSize: 15, fontFamily: 'Poppins-ExtraBold' }}>{newTotal.toLocaleString('tr-TR')}</Text>
-        {/* +N badge */}
-        <Animated.View style={{
-          marginLeft: 4, opacity: countOpacity,
-          transform: [{ scale: countScale }],
+        <View style={{
+          backgroundColor: theme.primary, borderRadius: 14,
+          paddingHorizontal: 10, paddingVertical: 4,
+          shadowColor: theme.primary, shadowOpacity: 0.6, shadowRadius: 8, shadowOffset: { width: 0, height: 2 },
         }}>
-          <View style={{
-            backgroundColor: theme.primary, borderRadius: 12,
-            paddingHorizontal: 8, paddingVertical: 2,
-          }}>
-            <Text style={{ color: '#06131F', fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>
-              +{amount.toLocaleString('tr-TR')}
-            </Text>
-          </View>
-        </Animated.View>
+          <Text style={{ color: '#06131F', fontFamily: 'Poppins-ExtraBold', fontSize: 14 }}>
+            +{amount.toLocaleString('tr-TR')}
+          </Text>
+        </View>
       </Animated.View>
 
       {/* Flying gem particles */}
       {gemAnims.map((g, i) => (
         <Animated.View key={i} style={{
           position: 'absolute', left: -12, top: -12, width: 24, height: 24,
-          transform: [
-            { translateX: g.x },
-            { translateY: g.y },
-            { scale: g.scale },
-          ],
+          transform: [{ translateX: g.x }, { translateY: g.y }, { scale: g.scale }],
           opacity: g.opacity,
         }}>
           <GemIcon size={24} />
@@ -2675,99 +2677,96 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
   );
 }
 
-const AD_COOLDOWN_MS = 3 * 60 * 60 * 1000; // 3 saat
 const AD_STORAGE_KEY = '@crossover_ad_state';
+const AD_REWARD_DIAMONDS = 5;
 
-function useAdState() {
+// AdMob Rewarded Ad Unit IDs
+const REWARDED_AD_IOS = 'ca-app-pub-5118403349234305/6758433311';
+const REWARDED_AD_ANDROID = 'ca-app-pub-5118403349234305/3118571202';
+const REWARDED_AD_UNIT = Platform.OS === 'ios' ? REWARDED_AD_IOS : REWARDED_AD_ANDROID;
+
+// Load AdMob SDK — native module, absent in Expo Go.
+let RewardedAd: any = null;
+let RewardedAdEventType: any = null;
+let AdEventType: any = null;
+try {
+  const ads = require('react-native-google-mobile-ads');
+  RewardedAd = ads.RewardedAd;
+  RewardedAdEventType = ads.RewardedAdEventType;
+  AdEventType = ads.AdEventType;
+} catch {
+  // native module unavailable (Expo Go) — ads disabled gracefully
+}
+
+function useAdState(onReward?: () => void) {
   const [adsWatched, setAdsWatched] = useState(0);
-  const [nextAdAt, setNextAdAt] = useState<number | null>(null);
-  const [cooldownLeft, setCooldownLeft] = useState('');
+  const [adLoading, setAdLoading] = useState(false);
+  const onRewardRef = useRef(onReward);
+  onRewardRef.current = onReward;
 
-  // Load from AsyncStorage on mount
+  // Load today's count from AsyncStorage
   useEffect(() => {
     (async () => {
       try {
-        const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
         const raw = await AsyncStorage.getItem(AD_STORAGE_KEY);
         if (raw) {
           const data = JSON.parse(raw);
-          const today = new Date().toDateString();
-          if (data.date === today) {
-            setAdsWatched(data.watched);
-            if (data.nextAdAt) setNextAdAt(data.nextAdAt);
-          }
+          if (data.date === new Date().toDateString()) setAdsWatched(data.watched);
         }
       } catch {}
     })();
   }, []);
 
-  // Reset at midnight (00:00)
-  useEffect(() => {
-    const check = () => {
-      const now = new Date();
-      const storedDate = new Date().toDateString();
-      // If adsWatched > 0 but date changed, reset
-      if (adsWatched > 0) {
-        (async () => {
-          try {
-            const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-            const raw = await AsyncStorage.getItem(AD_STORAGE_KEY);
-            if (raw) {
-              const data = JSON.parse(raw);
-              if (data.date !== storedDate) {
-                setAdsWatched(0);
-                setNextAdAt(null);
-                setCooldownLeft('');
-              }
-            }
-          } catch {}
-        })();
-      }
-    };
-    const id = setInterval(check, 60_000); // check every minute
-    return () => clearInterval(id);
-  }, [adsWatched]);
-
-  // Countdown timer
-  useEffect(() => {
-    if (!nextAdAt) return;
-    const tick = () => {
-      const diff = nextAdAt - Date.now();
-      if (diff <= 0) {
-        setCooldownLeft('');
-        setNextAdAt(null);
-        return;
-      }
-      const h = Math.floor(diff / 3600000);
-      const m = Math.floor((diff % 3600000) / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setCooldownLeft(`${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [nextAdAt]);
-
-  const watchAd = async () => {
-    if (adsWatched >= 2) return;
-    if (nextAdAt && Date.now() < nextAdAt) return;
-    const newCount = adsWatched + 1;
-    const newNextAt = newCount < 2 ? Date.now() + AD_COOLDOWN_MS : null;
-    setAdsWatched(newCount);
-    setNextAdAt(newNextAt);
-    setCooldownLeft('');
+  const saveState = async (watched: number) => {
     try {
-      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-      await AsyncStorage.setItem(AD_STORAGE_KEY, JSON.stringify({
-        date: new Date().toDateString(),
-        watched: newCount,
-        nextAdAt: newNextAt,
-      }));
+      await AsyncStorage.setItem(AD_STORAGE_KEY, JSON.stringify({ date: new Date().toDateString(), watched }));
     } catch {}
   };
 
-  const canWatch = adsWatched < 2 && (!nextAdAt || Date.now() >= nextAdAt);
-  return { adsWatched, canWatch, cooldownLeft, watchAd };
+  const watchAd = async () => {
+    // No AdMob SDK → grant reward directly (dev/Expo Go fallback)
+    if (!RewardedAd) {
+      const n = adsWatched + 1;
+      setAdsWatched(n);
+      await saveState(n);
+      onRewardRef.current?.();
+      return;
+    }
+
+    // Load and show a rewarded ad
+    setAdLoading(true);
+    const ad = RewardedAd.createForAdRequest(REWARDED_AD_UNIT, {
+      requestNonPersonalizedAdsOnly: true,
+    });
+
+    const unsubs: (() => void)[] = [];
+    const cleanup = () => { unsubs.forEach((u) => u()); setAdLoading(false); };
+
+    unsubs.push(ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, async () => {
+      const n = adsWatched + 1;
+      setAdsWatched(n);
+      await saveState(n);
+      onRewardRef.current?.();
+    }));
+
+    unsubs.push(ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
+      ad.show();
+    }));
+
+    unsubs.push(ad.addAdEventListener(AdEventType.ERROR, () => {
+      cleanup();
+      Alert.alert('Reklam', 'Reklam yüklenemedi, biraz sonra tekrar dene.');
+    }));
+
+    unsubs.push(ad.addAdEventListener(AdEventType.CLOSED, () => {
+      cleanup();
+    }));
+
+    ad.load();
+  };
+
+  const canWatch = !adLoading;
+  return { adsWatched, canWatch, watchAd, adLoading };
 }
 
 // Next weekly drop reset = upcoming Monday 00:00 local.
@@ -2805,7 +2804,13 @@ function WeeklyCountdown() {
 
 export function StoreScreen({ state, actions, scrollToSection }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | null }) {
   const profile = state.profile;
-  const { adsWatched, canWatch, cooldownLeft, watchAd } = useAdState();
+  const adReward = useCallback(() => {
+    // Grant diamonds after watching a rewarded ad — uses the same
+    // server-side verify flow (silent re-validate grants 0 + refreshes profile).
+    // For ad rewards we just credit locally; the server doesn't track ad views.
+    setCelebration({ amount: AD_REWARD_DIAMONDS });
+  }, []);
+  const { adsWatched, canWatch, watchAd, adLoading } = useAdState(adReward);
   const storeScrollRef = useRef<ScrollView>(null);
   const sectionYRef = useRef<Record<string, number>>({});
 
@@ -2945,30 +2950,21 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
           </View>
         </View>
 
-        {/* Free diamonds - watch ads */}
+        {/* Free diamonds - watch ads (unlimited) */}
         <Text style={styles.sectionLabel}>{t('store.freeDiamonds')}</Text>
         <View style={styles.storeAdCard}>
           <Ionicons name="play-circle" size={32} color={theme.primary} />
           <View style={{ flex: 1 }}>
             <Text style={styles.storeAdTitle}>{t('store.watchAd')}</Text>
-            <Text style={styles.muted}>{t('store.adsDaily')}</Text>
+            <Text style={styles.muted}>Sınırsız izle, her seferinde +5 elmas</Text>
           </View>
           <View style={{ alignItems: 'center' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 4 }}>
-              <Text style={styles.storeAdReward}>+25</Text>
+              <Text style={styles.storeAdReward}>+5</Text>
               <GemIcon size={14} />
             </View>
-            {adsWatched >= 2 ? (
-              <Btn label={t('store.done')} kind="ghost" icon="checkmark-circle" onPress={() => {}} disabled />
-            ) : cooldownLeft ? (
-              <View style={styles.storeCooldown}>
-                <Ionicons name="time-outline" size={14} color={theme.accent} />
-                <Text style={styles.storeCooldownText}>{cooldownLeft}</Text>
-              </View>
-            ) : (
-              <Btn label={t('store.watch')} kind="primary" icon="play" onPress={watchAd} />
-            )}
-            <Text style={[styles.muted, { fontSize: 10, marginTop: 2 }]}>{adsWatched}/2</Text>
+            <Btn label={adLoading ? 'Yükleniyor...' : t('store.watch')} kind="primary" icon={adLoading ? 'hourglass' : 'play'} onPress={watchAd} disabled={adLoading} />
+            {adsWatched > 0 ? <Text style={[styles.muted, { fontSize: 10, marginTop: 2 }]}>Bugün {adsWatched} izledin</Text> : null}
           </View>
         </View>
 
@@ -3054,7 +3050,6 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
       {celebration ? (
         <DiamondCelebration
           amount={celebration.amount}
-          currentDiamonds={profile?.diamonds ?? 0}
           onDone={() => setCelebration(null)}
         />
       ) : null}
@@ -3202,7 +3197,7 @@ function InviteWaitingModal({ invite, onCancel }: { invite: GameState['outgoingI
 }
 
 // A friend's public profile (tapped from the friends list).
-function FriendProfileModal({ profile, onClose }: { profile: PublicProfile | null; onClose: () => void }) {
+export function FriendProfileModal({ profile, onClose }: { profile: PublicProfile | null; onClose: () => void }) {
   const total = (profile?.wins ?? 0) + (profile?.losses ?? 0);
   const winRate = total ? Math.round(((profile?.wins ?? 0) / total) * 100) : 0;
   const color = profile ? arenaColor(profile.arena.name) : theme.primary;
@@ -3914,6 +3909,7 @@ function ChatScreen({ state, actions }: Props) {
             onChangeText={onChangeText}
             blurOnSubmit={false}
             returnKeyType="send"
+            submitBehavior="submit"
             onSubmitEditing={onSend}
             style={{
               flex: 1, backgroundColor: theme.bg, color: theme.text,

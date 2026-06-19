@@ -274,6 +274,7 @@ export async function setEquippedEmotes(
 
 export interface LeaderboardEntry {
   rank: number;
+  userId: string;
   displayName: string;
   trophies: number;
   wins: number;
@@ -288,6 +289,7 @@ export async function getLeaderboard(limit = 50): Promise<LeaderboardEntry[]> {
   );
   return rows.map((r, i) => ({
     rank: i + 1,
+    userId: r.id,
     displayName: r.display_name,
     trophies: r.trophies,
     wins: r.wins,

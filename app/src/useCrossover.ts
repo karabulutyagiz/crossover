@@ -33,6 +33,7 @@ export type Phase = 'home' | 'arenas' | 'leaderboard' | 'matchHistory' | 'profil
 
 export interface LeaderboardEntry {
   rank: number;
+  userId: string;
   displayName: string;
   trophies: number;
   wins: number;

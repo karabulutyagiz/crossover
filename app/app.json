@@ -14,6 +14,12 @@
       "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "NSUserTrackingUsageDescription": "Reklam deneyimini kişiselleştirmek için izin istiyoruz.",
+        "SKAdNetworkItems": [
+          { "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork" },
+          { "SKAdNetworkIdentifier": "4fzdc2evr5.skadnetwork" },
+          { "SKAdNetworkIdentifier": "2fnua5tdw4.skadnetwork" }
+        ],
         "CFBundleDisplayName": "COF",
         "CFBundleURLTypes": [
           {
@@ -44,7 +50,15 @@
       "expo-font",
       "expo-sqlite",
       "react-native-iap",
-      "expo-image"
+      "expo-image",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-5118403349234305~5744734548",
+          "iosAppId": "ca-app-pub-5118403349234305~1206723737",
+          "userTrackingUsageDescription": "Reklam deneyimini kişiselleştirmek için izin istiyoruz."
+        }
+      ]
     ],
     "owner": "ygzkrblt3s-team",
     "extra": {
