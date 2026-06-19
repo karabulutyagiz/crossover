@@ -26,7 +26,11 @@ import { normalize } from '../game/normalize.ts';
 const API = process.env.TM_API ?? 'http://127.0.0.1:8000';
 const DELAY = Number(process.env.TM_DELAY_MS ?? 700);
 const COMPETITIONS = (process.env.TM_COMPETITIONS ??
-  'TR1,GB1,ES1,IT1,L1,FR1,PO1,NL1,CL,EL').split(',').map((s) => s.trim()).filter(Boolean);
+  // Broad coverage: top leagues + second divisions + continental cups + global
+  'TR1,GB1,GB2,ES1,ES2,IT1,IT2,L1,L2,FR1,FR2,PO1,NL1,BE1,SC1,C1,A1,' +
+  'DK1,NO1,SE1,PL1,TS1,KR1,SER1,RO1,GR1,UKR1,' +
+  'SA1,MLS1,MEX1,BRA1,BRA2,AR1N,JAP1,RSK1,AUS1,' +
+  'CL,EL').split(',').map((s) => s.trim()).filter(Boolean);
 const SEASON_FROM = Number(process.env.TM_SEASON_FROM ?? 2006);
 const SEASON_TO = Number(process.env.TM_SEASON_TO ?? 2025);
 

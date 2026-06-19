@@ -14,10 +14,10 @@ to name a footballer who played for **both** teams. First correct answer wins.
 | `PLAN.md` | Architecture & roadmap |
 
 ## How it works
-- **Data**: ~52k players / ~12k clubs / ~350k spells, ingested from **Wikidata**
-  (`P54` member of sports team). Club logos + league/country from Wikimedia Commons
-  and API-Football. Fuzzy, Turkish/accent-insensitive name matching via Postgres
-  `pg_trgm`; typos are auto-corrected to the closest valid player.
+- **Data**: Players, clubs, logos, photos, careers — all from **Transfermarkt**
+  (via `felipeall/transfermarkt-api`). 36 competitions, 2006–2025 seasons.
+  Fuzzy, Turkish/accent-insensitive name matching via Postgres `pg_trgm`;
+  typos are auto-corrected to the closest valid player.
 - **Server**: in-memory rooms + a state machine (countdown → pick → reveal → guess →
   result), WebSocket transport, "first valid answer locks the round". Play vs a
   friend (room code) or a practice **bot** (easy/medium/hard).
@@ -31,7 +31,9 @@ createdb crossover_dev
 
 # Server
 cd server && cp .env.example .env && npm install
-npm run migrate && npm run ingest        # pull data from Wikidata
+npm run migrate                           # create schema
+docker run -d -p 8000:8000 felipeall/transfermarkt-api  # TM API
+npm run rebuild                           # full Transfermarkt ingest
 npm run dev                               # ws://localhost:8080
 
 # App
