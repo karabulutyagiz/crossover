@@ -21,12 +21,7 @@ export const MAX_EQUIPPED = 3;
 // Visual emotes, grouped by weekly drop (`week`). Add 3 new each week.
 interface VisualDef { id: string; price: number; week: number }
 const VISUAL_EMOTES: readonly VisualDef[] = [
-  { id: 'jersey10', price: 250, week: 1 },
-  { id: 'goal', price: 150, week: 1 },
-  { id: 'champion', price: 300, week: 1 },
-  { id: 'redcard', price: 150, week: 2 },
-  { id: 'penalty', price: 180, week: 2 },
-  { id: 'hattrick', price: 220, week: 2 },
+  // No premium emotes currently — add new ones here with price 300.
 ];
 
 const VISUAL_IDS = new Set(VISUAL_EMOTES.map((e) => e.id));

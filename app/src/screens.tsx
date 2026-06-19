@@ -2910,77 +2910,102 @@ export function CollectionScreen({ state, actions }: Props) {
     if (equipped.includes(id)) actions.equipEmotes(equipped.filter((x) => x !== id));
     else if (equipped.length < 3) actions.equipEmotes([...equipped, id]);
   };
-  // Equippable into the 3 loadout slots: VISUAL (premium store) emotes + the
-  // animated (Lottie→WebP) emotes. Free quick-chat + character faces are always
-  // available in matches, so they're not shown here.
-  const all = [...PREMIUM_EMOTES, ...ANIM_EMOTES];
+
+  // Inventory: free emotes (always owned, cannot be removed) + purchased premium + anim emotes
+  const freeEmotes = FREE_EMOTES;
+  const ownedPremium = [...PREMIUM_EMOTES.filter((e) => ownsEmote(profile, e.id)), ...ANIM_EMOTES];
   const COL_GAP = 8;
-  const COL_W = Math.floor((SCREEN_W - 44 - COL_GAP * 3) / 4); // 4 columns inside Screen's 22px padding
+  const COL_W = Math.floor((SCREEN_W - 44 - COL_GAP * 3) / 4);
+
+  const renderEmoteCard = (e: typeof FREE_EMOTES[number], isFree: boolean) => {
+    const isEquipped = equipped.includes(e.id);
+    const canEquip = !isFree && (PREMIUM_EMOTES.some((p) => p.id === e.id) || ANIM_EMOTES.some((a) => a.id === e.id));
+    const full = equipped.length >= 3 && !isEquipped;
+    return (
+      <Pressable
+        key={e.id}
+        disabled={!canEquip}
+        onPress={() => { if (canEquip && !full) toggleEquip(e.id); }}
+        style={{
+          width: COL_W, paddingTop: 11, paddingBottom: 9, paddingHorizontal: 4,
+          backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
+          borderWidth: 2, borderColor: isEquipped ? theme.primary : theme.border,
+          borderBottomWidth: 3, borderBottomColor: isEquipped ? theme.primaryDark : theme.cardLip,
+          opacity: canEquip ? (full ? 0.65 : 1) : 1,
+        }}
+      >
+        {isEquipped ? (
+          <View style={{ position: 'absolute', top: 4, right: 4, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>
+            <Ionicons name="checkmark" size={12} color="#06131F" />
+          </View>
+        ) : null}
+        <EmoteSticker id={e.id} size={58} />
+        <View style={{ height: 6 }} />
+        {isFree ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+            <Ionicons name="lock-closed" size={10} color={theme.accent} />
+            <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 10 }}>Sabit</Text>
+          </View>
+        ) : isEquipped ? (
+          <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 10.5 }} numberOfLines={1} adjustsFontSizeToFit>Kuşanıldı</Text>
+        ) : (
+          <Text style={{ color: theme.muted, fontWeight: '800', fontSize: 10.5 }} numberOfLines={1} adjustsFontSizeToFit>Kuşan</Text>
+        )}
+      </Pressable>
+    );
+  };
 
   return (
     <Screen>
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
         <ScreenHeader title="Koleksiyon" icon="albums" underline={theme.primary} />
-        <Text style={[styles.muted, { textAlign: 'center', marginBottom: 10 }]}>Maçta kuşanılan {equipped.length}/3</Text>
 
-        {/* Equipped loadout — 3 slots at the very top (empty = dashed placeholder) */}
-        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16, marginBottom: 18 }}>
-          {[0, 1, 2].map((i) => {
-            const id = equipped[i];
-            const em = id ? all.find((e) => e.id === id) : null;
-            return (
-              <Pressable
-                key={`slot${i}`}
-                onPress={() => { if (id) toggleEquip(id); }}
-                style={{
-                  width: 82, height: 82, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: em ? theme.card : theme.panelInnerFill,
-                  borderWidth: 2, borderColor: em ? theme.primary : theme.border,
-                  borderStyle: em ? 'solid' : 'dashed',
-                  shadowColor: em ? theme.primary : 'transparent', shadowOpacity: em ? 0.5 : 0, shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
-                }}
-              >
-                {em ? <EmoteSticker id={em.id} size={62} /> : <Ionicons name="add" size={26} color={theme.muted} />}
-              </Pressable>
-            );
-          })}
+        {/* Section: Free emotes — always in inventory, marked "Sabit" */}
+        <Text style={{ color: theme.accent, fontFamily: 'Poppins-ExtraBold', fontSize: 13, letterSpacing: 0.5, marginBottom: 8, marginLeft: 4 }}>TEMEL İFADELER</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP, marginBottom: 20 }}>
+          {freeEmotes.map((e) => renderEmoteCard(e, true))}
         </View>
 
-        {/* All emotes — 4-column grid. The WHOLE card is tappable → equips directly. */}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP }}>
-          {all.map((e) => {
-            const owned = ownsEmote(profile, e.id);
-            const isEquipped = equipped.includes(e.id);
-            const full = equipped.length >= 3 && !isEquipped;
-            return (
-              <Pressable
-                key={e.id}
-                disabled={!owned}
-                onPress={() => { if (owned && !full) toggleEquip(e.id); }}
-                style={{
-                  width: COL_W, paddingTop: 11, paddingBottom: 9, paddingHorizontal: 4,
-                  backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
-                  borderWidth: 2, borderColor: isEquipped ? theme.primary : theme.border,
-                  borderBottomWidth: 3, borderBottomColor: isEquipped ? theme.primaryDark : theme.cardLip,
-                  opacity: owned ? (full ? 0.65 : 1) : 0.5,
-                }}
-              >
-                {isEquipped ? (
-                  <View style={{ position: 'absolute', top: 4, right: 4, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>
-                    <Ionicons name="checkmark" size={12} color="#06131F" />
-                  </View>
-                ) : null}
-                <EmoteSticker id={e.id} size={58} />
-                <View style={{ height: 6 }} />
-                {owned ? (
-                  <Text style={{ color: isEquipped ? theme.primary : theme.muted, fontWeight: '800', fontSize: 10.5 }} numberOfLines={1} adjustsFontSizeToFit>{isEquipped ? 'Kuşanıldı' : 'Kuşan'}</Text>
-                ) : (
-                  <Ionicons name="lock-closed" size={13} color={theme.muted} />
-                )}
-              </Pressable>
-            );
-          })}
-        </View>
+        {/* Section: Purchased premium emotes */}
+        {ownedPremium.length > 0 ? (
+          <>
+            <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 13, letterSpacing: 0.5, marginBottom: 4, marginLeft: 4 }}>SATIN ALINAN İFADELER</Text>
+            <Text style={{ color: theme.muted, fontSize: 11, marginBottom: 8, marginLeft: 4 }}>Kuşanılan {equipped.length}/3</Text>
+
+            {/* Equipped loadout — 3 slots */}
+            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16, marginBottom: 18 }}>
+              {[0, 1, 2].map((i) => {
+                const id = equipped[i];
+                const em = id ? ownedPremium.find((e) => e.id === id) : null;
+                return (
+                  <Pressable
+                    key={`slot${i}`}
+                    onPress={() => { if (id) toggleEquip(id); }}
+                    style={{
+                      width: 82, height: 82, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: em ? theme.card : theme.panelInnerFill,
+                      borderWidth: 2, borderColor: em ? theme.primary : theme.border,
+                      borderStyle: em ? 'solid' : 'dashed',
+                      shadowColor: em ? theme.primary : 'transparent', shadowOpacity: em ? 0.5 : 0, shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
+                    }}
+                  >
+                    {em ? <EmoteSticker id={em.id} size={62} /> : <Ionicons name="add" size={26} color={theme.muted} />}
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP }}>
+              {ownedPremium.map((e) => renderEmoteCard(e, false))}
+            </View>
+          </>
+        ) : (
+          <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 24, gap: 6 }}>
+            <Ionicons name="bag-outline" size={36} color={theme.border} />
+            <Text style={{ color: theme.muted, fontSize: 12 }}>Henüz satın alınan ifade yok</Text>
+            <Text style={{ color: theme.muted, fontSize: 11 }}>Mağazadan yeni ifadeler satın alabilirsin</Text>
+          </View>
+        )}
       </ScrollView>
     </Screen>
   );
@@ -3571,7 +3596,18 @@ function TypingDot({ delay }: { delay: number }) {
 function ChatScreen({ state, actions }: Props) {
   const [text, setText] = useState('');
   const scrollRef = useRef<ScrollView>(null);
+  const inputRef = useRef<TextInput>(null);
   const chatWith = state.chatWith;
+  const [kbVisible, setKbVisible] = useState(false);
+
+  useEffect(() => {
+    const s1 = Keyboard.addListener('keyboardWillShow', () => setKbVisible(true));
+    const s2 = Keyboard.addListener('keyboardWillHide', () => setKbVisible(false));
+    // Android uses 'Did' variants
+    const s3 = Keyboard.addListener('keyboardDidShow', () => setKbVisible(true));
+    const s4 = Keyboard.addListener('keyboardDidHide', () => setKbVisible(false));
+    return () => { s1.remove(); s2.remove(); s3.remove(); s4.remove(); };
+  }, []);
 
   // Swipe-back: a left-to-right drag ANYWHERE on the screen closes the chat
   // (acts as a back button). We claim the gesture only when it's clearly
@@ -3626,7 +3662,7 @@ function ChatScreen({ state, actions }: Props) {
     }, 2000);
   };
 
-  const onSend = () => {
+  const onSend = useCallback(() => {
     if (!text.trim() || !chatWith) return;
     actions.sendMessage(chatWith, text.trim());
     setText('');
@@ -3635,11 +3671,13 @@ function ChatScreen({ state, actions }: Props) {
       actions.typingStop(chatWith);
     }
     if (typingTimer.current) clearTimeout(typingTimer.current);
-  };
+    // Re-focus input so the keyboard stays open for rapid messaging
+    inputRef.current?.focus();
+  }, [text, chatWith, actions]);
 
   return (
     <Animated.View style={{ flex: 1, transform: [{ translateX: swipeX }] }} {...panResponder.panHandlers}>
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
       {/* Header */}
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -3665,8 +3703,8 @@ function ChatScreen({ state, actions }: Props) {
         ref={scrollRef}
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 12, paddingBottom: 8 }}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="none"
       >
         {messages.length === 0 ? (
           <View style={{ alignItems: 'center', marginTop: 40 }}>
@@ -3717,11 +3755,13 @@ function ChatScreen({ state, actions }: Props) {
 
       {/* Input bar */}
       <View style={{
-        flexDirection: 'row', alignItems: 'center', gap: 8,
-        paddingHorizontal: 12, paddingVertical: 8, paddingBottom: 34,
+        flexDirection: 'row', alignItems: 'flex-end', gap: 8,
+        paddingHorizontal: 12, paddingVertical: 8,
+        paddingBottom: kbVisible ? 8 : 34,
         backgroundColor: theme.card, borderTopWidth: 1, borderTopColor: theme.border,
       }}>
         <TextInput
+          ref={inputRef}
           placeholder="Mesaj yaz..."
           placeholderTextColor={theme.muted}
           keyboardAppearance="dark"
@@ -3740,10 +3780,12 @@ function ChatScreen({ state, actions }: Props) {
         />
           <Pressable
             onPress={onSend}
+            hitSlop={6}
             style={{
               width: 42, height: 42, borderRadius: 21,
               backgroundColor: text.trim() ? theme.primary : theme.border,
               alignItems: 'center', justifyContent: 'center',
+              marginBottom: 1,
             }}
             disabled={!text.trim()}
           >
