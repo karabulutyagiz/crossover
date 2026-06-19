@@ -22,6 +22,8 @@ const DIAMOND_PRODUCTS: Record<string, number> = {
   'com.crossover.diamonds.500': 500,
   'com.crossover.diamonds.1200': 1200,
   'com.crossover.diamonds.5000': 5000,
+  'com.crossover.diamonds.15000': 15000,
+  'com.crossover.diamonds.50000': 50000,
 };
 
 // Auto-renewable subscriptions (the Social Pack) → set social_pack_until to the JWS expiry.

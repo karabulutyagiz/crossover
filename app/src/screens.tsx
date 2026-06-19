@@ -2447,15 +2447,159 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
   );
 }
 
+// ---- Diamond Purchase Celebration ----
+// Full-screen overlay: diamond bar slides in from top → gems fly from center into
+// the bar → "+N" count pops → bar slides back up. Triggered after a successful IAP.
+const GEM_COUNT = 8; // number of flying gem particles
+
+function DiamondCelebration({ amount, currentDiamonds, onDone }: { amount: number; currentDiamonds: number; onDone: () => void }) {
+  // Phase timeline (ms): 0→barIn  400→gemsLaunch  1800→countPop  3000→barOut  3500→done
+  const barY = useRef(new Animated.Value(-80)).current;         // bar slide position
+  const gemAnims = useRef(Array.from({ length: GEM_COUNT }, () => ({
+    x: new Animated.Value(0),
+    y: new Animated.Value(0),
+    scale: new Animated.Value(0),
+    opacity: new Animated.Value(0),
+  }))).current;
+  const countOpacity = useRef(new Animated.Value(0)).current;
+  const countScale = useRef(new Animated.Value(0.5)).current;
+  const barGlow = useRef(new Animated.Value(0)).current;
+
+  // Screen center → bar target (top-right area)
+  const screenW = Dimensions.get('window').width;
+  const screenH = Dimensions.get('window').height;
+  const centerX = screenW / 2;
+  const centerY = screenH * 0.4;
+  const targetX = screenW - 80;   // where the diamond pill sits (right side)
+  const targetY = 36;              // bar's vertical center when slid in
+
+  useEffect(() => {
+    // 1) Bar slides in from above
+    Animated.spring(barY, { toValue: 0, friction: 7, tension: 80, useNativeDriver: true }).start();
+
+    // 2) After 400ms, launch gems one by one from center toward the bar
+    const gemDelay = 400;
+    const perGem = 120; // stagger between each gem launch
+    gemAnims.forEach((g, i) => {
+      const delay = gemDelay + i * perGem;
+      // Random spread around center
+      const startOffX = (Math.random() - 0.5) * 60;
+      const startOffY = (Math.random() - 0.5) * 40;
+      g.x.setValue(centerX + startOffX);
+      g.y.setValue(centerY + startOffY);
+
+      setTimeout(() => {
+        // Pop in
+        Animated.parallel([
+          Animated.timing(g.opacity, { toValue: 1, duration: 100, useNativeDriver: true }),
+          Animated.spring(g.scale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }),
+        ]).start();
+
+        // After pop, fly to bar
+        setTimeout(() => {
+          Animated.parallel([
+            Animated.timing(g.x, { toValue: targetX, duration: 500, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.y, { toValue: targetY, duration: 500, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.scale, { toValue: 0.3, duration: 500, useNativeDriver: true }),
+            Animated.timing(g.opacity, { toValue: 0, duration: 400, delay: 100, useNativeDriver: true }),
+          ]).start();
+        }, 200);
+      }, delay);
+    });
+
+    // 3) Bar glow pulse when gems arrive
+    setTimeout(() => {
+      Animated.sequence([
+        Animated.timing(barGlow, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.timing(barGlow, { toValue: 0.4, duration: 300, useNativeDriver: true }),
+        Animated.timing(barGlow, { toValue: 0.8, duration: 200, useNativeDriver: true }),
+      ]).start();
+    }, gemDelay + GEM_COUNT * perGem + 300);
+
+    // 4) "+N" count pops in
+    const countDelay = gemDelay + GEM_COUNT * perGem + 600;
+    setTimeout(() => {
+      Animated.parallel([
+        Animated.spring(countScale, { toValue: 1, friction: 5, tension: 100, useNativeDriver: true }),
+        Animated.timing(countOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start();
+    }, countDelay);
+
+    // 5) Bar slides back up + done
+    const outDelay = countDelay + 1200;
+    setTimeout(() => {
+      Animated.timing(barY, { toValue: -80, duration: 350, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(() => {
+        onDone();
+      });
+    }, outDelay);
+  }, []);
+
+  const newTotal = currentDiamonds; // profile already updated by the time we render
+
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {/* Semi-transparent backdrop flash */}
+      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(88,28,135,0.15)', opacity: barGlow }]} />
+
+      {/* Diamond bar — slides from top */}
+      <Animated.View style={{
+        position: 'absolute', top: 50, right: 16,
+        transform: [{ translateY: barY }],
+        flexDirection: 'row', alignItems: 'center', gap: 8,
+        backgroundColor: 'rgba(228,238,255,0.13)',
+        borderRadius: 19, paddingLeft: 20, paddingRight: 12, paddingVertical: 8,
+        borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.5)',
+        borderBottomWidth: 3, borderBottomColor: 'rgba(255,255,255,0.18)',
+        shadowColor: '#A855F7', shadowOpacity: 0.6, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
+        elevation: 10,
+      }}>
+        <GemIcon size={20} />
+        <Text style={{ color: theme.gemText, fontSize: 15, fontFamily: 'Poppins-ExtraBold' }}>{newTotal.toLocaleString('tr-TR')}</Text>
+        {/* +N badge */}
+        <Animated.View style={{
+          marginLeft: 4, opacity: countOpacity,
+          transform: [{ scale: countScale }],
+        }}>
+          <View style={{
+            backgroundColor: theme.primary, borderRadius: 12,
+            paddingHorizontal: 8, paddingVertical: 2,
+          }}>
+            <Text style={{ color: '#06131F', fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>
+              +{amount.toLocaleString('tr-TR')}
+            </Text>
+          </View>
+        </Animated.View>
+      </Animated.View>
+
+      {/* Flying gem particles */}
+      {gemAnims.map((g, i) => (
+        <Animated.View key={i} style={{
+          position: 'absolute', left: -12, top: -12, width: 24, height: 24,
+          transform: [
+            { translateX: g.x },
+            { translateY: g.y },
+            { scale: g.scale },
+          ],
+          opacity: g.opacity,
+        }}>
+          <GemIcon size={24} />
+        </Animated.View>
+      ))}
+    </View>
+  );
+}
+
 // ---- Store ----
 // `productId` must match the Consumable products created in App Store Connect (and
 // server/src/game/iap.ts DIAMOND_PRODUCTS). `price` is a fallback shown until the
 // real localized App Store price is fetched.
 const DIAMOND_PACKS = [
-  { id: 'pack1', amount: 100, price: '₺29,99', color: '#A855F7', best: false, productId: 'com.crossover.diamonds.100' },
-  { id: 'pack2', amount: 500, price: '₺99,99', color: '#C084FC', best: true, productId: 'com.crossover.diamonds.500' },
-  { id: 'pack3', amount: 1200, price: '₺199,99', color: '#A855F7', best: false, productId: 'com.crossover.diamonds.1200' },
-  { id: 'pack4', amount: 5000, price: '₺699,99', color: '#7C3AED', best: false, productId: 'com.crossover.diamonds.5000' },
+  { id: 'pack1', amount: 100,   price: '₺29,99',   label: 'Elmas Kesesi',      color: '#A855F7', best: false, productId: 'com.crossover.diamonds.100',   img: require('../assets/store/diamonds-100.png') },
+  { id: 'pack2', amount: 500,   price: '₺79,99',   label: 'Elmas Çuvalı',      color: '#C084FC', best: false, productId: 'com.crossover.diamonds.500',   img: require('../assets/store/diamonds-500.png') },
+  { id: 'pack3', amount: 1200,  price: '₺149,99',  label: 'Elmas Sandığı',     color: '#A855F7', best: true,  productId: 'com.crossover.diamonds.1200',  img: require('../assets/store/diamonds-1200.png') },
+  { id: 'pack4', amount: 5000,  price: '₺449,99',  label: 'Büyük Elmas Kasası', color: '#7C3AED', best: false, productId: 'com.crossover.diamonds.5000',  img: require('../assets/store/diamonds-5000.png') },
+  { id: 'pack5', amount: 15000, price: '₺999,99',  label: 'Kraliyet Hazinesi', color: '#9333EA', best: false, productId: 'com.crossover.diamonds.15000', img: require('../assets/store/diamonds-15000.png') },
+  { id: 'pack6', amount: 50000, price: '₺2.499,99', label: 'Elmas Dağı',       color: '#6B21A8', best: false, productId: 'com.crossover.diamonds.50000', img: require('../assets/store/diamonds-50000.png') },
 ];
 const DIAMOND_PRODUCT_IDS = DIAMOND_PACKS.map((p) => p.productId);
 
@@ -2665,20 +2809,25 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
   const storeScrollRef = useRef<ScrollView>(null);
   const sectionYRef = useRef<Record<string, number>>({});
 
+  // ── Diamond purchase celebration animation ──
+  const [celebration, setCelebration] = useState<{ amount: number } | null>(null);
+
   // ── Apple In-App Purchase (StoreKit): consumable diamond packs + auto-renewable Social Pack ──
   const [buying, setBuying] = useState<string | null>(null); // productId mid-purchase
   const [activeSubId, setActiveSubId] = useState<string | null>(null); // active Social Pack plan id (StoreKit entitlement)
   const onPurchaseSuccess = useCallback(async (purchase: Purchase) => {
     const isSub = SOCIAL_PACK_IDS.includes(purchase.productId);
     try {
-      // StoreKit2: send the signed transaction JWS (the unified purchaseToken, or fetch it).
       const jws = purchase.purchaseToken ?? (await getTransactionJwsIOS(purchase.productId));
       if (!jws) throw new Error('no-jws');
-      await actions.verifyPurchase(jws);                            // server verifies JWS + grants
-      await iapFinishTransaction({ purchase, isConsumable: !isSub }); // finish only after grant
+      await actions.verifyPurchase(jws);
+      await iapFinishTransaction({ purchase, isConsumable: !isSub });
+      // Trigger celebration animation for diamond purchases
+      if (!isSub) {
+        const pack = DIAMOND_PACKS.find((p) => p.productId === purchase.productId);
+        if (pack) setCelebration({ amount: pack.amount });
+      }
     } catch {
-      // Verify/grant failed → leave the transaction UNFINISHED so StoreKit replays it on next
-      // launch and we grant then (server is idempotent — no double-charge/grant).
       Alert.alert('Satın alma', 'Birazdan hesabına işlenecek. Sorun sürerse uygulamayı yeniden aç.');
     } finally {
       setBuying(null);
@@ -2841,11 +2990,13 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
               </View>
             ) : null}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <View style={[styles.storePackIcon, { backgroundColor: pack.color + '22' }]}>
-                <GemIcon size={28} />
-              </View>
+              <Image source={pack.img} style={{ width: 52, height: 52 }} resizeMode="contain" />
               <View style={{ flex: 1 }}>
-                <Text style={styles.storePackAmount}>{t('store.diamonds', { n: pack.amount.toLocaleString('tr-TR') })}</Text>
+                <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14 }}>{pack.label}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                  <GemIcon size={14} />
+                  <Text style={{ color: theme.gemText, fontFamily: 'Poppins-ExtraBold', fontSize: 13 }}>{pack.amount.toLocaleString('tr-TR')}</Text>
+                </View>
               </View>
               <View style={styles.storePackPriceBox}>
                 {busy ? <ActivityIndicator color="#06131F" /> : <Text style={styles.storePackPrice}>{priceFor(pack.productId, pack.price)}</Text>}
@@ -2898,6 +3049,15 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
           </View>
         ))}
       </ScrollView>
+
+      {/* Diamond purchase celebration overlay */}
+      {celebration ? (
+        <DiamondCelebration
+          amount={celebration.amount}
+          currentDiamonds={profile?.diamonds ?? 0}
+          onDone={() => setCelebration(null)}
+        />
+      ) : null}
     </Screen>
   );
 }
@@ -3564,8 +3724,8 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
       {/* Tapped a friend → their public profile */}
       <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
 
-      {/* Chat screen — WhatsApp style */}
-      <Modal visible={state.chatWith !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={actions.closeChat}>
+      {/* Chat screen — WhatsApp style (fullScreen so KeyboardAvoidingView works correctly) */}
+      <Modal visible={state.chatWith !== null} animationType="slide" presentationStyle="fullScreen" onRequestClose={actions.closeChat}>
         <ChatScreen state={state} actions={actions} />
       </Modal>
     </Screen>
@@ -3593,41 +3753,17 @@ function TypingDot({ delay }: { delay: number }) {
 }
 
 // ---- Chat Screen (WhatsApp-style) ----
+// Architecture: fullScreen Modal + KeyboardAvoidingView (behavior="padding")
+// wrapping the entire chat. The input bar sits INSIDE the KAV so it rises with
+// the keyboard. ScrollView uses `keyboardShouldPersistTaps="always"` so the send
+// button never requires a double-tap, and `onContentSizeChange` + `onLayout`
+// auto-scroll to the bottom on new messages and keyboard open.
 function ChatScreen({ state, actions }: Props) {
   const [text, setText] = useState('');
   const scrollRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
   const chatWith = state.chatWith;
-  const [kbVisible, setKbVisible] = useState(false);
 
-  useEffect(() => {
-    const s1 = Keyboard.addListener('keyboardWillShow', () => setKbVisible(true));
-    const s2 = Keyboard.addListener('keyboardWillHide', () => setKbVisible(false));
-    // Android uses 'Did' variants
-    const s3 = Keyboard.addListener('keyboardDidShow', () => setKbVisible(true));
-    const s4 = Keyboard.addListener('keyboardDidHide', () => setKbVisible(false));
-    return () => { s1.remove(); s2.remove(); s3.remove(); s4.remove(); };
-  }, []);
-
-  // Swipe-back: a left-to-right drag ANYWHERE on the screen closes the chat
-  // (acts as a back button). We claim the gesture only when it's clearly
-  // horizontal (dx dominates dy) so vertical message scrolling still works.
-  const swipeX = useRef(new Animated.Value(0)).current;
-  const panResponder = useRef(PanResponder.create({
-    onMoveShouldSetPanResponder: (_, g) => g.dx > 18 && g.dx > Math.abs(g.dy) * 1.5,
-    onPanResponderMove: (_, g) => { if (g.dx > 0) swipeX.setValue(g.dx); },
-    onPanResponderRelease: (_, g) => {
-      // Far enough OR a quick rightward flick → go back.
-      if (g.dx > 90 || g.vx > 0.5) {
-        Animated.timing(swipeX, { toValue: Dimensions.get('window').width, duration: 200, useNativeDriver: true }).start(() => {
-          swipeX.setValue(0);
-          actions.closeChat();
-        });
-      } else {
-        Animated.spring(swipeX, { toValue: 0, useNativeDriver: true, friction: 8 }).start();
-      }
-    },
-  })).current;
   const friend = state.friends.find(f => f.userId === chatWith);
   const myId = state.profile?.userId;
   const messages = state.chatMessages;
@@ -3635,20 +3771,29 @@ function ChatScreen({ state, actions }: Props) {
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasTyping = useRef(false);
 
-  // Auto-scroll to bottom when new messages arrive or typing changes
-  useEffect(() => {
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-  }, [messages.length, isTyping]);
+  // Auto-scroll to bottom whenever content grows (new message, typing indicator)
+  // or the ScrollView layout changes (keyboard opens → ScrollView shrinks).
+  const scrollToBottom = useCallback(() => {
+    scrollRef.current?.scrollToEnd({ animated: true });
+  }, []);
 
-  // Mark messages as read when chat opens
+  // Mark messages as read when chat opens or new messages arrive
   useEffect(() => {
     if (chatWith) actions.markRead(chatWith);
   }, [chatWith, messages.length]);
 
+  // Scroll on keyboard show (iOS fires before the layout change)
+  useEffect(() => {
+    const sub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setTimeout(scrollToBottom, 50),
+    );
+    return () => sub.remove();
+  }, [scrollToBottom]);
+
   const onChangeText = (t: string) => {
     setText(t);
     if (!chatWith) return;
-    // Send typing_start when user starts typing, typing_stop after 2s idle
     if (t.trim() && !wasTyping.current) {
       wasTyping.current = true;
       actions.typingStart(chatWith);
@@ -3671,129 +3816,130 @@ function ChatScreen({ state, actions }: Props) {
       actions.typingStop(chatWith);
     }
     if (typingTimer.current) clearTimeout(typingTimer.current);
-    // Re-focus input so the keyboard stays open for rapid messaging
     inputRef.current?.focus();
   }, [text, chatWith, actions]);
 
   return (
-    <Animated.View style={{ flex: 1, transform: [{ translateX: swipeX }] }} {...panResponder.panHandlers}>
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
-      {/* Header */}
-      <View style={{
-        flexDirection: 'row', alignItems: 'center', gap: 12,
-        paddingTop: 54, paddingBottom: 12, paddingHorizontal: 16,
-        backgroundColor: theme.card, borderBottomWidth: 1, borderBottomColor: theme.border,
-      }}>
-        <Pressable onPress={actions.closeChat} hitSlop={10}>
-          <Ionicons name="arrow-back" size={24} color={theme.text} />
-        </Pressable>
-        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="person" size={18} color={theme.primary} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15 }} numberOfLines={1}>{friend?.displayName ?? '...'}</Text>
-          <Text style={{ color: isTyping ? theme.primary : friend?.online ? theme.primary : theme.muted, fontSize: 11 }}>
-            {isTyping ? 'yazıyor...' : friend?.online ? 'Çevrimiçi' : 'Çevrimdışı'}
-          </Text>
-        </View>
-      </View>
-
-      {/* Messages */}
-      <ScrollView
-        ref={scrollRef}
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <KeyboardAvoidingView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 12, paddingBottom: 8 }}
-        keyboardShouldPersistTaps="always"
-        keyboardDismissMode="none"
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        {messages.length === 0 ? (
-          <View style={{ alignItems: 'center', marginTop: 40 }}>
-            <Ionicons name="chatbubbles-outline" size={48} color={theme.border} />
-            <Text style={{ color: theme.muted, fontSize: 13, marginTop: 8 }}>Henüz mesaj yok</Text>
+        {/* Header — safe area top is handled by paddingTop:54 (status bar) */}
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', gap: 12,
+          paddingTop: 54, paddingBottom: 12, paddingHorizontal: 16,
+          backgroundColor: theme.card, borderBottomWidth: 1, borderBottomColor: theme.border,
+        }}>
+          <Pressable onPress={actions.closeChat} hitSlop={10}>
+            <Ionicons name="arrow-back" size={24} color={theme.text} />
+          </Pressable>
+          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="person" size={18} color={theme.primary} />
           </View>
-        ) : messages.map((m) => {
-          const isMe = m.fromId === myId;
-          return (
-            <View key={m.id} style={{ alignItems: isMe ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
-              <View style={{ flexDirection: isMe ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 6, maxWidth: '80%' }}>
-                {/* Avatar */}
-                <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: isMe ? theme.primary + '33' : theme.card, borderWidth: 1.5, borderColor: isMe ? theme.primary : theme.border, alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="person" size={13} color={isMe ? theme.primary : theme.muted} />
-                </View>
-                {/* Bubble */}
-                <View style={{
-                  backgroundColor: isMe ? theme.primary : theme.card,
-                  borderRadius: 16,
-                  borderBottomRightRadius: isMe ? 4 : 16,
-                  borderBottomLeftRadius: isMe ? 16 : 4,
-                  paddingHorizontal: 14, paddingVertical: 9,
-                  borderWidth: isMe ? 0 : 1, borderColor: theme.border,
-                }}>
-                  <Text style={{ color: isMe ? '#06131F' : theme.text, fontSize: 14 }}>{m.body}</Text>
-                  <Text style={{ color: isMe ? 'rgba(6,19,31,0.5)' : theme.muted, fontSize: 9, marginTop: 3, textAlign: 'right' }}>
-                    {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15 }} numberOfLines={1}>{friend?.displayName ?? '...'}</Text>
+            <Text style={{ color: isTyping ? theme.primary : friend?.online ? theme.primary : theme.muted, fontSize: 11 }}>
+              {isTyping ? 'yazıyor...' : friend?.online ? 'Çevrimiçi' : 'Çevrimdışı'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Messages — flex:1 takes all remaining space between header and input bar */}
+        <ScrollView
+          ref={scrollRef}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 12, paddingBottom: 4 }}
+          keyboardShouldPersistTaps="always"
+          keyboardDismissMode="interactive"
+          onContentSizeChange={scrollToBottom}
+          onLayout={scrollToBottom}
+        >
+          {messages.length === 0 ? (
+            <View style={{ alignItems: 'center', marginTop: 40 }}>
+              <Ionicons name="chatbubbles-outline" size={48} color={theme.border} />
+              <Text style={{ color: theme.muted, fontSize: 13, marginTop: 8 }}>Henüz mesaj yok</Text>
+            </View>
+          ) : messages.map((m) => {
+            const isMe = m.fromId === myId;
+            return (
+              <View key={m.id} style={{ alignItems: isMe ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
+                <View style={{ flexDirection: isMe ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 6, maxWidth: '80%' }}>
+                  <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: isMe ? theme.primary + '33' : theme.card, borderWidth: 1.5, borderColor: isMe ? theme.primary : theme.border, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="person" size={13} color={isMe ? theme.primary : theme.muted} />
+                  </View>
+                  <View style={{
+                    backgroundColor: isMe ? theme.primary : theme.card,
+                    borderRadius: 16,
+                    borderBottomRightRadius: isMe ? 4 : 16,
+                    borderBottomLeftRadius: isMe ? 16 : 4,
+                    paddingHorizontal: 14, paddingVertical: 9,
+                    borderWidth: isMe ? 0 : 1, borderColor: theme.border,
+                  }}>
+                    <Text style={{ color: isMe ? '#06131F' : theme.text, fontSize: 14 }}>{m.body}</Text>
+                    <Text style={{ color: isMe ? 'rgba(6,19,31,0.5)' : theme.muted, fontSize: 9, marginTop: 3, textAlign: 'right' }}>
+                      {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
                 </View>
               </View>
+            );
+          })}
+          {isTyping ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: theme.card, borderWidth: 1.5, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="person" size={13} color={theme.muted} />
+              </View>
+              <View style={{ backgroundColor: theme.card, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: theme.border, flexDirection: 'row', gap: 4 }}>
+                <TypingDot delay={0} />
+                <TypingDot delay={150} />
+                <TypingDot delay={300} />
+              </View>
             </View>
-          );
-        })}
-        {/* Typing indicator — three bouncing dots */}
-        {isTyping ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: theme.card, borderWidth: 1.5, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="person" size={13} color={theme.muted} />
-            </View>
-            <View style={{ backgroundColor: theme.card, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: theme.border, flexDirection: 'row', gap: 4 }}>
-              <TypingDot delay={0} />
-              <TypingDot delay={150} />
-              <TypingDot delay={300} />
-            </View>
-          </View>
-        ) : null}
-      </ScrollView>
+          ) : null}
+        </ScrollView>
 
-      {/* Input bar */}
-      <View style={{
-        flexDirection: 'row', alignItems: 'flex-end', gap: 8,
-        paddingHorizontal: 12, paddingVertical: 8,
-        paddingBottom: kbVisible ? 8 : 34,
-        backgroundColor: theme.card, borderTopWidth: 1, borderTopColor: theme.border,
-      }}>
-        <TextInput
-          ref={inputRef}
-          placeholder="Mesaj yaz..."
-          placeholderTextColor={theme.muted}
-          keyboardAppearance="dark"
-          value={text}
-          onChangeText={onChangeText}
-          blurOnSubmit={false}
-          returnKeyType="send"
-          onSubmitEditing={onSend}
-          style={{
-            flex: 1, backgroundColor: theme.bg, color: theme.text,
-            borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10,
-            fontSize: 14, borderWidth: 1, borderColor: theme.border,
-          }}
-          multiline
-          maxLength={500}
-        />
+        {/* Input bar — sits inside KAV so it moves up with the keyboard */}
+        <View style={{
+          flexDirection: 'row', alignItems: 'flex-end', gap: 8,
+          paddingHorizontal: 12, paddingTop: 8, paddingBottom: 34,
+          backgroundColor: theme.card, borderTopWidth: 1, borderTopColor: theme.border,
+        }}>
+          <TextInput
+            ref={inputRef}
+            placeholder="Mesaj yaz..."
+            placeholderTextColor={theme.muted}
+            keyboardAppearance="dark"
+            value={text}
+            onChangeText={onChangeText}
+            blurOnSubmit={false}
+            returnKeyType="send"
+            onSubmitEditing={onSend}
+            style={{
+              flex: 1, backgroundColor: theme.bg, color: theme.text,
+              borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10,
+              fontSize: 14, borderWidth: 1, borderColor: theme.border,
+              maxHeight: 100,
+            }}
+            multiline
+            maxLength={500}
+          />
           <Pressable
             onPress={onSend}
-            hitSlop={6}
+            hitSlop={8}
             style={{
               width: 42, height: 42, borderRadius: 21,
               backgroundColor: text.trim() ? theme.primary : theme.border,
               alignItems: 'center', justifyContent: 'center',
-              marginBottom: 1,
+              marginBottom: 2,
             }}
             disabled={!text.trim()}
           >
             <Ionicons name="send" size={20} color={text.trim() ? '#06131F' : theme.muted} />
           </Pressable>
-      </View>
-    </KeyboardAvoidingView>
-    </Animated.View>
+        </View>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
