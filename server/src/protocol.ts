@@ -254,6 +254,7 @@ export interface FriendView {
   arena: ArenaView;
   online: boolean;
   avatar?: string | null;
+  lastSeen?: string | null; // ISO; when they were last online (for offline friends)
 }
 
 export interface FriendRequestView {

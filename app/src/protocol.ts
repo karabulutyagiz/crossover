@@ -82,6 +82,7 @@ export interface FriendView {
   arena: ArenaView;
   online: boolean;
   avatar?: string | null;
+  lastSeen?: string | null;
 }
 
 export interface FriendRequestView {

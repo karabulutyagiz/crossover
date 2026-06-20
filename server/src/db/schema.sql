@@ -102,6 +102,9 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS social_pack_until TIMESTAMPTZ;
 -- Chosen profile-picture id (e.g. 'pp7'); null = default person icon.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT;
 
+-- Last time the user was online (updated on connect + disconnect) for "last seen".
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ;
+
 -- ---- Friend requests (pending invitations) ----
 CREATE TABLE IF NOT EXISTS friend_requests (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

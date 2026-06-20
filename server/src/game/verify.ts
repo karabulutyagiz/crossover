@@ -141,6 +141,11 @@ export async function searchClubs(
  * - 'hard':   ranks 81–250 — recognizable but harder to recall transfers for
  *             (Montpellier, Augsburg, Sassuolo, Kasımpaşa, etc.)
  */
+// Minimum name similarity to accept a TYPO auto-correction (below the exact
+// threshold but high enough that it's clearly the same name, just misspelled —
+// not a loose coincidental overlap).
+const AUTOCORRECT_MIN = 0.6;
+
 const EASY_TOP = 20;    // top 20 only
 const MEDIUM_FROM = 21; // skip the mega-famous
 const MEDIUM_TO = 80;
@@ -513,10 +518,15 @@ export async function verifyCountryTeamGuess(
   if (exactCluster.length > 0) {
     matched = exactCluster[0]!;
     correct = true;
-  } else {
+  } else if (eligible[0]!.sim >= AUTOCORRECT_MIN) {
+    // close typo of a valid answer → accept
     matched = eligible[0]!;
     correct = true;
     autocorrected = true;
+  } else {
+    // loose/garbage match → not accepted
+    matched = eligible[0]!;
+    correct = false;
   }
 
   const allClubs = await getPlayerSpells(matched.id);
@@ -524,7 +534,7 @@ export async function verifyCountryTeamGuess(
 
   return {
     correct,
-    reason: 'both',
+    reason: correct ? 'both' : 'not_both',
     autocorrected,
     teamA: pseudoCountry,
     teamB: club,
@@ -593,7 +603,7 @@ export async function verifyLetterTeamGuess(
     // Only autocorrect genuine typos — NOT a bare prefix like "c"/"cri". You picked the
     // letter, so a single letter (or tiny stub) sharing it must not win the round.
     const matchedNorm = normalize(matched.name);
-    if (norm.length >= 4 && norm.length >= matchedNorm.length * 0.5) {
+    if (matched.sim >= AUTOCORRECT_MIN && norm.length >= 4 && norm.length >= matchedNorm.length * 0.5) {
       correct = true;
       autocorrected = true;
     } else {
@@ -759,9 +769,12 @@ export async function verifyGuess(
     correct = Boolean(both);
   } else {
     // Approximate spelling (a typo) → auto-correct to the closest player who
-    // actually played BOTH teams, and accept it. No "wrong" for a misspelling.
+    // actually played BOTH teams. BUT only when the match is genuinely close, so a
+    // loose trigram overlap ("messi" → "Gaizka Mendieta") or garbage ("aab") is NOT
+    // accepted just because that player happened to play both. Auto-correct is for
+    // fixing fast-typing typos, not for guessing points.
     const both = eligible.find((c) => playedBoth(c.id));
-    if (both) {
+    if (both && both.sim >= AUTOCORRECT_MIN) {
       matched = both;
       correct = true;
       autocorrected = true;

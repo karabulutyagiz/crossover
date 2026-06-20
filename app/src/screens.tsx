@@ -3575,7 +3575,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }} numberOfLines={1}>{f.displayName}</Text>
-                <Text style={{ color: f.online ? theme.primary : theme.muted, fontSize: 11, fontWeight: '600' }}>{f.online ? t('common.online') : arenaLabel(f.arena.name)}</Text>
+                <Text style={{ color: f.online ? theme.primary : theme.muted, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>{f.online ? t('common.online') : lastSeenLabel(f.lastSeen)}</Text>
               </View>
               {/* Trophy on the far right */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.bg2, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5, borderWidth: 1, borderColor: theme.border }}>
@@ -4393,6 +4393,22 @@ function arenaLabel(name: string): string {
 function arenaDesc(name: string): string {
   const k = arenaKeyFromName(name);
   return k ? t(`arena.${k}.desc` as MessageKey) : '';
+}
+
+// "Last seen 5 min ago" for an offline friend (relative, localized).
+function lastSeenLabel(iso: string | null | undefined): string {
+  if (!iso) return t('common.offline');
+  const diff = Date.now() - new Date(iso).getTime();
+  if (Number.isNaN(diff) || diff < 0) return t('common.offline');
+  const mins = Math.floor(diff / 60000);
+  const p = t('lastSeen.prefix');
+  if (mins < 1) return `${p} ${t('lastSeen.justNow')}`;
+  if (mins < 60) return `${p} ${t('lastSeen.min', { n: String(mins) })}`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${p} ${t('lastSeen.hour', { n: String(hrs) })}`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${p} ${t('lastSeen.day', { n: String(days) })}`;
+  return `${p} ${t('lastSeen.long')}`;
 }
 
 function ClubLogo({ uri, name, size = 22 }: { uri: string | null; name?: string; size?: number }) {

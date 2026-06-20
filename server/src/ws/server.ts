@@ -6,7 +6,7 @@ import { listScopes, listNationalities } from '../game/verify.ts';
 import {
   findOrCreateUser, findOrCreateUserByProvider, createGuestUser, getUser, changeDisplayName,
   grantDevEmotesIfNeeded,
-  setUsername, buyEmote, setEquippedEmotes, setAvatar, getLeaderboard,
+  setUsername, buyEmote, setEquippedEmotes, setAvatar, touchLastSeen, getLeaderboard,
   listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
   removeFriend, searchUsers, getMatchHistory,
   getArena,
@@ -84,8 +84,10 @@ function addOnline(userId: string, ws: WebSocket): void {
   let set = onlineUsers.get(userId);
   if (!set) { set = new Set(); onlineUsers.set(userId, set); }
   set.add(ws);
+  void touchLastSeen(userId);
 }
 function removeOnline(userId: string, ws: WebSocket): void {
+  void touchLastSeen(userId);
   const set = onlineUsers.get(userId);
   if (!set) return;
   set.delete(ws);

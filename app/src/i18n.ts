@@ -298,6 +298,12 @@ const tr = {
   'notif.newMessage': 'sana mesaj gönderdi',
   'chat.placeholder': 'Mesaj yaz...',
   'chat.typing': 'yazıyor...',
+  'lastSeen.prefix': 'Son görülme',
+  'lastSeen.justNow': 'az önce',
+  'lastSeen.min': '{n} dk önce',
+  'lastSeen.hour': '{n} sa önce',
+  'lastSeen.day': '{n} gün önce',
+  'lastSeen.long': 'uzun süre önce',
 
   // arena names
   'arena.mahalle': 'Mahalle Sahası',
@@ -576,6 +582,12 @@ const en: typeof tr = {
   'notif.newMessage': 'sent you a message',
   'chat.placeholder': 'Type a message...',
   'chat.typing': 'typing...',
+  'lastSeen.prefix': 'Last seen',
+  'lastSeen.justNow': 'just now',
+  'lastSeen.min': '{n} min ago',
+  'lastSeen.hour': '{n} h ago',
+  'lastSeen.day': '{n} d ago',
+  'lastSeen.long': 'a long time ago',
 
   'arena.mahalle': 'Local Pitch',
   'arena.amator': 'Amateur League',

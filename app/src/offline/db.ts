@@ -262,7 +262,7 @@ export interface VerifyResult {
 export async function verifyGuess(teamAId: number, teamBId: number, guess: string): Promise<VerifyResult> {
   const d = getDB();
   const norm = normalize(guess);
-  if (!norm) return emptyResult();
+  if (!norm || norm.length < 3) return emptyResult(); // reject empty / "a" / "aa" garbage
 
   // Find candidate players by LIKE search
   const candidates = await d.getAllAsync(
@@ -290,8 +290,11 @@ export async function verifyGuess(teamAId: number, teamBId: number, guess: strin
     return emptyResult();
   }
 
-  // Approximate: find the best candidate who played both clubs
+  // Approximate (typo): find the closest candidate who played both clubs. A short
+  // stub ("aab") must be near-exact to a name — it can't auto-correct into a
+  // coincidental substring match just to score points.
   for (const c of scored) {
+    if (norm.length < 4 && c.sim < EXACT_THRESHOLD) continue;
     const played = await playedBothClubs(d, c.id, teamAId, teamBId);
     if (played) {
       return await buildResult(d, c.id, c.name, c.img, teamAId, teamBId, c.id !== top.id);

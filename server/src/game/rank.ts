@@ -372,6 +372,7 @@ export async function listFriends(userId: string): Promise<Omit<FriendView, 'onl
     trophies: r.trophies,
     arena: getArena(r.trophies),
     avatar: r.avatar ?? null,
+    lastSeen: r.last_seen ?? null,
   }));
 }
 
@@ -517,7 +518,14 @@ interface DbUser {
   username_set: boolean | null;
   social_pack_until: string | null;
   avatar: string | null;
+  last_seen: string | null;
   created_at: string;
+}
+
+// Stamp the user's last-online time (on connect and disconnect) for "last seen".
+export async function touchLastSeen(userId: string): Promise<void> {
+  if (!userId) return;
+  await pool.query(`UPDATE users SET last_seen = now() WHERE id = $1`, [userId]);
 }
 
 function toProfile(row: DbUser): UserProfile {
