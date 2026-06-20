@@ -50,7 +50,7 @@ function similarity(a: string, b: string): number {
 // ---------- DB singleton ----------
 const DB_NAME = 'crossover_offline.db';
 const DATA_VERSION_KEY = '@offline_data_v';
-const CURRENT_VERSION = '2'; // bump when data.json changes
+const CURRENT_VERSION = '3'; // bump when data.json changes
 
 let db: any = null;
 
@@ -134,14 +134,24 @@ export interface OfflineClub {
 export async function searchClubs(query: string, limit = 30): Promise<OfflineClub[]> {
   const d = getDB();
   if (!query.trim()) {
-    // Return popular clubs (those with the most spells)
-    const rows = await d.getAllAsync(
+    // The well-known "favorite" teams (EASY pool) first, in that curated order, then
+    // the rest of the popular clubs by player count.
+    const favIds: number[] = BOT_POOL_IDS.easy ?? [];
+    const favPh = favIds.map(() => '?').join(',');
+    const favRows = favIds.length
+      ? await d.getAllAsync(`SELECT id, name, logo FROM clubs WHERE id IN (${favPh})`, favIds)
+      : [];
+    const favById = new Map<number, any>(favRows.map((r: any) => [r.id, r]));
+    const ordered = favIds.map((id) => favById.get(id)).filter(Boolean);
+    const rest = await d.getAllAsync(
       `SELECT c.id, c.name, c.logo FROM clubs c
        JOIN spells s ON s.club_id = c.id
+       ${favIds.length ? `WHERE c.id NOT IN (${favPh})` : ''}
        GROUP BY c.id ORDER BY COUNT(*) DESC LIMIT ?`,
-      [limit],
+      [...favIds, limit],
     );
-    return rows.map((r: any) => ({ id: r.id, name: r.name, logoUrl: r.logo }));
+    const combined = [...ordered, ...rest].slice(0, limit);
+    return combined.map((r: any) => ({ id: r.id, name: r.name, logoUrl: r.logo }));
   }
   const norm = normalize(query);
   // SQLite doesn't have pg_trgm — use LIKE + in-memory similarity ranking
@@ -186,6 +196,54 @@ export async function randomClub(difficulty: 'easy' | 'medium' | 'hard'): Promis
   if (rows.length === 0) return null;
   const r = rows[Math.floor(Math.random() * rows.length)]!;
   return { id: r.id, name: r.name, logoUrl: r.logo };
+}
+
+// Fixed difficulty pools (resolved club ids) — the bot ONLY picks from these.
+const BOT_POOL_IDS: Record<'easy' | 'medium' | 'hard', number[]> = require('./botpools.json');
+
+export interface BotPick { id: number; name: string; logoUrl: string | null; country: string | null }
+
+// Pick the bot's team from its difficulty pool. Rules:
+//  - stay strictly inside the pool, never a random club;
+//  - skip teams used in the last few bot picks (excludeIds);
+//  - prefer a team that actually crosses over with the player's team (so the
+//    round has an answer), then a team from a different country than the last pick.
+export async function botPickFromPool(
+  difficulty: 'easy' | 'medium' | 'hard',
+  playerTeamId: number | null,
+  excludeIds: number[],
+  lastCountry: string | null,
+): Promise<BotPick | null> {
+  const d = getDB();
+  const poolIds = BOT_POOL_IDS[difficulty] ?? [];
+  if (!poolIds.length) return null;
+  const ph = poolIds.map(() => '?').join(',');
+  const all: any[] = await d.getAllAsync(
+    `SELECT id, name, logo, country FROM clubs WHERE id IN (${ph})`, poolIds,
+  );
+  if (!all.length) return null;
+  let cands = all.filter((c) => !excludeIds.includes(c.id));
+  if (!cands.length) cands = all; // window bigger than the pool — allow a repeat
+
+  // Teams in the pool that share a player with the player's chosen team.
+  if (playerTeamId != null) {
+    const rows: any[] = await d.getAllAsync(
+      `SELECT DISTINCT s2.club_id AS cid FROM spells s1
+         JOIN spells s2 ON s2.player_id = s1.player_id
+        WHERE s1.club_id = ? AND s2.club_id IN (${ph})`,
+      [playerTeamId, ...poolIds],
+    );
+    const cross = new Set<number>(rows.map((r) => r.cid));
+    const withCross = cands.filter((c) => cross.has(c.id));
+    if (withCross.length) cands = withCross;
+  }
+
+  // Avoid the same country two bot picks in a row when possible.
+  const diffCountry = cands.filter((c) => c.country && c.country !== lastCountry);
+  if (diffCountry.length) cands = diffCountry;
+
+  const r = cands[Math.floor(Math.random() * cands.length)]!;
+  return { id: r.id, name: r.name, logoUrl: r.logo, country: r.country };
 }
 
 const MATCH_THRESHOLD = 0.3;
@@ -299,6 +357,27 @@ export async function commonPlayers(teamAId: number, teamBId: number, limit = 5)
     [teamAId, teamBId, limit],
   );
   return rows.map((r: any) => ({ name: r.name, imageUrl: r.img }));
+}
+
+// Common players ranked by "fame" — the max player-count of any club they played
+// at (a stand-in for recognizability: stars passed through big clubs). The bot uses
+// this to decide whether it would realistically know the answer at a given difficulty.
+export async function commonPlayersRanked(teamAId: number, teamBId: number, limit = 8): Promise<{ name: string; fame: number }[]> {
+  const d = getDB();
+  const rows = await d.getAllAsync(
+    `WITH cp AS (SELECT club_id, COUNT(*) AS pop FROM spells GROUP BY club_id)
+     SELECT p.id, p.name, COALESCE(MAX(cp.pop), 0) AS fame
+       FROM players p
+       JOIN spells sa ON sa.player_id = p.id AND sa.club_id = ?
+       JOIN spells sb ON sb.player_id = p.id AND sb.club_id = ?
+       JOIN spells s  ON s.player_id  = p.id
+       JOIN cp ON cp.club_id = s.club_id
+      GROUP BY p.id, p.name
+      ORDER BY fame DESC
+      LIMIT ?`,
+    [teamAId, teamBId, limit],
+  );
+  return rows.map((r: any) => ({ name: r.name, fame: Number(r.fame) }));
 }
 
 export async function hasCommonPlayers(teamAId: number, teamBId: number): Promise<boolean> {

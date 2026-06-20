@@ -11,8 +11,10 @@ import type { ClubRef, GameMode, RoundResult, ServerMsg, Scope, PlayerView } fro
 import {
   searchClubs as offlineSearchClubs,
   randomClub,
+  botPickFromPool,
   verifyGuess,
   commonPlayers,
+  commonPlayersRanked,
   hasCommonPlayers,
   normalize,
   type OfflineClub,
@@ -49,6 +51,25 @@ export class OfflineRoom {
   private bot: OfflinePlayer;
   private roundNumber = 0;
   private timers: ReturnType<typeof setTimeout>[] = [];
+  // Last bot team picks (ids) so the same team isn't repeated within 10 picks,
+  // and the last pick's country to avoid two from the same league in a row.
+  private recentBotPicks: number[] = [];
+  private lastBotCountry: string | null = null;
+
+  // Pick the bot's team from the difficulty pool and record it for the no-repeat
+  // and no-same-country-twice rules.
+  private async pickBotTeam(playerTeamId: number | null): Promise<ClubRef | null> {
+    const pick = await botPickFromPool(this.difficulty, playerTeamId, this.recentBotPicks, this.lastBotCountry);
+    if (!pick) {
+      // Pool unavailable for some reason — fall back to the old band picker.
+      const r = await randomClub(this.difficulty);
+      return r ? { id: r.id, name: r.name, logoUrl: r.logoUrl } : null;
+    }
+    this.recentBotPicks.push(pick.id);
+    if (this.recentBotPicks.length > 10) this.recentBotPicks.shift();
+    this.lastBotCountry = pick.country;
+    return { id: pick.id, name: pick.name, logoUrl: pick.logoUrl };
+  }
   private round: {
     teamA?: ClubRef;
     teamB?: ClubRef;
@@ -117,11 +138,9 @@ export class OfflineRoom {
     const club = clubs.find(c => c.id === clubId);
     if (!club) return;
     this.round.teamA = { id: club.id, name: club.name, logoUrl: club.logoUrl };
-    // Bot picks
-    const botClub = await randomClub(this.difficulty);
-    if (botClub) {
-      this.round.teamB = { id: botClub.id, name: botClub.name, logoUrl: botClub.logoUrl };
-    }
+    // Bot picks its team from the difficulty pool (prefers a crossover with mine).
+    const botTeam = await this.pickBotTeam(club.id);
+    if (botTeam) this.round.teamB = botTeam;
     this.clearTimers();
     this.revealTeams();
   }
@@ -242,14 +261,14 @@ export class OfflineRoom {
 
   private async autoPickAndReveal() {
     if (!this.round) return;
-    const club = await randomClub(this.difficulty);
+    // Player didn't pick in time — give them a well-known team so the bot's pool
+    // team is likely to cross over, then the bot picks from its pool.
+    const club = await randomClub('easy');
     if (club) {
       this.round.teamA = { id: club.id, name: club.name, logoUrl: club.logoUrl };
     }
-    const botClub = await randomClub(this.difficulty);
-    if (botClub) {
-      this.round.teamB = { id: botClub.id, name: botClub.name, logoUrl: botClub.logoUrl };
-    }
+    const botTeam = await this.pickBotTeam(club?.id ?? null);
+    if (botTeam) this.round.teamB = botTeam;
     this.revealTeams();
   }
 
@@ -294,14 +313,30 @@ export class OfflineRoom {
       return;
     }
 
-    // Prepare bot answer
-    const common = await commonPlayers(this.round.teamA.id, this.round.teamB.id, 6);
-    if (common.length > 0) {
-      this.botAnswer = common[Math.floor(Math.random() * common.length)]!.name;
-    }
+    // Decide the bot's answer by difficulty + how famous the crossover is.
+    // HARD: knows everything. EASY/MEDIUM: more likely to know famous players
+    // (human-like) and sometimes just doesn't know — leaving the round to the player.
+    const ranked = await commonPlayersRanked(this.round.teamA.id, this.round.teamB.id, 8);
+    this.botAnswer = this.decideBotAnswer(ranked);
 
     // Begin guess phase after reveal delay
     this.timers.push(setTimeout(() => this.beginGuess(), 2200));
+  }
+
+  // Whether the bot "knows" the crossover, and which player it recalls.
+  private decideBotAnswer(ranked: { name: string; fame: number }[]): string | null {
+    if (!ranked.length) return null;
+    if (this.difficulty === 'hard') {
+      // Knows them all — recalls one of the more famous crossovers.
+      return ranked[Math.floor(Math.random() * Math.min(3, ranked.length))]!.name;
+    }
+    // fame ≈ max club player-count (~40..260). Famous answers are more likely known.
+    const fameNorm = Math.max(0, Math.min(1, (ranked[0]!.fame - 40) / 200));
+    const base = this.difficulty === 'medium' ? 0.45 : 0.20;
+    const knowProb = base + 0.45 * fameNorm;
+    if (Math.random() > knowProb) return null; // bot doesn't know this one this time
+    const half = ranked.slice(0, Math.max(1, Math.ceil(ranked.length / 2)));
+    return half[Math.floor(Math.random() * half.length)]!.name;
   }
 
   private beginGuess() {
@@ -314,7 +349,8 @@ export class OfflineRoom {
         ? 9000 + Math.random() * 7000
         : this.difficulty === 'medium'
         ? 4000 + Math.random() * 5000
-        : 1500 + Math.random() * 2500;
+        // HARD: knows the answer but doesn't rush — gives the human time to compete.
+        : 4500 + Math.random() * 4000;
       this.timers.push(setTimeout(() => this.botSubmitGuess(), delay));
     }
 

@@ -1,6 +1,7 @@
 import { pool } from '../db/pool.ts';
 import { config } from '../config.ts';
 import { normalize } from './normalize.ts';
+import { BOT_POOLS } from './botpools.ts';
 import type { Scope, PlayerRef } from '../protocol.ts';
 
 // Build a scope WHERE-fragment + push its param. Returns '' for 'all'.
@@ -71,7 +72,10 @@ export async function searchClubs(
   // Empty query → the most popular teams, so the picker's logo grid opens full
   // (no empty gap) and then filters down as the user types.
   if (!norm) {
-    const p: unknown[] = [];
+    // Well-known "favorite" teams (EASY pool) first, then the rest by popularity.
+    // Only when unscoped — a league-scoped picker just uses popularity.
+    const favIds = scope.type === 'all' ? (await resolvedPools()).easy : [];
+    const p: unknown[] = [favIds];
     const sSql = scopeClause(scope, p);
     p.push(limit);
     const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
@@ -82,7 +86,8 @@ export async function searchClubs(
           AND EXISTS (SELECT 1 FROM player_clubs pc WHERE pc.club_id = c.id)
           ${A_TEAM_ONLY}
           ${sSql}
-        ORDER BY COALESCE(NULLIF(c.popularity, 0), (SELECT COUNT(*) FROM player_clubs pc2 WHERE pc2.club_id = c.id)) DESC
+        ORDER BY array_position($1::bigint[], c.id::bigint) NULLS LAST,
+                 COALESCE(NULLIF(c.popularity, 0), (SELECT COUNT(*) FROM player_clubs pc2 WHERE pc2.club_id = c.id)) DESC
         LIMIT $${p.length}`,
       p,
     );
@@ -177,6 +182,61 @@ export async function randomClub(
   }
 
   const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(sql, params);
+  const r = rows[0];
+  return r ? { id: Number(r.id), name: r.name, logoUrl: r.logo_url } : null;
+}
+
+// Resolve the fixed difficulty pools to club ids once (cached for the process).
+let cachedPools: Record<'easy' | 'medium' | 'hard', number[]> | null = null;
+async function resolvedPools(): Promise<Record<'easy' | 'medium' | 'hard', number[]>> {
+  if (cachedPools) return cachedPools;
+  const out: Record<'easy' | 'medium' | 'hard', number[]> = { easy: [], medium: [], hard: [] };
+  for (const level of ['easy', 'medium', 'hard'] as const) {
+    for (const t of BOT_POOLS[level]) {
+      const { rows } = await pool.query<{ id: string }>(
+        `SELECT c.id FROM clubs c
+          WHERE c.is_national = false AND c.logo_url IS NOT NULL
+            AND EXISTS (SELECT 1 FROM player_clubs pc WHERE pc.club_id = c.id)
+            AND c.name_norm NOT LIKE '%u21%' AND c.name_norm NOT LIKE '%u23%' AND c.name_norm NOT LIKE '% b'
+            AND (c.name_norm = $1 OR c.name_norm % $1 OR c.name_norm LIKE '%' || $1 || '%')
+          ORDER BY (c.name_norm = $1) DESC, (c.league IS NOT NULL) DESC, similarity(c.name_norm, $1) DESC,
+                   (SELECT COUNT(*) FROM player_clubs pc2 WHERE pc2.club_id = c.id) DESC, length(c.name) ASC
+          LIMIT 1`,
+        [normalize(t.q)],
+      );
+      if (rows[0]) out[level].push(Number(rows[0].id));
+    }
+  }
+  cachedPools = out;
+  return out;
+}
+
+// Pick the bot's team from its fixed difficulty pool, preferring a team that
+// crosses over with the player's chosen team and isn't in the recent-picks list.
+export async function botPickFromPool(
+  difficulty: 'easy' | 'medium' | 'hard',
+  playerTeamId: number | null,
+  excludeIds: number[] = [],
+): Promise<ClubHit | null> {
+  const pools = await resolvedPools();
+  const poolIds = pools[difficulty];
+  if (!poolIds.length) return null;
+  let cands = poolIds.filter((id) => !excludeIds.includes(id));
+  if (!cands.length) cands = poolIds;
+  if (playerTeamId != null) {
+    const { rows } = await pool.query<{ cid: string }>(
+      `SELECT DISTINCT pc2.club_id AS cid FROM player_clubs pc1
+         JOIN player_clubs pc2 ON pc2.player_id = pc1.player_id
+        WHERE pc1.club_id = $1 AND pc2.club_id = ANY($2)`,
+      [playerTeamId, cands],
+    );
+    const cross = rows.map((r) => Number(r.cid));
+    if (cross.length) cands = cross;
+  }
+  const id = cands[Math.floor(Math.random() * cands.length)]!;
+  const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
+    `SELECT id, name, logo_url FROM clubs WHERE id = $1`, [id],
+  );
   const r = rows[0];
   return r ? { id: Number(r.id), name: r.name, logoUrl: r.logo_url } : null;
 }

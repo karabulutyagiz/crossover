@@ -11,6 +11,7 @@ import {
   hasPlayersCountryTeam,
   hasPlayersLetterTeam,
   randomClub,
+  botPickFromPool,
   searchPlayers,
   randomPlayer,
   verifyPlayerPlayerGuess,
@@ -91,6 +92,7 @@ export class Room {
   private rematchBy: string | null = null;
   private readyPlayers = new Set<string>();
   private matchRounds: MatchRound[] = [];
+  private recentBotPicks: number[] = []; // last bot team ids (no-repeat within 10)
 
   constructor(code: string, onEmpty: (code: string) => void) {
     this.code = code;
@@ -313,8 +315,18 @@ export class Room {
         continue;
       }
       if (role === 'team') {
-        const club = await randomClub(this.scope, 'medium');
+        // Bot picks from the fixed MEDIUM pool (online matches have no difficulty),
+        // preferring a crossover with the human's team. League-scoped rooms keep the
+        // old popularity picker so the pick stays inside the chosen league.
+        const humanPick = [...this.round.picks.values()][0];
+        const club = this.scope.type === 'all'
+          ? await botPickFromPool('medium', humanPick ? Number(humanPick.id) : null, this.recentBotPicks)
+          : await randomClub(this.scope, 'medium');
         if (club) {
+          if (this.scope.type === 'all') {
+            this.recentBotPicks.push(club.id);
+            if (this.recentBotPicks.length > 10) this.recentBotPicks.shift();
+          }
           this.round.picks.set(id, club);
           this.broadcast({ type: 'team_picked', playerId: id });
         }
