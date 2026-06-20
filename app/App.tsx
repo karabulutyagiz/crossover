@@ -460,20 +460,11 @@ export default function App() {
               ],
             }}
           >
-            <View style={{
-              flexDirection: 'row', alignItems: 'center', gap: 11,
-              backgroundColor: theme.card, borderRadius: 16,
-              paddingVertical: 16, paddingHorizontal: 26,
-              borderWidth: 2, borderColor: theme.frameGold,
-              borderBottomWidth: 5, borderBottomColor: theme.frameGoldDark,
-              borderTopColor: theme.panelTopGloss,
-              shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 22, shadowOffset: { width: 0, height: 16 }, elevation: 24,
-            }}>
-              <Ionicons name="time" size={22} color={theme.accent} />
-              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 21, letterSpacing: 0.5, textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 }}>
-                {t('common.comingSoon')}
-              </Text>
-            </View>
+            <Image
+              source={require('./assets/cokyakinda.png')}
+              style={{ width: 288, height: 288 * (818 / 1923) }}
+              resizeMode="contain"
+            />
           </Animated.View>
         </View>
       ) : null}

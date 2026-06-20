@@ -239,23 +239,22 @@ export function EmoteCallout({ id, size = 88 }: { id: string; size?: number }) {
   );
 }
 
-// A framed plain-text emote (Clash-Royale quick-chat style): the phrase sits in a
-// card whose width hugs the text, with a colored frame + bottom lip.
-export function TextEmoteFrame({ text, color, fontSize = 16 }: { text: string; color: string; fontSize?: number }) {
+// A framed plain-text emote — the "ÇOK YAKINDA!" speech-bubble style: a white
+// rounded bubble with a thick dark outline and bold dark text. The width hugs the
+// text. (color is kept for the API but the bubble is uniform white/black.)
+export function TextEmoteFrame({ text, fontSize = 16 }: { text: string; color?: string; fontSize?: number }) {
   return (
     <View style={{
       alignSelf: 'flex-start',
-      backgroundColor: theme.card,
-      borderRadius: 16,
-      borderWidth: 2.5,
-      borderColor: color,
-      borderBottomWidth: 4,
-      borderBottomColor: theme.cardLip,
-      paddingHorizontal: 16,
-      paddingVertical: 9,
-      shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 8,
+      backgroundColor: '#FCFCFC',
+      borderRadius: 22,
+      borderWidth: 3.5,
+      borderColor: '#15171C',
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      shadowColor: '#000', shadowOpacity: 0.38, shadowRadius: 6, shadowOffset: { width: 0, height: 5 }, elevation: 9,
     }}>
-      <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize }}>{text}</Text>
+      <Text style={{ color: '#15171C', fontFamily: 'Poppins-ExtraBold', fontSize: fontSize + 1, letterSpacing: 0.3 }}>{text}</Text>
     </View>
   );
 }

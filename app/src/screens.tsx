@@ -1912,7 +1912,7 @@ export function LobbyScreen({ state, actions }: Props) {
       <View style={{ height: 14 }} />
       {room.players.map((p) => (
         <GamePanel key={p.id} compact accentStripe={p.isHost ? theme.accent : theme.primary} style={{ marginBottom: 8 }} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingLeft: 14 }}>
-          <Avatar avatar={p.avatar} name={p.name} size={32} ring={p.isHost ? theme.accent : theme.primary} iconColor={p.isHost ? theme.accent : theme.muted} iconSize={18} />
+          <Avatar avatar={p.id === room.youId ? (p.avatar ?? state.profile?.avatar) : p.avatar} name={p.name} size={32} ring={p.isHost ? theme.accent : theme.primary} iconColor={p.isHost ? theme.accent : theme.muted} iconSize={18} />
           <Text style={styles.lobbyName}>
             {p.name}
             {p.id === room.youId ? t('lobby.youSuffix') : ''}
@@ -1957,9 +1957,9 @@ export function MatchupScreen({ state }: Props) {
   const oppColor = opp?.arena ? arenaColor(opp.arena.name) : theme.muted;
   const youColor = you?.arena ? arenaColor(you.arena.name) : theme.primary;
 
-  const renderPlayer = (p: typeof you, color: string, slideY: Animated.AnimatedInterpolation<number>) => (
+  const renderPlayer = (p: typeof you, color: string, slideY: Animated.AnimatedInterpolation<number>, fallbackAvatar?: string | null) => (
     <Animated.View style={{ transform: [{ translateY: slideY }], opacity: anim, alignItems: 'center', gap: 6 }}>
-      <Avatar avatar={p?.avatar} name={p?.name} size={64} ring={color} ringWidth={3} bg={theme.card} iconColor={color} iconSize={30} />
+      <Avatar avatar={p?.avatar ?? fallbackAvatar} name={p?.name} size={64} ring={color} ringWidth={3} bg={theme.card} iconColor={color} iconSize={30} />
       <Text style={{ color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold' }} numberOfLines={1}>{p?.name ?? '?'}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
         <Ionicons name="trophy" size={15} color={theme.accent} />
@@ -1984,7 +1984,7 @@ export function MatchupScreen({ state }: Props) {
             <Text style={{ color: '#06131F', fontFamily: 'Poppins-Black', fontSize: 16 }}>{t('matchup.vs')}</Text>
           </View>
         </Animated.View>
-        {renderPlayer(you, youColor, youSlide)}
+        {renderPlayer(you, youColor, youSlide, state.profile?.avatar)}
       </View>
     </Screen>
   );
