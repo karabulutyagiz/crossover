@@ -128,6 +128,16 @@ export class Room {
     return { ok: true, id };
   }
 
+  // The club the OTHER (human) player has picked this round, if any — used so the
+  // bot can prefer a pool team that crosses over with it.
+  otherTeamPick(playerId: string): number | null {
+    if (!this.round) return null;
+    for (const [pid, club] of this.round.picks) {
+      if (pid !== playerId) return Number(club.id);
+    }
+    return null;
+  }
+
   // Update a player's avatar mid-match (by persistent userId) and push fresh state
   // so the opponent sees the new profile picture instantly.
   setAvatarFor(userId: string, avatar: string | null): void {

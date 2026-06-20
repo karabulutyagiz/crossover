@@ -376,6 +376,30 @@ export async function commonPlayers(
   return rows.map((r) => r.name);
 }
 
+// Common players ranked by "fame" (the player-count of their biggest club — a
+// stand-in for recognizability). The bot uses this to decide whether it would
+// realistically know the answer at a given difficulty.
+export async function botCommonPlayersRanked(
+  teamAId: number,
+  teamBId: number,
+  limit = 8,
+): Promise<{ name: string; fame: number }[]> {
+  const { rows } = await pool.query<{ name: string; fame: string }>(
+    `WITH cp AS (SELECT club_id, COUNT(*) AS pop FROM player_clubs GROUP BY club_id)
+     SELECT p.name, COALESCE(MAX(cp.pop), 0) AS fame
+       FROM players p
+       JOIN player_clubs a ON a.player_id = p.id AND a.club_id = $1
+       JOIN player_clubs b ON b.player_id = p.id AND b.club_id = $2
+       JOIN player_clubs s ON s.player_id = p.id
+       JOIN cp ON cp.club_id = s.club_id
+      GROUP BY p.id, p.name
+      ORDER BY fame DESC
+      LIMIT $3`,
+    [teamAId, teamBId, limit],
+  );
+  return rows.map((r) => ({ name: r.name, fame: Number(r.fame) }));
+}
+
 export interface CommonPlayerInfo {
   name: string;
   imageUrl: string | null;
