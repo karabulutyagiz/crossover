@@ -244,6 +244,40 @@ export async function setAvatar(
   return { ok: true, profile: toProfile(rows[0]) };
 }
 
+// Grant diamonds for watching a rewarded ad. There is no AdMob server-side
+// verification yet, so we bound abuse with a per-UTC-day cap plus a minimum gap
+// between grants (a real rewarded ad can't finish faster than this). One atomic
+// UPDATE guarded on both, so concurrent taps can never exceed the cap.
+const AD_REWARD = 5;
+const AD_REWARD_DAILY_CAP = 100;   // max rewarded-ad grants per day
+const AD_REWARD_MIN_GAP_SEC = 12;  // min seconds between grants
+export async function grantAdReward(
+  userId: string,
+): Promise<{ ok: true; profile: UserProfile; granted: number } | { ok: false; error: string }> {
+  if (!userId) return { ok: false, error: 'Önce giriş yap' };
+  const { rows } = await pool.query<DbUser>(
+    `UPDATE users SET
+       diamonds = diamonds + $2,
+       ad_reward_count = CASE WHEN ad_reward_day = CURRENT_DATE THEN ad_reward_count + 1 ELSE 1 END,
+       ad_reward_day = CURRENT_DATE,
+       last_ad_reward_at = now()
+     WHERE id = $1
+       AND (last_ad_reward_at IS NULL OR last_ad_reward_at < now() - ($4 || ' seconds')::interval)
+       AND (ad_reward_day IS NULL OR ad_reward_day < CURRENT_DATE OR ad_reward_count < $3)
+     RETURNING *`,
+    [userId, AD_REWARD, AD_REWARD_DAILY_CAP, String(AD_REWARD_MIN_GAP_SEC)],
+  );
+  if (!rows[0]) {
+    const chk = await pool.query<{ c: number; today: boolean }>(
+      `SELECT ad_reward_count AS c, (ad_reward_day = CURRENT_DATE) AS today FROM users WHERE id = $1`,
+      [userId],
+    );
+    const capped = !!chk.rows[0]?.today && (chk.rows[0]?.c ?? 0) >= AD_REWARD_DAILY_CAP;
+    return { ok: false, error: capped ? 'Günlük reklam ödülü sınırına ulaştın' : 'Çok hızlı, birazdan tekrar dene' };
+  }
+  return { ok: true, profile: toProfile(rows[0]), granted: AD_REWARD };
+}
+
 // Buy a premium emote: charge diamonds once and append it to owned_emotes.
 // The whole thing is one atomic UPDATE guarded on balance + not-already-owned,
 // so double taps or races can never double-charge.

@@ -109,6 +109,7 @@ type Actions = {
   equipEmotes: (emoteIds: string[]) => void;
   setAvatar: (avatar: string | null) => void;
   verifyPurchase: (receipt: string) => Promise<void>;
+  grantAdReward: () => Promise<number>;
   loadFriends: () => void;
   sendFriendRequest: (targetCode?: string, targetUsername?: string) => void;
   respondFriendRequest: (requestId: string, accept: boolean) => void;
@@ -2734,7 +2735,6 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
 }
 
 const AD_STORAGE_KEY = '@crossover_ad_state';
-const AD_REWARD_DIAMONDS = 5;
 
 // AdMob Rewarded Ad Unit IDs
 const REWARDED_AD_IOS = 'ca-app-pub-5118403349234305/6758433311';
@@ -2861,11 +2861,18 @@ function WeeklyCountdown() {
 export function StoreScreen({ state, actions, scrollToSection }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | null }) {
   const profile = state.profile;
   const adReward = useCallback(() => {
-    // Grant diamonds after watching a rewarded ad — uses the same
-    // server-side verify flow (silent re-validate grants 0 + refreshes profile).
-    // For ad rewards we just credit locally; the server doesn't track ad views.
-    setCelebration({ amount: AD_REWARD_DIAMONDS });
-  }, []);
+    // Watched a rewarded ad → credit diamonds server-side (persisted + capped).
+    // state.notice/error aren't rendered on the Store tab, so give feedback HERE:
+    // the celebration overlay on success, an alert with the cap/throttle reason on
+    // refusal. The balance updates from the server's ad_reward_result reply.
+    actions.grantAdReward()
+      .then((granted) => { if (granted > 0) setCelebration({ amount: granted }); })
+      .catch((e: Error) => {
+        if (!/timeout|disconnected/.test(e?.message ?? '')) {
+          Alert.alert('Reklam Ödülü', e?.message ?? 'Ödül şu an verilemedi, birazdan tekrar dene.');
+        }
+      });
+  }, [actions]);
   const { adsWatched, canWatch, watchAd, adLoading } = useAdState(adReward);
   const storeScrollRef = useRef<ScrollView>(null);
   const sectionYRef = useRef<Record<string, number>>({});
@@ -2976,26 +2983,23 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
                 </Text>
               </View>
             ) : null}
+            {/* While the pack is active we only show the "AKTİF" status above — the
+                purchase buttons are hidden so it doesn't look re-purchasable. They
+                come back automatically once the entitlement expires. */}
+            {!hasActivePack ? (
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
               {SOCIAL_PACK.map((sp, i) => {
                 const busy = buying === sp.productId;
-                // When a pack is active AND we know the current plan (from StoreKit),
-                // relabel the buttons: same plan → "Süreyi Uzat", other plan →
-                // upgrade/switch. Otherwise keep the first-purchase plan name.
-                const isCurrent = !!activeSubId && activeSubId === sp.productId;
-                const actionLabel = (hasActivePack && activeSubId)
-                  ? (isCurrent ? 'Süreyi Uzat' : (sp.id === 'monthly' ? 'Aylığa Yükselt' : 'Haftalığa Geç'))
-                  : sp.label;
                 return (
                   <Pressable
                     key={sp.id}
                     disabled={!!buying}
                     onPress={() => buy(sp.productId)}
-                    style={[styles.storePackPriceBox, { flex: 1, alignItems: 'center', minHeight: 46, justifyContent: 'center' }, i === 1 && { backgroundColor: theme.accent }, isCurrent && { borderWidth: 1.5, borderColor: theme.primary }, !!buying && !busy && { opacity: 0.5 }]}
+                    style={[styles.storePackPriceBox, { flex: 1, alignItems: 'center', minHeight: 46, justifyContent: 'center' }, i === 1 && { backgroundColor: theme.accent }, !!buying && !busy && { opacity: 0.5 }]}
                   >
                     {busy ? <ActivityIndicator color="#06131F" /> : (
                       <>
-                        <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>{actionLabel}</Text>
+                        <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>{sp.label}</Text>
                         <Text style={styles.storePackPrice}>{priceFor(sp.productId, sp.price)}</Text>
                       </>
                     )}
@@ -3003,6 +3007,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
                 );
               })}
             </View>
+            ) : null}
           </View>
         </View>
 

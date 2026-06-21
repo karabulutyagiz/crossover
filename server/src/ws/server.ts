@@ -6,7 +6,7 @@ import { listScopes, listNationalities } from '../game/verify.ts';
 import {
   findOrCreateUser, findOrCreateUserByProvider, createGuestUser, getUser, changeDisplayName,
   grantDevEmotesIfNeeded,
-  setUsername, buyEmote, setEquippedEmotes, setAvatar, touchLastSeen, getLeaderboard,
+  setUsername, buyEmote, setEquippedEmotes, setAvatar, touchLastSeen, getLeaderboard, grantAdReward,
   listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
   removeFriend, searchUsers, getMatchHistory,
   getArena,
@@ -341,6 +341,20 @@ export function startServer(port: number): Server {
           if (!result.ok) return transport.send({ type: 'error', message: result.error });
           userProfile = result.profile;
           transport.send({ type: 'diamonds_granted', granted: result.granted, profile: toProfileView(result.profile) });
+        })();
+        return;
+      }
+
+      // Credit diamonds for watching a rewarded ad (server-capped, no client trust).
+      // Uses its own ad_reward_result channel so it never resolves an in-flight IAP
+      // verification (which keys off diamonds_granted).
+      if (msg.type === 'grant_ad_reward') {
+        if (!userProfile) return transport.send({ type: 'ad_reward_result', ok: false, error: 'Önce kayıt ol' });
+        void (async () => {
+          const result = await grantAdReward(userProfile!.id);
+          if (!result.ok) return transport.send({ type: 'ad_reward_result', ok: false, error: result.error });
+          userProfile = result.profile;
+          transport.send({ type: 'ad_reward_result', ok: true, granted: result.granted, profile: toProfileView(result.profile) });
         })();
         return;
       }

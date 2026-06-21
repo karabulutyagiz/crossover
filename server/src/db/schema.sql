@@ -105,6 +105,12 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT;
 -- Last time the user was online (updated on connect + disconnect) for "last seen".
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ;
 
+-- Rewarded-ad diamond grants: daily counter (resets per UTC day) + last grant time,
+-- used to cap abuse (no AdMob server-side verification yet).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS ad_reward_day DATE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS ad_reward_count INT NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_ad_reward_at TIMESTAMPTZ;
+
 -- ---- Friend requests (pending invitations) ----
 CREATE TABLE IF NOT EXISTS friend_requests (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

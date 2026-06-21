@@ -344,6 +344,12 @@ function reducer(state: GameState, action: Action): GameState {
       // store's "Aktif" badge reflects it. Always refresh the profile.
       return { ...state, profile: (action as { profile: ProfileView }).profile, notice: g > 0 ? `+${g} 💎` : state.notice };
     }
+    case 'ad_reward_result': {
+      // Refresh the authoritative balance on success; the Store screen shows the
+      // celebration/alert itself (state.notice isn't rendered on that tab).
+      const a = action as { ok?: boolean; profile?: ProfileView };
+      return a.ok && a.profile ? { ...state, profile: a.profile } : state;
+    }
 
     case 'room_state': {
       // When a non-bot room fills to 2 players, show the matchup reveal screen.
@@ -498,6 +504,9 @@ export function useCrossover() {
   // A pending Apple IAP verification — resolved when the server confirms the grant
   // (diamonds_granted) or rejected on error, so we only finishTransaction once paid.
   const pendingVerify = useRef<{ resolve: () => void; reject: (e: Error) => void } | null>(null);
+  // A pending rewarded-ad grant — its own channel (ad_reward_result) so it can never
+  // resolve an in-flight IAP verification by sharing the diamonds_granted message.
+  const pendingAdReward = useRef<{ resolve: (granted: number) => void; reject: (e: Error) => void } | null>(null);
 
   const connectAndSend = useCallback((first: ClientMsg, opts?: { silent?: boolean }) => {
     // Detach the previous socket's handlers BEFORE closing it. Otherwise its
@@ -527,6 +536,13 @@ export function useCrossover() {
         // Resolve/reject a pending IAP verification.
         if (mt === 'diamonds_granted') { pendingVerify.current?.resolve(); pendingVerify.current = null; }
         else if (mt === 'error' && pendingVerify.current) { pendingVerify.current.reject(new Error((m as { message?: string }).message ?? 'error')); pendingVerify.current = null; }
+        // Rewarded-ad grant result — its own channel, never touches pendingVerify.
+        if (mt === 'ad_reward_result') {
+          const r = m as { ok?: boolean; granted?: number; error?: string };
+          if (r.ok) pendingAdReward.current?.resolve(r.granted ?? 0);
+          else pendingAdReward.current?.reject(new Error(r.error ?? 'Ödül verilemedi'));
+          pendingAdReward.current = null;
+        }
         // A friend request just arrived in real time — pull the authoritative
         // list so it shows with a real requestId (accept/reject works instantly).
         if (mt === 'friend_request_received' && ws.readyState === WebSocket.OPEN) {
@@ -611,6 +627,18 @@ export function useCrossover() {
       setTimeout(() => {
         if (pendingVerify.current) { pendingVerify.current.reject(new Error('timeout')); pendingVerify.current = null; }
       }, 20000);
+    }),
+    // Watched a rewarded ad → ask the server to credit diamonds (server-capped).
+    // Resolves with the granted amount (server-authoritative) on its own
+    // ad_reward_result channel, or rejects with the cap/throttle reason.
+    grantAdReward: () => new Promise<number>((resolve, reject) => {
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) { reject(new Error('disconnected')); return; }
+      pendingAdReward.current = { resolve, reject };
+      ws.send(JSON.stringify({ type: 'grant_ad_reward' }));
+      setTimeout(() => {
+        if (pendingAdReward.current) { pendingAdReward.current.reject(new Error('timeout')); pendingAdReward.current = null; }
+      }, 15000);
     }),
     openLeaderboard: () => {
       fetch(`${HTTP_URL}/leaderboard`)

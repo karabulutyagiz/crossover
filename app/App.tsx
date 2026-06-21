@@ -47,6 +47,17 @@ import {
 import { theme, engrave } from './src/theme';
 import { GemIcon, GEM_COLOR } from './src/GemIcon';
 
+// AdMob must be initialized once at startup or no ad (incl. rewarded) will ever
+// load. Native module — absent in Expo Go, so require it guarded.
+let initMobileAds: (() => Promise<unknown>) | null = null;
+try {
+  const ads = require('react-native-google-mobile-ads');
+  const mobileAds = ads.default;
+  initMobileAds = () => mobileAds().initialize();
+} catch {
+  // native module unavailable (Expo Go) — ads disabled gracefully
+}
+
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -176,6 +187,8 @@ export default function App() {
 
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 1900);
+    // Kick off the AdMob SDK once so rewarded ads can load (no-op in Expo Go).
+    initMobileAds?.().catch(() => {});
     // Read saved language
     AsyncStorage.getItem('@crossover_lang').then((v) => { if (v) setLanguage(v); }).catch(() => {});
     AsyncStorage.getItem('@crossover_tutorial_seen')

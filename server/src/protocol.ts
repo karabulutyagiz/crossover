@@ -102,6 +102,7 @@ export type ClientMsg =
   | { type: 'equip_emotes'; emoteIds: string[] } // set the match loadout (max 3 visual)
   | { type: 'set_avatar'; avatar: string | null } // choose profile picture ('pp7' or null)
   | { type: 'verify_purchase'; receipt: string } // validate an Apple IAP receipt → grant diamonds
+  | { type: 'grant_ad_reward' } // watched a rewarded ad → credit a few diamonds (capped server-side)
   | { type: 'search_clubs'; reqId: string; q: string }
   | { type: 'pick_player'; playerId: number }
   | { type: 'search_players'; q: string }
@@ -175,6 +176,7 @@ export type ServerMsg =
   | { type: 'emote'; fromId: string; emoteId: string } // a player in the room sent an emote
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string } // store purchase succeeded
   | { type: 'diamonds_granted'; profile: ProfileView; granted: number } // IAP validated → diamonds added
+  | { type: 'ad_reward_result'; ok: boolean; granted?: number; profile?: ProfileView; error?: string } // rewarded-ad grant (separate from IAP)
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
   | { type: 'player_results'; players: PlayerRef[] }
   | { type: 'searching' }

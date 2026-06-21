@@ -154,6 +154,7 @@ export type ClientMsg =
   | { type: 'equip_emotes'; emoteIds: string[] }
   | { type: 'set_avatar'; avatar: string | null }
   | { type: 'verify_purchase'; receipt: string }
+  | { type: 'grant_ad_reward' }
   | { type: 'search_clubs'; reqId: string; q: string }
   | { type: 'pick_player'; playerId: number }
   | { type: 'search_players'; q: string }
@@ -204,6 +205,7 @@ export type ServerMsg =
   | { type: 'emote'; fromId: string; emoteId: string }
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string }
   | { type: 'diamonds_granted'; profile: ProfileView; granted: number }
+  | { type: 'ad_reward_result'; ok: boolean; granted?: number; profile?: ProfileView; error?: string }
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
   | { type: 'player_results'; players: PlayerRef[] }
   | { type: 'searching' }
