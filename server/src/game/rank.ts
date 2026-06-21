@@ -1,5 +1,6 @@
 import { pool } from '../db/pool.ts';
 import { emotePrice, isFreeEmote, isEquippableEmote, MAX_EQUIPPED, ALL_COLLECTIBLE_EMOTES } from './emotes.ts';
+import { avatarPrice, canUseAvatar, DEFAULT_AVATAR_ID, isAvatar, isFreeAvatar } from './avatars.ts';
 import { validateUsername } from './username.ts';
 
 // ---- Trophy arenas (Clash Royale style) ----
@@ -53,6 +54,8 @@ export interface UserProfile {
   diamonds: number;
   wins: number;
   losses: number;
+  selectedAvatar: string;
+  ownedAvatars: string[];
   ownedEmotes: string[];
   equippedEmotes: string[]; // visual emotes in the match loadout (max 3)
   usernameSet: boolean;
@@ -227,18 +230,20 @@ export async function changeDisplayName(
   return { ok: true, profile: toProfile(rows[0]) };
 }
 
-// Set the player's profile picture (free). `avatar` is an id like 'pp7', or null
-// to clear back to the default.
-const VALID_AVATARS = new Set(Array.from({ length: 20 }, (_, i) => `pp${i + 1}`));
+// Set the player's profile picture. Free avatars can be used by everyone; premium
+// ones require ownership. `null` clears back to the default icon.
 export async function setAvatar(
   userId: string,
   avatar: string | null,
 ): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
   if (!userId) return { ok: false, error: 'Önce giriş yap' };
-  const clean = avatar && VALID_AVATARS.has(avatar) ? avatar : null;
+  if (avatar !== null && !isAvatar(avatar)) return { ok: false, error: 'Geçersiz profil fotoğrafı' };
+  const user = await getUser(userId);
+  if (!user) return { ok: false, error: 'Kullanıcı bulunamadı' };
+  if (!canUseAvatar(user.ownedAvatars, avatar)) return { ok: false, error: 'Önce bu profil fotoğrafını satın al' };
   const { rows } = await pool.query<DbUser>(
-    `UPDATE users SET avatar = $2 WHERE id = $1 RETURNING *`,
-    [userId, clean],
+    `UPDATE users SET avatar = $2, selected_avatar = COALESCE($2, $3) WHERE id = $1 RETURNING *`,
+    [userId, avatar, DEFAULT_AVATAR_ID],
   );
   if (!rows[0]) return { ok: false, error: 'Kullanıcı bulunamadı' };
   return { ok: true, profile: toProfile(rows[0]) };
@@ -322,6 +327,33 @@ export async function setEquippedEmotes(
   return { ok: true, profile: toProfile(rows[0]) };
 }
 
+export async function buyAvatar(
+  userId: string,
+  avatarId: string,
+): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
+  const price = avatarPrice(avatarId);
+  if (price === null || !isAvatar(avatarId)) return { ok: false, error: 'Geçersiz profil fotoğrafı' };
+  if (isFreeAvatar(avatarId)) return { ok: false, error: 'Bu profil fotoğrafı zaten herkeste' };
+
+  const user = await getUser(userId);
+  if (!user) return { ok: false, error: 'Kullanıcı bulunamadı' };
+  if (user.ownedAvatars.includes(avatarId)) return { ok: false, error: 'Bu profil fotoğrafına zaten sahipsin' };
+  if (user.diamonds < price) return { ok: false, error: `Yetersiz elmas (${user.diamonds}/${price})` };
+
+  const { rows } = await pool.query<DbUser>(
+    `UPDATE users
+        SET diamonds = diamonds - $2,
+            owned_avatars = array_append(owned_avatars, $3),
+            selected_avatar = $3,
+            avatar = $3
+      WHERE id = $1 AND diamonds >= $2 AND NOT ($3 = ANY(owned_avatars))
+      RETURNING *`,
+    [userId, price, avatarId],
+  );
+  if (!rows[0]) return { ok: false, error: 'Satın alma başarısız' };
+  return { ok: true, profile: toProfile(rows[0]) };
+}
+
 // ---- Leaderboard ----
 
 export interface LeaderboardEntry {
@@ -357,8 +389,11 @@ export async function getLeaderboard(limit = 50): Promise<LeaderboardEntry[]> {
 export interface FriendView {
   userId: string;
   displayName: string;
+  selectedAvatar: string;
+  avatar: string | null;
   trophies: number;
   arena: Arena;
+  lastSeen?: string | null;
   online: boolean; // set by the caller (ws layer tracks connections)
 }
 
@@ -403,9 +438,10 @@ export async function listFriends(userId: string): Promise<Omit<FriendView, 'onl
   return rows.map((r) => ({
     userId: r.id,
     displayName: r.display_name,
+    selectedAvatar: r.selected_avatar ?? DEFAULT_AVATAR_ID,
+    avatar: r.avatar ?? r.selected_avatar ?? null,
     trophies: r.trophies,
     arena: getArena(r.trophies),
-    avatar: r.avatar ?? null,
     lastSeen: r.last_seen ?? null,
   }));
 }
@@ -547,6 +583,8 @@ interface DbUser {
   diamonds: number;
   wins: number;
   losses: number;
+  selected_avatar: string | null;
+  owned_avatars: string[] | null;
   owned_emotes: string[] | null;
   equipped_emotes: string[] | null;
   username_set: boolean | null;
@@ -571,12 +609,14 @@ function toProfile(row: DbUser): UserProfile {
     diamonds: row.diamonds,
     wins: row.wins,
     losses: row.losses,
+    selectedAvatar: row.avatar ?? row.selected_avatar ?? DEFAULT_AVATAR_ID,
+    ownedAvatars: row.owned_avatars ?? [],
     ownedEmotes: row.owned_emotes ?? [],
     equippedEmotes: row.equipped_emotes ?? [],
     usernameSet: row.username_set ?? false,
     socialPackUntil: row.social_pack_until ?? null,
     arena: getArena(row.trophies),
-    avatar: row.avatar ?? null,
+    avatar: row.avatar ?? row.selected_avatar ?? null,
   };
 }
 

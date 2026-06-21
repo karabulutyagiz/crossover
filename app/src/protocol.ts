@@ -67,6 +67,8 @@ export interface ProfileView {
   diamonds: number;
   wins: number;
   losses: number;
+  selectedAvatar: string;
+  ownedAvatars: string[];
   ownedEmotes: string[];
   equippedEmotes: string[];
   usernameSet: boolean;
@@ -78,6 +80,7 @@ export interface ProfileView {
 export interface FriendView {
   userId: string;
   displayName: string;
+  selectedAvatar: string;
   trophies: number;
   arena: ArenaView;
   online: boolean;
@@ -152,6 +155,7 @@ export type ClientMsg =
   | { type: 'send_emote'; emoteId: string }
   | { type: 'buy_emote'; emoteId: string }
   | { type: 'equip_emotes'; emoteIds: string[] }
+  | { type: 'buy_avatar'; avatarId: string }
   | { type: 'set_avatar'; avatar: string | null }
   | { type: 'verify_purchase'; receipt: string }
   | { type: 'grant_ad_reward' }
@@ -204,6 +208,7 @@ export type ServerMsg =
   | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView }
   | { type: 'emote'; fromId: string; emoteId: string }
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string }
+  | { type: 'avatar_purchased'; profile: ProfileView; avatarId: string }
   | { type: 'diamonds_granted'; profile: ProfileView; granted: number }
   | { type: 'ad_reward_result'; ok: boolean; granted?: number; profile?: ProfileView; error?: string }
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
@@ -240,6 +245,7 @@ export interface MessageView {
 export interface ConversationView {
   userId: string;
   displayName: string;
+  selectedAvatar?: string;
   online: boolean;
   lastMessage: string;
   lastMessageAt: string;
@@ -250,6 +256,7 @@ export interface ConversationView {
 export interface PublicProfile {
   userId: string;
   displayName: string;
+  selectedAvatar: string;
   trophies: number;
   wins: number;
   losses: number;

@@ -50,6 +50,7 @@ import {
   ownsEmote,
 } from './emotes';
 import type { EmoteMeta } from './emotes';
+import { AvatarBadge, avatarMeta, avatarPrice, ownsAvatar } from './avatars';
 import { NATIONALITIES } from './nationalities';
 // react-native-iap v15 (StoreKit2) — native module, absent in Expo Go. Wrap the require
 // in try/catch so the app still loads in Expo Go (Store shows "coming soon"); the real
@@ -107,6 +108,7 @@ type Actions = {
   clearEmote: (playerId: string) => void;
   buyEmote: (emoteId: string) => void;
   equipEmotes: (emoteIds: string[]) => void;
+  buyAvatar: (avatarId: string) => void;
   setAvatar: (avatar: string | null) => void;
   verifyPurchase: (receipt: string) => Promise<void>;
   grantAdReward: () => Promise<number>;
@@ -630,8 +632,9 @@ const TUT_SPELL_A = [TUT_CAREER[3]!]; // Galatasaray
 const TUT_SPELL_B = [TUT_CAREER[1]!]; // Real Madrid
 const TUT_PROFILE = {
   userId: 'you', displayName: 'Sen', trophies: 0, diamonds: 0, wins: 0, losses: 0,
+  selectedAvatar: 'pp7', ownedAvatars: [],
   ownedEmotes: [], equippedEmotes: [], usernameSet: true, socialPackUntil: null,
-  arena: { name: 'Mahalle Sahası', icon: '🏟️', minTrophies: 0 }, avatar: null,
+  arena: { name: 'Mahalle Sahası', icon: '🏟️', minTrophies: 0 }, avatar: 'pp7',
 };
 
 // Guided first-time tutorial that drives the REAL match screens (PickTeam → Guess
@@ -991,6 +994,48 @@ function DIFF_LABEL(d: Difficulty): string {
 function MODE_LABEL(m: GameMode): string {
   return { 'team-team': t('mode.teamTeam'), 'country-team': t('mode.countryTeam'), 'letter-team': t('mode.letterTeam'), 'player-player': t('mode.playerPlayer') }[m];
 }
+
+function normalizeCountryKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function countryFlagFor(value?: string | null): string | null {
+  if (!value) return null;
+  const key = normalizeCountryKey(value);
+  const hit = NATIONALITIES.find((n) =>
+    normalizeCountryKey(n.value) === key || normalizeCountryKey(n.displayName) === key,
+  );
+  return hit?.flag ?? null;
+}
+
+function MatchHistoryLeadBadge({
+  mode,
+  country,
+  letter,
+  teamA,
+  teamALogo,
+  size = 18,
+}: {
+  mode: GameMode;
+  country?: string | null;
+  letter?: string | null;
+  teamA: string;
+  teamALogo?: string | null;
+  size?: number;
+}) {
+  if (mode === 'country-team') {
+    const flag = countryFlagFor(country ?? teamA);
+    if (flag) return <Text style={{ fontSize: size - 2 }}>{flag}</Text>;
+  }
+  if (mode === 'letter-team' && letter) {
+    return (
+      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ color: '#06131F', fontSize: Math.max(10, size - 7), fontWeight: '900' }}>{letter}</Text>
+      </View>
+    );
+  }
+  return <ClubLogo uri={teamALogo ?? null} name={teamA} size={size} />;
+}
 const MODE_ICON: Record<GameMode, IoniconName> = {
   'team-team': 'football',
   'country-team': 'flag',
@@ -1008,7 +1053,7 @@ function ProfileCard({ profile, onPress }: { profile: ProfileView; onPress?: () 
   return (
     <Pressable style={styles.profileCard} onPress={onPress}>
       <View style={styles.profileRow}>
-        <Ionicons name={arenaIcon(profile.arena)} size={24} color={theme.accent} />
+        <AvatarBadge avatarId={profile.avatar ?? profile.selectedAvatar} size={32} ringColor={theme.accent} />
         <View style={{ flex: 1 }}>
           <Text style={styles.profileName}>{profile.displayName}</Text>
           <Text style={styles.profileArena}>{arenaLabel(profile.arena.name)}</Text>
@@ -1515,7 +1560,7 @@ export function MatchHistoryModal({ visible, history, myName, onClose }: { visib
                   {myRounds.length > 0 ? myRounds.map((r, i) => (
                     <View key={i} style={{ backgroundColor: theme.bg, borderRadius: 10, padding: 7, marginBottom: 4, borderLeftWidth: 3, borderLeftColor: theme.primary }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                        <ClubLogo uri={r.teamALogo} name={r.teamA} size={17} />
+                        <MatchHistoryLeadBadge mode={(r.mode as GameMode) ?? (m.gameMode as GameMode) ?? 'team-team'} country={r.country} letter={r.letter} teamA={r.teamA} teamALogo={r.teamALogo} size={17} />
                         <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
                         <ClubLogo uri={r.teamBLogo} name={r.teamB} size={17} />
                       </View>
@@ -1531,7 +1576,7 @@ export function MatchHistoryModal({ visible, history, myName, onClose }: { visib
                   {oppRounds.length > 0 ? oppRounds.map((r, i) => (
                     <View key={i} style={{ backgroundColor: theme.bg, borderRadius: 10, padding: 7, marginBottom: 4, borderLeftWidth: 3, borderLeftColor: theme.danger }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                        <ClubLogo uri={r.teamALogo} name={r.teamA} size={17} />
+                        <MatchHistoryLeadBadge mode={(r.mode as GameMode) ?? (m.gameMode as GameMode) ?? 'team-team'} country={r.country} letter={r.letter} teamA={r.teamA} teamALogo={r.teamALogo} size={17} />
                         <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
                         <ClubLogo uri={r.teamBLogo} name={r.teamB} size={17} />
                       </View>
@@ -1569,9 +1614,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       {/* Top bar: profile avatar (→ profile) · leaderboard (gems live in the global resource bar) */}
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
         <Pressable onPress={actions.openProfile} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.card, borderRadius: 22, paddingVertical: 4, paddingLeft: 4, paddingRight: 12, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, maxWidth: '60%', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: 4 }}>
-          <View style={{ borderRadius: 17, shadowColor: theme.primary, shadowOpacity: 0.5, shadowRadius: 5, shadowOffset: { width: 0, height: 0 } }}>
-            <Avatar avatar={profile?.avatar} name={profile?.displayName} size={34} ring={theme.primary} iconColor={theme.primary} iconSize={18} />
-          </View>
+          <AvatarBadge avatarId={profile?.avatar ?? profile?.selectedAvatar} size={34} ringColor={theme.primary} />
           <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13 }} numberOfLines={1}>{profile?.displayName ?? 'Oyuncu'}</Text>
         </Pressable>
         <View style={{ flex: 1 }} />
@@ -3263,9 +3306,7 @@ export function FriendProfileModal({ profile, onClose }: { profile: PublicProfil
 
           {/* Avatar + name + arena */}
           <View style={{ alignItems: 'center', marginBottom: 26 }}>
-            <View style={{ borderRadius: 55, shadowColor: color, shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 0 }, elevation: 10 }}>
-              <Avatar avatar={profile?.avatar} name={profile?.displayName} size={110} ring={color} ringWidth={4} iconColor={color} iconSize={56} />
-            </View>
+            <AvatarBadge avatarId={profile?.avatar ?? profile?.selectedAvatar} size={110} ringColor={color} />
             <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 24, marginTop: 14 }}>{profile?.displayName}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, backgroundColor: theme.card, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: color + '66' }}>
               <Ionicons name="trophy" size={15} color={theme.gold} />
@@ -3534,7 +3575,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
                 }}
               >
                 <View style={{ position: 'relative' }}>
-                  <Avatar avatar={c.avatar} name={c.displayName} size={44} ring={c.online ? theme.primary : theme.border} iconColor={c.online ? theme.primary : theme.muted} iconSize={20} />
+                  <AvatarBadge avatarId={c.avatar ?? c.selectedAvatar} size={44} ringColor={c.online ? theme.primary : theme.border} />
                   {c.online ? <View style={{ position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
                 </View>
                 <View style={{ flex: 1 }}>
@@ -3575,7 +3616,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
               }}
             >
               <View style={{ position: 'relative' }}>
-                <Avatar avatar={f.avatar} name={f.displayName} size={38} ring={theme.accent} iconColor={theme.accent} iconSize={22} />
+                <AvatarBadge avatarId={f.avatar ?? f.selectedAvatar} size={38} ringColor={theme.accent} />
                 {f.online ? <View style={{ position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: 6, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card, shadowColor: theme.primary, shadowOpacity: 0.7, shadowRadius: 4, shadowOffset: { width: 0, height: 0 } }} /> : null}
               </View>
               <View style={{ flex: 1 }}>
@@ -3956,7 +3997,7 @@ function ChatScreen({ state, actions }: Props) {
           <Pressable onPress={actions.closeChat} hitSlop={10}>
             <Ionicons name="arrow-back" size={24} color={theme.text} />
           </Pressable>
-          <Avatar avatar={friend?.avatar} name={friend?.displayName} size={36} ring={theme.primary} iconColor={theme.primary} iconSize={18} />
+          <AvatarBadge avatarId={friend?.avatar ?? friend?.selectedAvatar} size={36} ringColor={theme.primary} />
           <View style={{ flex: 1 }}>
             <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15 }} numberOfLines={1}>{friend?.displayName ?? '...'}</Text>
             <Text style={{ color: isTyping ? theme.primary : friend?.online ? theme.primary : theme.muted, fontSize: 11 }}>
@@ -3985,7 +4026,7 @@ function ChatScreen({ state, actions }: Props) {
             return (
               <View key={m.id} style={{ alignItems: isMe ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
                 <View style={{ flexDirection: isMe ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 6, maxWidth: '80%' }}>
-                  <Avatar avatar={isMe ? state.profile?.avatar : friend?.avatar} name={isMe ? state.profile?.displayName : friend?.displayName} size={28} ring={isMe ? theme.primary : theme.border} ringWidth={1.5} bg={isMe ? theme.primary + '33' : theme.card} iconColor={isMe ? theme.primary : theme.muted} iconSize={13} />
+                  <AvatarBadge avatarId={isMe ? (state.profile?.avatar ?? state.profile?.selectedAvatar) : (friend?.avatar ?? friend?.selectedAvatar)} size={28} ringColor={isMe ? theme.primary : theme.border} />
                   <View style={{
                     backgroundColor: isMe ? theme.primary : theme.card,
                     borderRadius: 16,
@@ -4005,7 +4046,7 @@ function ChatScreen({ state, actions }: Props) {
           })}
           {isTyping ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-              <Avatar avatar={friend?.avatar} name={friend?.displayName} size={28} ring={theme.border} ringWidth={1.5} bg={theme.card} iconColor={theme.muted} iconSize={13} />
+              <AvatarBadge avatarId={friend?.avatar ?? friend?.selectedAvatar} size={28} ringColor={theme.border} />
               <View style={{ backgroundColor: theme.card, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: theme.border, flexDirection: 'row', gap: 4 }}>
                 <TypingDot delay={0} />
                 <TypingDot delay={150} />
@@ -4077,23 +4118,19 @@ function StatCard({ icon, color, label, value, gem }: { icon?: IoniconName; colo
 
 export function ProfileScreen({ state, actions, onOpenMatchHistory }: Props) {
   const p = state.profile;
-  const [avatarPicker, setAvatarPicker] = useState(false);
+  const [pendingAvatarId, setPendingAvatarId] = useState<string | null>(null);
   if (!p) return <Screen><View style={styles.center}><Text style={styles.muted}>—</Text></View></Screen>;
   const total = p.wins + p.losses;
   const winRate = total ? Math.round((p.wins / total) * 100) : 0;
   const color = arenaColor(p.arena.name);
+  const pendingAvatar = pendingAvatarId ? avatarMeta(pendingAvatarId) : null;
+  const canAffordPending = pendingAvatar ? p.diamonds >= avatarPrice(pendingAvatar.id) : false;
   return (
     <Screen>
       <ScreenHeader title="Profil" icon="person" onBack={actions.closeProfile} underline={color} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
         <View style={{ alignItems: 'center', gap: 8, marginVertical: 10 }}>
-          <Pressable onPress={() => setAvatarPicker(true)} style={{ borderRadius: 52, shadowColor: color, shadowOpacity: 0.6, shadowRadius: 18, shadowOffset: { width: 0, height: 0 }, elevation: 12 }}>
-            <Avatar avatar={p.avatar} name={p.displayName} size={104} ring={color} ringWidth={4} iconColor={color} iconSize={54} />
-            {/* edit badge */}
-            <View style={{ position: 'absolute', bottom: 0, right: 0, width: 32, height: 32, borderRadius: 16, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: theme.bg }}>
-              <Ionicons name="camera" size={15} color="#06131F" />
-            </View>
-          </Pressable>
+          <AvatarBadge avatarId={p.avatar ?? p.selectedAvatar} size={104} ringColor={color} />
           <Text style={{ color: theme.text, fontSize: 24, fontFamily: 'Poppins-ExtraBold', ...engrave('lg') }}>{p.displayName}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: color + '66' }}>
             <Text style={{ fontSize: 17 }}>{p.arena.icon}</Text>
@@ -4114,13 +4151,89 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory }: Props) {
         <View style={{ marginTop: 16 }}>
           <Btn label={t('menu.matchHistory')} icon="time" kind="blue" onPress={() => onOpenMatchHistory?.()} />
         </View>
+
+        <View style={{ marginTop: 18 }}>
+          <Text style={[styles.sectionLabel, { marginBottom: 10 }]}>Profil Fotoğrafları</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+            {AVATAR_IDS.map((avatarId) => {
+              const meta = avatarMeta(avatarId);
+              const owned = ownsAvatar(p, avatarId);
+              const selected = (p.avatar ?? p.selectedAvatar ?? null) === avatarId;
+              return (
+                <Pressable
+                  key={avatarId}
+                  onPress={() => {
+                    if (owned) actions.setAvatar(avatarId);
+                    else setPendingAvatarId(avatarId);
+                  }}
+                  style={{
+                    width: '31%',
+                    minWidth: 96,
+                    backgroundColor: theme.card,
+                    borderRadius: 16,
+                    paddingVertical: 12,
+                    paddingHorizontal: 8,
+                    borderWidth: selected ? 2 : 1,
+                    borderColor: selected ? theme.primary : theme.border,
+                    borderBottomWidth: selected ? 3 : 2,
+                    borderBottomColor: selected ? theme.primaryDark : theme.cardLip,
+                    alignItems: 'center',
+                    opacity: owned ? 1 : 0.72,
+                  }}
+                >
+                  <AvatarBadge avatarId={avatarId} size={58} locked={!owned} dimmed={!owned} ringColor={selected ? theme.primary : undefined} />
+                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 11, marginTop: 8, textAlign: 'center' }} numberOfLines={2}>{meta.label}</Text>
+                  {owned ? (
+                    <Text style={{ color: selected ? theme.primary : theme.muted, fontSize: 10, marginTop: 3, fontWeight: '700' }}>{selected ? 'Kullanılıyor' : 'Hazır'}</Text>
+                  ) : (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                      <GemIcon size={12} />
+                      <Text style={{ color: theme.gold, fontSize: 10, fontWeight: '900' }}>{meta.price}</Text>
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
       </ScrollView>
-      <AvatarPickerModal
-        visible={avatarPicker}
-        current={p.avatar}
-        onClose={() => setAvatarPicker(false)}
-        onApply={(id) => actions.setAvatar(id)}
-      />
+
+      <GameModal visible={pendingAvatar !== null} onClose={() => setPendingAvatarId(null)} title="Satın Al" icon="lock-closed">
+        {pendingAvatar ? (
+          <>
+            <View style={{ alignItems: 'center', gap: 10 }}>
+              <AvatarBadge avatarId={pendingAvatar.id} size={88} />
+              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18 }}>{pendingAvatar.label}</Text>
+              <Text style={{ color: theme.muted, fontSize: 13, textAlign: 'center' }}>
+                {pendingAvatar.price} elmas karşılığında bu profil fotoğrafını satın almak istiyor musunuz?
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <GemIcon size={16} />
+                <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 14 }}>{pendingAvatar.price}</Text>
+                <Text style={{ color: theme.muted, fontSize: 12 }}>· sende {p.diamonds}</Text>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Btn label="Hayır" kind="danger" icon="close" onPress={() => setPendingAvatarId(null)} />
+              </View>
+              <View style={{ flex: 1, opacity: canAffordPending ? 1 : 0.55 }}>
+                <Btn
+                  label="Evet"
+                  kind="blue"
+                  icon="checkmark"
+                  onPress={() => {
+                    if (!pendingAvatar || !canAffordPending) return;
+                    actions.buyAvatar(pendingAvatar.id);
+                    setPendingAvatarId(null);
+                  }}
+                />
+              </View>
+            </View>
+            {!canAffordPending ? <Text style={{ color: theme.danger, fontSize: 12, textAlign: 'center' }}>Yeterli elmasın yok.</Text> : null}
+          </>
+        ) : null}
+      </GameModal>
     </Screen>
   );
 }
@@ -4524,15 +4637,7 @@ export function MatchHistoryScreen({ state, actions }: Props) {
                           borderLeftWidth: 3, borderLeftColor: theme.primary,
                         }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                            {rMode === 'country-team' && r.country ? (
-                              <Text style={{ fontSize: 16 }}>{NATIONALITIES.find((n) => n.value === r.country)?.flag ?? '🏳️'}</Text>
-                            ) : rMode === 'letter-team' && r.letter ? (
-                              <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' }}>
-                                <Text style={{ color: '#06131F', fontSize: 11, fontWeight: '900' }}>{r.letter}</Text>
-                              </View>
-                            ) : (
-                              <ClubLogo uri={r.teamALogo} size={18} name={r.teamA} />
-                            )}
+                            <MatchHistoryLeadBadge mode={rMode as GameMode} country={r.country} letter={r.letter} teamA={r.teamA} teamALogo={r.teamALogo} size={18} />
                             <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
                             <ClubLogo uri={r.teamBLogo} size={18} name={r.teamB} />
                           </View>
@@ -4558,15 +4663,7 @@ export function MatchHistoryScreen({ state, actions }: Props) {
                           borderLeftWidth: 3, borderLeftColor: theme.danger,
                         }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                            {rMode === 'country-team' && r.country ? (
-                              <Text style={{ fontSize: 16 }}>{NATIONALITIES.find((n) => n.value === r.country)?.flag ?? '🏳️'}</Text>
-                            ) : rMode === 'letter-team' && r.letter ? (
-                              <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' }}>
-                                <Text style={{ color: '#06131F', fontSize: 11, fontWeight: '900' }}>{r.letter}</Text>
-                              </View>
-                            ) : (
-                              <ClubLogo uri={r.teamALogo} size={18} name={r.teamA} />
-                            )}
+                            <MatchHistoryLeadBadge mode={rMode as GameMode} country={r.country} letter={r.letter} teamA={r.teamA} teamALogo={r.teamALogo} size={18} />
                             <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
                             <ClubLogo uri={r.teamBLogo} size={18} name={r.teamB} />
                           </View>

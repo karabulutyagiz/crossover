@@ -50,6 +50,8 @@ export interface ProfileView {
   diamonds: number;
   wins: number;
   losses: number;
+  selectedAvatar: string;
+  ownedAvatars: string[];
   ownedEmotes: string[];
   equippedEmotes: string[];
   usernameSet: boolean;
@@ -100,7 +102,8 @@ export type ClientMsg =
   | { type: 'send_emote'; emoteId: string } // show an emote to the opponent during a match
   | { type: 'buy_emote'; emoteId: string } // purchase a premium emote with diamonds
   | { type: 'equip_emotes'; emoteIds: string[] } // set the match loadout (max 3 visual)
-  | { type: 'set_avatar'; avatar: string | null } // choose profile picture ('pp7' or null)
+  | { type: 'buy_avatar'; avatarId: string } // purchase a premium profile avatar with diamonds
+  | { type: 'set_avatar'; avatar: string | null } // choose/select profile picture ('pp7' or null)
   | { type: 'verify_purchase'; receipt: string } // validate an Apple IAP receipt → grant diamonds
   | { type: 'grant_ad_reward' } // watched a rewarded ad → credit a few diamonds (capped server-side)
   | { type: 'search_clubs'; reqId: string; q: string }
@@ -175,6 +178,7 @@ export type ServerMsg =
   | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView }
   | { type: 'emote'; fromId: string; emoteId: string } // a player in the room sent an emote
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string } // store purchase succeeded
+  | { type: 'avatar_purchased'; profile: ProfileView; avatarId: string }
   | { type: 'diamonds_granted'; profile: ProfileView; granted: number } // IAP validated → diamonds added
   | { type: 'ad_reward_result'; ok: boolean; granted?: number; profile?: ProfileView; error?: string } // rewarded-ad grant (separate from IAP)
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
@@ -213,6 +217,7 @@ export interface MessageView {
 export interface ConversationView {
   userId: string;
   displayName: string;
+  selectedAvatar?: string;
   online: boolean;
   lastMessage: string;
   lastMessageAt: string;
@@ -223,6 +228,7 @@ export interface ConversationView {
 export interface PublicProfile {
   userId: string;
   displayName: string;
+  selectedAvatar: string;
   trophies: number;
   wins: number;
   losses: number;
@@ -252,6 +258,7 @@ export interface MatchHistoryView {
 export interface FriendView {
   userId: string;
   displayName: string;
+  selectedAvatar: string;
   trophies: number;
   arena: ArenaView;
   online: boolean;

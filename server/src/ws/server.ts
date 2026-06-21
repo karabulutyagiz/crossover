@@ -6,7 +6,7 @@ import { listScopes, listNationalities } from '../game/verify.ts';
 import {
   findOrCreateUser, findOrCreateUserByProvider, createGuestUser, getUser, changeDisplayName,
   grantDevEmotesIfNeeded,
-  setUsername, buyEmote, setEquippedEmotes, setAvatar, touchLastSeen, getLeaderboard, grantAdReward,
+  setUsername, buyEmote, setEquippedEmotes, setAvatar, buyAvatar, touchLastSeen, getLeaderboard, grantAdReward,
   listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
   removeFriend, searchUsers, getMatchHistory,
   getArena,
@@ -35,6 +35,8 @@ function toProfileView(p: UserProfile): ProfileView {
     diamonds: p.diamonds,
     wins: p.wins,
     losses: p.losses,
+    selectedAvatar: p.selectedAvatar,
+    ownedAvatars: p.ownedAvatars,
     ownedEmotes: p.ownedEmotes,
     equippedEmotes: p.equippedEmotes,
     usernameSet: p.usernameSet,
@@ -333,6 +335,20 @@ export function startServer(port: number): Server {
         return;
       }
 
+      if (msg.type === 'buy_avatar') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce kayıt ol' });
+        void (async () => {
+          const result = await buyAvatar(userProfile!.id, msg.avatarId);
+          if (!result.ok) return transport.send({ type: 'error', message: result.error });
+          userProfile = result.profile;
+          transport.send({ type: 'avatar_purchased', avatarId: msg.avatarId, profile: toProfileView(result.profile) });
+          if (ctx?.room) ctx.room.setAvatarFor(userProfile!.id, result.profile.avatar);
+          const friends = await listFriends(userProfile!.id);
+          for (const f of friends) sendToUser(f.userId, await getFriendsData(f.userId));
+        })();
+        return;
+      }
+
       // Validate an Apple IAP receipt and grant diamonds (server-authoritative).
       if (msg.type === 'verify_purchase') {
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce kayıt ol' });
@@ -492,7 +508,7 @@ export function startServer(port: number): Server {
           if (!u) return transport.send({ type: 'error', message: 'Kullanıcı bulunamadı' });
           transport.send({
             type: 'user_profile',
-            profile: { userId: u.id, displayName: u.displayName, trophies: u.trophies, wins: u.wins, losses: u.losses, arena: u.arena, avatar: u.avatar },
+            profile: { userId: u.id, displayName: u.displayName, selectedAvatar: u.selectedAvatar, trophies: u.trophies, wins: u.wins, losses: u.losses, arena: u.arena, avatar: u.avatar },
           });
         })();
         return;
@@ -582,7 +598,7 @@ export function startServer(port: number): Server {
             SELECT
               c.partner_id,
               u.display_name AS partner_name,
-              u.avatar AS partner_avatar,
+              COALESCE(u.avatar, u.selected_avatar) AS partner_avatar,
               c.body AS last_body,
               c.created_at AS last_at,
               COALESCE((SELECT COUNT(*) FROM messages WHERE from_user = c.partner_id AND to_user = $1 AND read_at IS NULL), 0) AS unread
@@ -595,6 +611,7 @@ export function startServer(port: number): Server {
           const conversations = rows.map(r => ({
             userId: r.partner_id,
             displayName: r.partner_name,
+            selectedAvatar: r.partner_avatar ?? undefined,
             online: onlineUsers.has(r.partner_id),
             lastMessage: r.last_body,
             lastMessageAt: r.last_at,

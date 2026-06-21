@@ -338,6 +338,8 @@ function reducer(state: GameState, action: Action): GameState {
     }
     case 'emote_purchased':
       return { ...state, profile: action.profile };
+    case 'avatar_purchased':
+      return { ...state, profile: action.profile };
     case 'diamonds_granted': {
       const g = (action as { granted?: number }).granted ?? 0;
       // Diamonds → toast; Social Pack / silent re-validate (granted 0) → no toast, the
@@ -782,6 +784,7 @@ export function useCrossover() {
     clearEmote: (playerId: string) => dispatch({ type: '_clear_emote', playerId }),
     buyEmote: (emoteId: string) => send({ type: 'buy_emote', emoteId }),
     equipEmotes: (emoteIds: string[]) => send({ type: 'equip_emotes', emoteIds }),
+    buyAvatar: (avatarId: string) => send({ type: 'buy_avatar', avatarId }),
     setAvatar: (avatar: string | null) => send({ type: 'set_avatar', avatar }),
     // Friends — via WebSocket for real-time notifications.
     loadFriends: () => send({ type: 'list_friends' }),

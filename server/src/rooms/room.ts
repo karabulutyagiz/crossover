@@ -806,8 +806,8 @@ export class Room {
           playerImageUrl: playerImage,
           answeredBy: result.answeredByName ?? '',
           mode: this.gameMode,
-          country: this.round?.countryPick,
-          letter: this.round?.letterPick,
+          country: this.gameMode === 'country-team' ? this.round?.countryPick : undefined,
+          letter: this.gameMode === 'letter-team' ? this.round?.letterPick : undefined,
         });
       }
     }
