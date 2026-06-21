@@ -4116,9 +4116,11 @@ function StatCard({ icon, color, label, value, gem }: { icon?: IoniconName; colo
   );
 }
 
-export function ProfileScreen({ state, actions, onOpenMatchHistory }: Props) {
+export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore }: Props) {
   const p = state.profile;
   const [pendingAvatarId, setPendingAvatarId] = useState<string | null>(null);
+  const [showAvatarPage, setShowAvatarPage] = useState(false);
+  const [showInsufficientPopup, setShowInsufficientPopup] = useState(false);
   if (!p) return <Screen><View style={styles.center}><Text style={styles.muted}>—</Text></View></Screen>;
   const total = p.wins + p.losses;
   const winRate = total ? Math.round((p.wins / total) * 100) : 0;
@@ -4130,7 +4132,9 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory }: Props) {
       <ScreenHeader title="Profil" icon="person" onBack={actions.closeProfile} underline={color} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
         <View style={{ alignItems: 'center', gap: 8, marginVertical: 10 }}>
-          <AvatarBadge avatarId={p.avatar ?? p.selectedAvatar} size={104} ringColor={color} />
+          <Pressable onPress={() => setShowAvatarPage(true)}>
+            <AvatarBadge avatarId={p.avatar ?? p.selectedAvatar} size={104} ringColor={color} />
+          </Pressable>
           <Text style={{ color: theme.text, fontSize: 24, fontFamily: 'Poppins-ExtraBold', ...engrave('lg') }}>{p.displayName}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: color + '66' }}>
             <Text style={{ fontSize: 17 }}>{p.arena.icon}</Text>
@@ -4151,53 +4155,59 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory }: Props) {
         <View style={{ marginTop: 16 }}>
           <Btn label={t('menu.matchHistory')} icon="time" kind="blue" onPress={() => onOpenMatchHistory?.()} />
         </View>
-
-        <View style={{ marginTop: 18 }}>
-          <Text style={[styles.sectionLabel, { marginBottom: 10 }]}>Profil Fotoğrafları</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-            {AVATAR_IDS.map((avatarId) => {
-              const meta = avatarMeta(avatarId);
-              const owned = ownsAvatar(p, avatarId);
-              const selected = (p.avatar ?? p.selectedAvatar ?? null) === avatarId;
-              return (
-                <Pressable
-                  key={avatarId}
-                  onPress={() => {
-                    if (owned) actions.setAvatar(avatarId);
-                    else setPendingAvatarId(avatarId);
-                  }}
-                  style={{
-                    width: '31%',
-                    minWidth: 96,
-                    backgroundColor: theme.card,
-                    borderRadius: 16,
-                    paddingVertical: 12,
-                    paddingHorizontal: 8,
-                    borderWidth: selected ? 2 : 1,
-                    borderColor: selected ? theme.primary : theme.border,
-                    borderBottomWidth: selected ? 3 : 2,
-                    borderBottomColor: selected ? theme.primaryDark : theme.cardLip,
-                    alignItems: 'center',
-                    opacity: owned ? 1 : 0.72,
-                  }}
-                >
-                  <AvatarBadge avatarId={avatarId} size={58} locked={!owned} dimmed={!owned} ringColor={selected ? theme.primary : undefined} />
-                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 11, marginTop: 8, textAlign: 'center' }} numberOfLines={2}>{meta.label}</Text>
-                  {owned ? (
-                    <Text style={{ color: selected ? theme.primary : theme.muted, fontSize: 10, marginTop: 3, fontWeight: '700' }}>{selected ? 'Kullanılıyor' : 'Hazır'}</Text>
-                  ) : (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                      <GemIcon size={12} />
-                      <Text style={{ color: theme.gold, fontSize: 10, fontWeight: '900' }}>{meta.price}</Text>
-                    </View>
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
       </ScrollView>
 
+      {/* Full-screen avatar picker page */}
+      <Modal visible={showAvatarPage} animationType="slide" onRequestClose={() => setShowAvatarPage(false)} presentationStyle="fullScreen">
+        <Screen>
+          <ScreenHeader title="Profil Fotoğrafları" icon="images" onBack={() => setShowAvatarPage(false)} underline={color} />
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
+              {AVATAR_IDS.map((avatarId) => {
+                const meta = avatarMeta(avatarId);
+                const owned = ownsAvatar(p, avatarId);
+                const selected = (p.avatar ?? p.selectedAvatar ?? null) === avatarId;
+                return (
+                  <Pressable
+                    key={avatarId}
+                    onPress={() => {
+                      if (owned) { actions.setAvatar(avatarId); setShowAvatarPage(false); }
+                      else setPendingAvatarId(avatarId);
+                    }}
+                    style={{
+                      width: '31%',
+                      minWidth: 96,
+                      backgroundColor: theme.card,
+                      borderRadius: 16,
+                      paddingVertical: 12,
+                      paddingHorizontal: 8,
+                      borderWidth: selected ? 2 : 1,
+                      borderColor: selected ? theme.primary : theme.border,
+                      borderBottomWidth: selected ? 3 : 2,
+                      borderBottomColor: selected ? theme.primaryDark : theme.cardLip,
+                      alignItems: 'center',
+                      opacity: owned ? 1 : 0.72,
+                    }}
+                  >
+                    <AvatarBadge avatarId={avatarId} size={58} locked={!owned} dimmed={!owned} ringColor={selected ? theme.primary : undefined} />
+                    <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 11, marginTop: 8, textAlign: 'center' }} numberOfLines={2}>{meta.label}</Text>
+                    {owned ? (
+                      <Text style={{ color: selected ? theme.primary : theme.muted, fontSize: 10, marginTop: 3, fontWeight: '700' }}>{selected ? 'Kullanılıyor' : 'Hazır'}</Text>
+                    ) : (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                        <GemIcon size={12} />
+                        <Text style={{ color: theme.gold, fontSize: 10, fontWeight: '900' }}>{meta.price}</Text>
+                      </View>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+        </Screen>
+      </Modal>
+
+      {/* Purchase confirmation modal */}
       <GameModal visible={pendingAvatar !== null} onClose={() => setPendingAvatarId(null)} title="Satın Al" icon="lock-closed">
         {pendingAvatar ? (
           <>
@@ -4217,22 +4227,55 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory }: Props) {
               <View style={{ flex: 1 }}>
                 <Btn label="Hayır" kind="danger" icon="close" onPress={() => setPendingAvatarId(null)} />
               </View>
-              <View style={{ flex: 1, opacity: canAffordPending ? 1 : 0.55 }}>
+              <View style={{ flex: 1 }}>
                 <Btn
                   label="Evet"
                   kind="blue"
                   icon="checkmark"
                   onPress={() => {
-                    if (!pendingAvatar || !canAffordPending) return;
-                    actions.buyAvatar(pendingAvatar.id);
-                    setPendingAvatarId(null);
+                    if (!pendingAvatar) return;
+                    if (canAffordPending) {
+                      actions.buyAvatar(pendingAvatar.id);
+                      setPendingAvatarId(null);
+                    } else {
+                      setPendingAvatarId(null);
+                      setShowInsufficientPopup(true);
+                    }
                   }}
                 />
               </View>
             </View>
-            {!canAffordPending ? <Text style={{ color: theme.danger, fontSize: 12, textAlign: 'center' }}>Yeterli elmasın yok.</Text> : null}
           </>
         ) : null}
+      </GameModal>
+
+      {/* Insufficient diamonds popup */}
+      <GameModal visible={showInsufficientPopup} onClose={() => setShowInsufficientPopup(false)} title="Yetersiz Elmas" icon="alert-circle">
+        <View style={{ alignItems: 'center', gap: 12, paddingVertical: 4 }}>
+          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 16, textAlign: 'center' }}>
+            Yeterli elmasın yok!
+          </Text>
+          <Text style={{ color: theme.muted, fontSize: 14, textAlign: 'center', lineHeight: 20 }}>
+            Mağazaya gidip elmas satın almak ister misin?
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Btn label="İptal" kind="danger" icon="close" onPress={() => setShowInsufficientPopup(false)} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Btn
+              label="Devam Et"
+              kind="primary"
+              icon="storefront"
+              onPress={() => {
+                setShowInsufficientPopup(false);
+                actions.closeProfile();
+                onGoToStore?.('diamonds');
+              }}
+            />
+          </View>
+        </View>
       </GameModal>
     </Screen>
   );
