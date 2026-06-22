@@ -4085,7 +4085,7 @@ function ChatScreen({ state, actions }: Props) {
             maxLength={500}
           />
           <Pressable
-            onPressIn={onSend}
+            onPress={onSend}
             hitSlop={8}
             style={{
               width: 42, height: 42, borderRadius: 21,
@@ -4093,7 +4093,6 @@ function ChatScreen({ state, actions }: Props) {
               alignItems: 'center', justifyContent: 'center',
               marginBottom: 2,
             }}
-            disabled={!text.trim()}
           >
             <Ionicons name="send" size={20} color={text.trim() ? '#06131F' : theme.muted} />
           </Pressable>
