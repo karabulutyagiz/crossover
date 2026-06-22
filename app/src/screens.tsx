@@ -1440,9 +1440,10 @@ function PopupCard({ visible, title, icon, onClose, children }: {
   );
 }
 
-export function LeaderboardModal({ visible, entries, onClose, onViewProfile, onSendFriendRequest }: {
+export function LeaderboardModal({ visible, entries, friends, onClose, onViewProfile, onSendFriendRequest }: {
   visible: boolean;
   entries: GameState['leaderboard'];
+  friends: FriendInfo[];
   onClose: () => void;
   onViewProfile?: (userId: string) => void;
   onSendFriendRequest?: (userId: string, displayName: string) => void;
@@ -1491,8 +1492,12 @@ export function LeaderboardModal({ visible, entries, onClose, onViewProfile, onS
                     {menuEntry.displayName}
                   </Text>
                   <LbRow color={theme.text} label="Profili Görüntüle" onPress={() => { const id = menuEntry.userId; setMenuEntry(null); onViewProfile?.(id); }} />
-                  <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
-                  <LbRow color={theme.primary} label="Arkadaşlık İsteği Gönder" onPress={() => { const e = menuEntry; setMenuEntry(null); onSendFriendRequest?.(e.userId, e.displayName); }} />
+                  {!friends.some(f => f.userId === menuEntry.userId) ? (
+                    <>
+                      <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
+                      <LbRow color={theme.primary} label="Arkadaşlık İsteği Gönder" onPress={() => { const e = menuEntry; setMenuEntry(null); onSendFriendRequest?.(e.userId, e.displayName); }} />
+                    </>
+                  ) : null}
                 </View>
                 {/* Downward tail pointing at the tapped row */}
                 <View style={{ position: 'absolute', bottom: -7, left: tailLeft, width: 15, height: 15, backgroundColor: theme.card, transform: [{ rotate: '45deg' }], borderRightWidth: 1, borderBottomWidth: 1, borderColor: theme.border }} />

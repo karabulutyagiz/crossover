@@ -506,7 +506,7 @@ export default function App() {
       />
 
       {/* Centered popups (leaderboard / match history) — open over everything, not fullscreen */}
-      <LeaderboardModal visible={overlay === 'leaderboard'} entries={state.leaderboard} onClose={() => setOverlay(null)} onViewProfile={(userId) => actions.getUserProfile(userId)} onSendFriendRequest={(userId) => actions.sendFriendRequest(userId.slice(0, 8))} />
+      <LeaderboardModal visible={overlay === 'leaderboard'} entries={state.leaderboard} friends={state.friends} onClose={() => setOverlay(null)} onViewProfile={(userId) => actions.getUserProfile(userId)} onSendFriendRequest={(userId) => actions.sendFriendRequest(userId.slice(0, 8))} />
       <MatchHistoryModal visible={overlay === 'matchHistory'} history={state.matchHistory} myName={state.profile?.displayName ?? ''} onClose={() => setOverlay(null)} />
       <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
 
