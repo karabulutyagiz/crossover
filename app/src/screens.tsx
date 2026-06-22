@@ -2852,9 +2852,11 @@ function useAdState(onReward?: () => void) {
       ad.show();
     }));
 
-    unsubs.push(ad.addAdEventListener(AdEventType.ERROR, () => {
+    unsubs.push(ad.addAdEventListener(AdEventType.ERROR, (error?: { code?: number; message?: string }) => {
       cleanup();
-      Alert.alert('Reklam', 'Reklam yüklenemedi, biraz sonra tekrar dene.');
+      const code = error?.code ?? '?';
+      const msg = error?.message ?? '';
+      Alert.alert('Reklam Hatası', `Kod: ${code}${msg ? ` — ${msg}` : ''}`);
     }));
 
     unsubs.push(ad.addAdEventListener(AdEventType.CLOSED, () => {
