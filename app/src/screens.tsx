@@ -4138,7 +4138,12 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
         <View style={{ alignItems: 'center', gap: 8, marginVertical: 10 }}>
           <Pressable onPress={() => setShowAvatarPage(true)}>
-            <AvatarBadge avatarId={p.avatar ?? p.selectedAvatar} size={104} ringColor={color} />
+            <View>
+              <AvatarBadge avatarId={p.avatar ?? p.selectedAvatar} size={104} ringColor={color} />
+              <View style={{ position: 'absolute', bottom: 0, right: 0, width: 30, height: 30, borderRadius: 15, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.card }}>
+                <Ionicons name="pencil" size={15} color="#06131F" />
+              </View>
+            </View>
           </Pressable>
           <Text style={{ color: theme.text, fontSize: 24, fontFamily: 'Poppins-ExtraBold', ...engrave('lg') }}>{p.displayName}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: color + '66' }}>
@@ -4165,10 +4170,15 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
       {/* Full-screen avatar picker page */}
       <Modal visible={showAvatarPage} animationType="slide" onRequestClose={() => setShowAvatarPage(false)} presentationStyle="fullScreen">
         <Screen>
-          <ScreenHeader title="Profil Fotoğrafları" icon="images" onBack={() => setShowAvatarPage(false)} underline={color} />
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+          <View style={{ paddingTop: 40, flex: 1 }}>
+            <ScreenHeader title="Profil Fotoğrafları" icon="images" onBack={() => setShowAvatarPage(false)} underline={color} />
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
-              {AVATAR_IDS.map((avatarId) => {
+              {([
+                'pp7', 'pp11', 'pp12', 'pp13', 'pp14', 'pp15', 'pp16', 'pp17',
+                'pp1', 'pp2', 'pp3', 'pp4', 'pp5', 'pp6', 'pp8', 'pp9', 'pp10',
+                'pp19', 'pp20', 'pp18',
+              ]).map((avatarId) => {
                 const meta = avatarMeta(avatarId);
                 const owned = ownsAvatar(p, avatarId);
                 const selected = (p.avatar ?? p.selectedAvatar ?? null) === avatarId;
@@ -4195,7 +4205,6 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
                     }}
                   >
                     <AvatarBadge avatarId={avatarId} size={58} locked={!owned} dimmed={!owned} ringColor={selected ? theme.primary : undefined} />
-                    <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 11, marginTop: 8, textAlign: 'center' }} numberOfLines={2}>{meta.label}</Text>
                     {owned ? (
                       <Text style={{ color: selected ? theme.primary : theme.muted, fontSize: 10, marginTop: 3, fontWeight: '700' }}>{selected ? 'Kullanılıyor' : 'Hazır'}</Text>
                     ) : (
@@ -4209,79 +4218,79 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
               })}
             </View>
           </ScrollView>
-        </Screen>
-      </Modal>
 
-      {/* Purchase confirmation modal */}
-      <GameModal visible={pendingAvatar !== null} onClose={() => setPendingAvatarId(null)} title="Satın Al" icon="lock-closed">
-        {pendingAvatar ? (
-          <>
-            <View style={{ alignItems: 'center', gap: 10 }}>
-              <AvatarBadge avatarId={pendingAvatar.id} size={88} />
-              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18 }}>{pendingAvatar.label}</Text>
-              <Text style={{ color: theme.muted, fontSize: 13, textAlign: 'center' }}>
-                {pendingAvatar.price} elmas karşılığında bu profil fotoğrafını satın almak istiyor musunuz?
+          {/* Purchase confirmation modal (inside avatar picker) */}
+          <GameModal visible={pendingAvatar !== null} onClose={() => setPendingAvatarId(null)} title="Satın Al" icon="lock-closed">
+            {pendingAvatar ? (
+              <>
+                <View style={{ alignItems: 'center', gap: 10 }}>
+                  <AvatarBadge avatarId={pendingAvatar.id} size={88} />
+                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18 }}>{pendingAvatar.label}</Text>
+                  <Text style={{ color: theme.muted, fontSize: 13, textAlign: 'center' }}>
+                    {pendingAvatar.price} elmas karşılığında bu profil fotoğrafını satın almak istiyor musunuz?
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <GemIcon size={16} />
+                    <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 14 }}>{pendingAvatar.price}</Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Btn label="Hayır" kind="danger" icon="close" onPress={() => setPendingAvatarId(null)} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Btn
+                      label="Evet"
+                      kind="blue"
+                      icon="checkmark"
+                      onPress={() => {
+                        if (!pendingAvatar) return;
+                        if (canAffordPending) {
+                          actions.buyAvatar(pendingAvatar.id);
+                          setPendingAvatarId(null);
+                        } else {
+                          setPendingAvatarId(null);
+                          setShowInsufficientPopup(true);
+                        }
+                      }}
+                    />
+                  </View>
+                </View>
+              </>
+            ) : null}
+          </GameModal>
+
+          {/* Insufficient diamonds popup (inside avatar picker) */}
+          <GameModal visible={showInsufficientPopup} onClose={() => setShowInsufficientPopup(false)} title="Yetersiz Elmas" icon="alert-circle">
+            <View style={{ alignItems: 'center', gap: 12, paddingVertical: 4 }}>
+              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 16, textAlign: 'center' }}>
+                Yeterli elmasın yok!
               </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <GemIcon size={16} />
-                <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 14 }}>{pendingAvatar.price}</Text>
-                <Text style={{ color: theme.muted, fontSize: 12 }}>· sende {p.diamonds}</Text>
-              </View>
+              <Text style={{ color: theme.muted, fontSize: 14, textAlign: 'center', lineHeight: 20 }}>
+                Mağazaya gidip elmas satın almak ister misin?
+              </Text>
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
-                <Btn label="Hayır" kind="danger" icon="close" onPress={() => setPendingAvatarId(null)} />
+                <Btn label="İptal" kind="danger" icon="close" onPress={() => setShowInsufficientPopup(false)} />
               </View>
               <View style={{ flex: 1 }}>
                 <Btn
-                  label="Evet"
-                  kind="blue"
-                  icon="checkmark"
+                  label="Devam Et"
+                  kind="primary"
+                  icon="storefront"
                   onPress={() => {
-                    if (!pendingAvatar) return;
-                    if (canAffordPending) {
-                      actions.buyAvatar(pendingAvatar.id);
-                      setPendingAvatarId(null);
-                    } else {
-                      setPendingAvatarId(null);
-                      setShowInsufficientPopup(true);
-                    }
+                    setShowInsufficientPopup(false);
+                    actions.closeProfile();
+                    onGoToStore?.('diamonds');
                   }}
                 />
               </View>
             </View>
-          </>
-        ) : null}
-      </GameModal>
-
-      {/* Insufficient diamonds popup */}
-      <GameModal visible={showInsufficientPopup} onClose={() => setShowInsufficientPopup(false)} title="Yetersiz Elmas" icon="alert-circle">
-        <View style={{ alignItems: 'center', gap: 12, paddingVertical: 4 }}>
-          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 16, textAlign: 'center' }}>
-            Yeterli elmasın yok!
-          </Text>
-          <Text style={{ color: theme.muted, fontSize: 14, textAlign: 'center', lineHeight: 20 }}>
-            Mağazaya gidip elmas satın almak ister misin?
-          </Text>
-        </View>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <View style={{ flex: 1 }}>
-            <Btn label="İptal" kind="danger" icon="close" onPress={() => setShowInsufficientPopup(false)} />
+          </GameModal>
           </View>
-          <View style={{ flex: 1 }}>
-            <Btn
-              label="Devam Et"
-              kind="primary"
-              icon="storefront"
-              onPress={() => {
-                setShowInsufficientPopup(false);
-                actions.closeProfile();
-                onGoToStore?.('diamonds');
-              }}
-            />
-          </View>
-        </View>
-      </GameModal>
+        </Screen>
+      </Modal>
     </Screen>
   );
 }
