@@ -4091,7 +4091,7 @@ function ChatScreen({ state, actions }: Props) {
             maxLength={500}
           />
           <Pressable
-            onPress={onSend}
+            onPressIn={onSend}
             hitSlop={8}
             style={{
               width: 42, height: 42, borderRadius: 21,
