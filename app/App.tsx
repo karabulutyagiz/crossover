@@ -5,6 +5,7 @@ import {
   Dimensions,
   Easing,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -174,6 +175,7 @@ export default function App() {
   const [loaded, setLoaded] = useState(false); // Clash-Royale-style entry loading (warms logo cache)
   const [storeSection, setStoreSection] = useState<'socialPack' | 'diamonds' | null>(null);
   const [comingSoon, setComingSoon] = useState(false); // Turnuvalar — greyed "coming soon"
+  const [expiredSocialPack, setExpiredSocialPack] = useState(false); // Social Pack expired popup
   const [overlay, setOverlay] = useState<'leaderboard' | 'matchHistory' | null>(null); // centered popups
   const csAnim = useRef(new Animated.Value(0)).current; // coming-soon pop/float
   const [fontsLoaded, fontError] = useFonts({
@@ -196,6 +198,14 @@ export default function App() {
       .catch(() => setTutorialSeen(true));
     return () => clearTimeout(t);
   }, []);
+
+  // Auto-show Social Pack renewal popup when it has expired.
+  useEffect(() => {
+    const until = state.profile?.socialPackUntil;
+    if (until && new Date(until) <= new Date()) {
+      setExpiredSocialPack(true);
+    }
+  }, [state.profile?.socialPackUntil]);
 
   // Pop the "coming soon" badge in, then auto-hide.
   useEffect(() => {
@@ -499,6 +509,33 @@ export default function App() {
       <LeaderboardModal visible={overlay === 'leaderboard'} entries={state.leaderboard} onClose={() => setOverlay(null)} onViewProfile={(userId) => actions.getUserProfile(userId)} onSendFriendRequest={(userId) => actions.sendFriendRequest(userId.slice(0, 8))} />
       <MatchHistoryModal visible={overlay === 'matchHistory'} history={state.matchHistory} myName={state.profile?.displayName ?? ''} onClose={() => setOverlay(null)} />
       <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
+
+      {/* Expired Social Pack popup */}
+      <Modal visible={expiredSocialPack} transparent animationType="fade" onRequestClose={() => setExpiredSocialPack(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
+          <View style={{ width: '100%', maxWidth: 340, backgroundColor: theme.card, borderRadius: 20, borderWidth: 1, borderColor: theme.frameGold, overflow: 'hidden' }}>
+            {/* Close button top-right */}
+            <Pressable onPress={() => setExpiredSocialPack(false)} hitSlop={10} style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, width: 32, height: 32, borderRadius: 16, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="close" size={18} color={theme.muted} />
+            </Pressable>
+            <View style={{ alignItems: 'center', paddingTop: 28, paddingHorizontal: 20, paddingBottom: 20 }}>
+              <Ionicons name="people" size={40} color={theme.accent} />
+              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18, marginTop: 12, textAlign: 'center' }}>Sosyal Paket Sona Erdi</Text>
+              <Text style={{ color: theme.muted, fontSize: 14, textAlign: 'center', lineHeight: 20, marginTop: 8 }}>
+                Sosyal paketin süresi doldu. Arkadaşlarınla ülke-takım ve harf-takım modlarında oynamaya devam etmek için paketini yenile.
+              </Text>
+            </View>
+            <View style={{ paddingHorizontal: 20, paddingBottom: 20, gap: 8 }}>
+              <Pressable
+                onPress={() => { setExpiredSocialPack(false); setStoreSection('socialPack'); goToTab(0); }}
+                style={{ backgroundColor: theme.accent, borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: '#C68A0E' }}
+              >
+                <Text style={{ color: '#06131F', fontFamily: 'Poppins-ExtraBold', fontSize: 15 }}>Devam Et</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
     </View>
   );
