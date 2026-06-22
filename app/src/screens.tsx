@@ -3368,8 +3368,8 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
   const requests = state.friendRequests;
 
   useEffect(() => {
-    if (profile?.userId) actions.loadFriends();
-  }, [profile?.userId]);
+    if (profile?.userId && state.connected) actions.loadFriends();
+  }, [profile?.userId, state.connected]);
 
   const onSendRequest = () => {
     const val = addInput.trim();
@@ -3664,11 +3664,11 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
                   <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '900', letterSpacing: 0.5, textAlign: 'center', paddingTop: 9, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: theme.border }} numberOfLines={1}>
                     {menuFriend.displayName}
                   </Text>
-                  <Row color={theme.text} label="Dostluk Savaşı" onPress={() => { const id = menuFriend.userId; matchFriendRef.current = id; setMenuFriend(null); setMatchModal(id); }} />
+                  <Row color={theme.text} label="Dostluk Savaşı" onPress={() => { const id = menuFriend.userId; matchFriendRef.current = id; setMenuFriend(null); setTimeout(() => setMatchModal(id), 100); }} />
                   <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
                   <Row color={theme.text} label="Profili Görüntüle" onPress={() => { const id = menuFriend.userId; setMenuFriend(null); actions.getUserProfile(id); }} />
                   <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
-                  <Row color={theme.danger} label="Arkadaşlıktan Kaldır" onPress={() => { const f = menuFriend; setMenuFriend(null); setConfirmRemove(f); }} />
+                  <Row color={theme.danger} label="Arkadaşlıktan Kaldır" onPress={() => { const f = menuFriend; setMenuFriend(null); setTimeout(() => setConfirmRemove(f), 100); }} />
                 </View>
                 {/* downward tail pointing at the row */}
                 <View style={{ position: 'absolute', bottom: -7, left: tailLeft, width: 15, height: 15, backgroundColor: theme.card, transform: [{ rotate: '45deg' }], borderRightWidth: 1, borderBottomWidth: 1, borderColor: theme.border }} />
