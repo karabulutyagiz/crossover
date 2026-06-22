@@ -2779,9 +2779,15 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
 
 const AD_STORAGE_KEY = '@crossover_ad_state';
 
-// AdMob Rewarded Ad Unit IDs
-const REWARDED_AD_IOS = 'ca-app-pub-5118403349234305/6758433311';
-const REWARDED_AD_ANDROID = 'ca-app-pub-5118403349234305/3118571202';
+// AdMob Rewarded Ad Unit IDs: test IDs during development (__DEV__), production IDs in release builds.
+// Google test rewarded IDs always serve test ads instantly with no AdMob setup needed.
+// Production IDs serve real ads and generate revenue.
+const REWARDED_AD_IOS = __DEV__
+  ? 'ca-app-pub-3940256099942544/1712485313'
+  : 'ca-app-pub-5118403349234305/6758433311';
+const REWARDED_AD_ANDROID = __DEV__
+  ? 'ca-app-pub-3940256099942544/5224354917'
+  : 'ca-app-pub-5118403349234305/3118571202';
 const REWARDED_AD_UNIT = Platform.OS === 'ios' ? REWARDED_AD_IOS : REWARDED_AD_ANDROID;
 
 // Load AdMob SDK — native module, absent in Expo Go.
@@ -2834,9 +2840,7 @@ function useAdState(onReward?: () => void) {
 
     // Load and show a rewarded ad
     setAdLoading(true);
-    const ad = RewardedAd.createForAdRequest(REWARDED_AD_UNIT, {
-      requestNonPersonalizedAdsOnly: true,
-    });
+    const ad = RewardedAd.createForAdRequest(REWARDED_AD_UNIT);
 
     const unsubs: (() => void)[] = [];
     const cleanup = () => { unsubs.forEach((u) => u()); setAdLoading(false); };

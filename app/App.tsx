@@ -190,7 +190,7 @@ export default function App() {
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 1900);
     // Kick off the AdMob SDK once so rewarded ads can load (no-op in Expo Go).
-    initMobileAds?.().catch(() => {});
+    initMobileAds?.().catch((e: unknown) => console.warn('AdMob init failed', e));
     // Read saved language
     AsyncStorage.getItem('@crossover_lang').then((v) => { if (v) setLanguage(v); }).catch(() => {});
     AsyncStorage.getItem('@crossover_tutorial_seen')
