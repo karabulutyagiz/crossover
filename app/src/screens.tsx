@@ -4131,12 +4131,14 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
   const [pendingAvatarId, setPendingAvatarId] = useState<string | null>(null);
   const [showAvatarPage, setShowAvatarPage] = useState(false);
   const [showInsufficientPopup, setShowInsufficientPopup] = useState(false);
+  const [confirmAvatarId, setConfirmAvatarId] = useState<string | null>(null);
   if (!p) return <Screen><View style={styles.center}><Text style={styles.muted}>—</Text></View></Screen>;
   const total = p.wins + p.losses;
   const winRate = total ? Math.round((p.wins / total) * 100) : 0;
   const color = arenaColor(p.arena.name);
   const pendingAvatar = pendingAvatarId ? avatarMeta(pendingAvatarId) : null;
   const canAffordPending = pendingAvatar ? p.diamonds >= avatarPrice(pendingAvatar.id) : false;
+  const confirmAvatar = confirmAvatarId ? avatarMeta(confirmAvatarId) : null;
   return (
     <Screen>
       <ScreenHeader title="Profil" icon="person" onBack={actions.closeProfile} underline={color} />
@@ -4191,7 +4193,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
                   <Pressable
                     key={avatarId}
                     onPress={() => {
-                      if (owned) { actions.setAvatar(avatarId); setShowAvatarPage(false); }
+                      if (owned) setConfirmAvatarId(avatarId);
                       else setPendingAvatarId(avatarId);
                     }}
                     style={{
@@ -4292,6 +4294,40 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
                 />
               </View>
             </View>
+          </GameModal>
+
+          {/* Avatar change confirmation (inside avatar picker) */}
+          <GameModal visible={confirmAvatar !== null} onClose={() => setConfirmAvatarId(null)} title="Değiştir" icon="images">
+            {confirmAvatar ? (
+              <>
+                <View style={{ alignItems: 'center', gap: 10 }}>
+                  <AvatarBadge avatarId={confirmAvatar.id} size={88} />
+                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18 }}>{confirmAvatar.label}</Text>
+                  <Text style={{ color: theme.muted, fontSize: 13, textAlign: 'center' }}>
+                    Bu profil fotoğrafını kullanmak istiyor musun?
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Btn label="Hayır" kind="danger" icon="close" onPress={() => setConfirmAvatarId(null)} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Btn
+                      label="Evet"
+                      kind="blue"
+                      icon="checkmark"
+                      onPress={() => {
+                        if (confirmAvatarId) {
+                          actions.setAvatar(confirmAvatarId);
+                          setConfirmAvatarId(null);
+                          setShowAvatarPage(false);
+                        }
+                      }}
+                    />
+                  </View>
+                </View>
+              </>
+            ) : null}
           </GameModal>
           </View>
         </Screen>

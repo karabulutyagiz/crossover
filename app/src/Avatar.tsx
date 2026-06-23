@@ -63,7 +63,7 @@ export function Avatar({
       alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
     }}>
       {src ? (
-        <Image source={src} style={{ width: size, height: size }} resizeMode="cover" />
+        <Image source={src} style={{ width: size * 1.06, height: size * 1.06 }} resizeMode="cover" />
       ) : (
         <Ionicons name={fallback} size={iconSize ?? size * 0.55} color={iconColor ?? theme.muted} />
       )}
