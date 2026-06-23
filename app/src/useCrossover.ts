@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 let NetInfo: any;
 try { NetInfo = require('@react-native-community/netinfo').default; } catch { NetInfo = null; }
 import { SERVER_URL, HTTP_URL } from './config';
-import { t } from './i18n';
+import { t, serverError } from './i18n';
 import { OfflineRoom } from './offline/room';
 import { initOfflineDB } from './offline/db';
 import type {
@@ -165,6 +165,7 @@ type Action =
   | ServerMsg
   | { type: '_connected'; value: boolean }
   | { type: '_reset' }
+  | { type: '_logout' }
   | { type: '_picked' }
   | { type: '_scopes'; scopes: ScopesList }
   | { type: '_leaderboard'; entries: LeaderboardEntry[] }
@@ -187,6 +188,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, connected: action.value, error: action.value ? null : state.error };
     case '_reset':
       return { ...initialState, scopes: state.scopes, profile: state.profile, friends: state.friends, isQuickMatch: false, opponentForfeit: false };
+    case '_logout':
+      return { ...initialState, scopes: state.scopes };
     case '_picked':
       return { ...state, picked: true };
     case '_scopes':
@@ -448,7 +451,7 @@ function reducer(state: GameState, action: Action): GameState {
       if (action.message === 'Create or join a room first') return state;
       // IAP receipt validation errors (sandbox/production mismatch) — silent.
       if (/receipt|makbuz|21002|21007|21008/i.test(action.message ?? '')) return state;
-      return { ...state, error: action.message };
+      return { ...state, error: serverError(action.message ?? '') };
     default:
       return state;
   }
@@ -542,7 +545,7 @@ export function useCrossover() {
         if (mt === 'ad_reward_result') {
           const r = m as { ok?: boolean; granted?: number; error?: string };
           if (r.ok) pendingAdReward.current?.resolve(r.granted ?? 0);
-          else pendingAdReward.current?.reject(new Error(r.error ?? 'Ödül verilemedi'));
+          else pendingAdReward.current?.reject(new Error(serverError(r.error ?? 'Ödül verilemedi')));
           pendingAdReward.current = null;
         }
         // A friend request just arrived in real time — pull the authoritative
@@ -839,6 +842,31 @@ export function useCrossover() {
       wsRef.current?.close();
       wsRef.current = null;
       dispatch({ type: '_reset' });
+    },
+    logout: async () => {
+      if (offlineRoomRef.current) {
+        offlineRoomRef.current.leave();
+        offlineRoomRef.current = null;
+      }
+      const ws = wsRef.current;
+      if (ws) {
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onclose = null;
+        ws.onerror = null;
+        try { ws.close(); } catch { /* ignore */ }
+      }
+      wsRef.current = null;
+      connectingSince.current = 0;
+      prevProfile.current = null;
+      pendingVerify.current = null;
+      pendingAdReward.current = null;
+      try {
+        await AsyncStorage.removeItem(PROFILE_KEY);
+      } catch {
+        // Even if storage removal fails, still force the UI back to the login gate.
+      }
+      dispatch({ type: '_logout' });
     },
   };
 

@@ -11,7 +11,9 @@ to name a footballer who played for **both** teams. First correct answer wins.
 |---|---|
 | `app/` | React Native + Expo client (iOS/Android) — see [`app/README.md`](app/README.md) |
 | `server/` | Node.js + TypeScript game server (WebSocket) + data layer — see [`server/README.md`](server/README.md) |
-| `PLAN.md` | Architecture & roadmap |
+| `deploy/` | Docker Compose + deployment notes |
+| `website/` | Landing page (vanilla HTML/CSS/JS) |
+| `PLAN.md` | Legacy architecture plan (partially outdated — codebase is the source of truth) |
 
 ## How it works
 - **Data**: Players, clubs, logos, photos, careers — all from **Transfermarkt**
