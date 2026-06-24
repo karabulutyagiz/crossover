@@ -1,10 +1,7 @@
 # Crossover — Mobile App (Expo / React Native)
 
-Connects to the game server over WebSocket and walks through the full flow:
-Home → Lobby → Countdown → Pick team → Reveal → Guess → Result.
-
-Supports 19 languages, bot matches, friend system, DMs, store, emotes, avatars,
-arena rankings, and more.
+Phase 1 skeleton: connects to the game server over WebSocket and walks through
+the full flow — Home → Lobby → Countdown → Pick team → Reveal → Guess → Result.
 
 ## Run it
 
@@ -35,20 +32,18 @@ EXPO_PUBLIC_SERVER_URL=ws://192.168.1.X:8080 npm start
 
 ## Structure
 ```
-App.tsx              phase-based router
+App.tsx              phase-based router (no nav library yet)
 src/
-  screens.tsx        All screens (Home, Lobby, Countdown, Pick, Guess, Result,
-                     Store, Collection, Friends, Profile, Settings, Chat, etc.)
+  config.ts          server URL (per-platform)
+  protocol.ts        client mirror of server/src/protocol.ts (keep in sync)
   useCrossover.ts    WebSocket connection + game state (useReducer)
-  i18n.ts            i18n system (19 languages)
-  i18n-locales/      Per-language JSON dictionaries
-  protocol.ts        Client mirror of server/src/protocol.ts (keep in sync)
-  config.ts          Server URL (per-platform)
-  theme.ts           Colors
-  offline/           Bot mode offline database
+  screens.tsx        Home / Lobby / Countdown / PickTeam / Guess / Result
+  theme.ts           colors
 ```
 
-## Notes
+## Notes / next
+- Phase 6 will add the iOS-only **Game Center**, **Live Activities** and
+  **Dynamic Island** features — these need native modules + a Widget Extension,
+  so the app must run via an **EAS dev build** (not Expo Go) at that point.
 - The protocol types are duplicated between app and server for now; a shared
   package can be extracted later.
-- Game Center, Live Activities and Dynamic Island are planned but not yet implemented.

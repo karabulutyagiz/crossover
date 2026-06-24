@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 let NetInfo: any;
 try { NetInfo = require('@react-native-community/netinfo').default; } catch { NetInfo = null; }
 import { SERVER_URL, HTTP_URL } from './config';
-import { t, serverError } from './i18n';
+import { t } from './i18n';
 import { OfflineRoom } from './offline/room';
 import { initOfflineDB } from './offline/db';
 import type {
@@ -451,7 +451,7 @@ function reducer(state: GameState, action: Action): GameState {
       if (action.message === 'Create or join a room first') return state;
       // IAP receipt validation errors (sandbox/production mismatch) — silent.
       if (/receipt|makbuz|21002|21007|21008/i.test(action.message ?? '')) return state;
-      return { ...state, error: serverError(action.message ?? '') };
+      return { ...state, error: action.message };
     default:
       return state;
   }
@@ -545,7 +545,7 @@ export function useCrossover() {
         if (mt === 'ad_reward_result') {
           const r = m as { ok?: boolean; granted?: number; error?: string };
           if (r.ok) pendingAdReward.current?.resolve(r.granted ?? 0);
-          else pendingAdReward.current?.reject(new Error(serverError(r.error ?? 'Ödül verilemedi')));
+          else pendingAdReward.current?.reject(new Error(r.error ?? 'Ödül verilemedi'));
           pendingAdReward.current = null;
         }
         // A friend request just arrived in real time — pull the authoritative
@@ -864,7 +864,7 @@ export function useCrossover() {
       try {
         await AsyncStorage.removeItem(PROFILE_KEY);
       } catch {
-        // Even if storage removal fails, still force the UI back to the login gate.
+        // Even if storage removal fails, still force the UI back to login.
       }
       dispatch({ type: '_logout' });
     },
