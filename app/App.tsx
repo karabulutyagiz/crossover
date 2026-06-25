@@ -62,11 +62,11 @@ try {
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 const { width: SCREEN_W } = Dimensions.get('window');
 
-const TABS: { key: string; label: string; icon: IoniconName; activeIcon: IoniconName }[] = [
-  { key: 'store', label: t('tab.store'), icon: 'storefront-outline', activeIcon: 'storefront' },
-  { key: 'collection', label: t('tab.collection'), icon: 'albums-outline', activeIcon: 'albums' },
-  { key: 'home', label: t('tab.game'), icon: 'football-outline', activeIcon: 'football' },
-  { key: 'friends', label: t('tab.friends'), icon: 'people-outline', activeIcon: 'people' },
+const TAB_DEFS: { key: string; labelKey: 'tab.store' | 'tab.collection' | 'tab.game' | 'tab.friends'; icon: IoniconName; activeIcon: IoniconName }[] = [
+  { key: 'store', labelKey: 'tab.store', icon: 'storefront-outline', activeIcon: 'storefront' },
+  { key: 'collection', labelKey: 'tab.collection', icon: 'albums-outline', activeIcon: 'albums' },
+  { key: 'home', labelKey: 'tab.game', icon: 'football-outline', activeIcon: 'football' },
+  { key: 'friends', labelKey: 'tab.friends', icon: 'people-outline', activeIcon: 'people' },
 ];
 
 // Phases that show the main tab bar (non-game screens)
@@ -186,6 +186,7 @@ export default function App() {
   const fontsReady = fontsLoaded || !!fontError; // don't get stuck if a font fails
 
   const [langKey, setLangKey] = useState(0); // increment to force full remount after language change
+  const TABS = TAB_DEFS.map((tab) => ({ ...tab, label: t(tab.labelKey) }));
 
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 1900);
@@ -372,7 +373,14 @@ export default function App() {
     ? <ArenasScreen {...props} />
     : state.phase === 'profile'
     ? <ProfileScreen {...props} onOpenMatchHistory={openMatchHistory} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
-    : <HomeScreen {...props} onLanguageChange={() => { setLangKey((k) => k + 1); }} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} onOpenLeaderboard={openLeaderboard} onOpenMatchHistory={openMatchHistory} />;
+    : <HomeScreen {...props} onLanguageChange={() => {
+        setOverlay(null);
+        setStoreSection(null);
+        setActiveTab(2);
+        setLoaded(false);
+        setLangKey((k) => k + 1);
+        actions.closeArenas();
+      }} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} onOpenLeaderboard={openLeaderboard} onOpenMatchHistory={openMatchHistory} />;
 
   // Per-tab background: Oyna/home = blue arena backdrop, Mağaza = violet, others = calm navy.
   const bgVariant = (activeTab === 0 ? 'store' : activeTab === 2 && state.phase === 'home' ? 'home' : 'menu') as 'store' | 'home' | 'menu';

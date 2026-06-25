@@ -226,6 +226,7 @@ export function startServer(port: number): Server {
               verified.sub,
               verified.email ?? null,
               name,
+              msg.userId,
             ));
             userProfile = profile;
             addOnline(profile.id, ws);

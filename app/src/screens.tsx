@@ -72,6 +72,9 @@ try {
   // native module unavailable (Expo Go) — IAP disabled gracefully
 }
 
+let NetInfoModule: any = null;
+try { NetInfoModule = require('@react-native-community/netinfo').default; } catch { NetInfoModule = null; }
+
 type Actions = {
   register: (name: string, gameCenterId?: string) => void;
   guestLogin: () => void;
@@ -443,10 +446,10 @@ function Screen({ children, scroll }: { children: ReactNode; scroll?: boolean; n
 
 // ---- Swipeable intro / onboarding (shown on first launch) ----
 
-const INTRO_SLIDES = [
-  { icon: 'football' as IoniconName, color: theme.primary, title: 'CROSSOVER', desc: 'İki takımda da oynamış futbolcuyu bul. İlk bilen kazanır!' },
-  { icon: 'flash' as IoniconName, color: theme.accent, title: 'RAKİBİNLE YARIŞ', desc: 'Ortak oyuncuyu ilk doğru yazan turu alır. Hızlı düşün!' },
-  { icon: 'trophy' as IoniconName, color: theme.gold, title: 'KUPALARI TOPLA', desc: 'Maç kazan, kupa kazan, arenalarda zirveye tırman.' },
+const INTRO_SLIDES: { icon: IoniconName; color: string; title: string; descKey: MessageKey }[] = [
+  { icon: 'football', color: theme.primary, title: 'CROSSOVER', descKey: 'intro.slide1.desc' },
+  { icon: 'flash', color: theme.accent, title: 'intro.slide2.title', descKey: 'intro.slide2.desc' },
+  { icon: 'trophy', color: theme.gold, title: 'intro.slide3.title', descKey: 'intro.slide3.desc' },
 ];
 
 function IntroSlide({ slide, index, scrollX }: { slide: (typeof INTRO_SLIDES)[number]; index: number; scrollX: Animated.Value }) {
@@ -459,8 +462,8 @@ function IntroSlide({ slide, index, scrollX }: { slide: (typeof INTRO_SLIDES)[nu
         <View style={{ width: 150, height: 150, borderRadius: 75, backgroundColor: theme.card, borderWidth: 3, borderColor: slide.color, alignItems: 'center', justifyContent: 'center', marginBottom: 30, shadowColor: slide.color, shadowOpacity: 0.55, shadowRadius: 22, shadowOffset: { width: 0, height: 0 }, elevation: 12 }}>
           <Ionicons name={slide.icon} size={72} color={slide.color} />
         </View>
-        <Text style={{ color: theme.text, fontSize: 26, fontWeight: '900', letterSpacing: 1, textAlign: 'center', marginBottom: 12 }}>{slide.title}</Text>
-        <Text style={{ color: theme.muted, fontSize: 15, textAlign: 'center', lineHeight: 23 }}>{slide.desc}</Text>
+        <Text style={{ color: theme.text, fontSize: 26, fontWeight: '900', letterSpacing: 1, textAlign: 'center', marginBottom: 12 }}>{slide.title.startsWith('intro.') ? t(slide.title as MessageKey) : slide.title}</Text>
+        <Text style={{ color: theme.muted, fontSize: 15, textAlign: 'center', lineHeight: 23 }}>{t(slide.descKey)}</Text>
       </Animated.View>
     </View>
   );
@@ -482,7 +485,7 @@ export function IntroScreen({ onDone }: { onDone: () => void }) {
       <View pointerEvents="none" style={{ position: 'absolute', top: '12%', alignSelf: 'center', width: SCREEN_W * 1.7, height: SCREEN_W * 1.7, borderRadius: SCREEN_W * 0.85, backgroundColor: tint, opacity: 0.1 }} />
       <View pointerEvents="none" style={{ position: 'absolute', top: '22%', alignSelf: 'center', width: SCREEN_W * 1.05, height: SCREEN_W * 1.05, borderRadius: SCREEN_W * 0.53, backgroundColor: tint, opacity: 0.14 }} />
       <Pressable onPress={onDone} style={{ position: 'absolute', top: 50, right: 22, zIndex: 10 }} hitSlop={12}>
-        <Text style={{ color: theme.muted, fontWeight: '700', fontSize: 14 }}>Atla</Text>
+        <Text style={{ color: theme.muted, fontWeight: '700', fontSize: 14 }}>{t('common.skip')}</Text>
       </Pressable>
       <Animated.ScrollView
         ref={scRef as never}
@@ -507,7 +510,7 @@ export function IntroScreen({ onDone }: { onDone: () => void }) {
         ))}
       </View>
       <View style={{ paddingHorizontal: 28, paddingBottom: 40 }}>
-        <Btn label={page === last ? 'BAŞLA' : 'İLERİ'} icon={page === last ? 'rocket' : 'arrow-forward'} kind="primary" big onPress={next} />
+        <Btn label={page === last ? t('common.start') : t('common.next')} icon={page === last ? 'rocket' : 'arrow-forward'} kind="primary" big onPress={next} />
       </View>
     </View>
   );
@@ -549,17 +552,12 @@ export function SplashScreen() {
 }
 
 // ---- Loading screen (Clash-Royale-style bar) shown on entry; warms the logo cache ----
-const LOADING_TIPS = [
-  'İki takımda da oynamış futbolcuyu ilk bilen kazanır.',
-  'Rakipten önce yaz — hız kadar bilgi de önemli.',
-  'Pas mı? İki taraf da pas geçerse el atlanır, puan gitmez.',
-  'İlk 3 turu kazanan maçı ve kupayı alır.',
-];
+const LOADING_TIPS: MessageKey[] = ['loading.tip1', 'loading.tip2', 'loading.tip3', 'loading.tip4'];
 export function LoadingScreen({ state, actions, onReady }: Props & { onReady: () => void }) {
   const [pct, setPct] = useState(0);
   const done = useRef(false);
   const prefetched = useRef(false);
-  const tip = useRef(LOADING_TIPS[Math.floor((state.profile?.trophies ?? 0) % LOADING_TIPS.length)] ?? LOADING_TIPS[0]!).current;
+  const tipKey = useRef(LOADING_TIPS[Math.floor((state.profile?.trophies ?? 0) % LOADING_TIPS.length)] ?? LOADING_TIPS[0]!).current;
 
   // Pull the popular clubs so their crests warm the image cache before pick time.
   useEffect(() => { actions.searchClubs(''); }, []);
@@ -595,7 +593,7 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
       </View>
 
       <View style={{ position: 'absolute', left: 32, right: 32, bottom: 64, alignItems: 'center', gap: 10 }}>
-        <Text style={{ color: theme.muted, fontSize: 12.5, textAlign: 'center', lineHeight: 18 }}>{tip}</Text>
+        <Text style={{ color: theme.muted, fontSize: 12.5, textAlign: 'center', lineHeight: 18 }}>{t(tipKey)}</Text>
         <View style={{ width: '100%', height: 16, borderRadius: 10, backgroundColor: theme.cardLip, borderWidth: 1, borderColor: theme.border, overflow: 'hidden' }}>
           <View style={{ width: `${pct}%`, height: '100%', borderRadius: 10, backgroundColor: theme.primary }} />
         </View>
@@ -714,21 +712,19 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
   // hint (shown while interacting), and the gate button label.
   const STEPS = [
     {
-      gate: "Hoş geldin! 👋 Hızlı bir alıştırma yapalım. İki takımda da oynamış futbolcuyu bulacaksın.\n\nDevam Et'e bas, sonra Galatasaray'a dokun.",
-      hint: '👇 Galatasaray’a dokun',
-      cta: 'Devam Et',
+        gate: t('tutorial.step1Gate'),
+        hint: t('tutorial.step1Hint'),
+        cta: t('common.continue'),
     },
     {
-      gate: wrong
-        ? "Olmadı 🙈 Doğru cevap: Wesley Sneijder.\n\nDevam Et'e bas ve aynen yaz."
-        : "Sıra sende! Galatasaray ve Real Madrid'in ikisinde de oynayan futbolcu: Wesley Sneijder.\n\nDevam Et'e bas, yaz ve Gönder'e bas.",
-      hint: '⌨️ “Wesley Sneijder” yaz ve Gönder’e bas',
-      cta: 'Devam Et',
+        gate: wrong ? t('tutorial.step2WrongGate') : t('tutorial.step2Gate'),
+      hint: t('tutorial.step2Hint'),
+      cta: t('common.continue'),
     },
     {
-      gate: 'Doğru! 🎉 Sneijder hem Galatasaray hem Real Madrid forması giydi.\n\nRakipten önce bilen turu kazanır; ilk 3 turu alan kupayı kazanır!',
+      gate: t('tutorial.step3Gate'),
       hint: '',
-      cta: 'BAŞLA',
+      cta: t('common.start'),
     },
   ];
   const cur = STEPS[Math.min(step, STEPS.length - 1)]!;
@@ -770,7 +766,7 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
             <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: wrong ? theme.danger : theme.primary, marginBottom: 12 }}>
               <Ionicons name={wrong ? 'alert' : 'football'} size={28} color={wrong ? theme.danger : theme.primary} />
             </View>
-            <Text style={{ color: theme.muted, fontWeight: '900', fontSize: 11, letterSpacing: 1.5, marginBottom: 8 }}>KOÇ · ADIM {step + 1}/3</Text>
+            <Text style={{ color: theme.muted, fontWeight: '900', fontSize: 11, letterSpacing: 1.5, marginBottom: 8 }}>{t('tutorial.coachStep', { step: step + 1 })}</Text>
             <Text style={{ color: theme.text, fontSize: 15.5, lineHeight: 23, textAlign: 'center', marginBottom: 18 }}>{cur.gate}</Text>
             <View style={{ width: '100%' }}>
               <Btn label={cur.cta} kind="primary" icon="arrow-forward" onPress={onGate} big />
@@ -785,7 +781,7 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
         style={{ position: 'absolute', top: 50, right: 16, zIndex: 40, backgroundColor: theme.card, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: theme.border }}
         hitSlop={10}
       >
-        <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13 }}>Atla ›</Text>
+        <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13 }}>{`${t('common.skip')} ›`}</Text>
       </Pressable>
     </View>
   );
@@ -1077,8 +1073,17 @@ function ProfileCard({ profile, onPress }: { profile: ProfileView; onPress?: () 
 // behind Apple/Google (Facebook coming soon) sign-in.
 export function LoginScreen({ state, actions }: Props) {
   const [appleAvailable, setAppleAvailable] = useState(false);
+  const [hasInternet, setHasInternet] = useState(true);
   useEffect(() => {
     AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(() => setAppleAvailable(false));
+  }, []);
+  useEffect(() => {
+    if (!NetInfoModule) return;
+    NetInfoModule.fetch().then((s: any) => setHasInternet(Boolean(s?.isConnected && s?.isInternetReachable !== false))).catch(() => {});
+    const unsub = NetInfoModule.addEventListener?.((s: any) => {
+      setHasInternet(Boolean(s?.isConnected && s?.isInternetReachable !== false));
+    });
+    return () => unsub?.();
   }, []);
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
@@ -1129,15 +1134,25 @@ export function LoginScreen({ state, actions }: Props) {
             buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
             cornerRadius={10}
             style={{ height: 50 }}
-            onPress={signInApple}
+            onPress={() => { if (hasInternet) void signInApple(); }}
           />
         ) : null}
 
-        <Btn label={t('login.google')} icon="logo-google" kind="accent" onPress={() => promptAsync()} disabled={!request} />
+        <Btn label={t('login.google')} icon="logo-google" kind="accent" onPress={() => promptAsync()} disabled={!request || !hasInternet} />
 
         {state.error ? <Text style={styles.error}>{state.error}</Text> : null}
         <Text style={[styles.muted, { marginTop: 12 }]}>{t('login.hint')}</Text>
       </View>
+
+      {!hasInternet ? (
+        <View pointerEvents="none" style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 190, minHeight: 190, borderRadius: 22, backgroundColor: theme.card, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 4, borderBottomColor: theme.cardLip, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 14 }}>
+            <Ionicons name="wifi" size={54} color={theme.danger} />
+            <Text style={{ color: theme.danger, fontFamily: 'Poppins-ExtraBold', fontSize: 18, marginTop: 14, textAlign: 'center' }}>{t('login.noInternet')}</Text>
+            <Text style={{ color: theme.muted, fontSize: 12, marginTop: 8, textAlign: 'center', lineHeight: 17 }}>{t('login.noInternetHint')}</Text>
+          </View>
+        </View>
+      ) : null}
 
       {/* Guest login — pinned at the very bottom, subtle gray. Creates an
           auto-named ("M"+9 digits) account that persists on this device. */}
@@ -1260,7 +1275,7 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
         <Ionicons name="trophy" size={13} color={theme.gold} />
         <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 14 }}>{trophies}</Text>
       </View>
-      <Text style={{ color: theme.muted, fontSize: 10, fontWeight: '700', marginTop: 5 }}>ARENALAR ›</Text>
+      <Text style={{ color: theme.muted, fontSize: 10, fontWeight: '700', marginTop: 5 }}>{`${t('home.arenas')} ›`}</Text>
     </Pressable>
   );
 }
@@ -1317,12 +1332,12 @@ function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamond
       </Pressable>
 
       {/* Ad Değiştir (1000 elmas) */}
-      <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '700', marginTop: 16, marginBottom: 8 }}>AD</Text>
+      <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '700', marginTop: 16, marginBottom: 8 }}>{t('settings.name')}</Text>
       <Pressable
         onPress={() => { if (diamonds < 1000) onNeedDiamonds(); else setRenameOpen(true); }}
         style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.bg, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 14 }}
       >
-        <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>Ad Değiştir</Text>
+        <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{t('settings.changeName')}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 14 }}>1000</Text>
           <GemIcon size={14} />
@@ -1341,26 +1356,26 @@ function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamond
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Pressable style={[linkChip, { flex: 1 }]} onPress={() => openLink(INFO_LINKS.help)}>
           <Ionicons name="help-circle-outline" size={15} color={theme.muted} />
-          <Text style={linkTxt} numberOfLines={1}>Yardım ve Bilgiler</Text>
+          <Text style={linkTxt} numberOfLines={1}>{t('settings.help')}</Text>
         </Pressable>
         <Pressable style={[linkChip, { flex: 1 }]} onPress={() => openLink(INFO_LINKS.privacy)}>
           <Ionicons name="shield-checkmark-outline" size={15} color={theme.muted} />
-          <Text style={linkTxt} numberOfLines={1}>Gizlilik</Text>
+          <Text style={linkTxt} numberOfLines={1}>{t('settings.privacy')}</Text>
         </Pressable>
       </View>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
         <Pressable style={[linkChip, { flex: 1 }]} onPress={() => openLink(INFO_LINKS.parents)}>
           <Ionicons name="people-outline" size={15} color={theme.muted} />
-          <Text style={linkTxt} numberOfLines={1}>Ebeveyn Kılavuzu</Text>
+          <Text style={linkTxt} numberOfLines={1}>{t('settings.parents')}</Text>
         </Pressable>
         <Pressable style={[linkChip, { flex: 1 }]} onPress={() => openLink(INFO_LINKS.terms)}>
           <Ionicons name="document-text-outline" size={15} color={theme.muted} />
-          <Text style={linkTxt} numberOfLines={1}>Hizmet Koşulları</Text>
+          <Text style={linkTxt} numberOfLines={1}>{t('settings.terms')}</Text>
         </Pressable>
       </View>
       <Pressable style={[linkChip, { marginTop: 8, justifyContent: 'center' }]} onPress={() => openLink(INFO_LINKS.founders)}>
         <Ionicons name="star-outline" size={15} color={theme.accent} />
-        <Text style={[linkTxt, { flex: 0, color: theme.text, fontWeight: '800', letterSpacing: 0.5 }]}>Kurucular</Text>
+        <Text style={[linkTxt, { flex: 0, color: theme.text, fontWeight: '800', letterSpacing: 0.5 }]}>{t('settings.founders')}</Text>
       </Pressable>
 
       <View style={{ height: 1, backgroundColor: theme.border, marginTop: 22, marginBottom: 14 }} />
@@ -1511,11 +1526,11 @@ export function LeaderboardModal({ visible, entries, friends, onClose, onViewPro
                   <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '900', letterSpacing: 0.5, textAlign: 'center', paddingTop: 9, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: theme.border }} numberOfLines={1}>
                     {menuEntry.displayName}
                   </Text>
-                  <LbRow color={theme.text} label="Profili Görüntüle" onPress={() => { const id = menuEntry.userId; setMenuEntry(null); onViewProfile?.(id); }} />
+                  <LbRow color={theme.text} label={t('leaderboard.viewProfile')} onPress={() => { const id = menuEntry.userId; setMenuEntry(null); onViewProfile?.(id); }} />
                   {!friends.some(f => f.userId === menuEntry.userId) ? (
                     <>
                       <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
-                      <LbRow color={theme.primary} label="Arkadaşlık İsteği Gönder" onPress={() => { const e = menuEntry; setMenuEntry(null); onSendFriendRequest?.(e.userId, e.displayName); }} />
+                      <LbRow color={theme.primary} label={t('leaderboard.sendFriendRequest')} onPress={() => { const e = menuEntry; setMenuEntry(null); onSendFriendRequest?.(e.userId, e.displayName); }} />
                     </>
                   ) : null}
                 </View>
@@ -1570,7 +1585,7 @@ export function MatchHistoryModal({ visible, history, myName, onClose }: { visib
                     <Text style={{ color: pArena.color, fontSize: 9, fontWeight: '700' }}>{m.playerTrophies}</Text>
                   </View>
                 </View>
-                <View style={{ justifyContent: 'center', paddingHorizontal: 8 }}><Text style={{ color: theme.muted, fontSize: 11, fontWeight: '900' }}>VS</Text></View>
+                <View style={{ justifyContent: 'center', paddingHorizontal: 8 }}><Text style={{ color: theme.muted, fontSize: 11, fontWeight: '900' }}>{t('common.vs')}</Text></View>
                 <View style={{ flex: 1, alignItems: 'center' }}>
                   <Text style={{ color: theme.text, fontWeight: '900', fontSize: 14 }} numberOfLines={1}>{m.opponentName}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
@@ -1632,7 +1647,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const [botOpen, setBotOpen] = useState(false);
   const opts: GameOptions = { scope, mode };
   const profile = state.profile;
-  const playerName = profile?.displayName ?? (name || 'Oyuncu');
+  const playerName = profile?.displayName ?? (name || t('home.namePlaceholder'));
 
   return (
     <Screen>
@@ -1640,7 +1655,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
         <Pressable onPress={actions.openProfile} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.card, borderRadius: 22, paddingVertical: 4, paddingLeft: 4, paddingRight: 12, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, maxWidth: '60%', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: 4 }}>
           <AvatarBadge avatarId={profile?.avatar ?? profile?.selectedAvatar} size={34} ringColor={theme.primary} />
-          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13 }} numberOfLines={1}>{profile?.displayName ?? 'Oyuncu'}</Text>
+          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13 }} numberOfLines={1}>{profile?.displayName ?? t('home.namePlaceholder')}</Text>
         </Pressable>
         <View style={{ flex: 1 }} />
         <Pressable onPress={() => setMenuOpen(true)} style={{ width: 38, height: 38, borderRadius: 14, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip }}>
@@ -1797,7 +1812,7 @@ function PickerModal({
         <Pressable style={styles.modalCard} onPress={() => {}}>
           {picker === 'difficulty' && (
             <>
-              <Text style={styles.modalTitle}>Bot zorluğu</Text>
+              <Text style={styles.modalTitle}>{t('home.botDifficulty')}</Text>
               {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
                 <Pressable key={d} style={styles.modalRow} onPress={() => onDifficulty(d)}>
                   <Text style={styles.modalRowText}>{DIFF_LABEL(d)}</Text>
@@ -1822,7 +1837,7 @@ function PickerModal({
 
           {picker === 'scopeType' && (
             <>
-              <Text style={styles.modalTitle}>Kapsam</Text>
+              <Text style={styles.modalTitle}>{t('friends.scopeTitle')}</Text>
               <Pressable style={styles.modalRow} onPress={() => onScope({ type: 'all' })}>
                 <Text style={styles.modalRowText}>{t('scope.all')}</Text>
               </Pressable>
@@ -2485,7 +2500,7 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
         </Animated.View>
         <Animated.View style={{ transform: [{ scale: vsScale }], marginHorizontal: 4 }}>
           <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', borderTopWidth: 2, borderTopColor: 'rgba(255,255,255,0.55)', borderBottomWidth: 4, borderBottomColor: theme.accentDark, shadowColor: theme.accent, shadowOpacity: 0.6, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 8 }}>
-            <Text style={{ color: theme.ink, fontFamily: 'Poppins-Black', fontSize: 15, ...engrave('sm') }}>VS</Text>
+            <Text style={{ color: theme.ink, fontFamily: 'Poppins-Black', fontSize: 15, ...engrave('sm') }}>{t('common.vs')}</Text>
           </View>
         </Animated.View>
         <Animated.View style={[styles.teamCard, { transform: [{ translateX: rightX }], opacity: reveal }]}>
@@ -2886,7 +2901,7 @@ function useAdState(onReward?: () => void) {
       cleanup();
       const code = error?.code ?? '?';
       const msg = error?.message ?? '';
-      Alert.alert('Reklam Hatası', `Kod: ${code}${msg ? ` — ${msg}` : ''}`);
+      Alert.alert(t('store.adErrorTitle'), t('store.adErrorBody', { code: String(code), details: msg ? ` — ${msg}` : '' }));
     }));
 
     unsubs.push(ad.addAdEventListener(AdEventType.CLOSED, () => {
@@ -2944,7 +2959,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
       .then((granted) => { if (granted > 0) setCelebration({ amount: granted }); })
       .catch((e: Error) => {
         if (!/timeout|disconnected/.test(e?.message ?? '')) {
-          Alert.alert('Reklam Ödülü', e?.message ?? 'Ödül şu an verilemedi, birazdan tekrar dene.');
+          Alert.alert(t('store.adRewardTitle'), e?.message ?? t('store.adRewardFailed'));
         }
       });
   }, [actions]);
@@ -2971,7 +2986,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
         if (pack) setCelebration({ amount: pack.amount, img: pack.img });
       }
     } catch {
-      Alert.alert('Satın alma', 'Birazdan hesabına işlenecek. Sorun sürerse uygulamayı yeniden aç.');
+      Alert.alert(t('store.purchasePendingTitle'), t('store.purchasePendingBody'));
     } finally {
       setBuying(null);
     }
@@ -2979,7 +2994,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
   const onPurchaseError = useCallback((err: { code?: string }) => {
     setBuying(null);
     const code = err?.code ?? '';
-    if (!/cancel/i.test(code)) Alert.alert('Satın alma başarısız', 'Ödeme tamamlanamadı, tekrar dene.');
+    if (!/cancel/i.test(code)) Alert.alert(t('store.purchaseFailedTitle'), t('store.purchaseFailedBody'));
   }, []);
   const { connected, products, subscriptions, requestPurchase, fetchProducts } = useIAP({ onPurchaseSuccess, onPurchaseError });
   useEffect(() => {
@@ -3011,7 +3026,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
     // Until the product exists in App Store Connect it won't load — show a gentle
     // "coming soon" instead of a payment error (e.g. in builds before IAP is set up).
     const loaded = [...products, ...subscriptions].some((p) => (p as { id?: string }).id === productId);
-    if (!loaded) { Alert.alert('Çok yakında', 'Satın alma yakında aktifleşecek.'); return; }
+    if (!loaded) { Alert.alert(t('store.comingSoonTitle'), t('store.comingSoonBody')); return; }
     const isSub = SOCIAL_PACK_IDS.includes(productId);
     setBuying(productId);
     const apple = { sku: productId, appAccountToken: profile?.userId ?? undefined };
@@ -3037,24 +3052,24 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
 
         {/* Sosyal Paket */}
         <View onLayout={(e) => { sectionYRef.current['socialPack'] = e.nativeEvent.layout.y; }} />
-        <Text style={styles.sectionLabel}>SOSYAL PAKET</Text>
+        <Text style={styles.sectionLabel}>{t('store.socialPackSection')}</Text>
         <View style={[styles.storePackCard, { borderColor: theme.accent, borderWidth: 2 }]}>
           <View style={styles.storePackBadge}>
-            <Text style={styles.storePackBadgeText}>{hasActivePack ? 'AKTİF' : 'YENİ'}</Text>
+                <Text style={styles.storePackBadgeText}>{hasActivePack ? t('store.badgeActive') : t('store.badgeNew')}</Text>
           </View>
           <View style={{ gap: 8 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <Ionicons name="people" size={24} color={theme.accent} />
-              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>Sosyal Paket</Text>
+              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>{t('store.socialPackTitle')}</Text>
             </View>
             <Text style={{ color: theme.muted, fontSize: 12 }}>
-              Arkadaşlarınla Ülke-Takım ve Harf-Takım modlarında dostluk maçı oyna.
+              {t('store.socialPackDesc')}
             </Text>
             {hasActivePack && profile?.socialPackUntil ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.primary + '22', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10, borderWidth: 1, borderColor: theme.primary, marginTop: 2 }}>
                 <Ionicons name="checkmark-circle" size={16} color={theme.primary} />
                 <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 12 }}>
-                  Aktif — bitiş {new Date(profile.socialPackUntil).toLocaleDateString('tr-TR')}
+                  {t('store.activeUntil', { date: new Date(profile.socialPackUntil).toLocaleDateString(currentLang()) })}
                 </Text>
               </View>
             ) : null}
@@ -3074,7 +3089,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
                   >
                     {busy ? <ActivityIndicator color="#06131F" /> : (
                       <>
-                        <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>{sp.label}</Text>
+                        <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>{t(`store.${sp.id}` as MessageKey)}</Text>
                         <Text style={styles.storePackPrice}>{priceFor(sp.productId, sp.price)}</Text>
                       </>
                     )}
@@ -3092,15 +3107,15 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
           <Ionicons name="play-circle" size={32} color={theme.primary} />
           <View style={{ flex: 1 }}>
             <Text style={styles.storeAdTitle}>{t('store.watchAd')}</Text>
-            <Text style={styles.muted}>Sınırsız izle, her seferinde +5 elmas</Text>
+            <Text style={styles.muted}>{t('store.freeDiamondsDesc')}</Text>
           </View>
           <View style={{ alignItems: 'center' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 4 }}>
               <Text style={styles.storeAdReward}>+5</Text>
               <GemIcon size={14} />
             </View>
-            <Btn label={adLoading ? 'Yükleniyor...' : t('store.watch')} kind="primary" icon={adLoading ? 'hourglass' : 'play'} onPress={watchAd} disabled={adLoading} />
-            {adsWatched > 0 ? <Text style={[styles.muted, { fontSize: 10, marginTop: 2 }]}>Bugün {adsWatched} izledin</Text> : null}
+            <Btn label={adLoading ? t('store.loading') : t('store.watch')} kind="primary" icon={adLoading ? 'hourglass' : 'play'} onPress={watchAd} disabled={adLoading} />
+            {adsWatched > 0 ? <Text style={[styles.muted, { fontSize: 10, marginTop: 2 }]}>{t('store.adsWatchedToday', { n: adsWatched })}</Text> : null}
           </View>
         </View>
 
@@ -3124,10 +3139,10 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <Image source={pack.img} style={{ width: 52, height: 52 }} resizeMode="contain" />
               <View style={{ flex: 1 }}>
-                <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14 }}>{pack.label}</Text>
+                <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14 }}>{t(`store.${pack.id}` as MessageKey)}</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
                   <GemIcon size={14} />
-                  <Text style={{ color: theme.gemText, fontFamily: 'Poppins-ExtraBold', fontSize: 13 }}>{pack.amount.toLocaleString('tr-TR')}</Text>
+                  <Text style={{ color: theme.gemText, fontFamily: 'Poppins-ExtraBold', fontSize: 13 }}>{pack.amount.toLocaleString(currentLang())}</Text>
                 </View>
               </View>
               <View style={styles.storePackPriceBox}>
@@ -3142,11 +3157,11 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
         {emoteWeeks().map(({ week, emotes }) => (
           <View key={week}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <Text style={styles.sectionLabel}>{week === LATEST_WEEK ? 'BU HAFTA' : `${week}. HAFTA İFADELERİ`}</Text>
+              <Text style={styles.sectionLabel}>{week === LATEST_WEEK ? t('store.thisWeek') : t('store.weekEmotes', { week })}</Text>
               {week === LATEST_WEEK ? (
                 <>
                   <View style={{ backgroundColor: theme.danger, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1, marginBottom: 4 }}>
-                    <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900' }}>YENİ</Text>
+                    <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900' }}>{t('store.badgeNew')}</Text>
                   </View>
                   <WeeklyCountdown />
                 </>
@@ -3167,7 +3182,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
                   {owned ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8 }}>
                       <Ionicons name="checkmark-circle" size={16} color={theme.primary} />
-                      <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 12 }}>Sahipsin</Text>
+                      <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 12 }}>{t('store.owned')}</Text>
                     </View>
                   ) : (
                     <Pressable style={[styles.storeEmoteBuy, !canAfford && { opacity: 0.5 }]} onPress={() => canAfford && actions.buyEmote(e.id)}>
@@ -3308,10 +3323,10 @@ function InviteWaitingModal({ invite, onCancel }: { invite: GameState['outgoingI
         <View style={styles.modalCard}>
           <ActivityIndicator color={theme.primary} size="large" />
           <Text style={styles.modalTitle}>{invite?.toName}</Text>
-          <Text style={[styles.muted, { textAlign: 'center', marginBottom: 6 }]}>Kabul etmesi bekleniyor…</Text>
+          <Text style={[styles.muted, { textAlign: 'center', marginBottom: 6 }]}>{t('friends.waitingAccept')}</Text>
           <Text style={{ color: theme.accent, fontFamily: 'Poppins-Black', fontSize: 36 }}>{left}s</Text>
           <View style={{ height: 12 }} />
-          <Btn label="Vazgeç" kind="ghost" icon="close" onPress={onCancel} />
+          <Btn label={t('searching.cancel')} kind="ghost" icon="close" onPress={onCancel} />
         </View>
       </View>
     </Modal>
@@ -3435,18 +3450,18 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
             onPress={() => setSearchMode('code')}
           >
             <Ionicons name="key-outline" size={14} color={searchMode === 'code' ? theme.primary : theme.muted} />
-            <Text style={[styles.optChipText, searchMode === 'code' && { color: theme.primary }]}>Kod ile</Text>
+            <Text style={[styles.optChipText, searchMode === 'code' && { color: theme.primary }]}>{t('friends.byCode')}</Text>
           </Pressable>
           <Pressable
             style={[styles.optChip, searchMode === 'username' && { borderColor: theme.primary }]}
             onPress={() => setSearchMode('username')}
           >
             <Ionicons name="person-outline" size={14} color={searchMode === 'username' ? theme.primary : theme.muted} />
-            <Text style={[styles.optChipText, searchMode === 'username' && { color: theme.primary }]}>İsim ile</Text>
+            <Text style={[styles.optChipText, searchMode === 'username' && { color: theme.primary }]}>{t('friends.byName')}</Text>
           </Pressable>
         </View>
         <TextInput
-          placeholder={searchMode === 'code' ? t('friends.enterCode') : 'Kullanıcı adı yaz'}
+          placeholder={searchMode === 'code' ? t('friends.enterCode') : t('friends.usernamePlaceholder')}
           placeholderTextColor={theme.muted}
           keyboardAppearance="dark"
           value={addInput}
@@ -3457,9 +3472,9 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
           style={styles.input}
         />
         {searchMode === 'code' ? (
-          <Btn label="Arkadaşlık İsteği Gönder" icon="paper-plane" kind="primary" onPress={onSendRequest} disabled={addInput.trim().length < 3} />
+          <Btn label={t('friends.sendRequest')} icon="paper-plane" kind="primary" onPress={onSendRequest} disabled={addInput.trim().length < 3} />
         ) : (
-          <Btn label="Ara" icon="search" kind="primary" onPress={() => { if (addInput.trim().length >= 3) actions.searchUsers(addInput.trim()); }} disabled={addInput.trim().length < 3} />
+          <Btn label={t('friends.search')} icon="search" kind="primary" onPress={() => { if (addInput.trim().length >= 3) actions.searchUsers(addInput.trim()); }} disabled={addInput.trim().length < 3} />
         )}
         {state.error ? <Text style={[styles.error, { marginTop: 6 }]}>{state.error}</Text> : null}
         {state.notice ? (
@@ -3492,9 +3507,9 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
         {/* Tabs: Arkadaşlarım | İstekler | Mesajlar */}
         <View style={{ flexDirection: 'row', gap: 6, marginTop: 18, marginBottom: 12 }}>
           {([
-            ['friends', 'people', 'Arkadaşlar'],
-            ['requests', 'person-add', 'İstekler'],
-            ['messages', 'chatbubbles', 'Mesajlar'],
+            ['friends', 'people', t('friends.tabFriends')],
+            ['requests', 'person-add', t('friends.tabRequests')],
+            ['messages', 'chatbubbles', t('friends.tabMessages')],
           ] as const).map(([key, icon, label]) => {
             const active = friendTab === key;
             const badgeNum = key === 'requests' ? requests.length : key === 'messages' ? state.totalUnread : 0;
@@ -3530,7 +3545,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
           requests.length === 0 ? (
             <View style={styles.friendEmpty}>
               <Ionicons name="mail-open-outline" size={48} color={theme.border} />
-              <Text style={styles.muted}>Bekleyen istek yok</Text>
+              <Text style={styles.muted}>{t('friends.noPendingRequests')}</Text>
             </View>
           ) : (
             requests.map((req) => (
@@ -3543,7 +3558,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
                 <Ionicons name="person-add" size={24} color={theme.accent} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14 }}>{req.fromName}</Text>
-                  <Text style={{ color: theme.muted, fontSize: 11 }}>Seninle arkadaş olmak istiyor</Text>
+                  <Text style={{ color: theme.muted, fontSize: 11 }}>{t('friends.wantsToBeFriend')}</Text>
                 </View>
                 <Pressable
                   onPress={() => actions.respondFriendRequest(req.requestId, true)}
@@ -3566,7 +3581,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
             <View style={[styles.searchBox, { marginBottom: 10 }]}>
               <Ionicons name="search" size={16} color={theme.muted} />
               <TextInput
-                placeholder="Arkadaş ara..."
+                placeholder={t('friends.searchFriends')}
                 placeholderTextColor={theme.muted}
                 keyboardAppearance="dark"
                 value={msgSearch}
@@ -3584,7 +3599,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
                   <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14, flex: 1 }} numberOfLines={1}>{f.displayName}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 }}>
                     <Ionicons name="chatbubble" size={12} color="#06131F" />
-                    <Text style={{ color: '#06131F', fontWeight: '800', fontSize: 11 }}>Mesaj Gönder</Text>
+                    <Text style={{ color: '#06131F', fontWeight: '800', fontSize: 11 }}>{t('friends.sendMessage')}</Text>
                   </View>
                 </Pressable>
               )) : null;
@@ -3593,8 +3608,8 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
             {state.conversations.length === 0 && !msgSearch.trim() ? (
               <View style={styles.friendEmpty}>
                 <Ionicons name="chatbubbles-outline" size={48} color={theme.border} />
-                <Text style={styles.muted}>Henüz sohbet yok</Text>
-                <Text style={[styles.muted, { fontSize: 11 }]}>Yukarıdan bir arkadaşını arayarak mesaj gönder</Text>
+                <Text style={styles.muted}>{t('friends.noChats')}</Text>
+                <Text style={[styles.muted, { fontSize: 11 }]}>{t('friends.searchToMessage')}</Text>
               </View>
             ) : state.conversations.map(c => (
               <Pressable
@@ -3613,7 +3628,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14 }} numberOfLines={1}>{c.displayName}</Text>
                   <Text style={{ color: c.unreadCount > 0 ? theme.text : theme.muted, fontSize: 12, fontWeight: c.unreadCount > 0 ? '600' : '400' }} numberOfLines={1}>
-                    {state.typingFrom[c.userId] ? 'yazıyor...' : c.lastMessage}
+                    {state.typingFrom[c.userId] ? t('chat.typing') : c.lastMessage}
                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 4 }}>
@@ -3686,13 +3701,13 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
                   <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '900', letterSpacing: 0.5, textAlign: 'center', paddingTop: 9, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: theme.border }} numberOfLines={1}>
                     {menuFriend.displayName}
                   </Text>
-                  <Row color={theme.text} label="Dostluk Savaşı" onPress={() => { const id = menuFriend.userId; matchFriendRef.current = id; setMenuFriend(null); setTimeout(() => setMatchModal(id), 100); }} />
+                  <Row color={theme.text} label={t('friends.friendlyMatch')} onPress={() => { const id = menuFriend.userId; matchFriendRef.current = id; setMenuFriend(null); setTimeout(() => setMatchModal(id), 100); }} />
                   <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
-                  <Row color={theme.text} label="Mesaj Gönder" onPress={() => { const id = menuFriend.userId; setMenuFriend(null); setTimeout(() => actions.openChat(id), 100); }} />
+                  <Row color={theme.text} label={t('friends.sendMessage')} onPress={() => { const id = menuFriend.userId; setMenuFriend(null); setTimeout(() => actions.openChat(id), 100); }} />
                   <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
-                  <Row color={theme.text} label="Profili Görüntüle" onPress={() => { const id = menuFriend.userId; setMenuFriend(null); setTimeout(() => actions.getUserProfile(id), 100); }} />
+                  <Row color={theme.text} label={t('friends.viewProfile')} onPress={() => { const id = menuFriend.userId; setMenuFriend(null); setTimeout(() => actions.getUserProfile(id), 100); }} />
                   <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
-                  <Row color={theme.danger} label="Arkadaşlıktan Kaldır" onPress={() => { const f = menuFriend; setMenuFriend(null); setTimeout(() => setConfirmRemove(f), 100); }} />
+                  <Row color={theme.danger} label={t('friends.removeFriend')} onPress={() => { const f = menuFriend; setMenuFriend(null); setTimeout(() => setConfirmRemove(f), 100); }} />
                 </View>
                 {/* downward tail pointing at the row */}
                 <View style={{ position: 'absolute', bottom: -7, left: tailLeft, width: 15, height: 15, backgroundColor: theme.card, transform: [{ rotate: '45deg' }], borderRightWidth: 1, borderBottomWidth: 1, borderColor: theme.border }} />
@@ -3703,13 +3718,13 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
       </Modal>
 
       {/* Remove-friend confirmation */}
-      <GameModal visible={confirmRemove !== null} onClose={() => setConfirmRemove(null)} title="Kaldırılsın mı?" icon="warning" danger>
-        <Text style={[styles.muted, { textAlign: 'center', marginBottom: 6 }]}>
-          {confirmRemove?.displayName} adlı kişiyi arkadaşlarından çıkarmak istediğine emin misin?
+      <GameModal visible={confirmRemove !== null} onClose={() => setConfirmRemove(null)} title={t('friends.removeConfirmTitle')} icon="warning" danger>
+        <Text style={[styles.muted, { textAlign: 'center', marginBottom: 6 }]}> 
+          {t('friends.removeConfirmBody', { name: confirmRemove?.displayName ?? '' })}
         </Text>
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <View style={{ flex: 1 }}><Btn label="İptal" kind="danger" icon="close" onPress={() => setConfirmRemove(null)} /></View>
-          <View style={{ flex: 1 }}><Btn label="Tamam" kind="blue" icon="checkmark" onPress={() => { actions.removeFriend(confirmRemove!.userId); setConfirmRemove(null); }} /></View>
+          <View style={{ flex: 1 }}><Btn label={t('settings.cancel')} kind="danger" icon="close" onPress={() => setConfirmRemove(null)} /></View>
+          <View style={{ flex: 1 }}><Btn label={t('settings.confirm')} kind="blue" icon="checkmark" onPress={() => { actions.removeFriend(confirmRemove!.userId); setConfirmRemove(null); }} /></View>
         </View>
       </GameModal>
 
@@ -3719,7 +3734,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
           <Pressable style={styles.modalCard} onPress={() => {}}>
             {matchStep === 'mode' ? (
               <>
-                <Text style={styles.modalTitle}>Dostluk Maçı - Mod Seç</Text>
+                <Text style={styles.modalTitle}>{t('friends.matchModeTitle')}</Text>
                 {(['team-team', 'country-team', 'letter-team'] as GameMode[]).map((m) => {
                   const locked = m !== 'team-team' && !hasSocialPack;
                   return (
@@ -3752,7 +3767,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
                   <Pressable onPress={() => setMatchStep('mode')} hitSlop={8}>
                     <Ionicons name="arrow-back" size={20} color={theme.text} />
                   </Pressable>
-                  <Text style={[styles.modalTitle, { flex: 1, marginBottom: 0 }]}>Kapsam Seç</Text>
+                  <Text style={[styles.modalTitle, { flex: 1, marginBottom: 0 }]}>{t('friends.scopeTitle')}</Text>
                 </View>
                 <Pressable
                   style={styles.modalRow}
@@ -3818,13 +3833,13 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
         <Pressable style={styles.modalBg} onPress={() => setSocialPackPopup(false)}>
           <Pressable style={styles.nameModalCard} onPress={() => {}}>
             <Ionicons name="lock-closed" size={32} color={theme.accent} />
-            <Text style={styles.modalTitle}>Sosyal Paket Gerekli</Text>
+            <Text style={styles.modalTitle}>{t('friends.socialPackRequired')}</Text>
             <Text style={[styles.muted, { marginBottom: 12 }]}>
-              Ülke-Takım ve Harf-Takım modlarını dostluk maçlarında kullanmak için Sosyal Paket satın almalısın.
+              {t('friends.socialPackRequiredBody')}
             </Text>
-            <Btn label="Mağazaya Git" kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); onGoToStore?.('socialPack'); }} />
+            <Btn label={t('friends.goToStore')} kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); onGoToStore?.('socialPack'); }} />
             <View style={{ height: 6 }} />
-            <Btn label="Vazgeç" kind="ghost" icon="close" onPress={() => setSocialPackPopup(false)} />
+            <Btn label={t('searching.cancel')} kind="ghost" icon="close" onPress={() => setSocialPackPopup(false)} />
           </Pressable>
         </Pressable>
       </Modal>
@@ -4054,7 +4069,7 @@ function ChatScreen({ state, actions }: Props) {
           {messages.length === 0 ? (
             <View style={{ alignItems: 'center', marginTop: 40 }}>
               <Ionicons name="chatbubbles-outline" size={48} color={theme.border} />
-              <Text style={{ color: theme.muted, fontSize: 13, marginTop: 8 }}>Henüz mesaj yok</Text>
+              <Text style={{ color: theme.muted, fontSize: 13, marginTop: 8 }}>{t('chat.noMessages')}</Text>
             </View>
           ) : messages.map((m) => {
             const isMe = m.fromId === myId;
@@ -4165,7 +4180,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
   const confirmAvatar = confirmAvatarId ? avatarMeta(confirmAvatarId) : null;
   return (
     <Screen>
-      <ScreenHeader title="Profil" icon="person" onBack={actions.closeProfile} underline={color} />
+      <ScreenHeader title={t('profile.title')} icon="person" onBack={actions.closeProfile} underline={color} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
         <View style={{ alignItems: 'center', gap: 8, marginVertical: 10 }}>
           <Pressable onPress={() => setShowAvatarPage(true)}>
@@ -4184,8 +4199,8 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
         </View>
 
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
-          <StatCard icon="trophy" color={theme.gold} label="Kupa" value={p.trophies} />
-          <StatCard gem color={GEM_COLOR} label="Elmas" value={p.diamonds} />
+          <StatCard icon="trophy" color={theme.gold} label={t('stats.trophies')} value={p.trophies} />
+          <StatCard gem color={GEM_COLOR} label={t('stats.diamonds')} value={p.diamonds} />
         </View>
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
           <StatCard icon="checkmark-circle" color={theme.primary} label={t('stats.wins')} value={p.wins} />
@@ -4202,7 +4217,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
       <Modal visible={showAvatarPage} animationType="slide" onRequestClose={() => setShowAvatarPage(false)} presentationStyle="fullScreen">
         <Screen>
           <View style={{ paddingTop: 40, flex: 1 }}>
-            <ScreenHeader title="Profil Fotoğrafları" icon="images" onBack={() => setShowAvatarPage(false)} underline={color} />
+            <ScreenHeader title={t('profile.pictures')} icon="images" onBack={() => setShowAvatarPage(false)} underline={color} />
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
               {([
@@ -4237,7 +4252,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
                   >
                     <AvatarBadge avatarId={avatarId} size={58} locked={!owned} dimmed={!owned} ringColor={selected ? theme.primary : undefined} />
                     {owned ? (
-                      <Text style={{ color: selected ? theme.primary : theme.muted, fontSize: 10, marginTop: 3, fontWeight: '700' }}>{selected ? 'Kullanılıyor' : 'Hazır'}</Text>
+                      <Text style={{ color: selected ? theme.primary : theme.muted, fontSize: 10, marginTop: 3, fontWeight: '700' }}>{selected ? t('profile.inUse') : t('profile.ready')}</Text>
                     ) : (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
                         <GemIcon size={12} />
@@ -4251,14 +4266,14 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
           </ScrollView>
 
           {/* Purchase confirmation modal (inside avatar picker) */}
-          <GameModal visible={pendingAvatar !== null} onClose={() => setPendingAvatarId(null)} title="Satın Al" icon="lock-closed">
+          <GameModal visible={pendingAvatar !== null} onClose={() => setPendingAvatarId(null)} title={t('profile.buyTitle')} icon="lock-closed">
             {pendingAvatar ? (
               <>
                 <View style={{ alignItems: 'center', gap: 10 }}>
                   <AvatarBadge avatarId={pendingAvatar.id} size={88} />
                   <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18 }}>{pendingAvatar.label}</Text>
                   <Text style={{ color: theme.muted, fontSize: 13, textAlign: 'center' }}>
-                    {pendingAvatar.price} elmas karşılığında bu profil fotoğrafını satın almak istiyor musunuz?
+                    {t('profile.buyConfirm', { price: pendingAvatar.price })}
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <GemIcon size={16} />
@@ -4267,11 +4282,11 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
                 </View>
                 <View style={{ flexDirection: 'row', gap: 10 }}>
                   <View style={{ flex: 1 }}>
-                    <Btn label="Hayır" kind="danger" icon="close" onPress={() => setPendingAvatarId(null)} />
+                    <Btn label={t('common.no')} kind="danger" icon="close" onPress={() => setPendingAvatarId(null)} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Btn
-                      label="Evet"
+                      label={t('common.yes')}
                       kind="blue"
                       icon="checkmark"
                       onPress={() => {
@@ -4292,22 +4307,22 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
           </GameModal>
 
           {/* Insufficient diamonds popup (inside avatar picker) */}
-          <GameModal visible={showInsufficientPopup} onClose={() => setShowInsufficientPopup(false)} title="Yetersiz Elmas" icon="alert-circle">
+          <GameModal visible={showInsufficientPopup} onClose={() => setShowInsufficientPopup(false)} title={t('profile.notEnoughTitle')} icon="alert-circle">
             <View style={{ alignItems: 'center', gap: 12, paddingVertical: 4 }}>
               <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 16, textAlign: 'center' }}>
-                Yeterli elmasın yok!
+                {t('store.changeNameInsufficient')}
               </Text>
               <Text style={{ color: theme.muted, fontSize: 14, textAlign: 'center', lineHeight: 20 }}>
-                Mağazaya gidip elmas satın almak ister misin?
+                {t('profile.notEnoughBody')}
               </Text>
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
-                <Btn label="İptal" kind="danger" icon="close" onPress={() => setShowInsufficientPopup(false)} />
+                <Btn label={t('settings.cancel')} kind="danger" icon="close" onPress={() => setShowInsufficientPopup(false)} />
               </View>
               <View style={{ flex: 1 }}>
                 <Btn
-                  label="Devam Et"
+                  label={t('common.continue')}
                   kind="primary"
                   icon="storefront"
                   onPress={() => {
@@ -4321,23 +4336,23 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
           </GameModal>
 
           {/* Avatar change confirmation (inside avatar picker) */}
-          <GameModal visible={confirmAvatar !== null} onClose={() => setConfirmAvatarId(null)} title="Değiştir" icon="images">
+          <GameModal visible={confirmAvatar !== null} onClose={() => setConfirmAvatarId(null)} title={t('profile.changeTitle')} icon="images">
             {confirmAvatar ? (
               <>
                 <View style={{ alignItems: 'center', gap: 10 }}>
                   <AvatarBadge avatarId={confirmAvatar.id} size={88} />
                   <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18 }}>{confirmAvatar.label}</Text>
                   <Text style={{ color: theme.muted, fontSize: 13, textAlign: 'center' }}>
-                    Bu profil fotoğrafını kullanmak istiyor musun?
+                    {t('profile.changeConfirm')}
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 10 }}>
                   <View style={{ flex: 1 }}>
-                    <Btn label="Hayır" kind="danger" icon="close" onPress={() => setConfirmAvatarId(null)} />
+                    <Btn label={t('common.no')} kind="danger" icon="close" onPress={() => setConfirmAvatarId(null)} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Btn
-                      label="Evet"
+                      label={t('common.yes')}
                       kind="blue"
                       icon="checkmark"
                       onPress={() => {
@@ -4518,7 +4533,7 @@ export function ArenasScreen({ state, actions }: Props) {
                 {/* Status badge */}
                 {isCurrent ? (
                   <View style={[styles.arenaBadge, { backgroundColor: arena.color }]}>
-                    <Text style={styles.arenaBadgeText}>BURADASIN</Text>
+                    <Text style={styles.arenaBadgeText}>{t('arenas.here')}</Text>
                   </View>
                 ) : isPassed ? (
                   <View style={[styles.arenaBadge, { backgroundColor: theme.primary }]}>
@@ -4574,12 +4589,13 @@ export function SearchingScreen({ actions }: Props) {
   }, []);
 
   const fact = FUN_FACTS[factIdx]!;
+  const factText = t((LOADING_TIPS[factIdx % LOADING_TIPS.length] ?? 'loading.tip1') as MessageKey);
 
   return (
     <Screen>
       <View style={styles.center}>
         <Ionicons name="flash" size={44} color={theme.primary} />
-        <Text style={styles.h1}>Rakip Aranıyor</Text>
+        <Text style={styles.h1}>{t('searching.header')}</Text>
         <View style={{ height: 20 }} />
         <ActivityIndicator size="large" color={theme.primary} />
         <View style={{ height: 12 }} />
@@ -4588,7 +4604,7 @@ export function SearchingScreen({ actions }: Props) {
 
       <View style={styles.factCard}>
         <Ionicons name="bulb" size={26} color={theme.accent} />
-        <Text style={styles.factText}>{fact.text}</Text>
+        <Text style={styles.factText}>{factText}</Text>
       </View>
 
       <Btn label={t('searching.cancel')} kind="ghost" icon="close" onPress={actions.cancelSearch} />
@@ -4733,7 +4749,7 @@ export function MatchHistoryScreen({ state, actions }: Props) {
 
                   {/* VS */}
                   <View style={{ justifyContent: 'center', paddingHorizontal: 8 }}>
-                    <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '900' }}>VS</Text>
+                    <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '900' }}>{t('common.vs')}</Text>
                   </View>
 
                   {/* Opponent side */}
@@ -4812,7 +4828,7 @@ export function LeaderboardScreen({ state, actions }: Props) {
   const lb = state.leaderboard;
   return (
     <Screen>
-      <ScreenHeader title="Lider Tablosu" icon="trophy" onBack={actions.closeLeaderboard} underline={theme.accent} />
+      <ScreenHeader title={t('leaderboard.title')} icon="trophy" onBack={actions.closeLeaderboard} underline={theme.accent} />
       <ScrollView style={{ flex: 1, marginTop: 10 }} showsVerticalScrollIndicator={false}>
         {lb.map((entry) => (
           <View key={entry.rank} style={{ marginBottom: 8 }}>
@@ -4826,7 +4842,7 @@ export function LeaderboardScreen({ state, actions }: Props) {
                 <Ionicons name="trophy" size={12} color={theme.accent} />
                 <Text style={styles.lbTrophies}>{entry.trophies}</Text>
               </View>
-              <Text style={styles.lbWL}>{entry.wins}G {entry.losses}M</Text>
+              <Text style={styles.lbWL}>{t('stats.record', { wins: entry.wins, losses: entry.losses })}</Text>
             </GamePanel>
           </View>
         ))}

@@ -160,6 +160,8 @@ export const initialState: GameState = {
 };
 
 const PROFILE_KEY = '@crossover_profile';
+const LAST_USER_ID_KEY = '@crossover_last_user_id';
+const LAST_AUTH_PROVIDER_KEY = '@crossover_last_auth_provider';
 
 type Action =
   | ServerMsg
@@ -467,6 +469,8 @@ export function useCrossover() {
   const wsRef = useRef<WebSocket | null>(null);
   const connectingSince = useRef(0); // when the current socket started CONNECTING (0 = not connecting)
   const offlineRoomRef = useRef<OfflineRoom | null>(null);
+  const lastUserIdRef = useRef<string | null>(null);
+  const lastAuthProviderRef = useRef<'apple' | 'google' | 'facebook' | null>(null);
 
   // Seed the offline DB only AFTER first paint + interactions settle, so the one-time 8MB
   // load never blocks/janks app launch. (Only runs once; subsequent launches no-op.)
@@ -485,6 +489,18 @@ export function useCrossover() {
         }
       })
       .catch(() => {});
+    AsyncStorage.getItem(LAST_USER_ID_KEY)
+      .then((userId) => {
+        if (userId) lastUserIdRef.current = userId;
+      })
+      .catch(() => {});
+    AsyncStorage.getItem(LAST_AUTH_PROVIDER_KEY)
+      .then((provider) => {
+        if (provider === 'apple' || provider === 'google' || provider === 'facebook') {
+          lastAuthProviderRef.current = provider;
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Persist profile whenever it changes from server messages.
@@ -492,7 +508,9 @@ export function useCrossover() {
   useEffect(() => {
     if (state.profile && state.profile !== prevProfile.current) {
       prevProfile.current = state.profile;
+      lastUserIdRef.current = state.profile.userId;
       saveProfile(state.profile);
+      AsyncStorage.setItem(LAST_USER_ID_KEY, state.profile.userId).catch(() => {});
     }
   }, [state.profile]);
 
@@ -676,10 +694,14 @@ export function useCrossover() {
     // Sign in with Apple / Google / Facebook: send the provider's identity token
     // to the server, which verifies it and returns the account profile.
     authWith: (provider: 'apple' | 'google' | 'facebook', token: string, name?: string) => {
+      const canReuseLastUser = !lastAuthProviderRef.current || lastAuthProviderRef.current === provider;
+      const userId = canReuseLastUser ? (state.profile?.userId ?? lastUserIdRef.current ?? undefined) : undefined;
+      lastAuthProviderRef.current = provider;
+      AsyncStorage.setItem(LAST_AUTH_PROVIDER_KEY, provider).catch(() => {});
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        send({ type: 'auth', provider, token, name });
+        send({ type: 'auth', provider, token, name, userId });
       } else {
-        connectAndSend({ type: 'auth', provider, token, name });
+        connectAndSend({ type: 'auth', provider, token, name, userId });
       }
     },
     changeName: (newName: string) => send({ type: 'change_name', newName }),
@@ -844,6 +866,7 @@ export function useCrossover() {
       dispatch({ type: '_reset' });
     },
     logout: async () => {
+      const lastUserId = state.profile?.userId ?? lastUserIdRef.current;
       if (offlineRoomRef.current) {
         offlineRoomRef.current.leave();
         offlineRoomRef.current = null;
@@ -861,7 +884,9 @@ export function useCrossover() {
       prevProfile.current = null;
       pendingVerify.current = null;
       pendingAdReward.current = null;
+      lastUserIdRef.current = lastUserId ?? null;
       try {
+        if (lastUserId) await AsyncStorage.setItem(LAST_USER_ID_KEY, lastUserId);
         await AsyncStorage.removeItem(PROFILE_KEY);
       } catch {
         // Even if storage removal fails, still force the UI back to login.

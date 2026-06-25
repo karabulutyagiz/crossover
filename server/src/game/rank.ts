@@ -96,11 +96,24 @@ export async function findOrCreateUserByProvider(
   sub: string,
   email: string | null,
   displayName: string,
+  hintedUserId?: string,
 ): Promise<UserProfile> {
   const col =
     provider === 'apple' ? 'apple_sub' : provider === 'google' ? 'google_sub' : 'facebook_sub';
   const found = await pool.query<DbUser>(`SELECT * FROM users WHERE ${col} = $1`, [sub]);
   if (found.rows[0]) return toProfile(found.rows[0]);
+  if (hintedUserId) {
+    const hinted = await pool.query<DbUser>(
+      `UPDATE users
+       SET ${col} = $2,
+           email = COALESCE($3, email)
+       WHERE id = $1
+         AND (${col} IS NULL OR ${col} = $2)
+       RETURNING *`,
+      [hintedUserId, sub, email],
+    );
+    if (hinted.rows[0]) return toProfile(hinted.rows[0]);
+  }
   const { rows } = await pool.query<DbUser>(
     `INSERT INTO users (display_name, ${col}, email) VALUES ($1, $2, $3) RETURNING *`,
     [displayName.trim() || 'Oyuncu', sub, email],

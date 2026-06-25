@@ -8,17 +8,22 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
+import LottieView from 'lottie-react-native';
 import type { ComponentProps } from 'react';
 import { theme } from './theme';
 import { t } from './i18n';
 import type { MessageKey } from './i18n';
 import type { ProfileView } from './protocol';
+import cryingEmoji from './cryingEmoji';
+import angryEmoji from './angryEmoji';
+import smileEmoji from './smileEmoji';
+import okEmoji from './okEmoji';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 export interface EmoteMeta {
   id: string;
-  kind: 'text' | 'animated' | 'face' | 'lottie';
+  kind: 'text' | 'animated' | 'face' | 'lottie' | 'lottieJson';
   phrase?: string; // static caption (premium emotes); prefer phraseKey for i18n
   phraseKey?: MessageKey; // i18n key — resolved at render time so it follows language changes
   icon?: IoniconName; // text + generic animated emotes
@@ -27,6 +32,7 @@ export interface EmoteMeta {
   week?: number; // visual emotes: which weekly store drop it belongs to
   premium?: { name: string; price: number; desc: string };
   anim?: number; // 'lottie' emotes: the bundled animated WebP (require result)
+  animJson?: object;
 }
 
 // Resolve an emote's caption at render time (so it follows live language changes).
@@ -48,10 +54,10 @@ export const TEXT_EMOTES: EmoteMeta[] = [
 // The 4 character emotes (Clash-Royale style): smiling / crying / angry / OK-sign.
 // Free for everyone, but COLLECTIBLE/EQUIPPABLE into the 6 loadout slots.
 export const FACE_EMOTES: EmoteMeta[] = [
-  { id: 'smile', kind: 'face', expr: 'smile', phraseKey: 'emote.face.smile', color: theme.accent },
-  { id: 'cry', kind: 'face', expr: 'cry', phraseKey: 'emote.face.cry', color: theme.blue },
-  { id: 'angry', kind: 'face', expr: 'angry', phraseKey: 'emote.face.angry', color: theme.danger },
-  { id: 'ok', kind: 'face', expr: 'ok', phraseKey: 'emote.face.ok', color: theme.primary },
+  { id: 'smile', kind: 'lottieJson', color: theme.accent, animJson: smileEmoji },
+  { id: 'cry', kind: 'lottieJson', color: theme.blue, animJson: cryingEmoji },
+  { id: 'angry', kind: 'lottieJson', color: theme.danger, animJson: angryEmoji },
+  { id: 'ok', kind: 'lottieJson', color: theme.primary, animJson: okEmoji },
 ];
 
 // All free (always-available) emotes = quick-chat text + the 4 character faces.
@@ -198,6 +204,9 @@ export function EmoteSticker({ id, size }: { id: string; size: number }) {
   const meta = getEmote(id);
   if (!meta) return null;
   if (meta.kind === 'face') return <FaceEmote size={size} expr={meta.expr ?? 'smile'} />;
+  if (meta.kind === 'lottieJson' && meta.animJson) {
+    return <LottieView source={meta.animJson as any} autoPlay loop style={{ width: size, height: size }} />;
+  }
   if (meta.kind === 'lottie' && meta.anim != null) {
     return <ExpoImage source={meta.anim} style={{ width: size, height: size }} contentFit="contain" autoplay />;
   }
@@ -222,9 +231,8 @@ export function EmoteCallout({ id, size = 88 }: { id: string; size?: number }) {
   if (meta.kind === 'text') {
     return <TextEmoteFrame text={caption} color={meta.color} fontSize={17} />;
   }
-  // Animated (Lottie) emotes: keep the frame but make it SQUARE (not the rounded
-  // pill), and show NO caption — just the looping animation inside.
-  if (meta.kind === 'lottie') {
+  // LottieJson emotes (cry, angry): square frame, no caption.
+  if (meta.kind === 'lottie' || meta.kind === 'lottieJson') {
     return (
       <View style={[styles.callout, { borderRadius: 16, paddingVertical: 8, paddingHorizontal: 8, borderWidth: 1.5, borderColor: meta.color }]}>
         <EmoteSticker id={id} size={size} />
