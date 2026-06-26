@@ -466,6 +466,7 @@ const tr = {
   'collection.yourEmotes': 'İFADELERİN',
   'collection.equip': 'Kuşan',
   'collection.equipped': 'Kuşanıldı',
+  'collection.discoverable': 'BULUNACAK İFADELER',
 
   // store — purchase popup
   'store.purchaseSuccess': 'Satın Alma Başarılı!',
@@ -876,6 +877,7 @@ const en: typeof tr = {
   'collection.yourEmotes': 'YOUR EMOTES',
   'collection.equip': 'Equip',
   'collection.equipped': 'Equipped',
+  'collection.discoverable': 'DISCOVERABLE EMOTES',
 
   'store.purchaseSuccess': 'Purchase Successful!',
   'store.gotIt': 'Awesome!',

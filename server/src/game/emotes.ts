@@ -33,7 +33,7 @@ const VISUAL_IDS = new Set(VISUAL_EMOTES.map((e) => e.id));
 // Animated (Lottie→WebP) emotes. NOT sold in the store (no price, never in the
 // weekly drops) but they ARE equippable like visual emotes. Granted to specific
 // accounts (see the owned_emotes grant). Keep ids in sync with app/src/emotes.tsx.
-export const ANIM_EMOTES: readonly string[] = ['footballer', 'worldcup', 'kick', 'squad', 'pitch'];
+export const ANIM_EMOTES: readonly string[] = ['footballer', 'worldcup', 'kick', 'squad', 'pitch', 'euro2024'];
 const ANIM_IDS = new Set(ANIM_EMOTES);
 
 const PRICE = new Map<string, number>([

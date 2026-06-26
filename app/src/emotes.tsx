@@ -18,6 +18,7 @@ import cryingEmoji from './cryingEmoji';
 import angryEmoji from './angryEmoji';
 import smileEmoji from './smileEmoji';
 import okEmoji from './okEmoji';
+import logoEmoji from './logoEmoji';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -78,6 +79,7 @@ export const ANIM_EMOTES: EmoteMeta[] = [
   { id: 'kick',       kind: 'lottie', phrase: '', color: theme.blue,    anim: require('../assets/emotes/kick.webp') },
   { id: 'squad',      kind: 'lottie', phrase: '', color: theme.accent,  anim: require('../assets/emotes/squad.webp') },
   { id: 'pitch',      kind: 'lottie', phrase: '', color: theme.purple,  anim: require('../assets/emotes/pitch.webp') },
+  { id: 'euro2024',   kind: 'lottieJson', phrase: '', color: theme.gold, animJson: logoEmoji },
 ];
 
 // Visual (premium) emotes grouped by their weekly drop, newest first.
@@ -129,16 +131,17 @@ export function availableEmotes(profile: ProfileView | null): EmoteMeta[] {
 
 // The 4 character emotes (smiling / crying / angry / OK-sign), drawn with plain RN
 // Views + a gentle bob/tilt loop — no assets, runs in Expo Go.
-function FaceEmote({ size, expr }: { size: number; expr: 'smile' | 'cry' | 'angry' | 'ok' }) {
+function FaceEmote({ size, expr, play = true }: { size: number; expr: 'smile' | 'cry' | 'angry' | 'ok'; play?: boolean }) {
   const a = useRef(new Animated.Value(0)).current;
   useEffect(() => {
+    if (!play) return;
     const loop = Animated.loop(Animated.sequence([
       Animated.timing(a, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
       Animated.timing(a, { toValue: 0, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
     ]));
     loop.start();
     return () => loop.stop();
-  }, [a]);
+  }, [a, play]);
   const bob = a.interpolate({ inputRange: [0, 1], outputRange: [0, -size * 0.04] });
   const rot = a.interpolate({ inputRange: [0, 1], outputRange: [expr === 'angry' ? '-5deg' : '-3deg', expr === 'angry' ? '5deg' : '3deg'] });
 
@@ -200,15 +203,20 @@ function FaceEmote({ size, expr }: { size: number; expr: 'smile' | 'cry' | 'angr
   );
 }
 
-export function EmoteSticker({ id, size }: { id: string; size: number }) {
+export function EmoteSticker({ id, size, play = true, onFinish }: {
+  id: string; size: number; play?: boolean; onFinish?: () => void;
+}) {
   const meta = getEmote(id);
   if (!meta) return null;
-  if (meta.kind === 'face') return <FaceEmote size={size} expr={meta.expr ?? 'smile'} />;
+  if (meta.kind === 'face') return <FaceEmote size={size} expr={meta.expr ?? 'smile'} play={play} />;
   if (meta.kind === 'lottieJson' && meta.animJson) {
-    return <LottieView source={meta.animJson as any} autoPlay loop style={{ width: size, height: size }} />;
+    if (!play) {
+      return <LottieView source={meta.animJson as any} autoPlay={false} loop={false} progress={0} style={{ width: size, height: size }} />;
+    }
+    return <LottieView source={meta.animJson as any} autoPlay loop={false} onAnimationFinish={onFinish} style={{ width: size, height: size }} />;
   }
   if (meta.kind === 'lottie' && meta.anim != null) {
-    return <ExpoImage source={meta.anim} style={{ width: size, height: size }} contentFit="contain" autoplay />;
+    return <ExpoImage source={meta.anim} style={{ width: size, height: size }} contentFit="contain" autoplay={play} />;
   }
   // text emote: icon badge
   return (

@@ -481,7 +481,7 @@ export default function App() {
 
       {/* Tournaments → standalone 3D coming-soon lettering, no bubble/background. */}
       {comingSoon ? (
-        <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: '42%', alignItems: 'center' }}>
+        <View pointerEvents="none" style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
           <Animated.View
             style={{
               opacity: csAnim,
@@ -514,7 +514,7 @@ export default function App() {
       />
 
       {/* Centered popups (leaderboard / match history) — open over everything, not fullscreen */}
-      <LeaderboardModal visible={overlay === 'leaderboard'} entries={state.leaderboard} friends={state.friends} onClose={() => setOverlay(null)} onViewProfile={(userId) => actions.getUserProfile(userId)} onSendFriendRequest={(userId) => actions.sendFriendRequest(userId.slice(0, 8))} />
+      <LeaderboardModal visible={overlay === 'leaderboard'} entries={state.leaderboard} onClose={() => setOverlay(null)} onViewProfile={(userId) => actions.getUserProfile(userId)} />
       <MatchHistoryModal visible={overlay === 'matchHistory'} history={state.matchHistory} myName={state.profile?.displayName ?? ''} onClose={() => setOverlay(null)} />
       <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
 
@@ -580,7 +580,6 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 18,
     minWidth: 290,
-    transform: [{ rotate: '-2deg' }],
   },
   comingSoonTextBack: {
     position: 'absolute',
