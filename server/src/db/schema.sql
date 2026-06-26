@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS users (
   display_name   TEXT NOT NULL,
   game_center_id TEXT UNIQUE,              -- Apple Game Center player ID
   trophies       INT NOT NULL DEFAULT 0,   -- Clash Royale-style cups
-  diamonds       INT NOT NULL DEFAULT 50,  -- in-game currency (start with 50 free)
+  diamonds       INT NOT NULL DEFAULT 100, -- includes the one-time Mahalle Sahası reward (50 base + 50 gift)
   wins           INT NOT NULL DEFAULT 0,
   losses         INT NOT NULL DEFAULT 0,
   owned_emotes   TEXT[] NOT NULL DEFAULT '{}',  -- premium emote ids the user has bought
@@ -112,6 +112,15 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS ad_reward_day DATE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS ad_reward_count INT NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_ad_reward_at TIMESTAMPTZ;
+
+-- Highest arena milestone already rewarded. Backfill existing users once with the
+-- Mahalle Sahası gift so everyone starts from the same baseline.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS highest_arena_rewarded INT;
+UPDATE users
+   SET diamonds = diamonds + 50,
+       highest_arena_rewarded = 0
+ WHERE highest_arena_rewarded IS NULL;
+ALTER TABLE users ALTER COLUMN highest_arena_rewarded SET DEFAULT 0;
 
 -- ---- Friend requests (pending invitations) ----
 CREATE TABLE IF NOT EXISTS friend_requests (

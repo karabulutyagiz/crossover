@@ -326,8 +326,14 @@ function reducer(state: GameState, action: Action): GameState {
         ...state,
         trophyDelta: { trophies: action.trophies, delta: action.delta, arena: action.arena },
         profile: state.profile
-          ? { ...state.profile, trophies: action.trophies, arena: action.arena }
+          ? {
+              ...state.profile,
+              trophies: action.trophies,
+              arena: action.arena,
+              diamonds: typeof (action as any).diamonds === 'number' ? (action as any).diamonds : state.profile.diamonds,
+            }
           : state.profile,
+        notice: (action as any).arenaReward > 0 ? `+${(action as any).arenaReward} 💎` : state.notice,
       };
     case '_clear_emote': {
       // Remove a shown emote so it doesn't persist in state and re-appear when the

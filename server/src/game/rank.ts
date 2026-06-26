@@ -39,6 +39,8 @@ const TROPHY_TABLE: [number, number][] = [
   [+15, -35],   // GOAT               — brutal, only the best stay
 ];
 
+const ARENA_DIAMOND_REWARDS = [50, 100, 150, 200, 300, 500, 1000] as const;
+
 function trophyDelta(trophies: number, won: boolean): number {
   const arena = getArena(trophies);
   const idx = ARENAS.indexOf(arena);
@@ -206,22 +208,66 @@ export async function getUser(userId: string): Promise<UserProfile | null> {
 export async function applyMatchResult(
   userId: string,
   won: boolean,
-): Promise<{ profile: UserProfile; delta: number }> {
+): Promise<{ profile: UserProfile; delta: number; arenaReward: number }> {
   // Read current trophies to determine arena-specific delta
   const user = await getUser(userId);
   if (!user) throw new Error('User not found');
   const delta = trophyDelta(user.trophies, won);
+  const prevArenaIdx = ARENAS.findIndex((a) => a.name === user.arena.name);
 
   const { rows } = await pool.query<DbUser>(
-    `UPDATE users
-     SET trophies = GREATEST(0, trophies + $2),
-         wins = wins + (CASE WHEN $3 THEN 1 ELSE 0 END),
-         losses = losses + (CASE WHEN $3 THEN 0 ELSE 1 END)
-     WHERE id = $1
-     RETURNING *`,
-    [userId, delta, won],
+    `WITH next_state AS (
+       SELECT
+         id,
+         GREATEST(0, trophies + $2) AS next_trophies,
+         wins,
+         losses,
+         COALESCE(highest_arena_rewarded, 0) AS highest_arena_rewarded
+       FROM users
+       WHERE id = $1
+     ), reward_calc AS (
+       SELECT
+         id,
+         next_trophies,
+         wins,
+         losses,
+         highest_arena_rewarded,
+         CASE
+           WHEN next_trophies >= 5000 THEN 6
+           WHEN next_trophies >= 3500 THEN 5
+           WHEN next_trophies >= 2000 THEN 4
+           WHEN next_trophies >= 1000 THEN 3
+           WHEN next_trophies >= 500 THEN 2
+           WHEN next_trophies >= 200 THEN 1
+           ELSE 0
+         END AS next_arena_idx
+       FROM next_state
+     )
+     UPDATE users u
+        SET trophies = r.next_trophies,
+            wins = r.wins + (CASE WHEN $3 THEN 1 ELSE 0 END),
+            losses = r.losses + (CASE WHEN $3 THEN 0 ELSE 1 END),
+            diamonds = u.diamonds +
+              CASE
+                WHEN r.next_arena_idx > r.highest_arena_rewarded THEN (
+                  SELECT COALESCE(SUM(v.reward), 0)
+                  FROM unnest($4::int[]) WITH ORDINALITY AS v(reward, ord)
+                  WHERE ord - 1 > r.highest_arena_rewarded AND ord - 1 <= r.next_arena_idx
+                )
+                ELSE 0
+              END,
+            highest_arena_rewarded = GREATEST(r.highest_arena_rewarded, r.next_arena_idx)
+       FROM reward_calc r
+       WHERE u.id = r.id
+       RETURNING u.*`,
+    [userId, delta, won, [...ARENA_DIAMOND_REWARDS]],
   );
-  return { profile: toProfile(rows[0]!), delta };
+  const profile = toProfile(rows[0]!);
+  const nextArenaIdx = ARENAS.findIndex((a) => a.name === profile.arena.name);
+  const arenaReward = nextArenaIdx > prevArenaIdx
+    ? ARENA_DIAMOND_REWARDS.slice(prevArenaIdx + 1, nextArenaIdx + 1).reduce((sum, n) => sum + n, 0)
+    : 0;
+  return { profile, delta, arenaReward };
 }
 
 export async function changeDisplayName(
@@ -604,6 +650,7 @@ interface DbUser {
   social_pack_until: string | null;
   avatar: string | null;
   last_seen: string | null;
+  highest_arena_rewarded: number | null;
   created_at: string;
 }
 

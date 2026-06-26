@@ -175,7 +175,7 @@ export type ServerMsg =
   | { type: 'rematch_requested'; byId: string; byName: string } // opponent wants to play again
   | { type: 'rematch_waiting' } // your rematch request was sent, waiting for opponent
   | { type: 'rematch_declined' } // opponent declined your rematch request
-  | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView }
+  | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView; diamonds?: number; arenaReward?: number }
   | { type: 'emote'; fromId: string; emoteId: string } // a player in the room sent an emote
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string } // store purchase succeeded
   | { type: 'avatar_purchased'; profile: ProfileView; avatarId: string }

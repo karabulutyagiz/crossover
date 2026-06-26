@@ -205,7 +205,7 @@ export type ServerMsg =
   | { type: 'rematch_requested'; byId: string; byName: string }
   | { type: 'rematch_waiting' }
   | { type: 'rematch_declined' }
-  | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView }
+  | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView; diamonds?: number; arenaReward?: number }
   | { type: 'emote'; fromId: string; emoteId: string }
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string }
   | { type: 'avatar_purchased'; profile: ProfileView; avatarId: string }

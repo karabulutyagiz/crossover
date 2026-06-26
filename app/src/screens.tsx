@@ -986,7 +986,7 @@ function CareerRow({ spell, highlight }: { spell: SpellInfo; highlight?: boolean
 
 // ---- Home ----
 function DIFF_LABEL(d: Difficulty): string {
-  return { easy: 'Kolay', medium: 'Orta', hard: 'Zor' }[d];
+  return { easy: t('difficulty.easy'), medium: t('difficulty.medium'), hard: t('difficulty.hard') }[d];
 }
 function MODE_LABEL(m: GameMode): string {
   return { 'team-team': t('mode.teamTeam'), 'country-team': t('mode.countryTeam'), 'letter-team': t('mode.letterTeam'), 'player-player': t('mode.playerPlayer') }[m];
@@ -1146,10 +1146,10 @@ export function LoginScreen({ state, actions }: Props) {
 
       {!hasInternet ? (
         <View pointerEvents="none" style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
-          <View style={{ width: 190, minHeight: 190, borderRadius: 22, backgroundColor: theme.card, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 4, borderBottomColor: theme.cardLip, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 14 }}>
-            <Ionicons name="wifi" size={54} color={theme.danger} />
-            <Text style={{ color: theme.danger, fontFamily: 'Poppins-ExtraBold', fontSize: 18, marginTop: 14, textAlign: 'center' }}>{t('login.noInternet')}</Text>
-            <Text style={{ color: theme.muted, fontSize: 12, marginTop: 8, textAlign: 'center', lineHeight: 17 }}>{t('login.noInternetHint')}</Text>
+          <View style={{ width: 148, height: 148, borderRadius: 24, backgroundColor: theme.card, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 4, borderBottomColor: theme.cardLip, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 12 }}>
+            <Ionicons name="wifi" size={58} color={theme.danger} />
+            <View style={{ width: 56, height: 4, borderRadius: 999, backgroundColor: theme.danger, marginTop: 8, opacity: 0.95 }} />
+            <Text style={{ color: theme.danger, fontFamily: 'Poppins-ExtraBold', fontSize: 13, marginTop: 12, textAlign: 'center' }}>{t('login.noInternet')}</Text>
           </View>
         </View>
       ) : null}
@@ -4170,14 +4170,12 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
   const [pendingAvatarId, setPendingAvatarId] = useState<string | null>(null);
   const [showAvatarPage, setShowAvatarPage] = useState(false);
   const [showInsufficientPopup, setShowInsufficientPopup] = useState(false);
-  const [confirmAvatarId, setConfirmAvatarId] = useState<string | null>(null);
   if (!p) return <Screen><View style={styles.center}><Text style={styles.muted}>—</Text></View></Screen>;
   const total = p.wins + p.losses;
   const winRate = total ? Math.round((p.wins / total) * 100) : 0;
   const color = arenaColor(p.arena.name);
   const pendingAvatar = pendingAvatarId ? avatarMeta(pendingAvatarId) : null;
   const canAffordPending = pendingAvatar ? p.diamonds >= avatarPrice(pendingAvatar.id) : false;
-  const confirmAvatar = confirmAvatarId ? avatarMeta(confirmAvatarId) : null;
   return (
     <Screen>
       <ScreenHeader title={t('profile.title')} icon="person" onBack={actions.closeProfile} underline={color} />
@@ -4232,8 +4230,13 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
                   <Pressable
                     key={avatarId}
                     onPress={() => {
-                      if (owned) setConfirmAvatarId(avatarId);
-                      else setPendingAvatarId(avatarId);
+                      if (!owned) {
+                        setPendingAvatarId(avatarId);
+                        return;
+                      }
+                      if (selected) return;
+                      actions.setAvatar(avatarId);
+                      setShowAvatarPage(false);
                     }}
                     style={{
                       width: '31%',
@@ -4335,39 +4338,6 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
             </View>
           </GameModal>
 
-          {/* Avatar change confirmation (inside avatar picker) */}
-          <GameModal visible={confirmAvatar !== null} onClose={() => setConfirmAvatarId(null)} title={t('profile.changeTitle')} icon="images">
-            {confirmAvatar ? (
-              <>
-                <View style={{ alignItems: 'center', gap: 10 }}>
-                  <AvatarBadge avatarId={confirmAvatar.id} size={88} />
-                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18 }}>{confirmAvatar.label}</Text>
-                  <Text style={{ color: theme.muted, fontSize: 13, textAlign: 'center' }}>
-                    {t('profile.changeConfirm')}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <View style={{ flex: 1 }}>
-                    <Btn label={t('common.no')} kind="danger" icon="close" onPress={() => setConfirmAvatarId(null)} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Btn
-                      label={t('common.yes')}
-                      kind="blue"
-                      icon="checkmark"
-                      onPress={() => {
-                        if (confirmAvatarId) {
-                          actions.setAvatar(confirmAvatarId);
-                          setConfirmAvatarId(null);
-                          setShowAvatarPage(false);
-                        }
-                      }}
-                    />
-                  </View>
-                </View>
-              </>
-            ) : null}
-          </GameModal>
           </View>
         </Screen>
       </Modal>

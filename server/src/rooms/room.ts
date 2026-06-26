@@ -177,8 +177,8 @@ export class Room {
       void (async () => {
         try {
           if (winner.userId) {
-            const { profile, delta } = await applyMatchResult(winner.userId, true);
-            winner.transport.send({ type: 'trophy_update', trophies: profile.trophies, delta, arena: profile.arena });
+            const { profile, delta, arenaReward } = await applyMatchResult(winner.userId, true);
+            winner.transport.send({ type: 'trophy_update', trophies: profile.trophies, delta, arena: profile.arena, diamonds: profile.diamonds, arenaReward });
           }
           if (p.userId) {
             await applyMatchResult(p.userId, false);
@@ -894,12 +894,14 @@ export class Room {
       if (p.transport.isBot || !p.userId) continue;
       const won = p.id === winner.id;
       try {
-        const { profile, delta } = await applyMatchResult(p.userId, won);
+        const { profile, delta, arenaReward } = await applyMatchResult(p.userId, won);
         p.transport.send({
           type: 'trophy_update',
           trophies: profile.trophies,
           delta,
           arena: profile.arena,
+          diamonds: profile.diamonds,
+          arenaReward,
         });
       } catch {
         // DB error — skip silently

@@ -479,7 +479,7 @@ export default function App() {
         </Pressable>
       </View>
 
-      {/* Tournaments → a raised rectangular "coming soon" badge that pops in with a deep shadow */}
+      {/* Tournaments → standalone 3D coming-soon lettering, no bubble/background. */}
       {comingSoon ? (
         <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: '42%', alignItems: 'center' }}>
           <Animated.View
@@ -491,11 +491,11 @@ export default function App() {
               ],
             }}
           >
-            <Image
-              source={require('./assets/cokyakinda.png')}
-              style={{ width: 288, height: 288 * (818 / 1923) }}
-              resizeMode="contain"
-            />
+            <View style={s.comingSoonWrap}>
+              <Text style={s.comingSoonTextBack}>{t('common.comingSoon').toUpperCase()}</Text>
+              <Text style={s.comingSoonTextMid}>{t('common.comingSoon').toUpperCase()}</Text>
+              <Text style={s.comingSoonTextFront}>{t('common.comingSoon').toUpperCase()}</Text>
+            </View>
           </Animated.View>
         </View>
       ) : null}
@@ -575,6 +575,40 @@ const s = StyleSheet.create({
   },
   tabLabel: { color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' },
   tabLabelActive: { color: theme.primary },
+  comingSoonWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    minWidth: 290,
+    transform: [{ rotate: '-2deg' }],
+  },
+  comingSoonTextBack: {
+    position: 'absolute',
+    color: '#653100',
+    fontSize: 34,
+    fontFamily: 'Poppins-Black',
+    letterSpacing: 1.6,
+    textAlign: 'center',
+    transform: [{ translateX: 0 }, { translateY: 9 }],
+    opacity: 0.95,
+  },
+  comingSoonTextMid: {
+    position: 'absolute',
+    color: '#A65108',
+    fontSize: 34,
+    fontFamily: 'Poppins-Black',
+    letterSpacing: 1.6,
+    textAlign: 'center',
+    transform: [{ translateX: 0 }, { translateY: 4 }],
+  },
+  comingSoonTextFront: {
+    color: '#FFD86B',
+    fontSize: 34,
+    fontFamily: 'Poppins-Black',
+    letterSpacing: 1.6,
+    textAlign: 'center',
+    ...engrave('lg'),
+  },
   inviteBanner: {
     position: 'absolute', top: 50, left: 10, right: 10, zIndex: 100,
     flexDirection: 'row', alignItems: 'center', gap: 12,
