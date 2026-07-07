@@ -62,7 +62,7 @@ export interface GameState {
   playerResults: PlayerRef[];
   scopes: ScopesList | null;
   profile: ProfileView | null;
-  trophyDelta: { trophies: number; delta: number; arena: ArenaView } | null;
+  trophyDelta: { trophies: number; delta: number; arena: ArenaView; arenaReward?: number } | null;
   leaderboard: LeaderboardEntry[];
   friends: FriendInfo[];
   friendRequests: FriendRequestView[];
@@ -326,7 +326,7 @@ function reducer(state: GameState, action: Action): GameState {
     case 'trophy_update':
       return {
         ...state,
-        trophyDelta: { trophies: action.trophies, delta: action.delta, arena: action.arena },
+        trophyDelta: { trophies: action.trophies, delta: action.delta, arena: action.arena, arenaReward: (action as any).arenaReward },
         profile: state.profile
           ? {
               ...state.profile,

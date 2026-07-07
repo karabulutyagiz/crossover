@@ -51,6 +51,10 @@ import { GemIcon, GEM_COLOR } from './src/GemIcon';
 import { installGlobalErrorHandlers, track } from './src/telemetry';
 import type { ImageSourcePropType } from 'react-native';
 
+type GemCelebration =
+  | { kind: 'purchase'; amount: number; img?: ImageSourcePropType }
+  | { kind: 'arenaReward'; amount: number; arenaName: string };
+
 // AdMob must be initialized once at startup or no ad (incl. rewarded) will ever
 // load. Native module — absent in Expo Go, so require it guarded.
 let initMobileAds: (() => Promise<unknown>) | null = null;
@@ -165,9 +169,13 @@ export default function App() {
   const props = { state, actions };
   const scrollRef = useRef<ScrollView>(null);
   const diamondPillRef = useRef<View>(null); // measured so purchase animations fly gems onto it
+  const diamondCountAnim = useRef(new Animated.Value(0)).current;
+  const diamondFillAnim = useRef(new Animated.Value(0)).current;
   const measureDiamondPill = useCallback(() => {
     diamondPillRef.current?.measureInWindow((x, y, w, h) => {
-      if (w > 0 && h > 0) setGemTarget(x + w / 2, y + h / 2);
+      // Aim near the gem icon on the left side of the pill so particles visibly
+      // enter the counter before the bar fill/count animation takes over.
+      if (w > 0 && h > 0) setGemTarget(x + Math.min(30, w * 0.3), y + h / 2);
     });
   }, []);
   const programmaticScroll = useRef(false); // true right after a tab tap — ignore scroll events
@@ -180,7 +188,9 @@ export default function App() {
   const [comingSoon, setComingSoon] = useState(false); // Turnuvalar — greyed "coming soon"
   const [expiredSocialPack, setExpiredSocialPack] = useState(false); // Social Pack expired popup
   const [overlay, setOverlay] = useState<'leaderboard' | 'matchHistory' | null>(null); // centered popups
-  const [diamondCelebration, setDiamondCelebration] = useState<{ amount: number; img?: ImageSourcePropType } | null>(null);
+  const [gemCelebration, setGemCelebration] = useState<GemCelebration | null>(null);
+  const [diamondPillWidth, setDiamondPillWidth] = useState(148);
+  const [visibleDiamonds, setVisibleDiamonds] = useState(0);
   const csAnim = useRef(new Animated.Value(0)).current; // coming-soon pop/float
   const [fontsLoaded, fontError] = useFonts({
     'Poppins-Black': require('./assets/fonts/Poppins-Black.ttf'),
@@ -191,6 +201,45 @@ export default function App() {
 
   const [langKey, setLangKey] = useState(0); // increment to force full remount after language change
   const TABS = TAB_DEFS.map((tab) => ({ ...tab, label: t(tab.labelKey) }));
+
+  const setDiamondDisplayInstant = useCallback((value: number) => {
+    diamondCountAnim.stopAnimation();
+    diamondCountAnim.setValue(value);
+    setVisibleDiamonds(Math.max(0, Math.round(value)));
+  }, [diamondCountAnim]);
+
+  const animateDiamondGain = useCallback((from: number, to: number, amount: number) => {
+    const safeFrom = Math.max(0, Math.round(from));
+    const safeTo = Math.max(0, Math.round(to));
+    const duration = Math.min(1800, Math.max(850, 450 + Math.round(Math.log10(Math.max(amount, 10)) * 520)));
+    diamondCountAnim.stopAnimation();
+    diamondFillAnim.stopAnimation();
+    diamondCountAnim.setValue(safeFrom);
+    diamondFillAnim.setValue(0);
+    setVisibleDiamonds(safeFrom);
+    Animated.parallel([
+      Animated.timing(diamondCountAnim, {
+        toValue: safeTo,
+        duration,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+      Animated.sequence([
+        Animated.timing(diamondFillAnim, {
+          toValue: 1,
+          duration: Math.max(360, duration - 90),
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        Animated.timing(diamondFillAnim, {
+          toValue: 0,
+          duration: 230,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: false,
+        }),
+      ]),
+    ]).start();
+  }, [diamondCountAnim, diamondFillAnim]);
 
   useEffect(() => {
     installGlobalErrorHandlers();
@@ -209,6 +258,39 @@ export default function App() {
       .catch(() => setTutorialSeen(true));
     return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    const id = diamondCountAnim.addListener(({ value }) => setVisibleDiamonds(Math.max(0, Math.round(value))));
+    return () => diamondCountAnim.removeListener(id);
+  }, [diamondCountAnim]);
+
+  useEffect(() => {
+    const diamonds = state.profile?.diamonds;
+    if (typeof diamonds !== 'number') return;
+    if (gemCelebration) {
+      const before = Math.max(0, diamonds - gemCelebration.amount);
+      setDiamondDisplayInstant(before);
+      diamondFillAnim.stopAnimation();
+      diamondFillAnim.setValue(0);
+      requestAnimationFrame(() => requestAnimationFrame(measureDiamondPill));
+      return;
+    }
+    setDiamondDisplayInstant(diamonds);
+  }, [state.profile?.diamonds, gemCelebration, setDiamondDisplayInstant, diamondFillAnim, measureDiamondPill]);
+
+  const handleGemCelebrationDone = useCallback(() => {
+    const diamonds = state.profile?.diamonds ?? visibleDiamonds;
+    const amount = gemCelebration?.amount ?? 0;
+    setGemCelebration(null);
+    animateDiamondGain(Math.max(0, diamonds - amount), diamonds, amount);
+  }, [state.profile?.diamonds, visibleDiamonds, gemCelebration, animateDiamondGain]);
+
+  useEffect(() => {
+    const reward = state.trophyDelta?.arenaReward ?? 0;
+    const arenaName = state.trophyDelta?.arena?.name;
+    if (!reward || !arenaName) return;
+    setGemCelebration((current) => current ?? { kind: 'arenaReward', amount: reward, arenaName });
+  }, [state.trophyDelta?.arenaReward, state.trophyDelta?.arena?.name]);
 
   // Auto-show Social Pack renewal popup when it has expired.
   useEffect(() => {
@@ -408,10 +490,30 @@ export default function App() {
             <Ionicons name="trophy" size={18} color={theme.accent} />
             <Text style={s.trophyText}>{state.profile.trophies}</Text>
           </View>
-          <Pressable ref={diamondPillRef} onLayout={measureDiamondPill} style={s.diamondPill} onPress={() => { setStoreSection('diamonds'); goToTab(0); }}>
+          <Pressable
+            ref={diamondPillRef}
+            onLayout={(e) => {
+              setDiamondPillWidth(e.nativeEvent.layout.width);
+              measureDiamondPill();
+            }}
+            style={s.diamondPill}
+            onPress={() => { setStoreSection('diamonds'); goToTab(0); }}
+          >
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                s.diamondFill,
+                {
+                  width: diamondFillAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, diamondPillWidth],
+                  }),
+                },
+              ]}
+            />
             <View style={s.glassSheen} pointerEvents="none" />
             <GemIcon size={20} />
-            <Text style={s.diamondText}>{state.profile.diamonds}</Text>
+            <Text style={s.diamondText}>{visibleDiamonds}</Text>
             <View style={s.diamondPlus}>
               <Ionicons name="add" size={12} color="#fff" />
             </View>
@@ -435,7 +537,7 @@ export default function App() {
         style={{ flex: 1 }}
       >
         <View style={{ width: SCREEN_W, flex: 1 }}>
-          <StoreScreen {...props} scrollToSection={storeSection} onDiamondCelebration={setDiamondCelebration} />
+          <StoreScreen {...props} scrollToSection={storeSection} onDiamondCelebration={(c) => setGemCelebration({ kind: 'purchase', amount: c.amount, img: c.img })} />
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
           <CollectionScreen {...props} />
@@ -528,11 +630,13 @@ export default function App() {
       <MatchHistoryModal visible={overlay === 'matchHistory'} history={state.matchHistory} myName={state.profile?.displayName ?? ''} onClose={() => setOverlay(null)} />
       <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
 
-      {diamondCelebration ? (
+      {gemCelebration ? (
         <DiamondCelebration
-          amount={diamondCelebration.amount}
-          img={diamondCelebration.img}
-          onDone={() => setDiamondCelebration(null)}
+          amount={gemCelebration.amount}
+          img={gemCelebration.kind === 'purchase' ? gemCelebration.img : undefined}
+          variant={gemCelebration.kind === 'arenaReward' ? 'arenaReward' : 'purchase'}
+          arenaName={gemCelebration.kind === 'arenaReward' ? gemCelebration.arenaName : undefined}
+          onDone={handleGemCelebrationDone}
         />
       ) : null}
 
@@ -694,6 +798,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    overflow: 'hidden',
     minWidth: 148, // longer left↔right
     justifyContent: 'center',
     backgroundColor: 'rgba(228,238,255,0.13)', // true glass — bg pattern shows through
@@ -712,6 +817,14 @@ const s = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
+  },
+  diamondFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(168,85,247,0.24)',
+    borderRadius: 19,
   },
   diamondText: {
     color: theme.gemText,

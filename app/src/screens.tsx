@@ -528,15 +528,13 @@ export function SplashScreen() {
       Animated.timing(fade, { toValue: 1, duration: 700, easing: Easing.out(Easing.quad), useNativeDriver: true }),
     ]).start();
   }, [logo, fade]);
-  const scale = logo.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] });
-  const lift = logo.interpolate({ inputRange: [0, 1], outputRange: [8, 0] });
+  const scale = logo.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] });
+  const lift = logo.interpolate({ inputRange: [0, 1], outputRange: [6, 0] });
+  const logoSize = Math.min(SCREEN_W * 0.72, SCREEN_H * 0.32);
   return (
-    <View style={{ flex: 1, backgroundColor: '#07111F', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-      <View style={{ position: 'absolute', width: SCREEN_W * 0.72, height: SCREEN_W * 0.72, borderRadius: SCREEN_W * 0.36, backgroundColor: theme.primary, opacity: 0.045 }} />
-      <Animated.View style={{ opacity: fade, transform: [{ translateY: lift }, { scale }], alignItems: 'center', paddingHorizontal: 34 }}>
-        <Image source={require('../assets/splash-icon.png')} style={{ width: 104, height: 104 }} resizeMode="contain" />
-        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ color: '#F8FBFF', fontSize: 23, fontFamily: 'Poppins-Black', letterSpacing: 3.2, textAlign: 'center', includeFontPadding: false, marginTop: 24 }}>CROSSOVER</Text>
-        <Text style={{ color: 'rgba(248,251,255,0.42)', fontSize: 10, fontFamily: 'Poppins-SemiBold', letterSpacing: 2.2, marginTop: 9 }}>FOOTBALL</Text>
+    <View style={{ flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View style={{ opacity: fade, transform: [{ translateY: lift }, { scale }] }}>
+        <Image source={require('../assets/splash-icon.png')} style={{ width: logoSize, height: logoSize }} resizeMode="contain" />
       </Animated.View>
     </View>
   );
@@ -2627,10 +2625,24 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
 // counter, then the overlay dismisses. Triggered after a successful IAP.
 const GEM_COUNT = 10; // number of flying gem particles
 
-export function DiamondCelebration({ amount, img, onDone }: { amount: number; img?: ImageSourcePropType; onDone: () => void }) {
+export function DiamondCelebration({
+  amount,
+  img,
+  onDone,
+  variant = 'purchase',
+  arenaName,
+}: {
+  amount: number;
+  img?: ImageSourcePropType;
+  onDone: () => void;
+  variant?: 'purchase' | 'arenaReward';
+  arenaName?: string;
+}) {
   const [flying, setFlying] = useState(false);
   const cardScale = useRef(new Animated.Value(0)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
+  const arenaHeroAnim = useRef(new Animated.Value(0)).current;
+  const arenaSheenAnim = useRef(new Animated.Value(0)).current;
   const gemAnims = useRef(Array.from({ length: GEM_COUNT }, () => ({
     x: new Animated.Value(0),
     y: new Animated.Value(0),
@@ -2646,6 +2658,12 @@ export function DiamondCelebration({ amount, img, onDone }: { amount: number; im
   // top-right corner if it hasn't been measured yet.
   const targetX = gemTarget.measured ? gemTarget.x : screenW - 86;
   const targetY = gemTarget.measured ? gemTarget.y : 78;
+  const arenaReward = variant === 'arenaReward';
+  const arenaVisual = arenaName ? getArenaDataByName(arenaName) : null;
+  const title = arenaReward ? 'Tebrikler, yeni arenaya ulaştın!' : t('store.purchaseSuccess');
+  const subtitle = arenaReward
+    ? `${arenaName ?? 'Yeni arena'} ödülün: +${amount.toLocaleString('tr-TR')} elmas`
+    : null;
 
   // Pop the card in on mount.
   useEffect(() => {
@@ -2654,6 +2672,29 @@ export function DiamondCelebration({ amount, img, onDone }: { amount: number; im
       Animated.timing(cardOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
     ]).start();
   }, [cardScale, cardOpacity]);
+
+  useEffect(() => {
+    if (!arenaReward || !arenaVisual) return;
+    arenaHeroAnim.setValue(0);
+    arenaSheenAnim.setValue(0);
+    Animated.parallel([
+      Animated.timing(arenaHeroAnim, {
+        toValue: 1,
+        duration: 320,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.sequence([
+        Animated.delay(120),
+        Animated.timing(arenaSheenAnim, {
+          toValue: 1,
+          duration: 850,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+  }, [arenaReward, arenaVisual, arenaHeroAnim, arenaSheenAnim]);
 
   // Close → fade the card, then fly the gems into the counter, then finish.
   const handleClose = () => {
@@ -2670,6 +2711,8 @@ export function DiamondCelebration({ amount, img, onDone }: { amount: number; im
       const startOffY = (Math.random() - 0.5) * 70;
       g.x.setValue(originX + startOffX);
       g.y.setValue(originY + startOffY);
+      g.scale.setValue(0);
+      g.opacity.setValue(0);
       setTimeout(() => {
         Animated.sequence([
           Animated.parallel([
@@ -2679,8 +2722,11 @@ export function DiamondCelebration({ amount, img, onDone }: { amount: number; im
           Animated.parallel([
             Animated.timing(g.x, { toValue: targetX, duration: 540, easing: Easing.in(Easing.quad), useNativeDriver: true }),
             Animated.timing(g.y, { toValue: targetY, duration: 540, easing: Easing.in(Easing.quad), useNativeDriver: true }),
-            Animated.timing(g.scale, { toValue: 0.3, duration: 540, useNativeDriver: true }),
-            Animated.timing(g.opacity, { toValue: 0, duration: 420, delay: 140, useNativeDriver: true }),
+            Animated.timing(g.scale, { toValue: 0.44, duration: 540, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(g.scale, { toValue: 0.18, duration: 120, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.opacity, { toValue: 0, duration: 120, useNativeDriver: true }),
           ]),
         ]).start();
       }, i * perGem);
@@ -2692,10 +2738,9 @@ export function DiamondCelebration({ amount, img, onDone }: { amount: number; im
   return (
     <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={handleClose}>
       <View style={StyleSheet.absoluteFill}>
-        {/* Dim backdrop — tap to close (same as the X) while the card is up */}
         <Pressable
           style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(6,10,20,0.74)' }]}
-          onPress={flying ? undefined : handleClose}
+          onPress={!arenaReward && !flying ? handleClose : undefined}
         />
 
         {/* Centered popup card */}
@@ -2712,35 +2757,85 @@ export function DiamondCelebration({ amount, img, onDone }: { amount: number; im
               shadowColor: GEM_COLOR, shadowOpacity: 0.55, shadowRadius: 22, shadowOffset: { width: 0, height: 8 }, elevation: 16,
             }}
           >
-            {/* Close X (top-right) */}
-            <Pressable onPress={handleClose} hitSlop={12} style={{
-              position: 'absolute', top: 10, right: 10, width: 32, height: 32, borderRadius: 16,
-              backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center',
-              borderWidth: 1, borderColor: theme.border, zIndex: 3,
-            }}>
-              <Ionicons name="close" size={19} color={theme.muted} />
-            </Pressable>
+            {!arenaReward ? (
+              <Pressable onPress={handleClose} hitSlop={12} style={{
+                position: 'absolute', top: 10, right: 10, width: 32, height: 32, borderRadius: 16,
+                backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center',
+                borderWidth: 1, borderColor: theme.border, zIndex: 3,
+              }}>
+                <Ionicons name="close" size={19} color={theme.muted} />
+              </Pressable>
+            ) : null}
 
-            {img ? (
+            {arenaReward && arenaVisual ? (
+              <View style={{ width: '100%', marginBottom: 14 }}>
+                <Animated.View style={{
+                  borderRadius: 22,
+                  overflow: 'hidden',
+                  borderWidth: 1.5,
+                  borderColor: arenaVisual.color + '66',
+                  backgroundColor: '#08111C',
+                  opacity: arenaHeroAnim.interpolate({ inputRange: [0, 1], outputRange: [0.76, 1] }),
+                  transform: [{ scale: arenaHeroAnim.interpolate({ inputRange: [0, 1], outputRange: [0.985, 1] }) }],
+                }}>
+                  <Image source={arenaVisual.img} style={{ width: '100%', aspectRatio: 16 / 9 }} resizeMode="cover" />
+                  <Animated.View
+                    pointerEvents="none"
+                    style={{
+                      position: 'absolute',
+                      top: -16,
+                      bottom: -16,
+                      width: '32%',
+                      backgroundColor: 'rgba(255,255,255,0.11)',
+                      opacity: arenaSheenAnim.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.85, 0] }),
+                      transform: [
+                        { translateX: arenaSheenAnim.interpolate({ inputRange: [0, 1], outputRange: [-120, 300] }) },
+                        { rotate: '14deg' },
+                      ],
+                    }}
+                  />
+                  <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 14, paddingTop: 18, paddingBottom: 12, backgroundColor: 'rgba(4,10,18,0.36)' }}>
+                    <View style={{ backgroundColor: 'rgba(4,10,18,0.76)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: arenaVisual.color + '55' }}>
+                      <Text numberOfLines={1} style={{ color: arenaVisual.color, fontFamily: 'Poppins-ExtraBold', fontSize: 16, textAlign: 'center' }}>
+                        {arenaLabel(arenaVisual.name)}
+                      </Text>
+                    </View>
+                  </View>
+                </Animated.View>
+              </View>
+            ) : !arenaReward && img ? (
               <Image source={img} style={{ width: 150, height: 150 }} resizeMode="contain" />
             ) : (
               <View style={{ width: 150, height: 150, alignItems: 'center', justifyContent: 'center' }}>
-                <GemIcon size={104} />
+                <GemIcon size={arenaReward ? 118 : 104} />
               </View>
             )}
             <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18, marginTop: 6, textAlign: 'center' }}>
-              {t('store.purchaseSuccess')}
+              {title}
             </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, backgroundColor: theme.bg2, borderRadius: 16, paddingHorizontal: 18, paddingVertical: 9, borderWidth: 1.5, borderColor: GEM_COLOR + '55' }}>
-              <GemIcon size={24} />
-              <Text style={{ color: theme.gemText, fontFamily: 'Poppins-Black', fontSize: 22 }}>+{amount.toLocaleString('tr-TR')}</Text>
-            </View>
+            {subtitle ? (
+              <Text style={{ color: theme.muted, fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 10 }}>
+                {subtitle}
+              </Text>
+            ) : (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, backgroundColor: theme.bg2, borderRadius: 16, paddingHorizontal: 18, paddingVertical: 9, borderWidth: 1.5, borderColor: GEM_COLOR + '55' }}>
+                <GemIcon size={24} />
+                <Text style={{ color: theme.gemText, fontFamily: 'Poppins-Black', fontSize: 22 }}>+{amount.toLocaleString('tr-TR')}</Text>
+              </View>
+            )}
             <Pressable onPress={handleClose} style={{
               marginTop: 20, alignSelf: 'stretch', backgroundColor: theme.primary, borderRadius: 16,
               paddingVertical: 13, alignItems: 'center',
               borderBottomWidth: 4, borderBottomColor: theme.primaryDark,
             }}>
-              <Text style={{ color: '#06131F', fontFamily: 'Poppins-ExtraBold', fontSize: 15 }}>{t('store.gotIt')}</Text>
+              {arenaReward ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <GemIcon size={22} />
+                  <Text style={{ color: '#06131F', fontFamily: 'Poppins-Black', fontSize: 19 }}>+{amount.toLocaleString('tr-TR')}</Text>
+                </View>
+              ) : (
+                <Text style={{ color: '#06131F', fontFamily: 'Poppins-ExtraBold', fontSize: 15 }}>{t('store.gotIt')}</Text>
+              )}
             </Pressable>
           </Animated.View>
         </View>
@@ -4574,6 +4669,10 @@ const ARENA_DATA = [
   { name: 'Mahalle Sahası', min: 0, max: 199, color: '#8B4513', icon: 'shield-outline' as IoniconName, img: require('../assets/arenas/mahalle.png'), win: '+30', loss: '-10', reward: 50, desc: 'Herkesin başladığı yer. Kolay tırmanış.' },
 ];
 
+function getArenaDataByName(name: string) {
+  return ARENA_DATA.find((arena) => arena.name === name) ?? null;
+}
+
 export function ArenasScreen({ state, actions }: Props) {
   const trophies = state.profile?.trophies ?? 0;
   const currentArenaIdx = ARENA_DATA.findIndex((a) => trophies >= a.min && trophies <= a.max);
@@ -4648,7 +4747,7 @@ export function ArenasScreen({ state, actions }: Props) {
                       {arena.min} - {arena.max === 99999 ? '∞' : arena.max} 🏆
                     </Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 }}>
-                      <Ionicons name="diamond" size={13} color={theme.accent} />
+                      <GemIcon size={14} />
                       <Text style={{ color: theme.accent, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold' }}>+{arena.reward}</Text>
                     </View>
                     <Text style={[styles.muted, { fontSize: 11, marginTop: 2 }]}>{arenaDesc(arena.name)}</Text>

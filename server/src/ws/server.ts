@@ -127,6 +127,18 @@ function sendToUser(userId: string, msg: ServerMsg): void {
   }
 }
 
+async function ensureProfileLoaded(
+  current: UserProfile | undefined,
+  userId: string | undefined,
+  ws: WebSocket,
+): Promise<UserProfile | undefined> {
+  if (current || !userId) return current;
+  const profile = await getUser(userId).catch(() => null);
+  if (!profile) return current;
+  addOnline(profile.id, ws);
+  return profile;
+}
+
 /** Build a friends_list message with online status. */
 async function getFriendsData(userId: string): Promise<ServerMsg & { type: 'friends_list' }> {
   const [rawFriends, requests] = await Promise.all([
@@ -718,12 +730,10 @@ export function startServer(port: number): Server {
         }
         if (msg.type === 'find_match') {
           void (async () => {
-            // If this is a fresh socket (no register/auth yet), look up the profile
-            // from the userId the client sent so trophies/arena are available.
-            if (!userProfile && msg.userId) {
-              const u = await getUser(msg.userId);
-              if (u) { userProfile = u; addOnline(u.id, ws); }
-            }
+            // Fresh match sockets may not have registered yet; load the canonical
+            // server profile once so room membership and trophy updates never trust
+            // a stale/spoofed client-sent user id over the authenticated account.
+            userProfile = await ensureProfileLoaded(userProfile, msg.userId, ws);
             // Prefer the registered profile name; fall back to the name the client
             // sent with the request (the matchmaking socket may not have registered).
             const name = userProfile?.displayName ?? msg.name ?? 'Oyuncu';
@@ -751,8 +761,8 @@ export function startServer(port: number): Server {
               const room = manager.createRoom();
               if (msg.options?.scope) room.scope = msg.options.scope;
               room.gameMode = requestedMode;
-              const resA = room.addPlayer(partner.name, partner.transport, true, partner.userId, partner.userProfile?.trophies, partner.userProfile?.arena, partner.userProfile?.avatar);
-              const resB = room.addPlayer(name, transport, false, msg.userId ?? userProfile?.id, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
+              const resA = room.addPlayer(partner.name, partner.transport, true, partner.userProfile?.id ?? partner.userId, partner.userProfile?.trophies, partner.userProfile?.arena, partner.userProfile?.avatar);
+              const resB = room.addPlayer(name, transport, false, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
               if (resA.ok) partner.setCtx({ room, playerId: resA.id, userProfile: partner.userProfile });
               if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
               // Auto-start after matchup reveal delay
@@ -765,7 +775,7 @@ export function startServer(port: number): Server {
                 transport,
                 ws,
                 name,
-                userId: msg.userId ?? userProfile?.id,
+                userId: userProfile?.id ?? msg.userId,
                 userProfile,
                 options: msg.options,
                 setCtx: (c) => { ctx = c; },
@@ -778,22 +788,24 @@ export function startServer(port: number): Server {
         }
 
         if (msg.type === 'create_room') {
+          userProfile = await ensureProfileLoaded(userProfile, msg.userId, ws);
           if (!canUseMode(userProfile, msg.options?.mode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
           const room = manager.createRoom();
           if (msg.options?.scope) room.scope = msg.options.scope;
           if (msg.options?.mode) room.gameMode = msg.options.mode;
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, true, msg.userId ?? userProfile?.id, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
+          const res = room.addPlayer(name, transport, true, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
           if (res.ok) ctx = { room, playerId: res.id, userProfile };
           return;
         }
         if (msg.type === 'create_solo') {
+          userProfile = await ensureProfileLoaded(userProfile, msg.userId, ws);
           if (!canUseMode(userProfile, msg.options?.mode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
           const room = manager.createRoom();
           if (msg.options?.scope) room.scope = msg.options.scope;
           if (msg.options?.mode) room.gameMode = msg.options.mode;
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, true, msg.userId ?? userProfile?.id, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
+          const res = room.addPlayer(name, transport, true, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
           if (res.ok) ctx = { room, playerId: res.id, userProfile };
           const bot = new BotPlayer({ difficulty: msg.options?.difficulty, scope: room.scope, mode: room.gameMode });
           const botRes = room.addPlayer('Bot', bot, false);
@@ -801,11 +813,12 @@ export function startServer(port: number): Server {
           return;
         }
         if (msg.type === 'join_room') {
+          userProfile = await ensureProfileLoaded(userProfile, msg.userId, ws);
           const room = manager.get(msg.code);
           if (!room) return transport.send({ type: 'error', message: 'Room not found' });
           if (!canUseMode(userProfile, room.gameMode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, false, msg.userId ?? userProfile?.id, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
+          const res = room.addPlayer(name, transport, false, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
           if (!res.ok) return transport.send({ type: 'error', message: res.error });
           ctx = { room, playerId: res.id, userProfile };
           return;
