@@ -52,6 +52,7 @@ import {
 import type { EmoteMeta } from './emotes';
 import { AvatarBadge, avatarMeta, avatarPrice, ownsAvatar } from './avatars';
 import { NATIONALITIES } from './nationalities';
+import { captureError, track } from './telemetry';
 // react-native-iap v15 (StoreKit2) — native module, absent in Expo Go. Wrap the require
 // in try/catch so the app still loads in Expo Go (Store shows "coming soon"); the real
 // module is present in dev/prod builds. v15 is the version compatible with RN's prebuilt-
@@ -143,6 +144,7 @@ interface Props {
   state: GameState;
   actions: Actions;
   onGoToStore?: (section?: 'socialPack' | 'diamonds') => void;
+  onDiamondCelebration?: (celebration: { amount: number; img?: ImageSourcePropType }) => void;
   tutorial?: boolean; // running inside the guided simulation → no emotes, no keyboard autofocus
   onLanguageChange?: () => void;
   onOpenLeaderboard?: () => void; // open the centered leaderboard popup (App-level overlay)
@@ -516,37 +518,26 @@ export function IntroScreen({ onDone }: { onDone: () => void }) {
   );
 }
 
-// ---- Animated branded splash (rings expand outward → CROSSOVER → BY GAMES) ----
+// ---- Animated branded splash ----
 export function SplashScreen() {
-  const ring = useRef(new Animated.Value(0)).current;
+  const logo = useRef(new Animated.Value(0)).current;
   const fade = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.sequence([
-      Animated.timing(ring, { toValue: 1, duration: 950, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      Animated.timing(fade, { toValue: 1, duration: 450, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+    Animated.parallel([
+      Animated.timing(logo, { toValue: 1, duration: 900, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(fade, { toValue: 1, duration: 700, easing: Easing.out(Easing.quad), useNativeDriver: true }),
     ]).start();
-  }, [ring, fade]);
-  const scale = ring.interpolate({ inputRange: [0, 1], outputRange: [0.15, 1] });
-  const ringOpacity = ring.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0.45, 0.16] });
+  }, [logo, fade]);
+  const scale = logo.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] });
+  const lift = logo.interpolate({ inputRange: [0, 1], outputRange: [8, 0] });
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
-      {[1.8, 1.25, 0.8].map((m, i) => (
-        <Animated.View
-          key={i}
-          style={{
-            position: 'absolute', width: SCREEN_W * m, height: SCREEN_W * m, borderRadius: (SCREEN_W * m) / 2,
-            backgroundColor: i === 1 ? theme.accent : theme.primary,
-            opacity: ringOpacity, transform: [{ scale }],
-          }}
-        />
-      ))}
-      <Animated.View style={{ opacity: fade, alignItems: 'center', gap: 12, alignSelf: 'stretch', paddingHorizontal: 20 }}>
-        <Image source={require('../assets/splash-icon.png')} style={{ width: 70, height: 70 }} resizeMode="contain" />
-        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: theme.text, fontSize: 34, fontFamily: 'Poppins-Black', letterSpacing: 2, textAlign: 'center', alignSelf: 'stretch', includeFontPadding: false }}>CROSSOVER</Text>
+    <View style={{ flex: 1, backgroundColor: '#07111F', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+      <View style={{ position: 'absolute', width: SCREEN_W * 0.72, height: SCREEN_W * 0.72, borderRadius: SCREEN_W * 0.36, backgroundColor: theme.primary, opacity: 0.045 }} />
+      <Animated.View style={{ opacity: fade, transform: [{ translateY: lift }, { scale }], alignItems: 'center', paddingHorizontal: 34 }}>
+        <Image source={require('../assets/splash-icon.png')} style={{ width: 104, height: 104 }} resizeMode="contain" />
+        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ color: '#F8FBFF', fontSize: 23, fontFamily: 'Poppins-Black', letterSpacing: 3.2, textAlign: 'center', includeFontPadding: false, marginTop: 24 }}>CROSSOVER</Text>
+        <Text style={{ color: 'rgba(248,251,255,0.42)', fontSize: 10, fontFamily: 'Poppins-SemiBold', letterSpacing: 2.2, marginTop: 9 }}>FOOTBALL</Text>
       </Animated.View>
-      <Animated.Text style={{ position: 'absolute', bottom: 44, color: theme.muted, fontSize: 12, letterSpacing: 3, fontFamily: 'Poppins-ExtraBold', opacity: fade }}>
-        BY GAMES
-      </Animated.Text>
     </View>
   );
 }
@@ -585,11 +576,11 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
       <ScreenBg />
-      <View style={{ alignItems: 'center', gap: 14, alignSelf: 'stretch', paddingHorizontal: 24 }}>
-        <View style={{ width: 96, height: 96, borderRadius: 24, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.primary }}>
-          <Image source={require('../assets/splash-icon.png')} style={{ width: 60, height: 60 }} resizeMode="contain" />
+      <View style={{ alignItems: 'center', alignSelf: 'stretch', paddingHorizontal: 24 }}>
+        <View style={{ width: 112, height: 112, borderRadius: 28, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.primary, borderBottomWidth: 5, borderBottomColor: theme.primaryDark }}>
+          <Image source={require('../assets/splash-icon.png')} style={{ width: 84, height: 84 }} resizeMode="contain" />
         </View>
-        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: theme.text, fontSize: 30, fontFamily: 'Poppins-Black', letterSpacing: 2, textAlign: 'center', alignSelf: 'stretch', includeFontPadding: false }}>CROSSOVER</Text>
+        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: theme.text, fontSize: 32, fontFamily: 'Poppins-Black', letterSpacing: 1.5, textAlign: 'center', alignSelf: 'stretch', includeFontPadding: false, marginTop: 14 }}>CROSSOVER</Text>
       </View>
 
       <View style={{ position: 'absolute', left: 32, right: 32, bottom: 64, alignItems: 'center', gap: 10 }}>
@@ -1640,8 +1631,11 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuSub, setMenuSub] = useState<'settings' | null>(null);
   const [botOpen, setBotOpen] = useState(false);
+  const [specialOpen, setSpecialOpen] = useState(false);
+  const [socialPackPopup, setSocialPackPopup] = useState(false);
   const opts: GameOptions = { scope, mode };
   const profile = state.profile;
+  const hasSocialPack = !!(profile?.socialPackUntil && new Date(profile.socialPackUntil) > new Date());
   const playerName = profile?.displayName ?? (name || t('home.namePlaceholder'));
 
   return (
@@ -1665,8 +1659,15 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
 
         <View style={{ height: 16 }} />
 
-        {/* Primary action — quick match always all teams, team-team mode */}
-        <Btn label={t('home.quickMatch')} icon="flash" kind="primary" big onPress={() => actions.findMatch({ mode: 'team-team' })} />
+        {/* Primary actions: normal ranked match + Clash-style special mode queue. */}
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1.25 }}>
+            <Btn label={t('home.quickMatch')} icon="flash" kind="primary" big onPress={() => actions.findMatch({ mode: 'team-team' })} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Btn label={t('home.specialMode')} icon="sparkles" kind="blue" big onPress={() => setSpecialOpen(true)} />
+          </View>
+        </View>
 
         {/* Bot match */}
         <Btn label={t('home.solo')} icon="game-controller" kind="accent" onPress={() => setBotOpen(true)} />
@@ -1745,6 +1746,39 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
             </Pressable>
           );
         })}
+      </GameModal>
+
+      <GameModal visible={specialOpen} onClose={() => setSpecialOpen(false)} title={t('home.specialModeTitle')} icon="sparkles">
+        <Text style={[styles.muted, { textAlign: 'center', marginBottom: 4 }]}>{t('home.specialModeBody')}</Text>
+        {(['country-team', 'letter-team'] as GameMode[]).map((m) => {
+          const locked = !hasSocialPack;
+          return (
+            <Pressable
+              key={m}
+              style={[styles.modalRow, locked && { opacity: 0.45 }]}
+              onPress={() => {
+                if (locked) {
+                  setSpecialOpen(false);
+                  setSocialPackPopup(true);
+                  return;
+                }
+                setSpecialOpen(false);
+                actions.findMatch({ mode: m });
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Ionicons name={MODE_ICON[m]} size={18} color={locked ? theme.muted : theme.accent} />
+                <Text style={[styles.modalRowText, locked && { color: theme.muted }]}>{MODE_LABEL(m)}</Text>
+              </View>
+              {locked ? <Ionicons name="lock-closed" size={16} color={theme.muted} /> : null}
+            </Pressable>
+          );
+        })}
+      </GameModal>
+
+      <GameModal visible={socialPackPopup} onClose={() => setSocialPackPopup(false)} title={t('friends.socialPackRequired')} icon="lock-closed">
+        <Text style={[styles.muted, { textAlign: 'center', marginBottom: 8 }]}>{t('home.specialModeLocked')}</Text>
+        <Btn label={t('friends.goToStore')} kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); onGoToStore?.('socialPack'); }} />
       </GameModal>
 
       <PickerModal
@@ -2593,7 +2627,7 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
 // counter, then the overlay dismisses. Triggered after a successful IAP.
 const GEM_COUNT = 10; // number of flying gem particles
 
-function DiamondCelebration({ amount, img, onDone }: { amount: number; img?: ImageSourcePropType; onDone: () => void }) {
+export function DiamondCelebration({ amount, img, onDone }: { amount: number; img?: ImageSourcePropType; onDone: () => void }) {
   const [flying, setFlying] = useState(false);
   const cardScale = useRef(new Animated.Value(0)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
@@ -2944,7 +2978,7 @@ function WeeklyCountdown() {
   );
 }
 
-export function StoreScreen({ state, actions, scrollToSection }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | null }) {
+export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebration }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | null }) {
   const profile = state.profile;
   const adReward = useCallback(() => {
     // Watched a rewarded ad → credit diamonds server-side (persisted + capped).
@@ -2952,19 +2986,17 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
     // the celebration overlay on success, an alert with the cap/throttle reason on
     // refusal. The balance updates from the server's ad_reward_result reply.
     actions.grantAdReward()
-      .then((granted) => { if (granted > 0) setCelebration({ amount: granted }); })
+      .then((granted) => { track('ad_reward_granted', { granted }); if (granted > 0) onDiamondCelebration?.({ amount: granted }); })
       .catch((e: Error) => {
+        captureError(e, { where: 'ad_reward' });
         if (!/timeout|disconnected/.test(e?.message ?? '')) {
           Alert.alert(t('store.adRewardTitle'), e?.message ?? t('store.adRewardFailed'));
         }
       });
-  }, [actions]);
+  }, [actions, onDiamondCelebration]);
   const { adsWatched, canWatch, watchAd, adLoading } = useAdState(adReward);
   const storeScrollRef = useRef<ScrollView>(null);
   const sectionYRef = useRef<Record<string, number>>({});
-
-  // ── Diamond purchase celebration animation ──
-  const [celebration, setCelebration] = useState<{ amount: number; img?: ImageSourcePropType } | null>(null);
 
   // ── Apple In-App Purchase (StoreKit): consumable diamond packs + auto-renewable Social Pack ──
   const [buying, setBuying] = useState<string | null>(null); // productId mid-purchase
@@ -2976,20 +3008,23 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
       if (!jws) throw new Error('no-jws');
       await actions.verifyPurchase(jws);
       await iapFinishTransaction({ purchase, isConsumable: !isSub });
+      track('purchase_success', { productId: purchase.productId, kind: isSub ? 'subscription' : 'diamonds' });
       // Trigger celebration animation for diamond purchases
       if (!isSub) {
         const pack = DIAMOND_PACKS.find((p) => p.productId === purchase.productId);
-        if (pack) setCelebration({ amount: pack.amount, img: pack.img });
+        if (pack) onDiamondCelebration?.({ amount: pack.amount, img: pack.img });
       }
-    } catch {
+    } catch (err) {
+      captureError(err, { where: 'purchase_success', productId: purchase.productId });
       Alert.alert(t('store.purchasePendingTitle'), t('store.purchasePendingBody'));
     } finally {
       setBuying(null);
     }
-  }, [actions]);
+  }, [actions, onDiamondCelebration]);
   const onPurchaseError = useCallback((err: { code?: string }) => {
     setBuying(null);
     const code = err?.code ?? '';
+    track('purchase_error', { code });
     if (!/cancel/i.test(code)) Alert.alert(t('store.purchaseFailedTitle'), t('store.purchaseFailedBody'));
   }, []);
   const { connected, products, subscriptions, requestPurchase, fetchProducts } = useIAP({ onPurchaseSuccess, onPurchaseError });
@@ -3025,6 +3060,7 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
     if (!loaded) { Alert.alert(t('store.comingSoonTitle'), t('store.comingSoonBody')); return; }
     const isSub = SOCIAL_PACK_IDS.includes(productId);
     setBuying(productId);
+    track('purchase_start', { productId, kind: isSub ? 'subscription' : 'diamonds' });
     const apple = { sku: productId, appAccountToken: profile?.userId ?? undefined };
     Promise.resolve(requestPurchase({ request: { apple }, type: isSub ? 'subs' : 'in-app' })).catch(() => setBuying(null));
   }, [buying, requestPurchase, products, subscriptions, profile?.userId]);
@@ -3193,26 +3229,35 @@ export function StoreScreen({ state, actions, scrollToSection }: Props & { scrol
         ))}
       </ScrollView>
 
-      {/* Diamond purchase celebration overlay */}
-      {celebration ? (
-        <DiamondCelebration
-          amount={celebration.amount}
-          img={celebration.img}
-          onDone={() => setCelebration(null)}
-        />
-      ) : null}
+      {buying ? <PurchaseOverlay /> : null}
     </Screen>
   );
 }
 
+function PurchaseOverlay() {
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(6, 12, 24, 0.62)', paddingHorizontal: 28 }}>
+      <View style={{ width: '100%', maxWidth: 280, borderRadius: 24, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.primary + '66', alignItems: 'center', paddingVertical: 26, paddingHorizontal: 22, shadowColor: theme.primary, shadowOpacity: 0.22, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 18 }}>
+        <View style={{ width: 86, height: 86, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', marginBottom: 14 }}>
+          <Image source={require('../assets/splash-icon.png')} style={{ width: 58, height: 58 }} resizeMode="contain" />
+        </View>
+        <Text style={{ color: theme.text, fontFamily: 'Poppins-Black', fontSize: 20, letterSpacing: 1.2 }}>CROSSOVER</Text>
+        <Text style={{ color: theme.muted, fontSize: 12, textAlign: 'center', marginTop: 8 }}>Satın alma güvenli şekilde işleniyor...</Text>
+        <ActivityIndicator color={theme.primary} style={{ marginTop: 16 }} />
+      </View>
+    </View>
+  );
+}
+
 // ---- Discoverable emote card (tap to play once, then greyscale) ----
-function DiscoverableEmoteCard({ emote, lastTapped, onTap }: {
+function DiscoverableEmoteCard({ emote, lastTapped, onTap, width }: {
   emote: EmoteMeta;
   lastTapped: string | null;
   onTap: (id: string) => void;
+  width: number;
 }) {
   const [playing, setPlaying] = useState(false);
-  const tmRef = useRef<ReturnType<typeof setTimeout>>();
+  const tmRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handlePress = () => {
     if (playing) return;
@@ -3234,7 +3279,7 @@ function DiscoverableEmoteCard({ emote, lastTapped, onTap }: {
       key={emote.id}
       onPress={handlePress}
       style={{
-        width: 82, paddingTop: 10, paddingBottom: 8,
+        width, paddingTop: 10, paddingBottom: 8,
         backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
         borderWidth: 2, borderColor: highlighted ? theme.primary : theme.border,
         borderBottomWidth: 3,
@@ -3274,6 +3319,7 @@ export function CollectionScreen({ state, actions }: Props) {
     ...ANIM_EMOTES.filter((e) => ownsEmote(profile, e.id)),
   ];
   const allEmotes: EmoteMeta[] = [...FACE_EMOTES, ...PREMIUM_EMOTES, ...ANIM_EMOTES];
+  const discoverable = allEmotes.filter((e) => !ownsEmote(profile, e.id));
   const COL_GAP = 8;
   const COL_W = Math.floor((SCREEN_W - 44 - COL_GAP * 3) / 4);
   const full = equipped.length >= EMOTE_SLOTS;
@@ -3349,9 +3395,15 @@ export function CollectionScreen({ state, actions }: Props) {
         <View style={{ height: 16 }} />
         <Text style={{ color: theme.muted, fontFamily: 'Poppins-ExtraBold', fontSize: 13, letterSpacing: 0.5, marginBottom: 10, marginLeft: 4 }}>{t('collection.discoverable')}</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP }}>
-          {allEmotes.map((e) => (
-            <DiscoverableEmoteCard key={e.id} emote={e} lastTapped={lastTapped} onTap={setLastTapped} />
-          ))}
+          {discoverable.length ? (
+            discoverable.map((e) => (
+              <DiscoverableEmoteCard key={e.id} emote={e} lastTapped={lastTapped} onTap={setLastTapped} width={COL_W} />
+            ))
+          ) : (
+            <View style={{ flex: 1, minHeight: 70, borderRadius: 14, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }}>
+              <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700', textAlign: 'center' }}>{t('collection.allOwned')}</Text>
+            </View>
+          )}
         </View>
       </ScrollView>
     </Screen>
@@ -3446,6 +3498,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
   const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 }); // tap anchor for the popover
   const [confirmRemove, setConfirmRemove] = useState<FriendInfo | null>(null); // remove confirmation
   const [socialPackPopup, setSocialPackPopup] = useState(false);
+  const menuActionLock = useRef(false);
   const profile = state.profile;
   const hasSocialPack = profile?.socialPackUntil ? new Date(profile.socialPackUntil) > new Date() : false;
   const friends = state.friends;
@@ -3710,7 +3763,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
           friends.map((f) => (
             <Pressable
               key={f.userId}
-              onPress={(e) => { setMenuPos({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY }); setMenuFriend(f); }}
+              onPress={(e) => { menuActionLock.current = false; setMenuPos({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY }); setMenuFriend(f); }}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 12,
                 backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 8,
@@ -3738,7 +3791,8 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
 
       {/* Friend actions — small Clash-Royale-style popover above the tapped row */}
       <Modal visible={menuFriend !== null} transparent animationType="fade" onRequestClose={() => setMenuFriend(null)}>
-        <Pressable style={{ flex: 1 }} onPress={() => setMenuFriend(null)}>
+        <View style={{ flex: 1 }} pointerEvents="box-none">
+          <Pressable style={[StyleSheet.absoluteFill, { zIndex: 0 }]} onPress={() => setMenuFriend(null)} />
           {menuFriend ? (() => {
             const W = 236;
             const H = 214;
@@ -3746,12 +3800,21 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
             const top = Math.max(56, menuPos.y - H - 14);
             const tailLeft = Math.min(Math.max(menuPos.x - left - 8, 18), W - 34);
             const Row = ({ color, label, onPress }: { color: string; label: string; onPress: () => void }) => (
-              <Pressable onPress={onPress} style={{ paddingVertical: 12, paddingHorizontal: 14, alignItems: 'center' }}>
+              <Pressable
+                onPressIn={() => {
+                  if (menuActionLock.current) return;
+                  menuActionLock.current = true;
+                  onPress();
+                }}
+                hitSlop={6}
+                pressRetentionOffset={18}
+                style={({ pressed }) => ({ paddingVertical: 14, paddingHorizontal: 14, alignItems: 'center', backgroundColor: pressed ? 'rgba(255,255,255,0.08)' : 'transparent' })}
+              >
                 <Text style={{ color, fontWeight: '800', fontSize: 14.5 }}>{label}</Text>
               </Pressable>
             );
             return (
-              <View style={{ position: 'absolute', left, top, width: W }} pointerEvents="box-none">
+              <View style={{ position: 'absolute', left, top, width: W, zIndex: 2, elevation: 20 }} pointerEvents="box-none">
                 <View style={{ backgroundColor: theme.card, borderRadius: 14, borderWidth: 1, borderColor: theme.border, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 16 }}>
                   <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '900', letterSpacing: 0.5, textAlign: 'center', paddingTop: 9, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: theme.border }} numberOfLines={1}>
                     {menuFriend.displayName}
@@ -3769,7 +3832,7 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
               </View>
             );
           })() : null}
-        </Pressable>
+        </View>
       </Modal>
 
       {/* Remove-friend confirmation */}
@@ -3949,12 +4012,13 @@ const EDGE_WIDTH = 30;        // px from left edge that starts the gesture
 function SwipeBackWrap({ children, onBack }: { children: ReactNode; onBack: () => void }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const screenW = Dimensions.get('window').width;
+  const shouldStartBackSwipe = (_evt: any, g: { dx: number; dy: number }) =>
+    _evt.nativeEvent.pageX < EDGE_WIDTH && g.dx > 8 && g.dx > Math.abs(g.dy) * 1.8;
 
   const panResponder = useRef(PanResponder.create({
-    onMoveShouldSetPanResponder: (evt, g) => {
-      // Only claim if: started near left edge, moving right, clearly horizontal
-      return evt.nativeEvent.pageX < EDGE_WIDTH && g.dx > 8 && g.dx > Math.abs(g.dy) * 1.8;
-    },
+    // Capture before the message ScrollView consumes the horizontal edge swipe.
+    onMoveShouldSetPanResponderCapture: shouldStartBackSwipe,
+    onMoveShouldSetPanResponder: shouldStartBackSwipe,
     onPanResponderGrant: () => {
       // Dismiss keyboard when swipe starts so it doesn't interfere
       Keyboard.dismiss();
@@ -4035,6 +4099,7 @@ function ChatScreen({ state, actions }: Props) {
   const isTyping = chatWith ? state.typingFrom[chatWith] : false;
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasTyping = useRef(false);
+  const sendingRef = useRef(false);
 
   // Auto-scroll to bottom whenever content grows (new message, typing indicator)
   // or the ScrollView layout changes (keyboard opens → ScrollView shrinks).
@@ -4076,6 +4141,8 @@ function ChatScreen({ state, actions }: Props) {
 
   const onSend = useCallback(() => {
     if (!text.trim() || !chatWith) return;
+    if (sendingRef.current) return;
+    sendingRef.current = true;
     actions.sendMessage(chatWith, text.trim());
     setText('');
     if (wasTyping.current) {
@@ -4084,6 +4151,7 @@ function ChatScreen({ state, actions }: Props) {
     }
     if (typingTimer.current) clearTimeout(typingTimer.current);
     inputRef.current?.focus();
+    setTimeout(() => { sendingRef.current = false; }, 120);
   }, [text, chatWith, actions]);
 
   return (
@@ -4180,6 +4248,7 @@ function ChatScreen({ state, actions }: Props) {
             returnKeyType="send"
             submitBehavior="submit"
             onSubmitEditing={onSend}
+            rejectResponderTermination={false}
             style={{
               flex: 1, backgroundColor: theme.bg, color: theme.text,
               borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10,
@@ -4191,7 +4260,9 @@ function ChatScreen({ state, actions }: Props) {
           />
           <Pressable
             onPressIn={onSend}
+            onPress={onSend}
             hitSlop={8}
+            onStartShouldSetResponder={() => true}
             style={{
               width: 42, height: 42, borderRadius: 21,
               backgroundColor: text.trim() ? theme.primary : theme.border,
@@ -4385,10 +4456,11 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
                       kind="blue"
                       icon="checkmark"
                       onPress={() => {
-                        if (!confirmAvatarId) return;
-                        actions.setAvatar(confirmAvatarId);
+                        const nextAvatarId = confirmAvatarId;
+                        if (!nextAvatarId) return;
                         setConfirmAvatarId(null);
-                        setShowAvatarPage(false);
+                        actions.setAvatar(nextAvatarId);
+                        setTimeout(() => setShowAvatarPage(false), 120);
                       }}
                     />
                   </View>

@@ -137,6 +137,7 @@ export type ClientMsg =
   | { type: 'create_room'; name: string; userId?: string; options?: GameOptions }
   | { type: 'create_solo'; name: string; userId?: string; options?: GameOptions }
   | { type: 'join_room'; code: string; name: string; userId?: string }
+  | { type: 'resume_room'; code: string; userId: string }
   | { type: 'register'; name: string; gameCenterId?: string; userId?: string }
   | { type: 'guest' } // guest login → server creates an account with an auto "M"+9-digit username
   | { type: 'auth'; provider: 'apple' | 'google' | 'facebook'; token: string; name?: string; userId?: string }

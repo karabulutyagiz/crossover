@@ -4,10 +4,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // NetInfo may not be available in Expo Go — graceful fallback
 let NetInfo: any;
 try { NetInfo = require('@react-native-community/netinfo').default; } catch { NetInfo = null; }
-import { SERVER_URL, HTTP_URL } from './config';
+import { SERVER_URL, HTTP_URL, APP_BUILD_NUMBER } from './config';
 import { t } from './i18n';
 import { OfflineRoom } from './offline/room';
 import { initOfflineDB } from './offline/db';
+import { captureError, track } from './telemetry';
 import type {
   ArenaView,
   ClientMsg,
@@ -162,6 +163,7 @@ export const initialState: GameState = {
 const PROFILE_KEY = '@crossover_profile';
 const LAST_USER_ID_KEY = '@crossover_last_user_id';
 const LAST_AUTH_PROVIDER_KEY = '@crossover_last_auth_provider';
+const STALE_SOCKET_MS = 120_000;
 
 type Action =
   | ServerMsg
@@ -474,6 +476,9 @@ export function useCrossover() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const wsRef = useRef<WebSocket | null>(null);
   const connectingSince = useRef(0); // when the current socket started CONNECTING (0 = not connecting)
+  const lastSocketActivity = useRef(0);
+  const pendingAfterAuth = useRef<ClientMsg | null>(null);
+  const pendingAfterResume = useRef<ClientMsg | null>(null);
   const offlineRoomRef = useRef<OfflineRoom | null>(null);
   const lastUserIdRef = useRef<string | null>(null);
   const lastAuthProviderRef = useRef<'apple' | 'google' | 'facebook' | null>(null);
@@ -554,14 +559,26 @@ export function useCrossover() {
     ws.onopen = () => {
       if (wsRef.current !== ws) return; // superseded by a newer socket
       connectingSince.current = 0;
+      lastSocketActivity.current = Date.now();
       dispatch({ type: '_connected', value: true });
       ws.send(JSON.stringify(first));
     };
     ws.onmessage = (e) => {
       try {
         const m = JSON.parse(String(e.data)) as ServerMsg;
+        lastSocketActivity.current = Date.now();
         dispatch(m);
         const mt = (m as { type?: string }).type;
+        if (mt === 'profile' && pendingAfterAuth.current && ws.readyState === WebSocket.OPEN) {
+          const pending = pendingAfterAuth.current;
+          pendingAfterAuth.current = null;
+          ws.send(JSON.stringify(pending));
+        }
+        if (mt === 'room_state' && pendingAfterResume.current && ws.readyState === WebSocket.OPEN) {
+          const pending = pendingAfterResume.current;
+          pendingAfterResume.current = null;
+          ws.send(JSON.stringify(pending));
+        }
         // Resolve/reject a pending IAP verification.
         if (mt === 'diamonds_granted') { pendingVerify.current?.resolve(); pendingVerify.current = null; }
         else if (mt === 'error' && pendingVerify.current) { pendingVerify.current.reject(new Error((m as { message?: string }).message ?? 'error')); pendingVerify.current = null; }
@@ -577,8 +594,8 @@ export function useCrossover() {
         if (mt === 'friend_request_received' && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'list_friends' }));
         }
-      } catch {
-        /* ignore malformed */
+      } catch (err) {
+        captureError(err, { where: 'ws_onmessage' });
       }
     };
     ws.onclose = () => {
@@ -593,14 +610,41 @@ export function useCrossover() {
 
   const send = useCallback((msg: ClientMsg) => {
     const ws = wsRef.current;
+    const canReconnectWithoutRoom = ['home', 'arenas', 'leaderboard', 'matchHistory', 'profile'].includes(state.phase);
+    const canResumeRoom = Boolean(state.room?.code && state.profile?.userId && !canReconnectWithoutRoom);
+    const staleOpen = ws?.readyState === WebSocket.OPEN && lastSocketActivity.current > 0 && Date.now() - lastSocketActivity.current > STALE_SOCKET_MS;
+    const reconnectAndSendAuthed = () => {
+      const uid = state.profile?.userId;
+      const name = state.profile?.displayName;
+      if (uid && name) {
+        pendingAfterAuth.current = msg;
+        connectAndSend({ type: 'register', name, userId: uid }, { silent: true });
+      } else {
+        connectAndSend(msg, { silent: true });
+      }
+    };
+    if (staleOpen && canReconnectWithoutRoom) {
+      reconnectAndSendAuthed();
+      return;
+    }
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(msg));
     } else {
+      if (canReconnectWithoutRoom) {
+        reconnectAndSendAuthed();
+        return;
+      }
+      if (canResumeRoom && state.room && state.profile) {
+        pendingAfterResume.current = msg;
+        connectAndSend({ type: 'resume_room', code: state.room.code, userId: state.profile.userId }, { silent: true });
+        track('room_resume_attempt', { phase: state.phase });
+        return;
+      }
       // Connection lost — reset to home so user can start fresh
       dispatch({ type: 'error', message: t('error.disconnected') });
       dispatch({ type: '_reset' });
     }
-  }, []);
+  }, [connectAndSend, state.phase, state.profile?.userId, state.profile?.displayName, state.room?.code]);
 
   // Presence: keep an authenticated socket open whenever signed in (cold start +
   // after matches) so friend requests arrive in real time. Reconnects if dropped.
@@ -610,6 +654,11 @@ export function useCrossover() {
     if (!uid || !name) return;
     const ensure = () => {
       const ws = wsRef.current;
+      const staleOpen = ws?.readyState === WebSocket.OPEN && lastSocketActivity.current > 0 && Date.now() - lastSocketActivity.current > STALE_SOCKET_MS;
+      if (staleOpen && ['home', 'arenas', 'leaderboard', 'matchHistory', 'profile'].includes(state.phase)) {
+        connectAndSend({ type: 'register', name, userId: uid }, { silent: true });
+        return;
+      }
       if (ws && ws.readyState === WebSocket.OPEN) return;
       // A socket stuck in CONNECTING (e.g. suspended while the app was backgrounded)
       // never opens or closes — the old code treated that as "fine" and so never
@@ -629,11 +678,21 @@ export function useCrossover() {
     const onAppState = (s: AppStateStatus) => { if (s === 'active') ensure(); };
     const appSub = AppState.addEventListener('change', onAppState);
     return () => { clearInterval(iv); appSub.remove(); };
-  }, [state.profile?.userId, state.profile?.displayName, connectAndSend]);
+  }, [state.profile?.userId, state.profile?.displayName, state.phase, connectAndSend]);
 
   // Load available leagues/countries once for the scope picker.
   useEffect(() => {
     let alive = true;
+    fetch(`${HTTP_URL}/config`)
+      .then((r) => r.json())
+      .then((cfg: { maintenance?: boolean; minIosBuild?: number }) => {
+        if (!alive) return;
+        if (cfg.maintenance) dispatch({ type: 'error', message: 'Bakım modundayız, birazdan tekrar dene' });
+        if (typeof cfg.minIosBuild === 'number' && APP_BUILD_NUMBER < cfg.minIosBuild) {
+          dispatch({ type: 'error', message: 'Yeni sürüm gerekli. Lütfen uygulamayı güncelle.' });
+        }
+      })
+      .catch(() => {});
     fetch(`${HTTP_URL}/scopes`)
       .then((r) => r.json())
       .then((s: ScopesList) => {
@@ -720,6 +779,7 @@ export function useCrossover() {
       }
     },
     findMatch: (options?: GameOptions) => {
+      track('match_find', { mode: options?.mode ?? 'team-team' });
       // Carry the registered name + account id: this fresh socket hasn't sent
       // `register`, so without them the player would be a nameless "Oyuncu" with
       // no trophies awarded.
@@ -734,6 +794,7 @@ export function useCrossover() {
     createRoom: (name: string, options?: GameOptions) =>
       connectAndSend({ type: 'create_room', name, userId: state.profile?.userId, options }),
     createSolo: (name: string, options?: GameOptions) => {
+      track('solo_create', { difficulty: options?.difficulty ?? 'medium', mode: options?.mode ?? 'team-team' });
       // Try online first; fall back to offline if no network
       const checkNet = NetInfo ? NetInfo.fetch() : Promise.resolve({ isConnected: true });
       checkNet.then((netState: any) => {
@@ -792,10 +853,12 @@ export function useCrossover() {
       dispatch({ type: '_picked' });
     },
     submitGuess: (text: string) => {
+      track('guess_submit', { length: text.trim().length });
       if (offlineRoomRef.current) return void offlineRoomRef.current.submitGuess(text);
       send({ type: 'submit_guess', text });
     },
     pass: () => {
+      track('round_pass');
       if (offlineRoomRef.current) return offlineRoomRef.current.pass();
       send({ type: 'pass' });
     },

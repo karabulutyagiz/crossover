@@ -34,6 +34,7 @@ import {
   StoreScreen,
   CollectionScreen,
   FriendsScreen,
+  DiamondCelebration,
   LobbyScreen,
   MatchupScreen,
   CountdownScreen,
@@ -47,6 +48,8 @@ import {
 } from './src/screens';
 import { theme, engrave } from './src/theme';
 import { GemIcon, GEM_COLOR } from './src/GemIcon';
+import { installGlobalErrorHandlers, track } from './src/telemetry';
+import type { ImageSourcePropType } from 'react-native';
 
 // AdMob must be initialized once at startup or no ad (incl. rewarded) will ever
 // load. Native module — absent in Expo Go, so require it guarded.
@@ -177,6 +180,7 @@ export default function App() {
   const [comingSoon, setComingSoon] = useState(false); // Turnuvalar — greyed "coming soon"
   const [expiredSocialPack, setExpiredSocialPack] = useState(false); // Social Pack expired popup
   const [overlay, setOverlay] = useState<'leaderboard' | 'matchHistory' | null>(null); // centered popups
+  const [diamondCelebration, setDiamondCelebration] = useState<{ amount: number; img?: ImageSourcePropType } | null>(null);
   const csAnim = useRef(new Animated.Value(0)).current; // coming-soon pop/float
   const [fontsLoaded, fontError] = useFonts({
     'Poppins-Black': require('./assets/fonts/Poppins-Black.ttf'),
@@ -189,11 +193,17 @@ export default function App() {
   const TABS = TAB_DEFS.map((tab) => ({ ...tab, label: t(tab.labelKey) }));
 
   useEffect(() => {
+    installGlobalErrorHandlers();
+    track('app_start');
     const t = setTimeout(() => setSplash(false), 1900);
     // Kick off the AdMob SDK once so rewarded ads can load (no-op in Expo Go).
     initMobileAds?.().catch((e: unknown) => console.warn('AdMob init failed', e));
     // Read saved language
-    AsyncStorage.getItem('@crossover_lang').then((v) => { if (v) setLanguage(v); }).catch(() => {});
+    AsyncStorage.getItem('@crossover_lang').then((v) => {
+      if (!v) return;
+      setLanguage(v);
+      setLangKey((k) => k + 1);
+    }).catch(() => {});
     AsyncStorage.getItem('@crossover_tutorial_seen')
       .then((v) => setTutorialSeen(v === '1'))
       .catch(() => setTutorialSeen(true));
@@ -425,7 +435,7 @@ export default function App() {
         style={{ flex: 1 }}
       >
         <View style={{ width: SCREEN_W, flex: 1 }}>
-          <StoreScreen {...props} scrollToSection={storeSection} />
+          <StoreScreen {...props} scrollToSection={storeSection} onDiamondCelebration={setDiamondCelebration} />
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
           <CollectionScreen {...props} />
@@ -464,7 +474,7 @@ export default function App() {
                   color={active ? theme.primary : theme.muted}
                 />
                 <Text style={[s.tabLabel, active && s.tabLabelActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-                  {tab.label}
+                  {t(tab.labelKey)}
                 </Text>
               </View>
             </Pressable>
@@ -517,6 +527,14 @@ export default function App() {
       <LeaderboardModal visible={overlay === 'leaderboard'} entries={state.leaderboard} onClose={() => setOverlay(null)} onViewProfile={(userId) => actions.getUserProfile(userId)} />
       <MatchHistoryModal visible={overlay === 'matchHistory'} history={state.matchHistory} myName={state.profile?.displayName ?? ''} onClose={() => setOverlay(null)} />
       <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
+
+      {diamondCelebration ? (
+        <DiamondCelebration
+          amount={diamondCelebration.amount}
+          img={diamondCelebration.img}
+          onDone={() => setDiamondCelebration(null)}
+        />
+      ) : null}
 
       {/* Expired Social Pack popup */}
       <Modal visible={expiredSocialPack} transparent animationType="fade" onRequestClose={() => setExpiredSocialPack(false)}>

@@ -42,4 +42,4 @@ cd ../app && npm install && npm start     # press i (iOS) / a (Android) / w (web
 
 ## Status
 Prototype / work in progress. Tech: React Native (Expo), Node.js, PostgreSQL.
-Target deploy: AWS (EC2 + Postgres) and iOS TestFlight.
+Current deploy: Dockerized Node + isolated Postgres behind the existing Caddy reverse proxy; mobile target is iOS TestFlight.

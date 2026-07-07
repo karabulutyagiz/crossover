@@ -58,6 +58,10 @@ const tr = {
   'home.tagline': 'İki takımda da oynamış futbolcuyu ilk bilen kazanır',
   'home.register': 'Kayıt Ol',
   'home.quickMatch': 'Hemen Oyna',
+  'home.specialMode': 'Özel Mod',
+  'home.specialModeTitle': 'Mücadele Modu',
+  'home.specialModeBody': 'Sadece aynı modu seçen oyuncularla eşleşirsin.',
+  'home.specialModeLocked': 'Ülke-Takım ve Harf-Takım için iki oyuncuda da Sosyal Paket aktif olmalı.',
   'home.createRoom': 'Oda Kur',
   'home.joinRoom': 'Odaya Katıl',
   'home.solo': 'Bot Maçı',
@@ -467,6 +471,7 @@ const tr = {
   'collection.equip': 'Kuşan',
   'collection.equipped': 'Kuşanıldı',
   'collection.discoverable': 'BULUNACAK İFADELER',
+  'collection.allOwned': 'Tüm ifadeler sende. Yeni ifadeler mağazaya geldiğinde burada görünür.',
 
   // store — purchase popup
   'store.purchaseSuccess': 'Satın Alma Başarılı!',
@@ -495,6 +500,10 @@ const en: typeof tr = {
   'home.tagline': 'First to name a player who played for both clubs wins',
   'home.register': 'Register',
   'home.quickMatch': 'Play Now',
+  'home.specialMode': 'Special Mode',
+  'home.specialModeTitle': 'Challenge Mode',
+  'home.specialModeBody': 'You will only match with players who chose the same mode.',
+  'home.specialModeLocked': 'Country-Team and Letter-Team require both players to have an active Social Pack.',
   'home.createRoom': 'Create Room',
   'home.joinRoom': 'Join Room',
   'home.solo': 'Play vs Bot',
@@ -878,6 +887,7 @@ const en: typeof tr = {
   'collection.equip': 'Equip',
   'collection.equipped': 'Equipped',
   'collection.discoverable': 'DISCOVERABLE EMOTES',
+  'collection.allOwned': 'You own every emote. New emotes will appear here when they arrive in the store.',
 
   'store.purchaseSuccess': 'Purchase Successful!',
   'store.gotIt': 'Awesome!',

@@ -28,4 +28,7 @@ export const config = {
   // Information → App-Specific Shared Secret). Used to validate consumable receipts
   // with Apple before granting diamonds. Empty = IAP grants are refused.
   iapSharedSecret: process.env.IAP_SHARED_SECRET ?? '',
+  maintenanceMode: process.env.MAINTENANCE_MODE === '1',
+  minIosBuild: Number(process.env.MIN_IOS_BUILD ?? '1'),
+  minAndroidVersionCode: Number(process.env.MIN_ANDROID_VERSION_CODE ?? '1'),
 } as const;

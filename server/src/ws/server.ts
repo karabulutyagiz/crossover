@@ -16,9 +16,11 @@ import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../gam
 import { censorMessage } from '../game/username.ts';
 import { verifyApplePurchase } from '../game/iap.ts';
 import { pool } from '../db/pool.ts';
+import { log } from '../logger.ts';
+import { config } from '../config.ts';
 import type { Room, Transport } from '../rooms/room.ts';
 import type { MessageView, ConversationView } from '../protocol.ts';
-import type { ClientMsg, ProfileView, ServerMsg } from '../protocol.ts';
+import type { ClientMsg, GameMode, ProfileView, ServerMsg } from '../protocol.ts';
 
 interface ConnCtx {
   room: Room;
@@ -63,6 +65,26 @@ interface QueueEntry {
   userProfile?: UserProfile;
   options?: import('../protocol.ts').GameOptions;
   setCtx: (c: ConnCtx) => void;
+}
+
+const SOCIAL_PACK_REQUIRED = 'Bu mod için iki oyuncuda da Sosyal Paket aktif olmalı';
+const RATE_WINDOW_MS = 10_000;
+const RATE_MAX_MESSAGES = 90;
+
+function remoteIp(req: import('node:http').IncomingMessage): string {
+  return String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? 'unknown').split(',')[0]!.trim();
+}
+
+function isSocialPackMode(mode: GameMode | undefined): boolean {
+  return mode === 'country-team' || mode === 'letter-team';
+}
+
+function hasActiveSocialPack(profile: UserProfile | undefined): boolean {
+  return Boolean(profile?.socialPackUntil && new Date(profile.socialPackUntil).getTime() > Date.now());
+}
+
+function canUseMode(profile: UserProfile | undefined, mode: GameMode | undefined): boolean {
+  return !isSocialPackMode(mode) || hasActiveSocialPack(profile);
 }
 
 // A friend match invite awaiting the invitee's response. Holds the inviter's
@@ -129,6 +151,15 @@ export function startServer(port: number): Server {
       res.end(JSON.stringify({ ok: true, rooms: manager.count }));
       return;
     }
+    if (req.url === '/config') {
+      res.writeHead(200, cors);
+      res.end(JSON.stringify({
+        maintenance: config.maintenanceMode,
+        minIosBuild: config.minIosBuild,
+        minAndroidVersionCode: config.minAndroidVersionCode,
+      }));
+      return;
+    }
     if (req.url === '/scopes') {
       Promise.all([listScopes(), listNationalities()])
         .then(([scopes, nationalities]) => {
@@ -176,12 +207,25 @@ export function startServer(port: number): Server {
 
   const wss = new WebSocketServer({ server: http });
 
-  wss.on('connection', (ws: WebSocket) => {
+  wss.on('connection', (ws: WebSocket, req) => {
     let ctx: ConnCtx | null = null;
     let userProfile: UserProfile | undefined;
     const transport = wsTransport(ws);
+    const ip = remoteIp(req);
+    let windowStart = Date.now();
+    let messageCount = 0;
+    log.info('ws_connect', { ip });
 
-    ws.on('message', (data) => {
+    ws.on('message', async (data) => {
+      const now = Date.now();
+      if (now - windowStart > RATE_WINDOW_MS) { windowStart = now; messageCount = 0; }
+      messageCount += 1;
+      if (messageCount > RATE_MAX_MESSAGES) {
+        log.warn('ws_rate_limited', { ip, userId: userProfile?.id });
+        transport.send({ type: 'error', message: 'Çok hızlı işlem yapıyorsun' });
+        ws.close(1008, 'rate limited');
+        return;
+      }
       let msg: ClientMsg;
       try {
         msg = JSON.parse(data.toString()) as ClientMsg;
@@ -440,6 +484,8 @@ export function startServer(port: number): Server {
       }
       if (msg.type === 'invite_friend_match') {
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        const requestedMode = msg.options?.mode ?? 'team-team';
+        if (!canUseMode(userProfile, requestedMode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
         const fromId = userProfile.id;
         const key = `${fromId}:${msg.friendId}`;
         // Replace any prior pending invite to the same friend.
@@ -482,11 +528,17 @@ export function startServer(port: number): Server {
           sendToUser(inv.fromUserId, { type: 'match_invite_declined', byId: userProfile.id });
           return;
         }
+        const requestedMode = inv.options?.mode ?? 'team-team';
+        if (!canUseMode(userProfile, requestedMode) || !canUseMode(inv.userProfile, requestedMode)) {
+          sendToUser(inv.fromUserId, { type: 'match_invite_declined', byId: userProfile.id });
+          transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
+          return;
+        }
         // Accepted — drop both players into a fresh room and auto-start.
         if (inv.ws.readyState !== inv.ws.OPEN) { transport.send({ type: 'match_invite_cancelled' }); return; }
         const room = manager.createRoom();
         if (inv.options?.scope) room.scope = inv.options.scope;
-        room.gameMode = inv.options?.mode ?? 'team-team';
+        room.gameMode = requestedMode;
         const resA = room.addPlayer(inv.fromName, inv.transport, true, inv.fromUserId, inv.userProfile?.trophies, inv.userProfile?.arena, inv.userProfile?.avatar);
         const resB = room.addPlayer(userProfile.displayName, transport, false, userProfile.id, userProfile.trophies, userProfile.arena, userProfile.avatar);
         if (resA.ok) inv.setCtx({ room, playerId: resA.id, userProfile: inv.userProfile });
@@ -649,6 +701,21 @@ export function startServer(port: number): Server {
 
       // First message must establish the connection (create / solo / join / find_match).
       if (!ctx) {
+        if (config.maintenanceMode) {
+          transport.send({ type: 'error', message: 'Bakım modundayız, birazdan tekrar dene' });
+          return;
+        }
+        if (msg.type === 'resume_room') {
+          const room = manager.get(msg.code);
+          if (!room) return transport.send({ type: 'error', message: 'Maç bulunamadı' });
+          const resumed = room.resumePlayer(msg.userId, transport);
+          if (!resumed.ok) return transport.send({ type: 'error', message: resumed.error });
+          const u = await getUser(msg.userId).catch(() => null);
+          if (u) { userProfile = u; addOnline(u.id, ws); }
+          ctx = { room, playerId: resumed.id, userProfile: u ?? undefined };
+          log.info('room_resumed', { room: msg.code, userId: msg.userId });
+          return;
+        }
         if (msg.type === 'find_match') {
           void (async () => {
             // If this is a fresh socket (no register/auth yet), look up the profile
@@ -667,10 +734,15 @@ export function startServer(port: number): Server {
             // Try to pair with someone already waiting
             // Match by game mode AND arena: only pair players in the same arena
             const requestedMode = msg.options?.mode ?? 'team-team';
+            if (!canUseMode(userProfile, requestedMode)) {
+              transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
+              return;
+            }
             const myArena = getArena(userProfile?.trophies ?? 0).name;
             const partnerIdx = matchQueue.findIndex(
               (e) => e.ws.readyState === e.ws.OPEN
                 && (e.options?.mode ?? 'team-team') === requestedMode
+                && canUseMode(e.userProfile, requestedMode)
                 && getArena(e.userProfile?.trophies ?? 0).name === myArena,
             );
             const partner = partnerIdx >= 0 ? matchQueue.splice(partnerIdx, 1)[0]! : undefined;
@@ -706,6 +778,7 @@ export function startServer(port: number): Server {
         }
 
         if (msg.type === 'create_room') {
+          if (!canUseMode(userProfile, msg.options?.mode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
           const room = manager.createRoom();
           if (msg.options?.scope) room.scope = msg.options.scope;
           if (msg.options?.mode) room.gameMode = msg.options.mode;
@@ -715,6 +788,7 @@ export function startServer(port: number): Server {
           return;
         }
         if (msg.type === 'create_solo') {
+          if (!canUseMode(userProfile, msg.options?.mode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
           const room = manager.createRoom();
           if (msg.options?.scope) room.scope = msg.options.scope;
           if (msg.options?.mode) room.gameMode = msg.options.mode;
@@ -729,6 +803,7 @@ export function startServer(port: number): Server {
         if (msg.type === 'join_room') {
           const room = manager.get(msg.code);
           if (!room) return transport.send({ type: 'error', message: 'Room not found' });
+          if (!canUseMode(userProfile, room.gameMode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
           const name = userProfile?.displayName ?? msg.name;
           const res = room.addPlayer(name, transport, false, msg.userId ?? userProfile?.id, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
           if (!res.ok) return transport.send({ type: 'error', message: res.error });
@@ -742,6 +817,7 @@ export function startServer(port: number): Server {
     });
 
     ws.on('close', () => {
+      log.info('ws_close', { ip, userId: userProfile?.id, room: ctx?.room.code });
       // Remove from online users tracking — but only if THIS socket is the one
       // registered (a fresh reconnect may have already replaced it).
       if (userProfile) removeOnline(userProfile.id, ws);

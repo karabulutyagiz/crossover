@@ -1,7 +1,7 @@
 # Crossover — Teknik Plan
 
 > Oyun adı: **Crossover**
-> Durum: PLAN — onay bekliyor. Henüz uygulama kodu yazılmadı.
+> Durum: Uygulandı / evrimleşti. Bu dosya artık tarihsel mimari notudur; güncel çalışma şekli için README dosyalarına bakın.
 > Tarih: 2026-05-31
 
 ---
@@ -29,15 +29,15 @@
 | Katman | Seçim | Gerekçe |
 |---|---|---|
 | Mobil | **React Native + Expo** (custom dev client / EAS Build) | Tek kod → iOS + Android; native modüller için EAS şart |
-| Oyun sunucusu | **Node.js + TypeScript**, **AWS EC2** | WebSocket ekosistemi olgun; RN ile tip paylaşımı |
+| Oyun sunucusu | **Node.js + TypeScript**, Docker | WebSocket ekosistemi olgun; RN ile tip paylaşımı |
 | Gerçek zamanlı | **WebSocket** (`ws`/Socket.io), sunucu içinde | İki oyuncu aynı sürece bağlanır; oda durumu bellekte, anında broadcast |
-| Futbol verisi + fuzzy | **Aurora Serverless v2 (PostgreSQL)** + `pg_trgm`/`unaccent` | Bulanık isim eşleştirme; boştayken ~0 maliyet |
-| Oyun durumu | **DynamoDB** | Atomik conditional write → "ilk yazan kazanır" |
-| Veri kaynağı | **Wikidata** → Aurora | Sıfır maliyetle en geniş kapsam |
+| Futbol verisi + fuzzy | **PostgreSQL** + `pg_trgm`/`unaccent` | Bulanık isim eşleştirme; Docker deploy'da izole Postgres |
+| Oyun durumu | **Bellek içi Room state machine** | Tek Node sürecinde `answeredBy` kilidi → "ilk yazan kazanır" |
+| Veri kaynağı | **Transfermarkt** → PostgreSQL | Güncel kodda ana veri kaynağı Transfermarkt ingest pipeline'ı; Wikidata scriptleri legacy |
 | iOS sosyal | **Game Center (GameKit)** | Kimlik, lider tablosu, başarımlar, arkadaşlar |
 | iOS canlı durum | **Live Activities + Dynamic Island (ActivityKit/WidgetKit)** | Kilit ekranı + Dynamic Island'da canlı maç durumu |
 | Kimlik (sonra) | **Cognito** (anonim) + Game Center kimliği | Hızlı giriş |
-| Altyapı (IaC) | **AWS CDK** (TypeScript) | EC2 + Aurora + DynamoDB tek dilde |
+| Altyapı | **Docker Compose** | Mevcut canlı deploy: Node app + izole Postgres, mevcut Caddy üzerinden TLS |
 
 ---
 
@@ -53,34 +53,34 @@
          └──────────────────┬─────────────────────┘
                             ▼
                 ┌───────────────────────────┐
-                │   EC2 — Node.js sunucu     │
+                │ Docker — Node.js sunucu     │
                 │  WS gateway / oda yöneticisi│
                 │  state machine / verify     │
                 │  (+ APNs push → LiveActivity)│
                 └───────┬───────────┬────────┘
                         ▼           ▼
               ┌──────────────┐  ┌──────────────────────┐
-              │  DynamoDB    │  │ Aurora Serverless v2  │
-              │  oyun durumu │  │  (PostgreSQL)         │
-              │  atomik      │  │  players/clubs/       │
-              │  first-wins  │  │  player_clubs + pg_trgm│
+              │ Bellek içi oda│  │ Docker Postgres 16    │
+              │ state machine │  │ players/clubs/        │
+              │ first-wins    │  │ player_clubs + pg_trgm│
               └──────────────┘  └──────────────────────┘
 ```
 
-**İlkeler:** Server-authoritative (hile/yarış korumalı); oda durumu bellekte + DynamoDB kalıcılık; ölçekleme gerekirse çoklu EC2 + Redis pub/sub (sonra).
+**İlkeler:** Server-authoritative (hile/yarış korumalı); oda durumu bellekte, kalıcı kullanıcı/veri katmanı PostgreSQL'de; ölçekleme gerekirse çoklu app instance + Redis pub/sub (sonra).
 
 ---
 
-## 4. Veri Katmanı — Wikidata Pipeline (oyunun kalbi)
+## 4. Veri Katmanı — Transfermarkt Pipeline (oyunun kalbi)
 
 ### 4.1 Kaynak
-- Wikidata `P54 (member of sports team)`: oyuncu → kulüpler + dönemler (`P580`/`P582`); `P641=Q2736` (futbol) filtresi.
-- Erişim: **SPARQL endpoint** (sayfalı) veya JSON dump.
+- Ana kaynak: Transfermarkt API (`felipeall/transfermarkt-api`).
+- Kapsam: lig/sezon bazlı kulüpler, kadrolar, oyuncu profilleri, transfer geçmişi, fotoğraf/logo/market değeri zenginleştirmeleri.
+- Wikidata ingest scriptleri kodda legacy olarak duruyor; varsayılan rebuild hattı Transfermarkt'tır.
 
-### 4.2 Çekim scripti (`scripts/ingest-wikidata.ts`)
-Sayfalı çek → normalize (aksan/küçük harf) → Aurora `upsert`. Aylık cron (EventBridge/Lambda veya EC2 cron) ile tazele. (Wikidata alt lig/eski oyuncuda eksik olabilir ama ücretsizler içinde en dolu.)
+### 4.2 Çekim scriptleri
+`server/src/ingest/tm-rebuild.ts` üç aşamalı ve kaldığı yerden devam edebilen hattı çalıştırır: kulüp/oyuncu keşfi, oyuncu kariyerleri, kulüp profilleri. Sonrasında `tm-swap`, `tm-marketvalue` ve `export-offline` ile canlı tablo ve mobil offline veri güncellenir.
 
-### 4.3 Aurora şeması
+### 4.3 PostgreSQL şeması
 ```sql
 clubs(id bigint pk, name, name_norm, country, aliases text[]);
 players(id bigint pk, name, name_norm, aliases text[], birth_year int, nationality);
@@ -98,19 +98,21 @@ Fuzzy eşik; Türkçe takım/takma ad sözlüğü; kiralık dönemler sayılır 
 
 ---
 
-## 5. Oyun Durumu — DynamoDB & "ilk yazan kazanır"
+## 5. Oyun Durumu — Bellek İçi Oda & "ilk yazan kazanır"
 
 ```
-Rooms        PK=roomCode             { status, hostId, createdAt, ttl }
-RoomPlayers  PK=roomCode SK=playerId { displayName, score, connected, gameCenterId }
-Rounds       PK=roomCode SK=roundNo  { teamA, teamB, state, winnerId, winningGuess, isCorrect }
+Room         { code, status, players, round, timers }
+Round        { picks, teamA, teamB, answeredBy, passedBy, finished }
+Player       { id, name, score, wrongCount, transport, userId }
 ```
 Atomik kazanan:
 ```
-UpdateItem Rounds SET winnerId=:pid, winningGuess=:g, answeredAt=:now
-  ConditionExpression: attribute_not_exists(winnerId)
+if (!round.answeredBy && status === 'guess') {
+  round.answeredBy = playerId
+  evaluateGuess()
+}
 ```
-Koşul başarısız → oyuncu geç kaldı, kilit. Kazanan sonrası `verifyPlayer` → sonuç odaya broadcast.
+`answeredBy` set edildikten sonra sonraki tahminler yok sayılır. Kazanan sonrası `verifyPlayer` → sonuç odaya broadcast.
 
 ---
 
@@ -149,7 +151,7 @@ Sunucu→İstemci: `room_update`, `countdown`, `reveal_teams`, `guess_locked`, `
 - **Teknik:**
   - Swift ile bir **Widget Extension** (`ActivityKit` + `WidgetKit`) yazılır: compact / minimal / expanded Dynamic Island düzenleri + Lock Screen düzeni.
   - RN'den activity **başlat/güncelle/bitir**: `expo-live-activity` benzeri köprü veya özel native modül.
-  - **Uzaktan güncelleme:** Uygulama arka plandayken sunucu, **APNs** üzerinden Live Activity push (`content-state`) gönderir → EC2 sunucusuna APNs entegrasyonu (token-based, `.p8` anahtarı) eklenir.
+  - **Uzaktan güncelleme:** Uygulama arka plandayken sunucu, **APNs** üzerinden Live Activity push (`content-state`) gönderir → Node sunucusuna APNs entegrasyonu (token-based, `.p8` anahtarı) eklenir.
 - **Gereksinimler:** iOS 16.1+ (Dynamic Island iPhone 14 Pro+); cihaz desteği yoksa otomatik gizlenir.
 
 ### 8.3 Expo/EAS etkisi
@@ -171,10 +173,10 @@ crossover/
 │   ├── src/{screens,components,net,game}
 │   ├── modules/             native köprüler (game-center, live-activity)
 │   └── ios/ (widget extension — Swift: ActivityKit/WidgetKit)
-├── server/                  Node.js + TS (EC2): ws, rooms, game, db, apns
-├── shared/                  app & server ortak tipler/protokol
-├── scripts/ingest-wikidata.ts
-└── infra/                   AWS CDK (EC2, Aurora v2, DynamoDB, VPC, SG)
+├── server/                  Node.js + TS: ws, rooms, game, db, ingest
+├── website/                 Statik tanıtım sitesi
+├── deploy/                  Docker/Caddy deploy notları
+└── docker-compose.yml       App + izole Postgres
 ```
 
 ---
@@ -182,10 +184,10 @@ crossover/
 ## 11. Yol Haritası
 | Faz | İçerik | Çıktı |
 |---|---|---|
-| **2 (önce)** | Wikidata + Aurora şema + `verifyPlayer` + fuzzy | "Galatasaray + Inter → Sneijder ✅" testi geçiyor |
+| **2 (önce)** | Transfermarkt + PostgreSQL şema + `verifyPlayer` + fuzzy | "Galatasaray + Inter → Sneijder ✅" testi geçiyor |
 | **1** | Expo (EAS dev client) + Node sunucu iskeleti + WS + paylaşılan tipler | Ekran geçişi + ping/pong |
-| **0** | AWS CDK: VPC, EC2, Aurora v2, DynamoDB | Bulutta bağlı altyapı |
-| **3** | Oda kur/katıl + WS senkron + DynamoDB | İki cihaz aynı odada |
+| **0** | Docker Compose + Postgres + Caddy yönlendirme | Canlı sunucuda izole stack |
+| **3** | Oda kur/katıl + WS senkron | İki cihaz aynı odada |
 | **4** | Tam oyun akışı + atomik first-wins + sonuç | Uçtan uca maç |
 | **5** | **Game Center** (kimlik, leaderboard, achievement) | iOS sosyal katman |
 | **6** | **Live Activities + Dynamic Island** + APNs push | Kilit ekranı/ada canlı durum |
@@ -196,16 +198,15 @@ crossover/
 ---
 
 ## 12. Maliyet
-Wikidata ücretsiz. EC2 t3.micro + DynamoDB free tier; Aurora v2 boşta ~0. APNs ücretsiz (Apple Developer hesabı içinde). Yayın: Apple $99/yıl + Google $25. Geliştirmede ~0.
+Transfermarkt API container'ı ve PostgreSQL yerel/Docker ortamında çalışır. Canlı deploy mevcut sunucuda Docker + izole Postgres + mevcut Caddy reverse proxy ile çalışacak şekilde notlandı. Yayın: Apple $99/yıl + Google $25.
 
 ---
 
 ## 13. Riskler & Açık Sorular
-- Wikidata kapsamı; fuzzy eşik kalibrasyonu; Türkçe takım/takma ad sözlüğü.
+- Transfermarkt kapsamı; fuzzy eşik kalibrasyonu; Türkçe takım/takma ad sözlüğü.
 - Aynı takım seçilirse kural (Faz 4).
 - Tahmin süre limiti (öneri 30 sn).
 - **Live Activity/Dynamic Island sadece iOS 16.1+ / belirli iPhone'larda** → Android & eski iOS için fallback.
 - Game Center yerine kendi hesabımız mı? (öneri: iOS'ta Game Center, Android'de kendi/Google Play Games).
-- Ölçekleme: çoklu EC2 → Redis pub/sub (sonra).
+- Ölçekleme: çoklu app instance → Redis pub/sub (sonra).
 ```
-

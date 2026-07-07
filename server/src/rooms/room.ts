@@ -20,6 +20,7 @@ import {
 } from '../game/verify.ts';
 import { applyMatchResult, getUser, saveMatchHistory, type MatchRound } from '../game/rank.ts';
 import { isEmote } from '../game/emotes.ts';
+import { log } from '../logger.ts';
 import type {
   ClientMsg,
   ServerMsg,
@@ -42,6 +43,7 @@ const WIN_TARGET = 3; // first to this many round wins takes the match
 const MAX_WRONG = 3; // 3 wrong answers → opponent wins the match
 const INTER_ROUND_MS = 5_000; // pause on the result screen before the next round auto-starts
 const READY_TIMEOUT_MS = 20_000;
+const RECONNECT_GRACE_MS = 12_000;
 
 // A player's link to the outside world: a real WebSocket client, or a bot.
 export interface Transport {
@@ -93,6 +95,7 @@ export class Room {
   private readyPlayers = new Set<string>();
   private matchRounds: MatchRound[] = [];
   private recentBotPicks: number[] = []; // last bot team ids (no-repeat within 10)
+  private disconnectTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(code: string, onEmpty: (code: string) => void) {
     this.code = code;
@@ -148,7 +151,40 @@ export class Room {
     if (changed) this.broadcastState();
   }
 
+  resumePlayer(userId: string, transport: Transport): { ok: true; id: string } | { ok: false; error: string } {
+    for (const p of this.players.values()) {
+      if (p.userId !== userId) continue;
+      const timer = this.disconnectTimers.get(p.id);
+      if (timer) clearTimeout(timer);
+      this.disconnectTimers.delete(p.id);
+      p.transport = transport;
+      p.connected = true;
+      this.broadcastState();
+      return { ok: true, id: p.id };
+    }
+    return { ok: false, error: 'Maça geri dönülemedi' };
+  }
+
   handleClose(playerId: string): void {
+    const p = this.players.get(playerId);
+    if (!p) return;
+    if (this.status !== 'lobby' && !p.transport.isBot) {
+      p.connected = false;
+      this.broadcastState();
+      const prev = this.disconnectTimers.get(playerId);
+      if (prev) clearTimeout(prev);
+      const timer = setTimeout(() => {
+        this.disconnectTimers.delete(playerId);
+        this.finalizeClose(playerId);
+      }, RECONNECT_GRACE_MS);
+      this.disconnectTimers.set(playerId, timer);
+      log.warn('player_disconnect_grace', { room: this.code, playerId, userId: p.userId, status: this.status });
+      return;
+    }
+    this.finalizeClose(playerId);
+  }
+
+  private finalizeClose(playerId: string): void {
     const p = this.players.get(playerId);
     if (!p) return;
     this.clearTimers();
@@ -161,6 +197,7 @@ export class Room {
     const humansLeft = [...this.players.values()].some((pl) => !pl.transport.isBot);
     if (this.players.size === 0 || !humansLeft) {
       this.players.clear();
+      this.clearDisconnectTimers();
       this.onEmpty(this.code);
       return;
     }
@@ -994,6 +1031,11 @@ export class Room {
   private clearTimers(): void {
     for (const t of this.timers) clearTimeout(t);
     this.timers = [];
+  }
+
+  private clearDisconnectTimers(): void {
+    for (const t of this.disconnectTimers.values()) clearTimeout(t);
+    this.disconnectTimers.clear();
   }
 
   get size(): number {
