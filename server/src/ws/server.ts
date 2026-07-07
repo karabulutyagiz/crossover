@@ -234,8 +234,8 @@ export function startServer(port: number): Server {
       messageCount += 1;
       if (messageCount > RATE_MAX_MESSAGES) {
         log.warn('ws_rate_limited', { ip, userId: userProfile?.id });
-        transport.send({ type: 'error', message: 'Çok hızlı işlem yapıyorsun' });
-        ws.close(1008, 'rate limited');
+        // Drop burst messages silently so the user never sees a flashing red error
+        // or gets kicked for a brief burst of taps.
         return;
       }
       let msg: ClientMsg;

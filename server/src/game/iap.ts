@@ -26,11 +26,43 @@ const DIAMOND_PRODUCTS: Record<string, number> = {
   'com.crossover.diamonds.50000': 50000,
 };
 
-// Auto-renewable subscriptions (the Social Pack) → set social_pack_until to the JWS expiry.
+// Social Pack entitlements are product-based: weekly = exact 7 x 24 hours,
+// monthly = exact 1 calendar month from the purchase timestamp.
 const SOCIAL_PACK_PRODUCTS = new Set<string>([
   'com.crossover.socialpack.weekly',
   'com.crossover.socialpack.monthly',
 ]);
+const SOCIAL_PACK_WEEKLY_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+
+function daysInMonth(year: number, monthIndex: number): number {
+  return new Date(year, monthIndex + 1, 0).getDate();
+}
+
+function addCalendarMonthsClamped(baseMs: number, months: number): number {
+  const d = new Date(baseMs);
+  const year = d.getUTCFullYear();
+  const month = d.getUTCMonth();
+  const targetMonthIndex = month + months;
+  const targetYear = year + Math.floor(targetMonthIndex / 12);
+  const normalizedMonth = ((targetMonthIndex % 12) + 12) % 12;
+  const targetDay = Math.min(d.getUTCDate(), daysInMonth(targetYear, normalizedMonth));
+  return Date.UTC(
+    targetYear,
+    normalizedMonth,
+    targetDay,
+    d.getUTCHours(),
+    d.getUTCMinutes(),
+    d.getUTCSeconds(),
+    d.getUTCMilliseconds(),
+  );
+}
+
+function socialPackExpiryMs(productId: string, purchaseMs: number): number | null {
+  if (!Number.isFinite(purchaseMs) || purchaseMs <= 0) return null;
+  if (productId === 'com.crossover.socialpack.weekly') return purchaseMs + SOCIAL_PACK_WEEKLY_DURATION_MS;
+  if (productId === 'com.crossover.socialpack.monthly') return addCalendarMonthsClamped(purchaseMs, 1);
+  return null;
+}
 
 // Apple root CAs (public certs) for JWS signature verification.
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -95,11 +127,14 @@ export async function verifyApplePurchase(
     }
   }
 
-  // Social Pack (auto-renewable) — set entitlement to the transaction's expiry if future.
-  if (SOCIAL_PACK_PRODUCTS.has(pid) && tx.expiresDate) {
-    const e = Number(tx.expiresDate);
-    if (e > Date.now()) {
-      await pool.query(`UPDATE users SET social_pack_until = $2 WHERE id = $1`, [userId, new Date(e).toISOString()]);
+  // Social Pack — grant the exact duration for the purchased plan.
+  if (SOCIAL_PACK_PRODUCTS.has(pid)) {
+    const purchasedAt = Number(tx.purchaseDate ?? 0);
+    const fallbackExpiry = Number(tx.expiresDate ?? 0);
+    const base = purchasedAt > 0 ? purchasedAt : fallbackExpiry;
+    const until = socialPackExpiryMs(pid, base);
+    if (until && until > Date.now()) {
+      await pool.query(`UPDATE users SET social_pack_until = $2 WHERE id = $1`, [userId, new Date(until).toISOString()]);
     }
   }
 

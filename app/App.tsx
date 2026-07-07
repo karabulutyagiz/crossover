@@ -173,9 +173,9 @@ export default function App() {
   const diamondFillAnim = useRef(new Animated.Value(0)).current;
   const measureDiamondPill = useCallback(() => {
     diamondPillRef.current?.measureInWindow((x, y, w, h) => {
-      // Aim near the gem icon on the left side of the pill so particles visibly
-      // enter the counter before the bar fill/count animation takes over.
-      if (w > 0 && h > 0) setGemTarget(x + Math.min(30, w * 0.3), y + h / 2);
+      // Aim for the inner body of the pill so flying gems visibly reach the
+      // counter itself before the fill/count animation takes over.
+      if (w > 0 && h > 0) setGemTarget(x + w * 0.52, y + h * 0.52);
     });
   }, []);
   const programmaticScroll = useRef(false); // true right after a tab tap — ignore scroll events
@@ -192,6 +192,7 @@ export default function App() {
   const [diamondPillWidth, setDiamondPillWidth] = useState(148);
   const [visibleDiamonds, setVisibleDiamonds] = useState(0);
   const csAnim = useRef(new Animated.Value(0)).current; // coming-soon pop/float
+  const prevHadActiveSocialPackRef = useRef<boolean | undefined>(undefined);
   const [fontsLoaded, fontError] = useFonts({
     'Poppins-Black': require('./assets/fonts/Poppins-Black.ttf'),
     'Poppins-ExtraBold': require('./assets/fonts/Poppins-ExtraBold.ttf'),
@@ -295,9 +296,24 @@ export default function App() {
   // Auto-show Social Pack renewal popup when it has expired.
   useEffect(() => {
     const until = state.profile?.socialPackUntil;
-    if (until && new Date(until) <= new Date()) {
+    const hasActivePack = !!(until && new Date(until).getTime() > Date.now());
+    const hadActivePack = prevHadActiveSocialPackRef.current;
+    if (hadActivePack && !hasActivePack) {
       setExpiredSocialPack(true);
     }
+    prevHadActiveSocialPackRef.current = hasActivePack;
+  }, [state.profile?.socialPackUntil]);
+
+  useEffect(() => {
+    const until = state.profile?.socialPackUntil;
+    if (!until) return;
+    const expiresAt = new Date(until).getTime();
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return;
+    const id = setTimeout(() => {
+      prevHadActiveSocialPackRef.current = false;
+      setExpiredSocialPack(true);
+    }, expiresAt - Date.now() + 80);
+    return () => clearTimeout(id);
   }, [state.profile?.socialPackUntil]);
 
   // Pop the "coming soon" badge in, then auto-hide.

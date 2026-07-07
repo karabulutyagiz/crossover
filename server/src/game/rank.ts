@@ -66,6 +66,20 @@ export interface UserProfile {
   avatar: string | null; // chosen profile-picture id (e.g. 'pp7') or null
 }
 
+function isFutureIso(iso: string | null | undefined): iso is string {
+  return !!iso && new Date(iso).getTime() > Date.now();
+}
+
+async function clearExpiredSocialPackIfNeeded(row: DbUser): Promise<DbUser> {
+  if (isFutureIso(row.social_pack_until)) return row;
+  if (!row.social_pack_until) return row;
+  const { rows } = await pool.query<DbUser>(
+    `UPDATE users SET social_pack_until = NULL WHERE id = $1 RETURNING *`,
+    [row.id],
+  );
+  return rows[0] ?? { ...row, social_pack_until: null };
+}
+
 // ---- User CRUD ----
 
 export async function findOrCreateUser(
@@ -202,7 +216,8 @@ export async function getUser(userId: string): Promise<UserProfile | null> {
     'SELECT * FROM users WHERE id = $1',
     [userId],
   );
-  return rows[0] ? toProfile(rows[0]) : null;
+  if (!rows[0]) return null;
+  return toProfile(await clearExpiredSocialPackIfNeeded(rows[0]));
 }
 
 export async function applyMatchResult(
@@ -674,7 +689,7 @@ function toProfile(row: DbUser): UserProfile {
     ownedEmotes: row.owned_emotes ?? [],
     equippedEmotes: row.equipped_emotes ?? [],
     usernameSet: row.username_set ?? false,
-    socialPackUntil: row.social_pack_until ?? null,
+    socialPackUntil: isFutureIso(row.social_pack_until) ? row.social_pack_until : null,
     arena: getArena(row.trophies),
     avatar: row.avatar ?? row.selected_avatar ?? null,
   };

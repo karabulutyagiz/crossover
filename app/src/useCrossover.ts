@@ -461,6 +461,8 @@ function reducer(state: GameState, action: Action): GameState {
       if (action.message === 'Create or join a room first') return state;
       // IAP receipt validation errors (sandbox/production mismatch) — silent.
       if (/receipt|makbuz|21002|21007|21008/i.test(action.message ?? '')) return state;
+      // Silent rate-limit feedback; just ignore the burst instead of flashing red UI.
+      if (/çok hızlı|cok hizli|rate limit/i.test(action.message ?? '')) return state;
       return { ...state, error: action.message };
     default:
       return state;

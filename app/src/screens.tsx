@@ -530,11 +530,18 @@ export function SplashScreen() {
   }, [logo, fade]);
   const scale = logo.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] });
   const lift = logo.interpolate({ inputRange: [0, 1], outputRange: [6, 0] });
-  const logoSize = Math.min(SCREEN_W * 0.72, SCREEN_H * 0.32);
+  const logoWidth = Math.min(SCREEN_W * 0.78, SCREEN_H * 0.44);
+  const logoHeight = logoWidth * 0.56;
   return (
     <View style={{ flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' }}>
       <Animated.View style={{ opacity: fade, transform: [{ translateY: lift }, { scale }] }}>
-        <Image source={require('../assets/splash-icon.png')} style={{ width: logoSize, height: logoSize }} resizeMode="contain" />
+        <View style={{ width: logoWidth, height: logoHeight, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
+          <Image
+            source={require('../assets/splash-icon.png')}
+            style={{ width: logoWidth * 1.44, height: logoWidth * 1.44 }}
+            resizeMode="contain"
+          />
+        </View>
       </Animated.View>
     </View>
   );
@@ -2724,6 +2731,7 @@ export function DiamondCelebration({
             Animated.timing(g.y, { toValue: targetY, duration: 540, easing: Easing.in(Easing.quad), useNativeDriver: true }),
             Animated.timing(g.scale, { toValue: 0.44, duration: 540, easing: Easing.in(Easing.quad), useNativeDriver: true }),
           ]),
+          Animated.delay(60),
           Animated.parallel([
             Animated.timing(g.scale, { toValue: 0.18, duration: 120, easing: Easing.out(Easing.quad), useNativeDriver: true }),
             Animated.timing(g.opacity, { toValue: 0, duration: 120, useNativeDriver: true }),
@@ -2732,7 +2740,7 @@ export function DiamondCelebration({
       }, i * perGem);
     });
 
-    setTimeout(onDone, (GEM_COUNT - 1) * perGem + 90 + 540 + 120);
+    setTimeout(onDone, (GEM_COUNT - 1) * perGem + 90 + 540 + 60 + 120);
   };
 
   return (
