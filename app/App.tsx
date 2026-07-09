@@ -293,6 +293,14 @@ export default function App() {
     setGemCelebration((current) => current ?? { kind: 'arenaReward', amount: reward, arenaName });
   }, [state.trophyDelta?.arenaReward, state.trophyDelta?.arena?.name]);
 
+  useEffect(() => {
+    if (!TAB_PHASES.has(state.phase)) return;
+    const id = requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ x: activeTab * SCREEN_W, animated: false });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [state.phase, activeTab, langKey]);
+
   // Auto-show Social Pack renewal popup when it has expired.
   useEffect(() => {
     const until = state.profile?.socialPackUntil;
@@ -550,6 +558,7 @@ export default function App() {
         }}
         scrollEventThrottle={16}
         contentOffset={{ x: 2 * SCREEN_W, y: 0 }}
+        onLayout={() => scrollRef.current?.scrollTo({ x: activeTab * SCREEN_W, animated: false })}
         style={{ flex: 1 }}
       >
         <View style={{ width: SCREEN_W, flex: 1 }}>

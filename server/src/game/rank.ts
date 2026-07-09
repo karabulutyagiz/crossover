@@ -746,19 +746,18 @@ export async function saveMatchHistory(
   );
 }
 
-export async function getMatchHistory(userId: string, limit = 30): Promise<MatchHistoryEntry[]> {
+export async function getMatchHistory(userId: string): Promise<MatchHistoryEntry[]> {
   const { rows } = await pool.query<{
     id: string; player_name: string; opponent_name: string; player_score: number; opponent_score: number;
     won: boolean; player_trophies: number; opponent_trophies: number;
     game_mode: string; rounds: string; played_at: string;
   }>(
     `SELECT id, player_name, opponent_name, player_score, opponent_score, won,
-            player_trophies, opponent_trophies, game_mode, rounds, played_at
-       FROM match_history
-      WHERE player_id = $1
-      ORDER BY played_at DESC
-      LIMIT $2`,
-    [userId, limit],
+             player_trophies, opponent_trophies, game_mode, rounds, played_at
+        FROM match_history
+       WHERE player_id = $1
+       ORDER BY played_at DESC`,
+    [userId],
   );
   return rows.map((r) => ({
     id: r.id,

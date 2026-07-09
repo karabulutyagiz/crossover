@@ -412,7 +412,25 @@ export function ScreenBg({ variant = 'menu' }: { variant?: BgVariant }) {
             <Stop offset="0.80" stopColor="#04060F" stopOpacity={0.04} />
             <Stop offset="1" stopColor="#04060F" stopOpacity={0.44} />
           </SvgGradient>
+          <SvgGradient id="bgstripe" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.038} />
+            <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0.012} />
+          </SvgGradient>
         </Defs>
+        {Array.from({ length: 30 }).map((_, i) => {
+          const x = -SCREEN_W + i * 72;
+          return (
+            <Line
+              key={`stripe-${i}`}
+              x1={x}
+              y1={0}
+              x2={x + SCREEN_H * 1.25}
+              y2={SCREEN_H}
+              stroke="url(#bgstripe)"
+              strokeWidth={1.2}
+            />
+          );
+        })}
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#bgshade)" />
       </Svg>
     </View>
@@ -2160,7 +2178,7 @@ function ThoughtBubble({ emoteId, emoteN, position }: { emoteId?: string; emoteN
         paddingHorizontal: 8, paddingVertical: 6, minWidth: 60, alignItems: 'center',
         shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 8,
       }}>
-        <EmoteSticker id={currentEmote} size={40} />
+        <EmoteSticker id={currentEmote} size={40} play />
       </View>
       {/* Small dots (thought bubble tail) */}
       <Animated.View style={{ opacity: dotOp, alignItems: 'flex-end', marginRight: 10 }}>

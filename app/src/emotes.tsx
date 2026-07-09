@@ -33,6 +33,7 @@ export interface EmoteMeta {
   week?: number; // visual emotes: which weekly store drop it belongs to
   premium?: { name: string; price: number; desc: string };
   anim?: number; // 'lottie' emotes: the bundled animated WebP (require result)
+  still?: number; // static preview used when the emote should not animate
   animJson?: object;
 }
 
@@ -74,11 +75,11 @@ export const PREMIUM_EMOTES: EmoteMeta[] = [
 // server/src/game/emotes.ts (ANIM_EMOTES).
 // phrase intentionally empty — animated emotes are shown as just the animation, no caption.
 export const ANIM_EMOTES: EmoteMeta[] = [
-  { id: 'footballer', kind: 'lottie', phrase: '', color: theme.primary, anim: require('../assets/emotes/footballer.webp') },
-  { id: 'worldcup',   kind: 'lottie', phrase: '', color: theme.gold,    anim: require('../assets/emotes/worldcup.webp') },
-  { id: 'kick',       kind: 'lottie', phrase: '', color: theme.blue,    anim: require('../assets/emotes/kick.webp') },
-  { id: 'squad',      kind: 'lottie', phrase: '', color: theme.accent,  anim: require('../assets/emotes/squad.webp') },
-  { id: 'pitch',      kind: 'lottie', phrase: '', color: theme.purple,  anim: require('../assets/emotes/pitch.webp') },
+  { id: 'footballer', kind: 'lottie', phrase: '', color: theme.primary, anim: require('../assets/emotes/footballer.webp'), still: require('../assets/emotes/footballer.png') },
+  { id: 'worldcup',   kind: 'lottie', phrase: '', color: theme.gold,    anim: require('../assets/emotes/worldcup.webp'), still: require('../assets/emotes/worldcup.png') },
+  { id: 'kick',       kind: 'lottie', phrase: '', color: theme.blue,    anim: require('../assets/emotes/kick.webp'), still: require('../assets/emotes/kick.png') },
+  { id: 'squad',      kind: 'lottie', phrase: '', color: theme.accent,  anim: require('../assets/emotes/squad.webp'), still: require('../assets/emotes/squad.png') },
+  { id: 'pitch',      kind: 'lottie', phrase: '', color: theme.purple,  anim: require('../assets/emotes/pitch.webp'), still: require('../assets/emotes/pitch.png') },
   { id: 'euro2024',   kind: 'lottieJson', phrase: '', color: theme.gold, animJson: logoEmoji },
 ];
 
@@ -203,7 +204,7 @@ function FaceEmote({ size, expr, play = true }: { size: number; expr: 'smile' | 
   );
 }
 
-export function EmoteSticker({ id, size, play = true, onFinish }: {
+export function EmoteSticker({ id, size, play = false, onFinish }: {
   id: string; size: number; play?: boolean; onFinish?: () => void;
 }) {
   const meta = getEmote(id);
@@ -216,7 +217,7 @@ export function EmoteSticker({ id, size, play = true, onFinish }: {
     return <LottieView source={meta.animJson as any} autoPlay loop={false} onAnimationFinish={onFinish} style={{ width: size, height: size }} />;
   }
   if (meta.kind === 'lottie' && meta.anim != null) {
-    return <ExpoImage source={meta.anim} style={{ width: size, height: size }} contentFit="contain" autoplay={play} />;
+    return <ExpoImage source={play ? meta.anim : (meta.still ?? meta.anim)} style={{ width: size, height: size }} contentFit="contain" autoplay={play} />;
   }
   // text emote: icon badge
   return (
@@ -243,13 +244,13 @@ export function EmoteCallout({ id, size = 88 }: { id: string; size?: number }) {
   if (meta.kind === 'lottie' || meta.kind === 'lottieJson') {
     return (
       <View style={[styles.callout, { borderRadius: 16, paddingVertical: 8, paddingHorizontal: 8, borderWidth: 1.5, borderColor: meta.color }]}>
-        <EmoteSticker id={id} size={size} />
+        <EmoteSticker id={id} size={size} play />
       </View>
     );
   }
   return (
     <View style={styles.callout}>
-      <EmoteSticker id={id} size={size} />
+      <EmoteSticker id={id} size={size} play />
       {caption ? <Text style={[styles.calloutText, { color: meta.color }]}>{caption}</Text> : null}
     </View>
   );

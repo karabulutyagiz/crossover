@@ -615,6 +615,7 @@ export function useCrossover() {
     const canReconnectWithoutRoom = ['home', 'arenas', 'leaderboard', 'matchHistory', 'profile'].includes(state.phase);
     const canResumeRoom = Boolean(state.room?.code && state.profile?.userId && !canReconnectWithoutRoom);
     const staleOpen = ws?.readyState === WebSocket.OPEN && lastSocketActivity.current > 0 && Date.now() - lastSocketActivity.current > STALE_SOCKET_MS;
+    const staleConnecting = ws?.readyState === WebSocket.CONNECTING && Date.now() - connectingSince.current >= 12000;
     const reconnectAndSendAuthed = () => {
       const uid = state.profile?.userId;
       const name = state.profile?.displayName;
@@ -625,7 +626,21 @@ export function useCrossover() {
         connectAndSend(msg, { silent: true });
       }
     };
-    if (staleOpen && canReconnectWithoutRoom) {
+    const reconnectAndResumeRoom = () => {
+      if (!state.room || !state.profile) return false;
+      pendingAfterResume.current = msg;
+      connectAndSend({ type: 'resume_room', code: state.room.code, userId: state.profile.userId }, { silent: true });
+      track('room_resume_attempt', { phase: state.phase, stale: true });
+      return true;
+    };
+    if ((staleOpen || staleConnecting) && canReconnectWithoutRoom) {
+      reconnectAndSendAuthed();
+      return;
+    }
+    if ((staleOpen || staleConnecting) && canResumeRoom && reconnectAndResumeRoom()) {
+      return;
+    }
+    if ((staleOpen || staleConnecting) && !canReconnectWithoutRoom && !canResumeRoom) {
       reconnectAndSendAuthed();
       return;
     }
@@ -636,10 +651,7 @@ export function useCrossover() {
         reconnectAndSendAuthed();
         return;
       }
-      if (canResumeRoom && state.room && state.profile) {
-        pendingAfterResume.current = msg;
-        connectAndSend({ type: 'resume_room', code: state.room.code, userId: state.profile.userId }, { silent: true });
-        track('room_resume_attempt', { phase: state.phase });
+      if (canResumeRoom && reconnectAndResumeRoom()) {
         return;
       }
       // Connection lost — reset to home so user can start fresh
