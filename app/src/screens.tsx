@@ -548,18 +548,15 @@ export function SplashScreen() {
   }, [logo, fade]);
   const scale = logo.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] });
   const lift = logo.interpolate({ inputRange: [0, 1], outputRange: [6, 0] });
-  const logoWidth = Math.min(SCREEN_W * 0.78, SCREEN_H * 0.44);
-  const logoHeight = logoWidth * 0.56;
+  const logoSize = Math.min(SCREEN_W * 0.88, SCREEN_H * 0.42);
   return (
     <View style={{ flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' }}>
       <Animated.View style={{ opacity: fade, transform: [{ translateY: lift }, { scale }] }}>
-        <View style={{ width: logoWidth, height: logoHeight, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
-          <Image
-            source={require('../assets/splash-icon.png')}
-            style={{ width: logoWidth * 1.44, height: logoWidth * 1.44 }}
-            resizeMode="contain"
-          />
-        </View>
+        <Image
+          source={require('../assets/splash-icon.png')}
+          style={{ width: logoSize, height: logoSize }}
+          resizeMode="contain"
+        />
       </Animated.View>
     </View>
   );
@@ -1311,11 +1308,11 @@ function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon:
       <View style={{ alignItems: 'center', justifyContent: 'flex-end' }}>
         <ArenaHaze />
         {/* faint wide ground darkening so the base meets the floor */}
-        <View pointerEvents="none" style={{ position: 'absolute', bottom: 14, width: 196, height: 22, borderRadius: 11, backgroundColor: '#02030B', opacity: 0.3, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 16, shadowOffset: { width: 0, height: 2 }, transform: [{ scaleX: 1.35 }] }} />
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: 15, width: 188, height: 18, borderRadius: 10, backgroundColor: '#02030B', opacity: 0.13, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 9, shadowOffset: { width: 0, height: 1 }, transform: [{ scaleX: 1.22 }] }} />
         <Image
           source={tier.img}
           resizeMode="contain"
-          style={{ width: 270, height: 230, shadowColor: '#01030B', shadowOpacity: 0.6, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }}
+          style={{ width: 270, height: 230, shadowColor: '#01030B', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }}
         />
       </View>
       {/* Nameplate below */}
@@ -3425,6 +3422,7 @@ export function CollectionScreen({ state, actions }: Props) {
   const profile = state.profile;
   const equipped = profile?.equippedEmotes ?? [];
   const [lastTapped, setLastTapped] = useState<string | null>(null);
+  const [selectedEmoteId, setSelectedEmoteId] = useState<string | null>(null);
   const toggleEquip = (id: string) => {
     if (equipped.includes(id)) actions.equipEmotes(equipped.filter((x) => x !== id));
     else if (equipped.length < EMOTE_SLOTS) actions.equipEmotes([...equipped, id]);
@@ -3445,34 +3443,62 @@ export function CollectionScreen({ state, actions }: Props) {
   const COL_W = Math.floor((SCREEN_W - 44 - COL_GAP * 3) / 4);
   const full = equipped.length >= EMOTE_SLOTS;
 
+  useEffect(() => {
+    if (!selectedEmoteId) return;
+    if (!collectible.some((e) => e.id === selectedEmoteId)) setSelectedEmoteId(null);
+  }, [collectible, selectedEmoteId]);
+
   const renderEmoteCard = (e: EmoteMeta) => {
     const isEquipped = equipped.includes(e.id);
     const blocked = full && !isEquipped;
+    const selected = selectedEmoteId === e.id;
     return (
-      <Pressable
-        key={e.id}
-        onPress={() => { if (!blocked) toggleEquip(e.id); }}
-        style={{
-          width: COL_W, paddingTop: 11, paddingBottom: 9, paddingHorizontal: 4,
-          backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
-          borderWidth: 2, borderColor: isEquipped ? theme.primary : theme.border,
-          borderBottomWidth: 3, borderBottomColor: isEquipped ? theme.primaryDark : theme.cardLip,
-          opacity: blocked ? 0.55 : 1,
-        }}
-      >
-        {isEquipped ? (
-          <View style={{ position: 'absolute', top: 4, right: 4, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>
-            <Ionicons name="checkmark" size={12} color="#06131F" />
+      <View key={e.id} style={{ width: COL_W }}>
+        <Pressable
+          onPress={() => setSelectedEmoteId((current) => current === e.id ? null : e.id)}
+          hitSlop={4}
+          style={{
+            paddingTop: 11, paddingBottom: 9, paddingHorizontal: 4,
+            backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
+            borderWidth: 2, borderColor: selected ? theme.accent : isEquipped ? theme.primary : theme.border,
+            borderBottomWidth: 3, borderBottomColor: selected ? theme.accentDark : isEquipped ? theme.primaryDark : theme.cardLip,
+            opacity: blocked && !selected ? 0.55 : 1,
+          }}
+        >
+          {isEquipped ? (
+            <View style={{ position: 'absolute', top: 4, right: 4, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>
+              <Ionicons name="checkmark" size={12} color="#06131F" />
+            </View>
+          ) : null}
+          <View pointerEvents="none">
+            <EmoteSticker id={e.id} size={58} />
           </View>
+          <View style={{ height: 6 }} />
+          <Text style={{ color: selected ? theme.accent : isEquipped ? theme.primary : theme.muted, fontWeight: '800', fontSize: 10.5 }} numberOfLines={1} adjustsFontSizeToFit>
+            {isEquipped ? t('collection.equipped') : t('collection.equip')}
+          </Text>
+        </Pressable>
+        {selected ? (
+          <Pressable
+            onPress={() => toggleEquip(e.id)}
+            disabled={blocked}
+            style={{
+              marginTop: 6,
+              borderRadius: 10,
+              paddingVertical: 8,
+              alignItems: 'center',
+              backgroundColor: blocked ? theme.border : isEquipped ? theme.danger : theme.primary,
+              borderBottomWidth: 2,
+              borderBottomColor: blocked ? theme.cardLip : isEquipped ? '#B82B3F' : theme.primaryDark,
+              opacity: blocked ? 0.65 : 1,
+            }}
+          >
+            <Text style={{ color: blocked ? theme.muted : isEquipped ? '#fff' : '#06131F', fontWeight: '900', fontSize: 11.5 }}>
+              {blocked ? t('collection.loadoutFull') : isEquipped ? t('collection.remove') : t('collection.equip')}
+            </Text>
+          </Pressable>
         ) : null}
-        <EmoteSticker id={e.id} size={58} />
-        <View style={{ height: 6 }} />
-        {isEquipped ? (
-          <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 10.5 }} numberOfLines={1} adjustsFontSizeToFit>{t('collection.equipped')}</Text>
-        ) : (
-          <Text style={{ color: theme.muted, fontWeight: '800', fontSize: 10.5 }} numberOfLines={1} adjustsFontSizeToFit>{t('collection.equip')}</Text>
-        )}
-      </Pressable>
+      </View>
     );
   };
 

@@ -470,6 +470,8 @@ const tr = {
   'collection.yourEmotes': 'İFADELERİN',
   'collection.equip': 'Kuşan',
   'collection.equipped': 'Kuşanıldı',
+  'collection.remove': 'Kaldır',
+  'collection.loadoutFull': 'Slot Dolu',
   'collection.discoverable': 'BULUNACAK İFADELER',
   'collection.allOwned': 'Tüm ifadeler sende. Yeni ifadeler mağazaya geldiğinde burada görünür.',
 
@@ -886,6 +888,8 @@ const en: typeof tr = {
   'collection.yourEmotes': 'YOUR EMOTES',
   'collection.equip': 'Equip',
   'collection.equipped': 'Equipped',
+  'collection.remove': 'Remove',
+  'collection.loadoutFull': 'Slots Full',
   'collection.discoverable': 'DISCOVERABLE EMOTES',
   'collection.allOwned': 'You own every emote. New emotes will appear here when they arrive in the store.',
 
