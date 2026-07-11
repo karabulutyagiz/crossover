@@ -15,7 +15,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Animated, Easing, PanResponder, Platform, Dimensions, Linking } from 'react-native';
+import { Animated, Easing, Platform, Dimensions, Linking } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
@@ -845,6 +845,7 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
   const [internalOpen, setInternalOpen] = useState(false);
   const open = externalOpen ?? internalOpen;
   const setOpen = (v: boolean) => { setInternalOpen(v); onOpenChange?.(v); };
+  const [selectedSticker, setSelectedSticker] = useState<string | null>(null);
   const room = state.room;
   const youId = room?.youId;
   const oppId = room?.players.find((p) => p.id !== youId)?.id;
@@ -859,6 +860,27 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
   const dismissedMine = useRef(-1);
   const showTheirs = theirs && theirs.n > dismissedOpp.current;
   const showMine = mine && mine.n > dismissedMine.current;
+
+  const handleStickerTap = (id: string) => {
+    if (selectedSticker === id) {
+      // Already selected — send now
+      actions.sendEmote(id);
+      setOpen(false);
+      setSelectedSticker(null);
+    } else {
+      // Select and animate (preview), send after brief delay
+      setSelectedSticker(id);
+      setTimeout(() => {
+        setSelectedSticker((current) => {
+          if (current === id) {
+            actions.sendEmote(id);
+            setOpen(false);
+          }
+          return null;
+        });
+      }, 800);
+    }
+  };
 
   return (
     <>
@@ -878,8 +900,8 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
         </Pressable>
       ) : null}
 
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.emoteSheetBackdrop} onPress={() => setOpen(false)}>
+      <Modal visible={open} transparent animationType="slide" onRequestClose={() => { setSelectedSticker(null); setOpen(false); }}>
+        <Pressable style={styles.emoteSheetBackdrop} onPress={() => { setSelectedSticker(null); setOpen(false); }}>
           <Pressable
             style={{
               backgroundColor: theme.card, borderTopLeftRadius: 26, borderTopRightRadius: 26,
@@ -908,21 +930,25 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
             {/* Character emotes (smiling / crying / angry / OK) + any equipped visual emotes */}
             <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '800', letterSpacing: 0.5, marginBottom: 10, marginLeft: 2 }}>{t('emote.faces')}</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 14 }}>
-              {stickerEmotes.map((e) => (
-                <Pressable
-                  key={e.id}
-                  onPress={() => { actions.sendEmote(e.id); setOpen(false); }}
-                  style={{ alignItems: 'center', width: 72 }}
-                >
-                  <View style={{
-                    width: 70, height: 70, borderRadius: e.kind === 'lottie' ? 14 : 35, backgroundColor: theme.bg,
-                    borderWidth: 2.5, borderColor: e.color, alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-                  }}>
-                    <EmoteSticker id={e.id} size={56} />
-                  </View>
-                  <Text style={{ color: theme.muted, fontSize: 9.5, marginTop: 5, textAlign: 'center' }} numberOfLines={1}>{emotePhrase(e)}</Text>
-                </Pressable>
-              ))}
+              {stickerEmotes.map((e) => {
+                const isSelected = selectedSticker === e.id;
+                return (
+                  <Pressable
+                    key={e.id}
+                    onPress={() => handleStickerTap(e.id)}
+                    style={{ alignItems: 'center', width: 72 }}
+                  >
+                    <View style={{
+                      width: 70, height: 70, borderRadius: e.kind === 'lottie' ? 14 : 35, backgroundColor: theme.bg,
+                      borderWidth: 2.5, borderColor: isSelected ? theme.accent : e.color,
+                      alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                    }}>
+                      <EmoteSticker key={`${e.id}-${isSelected ? 'sel' : 'idle'}`} id={e.id} size={56} play={isSelected} />
+                    </View>
+                    <Text style={{ color: theme.muted, fontSize: 9.5, marginTop: 5, textAlign: 'center' }} numberOfLines={1}>{emotePhrase(e)}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </Pressable>
         </Pressable>
@@ -3377,6 +3403,14 @@ function DiscoverableEmoteCard({ emote, lastTapped, onTap, width }: {
   const [playing, setPlaying] = useState(false);
   const tmRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // When another emote is tapped, stop our animation immediately
+  useEffect(() => {
+    if (lastTapped !== emote.id) {
+      setPlaying(false);
+      if (tmRef.current) { clearTimeout(tmRef.current); tmRef.current = null; }
+    }
+  }, [lastTapped, emote.id]);
+
   const handlePress = () => {
     if (playing) return;
     setPlaying(true);
@@ -3471,7 +3505,7 @@ export function CollectionScreen({ state, actions }: Props) {
             </View>
           ) : null}
           <View pointerEvents="none">
-            <EmoteSticker id={e.id} size={58} />
+            <EmoteSticker key={`${e.id}-${selected ? 'anim' : 'static'}`} id={e.id} size={58} play={selected} />
           </View>
           <View style={{ height: 6 }} />
           <Text style={{ color: selected ? theme.accent : isEquipped ? theme.primary : theme.muted, fontWeight: '800', fontSize: 10.5 }} numberOfLines={1} adjustsFontSizeToFit>
@@ -3534,24 +3568,28 @@ export function CollectionScreen({ state, actions }: Props) {
 
         {/* All collectible emotes — tap to equip/unequip */}
         <Text style={{ color: theme.accent, fontFamily: 'Poppins-ExtraBold', fontSize: 13, letterSpacing: 0.5, marginBottom: 10, marginLeft: 4 }}>{t('collection.yourEmotes')}</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP }}>
-          {collectible.map((e) => renderEmoteCard(e))}
-        </View>
+        <Pressable onPress={() => setSelectedEmoteId(null)}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP }}>
+            {collectible.map((e) => renderEmoteCard(e))}
+          </View>
+        </Pressable>
 
         {/* Discoverable emotes — all emotes greyed out, tap to play animation */}
         <View style={{ height: 16 }} />
         <Text style={{ color: theme.muted, fontFamily: 'Poppins-ExtraBold', fontSize: 13, letterSpacing: 0.5, marginBottom: 10, marginLeft: 4 }}>{t('collection.discoverable')}</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP }}>
-          {discoverable.length ? (
-            discoverable.map((e) => (
-              <DiscoverableEmoteCard key={e.id} emote={e} lastTapped={lastTapped} onTap={setLastTapped} width={COL_W} />
-            ))
-          ) : (
-            <View style={{ flex: 1, minHeight: 70, borderRadius: 14, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }}>
-              <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700', textAlign: 'center' }}>{t('collection.allOwned')}</Text>
-            </View>
-          )}
-        </View>
+        <Pressable onPress={() => setSelectedEmoteId(null)}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP }}>
+            {discoverable.length ? (
+              discoverable.map((e) => (
+                <DiscoverableEmoteCard key={e.id} emote={e} lastTapped={lastTapped} onTap={setLastTapped} width={COL_W} />
+              ))
+            ) : (
+              <View style={{ flex: 1, minHeight: 70, borderRadius: 14, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }}>
+                <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700', textAlign: 'center' }}>{t('collection.allOwned')}</Text>
+              </View>
+            )}
+          </View>
+        </Pressable>
       </ScrollView>
     </Screen>
   );
@@ -4149,76 +4187,85 @@ function TypingDot({ delay }: { delay: number }) {
 }
 
 // ---- Swipe-back wrapper (WhatsApp-style left-edge → right gesture) ----
-// Wraps any fullScreen content. Dragging from the left 30px edge slides the
-// page right; past 35% of screen width it completes the back navigation,
-// otherwise it springs back. A dim overlay behind the sliding page fades in
-// to simulate depth. Vertical scrolls are never intercepted.
-const SWIPE_THRESHOLD = 0.35; // fraction of screen width to trigger back
-const EDGE_WIDTH = 30;        // px from left edge that starts the gesture
+// Wraps any fullScreen content. Uses onStartShouldSetResponderCapture so it
+// ALWAYS grabs touches starting within the left 30px BEFORE the inner ScrollView
+// can claim them. Dragging past 35% of screen width completes the back navigation;
+// otherwise it springs back. Vertical swipes are released without action.
+const SWIPE_THRESHOLD = 0.35;
+const EDGE_WIDTH = 30;
 
 function SwipeBackWrap({ children, onBack }: { children: ReactNode; onBack: () => void }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const screenW = Dimensions.get('window').width;
-  const shouldStartBackSwipe = (_evt: any, g: { dx: number; dy: number }) =>
-    _evt.nativeEvent.pageX < EDGE_WIDTH && g.dx > 8 && g.dx > Math.abs(g.dy) * 1.8;
-
-  const panResponder = useRef(PanResponder.create({
-    // Capture before the message ScrollView consumes the horizontal edge swipe.
-    onMoveShouldSetPanResponderCapture: shouldStartBackSwipe,
-    onMoveShouldSetPanResponder: shouldStartBackSwipe,
-    onPanResponderGrant: () => {
-      // Dismiss keyboard when swipe starts so it doesn't interfere
-      Keyboard.dismiss();
-    },
-    onPanResponderMove: (_, g) => {
-      if (g.dx > 0) translateX.setValue(g.dx);
-    },
-    onPanResponderRelease: (_, g) => {
-      const pastThreshold = g.dx > screenW * SWIPE_THRESHOLD;
-      const fastFlick = g.vx > 0.4 && g.dx > 40;
-      if (pastThreshold || fastFlick) {
-        // Complete: slide off screen then call onBack
-        Animated.timing(translateX, {
-          toValue: screenW,
-          duration: 200,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }).start(() => {
-          translateX.setValue(0);
-          onBack();
-        });
-      } else {
-        // Cancel: spring back to origin
-        Animated.spring(translateX, {
-          toValue: 0,
-          useNativeDriver: true,
-          friction: 8,
-          tension: 80,
-        }).start();
-      }
-    },
-  })).current;
-
-  // Dim overlay opacity: 0 when not swiping, 0.5 at full drag
-  const overlayOpacity = translateX.interpolate({
-    inputRange: [0, screenW],
-    outputRange: [0, 0.5],
-    extrapolate: 'clamp',
-  });
-
-  // Slight parallax: background shifts left a bit (like iOS)
-  const bgTranslateX = translateX.interpolate({
-    inputRange: [0, screenW],
-    outputRange: [-screenW * 0.3, 0],
-    extrapolate: 'clamp',
-  });
+  const startX = useRef(0);
+  const startY = useRef(0);
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#000' }} {...panResponder.panHandlers}>
-      {/* Dim background layer */}
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#000', opacity: overlayOpacity }]} pointerEvents="none" />
+    <View
+      style={{ flex: 1, backgroundColor: '#000' }}
+      onStartShouldSetResponderCapture={(evt) => evt.nativeEvent.pageX < EDGE_WIDTH}
+      onResponderGrant={(evt) => {
+        startX.current = evt.nativeEvent.pageX;
+        startY.current = evt.nativeEvent.pageY;
+        Keyboard.dismiss();
+      }}
+      onResponderMove={(evt) => {
+        const dx = evt.nativeEvent.pageX - startX.current;
+        if (dx > 0) translateX.setValue(dx);
+      }}
+      onResponderRelease={(evt) => {
+        const dx = evt.nativeEvent.pageX - startX.current;
+        const dy = evt.nativeEvent.pageY - startY.current;
+        const absDx = Math.abs(dx);
+        const absDy = Math.abs(dy);
+        // If mostly vertical (scroll), release without action
+        if (absDy > absDx * 2) {
+          Animated.spring(translateX, { toValue: 0, useNativeDriver: true, friction: 8, tension: 80 }).start();
+          return;
+        }
+        const pastThreshold = dx > screenW * SWIPE_THRESHOLD;
+        if (pastThreshold) {
+          Animated.timing(translateX, {
+            toValue: screenW,
+            duration: 200,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }).start(() => {
+            translateX.setValue(0);
+            onBack();
+          });
+        } else {
+          Animated.spring(translateX, { toValue: 0, useNativeDriver: true, friction: 8, tension: 80 }).start();
+        }
+      }}
+    >
+      {/* Dim overlay — fades in as the page slides */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            backgroundColor: '#000',
+            opacity: translateX.interpolate({
+              inputRange: [0, screenW],
+              outputRange: [0, 0.5],
+              extrapolate: 'clamp',
+            }),
+          },
+        ]}
+      />
       {/* Foreground page that slides */}
-      <Animated.View style={{ flex: 1, transform: [{ translateX }], shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: -10, height: 0 }, elevation: 16 }}>
+      <Animated.View
+        style={{
+          flex: 1,
+          transform: [{ translateX }],
+          shadowColor: '#000',
+          shadowOpacity: 0.3,
+          shadowRadius: 20,
+          shadowOffset: { width: -10, height: 0 },
+          elevation: 16,
+        }}
+      >
         {children}
       </Animated.View>
     </View>
