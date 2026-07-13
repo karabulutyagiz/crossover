@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Animated, Easing, Platform, Dimensions, Linking } from 'react-native';
+import type { GestureResponderEvent } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
@@ -4156,12 +4157,10 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
       {/* Tapped a friend → their public profile */}
       <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
 
-      {/* Chat screen — WhatsApp style, swipe-back enabled */}
-      <Modal visible={state.chatWith !== null} animationType="slide" presentationStyle="fullScreen" onRequestClose={actions.closeChat}>
-        <SwipeBackWrap onBack={actions.closeChat}>
-          <ChatScreen state={state} actions={actions} />
-        </SwipeBackWrap>
-      </Modal>
+      {/* Chat screen — WhatsApp style: slides in from the right, swipes/backs out to the right */}
+      <SwipeBackModal visible={state.chatWith !== null} onBack={actions.closeChat}>
+        <ChatScreen state={state} actions={actions} />
+      </SwipeBackModal>
     </Screen>
   );
 }
@@ -4186,89 +4185,154 @@ function TypingDot({ delay }: { delay: number }) {
   return <Animated.View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: theme.muted, transform: [{ scale }], opacity }} />;
 }
 
-// ---- Swipe-back wrapper (WhatsApp-style left-edge → right gesture) ----
-// Wraps any fullScreen content. Uses onStartShouldSetResponderCapture so it
-// ALWAYS grabs touches starting within the left 30px BEFORE the inner ScrollView
-// can claim them. Dragging past 35% of screen width completes the back navigation;
-// otherwise it springs back. Vertical swipes are released without action.
-const SWIPE_THRESHOLD = 0.35;
-const EDGE_WIDTH = 30;
+// ---- Swipe-back chat modal (WhatsApp-style slide-over) ----
+// A transparent Modal with NO built-in animation: the page slides in from the
+// right on open, and every exit path — the header back button (via
+// SwipeBackContext), the Android back button/gesture (onRequestClose) and the
+// swipe gesture itself — slides it back out to the RIGHT, WhatsApp-style. The
+// screen behind stays visible under a dim layer tied to the slide position.
+// The gesture CLAIMS the touch at touch-down (onStartShouldSetResponderCapture),
+// because on this stack (RN Fabric + Android) move-should-set interrogation is
+// unreliable — moves get consumed natively after 1-2 events and the arm never
+// fires (verified empirically; the same reason the pre-rewrite code used
+// start-capture). To avoid dead taps, the claim zone is a narrow left-edge
+// strip that EXCLUDES the header (back button) and the input bar (keyboard
+// height is tracked so the exclusion follows the input when typing). Taps in
+// the remaining strip land on non-interactive message margin, so claiming them
+// is harmless. All animations use the JS driver: native-driven values inside a
+// transparent Modal proved flaky here (enter animation silently no-opped).
+// Dragging past 35% of screen width — or a quick right flick — completes the
+// back navigation; otherwise the page springs back.
+const SWIPE_THRESHOLD = 0.35; // fraction of screen width to trigger back
+const FLICK_VX = 0.35;        // dp/ms — a fast flick completes before the threshold
+const FLICK_MIN_DX = 50;      // ...but only after a deliberate distance
+const DIM_MAX = 0.45;         // dim over the underlying screen when fully open
+const EDGE_DP = 44;           // left strip (dp) where the swipe may start
+const HEADER_EXCLUDE_DP = 116; // top strip left to the header (back button)
+const INPUT_EXCLUDE_DP = 96;  // bottom strip left to the input bar
 
-function SwipeBackWrap({ children, onBack }: { children: ReactNode; onBack: () => void }) {
-  const translateX = useRef(new Animated.Value(0)).current;
+// Provides the animated close to content inside the modal (the chat header's
+// back button), so button exits get the same slide-right as the gesture.
+const SwipeBackContext = createContext<(() => void) | null>(null);
+
+function SwipeBackModal({ visible, onBack, children }: { visible: boolean; onBack: () => void; children: ReactNode }) {
   const screenW = Dimensions.get('window').width;
+  const translateX = useRef(new Animated.Value(screenW)).current;
+  const closing = useRef(false);
   const startX = useRef(0);
-  const startY = useRef(0);
+  const lastX = useRef(0);
+  const lastT = useRef(0);
+  const vx = useRef(0);      // self-computed velocity (dp/ms) — decays via lastT freshness check
+  const kbHeight = useRef(0); // keyboard height so the input-bar exclusion follows it up
+  const onBackRef = useRef(onBack);
+  onBackRef.current = onBack;
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => { kbHeight.current = e.endCoordinates?.height ?? 0; });
+    const hide = Keyboard.addListener('keyboardDidHide', () => { kbHeight.current = 0; });
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+
+  // Slide in from the right every time the modal opens.
+  useEffect(() => {
+    if (!visible) return;
+    closing.current = false;
+    translateX.setValue(Dimensions.get('window').width);
+    Animated.timing(translateX, { toValue: 0, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+  }, [visible, translateX]);
+
+  // Slide out to the right, then actually close.
+  const animatedClose = useCallback(() => {
+    if (closing.current) return;
+    closing.current = true;
+    Animated.timing(translateX, {
+      toValue: Dimensions.get('window').width,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start(() => onBackRef.current());
+  }, [translateX]);
+
+  const springBack = useCallback(() => {
+    if (!closing.current) {
+      Animated.spring(translateX, { toValue: 0, useNativeDriver: false, friction: 8, tension: 80 }).start();
+    }
+  }, [translateX]);
+
+  const inStartZone = (x: number, y: number) => {
+    const h = Dimensions.get('window').height;
+    return x <= EDGE_DP && y >= HEADER_EXCLUDE_DP && y <= h - kbHeight.current - INPUT_EXCLUDE_DP;
+  };
 
   return (
-    <View
-      style={{ flex: 1, backgroundColor: '#000' }}
-      onStartShouldSetResponderCapture={(evt) => evt.nativeEvent.pageX < EDGE_WIDTH}
-      onResponderGrant={(evt) => {
-        startX.current = evt.nativeEvent.pageX;
-        startY.current = evt.nativeEvent.pageY;
-        Keyboard.dismiss();
-      }}
-      onResponderMove={(evt) => {
-        const dx = evt.nativeEvent.pageX - startX.current;
-        if (dx > 0) translateX.setValue(dx);
-      }}
-      onResponderRelease={(evt) => {
-        const dx = evt.nativeEvent.pageX - startX.current;
-        const dy = evt.nativeEvent.pageY - startY.current;
-        const absDx = Math.abs(dx);
-        const absDy = Math.abs(dy);
-        // If mostly vertical (scroll), release without action
-        if (absDy > absDx * 2) {
-          Animated.spring(translateX, { toValue: 0, useNativeDriver: true, friction: 8, tension: 80 }).start();
-          return;
-        }
-        const pastThreshold = dx > screenW * SWIPE_THRESHOLD;
-        if (pastThreshold) {
-          Animated.timing(translateX, {
-            toValue: screenW,
-            duration: 200,
-            easing: Easing.out(Easing.quad),
-            useNativeDriver: true,
-          }).start(() => {
-            translateX.setValue(0);
-            onBack();
-          });
-        } else {
-          Animated.spring(translateX, { toValue: 0, useNativeDriver: true, friction: 8, tension: 80 }).start();
-        }
-      }}
-    >
-      {/* Dim overlay — fades in as the page slides */}
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          StyleSheet.absoluteFill,
-          {
-            backgroundColor: '#000',
-            opacity: translateX.interpolate({
-              inputRange: [0, screenW],
-              outputRange: [0, 0.5],
-              extrapolate: 'clamp',
-            }),
-          },
-        ]}
-      />
-      {/* Foreground page that slides */}
-      <Animated.View
-        style={{
-          flex: 1,
-          transform: [{ translateX }],
-          shadowColor: '#000',
-          shadowOpacity: 0.3,
-          shadowRadius: 20,
-          shadowOffset: { width: -10, height: 0 },
-          elevation: 16,
+    <Modal visible={visible} transparent animationType="none" statusBarTranslucent onRequestClose={animatedClose}>
+      <View
+        style={{ flex: 1 }}
+        onStartShouldSetResponderCapture={(evt: GestureResponderEvent) =>
+          !closing.current && inStartZone(evt.nativeEvent.pageX, evt.nativeEvent.pageY)}
+        onResponderGrant={(evt: GestureResponderEvent) => {
+          startX.current = evt.nativeEvent.pageX;
+          lastX.current = evt.nativeEvent.pageX;
+          lastT.current = Date.now();
+          vx.current = 0;
+          Keyboard.dismiss();
         }}
+        onResponderMove={(evt: GestureResponderEvent) => {
+          if (closing.current) return;
+          const x = evt.nativeEvent.pageX;
+          const t = Date.now();
+          const dt = t - lastT.current;
+          if (dt > 0) vx.current = (x - lastX.current) / dt;
+          lastX.current = x;
+          lastT.current = t;
+          translateX.setValue(Math.max(0, x - startX.current));
+        }}
+        // Never yield to the message ScrollView once the swipe started.
+        onResponderTerminationRequest={() => false}
+        onResponderRelease={(evt: GestureResponderEvent) => {
+          if (closing.current) return;
+          const w = Dimensions.get('window').width;
+          const dx = evt.nativeEvent.pageX - startX.current;
+          // Honor the flick only when the lift follows the last move closely,
+          // so a drag-pause-release under the threshold cancels as expected.
+          const flickFresh = Date.now() - lastT.current < 150;
+          if (dx > w * SWIPE_THRESHOLD || (flickFresh && dx > FLICK_MIN_DX && vx.current > FLICK_VX)) animatedClose();
+          else springBack();
+        }}
+        // The OS (or a parent) forcibly took the responder — restore the page.
+        onResponderTerminate={() => springBack()}
       >
-        {children}
-      </Animated.View>
-    </View>
+        {/* Dim over the underlying screen — fades out as the page slides away */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: '#000',
+              opacity: translateX.interpolate({
+                inputRange: [0, screenW],
+                outputRange: [DIM_MAX, 0],
+                extrapolate: 'clamp',
+              }),
+            },
+          ]}
+        />
+        {/* Foreground page that slides */}
+        <Animated.View
+          style={{
+            flex: 1,
+            transform: [{ translateX }],
+            shadowColor: '#000',
+            shadowOpacity: 0.3,
+            shadowRadius: 20,
+            shadowOffset: { width: -10, height: 0 },
+            elevation: 16,
+          }}
+        >
+          <SwipeBackContext.Provider value={animatedClose}>{children}</SwipeBackContext.Provider>
+        </Animated.View>
+      </View>
+    </Modal>
   );
 }
 
@@ -4279,6 +4343,8 @@ function SwipeBackWrap({ children, onBack }: { children: ReactNode; onBack: () =
 // button never requires a double-tap, and `onContentSizeChange` + `onLayout`
 // auto-scroll to the bottom on new messages and keyboard open.
 function ChatScreen({ state, actions }: Props) {
+  // Exit through the swipe-back modal's slide-right animation when available.
+  const animatedBack = useContext(SwipeBackContext);
   const [text, setText] = useState('');
   const [kbOpen, setKbOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -4381,7 +4447,7 @@ function ChatScreen({ state, actions }: Props) {
           paddingTop: 54, paddingBottom: 12, paddingHorizontal: 16,
           backgroundColor: theme.card, borderBottomWidth: 1, borderBottomColor: theme.border,
         }}>
-          <Pressable onPress={actions.closeChat} hitSlop={10}>
+          <Pressable onPress={animatedBack ?? actions.closeChat} hitSlop={10}>
             <Ionicons name="arrow-back" size={24} color={theme.text} />
           </Pressable>
           <AvatarBadge avatarId={friend?.avatar ?? friend?.selectedAvatar} size={36} ringColor={theme.primary} />

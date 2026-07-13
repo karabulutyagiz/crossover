@@ -324,14 +324,26 @@ export default function App() {
     return () => clearTimeout(id);
   }, [state.profile?.socialPackUntil]);
 
-  // Pop the "coming soon" badge in, then auto-hide.
-  useEffect(() => {
-    if (!comingSoon) return;
+  // Pop the "coming soon" badge in, hold ~2s, fade out, unmount. Owned entirely
+  // by the press handler (no effect-managed timer to leak or double-run), and a
+  // press while the badge is still on screen is ignored — it can only reappear
+  // after it has fully gone and the tab is pressed again. JS driver: native-
+  // driven one-shot animations proved flaky in this setup (badge sometimes
+  // never became visible, or never hid).
+  const csTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showComingSoon = useCallback(() => {
+    if (csTimer.current) return; // still visible/fading — ignore re-press
+    setComingSoon(true);
     csAnim.setValue(0);
-    Animated.spring(csAnim, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }).start();
-    const id = setTimeout(() => setComingSoon(false), 1700);
-    return () => clearTimeout(id);
-  }, [comingSoon, csAnim]);
+    Animated.spring(csAnim, { toValue: 1, friction: 6, tension: 90, useNativeDriver: false }).start();
+    csTimer.current = setTimeout(() => {
+      Animated.timing(csAnim, { toValue: 0, duration: 220, easing: Easing.in(Easing.quad), useNativeDriver: false }).start(() => {
+        csTimer.current = null;
+        setComingSoon(false); // unconditional — the badge must never stay stuck
+      });
+    }, 2200);
+  }, [csAnim]);
+  useEffect(() => () => { if (csTimer.current) clearTimeout(csTimer.current); }, []);
 
   // When switching away from the home tab, reset any home-slot sub-screen
   // (arenas, leaderboard, matchHistory, profile) back to the main home screen —
@@ -608,7 +620,7 @@ export default function App() {
           );
         })}
         {/* Tournaments — greyed, coming soon */}
-        <Pressable style={s.tab} onPress={() => setComingSoon(true)}>
+        <Pressable style={s.tab} onPress={showComingSoon}>
           <View style={s.tabInner}>
             <Ionicons name="trophy-outline" size={26} color={theme.border} />
             <Text style={[s.tabLabel, { color: theme.border }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{t('tab.tournaments')}</Text>
