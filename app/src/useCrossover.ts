@@ -160,6 +160,30 @@ export const initialState: GameState = {
   banner: null,
 };
 
+function compareIsoAsc(a: string, b: string): number {
+  const ta = Date.parse(a);
+  const tb = Date.parse(b);
+  if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
+  return a.localeCompare(b);
+}
+
+function mergeMessages(existing: MessageView[], incoming: MessageView[]): MessageView[] {
+  const byId = new Map<string, MessageView>();
+  for (const msg of existing) byId.set(msg.id, msg);
+  for (const msg of incoming) byId.set(msg.id, msg);
+  return [...byId.values()].sort((a, b) => {
+    const byTime = compareIsoAsc(a.createdAt, b.createdAt);
+    return byTime !== 0 ? byTime : a.id.localeCompare(b.id);
+  });
+}
+
+function sortConversations(conversations: ConversationView[]): ConversationView[] {
+  return [...conversations].sort((a, b) => {
+    const byTime = compareIsoAsc(b.lastMessageAt, a.lastMessageAt);
+    return byTime !== 0 ? byTime : a.userId.localeCompare(b.userId);
+  });
+}
+
 const PROFILE_KEY = '@crossover_profile';
 const LAST_USER_ID_KEY = '@crossover_last_user_id';
 const LAST_AUTH_PROVIDER_KEY = '@crossover_last_auth_provider';
@@ -260,30 +284,35 @@ function reducer(state: GameState, action: Action): GameState {
       const partnerId = msg.fromId === myId ? msg.toId : msg.fromId;
 
       // Add to current chat if open with this partner
-      if (state.chatWith && (msg.fromId === state.chatWith || msg.toId === state.chatWith)) {
-        if (!state.chatMessages.some(m => m.id === msg.id)) {
-          nextMessages = [...state.chatMessages, msg];
-        }
+      if (state.chatWith === partnerId) {
+        nextMessages = mergeMessages(state.chatMessages, [msg]);
       }
 
       // Update conversation list
       const existingIdx = nextConvos.findIndex(c => c.userId === partnerId);
       if (existingIdx >= 0) {
-        const updated = { ...nextConvos[existingIdx]!, lastMessage: msg.body, lastMessageAt: msg.createdAt };
+        const updated = {
+          ...nextConvos[existingIdx]!,
+          lastMessage: msg.body,
+          lastMessageAt: msg.createdAt,
+          displayName: nextConvos[existingIdx]!.displayName || state.friends.find(f => f.userId === partnerId)?.displayName || msg.fromName,
+        };
         // Increment unread if message is from the partner and we're NOT in that chat
         if (msg.fromId !== myId && state.chatWith !== partnerId) {
           updated.unreadCount = (updated.unreadCount ?? 0) + 1;
           nextUnread = nextUnread + 1;
         }
-        nextConvos = [updated, ...nextConvos.filter((_, i) => i !== existingIdx)];
+        nextConvos = sortConversations([updated, ...nextConvos.filter((_, i) => i !== existingIdx)]);
       } else {
         const isIncoming = msg.fromId !== myId;
-        nextConvos = [{
-          userId: partnerId, displayName: msg.fromId === myId ? '' : msg.fromName,
+        const friend = state.friends.find(f => f.userId === partnerId);
+        nextConvos = sortConversations([{
+          userId: partnerId,
+          displayName: friend?.displayName || (msg.fromId === myId ? '' : msg.fromName),
           online: true, lastMessage: msg.body, lastMessageAt: msg.createdAt,
           unreadCount: isIncoming && state.chatWith !== partnerId ? 1 : 0,
-          avatar: state.friends.find(f => f.userId === partnerId)?.avatar ?? null,
-        }, ...nextConvos];
+          avatar: friend?.avatar ?? null,
+        }, ...nextConvos]);
         if (isIncoming && state.chatWith !== partnerId) nextUnread++;
       }
       // Clear typing indicator for sender
@@ -298,11 +327,16 @@ function reducer(state: GameState, action: Action): GameState {
 
       return { ...state, chatMessages: nextMessages, conversations: nextConvos, totalUnread: nextUnread, typingFrom: nextTyping, banner: nextBanner };
     }
-    case 'message_list':
-      return { ...state, chatMessages: (action as any).messages ?? [] };
+    case 'message_list': {
+      const withUserId = (action as any).withUserId as string;
+      if (state.chatWith !== withUserId) return state;
+      const listed = (action as any).messages as MessageView[] ?? [];
+      return { ...state, chatMessages: mergeMessages(state.chatMessages, listed) };
+    }
     case 'conversation_list': {
       const convos = (action as any).conversations as ConversationView[] ?? [];
-      return { ...state, conversations: convos, totalUnread: convos.reduce((s: number, c: ConversationView) => s + c.unreadCount, 0) };
+      const sorted = sortConversations(convos);
+      return { ...state, conversations: sorted, totalUnread: sorted.reduce((s: number, c: ConversationView) => s + c.unreadCount, 0) };
     }
     case 'messages_marked_read':
       return {

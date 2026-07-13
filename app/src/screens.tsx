@@ -553,7 +553,7 @@ export function SplashScreen() {
     <View style={{ flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' }}>
       <Animated.View style={{ opacity: fade, transform: [{ translateY: lift }, { scale }] }}>
         <Image
-          source={require('../assets/splash-icon.png')}
+          source={require('../assets/logo2.jpeg')}
           style={{ width: logoSize, height: logoSize }}
           resizeMode="contain"
         />
@@ -4294,6 +4294,13 @@ function ChatScreen({ state, actions }: Props) {
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasTyping = useRef(false);
   const sendingRef = useRef(false);
+  const keepKeyboardOpenRef = useRef(false);
+
+  const refocusInput = useCallback(() => {
+    inputRef.current?.focus();
+    requestAnimationFrame(() => inputRef.current?.focus());
+    setTimeout(() => inputRef.current?.focus(), 40);
+  }, []);
 
   // Auto-scroll to bottom whenever content grows (new message, typing indicator)
   // or the ScrollView layout changes (keyboard opens → ScrollView shrinks).
@@ -4337,6 +4344,7 @@ function ChatScreen({ state, actions }: Props) {
     if (!text.trim() || !chatWith) return;
     if (sendingRef.current) return;
     sendingRef.current = true;
+    keepKeyboardOpenRef.current = true;
     actions.sendMessage(chatWith, text.trim());
     setText('');
     if (wasTyping.current) {
@@ -4344,9 +4352,21 @@ function ChatScreen({ state, actions }: Props) {
       actions.typingStop(chatWith);
     }
     if (typingTimer.current) clearTimeout(typingTimer.current);
-    inputRef.current?.focus();
-    setTimeout(() => { sendingRef.current = false; }, 120);
-  }, [text, chatWith, actions]);
+    refocusInput();
+    setTimeout(() => {
+      sendingRef.current = false;
+      keepKeyboardOpenRef.current = false;
+    }, 120);
+  }, [text, chatWith, actions, refocusInput]);
+
+  const onSendTapStart = useCallback(() => {
+    onSend();
+  }, [onSend]);
+
+  const onInputBlur = useCallback(() => {
+    if (!keepKeyboardOpenRef.current) return;
+    refocusInput();
+  }, [refocusInput]);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -4438,6 +4458,7 @@ function ChatScreen({ state, actions }: Props) {
             keyboardAppearance="dark"
             value={text}
             onChangeText={onChangeText}
+            onBlur={onInputBlur}
             blurOnSubmit={false}
             returnKeyType="send"
             submitBehavior="submit"
@@ -4453,10 +4474,11 @@ function ChatScreen({ state, actions }: Props) {
             maxLength={500}
           />
           <Pressable
-            onPressIn={onSend}
-            onPress={onSend}
+            onTouchStart={onSendTapStart}
+            onPress={onSendTapStart}
             hitSlop={8}
             onStartShouldSetResponder={() => true}
+            focusable={false}
             style={{
               width: 42, height: 42, borderRadius: 21,
               backgroundColor: text.trim() ? theme.primary : theme.border,
