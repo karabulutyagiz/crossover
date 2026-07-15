@@ -29,6 +29,9 @@ export const config = {
   // with Apple before granting diamonds. Empty = IAP grants are refused.
   iapSharedSecret: process.env.IAP_SHARED_SECRET ?? '',
   maintenanceMode: process.env.MAINTENANCE_MODE === '1',
+  // Expo push notifications. '0' turns off all sending + the push crons
+  // (token registration is skipped too); defaults to on.
+  pushEnabled: (process.env.PUSH_ENABLED ?? '1') === '1',
   minIosBuild: Number(process.env.MIN_IOS_BUILD ?? '1'),
   minAndroidVersionCode: Number(process.env.MIN_ANDROID_VERSION_CODE ?? '1'),
 } as const;

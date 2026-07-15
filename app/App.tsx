@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   Animated,
+  AppState,
   Dimensions,
   Easing,
-  Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,15 +12,18 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCrossover } from './src/useCrossover';
 import { t, setLanguage } from './src/i18n';
 import { setGemTarget } from './src/gemTarget';
+import { addNotificationTapListener, getPushPermissionGranted, setBadge } from './src/notifications';
 import {
   SplashScreen,
   LoadingScreen,
   ScreenBg,
+  BG_TOP,
   TutorialScreen,
   LoginScreen,
   UsernameScreen,
@@ -45,9 +47,14 @@ import {
   LeaderboardModal,
   MatchHistoryModal,
   FriendProfileModal,
+  GameModal,
+  Btn,
+  MODE_LABEL,
+  darken,
+  withAlpha,
 } from './src/screens';
 import { theme, engrave } from './src/theme';
-import { GemIcon, GEM_COLOR } from './src/GemIcon';
+import { GemIcon } from './src/GemIcon';
 import { installGlobalErrorHandlers, track } from './src/telemetry';
 import type { ImageSourcePropType } from 'react-native';
 
@@ -69,6 +76,24 @@ try {
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 const { width: SCREEN_W } = Dimensions.get('window');
 
+// Once-per-install push permission prompt marker.
+const PUSH_PROMPTED_KEY = '@crossover_push_prompted';
+
+// Where a tapped push notification wants to land. A cold-start tap fires before
+// profile/loaded are ready, so the route is stashed in this module ref and
+// consumed by an App effect once the app is actually navigable.
+type PushRoute = { kind: 'message'; fromId: string } | { kind: 'store' } | { kind: 'reengage' };
+const pendingPushRoute: { current: PushRoute | null } = { current: null };
+
+function parsePushRoute(data: any): PushRoute | null {
+  if (data?.kind === 'message' && typeof data.fromId === 'string' && data.fromId) {
+    return { kind: 'message', fromId: data.fromId };
+  }
+  if (data?.kind === 'store') return { kind: 'store' };
+  if (data?.kind === 'reengage') return { kind: 'reengage' };
+  return null;
+}
+
 const TAB_DEFS: { key: string; labelKey: 'tab.store' | 'tab.collection' | 'tab.game' | 'tab.friends'; icon: IoniconName; activeIcon: IoniconName }[] = [
   { key: 'store', labelKey: 'tab.store', icon: 'storefront-outline', activeIcon: 'storefront' },
   { key: 'collection', labelKey: 'tab.collection', icon: 'albums-outline', activeIcon: 'albums' },
@@ -79,8 +104,112 @@ const TAB_DEFS: { key: string; labelKey: 'tab.store' | 'tab.collection' | 'tab.g
 // Phases that show the main tab bar (non-game screens)
 const TAB_PHASES = new Set(['home', 'arenas', 'leaderboard', 'matchHistory', 'profile']);
 
-// Top notification banner for an incoming friend match invite. Stays until
-// the user accepts or rejects; rendered over every screen.
+// HUD gem counter. Memoized + owns the count-anim listener, so the per-frame
+// setState during gain animations re-renders ONLY this pill, never the app tree.
+// The purple gain sweep is a native-driver scaleX on a left-anchored layer.
+const DiamondPill = memo(function DiamondPill({ countAnim, fillAnim, pillRef, onMeasure, onPress, shownRef }: {
+  countAnim: Animated.Value;
+  fillAnim: Animated.Value;
+  pillRef: RefObject<View | null>;
+  onMeasure: () => void;
+  onPress: () => void;
+  // The profile's diamonds land via setValue while the pill is unmounted
+  // (splash/loading gates) — seed the display from the last pushed value or
+  // the counter reads 0 until the next change. A ref keeps memo() effective.
+  shownRef: RefObject<number>;
+}) {
+  const [count, setCount] = useState(() => shownRef.current ?? 0);
+  useEffect(() => {
+    const id = countAnim.addListener(({ value }) => setCount(Math.max(0, Math.round(value))));
+    return () => countAnim.removeListener(id);
+  }, [countAnim]);
+  return (
+    <Pressable ref={pillRef} onLayout={onMeasure} onPress={onPress}>
+      {({ pressed }) => (
+        <View style={[s.hudPill, { paddingLeft: 20, paddingRight: 5, paddingVertical: 5 }, pressed && s.hudPillPressed]}>
+          <Animated.View pointerEvents="none" style={[s.diamondFill, { transform: [{ scaleX: fillAnim }] }]} />
+          <GemIcon size={20} />
+          <Text style={s.diamondText}>{count}</Text>
+          <View style={s.diamondPlus}>
+            <Ionicons name="add" size={12} color={theme.ink} />
+          </View>
+        </View>
+      )}
+    </Pressable>
+  );
+});
+
+// One tab: opaque cardLip pill fades/scales in behind the active icon (180ms),
+// icon spring-pops on activation, whole tab has a 2px press-lip. `locked` renders
+// the muted "coming soon" treatment with a gold lock mini-badge.
+function TabButton({ active = false, locked = false, icon, activeIcon, label, onPress }: {
+  active?: boolean; locked?: boolean; icon: IoniconName; activeIcon?: IoniconName; label: string; onPress: () => void;
+}) {
+  const press = useRef(new Animated.Value(0)).current;
+  const act = useRef(new Animated.Value(active ? 1 : 0)).current;
+  const iconPop = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    Animated.timing(act, { toValue: active ? 1 : 0, duration: 180, useNativeDriver: true }).start();
+    if (active) {
+      iconPop.setValue(0.8);
+      Animated.spring(iconPop, { toValue: 1, friction: 4, tension: 160, useNativeDriver: true }).start();
+    }
+  }, [active, act, iconPop]);
+  const color = locked ? theme.muted : active ? theme.primary : theme.muted;
+  return (
+    <Pressable
+      style={s.tab}
+      onPress={onPress}
+      onPressIn={() => Animated.timing(press, { toValue: 1, duration: 60, useNativeDriver: true }).start()}
+      onPressOut={() => Animated.timing(press, { toValue: 0, duration: 110, useNativeDriver: true }).start()}
+    >
+      <Animated.View style={[s.tabInner, { transform: [{ translateY: press.interpolate({ inputRange: [0, 1], outputRange: [0, 2] }) }] }]}>
+        <Animated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, s.tabPill, { opacity: act, transform: [{ scale: act.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }] }]}
+        />
+        <Animated.View style={{ transform: [{ scale: iconPop }] }}>
+          <Ionicons name={active && activeIcon ? activeIcon : icon} size={active ? 30 : 26} color={color} />
+          {locked ? (
+            <View style={s.tabLock}>
+              <Ionicons name="lock-closed" size={9} color={theme.ink} />
+            </View>
+          ) : null}
+        </Animated.View>
+        <Text style={[s.tabLabel, active && s.tabLabelActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+          {label}
+        </Text>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// Mini chunky circle button (lip + 2px depress) for the invite banner actions.
+function InviteAction({ icon, face, lip, fg, onPress }: {
+  icon: IoniconName; face: string; lip: string; fg: string; onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} hitSlop={6}>
+      {({ pressed }) => (
+        <View style={{ backgroundColor: lip, borderRadius: 21, paddingBottom: 2 }}>
+          <View
+            style={{
+              width: 38, height: 38, borderRadius: 19, backgroundColor: face,
+              borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.30)',
+              alignItems: 'center', justifyContent: 'center',
+              transform: [{ translateY: pressed ? 2 : 0 }],
+            }}
+          >
+            <Ionicons name={icon} size={20} color={fg} />
+          </View>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+// Top notification banner for an incoming friend match invite. Springs in like
+// TopBanner, animates out before resolving; stays until accepted or rejected.
 function InviteBanner({
   invite,
   onAccept,
@@ -90,6 +219,21 @@ function InviteBanner({
   onAccept: () => void;
   onReject: () => void;
 }) {
+  const insets = useSafeAreaInsets();
+  const y = useRef(new Animated.Value(-160)).current;
+  const leavingRef = useRef(false); // one response per invite — block ✓/✕ races during the exit
+  useEffect(() => {
+    y.setValue(-160);
+    leavingRef.current = false;
+    Animated.spring(y, { toValue: 0, friction: 8, tension: 70, useNativeDriver: true }).start();
+  }, [invite.fromId, y]);
+  const leave = (done: () => void) => {
+    if (leavingRef.current) return;
+    leavingRef.current = true;
+    Animated.timing(y, { toValue: -160, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
+      if (finished) done();
+    });
+  };
   // Build scope description for the banner
   let scopeDesc = '';
   const scope = invite.options?.scope;
@@ -97,27 +241,25 @@ function InviteBanner({
     scopeDesc = scope.value;
   }
   const mode = invite.options?.mode;
-  const modeLabel = mode === 'country-team' ? 'Ülke-Takım' : mode === 'letter-team' ? 'Harf-Takım' : '';
+  const modeLabel = mode === 'country-team' || mode === 'letter-team' || mode === 'team-team' || mode === 'player-player'
+    ? MODE_LABEL(mode)
+    : '';
 
   const subtitle = scopeDesc
     ? t('friends.inviteMsgScope', { scope: scopeDesc })
     : t('friends.inviteMsg');
 
   return (
-    <View style={s.inviteBanner}>
+    <Animated.View style={[s.inviteBanner, { top: insets.top + 6, transform: [{ translateY: y }] }]}>
       <Ionicons name="game-controller" size={26} color={theme.primary} />
       <View style={{ flex: 1 }}>
         <Text style={s.inviteName} numberOfLines={1}>{invite.fromName}</Text>
         <Text style={s.inviteSub} numberOfLines={2}>{subtitle}</Text>
         {modeLabel ? <Text style={[s.inviteSub, { color: theme.accent, fontSize: 10, marginTop: 1 }]}>{modeLabel}</Text> : null}
       </View>
-      <Pressable onPress={onAccept} style={[s.inviteBtn, { backgroundColor: theme.primary }]} hitSlop={6}>
-        <Ionicons name="checkmark" size={20} color="#06131F" />
-      </Pressable>
-      <Pressable onPress={onReject} style={[s.inviteBtn, { backgroundColor: theme.danger }]} hitSlop={6}>
-        <Ionicons name="close" size={20} color="#fff" />
-      </Pressable>
-    </View>
+      <InviteAction icon="checkmark" face={theme.primary} lip={theme.primaryDark} fg={theme.ink} onPress={() => leave(onAccept)} />
+      <InviteAction icon="close" face={theme.danger} lip={theme.dangerDark} fg={theme.text} onPress={() => leave(onReject)} />
+    </Animated.View>
   );
 }
 
@@ -132,6 +274,7 @@ function TopBanner({
   onPress: () => void;
   onClose: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const y = useRef(new Animated.Value(-160)).current;
   const id = banner?.id;
   useEffect(() => {
@@ -147,8 +290,8 @@ function TopBanner({
   const isFr = banner.kind === 'friend_request';
   const sub = isFr ? t('notif.friendRequest') : (banner.body || t('notif.newMessage'));
   return (
-    <Animated.View style={[s.topBanner, { transform: [{ translateY: y }] }]}>
-      <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }} onPress={() => { onClose(); onPress(); }}>
+    <Animated.View style={[s.topBanner, { top: insets.top + 6, transform: [{ translateY: y }] }]}>
+      <Pressable style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, transform: [{ translateY: pressed ? 1 : 0 }], opacity: pressed ? 0.85 : 1 })} onPress={() => { onClose(); onPress(); }}>
         <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.primary }}>
           <Ionicons name={isFr ? 'person-add' : 'chatbubble-ellipses'} size={20} color={theme.primary} />
         </View>
@@ -157,14 +300,25 @@ function TopBanner({
           <Text style={s.inviteSub} numberOfLines={1}>{sub}</Text>
         </View>
       </Pressable>
-      <Pressable onPress={onClose} hitSlop={8} style={{ paddingHorizontal: 4 }}>
+      <Pressable onPress={onClose} hitSlop={8} style={({ pressed }) => ({ paddingHorizontal: 4, transform: [{ translateY: pressed ? 1 : 0 }], opacity: pressed ? 0.7 : 1 })}>
         <Ionicons name="close" size={18} color={theme.muted} />
       </Pressable>
     </Animated.View>
   );
 }
 
+// Safe-area context must wrap everything that calls useSafeAreaInsets (screens,
+// banners, tab bar) — the provider lives in the default export, the app in AppRoot.
 export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppRoot />
+    </SafeAreaProvider>
+  );
+}
+
+function AppRoot() {
+  const insets = useSafeAreaInsets();
   const { state, actions } = useCrossover();
   const props = { state, actions };
   const scrollRef = useRef<ScrollView>(null);
@@ -189,8 +343,7 @@ export default function App() {
   const [expiredSocialPack, setExpiredSocialPack] = useState(false); // Social Pack expired popup
   const [overlay, setOverlay] = useState<'leaderboard' | 'matchHistory' | null>(null); // centered popups
   const [gemCelebration, setGemCelebration] = useState<GemCelebration | null>(null);
-  const [diamondPillWidth, setDiamondPillWidth] = useState(148);
-  const [visibleDiamonds, setVisibleDiamonds] = useState(0);
+  const diamondsShownRef = useRef(0); // last value pushed to the pill (fallback when profile is briefly absent)
   const csAnim = useRef(new Animated.Value(0)).current; // coming-soon pop/float
   const prevHadActiveSocialPackRef = useRef<boolean | undefined>(undefined);
   const [fontsLoaded, fontError] = useFonts({
@@ -205,8 +358,8 @@ export default function App() {
 
   const setDiamondDisplayInstant = useCallback((value: number) => {
     diamondCountAnim.stopAnimation();
-    diamondCountAnim.setValue(value);
-    setVisibleDiamonds(Math.max(0, Math.round(value)));
+    diamondCountAnim.setValue(value); // setValue notifies the pill's listener
+    diamondsShownRef.current = Math.max(0, Math.round(value));
   }, [diamondCountAnim]);
 
   const animateDiamondGain = useCallback((from: number, to: number, amount: number) => {
@@ -217,26 +370,28 @@ export default function App() {
     diamondFillAnim.stopAnimation();
     diamondCountAnim.setValue(safeFrom);
     diamondFillAnim.setValue(0);
-    setVisibleDiamonds(safeFrom);
+    diamondsShownRef.current = safeTo;
     Animated.parallel([
+      // Count drives a text via listener — necessarily JS-driven.
       Animated.timing(diamondCountAnim, {
         toValue: safeTo,
         duration,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: false,
       }),
+      // Fill sweep is transform-only (scaleX) — native driver.
       Animated.sequence([
         Animated.timing(diamondFillAnim, {
           toValue: 1,
           duration: Math.max(360, duration - 90),
           easing: Easing.out(Easing.cubic),
-          useNativeDriver: false,
+          useNativeDriver: true,
         }),
         Animated.timing(diamondFillAnim, {
           toValue: 0,
           duration: 230,
           easing: Easing.inOut(Easing.quad),
-          useNativeDriver: false,
+          useNativeDriver: true,
         }),
       ]),
     ]).start();
@@ -245,7 +400,6 @@ export default function App() {
   useEffect(() => {
     installGlobalErrorHandlers();
     track('app_start');
-    const t = setTimeout(() => setSplash(false), 1900);
     // Kick off the AdMob SDK once so rewarded ads can load (no-op in Expo Go).
     initMobileAds?.().catch((e: unknown) => console.warn('AdMob init failed', e));
     // Read saved language
@@ -257,13 +411,7 @@ export default function App() {
     AsyncStorage.getItem('@crossover_tutorial_seen')
       .then((v) => setTutorialSeen(v === '1'))
       .catch(() => setTutorialSeen(true));
-    return () => clearTimeout(t);
   }, []);
-
-  useEffect(() => {
-    const id = diamondCountAnim.addListener(({ value }) => setVisibleDiamonds(Math.max(0, Math.round(value))));
-    return () => diamondCountAnim.removeListener(id);
-  }, [diamondCountAnim]);
 
   useEffect(() => {
     const diamonds = state.profile?.diamonds;
@@ -280,11 +428,11 @@ export default function App() {
   }, [state.profile?.diamonds, gemCelebration, setDiamondDisplayInstant, diamondFillAnim, measureDiamondPill]);
 
   const handleGemCelebrationDone = useCallback(() => {
-    const diamonds = state.profile?.diamonds ?? visibleDiamonds;
+    const diamonds = state.profile?.diamonds ?? diamondsShownRef.current;
     const amount = gemCelebration?.amount ?? 0;
     setGemCelebration(null);
     animateDiamondGain(Math.max(0, diamonds - amount), diamonds, amount);
-  }, [state.profile?.diamonds, visibleDiamonds, gemCelebration, animateDiamondGain]);
+  }, [state.profile?.diamonds, gemCelebration, animateDiamondGain]);
 
   useEffect(() => {
     const reward = state.trophyDelta?.arenaReward ?? 0;
@@ -316,12 +464,16 @@ export default function App() {
     return () => clearTimeout(id);
   }, [state.profile?.socialPackUntil]);
 
-  // Pop the "coming soon" badge in, then auto-hide.
+  // Pop the "coming soon" badge in, animate it back out (180ms), then unmount.
   useEffect(() => {
     if (!comingSoon) return;
     csAnim.setValue(0);
     Animated.spring(csAnim, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }).start();
-    const id = setTimeout(() => setComingSoon(false), 1700);
+    const id = setTimeout(() => {
+      Animated.timing(csAnim, { toValue: 0, duration: 180, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
+        if (finished) setComingSoon(false);
+      });
+    }, 1700);
     return () => clearTimeout(id);
   }, [comingSoon, csAnim]);
 
@@ -360,13 +512,84 @@ export default function App() {
   // Leaderboard / match-history open as centered popups (App-level overlay), not fullscreen.
   const openLeaderboard = useCallback(() => { actions.openLeaderboard(); setOverlay('leaderboard'); }, [actions]);
   const openMatchHistory = useCallback(() => { actions.openMatchHistory(); setOverlay('matchHistory'); }, [actions]);
+  const openDiamondStore = useCallback(() => { setStoreSection('diamonds'); goToTab(0); }, [goToTab]);
 
-  // Splash screen: show COF logo on launch.
+  // ---- Push notifications --------------------------------------------------
+  // Once-per-install permission prompt: ~2s after the user first lands on the
+  // home tab (loaded && phase 'home'). The AsyncStorage key marks it shown so
+  // it never nags again; declining keeps notifications off until they revisit.
+  const [pushPrompt, setPushPrompt] = useState(false);
+  const pushPromptChecked = useRef(false); // one arm per launch
+  useEffect(() => {
+    if (!loaded || state.phase !== 'home' || !state.profile || pushPromptChecked.current) return;
+    pushPromptChecked.current = true;
+    AsyncStorage.getItem(PUSH_PROMPTED_KEY)
+      .then((v) => {
+        if (v) return;
+        // AppRoot stays mounted for the app's lifetime — a stray late setState is harmless.
+        setTimeout(() => {
+          setPushPrompt(true);
+          AsyncStorage.setItem(PUSH_PROMPTED_KEY, '1').catch(() => {});
+        }, 2000);
+      })
+      .catch(() => {});
+  }, [loaded, state.phase, state.profile]);
+
+  // Silent re-register on later launches: if permission is already granted,
+  // refresh + resend the token so server-side tokens never go stale. Guarded —
+  // in Expo Go getPushPermissionGranted/getPushToken resolve false/null.
+  const pushRegisteredRef = useRef(false); // once per launch
+  useEffect(() => {
+    if (!loaded || !state.profile || pushRegisteredRef.current) return;
+    pushRegisteredRef.current = true;
+    getPushPermissionGranted()
+      .then((granted) => { if (granted) actions.registerPush(); })
+      .catch(() => {});
+  }, [loaded, state.profile, actions]);
+
+  // Badge sync: unread messages + pending friend requests. Recomputed on every
+  // state change and re-pushed when the app returns to the foreground; clears
+  // naturally when the counts hit 0.
+  const badgeTotal =
+    state.conversations.reduce((sum, c) => sum + (c.unreadCount ?? 0), 0) + state.friendRequests.length;
+  useEffect(() => {
+    setBadge(badgeTotal);
+    const sub = AppState.addEventListener('change', (st) => { if (st === 'active') setBadge(badgeTotal); });
+    return () => sub.remove();
+  }, [badgeTotal]);
+
+  // Tap routing: every tap (warm or cold-start) stashes its route in the module
+  // ref and bumps a counter; the consuming effect below navigates once the app
+  // is ready (loaded + profile), which also covers taps that launched the app.
+  const [pushRouteSeq, setPushRouteSeq] = useState(0);
+  useEffect(() => {
+    const unsubscribe = addNotificationTapListener((data) => {
+      const route = parsePushRoute(data);
+      if (!route) return;
+      pendingPushRoute.current = route;
+      setPushRouteSeq((n) => n + 1);
+    });
+    return unsubscribe;
+  }, []);
+  useEffect(() => {
+    const route = pendingPushRoute.current;
+    if (!route || !loaded || !state.profile) return;
+    pendingPushRoute.current = null;
+    if (route.kind === 'message') {
+      goToTab(3); // friends tab
+      actions.openChat(route.fromId);
+    } else if (route.kind === 'store') {
+      goToTab(0);
+    }
+    // 'reengage' → just open the app (home); nothing to navigate.
+  }, [pushRouteSeq, loaded, state.profile, goToTab, actions]);
+
+  // Splash screen: cinematic brand opening; dismisses itself via onDone.
   if (splash || !fontsReady) {
     return (
       <View style={{ flex: 1 }}>
         <StatusBar style="light" />
-        <SplashScreen />
+        <SplashScreen onDone={() => setSplash(false)} fontsReady={fontsReady} />
       </View>
     );
   }
@@ -376,7 +599,7 @@ export default function App() {
   // the hook count between renders (Rules of Hooks) and crashes right after login.
   if (!state.profile) {
     return (
-      <View style={s.root}>
+      <View style={[s.root, { paddingTop: insets.top }]}>
         <StatusBar style="light" />
         <ScreenBg />
         <LoginScreen state={state} actions={actions} />
@@ -387,7 +610,7 @@ export default function App() {
   // Signed in but no username yet → one-time username creation, before anything else.
   if (!state.profile.usernameSet) {
     return (
-      <View style={s.root}>
+      <View style={[s.root, { paddingTop: insets.top }]}>
         <StatusBar style="light" />
         <ScreenBg />
         <UsernameScreen state={state} actions={actions} />
@@ -411,9 +634,10 @@ export default function App() {
   // crests are prefetched, so the team picker has logos ready immediately.
   if (!loaded) {
     return (
-      <View style={s.root}>
+      // Full-bleed like the splash gate — LoadingScreen paints its own backdrop;
+      // s.root's paddingTop:44 would inset it and show a seam at the status bar.
+      <View style={{ flex: 1 }}>
         <StatusBar style="light" />
-        <ScreenBg />
         <LoadingScreen state={state} actions={actions} onReady={() => setLoaded(true)} />
       </View>
     );
@@ -451,7 +675,7 @@ export default function App() {
         screen = <HomeScreen {...props} />;
     }
     return (
-      <View style={s.root}>
+      <View style={[s.root, { paddingTop: insets.top }]}>
         <StatusBar style="light" />
         <ScreenBg variant="match" />
         {screen}
@@ -494,46 +718,29 @@ export default function App() {
   const bgVariant = (activeTab === 0 ? 'store' : activeTab === 2 && state.phase === 'home' ? 'home' : 'menu') as 'store' | 'home' | 'menu';
 
   return (
-    <View key={`app-${langKey}`} style={s.root}>
+    <View key={`app-${langKey}`} style={[s.root, { paddingTop: insets.top }]}>
       <StatusBar style="light" />
       <ScreenBg variant={bgVariant} />
 
-      {/* Top bar — trophies (left) + gems pill (right) */}
+      {/* Top bar — trophies (left) + gems pill (right); both HUD pills are alive. */}
       {state.profile ? (
         <View style={s.resourceBar}>
-          <View style={s.trophyPill}>
-            <View style={s.glassSheen} pointerEvents="none" />
-            <Ionicons name="trophy" size={18} color={theme.accent} />
-            <Text style={s.trophyText}>{state.profile.trophies}</Text>
-          </View>
-          <Pressable
-            ref={diamondPillRef}
-            onLayout={(e) => {
-              setDiamondPillWidth(e.nativeEvent.layout.width);
-              measureDiamondPill();
-            }}
-            style={s.diamondPill}
-            onPress={() => { setStoreSection('diamonds'); goToTab(0); }}
-          >
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                s.diamondFill,
-                {
-                  width: diamondFillAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, diamondPillWidth],
-                  }),
-                },
-              ]}
-            />
-            <View style={s.glassSheen} pointerEvents="none" />
-            <GemIcon size={20} />
-            <Text style={s.diamondText}>{visibleDiamonds}</Text>
-            <View style={s.diamondPlus}>
-              <Ionicons name="add" size={12} color="#fff" />
-            </View>
+          <Pressable onPress={() => { actions.openArenas(); goToTab(2); }}>
+            {({ pressed }) => (
+              <View style={[s.hudPill, { paddingHorizontal: 24, paddingVertical: 8 }, pressed && s.hudPillPressed]}>
+                <Ionicons name="trophy" size={18} color={theme.accent} />
+                <Text style={s.trophyText}>{state.profile!.trophies}</Text>
+              </View>
+            )}
           </Pressable>
+          <DiamondPill
+            countAnim={diamondCountAnim}
+            fillAnim={diamondFillAnim}
+            pillRef={diamondPillRef}
+            onMeasure={measureDiamondPill}
+            onPress={openDiamondStore}
+            shownRef={diamondsShownRef}
+          />
         </View>
       ) : null}
 
@@ -541,6 +748,11 @@ export default function App() {
         ref={scrollRef}
         horizontal
         pagingEnabled
+        // "always" so this pager never capture-steals the first tap / blurs the
+        // focused TextInput of fiber-descendant screens (the chat Modal lives under
+        // FriendsScreen). Per-tab ScrollViews use "handled", so background-tap
+        // keyboard dismissal on the tabs still works.
+        keyboardShouldPersistTaps="always"
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onScrollEnd}
         onScroll={(e) => {
@@ -567,44 +779,30 @@ export default function App() {
       </ScrollView>
 
       {/* Bottom Tab Bar */}
-      <View style={s.tabBar}>
-        {TABS.map((tab, idx) => {
-          const active = idx === activeTab;
-          return (
-            <Pressable
-              key={tab.key}
-              style={s.tab}
-              onPress={() => {
-                if (idx === 2 && activeTab === 2) {
-                  // Re-tapping the active Oyna tab opens Arenas (Clash Royale style);
-                  // from any other home-slot sub-screen (Profile, Arenas) it returns
-                  // to the main home screen instead of staying put.
-                  if (state.phase === 'home') { actions.openArenas(); return; }
-                  resetHomePhase(); return;
-                }
-                goToTab(idx);
-              }}
-            >
-              <View style={[s.tabInner, active && s.tabInnerActive]}>
-                <Ionicons
-                  name={active ? tab.activeIcon : tab.icon}
-                  size={active ? 30 : 26}
-                  color={active ? theme.primary : theme.muted}
-                />
-                <Text style={[s.tabLabel, active && s.tabLabelActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-                  {t(tab.labelKey)}
-                </Text>
-              </View>
-            </Pressable>
-          );
-        })}
-        {/* Tournaments — greyed, coming soon */}
-        <Pressable style={s.tab} onPress={() => setComingSoon(true)}>
-          <View style={s.tabInner}>
-            <Ionicons name="trophy-outline" size={26} color={theme.border} />
-            <Text style={[s.tabLabel, { color: theme.border }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{t('tab.tournaments')}</Text>
-          </View>
-        </Pressable>
+      <View style={[s.tabBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        {/* 1px top gloss just under the cardLip edge — the bar is a raised surface. */}
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: theme.panelTopGloss }} />
+        {TABS.map((tab, idx) => (
+          <TabButton
+            key={tab.key}
+            active={idx === activeTab}
+            icon={tab.icon}
+            activeIcon={tab.activeIcon}
+            label={t(tab.labelKey)}
+            onPress={() => {
+              if (idx === 2 && activeTab === 2) {
+                // Re-tapping the active Oyna tab opens Arenas (Clash Royale style);
+                // from any other home-slot sub-screen (Profile, Arenas) it returns
+                // to the main home screen instead of staying put.
+                if (state.phase === 'home') { actions.openArenas(); return; }
+                resetHomePhase(); return;
+              }
+              goToTab(idx);
+            }}
+          />
+        ))}
+        {/* Tournaments — locked, coming soon */}
+        <TabButton locked icon="trophy-outline" label={t('tab.tournaments')} onPress={() => setComingSoon(true)} />
       </View>
 
       {/* Tournaments → standalone 3D coming-soon lettering, no bubble/background. */}
@@ -657,59 +855,76 @@ export default function App() {
       ) : null}
 
       {/* Expired Social Pack popup */}
-      <Modal visible={expiredSocialPack} transparent animationType="fade" onRequestClose={() => setExpiredSocialPack(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
-          <View style={{ width: '100%', maxWidth: 340, backgroundColor: theme.card, borderRadius: 20, borderWidth: 1, borderColor: theme.frameGold, overflow: 'hidden' }}>
-            {/* Close button top-right */}
-            <Pressable onPress={() => setExpiredSocialPack(false)} hitSlop={10} style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, width: 32, height: 32, borderRadius: 16, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="close" size={18} color={theme.muted} />
-            </Pressable>
-            <View style={{ alignItems: 'center', paddingTop: 28, paddingHorizontal: 20, paddingBottom: 20 }}>
-              <Ionicons name="people" size={40} color={theme.accent} />
-              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18, marginTop: 12, textAlign: 'center' }}>Sosyal Paket Sona Erdi</Text>
-              <Text style={{ color: theme.muted, fontSize: 14, textAlign: 'center', lineHeight: 20, marginTop: 8 }}>
-                Sosyal paketin süresi doldu. Arkadaşlarınla ülke-takım ve harf-takım modlarında oynamaya devam etmek için paketini yenile.
-              </Text>
-            </View>
-            <View style={{ paddingHorizontal: 20, paddingBottom: 20, gap: 8 }}>
-              <Pressable
-                onPress={() => { setExpiredSocialPack(false); setStoreSection('socialPack'); goToTab(0); }}
-                style={{ backgroundColor: theme.accent, borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: '#C68A0E' }}
-              >
-                <Text style={{ color: '#06131F', fontFamily: 'Poppins-ExtraBold', fontSize: 15 }}>Devam Et</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <GameModal
+        visible={expiredSocialPack}
+        onClose={() => setExpiredSocialPack(false)}
+        title={t('socialPack.expiredTitle')}
+        icon="people"
+      >
+        <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+          {t('socialPack.expiredBody')}
+        </Text>
+        <Btn
+          big
+          kind="accent"
+          icon="people"
+          label={t('common.continue')}
+          onPress={() => { setExpiredSocialPack(false); setStoreSection('socialPack'); goToTab(0); }}
+        />
+      </GameModal>
+
+      {/* Push permission prompt — once per install, coach-framed. */}
+      <GameModal
+        visible={pushPrompt}
+        onClose={() => setPushPrompt(false)}
+        title={t('push.promptTitle')}
+        icon="notifications"
+        coach
+      >
+        <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+          {t('push.promptBody')}
+        </Text>
+        <Btn
+          big
+          icon="notifications"
+          label={t('push.enable')}
+          onPress={() => { setPushPrompt(false); actions.registerPush(); }}
+        />
+        <Btn kind="ghost" label={t('push.later')} onPress={() => setPushPrompt(false)} />
+      </GameModal>
 
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  splash: { flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' },
-  splashLogo: { width: 120, height: 120, borderRadius: 28 },
-  root: { flex: 1, backgroundColor: '#0E2347', paddingTop: 44 }, // navy behind the patterned ScreenBg (no header seam)
+  root: { flex: 1, backgroundColor: BG_TOP }, // navy behind the patterned ScreenBg (no header seam); top inset applied via safe-area
   tabBar: {
     flexDirection: 'row',
     borderTopWidth: 2,
     borderTopColor: theme.cardLip,
     backgroundColor: theme.bg2,
-    paddingBottom: 24,
     paddingTop: 13,
+    // Upward shadow — the bar physically sits over the content.
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 10,
   },
   tab: { flex: 1, alignItems: 'center' },
   tabInner: { alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 9, paddingHorizontal: 4, borderRadius: 16, alignSelf: 'stretch' },
-  tabInnerActive: {
-    backgroundColor: '#0E1838',
+  // Opaque active pill (no rest glow — spec §14): cardLip fill + primary ring.
+  tabPill: {
+    backgroundColor: theme.cardLip,
     borderWidth: 1,
     borderColor: theme.primary,
-    shadowColor: theme.primary,
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 4,
+    borderRadius: 16,
+  },
+  tabLock: {
+    position: 'absolute', top: -4, right: -8, width: 14, height: 14, borderRadius: 7,
+    backgroundColor: theme.accent, borderBottomWidth: 1.5, borderBottomColor: theme.accentDark,
+    alignItems: 'center', justifyContent: 'center',
   },
   tabLabel: { color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' },
   tabLabelActive: { color: theme.primary },
@@ -721,7 +936,7 @@ const s = StyleSheet.create({
   },
   comingSoonTextBack: {
     position: 'absolute',
-    color: '#653100',
+    color: darken(theme.accentDark),
     fontSize: 34,
     fontFamily: 'Poppins-Black',
     letterSpacing: 1.6,
@@ -731,7 +946,7 @@ const s = StyleSheet.create({
   },
   comingSoonTextMid: {
     position: 'absolute',
-    color: '#A65108',
+    color: theme.accentDark,
     fontSize: 34,
     fontFamily: 'Poppins-Black',
     letterSpacing: 1.6,
@@ -739,7 +954,7 @@ const s = StyleSheet.create({
     transform: [{ translateX: 0 }, { translateY: 4 }],
   },
   comingSoonTextFront: {
-    color: '#FFD86B',
+    color: theme.gold,
     fontSize: 34,
     fontFamily: 'Poppins-Black',
     letterSpacing: 1.6,
@@ -747,22 +962,21 @@ const s = StyleSheet.create({
     ...engrave('lg'),
   },
   inviteBanner: {
-    position: 'absolute', top: 50, left: 10, right: 10, zIndex: 100,
+    position: 'absolute', left: 10, right: 10, zIndex: 100, // top comes from the safe-area inset
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: theme.card, borderRadius: 16, padding: 12,
-    borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark,
+    borderWidth: 2, borderColor: theme.primary, borderBottomWidth: 4, borderBottomColor: theme.primaryDark,
     shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 16,
   },
   topBanner: {
-    position: 'absolute', top: 50, left: 10, right: 10, zIndex: 110,
+    position: 'absolute', left: 10, right: 10, zIndex: 110, // top comes from the safe-area inset
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: theme.card, borderRadius: 16, paddingVertical: 10, paddingHorizontal: 12,
     borderWidth: 2, borderColor: theme.primary, borderBottomWidth: 4, borderBottomColor: theme.primaryDark,
     shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 18,
   },
-  inviteName: { color: theme.text, fontWeight: '800', fontSize: 15 },
-  inviteSub: { color: theme.muted, fontSize: 11.5 },
-  inviteBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  inviteName: { color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15, ...engrave('sm') },
+  inviteSub: { color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold' },
   resourceBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -771,38 +985,29 @@ const s = StyleSheet.create({
     paddingTop: 18, // moved down — was sitting too high under the notch
     paddingBottom: 8,
   },
-  glassSheen: {
-    // Top-half highlight that fakes light reflecting off curved glass.
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '52%',
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-  },
-  trophyPill: {
+  // One opaque HUD counter language (spec §14 — no glass): recessed panelInnerFill
+  // trough, dark top edge = sunken, bright content sits inside it.
+  hudPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    overflow: 'hidden',
     minWidth: 148, // longer left↔right
     justifyContent: 'center',
-    backgroundColor: 'rgba(228,238,255,0.13)', // true glass — bg pattern shows through
+    backgroundColor: theme.panelInnerFill,
     borderRadius: 19,
-    paddingHorizontal: 24,
-    paddingVertical: 8,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.5)', // bright glass rim
-    borderTopWidth: 1.5,
-    borderTopColor: 'rgba(255,255,255,0.95)', // top edge catches the most light
-    borderBottomWidth: 3,
-    borderBottomColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 2,
+    borderColor: theme.border,
+    borderTopColor: theme.cardLip, // dark top edge = sunken counter well
     shadowColor: '#000',
     shadowOpacity: 0.35,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
+  },
+  hudPillPressed: {
+    backgroundColor: theme.bg2, // fill brightens
+    transform: [{ translateY: 1 }],
   },
   trophyText: {
     color: theme.gold,
@@ -810,37 +1015,15 @@ const s = StyleSheet.create({
     fontFamily: 'Poppins-Black',
     ...engrave('sm'),
   },
-  diamondPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    overflow: 'hidden',
-    minWidth: 148, // longer left↔right
-    justifyContent: 'center',
-    backgroundColor: 'rgba(228,238,255,0.13)', // true glass — bg pattern shows through
-    borderRadius: 19,
-    paddingLeft: 20,
-    paddingRight: 5,
-    paddingVertical: 5,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.5)', // bright glass rim
-    borderTopWidth: 1.5,
-    borderTopColor: 'rgba(255,255,255,0.95)', // top edge catches the most light
-    borderBottomWidth: 3,
-    borderBottomColor: 'rgba(255,255,255,0.18)',
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
+  // Left-anchored gain sweep: full-width layer scaled from 0 via scaleX (native driver).
   diamondFill: {
     position: 'absolute',
     left: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: 'rgba(168,85,247,0.24)',
-    borderRadius: 19,
+    width: '100%',
+    transformOrigin: 'left',
+    backgroundColor: withAlpha(theme.gem, 0.24),
   },
   diamondText: {
     color: theme.gemText,
@@ -854,7 +1037,7 @@ const s = StyleSheet.create({
     width: 22,
     height: 22,
     borderTopWidth: 1.5,
-    borderTopColor: 'rgba(255,255,255,0.6)',
+    borderTopColor: 'rgba(255,255,255,0.30)',
     borderBottomWidth: 2,
     borderBottomColor: theme.primaryDark,
     alignItems: 'center',

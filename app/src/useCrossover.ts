@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
-import { AppState, type AppStateStatus, InteractionManager } from 'react-native';
+import { AppState, type AppStateStatus, InteractionManager, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // NetInfo may not be available in Expo Go — graceful fallback
 let NetInfo: any;
 try { NetInfo = require('@react-native-community/netinfo').default; } catch { NetInfo = null; }
 import { SERVER_URL, HTTP_URL, APP_BUILD_NUMBER } from './config';
-import { t } from './i18n';
+import { currentLang, t } from './i18n';
+import { getPushToken, requestPushPermission } from './notifications';
 import { OfflineRoom } from './offline/room';
 import { initOfflineDB } from './offline/db';
 import { captureError, track } from './telemetry';
@@ -925,6 +926,24 @@ export function useCrossover() {
       send({ type: 'send_message', toUserId, body: body.trim() });
     },
     markRead: (fromUserId: string) => send({ type: 'mark_read', fromUserId }),
+    // ---- Push notifications ----
+    // Ask permission → fetch the Expo push token → register it with the server.
+    // NOT auto-run — the UI triggers it (permission prompt / silent re-register
+    // on later launches when permission is already granted). Every step is
+    // guarded: in Expo Go the token is null and this quietly does nothing.
+    registerPush: async () => {
+      try {
+        const granted = await requestPushPermission();
+        if (!granted) return;
+        const token = await getPushToken();
+        if (!token) return;
+        const platform = Platform.OS === 'android' ? ('android' as const) : ('ios' as const);
+        // send() so reconnect queueing applies (register → queued msg after auth).
+        send({ type: 'register_push', token, platform, lang: currentLang() });
+      } catch (err) {
+        captureError(err, { where: 'register_push' });
+      }
+    },
     typingStart: (toUserId: string) => send({ type: 'typing_start', toUserId }),
     typingStop: (toUserId: string) => send({ type: 'typing_stop', toUserId }),
     leave: () => {

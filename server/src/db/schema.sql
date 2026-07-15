@@ -208,3 +208,24 @@ ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_messages_conversation
   ON messages (LEAST(from_user, to_user), GREATEST(from_user, to_user), created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_unread ON messages (to_user, read_at) WHERE read_at IS NULL;
+
+-- ---- Push notifications (Expo) ----
+-- One row per device push token. A user may have several devices; a token
+-- belongs to exactly one user (re-login on the same device re-points it).
+CREATE TABLE IF NOT EXISTS push_tokens (
+  token      TEXT PRIMARY KEY,             -- Expo push token (ExponentPushToken[...])
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  platform   TEXT NOT NULL,                -- 'ios' | 'android'
+  lang       TEXT NOT NULL DEFAULT 'tr',   -- device language for localized copy
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_push_tokens_user ON push_tokens (user_id);
+
+-- Last time we sent this user a re-engagement push (rate-limits the cron).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_reengage_at TIMESTAMPTZ;
+
+-- Tiny key/value store for cron bookkeeping (e.g. last store-refresh push date).
+CREATE TABLE IF NOT EXISTS app_state (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);

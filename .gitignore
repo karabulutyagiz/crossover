@@ -14,3 +14,6 @@ deploy/seed/*.sql.gz
 *.pem
 *.key
 *.mobileprovision
+
+# iCloud-safe deps (node_modules symlinked to .nosync)
+node_modules.nosync/

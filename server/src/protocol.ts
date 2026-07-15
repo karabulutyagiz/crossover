@@ -127,7 +127,10 @@ export type ClientMsg =
   | { type: 'list_conversations' }           // get all chats with last message + unread count
   | { type: 'mark_read'; fromUserId: string } // mark all messages from this user as read
   | { type: 'typing_start'; toUserId: string }
-  | { type: 'typing_stop'; toUserId: string };
+  | { type: 'typing_stop'; toUserId: string }
+  // ---- Push notifications ----
+  // Save this device's Expo push token (client mirror must stay in sync).
+  | { type: 'register_push'; token: string; platform: 'ios' | 'android'; lang?: string };
 
 // ---- Server -> Client ----
 export interface RoundResult {

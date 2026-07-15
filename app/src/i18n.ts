@@ -47,6 +47,7 @@ const tr = {
   'login.hint': 'Oynamak için giriş yapmalısın. Devam ederek bir hesap oluşturulur.',
   'login.failed': 'Giriş başarısız. Tekrar dene.',
   'login.guest': 'Misafir Girişi',
+  'login.apple': 'Apple ile Giriş Yap',
 
   // tabs
   'tab.store': 'Mağaza',
@@ -71,6 +72,7 @@ const tr = {
   'difficulty.hard': 'Zor',
   'home.leaderboard': 'Lider Tablosu',
   'home.arenas': 'Arenalar',
+  'home.topArena': 'ZİRVEDESİN',
   'home.namePlaceholder': 'Adın',
   'home.codePlaceholder': 'ODA KODU',
 
@@ -186,6 +188,7 @@ const tr = {
   'searching.title': 'Çevrimiçi rakip aranıyor…',
   'searching.header': 'Rakip Aranıyor',
   'searching.cancel': 'Vazgeç',
+  'searching.didYouKnow': 'BİLİYOR MUYDUN?',
   'ready.label': 'Hazır',
   'ready.labelSecs': 'Hazır ({secs})',
   'store.changeNameConfirm': 'Değiştir',
@@ -212,6 +215,7 @@ const tr = {
   // match history
   'matchHistory.title': 'Müsabaka Geçmişi',
   'matchHistory.empty': 'Henüz müsabaka yok',
+  'matchHistory.emptyHint': 'İlk maçını oyna, geçmişin burada birikecek!',
   'matchHistory.won': 'GALİBİYET',
   'matchHistory.lost': 'MAĞLUBİYET',
 
@@ -219,6 +223,7 @@ const tr = {
   'leaderboard.title': 'Lider Tablosu',
   'leaderboard.back': 'Geri',
   'leaderboard.empty': 'Henüz sıralama yok',
+  'leaderboard.emptyHint': 'Maç kazan, kupa topla ve sıralamaya gir!',
   'leaderboard.viewProfile': 'Profili Görüntüle',
   'leaderboard.sendFriendRequest': 'Arkadaşlık İsteği Gönder',
 
@@ -270,6 +275,13 @@ const tr = {
   'store.purchaseFailedBody': 'Ödeme tamamlanamadı, tekrar dene.',
   'store.comingSoonTitle': 'Çok yakında',
   'store.comingSoonBody': 'Satın alma yakında aktifleşecek.',
+  // Rendered in the GameModal banner (uppercase) — pre-uppercased for Turkish İ.
+  'socialPack.expiredTitle': 'SOSYAL PAKET SONA ERDİ',
+  'socialPack.expiredBody': 'Sosyal paketin süresi doldu. Arkadaşlarınla ülke-takım ve harf-takım modlarında oynamaya devam etmek için paketini yenile.',
+
+  // network (offline banner) — title renders uppercase, pre-uppercased for Turkish İ
+  'network.offlineTitle': 'İNTERNET BAĞLANTISI YOK',
+  'network.offlineHint': 'Bağlantı gelince kaldığın yerden devam edersin',
   'store.cancel': 'Vazgeç',
   'store.confirm': 'Onayla',
   'store.newName': 'Yeni isim',
@@ -279,6 +291,8 @@ const tr = {
   'arenas.back': 'Geri',
   'arenas.current': 'ŞU AN',
   'arenas.here': 'BURADASIN',
+  // Ribbon renders uppercase — pre-uppercased for Turkish İ/ı.
+  'arenas.passed': 'TAMAMLANDI',
 
   // friends
   'friends.title': 'Arkadaşlar',
@@ -287,6 +301,7 @@ const tr = {
   'friends.byCode': 'Kod ile',
   'friends.byName': 'İsim ile',
   'friends.usernamePlaceholder': 'Kullanıcı adı yaz',
+  'friends.copied': 'KOPYALANDI',
   'friends.sendRequest': 'Arkadaşlık İsteği Gönder',
   'friends.search': 'Ara',
   'friends.friendCode': 'Arkadaş Kodu',
@@ -305,6 +320,7 @@ const tr = {
   'friends.removeConfirmTitle': 'Kaldırılsın mı?',
   'friends.removeConfirmBody': '{name} adlı kişiyi arkadaşlarından çıkarmak istediğine emin misin?',
   'friends.noPendingRequests': 'Bekleyen istek yok',
+  'friends.noRequestsHint': 'Kodunu paylaş, istekler burada görünsün',
   'friends.wantsToBeFriend': 'Seninle arkadaş olmak istiyor',
   'friends.searchFriends': 'Arkadaş ara...',
   'friends.sendMessage': 'Mesaj Gönder',
@@ -353,12 +369,14 @@ const tr = {
   'emote.champion.desc': 'Kupayı kaldır, zaferi kutla',
 
   // leave confirmation
+  'leave.bannerTitle': 'DİKKAT',
   'leave.confirmTitle': 'Çıkış yapmak istediğinize emin misiniz?',
   'leave.confirmBody': 'Çıkış yaptığınız halde kupa kaybedeceksiniz.',
   'leave.confirm': 'Evet, Çık',
   'leave.cancel': 'Vazgeç',
 
   // opponent left popup
+  'opponent.bannerTitle': 'RAKİP AYRILDI',
   'opponent.leftTitle': 'Rakibiniz maçtan ayrıldı',
   'opponent.findNew': 'Yeni Rakip Bul',
   'opponent.goHome': 'Ana Sayfaya Dön',
@@ -392,8 +410,17 @@ const tr = {
   'profile.logoutConfirm': 'Hesabından çıkış yapmak istediğine emin misin?',
   'notif.friendRequest': 'sana arkadaşlık isteği gönderdi',
   'notif.newMessage': 'sana mesaj gönderdi',
+  'push.promptTitle': 'BİLDİRİMLERİ AÇ',
+  'push.promptBody': 'Arkadaşlarının mesajlarını, maç davetlerini ve mağaza yeniliklerini anında haber verelim.',
+  'push.enable': 'Bildirimleri Aç',
+  'push.later': 'Daha Sonra',
   'chat.placeholder': 'Mesaj yaz...',
+  'chat.send': 'Gönder',
   'chat.typing': 'yazıyor...',
+  'chat.sayHello': 'Merhaba de!',
+  'chat.greeting1': 'Selam! 👋',
+  'chat.greeting2': 'Maç yapalım mı?',
+  'chat.greeting3': 'İyi oyundu! 🔥',
   'intro.slide1.desc': 'İki takımda da oynamış futbolcuyu bul. İlk bilen kazanır!',
   'intro.slide2.title': 'RAKİBİNLE YARIŞ',
   'intro.slide2.desc': 'Ortak oyuncuyu ilk doğru yazan turu alır. Hızlı düşün!',
@@ -403,6 +430,7 @@ const tr = {
   'loading.tip2': 'Rakipten önce yaz — hız kadar bilgi de önemli.',
   'loading.tip3': 'Pas mı? İki taraf da pas geçerse el atlanır, puan gitmez.',
   'loading.tip4': 'İlk 3 turu kazanan maçı ve kupayı alır.',
+  'loading.tipLabel': 'İPUCU',
   'tutorial.coachStep': 'KOÇ · ADIM {step}/3',
   'tutorial.step1Gate': 'Hoş geldin! 👋 Hızlı bir alıştırma yapalım. İki takımda da oynamış futbolcuyu bulacaksın.\n\nDevam Et\'e bas, sonra Galatasaray\'a dokun.',
   'tutorial.step1Hint': '👇 Galatasaray’a dokun',
@@ -476,6 +504,27 @@ const tr = {
   // store — purchase popup
   'store.purchaseSuccess': 'Satın Alma Başarılı!',
   'store.gotIt': 'Harika!',
+
+  // store — kit reskin (banner titles render uppercase; pre-uppercased for Turkish İ)
+  'store.bestValue': 'EN AVANTAJLI',
+  'store.processing': 'Satın alma güvenli şekilde işleniyor...',
+  'store.countdown.daysHours': '{d} gün {h} saat kaldı',
+  'store.countdown.hms': '{h}sa {m}dk {s}sn kaldı',
+  'store.notEnoughGemsTitle': 'YETERSİZ ELMAS',
+  'store.notEnoughGemsBody': 'Bu ifade için elmasın yetmiyor. Elmas paketlerine göz at!',
+  'store.goToDiamonds': 'Elmaslara Git',
+  'store.changeNameTitle': 'AD DEĞİŞTİR',
+
+  // diamond celebration
+  'celebration.congrats': 'TEBRİKLER',
+  'celebration.arenaTitle': 'Tebrikler, yeni arenaya ulaştın!',
+  'celebration.arenaReward': '{arena} ödülün: +{n} elmas',
+
+  // collection — kit reskin
+  'collection.allOwnedTitle': 'Hepsi sende!',
+  'collection.unlockStore': 'Mağazada',
+  'collection.unlockWeek': '{week}. hafta',
+  'collection.unlockReward': 'Özel ödül',
 };
 
 // ---- English (fallback) ----
@@ -491,6 +540,7 @@ const en: typeof tr = {
   'login.hint': 'You must sign in to play. By continuing, an account is created.',
   'login.failed': 'Sign-in failed. Please try again.',
   'login.guest': 'Guest Login',
+  'login.apple': 'Sign in with Apple',
 
   'tab.store': 'Store',
   'tab.collection': 'Collection',
@@ -513,6 +563,7 @@ const en: typeof tr = {
   'difficulty.hard': 'Hard',
   'home.leaderboard': 'Leaderboard',
   'home.arenas': 'Arenas',
+  'home.topArena': 'TOP ARENA',
   'home.namePlaceholder': 'Your name',
   'home.codePlaceholder': 'ROOM CODE',
 
@@ -621,6 +672,7 @@ const en: typeof tr = {
   'searching.title': 'Looking for an online opponent…',
   'searching.header': 'Finding Opponent',
   'searching.cancel': 'Cancel',
+  'searching.didYouKnow': 'DID YOU KNOW?',
   'ready.label': 'Ready',
   'ready.labelSecs': 'Ready ({secs})',
   'store.changeNameConfirm': 'Change',
@@ -644,12 +696,14 @@ const en: typeof tr = {
 
   'matchHistory.title': 'Match History',
   'matchHistory.empty': 'No matches yet',
+  'matchHistory.emptyHint': 'Play your first match and your history will pile up here!',
   'matchHistory.won': 'WON',
   'matchHistory.lost': 'LOST',
 
   'leaderboard.title': 'Leaderboard',
   'leaderboard.back': 'Back',
   'leaderboard.empty': 'No rankings yet',
+  'leaderboard.emptyHint': 'Win matches, collect trophies and enter the rankings!',
   'leaderboard.viewProfile': 'View Profile',
   'leaderboard.sendFriendRequest': 'Send Friend Request',
 
@@ -700,6 +754,10 @@ const en: typeof tr = {
   'store.purchaseFailedBody': 'Payment could not be completed. Please try again.',
   'store.comingSoonTitle': 'Coming soon',
   'store.comingSoonBody': 'Purchases will be available soon.',
+  'socialPack.expiredTitle': 'Social Pack Expired',
+  'socialPack.expiredBody': 'Your Social Pack has expired. Renew it to keep playing Country-Team and Letter-Team friendlies with your friends.',
+  'network.offlineTitle': 'NO INTERNET CONNECTION',
+  'network.offlineHint': 'You will resume as soon as you are back online',
   'store.cancel': 'Cancel',
   'store.confirm': 'Confirm',
   'store.newName': 'New name',
@@ -708,6 +766,7 @@ const en: typeof tr = {
   'arenas.back': 'Back',
   'arenas.current': 'CURRENT',
   'arenas.here': 'YOU ARE HERE',
+  'arenas.passed': 'CLEARED',
 
   'friends.title': 'Friends',
   'friends.addSection': 'ADD FRIEND',
@@ -715,6 +774,7 @@ const en: typeof tr = {
   'friends.byCode': 'By Code',
   'friends.byName': 'By Name',
   'friends.usernamePlaceholder': 'Enter username',
+  'friends.copied': 'COPIED',
   'friends.sendRequest': 'Send Friend Request',
   'friends.search': 'Search',
   'friends.friendCode': 'Friend Code',
@@ -733,6 +793,7 @@ const en: typeof tr = {
   'friends.removeConfirmTitle': 'Remove friend?',
   'friends.removeConfirmBody': 'Are you sure you want to remove {name} from your friends?',
   'friends.noPendingRequests': 'No pending requests',
+  'friends.noRequestsHint': 'Share your code and requests will show up here',
   'friends.wantsToBeFriend': 'wants to be your friend',
   'friends.searchFriends': 'Search friends...',
   'friends.sendMessage': 'Send Message',
@@ -776,11 +837,13 @@ const en: typeof tr = {
   'emote.champion.name': 'Trophy Party',
   'emote.champion.desc': 'Lift the trophy, celebrate the win',
 
+  'leave.bannerTitle': 'HOLD ON',
   'leave.confirmTitle': 'Are you sure you want to leave?',
   'leave.confirmBody': 'You will lose trophies if you leave.',
   'leave.confirm': 'Yes, Leave',
   'leave.cancel': 'Cancel',
 
+  'opponent.bannerTitle': 'OPPONENT LEFT',
   'opponent.leftTitle': 'Your opponent left the match',
   'opponent.findNew': 'Find New Opponent',
   'opponent.goHome': 'Go Home',
@@ -812,8 +875,17 @@ const en: typeof tr = {
   'profile.logoutConfirm': 'Are you sure you want to log out of this account?',
   'notif.friendRequest': 'sent you a friend request',
   'notif.newMessage': 'sent you a message',
+  'push.promptTitle': 'TURN ON NOTIFICATIONS',
+  'push.promptBody': 'Get instant word of friend messages, match invites and store drops.',
+  'push.enable': 'Enable Notifications',
+  'push.later': 'Maybe Later',
   'chat.placeholder': 'Type a message...',
+  'chat.send': 'Send',
   'chat.typing': 'typing...',
+  'chat.sayHello': 'Say hello!',
+  'chat.greeting1': 'Hey! 👋',
+  'chat.greeting2': 'Up for a match?',
+  'chat.greeting3': 'Good game! 🔥',
   'intro.slide1.desc': 'Find the footballer who played for both clubs. First to know wins!',
   'intro.slide2.title': 'RACE YOUR RIVAL',
   'intro.slide2.desc': 'The first correct shared player takes the round. Think fast!',
@@ -823,6 +895,7 @@ const en: typeof tr = {
   'loading.tip2': 'Type before your rival — knowledge matters as much as speed.',
   'loading.tip3': 'Pass? If both sides pass, the round is skipped and no points are lost.',
   'loading.tip4': 'The first to win 3 rounds takes the match and the trophies.',
+  'loading.tipLabel': 'TIP',
   'tutorial.coachStep': 'COACH · STEP {step}/3',
   'tutorial.step1Gate': 'Welcome! 👋 Let\'s do a quick practice. You\'ll find a footballer who played for both clubs.\n\nPress Continue, then tap Galatasaray.',
   'tutorial.step1Hint': '👇 Tap Galatasaray',
@@ -891,6 +964,24 @@ const en: typeof tr = {
 
   'store.purchaseSuccess': 'Purchase Successful!',
   'store.gotIt': 'Awesome!',
+
+  'store.bestValue': 'BEST VALUE',
+  'store.processing': 'Your purchase is being processed securely...',
+  'store.countdown.daysHours': '{d}d {h}h left',
+  'store.countdown.hms': '{h}h {m}m {s}s left',
+  'store.notEnoughGemsTitle': 'NOT ENOUGH DIAMONDS',
+  'store.notEnoughGemsBody': "You don't have enough diamonds for this emote. Check out the diamond packs!",
+  'store.goToDiamonds': 'Get Diamonds',
+  'store.changeNameTitle': 'CHANGE NAME',
+
+  'celebration.congrats': 'CONGRATS',
+  'celebration.arenaTitle': 'Congrats — you reached a new arena!',
+  'celebration.arenaReward': 'Your {arena} reward: +{n} diamonds',
+
+  'collection.allOwnedTitle': 'You have them all!',
+  'collection.unlockStore': 'In the store',
+  'collection.unlockWeek': 'Week {week}',
+  'collection.unlockReward': 'Special reward',
 };
 
 export type MessageKey = keyof typeof tr;

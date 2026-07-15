@@ -1,7 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
   Image,
   type ImageSourcePropType,
   Keyboard,
@@ -16,6 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Animated, Easing, PanResponder, Platform, Dimensions, Linking } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
@@ -27,17 +26,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
 import { gemTarget } from './gemTarget';
-import { Avatar, AVATAR_IDS } from './Avatar';
+import { Avatar } from './Avatar';
 import Svg, { Rect, Circle, Line, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
-import type { GameState, FriendInfo } from './useCrossover';
+import type { GameState, FriendInfo, LeaderboardEntry } from './useCrossover';
 import { initialState } from './useCrossover';
-import type { ClubRef, Difficulty, GameMode, GameOptions, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, SpellInfo } from './protocol';
+import type { ClubRef, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, SpellInfo } from './protocol';
 import {
   EmoteCallout,
   EmoteSticker,
-  TextEmoteFrame,
   emotePhrase,
   PREMIUM_EMOTES,
   ANIM_EMOTES,
@@ -165,104 +163,24 @@ function arenaIcon(arena: { minTrophies: number }): IoniconName {
   return 'shield-outline';
 }
 
-// ---- shared primitives ----
-// Flat, simple button: solid colour, subtle scale press feedback. Palette index
-// [1] is the solid fill (other entries kept for tonal reference).
-const BTN_PALETTE: Record<string, [string, string, string]> = {
-  primary: ['#3DF29A', '#1FBE76', '#0E8C53'],
-  accent: ['#FFD968', '#F5B81F', '#C68A0E'],
-  blue: ['#5FB8FF', '#2E93F0', '#1E6FD4'],
-  danger: ['#FF6E80', '#ED3F55', '#B82B3F'],
-  ghost: ['transparent', 'transparent', theme.border],
-};
+// ============================================================================
+// CROSSOVER UI KIT — shared primitives (drop-in replacement)
+// Replaces the "---- shared primitives ----" section of app/src/screens.tsx
+// (the current block from BTN_PALETTE through ScreenHeader, ~lines 168–381).
+// Relies ONLY on imports already present at the top of screens.tsx:
+//   useCallback/useEffect/useRef/useState, type ComponentProps/ReactNode,
+//   Animated, Easing, Modal, Pressable, StyleSheet, Text, TextInput, View,
+//   Ionicons, Svg + gradient primitives, theme, engrave.
+// IoniconName (line ~154) stays where it is.
+// Backward compatible: Btn / Chip / GamePanel / GameModal / RankBadge /
+// ScreenHeader keep their names and prop contracts; darken() keeps its
+// signature. New: lighten, withAlpha, usePressLip, GameSpinner, GameInput,
+// GameRow, Ribbon, SectionHeader, EmptyState.
+// ============================================================================
 
-function Btn({
-  label,
-  onPress,
-  kind = 'primary',
-  disabled,
-  icon,
-  big,
-}: {
-  label: string;
-  onPress: () => void;
-  kind?: 'primary' | 'ghost' | 'accent' | 'blue' | 'danger';
-  disabled?: boolean;
-  icon?: IoniconName;
-  big?: boolean;
-}) {
-  const press = useRef(new Animated.Value(0)).current;
-  const pal = BTN_PALETTE[kind] ?? BTN_PALETTE.primary!;
-  const face = pal[1];
-  const lip = pal[2];
-  const ghost = kind === 'ghost';
-  const fg = ghost ? theme.text : theme.ink;
-  const radius = big ? 14 : 12;
-  const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, ghost ? 2 : 4] });
-  const glow = big && (kind === 'primary' || kind === 'accent') && !disabled;
-  const content = (
-    <>
-      {icon ? <Ionicons name={icon} size={big ? 23 : 19} color={fg} style={{ marginRight: 9 }} /> : null}
-      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: fg, fontSize: big ? 18 : 15, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.3, flexShrink: 1 }}>{label}</Text>
-    </>
-  );
-  return (
-    <Pressable
-      disabled={disabled}
-      onPressIn={() => Animated.timing(press, { toValue: 1, duration: 60, useNativeDriver: true }).start()}
-      onPressOut={() => Animated.timing(press, { toValue: 0, duration: 110, useNativeDriver: true }).start()}
-      onPress={disabled ? undefined : onPress}
-      style={{
-        marginVertical: 6, opacity: disabled ? 0.5 : 1, borderRadius: radius + 2,
-        ...(glow ? { shadowColor: face, shadowOpacity: 0.5, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 10 } : {}),
-      }}
-    >
-      {ghost ? (
-        <Animated.View
-          style={{
-            transform: [{ translateY: ty }], backgroundColor: theme.glowSoft, borderRadius: radius, borderWidth: 2, borderColor: theme.primary,
-            paddingVertical: big ? 14 : 11, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-            shadowColor: theme.primary, shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 4,
-          }}
-        >
-          {content}
-        </Animated.View>
-      ) : (
-        // chunky 3D button: darker bottom "lip" + face that depresses onto it when pressed
-        <View style={{ backgroundColor: lip, borderRadius: radius + 1, paddingBottom: disabled ? 0 : 4, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
-          <Animated.View
-            style={{
-              transform: [{ translateY: ty }], backgroundColor: face, borderRadius: radius, paddingVertical: big ? 15 : 12, paddingHorizontal: 18,
-              borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.30)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            {content}
-          </Animated.View>
-        </View>
-      )}
-    </Pressable>
-  );
-}
-
-// Compact option chip (mode / scope / difficulty) for the home screen.
-function Chip({ icon, label, onPress }: { icon: IoniconName; label: string; onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-        backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border,
-        borderRadius: 12, paddingVertical: 11, paddingHorizontal: 6,
-      }}
-    >
-      <Ionicons name={icon} size={14} color={theme.accent} />
-      <Text style={{ color: theme.text, fontSize: 11, fontWeight: '700' }} numberOfLines={1}>{label}</Text>
-    </Pressable>
-  );
-}
-
-// Darken a hex color (for tinted frame bottom-edges).
-function darken(hex: string, amt = 0.34): string {
+// ---- color math ------------------------------------------------------------
+// Darken a hex color (for tinted frame bottom-edges). KEEP SIGNATURE — used app-wide.
+export function darken(hex: string, amt = 0.34): string {
   const h = hex.replace('#', '');
   if (h.length !== 6) return hex;
   const n = parseInt(h, 16);
@@ -272,10 +190,329 @@ function darken(hex: string, amt = 0.34): string {
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
 }
 
+// Lighten a hex color (top-gloss "hi" stops of button ramps).
+function lighten(hex: string, amt = 0.3): string {
+  const h = hex.replace('#', '');
+  if (h.length !== 6) return hex;
+  const n = parseInt(h, 16);
+  const r = Math.round(((n >> 16) & 255) + (255 - ((n >> 16) & 255)) * amt);
+  const g = Math.round(((n >> 8) & 255) + (255 - ((n >> 8) & 255)) * amt);
+  const b = Math.round((n & 255) + (255 - (n & 255)) * amt);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+}
+
+// Translucent version of a hex token. Replaces the banned `color + '55'` pattern.
+export function withAlpha(hex: string, alpha: number): string {
+  const h = hex.replace('#', '');
+  if (h.length !== 6) return hex;
+  const n = parseInt(h, 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
+// ---- press physics ----------------------------------------------------------
+// THE press standard: 60ms depress in / 110ms release out, native driver.
+const PRESS_IN_MS = 60;
+const PRESS_OUT_MS = 110;
+function usePressLip(depth = 2) {
+  const press = useRef(new Animated.Value(0)).current;
+  const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, depth] });
+  const onIn = useCallback(() => {
+    Animated.timing(press, { toValue: 1, duration: PRESS_IN_MS, useNativeDriver: true }).start();
+  }, [press]);
+  const onOut = useCallback(() => {
+    Animated.timing(press, { toValue: 0, duration: PRESS_OUT_MS, useNativeDriver: true }).start();
+  }, [press]);
+  return { press, ty, onIn, onOut };
+}
+
+// Spring press-scale for tile/cell touchables (sticker cells, crest taps).
+function usePressScale(to = 0.92) {
+  const v = useRef(new Animated.Value(1)).current;
+  const onIn = useCallback(() => {
+    Animated.spring(v, { toValue: to, friction: 5, tension: 300, useNativeDriver: true }).start();
+  }, [v, to]);
+  const onOut = useCallback(() => {
+    Animated.spring(v, { toValue: 1, friction: 5, tension: 300, useNativeDriver: true }).start();
+  }, [v]);
+  return { scale: v, onIn, onOut };
+}
+
+// ---- GameSpinner ------------------------------------------------------------
+// Branded loader: rotating football, 900ms linear loop. Replaces every
+// ActivityIndicator. Use color={theme.ink} for the sm variant inside bright faces.
+function GameSpinner({ size = 'sm', color = theme.primary }: { size?: 'sm' | 'lg'; color?: string }) {
+  const spin = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(spin, { toValue: 1, duration: 900, easing: Easing.linear, useNativeDriver: true }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [spin]);
+  const px = size === 'lg' ? 34 : 18;
+  return (
+    <Animated.View
+      style={{
+        width: px + 6, height: px + 6, alignItems: 'center', justifyContent: 'center',
+        transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }],
+      }}
+    >
+      <Ionicons
+        name="football"
+        size={px}
+        color={color}
+        style={{ textShadowColor: theme.textShadow, textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}
+      />
+    </Animated.View>
+  );
+}
+
+// ---- PulseRing — the CountdownScreen-dialect hero wait -----------------------
+// A beveled ring (top-lit face / dark lip, panelInk base, static soft glow)
+// that gently scale-pulses around its subject. Reserved for hero waiting
+// moments (searching, opponent picking) per spec §9.
+function PulseRing({ size = 120, color = theme.primary, children }: { size?: number; color?: string; children: ReactNode }) {
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 650, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 650, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+  const inner = size - 26;
+  return (
+    <Animated.View
+      style={{
+        width: size, height: size, borderRadius: size / 2,
+        borderWidth: 4, borderColor: color, borderTopColor: lighten(color, 0.35), borderBottomColor: darken(color),
+        backgroundColor: theme.panelInk, alignItems: 'center', justifyContent: 'center',
+        shadowColor: color, shadowOpacity: 0.55, shadowRadius: 18, shadowOffset: { width: 0, height: 0 }, elevation: 12,
+        transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.045] }) }],
+      }}
+    >
+      <View style={{ width: inner, height: inner, borderRadius: inner / 2, backgroundColor: theme.card, borderWidth: 2, borderColor: withAlpha(color, 0.33), alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        {children}
+      </View>
+    </Animated.View>
+  );
+}
+
+// ---- Btn 2.1 ----------------------------------------------------------------
+// Palette derived from theme tokens — ONE mint/gold/blue/red/purple in the app.
+// CR-grade face: dark ink outline around the whole body + a single-hue tonal
+// ramp on the face (top-lit toy, NOT a multi-color web gradient).
+let _btnSeq = 0;
+type BtnKind = 'primary' | 'ghost' | 'accent' | 'blue' | 'danger' | 'purple';
+const rampOf = (face: string, lip: string) => ({ hi: lighten(face, 0.3), face, lip });
+const BTN_PALETTE: Record<BtnKind, { hi: string; face: string; lip: string }> = {
+  primary: rampOf(theme.primary, theme.primaryDark),
+  accent: rampOf(theme.accent, theme.accentDark),
+  blue: rampOf(theme.blue, theme.blueDark),
+  danger: rampOf(theme.danger, theme.dangerDark),
+  purple: rampOf(theme.purple, theme.purpleDark),
+  ghost: { hi: 'transparent', face: 'transparent', lip: theme.border },
+};
+
+export function Btn({
+  label,
+  onPress,
+  kind = 'primary',
+  disabled,
+  icon,
+  big,
+  compact,
+  loading,
+  tint,
+  badge,
+}: {
+  label: string;
+  onPress: () => void;
+  kind?: BtnKind;
+  disabled?: boolean;
+  icon?: IoniconName;
+  big?: boolean;
+  compact?: boolean; // NEW: dense variant for price pills / inline CTAs
+  loading?: boolean; // NEW: GameSpinner replaces icon, press inert, no layout change
+  tint?: string;     // NEW: ghost-only ring/fill tint (e.g. theme.danger for a danger ghost)
+  badge?: string;    // NEW: fixed-width tabular-nums ink pill beside the label (countdowns)
+}) {
+  const press = useRef(new Animated.Value(0)).current;
+  const btnGid = useRef(`btn${_btnSeq++}`).current;
+  const pal = BTN_PALETTE[kind] ?? BTN_PALETTE.primary;
+  const ghost = kind === 'ghost';
+  const inert = Boolean(disabled || loading);
+  const ghostTint = tint ?? theme.primary;
+  // Disabled = desaturated at FULL geometry (no 4px layout jump).
+  const face = disabled ? theme.bg2 : pal.face;
+  const lip = disabled ? theme.cardLip : darken(pal.face, 0.42);
+  // CR signature: WHITE label with a dark cast on painted faces (dark-on-bright
+  // reads web). Ghost keeps quiet white; disabled goes muted.
+  const fg = disabled ? theme.muted : theme.text;
+  const radius = big ? 16 : compact ? 11 : 14;
+  const depth = ghost ? 2 : big ? 5 : compact ? 3 : 4;
+  const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, depth] });
+  const glow = big && (kind === 'primary' || kind === 'accent') && !inert;
+  const padV = big ? 16 : compact ? 9 : 13;
+  const font = big ? 18 : compact ? 13 : 15;
+  const iconSz = big ? 23 : compact ? 15 : 19;
+  // White label with a strong dark cast (CR reads bold-white-on-color); ghost engraves.
+  const emboss = ghost
+    ? engrave('sm')
+    : disabled
+      ? {}
+      : { textShadowColor: 'rgba(4,9,24,0.55)', textShadowOffset: { width: 0, height: 1.5 }, textShadowRadius: 1.5 };
+  void icon; void iconSz; // icons intentionally not rendered inside buttons
+  const content = (
+    <>
+      {loading ? (
+        <View style={{ marginRight: compact ? 6 : 8 }}>
+          <GameSpinner size="sm" color={fg} />
+        </View>
+      ) : null}
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.75}
+        style={{ color: fg, fontSize: font, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.3, flexShrink: 1, ...emboss }}
+      >
+        {label}
+      </Text>
+      {badge != null ? (
+        <View style={{ marginLeft: 8, minWidth: 34, alignItems: 'center', borderRadius: 9, backgroundColor: withAlpha(theme.ink, 0.3), paddingHorizontal: 7, paddingVertical: 2 }}>
+          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: compact ? 11 : 12, fontVariant: ['tabular-nums'] }}>{badge}</Text>
+        </View>
+      ) : null}
+    </>
+  );
+  return (
+    <Pressable
+      disabled={inert}
+      onPressIn={() => Animated.timing(press, { toValue: 1, duration: PRESS_IN_MS, useNativeDriver: true }).start()}
+      onPressOut={() => Animated.timing(press, { toValue: 0, duration: PRESS_OUT_MS, useNativeDriver: true }).start()}
+      onPress={inert ? undefined : onPress}
+      style={{
+        marginVertical: 6,
+        borderRadius: radius + 2,
+        ...(glow ? { shadowColor: pal.face, shadowOpacity: 0.5, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 10 } : {}),
+      }}
+    >
+      {ghost ? (
+        // Ghost: glowSoft fill + tint ring. NO rest glow — glow is for hero CTAs only.
+        <Animated.View
+          style={{
+            transform: [{ translateY: ty }],
+            backgroundColor: disabled ? withAlpha(theme.muted, 0.08) : tint ? withAlpha(ghostTint, 0.16) : theme.glowSoft,
+            borderRadius: radius,
+            borderWidth: 2,
+            borderColor: disabled ? theme.border : ghostTint,
+            paddingVertical: big ? 14 : compact ? 7 : 11,
+            paddingHorizontal: 18,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {content}
+        </Animated.View>
+      ) : (
+        // CLASH-ROYALE button: chunky body with a dark ink outline + deep bottom
+        // lip; the face carries a vertical gradient AND a glossy highlight pill
+        // over the top half (the glass shine is what makes it read premium).
+        <View
+          style={{
+            backgroundColor: lip,
+            borderRadius: radius + 4,
+            borderWidth: 2,
+            borderColor: disabled ? theme.cardLip : darken(pal.face, 0.5),
+            paddingBottom: depth, // ALWAYS — disabled keeps full geometry
+            shadowColor: '#000',
+            shadowOpacity: disabled ? 0.14 : 0.34,
+            shadowRadius: 7,
+            shadowOffset: { width: 0, height: 5 },
+            elevation: disabled ? 2 : 6,
+          }}
+        >
+          <Animated.View
+            style={{
+              transform: [{ translateY: ty }],
+              backgroundColor: face,
+              borderRadius: radius,
+              paddingVertical: padV,
+              paddingHorizontal: 18,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+            }}
+          >
+            {!disabled ? (
+              // Body gradient + a SMOOTH top gloss (white→transparent), so the
+              // shine reads like a glass dome, not a slapped-on white band.
+              <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
+                <Defs>
+                  <SvgGradient id={btnGid} x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor={lighten(face, 0.52)} />
+                    <Stop offset="0.5" stopColor={face} />
+                    <Stop offset="1" stopColor={darken(face, 0.3)} />
+                  </SvgGradient>
+                  <SvgGradient id={`${btnGid}g`} x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.5" />
+                    <Stop offset="0.55" stopColor="#FFFFFF" stopOpacity="0.06" />
+                    <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
+                  </SvgGradient>
+                </Defs>
+                <Rect width="100%" height="100%" fill={`url(#${btnGid})`} />
+                <Rect x={4} y={3} rx={radius - 4} width="92%" height="55%" fill={`url(#${btnGid}g)`} />
+              </Svg>
+            ) : null}
+            {content}
+          </Animated.View>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+// ---- Chip 2.0 ---------------------------------------------------------------
+// Mini-bevel option chip with real press physics. `active` = selected state.
+function Chip({ icon, label, onPress, active = false }: { icon: IoniconName; label: string; onPress: () => void; active?: boolean }) {
+  const { ty, onIn, onOut } = usePressLip(2);
+  return (
+    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1 }}>
+      <View style={{ backgroundColor: theme.cardLip, borderRadius: 13, paddingBottom: 2 }}>
+        <Animated.View
+          style={{
+            transform: [{ translateY: ty }],
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 5,
+            backgroundColor: active ? theme.glowSoft : theme.card,
+            borderWidth: 1.5,
+            borderColor: active ? theme.primary : theme.border,
+            borderTopColor: active ? theme.primary : theme.panelTopGloss,
+            borderRadius: 12,
+            paddingVertical: 10,
+            paddingHorizontal: 6,
+          }}
+        >
+          <Ionicons name={icon} size={14} color={theme.accent} />
+          <Text numberOfLines={1} style={{ color: theme.text, fontSize: 11, fontFamily: 'Poppins-ExtraBold', flexShrink: 1, ...engrave('sm') }}>
+            {label}
+          </Text>
+        </Animated.View>
+      </View>
+    </Pressable>
+  );
+}
+
 // ---- Game design kit: framed panel + centered pop-in modal + rank badge ----
 let _gpSeq = 0;
-// Reusable Clash-Royale-style framed surface: outer frame ring → beveled face
+// Reusable framed surface (THE panel): outer frame ring → beveled face
 // (+ optional top-lit gloss for hero panels) → optional left accent stripe.
+// UNCHANGED — this is the reference surface every card/row is rebuilt on.
 function GamePanel({ children, hero = false, tint, accentStripe, compact = false, style, bodyStyle }: {
   children: ReactNode; hero?: boolean; tint?: string; accentStripe?: string; compact?: boolean; style?: any; bodyStyle?: any;
 }) {
@@ -285,7 +522,7 @@ function GamePanel({ children, hero = false, tint, accentStripe, compact = false
   const frameColor = tint ?? (hero ? theme.frameGold : theme.border);
   const frameBot = tint ? darken(tint) : (hero ? theme.accentDark : theme.cardLip);
   return (
-    <View style={[{ backgroundColor: hero ? theme.panelInk : theme.bg2, borderRadius: r, padding: 2, borderWidth: 2, borderColor: frameColor, borderBottomColor: frameBot, shadowColor: tint ?? '#000', shadowOpacity: tint ? 0.45 : 0.4, shadowRadius: compact ? 6 : 12, shadowOffset: { width: 0, height: compact ? 4 : 6 }, elevation: compact ? 5 : 9 }, style]}>
+    <View style={[{ backgroundColor: hero ? theme.panelInk : theme.bg2, borderRadius: r, padding: 2, borderWidth: 2, borderColor: frameColor, borderBottomColor: frameBot, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: compact ? 6 : 12, shadowOffset: { width: 0, height: compact ? 4 : 6 }, elevation: compact ? 5 : 9 }, style]}>
       <View style={[{ backgroundColor: theme.card, borderRadius: fr, borderTopWidth: 1, borderTopColor: theme.panelTopGloss, borderBottomWidth: 3, borderBottomColor: theme.cardLip, overflow: 'hidden', padding: 12 }, bodyStyle]}>
         {hero ? (
           <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -307,42 +544,83 @@ function GamePanel({ children, hero = false, tint, accentStripe, compact = false
   );
 }
 
-// Centered pop-in modal with a gold banner header + close gem (Clash-Royale dialog).
-function GameModal({ visible, onClose, title, icon, danger = false, coach = false, children }: {
-  visible: boolean; onClose: () => void; title?: string; icon?: IoniconName; danger?: boolean; coach?: boolean; children: ReactNode;
+// ---- GameModal — THE dialog. Native Alert.alert is banned for game flows. ----
+// Spring pop-in + 160ms animated exit (scale/fade, scrim fades with it) +
+// pressed close gem. Keeps the Modal mounted during the exit animation.
+export function GameModal({ visible, onClose, onExited, title, icon, danger = false, coach = false, children }: {
+  visible: boolean; onClose: () => void; onExited?: () => void; title?: string; icon?: IoniconName; danger?: boolean; coach?: boolean; children: ReactNode;
 }) {
   const a = useRef(new Animated.Value(0)).current;
+  const [mounted, setMounted] = useState(visible);
+  const onExitedRef = useRef(onExited);
+  onExitedRef.current = onExited;
   useEffect(() => {
-    if (visible) Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
-    else a.setValue(0);
+    if (visible) {
+      setMounted(true);
+      Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(a, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
+        if (finished) {
+          setMounted(false);
+          onExitedRef.current?.(); // exit animation done — safe to hand off (no timer chains)
+        }
+      });
+    }
   }, [visible, a]);
+  if (!mounted && !visible) return null;
+  const clamped = a.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' });
   const frameColor = coach ? theme.primary : theme.frameGold;
   const frameBot = coach ? theme.primaryDark : theme.frameGoldDark;
   const bannerBg = danger ? theme.danger : theme.accent;
   const bannerBot = danger ? theme.dangerDark : theme.accentDark;
+  const bannerFg = danger ? theme.text : theme.ink;
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: theme.scrim, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }} onPress={onClose}>
-        <Animated.View style={{ width: '100%', maxWidth: 360, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) }], opacity: a, backgroundColor: theme.panelInk, borderRadius: 22, padding: 2, borderWidth: 2, borderColor: frameColor, borderBottomColor: frameBot, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 24, shadowOffset: { width: 0, height: 14 }, elevation: 24 }}>
-          <Pressable onPress={() => {}} style={{ backgroundColor: theme.card, borderRadius: 20, overflow: 'hidden', borderBottomWidth: 3, borderBottomColor: theme.cardLip }}>
-            {title ? (
-              <View style={{ height: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 46, backgroundColor: bannerBg, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.35)', borderBottomWidth: 3, borderBottomColor: bannerBot }}>
-                {icon ? <Ionicons name={icon} size={18} color={danger ? theme.text : theme.ink} /> : null}
-                <Text numberOfLines={1} style={{ color: danger ? theme.text : theme.ink, fontFamily: 'Poppins-ExtraBold', fontSize: 16, letterSpacing: 0.5, textTransform: 'uppercase' }}>{title}</Text>
-              </View>
-            ) : null}
-            <View style={{ padding: 20, paddingTop: title ? 16 : 20, gap: 12 }}>{children}</View>
-            <Pressable onPress={onClose} hitSlop={8} style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: theme.cardLip, borderWidth: 2, borderColor: theme.accentDark, alignItems: 'center', justifyContent: 'center', zIndex: 5 }}>
-              <Ionicons name="close" size={16} color={theme.accent} />
+    <Modal visible transparent animationType="none" onRequestClose={onClose}>
+      <Animated.View style={{ flex: 1, backgroundColor: theme.scrim, opacity: clamped }}>
+        {/* Inert the instant `visible` flips false — the 160ms exit must not be
+            hit-testable (double-tapped confirms re-fired actions, e.g. double gem charges) */}
+        <Pressable pointerEvents={visible ? 'auto' : 'none'} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }} onPress={onClose}>
+          <Animated.View
+            pointerEvents={visible ? 'auto' : 'none'}
+            style={{
+              width: '100%', maxWidth: 360,
+              transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) }],
+              opacity: clamped,
+              backgroundColor: theme.panelInk, borderRadius: 22, padding: 2,
+              borderWidth: 2, borderColor: frameColor, borderBottomColor: frameBot, overflow: 'hidden',
+              shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 24, shadowOffset: { width: 0, height: 14 }, elevation: 24,
+            }}
+          >
+            <Pressable onPress={() => {}} style={{ backgroundColor: theme.card, borderRadius: 20, overflow: 'hidden', borderBottomWidth: 3, borderBottomColor: theme.cardLip }}>
+              {title ? (
+                <View style={{ height: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 46, backgroundColor: bannerBg, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.35)', borderBottomWidth: 3, borderBottomColor: bannerBot }}>
+                  {icon ? <Ionicons name={icon} size={18} color={bannerFg} /> : null}
+                  <Text numberOfLines={1} style={{ color: bannerFg, fontFamily: 'Poppins-ExtraBold', fontSize: 16, letterSpacing: 0.5, textTransform: 'uppercase' }}>{title}</Text>
+                </View>
+              ) : null}
+              <View style={{ padding: 20, paddingTop: title ? 16 : 20, gap: 12 }}>{children}</View>
+              <Pressable
+                onPress={onClose}
+                hitSlop={8}
+                style={({ pressed }) => ({
+                  position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15,
+                  backgroundColor: pressed ? darken(theme.cardLip, 0.35) : theme.cardLip,
+                  borderWidth: 2, borderColor: theme.accentDark,
+                  alignItems: 'center', justifyContent: 'center', zIndex: 5,
+                  transform: [{ translateY: pressed ? 1 : 0 }],
+                })}
+              >
+                <Ionicons name="close" size={16} color={theme.accent} />
+              </Pressable>
             </Pressable>
-          </Pressable>
-        </Animated.View>
-      </Pressable>
+          </Animated.View>
+        </Pressable>
+      </Animated.View>
     </Modal>
   );
 }
 
-// Beveled rank badge (1/2/3 = gold/silver/bronze with glow; 4+ = plain).
+// ---- RankBadge (unchanged) ---------------------------------------------------
 function RankBadge({ rank, size = 28 }: { rank: number; size?: number }) {
   if (rank <= 3) {
     const c = [theme.gold, theme.silver, theme.bronze][rank - 1]!;
@@ -359,14 +637,25 @@ function RankBadge({ rank, size = 28 }: { rank: number; size?: number }) {
   );
 }
 
-// Framed screen header bar with a real back mini-button + engraved title.
-function ScreenHeader({ title, onBack, icon, right, underline }: {
-  title: string; onBack?: () => void; icon?: IoniconName; right?: ReactNode; underline?: string;
+// ---- ScreenHeader — now with a live back button ------------------------------
+function ScreenHeader({ title, onBack, icon, right }: {
+  title: string; onBack?: () => void; icon?: IoniconName; right?: ReactNode;
 }) {
   return (
     <View style={{ alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 14, backgroundColor: theme.bg2, borderBottomWidth: 2, borderBottomColor: theme.cardLip, marginBottom: 12 }}>
       {onBack ? (
-        <Pressable onPress={onBack} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: theme.card, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, alignItems: 'center', justifyContent: 'center' }}>
+        <Pressable
+          onPress={onBack}
+          hitSlop={8}
+          style={({ pressed }) => ({
+            width: 40, height: 40, borderRadius: 14,
+            backgroundColor: pressed ? theme.bg2 : theme.card,
+            borderWidth: 2, borderColor: theme.border,
+            borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
+            alignItems: 'center', justifyContent: 'center',
+            transform: [{ translateY: pressed ? 2 : 0 }],
+          })}
+        >
           <Ionicons name="chevron-back" size={22} color={theme.text} />
         </Pressable>
       ) : <View style={{ width: 40 }} />}
@@ -375,7 +664,163 @@ function ScreenHeader({ title, onBack, icon, right, underline }: {
         <Text numberOfLines={1} style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18, letterSpacing: 0.5, textTransform: 'uppercase', ...engrave('lg') }}>{title}</Text>
       </View>
       {right ?? <View style={{ width: 40 }} />}
-      {underline ? <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: underline, opacity: 0.55 }} /> : null}
+    </View>
+  );
+}
+
+// ---- GameInput — THE text input (recessed well + animated focus halo) --------
+// Replaces styles.searchBox / modalSearchBox / friendInput. Forward-compatible
+// with all TextInput props; `icon` renders a leading glyph inside the well;
+// `inputRef` reaches the underlying TextInput (imperative focus flows).
+function GameInput({ icon, error = false, containerStyle, style, onFocus, onBlur, inputRef, ...rest }: ComponentProps<typeof TextInput> & {
+  icon?: IoniconName; error?: boolean; containerStyle?: any; inputRef?: Ref<TextInput>;
+}) {
+  const [focused, setFocused] = useState(false);
+  const halo = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(halo, { toValue: focused ? 1 : 0, duration: 150, useNativeDriver: true }).start();
+  }, [focused, halo]);
+  const ring = error ? theme.danger : theme.primary;
+  return (
+    <View style={[{ marginVertical: 6 }, containerStyle]}>
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute', top: -3, left: -3, right: -3, bottom: -3, borderRadius: 17,
+          borderWidth: 3, borderColor: error ? withAlpha(theme.danger, 0.28) : theme.glowSoft,
+          opacity: halo,
+        }}
+      />
+      <View
+        style={{
+          flexDirection: 'row', alignItems: 'center',
+          backgroundColor: theme.panelInnerFill, // recessed inner well
+          borderRadius: 14, borderWidth: 2,
+          borderColor: error ? theme.danger : focused ? ring : theme.border,
+          borderTopColor: error ? theme.danger : focused ? ring : theme.cardLip, // dark top edge = sunken
+          paddingHorizontal: 14,
+        }}
+      >
+        {icon ? <Ionicons name={icon} size={16} color={focused ? ring : theme.muted} style={{ marginRight: 8 }} /> : null}
+        <TextInput
+          ref={inputRef}
+          placeholderTextColor={theme.muted}
+          keyboardAppearance="dark"
+          {...rest}
+          onFocus={(e) => { setFocused(true); onFocus?.(e); }}
+          onBlur={(e) => { setFocused(false); onBlur?.(e); }}
+          style={[{ flex: 1, color: theme.text, paddingVertical: 13, fontSize: 14, fontFamily: 'Poppins-SemiBold' }, style]}
+        />
+      </View>
+    </View>
+  );
+}
+
+// ---- GameRow — THE beveled list row -------------------------------------------
+// Raised row bevel + leading icon gem + optional chevron/selected/locked states
+// + 2px press-lip physics. Replaces clubRow / modalRow / menu rows / lbRow etc.
+function GameRow({ icon, iconColor = theme.accent, leading, label, sublabel, right, chevron = false, onPress, selected = false, locked = false, tint, style, children }: {
+  icon?: IoniconName; iconColor?: string; leading?: ReactNode; label: string; sublabel?: string; right?: ReactNode; chevron?: boolean;
+  onPress?: () => void; selected?: boolean; locked?: boolean; tint?: string; style?: any; children?: ReactNode;
+}) {
+  const { ty, onIn, onOut } = usePressLip(2);
+  const check = useRef(new Animated.Value(selected ? 1 : 0)).current;
+  useEffect(() => {
+    if (selected) Animated.spring(check, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }).start();
+    else Animated.timing(check, { toValue: 0, duration: 120, useNativeDriver: true }).start();
+  }, [selected, check]);
+  const ring = selected ? theme.primary : tint ?? theme.border;
+  const fgLabel = locked ? theme.muted : theme.text;
+  const gemRing = locked ? theme.border : darken(iconColor, 0.25);
+  const body = (
+    <View
+      style={{
+        backgroundColor: theme.cardLip, borderRadius: 15, paddingBottom: 3, marginVertical: 4,
+        shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 5,
+      }}
+    >
+      <Animated.View
+        style={[{
+          transform: [{ translateY: ty }],
+          flexDirection: 'row', alignItems: 'center', gap: 11,
+          backgroundColor: theme.card, borderRadius: 14, overflow: 'hidden',
+          borderWidth: 2, borderColor: ring, borderTopColor: selected ? theme.primary : theme.panelTopGloss,
+          paddingVertical: 12, paddingHorizontal: 12,
+        }, style]}
+      >
+        {selected ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: theme.glowSoft }]} /> : null}
+        {leading || icon ? (
+          <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: theme.cardLip, borderWidth: 1.5, borderColor: gemRing, alignItems: 'center', justifyContent: 'center' }}>
+            {leading ?? <Ionicons name={icon!} size={18} color={locked ? theme.muted : iconColor} />}
+          </View>
+        ) : null}
+        <View style={{ flex: 1 }}>
+          <Text numberOfLines={1} style={{ color: fgLabel, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{label}</Text>
+          {sublabel ? <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', marginTop: 1 }}>{sublabel}</Text> : null}
+          {children}
+        </View>
+        {locked ? (
+          <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: theme.accent, borderBottomWidth: 2, borderBottomColor: theme.accentDark, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="lock-closed" size={12} color={theme.ink} />
+          </View>
+        ) : selected ? (
+          <Animated.View style={{ transform: [{ scale: check }] }}>
+            <Ionicons name="checkmark-circle" size={20} color={theme.primary} />
+          </Animated.View>
+        ) : (
+          right ?? (chevron ? <Ionicons name="chevron-forward" size={16} color={theme.muted} /> : null)
+        )}
+      </Animated.View>
+    </View>
+  );
+  if (!onPress) return body;
+  return (
+    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut}>
+      {body}
+    </Pressable>
+  );
+}
+
+// ---- Ribbon — beveled badge (POPULAR / NEW / ACTIVE / WON / +12) --------------
+function Ribbon({ label, color = theme.accent, icon, style }: { label: string; color?: string; icon?: IoniconName; style?: any }) {
+  const fg = color === theme.danger ? theme.text : theme.ink;
+  return (
+    <View
+      style={[{
+        flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-start',
+        backgroundColor: color, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3,
+        borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.4)',
+        borderBottomWidth: 2, borderBottomColor: darken(color, 0.4),
+        shadowColor: color, shadowOpacity: 0.35, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 4,
+      }, style]}
+    >
+      {icon ? <Ionicons name={icon} size={10} color={fg} /> : null}
+      <Text style={{ color: fg, fontSize: 9.5, fontFamily: 'Poppins-Black', letterSpacing: 1, textTransform: 'uppercase' }}>{label}</Text>
+    </View>
+  );
+}
+
+// ---- SectionHeader — one section-label voice for every screen ------------------
+function SectionHeader({ label, icon, color = theme.muted, style }: { label: string; icon?: IoniconName; color?: string; style?: any }) {
+  return (
+    <View style={[{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14, marginBottom: 6 }, style]}>
+      {icon ? <Ionicons name={icon} size={13} color={color === theme.muted ? theme.accent : color} /> : null}
+      <Text style={{ color, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 2, textTransform: 'uppercase' }}>{label}</Text>
+      <View style={{ flex: 1, height: 1, backgroundColor: theme.border, opacity: 0.6 }} />
+    </View>
+  );
+}
+
+// ---- EmptyState — crafted emptiness (icon gem + title + hint + optional CTA) ---
+function EmptyState({ icon, title, hint, cta, style }: { icon: IoniconName; title: string; hint?: string; cta?: ReactNode; style?: any }) {
+  return (
+    <View style={[{ alignItems: 'center', gap: 10, paddingVertical: 28, paddingHorizontal: 18 }, style]}>
+      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.panelInnerFill, borderWidth: 2, borderColor: theme.border, borderTopColor: theme.cardLip, alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name={icon} size={28} color={theme.muted} />
+      </View>
+      <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') }}>{title}</Text>
+      {hint ? <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 18 }}>{hint}</Text> : null}
+      {cta ?? null}
     </View>
   );
 }
@@ -421,11 +866,13 @@ export function ScreenBg({ variant = 'menu' }: { variant?: BgVariant }) {
 
 function Screen({ children, scroll }: { children: ReactNode; scroll?: boolean; noPitch?: boolean }) {
   // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
+  // The KAV offset mirrors the app root's safe-area top inset (one source — they can't drift).
+  const insets = useSafeAreaInsets();
   return (
     <KeyboardAvoidingView
       style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 44 : 0}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
     >
       {/* Keyboard dismiss: a backdrop Pressable BEHIND the content. It never wraps the
           children (so no layout shift) and sits under the ScrollViews (so it never
@@ -448,24 +895,78 @@ function Screen({ children, scroll }: { children: ReactNode; scroll?: boolean; n
 
 // ---- Swipeable intro / onboarding (shown on first launch) ----
 
-const INTRO_SLIDES: { icon: IoniconName; color: string; title: string; descKey: MessageKey }[] = [
-  { icon: 'football', color: theme.primary, title: 'CROSSOVER', descKey: 'intro.slide1.desc' },
-  { icon: 'flash', color: theme.accent, title: 'intro.slide2.title', descKey: 'intro.slide2.desc' },
-  { icon: 'trophy', color: theme.gold, title: 'intro.slide3.title', descKey: 'intro.slide3.desc' },
+const INTRO_SLIDES: { icon: IoniconName; color: string; titleKey: MessageKey | null; descKey: MessageKey }[] = [
+  { icon: 'football', color: theme.primary, titleKey: null, descKey: 'intro.slide1.desc' }, // hero slide = the real brand block
+  { icon: 'flash', color: theme.accent, titleKey: 'intro.slide2.title', descKey: 'intro.slide2.desc' },
+  { icon: 'trophy', color: theme.gold, titleKey: 'intro.slide3.title', descKey: 'intro.slide3.desc' },
 ];
 
-function IntroSlide({ slide, index, scrollX }: { slide: (typeof INTRO_SLIDES)[number]; index: number; scrollX: Animated.Value }) {
+// Beveled onboarding skip chip — card face on a cardLip lip, chevron glyph,
+// press physics. ONE recipe shared by IntroScreen and TutorialScreen.
+function SkipChip({ onPress, style }: { onPress: () => void; style?: any }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={10} style={style}>
+      {({ pressed }) => (
+        <View
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 4,
+            backgroundColor: pressed ? theme.bg2 : theme.card,
+            borderRadius: 12, paddingHorizontal: 12, paddingVertical: 7,
+            borderWidth: 1.5, borderColor: theme.border,
+            borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
+            transform: [{ translateY: pressed ? 2 : 0 }],
+          }}
+        >
+          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12, ...engrave('sm') }}>{t('common.skip')}</Text>
+          <Ionicons name="chevron-forward" size={12} color={theme.muted} />
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+const INTRO_TILE = 150;
+function IntroSlide({ slide, index, active, scrollX }: { slide: (typeof INTRO_SLIDES)[number]; index: number; active: boolean; scrollX: Animated.Value }) {
   const inputRange = [(index - 1) * SCREEN_W, index * SCREEN_W, (index + 1) * SCREEN_W];
   const scale = scrollX.interpolate({ inputRange, outputRange: [0.55, 1, 0.55], extrapolate: 'clamp' });
   const opacity = scrollX.interpolate({ inputRange, outputRange: [0.25, 1, 0.25], extrapolate: 'clamp' });
   return (
     <View style={{ width: SCREEN_W, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36 }}>
       <Animated.View style={{ transform: [{ scale }], opacity, alignItems: 'center' }}>
-        <View style={{ width: 150, height: 150, borderRadius: 75, backgroundColor: theme.card, borderWidth: 3, borderColor: slide.color, alignItems: 'center', justifyContent: 'center', marginBottom: 30, shadowColor: slide.color, shadowOpacity: 0.55, shadowRadius: 22, shadowOffset: { width: 0, height: 0 }, elevation: 12 }}>
-          <Ionicons name={slide.icon} size={72} color={slide.color} />
-        </View>
-        <Text style={{ color: theme.text, fontSize: 26, fontWeight: '900', letterSpacing: 1, textAlign: 'center', marginBottom: 12 }}>{slide.title.startsWith('intro.') ? t(slide.title as MessageKey) : slide.title}</Text>
-        <Text style={{ color: theme.muted, fontSize: 15, textAlign: 'center', lineHeight: 23 }}>{t(slide.descKey)}</Text>
+        {slide.titleKey === null ? (
+          <>
+            {/* Slide 1 hero — the REAL brand mark + the splash wordmark voice */}
+            <BrandMark size={INTRO_TILE} />
+            <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 24, marginBottom: 18 }}>
+              {SLAM_WORD.split('').map((ch, i) => (
+                <Text key={i} style={{ color: theme.text, fontSize: Math.min(30, SCREEN_W * 0.076), letterSpacing: 1, marginHorizontal: 1.5, includeFontPadding: false, fontFamily: 'Poppins-Black', ...engrave('lg') }}>{ch}</Text>
+              ))}
+            </View>
+          </>
+        ) : (
+          <>
+            {/* Slides 2–3 — beveled badge tile in the BrandMark construction:
+                panelInk face, slide-color ring, darkened lip, top-half gloss,
+                one-shot ShineSweep when the page gains focus. */}
+            <View
+              style={{
+                width: INTRO_TILE, height: INTRO_TILE, borderRadius: INTRO_TILE * 0.24,
+                backgroundColor: theme.panelInk,
+                borderWidth: 2, borderColor: slide.color,
+                borderBottomWidth: 5, borderBottomColor: darken(slide.color),
+                alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                marginBottom: 26,
+                shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 8,
+              }}
+            >
+              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '50%', backgroundColor: '#FFFFFF', opacity: 0.05 }} />
+              <Ionicons name={slide.icon} size={72} color={slide.color} />
+              {active ? <ShineSweep width={INTRO_TILE} height={INTRO_TILE} delay={260} duration={700} opacity={0.3} band={0.3} /> : null}
+            </View>
+            <Text style={{ color: theme.text, fontSize: 26, fontFamily: 'Poppins-Black', letterSpacing: 1, textAlign: 'center', marginBottom: 12, ...engrave('lg') }}>{t(slide.titleKey)}</Text>
+          </>
+        )}
+        <Text style={{ color: theme.muted, fontSize: 15, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 23 }}>{t(slide.descKey)}</Text>
       </Animated.View>
     </View>
   );
@@ -473,6 +974,7 @@ function IntroSlide({ slide, index, scrollX }: { slide: (typeof INTRO_SLIDES)[nu
 
 export function IntroScreen({ onDone }: { onDone: () => void }) {
   const [page, setPage] = useState(0);
+  const insets = useSafeAreaInsets();
   const scRef = useRef<ScrollView>(null);
   const scrollX = useRef(new Animated.Value(0)).current;
   const last = INTRO_SLIDES.length - 1;
@@ -480,80 +982,307 @@ export function IntroScreen({ onDone }: { onDone: () => void }) {
     if (page < last) scRef.current?.scrollTo({ x: (page + 1) * SCREEN_W, animated: true });
     else onDone();
   };
-  const tint = INTRO_SLIDES[page]?.color ?? theme.primary;
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: 44 }}>
-      {/* Soft color glow that spreads to the sides and shifts hue per slide */}
-      <View pointerEvents="none" style={{ position: 'absolute', top: '12%', alignSelf: 'center', width: SCREEN_W * 1.7, height: SCREEN_W * 1.7, borderRadius: SCREEN_W * 0.85, backgroundColor: tint, opacity: 0.1 }} />
-      <View pointerEvents="none" style={{ position: 'absolute', top: '22%', alignSelf: 'center', width: SCREEN_W * 1.05, height: SCREEN_W * 1.05, borderRadius: SCREEN_W * 0.53, backgroundColor: tint, opacity: 0.14 }} />
-      <Pressable onPress={onDone} style={{ position: 'absolute', top: 50, right: 22, zIndex: 10 }} hitSlop={12}>
-        <Text style={{ color: theme.muted, fontWeight: '700', fontSize: 14 }}>{t('common.skip')}</Text>
-      </Pressable>
-      <Animated.ScrollView
-        ref={scRef as never}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        scrollEventThrottle={16}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
-          useNativeDriver: true,
-          listener: (e: { nativeEvent: { contentOffset: { x: number } } }) =>
-            setPage(Math.round(e.nativeEvent.contentOffset.x / SCREEN_W)),
-        })}
-        style={{ flex: 1 }}
-      >
+    // Same painted stage as splash → login, so first launch reads as one scene.
+    <OpeningBackdrop>
+      <View style={{ flex: 1, alignSelf: 'stretch' }}>
+        {/* ONE soft per-slide tint glow, crossfaded continuously by scrollX (§14 —
+            the three layers overlap in place; only ~one is ever lit). */}
         {INTRO_SLIDES.map((s, i) => (
-          <IntroSlide key={i} slide={s} index={i} scrollX={scrollX} />
+          <Animated.View
+            key={i}
+            pointerEvents="none"
+            style={{
+              position: 'absolute', top: '14%', alignSelf: 'center',
+              width: SCREEN_W * 1.3, height: SCREEN_W * 1.3, borderRadius: SCREEN_W * 0.65,
+              backgroundColor: s.color,
+              opacity: scrollX.interpolate({
+                inputRange: [(i - 1) * SCREEN_W, i * SCREEN_W, (i + 1) * SCREEN_W],
+                outputRange: [0, 0.11, 0],
+                extrapolate: 'clamp',
+              }),
+            }}
+          />
         ))}
-      </Animated.ScrollView>
-      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 16 }}>
-        {INTRO_SLIDES.map((_, i) => (
-          <View key={i} style={{ width: i === page ? 24 : 8, height: 8, borderRadius: 4, backgroundColor: i === page ? theme.primary : theme.border }} />
-        ))}
+        <SkipChip onPress={onDone} style={{ position: 'absolute', top: insets.top + 8, right: 22, zIndex: 10 }} />
+        <Animated.ScrollView
+          ref={scRef as never}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
+            useNativeDriver: true,
+            listener: (e: { nativeEvent: { contentOffset: { x: number } } }) =>
+              setPage(Math.round(e.nativeEvent.contentOffset.x / SCREEN_W)),
+          })}
+          style={{ flex: 1 }}
+        >
+          {INTRO_SLIDES.map((s, i) => (
+            <IntroSlide key={i} slide={s} index={i} active={i === page} scrollX={scrollX} />
+          ))}
+        </Animated.ScrollView>
+        {/* Page dots — continuous width/color morph driven straight off scrollX
+            (scaleX on a left-and-right-centered pill; no state snap). */}
+        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginBottom: 16 }}>
+          {INTRO_SLIDES.map((_, i) => {
+            const inputRange = [(i - 1) * SCREEN_W, i * SCREEN_W, (i + 1) * SCREEN_W];
+            return (
+              <View key={i} style={{ width: 24, height: 8, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: theme.border }} />
+                <Animated.View
+                  style={{
+                    width: 24, height: 8, borderRadius: 4, backgroundColor: theme.primary,
+                    opacity: scrollX.interpolate({ inputRange, outputRange: [0, 1, 0], extrapolate: 'clamp' }),
+                    transform: [{ scaleX: scrollX.interpolate({ inputRange, outputRange: [0.34, 1, 0.34], extrapolate: 'clamp' }) }],
+                  }}
+                />
+              </View>
+            );
+          })}
+        </View>
+        <View style={{ paddingHorizontal: 28, paddingBottom: Math.max(insets.bottom, 24) + 10 }}>
+          <Btn label={page === last ? t('common.start') : t('common.next')} icon={page === last ? 'rocket' : 'arrow-forward'} kind="primary" big onPress={next} />
+        </View>
       </View>
-      <View style={{ paddingHorizontal: 28, paddingBottom: 40 }}>
-        <Btn label={page === last ? t('common.start') : t('common.next')} icon={page === last ? 'rocket' : 'arrow-forward'} kind="primary" big onPress={next} />
+    </OpeningBackdrop>
+  );
+}
+
+// ---- Animated branded splash ----
+// The REAL brand mark — the shipped app icon (black tile, white+green interlocked
+// rings), rounded-masked. Never rebuild the logo as synthetic SVG (spec §14);
+// the `glow` prop is retained for call-site compatibility but ignored.
+function BrandMark({ size = 104 }: { size?: number; glow?: boolean }) {
+  return (
+    <View style={{ width: size, height: size, borderRadius: size * 0.24, shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}>
+      <View style={{ width: size, height: size, borderRadius: size * 0.24, overflow: 'hidden', backgroundColor: '#0A0A0B' }}>
+        <Image
+          source={require('../assets/splash-icon.png')}
+          style={{ width: size, height: size, transform: [{ scale: 1.03 }] }}
+          resizeMode="cover"
+        />
       </View>
     </View>
   );
 }
 
-// ---- Animated branded splash ----
-export function SplashScreen() {
-  const logo = useRef(new Animated.Value(0)).current;
-  const fade = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(logo, { toValue: 1, duration: 900, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      Animated.timing(fade, { toValue: 1, duration: 700, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-    ]).start();
-  }, [logo, fade]);
-  const scale = logo.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] });
-  const lift = logo.interpolate({ inputRange: [0, 1], outputRange: [6, 0] });
-  const logoWidth = Math.min(SCREEN_W * 0.78, SCREEN_H * 0.44);
-  const logoHeight = logoWidth * 0.56;
+// The opening stage = the SAME painted arena backdrop every other screen uses.
+// One hero art reused everywhere is what real studios ship; synthetic
+// gradient/blob scenes are banned (spec §14).
+function OpeningBackdrop({ children }: { children: ReactNode }) {
   return (
-    <View style={{ flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' }}>
-      <Animated.View style={{ opacity: fade, transform: [{ translateY: lift }, { scale }] }}>
-        <View style={{ width: logoWidth, height: logoHeight, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
-          <Image
-            source={require('../assets/splash-icon.png')}
-            style={{ width: logoWidth * 1.44, height: logoWidth * 1.44 }}
-            resizeMode="contain"
-          />
-        </View>
+    <View style={{ flex: 1, backgroundColor: BG_TOP, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+      <ScreenBg />
+      {children}
+    </View>
+  );
+}
+
+// One-shot or looping diagonal light sweep. Absolutely fills its parent (which
+// must be overflow:'hidden'); pass the parent's numeric width/height.
+let _shineSeq = 0;
+function ShineSweep({ width, height, delay = 0, duration = 650, loop = false, loopGap = 1400, opacity = 0.45, band = 0.3, tint = '#FFFFFF' }: {
+  width: number; height: number; delay?: number; duration?: number; loop?: boolean; loopGap?: number; opacity?: number; band?: number; tint?: string;
+}) {
+  const gid = useRef(`shine${_shineSeq++}`).current;
+  const x = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const anim = loop
+      ? Animated.loop(Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(x, { toValue: 1, duration, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+          Animated.timing(x, { toValue: 0, duration: 0, useNativeDriver: true }),
+          Animated.delay(loopGap),
+        ]))
+      : Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(x, { toValue: 1, duration, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        ]);
+    anim.start();
+    return () => anim.stop();
+  }, []);
+  const bandW = Math.max(26, width * band);
+  const bandH = height * 2.2;
+  const translateX = x.interpolate({ inputRange: [0, 1], outputRange: [-bandW * 1.6, width + bandW * 0.6] });
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, width, height, overflow: 'hidden' }}>
+      <Animated.View style={{ position: 'absolute', top: -height * 0.6, width: bandW, height: bandH, opacity, transform: [{ translateX }, { rotate: '18deg' }] }}>
+        <Svg width={bandW} height={bandH}>
+          <Defs>
+            <SvgGradient id={gid} x1="0" y1="0" x2="1" y2="0">
+              <Stop offset="0" stopColor={tint} stopOpacity="0" />
+              <Stop offset="0.5" stopColor={tint} stopOpacity="1" />
+              <Stop offset="1" stopColor={tint} stopOpacity="0" />
+            </SvgGradient>
+          </Defs>
+          <Rect width="100%" height="100%" fill={`url(#${gid})`} />
+        </Svg>
       </Animated.View>
     </View>
   );
 }
 
+// ---- "STADIUM SLAM" opening: the badge drops in with weight, sparks fly,
+// CROSSOVER stamps in letter-by-letter, then a gold shine sweeps the wordmark.
+// Runs entirely on the native driver; a fixed timer fires onDone at 2600ms so
+// the splash never blocks on anything.
+const SLAM_TOTAL_MS = 2500;
+const SLAM_WORD = 'CROSSOVER';
+const SLAM_FONT = Math.min(36, SCREEN_W * 0.088);
+const SLAM_WM_W = Math.min(SCREEN_W * 0.88, 380);
+const SLAM_BADGE = 128;
+// Impact sparks: angle (deg, -90 = straight up), distance, size, color.
+// Restraint per spec §14: a handful of debris kicks, not a firework.
+const SLAM_SPARKS: { a: number; d: number; s: number; c: string }[] = [
+  { a: -64, d: 104, s: 5, c: theme.text },
+  { a: -116, d: 108, s: 5, c: theme.text },
+  { a: -8, d: 142, s: 7, c: theme.accent },
+  { a: -172, d: 142, s: 7, c: theme.primary },
+  { a: 22, d: 98, s: 4, c: theme.text },
+  { a: 158, d: 98, s: 4, c: theme.text },
+  { a: -90, d: 148, s: 4, c: theme.text },
+];
+
+export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => void; fontsReady?: boolean }) {
+  const veil = useRef(new Animated.Value(1)).current;      // black cover → fades out
+  const drop = useRef(new Animated.Value(0)).current;      // badge fall
+  const impact = useRef(new Animated.Value(0)).current;    // squash & recover
+  const shake = useRef(new Animated.Value(0)).current;     // stage shake
+  const ring1 = useRef(new Animated.Value(0)).current;     // mint impact ring
+  const burst = useRef(new Animated.Value(0)).current;     // spark burst
+  const letters = useRef(SLAM_WORD.split('').map(() => new Animated.Value(0))).current;
+  const fired = useRef(false);
+  // The 2600ms timer must call the LATEST onDone, not the mount-time closure.
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+
+  useEffect(() => {
+    const anim = Animated.sequence([
+      // 0–640ms: lights up, badge falls with gravity
+      Animated.parallel([
+        Animated.timing(veil, { toValue: 0, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.sequence([
+          Animated.delay(120),
+          Animated.timing(drop, { toValue: 1, duration: 520, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+        ]),
+      ]),
+      // 640ms: IMPACT — squash, shake, rings, sparks; letters stamp in from 980ms
+      Animated.parallel([
+        Animated.timing(impact, { toValue: 1, duration: 380, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(shake, { toValue: 1, duration: 300, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(ring1, { toValue: 1, duration: 430, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(burst, { toValue: 1, duration: 520, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.sequence([
+          Animated.delay(340),
+          Animated.stagger(55, letters.map((v) =>
+            Animated.timing(v, { toValue: 1, duration: 260, easing: Easing.out(Easing.back(3)), useNativeDriver: true }),
+          )),
+        ]),
+      ]),
+    ]);
+    anim.start();
+    // Hard, network-independent exit: the animation is scenery, the timer is the contract.
+    const tm = setTimeout(() => {
+      if (!fired.current) { fired.current = true; onDoneRef.current?.(); }
+    }, SLAM_TOTAL_MS);
+    return () => { clearTimeout(tm); anim.stop(); };
+  }, []);
+
+  const badgeTY = drop.interpolate({ inputRange: [0, 1], outputRange: [-SCREEN_H * 0.42, 0] });
+  const badgeScale = drop.interpolate({ inputRange: [0, 1], outputRange: [1.3, 1] });
+  const badgeOpacity = drop.interpolate({ inputRange: [0, 0.12, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' });
+  // squash anchored to the floor: scale + a compensating translate
+  const squashTY = impact.interpolate({ inputRange: [0, 0.22, 0.55, 1], outputRange: [0, SLAM_BADGE * 0.09, -SLAM_BADGE * 0.02, 0] });
+  const squashX = impact.interpolate({ inputRange: [0, 0.22, 0.55, 1], outputRange: [1, 1.12, 0.96, 1] });
+  const squashY = impact.interpolate({ inputRange: [0, 0.22, 0.55, 1], outputRange: [1, 0.8, 1.06, 1] });
+  const shakeTX = shake.interpolate({ inputRange: [0, 0.25, 0.55, 0.8, 1], outputRange: [0, -4, 3, -2, 0] });
+  const shakeTY = shake.interpolate({ inputRange: [0, 0.18, 0.42, 0.66, 0.85, 1], outputRange: [0, 7, -5, 3, -1, 0] });
+  const shadowOpacity = drop.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 0.05, 0.34], extrapolate: 'clamp' });
+  const shadowScaleX = drop.interpolate({ inputRange: [0, 1], outputRange: [0.45, 1] });
+
+  return (
+    <OpeningBackdrop>
+      <Animated.View style={{ alignItems: 'center', transform: [{ translateX: shakeTX }, { translateY: shakeTY }] }}>
+        {/* badge + floor shadow + impact FX */}
+        <View style={{ width: SLAM_BADGE * 1.4, height: SLAM_BADGE + 30, alignItems: 'center', justifyContent: 'flex-start' }}>
+          <Animated.View pointerEvents="none" style={{ position: 'absolute', bottom: 0, width: SLAM_BADGE * 1.05, height: 20, borderRadius: 12, backgroundColor: '#01030A', opacity: shadowOpacity, transform: [{ scaleX: shadowScaleX }] }} />
+          <Animated.View style={{ opacity: badgeOpacity, transform: [{ translateY: badgeTY }, { scale: badgeScale }, { translateY: squashTY }, { scaleX: squashX }, { scaleY: squashY }] }}>
+            <BrandMark size={SLAM_BADGE} />
+          </Animated.View>
+          {/* impact anchor (zero-size, centered at the badge base) */}
+          <View pointerEvents="none" style={{ position: 'absolute', left: '50%', bottom: 16, width: 0, height: 0 }}>
+            <Animated.View style={{ position: 'absolute', left: -70, top: -70, width: 140, height: 140, borderRadius: 70, borderWidth: 3, borderColor: theme.primary, opacity: ring1.interpolate({ inputRange: [0, 0.12, 1], outputRange: [0, 0.85, 0], extrapolate: 'clamp' }), transform: [{ scale: ring1.interpolate({ inputRange: [0, 1], outputRange: [0.35, 2.4] }) }] }} />
+            {SLAM_SPARKS.map((p, i) => {
+              const rad = (p.a * Math.PI) / 180;
+              const dx = Math.cos(rad) * p.d;
+              const dy = Math.sin(rad) * p.d;
+              return (
+                <Animated.View
+                  key={i}
+                  style={{
+                    position: 'absolute', left: -p.s / 2, top: -p.s / 2, width: p.s, height: p.s, borderRadius: p.s / 2, backgroundColor: p.c,
+                    opacity: burst.interpolate({ inputRange: [0, 0.1, 0.65, 1], outputRange: [0, 1, 1, 0], extrapolate: 'clamp' }),
+                    transform: [
+                      { translateX: burst.interpolate({ inputRange: [0, 1], outputRange: [0, dx] }) },
+                      { translateY: burst.interpolate({ inputRange: [0, 1], outputRange: [0, dy] }) },
+                      { scale: burst.interpolate({ inputRange: [0, 1], outputRange: [1, 0.25] }) },
+                    ],
+                  }}
+                />
+              );
+            })}
+          </View>
+        </View>
+
+        {/* wordmark: letters stamp in, then a gold shine sweeps across */}
+        <View style={{ width: SLAM_WM_W, alignItems: 'center', marginTop: 26 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
+            {SLAM_WORD.split('').map((ch, i) => (
+              <Animated.Text
+                key={i}
+                style={{
+                  color: theme.text, fontSize: SLAM_FONT, letterSpacing: 1, marginHorizontal: 1.5, includeFontPadding: false,
+                  fontFamily: fontsReady ? 'Poppins-Black' : undefined, fontWeight: fontsReady ? undefined : '900',
+                  ...engrave('lg'),
+                  opacity: letters[i]!.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
+                  transform: [
+                    { translateY: letters[i]!.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) },
+                    { scale: letters[i]!.interpolate({ inputRange: [0, 1], outputRange: [1.7, 1] }) },
+                  ],
+                }}
+              >
+                {ch}
+              </Animated.Text>
+            ))}
+          </View>
+          <ShineSweep width={SLAM_WM_W} height={SLAM_FONT * 1.4} delay={1780} duration={620} tint={theme.accent} opacity={0.3} band={0.24} />
+        </View>
+      </Animated.View>
+      {/* fade-from-black veil (on top of everything) */}
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: veil }]} />
+    </OpeningBackdrop>
+  );
+}
+
 // ---- Loading screen (Clash-Royale-style bar) shown on entry; warms the logo cache ----
+// Same stage as the splash (OpeningBackdrop + BrandMark + wordmark) so
+// splash → login → loading reads as one continuous scene. The brand block
+// renders already in place — the splash just showed the same composition, so
+// re-fading it in would read as a double-take; only the bottom kit animates up.
 const LOADING_TIPS: MessageKey[] = ['loading.tip1', 'loading.tip2', 'loading.tip3', 'loading.tip4'];
+const LOAD_BAR_H = 24;
+const LOAD_BAR_W = SCREEN_W - 48;      // bottom block spans 24px side margins
+const LOAD_BAR_INNER = LOAD_BAR_W - 8; // minus 2px frame border + 2px well padding per side
 export function LoadingScreen({ state, actions, onReady }: Props & { onReady: () => void }) {
   const [pct, setPct] = useState(0);
   const done = useRef(false);
   const prefetched = useRef(false);
   const tipKey = useRef(LOADING_TIPS[Math.floor((state.profile?.trophies ?? 0) % LOADING_TIPS.length)] ?? LOADING_TIPS[0]!).current;
+  const kit = useRef(new Animated.Value(0)).current;   // bottom kit (tip card + bar) entrance
+  const float = useRef(new Animated.Value(0)).current; // idle badge bob
+  const fill = useRef(new Animated.Value(0)).current;  // native-driver slab glide toward pct
+  const blink = useRef(new Animated.Value(0)).current; // full-bar white punctuation at 100%
 
   // Pull the popular clubs so their crests warm the image cache before pick time.
   useEffect(() => { actions.searchClubs(''); }, []);
@@ -566,36 +1295,92 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
     }
   }, [state.clubResults]);
 
-  // Fill the bar 0→100 over ~2.2s, then enter the home panel.
+  // Fill the bar 0→100 over ~2.2s; at 100% blink the bar white, then enter home.
   useEffect(() => {
     const id = setInterval(() => {
       setPct((p) => {
         const next = Math.min(100, p + 4);
-        if (next >= 100 && !done.current) { done.current = true; setTimeout(onReady, 280); }
+        if (next >= 100 && !done.current) {
+          done.current = true;
+          Animated.sequence([
+            Animated.timing(blink, { toValue: 1, duration: 120, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+            Animated.timing(blink, { toValue: 0, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+          ]).start();
+          setTimeout(onReady, 320);
+        }
         return next;
       });
     }, 80);
     return () => clearInterval(id);
   }, []);
 
+  // Glide the fill slab toward the current % — a native-driver translateX so the
+  // bar moves smoothly BETWEEN the 80ms ticks instead of stepping 4% at a time.
+  useEffect(() => {
+    Animated.timing(fill, { toValue: pct / 100, duration: 130, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+  }, [pct]);
+
+  useEffect(() => {
+    Animated.timing(kit, { toValue: 1, duration: 460, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(float, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(float, { toValue: 0, duration: 1500, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, []);
+
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
-      <ScreenBg />
-      <View style={{ alignItems: 'center', alignSelf: 'stretch', paddingHorizontal: 24 }}>
-        <View style={{ width: 112, height: 112, borderRadius: 28, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.primary, borderBottomWidth: 5, borderBottomColor: theme.primaryDark }}>
-          <Image source={require('../assets/splash-icon.png')} style={{ width: 84, height: 84 }} resizeMode="contain" />
+    <OpeningBackdrop>
+      {/* brand block — pixel-identical to the splash's final frame (same badge box,
+          per-letter wordmark, underline and margins) so the cut is invisible */}
+      <View style={{ alignItems: 'center' }}>
+        <View style={{ width: SLAM_BADGE * 1.4, height: SLAM_BADGE + 30, alignItems: 'center', justifyContent: 'flex-start' }}>
+          <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, width: SLAM_BADGE * 1.05, height: 20, borderRadius: 12, backgroundColor: '#01030A', opacity: 0.34 }} />
+          <Animated.View style={{ transform: [{ translateY: float.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, -3, 0] }) }] }}>
+            <BrandMark size={SLAM_BADGE} />
+          </Animated.View>
         </View>
-        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: theme.text, fontSize: 32, fontFamily: 'Poppins-Black', letterSpacing: 1.5, textAlign: 'center', alignSelf: 'stretch', includeFontPadding: false, marginTop: 14 }}>CROSSOVER</Text>
+        <View style={{ width: SLAM_WM_W, alignItems: 'center', marginTop: 26 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
+            {SLAM_WORD.split('').map((ch, i) => (
+              <Text key={i} style={{ color: theme.text, fontSize: SLAM_FONT, letterSpacing: 1, marginHorizontal: 1.5, includeFontPadding: false, fontFamily: 'Poppins-Black', ...engrave('lg') }}>{ch}</Text>
+            ))}
+          </View>
+        </View>
       </View>
 
-      <View style={{ position: 'absolute', left: 32, right: 32, bottom: 64, alignItems: 'center', gap: 10 }}>
-        <Text style={{ color: theme.muted, fontSize: 12.5, textAlign: 'center', lineHeight: 18 }}>{t(tipKey)}</Text>
-        <View style={{ width: '100%', height: 16, borderRadius: 10, backgroundColor: theme.cardLip, borderWidth: 1, borderColor: theme.border, overflow: 'hidden' }}>
-          <View style={{ width: `${pct}%`, height: '100%', borderRadius: 10, backgroundColor: theme.primary }} />
+      {/* bottom: CR-style tip card + beveled glossy progress bar */}
+      <Animated.View style={{ position: 'absolute', left: 24, right: 24, bottom: 56, gap: 14, opacity: kit, transform: [{ translateY: kit.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] }}>
+        <GamePanel compact bodyStyle={{ padding: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}>
+            <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: theme.cardLip, borderWidth: 1.5, borderColor: theme.accentDark, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="bulb" size={18} color={theme.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: theme.accent, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 1.4 }}>{t('loading.tipLabel')}</Text>
+              <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', lineHeight: 17, marginTop: 2 }}>{t(tipKey)}</Text>
+            </View>
+          </View>
+        </GamePanel>
+
+        <View style={{ height: LOAD_BAR_H, borderRadius: 13, backgroundColor: theme.panelInk, borderWidth: 2, borderColor: theme.border, borderBottomColor: theme.cardLip, padding: 2, justifyContent: 'center' }}>
+          <View style={{ flex: 1, borderRadius: 10, backgroundColor: theme.panelInnerFill, overflow: 'hidden' }}>
+            {/* glossy mint fill slab (full width, slid in from the left on the native
+                driver): top gloss + dark lip + hot leading cap + looping shine */}
+            <Animated.View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: LOAD_BAR_INNER, borderRadius: 10, backgroundColor: theme.primary, overflow: 'hidden', transform: [{ translateX: fill.interpolate({ inputRange: [0, 1], outputRange: [-LOAD_BAR_INNER, 0] }) }] }}>
+              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '46%', backgroundColor: 'rgba(255,255,255,0.32)', borderTopLeftRadius: 10, borderTopRightRadius: 10 }} />
+              <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 4, backgroundColor: theme.primaryDark, opacity: 0.85 }} />
+              <View style={{ position: 'absolute', top: 2, bottom: 2, right: 2, width: 6, borderRadius: 3, backgroundColor: lighten(theme.primary, 0.55), opacity: 0.9 }} />
+              <ShineSweep width={LOAD_BAR_INNER} height={LOAD_BAR_H - 8} loop delay={350} duration={900} loopGap={900} opacity={0.35} band={0.22} />
+            </Animated.View>
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: '#000000', opacity: 0.28 }} />
+            <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF', opacity: blink.interpolate({ inputRange: [0, 1], outputRange: [0, 0.45] }) }]} />
+          </View>
+          <Text style={{ position: 'absolute', alignSelf: 'center', color: theme.text, fontSize: 12, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5, ...engrave('sm') }}>{pct}%</Text>
         </View>
-        <Text style={{ color: theme.primary, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>{pct}%</Text>
-      </View>
-    </View>
+      </Animated.View>
+    </OpeningBackdrop>
   );
 }
 
@@ -632,6 +1417,141 @@ const TUT_PROFILE = {
   arena: { name: 'Mahalle Sahası', icon: '🏟️', minTrophies: 0 }, avatar: 'pp7',
 };
 
+// Centered coach gate — the GameModal "coach" vocabulary as an in-screen overlay:
+// panelInk outer ring, mint frame (danger after a wrong guess) with a darkened
+// bottom bevel, card face on a cardLip lip, and a mint mini-banner carrying the
+// step label. theme.scrim fades in 180ms alongside the card spring; closing
+// animates out (no frame-cut unmounts, spec §11).
+function CoachGate({ visible, wrong, stepLabel, body, cta, ctaIcon, onPress }: {
+  visible: boolean; wrong: boolean; stepLabel: string; body: string; cta: string; ctaIcon: IoniconName; onPress: () => void;
+}) {
+  const a = useRef(new Animated.Value(0)).current;     // card spring
+  const scrim = useRef(new Animated.Value(0)).current; // 180ms scrim fade
+  const [mounted, setMounted] = useState(visible);
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      Animated.parallel([
+        Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }),
+        Animated.timing(scrim, { toValue: 1, duration: 180, useNativeDriver: true }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(a, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+        Animated.timing(scrim, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      ]).start(({ finished }) => { if (finished) setMounted(false); });
+    }
+  }, [visible, a, scrim]);
+  if (!mounted && !visible) return null;
+  const frame = wrong ? theme.danger : theme.primary;
+  const frameBot = wrong ? theme.dangerDark : theme.primaryDark;
+  return (
+    <Animated.View
+      style={[StyleSheet.absoluteFill, {
+        backgroundColor: theme.scrim,
+        opacity: scrim.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
+        alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, zIndex: 30,
+      }]}
+    >
+      <Animated.View
+        style={{
+          width: '100%',
+          opacity: a.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
+          transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) }],
+          backgroundColor: theme.panelInk, borderRadius: 22, padding: 2,
+          borderWidth: 2, borderColor: frame, borderBottomColor: frameBot,
+          shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 16,
+        }}
+      >
+        <View style={{ backgroundColor: theme.card, borderRadius: 20, overflow: 'hidden', borderBottomWidth: 3, borderBottomColor: theme.cardLip }}>
+          <View style={{ height: 38, alignItems: 'center', justifyContent: 'center', backgroundColor: frame, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.35)', borderBottomWidth: 3, borderBottomColor: frameBot }}>
+            <Text style={{ color: wrong ? theme.text : theme.ink, fontFamily: 'Poppins-ExtraBold', fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' }}>{stepLabel}</Text>
+          </View>
+          <View style={{ padding: 22, paddingTop: 18, alignItems: 'center' }}>
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: theme.panelInnerFill, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: frame, borderTopColor: theme.cardLip, marginBottom: 12 }}>
+              <Ionicons name={wrong ? 'alert' : 'football'} size={28} color={frame} />
+            </View>
+            <Text style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-SemiBold', lineHeight: 23, textAlign: 'center', marginBottom: 16 }}>{body}</Text>
+            <View style={{ width: '100%' }}>
+              <Btn label={cta} kind="primary" icon={ctaIcon} onPress={onPress} big />
+            </View>
+          </View>
+        </View>
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
+// Slim top interaction hint — beveled primary-ring chip that slides down + fades
+// in over 200ms when the gate closes, and fades out when it reopens.
+function TutorialHint({ visible, text }: { visible: boolean; text: string }) {
+  const a = useRef(new Animated.Value(0)).current;
+  const [mounted, setMounted] = useState(visible);
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      Animated.timing(a, { toValue: 1, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+    } else {
+      Animated.timing(a, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => { if (finished) setMounted(false); });
+    }
+  }, [visible, a]);
+  if ((!mounted && !visible) || !text) return null;
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute', top: 96, left: 16, right: 16, alignItems: 'center',
+        opacity: a,
+        transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [-12, 0] }) }],
+      }}
+    >
+      <View style={{ backgroundColor: theme.card, borderRadius: 14, borderWidth: 1.5, borderColor: theme.primary, borderBottomWidth: 3, borderBottomColor: theme.cardLip, paddingVertical: 9, paddingHorizontal: 14, maxWidth: '100%' }}>
+        <Text style={{ color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{text}</Text>
+      </View>
+    </Animated.View>
+  );
+}
+
+// One-shot celebration burst behind the tutorial's final CTA — six mint/gold
+// debris kicks (≤7 particles, celebration moment only — spec §14).
+const TUT_SPARKS: { a: number; d: number; s: number; c: string }[] = [
+  { a: -30, d: 70, s: 5, c: theme.primary },
+  { a: -80, d: 84, s: 6, c: theme.accent },
+  { a: -130, d: 68, s: 5, c: theme.primary },
+  { a: -55, d: 98, s: 4, c: theme.text },
+  { a: -105, d: 94, s: 4, c: theme.accent },
+  { a: -152, d: 84, s: 4, c: theme.text },
+];
+function CelebrationSparks() {
+  const burst = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(burst, { toValue: 1, duration: 640, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [burst]);
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: '50%', bottom: 44, width: 0, height: 0 }}>
+      {TUT_SPARKS.map((p, i) => {
+        const rad = (p.a * Math.PI) / 180;
+        const dx = Math.cos(rad) * p.d;
+        const dy = Math.sin(rad) * p.d;
+        return (
+          <Animated.View
+            key={i}
+            style={{
+              position: 'absolute', left: -p.s / 2, top: -p.s / 2, width: p.s, height: p.s, borderRadius: p.s / 2, backgroundColor: p.c,
+              opacity: burst.interpolate({ inputRange: [0, 0.1, 0.65, 1], outputRange: [0, 1, 1, 0], extrapolate: 'clamp' }),
+              transform: [
+                { translateX: burst.interpolate({ inputRange: [0, 1], outputRange: [0, dx] }) },
+                { translateY: burst.interpolate({ inputRange: [0, 1], outputRange: [0, dy] }) },
+                { scale: burst.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] }) },
+              ],
+            }}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
 // Guided first-time tutorial that drives the REAL match screens (PickTeam → Guess
 // → Result) with scripted fake data, plus a coach overlay + skip. Step advances
 // when the player does the real action (pick a team, submit a guess).
@@ -639,6 +1559,8 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0); // 0 pick · 1 guess · 2 result
   const [wrong, setWrong] = useState(false); // typed a wrong guess in the sim
   const [gateOpen, setGateOpen] = useState(true); // centered coach card blocks interaction until "Devam Et"
+  const [celebSize, setCelebSize] = useState({ w: 0, h: 0 }); // final-card dims for the one-shot ShineSweep
+  const insets = useSafeAreaInsets();
   const bubble = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     bubble.setValue(0);
@@ -737,48 +1659,40 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
       {screen}
 
       {/* Slim top hint while the player is interacting (gate closed) */}
-      {!gateOpen && cur.hint ? (
-        <View pointerEvents="none" style={{ position: 'absolute', top: 96, left: 16, right: 16, alignItems: 'center' }}>
-          <View style={{ backgroundColor: theme.card, borderRadius: 14, borderWidth: 1.5, borderColor: theme.primary, paddingVertical: 9, paddingHorizontal: 14, maxWidth: '100%' }}>
-            <Text style={{ color: theme.text, fontSize: 13.5, fontWeight: '700', textAlign: 'center' }}>{cur.hint}</Text>
-          </View>
-        </View>
-      ) : null}
+      <TutorialHint visible={!gateOpen && !!cur.hint} text={cur.hint} />
 
       {/* Result step: keep the win + career fully visible, celebration card at the bottom */}
       {step >= 2 ? (
         <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16 }}>
-          <Animated.View style={{ transform: [{ scale: bubble }], opacity: bubble, backgroundColor: theme.card, borderRadius: 20, borderWidth: 2, borderColor: theme.primary, padding: 18, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 14 }}>
-            <Text style={{ color: theme.text, fontSize: 14.5, lineHeight: 22, textAlign: 'center', marginBottom: 14 }}>{cur.gate}</Text>
-            <View style={{ width: '100%' }}>
-              <Btn label={cur.cta} kind="primary" icon="rocket" onPress={onGate} big />
-            </View>
+          <Animated.View
+            style={{ transform: [{ scale: bubble }], opacity: bubble }}
+            onLayout={(e) => setCelebSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+          >
+            <GamePanel hero tint={theme.primary} bodyStyle={{ alignItems: 'center', padding: 18 }}>
+              <CelebrationSparks />
+              <Text style={{ color: theme.text, fontSize: 14.5, fontFamily: 'Poppins-SemiBold', lineHeight: 22, textAlign: 'center', marginBottom: 14 }}>{cur.gate}</Text>
+              <View style={{ width: '100%' }}>
+                <Btn label={cur.cta} kind="primary" icon="rocket" onPress={onGate} big />
+              </View>
+              {celebSize.w > 0 ? <ShineSweep width={celebSize.w - 8} height={celebSize.h - 8} delay={340} duration={720} opacity={0.24} band={0.26} /> : null}
+            </GamePanel>
           </Animated.View>
         </View>
-      ) : gateOpen ? (
+      ) : (
         /* Pick/Guess step: centered coach gate — blocks interaction until "Devam Et" */
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(6,10,28,0.82)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }}>
-          <Animated.View style={{ width: '100%', transform: [{ scale: bubble }], opacity: bubble, backgroundColor: theme.card, borderRadius: 22, borderWidth: 2, borderColor: wrong ? theme.danger : theme.primary, padding: 22, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 16 }}>
-            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: wrong ? theme.danger : theme.primary, marginBottom: 12 }}>
-              <Ionicons name={wrong ? 'alert' : 'football'} size={28} color={wrong ? theme.danger : theme.primary} />
-            </View>
-            <Text style={{ color: theme.muted, fontWeight: '900', fontSize: 11, letterSpacing: 1.5, marginBottom: 8 }}>{t('tutorial.coachStep', { step: step + 1 })}</Text>
-            <Text style={{ color: theme.text, fontSize: 15.5, lineHeight: 23, textAlign: 'center', marginBottom: 18 }}>{cur.gate}</Text>
-            <View style={{ width: '100%' }}>
-              <Btn label={cur.cta} kind="primary" icon="arrow-forward" onPress={onGate} big />
-            </View>
-          </Animated.View>
-        </View>
-      ) : null}
+        <CoachGate
+          visible={gateOpen}
+          wrong={wrong}
+          stepLabel={t('tutorial.coachStep', { step: step + 1 })}
+          body={cur.gate}
+          cta={cur.cta}
+          ctaIcon="arrow-forward"
+          onPress={onGate}
+        />
+      )}
 
-      {/* Skip — always reachable, on top */}
-      <Pressable
-        onPress={onDone}
-        style={{ position: 'absolute', top: 50, right: 16, zIndex: 40, backgroundColor: theme.card, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: theme.border }}
-        hitSlop={10}
-      >
-        <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13 }}>{`${t('common.skip')} ›`}</Text>
-      </Pressable>
+      {/* Skip — always reachable, on top (same beveled mini-chip as IntroScreen) */}
+      <SkipChip onPress={onDone} style={{ position: 'absolute', top: insets.top + 8, right: 16, zIndex: 40 }} />
     </View>
   );
 }
@@ -826,10 +1740,67 @@ function TransientCallout({ emoteId, onDone }: { emoteId: string; onDone?: () =>
 
 // Floating emote button + picker sheet + the opponent/self callouts. Drop into
 // any in-match screen; positions itself absolutely over the screen.
+// ---- EmoteCoin — the one beveled emote button (match HUD strip + floating FAB) ----
+// Gold coin: accentDark lip under the accent face, white top gloss, 2px press
+// depress, theme.ink glyph.
+function EmoteCoin({ onPress, size = 52, style }: { onPress: () => void; size?: number; style?: any }) {
+  const { ty, onIn, onOut } = usePressLip(2);
+  return (
+    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} hitSlop={6} style={style}>
+      <View style={{ backgroundColor: theme.accentDark, borderRadius: size / 2 + 2, paddingBottom: 3, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 6 }}>
+        <Animated.View
+          style={{
+            transform: [{ translateY: ty }],
+            width: size, height: size, borderRadius: size / 2,
+            backgroundColor: theme.accent,
+            borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.30)',
+            alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <Ionicons name="chatbubble-ellipses" size={Math.round(size * 0.46)} color={theme.ink} />
+        </Animated.View>
+      </View>
+    </Pressable>
+  );
+}
+
+// Sticker cell in the emote sheet — spring press-scale 0.92 (spec §11).
+function EmoteStickerCell({ emote, onPress }: { emote: EmoteMeta; onPress: () => void }) {
+  const { scale, onIn, onOut } = usePressScale();
+  return (
+    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ alignItems: 'center', width: 72 }}>
+      <Animated.View style={{ transform: [{ scale }], alignItems: 'center' }}>
+        <View style={{
+          width: 70, height: 70, borderRadius: emote.kind === 'lottie' ? 14 : 35, backgroundColor: theme.bg,
+          borderWidth: 2.5, borderColor: emote.color, alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+        }}>
+          <EmoteSticker id={emote.id} size={56} />
+        </View>
+        <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', marginTop: 5, textAlign: 'center' }} numberOfLines={1}>{emotePhrase(emote)}</Text>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
 function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, onOpenChange }: Props & { fab?: 'bottom-right' | 'top-right'; hideFab?: boolean; externalOpen?: boolean; onOpenChange?: (open: boolean) => void }) {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = externalOpen ?? internalOpen;
   const setOpen = (v: boolean) => { setInternalOpen(v); onOpenChange?.(v); };
+  const insets = useSafeAreaInsets();
+  // Bottom sheet: spring translateY entry + 180ms animated exit (spec §7 — no
+  // animationType='slide'; the Modal stays mounted during the exit animation).
+  const sheetA = useRef(new Animated.Value(0)).current;
+  const [sheetMounted, setSheetMounted] = useState(false);
+  useEffect(() => {
+    if (open) {
+      setSheetMounted(true);
+      Animated.spring(sheetA, { toValue: 1, friction: 8, tension: 70, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(sheetA, { toValue: 0, duration: 180, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
+        if (finished) setSheetMounted(false);
+      });
+    }
+  }, [open, sheetA]);
   const room = state.room;
   const youId = room?.youId;
   const oppId = room?.players.find((p) => p.id !== youId)?.id;
@@ -855,62 +1826,60 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
       </View>
 
       {!hideFab ? (
-        <Pressable
-          style={[styles.emoteFab, fab === 'top-right' ? styles.emoteFabTop : styles.emoteFabBottom]}
+        <EmoteCoin
+          size={52}
           onPress={() => setOpen(true)}
-        >
-          <Ionicons name="chatbubble-ellipses" size={24} color="#06131F" />
-        </Pressable>
+          style={[{ position: 'absolute', zIndex: 40 }, fab === 'top-right' ? styles.emoteFabTop : styles.emoteFabBottom]}
+        />
       ) : null}
 
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.emoteSheetBackdrop} onPress={() => setOpen(false)}>
-          <Pressable
-            style={{
-              backgroundColor: theme.card, borderTopLeftRadius: 26, borderTopRightRadius: 26,
-              paddingTop: 10, paddingBottom: 34, paddingHorizontal: 18,
-              borderTopWidth: 1, borderColor: theme.border,
-            }}
-            onPress={() => {}}
-          >
-            <View style={{ width: 42, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: 'center', marginBottom: 16 }} />
+      <Modal visible={open || sheetMounted} transparent animationType="none" onRequestClose={() => setOpen(false)}>
+        <Animated.View style={[styles.emoteSheetBackdrop, { opacity: sheetA.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }) }]}>
+          <Pressable style={{ flex: 1 }} onPress={() => setOpen(false)} />
+          <Animated.View style={{ transform: [{ translateY: sheetA.interpolate({ inputRange: [0, 1], outputRange: [440, 0] }) }] }}>
+            {/* Gold top rim over a panelInk edge → card face with a panelTopGloss inner line */}
+            <View style={{ backgroundColor: theme.panelInk, borderTopLeftRadius: 30, borderTopRightRadius: 30, borderTopWidth: 2, borderTopColor: theme.frameGold, paddingTop: 3 }}>
+              <View
+                style={{
+                  backgroundColor: theme.card, borderTopLeftRadius: 26, borderTopRightRadius: 26,
+                  borderTopWidth: 1, borderTopColor: theme.panelTopGloss,
+                  paddingTop: 10, paddingHorizontal: 18, paddingBottom: Math.max(insets.bottom, 16) + 12,
+                }}
+              >
+                <View style={{ width: 42, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: 'center', marginBottom: 16 }} />
 
-            {/* Quick-chat text messages (no emoji — just text, Clash-Royale style) */}
-            <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '800', letterSpacing: 0.5, marginBottom: 9, marginLeft: 2 }}>{t('emote.quickChat')}</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
-              {textEmotes.map((e) => (
-                <Pressable
-                  key={e.id}
-                  onPress={() => { actions.sendEmote(e.id); setOpen(false); }}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.bg, borderRadius: 22, paddingVertical: 11, paddingHorizontal: 16, borderWidth: 1.5, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip }}
-                >
-                  <Ionicons name="chatbubble-ellipses" size={14} color={theme.primary} />
-                  <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13.5 }}>{emotePhrase(e)}</Text>
-                </Pressable>
-              ))}
-            </View>
+                {/* Quick-chat text messages (no emoji — just text, Clash-Royale style) */}
+                <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 1.5, marginBottom: 9, marginLeft: 2 }}>{t('emote.quickChat')}</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
+                  {textEmotes.map((e) => (
+                    <Pressable
+                      key={e.id}
+                      onPress={() => { actions.sendEmote(e.id); setOpen(false); }}
+                      style={({ pressed }) => ({
+                        flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.bg,
+                        borderRadius: 22, paddingVertical: 11, paddingHorizontal: 16,
+                        borderWidth: 1.5, borderColor: theme.border,
+                        borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
+                        transform: [{ translateY: pressed ? 2 : 0 }],
+                      })}
+                    >
+                      <Ionicons name="chatbubble-ellipses" size={14} color={theme.primary} />
+                      <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13.5 }}>{emotePhrase(e)}</Text>
+                    </Pressable>
+                  ))}
+                </View>
 
-            {/* Character emotes (smiling / crying / angry / OK) + any equipped visual emotes */}
-            <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '800', letterSpacing: 0.5, marginBottom: 10, marginLeft: 2 }}>{t('emote.faces')}</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 14 }}>
-              {stickerEmotes.map((e) => (
-                <Pressable
-                  key={e.id}
-                  onPress={() => { actions.sendEmote(e.id); setOpen(false); }}
-                  style={{ alignItems: 'center', width: 72 }}
-                >
-                  <View style={{
-                    width: 70, height: 70, borderRadius: e.kind === 'lottie' ? 14 : 35, backgroundColor: theme.bg,
-                    borderWidth: 2.5, borderColor: e.color, alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-                  }}>
-                    <EmoteSticker id={e.id} size={56} />
-                  </View>
-                  <Text style={{ color: theme.muted, fontSize: 9.5, marginTop: 5, textAlign: 'center' }} numberOfLines={1}>{emotePhrase(e)}</Text>
-                </Pressable>
-              ))}
+                {/* Character emotes (smiling / crying / angry / OK) + any equipped visual emotes */}
+                <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 1.5, marginBottom: 10, marginLeft: 2 }}>{t('emote.faces')}</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 14 }}>
+                  {stickerEmotes.map((e) => (
+                    <EmoteStickerCell key={e.id} emote={e} onPress={() => { actions.sendEmote(e.id); setOpen(false); }} />
+                  ))}
+                </View>
+              </View>
             </View>
-          </Pressable>
-        </Pressable>
+          </Animated.View>
+        </Animated.View>
       </Modal>
     </>
   );
@@ -939,7 +1908,7 @@ function ClubBadge({ name, size = 36, logoUrl }: { name: string; size?: number; 
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: '#fff',
+          backgroundColor: theme.text,
           alignItems: 'center',
           justifyContent: 'center',
           overflow: 'hidden',
@@ -960,7 +1929,7 @@ function ClubBadge({ name, size = 36, logoUrl }: { name: string; size?: number; 
         justifyContent: 'center',
       }}
     >
-      <Text style={{ color: '#fff', fontWeight: '800', fontSize: size * 0.4 }}>{initial(name)}</Text>
+      <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: size * 0.4 }}>{initial(name)}</Text>
     </View>
   );
 }
@@ -990,37 +1959,79 @@ function isNetworkErrorMessage(message?: string | null): boolean {
   return message === t('error.connect') || message === t('error.disconnected') || message === t('login.noInternet');
 }
 
-function NetworkErrorBeacon({ visible }: { visible: boolean }) {
-  const anim = useRef(new Animated.Value(0)).current;
+// Inline (non-network) error banner — danger-tinted compact panel with an
+// alert icon gem; fades/slides in over 200ms. Shared by Home/Login/Username.
+function ErrorBanner({ message, style }: { message: string; style?: any }) {
+  const a = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (!visible) {
-      anim.stopAnimation();
-      anim.setValue(0);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(anim, { toValue: 1, duration: 520, useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 0.18, duration: 520, useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [anim, visible]);
-  if (!visible) return null;
+    a.setValue(0);
+    Animated.timing(a, { toValue: 1, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+  }, [message, a]);
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
-      <Animated.View style={{ opacity: anim.interpolate({ inputRange: [0, 1], outputRange: [0.45, 1] }), transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.06] }) }] }}>
-        <View style={{ width: 122, height: 122, borderRadius: 30, backgroundColor: 'rgba(24,18,20,0.9)', borderWidth: 2, borderColor: 'rgba(255,92,92,0.32)', alignItems: 'center', justifyContent: 'center', shadowColor: theme.danger, shadowOpacity: 0.35, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 14 }}>
-          <Ionicons name="wifi" size={52} color={theme.danger} />
-          <View style={{ width: 48, height: 4, borderRadius: 999, backgroundColor: theme.danger, marginTop: 8 }} />
+    <Animated.View style={[{ opacity: a, transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }], marginVertical: 8 }, style]}>
+      <GamePanel compact tint={theme.danger} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 }}>
+        <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: theme.cardLip, borderWidth: 1.5, borderColor: theme.dangerDark, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="alert-circle" size={16} color={theme.danger} />
         </View>
-      </Animated.View>
-    </View>
+        <Text style={{ flex: 1, color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', lineHeight: 17 }}>{message}</Text>
+      </GamePanel>
+    </Animated.View>
   );
 }
 
-function MODE_LABEL(m: GameMode): string {
+// Offline status banner — opaque kit surface (danger-tinted GamePanel), pinned
+// above the bottom edge. Presence is the message: entrance/exit animate, the
+// container never blinks; only the icon dips on a slow ≥1800ms cycle.
+function NetworkErrorBeacon({ visible }: { visible: boolean }) {
+  const a = useRef(new Animated.Value(0)).current; // 200ms enter / 160ms exit
+  const dip = useRef(new Animated.Value(1)).current; // slow icon presence dip
+  const [mounted, setMounted] = useState(visible);
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      Animated.timing(a, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(dip, { toValue: 0.55, duration: 900, useNativeDriver: true }),
+          Animated.timing(dip, { toValue: 1, duration: 900, useNativeDriver: true }),
+        ]),
+      );
+      loop.start();
+      return () => loop.stop();
+    }
+    Animated.timing(a, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
+      if (finished) setMounted(false);
+    });
+    return undefined;
+  }, [a, dip, visible]);
+  if (!mounted && !visible) return null;
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute', bottom: 30, alignSelf: 'center', maxWidth: 320,
+        opacity: a,
+        transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
+      }}
+    >
+      <GamePanel compact tint={theme.danger}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: theme.cardLip, borderWidth: 1.5, borderColor: theme.dangerDark, alignItems: 'center', justifyContent: 'center' }}>
+            <Animated.View style={{ opacity: dip }}>
+              <Ionicons name="cloud-offline" size={18} color={theme.danger} />
+            </Animated.View>
+          </View>
+          <View style={{ flexShrink: 1 }}>
+            <Text style={{ color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t('network.offlineTitle')}</Text>
+            <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', marginTop: 1 }}>{t('network.offlineHint')}</Text>
+          </View>
+        </View>
+      </GamePanel>
+    </Animated.View>
+  );
+}
+
+export function MODE_LABEL(m: GameMode): string {
   return { 'team-team': t('mode.teamTeam'), 'country-team': t('mode.countryTeam'), 'letter-team': t('mode.letterTeam'), 'player-player': t('mode.playerPlayer') }[m];
 }
 
@@ -1059,7 +2070,7 @@ function MatchHistoryLeadBadge({
   if (mode === 'letter-team' && letter) {
     return (
       <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: '#06131F', fontSize: Math.max(10, size - 7), fontWeight: '900' }}>{letter}</Text>
+        <Text style={{ color: theme.ink, fontSize: Math.max(10, size - 7), fontFamily: 'Poppins-Black' }}>{letter}</Text>
       </View>
     );
   }
@@ -1076,37 +2087,48 @@ function scopeLabel(scope: Scope): string {
   return scope.type === 'all' ? t('scope.all') : scope.value;
 }
 
-type Picker = null | 'difficulty' | 'scopeType' | 'league' | 'country' | 'mode';
+// Bot-dialog pages (difficulty home + mode/scope pickers) — ONE mounted GameModal
+// pages between these with a 200ms ModalPager slide (spec §7).
+type BotPage = 'bot' | 'mode' | 'scopeType' | 'league' | 'country';
+const BOT_BANNER: Record<BotPage, { title: () => string; icon: IoniconName }> = {
+  bot: { title: () => t('home.solo'), icon: 'game-controller' },
+  mode: { title: () => t('mode.select'), icon: 'game-controller' },
+  scopeType: { title: () => t('friends.scopeTitle'), icon: 'filter' },
+  league: { title: () => t('scope.pickLeague'), icon: 'trophy' },
+  country: { title: () => t('scope.pickCountry'), icon: 'flag' },
+};
 
-function ProfileCard({ profile, onPress }: { profile: ProfileView; onPress?: () => void }) {
+// Login gate: shown until the user signs in. No guest play — the app is locked
+// behind Apple/Google (Facebook coming soon) sign-in.
+// Custom "Sign in with Apple" trigger in the kit's chunky anatomy. Follows
+// Apple's HIG (white field, black  logo + localized title — the mandated
+// white/black are a sanctioned exception to the no-raw-hex rule); the actual
+// sign-in still runs through the native AppleAuthentication module.
+function AppleSignInBtn({ onPress }: { onPress: () => void }) {
+  const press = useRef(new Animated.Value(0)).current;
+  const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, 4] });
   return (
-    <Pressable style={styles.profileCard} onPress={onPress}>
-      <View style={styles.profileRow}>
-        <AvatarBadge avatarId={profile.avatar ?? profile.selectedAvatar} size={32} ringColor={theme.accent} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.profileName}>{profile.displayName}</Text>
-          <Text style={styles.profileArena}>{arenaLabel(profile.arena.name)}</Text>
-        </View>
-        <View style={styles.profileStat}>
-          <Ionicons name="trophy" size={15} color={theme.accent} />
-          <Text style={styles.profileStatVal}>{profile.trophies}</Text>
-        </View>
-      </View>
-      <View style={styles.profileWL}>
-        <Text style={[styles.muted, { fontSize: 11 }]}>
-          {profile.wins}G / {profile.losses}M
-        </Text>
+    <Pressable
+      onPress={onPress}
+      onPressIn={() => Animated.timing(press, { toValue: 1, duration: PRESS_IN_MS, useNativeDriver: true }).start()}
+      onPressOut={() => Animated.timing(press, { toValue: 0, duration: PRESS_OUT_MS, useNativeDriver: true }).start()}
+      style={{ marginVertical: 6 }}
+    >
+      <View style={{ backgroundColor: '#B9BFCB', borderRadius: 16.5, borderWidth: 1.5, borderColor: theme.panelInk, paddingBottom: 4, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
+        <Animated.View style={{ transform: [{ translateY: ty }], backgroundColor: '#FFFFFF', borderRadius: 14, paddingVertical: 15, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="logo-apple" size={22} color="#000000" style={{ marginRight: 9, marginTop: -3 }} />
+          <Text numberOfLines={1} style={{ color: '#000000', fontSize: 17, fontFamily: 'Poppins-ExtraBold' }}>{t('login.apple')}</Text>
+        </Animated.View>
       </View>
     </Pressable>
   );
 }
 
-// Login gate: shown until the user signs in. No guest play — the app is locked
-// behind Apple/Google (Facebook coming soon) sign-in.
 export function LoginScreen({ state, actions }: Props) {
   const [appleAvailable, setAppleAvailable] = useState(false);
   const [hasInternet, setHasInternet] = useState(true);
   const [showOfflinePulse, setShowOfflinePulse] = useState(false);
+  const intro = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(() => setAppleAvailable(false));
   }, []);
@@ -1124,6 +2146,10 @@ export function LoginScreen({ state, actions }: Props) {
     const id = setTimeout(() => setShowOfflinePulse(false), 1500);
     return () => clearTimeout(id);
   }, [showOfflinePulse]);
+
+  useEffect(() => {
+    Animated.spring(intro, { toValue: 1, friction: 7, tension: 68, useNativeDriver: true }).start();
+  }, [intro]);
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     iosClientId: GOOGLE_IOS_CLIENT_ID,
@@ -1156,42 +2182,35 @@ export function LoginScreen({ state, actions }: Props) {
     }
   };
 
+  const heroScale = intro.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] });
+  const heroY = intro.interpolate({ inputRange: [0, 1], outputRange: [34, 0] });
+
   return (
     <Screen>
-      <View style={{ flex: 1, justifyContent: 'center', gap: 12 }}>
-        <View style={styles.center}>
-          <Ionicons name="football" size={56} color={theme.primary} />
-          <Text style={styles.logo}>CROSSOVER</Text>
-          <Text style={styles.tagline}>{t('home.tagline')}</Text>
-        </View>
+      {/* A stage, not a form: the splash's exact brand block carries straight
+          through, and the auth actions rise beneath it. No cards inside cards. */}
+      <View style={{ flex: 1, paddingHorizontal: 4 }}>
+        <Animated.View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', opacity: intro, transform: [{ translateY: heroY }, { scale: heroScale }] }}>
+          <BrandMark size={SLAM_BADGE} />
+          <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 26 }}>
+            {SLAM_WORD.split('').map((ch, i) => (
+              <Text key={i} style={{ color: theme.text, fontSize: SLAM_FONT, letterSpacing: 1, marginHorizontal: 1.5, includeFontPadding: false, fontFamily: 'Poppins-Black', ...engrave('lg') }}>{ch}</Text>
+            ))}
+          </View>
+        </Animated.View>
 
-        <View style={{ height: 12 }} />
-
-        {Platform.OS === 'ios' && appleAvailable ? (
-          <AppleAuthentication.AppleAuthenticationButton
-            buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
-            cornerRadius={10}
-            style={{ height: 50 }}
-            onPress={() => { if (hasInternet) void signInApple(); else setShowOfflinePulse(true); }}
-          />
-        ) : null}
-
-        <Btn label={t('login.google')} icon="logo-google" kind="accent" onPress={() => { if (hasInternet) void promptAsync(); else setShowOfflinePulse(true); }} disabled={!request} />
-
-        {!isNetworkErrorMessage(state.error) && state.error ? <Text style={styles.error}>{state.error}</Text> : null}
-        <Text style={[styles.muted, { marginTop: 12 }]}>{t('login.hint')}</Text>
+        <Animated.View style={{ paddingBottom: 16, opacity: intro, transform: [{ translateY: intro.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }] }}>
+          <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 18, marginBottom: 8 }}>{t('login.hint')}</Text>
+          {Platform.OS === 'ios' && appleAvailable ? (
+            <AppleSignInBtn onPress={() => { if (hasInternet) void signInApple(); else setShowOfflinePulse(true); }} />
+          ) : null}
+          <Btn label={t('login.google')} icon="logo-google" kind="accent" onPress={() => { if (hasInternet) void promptAsync(); else setShowOfflinePulse(true); }} disabled={!request} big />
+          {!isNetworkErrorMessage(state.error) && state.error ? <ErrorBanner message={state.error} /> : null}
+          <Btn label={t('login.guest')} icon="person-outline" kind="ghost" onPress={() => { if (hasInternet) actions.guestLogin(); else setShowOfflinePulse(true); }} />
+        </Animated.View>
       </View>
 
       <NetworkErrorBeacon visible={!hasInternet || showOfflinePulse || isNetworkErrorMessage(state.error)} />
-
-      {/* Guest login — pinned at the very bottom, subtle gray. Creates an
-          auto-named ("M"+9 digits) account that persists on this device. */}
-      <Pressable onPress={() => { if (hasInternet) actions.guestLogin(); else setShowOfflinePulse(true); }} hitSlop={10} style={{ alignItems: 'center', paddingVertical: 18 }}>
-        <Text style={{ color: theme.muted, fontSize: 14, fontWeight: '600', textDecorationLine: 'underline' }}>
-          {t('login.guest')}
-        </Text>
-      </Pressable>
     </Screen>
   );
 }
@@ -1199,41 +2218,51 @@ export function LoginScreen({ state, actions }: Props) {
 // One-time unique username pick, shown after sign-in before anything else.
 export function UsernameScreen({ state, actions }: Props) {
   const [name, setName] = useState('');
+  const intro = useRef(new Animated.Value(0)).current;
   const trimmed = name.trim();
   const valid =
     trimmed.length >= 3 &&
     trimmed.length <= 16 &&
     /^[A-Za-z0-9_çğıöşüÇĞİÖŞÜ]+$/.test(trimmed);
+  useEffect(() => {
+    Animated.spring(intro, { toValue: 1, friction: 7, tension: 72, useNativeDriver: true }).start();
+  }, [intro]);
   return (
     <Screen>
-      <View style={{ flex: 1, justifyContent: 'center', gap: 12 }}>
-        <View style={styles.center}>
-          <Ionicons name="person-circle-outline" size={56} color={theme.primary} />
-          <Text style={styles.h1}>{t('username.title')}</Text>
-          <Text style={styles.muted}>{t('username.subtitle')}</Text>
-        </View>
-        <TextInput
-          placeholder={t('username.placeholder')}
-          placeholderTextColor={theme.muted}
-          keyboardAppearance="dark"
-          value={name}
-          onChangeText={setName}
-          autoCapitalize="none"
-          autoCorrect={false}
-          maxLength={16}
-          style={styles.input}
-          autoFocus
-        />
-        <Text style={[styles.muted, { fontSize: 11 }]}>{t('username.rules')}</Text>
-        <Btn
-          label={t('username.create')}
-          icon="checkmark"
-          kind="primary"
-          onPress={() => actions.setUsername(trimmed)}
-          disabled={!valid}
-        />
-        {!isNetworkErrorMessage(state.error) && state.error ? <Text style={styles.error}>{state.error}</Text> : null}
-      </View>
+      <Animated.View style={{ flex: 1, justifyContent: 'center', transform: [{ translateY: intro.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }], opacity: intro }}>
+        <GamePanel hero tint={valid ? theme.primary : theme.frameGold} bodyStyle={{ gap: 14, padding: 22 }}>
+          <View style={{ alignItems: 'center', gap: 8 }}>
+            <View style={{ width: 78, height: 78, borderRadius: 24, backgroundColor: theme.panelInnerFill, borderWidth: 2, borderColor: valid ? theme.primary : theme.accent, borderBottomWidth: 5, borderBottomColor: valid ? theme.primaryDark : theme.accentDark, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="person" size={38} color={valid ? theme.primary : theme.accent} />
+            </View>
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-Black', fontSize: 24, textAlign: 'center', ...engrave('lg') }}>{t('username.title')}</Text>
+            <Text style={{ color: theme.muted, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>{t('username.subtitle')}</Text>
+          </View>
+          <GameInput
+            placeholder={t('username.placeholder')}
+            value={name}
+            onChangeText={setName}
+            autoCapitalize="none"
+            autoCorrect={false}
+            maxLength={16}
+            error={!valid && trimmed.length > 0}
+            autoFocus
+          />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, justifyContent: 'center' }}>
+            <Ionicons name={valid ? 'checkmark-circle' : 'information-circle'} size={15} color={valid ? theme.primary : theme.muted} />
+            <Text style={{ color: valid ? theme.primary : theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>{t('username.rules')}</Text>
+          </View>
+          <Btn
+            label={t('username.create')}
+            icon="checkmark"
+            kind="primary"
+            onPress={() => actions.setUsername(trimmed)}
+            disabled={!valid}
+            big
+          />
+          {!isNetworkErrorMessage(state.error) && state.error ? <ErrorBanner message={state.error} style={{ marginVertical: 0 }} /> : null}
+        </GamePanel>
+      </Animated.View>
       <NetworkErrorBeacon visible={isNetworkErrorMessage(state.error)} />
     </Screen>
   );
@@ -1280,34 +2309,99 @@ function ArenaHaze() {
   );
 }
 
-// Arena crest (Clash-Royale-style): the cut-out isometric arena sits planted with a
-// contact shadow + drifting haze behind it + a nameplate below. Tap → arenas screen.
+// Arena STAGE (home hero): the isometric arena scaled up to own the screen,
+// planted with its silhouette shadow + drifting haze, and one opaque plate
+// carrying identity AND progression (name · trophies · meter to next arena).
+// The whole stage is the tap target for the Arenas screen — no separate link.
+const STAGE_ART_W = Math.min(SCREEN_W * 0.92, 392);
 function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon: string }; trophies: number; onPress: () => void }) {
-  const tier = ARENA_DATA.find((a) => trophies >= a.min && trophies <= a.max) ?? ARENA_DATA[ARENA_DATA.length - 1]!;
+  const tierIdx = ARENA_DATA.findIndex((a) => trophies >= a.min && trophies <= a.max);
+  const tier = ARENA_DATA[tierIdx === -1 ? ARENA_DATA.length - 1 : tierIdx]!;
+  const next = tierIdx > 0 ? ARENA_DATA[tierIdx - 1] : null; // ARENA_DATA is highest→lowest
+  const pct = next ? Math.min(1, Math.max(0, (trophies - tier.min) / (next.min - tier.min))) : 1;
   const color = arenaColor(arena.name);
+  const { scale, onIn, onOut } = usePressScale(0.985);
   return (
-    <Pressable onPress={onPress} style={{ marginVertical: 6, alignItems: 'center' }}>
-      {/* Planted top-view arena (Clash-Royale board): NO float / NO bob. The shadow is the
-          arena's OWN silhouette cast down + to the sides (left/right/bottom) so it reads as
-          seated on the ground — not a single ellipse directly beneath (that looked airborne). */}
-      <View style={{ alignItems: 'center', justifyContent: 'flex-end' }}>
-        <ArenaHaze />
-        {/* faint wide ground darkening so the base meets the floor */}
-        <View pointerEvents="none" style={{ position: 'absolute', bottom: 14, width: 196, height: 22, borderRadius: 11, backgroundColor: '#02030B', opacity: 0.3, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 16, shadowOffset: { width: 0, height: 2 }, transform: [{ scaleX: 1.35 }] }} />
-        <Image
-          source={tier.img}
-          resizeMode="contain"
-          style={{ width: 270, height: 230, shadowColor: '#01030B', shadowOpacity: 0.6, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }}
-        />
+    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut}>
+      <Animated.View style={{ alignItems: 'center', transform: [{ scale }] }}>
+        {/* Planted arena board. A soft dark ground pool sits UNDER the base so the
+            arena reads as seated, not floating; the image itself casts no drop
+            shadow (that halo is what made it look airborne). */}
+        <View style={{ alignItems: 'center', justifyContent: 'flex-end', flexShrink: 1 }}>
+          <ArenaHaze />
+          {/* wide, soft contact pool — two stacked ellipses (dark core + soft falloff) */}
+          <View pointerEvents="none" style={{ position: 'absolute', bottom: 30, width: STAGE_ART_W * 0.9, height: 40, borderRadius: 20, backgroundColor: '#01020A', opacity: 0.4, transform: [{ scaleX: 1.15 }] }} />
+          <View pointerEvents="none" style={{ position: 'absolute', bottom: 40, width: STAGE_ART_W * 0.66, height: 26, borderRadius: 13, backgroundColor: '#01020A', opacity: 0.55, transform: [{ scaleX: 1.2 }] }} />
+          <Image
+            source={tier.img}
+            resizeMode="contain"
+            style={{ width: STAGE_ART_W, height: STAGE_ART_W * 0.852, maxHeight: SCREEN_H * 0.4 }}
+          />
+        </View>
+        {/* Identity plate overlapping the art base — a clean flat panel (NOT a
+            button): solid card face, one quiet border, a slim arena-tinted meter. */}
+        <View style={{ marginTop: -6, minWidth: STAGE_ART_W * 0.66, maxWidth: STAGE_ART_W * 0.94, backgroundColor: theme.card, borderRadius: 16, borderWidth: 1, borderColor: theme.border, paddingHorizontal: 16, paddingTop: 9, paddingBottom: 11, gap: 8, shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 8, shadowOffset: { width: 0, height: 5 }, elevation: 5 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color }} />
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15.5 }} numberOfLines={1}>{arenaLabel(arena.name)}</Text>
+            <View style={{ width: 1, height: 15, backgroundColor: theme.border }} />
+            <Ionicons name="trophy" size={13} color={theme.gold} />
+            <Text style={{ color: theme.gold, fontFamily: 'Poppins-Black', fontSize: 14.5, fontVariant: ['tabular-nums'] }}>{trophies}</Text>
+            <Ionicons name="chevron-forward" size={14} color={theme.muted} />
+          </View>
+          {/* Slim tier meter — arena-tinted fill on a recessed track. */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: theme.panelInk, overflow: 'hidden' }}>
+              <View style={{ width: `${Math.round(pct * 100)}%`, height: '100%', borderRadius: 4, backgroundColor: color }} />
+            </View>
+            <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>
+              {next ? `${trophies}/${next.min}` : t('home.topArena')}
+            </Text>
+          </View>
+        </View>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// The home console's dominant action — one oversized primary button with a
+// periodic shine pass. Same Btn anatomy (ink outline → lip → top-lit face).
+function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void }) {
+  const press = useRef(new Animated.Value(0)).current;
+  const [w, setW] = useState(0);
+  const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, 5] });
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={() => Animated.timing(press, { toValue: 1, duration: PRESS_IN_MS, useNativeDriver: true }).start()}
+      onPressOut={() => Animated.timing(press, { toValue: 0, duration: PRESS_OUT_MS, useNativeDriver: true }).start()}
+      style={{ marginVertical: 6 }}
+    >
+      <View style={{ backgroundColor: darken(theme.primary, 0.4), borderRadius: 22, borderWidth: 2, borderColor: darken(theme.primary, 0.5), paddingBottom: 6, shadowColor: '#000', shadowOpacity: 0.34, shadowRadius: 8, shadowOffset: { width: 0, height: 5 }, elevation: 8 }}>
+        <Animated.View
+          onLayout={(e) => setW(e.nativeEvent.layout.width)}
+          style={{ transform: [{ translateY: ty }], backgroundColor: theme.primary, borderRadius: 18, paddingVertical: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+        >
+          <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
+            <Defs>
+              <SvgGradient id="heroPlayG" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={lighten(theme.primary, 0.52)} />
+                <Stop offset="0.5" stopColor={theme.primary} />
+                <Stop offset="1" stopColor={darken(theme.primary, 0.3)} />
+              </SvgGradient>
+              <SvgGradient id="heroPlayGloss" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.5" />
+                <Stop offset="0.55" stopColor="#FFFFFF" stopOpacity="0.06" />
+                <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
+              </SvgGradient>
+            </Defs>
+            <Rect width="100%" height="100%" fill="url(#heroPlayG)" />
+            <Rect x={5} y={3} rx={15} width="94%" height="54%" fill="url(#heroPlayGloss)" />
+          </Svg>
+          {w > 0 ? <ShineSweep width={w} height={64} loop delay={1600} duration={800} loopGap={3600} opacity={0.22} band={0.2} /> : null}
+          <Text numberOfLines={1} style={{ color: theme.text, fontSize: 22, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.8, textShadowColor: 'rgba(4,9,24,0.55)', textShadowOffset: { width: 0, height: 1.5 }, textShadowRadius: 1.5 }}>{label}</Text>
+        </Animated.View>
       </View>
-      {/* Nameplate below */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: theme.card, borderRadius: 13, borderWidth: 1.5, borderColor: color + 'AA', paddingHorizontal: 14, paddingVertical: 7, marginTop: 8 }}>
-        <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15 }} numberOfLines={1}>{arenaLabel(arena.name)}</Text>
-        <View style={{ width: 1, height: 16, backgroundColor: theme.border }} />
-        <Ionicons name="trophy" size={13} color={theme.gold} />
-        <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 14 }}>{trophies}</Text>
-      </View>
-      <Text style={{ color: theme.muted, fontSize: 10, fontWeight: '700', marginTop: 5 }}>{`${t('home.arenas')} ›`}</Text>
     </Pressable>
   );
 }
@@ -1331,50 +2425,50 @@ function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamond
   onLogout: () => void;
 }) {
   const [langPicker, setLangPicker] = useState(false);
-  const [confirmLang, setConfirmLang] = useState<string | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [logoutConfirm, setLogoutConfirm] = useState(false);
   const activeLang = currentLang();
   const activeName = LANGUAGES.find((l) => l.code === activeLang)?.name ?? activeLang;
 
   const doChangeLang = (code: string) => {
     setLanguage(code);
     AsyncStorage.setItem('@crossover_lang', code).catch(() => {});
-    setConfirmLang(null);
     setLangPicker(false);
     onLanguageChange();
   };
 
-  const linkChip = {
+  const linkChip = (pressed: boolean) => ({
     flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7,
     paddingVertical: 11, paddingHorizontal: 11, borderRadius: 12,
-    backgroundColor: theme.bg, borderWidth: 1.5, borderColor: theme.border,
-    borderBottomWidth: 3, borderBottomColor: theme.cardLip,
-  };
-  const linkTxt = { color: theme.text, fontSize: 12, fontWeight: '700' as const, flex: 1 };
+    backgroundColor: pressed ? theme.bg2 : theme.bg, borderWidth: 1.5, borderColor: theme.border,
+    borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
+    transform: [{ translateY: pressed ? 2 : 0 }],
+  });
+  const linkTxt = { color: theme.text, fontSize: 12, fontFamily: 'Poppins-SemiBold', flex: 1 };
 
   return (
-    <View style={{ padding: 14 }}>
-      <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '700', marginBottom: 8 }}>{t('settings.language')}</Text>
-      <Pressable
+    <View style={{ paddingBottom: 4 }}>
+      <SectionHeader label={t('settings.language')} icon="language" style={{ marginTop: 2 }} />
+      <GameRow
+        icon="language"
+        label={activeName}
+        right={<Ionicons name="chevron-down" size={16} color={theme.muted} />}
         onPress={() => setLangPicker(true)}
-        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.bg, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 14 }}
-      >
-        <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{activeName}</Text>
-        <Ionicons name="chevron-down" size={18} color={theme.muted} />
-      </Pressable>
+      />
 
       {/* Ad Değiştir (1000 elmas) */}
-      <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '700', marginTop: 16, marginBottom: 8 }}>{t('settings.name')}</Text>
-      <Pressable
+      <SectionHeader label={t('settings.name')} icon="create" />
+      <GameRow
+        icon="create"
+        label={t('settings.changeName')}
+        right={(
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.cardLip, borderRadius: 9, borderWidth: 1, borderColor: theme.accentDark, paddingHorizontal: 8, paddingVertical: 3 }}>
+            <Text style={{ color: theme.accent, fontFamily: 'Poppins-ExtraBold', fontSize: 12, fontVariant: ['tabular-nums'], ...engrave('sm') }}>1000</Text>
+            <GemIcon size={13} />
+          </View>
+        )}
         onPress={() => { if (diamonds < 1000) onNeedDiamonds(); else setRenameOpen(true); }}
-        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.bg, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 14 }}
-      >
-        <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{t('settings.changeName')}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 14 }}>1000</Text>
-          <GemIcon size={14} />
-        </View>
-      </Pressable>
+      />
 
       <ChangeNameModal
         visible={renameOpen}
@@ -1384,97 +2478,72 @@ function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamond
       />
 
       {/* ── Yardım & Bilgiler — framed link chips ── */}
-      <View style={{ height: 1, backgroundColor: theme.border, marginTop: 22, marginBottom: 14 }} />
+      <SectionHeader label={t('settings.help')} icon="help-circle" style={{ marginTop: 18 }} />
       <View style={{ flexDirection: 'row', gap: 8 }}>
-        <Pressable style={[linkChip, { flex: 1 }]} onPress={() => openLink(INFO_LINKS.help)}>
+        <Pressable style={({ pressed }) => [linkChip(pressed), { flex: 1 }]} onPress={() => openLink(INFO_LINKS.help)}>
           <Ionicons name="help-circle-outline" size={15} color={theme.muted} />
           <Text style={linkTxt} numberOfLines={1}>{t('settings.help')}</Text>
         </Pressable>
-        <Pressable style={[linkChip, { flex: 1 }]} onPress={() => openLink(INFO_LINKS.privacy)}>
+        <Pressable style={({ pressed }) => [linkChip(pressed), { flex: 1 }]} onPress={() => openLink(INFO_LINKS.privacy)}>
           <Ionicons name="shield-checkmark-outline" size={15} color={theme.muted} />
           <Text style={linkTxt} numberOfLines={1}>{t('settings.privacy')}</Text>
         </Pressable>
       </View>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-        <Pressable style={[linkChip, { flex: 1 }]} onPress={() => openLink(INFO_LINKS.parents)}>
+        <Pressable style={({ pressed }) => [linkChip(pressed), { flex: 1 }]} onPress={() => openLink(INFO_LINKS.parents)}>
           <Ionicons name="people-outline" size={15} color={theme.muted} />
           <Text style={linkTxt} numberOfLines={1}>{t('settings.parents')}</Text>
         </Pressable>
-        <Pressable style={[linkChip, { flex: 1 }]} onPress={() => openLink(INFO_LINKS.terms)}>
+        <Pressable style={({ pressed }) => [linkChip(pressed), { flex: 1 }]} onPress={() => openLink(INFO_LINKS.terms)}>
           <Ionicons name="document-text-outline" size={15} color={theme.muted} />
           <Text style={linkTxt} numberOfLines={1}>{t('settings.terms')}</Text>
         </Pressable>
       </View>
-      <Pressable style={[linkChip, { marginTop: 8, justifyContent: 'center' }]} onPress={() => openLink(INFO_LINKS.founders)}>
+      <Pressable style={({ pressed }) => [linkChip(pressed), { marginTop: 8, justifyContent: 'center' }]} onPress={() => openLink(INFO_LINKS.founders)}>
         <Ionicons name="star-outline" size={15} color={theme.accent} />
-        <Text style={[linkTxt, { flex: 0, color: theme.text, fontWeight: '800', letterSpacing: 0.5 }]}>{t('settings.founders')}</Text>
+        <Text style={[linkTxt, { flex: 0, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5 }]}>{t('settings.founders')}</Text>
       </Pressable>
 
-      <View style={{ height: 1, backgroundColor: theme.border, marginTop: 22, marginBottom: 14 }} />
-      <Pressable
-        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.bg, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 14 }}
-        onPress={() => {
-          Alert.alert(
-            t('profile.logoutTitle'),
-            t('profile.logoutConfirm'),
-            [
-              { text: t('settings.cancel'), style: 'cancel' },
-              { text: t('profile.logout'), style: 'destructive', onPress: onLogout },
-            ],
-          );
-        }}
-      >
-        <Text style={{ color: theme.danger, fontSize: 15, fontWeight: '700' }}>{t('profile.logout')}</Text>
-        <Ionicons name="log-out-outline" size={18} color={theme.danger} />
-      </Pressable>
+      <View style={{ height: 1, backgroundColor: theme.border, marginTop: 18, marginBottom: 8 }} />
+      <GameRow
+        icon="log-out"
+        iconColor={theme.danger}
+        label={t('profile.logout')}
+        chevron
+        onPress={() => setLogoutConfirm(true)}
+      />
 
+      <GameModal visible={logoutConfirm} onClose={() => setLogoutConfirm(false)} title={t('profile.logoutTitle')} icon="log-out" danger>
+        <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+          {t('profile.logoutConfirm')}
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Btn label={t('settings.cancel')} kind="ghost" onPress={() => setLogoutConfirm(false)} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Btn label={t('profile.logout')} kind="danger" icon="log-out" onPress={() => { setLogoutConfirm(false); onLogout(); }} />
+          </View>
+        </View>
+      </GameModal>
+
+      {/* Language picker — GameRow rows (cardLip bevel + press physics + spring
+          check); doChangeLang applies immediately, no confirm step. */}
       <PopupCard visible={langPicker} title={t('settings.language')} icon="language" onClose={() => setLangPicker(false)}>
         <ScrollView style={{ maxHeight: 430 }} contentContainerStyle={{ padding: 12 }} showsVerticalScrollIndicator={false}>
           {LANGUAGES.map((lang) => (
-            <Pressable
+            <GameRow
               key={lang.code}
+              label={lang.name}
+              selected={lang.code === activeLang}
               onPress={() => {
                 if (lang.code === activeLang) { setLangPicker(false); return; }
                 doChangeLang(lang.code); // apply immediately (the confirm modal sat behind the picker → unselectable)
               }}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, paddingHorizontal: 12,
-                borderRadius: 10, backgroundColor: lang.code === activeLang ? theme.primary + '22' : theme.bg,
-                borderWidth: 1.5, borderColor: lang.code === activeLang ? theme.primary : theme.border,
-                marginBottom: 6,
-              }}
-            >
-              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700', flex: 1 }}>{lang.name}</Text>
-              {lang.code === activeLang ? <Ionicons name="checkmark" size={18} color={theme.primary} /> : null}
-            </Pressable>
+            />
           ))}
         </ScrollView>
       </PopupCard>
-
-      <Modal visible={confirmLang !== null} transparent animationType="fade" onRequestClose={() => setConfirmLang(null)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 40 }}>
-          <View style={{ backgroundColor: theme.card, borderRadius: 16, borderWidth: 1, borderColor: theme.border, padding: 20, alignItems: 'center' }}>
-            <Ionicons name="language" size={36} color={theme.accent} />
-            <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700', textAlign: 'center', marginTop: 10, marginBottom: 18 }}>
-              {t('settings.changeLangConfirm')}
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
-              <Pressable
-                onPress={() => setConfirmLang(null)}
-                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: theme.danger, alignItems: 'center' }}
-              >
-                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>{t('settings.cancel')}</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => confirmLang && doChangeLang(confirmLang)}
-                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: '#2196F3', alignItems: 'center' }}
-              >
-                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>{t('settings.confirm')}</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -1485,23 +2554,51 @@ function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamond
 function PopupCard({ visible, title, icon, onClose, children }: {
   visible: boolean; title: string; icon: IoniconName; onClose: () => void; children: ReactNode;
 }) {
+  // Spring pop-in + 160ms animated exit (scrim fades with the same value) —
+  // centered cards never use animationType='fade'/'slide' (spec §7).
+  const a = useRef(new Animated.Value(0)).current;
+  const [mounted, setMounted] = useState(visible);
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(a, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
+        if (finished) setMounted(false);
+      });
+    }
+  }, [visible, a]);
+  if (!mounted && !visible) return null;
+  const clamped = a.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' });
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible transparent animationType="none" onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 18 }}>
         {/* Backdrop catches outside taps. It is a SIBLING of the card (not a parent),
             so it never swallows the inner ScrollView's scroll gestures. */}
-        <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim }]} onPress={onClose} />
-        <View style={{ backgroundColor: theme.card, borderRadius: 22, borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark, maxHeight: '80%', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 20 }}>
+        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim, opacity: clamped }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        </Animated.View>
+        <Animated.View style={{ opacity: clamped, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }) }], backgroundColor: theme.card, borderRadius: 22, borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark, maxHeight: '80%', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 20 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 11 }}>
             <Ionicons name={icon} size={20} color={theme.accent} />
             <Text style={[{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 17, marginLeft: 8, flex: 1 }, engrave('sm')]} numberOfLines={1}>{title}</Text>
-            <Pressable onPress={onClose} hitSlop={10} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: theme.panelInnerFill, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.border }}>
+            <Pressable
+              onPress={onClose}
+              hitSlop={10}
+              style={({ pressed }) => ({
+                width: 32, height: 32, borderRadius: 16,
+                backgroundColor: pressed ? darken(theme.panelInnerFill, 0.25) : theme.panelInnerFill,
+                alignItems: 'center', justifyContent: 'center',
+                borderWidth: 1, borderColor: theme.border,
+                transform: [{ translateY: pressed ? 1 : 0 }],
+              })}
+            >
               <Ionicons name="close" size={18} color={theme.text} />
             </Pressable>
           </View>
           <View style={{ height: 1, backgroundColor: theme.border }} />
           {children}
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -1513,23 +2610,16 @@ export function LeaderboardModal({ visible, entries, onClose, onViewProfile }: {
   onClose: () => void;
   onViewProfile?: (userId: string) => void;
 }) {
+  // Loading ≠ empty: shimmer skeletons during the fetch window, then a crafted
+  // EmptyState if the board is genuinely empty (spec §9).
+  const graceOver = useLoadGrace(visible && entries.length === 0);
   return (
     <PopupCard visible={visible} title={t('menu.leaderboard')} icon="podium" onClose={onClose}>
-      <ScrollView style={{ maxHeight: 460 }} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ maxHeight: 460 }} contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 10 }} showsVerticalScrollIndicator={false}>
         {entries.length === 0 ? (
-          <View style={{ alignItems: 'center', paddingVertical: 36 }}><ActivityIndicator color={theme.primary} /></View>
+          graceOver ? <LeaderboardEmpty onPlay={onClose} /> : <SkeletonRows rows={4} />
         ) : entries.map((entry) => (
-          <Pressable
-            key={entry.rank}
-            onPress={() => onViewProfile?.(entry.userId)}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: theme.border }}
-          >
-            <Text style={{ color: entry.rank <= 3 ? ['#FFD700', '#C0C0C0', '#CD7F32'][entry.rank - 1] : theme.muted, fontWeight: '900', fontSize: 15, width: 28 }}>{entry.rank}</Text>
-            <Avatar avatar={entry.avatar} name={entry.displayName} size={28} ring={theme.primary} ringWidth={1.5} iconColor={theme.primary} iconSize={13} />
-            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14, flex: 1 }} numberOfLines={1}>{entry.displayName}</Text>
-            <Ionicons name="trophy" size={13} color={theme.accent} />
-            <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 14 }}>{entry.trophies}</Text>
-          </Pressable>
+          <LeaderboardRow key={entry.rank} entry={entry} onPress={onViewProfile ? () => onViewProfile(entry.userId) : undefined} />
         ))}
       </ScrollView>
     </PopupCard>
@@ -1541,87 +2631,10 @@ export function MatchHistoryModal({ visible, history, myName, onClose }: { visib
     <PopupCard visible={visible} title={t('menu.matchHistory')} icon="time" onClose={onClose}>
       <ScrollView style={{ maxHeight: 500 }} contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 12 }} showsVerticalScrollIndicator={false}>
         {history.length === 0 ? (
-          <View style={{ alignItems: 'center', paddingVertical: 36 }}>
-            <Ionicons name="time-outline" size={42} color={theme.border} />
-            <Text style={[styles.muted, { marginTop: 8 }]}>{t('matchHistory.empty')}</Text>
-          </View>
-        ) : history.map((m) => {
-          const myRounds = m.rounds.filter((r) => r.answeredBy === myName);
-          const oppRounds = m.rounds.filter((r) => r.answeredBy !== myName);
-          const pArena = arenaForTrophies(m.playerTrophies);
-          const oArena = arenaForTrophies(m.opponentTrophies);
-          const borderColor = m.won ? theme.primary : theme.danger;
-          const date = new Date(m.playedAt);
-          const dateStr = `${date.getDate().toString().padStart(2, '0')}.${(date.getMonth() + 1).toString().padStart(2, '0')}.${date.getFullYear()}`;
-          return (
-            <View key={m.id} style={{ backgroundColor: theme.panelInnerFill, borderRadius: 14, borderWidth: 1.5, borderColor, marginBottom: 12, overflow: 'hidden' }}>
-              {/* result + score + mode + date */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 7, backgroundColor: m.won ? 'rgba(39,229,139,0.10)' : 'rgba(255,84,104,0.10)' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Ionicons name={m.won ? 'trophy' : 'close-circle'} size={15} color={m.won ? theme.accent : theme.danger} />
-                  <Text style={{ color: m.won ? theme.primary : theme.danger, fontWeight: '900', fontSize: 12 }}>{m.won ? t('matchHistory.won') : t('matchHistory.lost')}</Text>
-                </View>
-                <Text style={{ color: theme.text, fontSize: 20, fontWeight: '900', letterSpacing: 2 }}>{m.playerScore} - {m.opponentScore}</Text>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ color: theme.muted, fontSize: 8 }}>{MODE_LABEL((m.gameMode as GameMode) ?? 'team-team')}</Text>
-                  <Text style={{ color: theme.muted, fontSize: 8 }}>{dateStr}</Text>
-                </View>
-              </View>
-              {/* head-to-head */}
-              <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 }}>
-                <View style={{ flex: 1, alignItems: 'center' }}>
-                  <Text style={{ color: theme.text, fontWeight: '900', fontSize: 14 }} numberOfLines={1}>{m.playerName || myName}</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                    <Ionicons name={pArena.icon} size={11} color={pArena.color} />
-                    <Text style={{ color: pArena.color, fontSize: 9, fontWeight: '700' }}>{m.playerTrophies}</Text>
-                  </View>
-                </View>
-                <View style={{ justifyContent: 'center', paddingHorizontal: 8 }}><Text style={{ color: theme.muted, fontSize: 11, fontWeight: '900' }}>{t('common.vs')}</Text></View>
-                <View style={{ flex: 1, alignItems: 'center' }}>
-                  <Text style={{ color: theme.text, fontWeight: '900', fontSize: 14 }} numberOfLines={1}>{m.opponentName}</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                    <Ionicons name={oArena.icon} size={11} color={oArena.color} />
-                    <Text style={{ color: oArena.color, fontSize: 9, fontWeight: '700' }}>{m.opponentTrophies}</Text>
-                  </View>
-                </View>
-              </View>
-              {/* who answered which player (two club logos + player photo/name) */}
-              <View style={{ flexDirection: 'row', paddingHorizontal: 10, paddingTop: 4, paddingBottom: 12, gap: 6 }}>
-                <View style={{ flex: 1 }}>
-                  {myRounds.length > 0 ? myRounds.map((r, i) => (
-                    <View key={i} style={{ backgroundColor: theme.bg, borderRadius: 10, padding: 7, marginBottom: 4, borderLeftWidth: 3, borderLeftColor: theme.primary }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                        <MatchHistoryLeadBadge mode={(r.mode as GameMode) ?? (m.gameMode as GameMode) ?? 'team-team'} country={r.country} letter={r.letter} teamA={r.teamA} teamALogo={r.teamALogo} size={17} />
-                        <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
-                        <ClubLogo uri={r.teamBLogo} name={r.teamB} size={17} />
-                      </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                        <PlayerPhoto uri={r.playerImageUrl} size={22} />
-                        <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 10.5, flex: 1 }} numberOfLines={1}>{r.player}</Text>
-                      </View>
-                    </View>
-                  )) : <Text style={{ color: theme.muted, fontSize: 10, textAlign: 'center', marginTop: 8 }}>—</Text>}
-                </View>
-                <View style={{ width: 1, backgroundColor: theme.border, marginVertical: 4 }} />
-                <View style={{ flex: 1 }}>
-                  {oppRounds.length > 0 ? oppRounds.map((r, i) => (
-                    <View key={i} style={{ backgroundColor: theme.bg, borderRadius: 10, padding: 7, marginBottom: 4, borderLeftWidth: 3, borderLeftColor: theme.danger }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                        <MatchHistoryLeadBadge mode={(r.mode as GameMode) ?? (m.gameMode as GameMode) ?? 'team-team'} country={r.country} letter={r.letter} teamA={r.teamA} teamALogo={r.teamALogo} size={17} />
-                        <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
-                        <ClubLogo uri={r.teamBLogo} name={r.teamB} size={17} />
-                      </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                        <PlayerPhoto uri={r.playerImageUrl} size={22} />
-                        <Text style={{ color: theme.danger, fontWeight: '800', fontSize: 10.5, flex: 1 }} numberOfLines={1}>{r.player}</Text>
-                      </View>
-                    </View>
-                  )) : <Text style={{ color: theme.muted, fontSize: 10, textAlign: 'center', marginTop: 8 }}>—</Text>}
-                </View>
-              </View>
-            </View>
-          );
-        })}
+          <EmptyState icon="time" title={t('matchHistory.empty')} hint={t('matchHistory.emptyHint')} />
+        ) : history.map((m) => (
+          <MatchHistoryCard key={m.id} match={m} myName={myName} />
+        ))}
       </ScrollView>
     </PopupCard>
   );
@@ -1632,7 +2645,9 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [scope, setScope] = useState<Scope>({ type: 'all' });
   const [mode, setMode] = useState<GameMode>('team-team');
-  const [picker, setPicker] = useState<Picker>(null);
+  // Bot dialog pages: difficulty home + mode/scope pickers INSIDE one mounted
+  // GameModal (spec §7 — chained setTimeout modal handoffs are banned).
+  const [botPage, setBotPage] = useState<{ key: BotPage; dir: 1 | -1 }>({ key: 'bot', dir: 1 });
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuSub, setMenuSub] = useState<'settings' | null>(null);
   const [botOpen, setBotOpen] = useState(false);
@@ -1647,120 +2662,169 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
     <Screen>
       {/* Top bar: profile avatar (→ profile) · leaderboard (gems live in the global resource bar) */}
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-        <Pressable onPress={actions.openProfile} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.card, borderRadius: 22, paddingVertical: 4, paddingLeft: 4, paddingRight: 12, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, maxWidth: '60%', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: 4 }}>
+        <Pressable
+          onPress={actions.openProfile}
+          style={({ pressed }) => ({
+            flexDirection: 'row', alignItems: 'center', gap: 8,
+            backgroundColor: pressed ? theme.bg2 : theme.card, borderRadius: 22,
+            paddingVertical: 4, paddingLeft: 4, paddingRight: 12,
+            borderWidth: 2, borderColor: theme.border,
+            borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
+            maxWidth: '60%',
+            shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: 4,
+            transform: [{ translateY: pressed ? 2 : 0 }],
+          })}
+        >
           <AvatarBadge avatarId={profile?.avatar ?? profile?.selectedAvatar} size={34} ringColor={theme.primary} />
           <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13 }} numberOfLines={1}>{profile?.displayName ?? t('home.namePlaceholder')}</Text>
         </Pressable>
         <View style={{ flex: 1 }} />
-        <Pressable onPress={() => setMenuOpen(true)} style={{ width: 38, height: 38, borderRadius: 14, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip }}>
+        <Pressable
+          onPress={() => { setMenuSub(null); setMenuOpen(true); }}
+          style={({ pressed }) => ({
+            width: 38, height: 38, borderRadius: 14,
+            backgroundColor: pressed ? theme.bg2 : theme.card,
+            alignItems: 'center', justifyContent: 'center',
+            borderWidth: 2, borderColor: theme.border,
+            borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
+            transform: [{ translateY: pressed ? 2 : 0 }],
+          })}
+        >
           <Ionicons name="menu" size={20} color={theme.text} />
         </Pressable>
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 4, paddingBottom: 20 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <Text style={[styles.logo, { marginTop: 2, fontSize: 22, marginBottom: 8 }]}>CROSSOVER</Text>
-
+      {/* Arena STAGE — a fixed scene, not a scrolling menu (user directive: the
+          home is a stage with controls embedded in it; no wordmark, no logo). */}
+      <View style={{ flex: 1, alignItems: 'stretch', justifyContent: 'center' }}>
         {profile ? <ArenaCrest arena={profile.arena} trophies={profile.trophies} onPress={actions.openArenas} /> : null}
+      </View>
 
-        <View style={{ height: 16 }} />
-
-        {/* Primary actions: normal ranked match + Clash-style special mode queue. */}
+      {/* Bottom console: ONE dominant play action + a compact secondary row,
+          sitting flush above the tab bar so they read as one chrome zone. */}
+      <View style={{ paddingBottom: 2 }}>
+        {!isNetworkErrorMessage(state.error) && state.error ? <ErrorBanner message={state.error} /> : null}
+        <HeroPlayBtn label={t('home.quickMatch')} onPress={() => actions.findMatch({ mode: 'team-team' })} />
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <View style={{ flex: 1.25 }}>
-            <Btn label={t('home.quickMatch')} icon="flash" kind="primary" big onPress={() => actions.findMatch({ mode: 'team-team' })} />
+          <View style={{ flex: 1 }}>
+            <Btn label={t('home.specialMode')} kind="blue" onPress={() => setSpecialOpen(true)} />
           </View>
           <View style={{ flex: 1 }}>
-            <Btn label={t('home.specialMode')} icon="sparkles" kind="blue" big onPress={() => setSpecialOpen(true)} />
+            <Btn label={t('home.solo')} kind="accent" onPress={() => { setBotPage({ key: 'bot', dir: 1 }); setBotOpen(true); }} />
           </View>
         </View>
-
-        {/* Bot match */}
-        <Btn label={t('home.solo')} icon="game-controller" kind="accent" onPress={() => setBotOpen(true)} />
-
-        {!isNetworkErrorMessage(state.error) && state.error ? <Text style={styles.error}>{state.error}</Text> : null}
-      </ScrollView>
+      </View>
       <NetworkErrorBeacon visible={isNetworkErrorMessage(state.error)} />
 
-      {/* ── Hamburger Menu Popup ── */}
-      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => { setMenuOpen(false); setMenuSub(null); }}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', paddingHorizontal: 20 }}>
-          <View style={{ backgroundColor: theme.card, borderRadius: 20, borderWidth: 1, borderColor: theme.border, maxHeight: '80%', overflow: 'hidden' }}>
-            {/* Header */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 16, paddingBottom: 10 }}>
-              <Text style={{ color: theme.text, fontSize: 18, fontWeight: '900' }}>
-                {menuSub === 'settings' ? t('settings.title') : t('menu.title')}
-              </Text>
-              <Pressable onPress={() => { if (menuSub) setMenuSub(null); else setMenuOpen(false); }} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name={menuSub ? 'arrow-back' : 'close'} size={18} color={theme.text} />
-              </Pressable>
-            </View>
-            <View style={{ height: 1, backgroundColor: theme.border }} />
-
-            {/* Content */}
-            {menuSub === null ? (
-              <View style={{ padding: 12 }}>
-                <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => { setMenuOpen(false); setMenuSub(null); onOpenLeaderboard?.(); }}>
-                  <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{t('menu.leaderboard')}</Text>
-                  <View style={{ flex: 1 }} />
-                  <Ionicons name="chevron-forward" size={18} color={theme.muted} />
-                </Pressable>
-                <View style={{ height: 8 }} />
-                <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => { setMenuOpen(false); setMenuSub(null); onOpenMatchHistory?.(); }}>
-                  <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{t('menu.matchHistory')}</Text>
-                  <View style={{ flex: 1 }} />
-                  <Ionicons name="chevron-forward" size={18} color={theme.muted} />
-                </Pressable>
-                <View style={{ height: 8 }} />
-                <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, borderRadius: 12, backgroundColor: theme.bg }} onPress={() => setMenuSub('settings')}>
-                  <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{t('settings.title')}</Text>
-                  <View style={{ flex: 1 }} />
-                  <Ionicons name="chevron-forward" size={18} color={theme.muted} />
-                </Pressable>
+      {/* ── Hamburger Menu — one GameModal paging menu ⇄ settings internally ── */}
+      <GameModal
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        title={(menuSub === 'settings' ? t('settings.title') : t('menu.title')).toLocaleUpperCase(currentLang())}
+        icon={menuSub === 'settings' ? 'settings' : 'menu'}
+      >
+        <ModalPager pageKey={menuSub ?? 'menu'} dir={menuSub ? 1 : -1}>
+          {menuSub === null ? (
+            <>
+              <GameRow icon="podium" label={t('menu.leaderboard')} chevron onPress={() => { setMenuOpen(false); onOpenLeaderboard?.(); }} />
+              <GameRow icon="time" iconColor={theme.blue} label={t('menu.matchHistory')} chevron onPress={() => { setMenuOpen(false); onOpenMatchHistory?.(); }} />
+              <GameRow icon="settings" iconColor={theme.muted} label={t('settings.title')} chevron onPress={() => setMenuSub('settings')} />
+            </>
+          ) : (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                <ModalBackBtn onPress={() => setMenuSub(null)} />
               </View>
-            ) : (
-              <SettingsPanel
-                onLanguageChange={() => { setMenuOpen(false); setMenuSub(null); onLanguageChange?.(); }}
-                diamonds={profile?.diamonds ?? 0}
-                onChangeName={(newName) => actions.changeName(newName)}
-                onNeedDiamonds={() => { setMenuOpen(false); setMenuSub(null); onGoToStore?.('diamonds'); }}
-                onLogout={() => { setMenuOpen(false); setMenuSub(null); void actions.logout(); }}
+              <ScrollView style={{ maxHeight: 430 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <SettingsPanel
+                  onLanguageChange={() => { setMenuOpen(false); onLanguageChange?.(); }}
+                  diamonds={profile?.diamonds ?? 0}
+                  onChangeName={(newName) => actions.changeName(newName)}
+                  onNeedDiamonds={() => { setMenuOpen(false); onGoToStore?.('diamonds'); }}
+                  onLogout={() => { setMenuOpen(false); void actions.logout(); }}
+                />
+              </ScrollView>
+            </>
+          )}
+        </ModalPager>
+      </GameModal>
+
+      {/* Bot match — difficulty home + mode/scope picker pages inside ONE GameModal */}
+      <GameModal
+        visible={botOpen}
+        onClose={() => setBotOpen(false)}
+        title={BOT_BANNER[botPage.key].title().toLocaleUpperCase(currentLang())}
+        icon={BOT_BANNER[botPage.key].icon}
+      >
+        <ModalPager pageKey={botPage.key} dir={botPage.dir}>
+          {botPage.key === 'bot' ? (
+            <>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                <Chip icon={MODE_ICON[mode]} label={MODE_LABEL(mode)} onPress={() => setBotPage({ key: 'mode', dir: 1 })} />
+                <Chip icon="globe-outline" label={scopeLabel(scope)} onPress={() => setBotPage({ key: 'scopeType', dir: 1 })} />
+              </View>
+              {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => {
+                const c = d === 'easy' ? theme.primary : d === 'medium' ? theme.accent : theme.danger;
+                return (
+                  <GameRow
+                    key={d}
+                    icon={d === 'easy' ? 'happy' : d === 'medium' ? 'flash' : 'skull'}
+                    iconColor={c}
+                    label={DIFF_LABEL(d)}
+                    selected={difficulty === d}
+                    onPress={() => { setDifficulty(d); setBotOpen(false); actions.createSolo(playerName, { ...opts, difficulty: d }); }}
+                  />
+                );
+              })}
+            </>
+          ) : botPage.key === 'mode' ? (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                <ModalBackBtn onPress={() => setBotPage({ key: 'bot', dir: -1 })} />
+              </View>
+              {(['team-team', 'country-team', 'letter-team'] as GameMode[]).map((m) => (
+                <GameRow key={m} icon={MODE_ICON[m]} label={MODE_LABEL(m)} selected={mode === m} onPress={() => { setMode(m); setBotPage({ key: 'bot', dir: -1 }); }} />
+              ))}
+            </>
+          ) : botPage.key === 'scopeType' ? (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                <ModalBackBtn onPress={() => setBotPage({ key: 'bot', dir: -1 })} />
+              </View>
+              <GameRow icon="earth" iconColor={theme.primary} label={t('scope.all')} selected={scope.type === 'all'} onPress={() => { setScope({ type: 'all' }); setBotPage({ key: 'bot', dir: -1 }); }} />
+              <GameRow icon="trophy" label={t('scope.pickLeague')} chevron onPress={() => setBotPage({ key: 'league', dir: 1 })} />
+              <GameRow icon="flag" iconColor={theme.blue} label={t('scope.pickCountry')} chevron onPress={() => setBotPage({ key: 'country', dir: 1 })} />
+            </>
+          ) : (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                <ModalBackBtn onPress={() => setBotPage({ key: 'scopeType', dir: -1 })} />
+              </View>
+              <ScopeListPage
+                key={botPage.key}
+                kind={botPage.key}
+                scopes={state.scopes}
+                onPick={(s) => { setScope(s); setBotPage({ key: 'bot', dir: -1 }); }}
               />
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* Bot difficulty picker */}
-      <GameModal visible={botOpen} onClose={() => setBotOpen(false)} title={t('home.solo')} icon="game-controller">
-        {/* Mode & scope chips — close bot modal first so picker modal can open */}
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-          <Chip icon={MODE_ICON[mode]} label={MODE_LABEL(mode)} onPress={() => { setBotOpen(false); setTimeout(() => setPicker('mode'), 350); }} />
-          <Chip icon="globe-outline" label={scopeLabel(scope)} onPress={() => { setBotOpen(false); setTimeout(() => setPicker('scopeType'), 350); }} />
-        </View>
-
-        {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => {
-          const c = d === 'easy' ? theme.primary : d === 'medium' ? theme.accent : theme.danger;
-          return (
-            <Pressable
-              key={d}
-              onPress={() => { setDifficulty(d); setBotOpen(false); actions.createSolo(playerName, { ...opts, difficulty: d }); }}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, paddingHorizontal: 14, borderRadius: 12, backgroundColor: theme.panelInnerFill, borderWidth: 1.5, borderColor: theme.border, borderLeftWidth: 4, borderLeftColor: c }}
-            >
-              <Ionicons name={d === 'easy' ? 'happy' : d === 'medium' ? 'flash' : 'skull'} size={20} color={c} />
-              <Text style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-ExtraBold' }}>{DIFF_LABEL(d)}</Text>
-            </Pressable>
-          );
-        })}
+            </>
+          )}
+        </ModalPager>
       </GameModal>
 
       <GameModal visible={specialOpen} onClose={() => setSpecialOpen(false)} title={t('home.specialModeTitle')} icon="sparkles">
         <Text style={[styles.muted, { textAlign: 'center', marginBottom: 4 }]}>{t('home.specialModeBody')}</Text>
         {(['country-team', 'letter-team'] as GameMode[]).map((m) => {
           const locked = !hasSocialPack;
+          const c = m === 'country-team' ? theme.blue : theme.purple;
           return (
-            <Pressable
+            <GameRow
               key={m}
-              style={[styles.modalRow, locked && { opacity: 0.45 }]}
+              icon={MODE_ICON[m]}
+              iconColor={c}
+              tint={locked ? undefined : c}
+              label={MODE_LABEL(m)}
+              locked={locked}
+              chevron={!locked}
               onPress={() => {
                 if (locked) {
                   setSpecialOpen(false);
@@ -1770,13 +2834,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 setSpecialOpen(false);
                 actions.findMatch({ mode: m });
               }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Ionicons name={MODE_ICON[m]} size={18} color={locked ? theme.muted : theme.accent} />
-                <Text style={[styles.modalRowText, locked && { color: theme.muted }]}>{MODE_LABEL(m)}</Text>
-              </View>
-              {locked ? <Ionicons name="lock-closed" size={16} color={theme.muted} /> : null}
-            </Pressable>
+            />
           );
         })}
       </GameModal>
@@ -1785,218 +2843,110 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         <Text style={[styles.muted, { textAlign: 'center', marginBottom: 8 }]}>{t('home.specialModeLocked')}</Text>
         <Btn label={t('friends.goToStore')} kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); onGoToStore?.('socialPack'); }} />
       </GameModal>
-
-      <PickerModal
-        picker={picker}
-        scopes={state.scopes}
-        onClose={() => setPicker(null)}
-        onDifficulty={(d) => {
-          setDifficulty(d);
-          setPicker(null);
-          setTimeout(() => setBotOpen(true), 350);
-        }}
-        onScope={(s) => {
-          setScope(s);
-          setPicker(null);
-          setTimeout(() => setBotOpen(true), 350);
-        }}
-        onMode={(m) => {
-          setMode(m);
-          setPicker(null);
-          setTimeout(() => setBotOpen(true), 350);
-        }}
-        goto={setPicker}
-      />
     </Screen>
   );
 }
 
-function PickerModal({
-  picker,
-  scopes,
-  onClose,
-  onDifficulty,
-  onScope,
-  onMode,
-  goto,
-}: {
-  picker: Picker;
+// Searchable league/country scope list — one page shared by the bot dialog (home)
+// and the friendly-match dialog (friends). Skeletons while scopes load; crafted
+// EmptyState for no results. Key it by `kind` so the search resets per page.
+function ScopeListPage({ kind, scopes, onPick }: {
+  kind: 'league' | 'country';
   scopes: GameState['scopes'];
-  onClose: () => void;
-  onDifficulty: (d: Difficulty) => void;
-  onScope: (s: Scope) => void;
-  onMode: (m: GameMode) => void;
-  goto: (p: Picker) => void;
+  onPick: (s: Scope) => void;
 }) {
-  const visible = picker !== null;
-  const allList =
-    picker === 'league' ? scopes?.leagues ?? [] : picker === 'country' ? scopes?.countries ?? [] : [];
-
+  const allList = kind === 'league' ? scopes?.leagues ?? [] : scopes?.countries ?? [];
   const [search, setSearch] = useState('');
-
-  // Reset search when picker changes
-  useEffect(() => { setSearch(''); }, [picker]);
-
   const filtered = search.trim()
     ? allList.filter((o) => (o.displayName ?? o.value).toLowerCase().includes(search.toLowerCase()))
     : allList;
-
+  const countChip = (count: number) => (
+    <View style={{ backgroundColor: theme.cardLip, borderRadius: 8, borderWidth: 1, borderColor: theme.accentDark, paddingHorizontal: 7, paddingVertical: 2 }}>
+      <Text style={{ color: theme.accent, fontSize: 10, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{count}</Text>
+    </View>
+  );
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.modalBg} onPress={onClose}>
-        <Pressable style={styles.modalCard} onPress={() => {}}>
-          {picker === 'difficulty' && (
-            <>
-              <Text style={styles.modalTitle}>{t('home.botDifficulty')}</Text>
-              {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
-                <Pressable key={d} style={styles.modalRow} onPress={() => onDifficulty(d)}>
-                  <Text style={styles.modalRowText}>{DIFF_LABEL(d)}</Text>
-                </Pressable>
-              ))}
-            </>
-          )}
-
-          {picker === 'mode' && (
-            <>
-              <Text style={styles.modalTitle}>{t('mode.select')}</Text>
-              {(['team-team', 'country-team', 'letter-team'] as GameMode[]).map((m) => (
-                <Pressable key={m} style={styles.modalRow} onPress={() => onMode(m)}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <Ionicons name={MODE_ICON[m]} size={18} color={theme.accent} />
-                    <Text style={styles.modalRowText}>{MODE_LABEL(m)}</Text>
-                  </View>
-                </Pressable>
-              ))}
-            </>
-          )}
-
-          {picker === 'scopeType' && (
-            <>
-              <Text style={styles.modalTitle}>{t('friends.scopeTitle')}</Text>
-              <Pressable style={styles.modalRow} onPress={() => onScope({ type: 'all' })}>
-                <Text style={styles.modalRowText}>{t('scope.all')}</Text>
-              </Pressable>
-              <Pressable style={styles.modalRow} onPress={() => goto('league')}>
-                <Text style={styles.modalRowText}>{t('scope.pickLeagueRow')}</Text>
-              </Pressable>
-              <Pressable style={styles.modalRow} onPress={() => goto('country')}>
-                <Text style={styles.modalRowText}>{t('scope.pickCountryRow')}</Text>
-              </Pressable>
-            </>
-          )}
-
-          {(picker === 'league' || picker === 'country') && (
-            <>
-              <Text style={styles.modalTitle}>{picker === 'league' ? t('scope.pickLeague') : t('scope.pickCountry')}</Text>
-              <View style={styles.modalSearchBox}>
-                <Ionicons name="search" size={16} color={theme.muted} />
-                <TextInput
-                  placeholder={picker === 'league' ? t('scope.searchLeague') : t('scope.searchCountry')}
-                  placeholderTextColor={theme.muted}
-          keyboardAppearance="dark"
-                  value={search}
-                  onChangeText={setSearch}
-                  style={styles.modalSearchInput}
-                  autoFocus
-                />
-                {search.length > 0 ? (
-                  <Pressable onPress={() => setSearch('')}>
-                    <Ionicons name="close-circle" size={16} color={theme.muted} />
-                  </Pressable>
-                ) : null}
-              </View>
-              <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
-                {filtered.map((o) => (
-                  <Pressable
-                    key={o.value}
-                    style={styles.modalRow}
-                    onPress={() => onScope({ type: picker === 'league' ? 'league' : 'country', value: o.value })}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-                      {picker === 'league' && o.logoUrl ? (
-                        <Image source={{ uri: o.logoUrl }} style={{ width: 24, height: 24 }} resizeMode="contain" />
-                      ) : picker === 'country' && o.logoUrl ? (
-                        <Text style={{ fontSize: 20 }}>{o.logoUrl}</Text>
-                      ) : picker === 'country' ? (
-                        <Ionicons name="flag" size={18} color={theme.muted} />
-                      ) : null}
-                      <Text style={[styles.modalRowText, { flex: 1 }]} numberOfLines={1}>{o.displayName ?? o.value}</Text>
-                    </View>
-                    <Text style={styles.modalCount}>{o.count}</Text>
-                  </Pressable>
-                ))}
-                {filtered.length === 0 && search.trim() ? (
-                  <Text style={[styles.muted, { marginTop: 12 }]}>{t('common.noResults')}</Text>
-                ) : null}
-                {allList.length === 0 ? <Text style={styles.muted}>{t('common.loading')}</Text> : null}
-              </ScrollView>
-            </>
-          )}
-        </Pressable>
-      </Pressable>
-    </Modal>
+    <>
+      <GameInput
+        icon="search"
+        placeholder={kind === 'league' ? t('scope.searchLeague') : t('scope.searchCountry')}
+        value={search}
+        onChangeText={setSearch}
+        autoFocus
+      />
+      <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        {allList.length === 0 ? (
+          // Loading skeleton — never confused with "empty".
+          <SkeletonRows rows={3} />
+        ) : filtered.length === 0 ? (
+          <EmptyState icon="search" title={t('common.noResults')} />
+        ) : (
+          filtered.map((o) => (
+            <GameRow
+              key={o.value}
+              leading={
+                kind === 'league' && o.logoUrl ? (
+                  <Image source={{ uri: o.logoUrl }} style={{ width: 24, height: 24 }} resizeMode="contain" />
+                ) : kind === 'country' && o.logoUrl ? (
+                  <Text style={{ fontSize: 18 }}>{o.logoUrl}</Text>
+                ) : (
+                  <Ionicons name={kind === 'league' ? 'trophy' : 'flag'} size={18} color={theme.muted} />
+                )
+              }
+              label={o.displayName ?? o.value}
+              right={countChip(o.count)}
+              onPress={() => onPick({ type: kind === 'league' ? 'league' : 'country', value: o.value })}
+            />
+          ))
+        )}
+      </ScrollView>
+    </>
   );
 }
 
 // ---- Lobby ----
 function LeaveConfirmModal({ visible, onCancel, onConfirm }: { visible: boolean; onCancel: () => void; onConfirm: () => void }) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', paddingHorizontal: 36 }}>
-        <View style={{ backgroundColor: theme.card, borderRadius: 18, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: 'center' }}>
-          <Ionicons name="warning" size={44} color={theme.danger} />
-          <Text style={{ color: theme.text, fontSize: 16, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginTop: 14 }}>
-            {t('leave.confirmTitle')}
-          </Text>
-          <Text style={{ color: theme.muted, fontSize: 13, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginTop: 6, marginBottom: 20 }}>
-            {t('leave.confirmBody')}
-          </Text>
-          <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
-            <Pressable
-              onPress={onCancel}
-              style={{ flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, alignItems: 'center' }}
-            >
-              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14 }}>{t('leave.cancel')}</Text>
-            </Pressable>
-            <Pressable
-              onPress={onConfirm}
-              style={{ flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: theme.danger, alignItems: 'center' }}
-            >
-              <Text style={{ color: '#fff', fontFamily: 'Poppins-ExtraBold', fontSize: 14 }}>{t('leave.confirm')}</Text>
-            </Pressable>
-          </View>
+    <GameModal visible={visible} onClose={onCancel} title={t('leave.bannerTitle')} icon="warning" danger>
+      <Text style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') }}>
+        {t('leave.confirmTitle')}
+      </Text>
+      <Text style={{ color: theme.muted, fontSize: 13, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 19 }}>
+        {t('leave.confirmBody')}
+      </Text>
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flex: 1 }}>
+          <Btn label={t('leave.cancel')} kind="ghost" onPress={onCancel} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Btn label={t('leave.confirm')} kind="danger" onPress={onConfirm} />
         </View>
       </View>
-    </Modal>
+    </GameModal>
   );
 }
 
 export function OpponentForfeitModal({ visible, onFindNew, onGoHome }: { visible: boolean; onFindNew: () => void; onGoHome: () => void }) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onGoHome}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', paddingHorizontal: 36 }}>
-        <View style={{ backgroundColor: theme.card, borderRadius: 18, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: 'center' }}>
-          <Ionicons name="exit-outline" size={48} color={theme.accent} />
-          <Text style={{ color: theme.text, fontSize: 16, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginTop: 14, marginBottom: 20 }}>
-            {t('opponent.leftTitle')}
-          </Text>
-          <View style={{ gap: 10, width: '100%' }}>
-            <Pressable
-              onPress={onFindNew}
-              style={{ paddingVertical: 14, borderRadius: 12, backgroundColor: theme.primary, alignItems: 'center' }}
-            >
-              <Text style={{ color: '#06131F', fontFamily: 'Poppins-ExtraBold', fontSize: 14 }}>{t('opponent.findNew')}</Text>
-            </Pressable>
-            <Pressable
-              onPress={onGoHome}
-              style={{ paddingVertical: 14, borderRadius: 12, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, alignItems: 'center' }}
-            >
-              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14 }}>{t('opponent.goHome')}</Text>
-            </Pressable>
-          </View>
-        </View>
+    <GameModal visible={visible} onClose={onGoHome} title={t('opponent.bannerTitle')} icon="exit">
+      {/* Exit icon in a beveled medallion (card face + accent ring + soft gold glow) */}
+      <View
+        style={{
+          alignSelf: 'center', width: 64, height: 64, borderRadius: 32,
+          backgroundColor: theme.card, borderWidth: 2, borderColor: theme.accent,
+          borderTopColor: lighten(theme.accent, 0.3), borderBottomColor: theme.accentDark,
+          alignItems: 'center', justifyContent: 'center',
+          shadowColor: theme.accent, shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 6,
+        }}
+      >
+        <Ionicons name="exit-outline" size={30} color={theme.accent} />
       </View>
-    </Modal>
+      <Text style={{ color: theme.muted, fontSize: 13, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 19 }}>
+        {t('opponent.leftTitle')}
+      </Text>
+      <Btn label={t('opponent.findNew')} icon="flash" onPress={onFindNew} />
+      <Btn label={t('opponent.goHome')} kind="ghost" icon="home" onPress={onGoHome} />
+    </GameModal>
   );
 }
 
@@ -2041,19 +2991,40 @@ export function LobbyScreen({ state, actions }: Props) {
       ))}
       <View style={{ height: 18 }} />
       {room.players.length < 2 ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={theme.primary} />
-          <Text style={styles.muted}>{t('lobby.waiting')}</Text>
+        <View style={styles.lobbyWaitChip}>
+          <GameSpinner />
+          <Text style={[styles.muted, { flexShrink: 1 }]}>{t('lobby.waiting')}</Text>
         </View>
       ) : canStart ? (
         <Btn label={t('lobby.start')} icon="play" onPress={actions.start} />
       ) : (
-        <Text style={styles.muted}>{t('lobby.waitHost')}</Text>
+        <View style={styles.lobbyWaitChip}>
+          <GameSpinner />
+          <Text style={[styles.muted, { flexShrink: 1 }]}>{t('lobby.waitHost')}</Text>
+        </View>
       )}
       <View style={{ height: 16 }} />
       <Btn label={t('result.leave')} kind="ghost" icon="close" onPress={() => needConfirm ? setShowLeaveConfirm(true) : actions.leave()} />
       <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
     </Screen>
+  );
+}
+
+// ---- VsBadge — THE gold VS coin (one dialect for matchup + guess reveal) ----
+// Top-lit gloss, 4px accentDark lip, gold glow, engraved Poppins-Black label.
+function VsBadge({ size = 48 }: { size?: number }) {
+  return (
+    <View
+      style={{
+        width: size, height: size, borderRadius: size / 2, backgroundColor: theme.accent,
+        alignItems: 'center', justifyContent: 'center',
+        borderTopWidth: 2, borderTopColor: 'rgba(255,255,255,0.55)',
+        borderBottomWidth: 4, borderBottomColor: theme.accentDark,
+        shadowColor: theme.accent, shadowOpacity: 0.6, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 8,
+      }}
+    >
+      <Text style={{ color: theme.ink, fontFamily: 'Poppins-Black', fontSize: Math.round(size * 0.31), ...engrave('sm') }}>{t('common.vs')}</Text>
+    </View>
   );
 }
 
@@ -2078,31 +3049,41 @@ export function MatchupScreen({ state }: Props) {
   const youColor = you?.arena ? arenaColor(you.arena.name) : theme.primary;
 
   const renderPlayer = (p: typeof you, color: string, slideY: Animated.AnimatedInterpolation<number>, fallbackAvatar?: string | null) => (
-    <Animated.View style={{ transform: [{ translateY: slideY }], opacity: anim, alignItems: 'center', gap: 6 }}>
-      <Avatar avatar={p?.avatar ?? fallbackAvatar} name={p?.name} size={64} ring={color} ringWidth={3} bg={theme.card} iconColor={color} iconSize={30} />
-      <Text style={{ color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold' }} numberOfLines={1}>{p?.name ?? '?'}</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-        <Ionicons name="trophy" size={15} color={theme.accent} />
-        <Text style={{ color: theme.accent, fontSize: 14, fontFamily: 'Poppins-SemiBold' }}>{p?.trophies ?? 0}</Text>
-      </View>
-      {p?.arena ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.bg2, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 3, borderWidth: 1, borderColor: color + '55' }}>
-          <Text style={{ fontSize: 13 }}>{p.arena.icon}</Text>
-          <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>{arenaLabel(p.arena.name)}</Text>
+    <Animated.View style={{ transform: [{ translateY: slideY }], opacity: anim, alignSelf: 'stretch' }}>
+      <GamePanel compact tint={color} bodyStyle={{ alignItems: 'center', gap: 6, paddingVertical: 14 }}>
+        <Avatar avatar={p?.avatar ?? fallbackAvatar} name={p?.name} size={64} ring={color} ringWidth={3} bg={theme.card} iconColor={color} iconSize={30} />
+        <Text style={{ color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{p?.name ?? '?'}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <Ionicons name="trophy" size={15} color={theme.accent} />
+          <Text style={{ color: theme.accent, fontSize: 14, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{p?.trophies ?? 0}</Text>
         </View>
-      ) : null}
+        {p?.arena ? (
+          <View
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              backgroundColor: theme.panelInnerFill, borderRadius: 12,
+              borderWidth: 1.5, borderColor: color, borderBottomColor: darken(color),
+              paddingHorizontal: 8, paddingVertical: 3,
+            }}
+          >
+            {/* Arena Ionicon (kit rule: vector icons in wells, never emoji) */}
+            <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: theme.bg, borderWidth: 1, borderColor: withAlpha(color, 0.4), alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name={arenaIcon(p.arena)} size={11} color={color} />
+            </View>
+            <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>{arenaLabel(p.arena.name)}</Text>
+          </View>
+        ) : null}
+      </GamePanel>
     </Animated.View>
   );
 
   return (
     <Screen>
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 }}>
-        <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 3 }}>{t('matchup.title')}</Text>
+        <Text style={{ color: theme.accent, fontSize: 14, fontFamily: 'Poppins-ExtraBold', letterSpacing: 3, textTransform: 'uppercase', ...engrave('lg') }}>{t('matchup.title')}</Text>
         {renderPlayer(opp, oppColor, oppSlide)}
         <Animated.View style={{ transform: [{ scale: vsScale }] }}>
-          <View style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: theme.accentDark }}>
-            <Text style={{ color: '#06131F', fontFamily: 'Poppins-Black', fontSize: 16 }}>{t('matchup.vs')}</Text>
-          </View>
+          <VsBadge size={50} />
         </Animated.View>
         {renderPlayer(you, youColor, youSlide, state.profile?.avatar)}
       </View>
@@ -2110,92 +3091,54 @@ export function MatchupScreen({ state }: Props) {
   );
 }
 
-// ---- Thought bubble callout (appears next to player bar) ----
-function ThoughtBubble({ emoteId, emoteN, position }: { emoteId?: string; emoteN?: number; position: 'top' | 'bottom' }) {
-  const a = useRef(new Animated.Value(0)).current;
-  const [gone, setGone] = useState(true);
-  const [currentEmote, setCurrentEmote] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!emoteId || !emoteN) return;
-    setCurrentEmote(emoteId);
-    setGone(false);
-    a.setValue(0);
-    Animated.spring(a, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }).start();
-    const tm = setTimeout(() => {
-      Animated.timing(a, { toValue: 0, duration: 250, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(
-        ({ finished }) => finished && setGone(true),
-      );
-    }, 3000);
-    return () => clearTimeout(tm);
-  }, [emoteId, emoteN, a]);
-
-  if (gone || !currentEmote) return null;
-  const scale = a.interpolate({ inputRange: [0, 0.7, 1], outputRange: [0.2, 1.1, 1] });
-  const op = a.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 1, 1] });
-  const dotOp = a.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0.6, 1] });
-  const cm = getEmote(currentEmote);
-
-  // Quick-chat TEXT phrase: framed plain text (Clash-Royale), no bubble/tail.
-  if (cm?.kind === 'text') {
-    return (
-      <Animated.View style={{
-        position: 'absolute', right: 6, [position === 'top' ? 'top' : 'bottom']: -54,
-        opacity: op, transform: [{ scale }], zIndex: 50, alignItems: 'flex-end',
-      }}>
-        <TextEmoteFrame text={emotePhrase(cm)} color={cm.color} fontSize={13.5} />
-      </Animated.View>
-    );
-  }
-
+// ---- MatchExitButton — the one leave-match affordance (ScreenHeader-back recipe) ----
+// 40px beveled card square with a danger-tinted close glyph + press depress.
+function MatchExitButton({ onPress }: { onPress: () => void }) {
   return (
-    <Animated.View style={{
-      position: 'absolute', right: 6, [position === 'top' ? 'top' : 'bottom']: -60,
-      opacity: op, transform: [{ scale }], zIndex: 50,
-      alignItems: 'flex-end',
-    }}>
-      {/* Main bubble — square frame for animated (lottie) emotes, rounded otherwise */}
-      <View style={{
-        backgroundColor: theme.card, borderRadius: cm?.kind === 'lottie' ? 12 : 18, borderWidth: 1.5, borderColor: theme.border,
-        paddingHorizontal: 8, paddingVertical: 6, minWidth: 60, alignItems: 'center',
-        shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 8,
-      }}>
-        <EmoteSticker id={currentEmote} size={40} />
-      </View>
-      {/* Small dots (thought bubble tail) */}
-      <Animated.View style={{ opacity: dotOp, alignItems: 'flex-end', marginRight: 10 }}>
-        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, marginTop: 3 }} />
-        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, marginTop: 2, marginRight: 4 }} />
-      </Animated.View>
-    </Animated.View>
+    <Pressable
+      onPress={onPress}
+      hitSlop={8}
+      style={({ pressed }) => ({
+        width: 40, height: 40, borderRadius: 14,
+        backgroundColor: pressed ? theme.bg2 : theme.card,
+        borderWidth: 2, borderColor: theme.border,
+        borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
+        alignItems: 'center', justifyContent: 'center',
+        transform: [{ translateY: pressed ? 2 : 0 }],
+      })}
+    >
+      <Ionicons name="close" size={20} color={theme.danger} />
+    </Pressable>
   );
 }
 
-// ---- Shared in-match player bar (opponent top, you bottom) ----
-function PlayerBar({ player, isYou, onEmotePress, emoteId, emoteN }: {
-  player: { name: string; trophies?: number; arena?: { name: string; icon: string; minTrophies: number }; avatar?: string | null } | undefined;
-  isYou?: boolean;
-  onEmotePress?: () => void;
-  emoteId?: string;
-  emoteN?: number;
-}) {
-  if (!player) return null;
-  const color = player.arena ? arenaColor(player.arena.name) : theme.muted;
+// ---- PlayerBar — the persistent in-match HUD (Clash-style opponent presence) ----
+// One slim GamePanel-compact strip: opponent avatar + name + trophies, the
+// running match score in a recessed well, and your beveled emote coin.
+function PlayerBar({ state, onEmotePress }: { state: GameState; onEmotePress?: () => void }) {
+  const room = state.room;
+  const you = room?.players.find((p) => p.id === room.youId);
+  const opp = room?.players.find((p) => p.id !== room.youId);
+  if (!room || !opp) return null;
+  const color = opp.arena ? arenaColor(opp.arena.name) : theme.muted;
   return (
-    <View style={{ position: 'relative', alignSelf: 'stretch' }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.card, borderRadius: 14, paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: isYou ? theme.primary + '44' : theme.border }}>
-        <Avatar avatar={player.avatar} name={player.name} size={28} ring={color} ringWidth={2} iconColor={color} iconSize={14} />
-        <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', flex: 1 }} numberOfLines={1}>{player.name}</Text>
-        <Ionicons name="trophy" size={13} color={theme.accent} />
-        <Text style={{ color: theme.accent, fontSize: 12, fontFamily: 'Poppins-SemiBold' }}>{player.trophies ?? 0}</Text>
-        {isYou && onEmotePress ? (
-          <Pressable onPress={onEmotePress} style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}>
-            <Ionicons name="happy" size={18} color="#06131F" />
-          </Pressable>
-        ) : null}
+    <GamePanel compact style={{ flex: 1 }} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 5, paddingHorizontal: 10 }}>
+      <Avatar avatar={opp.avatar} name={opp.name} size={30} ring={color} ringWidth={2} iconColor={color} iconSize={15} />
+      <View style={{ flex: 1 }}>
+        <Text numberOfLines={1} style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{opp.name}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+          <Ionicons name="trophy" size={10} color={theme.accent} />
+          <Text style={{ color: theme.accent, fontSize: 10, fontFamily: 'Poppins-SemiBold', letterSpacing: 0.5, fontVariant: ['tabular-nums'] }}>{opp.trophies ?? 0}</Text>
+        </View>
       </View>
-      <ThoughtBubble emoteId={emoteId} emoteN={emoteN} position={isYou ? 'bottom' : 'top'} />
-    </View>
+      {/* Running score — recessed well; your side leads in mint */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.panelInnerFill, borderRadius: 10, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, paddingHorizontal: 10, paddingVertical: 2 }}>
+        <Text style={{ color: theme.primary, fontSize: 15, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{you?.score ?? 0}</Text>
+        <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold' }}>-</Text>
+        <Text style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{opp.score ?? 0}</Text>
+      </View>
+      {onEmotePress ? <EmoteCoin size={34} onPress={onEmotePress} /> : null}
+    </GamePanel>
   );
 }
 
@@ -2211,9 +3154,9 @@ export function CountdownScreen({ state }: Props) {
   return (
     <Screen>
       <View style={styles.center}>
-        <View style={{ width: 172, height: 172, borderRadius: 86, borderWidth: 5, borderColor: theme.primary, borderTopColor: '#7CF3BC', borderBottomColor: theme.primaryDark, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.panelInk, shadowColor: theme.primary, shadowOpacity: 0.65, shadowRadius: 28, shadowOffset: { width: 0, height: 0 }, elevation: 18 }}>
-          <View style={{ width: 140, height: 140, borderRadius: 70, backgroundColor: theme.card, borderWidth: 2, borderColor: theme.primary + '55', alignItems: 'center', justifyContent: 'center' }}>
-            <Animated.Text style={{ color: theme.text, fontSize: n > 0 ? 88 : 50, fontFamily: 'Poppins-Black', transform: [{ scale }], opacity: a, ...engrave('lg') }}>
+        <View style={{ width: 172, height: 172, borderRadius: 86, borderWidth: 5, borderColor: theme.primary, borderTopColor: lighten(theme.primary, 0.35), borderBottomColor: theme.primaryDark, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.panelInk, shadowColor: theme.primary, shadowOpacity: 0.65, shadowRadius: 28, shadowOffset: { width: 0, height: 0 }, elevation: 18 }}>
+          <View style={{ width: 140, height: 140, borderRadius: 70, backgroundColor: theme.card, borderWidth: 2, borderColor: withAlpha(theme.primary, 0.33), alignItems: 'center', justifyContent: 'center' }}>
+            <Animated.Text style={{ color: theme.text, fontSize: n > 0 ? 88 : 50, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], transform: [{ scale }], opacity: a, ...engrave('lg') }}>
               {n > 0 ? n : 'GO!'}
             </Animated.Text>
           </View>
@@ -2228,24 +3171,61 @@ export function CountdownScreen({ state }: Props) {
 
 const PICK_LETTERS = 'ABCDEFGHIJKLMNOPRSTUVYZ'.split('');
 
-function PickTimer({ pickEndsAt }: { pickEndsAt: number | null }) {
-  const [pickSecs, setPickSecs] = useState<number | null>(null);
+// ---- Shared match timer — THE recessed countdown trough (pick + guess) ----
+// panelInnerFill well with a sunken cardLip top edge, Poppins-Black tabular
+// digits + engrave, flips to danger with a scale-pulse loop when urgent.
+function MatchTimer({ endsAt, urgentAt = 5, fallbackSecs, style }: {
+  endsAt: number | null; urgentAt?: number; fallbackSecs?: number; style?: any;
+}) {
+  const [secs, setSecs] = useState<number | null>(null);
   useEffect(() => {
-    if (!pickEndsAt) return;
-    const tick = () => setPickSecs(Math.max(0, Math.ceil((pickEndsAt - Date.now()) / 1000)));
+    if (!endsAt) { setSecs(null); return; }
+    const tick = () => setSecs(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)));
     tick();
     const id = setInterval(tick, 250);
     return () => clearInterval(id);
-  }, [pickEndsAt]);
+  }, [endsAt]);
+  const shown = secs ?? fallbackSecs ?? null;
+  const urgent = endsAt != null && secs !== null && secs <= urgentAt;
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!urgent) { pulse.stopAnimation(); pulse.setValue(0); return; }
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 450, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 450, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [urgent, pulse]);
+  if (shown === null) return null;
+  const color = urgent ? theme.danger : theme.accent;
   return (
-    <View style={styles.pickTimerBox}>
-      <Ionicons name="time-outline" size={18} color={pickSecs !== null && pickSecs <= 3 ? theme.danger : theme.accent} />
-      <Text style={[styles.pickTimerText, pickSecs !== null && pickSecs <= 3 ? { color: theme.danger } : null]}>
-        {pickSecs !== null ? pickSecs : 10}
-      </Text>
-    </View>
+    <Animated.View
+      style={[{
+        flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center',
+        backgroundColor: theme.panelInnerFill, borderRadius: 14,
+        borderWidth: 2, borderColor: theme.border, borderTopColor: theme.cardLip,
+        paddingVertical: 4, paddingHorizontal: 14,
+        transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.09] }) }],
+      }, style]}
+    >
+      <Ionicons name="time-outline" size={16} color={color} />
+      <Text style={{ color, fontSize: 22, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{shown}</Text>
+    </Animated.View>
   );
 }
+
+function PickTimer({ pickEndsAt }: { pickEndsAt: number | null }) {
+  return <MatchTimer endsAt={pickEndsAt} urgentAt={3} fallbackSecs={10} style={{ marginTop: 6 }} />;
+}
+
+// What the local player chose this round — kept as UI state so the waiting
+// screen can render the pick large (the server only echoes `picked: true`).
+type LastPick =
+  | { kind: 'team'; label: string; logoUrl: string | null }
+  | { kind: 'player'; label: string; imageUrl: string | null }
+  | { kind: 'country'; label: string; flag: string }
+  | { kind: 'letter'; label: string };
 
 export function PickTeamScreen({ state, actions, tutorial }: Props) {
   const [q, setQ] = useState('');
@@ -2253,9 +3233,10 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const role = state.pickRole ?? 'team';
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [emoteOpen, setEmoteOpen] = useState(false);
+  const [lastPick, setLastPick] = useState<LastPick | null>(null);
   const hasBot = state.room?.players.some((p) => p.name === 'Bot');
   const handleLeave = () => hasBot ? actions.leave() : setShowLeaveConfirm(true);
-  const room = state.room;
 
   const onChange = (text: string) => {
     setQ(text);
@@ -2271,17 +3252,66 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
 
+  // A new pick phase (picked flips back to false) invalidates last round's pick.
+  useEffect(() => {
+    if (!state.picked) setLastPick(null);
+  }, [state.picked]);
+
+  // Top chrome shared by every pick state: exit button + opponent HUD, then title + timer.
+  const header = (title: string) => (
+    <>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4, marginBottom: 8 }}>
+        <MatchExitButton onPress={handleLeave} />
+        <PlayerBar state={state} onEmotePress={tutorial ? undefined : () => setEmoteOpen(true)} />
+      </View>
+      <View style={{ alignItems: 'center', marginBottom: 8 }}>
+        <Text style={styles.h1}>{title}</Text>
+        <PickTimer pickEndsAt={state.pickEndsAt} />
+      </View>
+    </>
+  );
+  const emoteLayer = !tutorial ? (
+    <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} />
+  ) : null;
+  const leaveModal = (
+    <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
+  );
+
   if (state.picked) {
     return (
       <Screen>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 6 }}>
-          <ActivityIndicator color={theme.primary} />
-          <Text style={styles.muted}>{t('pick.picked')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4, marginBottom: 8 }}>
+          <MatchExitButton onPress={handleLeave} />
+          <PlayerBar state={state} onEmotePress={tutorial ? undefined : () => setEmoteOpen(true)} />
         </View>
-        <Pressable onPress={handleLeave} style={{ position: 'absolute', top: 54, left: 18, zIndex: 20 }}>
-          <Ionicons name="close-circle" size={32} color={theme.muted} />
-        </Pressable>
-        <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
+        <View style={{ flex: 1, justifyContent: 'center' }}>
+          <GamePanel hero bodyStyle={{ alignItems: 'center', gap: 12, paddingVertical: 26 }}>
+            <PulseRing size={116}>
+              {lastPick?.kind === 'team' && lastPick.logoUrl ? (
+                <ClubBadge name={lastPick.label} size={62} logoUrl={lastPick.logoUrl} />
+              ) : lastPick?.kind === 'player' && lastPick.imageUrl ? (
+                <Image source={{ uri: lastPick.imageUrl }} style={{ width: 62, height: 62, borderRadius: 31 }} resizeMode="cover" />
+              ) : lastPick?.kind === 'country' ? (
+                <Text style={{ fontSize: 44 }}>{lastPick.flag}</Text>
+              ) : lastPick?.kind === 'letter' ? (
+                <Text style={{ color: theme.accent, fontSize: 42, fontFamily: 'Poppins-Black', ...engrave('lg') }}>{lastPick.label}</Text>
+              ) : lastPick ? (
+                <ClubBadge name={lastPick.label} size={62} />
+              ) : (
+                <Ionicons name="checkmark" size={42} color={theme.primary} />
+              )}
+            </PulseRing>
+            {lastPick && lastPick.kind !== 'letter' ? (
+              <Text numberOfLines={2} style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') }}>
+                {lastPick.label}
+              </Text>
+            ) : null}
+            <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{t('pick.picked')}</Text>
+            <PickTimer pickEndsAt={state.pickEndsAt} />
+          </GamePanel>
+        </View>
+        {leaveModal}
+        {emoteLayer}
       </Screen>
     );
   }
@@ -2295,43 +3325,36 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
     };
     return (
       <Screen>
-        <View style={{ alignItems: 'center', marginBottom: 8, marginTop: 8 }}>
-          <Text style={styles.h1}>{t('pick.titlePlayer')}</Text>
-          <PickTimer pickEndsAt={state.pickEndsAt} />
-        </View>
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={18} color={theme.muted} />
-          <TextInput
-            placeholder={t('pick.searchPlayer')}
-            placeholderTextColor={theme.muted}
-            keyboardAppearance="dark"
-            value={q}
-            onChangeText={onPlayerChange}
-            style={styles.searchInput}
-            autoFocus={!tutorial}
-          />
-        </View>
-        <ScrollView style={{ alignSelf: 'stretch', flex: 1 }} keyboardShouldPersistTaps="handled">
+        {header(t('pick.titlePlayer'))}
+        <GameInput
+          icon="search"
+          placeholder={t('pick.searchPlayer')}
+          value={q}
+          onChangeText={onPlayerChange}
+          autoFocus={!tutorial}
+        />
+        <ScrollView style={{ alignSelf: 'stretch', flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {state.playerResults.map((p: PlayerRef) => (
-            <Pressable key={p.id} style={styles.clubRow} onPress={() => actions.pickPlayer(p.id)}>
-              {p.imageUrl ? (
-                <Image source={{ uri: p.imageUrl }} style={{ width: 40, height: 40, borderRadius: 20 }} resizeMode="cover" />
-              ) : (
-                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: badgeColor(p.name), alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="person" size={20} color="#fff" />
-                </View>
-              )}
-              <Text style={styles.clubText} numberOfLines={1}>{p.name}</Text>
-              <Ionicons name="chevron-forward" size={18} color={theme.muted} />
-            </Pressable>
+            <GameRow
+              key={p.id}
+              leading={
+                p.imageUrl ? (
+                  <Image source={{ uri: p.imageUrl }} style={{ width: 32, height: 32, borderRadius: 16 }} resizeMode="cover" />
+                ) : (
+                  <Ionicons name="person" size={18} color={theme.muted} />
+                )
+              }
+              label={p.name}
+              chevron
+              onPress={() => { setLastPick({ kind: 'player', label: p.name, imageUrl: p.imageUrl ?? null }); actions.pickPlayer(p.id); }}
+            />
           ))}
-          {state.playerResults.length === 0 && q.trim() ? <Text style={styles.muted}>{t('common.noResults')}</Text> : null}
+          {state.playerResults.length === 0 && q.trim() ? (
+            <EmptyState icon="search" title={t('common.noResults')} style={{ paddingVertical: 16 }} />
+          ) : null}
         </ScrollView>
-        <Pressable onPress={handleLeave} style={{ position: 'absolute', top: 54, left: 18, zIndex: 20 }}>
-          <Ionicons name="close-circle" size={32} color={theme.muted} />
-        </Pressable>
-        <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
-        {!tutorial ? <EmoteLayer state={state} actions={actions} /> : null}
+        {leaveModal}
+        {emoteLayer}
       </Screen>
     );
   }
@@ -2340,31 +3363,29 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   if (role === 'letter') {
     return (
       <Screen>
-        <View style={{ alignItems: 'center', marginBottom: 8, marginTop: 8 }}>
-          <Text style={styles.h1}>{t('pick.titleLetter')}</Text>
-          <PickTimer pickEndsAt={state.pickEndsAt} />
-        </View>
+        {header(t('pick.titleLetter'))}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 12 }}>
           {PICK_LETTERS.map((l) => (
             <Pressable
               key={l}
-              style={{
+              style={({ pressed }) => ({
                 width: 48, height: 48, borderRadius: 12,
-                backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border,
+                backgroundColor: theme.card,
+                borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss,
+                borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
                 alignItems: 'center', justifyContent: 'center',
-              }}
-              onPress={() => actions.pickLetter(l)}
+                shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: 4,
+                transform: [{ translateY: pressed ? 2 : 0 }],
+              })}
+              onPress={() => { setLastPick({ kind: 'letter', label: l }); actions.pickLetter(l); }}
             >
-              <Text style={{ color: theme.text, fontSize: 20, fontWeight: '900' }}>{l}</Text>
+              <Text style={{ color: theme.text, fontSize: 20, fontFamily: 'Poppins-Black', ...engrave('sm') }}>{l}</Text>
             </Pressable>
           ))}
         </View>
         <View style={{ flex: 1 }} />
-        <Pressable onPress={handleLeave} style={{ position: 'absolute', top: 54, left: 18, zIndex: 20 }}>
-          <Ionicons name="close-circle" size={32} color={theme.muted} />
-        </Pressable>
-        <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
-        {!tutorial ? <EmoteLayer state={state} actions={actions} /> : null}
+        {leaveModal}
+        {emoteLayer}
       </Screen>
     );
   }
@@ -2384,37 +3405,30 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
       : NATIONALITIES;
     return (
       <Screen>
-        <View style={{ alignItems: 'center', marginBottom: 8, marginTop: 8 }}>
-          <Text style={styles.h1}>{t('pick.titleCountry')}</Text>
-          <PickTimer pickEndsAt={state.pickEndsAt} />
-        </View>
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={18} color={theme.muted} />
-          <TextInput
-            placeholder={t('pick.searchCountry')}
-            placeholderTextColor={theme.muted}
-            keyboardAppearance="dark"
-            value={countryQ}
-            onChangeText={setCountryQ}
-            style={styles.searchInput}
-            autoFocus={!tutorial}
-          />
-        </View>
-        <ScrollView style={{ alignSelf: 'stretch', flex: 1 }} keyboardShouldPersistTaps="handled">
+        {header(t('pick.titleCountry'))}
+        <GameInput
+          icon="search"
+          placeholder={t('pick.searchCountry')}
+          value={countryQ}
+          onChangeText={setCountryQ}
+          autoFocus={!tutorial}
+        />
+        <ScrollView style={{ alignSelf: 'stretch', flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {filtered.map((n) => (
-            <Pressable key={n.value} style={styles.clubRow} onPress={() => actions.pickCountry(n.value)}>
-              <Text style={{ fontSize: 24 }}>{n.flag}</Text>
-              <Text style={styles.clubText} numberOfLines={1}>{n.displayName}</Text>
-              <Ionicons name="chevron-forward" size={18} color={theme.muted} />
-            </Pressable>
+            <GameRow
+              key={n.value}
+              leading={<Text style={{ fontSize: 18 }}>{n.flag}</Text>}
+              label={n.displayName}
+              chevron
+              onPress={() => { setLastPick({ kind: 'country', label: n.displayName, flag: n.flag }); actions.pickCountry(n.value); }}
+            />
           ))}
-          {filtered.length === 0 && countryQ.trim() ? <Text style={styles.muted}>{t('common.noResults')}</Text> : null}
+          {filtered.length === 0 && countryQ.trim() ? (
+            <EmptyState icon="search" title={t('common.noResults')} style={{ paddingVertical: 16 }} />
+          ) : null}
         </ScrollView>
-        <Pressable onPress={handleLeave} style={{ position: 'absolute', top: 54, left: 18, zIndex: 20 }}>
-          <Ionicons name="close-circle" size={32} color={theme.muted} />
-        </Pressable>
-        <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
-        {!tutorial ? <EmoteLayer state={state} actions={actions} /> : null}
+        {leaveModal}
+        {emoteLayer}
       </Screen>
     );
   }
@@ -2422,22 +3436,14 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   // ---- Team picker (default) ----
   return (
     <Screen>
-      <View style={{ alignItems: 'center', marginBottom: 8, marginTop: 8 }}>
-        <Text style={styles.h1}>{t('pick.title')}</Text>
-        <PickTimer pickEndsAt={state.pickEndsAt} />
-      </View>
-      <View style={styles.searchBox}>
-        <Ionicons name="search" size={18} color={theme.muted} />
-        <TextInput
-          placeholder={t('pick.search')}
-          placeholderTextColor={theme.muted}
-          keyboardAppearance="dark"
-          value={q}
-          onChangeText={onChange}
-          style={styles.searchInput}
-          autoFocus={!tutorial}
-        />
-      </View>
+      {header(t('pick.title'))}
+      <GameInput
+        icon="search"
+        placeholder={t('pick.search')}
+        value={q}
+        onChangeText={onChange}
+        autoFocus={!tutorial}
+      />
       <ScrollView
         style={{ alignSelf: 'stretch', flex: 1 }}
         keyboardShouldPersistTaps="handled"
@@ -2447,14 +3453,16 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
         {state.clubResults.map((c: ClubRef) => (
           <Pressable
             key={c.id}
-            onPress={() => actions.pickTeam(c.id)}
-            style={{
-              width: '31.5%', alignItems: 'center', gap: 7,
+            onPress={() => { setLastPick({ kind: 'team', label: c.name, logoUrl: c.logoUrl ?? null }); actions.pickTeam(c.id); }}
+            style={({ pressed }) => ({
+              width: '31.5%' as const, alignItems: 'center' as const, gap: 7,
               backgroundColor: theme.card, borderRadius: 14,
-              borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip,
+              borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss,
+              borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
               paddingVertical: 12, paddingHorizontal: 4,
-              shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: 4,
-            }}
+              shadowColor: '#000', shadowOpacity: pressed ? 0.15 : 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: pressed ? 2 : 4,
+              transform: [{ translateY: pressed ? 2 : 0 }],
+            })}
           >
             <ClubBadge name={c.name} size={46} logoUrl={c.logoUrl} />
             <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }} numberOfLines={2}>
@@ -2463,19 +3471,41 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
           </Pressable>
         ))}
         {state.clubResults.length === 0 && q.trim() ? (
-          <Text style={[styles.muted, { width: '100%', marginTop: 20 }]}>{t('common.noResults')}</Text>
+          <EmptyState icon="search" title={t('common.noResults')} style={{ width: '100%', paddingVertical: 16 }} />
         ) : null}
       </ScrollView>
-      <Pressable onPress={handleLeave} style={{ position: 'absolute', top: 54, left: 18, zIndex: 20 }}>
-        <Ionicons name="close-circle" size={32} color={theme.muted} />
-      </Pressable>
-      <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
-      {!tutorial ? <EmoteLayer state={state} actions={actions} /> : null}
+      {leaveModal}
+      {emoteLayer}
     </Screen>
   );
 }
 
 // ---- Reveal + Guess ----
+// Locked / passed turn states — framed status panel with a 200ms fade+scale
+// entry and a one-shot icon pulse on arrival.
+function GuessStatusPanel({ icon, iconColor, stripe, text }: { icon: IoniconName; iconColor: string; stripe: string; text: string }) {
+  const a = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(a, { toValue: 1, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+    Animated.sequence([
+      Animated.delay(140),
+      Animated.timing(pulse, { toValue: 1, duration: 180, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 240, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+    ]).start();
+  }, [a, pulse]);
+  return (
+    <Animated.View style={{ opacity: a, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }], alignSelf: 'stretch', marginTop: 10 }}>
+      <GamePanel compact accentStripe={stripe} bodyStyle={{ alignItems: 'center', gap: 8, paddingVertical: 18 }}>
+        <Animated.View style={{ transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.25] }) }] }}>
+          <Ionicons name={icon} size={28} color={iconColor} />
+        </Animated.View>
+        <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') }}>{text}</Text>
+      </GamePanel>
+    </Animated.View>
+  );
+}
+
 export function GuessScreen({ state, actions, tutorial }: Props) {
   const [text, setText] = useState('');
   const teams = state.teams;
@@ -2485,17 +3515,9 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
   const youPassed = state.passedBy.includes(room.youId);
   const oppPassed = state.passedBy.some((id) => id !== room.youId);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [emoteOpen, setEmoteOpen] = useState(false);
   const hasBot = room.players.some((p) => p.name === 'Bot');
   const handleLeave = () => hasBot ? actions.leave() : setShowLeaveConfirm(true);
-
-  const [secs, setSecs] = useState<number | null>(null);
-  useEffect(() => {
-    if (state.phase !== 'guess' || !state.guessEndsAt) return;
-    const tick = () => setSecs(Math.max(0, Math.ceil((state.guessEndsAt! - Date.now()) / 1000)));
-    tick();
-    const id = setInterval(tick, 250);
-    return () => clearInterval(id);
-  }, [state.phase, state.guessEndsAt]);
 
   // Reveal animation: teams slide in from the sides, the VS badge pops.
   const reveal = useRef(new Animated.Value(0)).current;
@@ -2508,8 +3530,21 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
   const rightX = reveal.interpolate({ inputRange: [0, 1], outputRange: [70, 0] });
   const vsScale = reveal.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0, 0, 1] });
 
+  // Reveal → guess handoff: the guess block fades in and rises 12px over 200ms.
+  const phaseIn = useRef(new Animated.Value(state.phase === 'guess' ? 1 : 0)).current;
+  useEffect(() => {
+    if (state.phase === 'guess') {
+      phaseIn.setValue(0);
+      Animated.timing(phaseIn, { toValue: 1, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+    }
+  }, [state.phase, phaseIn]);
+
   return (
     <Screen scroll>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <MatchExitButton onPress={handleLeave} />
+        <PlayerBar state={state} onEmotePress={tutorial ? undefined : () => setEmoteOpen(true)} />
+      </View>
       <View style={styles.teamsRow}>
         <Animated.View style={[styles.teamCard, { transform: [{ translateX: leftX }], opacity: reveal }]}>
           {state.revealMode === 'player-player' ? (
@@ -2517,13 +3552,16 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
               <Image source={{ uri: teams.teamA.logoUrl }} style={{ width: 62, height: 62, borderRadius: 31 }} resizeMode="cover" />
             ) : (
               <View style={{ width: 62, height: 62, borderRadius: 31, backgroundColor: badgeColor(teams?.teamA.name ?? '?'), alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="person" size={30} color="#fff" />
+                <Ionicons name="person" size={30} color={theme.text} />
               </View>
             )
           ) : state.revealMode === 'country-team' ? (
-            <Text style={{ fontSize: 52 }}>{NATIONALITIES.find((n) => n.value === state.revealCountry)?.flag ?? '🏳️'}</Text>
+            /* Flag emoji framed in the ClubBadge white circular chip */
+            <View style={{ width: 62, height: 62, borderRadius: 31, backgroundColor: theme.text, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              <Text style={{ fontSize: 38 }}>{NATIONALITIES.find((n) => n.value === state.revealCountry)?.flag ?? '🏳️'}</Text>
+            </View>
           ) : state.revealMode === 'letter-team' ? (
-            <Text style={{ color: theme.accent, fontSize: 48, fontFamily: 'Poppins-Black' }}>{teams?.teamA.name ?? '?'}</Text>
+            <Text style={{ color: theme.accent, fontSize: 48, fontFamily: 'Poppins-Black', ...engrave('lg') }}>{teams?.teamA.name ?? '?'}</Text>
           ) : (
             <ClubBadge name={teams?.teamA.name ?? '?'} size={62} logoUrl={teams?.teamA.logoUrl ?? null} />
           )}
@@ -2534,9 +3572,7 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
           </Text>
         </Animated.View>
         <Animated.View style={{ transform: [{ scale: vsScale }], marginHorizontal: 4 }}>
-          <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', borderTopWidth: 2, borderTopColor: 'rgba(255,255,255,0.55)', borderBottomWidth: 4, borderBottomColor: theme.accentDark, shadowColor: theme.accent, shadowOpacity: 0.6, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 8 }}>
-            <Text style={{ color: theme.ink, fontFamily: 'Poppins-Black', fontSize: 15, ...engrave('sm') }}>{t('common.vs')}</Text>
-          </View>
+          <VsBadge size={48} />
         </Animated.View>
         <Animated.View style={[styles.teamCard, { transform: [{ translateX: rightX }], opacity: reveal }]}>
           {state.revealMode === 'player-player' ? (
@@ -2544,7 +3580,7 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
               <Image source={{ uri: teams.teamB.logoUrl }} style={{ width: 62, height: 62, borderRadius: 31 }} resizeMode="cover" />
             ) : (
               <View style={{ width: 62, height: 62, borderRadius: 31, backgroundColor: badgeColor(teams?.teamB.name ?? '?'), alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="person" size={30} color="#fff" />
+                <Ionicons name="person" size={30} color={theme.text} />
               </View>
             )
           ) : (
@@ -2559,18 +3595,22 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
       {state.phase === 'reveal' ? (
         <Text style={styles.h1}>{t('getReadyWait')}</Text>
       ) : (
-        <>
-          <Text style={styles.timer}>{secs !== null ? `${secs}s` : ''}</Text>
+        <Animated.View style={{ opacity: phaseIn, transform: [{ translateY: phaseIn.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
+          <MatchTimer endsAt={state.phase === 'guess' ? state.guessEndsAt : null} urgentAt={5} style={{ marginTop: 8, marginBottom: 4 }} />
           {someoneElseAnswered ? (
-            <View style={styles.center}>
-              <Ionicons name="lock-closed" size={28} color={theme.muted} />
-              <Text style={styles.muted}>{t('guess.locked', { name: state.locked?.byName ?? '' })}</Text>
-            </View>
+            <GuessStatusPanel
+              icon="lock-closed"
+              iconColor={theme.danger}
+              stripe={theme.danger}
+              text={t('guess.locked', { name: state.locked?.byName ?? '' })}
+            />
           ) : youPassed ? (
-            <View style={styles.center}>
-              <Ionicons name="play-skip-forward" size={30} color={theme.accent} />
-              <Text style={styles.muted}>{t('guess.youPassed')}</Text>
-            </View>
+            <GuessStatusPanel
+              icon="play-skip-forward"
+              iconColor={theme.accent}
+              stripe={theme.accent}
+              text={t('guess.youPassed')}
+            />
           ) : (
             <>
               <Text style={styles.h1}>
@@ -2588,13 +3628,10 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
                   <Text style={styles.passHintText}>{t('guess.oppPassed')}</Text>
                 </View>
               ) : null}
-              <TextInput
+              <GameInput
                 placeholder={state.revealMode === 'player-player' ? t('guess.placeholderClub') : t('guess.placeholder')}
-                placeholderTextColor={theme.muted}
-          keyboardAppearance="dark"
                 value={text}
                 onChangeText={setText}
-                style={styles.input}
                 autoFocus={!tutorial}
                 editable={!youAnswered}
                 onSubmitEditing={() => text.trim() && actions.submitGuess(text.trim())}
@@ -2615,13 +3652,10 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
               />
             </>
           )}
-        </>
+        </Animated.View>
       )}
-      <Pressable onPress={handleLeave} style={{ position: 'absolute', top: 54, left: 18, zIndex: 20 }}>
-        <Ionicons name="close-circle" size={32} color={theme.muted} />
-      </Pressable>
       <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
-      {!tutorial ? <EmoteLayer state={state} actions={actions} /> : null}
+      {!tutorial ? <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} /> : null}
     </Screen>
   );
 }
@@ -2631,6 +3665,11 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
 // (2) When the user closes it, gems fly from the card up into the top-right gem
 // counter, then the overlay dismisses. Triggered after a successful IAP.
 const GEM_COUNT = 10; // number of flying gem particles
+// Radial directions for the one-shot 6-gem reveal spark (≤7 particles — FX restraint).
+const SPARK_DIRS = Array.from({ length: 6 }, (_, i) => {
+  const a = (Math.PI * 2 * i) / 6 - Math.PI / 2;
+  return { x: Math.cos(a) * 86, y: Math.sin(a) * 70 };
+});
 
 export function DiamondCelebration({
   amount,
@@ -2661,16 +3700,20 @@ export function DiamondCelebration({
   const screenH = Dimensions.get('window').height;
   const originX = screenW / 2;        // gems launch from the card centre
   const originY = screenH * 0.46;
-  // Fly into the real diamond counter (measured by App.tsx). Fall back to the
-  // top-right corner if it hasn't been measured yet.
-  const targetX = gemTarget.measured ? gemTarget.x : screenW - 86;
-  const targetY = gemTarget.measured ? gemTarget.y : 78;
+  // Fly into the real diamond counter (measured by App.tsx). Read this at close
+  // time, not render time: App measures the pill after the celebration mounts.
+  const getTarget = () => ({
+    x: gemTarget.measured ? gemTarget.x : screenW - 86,
+    y: gemTarget.measured ? gemTarget.y : 78,
+  });
   const arenaReward = variant === 'arenaReward';
   const arenaVisual = arenaName ? getArenaDataByName(arenaName) : null;
-  const title = arenaReward ? 'Tebrikler, yeni arenaya ulaştın!' : t('store.purchaseSuccess');
+  const title = arenaReward ? t('celebration.arenaTitle') : t('store.purchaseSuccess');
   const subtitle = arenaReward
-    ? `${arenaName ?? 'Yeni arena'} ödülün: +${amount.toLocaleString('tr-TR')} elmas`
+    ? t('celebration.arenaReward', { arena: arenaName ?? 'Arena', n: amount.toLocaleString('tr-TR') })
     : null;
+  // ~400ms count-up on the revealed amount (spec §11).
+  const shownAmount = useCountUp(amount);
 
   // Pop the card in on mount.
   useEffect(() => {
@@ -2679,6 +3722,15 @@ export function DiamondCelebration({
       Animated.timing(cardOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
     ]).start();
   }, [cardScale, cardOpacity]);
+
+  // One-shot radial gem spark as the card lands (fades with the card on close).
+  const sparkAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(120),
+      Animated.timing(sparkAnim, { toValue: 1, duration: 550, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+    ]).start();
+  }, [sparkAnim]);
 
   useEffect(() => {
     if (!arenaReward || !arenaVisual) return;
@@ -2713,6 +3765,8 @@ export function DiamondCelebration({
     ]).start();
 
     const perGem = 70;
+    const target = getTarget();
+    let completed = 0;
     gemAnims.forEach((g, i) => {
       const startOffX = (Math.random() - 0.5) * 90;
       const startOffY = (Math.random() - 0.5) * 70;
@@ -2727,8 +3781,8 @@ export function DiamondCelebration({
             Animated.spring(g.scale, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }),
           ]),
           Animated.parallel([
-            Animated.timing(g.x, { toValue: targetX, duration: 540, easing: Easing.in(Easing.quad), useNativeDriver: true }),
-            Animated.timing(g.y, { toValue: targetY, duration: 540, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.x, { toValue: target.x, duration: 540, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.y, { toValue: target.y, duration: 540, easing: Easing.in(Easing.quad), useNativeDriver: true }),
             Animated.timing(g.scale, { toValue: 0.44, duration: 540, easing: Easing.in(Easing.quad), useNativeDriver: true }),
           ]),
           Animated.delay(60),
@@ -2736,115 +3790,163 @@ export function DiamondCelebration({
             Animated.timing(g.scale, { toValue: 0.18, duration: 120, easing: Easing.out(Easing.quad), useNativeDriver: true }),
             Animated.timing(g.opacity, { toValue: 0, duration: 120, useNativeDriver: true }),
           ]),
-        ]).start();
+        ]).start(() => {
+          completed += 1;
+          if (completed === gemAnims.length) onDone();
+        });
       }, i * perGem);
     });
-
-    setTimeout(onDone, (GEM_COUNT - 1) * perGem + 90 + 540 + 60 + 120);
   };
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={handleClose}>
+    <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={handleClose}>
       <View style={StyleSheet.absoluteFill}>
-        <Pressable
-          style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(6,10,20,0.74)' }]}
-          onPress={!arenaReward && !flying ? handleClose : undefined}
-        />
+        {/* Scrim fades with the card's own animated value (Modal animates nothing) */}
+        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim, opacity: cardOpacity }]}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={!arenaReward && !flying ? handleClose : undefined}
+          />
+        </Animated.View>
 
-        {/* Centered popup card */}
+        {/* Centered popup card — GameModal anatomy: panelInk ring → gem frame → face */}
         <View pointerEvents="box-none" style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36 }}>
+          {/* one-shot 6-gem radial spark on reveal */}
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+            {SPARK_DIRS.map((d, i) => (
+              <Animated.View
+                key={i}
+                style={{
+                  position: 'absolute',
+                  opacity: Animated.multiply(cardOpacity, sparkAnim.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 1, 0] })),
+                  transform: [
+                    { translateX: sparkAnim.interpolate({ inputRange: [0, 1], outputRange: [0, d.x] }) },
+                    { translateY: sparkAnim.interpolate({ inputRange: [0, 1], outputRange: [0, d.y] }) },
+                    { scale: sparkAnim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0.4, 1, 0.6] }) },
+                  ],
+                }}
+              >
+                <GemIcon size={18} />
+              </Animated.View>
+            ))}
+          </View>
           <Animated.View
             pointerEvents={flying ? 'none' : 'auto'}
             style={{
-              width: '100%', maxWidth: 320, alignItems: 'center',
-              backgroundColor: theme.card, borderRadius: 26,
-              borderWidth: 2, borderColor: GEM_COLOR + '88',
-              borderBottomWidth: 5, borderBottomColor: theme.cardLip,
-              paddingTop: 30, paddingBottom: 22, paddingHorizontal: 22,
+              width: '100%', maxWidth: 330,
               opacity: cardOpacity, transform: [{ scale: cardScale }],
-              shadowColor: GEM_COLOR, shadowOpacity: 0.55, shadowRadius: 22, shadowOffset: { width: 0, height: 8 }, elevation: 16,
+              backgroundColor: theme.panelInk, borderRadius: 22, padding: 2,
+              borderWidth: 2, borderColor: theme.gem, borderBottomColor: theme.gemDark,
+              overflow: 'hidden',
+              shadowColor: theme.gem, shadowOpacity: 0.45, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 18,
             }}
           >
-            {!arenaReward ? (
-              <Pressable onPress={handleClose} hitSlop={12} style={{
-                position: 'absolute', top: 10, right: 10, width: 32, height: 32, borderRadius: 16,
-                backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center',
-                borderWidth: 1, borderColor: theme.border, zIndex: 3,
-              }}>
-                <Ionicons name="close" size={19} color={theme.muted} />
-              </Pressable>
-            ) : null}
+            <View style={{ backgroundColor: theme.card, borderRadius: 20, overflow: 'hidden', borderBottomWidth: 3, borderBottomColor: theme.cardLip }}>
+              {/* Gold banner strip */}
+              <View style={{ height: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 46, backgroundColor: theme.accent, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.35)', borderBottomWidth: 3, borderBottomColor: theme.accentDark }}>
+                <Ionicons name="sparkles" size={18} color={theme.ink} />
+                <Text numberOfLines={1} style={{ color: theme.ink, fontFamily: 'Poppins-ExtraBold', fontSize: 16, letterSpacing: 0.5, textTransform: 'uppercase' }}>{t('celebration.congrats')}</Text>
+              </View>
 
-            {arenaReward && arenaVisual ? (
-              <View style={{ width: '100%', marginBottom: 14 }}>
-                <Animated.View style={{
-                  borderRadius: 22,
-                  overflow: 'hidden',
-                  borderWidth: 1.5,
-                  borderColor: arenaVisual.color + '66',
-                  backgroundColor: '#08111C',
-                  opacity: arenaHeroAnim.interpolate({ inputRange: [0, 1], outputRange: [0.76, 1] }),
-                  transform: [{ scale: arenaHeroAnim.interpolate({ inputRange: [0, 1], outputRange: [0.985, 1] }) }],
-                }}>
-                  <Image source={arenaVisual.img} style={{ width: '100%', aspectRatio: 16 / 9 }} resizeMode="cover" />
-                  <Animated.View
-                    pointerEvents="none"
-                    style={{
-                      position: 'absolute',
-                      top: -16,
-                      bottom: -16,
-                      width: '32%',
-                      backgroundColor: 'rgba(255,255,255,0.11)',
-                      opacity: arenaSheenAnim.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.85, 0] }),
-                      transform: [
-                        { translateX: arenaSheenAnim.interpolate({ inputRange: [0, 1], outputRange: [-120, 300] }) },
-                        { rotate: '14deg' },
-                      ],
-                    }}
-                  />
-                  <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 14, paddingTop: 18, paddingBottom: 12, backgroundColor: 'rgba(4,10,18,0.36)' }}>
-                    <View style={{ backgroundColor: 'rgba(4,10,18,0.76)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: arenaVisual.color + '55' }}>
-                      <Text numberOfLines={1} style={{ color: arenaVisual.color, fontFamily: 'Poppins-ExtraBold', fontSize: 16, textAlign: 'center' }}>
-                        {arenaLabel(arenaVisual.name)}
-                      </Text>
-                    </View>
+              <View style={{ alignItems: 'center', paddingTop: 16, paddingBottom: 18, paddingHorizontal: 22 }}>
+                {arenaReward && arenaVisual ? (
+                  <View style={{ width: '100%', marginBottom: 12 }}>
+                    <Animated.View style={{
+                      borderRadius: 16,
+                      overflow: 'hidden',
+                      borderWidth: 1.5,
+                      borderColor: withAlpha(arenaVisual.color, 0.4),
+                      backgroundColor: theme.panelInk,
+                      opacity: arenaHeroAnim.interpolate({ inputRange: [0, 1], outputRange: [0.76, 1] }),
+                      transform: [{ scale: arenaHeroAnim.interpolate({ inputRange: [0, 1], outputRange: [0.985, 1] }) }],
+                    }}>
+                      <Image source={arenaVisual.img} style={{ width: '100%', aspectRatio: 16 / 9 }} resizeMode="cover" />
+                      <Animated.View
+                        pointerEvents="none"
+                        style={{
+                          position: 'absolute',
+                          top: -16,
+                          bottom: -16,
+                          width: '32%',
+                          backgroundColor: 'rgba(255,255,255,0.11)',
+                          opacity: arenaSheenAnim.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.85, 0] }),
+                          transform: [
+                            { translateX: arenaSheenAnim.interpolate({ inputRange: [0, 1], outputRange: [-120, 300] }) },
+                            { rotate: '14deg' },
+                          ],
+                        }}
+                      />
+                    </Animated.View>
+                    {/* Opaque mini-bevel nameplate (card face + arena ring + cardLip lip)
+                        overlapping the image bottom — no translucent stacks (spec §14) */}
+                    <Animated.View
+                      style={{
+                        alignSelf: 'center', marginTop: -16, maxWidth: '86%',
+                        backgroundColor: theme.cardLip, borderRadius: 13, paddingBottom: 2,
+                        opacity: arenaHeroAnim.interpolate({ inputRange: [0, 1], outputRange: [0.76, 1] }),
+                      }}
+                    >
+                      <View
+                        style={{
+                          backgroundColor: theme.card, borderRadius: 12,
+                          borderWidth: 1.5, borderColor: arenaVisual.color, borderTopColor: theme.panelTopGloss,
+                          paddingHorizontal: 14, paddingVertical: 7,
+                        }}
+                      >
+                        <Text numberOfLines={1} style={{ color: arenaVisual.color, fontFamily: 'Poppins-ExtraBold', fontSize: 15, textAlign: 'center', ...engrave('sm') }}>
+                          {arenaLabel(arenaVisual.name)}
+                        </Text>
+                      </View>
+                    </Animated.View>
                   </View>
-                </Animated.View>
-              </View>
-            ) : !arenaReward && img ? (
-              <Image source={img} style={{ width: 150, height: 150 }} resizeMode="contain" />
-            ) : (
-              <View style={{ width: 150, height: 150, alignItems: 'center', justifyContent: 'center' }}>
-                <GemIcon size={arenaReward ? 118 : 104} />
-              </View>
-            )}
-            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18, marginTop: 6, textAlign: 'center' }}>
-              {title}
-            </Text>
-            {subtitle ? (
-              <Text style={{ color: theme.muted, fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 10 }}>
-                {subtitle}
-              </Text>
-            ) : (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, backgroundColor: theme.bg2, borderRadius: 16, paddingHorizontal: 18, paddingVertical: 9, borderWidth: 1.5, borderColor: GEM_COLOR + '55' }}>
-                <GemIcon size={24} />
-                <Text style={{ color: theme.gemText, fontFamily: 'Poppins-Black', fontSize: 22 }}>+{amount.toLocaleString('tr-TR')}</Text>
-              </View>
-            )}
-            <Pressable onPress={handleClose} style={{
-              marginTop: 20, alignSelf: 'stretch', backgroundColor: theme.primary, borderRadius: 16,
-              paddingVertical: 13, alignItems: 'center',
-              borderBottomWidth: 4, borderBottomColor: theme.primaryDark,
-            }}>
-              {arenaReward ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <GemIcon size={22} />
-                  <Text style={{ color: '#06131F', fontFamily: 'Poppins-Black', fontSize: 19 }}>+{amount.toLocaleString('tr-TR')}</Text>
+                ) : !arenaReward && img ? (
+                  <Image source={img} style={{ width: 150, height: 150 }} resizeMode="contain" />
+                ) : (
+                  <View style={{ width: 150, height: 150, alignItems: 'center', justifyContent: 'center' }}>
+                    <GemIcon size={arenaReward ? 118 : 104} />
+                  </View>
+                )}
+                <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18, marginTop: 6, textAlign: 'center', ...engrave('lg') }}>
+                  {title}
+                </Text>
+                {subtitle ? (
+                  <Text style={{ color: theme.muted, fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 10, fontFamily: 'Poppins-SemiBold' }}>
+                    {subtitle}
+                  </Text>
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, backgroundColor: theme.panelInnerFill, borderRadius: 14, paddingHorizontal: 18, paddingVertical: 9, borderWidth: 1.5, borderColor: theme.gem, borderTopColor: theme.cardLip }}>
+                    <GemIcon size={24} />
+                    <Text style={{ color: theme.gemText, fontFamily: 'Poppins-Black', fontSize: 22, fontVariant: ['tabular-nums'], ...engrave('sm') }}>+{shownAmount.toLocaleString('tr-TR')}</Text>
+                  </View>
+                )}
+                <View style={{ alignSelf: 'stretch', marginTop: 10 }}>
+                  <Btn
+                    big
+                    kind="primary"
+                    icon={arenaReward ? 'diamond' : undefined}
+                    label={arenaReward ? `+${amount.toLocaleString('tr-TR')}` : t('store.gotIt')}
+                    onPress={handleClose}
+                  />
                 </View>
-              ) : (
-                <Text style={{ color: '#06131F', fontFamily: 'Poppins-ExtraBold', fontSize: 15 }}>{t('store.gotIt')}</Text>
-              )}
-            </Pressable>
+              </View>
+
+              {/* Close gem — the GameModal recipe verbatim */}
+              {!arenaReward ? (
+                <Pressable
+                  onPress={handleClose}
+                  hitSlop={8}
+                  style={({ pressed }) => ({
+                    position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15,
+                    backgroundColor: pressed ? darken(theme.cardLip, 0.35) : theme.cardLip,
+                    borderWidth: 2, borderColor: theme.accentDark,
+                    alignItems: 'center', justifyContent: 'center', zIndex: 5,
+                    transform: [{ translateY: pressed ? 1 : 0 }],
+                  })}
+                >
+                  <Ionicons name="close" size={16} color={theme.accent} />
+                </Pressable>
+              ) : null}
+            </View>
           </Animated.View>
         </View>
 
@@ -2869,13 +3971,15 @@ export function DiamondCelebration({
 // `productId` must match the Consumable products created in App Store Connect (and
 // server/src/game/iap.ts DIAMOND_PRODUCTS). `price` is a fallback shown until the
 // real localized App Store price is fetched.
+// Pack tint = the theme escalation ramp (bronze lowest → flame highest) rendered
+// as each GamePanel's frame tint, so bigger packs visibly escalate.
 const DIAMOND_PACKS = [
-  { id: 'pack1', amount: 100,   price: '₺29,99',   label: 'Elmas Kesesi',      color: '#A855F7', best: false, productId: 'com.crossover.diamonds.100',   img: require('../assets/store/diamonds-100.png') },
-  { id: 'pack2', amount: 500,   price: '₺79,99',   label: 'Elmas Çuvalı',      color: '#C084FC', best: false, productId: 'com.crossover.diamonds.500',   img: require('../assets/store/diamonds-500.png') },
-  { id: 'pack3', amount: 1200,  price: '₺149,99',  label: 'Büyük Elmas Çuvalı', color: '#A855F7', best: true,  productId: 'com.crossover.diamonds.1200',  img: require('../assets/store/diamonds-1200.png') },
-  { id: 'pack4', amount: 5000,  price: '₺449,99',  label: 'Elmas Sandığı',     color: '#7C3AED', best: false, productId: 'com.crossover.diamonds.5000',  img: require('../assets/store/diamonds-5000.png') },
-  { id: 'pack5', amount: 15000, price: '₺999,99',  label: 'Kraliyet Sandığı',  color: '#9333EA', best: false, productId: 'com.crossover.diamonds.15000', img: require('../assets/store/diamonds-15000.png') },
-  { id: 'pack6', amount: 50000, price: '₺2.499,99', label: 'Elmas Dağı',       color: '#6B21A8', best: false, productId: 'com.crossover.diamonds.50000', img: require('../assets/store/diamonds-50000.png') },
+  { id: 'pack1', amount: 100,   price: '₺29,99',   label: 'Elmas Kesesi',      color: theme.bronze, best: false, productId: 'com.crossover.diamonds.100',   img: require('../assets/store/diamonds-100.png') },
+  { id: 'pack2', amount: 500,   price: '₺79,99',   label: 'Elmas Çuvalı',      color: theme.silver, best: false, productId: 'com.crossover.diamonds.500',   img: require('../assets/store/diamonds-500.png') },
+  { id: 'pack3', amount: 1200,  price: '₺149,99',  label: 'Büyük Elmas Çuvalı', color: theme.gold,  best: true,  productId: 'com.crossover.diamonds.1200',  img: require('../assets/store/diamonds-1200.png') },
+  { id: 'pack4', amount: 5000,  price: '₺449,99',  label: 'Elmas Sandığı',     color: theme.blue,   best: false, productId: 'com.crossover.diamonds.5000',  img: require('../assets/store/diamonds-5000.png') },
+  { id: 'pack5', amount: 15000, price: '₺999,99',  label: 'Kraliyet Sandığı',  color: theme.purple, best: false, productId: 'com.crossover.diamonds.15000', img: require('../assets/store/diamonds-15000.png') },
+  { id: 'pack6', amount: 50000, price: '₺2.499,99', label: 'Elmas Dağı',       color: theme.flame,  best: false, productId: 'com.crossover.diamonds.50000', img: require('../assets/store/diamonds-50000.png') },
 ];
 const DIAMOND_PRODUCT_IDS = DIAMOND_PACKS.map((p) => p.productId);
 
@@ -2900,54 +4004,47 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
   useEffect(() => { if (visible) setNewName(''); }, [visible]);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.modalBg} onPress={onClose}>
-        <Pressable style={styles.nameModalCard} onPress={() => {}}>
-          <Ionicons name="create" size={32} color={theme.accent} />
-          <Text style={styles.modalTitle}>{t('store.changeName')}</Text>
+    <GameModal visible={visible} onClose={onClose} title={t('store.changeNameTitle')} icon="create">
+      <GameInput
+        placeholder={t('store.newName')}
+        value={newName}
+        onChangeText={setNewName}
+        autoFocus
+        maxLength={20}
+      />
 
-          <TextInput
-            placeholder={t('store.newName')}
-            placeholderTextColor={theme.muted}
-          keyboardAppearance="dark"
-            value={newName}
-            onChangeText={setNewName}
-            style={styles.input}
-            autoFocus
-            maxLength={20}
-          />
+      {/* Cost / balance in a recessed summary well */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: theme.panelInnerFill, borderRadius: 12, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, paddingVertical: 10, paddingHorizontal: 12 }}>
+        <Text style={styles.muted}>{t('store.cost')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Text style={{ color: canAfford ? theme.gemText : theme.danger, fontFamily: 'Poppins-ExtraBold', fontSize: 15, fontVariant: ['tabular-nums'] }}>{cost}</Text>
+          <GemIcon size={14} />
+        </View>
+        <Text style={styles.muted}>{t('store.balance')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15, fontVariant: ['tabular-nums'] }}>{diamonds}</Text>
+          <GemIcon size={14} />
+        </View>
+      </View>
 
-          <View style={styles.nameModalCost}>
-            <Text style={styles.muted}>{t('store.cost')}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Text style={{ color: canAfford ? GEM_COLOR : theme.danger, fontWeight: '800', fontSize: 15 }}>{cost}</Text>
-              <GemIcon size={14} />
-            </View>
-            <Text style={styles.muted}>{t('store.balance')}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>{diamonds}</Text>
-              <GemIcon size={14} />
-            </View>
-          </View>
+      {!canAfford ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center', backgroundColor: withAlpha(theme.danger, 0.14), borderRadius: 10, borderWidth: 1.5, borderColor: theme.danger, paddingVertical: 6, paddingHorizontal: 10 }}>
+          <Ionicons name="alert-circle" size={14} color={theme.danger} />
+          <Text style={{ color: theme.danger, fontSize: 12, fontFamily: 'Poppins-SemiBold', flexShrink: 1 }}>
+            {t('store.changeNameInsufficient')}
+          </Text>
+        </View>
+      ) : null}
 
-          {!canAfford ? (
-            <Text style={{ color: theme.danger, fontSize: 12, textAlign: 'center', marginBottom: 8 }}>
-              {t('store.changeNameInsufficient')}
-            </Text>
-          ) : null}
-
-          <Btn
-            label={t('store.changeNameConfirm')}
-            kind="accent"
-            icon="checkmark"
-            onPress={() => onConfirm(newName.trim())}
-            disabled={!canAfford || newName.trim().length < 2}
-          />
-          <View style={{ height: 6 }} />
-          <Btn label={t('store.cancel')} kind="ghost" icon="close" onPress={onClose} />
-        </Pressable>
-      </Pressable>
-    </Modal>
+      <Btn
+        label={t('store.changeNameConfirm')}
+        kind="accent"
+        icon="checkmark"
+        onPress={() => onConfirm(newName.trim())}
+        disabled={!canAfford || newName.trim().length < 2}
+      />
+      <Btn label={t('store.cancel')} kind="ghost" icon="close" onPress={onClose} />
+    </GameModal>
   );
 }
 
@@ -2980,6 +4077,8 @@ try {
 function useAdState(onReward?: () => void) {
   const [adsWatched, setAdsWatched] = useState(0);
   const [adLoading, setAdLoading] = useState(false);
+  // Ad failures surface as state so the caller renders a skinned GameModal (no native Alert).
+  const [adError, setAdError] = useState<{ code: string; message: string } | null>(null);
   const onRewardRef = useRef(onReward);
   onRewardRef.current = onReward;
 
@@ -3032,9 +4131,7 @@ function useAdState(onReward?: () => void) {
 
     unsubs.push(ad.addAdEventListener(AdEventType.ERROR, (error?: { code?: number; message?: string }) => {
       cleanup();
-      const code = error?.code ?? '?';
-      const msg = error?.message ?? '';
-      Alert.alert(t('store.adErrorTitle'), t('store.adErrorBody', { code: String(code), details: msg ? ` — ${msg}` : '' }));
+      setAdError({ code: String(error?.code ?? '?'), message: error?.message ?? '' });
     }));
 
     unsubs.push(ad.addAdEventListener(AdEventType.CLOSED, () => {
@@ -3045,7 +4142,8 @@ function useAdState(onReward?: () => void) {
   };
 
   const canWatch = !adLoading;
-  return { adsWatched, canWatch, watchAd, adLoading };
+  const clearAdError = useCallback(() => setAdError(null), []);
+  return { adsWatched, canWatch, watchAd, adLoading, adError, clearAdError };
 }
 
 // Next weekly drop reset = upcoming Monday 00:00 local.
@@ -3057,7 +4155,8 @@ function nextWeeklyReset(): number {
   return d.getTime();
 }
 
-// Valorant-style countdown pill: "X gün Y saat" normally, "Xsa Ydk Zsn" under a day.
+// Weekly-drop countdown: recessed timer trough (sunken top edge), tabular-nums so
+// the ticking seconds never jitter the pill width, subtle scale pulse under 1 hour.
 function WeeklyCountdown() {
   const [now, setNow] = useState(() => Date.now());
   const [target, setTarget] = useState(() => nextWeeklyReset());
@@ -3072,32 +4171,170 @@ function WeeklyCountdown() {
   const hh = Math.floor((s % 86400) / 3600);
   const mm = Math.floor((s % 3600) / 60);
   const ss = s % 60;
-  const label = days >= 1 ? `${days} gün ${hh} saat` : `${hh}sa ${mm}dk ${ss}sn`;
+  const label = days >= 1
+    ? t('store.countdown.daysHours', { d: days, h: hh })
+    : t('store.countdown.hms', { h: hh, m: mm, s: ss });
+  const urgent = s > 0 && s < 3600; // final hour → urgency pulse (spec §8 timer chips)
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!urgent) { pulse.setValue(0); return; }
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [urgent, pulse]);
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.bg, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: theme.danger, marginBottom: 4 }}>
+    <Animated.View
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: 4,
+        backgroundColor: theme.panelInnerFill, borderRadius: 999,
+        borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, // dark top = sunken
+        paddingHorizontal: 9, paddingVertical: 3,
+        transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) }],
+      }}
+    >
       <Ionicons name="time-outline" size={12} color={theme.danger} />
-      <Text style={{ color: theme.danger, fontSize: 10, fontWeight: '800' }}>{label} kaldı</Text>
-    </View>
+      <Text style={{ color: theme.danger, fontSize: 10, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.3, fontVariant: ['tabular-nums'] }}>{label}</Text>
+    </Animated.View>
+  );
+}
+
+// Rewarded-ad card — the "free gift" of the store: beveled play disc with a mint
+// halo, gem reward in Poppins-Black gemText, and a slow looping shine sweep.
+function AdRewardCard({ adLoading, adsWatched, onWatch }: { adLoading: boolean; adsWatched: number; onWatch: () => void }) {
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  return (
+    <GamePanel compact accentStripe={theme.primary} style={{ marginVertical: 5 }}>
+      <View
+        onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
+      >
+        <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.primary, borderBottomColor: theme.primaryDark, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="play" size={24} color={theme.primary} style={{ marginLeft: 2 }} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.storeAdTitle}>{t('store.watchAd')}</Text>
+          <Text style={[styles.muted, { textAlign: 'left', fontSize: 11.5, marginTop: 2 }]}>{t('store.freeDiamondsDesc')}</Text>
+        </View>
+        <View style={{ alignItems: 'center' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 2 }}>
+            <Text style={styles.storeAdReward}>+5</Text>
+            <GemIcon size={15} />
+          </View>
+          <Btn compact label={t('store.watch')} kind="primary" icon="play" loading={adLoading} onPress={onWatch} />
+          {adsWatched > 0 ? <Text style={[styles.muted, { fontSize: 10 }]}>{t('store.adsWatchedToday', { n: adsWatched })}</Text> : null}
+        </View>
+      </View>
+      {size.w > 0 ? <ShineSweep width={size.w} height={size.h} loop delay={600} duration={900} loopGap={2800} opacity={0.16} band={0.24} /> : null}
+    </GamePanel>
+  );
+}
+
+// One diamond pack row: GamePanel compact tinted by the pack's escalation-ramp
+// color; the whole card gets the 2px press-lip and the price is a real Btn
+// (its `loading` prop covers the mid-purchase state — no bare spinners).
+function DiamondPackRow({ pack, busy, inert, price, onBuy }: {
+  pack: (typeof DIAMOND_PACKS)[number]; busy: boolean; inert: boolean; price: string; onBuy: () => void;
+}) {
+  const { ty, onIn, onOut } = usePressLip(2);
+  return (
+    <Pressable disabled={inert || busy} onPress={onBuy} onPressIn={onIn} onPressOut={onOut}>
+      <Animated.View style={{ transform: [{ translateY: ty }], marginVertical: 5 }}>
+        <GamePanel compact tint={pack.color}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <Image source={pack.img} style={{ width: 52, height: 52 }} resizeMode="contain" />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14, ...engrave('sm') }}>{t(`store.${pack.id}` as MessageKey)}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                <GemIcon size={14} />
+                <Text style={{ color: theme.gemText, fontFamily: 'Poppins-ExtraBold', fontSize: 13 }}>{pack.amount.toLocaleString(currentLang())}</Text>
+              </View>
+            </View>
+            <Btn compact kind="primary" label={price} loading={busy} disabled={inert} onPress={onBuy} />
+          </View>
+        </GamePanel>
+        {pack.best ? (
+          <Ribbon label={t('store.popular')} style={{ position: 'absolute', top: -7, right: 10, transform: [{ rotate: '-2deg' }], zIndex: 3 }} />
+        ) : null}
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// Weekly emote shop row — raised-row bevel; unaffordable taps shake the row and
+// surface the "not enough gems" dialog (which deep-links to the diamond packs).
+function EmoteShopRow({ emote, owned, canAfford, onBuy, onBlocked }: {
+  emote: EmoteMeta; owned: boolean; canAfford: boolean; onBuy: () => void; onBlocked: () => void;
+}) {
+  const shake = useRef(new Animated.Value(0)).current;
+  const runShake = useCallback(() => {
+    shake.setValue(0);
+    Animated.sequence([
+      Animated.timing(shake, { toValue: 1, duration: 55, useNativeDriver: true }),
+      Animated.timing(shake, { toValue: -1, duration: 55, useNativeDriver: true }),
+      Animated.timing(shake, { toValue: 1, duration: 55, useNativeDriver: true }),
+      Animated.timing(shake, { toValue: 0, duration: 55, useNativeDriver: true }),
+    ]).start();
+  }, [shake]);
+  return (
+    <Animated.View style={[styles.storeEmoteCard, { transform: [{ translateX: shake.interpolate({ inputRange: [-1, 1], outputRange: [-4, 4] }) }] }]}>
+      <View style={{ width: 56, height: 56 }}>
+        <EmoteSticker id={emote.id} size={56} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.storeEmoteName}>{emote.premium?.name}</Text>
+        <Text style={styles.storeEmoteDesc} numberOfLines={2}>{emote.premium?.desc}</Text>
+      </View>
+      {owned ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.panelInnerFill, borderRadius: 10, borderWidth: 1, borderColor: theme.primary, paddingHorizontal: 10, paddingVertical: 7 }}>
+          <Ionicons name="checkmark-circle" size={15} color={theme.primary} />
+          <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>{t('store.owned')}</Text>
+        </View>
+      ) : (
+        <Btn compact kind="primary" icon="diamond" label={String(emote.premium?.price ?? 0)} onPress={() => { if (canAfford) onBuy(); else { runShake(); onBlocked(); } }} />
+      )}
+    </Animated.View>
   );
 }
 
 export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebration }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | null }) {
   const profile = state.profile;
+  // One skinned dialog for every store notice (pending/failed/coming-soon/ad errors) —
+  // replaces the five native Alert.alert sites. Content stays mounted through the
+  // GameModal exit animation; only `open` flips.
+  const [storeDialog, setStoreDialog] = useState<{ title: string; body: string; icon: IoniconName; danger?: boolean; coach?: boolean } | null>(null);
+  const [storeDialogOpen, setStoreDialogOpen] = useState(false);
+  const openStoreDialog = useCallback((d: { title: string; body: string; icon: IoniconName; danger?: boolean; coach?: boolean }) => {
+    setStoreDialog(d);
+    setStoreDialogOpen(true);
+  }, []);
   const adReward = useCallback(() => {
     // Watched a rewarded ad → credit diamonds server-side (persisted + capped).
     // state.notice/error aren't rendered on the Store tab, so give feedback HERE:
-    // the celebration overlay on success, an alert with the cap/throttle reason on
-    // refusal. The balance updates from the server's ad_reward_result reply.
+    // the celebration overlay on success, a danger dialog with the cap/throttle
+    // reason on refusal. The balance updates from the server's ad_reward_result reply.
     actions.grantAdReward()
       .then((granted) => { track('ad_reward_granted', { granted }); if (granted > 0) onDiamondCelebration?.({ amount: granted }); })
       .catch((e: Error) => {
         captureError(e, { where: 'ad_reward' });
         if (!/timeout|disconnected/.test(e?.message ?? '')) {
-          Alert.alert(t('store.adRewardTitle'), e?.message ?? t('store.adRewardFailed'));
+          openStoreDialog({ title: t('store.adRewardTitle'), body: e?.message || t('store.adRewardFailed'), icon: 'videocam-off', danger: true });
         }
       });
-  }, [actions, onDiamondCelebration]);
-  const { adsWatched, canWatch, watchAd, adLoading } = useAdState(adReward);
+  }, [actions, onDiamondCelebration, openStoreDialog]);
+  const { adsWatched, canWatch, watchAd, adLoading, adError, clearAdError } = useAdState(adReward);
+  useEffect(() => {
+    if (!adError) return;
+    openStoreDialog({
+      title: t('store.adErrorTitle'),
+      body: t('store.adErrorBody', { code: adError.code, details: adError.message ? ` — ${adError.message}` : '' }),
+      icon: 'videocam-off',
+      danger: true,
+    });
+    clearAdError();
+  }, [adError, clearAdError, openStoreDialog]);
   const storeScrollRef = useRef<ScrollView>(null);
   const sectionYRef = useRef<Record<string, number>>({});
 
@@ -3119,17 +4356,17 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
       }
     } catch (err) {
       captureError(err, { where: 'purchase_success', productId: purchase.productId });
-      Alert.alert(t('store.purchasePendingTitle'), t('store.purchasePendingBody'));
+      openStoreDialog({ title: t('store.purchasePendingTitle'), body: t('store.purchasePendingBody'), icon: 'hourglass' });
     } finally {
       setBuying(null);
     }
-  }, [actions, onDiamondCelebration]);
+  }, [actions, onDiamondCelebration, openStoreDialog]);
   const onPurchaseError = useCallback((err: { code?: string }) => {
     setBuying(null);
     const code = err?.code ?? '';
     track('purchase_error', { code });
-    if (!/cancel/i.test(code)) Alert.alert(t('store.purchaseFailedTitle'), t('store.purchaseFailedBody'));
-  }, []);
+    if (!/cancel/i.test(code)) openStoreDialog({ title: t('store.purchaseFailedTitle'), body: t('store.purchaseFailedBody'), icon: 'alert-circle', danger: true });
+  }, [openStoreDialog]);
   const { connected, products, subscriptions, requestPurchase, fetchProducts } = useIAP({ onPurchaseSuccess, onPurchaseError });
   useEffect(() => {
     if (!connected) return;
@@ -3160,7 +4397,7 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
     // Until the product exists in App Store Connect it won't load — show a gentle
     // "coming soon" instead of a payment error (e.g. in builds before IAP is set up).
     const loaded = [...products, ...subscriptions].some((p) => (p as { id?: string }).id === productId);
-    if (!loaded) { Alert.alert(t('store.comingSoonTitle'), t('store.comingSoonBody')); return; }
+    if (!loaded) { openStoreDialog({ title: t('store.comingSoonTitle'), body: t('store.comingSoonBody'), icon: 'time', coach: true }); return; }
     const isSub = SOCIAL_PACK_IDS.includes(productId);
     setBuying(productId);
     track('purchase_start', { productId, kind: isSub ? 'subscription' : 'diamonds' });
@@ -3180,222 +4417,324 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
   // Does the user have a Social Pack right now (server-authoritative expiry)?
   const hasActivePack = !!(profile?.socialPackUntil && new Date(profile.socialPackUntil) > new Date());
 
+  // "Not enough gems" dialog (weekly emote shop) — its CTA deep-links to the packs.
+  const [showNotEnough, setShowNotEnough] = useState(false);
+
+  // Staggered section entrance: fade + 12px rise, 200ms each, 40ms stagger.
+  const sectionAnims = useRef(Array.from({ length: 4 }, () => new Animated.Value(0))).current;
+  useEffect(() => {
+    Animated.stagger(40, sectionAnims.map((v) =>
+      Animated.timing(v, { toValue: 1, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+    )).start();
+  }, [sectionAnims]);
+  const sectionIn = (i: number) => ({
+    opacity: sectionAnims[i]!,
+    transform: [{ translateY: sectionAnims[i]!.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+  });
+
+  // Entitlement flips (plan buttons ⇄ AKTİF chip) crossfade instead of snapping.
+  const packFlip = useRef(new Animated.Value(1)).current;
+  const packStateSeen = useRef(hasActivePack);
+  useEffect(() => {
+    if (packStateSeen.current === hasActivePack) return;
+    packStateSeen.current = hasActivePack;
+    packFlip.setValue(0);
+    Animated.timing(packFlip, { toValue: 1, duration: 180, useNativeDriver: true }).start();
+  }, [hasActivePack, packFlip]);
+
   return (
     <Screen>
       <ScrollView ref={storeScrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
-        <ScreenHeader title={t('store.title')} icon="storefront" underline={theme.accent} />
+        <ScreenHeader title={t('store.title')} icon="storefront" />
 
-        {/* Sosyal Paket */}
-        <View onLayout={(e) => { sectionYRef.current['socialPack'] = e.nativeEvent.layout.y; }} />
-        <Text style={styles.sectionLabel}>{t('store.socialPackSection')}</Text>
-        <View style={[styles.storePackCard, { borderColor: theme.accent, borderWidth: 2 }]}>
-          <View style={styles.storePackBadge}>
-                <Text style={styles.storePackBadgeText}>{hasActivePack ? t('store.badgeActive') : t('store.badgeNew')}</Text>
-          </View>
-          <View style={{ gap: 8 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Ionicons name="people" size={24} color={theme.accent} />
-              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>{t('store.socialPackTitle')}</Text>
-            </View>
-            <Text style={{ color: theme.muted, fontSize: 12 }}>
-              {t('store.socialPackDesc')}
-            </Text>
-            {hasActivePack && profile?.socialPackUntil ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.primary + '22', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10, borderWidth: 1, borderColor: theme.primary, marginTop: 2 }}>
-                <Ionicons name="checkmark-circle" size={16} color={theme.primary} />
-                <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 12 }}>
-                  {t('store.activeUntil', { date: new Date(profile.socialPackUntil).toLocaleDateString(currentLang()) })}
+        {/* Sosyal Paket — hero panel (gold frame + gloss), corner ribbon status */}
+        <Animated.View style={sectionIn(0)} onLayout={(e) => { sectionYRef.current['socialPack'] = e.nativeEvent.layout.y; }}>
+          <SectionHeader label={t('store.socialPackSection')} icon="people" />
+          <View style={{ marginVertical: 5 }}>
+            <GamePanel hero>
+              <View style={{ gap: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Ionicons name="people" size={24} color={theme.accent} />
+                  <Text style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t('store.socialPackTitle')}</Text>
+                </View>
+                <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold' }}>
+                  {t('store.socialPackDesc')}
                 </Text>
+                {hasActivePack && profile?.socialPackUntil ? (
+                  <Animated.View style={{ opacity: packFlip, flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: theme.panelInnerFill, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10, borderWidth: 1, borderColor: theme.primary, marginTop: 2 }}>
+                    <Ionicons name="checkmark-circle" size={16} color={theme.primary} />
+                    <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>
+                      {t('store.activeUntil', { date: new Date(profile.socialPackUntil).toLocaleDateString(currentLang()) })}
+                    </Text>
+                  </Animated.View>
+                ) : null}
+                {/* While the pack is active we only show the "AKTİF" status above — the
+                    purchase buttons are hidden so it doesn't look re-purchasable. They
+                    come back automatically once the entitlement expires. */}
+                {!hasActivePack ? (
+                  <Animated.View style={{ opacity: packFlip, flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                    {SOCIAL_PACK.map((sp, i) => {
+                      const busy = buying === sp.productId;
+                      return (
+                        <View key={sp.id} style={{ flex: 1 }}>
+                          <Btn
+                            label={`${t(`store.${sp.id}` as MessageKey)} · ${priceFor(sp.productId, sp.price)}`}
+                            kind={i === 1 ? 'accent' : 'blue'}
+                            compact
+                            loading={busy}
+                            disabled={!!buying && !busy}
+                            onPress={() => buy(sp.productId)}
+                          />
+                          {i === 1 ? <Ribbon label={t('store.bestValue')} style={{ position: 'absolute', top: -5, right: 4, transform: [{ rotate: '-2deg' }], zIndex: 3 }} /> : null}
+                        </View>
+                      );
+                    })}
+                  </Animated.View>
+                ) : null}
               </View>
-            ) : null}
-            {/* While the pack is active we only show the "AKTİF" status above — the
-                purchase buttons are hidden so it doesn't look re-purchasable. They
-                come back automatically once the entitlement expires. */}
-            {!hasActivePack ? (
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-              {SOCIAL_PACK.map((sp, i) => {
-                const busy = buying === sp.productId;
-                return (
-                  <Pressable
-                    key={sp.id}
-                    disabled={!!buying}
-                    onPress={() => buy(sp.productId)}
-                    style={[styles.storePackPriceBox, { flex: 1, alignItems: 'center', minHeight: 46, justifyContent: 'center' }, i === 1 && { backgroundColor: theme.accent }, !!buying && !busy && { opacity: 0.5 }]}
-                  >
-                    {busy ? <ActivityIndicator color="#06131F" /> : (
-                      <>
-                        <Text style={{ color: '#06131F', fontSize: 10, fontWeight: '600' }}>{t(`store.${sp.id}` as MessageKey)}</Text>
-                        <Text style={styles.storePackPrice}>{priceFor(sp.productId, sp.price)}</Text>
-                      </>
-                    )}
-                  </Pressable>
-                );
-              })}
-            </View>
-            ) : null}
+            </GamePanel>
+            <Ribbon
+              label={hasActivePack ? t('store.badgeActive') : t('store.badgeNew')}
+              color={hasActivePack ? theme.primary : theme.danger}
+              style={{ position: 'absolute', top: -7, right: 12, transform: [{ rotate: '-2deg' }], zIndex: 3 }}
+            />
           </View>
-        </View>
+        </Animated.View>
 
         {/* Free diamonds - watch ads (unlimited) */}
-        <Text style={styles.sectionLabel}>{t('store.freeDiamonds')}</Text>
-        <View style={styles.storeAdCard}>
-          <Ionicons name="play-circle" size={32} color={theme.primary} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.storeAdTitle}>{t('store.watchAd')}</Text>
-            <Text style={styles.muted}>{t('store.freeDiamondsDesc')}</Text>
-          </View>
-          <View style={{ alignItems: 'center' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 4 }}>
-              <Text style={styles.storeAdReward}>+5</Text>
-              <GemIcon size={14} />
-            </View>
-            <Btn label={adLoading ? t('store.loading') : t('store.watch')} kind="primary" icon={adLoading ? 'hourglass' : 'play'} onPress={watchAd} disabled={adLoading} />
-            {adsWatched > 0 ? <Text style={[styles.muted, { fontSize: 10, marginTop: 2 }]}>{t('store.adsWatchedToday', { n: adsWatched })}</Text> : null}
-          </View>
-        </View>
+        <Animated.View style={sectionIn(1)}>
+          <SectionHeader label={t('store.freeDiamonds')} icon="gift" />
+          <AdRewardCard adLoading={adLoading} adsWatched={adsWatched} onWatch={watchAd} />
+        </Animated.View>
 
         {/* Diamond packs */}
-        <View onLayout={(e) => { sectionYRef.current['diamonds'] = e.nativeEvent.layout.y; }} />
-        <Text style={styles.sectionLabel}>{t('store.packs')}</Text>
-        {DIAMOND_PACKS.map((pack) => {
-          const busy = buying === pack.productId;
-          return (
-          <Pressable
-            key={pack.id}
-            disabled={!!buying}
-            onPress={() => buy(pack.productId)}
-            style={[styles.storePackCard, pack.best && styles.storePackBest, !!buying && !busy && { opacity: 0.5 }]}
-          >
-            {pack.best ? (
-              <View style={styles.storePackBadge}>
-                <Text style={styles.storePackBadgeText}>{t('store.popular')}</Text>
-              </View>
-            ) : null}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <Image source={pack.img} style={{ width: 52, height: 52 }} resizeMode="contain" />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14 }}>{t(`store.${pack.id}` as MessageKey)}</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                  <GemIcon size={14} />
-                  <Text style={{ color: theme.gemText, fontFamily: 'Poppins-ExtraBold', fontSize: 13 }}>{pack.amount.toLocaleString(currentLang())}</Text>
-                </View>
-              </View>
-              <View style={styles.storePackPriceBox}>
-                {busy ? <ActivityIndicator color="#06131F" /> : <Text style={styles.storePackPrice}>{priceFor(pack.productId, pack.price)}</Text>}
-              </View>
-            </View>
-          </Pressable>
-          );
-        })}
+        <Animated.View style={sectionIn(2)} onLayout={(e) => { sectionYRef.current['diamonds'] = e.nativeEvent.layout.y; }}>
+          <SectionHeader label={t('store.packs')} icon="diamond" />
+          {DIAMOND_PACKS.map((pack) => (
+            <DiamondPackRow
+              key={pack.id}
+              pack={pack}
+              busy={buying === pack.productId}
+              inert={!!buying && buying !== pack.productId}
+              price={priceFor(pack.productId, pack.price)}
+              onBuy={() => buy(pack.productId)}
+            />
+          ))}
+        </Animated.View>
 
         {/* Haftalık ifade dükkanı (satışlar burada — koleksiyonda değil) */}
-        {emoteWeeks().map(({ week, emotes }) => (
-          <View key={week}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <Text style={styles.sectionLabel}>{week === LATEST_WEEK ? t('store.thisWeek') : t('store.weekEmotes', { week })}</Text>
-              {week === LATEST_WEEK ? (
-                <>
-                  <View style={{ backgroundColor: theme.danger, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1, marginBottom: 4 }}>
-                    <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900' }}>{t('store.badgeNew')}</Text>
-                  </View>
-                  <WeeklyCountdown />
-                </>
-              ) : null}
+        <Animated.View style={sectionIn(3)}>
+          {emoteWeeks().map(({ week, emotes }) => (
+            <View key={week}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, marginBottom: 6 }}>
+                <SectionHeader
+                  label={week === LATEST_WEEK ? t('store.thisWeek') : t('store.weekEmotes', { week })}
+                  icon="happy"
+                  style={{ flex: 1, marginTop: 0, marginBottom: 0 }}
+                />
+                {week === LATEST_WEEK ? (
+                  <>
+                    <Ribbon label={t('store.badgeNew')} color={theme.danger} />
+                    <WeeklyCountdown />
+                  </>
+                ) : null}
+              </View>
+              {emotes.map((e) => (
+                <EmoteShopRow
+                  key={e.id}
+                  emote={e}
+                  owned={ownsEmote(profile, e.id)}
+                  canAfford={(profile?.diamonds ?? 0) >= (e.premium?.price ?? 0)}
+                  onBuy={() => actions.buyEmote(e.id)}
+                  onBlocked={() => setShowNotEnough(true)}
+                />
+              ))}
             </View>
-            {emotes.map((e) => {
-              const owned = ownsEmote(profile, e.id);
-              const canAfford = (profile?.diamonds ?? 0) >= (e.premium?.price ?? 0);
-              return (
-                <View key={e.id} style={styles.storeEmoteCard}>
-                  <View style={{ width: 56, height: 56 }}>
-                    <EmoteSticker id={e.id} size={56} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.storeEmoteName}>{e.premium?.name}</Text>
-                    <Text style={styles.storeEmoteDesc} numberOfLines={2}>{e.premium?.desc}</Text>
-                  </View>
-                  {owned ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8 }}>
-                      <Ionicons name="checkmark-circle" size={16} color={theme.primary} />
-                      <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 12 }}>{t('store.owned')}</Text>
-                    </View>
-                  ) : (
-                    <Pressable style={[styles.storeEmoteBuy, !canAfford && { opacity: 0.5 }]} onPress={() => canAfford && actions.buyEmote(e.id)}>
-                      <Text style={styles.storeEmoteBuyText}>{e.premium?.price}</Text>
-                      <GemIcon size={13} />
-                    </Pressable>
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        ))}
+          ))}
+        </Animated.View>
       </ScrollView>
+
+      <GameModal
+        visible={storeDialogOpen}
+        onClose={() => setStoreDialogOpen(false)}
+        title={storeDialog?.title ?? ''}
+        icon={storeDialog?.icon}
+        danger={storeDialog?.danger}
+        coach={storeDialog?.coach}
+      >
+        <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+          {storeDialog?.body ?? ''}
+        </Text>
+        <Btn big label={t('settings.confirm')} onPress={() => setStoreDialogOpen(false)} />
+      </GameModal>
+
+      {/* Not enough gems for a weekly emote → gold CTA scrolls to the diamond packs */}
+      <GameModal visible={showNotEnough} onClose={() => setShowNotEnough(false)} title={t('store.notEnoughGemsTitle')} icon="diamond">
+        <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+          {t('store.notEnoughGemsBody')}
+        </Text>
+        <Btn
+          big
+          kind="accent"
+          icon="diamond"
+          label={t('store.goToDiamonds')}
+          onPress={() => {
+            setShowNotEnough(false);
+            const y = sectionYRef.current['diamonds'];
+            if (y !== undefined) storeScrollRef.current?.scrollTo({ y, animated: true });
+          }}
+        />
+      </GameModal>
 
       {buying ? <PurchaseOverlay /> : null}
     </Screen>
   );
 }
 
+// Mid-payment wait: a GameModal-anatomy card (panelInk ring → gold frame → card
+// face with cardLip lip) carrying the REAL BrandMark. 150ms scrim fade + spring
+// scale 0.9→1 on mount, mirroring GameModal's entrance.
 function PurchaseOverlay() {
+  const fade = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.9)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fade, { toValue: 1, duration: 150, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }),
+    ]).start();
+  }, [fade, scale]);
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(6, 12, 24, 0.62)', paddingHorizontal: 28 }}>
-      <View style={{ width: '100%', maxWidth: 280, borderRadius: 24, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.primary + '66', alignItems: 'center', paddingVertical: 26, paddingHorizontal: 22, shadowColor: theme.primary, shadowOpacity: 0.22, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 18 }}>
-        <View style={{ width: 86, height: 86, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', marginBottom: 14 }}>
-          <Image source={require('../assets/splash-icon.png')} style={{ width: 58, height: 58 }} resizeMode="contain" />
+    <View pointerEvents="none" style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }}>
+      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim, opacity: fade }]} />
+      <Animated.View
+        style={{
+          width: '100%', maxWidth: 280,
+          opacity: fade, transform: [{ scale }],
+          backgroundColor: theme.panelInk, borderRadius: 22, padding: 2,
+          borderWidth: 2, borderColor: theme.frameGold, borderBottomColor: theme.frameGoldDark,
+          shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 24, shadowOffset: { width: 0, height: 14 }, elevation: 24,
+        }}
+      >
+        <View style={{ backgroundColor: theme.card, borderRadius: 20, overflow: 'hidden', borderTopWidth: 1, borderTopColor: theme.panelTopGloss, borderBottomWidth: 3, borderBottomColor: theme.cardLip, alignItems: 'center', paddingVertical: 24, paddingHorizontal: 20 }}>
+          <BrandMark size={72} glow />
+          <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginTop: 14, lineHeight: 18 }}>{t('store.processing')}</Text>
+          <View style={{ marginTop: 12 }}><GameSpinner /></View>
         </View>
-        <Text style={{ color: theme.text, fontFamily: 'Poppins-Black', fontSize: 20, letterSpacing: 1.2 }}>CROSSOVER</Text>
-        <Text style={{ color: theme.muted, fontSize: 12, textAlign: 'center', marginTop: 8 }}>Satın alma güvenli şekilde işleniyor...</Text>
-        <ActivityIndicator color={theme.primary} style={{ marginTop: 16 }} />
-      </View>
+      </Animated.View>
     </View>
   );
 }
 
-// ---- Discoverable emote card (tap to play once, then greyscale) ----
-function DiscoverableEmoteCard({ emote, lastTapped, onTap, width }: {
+// ---- Discoverable emote card ----
+// Locked language: crisp frame + panelInk dim overlay (never whole-card opacity),
+// mini padlock disc, unlock-source caption. Tap to preview: the sticker spring-
+// scales up, a primary highlight ring fades in and auto-decays 400ms after the
+// preview ends — highlight means "currently playing", not "last touched".
+function DiscoverableEmoteCard({ emote, width }: {
   emote: EmoteMeta;
-  lastTapped: string | null;
-  onTap: (id: string) => void;
   width: number;
 }) {
   const [playing, setPlaying] = useState(false);
   const tmRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const decayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ring = useRef(new Animated.Value(0)).current; // highlight ring; also lifts the dim
+  const stickerScale = useRef(new Animated.Value(1)).current;
+  const { scale: pressScale, onIn, onOut } = usePressScale(0.96); // every touchable responds on press-in (spec §11)
+
+  const endPreview = useCallback(() => {
+    setPlaying(false);
+    Animated.spring(stickerScale, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }).start();
+    if (decayRef.current) clearTimeout(decayRef.current);
+    decayRef.current = setTimeout(() => {
+      Animated.timing(ring, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+    }, 400);
+  }, [ring, stickerScale]);
 
   const handlePress = () => {
     if (playing) return;
+    if (decayRef.current) clearTimeout(decayRef.current);
     setPlaying(true);
-    onTap(emote.id);
+    Animated.timing(ring, { toValue: 1, duration: 150, useNativeDriver: true }).start();
+    Animated.spring(stickerScale, { toValue: 1.12, friction: 5, tension: 140, useNativeDriver: true }).start();
     if (emote.kind === 'lottie') {
-      tmRef.current = setTimeout(() => setPlaying(false), 2000);
+      tmRef.current = setTimeout(endPreview, 2000);
     }
   };
 
   useEffect(() => {
-    return () => { if (tmRef.current) clearTimeout(tmRef.current); };
+    return () => {
+      if (tmRef.current) clearTimeout(tmRef.current);
+      if (decayRef.current) clearTimeout(decayRef.current);
+    };
   }, []);
 
-  const highlighted = lastTapped === emote.id;
+  const unlockLabel = emote.premium
+    ? (emote.week ? t('collection.unlockWeek', { week: emote.week }) : t('collection.unlockStore'))
+    : t('collection.unlockReward');
 
   return (
-    <Pressable
-      key={emote.id}
-      onPress={handlePress}
-      style={{
-        width, paddingTop: 10, paddingBottom: 8,
-        backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
-        borderWidth: 2, borderColor: highlighted ? theme.primary : theme.border,
-        borderBottomWidth: 3,
-        borderBottomColor: highlighted ? theme.primaryDark : theme.cardLip,
-        opacity: highlighted ? 1 : 0.7,
-      }}
-    >
-      <View style={{ width: 58, height: 58, alignItems: 'center', justifyContent: 'center' }}>
-        {playing ? (
-          <EmoteSticker key={`${emote.id}-anim`} id={emote.id} size={58} play onFinish={() => setPlaying(false)} />
-        ) : (
-          <EmoteSticker key={`${emote.id}-static`} id={emote.id} size={58} play={false} />
-        )}
+    <Pressable key={emote.id} onPress={handlePress} onPressIn={onIn} onPressOut={onOut} style={{ width }}>
+      <Animated.View
+        style={{
+          paddingTop: 10, paddingBottom: 6,
+          backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
+          borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss,
+          borderBottomWidth: 3, borderBottomColor: theme.cardLip,
+          overflow: 'hidden',
+          transform: [{ scale: pressScale }],
+        }}
+      >
+        <Animated.View style={{ width: 58, height: 58, alignItems: 'center', justifyContent: 'center', transform: [{ scale: stickerScale }] }}>
+          {playing ? (
+            <EmoteSticker key={`${emote.id}-anim`} id={emote.id} size={58} play onFinish={endPreview} />
+          ) : (
+            <EmoteSticker key={`${emote.id}-static`} id={emote.id} size={58} play={false} />
+          )}
+        </Animated.View>
+        <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', letterSpacing: 0.3, marginTop: 3, maxWidth: width - 12 }}>
+          {unlockLabel}
+        </Text>
+        {/* locked dim — lifts while the preview plays; the frame stays crisp */}
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(theme.panelInk, 0.45), opacity: ring.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]} />
+        {/* mini padlock disc */}
+        <View style={{ position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: 10, backgroundColor: theme.cardLip, borderWidth: 1.5, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="lock-closed" size={10} color={theme.muted} />
+        </View>
+        {/* highlight ring — "currently playing" */}
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 12, borderWidth: 2, borderColor: theme.primary, opacity: ring }]} />
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// Owned-emote card — press-lip physics + spring-pop equipped check. When the
+// loadout is full, the frame stays crisp and only the sticker dims.
+function CollectibleEmoteCard({ emote, width, isEquipped, blocked, onToggle }: {
+  emote: EmoteMeta; width: number; isEquipped: boolean; blocked: boolean; onToggle: () => void;
+}) {
+  const { ty, onIn, onOut } = usePressLip(2);
+  const check = useRef(new Animated.Value(isEquipped ? 1 : 0)).current;
+  useEffect(() => {
+    if (isEquipped) Animated.spring(check, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }).start();
+    else Animated.timing(check, { toValue: 0, duration: 120, useNativeDriver: true }).start();
+  }, [isEquipped, check]);
+  return (
+    <Pressable onPress={() => { if (!blocked) onToggle(); }} onPressIn={blocked ? undefined : onIn} onPressOut={blocked ? undefined : onOut} style={{ width }}>
+      <View style={{ backgroundColor: isEquipped ? theme.primaryDark : theme.cardLip, borderRadius: 15, paddingBottom: 3 }}>
+        <Animated.View style={{ transform: [{ translateY: ty }], paddingTop: 11, paddingBottom: 9, paddingHorizontal: 4, backgroundColor: theme.card, borderRadius: 14, alignItems: 'center', borderWidth: 2, borderColor: isEquipped ? theme.primary : theme.border, borderTopColor: isEquipped ? theme.primary : theme.panelTopGloss }}>
+          <View style={{ opacity: blocked ? 0.45 : 1 }}>
+            <EmoteSticker id={emote.id} size={58} />
+          </View>
+          <View style={{ height: 6 }} />
+          <Text style={{ color: isEquipped ? theme.primary : theme.muted, fontFamily: 'Poppins-ExtraBold', fontSize: 10.5 }} numberOfLines={1} adjustsFontSizeToFit>
+            {isEquipped ? t('collection.equipped') : t('collection.equip')}
+          </Text>
+          <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 4, right: 4, transform: [{ scale: check }] }}>
+            <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.card }}>
+              <Ionicons name="checkmark" size={11} color={theme.ink} />
+            </View>
+          </Animated.View>
+        </Animated.View>
       </View>
     </Pressable>
   );
@@ -3406,7 +4745,6 @@ const EMOTE_SLOTS = 6;
 export function CollectionScreen({ state, actions }: Props) {
   const profile = state.profile;
   const equipped = profile?.equippedEmotes ?? [];
-  const [lastTapped, setLastTapped] = useState<string | null>(null);
   const toggleEquip = (id: string) => {
     if (equipped.includes(id)) actions.equipEmotes(equipped.filter((x) => x !== id));
     else if (equipped.length < EMOTE_SLOTS) actions.equipEmotes([...equipped, id]);
@@ -3431,41 +4769,34 @@ export function CollectionScreen({ state, actions }: Props) {
     const isEquipped = equipped.includes(e.id);
     const blocked = full && !isEquipped;
     return (
-      <Pressable
+      <CollectibleEmoteCard
         key={e.id}
-        onPress={() => { if (!blocked) toggleEquip(e.id); }}
-        style={{
-          width: COL_W, paddingTop: 11, paddingBottom: 9, paddingHorizontal: 4,
-          backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
-          borderWidth: 2, borderColor: isEquipped ? theme.primary : theme.border,
-          borderBottomWidth: 3, borderBottomColor: isEquipped ? theme.primaryDark : theme.cardLip,
-          opacity: blocked ? 0.55 : 1,
-        }}
-      >
-        {isEquipped ? (
-          <View style={{ position: 'absolute', top: 4, right: 4, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>
-            <Ionicons name="checkmark" size={12} color="#06131F" />
-          </View>
-        ) : null}
-        <EmoteSticker id={e.id} size={58} />
-        <View style={{ height: 6 }} />
-        {isEquipped ? (
-          <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 10.5 }} numberOfLines={1} adjustsFontSizeToFit>{t('collection.equipped')}</Text>
-        ) : (
-          <Text style={{ color: theme.muted, fontWeight: '800', fontSize: 10.5 }} numberOfLines={1} adjustsFontSizeToFit>{t('collection.equip')}</Text>
-        )}
-      </Pressable>
+        emote={e}
+        width={COL_W}
+        isEquipped={isEquipped}
+        blocked={blocked}
+        onToggle={() => toggleEquip(e.id)}
+      />
     );
   };
 
   return (
     <Screen>
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-        <ScreenHeader title={t('tab.collection')} icon="albums" underline={theme.primary} />
+        <ScreenHeader
+          title={t('tab.collection')}
+          icon="albums"
+          right={
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.panelInnerFill, borderRadius: 999, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, paddingHorizontal: 9, paddingVertical: 5 }}>
+              <Ionicons name="albums" size={12} color={theme.accent} />
+              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 11, fontVariant: ['tabular-nums'] }}>{collectible.length}/{allEmotes.length}</Text>
+            </View>
+          }
+        />
 
         {/* Loadout — 6 slots the player fills with any emotes they choose */}
         <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 13, letterSpacing: 0.5, marginBottom: 4, marginLeft: 4 }}>{t('collection.loadout')}</Text>
-        <Text style={{ color: theme.muted, fontSize: 11, marginBottom: 10, marginLeft: 4 }}>{t('collection.loadoutHint', { n: String(equipped.length), max: String(EMOTE_SLOTS) })}</Text>
+        <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', marginBottom: 10, marginLeft: 4 }}>{t('collection.loadoutHint', { n: String(equipped.length), max: String(EMOTE_SLOTS) })}</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12, marginBottom: 22 }}>
           {Array.from({ length: EMOTE_SLOTS }).map((_, i) => {
             const id = equipped[i];
@@ -3474,13 +4805,14 @@ export function CollectionScreen({ state, actions }: Props) {
               <Pressable
                 key={`slot${i}`}
                 onPress={() => { if (id) toggleEquip(id); }}
-                style={{
+                style={({ pressed }) => ({
                   width: 72, height: 72, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
                   backgroundColor: em ? theme.card : theme.panelInnerFill,
                   borderWidth: 2, borderColor: em ? theme.primary : theme.border,
-                  borderStyle: em ? 'solid' : 'dashed',
-                  shadowColor: em ? theme.primary : 'transparent', shadowOpacity: em ? 0.5 : 0, shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
-                }}
+                  ...(em ? { borderTopColor: theme.panelTopGloss, borderBottomWidth: 4, borderBottomColor: theme.cardLip } : {}),
+                  borderStyle: (em ? 'solid' : 'dashed') as 'solid' | 'dashed',
+                  transform: [{ translateY: pressed ? 2 : 0 }],
+                })}
               >
                 {em ? <EmoteSticker id={em.id} size={54} /> : <Ionicons name="add" size={26} color={theme.muted} />}
               </Pressable>
@@ -3489,23 +4821,26 @@ export function CollectionScreen({ state, actions }: Props) {
         </View>
 
         {/* All collectible emotes — tap to equip/unequip */}
-        <Text style={{ color: theme.accent, fontFamily: 'Poppins-ExtraBold', fontSize: 13, letterSpacing: 0.5, marginBottom: 10, marginLeft: 4 }}>{t('collection.yourEmotes')}</Text>
+        <SectionHeader label={t('collection.yourEmotes').toLocaleUpperCase(currentLang())} icon="happy" style={{ marginBottom: 8 }} />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP }}>
           {collectible.map((e) => renderEmoteCard(e))}
         </View>
 
         {/* Discoverable emotes — all emotes greyed out, tap to play animation */}
-        <View style={{ height: 16 }} />
-        <Text style={{ color: theme.muted, fontFamily: 'Poppins-ExtraBold', fontSize: 13, letterSpacing: 0.5, marginBottom: 10, marginLeft: 4 }}>{t('collection.discoverable')}</Text>
+        <SectionHeader label={t('collection.discoverable').toLocaleUpperCase(currentLang())} icon="lock-closed" style={{ marginTop: 18, marginBottom: 8 }} />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP }}>
           {discoverable.length ? (
             discoverable.map((e) => (
-              <DiscoverableEmoteCard key={e.id} emote={e} lastTapped={lastTapped} onTap={setLastTapped} width={COL_W} />
+              <DiscoverableEmoteCard key={e.id} emote={e} width={COL_W} />
             ))
           ) : (
-            <View style={{ flex: 1, minHeight: 70, borderRadius: 14, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }}>
-              <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700', textAlign: 'center' }}>{t('collection.allOwned')}</Text>
-            </View>
+            // 100% completion is a celebration, not a muted empty box.
+            <GamePanel compact style={{ flex: 1 }} bodyStyle={{ alignItems: 'center', gap: 8, paddingVertical: 18 }}>
+              <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: theme.panelInnerFill, borderWidth: 2, borderColor: theme.accent, borderTopColor: theme.accentDark, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="trophy" size={26} color={theme.gold} />
+              </View>
+              <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') }}>{t('collection.allOwned')}</Text>
+            </GamePanel>
           )}
         </View>
       </ScrollView>
@@ -3514,37 +4849,89 @@ export function CollectionScreen({ state, actions }: Props) {
 }
 
 // Waiting overlay shown to the inviter while the friend decides (30s window).
-function InviteWaitingModal({ invite, onCancel }: { invite: GameState['outgoingInvite']; onCancel: () => void }) {
-  const [left, setLeft] = useState(30);
+// GameModal + the hero-wait dialect (spec §9): the friend's avatar sits inside
+// a pulsing glowSoft halo while an Svg ring drains down the 30s countdown.
+const INVITE_WINDOW_MS = 30_000;
+function InviteWaitingModal({ invite, avatarId, onCancel }: {
+  invite: GameState['outgoingInvite']; avatarId?: string | null; onCancel: () => void;
+}) {
+  const [leftMs, setLeftMs] = useState(INVITE_WINDOW_MS);
+  // Keep the last invite rendered through GameModal's 160ms exit animation.
+  const lastInvite = useRef(invite);
+  if (invite) lastInvite.current = invite;
+  const shown = invite ?? lastInvite.current;
+
   useEffect(() => {
     if (!invite) return;
     const tick = () => {
-      const s = Math.max(0, Math.ceil((invite.expiresAt - Date.now()) / 1000));
-      setLeft(s);
-      if (s <= 0) onCancel();
+      const ms = Math.max(0, invite.expiresAt - Date.now());
+      setLeftMs(ms);
+      if (ms <= 0) onCancel();
     };
     tick();
-    const id = setInterval(tick, 250);
+    const id = setInterval(tick, 100); // 10fps keeps the draining ring smooth
     return () => clearInterval(id);
   }, [invite?.toId, invite?.expiresAt]);
+
+  // Pulsing glowSoft halo behind the avatar (native driver scale/opacity only).
+  // Gated on an active invite — the component itself stays mounted in
+  // FriendsScreen, so an unconditional loop would churn forever.
+  const pulse = useRef(new Animated.Value(0)).current;
+  const hasInvite = !!invite;
+  useEffect(() => {
+    if (!hasInvite) return;
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => { loop.stop(); pulse.setValue(0); };
+  }, [hasInvite, pulse]);
+
+  const secs = Math.ceil(leftMs / 1000);
+  const frac = Math.min(1, Math.max(0, leftMs / INVITE_WINDOW_MS));
+  const urgent = secs <= 5;
+  const RING = 118;
+  const STROKE = 6;
+  const R = (RING - STROKE) / 2;
+  const C = 2 * Math.PI * R;
+
   return (
-    <Modal visible={!!invite} transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={styles.modalBg}>
-        <View style={styles.modalCard}>
-          <ActivityIndicator color={theme.primary} size="large" />
-          <Text style={styles.modalTitle}>{invite?.toName}</Text>
-          <Text style={[styles.muted, { textAlign: 'center', marginBottom: 6 }]}>{t('friends.waitingAccept')}</Text>
-          <Text style={{ color: theme.accent, fontFamily: 'Poppins-Black', fontSize: 36 }}>{left}s</Text>
-          <View style={{ height: 12 }} />
-          <Btn label={t('searching.cancel')} kind="ghost" icon="close" onPress={onCancel} />
+    <GameModal visible={!!invite} onClose={onCancel} title={t('friends.friendlyMatch')} icon="flash">
+      <View style={{ alignItems: 'center', gap: 8 }}>
+        <View style={{ width: RING + 20, height: RING + 20, alignItems: 'center', justifyContent: 'center' }}>
+          <Animated.View
+            pointerEvents="none"
+            style={{
+              position: 'absolute', width: RING + 16, height: RING + 16, borderRadius: (RING + 16) / 2,
+              backgroundColor: theme.glowSoft,
+              opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }),
+              transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1.04] }) }],
+            }}
+          />
+          {/* countdown ring draining around the avatar */}
+          <Svg width={RING} height={RING} style={{ position: 'absolute', transform: [{ rotate: '-90deg' }] }}>
+            <Circle cx={RING / 2} cy={RING / 2} r={R} stroke={theme.panelInnerFill} strokeWidth={STROKE} fill="none" />
+            <Circle
+              cx={RING / 2} cy={RING / 2} r={R}
+              stroke={urgent ? theme.danger : theme.primary} strokeWidth={STROKE} fill="none" strokeLinecap="round"
+              strokeDasharray={`${C}`} strokeDashoffset={C * (1 - frac)}
+            />
+          </Svg>
+          <AvatarBadge avatarId={avatarId} size={RING - STROKE * 2 - 14} ringColor={theme.border} />
         </View>
+        <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 17, ...engrave('sm') }} numberOfLines={1}>{shown?.toName}</Text>
+        <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{t('friends.waitingAccept')}</Text>
+        <Text style={{ color: urgent ? theme.danger : theme.accent, fontFamily: 'Poppins-Black', fontSize: 34, fontVariant: ['tabular-nums'], ...engrave('lg') }}>{secs}</Text>
       </View>
-    </Modal>
+      <Btn label={t('searching.cancel')} kind="ghost" icon="close" onPress={onCancel} />
+    </GameModal>
   );
 }
 
 // A friend's public profile (tapped from the friends list).
 export function FriendProfileModal({ profile, onClose }: { profile: PublicProfile | null; onClose: () => void }) {
+  const insets = useSafeAreaInsets();
   const total = (profile?.wins ?? 0) + (profile?.losses ?? 0);
   const winRate = total ? Math.round(((profile?.wins ?? 0) / total) * 100) : 0;
   const color = profile ? arenaColor(profile.arena.name) : theme.primary;
@@ -3552,31 +4939,30 @@ export function FriendProfileModal({ profile, onClose }: { profile: PublicProfil
     <Modal visible={!!profile} animationType="slide" onRequestClose={onClose} presentationStyle="overFullScreen" transparent>
       <View style={{ flex: 1, backgroundColor: BG_TOP }}>
         <ScreenBg />
-        <View style={{ flex: 1, paddingTop: 56, paddingHorizontal: 20 }}>
-          {/* Header with back */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
-            <Pressable onPress={onClose} hitSlop={10} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: theme.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.border }}>
-              <Ionicons name="arrow-back" size={20} color={theme.text} />
-            </Pressable>
-            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18, marginLeft: 12 }}>{t('profile.title')}</Text>
-          </View>
+        <View style={{ flex: 1, paddingTop: insets.top }}>
+          <ScreenHeader title={t('profile.title')} icon="person" onBack={onClose} />
 
-          {/* Avatar + name + arena */}
-          <View style={{ alignItems: 'center', marginBottom: 26 }}>
-            <AvatarBadge avatarId={profile?.avatar ?? profile?.selectedAvatar} size={110} ringColor={color} />
-            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 24, marginTop: 14 }}>{profile?.displayName}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, backgroundColor: theme.card, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: color + '66' }}>
-              <Ionicons name="trophy" size={15} color={theme.gold} />
-              <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 16 }}>{profile?.trophies ?? 0}</Text>
-              <Text style={styles.muted}> · {profile?.arena ? arenaLabel(profile.arena.name) : ''}</Text>
+          <View style={{ paddingHorizontal: 20 }}>
+            {/* Identity block — hero panel tinted by the friend's arena */}
+            <GamePanel hero tint={color} style={{ marginBottom: 14 }} bodyStyle={{ alignItems: 'center', paddingVertical: 22 }}>
+              <AvatarBadge avatarId={profile?.avatar ?? profile?.selectedAvatar} size={104} ringColor={color} />
+              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 22, marginTop: 12, ...engrave('lg') }} numberOfLines={1}>{profile?.displayName}</Text>
+              {/* Beveled gold trophies chip (mini-bevel: card face on a cardLip lip) */}
+              <View style={{ backgroundColor: theme.cardLip, borderRadius: 13, paddingBottom: 2, marginTop: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.card, borderRadius: 12, borderWidth: 1.5, borderColor: withAlpha(color, 0.45), borderTopColor: theme.panelTopGloss, paddingHorizontal: 14, paddingVertical: 6 }}>
+                  <Ionicons name="trophy" size={15} color={theme.gold} />
+                  <Text style={{ color: theme.gold, fontFamily: 'Poppins-ExtraBold', fontSize: 15, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{profile?.trophies ?? 0}</Text>
+                  <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>· {profile?.arena ? arenaLabel(profile.arena.name) : ''}</Text>
+                </View>
+              </View>
+            </GamePanel>
+
+            {/* Stats */}
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <StatCard icon="trophy" color={theme.primary} label={t('stats.wins')} value={profile?.wins ?? 0} />
+              <StatCard icon="skull-outline" color={theme.danger} label={t('stats.losses')} value={profile?.losses ?? 0} />
+              <StatCard icon="stats-chart" color={theme.blue} label={t('stats.winRate')} value={`${winRate}%`} />
             </View>
-          </View>
-
-          {/* Stats */}
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <StatCard icon="trophy" color={theme.primary} label={t('stats.wins')} value={profile?.wins ?? 0} />
-            <StatCard icon="skull-outline" color={theme.danger} label={t('stats.losses')} value={profile?.losses ?? 0} />
-            <StatCard icon="stats-chart" color={theme.blue} label={t('stats.winRate')} value={`${winRate}%`} />
           </View>
         </View>
       </View>
@@ -3585,23 +4971,345 @@ export function FriendProfileModal({ profile, onClose }: { profile: PublicProfil
 }
 
 // ---- Friends ----
+
+// Count badge (tab bars, conversation rows): danger disc + 2px bg2 separating
+// ring + engraved count, spring-pop on change (spec §8).
+function CountBadge({ count, style }: { count: number; style?: any }) {
+  const pop = useRef(new Animated.Value(1)).current;
+  const prev = useRef(count);
+  useEffect(() => {
+    if (count === prev.current) return;
+    prev.current = count;
+    if (count > 0) {
+      pop.setValue(0.5);
+      Animated.spring(pop, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }).start();
+    }
+  }, [count, pop]);
+  if (count <= 0) return null;
+  return (
+    <Animated.View
+      style={[{
+        transform: [{ scale: pop }],
+        backgroundColor: theme.danger, borderRadius: 11, minWidth: 20, height: 20,
+        alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5,
+        borderWidth: 2, borderColor: theme.bg2,
+      }, style]}
+    >
+      <Text style={{ color: theme.text, fontSize: 10, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{count}</Text>
+    </Animated.View>
+  );
+}
+
+// THE social list-row shell — the friend-row bevel recipe (2px ring with a
+// panelTopGloss top edge, 3px cardLip lip, drop shadow) plus pressed feedback:
+// 2px sink onto the lip + face darken. `ring` tints the frame (online/unread),
+// `wash` lays the glowSoft unread wash over the face.
+function BevelRow({ onPress, ring, wash = false, outerStyle, style, children }: {
+  onPress?: (e: { nativeEvent: { pageX: number; pageY: number } }) => void;
+  ring?: string; wash?: boolean; outerStyle?: any; style?: any; children: ReactNode;
+}) {
+  const face = (pressed: boolean) => (
+    <View
+      style={[{
+        backgroundColor: theme.cardLip, borderRadius: 15, paddingBottom: pressed ? 1 : 3,
+        shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4,
+      }, outerStyle]}
+    >
+      <View
+        style={[{
+          flexDirection: 'row', alignItems: 'center', gap: 10,
+          backgroundColor: pressed ? darken(theme.card, 0.14) : theme.card,
+          borderRadius: 14, padding: 12, overflow: 'hidden',
+          borderWidth: 2, borderColor: ring ?? theme.border, borderTopColor: ring ?? theme.panelTopGloss,
+          transform: [{ translateY: pressed ? 2 : 0 }],
+        }, style]}
+      >
+        {wash ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: theme.glowSoft }]} /> : null}
+        {children}
+      </View>
+    </View>
+  );
+  if (!onPress) return face(false);
+  return <Pressable onPress={onPress}>{({ pressed }) => face(pressed)}</Pressable>;
+}
+
+// Mini lipped circular icon-button (add-friend / view-profile / row actions):
+// face on a darker lip, top gloss, 1px press sink.
+function MiniIconBtn({ icon, face, lip, fg, ringColor, onPress, size = 34 }: {
+  icon: IoniconName; face: string; lip: string; fg: string; ringColor?: string; onPress: () => void; size?: number;
+}) {
+  return (
+    <Pressable onPress={onPress} hitSlop={6}>
+      {({ pressed }) => (
+        <View style={{ backgroundColor: lip, borderRadius: size / 2 + 2, paddingBottom: pressed ? 1 : 2.5 }}>
+          <View
+            style={{
+              width: size, height: size, borderRadius: size / 2,
+              backgroundColor: pressed ? darken(face, 0.1) : face,
+              borderWidth: ringColor ? 1.5 : 0, borderColor: ringColor,
+              borderTopWidth: 1.5, borderTopColor: ringColor ?? 'rgba(255,255,255,0.30)',
+              alignItems: 'center', justifyContent: 'center',
+              transform: [{ translateY: pressed ? 1.5 : 0 }],
+            }}
+          >
+            <Ionicons name={icon} size={Math.round(size * 0.46)} color={fg} />
+          </View>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+// Segmented control in a recessed trough: active segment is a chunky mint face
+// on a primaryDark lip; inactive segments are quiet wells with a 2px press-lip.
+function SegmentedTabs<K extends string>({ tabs, active, onChange }: {
+  tabs: { key: K; icon: IoniconName; label: string; badge?: number }[];
+  active: K;
+  onChange: (key: K) => void;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: 'row', gap: 3, padding: 3,
+        backgroundColor: theme.panelInnerFill, borderRadius: 15,
+        borderWidth: 2, borderColor: theme.border, borderTopColor: theme.cardLip, // dark top = sunken
+      }}
+    >
+      {tabs.map((tab) => (
+        <SegmentTab key={tab.key} icon={tab.icon} label={tab.label} badge={tab.badge ?? 0} active={tab.key === active} onPress={() => onChange(tab.key)} />
+      ))}
+    </View>
+  );
+}
+
+function SegmentTab({ icon, label, badge, active, onPress }: {
+  icon: IoniconName; label: string; badge: number; active: boolean; onPress: () => void;
+}) {
+  const { ty, onIn, onOut } = usePressLip(2);
+  return (
+    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1 }}>
+      <View style={{ backgroundColor: active ? theme.primaryDark : 'transparent', borderRadius: 11, paddingBottom: active ? 2 : 0 }}>
+        <Animated.View
+          style={{
+            transform: [{ translateY: ty }],
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+            paddingVertical: 9, borderRadius: 10,
+            backgroundColor: active ? theme.primary : 'transparent',
+            borderTopWidth: active ? 1.5 : 0, borderTopColor: 'rgba(255,255,255,0.30)',
+          }}
+        >
+          <Ionicons name={icon} size={14} color={active ? theme.ink : theme.muted} />
+          <Text numberOfLines={1} style={{ color: active ? theme.ink : theme.muted, fontSize: 12, fontFamily: 'Poppins-ExtraBold', flexShrink: 1 }}>{label}</Text>
+        </Animated.View>
+      </View>
+      <CountBadge count={badge} style={{ position: 'absolute', top: -7, right: -3 }} />
+    </Pressable>
+  );
+}
+
+// Pages content INSIDE one mounted GameModal: 200ms translateX/opacity slide on
+// page change (spec §7 — chained setTimeout modal handoffs are banned).
+// `dir` = 1 slides the new page in from the right (deeper), -1 from the left (back).
+function ModalPager({ pageKey, dir = 1, children }: { pageKey: string; dir?: 1 | -1; children: ReactNode }) {
+  const a = useRef(new Animated.Value(1)).current;
+  const prev = useRef(pageKey);
+  const dirRef = useRef<1 | -1>(dir);
+  // Detect the page swap during render so the incoming page never flashes at
+  // identity before the entrance starts (setValue is idempotent & pre-paint).
+  if (prev.current !== pageKey) {
+    prev.current = pageKey;
+    dirRef.current = dir;
+    a.setValue(0);
+  }
+  useEffect(() => {
+    Animated.timing(a, { toValue: 1, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+  }, [pageKey, a]);
+  return (
+    <Animated.View
+      style={{
+        opacity: a,
+        transform: [{ translateX: a.interpolate({ inputRange: [0, 1], outputRange: [dirRef.current * 26, 0] }) }],
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+// Mini step-back button for paged dialogs — the ScreenHeader back-button chrome
+// at dialog scale (34px beveled square, pressed 2px sink).
+function ModalBackBtn({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={8}
+      style={({ pressed }) => ({
+        width: 34, height: 34, borderRadius: 12,
+        backgroundColor: pressed ? theme.bg2 : theme.card,
+        borderWidth: 2, borderColor: theme.border,
+        borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
+        alignItems: 'center', justifyContent: 'center',
+        transform: [{ translateY: pressed ? 2 : 0 }],
+      })}
+    >
+      <Ionicons name="chevron-back" size={18} color={theme.text} />
+    </Pressable>
+  );
+}
+
+// Fades content back in whenever `trigger` changes (tab switches, page swaps).
+function CrossFade({ trigger, children }: { trigger: unknown; children: ReactNode }) {
+  const a = useRef(new Animated.Value(1)).current;
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    a.setValue(0);
+    Animated.timing(a, { toValue: 1, duration: 180, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+  }, [trigger, a]);
+  return <Animated.View style={{ opacity: a }}>{children}</Animated.View>;
+}
+
+// Incoming friend request row: BevelRow shell + mini circular lipped accept/deny
+// buttons; resolving slides the row out (translateX + fade + scaleY, 200ms,
+// native driver) before the server reflow removes it — no instant frame-cut.
+function FriendRequestRow({ request, onRespond }: {
+  request: GameState['friendRequests'][number];
+  onRespond: (accept: boolean) => void;
+}) {
+  const out = useRef(new Animated.Value(0)).current;
+  const [hidden, setHidden] = useState(false);
+  const resolving = useRef(false);
+  const resolve = (accept: boolean) => {
+    if (resolving.current) return;
+    resolving.current = true;
+    onRespond(accept); // protocol call unchanged — fires immediately
+    Animated.timing(out, { toValue: 1, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
+      if (finished) setHidden(true);
+    });
+  };
+  if (hidden) return null;
+  return (
+    <Animated.View
+      style={{
+        opacity: out.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+        transform: [
+          { translateX: out.interpolate({ inputRange: [0, 1], outputRange: [0, 84] }) },
+          { scaleY: out.interpolate({ inputRange: [0, 1], outputRange: [1, 0.7] }) },
+        ],
+      }}
+    >
+      <BevelRow ring={theme.accent} outerStyle={{ marginBottom: 8 }}>
+        {/* leading icon gem (GameRow recipe) */}
+        <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: theme.cardLip, borderWidth: 1.5, borderColor: darken(theme.accent, 0.25), alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="person-add" size={18} color={theme.accent} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14, ...engrave('sm') }} numberOfLines={1}>{request.fromName}</Text>
+          <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }} numberOfLines={1}>{t('friends.wantsToBeFriend')}</Text>
+        </View>
+        <MiniIconBtn icon="checkmark" face={theme.primary} lip={theme.primaryDark} fg={theme.ink} size={36} onPress={() => resolve(true)} />
+        <MiniIconBtn icon="close" face={theme.danger} lip={theme.dangerDark} fg={theme.text} size={36} onPress={() => resolve(false)} />
+      </BevelRow>
+    </Animated.View>
+  );
+}
+
+// Inline toast pill for transient notices/errors: glowSoft+primary (ok) or
+// danger tint (error), 180ms fade + rise entrance (native driver).
+function ToastPill({ kind, text }: { kind: 'ok' | 'error'; text: string }) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    a.setValue(0);
+    Animated.timing(a, { toValue: 1, duration: 180, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+  }, [text, a]);
+  const ok = kind === 'ok';
+  const fg = ok ? theme.primary : theme.danger;
+  return (
+    <Animated.View
+      style={{
+        opacity: a,
+        transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
+        flexDirection: 'row', alignItems: 'center', alignSelf: 'center', gap: 6, marginTop: 8,
+        paddingHorizontal: 13, paddingVertical: 6, borderRadius: 999,
+        backgroundColor: ok ? theme.glowSoft : withAlpha(theme.danger, 0.14),
+        borderWidth: 1.5, borderColor: fg,
+      }}
+    >
+      <Ionicons name={ok ? 'checkmark-circle' : 'alert-circle'} size={14} color={fg} />
+      <Text style={{ color: fg, fontSize: 12, fontFamily: 'Poppins-SemiBold', flexShrink: 1 }}>{text}</Text>
+    </Animated.View>
+  );
+}
+
+// Tiny mint "copied" confirmation pill — 150ms fade/scale/rise beside the copy button.
+function CopiedPill({ visible }: { visible: boolean }) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(a, { toValue: visible ? 1 : 0, duration: 150, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+  }, [visible, a]);
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute', right: 60,
+        opacity: a,
+        transform: [
+          { translateY: a.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) },
+          { scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) },
+        ],
+        flexDirection: 'row', alignItems: 'center', gap: 3,
+        backgroundColor: theme.primary, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2.5,
+        borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.4)',
+        borderBottomWidth: 2, borderBottomColor: theme.primaryDark,
+      }}
+    >
+      <Ionicons name="checkmark" size={10} color={theme.ink} />
+      <Text style={{ color: theme.ink, fontSize: 9.5, fontFamily: 'Poppins-Black', letterSpacing: 1 }}>{t('friends.copied')}</Text>
+    </Animated.View>
+  );
+}
+
+// Spring pop-in wrapper for anchored popovers: scale 0.92→1 + fade + small rise
+// (friction 6 / tension 120 — the dialog spring).
+function SpringPop({ style, children }: { style?: any; children: ReactNode }) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
+  }, [a]);
+  const clamped = a.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' });
+  return (
+    <Animated.View
+      style={[{
+        opacity: clamped,
+        transform: [
+          { scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) },
+          { translateY: a.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) },
+        ],
+      }, style]}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
 export function FriendsScreen({ state, actions, onGoToStore }: Props) {
   const [addInput, setAddInput] = useState('');
   const [searchMode, setSearchMode] = useState<'code' | 'username'>('code');
   const [friendTab, setFriendTab] = useState<'friends' | 'requests' | 'messages'>('friends');
   const [msgSearch, setMsgSearch] = useState('');
   const [copied, setCopied] = useState(false);
-  const [matchModal, setMatchModal] = useState<string | null>(null); // friendId — mode picker
-  const [matchStep, setMatchStep] = useState<'mode' | 'scope'>('mode');
+  const [matchModal, setMatchModal] = useState<string | null>(null); // friendId — friendly-match dialog
+  // Friendly-match setup pages ALL live inside one mounted GameModal (mode →
+  // scope → league/country) and slide between each other — no modal handoffs.
+  const [matchPage, setMatchPage] = useState<{ key: 'mode' | 'scope' | 'league' | 'country'; dir: 1 | -1 }>({ key: 'mode', dir: 1 });
   const [matchMode, setMatchMode] = useState<GameMode>('team-team');
-  const [matchScope, setMatchScope] = useState<Scope>({ type: 'all' });
-  const [matchPicker, setMatchPicker] = useState<'scopeType' | 'league' | 'country' | null>(null);
-  const matchFriendRef = useRef<string | null>(null); // keep friendId when matchModal closes for picker
   const [menuFriend, setMenuFriend] = useState<FriendInfo | null>(null); // tapped friend → actions popover
   const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 }); // tap anchor for the popover
   const [confirmRemove, setConfirmRemove] = useState<FriendInfo | null>(null); // remove confirmation
   const [socialPackPopup, setSocialPackPopup] = useState(false);
   const menuActionLock = useRef(false);
+  const addInputRef = useRef<TextInput>(null);   // empty-state CTA → focus add-friend input
+  const msgSearchRef = useRef<TextInput>(null);  // empty-state CTA → focus message search
   const profile = state.profile;
   const hasSocialPack = profile?.socialPackUntil ? new Date(profile.socialPackUntil) > new Date() : false;
   const friends = state.friends;
@@ -3632,13 +5340,27 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
   return (
     <Screen>
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
-        <ScreenHeader title={t('friends.title')} icon="people" underline={theme.primary} />
+        <ScreenHeader title={t('friends.title')} icon="people" />
 
-        {/* Your code */}
+        {/* Your code — recessed trough (engraved code) + mini beveled copy button + copied pill */}
         <Text style={styles.sectionLabel}>{t('friends.yourCode')}</Text>
-        <View style={[styles.friendAddCard, { justifyContent: 'center', gap: 10 }]}>
-          <Text style={styles.friendCode}>{profile?.userId?.slice(0, 8).toUpperCase() ?? '...'}</Text>
-          <Pressable
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 5 }}>
+          <View
+            style={{
+              flex: 1, alignItems: 'center', justifyContent: 'center',
+              backgroundColor: theme.panelInnerFill, borderRadius: 14, paddingVertical: 12,
+              borderWidth: 2, borderColor: theme.border, borderTopColor: theme.cardLip, // dark top = sunken
+            }}
+          >
+            <Text style={styles.friendCode}>{profile?.userId?.slice(0, 8).toUpperCase() ?? '...'}</Text>
+          </View>
+          <MiniIconBtn
+            icon={copied ? 'checkmark' : 'copy-outline'}
+            face={theme.card}
+            lip={theme.cardLip}
+            ringColor={theme.border}
+            fg={copied ? theme.primary : theme.accent}
+            size={38}
             onPress={() => {
               const code = profile?.userId?.slice(0, 8).toUpperCase();
               if (code) {
@@ -3647,291 +5369,237 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
                 setTimeout(() => setCopied(false), 2000);
               }
             }}
-            hitSlop={8}
-          >
-            <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={18} color={copied ? theme.primary : theme.accent} />
-          </Pressable>
+          />
+          <CopiedPill visible={copied} />
         </View>
 
-        {/* Add friend */}
+        {/* Add friend — search mode as a segmented control (same trough voice as the tab bar) */}
         <Text style={styles.sectionLabel}>{t('friends.addSection')}</Text>
-        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
-          <Pressable
-            style={[styles.optChip, searchMode === 'code' && { borderColor: theme.primary }]}
-            onPress={() => setSearchMode('code')}
-          >
-            <Ionicons name="key-outline" size={14} color={searchMode === 'code' ? theme.primary : theme.muted} />
-            <Text style={[styles.optChipText, searchMode === 'code' && { color: theme.primary }]}>{t('friends.byCode')}</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.optChip, searchMode === 'username' && { borderColor: theme.primary }]}
-            onPress={() => setSearchMode('username')}
-          >
-            <Ionicons name="person-outline" size={14} color={searchMode === 'username' ? theme.primary : theme.muted} />
-            <Text style={[styles.optChipText, searchMode === 'username' && { color: theme.primary }]}>{t('friends.byName')}</Text>
-          </Pressable>
+        <View style={{ marginBottom: 6 }}>
+          <SegmentedTabs
+            tabs={[
+              { key: 'code', icon: 'key-outline', label: t('friends.byCode') },
+              { key: 'username', icon: 'person-outline', label: t('friends.byName') },
+            ]}
+            active={searchMode}
+            onChange={setSearchMode}
+          />
         </View>
-        <TextInput
+        <GameInput
+          inputRef={addInputRef}
           placeholder={searchMode === 'code' ? t('friends.enterCode') : t('friends.usernamePlaceholder')}
-          placeholderTextColor={theme.muted}
-          keyboardAppearance="dark"
           value={addInput}
           onChangeText={setAddInput}
           autoCapitalize={searchMode === 'code' ? 'characters' : 'none'}
           autoCorrect={false}
           onSubmitEditing={onSendRequest}
-          style={styles.input}
         />
         {searchMode === 'code' ? (
           <Btn label={t('friends.sendRequest')} icon="paper-plane" kind="primary" onPress={onSendRequest} disabled={addInput.trim().length < 3} />
         ) : (
           <Btn label={t('friends.search')} icon="search" kind="primary" onPress={() => { if (addInput.trim().length >= 3) actions.searchUsers(addInput.trim()); }} disabled={addInput.trim().length < 3} />
         )}
-        {!isNetworkErrorMessage(state.error) && state.error ? <Text style={[styles.error, { marginTop: 6 }]}>{state.error}</Text> : null}
-        {state.notice ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 6 }}>
-            <Ionicons name="checkmark-circle" size={15} color={theme.primary} />
-            <Text style={{ color: theme.primary, fontSize: 12.5, fontWeight: '700' }}>{state.notice}</Text>
-          </View>
-        ) : null}
+        {!isNetworkErrorMessage(state.error) && state.error ? <ToastPill kind="error" text={state.error} /> : null}
+        {state.notice ? <ToastPill kind="ok" text={state.notice} /> : null}
 
-        {/* Username search results */}
+        {/* Username search results — same bevel voice as the friend rows */}
         {searchMode === 'username' && state.userSearchResults.length > 0 ? (
-          <View style={{ marginTop: 10, gap: 6 }}>
+          <View style={{ marginTop: 10 }}>
             {state.userSearchResults.map((u) => (
-              <View key={u.userId} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.card, borderRadius: 12, borderWidth: 1, borderColor: theme.border, paddingVertical: 8, paddingHorizontal: 12, gap: 10 }}>
-                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="person" size={16} color={theme.primary} />
-                </View>
-                <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13, flex: 1 }} numberOfLines={1}>{u.displayName}</Text>
-                <Pressable onPress={() => actions.getUserProfile(u.userId)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: theme.bg2, borderWidth: 1, borderColor: theme.border }}>
-                  <Ionicons name="eye-outline" size={16} color={theme.accent} />
-                </Pressable>
-                <Pressable onPress={() => { actions.sendFriendRequest(undefined, u.displayName); }} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: theme.primary }}>
-                  <Ionicons name="person-add" size={16} color="#06131F" />
-                </Pressable>
-              </View>
+              <BevelRow key={u.userId} outerStyle={{ marginBottom: 6 }} style={{ paddingVertical: 9 }}>
+                <Avatar avatar={null} name={u.displayName} size={34} ring={theme.primary} ringWidth={1.5} iconColor={theme.primary} iconSize={15} />
+                <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13, flex: 1, ...engrave('sm') }} numberOfLines={1}>{u.displayName}</Text>
+                <MiniIconBtn icon="eye" face={theme.card} lip={theme.cardLip} ringColor={theme.border} fg={theme.text} onPress={() => actions.getUserProfile(u.userId)} />
+                <MiniIconBtn icon="person-add" face={theme.primary} lip={theme.primaryDark} fg={theme.ink} onPress={() => actions.sendFriendRequest(undefined, u.displayName)} />
+              </BevelRow>
             ))}
           </View>
         ) : null}
-        <NetworkErrorBeacon visible={isNetworkErrorMessage(state.error)} />
 
-        {/* Tabs: Arkadaşlarım | İstekler | Mesajlar */}
-        <View style={{ flexDirection: 'row', gap: 6, marginTop: 18, marginBottom: 12 }}>
-          {([
-            ['friends', 'people', t('friends.tabFriends')],
-            ['requests', 'person-add', t('friends.tabRequests')],
-            ['messages', 'chatbubbles', t('friends.tabMessages')],
-          ] as const).map(([key, icon, label]) => {
-            const active = friendTab === key;
-            const badgeNum = key === 'requests' ? requests.length : key === 'messages' ? state.totalUnread : 0;
-            return (
-              <Pressable
-                key={key}
-                onPress={() => {
-                  setFriendTab(key);
-                  if (key === 'messages') actions.loadConversations();
-                }}
-                style={{
-                  flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-                  paddingVertical: 10, borderRadius: 12,
-                  backgroundColor: active ? theme.primary : theme.card,
-                  borderWidth: 1, borderColor: active ? theme.primary : theme.border,
-                  position: 'relative',
-                }}
-              >
-                <Ionicons name={icon as any} size={15} color={active ? '#06131F' : theme.muted} />
-                <Text style={{ color: active ? '#06131F' : theme.text, fontWeight: '800', fontSize: 12 }}>{label}</Text>
-                {badgeNum > 0 ? (
-                  <View style={{ position: 'absolute', top: -6, right: -2, backgroundColor: theme.danger, borderRadius: 9, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
-                    <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>{badgeNum}</Text>
-                  </View>
-                ) : null}
-              </Pressable>
-            );
-          })}
+        {/* Tabs: Arkadaşlarım | İstekler | Mesajlar — segmented control in a recessed trough */}
+        <View style={{ marginTop: 18, marginBottom: 12 }}>
+          <SegmentedTabs
+            tabs={[
+              { key: 'friends', icon: 'people', label: t('friends.tabFriends') },
+              { key: 'requests', icon: 'person-add', label: t('friends.tabRequests'), badge: requests.length },
+              { key: 'messages', icon: 'chatbubbles', label: t('friends.tabMessages'), badge: state.totalUnread },
+            ]}
+            active={friendTab}
+            onChange={(key) => {
+              setFriendTab(key);
+              if (key === 'messages') actions.loadConversations();
+            }}
+          />
         </View>
 
+        <CrossFade trigger={friendTab}>
         {/* Requests tab */}
         {friendTab === 'requests' ? (
           requests.length === 0 ? (
-            <View style={styles.friendEmpty}>
-              <Ionicons name="mail-open-outline" size={48} color={theme.border} />
-              <Text style={styles.muted}>{t('friends.noPendingRequests')}</Text>
-            </View>
+            <EmptyState
+              icon="mail-open"
+              title={t('friends.noPendingRequests')}
+              hint={t('friends.noRequestsHint')}
+              cta={<Btn label={t('friends.add')} kind="ghost" icon="person-add" onPress={() => addInputRef.current?.focus()} />}
+            />
           ) : (
             requests.map((req) => (
-              <View key={req.requestId || req.fromId} style={{
-                flexDirection: 'row', alignItems: 'center', gap: 10,
-                backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 8,
-                borderWidth: 2, borderColor: theme.accent, borderBottomWidth: 3, borderBottomColor: theme.accentDark,
-                shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4,
-              }}>
-                <Ionicons name="person-add" size={24} color={theme.accent} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14 }}>{req.fromName}</Text>
-                  <Text style={{ color: theme.muted, fontSize: 11 }}>{t('friends.wantsToBeFriend')}</Text>
-                </View>
-                <Pressable
-                  onPress={() => actions.respondFriendRequest(req.requestId, true)}
-                  style={{ backgroundColor: theme.primary, borderRadius: 20, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Ionicons name="checkmark" size={20} color="#06131F" />
-                </Pressable>
-                <Pressable
-                  onPress={() => actions.respondFriendRequest(req.requestId, false)}
-                  style={{ backgroundColor: theme.danger, borderRadius: 20, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Ionicons name="close" size={20} color="#fff" />
-                </Pressable>
-              </View>
+              <FriendRequestRow
+                key={req.requestId || req.fromId}
+                request={req}
+                onRespond={(accept) => actions.respondFriendRequest(req.requestId, accept)}
+              />
             ))
           )
         ) : friendTab === 'messages' ? (
           <>
             {/* Search bar for starting a new chat */}
-            <View style={[styles.searchBox, { marginBottom: 10 }]}>
-              <Ionicons name="search" size={16} color={theme.muted} />
-              <TextInput
-                placeholder={t('friends.searchFriends')}
-                placeholderTextColor={theme.muted}
-                keyboardAppearance="dark"
-                value={msgSearch}
-                onChangeText={setMsgSearch}
-                style={[styles.searchInput, { fontSize: 13 }]}
-              />
-            </View>
+            <GameInput
+              icon="search"
+              inputRef={msgSearchRef}
+              placeholder={t('friends.searchFriends')}
+              value={msgSearch}
+              onChangeText={setMsgSearch}
+              containerStyle={{ marginTop: 0, marginBottom: 10 }}
+              style={{ fontSize: 13 }}
+            />
             {/* Search results — friends not in conversations yet */}
             {msgSearch.trim().length >= 2 ? (() => {
               const q = msgSearch.trim().toLowerCase();
               const matches = friends.filter(f => f.displayName.toLowerCase().includes(q) && !state.conversations.some(c => c.userId === f.userId));
               return matches.length > 0 ? matches.map(f => (
-                <Pressable key={f.userId} onPress={() => { setMsgSearch(''); actions.openChat(f.userId); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: theme.card, borderRadius: 12, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: theme.border }}>
+                <BevelRow key={f.userId} onPress={() => { setMsgSearch(''); actions.openChat(f.userId); }} outerStyle={{ marginBottom: 6 }} style={{ padding: 10 }}>
                   <Avatar avatar={f.avatar} name={f.displayName} size={36} ring={theme.primary} iconColor={theme.primary} iconSize={16} />
-                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14, flex: 1 }} numberOfLines={1}>{f.displayName}</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 }}>
-                    <Ionicons name="chatbubble" size={12} color="#06131F" />
-                    <Text style={{ color: '#06131F', fontWeight: '800', fontSize: 11 }}>{t('friends.sendMessage')}</Text>
+                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14, flex: 1, ...engrave('sm') }} numberOfLines={1}>{f.displayName}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.primary, borderRadius: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.30)', borderBottomWidth: 2, borderBottomColor: theme.primaryDark, paddingHorizontal: 10, paddingVertical: 5 }}>
+                    <Ionicons name="chatbubble" size={12} color={theme.ink} />
+                    <Text style={{ color: theme.ink, fontFamily: 'Poppins-ExtraBold', fontSize: 11 }}>{t('friends.sendMessage')}</Text>
                   </View>
-                </Pressable>
+                </BevelRow>
               )) : null;
             })() : null}
             {/* Conversation list */}
             {state.conversations.length === 0 && !msgSearch.trim() ? (
-              <View style={styles.friendEmpty}>
-                <Ionicons name="chatbubbles-outline" size={48} color={theme.border} />
-                <Text style={styles.muted}>{t('friends.noChats')}</Text>
-                <Text style={[styles.muted, { fontSize: 11 }]}>{t('friends.searchToMessage')}</Text>
-              </View>
+              <EmptyState
+                icon="chatbubbles"
+                title={t('friends.noChats')}
+                hint={t('friends.searchToMessage')}
+                cta={<Btn label={t('friends.search')} kind="ghost" icon="search" onPress={() => msgSearchRef.current?.focus()} />}
+              />
             ) : state.conversations.map(c => (
-              <Pressable
+              <BevelRow
                 key={c.userId}
                 onPress={() => actions.openChat(c.userId)}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 10,
-                  backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 8,
-                  borderWidth: 1, borderColor: c.unreadCount > 0 ? theme.primary + '66' : theme.border,
-                }}
+                ring={c.unreadCount > 0 ? theme.primary : undefined}
+                wash={c.unreadCount > 0}
+                outerStyle={{ marginBottom: 8 }}
               >
                 <View style={{ position: 'relative' }}>
                   <AvatarBadge avatarId={c.avatar ?? c.selectedAvatar} size={44} ringColor={c.online ? theme.primary : theme.border} />
                   {c.online ? <View style={{ position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14 }} numberOfLines={1}>{c.displayName}</Text>
-                  <Text style={{ color: c.unreadCount > 0 ? theme.text : theme.muted, fontSize: 12, fontWeight: c.unreadCount > 0 ? '600' : '400' }} numberOfLines={1}>
+                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14, ...engrave('sm') }} numberOfLines={1}>{c.displayName}</Text>
+                  <Text style={{ color: state.typingFrom[c.userId] ? theme.primary : c.unreadCount > 0 ? theme.text : theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold' }} numberOfLines={1}>
                     {state.typingFrom[c.userId] ? t('chat.typing') : c.lastMessage}
                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                  <Text style={{ color: theme.muted, fontSize: 10 }}>
-                    {(() => { const d = new Date(c.lastMessageAt); const now = new Date(); return d.toDateString() === now.toDateString() ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : `${d.getDate()}.${d.getMonth()+1}`; })()}
-                  </Text>
-                  {c.unreadCount > 0 ? (
-                    <View style={{ backgroundColor: theme.danger, borderRadius: 10, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}>
-                      <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>{c.unreadCount}</Text>
-                    </View>
-                  ) : null}
+                  <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{shortDate(c.lastMessageAt)}</Text>
+                  <CountBadge count={c.unreadCount} />
                 </View>
-              </Pressable>
+              </BevelRow>
             ))}
           </>
         ) : /* Friends tab */ friends.length === 0 ? (
-          <View style={styles.friendEmpty}>
-            <Ionicons name="people-outline" size={48} color={theme.border} />
-            <Text style={styles.muted}>{t('friends.empty')}</Text>
-            <Text style={[styles.muted, { fontSize: 11 }]}>{t('friends.shareHint')}</Text>
-          </View>
+          <EmptyState
+            icon="people"
+            title={t('friends.empty')}
+            hint={t('friends.shareHint')}
+            cta={<Btn label={t('friends.add')} kind="ghost" icon="person-add" onPress={() => addInputRef.current?.focus()} />}
+          />
         ) : (
           friends.map((f) => (
-            <Pressable
+            <BevelRow
               key={f.userId}
               onPress={(e) => { menuActionLock.current = false; setMenuPos({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY }); setMenuFriend(f); }}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 12,
-                backgroundColor: theme.card, borderRadius: 14, padding: 12, marginBottom: 8,
-                borderWidth: 2, borderColor: f.online ? theme.primary : theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip,
-                shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4,
-              }}
+              ring={f.online ? theme.primary : undefined}
+              outerStyle={{ marginBottom: 8 }}
+              style={{ gap: 12 }}
             >
               <View style={{ position: 'relative' }}>
                 <AvatarBadge avatarId={f.avatar ?? f.selectedAvatar} size={38} ringColor={theme.accent} />
-                {f.online ? <View style={{ position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: 6, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card, shadowColor: theme.primary, shadowOpacity: 0.7, shadowRadius: 4, shadowOffset: { width: 0, height: 0 } }} /> : null}
+                {f.online ? <View style={{ position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: 6, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }} numberOfLines={1}>{f.displayName}</Text>
-                <Text style={{ color: f.online ? theme.primary : theme.muted, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>{f.online ? t('common.online') : lastSeenLabel(f.lastSeen)}</Text>
+                <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15, ...engrave('sm') }} numberOfLines={1}>{f.displayName}</Text>
+                <Text style={{ color: f.online ? theme.primary : theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }} numberOfLines={1}>{f.online ? t('common.online') : lastSeenLabel(f.lastSeen)}</Text>
               </View>
               {/* Trophy on the far right */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.bg2, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5, borderWidth: 1, borderColor: theme.border }}>
                 <Ionicons name="trophy" size={13} color={theme.gold} />
-                <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 13 }}>{f.trophies}</Text>
+                <Text style={{ color: theme.gold, fontFamily: 'Poppins-ExtraBold', fontSize: 13, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{f.trophies}</Text>
               </View>
-            </Pressable>
+            </BevelRow>
           ))
         )}
+        </CrossFade>
       </ScrollView>
 
+      <NetworkErrorBeacon visible={isNetworkErrorMessage(state.error)} />
+
       {/* Friend actions — small Clash-Royale-style popover above the tapped row */}
-      <Modal visible={menuFriend !== null} transparent animationType="fade" onRequestClose={() => setMenuFriend(null)}>
+      <Modal visible={menuFriend !== null} transparent animationType="none" onRequestClose={() => setMenuFriend(null)}>
         <View style={{ flex: 1 }} pointerEvents="box-none">
           <Pressable style={[StyleSheet.absoluteFill, { zIndex: 0 }]} onPress={() => setMenuFriend(null)} />
           {menuFriend ? (() => {
             const W = 236;
-            const H = 214;
+            const H = 222;
             const left = Math.max(8, Math.min(menuPos.x - W / 2, SCREEN_W - W - 8));
             const top = Math.max(56, menuPos.y - H - 14);
             const tailLeft = Math.min(Math.max(menuPos.x - left - 8, 18), W - 34);
             const Row = ({ color, label, onPress }: { color: string; label: string; onPress: () => void }) => (
               <Pressable
-                onPressIn={() => {
+                onPress={() => {
                   if (menuActionLock.current) return;
                   menuActionLock.current = true;
                   onPress();
                 }}
                 hitSlop={6}
                 pressRetentionOffset={18}
-                style={({ pressed }) => ({ paddingVertical: 14, paddingHorizontal: 14, alignItems: 'center', backgroundColor: pressed ? 'rgba(255,255,255,0.08)' : 'transparent' })}
+                style={({ pressed }) => ({
+                  paddingVertical: 14,
+                  paddingHorizontal: 14,
+                  alignItems: 'center',
+                  backgroundColor: pressed ? 'rgba(255,255,255,0.08)' : 'transparent',
+                })}
               >
-                <Text style={{ color, fontWeight: '800', fontSize: 14.5 }}>{label}</Text>
+                {({ pressed }) => (
+                  <Text style={{ color, fontFamily: 'Poppins-ExtraBold', fontSize: 14, ...engrave('sm'), transform: [{ translateY: pressed ? 2 : 0 }], opacity: pressed ? 0.82 : 1 }}>{label}</Text>
+                )}
               </Pressable>
             );
             return (
               <View style={{ position: 'absolute', left, top, width: W, zIndex: 2, elevation: 20 }} pointerEvents="box-none">
-                <View style={{ backgroundColor: theme.card, borderRadius: 14, borderWidth: 1, borderColor: theme.border, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 16 }}>
-                  <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '900', letterSpacing: 0.5, textAlign: 'center', paddingTop: 9, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: theme.border }} numberOfLines={1}>
-                    {menuFriend.displayName}
-                  </Text>
-                  <Row color={theme.text} label={t('friends.friendlyMatch')} onPress={() => { const id = menuFriend.userId; matchFriendRef.current = id; setMenuFriend(null); setMatchModal(id); }} />
-                  <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
-                  <Row color={theme.text} label={t('friends.sendMessage')} onPress={() => { const id = menuFriend.userId; setMenuFriend(null); actions.openChat(id); }} />
-                  <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
-                  <Row color={theme.text} label={t('friends.viewProfile')} onPress={() => { const id = menuFriend.userId; setMenuFriend(null); actions.getUserProfile(id); }} />
-                  <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
-                  <Row color={theme.danger} label={t('friends.removeFriend')} onPress={() => { const f = menuFriend; setMenuFriend(null); setConfirmRemove(f); }} />
-                </View>
-                {/* downward tail pointing at the row */}
-                <View style={{ position: 'absolute', bottom: -7, left: tailLeft, width: 15, height: 15, backgroundColor: theme.card, transform: [{ rotate: '45deg' }], borderRightWidth: 1, borderBottomWidth: 1, borderColor: theme.border }} />
+                {/* GamePanel-compact frame language + 150ms spring pop anchored at the tail */}
+                <SpringPop>
+                  <View style={{ backgroundColor: theme.bg2, borderRadius: 15, padding: 2, borderWidth: 2, borderColor: theme.border, borderBottomColor: theme.cardLip, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 16 }}>
+                    <View style={{ backgroundColor: theme.card, borderRadius: 13, borderTopWidth: 1, borderTopColor: theme.panelTopGloss, borderBottomWidth: 3, borderBottomColor: theme.cardLip, overflow: 'hidden' }}>
+                      <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5, textAlign: 'center', paddingTop: 9, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: theme.border }} numberOfLines={1}>
+                        {menuFriend.displayName}
+                      </Text>
+                      <Row color={theme.text} label={t('friends.friendlyMatch')} onPress={() => { const id = menuFriend.userId; setMenuFriend(null); setMatchPage({ key: 'mode', dir: 1 }); setMatchModal(id); }} />
+                      <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
+                      <Row color={theme.text} label={t('friends.sendMessage')} onPress={() => { const id = menuFriend.userId; setMenuFriend(null); actions.openChat(id); }} />
+                      <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
+                      <Row color={theme.text} label={t('friends.viewProfile')} onPress={() => { const id = menuFriend.userId; setMenuFriend(null); actions.getUserProfile(id); }} />
+                      <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
+                      <Row color={theme.danger} label={t('friends.removeFriend')} onPress={() => { const f = menuFriend; setMenuFriend(null); setConfirmRemove(f); }} />
+                    </View>
+                  </View>
+                  {/* downward tail pointing at the row — matches the frame ring */}
+                  <View style={{ position: 'absolute', bottom: -7, left: tailLeft, width: 15, height: 15, backgroundColor: theme.bg2, transform: [{ rotate: '45deg' }], borderRightWidth: 2, borderBottomWidth: 2, borderColor: theme.cardLip }} />
+                </SpringPop>
               </View>
             );
           })() : null}
@@ -3944,130 +5612,98 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
           {t('friends.removeConfirmBody', { name: confirmRemove?.displayName ?? '' })}
         </Text>
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <View style={{ flex: 1 }}><Btn label={t('settings.cancel')} kind="danger" icon="close" onPress={() => setConfirmRemove(null)} /></View>
-          <View style={{ flex: 1 }}><Btn label={t('settings.confirm')} kind="blue" icon="checkmark" onPress={() => { actions.removeFriend(confirmRemove!.userId); setConfirmRemove(null); }} /></View>
+          <View style={{ flex: 1 }}><Btn label={t('settings.cancel')} kind="ghost" icon="close" onPress={() => setConfirmRemove(null)} /></View>
+          <View style={{ flex: 1 }}><Btn label={t('settings.confirm')} kind="danger" icon="checkmark" onPress={() => { actions.removeFriend(confirmRemove!.userId); setConfirmRemove(null); }} /></View>
         </View>
       </GameModal>
 
-      {/* Match mode + scope selection modal */}
-      <Modal visible={matchModal !== null} transparent animationType="fade" onRequestClose={() => { setMatchModal(null); setMatchStep('mode'); }}>
-        <Pressable style={styles.modalBg} onPress={() => { setMatchModal(null); setMatchStep('mode'); }}>
-          <Pressable style={styles.modalCard} onPress={() => {}}>
-            {matchStep === 'mode' ? (
-              <>
-                <Text style={styles.modalTitle}>{t('friends.matchModeTitle')}</Text>
-                {(['team-team', 'country-team', 'letter-team'] as GameMode[]).map((m) => {
-                  const locked = m !== 'team-team' && !hasSocialPack;
-                  return (
-                    <Pressable
-                      key={m}
-                      style={[styles.modalRow, locked && { opacity: 0.4 }]}
-                      onPress={() => {
-                        if (locked) {
-                          setMatchModal(null);
-                          setMatchStep('mode');
-                          setSocialPackPopup(true);
-                          return;
-                        }
-                        setMatchMode(m);
-                        setMatchStep('scope');
-                      }}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        <Ionicons name={MODE_ICON[m]} size={18} color={locked ? theme.muted : theme.accent} />
-                        <Text style={[styles.modalRowText, locked && { color: theme.muted }]}>{MODE_LABEL(m)}</Text>
-                      </View>
-                      {locked ? <Ionicons name="lock-closed" size={16} color={theme.muted} /> : null}
-                    </Pressable>
-                  );
-                })}
-              </>
-            ) : (
-              <>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <Pressable onPress={() => setMatchStep('mode')} hitSlop={8}>
-                    <Ionicons name="arrow-back" size={20} color={theme.text} />
-                  </Pressable>
-                  <Text style={[styles.modalTitle, { flex: 1, marginBottom: 0 }]}>{t('friends.scopeTitle')}</Text>
-                </View>
-                <Pressable
-                  style={styles.modalRow}
+      {/* Friendly match setup — mode → scope → league/country page INSIDE one
+          mounted GameModal (200ms slide, spec §7: no setTimeout modal handoffs). */}
+      <GameModal
+        visible={matchModal !== null}
+        onClose={() => setMatchModal(null)}
+        title={(
+          matchPage.key === 'mode' ? t('friends.matchModeTitle')
+          : matchPage.key === 'scope' ? t('friends.scopeTitle')
+          : matchPage.key === 'league' ? t('scope.pickLeague')
+          : t('scope.pickCountry')
+        ).toLocaleUpperCase(currentLang())}
+        icon="game-controller"
+      >
+        <ModalPager pageKey={matchPage.key} dir={matchPage.dir}>
+          {matchPage.key === 'mode' ? (
+            (['team-team', 'country-team', 'letter-team'] as GameMode[]).map((m) => {
+              const locked = m !== 'team-team' && !hasSocialPack;
+              return (
+                <GameRow
+                  key={m}
+                  icon={MODE_ICON[m]}
+                  label={MODE_LABEL(m)}
+                  locked={locked}
+                  chevron
                   onPress={() => {
-                    actions.inviteFriendMatch(matchModal!, friends.find((f) => f.userId === matchModal)?.displayName ?? 'Arkadaş', { mode: matchMode });
-                    setMatchModal(null);
-                    setMatchStep('mode');
-                    setMatchScope({ type: 'all' });
+                    if (locked) {
+                      setMatchModal(null);
+                      setSocialPackPopup(true);
+                      return;
+                    }
+                    setMatchMode(m);
+                    setMatchPage({ key: 'scope', dir: 1 });
                   }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <Ionicons name="globe-outline" size={18} color={theme.primary} />
-                    <Text style={styles.modalRowText}>{t('scope.all')}</Text>
-                  </View>
-                </Pressable>
-                <Pressable
-                  style={styles.modalRow}
-                  onPress={() => { setMatchModal(null); setTimeout(() => setMatchPicker('league'), 350); }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <Ionicons name="trophy-outline" size={18} color={theme.accent} />
-                    <Text style={styles.modalRowText}>{t('scope.pickLeague')}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={theme.muted} />
-                </Pressable>
-                <Pressable
-                  style={styles.modalRow}
-                  onPress={() => { setMatchModal(null); setTimeout(() => setMatchPicker('country'), 350); }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <Ionicons name="flag-outline" size={18} color={theme.blue} />
-                    <Text style={styles.modalRowText}>{t('scope.pickCountry')}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={theme.muted} />
-                </Pressable>
-              </>
-            )}
-          </Pressable>
-        </Pressable>
-      </Modal>
+                />
+              );
+            })
+          ) : matchPage.key === 'scope' ? (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                <ModalBackBtn onPress={() => setMatchPage({ key: 'mode', dir: -1 })} />
+              </View>
+              <GameRow
+                icon="earth"
+                iconColor={theme.primary}
+                label={t('scope.all')}
+                onPress={() => {
+                  if (!matchModal) return; // dialog already exiting
+                  actions.inviteFriendMatch(matchModal, friends.find((f) => f.userId === matchModal)?.displayName ?? 'Arkadaş', { mode: matchMode });
+                  setMatchModal(null);
+                }}
+              />
+              <GameRow icon="trophy" label={t('scope.pickLeague')} chevron onPress={() => setMatchPage({ key: 'league', dir: 1 })} />
+              <GameRow icon="flag" iconColor={theme.blue} label={t('scope.pickCountry')} chevron onPress={() => setMatchPage({ key: 'country', dir: 1 })} />
+            </>
+          ) : (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                <ModalBackBtn onPress={() => setMatchPage({ key: 'scope', dir: -1 })} />
+              </View>
+              <ScopeListPage
+                key={matchPage.key}
+                kind={matchPage.key}
+                scopes={state.scopes}
+                onPick={(s) => {
+                  if (!matchModal) return; // dialog already exiting
+                  actions.inviteFriendMatch(matchModal, friends.find((f) => f.userId === matchModal)?.displayName ?? 'Arkadaş', { mode: matchMode, scope: s });
+                  setMatchModal(null);
+                }}
+              />
+            </>
+          )}
+        </ModalPager>
+      </GameModal>
 
-      {/* League/country picker for friend match scope */}
-      <PickerModal
-        picker={matchPicker}
-        scopes={state.scopes}
-        onClose={() => setMatchPicker(null)}
-        onScope={(s) => {
-          const fId = matchFriendRef.current;
-          setMatchScope(s);
-          setMatchPicker(null);
-          if (fId) {
-            actions.inviteFriendMatch(fId, friends.find((f) => f.userId === fId)?.displayName ?? 'Arkadaş', { mode: matchMode, scope: s });
-          }
-          setMatchStep('mode');
-        }}
-        onMode={() => {}}
-        onDifficulty={() => {}}
-        goto={() => {}}
-      />
-
-      {/* Social pack popup */}
-      <Modal visible={socialPackPopup} transparent animationType="fade" onRequestClose={() => setSocialPackPopup(false)}>
-        <Pressable style={styles.modalBg} onPress={() => setSocialPackPopup(false)}>
-          <Pressable style={styles.nameModalCard} onPress={() => {}}>
-            <Ionicons name="lock-closed" size={32} color={theme.accent} />
-            <Text style={styles.modalTitle}>{t('friends.socialPackRequired')}</Text>
-            <Text style={[styles.muted, { marginBottom: 12 }]}>
-              {t('friends.socialPackRequiredBody')}
-            </Text>
-            <Btn label={t('friends.goToStore')} kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); onGoToStore?.('socialPack'); }} />
-            <View style={{ height: 6 }} />
-            <Btn label={t('searching.cancel')} kind="ghost" icon="close" onPress={() => setSocialPackPopup(false)} />
-          </Pressable>
-        </Pressable>
-      </Modal>
+      {/* Social pack upsell — the ONE GameModal pattern (same as HomeScreen's) */}
+      <GameModal visible={socialPackPopup} onClose={() => setSocialPackPopup(false)} title={t('friends.socialPackRequired')} icon="lock-closed">
+        <Text style={[styles.muted, { textAlign: 'center', marginBottom: 8 }]}>{t('friends.socialPackRequiredBody')}</Text>
+        <Btn label={t('friends.goToStore')} kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); onGoToStore?.('socialPack'); }} />
+      </GameModal>
 
       {/* Outgoing invite — waiting for the friend to accept (30s) */}
       <InviteWaitingModal
         invite={state.outgoingInvite}
+        avatarId={(() => {
+          const f = friends.find((fr) => fr.userId === state.outgoingInvite?.toId);
+          return f?.avatar ?? f?.selectedAvatar;
+        })()}
         onCancel={() => { if (state.outgoingInvite) actions.cancelMatchInvite(state.outgoingInvite.toId); }}
       />
 
@@ -4075,9 +5711,9 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
       <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
 
       {/* Chat screen — WhatsApp style, swipe-back enabled */}
-      <Modal visible={state.chatWith !== null} animationType="slide" presentationStyle="fullScreen" onRequestClose={actions.closeChat}>
+      <Modal visible={state.chatWith !== null} transparent animationType="none" presentationStyle="overFullScreen" onRequestClose={actions.closeChat}>
         <SwipeBackWrap onBack={actions.closeChat}>
-          <ChatScreen state={state} actions={actions} />
+          {(softBack) => <ChatScreen state={state} actions={actions} onBack={softBack} />}
         </SwipeBackWrap>
       </Modal>
     </Screen>
@@ -4101,48 +5737,82 @@ function TypingDot({ delay }: { delay: number }) {
   }, [a, delay]);
   const scale = a.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
   const opacity = a.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] });
-  return <Animated.View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: theme.muted, transform: [{ scale }], opacity }} />;
+  return <Animated.View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: theme.primary, transform: [{ scale }], opacity }} />;
 }
 
-// ---- Swipe-back wrapper (WhatsApp-style left-edge → right gesture) ----
-// Wraps any fullScreen content. Dragging from the left 30px edge slides the
-// page right; past 35% of screen width it completes the back navigation,
-// otherwise it springs back. A dim overlay behind the sliding page fades in
-// to simulate depth. Vertical scrolls are never intercepted.
-const SWIPE_THRESHOLD = 0.35; // fraction of screen width to trigger back
-const EDGE_WIDTH = 30;        // px from left edge that starts the gesture
+// New chat messages mount with a 180ms fade + 8px rise (spec §11). History that
+// is already on screen when the chat opens must NOT re-animate: items mounted
+// with animate=false render at identity and stay there.
+function RiseIn({ animate, children }: { animate: boolean; children: ReactNode }) {
+  const a = useRef(new Animated.Value(animate ? 0 : 1)).current;
+  useEffect(() => {
+    if (!animate) return;
+    Animated.timing(a, { toValue: 1, duration: 180, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+  }, [a, animate]);
+  return (
+    <Animated.View style={{ opacity: a, transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
+      {children}
+    </Animated.View>
+  );
+}
 
-function SwipeBackWrap({ children, onBack }: { children: ReactNode; onBack: () => void }) {
-  const translateX = useRef(new Animated.Value(0)).current;
+// ---- Swipe-back wrapper ----
+// Horizontal drag anywhere closes the full-screen chat softly. Supports both
+// directions because users describe the gesture differently; vertical scrolls are
+// not intercepted.
+const SWIPE_THRESHOLD = 0.24; // fraction of screen width to trigger back
+
+// Top edge (pageY) of the chat composer. Gestures starting on/below it never
+// capture-steal — otherwise a horizontal text-selection drag inside the input
+// would close the chat and destroy the draft (Android TextInput always grants
+// responder termination, unlike iOS). ChatScreen keeps this up to date.
+const chatComposerTop = { y: Number.POSITIVE_INFINITY };
+
+function SwipeBackWrap({ children, onBack }: { children: (softBack: () => void) => ReactNode; onBack: () => void }) {
   const screenW = Dimensions.get('window').width;
-  const shouldStartBackSwipe = (_evt: any, g: { dx: number; dy: number }) =>
-    _evt.nativeEvent.pageX < EDGE_WIDTH && g.dx > 8 && g.dx > Math.abs(g.dy) * 1.8;
+  const translateX = useRef(new Animated.Value(screenW)).current;
+  const closingRef = useRef(false);
+  const shouldStartBackSwipe = (evt: any, g: { dx: number; dy: number }) =>
+    evt.nativeEvent.pageY < chatComposerTop.y &&
+    Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.7;
+
+  const closeWithAnimation = useCallback((direction = 1) => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    Animated.timing(translateX, {
+      toValue: direction >= 0 ? screenW : -screenW,
+      duration: 210,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => {
+      translateX.setValue(0);
+      closingRef.current = false;
+      onBack();
+    });
+  }, [onBack, screenW, translateX]);
+
+  useEffect(() => {
+    translateX.setValue(screenW);
+    Animated.timing(translateX, {
+      toValue: 0,
+      duration: 210,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [screenW, translateX]);
 
   const panResponder = useRef(PanResponder.create({
-    // Capture before the message ScrollView consumes the horizontal edge swipe.
+    // Capture before the message ScrollView consumes the horizontal swipe.
     onMoveShouldSetPanResponderCapture: shouldStartBackSwipe,
     onMoveShouldSetPanResponder: shouldStartBackSwipe,
-    onPanResponderGrant: () => {
-      // Dismiss keyboard when swipe starts so it doesn't interfere
-      Keyboard.dismiss();
-    },
     onPanResponderMove: (_, g) => {
-      if (g.dx > 0) translateX.setValue(g.dx);
+      translateX.setValue(g.dx);
     },
     onPanResponderRelease: (_, g) => {
-      const pastThreshold = g.dx > screenW * SWIPE_THRESHOLD;
-      const fastFlick = g.vx > 0.4 && g.dx > 40;
+      const pastThreshold = Math.abs(g.dx) > screenW * SWIPE_THRESHOLD;
+      const fastFlick = Math.abs(g.vx) > 0.45 && Math.abs(g.dx) > 34;
       if (pastThreshold || fastFlick) {
-        // Complete: slide off screen then call onBack
-        Animated.timing(translateX, {
-          toValue: screenW,
-          duration: 200,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }).start(() => {
-          translateX.setValue(0);
-          onBack();
-        });
+        closeWithAnimation(g.dx >= 0 ? 1 : -1);
       } else {
         // Cancel: spring back to origin
         Animated.spring(translateX, {
@@ -4153,46 +5823,47 @@ function SwipeBackWrap({ children, onBack }: { children: ReactNode; onBack: () =
         }).start();
       }
     },
+    onPanResponderTerminate: () => {
+      Animated.spring(translateX, {
+        toValue: 0,
+        useNativeDriver: true,
+        friction: 8,
+        tension: 80,
+      }).start();
+    },
   })).current;
 
-  // Dim overlay opacity: 0 when not swiping, 0.5 at full drag
-  const overlayOpacity = translateX.interpolate({
-    inputRange: [0, screenW],
-    outputRange: [0, 0.5],
-    extrapolate: 'clamp',
-  });
-
-  // Slight parallax: background shifts left a bit (like iOS)
-  const bgTranslateX = translateX.interpolate({
-    inputRange: [0, screenW],
-    outputRange: [-screenW * 0.3, 0],
-    extrapolate: 'clamp',
-  });
-
   return (
-    <View style={{ flex: 1, backgroundColor: '#000' }} {...panResponder.panHandlers}>
-      {/* Dim background layer */}
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#000', opacity: overlayOpacity }]} pointerEvents="none" />
+    <View style={{ flex: 1, backgroundColor: 'transparent' }} {...panResponder.panHandlers}>
       {/* Foreground page that slides */}
-      <Animated.View style={{ flex: 1, transform: [{ translateX }], shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: -10, height: 0 }, elevation: 16 }}>
-        {children}
+      <Animated.View style={{ flex: 1, backgroundColor: theme.bg, transform: [{ translateX }], shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: -10, height: 0 }, elevation: 16 }}>
+        {children(() => closeWithAnimation(1))}
       </Animated.View>
     </View>
   );
 }
 
 // ---- Chat Screen (WhatsApp-style) ----
-// Architecture: fullScreen Modal + KeyboardAvoidingView (behavior="padding")
-// wrapping the entire chat. The input bar sits INSIDE the KAV so it rises with
-// the keyboard. ScrollView uses `keyboardShouldPersistTaps="always"` so the send
-// button never requires a double-tap, and `onContentSizeChange` + `onLayout`
-// auto-scroll to the bottom on new messages and keyboard open.
-function ChatScreen({ state, actions }: Props) {
+// Architecture: fullScreen overlay modal with an absolute input bar. The input
+// bar follows the native keyboard frame directly instead of relying on KAV, so
+// the send button remains touchable while the keyboard is open.
+function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void }) {
   const [text, setText] = useState('');
   const [kbOpen, setKbOpen] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [inputBarHeight, setInputBarHeight] = useState(86);
   const scrollRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
+  const insets = useSafeAreaInsets();
   const chatWith = state.chatWith;
+
+  // Messages that arrive after this settles animate in (fade + rise); the
+  // history present at open renders statically.
+  const animReady = useRef(false);
+  useEffect(() => {
+    const id = setTimeout(() => { animReady.current = true; }, 350);
+    return () => clearTimeout(id);
+  }, []);
 
   // Partner may be a friend OR just a conversation partner (DMs with non-friends).
   // Both carry displayName/online/avatar, so fall back to the conversation row.
@@ -4219,12 +5890,29 @@ function ChatScreen({ state, actions }: Props) {
   // while the keyboard is up (so it sits flush above it, Instagram-style — no jump)
   // and keep the latest message in view.
   useEffect(() => {
-    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const setKeyboardFrame = (e: any) => {
+      const endY = e?.endCoordinates?.screenY ?? SCREEN_H;
+      const height = Math.max(0, SCREEN_H - endY);
+      setKeyboardHeight(height);
+      setKbOpen(height > 0);
+      setTimeout(scrollToBottom, 50);
+    };
+    const resetKeyboardFrame = () => {
+      setKeyboardHeight(0);
+      setKbOpen(false);
+    };
+    const frameEvt = Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidShow';
     const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const onShow = Keyboard.addListener(showEvt, () => { setKbOpen(true); setTimeout(scrollToBottom, 50); });
-    const onHide = Keyboard.addListener(hideEvt, () => setKbOpen(false));
-    return () => { onShow.remove(); onHide.remove(); };
+    const onFrame = Keyboard.addListener(frameEvt, setKeyboardFrame);
+    const onHide = Keyboard.addListener(hideEvt, resetKeyboardFrame);
+    return () => { onFrame.remove(); onHide.remove(); };
   }, [scrollToBottom]);
+
+  // Publish the composer's top edge so SwipeBackWrap ignores gestures over it.
+  useEffect(() => {
+    chatComposerTop.y = SCREEN_H - keyboardHeight - inputBarHeight;
+    return () => { chatComposerTop.y = Number.POSITIVE_INFINITY; };
+  }, [keyboardHeight, inputBarHeight]);
 
   const onChangeText = (t: string) => {
     setText(t);
@@ -4242,6 +5930,11 @@ function ChatScreen({ state, actions }: Props) {
     }, 2000);
   };
 
+  const focusInputSoon = useCallback(() => {
+    inputRef.current?.focus();
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, []);
+
   const onSend = useCallback(() => {
     if (!text.trim() || !chatWith) return;
     if (sendingRef.current) return;
@@ -4253,54 +5946,72 @@ function ChatScreen({ state, actions }: Props) {
       actions.typingStop(chatWith);
     }
     if (typingTimer.current) clearTimeout(typingTimer.current);
-    inputRef.current?.focus();
+    focusInputSoon();
     setTimeout(() => { sendingRef.current = false; }, 120);
-  }, [text, chatWith, actions]);
+  }, [text, chatWith, actions, focusInputSoon]);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
-      >
-        {/* Header — safe area top is handled by paddingTop:54 (status bar) */}
-        <View style={{
-          flexDirection: 'row', alignItems: 'center', gap: 12,
-          paddingTop: 54, paddingBottom: 12, paddingHorizontal: 16,
-          backgroundColor: theme.card, borderBottomWidth: 1, borderBottomColor: theme.border,
-        }}>
-          <Pressable onPress={actions.closeChat} hitSlop={10}>
-            <Ionicons name="arrow-back" size={24} color={theme.text} />
-          </Pressable>
-          <AvatarBadge avatarId={friend?.avatar ?? friend?.selectedAvatar} size={36} ringColor={theme.primary} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15 }} numberOfLines={1}>{friend?.displayName ?? '...'}</Text>
-            <Text style={{ color: isTyping ? theme.primary : friend?.online ? theme.primary : theme.muted, fontSize: 11 }}>
-              {isTyping ? t('chat.typing') : friend?.online ? t('common.online') : t('common.offline')}
-            </Text>
-          </View>
-        </View>
-
-        {/* Messages — flex:1 takes all remaining space between header and input bar */}
-        <ScrollView
-          ref={scrollRef}
-          style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 12, paddingBottom: 4 }}
-          keyboardShouldPersistTaps="always"
-          keyboardDismissMode="none"
-          onContentSizeChange={scrollToBottom}
-          onLayout={scrollToBottom}
+      {/* Header — ScreenHeader language: beveled 40px back button, chrome bar
+          with a 2px cardLip edge, engraved name; safe-area top (no magic 54). */}
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', gap: 12,
+        paddingTop: insets.top + 8, paddingBottom: 10, paddingHorizontal: 14,
+        backgroundColor: theme.bg2, borderBottomWidth: 2, borderBottomColor: theme.cardLip,
+      }}>
+        <Pressable
+          onPress={onBack ?? actions.closeChat}
+          hitSlop={10}
+          style={({ pressed }) => ({
+            width: 40, height: 40, borderRadius: 14,
+            backgroundColor: pressed ? theme.bg2 : theme.card,
+            borderWidth: 2, borderColor: theme.border,
+            borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
+            alignItems: 'center', justifyContent: 'center',
+            transform: [{ translateY: pressed ? 2 : 0 }],
+          })}
         >
-          {messages.length === 0 ? (
-            <View style={{ alignItems: 'center', marginTop: 40 }}>
-              <Ionicons name="chatbubbles-outline" size={48} color={theme.border} />
-              <Text style={{ color: theme.muted, fontSize: 13, marginTop: 8 }}>{t('chat.noMessages')}</Text>
+          <Ionicons name="chevron-back" size={22} color={theme.text} />
+        </Pressable>
+        <AvatarBadge avatarId={friend?.avatar ?? friend?.selectedAvatar} size={36} ringColor={friend?.online ? theme.primary : theme.border} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15, ...engrave('sm') }} numberOfLines={1}>{friend?.displayName ?? '...'}</Text>
+          <Text style={{ color: isTyping ? theme.primary : friend?.online ? theme.primary : theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>
+            {isTyping ? t('chat.typing') : friend?.online ? t('common.online') : t('common.offline')}
+          </Text>
+        </View>
+      </View>
+
+      {/* Messages — bottom padding reserves the input bar AND (on iOS, where the
+          window doesn't resize) the keyboard, so the newest message stays visible. */}
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1, backgroundColor: theme.bg }}
+        contentContainerStyle={{ padding: 12, paddingBottom: inputBarHeight + 10 + (Platform.OS === 'ios' ? keyboardHeight : 0) }}
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="none"
+        onContentSizeChange={scrollToBottom}
+        onLayout={scrollToBottom}
+      >
+        {messages.length === 0 ? (
+          <View style={{ marginTop: 28 }}>
+            <EmptyState icon="chatbubbles" title={t('chat.sayHello')} hint={t('chat.noMessages')} />
+            {/* Mint ghost greeting chips — tap fills the composer */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 2 }}>
+              {(['chat.greeting1', 'chat.greeting2', 'chat.greeting3'] as MessageKey[]).map((k) => (
+                <Pressable key={k} onPress={() => { onChangeText(t(k)); focusInputSoon(); }} style={({ pressed }) => ({ transform: [{ translateY: pressed ? 2 : 0 }] })}>
+                  <View style={{ backgroundColor: theme.glowSoft, borderRadius: 999, borderWidth: 2, borderColor: theme.primary, paddingHorizontal: 14, paddingVertical: 8 }}>
+                    <Text style={{ color: theme.primary, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t(k)}</Text>
+                  </View>
+                </Pressable>
+              ))}
             </View>
-          ) : messages.map((m) => {
-            const isMe = m.fromId === myId;
-            return (
-              <View key={m.id} style={{ alignItems: isMe ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
+          </View>
+        ) : messages.map((m) => {
+          const isMe = m.fromId === myId;
+          return (
+            <RiseIn key={m.id} animate={animReady.current}>
+              <View style={{ alignItems: isMe ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
                 <View style={{ flexDirection: isMe ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 6, maxWidth: '80%' }}>
                   <AvatarBadge avatarId={isMe ? (state.profile?.avatar ?? state.profile?.selectedAvatar) : (friend?.avatar ?? friend?.selectedAvatar)} size={28} ringColor={isMe ? theme.primary : theme.border} />
                   <View style={{
@@ -4309,74 +6020,95 @@ function ChatScreen({ state, actions }: Props) {
                     borderBottomRightRadius: isMe ? 4 : 16,
                     borderBottomLeftRadius: isMe ? 16 : 4,
                     paddingHorizontal: 14, paddingVertical: 9,
-                    borderWidth: isMe ? 0 : 1, borderColor: theme.border,
+                    // mine: top-lit mint toy with a primaryDark lip;
+                    // theirs: card face ring with a cardLip bottom edge.
+                    borderWidth: isMe ? 0 : 1.5, borderColor: theme.border,
+                    borderTopWidth: 1.5, borderTopColor: isMe ? 'rgba(255,255,255,0.30)' : theme.panelTopGloss,
+                    borderBottomWidth: 2.5, borderBottomColor: isMe ? theme.primaryDark : theme.cardLip,
                   }}>
-                    <Text style={{ color: isMe ? '#06131F' : theme.text, fontSize: 14 }}>{m.body}</Text>
-                    <Text style={{ color: isMe ? 'rgba(6,19,31,0.5)' : theme.muted, fontSize: 9, marginTop: 3, textAlign: 'right' }}>
+                    <Text style={{ color: isMe ? theme.ink : theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold' }}>{m.body}</Text>
+                    <Text style={{ color: isMe ? withAlpha(theme.ink, 0.55) : theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', marginTop: 3, textAlign: 'right' }}>
                       {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </Text>
                   </View>
                 </View>
               </View>
-            );
-          })}
-          {isTyping ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-              <AvatarBadge avatarId={friend?.avatar ?? friend?.selectedAvatar} size={28} ringColor={theme.border} />
-              <View style={{ backgroundColor: theme.card, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: theme.border, flexDirection: 'row', gap: 4 }}>
-                <TypingDot delay={0} />
-                <TypingDot delay={150} />
-                <TypingDot delay={300} />
-              </View>
+            </RiseIn>
+          );
+        })}
+        {isTyping ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <AvatarBadge avatarId={friend?.avatar ?? friend?.selectedAvatar} size={28} ringColor={theme.border} />
+            <View style={{ backgroundColor: theme.card, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: theme.border, flexDirection: 'row', gap: 4 }}>
+              <TypingDot delay={0} />
+              <TypingDot delay={150} />
+              <TypingDot delay={300} />
             </View>
-          ) : null}
-        </ScrollView>
+          </View>
+        ) : null}
+      </ScrollView>
 
-        {/* Input bar — sits inside KAV so it moves up with the keyboard. While the
-            keyboard is up it sits flush above it (small padding); when closed it
-            clears the home indicator (paddingBottom 34). */}
-        <View style={{
+      {/* Absolute input bar: placed above the real keyboard frame instead of relying on KAV hit-testing. */}
+      <View
+        onLayout={(e) => setInputBarHeight(e.nativeEvent.layout.height)}
+        style={{
+          position: 'absolute', left: 0, right: 0, bottom: Platform.OS === 'ios' ? keyboardHeight : 0,
           flexDirection: 'row', alignItems: 'flex-end', gap: 8,
-          paddingHorizontal: 12, paddingTop: 8, paddingBottom: kbOpen ? 10 : 34,
-          backgroundColor: theme.card, borderTopWidth: 1, borderTopColor: theme.border,
-        }}>
-          <TextInput
-            ref={inputRef}
-            placeholder={t('chat.placeholder')}
-            placeholderTextColor={theme.muted}
-            keyboardAppearance="dark"
-            value={text}
-            onChangeText={onChangeText}
-            blurOnSubmit={false}
-            returnKeyType="send"
-            submitBehavior="submit"
-            onSubmitEditing={onSend}
-            rejectResponderTermination={false}
-            style={{
-              flex: 1, backgroundColor: theme.bg, color: theme.text,
-              borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10,
-              fontSize: 14, borderWidth: 1, borderColor: theme.border,
-              maxHeight: 100,
-            }}
-            multiline
-            maxLength={500}
-          />
-          <Pressable
-            onPressIn={onSend}
-            onPress={onSend}
-            hitSlop={8}
-            onStartShouldSetResponder={() => true}
-            style={{
-              width: 42, height: 42, borderRadius: 21,
-              backgroundColor: text.trim() ? theme.primary : theme.border,
-              alignItems: 'center', justifyContent: 'center',
-              marginBottom: 2,
-            }}
-          >
-            <Ionicons name="send" size={20} color={text.trim() ? '#06131F' : theme.muted} />
-          </Pressable>
-        </View>
-      </KeyboardAvoidingView>
+          paddingHorizontal: 12, paddingTop: 8, paddingBottom: kbOpen ? 8 : Math.max(insets.bottom, 12),
+          backgroundColor: theme.bg2, borderTopWidth: 2, borderTopColor: theme.cardLip,
+          zIndex: 50, elevation: 50,
+        }}
+      >
+        <GameInput
+          inputRef={inputRef}
+          placeholder={t('chat.placeholder')}
+          value={text}
+          onChangeText={onChangeText}
+          blurOnSubmit={false}
+          returnKeyType="send"
+          submitBehavior="submit"
+          onSubmitEditing={onSend}
+          containerStyle={{ flex: 1, marginVertical: 0 }}
+          style={{ maxHeight: 100, paddingVertical: 10 }}
+          multiline
+          maxLength={500}
+        />
+        {/* Send fires on touch-down (Instagram behavior). Nothing here can blur the
+            input: the App-level tab pager now uses keyboardShouldPersistTaps="always",
+            which was the actual cause of the tap-eats-keyboard bug. onPress stays for
+            the Android accessibility click path (TalkBack/keyboard fire only onPress);
+            the sendingRef guard dedupes the touch double-fire. */}
+        <Pressable
+          onPressIn={onSend}
+          onPress={onSend}
+          accessibilityRole="button"
+          accessibilityLabel={t('chat.send')}
+          hitSlop={8}
+          style={{ marginBottom: 2 }}
+        >
+          {({ pressed }) => {
+            const hasText = !!text.trim();
+            return (
+              // Chunky circular send: primaryDark lip under a top-lit mint face,
+              // pressed = 2px sink; empty input = recessed panelInnerFill well.
+              <View style={{ backgroundColor: hasText ? theme.primaryDark : 'transparent', borderRadius: 23, paddingBottom: hasText && pressed ? 1 : 3 }}>
+                <View
+                  style={{
+                    width: 44, height: 44, borderRadius: 22,
+                    backgroundColor: hasText ? theme.primary : theme.panelInnerFill,
+                    borderWidth: hasText ? 0 : 2, borderColor: theme.border,
+                    borderTopWidth: hasText ? 1.5 : 2, borderTopColor: hasText ? 'rgba(255,255,255,0.30)' : theme.cardLip,
+                    alignItems: 'center', justifyContent: 'center',
+                    transform: [{ translateY: hasText && pressed ? 2 : 0 }],
+                  }}
+                >
+                  <Ionicons name="send" size={19} color={hasText ? theme.ink : theme.muted} />
+                </View>
+              </View>
+            );
+          }}
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -4385,45 +6117,66 @@ function ChatScreen({ state, actions }: Props) {
 function StatCard({ icon, color, label, value, gem }: { icon?: IoniconName; color: string; label: string; value: number | string; gem?: boolean }) {
   return (
     <GamePanel compact accentStripe={color} style={{ flex: 1 }} bodyStyle={{ alignItems: 'center', gap: 4, paddingVertical: 16 }}>
-      <View style={{ shadowColor: color, shadowOpacity: 0.5, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } }}>
-        {gem ? <GemIcon size={24} /> : icon ? <Ionicons name={icon} size={22} color={color} /> : null}
-      </View>
+      {gem ? <GemIcon size={24} /> : icon ? <Ionicons name={icon} size={22} color={color} /> : null}
       <Text style={{ color: theme.text, fontSize: 24, fontFamily: 'Poppins-Black', ...engrave('sm') }}>{value}</Text>
-      <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '600' }}>{label}</Text>
+      <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>{label}</Text>
     </GamePanel>
   );
 }
 
 export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore }: Props) {
   const p = state.profile;
+  const insets = useSafeAreaInsets();
   const [pendingAvatarId, setPendingAvatarId] = useState<string | null>(null);
   const [confirmAvatarId, setConfirmAvatarId] = useState<string | null>(null);
   const [showAvatarPage, setShowAvatarPage] = useState(false);
   const [showInsufficientPopup, setShowInsufficientPopup] = useState(false);
-  if (!p) return <Screen><View style={styles.center}><Text style={styles.muted}>—</Text></View></Screen>;
+  // Set on confirm: close the picker page once the confirm dialog's exit
+  // animation completes (GameModal onExited) — no setTimeout handoff chains.
+  const closePickerOnExit = useRef(false);
+  if (!p) {
+    // Branded placeholder while the profile loads — never a bare "—".
+    return (
+      <Screen>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 18 }}>
+          <BrandMark size={88} />
+          <GamePanel compact bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 18 }}>
+            <GameSpinner />
+            <Text style={{ color: theme.muted, fontSize: 13, fontFamily: 'Poppins-SemiBold' }}>{t('common.loading')}</Text>
+          </GamePanel>
+        </View>
+      </Screen>
+    );
+  }
   const total = p.wins + p.losses;
   const winRate = total ? Math.round((p.wins / total) * 100) : 0;
   const color = arenaColor(p.arena.name);
+  const arenaArt = getArenaDataByName(p.arena.name);
   const pendingAvatar = pendingAvatarId ? avatarMeta(pendingAvatarId) : null;
   const confirmAvatar = confirmAvatarId ? avatarMeta(confirmAvatarId) : null;
   const canAffordPending = pendingAvatar ? p.diamonds >= avatarPrice(pendingAvatar.id) : false;
   return (
     <Screen>
-      <ScreenHeader title={t('profile.title')} icon="person" onBack={actions.closeProfile} underline={color} />
+      <ScreenHeader title={t('profile.title')} icon="person" onBack={actions.closeProfile} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
         <View style={{ alignItems: 'center', gap: 8, marginVertical: 10 }}>
-          <Pressable onPress={() => setShowAvatarPage(true)}>
+          <Pressable onPress={() => setShowAvatarPage(true)} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.97 : 1 }] })}>
             <View>
               <AvatarBadge avatarId={p.avatar ?? p.selectedAvatar} size={104} ringColor={color} />
               <View style={{ position: 'absolute', bottom: 0, right: 0, width: 30, height: 30, borderRadius: 15, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.card }}>
-                <Ionicons name="pencil" size={15} color="#06131F" />
+                <Ionicons name="pencil" size={15} color={theme.ink} />
               </View>
             </View>
           </Pressable>
           <Text style={{ color: theme.text, fontSize: 24, fontFamily: 'Poppins-ExtraBold', ...engrave('lg') }}>{p.displayName}</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: color + '66' }}>
-            <Text style={{ fontSize: 17 }}>{p.arena.icon}</Text>
-            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>{arenaLabel(p.arena.name)}</Text>
+          {/* Arena chip — crafted arena art thumbnail in a beveled chip (no raw emoji) */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1.5, borderColor: withAlpha(color, 0.4), borderBottomWidth: 3, borderBottomColor: theme.cardLip }}>
+            {arenaArt ? (
+              <Image source={arenaArt.img} style={{ width: 24, height: 21 }} resizeMode="contain" />
+            ) : (
+              <Ionicons name={arenaIcon(p.arena)} size={15} color={color} />
+            )}
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13, ...engrave('sm') }}>{arenaLabel(p.arena.name)}</Text>
           </View>
         </View>
 
@@ -4442,11 +6195,11 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
         </View>
       </ScrollView>
 
-      {/* Full-screen avatar picker page */}
+      {/* Full-screen avatar picker page — real safe-area inset, not a hard-coded 40 */}
       <Modal visible={showAvatarPage} animationType="slide" onRequestClose={() => setShowAvatarPage(false)} presentationStyle="fullScreen">
         <Screen>
-          <View style={{ paddingTop: 40, flex: 1 }}>
-            <ScreenHeader title={t('profile.pictures')} icon="images" onBack={() => setShowAvatarPage(false)} underline={color} />
+          <View style={{ paddingTop: insets.top, flex: 1 }}>
+            <ScreenHeader title={t('profile.pictures')} icon="images" onBack={() => setShowAvatarPage(false)} />
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
               {([
@@ -4458,8 +6211,12 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
                 const owned = ownsAvatar(p, avatarId);
                 const selected = (p.avatar ?? p.selectedAvatar ?? null) === avatarId;
                 return (
-                  <Pressable
+                  <AvatarTile
                     key={avatarId}
+                    avatarId={avatarId}
+                    owned={owned}
+                    selected={selected}
+                    price={meta.price}
                     onPress={() => {
                       if (!owned) {
                         setPendingAvatarId(avatarId);
@@ -4468,31 +6225,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
                       if (selected) return;
                       setConfirmAvatarId(avatarId);
                     }}
-                    style={{
-                      width: '31%',
-                      minWidth: 96,
-                      backgroundColor: theme.card,
-                      borderRadius: 16,
-                      paddingVertical: 12,
-                      paddingHorizontal: 8,
-                      borderWidth: selected ? 2 : 1,
-                      borderColor: selected ? theme.primary : theme.border,
-                      borderBottomWidth: selected ? 3 : 2,
-                      borderBottomColor: selected ? theme.primaryDark : theme.cardLip,
-                      alignItems: 'center',
-                      opacity: owned ? 1 : 0.72,
-                    }}
-                  >
-                    <AvatarBadge avatarId={avatarId} size={58} locked={!owned} dimmed={!owned} ringColor={selected ? theme.primary : undefined} />
-                    {owned ? (
-                      <Text style={{ color: selected ? theme.primary : theme.muted, fontSize: 10, marginTop: 3, fontWeight: '700' }}>{selected ? t('profile.inUse') : t('profile.ready')}</Text>
-                    ) : (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                        <GemIcon size={12} />
-                        <Text style={{ color: theme.gold, fontSize: 10, fontWeight: '900' }}>{meta.price}</Text>
-                      </View>
-                    )}
-                  </Pressable>
+                  />
                 );
               })}
             </View>
@@ -4505,17 +6238,18 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
                 <View style={{ alignItems: 'center', gap: 10 }}>
                   <AvatarBadge avatarId={pendingAvatar.id} size={88} />
                   <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18 }}>{pendingAvatar.label}</Text>
-                  <Text style={{ color: theme.muted, fontSize: 13, textAlign: 'center' }}>
+                  <Text style={{ color: theme.muted, fontSize: 13, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>
                     {t('profile.buyConfirm', { price: pendingAvatar.price })}
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <GemIcon size={16} />
-                    <Text style={{ color: theme.gold, fontWeight: '900', fontSize: 14 }}>{pendingAvatar.price}</Text>
+                    <Text style={{ color: theme.gold, fontFamily: 'Poppins-Black', fontSize: 14, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{pendingAvatar.price}</Text>
                   </View>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 10 }}>
                   <View style={{ flex: 1 }}>
-                    <Btn label={t('common.no')} kind="danger" icon="close" onPress={() => setPendingAvatarId(null)} />
+                    {/* Cancel is ALWAYS ghost — danger is reserved for destructive confirms */}
+                    <Btn label={t('common.no')} kind="ghost" icon="close" onPress={() => setPendingAvatarId(null)} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Btn
@@ -4539,19 +6273,30 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
             ) : null}
           </GameModal>
 
-          <GameModal visible={confirmAvatar !== null} onClose={() => setConfirmAvatarId(null)} title={t('profile.changeTitle')} icon="images">
+          <GameModal
+            visible={confirmAvatar !== null}
+            onClose={() => setConfirmAvatarId(null)}
+            onExited={() => {
+              if (closePickerOnExit.current) {
+                closePickerOnExit.current = false;
+                setShowAvatarPage(false);
+              }
+            }}
+            title={t('profile.changeTitle')}
+            icon="images"
+          >
             {confirmAvatar ? (
               <>
                 <View style={{ alignItems: 'center', gap: 10 }}>
                   <AvatarBadge avatarId={confirmAvatar.id} size={88} />
                   <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18 }}>{confirmAvatar.label}</Text>
-                  <Text style={{ color: theme.muted, fontSize: 13, textAlign: 'center' }}>
+                  <Text style={{ color: theme.muted, fontSize: 13, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>
                     {t('profile.changeConfirm')}
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 10 }}>
                   <View style={{ flex: 1 }}>
-                    <Btn label={t('common.no')} kind="danger" icon="close" onPress={() => setConfirmAvatarId(null)} />
+                    <Btn label={t('common.no')} kind="ghost" icon="close" onPress={() => setConfirmAvatarId(null)} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Btn
@@ -4561,9 +6306,9 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
                       onPress={() => {
                         const nextAvatarId = confirmAvatarId;
                         if (!nextAvatarId) return;
+                        closePickerOnExit.current = true;
                         setConfirmAvatarId(null);
                         actions.setAvatar(nextAvatarId);
-                        setTimeout(() => setShowAvatarPage(false), 120);
                       }}
                     />
                   </View>
@@ -4578,13 +6323,13 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
               <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 16, textAlign: 'center' }}>
                 {t('store.changeNameInsufficient')}
               </Text>
-              <Text style={{ color: theme.muted, fontSize: 14, textAlign: 'center', lineHeight: 20 }}>
+              <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
                 {t('profile.notEnoughBody')}
               </Text>
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
-                <Btn label={t('settings.cancel')} kind="danger" icon="close" onPress={() => setShowInsufficientPopup(false)} />
+                <Btn label={t('settings.cancel')} kind="ghost" icon="close" onPress={() => setShowInsufficientPopup(false)} />
               </View>
               <View style={{ flex: 1 }}>
                 <Btn
@@ -4609,76 +6354,94 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
 }
 
 // Profile-picture chooser: a grid of the 20 avatars; tap to select, then apply.
-function AvatarPickerModal({ visible, current, onClose, onApply }: {
-  visible: boolean;
-  current?: string | null;
-  onClose: () => void;
-  onApply: (id: string) => void;
+// Avatar grid tile — chunky kit card with press-lip physics, a spring-pop
+// selected check (ported from the retired bottom-sheet picker) and a gold
+// gem-price pill when locked. The frame stays crisp; only the badge dims.
+function AvatarTile({ avatarId, owned, selected, price, onPress }: {
+  avatarId: string; owned: boolean; selected: boolean; price: number; onPress: () => void;
 }) {
-  const [sel, setSel] = useState<string | null>(current ?? null);
-  useEffect(() => { if (visible) setSel(current ?? null); }, [visible, current]);
-  const GAP = 12;
-  const W = Math.floor((SCREEN_W - 36 - GAP * 3) / 4);
+  const { ty, onIn, onOut } = usePressLip(2);
+  const check = useRef(new Animated.Value(selected ? 1 : 0)).current;
+  useEffect(() => {
+    if (selected) Animated.spring(check, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }).start();
+    else Animated.timing(check, { toValue: 0, duration: 120, useNativeDriver: true }).start();
+  }, [selected, check]);
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.emoteSheetBackdrop} onPress={onClose}>
-        <Pressable
-          onPress={() => {}}
-          style={{
-            backgroundColor: theme.card, borderTopLeftRadius: 26, borderTopRightRadius: 26,
-            paddingTop: 12, paddingBottom: 28, paddingHorizontal: 18,
-            borderTopWidth: 1, borderColor: theme.border, maxHeight: '82%',
-          }}
-        >
-          <View style={{ width: 42, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: 'center', marginBottom: 14 }} />
-          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 17, marginBottom: 12, marginLeft: 2 }}>{t('profile.choosePicture')}</Text>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, paddingBottom: 8 }}>
-              {AVATAR_IDS.map((id) => {
-                const selected = sel === id;
-                return (
-                  <Pressable
-                    key={id}
-                    onPress={() => setSel(id)}
-                    style={{
-                      width: W, height: W, borderRadius: W / 2,
-                      borderWidth: 3, borderColor: selected ? theme.primary : 'transparent',
-                      shadowColor: selected ? theme.primary : 'transparent', shadowOpacity: selected ? 0.6 : 0, shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
-                      alignItems: 'center', justifyContent: 'center',
-                    }}
-                  >
-                    <Avatar avatar={id} size={W - 8} />
-                    {selected ? (
-                      <View style={{ position: 'absolute', top: -2, right: -2, width: 22, height: 22, borderRadius: 11, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.card }}>
-                        <Ionicons name="checkmark" size={13} color="#06131F" />
-                      </View>
-                    ) : null}
-                  </Pressable>
-                );
-              })}
+    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ width: '31%', minWidth: 96 }}>
+      <View style={{ backgroundColor: selected ? theme.primaryDark : theme.cardLip, borderRadius: 17, paddingBottom: 3 }}>
+        <Animated.View style={{ transform: [{ translateY: ty }], backgroundColor: theme.card, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 8, borderWidth: 2, borderColor: selected ? theme.primary : theme.border, borderTopColor: selected ? theme.primary : theme.panelTopGloss, alignItems: 'center' }}>
+          <AvatarBadge avatarId={avatarId} size={58} locked={!owned} dimmed={!owned} ringColor={selected ? theme.primary : undefined} />
+          {owned ? (
+            <Text style={{ color: selected ? theme.primary : theme.muted, fontSize: 10, marginTop: 4, fontFamily: 'Poppins-ExtraBold' }}>{selected ? t('profile.inUse') : t('profile.ready')}</Text>
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4, backgroundColor: theme.panelInnerFill, borderRadius: 999, borderWidth: 1, borderColor: theme.accentDark, paddingHorizontal: 8, paddingVertical: 2 }}>
+              <GemIcon size={11} />
+              <Text style={{ color: theme.gold, fontSize: 10, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>{price}</Text>
             </View>
-          </ScrollView>
-          <View style={{ height: 12 }} />
-          <Btn label={t('profile.applyPicture')} icon="checkmark-circle" kind="primary" onPress={() => { if (sel) onApply(sel); onClose(); }} />
-        </Pressable>
-      </Pressable>
-    </Modal>
+          )}
+          <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 5, right: 5, transform: [{ scale: check }] }}>
+            <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.card }}>
+              <Ionicons name="checkmark" size={12} color={theme.ink} />
+            </View>
+          </Animated.View>
+        </Animated.View>
+      </View>
+    </Pressable>
   );
 }
 
 // ---- Arenas ----
+// Tier colors = the theme's 7-step arena ramp (bronze lowest → flame highest).
 const ARENA_DATA = [
-  { name: 'GOAT', min: 5000, max: 99999, color: '#FF4500', icon: 'flame' as IoniconName, img: require('../assets/arenas/goat.png'), win: '+15', loss: '-35', reward: 1000, desc: 'Efsanelerin zirvesi. Sadece en iyiler ayakta kalır.' },
-  { name: 'Dünya Klasmanı', min: 3500, max: 4999, color: '#FFD700', icon: 'trophy' as IoniconName, img: require('../assets/arenas/dunya.png'), win: '+18', loss: '-30', reward: 500, desc: 'Dünya sahnesinde mücadele. Her hata çok ağır.' },
-  { name: 'Efsaneler Arası', min: 2000, max: 3499, color: '#C0C0C0', icon: 'ribbon' as IoniconName, img: require('../assets/arenas/efsaneler.png'), win: '+20', loss: '-26', reward: 300, desc: 'Efsaneler burada. Kayıplar acıtıyor.' },
-  { name: 'Şampiyonlar Ligi', min: 1000, max: 1999, color: '#1E90FF', icon: 'medal' as IoniconName, img: require('../assets/arenas/sampiyonlar.png'), win: '+22', loss: '-22', reward: 200, desc: 'Avrupa\'nın en prestijli arenası. Dengeli mücadele.' },
-  { name: 'Profesyonel Lig', min: 500, max: 999, color: '#32CD32', icon: 'shield' as IoniconName, img: require('../assets/arenas/profesyonel.png'), win: '+25', loss: '-18', reward: 150, desc: 'Profesyonel seviye. Artık gerçek bir rakipsin.' },
-  { name: 'Amatör Lig', min: 200, max: 499, color: '#FF8C00', icon: 'shield-half' as IoniconName, img: require('../assets/arenas/amator.png'), win: '+28', loss: '-14', reward: 100, desc: 'İlk adımları attın. Yükselmeye devam!' },
-  { name: 'Mahalle Sahası', min: 0, max: 199, color: '#8B4513', icon: 'shield-outline' as IoniconName, img: require('../assets/arenas/mahalle.png'), win: '+30', loss: '-10', reward: 50, desc: 'Herkesin başladığı yer. Kolay tırmanış.' },
+  { name: 'GOAT', min: 5000, max: 99999, color: theme.flame, icon: 'flame' as IoniconName, img: require('../assets/arenas/goat.png'), win: '+15', loss: '-35', reward: 1000, desc: 'Efsanelerin zirvesi. Sadece en iyiler ayakta kalır.' },
+  { name: 'Dünya Klasmanı', min: 3500, max: 4999, color: theme.purple, icon: 'trophy' as IoniconName, img: require('../assets/arenas/dunya.png'), win: '+18', loss: '-30', reward: 500, desc: 'Dünya sahnesinde mücadele. Her hata çok ağır.' },
+  { name: 'Efsaneler Arası', min: 2000, max: 3499, color: theme.blue, icon: 'ribbon' as IoniconName, img: require('../assets/arenas/efsaneler.png'), win: '+20', loss: '-26', reward: 300, desc: 'Efsaneler burada. Kayıplar acıtıyor.' },
+  { name: 'Şampiyonlar Ligi', min: 1000, max: 1999, color: theme.primary, icon: 'medal' as IoniconName, img: require('../assets/arenas/sampiyonlar.png'), win: '+22', loss: '-22', reward: 200, desc: 'Avrupa\'nın en prestijli arenası. Dengeli mücadele.' },
+  { name: 'Profesyonel Lig', min: 500, max: 999, color: theme.gold, icon: 'shield' as IoniconName, img: require('../assets/arenas/profesyonel.png'), win: '+25', loss: '-18', reward: 150, desc: 'Profesyonel seviye. Artık gerçek bir rakipsin.' },
+  { name: 'Amatör Lig', min: 200, max: 499, color: theme.silver, icon: 'shield-half' as IoniconName, img: require('../assets/arenas/amator.png'), win: '+28', loss: '-14', reward: 100, desc: 'İlk adımları attın. Yükselmeye devam!' },
+  { name: 'Mahalle Sahası', min: 0, max: 199, color: theme.bronze, icon: 'shield-outline' as IoniconName, img: require('../assets/arenas/mahalle.png'), win: '+30', loss: '-10', reward: 50, desc: 'Herkesin başladığı yer. Kolay tırmanış.' },
 ];
 
 function getArenaDataByName(name: string) {
   return ARENA_DATA.find((arena) => arena.name === name) ?? null;
+}
+
+// Ladder connector between arena tiers — an SVG gradient segment (upper tier
+// color → lower tier color) with a node dot at each junction. The segment the
+// player climbed into the current arena pulses slowly (opacity 0.6→1, ≥900ms
+// cycle) to signal "you are climbing here"; future segments render dimmed.
+let _ladSeq = 0;
+function LadderConnector({ topColor, bottomColor, active, future }: {
+  topColor: string; bottomColor: string; active: boolean; future: boolean;
+}) {
+  const gid = useRef(`lad${_ladSeq++}`).current;
+  const pulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!active) { pulse.setValue(1); return; }
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 0.6, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [active, pulse]);
+  return (
+    <View style={{ alignItems: 'center', height: 30, opacity: future ? 0.35 : 1 }}>
+      <Animated.View style={{ flex: 1, width: 5, opacity: active ? pulse : 1 }}>
+        <Svg width={5} height="100%">
+          <Defs>
+            <SvgGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={topColor} />
+              <Stop offset="1" stopColor={bottomColor} />
+            </SvgGradient>
+          </Defs>
+          <Rect width="100%" height="100%" rx={2.5} fill={`url(#${gid})`} />
+        </Svg>
+      </Animated.View>
+      <View pointerEvents="none" style={{ position: 'absolute', top: -3, width: 9, height: 9, borderRadius: 4.5, backgroundColor: topColor, borderWidth: 1.5, borderColor: theme.panelInk }} />
+      <View pointerEvents="none" style={{ position: 'absolute', bottom: -3, width: 9, height: 9, borderRadius: 4.5, backgroundColor: bottomColor, borderWidth: 1.5, borderColor: theme.panelInk }} />
+    </View>
+  );
 }
 
 export function ArenasScreen({ state, actions }: Props) {
@@ -4700,6 +6463,9 @@ export function ArenasScreen({ state, actions }: Props) {
   const range = currentArena.max - currentArena.min;
   const progress = range > 0 ? Math.min(1, (trophies - currentArena.min) / range) : 1;
 
+  // Current-arena hero card dims — measured for the one-shot ShineSweep on mount.
+  const [heroSize, setHeroSize] = useState({ w: 0, h: 0 });
+
   // Slide up from the bottom when opened (e.g. re-tapping the Oyna tab).
   const slide = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -4713,11 +6479,10 @@ export function ArenasScreen({ state, actions }: Props) {
       <ScreenHeader
         title={t('home.arenas')}
         onBack={actions.closeArenas}
-        underline={theme.accent}
         right={(
           <View style={{ minWidth: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, paddingLeft: 4 }}>
             <Ionicons name="trophy" size={15} color={theme.accent} />
-            <Text numberOfLines={1} style={{ color: theme.gold, fontWeight: '900', fontSize: 14, ...engrave('sm') }}>{trophies}</Text>
+            <Text numberOfLines={1} style={{ color: theme.gold, fontFamily: 'Poppins-Black', fontSize: 14, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{trophies}</Text>
           </View>
         )}
       />
@@ -4728,64 +6493,98 @@ export function ArenasScreen({ state, actions }: Props) {
           const isCurrent = idx === currentArenaIdx;
           const isLocked = trophies < arena.min;
           const isPassed = trophies > arena.max;
+          const maxLabel = arena.max === 99999 ? '∞' : String(arena.max);
 
-          return (
-            <View key={arena.name}>
-              {/* Connector line (not on first item) */}
-              {idx > 0 ? (
-                <View style={{ alignItems: 'center', height: 24 }}>
-                  <View style={{ width: 3, flex: 1, backgroundColor: isPassed || isCurrent ? theme.primary : theme.border }} />
+          // Recessed mini stat well ('+X' win / '-Y' loss stakes, gem reward)
+          const stakePill = (fg: string, icon: IoniconName, label: string) => (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: theme.panelInnerFill, borderRadius: 9, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, paddingHorizontal: 7, paddingVertical: 2.5 }}>
+              <Ionicons name={icon} size={10} color={fg} />
+              <Text style={{ color: fg, fontSize: 10, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>{label}</Text>
+            </View>
+          );
+
+          const cardInner = (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={{ width: isCurrent ? 96 : 74, height: isCurrent ? 88 : 68, alignItems: 'center', justifyContent: 'center' }}>
+                  {/* Locked = art-only dim + padlock chip; text stays legible (no whole-card opacity) */}
+                  <Image source={arena.img} resizeMode="contain" style={{ width: '100%', height: '100%', opacity: isLocked ? 0.55 : 1, shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 4, shadowOffset: { width: 0, height: 3 } }} />
+                  {isLocked ? (
+                    <View style={{ position: 'absolute', top: -2, right: -2, width: 20, height: 20, borderRadius: 10, backgroundColor: theme.cardLip, borderWidth: 1.5, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
+                      <Ionicons name="lock-closed" size={10} color={theme.muted} />
+                    </View>
+                  ) : null}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: isCurrent ? arena.color : isLocked ? theme.muted : theme.text, fontSize: isCurrent ? 18 : 16, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>
+                    {arenaLabel(arena.name)}
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                    <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{arena.min} - {maxLabel}</Text>
+                    <Ionicons name="trophy" size={12} color={theme.gold} />
+                  </View>
+                  <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', marginTop: 3 }}>{arenaDesc(arena.name)}</Text>
+                  {/* Stakes + tier reward — the ladder's rising bets, finally rendered */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                    {stakePill(theme.primary, 'trophy', arena.win)}
+                    {stakePill(theme.danger, 'trophy', arena.loss)}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 2 }}>
+                      <GemIcon size={13} />
+                      <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>+{arena.reward}</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              {/* Progress bar for the current arena — the LoadingScreen recipe at small scale */}
+              {isCurrent ? (
+                <View style={{ height: 20, borderRadius: 12, backgroundColor: theme.panelInk, borderWidth: 2, borderColor: theme.border, borderBottomColor: theme.cardLip, padding: 2, marginTop: 12, justifyContent: 'center' }}>
+                  <View style={{ flex: 1, borderRadius: 8, backgroundColor: theme.panelInnerFill, overflow: 'hidden' }}>
+                    {progress > 0.01 ? (
+                      <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${Math.max(5, progress * 100)}%`, borderRadius: 8, backgroundColor: arena.color, overflow: 'hidden' }}>
+                        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '46%', backgroundColor: 'rgba(255,255,255,0.32)' }} />
+                        <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, backgroundColor: darken(arena.color), opacity: 0.85 }} />
+                        <View style={{ position: 'absolute', top: 2, bottom: 2, right: 2, width: 4, borderRadius: 2, backgroundColor: lighten(arena.color, 0.55), opacity: 0.9 }} />
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={{ position: 'absolute', alignSelf: 'center', color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{trophies} / {maxLabel}</Text>
                 </View>
               ) : null}
 
-              <View style={[
-                styles.arenaCard,
-                { borderColor: isCurrent ? arena.color : isLocked ? theme.border : theme.primary, opacity: isLocked ? 0.5 : 1 },
-                isCurrent && { borderWidth: 2, shadowColor: arena.color, shadowOpacity: 0.3, shadowRadius: 8 },
-              ]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View style={[styles.arenaIconBox, isLocked && { opacity: 0.55 }]}>
-                    <Image source={arena.img} resizeMode="contain" style={{ width: '100%', height: '100%', shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 4, shadowOffset: { width: 0, height: 3 } }} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.arenaName, { color: isCurrent ? arena.color : isLocked ? theme.muted : theme.text }]}>
-                      {arenaLabel(arena.name)}
-                    </Text>
-                    <Text style={styles.arenaTrophyRange}>
-                      {arena.min} - {arena.max === 99999 ? '∞' : arena.max} 🏆
-                    </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 }}>
-                      <GemIcon size={14} />
-                      <Text style={{ color: theme.accent, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold' }}>+{arena.reward}</Text>
-                    </View>
-                    <Text style={[styles.muted, { fontSize: 11, marginTop: 2 }]}>{arenaDesc(arena.name)}</Text>
-                  </View>
+              {/* Status ribbon — locked tiers carry the padlock on the art instead */}
+              {isCurrent ? (
+                <Ribbon label={t('arenas.here')} color={arena.color} style={{ position: 'absolute', top: 8, right: 8 }} />
+              ) : isPassed ? (
+                <Ribbon label={t('arenas.passed')} color={theme.primary} icon="checkmark" style={{ position: 'absolute', top: 8, right: 8 }} />
+              ) : null}
+            </>
+          );
+
+          return (
+            <View key={arena.name}>
+              {/* Gradient ladder segment between tiers (not on the first item) */}
+              {idx > 0 ? (
+                <LadderConnector
+                  topColor={ARENA_DATA[idx - 1]!.color}
+                  bottomColor={arena.color}
+                  active={idx === currentArenaIdx + 1}
+                  future={idx <= currentArenaIdx}
+                />
+              ) : null}
+
+              {isCurrent ? (
+                <View onLayout={(e) => setHeroSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
+                  <GamePanel hero tint={arena.color} bodyStyle={{ padding: 14 }}>
+                    {cardInner}
+                    {heroSize.w > 0 ? <ShineSweep width={heroSize.w - 8} height={heroSize.h - 8} delay={420} duration={720} opacity={0.22} band={0.26} /> : null}
+                  </GamePanel>
                 </View>
-
-
-                {/* Progress bar for current arena */}
-                {isCurrent ? (
-                  <View style={styles.arenaProgressOuter}>
-                    <View style={[styles.arenaProgressInner, { width: `${progress * 100}%`, backgroundColor: arena.color }]} />
-                    <Text style={styles.arenaProgressText}>{trophies} / {arena.max === 99999 ? '∞' : arena.max}</Text>
-                  </View>
-                ) : null}
-
-                {/* Status badge */}
-                {isCurrent ? (
-                  <View style={[styles.arenaBadge, { backgroundColor: arena.color }]}>
-                    <Text style={styles.arenaBadgeText}>{t('arenas.here')}</Text>
-                  </View>
-                ) : isPassed ? (
-                  <View style={[styles.arenaBadge, { backgroundColor: theme.primary }]}>
-                    <Ionicons name="checkmark" size={12} color="#fff" />
-                  </View>
-                ) : isLocked ? (
-                  <View style={[styles.arenaBadge, { backgroundColor: theme.border }]}>
-                    <Ionicons name="lock-closed" size={12} color={theme.muted} />
-                  </View>
-                ) : null}
-              </View>
+              ) : (
+                <GamePanel compact accentStripe={arena.color} bodyStyle={{ padding: 12, paddingLeft: 14 }}>
+                  {cardInner}
+                </GamePanel>
+              )}
             </View>
           );
         })}
@@ -4796,57 +6595,48 @@ export function ArenasScreen({ state, actions }: Props) {
 }
 
 // ---- Searching ----
-const FUN_FACTS = [
-  { icon: '🇧🇷', text: 'Pele, kariyeri boyunca 1.281 gol attı ve bu rekor hâlâ tartışılıyor.' },
-  { icon: '🏟️', text: "Camp Nou, Avrupa'nın en büyük stadyumu olarak 99.354 kişi kapasitesine sahiptir." },
-  { icon: '🇦🇷', text: "Messi, tek bir takvim yılında 91 gol atarak Gerd Müller'in rekorunu kırdı (2012)." },
-  { icon: '🇹🇷', text: "Galatasaray, 2000 yılında UEFA Kupası'nı kazanan ilk Türk takımı oldu." },
-  { icon: '🏆', text: "Real Madrid, 15 Şampiyonlar Ligi kupasıyla en çok kazanan takımdır." },
-  { icon: '🇮🇹', text: "Paolo Maldini, 25 yıl boyunca yalnızca AC Milan forması giydi." },
-  { icon: '⚽', text: "İlk FIFA Dünya Kupası 1930'da Uruguay'da düzenlendi ve ev sahibi Uruguay şampiyon oldu." },
-  { icon: '🇫🇷', text: "Zinedine Zidane, 2006 Dünya Kupası finalinde kafa attığı anla tarihe geçti." },
-  { icon: '🇩🇪', text: "Bundesliga'da ayakta seyirci bölümleri sayesinde bilet fiyatları Avrupa'nın en düşüğüdür." },
-  { icon: '🇳🇱', text: "Johan Cruyff, 'toplam futbol' felsefesinin mimarı olarak kabul edilir." },
-  { icon: '🇵🇹', text: "Cristiano Ronaldo, uluslararası arenada en çok gol atan futbolcudur." },
-  { icon: '🇪🇸', text: "Barcelona, 2008-2012 arasında tiki-taka stiliyle futbol tarihini değiştirdi." },
-  { icon: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', text: "Premier Lig, dünyanın en çok izlenen futbol ligidir; 212 ülkede yayınlanır." },
-  { icon: '🇭🇷', text: "Luka Modric, 2018'de Ballon d'Or'u kazanarak Messi-Ronaldo hegemonyasını kırdı." },
-  { icon: '🇹🇷', text: "Hakan Şükür, 2002 Dünya Kupası'nda tarihin en erken golünü 11. saniyede attı." },
-  { icon: '🧤', text: "Gianluigi Buffon, 40 yaşını geçtikten sonra bile üst düzey kaleciliğe devam etti." },
-  { icon: '🇲🇽', text: "Azteca Stadyumu, iki Dünya Kupası finaline ev sahipliği yapan tek stadyumdur." },
-  { icon: '🇪🇬', text: "Mohamed Salah, Premier Lig'de tek sezonda 32 gol atarak rekoru kırdı (2017-18)." },
-  { icon: '🏅', text: "Alex Ferguson, Manchester United'da 26 yıl teknik direktörlük yaptı ve 38 kupa kazandı." },
-  { icon: '🇯🇵', text: "Japonya, 2002'de Güney Kore ile birlikte Dünya Kupası'na ev sahipliği yapan ilk Asya ülkesiydi." },
-];
-
 export function SearchingScreen({ actions }: Props) {
-  const [factIdx, setFactIdx] = useState(Math.floor(Math.random() * FUN_FACTS.length));
+  const [factIdx, setFactIdx] = useState(Math.floor(Math.random() * LOADING_TIPS.length));
+  const factFade = useRef(new Animated.Value(1)).current;
 
+  // Rotate tips every 6s with a 200ms crossfade (fade out → swap → fade in).
   useEffect(() => {
     const id = setInterval(() => {
-      setFactIdx((prev) => (prev + 1) % FUN_FACTS.length);
+      Animated.timing(factFade, { toValue: 0, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
+        if (!finished) return;
+        setFactIdx((prev) => (prev + 1) % LOADING_TIPS.length);
+        Animated.timing(factFade, { toValue: 1, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+      });
     }, 6000);
     return () => clearInterval(id);
-  }, []);
+  }, [factFade]);
 
-  const fact = FUN_FACTS[factIdx]!;
-  const factText = t((LOADING_TIPS[factIdx % LOADING_TIPS.length] ?? 'loading.tip1') as MessageKey);
+  const factText = t(LOADING_TIPS[factIdx] ?? 'loading.tip1');
 
   return (
     <Screen>
-      <View style={styles.center}>
-        <Ionicons name="flash" size={44} color={theme.primary} />
-        <Text style={styles.h1}>{t('searching.header')}</Text>
-        <View style={{ height: 20 }} />
-        <ActivityIndicator size="large" color={theme.primary} />
-        <View style={{ height: 12 }} />
-        <Text style={styles.muted}>{t('searching.title')}</Text>
+      {/* Hero wait — Countdown-dialect pulsing mint ring around the engraved flash */}
+      <View style={[styles.center, { gap: 16 }]}>
+        <PulseRing size={132}>
+          <Ionicons
+            name="flash"
+            size={46}
+            color={theme.primary}
+            style={{ textShadowColor: theme.textShadow, textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 3 }}
+          />
+        </PulseRing>
+        <View style={{ alignItems: 'center', gap: 2 }}>
+          <Text style={styles.h1}>{t('searching.header')}</Text>
+          <Text style={styles.muted}>{t('searching.title')}</Text>
+        </View>
       </View>
 
-      <View style={styles.factCard}>
-        <Ionicons name="bulb" size={26} color={theme.accent} />
-        <Text style={styles.factText}>{factText}</Text>
-      </View>
+      <GamePanel compact accentStripe={theme.accent} style={{ marginVertical: 20 }} bodyStyle={{ paddingLeft: 16, paddingRight: 14 }}>
+        <SectionHeader label={t('searching.didYouKnow')} icon="bulb" style={{ marginTop: 0, marginBottom: 6 }} />
+        <Animated.Text style={{ opacity: factFade, color: theme.text, fontSize: 13, lineHeight: 20, fontFamily: 'Poppins-SemiBold', minHeight: 40 }}>
+          {factText}
+        </Animated.Text>
+      </GamePanel>
 
       <Btn label={t('searching.cancel')} kind="ghost" icon="close" onPress={actions.cancelSearch} />
     </Screen>
@@ -4854,18 +6644,95 @@ export function SearchingScreen({ actions }: Props) {
 }
 
 // ---- Leaderboard ----
-const RANK_COLORS = ['#FFD700', '#C0C0C0', '#CD7F32']; // gold, silver, bronze
+const RANK_COLORS = [theme.gold, theme.silver, theme.bronze];
+
+// THE leaderboard row — one component for the popup (LeaderboardModal) and the
+// fullscreen LeaderboardScreen: RankBadge + GamePanel compact with a medal
+// accent stripe for the top 3, pressed 2px depress, tap opens the profile.
+function LeaderboardRow({ entry, onPress }: { entry: LeaderboardEntry; onPress?: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      style={({ pressed }) => ({ marginVertical: 4, transform: [{ translateY: pressed ? 2 : 0 }] })}
+    >
+      <GamePanel compact accentStripe={entry.rank <= 3 ? RANK_COLORS[entry.rank - 1] : undefined} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingLeft: 12 }}>
+        <RankBadge rank={entry.rank} size={28} />
+        <Avatar avatar={entry.avatar} name={entry.displayName} size={30} ring={theme.primary} ringWidth={1.5} iconColor={theme.primary} iconSize={14} />
+        <View style={{ flex: 1 }}>
+          <Text numberOfLines={1} style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{entry.displayName}</Text>
+          <Text numberOfLines={1} style={{ color: theme.accent, fontSize: 10, fontFamily: 'Poppins-SemiBold' }}>{arenaLabel(entry.arena.name).toLocaleUpperCase(currentLang())}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+          <Ionicons name="trophy" size={12} color={theme.accent} />
+          <Text style={{ color: theme.accent, fontSize: 13, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{entry.trophies}</Text>
+        </View>
+        <Text style={{ color: theme.muted, fontSize: 10, width: 40, textAlign: 'right', fontFamily: 'Poppins-SemiBold' }}>{t('stats.record', { wins: entry.wins, losses: entry.losses })}</Text>
+      </GamePanel>
+    </Pressable>
+  );
+}
+
+// Loading ≠ empty (spec §9): lists shimmer 3–4 skeleton panels while fetching,
+// and only resolve into a crafted EmptyState once the fetch window has passed.
+function useLoadGrace(active: boolean, ms = 2500): boolean {
+  const [over, setOver] = useState(false);
+  useEffect(() => {
+    if (!active) { setOver(false); return; }
+    const id = setTimeout(() => setOver(true), ms);
+    return () => clearTimeout(id);
+  }, [active, ms]);
+  return over;
+}
+
+// Skeleton placeholder rows with a slow glowSoft shimmer (native driver opacity).
+function SkeletonRows({ rows = 3 }: { rows?: number }) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(a, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(a, { toValue: 0, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [a]);
+  return (
+    <>
+      {Array.from({ length: rows }).map((_, i) => (
+        <GamePanel key={i} compact style={{ marginVertical: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}>
+            <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: theme.panelInnerFill }} />
+            <View style={{ flex: 1, gap: 6 }}>
+              <View style={{ height: 12, borderRadius: 6, width: '62%', backgroundColor: theme.panelInnerFill }} />
+              <View style={{ height: 8, borderRadius: 4, width: '38%', backgroundColor: theme.panelInnerFill }} />
+            </View>
+          </View>
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: theme.glowSoft, opacity: a.interpolate({ inputRange: [0, 1], outputRange: [0.05, 0.5] }) }]} />
+        </GamePanel>
+      ))}
+    </>
+  );
+}
+
+// Crafted leaderboard emptiness — trophy medallion + hint + ghost "play now" CTA.
+function LeaderboardEmpty({ onPlay }: { onPlay?: () => void }) {
+  return (
+    <EmptyState
+      icon="trophy"
+      title={t('leaderboard.empty')}
+      hint={t('leaderboard.emptyHint')}
+      cta={onPlay ? <Btn label={t('home.quickMatch')} kind="ghost" icon="flash" onPress={onPlay} /> : undefined}
+    />
+  );
+}
 
 // ---- Match History ----
 
 function arenaForTrophies(trophies: number): { name: string; icon: IoniconName; color: string } {
-  if (trophies >= 5000) return { name: 'GOAT', icon: 'flame', color: '#FF4500' };
-  if (trophies >= 3500) return { name: 'Dünya Klasmanı', icon: 'trophy', color: '#FFD700' };
-  if (trophies >= 2000) return { name: 'Efsaneler Arası', icon: 'ribbon', color: '#C0C0C0' };
-  if (trophies >= 1000) return { name: 'Şampiyonlar Ligi', icon: 'medal', color: '#1E90FF' };
-  if (trophies >= 500) return { name: 'Profesyonel Lig', icon: 'medal-outline', color: '#32CD32' };
-  if (trophies >= 200) return { name: 'Amatör Lig', icon: 'football', color: '#FF8C00' };
-  return { name: 'Mahalle Sahası', icon: 'football-outline', color: '#8B4513' };
+  // Single source of truth: ARENA_DATA carries the trophy thresholds AND the
+  // theme's 7-step arena ramp (flame/purple/blue/primary/gold/silver/bronze).
+  const a = ARENA_DATA.find((arena) => trophies >= arena.min && trophies <= arena.max) ?? ARENA_DATA[ARENA_DATA.length - 1]!;
+  return { name: a.name, icon: a.icon, color: a.color };
 }
 
 // Map an arena's canonical (Turkish) name — as stored on the server & in ARENA_DATA
@@ -4908,10 +6775,22 @@ function lastSeenLabel(iso: string | null | undefined): string {
   return `${p} ${t('lastSeen.long')}`;
 }
 
+// One short-date voice for match-history cards AND conversation rows:
+// today → HH:mm, otherwise dd.MM (spec: metadata stays on the 10px caption floor).
+function shortDate(iso: string | number): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) {
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
 function ClubLogo({ uri, name, size = 22 }: { uri: string | null; name?: string; size?: number }) {
   if (!uri) return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: name ? badgeColor(name) : theme.border, alignItems: 'center', justifyContent: 'center' }}>
-      {name ? <Text style={{ color: '#fff', fontWeight: '900', fontSize: size * 0.45 }}>{initial(name)}</Text> : null}
+      {name ? <Text style={{ color: theme.text, fontFamily: 'Poppins-Black', fontSize: size * 0.45 }}>{initial(name)}</Text> : null}
     </View>
   );
   return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
@@ -4926,138 +6805,119 @@ function PlayerPhoto({ uri, size = 32 }: { uri: string | null; size?: number }) 
   return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
 }
 
+// THE match-history card — one component for the popup (MatchHistoryModal) and
+// the fullscreen MatchHistoryScreen: GamePanel compact tinted by the result,
+// Ribbon verdict chip, engraved Poppins-Black score, recessed round wells.
+function MatchHistoryCard({ match: m, myName }: { match: MatchHistoryView; myName: string }) {
+  const myRounds = m.rounds.filter((r) => r.answeredBy === myName);
+  const oppRounds = m.rounds.filter((r) => r.answeredBy !== myName);
+  const pArena = arenaForTrophies(m.playerTrophies);
+  const oArena = arenaForTrophies(m.opponentTrophies);
+  const tint = m.won ? theme.primary : theme.danger;
+
+  // Round chip: recessed panelInnerFill well (dark top edge = sunken) with a
+  // mine/theirs stripe. Metadata never dips under the 10px caption floor.
+  const roundChip = (r: MatchHistoryView['rounds'][number], mine: boolean, key: number) => (
+    <View
+      key={key}
+      style={{
+        backgroundColor: theme.panelInnerFill, borderRadius: 10, padding: 8, marginBottom: 4,
+        borderTopWidth: 1, borderTopColor: theme.cardLip,
+        borderLeftWidth: 3, borderLeftColor: mine ? theme.primary : theme.danger,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+        <MatchHistoryLeadBadge mode={(r.mode as GameMode) ?? (m.gameMode as GameMode) ?? 'team-team'} country={r.country} letter={r.letter} teamA={r.teamA} teamALogo={r.teamALogo} size={18} />
+        <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold' }}>+</Text>
+        <ClubLogo uri={r.teamBLogo} name={r.teamB} size={18} />
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+        <PlayerPhoto uri={r.playerImageUrl} size={22} />
+        <Text style={{ color: mine ? theme.primary : theme.danger, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', flex: 1 }} numberOfLines={1}>{r.player}</Text>
+      </View>
+    </View>
+  );
+
+  const side = (name: string, arena: ReturnType<typeof arenaForTrophies>, trophies: number) => (
+    <View style={{ flex: 1, alignItems: 'center' }}>
+      <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{name}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+        <Ionicons name={arena.icon} size={11} color={arena.color} />
+        <Text style={{ color: arena.color, fontSize: 10, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{trophies}</Text>
+      </View>
+      <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', marginTop: 1 }} numberOfLines={1}>{arenaLabel(arena.name)}</Text>
+    </View>
+  );
+
+  return (
+    <GamePanel compact tint={tint} style={{ marginBottom: 12 }} bodyStyle={{ padding: 0 }}>
+      {/* Result + score + mode/date band, washed in the result tint */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: withAlpha(tint, 0.10) }}>
+        <Ribbon
+          label={m.won ? t('matchHistory.won') : t('matchHistory.lost')}
+          color={m.won ? theme.accent : theme.danger}
+          icon={m.won ? 'trophy' : 'close-circle'}
+        />
+        <Text style={{ color: theme.text, fontSize: 22, fontFamily: 'Poppins-Black', letterSpacing: 2, fontVariant: ['tabular-nums'], ...engrave('lg') }}>
+          {m.playerScore} - {m.opponentScore}
+        </Text>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold' }}>{MODE_LABEL((m.gameMode as GameMode) ?? 'team-team')}</Text>
+          <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{shortDate(m.playedAt)}</Text>
+        </View>
+      </View>
+
+      {/* Head-to-head */}
+      <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 }}>
+        {side(m.playerName || myName, pArena, m.playerTrophies)}
+        <View style={{ justifyContent: 'center', paddingHorizontal: 8 }}>
+          <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t('common.vs')}</Text>
+        </View>
+        {side(m.opponentName, oArena, m.opponentTrophies)}
+      </View>
+
+      {/* Rounds detail — who answered which pairing */}
+      <View style={{ flexDirection: 'row', paddingHorizontal: 10, paddingTop: 4, paddingBottom: 12, gap: 6 }}>
+        <View style={{ flex: 1 }}>
+          {myRounds.length > 0
+            ? myRounds.map((r, i) => roundChip(r, true, i))
+            : <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginTop: 8 }}>—</Text>}
+        </View>
+        <View style={{ width: 1, backgroundColor: theme.border, marginVertical: 4 }} />
+        <View style={{ flex: 1 }}>
+          {oppRounds.length > 0
+            ? oppRounds.map((r, i) => roundChip(r, false, i))
+            : <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginTop: 8 }}>—</Text>}
+        </View>
+      </View>
+    </GamePanel>
+  );
+}
+
 export function MatchHistoryScreen({ state, actions }: Props) {
   const history = state.matchHistory;
   const myName = state.profile?.displayName ?? '';
 
   return (
     <Screen>
-      <ScreenHeader title={t('matchHistory.title')} icon="time" onBack={actions.closeMatchHistory} underline={theme.primary} />
+      <ScreenHeader title={t('matchHistory.title')} icon="time" onBack={actions.closeMatchHistory} />
 
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={history.length === 0 ? { flexGrow: 1, justifyContent: 'center', paddingBottom: 30 } : { paddingBottom: 30 }}
+      >
         {history.length === 0 ? (
-          <View style={styles.center}>
-            <Ionicons name="time-outline" size={48} color={theme.border} />
-            <Text style={styles.muted}>{t('matchHistory.empty')}</Text>
-          </View>
+          <EmptyState
+            icon="time"
+            title={t('matchHistory.empty')}
+            hint={t('matchHistory.emptyHint')}
+            cta={<Btn label={t('home.quickMatch')} kind="ghost" icon="flash" onPress={actions.closeMatchHistory} />}
+          />
         ) : (
-          history.map((m) => {
-            const myRounds = m.rounds.filter((r) => r.answeredBy === myName);
-            const oppRounds = m.rounds.filter((r) => r.answeredBy !== myName);
-            const pArena = arenaForTrophies(m.playerTrophies);
-            const oArena = arenaForTrophies(m.opponentTrophies);
-            const borderColor = m.won ? theme.primary : theme.danger;
-            const date = new Date(m.playedAt);
-            const dateStr = `${date.getDate().toString().padStart(2, '0')}.${(date.getMonth() + 1).toString().padStart(2, '0')}.${date.getFullYear()}`;
-
-            return (
-              <View key={m.id} style={{
-                backgroundColor: theme.card, borderRadius: 16, borderWidth: 1.5,
-                borderColor, marginBottom: 14, overflow: 'hidden',
-              }}>
-                {/* ── Top bar: result badge + score + mode + date ── */}
-                <View style={{
-                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                  paddingHorizontal: 14, paddingVertical: 8,
-                  backgroundColor: m.won ? 'rgba(61,220,132,0.08)' : 'rgba(255,90,95,0.08)',
-                }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Ionicons name={m.won ? 'trophy' : 'close-circle'} size={16} color={m.won ? theme.accent : theme.danger} />
-                    <Text style={{ color: m.won ? theme.primary : theme.danger, fontWeight: '900', fontSize: 12 }}>
-                      {m.won ? t('matchHistory.won') : t('matchHistory.lost')}
-                    </Text>
-                  </View>
-                  <Text style={{ color: theme.text, fontSize: 24, fontWeight: '900', letterSpacing: 3 }}>
-                    {m.playerScore} - {m.opponentScore}
-                  </Text>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ color: theme.muted, fontSize: 9 }}>{MODE_LABEL((m.gameMode as GameMode) ?? 'team-team')}</Text>
-                    <Text style={{ color: theme.muted, fontSize: 9 }}>{dateStr}</Text>
-                  </View>
-                </View>
-
-                {/* ── Players head-to-head ── */}
-                <View style={{ flexDirection: 'row', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 6 }}>
-                  {/* My side */}
-                  <View style={{ flex: 1, alignItems: 'center' }}>
-                    <Text style={{ color: theme.text, fontWeight: '900', fontSize: 16 }} numberOfLines={1}>{m.playerName || myName}</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                      <Ionicons name={pArena.icon} size={12} color={pArena.color} />
-                      <Text style={{ color: pArena.color, fontSize: 10, fontWeight: '700' }}>{m.playerTrophies}</Text>
-                    </View>
-                    <Text style={{ color: theme.muted, fontSize: 9, marginTop: 1 }}>{arenaLabel(pArena.name)}</Text>
-                  </View>
-
-                  {/* VS */}
-                  <View style={{ justifyContent: 'center', paddingHorizontal: 8 }}>
-                    <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '900' }}>{t('common.vs')}</Text>
-                  </View>
-
-                  {/* Opponent side */}
-                  <View style={{ flex: 1, alignItems: 'center' }}>
-                    <Text style={{ color: theme.text, fontWeight: '900', fontSize: 16 }} numberOfLines={1}>{m.opponentName}</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                      <Ionicons name={oArena.icon} size={12} color={oArena.color} />
-                      <Text style={{ color: oArena.color, fontSize: 10, fontWeight: '700' }}>{m.opponentTrophies}</Text>
-                    </View>
-                    <Text style={{ color: theme.muted, fontSize: 9, marginTop: 1 }}>{arenaLabel(oArena.name)}</Text>
-                  </View>
-                </View>
-
-                {/* ── Rounds detail ── */}
-                <View style={{ flexDirection: 'row', paddingHorizontal: 10, paddingBottom: 12, gap: 6 }}>
-                  {/* My rounds */}
-                  <View style={{ flex: 1 }}>
-                    {myRounds.length > 0 ? myRounds.map((r, i) => {
-                      const rMode = r.mode ?? m.gameMode ?? 'team-team';
-                      return (
-                        <View key={i} style={{
-                          backgroundColor: theme.bg, borderRadius: 10, padding: 8, marginBottom: 4,
-                          borderLeftWidth: 3, borderLeftColor: theme.primary,
-                        }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                            <MatchHistoryLeadBadge mode={rMode as GameMode} country={r.country} letter={r.letter} teamA={r.teamA} teamALogo={r.teamALogo} size={18} />
-                            <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
-                            <ClubLogo uri={r.teamBLogo} size={18} name={r.teamB} />
-                          </View>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                            <PlayerPhoto uri={r.playerImageUrl} size={24} />
-                            <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 11, flex: 1 }} numberOfLines={1}>{r.player}</Text>
-                          </View>
-                        </View>
-                      );
-                    }) : <Text style={{ color: theme.muted, fontSize: 10, textAlign: 'center', marginTop: 8 }}>—</Text>}
-                  </View>
-
-                  {/* Divider */}
-                  <View style={{ width: 1, backgroundColor: theme.border, marginVertical: 4 }} />
-
-                  {/* Opponent rounds */}
-                  <View style={{ flex: 1 }}>
-                    {oppRounds.length > 0 ? oppRounds.map((r, i) => {
-                      const rMode = r.mode ?? m.gameMode ?? 'team-team';
-                      return (
-                        <View key={i} style={{
-                          backgroundColor: theme.bg, borderRadius: 10, padding: 8, marginBottom: 4,
-                          borderLeftWidth: 3, borderLeftColor: theme.danger,
-                        }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                            <MatchHistoryLeadBadge mode={rMode as GameMode} country={r.country} letter={r.letter} teamA={r.teamA} teamALogo={r.teamALogo} size={18} />
-                            <Text style={{ color: theme.muted, fontSize: 8, fontWeight: '600' }}>+</Text>
-                            <ClubLogo uri={r.teamBLogo} size={18} name={r.teamB} />
-                          </View>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                            <PlayerPhoto uri={r.playerImageUrl} size={24} />
-                            <Text style={{ color: theme.danger, fontWeight: '800', fontSize: 11, flex: 1 }} numberOfLines={1}>{r.player}</Text>
-                          </View>
-                        </View>
-                      );
-                    }) : <Text style={{ color: theme.muted, fontSize: 10, textAlign: 'center', marginTop: 8 }}>—</Text>}
-                  </View>
-                </View>
-              </View>
-            );
-          })
+          history.map((m) => (
+            <MatchHistoryCard key={m.id} match={m} myName={myName} />
+          ))
         )}
       </ScrollView>
     </Screen>
@@ -5065,32 +6925,62 @@ export function MatchHistoryScreen({ state, actions }: Props) {
 }
 
 // ---- Leaderboard ----
+
+// One podium spot for the fullscreen leaderboard hero: avatar over a stepped
+// plinth in the medal color, RankBadge medal overlapping the avatar, pressed
+// 2px sink, tap opens the profile. #1 carries the gold gloss.
+function PodiumSpot({ entry, onPress }: { entry: LeaderboardEntry; onPress: () => void }) {
+  const place = entry.rank;
+  const c = RANK_COLORS[place - 1] ?? theme.gold;
+  const plinthH = place === 1 ? 44 : place === 2 ? 30 : 22;
+  const avSize = place === 1 ? 58 : 46;
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => ({ flex: 1, alignItems: 'center', transform: [{ translateY: pressed ? 2 : 0 }] })}>
+      <Avatar avatar={entry.avatar} name={entry.displayName} size={avSize} ring={c} ringWidth={2.5} iconColor={c} iconSize={Math.round(avSize * 0.45)} />
+      <View style={{ marginTop: -11 }}>
+        <RankBadge rank={place} size={22} />
+      </View>
+      <Text numberOfLines={1} style={{ color: theme.text, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold', marginTop: 4, maxWidth: '96%', ...engrave('sm') }}>{entry.displayName}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 1, marginBottom: 6 }}>
+        <Ionicons name="trophy" size={10} color={theme.accent} />
+        <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{entry.trophies}</Text>
+      </View>
+      {/* Stepped plinth — raised block in the medal color (light top / dark lip) */}
+      <View style={{ alignSelf: 'stretch', height: plinthH, borderRadius: 8, backgroundColor: c, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.45)', borderBottomWidth: 3, borderBottomColor: darken(c), overflow: 'hidden' }}>
+        {place === 1 ? <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '50%', backgroundColor: 'rgba(255,255,255,0.22)' }} /> : null}
+      </View>
+    </Pressable>
+  );
+}
+
 export function LeaderboardScreen({ state, actions }: Props) {
   const lb = state.leaderboard;
+  // Loading ≠ empty: skeleton shimmer during the fetch window, then EmptyState.
+  const graceOver = useLoadGrace(lb.length === 0);
+  const top3 = lb.filter((e) => e.rank >= 1 && e.rank <= 3);
   return (
     <Screen>
-      <ScreenHeader title={t('leaderboard.title')} icon="trophy" onBack={actions.closeLeaderboard} underline={theme.accent} />
-      <ScrollView style={{ flex: 1, marginTop: 10 }} showsVerticalScrollIndicator={false}>
+      <ScreenHeader title={t('leaderboard.title')} icon="trophy" onBack={actions.closeLeaderboard} />
+      <ScrollView style={{ flex: 1, marginTop: 10 }} showsVerticalScrollIndicator={false} contentContainerStyle={lb.length === 0 && graceOver ? { flexGrow: 1, justifyContent: 'center' } : { paddingBottom: 24 }}>
+        {top3.length === 3 ? (
+          // Hero podium header: 2 — 1 — 3 on stepped plinths.
+          <GamePanel hero style={{ marginBottom: 12 }} bodyStyle={{ paddingTop: 18, paddingBottom: 12, paddingHorizontal: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
+              <PodiumSpot entry={top3[1]!} onPress={() => actions.getUserProfile(top3[1]!.userId)} />
+              <PodiumSpot entry={top3[0]!} onPress={() => actions.getUserProfile(top3[0]!.userId)} />
+              <PodiumSpot entry={top3[2]!} onPress={() => actions.getUserProfile(top3[2]!.userId)} />
+            </View>
+          </GamePanel>
+        ) : null}
         {lb.map((entry) => (
-          <View key={entry.rank} style={{ marginBottom: 8 }}>
-            <GamePanel compact accentStripe={entry.rank <= 3 ? RANK_COLORS[entry.rank - 1] : undefined} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingLeft: 12 }}>
-              <RankBadge rank={entry.rank} size={28} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.lbName} numberOfLines={1}>{entry.displayName}</Text>
-                <Text style={styles.lbArena}>{arenaLabel(entry.arena.name)}</Text>
-              </View>
-              <View style={styles.lbTrophyBox}>
-                <Ionicons name="trophy" size={12} color={theme.accent} />
-                <Text style={styles.lbTrophies}>{entry.trophies}</Text>
-              </View>
-              <Text style={styles.lbWL}>{t('stats.record', { wins: entry.wins, losses: entry.losses })}</Text>
-            </GamePanel>
+          <View key={entry.rank} style={{ marginBottom: 4 }}>
+            <LeaderboardRow entry={entry} onPress={() => actions.getUserProfile(entry.userId)} />
           </View>
         ))}
-        {lb.length === 0 ? <Text style={styles.muted}>{t('leaderboard.empty')}</Text> : null}
+        {lb.length === 0 ? (
+          graceOver ? <LeaderboardEmpty onPlay={actions.closeLeaderboard} /> : <SkeletonRows rows={4} />
+        ) : null}
       </ScrollView>
-      <View style={{ height: 10 }} />
-      <Btn label={t('common.back')} kind="ghost" icon="arrow-back" onPress={actions.closeLeaderboard} />
     </Screen>
   );
 }
@@ -5126,23 +7016,44 @@ function ReadyButton({ state, onPress }: { state: GameState; onPress: () => void
     return () => clearInterval(id);
   }, [state.readyCountdownEndsAt]);
 
+  // Last 3 seconds: flip to accent + a gentle scale pulse for urgency.
+  const urgent = secs !== null && secs <= 3;
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!urgent) { pulse.stopAnimation(); pulse.setValue(0); return; }
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 450, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 450, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [urgent, pulse]);
+
   return (
-    <Btn
-      label={secs !== null ? t('ready.labelSecs', { secs }) : t('ready.label')}
-      kind="primary"
-      icon="checkmark"
-      onPress={onPress}
-    />
+    <Animated.View style={{ transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.03] }) }] }}>
+      <Btn
+        label={t('ready.label')}
+        badge={secs !== null ? String(secs) : undefined}
+        kind={urgent ? 'accent' : 'primary'}
+        icon="checkmark"
+        onPress={onPress}
+      />
+    </Animated.View>
   );
 }
 
 // Falling confetti for the victory screen (pure RN Animated, no deps).
+// Full-viewport travel, per-piece duration/size variance + sinusoidal sway.
 function Confetti() {
   const COLORS = [theme.primary, theme.accent, theme.blue, theme.purple, theme.danger, theme.gold];
   const pieces = useRef(
     Array.from({ length: 32 }, (_, i) => ({
       x: (i * 53) % 100,
       delay: (i * 71) % 900,
+      duration: 1800 + ((i * 97) % 1400),
+      w: 6 + (i % 3) * 2,
+      h: 10 + ((i * 13) % 8),
+      sway: (8 + ((i * 29) % 14)) * (i % 2 === 0 ? 1 : -1),
       color: COLORS[i % COLORS.length]!,
       v: new Animated.Value(0),
     })),
@@ -5150,24 +7061,127 @@ function Confetti() {
   useEffect(() => {
     pieces.forEach((p) =>
       Animated.loop(
-        Animated.timing(p.v, { toValue: 1, duration: 2400, delay: p.delay, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(p.v, { toValue: 1, duration: p.duration, delay: p.delay, easing: Easing.linear, useNativeDriver: true }),
       ).start(),
     );
   }, [pieces]);
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       {pieces.map((p, i) => {
-        const ty = p.v.interpolate({ inputRange: [0, 1], outputRange: [-30, 820] });
+        const ty = p.v.interpolate({ inputRange: [0, 1], outputRange: [-30, SCREEN_H + 30] });
+        const tx = p.v.interpolate({ inputRange: [0, 0.25, 0.5, 0.75, 1], outputRange: [0, p.sway, 0, -p.sway, 0] });
         const rot = p.v.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '720deg'] });
         const op = p.v.interpolate({ inputRange: [0, 0.08, 0.85, 1], outputRange: [0, 1, 1, 0] });
         return (
           <Animated.View
             key={i}
-            style={{ position: 'absolute', left: `${p.x}%`, top: 0, width: 8, height: 13, borderRadius: 2, backgroundColor: p.color, opacity: op, transform: [{ translateY: ty }, { rotate: rot }] }}
+            style={{ position: 'absolute', left: `${p.x}%`, top: 0, width: p.w, height: p.h, borderRadius: 2, backgroundColor: p.color, opacity: op, transform: [{ translateY: ty }, { translateX: tx }, { rotate: rot }] }}
           />
         );
       })}
     </View>
+  );
+}
+
+// Count-up ticker for score / reward numerals (~400ms, spec §11). JS-driven by
+// design — the ticking value feeds a Text, which the native driver can't do.
+function useCountUp(target: number, duration = 400): number {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    const v = new Animated.Value(0);
+    const id = v.addListener(({ value }) => setVal(Math.round(value)));
+    Animated.timing(v, { toValue: target, duration, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    return () => { v.removeListener(id); v.stopAnimation(); };
+  }, [target, duration]);
+  return val;
+}
+
+// Trophy delta — beveled reward chip (Ribbon language: gold for gains, danger
+// for losses) with a count-up delta and the new total in a recessed muted
+// segment. Slides in 150ms after the banner lands.
+function TrophyDeltaChip({ delta, trophies }: { delta: number; trophies: number }) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(150),
+      Animated.timing(a, { toValue: 1, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+    ]).start();
+  }, [a]);
+  const gain = delta >= 0;
+  const color = gain ? theme.accent : theme.danger;
+  const fg = gain ? theme.ink : theme.text;
+  const shownDelta = useCountUp(Math.abs(delta));
+  return (
+    <Animated.View
+      style={{
+        opacity: a,
+        transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
+        flexDirection: 'row', alignItems: 'stretch', marginTop: 8,
+        borderRadius: 10, overflow: 'hidden',
+        shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 4,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: color, paddingHorizontal: 10, paddingVertical: 4, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.4)', borderBottomWidth: 2, borderBottomColor: darken(color, 0.4) }}>
+        <Ionicons name="trophy" size={12} color={fg} />
+        <Text style={{ color: fg, fontSize: 13, fontFamily: 'Poppins-Black', letterSpacing: 0.5, fontVariant: ['tabular-nums'] }}>
+          {gain ? '+' : '-'}{shownDelta}
+        </Text>
+      </View>
+      <View style={{ justifyContent: 'center', backgroundColor: theme.panelInnerFill, paddingHorizontal: 10, borderTopWidth: 1, borderTopColor: theme.cardLip, borderBottomWidth: 2, borderBottomColor: theme.cardLip }}>
+        <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{trophies}</Text>
+      </View>
+    </Animated.View>
+  );
+}
+
+// Match-over banner: spring-scales in, trophy/sad icon in a gold-glow medallion,
+// count-up score, trophy delta as a reward chip (no more raw '→' text row).
+function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong, winnerName, trophyDelta }: {
+  youWon: boolean; youScore: number; oppScore: number; youWrong: number; oppWrong: number;
+  winnerName: string | null; trophyDelta: { delta: number; trophies: number } | null;
+}) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
+  }, [a]);
+  const sYou = useCountUp(youScore);
+  const sOpp = useCountUp(oppScore);
+  return (
+    <Animated.View
+      style={[styles.matchBanner, {
+        opacity: a.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
+        transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }],
+      }]}
+    >
+      <View
+        style={{
+          width: 64, height: 64, borderRadius: 32, backgroundColor: theme.card,
+          borderWidth: 2,
+          borderColor: youWon ? theme.accent : theme.border,
+          borderTopColor: youWon ? lighten(theme.accent, 0.3) : theme.panelTopGloss,
+          borderBottomColor: youWon ? theme.accentDark : theme.cardLip,
+          alignItems: 'center', justifyContent: 'center', marginBottom: 2,
+          ...(youWon ? { shadowColor: theme.accent, shadowOpacity: 0.55, shadowRadius: 12, shadowOffset: { width: 0, height: 0 }, elevation: 8 } : {}),
+        }}
+      >
+        <Ionicons name={youWon ? 'trophy' : 'sad-outline'} size={32} color={youWon ? theme.accent : theme.muted} />
+      </View>
+      <Text style={[styles.h1, { color: youWon ? theme.accent : theme.text, marginTop: 2 }]}>
+        {youWon ? t('result.youWon') : t('result.youLost')}
+      </Text>
+      <Text style={styles.matchScore}>
+        {sYou} - {sOpp}
+      </Text>
+      {/* 3 wrong answers explanation */}
+      {youWrong >= 3 ? (
+        <Text style={[styles.muted, { color: theme.danger, marginTop: 4 }]}>{t('result.youLost3Wrong')}</Text>
+      ) : oppWrong >= 3 ? (
+        <Text style={[styles.muted, { color: theme.primary, marginTop: 4 }]}>{t('result.youWon3Wrong')}</Text>
+      ) : !youWon && winnerName ? (
+        <Text style={styles.muted}>{t('result.winnerTook', { name: winnerName })}</Text>
+      ) : null}
+      {trophyDelta ? <TrophyDeltaChip delta={trophyDelta.delta} trophies={trophyDelta.trophies} /> : null}
+    </Animated.View>
   );
 }
 
@@ -5183,15 +7197,33 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
     if (r.reason === 'same_team')
       return { icon: 'swap-horizontal' as IoniconName, color: theme.accent, headline: t('result.roundSkipped') };
     if (r.reason === 'no_common')
-      return { icon: 'information-circle-outline' as IoniconName, color: theme.accent, headline: t('result.roundSkipped') };
+      return { icon: 'information' as IoniconName, color: theme.accent, headline: t('result.roundSkipped') };
     if (r.reason === 'passed')
       return { icon: 'play-skip-forward' as IoniconName, color: theme.accent, headline: t('result.roundSkipped') };
     if (r.reason === 'timeout')
       return { icon: 'time' as IoniconName, color: theme.muted, headline: t('result.timeUp') };
     return r.correct
-      ? { icon: 'checkmark-circle' as IoniconName, color: theme.primary, headline: t('result.correct') }
-      : { icon: 'close-circle' as IoniconName, color: theme.danger, headline: t('result.wrong') };
+      ? { icon: 'checkmark' as IoniconName, color: theme.primary, headline: t('result.correct') }
+      : { icon: 'close' as IoniconName, color: theme.danger, headline: t('result.wrong') };
   }, [r]);
+
+  // Round verdict pop (scale 0.5 → spring overshoot → 1) + 80ms photo stagger.
+  const verdictA = useRef(new Animated.Value(0)).current;
+  const photoA = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    verdictA.setValue(0);
+    photoA.setValue(0);
+    Animated.spring(verdictA, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }).start();
+    Animated.sequence([
+      Animated.delay(80),
+      Animated.spring(photoA, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }),
+    ]).start();
+  }, [r, verdictA, photoA]);
+  const photoStyle = {
+    alignItems: 'center' as const,
+    opacity: photoA.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' as const }),
+    transform: [{ scale: photoA.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }],
+  };
 
   const playedA = r.spellsA.length > 0;
   const playedB = r.spellsB.length > 0;
@@ -5201,36 +7233,36 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
         {/* Match-over banner (the round detail below still shows the deciding answer) */}
         {matchOver ? (
-          <View style={styles.matchBanner}>
-            <Ionicons name={youWon ? 'trophy' : 'sad-outline'} size={40} color={youWon ? theme.accent : theme.muted} />
-            <Text style={[styles.h1, { color: youWon ? theme.accent : theme.text, marginTop: 2 }]}>
-              {youWon ? t('result.youWon') : t('result.youLost')}
-            </Text>
-            <Text style={styles.matchScore}>
-              {(you?.score ?? 0)} - {(opp?.score ?? 0)}
-            </Text>
-            {/* 3 wrong answers explanation */}
-            {(you?.wrongCount ?? 0) >= 3 ? (
-              <Text style={[styles.muted, { color: theme.danger, marginTop: 4 }]}>{t('result.youLost3Wrong')}</Text>
-            ) : (opp?.wrongCount ?? 0) >= 3 ? (
-              <Text style={[styles.muted, { color: theme.primary, marginTop: 4 }]}>{t('result.youWon3Wrong')}</Text>
-            ) : !youWon && state.matchWinnerName ? (
-              <Text style={styles.muted}>{t('result.winnerTook', { name: state.matchWinnerName })}</Text>
-            ) : null}
-            {state.trophyDelta ? (
-              <View style={styles.trophyDeltaRow}>
-                <Ionicons name="trophy" size={14} color={theme.accent} />
-                <Text style={[styles.trophyDeltaText, { color: state.trophyDelta.delta >= 0 ? theme.primary : theme.danger }]}>
-                  {state.trophyDelta.delta >= 0 ? '+' : ''}{state.trophyDelta.delta} → {state.trophyDelta.trophies}
-                </Text>
-              </View>
-            ) : null}
-          </View>
+          <MatchOverBanner
+            youWon={youWon}
+            youScore={you?.score ?? 0}
+            oppScore={opp?.score ?? 0}
+            youWrong={you?.wrongCount ?? 0}
+            oppWrong={opp?.wrongCount ?? 0}
+            winnerName={state.matchWinnerName ?? null}
+            trophyDelta={state.trophyDelta ?? null}
+          />
         ) : null}
 
         {/* Round verdict — always shown, so even on the deciding round you see who/what the answer was */}
-        <View style={styles.center}>
-          <Ionicons name={icon} size={matchOver ? 44 : 64} color={color} />
+        <Animated.View
+          style={[styles.center, {
+            opacity: verdictA.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
+            transform: [{ scale: verdictA.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }) }],
+          }]}
+        >
+          {/* Check/cross in a beveled medallion — colored face, darkened lip, top gloss, glow */}
+          <View
+            style={{
+              width: matchOver ? 52 : 72, height: matchOver ? 52 : 72, borderRadius: matchOver ? 26 : 36,
+              backgroundColor: color,
+              borderTopWidth: 2, borderTopColor: 'rgba(255,255,255,0.45)',
+              borderBottomWidth: matchOver ? 3 : 4, borderBottomColor: darken(color),
+              alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Ionicons name={icon} size={matchOver ? 26 : 38} color={theme.ink} />
+          </View>
           <Text style={[styles.h1, { color }]}>{headline}</Text>
           {r.reason === 'same_team' ? (
             <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.sameTeam')}</Text>
@@ -5244,19 +7276,19 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
             <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.passed')}</Text>
           ) : null}
           {state.revealMode === 'player-player' && r.correct ? (
-            <>
+            <Animated.View style={photoStyle}>
               {r.matchedClubLogo ? (
                 <ClubBadge name={r.matchedClubName ?? '?'} size={104} logoUrl={r.matchedClubLogo} />
               ) : null}
               {r.matchedClubName ? <Text style={styles.matched}>{r.matchedClubName}</Text> : null}
-            </>
+            </Animated.View>
           ) : (
-            <>
+            <Animated.View style={photoStyle}>
               {r.matchedPlayerImageUrl ? (
                 <Image source={{ uri: r.matchedPlayerImageUrl }} style={styles.playerPhoto} />
               ) : null}
               {r.matchedPlayerName ? <Text style={styles.matched}>{r.matchedPlayerName}</Text> : null}
-            </>
+            </Animated.View>
           )}
           {r.answeredByName ? (
             <Text style={styles.muted}>
@@ -5269,7 +7301,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
               <Text style={styles.fixText}>{t('result.autocorrected')}</Text>
             </View>
           ) : null}
-        </View>
+        </Animated.View>
 
         {/* Per-round detail (also shown on a passed round so both players see who the
             common player(s) were — the two team cards + "who played for both"). */}
@@ -5283,7 +7315,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
                       <Image source={{ uri: r.teamA.logoUrl }} style={{ width: 40, height: 40, borderRadius: 20 }} resizeMode="cover" />
                     ) : (
                       <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: badgeColor(r.teamA.name), alignItems: 'center', justifyContent: 'center' }}>
-                        <Ionicons name="person" size={20} color="#fff" />
+                        <Ionicons name="person" size={20} color={theme.text} />
                       </View>
                     )}
                     <Text style={styles.teamResultName} numberOfLines={2}>{r.teamA.name}</Text>
@@ -5297,7 +7329,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
                       <Image source={{ uri: r.teamB.logoUrl }} style={{ width: 40, height: 40, borderRadius: 20 }} resizeMode="cover" />
                     ) : (
                       <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: badgeColor(r.teamB.name), alignItems: 'center', justifyContent: 'center' }}>
-                        <Ionicons name="person" size={20} color="#fff" />
+                        <Ionicons name="person" size={20} color={theme.text} />
                       </View>
                     )}
                     <Text style={styles.teamResultName} numberOfLines={2}>{r.teamB.name}</Text>
@@ -5310,7 +7342,10 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
               ) : state.revealMode === 'country-team' ? (
                 /* Country card: flag + name + checkmark only */
                 <View style={[styles.teamResult, { borderColor: theme.primary }]}>
-                  <Text style={{ fontSize: 36 }}>{NATIONALITIES.find((n) => n.value === state.revealCountry)?.flag ?? '🏳️'}</Text>
+                  {/* Flag emoji framed in the ClubBadge white circular chip */}
+                  <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: theme.text, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                    <Text style={{ fontSize: 28 }}>{NATIONALITIES.find((n) => n.value === state.revealCountry)?.flag ?? '🏳️'}</Text>
+                  </View>
                   <Text style={styles.teamResultName} numberOfLines={2}>
                     {NATIONALITIES.find((n) => n.value === state.revealCountry)?.displayName ?? r.teamA.name}
                   </Text>
@@ -5357,18 +7392,23 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
                 state.revealMode === 'country-team' ? t('result.noCommonFoundCountry')
                 : state.revealMode === 'letter-team' ? t('result.noCommonFoundLetter')
                 : t('result.noCommonFound');
-              const renderList = (list: typeof r.commonPlayers) => list.map((cp, i) => (
-                <View key={i} style={styles.commonRow}>
-                  {cp.imageUrl ? (
-                    <Image source={{ uri: cp.imageUrl }} style={styles.commonPhoto} resizeMode="cover" />
-                  ) : (
-                    <View style={[styles.commonPhoto, { backgroundColor: badgeColor(cp.name), alignItems: 'center', justifyContent: 'center' }]}>
-                      <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>{initial(cp.name)}</Text>
+              // One GamePanel compact wrapping recessed panelInnerFill rows.
+              const renderList = (list: typeof r.commonPlayers) => (
+                <GamePanel compact style={{ marginTop: 6 }} bodyStyle={{ padding: 8, gap: 6 }}>
+                  {list.map((cp, i) => (
+                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: theme.panelInnerFill, borderRadius: 10, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, paddingVertical: 6, paddingHorizontal: 8 }}>
+                      {cp.imageUrl ? (
+                        <Image source={{ uri: cp.imageUrl }} style={styles.commonPhoto} resizeMode="cover" />
+                      ) : (
+                        <View style={[styles.commonPhoto, { backgroundColor: badgeColor(cp.name), alignItems: 'center', justifyContent: 'center' }]}>
+                          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14 }}>{initial(cp.name)}</Text>
+                        </View>
+                      )}
+                      <Text style={styles.commonName}>{cp.name}</Text>
                     </View>
-                  )}
-                  <Text style={styles.commonName}>{cp.name}</Text>
-                </View>
-              ));
+                  ))}
+                </GamePanel>
+              );
               if (!r.correct) {
                 return (
                   <>
@@ -5392,15 +7432,26 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
           </>
         ) : null}
 
+        {/* Running match score — one recessed strip, leader tinted mint */}
         <View style={styles.scoreRow}>
-          {room.players.map((p) => (
-            <View key={p.id} style={styles.scoreChip}>
-              <Avatar avatar={p.avatar} name={p.name} size={20} iconColor={theme.muted} iconSize={14} />
-              <Text style={styles.scoreText}>
-                {p.name} {p.score}/{state.winTarget}
-              </Text>
-            </View>
-          ))}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.panelInnerFill, borderRadius: 16, borderWidth: 2, borderColor: theme.border, borderTopColor: theme.cardLip, paddingVertical: 8, paddingHorizontal: 14 }}>
+            {room.players.map((p, i) => {
+              const other = room.players[1 - i];
+              const leads = (p.score ?? 0) > (other?.score ?? 0);
+              return (
+                <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  {i > 0 ? <View style={{ width: 1.5, height: 22, backgroundColor: theme.border }} /> : null}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                    <Avatar avatar={p.avatar} name={p.name} size={22} ring={leads ? theme.primary : theme.border} ringWidth={1.5} iconColor={theme.muted} iconSize={13} />
+                    <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', maxWidth: 72 }} numberOfLines={1}>{p.name}</Text>
+                    <Text style={{ color: leads ? theme.primary : theme.text, fontSize: 15, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>
+                      {p.score}/{state.winTarget}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
         </View>
 
         {matchOver ? (
@@ -5415,7 +7466,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
               </>
             ) : state.rematchState === 'waiting' ? (
               <View style={styles.center}>
-                <ActivityIndicator color={theme.primary} />
+                <GameSpinner />
                 <Text style={styles.muted}>{t('result.rematchWaiting')}</Text>
               </View>
             ) : state.rematchState === 'declined' ? (
@@ -5438,7 +7489,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
           )
         ) : (
           <View style={styles.center}>
-            <ActivityIndicator color={theme.primary} />
+            <GameSpinner />
             <Text style={styles.muted}>{t('result.nextRound')}</Text>
           </View>
         )}
@@ -5454,15 +7505,11 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent', padding: 22, justifyContent: 'center' },
   center: { alignItems: 'center', gap: 6 },
-  logo: { color: theme.primary, fontSize: 28, fontFamily: 'Poppins-Black', textAlign: 'center', letterSpacing: 2, paddingRight: 4, marginTop: 6 },
-  tagline: { color: theme.muted, textAlign: 'center', marginBottom: 20, marginTop: 4, fontSize: 12, fontFamily: 'Poppins-SemiBold' },
   h1: { color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginVertical: 6, letterSpacing: 0.5, ...engrave('lg') },
-  label: { color: theme.muted, fontSize: 10, letterSpacing: 2, textAlign: 'center' },
+  label: { color: theme.muted, fontSize: 10, letterSpacing: 2, textAlign: 'center', fontFamily: 'Poppins-SemiBold' },
   sectionLabel: { color: theme.muted, fontSize: 10, letterSpacing: 2, marginTop: 12, marginBottom: 4, fontFamily: 'Poppins-ExtraBold' },
   code: { color: theme.accent, fontSize: 32, fontFamily: 'Poppins-Black', textAlign: 'center', letterSpacing: 4 },
-  big: { color: theme.text, fontSize: 64, fontFamily: 'Poppins-Black' },
-  muted: { color: theme.muted, textAlign: 'center', fontSize: 12 },
-  error: { color: theme.danger, textAlign: 'center', marginTop: 10, fontSize: 12 },
+  muted: { color: theme.muted, textAlign: 'center', fontSize: 12, fontFamily: 'Poppins-SemiBold' },
   input: {
     backgroundColor: theme.panelInnerFill, // recessed inner well
     color: theme.text,
@@ -5476,60 +7523,25 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins-ExtraBold',
     marginVertical: 6,
   },
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: theme.card,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    marginVertical: 8,
-  },
-  searchInput: { flex: 1, color: theme.text, paddingVertical: 12, fontSize: 14 },
-  btn: {
-    flexDirection: 'row',
-    borderRadius: 10,
-    padding: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 4,
-    borderColor: theme.border,
-  },
-  btnText: { fontSize: 14, fontWeight: '800' },
-  divider: { height: 1, backgroundColor: theme.border, marginVertical: 16, alignSelf: 'stretch' },
-  lobbyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginVertical: 5 },
-  lobbyName: { color: theme.text, fontSize: 14 },
-  clubRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: theme.card,
-    borderRadius: 12,
-    padding: 12,
-    marginVertical: 4,
-  },
-  clubText: { color: theme.text, fontSize: 13, flex: 1 },
+  lobbyName: { color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') },
+  // Recessed waiting chip (lobby waiting / wait-host states)
+  lobbyWaitChip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, alignSelf: 'center', backgroundColor: theme.panelInnerFill, borderRadius: 14, borderWidth: 2, borderColor: theme.border, borderTopColor: theme.cardLip, paddingVertical: 10, paddingHorizontal: 16 },
   teamsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   teamCard: { flex: 1, backgroundColor: theme.card, borderRadius: 16, padding: 14, alignItems: 'center', gap: 8, borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss, borderBottomWidth: 4, borderBottomColor: theme.cardLip, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 5 }, elevation: 7 },
   teamName: { color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') },
-  plus: { color: theme.accent, fontSize: 22, fontWeight: '900' },
-  timer: { color: theme.accent, fontSize: 22, fontWeight: '900', textAlign: 'center', marginTop: 8 },
-  passHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: theme.accent + '1F', borderRadius: 12, paddingVertical: 7, paddingHorizontal: 12, marginBottom: 8, borderWidth: 1, borderColor: theme.accent + '55' },
-  passHintText: { color: theme.accent, fontSize: 12, fontWeight: '700', flexShrink: 1 },
+  plus: { color: theme.accent, fontSize: 22, fontFamily: 'Poppins-Black', ...engrave('sm') },
+  passHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: withAlpha(theme.accent, 0.12), borderRadius: 12, paddingVertical: 7, paddingHorizontal: 12, marginBottom: 8, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, borderLeftWidth: 3, borderLeftColor: theme.accent },
+  passHintText: { color: theme.accent, fontSize: 12, fontFamily: 'Poppins-SemiBold', flexShrink: 1 },
   playerPhoto: { width: 104, height: 104, borderRadius: 52, marginTop: 10, borderWidth: 3, borderColor: theme.primary, backgroundColor: theme.card },
-  matched: { color: theme.text, fontSize: 19, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginTop: 4 },
-  matchScore: { color: theme.text, fontSize: 46, fontFamily: 'Poppins-Black', letterSpacing: 3, marginTop: 6, ...engrave('lg') },
+  matched: { color: theme.text, fontSize: 19, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginTop: 4, ...engrave('sm') },
+  matchScore: { color: theme.text, fontSize: 46, fontFamily: 'Poppins-Black', letterSpacing: 3, marginTop: 6, fontVariant: ['tabular-nums'], ...engrave('lg') },
   matchBanner: { alignItems: 'center', gap: 2, backgroundColor: theme.card, borderRadius: 20, borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark, paddingVertical: 18, paddingHorizontal: 14, marginBottom: 14, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 12 },
-  trophyDeltaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
-  trophyDeltaText: { fontSize: 14, fontWeight: '800' },
   fixRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  fixText: { color: theme.accent, fontSize: 12, fontWeight: '600' },
+  fixText: { color: theme.accent, fontSize: 12, fontFamily: 'Poppins-SemiBold' },
   teamResultRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  teamResult: { flex: 1, backgroundColor: theme.card, borderRadius: 16, borderWidth: 2, borderBottomWidth: 4, borderBottomColor: theme.cardLip, padding: 12, alignItems: 'center', gap: 6, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+  teamResult: { flex: 1, backgroundColor: theme.card, borderRadius: 16, borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss, borderBottomWidth: 4, borderBottomColor: theme.cardLip, padding: 12, alignItems: 'center', gap: 6, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
   teamResultName: { color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') },
-  teamResultYears: { color: theme.muted, fontSize: 10, textAlign: 'center' },
+  teamResultYears: { color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', textAlign: 'center' },
   careerList: { alignSelf: 'stretch', maxHeight: 220 },
   careerRow: {
     flexDirection: 'row',
@@ -5540,182 +7552,41 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.border,
   },
-  careerRowHi: { backgroundColor: 'rgba(61,220,132,0.10)', borderRadius: 8 },
-  careerClub: { color: theme.text, fontSize: 12, flex: 1 },
-  careerYears: { color: theme.muted, fontSize: 11 },
-  nameModalCard: { width: '100%' as const, maxWidth: 360, backgroundColor: theme.card, borderRadius: 26, padding: 24, alignItems: 'center' as const, gap: 10, borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark, shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 20 },
-  nameModalCost: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, marginVertical: 6 },
-  storeBalance: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.card, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14, marginTop: 6, borderWidth: 1, borderColor: theme.border },
-  storeBalanceText: { color: '#C084FC', fontSize: 18, fontWeight: '800' },
-  storeAdCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.card, borderRadius: 14, padding: 14, marginVertical: 5, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
-  storeAdTitle: { color: theme.text, fontSize: 14, fontWeight: '700' },
-  storeAdReward: { color: '#C084FC', fontSize: 14, fontWeight: '800', marginBottom: 4 },
-  storeCooldown: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.bg, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10, marginVertical: 4 },
-  storeCooldownText: { color: theme.accent, fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  storePackCard: { backgroundColor: theme.card, borderRadius: 14, padding: 14, marginVertical: 5, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, position: 'relative' as const, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
-  storePackBest: { borderColor: '#A855F7', borderWidth: 2 },
-  storePackBadge: { position: 'absolute' as const, top: -10, right: 12, backgroundColor: '#A855F7', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
-  storePackBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
-  storePackIcon: { width: 48, height: 48, borderRadius: 12, alignItems: 'center' as const, justifyContent: 'center' as const },
-  storePackAmount: { color: theme.text, fontSize: 16, fontWeight: '800' },
-  storePackPriceBox: { backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
-  storePackPrice: { color: '#06131F', fontSize: 14, fontWeight: '800' },
-  friendAddCard: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: theme.card, borderRadius: 14, padding: 14, marginVertical: 5, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip },
-  friendDivider: { width: 1, height: 40, backgroundColor: theme.border, marginHorizontal: 10 },
-  friendLabel: { color: theme.muted, fontSize: 10, fontWeight: '600', marginBottom: 4 },
-  friendCode: { color: theme.accent, fontSize: 16, fontWeight: '900', letterSpacing: 2 },
-  friendInput: { color: theme.text, fontSize: 14, fontWeight: '700', borderBottomWidth: 1, borderBottomColor: theme.border, paddingBottom: 4 },
-  friendEmpty: { alignItems: 'center' as const, gap: 8, paddingVertical: 30 },
-  arenaCard: { backgroundColor: theme.card, borderRadius: 16, borderWidth: 2, borderColor: theme.border, borderBottomWidth: 3, borderBottomColor: theme.cardLip, padding: 14, position: 'relative', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
-  arenaIconBox: { width: 74, height: 68, alignItems: 'center', justifyContent: 'center' },
-  arenaName: { color: theme.text, fontSize: 16, fontWeight: '900' },
-  arenaTrophyRange: { color: theme.muted, fontSize: 12, marginTop: 2 },
-  arenaStats: { flexDirection: 'row', gap: 16, marginTop: 8 },
-  arenaStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  arenaProgressOuter: { height: 8, backgroundColor: theme.border, borderRadius: 4, marginTop: 10, overflow: 'hidden', position: 'relative' },
-  arenaProgressInner: { height: '100%', borderRadius: 4 },
-  arenaProgressText: { position: 'absolute', right: 0, top: -16, color: theme.muted, fontSize: 10, fontWeight: '600' },
-  arenaBadge: { position: 'absolute', top: 10, right: 10, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
-  arenaBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
-  pickTimerBox: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.card, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14, marginTop: 6, borderWidth: 1, borderColor: theme.border },
-  pickTimerText: { color: theme.accent, fontSize: 22, fontWeight: '900' },
-  factCard: { backgroundColor: theme.card, borderRadius: 12, padding: 16, marginVertical: 24, borderWidth: 1, borderColor: theme.border, alignItems: 'center', gap: 10 },
-  factIcon: { fontSize: 28 },
-  factText: { color: theme.text, fontSize: 13, textAlign: 'center', lineHeight: 20 },
-  lbRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.card, borderRadius: 10, padding: 10, marginVertical: 3, borderWidth: 1, borderColor: theme.border },
-  lbRank: { color: theme.muted, fontSize: 15, fontWeight: '900', width: 24, textAlign: 'center' },
-  lbName: { color: theme.text, fontSize: 13, fontWeight: '700' },
-  lbArena: { color: theme.accent, fontSize: 10 },
-  lbTrophyBox: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  lbTrophies: { color: theme.accent, fontSize: 13, fontWeight: '800' },
-  lbWL: { color: theme.muted, fontSize: 10, width: 40, textAlign: 'right' },
-  profileCard: { backgroundColor: theme.card, borderRadius: 12, padding: 12, marginVertical: 8, borderWidth: 1, borderColor: theme.border },
-  profileRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  profileName: { color: theme.text, fontSize: 15, fontWeight: '800' },
-  profileArena: { color: theme.accent, fontSize: 11, fontWeight: '600' },
-  profileStat: { alignItems: 'center', gap: 2 },
-  profileStatIcon: { fontSize: 14 },
-  profileStatVal: { color: theme.text, fontSize: 13, fontWeight: '700' },
-  profileWL: { alignItems: 'flex-end', marginTop: 4 },
-  commonList: { alignSelf: 'stretch', marginTop: 4 },
-  commonRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: theme.border },
+  careerRowHi: { backgroundColor: theme.glowSoft, borderRadius: 8 },
+  careerClub: { color: theme.text, fontSize: 12, flex: 1, fontFamily: 'Poppins-SemiBold' },
+  careerYears: { color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' },
+  storeAdTitle: { color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') },
+  storeAdReward: { color: theme.gemText, fontSize: 15, fontFamily: 'Poppins-Black' },
+  friendCode: { color: theme.accent, fontSize: 16, fontFamily: 'Poppins-Black', letterSpacing: 2, ...engrave('sm') },
   commonPhoto: { width: 32, height: 32, borderRadius: 16, overflow: 'hidden' },
-  commonName: { color: theme.text, fontSize: 13, fontWeight: '600', flex: 1 },
+  commonName: { color: theme.text, fontSize: 13, fontFamily: 'Poppins-SemiBold', flex: 1 },
   scoreRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginVertical: 14 },
-  scoreChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: theme.card,
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-  },
-  scoreText: { color: theme.text, fontSize: 12, fontWeight: '700' },
-  optRow: { flexDirection: 'row', gap: 8, marginBottom: 4 },
-  optChip: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: theme.card,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  optChipText: { color: theme.text, fontSize: 12, fontWeight: '600', flex: 1 },
-  modalBg: { flex: 1, backgroundColor: theme.scrim, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 22 },
-  modalCard: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: theme.card,
-    borderRadius: 26,
-    padding: 20,
-    borderWidth: 2,
-    borderColor: theme.frameGold, // gold game frame
-    borderBottomWidth: 4,
-    borderBottomColor: theme.frameGoldDark,
-    shadowColor: '#000',
-    shadowOpacity: 0.6,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 20,
-  },
-  modalSearchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.bg, borderRadius: 10, paddingHorizontal: 12, marginBottom: 8 },
-  modalSearchInput: { flex: 1, color: theme.text, paddingVertical: 10, fontSize: 13 },
-  modalTitle: { color: theme.text, fontSize: 17, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5, marginBottom: 8, textShadowColor: theme.textShadow, textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 3 },
-  modalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.border,
-  },
-  modalRowText: { color: theme.text, fontSize: 13 },
-  modalCount: { color: theme.muted, fontSize: 11 },
   // emotes
   emoteTop: { position: 'absolute', top: 16, left: 0, right: 0, alignItems: 'center', zIndex: 30 },
   emoteBottom: { position: 'absolute', bottom: 90, left: 0, right: 0, alignItems: 'center', zIndex: 30 },
-  emoteFab: {
-    position: 'absolute',
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: theme.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 40,
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 6,
-  },
   emoteFabBottom: { right: 18, bottom: 28 },
   emoteFabTop: { right: 18, top: 8 },
-  emoteSheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
-  emoteSheet: {
-    backgroundColor: theme.card,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    padding: 18,
-    paddingBottom: 34,
-    borderTopWidth: 1,
-    borderColor: theme.border,
-  },
-  emoteSheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: theme.border, marginBottom: 12 },
-  emoteSheetTitle: { color: theme.text, fontSize: 15, fontWeight: '800', marginBottom: 12, textAlign: 'center' },
-  emoteGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6 },
-  emoteCell: {
-    width: '30%',
-    alignItems: 'center',
-    backgroundColor: theme.bg,
-    borderRadius: 14,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  emoteCellLabel: { color: theme.text, fontSize: 11, fontWeight: '600', marginTop: 2 },
-  emoteHint: { color: theme.muted, fontSize: 11, textAlign: 'center', marginTop: 14 },
-  // store emotes
+  emoteSheetBackdrop: { flex: 1, backgroundColor: theme.scrim, justifyContent: 'flex-end' },
+  // store emotes — raised-row bevel (2px ring + panelTopGloss top + 3px cardLip lip + shadow)
   storeEmoteCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     backgroundColor: theme.card,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 12,
     marginVertical: 4,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: theme.border,
+    borderTopColor: theme.panelTopGloss,
+    borderBottomWidth: 3,
+    borderBottomColor: theme.cardLip,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
   },
-  storeEmoteName: { color: theme.text, fontSize: 14, fontWeight: '800' },
-  storeEmoteDesc: { color: theme.muted, fontSize: 11, marginTop: 2 },
-  storeEmoteBuy: { backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  storeEmoteBuyText: { color: '#06131F', fontSize: 13, fontWeight: '800' },
-  storeEmoteOwned: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8 },
-  storeEmoteOwnedText: { color: theme.primary, fontSize: 12, fontWeight: '700' },
+  storeEmoteName: { color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') },
+  storeEmoteDesc: { color: theme.muted, fontSize: 11, marginTop: 2, fontFamily: 'Poppins-SemiBold' },
 });

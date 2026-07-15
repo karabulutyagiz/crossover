@@ -1,6 +1,10 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
-  }
+    "strict": true,
+    // node_modules is a symlink to node_modules.nosync (keeps iCloud away).
+    // Without this, tsc resolves realpaths and stops treating it as node_modules.
+    "preserveSymlinks": true
+  },
+  "exclude": ["node_modules", "node_modules.nosync"]
 }

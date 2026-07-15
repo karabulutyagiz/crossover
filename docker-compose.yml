@@ -49,6 +49,7 @@ services:
       MAINTENANCE_MODE: ${MAINTENANCE_MODE:-0}
       MIN_IOS_BUILD: ${MIN_IOS_BUILD:-1}
       MIN_ANDROID_VERSION_CODE: ${MIN_ANDROID_VERSION_CODE:-1}
+      PUSH_ENABLED: ${PUSH_ENABLED:-1}
     depends_on:
       db:
         condition: service_healthy

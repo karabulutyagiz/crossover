@@ -178,7 +178,8 @@ export type ClientMsg =
   | { type: 'list_conversations' }
   | { type: 'mark_read'; fromUserId: string }
   | { type: 'typing_start'; toUserId: string }
-  | { type: 'typing_stop'; toUserId: string };
+  | { type: 'typing_stop'; toUserId: string }
+  | { type: 'register_push'; token: string; platform: 'ios' | 'android'; lang?: string };
 
 export type ServerMsg =
   | { type: 'room_state'; room: RoomView }

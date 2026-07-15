@@ -15,6 +15,7 @@ import {
 import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
 import { censorMessage } from '../game/username.ts';
 import { verifyApplePurchase } from '../game/iap.ts';
+import { registerPushToken, sendPushToUsers, startPushCrons } from '../game/push.ts';
 import { pool } from '../db/pool.ts';
 import { log } from '../logger.ts';
 import { config } from '../config.ts';
@@ -154,6 +155,7 @@ async function getFriendsData(userId: string): Promise<ServerMsg & { type: 'frie
 
 export function startServer(port: number): Server {
   const manager = new RoomManager();
+  startPushCrons();
   const matchQueue: QueueEntry[] = [];
   const pendingInvites = new Map<string, PendingInvite>(); // `${fromUserId}:${toUserId}`
   const http = createServer((req, res) => {
@@ -432,6 +434,15 @@ export function startServer(port: number): Server {
         return;
       }
 
+      // Save this device's Expo push token for notifications. Needs a signed-in
+      // account to attach the token to; silently ignored otherwise.
+      if (msg.type === 'register_push') {
+        if (!userProfile) return;
+        void registerPushToken(userProfile.id, msg.token, msg.platform, msg.lang ?? 'tr')
+          .catch((err) => log.warn('push_register_failed', { userId: userProfile?.id, error: err instanceof Error ? err.message : String(err) }));
+        return;
+      }
+
       // ---- Friend system (works with or without a room) ----
       if (msg.type === 'send_friend_request') {
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
@@ -612,6 +623,27 @@ export function startServer(port: number): Server {
           transport.send({ type: 'message_received', message: mv });
           // Send to recipient if online
           sendToUser(msg.toUserId, { type: 'message_received', message: mv });
+          // Recipient has no live socket → push notification instead. Badge =
+          // their unread DMs + pending friend requests, so the app icon count
+          // matches what they'll see inside. Fire-and-forget: a push failure
+          // must never affect message delivery.
+          if (!onlineUsers.has(msg.toUserId)) {
+            const sender = userProfile!;
+            void (async () => {
+              const { rows: cnt } = await pool.query<{ badge: string }>(
+                `SELECT (SELECT COUNT(*) FROM messages WHERE to_user = $1 AND read_at IS NULL)
+                      + (SELECT COUNT(*) FROM friend_requests WHERE to_user = $1) AS badge`,
+                [msg.toUserId],
+              );
+              const preview = body.replace(/\s+/g, ' ').trim().slice(0, 100);
+              await sendPushToUsers([msg.toUserId], {
+                title: sender.displayName,
+                body: preview,
+                data: { kind: 'message', fromId: sender.id },
+                badge: Number(cnt[0]?.badge ?? 0),
+              });
+            })().catch((err) => log.warn('push_message_failed', { toUserId: msg.toUserId, error: err instanceof Error ? err.message : String(err) }));
+          }
         })();
         return;
       }

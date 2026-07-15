@@ -1,4 +1,5 @@
 import Svg, { Defs, LinearGradient, Stop, Path, Polygon, G } from 'react-native-svg';
+import { theme } from './theme';
 
 interface Props {
   size?: number;
@@ -99,5 +100,5 @@ export function GemIcon({ size = 24 }: Props) {
   );
 }
 
-/** The accent colour for gem-related text, borders, etc. */
-export const GEM_COLOR = '#A855F7';
+/** The accent colour for gem-related text, borders, etc. (canonical token: theme.gem) */
+export const GEM_COLOR = theme.gem;
