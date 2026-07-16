@@ -27,7 +27,7 @@ import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
 import { gemTarget } from './gemTarget';
 import { Avatar } from './Avatar';
-import Svg, { Rect, Circle, Line, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState, FriendInfo, LeaderboardEntry } from './useCrossover';
@@ -147,6 +147,7 @@ interface Props {
   onLanguageChange?: () => void;
   onOpenLeaderboard?: () => void; // open the centered leaderboard popup (App-level overlay)
   onOpenMatchHistory?: () => void; // open the centered match-history popup (App-level overlay)
+  onGoToFriends?: () => void; // page the tab ScrollView across to the Friends tab
 }
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -216,13 +217,16 @@ const PRESS_OUT_MS = 110;
 function usePressLip(depth = 2) {
   const press = useRef(new Animated.Value(0)).current;
   const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, depth] });
+  // A tiny scale-down alongside the lip. The lip alone (a 2px shift) is too subtle
+  // to register as feedback; the scale makes every press read as instant.
+  const scale = press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.965] });
   const onIn = useCallback(() => {
     Animated.timing(press, { toValue: 1, duration: PRESS_IN_MS, useNativeDriver: true }).start();
   }, [press]);
   const onOut = useCallback(() => {
     Animated.timing(press, { toValue: 0, duration: PRESS_OUT_MS, useNativeDriver: true }).start();
   }, [press]);
-  return { press, ty, onIn, onOut };
+  return { press, ty, scale, onIn, onOut };
 }
 
 // Spring press-scale for tile/cell touchables (sticker cells, crest taps).
@@ -834,21 +838,34 @@ function EmptyState({ icon, title, hint, cta, style }: { icon: IoniconName; titl
 const SCREEN_W = Dimensions.get('window').width;
 const SCREEN_H = Dimensions.get('window').height;
 export const BG_TOP = '#0E2347'; // navy shown behind the bg image (frame before load / root)
-export type BgVariant = 'home' | 'store' | 'menu' | 'match';
-const BG_HOME = require('../assets/bg-home.png');   // royal-blue arena backdrop (Oyna/home only)
+export type BgVariant = 'home' | 'stadium' | 'store' | 'menu' | 'match';
+const BG_HOME = require('../assets/bg-home.png');   // royal-blue arena backdrop (legacy home)
 const BG_STORE = require('../assets/bg-store.png');  // violet gem-shop backdrop (Mağaza)
 const BG_MENU = require('../assets/bg-menu.png');    // calm navy backdrop (collection/friends/sub-screens)
-const BG_VARIANT = { home: BG_HOME, store: BG_STORE, menu: BG_MENU } as const;
-// Per-screen background. 'match' = flat solid colour (no pattern). The image variants
-// already bake a radial vignette + faint diamond weave; we only add a top/bottom shade
-// so the resource bar and tab bar stay readable.
+// Night-stadium photograph behind HOME v4 — the one asset the whole home look rests
+// on. Swap this file to re-dress the screen; nothing else references it.
+const BG_STADIUM = require('../assets/bg-stadium.jpg');
+const BG_VARIANT = { home: BG_HOME, stadium: BG_STADIUM, store: BG_STORE, menu: BG_MENU } as const;
+// Per-screen background. 'match' = flat solid colour (no pattern).
+//
+// Two shade recipes. The painted variants (home/store/menu) already bake their own
+// vignette + weave, so they need only a whisper of top/bottom shade. 'stadium' is a
+// PHOTOGRAPH with its own highlights, so it gets a much heavier scrim over the two
+// bands the chrome sits in — that is what keeps the HUD and tab bar legible no
+// matter which photo is dropped in.
 export function ScreenBg({ variant = 'menu' }: { variant?: BgVariant }) {
   if (variant === 'match') {
     return <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: theme.bg }]} />;
   }
+  const photo = variant === 'stadium';
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      <Image source={BG_VARIANT[variant]} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      {/* Explicit width/height — NOT bare absoluteFill. With only inset-based bounds
+          the image ignores resizeMode and paints at its intrinsic point size anchored
+          top-left (a source with no @2x/@3x suffix is treated as 1x, so bg-stadium.jpg
+          is 1080×2400 POINTS). The painted backdrops are near-uniform so this never
+          showed; a photograph makes it obvious — only its top third would be on screen. */}
+      <Image source={BG_VARIANT[variant]} style={[StyleSheet.absoluteFill, { width: '100%', height: '100%' }]} resizeMode="cover" />
       <Svg width="100%" height="100%">
         <Defs>
           <SvgGradient id="bgshade" x1="0" y1="0" x2="0" y2="1">
@@ -857,23 +874,33 @@ export function ScreenBg({ variant = 'menu' }: { variant?: BgVariant }) {
             <Stop offset="0.80" stopColor="#04060F" stopOpacity={0.04} />
             <Stop offset="1" stopColor="#04060F" stopOpacity={0.44} />
           </SvgGradient>
+          <SvgGradient id="bgphoto" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#06101F" stopOpacity={0.78} />
+            <Stop offset="0.13" stopColor="#06101F" stopOpacity={0.34} />
+            <Stop offset="0.42" stopColor="#06101F" stopOpacity={0.14} />
+            <Stop offset="0.70" stopColor="#06101F" stopOpacity={0.40} />
+            <Stop offset="1" stopColor="#06101F" stopOpacity={0.84} />
+          </SvgGradient>
         </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#bgshade)" />
+        <Rect x="0" y="0" width="100%" height="100%" fill={photo ? 'url(#bgphoto)' : 'url(#bgshade)'} />
       </Svg>
     </View>
   );
 }
 
-function Screen({ children, scroll }: { children: ReactNode; scroll?: boolean; noPitch?: boolean }) {
+function Screen({ children, scroll, bg, pad, contentCenter = true }: { children: ReactNode; scroll?: boolean; noPitch?: boolean; bg?: ReactNode; pad?: number; contentCenter?: boolean }) {
   // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
   // The KAV offset mirrors the app root's safe-area top inset (one source — they can't drift).
   const insets = useSafeAreaInsets();
   return (
     <KeyboardAvoidingView
-      style={styles.screen}
+      style={[styles.screen, pad !== undefined && { padding: pad }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
     >
+      {/* Optional fixed backdrop BEHIND the scroll content (covers the app's default
+          ScreenBg). Rendered outside the ScrollView so it never scrolls. */}
+      {bg ? <View pointerEvents="none" style={StyleSheet.absoluteFill}>{bg}</View> : null}
       {/* Keyboard dismiss: a backdrop Pressable BEHIND the content. It never wraps the
           children (so no layout shift) and sits under the ScrollViews (so it never
           intercepts scroll); tapping empty background area still dismisses. Scroll-area
@@ -882,7 +909,7 @@ function Screen({ children, scroll }: { children: ReactNode; scroll?: boolean; n
       {scroll ? (
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: contentCenter ? 'center' : 'flex-start' }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -973,8 +1000,8 @@ function IntroSlide({ slide, index, active, scrollX }: { slide: (typeof INTRO_SL
 }
 
 export function IntroScreen({ onDone }: { onDone: () => void }) {
-  const [page, setPage] = useState(0);
   const insets = useSafeAreaInsets();
+  const [page, setPage] = useState(0);
   const scRef = useRef<ScrollView>(null);
   const scrollX = useRef(new Animated.Value(0)).current;
   const last = INTRO_SLIDES.length - 1;
@@ -2272,98 +2299,6 @@ function arenaColor(name: string): string {
   return ARENA_DATA.find((a) => a.name === name)?.color ?? theme.primary;
 }
 
-// Soft warm sunlit haze behind the arena — drifting fog so the arena
-// stands out from the background (low opacity, non-distracting).
-function ArenaHaze() {
-  const drift = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(drift, { toValue: 1, duration: 9000, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(drift, { toValue: 0, duration: 9000, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [drift]);
-  const tx = drift.interpolate({ inputRange: [0, 1], outputRange: [-12, 12] });
-  return (
-    <Animated.View pointerEvents="none" style={{ position: 'absolute', top: -6, width: 330, height: 210, transform: [{ translateX: tx }] }}>
-      <Svg width="100%" height="100%">
-        <Defs>
-          <RadialGradient id="haze" cx="50%" cy="50%" r="50%">
-            <Stop offset="0" stopColor="#EAF6C4" stopOpacity={0.22} />
-            <Stop offset="1" stopColor="#EAF6C4" stopOpacity={0} />
-          </RadialGradient>
-          <RadialGradient id="hazeLight" cx="50%" cy="50%" r="50%">
-            <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.16} />
-            <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
-          </RadialGradient>
-        </Defs>
-        <Circle cx="38%" cy="56%" r={86} fill="url(#haze)" />
-        <Circle cx="64%" cy="46%" r={74} fill="url(#haze)" />
-        <Circle cx="52%" cy="64%" r={96} fill="url(#haze)" />
-        <Circle cx="34%" cy="34%" r={60} fill="url(#hazeLight)" />
-      </Svg>
-    </Animated.View>
-  );
-}
-
-// Arena STAGE (home hero): the isometric arena scaled up to own the screen,
-// planted with its silhouette shadow + drifting haze, and one opaque plate
-// carrying identity AND progression (name · trophies · meter to next arena).
-// The whole stage is the tap target for the Arenas screen — no separate link.
-const STAGE_ART_W = Math.min(SCREEN_W * 0.92, 392);
-function ArenaCrest({ arena, trophies, onPress }: { arena: { name: string; icon: string }; trophies: number; onPress: () => void }) {
-  const tierIdx = ARENA_DATA.findIndex((a) => trophies >= a.min && trophies <= a.max);
-  const tier = ARENA_DATA[tierIdx === -1 ? ARENA_DATA.length - 1 : tierIdx]!;
-  const next = tierIdx > 0 ? ARENA_DATA[tierIdx - 1] : null; // ARENA_DATA is highest→lowest
-  const pct = next ? Math.min(1, Math.max(0, (trophies - tier.min) / (next.min - tier.min))) : 1;
-  const color = arenaColor(arena.name);
-  const { scale, onIn, onOut } = usePressScale(0.985);
-  return (
-    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut}>
-      <Animated.View style={{ alignItems: 'center', transform: [{ scale }] }}>
-        {/* Planted arena board. A soft dark ground pool sits UNDER the base so the
-            arena reads as seated, not floating; the image itself casts no drop
-            shadow (that halo is what made it look airborne). */}
-        <View style={{ alignItems: 'center', justifyContent: 'flex-end', flexShrink: 1 }}>
-          <ArenaHaze />
-          {/* wide, soft contact pool — two stacked ellipses (dark core + soft falloff) */}
-          <View pointerEvents="none" style={{ position: 'absolute', bottom: 30, width: STAGE_ART_W * 0.9, height: 40, borderRadius: 20, backgroundColor: '#01020A', opacity: 0.4, transform: [{ scaleX: 1.15 }] }} />
-          <View pointerEvents="none" style={{ position: 'absolute', bottom: 40, width: STAGE_ART_W * 0.66, height: 26, borderRadius: 13, backgroundColor: '#01020A', opacity: 0.55, transform: [{ scaleX: 1.2 }] }} />
-          <Image
-            source={tier.img}
-            resizeMode="contain"
-            style={{ width: STAGE_ART_W, height: STAGE_ART_W * 0.852, maxHeight: SCREEN_H * 0.4 }}
-          />
-        </View>
-        {/* Identity plate overlapping the art base — a clean flat panel (NOT a
-            button): solid card face, one quiet border, a slim arena-tinted meter. */}
-        <View style={{ marginTop: -6, minWidth: STAGE_ART_W * 0.66, maxWidth: STAGE_ART_W * 0.94, backgroundColor: theme.card, borderRadius: 16, borderWidth: 1, borderColor: theme.border, paddingHorizontal: 16, paddingTop: 9, paddingBottom: 11, gap: 8, shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 8, shadowOffset: { width: 0, height: 5 }, elevation: 5 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color }} />
-            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15.5 }} numberOfLines={1}>{arenaLabel(arena.name)}</Text>
-            <View style={{ width: 1, height: 15, backgroundColor: theme.border }} />
-            <Ionicons name="trophy" size={13} color={theme.gold} />
-            <Text style={{ color: theme.gold, fontFamily: 'Poppins-Black', fontSize: 14.5, fontVariant: ['tabular-nums'] }}>{trophies}</Text>
-            <Ionicons name="chevron-forward" size={14} color={theme.muted} />
-          </View>
-          {/* Slim tier meter — arena-tinted fill on a recessed track. */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <View style={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: theme.panelInk, overflow: 'hidden' }}>
-              <View style={{ width: `${Math.round(pct * 100)}%`, height: '100%', borderRadius: 4, backgroundColor: color }} />
-            </View>
-            <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>
-              {next ? `${trophies}/${next.min}` : t('home.topArena')}
-            </Text>
-          </View>
-        </View>
-      </Animated.View>
-    </Pressable>
-  );
-}
-
 // The home console's dominant action — one oversized primary button with a
 // periodic shine pass. Same Btn anatomy (ink outline → lip → top-lit face).
 function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void }) {
@@ -2375,12 +2310,12 @@ function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void })
       onPress={onPress}
       onPressIn={() => Animated.timing(press, { toValue: 1, duration: PRESS_IN_MS, useNativeDriver: true }).start()}
       onPressOut={() => Animated.timing(press, { toValue: 0, duration: PRESS_OUT_MS, useNativeDriver: true }).start()}
-      style={{ marginVertical: 6 }}
+      style={{ marginVertical: 4 }}
     >
       <View style={{ backgroundColor: darken(theme.primary, 0.4), borderRadius: 22, borderWidth: 2, borderColor: darken(theme.primary, 0.5), paddingBottom: 6, shadowColor: '#000', shadowOpacity: 0.34, shadowRadius: 8, shadowOffset: { width: 0, height: 5 }, elevation: 8 }}>
         <Animated.View
           onLayout={(e) => setW(e.nativeEvent.layout.width)}
-          style={{ transform: [{ translateY: ty }], backgroundColor: theme.primary, borderRadius: 18, paddingVertical: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+          style={{ transform: [{ translateY: ty }], backgroundColor: theme.primary, borderRadius: 18, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
         >
           <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
             <Defs>
@@ -2640,83 +2575,784 @@ export function MatchHistoryModal({ visible, history, myName, onClose }: { visib
   );
 }
 
-export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory }: Props) {
-  const [name, setName] = useState('');
+// ============================================================================
+// HOME v4 — rebuilt from scratch against the "cof. yeni home" mockup.
+//
+// Layout, top → bottom (proportions taken off the reference JPEG):
+//   1. TOP BAR   profile pill (avatar · tier · name · progress) + gem pill, then
+//                a row of three raised round buttons (pack / bell / settings)
+//   2. HERO      two balls + the CROSSOVER wordmark over the stadium, with a
+//                right-hand counter rail (trophies, wins)
+//   3. CTA       one oversized green "Hemen Oyna"
+//   4. GRID      amber art cards on the left, navy panels on the right
+//   5. CAROUSEL  three paged cards + dots
+//
+// The palette is sampled from the mockup itself and lives in theme.ts
+// (primary/amber/clubYellow/navyChip/navyWell/badgeRed).
+//
+// Where the mockup shows a stat this game has no field for, the SLOT is kept and
+// filled with the real equivalent rather than a fake number:
+//   coin "3,583" → diamonds (the game's only currency)
+//   level "10" / xp bar "9" → arena tier (1–7) + trophy climb to the next arena
+//   "35.6k" card counter → wins
+// ============================================================================
+
+// The stadium photograph is NOT painted here — it is a ScreenBg variant
+// ('stadium', see BG_STADIUM above) chosen by the app shell for the home tab. That
+// way the photo runs edge to edge, under the status bar and behind the tab bar,
+// instead of being boxed into this screen's padded frame.
+
+// Flat vector art already in the bundle, reused as card fields.
+const EMOTE_ART = {
+  pitch: require('../assets/emotes/pitch.webp'),
+  kick: require('../assets/emotes/kick.webp'),
+  squad: require('../assets/emotes/squad.webp'),
+  worldcup: require('../assets/emotes/worldcup.webp'),
+};
+
+// ---- hero -----------------------------------------------------------------
+
+// Realistic soccer ball: a shaded sphere (radial gradient → 3D roundness), the
+// classic truncated-icosahedron pattern (one centre pentagon, five rim pentagons
+// clipped by the ball edge, seams between them) and a glossy top-left highlight.
+const BALL_R = 44;
+const BALL_ANGLES = [-90, -18, 54, 126, 198]; // centre-pentagon vertices
+const BALL_RIM_ANGLES = [-54, 18, 90, 162, 234]; // rim pentagons sit on the edge midpoints
+const ballPt = (deg: number, rad: number): [number, number] => [
+  50 + rad * Math.cos((deg * Math.PI) / 180),
+  50 + rad * Math.sin((deg * Math.PI) / 180),
+];
+const polyStr = (pts: [number, number][]) => pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+// A pentagon of radius `r` centred at (angle, dist) from the ball centre, oriented
+// so one FLAT edge faces back toward the centre (base = inward − 36°). Placed past
+// the rim and clipped, each reads as a clean pentagon cap — not an inward spike.
+const pentAround = (angleDeg: number, dist: number, r: number): [number, number][] => {
+  const [ox, oy] = ballPt(angleDeg, dist);
+  return [0, 1, 2, 3, 4].map((k) => {
+    const a = ((angleDeg + 144 + k * 72) * Math.PI) / 180;
+    return [ox + r * Math.cos(a), oy + r * Math.sin(a)] as [number, number];
+  });
+};
+
+let ballSeq = 0;
+function Ball({ size, face, faceDark, ink }: { size: number; face: string; faceDark: string; ink: string }) {
+  const uid = useMemo(() => `ball${ballSeq++}`, []);
+  const centre = BALL_ANGLES.map((a) => ballPt(a, 15));
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <RadialGradient id={`${uid}g`} cx="36%" cy="30%" r="72%">
+          <Stop offset="0" stopColor={lighten(face, 0.5)} />
+          <Stop offset="0.55" stopColor={face} />
+          <Stop offset="1" stopColor={faceDark} />
+        </RadialGradient>
+        <ClipPath id={`${uid}c`}>
+          <Circle cx="50" cy="50" r={BALL_R} />
+        </ClipPath>
+      </Defs>
+      <Circle cx="50" cy="50" r={BALL_R} fill={`url(#${uid}g)`} stroke={ink} strokeWidth={2.5} />
+      <G clipPath={`url(#${uid}c)`}>
+        {/* seams: centre-pentagon vertex → rim (thin, they trace the hexagon borders) */}
+        {BALL_ANGLES.map((a, i) => {
+          const [x2, y2] = ballPt(a, BALL_R);
+          return <Line key={`s${a}`} x1={centre[i]![0]} y1={centre[i]![1]} x2={x2} y2={y2} stroke={ink} strokeWidth={1.6} strokeLinecap="round" />;
+        })}
+        {/* five rim pentagons — pushed past the edge so only a clean cap shows */}
+        {BALL_RIM_ANGLES.map((a) => (
+          <Polygon key={`r${a}`} points={polyStr(pentAround(a, 50, 16))} fill={ink} />
+        ))}
+        {/* centre pentagon */}
+        <Polygon points={polyStr(centre)} fill={ink} />
+      </G>
+      {/* glossy highlight */}
+      <Ellipse cx="37" cy="31" rx="15" ry="10" fill="#FFFFFF" opacity={0.28} />
+    </Svg>
+  );
+}
+
+// The mockup's pair of balls straddling the wordmark's crown — one classic
+// white, one blue, tilted toward each other.
+function BrandBalls({ size }: { size: number }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: size * 0.30 }}>
+      <View style={{ transform: [{ rotate: '-9deg' }] }}>
+        <Ball size={size * 0.58} face="#F4F7FC" faceDark="#B9C4D6" ink="#131C30" />
+      </View>
+      <View style={{ marginTop: size * 0.04, transform: [{ rotate: '11deg' }] }}>
+        <Ball size={size * 0.55} face="#3E97F0" faceDark="#1A62C0" ink="#0B2E5C" />
+      </View>
+    </View>
+  );
+}
+
+// "CROSSOVER" set in Poppins-Black renders 6.75× its fontSize wide — measured off a
+// device screenshot, not guessed. The hero sizes itself from this so the mark keeps the
+// mockup's ~59%-of-width presence while always clearing the counter rail on its right.
+const WORDMARK_ASPECT = 6.754;
+const RAIL_CLEARANCE = 50; // rail badge + breathing room, reserved on BOTH sides to stay centred
+function wordmarkSize(availW: number): number {
+  return Math.min(availW * 0.60, availW - 2 * RAIL_CLEARANCE) / WORDMARK_ASPECT;
+}
+
+// RN <Text> has no stroke, so the mockup's outlined 3D wordmark is faked: eight
+// navy copies ringed around the glyphs make the outline, a few stacked below make
+// the extrude, and the white face sits on top. Cheap enough for one hero title.
+const OUTLINE_RING = [
+  [-1, -1], [0, -1], [1, -1],
+  [-1, 0], [1, 0],
+  [-1, 1], [0, 1], [1, 1],
+] as const;
+
+function Wordmark({ size, color = '#FFFFFF', outline = '#0B2145', width = 3, depth = 6 }: {
+  size: number; color?: string; outline?: string; width?: number; depth?: number;
+}) {
+  const base = { fontSize: size, fontFamily: 'Poppins-Black', letterSpacing: size * 0.015, includeFontPadding: false } as const;
+  const layer = (key: string, dx: number, dy: number, c: string) => (
+    <Text key={key} style={[base, { color: c, position: 'absolute', left: dx, top: dy }]} numberOfLines={1}>CROSSOVER</Text>
+  );
+  return (
+    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+      {Array.from({ length: depth }, (_, i) => layer(`d${i}`, 0, i + 1.5, darken(outline, 0.4)))}
+      {OUTLINE_RING.map(([dx, dy]) => layer(`o${dx}${dy}`, dx * width, dy * width, outline))}
+      <Text style={[base, { color }]} numberOfLines={1}>CROSSOVER</Text>
+    </View>
+  );
+}
+
+// Falling confetti behind the wordmark: little paper shards (ribbons + squares,
+// no lightning/energy symbols) that rain straight down, spinning and swaying, then
+// loop from the top. Decorative only — never intercepts touches.
+const CONFETTI_COLORS = ['#3EC98A', '#3B82F6', '#F5B331', '#EC5B8C', '#9B6BFF', '#F4F7FC'];
+const CONFETTI = Array.from({ length: 18 }, (_, i) => ({
+  x: (i * 0.6180339 + 0.09) % 1, // golden-ratio scatter → even spread, no clumping
+  c: CONFETTI_COLORS[i % CONFETTI_COLORS.length]!,
+  w: 4.5 + (i % 3), // ribbon width
+  h: i % 4 === 0 ? 4.5 + (i % 3) : 9 + (i % 3) * 1.5, // some squares, most ribbons
+  dur: 2600 + ((i * 173) % 1800), // varied fall speed
+  delay: (i * 411) % 2600, // stagger so they're spread down the column at any instant
+  spins: 1 + (i % 3),
+  sway: 6 + (i % 4) * 4,
+  round: i % 5 === 0,
+}));
+
+// One shard: falls top→bottom on a linear loop (resets off-screen, so seamless),
+// spinning as it goes and swaying left/right. Native driver — no per-frame JS.
+function ConfettiPiece({ p, w, h }: { p: (typeof CONFETTI)[number]; w: number; h: number }) {
+  const t = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(t, { toValue: 1, duration: p.dur, easing: Easing.linear, useNativeDriver: true }),
+    );
+    const start = setTimeout(() => loop.start(), p.delay);
+    return () => { clearTimeout(start); loop.stop(); };
+  }, [t, p.dur, p.delay]);
+  const translateY = t.interpolate({ inputRange: [0, 1], outputRange: [-20, h + 20] });
+  const translateX = t.interpolate({ inputRange: [0, 0.25, 0.5, 0.75, 1], outputRange: [0, p.sway, 0, -p.sway, 0] });
+  const rotate = t.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${360 * p.spins}deg`] });
+  return (
+    <Animated.View style={{ position: 'absolute', left: p.x * w, top: 0, transform: [{ translateY }, { translateX }, { rotate }] }}>
+      <View style={{ width: p.w, height: p.h, borderRadius: p.round ? p.w / 2 : 1.5, backgroundColor: p.c }} />
+    </Animated.View>
+  );
+}
+
+function HeroConfetti({ w, h }: { w: number; h: number }) {
+  if (w <= 0 || h <= 0) return null;
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {CONFETTI.map((p, i) => <ConfettiPiece key={i} p={p} w={w} h={h} />)}
+    </View>
+  );
+}
+
+// A floating counter beside the hero: round art badge with its value on a dark
+// caption chip clipped to the badge's bottom edge.
+function RailBadge({ icon, iconColor, ringColor, value, onPress }: {
+  icon: IoniconName; iconColor: string; ringColor: string; value: string; onPress: () => void;
+}) {
+  const { scale, onIn, onOut } = usePressScale();
+  return (
+    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} hitSlop={6}>
+      <Animated.View style={{ alignItems: 'center', transform: [{ scale }] }}>
+        <View style={{
+          width: 44, height: 44, borderRadius: 22,
+          backgroundColor: withAlpha(ringColor, 0.28),
+          borderWidth: 2.5, borderColor: ringColor,
+          alignItems: 'center', justifyContent: 'center',
+          shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 5,
+        }}>
+          <Ionicons name={icon} size={22} color={iconColor} />
+        </View>
+        <View style={{
+          marginTop: -8,
+          backgroundColor: '#0A1428', borderRadius: 9,
+          borderWidth: 1.5, borderColor: withAlpha(ringColor, 0.6),
+          paddingHorizontal: 7, paddingVertical: 1.5,
+        }}>
+          <Text style={{ color: theme.text, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{value}</Text>
+        </View>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// ---- top bar --------------------------------------------------------------
+
+// Raised round button — the mockup's pack / bell / gear trio.
+function RoundIconBtn({ icon, onPress, dot = false, tint = theme.text }: {
+  icon: IoniconName; onPress: () => void; dot?: boolean; tint?: string;
+}) {
+  const { ty, scale, onIn, onOut } = usePressLip(2);
+  return (
+    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} hitSlop={4}>
+      <View style={{ backgroundColor: darken(theme.navyChip, 0.5), borderRadius: 18, paddingBottom: 2.5 }}>
+        <Animated.View style={{
+          transform: [{ translateY: ty }, { scale }],
+          width: 36, height: 36, borderRadius: 18,
+          backgroundColor: theme.navyChip,
+          borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.16)',
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Ionicons name={icon} size={18} color={tint} />
+        </Animated.View>
+      </View>
+      {dot ? (
+        <View style={{ position: 'absolute', top: -1, right: -1, width: 12, height: 12, borderRadius: 6, backgroundColor: theme.badgeRed, borderWidth: 2, borderColor: darken(theme.navyChip, 0.5) }} />
+      ) : null}
+    </Pressable>
+  );
+}
+
+// Profile pill: avatar (tier-ringed, tier-badged) · name · progress trough.
+// The mockup's "level" is this game's ARENA TIER (1–7, Mahalle→GOAT) and its XP
+// bar is the trophy climb toward the next arena — real numbers in the mockup's slots.
+function ProfilePill({ name, avatarId, tier, pct, color, onPress }: {
+  name: string; avatarId?: string | null; tier: number; pct: number; color: string; onPress: () => void;
+}) {
+  const { ty, scale, onIn, onOut } = usePressLip(2);
+  return (
+    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1, minWidth: 108 }}>
+      <View style={{ backgroundColor: darken(theme.card, 0.5), borderRadius: 24, paddingBottom: 2.5 }}>
+        <Animated.View style={{
+          transform: [{ translateY: ty }, { scale }],
+          flexDirection: 'row', alignItems: 'center', gap: 8,
+          backgroundColor: theme.card, borderRadius: 24,
+          borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.14)',
+          paddingVertical: 3.5, paddingLeft: 3.5, paddingRight: 10,
+        }}>
+          <View>
+            <AvatarBadge avatarId={avatarId} size={34} ringColor={color} />
+            <View style={{
+              position: 'absolute', right: -3, bottom: -2,
+              minWidth: 17, height: 17, borderRadius: 9, paddingHorizontal: 2.5,
+              backgroundColor: color, borderWidth: 2, borderColor: darken(theme.card, 0.45),
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Text style={{ color: theme.ink, fontSize: 10, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{tier}</Text>
+            </View>
+          </View>
+          <View style={{ flex: 1, gap: 3 }}>
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12, ...engrave('sm') }} numberOfLines={1}>{name}</Text>
+            <View style={{ height: 8, borderRadius: 4, backgroundColor: theme.navyWell, justifyContent: 'center', overflow: 'hidden' }}>
+              <View style={{ width: `${Math.round(pct * 100)}%`, height: '100%', borderRadius: 4, backgroundColor: color }} />
+            </View>
+          </View>
+        </Animated.View>
+      </View>
+    </Pressable>
+  );
+}
+
+// Currency pill — the mockup's coin capsule. This game has exactly one currency
+// (diamonds), so the coin slot carries the gem and the capsule's green "+" goes
+// straight to the diamond aisle of the store.
+function GemPill({ count, onPress }: { count: number; onPress: () => void }) {
+  const { ty, scale, onIn, onOut } = usePressLip(2);
+  return (
+    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut}>
+      <View style={{ backgroundColor: darken(theme.card, 0.5), borderRadius: 18, paddingBottom: 2.5 }}>
+        <Animated.View style={{
+          transform: [{ translateY: ty }, { scale }],
+          flexDirection: 'row', alignItems: 'center', gap: 5,
+          backgroundColor: theme.card, borderRadius: 18,
+          borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.14)',
+          paddingVertical: 3.5, paddingLeft: 7, paddingRight: 3.5,
+        }}>
+          <GemIcon size={17} />
+          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12, fontVariant: ['tabular-nums'], maxWidth: 62, ...engrave('sm') }} numberOfLines={1}>
+            {count.toLocaleString(currentLang() === 'tr' ? 'tr-TR' : 'en-US')}
+          </Text>
+          <View style={{
+            width: 23, height: 23, borderRadius: 12,
+            backgroundColor: theme.primary, borderBottomWidth: 2, borderBottomColor: theme.primaryDark,
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Ionicons name="add" size={14} color={theme.ink} />
+          </View>
+        </Animated.View>
+      </View>
+    </Pressable>
+  );
+}
+
+// ---- cards ----------------------------------------------------------------
+
+// The mockup's bright art cards: an art field up top, a dark caption band across
+// the bottom carrying the title. `art` is drawn into the field and may overhang it.
+function ArtCard({ title, tint, art, height, onPress }: {
+  title: string; tint: string; art?: ReactNode; height: number; onPress: () => void;
+}) {
+  const { ty, scale, onIn, onOut } = usePressLip(2);
+  return (
+    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1 }}>
+      <View style={{ backgroundColor: darken(tint, 0.55), borderRadius: 20, paddingBottom: 3, shadowColor: '#000', shadowOpacity: 0.34, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
+        <Animated.View style={{
+          transform: [{ translateY: ty }, { scale }], height, borderRadius: 18, overflow: 'hidden',
+          backgroundColor: tint, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.26)',
+        }}>
+          <View style={StyleSheet.absoluteFill}>{art}</View>
+          <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: withAlpha(darken(tint, 0.66), 0.94), paddingHorizontal: 11, paddingVertical: 7 }}>
+            <Text style={{ color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{title}</Text>
+          </View>
+        </Animated.View>
+      </View>
+    </Pressable>
+  );
+}
+
+// The faded tilted card-stack watermark bleeding off the mockup's navy panels.
+function GhostStack({ icon }: { icon: IoniconName }) {
+  const plate = (extra: object) => (
+    <View style={[{
+      position: 'absolute', width: 58, height: 68, borderRadius: 10,
+      borderWidth: 2, borderColor: 'rgba(255,255,255,0.10)', backgroundColor: 'rgba(255,255,255,0.05)',
+    }, extra]} />
+  );
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', right: -12, top: -8, width: 92, height: 88 }}>
+      {plate({ right: 24, top: 12, transform: [{ rotate: '-12deg' }] })}
+      {plate({ right: 13, top: 6, transform: [{ rotate: '-6deg' }] })}
+      <View style={{
+        position: 'absolute', right: 2, top: 2, width: 58, height: 68, borderRadius: 10,
+        borderWidth: 2, borderColor: 'rgba(255,255,255,0.16)', backgroundColor: 'rgba(255,255,255,0.08)',
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Ionicons name={icon} size={28} color="rgba(255,255,255,0.30)" />
+      </View>
+    </View>
+  );
+}
+
+// The mockup's navy panels: title row up top, ghost stack in the corner, free
+// content below. Pressable only when `onPress` is given (the Özel Mod panel owns
+// its own inner controls instead).
+function GhostPanel({ title, icon, ghost, height, onPress, children, locked = false }: {
+  title: string; icon?: IoniconName; ghost: IoniconName; height: number;
+  onPress?: () => void; children?: ReactNode; locked?: boolean;
+}) {
+  const { ty, scale, onIn, onOut } = usePressLip(2);
+  const body = (
+    <View style={{ backgroundColor: darken(theme.card, 0.52), borderRadius: 20, paddingBottom: 3, shadowColor: '#000', shadowOpacity: 0.34, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
+      <Animated.View style={{
+        transform: onPress ? [{ translateY: ty }, { scale }] : [], height, borderRadius: 18, overflow: 'hidden',
+        backgroundColor: theme.card, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.14)', padding: 11,
+      }}>
+        <GhostStack icon={ghost} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+          {icon ? <Ionicons name={icon} size={17} color={theme.muted} /> : null}
+          <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{title}</Text>
+          {locked ? <Ionicons name="lock-closed" size={13} color={theme.accent} /> : null}
+        </View>
+        {children}
+      </Animated.View>
+    </View>
+  );
+  if (!onPress) return <View style={{ flex: 1 }}>{body}</View>;
+  return <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1 }}>{body}</Pressable>;
+}
+
+// ---- the screen -----------------------------------------------------------
+
+// Every mode this game can actually play. country-team/letter-team are the
+// Social-Pack-gated pair (server: isSocialPackMode, ws/server.ts:79); team-team
+// and player-player are free. player-player is fully implemented server-side
+// (rooms/room.ts) but had no entry point anywhere in the UI before this screen.
+const CAROUSEL_GAP = 8;
+// Below this width the one-row top bar cannot seat all three round buttons without
+// starving the profile pill, so the pack shortcut (duplicated in the Store tab) steps out.
+const TOPBAR_ROOMY_W = 360;
+// Room codes are always exactly this long — server/src/rooms/manager.ts:5 (CODE_LEN).
+const ROOM_CODE_LEN = 6;
+const HOME_MODES: GameMode[] = ['team-team', 'player-player', 'country-team', 'letter-team'];
+const PACK_MODES: GameMode[] = ['country-team', 'letter-team'];
+
+export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends }: Props) {
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [scope, setScope] = useState<Scope>({ type: 'all' });
   const [mode, setMode] = useState<GameMode>('team-team');
-  // Bot dialog pages: difficulty home + mode/scope pickers INSIDE one mounted
-  // GameModal (spec §7 — chained setTimeout modal handoffs are banned).
   const [botPage, setBotPage] = useState<{ key: BotPage; dir: 1 | -1 }>({ key: 'bot', dir: 1 });
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuSub, setMenuSub] = useState<'settings' | null>(null);
   const [botOpen, setBotOpen] = useState(false);
-  const [specialOpen, setSpecialOpen] = useState(false);
+  const [modesOpen, setModesOpen] = useState(false);
   const [socialPackPopup, setSocialPackPopup] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
+  const [friendQuery, setFriendQuery] = useState('');
+  // The query THIS card submitted. `state.userSearchResults` is global and is never reset
+  // (useCrossover.ts only ever writes it on user_search_results), so without this the card
+  // would show a hit left behind by the Friends tab before the user searched anything here.
+  const [submitted, setSubmitted] = useState<string | null>(null);
+  const [hero, setHero] = useState({ w: 0, h: 0 });
+  const [railW, setRailW] = useState(0);
+
   const opts: GameOptions = { scope, mode };
   const profile = state.profile;
-  const hasSocialPack = !!(profile?.socialPackUntil && new Date(profile.socialPackUntil) > new Date());
-  const playerName = profile?.displayName ?? (name || t('home.namePlaceholder'));
+  const hasPack = !!(profile?.socialPackUntil && new Date(profile.socialPackUntil) > new Date());
+  const playerName = profile?.displayName ?? t('home.namePlaceholder');
+  const trophies = profile?.trophies ?? 0;
+
+  // Arena tier drives the mockup's "level" slots. ARENA_DATA runs highest→lowest,
+  // so the human-facing tier number counts up from the bottom (Mahalle = 1).
+  // ARENA_DATA runs highest→lowest and GOAT is capped at max: 99999, but the server ladder
+  // (server/src/game/rank.ts getArena) has no upper bound — so a miss ABOVE the table must
+  // clamp to the top tier; only a miss below it falls to the bottom.
+  const tIdx = ARENA_DATA.findIndex((a) => trophies >= a.min && trophies <= a.max);
+  const curIdx = tIdx !== -1 ? tIdx : trophies >= (ARENA_DATA[0]?.min ?? 0) ? 0 : ARENA_DATA.length - 1;
+  const curTier = ARENA_DATA[curIdx]!;
+  const nextTier = curIdx > 0 ? ARENA_DATA[curIdx - 1] : null;
+  const tierNo = ARENA_DATA.length - curIdx;
+  const arenaPct = nextTier ? Math.min(1, Math.max(0, (trophies - curTier.min) / (nextTier.min - curTier.min))) : 1;
+  const arenaC = arenaColor(profile?.arena.name ?? '');
+
+  // The bell's red pip. Both counts are pushed live mid-session, but they are only
+  // FETCHED by the Friends screen — without this a cold home would never show a pip.
+  const pending = state.friendRequests.length + (state.totalUnread ?? 0);
+
+  // BOTH fetches are needed: loadFriends() brings the requests, loadConversations() brings
+  // the unread counts. Without the second, the message half of the pip stays dark until the
+  // user visits Friends — which is exactly the trip the pip exists to prompt.
+  useEffect(() => {
+    actions.loadFriends();
+    actions.loadConversations();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startMode = useCallback((m: GameMode) => {
+    if (PACK_MODES.includes(m) && !hasPack) {
+      setModesOpen(false);
+      setSocialPackPopup(true);
+      return;
+    }
+    setModesOpen(false);
+    actions.findMatch({ mode: m });
+  }, [actions, hasPack]);
+
+  // searchUsers is an EXACT display-name lookup server-side (rank.ts:624,
+  // `lower(display_name) = lower($1)`), so searching per keystroke would read as
+  // broken for every partial name. Fire on submit only, and say so in the hint.
+  const runSearch = useCallback(() => {
+    const q = friendQuery.trim();
+    if (q.length < 2) return;
+    setSubmitted(q);
+    actions.searchUsers(q);
+  }, [friendQuery, actions]);
+
+  // Three across, as the mockup — the row is (3 cards + 2 gaps) wide.
+  const cardW = railW > 0 ? (railW - 2 * CAROUSEL_GAP) / 3 : 0;
+  const codeReady = joinCode.length === ROOM_CODE_LEN;
+  // searchUsers is an exact display-name match (server/src/game/rank.ts:624), so a result
+  // belongs to this card only when it equals the query we submitted.
+  const hit = submitted
+    ? state.userSearchResults.find((u) => u.displayName.toLowerCase() === submitted.toLowerCase())
+    : undefined;
 
   return (
-    <Screen>
-      {/* Top bar: profile avatar (→ profile) · leaderboard (gems live in the global resource bar) */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-        <Pressable
+    <Screen scroll pad={16} contentCenter={false}>
+      {/* ── 1. TOP BAR ── one row, exactly as the mockup: the profile pill flexes to
+           absorb whatever the fixed-width gem pill and button trio leave behind. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <ProfilePill
+          name={playerName}
+          avatarId={profile?.avatar ?? profile?.selectedAvatar}
+          tier={tierNo}
+          pct={arenaPct}
+          color={arenaC}
           onPress={actions.openProfile}
-          style={({ pressed }) => ({
-            flexDirection: 'row', alignItems: 'center', gap: 8,
-            backgroundColor: pressed ? theme.bg2 : theme.card, borderRadius: 22,
-            paddingVertical: 4, paddingLeft: 4, paddingRight: 12,
-            borderWidth: 2, borderColor: theme.border,
-            borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
-            maxWidth: '60%',
-            shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: 4,
-            transform: [{ translateY: pressed ? 2 : 0 }],
-          })}
-        >
-          <AvatarBadge avatarId={profile?.avatar ?? profile?.selectedAvatar} size={34} ringColor={theme.primary} />
-          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13 }} numberOfLines={1}>{profile?.displayName ?? t('home.namePlaceholder')}</Text>
-        </Pressable>
-        <View style={{ flex: 1 }} />
-        <Pressable
-          onPress={() => { setMenuSub(null); setMenuOpen(true); }}
-          style={({ pressed }) => ({
-            width: 38, height: 38, borderRadius: 14,
-            backgroundColor: pressed ? theme.bg2 : theme.card,
-            alignItems: 'center', justifyContent: 'center',
-            borderWidth: 2, borderColor: theme.border,
-            borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
-            transform: [{ translateY: pressed ? 2 : 0 }],
-          })}
-        >
-          <Ionicons name="menu" size={20} color={theme.text} />
-        </Pressable>
+        />
+        <GemPill count={profile?.diamonds ?? 0} onPress={() => onGoToStore?.('diamonds')} />
+        {SCREEN_W >= TOPBAR_ROOMY_W ? (
+          <RoundIconBtn icon="ribbon" tint={hasPack ? theme.accent : theme.text} onPress={() => onGoToStore?.('socialPack')} />
+        ) : null}
+        <RoundIconBtn icon="notifications" dot={pending > 0} onPress={() => onGoToFriends?.()} />
+        <RoundIconBtn icon="settings-sharp" onPress={() => { setMenuSub(null); setMenuOpen(true); }} />
       </View>
 
-      {/* Arena STAGE — a fixed scene, not a scrolling menu (user directive: the
-          home is a stage with controls embedded in it; no wordmark, no logo). */}
-      <View style={{ flex: 1, alignItems: 'stretch', justifyContent: 'center' }}>
-        {profile ? <ArenaCrest arena={profile.arena} trophies={profile.trophies} onPress={actions.openArenas} /> : null}
-      </View>
-
-      {/* Bottom console: ONE dominant play action + a compact secondary row,
-          sitting flush above the tab bar so they read as one chrome zone. */}
-      <View style={{ paddingBottom: 2 }}>
-        {!isNetworkErrorMessage(state.error) && state.error ? <ErrorBanner message={state.error} /> : null}
-        <HeroPlayBtn label={t('home.quickMatch')} onPress={() => actions.findMatch({ mode: 'team-team' })} />
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <View style={{ flex: 1 }}>
-            <Btn label={t('home.specialMode')} kind="blue" onPress={() => setSpecialOpen(true)} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Btn label={t('home.solo')} kind="accent" onPress={() => { setBotPage({ key: 'bot', dir: 1 }); setBotOpen(true); }} />
-          </View>
+      {/* ── 2. HERO ── */}
+      <View
+        onLayout={(e) => setHero({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+        // minHeight must clear the absolutely-positioned rail: top(2) + 2 badges (44 circle
+        // + 14.5 chip overlap) + 12 gap = 131. Anything less and the rail spills onto the CTA.
+        style={{ alignItems: 'center', justifyContent: 'center', marginTop: 8, marginBottom: 2, minHeight: 134 }}
+      >
+        <HeroConfetti w={hero.w} h={hero.h} />
+        <BrandBalls size={Math.min(104, SCREEN_W * 0.26)} />
+        {/* the wordmark tucks UNDER the balls, as in the mockup */}
+        <View style={{ marginTop: -22 }}>
+          <Wordmark size={wordmarkSize(SCREEN_W - 32)} />
+        </View>
+        <View style={{ position: 'absolute', right: 0, top: 2, gap: 12 }}>
+          <RailBadge icon="trophy" iconColor={theme.gold} ringColor={theme.purple} value={String(trophies)} onPress={actions.openArenas} />
+          <RailBadge icon="podium" iconColor={theme.accent} ringColor={theme.accentDark} value={String(profile?.wins ?? 0)} onPress={() => onOpenLeaderboard?.()} />
         </View>
       </View>
+
+      {!isNetworkErrorMessage(state.error) && state.error ? <ErrorBanner message={state.error} /> : null}
+
+      {/* ── 3. CTA ── */}
+      <HeroPlayBtn label={t('home.quickMatch')} onPress={() => actions.findMatch({ mode: 'team-team' })} />
+
+      {/* ── 4. GRID ── */}
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
+        <ArtCard
+          title={t('home.modesTitle')}
+          tint={theme.amber}
+          height={142}
+          onPress={() => setModesOpen(true)}
+          art={
+            <View style={StyleSheet.absoluteFill}>
+              {/* a faint sun glow so the amber face isn't flat, then the squad filling
+                  the card — big enough that the card no longer reads as empty */}
+              <View pointerEvents="none" style={{ position: 'absolute', top: -30, left: -20, right: -20, height: 120 }}>
+                <Svg width="100%" height="100%">
+                  <Defs>
+                    <RadialGradient id="amberGlow" cx="50%" cy="40%" r="60%">
+                      <Stop offset="0" stopColor={lighten(theme.amber, 0.4)} stopOpacity={0.9} />
+                      <Stop offset="1" stopColor={theme.amber} stopOpacity={0} />
+                    </RadialGradient>
+                  </Defs>
+                  <Rect width="100%" height="100%" fill="url(#amberGlow)" />
+                </Svg>
+              </View>
+              <Image source={EMOTE_ART.squad} resizeMode="contain" style={{ position: 'absolute', alignSelf: 'center', bottom: 22, width: '104%', height: '90%' }} />
+            </View>
+          }
+        />
+        {/* Özel Mod — the private-room flow. createRoom/joinRoom have existed in
+            useCrossover (797/826) with a working LobbyScreen, but nothing in the UI
+            had called them; this panel is their entry point. */}
+        <GhostPanel title={t('home.specialMode')} ghost="key" height={142}>
+          <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', marginTop: 9 }} numberOfLines={1}>{t('home.roomCodeLabel')}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 }}>
+            <TextInput
+              value={joinCode}
+              onChangeText={(v) => setJoinCode(v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, ROOM_CODE_LEN))}
+              onSubmitEditing={() => { if (codeReady) { actions.joinRoom(joinCode, playerName); setJoinCode(''); } }}
+              placeholder={t('home.codePlaceholder')}
+              placeholderTextColor={withAlpha(theme.muted, 0.5)}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              returnKeyType="go"
+              style={{
+                flex: 1, height: 34, borderRadius: 11, backgroundColor: theme.navyWell,
+                borderWidth: 1.5, borderColor: theme.border,
+                color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12.5, letterSpacing: 1.2,
+                paddingHorizontal: 8, textAlign: 'center',
+              }}
+            />
+            <Pressable
+              disabled={!codeReady}
+              onPress={() => { actions.joinRoom(joinCode, playerName); setJoinCode(''); }}
+              style={({ pressed }) => ({
+                width: 34, height: 34, borderRadius: 17,
+                backgroundColor: codeReady ? theme.primary : theme.navyWell,
+                borderBottomWidth: 2, borderBottomColor: codeReady ? theme.primaryDark : theme.panelInk,
+                alignItems: 'center', justifyContent: 'center',
+                transform: [{ translateY: pressed ? 2 : 0 }],
+              })}
+            >
+              <Ionicons name="arrow-forward" size={16} color={codeReady ? theme.ink : theme.muted} />
+            </Pressable>
+          </View>
+          <Pressable
+            onPress={() => actions.createRoom(playerName, opts)}
+            style={({ pressed }) => ({
+              marginTop: 8, height: 32, borderRadius: 11,
+              backgroundColor: withAlpha(theme.blue, 0.22),
+              borderWidth: 1.5, borderColor: withAlpha(theme.blue, 0.6),
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+              transform: [{ translateY: pressed ? 2 : 0 }],
+            })}
+          >
+            <Ionicons name="add-circle" size={14} color={theme.blue} />
+            <Text style={{ color: theme.text, fontSize: 11, fontFamily: 'Poppins-ExtraBold' }} numberOfLines={1}>{t('home.createRoom')}</Text>
+          </Pressable>
+        </GhostPanel>
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 10, alignItems: 'flex-end' }}>
+        <ArtCard
+          title={arenaLabel(profile?.arena.name ?? '')}
+          tint={theme.card}
+          height={96}
+          onPress={actions.openArenas}
+          art={
+            <View style={StyleSheet.absoluteFill}>
+              {/* Arena render fills the frame as a horizontal strip. The isometric stadium
+                  is diamond-shaped, so its PNG has transparent top corners; the render is
+                  scaled up past the box so the stadium body covers them instead of leaving
+                  the card colour showing through. Clipped by the box's overflow:hidden. */}
+              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 30, overflow: 'hidden' }}>
+                <Image source={curTier.img} resizeMode="cover" style={{ width: '100%', height: '100%', transform: [{ scale: 1.5 }, { translateY: 6 }] }} />
+              </View>
+              <View style={{ position: 'absolute', right: 12, top: 7, flexDirection: 'row', gap: 2 }}>
+                {Array.from({ length: 3 }, (_, i) => (
+                  <Ionicons key={i} name="star" size={12} color={i < Math.ceil(arenaPct * 3) ? theme.gold : 'rgba(255,255,255,0.22)'} />
+                ))}
+              </View>
+              <Text style={{ position: 'absolute', left: 11, top: 9, color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }} numberOfLines={1}>
+                {nextTier ? `${trophies}/${nextTier.min} 🏆` : t('home.topArena')}
+              </Text>
+            </View>
+          }
+        />
+        <GhostPanel
+          title={t('home.solo')}
+          icon="people"
+          ghost="game-controller"
+          height={96}
+          onPress={() => { setBotPage({ key: 'bot', dir: 1 }); setBotOpen(true); }}
+        >
+          <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', marginTop: 6 }} numberOfLines={2}>{t('home.soloShort')}</Text>
+        </GhostPanel>
+      </View>
+
+      {/* ── 5. CAROUSEL ── */}
+      {/* marginBottom clears the tab bar's raised centre ball, which breaks ~18pt above
+          the bar and would otherwise sit on this strip's captions. */}
+      <View onLayout={(e) => setRailW(e.nativeEvent.layout.width)} style={{ marginTop: 10, marginBottom: 18 }}>
+        {cardW > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={cardW + CAROUSEL_GAP}
+            decelerationRate="fast"
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ gap: CAROUSEL_GAP }}
+          >
+            <View style={{ width: cardW }}>
+              <ArtCard
+                title={hasPack ? t('store.badgeActive') : t('store.socialPackTitle')}
+                tint={theme.purple}
+                height={128}
+                onPress={() => onGoToStore?.('socialPack')}
+                art={
+                  <View style={StyleSheet.absoluteFill}>
+                    <Image source={EMOTE_ART.squad} resizeMode="contain" style={{ position: 'absolute', right: -2, top: 26, width: '74%', height: '58%' }} />
+                    <Text style={{ position: 'absolute', left: 11, top: 10, color: theme.text, fontSize: 11, fontFamily: 'Poppins-SemiBold', width: '58%', ...engrave('sm') }} numberOfLines={3}>
+                      {t('home.socialPackShort')}
+                    </Text>
+                  </View>
+                }
+              />
+            </View>
+            <View style={{ width: cardW }}>
+              <ArtCard
+                title={t('menu.leaderboard')}
+                tint={theme.blue}
+                height={128}
+                onPress={() => onOpenLeaderboard?.()}
+                art={
+                  <View style={StyleSheet.absoluteFill}>
+                    <Image source={EMOTE_ART.worldcup} resizeMode="contain" style={{ position: 'absolute', right: -2, top: 24, width: '60%', height: '58%' }} />
+                    <Text style={{ position: 'absolute', left: 11, top: 10, color: theme.text, fontSize: 11, fontFamily: 'Poppins-SemiBold', width: '58%', ...engrave('sm') }} numberOfLines={3}>
+                      {t('home.leaderboardHint')}
+                    </Text>
+                  </View>
+                }
+              />
+            </View>
+            {/* Find a friend. Unlike the in-room player search (search_players, handled
+                only inside a room), search_users is served top-level at ws/server.ts:489
+                — so it genuinely works from home. */}
+            <View style={{ width: cardW }}>
+              <View style={{ backgroundColor: darken(theme.card, 0.52), borderRadius: 20, paddingBottom: 3 }}>
+                <View style={{ height: 128, borderRadius: 18, backgroundColor: theme.card, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.14)', padding: 11 }}>
+                  <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{t('home.findFriends')}</Text>
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8,
+                    height: 32, borderRadius: 16, backgroundColor: theme.navyWell,
+                    borderWidth: 1.5, borderColor: theme.border, paddingHorizontal: 9,
+                  }}>
+                    <Ionicons name="search" size={13} color={theme.muted} />
+                    <TextInput
+                      value={friendQuery}
+                      onChangeText={(v) => { setFriendQuery(v); setSubmitted(null); }}
+                      onSubmitEditing={runSearch}
+                      placeholder={t('friends.usernamePlaceholder')}
+                      placeholderTextColor={withAlpha(theme.muted, 0.5)}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="search"
+                      style={{ flex: 1, color: theme.text, fontFamily: 'Poppins-SemiBold', fontSize: 11.5, padding: 0 }}
+                    />
+                    <Pressable onPress={runSearch} hitSlop={6} disabled={friendQuery.trim().length < 2}>
+                      <Ionicons name="arrow-forward-circle" size={19} color={friendQuery.trim().length < 2 ? theme.muted : theme.primary} />
+                    </Pressable>
+                  </View>
+                  {hit ? (
+                    <View style={{ marginTop: 9, gap: 6 }}>
+                      {/* No avatar: user_search_results carries only { userId, displayName }
+                          (protocol.ts:224), so an avatar here is always the generic fallback —
+                          and at this card's width it would starve the name it identifies. */}
+                      <Text style={{ color: theme.text, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold' }} numberOfLines={1}>{hit.displayName}</Text>
+                      <Pressable
+                        onPress={() => actions.sendFriendRequest(undefined, hit.displayName)}
+                        style={({ pressed }) => ({
+                          height: 28, borderRadius: 14, backgroundColor: theme.primary,
+                          borderBottomWidth: 2, borderBottomColor: theme.primaryDark,
+                          flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+                          transform: [{ translateY: pressed ? 2 : 0 }],
+                        })}
+                      >
+                        <Ionicons name="person-add" size={12} color={theme.ink} />
+                        <Text style={{ color: theme.ink, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold' }} numberOfLines={1}>{t('friends.sendRequest')}</Text>
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', marginTop: 10 }} numberOfLines={3}>
+                      {submitted ? t('home.findFriendsNone') : t('home.findFriendsHint')}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </View>
+          </ScrollView>
+        ) : null}
+      </View>
+
       <NetworkErrorBeacon visible={isNetworkErrorMessage(state.error)} />
 
-      {/* ── Hamburger Menu — one GameModal paging menu ⇄ settings internally ── */}
+      {/* ── Mode picker ── */}
+      <GameModal visible={modesOpen} onClose={() => setModesOpen(false)} title={t('home.modesTitle').toLocaleUpperCase(currentLang())} icon="football">
+        <Text style={[styles.muted, { textAlign: 'center', marginBottom: 6 }]}>{t('home.specialModeBody')}</Text>
+        {HOME_MODES.map((m) => {
+          const locked = PACK_MODES.includes(m) && !hasPack;
+          const c = m === 'team-team' ? theme.primary : m === 'player-player' ? theme.accent : m === 'country-team' ? theme.blue : theme.purple;
+          return (
+            <GameRow
+              key={m}
+              icon={MODE_ICON[m]}
+              iconColor={c}
+              tint={locked ? undefined : c}
+              label={MODE_LABEL(m)}
+              locked={locked}
+              chevron={!locked}
+              onPress={() => startMode(m)}
+            />
+          );
+        })}
+      </GameModal>
+
+      {/* ── Hamburger menu ── */}
       <GameModal
         visible={menuOpen}
         onClose={() => setMenuOpen(false)}
@@ -2749,7 +3385,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         </ModalPager>
       </GameModal>
 
-      {/* Bot match — difficulty home + mode/scope picker pages inside ONE GameModal */}
+      {/* ── Bot match — difficulty home + mode/scope pages inside ONE modal ── */}
       <GameModal
         visible={botOpen}
         onClose={() => setBotOpen(false)}
@@ -2809,34 +3445,6 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
             </>
           )}
         </ModalPager>
-      </GameModal>
-
-      <GameModal visible={specialOpen} onClose={() => setSpecialOpen(false)} title={t('home.specialModeTitle')} icon="sparkles">
-        <Text style={[styles.muted, { textAlign: 'center', marginBottom: 4 }]}>{t('home.specialModeBody')}</Text>
-        {(['country-team', 'letter-team'] as GameMode[]).map((m) => {
-          const locked = !hasSocialPack;
-          const c = m === 'country-team' ? theme.blue : theme.purple;
-          return (
-            <GameRow
-              key={m}
-              icon={MODE_ICON[m]}
-              iconColor={c}
-              tint={locked ? undefined : c}
-              label={MODE_LABEL(m)}
-              locked={locked}
-              chevron={!locked}
-              onPress={() => {
-                if (locked) {
-                  setSpecialOpen(false);
-                  setSocialPackPopup(true);
-                  return;
-                }
-                setSpecialOpen(false);
-                actions.findMatch({ mode: m });
-              }}
-            />
-          );
-        })}
       </GameModal>
 
       <GameModal visible={socialPackPopup} onClose={() => setSocialPackPopup(false)} title={t('friends.socialPackRequired')} icon="lock-closed">
@@ -6126,7 +6734,6 @@ function StatCard({ icon, color, label, value, gem }: { icon?: IoniconName; colo
 
 export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore }: Props) {
   const p = state.profile;
-  const insets = useSafeAreaInsets();
   const [pendingAvatarId, setPendingAvatarId] = useState<string | null>(null);
   const [confirmAvatarId, setConfirmAvatarId] = useState<string | null>(null);
   const [showAvatarPage, setShowAvatarPage] = useState(false);
@@ -6134,6 +6741,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
   // Set on confirm: close the picker page once the confirm dialog's exit
   // animation completes (GameModal onExited) — no setTimeout handoff chains.
   const closePickerOnExit = useRef(false);
+
   if (!p) {
     // Branded placeholder while the profile loads — never a bare "—".
     return (
@@ -6155,6 +6763,169 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
   const pendingAvatar = pendingAvatarId ? avatarMeta(pendingAvatarId) : null;
   const confirmAvatar = confirmAvatarId ? avatarMeta(confirmAvatarId) : null;
   const canAffordPending = pendingAvatar ? p.diamonds >= avatarPrice(pendingAvatar.id) : false;
+
+  // Avatar picker — an INLINE page, deliberately NOT a native <Modal>.
+  //
+  // It used to be a presentationStyle="fullScreen" Modal with the confirm/purchase
+  // GameModals (themselves Modals) nested inside it. Confirming a change dismissed BOTH
+  // levels in a single commit — GameModal's exit callback runs setMounted(false) and
+  // onExited() back to back, and onExited closed the picker — so iOS tore down a presented
+  // view controller while its own child was still mid-dismissal and left the app on a black
+  // screen with no way out. Rendering the page in the normal tree keeps GameModal the only
+  // native modal on screen, so there is nothing to race; the picker also closes instantly
+  // (a render branch, not a native dismissal) and inherits the app's ScreenBg.
+  if (showAvatarPage) {
+    return (
+      <Screen>
+          <ScreenHeader title={t('profile.pictures')} icon="images" onBack={() => setShowAvatarPage(false)} />
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
+            {([
+              'pp7', 'pp11', 'pp12', 'pp13', 'pp14', 'pp15', 'pp16', 'pp17',
+              'pp1', 'pp2', 'pp3', 'pp4', 'pp5', 'pp6', 'pp8', 'pp9', 'pp10',
+              'pp19', 'pp20', 'pp18',
+            ]).map((avatarId) => {
+              const meta = avatarMeta(avatarId);
+              const owned = ownsAvatar(p, avatarId);
+              const selected = (p.avatar ?? p.selectedAvatar ?? null) === avatarId;
+              return (
+                <AvatarTile
+                  key={avatarId}
+                  avatarId={avatarId}
+                  owned={owned}
+                  selected={selected}
+                  price={meta.price}
+                  onPress={() => {
+                    if (!owned) {
+                      setPendingAvatarId(avatarId);
+                      return;
+                    }
+                    if (selected) return;
+                    setConfirmAvatarId(avatarId);
+                  }}
+                />
+              );
+            })}
+          </View>
+        </ScrollView>
+
+        {/* Purchase confirmation modal (inside avatar picker) */}
+        <GameModal visible={pendingAvatar !== null} onClose={() => setPendingAvatarId(null)} title={t('profile.buyTitle')} icon="lock-closed">
+          {pendingAvatar ? (
+            <>
+              <View style={{ alignItems: 'center', gap: 10 }}>
+                <AvatarBadge avatarId={pendingAvatar.id} size={88} />
+                <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18 }}>{pendingAvatar.label}</Text>
+                <Text style={{ color: theme.muted, fontSize: 13, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>
+                  {t('profile.buyConfirm', { price: pendingAvatar.price })}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <GemIcon size={16} />
+                  <Text style={{ color: theme.gold, fontFamily: 'Poppins-Black', fontSize: 14, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{pendingAvatar.price}</Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  {/* Cancel is ALWAYS ghost — danger is reserved for destructive confirms */}
+                  <Btn label={t('common.no')} kind="ghost" icon="close" onPress={() => setPendingAvatarId(null)} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Btn
+                    label={t('common.yes')}
+                    kind="blue"
+                    icon="checkmark"
+                    onPress={() => {
+                      if (!pendingAvatar) return;
+                      if (canAffordPending) {
+                        actions.buyAvatar(pendingAvatar.id);
+                        setPendingAvatarId(null);
+                      } else {
+                        setPendingAvatarId(null);
+                        setShowInsufficientPopup(true);
+                      }
+                    }}
+                  />
+                </View>
+              </View>
+            </>
+          ) : null}
+        </GameModal>
+
+        <GameModal
+          visible={confirmAvatar !== null}
+          onClose={() => setConfirmAvatarId(null)}
+          onExited={() => {
+            if (closePickerOnExit.current) {
+              closePickerOnExit.current = false;
+              setShowAvatarPage(false);
+            }
+          }}
+          title={t('profile.changeTitle')}
+          icon="images"
+        >
+          {confirmAvatar ? (
+            <>
+              <View style={{ alignItems: 'center', gap: 10 }}>
+                <AvatarBadge avatarId={confirmAvatar.id} size={88} />
+                <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18 }}>{confirmAvatar.label}</Text>
+                <Text style={{ color: theme.muted, fontSize: 13, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>
+                  {t('profile.changeConfirm')}
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Btn label={t('common.no')} kind="ghost" icon="close" onPress={() => setConfirmAvatarId(null)} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Btn
+                    label={t('common.yes')}
+                    kind="blue"
+                    icon="checkmark"
+                    onPress={() => {
+                      const nextAvatarId = confirmAvatarId;
+                      if (!nextAvatarId) return;
+                      closePickerOnExit.current = true;
+                      setConfirmAvatarId(null);
+                      actions.setAvatar(nextAvatarId);
+                    }}
+                  />
+                </View>
+              </View>
+            </>
+          ) : null}
+        </GameModal>
+
+        {/* Insufficient diamonds popup (inside avatar picker) */}
+        <GameModal visible={showInsufficientPopup} onClose={() => setShowInsufficientPopup(false)} title={t('profile.notEnoughTitle')} icon="alert-circle">
+          <View style={{ alignItems: 'center', gap: 12, paddingVertical: 4 }}>
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 16, textAlign: 'center' }}>
+              {t('store.changeNameInsufficient')}
+            </Text>
+            <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+              {t('profile.notEnoughBody')}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Btn label={t('settings.cancel')} kind="ghost" icon="close" onPress={() => setShowInsufficientPopup(false)} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Btn
+                label={t('common.continue')}
+                kind="primary"
+                icon="storefront"
+                onPress={() => {
+                  setShowInsufficientPopup(false);
+                  actions.closeProfile();
+                  onGoToStore?.('diamonds');
+                }}
+              />
+            </View>
+          </View>
+        </GameModal>
+      </Screen>
+    );
+  }
   return (
     <Screen>
       <ScreenHeader title={t('profile.title')} icon="person" onBack={actions.closeProfile} />
@@ -6195,160 +6966,6 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
         </View>
       </ScrollView>
 
-      {/* Full-screen avatar picker page — real safe-area inset, not a hard-coded 40 */}
-      <Modal visible={showAvatarPage} animationType="slide" onRequestClose={() => setShowAvatarPage(false)} presentationStyle="fullScreen">
-        <Screen>
-          <View style={{ paddingTop: insets.top, flex: 1 }}>
-            <ScreenHeader title={t('profile.pictures')} icon="images" onBack={() => setShowAvatarPage(false)} />
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
-              {([
-                'pp7', 'pp11', 'pp12', 'pp13', 'pp14', 'pp15', 'pp16', 'pp17',
-                'pp1', 'pp2', 'pp3', 'pp4', 'pp5', 'pp6', 'pp8', 'pp9', 'pp10',
-                'pp19', 'pp20', 'pp18',
-              ]).map((avatarId) => {
-                const meta = avatarMeta(avatarId);
-                const owned = ownsAvatar(p, avatarId);
-                const selected = (p.avatar ?? p.selectedAvatar ?? null) === avatarId;
-                return (
-                  <AvatarTile
-                    key={avatarId}
-                    avatarId={avatarId}
-                    owned={owned}
-                    selected={selected}
-                    price={meta.price}
-                    onPress={() => {
-                      if (!owned) {
-                        setPendingAvatarId(avatarId);
-                        return;
-                      }
-                      if (selected) return;
-                      setConfirmAvatarId(avatarId);
-                    }}
-                  />
-                );
-              })}
-            </View>
-          </ScrollView>
-
-          {/* Purchase confirmation modal (inside avatar picker) */}
-          <GameModal visible={pendingAvatar !== null} onClose={() => setPendingAvatarId(null)} title={t('profile.buyTitle')} icon="lock-closed">
-            {pendingAvatar ? (
-              <>
-                <View style={{ alignItems: 'center', gap: 10 }}>
-                  <AvatarBadge avatarId={pendingAvatar.id} size={88} />
-                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18 }}>{pendingAvatar.label}</Text>
-                  <Text style={{ color: theme.muted, fontSize: 13, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>
-                    {t('profile.buyConfirm', { price: pendingAvatar.price })}
-                  </Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <GemIcon size={16} />
-                    <Text style={{ color: theme.gold, fontFamily: 'Poppins-Black', fontSize: 14, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{pendingAvatar.price}</Text>
-                  </View>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <View style={{ flex: 1 }}>
-                    {/* Cancel is ALWAYS ghost — danger is reserved for destructive confirms */}
-                    <Btn label={t('common.no')} kind="ghost" icon="close" onPress={() => setPendingAvatarId(null)} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Btn
-                      label={t('common.yes')}
-                      kind="blue"
-                      icon="checkmark"
-                      onPress={() => {
-                        if (!pendingAvatar) return;
-                        if (canAffordPending) {
-                          actions.buyAvatar(pendingAvatar.id);
-                          setPendingAvatarId(null);
-                        } else {
-                          setPendingAvatarId(null);
-                          setShowInsufficientPopup(true);
-                        }
-                      }}
-                    />
-                  </View>
-                </View>
-              </>
-            ) : null}
-          </GameModal>
-
-          <GameModal
-            visible={confirmAvatar !== null}
-            onClose={() => setConfirmAvatarId(null)}
-            onExited={() => {
-              if (closePickerOnExit.current) {
-                closePickerOnExit.current = false;
-                setShowAvatarPage(false);
-              }
-            }}
-            title={t('profile.changeTitle')}
-            icon="images"
-          >
-            {confirmAvatar ? (
-              <>
-                <View style={{ alignItems: 'center', gap: 10 }}>
-                  <AvatarBadge avatarId={confirmAvatar.id} size={88} />
-                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18 }}>{confirmAvatar.label}</Text>
-                  <Text style={{ color: theme.muted, fontSize: 13, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>
-                    {t('profile.changeConfirm')}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <View style={{ flex: 1 }}>
-                    <Btn label={t('common.no')} kind="ghost" icon="close" onPress={() => setConfirmAvatarId(null)} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Btn
-                      label={t('common.yes')}
-                      kind="blue"
-                      icon="checkmark"
-                      onPress={() => {
-                        const nextAvatarId = confirmAvatarId;
-                        if (!nextAvatarId) return;
-                        closePickerOnExit.current = true;
-                        setConfirmAvatarId(null);
-                        actions.setAvatar(nextAvatarId);
-                      }}
-                    />
-                  </View>
-                </View>
-              </>
-            ) : null}
-          </GameModal>
-
-          {/* Insufficient diamonds popup (inside avatar picker) */}
-          <GameModal visible={showInsufficientPopup} onClose={() => setShowInsufficientPopup(false)} title={t('profile.notEnoughTitle')} icon="alert-circle">
-            <View style={{ alignItems: 'center', gap: 12, paddingVertical: 4 }}>
-              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 16, textAlign: 'center' }}>
-                {t('store.changeNameInsufficient')}
-              </Text>
-              <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
-                {t('profile.notEnoughBody')}
-              </Text>
-            </View>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <View style={{ flex: 1 }}>
-                <Btn label={t('settings.cancel')} kind="ghost" icon="close" onPress={() => setShowInsufficientPopup(false)} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Btn
-                  label={t('common.continue')}
-                  kind="primary"
-                  icon="storefront"
-                  onPress={() => {
-                    setShowInsufficientPopup(false);
-                    actions.closeProfile();
-                    onGoToStore?.('diamonds');
-                  }}
-                />
-              </View>
-            </View>
-          </GameModal>
-
-          </View>
-        </Screen>
-      </Modal>
     </Screen>
   );
 }
@@ -6449,14 +7066,17 @@ export function ArenasScreen({ state, actions }: Props) {
   const currentArenaIdx = ARENA_DATA.findIndex((a) => trophies >= a.min && trophies <= a.max);
   const scrollRef = useRef<ScrollView>(null);
 
-  // Scroll to current arena on mount
-  useEffect(() => {
-    if (currentArenaIdx >= 0) {
-      setTimeout(() => {
-        scrollRef.current?.scrollTo({ y: Math.max(0, (ARENA_DATA.length - 1 - currentArenaIdx) * 160 - 200), animated: true });
-      }, 300);
-    }
-  }, [currentArenaIdx]);
+  // Land on the player's own arena, not the top of the list. The rows have very
+  // different heights (the current tier is a tall hero card), so a fixed
+  // row-height guess is unreliable — measure the current row's actual Y within the
+  // scroll content (via onLayout, below) and scroll to it once, a little below the
+  // header so it isn't glued to the very top.
+  const didScrollToCurrent = useRef(false);
+  const scrollToCurrentRow = useCallback((y: number) => {
+    if (didScrollToCurrent.current) return;
+    didScrollToCurrent.current = true;
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: Math.max(0, y - 96), animated: false }));
+  }, []);
 
   // Progress within current arena (0..1)
   const currentArena = ARENA_DATA[currentArenaIdx] ?? ARENA_DATA[ARENA_DATA.length - 1]!;
@@ -6495,14 +7115,6 @@ export function ArenasScreen({ state, actions }: Props) {
           const isPassed = trophies > arena.max;
           const maxLabel = arena.max === 99999 ? '∞' : String(arena.max);
 
-          // Recessed mini stat well ('+X' win / '-Y' loss stakes, gem reward)
-          const stakePill = (fg: string, icon: IoniconName, label: string) => (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: theme.panelInnerFill, borderRadius: 9, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, paddingHorizontal: 7, paddingVertical: 2.5 }}>
-              <Ionicons name={icon} size={10} color={fg} />
-              <Text style={{ color: fg, fontSize: 10, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>{label}</Text>
-            </View>
-          );
-
           const cardInner = (
             <>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -6524,14 +7136,10 @@ export function ArenasScreen({ state, actions }: Props) {
                     <Ionicons name="trophy" size={12} color={theme.gold} />
                   </View>
                   <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', marginTop: 3 }}>{arenaDesc(arena.name)}</Text>
-                  {/* Stakes + tier reward — the ladder's rising bets, finally rendered */}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
-                    {stakePill(theme.primary, 'trophy', arena.win)}
-                    {stakePill(theme.danger, 'trophy', arena.loss)}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 2 }}>
-                      <GemIcon size={13} />
-                      <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>+{arena.reward}</Text>
-                    </View>
+                  {/* Tier reward only — the per-match win/loss trophy stakes are not shown. */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}>
+                    <GemIcon size={13} />
+                    <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>+{arena.reward}</Text>
                   </View>
                 </View>
               </View>
@@ -6562,7 +7170,7 @@ export function ArenasScreen({ state, actions }: Props) {
           );
 
           return (
-            <View key={arena.name}>
+            <View key={arena.name} onLayout={isCurrent ? (e) => scrollToCurrentRow(e.nativeEvent.layout.y) : undefined}>
               {/* Gradient ladder segment between tiers (not on the first item) */}
               {idx > 0 ? (
                 <LadderConnector

@@ -10,7 +10,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import LottieView from 'lottie-react-native';
 import type { ComponentProps } from 'react';
-import { theme } from './theme';
+import { theme, engrave } from './theme';
 import { t } from './i18n';
 import type { MessageKey } from './i18n';
 import type { ProfileView } from './protocol';
@@ -21,6 +21,18 @@ import okEmoji from './okEmoji';
 import logoEmoji from './logoEmoji';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
+
+// Local copy of the kit's darken() (screens.tsx imports this module, so importing
+// it back from there would create a require cycle).
+function darkenHex(hex: string, amt = 0.34): string {
+  const h = hex.replace('#', '');
+  if (h.length !== 6) return hex;
+  const n = parseInt(h, 16);
+  const r = Math.round(((n >> 16) & 255) * (1 - amt));
+  const g = Math.round(((n >> 8) & 255) * (1 - amt));
+  const b = Math.round((n & 255) * (1 - amt));
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+}
 
 export interface EmoteMeta {
   id: string;
@@ -242,13 +254,13 @@ export function EmoteCallout({ id, size = 88 }: { id: string; size?: number }) {
   // LottieJson emotes (cry, angry): square frame, no caption.
   if (meta.kind === 'lottie' || meta.kind === 'lottieJson') {
     return (
-      <View style={[styles.callout, { borderRadius: 16, paddingVertical: 8, paddingHorizontal: 8, borderWidth: 1.5, borderColor: meta.color }]}>
+      <View style={[styles.callout, { borderRadius: 16, paddingVertical: 8, paddingHorizontal: 8, borderColor: meta.color, borderBottomColor: darkenHex(meta.color) }]}>
         <EmoteSticker id={id} size={size} />
       </View>
     );
   }
   return (
-    <View style={styles.callout}>
+    <View style={[styles.callout, { borderColor: meta.color, borderBottomColor: darkenHex(meta.color) }]}>
       <EmoteSticker id={id} size={size} />
       {caption ? <Text style={[styles.calloutText, { color: meta.color }]}>{caption}</Text> : null}
     </View>
@@ -278,12 +290,13 @@ export function TextEmoteFrame({ text, fontSize = 16 }: { text: string; color?: 
 const styles = StyleSheet.create({
   callout: {
     alignItems: 'center',
-    backgroundColor: 'rgba(11,16,32,0.82)',
+    backgroundColor: theme.panelInk, // opaque ink plate (spec §14 — no translucent surfaces)
     borderRadius: 18,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: theme.border,
+    borderBottomColor: theme.cardLip,
   },
-  calloutText: { fontSize: 14, fontWeight: '900', marginTop: 2 },
+  calloutText: { fontSize: 14, fontFamily: 'Poppins-ExtraBold', marginTop: 2, ...engrave('sm') },
 });

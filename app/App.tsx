@@ -139,11 +139,23 @@ const DiamondPill = memo(function DiamondPill({ countAnim, fillAnim, pillRef, on
   );
 });
 
-// One tab: opaque cardLip pill fades/scales in behind the active icon (180ms),
-// icon spring-pops on activation, whole tab has a 2px press-lip. `locked` renders
-// the muted "coming soon" treatment with a gold lock mini-badge.
-function TabButton({ active = false, locked = false, icon, activeIcon, label, onPress }: {
-  active?: boolean; locked?: boolean; icon: IoniconName; activeIcon?: IoniconName; label: string; onPress: () => void;
+// A red count badge riding a tab icon's top-right corner. Only ever rendered for a
+// positive count — callers pass null when there is nothing to announce.
+function TabBadge({ count }: { count: number }) {
+  return (
+    <View pointerEvents="none" style={s.tabBadge}>
+      <Text style={s.tabBadgeText} numberOfLines={1}>{count > 99 ? '99+' : String(count)}</Text>
+    </View>
+  );
+}
+
+// One tab, per the mockup: a green indicator LINE across the top edge of the active
+// tab (not a pill), green icon + label when active, muted periwinkle otherwise. The
+// icon spring-pops on activation and the whole tab has the standard 2px press-lip.
+// `locked` renders the muted "coming soon" treatment with a gold lock mini-badge.
+function TabButton({ active = false, locked = false, icon, activeIcon, label, onPress, badge }: {
+  active?: boolean; locked?: boolean; icon: IoniconName; activeIcon?: IoniconName; label: string;
+  onPress: () => void; badge?: number | null;
 }) {
   const press = useRef(new Animated.Value(0)).current;
   const act = useRef(new Animated.Value(active ? 1 : 0)).current;
@@ -163,19 +175,51 @@ function TabButton({ active = false, locked = false, icon, activeIcon, label, on
       onPressIn={() => Animated.timing(press, { toValue: 1, duration: 60, useNativeDriver: true }).start()}
       onPressOut={() => Animated.timing(press, { toValue: 0, duration: 110, useNativeDriver: true }).start()}
     >
+      {/* the mockup's active marker: a green rule along the tab's top edge, over a
+          barely-there wash that lifts the active tab off the bar */}
+      <Animated.View pointerEvents="none" style={[s.tabActiveWash, { opacity: act }]} />
+      <Animated.View pointerEvents="none" style={[s.tabIndicator, { opacity: act, transform: [{ scaleX: act }] }]} />
       <Animated.View style={[s.tabInner, { transform: [{ translateY: press.interpolate({ inputRange: [0, 1], outputRange: [0, 2] }) }] }]}>
-        <Animated.View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, s.tabPill, { opacity: act, transform: [{ scale: act.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }] }]}
-        />
         <Animated.View style={{ transform: [{ scale: iconPop }] }}>
-          <Ionicons name={active && activeIcon ? activeIcon : icon} size={active ? 30 : 26} color={color} />
+          <Ionicons name={active && activeIcon ? activeIcon : icon} size={26} color={color} />
           {locked ? (
             <View style={s.tabLock}>
               <Ionicons name="lock-closed" size={9} color={theme.ink} />
             </View>
           ) : null}
+          {badge != null ? <TabBadge count={badge} /> : null}
         </Animated.View>
+        <Text style={[s.tabLabel, active && s.tabLabelActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+          {label}
+        </Text>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// The centre "Oyna" tab: a raised green ball that breaks above the bar's top edge,
+// the way the mockup's does. Same press-lip physics as its flat siblings.
+function PlayTab({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) {
+  const press = useRef(new Animated.Value(0)).current;
+  const pop = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!active) return;
+    pop.setValue(0.82);
+    Animated.spring(pop, { toValue: 1, friction: 4, tension: 160, useNativeDriver: true }).start();
+  }, [active, pop]);
+  return (
+    <Pressable
+      style={s.tab}
+      onPress={onPress}
+      onPressIn={() => Animated.timing(press, { toValue: 1, duration: 60, useNativeDriver: true }).start()}
+      onPressOut={() => Animated.timing(press, { toValue: 0, duration: 110, useNativeDriver: true }).start()}
+    >
+      <Animated.View style={[s.tabInner, { transform: [{ translateY: press.interpolate({ inputRange: [0, 1], outputRange: [0, 2] }) }] }]}>
+        <View style={s.playTabSlot}>
+          <Animated.View style={[s.playTabBall, { transform: [{ translateY: -18 }, { scale: pop }] }]}>
+            <Ionicons name="football" size={28} color={theme.ink} />
+          </Animated.View>
+        </View>
         <Text style={[s.tabLabel, active && s.tabLabelActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
           {label}
         </Text>
@@ -712,18 +756,21 @@ function AppRoot() {
         setLoaded(false);
         setLangKey((k) => k + 1);
         actions.closeArenas();
-      }} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} onOpenLeaderboard={openLeaderboard} onOpenMatchHistory={openMatchHistory} />;
+      }} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} onOpenLeaderboard={openLeaderboard} onOpenMatchHistory={openMatchHistory} onGoToFriends={() => goToTab(3)} />;
 
   // Per-tab background: Oyna/home = blue arena backdrop, Mağaza = violet, others = calm navy.
-  const bgVariant = (activeTab === 0 ? 'store' : activeTab === 2 && state.phase === 'home' ? 'home' : 'menu') as 'store' | 'home' | 'menu';
+  // Home gets the stadium photograph (HOME v4); its sub-screens (Arenas/Profile) keep the calm navy.
+  const bgVariant = (activeTab === 0 ? 'store' : activeTab === 2 && state.phase === 'home' ? 'stadium' : 'menu') as 'store' | 'stadium' | 'menu';
 
   return (
     <View key={`app-${langKey}`} style={[s.root, { paddingTop: insets.top }]}>
       <StatusBar style="light" />
       <ScreenBg variant={bgVariant} />
 
-      {/* Top bar — trophies (left) + gems pill (right); both HUD pills are alive. */}
-      {state.profile ? (
+      {/* Top bar — trophies (left) + gems pill (right); both HUD pills are alive.
+          Hidden on the home tab itself: HomeScreen carries its own integrated
+          profile+gem bar there (other tabs still need this resource bar). */}
+      {state.profile && !(activeTab === 2 && state.phase === 'home') ? (
         <View style={s.resourceBar}>
           <Pressable onPress={() => { actions.openArenas(); goToTab(2); }}>
             {({ pressed }) => (
@@ -782,25 +829,35 @@ function AppRoot() {
       <View style={[s.tabBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         {/* 1px top gloss just under the cardLip edge — the bar is a raised surface. */}
         <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: theme.panelTopGloss }} />
-        {TABS.map((tab, idx) => (
-          <TabButton
-            key={tab.key}
-            active={idx === activeTab}
-            icon={tab.icon}
-            activeIcon={tab.activeIcon}
-            label={t(tab.labelKey)}
-            onPress={() => {
-              if (idx === 2 && activeTab === 2) {
-                // Re-tapping the active Oyna tab opens Arenas (Clash Royale style);
-                // from any other home-slot sub-screen (Profile, Arenas) it returns
-                // to the main home screen instead of staying put.
-                if (state.phase === 'home') { actions.openArenas(); return; }
-                resetHomePhase(); return;
-              }
-              goToTab(idx);
-            }}
-          />
-        ))}
+        {TABS.map((tab, idx) => {
+          const onPress = () => {
+            if (idx === 2 && activeTab === 2) {
+              // Re-tapping the active Oyna tab opens Arenas (Clash Royale style);
+              // from any other home-slot sub-screen (Profile, Arenas) it returns
+              // to the main home screen instead of staying put.
+              if (state.phase === 'home') { actions.openArenas(); return; }
+              resetHomePhase(); return;
+            }
+            goToTab(idx);
+          };
+          // The mockup's centre tab is a raised ball, not a flat icon.
+          if (idx === 2) return <PlayTab key={tab.key} active={activeTab === 2} label={t(tab.labelKey)} onPress={onPress} />;
+          return (
+            <TabButton
+              key={tab.key}
+              active={idx === activeTab}
+              icon={tab.icon}
+              activeIcon={tab.activeIcon}
+              label={t(tab.labelKey)}
+              // Friends is the only tab with an honest badge source: unread messages +
+              // pending requests, and it clears itself. (The mockup also badges
+              // Collection, but every un-owned emote there is grant-only — that badge
+              // could never be cleared, so it is deliberately not rendered.)
+              badge={tab.key === 'friends' ? (badgeTotal || null) : null}
+              onPress={onPress}
+            />
+          );
+        })}
         {/* Tournaments — locked, coming soon */}
         <TabButton locked icon="trophy-outline" label={t('tab.tournaments')} onPress={() => setComingSoon(true)} />
       </View>
@@ -897,34 +954,66 @@ function AppRoot() {
   );
 }
 
+const TAB_TOP_INSET = 12.5; // s.tabBar borderTopWidth (1.5) + paddingTop (11)
+
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG_TOP }, // navy behind the patterned ScreenBg (no header seam); top inset applied via safe-area
+  // The mockup's bar: a flat deep-navy slab with rounded top corners, its own
+  // hairline top edge, and the content shadowed up off it.
   tabBar: {
     flexDirection: 'row',
-    borderTopWidth: 2,
-    borderTopColor: theme.cardLip,
-    backgroundColor: theme.bg2,
-    paddingTop: 13,
+    backgroundColor: theme.tabBar,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1.5,
+    borderTopColor: 'rgba(255,255,255,0.07)',
+    paddingTop: 11,
     // Upward shadow — the bar physically sits over the content.
     shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: -5 },
     elevation: 10,
+    // The centre ball breaks above the bar; let it.
+    overflow: 'visible',
   },
   tab: { flex: 1, alignItems: 'center' },
-  tabInner: { alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 9, paddingHorizontal: 4, borderRadius: 16, alignSelf: 'stretch' },
-  // Opaque active pill (no rest glow — spec §14): cardLip fill + primary ring.
-  tabPill: {
-    backgroundColor: theme.cardLip,
-    borderWidth: 1,
-    borderColor: theme.primary,
-    borderRadius: 16,
+  tabInner: { alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 8, paddingHorizontal: 4, alignSelf: 'stretch' },
+  // Active marker (mockup): a green rule across the tab's TOP edge, plus a faint
+  // wash under it. Replaces the old opaque pill behind the icon.
+  // TAB_TOP_INSET is how far s.tab's box starts below the bar's outer top edge:
+  // borderTopWidth 1.5 + paddingTop 11. Both markers are pulled up by it so they land ON
+  // the edge, the way the mockup draws them.
+  tabIndicator: {
+    position: 'absolute', top: -TAB_TOP_INSET, left: '14%', right: '14%',
+    height: 3.5, borderRadius: 2, backgroundColor: theme.primary,
   },
+  tabActiveWash: { position: 'absolute', top: -TAB_TOP_INSET, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.045)' },
   tabLock: {
     position: 'absolute', top: -4, right: -8, width: 14, height: 14, borderRadius: 7,
     backgroundColor: theme.accent, borderBottomWidth: 1.5, borderBottomColor: theme.accentDark,
     alignItems: 'center', justifyContent: 'center',
+  },
+  tabBadge: {
+    position: 'absolute', top: -6, right: -13,
+    minWidth: 19, height: 19, borderRadius: 10, paddingHorizontal: 4,
+    backgroundColor: theme.badgeRed,
+    borderWidth: 2, borderColor: theme.tabBar,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  tabBadgeText: { color: '#FFFFFF', fontSize: 10, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] },
+  // Centre "Oyna" ball. The slot is only as tall as a normal tab icon so the label keeps
+  // the same baseline as its siblings; the ball itself is absolutely placed and lifted by
+  // a transform (which costs no layout) so it breaks above the bar's top edge.
+  playTabSlot: { width: 48, height: 26, alignItems: 'center' },
+  playTabBall: {
+    position: 'absolute', bottom: 0,
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: theme.primary,
+    borderWidth: 3, borderColor: theme.tabBar,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 6, shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
   },
   tabLabel: { color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' },
   tabLabelActive: { color: theme.primary },
