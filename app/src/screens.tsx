@@ -895,7 +895,11 @@ function Screen({ children, scroll, bg, pad, contentCenter = true }: { children:
   return (
     <KeyboardAvoidingView
       style={[styles.screen, pad !== undefined && { padding: pad }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // Scroll screens let the ScrollView's `automaticallyAdjustKeyboardInsets` do the
+      // work (it insets AND scrolls the focused input above the keyboard); only fixed
+      // (non-scroll) screens need the KAV to pad. Running both double-shifts the layout
+      // and was pushing the submit button under the keyboard ("gönderme kısmı gidiyor").
+      behavior={Platform.OS === 'ios' && !scroll ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
     >
       {/* Optional fixed backdrop BEHIND the scroll content (covers the app's default
@@ -912,6 +916,7 @@ function Screen({ children, scroll, bg, pad, contentCenter = true }: { children:
           contentContainerStyle={{ flexGrow: 1, justifyContent: contentCenter ? 'center' : 'flex-start' }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
         >
           {children}
         </ScrollView>
@@ -3534,7 +3539,7 @@ function LeaveConfirmModal({ visible, onCancel, onConfirm }: { visible: boolean;
   );
 }
 
-export function OpponentForfeitModal({ visible, onFindNew, onGoHome }: { visible: boolean; onFindNew: () => void; onGoHome: () => void }) {
+export function OpponentForfeitModal({ visible, onFindNew, onGoHome, trophyDelta }: { visible: boolean; onFindNew: () => void; onGoHome: () => void; trophyDelta?: { delta: number; trophies: number } | null }) {
   return (
     <GameModal visible={visible} onClose={onGoHome} title={t('opponent.bannerTitle')} icon="exit">
       {/* Exit icon in a beveled medallion (card face + accent ring + soft gold glow) */}
@@ -3552,6 +3557,13 @@ export function OpponentForfeitModal({ visible, onFindNew, onGoHome }: { visible
       <Text style={{ color: theme.muted, fontSize: 13, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 19 }}>
         {t('opponent.leftTitle')}
       </Text>
+      {/* Forfeit is always a win for whoever stays → show the trophies gained (chip
+          shows +delta and the new total), mirroring the match-over screen. */}
+      {trophyDelta && trophyDelta.delta ? (
+        <View style={{ alignItems: 'center' }}>
+          <TrophyDeltaChip delta={trophyDelta.delta} trophies={trophyDelta.trophies} />
+        </View>
+      ) : null}
       <Btn label={t('opponent.findNew')} icon="flash" onPress={onFindNew} />
       <Btn label={t('opponent.goHome')} kind="ghost" icon="home" onPress={onGoHome} />
     </GameModal>
@@ -4242,6 +4254,7 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
                 onChangeText={setText}
                 autoFocus={!tutorial}
                 editable={!youAnswered}
+                returnKeyType="send"
                 onSubmitEditing={() => text.trim() && actions.submitGuess(text.trim())}
               />
               <Btn
@@ -4413,7 +4426,7 @@ export function DiamondCelebration({
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim, opacity: cardOpacity }]}>
           <Pressable
             style={StyleSheet.absoluteFill}
-            onPress={!arenaReward && !flying ? handleClose : undefined}
+            onPress={!flying ? handleClose : undefined}
           />
         </Animated.View>
 
@@ -4532,28 +4545,27 @@ export function DiamondCelebration({
                     big
                     kind="primary"
                     icon={arenaReward ? 'diamond' : undefined}
-                    label={arenaReward ? `+${amount.toLocaleString('tr-TR')}` : t('store.gotIt')}
+                    label={t('store.gotIt')}
                     onPress={handleClose}
                   />
                 </View>
               </View>
 
-              {/* Close gem — the GameModal recipe verbatim */}
-              {!arenaReward ? (
-                <Pressable
-                  onPress={handleClose}
-                  hitSlop={8}
-                  style={({ pressed }) => ({
-                    position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15,
-                    backgroundColor: pressed ? darken(theme.cardLip, 0.35) : theme.cardLip,
-                    borderWidth: 2, borderColor: theme.accentDark,
-                    alignItems: 'center', justifyContent: 'center', zIndex: 5,
-                    transform: [{ translateY: pressed ? 1 : 0 }],
-                  })}
-                >
-                  <Ionicons name="close" size={16} color={theme.accent} />
-                </Pressable>
-              ) : null}
+              {/* Close gem — the GameModal recipe verbatim. Shown on BOTH variants so an
+                  arena-reward popup is never a dead-end (was arena-only-unclosable before). */}
+              <Pressable
+                onPress={handleClose}
+                hitSlop={8}
+                style={({ pressed }) => ({
+                  position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15,
+                  backgroundColor: pressed ? darken(theme.cardLip, 0.35) : theme.cardLip,
+                  borderWidth: 2, borderColor: theme.accentDark,
+                  alignItems: 'center', justifyContent: 'center', zIndex: 5,
+                  transform: [{ translateY: pressed ? 1 : 0 }],
+                })}
+              >
+                <Ionicons name="close" size={16} color={theme.accent} />
+              </Pressable>
             </View>
           </Animated.View>
         </View>

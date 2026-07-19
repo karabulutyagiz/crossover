@@ -366,6 +366,9 @@ function AppRoot() {
   const { state, actions } = useCrossover();
   const props = { state, actions };
   const scrollRef = useRef<ScrollView>(null);
+  // Native-driven horizontal pager offset — powers the background cross-fade so the
+  // backdrop never blanks or hard-swaps while swiping between tabs.
+  const scrollX = useRef(new Animated.Value(2 * SCREEN_W)).current;
   const diamondPillRef = useRef<View>(null); // measured so purchase animations fly gems onto it
   const diamondCountAnim = useRef(new Animated.Value(0)).current;
   const diamondFillAnim = useRef(new Animated.Value(0)).current;
@@ -739,6 +742,7 @@ function AppRoot() {
           visible={state.opponentForfeit}
           onFindNew={actions.findMatchAgain}
           onGoHome={actions.leave}
+          trophyDelta={state.trophyDelta}
         />
       </View>
     );
@@ -758,14 +762,32 @@ function AppRoot() {
         actions.closeArenas();
       }} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} onOpenLeaderboard={openLeaderboard} onOpenMatchHistory={openMatchHistory} onGoToFriends={() => goToTab(3)} />;
 
-  // Per-tab background: Oyna/home = blue arena backdrop, Mağaza = violet, others = calm navy.
-  // Home gets the stadium photograph (HOME v4); its sub-screens (Arenas/Profile) keep the calm navy.
-  const bgVariant = (activeTab === 0 ? 'store' : activeTab === 2 && state.phase === 'home' ? 'stadium' : 'menu') as 'store' | 'stadium' | 'menu';
-
   return (
     <View key={`app-${langKey}`} style={[s.root, { paddingTop: insets.top }]}>
       <StatusBar style="light" />
-      <ScreenBg variant={bgVariant} />
+      {/* Layered tab backgrounds: calm navy is the always-present base; violet (Mağaza)
+          and the stadium photo (Oyna/home) cross-fade OVER it, driven by the pager's
+          native scroll offset. Both are mounted the whole time, so a swipe just tweaks
+          opacity on the native thread — the backdrop never blanks or reloads mid-swipe. */}
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        <ScreenBg variant="menu" />
+        <Animated.View
+          style={[StyleSheet.absoluteFill, {
+            opacity: scrollX.interpolate({ inputRange: [-SCREEN_W, 0, SCREEN_W], outputRange: [1, 1, 0], extrapolate: 'clamp' }),
+          }]}
+        >
+          <ScreenBg variant="store" />
+        </Animated.View>
+        {state.phase === 'home' ? (
+          <Animated.View
+            style={[StyleSheet.absoluteFill, {
+              opacity: scrollX.interpolate({ inputRange: [SCREEN_W, 2 * SCREEN_W, 3 * SCREEN_W], outputRange: [0, 1, 0], extrapolate: 'clamp' }),
+            }]}
+          >
+            <ScreenBg variant="stadium" />
+          </Animated.View>
+        ) : null}
+      </View>
 
       {/* Top bar — trophies (left) + gems pill (right); both HUD pills are alive.
           Hidden on the home tab itself: HomeScreen carries its own integrated
@@ -791,7 +813,7 @@ function AppRoot() {
         </View>
       ) : null}
 
-      <ScrollView
+      <Animated.ScrollView
         ref={scrollRef}
         horizontal
         pagingEnabled
@@ -802,11 +824,11 @@ function AppRoot() {
         keyboardShouldPersistTaps="always"
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onScrollEnd}
-        onScroll={(e) => {
-          if (programmaticScroll.current) return; // tab tap in progress — don't flicker through pages
-          const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
-          if (idx !== activeTab) setActiveTab(idx);
-        }}
+        // Drive the background cross-fade natively from the raw scroll offset. The
+        // active tab (pill + resource bar) is committed once in onMomentumScrollEnd,
+        // so NO React state update fires mid-gesture — the old per-frame setActiveTab
+        // was re-rendering the whole tree on every scroll frame (the swipe jank).
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
         scrollEventThrottle={16}
         contentOffset={{ x: 2 * SCREEN_W, y: 0 }}
         style={{ flex: 1 }}
@@ -823,7 +845,7 @@ function AppRoot() {
         <View style={{ width: SCREEN_W, flex: 1 }}>
           <FriendsScreen {...props} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* Bottom Tab Bar */}
       <View style={[s.tabBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>

@@ -9,7 +9,6 @@ import {
   setUsername, buyEmote, setEquippedEmotes, setAvatar, buyAvatar, touchLastSeen, getLeaderboard, grantAdReward,
   listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
   removeFriend, searchUsers, getMatchHistory,
-  getArena,
   type UserProfile,
 } from '../game/rank.ts';
 import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
@@ -71,6 +70,9 @@ interface QueueEntry {
 const SOCIAL_PACK_REQUIRED = 'Bu mod için iki oyuncuda da Sosyal Paket aktif olmalı';
 const RATE_WINDOW_MS = 10_000;
 const RATE_MAX_MESSAGES = 90;
+// Ranked pairing: match on trophy proximity, NOT arena identity — two players a
+// couple of matches apart (e.g. 500 vs 450) must pair even across an arena border.
+const MATCH_TROPHY_RANGE = 100;
 
 function remoteIp(req: import('node:http').IncomingMessage): string {
   return String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? 'unknown').split(',')[0]!.trim();
@@ -780,12 +782,12 @@ export function startServer(port: number): Server {
               transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
               return;
             }
-            const myArena = getArena(userProfile?.trophies ?? 0).name;
+            const myTrophies = userProfile?.trophies ?? 0;
             const partnerIdx = matchQueue.findIndex(
               (e) => e.ws.readyState === e.ws.OPEN
                 && (e.options?.mode ?? 'team-team') === requestedMode
                 && canUseMode(e.userProfile, requestedMode)
-                && getArena(e.userProfile?.trophies ?? 0).name === myArena,
+                && Math.abs((e.userProfile?.trophies ?? 0) - myTrophies) <= MATCH_TROPHY_RANGE,
             );
             const partner = partnerIdx >= 0 ? matchQueue.splice(partnerIdx, 1)[0]! : undefined;
             if (partner && partner.ws.readyState === partner.ws.OPEN) {
