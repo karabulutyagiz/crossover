@@ -2709,9 +2709,10 @@ export function DiamondCelebration({
   const targetY = gemTarget.measured ? gemTarget.y : 78;
   const arenaReward = variant === 'arenaReward';
   const arenaVisual = arenaName ? getArenaDataByName(arenaName) : null;
-  const title = arenaReward ? 'Tebrikler, yeni arenaya ulaştın!' : t('store.purchaseSuccess');
+  const arenaTitleName = arenaName ? arenaLabel(arenaName) : t('arena.newArena');
+  const title = arenaReward ? t('arena.rewardTitle') : t('store.purchaseSuccess');
   const subtitle = arenaReward
-    ? `${arenaName ?? 'Yeni arena'} ödülün: +${amount.toLocaleString('tr-TR')} elmas`
+    ? t('arena.rewardSubtitle', { arena: arenaTitleName, amount: amount.toLocaleString('tr-TR') })
     : null;
 
   // Pop the card in on mount.
@@ -2818,40 +2819,44 @@ export function DiamondCelebration({
             ) : null}
 
             {arenaReward && arenaVisual ? (
-              <View style={{ width: '100%', marginBottom: 14 }}>
+              <View style={{ alignItems: 'center', marginBottom: 12 }}>
+                {/* Reached-arena medallion — shown small but FULLY visible (contained,
+                    never cropped), with a soft color glow + one-off sheen sweep. */}
                 <Animated.View style={{
-                  borderRadius: 22,
+                  width: 210, height: 186, borderRadius: 26,
+                  alignItems: 'center', justifyContent: 'center',
                   overflow: 'hidden',
                   borderWidth: 1.5,
-                  borderColor: arenaVisual.color + '66',
+                  borderColor: arenaVisual.color + '55',
                   backgroundColor: '#08111C',
-                  opacity: arenaHeroAnim.interpolate({ inputRange: [0, 1], outputRange: [0.76, 1] }),
-                  transform: [{ scale: arenaHeroAnim.interpolate({ inputRange: [0, 1], outputRange: [0.985, 1] }) }],
+                  shadowColor: arenaVisual.color, shadowOpacity: 0.5, shadowRadius: 18, shadowOffset: { width: 0, height: 6 },
+                  opacity: arenaHeroAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }),
+                  transform: [{ scale: arenaHeroAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }],
                 }}>
-                  <Image source={arenaVisual.img} style={{ width: '100%', aspectRatio: 16 / 9 }} resizeMode="cover" />
+                  <View pointerEvents="none" style={{ position: 'absolute', width: 224, height: 224, borderRadius: 112, backgroundColor: arenaVisual.color + '1F' }} />
+                  <Image source={arenaVisual.img} resizeMode="contain" style={{ width: 172, height: 172 }} />
                   <Animated.View
                     pointerEvents="none"
                     style={{
                       position: 'absolute',
-                      top: -16,
-                      bottom: -16,
-                      width: '32%',
-                      backgroundColor: 'rgba(255,255,255,0.11)',
-                      opacity: arenaSheenAnim.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.85, 0] }),
+                      top: -20,
+                      bottom: -20,
+                      width: '34%',
+                      backgroundColor: 'rgba(255,255,255,0.10)',
+                      opacity: arenaSheenAnim.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.8, 0] }),
                       transform: [
-                        { translateX: arenaSheenAnim.interpolate({ inputRange: [0, 1], outputRange: [-120, 300] }) },
+                        { translateX: arenaSheenAnim.interpolate({ inputRange: [0, 1], outputRange: [-150, 250] }) },
                         { rotate: '14deg' },
                       ],
                     }}
                   />
-                  <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 14, paddingTop: 18, paddingBottom: 12, backgroundColor: 'rgba(4,10,18,0.36)' }}>
-                    <View style={{ backgroundColor: 'rgba(4,10,18,0.76)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: arenaVisual.color + '55' }}>
-                      <Text numberOfLines={1} style={{ color: arenaVisual.color, fontFamily: 'Poppins-ExtraBold', fontSize: 16, textAlign: 'center' }}>
-                        {arenaLabel(arenaVisual.name)}
-                      </Text>
-                    </View>
-                  </View>
                 </Animated.View>
+                {/* Reached-arena name pill */}
+                <View style={{ marginTop: 12, backgroundColor: 'rgba(4,10,18,0.76)', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 8, borderWidth: 1, borderColor: arenaVisual.color + '66' }}>
+                  <Text numberOfLines={1} style={{ color: arenaVisual.color, fontFamily: 'Poppins-ExtraBold', fontSize: 17, textAlign: 'center' }}>
+                    {arenaLabel(arenaVisual.name)}
+                  </Text>
+                </View>
               </View>
             ) : !arenaReward && img ? (
               <Image source={img} style={{ width: 150, height: 150 }} resizeMode="contain" />
@@ -5350,6 +5355,72 @@ function Confetti() {
   );
 }
 
+// Prominent post-match trophy delta — pops in on the match-over screen and
+// counts the gained/lost trophies up to the new total. Shown after every ranked
+// match (solo/bot matches don't touch trophies, so there's no delta to show).
+function TrophyDeltaCard({ delta, trophies }: { delta: number; trophies: number }) {
+  const gain = delta >= 0;
+  const color = gain ? theme.primary : theme.danger;
+  const oldTotal = Math.max(0, trophies - delta);
+
+  const pop = useRef(new Animated.Value(0)).current;
+  const count = useRef(new Animated.Value(0)).current;
+  const [shownDelta, setShownDelta] = useState(0);
+  const [shownTotal, setShownTotal] = useState(oldTotal);
+
+  useEffect(() => {
+    pop.setValue(0);
+    count.setValue(0);
+    setShownDelta(0);
+    setShownTotal(oldTotal);
+    const id = count.addListener(({ value }) => {
+      setShownDelta(Math.round(delta * value));
+      setShownTotal(Math.round(oldTotal + delta * value));
+    });
+    Animated.sequence([
+      Animated.delay(240),
+      Animated.parallel([
+        Animated.spring(pop, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }),
+        Animated.timing(count, { toValue: 1, duration: 780, delay: 120, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+      ]),
+    ]).start();
+    return () => count.removeListener(id);
+  }, [delta, trophies, oldTotal, pop, count]);
+
+  const sign = shownDelta > 0 ? '+' : '';
+
+  return (
+    <Animated.View
+      style={[
+        styles.trophyDeltaCard,
+        {
+          borderColor: color + '66',
+          shadowColor: color,
+          opacity: pop,
+          transform: [
+            { scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) },
+            { translateY: pop.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) },
+          ],
+        },
+      ]}
+    >
+      <Text style={[styles.trophyDeltaCaption, { color }]}>
+        {gain ? t('result.trophyGain') : t('result.trophyLoss')}
+      </Text>
+      <View style={styles.trophyDeltaTopRow}>
+        <Ionicons name="trophy" size={30} color={color} />
+        <Text style={[styles.trophyDeltaBig, { color }]}>{sign}{shownDelta}</Text>
+      </View>
+      <Text style={styles.trophyDeltaTotal}>
+        {oldTotal.toLocaleString('tr-TR')}
+        <Text style={styles.trophyDeltaArrow}>{'   →   '}</Text>
+        <Text style={styles.trophyDeltaTotalNew}>{shownTotal.toLocaleString('tr-TR')}</Text>
+        {'  '}{t('stats.trophies')}
+      </Text>
+    </Animated.View>
+  );
+}
+
 export function ResultScreen({ state, actions, tutorial }: Props) {
   const r = state.result!;
   const room = state.room!;
@@ -5397,12 +5468,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
               <Text style={styles.muted}>{t('result.winnerTook', { name: state.matchWinnerName })}</Text>
             ) : null}
             {state.trophyDelta ? (
-              <View style={styles.trophyDeltaRow}>
-                <Ionicons name="trophy" size={14} color={theme.accent} />
-                <Text style={[styles.trophyDeltaText, { color: state.trophyDelta.delta >= 0 ? theme.primary : theme.danger }]}>
-                  {state.trophyDelta.delta >= 0 ? '+' : ''}{state.trophyDelta.delta} → {state.trophyDelta.trophies}
-                </Text>
-              </View>
+              <TrophyDeltaCard delta={state.trophyDelta.delta} trophies={state.trophyDelta.trophies} />
             ) : null}
           </View>
         ) : null}
@@ -5701,8 +5767,13 @@ const styles = StyleSheet.create({
   matched: { color: theme.text, fontSize: 19, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginTop: 4 },
   matchScore: { color: theme.text, fontSize: 46, fontFamily: 'Poppins-Black', letterSpacing: 3, marginTop: 6, ...engrave('lg') },
   matchBanner: { alignItems: 'center', gap: 2, backgroundColor: theme.card, borderRadius: 20, borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark, paddingVertical: 18, paddingHorizontal: 14, marginBottom: 14, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 12 },
-  trophyDeltaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
-  trophyDeltaText: { fontSize: 14, fontWeight: '800' },
+  trophyDeltaCard: { alignSelf: 'stretch', alignItems: 'center', gap: 2, marginTop: 14, backgroundColor: theme.bg2, borderRadius: 16, borderWidth: 1.5, borderBottomWidth: 4, paddingVertical: 12, paddingHorizontal: 16, shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
+  trophyDeltaCaption: { fontSize: 12, fontFamily: 'Poppins-SemiBold', letterSpacing: 0.4, textTransform: 'uppercase' },
+  trophyDeltaTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+  trophyDeltaBig: { fontSize: 40, fontFamily: 'Poppins-Black', letterSpacing: 1, ...engrave('lg') },
+  trophyDeltaTotal: { color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', marginTop: 2 },
+  trophyDeltaArrow: { color: theme.muted, fontSize: 14 },
+  trophyDeltaTotalNew: { color: theme.accent, fontFamily: 'Poppins-ExtraBold', fontSize: 15 },
   fixRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   fixText: { color: theme.accent, fontSize: 12, fontWeight: '600' },
   teamResultRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
