@@ -25,7 +25,8 @@ export const MAX_EQUIPPED = 6;
 // Visual emotes, grouped by weekly drop (`week`). Add 3 new each week.
 interface VisualDef { id: string; price: number; week: number }
 const VISUAL_EMOTES: readonly VisualDef[] = [
-  // No premium emotes currently — add new ones here with price 300.
+  // Keep ids in sync with app/src/emotes.tsx (PREMIUM_EMOTES).
+  { id: 'ball', price: 300, week: 1 },
 ];
 
 const VISUAL_IDS = new Set(VISUAL_EMOTES.map((e) => e.id));
