@@ -19,6 +19,7 @@ import angryEmoji from './angryEmoji';
 import smileEmoji from './smileEmoji';
 import okEmoji from './okEmoji';
 import logoEmoji from './logoEmoji';
+import ballEmoji from './ballEmoji';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -46,6 +47,8 @@ export interface EmoteMeta {
   premium?: { name: string; price: number; desc: string };
   anim?: number; // 'lottie' emotes: the bundled animated WebP (require result)
   animJson?: object;
+  still?: number;            // static preview (require result) shown when the emote must not animate
+  previewProgress?: number;  // lottieJson static-preview frame (0..1) — for anims whose frame 0 is blank
 }
 
 // Resolve an emote's caption at render time (so it follows live language changes).
@@ -77,7 +80,10 @@ export const FACE_EMOTES: EmoteMeta[] = [
 export const FREE_EMOTES: EmoteMeta[] = [...TEXT_EMOTES, ...FACE_EMOTES];
 
 export const PREMIUM_EMOTES: EmoteMeta[] = [
-  // No premium emotes currently — add new ones here with price 300.
+  // Zıplayan Top — bouncing-ball Lottie premium emote (weekly drop 1). previewProgress:1
+  // shows the settled final frame as a static preview (this animation's frame 0 is blank).
+  { id: 'ball', kind: 'lottieJson', color: theme.gold, week: 1, animJson: ballEmoji, previewProgress: 1,
+    premium: { name: 'Zıplayan Top', price: 300, desc: 'Top sekiyor, rakip şaşırıyor!' } },
 ];
 
 // Animated emotes (rendered from the downloaded Lottie files into looping WebPs).
@@ -223,7 +229,7 @@ export function EmoteSticker({ id, size, play = true, onFinish }: {
   if (meta.kind === 'face') return <FaceEmote size={size} expr={meta.expr ?? 'smile'} play={play} />;
   if (meta.kind === 'lottieJson' && meta.animJson) {
     if (!play) {
-      return <LottieView source={meta.animJson as any} autoPlay={false} loop={false} progress={0} style={{ width: size, height: size }} />;
+      return <LottieView source={meta.animJson as any} autoPlay={false} loop={false} progress={meta.previewProgress ?? 0} style={{ width: size, height: size }} />;
     }
     return <LottieView source={meta.animJson as any} autoPlay loop={false} onAnimationFinish={onFinish} style={{ width: size, height: size }} />;
   }

@@ -75,7 +75,6 @@ try {
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 const { width: SCREEN_W } = Dimensions.get('window');
-
 // Once-per-install push permission prompt marker.
 const PUSH_PROMPTED_KEY = '@crossover_push_prompted';
 
@@ -366,9 +365,9 @@ function AppRoot() {
   const { state, actions } = useCrossover();
   const props = { state, actions };
   const scrollRef = useRef<ScrollView>(null);
-  // Native-driven horizontal pager offset — powers the background cross-fade so the
-  // backdrop never blanks or hard-swaps while swiping between tabs.
-  const scrollX = useRef(new Animated.Value(2 * SCREEN_W)).current;
+  // Off-screen pages' gem pills get this throwaway ref, so only the ACTIVE page's
+  // pill holds the real measured ref (the fly-to-gems target).
+  const dummyPillRef = useRef<View | null>(null);
   const diamondPillRef = useRef<View>(null); // measured so purchase animations fly gems onto it
   const diamondCountAnim = useRef(new Animated.Value(0)).current;
   const diamondFillAnim = useRef(new Animated.Value(0)).current;
@@ -392,6 +391,7 @@ function AppRoot() {
   const [gemCelebration, setGemCelebration] = useState<GemCelebration | null>(null);
   const diamondsShownRef = useRef(0); // last value pushed to the pill (fallback when profile is briefly absent)
   const csAnim = useRef(new Animated.Value(0)).current; // coming-soon pop/float
+  const csTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // owns the coming-soon show/hide lifecycle
   const prevHadActiveSocialPackRef = useRef<boolean | undefined>(undefined);
   const [fontsLoaded, fontError] = useFonts({
     'Poppins-Black': require('./assets/fonts/Poppins-Black.ttf'),
@@ -488,6 +488,13 @@ function AppRoot() {
     setGemCelebration((current) => current ?? { kind: 'arenaReward', amount: reward, arenaName });
   }, [state.trophyDelta?.arenaReward, state.trophyDelta?.arena?.name]);
 
+  // Re-measure the active tab's gem pill (fly-to-gems target) after each tab change —
+  // only the active page's bar holds the real ref, and it won't re-layout on its own.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => measureDiamondPill());
+    return () => cancelAnimationFrame(id);
+  }, [activeTab, measureDiamondPill]);
+
   // Auto-show Social Pack renewal popup when it has expired.
   useEffect(() => {
     const until = state.profile?.socialPackUntil;
@@ -511,18 +518,23 @@ function AppRoot() {
     return () => clearTimeout(id);
   }, [state.profile?.socialPackUntil]);
 
-  // Pop the "coming soon" badge in, animate it back out (180ms), then unmount.
-  useEffect(() => {
-    if (!comingSoon) return;
+  // Show the "coming soon" badge: pop in, hold, animate out, unmount. The timer ref
+  // owns the whole lifecycle so a re-tap while it's visible is ignored and the hide
+  // always fires (the old effect-driven version could get stuck visible). JS driver —
+  // the native one-shot proved flaky here.
+  const showComingSoon = useCallback(() => {
+    if (csTimer.current) return; // already showing — ignore repeat taps
+    setComingSoon(true);
     csAnim.setValue(0);
-    Animated.spring(csAnim, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }).start();
-    const id = setTimeout(() => {
-      Animated.timing(csAnim, { toValue: 0, duration: 180, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
-        if (finished) setComingSoon(false);
+    Animated.spring(csAnim, { toValue: 1, friction: 6, tension: 90, useNativeDriver: false }).start();
+    csTimer.current = setTimeout(() => {
+      Animated.timing(csAnim, { toValue: 0, duration: 220, easing: Easing.in(Easing.quad), useNativeDriver: false }).start(() => {
+        csTimer.current = null;
+        setComingSoon(false);
       });
-    }, 1700);
-    return () => clearTimeout(id);
-  }, [comingSoon, csAnim]);
+    }, 2200);
+  }, [csAnim]);
+  useEffect(() => () => { if (csTimer.current) clearTimeout(csTimer.current); }, []);
 
   // When switching away from the home tab, reset any home-slot sub-screen
   // (arenas, leaderboard, matchHistory, profile) back to the main home screen —
@@ -762,90 +774,72 @@ function AppRoot() {
         actions.closeArenas();
       }} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} onOpenLeaderboard={openLeaderboard} onOpenMatchHistory={openMatchHistory} onGoToFriends={() => goToTab(3)} />;
 
+  // Shared top bar (trophies + gems), rendered INSIDE each tab page that needs it —
+  // exactly like Home carries its own bar. Nothing lives outside the pager to toggle,
+  // fade or resize, so a swipe is one seamless slide: no pop, no gap, no vertical jump.
+  const renderResourceBar = (active: boolean) => (
+    <View style={s.resourceBar}>
+      <Pressable onPress={() => { actions.openArenas(); goToTab(2); }}>
+        {({ pressed }) => (
+          <View style={[s.hudPill, { paddingHorizontal: 24, paddingVertical: 8 }, pressed && s.hudPillPressed]}>
+            <Ionicons name="trophy" size={18} color={theme.accent} />
+            <Text style={s.trophyText}>{state.profile?.trophies ?? 0}</Text>
+          </View>
+        )}
+      </Pressable>
+      <DiamondPill
+        countAnim={diamondCountAnim}
+        fillAnim={diamondFillAnim}
+        pillRef={active ? diamondPillRef : dummyPillRef}
+        onMeasure={active ? measureDiamondPill : () => {}}
+        onPress={openDiamondStore}
+        shownRef={diamondsShownRef}
+      />
+    </View>
+  );
+
   return (
     <View key={`app-${langKey}`} style={[s.root, { paddingTop: insets.top }]}>
       <StatusBar style="light" />
-      {/* Layered tab backgrounds: calm navy is the always-present base; violet (Mağaza)
-          and the stadium photo (Oyna/home) cross-fade OVER it, driven by the pager's
-          native scroll offset. Both are mounted the whole time, so a swipe just tweaks
-          opacity on the native thread — the backdrop never blanks or reloads mid-swipe. */}
-      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-        <ScreenBg variant="menu" />
-        <Animated.View
-          style={[StyleSheet.absoluteFill, {
-            opacity: scrollX.interpolate({ inputRange: [-SCREEN_W, 0, SCREEN_W], outputRange: [1, 1, 0], extrapolate: 'clamp' }),
-          }]}
-        >
-          <ScreenBg variant="store" />
-        </Animated.View>
-        {state.phase === 'home' ? (
-          <Animated.View
-            style={[StyleSheet.absoluteFill, {
-              opacity: scrollX.interpolate({ inputRange: [SCREEN_W, 2 * SCREEN_W, 3 * SCREEN_W], outputRange: [0, 1, 0], extrapolate: 'clamp' }),
-            }]}
-          >
-            <ScreenBg variant="stadium" />
-          </Animated.View>
-        ) : null}
-      </View>
+      {/* Single stable backdrop — identical on every tab, so a swipe never changes,
+          cross-fades or reloads the background (calmest look; no multi-layer jank). */}
+      <ScreenBg variant="menu" />
 
-      {/* Top bar — trophies (left) + gems pill (right); both HUD pills are alive.
-          Hidden on the home tab itself: HomeScreen carries its own integrated
-          profile+gem bar there (other tabs still need this resource bar). */}
-      {state.profile && !(activeTab === 2 && state.phase === 'home') ? (
-        <View style={s.resourceBar}>
-          <Pressable onPress={() => { actions.openArenas(); goToTab(2); }}>
-            {({ pressed }) => (
-              <View style={[s.hudPill, { paddingHorizontal: 24, paddingVertical: 8 }, pressed && s.hudPillPressed]}>
-                <Ionicons name="trophy" size={18} color={theme.accent} />
-                <Text style={s.trophyText}>{state.profile!.trophies}</Text>
-              </View>
-            )}
-          </Pressable>
-          <DiamondPill
-            countAnim={diamondCountAnim}
-            fillAnim={diamondFillAnim}
-            pillRef={diamondPillRef}
-            onMeasure={measureDiamondPill}
-            onPress={openDiamondStore}
-            shownRef={diamondsShownRef}
-          />
-        </View>
-      ) : null}
-
-      <Animated.ScrollView
+      <ScrollView
         ref={scrollRef}
         horizontal
         pagingEnabled
-        // "always" so this pager never capture-steals the first tap / blurs the
-        // focused TextInput of fiber-descendant screens (the chat Modal lives under
-        // FriendsScreen). Per-tab ScrollViews use "handled", so background-tap
-        // keyboard dismissal on the tabs still works.
+        // Lock to one axis per gesture (no vertical drift while swiping sideways).
+        directionalLockEnabled
+        // "always" so the pager never capture-steals the first tap / blurs a
+        // descendant TextInput. Per-tab ScrollViews use "handled".
         keyboardShouldPersistTaps="always"
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onScrollEnd}
-        // Drive the background cross-fade natively from the raw scroll offset. The
-        // active tab (pill + resource bar) is committed once in onMomentumScrollEnd,
-        // so NO React state update fires mid-gesture — the old per-frame setActiveTab
-        // was re-rendering the whole tree on every scroll frame (the swipe jank).
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
         scrollEventThrottle={16}
         contentOffset={{ x: 2 * SCREEN_W, y: 0 }}
         style={{ flex: 1 }}
       >
+        {/* Each page is fully self-contained: its own top bar lives INSIDE it and
+            slides with it. Home shows its own bar (phase 'home'); on Arenas/Profile
+            the shared bar is shown here instead. */}
         <View style={{ width: SCREEN_W, flex: 1 }}>
+          {state.profile ? renderResourceBar(activeTab === 0) : null}
           <StoreScreen {...props} scrollToSection={storeSection} onDiamondCelebration={(c) => setGemCelebration({ kind: 'purchase', amount: c.amount, img: c.img })} />
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
+          {state.profile ? renderResourceBar(activeTab === 1) : null}
           <CollectionScreen {...props} />
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
+          {state.phase !== 'home' && state.profile ? renderResourceBar(activeTab === 2) : null}
           {homeContent}
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
+          {state.profile ? renderResourceBar(activeTab === 3) : null}
           <FriendsScreen {...props} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
         </View>
-      </Animated.ScrollView>
+      </ScrollView>
 
       {/* Bottom Tab Bar */}
       <View style={[s.tabBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
@@ -881,7 +875,7 @@ function AppRoot() {
           );
         })}
         {/* Tournaments — locked, coming soon */}
-        <TabButton locked icon="trophy-outline" label={t('tab.tournaments')} onPress={() => setComingSoon(true)} />
+        <TabButton locked icon="trophy-outline" label={t('tab.tournaments')} onPress={showComingSoon} />
       </View>
 
       {/* Tournaments → standalone 3D coming-soon lettering, no bubble/background. */}
@@ -1089,6 +1083,8 @@ const s = StyleSheet.create({
   inviteName: { color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15, ...engrave('sm') },
   inviteSub: { color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold' },
   resourceBar: {
+    // In-flow at the top of each tab page (like Home's own bar) — no absolute, no
+    // toggle: it slides with the page and never resizes the pager or leaves a gap.
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',

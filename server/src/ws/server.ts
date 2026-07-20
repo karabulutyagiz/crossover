@@ -663,7 +663,7 @@ export function startServer(port: number): Server {
              JOIN users u ON u.id = m.from_user
              WHERE ((m.from_user = $1 AND m.to_user = $2) OR (m.from_user = $2 AND m.to_user = $1))
              ${beforeClause}
-             ORDER BY m.created_at DESC
+             ORDER BY m.created_at DESC, m.id DESC
              LIMIT 50`,
             params,
           );
@@ -704,7 +704,7 @@ export function startServer(port: number): Server {
             FROM convos c
             JOIN users u ON u.id = c.partner_id
             WHERE c.rn = 1
-            ORDER BY c.created_at DESC
+            ORDER BY c.created_at DESC, c.partner_id ASC
             LIMIT 50
           `, [userProfile!.id]);
           const conversations = rows.map(r => ({

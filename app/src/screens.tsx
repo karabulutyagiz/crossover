@@ -23,6 +23,7 @@ import { theme, engrave } from './theme';
 import { t, currentLang, setLanguage, LANGUAGES } from './i18n';
 import type { MessageKey } from './i18n';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Image as ExpoImage } from 'expo-image';
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
 import { gemTarget } from './gemTarget';
@@ -1946,7 +1947,7 @@ function ClubBadge({ name, size = 36, logoUrl }: { name: string; size?: number; 
           overflow: 'hidden',
         }}
       >
-        <Image source={{ uri: logoUrl }} style={{ width: size * 0.78, height: size * 0.78 }} resizeMode="contain" />
+        <CachedImage uri={logoUrl} style={{ width: size * 0.78, height: size * 0.78 }} contentFit="contain" />
       </View>
     );
   }
@@ -2544,6 +2545,48 @@ function PopupCard({ visible, title, icon, onClose, children }: {
   );
 }
 
+// ---- News / announcements feed (opened from the Home bell icon) ----
+// Static for now; swap NEWS for a server `/news` fetch later without touching the UI
+// or the bell wiring. Newest item first — its id drives the unread pip.
+type NewsItem = { id: string; date: string; title: string; body: string; icon: any; tint: string };
+const NEWS: NewsItem[] = [
+  { id: '2026-07-20-ball', date: '20.07.2026', icon: 'football', tint: theme.gold,
+    title: 'Yeni: Zıplayan Top emote!',
+    body: "Mağaza'dan Zıplayan Top premium emote'unu al, maç içinde rakibini şaşırt. Koleksiyondan loadout'una ekle." },
+  { id: '2026-07-14-social', date: '14.07.2026', icon: 'people', tint: theme.primary,
+    title: 'Sosyal Paket geldi',
+    body: 'Ülke-Takım ve Harf-Takım modlarını arkadaşlarınla oyna. Haftalık veya aylık Sosyal Paket ile kilidi aç.' },
+  { id: '2026-07-01-arena', date: '01.07.2026', icon: 'trophy', tint: theme.accent,
+    title: 'Arenalar ve kupalar',
+    body: "Maç kazandıkça kupa topla, Mahalle Sahası'ndan GOAT'a yüksel. Her arena atlayışında elmas ödülü seni bekliyor." },
+  { id: 'welcome', date: '01.06.2026', icon: 'sparkles', tint: theme.blue,
+    title: "Crossover'a hoş geldin!",
+    body: "İki takım seç; ikisinde de oynamış futbolcuyu ilk yazan kazanır. Bot'a karşı çalış, arkadaşınla oda kur ya da hızlı eşleşmeye gir." },
+];
+export const LATEST_NEWS_ID = NEWS[0]?.id ?? '';
+export const NEWS_READ_KEY = '@crossover_news_read';
+
+export function NewsModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  return (
+    <GameModal visible={visible} onClose={onClose} title="Haberler" icon="megaphone">
+      <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+        {NEWS.map((item) => (
+          <View key={item.id} style={{ backgroundColor: theme.panelInnerFill, borderRadius: 16, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, padding: 15, gap: 9 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: theme.card, borderWidth: 1.5, borderColor: item.tint, borderBottomColor: darken(item.tint), alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name={item.icon} size={21} color={item.tint} />
+              </View>
+              <Text style={{ flex: 1, color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 17, ...engrave('sm') }} numberOfLines={2}>{item.title}</Text>
+            </View>
+            <Text style={{ color: theme.muted, fontSize: 15, lineHeight: 22, fontFamily: 'Poppins-SemiBold' }}>{item.body}</Text>
+            <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold', opacity: 0.7 }}>{item.date}</Text>
+          </View>
+        ))}
+      </ScrollView>
+    </GameModal>
+  );
+}
+
 export function LeaderboardModal({ visible, entries, onClose, onViewProfile }: {
   visible: boolean;
   entries: GameState['leaderboard'];
@@ -3001,6 +3044,12 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const [botOpen, setBotOpen] = useState(false);
   const [modesOpen, setModesOpen] = useState(false);
   const [socialPackPopup, setSocialPackPopup] = useState(false);
+  const [newsOpen, setNewsOpen] = useState(false);
+  const [newsUnread, setNewsUnread] = useState(false);
+  // Show the bell's red pip until the user has opened the feed at the latest item.
+  useEffect(() => {
+    AsyncStorage.getItem(NEWS_READ_KEY).then((v) => setNewsUnread(v !== LATEST_NEWS_ID)).catch(() => {});
+  }, []);
   const [joinCode, setJoinCode] = useState('');
   const [friendQuery, setFriendQuery] = useState('');
   // The query THIS card submitted. `state.userSearchResults` is global and is never reset
@@ -3087,7 +3136,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         {SCREEN_W >= TOPBAR_ROOMY_W ? (
           <RoundIconBtn icon="ribbon" tint={hasPack ? theme.accent : theme.text} onPress={() => onGoToStore?.('socialPack')} />
         ) : null}
-        <RoundIconBtn icon="notifications" dot={pending > 0} onPress={() => onGoToFriends?.()} />
+        <RoundIconBtn icon="notifications" dot={newsUnread} onPress={() => { setNewsOpen(true); setNewsUnread(false); AsyncStorage.setItem(NEWS_READ_KEY, LATEST_NEWS_ID).catch(() => {}); }} />
         <RoundIconBtn icon="settings-sharp" onPress={() => { setMenuSub(null); setMenuOpen(true); }} />
       </View>
 
@@ -3452,6 +3501,8 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         </ModalPager>
       </GameModal>
 
+      <NewsModal visible={newsOpen} onClose={() => setNewsOpen(false)} />
+
       <GameModal visible={socialPackPopup} onClose={() => setSocialPackPopup(false)} title={t('friends.socialPackRequired')} icon="lock-closed">
         <Text style={[styles.muted, { textAlign: 'center', marginBottom: 8 }]}>{t('home.specialModeLocked')}</Text>
         <Btn label={t('friends.goToStore')} kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); onGoToStore?.('socialPack'); }} />
@@ -3499,7 +3550,7 @@ function ScopeListPage({ kind, scopes, onPick }: {
               key={o.value}
               leading={
                 kind === 'league' && o.logoUrl ? (
-                  <Image source={{ uri: o.logoUrl }} style={{ width: 24, height: 24 }} resizeMode="contain" />
+                  <CachedImage uri={o.logoUrl} style={{ width: 24, height: 24 }} contentFit="contain" />
                 ) : kind === 'country' && o.logoUrl ? (
                   <Text style={{ fontSize: 18 }}>{o.logoUrl}</Text>
                 ) : (
@@ -3910,7 +3961,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
               {lastPick?.kind === 'team' && lastPick.logoUrl ? (
                 <ClubBadge name={lastPick.label} size={62} logoUrl={lastPick.logoUrl} />
               ) : lastPick?.kind === 'player' && lastPick.imageUrl ? (
-                <Image source={{ uri: lastPick.imageUrl }} style={{ width: 62, height: 62, borderRadius: 31 }} resizeMode="cover" />
+                <CachedImage uri={lastPick.imageUrl} style={{ width: 62, height: 62, borderRadius: 31 }} contentFit="cover" />
               ) : lastPick?.kind === 'country' ? (
                 <Text style={{ fontSize: 44 }}>{lastPick.flag}</Text>
               ) : lastPick?.kind === 'letter' ? (
@@ -3959,7 +4010,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
               key={p.id}
               leading={
                 p.imageUrl ? (
-                  <Image source={{ uri: p.imageUrl }} style={{ width: 32, height: 32, borderRadius: 16 }} resizeMode="cover" />
+                  <CachedImage uri={p.imageUrl} style={{ width: 32, height: 32, borderRadius: 16 }} contentFit="cover" />
                 ) : (
                   <Ionicons name="person" size={18} color={theme.muted} />
                 )
@@ -4169,7 +4220,7 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
         <Animated.View style={[styles.teamCard, { transform: [{ translateX: leftX }], opacity: reveal }]}>
           {state.revealMode === 'player-player' ? (
             teams?.teamA.logoUrl ? (
-              <Image source={{ uri: teams.teamA.logoUrl }} style={{ width: 62, height: 62, borderRadius: 31 }} resizeMode="cover" />
+              <CachedImage uri={teams.teamA.logoUrl} style={{ width: 62, height: 62, borderRadius: 31 }} contentFit="cover" />
             ) : (
               <View style={{ width: 62, height: 62, borderRadius: 31, backgroundColor: badgeColor(teams?.teamA.name ?? '?'), alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="person" size={30} color={theme.text} />
@@ -4197,7 +4248,7 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
         <Animated.View style={[styles.teamCard, { transform: [{ translateX: rightX }], opacity: reveal }]}>
           {state.revealMode === 'player-player' ? (
             teams?.teamB.logoUrl ? (
-              <Image source={{ uri: teams.teamB.logoUrl }} style={{ width: 62, height: 62, borderRadius: 31 }} resizeMode="cover" />
+              <CachedImage uri={teams.teamB.logoUrl} style={{ width: 62, height: 62, borderRadius: 31 }} contentFit="cover" />
             ) : (
               <View style={{ width: 62, height: 62, borderRadius: 31, backgroundColor: badgeColor(teams?.teamB.name ?? '?'), alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="person" size={30} color={theme.text} />
@@ -7407,13 +7458,20 @@ function shortDate(iso: string | number): string {
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+// Remote club logo / player photo, rendered via expo-image with disk caching, so it
+// is fetched from the backend ONCE, saved on the phone, and shown instantly forever
+// after (no re-download, no flash). transition:0 = no fade when it's already cached.
+function CachedImage({ uri, style, contentFit = 'cover' }: { uri: string | null | undefined; style?: any; contentFit?: 'cover' | 'contain' }) {
+  return <ExpoImage source={uri ? { uri } : null} style={style} contentFit={contentFit} cachePolicy="memory-disk" transition={0} />;
+}
+
 function ClubLogo({ uri, name, size = 22 }: { uri: string | null; name?: string; size?: number }) {
   if (!uri) return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: name ? badgeColor(name) : theme.border, alignItems: 'center', justifyContent: 'center' }}>
       {name ? <Text style={{ color: theme.text, fontFamily: 'Poppins-Black', fontSize: size * 0.45 }}>{initial(name)}</Text> : null}
     </View>
   );
-  return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
+  return <CachedImage uri={uri} style={{ width: size, height: size, borderRadius: size / 2 }} />;
 }
 
 function PlayerPhoto({ uri, size = 32 }: { uri: string | null; size?: number }) {
@@ -7422,7 +7480,7 @@ function PlayerPhoto({ uri, size = 32 }: { uri: string | null; size?: number }) 
       <Ionicons name="person" size={size * 0.5} color={theme.muted} />
     </View>
   );
-  return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
+  return <CachedImage uri={uri} style={{ width: size, height: size, borderRadius: size / 2 }} />;
 }
 
 // THE match-history card — one component for the popup (MatchHistoryModal) and
@@ -7905,7 +7963,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
           ) : (
             <Animated.View style={photoStyle}>
               {r.matchedPlayerImageUrl ? (
-                <Image source={{ uri: r.matchedPlayerImageUrl }} style={styles.playerPhoto} />
+                <CachedImage uri={r.matchedPlayerImageUrl} style={styles.playerPhoto} contentFit="cover" />
               ) : null}
               {r.matchedPlayerName ? <Text style={styles.matched}>{r.matchedPlayerName}</Text> : null}
             </Animated.View>
@@ -7932,7 +7990,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
                 <>
                   <View style={[styles.teamResult, { borderColor: playedA ? theme.primary : theme.danger }]}>
                     {r.teamA.logoUrl ? (
-                      <Image source={{ uri: r.teamA.logoUrl }} style={{ width: 40, height: 40, borderRadius: 20 }} resizeMode="cover" />
+                      <CachedImage uri={r.teamA.logoUrl} style={{ width: 40, height: 40, borderRadius: 20 }} contentFit="cover" />
                     ) : (
                       <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: badgeColor(r.teamA.name), alignItems: 'center', justifyContent: 'center' }}>
                         <Ionicons name="person" size={20} color={theme.text} />
@@ -7946,7 +8004,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
                   </View>
                   <View style={[styles.teamResult, { borderColor: playedB ? theme.primary : theme.danger }]}>
                     {r.teamB.logoUrl ? (
-                      <Image source={{ uri: r.teamB.logoUrl }} style={{ width: 40, height: 40, borderRadius: 20 }} resizeMode="cover" />
+                      <CachedImage uri={r.teamB.logoUrl} style={{ width: 40, height: 40, borderRadius: 20 }} contentFit="cover" />
                     ) : (
                       <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: badgeColor(r.teamB.name), alignItems: 'center', justifyContent: 'center' }}>
                         <Ionicons name="person" size={20} color={theme.text} />
@@ -8018,7 +8076,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
                   {list.map((cp, i) => (
                     <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: theme.panelInnerFill, borderRadius: 10, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, paddingVertical: 6, paddingHorizontal: 8 }}>
                       {cp.imageUrl ? (
-                        <Image source={{ uri: cp.imageUrl }} style={styles.commonPhoto} resizeMode="cover" />
+                        <CachedImage uri={cp.imageUrl} style={styles.commonPhoto} contentFit="cover" />
                       ) : (
                         <View style={[styles.commonPhoto, { backgroundColor: badgeColor(cp.name), alignItems: 'center', justifyContent: 'center' }]}>
                           <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14 }}>{initial(cp.name)}</Text>

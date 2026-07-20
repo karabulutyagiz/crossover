@@ -108,6 +108,23 @@ export interface GameState {
   banner: { id: number; kind: 'friend_request' | 'message'; name: string; body?: string; userId?: string } | null;
 }
 
+// --- Messaging helpers: stable ordering + de-dupe, so live pushes and (possibly
+// out-of-order / duplicated) list responses converge to one time-sorted view. ---
+function compareIsoAsc(a: string, b: string): number {
+  const ta = Date.parse(a), tb = Date.parse(b);
+  if (!Number.isNaN(ta) && !Number.isNaN(tb) && ta !== tb) return ta - tb;
+  return a.localeCompare(b);
+}
+function mergeMessages(existing: MessageView[], incoming: MessageView[]): MessageView[] {
+  const by = new Map<string, MessageView>();
+  for (const m of existing) by.set(m.id, m);
+  for (const m of incoming) by.set(m.id, m);
+  return [...by.values()].sort((x, y) => compareIsoAsc(x.createdAt, y.createdAt) || x.id.localeCompare(y.id));
+}
+function sortConversations(convos: ConversationView[]): ConversationView[] {
+  return [...convos].sort((a, b) => compareIsoAsc(b.lastMessageAt, a.lastMessageAt) || a.userId.localeCompare(b.userId));
+}
+
 export const initialState: GameState = {
   connected: false,
   phase: 'home',
@@ -260,11 +277,9 @@ function reducer(state: GameState, action: Action): GameState {
       const myId = state.profile?.userId;
       const partnerId = msg.fromId === myId ? msg.toId : msg.fromId;
 
-      // Add to current chat if open with this partner
-      if (state.chatWith && (msg.fromId === state.chatWith || msg.toId === state.chatWith)) {
-        if (!state.chatMessages.some(m => m.id === msg.id)) {
-          nextMessages = [...state.chatMessages, msg];
-        }
+      // Add to current chat if open with this partner (merge = de-dupe + time-sort)
+      if (state.chatWith === partnerId) {
+        nextMessages = mergeMessages(state.chatMessages, [msg]);
       }
 
       // Update conversation list
@@ -280,7 +295,10 @@ function reducer(state: GameState, action: Action): GameState {
       } else {
         const isIncoming = msg.fromId !== myId;
         nextConvos = [{
-          userId: partnerId, displayName: msg.fromId === myId ? '' : msg.fromName,
+          userId: partnerId,
+          // Outgoing-first message: msg.fromName is OUR name, so backfill the partner's
+          // name from the friends list instead of showing an empty title.
+          displayName: (msg.fromId === myId ? '' : msg.fromName) || state.friends.find(f => f.userId === partnerId)?.displayName || '',
           online: true, lastMessage: msg.body, lastMessageAt: msg.createdAt,
           unreadCount: isIncoming && state.chatWith !== partnerId ? 1 : 0,
           avatar: state.friends.find(f => f.userId === partnerId)?.avatar ?? null,
@@ -297,12 +315,16 @@ function reducer(state: GameState, action: Action): GameState {
         ? { id: (state.banner?.id ?? 0) + 1, kind: 'message' as const, name: msg.fromName, body: msg.body, userId: msg.fromId }
         : state.banner;
 
-      return { ...state, chatMessages: nextMessages, conversations: nextConvos, totalUnread: nextUnread, typingFrom: nextTyping, banner: nextBanner };
+      return { ...state, chatMessages: nextMessages, conversations: sortConversations(nextConvos), totalUnread: nextUnread, typingFrom: nextTyping, banner: nextBanner };
     }
-    case 'message_list':
-      return { ...state, chatMessages: (action as any).messages ?? [] };
+    case 'message_list': {
+      const withUserId = (action as any).withUserId as string | undefined;
+      // Drop a stale history response for a chat we've since left / switched away from.
+      if (withUserId && state.chatWith !== withUserId) return state;
+      return { ...state, chatMessages: mergeMessages(state.chatMessages, (action as any).messages ?? []) };
+    }
     case 'conversation_list': {
-      const convos = (action as any).conversations as ConversationView[] ?? [];
+      const convos = sortConversations((action as any).conversations as ConversationView[] ?? []);
       return { ...state, conversations: convos, totalUnread: convos.reduce((s: number, c: ConversationView) => s + c.unreadCount, 0) };
     }
     case 'messages_marked_read':
