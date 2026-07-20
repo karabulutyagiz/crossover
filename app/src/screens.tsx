@@ -26,7 +26,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image as ExpoImage } from 'expo-image';
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
-import { gemTarget } from './gemTarget';
+import { gemTarget, setGemTarget } from './gemTarget';
 import { Avatar } from './Avatar';
 import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
@@ -2815,20 +2815,35 @@ function HeroConfetti({ w, h }: { w: number; h: number }) {
 
 // A floating counter beside the hero: round art badge with its value on a dark
 // caption chip clipped to the badge's bottom edge.
-function RailBadge({ icon, iconColor, ringColor, value, onPress }: {
+function RailBadge({ icon, iconColor, ringColor, value, onPress, countAnim, fillAnim, innerRef }: {
   icon: IoniconName; iconColor: string; ringColor: string; value: string; onPress: () => void;
+  countAnim?: Animated.Value; fillAnim?: Animated.Value; innerRef?: Ref<View>;
 }) {
   const { scale, onIn, onOut } = usePressScale();
+  // When a count animation is supplied (trophy reward), the number ticks from it.
+  const [animVal, setAnimVal] = useState(value);
+  useEffect(() => {
+    if (!countAnim) return;
+    const id = countAnim.addListener(({ value: v }) => setAnimVal(String(Math.max(0, Math.round(v)))));
+    return () => countAnim.removeListener(id);
+  }, [countAnim]);
+  const shown = countAnim ? animVal : value;
   return (
-    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} hitSlop={6}>
+    <Pressable ref={innerRef} onPress={onPress} onPressIn={onIn} onPressOut={onOut} hitSlop={6}>
       <Animated.View style={{ alignItems: 'center', transform: [{ scale }] }}>
         <View style={{
-          width: 44, height: 44, borderRadius: 22,
+          width: 44, height: 44, borderRadius: 22, overflow: 'hidden',
           backgroundColor: withAlpha(ringColor, 0.28),
           borderWidth: 2.5, borderColor: ringColor,
           alignItems: 'center', justifyContent: 'center',
           shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 5,
         }}>
+          {fillAnim ? (
+            <Animated.View
+              pointerEvents="none"
+              style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '100%', backgroundColor: withAlpha(theme.gold, 0.55), transformOrigin: 'bottom', transform: [{ scaleY: fillAnim }] }}
+            />
+          ) : null}
           <Ionicons name={icon} size={22} color={iconColor} />
         </View>
         <View style={{
@@ -2837,7 +2852,7 @@ function RailBadge({ icon, iconColor, ringColor, value, onPress }: {
           borderWidth: 1.5, borderColor: withAlpha(ringColor, 0.6),
           paddingHorizontal: 7, paddingVertical: 1.5,
         }}>
-          <Text style={{ color: theme.text, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{value}</Text>
+          <Text style={{ color: theme.text, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{shown}</Text>
         </View>
       </Animated.View>
     </Pressable>
@@ -2858,7 +2873,6 @@ function RoundIconBtn({ icon, onPress, dot = false, tint = theme.text }: {
           transform: [{ translateY: ty }, { scale }],
           width: 36, height: 36, borderRadius: 18,
           backgroundColor: theme.navyChip,
-          borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.16)',
           alignItems: 'center', justifyContent: 'center',
         }}>
           <Ionicons name={icon} size={18} color={tint} />
@@ -2885,7 +2899,6 @@ function ProfilePill({ name, avatarId, tier, pct, color, onPress }: {
           transform: [{ translateY: ty }, { scale }],
           flexDirection: 'row', alignItems: 'center', gap: 8,
           backgroundColor: theme.card, borderRadius: 24,
-          borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.14)',
           paddingVertical: 3.5, paddingLeft: 3.5, paddingRight: 10,
         }}>
           <View>
@@ -2914,21 +2927,42 @@ function ProfilePill({ name, avatarId, tier, pct, color, onPress }: {
 // Currency pill — the mockup's coin capsule. This game has exactly one currency
 // (diamonds), so the coin slot carries the gem and the capsule's green "+" goes
 // straight to the diamond aisle of the store.
-function GemPill({ count, onPress }: { count: number; onPress: () => void }) {
+function GemPill({ count, onPress, countAnim, fillAnim, innerRef }: {
+  count: number; onPress: () => void;
+  countAnim?: Animated.Value; fillAnim?: Animated.Value; innerRef?: Ref<View>;
+}) {
   const { ty, scale, onIn, onOut } = usePressLip(2);
+  // When an external count animation is supplied (arena/purchase reward), the
+  // displayed number ticks from that value; otherwise it just shows `count`.
+  const [animCount, setAnimCount] = useState(count);
+  useEffect(() => {
+    if (!countAnim) return;
+    const id = countAnim.addListener(({ value }) => setAnimCount(Math.max(0, Math.round(value))));
+    return () => countAnim.removeListener(id);
+  }, [countAnim]);
+  const shown = countAnim ? animCount : count;
   return (
-    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut}>
+    <Pressable ref={innerRef} onPress={onPress} onPressIn={onIn} onPressOut={onOut}>
       <View style={{ backgroundColor: darken(theme.card, 0.5), borderRadius: 18, paddingBottom: 2.5 }}>
         <Animated.View style={{
           transform: [{ translateY: ty }, { scale }],
           flexDirection: 'row', alignItems: 'center', gap: 5,
-          backgroundColor: theme.card, borderRadius: 18,
-          borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.14)',
+          backgroundColor: theme.card, borderRadius: 18, overflow: 'hidden',
           paddingVertical: 3.5, paddingLeft: 7, paddingRight: 3.5,
         }}>
+          {fillAnim ? (
+            <Animated.View
+              pointerEvents="none"
+              style={{
+                position: 'absolute', left: 0, top: 0, bottom: 0, right: 0,
+                backgroundColor: withAlpha(GEM_COLOR, 0.34),
+                transformOrigin: 'left', transform: [{ scaleX: fillAnim }],
+              }}
+            />
+          ) : null}
           <GemIcon size={17} />
           <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12, fontVariant: ['tabular-nums'], maxWidth: 62, ...engrave('sm') }} numberOfLines={1}>
-            {count.toLocaleString(currentLang() === 'tr' ? 'tr-TR' : 'en-US')}
+            {shown.toLocaleString(currentLang() === 'tr' ? 'tr-TR' : 'en-US')}
           </Text>
           <View style={{
             width: 23, height: 23, borderRadius: 12,
@@ -3058,12 +3092,91 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const [submitted, setSubmitted] = useState<string | null>(null);
   const [hero, setHero] = useState({ w: 0, h: 0 });
   const [railW, setRailW] = useState(0);
+  // 🧪 TEMP DEBUG — maç-sonu ve arena popup önizlemesi (kaldırılacak)
+  const [demo, setDemo] = useState<'win' | 'loss' | 'arena' | null>(null);
 
   const opts: GameOptions = { scope, mode };
   const profile = state.profile;
   const hasPack = !!(profile?.socialPackUntil && new Date(profile.socialPackUntil) > new Date());
   const playerName = profile?.displayName ?? t('home.namePlaceholder');
   const trophies = profile?.trophies ?? 0;
+
+  // 🧪 Arena elmas ödülü animasyonu: kutlamayı kapatınca elmaslar üstteki elmas
+  // çubuğuna uçar → çubuk soldan sağa dolar → sayı ödül kadar yükselir.
+  const ARENA_DEMO_REWARD = 100;
+  const gemCountAnim = useRef(new Animated.Value(profile?.diamonds ?? 0)).current;
+  const gemFillAnim = useRef(new Animated.Value(0)).current;
+  const gemPillRef = useRef<View>(null);
+  const gemAnimating = useRef(false);
+  // Keep the pill synced to the real balance whenever we're NOT mid-reward-animation.
+  useEffect(() => {
+    if (!gemAnimating.current) gemCountAnim.setValue(profile?.diamonds ?? 0);
+  }, [profile?.diamonds, gemCountAnim]);
+  const startArenaDemo = useCallback(() => {
+    // Register the pill's on-screen centre so the celebration's gems fly onto it.
+    gemPillRef.current?.measureInWindow((x, y, w, h) => { if (w > 0 && h > 0) setGemTarget(x + w * 0.5, y + h * 0.55); });
+    setDemo('arena');
+  }, []);
+  const finishArenaDemo = useCallback(() => {
+    setDemo(null);
+    const start = profile?.diamonds ?? 0;
+    const end = start + ARENA_DEMO_REWARD;
+    gemAnimating.current = true;
+    gemCountAnim.setValue(start);
+    gemFillAnim.setValue(0);
+    Animated.parallel([
+      Animated.timing(gemCountAnim, { toValue: end, duration: 1000, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+      Animated.sequence([
+        Animated.timing(gemFillAnim, { toValue: 1, duration: 880, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+        Animated.timing(gemFillAnim, { toValue: 0, duration: 260, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
+      ]),
+    ]).start(() => { gemAnimating.current = false; });
+  }, [profile?.diamonds, gemCountAnim, gemFillAnim]);
+
+  // 🏆 Kupa ödülü animasyonu (elmasların kupa karşılığı): KAZANINCA kupalar ekranın
+  // ortasında belirir → kupa göstergesine uçar → gösterge dolar → sayı ödül kadar
+  // artar. KAYBEDİNCE gösterge animasyonsuz düşer.
+  const WIN_TROPHY_DELTA = 30;
+  const LOSS_TROPHY_DELTA = 18;
+  const trophyCountAnim = useRef(new Animated.Value(profile?.trophies ?? 0)).current;
+  const trophyFillAnim = useRef(new Animated.Value(0)).current;
+  const trophyBadgeRef = useRef<View>(null);
+  const trophyAnimating = useRef(false);
+  const [trophyFly, setTrophyFly] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!trophyAnimating.current) trophyCountAnim.setValue(profile?.trophies ?? 0);
+  }, [profile?.trophies, trophyCountAnim]);
+  // Trophies have landed on the counter → sweep the fill up-and-back and tick the number up.
+  const finishTrophyWin = useCallback(() => {
+    const start = profile?.trophies ?? 0;
+    const end = start + WIN_TROPHY_DELTA;
+    trophyAnimating.current = true;
+    trophyCountAnim.setValue(start);
+    trophyFillAnim.setValue(0);
+    Animated.parallel([
+      Animated.timing(trophyCountAnim, { toValue: end, duration: 900, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+      Animated.sequence([
+        Animated.timing(trophyFillAnim, { toValue: 1, duration: 640, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+        Animated.timing(trophyFillAnim, { toValue: 0, duration: 320, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
+      ]),
+    ]).start(() => { trophyAnimating.current = false; setTrophyFly(null); });
+  }, [profile?.trophies, trophyCountAnim, trophyFillAnim]);
+  // Closing the match popup: a WIN throws trophies onto the counter (fly → fill →
+  // rise); a LOSS just drops the number with no animation, as requested.
+  const dismissMatchDemo = useCallback(() => {
+    const was = demo;
+    setDemo(null);
+    if (was === 'win') {
+      trophyBadgeRef.current?.measureInWindow((x, y, w, h) => {
+        if (w > 0 && h > 0) setTrophyFly({ x: x + w * 0.5, y: y + h * 0.34 });
+        else finishTrophyWin();
+      });
+    } else if (was === 'loss') {
+      trophyAnimating.current = true;
+      trophyCountAnim.setValue(Math.max(0, (profile?.trophies ?? 0) - LOSS_TROPHY_DELTA));
+      trophyAnimating.current = false;
+    }
+  }, [demo, profile?.trophies, trophyCountAnim, finishTrophyWin]);
 
   // Arena tier drives the mockup's "level" slots. ARENA_DATA runs highest→lowest,
   // so the human-facing tier number counts up from the bottom (Mahalle = 1).
@@ -3132,13 +3245,47 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
           color={arenaC}
           onPress={actions.openProfile}
         />
-        <GemPill count={profile?.diamonds ?? 0} onPress={() => onGoToStore?.('diamonds')} />
+        <GemPill count={profile?.diamonds ?? 0} onPress={() => onGoToStore?.('diamonds')} countAnim={gemCountAnim} fillAnim={gemFillAnim} innerRef={gemPillRef} />
         {SCREEN_W >= TOPBAR_ROOMY_W ? (
           <RoundIconBtn icon="ribbon" tint={hasPack ? theme.accent : theme.text} onPress={() => onGoToStore?.('socialPack')} />
         ) : null}
         <RoundIconBtn icon="notifications" dot={newsUnread} onPress={() => { setNewsOpen(true); setNewsUnread(false); AsyncStorage.setItem(NEWS_READ_KEY, LATEST_NEWS_ID).catch(() => {}); }} />
         <RoundIconBtn icon="settings-sharp" onPress={() => { setMenuSub(null); setMenuOpen(true); }} />
       </View>
+
+      {/* 🧪 TEMP DEBUG — 3 test butonu: maç-sonu kazanma/kaybetme + arena atlama popup'ları.
+          Bu blok yalnızca popup'ları önizlemek için; kaldırılacak. */}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+        <Pressable onPress={() => setDemo('win')} style={{ flex: 1, backgroundColor: theme.primary, borderRadius: 12, paddingVertical: 11, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: theme.primaryDark }}>
+          <Text style={{ color: theme.ink, fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>🏆 Kazanma</Text>
+        </Pressable>
+        <Pressable onPress={() => setDemo('loss')} style={{ flex: 1, backgroundColor: theme.danger, borderRadius: 12, paddingVertical: 11, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: theme.dangerDark }}>
+          <Text style={{ color: '#fff', fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>😢 Kaybetme</Text>
+        </Pressable>
+        <Pressable onPress={startArenaDemo} style={{ flex: 1, backgroundColor: theme.accent, borderRadius: 12, paddingVertical: 11, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: theme.accentDark }}>
+          <Text style={{ color: theme.ink, fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>⬆️ Arena</Text>
+        </Pressable>
+      </View>
+
+      {/* 🧪 TEMP DEBUG — maç-sonu banner önizlemesi (kazanma/kaybetme) */}
+      <Modal visible={demo === 'win' || demo === 'loss'} transparent animationType="fade" onRequestClose={dismissMatchDemo}>
+        <Pressable onPress={dismissMatchDemo} style={{ flex: 1, backgroundColor: theme.scrim, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
+          {demo === 'win' ? (
+            <MatchOverBanner youWon youScore={3} oppScore={1} youWrong={0} oppWrong={0} winnerName={playerName} trophyDelta={{ delta: WIN_TROPHY_DELTA, trophies: trophies + WIN_TROPHY_DELTA }} />
+          ) : demo === 'loss' ? (
+            <MatchOverBanner youWon={false} youScore={1} oppScore={3} youWrong={0} oppWrong={0} winnerName="Bot" trophyDelta={{ delta: -LOSS_TROPHY_DELTA, trophies: Math.max(0, trophies - LOSS_TROPHY_DELTA) }} />
+          ) : null}
+          <Text style={{ color: theme.muted, marginTop: 18, fontSize: 12 }}>Kapatmak için dokun</Text>
+        </Pressable>
+      </Modal>
+
+      {/* 🏆 Kupa uçuşu — kazanma popup'ı kapanınca kupalar göstergeye uçar */}
+      {trophyFly ? <TrophyFly target={trophyFly} onDone={finishTrophyWin} /> : null}
+
+      {/* 🧪 TEMP DEBUG — arena atlama kutlaması önizlemesi */}
+      {demo === 'arena' ? (
+        <DiamondCelebration amount={ARENA_DEMO_REWARD} variant="arenaReward" arenaName="Amatör Lig" onDone={finishArenaDemo} />
+      ) : null}
 
       {/* ── 2. HERO ── */}
       <View
@@ -3154,7 +3301,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
           <Wordmark size={wordmarkSize(SCREEN_W - 32)} />
         </View>
         <View style={{ position: 'absolute', right: 0, top: 2, gap: 12 }}>
-          <RailBadge icon="trophy" iconColor={theme.gold} ringColor={theme.purple} value={String(trophies)} onPress={actions.openArenas} />
+          <RailBadge icon="trophy" iconColor={theme.gold} ringColor={theme.purple} value={String(trophies)} onPress={actions.openArenas} countAnim={trophyCountAnim} fillAnim={trophyFillAnim} innerRef={trophyBadgeRef} />
           <RailBadge icon="podium" iconColor={theme.accent} ringColor={theme.accentDark} value={String(profile?.wins ?? 0)} onPress={() => onOpenLeaderboard?.()} />
         </View>
       </View>
@@ -4532,7 +4679,7 @@ export function DiamondCelebration({
                       opacity: arenaHeroAnim.interpolate({ inputRange: [0, 1], outputRange: [0.76, 1] }),
                       transform: [{ scale: arenaHeroAnim.interpolate({ inputRange: [0, 1], outputRange: [0.985, 1] }) }],
                     }}>
-                      <Image source={arenaVisual.img} style={{ width: '100%', aspectRatio: 16 / 9 }} resizeMode="cover" />
+                      <Image source={arenaVisual.img} style={{ width: '100%', height: 148 }} resizeMode="contain" />
                       <Animated.View
                         pointerEvents="none"
                         style={{
@@ -7814,6 +7961,81 @@ function TrophyDeltaChip({ delta, trophies }: { delta: number; trophies: number 
 
 // Match-over banner: spring-scales in, trophy/sad icon in a gold-glow medallion,
 // count-up score, trophy delta as a reward chip (no more raw '→' text row).
+// Trophy medallion art (cropped from the Kupa-popup mockup): gold cup on blue for
+// a win, cracked silver cup on purple for a loss.
+const TROPHY_MEDALLION_WIN = require('../assets/trophy-win.png');
+const TROPHY_MEDALLION_LOSS = require('../assets/trophy-loss.png');
+
+// Static confetti scattered down the sides of the win card (as in the mockup).
+const WIN_CONFETTI: { l: `${number}%`; t: `${number}%`; c: string; w: number; h: number; r: `${number}deg` }[] = [
+  { l: '6%', t: '10%', c: theme.purple, w: 11, h: 7, r: '25deg' },
+  { l: '17%', t: '28%', c: theme.gold, w: 12, h: 6, r: '-18deg' },
+  { l: '3%', t: '40%', c: theme.blue, w: 9, h: 9, r: '10deg' },
+  { l: '21%', t: '9%', c: theme.primary, w: 8, h: 8, r: '40deg' },
+  { l: '11%', t: '50%', c: theme.gold, w: 10, h: 6, r: '-30deg' },
+  { l: '87%', t: '11%', c: theme.gold, w: 10, h: 7, r: '15deg' },
+  { l: '92%', t: '29%', c: theme.purple, w: 9, h: 9, r: '-22deg' },
+  { l: '82%', t: '45%', c: theme.blue, w: 11, h: 6, r: '32deg' },
+  { l: '77%', t: '8%', c: theme.danger, w: 8, h: 8, r: '-12deg' },
+  { l: '90%', t: '50%', c: theme.primary, w: 9, h: 6, r: '50deg' },
+];
+
+// Flying gold trophies: spawn at screen centre and arc onto the trophy counter
+// (mirrors the diamond gem-fly). Calls onDone once every trophy has landed, so the
+// caller can then run the counter's fill + count-up.
+function TrophyFly({ target, onDone, count = 9 }: { target: { x: number; y: number }; onDone: () => void; count?: number }) {
+  const screenW = Dimensions.get('window').width;
+  const screenH = Dimensions.get('window').height;
+  const originX = screenW / 2;
+  const originY = screenH * 0.42;
+  const parts = useRef(
+    Array.from({ length: count }, () => ({ x: new Animated.Value(0), y: new Animated.Value(0), s: new Animated.Value(0), o: new Animated.Value(0) })),
+  ).current;
+  useEffect(() => {
+    let done = 0;
+    parts.forEach((g, i) => {
+      g.x.setValue(originX + (Math.random() - 0.5) * 90);
+      g.y.setValue(originY + (Math.random() - 0.5) * 70);
+      g.s.setValue(0);
+      g.o.setValue(0);
+      setTimeout(() => {
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(g.o, { toValue: 1, duration: 90, useNativeDriver: true }),
+            Animated.spring(g.s, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(g.x, { toValue: target.x, duration: 560, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.y, { toValue: target.y, duration: 560, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.s, { toValue: 0.42, duration: 560, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(g.s, { toValue: 0.15, duration: 120, useNativeDriver: true }),
+            Animated.timing(g.o, { toValue: 0, duration: 120, useNativeDriver: true }),
+          ]),
+        ]).start(() => { done += 1; if (done === parts.length) onDone(); });
+      }, i * 55);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Rendered in a Modal so absoluteFill maps to the whole window — the same
+  // coordinate space measureInWindow / Dimensions gave us for origin and target.
+  return (
+    <Modal visible transparent animationType="none" statusBarTranslucent>
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {parts.map((g, i) => (
+          <Animated.View key={i} style={{ position: 'absolute', left: -15, top: -15, opacity: g.o, transform: [{ translateX: g.x }, { translateY: g.y }, { scale: g.s }] }}>
+            <Ionicons name="trophy" size={30} color={theme.gold} />
+          </Animated.View>
+        ))}
+      </View>
+    </Modal>
+  );
+}
+
+// Match-over banner, styled after the Kupa-popup mockup: a coloured card (blue win /
+// purple loss) with a ringed trophy medallion, confetti on a win, and a recessed
+// panel showing the score and the arena-based trophy delta (+green / −red).
 function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong, winnerName, trophyDelta }: {
   youWon: boolean; youScore: number; oppScore: number; youWrong: number; oppWrong: number;
   winnerName: string | null; trophyDelta: { delta: number; trophies: number } | null;
@@ -7824,41 +8046,67 @@ function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong, winne
   }, [a]);
   const sYou = useCountUp(youScore);
   const sOpp = useCountUp(oppScore);
+  const deltaCount = useCountUp(trophyDelta ? Math.abs(trophyDelta.delta) : 0);
+
+  const accent = youWon ? theme.blue : theme.purple;                 // ring / glow
+  const cardFill = youWon ? '#1E52C0' : '#432A9E';                    // card body
+  const insetFill = youWon ? 'rgba(8,20,60,0.5)' : 'rgba(18,8,52,0.5)'; // score panel well
+  const gain = trophyDelta ? trophyDelta.delta >= 0 : youWon;
+  const deltaColor = gain ? theme.primary : theme.danger;            // +green / −red
+
   return (
     <Animated.View
-      style={[styles.matchBanner, {
+      style={{
+        width: '100%', maxWidth: 320, alignSelf: 'center', marginBottom: 14,
+        backgroundColor: cardFill, borderRadius: 28,
+        borderWidth: 2.5, borderColor: accent,
+        paddingTop: 18, paddingBottom: 16, paddingHorizontal: 16, alignItems: 'center',
+        shadowColor: accent, shadowOpacity: 0.7, shadowRadius: 22, shadowOffset: { width: 0, height: 0 }, elevation: 18,
         opacity: a.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
         transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }],
-      }]}
+      }}
     >
+      {/* Confetti (win only) */}
+      {youWon ? (
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          {WIN_CONFETTI.map((p, i) => (
+            <View key={i} style={{ position: 'absolute', left: p.l, top: p.t, width: p.w, height: p.h, borderRadius: 2, backgroundColor: p.c, transform: [{ rotate: p.r }] }} />
+          ))}
+        </View>
+      ) : null}
+
+      {/* Ringed trophy medallion (image slightly overscanned so its ring meets the circle) */}
+      <View style={{ width: 132, height: 132, borderRadius: 66, overflow: 'hidden', marginBottom: 14 }}>
+        <Image
+          source={youWon ? TROPHY_MEDALLION_WIN : TROPHY_MEDALLION_LOSS}
+          style={{ width: 150, height: 150, marginLeft: -9, marginTop: -9 }}
+          resizeMode="cover"
+        />
+      </View>
+
+      {/* Recessed panel: score + divider + trophy delta */}
       <View
         style={{
-          width: 64, height: 64, borderRadius: 32, backgroundColor: theme.card,
-          borderWidth: 2,
-          borderColor: youWon ? theme.accent : theme.border,
-          borderTopColor: youWon ? lighten(theme.accent, 0.3) : theme.panelTopGloss,
-          borderBottomColor: youWon ? theme.accentDark : theme.cardLip,
-          alignItems: 'center', justifyContent: 'center', marginBottom: 2,
-          ...(youWon ? { shadowColor: theme.accent, shadowOpacity: 0.55, shadowRadius: 12, shadowOffset: { width: 0, height: 0 }, elevation: 8 } : {}),
+          width: '100%', backgroundColor: insetFill, borderRadius: 20,
+          paddingVertical: 14, paddingHorizontal: 12, alignItems: 'center',
+          borderWidth: 1.5, borderColor: withAlpha(accent, 0.35),
         }}
       >
-        <Ionicons name={youWon ? 'trophy' : 'sad-outline'} size={32} color={youWon ? theme.accent : theme.muted} />
+        <Text style={{ color: '#fff', fontFamily: 'Poppins-Black', fontSize: 42, letterSpacing: 4, fontVariant: ['tabular-nums'], ...engrave('lg') }}>
+          {sYou} - {sOpp}
+        </Text>
+        {trophyDelta ? (
+          <>
+            <View style={{ height: 1.5, width: '84%', backgroundColor: 'rgba(255,255,255,0.12)', marginTop: 10, marginBottom: 12 }} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Ionicons name="trophy" size={28} color={youWon ? theme.gold : theme.silver} />
+              <Text style={{ color: deltaColor, fontFamily: 'Poppins-Black', fontSize: 34, fontVariant: ['tabular-nums'], ...engrave('sm') }}>
+                {gain ? '+' : '−'}{deltaCount}
+              </Text>
+            </View>
+          </>
+        ) : null}
       </View>
-      <Text style={[styles.h1, { color: youWon ? theme.accent : theme.text, marginTop: 2 }]}>
-        {youWon ? t('result.youWon') : t('result.youLost')}
-      </Text>
-      <Text style={styles.matchScore}>
-        {sYou} - {sOpp}
-      </Text>
-      {/* 3 wrong answers explanation */}
-      {youWrong >= 3 ? (
-        <Text style={[styles.muted, { color: theme.danger, marginTop: 4 }]}>{t('result.youLost3Wrong')}</Text>
-      ) : oppWrong >= 3 ? (
-        <Text style={[styles.muted, { color: theme.primary, marginTop: 4 }]}>{t('result.youWon3Wrong')}</Text>
-      ) : !youWon && winnerName ? (
-        <Text style={styles.muted}>{t('result.winnerTook', { name: winnerName })}</Text>
-      ) : null}
-      {trophyDelta ? <TrophyDeltaChip delta={trophyDelta.delta} trophies={trophyDelta.trophies} /> : null}
     </Animated.View>
   );
 }
@@ -7909,8 +8157,9 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
   return (
     <Screen>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
-        {/* Match-over banner (the round detail below still shows the deciding answer) */}
-        {matchOver ? (
+        {/* Match-over banner — only for ranked matches that actually change trophies.
+            Bot matches award no trophies (trophyDelta stays null), so no popup there. */}
+        {matchOver && state.trophyDelta ? (
           <MatchOverBanner
             youWon={youWon}
             youScore={you?.score ?? 0}
