@@ -146,6 +146,56 @@ export async function searchClubs(
 // not a loose coincidental overlap).
 const AUTOCORRECT_MIN = 0.6;
 
+// ---- Edit-distance fallback for the autocorrect gate ----
+// Trigram similarity punishes an inserted/dropped letter near the start of a
+// short name far harder than a human would: "pijanic" vs "pjanic" is one edit
+// away yet only ~0.5 trigram — below AUTOCORRECT_MIN — while the unrelated
+// "tijanic" scores higher. Levenshtein sees through that, so a both-teams
+// candidate that trigram rejects gets a second look by edit closeness.
+function editDistance(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  const cur = new Array<number>(n + 1);
+  for (let i = 1; i <= m; i++) {
+    cur[0] = i;
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(
+        prev[j]! + 1,          // deletion
+        cur[j - 1]! + 1,       // insertion
+        prev[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1), // substitution
+      );
+    }
+    prev = [...cur];
+  }
+  return prev[n]!;
+}
+
+// Closeness (0..1) of the guess to the full normalized name or any single name
+// token — a surname alone must be able to match ("pijanic" → "pjanic" = 0.857).
+function editCloseness(guessNorm: string, nameNorm: string): number {
+  let best = 0;
+  for (const target of [nameNorm, ...nameNorm.split(' ')]) {
+    if (!target) continue;
+    const d = editDistance(guessNorm, target);
+    const r = 1 - d / Math.max(guessNorm.length, target.length);
+    if (r > best) best = r;
+  }
+  return best;
+}
+
+// Accept threshold for the edit-closeness fallback. Deliberately JUST above
+// "ronaldo"→"rivaldo" (2 edits over 7 = 0.714): famous-name confusions stay
+// wrong, while genuine one-letter typos ("pijanic"→"pjanic" = 0.857) pass.
+// Guesses shorter than 4 chars never use the fallback (stubs stay rejected).
+const EDIT_ACCEPT = 0.72;
+const EDIT_MIN_GUESS_LEN = 4;
+
+function editAccepts(guessNorm: string, nameNorm: string): boolean {
+  return guessNorm.length >= EDIT_MIN_GUESS_LEN && editCloseness(guessNorm, nameNorm) >= EDIT_ACCEPT;
+}
+
 const EASY_TOP = 20;    // top 20 only
 const MEDIUM_FROM = 21; // skip the mega-famous
 const MEDIUM_TO = 80;
@@ -542,8 +592,8 @@ export async function verifyCountryTeamGuess(
   if (exactCluster.length > 0) {
     matched = exactCluster[0]!;
     correct = true;
-  } else if (eligible[0]!.sim >= AUTOCORRECT_MIN) {
-    // close typo of a valid answer → accept
+  } else if (eligible[0]!.sim >= AUTOCORRECT_MIN || editAccepts(norm, normalize(eligible[0]!.name))) {
+    // close typo of a valid answer (trigram OR edit-distance close) → accept
     matched = eligible[0]!;
     correct = true;
     autocorrected = true;
@@ -626,8 +676,9 @@ export async function verifyLetterTeamGuess(
     matched = eligible[0]!;
     // Only autocorrect genuine typos — NOT a bare prefix like "c"/"cri". You picked the
     // letter, so a single letter (or tiny stub) sharing it must not win the round.
+    // Closeness = trigram OR edit-distance; the length guards stay for both paths.
     const matchedNorm = normalize(matched.name);
-    if (matched.sim >= AUTOCORRECT_MIN && norm.length >= 4 && norm.length >= matchedNorm.length * 0.5) {
+    if ((matched.sim >= AUTOCORRECT_MIN || editAccepts(norm, matchedNorm)) && norm.length >= 4 && norm.length >= matchedNorm.length * 0.5) {
       correct = true;
       autocorrected = true;
     } else {
@@ -735,8 +786,8 @@ export async function verifyGuess(
   // 1) Fuzzy candidates by name. word_similarity lets "Sneijder" match
   // "Wesley Sneijder". When similarity scores are equal, prefer the most
   // notable player (more clubs = bigger career, has photo = Wikipedia-notable).
-  const { rows: cands } = await pool.query<{ id: string; name: string; sim: number; image_url: string | null }>(
-    `SELECT p.id, p.name, p.image_url, word_similarity($1, p.name_norm) AS sim
+  const { rows: cands } = await pool.query<{ id: string; name: string; name_norm: string; sim: number; image_url: string | null }>(
+    `SELECT p.id, p.name, p.name_norm, p.image_url, word_similarity($1, p.name_norm) AS sim
        FROM players p
       WHERE word_similarity($1, p.name_norm) >= $2
       ORDER BY sim DESC,
@@ -746,34 +797,44 @@ export async function verifyGuess(
     [norm, config.verifyMatchThreshold],
   );
 
-  const eligible = cands.map((c) => ({ id: Number(c.id), name: c.name, sim: Number(c.sim), imageUrl: c.image_url }));
+  const eligible = cands.map((c) => ({ id: Number(c.id), name: c.name, nameNorm: c.name_norm, sim: Number(c.sim), imageUrl: c.image_url }));
 
   if (eligible.length === 0) {
     return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
   }
 
-  // 2) Which eligible candidates played for both teams?
+  // 2) Which eligible candidates played for both teams — and how famous is each?
+  // fame piggybacks on the membership scan (≤25 ids): the candidate's biggest
+  // club, by market value where filled, else by squad size — the same
+  // recognizability proxy botCommonPlayersRanked uses.
   const ids = eligible.map((c) => c.id);
   const { rows: membership } = await pool.query<{
     player_id: string;
     in_a: boolean;
     in_b: boolean;
+    fame: string;
   }>(
-    `SELECT player_id,
-            bool_or(club_id = $2) AS in_a,
-            bool_or(club_id = $3) AS in_b
-       FROM player_clubs
-      WHERE player_id = ANY($1::bigint[])
-      GROUP BY player_id`,
+    `SELECT pc.player_id,
+            bool_or(pc.club_id = $2) AS in_a,
+            bool_or(pc.club_id = $3) AS in_b,
+            MAX(GREATEST(COALESCE(c.popularity, 0),
+                         (SELECT count(*) FROM player_clubs x WHERE x.club_id = pc.club_id))) AS fame
+       FROM player_clubs pc
+       JOIN clubs c ON c.id = pc.club_id
+      WHERE pc.player_id = ANY($1::bigint[])
+      GROUP BY pc.player_id`,
     [ids, teamAId, teamBId],
   );
-  const memberBy = new Map<number, { inA: boolean; inB: boolean }>(
-    membership.map((m) => [Number(m.player_id), { inA: m.in_a, inB: m.in_b }]),
+  const memberBy = new Map<number, { inA: boolean; inB: boolean; fame: number }>(
+    membership.map((m) => [Number(m.player_id), { inA: m.in_a, inB: m.in_b, fame: Number(m.fame) }]),
   );
   const playedBoth = (id: number) => {
     const m = memberBy.get(id);
     return Boolean(m?.inA && m?.inB);
   };
+  const fameOf = (id: number) => memberBy.get(id)?.fame ?? 0;
+  type Cand = (typeof eligible)[number];
+  const mostFamous = (cs: Cand[]): Cand => cs.reduce((best, c) => (fameOf(c.id) > fameOf(best.id) ? c : best));
 
   // Candidates are ordered by similarity descending; the best is index 0.
   let matched = eligible[0]!;
@@ -788,23 +849,40 @@ export async function verifyGuess(
     // You clearly named a specific player → judge them strictly. If any of the
     // same-name players played both, that's who you meant. ("Ronaldinho" has no
     // such variant, so it stays wrong — never auto-corrected to "Ronaldo".)
-    const both = exactCluster.find((c) => playedBoth(c.id));
-    matched = both ?? exactCluster[0]!;
-    correct = Boolean(both);
+    // Same-name ties break by fame: "ronaldo" means Cristiano/R9, never a
+    // lower-division namesake.
+    const bothInCluster = exactCluster.filter((c) => playedBoth(c.id));
+    matched = bothInCluster.length > 0 ? mostFamous(bothInCluster) : mostFamous(exactCluster);
+    correct = bothInCluster.length > 0;
   } else {
     // Approximate spelling (a typo) → auto-correct to the closest player who
     // actually played BOTH teams. BUT only when the match is genuinely close, so a
     // loose trigram overlap ("messi" → "Gaizka Mendieta") or garbage ("aab") is NOT
     // accepted just because that player happened to play both. Auto-correct is for
-    // fixing fast-typing typos, not for guessing points.
-    const both = eligible.find((c) => playedBoth(c.id));
-    if (both && both.sim >= AUTOCORRECT_MIN) {
-      matched = both;
+    // fixing fast-typing typos, not for guessing points. Closeness is trigram OR
+    // edit-distance — the latter rescues one-letter slips trigram undervalues
+    // ("pijanic" → Pjanić), while EDIT_ACCEPT keeps rivaldo/ronaldo-style
+    // confusions and garbage out.
+    const bothAccepted = eligible.filter(
+      (c) => playedBoth(c.id) && (c.sim >= AUTOCORRECT_MIN || editAccepts(norm, c.nameNorm)),
+    );
+    if (bothAccepted.length > 0) {
+      matched = mostFamous(bothAccepted);
       correct = true;
       autocorrected = true;
     } else {
       correct = false;
     }
+  }
+
+  // A wrong guess surfaces "you meant X" — make X the player the human plausibly
+  // meant: among the candidates whose similarity is within a whisker of the top,
+  // show the most FAMOUS one, not whoever wins the trigram coin-flip. Typing
+  // "pijanic" should present Miralem Pjanić, never an obscure near-anagram.
+  if (!correct) {
+    const SIM_BAND = 0.13;
+    const nearTop = eligible.filter((c) => c.sim >= eligible[0]!.sim - SIM_BAND);
+    matched = mostFamous(nearTop);
   }
 
   const allClubs = await getPlayerSpells(matched.id);

@@ -365,6 +365,10 @@ function AppRoot() {
   const { state, actions } = useCrossover();
   const props = { state, actions };
   const scrollRef = useRef<ScrollView>(null);
+  // Native-driven pager offset — powers ONLY the stadium-photo cross-fade on the
+  // Oyna tab (the green pitch the home look rests on). Driven by Animated.event
+  // with useNativeDriver, so no JS work happens per scroll frame.
+  const scrollX = useRef(new Animated.Value(2 * SCREEN_W)).current;
   // Off-screen pages' gem pills get this throwaway ref, so only the ACTIVE page's
   // pill holds the real measured ref (the fly-to-gems target).
   const dummyPillRef = useRef<View | null>(null);
@@ -801,11 +805,24 @@ function AppRoot() {
   return (
     <View key={`app-${langKey}`} style={[s.root, { paddingTop: insets.top }]}>
       <StatusBar style="light" />
-      {/* Single stable backdrop — identical on every tab, so a swipe never changes,
-          cross-fades or reloads the background (calmest look; no multi-layer jank). */}
+      {/* Backdrop: the calm menu weave is the always-present base; the night-stadium
+          photo (the green pitch) cross-fades OVER it on the Oyna tab, driven by the
+          pager's native scroll offset — so a swipe fades the pitch in/out on the
+          native thread and never blanks or reloads the background. Only rendered on
+          the home phase; Arenas/Profile keep the flat menu backdrop. */}
       <ScreenBg variant="menu" />
+      {state.phase === 'home' ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, {
+            opacity: scrollX.interpolate({ inputRange: [SCREEN_W, 2 * SCREEN_W, 3 * SCREEN_W], outputRange: [0, 1, 0], extrapolate: 'clamp' }),
+          }]}
+        >
+          <ScreenBg variant="stadium" />
+        </Animated.View>
+      ) : null}
 
-      <ScrollView
+      <Animated.ScrollView
         ref={scrollRef}
         horizontal
         pagingEnabled
@@ -816,6 +833,8 @@ function AppRoot() {
         keyboardShouldPersistTaps="always"
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onScrollEnd}
+        // Feed the raw offset to scrollX on the native thread (stadium cross-fade).
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
         scrollEventThrottle={16}
         contentOffset={{ x: 2 * SCREEN_W, y: 0 }}
         style={{ flex: 1 }}
@@ -839,7 +858,7 @@ function AppRoot() {
           {state.profile ? renderResourceBar(activeTab === 3) : null}
           <FriendsScreen {...props} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* Bottom Tab Bar */}
       <View style={[s.tabBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>

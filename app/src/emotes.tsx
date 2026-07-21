@@ -5,7 +5,7 @@
 // no GIF/sprite assets and no extra native deps, so they run fine in Expo Go.
 // Keep these ids in sync with server/src/game/emotes.ts.
 import { useEffect, useRef } from 'react';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Image as RNImage, StyleSheet, Text, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import LottieView from 'lottie-react-native';
@@ -221,6 +221,18 @@ function FaceEmote({ size, expr, play = true }: { size: number; expr: 'smile' | 
   );
 }
 
+// Animated-WebP sticker (the `lottie` kind). Neither `autoplay={false}` nor the
+// imperative stopAnimating() reliably freezes a looping WebP in expo-image (the
+// world-cup trophy's rays kept turning after its preview was interrupted). So a
+// paused sticker is rendered by React Native's own <Image>, which CANNOT play
+// animated WebP — it decodes just the first frame. Guaranteed still, no races.
+function WebpSticker({ source, size, play }: { source: number; size: number; play: boolean }) {
+  if (!play) {
+    return <RNImage source={source} style={{ width: size, height: size }} resizeMode="contain" />;
+  }
+  return <ExpoImage source={source} style={{ width: size, height: size }} contentFit="contain" autoplay />;
+}
+
 export function EmoteSticker({ id, size, play = true, onFinish }: {
   id: string; size: number; play?: boolean; onFinish?: () => void;
 }) {
@@ -234,7 +246,7 @@ export function EmoteSticker({ id, size, play = true, onFinish }: {
     return <LottieView source={meta.animJson as any} autoPlay loop={false} onAnimationFinish={onFinish} style={{ width: size, height: size }} />;
   }
   if (meta.kind === 'lottie' && meta.anim != null) {
-    return <ExpoImage source={meta.anim} style={{ width: size, height: size }} contentFit="contain" autoplay={play} />;
+    return <WebpSticker source={meta.anim} size={size} play={play} />;
   }
   // text emote: icon badge
   return (

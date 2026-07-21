@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
 import {
   Image,
   type ImageSourcePropType,
@@ -331,6 +331,7 @@ export function Btn({
   loading,
   tint,
   badge,
+  gem,
 }: {
   label: string;
   onPress: () => void;
@@ -342,6 +343,7 @@ export function Btn({
   loading?: boolean; // NEW: GameSpinner replaces icon, press inert, no layout change
   tint?: string;     // NEW: ghost-only ring/fill tint (e.g. theme.danger for a danger ghost)
   badge?: string;    // NEW: fixed-width tabular-nums ink pill beside the label (countdowns)
+  gem?: boolean;     // NEW: gem-price button — the crystal logo sits before the label ("💎 300")
 }) {
   const press = useRef(new Animated.Value(0)).current;
   const btnGid = useRef(`btn${_btnSeq++}`).current;
@@ -368,12 +370,19 @@ export function Btn({
     : disabled
       ? {}
       : { textShadowColor: 'rgba(4,9,24,0.55)', textShadowOffset: { width: 0, height: 1.5 }, textShadowRadius: 1.5 };
-  void icon; void iconSz; // icons intentionally not rendered inside buttons
+  void icon; // decorative icons intentionally not rendered inside buttons
+  // Exception: `gem` — a PRICE button must show what currency it charges, so the
+  // crystal logo (the same GemIcon as the HUD counter) sits right before the number.
   const content = (
     <>
       {loading ? (
         <View style={{ marginRight: compact ? 6 : 8 }}>
           <GameSpinner size="sm" color={fg} />
+        </View>
+      ) : null}
+      {!loading && gem ? (
+        <View style={{ marginRight: compact ? 5 : 7 }}>
+          <GemIcon size={iconSz} />
         </View>
       ) : null}
       <Text
@@ -2718,17 +2727,43 @@ function Ball({ size, face, faceDark, ink }: { size: number; face: string; faceD
   );
 }
 
-// The mockup's pair of balls straddling the wordmark's crown — one classic
-// white, one blue, tilted toward each other.
+// The complete hero unit (two balls + CROSSOVER 3D lettering) lifted WHOLE from
+// the Top.jpeg mockup with feathered edges — used by the home hero so it matches
+// the mockup pixel-for-pixel. Source 708×320.
+const HERO_ART = require('../assets/hero-crossover.png');
+// (Individual hero-ball cutouts, kept for the legacy BrandBalls pair below.)
+const HERO_BALL_WHITE = require('../assets/ball-hero-white.png');
+const HERO_BALL_BLUE = require('../assets/ball-hero-blue.png');
 function BrandBalls({ size }: { size: number }) {
+  const white = size * 0.70;
+  const blue = size * 0.64;
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: size * 0.30 }}>
-      <View style={{ transform: [{ rotate: '-9deg' }] }}>
-        <Ball size={size * 0.58} face="#F4F7FC" faceDark="#B9C4D6" ink="#131C30" />
-      </View>
-      <View style={{ marginTop: size * 0.04, transform: [{ rotate: '11deg' }] }}>
-        <Ball size={size * 0.55} face="#3E97F0" faceDark="#1A62C0" ink="#0B2E5C" />
-      </View>
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center' }}>
+      <Image source={HERO_BALL_WHITE} style={{ width: white, height: white }} resizeMode="contain" />
+      <Image source={HERO_BALL_BLUE} style={{ width: blue, height: blue, marginLeft: size * 0.17 }} resizeMode="contain" />
+    </View>
+  );
+}
+
+// "Mücadele Modu" card art: the brand's two balls CHARGING at each other —
+// speed streaks trailing, the matchup screen's gold VS coin at the collision
+// point. Head-to-head rivalry told entirely in the game's own dialects (the
+// hero's Ball + the matchup VsBadge), so the card reads competitive yet
+// unmistakably Crossover. Speed streak = a rounded bar trailing the mover.
+// "Mücadele Modu" card art — the mockup's own duel, lifted from Top.jpeg as
+// three feathered patches (white ball + fire trail, blue ball + icy streaks,
+// the gold 3D VS) and laid out at the mockup's measured positions, so the card
+// reads exactly like the photo. Patch sizes map the mockup card (462w) onto the
+// app card (~170w, scale ≈0.368) with the balls kept perfectly round.
+const CARD_DUEL_WHITE = require('../assets/card-duel-white.png');
+const CARD_DUEL_BLUE = require('../assets/card-duel-blue.png');
+const CARD_DUEL_VS = require('../assets/card-duel-vs.png');
+function RivalryArt() {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Image source={CARD_DUEL_WHITE} style={{ position: 'absolute', left: 0, top: 25, width: 74, height: 66 }} resizeMode="contain" />
+      <Image source={CARD_DUEL_BLUE} style={{ position: 'absolute', right: 0, top: 26, width: 66, height: 65 }} resizeMode="contain" />
+      <Image source={CARD_DUEL_VS} style={{ position: 'absolute', alignSelf: 'center', top: 36, width: 38, height: 39 }} resizeMode="contain" />
     </View>
   );
 }
@@ -3055,17 +3090,18 @@ function GhostPanel({ title, icon, ghost, height, onPress, children, locked = fa
 
 // ---- the screen -----------------------------------------------------------
 
-// Every mode this game can actually play. country-team/letter-team are the
-// Social-Pack-gated pair (server: isSocialPackMode, ws/server.ts:79); team-team
-// and player-player are free. player-player is fully implemented server-side
-// (rooms/room.ts) but had no entry point anywhere in the UI before this screen.
+// Modes listed in the "Mücadele Modu" (Challenge Mode) picker. Only the two
+// Social-Pack-gated modes appear here (server: isSocialPackMode, ws/server.ts).
+// team-team is deliberately NOT listed — it stays the free default of "Hemen
+// Oyna" / bot / friend-invite, just not a selectable "challenge" mode. player-player
+// is implemented server-side (rooms/room.ts) but has no UI entry point.
 const CAROUSEL_GAP = 8;
 // Below this width the one-row top bar cannot seat all three round buttons without
 // starving the profile pill, so the pack shortcut (duplicated in the Store tab) steps out.
 const TOPBAR_ROOMY_W = 360;
 // Room codes are always exactly this long — server/src/rooms/manager.ts:5 (CODE_LEN).
 const ROOM_CODE_LEN = 6;
-const HOME_MODES: GameMode[] = ['team-team', 'player-player', 'country-team', 'letter-team'];
+const HOME_MODES: GameMode[] = ['country-team', 'letter-team'];
 const PACK_MODES: GameMode[] = ['country-team', 'letter-team'];
 
 export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends }: Props) {
@@ -3092,8 +3128,6 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const [submitted, setSubmitted] = useState<string | null>(null);
   const [hero, setHero] = useState({ w: 0, h: 0 });
   const [railW, setRailW] = useState(0);
-  // 🧪 TEMP DEBUG — maç-sonu ve arena popup önizlemesi (kaldırılacak)
-  const [demo, setDemo] = useState<'win' | 'loss' | 'arena' | null>(null);
 
   const opts: GameOptions = { scope, mode };
   const profile = state.profile;
@@ -3101,82 +3135,21 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const playerName = profile?.displayName ?? t('home.namePlaceholder');
   const trophies = profile?.trophies ?? 0;
 
-  // 🧪 Arena elmas ödülü animasyonu: kutlamayı kapatınca elmaslar üstteki elmas
-  // çubuğuna uçar → çubuk soldan sağa dolar → sayı ödül kadar yükselir.
-  const ARENA_DEMO_REWARD = 100;
+  // HUD counters: the gem pill and trophy badge are driven by these anim values
+  // (RailBadge/GemPill read them via listener), kept in lock-step with the profile.
+  // Real reward animations (match win / arena reward) run at the App level.
   const gemCountAnim = useRef(new Animated.Value(profile?.diamonds ?? 0)).current;
   const gemFillAnim = useRef(new Animated.Value(0)).current;
   const gemPillRef = useRef<View>(null);
-  const gemAnimating = useRef(false);
-  // Keep the pill synced to the real balance whenever we're NOT mid-reward-animation.
   useEffect(() => {
-    if (!gemAnimating.current) gemCountAnim.setValue(profile?.diamonds ?? 0);
+    gemCountAnim.setValue(profile?.diamonds ?? 0);
   }, [profile?.diamonds, gemCountAnim]);
-  const startArenaDemo = useCallback(() => {
-    // Register the pill's on-screen centre so the celebration's gems fly onto it.
-    gemPillRef.current?.measureInWindow((x, y, w, h) => { if (w > 0 && h > 0) setGemTarget(x + w * 0.5, y + h * 0.55); });
-    setDemo('arena');
-  }, []);
-  const finishArenaDemo = useCallback(() => {
-    setDemo(null);
-    const start = profile?.diamonds ?? 0;
-    const end = start + ARENA_DEMO_REWARD;
-    gemAnimating.current = true;
-    gemCountAnim.setValue(start);
-    gemFillAnim.setValue(0);
-    Animated.parallel([
-      Animated.timing(gemCountAnim, { toValue: end, duration: 1000, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
-      Animated.sequence([
-        Animated.timing(gemFillAnim, { toValue: 1, duration: 880, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
-        Animated.timing(gemFillAnim, { toValue: 0, duration: 260, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
-      ]),
-    ]).start(() => { gemAnimating.current = false; });
-  }, [profile?.diamonds, gemCountAnim, gemFillAnim]);
-
-  // 🏆 Kupa ödülü animasyonu (elmasların kupa karşılığı): KAZANINCA kupalar ekranın
-  // ortasında belirir → kupa göstergesine uçar → gösterge dolar → sayı ödül kadar
-  // artar. KAYBEDİNCE gösterge animasyonsuz düşer.
-  const WIN_TROPHY_DELTA = 30;
-  const LOSS_TROPHY_DELTA = 18;
   const trophyCountAnim = useRef(new Animated.Value(profile?.trophies ?? 0)).current;
   const trophyFillAnim = useRef(new Animated.Value(0)).current;
   const trophyBadgeRef = useRef<View>(null);
-  const trophyAnimating = useRef(false);
-  const [trophyFly, setTrophyFly] = useState<{ x: number; y: number } | null>(null);
   useEffect(() => {
-    if (!trophyAnimating.current) trophyCountAnim.setValue(profile?.trophies ?? 0);
+    trophyCountAnim.setValue(profile?.trophies ?? 0);
   }, [profile?.trophies, trophyCountAnim]);
-  // Trophies have landed on the counter → sweep the fill up-and-back and tick the number up.
-  const finishTrophyWin = useCallback(() => {
-    const start = profile?.trophies ?? 0;
-    const end = start + WIN_TROPHY_DELTA;
-    trophyAnimating.current = true;
-    trophyCountAnim.setValue(start);
-    trophyFillAnim.setValue(0);
-    Animated.parallel([
-      Animated.timing(trophyCountAnim, { toValue: end, duration: 900, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
-      Animated.sequence([
-        Animated.timing(trophyFillAnim, { toValue: 1, duration: 640, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
-        Animated.timing(trophyFillAnim, { toValue: 0, duration: 320, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
-      ]),
-    ]).start(() => { trophyAnimating.current = false; setTrophyFly(null); });
-  }, [profile?.trophies, trophyCountAnim, trophyFillAnim]);
-  // Closing the match popup: a WIN throws trophies onto the counter (fly → fill →
-  // rise); a LOSS just drops the number with no animation, as requested.
-  const dismissMatchDemo = useCallback(() => {
-    const was = demo;
-    setDemo(null);
-    if (was === 'win') {
-      trophyBadgeRef.current?.measureInWindow((x, y, w, h) => {
-        if (w > 0 && h > 0) setTrophyFly({ x: x + w * 0.5, y: y + h * 0.34 });
-        else finishTrophyWin();
-      });
-    } else if (was === 'loss') {
-      trophyAnimating.current = true;
-      trophyCountAnim.setValue(Math.max(0, (profile?.trophies ?? 0) - LOSS_TROPHY_DELTA));
-      trophyAnimating.current = false;
-    }
-  }, [demo, profile?.trophies, trophyCountAnim, finishTrophyWin]);
 
   // Arena tier drives the mockup's "level" slots. ARENA_DATA runs highest→lowest,
   // so the human-facing tier number counts up from the bottom (Mahalle = 1).
@@ -3253,40 +3226,6 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         <RoundIconBtn icon="settings-sharp" onPress={() => { setMenuSub(null); setMenuOpen(true); }} />
       </View>
 
-      {/* 🧪 TEMP DEBUG — 3 test butonu: maç-sonu kazanma/kaybetme + arena atlama popup'ları.
-          Bu blok yalnızca popup'ları önizlemek için; kaldırılacak. */}
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-        <Pressable onPress={() => setDemo('win')} style={{ flex: 1, backgroundColor: theme.primary, borderRadius: 12, paddingVertical: 11, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: theme.primaryDark }}>
-          <Text style={{ color: theme.ink, fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>🏆 Kazanma</Text>
-        </Pressable>
-        <Pressable onPress={() => setDemo('loss')} style={{ flex: 1, backgroundColor: theme.danger, borderRadius: 12, paddingVertical: 11, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: theme.dangerDark }}>
-          <Text style={{ color: '#fff', fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>😢 Kaybetme</Text>
-        </Pressable>
-        <Pressable onPress={startArenaDemo} style={{ flex: 1, backgroundColor: theme.accent, borderRadius: 12, paddingVertical: 11, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: theme.accentDark }}>
-          <Text style={{ color: theme.ink, fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>⬆️ Arena</Text>
-        </Pressable>
-      </View>
-
-      {/* 🧪 TEMP DEBUG — maç-sonu banner önizlemesi (kazanma/kaybetme) */}
-      <Modal visible={demo === 'win' || demo === 'loss'} transparent animationType="fade" onRequestClose={dismissMatchDemo}>
-        <Pressable onPress={dismissMatchDemo} style={{ flex: 1, backgroundColor: theme.scrim, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
-          {demo === 'win' ? (
-            <MatchOverBanner youWon youScore={3} oppScore={1} youWrong={0} oppWrong={0} winnerName={playerName} trophyDelta={{ delta: WIN_TROPHY_DELTA, trophies: trophies + WIN_TROPHY_DELTA }} />
-          ) : demo === 'loss' ? (
-            <MatchOverBanner youWon={false} youScore={1} oppScore={3} youWrong={0} oppWrong={0} winnerName="Bot" trophyDelta={{ delta: -LOSS_TROPHY_DELTA, trophies: Math.max(0, trophies - LOSS_TROPHY_DELTA) }} />
-          ) : null}
-          <Text style={{ color: theme.muted, marginTop: 18, fontSize: 12 }}>Kapatmak için dokun</Text>
-        </Pressable>
-      </Modal>
-
-      {/* 🏆 Kupa uçuşu — kazanma popup'ı kapanınca kupalar göstergeye uçar */}
-      {trophyFly ? <TrophyFly target={trophyFly} onDone={finishTrophyWin} /> : null}
-
-      {/* 🧪 TEMP DEBUG — arena atlama kutlaması önizlemesi */}
-      {demo === 'arena' ? (
-        <DiamondCelebration amount={ARENA_DEMO_REWARD} variant="arenaReward" arenaName="Amatör Lig" onDone={finishArenaDemo} />
-      ) : null}
-
       {/* ── 2. HERO ── */}
       <View
         onLayout={(e) => setHero({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
@@ -3295,11 +3234,14 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         style={{ alignItems: 'center', justifyContent: 'center', marginTop: 8, marginBottom: 2, minHeight: 134 }}
       >
         <HeroConfetti w={hero.w} h={hero.h} />
-        <BrandBalls size={Math.min(104, SCREEN_W * 0.26)} />
-        {/* the wordmark tucks UNDER the balls, as in the mockup */}
-        <View style={{ marginTop: -22 }}>
-          <Wordmark size={wordmarkSize(SCREEN_W - 32)} />
-        </View>
+        {/* The hero unit — the two balls + the CROSSOVER lettering lifted WHOLE
+            from the Top.jpeg mockup as one image (feathered edges melt into the
+            night sky), so it is pixel-for-pixel the photo composition. */}
+        <Image
+          source={HERO_ART}
+          style={{ width: SCREEN_W * 0.652, height: SCREEN_W * 0.652 * (320 / 708) }}
+          resizeMode="contain"
+        />
         <View style={{ position: 'absolute', right: 0, top: 2, gap: 12 }}>
           <RailBadge icon="trophy" iconColor={theme.gold} ringColor={theme.purple} value={String(trophies)} onPress={actions.openArenas} countAnim={trophyCountAnim} fillAnim={trophyFillAnim} innerRef={trophyBadgeRef} />
           <RailBadge icon="podium" iconColor={theme.accent} ringColor={theme.accentDark} value={String(profile?.wins ?? 0)} onPress={() => onOpenLeaderboard?.()} />
@@ -3320,8 +3262,8 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
           onPress={() => setModesOpen(true)}
           art={
             <View style={StyleSheet.absoluteFill}>
-              {/* a faint sun glow so the amber face isn't flat, then the squad filling
-                  the card — big enough that the card no longer reads as empty */}
+              {/* a faint sun glow so the amber face isn't flat, then the ball-duel
+                  scene — two brand balls clashing under the gold VS coin */}
               <View pointerEvents="none" style={{ position: 'absolute', top: -30, left: -20, right: -20, height: 120 }}>
                 <Svg width="100%" height="100%">
                   <Defs>
@@ -3333,7 +3275,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                   <Rect width="100%" height="100%" fill="url(#amberGlow)" />
                 </Svg>
               </View>
-              <Image source={EMOTE_ART.squad} resizeMode="contain" style={{ position: 'absolute', alignSelf: 'center', bottom: 22, width: '104%', height: '90%' }} />
+              <RivalryArt />
             </View>
           }
         />
@@ -5111,7 +5053,7 @@ function EmoteShopRow({ emote, owned, canAfford, onBuy, onBlocked }: {
           <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>{t('store.owned')}</Text>
         </View>
       ) : (
-        <Btn compact kind="primary" icon="diamond" label={String(emote.premium?.price ?? 0)} onPress={() => { if (canAfford) onBuy(); else { runShake(); onBlocked(); } }} />
+        <Btn compact kind="primary" gem label={String(emote.premium?.price ?? 0)} onPress={() => { if (canAfford) onBuy(); else { runShake(); onBlocked(); } }} />
       )}
     </Animated.View>
   );
@@ -5445,73 +5387,70 @@ function PurchaseOverlay() {
 
 // ---- Discoverable emote card ----
 // Locked language: crisp frame + panelInk dim overlay (never whole-card opacity),
-// mini padlock disc, unlock-source caption. Tap to preview: the sticker spring-
-// scales up, a primary highlight ring fades in and auto-decays 400ms after the
-// preview ends — highlight means "currently playing", not "last touched".
-function DiscoverableEmoteCard({ emote, width }: {
+// mini padlock disc. Tap to preview: the sticker spring-scales up, a primary
+// highlight ring fades in, and the whole card POPS up off the row (Clash-Royale
+// "swollen from below" lift) while it plays.
+//
+// Exactly ONE card previews at a time — the parent owns `previewId` and passes
+// `active`. Tapping another card flips this one's `active` off mid-play: the
+// animation is cut instantly (sticker swaps back to its static frame), the green
+// ring fades and the lift springs back — no lingering highlight on the old card.
+const DiscoverableEmoteCard = memo(function DiscoverableEmoteCard({ emote, width, active, onPreview, onPreviewEnd }: {
   emote: EmoteMeta;
   width: number;
+  active: boolean;                // am I the one currently previewing?
+  onPreview: (id: string) => void;    // tapped → claim the single preview slot
+  onPreviewEnd: (id: string) => void; // my animation finished naturally → release it
 }) {
-  const [playing, setPlaying] = useState(false);
   const tmRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const decayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ring = useRef(new Animated.Value(0)).current; // highlight ring; also lifts the dim
   const stickerScale = useRef(new Animated.Value(1)).current;
+  const lift = useRef(new Animated.Value(0)).current; // 0 = seated, 1 = popped up
   const { scale: pressScale, onIn, onOut } = usePressScale(0.96); // every touchable responds on press-in (spec §11)
 
-  const endPreview = useCallback(() => {
-    setPlaying(false);
-    Animated.spring(stickerScale, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }).start();
-    if (decayRef.current) clearTimeout(decayRef.current);
-    decayRef.current = setTimeout(() => {
-      Animated.timing(ring, { toValue: 0, duration: 200, useNativeDriver: true }).start();
-    }, 400);
-  }, [ring, stickerScale]);
-
-  const handlePress = () => {
-    if (playing) return;
-    if (decayRef.current) clearTimeout(decayRef.current);
-    setPlaying(true);
-    Animated.timing(ring, { toValue: 1, duration: 150, useNativeDriver: true }).start();
-    Animated.spring(stickerScale, { toValue: 1.12, friction: 5, tension: 140, useNativeDriver: true }).start();
-    if (emote.kind === 'lottie') {
-      tmRef.current = setTimeout(endPreview, 2000);
-    }
-  };
-
+  // All visual state follows `active` in one place, so the interrupt path
+  // (parent hands the slot to another card) and the natural end share the exact
+  // same revert — the ring can never be left glowing on a stopped card.
   useEffect(() => {
-    return () => {
-      if (tmRef.current) clearTimeout(tmRef.current);
-      if (decayRef.current) clearTimeout(decayRef.current);
-    };
-  }, []);
-
-  const unlockLabel = emote.premium
-    ? (emote.week ? t('collection.unlockWeek', { week: emote.week }) : t('collection.unlockStore'))
-    : t('collection.unlockReward');
+    if (tmRef.current) { clearTimeout(tmRef.current); tmRef.current = null; }
+    if (active) {
+      Animated.timing(ring, { toValue: 1, duration: 150, useNativeDriver: true }).start();
+      Animated.spring(stickerScale, { toValue: 1.12, friction: 5, tension: 140, useNativeDriver: true }).start();
+      Animated.spring(lift, { toValue: 1, friction: 5, tension: 150, useNativeDriver: true }).start();
+      // Lottie safety net: if onFinish never fires, release the slot ourselves.
+      if (emote.kind === 'lottie') tmRef.current = setTimeout(() => onPreviewEnd(emote.id), 2000);
+    } else {
+      Animated.timing(ring, { toValue: 0, duration: 180, useNativeDriver: true }).start();
+      Animated.spring(stickerScale, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }).start();
+      Animated.spring(lift, { toValue: 0, friction: 6, tension: 150, useNativeDriver: true }).start();
+    }
+    return () => { if (tmRef.current) clearTimeout(tmRef.current); };
+  }, [active, emote.id, emote.kind, ring, stickerScale, lift, onPreviewEnd]);
 
   return (
-    <Pressable key={emote.id} onPress={handlePress} onPressIn={onIn} onPressOut={onOut} style={{ width }}>
+    <Pressable key={emote.id} onPress={() => { if (!active) onPreview(emote.id); }} onPressIn={onIn} onPressOut={onOut} style={{ width, zIndex: active ? 2 : 0 }}>
       <Animated.View
         style={{
-          paddingTop: 10, paddingBottom: 6,
+          paddingVertical: 10,
           backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
           borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss,
           borderBottomWidth: 3, borderBottomColor: theme.cardLip,
           overflow: 'hidden',
-          transform: [{ scale: pressScale }],
+          transform: [
+            // Clash-Royale pop: the active card rises off the row and swells a touch.
+            { translateY: lift.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }) },
+            { scale: lift.interpolate({ inputRange: [0, 1], outputRange: [1, 1.05] }) },
+            { scale: pressScale },
+          ],
         }}
       >
         <Animated.View style={{ width: 58, height: 58, alignItems: 'center', justifyContent: 'center', transform: [{ scale: stickerScale }] }}>
-          {playing ? (
-            <EmoteSticker key={`${emote.id}-anim`} id={emote.id} size={58} play onFinish={endPreview} />
+          {active ? (
+            <EmoteSticker key={`${emote.id}-anim`} id={emote.id} size={58} play onFinish={() => onPreviewEnd(emote.id)} />
           ) : (
             <EmoteSticker key={`${emote.id}-static`} id={emote.id} size={58} play={false} />
           )}
         </Animated.View>
-        <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', letterSpacing: 0.3, marginTop: 3, maxWidth: width - 12 }}>
-          {unlockLabel}
-        </Text>
         {/* locked dim — lifts while the preview plays; the frame stays crisp */}
         <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(theme.panelInk, 0.45), opacity: ring.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]} />
         {/* mini padlock disc */}
@@ -5523,7 +5462,7 @@ function DiscoverableEmoteCard({ emote, width }: {
       </Animated.View>
     </Pressable>
   );
-}
+});
 
 // Owned-emote card — press-lip physics + spring-pop equipped check. When the
 // loadout is full, the frame stays crisp and only the sticker dims.
@@ -5563,6 +5502,14 @@ const EMOTE_SLOTS = 6;
 export function CollectionScreen({ state, actions }: Props) {
   const profile = state.profile;
   const equipped = profile?.equippedEmotes ?? [];
+  // The single discoverable-emote preview slot: tapping a card claims it (which
+  // interrupts whichever card held it), a finished animation releases it.
+  // Both handlers are stable so the memo'd cards only re-render on `active` flips.
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const startPreview = useCallback((id: string) => setPreviewId(id), []);
+  const endPreviewFor = useCallback((id: string) => {
+    setPreviewId((cur) => (cur === id ? null : cur));
+  }, []);
   const toggleEquip = (id: string) => {
     if (equipped.includes(id)) actions.equipEmotes(equipped.filter((x) => x !== id));
     else if (equipped.length < EMOTE_SLOTS) actions.equipEmotes([...equipped, id]);
@@ -5649,7 +5596,14 @@ export function CollectionScreen({ state, actions }: Props) {
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP }}>
           {discoverable.length ? (
             discoverable.map((e) => (
-              <DiscoverableEmoteCard key={e.id} emote={e} width={COL_W} />
+              <DiscoverableEmoteCard
+                key={e.id}
+                emote={e}
+                width={COL_W}
+                active={previewId === e.id}
+                onPreview={startPreview}
+                onPreviewEnd={endPreviewFor}
+              />
             ))
           ) : (
             // 100% completion is a celebration, not a muted empty box.
@@ -6951,6 +6905,9 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
   // Set on confirm: close the picker page once the confirm dialog's exit
   // animation completes (GameModal onExited) — no setTimeout handoff chains.
   const closePickerOnExit = useRef(false);
+  // Set when "Evet" is tapped without enough diamonds: the insufficient popup
+  // opens from the purchase modal's onExited (never in the same commit).
+  const insufficientOnExit = useRef(false);
 
   if (!p) {
     // Branded placeholder while the profile loads — never a bare "—".
@@ -7019,8 +6976,23 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
           </View>
         </ScrollView>
 
-        {/* Purchase confirmation modal (inside avatar picker) */}
-        <GameModal visible={pendingAvatar !== null} onClose={() => setPendingAvatarId(null)} title={t('profile.buyTitle')} icon="lock-closed">
+        {/* Purchase confirmation modal (inside avatar picker).
+            onExited: opening the "not enough gems" popup must WAIT for this
+            modal's native dismissal to finish — flipping both in one commit
+            makes iOS drop the new presentation and the popup never shows
+            (same race the picker's own close guards against, see above). */}
+        <GameModal
+          visible={pendingAvatar !== null}
+          onClose={() => setPendingAvatarId(null)}
+          onExited={() => {
+            if (insufficientOnExit.current) {
+              insufficientOnExit.current = false;
+              setShowInsufficientPopup(true);
+            }
+          }}
+          title={t('profile.buyTitle')}
+          icon="lock-closed"
+        >
           {pendingAvatar ? (
             <>
               <View style={{ alignItems: 'center', gap: 10 }}>
@@ -7050,8 +7022,9 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
                         actions.buyAvatar(pendingAvatar.id);
                         setPendingAvatarId(null);
                       } else {
+                        // Close this modal first; its onExited opens the popup.
+                        insufficientOnExit.current = true;
                         setPendingAvatarId(null);
-                        setShowInsufficientPopup(true);
                       }
                     }}
                   />
@@ -7105,33 +7078,24 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
           ) : null}
         </GameModal>
 
-        {/* Insufficient diamonds popup (inside avatar picker) */}
-        <GameModal visible={showInsufficientPopup} onClose={() => setShowInsufficientPopup(false)} title={t('profile.notEnoughTitle')} icon="alert-circle">
-          <View style={{ alignItems: 'center', gap: 12, paddingVertical: 4 }}>
-            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 16, textAlign: 'center' }}>
-              {t('store.changeNameInsufficient')}
-            </Text>
-            <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
-              {t('profile.notEnoughBody')}
-            </Text>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <View style={{ flex: 1 }}>
-              <Btn label={t('settings.cancel')} kind="ghost" icon="close" onPress={() => setShowInsufficientPopup(false)} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Btn
-                label={t('common.continue')}
-                kind="primary"
-                icon="storefront"
-                onPress={() => {
-                  setShowInsufficientPopup(false);
-                  actions.closeProfile();
-                  onGoToStore?.('diamonds');
-                }}
-              />
-            </View>
-          </View>
+        {/* Insufficient diamonds popup (inside avatar picker) — the same recipe as
+            the store's weekly-emote version: one line of copy + a single gold CTA
+            that jumps straight to the diamond packs. */}
+        <GameModal visible={showInsufficientPopup} onClose={() => setShowInsufficientPopup(false)} title={t('profile.notEnoughTitle')} icon="diamond">
+          <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+            {t('profile.notEnoughGemsBody')}
+          </Text>
+          <Btn
+            big
+            kind="accent"
+            icon="storefront"
+            label={t('friends.goToStore')}
+            onPress={() => {
+              setShowInsufficientPopup(false);
+              actions.closeProfile();
+              onGoToStore?.('diamonds');
+            }}
+          />
         </GameModal>
       </Screen>
     );
