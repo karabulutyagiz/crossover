@@ -576,6 +576,10 @@ function AppRoot() {
   const openLeaderboard = useCallback(() => { actions.openLeaderboard(); setOverlay('leaderboard'); }, [actions]);
   const openMatchHistory = useCallback(() => { actions.openMatchHistory(); setOverlay('matchHistory'); }, [actions]);
   const openDiamondStore = useCallback(() => { setStoreSection('diamonds'); goToTab(0); }, [goToTab]);
+  // Home's find-friend card → Friends tab, landing focused on the add-friend search.
+  // A bumped sequence (not a boolean) so every tap re-triggers the focus effect.
+  const [friendsAddSeq, setFriendsAddSeq] = useState(0);
+  const goToFriendSearch = useCallback(() => { setFriendsAddSeq((s) => s + 1); goToTab(3); }, [goToTab]);
 
   // ---- Push notifications --------------------------------------------------
   // Once-per-install permission prompt: ~2s after the user first lands on the
@@ -776,7 +780,7 @@ function AppRoot() {
         setLoaded(false);
         setLangKey((k) => k + 1);
         actions.closeArenas();
-      }} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} onOpenLeaderboard={openLeaderboard} onOpenMatchHistory={openMatchHistory} onGoToFriends={() => goToTab(3)} />;
+      }} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} onOpenLeaderboard={openLeaderboard} onOpenMatchHistory={openMatchHistory} onGoToFriends={goToFriendSearch} />;
 
   // Shared top bar (trophies + gems), rendered INSIDE each tab page that needs it —
   // exactly like Home carries its own bar. Nothing lives outside the pager to toggle,
@@ -856,7 +860,7 @@ function AppRoot() {
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
           {state.profile ? renderResourceBar(activeTab === 3) : null}
-          <FriendsScreen {...props} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
+          <FriendsScreen {...props} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} focusAddFriendSeq={friendsAddSeq} />
         </View>
       </Animated.ScrollView>
 

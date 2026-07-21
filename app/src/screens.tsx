@@ -149,6 +149,7 @@ interface Props {
   onOpenLeaderboard?: () => void; // open the centered leaderboard popup (App-level overlay)
   onOpenMatchHistory?: () => void; // open the centered match-history popup (App-level overlay)
   onGoToFriends?: () => void; // page the tab ScrollView across to the Friends tab
+  focusAddFriendSeq?: number; // bumped by App when Home's find-friend card is tapped → Friends focuses its add-friend input
 }
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -3121,11 +3122,6 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
     AsyncStorage.getItem(NEWS_READ_KEY).then((v) => setNewsUnread(v !== LATEST_NEWS_ID)).catch(() => {});
   }, []);
   const [joinCode, setJoinCode] = useState('');
-  const [friendQuery, setFriendQuery] = useState('');
-  // The query THIS card submitted. `state.userSearchResults` is global and is never reset
-  // (useCrossover.ts only ever writes it on user_search_results), so without this the card
-  // would show a hit left behind by the Friends tab before the user searched anything here.
-  const [submitted, setSubmitted] = useState<string | null>(null);
   const [hero, setHero] = useState({ w: 0, h: 0 });
   const [railW, setRailW] = useState(0);
 
@@ -3186,24 +3182,9 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
     actions.findMatch({ mode: m });
   }, [actions, hasPack]);
 
-  // searchUsers is an EXACT display-name lookup server-side (rank.ts:624,
-  // `lower(display_name) = lower($1)`), so searching per keystroke would read as
-  // broken for every partial name. Fire on submit only, and say so in the hint.
-  const runSearch = useCallback(() => {
-    const q = friendQuery.trim();
-    if (q.length < 2) return;
-    setSubmitted(q);
-    actions.searchUsers(q);
-  }, [friendQuery, actions]);
-
   // Three across, as the mockup — the row is (3 cards + 2 gaps) wide.
   const cardW = railW > 0 ? (railW - 2 * CAROUSEL_GAP) / 3 : 0;
   const codeReady = joinCode.length === ROOM_CODE_LEN;
-  // searchUsers is an exact display-name match (server/src/game/rank.ts:624), so a result
-  // belongs to this card only when it equals the query we submitted.
-  const hit = submitted
-    ? state.userSearchResults.find((u) => u.displayName.toLowerCase() === submitted.toLowerCase())
-    : undefined;
 
   return (
     <Screen scroll pad={16} contentCenter={false}>
@@ -3413,12 +3394,12 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 }
               />
             </View>
-            {/* Find a friend. Unlike the in-room player search (search_players, handled
-                only inside a room), search_users is served top-level at ws/server.ts:489
-                — so it genuinely works from home. */}
+            {/* Find a friend — looks exactly like the old inline-search card (title +
+                search bar + hint), but the "search bar" is paint only: the WHOLE card
+                is one button that pages across to Friends and focuses its add input. */}
             <View style={{ width: cardW }}>
-              <View style={{ backgroundColor: darken(theme.card, 0.52), borderRadius: 20, paddingBottom: 3 }}>
-                <View style={{ height: 128, borderRadius: 18, backgroundColor: theme.card, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.14)', padding: 11 }}>
+              <Pressable onPress={() => onGoToFriends?.()} style={({ pressed }) => ({ backgroundColor: darken(theme.card, 0.52), borderRadius: 20, paddingBottom: 3, transform: [{ translateY: pressed ? 2 : 0 }] })}>
+                <View pointerEvents="none" style={{ height: 128, borderRadius: 18, backgroundColor: theme.card, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.14)', padding: 11 }}>
                   <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{t('home.findFriends')}</Text>
                   <View style={{
                     flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8,
@@ -3426,47 +3407,16 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                     borderWidth: 1.5, borderColor: theme.border, paddingHorizontal: 9,
                   }}>
                     <Ionicons name="search" size={13} color={theme.muted} />
-                    <TextInput
-                      value={friendQuery}
-                      onChangeText={(v) => { setFriendQuery(v); setSubmitted(null); }}
-                      onSubmitEditing={runSearch}
-                      placeholder={t('friends.usernamePlaceholder')}
-                      placeholderTextColor={withAlpha(theme.muted, 0.5)}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      returnKeyType="search"
-                      style={{ flex: 1, color: theme.text, fontFamily: 'Poppins-SemiBold', fontSize: 11.5, padding: 0 }}
-                    />
-                    <Pressable onPress={runSearch} hitSlop={6} disabled={friendQuery.trim().length < 2}>
-                      <Ionicons name="arrow-forward-circle" size={19} color={friendQuery.trim().length < 2 ? theme.muted : theme.primary} />
-                    </Pressable>
-                  </View>
-                  {hit ? (
-                    <View style={{ marginTop: 9, gap: 6 }}>
-                      {/* No avatar: user_search_results carries only { userId, displayName }
-                          (protocol.ts:224), so an avatar here is always the generic fallback —
-                          and at this card's width it would starve the name it identifies. */}
-                      <Text style={{ color: theme.text, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold' }} numberOfLines={1}>{hit.displayName}</Text>
-                      <Pressable
-                        onPress={() => actions.sendFriendRequest(undefined, hit.displayName)}
-                        style={({ pressed }) => ({
-                          height: 28, borderRadius: 14, backgroundColor: theme.primary,
-                          borderBottomWidth: 2, borderBottomColor: theme.primaryDark,
-                          flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-                          transform: [{ translateY: pressed ? 2 : 0 }],
-                        })}
-                      >
-                        <Ionicons name="person-add" size={12} color={theme.ink} />
-                        <Text style={{ color: theme.ink, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold' }} numberOfLines={1}>{t('friends.sendRequest')}</Text>
-                      </Pressable>
-                    </View>
-                  ) : (
-                    <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', marginTop: 10 }} numberOfLines={3}>
-                      {submitted ? t('home.findFriendsNone') : t('home.findFriendsHint')}
+                    <Text style={{ flex: 1, color: withAlpha(theme.muted, 0.5), fontFamily: 'Poppins-SemiBold', fontSize: 11.5 }} numberOfLines={1}>
+                      {t('friends.usernamePlaceholder')}
                     </Text>
-                  )}
+                    <Ionicons name="arrow-forward-circle" size={19} color={theme.primary} />
+                  </View>
+                  <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', marginTop: 10 }} numberOfLines={3}>
+                    {t('home.findFriendsHint')}
+                  </Text>
                 </View>
-              </View>
+              </Pressable>
             </View>
           </ScrollView>
         ) : null}
@@ -6064,7 +6014,7 @@ function SpringPop({ style, children }: { style?: any; children: ReactNode }) {
   );
 }
 
-export function FriendsScreen({ state, actions, onGoToStore }: Props) {
+export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }: Props) {
   const [addInput, setAddInput] = useState('');
   const [searchMode, setSearchMode] = useState<'code' | 'username'>('code');
   const [friendTab, setFriendTab] = useState<'friends' | 'requests' | 'messages'>('friends');
@@ -6097,6 +6047,19 @@ export function FriendsScreen({ state, actions, onGoToStore }: Props) {
   useEffect(() => {
     if (profile?.userId && state.connected) actions.loadFriends();
   }, [profile?.userId, state.connected]);
+
+  // Home's find-friend card lands here: switch to name search and raise the keyboard.
+  // The delay lets the tab pager's instant jump settle before focus scrolls/animates.
+  // The ref seeds from the mount-time value so a remount (e.g. the language-change
+  // key bump) with an old nonzero seq doesn't steal focus — only a fresh tap does.
+  const handledAddSeq = useRef(focusAddFriendSeq ?? 0);
+  useEffect(() => {
+    if (!focusAddFriendSeq || focusAddFriendSeq === handledAddSeq.current) return;
+    handledAddSeq.current = focusAddFriendSeq;
+    setSearchMode('username');
+    const id = setTimeout(() => addInputRef.current?.focus(), 300);
+    return () => clearTimeout(id);
+  }, [focusAddFriendSeq]);
 
   const onSendRequest = () => {
     const val = addInput.trim();

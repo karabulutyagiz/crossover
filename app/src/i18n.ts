@@ -82,8 +82,7 @@ const tr = {
   'home.modesTitle': 'Mücadele Modu',
   'home.roomCodeLabel': 'Oda kodun var mı?',
   'home.findFriends': 'Arkadaş Bul',
-  'home.findFriendsHint': 'Kullanıcı adını tam yaz ve ara.',
-  'home.findFriendsNone': 'Bu kullanıcı adı bulunamadı.',
+  'home.findFriendsHint': 'Yeni arkadaşlar ekle.',
 
   // common / scope picker
   'common.noResults': 'Sonuç bulunamadı',
@@ -587,8 +586,7 @@ const en: typeof tr = {
   'home.modesTitle': 'Challenge Mode',
   'home.roomCodeLabel': 'Got a room code?',
   'home.findFriends': 'Find Friends',
-  'home.findFriendsHint': 'Type the exact username and search.',
-  'home.findFriendsNone': 'No player with that username.',
+  'home.findFriendsHint': 'Add new friends.',
 
   'common.noResults': 'No results found',
   'common.loading': 'Loading…',
