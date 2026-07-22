@@ -1096,15 +1096,19 @@ export function IntroScreen({ onDone }: { onDone: () => void }) {
 // The REAL brand mark — the shipped app icon (black tile, white+green interlocked
 // rings), rounded-masked. Never rebuild the logo as synthetic SVG (spec §14);
 // the `glow` prop is retained for call-site compatibility but ignored.
+// The COF "versus" emblem (blue ball · lightning · red ball) — the brand mark,
+// shown WITH its background: landscape art on a dark rounded tile whose fill
+// matches the logo's own navy backdrop, reading as one seamless framed mark.
+// (Card balls kept for the splash's fly-in, which dissolves into this emblem.)
+const COF_LOGO = require('../assets/cof-logo.png');
+const COF_LOGO_AR = 1122 / 1402;             // native art aspect (h / w)
+const CLASH_BALL_BLUE = require('../assets/ball-card-blue.png');
+const CLASH_BALL_WHITE = require('../assets/ball-card-white.png');
 function BrandMark({ size = 104 }: { size?: number; glow?: boolean }) {
   return (
     <View style={{ width: size, height: size, borderRadius: size * 0.24, shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}>
-      <View style={{ width: size, height: size, borderRadius: size * 0.24, overflow: 'hidden', backgroundColor: '#0A0A0B' }}>
-        <Image
-          source={require('../assets/splash-icon.png')}
-          style={{ width: size, height: size, transform: [{ scale: 1.03 }] }}
-          resizeMode="cover"
-        />
+      <View style={{ width: size, height: size, borderRadius: size * 0.24, overflow: 'hidden', backgroundColor: '#050B1C', alignItems: 'center', justifyContent: 'center' }}>
+        <Image source={COF_LOGO} style={{ width: size, height: size }} resizeMode="contain" />
       </View>
     </View>
   );
@@ -1166,15 +1170,19 @@ function ShineSweep({ width, height, delay = 0, duration = 650, loop = false, lo
   );
 }
 
-// ---- "STADIUM SLAM" opening: the badge drops in with weight, sparks fly,
-// CROSSOVER stamps in letter-by-letter, then a gold shine sweeps the wordmark.
-// Runs entirely on the native driver; a fixed timer fires onDone at 2600ms so
+// ---- "CLASH" opening: two balls rush in from opposite edges and COLLIDE at
+// centre — flash, sparks, a stage shake — then the COF emblem forms in their
+// place as they recoil apart; CROSSOVER stamps in letter-by-letter and a gold
+// shine sweeps the wordmark. Native driver only; a fixed timer fires onDone so
 // the splash never blocks on anything.
-const SLAM_TOTAL_MS = 2500;
+const SLAM_TOTAL_MS = 2900;
 const SLAM_WORD = 'CROSSOVER';
 const SLAM_FONT = Math.min(36, SCREEN_W * 0.088);
 const SLAM_WM_W = Math.min(SCREEN_W * 0.88, 380);
-const SLAM_BADGE = 128;
+const CLASH_BALL = Math.min(112, SCREEN_W * 0.30);     // rushing ball diameter (dissolves into emblem)
+const CLASH_LOGO_W = Math.min(SCREEN_W * 0.82, 360);   // revealed emblem width
+const CLASH_LOGO_H = CLASH_LOGO_W * COF_LOGO_AR;
+const SLAM_BADGE = 128;                                // brand badge size (loading/entry)
 // Impact sparks: angle (deg, -90 = straight up), distance, size, color.
 // Restraint per spec §14: a handful of debris kicks, not a firework.
 const SLAM_SPARKS: { a: number; d: number; s: number; c: string }[] = [
@@ -1189,35 +1197,38 @@ const SLAM_SPARKS: { a: number; d: number; s: number; c: string }[] = [
 
 export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => void; fontsReady?: boolean }) {
   const veil = useRef(new Animated.Value(1)).current;      // black cover → fades out
-  const drop = useRef(new Animated.Value(0)).current;      // badge fall
-  const impact = useRef(new Animated.Value(0)).current;    // squash & recover
-  const shake = useRef(new Animated.Value(0)).current;     // stage shake
-  const ring1 = useRef(new Animated.Value(0)).current;     // mint impact ring
+  const fly = useRef(new Animated.Value(0)).current;       // two balls rush in 0→1 (contact)
+  const shake = useRef(new Animated.Value(0)).current;     // stage shake on impact
+  const ring1 = useRef(new Animated.Value(0)).current;     // impact ring
   const burst = useRef(new Animated.Value(0)).current;     // spark burst
+  const flash = useRef(new Animated.Value(0)).current;     // white collision flash
+  const reveal = useRef(new Animated.Value(0)).current;    // emblem forms; balls recoil out + fade
   const letters = useRef(SLAM_WORD.split('').map(() => new Animated.Value(0))).current;
   const fired = useRef(false);
-  // The 2600ms timer must call the LATEST onDone, not the mount-time closure.
+  // The exit timer must call the LATEST onDone, not the mount-time closure.
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
 
   useEffect(() => {
     const anim = Animated.sequence([
-      // 0–640ms: lights up, badge falls with gravity
+      // 0–570ms: lights up, the two balls rush in from opposite edges
       Animated.parallel([
-        Animated.timing(veil, { toValue: 0, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(veil, { toValue: 0, duration: 240, easing: Easing.out(Easing.quad), useNativeDriver: true }),
         Animated.sequence([
-          Animated.delay(120),
-          Animated.timing(drop, { toValue: 1, duration: 520, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+          Animated.delay(140),
+          Animated.timing(fly, { toValue: 1, duration: 430, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
         ]),
       ]),
-      // 640ms: IMPACT — squash, shake, rings, sparks; letters stamp in from 980ms
+      // ~570ms: COLLISION — flash, shake, ring, sparks; the emblem forms as the
+      // balls recoil apart and fade; the wordmark stamps in from ~990ms.
       Animated.parallel([
-        Animated.timing(impact, { toValue: 1, duration: 380, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-        Animated.timing(shake, { toValue: 1, duration: 300, easing: Easing.linear, useNativeDriver: true }),
-        Animated.timing(ring1, { toValue: 1, duration: 430, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-        Animated.timing(burst, { toValue: 1, duration: 520, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(flash, { toValue: 1, duration: 460, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(shake, { toValue: 1, duration: 340, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(ring1, { toValue: 1, duration: 480, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(burst, { toValue: 1, duration: 560, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(reveal, { toValue: 1, duration: 560, easing: Easing.out(Easing.back(2.1)), useNativeDriver: true }),
         Animated.sequence([
-          Animated.delay(340),
+          Animated.delay(420),
           Animated.stagger(55, letters.map((v) =>
             Animated.timing(v, { toValue: 1, duration: 260, easing: Easing.out(Easing.back(3)), useNativeDriver: true }),
           )),
@@ -1232,54 +1243,69 @@ export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => voi
     return () => { clearTimeout(tm); anim.stop(); };
   }, []);
 
-  const badgeTY = drop.interpolate({ inputRange: [0, 1], outputRange: [-SCREEN_H * 0.42, 0] });
-  const badgeScale = drop.interpolate({ inputRange: [0, 1], outputRange: [1.3, 1] });
-  const badgeOpacity = drop.interpolate({ inputRange: [0, 0.12, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' });
-  // squash anchored to the floor: scale + a compensating translate
-  const squashTY = impact.interpolate({ inputRange: [0, 0.22, 0.55, 1], outputRange: [0, SLAM_BADGE * 0.09, -SLAM_BADGE * 0.02, 0] });
-  const squashX = impact.interpolate({ inputRange: [0, 0.22, 0.55, 1], outputRange: [1, 1.12, 0.96, 1] });
-  const squashY = impact.interpolate({ inputRange: [0, 0.22, 0.55, 1], outputRange: [1, 0.8, 1.06, 1] });
-  const shakeTX = shake.interpolate({ inputRange: [0, 0.25, 0.55, 0.8, 1], outputRange: [0, -4, 3, -2, 0] });
-  const shakeTY = shake.interpolate({ inputRange: [0, 0.18, 0.42, 0.66, 0.85, 1], outputRange: [0, 7, -5, 3, -1, 0] });
-  const shadowOpacity = drop.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 0.05, 0.34], extrapolate: 'clamp' });
-  const shadowScaleX = drop.interpolate({ inputRange: [0, 1], outputRange: [0.45, 1] });
+  // Balls rush in from opposite edges, meet at centre, then recoil apart + fade as
+  // the COF emblem (WITH its own navy background) grows in their place. Everything
+  // positions off a zero-size centre anchor.
+  const flyBlueX = fly.interpolate({ inputRange: [0, 1], outputRange: [-SCREEN_W * 0.62, 0] });
+  const flyWhiteX = fly.interpolate({ inputRange: [0, 1], outputRange: [SCREEN_W * 0.62, 0] });
+  const spinBlue = fly.interpolate({ inputRange: [0, 1], outputRange: ['-260deg', '0deg'] });
+  const spinWhite = fly.interpolate({ inputRange: [0, 1], outputRange: ['260deg', '0deg'] });
+  const recoilBlue = reveal.interpolate({ inputRange: [0, 0.22, 1], outputRange: [0, -6, -46] });
+  const recoilWhite = reveal.interpolate({ inputRange: [0, 0.22, 1], outputRange: [0, 6, 46] });
+  const ballScale = reveal.interpolate({ inputRange: [0, 0.16, 0.5, 1], outputRange: [1, 1.12, 0.92, 0.6] });
+  const ballOpacity = reveal.interpolate({ inputRange: [0, 0.3, 0.62], outputRange: [1, 1, 0], extrapolate: 'clamp' });
+  const logoScale = reveal.interpolate({ inputRange: [0, 1], outputRange: [0.28, 1] });
+  const logoOpacity = reveal.interpolate({ inputRange: [0, 0.14, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' });
+  const flashOpacity = flash.interpolate({ inputRange: [0, 0.1, 0.42, 1], outputRange: [0, 0.5, 0, 0], extrapolate: 'clamp' });
+  const shakeTX = shake.interpolate({ inputRange: [0, 0.25, 0.55, 0.8, 1], outputRange: [0, -5, 4, -2, 0] });
+  const shakeTY = shake.interpolate({ inputRange: [0, 0.18, 0.42, 0.66, 0.85, 1], outputRange: [0, 6, -4, 3, -1, 0] });
+  const STAGE_H = CLASH_LOGO_H + 44;
 
   return (
     <OpeningBackdrop>
       <Animated.View style={{ alignItems: 'center', transform: [{ translateX: shakeTX }, { translateY: shakeTY }] }}>
-        {/* badge + floor shadow + impact FX */}
-        <View style={{ width: SLAM_BADGE * 1.4, height: SLAM_BADGE + 30, alignItems: 'center', justifyContent: 'flex-start' }}>
-          <Animated.View pointerEvents="none" style={{ position: 'absolute', bottom: 0, width: SLAM_BADGE * 1.05, height: 20, borderRadius: 12, backgroundColor: '#01030A', opacity: shadowOpacity, transform: [{ scaleX: shadowScaleX }] }} />
-          <Animated.View style={{ opacity: badgeOpacity, transform: [{ translateY: badgeTY }, { scale: badgeScale }, { translateY: squashTY }, { scaleX: squashX }, { scaleY: squashY }] }}>
-            <BrandMark size={SLAM_BADGE} />
-          </Animated.View>
-          {/* impact anchor (zero-size, centered at the badge base) */}
-          <View pointerEvents="none" style={{ position: 'absolute', left: '50%', bottom: 16, width: 0, height: 0 }}>
-            <Animated.View style={{ position: 'absolute', left: -70, top: -70, width: 140, height: 140, borderRadius: 70, borderWidth: 3, borderColor: theme.primary, opacity: ring1.interpolate({ inputRange: [0, 0.12, 1], outputRange: [0, 0.85, 0], extrapolate: 'clamp' }), transform: [{ scale: ring1.interpolate({ inputRange: [0, 1], outputRange: [0.35, 2.4] }) }] }} />
-            {SLAM_SPARKS.map((p, i) => {
-              const rad = (p.a * Math.PI) / 180;
-              const dx = Math.cos(rad) * p.d;
-              const dy = Math.sin(rad) * p.d;
-              return (
-                <Animated.View
-                  key={i}
-                  style={{
-                    position: 'absolute', left: -p.s / 2, top: -p.s / 2, width: p.s, height: p.s, borderRadius: p.s / 2, backgroundColor: p.c,
-                    opacity: burst.interpolate({ inputRange: [0, 0.1, 0.65, 1], outputRange: [0, 1, 1, 0], extrapolate: 'clamp' }),
-                    transform: [
-                      { translateX: burst.interpolate({ inputRange: [0, 1], outputRange: [0, dx] }) },
-                      { translateY: burst.interpolate({ inputRange: [0, 1], outputRange: [0, dy] }) },
-                      { scale: burst.interpolate({ inputRange: [0, 1], outputRange: [1, 0.25] }) },
-                    ],
-                  }}
-                />
-              );
-            })}
+        {/* collision stage — everything positions off a zero-size centre anchor */}
+        <View style={{ width: SCREEN_W, height: STAGE_H, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 0, height: 0, alignItems: 'center', justifyContent: 'center' }}>
+            {/* the revealed COF emblem (with its own navy background) — pops in on impact */}
+            <Animated.View pointerEvents="none" style={{ position: 'absolute', left: -CLASH_LOGO_W / 2, top: -CLASH_LOGO_H / 2, opacity: logoOpacity, transform: [{ scale: logoScale }] }}>
+              <View style={{ width: CLASH_LOGO_W, height: CLASH_LOGO_H, borderRadius: 26, overflow: 'hidden', backgroundColor: '#050B1C', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 20, shadowOffset: { width: 0, height: 12 }, elevation: 18 }}>
+                <Image source={COF_LOGO} style={{ width: CLASH_LOGO_W, height: CLASH_LOGO_H }} resizeMode="cover" />
+              </View>
+            </Animated.View>
+
+            {/* the two rushing balls (blue ← left, white → right); they fade into the emblem */}
+            <Animated.Image source={CLASH_BALL_BLUE} style={{ position: 'absolute', left: -CLASH_BALL, top: -CLASH_BALL / 2, width: CLASH_BALL, height: CLASH_BALL, opacity: ballOpacity, transform: [{ translateX: Animated.add(flyBlueX, recoilBlue) }, { rotate: spinBlue }, { scale: ballScale }] }} />
+            <Animated.Image source={CLASH_BALL_WHITE} style={{ position: 'absolute', left: 0, top: -CLASH_BALL / 2, width: CLASH_BALL, height: CLASH_BALL, opacity: ballOpacity, transform: [{ translateX: Animated.add(flyWhiteX, recoilWhite) }, { rotate: spinWhite }, { scale: ballScale }] }} />
+
+            {/* impact ring + spark debris, centred on the anchor */}
+            <View pointerEvents="none" style={{ position: 'absolute', width: 0, height: 0 }}>
+              <Animated.View style={{ position: 'absolute', left: -70, top: -70, width: 140, height: 140, borderRadius: 70, borderWidth: 3, borderColor: theme.accent, opacity: ring1.interpolate({ inputRange: [0, 0.12, 1], outputRange: [0, 0.85, 0], extrapolate: 'clamp' }), transform: [{ scale: ring1.interpolate({ inputRange: [0, 1], outputRange: [0.35, 2.6] }) }] }} />
+              {SLAM_SPARKS.map((p, i) => {
+                const rad = (p.a * Math.PI) / 180;
+                const dx = Math.cos(rad) * p.d;
+                const dy = Math.sin(rad) * p.d;
+                return (
+                  <Animated.View
+                    key={i}
+                    style={{
+                      position: 'absolute', left: -p.s / 2, top: -p.s / 2, width: p.s, height: p.s, borderRadius: p.s / 2, backgroundColor: p.c,
+                      opacity: burst.interpolate({ inputRange: [0, 0.1, 0.65, 1], outputRange: [0, 1, 1, 0], extrapolate: 'clamp' }),
+                      transform: [
+                        { translateX: burst.interpolate({ inputRange: [0, 1], outputRange: [0, dx] }) },
+                        { translateY: burst.interpolate({ inputRange: [0, 1], outputRange: [0, dy] }) },
+                        { scale: burst.interpolate({ inputRange: [0, 1], outputRange: [1, 0.25] }) },
+                      ],
+                    }}
+                  />
+                );
+              })}
+            </View>
           </View>
         </View>
 
         {/* wordmark: letters stamp in, then a gold shine sweeps across */}
-        <View style={{ width: SLAM_WM_W, alignItems: 'center', marginTop: 26 }}>
+        <View style={{ width: SLAM_WM_W, alignItems: 'center', marginTop: 22 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
             {SLAM_WORD.split('').map((ch, i) => (
               <Animated.Text
@@ -1299,10 +1325,11 @@ export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => voi
               </Animated.Text>
             ))}
           </View>
-          <ShineSweep width={SLAM_WM_W} height={SLAM_FONT * 1.4} delay={1780} duration={620} tint={theme.accent} opacity={0.3} band={0.24} />
+          <ShineSweep width={SLAM_WM_W} height={SLAM_FONT * 1.4} delay={1900} duration={620} tint={theme.accent} opacity={0.3} band={0.24} />
         </View>
       </Animated.View>
-      {/* fade-from-black veil (on top of everything) */}
+      {/* white collision flash, then the fade-from-black veil (both on top) */}
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF', opacity: flashOpacity }]} />
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: veil }]} />
     </OpeningBackdrop>
   );
@@ -2578,8 +2605,10 @@ export const NEWS_READ_KEY = '@crossover_news_read';
 
 export function NewsModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   return (
-    <GameModal visible={visible} onClose={onClose} title="Haberler" icon="megaphone">
-      <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+    <PopupCard visible={visible} title="Haberler" icon="megaphone" onClose={onClose}>
+      {/* PopupCard's scrim is a SIBLING (not a parent) of the card, so — unlike
+          GameModal — it doesn't swallow this ScrollView's vertical drag. */}
+      <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, gap: 12 }}>
         {NEWS.map((item) => (
           <View key={item.id} style={{ backgroundColor: theme.panelInnerFill, borderRadius: 16, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, padding: 15, gap: 9 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -2593,7 +2622,7 @@ export function NewsModal({ visible, onClose }: { visible: boolean; onClose: () 
           </View>
         ))}
       </ScrollView>
-    </GameModal>
+    </PopupCard>
   );
 }
 
@@ -3332,9 +3361,14 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                   <Ionicons key={i} name="star" size={12} color={i < Math.ceil(arenaPct * 3) ? theme.gold : 'rgba(255,255,255,0.22)'} />
                 ))}
               </View>
-              <Text style={{ position: 'absolute', left: 11, top: 9, color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }} numberOfLines={1}>
-                {nextTier ? `${trophies}/${nextTier.min} 🏆` : t('home.topArena')}
-              </Text>
+              {nextTier ? (
+                <View style={{ position: 'absolute', left: 11, top: 9, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }} numberOfLines={1}>{`${trophies}/${nextTier.min}`}</Text>
+                  <Ionicons name="trophy" size={11} color={theme.accent} />
+                </View>
+              ) : (
+                <Text style={{ position: 'absolute', left: 11, top: 9, color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{t('home.topArena')}</Text>
+              )}
             </View>
           }
         />
@@ -4250,7 +4284,11 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
   }, [state.phase, phaseIn]);
 
   return (
-    <Screen scroll>
+    // Top-aligned (not centred): with the keyboard up during the guess phase, centred
+    // content pushed the input + Send/Pass buttons down under the keyboard. Anchored to
+    // the top they sit in the upper screen, above the keyboard; automaticallyAdjust-
+    // KeyboardInsets still scrolls the focused field into view on short screens.
+    <Screen scroll contentCenter={false}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
         <MatchExitButton onPress={handleLeave} />
         <PlayerBar state={state} onEmotePress={tutorial ? undefined : () => setEmoteOpen(true)} />
@@ -4365,6 +4403,8 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
           )}
         </Animated.View>
       )}
+      {/* trailing room so the last button can scroll clear of the keyboard on short screens */}
+      <View style={{ height: 32 }} />
       <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
       {!tutorial ? <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} /> : null}
     </Screen>
