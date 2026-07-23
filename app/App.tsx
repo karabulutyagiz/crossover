@@ -388,7 +388,8 @@ function AppRoot() {
   const [splash, setSplash] = useState(true);
   const [tutorialSeen, setTutorialSeen] = useState<boolean | null>(null);
   const [loaded, setLoaded] = useState(false); // Clash-Royale-style entry loading (warms logo cache)
-  const [storeSection, setStoreSection] = useState<'socialPack' | 'diamonds' | null>(null);
+  const [storeSection, setStoreSection] = useState<'socialPack' | 'diamonds' | 'top' | null>(null);
+  const storeAtDiamondsRef = useRef(false); // re-tap toggle: diamonds ↔ back to top
   const [comingSoon, setComingSoon] = useState(false); // Turnuvalar — greyed "coming soon"
   const [expiredSocialPack, setExpiredSocialPack] = useState(false); // Social Pack expired popup
   const [overlay, setOverlay] = useState<'leaderboard' | 'matchHistory' | null>(null); // centered popups
@@ -560,6 +561,7 @@ function AppRoot() {
     tabGuardTimer.current = setTimeout(() => { programmaticScroll.current = false; }, 260);
     setActiveTab(idx);
     scrollRef.current?.scrollTo({ x: idx * SCREEN_W, animated: false });
+    storeAtDiamondsRef.current = false; // fresh tab entry → re-tap toggle starts at "diamonds"
     if (idx !== 2) resetHomePhase(); // home lives at index 2 (store=0, collection=1, home=2, friends=3)
   }, [resetHomePhase]);
 
@@ -888,12 +890,14 @@ function AppRoot() {
               resetHomePhase(); return;
             }
             if (idx === 0 && activeTab === 0) {
-              // Re-tapping the active Store tab jumps to the diamond packs
-              // (Clash Royale style). null→'diamonds' retriggers the scroll effect
-              // even if the last jump was already to diamonds; the trailing reset
-              // un-parks the value so LATER same-value jumps (gem pill etc.) fire.
+              // Re-tapping the active Store tab TOGGLES (Clash Royale style):
+              // first re-tap scrolls to the diamond packs, the next one back to
+              // the top. null→value retriggers the scroll effect even for repeat
+              // targets; the trailing reset un-parks it for later gem-pill jumps.
+              const target = storeAtDiamondsRef.current ? 'top' : 'diamonds';
+              storeAtDiamondsRef.current = !storeAtDiamondsRef.current;
               setStoreSection(null);
-              setTimeout(() => setStoreSection('diamonds'), 30);
+              setTimeout(() => setStoreSection(target), 30);
               setTimeout(() => setStoreSection(null), 900);
               return;
             }

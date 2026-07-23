@@ -15,7 +15,7 @@ export const SERVER_URL =
 
 // Same host over HTTP(S), for REST endpoints like /scopes and /leaderboard.
 export const HTTP_URL = SERVER_URL.replace(/^ws/, 'http');
-export const APP_BUILD_NUMBER = 116;
+export const APP_BUILD_NUMBER = 117;
 
 // Google OAuth client IDs (from Google Cloud → Credentials).
 export const GOOGLE_IOS_CLIENT_ID =

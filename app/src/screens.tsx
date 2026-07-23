@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Animated, Easing, PanResponder, Platform, Dimensions, Linking, LayoutAnimation } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -5041,7 +5042,7 @@ function EmoteShopRow({ emote, owned, canAfford, onBuy, onBlocked }: {
   );
 }
 
-export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebration }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | null }) {
+export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebration }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | 'top' | null }) {
   const profile = state.profile;
   // One skinned dialog for every store notice (pending/failed/coming-soon/ad errors) —
   // replaces the five native Alert.alert sites. Content stays mounted through the
@@ -5157,7 +5158,8 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
 
   useEffect(() => {
     if (scrollToSection && storeScrollRef.current) {
-      const y = sectionYRef.current[scrollToSection];
+      // 'top' is the re-tap toggle's return trip — plain scroll to the very top.
+      const y = scrollToSection === 'top' ? 0 : sectionYRef.current[scrollToSection];
       if (y !== undefined) {
         setTimeout(() => storeScrollRef.current?.scrollTo({ y, animated: true }), 150);
       }
@@ -6823,9 +6825,7 @@ function SwipeBackWrap({ children, onBack }: { children: (softBack: () => void) 
   const screenW = Dimensions.get('window').width;
   const translateX = useRef(new Animated.Value(screenW)).current;
   const closingRef = useRef(false);
-  const shouldStartBackSwipe = (evt: any, g: { dx: number; dy: number }) =>
-    evt.nativeEvent.pageY < chatComposerTop.y &&
-    Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.7;
+  const ignoreRef = useRef(false);
 
   const closeWithAnimation = useCallback((direction = 1) => {
     if (closingRef.current) return;
@@ -6858,45 +6858,43 @@ function SwipeBackWrap({ children, onBack }: { children: (softBack: () => void) 
     }).start();
   }, [screenW, translateX]);
 
-  const panResponder = useRef(PanResponder.create({
-    // Capture before the message ScrollView consumes the horizontal swipe.
-    onMoveShouldSetPanResponderCapture: shouldStartBackSwipe,
-    onMoveShouldSetPanResponder: shouldStartBackSwipe,
-    onPanResponderMove: (_, g) => {
-      translateX.setValue(g.dx);
-    },
-    onPanResponderRelease: (_, g) => {
-      const pastThreshold = Math.abs(g.dx) > screenW * SWIPE_THRESHOLD;
-      const fastFlick = Math.abs(g.vx) > 0.45 && Math.abs(g.dx) > 34;
-      if (pastThreshold || fastFlick) {
-        closeWithAnimation(g.dx >= 0 ? 1 : -1);
-      } else {
-        // Cancel: spring back to origin
-        Animated.spring(translateX, {
-          toValue: 0,
-          useNativeDriver: true,
-          friction: 8,
-          tension: 80,
-        }).start();
-      }
-    },
-    onPanResponderTerminate: () => {
-      Animated.spring(translateX, {
-        toValue: 0,
-        useNativeDriver: true,
-        friction: 8,
-        tension: 80,
-      }).start();
-    },
-  })).current;
+  // RNGH pan (NATIVE-level gesture): unlike the old JS PanResponder capture — which
+  // lost the race to the message ScrollView everywhere but the screen edge — this
+  // wins a clearly-horizontal drag started ANYWHERE. Vertical intent fails fast so
+  // the list scrolls normally; gestures starting on/below the composer are ignored
+  // (text-selection drags in the input must never close the chat).
+  const springBack = useCallback(() => {
+    Animated.spring(translateX, { toValue: 0, useNativeDriver: true, friction: 8, tension: 80 }).start();
+  }, [translateX]);
+  const pan = useMemo(() => Gesture.Pan()
+    .activeOffsetX([-14, 14])
+    .failOffsetY([-12, 12])
+    .runOnJS(true)
+    .onBegin((e) => { ignoreRef.current = e.absoluteY >= chatComposerTop.y; })
+    .onUpdate((e) => {
+      if (!ignoreRef.current && !closingRef.current) translateX.setValue(e.translationX);
+    })
+    .onEnd((e) => {
+      if (ignoreRef.current || closingRef.current) return;
+      const pastThreshold = Math.abs(e.translationX) > screenW * SWIPE_THRESHOLD;
+      const fastFlick = Math.abs(e.velocityX) > 450 && Math.abs(e.translationX) > 34; // px/s (RNGH), not px/ms
+      if (pastThreshold || fastFlick) closeWithAnimation(e.translationX >= 0 ? 1 : -1);
+      else springBack();
+    })
+    .onFinalize((_e, success) => {
+      // Cancelled without a clean end (another gesture took over) → spring back.
+      if (!success && !closingRef.current) springBack();
+    }), [closeWithAnimation, screenW, springBack, translateX]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: 'transparent' }} {...panResponder.panHandlers}>
-      {/* Foreground page that slides */}
-      <Animated.View style={{ flex: 1, backgroundColor: theme.bg, transform: [{ translateX }], shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: -10, height: 0 }, elevation: 16 }}>
-        {children(() => closeWithAnimation(1))}
-      </Animated.View>
-    </View>
+    <GestureDetector gesture={pan}>
+      <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+        {/* Foreground page that slides */}
+        <Animated.View style={{ flex: 1, backgroundColor: theme.bg, transform: [{ translateX }], shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: -10, height: 0 }, elevation: 16 }}>
+          {children(() => closeWithAnimation(1))}
+        </Animated.View>
+      </View>
+    </GestureDetector>
   );
 }
 
@@ -6913,6 +6911,8 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
   const inputRef = useRef<TextInput>(null);
   const insets = useSafeAreaInsets();
   const chatWith = state.chatWith;
+  // iOS: the input bar's position above the keyboard, ANIMATED (soft glide).
+  const barTY = useRef(new Animated.Value(0)).current;
 
   // Messages that arrive after this settles animate in (fade + rise); the
   // history present at open renders statically.
@@ -6952,18 +6952,27 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
   // while the keyboard is up (so it sits flush above it, Instagram-style — no jump)
   // and keep the latest message in view.
   useEffect(() => {
+    // The bar GLIDES with the keyboard (event's own duration + Apple-like curve)
+    // instead of snapping — on-drag dismissal used to slam it down ("pat diye").
+    const glideBar = (toY: number, e: any) => {
+      if (Platform.OS !== 'ios') return; // Android: window resizes, bar stays at 0
+      const dur = typeof e?.duration === 'number' && e.duration > 0 ? e.duration : 250;
+      Animated.timing(barTY, { toValue: toY, duration: dur, easing: Easing.bezier(0.17, 0.59, 0.4, 0.77), useNativeDriver: true }).start();
+    };
     const setKeyboardFrame = (e: any) => {
       const endY = e?.endCoordinates?.screenY ?? SCREEN_H;
       const height = Math.max(0, SCREEN_H - endY);
       setKeyboardHeight(height);
       setKbOpen(height > 0);
+      glideBar(-height, e);
       // Follow to bottom only when the keyboard OPENS; the hide frame (fired by
       // on-drag dismissal) must not fight the user's scroll gesture.
       if (height > 0) setTimeout(scrollToBottom, 50);
     };
-    const resetKeyboardFrame = () => {
+    const resetKeyboardFrame = (e: any) => {
       setKeyboardHeight(0);
       setKbOpen(false);
+      glideBar(0, e);
     };
     const frameEvt = Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidShow';
     const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
@@ -7121,11 +7130,13 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
         ) : null}
       </ScrollView>
 
-      {/* Absolute input bar: placed above the real keyboard frame instead of relying on KAV hit-testing. */}
-      <View
+      {/* Absolute input bar: rides the real keyboard frame via an ANIMATED translateY
+          (glides with the keyboard's own duration — no snap), not KAV hit-testing. */}
+      <Animated.View
         onLayout={(e) => setInputBarHeight(e.nativeEvent.layout.height)}
         style={{
-          position: 'absolute', left: 0, right: 0, bottom: Platform.OS === 'ios' ? keyboardHeight : 0,
+          position: 'absolute', left: 0, right: 0, bottom: 0,
+          transform: [{ translateY: barTY }],
           flexDirection: 'row', alignItems: 'flex-end', gap: 8,
           paddingHorizontal: 12, paddingTop: 8, paddingBottom: kbOpen ? 8 : Math.max(insets.bottom, 12),
           backgroundColor: theme.bg2, borderTopWidth: 2, borderTopColor: theme.cardLip,
@@ -7184,7 +7195,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
             );
           }}
         </Pressable>
-      </View>
+      </Animated.View>
     </View>
   );
 }
