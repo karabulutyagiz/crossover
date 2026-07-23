@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Crossover Football</title>
+  <link rel="icon" type="image/png" sizes="196x196" href="assets/favicon.png?v=2" />
+  <link rel="apple-touch-icon" href="assets/favicon.png?v=2" />
+  <link rel="preconnect" href="https://168-222-180-190.nip.io" />
+  <link rel="preconnect" href="https://tmssl.akamaized.net" crossorigin />
+  <link rel="preconnect" href="https://img.a.transfermarkt.technology" crossorigin />
+  <link rel="stylesheet" href="styles.css?v=8" />
+</head>
+<body>
+  <div id="stage">
+    <!-- vignette + floodlight glow over the stadium backdrop -->
+    <div class="bg-vignette" aria-hidden="true"></div>
+
+    <main id="app">
+
+      <!-- ══════════ HOME ══════════ -->
+      <section id="screen-home" class="screen">
+        <header class="hud">
+          <button id="hud-player" class="hud-pill" type="button">
+            <span class="hud-avatar"><img id="hud-avatar-img" alt="" src="" hidden /><svg id="hud-avatar-fallback" viewBox="0 0 24 24" width="18" height="18"><path fill="#98A4CE" d="M12 12a4.2 4.2 0 1 0 0-8.4A4.2 4.2 0 0 0 12 12Zm0 2.1c-3.6 0-7.2 1.8-7.2 4.5v1.2h14.4v-1.2c0-2.7-3.6-4.5-7.2-4.5Z"/></svg></span>
+            <span id="hud-name" class="hud-name">—</span>
+          </button>
+          <div class="hud-right">
+            <div class="hud-pill stat"><span class="hud-ico">🏆</span><span id="hud-trophies" class="hud-num">0</span></div>
+            <div class="hud-pill stat"><span class="hud-ico gem-ico"><svg viewBox="0 0 24 24" width="15" height="15"><path fill="#A855F7" stroke="#6F38A3" stroke-width="1.2" stroke-linejoin="round" d="M7 3h10l4 6-9 12L3 9l4-6Z"/><path fill="rgba(255,255,255,.45)" d="M7.8 4.4h8.4l-4.2 4.6-4.2-4.6Z"/></svg></span><span id="hud-diamonds" class="hud-num gem-num">0</span></div>
+          </div>
+        </header>
+
+        <div class="hero">
+          <div class="hero-balls" aria-hidden="true">
+            <img class="ball ball-white" src="assets/ball-hero-white.png" alt="" />
+            <img class="ball ball-blue" src="assets/ball-hero-blue.png" alt="" />
+          </div>
+          <h1 class="logo" aria-label="Crossover">
+            <span class="logo-stroke" aria-hidden="true">CROSSOVER</span>
+            <span class="logo-fill">CROSSOVER</span>
+          </h1>
+          <div class="logo-sub">FUTBOL BİLGİ DÜELLOSU</div>
+        </div>
+
+        <div id="home-banner" class="banner" hidden></div>
+
+        <button id="btn-quick" class="btn btn-primary btn-hero" type="button">
+          <span class="face"><span class="btn-label">HEMEN OYNA</span></span>
+        </button>
+
+        <div class="home-grid">
+          <div class="panel">
+            <div class="body">
+              <div class="card-title"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="#FFCE3A" d="M6 3h12v2h3v4c0 2.2-1.8 4-4 4h-.3A6 6 0 0 1 13 16.9V19h3v2H8v-2h3v-2.1A6 6 0 0 1 7.3 13H7c-2.2 0-4-1.8-4-4V5h3V3Zm-1 4v2c0 1.1.9 2 2 2V7H5Zm14 0h-2v4c1.1 0 2-.9 2-2V7Z"/></svg> TEK KİŞİLİK</div>
+              <div class="seg" id="bot-diff">
+                <button class="seg-opt" data-diff="easy" type="button">KOLAY</button>
+                <button class="seg-opt active" data-diff="medium" type="button">ORTA</button>
+                <button class="seg-opt" data-diff="hard" type="button">ZOR</button>
+              </div>
+              <button id="btn-solo" class="btn btn-blue btn-block" type="button">
+                <span class="face"><span class="btn-label">BOTLA OYNA</span></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="body">
+              <div class="card-title"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="#FFCE3A" d="M14.5 4a5.5 5.5 0 0 1 0 11c-.6 0-1.2-.1-1.8-.3L11 16.4V19h-2.5v2.5H4V17l6.3-6.3c-.2-.6-.3-1.2-.3-1.8A5.5 5.5 0 0 1 14.5 4Zm1.5 3a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"/></svg> ÖZEL MOD</div>
+              <div class="join-row">
+                <input id="join-code" class="input input-code" maxlength="6" placeholder="KOD" autocomplete="off" spellcheck="false" />
+                <button id="btn-join" class="round-go" type="button" disabled aria-label="Katıl">
+                  <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M4 11h12.2l-4.6-4.6L13 5l7 7-7 7-1.4-1.4 4.6-4.6H4v-2Z"/></svg>
+                </button>
+              </div>
+              <button id="btn-create" class="link-btn" type="button">
+                <svg viewBox="0 0 24 24" width="13" height="13"><path fill="#37A8FF" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 5v4h4v2h-4v4h-2v-4H7v-2h4V7h2Z"/></svg>
+                Oda Kur
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="store-callout">
+          <div class="sc-in">
+            <div class="sc-title">ÇOK DAHA FAZLASI <span>CROSSOVER</span> UYGULAMASINDA!</div>
+            <div class="sc-sub">Arkadaşlarınla oyna · kupa topla · arenalarda yüksel · ifadeler ve avatarlar</div>
+            <div class="sc-badges">
+              <a class="store-badge" href="https://apps.apple.com/tr/app/id6778542426" target="_blank" rel="noopener">
+                <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="#FFFFFF" d="M17.05 12.54c-.03-2.5 2.04-3.7 2.13-3.76-1.16-1.7-2.97-1.93-3.61-1.96-1.54-.16-3 .9-3.78.9-.78 0-1.98-.88-3.26-.86-1.68.03-3.22.98-4.08 2.48-1.74 3.02-.44 7.49 1.25 9.94.83 1.2 1.82 2.55 3.12 2.5 1.25-.05 1.72-.81 3.23-.81 1.51 0 1.93.81 3.25.79 1.35-.03 2.2-1.22 3.02-2.43.95-1.39 1.34-2.74 1.36-2.81-.03-.01-2.6-1-2.63-3.98ZM14.56 4.9c.69-.83 1.15-1.99 1.02-3.15-.99.04-2.18.66-2.89 1.49-.63.73-1.19 1.91-1.04 3.04 1.1.09 2.23-.56 2.91-1.38Z"/></svg>
+                <span><small>App Store'dan</small><b>İNDİR</b></span>
+              </a>
+              <a class="store-badge" href="https://play.google.com/store/apps/details?id=com.crossover.football" target="_blank" rel="noopener">
+                <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true"><path fill="#00E3A0" d="M4 2.7c-.3.3-.5.8-.5 1.4v15.8c0 .6.2 1.1.5 1.4l.1.1 8.9-8.9v-.2L4.1 2.6l-.1.1Z"/><path fill="#FFCE3A" d="m16 15.3-3-3v-.2l3-3 .1.1 3.5 2c1 .6 1 1.5 0 2.1l-3.5 2-.1-.1Z"/><path fill="#FF5468" d="m16.1 15.2-3.1-3.1-9 9c.3.3.9.4 1.5 0l10.6-6Z"/><path fill="#37A8FF" d="M16.1 8.9 5.5 2.9c-.6-.4-1.2-.3-1.5 0l9 9 3.1-3Z"/></svg>
+                <span><small>Google Play'den</small><b>İNDİR</b></span>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div class="home-foot">İki takımda da oynamış futbolcuyu ilk yazan turu alır · 3 tur kazanan maçı kazanır</div>
+      </section>
+
+      <!-- ══════════ SEARCHING ══════════ -->
+      <section id="screen-searching" class="screen center" hidden>
+        <div class="orbit-loader" aria-hidden="true">
+          <svg class="orbit-bolt" viewBox="0 0 24 24" width="58" height="58">
+            <defs>
+              <linearGradient id="boltG" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#FFE484" />
+                <stop offset="0.55" stop-color="#FFCE3A" />
+                <stop offset="1" stop-color="#E5A912" />
+              </linearGradient>
+            </defs>
+            <path d="M13.2 1.6 3.4 13.5c-.3.4 0 .9.5.9h5.8l-1.3 7.2c-.1.6.7 1 1.1.5l9.9-11.9c.3-.4 0-.9-.5-.9h-5.8l1.2-7.2c.1-.6-.7-1-1.1-.5Z"
+              fill="url(#boltG)" stroke="#6B4E06" stroke-width="1.1" stroke-linejoin="round" />
+          </svg>
+          <img class="orbiter ob-a" src="assets/ball-card-white.png" alt="" />
+          <img class="orbiter ob-b" src="assets/ball-card-blue.png" alt="" />
+        </div>
+        <div class="big-status"><span id="search-title">RAKİP ARANIYOR</span><span class="dots"><i>.</i><i>.</i><i>.</i></span></div>
+        <div id="search-sub" class="sub-status">Kupana yakın bir rakip eşleştiriliyor</div>
+        <button id="btn-cancel-search" class="btn btn-ghost" type="button"><span class="face"><span class="btn-label">İPTAL</span></span></button>
+      </section>
+
+      <!-- ══════════ LOBBY ══════════ -->
+      <section id="screen-lobby" class="screen center" hidden>
+        <div class="panel hero lobby-panel">
+          <div class="body">
+            <div class="lobby-crown" aria-hidden="true">
+              <img src="assets/ball-hero-white.png" alt="" />
+            </div>
+            <div class="lobby-caption">ODA KODU</div>
+            <button id="lobby-code" class="code-tiles" type="button" title="Kopyala" aria-label="Oda kodunu kopyala"></button>
+            <button id="btn-copy" class="copy-pill" type="button">
+              <svg viewBox="0 0 24 24" width="13" height="13"><path fill="currentColor" d="M8 2h11a1 1 0 0 1 1 1v13h-2V4H8V2Zm-3 4h11a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Zm1 2v12h9V8H6Z"/></svg>
+              <span id="copy-label">KODU KOPYALA</span>
+            </button>
+            <div class="lobby-hint">Kodu arkadaşına gönder, aynı odada buluşun</div>
+            <div class="lobby-divider" aria-hidden="true"></div>
+            <div id="lobby-players" class="lobby-players"></div>
+            <button id="btn-start" class="btn btn-primary btn-block" type="button" hidden>
+              <span class="face"><span class="btn-label">BAŞLAT</span></span>
+            </button>
+            <div id="lobby-wait" class="lobby-wait">Rakip bekleniyor<span class="dots"><i>.</i><i>.</i><i>.</i></span></div>
+          </div>
+        </div>
+        <button id="btn-leave-lobby" class="btn btn-ghost" type="button"><span class="face"><span class="btn-label">AYRIL</span></span></button>
+      </section>
+
+      <!-- ══════════ MATCHUP ══════════ -->
+      <section id="screen-matchup" class="screen center" hidden>
+        <div class="matchup">
+          <div class="duel-card duel-you">
+            <div class="duel-avatar" id="mu-you-avatar"></div>
+            <div class="duel-name" id="mu-you-name">Sen</div>
+            <div class="duel-trophy" id="mu-you-trophy">🏆 0</div>
+          </div>
+          <div class="vs-text lg" aria-label="karşı">VS</div>
+          <div class="duel-card duel-opp">
+            <div class="duel-avatar" id="mu-opp-avatar"></div>
+            <div class="duel-name" id="mu-opp-name">Rakip</div>
+            <div class="duel-trophy" id="mu-opp-trophy">🏆 0</div>
+          </div>
+        </div>
+        <div class="sub-status">Maç başlıyor…</div>
+      </section>
+
+      <!-- ══════════ COUNTDOWN ══════════ -->
+      <section id="screen-countdown" class="screen center" hidden>
+        <div id="count-num" class="count-num">3</div>
+      </section>
+
+      <!-- ══════════ PICK ══════════ -->
+      <section id="screen-pick" class="screen" hidden>
+        <div id="pick-matchbar" class="match-bar"></div>
+        <div class="phase-head">
+          <div class="phase-title">TAKIMINI SEÇ</div>
+          <div class="timer"><div id="pick-timer" class="timer-fill"></div></div>
+        </div>
+        <div id="pick-form-area">
+          <input id="pick-search" class="input" placeholder="Takım ara… (ör. Galatasaray)" autocomplete="off" spellcheck="false" />
+          <div id="pick-results" class="club-grid"></div>
+        </div>
+        <div id="pick-done" class="picked-wrap" hidden>
+          <div class="panel hero picked-panel">
+            <div class="body">
+              <div class="pulse-ring"><img id="pick-done-logo" class="picked-crest" src="" alt="" /></div>
+              <div id="pick-done-name" class="picked-name"></div>
+              <div class="sub-status">Rakip takımını seçiyor…</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════ GUESS (reveal + guess) ══════════ -->
+      <section id="screen-guess" class="screen" hidden>
+        <div id="guess-matchbar" class="match-bar"></div>
+        <div class="phase-head">
+          <div class="phase-title">İKİSİNDE DE OYNAYAN KİM?</div>
+          <div class="timer"><div id="guess-timer" class="timer-fill"></div></div>
+        </div>
+
+        <div class="duel-teams">
+          <div class="team-card team-a">
+            <img id="teamA-logo" class="team-crest" src="" alt="" />
+            <div id="teamA-name" class="team-name"></div>
+          </div>
+          <div class="vs-text" aria-label="karşı">VS</div>
+          <div class="team-card team-b">
+            <img id="teamB-logo" class="team-crest" src="" alt="" />
+            <div id="teamB-name" class="team-name"></div>
+          </div>
+        </div>
+
+        <div id="guess-form">
+          <div class="guess-row">
+            <input id="guess-input" class="input" placeholder="Futbolcu adı yaz…" autocomplete="off" spellcheck="false" />
+            <button id="btn-guess" class="round-go big" type="button" aria-label="Gönder">
+              <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M3 20v-6l8-2-8-2V4l19 8-19 8Z"/></svg>
+            </button>
+          </div>
+          <button id="btn-pass" class="btn btn-ghost btn-sm" type="button"><span class="face"><span class="btn-label">PAS GEÇ</span></span></button>
+        </div>
+
+        <div id="guess-locked" class="locked-note" hidden>
+          <div class="locked-flash">⚡</div>
+          <div id="guess-locked-text" class="locked-text">Rakip cevaplıyor…</div>
+        </div>
+      </section>
+
+      <!-- ══════════ RESULT ══════════ -->
+      <section id="screen-result" class="screen" hidden>
+        <div id="result-ribbon" class="result-ribbon">DOĞRU!</div>
+
+        <div class="panel hero">
+          <div class="body result-body">
+            <div id="result-summary" class="result-summary"></div>
+            <div id="result-player" class="result-player" hidden>
+              <div id="result-player-photo" class="result-photo"></div>
+              <div id="result-player-name" class="result-player-name"></div>
+              <div id="result-spells" class="result-spells"></div>
+            </div>
+            <div id="result-common" class="result-common" hidden>
+              <div class="result-common-title">DOĞRU CEVAPLAR</div>
+              <div id="result-common-list" class="result-common-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="score-row">
+          <div class="score-side"><div id="score-you-name" class="score-name">Sen</div><div id="score-you" class="score-num you">0</div></div>
+          <div class="score-dash">–</div>
+          <div class="score-side"><div id="score-opp-name" class="score-name">Rakip</div><div id="score-opp" class="score-num opp">0</div></div>
+        </div>
+
+        <div id="result-next" hidden>
+          <button id="btn-ready" class="btn btn-primary btn-block" type="button">
+            <span class="face"><span class="btn-label">HAZIR</span><span id="ready-badge" class="btn-badge">10</span></span>
+          </button>
+          <div id="ready-opp" class="sub-status" hidden>Rakip hazır ✓</div>
+        </div>
+
+        <div id="result-over" hidden>
+          <img id="over-trophy" class="over-trophy" src="assets/trophy-win.png" alt="" />
+          <div id="over-title" class="over-title">MAÇI KAZANDIN!</div>
+          <div id="over-delta" class="over-delta" hidden></div>
+          <button id="btn-rematch" class="btn btn-accent btn-block" type="button"><span class="face"><span class="btn-label">TEKRAR OYNA</span></span></button>
+          <button id="btn-home" class="btn btn-ghost btn-block" type="button"><span class="face"><span class="btn-label">ANA MENÜ</span></span></button>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- toast + modal + confetti -->
+    <div id="toast" class="toast" hidden></div>
+    <div id="modal-scrim" class="scrim" hidden>
+      <div class="panel hero modal-panel">
+        <div class="body">
+          <div id="modal-title" class="modal-title"></div>
+          <div id="modal-text" class="modal-text"></div>
+          <div id="modal-actions" class="modal-actions"></div>
+        </div>
+      </div>
+    </div>
+    <div id="confetti" aria-hidden="true"></div>
+  </div>
+
+  <script src="app.js?v=8"></script>
+</body>
+</html>

@@ -1137,8 +1137,7 @@ const s = StyleSheet.create({
     backgroundColor: theme.panelInnerFill,
     borderRadius: 19,
     borderWidth: 2,
-    borderColor: theme.border,
-    borderTopColor: theme.cardLip, // dark top edge = sunken counter well
+    borderColor: theme.border, // tek parça halka — üstte kesik yok
     shadowColor: '#000',
     shadowOpacity: 0.35,
     shadowRadius: 8,

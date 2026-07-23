@@ -13,7 +13,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Animated, Easing, PanResponder, Platform, Dimensions, Linking } from 'react-native';
+import { Animated, Easing, PanResponder, Platform, Dimensions, Linking, LayoutAnimation } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -711,8 +711,7 @@ function GameInput({ icon, error = false, containerStyle, style, onFocus, onBlur
           flexDirection: 'row', alignItems: 'center',
           backgroundColor: theme.panelInnerFill, // recessed inner well
           borderRadius: 14, borderWidth: 2,
-          borderColor: error ? theme.danger : focused ? ring : theme.border,
-          borderTopColor: error ? theme.danger : focused ? ring : theme.cardLip, // dark top edge = sunken
+          borderColor: error ? theme.danger : focused ? ring : theme.border, // tek parça halka
           paddingHorizontal: 14,
         }}
       >
@@ -830,7 +829,7 @@ function SectionHeader({ label, icon, color = theme.muted, style }: { label: str
 function EmptyState({ icon, title, hint, cta, style }: { icon: IoniconName; title: string; hint?: string; cta?: ReactNode; style?: any }) {
   return (
     <View style={[{ alignItems: 'center', gap: 10, paddingVertical: 28, paddingHorizontal: 18 }, style]}>
-      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.panelInnerFill, borderWidth: 2, borderColor: theme.border, borderTopColor: theme.cardLip, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.panelInnerFill, borderWidth: 2, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
         <Ionicons name={icon} size={28} color={theme.muted} />
       </View>
       <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') }}>{title}</Text>
@@ -982,7 +981,7 @@ function IntroSlide({ slide, index, active, scrollX }: { slide: (typeof INTRO_SL
             <BrandMark size={INTRO_TILE} />
             <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 24, marginBottom: 18 }}>
               {SLAM_WORD.split('').map((ch, i) => (
-                <Text key={i} style={{ color: theme.text, fontSize: Math.min(30, SCREEN_W * 0.076), letterSpacing: 1, marginHorizontal: 1.5, includeFontPadding: false, fontFamily: 'Poppins-Black', ...engrave('lg') }}>{ch}</Text>
+                <Text key={i} style={{ color: theme.text, fontSize: Math.min(30, SCREEN_W * 0.076), letterSpacing: 3, marginHorizontal: 2, includeFontPadding: false, fontFamily: 'Poppins-Black', ...engrave('lg') }}>{ch}</Text>
               ))}
             </View>
           </>
@@ -1096,21 +1095,18 @@ export function IntroScreen({ onDone }: { onDone: () => void }) {
 // The REAL brand mark — the shipped app icon (black tile, white+green interlocked
 // rings), rounded-masked. Never rebuild the logo as synthetic SVG (spec §14);
 // the `glow` prop is retained for call-site compatibility but ignored.
-// The COF "versus" emblem (blue ball · lightning · red ball) — the brand mark,
-// shown WITH its background: landscape art on a dark rounded tile whose fill
-// matches the logo's own navy backdrop, reading as one seamless framed mark.
-// (Card balls kept for the splash's fly-in, which dissolves into this emblem.)
-const COF_LOGO = require('../assets/cof-logo.png');
-const COF_LOGO_AR = 1122 / 1402;             // native art aspect (h / w)
-const CLASH_BALL_BLUE = require('../assets/ball-card-blue.png');
-const CLASH_BALL_WHITE = require('../assets/ball-card-white.png');
+// giriş.jpeg mockup'ından çıkarılan şeffaf logo işareti (balonlar + yıldırım +
+// konfeti). Plaka/zemin YOK — işaret doğrudan sahne arka planının üstünde durur.
+// (Kullanıcı onayı: koyu plakalı amblem reddedildi — "arkasında siyah olmayacak".)
+const LOGO_MARK = require('../assets/logo-mark.png');
+const LOGO_MARK_AR = 267 / 328; // kaynak png en-boy oranı
 function BrandMark({ size = 104 }: { size?: number; glow?: boolean }) {
   return (
-    <View style={{ width: size, height: size, borderRadius: size * 0.24, shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}>
-      <View style={{ width: size, height: size, borderRadius: size * 0.24, overflow: 'hidden', backgroundColor: '#050B1C', alignItems: 'center', justifyContent: 'center' }}>
-        <Image source={COF_LOGO} style={{ width: size, height: size }} resizeMode="contain" />
-      </View>
-    </View>
+    <Image
+      source={LOGO_MARK}
+      style={{ width: size, height: size * LOGO_MARK_AR }}
+      resizeMode="contain"
+    />
   );
 }
 
@@ -1175,14 +1171,13 @@ function ShineSweep({ width, height, delay = 0, duration = 650, loop = false, lo
 // place as they recoil apart; CROSSOVER stamps in letter-by-letter and a gold
 // shine sweeps the wordmark. Native driver only; a fixed timer fires onDone so
 // the splash never blocks on anything.
-const SLAM_TOTAL_MS = 2900;
+const SLAM_TOTAL_MS = 2500;
 const SLAM_WORD = 'CROSSOVER';
-const SLAM_FONT = Math.min(36, SCREEN_W * 0.088);
+// giriş.jpeg oranları: geniş harf aralıklı, daha ufak beyaz logotip + büyük işaret
+const SLAM_FONT = Math.min(30, SCREEN_W * 0.074);
 const SLAM_WM_W = Math.min(SCREEN_W * 0.88, 380);
-const CLASH_BALL = Math.min(112, SCREEN_W * 0.30);     // rushing ball diameter (dissolves into emblem)
-const CLASH_LOGO_W = Math.min(SCREEN_W * 0.82, 360);   // revealed emblem width
-const CLASH_LOGO_H = CLASH_LOGO_W * COF_LOGO_AR;
-const SLAM_BADGE = 128;                                // brand badge size (loading/entry)
+const SLAM_BADGE = Math.min(SCREEN_W * 0.46, 188);
+const SLAM_BADGE_H = SLAM_BADGE * LOGO_MARK_AR;
 // Impact sparks: angle (deg, -90 = straight up), distance, size, color.
 // Restraint per spec §14: a handful of debris kicks, not a firework.
 const SLAM_SPARKS: { a: number; d: number; s: number; c: string }[] = [
@@ -1196,13 +1191,12 @@ const SLAM_SPARKS: { a: number; d: number; s: number; c: string }[] = [
 ];
 
 export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => void; fontsReady?: boolean }) {
-  const veil = useRef(new Animated.Value(1)).current;      // black cover → fades out
-  const fly = useRef(new Animated.Value(0)).current;       // two balls rush in 0→1 (contact)
-  const shake = useRef(new Animated.Value(0)).current;     // stage shake on impact
-  const ring1 = useRef(new Animated.Value(0)).current;     // impact ring
+  const veil = useRef(new Animated.Value(1)).current;      // navy cover → fades out
+  const drop = useRef(new Animated.Value(0)).current;      // badge fall
+  const impact = useRef(new Animated.Value(0)).current;    // squash & recover
+  const shake = useRef(new Animated.Value(0)).current;     // stage shake
+  const ring1 = useRef(new Animated.Value(0)).current;     // mint impact ring
   const burst = useRef(new Animated.Value(0)).current;     // spark burst
-  const flash = useRef(new Animated.Value(0)).current;     // white collision flash
-  const reveal = useRef(new Animated.Value(0)).current;    // emblem forms; balls recoil out + fade
   const letters = useRef(SLAM_WORD.split('').map(() => new Animated.Value(0))).current;
   const fired = useRef(false);
   // The exit timer must call the LATEST onDone, not the mount-time closure.
@@ -1211,24 +1205,22 @@ export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => voi
 
   useEffect(() => {
     const anim = Animated.sequence([
-      // 0–570ms: lights up, the two balls rush in from opposite edges
+      // 0–640ms: lights up, badge falls with gravity
       Animated.parallel([
-        Animated.timing(veil, { toValue: 0, duration: 240, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(veil, { toValue: 0, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }),
         Animated.sequence([
-          Animated.delay(140),
-          Animated.timing(fly, { toValue: 1, duration: 430, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+          Animated.delay(120),
+          Animated.timing(drop, { toValue: 1, duration: 520, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
         ]),
       ]),
-      // ~570ms: COLLISION — flash, shake, ring, sparks; the emblem forms as the
-      // balls recoil apart and fade; the wordmark stamps in from ~990ms.
+      // 640ms: IMPACT — squash, shake, rings, sparks; letters stamp in from 980ms
       Animated.parallel([
-        Animated.timing(flash, { toValue: 1, duration: 460, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-        Animated.timing(shake, { toValue: 1, duration: 340, easing: Easing.linear, useNativeDriver: true }),
-        Animated.timing(ring1, { toValue: 1, duration: 480, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-        Animated.timing(burst, { toValue: 1, duration: 560, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-        Animated.timing(reveal, { toValue: 1, duration: 560, easing: Easing.out(Easing.back(2.1)), useNativeDriver: true }),
+        Animated.timing(impact, { toValue: 1, duration: 380, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(shake, { toValue: 1, duration: 300, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(ring1, { toValue: 1, duration: 430, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(burst, { toValue: 1, duration: 520, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
         Animated.sequence([
-          Animated.delay(420),
+          Animated.delay(340),
           Animated.stagger(55, letters.map((v) =>
             Animated.timing(v, { toValue: 1, duration: 260, easing: Easing.out(Easing.back(3)), useNativeDriver: true }),
           )),
@@ -1243,64 +1235,46 @@ export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => voi
     return () => { clearTimeout(tm); anim.stop(); };
   }, []);
 
-  // Balls rush in from opposite edges, meet at centre, then recoil apart + fade as
-  // the COF emblem (WITH its own navy background) grows in their place. Everything
-  // positions off a zero-size centre anchor.
-  const flyBlueX = fly.interpolate({ inputRange: [0, 1], outputRange: [-SCREEN_W * 0.62, 0] });
-  const flyWhiteX = fly.interpolate({ inputRange: [0, 1], outputRange: [SCREEN_W * 0.62, 0] });
-  const spinBlue = fly.interpolate({ inputRange: [0, 1], outputRange: ['-260deg', '0deg'] });
-  const spinWhite = fly.interpolate({ inputRange: [0, 1], outputRange: ['260deg', '0deg'] });
-  const recoilBlue = reveal.interpolate({ inputRange: [0, 0.22, 1], outputRange: [0, -6, -46] });
-  const recoilWhite = reveal.interpolate({ inputRange: [0, 0.22, 1], outputRange: [0, 6, 46] });
-  const ballScale = reveal.interpolate({ inputRange: [0, 0.16, 0.5, 1], outputRange: [1, 1.12, 0.92, 0.6] });
-  const ballOpacity = reveal.interpolate({ inputRange: [0, 0.3, 0.62], outputRange: [1, 1, 0], extrapolate: 'clamp' });
-  const logoScale = reveal.interpolate({ inputRange: [0, 1], outputRange: [0.28, 1] });
-  const logoOpacity = reveal.interpolate({ inputRange: [0, 0.14, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' });
-  const flashOpacity = flash.interpolate({ inputRange: [0, 0.1, 0.42, 1], outputRange: [0, 0.5, 0, 0], extrapolate: 'clamp' });
-  const shakeTX = shake.interpolate({ inputRange: [0, 0.25, 0.55, 0.8, 1], outputRange: [0, -5, 4, -2, 0] });
-  const shakeTY = shake.interpolate({ inputRange: [0, 0.18, 0.42, 0.66, 0.85, 1], outputRange: [0, 6, -4, 3, -1, 0] });
-  const STAGE_H = CLASH_LOGO_H + 44;
-
+  const badgeTY = drop.interpolate({ inputRange: [0, 1], outputRange: [-SCREEN_H * 0.42, 0] });
+  const badgeScale = drop.interpolate({ inputRange: [0, 1], outputRange: [1.3, 1] });
+  const badgeOpacity = drop.interpolate({ inputRange: [0, 0.12, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' });
+  // squash anchored to the floor: scale + a compensating translate
+  const squashTY = impact.interpolate({ inputRange: [0, 0.22, 0.55, 1], outputRange: [0, SLAM_BADGE * 0.09, -SLAM_BADGE * 0.02, 0] });
+  const squashX = impact.interpolate({ inputRange: [0, 0.22, 0.55, 1], outputRange: [1, 1.12, 0.96, 1] });
+  const squashY = impact.interpolate({ inputRange: [0, 0.22, 0.55, 1], outputRange: [1, 0.8, 1.06, 1] });
+  const shakeTX = shake.interpolate({ inputRange: [0, 0.25, 0.55, 0.8, 1], outputRange: [0, -4, 3, -2, 0] });
+  const shakeTY = shake.interpolate({ inputRange: [0, 0.18, 0.42, 0.66, 0.85, 1], outputRange: [0, 7, -5, 3, -1, 0] });
   return (
     <OpeningBackdrop>
       <Animated.View style={{ alignItems: 'center', transform: [{ translateX: shakeTX }, { translateY: shakeTY }] }}>
-        {/* collision stage — everything positions off a zero-size centre anchor */}
-        <View style={{ width: SCREEN_W, height: STAGE_H, alignItems: 'center', justifyContent: 'center' }}>
-          <View style={{ width: 0, height: 0, alignItems: 'center', justifyContent: 'center' }}>
-            {/* the revealed COF emblem (with its own navy background) — pops in on impact */}
-            <Animated.View pointerEvents="none" style={{ position: 'absolute', left: -CLASH_LOGO_W / 2, top: -CLASH_LOGO_H / 2, opacity: logoOpacity, transform: [{ scale: logoScale }] }}>
-              <View style={{ width: CLASH_LOGO_W, height: CLASH_LOGO_H, borderRadius: 26, overflow: 'hidden', backgroundColor: '#050B1C', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 20, shadowOffset: { width: 0, height: 12 }, elevation: 18 }}>
-                <Image source={COF_LOGO} style={{ width: CLASH_LOGO_W, height: CLASH_LOGO_H }} resizeMode="cover" />
-              </View>
-            </Animated.View>
-
-            {/* the two rushing balls (blue ← left, white → right); they fade into the emblem */}
-            <Animated.Image source={CLASH_BALL_BLUE} style={{ position: 'absolute', left: -CLASH_BALL, top: -CLASH_BALL / 2, width: CLASH_BALL, height: CLASH_BALL, opacity: ballOpacity, transform: [{ translateX: Animated.add(flyBlueX, recoilBlue) }, { rotate: spinBlue }, { scale: ballScale }] }} />
-            <Animated.Image source={CLASH_BALL_WHITE} style={{ position: 'absolute', left: 0, top: -CLASH_BALL / 2, width: CLASH_BALL, height: CLASH_BALL, opacity: ballOpacity, transform: [{ translateX: Animated.add(flyWhiteX, recoilWhite) }, { rotate: spinWhite }, { scale: ballScale }] }} />
-
-            {/* impact ring + spark debris, centred on the anchor */}
-            <View pointerEvents="none" style={{ position: 'absolute', width: 0, height: 0 }}>
-              <Animated.View style={{ position: 'absolute', left: -70, top: -70, width: 140, height: 140, borderRadius: 70, borderWidth: 3, borderColor: theme.accent, opacity: ring1.interpolate({ inputRange: [0, 0.12, 1], outputRange: [0, 0.85, 0], extrapolate: 'clamp' }), transform: [{ scale: ring1.interpolate({ inputRange: [0, 1], outputRange: [0.35, 2.6] }) }] }} />
-              {SLAM_SPARKS.map((p, i) => {
-                const rad = (p.a * Math.PI) / 180;
-                const dx = Math.cos(rad) * p.d;
-                const dy = Math.sin(rad) * p.d;
-                return (
-                  <Animated.View
-                    key={i}
-                    style={{
-                      position: 'absolute', left: -p.s / 2, top: -p.s / 2, width: p.s, height: p.s, borderRadius: p.s / 2, backgroundColor: p.c,
-                      opacity: burst.interpolate({ inputRange: [0, 0.1, 0.65, 1], outputRange: [0, 1, 1, 0], extrapolate: 'clamp' }),
-                      transform: [
-                        { translateX: burst.interpolate({ inputRange: [0, 1], outputRange: [0, dx] }) },
-                        { translateY: burst.interpolate({ inputRange: [0, 1], outputRange: [0, dy] }) },
-                        { scale: burst.interpolate({ inputRange: [0, 1], outputRange: [1, 0.25] }) },
-                      ],
-                    }}
-                  />
-                );
-              })}
-            </View>
+        {/* badge + floor shadow + impact FX */}
+        <View style={{ width: SLAM_BADGE * 1.4, height: SLAM_BADGE_H + 26, alignItems: 'center', justifyContent: 'flex-start' }}>
+          {/* mockup'ta zemin gölgesi yok — logo doğrudan desenli lacivertin üstünde */}
+          <Animated.View style={{ opacity: badgeOpacity, transform: [{ translateY: badgeTY }, { scale: badgeScale }, { translateY: squashTY }, { scaleX: squashX }, { scaleY: squashY }] }}>
+            <BrandMark size={SLAM_BADGE} />
+          </Animated.View>
+          {/* impact anchor (zero-size, centered at the badge base) */}
+          <View pointerEvents="none" style={{ position: 'absolute', left: '50%', bottom: 16, width: 0, height: 0 }}>
+            <Animated.View style={{ position: 'absolute', left: -70, top: -70, width: 140, height: 140, borderRadius: 70, borderWidth: 3, borderColor: theme.primary, opacity: ring1.interpolate({ inputRange: [0, 0.12, 1], outputRange: [0, 0.85, 0], extrapolate: 'clamp' }), transform: [{ scale: ring1.interpolate({ inputRange: [0, 1], outputRange: [0.35, 2.4] }) }] }} />
+            {SLAM_SPARKS.map((p, i) => {
+              const rad = (p.a * Math.PI) / 180;
+              const dx = Math.cos(rad) * p.d;
+              const dy = Math.sin(rad) * p.d;
+              return (
+                <Animated.View
+                  key={i}
+                  style={{
+                    position: 'absolute', left: -p.s / 2, top: -p.s / 2, width: p.s, height: p.s, borderRadius: p.s / 2, backgroundColor: p.c,
+                    opacity: burst.interpolate({ inputRange: [0, 0.1, 0.65, 1], outputRange: [0, 1, 1, 0], extrapolate: 'clamp' }),
+                    transform: [
+                      { translateX: burst.interpolate({ inputRange: [0, 1], outputRange: [0, dx] }) },
+                      { translateY: burst.interpolate({ inputRange: [0, 1], outputRange: [0, dy] }) },
+                      { scale: burst.interpolate({ inputRange: [0, 1], outputRange: [1, 0.25] }) },
+                    ],
+                  }}
+                />
+              );
+            })}
           </View>
         </View>
 
@@ -1311,7 +1285,7 @@ export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => voi
               <Animated.Text
                 key={i}
                 style={{
-                  color: theme.text, fontSize: SLAM_FONT, letterSpacing: 1, marginHorizontal: 1.5, includeFontPadding: false,
+                  color: theme.text, fontSize: SLAM_FONT, letterSpacing: 3, marginHorizontal: 2, includeFontPadding: false,
                   fontFamily: fontsReady ? 'Poppins-Black' : undefined, fontWeight: fontsReady ? undefined : '900',
                   ...engrave('lg'),
                   opacity: letters[i]!.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
@@ -1328,9 +1302,8 @@ export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => voi
           <ShineSweep width={SLAM_WM_W} height={SLAM_FONT * 1.4} delay={1900} duration={620} tint={theme.accent} opacity={0.3} band={0.24} />
         </View>
       </Animated.View>
-      {/* white collision flash, then the fade-from-black veil (both on top) */}
-      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF', opacity: flashOpacity }]} />
-      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: veil }]} />
+      {/* fade-from-navy veil (on top of everything) — mockup zemininde siyah yok */}
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: theme.bg, opacity: veil }]} />
     </OpeningBackdrop>
   );
 }
@@ -1405,8 +1378,8 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
       {/* brand block — pixel-identical to the splash's final frame (same badge box,
           per-letter wordmark, underline and margins) so the cut is invisible */}
       <View style={{ alignItems: 'center' }}>
-        <View style={{ width: SLAM_BADGE * 1.4, height: SLAM_BADGE + 30, alignItems: 'center', justifyContent: 'flex-start' }}>
-          <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, width: SLAM_BADGE * 1.05, height: 20, borderRadius: 12, backgroundColor: '#01030A', opacity: 0.34 }} />
+        <View style={{ width: SLAM_BADGE * 1.4, height: SLAM_BADGE_H + 26, alignItems: 'center', justifyContent: 'flex-start' }}>
+          {/* mockup'ta zemin gölgesi yok */}
           <Animated.View style={{ transform: [{ translateY: float.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, -3, 0] }) }] }}>
             <BrandMark size={SLAM_BADGE} />
           </Animated.View>
@@ -1414,7 +1387,7 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
         <View style={{ width: SLAM_WM_W, alignItems: 'center', marginTop: 26 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
             {SLAM_WORD.split('').map((ch, i) => (
-              <Text key={i} style={{ color: theme.text, fontSize: SLAM_FONT, letterSpacing: 1, marginHorizontal: 1.5, includeFontPadding: false, fontFamily: 'Poppins-Black', ...engrave('lg') }}>{ch}</Text>
+              <Text key={i} style={{ color: theme.text, fontSize: SLAM_FONT, letterSpacing: 3, marginHorizontal: 2, includeFontPadding: false, fontFamily: 'Poppins-Black', ...engrave('lg') }}>{ch}</Text>
             ))}
           </View>
         </View>
@@ -1538,7 +1511,7 @@ function CoachGate({ visible, wrong, stepLabel, body, cta, ctaIcon, onPress }: {
             <Text style={{ color: wrong ? theme.text : theme.ink, fontFamily: 'Poppins-ExtraBold', fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' }}>{stepLabel}</Text>
           </View>
           <View style={{ padding: 22, paddingTop: 18, alignItems: 'center' }}>
-            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: theme.panelInnerFill, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: frame, borderTopColor: theme.cardLip, marginBottom: 12 }}>
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: theme.panelInnerFill, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: frame, marginBottom: 12 }}>
               <Ionicons name={wrong ? 'alert' : 'football'} size={28} color={frame} />
             </View>
             <Text style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-SemiBold', lineHeight: 23, textAlign: 'center', marginBottom: 16 }}>{body}</Text>
@@ -2264,7 +2237,7 @@ export function LoginScreen({ state, actions }: Props) {
           <BrandMark size={SLAM_BADGE} />
           <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 26 }}>
             {SLAM_WORD.split('').map((ch, i) => (
-              <Text key={i} style={{ color: theme.text, fontSize: SLAM_FONT, letterSpacing: 1, marginHorizontal: 1.5, includeFontPadding: false, fontFamily: 'Poppins-Black', ...engrave('lg') }}>{ch}</Text>
+              <Text key={i} style={{ color: theme.text, fontSize: SLAM_FONT, letterSpacing: 3, marginHorizontal: 2, includeFontPadding: false, fontFamily: 'Poppins-Black', ...engrave('lg') }}>{ch}</Text>
             ))}
           </View>
         </Animated.View>
@@ -2610,7 +2583,7 @@ export function NewsModal({ visible, onClose }: { visible: boolean; onClose: () 
           GameModal — it doesn't swallow this ScrollView's vertical drag. */}
       <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, gap: 12 }}>
         {NEWS.map((item) => (
-          <View key={item.id} style={{ backgroundColor: theme.panelInnerFill, borderRadius: 16, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, padding: 15, gap: 9 }}>
+          <View key={item.id} style={{ backgroundColor: theme.panelInnerFill, borderRadius: 16, borderWidth: 1.5, borderColor: theme.border, padding: 15, gap: 9 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: theme.card, borderWidth: 1.5, borderColor: item.tint, borderBottomColor: darken(item.tint), alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name={item.icon} size={21} color={item.tint} />
@@ -5394,28 +5367,27 @@ const DiscoverableEmoteCard = memo(function DiscoverableEmoteCard({ emote, width
 }) {
   const tmRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ring = useRef(new Animated.Value(0)).current; // highlight ring; also lifts the dim
-  const stickerScale = useRef(new Animated.Value(1)).current;
   const lift = useRef(new Animated.Value(0)).current; // 0 = seated, 1 = popped up
   const { scale: pressScale, onIn, onOut } = usePressScale(0.96); // every touchable responds on press-in (spec §11)
 
   // All visual state follows `active` in one place, so the interrupt path
   // (parent hands the slot to another card) and the natural end share the exact
   // same revert — the ring can never be left glowing on a stopped card.
+  // NOT: önizlemede BÜYÜTME YOK — 58px raster'ı transform'la şişirmek bulanıklık
+  // yapar; ifade animasyonunu normal halinde, kristal netlikte oynar.
   useEffect(() => {
     if (tmRef.current) { clearTimeout(tmRef.current); tmRef.current = null; }
     if (active) {
       Animated.timing(ring, { toValue: 1, duration: 150, useNativeDriver: true }).start();
-      Animated.spring(stickerScale, { toValue: 1.12, friction: 5, tension: 140, useNativeDriver: true }).start();
       Animated.spring(lift, { toValue: 1, friction: 5, tension: 150, useNativeDriver: true }).start();
       // Lottie safety net: if onFinish never fires, release the slot ourselves.
       if (emote.kind === 'lottie') tmRef.current = setTimeout(() => onPreviewEnd(emote.id), 2000);
     } else {
       Animated.timing(ring, { toValue: 0, duration: 180, useNativeDriver: true }).start();
-      Animated.spring(stickerScale, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }).start();
       Animated.spring(lift, { toValue: 0, friction: 6, tension: 150, useNativeDriver: true }).start();
     }
     return () => { if (tmRef.current) clearTimeout(tmRef.current); };
-  }, [active, emote.id, emote.kind, ring, stickerScale, lift, onPreviewEnd]);
+  }, [active, emote.id, emote.kind, ring, lift, onPreviewEnd]);
 
   return (
     <Pressable key={emote.id} onPress={() => { if (!active) onPreview(emote.id); }} onPressIn={onIn} onPressOut={onOut} style={{ width, zIndex: active ? 2 : 0 }}>
@@ -5427,20 +5399,20 @@ const DiscoverableEmoteCard = memo(function DiscoverableEmoteCard({ emote, width
           borderBottomWidth: 3, borderBottomColor: theme.cardLip,
           overflow: 'hidden',
           transform: [
-            // Clash-Royale pop: the active card rises off the row and swells a touch.
+            // Clash-Royale pop: the active card rises off the row — scale YOK
+            // (raster büyütme = bulanıklık; ifade normal boyutunda kalır).
             { translateY: lift.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }) },
-            { scale: lift.interpolate({ inputRange: [0, 1], outputRange: [1, 1.05] }) },
             { scale: pressScale },
           ],
         }}
       >
-        <Animated.View style={{ width: 58, height: 58, alignItems: 'center', justifyContent: 'center', transform: [{ scale: stickerScale }] }}>
+        <View style={{ width: 58, height: 58, alignItems: 'center', justifyContent: 'center' }}>
           {active ? (
             <EmoteSticker key={`${emote.id}-anim`} id={emote.id} size={58} play onFinish={() => onPreviewEnd(emote.id)} />
           ) : (
             <EmoteSticker key={`${emote.id}-static`} id={emote.id} size={58} play={false} />
           )}
-        </Animated.View>
+        </View>
         {/* locked dim — lifts while the preview plays; the frame stays crisp */}
         <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(theme.panelInk, 0.45), opacity: ring.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]} />
         {/* mini padlock disc */}
@@ -5454,36 +5426,205 @@ const DiscoverableEmoteCard = memo(function DiscoverableEmoteCard({ emote, width
   );
 });
 
-// Owned-emote card — press-lip physics + spring-pop equipped check. When the
-// loadout is full, the frame stays crisp and only the sticker dims.
-function CollectibleEmoteCard({ emote, width, isEquipped, blocked, onToggle }: {
-  emote: EmoteMeta; width: number; isEquipped: boolean; blocked: boolean; onToggle: () => void;
+// ---- ActionFlap — karta/slota ALTTAN BİRLEŞİK küçük eylem düğmesi ----
+// Üst köşeleri düz (karonun alt kenarıyla kaynaşır), alt köşeleri yuvarlak;
+// yay ile karonun altından süzülerek çıkar. KULLAN (yeşil) / KALDIR (kırmızı).
+function ActionFlap({ visible, label, tone, disabled = false, onPress }: {
+  visible: boolean; label: string; tone: 'primary' | 'danger'; disabled?: boolean; onPress: () => void;
 }) {
-  const { ty, onIn, onOut } = usePressLip(2);
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (visible) Animated.spring(a, { toValue: 1, friction: 7, tension: 180, useNativeDriver: true }).start();
+    else Animated.timing(a, { toValue: 0, duration: 110, useNativeDriver: true }).start();
+  }, [visible, a]);
+  const face = disabled ? theme.bg2 : tone === 'primary' ? theme.primary : theme.danger;
+  const lip = disabled ? theme.cardLip : tone === 'primary' ? theme.primaryDark : theme.dangerDark;
+  return (
+    <Animated.View
+      pointerEvents={visible && !disabled ? 'auto' : 'none'}
+      style={{
+        position: 'absolute', top: '100%', left: 5, right: 5, marginTop: -2, zIndex: 5,
+        opacity: a,
+        transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
+      }}
+    >
+      <Pressable
+        onPress={onPress}
+        disabled={disabled}
+        style={({ pressed }) => ({
+          backgroundColor: lip,
+          borderBottomLeftRadius: 12, borderBottomRightRadius: 12,
+          paddingBottom: pressed ? 1 : 3,
+          shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 5, shadowOffset: { width: 0, height: 4 }, elevation: 7,
+        })}
+      >
+        <View style={{ backgroundColor: face, borderBottomLeftRadius: 10, borderBottomRightRadius: 10, alignItems: 'center', paddingVertical: 5 }}>
+          <Text style={{ color: disabled ? theme.muted : theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 11, letterSpacing: 0.5, textShadowColor: 'rgba(4,9,24,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 1 }}>
+            {label}
+          </Text>
+        </View>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+// ---- FlyingEmote — KULLAN'a basılan ifadenin karttan yuvaya uçuşu ----
+// Ölçüme dayalı: kaynak kart, hedef yuva ve kök katman HER uçuşta yeniden
+// measureInWindow ile ölçülür — elle koordinat yok, kaydırma konumu fark etmez.
+// Yol: 20 örnekli, yumuşatılmış hafif kavisli fırlatma eğrisi (yukarı süzülüp
+// yuvaya oturur), ortada zarif bir kabarma, inişte yuva boyutuna toparlanma.
+// Tamamı native driver'da tek progress değeriyle oynar — JS meşgulken bile akıcı.
+type FlightRect = { x: number; y: number; w: number; h: number };
+type EmoteFlight = {
+  key: number; id: string; toIdx: number;
+  fromX: number; fromY: number; toX: number; toY: number;
+  fromSize: number; toSize: number;
+};
+
+function FlyingEmote({ flight, onEnd }: { flight: EmoteFlight; onEnd: (key: number) => void }) {
+  const p = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(p, { toValue: 1, duration: 620, easing: Easing.inOut(Easing.cubic), useNativeDriver: true })
+      .start(({ finished }) => { if (finished) onEnd(flight.key); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const N = 20;
+  const input: number[] = []; const xs: number[] = []; const ys: number[] = []; const ss: number[] = [];
+  const dx = flight.toX - flight.fromX;
+  const dy = flight.toY - flight.fromY;
+  const lift = Math.min(56, 24 + Math.hypot(dx, dy) * 0.12);
+  const endScale = flight.toSize / flight.fromSize;
+  const posAt = (t: number) => ({
+    x: flight.fromX + dx * t,
+    y: flight.fromY + dy * t - Math.sin(Math.PI * t) * lift,
+    s: 1 + Math.sin(Math.PI * t) * 0.14 + (endScale - 1) * t,
+  });
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    const pt = posAt(t);
+    input.push(t); xs.push(pt.x); ys.push(pt.y); ss.push(pt.s);
+  }
+  // Hız izi: aynı yörüngeyi faz gecikmesiyle izleyen, sönükleşerek küçülen yankı
+  // kopyaları. Ana kopyayla AYNI progress değerine bağlılar — asla ayrışamazlar;
+  // iz inişten önce yumuşakça sönüp yuvada hiçbir kalıntı bırakmaz.
+  const ghost = (lag: number, baseOpacity: number, shrink: number) => {
+    const gxs: number[] = []; const gys: number[] = []; const gss: number[] = []; const gop: number[] = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const pt = posAt(Math.max(0, t - lag));
+      gxs.push(pt.x); gys.push(pt.y); gss.push(pt.s * shrink);
+      const fadeIn = Math.min(1, Math.max(0, (t - lag) / 0.12));   // ayrışınca belirir
+      const fadeOut = Math.min(1, Math.max(0, (1 - t) / 0.18));    // inişten önce söner
+      gop.push(baseOpacity * fadeIn * fadeOut);
+    }
+    return { gxs, gys, gss, gop };
+  };
+  const ghosts = [ghost(0.16, 0.16, 0.84), ghost(0.08, 0.3, 0.92)]; // uzak → yakın
+  return (
+    <>
+      {ghosts.map((g, gi) => (
+        <Animated.View
+          key={gi}
+          pointerEvents="none"
+          style={{
+            position: 'absolute', left: 0, top: 0, zIndex: 99,
+            width: flight.fromSize, height: flight.fromSize,
+            opacity: p.interpolate({ inputRange: input, outputRange: g.gop }),
+            transform: [
+              { translateX: p.interpolate({ inputRange: input, outputRange: g.gxs }) },
+              { translateY: p.interpolate({ inputRange: input, outputRange: g.gys }) },
+              { scale: p.interpolate({ inputRange: input, outputRange: g.gss }) },
+            ],
+          }}
+        >
+          <EmoteSticker id={flight.id} size={flight.fromSize} play={false} />
+        </Animated.View>
+      ))}
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute', left: 0, top: 0, zIndex: 100,
+          width: flight.fromSize, height: flight.fromSize,
+          transform: [
+            { translateX: p.interpolate({ inputRange: input, outputRange: xs }) },
+            { translateY: p.interpolate({ inputRange: input, outputRange: ys }) },
+            { scale: p.interpolate({ inputRange: input, outputRange: ss }) },
+          ],
+        }}
+      >
+        <EmoteSticker id={flight.id} size={flight.fromSize} play={false} />
+      </Animated.View>
+    </>
+  );
+}
+
+// Owned-emote card — dokun: animasyon KARTTA oynar (statik dinlenme hali) ve
+// altına birleşik KULLAN flap'i çıkar; kuşanma yalnız flap'e basınca olur.
+// KULLAN, çıkartma kutusunu ölçüp konumu üst katmana verir (uçuş oradan başlar).
+function CollectibleEmoteCard({ emote, width, isEquipped, blocked, active, onPreview, onUse, onRemove }: {
+  emote: EmoteMeta; width: number; isEquipped: boolean; blocked: boolean;
+  active: boolean; onPreview: (id: string | null) => void; onUse: (from: FlightRect | null) => void; onRemove: () => void;
+}) {
+  const stickerBoxRef = useRef<View>(null);
+  const ring = useRef(new Animated.Value(0)).current;
+  const lift = useRef(new Animated.Value(0)).current;
   const check = useRef(new Animated.Value(isEquipped ? 1 : 0)).current;
+  const { scale: pressScale, onIn, onOut } = usePressScale(0.96);
   useEffect(() => {
     if (isEquipped) Animated.spring(check, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }).start();
     else Animated.timing(check, { toValue: 0, duration: 120, useNativeDriver: true }).start();
   }, [isEquipped, check]);
+  useEffect(() => {
+    Animated.timing(ring, { toValue: active ? 1 : 0, duration: active ? 150 : 180, useNativeDriver: true }).start();
+    Animated.spring(lift, { toValue: active ? 1 : 0, friction: active ? 5 : 6, tension: 150, useNativeDriver: true }).start();
+  }, [active, ring, lift]);
+  const flapDisabled = !isEquipped && blocked; // yuva dolu — kuşanamaz
   return (
-    <Pressable onPress={() => { if (!blocked) onToggle(); }} onPressIn={blocked ? undefined : onIn} onPressOut={blocked ? undefined : onOut} style={{ width }}>
-      <View style={{ backgroundColor: isEquipped ? theme.primaryDark : theme.cardLip, borderRadius: 15, paddingBottom: 3 }}>
-        <Animated.View style={{ transform: [{ translateY: ty }], paddingTop: 11, paddingBottom: 9, paddingHorizontal: 4, backgroundColor: theme.card, borderRadius: 14, alignItems: 'center', borderWidth: 2, borderColor: isEquipped ? theme.primary : theme.border, borderTopColor: isEquipped ? theme.primary : theme.panelTopGloss }}>
-          <View style={{ opacity: blocked ? 0.45 : 1 }}>
-            <EmoteSticker id={emote.id} size={58} />
+    <View style={{ width, zIndex: active ? 30 : 0 }}>
+      <Pressable onPress={() => onPreview(active ? null : emote.id)} onPressIn={onIn} onPressOut={onOut}>
+        <Animated.View
+          style={{
+            paddingVertical: 10,
+            backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
+            borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss,
+            borderBottomWidth: 3, borderBottomColor: theme.cardLip,
+            transform: [
+              { translateY: lift.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }) },
+              { scale: pressScale },
+            ],
+          }}
+        >
+          <View ref={stickerBoxRef} collapsable={false} style={{ width: 58, height: 58, alignItems: 'center', justifyContent: 'center' }}>
+            {active ? (
+              <EmoteSticker key={`${emote.id}-anim`} id={emote.id} size={58} play />
+            ) : (
+              <EmoteSticker key={`${emote.id}-static`} id={emote.id} size={58} play={false} />
+            )}
           </View>
-          <View style={{ height: 6 }} />
-          <Text style={{ color: isEquipped ? theme.primary : theme.muted, fontFamily: 'Poppins-ExtraBold', fontSize: 10.5 }} numberOfLines={1} adjustsFontSizeToFit>
-            {isEquipped ? t('collection.equipped') : t('collection.equip')}
-          </Text>
+          {/* kuşanıldı rozeti */}
           <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 4, right: 4, transform: [{ scale: check }] }}>
             <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.card }}>
               <Ionicons name="checkmark" size={11} color={theme.ink} />
             </View>
           </Animated.View>
+          {/* önizleme halkası */}
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 12, borderWidth: 2, borderColor: isEquipped ? theme.danger : theme.primary, opacity: ring }]} />
         </Animated.View>
-      </View>
-    </Pressable>
+      </Pressable>
+      <ActionFlap
+        visible={active}
+        label={(flapDisabled ? t('collection.slotsFull') : isEquipped ? t('collection.remove') : t('collection.use')).toLocaleUpperCase(currentLang())}
+        tone={isEquipped ? 'danger' : 'primary'}
+        disabled={flapDisabled}
+        onPress={() => {
+          if (isEquipped) { onRemove(); onPreview(null); return; }
+          const node = stickerBoxRef.current;
+          if (node) node.measureInWindow((x, y, w, h) => onUse({ x, y, w, h }));
+          else onUse(null); // ölçüm yolu yoksa animasyonsuz kuşan — işlev asla kaybolmaz
+          onPreview(null);
+        }}
+      />
+    </View>
   );
 }
 
@@ -5496,13 +5637,85 @@ export function CollectionScreen({ state, actions }: Props) {
   // interrupts whichever card held it), a finished animation releases it.
   // Both handlers are stable so the memo'd cards only re-render on `active` flips.
   const [previewId, setPreviewId] = useState<string | null>(null);
-  const startPreview = useCallback((id: string) => setPreviewId(id), []);
+  // Seçili yuva (KALDIR flap'i açık olan) — kart önizlemesiyle karşılıklı dışlar:
+  // ekranda aynı anda tek seçim/flap olur.
+  const [slotSel, setSlotSel] = useState<number | null>(null);
+  const startPreview = useCallback((id: string) => { setPreviewId(id); setSlotSel(null); }, []);
   const endPreviewFor = useCallback((id: string) => {
     setPreviewId((cur) => (cur === id ? null : cur));
   }, []);
   const toggleEquip = (id: string) => {
+    setSlotSel(null);
     if (equipped.includes(id)) actions.equipEmotes(equipped.filter((x) => x !== id));
     else if (equipped.length < EMOTE_SLOTS) actions.equipEmotes([...equipped, id]);
+  };
+
+  // ---- Uçuş yönetimi: KULLAN → kart konumundan hedef yuvaya ----
+  // Sağlamlık kuralları:
+  //  * Sunucu çağrısı uçuşla AYNI ANDA başlar (gecikme uçuş süresiyle örtüşür).
+  //  * Uçan ifade, iniş bitene VE sunucu kuşanmayı onaylayana kadar ekranda
+  //    kalır — yuva hiçbir an boş yanıp sönmez.
+  //  * 4sn güvenlik ağı: sunucu ne olursa olsun uçuş temizlenir; onay
+  //    gelmediyse ifade ızgarada yeniden belirir (işlev kaybı imkânsız).
+  const rootRef = useRef<View>(null);
+  const slotRefs = useRef<(View | null)[]>([]);
+  const [flights, setFlights] = useState<EmoteFlight[]>([]);
+  const flightSeq = useRef(0);
+  const doneFlights = useRef<Set<number>>(new Set());
+  const equippedRef = useRef(equipped);
+  equippedRef.current = equipped;
+  const [landedIdx, setLandedIdx] = useState<number | null>(null);
+  const landFlash = useRef(new Animated.Value(0)).current;
+
+  const pruneFlight = useCallback((key: number) => {
+    doneFlights.current.delete(key);
+    setFlights((cur) => cur.filter((f) => f.key !== key));
+  }, []);
+
+  const onFlightEnd = useCallback((key: number) => {
+    doneFlights.current.add(key);
+    setFlights((cur) => {
+      const f = cur.find((x) => x.key === key);
+      if (f) {
+        // iniş parlaması — yuva yeşil bir nefes alır
+        setLandedIdx(f.toIdx);
+        landFlash.setValue(1);
+        Animated.timing(landFlash, { toValue: 0, duration: 420, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+      }
+      // sunucu onayı geldiyse uçan kopyayı hemen bırak (yuva zaten dolu çizilir)
+      if (f && equippedRef.current.includes(f.id)) return cur.filter((x) => x.key !== key);
+      return cur;
+    });
+  }, [landFlash]);
+
+  // Sunucu onayı inişten SONRA gelirse: onaylanan biten uçuşları burada bırak.
+  useEffect(() => {
+    setFlights((cur) => cur.filter((f) => !(doneFlights.current.has(f.key) && equipped.includes(f.id))));
+  }, [equipped.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startFlight = (e: EmoteMeta, from: FlightRect | null) => {
+    const targetIdx = Math.min(EMOTE_SLOTS - 1, equipped.length + flights.length);
+    const slotNode = slotRefs.current[targetIdx];
+    const rootNode = rootRef.current;
+    if (!from || !slotNode || !rootNode) { toggleEquip(e.id); return; } // ölçülemedi → animasyonsuz ama daima çalışır
+    rootNode.measureInWindow((rx, ry) => {
+      slotNode.measureInWindow((sx, sy, sw, sh) => {
+        const fromSize = 58;
+        const key = ++flightSeq.current;
+        const flight: EmoteFlight = {
+          key, id: e.id, toIdx: targetIdx,
+          fromX: from.x + from.w / 2 - fromSize / 2 - rx,
+          fromY: from.y + from.h / 2 - fromSize / 2 - ry,
+          toX: sx + sw / 2 - fromSize / 2 - rx,
+          toY: sy + sh / 2 - fromSize / 2 - ry,
+          fromSize, toSize: 54,
+        };
+        try { LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity')); } catch {}
+        setFlights((cur) => [...cur, flight]);
+        setTimeout(() => pruneFlight(key), 4000); // güvenlik ağı
+        toggleEquip(e.id);
+      });
+    });
   };
 
   // Collectible sticker emotes the player owns: the 4 character faces (free) + any
@@ -5514,6 +5727,9 @@ export function CollectionScreen({ state, actions }: Props) {
     ...PREMIUM_EMOTES.filter((e) => ownsEmote(profile, e.id)),
     ...ANIM_EMOTES.filter((e) => ownsEmote(profile, e.id)),
   ];
+  // Izgara: kuşanılanlar ve o an uçuşta olanlar GÖRÜNMEZ — kullanılan ifade
+  // kaldırılana kadar yalnız yuvasında yaşar.
+  const gridEmotes = collectible.filter((e) => !equipped.includes(e.id) && !flights.some((f) => f.id === e.id));
   const allEmotes: EmoteMeta[] = [...FACE_EMOTES, ...PREMIUM_EMOTES, ...ANIM_EMOTES];
   const discoverable = allEmotes.filter((e) => !ownsEmote(profile, e.id));
   const COL_GAP = 8;
@@ -5530,14 +5746,18 @@ export function CollectionScreen({ state, actions }: Props) {
         width={COL_W}
         isEquipped={isEquipped}
         blocked={blocked}
-        onToggle={() => toggleEquip(e.id)}
+        active={previewId === e.id}
+        onPreview={(id) => { setPreviewId(id); setSlotSel(null); }}
+        onUse={(from) => startFlight(e, from)}
+        onRemove={() => toggleEquip(e.id)}
       />
     );
   };
 
   return (
     <Screen>
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+      <View ref={rootRef} collapsable={false} style={{ flex: 1 }}>
+      <ScrollView style={{ flex: 1 }} scrollEnabled={flights.length === 0} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
         <ScreenHeader
           title={t('tab.collection')}
           icon="albums"
@@ -5552,33 +5772,56 @@ export function CollectionScreen({ state, actions }: Props) {
         {/* Loadout — 6 slots the player fills with any emotes they choose */}
         <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 13, letterSpacing: 0.5, marginBottom: 4, marginLeft: 4 }}>{t('collection.loadout')}</Text>
         <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', marginBottom: 10, marginLeft: 4 }}>{t('collection.loadoutHint', { n: String(equipped.length), max: String(EMOTE_SLOTS) })}</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12, marginBottom: 22 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12, marginBottom: 22, zIndex: slotSel != null ? 20 : 0 }}>
           {Array.from({ length: EMOTE_SLOTS }).map((_, i) => {
             const id = equipped[i];
             const em = id ? (collectible.find((e) => e.id === id) ?? getEmote(id)) : null;
+            // uçuşu süren ifade yuvada henüz ÇİZİLMEZ — uçan kopya inince görünür
+            const inFlight = em ? flights.some((f) => f.id === em.id) : false;
+            const shown = em && !inFlight;
+            const sel = slotSel === i;
             return (
-              <Pressable
-                key={`slot${i}`}
-                onPress={() => { if (id) toggleEquip(id); }}
-                style={({ pressed }) => ({
-                  width: 72, height: 72, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: em ? theme.card : theme.panelInnerFill,
-                  borderWidth: 2, borderColor: em ? theme.primary : theme.border,
-                  ...(em ? { borderTopColor: theme.panelTopGloss, borderBottomWidth: 4, borderBottomColor: theme.cardLip } : {}),
-                  borderStyle: (em ? 'solid' : 'dashed') as 'solid' | 'dashed',
-                  transform: [{ translateY: pressed ? 2 : 0 }],
-                })}
-              >
-                {em ? <EmoteSticker id={em.id} size={54} /> : <Ionicons name="add" size={26} color={theme.muted} />}
-              </Pressable>
+              <View key={`slot${i}`} style={{ zIndex: sel ? 30 : 0 }}>
+                <Pressable
+                  ref={(n) => { slotRefs.current[i] = n as unknown as View; }}
+                  onPress={() => {
+                    if (!shown) { setSlotSel(null); return; }
+                    setPreviewId(null);
+                    setSlotSel((cur) => (cur === i ? null : i));
+                  }}
+                  style={({ pressed }) => ({
+                    width: 72, height: 72, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: shown ? theme.card : theme.panelInnerFill,
+                    borderWidth: 2, borderColor: sel ? theme.danger : shown ? theme.primary : theme.border,
+                    ...(shown ? { borderTopColor: sel ? theme.danger : theme.panelTopGloss, borderBottomWidth: 4, borderBottomColor: theme.cardLip } : {}),
+                    borderStyle: (shown ? 'solid' : 'dashed') as 'solid' | 'dashed',
+                    transform: [{ translateY: pressed ? 2 : 0 }],
+                  })}
+                >
+                  {/* slotta ifade DURAĞAN — animasyon yalnız kart önizlemesinde oynar */}
+                  {shown ? <EmoteSticker id={em.id} size={54} play={false} /> : <Ionicons name="add" size={26} color={theme.muted} />}
+                  {/* iniş parlaması — yuva bir nefes yeşil ışır */}
+                  {landedIdx === i ? (
+                    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 16, backgroundColor: theme.primary, opacity: landFlash.interpolate({ inputRange: [0, 1], outputRange: [0, 0.28] }) }]} />
+                  ) : null}
+                </Pressable>
+                {/* seçili yuvanın altına birleşik KALDIR flap'i */}
+                <ActionFlap
+                  visible={sel && Boolean(shown)}
+                  label={t('collection.remove').toLocaleUpperCase(currentLang())}
+                  tone="danger"
+                  onPress={() => { if (id) toggleEquip(id); }}
+                />
+              </View>
             );
           })}
         </View>
 
-        {/* All collectible emotes — tap to equip/unequip */}
+        {/* All collectible emotes — dokun: önizle; KULLAN flap'i ile kuşan.
+            Kuşanılanlar burada listelenmez — yalnız yuvalarında görünürler. */}
         <SectionHeader label={t('collection.yourEmotes').toLocaleUpperCase(currentLang())} icon="happy" style={{ marginBottom: 8 }} />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP }}>
-          {collectible.map((e) => renderEmoteCard(e))}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP, zIndex: gridEmotes.some((e) => e.id === previewId) ? 20 : 0 }}>
+          {gridEmotes.map((e) => renderEmoteCard(e))}
         </View>
 
         {/* Discoverable emotes — all emotes greyed out, tap to play animation */}
@@ -5606,6 +5849,11 @@ export function CollectionScreen({ state, actions }: Props) {
           )}
         </View>
       </ScrollView>
+      {/* uçuş katmanı — kart→yuva yolculuğundaki ifadeler her şeyin üstünde süzülür */}
+      {flights.map((f) => (
+        <FlyingEmote key={f.key} flight={f} onEnd={onFlightEnd} />
+      ))}
+      </View>
     </Screen>
   );
 }
@@ -7380,6 +7628,103 @@ export function ArenasScreen({ state, actions }: Props) {
 }
 
 // ---- Searching ----
+// ---- OrbitLoader — web istemcideki 3D yörünge yükleyicisinin birebir RN karşılığı ----
+// Ortada SABİT altın yıldırım (yumuşak ışıma nabzıyla); iki marka topu saat
+// yönünde, gerçek derinlik hissiyle tur atar: öndeyken büyük/parlak, arkadayken
+// küçük/loş. Ön/arka katman geçişi toplar tam yanlardayken (yıldırımla hiç
+// çakışmadıkları anda) olur. İki top aynı yörüngeyi 180° faz farkıyla paylaşır.
+// Web karşılığı: webapp/styles.css @keyframes orbit3d (aynı 45° örnek noktaları).
+const ORBIT_BALL_WHITE = require('../assets/ball-card-white.png');
+const ORBIT_BALL_BLUE = require('../assets/ball-card-blue.png');
+const ORBIT_PERIOD_MS = 2600;
+const ORBIT_T = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1];
+// A topu (t=0'da önde): x = -R·sinθ (saat yönü), y = V·cosθ, ölçek = 1+0.16·cosθ
+const ORBIT_AX = [0, -52, -74, -52, 0, 52, 74, 52, 0];
+const ORBIT_AY = [14, 10, 0, -10, -14, -10, 0, 10, 14];
+const ORBIT_AS = [1.16, 1.11, 1, 0.89, 0.84, 0.89, 1, 1.11, 1.16];
+// B topu: aynı değer, yarım periyot kaydırılmış çıktılar
+const ORBIT_BX = [0, 52, 74, 52, 0, -52, -74, -52, 0];
+const ORBIT_BY = [-14, -10, 0, 10, 14, 10, 0, -10, -14];
+const ORBIT_BS = [0.84, 0.89, 1, 1.11, 1.16, 1.11, 1, 0.89, 0.84];
+// Görünürlük pencereleri: A önde t∈[0,.25)∪(.75,1], B önde t∈(.25,.75).
+// Geçiş .24→.25 ve .75→.76 aralığında (~26ms, toplar yanlardayken) olur.
+const ORBIT_VIS_T = [0, 0.24, 0.25, 0.75, 0.76, 1];
+const ORBIT_A_FRONT = [1, 1, 0, 0, 1, 1];
+const ORBIT_A_BACK = [0, 0, 0.82, 0.82, 0, 0]; // arkada hafif loş (derinlik)
+const ORBIT_B_FRONT = [0, 0, 1, 1, 0, 0];
+const ORBIT_B_BACK = [0.82, 0.82, 0, 0, 0, 0.82];
+
+function OrbitLoader({ size = 190 }: { size?: number }) {
+  const t = useRef(new Animated.Value(0)).current;
+  const glow = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const spin = Animated.loop(
+      Animated.timing(t, { toValue: 1, duration: ORBIT_PERIOD_MS, easing: Easing.linear, useNativeDriver: true }),
+    );
+    const pulse = Animated.loop(Animated.sequence([
+      Animated.timing(glow, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(glow, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    spin.start();
+    pulse.start();
+    return () => { spin.stop(); pulse.stop(); };
+  }, [t, glow]);
+
+  const k = size / 190;
+  const ballSz = 58 * k;
+  const orbitBall = (src: any, xs: number[], ys: number[], ss: number[], vis: number[]) => (
+    <Animated.Image
+      source={src}
+      resizeMode="contain"
+      style={{
+        position: 'absolute', width: ballSz, height: ballSz,
+        opacity: t.interpolate({ inputRange: ORBIT_VIS_T, outputRange: vis }),
+        transform: [
+          { translateX: t.interpolate({ inputRange: ORBIT_T, outputRange: xs.map((v) => v * k) }) },
+          { translateY: t.interpolate({ inputRange: ORBIT_T, outputRange: ys.map((v) => v * k) }) },
+          { scale: t.interpolate({ inputRange: ORBIT_T, outputRange: ss }) },
+        ],
+      }}
+    />
+  );
+
+  return (
+    <View style={{ width: 224 * k, height: 168 * k, alignItems: 'center', justifyContent: 'center' }}>
+      {/* arka yarıdaki toplar — yıldırımın ALTINDA çizilir */}
+      {orbitBall(ORBIT_BALL_WHITE, ORBIT_AX, ORBIT_AY, ORBIT_AS, ORBIT_A_BACK)}
+      {orbitBall(ORBIT_BALL_BLUE, ORBIT_BX, ORBIT_BY, ORBIT_BS, ORBIT_B_BACK)}
+      {/* sabit yıldırım + nabız gibi atan altın ışıma */}
+      <Animated.View style={{ position: 'absolute', opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.75] }) }}>
+        <Svg width={116 * k} height={116 * k}>
+          <Defs>
+            <RadialGradient id="orbitGlow" cx="50%" cy="50%" r="50%">
+              <Stop offset="0" stopColor={theme.accent} stopOpacity="0.55" />
+              <Stop offset="1" stopColor={theme.accent} stopOpacity="0" />
+            </RadialGradient>
+          </Defs>
+          <Circle cx={58 * k} cy={58 * k} r={56 * k} fill="url(#orbitGlow)" />
+        </Svg>
+      </Animated.View>
+      <Svg width={58 * k} height={58 * k} viewBox="0 0 24 24">
+        <Defs>
+          <SvgGradient id="orbitBolt" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#FFE484" />
+            <Stop offset="0.55" stopColor={theme.accent} />
+            <Stop offset="1" stopColor="#E5A912" />
+          </SvgGradient>
+        </Defs>
+        <Path
+          d="M13.2 1.6 3.4 13.5c-.3.4 0 .9.5.9h5.8l-1.3 7.2c-.1.6.7 1 1.1.5l9.9-11.9c.3-.4 0-.9-.5-.9h-5.8l1.2-7.2c.1-.6-.7-1-1.1-.5Z"
+          fill="url(#orbitBolt)" stroke="#6B4E06" strokeWidth={1.1} strokeLinejoin="round"
+        />
+      </Svg>
+      {/* ön yarıdaki toplar — yıldırımın ÜSTÜNDE çizilir */}
+      {orbitBall(ORBIT_BALL_WHITE, ORBIT_AX, ORBIT_AY, ORBIT_AS, ORBIT_A_FRONT)}
+      {orbitBall(ORBIT_BALL_BLUE, ORBIT_BX, ORBIT_BY, ORBIT_BS, ORBIT_B_FRONT)}
+    </View>
+  );
+}
+
 export function SearchingScreen({ actions }: Props) {
   const [factIdx, setFactIdx] = useState(Math.floor(Math.random() * LOADING_TIPS.length));
   const factFade = useRef(new Animated.Value(1)).current;
@@ -7400,16 +7745,9 @@ export function SearchingScreen({ actions }: Props) {
 
   return (
     <Screen>
-      {/* Hero wait — Countdown-dialect pulsing mint ring around the engraved flash */}
+      {/* Hero wait — webapp'teki 3D yörünge yükleyicisi: sabit yıldırım + dönen toplar */}
       <View style={[styles.center, { gap: 16 }]}>
-        <PulseRing size={132}>
-          <Ionicons
-            name="flash"
-            size={46}
-            color={theme.primary}
-            style={{ textShadowColor: theme.textShadow, textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 3 }}
-          />
-        </PulseRing>
+        <OrbitLoader />
         <View style={{ alignItems: 'center', gap: 2 }}>
           <Text style={styles.h1}>{t('searching.header')}</Text>
           <Text style={styles.muted}>{t('searching.title')}</Text>
