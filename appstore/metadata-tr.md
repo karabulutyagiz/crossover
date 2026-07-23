@@ -6,8 +6,7 @@
 ---
 
 ## Uygulama Adı (max 30)
-**Crossover: Futbol Düellosu**  _(26)_
-Alternatif: `Crossover — Ortak Oyuncu` _(24)_
+**CrossOver Football**  _(18 — kullanıcı kararı: bu ad kalıyor)_
 
 ## Alt Başlık / Subtitle (max 30)
 **Ortak futbolcuyu ilk sen bul**  _(29)_
