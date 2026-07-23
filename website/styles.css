@@ -37,10 +37,7 @@ nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(14px);
   background:rgba(11,16,32,.6);border-bottom:1px solid rgba(255,255,255,.06)}
 nav .wrap{display:flex;align-items:center;justify-content:space-between;height:68px;gap:20px}
 .brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:1px;font-size:19px}
-.brand .mark{width:30px;height:30px;display:block;flex:none}
-.brand .mark .c1{stroke:var(--primary)}
-.brand .mark .c2{stroke:var(--accent)}
-.brand .mark .x{fill:rgba(61,220,132,.18)}
+.brand .mark{width:auto;height:34px;display:block;flex:none;border-radius:8px}
 .nav-links{display:flex;gap:28px;color:var(--muted);font-size:15px}
 .nav-links a{transition:color .15s ease}
 .nav-links a:hover{color:var(--text)}

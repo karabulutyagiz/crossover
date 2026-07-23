@@ -1097,6 +1097,7 @@ export function IntroScreen({ onDone }: { onDone: () => void }) {
 // the `glow` prop is retained for call-site compatibility but ignored.
 // giriş.jpeg mockup'ından çıkarılan şeffaf logo işareti (balonlar + yıldırım +
 // konfeti). Plaka/zemin YOK — işaret doğrudan sahne arka planının üstünde durur.
+// (Kullanıcı onayı: koyu plakalı amblem reddedildi — "arkasında siyah olmayacak".)
 const LOGO_MARK = require('../assets/logo-mark.png');
 const LOGO_MARK_AR = 267 / 328; // kaynak png en-boy oranı
 function BrandMark({ size = 104 }: { size?: number; glow?: boolean }) {
@@ -1165,9 +1166,10 @@ function ShineSweep({ width, height, delay = 0, duration = 650, loop = false, lo
   );
 }
 
-// ---- "STADIUM SLAM" opening: the badge drops in with weight, sparks fly,
-// CROSSOVER stamps in letter-by-letter, then a gold shine sweeps the wordmark.
-// Runs entirely on the native driver; a fixed timer fires onDone at 2600ms so
+// ---- "CLASH" opening: two balls rush in from opposite edges and COLLIDE at
+// centre — flash, sparks, a stage shake — then the COF emblem forms in their
+// place as they recoil apart; CROSSOVER stamps in letter-by-letter and a gold
+// shine sweeps the wordmark. Native driver only; a fixed timer fires onDone so
 // the splash never blocks on anything.
 const SLAM_TOTAL_MS = 2500;
 const SLAM_WORD = 'CROSSOVER';
@@ -1189,7 +1191,7 @@ const SLAM_SPARKS: { a: number; d: number; s: number; c: string }[] = [
 ];
 
 export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => void; fontsReady?: boolean }) {
-  const veil = useRef(new Animated.Value(1)).current;      // black cover → fades out
+  const veil = useRef(new Animated.Value(1)).current;      // navy cover → fades out
   const drop = useRef(new Animated.Value(0)).current;      // badge fall
   const impact = useRef(new Animated.Value(0)).current;    // squash & recover
   const shake = useRef(new Animated.Value(0)).current;     // stage shake
@@ -1197,7 +1199,7 @@ export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => voi
   const burst = useRef(new Animated.Value(0)).current;     // spark burst
   const letters = useRef(SLAM_WORD.split('').map(() => new Animated.Value(0))).current;
   const fired = useRef(false);
-  // The 2600ms timer must call the LATEST onDone, not the mount-time closure.
+  // The exit timer must call the LATEST onDone, not the mount-time closure.
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
 
@@ -1277,7 +1279,7 @@ export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => voi
         </View>
 
         {/* wordmark: letters stamp in, then a gold shine sweeps across */}
-        <View style={{ width: SLAM_WM_W, alignItems: 'center', marginTop: 26 }}>
+        <View style={{ width: SLAM_WM_W, alignItems: 'center', marginTop: 22 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
             {SLAM_WORD.split('').map((ch, i) => (
               <Animated.Text
@@ -1297,7 +1299,7 @@ export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => voi
               </Animated.Text>
             ))}
           </View>
-          <ShineSweep width={SLAM_WM_W} height={SLAM_FONT * 1.4} delay={1780} duration={620} tint={theme.accent} opacity={0.3} band={0.24} />
+          <ShineSweep width={SLAM_WM_W} height={SLAM_FONT * 1.4} delay={1900} duration={620} tint={theme.accent} opacity={0.3} band={0.24} />
         </View>
       </Animated.View>
       {/* fade-from-navy veil (on top of everything) — mockup zemininde siyah yok */}
@@ -2576,8 +2578,10 @@ export const NEWS_READ_KEY = '@crossover_news_read';
 
 export function NewsModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   return (
-    <GameModal visible={visible} onClose={onClose} title="Haberler" icon="megaphone">
-      <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+    <PopupCard visible={visible} title="Haberler" icon="megaphone" onClose={onClose}>
+      {/* PopupCard's scrim is a SIBLING (not a parent) of the card, so — unlike
+          GameModal — it doesn't swallow this ScrollView's vertical drag. */}
+      <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, gap: 12 }}>
         {NEWS.map((item) => (
           <View key={item.id} style={{ backgroundColor: theme.panelInnerFill, borderRadius: 16, borderWidth: 1.5, borderColor: theme.border, padding: 15, gap: 9 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -2591,7 +2595,7 @@ export function NewsModal({ visible, onClose }: { visible: boolean; onClose: () 
           </View>
         ))}
       </ScrollView>
-    </GameModal>
+    </PopupCard>
   );
 }
 
@@ -3330,9 +3334,14 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                   <Ionicons key={i} name="star" size={12} color={i < Math.ceil(arenaPct * 3) ? theme.gold : 'rgba(255,255,255,0.22)'} />
                 ))}
               </View>
-              <Text style={{ position: 'absolute', left: 11, top: 9, color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }} numberOfLines={1}>
-                {nextTier ? `${trophies}/${nextTier.min} 🏆` : t('home.topArena')}
-              </Text>
+              {nextTier ? (
+                <View style={{ position: 'absolute', left: 11, top: 9, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }} numberOfLines={1}>{`${trophies}/${nextTier.min}`}</Text>
+                  <Ionicons name="trophy" size={11} color={theme.accent} />
+                </View>
+              ) : (
+                <Text style={{ position: 'absolute', left: 11, top: 9, color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{t('home.topArena')}</Text>
+              )}
             </View>
           }
         />
@@ -4248,7 +4257,11 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
   }, [state.phase, phaseIn]);
 
   return (
-    <Screen scroll>
+    // Top-aligned (not centred): with the keyboard up during the guess phase, centred
+    // content pushed the input + Send/Pass buttons down under the keyboard. Anchored to
+    // the top they sit in the upper screen, above the keyboard; automaticallyAdjust-
+    // KeyboardInsets still scrolls the focused field into view on short screens.
+    <Screen scroll contentCenter={false}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
         <MatchExitButton onPress={handleLeave} />
         <PlayerBar state={state} onEmotePress={tutorial ? undefined : () => setEmoteOpen(true)} />
@@ -4363,6 +4376,8 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
           )}
         </Animated.View>
       )}
+      {/* trailing room so the last button can scroll clear of the keyboard on short screens */}
+      <View style={{ height: 32 }} />
       <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
       {!tutorial ? <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} /> : null}
     </Screen>

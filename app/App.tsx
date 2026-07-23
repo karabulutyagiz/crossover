@@ -178,7 +178,7 @@ function TabButton({ active = false, locked = false, icon, activeIcon, label, on
           barely-there wash that lifts the active tab off the bar */}
       <Animated.View pointerEvents="none" style={[s.tabActiveWash, { opacity: act }]} />
       <Animated.View pointerEvents="none" style={[s.tabIndicator, { opacity: act, transform: [{ scaleX: act }] }]} />
-      <Animated.View style={[s.tabInner, { transform: [{ translateY: press.interpolate({ inputRange: [0, 1], outputRange: [0, 2] }) }] }]}>
+      <Animated.View style={[s.tabInner, { opacity: locked ? 0.4 : 1, transform: [{ translateY: press.interpolate({ inputRange: [0, 1], outputRange: [0, 2] }) }] }]}>
         <Animated.View style={{ transform: [{ scale: iconPop }] }}>
           <Ionicons name={active && activeIcon ? activeIcon : icon} size={26} color={color} />
           {locked ? (
@@ -572,6 +572,16 @@ function AppRoot() {
     if (idx !== 2) resetHomePhase();
   }, [resetHomePhase]);
 
+  // Live tab tracking DURING the swipe so the bottom-nav green marker flips the
+  // moment you cross a page's halfway point — not after momentum settles. Skips
+  // the stray events fired by programmatic tab-tap jumps; phase reset is left to
+  // onScrollEnd so mid-swipe never tears down the home sub-screen.
+  const onScrollLive = useCallback((e: any) => {
+    if (programmaticScroll.current) return;
+    const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+    setActiveTab((prev) => (prev === idx || idx < 0 || idx > 3 ? prev : idx));
+  }, []);
+
   // Leaderboard / match-history open as centered popups (App-level overlay), not fullscreen.
   const openLeaderboard = useCallback(() => { actions.openLeaderboard(); setOverlay('leaderboard'); }, [actions]);
   const openMatchHistory = useCallback(() => { actions.openMatchHistory(); setOverlay('matchHistory'); }, [actions]);
@@ -838,7 +848,7 @@ function AppRoot() {
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onScrollEnd}
         // Feed the raw offset to scrollX on the native thread (stadium cross-fade).
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true, listener: onScrollLive })}
         scrollEventThrottle={16}
         contentOffset={{ x: 2 * SCREEN_W, y: 0 }}
         style={{ flex: 1 }}

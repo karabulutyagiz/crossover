@@ -1,0 +1,19 @@
+# ── Crossover website (static: marketing + gizlilik/destek) ──
+# Served by an ISOLATED standalone container (does NOT touch other projects):
+#   docker run -d --name crossover-web-1 --restart unless-stopped --network shared-net \
+#     -v /opt/crossover/website:/usr/share/nginx/html:ro nginx:alpine
+# Update site later:  rsync website/ → /opt/crossover/website/  (nginx serves live, no restart)
+#
+# Append this block to /root/transyol/Caddyfile, then:
+#   docker exec transyol-caddy-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+# ÖN KOŞUL: crossoverfootball.com + www A kaydı → 168.222.180.190 (Hostinger DNS).
+# NOT: oyun backend'i ayrı kalır (168-222-180-190.nip.io → crossover-app-1:8080).
+
+crossoverfootball.com {
+	reverse_proxy crossover-web-1:80
+	encode gzip
+}
+
+www.crossoverfootball.com {
+	redir https://crossoverfootball.com{uri} permanent
+}
