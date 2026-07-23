@@ -3232,7 +3232,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
           <RoundIconBtn icon="ribbon" tint={hasPack ? theme.accent : theme.text} onPress={() => onGoToStore?.('socialPack')} />
         ) : null}
         <RoundIconBtn icon="notifications" dot={newsUnread} onPress={() => { setNewsOpen(true); setNewsUnread(false); AsyncStorage.setItem(NEWS_READ_KEY, LATEST_NEWS_ID).catch(() => {}); }} />
-        <RoundIconBtn icon="settings-sharp" onPress={() => { setMenuSub(null); setMenuOpen(true); }} />
+        <RoundIconBtn icon="settings-sharp" onPress={() => setMenuOpen(true)} />
       </View>
 
       {/* ── 2. HERO ── */}
@@ -3412,16 +3412,19 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               />
             </View>
             <View style={{ width: cardW }}>
+              {/* Match history card (was the leaderboard card — user decision: the
+                  leaderboard stays on the hero podium badge; this slot shows the
+                  player's own match history instead). */}
               <ArtCard
-                title={t('menu.leaderboard')}
+                title={t('menu.matchHistory')}
                 tint={theme.blue}
                 height={128}
-                onPress={() => onOpenLeaderboard?.()}
+                onPress={() => onOpenMatchHistory?.()}
                 art={
                   <View style={StyleSheet.absoluteFill}>
                     <Image source={EMOTE_ART.worldcup} resizeMode="contain" style={{ position: 'absolute', right: -2, top: 24, width: '60%', height: '58%' }} />
                     <Text style={{ position: 'absolute', left: 11, top: 10, color: theme.text, fontSize: 11, fontFamily: 'Poppins-SemiBold', width: '58%', ...engrave('sm') }} numberOfLines={3}>
-                      {t('home.leaderboardHint')}
+                      {t('home.matchHistoryHint')}
                     </Text>
                   </View>
                 }
@@ -3478,37 +3481,24 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         })}
       </GameModal>
 
-      {/* ── Hamburger menu ── */}
+      {/* ── Settings (gear opens the settings CONTENT directly — no hub list;
+             leaderboard lives on the hero podium badge, match history on its
+             own home card — user decision) ── */}
       <GameModal
         visible={menuOpen}
         onClose={() => setMenuOpen(false)}
-        title={(menuSub === 'settings' ? t('settings.title') : t('menu.title')).toLocaleUpperCase(currentLang())}
-        icon={menuSub === 'settings' ? 'settings' : 'menu'}
+        title={t('settings.title').toLocaleUpperCase(currentLang())}
+        icon="settings"
       >
-        <ModalPager pageKey={menuSub ?? 'menu'} dir={menuSub ? 1 : -1}>
-          {menuSub === null ? (
-            <>
-              <GameRow icon="podium" label={t('menu.leaderboard')} chevron onPress={() => { setMenuOpen(false); onOpenLeaderboard?.(); }} />
-              <GameRow icon="time" iconColor={theme.blue} label={t('menu.matchHistory')} chevron onPress={() => { setMenuOpen(false); onOpenMatchHistory?.(); }} />
-              <GameRow icon="settings" iconColor={theme.muted} label={t('settings.title')} chevron onPress={() => setMenuSub('settings')} />
-            </>
-          ) : (
-            <>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-                <ModalBackBtn onPress={() => setMenuSub(null)} />
-              </View>
-              <ScrollView style={{ maxHeight: 430 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                <SettingsPanel
-                  onLanguageChange={() => { setMenuOpen(false); onLanguageChange?.(); }}
-                  diamonds={profile?.diamonds ?? 0}
-                  onChangeName={(newName) => actions.changeName(newName)}
-                  onNeedDiamonds={() => { setMenuOpen(false); onGoToStore?.('diamonds'); }}
-                  onLogout={() => { setMenuOpen(false); void actions.logout(); }}
-                />
-              </ScrollView>
-            </>
-          )}
-        </ModalPager>
+        <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <SettingsPanel
+            onLanguageChange={() => { setMenuOpen(false); onLanguageChange?.(); }}
+            diamonds={profile?.diamonds ?? 0}
+            onChangeName={(newName) => actions.changeName(newName)}
+            onNeedDiamonds={() => { setMenuOpen(false); onGoToStore?.('diamonds'); }}
+            onLogout={() => { setMenuOpen(false); void actions.logout(); }}
+          />
+        </ScrollView>
       </GameModal>
 
       {/* ── Bot match — difficulty home + mode/scope pages inside ONE modal ── */}
@@ -5120,10 +5110,18 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
     if (!/cancel/i.test(code)) openStoreDialog({ title: t('store.purchaseFailedTitle'), body: t('store.purchaseFailedBody'), icon: 'alert-circle', danger: true });
   }, [openStoreDialog]);
   const { connected, products, subscriptions, requestPurchase, fetchProducts } = useIAP({ onPurchaseSuccess, onPurchaseError });
+  // Latest actions via a ref: `actions` is a fresh object every render, and having
+  // it in the effect deps re-ran the replay loop constantly — its verifies overlapped
+  // a live purchase's verify (the stuck-overlay race). Replay runs ONCE per connect.
+  const actionsRef = useRef(actions);
+  actionsRef.current = actions;
+  const replayedRef = useRef(false);
   useEffect(() => {
-    if (!connected) return;
+    if (!connected) { replayedRef.current = false; return; }
     fetchProducts({ skus: DIAMOND_PRODUCT_IDS, type: 'in-app' }).catch(() => {});  // consumables
     fetchProducts({ skus: SOCIAL_PACK_IDS, type: 'subs' }).catch(() => {});         // auto-renewable
+    if (replayedRef.current) return;
+    replayedRef.current = true;
     // Replay any unfinished/available transactions (auto-renewed Social Pack, restores, or a
     // purchase whose grant failed before) — verify each by its JWS so the server grants + we
     // can finish them. granted-0 → no toast (see the reducer).
@@ -5136,12 +5134,12 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
         const jws = p.purchaseToken ?? (await getTransactionJwsIOS(p.productId));
         if (!jws) continue;
         try {
-          await actions.verifyPurchase(jws);
+          await actionsRef.current.verifyPurchase(jws);
           await iapFinishTransaction({ purchase: p, isConsumable: !SOCIAL_PACK_IDS.includes(p.productId) });
         } catch { /* leave unfinished; retried next launch */ }
       }
     }).catch(() => {});
-  }, [connected, fetchProducts, actions]);
+  }, [connected, fetchProducts]);
   const priceFor = (productId: string, fallback: string) =>
     (([...(products as { id?: string; displayPrice?: string }[]), ...(subscriptions as { id?: string; displayPrice?: string }[])]).find((p) => p.id === productId)?.displayPrice) ?? fallback;
   const buy = useCallback((productId: string) => {
@@ -5253,29 +5251,9 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
           </View>
         </Animated.View>
 
-        {/* Free diamonds - watch ads (unlimited) */}
+        {/* Haftalık ifade dükkanı — sıralama kullanıcı kararı: Sosyal Paket'in
+            hemen altında, elmasların üstünde (satışlar burada — koleksiyonda değil) */}
         <Animated.View style={sectionIn(1)}>
-          <SectionHeader label={t('store.freeDiamonds')} icon="gift" />
-          <AdRewardCard adLoading={adLoading} adsWatched={adsWatched} onWatch={watchAd} />
-        </Animated.View>
-
-        {/* Diamond packs */}
-        <Animated.View style={sectionIn(2)} onLayout={(e) => { sectionYRef.current['diamonds'] = e.nativeEvent.layout.y; }}>
-          <SectionHeader label={t('store.packs')} icon="diamond" />
-          {DIAMOND_PACKS.map((pack) => (
-            <DiamondPackRow
-              key={pack.id}
-              pack={pack}
-              busy={buying === pack.productId}
-              inert={!!buying && buying !== pack.productId}
-              price={priceFor(pack.productId, pack.price)}
-              onBuy={() => buy(pack.productId)}
-            />
-          ))}
-        </Animated.View>
-
-        {/* Haftalık ifade dükkanı (satışlar burada — koleksiyonda değil) */}
-        <Animated.View style={sectionIn(3)}>
           {emoteWeeks().map(({ week, emotes }) => (
             <View key={week}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, marginBottom: 6 }}>
@@ -5302,6 +5280,27 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
                 />
               ))}
             </View>
+          ))}
+        </Animated.View>
+
+        {/* Free diamonds - watch ads (unlimited) */}
+        <Animated.View style={sectionIn(2)}>
+          <SectionHeader label={t('store.freeDiamonds')} icon="gift" />
+          <AdRewardCard adLoading={adLoading} adsWatched={adsWatched} onWatch={watchAd} />
+        </Animated.View>
+
+        {/* Diamond packs */}
+        <Animated.View style={sectionIn(3)} onLayout={(e) => { sectionYRef.current['diamonds'] = e.nativeEvent.layout.y; }}>
+          <SectionHeader label={t('store.packs')} icon="diamond" />
+          {DIAMOND_PACKS.map((pack) => (
+            <DiamondPackRow
+              key={pack.id}
+              pack={pack}
+              busy={buying === pack.productId}
+              inert={!!buying && buying !== pack.productId}
+              price={priceFor(pack.productId, pack.price)}
+              onBuy={() => buy(pack.productId)}
+            />
           ))}
         </Animated.View>
       </ScrollView>
@@ -6831,13 +6830,19 @@ function SwipeBackWrap({ children, onBack }: { children: (softBack: () => void) 
   const closeWithAnimation = useCallback((direction = 1) => {
     if (closingRef.current) return;
     closingRef.current = true;
+    // Retire the keyboard up front so the slide-out and the keyboard teardown
+    // don't race the unmount (backing out with the keyboard up froze the screen).
+    Keyboard.dismiss();
     Animated.timing(translateX, {
       toValue: direction >= 0 ? screenW : -screenW,
       duration: 210,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start(() => {
-      translateX.setValue(0);
+      // Do NOT reset translateX before onBack(): the parent unmounts this wrap a
+      // render later, and resetting first popped the closed chat back on screen
+      // for those frames — read as "ekran takılıyor". Leave it parked off-screen;
+      // the entrance effect re-runs from scratch on the next mount anyway.
       closingRef.current = false;
       onBack();
     });
@@ -6929,7 +6934,12 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
 
   // Auto-scroll to bottom whenever content grows (new message, typing indicator)
   // or the ScrollView layout changes (keyboard opens → ScrollView shrinks).
+  // NEVER while the user is dragging: on-drag keyboard dismissal collapses the
+  // keyboard padding mid-scroll, and the resulting content-size change used to
+  // yank the history straight back to the bottom.
+  const draggingRef = useRef(false);
   const scrollToBottom = useCallback(() => {
+    if (draggingRef.current) return;
     scrollRef.current?.scrollToEnd({ animated: true });
   }, []);
 
@@ -6947,7 +6957,9 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
       const height = Math.max(0, SCREEN_H - endY);
       setKeyboardHeight(height);
       setKbOpen(height > 0);
-      setTimeout(scrollToBottom, 50);
+      // Follow to bottom only when the keyboard OPENS; the hide frame (fired by
+      // on-drag dismissal) must not fight the user's scroll gesture.
+      if (height > 0) setTimeout(scrollToBottom, 50);
     };
     const resetKeyboardFrame = () => {
       setKeyboardHeight(0);
@@ -7040,10 +7052,16 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
         ref={scrollRef}
         style={{ flex: 1, backgroundColor: theme.bg }}
         contentContainerStyle={{ padding: 12, paddingBottom: inputBarHeight + 10 + (Platform.OS === 'ios' ? keyboardHeight : 0) }}
-        keyboardShouldPersistTaps="always"
-        keyboardDismissMode="none"
+        // "handled": chips/bubbles still get their taps, but tapping EMPTY space
+        // dismisses the keyboard; "on-drag": scrolling the history closes it too
+        // (both user asks). The send button lives OUTSIDE this ScrollView, so
+        // neither setting can steal its touches.
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         onContentSizeChange={scrollToBottom}
         onLayout={scrollToBottom}
+        onScrollBeginDrag={() => { draggingRef.current = true; }}
+        onScrollEndDrag={() => { draggingRef.current = false; }}
       >
         {messages.length === 0 ? (
           <View style={{ marginTop: 28 }}>
@@ -7061,8 +7079,11 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
           </View>
         ) : messages.map((m) => {
           const isMe = m.fromId === myId;
+          // Own bubbles never animate in: the optimistic local- entry appears
+          // instantly, and the server echo swaps the id (RiseIn remounts) — an
+          // entrance animation there replayed as a visible blink.
           return (
-            <RiseIn key={m.id} animate={animReady.current}>
+            <RiseIn key={m.id} animate={animReady.current && !isMe}>
               <View style={{ alignItems: isMe ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
                 <View style={{ flexDirection: isMe ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 6, maxWidth: '80%' }}>
                   <AvatarBadge avatarId={isMe ? (state.profile?.avatar ?? state.profile?.selectedAvatar) : (friend?.avatar ?? friend?.selectedAvatar)} size={28} ringColor={isMe ? theme.primary : theme.border} />
@@ -7111,6 +7132,11 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
           zIndex: 50, elevation: 50,
         }}
       >
+        {/* Skirt: extends the bar's own background BELOW its bottom edge, behind
+            the keyboard. The iOS 26 keyboard has transparent rounded TOP corners —
+            without this the darker chat bg peeked through them as two notches
+            ("klavyenin sol üst ve sağ üst köşesi boşluk"). */}
+        <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: '100%', height: 40, backgroundColor: theme.bg2 }} />
         <GameInput
           inputRef={inputRef}
           placeholder={t('chat.placeholder')}
@@ -7141,21 +7167,19 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
           {({ pressed }) => {
             const hasText = !!text.trim();
             return (
-              // Chunky circular send: primaryDark lip under a top-lit mint face,
-              // pressed = 2px sink; empty input = recessed panelInnerFill well.
-              <View style={{ backgroundColor: hasText ? theme.primaryDark : 'transparent', borderRadius: 23, paddingBottom: hasText && pressed ? 1 : 3 }}>
-                <View
-                  style={{
-                    width: 44, height: 44, borderRadius: 22,
-                    backgroundColor: hasText ? theme.primary : theme.panelInnerFill,
-                    borderWidth: hasText ? 0 : 2, borderColor: theme.border,
-                    borderTopWidth: hasText ? 1.5 : 2, borderTopColor: hasText ? 'rgba(255,255,255,0.30)' : theme.cardLip,
-                    alignItems: 'center', justifyContent: 'center',
-                    transform: [{ translateY: hasText && pressed ? 2 : 0 }],
-                  }}
-                >
-                  <Ionicons name="send" size={19} color={hasText ? theme.ink : theme.muted} />
-                </View>
+              // Flat, clean send circle (the old chunky lip + dark top border made
+              // the idle state look gray-with-a-clipped-top — user feedback).
+              // Idle: quiet flat well. Ready: solid primary.
+              <View
+                style={{
+                  width: 44, height: 44, borderRadius: 22, marginBottom: 2,
+                  backgroundColor: hasText ? theme.primary : theme.panelInnerFill,
+                  borderWidth: hasText ? 0 : 1, borderColor: theme.border,
+                  alignItems: 'center', justifyContent: 'center',
+                  opacity: pressed && hasText ? 0.85 : 1,
+                }}
+              >
+                <Ionicons name="send" size={19} color={hasText ? theme.ink : theme.muted} />
               </View>
             );
           }}

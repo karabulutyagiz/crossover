@@ -277,9 +277,19 @@ function reducer(state: GameState, action: Action): GameState {
       const myId = state.profile?.userId;
       const partnerId = msg.fromId === myId ? msg.toId : msg.fromId;
 
-      // Add to current chat if open with this partner (merge = de-dupe + time-sort)
+      // Add to current chat if open with this partner (merge = de-dupe + time-sort).
+      // Reconciliation: when the SERVER echo of my own message lands, retire one
+      // matching optimistic local- placeholder first (else the message doubles).
       if (state.chatWith === partnerId) {
-        nextMessages = mergeMessages(state.chatMessages, [msg]);
+        let base = state.chatMessages;
+        if (msg.fromId === myId && !msg.id.startsWith('local-')) {
+          // Retire the OLDEST local- placeholder from me — matched by ORDER, not
+          // body: the server may censor the body, and a body-equality match then
+          // left the raw local bubble next to the censored echo (double bubble).
+          const li = base.findIndex((x) => x.id.startsWith('local-') && x.fromId === myId);
+          if (li >= 0) base = [...base.slice(0, li), ...base.slice(li + 1)];
+        }
+        nextMessages = mergeMessages(base, [msg]);
       }
 
       // Update conversation list
@@ -501,9 +511,13 @@ export function useCrossover() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const wsRef = useRef<WebSocket | null>(null);
   const connectingSince = useRef(0); // when the current socket started CONNECTING (0 = not connecting)
+  const connectKind = useRef(''); // first-message type of the in-flight connect ('register'/'resume_room'/…)
   const lastSocketActivity = useRef(0);
-  const pendingAfterAuth = useRef<ClientMsg | null>(null);
-  const pendingAfterResume = useRef<ClientMsg | null>(null);
+  // Ordered QUEUES (not single slots): rapid sends during a reconnect used to
+  // overwrite each other — only the last message survived, the rest silently
+  // vanished ("üst üste gönder basınca göndermiyor"). Flushed in order on auth.
+  const pendingAfterAuth = useRef<ClientMsg[]>([]);
+  const pendingAfterResume = useRef<ClientMsg[]>([]);
   const offlineRoomRef = useRef<OfflineRoom | null>(null);
   const lastUserIdRef = useRef<string | null>(null);
   const lastAuthProviderRef = useRef<'apple' | 'google' | 'facebook' | null>(null);
@@ -560,9 +574,11 @@ export function useCrossover() {
     return () => timers.forEach(clearTimeout);
   }, [state.emoteSeq]);
 
-  // A pending Apple IAP verification — resolved when the server confirms the grant
-  // (diamonds_granted) or rejected on error, so we only finishTransaction once paid.
-  const pendingVerify = useRef<{ resolve: () => void; reject: (e: Error) => void } | null>(null);
+  // Pending Apple IAP verifications — FIFO queue, resolved oldest-first when the
+  // server confirms each grant (diamonds_granted) or rejected on error, so we only
+  // finishTransaction once paid. A queue (not one slot): the connect-time replay
+  // of unfinished transactions can overlap a live purchase's verify.
+  const pendingVerify = useRef<Array<{ resolve: () => void; reject: (e: Error) => void }>>([]);
   // A pending rewarded-ad grant — its own channel (ad_reward_result) so it can never
   // resolve an in-flight IAP verification by sharing the diamonds_granted message.
   const pendingAdReward = useRef<{ resolve: (granted: number) => void; reject: (e: Error) => void } | null>(null);
@@ -581,6 +597,7 @@ export function useCrossover() {
     const ws = new WebSocket(SERVER_URL);
     wsRef.current = ws;
     connectingSince.current = Date.now();
+    connectKind.current = (first as { type?: string }).type ?? '';
     ws.onopen = () => {
       if (wsRef.current !== ws) return; // superseded by a newer socket
       connectingSince.current = 0;
@@ -594,19 +611,23 @@ export function useCrossover() {
         lastSocketActivity.current = Date.now();
         dispatch(m);
         const mt = (m as { type?: string }).type;
-        if (mt === 'profile' && pendingAfterAuth.current && ws.readyState === WebSocket.OPEN) {
-          const pending = pendingAfterAuth.current;
-          pendingAfterAuth.current = null;
-          ws.send(JSON.stringify(pending));
+        if (mt === 'profile' && pendingAfterAuth.current.length && ws.readyState === WebSocket.OPEN) {
+          const queue = pendingAfterAuth.current;
+          pendingAfterAuth.current = [];
+          for (const pending of queue) ws.send(JSON.stringify(pending));
         }
-        if (mt === 'room_state' && pendingAfterResume.current && ws.readyState === WebSocket.OPEN) {
-          const pending = pendingAfterResume.current;
-          pendingAfterResume.current = null;
-          ws.send(JSON.stringify(pending));
+        if (mt === 'room_state' && pendingAfterResume.current.length && ws.readyState === WebSocket.OPEN) {
+          const queue = pendingAfterResume.current;
+          pendingAfterResume.current = [];
+          for (const pending of queue) ws.send(JSON.stringify(pending));
         }
-        // Resolve/reject a pending IAP verification.
-        if (mt === 'diamonds_granted') { pendingVerify.current?.resolve(); pendingVerify.current = null; }
-        else if (mt === 'error' && pendingVerify.current) { pendingVerify.current.reject(new Error((m as { message?: string }).message ?? 'error')); pendingVerify.current = null; }
+        // Resolve the OLDEST pending IAP verification (FIFO — a concurrent verify
+        // used to clobber the single slot and orphan the first promise, leaving
+        // the "processing securely" overlay up forever). Generic 'error' frames
+        // are deliberately NOT consumed here: the server emits them from dozens
+        // of unrelated paths, and settling a verify on one desynced the FIFO —
+        // stray verifies settle via their own 20s timeout instead.
+        if (mt === 'diamonds_granted') { pendingVerify.current.shift()?.resolve(); }
         // Rewarded-ad grant result — its own channel, never touches pendingVerify.
         if (mt === 'ad_reward_result') {
           const r = m as { ok?: boolean; granted?: number; error?: string };
@@ -642,7 +663,14 @@ export function useCrossover() {
       const uid = state.profile?.userId;
       const name = state.profile?.displayName;
       if (uid && name) {
-        pendingAfterAuth.current = msg;
+        pendingAfterAuth.current.push(msg);
+        // A REGISTER reconnect is already in flight → the queued message will
+        // flush on 'profile'. (Kind check matters: a find_match/join connect
+        // never emits 'profile', so trusting any CONNECTING socket stranded the
+        // queue.) Re-entering connectAndSend tore the socket down on every rapid
+        // tap (socket thrash), losing all queued sends.
+        const cur = wsRef.current;
+        if (cur && cur.readyState === WebSocket.CONNECTING && connectKind.current === 'register' && connectingSince.current > 0 && Date.now() - connectingSince.current < 8000) return;
         connectAndSend({ type: 'register', name, userId: uid }, { silent: true });
       } else {
         connectAndSend(msg, { silent: true });
@@ -660,9 +688,15 @@ export function useCrossover() {
         return;
       }
       if (canResumeRoom && state.room && state.profile) {
-        pendingAfterResume.current = msg;
-        connectAndSend({ type: 'resume_room', code: state.room.code, userId: state.profile.userId }, { silent: true });
-        track('room_resume_attempt', { phase: state.phase });
+        pendingAfterResume.current.push(msg);
+        // Same in-flight guard as the auth path: while a RESUME connect is mid-
+        // handshake, rapid in-match sends (guess/emote taps) must only queue —
+        // re-entering connectAndSend restarted the handshake on every tap.
+        const cur = wsRef.current;
+        if (!(cur && cur.readyState === WebSocket.CONNECTING && connectKind.current === 'resume_room' && connectingSince.current > 0 && Date.now() - connectingSince.current < 8000)) {
+          connectAndSend({ type: 'resume_room', code: state.room.code, userId: state.profile.userId }, { silent: true });
+          track('room_resume_attempt', { phase: state.phase });
+        }
         return;
       }
       // Connection lost — reset to home so user can start fresh
@@ -735,10 +769,15 @@ export function useCrossover() {
     verifyPurchase: (receipt: string) => new Promise<void>((resolve, reject) => {
       const ws = wsRef.current;
       if (!ws || ws.readyState !== WebSocket.OPEN) { reject(new Error('disconnected')); return; }
-      pendingVerify.current = { resolve, reject };
+      // Settle via THIS entry, never a shared slot: the timeout always rejects
+      // this promise if it's still queued, so it can never be orphaned (which
+      // used to leave the purchase overlay stuck on "processing securely").
+      const entry = { resolve, reject };
+      pendingVerify.current.push(entry);
       ws.send(JSON.stringify({ type: 'verify_purchase', receipt }));
       setTimeout(() => {
-        if (pendingVerify.current) { pendingVerify.current.reject(new Error('timeout')); pendingVerify.current = null; }
+        const idx = pendingVerify.current.indexOf(entry);
+        if (idx >= 0) { pendingVerify.current.splice(idx, 1); reject(new Error('timeout')); }
       }, 20000);
     }),
     // Watched a rewarded ad → ask the server to credit diamonds (server-capped).
@@ -944,8 +983,24 @@ export function useCrossover() {
     },
     closeChat: () => dispatch({ type: '_close_chat' } as any),
     sendMessage: (toUserId: string, body: string) => {
-      if (!body.trim()) return;
-      send({ type: 'send_message', toUserId, body: body.trim() });
+      const b = body.trim();
+      if (!b) return;
+      // Optimistic local echo: the bubble appears the instant Send is pressed
+      // instead of after the server round-trip (whose delay/drop read as "Send
+      // doesn't work"). Reuses the message_received reducer (chat + conversation
+      // list both update); reconciled there when the real echo lands.
+      if (state.profile) {
+        const local: MessageView = {
+          id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          fromId: state.profile.userId,
+          fromName: state.profile.displayName ?? '',
+          toId: toUserId,
+          body: b,
+          createdAt: new Date().toISOString(),
+        };
+        dispatch({ type: 'message_received', message: local } as any);
+      }
+      send({ type: 'send_message', toUserId, body: b });
     },
     markRead: (fromUserId: string) => send({ type: 'mark_read', fromUserId }),
     // ---- Push notifications ----
@@ -994,8 +1049,11 @@ export function useCrossover() {
       wsRef.current = null;
       connectingSince.current = 0;
       prevProfile.current = null;
-      pendingVerify.current = null;
+      pendingVerify.current = [];
       pendingAdReward.current = null;
+      // Never let account A's queued sends flush under account B's session.
+      pendingAfterAuth.current = [];
+      pendingAfterResume.current = [];
       lastUserIdRef.current = lastUserId ?? null;
       try {
         if (lastUserId) await AsyncStorage.setItem(LAST_USER_ID_KEY, lastUserId);

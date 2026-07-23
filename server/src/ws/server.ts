@@ -70,6 +70,7 @@ interface QueueEntry {
 const SOCIAL_PACK_REQUIRED = 'Bu mod için iki oyuncuda da Sosyal Paket aktif olmalı';
 const RATE_WINDOW_MS = 10_000;
 const RATE_MAX_MESSAGES = 90;
+const RATE_MAX_TYPING = 120; // separate lane: exempt-from-main-cap typing still can't flood
 // Ranked pairing: match on trophy proximity, NOT arena identity — two players a
 // couple of matches apart (e.g. 500 vs 450) must pair even across an arena border.
 const MATCH_TROPHY_RANGE = 100;
@@ -230,23 +231,34 @@ export function startServer(port: number): Server {
     const ip = remoteIp(req);
     let windowStart = Date.now();
     let messageCount = 0;
+    let typingCount = 0;
     log.info('ws_connect', { ip });
 
     ws.on('message', async (data) => {
       const now = Date.now();
-      if (now - windowStart > RATE_WINDOW_MS) { windowStart = now; messageCount = 0; }
-      messageCount += 1;
-      if (messageCount > RATE_MAX_MESSAGES) {
-        log.warn('ws_rate_limited', { ip, userId: userProfile?.id });
-        // Drop burst messages silently so the user never sees a flashing red error
-        // or gets kicked for a brief burst of taps.
-        return;
-      }
+      if (now - windowStart > RATE_WINDOW_MS) { windowStart = now; messageCount = 0; typingCount = 0; }
       let msg: ClientMsg;
       try {
         msg = JSON.parse(data.toString()) as ClientMsg;
       } catch {
         return transport.send({ type: 'error', message: 'Invalid JSON' });
+      }
+      // Rate limit AFTER parse, exempting typing_start/typing_stop by their parsed
+      // type (a raw-substring exemption would be spoofable from a message body).
+      // Typing fires around every keystroke — counting it burned ~2/3 of the budget
+      // and rapid chatting hit the cap, silently dropping real send_message frames.
+      // Typing gets its own generous cap so an exempt flood can't fan out unbounded.
+      if (msg.type === 'typing_start' || msg.type === 'typing_stop') {
+        typingCount += 1;
+        if (typingCount > RATE_MAX_TYPING) return;
+      } else {
+        messageCount += 1;
+        if (messageCount > RATE_MAX_MESSAGES) {
+          log.warn('ws_rate_limited', { ip, userId: userProfile?.id });
+          // Drop burst messages silently so the user never sees a flashing red
+          // error or gets kicked for a brief burst of taps.
+          return;
+        }
       }
 
       // Register creates/loads a user profile (can happen before or without a room).

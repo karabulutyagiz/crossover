@@ -887,6 +887,16 @@ function AppRoot() {
               if (state.phase === 'home') { actions.openArenas(); return; }
               resetHomePhase(); return;
             }
+            if (idx === 0 && activeTab === 0) {
+              // Re-tapping the active Store tab jumps to the diamond packs
+              // (Clash Royale style). null→'diamonds' retriggers the scroll effect
+              // even if the last jump was already to diamonds; the trailing reset
+              // un-parks the value so LATER same-value jumps (gem pill etc.) fire.
+              setStoreSection(null);
+              setTimeout(() => setStoreSection('diamonds'), 30);
+              setTimeout(() => setStoreSection(null), 900);
+              return;
+            }
             goToTab(idx);
           };
           // The mockup's centre tab is a raised ball, not a flat icon.
