@@ -1037,7 +1037,14 @@ const s = StyleSheet.create({
     position: 'absolute', top: -TAB_TOP_INSET, left: '14%', right: '14%',
     height: 3.5, borderRadius: 2, backgroundColor: theme.primary,
   },
-  tabActiveWash: { position: 'absolute', top: -TAB_TOP_INSET, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.045)' },
+  // Active-tab box: a clearly-defined green-tinted rounded rectangle with a border
+  // (was a near-invisible 0.045 white wash) so the selected tab reads at a glance.
+  tabActiveWash: {
+    position: 'absolute', top: -TAB_TOP_INSET + 4, left: 6, right: 6, bottom: 5,
+    borderRadius: 13,
+    backgroundColor: 'rgba(22,178,122,0.15)',
+    borderWidth: 1.5, borderColor: 'rgba(22,178,122,0.55)',
+  },
   tabLock: {
     position: 'absolute', top: -4, right: -8, width: 14, height: 14, borderRadius: 7,
     backgroundColor: theme.accent, borderBottomWidth: 1.5, borderBottomColor: theme.accentDark,

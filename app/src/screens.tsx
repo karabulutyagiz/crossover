@@ -1166,11 +1166,13 @@ function ShineSweep({ width, height, delay = 0, duration = 650, loop = false, lo
   );
 }
 
-// ---- "CLASH" opening: two balls rush in from opposite edges and COLLIDE at
-// centre — flash, sparks, a stage shake — then the COF emblem forms in their
-// place as they recoil apart; CROSSOVER stamps in letter-by-letter and a gold
-// shine sweeps the wordmark. Native driver only; a fixed timer fires onDone so
-// the splash never blocks on anything.
+// ---- "MATCHUP" opening: the emblem's two halves rush in from opposite edges —
+// blue bubble from the LEFT, red bubble from the RIGHT — and COLLIDE at centre,
+// assembling the mark (the split runs through the bolt, so the lightning
+// completes on impact: they've been "matched"). Pop, shake, ring, sparks; then
+// CROSSOVER stamps in letter-by-letter and a gold shine sweeps the wordmark.
+// The loading screen then raises its bottom kit under this same composition.
+// Native driver only; a fixed timer fires onDone so the splash never blocks.
 const SLAM_TOTAL_MS = 2500;
 const SLAM_WORD = 'CROSSOVER';
 // giriş.jpeg oranları: geniş harf aralıklı, daha ufak beyaz logotip + büyük işaret
@@ -1192,11 +1194,11 @@ const SLAM_SPARKS: { a: number; d: number; s: number; c: string }[] = [
 
 export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => void; fontsReady?: boolean }) {
   const veil = useRef(new Animated.Value(1)).current;      // navy cover → fades out
-  const drop = useRef(new Animated.Value(0)).current;      // badge fall
-  const impact = useRef(new Animated.Value(0)).current;    // squash & recover
+  const fly = useRef(new Animated.Value(0)).current;       // both halves rush in 0→1 (contact)
+  const impact = useRef(new Animated.Value(0)).current;    // horizontal squeeze & recover
   const shake = useRef(new Animated.Value(0)).current;     // stage shake
   const ring1 = useRef(new Animated.Value(0)).current;     // mint impact ring
-  const burst = useRef(new Animated.Value(0)).current;     // spark burst
+  const burst = useRef(new Animated.Value(0)).current;     // spark burst + core flash
   const letters = useRef(SLAM_WORD.split('').map(() => new Animated.Value(0))).current;
   const fired = useRef(false);
   // The exit timer must call the LATEST onDone, not the mount-time closure.
@@ -1205,15 +1207,16 @@ export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => voi
 
   useEffect(() => {
     const anim = Animated.sequence([
-      // 0–640ms: lights up, badge falls with gravity
+      // 0–640ms: lights up; the two halves accelerate in from opposite edges
       Animated.parallel([
         Animated.timing(veil, { toValue: 0, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }),
         Animated.sequence([
           Animated.delay(120),
-          Animated.timing(drop, { toValue: 1, duration: 520, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+          Animated.timing(fly, { toValue: 1, duration: 520, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
         ]),
       ]),
-      // 640ms: IMPACT — squash, shake, rings, sparks; letters stamp in from 980ms
+      // 640ms: IMPACT — the halves meet, the bolt completes: squeeze, shake,
+      // ring, sparks; letters stamp in from 980ms
       Animated.parallel([
         Animated.timing(impact, { toValue: 1, duration: 380, easing: Easing.out(Easing.quad), useNativeDriver: true }),
         Animated.timing(shake, { toValue: 1, duration: 300, easing: Easing.linear, useNativeDriver: true }),
@@ -1235,26 +1238,38 @@ export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => voi
     return () => { clearTimeout(tm); anim.stop(); };
   }, []);
 
-  const badgeTY = drop.interpolate({ inputRange: [0, 1], outputRange: [-SCREEN_H * 0.42, 0] });
-  const badgeScale = drop.interpolate({ inputRange: [0, 1], outputRange: [1.3, 1] });
-  const badgeOpacity = drop.interpolate({ inputRange: [0, 0.12, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' });
-  // squash anchored to the floor: scale + a compensating translate
-  const squashTY = impact.interpolate({ inputRange: [0, 0.22, 0.55, 1], outputRange: [0, SLAM_BADGE * 0.09, -SLAM_BADGE * 0.02, 0] });
-  const squashX = impact.interpolate({ inputRange: [0, 0.22, 0.55, 1], outputRange: [1, 1.12, 0.96, 1] });
-  const squashY = impact.interpolate({ inputRange: [0, 0.22, 0.55, 1], outputRange: [1, 0.8, 1.06, 1] });
+  // Each half slides on X only (straight left/right, per the matchup metaphor);
+  // a slight lean straightens out exactly at contact so the seam lands clean.
+  const leftTX = fly.interpolate({ inputRange: [0, 1], outputRange: [-SCREEN_W * 0.72, 0] });
+  const rightTX = fly.interpolate({ inputRange: [0, 1], outputRange: [SCREEN_W * 0.72, 0] });
+  const leftRot = fly.interpolate({ inputRange: [0, 1], outputRange: ['-10deg', '0deg'] });
+  const rightRot = fly.interpolate({ inputRange: [0, 1], outputRange: ['10deg', '0deg'] });
+  // Horizontal collision physics on the ASSEMBLED mark: squeezed from the sides,
+  // it compresses in X / bulges in Y, then springs back.
+  const squeezeX = impact.interpolate({ inputRange: [0, 0.22, 0.55, 1], outputRange: [1, 0.9, 1.05, 1] });
+  const squeezeY = impact.interpolate({ inputRange: [0, 0.22, 0.55, 1], outputRange: [1, 1.08, 0.97, 1] });
   const shakeTX = shake.interpolate({ inputRange: [0, 0.25, 0.55, 0.8, 1], outputRange: [0, -4, 3, -2, 0] });
   const shakeTY = shake.interpolate({ inputRange: [0, 0.18, 0.42, 0.66, 0.85, 1], outputRange: [0, 7, -5, 3, -1, 0] });
+  const HALF_W = SLAM_BADGE / 2;
   return (
     <OpeningBackdrop>
       <Animated.View style={{ alignItems: 'center', transform: [{ translateX: shakeTX }, { translateY: shakeTY }] }}>
-        {/* badge + floor shadow + impact FX */}
-        <View style={{ width: SLAM_BADGE * 1.4, height: SLAM_BADGE_H + 26, alignItems: 'center', justifyContent: 'flex-start' }}>
-          {/* mockup'ta zemin gölgesi yok — logo doğrudan desenli lacivertin üstünde */}
-          <Animated.View style={{ opacity: badgeOpacity, transform: [{ translateY: badgeTY }, { scale: badgeScale }, { translateY: squashTY }, { scaleX: squashX }, { scaleY: squashY }] }}>
-            <BrandMark size={SLAM_BADGE} />
+        {/* badge (two clipped halves that assemble at centre) + impact FX */}
+        <View style={{ width: SLAM_BADGE * 1.4, height: SLAM_BADGE_H + 26, alignItems: 'center', justifyContent: 'center' }}>
+          <Animated.View style={{ flexDirection: 'row', transform: [{ scaleX: squeezeX }, { scaleY: squeezeY }] }}>
+            {/* LEFT half — the blue bubble (+ the bolt's left edge), in from the left */}
+            <Animated.View style={{ width: HALF_W, height: SLAM_BADGE_H, overflow: 'hidden', transform: [{ translateX: leftTX }, { rotate: leftRot }] }}>
+              <Image source={LOGO_MARK} style={{ position: 'absolute', left: 0, top: 0, width: SLAM_BADGE, height: SLAM_BADGE_H }} resizeMode="contain" />
+            </Animated.View>
+            {/* RIGHT half — the red bubble (+ the bolt's right edge), in from the right */}
+            <Animated.View style={{ width: HALF_W, height: SLAM_BADGE_H, overflow: 'hidden', transform: [{ translateX: rightTX }, { rotate: rightRot }] }}>
+              <Image source={LOGO_MARK} style={{ position: 'absolute', left: -HALF_W, top: 0, width: SLAM_BADGE, height: SLAM_BADGE_H }} resizeMode="contain" />
+            </Animated.View>
           </Animated.View>
-          {/* impact anchor (zero-size, centered at the badge base) */}
-          <View pointerEvents="none" style={{ position: 'absolute', left: '50%', bottom: 16, width: 0, height: 0 }}>
+          {/* impact anchor (zero-size, centered on the seam — the collision point) */}
+          <View pointerEvents="none" style={{ position: 'absolute', left: '50%', top: '50%', width: 0, height: 0 }}>
+            {/* white-hot core flash right where the bolt completes */}
+            <Animated.View style={{ position: 'absolute', left: -34, top: -34, width: 68, height: 68, borderRadius: 34, backgroundColor: '#FFFFFF', opacity: burst.interpolate({ inputRange: [0, 0.08, 0.4, 1], outputRange: [0, 0.6, 0, 0], extrapolate: 'clamp' }), transform: [{ scale: burst.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1.7] }) }] }} />
             <Animated.View style={{ position: 'absolute', left: -70, top: -70, width: 140, height: 140, borderRadius: 70, borderWidth: 3, borderColor: theme.primary, opacity: ring1.interpolate({ inputRange: [0, 0.12, 1], outputRange: [0, 0.85, 0], extrapolate: 'clamp' }), transform: [{ scale: ring1.interpolate({ inputRange: [0, 1], outputRange: [0.35, 2.4] }) }] }} />
             {SLAM_SPARKS.map((p, i) => {
               const rad = (p.a * Math.PI) / 180;
@@ -1376,15 +1391,17 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
   return (
     <OpeningBackdrop>
       {/* brand block — pixel-identical to the splash's final frame (same badge box,
-          per-letter wordmark, underline and margins) so the cut is invisible */}
+          per-letter wordmark, underline and margins) so the cut is invisible.
+          justifyContent + marginTop MUST match the splash ('center' / 22): a
+          mismatch here made the emblem visibly jump ~15px at the hard cut. */}
       <View style={{ alignItems: 'center' }}>
-        <View style={{ width: SLAM_BADGE * 1.4, height: SLAM_BADGE_H + 26, alignItems: 'center', justifyContent: 'flex-start' }}>
+        <View style={{ width: SLAM_BADGE * 1.4, height: SLAM_BADGE_H + 26, alignItems: 'center', justifyContent: 'center' }}>
           {/* mockup'ta zemin gölgesi yok */}
           <Animated.View style={{ transform: [{ translateY: float.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, -3, 0] }) }] }}>
             <BrandMark size={SLAM_BADGE} />
           </Animated.View>
         </View>
-        <View style={{ width: SLAM_WM_W, alignItems: 'center', marginTop: 26 }}>
+        <View style={{ width: SLAM_WM_W, alignItems: 'center', marginTop: 22 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
             {SLAM_WORD.split('').map((ch, i) => (
               <Text key={i} style={{ color: theme.text, fontSize: SLAM_FONT, letterSpacing: 3, marginHorizontal: 2, includeFontPadding: false, fontFamily: 'Poppins-Black', ...engrave('lg') }}>{ch}</Text>
@@ -2143,28 +2160,29 @@ const BOT_BANNER: Record<BotPage, { title: () => string; icon: IoniconName }> = 
 
 // Login gate: shown until the user signs in. No guest play — the app is locked
 // behind Apple/Google (Facebook coming soon) sign-in.
-// Custom "Sign in with Apple" trigger in the kit's chunky anatomy. Follows
-// Apple's HIG (white field, black  logo + localized title — the mandated
-// white/black are a sanctioned exception to the no-raw-hex rule); the actual
-// sign-in still runs through the native AppleAuthentication module.
-function AppleSignInBtn({ onPress }: { onPress: () => void }) {
-  const press = useRef(new Animated.Value(0)).current;
-  const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, 4] });
+// Clean, corporate sign-in buttons — flat & minimal (no chunky game lip), the
+// way real auth stacks look. Apple: solid black field, white  logo + localized
+// title (HIG). Google: white field, hairline border, blue "G" + gray title
+// (Google's brand spec). The mandated brand hex are a sanctioned exception to the
+// no-raw-hex rule; the actual sign-in still runs natively.
+function AuthBtn({ onPress, disabled, bg, border, fg, icon, iconColor, label }: {
+  onPress: () => void; disabled?: boolean; bg: string; border?: string; fg: string;
+  icon: IoniconName; iconColor: string; label: string;
+}) {
   return (
-    <Pressable
-      onPress={onPress}
-      onPressIn={() => Animated.timing(press, { toValue: 1, duration: PRESS_IN_MS, useNativeDriver: true }).start()}
-      onPressOut={() => Animated.timing(press, { toValue: 0, duration: PRESS_OUT_MS, useNativeDriver: true }).start()}
-      style={{ marginVertical: 6 }}
-    >
-      <View style={{ backgroundColor: '#B9BFCB', borderRadius: 16.5, borderWidth: 1.5, borderColor: theme.panelInk, paddingBottom: 4, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
-        <Animated.View style={{ transform: [{ translateY: ty }], backgroundColor: '#FFFFFF', borderRadius: 14, paddingVertical: 15, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="logo-apple" size={22} color="#000000" style={{ marginRight: 9, marginTop: -3 }} />
-          <Text numberOfLines={1} style={{ color: '#000000', fontSize: 17, fontFamily: 'Poppins-ExtraBold' }}>{t('login.apple')}</Text>
-        </Animated.View>
+    <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => ({ marginVertical: 6, opacity: disabled ? 0.5 : pressed ? 0.88 : 1 })}>
+      <View style={{ backgroundColor: bg, borderRadius: 12, height: 52, borderWidth: border ? 1 : 0, borderColor: border, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }}>
+        <Ionicons name={icon} size={20} color={iconColor} style={{ marginRight: 9, marginTop: icon === 'logo-apple' ? -2 : 0 }} />
+        <Text numberOfLines={1} style={{ color: fg, fontSize: 16, fontFamily: 'Poppins-SemiBold' }}>{label}</Text>
       </View>
     </Pressable>
   );
+}
+function AppleSignInBtn({ onPress }: { onPress: () => void }) {
+  return <AuthBtn onPress={onPress} bg="#000000" fg="#FFFFFF" icon="logo-apple" iconColor="#FFFFFF" label={t('login.apple')} />;
+}
+function GoogleSignInBtn({ onPress, disabled }: { onPress: () => void; disabled?: boolean }) {
+  return <AuthBtn onPress={onPress} disabled={disabled} bg="#FFFFFF" border="#DADCE0" fg="#3C4043" icon="logo-google" iconColor="#4285F4" label={t('login.google')} />;
 }
 
 export function LoginScreen({ state, actions }: Props) {
@@ -2247,9 +2265,11 @@ export function LoginScreen({ state, actions }: Props) {
           {Platform.OS === 'ios' && appleAvailable ? (
             <AppleSignInBtn onPress={() => { if (hasInternet) void signInApple(); else setShowOfflinePulse(true); }} />
           ) : null}
-          <Btn label={t('login.google')} icon="logo-google" kind="accent" onPress={() => { if (hasInternet) void promptAsync(); else setShowOfflinePulse(true); }} disabled={!request} big />
+          <GoogleSignInBtn onPress={() => { if (hasInternet) void promptAsync(); else setShowOfflinePulse(true); }} disabled={!request} />
           {!isNetworkErrorMessage(state.error) && state.error ? <ErrorBanner message={state.error} /> : null}
-          <Btn label={t('login.guest')} icon="person-outline" kind="ghost" onPress={() => { if (hasInternet) actions.guestLogin(); else setShowOfflinePulse(true); }} />
+          <Pressable onPress={() => { if (hasInternet) actions.guestLogin(); else setShowOfflinePulse(true); }} style={({ pressed }) => ({ marginTop: 6, paddingVertical: 12, opacity: pressed ? 0.55 : 1 })}>
+            <Text style={{ color: theme.muted, fontSize: 15, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{t('login.guest')}</Text>
+          </Pressable>
         </Animated.View>
       </View>
 
