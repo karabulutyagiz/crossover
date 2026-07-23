@@ -1503,8 +1503,11 @@ function CoachGate({ visible, wrong, stepLabel, body, cta, ctaIcon, onPress }: {
     }
   }, [visible, a, scrim]);
   if (!mounted && !visible) return null;
-  const frame = wrong ? theme.danger : theme.primary;
-  const frameBot = wrong ? theme.dangerDark : theme.primaryDark;
+  // Corporate-clean coach card: flat dark surface, hairline border, small caps
+  // step label, one flat CTA. (The old gold-banner + mascot-circle + chunky-lip
+  // treatment read as toylike — user feedback.)
+  const accent = wrong ? theme.danger : theme.primary;
+  const ctaFg = wrong ? theme.text : theme.ink;
   return (
     <Animated.View
       style={[StyleSheet.absoluteFill, {
@@ -1517,26 +1520,21 @@ function CoachGate({ visible, wrong, stepLabel, body, cta, ctaIcon, onPress }: {
         style={{
           width: '100%',
           opacity: a.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
-          transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) }],
-          backgroundColor: theme.panelInk, borderRadius: 22, padding: 2,
-          borderWidth: 2, borderColor: frame, borderBottomColor: frameBot,
-          shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 16,
+          transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }],
+          backgroundColor: theme.card, borderRadius: 18, borderWidth: 1, borderColor: theme.border,
+          paddingVertical: 24, paddingHorizontal: 22, alignItems: 'center',
+          shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 16,
         }}
       >
-        <View style={{ backgroundColor: theme.card, borderRadius: 20, overflow: 'hidden', borderBottomWidth: 3, borderBottomColor: theme.cardLip }}>
-          <View style={{ height: 38, alignItems: 'center', justifyContent: 'center', backgroundColor: frame, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.35)', borderBottomWidth: 3, borderBottomColor: frameBot }}>
-            <Text style={{ color: wrong ? theme.text : theme.ink, fontFamily: 'Poppins-ExtraBold', fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' }}>{stepLabel}</Text>
-          </View>
-          <View style={{ padding: 22, paddingTop: 18, alignItems: 'center' }}>
-            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: theme.panelInnerFill, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: frame, marginBottom: 12 }}>
-              <Ionicons name={wrong ? 'alert' : 'football'} size={28} color={frame} />
-            </View>
-            <Text style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-SemiBold', lineHeight: 23, textAlign: 'center', marginBottom: 16 }}>{body}</Text>
-            <View style={{ width: '100%' }}>
-              <Btn label={cta} kind="primary" icon={ctaIcon} onPress={onPress} big />
-            </View>
-          </View>
-        </View>
+        <Text style={{ color: accent, fontFamily: 'Poppins-ExtraBold', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 10 }}>{stepLabel}</Text>
+        <Text style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-SemiBold', lineHeight: 23, textAlign: 'center', marginBottom: 18 }}>{body}</Text>
+        <Pressable
+          onPress={onPress}
+          style={({ pressed }) => ({ alignSelf: 'stretch', height: 50, borderRadius: 12, backgroundColor: accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: pressed ? 0.88 : 1 })}
+        >
+          <Text style={{ color: ctaFg, fontSize: 16, fontFamily: 'Poppins-ExtraBold' }}>{cta}</Text>
+          <Ionicons name={ctaIcon} size={18} color={ctaFg} />
+        </Pressable>
       </Animated.View>
     </Animated.View>
   );
@@ -1565,8 +1563,8 @@ function TutorialHint({ visible, text }: { visible: boolean; text: string }) {
         transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [-12, 0] }) }],
       }}
     >
-      <View style={{ backgroundColor: theme.card, borderRadius: 14, borderWidth: 1.5, borderColor: theme.primary, borderBottomWidth: 3, borderBottomColor: theme.cardLip, paddingVertical: 9, paddingHorizontal: 14, maxWidth: '100%' }}>
-        <Text style={{ color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{text}</Text>
+      <View style={{ backgroundColor: theme.card, borderRadius: 12, borderWidth: 1, borderColor: theme.primary, paddingVertical: 10, paddingHorizontal: 16, maxWidth: '100%' }}>
+        <Text style={{ color: theme.text, fontSize: 13.5, lineHeight: 20, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{text}</Text>
       </View>
     </Animated.View>
   );
@@ -1715,27 +1713,30 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
   const onGate = () => { if (step >= 2) onDone(); else setGateOpen(false); };
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+    // paddingTop: the tutorial mounts full-bleed (App skips the padded root), so
+    // without the safe-area inset the inner match screens' top row (exit button +
+    // player bar) rendered under the notch — "üstte kalıyor görünmüyor".
+    <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
       {screen}
 
       {/* Slim top hint while the player is interacting (gate closed) */}
       <TutorialHint visible={!gateOpen && !!cur.hint} text={cur.hint} />
 
-      {/* Result step: keep the win + career fully visible, celebration card at the bottom */}
+      {/* Result step: keep the win + career fully visible, celebration card at the
+          bottom — same corporate-clean card voice as CoachGate (no sparks/shine). */}
       {step >= 2 ? (
-        <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16 }}>
-          <Animated.View
-            style={{ transform: [{ scale: bubble }], opacity: bubble }}
-            onLayout={(e) => setCelebSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
-          >
-            <GamePanel hero tint={theme.primary} bodyStyle={{ alignItems: 'center', padding: 18 }}>
-              <CelebrationSparks />
-              <Text style={{ color: theme.text, fontSize: 14.5, fontFamily: 'Poppins-SemiBold', lineHeight: 22, textAlign: 'center', marginBottom: 14 }}>{cur.gate}</Text>
-              <View style={{ width: '100%' }}>
-                <Btn label={cur.cta} kind="primary" icon="rocket" onPress={onGate} big />
-              </View>
-              {celebSize.w > 0 ? <ShineSweep width={celebSize.w - 8} height={celebSize.h - 8} delay={340} duration={720} opacity={0.24} band={0.26} /> : null}
-            </GamePanel>
+        <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16, paddingBottom: Math.max(insets.bottom, 16) }}>
+          <Animated.View style={{ transform: [{ scale: bubble }], opacity: bubble }}>
+            <View style={{ backgroundColor: theme.card, borderRadius: 18, borderWidth: 1, borderColor: theme.border, padding: 22, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 16 }}>
+              <Text style={{ color: theme.text, fontSize: 14.5, fontFamily: 'Poppins-SemiBold', lineHeight: 22, textAlign: 'center', marginBottom: 16 }}>{cur.gate}</Text>
+              <Pressable
+                onPress={onGate}
+                style={({ pressed }) => ({ alignSelf: 'stretch', height: 50, borderRadius: 12, backgroundColor: theme.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: pressed ? 0.88 : 1 })}
+              >
+                <Text style={{ color: theme.ink, fontSize: 16, fontFamily: 'Poppins-ExtraBold' }}>{cur.cta}</Text>
+                <Ionicons name="arrow-forward" size={18} color={theme.ink} />
+              </Pressable>
+            </View>
           </Animated.View>
         </View>
       ) : (
@@ -2865,7 +2866,12 @@ function ConfettiPiece({ p, w, h }: { p: (typeof CONFETTI)[number]; w: number; h
 function HeroConfetti({ w, h }: { w: number; h: number }) {
   if (w <= 0 || h <= 0) return null;
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+    // overflow hidden is load-bearing: while a piece waits out its stagger delay
+    // it PARKS at translateY -20 (just above the box). Unclipped, all 18 pieces
+    // sat visibly frozen in a row above the hero ("konfeti yukarıda takılı");
+    // clipped, they only exist while falling through the box and the loop's
+    // top-reset happens off-screen, so entry/exit/loop all read seamless.
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}>
       {CONFETTI.map((p, i) => <ConfettiPiece key={i} p={p} w={w} h={h} />)}
     </View>
   );
@@ -4244,7 +4250,10 @@ function GuessStatusPanel({ icon, iconColor, stripe, text }: { icon: IoniconName
 }
 
 export function GuessScreen({ state, actions, tutorial }: Props) {
-  const [text, setText] = useState('');
+  // Tutorial: the answer arrives PRE-FILLED and locked — the player only taps
+  // Send (typing "Wesley Sneijder" on a first launch was busywork + kept the
+  // keyboard out of the guided flow).
+  const [text, setText] = useState(tutorial ? 'Wesley Sneijder' : '');
   const teams = state.teams;
   const room = state.room!;
   const youAnswered = state.locked?.byId === room.youId;
@@ -4374,7 +4383,7 @@ export function GuessScreen({ state, actions, tutorial }: Props) {
                 value={text}
                 onChangeText={setText}
                 autoFocus={!tutorial}
-                editable={!youAnswered}
+                editable={!youAnswered && !tutorial}
                 returnKeyType="send"
                 onSubmitEditing={() => text.trim() && actions.submitGuess(text.trim())}
               />
