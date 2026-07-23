@@ -39,7 +39,7 @@
     "android": {
       "package": "com.crossover.football",
       "adaptiveIcon": {
-        "backgroundColor": "#1A1A1A",
+        "backgroundColor": "#0B1838",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"

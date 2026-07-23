@@ -91,12 +91,16 @@ export const PREMIUM_EMOTES: EmoteMeta[] = [
 // system and granted to specific accounts. Keep ids in sync with
 // server/src/game/emotes.ts (ANIM_EMOTES).
 // phrase intentionally empty — animated emotes are shown as just the animation, no caption.
+// `still`: ilk kareden üretilmiş GERÇEK PNG (assets/emotes/still-*.png).
+// Duraklatılmış WebP hiçbir çizim yolunda güvenilir donmuyor (yeni mimaride
+// RN Image bile animasyonu oynatabiliyor — dünya kupasının ışınları dönmeye
+// devam ediyordu); PNG'nin ise oynayacak karesi yok. Garanti durağan.
 export const ANIM_EMOTES: EmoteMeta[] = [
-  { id: 'footballer', kind: 'lottie', phrase: '', color: theme.primary, anim: require('../assets/emotes/footballer.webp') },
-  { id: 'worldcup',   kind: 'lottie', phrase: '', color: theme.gold,    anim: require('../assets/emotes/worldcup.webp') },
-  { id: 'kick',       kind: 'lottie', phrase: '', color: theme.blue,    anim: require('../assets/emotes/kick.webp') },
-  { id: 'squad',      kind: 'lottie', phrase: '', color: theme.accent,  anim: require('../assets/emotes/squad.webp') },
-  { id: 'pitch',      kind: 'lottie', phrase: '', color: theme.purple,  anim: require('../assets/emotes/pitch.webp') },
+  { id: 'footballer', kind: 'lottie', phrase: '', color: theme.primary, anim: require('../assets/emotes/footballer.webp'), still: require('../assets/emotes/still-footballer.png') },
+  { id: 'worldcup',   kind: 'lottie', phrase: '', color: theme.gold,    anim: require('../assets/emotes/worldcup.webp'),   still: require('../assets/emotes/still-worldcup.png') },
+  { id: 'kick',       kind: 'lottie', phrase: '', color: theme.blue,    anim: require('../assets/emotes/kick.webp'),       still: require('../assets/emotes/still-kick.png') },
+  { id: 'squad',      kind: 'lottie', phrase: '', color: theme.accent,  anim: require('../assets/emotes/squad.webp'),      still: require('../assets/emotes/still-squad.png') },
+  { id: 'pitch',      kind: 'lottie', phrase: '', color: theme.purple,  anim: require('../assets/emotes/pitch.webp'),      still: require('../assets/emotes/still-pitch.png') },
   { id: 'euro2024',   kind: 'lottieJson', phrase: '', color: theme.gold, animJson: logoEmoji },
 ];
 
@@ -221,14 +225,15 @@ function FaceEmote({ size, expr, play = true }: { size: number; expr: 'smile' | 
   );
 }
 
-// Animated-WebP sticker (the `lottie` kind). Neither `autoplay={false}` nor the
-// imperative stopAnimating() reliably freezes a looping WebP in expo-image (the
-// world-cup trophy's rays kept turning after its preview was interrupted). So a
-// paused sticker is rendered by React Native's own <Image>, which CANNOT play
-// animated WebP — it decodes just the first frame. Guaranteed still, no races.
-function WebpSticker({ source, size, play }: { source: number; size: number; play: boolean }) {
+// Animated-WebP sticker (the `lottie` kind). Duraklatılmış hal, animasyonlu
+// WebP'nin HİÇBİR çizim yoluna emanet edilmez (expo-image autoplay={false},
+// stopAnimating(), hatta RN Image — yeni mimaride hepsi kareyi oynatabiliyor;
+// dünya kupasının ışınları kesintiden sonra dönmeye devam ediyordu). Bunun
+// yerine ilk kareden üretilmiş gerçek PNG (`still`) gösterilir — oynayacak
+// karesi olmayan görsel garantili durağandır.
+function WebpSticker({ source, still, size, play }: { source: number; still?: number; size: number; play: boolean }) {
   if (!play) {
-    return <RNImage source={source} style={{ width: size, height: size }} resizeMode="contain" />;
+    return <RNImage source={still ?? source} style={{ width: size, height: size }} resizeMode="contain" />;
   }
   return <ExpoImage source={source} style={{ width: size, height: size }} contentFit="contain" autoplay />;
 }
@@ -246,7 +251,7 @@ export function EmoteSticker({ id, size, play = true, onFinish }: {
     return <LottieView source={meta.animJson as any} autoPlay loop={false} onAnimationFinish={onFinish} style={{ width: size, height: size }} />;
   }
   if (meta.kind === 'lottie' && meta.anim != null) {
-    return <WebpSticker source={meta.anim} size={size} play={play} />;
+    return <WebpSticker source={meta.anim} still={meta.still} size={size} play={play} />;
   }
   // text emote: icon badge
   return (
