@@ -1614,6 +1614,74 @@ function CelebrationSparks() {
 // Guided first-time tutorial that drives the REAL match screens (PickTeam → Guess
 // → Result) with scripted fake data, plus a coach overlay + skip. Step advances
 // when the player does the real action (pick a team, submit a guess).
+// ---- DEV ONLY: App Store screenshot harness -----------------------------------
+// Cycles the REAL match/social screens with the tutorial's mock data (real club
+// crests) so clean marketing screenshots can be captured in the simulator without
+// tap automation. Enabled by the DEV_SHOT flag in App.tsx; never ships enabled.
+const SHOT_PROFILE = {
+  ...TUT_PROFILE, displayName: 'Yağız', trophies: 340, diamonds: 1250, wins: 27, losses: 9,
+};
+const SHOT_FRIENDS = [
+  { userId: 'f1', displayName: 'Emre', selectedAvatar: 'pp3', avatar: 'pp3', trophies: 512, arena: { name: 'Şehir Stadı', icon: '🏟️', minTrophies: 400 }, online: true },
+  { userId: 'f2', displayName: 'Kerem', selectedAvatar: 'pp12', avatar: 'pp12', trophies: 385, arena: { name: 'Kasaba Arenası', icon: '🏟️', minTrophies: 200 }, online: true },
+  { userId: 'f3', displayName: 'Deniz', selectedAvatar: 'pp5', avatar: 'pp5', trophies: 260, arena: { name: 'Kasaba Arenası', icon: '🏟️', minTrophies: 200 }, online: false },
+  { userId: 'f4', displayName: 'Mert', selectedAvatar: 'pp18', avatar: 'pp18', trophies: 745, arena: { name: 'Millî Stadyum', icon: '🏟️', minTrophies: 600 }, online: true },
+];
+export function DevShotScreen() {
+  const [ix, setIx] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setIx((i) => (i + 1) % 5), 6000);
+    return () => clearInterval(id);
+  }, []);
+  const kind = (['pick', 'guess', 'result', 'friends', 'arenas'] as const)[ix]!;
+  const insets = useSafeAreaInsets();
+  const future = Date.now() + 3600_000;
+  const room = {
+    code: '', status: (kind === 'pick' ? 'pick' : kind === 'guess' ? 'guess' : 'result') as RoomView['status'],
+    youId: 'you',
+    players: [
+      { id: 'you', name: 'Yağız', score: 1, wrongCount: 0, isHost: true, connected: true },
+      { id: 'opp', name: 'Kerem', score: 1, wrongCount: 0, isHost: false, connected: true },
+    ],
+  } as RoomView;
+  const st: GameState = {
+    ...initialState,
+    connected: true,
+    profile: SHOT_PROFILE as GameState['profile'],
+    room,
+    phase: kind === 'pick' ? 'pick' : kind === 'guess' ? 'guess' : 'result',
+    pickRole: 'team', picked: false, pickEndsAt: future, guessEndsAt: future,
+    clubResults: TUT_CLUBS,
+    teams: { teamA: TUT_A, teamB: TUT_B },
+    revealMode: 'team-team', matchOver: false,
+    friends: SHOT_FRIENDS as GameState['friends'],
+    result: kind === 'result'
+      ? {
+          correct: true, reason: 'both', autocorrected: false,
+          answeredById: 'you', answeredByName: 'Yağız', guess: 'Wesley Sneijder',
+          teamA: TUT_A, teamB: TUT_B,
+          matchedPlayerName: 'Wesley Sneijder', matchedPlayerImageUrl: null,
+          spellsA: TUT_SPELL_A, spellsB: TUT_SPELL_B, allClubs: TUT_CAREER,
+          commonPlayers: [{ name: 'Wesley Sneijder', imageUrl: null }],
+        }
+      : null,
+  };
+  const acts = new Proxy({}, { get: () => () => {} }) as unknown as Actions;
+  const matchLike = kind === 'pick' || kind === 'guess' || kind === 'result';
+  return (
+    // +84: content sits BELOW Expo Go's floating Tools bubble, so the bubble
+    // lands on plain navy and can be painted out of the capture cleanly.
+    <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top + 84 }}>
+      <ScreenBg variant={matchLike ? 'match' : 'menu'} />
+      {kind === 'pick' ? <PickTeamScreen state={st} actions={acts} tutorial />
+        : kind === 'guess' ? <GuessScreen state={st} actions={acts} tutorial />
+        : kind === 'result' ? <ResultScreen state={st} actions={acts} tutorial />
+        : kind === 'friends' ? <FriendsScreen state={st} actions={acts} />
+        : <ArenasScreen state={st} actions={acts} />}
+    </View>
+  );
+}
+
 export function TutorialScreen({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0); // 0 pick · 1 guess · 2 result
   const [wrong, setWrong] = useState(false); // typed a wrong guess in the sim

@@ -20,6 +20,7 @@ import { t, setLanguage } from './src/i18n';
 import { setGemTarget } from './src/gemTarget';
 import { addNotificationTapListener, getPushPermissionGranted, setBadge } from './src/notifications';
 import {
+  DevShotScreen,
   SplashScreen,
   LoadingScreen,
   ScreenBg,
@@ -662,6 +663,11 @@ function AppRoot() {
     }
     // 'reengage' → just open the app (home); nothing to navigate.
   }, [pushRouteSeq, loaded, state.profile, goToTab, actions]);
+
+  // APP-STORE SCREENSHOT HARNESS — flip to true ONLY while capturing marketing
+  // shots in the simulator (cycles real screens with mock data); never ship true.
+  const DEV_SHOT = false;
+  if (DEV_SHOT) return <View style={{ flex: 1 }}><StatusBar style="light" /><DevShotScreen /></View>;
 
   // Splash screen: cinematic brand opening; dismisses itself via onDone.
   if (splash || !fontsReady) {
