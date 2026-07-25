@@ -292,16 +292,40 @@ export async function changeDisplayName(
   const COST = 1000; // diamonds
   const user = await getUser(userId);
   if (!user) return { ok: false, error: 'Kullanıcı bulunamadı' };
+  // Misafir hesaplar ad değiştiremez — yalnız Apple/Google/Facebook bağlı
+  // hesaplar. (İstemci bu UI'ı misafire hiç göstermez; bu, protokol düzeyinde
+  // ikinci kilittir — elmas düşülmeden ÖNCE kontrol edilir.)
+  const { rows: linkRows } = await pool.query<{ linked: boolean }>(
+    `SELECT (apple_sub IS NOT NULL OR google_sub IS NOT NULL OR facebook_sub IS NOT NULL) AS linked
+     FROM users WHERE id = $1`,
+    [userId],
+  );
+  if (!linkRows[0]?.linked) return { ok: false, error: 'Ad değiştirmek için bir hesapla kayıt olmalısın' };
   if (user.diamonds < COST) return { ok: false, error: `Yetersiz elmas (${user.diamonds}/${COST})` };
 
-  const { rows } = await pool.query<DbUser>(
-    `UPDATE users SET display_name = $2, diamonds = diamonds - $3
-     WHERE id = $1 AND diamonds >= $3
-     RETURNING *`,
-    [userId, newName.trim(), COST],
+  // İsim başka bir hesapta dolu mu? (Büyük/küçük harf duyarsız; elmas
+  // düşülmeden ÖNCE kontrol edilir.)
+  const trimmed = newName.trim();
+  const { rows: takenRows } = await pool.query(
+    `SELECT 1 FROM users WHERE LOWER(display_name) = LOWER($1) AND id <> $2 LIMIT 1`,
+    [trimmed, userId],
   );
-  if (!rows[0]) return { ok: false, error: 'Yetersiz elmas' };
-  return { ok: true, profile: toProfile(rows[0]) };
+  if (takenRows.length > 0) return { ok: false, error: 'Bu kullanıcı adı zaten dolu' };
+
+  try {
+    const { rows } = await pool.query<DbUser>(
+      `UPDATE users SET display_name = $2, diamonds = diamonds - $3
+       WHERE id = $1 AND diamonds >= $3
+       RETURNING *`,
+      [userId, trimmed, COST],
+    );
+    if (!rows[0]) return { ok: false, error: 'Yetersiz elmas' };
+    return { ok: true, profile: toProfile(rows[0]) };
+  } catch (err) {
+    // Yarış durumu: aynı ada eşzamanlı iki istek — unique index ihlali (23505).
+    if ((err as { code?: string }).code === '23505') return { ok: false, error: 'Bu kullanıcı adı zaten dolu' };
+    throw err;
+  }
 }
 
 // Set the player's profile picture. Free avatars can be used by everyone; premium

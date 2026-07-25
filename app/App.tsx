@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCrossover } from './src/useCrossover';
+import { useCrossover, type GameState } from './src/useCrossover';
 import { t, setLanguage } from './src/i18n';
 import { setGemTarget } from './src/gemTarget';
 import { addNotificationTapListener, getPushPermissionGranted, setBadge } from './src/notifications';
@@ -49,6 +49,7 @@ import {
   MatchHistoryModal,
   FriendProfileModal,
   GameModal,
+  MatchOverBanner,
   Btn,
   MODE_LABEL,
   darken,
@@ -487,12 +488,57 @@ function AppRoot() {
     animateDiamondGain(Math.max(0, diamonds - amount), diamonds, amount);
   }, [state.profile?.diamonds, gemCelebration, animateDiamondGain]);
 
+  // ---- Maç sonu kupa popup'ı: MAÇ EKRANINDA DEĞİL, ana menüye dönünce ----
+  // Maç biterken veri burada yakalanır (leave sonrası state sıfırlanır, o yüzden
+  // kopyalanır); popup yalnız sekme dünyasında (ana menü) çizilir. Arena elmas
+  // kutlaması da popup kapatıldıktan SONRA zincirlenir — maç ekranı temiz kalır.
+  const [matchOverPopup, setMatchOverPopup] = useState<null | {
+    youWon: boolean; youScore: number; oppScore: number; youWrong: number; oppWrong: number;
+    winnerName: string | null; trophyDelta: NonNullable<GameState['trophyDelta']>;
+  }>(null);
+  const matchOverCaptured = useRef(false);
   useEffect(() => {
+    if (!state.matchOver || !state.trophyDelta) { matchOverCaptured.current = false; return; }
+    if (matchOverCaptured.current) return;
+    matchOverCaptured.current = true;
+    const ps = state.room?.players ?? [];
+    const youId = state.room?.youId;
+    const you = ps.find((p) => p.id === youId);
+    const opp = ps.find((p) => p.id !== youId);
+    setMatchOverPopup({
+      youWon: state.matchWinnerId != null && state.matchWinnerId === youId,
+      youScore: you?.score ?? 0,
+      oppScore: opp?.score ?? 0,
+      youWrong: you?.wrongCount ?? 0,
+      oppWrong: opp?.wrongCount ?? 0,
+      winnerName: state.matchWinnerName ?? null,
+      trophyDelta: state.trophyDelta,
+    });
+  }, [state.matchOver, state.trophyDelta, state.room, state.matchWinnerId, state.matchWinnerName]);
+  // Rövanş/yeni maç başlarsa bekleyen popup düşer (bayat maçın popup'ı gösterilmez).
+  useEffect(() => {
+    if (state.phase === 'countdown' || state.phase === 'matchup' || state.phase === 'pick') setMatchOverPopup(null);
+  }, [state.phase]);
+  const dismissMatchOverPopup = useCallback(() => {
+    setMatchOverPopup((cur) => {
+      const reward = cur?.trophyDelta.arenaReward ?? 0;
+      const arenaName = cur?.trophyDelta.arena?.name;
+      if (reward > 0 && arenaName) {
+        setGemCelebration((current) => current ?? { kind: 'arenaReward', amount: reward, arenaName });
+      }
+      return null;
+    });
+  }, []);
+
+  useEffect(() => {
+    // Hükmen (rakip ayrıldı) gibi matchOver YAKALANMAYAN durumlarda arena ödülü
+    // eskisi gibi anında kutlanır; normal maç sonu ödülü popup kapanışına bağlı.
+    if (state.matchOver) return;
     const reward = state.trophyDelta?.arenaReward ?? 0;
     const arenaName = state.trophyDelta?.arena?.name;
     if (!reward || !arenaName) return;
     setGemCelebration((current) => current ?? { kind: 'arenaReward', amount: reward, arenaName });
-  }, [state.trophyDelta?.arenaReward, state.trophyDelta?.arena?.name]);
+  }, [state.matchOver, state.trophyDelta?.arenaReward, state.trophyDelta?.arena?.name]);
 
   // Re-measure the active tab's gem pill (fly-to-gems target) after each tab change —
   // only the active page's bar holds the real ref, and it won't re-layout on its own.
@@ -969,6 +1015,25 @@ function AppRoot() {
       <LeaderboardModal visible={overlay === 'leaderboard'} entries={state.leaderboard} onClose={() => setOverlay(null)} onViewProfile={(userId) => actions.getUserProfile(userId)} />
       <MatchHistoryModal visible={overlay === 'matchHistory'} history={state.matchHistory} myName={state.profile?.displayName ?? ''} onClose={() => setOverlay(null)} />
       <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
+
+      {/* Kupa kazanma/kaybetme popup'ı — maçtan ÇIKINCA burada, ana menünün üstünde */}
+      {matchOverPopup ? (
+        <View style={[StyleSheet.absoluteFill, { zIndex: 60, backgroundColor: theme.scrim, justifyContent: 'center', paddingHorizontal: 24 }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={dismissMatchOverPopup} />
+          <MatchOverBanner
+            youWon={matchOverPopup.youWon}
+            youScore={matchOverPopup.youScore}
+            oppScore={matchOverPopup.oppScore}
+            youWrong={matchOverPopup.youWrong}
+            oppWrong={matchOverPopup.oppWrong}
+            winnerName={matchOverPopup.winnerName}
+            trophyDelta={matchOverPopup.trophyDelta}
+          />
+          <View style={{ maxWidth: 320, width: '100%', alignSelf: 'center' }}>
+            <Btn big kind={matchOverPopup.youWon ? 'primary' : 'ghost'} label={t('common.continue')} onPress={dismissMatchOverPopup} />
+          </View>
+        </View>
+      ) : null}
 
       {gemCelebration ? (
         <DiamondCelebration

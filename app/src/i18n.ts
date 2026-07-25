@@ -297,6 +297,8 @@ const tr = {
   'network.offlineHint': 'Bağlantı gelince kaldığın yerden devam edersin',
   'store.cancel': 'Vazgeç',
   'store.confirm': 'Onayla',
+  'store.confirmBuyTitle': 'Satın Alma',
+  'store.confirmBuyBody': 'Bu ifadeyi satın almak istediğine emin misin?',
   'store.newName': 'Yeni isim',
 
   // arenas
@@ -515,6 +517,10 @@ const tr = {
   'collection.use': 'Kullan',
   'collection.remove': 'Kaldır',
   'collection.slotsFull': 'Yuvalar dolu',
+  'friends.guestGateTitle': 'Kayıt Gerekli',
+  'friends.guestGateBody': 'Arkadaş ekleyebilmek için bir hesapla kayıt olman gerekli.',
+  'friends.guestGateGoogle': 'Google ile Devam Et',
+  'friends.guestGateApple': 'Apple ile Devam Et',
   'collection.discoverable': 'BULUNACAK İFADELER',
   'collection.allOwned': 'Tüm ifadeler sende. Yeni ifadeler mağazaya geldiğinde burada görünür.',
 
@@ -790,6 +796,8 @@ const en: typeof tr = {
   'network.offlineHint': 'You will resume as soon as you are back online',
   'store.cancel': 'Cancel',
   'store.confirm': 'Confirm',
+  'store.confirmBuyTitle': 'Confirm Purchase',
+  'store.confirmBuyBody': 'Are you sure you want to buy this emote?',
   'store.newName': 'New name',
 
   'arenas.title': 'Arenas',
@@ -993,6 +1001,10 @@ const en: typeof tr = {
   'collection.use': 'Use',
   'collection.remove': 'Remove',
   'collection.slotsFull': 'Slots full',
+  'friends.guestGateTitle': 'Sign Up Required',
+  'friends.guestGateBody': 'You need to sign up with an account to add friends.',
+  'friends.guestGateGoogle': 'Continue with Google',
+  'friends.guestGateApple': 'Continue with Apple',
   'collection.discoverable': 'DISCOVERABLE EMOTES',
   'collection.allOwned': 'You own every emote. New emotes will appear here when they arrive in the store.',
 

@@ -508,7 +508,6 @@ function Chip({ icon, label, onPress, active = false }: { icon: IoniconName; lab
             backgroundColor: active ? theme.glowSoft : theme.card,
             borderWidth: 1.5,
             borderColor: active ? theme.primary : theme.border,
-            borderTopColor: active ? theme.primary : theme.panelTopGloss,
             borderRadius: 12,
             paddingVertical: 10,
             paddingHorizontal: 6,
@@ -759,7 +758,7 @@ function GameRow({ icon, iconColor = theme.accent, leading, label, sublabel, rig
           transform: [{ translateY: ty }],
           flexDirection: 'row', alignItems: 'center', gap: 11,
           backgroundColor: theme.card, borderRadius: 14, overflow: 'hidden',
-          borderWidth: 2, borderColor: ring, borderTopColor: selected ? theme.primary : theme.panelTopGloss,
+          borderWidth: 2, borderColor: ring,
           paddingVertical: 12, paddingHorizontal: 12,
         }, style]}
       >
@@ -2248,11 +2247,60 @@ function AuthBtn({ onPress, disabled, bg, border, fg, icon, iconColor, label }: 
     </Pressable>
   );
 }
-function AppleSignInBtn({ onPress }: { onPress: () => void }) {
-  return <AuthBtn onPress={onPress} bg="#000000" fg="#FFFFFF" icon="logo-apple" iconColor="#FFFFFF" label={t('login.apple')} />;
+function AppleSignInBtn({ onPress, label }: { onPress: () => void; label?: string }) {
+  return <AuthBtn onPress={onPress} bg="#000000" fg="#FFFFFF" icon="logo-apple" iconColor="#FFFFFF" label={label ?? t('login.apple')} />;
 }
-function GoogleSignInBtn({ onPress, disabled }: { onPress: () => void; disabled?: boolean }) {
-  return <AuthBtn onPress={onPress} disabled={disabled} bg="#FFFFFF" border="#DADCE0" fg="#3C4043" icon="logo-google" iconColor="#4285F4" label={t('login.google')} />;
+function GoogleSignInBtn({ onPress, disabled, label }: { onPress: () => void; disabled?: boolean; label?: string }) {
+  return <AuthBtn onPress={onPress} disabled={disabled} bg="#FFFFFF" border="#DADCE0" fg="#3C4043" icon="logo-google" iconColor="#4285F4" label={label ?? t('login.google')} />;
+}
+
+// ---- GuestGateModal — misafir kapısı ----
+// Misafir bir kullanıcı arkadaş eklemeyi denediğinde açılır: "kayıt olman
+// gerekli" mesajı + gerçek Apple/Google giriş akışları. authWith mevcut misafir
+// hesabın kimliğini ipucu olarak yollar → sunucu sağlayıcıyı AYNI hesaba bağlar,
+// ilerleme (kupa/elmas/ifadeler) aynen korunur.
+function GuestGateModal({ visible, onClose, actions }: { visible: boolean; onClose: () => void; actions: Actions }) {
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    iosClientId: GOOGLE_IOS_CLIENT_ID,
+    androidClientId: GOOGLE_WEB_CLIENT_ID,
+    webClientId: GOOGLE_WEB_CLIENT_ID,
+  });
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const idToken = response.params?.id_token ?? response.authentication?.idToken;
+      if (idToken) actions.authWith('google', idToken);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [response]);
+  const signInApple = async () => {
+    try {
+      const cred = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (cred.identityToken) {
+        const given = cred.fullName?.givenName ?? '';
+        const family = cred.fullName?.familyName ?? '';
+        const name = `${given} ${family}`.trim() || undefined;
+        actions.authWith('apple', cred.identityToken, name);
+      }
+    } catch {
+      /* kullanıcı Apple sayfasını kapattı */
+    }
+  };
+  return (
+    <GameModal visible={visible} onClose={onClose} title={t('friends.guestGateTitle')} icon="person-add">
+      <Text style={{ color: theme.muted, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20, marginBottom: 12 }}>
+        {t('friends.guestGateBody')}
+      </Text>
+      {Platform.OS === 'ios' ? (
+        <AppleSignInBtn label={t('friends.guestGateApple')} onPress={() => void signInApple()} />
+      ) : null}
+      <GoogleSignInBtn label={t('friends.guestGateGoogle')} onPress={() => void promptAsync()} disabled={!request} />
+    </GameModal>
+  );
 }
 
 export function LoginScreen({ state, actions }: Props) {
@@ -2458,9 +2506,11 @@ const INFO_LINKS = {
 const openLink = (url: string) => { Linking.openURL(url).catch(() => {}); };
 
 // ---- Settings Panel (inside hamburger menu) ----
-function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamonds, onLogout }: {
+function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName, onNeedDiamonds, onLogout }: {
   onLanguageChange: () => void;
   diamonds: number;
+  // Yalnız Apple/Google hesapları ad değiştirebilir — misafirlerde bölüm HİÇ çizilmez.
+  canChangeName: boolean;
   onChangeName: (name: string) => void;
   onNeedDiamonds: () => void;
   onLogout: () => void;
@@ -2497,26 +2547,30 @@ function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamond
         onPress={() => setLangPicker(true)}
       />
 
-      {/* Ad Değiştir (1000 elmas) */}
-      <SectionHeader label={t('settings.name')} icon="create" />
-      <GameRow
-        icon="create"
-        label={t('settings.changeName')}
-        right={(
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.cardLip, borderRadius: 9, borderWidth: 1, borderColor: theme.accentDark, paddingHorizontal: 8, paddingVertical: 3 }}>
-            <Text style={{ color: theme.accent, fontFamily: 'Poppins-ExtraBold', fontSize: 12, fontVariant: ['tabular-nums'], ...engrave('sm') }}>1000</Text>
-            <GemIcon size={13} />
-          </View>
-        )}
-        onPress={() => { if (diamonds < 1000) onNeedDiamonds(); else setRenameOpen(true); }}
-      />
+      {/* Ad Değiştir (1000 elmas) — YALNIZ Apple/Google hesapları; misafirde bölüm yok */}
+      {canChangeName ? (
+        <>
+          <SectionHeader label={t('settings.name')} icon="create" />
+          <GameRow
+            icon="create"
+            label={t('settings.changeName')}
+            right={(
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.cardLip, borderRadius: 9, borderWidth: 1, borderColor: theme.accentDark, paddingHorizontal: 8, paddingVertical: 3 }}>
+                <Text style={{ color: theme.accent, fontFamily: 'Poppins-ExtraBold', fontSize: 12, fontVariant: ['tabular-nums'], ...engrave('sm') }}>1000</Text>
+                <GemIcon size={13} />
+              </View>
+            )}
+            onPress={() => { if (diamonds < 1000) onNeedDiamonds(); else setRenameOpen(true); }}
+          />
 
-      <ChangeNameModal
-        visible={renameOpen}
-        diamonds={diamonds}
-        onClose={() => setRenameOpen(false)}
-        onConfirm={(newName) => { onChangeName(newName); setRenameOpen(false); }}
-      />
+          <ChangeNameModal
+            visible={renameOpen}
+            diamonds={diamonds}
+            onClose={() => setRenameOpen(false)}
+            onConfirm={(newName) => { onChangeName(newName); setRenameOpen(false); }}
+          />
+        </>
+      ) : null}
 
       {/* ── Yardım & Bilgiler — framed link chips ── */}
       <SectionHeader label={t('settings.help')} icon="help-circle" style={{ marginTop: 18 }} />
@@ -2949,7 +3003,8 @@ function HeroConfetti({ w, h }: { w: number; h: number }) {
 // A floating counter beside the hero: round art badge with its value on a dark
 // caption chip clipped to the badge's bottom edge.
 function RailBadge({ icon, iconColor, ringColor, value, onPress, countAnim, fillAnim, innerRef }: {
-  icon: IoniconName; iconColor: string; ringColor: string; value: string; onPress: () => void;
+  // value verilmezse rozet SAYISIZ çizilir (ör. liderlik tablosu rozeti)
+  icon: IoniconName; iconColor: string; ringColor: string; value?: string; onPress: () => void;
   countAnim?: Animated.Value; fillAnim?: Animated.Value; innerRef?: Ref<View>;
 }) {
   const { scale, onIn, onOut } = usePressScale();
@@ -2979,14 +3034,16 @@ function RailBadge({ icon, iconColor, ringColor, value, onPress, countAnim, fill
           ) : null}
           <Ionicons name={icon} size={22} color={iconColor} />
         </View>
-        <View style={{
-          marginTop: -8,
-          backgroundColor: '#0A1428', borderRadius: 9,
-          borderWidth: 1.5, borderColor: withAlpha(ringColor, 0.6),
-          paddingHorizontal: 7, paddingVertical: 1.5,
-        }}>
-          <Text style={{ color: theme.text, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{shown}</Text>
-        </View>
+        {shown != null ? (
+          <View style={{
+            marginTop: -8,
+            backgroundColor: '#0A1428', borderRadius: 9,
+            borderWidth: 1.5, borderColor: withAlpha(ringColor, 0.6),
+            paddingHorizontal: 7, paddingVertical: 1.5,
+          }}>
+            <Text style={{ color: theme.text, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{shown}</Text>
+          </View>
+        ) : null}
       </Animated.View>
     </Pressable>
   );
@@ -3322,7 +3379,8 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         />
         <View style={{ position: 'absolute', right: 0, top: 2, gap: 12 }}>
           <RailBadge icon="trophy" iconColor={theme.gold} ringColor={theme.purple} value={String(trophies)} onPress={actions.openArenas} countAnim={trophyCountAnim} fillAnim={trophyFillAnim} innerRef={trophyBadgeRef} />
-          <RailBadge icon="podium" iconColor={theme.accent} ringColor={theme.accentDark} value={String(profile?.wins ?? 0)} onPress={() => onOpenLeaderboard?.()} />
+          {/* liderlik rozeti SAYISIZ — altındaki galibiyet sayısı kullanıcı isteğiyle kaldırıldı */}
+          <RailBadge icon="podium" iconColor={theme.accent} ringColor={theme.accentDark} onPress={() => onOpenLeaderboard?.()} />
         </View>
       </View>
 
@@ -3563,10 +3621,14 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
           <SettingsPanel
             onLanguageChange={() => { setMenuOpen(false); onLanguageChange?.(); }}
             diamonds={profile?.diamonds ?? 0}
+            canChangeName={state.authProvider === 'apple' || state.authProvider === 'google'}
             onChangeName={(newName) => actions.changeName(newName)}
             onNeedDiamonds={() => { setMenuOpen(false); onGoToStore?.('diamonds'); }}
             onLogout={() => { setMenuOpen(false); void actions.logout(); }}
           />
+          {/* Ad değiştirme vb. sunucu hataları ("Bu kullanıcı adı zaten dolu")
+              pencere İÇİNDE görünsün — ana ekrandaki bant modalın altında kalıyor */}
+          {!isNetworkErrorMessage(state.error) && state.error ? <ErrorBanner message={state.error} /> : null}
         </ScrollView>
       </GameModal>
 
@@ -3934,7 +3996,7 @@ function PlayerBar({ state, onEmotePress }: { state: GameState; onEmotePress?: (
         </View>
       </View>
       {/* Running score — recessed well; your side leads in mint */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.panelInnerFill, borderRadius: 10, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, paddingHorizontal: 10, paddingVertical: 2 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.panelInnerFill, borderRadius: 10, borderWidth: 1.5, borderColor: theme.border, paddingHorizontal: 10, paddingVertical: 2 }}>
         <Text style={{ color: theme.primary, fontSize: 15, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{you?.score ?? 0}</Text>
         <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold' }}>-</Text>
         <Text style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{opp.score ?? 0}</Text>
@@ -4006,7 +4068,7 @@ function MatchTimer({ endsAt, urgentAt = 5, fallbackSecs, style }: {
       style={[{
         flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center',
         backgroundColor: theme.panelInnerFill, borderRadius: 14,
-        borderWidth: 2, borderColor: theme.border, borderTopColor: theme.cardLip,
+        borderWidth: 2, borderColor: theme.border,
         paddingVertical: 4, paddingHorizontal: 14,
         transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.09] }) }],
       }, style]}
@@ -4173,7 +4235,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
               style={({ pressed }) => ({
                 width: 48, height: 48, borderRadius: 12,
                 backgroundColor: theme.card,
-                borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss,
+                borderWidth: 2, borderColor: theme.border,
                 borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
                 alignItems: 'center', justifyContent: 'center',
                 shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: 4,
@@ -4259,7 +4321,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
             style={({ pressed }) => ({
               width: '31.5%' as const, alignItems: 'center' as const, gap: 7,
               backgroundColor: theme.card, borderRadius: 14,
-              borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss,
+              borderWidth: 2, borderColor: theme.border,
               borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
               paddingVertical: 12, paddingHorizontal: 4,
               shadowColor: '#000', shadowOpacity: pressed ? 0.15 : 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: pressed ? 2 : 4,
@@ -4701,7 +4763,7 @@ export function DiamondCelebration({
                       <View
                         style={{
                           backgroundColor: theme.card, borderRadius: 12,
-                          borderWidth: 1.5, borderColor: arenaVisual.color, borderTopColor: theme.panelTopGloss,
+                          borderWidth: 1.5, borderColor: arenaVisual.color,
                           paddingHorizontal: 14, paddingVertical: 7,
                         }}
                       >
@@ -4726,7 +4788,7 @@ export function DiamondCelebration({
                     {subtitle}
                   </Text>
                 ) : (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, backgroundColor: theme.panelInnerFill, borderRadius: 14, paddingHorizontal: 18, paddingVertical: 9, borderWidth: 1.5, borderColor: theme.gem, borderTopColor: theme.cardLip }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, backgroundColor: theme.panelInnerFill, borderRadius: 14, paddingHorizontal: 18, paddingVertical: 9, borderWidth: 1.5, borderColor: theme.gem }}>
                     <GemIcon size={24} />
                     <Text style={{ color: theme.gemText, fontFamily: 'Poppins-Black', fontSize: 22, fontVariant: ['tabular-nums'], ...engrave('sm') }}>+{shownAmount.toLocaleString('tr-TR')}</Text>
                   </View>
@@ -4825,7 +4887,7 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
       />
 
       {/* Cost / balance in a recessed summary well */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: theme.panelInnerFill, borderRadius: 12, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, paddingVertical: 10, paddingHorizontal: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: theme.panelInnerFill, borderRadius: 12, borderWidth: 1.5, borderColor: theme.border, paddingVertical: 10, paddingHorizontal: 12 }}>
         <Text style={styles.muted}>{t('store.cost')}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Text style={{ color: canAfford ? theme.gemText : theme.danger, fontFamily: 'Poppins-ExtraBold', fontSize: 15, fontVariant: ['tabular-nums'] }}>{cost}</Text>
@@ -5001,7 +5063,7 @@ function WeeklyCountdown() {
       style={{
         flexDirection: 'row', alignItems: 'center', gap: 4,
         backgroundColor: theme.panelInnerFill, borderRadius: 999,
-        borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, // dark top = sunken
+        borderWidth: 1.5, borderColor: theme.border, // dark top = sunken
         paddingHorizontal: 9, paddingVertical: 3,
         transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) }],
       }}
@@ -5022,7 +5084,7 @@ function AdRewardCard({ adLoading, adsWatched, onWatch }: { adLoading: boolean; 
         onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
         style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
       >
-        <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.primary, borderBottomColor: theme.primaryDark, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
           <Ionicons name="play" size={24} color={theme.primary} style={{ marginLeft: 2 }} />
         </View>
         <View style={{ flex: 1 }}>
@@ -5239,6 +5301,11 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
 
   // "Not enough gems" dialog (weekly emote shop) — its CTA deep-links to the packs.
   const [showNotEnough, setShowNotEnough] = useState(false);
+  // Satın alma onayı: fiyat butonu artık DOĞRUDAN satın almaz — animasyonlu
+  // önizlemeli "emin misin?" penceresi açar. İçerik, pencerenin çıkış
+  // animasyonu boyunca ekranda kalsın diye ayrı `open` bayrağıyla tutulur.
+  const [confirmEmote, setConfirmEmote] = useState<EmoteMeta | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   // Staggered section entrance: fade + 12px rise, 200ms each, 40ms stagger.
   const sectionAnims = useRef(Array.from({ length: 4 }, () => new Animated.Value(0))).current;
@@ -5345,7 +5412,7 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
                   emote={e}
                   owned={ownsEmote(profile, e.id)}
                   canAfford={(profile?.diamonds ?? 0) >= (e.premium?.price ?? 0)}
-                  onBuy={() => actions.buyEmote(e.id)}
+                  onBuy={() => { setConfirmEmote(e); setConfirmOpen(true); }}
                   onBlocked={() => setShowNotEnough(true)}
                 />
               ))}
@@ -5405,6 +5472,32 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
             if (y !== undefined) storeScrollRef.current?.scrollTo({ y, animated: true });
           }}
         />
+      </GameModal>
+
+      {/* İfade satın alma onayı — animasyonlu CANLI önizleme: alıcı ne aldığını görür */}
+      <GameModal visible={confirmOpen} onClose={() => setConfirmOpen(false)} title={t('store.confirmBuyTitle')} icon="cart">
+        {confirmEmote ? (
+          <View style={{ alignItems: 'center', gap: 10 }}>
+            <View style={{ width: 136, height: 136, borderRadius: 22, backgroundColor: theme.panelInnerFill, borderWidth: 2, borderColor: theme.accent, borderBottomWidth: 4, borderBottomColor: theme.accentDark, alignItems: 'center', justifyContent: 'center' }}>
+              {/* pencere her açılışta baştan oynasın diye key open'a bağlı */}
+              <EmoteSticker key={confirmOpen ? `${confirmEmote.id}-open` : `${confirmEmote.id}-closed`} id={confirmEmote.id} size={108} play loop />
+            </View>
+            <Text style={{ color: theme.text, fontSize: 16, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') }}>{confirmEmote.premium?.name}</Text>
+            <Text style={{ color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 19, marginTop: 2 }}>
+              {t('store.confirmBuyBody')}
+            </Text>
+            <View style={{ alignSelf: 'stretch', marginTop: 4 }}>
+              <Btn
+                big
+                kind="primary"
+                gem
+                label={String(confirmEmote.premium?.price ?? 0)}
+                onPress={() => { actions.buyEmote(confirmEmote.id); setConfirmOpen(false); }}
+              />
+              <Btn label={t('store.cancel')} kind="ghost" onPress={() => setConfirmOpen(false)} />
+            </View>
+          </View>
+        ) : null}
       </GameModal>
 
       {buying ? <PurchaseOverlay /> : null}
@@ -5493,8 +5586,7 @@ const DiscoverableEmoteCard = memo(function DiscoverableEmoteCard({ emote, width
         style={{
           paddingVertical: 10,
           backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
-          borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss,
-          borderBottomWidth: 3, borderBottomColor: theme.cardLip,
+          borderWidth: 2, borderColor: theme.border,
           overflow: 'hidden',
           transform: [
             // Clash-Royale pop: the active card rises off the row — scale YOK
@@ -5684,8 +5776,7 @@ function CollectibleEmoteCard({ emote, width, isEquipped, blocked, active, onPre
           style={{
             paddingVertical: 10,
             backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
-            borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss,
-            borderBottomWidth: 3, borderBottomColor: theme.cardLip,
+            borderWidth: 2, borderColor: theme.border,
             transform: [
               { translateY: lift.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }) },
               { scale: pressScale },
@@ -5860,7 +5951,7 @@ export function CollectionScreen({ state, actions }: Props) {
           title={t('tab.collection')}
           icon="albums"
           right={
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.panelInnerFill, borderRadius: 999, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, paddingHorizontal: 9, paddingVertical: 5 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.panelInnerFill, borderRadius: 999, borderWidth: 1.5, borderColor: theme.border, paddingHorizontal: 9, paddingVertical: 5 }}>
               <Ionicons name="albums" size={12} color={theme.accent} />
               <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 11, fontVariant: ['tabular-nums'] }}>{collectible.length}/{allEmotes.length}</Text>
             </View>
@@ -5891,7 +5982,6 @@ export function CollectionScreen({ state, actions }: Props) {
                     width: 72, height: 72, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
                     backgroundColor: shown ? theme.card : theme.panelInnerFill,
                     borderWidth: 2, borderColor: sel ? theme.danger : shown ? theme.primary : theme.border,
-                    ...(shown ? { borderTopColor: sel ? theme.danger : theme.panelTopGloss, borderBottomWidth: 4, borderBottomColor: theme.cardLip } : {}),
                     borderStyle: (shown ? 'solid' : 'dashed') as 'solid' | 'dashed',
                     transform: [{ translateY: pressed ? 2 : 0 }],
                   })}
@@ -6057,7 +6147,7 @@ export function FriendProfileModal({ profile, onClose }: { profile: PublicProfil
               <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 22, marginTop: 12, ...engrave('lg') }} numberOfLines={1}>{profile?.displayName}</Text>
               {/* Beveled gold trophies chip (mini-bevel: card face on a cardLip lip) */}
               <View style={{ backgroundColor: theme.cardLip, borderRadius: 13, paddingBottom: 2, marginTop: 8 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.card, borderRadius: 12, borderWidth: 1.5, borderColor: withAlpha(color, 0.45), borderTopColor: theme.panelTopGloss, paddingHorizontal: 14, paddingVertical: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.card, borderRadius: 12, borderWidth: 1.5, borderColor: withAlpha(color, 0.45), paddingHorizontal: 14, paddingVertical: 6 }}>
                   <Ionicons name="trophy" size={15} color={theme.gold} />
                   <Text style={{ color: theme.gold, fontFamily: 'Poppins-ExtraBold', fontSize: 15, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{profile?.trophies ?? 0}</Text>
                   <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>· {profile?.arena ? arenaLabel(profile.arena.name) : ''}</Text>
@@ -6128,7 +6218,7 @@ function BevelRow({ onPress, ring, wash = false, outerStyle, style, children }: 
           flexDirection: 'row', alignItems: 'center', gap: 10,
           backgroundColor: pressed ? darken(theme.card, 0.14) : theme.card,
           borderRadius: 14, padding: 12, overflow: 'hidden',
-          borderWidth: 2, borderColor: ring ?? theme.border, borderTopColor: ring ?? theme.panelTopGloss,
+          borderWidth: 2, borderColor: ring ?? theme.border,
           transform: [{ translateY: pressed ? 2 : 0 }],
         }, style]}
       >
@@ -6180,7 +6270,7 @@ function SegmentedTabs<K extends string>({ tabs, active, onChange }: {
       style={{
         flexDirection: 'row', gap: 3, padding: 3,
         backgroundColor: theme.panelInnerFill, borderRadius: 15,
-        borderWidth: 2, borderColor: theme.border, borderTopColor: theme.cardLip, // dark top = sunken
+        borderWidth: 2, borderColor: theme.border, // dark top = sunken
       }}
     >
       {tabs.map((tab) => (
@@ -6447,9 +6537,18 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
     return () => clearTimeout(id);
   }, [focusAddFriendSeq]);
 
+  // Misafir kapısı: misafir hesap arkadaş EKLEYEMEZ — denemede kayıt penceresi açılır.
+  const isGuest = state.authProvider == null;
+  const [guestGateOpen, setGuestGateOpen] = useState(false);
+  useEffect(() => {
+    // kayıt tamamlanınca (Apple/Google bağlandı) kapı kendiliğinden kapanır
+    if (state.authProvider != null) setGuestGateOpen(false);
+  }, [state.authProvider]);
+
   const onSendRequest = () => {
     const val = addInput.trim();
     if (val.length < 3) return;
+    if (isGuest) { setGuestGateOpen(true); return; }
     if (searchMode === 'code') {
       actions.sendFriendRequest(val, undefined);
     } else {
@@ -6470,7 +6569,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
             style={{
               flex: 1, alignItems: 'center', justifyContent: 'center',
               backgroundColor: theme.panelInnerFill, borderRadius: 14, paddingVertical: 12,
-              borderWidth: 2, borderColor: theme.border, borderTopColor: theme.cardLip, // dark top = sunken
+              borderWidth: 2, borderColor: theme.border, // dark top = sunken
             }}
           >
             <Text style={styles.friendCode}>{profile?.userId?.slice(0, 8).toUpperCase() ?? '...'}</Text>
@@ -6531,7 +6630,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                 <Avatar avatar={null} name={u.displayName} size={34} ring={theme.primary} ringWidth={1.5} iconColor={theme.primary} iconSize={15} />
                 <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13, flex: 1, ...engrave('sm') }} numberOfLines={1}>{u.displayName}</Text>
                 <MiniIconBtn icon="eye" face={theme.card} lip={theme.cardLip} ringColor={theme.border} fg={theme.text} onPress={() => actions.getUserProfile(u.userId)} />
-                <MiniIconBtn icon="person-add" face={theme.primary} lip={theme.primaryDark} fg={theme.ink} onPress={() => actions.sendFriendRequest(undefined, u.displayName)} />
+                <MiniIconBtn icon="person-add" face={theme.primary} lip={theme.primaryDark} fg={theme.ink} onPress={() => { if (isGuest) { setGuestGateOpen(true); return; } actions.sendFriendRequest(undefined, u.displayName); }} />
               </BevelRow>
             ))}
           </View>
@@ -6837,6 +6936,9 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
           {(softBack) => <ChatScreen state={state} actions={actions} onBack={softBack} />}
         </SwipeBackWrap>
       </Modal>
+
+      {/* Misafir kapısı — arkadaş eklemek kayıt ister */}
+      <GuestGateModal visible={guestGateOpen} onClose={() => setGuestGateOpen(false)} actions={actions} />
     </Screen>
   );
 }
@@ -7046,6 +7148,16 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
     const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const onFrame = Keyboard.addListener(frameEvt, setKeyboardFrame);
     const onHide = Keyboard.addListener(hideEvt, resetKeyboardFrame);
+    // Sohbet, klavye ZATEN açıkken açıldıysa frame olayı bir daha gelmez ve
+    // giriş çubuğu klavyenin arkasında (ekran dibinde) kalırdı — mount anında
+    // klavyenin mevcut ölçüsünü okuyup çubuğu HEMEN doğru yere koy.
+    const m = Keyboard.metrics?.();
+    if (m && m.height > 0) {
+      setKeyboardHeight(m.height);
+      setKbOpen(true);
+      barTY.setValue(Platform.OS === 'ios' ? -m.height : 0);
+      setTimeout(scrollToBottom, 50);
+    }
     return () => { onFrame.remove(); onHide.remove(); };
   }, [scrollToBottom]);
 
@@ -7140,6 +7252,9 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
         onScrollBeginDrag={() => { draggingRef.current = true; }}
         onScrollEndDrag={() => { draggingRef.current = false; }}
       >
+        {/* Boş alana dokunmak klavyeyi indirir (balon/çip dokunuşları kendi
+            işleyicilerine gitmeye devam eder — bu sarmalayıcıya düşmez) */}
+        <Pressable accessible={false} onPress={() => Keyboard.dismiss()}>
         {messages.length === 0 ? (
           <View style={{ marginTop: 28 }}>
             <EmptyState icon="chatbubbles" title={t('chat.sayHello')} hint={t('chat.noMessages')} />
@@ -7173,7 +7288,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
                     // mine: top-lit mint toy with a primaryDark lip;
                     // theirs: card face ring with a cardLip bottom edge.
                     borderWidth: isMe ? 0 : 1.5, borderColor: theme.border,
-                    borderTopWidth: 1.5, borderTopColor: isMe ? 'rgba(255,255,255,0.30)' : theme.panelTopGloss,
+                    borderTopWidth: 1.5, borderTopColor: isMe ? 'rgba(255,255,255,0.30)' : theme.border,
                     borderBottomWidth: 2.5, borderBottomColor: isMe ? theme.primaryDark : theme.cardLip,
                   }}>
                     <Text style={{ color: isMe ? theme.ink : theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold' }}>{m.body}</Text>
@@ -7196,6 +7311,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
             </View>
           </View>
         ) : null}
+        </Pressable>
       </ScrollView>
 
       {/* Absolute input bar: rides the real keyboard frame via an ANIMATED translateY
@@ -7498,7 +7614,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
           </Pressable>
           <Text style={{ color: theme.text, fontSize: 24, fontFamily: 'Poppins-ExtraBold', ...engrave('lg') }}>{p.displayName}</Text>
           {/* Arena chip — crafted arena art thumbnail in a beveled chip (no raw emoji) */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1.5, borderColor: withAlpha(color, 0.4), borderBottomWidth: 3, borderBottomColor: theme.cardLip }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1.5, borderColor: withAlpha(color, 0.4) }}>
             {arenaArt ? (
               <Image source={arenaArt.img} style={{ width: 24, height: 21 }} resizeMode="contain" />
             ) : (
@@ -7543,7 +7659,7 @@ function AvatarTile({ avatarId, owned, selected, price, onPress }: {
   return (
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ width: '31%', minWidth: 96 }}>
       <View style={{ backgroundColor: selected ? theme.primaryDark : theme.cardLip, borderRadius: 17, paddingBottom: 3 }}>
-        <Animated.View style={{ transform: [{ translateY: ty }], backgroundColor: theme.card, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 8, borderWidth: 2, borderColor: selected ? theme.primary : theme.border, borderTopColor: selected ? theme.primary : theme.panelTopGloss, alignItems: 'center' }}>
+        <Animated.View style={{ transform: [{ translateY: ty }], backgroundColor: theme.card, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 8, borderWidth: 2, borderColor: selected ? theme.primary : theme.border, alignItems: 'center' }}>
           <AvatarBadge avatarId={avatarId} size={58} locked={!owned} dimmed={!owned} ringColor={selected ? theme.primary : undefined} />
           {owned ? (
             <Text style={{ color: selected ? theme.primary : theme.muted, fontSize: 10, marginTop: 4, fontFamily: 'Poppins-ExtraBold' }}>{selected ? t('profile.inUse') : t('profile.ready')}</Text>
@@ -8473,7 +8589,7 @@ function TrophyFly({ target, onDone, count = 9 }: { target: { x: number; y: numb
 // Match-over banner, styled after the Kupa-popup mockup: a coloured card (blue win /
 // purple loss) with a ringed trophy medallion, confetti on a win, and a recessed
 // panel showing the score and the arena-based trophy delta (+green / −red).
-function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong, winnerName, trophyDelta }: {
+export function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong, winnerName, trophyDelta }: {
   youWon: boolean; youScore: number; oppScore: number; youWrong: number; oppWrong: number;
   winnerName: string | null; trophyDelta: { delta: number; trophies: number } | null;
 }) {
@@ -8594,19 +8710,9 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
   return (
     <Screen>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
-        {/* Match-over banner — only for ranked matches that actually change trophies.
-            Bot matches award no trophies (trophyDelta stays null), so no popup there. */}
-        {matchOver && state.trophyDelta ? (
-          <MatchOverBanner
-            youWon={youWon}
-            youScore={you?.score ?? 0}
-            oppScore={opp?.score ?? 0}
-            youWrong={you?.wrongCount ?? 0}
-            oppWrong={opp?.wrongCount ?? 0}
-            winnerName={state.matchWinnerName ?? null}
-            trophyDelta={state.trophyDelta ?? null}
-          />
-        ) : null}
+        {/* Kupa kazanma/kaybetme popup'ı artık BURADA ÇİZİLMEZ — maç ekranından
+            çıkıp ana menüye dönünce App-seviyesi katmanda gösterilir (kullanıcı
+            kararı). Veriyi App.tsx maç biterken yakalar. */}
 
         {/* Round verdict — always shown, so even on the deciding round you see who/what the answer was */}
         <Animated.View
@@ -8760,7 +8866,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
               const renderList = (list: typeof r.commonPlayers) => (
                 <GamePanel compact style={{ marginTop: 6 }} bodyStyle={{ padding: 8, gap: 6 }}>
                   {list.map((cp, i) => (
-                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: theme.panelInnerFill, borderRadius: 10, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, paddingVertical: 6, paddingHorizontal: 8 }}>
+                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: theme.panelInnerFill, borderRadius: 10, borderWidth: 1.5, borderColor: theme.border, paddingVertical: 6, paddingHorizontal: 8 }}>
                       {cp.imageUrl ? (
                         <CachedImage uri={cp.imageUrl} style={styles.commonPhoto} contentFit="cover" />
                       ) : (
@@ -8798,7 +8904,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
 
         {/* Running match score — one recessed strip, leader tinted mint */}
         <View style={styles.scoreRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.panelInnerFill, borderRadius: 16, borderWidth: 2, borderColor: theme.border, borderTopColor: theme.cardLip, paddingVertical: 8, paddingHorizontal: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.panelInnerFill, borderRadius: 16, borderWidth: 2, borderColor: theme.border, paddingVertical: 8, paddingHorizontal: 14 }}>
             {room.players.map((p, i) => {
               const other = room.players[1 - i];
               const leads = (p.score ?? 0) > (other?.score ?? 0);
@@ -8877,9 +8983,8 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: theme.panelInnerFill, // recessed inner well
     color: theme.text,
-    borderColor: theme.border,
+    borderColor: theme.border, // tek parça halka — üstte kesik yok
     borderWidth: 2,
-    borderTopColor: theme.cardLip, // dark top edge = sunken
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 13,
@@ -8889,12 +8994,12 @@ const styles = StyleSheet.create({
   },
   lobbyName: { color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') },
   // Recessed waiting chip (lobby waiting / wait-host states)
-  lobbyWaitChip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, alignSelf: 'center', backgroundColor: theme.panelInnerFill, borderRadius: 14, borderWidth: 2, borderColor: theme.border, borderTopColor: theme.cardLip, paddingVertical: 10, paddingHorizontal: 16 },
+  lobbyWaitChip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, alignSelf: 'center', backgroundColor: theme.panelInnerFill, borderRadius: 14, borderWidth: 2, borderColor: theme.border, paddingVertical: 10, paddingHorizontal: 16 },
   teamsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
-  teamCard: { flex: 1, backgroundColor: theme.card, borderRadius: 16, padding: 14, alignItems: 'center', gap: 8, borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss, borderBottomWidth: 4, borderBottomColor: theme.cardLip, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 5 }, elevation: 7 },
+  teamCard: { flex: 1, backgroundColor: theme.card, borderRadius: 16, padding: 14, alignItems: 'center', gap: 8, borderWidth: 2, borderColor: theme.border, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 5 }, elevation: 7 },
   teamName: { color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') },
   plus: { color: theme.accent, fontSize: 22, fontFamily: 'Poppins-Black', ...engrave('sm') },
-  passHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: withAlpha(theme.accent, 0.12), borderRadius: 12, paddingVertical: 7, paddingHorizontal: 12, marginBottom: 8, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, borderLeftWidth: 3, borderLeftColor: theme.accent },
+  passHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: withAlpha(theme.accent, 0.12), borderRadius: 12, paddingVertical: 7, paddingHorizontal: 12, marginBottom: 8, borderWidth: 1.5, borderColor: theme.border, borderLeftWidth: 3, borderLeftColor: theme.accent },
   passHintText: { color: theme.accent, fontSize: 12, fontFamily: 'Poppins-SemiBold', flexShrink: 1 },
   playerPhoto: { width: 104, height: 104, borderRadius: 52, marginTop: 10, borderWidth: 3, borderColor: theme.primary, backgroundColor: theme.card },
   matched: { color: theme.text, fontSize: 19, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginTop: 4, ...engrave('sm') },
@@ -8903,7 +9008,7 @@ const styles = StyleSheet.create({
   fixRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   fixText: { color: theme.accent, fontSize: 12, fontFamily: 'Poppins-SemiBold' },
   teamResultRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  teamResult: { flex: 1, backgroundColor: theme.card, borderRadius: 16, borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss, borderBottomWidth: 4, borderBottomColor: theme.cardLip, padding: 12, alignItems: 'center', gap: 6, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+  teamResult: { flex: 1, backgroundColor: theme.card, borderRadius: 16, borderWidth: 2, borderColor: theme.border, padding: 12, alignItems: 'center', gap: 6, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
   teamResultName: { color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') },
   teamResultYears: { color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', textAlign: 'center' },
   careerList: { alignSelf: 'stretch', maxHeight: 220 },
@@ -8941,10 +9046,7 @@ const styles = StyleSheet.create({
     padding: 12,
     marginVertical: 4,
     borderWidth: 2,
-    borderColor: theme.border,
-    borderTopColor: theme.panelTopGloss,
-    borderBottomWidth: 3,
-    borderBottomColor: theme.cardLip,
+    borderColor: theme.border, // tek parça halka — alt kenar da görünür
     shadowColor: '#000',
     shadowOpacity: 0.3,
     shadowRadius: 7,

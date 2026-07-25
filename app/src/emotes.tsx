@@ -238,8 +238,8 @@ function WebpSticker({ source, still, size, play }: { source: number; still?: nu
   return <ExpoImage source={source} style={{ width: size, height: size }} contentFit="contain" autoplay />;
 }
 
-export function EmoteSticker({ id, size, play = true, onFinish }: {
-  id: string; size: number; play?: boolean; onFinish?: () => void;
+export function EmoteSticker({ id, size, play = true, loop = false, onFinish }: {
+  id: string; size: number; play?: boolean; loop?: boolean; onFinish?: () => void;
 }) {
   const meta = getEmote(id);
   if (!meta) return null;
@@ -248,7 +248,8 @@ export function EmoteSticker({ id, size, play = true, onFinish }: {
     if (!play) {
       return <LottieView source={meta.animJson as any} autoPlay={false} loop={false} progress={meta.previewProgress ?? 0} style={{ width: size, height: size }} />;
     }
-    return <LottieView source={meta.animJson as any} autoPlay loop={false} onAnimationFinish={onFinish} style={{ width: size, height: size }} />;
+    // loop: mağaza önizlemesi gibi sürekli oynaması gereken yerler (onFinish yok)
+    return <LottieView source={meta.animJson as any} autoPlay loop={loop} onAnimationFinish={loop ? undefined : onFinish} style={{ width: size, height: size }} />;
   }
   if (meta.kind === 'lottie' && meta.anim != null) {
     return <WebpSticker source={meta.anim} still={meta.still} size={size} play={play} />;
