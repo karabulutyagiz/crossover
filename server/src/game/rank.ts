@@ -64,6 +64,8 @@ export interface UserProfile {
   socialPackUntil: string | null; // ISO date or null
   arena: Arena;
   avatar: string | null; // chosen profile-picture id (e.g. 'pp7') or null
+  xp: number;    // mevcut seviye içindeki ilerleme
+  level: number; // 1..50 — asla düşmez
 }
 
 function isFutureIso(iso: string | null | undefined): iso is string {
@@ -691,6 +693,8 @@ interface DbUser {
   last_seen: string | null;
   highest_arena_rewarded: number | null;
   created_at: string;
+  xp: number | null;
+  level: number | null;
 }
 
 // Stamp the user's last-online time (on connect and disconnect) for "last seen".
@@ -716,6 +720,8 @@ function toProfile(row: DbUser): UserProfile {
     socialPackUntil: isFutureIso(row.social_pack_until) ? row.social_pack_until : null,
     arena: getArena(row.trophies),
     avatar: row.avatar ?? row.selected_avatar ?? null,
+    xp: row.xp ?? 0,
+    level: row.level ?? 1,
   };
 }
 

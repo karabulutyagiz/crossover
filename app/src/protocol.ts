@@ -75,6 +75,8 @@ export interface ProfileView {
   socialPackUntil: string | null;
   arena: ArenaView;
   avatar: string | null;
+  xp: number;    // mevcut seviye içindeki ilerleme
+  level: number; // 1..50
 }
 
 export interface FriendView {
@@ -105,6 +107,7 @@ export interface PlayerView {
   trophies?: number;
   arena?: ArenaView;
   avatar?: string | null;
+  level?: number; // eşleşme kartındaki seviye rozeti
 }
 
 export interface RoomView {
@@ -208,6 +211,7 @@ export type ServerMsg =
   | { type: 'rematch_waiting' }
   | { type: 'rematch_declined' }
   | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView; diamonds?: number; arenaReward?: number }
+  | { type: 'xp_update'; xp: number; level: number; xpForNext: number; gained: number; leveledUp: { level: number; diamonds: number; emoteId?: string }[]; diamonds?: number }
   | { type: 'emote'; fromId: string; emoteId: string }
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string }
   | { type: 'avatar_purchased'; profile: ProfileView; avatarId: string }

@@ -45,6 +45,8 @@ function toProfileView(p: UserProfile): ProfileView {
     socialPackUntil: p.socialPackUntil,
     arena: p.arena,
     avatar: p.avatar,
+    xp: p.xp,
+    level: p.level,
   };
 }
 
@@ -576,8 +578,8 @@ export function startServer(port: number): Server {
         const room = manager.createRoom();
         if (inv.options?.scope) room.scope = inv.options.scope;
         room.gameMode = requestedMode;
-        const resA = room.addPlayer(inv.fromName, inv.transport, true, inv.fromUserId, inv.userProfile?.trophies, inv.userProfile?.arena, inv.userProfile?.avatar);
-        const resB = room.addPlayer(userProfile.displayName, transport, false, userProfile.id, userProfile.trophies, userProfile.arena, userProfile.avatar);
+        const resA = room.addPlayer(inv.fromName, inv.transport, true, inv.fromUserId, inv.userProfile?.trophies, inv.userProfile?.arena, inv.userProfile?.avatar, inv.userProfile?.level);
+        const resB = room.addPlayer(userProfile.displayName, transport, false, userProfile.id, userProfile.trophies, userProfile.arena, userProfile.avatar, userProfile.level);
         if (resA.ok) inv.setCtx({ room, playerId: resA.id, userProfile: inv.userProfile });
         if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
         setTimeout(() => { if (room.size === 2) room.handle(resA.ok ? resA.id : '', { type: 'start' }); }, 3500);
@@ -807,8 +809,8 @@ export function startServer(port: number): Server {
               const room = manager.createRoom();
               if (msg.options?.scope) room.scope = msg.options.scope;
               room.gameMode = requestedMode;
-              const resA = room.addPlayer(partner.name, partner.transport, true, partner.userProfile?.id ?? partner.userId, partner.userProfile?.trophies, partner.userProfile?.arena, partner.userProfile?.avatar);
-              const resB = room.addPlayer(name, transport, false, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
+              const resA = room.addPlayer(partner.name, partner.transport, true, partner.userProfile?.id ?? partner.userId, partner.userProfile?.trophies, partner.userProfile?.arena, partner.userProfile?.avatar, partner.userProfile?.level);
+              const resB = room.addPlayer(name, transport, false, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level);
               if (resA.ok) partner.setCtx({ room, playerId: resA.id, userProfile: partner.userProfile });
               if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
               // Auto-start after matchup reveal delay
@@ -840,7 +842,7 @@ export function startServer(port: number): Server {
           if (msg.options?.scope) room.scope = msg.options.scope;
           if (msg.options?.mode) room.gameMode = msg.options.mode;
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, true, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
+          const res = room.addPlayer(name, transport, true, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level);
           if (res.ok) ctx = { room, playerId: res.id, userProfile };
           return;
         }
@@ -851,7 +853,7 @@ export function startServer(port: number): Server {
           if (msg.options?.scope) room.scope = msg.options.scope;
           if (msg.options?.mode) room.gameMode = msg.options.mode;
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, true, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
+          const res = room.addPlayer(name, transport, true, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level);
           if (res.ok) ctx = { room, playerId: res.id, userProfile };
           const bot = new BotPlayer({ difficulty: msg.options?.difficulty, scope: room.scope, mode: room.gameMode });
           const botRes = room.addPlayer('Bot', bot, false);
@@ -864,7 +866,7 @@ export function startServer(port: number): Server {
           if (!room) return transport.send({ type: 'error', message: 'Room not found' });
           if (!canUseMode(userProfile, room.gameMode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, false, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
+          const res = room.addPlayer(name, transport, false, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level);
           if (!res.ok) return transport.send({ type: 'error', message: res.error });
           ctx = { room, playerId: res.id, userProfile };
           return;

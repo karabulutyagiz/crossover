@@ -19,6 +19,7 @@ import {
   hasCommonClubs,
 } from '../game/verify.ts';
 import { applyMatchResult, getUser, saveMatchHistory, type MatchRound } from '../game/rank.ts';
+import { awardMatchXp } from '../game/level.ts';
 import { isEmote } from '../game/emotes.ts';
 import { log } from '../logger.ts';
 import type {
@@ -63,6 +64,7 @@ interface Player {
   trophies?: number;
   arena?: { name: string; icon: string; minTrophies: number };
   avatar?: string | null; // chosen profile-picture id
+  level?: number; // eşleşme kartındaki seviye rozeti
 }
 
 interface Round {
@@ -111,6 +113,7 @@ export class Room {
     trophies?: number,
     arena?: { name: string; icon: string; minTrophies: number },
     avatar?: string | null,
+    level?: number,
   ): { ok: true; id: string } | { ok: false; error: string } {
     if (this.players.size >= MAX_PLAYERS) return { ok: false, error: 'Room is full' };
     const id = randomUUID();
@@ -126,6 +129,7 @@ export class Room {
       trophies,
       arena,
       avatar: avatar ?? null,
+      level,
     });
     this.broadcastState();
     return { ok: true, id };
@@ -189,7 +193,10 @@ export class Room {
     if (!p) return;
     this.clearTimers();
 
-    const wasInMatch = this.status !== 'lobby';
+    // Maç BİTTİYSE (matchOver) çıkış normal ayrılıştır — hükmen yolu yalnız
+    // maç hâlâ sürerken çalışır. (Önceden: maç sonu ekranından çıkan herkes
+    // "kaçtı" sayılıp kalan oyuncuya İKİNCİ bir galibiyet ödülü yazılıyordu.)
+    const wasInMatch = this.status !== 'lobby' && !this.matchOver;
     const hasBot = p.transport.isBot || [...this.players.values()].some((pl) => pl.id !== playerId && pl.transport.isBot);
 
     this.players.delete(playerId);
@@ -216,9 +223,12 @@ export class Room {
           if (winner.userId) {
             const { profile, delta, arenaReward } = await applyMatchResult(winner.userId, true);
             winner.transport.send({ type: 'trophy_update', trophies: profile.trophies, delta, arena: profile.arena, diamonds: profile.diamonds, arenaReward });
+            const xpRes = await awardMatchXp(winner.userId, true, false);
+            if (xpRes) winner.transport.send({ type: 'xp_update', ...xpRes });
           }
           if (p.userId) {
             await applyMatchResult(p.userId, false);
+            await awardMatchXp(p.userId, false, false); // ayrılan: mağlubiyet XP'si (gönderilemez — gitti)
           }
         } catch { /* DB error — skip silently */ }
       })();
@@ -878,6 +888,17 @@ export class Room {
       const hasBot = [...this.players.values()].some((p) => p.transport.isBot);
       if (!hasBot) {
         void this.updateTrophies(winner!);
+      } else {
+        // Bot maçı: kupa yok ama SEVİYE XP'si var (yarım puan, günlük tavanlı)
+        void (async () => {
+          for (const p of this.players.values()) {
+            if (p.transport.isBot || !p.userId) continue;
+            try {
+              const xpRes = await awardMatchXp(p.userId, p.id === winner!.id, true);
+              if (xpRes) p.transport.send({ type: 'xp_update', ...xpRes });
+            } catch { /* DB error — skip silently */ }
+          }
+        })();
       }
       void this.saveHistory();
     }
@@ -940,6 +961,9 @@ export class Room {
           diamonds: profile.diamonds,
           arenaReward,
         });
+        // Seviye XP'si — kupadan bağımsız, kaybeden de kazanır
+        const xpRes = await awardMatchXp(p.userId, won, false);
+        if (xpRes) p.transport.send({ type: 'xp_update', ...xpRes });
       } catch {
         // DB error — skip silently
       }
@@ -1009,6 +1033,7 @@ export class Room {
       trophies: p.trophies,
       arena: p.arena,
       avatar: p.avatar,
+      level: p.level,
     }));
   }
 

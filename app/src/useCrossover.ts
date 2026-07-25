@@ -71,6 +71,8 @@ export interface GameState {
   scopes: ScopesList | null;
   profile: ProfileView | null;
   trophyDelta: { trophies: number; delta: number; arena: ArenaView; arenaReward?: number } | null;
+  // Maç sonu seviye ilerlemesi (xp_update) — popup App katmanında maç ÇIKIŞINDA gösterilir
+  xpGain: { xp: number; level: number; xpForNext: number; gained: number; leveledUp: { level: number; diamonds: number; emoteId?: string }[] } | null;
   leaderboard: LeaderboardEntry[];
   friends: FriendInfo[];
   friendRequests: FriendRequestView[];
@@ -152,6 +154,7 @@ export const initialState: GameState = {
   scopes: null,
   profile: null,
   trophyDelta: null,
+  xpGain: null,
   leaderboard: [],
   friends: [],
   friendRequests: [],
@@ -368,6 +371,26 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, profile: action.profile };
     case 'name_changed':
       return { ...state, profile: action.profile };
+    case 'xp_update': {
+      // Profili yerinde güncelle: xp/seviye + ödül elmasları + açılan ifadeler.
+      const grantedEmotes = action.leveledUp.map((l) => l.emoteId).filter((e): e is string => Boolean(e));
+      const profile = state.profile
+        ? {
+            ...state.profile,
+            xp: action.xp,
+            level: action.level,
+            diamonds: action.diamonds ?? state.profile.diamonds,
+            ownedEmotes: grantedEmotes.length
+              ? [...new Set([...state.profile.ownedEmotes, ...grantedEmotes])]
+              : state.profile.ownedEmotes,
+          }
+        : state.profile;
+      return {
+        ...state,
+        profile,
+        xpGain: { xp: action.xp, level: action.level, xpForNext: action.xpForNext, gained: action.gained, leveledUp: action.leveledUp },
+      };
+    }
     case 'trophy_update':
       return {
         ...state,
@@ -443,6 +466,7 @@ function reducer(state: GameState, action: Action): GameState {
         locked: null,
         passedBy: [],
         trophyDelta: null,
+  xpGain: null,
         matchupAutoStart: false,
         matchOver: false,
         matchWinnerId: null,

@@ -58,6 +58,8 @@ export interface ProfileView {
   socialPackUntil: string | null; // ISO date or null
   arena: ArenaView;
   avatar: string | null; // chosen profile-picture id (e.g. 'pp7') or null
+  xp: number;    // mevcut seviye içindeki ilerleme
+  level: number; // 1..50
 }
 
 export interface PlayerView {
@@ -70,6 +72,7 @@ export interface PlayerView {
   trophies?: number;
   arena?: ArenaView;
   avatar?: string | null;
+  level?: number; // eşleşme kartındaki seviye rozeti için
 }
 
 export interface RoomView {
@@ -180,6 +183,7 @@ export type ServerMsg =
   | { type: 'rematch_waiting' } // your rematch request was sent, waiting for opponent
   | { type: 'rematch_declined' } // opponent declined your rematch request
   | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView; diamonds?: number; arenaReward?: number }
+  | { type: 'xp_update'; xp: number; level: number; xpForNext: number; gained: number; leveledUp: { level: number; diamonds: number; emoteId?: string }[]; diamonds?: number } // maç sonu seviye ilerlemesi
   | { type: 'emote'; fromId: string; emoteId: string } // a player in the room sent an emote
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string } // store purchase succeeded
   | { type: 'avatar_purchased'; profile: ProfileView; avatarId: string }

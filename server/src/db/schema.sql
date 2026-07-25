@@ -229,3 +229,12 @@ CREATE TABLE IF NOT EXISTS app_state (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- ---- Seviye sistemi (2026-07): kupadan bağımsız, asla düşmeyen XP merdiveni ----
+-- xp = mevcut seviye İÇİNDEKİ ilerleme; level 1..50. bot_xp_* günlük bot tavanı,
+-- last_win_day günün ilk gerçek galibiyeti bonusu için.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS xp INT NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS level INT NOT NULL DEFAULT 1;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_win_day TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS bot_xp_day TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS bot_xp_today INT NOT NULL DEFAULT 0;

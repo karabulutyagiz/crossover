@@ -50,6 +50,8 @@ import {
   FriendProfileModal,
   GameModal,
   MatchOverBanner,
+  LevelUpPopup,
+  LevelRoadModal,
   Btn,
   MODE_LABEL,
   darken,
@@ -497,6 +499,7 @@ function AppRoot() {
     winnerName: string | null; trophyDelta: NonNullable<GameState['trophyDelta']>;
   }>(null);
   const matchOverCaptured = useRef(false);
+  const [levelRoadOpen, setLevelRoadOpen] = useState(false);
   useEffect(() => {
     if (!state.matchOver || !state.trophyDelta) { matchOverCaptured.current = false; return; }
     if (matchOverCaptured.current) return;
@@ -517,14 +520,42 @@ function AppRoot() {
   }, [state.matchOver, state.trophyDelta, state.room, state.matchWinnerId, state.matchWinnerName]);
   // Rövanş/yeni maç başlarsa bekleyen popup düşer (bayat maçın popup'ı gösterilmez).
   useEffect(() => {
-    if (state.phase === 'countdown' || state.phase === 'matchup' || state.phase === 'pick') setMatchOverPopup(null);
+    if (state.phase === 'countdown' || state.phase === 'matchup' || state.phase === 'pick') { setMatchOverPopup(null); setPendingLevelUp(null); heldArena.current = null; }
   }, [state.phase]);
+  // ---- Seviye atlama zinciri: kupa popup'ı → seviye popup'ı → arena kutlaması ----
+  const [pendingLevelUp, setPendingLevelUp] = useState<null | { toLevel: number; diamonds: number; emoteIds: string[] }>(null);
+  const pendingLevelUpRef = useRef(pendingLevelUp);
+  pendingLevelUpRef.current = pendingLevelUp;
+  const heldArena = useRef<{ amount: number; arenaName: string } | null>(null);
+  useEffect(() => {
+    const lu = state.xpGain?.leveledUp;
+    if (!lu || lu.length === 0) return;
+    setPendingLevelUp({
+      toLevel: lu[lu.length - 1]!.level,
+      diamonds: lu.reduce((sum, l) => sum + l.diamonds, 0),
+      emoteIds: lu.map((l) => l.emoteId).filter((e): e is string => Boolean(e)),
+    });
+  }, [state.xpGain]);
+  const dismissLevelUp = useCallback(() => {
+    setPendingLevelUp(null);
+    if (heldArena.current) {
+      const h = heldArena.current;
+      heldArena.current = null;
+      setGemCelebration((current) => current ?? { kind: 'arenaReward', amount: h.amount, arenaName: h.arenaName });
+    }
+  }, []);
+
   const dismissMatchOverPopup = useCallback(() => {
     setMatchOverPopup((cur) => {
       const reward = cur?.trophyDelta.arenaReward ?? 0;
       const arenaName = cur?.trophyDelta.arena?.name;
       if (reward > 0 && arenaName) {
-        setGemCelebration((current) => current ?? { kind: 'arenaReward', amount: reward, arenaName });
+        if (pendingLevelUpRef.current) {
+          // seviye popup'ı araya girecek — arena kutlaması ONDAN sonra
+          heldArena.current = { amount: reward, arenaName };
+        } else {
+          setGemCelebration((current) => current ?? { kind: 'arenaReward', amount: reward, arenaName });
+        }
       }
       return null;
     });
@@ -836,7 +867,7 @@ function AppRoot() {
   const homeContent = state.phase === 'arenas'
     ? <ArenasScreen {...props} />
     : state.phase === 'profile'
-    ? <ProfileScreen {...props} onOpenMatchHistory={openMatchHistory} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
+    ? <ProfileScreen {...props} onOpenMatchHistory={openMatchHistory} onOpenLevelRoad={() => setLevelRoadOpen(true)} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
     : <HomeScreen {...props} onLanguageChange={() => {
         setOverlay(null);
         setStoreSection(null);
@@ -1034,6 +1065,19 @@ function AppRoot() {
           </View>
         </View>
       ) : null}
+
+      {/* Seviye atlama — kupa popup'ı kapandıktan sonra */}
+      {pendingLevelUp && !matchOverPopup ? (
+        <LevelUpPopup
+          toLevel={pendingLevelUp.toLevel}
+          diamonds={pendingLevelUp.diamonds}
+          emoteIds={pendingLevelUp.emoteIds}
+          onClose={dismissLevelUp}
+        />
+      ) : null}
+
+      {/* Seviye Yolu — tam ekran ilerleme/ödül haritası */}
+      <LevelRoadModal visible={levelRoadOpen} profile={state.profile} onClose={() => setLevelRoadOpen(false)} />
 
       {gemCelebration ? (
         <DiamondCelebration
