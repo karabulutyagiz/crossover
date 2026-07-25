@@ -82,6 +82,7 @@ type Actions = {
   authWith: (provider: 'apple' | 'google' | 'facebook', token: string, name?: string) => void;
   setUsername: (username: string) => void;
   changeName: (newName: string) => void;
+  markXpSeen: () => void;
   openArenas: () => void;
   closeArenas: () => void;
   openProfile: () => void;
@@ -668,7 +669,6 @@ function ScreenHeader({ title, onBack, icon, right }: {
             width: 40, height: 40, borderRadius: 14,
             backgroundColor: pressed ? theme.bg2 : theme.card,
             borderWidth: 2, borderColor: theme.border,
-            borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
             alignItems: 'center', justifyContent: 'center',
             transform: [{ translateY: pressed ? 2 : 0 }],
           })}
@@ -957,7 +957,6 @@ function SkipChip({ onPress, style }: { onPress: () => void; style?: any }) {
             backgroundColor: pressed ? theme.bg2 : theme.card,
             borderRadius: 12, paddingHorizontal: 12, paddingVertical: 7,
             borderWidth: 1.5, borderColor: theme.border,
-            borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
             transform: [{ translateY: pressed ? 2 : 0 }],
           }}
         >
@@ -1426,7 +1425,7 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
           </View>
         </GamePanel>
 
-        <View style={{ height: LOAD_BAR_H, borderRadius: 13, backgroundColor: theme.panelInk, borderWidth: 2, borderColor: theme.border, borderBottomColor: theme.cardLip, padding: 2, justifyContent: 'center' }}>
+        <View style={{ height: LOAD_BAR_H, borderRadius: 13, backgroundColor: theme.panelInk, borderWidth: 2, borderColor: theme.border, padding: 2, justifyContent: 'center' }}>
           <View style={{ flex: 1, borderRadius: 10, backgroundColor: theme.panelInnerFill, overflow: 'hidden' }}>
             {/* glossy mint fill slab (full width, slid in from the left on the native
                 driver): top gloss + dark lip + hot leading cap + looping shine */}
@@ -1991,8 +1990,7 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
                         flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.bg,
                         borderRadius: 22, paddingVertical: 11, paddingHorizontal: 16,
                         borderWidth: 1.5, borderColor: theme.border,
-                        borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
-                        transform: [{ translateY: pressed ? 2 : 0 }],
+                                    transform: [{ translateY: pressed ? 2 : 0 }],
                       })}
                     >
                       <Ionicons name="chatbubble-ellipses" size={14} color={theme.primary} />
@@ -2535,7 +2533,6 @@ function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName
     flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7,
     paddingVertical: 11, paddingHorizontal: 11, borderRadius: 12,
     backgroundColor: pressed ? theme.bg2 : theme.bg, borderWidth: 1.5, borderColor: theme.border,
-    borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
     transform: [{ translateY: pressed ? 2 : 0 }],
   });
   const linkTxt = { color: theme.text, fontSize: 12, fontFamily: 'Poppins-SemiBold', flex: 1 };
@@ -3352,8 +3349,10 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
     const toPct = g.level >= LEVEL_CAP ? 1 : Math.max(0, Math.min(1, g.xp / need));
     xpBarAnim.setValue(fromPct);
     setXpFly(g.gained);
-    // çubuk, kürelerin varış penceresiyle EŞ ZAMANLI dolar
-    Animated.timing(xpBarAnim, { toValue: toPct, duration: 1000, delay: 380, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+    // Çubuk, İLK küre çubuğa değdiği anda dolmaya başlar ve küre varışlarının
+    // penceresi boyunca dolar — küreler girmeden çubuk KIPIRDAMAZ.
+    const tm = xpOrbTiming(g.gained);
+    Animated.timing(xpBarAnim, { toValue: toPct, duration: tm.span, delay: tm.firstArrival, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
   }, [state.xpGain, overlayBusy, xpBarAnim]);
 
   // The bell's red pip. Both counts are pushed live mid-session, but they are only
@@ -3406,7 +3405,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
 
       {/* XP küre yağmuru (maç sonrası) */}
       {xpFly != null ? (
-        <XpOrbFly gained={xpFly} target={{ x: xpTarget.x, y: xpTarget.y }} onDone={() => setXpFly(null)} />
+        <XpOrbFly gained={xpFly} target={{ x: xpTarget.x, y: xpTarget.y }} onDone={() => { setXpFly(null); actions.markXpSeen(); }} />
       ) : null}
 
       {/* ── 2. HERO ── */}
@@ -4017,7 +4016,6 @@ function MatchExitButton({ onPress }: { onPress: () => void }) {
         width: 40, height: 40, borderRadius: 14,
         backgroundColor: pressed ? theme.bg2 : theme.card,
         borderWidth: 2, borderColor: theme.border,
-        borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
         alignItems: 'center', justifyContent: 'center',
         transform: [{ translateY: pressed ? 2 : 0 }],
       })}
@@ -4287,8 +4285,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
                 width: 48, height: 48, borderRadius: 12,
                 backgroundColor: theme.card,
                 borderWidth: 2, borderColor: theme.border,
-                borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
-                alignItems: 'center', justifyContent: 'center',
+                    alignItems: 'center', justifyContent: 'center',
                 shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: 4,
                 transform: [{ translateY: pressed ? 2 : 0 }],
               })}
@@ -4373,8 +4370,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
               width: '31.5%' as const, alignItems: 'center' as const, gap: 7,
               backgroundColor: theme.card, borderRadius: 14,
               borderWidth: 2, borderColor: theme.border,
-              borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
-              paddingVertical: 12, paddingHorizontal: 4,
+                paddingVertical: 12, paddingHorizontal: 4,
               shadowColor: '#000', shadowOpacity: pressed ? 0.15 : 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: pressed ? 2 : 4,
               transform: [{ translateY: pressed ? 2 : 0 }],
             })}
@@ -6396,7 +6392,6 @@ function ModalBackBtn({ onPress }: { onPress: () => void }) {
         width: 34, height: 34, borderRadius: 12,
         backgroundColor: pressed ? theme.bg2 : theme.card,
         borderWidth: 2, borderColor: theme.border,
-        borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
         alignItems: 'center', justifyContent: 'center',
         transform: [{ translateY: pressed ? 2 : 0 }],
       })}
@@ -6854,7 +6849,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
               <View style={{ position: 'absolute', left, top, width: W, zIndex: 2, elevation: 20 }} pointerEvents="box-none">
                 {/* GamePanel-compact frame language + 150ms spring pop anchored at the tail */}
                 <SpringPop>
-                  <View style={{ backgroundColor: theme.bg2, borderRadius: 15, padding: 2, borderWidth: 2, borderColor: theme.border, borderBottomColor: theme.cardLip, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 16 }}>
+                  <View style={{ backgroundColor: theme.bg2, borderRadius: 15, padding: 2, borderWidth: 2, borderColor: theme.border, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 16 }}>
                     <View style={{ backgroundColor: theme.card, borderRadius: 13, borderTopWidth: 1, borderTopColor: theme.panelTopGloss, borderBottomWidth: 3, borderBottomColor: theme.cardLip, overflow: 'hidden' }}>
                       <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5, textAlign: 'center', paddingTop: 9, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: theme.border }} numberOfLines={1}>
                         {menuFriend.displayName}
@@ -7270,7 +7265,6 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
             width: 40, height: 40, borderRadius: 14,
             backgroundColor: pressed ? theme.bg2 : theme.card,
             borderWidth: 2, borderColor: theme.border,
-            borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
             alignItems: 'center', justifyContent: 'center',
             transform: [{ translateY: pressed ? 2 : 0 }],
           })}
@@ -7889,7 +7883,7 @@ export function ArenasScreen({ state, actions }: Props) {
 
               {/* Progress bar for the current arena — the LoadingScreen recipe at small scale */}
               {isCurrent ? (
-                <View style={{ height: 20, borderRadius: 12, backgroundColor: theme.panelInk, borderWidth: 2, borderColor: theme.border, borderBottomColor: theme.cardLip, padding: 2, marginTop: 12, justifyContent: 'center' }}>
+                <View style={{ height: 20, borderRadius: 12, backgroundColor: theme.panelInk, borderWidth: 2, borderColor: theme.border, padding: 2, marginTop: 12, justifyContent: 'center' }}>
                   <View style={{ flex: 1, borderRadius: 8, backgroundColor: theme.panelInnerFill, overflow: 'hidden' }}>
                     {progress > 0.01 ? (
                       <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${Math.max(5, progress * 100)}%`, borderRadius: 8, backgroundColor: arena.color, overflow: 'hidden' }}>
@@ -9051,13 +9045,19 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
 // ---- XpOrbFly — maç sonrası XP kürelerinin çubuğa akışı ----
 // Ortada "+N XP" çipi belirir, ışıyan küreler sırayla profil hapındaki XP
 // çubuğuna süzülür; çubuk EŞ ZAMANLI dolar (HomeScreen animasyonu sürer).
+// Küre zamanlaması: i. küre 260+i*70'te fırlar, ~610ms sonra çubuğa değer.
+export function xpOrbTiming(gained: number): { count: number; firstArrival: number; span: number } {
+  const count = Math.max(4, Math.min(9, Math.round(gained / 12)));
+  return { count, firstArrival: 260 + 610, span: Math.max(320, (count - 1) * 70 + 160) };
+}
+
 function XpOrbFly({ gained, target, onDone }: { gained: number; target: { x: number; y: number }; onDone: () => void }) {
   const screenW = Dimensions.get('window').width;
   const screenH = Dimensions.get('window').height;
   const originX = screenW / 2;
   const originY = screenH * 0.4;
   const chip = useRef(new Animated.Value(0)).current;
-  const count = Math.max(4, Math.min(9, Math.round(gained / 12)));
+  const { count } = xpOrbTiming(gained);
   const parts = useRef(
     Array.from({ length: 9 }, () => ({ x: new Animated.Value(0), y: new Animated.Value(0), s: new Animated.Value(0), o: new Animated.Value(0) })),
   ).current;

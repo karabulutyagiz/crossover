@@ -199,6 +199,7 @@ type Action =
   | ServerMsg
   | { type: '_connected'; value: boolean }
   | { type: '_authProvider'; provider: 'apple' | 'google' | 'facebook' | null }
+  | { type: '_xp_seen' } // XP küre yağmuru oynatıldı — kazanım tüketildi
   | { type: '_reset' }
   | { type: '_logout' }
   | { type: '_picked' }
@@ -223,6 +224,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, connected: action.value, error: action.value ? null : state.error };
     case '_authProvider':
       return { ...state, authProvider: action.provider };
+    case '_xp_seen':
+      return { ...state, xpGain: null };
     case '_reset':
       // xpGain korunur: XP küre yağmuru ana ekrana DÖNÜNCE akar (yeni maç
       // başlarken countdown case'i zaten temizler).
@@ -900,6 +903,8 @@ export function useCrossover() {
       }
     },
     changeName: (newName: string) => send({ type: 'change_name', newName }),
+    // XP yağmuru tamamlandı — bir daha (profil gezintisi dahil) asla tekrarlamaz
+    markXpSeen: () => dispatch({ type: '_xp_seen' }),
     setUsername: (username: string) => {
       const userId = state.profile?.userId;
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
