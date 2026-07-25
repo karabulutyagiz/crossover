@@ -27,7 +27,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image as ExpoImage } from 'expo-image';
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
-import { gemTarget, setGemTarget, xpTarget, setXpTarget } from './gemTarget';
+import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget } from './gemTarget';
 import { Avatar } from './Avatar';
 import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
@@ -3091,6 +3091,11 @@ function ProfilePill({ name, avatarId, tier, pct, color, onPress, fillAnim }: {
       if (w > 0) setXpTarget(x + w / 2, y + h / 2);
     });
   }, []);
+  useEffect(() => {
+    // yağmur başlarken taze ölçüm alınabilsin
+    setXpRemeasure(measureBar);
+    return () => setXpRemeasure(null);
+  }, [measureBar]);
   return (
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1, minWidth: 108 }}>
       <View style={{ backgroundColor: darken(theme.card, 0.5), borderRadius: 24, paddingBottom: 2.5 }}>
@@ -3334,6 +3339,14 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const xpBarAnim = useRef(new Animated.Value(xpPct)).current;
   const xpFlownRef = useRef<GameState['xpGain']>(null);
   const [xpFly, setXpFly] = useState<number | null>(null);
+  const xpFlyPlanRef = useRef<{ fromPct: number; toPct: number; landed: number; count: number } | null>(null);
+  const onXpOrbLand = useCallback(() => {
+    const plan = xpFlyPlanRef.current;
+    if (!plan) return;
+    plan.landed = Math.min(plan.count, plan.landed + 1);
+    const target = plan.fromPct + (plan.toPct - plan.fromPct) * (plan.landed / plan.count);
+    Animated.timing(xpBarAnim, { toValue: target, duration: 150, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+  }, [xpBarAnim]);
   useEffect(() => {
     // animasyon akmıyorken çubuk gerçek değeri izler
     if (xpFly == null) xpBarAnim.setValue(xpPct);
@@ -3348,11 +3361,13 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
     const fromPct = g.leveledUp.length > 0 ? 0 : Math.max(0, (g.xp - g.gained) / need);
     const toPct = g.level >= LEVEL_CAP ? 1 : Math.max(0, Math.min(1, g.xp / need));
     xpBarAnim.setValue(fromPct);
-    setXpFly(g.gained);
-    // Çubuk, İLK küre çubuğa değdiği anda dolmaya başlar ve küre varışlarının
-    // penceresi boyunca dolar — küreler girmeden çubuk KIPIRDAMAZ.
-    const tm = xpOrbTiming(g.gained);
-    Animated.timing(xpBarAnim, { toValue: toPct, duration: tm.span, delay: tm.firstArrival, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+    // Çubuk yalnız GERÇEK küre inişleriyle dolar (onOrbLand): her iniş bir
+    // adım — küre değmeden kıpırdamaz, küreler bittiğinde tam hedefte biter.
+    xpFlyPlanRef.current = { fromPct, toPct, landed: 0, count: xpOrbTiming(g.gained).count };
+    // ilk onLayout ölçümü bayatlamış olabilir — taze ölçüm alınıp bir kare sonra uçuş
+    // başlar (cleanup YOK: dep titremesi yağmuru iptal etmesin, guard zaten tekil)
+    remeasureXpTarget();
+    setTimeout(() => setXpFly(g.gained), 50);
   }, [state.xpGain, overlayBusy, xpBarAnim]);
 
   // The bell's red pip. Both counts are pushed live mid-session, but they are only
@@ -3405,7 +3420,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
 
       {/* XP küre yağmuru (maç sonrası) */}
       {xpFly != null ? (
-        <XpOrbFly gained={xpFly} target={{ x: xpTarget.x, y: xpTarget.y }} onDone={() => { setXpFly(null); actions.markXpSeen(); }} />
+        <XpOrbFly gained={xpFly} target={{ x: xpTarget.x, y: xpTarget.y }} onOrbLand={onXpOrbLand} onDone={() => { xpFlyPlanRef.current = null; setXpFly(null); actions.markXpSeen(); }} />
       ) : null}
 
       {/* ── 2. HERO ── */}
@@ -7442,6 +7457,7 @@ function StatCard({ icon, color, label, value, gem }: { icon?: IoniconName; colo
 
 export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore, onOpenLevelRoad }: Props) {
   const p = state.profile;
+  const [framePrev, setFramePrev] = useState<{ tier: LevelTier; unlocked: boolean } | null>(null);
   const [pendingAvatarId, setPendingAvatarId] = useState<string | null>(null);
   const [confirmAvatarId, setConfirmAvatarId] = useState<string | null>(null);
   const [showAvatarPage, setShowAvatarPage] = useState(false);
@@ -7688,6 +7704,22 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
           </GamePanel>
         </Pressable>
 
+        {/* Açılan çerçeveler — kazanılmış statü vitrini (dokun: büyük önizleme) */}
+        {LEVEL_TIERS.some((tr) => p.level >= tr.min) ? (
+          <View style={{ marginTop: 10 }}>
+            <GamePanel compact accentStripe={levelTier(p.level)?.c ?? theme.primary} bodyStyle={{ paddingVertical: 10, paddingHorizontal: 12 }}>
+              <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 1.2, marginBottom: 6 }}>{t('profile.frames').toLocaleUpperCase(currentLang())}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 12 }}>
+                {LEVEL_TIERS.filter((tr) => p.level >= tr.min).map((tr) => (
+                  <Pressable key={tr.key} onPress={() => setFramePrev({ tier: tr, unlocked: true })} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
+                    <FrameArt tierKey={tr.key} size={56} well />
+                  </Pressable>
+                ))}
+              </View>
+            </GamePanel>
+          </View>
+        ) : null}
+
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
           <StatCard icon="trophy" color={theme.gold} label={t('stats.trophies')} value={p.trophies} />
           <StatCard gem color={GEM_COLOR} label={t('stats.diamonds')} value={p.diamonds} />
@@ -7703,6 +7735,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
         </View>
       </ScrollView>
 
+      <FramePreviewModal tier={framePrev?.tier ?? null} unlocked={framePrev?.unlocked ?? false} visible={framePrev != null} onClose={() => setFramePrev(null)} />
     </Screen>
   );
 }
@@ -9051,7 +9084,7 @@ export function xpOrbTiming(gained: number): { count: number; firstArrival: numb
   return { count, firstArrival: 260 + 610, span: Math.max(320, (count - 1) * 70 + 160) };
 }
 
-function XpOrbFly({ gained, target, onDone }: { gained: number; target: { x: number; y: number }; onDone: () => void }) {
+function XpOrbFly({ gained, target, onDone, onOrbLand }: { gained: number; target: { x: number; y: number }; onDone: () => void; onOrbLand?: () => void }) {
   const screenW = Dimensions.get('window').width;
   const screenH = Dimensions.get('window').height;
   const originX = screenW / 2;
@@ -9085,11 +9118,14 @@ function XpOrbFly({ gained, target, onDone }: { gained: number; target: { x: num
             Animated.timing(g.y, { toValue: target.y, duration: 520, easing: Easing.in(Easing.quad), useNativeDriver: true }),
             Animated.timing(g.s, { toValue: 0.45, duration: 520, easing: Easing.in(Easing.quad), useNativeDriver: true }),
           ]),
+        ]).start(() => {
+          // KÜRE ÇUBUĞA DEĞDİ — çubuk tam bu anda bir adım dolar
+          onOrbLand?.();
           Animated.parallel([
             Animated.timing(g.s, { toValue: 0.12, duration: 110, useNativeDriver: true }),
             Animated.timing(g.o, { toValue: 0, duration: 110, useNativeDriver: true }),
-          ]),
-        ]).start(() => { done += 1; if (done === count) onDone(); });
+          ]).start(() => { done += 1; if (done === count) onDone(); });
+        });
       }, 260 + i * 70);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -9145,6 +9181,61 @@ export function levelTier(level: number): LevelTier | null {
 export const LEVEL_EMOTE_UNLOCKS: Record<number, string> = {
   5: 'footballer', 15: 'kick', 25: 'squad', 35: 'pitch', 45: 'euro2024',
 };
+
+// ---- Çerçeve sanatları (çerçeve.jpeg'ten, ışıltıları birebir korunarak) ----
+export const FRAME_ART: Record<string, ImageSourcePropType> = {
+  bronze: require('../assets/frames/frame-bronze.png'),
+  silver: require('../assets/frames/frame-silver.png'),
+  gold: require('../assets/frames/frame-gold.png'),
+  diamond: require('../assets/frames/frame-diamond.png'),
+  goat: require('../assets/frames/frame-goat.png'),
+};
+
+// Çerçeve görseli — kilitliyse soluk + kilit rozetli ("henüz açılmadı" hali).
+// well: küçük boyutlarda koyu zeminde kaybolmasın diye yuvarlatılmış yuva zemini.
+export function FrameArt({ tierKey, size, locked = false, well = false }: { tierKey: string; size: number; locked?: boolean; well?: boolean }) {
+  const src = FRAME_ART[tierKey];
+  if (!src) return null;
+  const art = size - (well ? 8 : 0);
+  return (
+    <View style={{
+      width: size, height: size, alignItems: 'center', justifyContent: 'center',
+      ...(well ? { backgroundColor: theme.panelInnerFill, borderRadius: size * 0.28, borderWidth: 1.5, borderColor: theme.border } : {}),
+    }}>
+      <Image source={src} style={{ width: art, height: art, opacity: locked ? 0.32 : 1 }} resizeMode="contain" />
+      {locked ? (
+        <View style={{ position: 'absolute', width: Math.max(20, size * 0.3), height: Math.max(20, size * 0.3), borderRadius: Math.max(10, size * 0.15), backgroundColor: withAlpha(theme.panelInk, 0.88), borderWidth: 1.5, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="lock-closed" size={Math.max(11, size * 0.15)} color={theme.muted} />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// Dokununca açılan büyük çerçeve önizlemesi — kademe adı + açılma durumu.
+export function FramePreviewModal({ tier, unlocked, visible, onClose }: {
+  tier: LevelTier | null; unlocked: boolean; visible: boolean; onClose: () => void;
+}) {
+  if (!visible || !tier) return null;
+  const big = Math.min(SCREEN_W * 0.8, 330);
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim, alignItems: 'center', justifyContent: 'center', padding: 24 }]} onPress={onClose}>
+        <FrameArt tierKey={tier.key} size={big} locked={!unlocked} />
+        <Text style={{ color: tier.c, fontSize: 24, fontFamily: 'Poppins-Black', letterSpacing: 1.2, marginTop: 6, ...engrave('lg') }}>
+          {t(tier.nameKey).toLocaleUpperCase(currentLang())}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, backgroundColor: unlocked ? withAlpha(theme.primary, 0.16) : theme.panelInnerFill, borderRadius: 999, borderWidth: 1.5, borderColor: unlocked ? theme.primary : theme.border, paddingHorizontal: 14, paddingVertical: 6 }}>
+          <Ionicons name={unlocked ? 'checkmark-circle' : 'lock-closed'} size={15} color={unlocked ? theme.primary : theme.muted} />
+          <Text style={{ color: unlocked ? theme.primary : theme.muted, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>
+            {unlocked ? t('level.frameOwned') : t('level.frameLockedAt', { n: String(tier.min) })}
+          </Text>
+        </View>
+        <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', marginTop: 16 }}>{t('common.close')}</Text>
+      </Pressable>
+    </Modal>
+  );
+}
 
 // Seviye rozeti — kademe renkli çift halka içinde kazınmış numara.
 // 10+ seviyelerde halka kademe rengini alır; GOAT hafif ışıma taşır.
@@ -9253,7 +9344,7 @@ function segmentColor(n: number): string {
   return levelTier(Math.floor(n / 10) * 10)?.c ?? theme.primary;
 }
 
-function RoadRow({ n, level, xp }: { n: number; level: number; xp: number }) {
+function RoadRow({ n, level, xp, onFramePress }: { n: number; level: number; xp: number; onFramePress?: (tier: LevelTier, unlocked: boolean) => void }) {
   const done = n < level;
   const current = n === level;
   const tier = levelTier(n);
@@ -9291,10 +9382,9 @@ function RoadRow({ n, level, xp }: { n: number; level: number; xp: number }) {
           </View>
         ) : null}
         {isFrame && tier ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: withAlpha(tier.c, done || current ? 0.16 : 0.07), borderRadius: 999, borderWidth: 1.5, borderColor: done || current ? tier.c : theme.border, paddingHorizontal: 7, paddingVertical: 3 }}>
-            <Ionicons name="shield" size={11} color={done || current ? tier.c : theme.muted} />
-            <Text style={{ color: done || current ? tier.c : theme.muted, fontSize: 9.5, fontFamily: 'Poppins-ExtraBold' }}>{t(tier.nameKey).toLocaleUpperCase(currentLang())}</Text>
-          </View>
+          <Pressable onPress={() => onFramePress?.(tier, done || current)} hitSlop={6} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
+            <FrameArt tierKey={tier.key} size={46} locked={!(done || current)} well />
+          </Pressable>
         ) : null}
       </View>
     </View>
@@ -9359,6 +9449,7 @@ export function LevelRoadModal({ visible, profile, onClose }: {
   const scrollRef = useRef<ScrollView>(null);
   const level = profile?.level ?? 1;
   const xp = profile?.xp ?? 0;
+  const [framePrev, setFramePrev] = useState<{ tier: LevelTier; unlocked: boolean } | null>(null);
   useEffect(() => {
     if (!visible) return;
     const tm = setTimeout(() => {
@@ -9399,9 +9490,10 @@ export function LevelRoadModal({ visible, profile, onClose }: {
         </View>
         <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: insets.bottom + 26 }} showsVerticalScrollIndicator={false}>
           {Array.from({ length: LEVEL_CAP }, (_, i) => (
-            <RoadRow key={i + 1} n={i + 1} level={level} xp={xp} />
+            <RoadRow key={i + 1} n={i + 1} level={level} xp={xp} onFramePress={(tier, unlocked) => setFramePrev({ tier, unlocked })} />
           ))}
         </ScrollView>
+        <FramePreviewModal tier={framePrev?.tier ?? null} unlocked={framePrev?.unlocked ?? false} visible={framePrev != null} onClose={() => setFramePrev(null)} />
       </View>
     </Modal>
   );

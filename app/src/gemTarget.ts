@@ -19,3 +19,13 @@ export function setXpTarget(x: number, y: number): void {
   xpTarget.y = y;
   xpTarget.measured = true;
 }
+
+// Küre yağmuru başlamadan hemen önce taze ölçüm: ilk onLayout ölçümü sekme
+// kaydırması/yeniden mount yüzünden bayatlamış olabilir. ProfilePill kaydeder.
+let xpRemeasureFn: (() => void) | null = null;
+export function setXpRemeasure(fn: (() => void) | null): void {
+  xpRemeasureFn = fn;
+}
+export function remeasureXpTarget(): void {
+  xpRemeasureFn?.();
+}
