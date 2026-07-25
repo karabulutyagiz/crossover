@@ -27,7 +27,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image as ExpoImage } from 'expo-image';
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
-import { gemTarget, setGemTarget } from './gemTarget';
+import { gemTarget, setGemTarget, xpTarget, setXpTarget } from './gemTarget';
 import { Avatar } from './Avatar';
 import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
@@ -150,6 +150,7 @@ interface Props {
   onOpenLeaderboard?: () => void; // open the centered leaderboard popup (App-level overlay)
   onOpenMatchHistory?: () => void; // open the centered match-history popup (App-level overlay)
   onOpenLevelRoad?: () => void; // Seviye Yolu tam ekranını aç (App-level modal)
+  overlayBusy?: boolean; // App-katmanı popup zinciri sürüyor mu (XP yağmuru bekler)
   onGoToFriends?: () => void; // page the tab ScrollView across to the Friends tab
   focusAddFriendSeq?: number; // bumped by App when Home's find-friend card is tapped → Friends focuses its add-friend input
 }
@@ -3080,10 +3081,19 @@ function RoundIconBtn({ icon, onPress, dot = false, tint = theme.text }: {
 // Profile pill: avatar (tier-ringed, tier-badged) · name · progress trough.
 // The mockup's "level" is this game's ARENA TIER (1–7, Mahalle→GOAT) and its XP
 // bar is the trophy climb toward the next arena — real numbers in the mockup's slots.
-function ProfilePill({ name, avatarId, tier, pct, color, onPress }: {
+function ProfilePill({ name, avatarId, tier, pct, color, onPress, fillAnim }: {
   name: string; avatarId?: string | null; tier: number; pct: number; color: string; onPress: () => void;
+  // Verilirse çubuk bu 0..1 animasyon değeriyle dolar (XP küre yağmuru sırasında)
+  fillAnim?: Animated.Value;
 }) {
   const { ty, scale, onIn, onOut } = usePressLip(2);
+  const barRef = useRef<View>(null);
+  const measureBar = useCallback(() => {
+    // XP kürelerinin hedefi: çubuğun ekran-uzayı merkezi
+    barRef.current?.measureInWindow((x, y, w, h) => {
+      if (w > 0) setXpTarget(x + w / 2, y + h / 2);
+    });
+  }, []);
   return (
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1, minWidth: 108 }}>
       <View style={{ backgroundColor: darken(theme.card, 0.5), borderRadius: 24, paddingBottom: 2.5 }}>
@@ -3106,8 +3116,12 @@ function ProfilePill({ name, avatarId, tier, pct, color, onPress }: {
           </View>
           <View style={{ flex: 1, gap: 3 }}>
             <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12, ...engrave('sm') }} numberOfLines={1}>{name}</Text>
-            <View style={{ height: 8, borderRadius: 4, backgroundColor: theme.navyWell, justifyContent: 'center', overflow: 'hidden' }}>
-              <View style={{ width: `${Math.round(pct * 100)}%`, height: '100%', borderRadius: 4, backgroundColor: color }} />
+            <View ref={barRef} collapsable={false} onLayout={measureBar} style={{ height: 8, borderRadius: 4, backgroundColor: theme.navyWell, justifyContent: 'center', overflow: 'hidden' }}>
+              {fillAnim ? (
+                <Animated.View style={{ width: fillAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }), height: '100%', borderRadius: 4, backgroundColor: color }} />
+              ) : (
+                <View style={{ width: `${Math.round(pct * 100)}%`, height: '100%', borderRadius: 4, backgroundColor: color }} />
+              )}
             </View>
           </View>
         </Animated.View>
@@ -3261,7 +3275,7 @@ const ROOM_CODE_LEN = 6;
 const HOME_MODES: GameMode[] = ['country-team', 'letter-team'];
 const PACK_MODES: GameMode[] = ['country-team', 'letter-team'];
 
-export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends }: Props) {
+export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, overlayBusy }: Props) {
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [scope, setScope] = useState<Scope>({ type: 'all' });
   const [mode, setMode] = useState<GameMode>('team-team');
@@ -3319,6 +3333,28 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const lvl = profile?.level ?? 1;
   const lvlColor = levelTier(lvl)?.c ?? theme.primary;
   const xpPct = lvl >= LEVEL_CAP ? 1 : Math.max(0, Math.min(1, (profile?.xp ?? 0) / xpForNextLevel(lvl)));
+  // ---- XP küre yağmuru: maç sonrası kazanılan XP çubuğa akar, çubuk eş zamanlı dolar ----
+  const xpBarAnim = useRef(new Animated.Value(xpPct)).current;
+  const xpFlownRef = useRef<GameState['xpGain']>(null);
+  const [xpFly, setXpFly] = useState<number | null>(null);
+  useEffect(() => {
+    // animasyon akmıyorken çubuk gerçek değeri izler
+    if (xpFly == null) xpBarAnim.setValue(xpPct);
+  }, [xpPct, xpFly, xpBarAnim]);
+  useEffect(() => {
+    const g = state.xpGain;
+    if (!g || g.gained <= 0 || overlayBusy) return;      // popup zinciri bitmeden akmaz
+    if (xpFlownRef.current === g) return;                // aynı kazanım bir kez akar
+    if (!xpTarget.measured) return;
+    xpFlownRef.current = g;
+    const need = xpForNextLevel(g.level);
+    const fromPct = g.leveledUp.length > 0 ? 0 : Math.max(0, (g.xp - g.gained) / need);
+    const toPct = g.level >= LEVEL_CAP ? 1 : Math.max(0, Math.min(1, g.xp / need));
+    xpBarAnim.setValue(fromPct);
+    setXpFly(g.gained);
+    // çubuk, kürelerin varış penceresiyle EŞ ZAMANLI dolar
+    Animated.timing(xpBarAnim, { toValue: toPct, duration: 1000, delay: 380, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+  }, [state.xpGain, overlayBusy, xpBarAnim]);
 
   // The bell's red pip. Both counts are pushed live mid-session, but they are only
   // FETCHED by the Friends screen — without this a cold home would never show a pip.
@@ -3357,6 +3393,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
           tier={lvl}
           pct={xpPct}
           color={lvlColor}
+          fillAnim={xpBarAnim}
           onPress={actions.openProfile}
         />
         <GemPill count={profile?.diamonds ?? 0} onPress={() => onGoToStore?.('diamonds')} countAnim={gemCountAnim} fillAnim={gemFillAnim} innerRef={gemPillRef} />
@@ -3366,6 +3403,11 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         <RoundIconBtn icon="notifications" dot={newsUnread} onPress={() => { setNewsOpen(true); setNewsUnread(false); AsyncStorage.setItem(NEWS_READ_KEY, LATEST_NEWS_ID).catch(() => {}); }} />
         <RoundIconBtn icon="settings-sharp" onPress={() => setMenuOpen(true)} />
       </View>
+
+      {/* XP küre yağmuru (maç sonrası) */}
+      {xpFly != null ? (
+        <XpOrbFly gained={xpFly} target={{ x: xpTarget.x, y: xpTarget.y }} onDone={() => setXpFly(null)} />
+      ) : null}
 
       {/* ── 2. HERO ── */}
       <View
@@ -9006,6 +9048,81 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
 // Bu blok kendi içinde kapalıdır — kaldırmak istenirse bu bölüm + App.tsx'teki
 // popup zinciri + ProfilePill/Matchup rozetleri geri alınır.
 
+// ---- XpOrbFly — maç sonrası XP kürelerinin çubuğa akışı ----
+// Ortada "+N XP" çipi belirir, ışıyan küreler sırayla profil hapındaki XP
+// çubuğuna süzülür; çubuk EŞ ZAMANLI dolar (HomeScreen animasyonu sürer).
+function XpOrbFly({ gained, target, onDone }: { gained: number; target: { x: number; y: number }; onDone: () => void }) {
+  const screenW = Dimensions.get('window').width;
+  const screenH = Dimensions.get('window').height;
+  const originX = screenW / 2;
+  const originY = screenH * 0.4;
+  const chip = useRef(new Animated.Value(0)).current;
+  const count = Math.max(4, Math.min(9, Math.round(gained / 12)));
+  const parts = useRef(
+    Array.from({ length: 9 }, () => ({ x: new Animated.Value(0), y: new Animated.Value(0), s: new Animated.Value(0), o: new Animated.Value(0) })),
+  ).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.spring(chip, { toValue: 1, friction: 6, tension: 130, useNativeDriver: true }),
+      Animated.delay(520),
+      Animated.timing(chip, { toValue: 0, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+    ]).start();
+    let done = 0;
+    for (let i = 0; i < count; i++) {
+      const g = parts[i]!;
+      g.x.setValue(originX + (Math.random() - 0.5) * 80);
+      g.y.setValue(originY + (Math.random() - 0.5) * 56);
+      g.s.setValue(0);
+      g.o.setValue(0);
+      setTimeout(() => {
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(g.o, { toValue: 1, duration: 90, useNativeDriver: true }),
+            Animated.spring(g.s, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(g.x, { toValue: target.x, duration: 520, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.y, { toValue: target.y, duration: 520, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.s, { toValue: 0.45, duration: 520, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(g.s, { toValue: 0.12, duration: 110, useNativeDriver: true }),
+            Animated.timing(g.o, { toValue: 0, duration: 110, useNativeDriver: true }),
+          ]),
+        ]).start(() => { done += 1; if (done === count) onDone(); });
+      }, 260 + i * 70);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <Modal visible transparent animationType="none" statusBarTranslucent>
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {/* +N XP çipi */}
+        <Animated.View style={{
+          position: 'absolute', left: 0, right: 0, top: originY - 64, alignItems: 'center',
+          opacity: chip, transform: [{ scale: chip.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }],
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.panelInk, borderRadius: 999, borderWidth: 2, borderColor: theme.primary, paddingHorizontal: 16, paddingVertical: 7, shadowColor: theme.primary, shadowOpacity: 0.6, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 12 }}>
+            <Ionicons name="flash" size={16} color={theme.primary} />
+            <Text style={{ color: theme.text, fontSize: 17, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>+{gained} XP</Text>
+          </View>
+        </Animated.View>
+        {/* küreler */}
+        {parts.slice(0, count).map((g, i) => (
+          <Animated.View key={i} style={{
+            position: 'absolute', left: -9, top: -9, width: 18, height: 18, borderRadius: 9,
+            backgroundColor: theme.primary,
+            borderWidth: 2, borderColor: lighten(theme.primary, 0.5),
+            shadowColor: theme.primary, shadowOpacity: 0.9, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 9,
+            opacity: g.o,
+            transform: [{ translateX: g.x }, { translateY: g.y }, { scale: g.s }],
+          }} />
+        ))}
+      </View>
+    </Modal>
+  );
+}
+
 export const LEVEL_CAP = 50;
 export const xpForNextLevel = (level: number) => 100 + (level - 1) * 25;
 
@@ -9124,7 +9241,117 @@ export function LevelUpPopup({ toLevel, diamonds, emoteIds, onClose }: {
   );
 }
 
-// ---- Seviye Yolu — tüm ilerleme ve ödüllerin görüldüğü tam ekran ----
+// ---- Seviye Yolu — ortadan inen DOLAN kanal + sağlı-sollu ödül kartları ----
+// Kanal, geçilen seviyelerde o bölümün KADEME rengiyle dolar; mevcut seviyenin
+// segmenti XP oranınca kısmen dolar ve ucunda ışıyan bir kafa noktası taşır.
+// Kartlar zikzak dizilir; 5'in katları ifade, 10'un katları çerçeve vitrinidir.
+const ROAD_ROW_H = 92;
+const ROAD_TRACK_W = 16;
+
+function segmentColor(n: number): string {
+  // n → n+1 segmentinin rengi: bulunduğu onluğun kademe rengi (ilk onluk zümrüt)
+  return levelTier(Math.floor(n / 10) * 10)?.c ?? theme.primary;
+}
+
+function RoadRow({ n, level, xp }: { n: number; level: number; xp: number }) {
+  const done = n < level;
+  const current = n === level;
+  const tier = levelTier(n);
+  const isFrame = n % 10 === 0;
+  const emoteId = LEVEL_EMOTE_UNLOCKS[n];
+  const milestone = isFrame || Boolean(emoteId);
+  const segAbove = segmentColor(n - 1);
+  const segBelow = segmentColor(n);
+  const nodeColor = done || current ? (tier?.c ?? segmentColor(n)) : theme.border;
+  const left = n % 2 === 1; // tek seviyeler solda, çiftler sağda
+  const fillPct = current && level < LEVEL_CAP ? Math.max(0, Math.min(1, xp / xpForNextLevel(level))) : 0;
+
+  const card = (
+    <View style={{
+      flex: 1,
+      backgroundColor: theme.card,
+      borderRadius: 15,
+      borderWidth: milestone ? 2 : 1.5,
+      borderColor: current ? nodeColor : milestone && (done || current) ? withAlpha(nodeColor, 0.8) : done ? withAlpha(nodeColor, 0.45) : theme.border,
+      paddingVertical: 9, paddingHorizontal: 11,
+      opacity: done || current ? 1 : 0.6,
+      ...(current ? { shadowColor: nodeColor, shadowOpacity: 0.5, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 7 } : {}),
+    }}>
+      <Text style={{ color: done ? theme.muted : theme.text, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.4, ...engrave('sm') }}>
+        {t('level.levelN', { n: String(n) }).toLocaleUpperCase(currentLang())}
+      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.panelInnerFill, borderRadius: 999, borderWidth: 1, borderColor: withAlpha(theme.gem, 0.5), paddingHorizontal: 7, paddingVertical: 3 }}>
+          <GemIcon size={11} />
+          <Text style={{ color: theme.gemText, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>{n % 5 === 0 ? 70 : 20}</Text>
+        </View>
+        {emoteId ? (
+          <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: theme.panelInnerFill, borderWidth: 1.5, borderColor: done || current ? theme.accent : theme.border, alignItems: 'center', justifyContent: 'center' }}>
+            {done ? <EmoteSticker id={emoteId} size={27} play={false} /> : <Ionicons name="lock-closed" size={13} color={theme.muted} />}
+          </View>
+        ) : null}
+        {isFrame && tier ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: withAlpha(tier.c, done || current ? 0.16 : 0.07), borderRadius: 999, borderWidth: 1.5, borderColor: done || current ? tier.c : theme.border, paddingHorizontal: 7, paddingVertical: 3 }}>
+            <Ionicons name="shield" size={11} color={done || current ? tier.c : theme.muted} />
+            <Text style={{ color: done || current ? tier.c : theme.muted, fontSize: 9.5, fontFamily: 'Poppins-ExtraBold' }}>{t(tier.nameKey).toLocaleUpperCase(currentLang())}</Text>
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+
+  // düğümden karta uzanan bağ çizgisi
+  const tie = (
+    <View style={{ width: 16, height: 2, borderRadius: 1, backgroundColor: withAlpha(nodeColor, done || current ? 0.6 : 0.25) }} />
+  );
+
+  return (
+    <View style={{ height: ROAD_ROW_H, flexDirection: 'row', alignItems: 'center' }}>
+      {/* SOL yuva */}
+      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
+        {left ? card : null}
+        {left ? tie : null}
+      </View>
+      {/* ORTA kanal — beveled tüp + dolum + düğüm */}
+      <View style={{ width: 52, alignItems: 'center', alignSelf: 'stretch' }}>
+        <View style={{ flex: 1, width: ROAD_TRACK_W, backgroundColor: theme.panelInk, borderLeftWidth: 1.5, borderRightWidth: 1.5, borderColor: darken(theme.card, 0.35), overflow: 'hidden' }}>
+          <View style={{ flex: 1, marginHorizontal: 2.5, backgroundColor: n === 1 ? 'transparent' : done || current ? segAbove : theme.navyWell, borderRadius: 3 }} />
+        </View>
+        <View style={{
+          width: current ? 44 : milestone ? 38 : 32,
+          height: current ? 44 : milestone ? 38 : 32,
+          borderRadius: 22,
+          backgroundColor: done ? nodeColor : theme.panelInk,
+          borderWidth: current ? 3 : 2.5, borderColor: nodeColor,
+          alignItems: 'center', justifyContent: 'center',
+          ...(current ? { shadowColor: nodeColor, shadowOpacity: 0.9, shadowRadius: 12, shadowOffset: { width: 0, height: 0 }, elevation: 10 } : milestone && done ? { shadowColor: nodeColor, shadowOpacity: 0.5, shadowRadius: 7, shadowOffset: { width: 0, height: 0 }, elevation: 5 } : {}),
+        }}>
+          {done ? (
+            <Ionicons name="checkmark" size={milestone ? 19 : 16} color={theme.ink} />
+          ) : (
+            <Text style={{ color: current ? nodeColor : theme.muted, fontSize: current ? 16 : 12.5, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{n}</Text>
+          )}
+        </View>
+        <View style={{ flex: 1, width: ROAD_TRACK_W, backgroundColor: theme.panelInk, borderLeftWidth: 1.5, borderRightWidth: 1.5, borderColor: darken(theme.card, 0.35), overflow: 'hidden' }}>
+          <View style={{ flex: 1, marginHorizontal: 2.5, backgroundColor: n === LEVEL_CAP ? 'transparent' : done ? segBelow : theme.navyWell, borderRadius: 3, overflow: 'hidden' }}>
+            {current && fillPct > 0 ? (
+              <>
+                <View style={{ height: `${Math.round(fillPct * 100)}%`, backgroundColor: segBelow, borderRadius: 3 }} />
+                <View style={{ position: 'absolute', top: `${Math.round(fillPct * 100)}%`, left: -1, right: -1, height: 7, marginTop: -3.5, borderRadius: 4, backgroundColor: lighten(segBelow, 0.45), shadowColor: segBelow, shadowOpacity: 1, shadowRadius: 7, shadowOffset: { width: 0, height: 0 }, elevation: 8 }} />
+              </>
+            ) : null}
+          </View>
+        </View>
+      </View>
+      {/* SAĞ yuva */}
+      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }}>
+        {!left ? tie : null}
+        {!left ? card : null}
+      </View>
+    </View>
+  );
+}
+
 export function LevelRoadModal({ visible, profile, onClose }: {
   visible: boolean; profile: ProfileView | null; onClose: () => void;
 }) {
@@ -9132,94 +9359,19 @@ export function LevelRoadModal({ visible, profile, onClose }: {
   const scrollRef = useRef<ScrollView>(null);
   const level = profile?.level ?? 1;
   const xp = profile?.xp ?? 0;
-  const ROW_H = 74;
-  // Açılışta mevcut seviyeye kaydır (görüş alanının üst üçte birine)
   useEffect(() => {
     if (!visible) return;
     const tm = setTimeout(() => {
-      scrollRef.current?.scrollTo({ y: Math.max(0, (level - 2) * ROW_H), animated: false });
+      scrollRef.current?.scrollTo({ y: Math.max(0, (level - 2) * ROAD_ROW_H), animated: false });
     }, 60);
     return () => clearTimeout(tm);
   }, [visible, level]);
   if (!visible) return null;
 
-  const rows = [];
-  for (let n = 1; n <= LEVEL_CAP; n++) {
-    const done = n < level;
-    const current = n === level;
-    const tier = levelTier(n);
-    const isFrame = n % 10 === 0;
-    const isFive = n % 5 === 0;
-    const emoteId = LEVEL_EMOTE_UNLOCKS[n];
-    const nodeColor = done || current ? (tier?.c ?? theme.primary) : theme.border;
-    rows.push(
-      <View key={n} style={{ height: ROW_H, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        {/* yol çizgisi + düğüm */}
-        <View style={{ width: 44, alignItems: 'center', alignSelf: 'stretch' }}>
-          <View style={{ flex: 1, width: 3, backgroundColor: n === 1 ? 'transparent' : done || current ? withAlpha(nodeColor, 0.55) : theme.navyWell }} />
-          <View style={{
-            width: current ? 40 : 32, height: current ? 40 : 32, borderRadius: 20,
-            backgroundColor: done ? nodeColor : theme.panelInk,
-            borderWidth: 2.5, borderColor: nodeColor,
-            alignItems: 'center', justifyContent: 'center',
-            ...(current ? { shadowColor: nodeColor, shadowOpacity: 0.8, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 8 } : {}),
-          }}>
-            {done ? (
-              <Ionicons name="checkmark" size={16} color={theme.ink} />
-            ) : (
-              <Text style={{ color: current ? nodeColor : theme.muted, fontSize: current ? 15 : 12, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{n}</Text>
-            )}
-          </View>
-          <View style={{ flex: 1, width: 3, backgroundColor: n === LEVEL_CAP ? 'transparent' : n < level ? withAlpha(levelTier(n + 1)?.c ?? theme.primary, 0.55) : theme.navyWell }} />
-        </View>
-        {/* ödül kartı */}
-        <View style={{
-          flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
-          backgroundColor: current ? withAlpha(nodeColor, 0.1) : theme.card,
-          borderRadius: 14, borderWidth: current ? 2 : 1.5,
-          borderColor: current ? nodeColor : done ? withAlpha(nodeColor, 0.45) : theme.border,
-          paddingVertical: 8, paddingHorizontal: 12,
-          opacity: done || current ? 1 : 0.62,
-        }}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: current ? theme.text : done ? theme.muted : theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>
-              {t('level.levelN', { n: String(n) })}
-            </Text>
-            {current && level < LEVEL_CAP ? (
-              <View style={{ marginTop: 5, gap: 3 }}>
-                <XpBar xp={xp} level={level} height={7} />
-                <Text style={{ color: theme.muted, fontSize: 9.5, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{xp} / {xpForNextLevel(level)} XP</Text>
-              </View>
-            ) : null}
-          </View>
-          {/* ödül çipleri */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.panelInnerFill, borderRadius: 999, borderWidth: 1, borderColor: withAlpha(theme.gem, 0.5), paddingHorizontal: 8, paddingVertical: 3.5 }}>
-              <GemIcon size={12} />
-              <Text style={{ color: theme.gemText, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>{isFive ? 70 : 20}</Text>
-            </View>
-            {emoteId ? (
-              <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: theme.panelInnerFill, borderWidth: 1.5, borderColor: done || current ? theme.accent : theme.border, alignItems: 'center', justifyContent: 'center' }}>
-                {done ? <EmoteSticker id={emoteId} size={30} play={false} /> : <Ionicons name="lock-closed" size={14} color={theme.muted} />}
-              </View>
-            ) : null}
-            {isFrame && tier ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: withAlpha(tier.c, done || current ? 0.16 : 0.08), borderRadius: 999, borderWidth: 1.5, borderColor: done || current ? tier.c : theme.border, paddingHorizontal: 8, paddingVertical: 3.5 }}>
-                <Ionicons name="shield" size={12} color={done || current ? tier.c : theme.muted} />
-                <Text style={{ color: done || current ? tier.c : theme.muted, fontSize: 10, fontFamily: 'Poppins-ExtraBold' }}>{t(tier.nameKey).toLocaleUpperCase(currentLang())}</Text>
-              </View>
-            ) : null}
-          </View>
-        </View>
-      </View>,
-    );
-  }
-
   return (
     <Modal visible transparent animationType="slide" presentationStyle="overFullScreen" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
         <ScreenBg />
-        {/* başlık */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: insets.top + 8, paddingBottom: 12, paddingHorizontal: 14, backgroundColor: theme.bg2, borderBottomWidth: 2, borderBottomColor: theme.cardLip }}>
           <Pressable onPress={onClose} hitSlop={10} style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 14, backgroundColor: pressed ? theme.bg2 : theme.card, borderWidth: 2, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', transform: [{ translateY: pressed ? 2 : 0 }] })}>
             <Ionicons name="chevron-back" size={22} color={theme.text} />
@@ -9227,7 +9379,6 @@ export function LevelRoadModal({ visible, profile, onClose }: {
           <Text style={{ flex: 1, color: theme.text, fontFamily: 'Poppins-Black', fontSize: 17, letterSpacing: 0.5, ...engrave('lg') }}>{t('level.roadTitle').toLocaleUpperCase(currentLang())}</Text>
           <LevelBadge level={level} size={38} />
         </View>
-        {/* mevcut durum özeti */}
         <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
           <GamePanel hero bodyStyle={{ gap: 8, paddingVertical: 14 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -9246,9 +9397,10 @@ export function LevelRoadModal({ visible, profile, onClose }: {
             </View>
           </GamePanel>
         </View>
-        {/* yol */}
-        <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: insets.bottom + 24 }} showsVerticalScrollIndicator={false}>
-          {rows}
+        <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: insets.bottom + 26 }} showsVerticalScrollIndicator={false}>
+          {Array.from({ length: LEVEL_CAP }, (_, i) => (
+            <RoadRow key={i + 1} n={i + 1} level={level} xp={xp} />
+          ))}
         </ScrollView>
       </View>
     </Modal>

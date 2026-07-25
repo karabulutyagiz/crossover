@@ -224,7 +224,9 @@ function reducer(state: GameState, action: Action): GameState {
     case '_authProvider':
       return { ...state, authProvider: action.provider };
     case '_reset':
-      return { ...initialState, scopes: state.scopes, profile: state.profile, friends: state.friends, authProvider: state.authProvider, isQuickMatch: false, opponentForfeit: false };
+      // xpGain korunur: XP küre yağmuru ana ekrana DÖNÜNCE akar (yeni maç
+      // başlarken countdown case'i zaten temizler).
+      return { ...initialState, scopes: state.scopes, profile: state.profile, friends: state.friends, authProvider: state.authProvider, xpGain: state.xpGain, isQuickMatch: false, opponentForfeit: false };
     case '_logout':
       return { ...initialState, scopes: state.scopes };
     case '_picked':
