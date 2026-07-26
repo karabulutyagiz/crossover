@@ -9328,6 +9328,130 @@ export function FramePreviewModal({ tier, unlocked, visible, onClose }: {
   );
 }
 
+// ---- FrameUnlockCelebration — çerçeve açılışı: efsanevi kutlama ----
+// Clash Royale sandık açılışı duygusu: karanlık sahne → büyüyen ışıma →
+// beyaz parlama → çerçeve yaylanarak iner; şok halkası + kıvılcım patlaması,
+// arkada ağır dönen ışık huzmeleri; kademe adı damgalanır.
+export function FrameUnlockCelebration({ tierKey, onDone }: { tierKey: string; onDone: () => void }) {
+  const tier = LEVEL_TIERS.find((tr) => tr.key === tierKey) ?? LEVEL_TIERS[0]!;
+  const glow = useRef(new Animated.Value(0)).current;    // sahneyi ısıtan ışıma
+  const flash = useRef(new Animated.Value(0)).current;   // patlama anı beyazı
+  const frameIn = useRef(new Animated.Value(0)).current; // çerçeve girişi
+  const rays = useRef(new Animated.Value(0)).current;    // huzme dönüşü
+  const raysO = useRef(new Animated.Value(0)).current;
+  const ring = useRef(new Animated.Value(0)).current;    // şok halkası
+  const titleIn = useRef(new Animated.Value(0)).current;
+  const btnIn = useRef(new Animated.Value(0)).current;
+  const [btnReady, setBtnReady] = useState(false); // görünmeden tıklanamasın
+  const sparks = useRef(Array.from({ length: 12 }, () => new Animated.Value(0))).current;
+  const sparkDirs = useRef(Array.from({ length: 12 }, (_, i) => {
+    const a = (Math.PI * 2 * i) / 12 + (i % 2 ? 0.26 : 0);
+    const r = 120 + (i % 3) * 36;
+    return { x: Math.cos(a) * r, y: Math.sin(a) * r };
+  })).current;
+  useEffect(() => {
+    Animated.loop(Animated.timing(rays, { toValue: 1, duration: 14000, easing: Easing.linear, useNativeDriver: true })).start();
+    Animated.sequence([
+      Animated.timing(glow, { toValue: 1, duration: 620, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      Animated.parallel([
+        Animated.timing(flash, { toValue: 1, duration: 90, useNativeDriver: true }),
+        Animated.timing(raysO, { toValue: 1, duration: 240, useNativeDriver: true }),
+        Animated.timing(ring, { toValue: 1, duration: 640, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.spring(frameIn, { toValue: 1, friction: 5, tension: 46, useNativeDriver: true }),
+        ...sparks.map((s, i) => Animated.sequence([
+          Animated.delay(40 + (i % 4) * 45),
+          Animated.timing(s, { toValue: 1, duration: 720, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        ])),
+      ]),
+    ]).start();
+    Animated.sequence([Animated.delay(760), Animated.timing(flash, { toValue: 0, duration: 300, useNativeDriver: true })]).start();
+    Animated.sequence([Animated.delay(900), Animated.spring(titleIn, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true })]).start();
+    const btnTimer = setTimeout(() => {
+      setBtnReady(true);
+      Animated.timing(btnIn, { toValue: 1, duration: 240, useNativeDriver: true }).start();
+    }, 1500);
+    return () => clearTimeout(btnTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const spin = rays.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const big = Math.min(SCREEN_W * 0.72, 300);
+  return (
+    <Modal visible transparent animationType="fade" statusBarTranslucent>
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(4,7,18,0.94)', alignItems: 'center', justifyContent: 'center' }]}>
+        {/* ağır dönen ışık huzmeleri */}
+        <Animated.View pointerEvents="none" style={{ position: 'absolute', opacity: raysO.interpolate({ inputRange: [0, 1], outputRange: [0, 0.9] }), transform: [{ rotate: spin }] }}>
+          <Svg width={SCREEN_W * 1.3} height={SCREEN_W * 1.3} viewBox="-100 -100 200 200">
+            {Array.from({ length: 12 }, (_, i) => (
+              <Polygon key={i} points="0,0 -4.5,-100 4.5,-100" fill={tier.c} opacity={i % 2 ? 0.07 : 0.15} transform={`rotate(${i * 30})`} />
+            ))}
+          </Svg>
+        </Animated.View>
+        {/* merkez ışıma */}
+        <Animated.View pointerEvents="none" style={{ position: 'absolute', opacity: glow }}>
+          <Svg width={360} height={360}>
+            <Defs>
+              <RadialGradient id={`fglow-${tier.key}`} cx="50%" cy="50%" r="50%">
+                <Stop offset="0%" stopColor={tier.c} stopOpacity={0.55} />
+                <Stop offset="60%" stopColor={tier.c} stopOpacity={0.18} />
+                <Stop offset="100%" stopColor={tier.c} stopOpacity={0} />
+              </RadialGradient>
+            </Defs>
+            <Circle cx={180} cy={180} r={180} fill={`url(#fglow-${tier.key})`} />
+          </Svg>
+        </Animated.View>
+        {/* şok halkası */}
+        <Animated.View pointerEvents="none" style={{
+          position: 'absolute', width: big, height: big, borderRadius: big / 2,
+          borderWidth: 3, borderColor: lighten(tier.c, 0.35),
+          opacity: ring.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.9, 0] }),
+          transform: [{ scale: ring.interpolate({ inputRange: [0, 1], outputRange: [0.35, 2.1] }) }],
+        }} />
+        {/* kıvılcımlar */}
+        {sparks.map((s, i) => (
+          <Animated.View key={i} pointerEvents="none" style={{
+            position: 'absolute', width: i % 3 ? 7 : 10, height: i % 3 ? 7 : 10, borderRadius: 6,
+            backgroundColor: i % 2 ? '#FFFFFF' : lighten(tier.c, 0.25),
+            opacity: s.interpolate({ inputRange: [0, 0.12, 0.75, 1], outputRange: [0, 1, 0.9, 0] }),
+            transform: [
+              { translateX: s.interpolate({ inputRange: [0, 1], outputRange: [0, sparkDirs[i]!.x] }) },
+              { translateY: s.interpolate({ inputRange: [0, 1], outputRange: [0, sparkDirs[i]!.y + 26] }) },
+              { scale: s.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0.3, 1.15, 0.4] }) },
+            ],
+          }} />
+        ))}
+        {/* çerçeve — yaylanarak iner (gölge YOK: kare box-shadow izi bırakır,
+             ışıma radyal Svg + görselin kendi parlaklığından gelir) */}
+        <Animated.View style={{
+          opacity: frameIn,
+          transform: [{ scale: frameIn.interpolate({ inputRange: [0, 1], outputRange: [0.18, 1] }) }],
+        }}>
+          <FrameArt tierKey={tier.key} size={big} />
+        </Animated.View>
+        {/* patlama beyazı — en üstte */}
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF', opacity: flash.interpolate({ inputRange: [0, 1], outputRange: [0, 0.85] }) }]} />
+        {/* kademe adı damgası */}
+        <Animated.View style={{
+          position: 'absolute', bottom: '20%', left: 0, right: 0, alignItems: 'center',
+          opacity: titleIn, transform: [{ scale: titleIn.interpolate({ inputRange: [0, 1], outputRange: [1.6, 1] }) }],
+        }}>
+          <Text style={{ color: tier.c, fontSize: 30, fontFamily: 'Poppins-Black', letterSpacing: 1.6, ...engrave('lg') }}>
+            {t(tier.nameKey).toLocaleUpperCase(currentLang())}
+          </Text>
+          <Text style={{ color: theme.text, fontSize: 15.5, fontFamily: 'Poppins-ExtraBold', marginTop: 2, letterSpacing: 3.2, ...engrave('sm') }}>
+            {t('level.frameCelebUnlocked')}
+          </Text>
+        </Animated.View>
+        {/* devam — zamanı gelince render edilir (görünmez buton tık yemesin) */}
+        {btnReady ? (
+          <Animated.View style={{ position: 'absolute', bottom: 60, left: 40, right: 40, opacity: btnIn }}>
+            <Btn big kind="primary" label={t('common.continue')} onPress={onDone} />
+          </Animated.View>
+        ) : null}
+      </View>
+    </Modal>
+  );
+}
+
 // Seviye rozeti — kademe renkli çift halka içinde kazınmış numara.
 // 10+ seviyelerde halka kademe rengini alır; GOAT hafif ışıma taşır.
 export function LevelBadge({ level, size = 24 }: { level: number; size?: number }) {
