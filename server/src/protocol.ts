@@ -60,6 +60,7 @@ export interface ProfileView {
   avatar: string | null; // chosen profile-picture id (e.g. 'pp7') or null
   xp: number;    // mevcut seviye içindeki ilerleme
   level: number; // 1..50
+  selectedFrame: string | null; // takılı profil çerçevesi (bronze..goat) ya da null
 }
 
 export interface PlayerView {
@@ -73,6 +74,7 @@ export interface PlayerView {
   arena?: ArenaView;
   avatar?: string | null;
   level?: number; // eşleşme kartındaki seviye rozeti için
+  frame?: string | null; // takılı profil çerçevesi — rakip de görür
 }
 
 export interface RoomView {
@@ -108,6 +110,7 @@ export type ClientMsg =
   | { type: 'equip_emotes'; emoteIds: string[] } // set the match loadout (max 3 visual)
   | { type: 'buy_avatar'; avatarId: string } // purchase a premium profile avatar with diamonds
   | { type: 'set_avatar'; avatar: string | null } // choose/select profile picture ('pp7' or null)
+  | { type: 'set_frame'; frameId: string | null } // profil çerçevesi tak/kaldır (seviye ödülü)
   | { type: 'verify_purchase'; receipt: string } // validate an Apple IAP receipt → grant diamonds
   | { type: 'grant_ad_reward' } // watched a rewarded ad → credit a few diamonds (capped server-side)
   | { type: 'search_clubs'; reqId: string; q: string }
@@ -231,6 +234,7 @@ export interface ConversationView {
   lastMessageAt: string;
   unreadCount: number;
   avatar?: string | null;
+  frame?: string | null; // takılı profil çerçevesi
 }
 
 export interface PublicProfile {
@@ -242,6 +246,7 @@ export interface PublicProfile {
   losses: number;
   arena: ArenaView;
   avatar?: string | null;
+  frame?: string | null; // takılı profil çerçevesi
 }
 
 export interface MatchHistoryView {
@@ -271,6 +276,7 @@ export interface FriendView {
   arena: ArenaView;
   online: boolean;
   avatar?: string | null;
+  frame?: string | null; // takılı profil çerçevesi
   lastSeen?: string | null; // ISO; when they were last online (for offline friends)
 }
 

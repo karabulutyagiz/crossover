@@ -66,6 +66,7 @@ export interface UserProfile {
   avatar: string | null; // chosen profile-picture id (e.g. 'pp7') or null
   xp: number;    // mevcut seviye içindeki ilerleme
   level: number; // 1..50 — asla düşmez
+  selectedFrame: string | null; // takılı profil çerçevesi (bronze..goat) ya da null
 }
 
 function isFutureIso(iso: string | null | undefined): iso is string {
@@ -349,6 +350,30 @@ export async function setAvatar(
   return { ok: true, profile: toProfile(rows[0]) };
 }
 
+// ---- Profil çerçevesi (seviye ödülü) ----
+// Çerçeveler 10'un katı seviyelerde açılır; takmak için o seviyeye ulaşmış
+// olmak şart. null = çerçeveyi kaldır.
+const FRAME_MIN_LEVEL: Record<string, number> = { bronze: 10, silver: 20, gold: 30, diamond: 40, goat: 50 };
+export async function setSelectedFrame(
+  userId: string,
+  frameId: string | null,
+): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
+  if (!userId) return { ok: false, error: 'Önce giriş yap' };
+  if (frameId !== null) {
+    const min = FRAME_MIN_LEVEL[frameId];
+    if (!min) return { ok: false, error: 'Geçersiz çerçeve' };
+    const user = await getUser(userId);
+    if (!user) return { ok: false, error: 'Kullanıcı bulunamadı' };
+    if (user.level < min) return { ok: false, error: `Bu çerçeve için seviye ${min} gerekli` };
+  }
+  const { rows } = await pool.query<DbUser>(
+    `UPDATE users SET selected_frame = $2 WHERE id = $1 RETURNING *`,
+    [userId, frameId],
+  );
+  if (!rows[0]) return { ok: false, error: 'Kullanıcı bulunamadı' };
+  return { ok: true, profile: toProfile(rows[0]) };
+}
+
 // Grant diamonds for watching a rewarded ad. There is no AdMob server-side
 // verification yet, so we bound abuse with a per-UTC-day cap plus a minimum gap
 // between grants (a real rewarded ad can't finish faster than this). One atomic
@@ -465,6 +490,7 @@ export interface LeaderboardEntry {
   losses: number;
   arena: Arena;
   avatar: string | null;
+  frame: string | null; // takılı profil çerçevesi
 }
 
 export async function getLeaderboard(limit = 50): Promise<LeaderboardEntry[]> {
@@ -481,6 +507,7 @@ export async function getLeaderboard(limit = 50): Promise<LeaderboardEntry[]> {
     losses: Number(r.losses),
     arena: getArena(r.trophies),
     avatar: r.avatar ?? null,
+    frame: r.selected_frame ?? null,
   }));
 }
 
@@ -491,6 +518,7 @@ export interface FriendView {
   displayName: string;
   selectedAvatar: string;
   avatar: string | null;
+  frame?: string | null; // takılı profil çerçevesi
   trophies: number;
   arena: Arena;
   lastSeen?: string | null;
@@ -540,6 +568,7 @@ export async function listFriends(userId: string): Promise<Omit<FriendView, 'onl
     displayName: r.display_name,
     selectedAvatar: r.selected_avatar ?? DEFAULT_AVATAR_ID,
     avatar: r.avatar ?? r.selected_avatar ?? null,
+    frame: r.selected_frame ?? null,
     trophies: r.trophies,
     arena: getArena(r.trophies),
     lastSeen: r.last_seen ?? null,
@@ -695,6 +724,7 @@ interface DbUser {
   created_at: string;
   xp: number | null;
   level: number | null;
+  selected_frame: string | null;
 }
 
 // Stamp the user's last-online time (on connect and disconnect) for "last seen".
@@ -722,6 +752,7 @@ function toProfile(row: DbUser): UserProfile {
     avatar: row.avatar ?? row.selected_avatar ?? null,
     xp: row.xp ?? 0,
     level: row.level ?? 1,
+    selectedFrame: row.selected_frame ?? null,
   };
 }
 

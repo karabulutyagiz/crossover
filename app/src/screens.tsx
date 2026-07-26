@@ -51,6 +51,7 @@ import {
 } from './emotes';
 import type { EmoteMeta } from './emotes';
 import { AvatarBadge, avatarMeta, avatarPrice, ownsAvatar } from './avatars';
+import { FRAME_ART as FRAME_ART_MAP, FrameOverlay } from './frames';
 import { NATIONALITIES } from './nationalities';
 import { captureError, track } from './telemetry';
 // react-native-iap v15 (StoreKit2) — native module, absent in Expo Go. Wrap the require
@@ -115,6 +116,7 @@ type Actions = {
   equipEmotes: (emoteIds: string[]) => void;
   buyAvatar: (avatarId: string) => void;
   setAvatar: (avatar: string | null) => void;
+  setFrame: (frameId: string | null) => void; // profil çerçevesi tak/kaldır
   verifyPurchase: (receipt: string) => Promise<void>;
   grantAdReward: () => Promise<number>;
   loadFriends: () => void;
@@ -1480,7 +1482,7 @@ const TUT_PROFILE = {
   selectedAvatar: 'pp7', ownedAvatars: [],
   ownedEmotes: [], equippedEmotes: [], usernameSet: true, socialPackUntil: null,
   arena: { name: 'Mahalle Sahası', icon: '🏟️', minTrophies: 0 }, avatar: 'pp7',
-  xp: 0, level: 1,
+  xp: 0, level: 1, selectedFrame: null,
 };
 
 // Centered coach gate — the GameModal "coach" vocabulary as an in-screen overlay:
@@ -3082,10 +3084,11 @@ function RoundIconBtn({ icon, onPress, dot = false, tint = theme.text }: {
 // Profile pill: avatar (tier-ringed, tier-badged) · name · progress trough.
 // The mockup's "level" is this game's ARENA TIER (1–7, Mahalle→GOAT) and its XP
 // bar is the trophy climb toward the next arena — real numbers in the mockup's slots.
-function ProfilePill({ name, avatarId, tier, pct, color, onPress, fillAnim }: {
+function ProfilePill({ name, avatarId, tier, pct, color, onPress, fillAnim, frameId }: {
   name: string; avatarId?: string | null; tier: number; pct: number; color: string; onPress: () => void;
   // Verilirse çubuk bu 0..1 animasyon değeriyle dolar (XP küre yağmuru sırasında)
   fillAnim?: Animated.Value;
+  frameId?: string | null; // takılı profil çerçevesi
 }) {
   const { ty, scale, onIn, onOut } = usePressLip(2);
   const barRef = useRef<View>(null);
@@ -3110,7 +3113,7 @@ function ProfilePill({ name, avatarId, tier, pct, color, onPress, fillAnim }: {
           paddingVertical: 3.5, paddingLeft: 3.5, paddingRight: 10,
         }}>
           <View>
-            <AvatarBadge avatarId={avatarId} size={34} ringColor={color} />
+            <AvatarBadge avatarId={avatarId} size={34} ringColor={color} frameId={frameId} />
             <View style={{
               position: 'absolute', right: -3, bottom: -2,
               minWidth: 17, height: 17, borderRadius: 9, paddingHorizontal: 2.5,
@@ -3416,6 +3419,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
           pct={xpPct}
           color={lvlColor}
           fillAnim={xpBarAnim}
+          frameId={profile?.selectedFrame}
           onPress={actions.openProfile}
         />
         <GemPill count={profile?.diamonds ?? 0} onPress={() => onGoToStore?.('diamonds')} countAnim={gemCountAnim} fillAnim={gemFillAnim} innerRef={gemPillRef} />
@@ -3916,7 +3920,7 @@ export function LobbyScreen({ state, actions }: Props) {
       <View style={{ height: 14 }} />
       {room.players.map((p) => (
         <GamePanel key={p.id} compact accentStripe={p.isHost ? theme.accent : theme.primary} style={{ marginBottom: 8 }} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingLeft: 14 }}>
-          <Avatar avatar={p.id === room.youId ? (p.avatar ?? state.profile?.avatar) : p.avatar} name={p.name} size={32} ring={p.isHost ? theme.accent : theme.primary} iconColor={p.isHost ? theme.accent : theme.muted} iconSize={18} />
+          <Avatar avatar={p.id === room.youId ? (p.avatar ?? state.profile?.avatar) : p.avatar} name={p.name} size={32} ring={p.isHost ? theme.accent : theme.primary} iconColor={p.isHost ? theme.accent : theme.muted} iconSize={18} frameId={p.id === room.youId ? (p.frame ?? state.profile?.selectedFrame) : p.frame} />
           <Text style={styles.lobbyName}>
             {p.name}
             {p.id === room.youId ? t('lobby.youSuffix') : ''}
@@ -3982,10 +3986,10 @@ export function MatchupScreen({ state }: Props) {
   const oppColor = opp?.arena ? arenaColor(opp.arena.name) : theme.muted;
   const youColor = you?.arena ? arenaColor(you.arena.name) : theme.primary;
 
-  const renderPlayer = (p: typeof you, color: string, slideY: Animated.AnimatedInterpolation<number>, fallbackAvatar?: string | null) => (
+  const renderPlayer = (p: typeof you, color: string, slideY: Animated.AnimatedInterpolation<number>, fallbackAvatar?: string | null, fallbackFrame?: string | null) => (
     <Animated.View style={{ transform: [{ translateY: slideY }], opacity: anim, alignSelf: 'stretch' }}>
       <GamePanel compact tint={color} bodyStyle={{ alignItems: 'center', gap: 6, paddingVertical: 14 }}>
-        <Avatar avatar={p?.avatar ?? fallbackAvatar} name={p?.name} size={64} ring={color} ringWidth={3} bg={theme.card} iconColor={color} iconSize={30} />
+        <Avatar avatar={p?.avatar ?? fallbackAvatar} name={p?.name} size={64} ring={color} ringWidth={3} bg={theme.card} iconColor={color} iconSize={30} frameId={p?.frame ?? fallbackFrame} />
         <Text style={{ color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{p?.name ?? '?'}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -4022,7 +4026,7 @@ export function MatchupScreen({ state }: Props) {
         <Animated.View style={{ transform: [{ scale: vsScale }] }}>
           <VsBadge size={50} />
         </Animated.View>
-        {renderPlayer(you, youColor, youSlide, state.profile?.avatar)}
+        {renderPlayer(you, youColor, youSlide, state.profile?.avatar, state.profile?.selectedFrame)}
       </View>
     </Screen>
   );
@@ -4059,7 +4063,7 @@ function PlayerBar({ state, onEmotePress }: { state: GameState; onEmotePress?: (
   const color = opp.arena ? arenaColor(opp.arena.name) : theme.muted;
   return (
     <GamePanel compact style={{ flex: 1 }} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 5, paddingHorizontal: 10 }}>
-      <Avatar avatar={opp.avatar} name={opp.name} size={30} ring={color} ringWidth={2} iconColor={color} iconSize={15} />
+      <Avatar avatar={opp.avatar} name={opp.name} size={30} ring={color} ringWidth={2} iconColor={color} iconSize={15} frameId={opp.frame} />
       <View style={{ flex: 1 }}>
         <Text numberOfLines={1} style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{opp.name}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
@@ -6213,7 +6217,7 @@ export function FriendProfileModal({ profile, onClose }: { profile: PublicProfil
           <View style={{ paddingHorizontal: 20 }}>
             {/* Identity block — hero panel tinted by the friend's arena */}
             <GamePanel hero tint={color} style={{ marginBottom: 14 }} bodyStyle={{ alignItems: 'center', paddingVertical: 22 }}>
-              <AvatarBadge avatarId={profile?.avatar ?? profile?.selectedAvatar} size={104} ringColor={color} />
+              <AvatarBadge avatarId={profile?.avatar ?? profile?.selectedAvatar} size={104} ringColor={color} frameId={profile?.frame} />
               <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 22, marginTop: 12, ...engrave('lg') }} numberOfLines={1}>{profile?.displayName}</Text>
               {/* Beveled gold trophies chip (mini-bevel: card face on a cardLip lip) */}
               <View style={{ backgroundColor: theme.cardLip, borderRadius: 13, paddingBottom: 2, marginTop: 8 }}>
@@ -6758,7 +6762,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
               const matches = friends.filter(f => f.displayName.toLowerCase().includes(q) && !state.conversations.some(c => c.userId === f.userId));
               return matches.length > 0 ? matches.map(f => (
                 <BevelRow key={f.userId} onPress={() => { setMsgSearch(''); actions.openChat(f.userId); }} outerStyle={{ marginBottom: 6 }} style={{ padding: 10 }}>
-                  <Avatar avatar={f.avatar} name={f.displayName} size={36} ring={theme.primary} iconColor={theme.primary} iconSize={16} />
+                  <Avatar avatar={f.avatar} name={f.displayName} size={36} ring={theme.primary} iconColor={theme.primary} iconSize={16} frameId={f.frame} />
                   <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14, flex: 1, ...engrave('sm') }} numberOfLines={1}>{f.displayName}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.primary, borderRadius: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.30)', borderBottomWidth: 2, borderBottomColor: theme.primaryDark, paddingHorizontal: 10, paddingVertical: 5 }}>
                     <Ionicons name="chatbubble" size={12} color={theme.ink} />
@@ -6784,7 +6788,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                 outerStyle={{ marginBottom: 8 }}
               >
                 <View style={{ position: 'relative' }}>
-                  <AvatarBadge avatarId={c.avatar ?? c.selectedAvatar} size={44} ringColor={c.online ? theme.primary : theme.border} />
+                  <AvatarBadge avatarId={c.avatar ?? c.selectedAvatar} size={44} ringColor={c.online ? theme.primary : theme.border} frameId={c.frame} />
                   {c.online ? <View style={{ position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
                 </View>
                 <View style={{ flex: 1 }}>
@@ -6817,7 +6821,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
               style={{ gap: 12 }}
             >
               <View style={{ position: 'relative' }}>
-                <AvatarBadge avatarId={f.avatar ?? f.selectedAvatar} size={38} ringColor={theme.accent} />
+                <AvatarBadge avatarId={f.avatar ?? f.selectedAvatar} size={38} ringColor={theme.accent} frameId={f.frame} />
                 {f.online ? <View style={{ position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: 6, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
               </View>
               <View style={{ flex: 1 }}>
@@ -7294,7 +7298,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
         >
           <Ionicons name="chevron-back" size={22} color={theme.text} />
         </Pressable>
-        <AvatarBadge avatarId={friend?.avatar ?? friend?.selectedAvatar} size={36} ringColor={friend?.online ? theme.primary : theme.border} />
+        <AvatarBadge avatarId={friend?.avatar ?? friend?.selectedAvatar} size={36} ringColor={friend?.online ? theme.primary : theme.border} frameId={friend?.frame} />
         <View style={{ flex: 1 }}>
           <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15, ...engrave('sm') }} numberOfLines={1}>{friend?.displayName ?? '...'}</Text>
           <Text style={{ color: isTyping ? theme.primary : friend?.online ? theme.primary : theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>
@@ -7346,7 +7350,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
             <RiseIn key={m.id} animate={animReady.current && !isMe}>
               <View style={{ alignItems: isMe ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
                 <View style={{ flexDirection: isMe ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 6, maxWidth: '80%' }}>
-                  <AvatarBadge avatarId={isMe ? (state.profile?.avatar ?? state.profile?.selectedAvatar) : (friend?.avatar ?? friend?.selectedAvatar)} size={28} ringColor={isMe ? theme.primary : theme.border} />
+                  <AvatarBadge avatarId={isMe ? (state.profile?.avatar ?? state.profile?.selectedAvatar) : (friend?.avatar ?? friend?.selectedAvatar)} size={28} ringColor={isMe ? theme.primary : theme.border} frameId={isMe ? state.profile?.selectedFrame : friend?.frame} />
                   <View style={{
                     backgroundColor: isMe ? theme.primary : theme.card,
                     borderRadius: 16,
@@ -7371,7 +7375,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
         })}
         {isTyping ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <AvatarBadge avatarId={friend?.avatar ?? friend?.selectedAvatar} size={28} ringColor={theme.border} />
+            <AvatarBadge avatarId={friend?.avatar ?? friend?.selectedAvatar} size={28} ringColor={theme.border} frameId={friend?.frame} />
             <View style={{ backgroundColor: theme.card, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: theme.border, flexDirection: 'row', gap: 4 }}>
               <TypingDot delay={0} />
               <TypingDot delay={150} />
@@ -7675,7 +7679,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
         <View style={{ alignItems: 'center', gap: 8, marginVertical: 10 }}>
           <Pressable onPress={() => setShowAvatarPage(true)} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.97 : 1 }] })}>
             <View>
-              <AvatarBadge avatarId={p.avatar ?? p.selectedAvatar} size={104} ringColor={color} />
+              <AvatarBadge avatarId={p.avatar ?? p.selectedAvatar} size={104} ringColor={color} frameId={p.selectedFrame} />
               <View style={{ position: 'absolute', bottom: 0, right: 0, width: 30, height: 30, borderRadius: 15, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.card }}>
                 <Ionicons name="pencil" size={15} color={theme.ink} />
               </View>
@@ -7718,11 +7722,21 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
             <GamePanel compact accentStripe={levelTier(p.level)?.c ?? theme.primary} bodyStyle={{ paddingVertical: 10, paddingHorizontal: 12 }}>
               <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 1.2, marginBottom: 6 }}>{t('profile.frames').toLocaleUpperCase(currentLang())}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 12 }}>
-                {LEVEL_TIERS.filter((tr) => p.level >= tr.min).map((tr) => (
-                  <Pressable key={tr.key} onPress={() => setFramePrev({ tier: tr, unlocked: true })} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
-                    <FrameArt tierKey={tr.key} size={56} well />
-                  </Pressable>
-                ))}
+                {LEVEL_TIERS.filter((tr) => p.level >= tr.min).map((tr) => {
+                  const worn = p.selectedFrame === tr.key;
+                  return (
+                    <Pressable key={tr.key} onPress={() => setFramePrev({ tier: tr, unlocked: true })} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
+                      <View style={worn ? { borderRadius: 56 * 0.28, borderWidth: 2, borderColor: tr.c, margin: -2 } : undefined}>
+                        <FrameArt tierKey={tr.key} size={56} well />
+                      </View>
+                      {worn ? (
+                        <View style={{ position: 'absolute', right: -5, top: -5, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
+                          <Ionicons name="checkmark" size={11} color={theme.ink} />
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
               </View>
             </GamePanel>
           </View>
@@ -7743,7 +7757,14 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
         </View>
       </ScrollView>
 
-      <FramePreviewModal tier={framePrev?.tier ?? null} unlocked={framePrev?.unlocked ?? false} visible={framePrev != null} onClose={() => setFramePrev(null)} />
+      <FramePreviewModal
+        tier={framePrev?.tier ?? null}
+        unlocked={framePrev?.unlocked ?? false}
+        visible={framePrev != null}
+        onClose={() => setFramePrev(null)}
+        equipped={framePrev != null && p.selectedFrame === framePrev.tier.key}
+        onEquip={(frameId) => { actions.setFrame(frameId); setFramePrev(null); }}
+      />
     </Screen>
   );
 }
@@ -8134,7 +8155,7 @@ function LeaderboardRow({ entry, onPress }: { entry: LeaderboardEntry; onPress?:
     >
       <GamePanel compact accentStripe={entry.rank <= 3 ? RANK_COLORS[entry.rank - 1] : undefined} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingLeft: 12 }}>
         <RankBadge rank={entry.rank} size={28} />
-        <Avatar avatar={entry.avatar} name={entry.displayName} size={30} ring={theme.primary} ringWidth={1.5} iconColor={theme.primary} iconSize={14} />
+        <Avatar avatar={entry.avatar} name={entry.displayName} size={30} ring={theme.primary} ringWidth={1.5} iconColor={theme.primary} iconSize={14} frameId={entry.frame} />
         <View style={{ flex: 1 }}>
           <Text numberOfLines={1} style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{entry.displayName}</Text>
           <Text numberOfLines={1} style={{ color: theme.accent, fontSize: 10, fontFamily: 'Poppins-SemiBold' }}>{arenaLabel(entry.arena.name).toLocaleUpperCase(currentLang())}</Text>
@@ -8419,7 +8440,7 @@ function PodiumSpot({ entry, onPress }: { entry: LeaderboardEntry; onPress: () =
   const avSize = place === 1 ? 58 : 46;
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ flex: 1, alignItems: 'center', transform: [{ translateY: pressed ? 2 : 0 }] })}>
-      <Avatar avatar={entry.avatar} name={entry.displayName} size={avSize} ring={c} ringWidth={2.5} iconColor={c} iconSize={Math.round(avSize * 0.45)} />
+      <Avatar avatar={entry.avatar} name={entry.displayName} size={avSize} ring={c} ringWidth={2.5} iconColor={c} iconSize={Math.round(avSize * 0.45)} frameId={entry.frame} />
       <View style={{ marginTop: -11 }}>
         <RankBadge rank={place} size={22} />
       </View>
@@ -9017,7 +9038,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
                 <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   {i > 0 ? <View style={{ width: 1.5, height: 22, backgroundColor: theme.border }} /> : null}
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                    <Avatar avatar={p.avatar} name={p.name} size={22} ring={leads ? theme.primary : theme.border} ringWidth={1.5} iconColor={theme.muted} iconSize={13} />
+                    <Avatar avatar={p.avatar} name={p.name} size={22} ring={leads ? theme.primary : theme.border} ringWidth={1.5} iconColor={theme.muted} iconSize={13} frameId={p.frame} />
                     <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', maxWidth: 72 }} numberOfLines={1}>{p.name}</Text>
                     <Text style={{ color: leads ? theme.primary : theme.text, fontSize: 15, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>
                       {p.score}/{state.winTarget}
@@ -9271,18 +9292,12 @@ export const LEVEL_EMOTE_UNLOCKS: Record<number, string> = {
 };
 
 // ---- Çerçeve sanatları (çerçeve.jpeg'ten, ışıltıları birebir korunarak) ----
-export const FRAME_ART: Record<string, ImageSourcePropType> = {
-  bronze: require('../assets/frames/frame-bronze.png'),
-  silver: require('../assets/frames/frame-silver.png'),
-  gold: require('../assets/frames/frame-gold.png'),
-  diamond: require('../assets/frames/frame-diamond.png'),
-  goat: require('../assets/frames/frame-goat.png'),
-};
+export { FRAME_ART } from './frames';
 
 // Çerçeve görseli — kilitliyse soluk + kilit rozetli ("henüz açılmadı" hali).
 // well: küçük boyutlarda koyu zeminde kaybolmasın diye yuvarlatılmış yuva zemini.
 export function FrameArt({ tierKey, size, locked = false, well = false }: { tierKey: string; size: number; locked?: boolean; well?: boolean }) {
-  const src = FRAME_ART[tierKey];
+  const src = FRAME_ART_MAP[tierKey];
   if (!src) return null;
   const art = size - (well ? 8 : 0);
   return (
@@ -9304,8 +9319,10 @@ export function FrameArt({ tierKey, size, locked = false, well = false }: { tier
 }
 
 // Dokununca açılan büyük çerçeve önizlemesi — kademe adı + açılma durumu.
-export function FramePreviewModal({ tier, unlocked, visible, onClose }: {
+// onEquip verilirse (profil Çerçeveler şeridi) KULLAN/KALDIR butonu da çizilir.
+export function FramePreviewModal({ tier, unlocked, visible, onClose, equipped, onEquip }: {
   tier: LevelTier | null; unlocked: boolean; visible: boolean; onClose: () => void;
+  equipped?: boolean; onEquip?: (frameId: string | null) => void;
 }) {
   if (!visible || !tier) return null;
   const big = Math.min(SCREEN_W * 0.8, 330);
@@ -9322,6 +9339,17 @@ export function FramePreviewModal({ tier, unlocked, visible, onClose }: {
             {unlocked ? t('level.frameOwned') : t('level.frameLockedAt', { n: String(tier.min) })}
           </Text>
         </View>
+        {unlocked && onEquip ? (
+          <View style={{ marginTop: 18, width: Math.min(SCREEN_W * 0.6, 240) }}>
+            <Btn
+              big
+              kind={equipped ? 'ghost' : 'primary'}
+              icon={equipped ? 'close-circle' : 'checkmark-circle'}
+              label={(equipped ? t('collection.remove') : t('collection.use')).toLocaleUpperCase(currentLang())}
+              onPress={() => onEquip(equipped ? null : tier.key)}
+            />
+          </View>
+        ) : null}
         <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', marginTop: 16 }}>{t('common.close')}</Text>
       </Pressable>
     </Modal>

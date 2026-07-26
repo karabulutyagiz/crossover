@@ -6,7 +6,7 @@ import { listScopes, listNationalities } from '../game/verify.ts';
 import {
   findOrCreateUser, findOrCreateUserByProvider, createGuestUser, getUser, changeDisplayName,
   grantDevEmotesIfNeeded,
-  setUsername, buyEmote, setEquippedEmotes, setAvatar, buyAvatar, touchLastSeen, getLeaderboard, grantAdReward,
+  setUsername, buyEmote, setEquippedEmotes, setAvatar, setSelectedFrame, buyAvatar, touchLastSeen, getLeaderboard, grantAdReward,
   listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
   removeFriend, searchUsers, getMatchHistory,
   type UserProfile,
@@ -47,6 +47,7 @@ function toProfileView(p: UserProfile): ProfileView {
     avatar: p.avatar,
     xp: p.xp,
     level: p.level,
+    selectedFrame: p.selectedFrame,
   };
 }
 
@@ -410,6 +411,22 @@ export function startServer(port: number): Server {
         return;
       }
 
+      // Profil çerçevesi tak/kaldır (seviye ödülü). Hesap güncellenir, sonra
+      // maçtaki rakibe ve çevrimiçi arkadaşlara anında yansıtılır.
+      if (msg.type === 'set_frame') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          const result = await setSelectedFrame(userProfile!.id, msg.frameId ?? null);
+          if (!result.ok) return transport.send({ type: 'error', message: result.error });
+          userProfile = result.profile;
+          transport.send({ type: 'profile', profile: toProfileView(result.profile) });
+          if (ctx?.room) ctx.room.setFrameFor(userProfile!.id, result.profile.selectedFrame);
+          const friends = await listFriends(userProfile!.id);
+          for (const f of friends) sendToUser(f.userId, await getFriendsData(f.userId));
+        })();
+        return;
+      }
+
       if (msg.type === 'buy_avatar') {
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce kayıt ol' });
         void (async () => {
@@ -578,8 +595,8 @@ export function startServer(port: number): Server {
         const room = manager.createRoom();
         if (inv.options?.scope) room.scope = inv.options.scope;
         room.gameMode = requestedMode;
-        const resA = room.addPlayer(inv.fromName, inv.transport, true, inv.fromUserId, inv.userProfile?.trophies, inv.userProfile?.arena, inv.userProfile?.avatar, inv.userProfile?.level);
-        const resB = room.addPlayer(userProfile.displayName, transport, false, userProfile.id, userProfile.trophies, userProfile.arena, userProfile.avatar, userProfile.level);
+        const resA = room.addPlayer(inv.fromName, inv.transport, true, inv.fromUserId, inv.userProfile?.trophies, inv.userProfile?.arena, inv.userProfile?.avatar, inv.userProfile?.level, inv.userProfile?.selectedFrame);
+        const resB = room.addPlayer(userProfile.displayName, transport, false, userProfile.id, userProfile.trophies, userProfile.arena, userProfile.avatar, userProfile.level, userProfile.selectedFrame);
         if (resA.ok) inv.setCtx({ room, playerId: resA.id, userProfile: inv.userProfile });
         if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
         setTimeout(() => { if (room.size === 2) room.handle(resA.ok ? resA.id : '', { type: 'start' }); }, 3500);
@@ -600,7 +617,7 @@ export function startServer(port: number): Server {
           if (!u) return transport.send({ type: 'error', message: 'Kullanıcı bulunamadı' });
           transport.send({
             type: 'user_profile',
-            profile: { userId: u.id, displayName: u.displayName, selectedAvatar: u.selectedAvatar, trophies: u.trophies, wins: u.wins, losses: u.losses, arena: u.arena, avatar: u.avatar },
+            profile: { userId: u.id, displayName: u.displayName, selectedAvatar: u.selectedAvatar, trophies: u.trophies, wins: u.wins, losses: u.losses, arena: u.arena, avatar: u.avatar, frame: u.selectedFrame },
           });
         })();
         return;
@@ -698,7 +715,7 @@ export function startServer(port: number): Server {
         void (async () => {
           // Get distinct conversation partners with last message + unread count
           const { rows } = await pool.query<{
-            partner_id: string; partner_name: string; partner_avatar: string | null; last_body: string; last_at: string; unread: string;
+            partner_id: string; partner_name: string; partner_avatar: string | null; partner_frame: string | null; last_body: string; last_at: string; unread: string;
           }>(`
             WITH convos AS (
               SELECT
@@ -712,6 +729,7 @@ export function startServer(port: number): Server {
               c.partner_id,
               u.display_name AS partner_name,
               COALESCE(u.avatar, u.selected_avatar) AS partner_avatar,
+              u.selected_frame AS partner_frame,
               c.body AS last_body,
               c.created_at AS last_at,
               COALESCE((SELECT COUNT(*) FROM messages WHERE from_user = c.partner_id AND to_user = $1 AND read_at IS NULL), 0) AS unread
@@ -730,6 +748,7 @@ export function startServer(port: number): Server {
             lastMessageAt: r.last_at,
             unreadCount: Number(r.unread),
             avatar: r.partner_avatar ?? null,
+            frame: r.partner_frame ?? null,
           }));
           transport.send({ type: 'conversation_list', conversations });
         })();
@@ -809,8 +828,8 @@ export function startServer(port: number): Server {
               const room = manager.createRoom();
               if (msg.options?.scope) room.scope = msg.options.scope;
               room.gameMode = requestedMode;
-              const resA = room.addPlayer(partner.name, partner.transport, true, partner.userProfile?.id ?? partner.userId, partner.userProfile?.trophies, partner.userProfile?.arena, partner.userProfile?.avatar, partner.userProfile?.level);
-              const resB = room.addPlayer(name, transport, false, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level);
+              const resA = room.addPlayer(partner.name, partner.transport, true, partner.userProfile?.id ?? partner.userId, partner.userProfile?.trophies, partner.userProfile?.arena, partner.userProfile?.avatar, partner.userProfile?.level, partner.userProfile?.selectedFrame);
+              const resB = room.addPlayer(name, transport, false, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level, userProfile?.selectedFrame);
               if (resA.ok) partner.setCtx({ room, playerId: resA.id, userProfile: partner.userProfile });
               if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
               // Auto-start after matchup reveal delay
@@ -842,7 +861,7 @@ export function startServer(port: number): Server {
           if (msg.options?.scope) room.scope = msg.options.scope;
           if (msg.options?.mode) room.gameMode = msg.options.mode;
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, true, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level);
+          const res = room.addPlayer(name, transport, true, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level, userProfile?.selectedFrame);
           if (res.ok) ctx = { room, playerId: res.id, userProfile };
           return;
         }
@@ -853,7 +872,7 @@ export function startServer(port: number): Server {
           if (msg.options?.scope) room.scope = msg.options.scope;
           if (msg.options?.mode) room.gameMode = msg.options.mode;
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, true, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level);
+          const res = room.addPlayer(name, transport, true, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level, userProfile?.selectedFrame);
           if (res.ok) ctx = { room, playerId: res.id, userProfile };
           const bot = new BotPlayer({ difficulty: msg.options?.difficulty, scope: room.scope, mode: room.gameMode });
           const botRes = room.addPlayer('Bot', bot, false);
@@ -866,7 +885,7 @@ export function startServer(port: number): Server {
           if (!room) return transport.send({ type: 'error', message: 'Room not found' });
           if (!canUseMode(userProfile, room.gameMode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, false, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level);
+          const res = room.addPlayer(name, transport, false, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level, userProfile?.selectedFrame);
           if (!res.ok) return transport.send({ type: 'error', message: res.error });
           ctx = { room, playerId: res.id, userProfile };
           return;

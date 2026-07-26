@@ -4,6 +4,7 @@
 import { Image, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
+import { FrameOverlay } from './frames';
 import { theme } from './theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -42,7 +43,7 @@ export function avatarSource(avatar?: string | null): number | undefined {
 // A self-contained circular avatar: the chosen picture filling a circular frame,
 // or a person/bot fallback icon. Replaces the old `<View circle><Ionicons person/></View>`.
 export function Avatar({
-  avatar, name, size, ring, ringWidth = 2, bg, iconColor, iconSize,
+  avatar, name, size, ring, ringWidth = 2, bg, iconColor, iconSize, frameId,
 }: {
   avatar?: string | null;
   name?: string;          // used to pick the bot fallback icon
@@ -52,10 +53,11 @@ export function Avatar({
   bg?: string;            // background behind a fallback icon
   iconColor?: string;
   iconSize?: number;
+  frameId?: string | null; // takılı profil çerçevesi — daire kırpmasının DIŞINA çizilir
 }) {
   const src = avatarSource(avatar);
   const fallback: IoniconName = name === 'Bot' ? 'game-controller' : 'person';
-  return (
+  const circle = (
     <View style={{
       width: size, height: size, borderRadius: size / 2,
       backgroundColor: src ? '#0b1020' : (bg ?? theme.bg2),
@@ -67,6 +69,14 @@ export function Avatar({
       ) : (
         <Ionicons name={fallback} size={iconSize ?? size * 0.55} color={iconColor ?? theme.muted} />
       )}
+    </View>
+  );
+  if (!frameId) return circle;
+  // çerçeve daire kırpmasından etkilenmesin diye kırpmasız sarmalayıcı
+  return (
+    <View style={{ width: size, height: size }}>
+      {circle}
+      <FrameOverlay frameId={frameId} size={size} />
     </View>
   );
 }

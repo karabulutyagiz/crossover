@@ -77,6 +77,7 @@ export interface ProfileView {
   avatar: string | null;
   xp: number;    // mevcut seviye içindeki ilerleme
   level: number; // 1..50
+  selectedFrame: string | null; // takılı profil çerçevesi (bronze..goat) ya da null
 }
 
 export interface FriendView {
@@ -87,6 +88,7 @@ export interface FriendView {
   arena: ArenaView;
   online: boolean;
   avatar?: string | null;
+  frame?: string | null; // takılı profil çerçevesi
   lastSeen?: string | null;
 }
 
@@ -108,6 +110,7 @@ export interface PlayerView {
   arena?: ArenaView;
   avatar?: string | null;
   level?: number; // eşleşme kartındaki seviye rozeti
+  frame?: string | null; // takılı profil çerçevesi — rakip de görür
 }
 
 export interface RoomView {
@@ -161,6 +164,7 @@ export type ClientMsg =
   | { type: 'equip_emotes'; emoteIds: string[] }
   | { type: 'buy_avatar'; avatarId: string }
   | { type: 'set_avatar'; avatar: string | null }
+  | { type: 'set_frame'; frameId: string | null }
   | { type: 'verify_purchase'; receipt: string }
   | { type: 'grant_ad_reward' }
   | { type: 'search_clubs'; reqId: string; q: string }
@@ -257,6 +261,7 @@ export interface ConversationView {
   lastMessageAt: string;
   unreadCount: number;
   avatar?: string | null;
+  frame?: string | null; // takılı profil çerçevesi
 }
 
 export interface PublicProfile {
@@ -268,6 +273,7 @@ export interface PublicProfile {
   losses: number;
   arena: ArenaView;
   avatar?: string | null;
+  frame?: string | null; // takılı profil çerçevesi
 }
 
 export interface MatchHistoryView {

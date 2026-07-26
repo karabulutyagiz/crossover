@@ -65,6 +65,7 @@ interface Player {
   arena?: { name: string; icon: string; minTrophies: number };
   avatar?: string | null; // chosen profile-picture id
   level?: number; // eşleşme kartındaki seviye rozeti
+  frame?: string | null; // takılı profil çerçevesi
 }
 
 interface Round {
@@ -114,6 +115,7 @@ export class Room {
     arena?: { name: string; icon: string; minTrophies: number },
     avatar?: string | null,
     level?: number,
+    frame?: string | null,
   ): { ok: true; id: string } | { ok: false; error: string } {
     if (this.players.size >= MAX_PLAYERS) return { ok: false, error: 'Room is full' };
     const id = randomUUID();
@@ -130,6 +132,7 @@ export class Room {
       arena,
       avatar: avatar ?? null,
       level,
+      frame: frame ?? null,
     });
     this.broadcastState();
     return { ok: true, id };
@@ -151,6 +154,15 @@ export class Room {
     let changed = false;
     for (const p of this.players.values()) {
       if (p.userId === userId && p.avatar !== avatar) { p.avatar = avatar; changed = true; }
+    }
+    if (changed) this.broadcastState();
+  }
+
+  // Çerçeve değişimini maç ortasında rakibe anında yansıt (set_avatar ile aynı desen).
+  setFrameFor(userId: string, frame: string | null): void {
+    let changed = false;
+    for (const p of this.players.values()) {
+      if (p.userId === userId && p.frame !== frame) { p.frame = frame; changed = true; }
     }
     if (changed) this.broadcastState();
   }
@@ -1034,6 +1046,7 @@ export class Room {
       arena: p.arena,
       avatar: p.avatar,
       level: p.level,
+      frame: p.frame ?? null,
     }));
   }
 

@@ -42,6 +42,7 @@ export interface LeaderboardEntry {
   losses: number;
   arena: { name: string; icon: string; minTrophies: number };
   avatar?: string | null;
+  frame?: string | null; // takılı profil çerçevesi
 }
 
 export type FriendInfo = FriendView;
@@ -1015,6 +1016,7 @@ export function useCrossover() {
     equipEmotes: (emoteIds: string[]) => send({ type: 'equip_emotes', emoteIds }),
     buyAvatar: (avatarId: string) => send({ type: 'buy_avatar', avatarId }),
     setAvatar: (avatar: string | null) => send({ type: 'set_avatar', avatar }),
+    setFrame: (frameId: string | null) => send({ type: 'set_frame', frameId }),
     // Friends — via WebSocket for real-time notifications.
     loadFriends: () => send({ type: 'list_friends' }),
     sendFriendRequest: (targetCode?: string, targetUsername?: string) =>
