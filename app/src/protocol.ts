@@ -179,7 +179,9 @@ export type ClientMsg =
   | { type: 'mark_read'; fromUserId: string }
   | { type: 'typing_start'; toUserId: string }
   | { type: 'typing_stop'; toUserId: string }
-  | { type: 'register_push'; token: string; platform: 'ios' | 'android'; lang?: string };
+  | { type: 'register_push'; token: string; platform: 'ios' | 'android'; lang?: string }
+  // Permanently delete the signed-in account and all its data (App Store 5.1.1(v)).
+  | { type: 'delete_account' };
 
 export type ServerMsg =
   | { type: 'room_state'; room: RoomView }
@@ -233,6 +235,7 @@ export type ServerMsg =
   | { type: 'conversation_list'; conversations: ConversationView[] }
   | { type: 'messages_marked_read'; fromUserId: string }
   | { type: 'typing'; fromUserId: string; isTyping: boolean }
+  | { type: 'account_deleted' } // account permanently deleted — client wipes local state
   | { type: 'error'; message: string };
 
 export interface MessageView {

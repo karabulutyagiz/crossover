@@ -80,6 +80,64 @@ async function clearExpiredSocialPackIfNeeded(row: DbUser): Promise<DbUser> {
   return rows[0] ?? { ...row, social_pack_until: null };
 }
 
+// ---- Onboarding seed (App Store 2.1(a): pre-populated demo content) ----
+// A single persistent "Crossover" system account befriends every NEW user and
+// sends a couple of welcome DMs, so the Friends/Messages features are never empty
+// for a fresh (incl. guest) account — App Review can verify them immediately.
+const SYS_KEY = 'system_user_id';
+const WELCOME_MESSAGES = [
+  'Crossover\'a hoş geldin! 👋 Karşına iki futbol kulübü çıkar; ikisinde de forma giymiş ortak futbolcuyu rakibinden önce bul.',
+  'Hazır olduğunda "Hemen Oyna" ile ilk düellona başla. Bol şans! ⚽',
+];
+
+async function getSystemUserId(): Promise<string> {
+  const found = await pool.query<{ value: string }>(`SELECT value FROM app_state WHERE key = $1`, [SYS_KEY]);
+  if (found.rows[0]?.value) return found.rows[0].value;
+  let id: string;
+  try {
+    const ins = await pool.query<{ id: string }>(
+      `INSERT INTO users (display_name, username_set, selected_avatar, avatar)
+       VALUES ('Crossover', true, 'pp7', 'pp7') RETURNING id`,
+    );
+    id = ins.rows[0]!.id;
+  } catch (e) {
+    // Lost the create race (unique username) → reuse the existing system account.
+    if ((e as { code?: string })?.code === '23505') {
+      const byName = await pool.query<{ id: string }>(
+        `SELECT id FROM users WHERE lower(display_name) = lower('Crossover') AND username_set = true LIMIT 1`,
+      );
+      if (!byName.rows[0]) throw e;
+      id = byName.rows[0].id;
+    } else throw e;
+  }
+  await pool.query(
+    `INSERT INTO app_state (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    [SYS_KEY, id],
+  );
+  return id;
+}
+
+/** Befriend the new user with the system account + seed welcome DMs (best-effort). */
+export async function seedWelcomeForNewUser(newUserId: string): Promise<void> {
+  try {
+    if (!newUserId) return;
+    const sysId = await getSystemUserId();
+    if (newUserId === sysId) return;
+    await pool.query(
+      `INSERT INTO friendships (user_id, friend_id) VALUES ($1, $2), ($2, $1) ON CONFLICT DO NOTHING`,
+      [newUserId, sysId],
+    );
+    await pool.query(
+      `INSERT INTO messages (from_user, to_user, body, created_at)
+       VALUES ($1, $2, $3, now() - interval '2 minutes'),
+              ($1, $2, $4, now() - interval '1 minute')`,
+      [sysId, newUserId, WELCOME_MESSAGES[0], WELCOME_MESSAGES[1]],
+    );
+  } catch {
+    // Never let onboarding-seed failure block account creation.
+  }
+}
+
 // ---- User CRUD ----
 
 export async function findOrCreateUser(
@@ -102,6 +160,7 @@ export async function findOrCreateUser(
      RETURNING *`,
     [displayName, gameCenterId],
   );
+  await seedWelcomeForNewUser(rows[0]!.id);
   return toProfile(rows[0]!);
 }
 
@@ -134,6 +193,7 @@ export async function findOrCreateUserByProvider(
     `INSERT INTO users (display_name, ${col}, email) VALUES ($1, $2, $3) RETURNING *`,
     [displayName.trim() || 'Oyuncu', sub, email],
   );
+  await seedWelcomeForNewUser(rows[0]!.id);
   return toProfile(rows[0]!);
 }
 
@@ -158,6 +218,7 @@ export async function createGuestUser(): Promise<UserProfile> {
         `INSERT INTO users (display_name, username_set) VALUES ($1, true) RETURNING *`,
         [username],
       );
+      await seedWelcomeForNewUser(rows[0]!.id);
       return toProfile(rows[0]!);
     } catch (e) {
       // Lost a race to another guest on the same random number (the partial
@@ -218,6 +279,29 @@ export async function getUser(userId: string): Promise<UserProfile | null> {
   );
   if (!rows[0]) return null;
   return toProfile(await clearExpiredSocialPackIfNeeded(rows[0]));
+}
+
+/**
+ * Permanently delete a user account and ALL of its data (App Store 5.1.1(v)).
+ * `processed_transactions` has no ON DELETE CASCADE, so it is cleared explicitly;
+ * everything else (friend_requests, friendships, match_history, messages,
+ * push_tokens) cascades from the users row. All-or-nothing in one transaction.
+ */
+export async function deleteAccount(userId: string): Promise<boolean> {
+  if (!userId) return false;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM processed_transactions WHERE user_id = $1', [userId]);
+    const res = await client.query('DELETE FROM users WHERE id = $1', [userId]);
+    await client.query('COMMIT');
+    return (res.rowCount ?? 0) > 0;
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 export async function applyMatchResult(

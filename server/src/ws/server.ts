@@ -8,7 +8,7 @@ import {
   grantDevEmotesIfNeeded,
   setUsername, buyEmote, setEquippedEmotes, setAvatar, buyAvatar, touchLastSeen, getLeaderboard, grantAdReward,
   listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
-  removeFriend, searchUsers, getMatchHistory,
+  removeFriend, searchUsers, getMatchHistory, deleteAccount,
   type UserProfile,
 } from '../game/rank.ts';
 import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
@@ -454,6 +454,26 @@ export function startServer(port: number): Server {
         if (!userProfile) return;
         void registerPushToken(userProfile.id, msg.token, msg.platform, msg.lang ?? 'tr')
           .catch((err) => log.warn('push_register_failed', { userId: userProfile?.id, error: err instanceof Error ? err.message : String(err) }));
+        return;
+      }
+
+      // Permanently delete the signed-in account and all its data (App Store 5.1.1(v)),
+      // then tear down the session so the client returns to the login screen.
+      if (msg.type === 'delete_account') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        const uid = userProfile.id;
+        void (async () => {
+          try {
+            await deleteAccount(uid);
+            if (ctx) { ctx.room.handleClose(ctx.playerId); ctx = null; }
+            removeOnline(uid, ws);
+            userProfile = undefined;
+            transport.send({ type: 'account_deleted' });
+          } catch (err) {
+            log.warn('delete_account_failed', { userId: uid, error: err instanceof Error ? err.message : String(err) });
+            transport.send({ type: 'error', message: 'Hesap silinemedi, tekrar dene' });
+          }
+        })();
         return;
       }
 

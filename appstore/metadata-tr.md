@@ -26,8 +26,8 @@ Crossover — futbol bilgini gerçek rakiplere karşı kanıtla!
 İki futbol kulübü karşına çıkıyor. İkisinde de forma giymiş "ortak" futbolcuyu rakibinden önce bulan turu kazanır. Gerçek zamanlı 1v1 düellolarda hızlı düşün, hızlı yaz — 3 turu ilk alan maçı ve kupaları kazanır!
 
 ⚽ NASIL OYNANIR
-• İki takım gösterilir (ör. Galatasaray – Real Madrid)
-• İkisinde de oynamış futbolcuyu yaz (ör. Wesley Sneijder)
+• Karşına iki futbol kulübü çıkar
+• İkisinde de forma giymiş ortak futbolcuyu bul
 • Rakibinden önce doğru cevabı ver, turu kap
 • 3 tur kazanan maçı alır, kupaları toplar
 

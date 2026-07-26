@@ -611,6 +611,20 @@ export function useCrossover() {
         lastSocketActivity.current = Date.now();
         dispatch(m);
         const mt = (m as { type?: string }).type;
+        if (mt === 'account_deleted') {
+          // Server confirmed permanent deletion — wipe ALL local identity so the
+          // account can't be auto-restored, tear the socket down, back to login.
+          AsyncStorage.multiRemove([PROFILE_KEY, LAST_USER_ID_KEY, LAST_AUTH_PROVIDER_KEY]).catch(() => {});
+          lastUserIdRef.current = null;
+          prevProfile.current = null;
+          pendingAfterAuth.current = [];
+          pendingAfterResume.current = [];
+          if (offlineRoomRef.current) { try { offlineRoomRef.current.leave(); } catch { /* ignore */ } offlineRoomRef.current = null; }
+          try { ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null; ws.close(); } catch { /* ignore */ }
+          if (wsRef.current === ws) wsRef.current = null;
+          dispatch({ type: '_logout' });
+          return;
+        }
         if (mt === 'profile' && pendingAfterAuth.current.length && ws.readyState === WebSocket.OPEN) {
           const queue = pendingAfterAuth.current;
           pendingAfterAuth.current = [];
@@ -1063,6 +1077,7 @@ export function useCrossover() {
       }
       dispatch({ type: '_logout' });
     },
+    deleteAccount: () => send({ type: 'delete_account' }),
   };
 
   return { state, actions };

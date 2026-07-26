@@ -46,7 +46,7 @@ input { font: inherit; color: inherit; }
 
 /* ── Sahne: gece stadyumu (mobildeki bg-stadium.jpg) ── */
 #stage {
-  min-height: 100dvh;
+  min-height: var(--vvh, 100dvh);
   background: var(--bg) url('assets/bg-stadium.jpg') center top / cover no-repeat fixed;
   position: relative;
   display: flex;
@@ -59,7 +59,7 @@ input { font: inherit; color: inherit; }
 #app {
   position: relative; z-index: 2;
   width: min(460px, 100%);
-  min-height: 100dvh;
+  min-height: var(--vvh, 100dvh);
   padding: max(14px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
   display: flex; flex-direction: column;
 }

@@ -138,6 +138,7 @@ type Actions = {
   typingStop: (toUserId: string) => void;
   leave: () => void;
   logout: () => Promise<void>;
+  deleteAccount: () => void;
 };
 
 interface Props {
@@ -901,8 +902,6 @@ export function ScreenBg({ variant = 'menu' }: { variant?: BgVariant }) {
 
 function Screen({ children, scroll, bg, pad, contentCenter = true }: { children: ReactNode; scroll?: boolean; noPitch?: boolean; bg?: ReactNode; pad?: number; contentCenter?: boolean }) {
   // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
-  // The KAV offset mirrors the app root's safe-area top inset (one source — they can't drift).
-  const insets = useSafeAreaInsets();
   return (
     <KeyboardAvoidingView
       style={[styles.screen, pad !== undefined && { padding: pad }]}
@@ -911,7 +910,12 @@ function Screen({ children, scroll, bg, pad, contentCenter = true }: { children:
       // (non-scroll) screens need the KAV to pad. Running both double-shifts the layout
       // and was pushing the submit button under the keyboard ("gönderme kısmı gidiyor").
       behavior={Platform.OS === 'ios' && !scroll ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
+      // No keyboardVerticalOffset: the KAV measures its own frame in ABSOLUTE window
+      // coordinates, so the app root's safe-area top padding is already reflected there.
+      // Adding insets.top double-counted it — over-padding by the notch height and
+      // leaving a dead band above the keyboard that hid the lower rows (the bottom teams
+      // in the picker showed as a grey gap the keyboard "ate").
+      keyboardVerticalOffset={0}
     >
       {/* Optional fixed backdrop BEHIND the scroll content (covers the app's default
           ScreenBg). Rendered outside the ScrollView so it never scrolls. */}
@@ -2458,16 +2462,18 @@ const INFO_LINKS = {
 const openLink = (url: string) => { Linking.openURL(url).catch(() => {}); };
 
 // ---- Settings Panel (inside hamburger menu) ----
-function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamonds, onLogout }: {
+function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamonds, onLogout, onDeleteAccount }: {
   onLanguageChange: () => void;
   diamonds: number;
   onChangeName: (name: string) => void;
   onNeedDiamonds: () => void;
   onLogout: () => void;
+  onDeleteAccount: () => void;
 }) {
   const [langPicker, setLangPicker] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [logoutConfirm, setLogoutConfirm] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
   const activeLang = currentLang();
   const activeName = LANGUAGES.find((l) => l.code === activeLang)?.name ?? activeLang;
 
@@ -2564,6 +2570,31 @@ function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamond
           </View>
           <View style={{ flex: 1 }}>
             <Btn label={t('profile.logout')} kind="danger" icon="log-out" onPress={() => { setLogoutConfirm(false); onLogout(); }} />
+          </View>
+        </View>
+      </GameModal>
+
+      {/* Hesabı Sil — App Store 5.1.1(v): hesap oluşturan uygulamalar uygulama
+          içinden kalıcı hesap silme sunmak zorunda. Yıkıcı → çift onaylı. */}
+      <View style={{ height: 1, backgroundColor: theme.border, marginTop: 8, marginBottom: 8 }} />
+      <GameRow
+        icon="trash"
+        iconColor={theme.danger}
+        label={t('profile.deleteAccount')}
+        chevron
+        onPress={() => setDeleteConfirm(true)}
+      />
+
+      <GameModal visible={deleteConfirm} onClose={() => setDeleteConfirm(false)} title={t('profile.deleteAccountTitle')} icon="trash" danger>
+        <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+          {t('profile.deleteAccountConfirm')}
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Btn label={t('settings.cancel')} kind="ghost" onPress={() => setDeleteConfirm(false)} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Btn label={t('profile.deleteAccountConfirmBtn')} kind="danger" icon="trash" onPress={() => { setDeleteConfirm(false); onDeleteAccount(); }} />
           </View>
         </View>
       </GameModal>
@@ -3566,6 +3597,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
             onChangeName={(newName) => actions.changeName(newName)}
             onNeedDiamonds={() => { setMenuOpen(false); onGoToStore?.('diamonds'); }}
             onLogout={() => { setMenuOpen(false); void actions.logout(); }}
+            onDeleteAccount={() => { setMenuOpen(false); actions.deleteAccount(); }}
           />
         </ScrollView>
       </GameModal>

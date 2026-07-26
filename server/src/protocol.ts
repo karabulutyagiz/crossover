@@ -130,7 +130,9 @@ export type ClientMsg =
   | { type: 'typing_stop'; toUserId: string }
   // ---- Push notifications ----
   // Save this device's Expo push token (client mirror must stay in sync).
-  | { type: 'register_push'; token: string; platform: 'ios' | 'android'; lang?: string };
+  | { type: 'register_push'; token: string; platform: 'ios' | 'android'; lang?: string }
+  // Permanently delete the signed-in account and all its data (App Store 5.1.1(v)).
+  | { type: 'delete_account' };
 
 // ---- Server -> Client ----
 export interface RoundResult {
@@ -207,6 +209,7 @@ export type ServerMsg =
   | { type: 'conversation_list'; conversations: ConversationView[] }
   | { type: 'messages_marked_read'; fromUserId: string }
   | { type: 'typing'; fromUserId: string; isTyping: boolean }
+  | { type: 'account_deleted' } // account permanently deleted — client wipes local state
   | { type: 'error'; message: string };
 
 export interface MessageView {

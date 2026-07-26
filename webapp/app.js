@@ -35,6 +35,24 @@ const S = {
 const $ = (id) => document.getElementById(id);
 const screens = ['home', 'searching', 'lobby', 'matchup', 'countdown', 'pick', 'guess', 'result'];
 
+// ── klavye-farkında yükseklik ───────────────────────────────────────
+// Mobil tarayıcıda ekran klavyesi açılınca GÖRSEL viewport küçülür ama `100dvh`
+// çoğunlukla küçülmez → klavye içeriğin (takım gridi) altını kapatır ya da
+// klavyenin üstünde ölü bir gri bant kalır. `visualViewport` yüksekliğini bir
+// CSS değişkenine yansıtıyoruz; #stage/#app tam olarak klavyenin ÜSTÜNDEKİ alana
+// göre yeniden boyutlanır. (Chrome'da `interactive-widget=resizes-content`,
+// iOS Safari'de — orada henüz desteklenmiyor — bu visualViewport köprüsü çalışır.)
+(() => {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const applyVVH = () => {
+    document.documentElement.style.setProperty('--vvh', `${Math.round(vv.height)}px`);
+  };
+  vv.addEventListener('resize', applyVVH);
+  vv.addEventListener('scroll', applyVVH);
+  applyVVH();
+})();
+
 function show(phase) {
   S.phase = phase;
   for (const s of screens) $(`screen-${s}`).hidden = s !== phase;
