@@ -9105,6 +9105,10 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
 // Bu blok kendi içinde kapalıdır — kaldırmak istenirse bu bölüm + App.tsx'teki
 // popup zinciri + ProfilePill/Matchup rozetleri geri alınır.
 
+// Oyunun XP simgesi: masaüstü xp.jpeg'ten bozulmadan çıkarılan taçlı altın
+// yıldız — maç sonrası çubuğa uçan ödül taneleri ve +N XP çipi bunu taşır.
+export const XP_STAR = require('../assets/xp-star.png');
+
 // ---- XpOrbFly — maç sonrası XP kürelerinin çubuğa akışı ----
 // Ortada "+N XP" çipi belirir, ışıyan küreler sırayla profil hapındaki XP
 // çubuğuna süzülür; çubuk EŞ ZAMANLI dolar (HomeScreen animasyonu sürer).
@@ -9168,21 +9172,21 @@ function XpOrbFly({ gained, target, onDone, onOrbLand }: { gained: number; targe
           position: 'absolute', left: 0, right: 0, top: originY - 64, alignItems: 'center',
           opacity: chip, transform: [{ scale: chip.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }],
         }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.panelInk, borderRadius: 999, borderWidth: 2, borderColor: theme.primary, paddingHorizontal: 16, paddingVertical: 7, shadowColor: theme.primary, shadowOpacity: 0.6, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 12 }}>
-            <Ionicons name="flash" size={16} color={theme.primary} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.panelInk, borderRadius: 999, borderWidth: 2, borderColor: theme.gold, paddingHorizontal: 16, paddingVertical: 7, shadowColor: theme.gold, shadowOpacity: 0.6, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 12 }}>
+            <Image source={XP_STAR} style={{ width: 20, height: 20 }} resizeMode="contain" />
             <Text style={{ color: theme.text, fontSize: 17, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>+{gained} XP</Text>
           </View>
         </Animated.View>
         {/* küreler */}
         {parts.slice(0, count).map((g, i) => (
           <Animated.View key={i} style={{
-            position: 'absolute', left: -9, top: -9, width: 18, height: 18, borderRadius: 9,
-            backgroundColor: theme.primary,
-            borderWidth: 2, borderColor: lighten(theme.primary, 0.5),
-            shadowColor: theme.primary, shadowOpacity: 0.9, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 9,
+            position: 'absolute', left: -13, top: -13,
+            shadowColor: theme.gold, shadowOpacity: 0.9, shadowRadius: 9, shadowOffset: { width: 0, height: 0 }, elevation: 9,
             opacity: g.o,
             transform: [{ translateX: g.x }, { translateY: g.y }, { scale: g.s }],
-          }} />
+          }}>
+            <Image source={XP_STAR} style={{ width: 26, height: 26 }} resizeMode="contain" />
+          </Animated.View>
         ))}
       </View>
     </Modal>
@@ -9357,12 +9361,14 @@ export function FramePreviewModal({ tier, unlocked, visible, onClose, equipped, 
   );
 }
 
-// ---- FrameUnlockCelebration — çerçeve açılışı: efsanevi kutlama ----
+// ---- FrameUnlockCelebration — çerçeve/İFADE açılışı: efsanevi kutlama ----
 // Clash Royale sandık açılışı duygusu: karanlık sahne → büyüyen ışıma →
-// beyaz parlama → çerçeve yaylanarak iner; şok halkası + kıvılcım patlaması,
-// arkada ağır dönen ışık huzmeleri; kademe adı damgalanır.
-export function FrameUnlockCelebration({ tierKey, onDone }: { tierKey: string; onDone: () => void }) {
+// beyaz parlama → ödül yaylanarak iner; şok halkası + kıvılcım patlaması,
+// arkada ağır dönen ışık huzmeleri; ödülün adı damgalanır.
+export function FrameUnlockCelebration({ tierKey, emoteId, onDone }: { tierKey?: string | null; emoteId?: string | null; onDone: () => void }) {
+  const isEmote = !tierKey && Boolean(emoteId);
   const tier = LEVEL_TIERS.find((tr) => tr.key === tierKey) ?? LEVEL_TIERS[0]!;
+  const glowColor = isEmote ? theme.accent : tier.c;
   const glow = useRef(new Animated.Value(0)).current;    // sahneyi ısıtan ışıma
   const flash = useRef(new Animated.Value(0)).current;   // patlama anı beyazı
   const frameIn = useRef(new Animated.Value(0)).current; // çerçeve girişi
@@ -9411,7 +9417,7 @@ export function FrameUnlockCelebration({ tierKey, onDone }: { tierKey: string; o
         <Animated.View pointerEvents="none" style={{ position: 'absolute', opacity: raysO.interpolate({ inputRange: [0, 1], outputRange: [0, 0.9] }), transform: [{ rotate: spin }] }}>
           <Svg width={SCREEN_W * 1.3} height={SCREEN_W * 1.3} viewBox="-100 -100 200 200">
             {Array.from({ length: 12 }, (_, i) => (
-              <Polygon key={i} points="0,0 -4.5,-100 4.5,-100" fill={tier.c} opacity={i % 2 ? 0.07 : 0.15} transform={`rotate(${i * 30})`} />
+              <Polygon key={i} points="0,0 -4.5,-100 4.5,-100" fill={glowColor} opacity={i % 2 ? 0.07 : 0.15} transform={`rotate(${i * 30})`} />
             ))}
           </Svg>
         </Animated.View>
@@ -9419,19 +9425,19 @@ export function FrameUnlockCelebration({ tierKey, onDone }: { tierKey: string; o
         <Animated.View pointerEvents="none" style={{ position: 'absolute', opacity: glow }}>
           <Svg width={360} height={360}>
             <Defs>
-              <RadialGradient id={`fglow-${tier.key}`} cx="50%" cy="50%" r="50%">
-                <Stop offset="0%" stopColor={tier.c} stopOpacity={0.55} />
-                <Stop offset="60%" stopColor={tier.c} stopOpacity={0.18} />
-                <Stop offset="100%" stopColor={tier.c} stopOpacity={0} />
+              <RadialGradient id={`fglow-${isEmote ? 'emote' : tier.key}`} cx="50%" cy="50%" r="50%">
+                <Stop offset="0%" stopColor={glowColor} stopOpacity={0.55} />
+                <Stop offset="60%" stopColor={glowColor} stopOpacity={0.18} />
+                <Stop offset="100%" stopColor={glowColor} stopOpacity={0} />
               </RadialGradient>
             </Defs>
-            <Circle cx={180} cy={180} r={180} fill={`url(#fglow-${tier.key})`} />
+            <Circle cx={180} cy={180} r={180} fill={`url(#fglow-${isEmote ? 'emote' : tier.key})`} />
           </Svg>
         </Animated.View>
         {/* şok halkası */}
         <Animated.View pointerEvents="none" style={{
           position: 'absolute', width: big, height: big, borderRadius: big / 2,
-          borderWidth: 3, borderColor: lighten(tier.c, 0.35),
+          borderWidth: 3, borderColor: lighten(glowColor, 0.35),
           opacity: ring.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.9, 0] }),
           transform: [{ scale: ring.interpolate({ inputRange: [0, 1], outputRange: [0.35, 2.1] }) }],
         }} />
@@ -9439,7 +9445,7 @@ export function FrameUnlockCelebration({ tierKey, onDone }: { tierKey: string; o
         {sparks.map((s, i) => (
           <Animated.View key={i} pointerEvents="none" style={{
             position: 'absolute', width: i % 3 ? 7 : 10, height: i % 3 ? 7 : 10, borderRadius: 6,
-            backgroundColor: i % 2 ? '#FFFFFF' : lighten(tier.c, 0.25),
+            backgroundColor: i % 2 ? '#FFFFFF' : lighten(glowColor, 0.25),
             opacity: s.interpolate({ inputRange: [0, 0.12, 0.75, 1], outputRange: [0, 1, 0.9, 0] }),
             transform: [
               { translateX: s.interpolate({ inputRange: [0, 1], outputRange: [0, sparkDirs[i]!.x] }) },
@@ -9454,7 +9460,11 @@ export function FrameUnlockCelebration({ tierKey, onDone }: { tierKey: string; o
           opacity: frameIn,
           transform: [{ scale: frameIn.interpolate({ inputRange: [0, 1], outputRange: [0.18, 1] }) }],
         }}>
-          <FrameArt tierKey={tier.key} size={big} />
+          {isEmote && emoteId ? (
+            <EmoteSticker id={emoteId} size={Math.round(big * 0.78)} play />
+          ) : (
+            <FrameArt tierKey={tier.key} size={big} />
+          )}
         </Animated.View>
         {/* patlama beyazı — en üstte */}
         <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF', opacity: flash.interpolate({ inputRange: [0, 1], outputRange: [0, 0.85] }) }]} />
@@ -9463,11 +9473,11 @@ export function FrameUnlockCelebration({ tierKey, onDone }: { tierKey: string; o
           position: 'absolute', bottom: '20%', left: 0, right: 0, alignItems: 'center',
           opacity: titleIn, transform: [{ scale: titleIn.interpolate({ inputRange: [0, 1], outputRange: [1.6, 1] }) }],
         }}>
-          <Text style={{ color: tier.c, fontSize: 30, fontFamily: 'Poppins-Black', letterSpacing: 1.6, ...engrave('lg') }}>
-            {t(tier.nameKey).toLocaleUpperCase(currentLang())}
+          <Text style={{ color: glowColor, fontSize: isEmote ? 26 : 30, fontFamily: 'Poppins-Black', letterSpacing: 1.6, ...engrave('lg') }}>
+            {(isEmote ? t('level.exclusiveEmote') : t(tier.nameKey)).toLocaleUpperCase(currentLang())}
           </Text>
           <Text style={{ color: theme.text, fontSize: 15.5, fontFamily: 'Poppins-ExtraBold', marginTop: 2, letterSpacing: 3.2, ...engrave('sm') }}>
-            {t('level.frameCelebUnlocked')}
+            {isEmote ? t('level.emoteCelebUnlocked') : t('level.frameCelebUnlocked')}
           </Text>
         </Animated.View>
         {/* devam — zamanı gelince render edilir (görünmez buton tık yemesin) */}
@@ -9854,7 +9864,7 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, lastClaim }
   const claimPos = useRef<{ x: number; y: number } | null>(null);
   const claimBusy = useRef(false);
   const [claimFly, setClaimFly] = useState<{ from: { x: number; y: number }; amount: number; key: number } | null>(null);
-  const [celebTier, setCelebTier] = useState<string | null>(null);
+  const [celeb, setCeleb] = useState<{ tierKey?: string; emoteId?: string } | null>(null);
   const [shownDiamonds, setShownDiamonds] = useState(profile?.diamonds ?? 0);
   const lastSeq = useRef(lastClaim?.seq ?? 0);
   useEffect(() => {
@@ -9878,8 +9888,10 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, lastClaim }
   const handleFlyDone = useCallback(() => {
     setClaimFly(null);
     setShownDiamonds(profile?.diamonds ?? 0);
-    if (lastClaim?.frameTier) setCelebTier(lastClaim.frameTier);
-  }, [profile?.diamonds, lastClaim?.frameTier]);
+    // elmaslar indikten sonra büyük ödülün kutlaması: çerçeve ya da özel ifade
+    if (lastClaim?.frameTier) setCeleb({ tierKey: lastClaim.frameTier });
+    else if (lastClaim?.emoteId) setCeleb({ emoteId: lastClaim.emoteId });
+  }, [profile?.diamonds, lastClaim?.frameTier, lastClaim?.emoteId]);
   // sıradaki 5'in katı = sıradaki büyük ödül (çerçeve ya da özel ifade)
   const nextMilestone = level >= LEVEL_CAP ? null : Math.min(LEVEL_CAP, (Math.floor(level / 5) + 1) * 5);
   const nextIsFrame = nextMilestone != null && nextMilestone % 10 === 0;
@@ -9981,8 +9993,8 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, lastClaim }
         {claimFly ? (
           <RoadClaimFly key={claimFly.key} from={claimFly.from} to={pillPos.current} amount={claimFly.amount} onDone={handleFlyDone} />
         ) : null}
-        {celebTier ? (
-          <FrameUnlockCelebration tierKey={celebTier} onDone={() => setCelebTier(null)} />
+        {celeb ? (
+          <FrameUnlockCelebration tierKey={celeb.tierKey} emoteId={celeb.emoteId} onDone={() => setCeleb(null)} />
         ) : null}
         <FramePreviewModal tier={framePrev?.tier ?? null} unlocked={framePrev?.unlocked ?? false} visible={framePrev != null} onClose={() => setFramePrev(null)} />
       </View>
