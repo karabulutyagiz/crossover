@@ -61,6 +61,7 @@ export interface ProfileView {
   xp: number;    // mevcut seviye içindeki ilerleme
   level: number; // 1..50
   selectedFrame: string | null; // takılı profil çerçevesi (bronze..goat) ya da null
+  claimedLevels: number[]; // Seviye Yolu'nda toplanmış ödül seviyeleri
 }
 
 export interface PlayerView {
@@ -110,7 +111,8 @@ export type ClientMsg =
   | { type: 'equip_emotes'; emoteIds: string[] } // set the match loadout (max 3 visual)
   | { type: 'buy_avatar'; avatarId: string } // purchase a premium profile avatar with diamonds
   | { type: 'set_avatar'; avatar: string | null } // choose/select profile picture ('pp7' or null)
-  | { type: 'set_frame'; frameId: string | null } // profil çerçevesi tak/kaldır (seviye ödülü)
+  | { type: 'set_frame'; frameId: string | null }
+  | { type: 'claim_level_reward'; level: number } // Seviye Yolu kartına dokunarak ödül topla // profil çerçevesi tak/kaldır (seviye ödülü)
   | { type: 'verify_purchase'; receipt: string } // validate an Apple IAP receipt → grant diamonds
   | { type: 'grant_ad_reward' } // watched a rewarded ad → credit a few diamonds (capped server-side)
   | { type: 'search_clubs'; reqId: string; q: string }
@@ -186,7 +188,8 @@ export type ServerMsg =
   | { type: 'rematch_waiting' } // your rematch request was sent, waiting for opponent
   | { type: 'rematch_declined' } // opponent declined your rematch request
   | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView; diamonds?: number; arenaReward?: number }
-  | { type: 'xp_update'; xp: number; level: number; xpForNext: number; gained: number; leveledUp: { level: number; diamonds: number; emoteId?: string }[]; diamonds?: number } // maç sonu seviye ilerlemesi
+  | { type: 'xp_update'; xp: number; level: number; xpForNext: number; gained: number; leveledUp: { level: number; diamonds: number; emoteId?: string }[]; diamonds?: number }
+  | { type: 'level_reward_claimed'; level: number; diamonds: number; emoteId: string | null; frameTier: string | null; profile: ProfileView } // yol kartından ödül toplandı // maç sonu seviye ilerlemesi
   | { type: 'emote'; fromId: string; emoteId: string } // a player in the room sent an emote
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string } // store purchase succeeded
   | { type: 'avatar_purchased'; profile: ProfileView; avatarId: string }

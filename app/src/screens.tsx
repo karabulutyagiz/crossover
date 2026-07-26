@@ -117,6 +117,7 @@ type Actions = {
   buyAvatar: (avatarId: string) => void;
   setAvatar: (avatar: string | null) => void;
   setFrame: (frameId: string | null) => void; // profil çerçevesi tak/kaldır
+  claimLevelReward: (level: number) => void; // Seviye Yolu kartından ödül topla
   verifyPurchase: (receipt: string) => Promise<void>;
   grantAdReward: () => Promise<number>;
   loadFriends: () => void;
@@ -1482,7 +1483,7 @@ const TUT_PROFILE = {
   selectedAvatar: 'pp7', ownedAvatars: [],
   ownedEmotes: [], equippedEmotes: [], usernameSet: true, socialPackUntil: null,
   arena: { name: 'Mahalle Sahası', icon: '🏟️', minTrophies: 0 }, avatar: 'pp7',
-  xp: 0, level: 1, selectedFrame: null,
+  xp: 0, level: 1, selectedFrame: null, claimedLevels: [],
 };
 
 // Centered coach gate — the GameModal "coach" vocabulary as an in-screen overlay:
@@ -7717,12 +7718,12 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
         </Pressable>
 
         {/* Açılan çerçeveler — kazanılmış statü vitrini (dokun: büyük önizleme) */}
-        {LEVEL_TIERS.some((tr) => p.level >= tr.min) ? (
+        {LEVEL_TIERS.some((tr) => (p.claimedLevels ?? []).includes(tr.min)) ? (
           <View style={{ marginTop: 10 }}>
             <GamePanel compact accentStripe={levelTier(p.level)?.c ?? theme.primary} bodyStyle={{ paddingVertical: 10, paddingHorizontal: 12 }}>
               <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 1.2, marginBottom: 6 }}>{t('profile.frames').toLocaleUpperCase(currentLang())}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 12 }}>
-                {LEVEL_TIERS.filter((tr) => p.level >= tr.min).map((tr) => {
+                {LEVEL_TIERS.filter((tr) => (p.claimedLevels ?? []).includes(tr.min)).map((tr) => {
                   const worn = p.selectedFrame === tr.key;
                   return (
                     <Pressable key={tr.key} onPress={() => setFramePrev({ tier: tr, unlocked: true })} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
@@ -9566,6 +9567,12 @@ export function LevelUpPopup({ toLevel, diamonds, emoteIds, onClose }: {
             </View>
           ) : null}
 
+          {/* ödüller toplamalı: oyuncuyu Seviye Yolu'na çağır */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10 }}>
+            <Ionicons name="gift" size={13} color={theme.accent} />
+            <Text style={{ color: theme.accent, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t('level.claimHint')}</Text>
+          </View>
+
           <View style={{ alignSelf: 'stretch', marginTop: 16 }}>
             <Btn big kind="primary" label={t('common.continue')} onPress={onClose} />
           </View>
@@ -9590,9 +9597,16 @@ function segmentColor(n: number): string {
   return levelTier(Math.floor(n / 10) * 10)?.c ?? theme.primary;
 }
 
-function RoadRow({ n, level, xp, onFramePress }: { n: number; level: number; xp: number; onFramePress?: (tier: LevelTier, unlocked: boolean) => void }) {
+function RoadRow({ n, level, xp, claimed, onFramePress, onClaim }: {
+  n: number; level: number; xp: number;
+  claimed: boolean; // bu seviyenin ödülü toplandı mı
+  onFramePress?: (tier: LevelTier, unlocked: boolean) => void;
+  onClaim?: (n: number, pos: { x: number; y: number }) => void; // toplanabilirken karta dokunuldu
+}) {
   const done = n < level;
   const current = n === level;
+  const reached = n <= level;
+  const claimable = reached && n >= 2 && !claimed; // 1. seviye başlangıçtır, ödülü yok
   const tier = levelTier(n);
   const isFrame = n % 10 === 0;
   const emoteId = LEVEL_EMOTE_UNLOCKS[n];
@@ -9613,27 +9627,33 @@ function RoadRow({ n, level, xp, onFramePress }: { n: number; level: number; xp:
     </View>
   );
   const card = milestone ? (
-    // BÜYÜK ÖDÜL kartı — kilitliyken bile canlı: oyuncu ne kazanacağını görsün
+    // BÜYÜK ÖDÜL kartı: kilitliyken canlı önizleme, TOPLANABİLİRKEN parlak ve
+    // renkli (dokun → topla), toplanınca yeşil AÇILDI
     <View style={{
       flex: 1,
-      backgroundColor: theme.card,
+      backgroundColor: claimable ? lighten(theme.card, 0.06) : theme.card,
       borderRadius: 17,
-      borderWidth: 2.5,
-      borderColor: current ? mColor : done ? withAlpha(mColor, 0.8) : withAlpha(mColor, 0.55),
+      borderWidth: claimable ? 3 : 2.5,
+      borderColor: claimable ? lighten(mColor, 0.12) : current ? mColor : claimed ? withAlpha(theme.primary, 0.7) : withAlpha(mColor, 0.55),
       paddingVertical: 10, paddingHorizontal: 12,
-      opacity: done || current ? 1 : 0.88,
-      shadowColor: mColor, shadowOpacity: current ? 0.55 : 0.22, shadowRadius: current ? 12 : 8, shadowOffset: { width: 0, height: 0 }, elevation: current ? 8 : 4,
+      opacity: reached ? 1 : 0.88,
+      shadowColor: claimable ? mColor : mColor,
+      shadowOpacity: claimable ? 0.8 : current ? 0.55 : 0.22,
+      shadowRadius: claimable ? 15 : current ? 12 : 8,
+      shadowOffset: { width: 0, height: 0 }, elevation: claimable ? 10 : current ? 8 : 4,
     }}>
-      {/* yüzen bandrol — kart üst kenarına oturur, başlıkla yer kavgası etmez */}
+      {/* yüzen bandrol — toplanabilirken DOLU renkli 'ÖDÜLÜ TOPLA' */}
       <View style={{
         position: 'absolute', top: -10, right: 10, flexDirection: 'row', alignItems: 'center', gap: 3,
-        backgroundColor: done ? darken(theme.primary, 0.55) : darken(mColor, 0.55),
-        borderRadius: 999, borderWidth: 1.5, borderColor: done ? theme.primary : mColor,
+        backgroundColor: claimable ? mColor : claimed ? darken(theme.primary, 0.55) : darken(mColor, 0.55),
+        borderRadius: 999, borderWidth: 1.5,
+        borderColor: claimable ? lighten(mColor, 0.35) : claimed ? theme.primary : mColor,
         paddingHorizontal: 7, paddingVertical: 2.5,
+        ...(claimable ? { shadowColor: mColor, shadowOpacity: 0.9, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 12 } : {}),
       }}>
-        <Ionicons name={done ? 'checkmark-circle' : 'star'} size={9} color={done ? theme.primary : lighten(mColor, 0.2)} />
-        <Text style={{ color: done ? theme.primary : lighten(mColor, 0.25), fontSize: 8.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5 }}>
-          {(done ? t('level.frameOwned') : t('level.bigReward')).toLocaleUpperCase(currentLang())}
+        <Ionicons name={claimable ? 'gift' : claimed ? 'checkmark-circle' : 'star'} size={9} color={claimable ? theme.ink : claimed ? theme.primary : lighten(mColor, 0.2)} />
+        <Text style={{ color: claimable ? theme.ink : claimed ? theme.primary : lighten(mColor, 0.25), fontSize: 8.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5 }}>
+          {(claimable ? t('level.claim') : claimed ? t('level.frameOwned') : t('level.bigReward')).toLocaleUpperCase(currentLang())}
         </Text>
       </View>
       <Text numberOfLines={1} style={{ color: done ? theme.muted : theme.text, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.4, ...engrave('sm') }}>
@@ -9641,15 +9661,15 @@ function RoadRow({ n, level, xp, onFramePress }: { n: number; level: number; xp:
       </Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 7 }}>
         {isFrame && tier ? (
-          <Pressable onPress={() => onFramePress?.(tier, done || current)} hitSlop={6} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
-            <FrameArt tierKey={tier.key} size={54} locked={!(done || current)} well />
+          <Pressable onPress={() => onFramePress?.(tier, claimed)} hitSlop={6} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
+            <FrameArt tierKey={tier.key} size={54} locked={!claimed} well />
           </Pressable>
         ) : emoteId ? (
-          <View style={{ width: 54, height: 54, borderRadius: 15, backgroundColor: theme.panelInnerFill, borderWidth: 1.5, borderColor: done ? theme.accent : withAlpha(theme.accent, 0.5), alignItems: 'center', justifyContent: 'center' }}>
-            <View style={{ opacity: done ? 1 : 0.45 }}>
+          <View style={{ width: 54, height: 54, borderRadius: 15, backgroundColor: theme.panelInnerFill, borderWidth: 1.5, borderColor: claimed ? theme.accent : withAlpha(theme.accent, claimable ? 0.9 : 0.5), alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ opacity: claimed ? 1 : claimable ? 0.85 : 0.45 }}>
               <EmoteSticker id={emoteId} size={42} play={false} />
             </View>
-            {!done ? (
+            {!claimed && !claimable ? (
               <View style={{ position: 'absolute', right: -5, bottom: -5, width: 19, height: 19, borderRadius: 10, backgroundColor: theme.panelInk, borderWidth: 1.5, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="lock-closed" size={10} color={theme.muted} />
               </View>
@@ -9657,7 +9677,7 @@ function RoadRow({ n, level, xp, onFramePress }: { n: number; level: number; xp:
           </View>
         ) : null}
         <View style={{ flex: 1, gap: 4 }}>
-          <Text numberOfLines={2} style={{ color: done ? theme.muted : mColor, fontSize: 10.5, lineHeight: 14, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.3, ...engrave('sm') }}>
+          <Text numberOfLines={2} style={{ color: claimed ? theme.muted : claimable ? lighten(mColor, 0.15) : mColor, fontSize: 10.5, lineHeight: 14, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.3, ...engrave('sm') }}>
             {(isFrame && tier ? t('level.tierFrameName', { name: t(tier.nameKey) }) : t('level.exclusiveEmote')).toLocaleUpperCase(currentLang())}
           </Text>
           {gemChip}
@@ -9667,22 +9687,51 @@ function RoadRow({ n, level, xp, onFramePress }: { n: number; level: number; xp:
   ) : (
     <View style={{
       flex: 1,
-      backgroundColor: theme.card,
+      backgroundColor: claimable ? lighten(theme.card, 0.06) : theme.card,
       borderRadius: 15,
-      borderWidth: 1.5,
-      borderColor: current ? nodeColor : done ? withAlpha(nodeColor, 0.45) : theme.border,
+      borderWidth: claimable ? 2.5 : 1.5,
+      borderColor: claimable ? lighten(segBelow, 0.15) : current ? nodeColor : claimed ? withAlpha(nodeColor, 0.45) : theme.border,
       paddingVertical: 9, paddingHorizontal: 11,
-      opacity: done || current ? 1 : 0.6,
-      ...(current ? { shadowColor: nodeColor, shadowOpacity: 0.5, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 7 } : {}),
+      opacity: reached ? 1 : 0.6,
+      ...(claimable
+        ? { shadowColor: segBelow, shadowOpacity: 0.7, shadowRadius: 12, shadowOffset: { width: 0, height: 0 }, elevation: 8 }
+        : current ? { shadowColor: nodeColor, shadowOpacity: 0.5, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 7 } : {}),
     }}>
-      <Text style={{ color: done ? theme.muted : theme.text, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.4, ...engrave('sm') }}>
+      <Text style={{ color: claimed ? theme.muted : theme.text, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.4, ...engrave('sm') }}>
         {t('level.levelN', { n: String(n) }).toLocaleUpperCase(currentLang())}
       </Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 }}>
-        {gemChip}
+        {n === 1 ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Ionicons name="flag" size={11} color={theme.muted} />
+            <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold' }}>{t('level.start')}</Text>
+          </View>
+        ) : (
+          <>
+            {gemChip}
+            {claimable ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: segBelow, borderRadius: 999, borderWidth: 1, borderColor: lighten(segBelow, 0.35), paddingHorizontal: 7, paddingVertical: 3 }}>
+                <Ionicons name="gift" size={10} color={theme.ink} />
+                <Text style={{ color: theme.ink, fontSize: 9.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.4 }}>{t('level.claimShort').toLocaleUpperCase(currentLang())}</Text>
+              </View>
+            ) : claimed ? (
+              <Ionicons name="checkmark-circle" size={14} color={withAlpha(theme.primary, 0.8)} />
+            ) : null}
+          </>
+        )}
       </View>
     </View>
   );
+
+  // toplanabilir kart dokunuşla ödülünü verir (dokunuş noktası uçuş başlangıcı)
+  const pressableCard = claimable && onClaim ? (
+    <Pressable
+      style={({ pressed }) => ({ flex: 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}
+      onPress={(e) => onClaim(n, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
+    >
+      {card}
+    </Pressable>
+  ) : card;
 
   // düğümden karta uzanan bağ çizgisi
   const tie = (
@@ -9693,7 +9742,7 @@ function RoadRow({ n, level, xp, onFramePress }: { n: number; level: number; xp:
     <View style={{ height: roadRowH(n), flexDirection: 'row', alignItems: 'center' }}>
       {/* SOL yuva */}
       <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
-        {left ? card : null}
+        {left ? pressableCard : null}
         {left ? tie : null}
       </View>
       {/* ORTA kanal — beveled tüp + dolum + düğüm */}
@@ -9730,20 +9779,107 @@ function RoadRow({ n, level, xp, onFramePress }: { n: number; level: number; xp:
       {/* SAĞ yuva */}
       <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }}>
         {!left ? tie : null}
-        {!left ? card : null}
+        {!left ? pressableCard : null}
       </View>
     </View>
   );
 }
 
-export function LevelRoadModal({ visible, profile, onClose }: {
+// Toplanan elmasların karttan başlıktaki elmas hapına akışı (modal içi, hafif).
+function RoadClaimFly({ from, to, amount, onDone }: {
+  from: { x: number; y: number }; to: { x: number; y: number }; amount: number; onDone: () => void;
+}) {
+  const count = Math.max(4, Math.min(8, Math.round(amount / 12)));
+  const parts = useRef(
+    Array.from({ length: 8 }, () => ({ x: new Animated.Value(0), y: new Animated.Value(0), s: new Animated.Value(0), o: new Animated.Value(0) })),
+  ).current;
+  useEffect(() => {
+    let done = 0;
+    for (let i = 0; i < count; i++) {
+      const g = parts[i]!;
+      g.x.setValue(from.x + (Math.random() - 0.5) * 46);
+      g.y.setValue(from.y + (Math.random() - 0.5) * 30);
+      g.s.setValue(0);
+      g.o.setValue(0);
+      setTimeout(() => {
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(g.o, { toValue: 1, duration: 80, useNativeDriver: true }),
+            Animated.spring(g.s, { toValue: 1, friction: 5, tension: 150, useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(g.x, { toValue: to.x, duration: 460, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.y, { toValue: to.y, duration: 460, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.s, { toValue: 0.5, duration: 460, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(g.s, { toValue: 0.15, duration: 100, useNativeDriver: true }),
+            Animated.timing(g.o, { toValue: 0, duration: 100, useNativeDriver: true }),
+          ]),
+        ]).start(() => { done += 1; if (done === count) onDone(); });
+      }, 60 + i * 60);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 60 }]}>
+      {parts.slice(0, count).map((g, i) => (
+        <Animated.View key={i} style={{
+          position: 'absolute', left: -10, top: -10,
+          shadowColor: theme.gem, shadowOpacity: 0.9, shadowRadius: 7, shadowOffset: { width: 0, height: 0 }, elevation: 9,
+          opacity: g.o,
+          transform: [{ translateX: g.x }, { translateY: g.y }, { scale: g.s }],
+        }}>
+          <GemIcon size={20} />
+        </Animated.View>
+      ))}
+    </View>
+  );
+}
+
+export function LevelRoadModal({ visible, profile, onClose, onClaim, lastClaim }: {
   visible: boolean; profile: ProfileView | null; onClose: () => void;
+  onClaim?: (level: number) => void; // karta dokununca sunucuya claim gönder
+  lastClaim?: { level: number; diamonds: number; emoteId: string | null; frameTier: string | null; seq: number } | null;
 }) {
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const level = profile?.level ?? 1;
   const xp = profile?.xp ?? 0;
   const [framePrev, setFramePrev] = useState<{ tier: LevelTier; unlocked: boolean } | null>(null);
+  const claimedSet = useMemo(() => new Set(profile?.claimedLevels ?? []), [profile?.claimedLevels]);
+  // --- toplama animasyonu: dokunulan karttan başlığın elmas hapına elmas uçar ---
+  const pillRef = useRef<View>(null);
+  const pillPos = useRef({ x: SCREEN_W - 54, y: 40 });
+  const claimPos = useRef<{ x: number; y: number } | null>(null);
+  const claimBusy = useRef(false);
+  const [claimFly, setClaimFly] = useState<{ from: { x: number; y: number }; amount: number; key: number } | null>(null);
+  const [celebTier, setCelebTier] = useState<string | null>(null);
+  const [shownDiamonds, setShownDiamonds] = useState(profile?.diamonds ?? 0);
+  const lastSeq = useRef(lastClaim?.seq ?? 0);
+  useEffect(() => {
+    // uçuş yoksa hap gerçek bakiyeyi izler
+    if (!claimFly) setShownDiamonds(profile?.diamonds ?? 0);
+  }, [profile?.diamonds, claimFly]);
+  useEffect(() => {
+    if (!visible || !lastClaim || lastClaim.seq === lastSeq.current) return;
+    lastSeq.current = lastClaim.seq;
+    claimBusy.current = false;
+    // hap toplanan miktar KADAR eksik gösterir; elmaslar inince tamamlanır
+    setShownDiamonds(Math.max(0, (profile?.diamonds ?? 0) - lastClaim.diamonds));
+    setClaimFly({ from: claimPos.current ?? { x: SCREEN_W / 2, y: 300 }, amount: lastClaim.diamonds, key: lastClaim.seq });
+  }, [visible, lastClaim, profile?.diamonds]);
+  const handleClaimPress = useCallback((n: number, pos: { x: number; y: number }) => {
+    if (claimBusy.current || !onClaim) return;
+    claimBusy.current = true;
+    claimPos.current = pos;
+    onClaim(n);
+  }, [onClaim]);
+  const handleFlyDone = useCallback(() => {
+    setClaimFly(null);
+    setShownDiamonds(profile?.diamonds ?? 0);
+    if (lastClaim?.frameTier) setCelebTier(lastClaim.frameTier);
+  }, [profile?.diamonds, lastClaim?.frameTier]);
   // sıradaki 5'in katı = sıradaki büyük ödül (çerçeve ya da özel ifade)
   const nextMilestone = level >= LEVEL_CAP ? null : Math.min(LEVEL_CAP, (Math.floor(level / 5) + 1) * 5);
   const nextIsFrame = nextMilestone != null && nextMilestone % 10 === 0;
@@ -9768,6 +9904,15 @@ export function LevelRoadModal({ visible, profile, onClose }: {
             <Ionicons name="chevron-back" size={22} color={theme.text} />
           </Pressable>
           <Text style={{ flex: 1, color: theme.text, fontFamily: 'Poppins-Black', fontSize: 17, letterSpacing: 0.5, ...engrave('lg') }}>{t('level.roadTitle').toLocaleUpperCase(currentLang())}</Text>
+          <View
+            ref={pillRef}
+            collapsable={false}
+            onLayout={() => pillRef.current?.measureInWindow((x, y, w, h) => { if (w > 0) pillPos.current = { x: x + w / 2, y: y + h / 2 }; })}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.card, borderRadius: 999, borderWidth: 2, borderColor: withAlpha(theme.gem, 0.6), paddingHorizontal: 10, paddingVertical: 5 }}
+          >
+            <GemIcon size={14} />
+            <Text style={{ color: theme.gemText, fontSize: 13, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>{shownDiamonds}</Text>
+          </View>
           <LevelBadge level={level} size={38} />
         </View>
         <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
@@ -9825,9 +9970,20 @@ export function LevelRoadModal({ visible, profile, onClose }: {
         </View>
         <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: insets.bottom + 26 }} showsVerticalScrollIndicator={false}>
           {Array.from({ length: LEVEL_CAP }, (_, i) => (
-            <RoadRow key={i + 1} n={i + 1} level={level} xp={xp} onFramePress={(tier, unlocked) => setFramePrev({ tier, unlocked })} />
+            <RoadRow
+              key={i + 1} n={i + 1} level={level} xp={xp}
+              claimed={claimedSet.has(i + 1)}
+              onFramePress={(tier, unlocked) => setFramePrev({ tier, unlocked })}
+              onClaim={handleClaimPress}
+            />
           ))}
         </ScrollView>
+        {claimFly ? (
+          <RoadClaimFly key={claimFly.key} from={claimFly.from} to={pillPos.current} amount={claimFly.amount} onDone={handleFlyDone} />
+        ) : null}
+        {celebTier ? (
+          <FrameUnlockCelebration tierKey={celebTier} onDone={() => setCelebTier(null)} />
+        ) : null}
         <FramePreviewModal tier={framePrev?.tier ?? null} unlocked={framePrev?.unlocked ?? false} visible={framePrev != null} onClose={() => setFramePrev(null)} />
       </View>
     </Modal>

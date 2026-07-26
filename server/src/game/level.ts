@@ -5,10 +5,11 @@
 //   * Günün ilk GERÇEK galibiyeti: +50 XP bonus
 //   * Bot maçı: galibiyet 15 / mağlubiyet 5, günlük tavan 60 XP (farm koruması)
 //   * Seviye eşiği: 100 + (seviye-1) × 25 XP, tavan 50
-// Ödüller (seviye atlanan HER seviye için):
-//   * +20 elmas; 5'in katlarında +50 elmas daha ve seviyeye özel ifade
-//   * 10'un katları istemcide çerçeve kademesi açar (sunucuda ayrıca kayıt yok —
-//     çerçeve doğrudan seviyeden türetilir)
+// Ödüller TOPLAMALIDIR (Clash Royale pass modeli): seviyeye ulaşmak ödülü
+// yalnız HAZIR yapar; oyuncu Seviye Yolu'nda karta dokunup toplar
+// (claim_level_reward). Toplanan seviyeler users.claimed_levels'ta tutulur.
+//   * Her seviye: +20 elmas; 5'in katları: +70 elmas ve (varsa) özel ifade
+//   * 10'un katları: kademe çerçevesi — TAKMAK için de toplanmış olması şart
 import { pool } from '../db/pool.ts';
 
 export const LEVEL_CAP = 50;
@@ -79,37 +80,24 @@ export async function awardMatchXp(userId: string, won: boolean, vsBot: boolean)
     }
   }
 
-  // Seviye atlama döngüsü + ödül toplama
+  // Seviye atlama döngüsü — ÖDÜL VERİLMEZ; hangi ödüllerin hazır olduğu
+  // bilgisi popup için listelenir, toplamak oyuncuya kalır (claimLevelReward)
   let level = u.level ?? 1;
   let xp = (u.xp ?? 0) + gained;
   const leveledUp: LevelUpReward[] = [];
-  const owned = new Set(u.owned_emotes ?? []);
-  const newEmotes: string[] = [];
-  let diamondGain = 0;
   while (level < LEVEL_CAP && xp >= xpForNext(level)) {
     xp -= xpForNext(level);
     level += 1;
-    let d = 20;
-    if (level % 5 === 0) d += 50;
-    diamondGain += d;
-    const emoteId = LEVEL_EMOTES[level];
-    if (emoteId && !owned.has(emoteId)) {
-      owned.add(emoteId);
-      newEmotes.push(emoteId);
-    }
-    leveledUp.push({ level, diamonds: d, emoteId });
+    leveledUp.push({ level, diamonds: levelRewardDiamonds(level), emoteId: LEVEL_EMOTES[level] });
   }
   if (level >= LEVEL_CAP) xp = Math.min(xp, xpForNext(LEVEL_CAP)); // tavanda sabitlenir
 
-  const { rows: updated } = await pool.query<{ diamonds: number }>(
+  await pool.query(
     `UPDATE users SET
        xp = $2, level = $3,
-       diamonds = diamonds + $4,
-       owned_emotes = (SELECT ARRAY(SELECT DISTINCT e FROM unnest(owned_emotes || $5::text[]) AS e)),
-       last_win_day = $6, bot_xp_day = $7, bot_xp_today = $8
-     WHERE id = $1
-     RETURNING diamonds`,
-    [userId, xp, level, diamondGain, newEmotes, lastWinDay, vsBot ? today : u.bot_xp_day, vsBot ? botToday : (u.bot_xp_today ?? 0)],
+       last_win_day = $4, bot_xp_day = $5, bot_xp_today = $6
+     WHERE id = $1`,
+    [userId, xp, level, lastWinDay, vsBot ? today : u.bot_xp_day, vsBot ? botToday : (u.bot_xp_today ?? 0)],
   );
 
   return {
@@ -118,6 +106,42 @@ export async function awardMatchXp(userId: string, won: boolean, vsBot: boolean)
     xpForNext: xpForNext(level),
     gained,
     leveledUp,
-    diamonds: diamondGain > 0 ? updated[0]?.diamonds : undefined,
   };
+}
+
+// Bir seviyenin toplanabilir elmas ödülü (yolda gösterilenle birebir).
+export function levelRewardDiamonds(level: number): number {
+  return level % 5 === 0 ? 70 : 20;
+}
+
+export interface ClaimResult {
+  level: number;
+  diamonds: number;        // bu toplamayla verilen elmas
+  emoteId: string | null;  // bu toplamayla açılan özel ifade
+  frameTier: string | null; // bu toplamayla açılan çerçeve kademesi
+}
+
+const FRAME_TIER_BY_LEVEL: Record<number, string> = { 10: 'bronze', 20: 'silver', 30: 'gold', 40: 'diamond', 50: 'goat' };
+
+// Seviye Yolu'nda karta dokununca: ödülü tek seferlik ver. Yarışa dayanıklı —
+// claimed_levels denetimi UPDATE'in kendisinde (eşzamanlı çift dokunuş ikinciyi düşürür).
+export async function claimLevelReward(
+  userId: string,
+  level: number,
+): Promise<{ ok: true; claim: ClaimResult } | { ok: false; error: string }> {
+  if (!userId) return { ok: false, error: 'Önce giriş yap' };
+  if (!Number.isInteger(level) || level < 2 || level > LEVEL_CAP) return { ok: false, error: 'Geçersiz seviye' };
+  const diamonds = levelRewardDiamonds(level);
+  const emoteId = LEVEL_EMOTES[level] ?? null;
+  const { rows } = await pool.query<{ id: string }>(
+    `UPDATE users SET
+       diamonds = diamonds + $3,
+       owned_emotes = (SELECT ARRAY(SELECT DISTINCT e FROM unnest(owned_emotes || $4::text[]) AS e)),
+       claimed_levels = array_append(claimed_levels, $2)
+     WHERE id = $1 AND level >= $2 AND NOT (claimed_levels @> ARRAY[$2::int])
+     RETURNING id`,
+    [userId, level, diamonds, emoteId ? [emoteId] : []],
+  );
+  if (!rows[0]) return { ok: false, error: 'Bu ödül henüz açılmadı ya da zaten toplandı' };
+  return { ok: true, claim: { level, diamonds, emoteId, frameTier: FRAME_TIER_BY_LEVEL[level] ?? null } };
 }

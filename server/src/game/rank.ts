@@ -67,6 +67,7 @@ export interface UserProfile {
   xp: number;    // mevcut seviye içindeki ilerleme
   level: number; // 1..50 — asla düşmez
   selectedFrame: string | null; // takılı profil çerçevesi (bronze..goat) ya da null
+  claimedLevels: number[]; // Seviye Yolu'nda toplanmış ödül seviyeleri
 }
 
 function isFutureIso(iso: string | null | undefined): iso is string {
@@ -365,6 +366,7 @@ export async function setSelectedFrame(
     const user = await getUser(userId);
     if (!user) return { ok: false, error: 'Kullanıcı bulunamadı' };
     if (user.level < min) return { ok: false, error: `Bu çerçeve için seviye ${min} gerekli` };
+    if (!user.claimedLevels.includes(min)) return { ok: false, error: 'Önce Seviye Yolu\'ndan bu çerçevenin ödülünü topla' };
   }
   const { rows } = await pool.query<DbUser>(
     `UPDATE users SET selected_frame = $2 WHERE id = $1 RETURNING *`,
@@ -725,6 +727,7 @@ interface DbUser {
   xp: number | null;
   level: number | null;
   selected_frame: string | null;
+  claimed_levels: number[] | null;
 }
 
 // Stamp the user's last-online time (on connect and disconnect) for "last seen".
@@ -753,6 +756,7 @@ function toProfile(row: DbUser): UserProfile {
     xp: row.xp ?? 0,
     level: row.level ?? 1,
     selectedFrame: row.selected_frame ?? null,
+    claimedLevels: row.claimed_levels ?? [],
   };
 }
 

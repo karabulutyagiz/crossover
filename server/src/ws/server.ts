@@ -12,6 +12,7 @@ import {
   type UserProfile,
 } from '../game/rank.ts';
 import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
+import { claimLevelReward } from '../game/level.ts';
 import { censorMessage } from '../game/username.ts';
 import { verifyApplePurchase } from '../game/iap.ts';
 import { registerPushToken, sendPushToUsers, startPushCrons } from '../game/push.ts';
@@ -48,6 +49,7 @@ function toProfileView(p: UserProfile): ProfileView {
     xp: p.xp,
     level: p.level,
     selectedFrame: p.selectedFrame,
+    claimedLevels: p.claimedLevels,
   };
 }
 
@@ -423,6 +425,26 @@ export function startServer(port: number): Server {
           if (ctx?.room) ctx.room.setFrameFor(userProfile!.id, result.profile.selectedFrame);
           const friends = await listFriends(userProfile!.id);
           for (const f of friends) sendToUser(f.userId, await getFriendsData(f.userId));
+        })();
+        return;
+      }
+
+      // Seviye Yolu kartına dokunuldu — ödülü tek seferlik ver, taze profili gönder.
+      if (msg.type === 'claim_level_reward') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          const result = await claimLevelReward(userProfile!.id, msg.level);
+          if (!result.ok) return transport.send({ type: 'error', message: result.error });
+          const fresh = await getUser(userProfile!.id);
+          if (fresh) userProfile = fresh;
+          transport.send({
+            type: 'level_reward_claimed',
+            level: result.claim.level,
+            diamonds: result.claim.diamonds,
+            emoteId: result.claim.emoteId,
+            frameTier: result.claim.frameTier,
+            profile: toProfileView(userProfile!),
+          });
         })();
         return;
       }

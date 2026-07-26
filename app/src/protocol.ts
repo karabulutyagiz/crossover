@@ -78,6 +78,7 @@ export interface ProfileView {
   xp: number;    // mevcut seviye içindeki ilerleme
   level: number; // 1..50
   selectedFrame: string | null; // takılı profil çerçevesi (bronze..goat) ya da null
+  claimedLevels: number[]; // Seviye Yolu'nda toplanmış ödül seviyeleri
 }
 
 export interface FriendView {
@@ -165,6 +166,7 @@ export type ClientMsg =
   | { type: 'buy_avatar'; avatarId: string }
   | { type: 'set_avatar'; avatar: string | null }
   | { type: 'set_frame'; frameId: string | null }
+  | { type: 'claim_level_reward'; level: number } // Seviye Yolu kartına dokunarak ödül topla
   | { type: 'verify_purchase'; receipt: string }
   | { type: 'grant_ad_reward' }
   | { type: 'search_clubs'; reqId: string; q: string }
@@ -216,6 +218,7 @@ export type ServerMsg =
   | { type: 'rematch_declined' }
   | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView; diamonds?: number; arenaReward?: number }
   | { type: 'xp_update'; xp: number; level: number; xpForNext: number; gained: number; leveledUp: { level: number; diamonds: number; emoteId?: string }[]; diamonds?: number }
+  | { type: 'level_reward_claimed'; level: number; diamonds: number; emoteId: string | null; frameTier: string | null; profile: ProfileView } // yol kartından ödül toplandı
   | { type: 'emote'; fromId: string; emoteId: string }
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string }
   | { type: 'avatar_purchased'; profile: ProfileView; avatarId: string }

@@ -74,6 +74,8 @@ export interface GameState {
   trophyDelta: { trophies: number; delta: number; arena: ArenaView; arenaReward?: number } | null;
   // Maç sonu seviye ilerlemesi (xp_update) — popup App katmanında maç ÇIKIŞINDA gösterilir
   xpGain: { xp: number; level: number; xpForNext: number; gained: number; leveledUp: { level: number; diamonds: number; emoteId?: string }[] } | null;
+  // Seviye Yolu'nda son toplanan ödül — modal içi animasyonlar bunu izler
+  lastClaim: { level: number; diamonds: number; emoteId: string | null; frameTier: string | null; seq: number } | null;
   leaderboard: LeaderboardEntry[];
   friends: FriendInfo[];
   friendRequests: FriendRequestView[];
@@ -156,6 +158,7 @@ export const initialState: GameState = {
   profile: null,
   trophyDelta: null,
   xpGain: null,
+  lastClaim: null,
   leaderboard: [],
   friends: [],
   friendRequests: [],
@@ -375,21 +378,23 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, phase: 'searching', isQuickMatch: true, opponentForfeit: false };
     case 'profile':
       return { ...state, profile: action.profile };
+    case 'level_reward_claimed':
+      return {
+        ...state,
+        profile: action.profile,
+        lastClaim: {
+          level: action.level, diamonds: action.diamonds,
+          emoteId: action.emoteId, frameTier: action.frameTier,
+          seq: (state.lastClaim?.seq ?? 0) + 1,
+        },
+      };
     case 'name_changed':
       return { ...state, profile: action.profile };
     case 'xp_update': {
-      // Profili yerinde güncelle: xp/seviye + ödül elmasları + açılan ifadeler.
-      const grantedEmotes = action.leveledUp.map((l) => l.emoteId).filter((e): e is string => Boolean(e));
+      // Profili yerinde güncelle: yalnız xp/seviye — ödüller artık Seviye
+      // Yolu'ndan TOPLANIR (claim_level_reward), burada verilmez.
       const profile = state.profile
-        ? {
-            ...state.profile,
-            xp: action.xp,
-            level: action.level,
-            diamonds: action.diamonds ?? state.profile.diamonds,
-            ownedEmotes: grantedEmotes.length
-              ? [...new Set([...state.profile.ownedEmotes, ...grantedEmotes])]
-              : state.profile.ownedEmotes,
-          }
+        ? { ...state.profile, xp: action.xp, level: action.level }
         : state.profile;
       return {
         ...state,
@@ -473,6 +478,7 @@ function reducer(state: GameState, action: Action): GameState {
         passedBy: [],
         trophyDelta: null,
   xpGain: null,
+  lastClaim: null,
         matchupAutoStart: false,
         matchOver: false,
         matchWinnerId: null,
@@ -1017,6 +1023,7 @@ export function useCrossover() {
     buyAvatar: (avatarId: string) => send({ type: 'buy_avatar', avatarId }),
     setAvatar: (avatar: string | null) => send({ type: 'set_avatar', avatar }),
     setFrame: (frameId: string | null) => send({ type: 'set_frame', frameId }),
+    claimLevelReward: (level: number) => send({ type: 'claim_level_reward', level }),
     // Friends — via WebSocket for real-time notifications.
     loadFriends: () => send({ type: 'list_friends' }),
     sendFriendRequest: (targetCode?: string, targetUsername?: string) =>
