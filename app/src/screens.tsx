@@ -9204,8 +9204,11 @@ export function FrameArt({ tierKey, size, locked = false, well = false }: { tier
     }}>
       <Image source={src} style={{ width: art, height: art, opacity: locked ? 0.32 : 1 }} resizeMode="contain" />
       {locked ? (
-        <View style={{ position: 'absolute', width: Math.max(20, size * 0.3), height: Math.max(20, size * 0.3), borderRadius: Math.max(10, size * 0.15), backgroundColor: withAlpha(theme.panelInk, 0.88), borderWidth: 1.5, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="lock-closed" size={Math.max(11, size * 0.15)} color={theme.muted} />
+        // absoluteFill + iç ortalama: rozet her platformda halkanın TAM merkezinde
+        <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+          <View style={{ width: Math.max(20, size * 0.3), height: Math.max(20, size * 0.3), borderRadius: Math.max(10, size * 0.15), backgroundColor: withAlpha(theme.panelInk, 0.88), borderWidth: 1.5, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="lock-closed" size={Math.max(11, size * 0.15)} color={theme.muted} />
+          </View>
         </View>
       ) : null}
     </View>
