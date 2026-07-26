@@ -152,6 +152,10 @@ interface Props {
   onOpenMatchHistory?: () => void; // open the centered match-history popup (App-level overlay)
   onOpenLevelRoad?: () => void; // Seviye Yolu tam ekranını aç (App-level modal)
   overlayBusy?: boolean; // App-katmanı popup zinciri sürüyor mu (XP yağmuru bekler)
+  // App'in tutmalı/dönüşlü elmas sayacı — verilirse ana ekran hapı bunu izler
+  // (ödül uçuşu sırasında sayaç ödül ÖNCESİ değerde tutulur, iniş sonrası döner)
+  gemCountAnimOverride?: Animated.Value;
+  gemFillAnimOverride?: Animated.Value;
   onGoToFriends?: () => void; // page the tab ScrollView across to the Friends tab
   focusAddFriendSeq?: number; // bumped by App when Home's find-friend card is tapped → Friends focuses its add-friend input
 }
@@ -3277,7 +3281,7 @@ const ROOM_CODE_LEN = 6;
 const HOME_MODES: GameMode[] = ['country-team', 'letter-team'];
 const PACK_MODES: GameMode[] = ['country-team', 'letter-team'];
 
-export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, overlayBusy }: Props) {
+export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, overlayBusy, gemCountAnimOverride, gemFillAnimOverride }: Props) {
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [scope, setScope] = useState<Scope>({ type: 'all' });
   const [mode, setMode] = useState<GameMode>('team-team');
@@ -3306,12 +3310,16 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   // HUD counters: the gem pill and trophy badge are driven by these anim values
   // (RailBadge/GemPill read them via listener), kept in lock-step with the profile.
   // Real reward animations (match win / arena reward) run at the App level.
-  const gemCountAnim = useRef(new Animated.Value(profile?.diamonds ?? 0)).current;
-  const gemFillAnim = useRef(new Animated.Value(0)).current;
+  const gemCountAnimLocal = useRef(new Animated.Value(profile?.diamonds ?? 0)).current;
+  const gemFillAnimLocal = useRef(new Animated.Value(0)).current;
+  // App tutmalı sayacını verdiyse tek kaynak odur (ödül uçuşu/tutma/dönüş orada)
+  const gemCountAnim = gemCountAnimOverride ?? gemCountAnimLocal;
+  const gemFillAnim = gemFillAnimOverride ?? gemFillAnimLocal;
   const gemPillRef = useRef<View>(null);
   useEffect(() => {
-    gemCountAnim.setValue(profile?.diamonds ?? 0);
-  }, [profile?.diamonds, gemCountAnim]);
+    if (gemCountAnimOverride) return; // App zaten profile senkron tutuyor
+    gemCountAnimLocal.setValue(profile?.diamonds ?? 0);
+  }, [profile?.diamonds, gemCountAnimLocal, gemCountAnimOverride]);
   const trophyCountAnim = useRef(new Animated.Value(profile?.trophies ?? 0)).current;
   const trophyFillAnim = useRef(new Animated.Value(0)).current;
   const trophyBadgeRef = useRef<View>(null);
@@ -9153,6 +9161,86 @@ function XpOrbFly({ gained, target, onDone, onOrbLand }: { gained: number; targe
             opacity: g.o,
             transform: [{ translateX: g.x }, { translateY: g.y }, { scale: g.s }],
           }} />
+        ))}
+      </View>
+    </Modal>
+  );
+}
+
+// ---- GemOrbFly — seviye ödülü elmasların hapa akışı ----
+// XpOrbFly ile aynı dil: ortada "+N 💎" çipi, elmas taneleri sırayla sağ üstteki
+// elmas hapına süzülür. Sayaç dönüşü App.tsx'te uçuş bitince başlar.
+export function GemOrbFly({ amount, onDone }: { amount: number; onDone: () => void }) {
+  const screenW = Dimensions.get('window').width;
+  const screenH = Dimensions.get('window').height;
+  const originX = screenW / 2;
+  const originY = screenH * 0.4;
+  const chip = useRef(new Animated.Value(0)).current;
+  const count = Math.max(5, Math.min(10, Math.round(amount / 10)));
+  const parts = useRef(
+    Array.from({ length: 10 }, () => ({ x: new Animated.Value(0), y: new Animated.Value(0), s: new Animated.Value(0), o: new Animated.Value(0) })),
+  ).current;
+  useEffect(() => {
+    const target = {
+      x: gemTarget.measured ? gemTarget.x : screenW - 86,
+      y: gemTarget.measured ? gemTarget.y : 78,
+    };
+    Animated.sequence([
+      Animated.spring(chip, { toValue: 1, friction: 6, tension: 130, useNativeDriver: true }),
+      Animated.delay(520),
+      Animated.timing(chip, { toValue: 0, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+    ]).start();
+    let done = 0;
+    for (let i = 0; i < count; i++) {
+      const g = parts[i]!;
+      g.x.setValue(originX + (Math.random() - 0.5) * 84);
+      g.y.setValue(originY + (Math.random() - 0.5) * 58);
+      g.s.setValue(0);
+      g.o.setValue(0);
+      setTimeout(() => {
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(g.o, { toValue: 1, duration: 90, useNativeDriver: true }),
+            Animated.spring(g.s, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(g.x, { toValue: target.x, duration: 520, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.y, { toValue: target.y, duration: 520, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.s, { toValue: 0.5, duration: 520, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+          ]),
+        ]).start(() => {
+          Animated.parallel([
+            Animated.timing(g.s, { toValue: 0.15, duration: 110, useNativeDriver: true }),
+            Animated.timing(g.o, { toValue: 0, duration: 110, useNativeDriver: true }),
+          ]).start(() => { done += 1; if (done === count) onDone(); });
+        });
+      }, 260 + i * 70);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <Modal visible transparent animationType="none" statusBarTranslucent>
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {/* +N elmas çipi */}
+        <Animated.View style={{
+          position: 'absolute', left: 0, right: 0, top: originY - 64, alignItems: 'center',
+          opacity: chip, transform: [{ scale: chip.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }],
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.panelInk, borderRadius: 999, borderWidth: 2, borderColor: theme.gem, paddingHorizontal: 16, paddingVertical: 7, shadowColor: theme.gem, shadowOpacity: 0.6, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 12 }}>
+            <GemIcon size={16} />
+            <Text style={{ color: theme.text, fontSize: 17, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>+{amount}</Text>
+          </View>
+        </Animated.View>
+        {/* elmas taneleri */}
+        {parts.slice(0, count).map((g, i) => (
+          <Animated.View key={i} style={{
+            position: 'absolute', left: -11, top: -11,
+            shadowColor: theme.gem, shadowOpacity: 0.9, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 9,
+            opacity: g.o,
+            transform: [{ translateX: g.x }, { translateY: g.y }, { scale: g.s }],
+          }}>
+            <GemIcon size={22} />
+          </Animated.View>
         ))}
       </View>
     </Modal>

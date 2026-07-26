@@ -51,6 +51,7 @@ import {
   GameModal,
   MatchOverBanner,
   LevelUpPopup,
+  GemOrbFly,
   LevelRoadModal,
   Btn,
   MODE_LABEL,
@@ -399,6 +400,7 @@ function AppRoot() {
   const [overlay, setOverlay] = useState<'leaderboard' | 'matchHistory' | null>(null); // centered popups
   const [gemCelebration, setGemCelebration] = useState<GemCelebration | null>(null);
   const diamondsShownRef = useRef(0); // last value pushed to the pill (fallback when profile is briefly absent)
+  const gainAnimatingRef = useRef(false); // sayaç dönerken tutma efekti araya girmesin
   const csAnim = useRef(new Animated.Value(0)).current; // coming-soon pop/float
   const csTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // owns the coming-soon show/hide lifecycle
   const prevHadActiveSocialPackRef = useRef<boolean | undefined>(undefined);
@@ -427,6 +429,8 @@ function AppRoot() {
     diamondCountAnim.setValue(safeFrom);
     diamondFillAnim.setValue(0);
     diamondsShownRef.current = safeTo;
+    gainAnimatingRef.current = true;
+    setTimeout(() => { gainAnimatingRef.current = false; }, duration + 400);
     Animated.parallel([
       // Count drives a text via listener — necessarily JS-driven.
       Animated.timing(diamondCountAnim, {
@@ -469,20 +473,6 @@ function AppRoot() {
       .catch(() => setTutorialSeen(true));
   }, []);
 
-  useEffect(() => {
-    const diamonds = state.profile?.diamonds;
-    if (typeof diamonds !== 'number') return;
-    if (gemCelebration) {
-      const before = Math.max(0, diamonds - gemCelebration.amount);
-      setDiamondDisplayInstant(before);
-      diamondFillAnim.stopAnimation();
-      diamondFillAnim.setValue(0);
-      requestAnimationFrame(() => requestAnimationFrame(measureDiamondPill));
-      return;
-    }
-    setDiamondDisplayInstant(diamonds);
-  }, [state.profile?.diamonds, gemCelebration, setDiamondDisplayInstant, diamondFillAnim, measureDiamondPill]);
-
   const handleGemCelebrationDone = useCallback(() => {
     const diamonds = state.profile?.diamonds ?? diamondsShownRef.current;
     const amount = gemCelebration?.amount ?? 0;
@@ -520,12 +510,14 @@ function AppRoot() {
   }, [state.matchOver, state.trophyDelta, state.room, state.matchWinnerId, state.matchWinnerName]);
   // Rövanş/yeni maç başlarsa bekleyen popup düşer (bayat maçın popup'ı gösterilmez).
   useEffect(() => {
-    if (state.phase === 'countdown' || state.phase === 'matchup' || state.phase === 'pick') { setMatchOverPopup(null); setPendingLevelUp(null); heldArena.current = null; }
+    if (state.phase === 'countdown' || state.phase === 'matchup' || state.phase === 'pick') { setMatchOverPopup(null); setPendingLevelUp(null); setLevelGemFly(null); heldArena.current = null; }
   }, [state.phase]);
   // ---- Seviye atlama zinciri: kupa popup'ı → seviye popup'ı → arena kutlaması ----
   const [pendingLevelUp, setPendingLevelUp] = useState<null | { toLevel: number; diamonds: number; emoteIds: string[] }>(null);
   const pendingLevelUpRef = useRef(pendingLevelUp);
   pendingLevelUpRef.current = pendingLevelUp;
+  // Seviye ödülü elmasları: popup kapanınca ekranda belirip elmas hapına uçar
+  const [levelGemFly, setLevelGemFly] = useState<number | null>(null);
   const heldArena = useRef<{ amount: number; arenaName: string } | null>(null);
   useEffect(() => {
     const lu = state.xpGain?.leveledUp;
@@ -536,14 +528,49 @@ function AppRoot() {
       emoteIds: lu.map((l) => l.emoteId).filter((e): e is string => Boolean(e)),
     });
   }, [state.xpGain]);
-  const dismissLevelUp = useCallback(() => {
-    setPendingLevelUp(null);
+  const releaseHeldArena = useCallback(() => {
     if (heldArena.current) {
       const h = heldArena.current;
       heldArena.current = null;
       setGemCelebration((current) => current ?? { kind: 'arenaReward', amount: h.amount, arenaName: h.arenaName });
     }
   }, []);
+  const dismissLevelUp = useCallback(() => {
+    const gems = pendingLevelUpRef.current?.diamonds ?? 0;
+    setPendingLevelUp(null);
+    if (gems > 0) {
+      // elmaslar hapa uçsun; arena kutlaması uçuş bitince (handleLevelGemFlyDone)
+      setLevelGemFly(gems);
+    } else {
+      releaseHeldArena();
+    }
+  }, [releaseHeldArena]);
+  const handleLevelGemFlyDone = useCallback(() => {
+    const amount = levelGemFly ?? 0;
+    setLevelGemFly(null);
+    const diamonds = state.profile?.diamonds ?? diamondsShownRef.current;
+    animateDiamondGain(Math.max(0, diamonds - amount), diamonds, amount);
+    releaseHeldArena();
+  }, [levelGemFly, state.profile?.diamonds, animateDiamondGain, releaseHeldArena]);
+
+  // Sayaç tutma: kutlama/uçuş/bekleyen seviye popup'ı varken hap ödül ÖNCESİ
+  // değerde bekler — elmaslar hapa ulaşınca sayaç döner. (pendingLevelUp'tan
+  // sonra tanımlanmalı: deps render sırasında okunur.)
+  useEffect(() => {
+    const diamonds = state.profile?.diamonds;
+    if (typeof diamonds !== 'number') return;
+    if (gainAnimatingRef.current) return; // sayaç dönüşü sürüyor — ezme
+    const hold = gemCelebration ? gemCelebration.amount : (levelGemFly ?? (pendingLevelUp?.diamonds || 0));
+    if (hold > 0 || gemCelebration) {
+      const before = Math.max(0, diamonds - hold);
+      setDiamondDisplayInstant(before);
+      diamondFillAnim.stopAnimation();
+      diamondFillAnim.setValue(0);
+      requestAnimationFrame(() => requestAnimationFrame(measureDiamondPill));
+      return;
+    }
+    setDiamondDisplayInstant(diamonds);
+  }, [state.profile?.diamonds, gemCelebration, levelGemFly, pendingLevelUp, setDiamondDisplayInstant, diamondFillAnim, measureDiamondPill]);
 
   const dismissMatchOverPopup = useCallback(() => {
     setMatchOverPopup((cur) => {
@@ -834,7 +861,7 @@ function AppRoot() {
         screen = <ResultScreen {...props} />;
         break;
       default:
-        screen = <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} />;
+        screen = <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || levelGemFly != null || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} />;
     }
     return (
       <View style={[s.root, { paddingTop: insets.top }]}>
@@ -868,7 +895,7 @@ function AppRoot() {
     ? <ArenasScreen {...props} />
     : state.phase === 'profile'
     ? <ProfileScreen {...props} onOpenMatchHistory={openMatchHistory} onOpenLevelRoad={() => setLevelRoadOpen(true)} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
-    : <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} onLanguageChange={() => {
+    : <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || levelGemFly != null || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} onLanguageChange={() => {
         setOverlay(null);
         setStoreSection(null);
         setActiveTab(2);
@@ -1074,6 +1101,11 @@ function AppRoot() {
           emoteIds={pendingLevelUp.emoteIds}
           onClose={dismissLevelUp}
         />
+      ) : null}
+
+      {/* Seviye ödülü elmasları — popup kapandıktan sonra hapa uçar */}
+      {levelGemFly != null && !pendingLevelUp && !matchOverPopup ? (
+        <GemOrbFly amount={levelGemFly} onDone={handleLevelGemFlyDone} />
       ) : null}
 
       {/* Seviye Yolu — tam ekran ilerleme/ödül haritası */}
