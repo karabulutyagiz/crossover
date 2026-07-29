@@ -27,7 +27,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image as ExpoImage } from 'expo-image';
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
-import { gemTarget, setGemTarget } from './gemTarget';
+import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget } from './gemTarget';
 import { Avatar } from './Avatar';
 import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
@@ -51,6 +51,7 @@ import {
 } from './emotes';
 import type { EmoteMeta } from './emotes';
 import { AvatarBadge, avatarMeta, avatarPrice, ownsAvatar } from './avatars';
+import { FRAME_ART as FRAME_ART_MAP, FRAME_SCALE, FrameOverlay } from './frames';
 import { NATIONALITIES } from './nationalities';
 import { captureError, track } from './telemetry';
 // react-native-iap v15 (StoreKit2) — native module, absent in Expo Go. Wrap the require
@@ -82,6 +83,7 @@ type Actions = {
   authWith: (provider: 'apple' | 'google' | 'facebook', token: string, name?: string) => void;
   setUsername: (username: string) => void;
   changeName: (newName: string) => void;
+  markXpSeen: () => void;
   openArenas: () => void;
   closeArenas: () => void;
   openProfile: () => void;
@@ -114,6 +116,12 @@ type Actions = {
   equipEmotes: (emoteIds: string[]) => void;
   buyAvatar: (avatarId: string) => void;
   setAvatar: (avatar: string | null) => void;
+  setFrame: (frameId: string | null) => void; // profil çerçevesi tak/kaldır
+  claimLevelReward: (level: number, track?: 'free' | 'premium') => void; // Seviye Yolu kartından ödül topla
+  buyPremiumRoad: () => void; // Premium Yol'u 1000 elmasla aç
+  buyPower: (powerId: 'xp2x' | 'shield' | 'streak') => void; // mağazadan güç satın al
+  usePower: (powerId: 'xp2x' | 'shield' | 'streak') => void; // envanterdeki tek kullanımlık gücü etkinleştir
+  loadMyStats: () => void; // profil istatistiklerini iste (my_stats yanıtı)
   verifyPurchase: (receipt: string) => Promise<void>;
   grantAdReward: () => Promise<number>;
   loadFriends: () => void;
@@ -150,6 +158,12 @@ interface Props {
   onLanguageChange?: () => void;
   onOpenLeaderboard?: () => void; // open the centered leaderboard popup (App-level overlay)
   onOpenMatchHistory?: () => void; // open the centered match-history popup (App-level overlay)
+  onOpenLevelRoad?: () => void; // Seviye Yolu tam ekranını aç (App-level modal)
+  overlayBusy?: boolean; // App-katmanı popup zinciri sürüyor mu (XP yağmuru bekler)
+  // App'in tutmalı/dönüşlü elmas sayacı — verilirse ana ekran hapı bunu izler
+  // (ödül uçuşu sırasında sayaç ödül ÖNCESİ değerde tutulur, iniş sonrası döner)
+  gemCountAnimOverride?: Animated.Value;
+  gemFillAnimOverride?: Animated.Value;
   onGoToFriends?: () => void; // page the tab ScrollView across to the Friends tab
   focusAddFriendSeq?: number; // bumped by App when Home's find-friend card is tapped → Friends focuses its add-friend input
 }
@@ -509,7 +523,6 @@ function Chip({ icon, label, onPress, active = false }: { icon: IoniconName; lab
             backgroundColor: active ? theme.glowSoft : theme.card,
             borderWidth: 1.5,
             borderColor: active ? theme.primary : theme.border,
-            borderTopColor: active ? theme.primary : theme.panelTopGloss,
             borderRadius: 12,
             paddingVertical: 10,
             paddingHorizontal: 6,
@@ -668,7 +681,6 @@ function ScreenHeader({ title, onBack, icon, right }: {
             width: 40, height: 40, borderRadius: 14,
             backgroundColor: pressed ? theme.bg2 : theme.card,
             borderWidth: 2, borderColor: theme.border,
-            borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
             alignItems: 'center', justifyContent: 'center',
             transform: [{ translateY: pressed ? 2 : 0 }],
           })}
@@ -760,7 +772,7 @@ function GameRow({ icon, iconColor = theme.accent, leading, label, sublabel, rig
           transform: [{ translateY: ty }],
           flexDirection: 'row', alignItems: 'center', gap: 11,
           backgroundColor: theme.card, borderRadius: 14, overflow: 'hidden',
-          borderWidth: 2, borderColor: ring, borderTopColor: selected ? theme.primary : theme.panelTopGloss,
+          borderWidth: 2, borderColor: ring,
           paddingVertical: 12, paddingHorizontal: 12,
         }, style]}
       >
@@ -960,7 +972,6 @@ function SkipChip({ onPress, style }: { onPress: () => void; style?: any }) {
             backgroundColor: pressed ? theme.bg2 : theme.card,
             borderRadius: 12, paddingHorizontal: 12, paddingVertical: 7,
             borderWidth: 1.5, borderColor: theme.border,
-            borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
             transform: [{ translateY: pressed ? 2 : 0 }],
           }}
         >
@@ -1446,7 +1457,7 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
           </View>
         </GamePanel>
 
-        <View style={{ height: LOAD_BAR_H, borderRadius: 13, backgroundColor: theme.panelInk, borderWidth: 2, borderColor: theme.border, borderBottomColor: theme.cardLip, padding: 2, justifyContent: 'center' }}>
+        <View style={{ height: LOAD_BAR_H, borderRadius: 13, backgroundColor: theme.panelInk, borderWidth: 2, borderColor: theme.border, padding: 2, justifyContent: 'center' }}>
           <View style={{ flex: 1, borderRadius: 10, backgroundColor: theme.panelInnerFill, overflow: 'hidden' }}>
             {/* glossy mint fill slab (full width, slid in from the left on the native
                 driver): top gloss + dark lip + hot leading cap + looping shine */}
@@ -1497,6 +1508,7 @@ const TUT_PROFILE = {
   selectedAvatar: 'pp7', ownedAvatars: [],
   ownedEmotes: [], equippedEmotes: [], usernameSet: true, socialPackUntil: null,
   arena: { name: 'Mahalle Sahası', icon: '🏟️', minTrophies: 0 }, avatar: 'pp7',
+  xp: 0, level: 1, selectedFrame: null, claimedLevels: [],
 };
 
 // Centered coach gate — the GameModal "coach" vocabulary as an in-screen overlay:
@@ -2010,8 +2022,7 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
                         flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.bg,
                         borderRadius: 22, paddingVertical: 11, paddingHorizontal: 16,
                         borderWidth: 1.5, borderColor: theme.border,
-                        borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
-                        transform: [{ translateY: pressed ? 2 : 0 }],
+                                    transform: [{ translateY: pressed ? 2 : 0 }],
                       })}
                     >
                       <Ionicons name="chatbubble-ellipses" size={14} color={theme.primary} />
@@ -2269,11 +2280,60 @@ function AuthBtn({ onPress, disabled, bg, border, fg, icon, iconColor, label }: 
     </Pressable>
   );
 }
-function AppleSignInBtn({ onPress }: { onPress: () => void }) {
-  return <AuthBtn onPress={onPress} bg="#000000" fg="#FFFFFF" icon="logo-apple" iconColor="#FFFFFF" label={t('login.apple')} />;
+function AppleSignInBtn({ onPress, label }: { onPress: () => void; label?: string }) {
+  return <AuthBtn onPress={onPress} bg="#000000" fg="#FFFFFF" icon="logo-apple" iconColor="#FFFFFF" label={label ?? t('login.apple')} />;
 }
-function GoogleSignInBtn({ onPress, disabled }: { onPress: () => void; disabled?: boolean }) {
-  return <AuthBtn onPress={onPress} disabled={disabled} bg="#FFFFFF" border="#DADCE0" fg="#3C4043" icon="logo-google" iconColor="#4285F4" label={t('login.google')} />;
+function GoogleSignInBtn({ onPress, disabled, label }: { onPress: () => void; disabled?: boolean; label?: string }) {
+  return <AuthBtn onPress={onPress} disabled={disabled} bg="#FFFFFF" border="#DADCE0" fg="#3C4043" icon="logo-google" iconColor="#4285F4" label={label ?? t('login.google')} />;
+}
+
+// ---- GuestGateModal — misafir kapısı ----
+// Misafir bir kullanıcı arkadaş eklemeyi denediğinde açılır: "kayıt olman
+// gerekli" mesajı + gerçek Apple/Google giriş akışları. authWith mevcut misafir
+// hesabın kimliğini ipucu olarak yollar → sunucu sağlayıcıyı AYNI hesaba bağlar,
+// ilerleme (kupa/elmas/ifadeler) aynen korunur.
+function GuestGateModal({ visible, onClose, actions }: { visible: boolean; onClose: () => void; actions: Actions }) {
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    iosClientId: GOOGLE_IOS_CLIENT_ID,
+    androidClientId: GOOGLE_WEB_CLIENT_ID,
+    webClientId: GOOGLE_WEB_CLIENT_ID,
+  });
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const idToken = response.params?.id_token ?? response.authentication?.idToken;
+      if (idToken) actions.authWith('google', idToken);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [response]);
+  const signInApple = async () => {
+    try {
+      const cred = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (cred.identityToken) {
+        const given = cred.fullName?.givenName ?? '';
+        const family = cred.fullName?.familyName ?? '';
+        const name = `${given} ${family}`.trim() || undefined;
+        actions.authWith('apple', cred.identityToken, name);
+      }
+    } catch {
+      /* kullanıcı Apple sayfasını kapattı */
+    }
+  };
+  return (
+    <GameModal visible={visible} onClose={onClose} title={t('friends.guestGateTitle')} icon="person-add">
+      <Text style={{ color: theme.muted, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20, marginBottom: 12 }}>
+        {t('friends.guestGateBody')}
+      </Text>
+      {Platform.OS === 'ios' ? (
+        <AppleSignInBtn label={t('friends.guestGateApple')} onPress={() => void signInApple()} />
+      ) : null}
+      <GoogleSignInBtn label={t('friends.guestGateGoogle')} onPress={() => void promptAsync()} disabled={!request} />
+    </GameModal>
+  );
 }
 
 export function LoginScreen({ state, actions }: Props) {
@@ -2480,9 +2540,11 @@ const INFO_LINKS = {
 const openLink = (url: string) => { Linking.openURL(url).catch(() => {}); };
 
 // ---- Settings Panel (inside hamburger menu) ----
-function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamonds, onLogout, onDeleteAccount }: {
+function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName, onNeedDiamonds, onLogout, onDeleteAccount }: {
   onLanguageChange: () => void;
   diamonds: number;
+  // Yalnız Apple/Google hesapları ad değiştirebilir — misafirlerde bölüm HİÇ çizilmez.
+  canChangeName: boolean;
   onChangeName: (name: string) => void;
   onNeedDiamonds: () => void;
   onLogout: () => void;
@@ -2506,7 +2568,6 @@ function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamond
     flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7,
     paddingVertical: 11, paddingHorizontal: 11, borderRadius: 12,
     backgroundColor: pressed ? theme.bg2 : theme.bg, borderWidth: 1.5, borderColor: theme.border,
-    borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
     transform: [{ translateY: pressed ? 2 : 0 }],
   });
   const linkTxt = { color: theme.text, fontSize: 12, fontFamily: 'Poppins-SemiBold', flex: 1 };
@@ -2521,26 +2582,30 @@ function SettingsPanel({ onLanguageChange, diamonds, onChangeName, onNeedDiamond
         onPress={() => setLangPicker(true)}
       />
 
-      {/* Ad Değiştir (1000 elmas) */}
-      <SectionHeader label={t('settings.name')} icon="create" />
-      <GameRow
-        icon="create"
-        label={t('settings.changeName')}
-        right={(
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.cardLip, borderRadius: 9, borderWidth: 1, borderColor: theme.accentDark, paddingHorizontal: 8, paddingVertical: 3 }}>
-            <Text style={{ color: theme.accent, fontFamily: 'Poppins-ExtraBold', fontSize: 12, fontVariant: ['tabular-nums'], ...engrave('sm') }}>1000</Text>
-            <GemIcon size={13} />
-          </View>
-        )}
-        onPress={() => { if (diamonds < 1000) onNeedDiamonds(); else setRenameOpen(true); }}
-      />
+      {/* Ad Değiştir (1000 elmas) — YALNIZ Apple/Google hesapları; misafirde bölüm yok */}
+      {canChangeName ? (
+        <>
+          <SectionHeader label={t('settings.name')} icon="create" />
+          <GameRow
+            icon="create"
+            label={t('settings.changeName')}
+            right={(
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.cardLip, borderRadius: 9, borderWidth: 1, borderColor: theme.accentDark, paddingHorizontal: 8, paddingVertical: 3 }}>
+                <Text style={{ color: theme.accent, fontFamily: 'Poppins-ExtraBold', fontSize: 12, fontVariant: ['tabular-nums'], ...engrave('sm') }}>1000</Text>
+                <GemIcon size={13} />
+              </View>
+            )}
+            onPress={() => { if (diamonds < 1000) onNeedDiamonds(); else setRenameOpen(true); }}
+          />
 
-      <ChangeNameModal
-        visible={renameOpen}
-        diamonds={diamonds}
-        onClose={() => setRenameOpen(false)}
-        onConfirm={(newName) => { onChangeName(newName); setRenameOpen(false); }}
-      />
+          <ChangeNameModal
+            visible={renameOpen}
+            diamonds={diamonds}
+            onClose={() => setRenameOpen(false)}
+            onConfirm={(newName) => { onChangeName(newName); setRenameOpen(false); }}
+          />
+        </>
+      ) : null}
 
       {/* ── Yardım & Bilgiler — framed link chips ── */}
       <SectionHeader label={t('settings.help')} icon="help-circle" style={{ marginTop: 18 }} />
@@ -2998,7 +3063,8 @@ function HeroConfetti({ w, h }: { w: number; h: number }) {
 // A floating counter beside the hero: round art badge with its value on a dark
 // caption chip clipped to the badge's bottom edge.
 function RailBadge({ icon, iconColor, ringColor, value, onPress, countAnim, fillAnim, innerRef }: {
-  icon: IoniconName; iconColor: string; ringColor: string; value: string; onPress: () => void;
+  // value verilmezse rozet SAYISIZ çizilir (ör. liderlik tablosu rozeti)
+  icon: IoniconName; iconColor: string; ringColor: string; value?: string; onPress: () => void;
   countAnim?: Animated.Value; fillAnim?: Animated.Value; innerRef?: Ref<View>;
 }) {
   const { scale, onIn, onOut } = usePressScale();
@@ -3028,14 +3094,16 @@ function RailBadge({ icon, iconColor, ringColor, value, onPress, countAnim, fill
           ) : null}
           <Ionicons name={icon} size={22} color={iconColor} />
         </View>
-        <View style={{
-          marginTop: -8,
-          backgroundColor: '#0A1428', borderRadius: 9,
-          borderWidth: 1.5, borderColor: withAlpha(ringColor, 0.6),
-          paddingHorizontal: 7, paddingVertical: 1.5,
-        }}>
-          <Text style={{ color: theme.text, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{shown}</Text>
-        </View>
+        {shown != null ? (
+          <View style={{
+            marginTop: -8,
+            backgroundColor: '#0A1428', borderRadius: 9,
+            borderWidth: 1.5, borderColor: withAlpha(ringColor, 0.6),
+            paddingHorizontal: 7, paddingVertical: 1.5,
+          }}>
+            <Text style={{ color: theme.text, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{shown}</Text>
+          </View>
+        ) : null}
       </Animated.View>
     </Pressable>
   );
@@ -3070,10 +3138,59 @@ function RoundIconBtn({ icon, onPress, dot = false, tint = theme.text }: {
 // Profile pill: avatar (tier-ringed, tier-badged) · name · progress trough.
 // The mockup's "level" is this game's ARENA TIER (1–7, Mahalle→GOAT) and its XP
 // bar is the trophy climb toward the next arena — real numbers in the mockup's slots.
-function ProfilePill({ name, avatarId, tier, pct, color, onPress }: {
+// Ödül habercisi — Seviye Yolu'nda toplanacak ödül varken ProfilePill'in
+// köşesinde nabız gibi atan altın hediye rozeti (sayaçlı). Kırmızı nokta değil:
+// ışıyan, sallanan, davet eden bir "ödülün var!" mührü.
+function ClaimHerald({ count }: { count: number }) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(a, { toValue: 1, duration: 640, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(a, { toValue: 0, duration: 640, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.delay(900),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [a]);
+  const scale = a.interpolate({ inputRange: [0, 1], outputRange: [1, 1.14] });
+  const tilt = a.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['-8deg', '0deg', '8deg'] });
+  return (
+    <Animated.View style={{
+      transform: [{ scale }],
+      flexDirection: 'row', alignItems: 'center', gap: 3,
+      backgroundColor: theme.gold, borderRadius: 999,
+      paddingHorizontal: 7, paddingVertical: 2.5,
+      borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.55)',
+    }}>
+      <Animated.View style={{ transform: [{ rotate: tilt }] }}>
+        <Ionicons name="gift" size={11} color={theme.ink} />
+      </Animated.View>
+      <Text style={{ color: theme.ink, fontSize: 10, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{count}</Text>
+    </Animated.View>
+  );
+}
+
+function ProfilePill({ name, avatarId, tier, pct, color, onPress, fillAnim, frameId, claimBadge, boosted }: {
   name: string; avatarId?: string | null; tier: number; pct: number; color: string; onPress: () => void;
+  // Verilirse çubuk bu 0..1 animasyon değeriyle dolar (XP küre yağmuru sırasında)
+  fillAnim?: Animated.Value;
+  frameId?: string | null; // takılı profil çerçevesi
+  claimBadge?: number; // toplanmamış Seviye Yolu ödülü sayısı (0 = rozet yok)
+  boosted?: boolean; // 2x XP jetonu penceresi aktif — çubuğun ucunda altın "2x"
 }) {
   const { ty, scale, onIn, onOut } = usePressLip(2);
+  const barRef = useRef<View>(null);
+  const measureBar = useCallback(() => {
+    // XP kürelerinin hedefi: çubuğun ekran-uzayı merkezi
+    barRef.current?.measureInWindow((x, y, w, h) => {
+      if (w > 0) setXpTarget(x + w / 2, y + h / 2);
+    });
+  }, []);
+  useEffect(() => {
+    // yağmur başlarken taze ölçüm alınabilsin
+    setXpRemeasure(measureBar);
+    return () => setXpRemeasure(null);
+  }, [measureBar]);
   return (
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1, minWidth: 108 }}>
       <View style={{ backgroundColor: darken(theme.card, 0.5), borderRadius: 24, paddingBottom: 2.5 }}>
@@ -3084,7 +3201,7 @@ function ProfilePill({ name, avatarId, tier, pct, color, onPress }: {
           paddingVertical: 3.5, paddingLeft: 3.5, paddingRight: 10,
         }}>
           <View>
-            <AvatarBadge avatarId={avatarId} size={34} ringColor={color} />
+            <AvatarBadge avatarId={avatarId} size={34} ringColor={color} frameId={frameId} />
             <View style={{
               position: 'absolute', right: -3, bottom: -2,
               minWidth: 17, height: 17, borderRadius: 9, paddingHorizontal: 2.5,
@@ -3096,11 +3213,26 @@ function ProfilePill({ name, avatarId, tier, pct, color, onPress }: {
           </View>
           <View style={{ flex: 1, gap: 3 }}>
             <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12, ...engrave('sm') }} numberOfLines={1}>{name}</Text>
-            <View style={{ height: 8, borderRadius: 4, backgroundColor: theme.navyWell, justifyContent: 'center', overflow: 'hidden' }}>
-              <View style={{ width: `${Math.round(pct * 100)}%`, height: '100%', borderRadius: 4, backgroundColor: color }} />
+            <View ref={barRef} collapsable={false} onLayout={measureBar} style={{ height: 8, borderRadius: 4, backgroundColor: theme.navyWell, justifyContent: 'center', overflow: 'hidden' }}>
+              {fillAnim ? (
+                <Animated.View style={{ width: fillAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }), height: '100%', borderRadius: 4, backgroundColor: color }} />
+              ) : (
+                <View style={{ width: `${Math.round(pct * 100)}%`, height: '100%', borderRadius: 4, backgroundColor: color }} />
+              )}
             </View>
+            {boosted ? (
+              <View style={{ position: 'absolute', right: -3, bottom: -5, flexDirection: 'row', alignItems: 'center', gap: 1.5, backgroundColor: theme.gold, borderRadius: 999, paddingHorizontal: 5, paddingVertical: 1.5, borderWidth: 1.5, borderColor: darken(theme.card, 0.45) }}>
+                <Ionicons name="flash" size={8} color={theme.ink} />
+                <Text style={{ color: theme.ink, fontSize: 8.5, fontFamily: 'Poppins-Black' }}>2x</Text>
+              </View>
+            ) : null}
           </View>
         </Animated.View>
+        {claimBadge ? (
+          <View style={{ position: 'absolute', right: -5, top: -7 }}>
+            <ClaimHerald count={claimBadge} />
+          </View>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -3251,7 +3383,7 @@ const ROOM_CODE_LEN = 6;
 const HOME_MODES: GameMode[] = ['country-team', 'letter-team'];
 const PACK_MODES: GameMode[] = ['country-team', 'letter-team'];
 
-export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends }: Props) {
+export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, overlayBusy, gemCountAnimOverride, gemFillAnimOverride }: Props) {
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [scope, setScope] = useState<Scope>({ type: 'all' });
   const [mode, setMode] = useState<GameMode>('team-team');
@@ -3280,12 +3412,16 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   // HUD counters: the gem pill and trophy badge are driven by these anim values
   // (RailBadge/GemPill read them via listener), kept in lock-step with the profile.
   // Real reward animations (match win / arena reward) run at the App level.
-  const gemCountAnim = useRef(new Animated.Value(profile?.diamonds ?? 0)).current;
-  const gemFillAnim = useRef(new Animated.Value(0)).current;
+  const gemCountAnimLocal = useRef(new Animated.Value(profile?.diamonds ?? 0)).current;
+  const gemFillAnimLocal = useRef(new Animated.Value(0)).current;
+  // App tutmalı sayacını verdiyse tek kaynak odur (ödül uçuşu/tutma/dönüş orada)
+  const gemCountAnim = gemCountAnimOverride ?? gemCountAnimLocal;
+  const gemFillAnim = gemFillAnimOverride ?? gemFillAnimLocal;
   const gemPillRef = useRef<View>(null);
   useEffect(() => {
-    gemCountAnim.setValue(profile?.diamonds ?? 0);
-  }, [profile?.diamonds, gemCountAnim]);
+    if (gemCountAnimOverride) return; // App zaten profile senkron tutuyor
+    gemCountAnimLocal.setValue(profile?.diamonds ?? 0);
+  }, [profile?.diamonds, gemCountAnimLocal, gemCountAnimOverride]);
   const trophyCountAnim = useRef(new Animated.Value(profile?.trophies ?? 0)).current;
   const trophyFillAnim = useRef(new Animated.Value(0)).current;
   const trophyBadgeRef = useRef<View>(null);
@@ -3305,6 +3441,44 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const tierNo = ARENA_DATA.length - curIdx;
   const arenaPct = nextTier ? Math.min(1, Math.max(0, (trophies - curTier.min) / (nextTier.min - curTier.min))) : 1;
   const arenaC = arenaColor(profile?.arena.name ?? '');
+  // Profil hapı: köşe rozeti = SEVİYE, ince çubuk = XP ilerlemesi (kademe renkli)
+  const lvl = profile?.level ?? 1;
+  const lvlColor = levelTier(lvl)?.c ?? theme.primary;
+  const xpPct = lvl >= LEVEL_CAP ? 1 : Math.max(0, Math.min(1, (profile?.xp ?? 0) / xpForNextLevel(lvl)));
+  // ---- XP küre yağmuru: maç sonrası kazanılan XP çubuğa akar, çubuk eş zamanlı dolar ----
+  const xpBarAnim = useRef(new Animated.Value(xpPct)).current;
+  const xpFlownRef = useRef<GameState['xpGain']>(null);
+  const [xpFly, setXpFly] = useState<number | null>(null);
+  const xpFlyPlanRef = useRef<{ fromPct: number; toPct: number; landed: number; count: number } | null>(null);
+  const onXpOrbLand = useCallback(() => {
+    const plan = xpFlyPlanRef.current;
+    if (!plan) return;
+    plan.landed = Math.min(plan.count, plan.landed + 1);
+    const target = plan.fromPct + (plan.toPct - plan.fromPct) * (plan.landed / plan.count);
+    Animated.timing(xpBarAnim, { toValue: target, duration: 150, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+  }, [xpBarAnim]);
+  useEffect(() => {
+    // animasyon akmıyorken çubuk gerçek değeri izler
+    if (xpFly == null) xpBarAnim.setValue(xpPct);
+  }, [xpPct, xpFly, xpBarAnim]);
+  useEffect(() => {
+    const g = state.xpGain;
+    if (!g || g.gained <= 0 || overlayBusy) return;      // popup zinciri bitmeden akmaz
+    if (xpFlownRef.current === g) return;                // aynı kazanım bir kez akar
+    if (!xpTarget.measured) return;
+    xpFlownRef.current = g;
+    const need = xpForNextLevel(g.level);
+    const fromPct = g.leveledUp.length > 0 ? 0 : Math.max(0, (g.xp - g.gained) / need);
+    const toPct = g.level >= LEVEL_CAP ? 1 : Math.max(0, Math.min(1, g.xp / need));
+    xpBarAnim.setValue(fromPct);
+    // Çubuk yalnız GERÇEK küre inişleriyle dolar (onOrbLand): her iniş bir
+    // adım — küre değmeden kıpırdamaz, küreler bittiğinde tam hedefte biter.
+    xpFlyPlanRef.current = { fromPct, toPct, landed: 0, count: xpOrbTiming(g.gained).count };
+    // ilk onLayout ölçümü bayatlamış olabilir — taze ölçüm alınıp bir kare sonra uçuş
+    // başlar (cleanup YOK: dep titremesi yağmuru iptal etmesin, guard zaten tekil)
+    remeasureXpTarget();
+    setTimeout(() => setXpFly(g.gained), 50);
+  }, [state.xpGain, overlayBusy, xpBarAnim]);
 
   // The bell's red pip. Both counts are pushed live mid-session, but they are only
   // FETCHED by the Friends screen — without this a cold home would never show a pip.
@@ -3335,15 +3509,20 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   return (
     <Screen scroll pad={16} contentCenter={false}>
       {/* ── 1. TOP BAR ── one row, exactly as the mockup: the profile pill flexes to
-           absorb whatever the fixed-width gem pill and button trio leave behind. */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+           absorb whatever the fixed-width gem pill and button trio leave behind.
+           paddingTop: ödül habercisinin üst taşması scroll sınırında kırpılmasın */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 10 }}>
         <ProfilePill
           name={playerName}
           avatarId={profile?.avatar ?? profile?.selectedAvatar}
-          tier={tierNo}
-          pct={arenaPct}
-          color={arenaC}
+          tier={lvl}
+          pct={xpPct}
+          color={lvlColor}
+          fillAnim={xpBarAnim}
+          frameId={profile?.selectedFrame}
           onPress={actions.openProfile}
+          claimBadge={unclaimedLevelCount(profile)}
+          boosted={Boolean(profile?.xpBoostUntil && new Date(profile.xpBoostUntil).getTime() > Date.now())}
         />
         <GemPill count={profile?.diamonds ?? 0} onPress={() => onGoToStore?.('diamonds')} countAnim={gemCountAnim} fillAnim={gemFillAnim} innerRef={gemPillRef} />
         {SCREEN_W >= TOPBAR_ROOMY_W ? (
@@ -3352,6 +3531,11 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         <RoundIconBtn icon="notifications" dot={newsUnread} onPress={() => { setNewsOpen(true); setNewsUnread(false); AsyncStorage.setItem(NEWS_READ_KEY, LATEST_NEWS_ID).catch(() => {}); }} />
         <RoundIconBtn icon="settings-sharp" onPress={() => setMenuOpen(true)} />
       </View>
+
+      {/* XP küre yağmuru (maç sonrası) */}
+      {xpFly != null ? (
+        <XpOrbFly gained={xpFly} target={{ x: xpTarget.x, y: xpTarget.y }} onOrbLand={onXpOrbLand} onDone={() => { xpFlyPlanRef.current = null; setXpFly(null); actions.markXpSeen(); }} />
+      ) : null}
 
       {/* ── 2. HERO ── */}
       <View
@@ -3371,14 +3555,34 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         />
         <View style={{ position: 'absolute', right: 0, top: 2, gap: 12 }}>
           <RailBadge icon="trophy" iconColor={theme.gold} ringColor={theme.purple} value={String(trophies)} onPress={actions.openArenas} countAnim={trophyCountAnim} fillAnim={trophyFillAnim} innerRef={trophyBadgeRef} />
-          <RailBadge icon="podium" iconColor={theme.accent} ringColor={theme.accentDark} value={String(profile?.wins ?? 0)} onPress={() => onOpenLeaderboard?.()} />
+          {/* liderlik rozeti SAYISIZ — altındaki galibiyet sayısı kullanıcı isteğiyle kaldırıldı */}
+          <RailBadge icon="podium" iconColor={theme.accent} ringColor={theme.accentDark} onPress={() => onOpenLeaderboard?.()} />
         </View>
       </View>
 
       {!isNetworkErrorMessage(state.error) && state.error ? <ErrorBanner message={state.error} /> : null}
 
       {/* ── 3. CTA ── */}
-      <HeroPlayBtn label={t('home.quickMatch')} onPress={() => actions.findMatch({ mode: 'team-team' })} />
+      <View>
+        {/* Galibiyet serisi — 2+ üst üste dereceli galibiyette CTA'nın üstünde alevli rozet */}
+        {(profile?.winStreak ?? 0) >= 2 ? (
+          <View pointerEvents="none" style={{ position: 'absolute', top: -13, left: 0, right: 0, alignItems: 'center', zIndex: 5 }}>
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', gap: 4,
+              backgroundColor: theme.flame, borderRadius: 999,
+              borderWidth: 2, borderColor: lighten(theme.flame, 0.3),
+              paddingHorizontal: 11, paddingVertical: 3.5,
+              shadowColor: theme.flame, shadowOpacity: 0.8, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 10,
+            }}>
+              <Ionicons name="flame" size={13} color="#FFF3D6" />
+              <Text style={{ color: '#FFF9EC', fontSize: 11.5, fontFamily: 'Poppins-Black', letterSpacing: 0.6, ...engrave('sm') }}>
+                {t('streak.chip', { n: String(profile?.winStreak ?? 0) }).toLocaleUpperCase(currentLang())}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+        <HeroPlayBtn label={t('home.quickMatch')} onPress={() => actions.findMatch({ mode: 'team-team' })} />
+      </View>
 
       {/* ── 4. GRID ── */}
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
@@ -3612,11 +3816,15 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
           <SettingsPanel
             onLanguageChange={() => { setMenuOpen(false); onLanguageChange?.(); }}
             diamonds={profile?.diamonds ?? 0}
+            canChangeName={state.authProvider === 'apple' || state.authProvider === 'google'}
             onChangeName={(newName) => actions.changeName(newName)}
             onNeedDiamonds={() => { setMenuOpen(false); onGoToStore?.('diamonds'); }}
             onLogout={() => { setMenuOpen(false); void actions.logout(); }}
             onDeleteAccount={() => { setMenuOpen(false); actions.deleteAccount(); }}
           />
+          {/* Ad değiştirme vb. sunucu hataları ("Bu kullanıcı adı zaten dolu")
+              pencere İÇİNDE görünsün — ana ekrandaki bant modalın altında kalıyor */}
+          {!isNetworkErrorMessage(state.error) && state.error ? <ErrorBanner message={state.error} /> : null}
         </ScrollView>
       </GameModal>
 
@@ -3647,6 +3855,10 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                   />
                 );
               })}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingHorizontal: 2 }}>
+                <Ionicons name="information-circle" size={14} color={theme.muted} />
+                <Text style={{ flex: 1, color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>{t('level.botXpCapInfo')}</Text>
+              </View>
             </>
           ) : botPage.key === 'mode' ? (
             <>
@@ -3834,7 +4046,7 @@ export function LobbyScreen({ state, actions }: Props) {
       <View style={{ height: 14 }} />
       {room.players.map((p) => (
         <GamePanel key={p.id} compact accentStripe={p.isHost ? theme.accent : theme.primary} style={{ marginBottom: 8 }} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingLeft: 14 }}>
-          <Avatar avatar={p.id === room.youId ? (p.avatar ?? state.profile?.avatar) : p.avatar} name={p.name} size={32} ring={p.isHost ? theme.accent : theme.primary} iconColor={p.isHost ? theme.accent : theme.muted} iconSize={18} />
+          <Avatar avatar={p.id === room.youId ? (p.avatar ?? state.profile?.avatar) : p.avatar} name={p.name} size={32} ring={p.isHost ? theme.accent : theme.primary} iconColor={p.isHost ? theme.accent : theme.muted} iconSize={18} frameId={p.id === room.youId ? (p.frame ?? state.profile?.selectedFrame) : p.frame} />
           <Text style={styles.lobbyName}>
             {p.name}
             {p.id === room.youId ? t('lobby.youSuffix') : ''}
@@ -3900,14 +4112,17 @@ export function MatchupScreen({ state }: Props) {
   const oppColor = opp?.arena ? arenaColor(opp.arena.name) : theme.muted;
   const youColor = you?.arena ? arenaColor(you.arena.name) : theme.primary;
 
-  const renderPlayer = (p: typeof you, color: string, slideY: Animated.AnimatedInterpolation<number>, fallbackAvatar?: string | null) => (
+  const renderPlayer = (p: typeof you, color: string, slideY: Animated.AnimatedInterpolation<number>, fallbackAvatar?: string | null, fallbackFrame?: string | null) => (
     <Animated.View style={{ transform: [{ translateY: slideY }], opacity: anim, alignSelf: 'stretch' }}>
       <GamePanel compact tint={color} bodyStyle={{ alignItems: 'center', gap: 6, paddingVertical: 14 }}>
-        <Avatar avatar={p?.avatar ?? fallbackAvatar} name={p?.name} size={64} ring={color} ringWidth={3} bg={theme.card} iconColor={color} iconSize={30} />
+        <Avatar avatar={p?.avatar ?? fallbackAvatar} name={p?.name} size={64} ring={color} ringWidth={3} bg={theme.card} iconColor={color} iconSize={30} frameId={p?.frame ?? fallbackFrame} />
         <Text style={{ color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{p?.name ?? '?'}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-          <Ionicons name="trophy" size={15} color={theme.accent} />
-          <Text style={{ color: theme.accent, fontSize: 14, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{p?.trophies ?? 0}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            <Ionicons name="trophy" size={15} color={theme.accent} />
+            <Text style={{ color: theme.accent, fontSize: 14, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{p?.trophies ?? 0}</Text>
+          </View>
+          {p?.level ? <LevelBadge level={p.level} size={22} /> : null}
         </View>
         {p?.arena ? (
           <View
@@ -3937,7 +4152,7 @@ export function MatchupScreen({ state }: Props) {
         <Animated.View style={{ transform: [{ scale: vsScale }] }}>
           <VsBadge size={50} />
         </Animated.View>
-        {renderPlayer(you, youColor, youSlide, state.profile?.avatar)}
+        {renderPlayer(you, youColor, youSlide, state.profile?.avatar, state.profile?.selectedFrame)}
       </View>
     </Screen>
   );
@@ -3954,7 +4169,6 @@ function MatchExitButton({ onPress }: { onPress: () => void }) {
         width: 40, height: 40, borderRadius: 14,
         backgroundColor: pressed ? theme.bg2 : theme.card,
         borderWidth: 2, borderColor: theme.border,
-        borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
         alignItems: 'center', justifyContent: 'center',
         transform: [{ translateY: pressed ? 2 : 0 }],
       })}
@@ -3975,7 +4189,7 @@ function PlayerBar({ state, onEmotePress }: { state: GameState; onEmotePress?: (
   const color = opp.arena ? arenaColor(opp.arena.name) : theme.muted;
   return (
     <GamePanel compact style={{ flex: 1 }} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 5, paddingHorizontal: 10 }}>
-      <Avatar avatar={opp.avatar} name={opp.name} size={30} ring={color} ringWidth={2} iconColor={color} iconSize={15} />
+      <Avatar avatar={opp.avatar} name={opp.name} size={30} ring={color} ringWidth={2} iconColor={color} iconSize={15} frameId={opp.frame} />
       <View style={{ flex: 1 }}>
         <Text numberOfLines={1} style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{opp.name}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
@@ -3984,7 +4198,7 @@ function PlayerBar({ state, onEmotePress }: { state: GameState; onEmotePress?: (
         </View>
       </View>
       {/* Running score — recessed well; your side leads in mint */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.panelInnerFill, borderRadius: 10, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, paddingHorizontal: 10, paddingVertical: 2 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.panelInnerFill, borderRadius: 10, borderWidth: 1.5, borderColor: theme.border, paddingHorizontal: 10, paddingVertical: 2 }}>
         <Text style={{ color: theme.primary, fontSize: 15, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{you?.score ?? 0}</Text>
         <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold' }}>-</Text>
         <Text style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{opp.score ?? 0}</Text>
@@ -4056,7 +4270,7 @@ function MatchTimer({ endsAt, urgentAt = 5, fallbackSecs, style }: {
       style={[{
         flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center',
         backgroundColor: theme.panelInnerFill, borderRadius: 14,
-        borderWidth: 2, borderColor: theme.border, borderTopColor: theme.cardLip,
+        borderWidth: 2, borderColor: theme.border,
         paddingVertical: 4, paddingHorizontal: 14,
         transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.09] }) }],
       }, style]}
@@ -4223,9 +4437,8 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
               style={({ pressed }) => ({
                 width: 48, height: 48, borderRadius: 12,
                 backgroundColor: theme.card,
-                borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss,
-                borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
-                alignItems: 'center', justifyContent: 'center',
+                borderWidth: 2, borderColor: theme.border,
+                    alignItems: 'center', justifyContent: 'center',
                 shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: 4,
                 transform: [{ translateY: pressed ? 2 : 0 }],
               })}
@@ -4309,9 +4522,8 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
             style={({ pressed }) => ({
               width: '31.5%' as const, alignItems: 'center' as const, gap: 7,
               backgroundColor: theme.card, borderRadius: 14,
-              borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss,
-              borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
-              paddingVertical: 12, paddingHorizontal: 4,
+              borderWidth: 2, borderColor: theme.border,
+                paddingVertical: 12, paddingHorizontal: 4,
               shadowColor: '#000', shadowOpacity: pressed ? 0.15 : 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: pressed ? 2 : 4,
               transform: [{ translateY: pressed ? 2 : 0 }],
             })}
@@ -4751,7 +4963,7 @@ export function DiamondCelebration({
                       <View
                         style={{
                           backgroundColor: theme.card, borderRadius: 12,
-                          borderWidth: 1.5, borderColor: arenaVisual.color, borderTopColor: theme.panelTopGloss,
+                          borderWidth: 1.5, borderColor: arenaVisual.color,
                           paddingHorizontal: 14, paddingVertical: 7,
                         }}
                       >
@@ -4776,7 +4988,7 @@ export function DiamondCelebration({
                     {subtitle}
                   </Text>
                 ) : (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, backgroundColor: theme.panelInnerFill, borderRadius: 14, paddingHorizontal: 18, paddingVertical: 9, borderWidth: 1.5, borderColor: theme.gem, borderTopColor: theme.cardLip }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, backgroundColor: theme.panelInnerFill, borderRadius: 14, paddingHorizontal: 18, paddingVertical: 9, borderWidth: 1.5, borderColor: theme.gem }}>
                     <GemIcon size={24} />
                     <Text style={{ color: theme.gemText, fontFamily: 'Poppins-Black', fontSize: 22, fontVariant: ['tabular-nums'], ...engrave('sm') }}>+{shownAmount.toLocaleString('tr-TR')}</Text>
                   </View>
@@ -4875,7 +5087,7 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
       />
 
       {/* Cost / balance in a recessed summary well */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: theme.panelInnerFill, borderRadius: 12, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, paddingVertical: 10, paddingHorizontal: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: theme.panelInnerFill, borderRadius: 12, borderWidth: 1.5, borderColor: theme.border, paddingVertical: 10, paddingHorizontal: 12 }}>
         <Text style={styles.muted}>{t('store.cost')}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Text style={{ color: canAfford ? theme.gemText : theme.danger, fontFamily: 'Poppins-ExtraBold', fontSize: 15, fontVariant: ['tabular-nums'] }}>{cost}</Text>
@@ -5051,7 +5263,7 @@ function WeeklyCountdown() {
       style={{
         flexDirection: 'row', alignItems: 'center', gap: 4,
         backgroundColor: theme.panelInnerFill, borderRadius: 999,
-        borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, // dark top = sunken
+        borderWidth: 1.5, borderColor: theme.border, // dark top = sunken
         paddingHorizontal: 9, paddingVertical: 3,
         transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) }],
       }}
@@ -5072,7 +5284,7 @@ function AdRewardCard({ adLoading, adsWatched, onWatch }: { adLoading: boolean; 
         onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
         style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
       >
-        <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.primary, borderBottomColor: theme.primaryDark, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
           <Ionicons name="play" size={24} color={theme.primary} style={{ marginLeft: 2 }} />
         </View>
         <View style={{ flex: 1 }}>
@@ -5124,39 +5336,29 @@ function DiamondPackRow({ pack, busy, inert, price, onBuy }: {
   );
 }
 
-// Weekly emote shop row — raised-row bevel; unaffordable taps shake the row and
-// surface the "not enough gems" dialog (which deep-links to the diamond packs).
-function EmoteShopRow({ emote, owned, canAfford, onBuy, onBlocked }: {
-  emote: EmoteMeta; owned: boolean; canAfford: boolean; onBuy: () => void; onBlocked: () => void;
+// Mağaza ifade KUTUCUĞU — koleksiyondaki kartlarla aynı dil: kare kutu, ifade
+// DURAĞAN durur (animasyon yalnız dokununca açılan popup'ta oynar). İsim,
+// açıklama, fiyat yok — fiyat ve satın alma popup'tadır.
+function EmoteShopTile({ emote, owned, width, onPress }: {
+  emote: EmoteMeta; owned: boolean; width: number; onPress: () => void;
 }) {
-  const shake = useRef(new Animated.Value(0)).current;
-  const runShake = useCallback(() => {
-    shake.setValue(0);
-    Animated.sequence([
-      Animated.timing(shake, { toValue: 1, duration: 55, useNativeDriver: true }),
-      Animated.timing(shake, { toValue: -1, duration: 55, useNativeDriver: true }),
-      Animated.timing(shake, { toValue: 1, duration: 55, useNativeDriver: true }),
-      Animated.timing(shake, { toValue: 0, duration: 55, useNativeDriver: true }),
-    ]).start();
-  }, [shake]);
+  const { scale, onIn, onOut } = usePressScale();
   return (
-    <Animated.View style={[styles.storeEmoteCard, { transform: [{ translateX: shake.interpolate({ inputRange: [-1, 1], outputRange: [-4, 4] }) }] }]}>
-      <View style={{ width: 56, height: 56 }}>
-        <EmoteSticker id={emote.id} size={56} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.storeEmoteName}>{emote.premium?.name}</Text>
-        <Text style={styles.storeEmoteDesc} numberOfLines={2}>{emote.premium?.desc}</Text>
-      </View>
-      {owned ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.panelInnerFill, borderRadius: 10, borderWidth: 1, borderColor: theme.primary, paddingHorizontal: 10, paddingVertical: 7 }}>
-          <Ionicons name="checkmark-circle" size={15} color={theme.primary} />
-          <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>{t('store.owned')}</Text>
-        </View>
-      ) : (
-        <Btn compact kind="primary" gem label={String(emote.premium?.price ?? 0)} onPress={() => { if (canAfford) onBuy(); else { runShake(); onBlocked(); } }} />
-      )}
-    </Animated.View>
+    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ width }}>
+      <Animated.View style={{
+        transform: [{ scale }],
+        width, height: width, borderRadius: 16,
+        backgroundColor: theme.card, borderWidth: 2, borderColor: owned ? withAlpha(theme.primary, 0.6) : theme.border,
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        <EmoteSticker id={emote.id} size={Math.round(width * 0.68)} play={false} />
+        {owned ? (
+          <View style={{ position: 'absolute', right: 6, top: 6, width: 20, height: 20, borderRadius: 10, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="checkmark" size={12} color={theme.ink} />
+          </View>
+        ) : null}
+      </Animated.View>
+    </Pressable>
   );
 }
 
@@ -5289,6 +5491,15 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
 
   // "Not enough gems" dialog (weekly emote shop) — its CTA deep-links to the packs.
   const [showNotEnough, setShowNotEnough] = useState(false);
+  // Satın alma onayı: fiyat butonu artık DOĞRUDAN satın almaz — animasyonlu
+  // önizlemeli "emin misin?" penceresi açar. İçerik, pencerenin çıkış
+  // animasyonu boyunca ekranda kalsın diye ayrı `open` bayrağıyla tutulur.
+  const [confirmEmote, setConfirmEmote] = useState<EmoteMeta | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  // Mağazadan güç satın alma onayı
+  const [confirmPower, setConfirmPower] = useState<PowerId | null>(null);
+  // İfade vitrini kutu boyu — konteyner genişliğinden ölçülür (kesilme olmasın)
+  const [shelfW, setShelfW] = useState(0);
 
   // Staggered section entrance: fade + 12px rise, 200ms each, 40ms stagger.
   const sectionAnims = useRef(Array.from({ length: 4 }, () => new Animated.Value(0))).current;
@@ -5374,7 +5585,11 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
         {/* Haftalık ifade dükkanı — sıralama kullanıcı kararı: Sosyal Paket'in
             hemen altında, elmasların üstünde (satışlar burada — koleksiyonda değil) */}
         <Animated.View style={sectionIn(1)}>
-          {emoteWeeks().map(({ week, emotes }) => (
+          {emoteWeeks().map(({ week, emotes }) => {
+            // Sahip olunan ifadeler vitrinde GÖSTERİLMEZ — yalnız alınabilir olanlar
+            const unowned = emotes.filter((e) => !ownsEmote(profile, e.id));
+            if (unowned.length === 0) return null;
+            return (
             <View key={week}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, marginBottom: 6 }}>
                 <SectionHeader
@@ -5389,18 +5604,57 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
                   </>
                 ) : null}
               </View>
-              {emotes.map((e) => (
-                <EmoteShopRow
-                  key={e.id}
-                  emote={e}
-                  owned={ownsEmote(profile, e.id)}
-                  canAfford={(profile?.diamonds ?? 0) >= (e.premium?.price ?? 0)}
-                  onBuy={() => actions.buyEmote(e.id)}
-                  onBlocked={() => setShowNotEnough(true)}
-                />
-              ))}
+              {/* 3'erli kutucuk ızgarası — genişlik KONTEYNERDEN ölçülür (taşma/kesilme
+                  imkânsız), sıralar tam ortalı; animasyon yalnız popup'ta oynar */}
+              <View
+                onLayout={(e) => setShelfW(e.nativeEvent.layout.width)}
+                style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 }}
+              >
+                {shelfW > 0 ? unowned.map((e) => (
+                  <EmoteShopTile
+                    key={e.id}
+                    emote={e}
+                    owned={false}
+                    width={Math.floor((shelfW - 20) / 3)}
+                    onPress={() => { setConfirmEmote(e); setConfirmOpen(true); }}
+                  />
+                )) : null}
+              </View>
             </View>
-          ))}
+            );
+          })}
+        </Animated.View>
+
+        {/* Güçler — tek kullanımlık, stoklanabilir; Seviye Yolu dışında buradan da alınır */}
+        <Animated.View style={sectionIn(2)}>
+          <SectionHeader label={t('store.powers')} icon="flash" />
+          {(['xp2x', 'shield', 'streak'] as PowerId[]).map((pid) => {
+            const price = POWER_PRICES[pid];
+            const count = pid === 'xp2x' ? (profile?.powerXp2x ?? 0) : pid === 'shield' ? (profile?.powerShield ?? 0) : (profile?.powerStreak ?? 0);
+            return (
+              <View key={pid} style={styles.storeEmoteCard}>
+                <View>
+                  <PowerArt powerId={pid} size={56} />
+                  {count > 0 ? (
+                    <View style={{ position: 'absolute', right: -6, top: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 4, backgroundColor: POWERS[pid].color, borderWidth: 2, borderColor: darken(theme.card, 0.45), alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ color: theme.ink, fontSize: 10, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>x{count}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <Text style={{ flex: 1, color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t(POWERS[pid].nameKey)}</Text>
+                <Btn
+                  compact
+                  kind="primary"
+                  gem
+                  label={String(price)}
+                  onPress={() => {
+                    if ((profile?.diamonds ?? 0) >= price) setConfirmPower(pid);
+                    else setShowNotEnough(true);
+                  }}
+                />
+              </View>
+            );
+          })}
         </Animated.View>
 
         {/* Free diamonds - watch ads (unlimited) */}
@@ -5455,6 +5709,68 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
             if (y !== undefined) storeScrollRef.current?.scrollTo({ y, animated: true });
           }}
         />
+      </GameModal>
+
+      {/* Güç satın alma onayı */}
+      <GameModal
+        visible={confirmPower != null}
+        onClose={() => setConfirmPower(null)}
+        title={confirmPower ? t(POWERS[confirmPower].nameKey).toLocaleUpperCase(currentLang()) : ''}
+        icon={confirmPower ? POWERS[confirmPower].icon : 'flash'}
+      >
+        {confirmPower ? (
+          <View style={{ alignItems: 'center', gap: 10 }}>
+            <PowerArt powerId={confirmPower} size={84} />
+            <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 18 }}>{t(POWERS[confirmPower].descKey)}</Text>
+            <Text style={{ color: theme.text, fontSize: 12, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{t('power.buyConfirm')}</Text>
+            <View style={{ alignSelf: 'stretch', marginTop: 4, gap: 8 }}>
+              <Btn big kind="primary" gem label={String(POWER_PRICES[confirmPower])} onPress={() => { const pid = confirmPower; setConfirmPower(null); actions.buyPower(pid); }} />
+              <Btn label={t('store.cancel')} kind="ghost" onPress={() => setConfirmPower(null)} />
+            </View>
+          </View>
+        ) : null}
+      </GameModal>
+
+      {/* İfade satın alma onayı — animasyonlu CANLI önizleme: alıcı ne aldığını görür */}
+      <GameModal visible={confirmOpen} onClose={() => setConfirmOpen(false)} title={t('store.confirmBuyTitle')} icon="cart">
+        {confirmEmote ? (
+          <View style={{ alignItems: 'center', gap: 10 }}>
+            <View style={{ width: 136, height: 136, borderRadius: 22, backgroundColor: theme.panelInnerFill, borderWidth: 2, borderColor: theme.accent, borderBottomWidth: 4, borderBottomColor: theme.accentDark, alignItems: 'center', justifyContent: 'center' }}>
+              {/* animasyon YALNIZ burada oynar — pencere her açılışta baştan başlar */}
+              <EmoteSticker key={confirmOpen ? `${confirmEmote.id}-open` : `${confirmEmote.id}-closed`} id={confirmEmote.id} size={108} play loop />
+            </View>
+            {ownsEmote(profile, confirmEmote.id) ? (
+              <>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.panelInnerFill, borderRadius: 999, borderWidth: 1.5, borderColor: theme.primary, paddingHorizontal: 12, paddingVertical: 6 }}>
+                  <Ionicons name="checkmark-circle" size={15} color={theme.primary} />
+                  <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 12.5 }}>{t('store.owned')}</Text>
+                </View>
+                <View style={{ alignSelf: 'stretch', marginTop: 4 }}>
+                  <Btn label={t('common.close')} kind="ghost" onPress={() => setConfirmOpen(false)} />
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={{ color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 19, marginTop: 2 }}>
+                  {t('store.buyAsk', { n: String(confirmEmote.premium?.price ?? 0) })}
+                </Text>
+                <View style={{ alignSelf: 'stretch', marginTop: 4 }}>
+                  <Btn
+                    big
+                    kind="primary"
+                    gem
+                    label={String(confirmEmote.premium?.price ?? 0)}
+                    onPress={() => {
+                      if ((profile?.diamonds ?? 0) >= (confirmEmote.premium?.price ?? 0)) { actions.buyEmote(confirmEmote.id); setConfirmOpen(false); }
+                      else { setConfirmOpen(false); setShowNotEnough(true); }
+                    }}
+                  />
+                  <Btn label={t('store.cancel')} kind="ghost" onPress={() => setConfirmOpen(false)} />
+                </View>
+              </>
+            )}
+          </View>
+        ) : null}
       </GameModal>
 
       {buying ? <PurchaseOverlay /> : null}
@@ -5543,8 +5859,7 @@ const DiscoverableEmoteCard = memo(function DiscoverableEmoteCard({ emote, width
         style={{
           paddingVertical: 10,
           backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
-          borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss,
-          borderBottomWidth: 3, borderBottomColor: theme.cardLip,
+          borderWidth: 2, borderColor: theme.border,
           overflow: 'hidden',
           transform: [
             // Clash-Royale pop: the active card rises off the row — scale YOK
@@ -5734,8 +6049,7 @@ function CollectibleEmoteCard({ emote, width, isEquipped, blocked, active, onPre
           style={{
             paddingVertical: 10,
             backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
-            borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss,
-            borderBottomWidth: 3, borderBottomColor: theme.cardLip,
+            borderWidth: 2, borderColor: theme.border,
             transform: [
               { translateY: lift.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }) },
               { scale: pressScale },
@@ -5777,10 +6091,145 @@ function CollectibleEmoteCard({ emote, width, isEquipped, blocked, active, onPre
 }
 
 // ---- Collection (emotes / loadout) ----
-const EMOTE_SLOTS = 6;
+const EMOTE_SLOTS = 8;
+// ---- Güçler paneli — Seviye Yolu'ndan kazanılan tek kullanımlık güçlerin
+// envanteri. KULLAN → onay → sunucu etkinleştirir (jeton 24s pencere açar,
+// kalkan kuşanılır). Adetler stoklanır; aktifken ikincisi başlatılamaz. ----
+function fmtTimeLeft(ms: number): string {
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.max(1, Math.ceil((ms % 3_600_000) / 60_000));
+  return h > 0 ? t('power.hoursMin', { h: String(h), m: String(m) }) : t('power.min', { m: String(m) });
+}
+
+function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (id: PowerId) => void }) {
+  const [confirmId, setConfirmId] = useState<PowerId | null>(null);
+  // 2x XP geri sayımı canlı kalsın — yarım dakikada bir tazele
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(iv);
+  }, []);
+  const boostUntil = profile?.xpBoostUntil ? new Date(profile.xpBoostUntil).getTime() : 0;
+  const boostActive = boostUntil > Date.now();
+  const armed = profile?.shieldArmed ?? false;
+  const lostStreak = profile?.lostStreak ?? 0;
+  const counts: Record<PowerId, number> = {
+    xp2x: profile?.powerXp2x ?? 0,
+    shield: profile?.powerShield ?? 0,
+    streak: profile?.powerStreak ?? 0,
+  };
+  const anyOwnedOrActive = counts.xp2x > 0 || counts.shield > 0 || counts.streak > 0 || boostActive || armed;
+
+  const renderCard = (id: PowerId) => {
+    const meta = POWERS[id];
+    const count = counts[id];
+    const active = id === 'xp2x' ? boostActive : id === 'shield' ? armed : false;
+    const activeLabel = id === 'xp2x'
+      ? t('power.activeLeft', { t: fmtTimeLeft(boostUntil - Date.now()) })
+      : t('power.armed');
+    // Seri Geri Yükleme yalnız kırık bir seri varken kullanılabilir
+    const streakBlocked = id === 'streak' && lostStreak <= 0;
+    return (
+      <View key={id} style={{ backgroundColor: darken(theme.card, 0.5), borderRadius: 19, paddingBottom: 3 }}>
+        <View style={{
+          backgroundColor: theme.card, borderRadius: 19, borderWidth: 2,
+          borderColor: active ? meta.color : withAlpha(meta.color, count > 0 ? 0.55 : 0.25),
+          padding: 12,
+          ...(active ? { shadowColor: meta.color, shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 0 }, elevation: 8 } : {}),
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View>
+              <PowerArt powerId={id} size={62} locked={count === 0 && !active} />
+              {count > 0 ? (
+                <View style={{ position: 'absolute', right: -6, top: -6, minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 5, backgroundColor: meta.color, borderWidth: 2, borderColor: darken(theme.card, 0.45), alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ color: theme.ink, fontSize: 11, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>x{count}</Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text style={{ color: theme.text, fontSize: 14.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t(meta.nameKey)}</Text>
+              <Text style={{ color: theme.muted, fontSize: 11, lineHeight: 15, fontFamily: 'Poppins-SemiBold' }}>{t(meta.descKey)}</Text>
+            </View>
+          </View>
+          {active ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10, backgroundColor: withAlpha(meta.color, 0.14), borderRadius: 999, borderWidth: 1.5, borderColor: withAlpha(meta.color, 0.6), paddingVertical: 6 }}>
+              <Ionicons name={id === 'xp2x' ? 'time' : 'shield-checkmark'} size={14} color={meta.color} />
+              <Text style={{ color: meta.color, fontSize: 12, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{activeLabel}</Text>
+            </View>
+          ) : (
+            <View style={{ marginTop: 10 }}>
+              {count > 0 && streakBlocked ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 7 }}>
+                  <Ionicons name="information-circle" size={13} color={theme.muted} />
+                  <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>{t('power.streakNone')}</Text>
+                </View>
+              ) : count > 0 ? (
+                <Btn kind={id === 'xp2x' ? 'accent' : id === 'shield' ? 'blue' : 'primary'} label={t('power.use')} onPress={() => setConfirmId(id)} />
+              ) : (
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 7 }}>
+                  <Ionicons name="lock-closed" size={12} color={theme.muted} />
+                  <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>{t('power.emptyHint')}</Text>
+                </View>
+              )}
+            </View>
+          )}
+          {id === 'shield' && armed ? (
+            <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginTop: 6 }}>{t('power.armedHint')}</Text>
+          ) : null}
+          {id === 'streak' && lostStreak > 0 && count > 0 ? (
+            <Text style={{ color: theme.primary, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginTop: 6 }}>{t('power.streakReady', { n: String(lostStreak) })}</Text>
+          ) : null}
+        </View>
+      </View>
+    );
+  };
+
+  const confirmMeta = confirmId ? POWERS[confirmId] : null;
+  return (
+    <>
+      <SectionHeader label={t('collection.tabPowers').toLocaleUpperCase(currentLang())} icon="flash" style={{ marginBottom: 8 }} />
+      <View style={{ gap: 12 }}>
+        {renderCard('xp2x')}
+        {renderCard('shield')}
+        {renderCard('streak')}
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 12, paddingHorizontal: 4 }}>
+        <Ionicons name="information-circle" size={14} color={theme.muted} style={{ marginTop: 1 }} />
+        <Text style={{ flex: 1, color: theme.muted, fontSize: 11, lineHeight: 15, fontFamily: 'Poppins-SemiBold' }}>
+          {t('power.oneTime')}{anyOwnedOrActive ? '' : ` ${t('power.earnHint')}`}
+        </Text>
+      </View>
+      {/* Onay — güç tek kullanımlık, yanlışlıkla yakılmasın */}
+      <GameModal
+        visible={confirmId != null}
+        onClose={() => setConfirmId(null)}
+        title={confirmMeta ? t(confirmMeta.nameKey).toLocaleUpperCase(currentLang()) : ''}
+        icon={confirmMeta?.icon ?? 'flash'}
+      >
+        {confirmId && confirmMeta ? (
+          <>
+            <View style={{ alignItems: 'center', marginBottom: 12 }}>
+              <PowerArt powerId={confirmId} size={76} />
+            </View>
+            <Text style={{ color: theme.text, fontSize: 13.5, lineHeight: 19, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginBottom: 14 }}>
+              {t(confirmMeta.confirmKey)}
+            </Text>
+            <View style={{ gap: 8 }}>
+              <Btn big kind={confirmId === 'xp2x' ? 'accent' : confirmId === 'shield' ? 'blue' : 'primary'} label={t('power.use')} onPress={() => { const id = confirmId; setConfirmId(null); onUse(id); }} />
+              <Btn kind="ghost" label={t('power.cancel')} onPress={() => setConfirmId(null)} />
+            </View>
+          </>
+        ) : null}
+      </GameModal>
+    </>
+  );
+}
+
 export function CollectionScreen({ state, actions }: Props) {
   const profile = state.profile;
   const equipped = profile?.equippedEmotes ?? [];
+  // Sekmeler: İfadeler (yuvalar + koleksiyon) | Güçler (tek kullanımlık envanter)
+  const [colTab, setColTab] = useState<'emotes' | 'powers'>('emotes');
   // The single discoverable-emote preview slot: tapping a card claims it (which
   // interrupts whichever card held it), a finished animation releases it.
   // Both handlers are stable so the memo'd cards only re-render on `active` flips.
@@ -5910,14 +6359,42 @@ export function CollectionScreen({ state, actions }: Props) {
           title={t('tab.collection')}
           icon="albums"
           right={
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.panelInnerFill, borderRadius: 999, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, paddingHorizontal: 9, paddingVertical: 5 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.panelInnerFill, borderRadius: 999, borderWidth: 1.5, borderColor: theme.border, paddingHorizontal: 9, paddingVertical: 5 }}>
               <Ionicons name="albums" size={12} color={theme.accent} />
               <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 11, fontVariant: ['tabular-nums'] }}>{collectible.length}/{allEmotes.length}</Text>
             </View>
           }
         />
 
-        {/* Loadout — 6 slots the player fills with any emotes they choose */}
+        {/* Sekmeler: İfadeler | Güçler — Clash tarzı iki kalın segment */}
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+          {([['emotes', 'happy', t('collection.tabEmotes')], ['powers', 'flash', t('collection.tabPowers')]] as const).map(([key, icon, label]) => {
+            const sel = colTab === key;
+            return (
+              <Pressable
+                key={key}
+                onPress={() => setColTab(key)}
+                style={({ pressed }) => ({
+                  flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  backgroundColor: sel ? withAlpha(theme.primary, 0.16) : theme.card,
+                  borderRadius: 15, borderWidth: 2,
+                  borderColor: sel ? theme.primary : theme.border,
+                  paddingVertical: 9,
+                  transform: [{ translateY: pressed ? 2 : 0 }],
+                })}
+              >
+                <Ionicons name={icon} size={14} color={sel ? theme.primary : theme.muted} />
+                <Text style={{ color: sel ? theme.primary : theme.muted, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.4 }}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {colTab === 'powers' ? (
+          <PowersPanel profile={profile} onUse={(id) => actions.usePower(id)} />
+        ) : (<>
+
+        {/* Loadout — 8 slots the player fills with any emotes they choose */}
         <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 13, letterSpacing: 0.5, marginBottom: 4, marginLeft: 4 }}>{t('collection.loadout')}</Text>
         <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', marginBottom: 10, marginLeft: 4 }}>{t('collection.loadoutHint', { n: String(equipped.length), max: String(EMOTE_SLOTS) })}</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12, marginBottom: 22, zIndex: slotSel != null ? 20 : 0 }}>
@@ -5941,7 +6418,6 @@ export function CollectionScreen({ state, actions }: Props) {
                     width: 72, height: 72, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
                     backgroundColor: shown ? theme.card : theme.panelInnerFill,
                     borderWidth: 2, borderColor: sel ? theme.danger : shown ? theme.primary : theme.border,
-                    ...(shown ? { borderTopColor: sel ? theme.danger : theme.panelTopGloss, borderBottomWidth: 4, borderBottomColor: theme.cardLip } : {}),
                     borderStyle: (shown ? 'solid' : 'dashed') as 'solid' | 'dashed',
                     transform: [{ translateY: pressed ? 2 : 0 }],
                   })}
@@ -5996,6 +6472,7 @@ export function CollectionScreen({ state, actions }: Props) {
             </GamePanel>
           )}
         </View>
+        </>)}
       </ScrollView>
       {/* uçuş katmanı — kart→yuva yolculuğundaki ifadeler her şeyin üstünde süzülür */}
       {flights.map((f) => (
@@ -6103,11 +6580,11 @@ export function FriendProfileModal({ profile, onClose }: { profile: PublicProfil
           <View style={{ paddingHorizontal: 20 }}>
             {/* Identity block — hero panel tinted by the friend's arena */}
             <GamePanel hero tint={color} style={{ marginBottom: 14 }} bodyStyle={{ alignItems: 'center', paddingVertical: 22 }}>
-              <AvatarBadge avatarId={profile?.avatar ?? profile?.selectedAvatar} size={104} ringColor={color} />
+              <AvatarBadge avatarId={profile?.avatar ?? profile?.selectedAvatar} size={104} ringColor={color} frameId={profile?.frame} />
               <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 22, marginTop: 12, ...engrave('lg') }} numberOfLines={1}>{profile?.displayName}</Text>
               {/* Beveled gold trophies chip (mini-bevel: card face on a cardLip lip) */}
               <View style={{ backgroundColor: theme.cardLip, borderRadius: 13, paddingBottom: 2, marginTop: 8 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.card, borderRadius: 12, borderWidth: 1.5, borderColor: withAlpha(color, 0.45), borderTopColor: theme.panelTopGloss, paddingHorizontal: 14, paddingVertical: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.card, borderRadius: 12, borderWidth: 1.5, borderColor: withAlpha(color, 0.45), paddingHorizontal: 14, paddingVertical: 6 }}>
                   <Ionicons name="trophy" size={15} color={theme.gold} />
                   <Text style={{ color: theme.gold, fontFamily: 'Poppins-ExtraBold', fontSize: 15, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{profile?.trophies ?? 0}</Text>
                   <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>· {profile?.arena ? arenaLabel(profile.arena.name) : ''}</Text>
@@ -6178,7 +6655,7 @@ function BevelRow({ onPress, ring, wash = false, outerStyle, style, children }: 
           flexDirection: 'row', alignItems: 'center', gap: 10,
           backgroundColor: pressed ? darken(theme.card, 0.14) : theme.card,
           borderRadius: 14, padding: 12, overflow: 'hidden',
-          borderWidth: 2, borderColor: ring ?? theme.border, borderTopColor: ring ?? theme.panelTopGloss,
+          borderWidth: 2, borderColor: ring ?? theme.border,
           transform: [{ translateY: pressed ? 2 : 0 }],
         }, style]}
       >
@@ -6230,7 +6707,7 @@ function SegmentedTabs<K extends string>({ tabs, active, onChange }: {
       style={{
         flexDirection: 'row', gap: 3, padding: 3,
         backgroundColor: theme.panelInnerFill, borderRadius: 15,
-        borderWidth: 2, borderColor: theme.border, borderTopColor: theme.cardLip, // dark top = sunken
+        borderWidth: 2, borderColor: theme.border, // dark top = sunken
       }}
     >
       {tabs.map((tab) => (
@@ -6305,7 +6782,6 @@ function ModalBackBtn({ onPress }: { onPress: () => void }) {
         width: 34, height: 34, borderRadius: 12,
         backgroundColor: pressed ? theme.bg2 : theme.card,
         borderWidth: 2, borderColor: theme.border,
-        borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
         alignItems: 'center', justifyContent: 'center',
         transform: [{ translateY: pressed ? 2 : 0 }],
       })}
@@ -6497,9 +6973,18 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
     return () => clearTimeout(id);
   }, [focusAddFriendSeq]);
 
+  // Misafir kapısı: misafir hesap arkadaş EKLEYEMEZ — denemede kayıt penceresi açılır.
+  const isGuest = state.authProvider == null;
+  const [guestGateOpen, setGuestGateOpen] = useState(false);
+  useEffect(() => {
+    // kayıt tamamlanınca (Apple/Google bağlandı) kapı kendiliğinden kapanır
+    if (state.authProvider != null) setGuestGateOpen(false);
+  }, [state.authProvider]);
+
   const onSendRequest = () => {
     const val = addInput.trim();
     if (val.length < 3) return;
+    if (isGuest) { setGuestGateOpen(true); return; }
     if (searchMode === 'code') {
       actions.sendFriendRequest(val, undefined);
     } else {
@@ -6520,7 +7005,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
             style={{
               flex: 1, alignItems: 'center', justifyContent: 'center',
               backgroundColor: theme.panelInnerFill, borderRadius: 14, paddingVertical: 12,
-              borderWidth: 2, borderColor: theme.border, borderTopColor: theme.cardLip, // dark top = sunken
+              borderWidth: 2, borderColor: theme.border, // dark top = sunken
             }}
           >
             <Text style={styles.friendCode}>{profile?.userId?.slice(0, 8).toUpperCase() ?? '...'}</Text>
@@ -6581,7 +7066,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                 <Avatar avatar={null} name={u.displayName} size={34} ring={theme.primary} ringWidth={1.5} iconColor={theme.primary} iconSize={15} />
                 <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13, flex: 1, ...engrave('sm') }} numberOfLines={1}>{u.displayName}</Text>
                 <MiniIconBtn icon="eye" face={theme.card} lip={theme.cardLip} ringColor={theme.border} fg={theme.text} onPress={() => actions.getUserProfile(u.userId)} />
-                <MiniIconBtn icon="person-add" face={theme.primary} lip={theme.primaryDark} fg={theme.ink} onPress={() => actions.sendFriendRequest(undefined, u.displayName)} />
+                <MiniIconBtn icon="person-add" face={theme.primary} lip={theme.primaryDark} fg={theme.ink} onPress={() => { if (isGuest) { setGuestGateOpen(true); return; } actions.sendFriendRequest(undefined, u.displayName); }} />
               </BevelRow>
             ))}
           </View>
@@ -6640,7 +7125,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
               const matches = friends.filter(f => f.displayName.toLowerCase().includes(q) && !state.conversations.some(c => c.userId === f.userId));
               return matches.length > 0 ? matches.map(f => (
                 <BevelRow key={f.userId} onPress={() => { setMsgSearch(''); actions.openChat(f.userId); }} outerStyle={{ marginBottom: 6 }} style={{ padding: 10 }}>
-                  <Avatar avatar={f.avatar} name={f.displayName} size={36} ring={theme.primary} iconColor={theme.primary} iconSize={16} />
+                  <Avatar avatar={f.avatar} name={f.displayName} size={36} ring={theme.primary} iconColor={theme.primary} iconSize={16} frameId={f.frame} />
                   <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14, flex: 1, ...engrave('sm') }} numberOfLines={1}>{f.displayName}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.primary, borderRadius: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.30)', borderBottomWidth: 2, borderBottomColor: theme.primaryDark, paddingHorizontal: 10, paddingVertical: 5 }}>
                     <Ionicons name="chatbubble" size={12} color={theme.ink} />
@@ -6666,7 +7151,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                 outerStyle={{ marginBottom: 8 }}
               >
                 <View style={{ position: 'relative' }}>
-                  <AvatarBadge avatarId={c.avatar ?? c.selectedAvatar} size={44} ringColor={c.online ? theme.primary : theme.border} />
+                  <AvatarBadge avatarId={c.avatar ?? c.selectedAvatar} size={44} ringColor={c.online ? theme.primary : theme.border} frameId={c.frame} />
                   {c.online ? <View style={{ position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
                 </View>
                 <View style={{ flex: 1 }}>
@@ -6699,7 +7184,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
               style={{ gap: 12 }}
             >
               <View style={{ position: 'relative' }}>
-                <AvatarBadge avatarId={f.avatar ?? f.selectedAvatar} size={38} ringColor={theme.accent} />
+                <AvatarBadge avatarId={f.avatar ?? f.selectedAvatar} size={38} ringColor={theme.accent} frameId={f.frame} />
                 {f.online ? <View style={{ position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: 6, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
               </View>
               <View style={{ flex: 1 }}>
@@ -6754,7 +7239,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
               <View style={{ position: 'absolute', left, top, width: W, zIndex: 2, elevation: 20 }} pointerEvents="box-none">
                 {/* GamePanel-compact frame language + 150ms spring pop anchored at the tail */}
                 <SpringPop>
-                  <View style={{ backgroundColor: theme.bg2, borderRadius: 15, padding: 2, borderWidth: 2, borderColor: theme.border, borderBottomColor: theme.cardLip, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 16 }}>
+                  <View style={{ backgroundColor: theme.bg2, borderRadius: 15, padding: 2, borderWidth: 2, borderColor: theme.border, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 16 }}>
                     <View style={{ backgroundColor: theme.card, borderRadius: 13, borderTopWidth: 1, borderTopColor: theme.panelTopGloss, borderBottomWidth: 3, borderBottomColor: theme.cardLip, overflow: 'hidden' }}>
                       <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5, textAlign: 'center', paddingTop: 9, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: theme.border }} numberOfLines={1}>
                         {menuFriend.displayName}
@@ -6887,6 +7372,9 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
           {(softBack) => <ChatScreen state={state} actions={actions} onBack={softBack} />}
         </SwipeBackWrap>
       </Modal>
+
+      {/* Misafir kapısı — arkadaş eklemek kayıt ister */}
+      <GuestGateModal visible={guestGateOpen} onClose={() => setGuestGateOpen(false)} actions={actions} />
     </Screen>
   );
 }
@@ -7096,6 +7584,16 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
     const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const onFrame = Keyboard.addListener(frameEvt, setKeyboardFrame);
     const onHide = Keyboard.addListener(hideEvt, resetKeyboardFrame);
+    // Sohbet, klavye ZATEN açıkken açıldıysa frame olayı bir daha gelmez ve
+    // giriş çubuğu klavyenin arkasında (ekran dibinde) kalırdı — mount anında
+    // klavyenin mevcut ölçüsünü okuyup çubuğu HEMEN doğru yere koy.
+    const m = Keyboard.metrics?.();
+    if (m && m.height > 0) {
+      setKeyboardHeight(m.height);
+      setKbOpen(true);
+      barTY.setValue(Platform.OS === 'ios' ? -m.height : 0);
+      setTimeout(scrollToBottom, 50);
+    }
     return () => { onFrame.remove(); onHide.remove(); };
   }, [scrollToBottom]);
 
@@ -7157,14 +7655,13 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
             width: 40, height: 40, borderRadius: 14,
             backgroundColor: pressed ? theme.bg2 : theme.card,
             borderWidth: 2, borderColor: theme.border,
-            borderBottomWidth: pressed ? 1 : 3, borderBottomColor: theme.cardLip,
             alignItems: 'center', justifyContent: 'center',
             transform: [{ translateY: pressed ? 2 : 0 }],
           })}
         >
           <Ionicons name="chevron-back" size={22} color={theme.text} />
         </Pressable>
-        <AvatarBadge avatarId={friend?.avatar ?? friend?.selectedAvatar} size={36} ringColor={friend?.online ? theme.primary : theme.border} />
+        <AvatarBadge avatarId={friend?.avatar ?? friend?.selectedAvatar} size={36} ringColor={friend?.online ? theme.primary : theme.border} frameId={friend?.frame} />
         <View style={{ flex: 1 }}>
           <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15, ...engrave('sm') }} numberOfLines={1}>{friend?.displayName ?? '...'}</Text>
           <Text style={{ color: isTyping ? theme.primary : friend?.online ? theme.primary : theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>
@@ -7190,6 +7687,9 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
         onScrollBeginDrag={() => { draggingRef.current = true; }}
         onScrollEndDrag={() => { draggingRef.current = false; }}
       >
+        {/* Boş alana dokunmak klavyeyi indirir (balon/çip dokunuşları kendi
+            işleyicilerine gitmeye devam eder — bu sarmalayıcıya düşmez) */}
+        <Pressable accessible={false} onPress={() => Keyboard.dismiss()}>
         {messages.length === 0 ? (
           <View style={{ marginTop: 28 }}>
             <EmptyState icon="chatbubbles" title={t('chat.sayHello')} hint={t('chat.noMessages')} />
@@ -7213,7 +7713,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
             <RiseIn key={m.id} animate={animReady.current && !isMe}>
               <View style={{ alignItems: isMe ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
                 <View style={{ flexDirection: isMe ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 6, maxWidth: '80%' }}>
-                  <AvatarBadge avatarId={isMe ? (state.profile?.avatar ?? state.profile?.selectedAvatar) : (friend?.avatar ?? friend?.selectedAvatar)} size={28} ringColor={isMe ? theme.primary : theme.border} />
+                  <AvatarBadge avatarId={isMe ? (state.profile?.avatar ?? state.profile?.selectedAvatar) : (friend?.avatar ?? friend?.selectedAvatar)} size={28} ringColor={isMe ? theme.primary : theme.border} frameId={isMe ? state.profile?.selectedFrame : friend?.frame} />
                   <View style={{
                     backgroundColor: isMe ? theme.primary : theme.card,
                     borderRadius: 16,
@@ -7223,7 +7723,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
                     // mine: top-lit mint toy with a primaryDark lip;
                     // theirs: card face ring with a cardLip bottom edge.
                     borderWidth: isMe ? 0 : 1.5, borderColor: theme.border,
-                    borderTopWidth: 1.5, borderTopColor: isMe ? 'rgba(255,255,255,0.30)' : theme.panelTopGloss,
+                    borderTopWidth: 1.5, borderTopColor: isMe ? 'rgba(255,255,255,0.30)' : theme.border,
                     borderBottomWidth: 2.5, borderBottomColor: isMe ? theme.primaryDark : theme.cardLip,
                   }}>
                     <Text style={{ color: isMe ? theme.ink : theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold' }}>{m.body}</Text>
@@ -7238,7 +7738,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
         })}
         {isTyping ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <AvatarBadge avatarId={friend?.avatar ?? friend?.selectedAvatar} size={28} ringColor={theme.border} />
+            <AvatarBadge avatarId={friend?.avatar ?? friend?.selectedAvatar} size={28} ringColor={theme.border} frameId={friend?.frame} />
             <View style={{ backgroundColor: theme.card, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: theme.border, flexDirection: 'row', gap: 4 }}>
               <TypingDot delay={0} />
               <TypingDot delay={150} />
@@ -7246,6 +7746,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
             </View>
           </View>
         ) : null}
+        </Pressable>
       </ScrollView>
 
       {/* Absolute input bar: rides the real keyboard frame via an ANIMATED translateY
@@ -7329,8 +7830,19 @@ function StatCard({ icon, color, label, value, gem }: { icon?: IoniconName; colo
   );
 }
 
-export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore }: Props) {
+export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore, onOpenLevelRoad }: Props) {
   const p = state.profile;
+  // Eski sunucu ProfileView'da xp/level göndermeyebilir — "Seviye undefined"
+  // basmamak için ProfilePill/LevelRoadModal ile aynı varsayılanlar kullanılır.
+  const lvl = p?.level ?? 1;
+  const lvlXp = p?.xp ?? 0;
+  const lvlUnclaimed = unclaimedLevelCount(p);
+  // Detaylı istatistikler ekran açılışında bir kez istenir (my_stats yanıtı state'e düşer)
+  useEffect(() => {
+    actions.loadMyStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const [framePrev, setFramePrev] = useState<{ tier: LevelTier; unlocked: boolean } | null>(null);
   const [pendingAvatarId, setPendingAvatarId] = useState<string | null>(null);
   const [confirmAvatarId, setConfirmAvatarId] = useState<string | null>(null);
   const [showAvatarPage, setShowAvatarPage] = useState(false);
@@ -7540,15 +8052,17 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
         <View style={{ alignItems: 'center', gap: 8, marginVertical: 10 }}>
           <Pressable onPress={() => setShowAvatarPage(true)} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.97 : 1 }] })}>
             <View>
-              <AvatarBadge avatarId={p.avatar ?? p.selectedAvatar} size={104} ringColor={color} />
+              <AvatarBadge avatarId={p.avatar ?? p.selectedAvatar} size={104} ringColor={color} frameId={p.selectedFrame} />
+              {/* not: çerçeve kaplaması avatarın DIŞINA taşar (FRAME_SCALE) —
+                  alttaki isim için ek boşluk aşağıda frameGap ile açılır */}
               <View style={{ position: 'absolute', bottom: 0, right: 0, width: 30, height: 30, borderRadius: 15, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.card }}>
                 <Ionicons name="pencil" size={15} color={theme.ink} />
               </View>
             </View>
           </Pressable>
-          <Text style={{ color: theme.text, fontSize: 24, fontFamily: 'Poppins-ExtraBold', ...engrave('lg') }}>{p.displayName}</Text>
+          <Text style={{ color: theme.text, fontSize: 24, fontFamily: 'Poppins-ExtraBold', ...engrave('lg'), marginTop: p.selectedFrame ? Math.min(44, Math.round((104 * ((FRAME_SCALE[p.selectedFrame] ?? 2.1) - 1)) / 2 * 0.5)) : 0 }}>{p.displayName}</Text>
           {/* Arena chip — crafted arena art thumbnail in a beveled chip (no raw emoji) */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1.5, borderColor: withAlpha(color, 0.4), borderBottomWidth: 3, borderBottomColor: theme.cardLip }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1.5, borderColor: withAlpha(color, 0.4) }}>
             {arenaArt ? (
               <Image source={arenaArt.img} style={{ width: 24, height: 21 }} resizeMode="contain" />
             ) : (
@@ -7557,6 +8071,57 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
             <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13, ...engrave('sm') }}>{arenaLabel(p.arena.name)}</Text>
           </View>
         </View>
+
+        {/* Seviye Yolu girişi — rozet + XP çubuğu, dokununca tam ekran yol */}
+        <Pressable onPress={() => onOpenLevelRoad?.()} style={({ pressed }) => ({ marginTop: 12, transform: [{ translateY: pressed ? 2 : 0 }] })}>
+          <GamePanel compact accentStripe={levelTier(lvl)?.c ?? theme.primary} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingLeft: 14 }}>
+            <LevelBadge level={lvl} size={44} />
+            <View style={{ flex: 1, gap: 5 }}>
+              <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t('level.levelN', { n: String(lvl) })}</Text>
+              {lvl < LEVEL_CAP ? (
+                <>
+                  <XpBar xp={lvlXp} level={lvl} height={9} />
+                  <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{t('level.toNext', { n: String(xpForNextLevel(lvl) - lvlXp) })}</Text>
+                </>
+              ) : (
+                <Text style={{ color: theme.flame, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t('level.maxed')}</Text>
+              )}
+            </View>
+            {lvlUnclaimed > 0 ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: withAlpha(theme.accent, 0.14), borderRadius: 999, borderWidth: 1.5, borderColor: withAlpha(theme.accent, 0.6), paddingHorizontal: 9, paddingVertical: 4 }}>
+                <Ionicons name="gift" size={12} color={theme.accent} />
+                <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>{t('level.rewardsReady', { n: String(lvlUnclaimed) })}</Text>
+              </View>
+            ) : null}
+            <Ionicons name="chevron-forward" size={18} color={theme.muted} style={{ marginRight: 8 }} />
+          </GamePanel>
+        </Pressable>
+
+        {/* Açılan çerçeveler — kazanılmış statü vitrini (dokun: büyük önizleme) */}
+        {LEVEL_TIERS.some((tr) => ownsFrame(p, tr.key)) ? (
+          <View style={{ marginTop: 10 }}>
+            <GamePanel compact accentStripe={levelTier(lvl)?.c ?? theme.primary} bodyStyle={{ paddingVertical: 10, paddingHorizontal: 12 }}>
+              <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 1.2, marginBottom: 6 }}>{t('profile.frames').toLocaleUpperCase(currentLang())}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 12 }}>
+                {LEVEL_TIERS.filter((tr) => ownsFrame(p, tr.key)).map((tr) => {
+                  const worn = p.selectedFrame === tr.key;
+                  return (
+                    <Pressable key={tr.key} onPress={() => setFramePrev({ tier: tr, unlocked: true })} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
+                      <View style={worn ? { borderRadius: 56 * 0.28, borderWidth: 2, borderColor: tr.c, margin: -2 } : undefined}>
+                        <FrameArt tierKey={tr.key} size={56} well />
+                      </View>
+                      {worn ? (
+                        <View style={{ position: 'absolute', right: -5, top: -5, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
+                          <Ionicons name="checkmark" size={11} color={theme.ink} />
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </GamePanel>
+          </View>
+        ) : null}
 
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
           <StatCard icon="trophy" color={theme.gold} label={t('stats.trophies')} value={p.trophies} />
@@ -7568,11 +8133,38 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore 
           <StatCard icon="stats-chart" color={theme.purple} label={t('stats.winRateShort')} value={`%${winRate}`} />
         </View>
 
+        {/* Detaylı istatistikler — G/M/% kutularıyla aynı dil: seri rekoru +
+            yalnız Ülke-Takım ve Harf-Takım başarı yüzdeleri (get_my_stats) */}
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+          <StatCard icon="flame" color={theme.flame} label={t('stats.bestStreak')} value={state.myStats?.bestStreak ?? p.bestStreak ?? 0} />
+          {([['country-team', 'mode.countryTeam'], ['letter-team', 'mode.letterTeam']] as const).map(([modeId, labelKey]) => {
+            const s = state.myStats?.modes.find((m) => m.mode === modeId);
+            const total = (s?.wins ?? 0) + (s?.losses ?? 0);
+            return (
+              <StatCard
+                key={modeId}
+                icon={MODE_ICON[modeId]}
+                color={modeId === 'country-team' ? theme.blue : theme.accent}
+                label={t(labelKey)}
+                value={total > 0 ? `%${Math.round(((s?.wins ?? 0) / total) * 100)}` : '—'}
+              />
+            );
+          })}
+        </View>
+
         <View style={{ marginTop: 16 }}>
           <Btn label={t('menu.matchHistory')} icon="time" kind="blue" onPress={() => onOpenMatchHistory?.()} />
         </View>
       </ScrollView>
 
+      <FramePreviewModal
+        tier={framePrev?.tier ?? null}
+        unlocked={framePrev?.unlocked ?? false}
+        visible={framePrev != null}
+        onClose={() => setFramePrev(null)}
+        equipped={framePrev != null && p.selectedFrame === framePrev.tier.key}
+        onEquip={(frameId) => { actions.setFrame(frameId); setFramePrev(null); }}
+      />
     </Screen>
   );
 }
@@ -7593,7 +8185,7 @@ function AvatarTile({ avatarId, owned, selected, price, onPress }: {
   return (
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ width: '31%', minWidth: 96 }}>
       <View style={{ backgroundColor: selected ? theme.primaryDark : theme.cardLip, borderRadius: 17, paddingBottom: 3 }}>
-        <Animated.View style={{ transform: [{ translateY: ty }], backgroundColor: theme.card, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 8, borderWidth: 2, borderColor: selected ? theme.primary : theme.border, borderTopColor: selected ? theme.primary : theme.panelTopGloss, alignItems: 'center' }}>
+        <Animated.View style={{ transform: [{ translateY: ty }], backgroundColor: theme.card, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 8, borderWidth: 2, borderColor: selected ? theme.primary : theme.border, alignItems: 'center' }}>
           <AvatarBadge avatarId={avatarId} size={58} locked={!owned} dimmed={!owned} ringColor={selected ? theme.primary : undefined} />
           {owned ? (
             <Text style={{ color: selected ? theme.primary : theme.muted, fontSize: 10, marginTop: 4, fontFamily: 'Poppins-ExtraBold' }}>{selected ? t('profile.inUse') : t('profile.ready')}</Text>
@@ -7753,7 +8345,7 @@ export function ArenasScreen({ state, actions }: Props) {
 
               {/* Progress bar for the current arena — the LoadingScreen recipe at small scale */}
               {isCurrent ? (
-                <View style={{ height: 20, borderRadius: 12, backgroundColor: theme.panelInk, borderWidth: 2, borderColor: theme.border, borderBottomColor: theme.cardLip, padding: 2, marginTop: 12, justifyContent: 'center' }}>
+                <View style={{ height: 20, borderRadius: 12, backgroundColor: theme.panelInk, borderWidth: 2, borderColor: theme.border, padding: 2, marginTop: 12, justifyContent: 'center' }}>
                   <View style={{ flex: 1, borderRadius: 8, backgroundColor: theme.panelInnerFill, overflow: 'hidden' }}>
                     {progress > 0.01 ? (
                       <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${Math.max(5, progress * 100)}%`, borderRadius: 8, backgroundColor: arena.color, overflow: 'hidden' }}>
@@ -7963,7 +8555,7 @@ function LeaderboardRow({ entry, onPress }: { entry: LeaderboardEntry; onPress?:
     >
       <GamePanel compact accentStripe={entry.rank <= 3 ? RANK_COLORS[entry.rank - 1] : undefined} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingLeft: 12 }}>
         <RankBadge rank={entry.rank} size={28} />
-        <Avatar avatar={entry.avatar} name={entry.displayName} size={30} ring={theme.primary} ringWidth={1.5} iconColor={theme.primary} iconSize={14} />
+        <Avatar avatar={entry.avatar} name={entry.displayName} size={30} ring={theme.primary} ringWidth={1.5} iconColor={theme.primary} iconSize={14} frameId={entry.frame} />
         <View style={{ flex: 1 }}>
           <Text numberOfLines={1} style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{entry.displayName}</Text>
           <Text numberOfLines={1} style={{ color: theme.accent, fontSize: 10, fontFamily: 'Poppins-SemiBold' }}>{arenaLabel(entry.arena.name).toLocaleUpperCase(currentLang())}</Text>
@@ -8248,7 +8840,7 @@ function PodiumSpot({ entry, onPress }: { entry: LeaderboardEntry; onPress: () =
   const avSize = place === 1 ? 58 : 46;
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ flex: 1, alignItems: 'center', transform: [{ translateY: pressed ? 2 : 0 }] })}>
-      <Avatar avatar={entry.avatar} name={entry.displayName} size={avSize} ring={c} ringWidth={2.5} iconColor={c} iconSize={Math.round(avSize * 0.45)} />
+      <Avatar avatar={entry.avatar} name={entry.displayName} size={avSize} ring={c} ringWidth={2.5} iconColor={c} iconSize={Math.round(avSize * 0.45)} frameId={entry.frame} />
       <View style={{ marginTop: -11 }}>
         <RankBadge rank={place} size={22} />
       </View>
@@ -8523,9 +9115,9 @@ function TrophyFly({ target, onDone, count = 9 }: { target: { x: number; y: numb
 // Match-over banner, styled after the Kupa-popup mockup: a coloured card (blue win /
 // purple loss) with a ringed trophy medallion, confetti on a win, and a recessed
 // panel showing the score and the arena-based trophy delta (+green / −red).
-function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong, winnerName, trophyDelta }: {
+export function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong, winnerName, trophyDelta }: {
   youWon: boolean; youScore: number; oppScore: number; youWrong: number; oppWrong: number;
-  winnerName: string | null; trophyDelta: { delta: number; trophies: number } | null;
+  winnerName: string | null; trophyDelta: { delta: number; trophies: number; shielded?: boolean } | null;
 }) {
   const a = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -8591,6 +9183,13 @@ function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong, winne
                 {gain ? '+' : '−'}{deltaCount}
               </Text>
             </View>
+            {trophyDelta.shielded ? (
+              // Kupa Kalkanı bu mağlubiyetin kupa kaybını emdi — delta 0 gösterilir
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, backgroundColor: withAlpha(theme.blue, 0.18), borderRadius: 999, borderWidth: 1.5, borderColor: withAlpha(theme.blue, 0.65), paddingHorizontal: 11, paddingVertical: 5 }}>
+                <Ionicons name="shield-checkmark" size={14} color={theme.blue} />
+                <Text style={{ color: lighten(theme.blue, 0.25), fontSize: 12, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t('power.shieldSaved')}</Text>
+              </View>
+            ) : null}
           </>
         ) : null}
       </View>
@@ -8644,19 +9243,9 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
   return (
     <Screen>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
-        {/* Match-over banner — only for ranked matches that actually change trophies.
-            Bot matches award no trophies (trophyDelta stays null), so no popup there. */}
-        {matchOver && state.trophyDelta ? (
-          <MatchOverBanner
-            youWon={youWon}
-            youScore={you?.score ?? 0}
-            oppScore={opp?.score ?? 0}
-            youWrong={you?.wrongCount ?? 0}
-            oppWrong={opp?.wrongCount ?? 0}
-            winnerName={state.matchWinnerName ?? null}
-            trophyDelta={state.trophyDelta ?? null}
-          />
-        ) : null}
+        {/* Kupa kazanma/kaybetme popup'ı artık BURADA ÇİZİLMEZ — maç ekranından
+            çıkıp ana menüye dönünce App-seviyesi katmanda gösterilir (kullanıcı
+            kararı). Veriyi App.tsx maç biterken yakalar. */}
 
         {/* Round verdict — always shown, so even on the deciding round you see who/what the answer was */}
         <Animated.View
@@ -8810,7 +9399,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
               const renderList = (list: typeof r.commonPlayers) => (
                 <GamePanel compact style={{ marginTop: 6 }} bodyStyle={{ padding: 8, gap: 6 }}>
                   {list.map((cp, i) => (
-                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: theme.panelInnerFill, borderRadius: 10, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, paddingVertical: 6, paddingHorizontal: 8 }}>
+                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: theme.panelInnerFill, borderRadius: 10, borderWidth: 1.5, borderColor: theme.border, paddingVertical: 6, paddingHorizontal: 8 }}>
                       {cp.imageUrl ? (
                         <CachedImage uri={cp.imageUrl} style={styles.commonPhoto} contentFit="cover" />
                       ) : (
@@ -8848,7 +9437,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
 
         {/* Running match score — one recessed strip, leader tinted mint */}
         <View style={styles.scoreRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.panelInnerFill, borderRadius: 16, borderWidth: 2, borderColor: theme.border, borderTopColor: theme.cardLip, paddingVertical: 8, paddingHorizontal: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.panelInnerFill, borderRadius: 16, borderWidth: 2, borderColor: theme.border, paddingVertical: 8, paddingHorizontal: 14 }}>
             {room.players.map((p, i) => {
               const other = room.players[1 - i];
               const leads = (p.score ?? 0) > (other?.score ?? 0);
@@ -8856,7 +9445,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
                 <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   {i > 0 ? <View style={{ width: 1.5, height: 22, backgroundColor: theme.border }} /> : null}
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                    <Avatar avatar={p.avatar} name={p.name} size={22} ring={leads ? theme.primary : theme.border} ringWidth={1.5} iconColor={theme.muted} iconSize={13} />
+                    <Avatar avatar={p.avatar} name={p.name} size={22} ring={leads ? theme.primary : theme.border} ringWidth={1.5} iconColor={theme.muted} iconSize={13} frameId={p.frame} />
                     <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', maxWidth: 72 }} numberOfLines={1}>{p.name}</Text>
                     <Text style={{ color: leads ? theme.primary : theme.text, fontSize: 15, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>
                       {p.score}/{state.winTarget}
@@ -8916,6 +9505,1223 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
   );
 }
 
+
+// ═══════════════════════ SEVİYE SİSTEMİ ═══════════════════════
+// Kupadan bağımsız, asla düşmeyen sadakat merdiveni (sunucu: game/level.ts).
+// Bu blok kendi içinde kapalıdır — kaldırmak istenirse bu bölüm + App.tsx'teki
+// popup zinciri + ProfilePill/Matchup rozetleri geri alınır.
+
+// Oyunun XP simgesi: masaüstü xp.jpeg'ten bozulmadan çıkarılan taçlı altın
+// yıldız — maç sonrası çubuğa uçan ödül taneleri ve +N XP çipi bunu taşır.
+export const XP_STAR = require('../assets/xp-star.png');
+
+// ---- XpOrbFly — maç sonrası XP kürelerinin çubuğa akışı ----
+// Ortada "+N XP" çipi belirir, ışıyan küreler sırayla profil hapındaki XP
+// çubuğuna süzülür; çubuk EŞ ZAMANLI dolar (HomeScreen animasyonu sürer).
+// Küre zamanlaması: i. küre 260+i*70'te fırlar, ~610ms sonra çubuğa değer.
+export function xpOrbTiming(gained: number): { count: number; firstArrival: number; span: number } {
+  const count = Math.max(4, Math.min(9, Math.round(gained / 12)));
+  return { count, firstArrival: 260 + 610, span: Math.max(320, (count - 1) * 70 + 160) };
+}
+
+function XpOrbFly({ gained, target, onDone, onOrbLand }: { gained: number; target: { x: number; y: number }; onDone: () => void; onOrbLand?: () => void }) {
+  const screenW = Dimensions.get('window').width;
+  const screenH = Dimensions.get('window').height;
+  const originX = screenW / 2;
+  const originY = screenH * 0.4;
+  const chip = useRef(new Animated.Value(0)).current;
+  const { count } = xpOrbTiming(gained);
+  const parts = useRef(
+    Array.from({ length: 9 }, () => ({ x: new Animated.Value(0), y: new Animated.Value(0), s: new Animated.Value(0), o: new Animated.Value(0) })),
+  ).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.spring(chip, { toValue: 1, friction: 6, tension: 130, useNativeDriver: true }),
+      Animated.delay(520),
+      Animated.timing(chip, { toValue: 0, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+    ]).start();
+    let done = 0;
+    for (let i = 0; i < count; i++) {
+      const g = parts[i]!;
+      g.x.setValue(originX + (Math.random() - 0.5) * 80);
+      g.y.setValue(originY + (Math.random() - 0.5) * 56);
+      g.s.setValue(0);
+      g.o.setValue(0);
+      setTimeout(() => {
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(g.o, { toValue: 1, duration: 90, useNativeDriver: true }),
+            Animated.spring(g.s, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(g.x, { toValue: target.x, duration: 520, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.y, { toValue: target.y, duration: 520, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.s, { toValue: 0.45, duration: 520, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+          ]),
+        ]).start(() => {
+          // KÜRE ÇUBUĞA DEĞDİ — çubuk tam bu anda bir adım dolar
+          onOrbLand?.();
+          Animated.parallel([
+            Animated.timing(g.s, { toValue: 0.12, duration: 110, useNativeDriver: true }),
+            Animated.timing(g.o, { toValue: 0, duration: 110, useNativeDriver: true }),
+          ]).start(() => { done += 1; if (done === count) onDone(); });
+        });
+      }, 260 + i * 70);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <Modal visible transparent animationType="none" statusBarTranslucent>
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {/* +N XP çipi */}
+        <Animated.View style={{
+          position: 'absolute', left: 0, right: 0, top: originY - 64, alignItems: 'center',
+          opacity: chip, transform: [{ scale: chip.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }],
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.panelInk, borderRadius: 999, borderWidth: 2, borderColor: theme.gold, paddingHorizontal: 16, paddingVertical: 7, shadowColor: theme.gold, shadowOpacity: 0.6, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 12 }}>
+            <Image source={XP_STAR} style={{ width: 20, height: 20 }} resizeMode="contain" />
+            <Text style={{ color: theme.text, fontSize: 17, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>+{gained} XP</Text>
+          </View>
+        </Animated.View>
+        {/* küreler */}
+        {parts.slice(0, count).map((g, i) => (
+          <Animated.View key={i} style={{
+            position: 'absolute', left: -13, top: -13,
+            shadowColor: theme.gold, shadowOpacity: 0.9, shadowRadius: 9, shadowOffset: { width: 0, height: 0 }, elevation: 9,
+            opacity: g.o,
+            transform: [{ translateX: g.x }, { translateY: g.y }, { scale: g.s }],
+          }}>
+            <Image source={XP_STAR} style={{ width: 26, height: 26 }} resizeMode="contain" />
+          </Animated.View>
+        ))}
+      </View>
+    </Modal>
+  );
+}
+
+// ---- GemOrbFly — seviye ödülü elmasların hapa akışı ----
+// XpOrbFly ile aynı dil: ortada "+N 💎" çipi, elmas taneleri sırayla sağ üstteki
+// elmas hapına süzülür. Sayaç dönüşü App.tsx'te uçuş bitince başlar.
+export function GemOrbFly({ amount, onDone }: { amount: number; onDone: () => void }) {
+  const screenW = Dimensions.get('window').width;
+  const screenH = Dimensions.get('window').height;
+  const originX = screenW / 2;
+  const originY = screenH * 0.4;
+  const chip = useRef(new Animated.Value(0)).current;
+  const count = Math.max(5, Math.min(10, Math.round(amount / 10)));
+  const parts = useRef(
+    Array.from({ length: 10 }, () => ({ x: new Animated.Value(0), y: new Animated.Value(0), s: new Animated.Value(0), o: new Animated.Value(0) })),
+  ).current;
+  useEffect(() => {
+    const target = {
+      x: gemTarget.measured ? gemTarget.x : screenW - 86,
+      y: gemTarget.measured ? gemTarget.y : 78,
+    };
+    Animated.sequence([
+      Animated.spring(chip, { toValue: 1, friction: 6, tension: 130, useNativeDriver: true }),
+      Animated.delay(520),
+      Animated.timing(chip, { toValue: 0, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+    ]).start();
+    let done = 0;
+    for (let i = 0; i < count; i++) {
+      const g = parts[i]!;
+      g.x.setValue(originX + (Math.random() - 0.5) * 84);
+      g.y.setValue(originY + (Math.random() - 0.5) * 58);
+      g.s.setValue(0);
+      g.o.setValue(0);
+      setTimeout(() => {
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(g.o, { toValue: 1, duration: 90, useNativeDriver: true }),
+            Animated.spring(g.s, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(g.x, { toValue: target.x, duration: 520, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.y, { toValue: target.y, duration: 520, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.s, { toValue: 0.5, duration: 520, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+          ]),
+        ]).start(() => {
+          Animated.parallel([
+            Animated.timing(g.s, { toValue: 0.15, duration: 110, useNativeDriver: true }),
+            Animated.timing(g.o, { toValue: 0, duration: 110, useNativeDriver: true }),
+          ]).start(() => { done += 1; if (done === count) onDone(); });
+        });
+      }, 260 + i * 70);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <Modal visible transparent animationType="none" statusBarTranslucent>
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {/* +N elmas çipi */}
+        <Animated.View style={{
+          position: 'absolute', left: 0, right: 0, top: originY - 64, alignItems: 'center',
+          opacity: chip, transform: [{ scale: chip.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }],
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.panelInk, borderRadius: 999, borderWidth: 2, borderColor: theme.gem, paddingHorizontal: 16, paddingVertical: 7, shadowColor: theme.gem, shadowOpacity: 0.6, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 12 }}>
+            <GemIcon size={16} />
+            <Text style={{ color: theme.text, fontSize: 17, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>+{amount}</Text>
+          </View>
+        </Animated.View>
+        {/* elmas taneleri */}
+        {parts.slice(0, count).map((g, i) => (
+          <Animated.View key={i} style={{
+            position: 'absolute', left: -11, top: -11,
+            shadowColor: theme.gem, shadowOpacity: 0.9, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 9,
+            opacity: g.o,
+            transform: [{ translateX: g.x }, { translateY: g.y }, { scale: g.s }],
+          }}>
+            <GemIcon size={22} />
+          </Animated.View>
+        ))}
+      </View>
+    </Modal>
+  );
+}
+
+export const LEVEL_CAP = 50;
+export const xpForNextLevel = (level: number) => 100 + (level - 1) * 25;
+
+// Çerçeve kademeleri — 10'un katlarında açılır; renkler tema paletinden.
+export interface LevelTier { key: string; min: number; nameKey: MessageKey; c: string; dark: string }
+export const LEVEL_TIERS: LevelTier[] = [
+  { key: 'bronze',  min: 10, nameKey: 'level.tierBronze',  c: theme.bronze, dark: darken(theme.bronze, 0.4) },
+  { key: 'silver',  min: 20, nameKey: 'level.tierSilver',  c: theme.silver, dark: darken(theme.silver, 0.45) },
+  { key: 'gold',    min: 30, nameKey: 'level.tierGold',    c: theme.gold,   dark: darken(theme.gold, 0.4) },
+  { key: 'diamond', min: 40, nameKey: 'level.tierDiamond', c: theme.gem,    dark: darken(theme.gem, 0.4) },
+  { key: 'goat',    min: 50, nameKey: 'level.tierGoat',    c: theme.flame,  dark: darken(theme.flame, 0.4) },
+];
+export function levelTier(level: number): LevelTier | null {
+  let cur: LevelTier | null = null;
+  for (const t of LEVEL_TIERS) if (level >= t.min) cur = t;
+  return cur;
+}
+
+// 5'in katlarında açılan özel ifadeler (sunucudaki LEVEL_EMOTES ile birebir).
+// Çerçeve sahipliği KALICIDIR (sezonlar arası): yeni alan ownedFrames esas,
+// eski sunucuya karşı claimedLevels'tan türetme yedeği korunur.
+export function ownsFrame(p: ProfileView | null, tierKey: string): boolean {
+  if (!p) return false;
+  if (p.ownedFrames) return p.ownedFrames.includes(tierKey);
+  const tier = LEVEL_TIERS.find((tr) => tr.key === tierKey);
+  return tier ? (p.claimedLevels ?? []).includes(tier.min) : false;
+}
+
+// Ulaşılmış ama Seviye Yolu'ndan henüz toplanmamış ödül sayısı — haberci
+// rozetleri bunu gösterir. Ödül YALNIZ 5'in katlarında vardır.
+export function unclaimedLevelCount(p: ProfileView | null): number {
+  if (!p) return 0;
+  const claimed = new Set(p.claimedLevels ?? []);
+  const claimedPremium = new Set(p.claimedPremium ?? []);
+  let n = 0;
+  for (let i = 5; i <= (p.level ?? 1); i += 5) {
+    if (!claimed.has(i)) n++;
+    if (p.premiumRoad && !claimedPremium.has(i)) n++; // premium şerit yalnız sahiplere sayılır
+  }
+  return n;
+}
+
+// ---- Özel güçler — Seviye Yolu'ndan kazanılan TEK KULLANIMLIK tüketilebilirler.
+// Elmasla satılmaz; kullanılmadıkça envanterde birikir (sunucudaki LEVEL_POWERS
+// ve powers kataloglarıyla birebir aynı kimlikler/seviyeler).
+export type PowerId = 'xp2x' | 'shield' | 'streak';
+export const POWERS: Record<PowerId, {
+  icon: ComponentProps<typeof Ionicons>['name'];
+  color: string;
+  nameKey: MessageKey;
+  descKey: MessageKey;
+  confirmKey: MessageKey;
+}> = {
+  xp2x: { icon: 'flash', color: theme.gold, nameKey: 'power.xp2xName', descKey: 'power.xp2xDesc', confirmKey: 'power.confirmXp2x' },
+  shield: { icon: 'shield', color: theme.blue, nameKey: 'power.shieldName', descKey: 'power.shieldDesc', confirmKey: 'power.confirmShield' },
+  streak: { icon: 'flame', color: theme.primary, nameKey: 'power.streakName', descKey: 'power.streakDesc', confirmKey: 'power.confirmStreak' },
+};
+export const LEVEL_POWER_UNLOCKS: Record<number, PowerId> = {
+  5: 'xp2x',
+  15: 'shield',
+  25: 'streak',
+  35: 'xp2x',
+  45: 'shield',
+};
+
+// ---- PREMIUM Seviye Yolu (sunucudaki PREMIUM_* sabitleriyle birebir) ----
+// 1000 elmasla bir kez açılır; her ×5 seviyesinde EKSTRA güç + daha dolgun elmas.
+export const PREMIUM_ROAD_PRICE = 1000;
+export const PREMIUM_LEVEL_POWERS: Record<number, PowerId> = {
+  5: 'xp2x', 10: 'shield', 15: 'streak',
+  20: 'xp2x', 25: 'shield', 30: 'streak',
+  35: 'xp2x', 40: 'shield', 45: 'streak',
+  50: 'xp2x',
+};
+// Mağaza güç fiyatları (sunucudaki POWER_PRICES ile birebir)
+export const POWER_PRICES: Record<PowerId, number> = { xp2x: 150, shield: 250, streak: 300 };
+
+export function premiumRewardGems(n: number): number {
+  if (n % 5 !== 0) return 0;
+  if (n === LEVEL_CAP) return 300;
+  return n % 10 === 0 ? 200 : 100;
+}
+
+// Güç rozetleri — özellik.jpeg'ten birebir kesilmiş gerçek sanatlar (altın 2x
+// jetonu / mavi kupa kalkanı). Çizim yok: görselin kendisi, şekli bozulmadan.
+const POWER_ART: Partial<Record<PowerId, number>> = {
+  xp2x: require('../assets/power-xp2x.png'),
+  shield: require('../assets/power-shield.png'),
+  streak: require('../assets/power-streak.png'), // seri.jpeg'ten birebir
+};
+export function PowerArt({ powerId, size, locked }: { powerId: PowerId; size: number; locked?: boolean; well?: boolean }) {
+  const art = POWER_ART[powerId];
+  if (art != null) {
+    return (
+      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+        <Image source={art} style={{ width: size, height: size, opacity: locked ? 0.45 : 1 }} resizeMode="contain" />
+      </View>
+    );
+  }
+  // Görseli olmayan güç (streak): alev madalyonu — koyu plaka, alev halkası,
+  // sağ altta geri-sarma mini rozeti. Özel sanat gelince POWER_ART'a eklenir.
+  const meta = POWERS[powerId];
+  const c = locked ? theme.muted : meta.color;
+  return (
+    <View style={{
+      width: size, height: size, borderRadius: size / 2,
+      backgroundColor: darken(theme.card, 0.35),
+      borderWidth: Math.max(2, size * 0.045), borderColor: withAlpha(c, locked ? 0.4 : 0.85),
+      alignItems: 'center', justifyContent: 'center',
+    }}>
+      <View pointerEvents="none" style={{ position: 'absolute', width: size * 0.82, height: size * 0.82, borderRadius: size * 0.41, backgroundColor: withAlpha(c, locked ? 0.07 : 0.18) }} />
+      <View style={{ opacity: locked ? 0.55 : 1 }}>
+        <Ionicons name={meta.icon} size={Math.round(size * 0.48)} color={c} />
+      </View>
+      <View style={{ position: 'absolute', right: -size * 0.02, bottom: -size * 0.02, width: size * 0.34, height: size * 0.34, borderRadius: size * 0.17, backgroundColor: locked ? theme.border : meta.color, borderWidth: 1.5, borderColor: darken(theme.card, 0.45), alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name="refresh" size={Math.round(size * 0.2)} color={theme.ink} />
+      </View>
+    </View>
+  );
+}
+
+// Bir seviyenin toplanabilir elmas ödülü — sunucudaki levelRewardDiamonds ile
+// birebir: yalnız 5'in katları (güç 50 / çerçeve 100), arası 0.
+export function levelRewardGems(n: number): number {
+  if (n % 5 !== 0) return 0;
+  return n % 10 === 0 ? 100 : 50;
+}
+
+// (ARTIK KULLANILMIYOR: ifadeler Seviye Yolu'ndan kazanılmaz, yalnız mağazadan
+// satılır. Tarihsel referans olarak duruyor — yol/popup bu haritayı okumaz.)
+export const LEVEL_EMOTE_UNLOCKS: Record<number, string> = {
+  5: 'footballer', 15: 'kick', 25: 'squad', 35: 'pitch', 45: 'euro2024',
+};
+
+// ---- Çerçeve sanatları (çerçeve.jpeg'ten, ışıltıları birebir korunarak) ----
+export { FRAME_ART } from './frames';
+
+// Çerçeve görseli — kilitliyse soluk + kilit rozetli ("henüz açılmadı" hali).
+// well: küçük boyutlarda koyu zeminde kaybolmasın diye yuvarlatılmış yuva zemini.
+export function FrameArt({ tierKey, size, locked = false, well = false }: { tierKey: string; size: number; locked?: boolean; well?: boolean }) {
+  const src = FRAME_ART_MAP[tierKey];
+  if (!src) return null;
+  const art = size - (well ? 8 : 0);
+  return (
+    <View style={{
+      width: size, height: size, alignItems: 'center', justifyContent: 'center',
+      ...(well ? { backgroundColor: theme.panelInnerFill, borderRadius: size * 0.28, borderWidth: 1.5, borderColor: theme.border } : {}),
+    }}>
+      <Image source={src} style={{ width: art, height: art, opacity: locked ? 0.32 : 1 }} resizeMode="contain" />
+      {locked ? (
+        // absoluteFill + iç ortalama: rozet her platformda halkanın TAM merkezinde
+        <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+          <View style={{ width: Math.max(20, size * 0.3), height: Math.max(20, size * 0.3), borderRadius: Math.max(10, size * 0.15), backgroundColor: withAlpha(theme.panelInk, 0.88), borderWidth: 1.5, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="lock-closed" size={Math.max(11, size * 0.15)} color={theme.muted} />
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// Dokununca açılan büyük çerçeve önizlemesi — kademe adı + açılma durumu.
+// onEquip verilirse (profil Çerçeveler şeridi) KULLAN/KALDIR butonu da çizilir.
+export function FramePreviewModal({ tier, unlocked, visible, onClose, equipped, onEquip }: {
+  tier: LevelTier | null; unlocked: boolean; visible: boolean; onClose: () => void;
+  equipped?: boolean; onEquip?: (frameId: string | null) => void;
+}) {
+  if (!visible || !tier) return null;
+  const big = Math.min(SCREEN_W * 0.8, 330);
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim, alignItems: 'center', justifyContent: 'center', padding: 24 }]} onPress={onClose}>
+        <FrameArt tierKey={tier.key} size={big} locked={!unlocked} />
+        <Text style={{ color: tier.c, fontSize: 24, fontFamily: 'Poppins-Black', letterSpacing: 1.2, marginTop: 6, ...engrave('lg') }}>
+          {t(tier.nameKey).toLocaleUpperCase(currentLang())}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, backgroundColor: unlocked ? withAlpha(theme.primary, 0.16) : theme.panelInnerFill, borderRadius: 999, borderWidth: 1.5, borderColor: unlocked ? theme.primary : theme.border, paddingHorizontal: 14, paddingVertical: 6 }}>
+          <Ionicons name={unlocked ? 'checkmark-circle' : 'lock-closed'} size={15} color={unlocked ? theme.primary : theme.muted} />
+          <Text style={{ color: unlocked ? theme.primary : theme.muted, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>
+            {unlocked ? t('level.frameOwned') : t('level.frameLockedAt', { n: String(tier.min) })}
+          </Text>
+        </View>
+        {unlocked && onEquip ? (
+          <View style={{ marginTop: 18, width: Math.min(SCREEN_W * 0.6, 240) }}>
+            <Btn
+              big
+              kind={equipped ? 'ghost' : 'primary'}
+              icon={equipped ? 'close-circle' : 'checkmark-circle'}
+              label={(equipped ? t('collection.remove') : t('collection.use')).toLocaleUpperCase(currentLang())}
+              onPress={() => onEquip(equipped ? null : tier.key)}
+            />
+          </View>
+        ) : null}
+        <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', marginTop: 16 }}>{t('common.close')}</Text>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ---- FrameUnlockCelebration — çerçeve/İFADE açılışı: efsanevi kutlama ----
+// Clash Royale sandık açılışı duygusu: karanlık sahne → büyüyen ışıma →
+// beyaz parlama → ödül yaylanarak iner; şok halkası + kıvılcım patlaması,
+// arkada ağır dönen ışık huzmeleri; ödülün adı damgalanır.
+export function FrameUnlockCelebration({ tierKey, emoteId, powerId, onDone }: { tierKey?: string | null; emoteId?: string | null; powerId?: PowerId | null; onDone: () => void }) {
+  const isEmote = !tierKey && Boolean(emoteId);
+  const isPower = !tierKey && !emoteId && Boolean(powerId);
+  const tier = LEVEL_TIERS.find((tr) => tr.key === tierKey) ?? LEVEL_TIERS[0]!;
+  const glowColor = isPower && powerId ? POWERS[powerId].color : isEmote ? theme.accent : tier.c;
+  const glow = useRef(new Animated.Value(0)).current;    // sahneyi ısıtan ışıma
+  const flash = useRef(new Animated.Value(0)).current;   // patlama anı beyazı
+  const frameIn = useRef(new Animated.Value(0)).current; // çerçeve girişi
+  const rays = useRef(new Animated.Value(0)).current;    // huzme dönüşü
+  const raysO = useRef(new Animated.Value(0)).current;
+  const ring = useRef(new Animated.Value(0)).current;    // şok halkası
+  const titleIn = useRef(new Animated.Value(0)).current;
+  const btnIn = useRef(new Animated.Value(0)).current;
+  const [btnReady, setBtnReady] = useState(false); // görünmeden tıklanamasın
+  const sparks = useRef(Array.from({ length: 12 }, () => new Animated.Value(0))).current;
+  const sparkDirs = useRef(Array.from({ length: 12 }, (_, i) => {
+    const a = (Math.PI * 2 * i) / 12 + (i % 2 ? 0.26 : 0);
+    const r = 120 + (i % 3) * 36;
+    return { x: Math.cos(a) * r, y: Math.sin(a) * r };
+  })).current;
+  useEffect(() => {
+    Animated.loop(Animated.timing(rays, { toValue: 1, duration: 14000, easing: Easing.linear, useNativeDriver: true })).start();
+    Animated.sequence([
+      Animated.timing(glow, { toValue: 1, duration: 620, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      Animated.parallel([
+        Animated.timing(flash, { toValue: 1, duration: 90, useNativeDriver: true }),
+        Animated.timing(raysO, { toValue: 1, duration: 240, useNativeDriver: true }),
+        Animated.timing(ring, { toValue: 1, duration: 640, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.spring(frameIn, { toValue: 1, friction: 5, tension: 46, useNativeDriver: true }),
+        ...sparks.map((s, i) => Animated.sequence([
+          Animated.delay(40 + (i % 4) * 45),
+          Animated.timing(s, { toValue: 1, duration: 720, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        ])),
+      ]),
+    ]).start();
+    Animated.sequence([Animated.delay(760), Animated.timing(flash, { toValue: 0, duration: 300, useNativeDriver: true })]).start();
+    Animated.sequence([Animated.delay(900), Animated.spring(titleIn, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true })]).start();
+    const btnTimer = setTimeout(() => {
+      setBtnReady(true);
+      Animated.timing(btnIn, { toValue: 1, duration: 240, useNativeDriver: true }).start();
+    }, 1500);
+    return () => clearTimeout(btnTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const spin = rays.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const big = Math.min(SCREEN_W * 0.72, 300);
+  return (
+    <Modal visible transparent animationType="fade" statusBarTranslucent>
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(4,7,18,0.94)', alignItems: 'center', justifyContent: 'center' }]}>
+        {/* ağır dönen ışık huzmeleri */}
+        <Animated.View pointerEvents="none" style={{ position: 'absolute', opacity: raysO.interpolate({ inputRange: [0, 1], outputRange: [0, 0.9] }), transform: [{ rotate: spin }] }}>
+          <Svg width={SCREEN_W * 1.3} height={SCREEN_W * 1.3} viewBox="-100 -100 200 200">
+            {Array.from({ length: 12 }, (_, i) => (
+              <Polygon key={i} points="0,0 -4.5,-100 4.5,-100" fill={glowColor} opacity={i % 2 ? 0.07 : 0.15} transform={`rotate(${i * 30})`} />
+            ))}
+          </Svg>
+        </Animated.View>
+        {/* merkez ışıma */}
+        <Animated.View pointerEvents="none" style={{ position: 'absolute', opacity: glow }}>
+          <Svg width={360} height={360}>
+            <Defs>
+              <RadialGradient id={`fglow-${isEmote ? 'emote' : tier.key}`} cx="50%" cy="50%" r="50%">
+                <Stop offset="0%" stopColor={glowColor} stopOpacity={0.55} />
+                <Stop offset="60%" stopColor={glowColor} stopOpacity={0.18} />
+                <Stop offset="100%" stopColor={glowColor} stopOpacity={0} />
+              </RadialGradient>
+            </Defs>
+            <Circle cx={180} cy={180} r={180} fill={`url(#fglow-${isEmote ? 'emote' : tier.key})`} />
+          </Svg>
+        </Animated.View>
+        {/* şok halkası */}
+        <Animated.View pointerEvents="none" style={{
+          position: 'absolute', width: big, height: big, borderRadius: big / 2,
+          borderWidth: 3, borderColor: lighten(glowColor, 0.35),
+          opacity: ring.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.9, 0] }),
+          transform: [{ scale: ring.interpolate({ inputRange: [0, 1], outputRange: [0.35, 2.1] }) }],
+        }} />
+        {/* kıvılcımlar */}
+        {sparks.map((s, i) => (
+          <Animated.View key={i} pointerEvents="none" style={{
+            position: 'absolute', width: i % 3 ? 7 : 10, height: i % 3 ? 7 : 10, borderRadius: 6,
+            backgroundColor: i % 2 ? '#FFFFFF' : lighten(glowColor, 0.25),
+            opacity: s.interpolate({ inputRange: [0, 0.12, 0.75, 1], outputRange: [0, 1, 0.9, 0] }),
+            transform: [
+              { translateX: s.interpolate({ inputRange: [0, 1], outputRange: [0, sparkDirs[i]!.x] }) },
+              { translateY: s.interpolate({ inputRange: [0, 1], outputRange: [0, sparkDirs[i]!.y + 26] }) },
+              { scale: s.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0.3, 1.15, 0.4] }) },
+            ],
+          }} />
+        ))}
+        {/* çerçeve — yaylanarak iner (gölge YOK: kare box-shadow izi bırakır,
+             ışıma radyal Svg + görselin kendi parlaklığından gelir) */}
+        <Animated.View style={{
+          opacity: frameIn,
+          transform: [{ scale: frameIn.interpolate({ inputRange: [0, 1], outputRange: [0.18, 1] }) }],
+        }}>
+          {isPower && powerId ? (
+            <PowerArt powerId={powerId} size={Math.round(big * 0.66)} />
+          ) : isEmote && emoteId ? (
+            <EmoteSticker id={emoteId} size={Math.round(big * 0.78)} play />
+          ) : (
+            <FrameArt tierKey={tier.key} size={big} />
+          )}
+        </Animated.View>
+        {/* patlama beyazı — en üstte */}
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF', opacity: flash.interpolate({ inputRange: [0, 1], outputRange: [0, 0.85] }) }]} />
+        {/* kademe adı damgası */}
+        <Animated.View style={{
+          position: 'absolute', bottom: '20%', left: 0, right: 0, alignItems: 'center',
+          opacity: titleIn, transform: [{ scale: titleIn.interpolate({ inputRange: [0, 1], outputRange: [1.6, 1] }) }],
+        }}>
+          <Text style={{ color: glowColor, fontSize: isEmote || isPower ? 26 : 30, fontFamily: 'Poppins-Black', letterSpacing: 1.6, ...engrave('lg') }}>
+            {(isPower && powerId ? t(POWERS[powerId].nameKey) : isEmote ? t('level.exclusiveEmote') : t(tier.nameKey)).toLocaleUpperCase(currentLang())}
+          </Text>
+          <Text style={{ color: theme.text, fontSize: 15.5, fontFamily: 'Poppins-ExtraBold', marginTop: 2, letterSpacing: 3.2, ...engrave('sm') }}>
+            {isPower ? t('power.celebUnlocked') : isEmote ? t('level.emoteCelebUnlocked') : t('level.frameCelebUnlocked')}
+          </Text>
+        </Animated.View>
+        {/* devam — zamanı gelince render edilir (görünmez buton tık yemesin) */}
+        {btnReady ? (
+          <Animated.View style={{ position: 'absolute', bottom: 60, left: 40, right: 40, opacity: btnIn }}>
+            <Btn big kind="primary" label={t('common.continue')} onPress={onDone} />
+          </Animated.View>
+        ) : null}
+      </View>
+    </Modal>
+  );
+}
+
+// Seviye rozeti — kademe renkli çift halka içinde kazınmış numara.
+// 10+ seviyelerde halka kademe rengini alır; GOAT hafif ışıma taşır.
+export function LevelBadge({ level, size = 24 }: { level: number; size?: number }) {
+  const tier = levelTier(level);
+  const ring = tier?.c ?? theme.border;
+  const fs = Math.max(9, size * 0.44);
+  return (
+    <View style={{
+      width: size, height: size, borderRadius: size / 2,
+      backgroundColor: theme.panelInk,
+      borderWidth: Math.max(1.5, size * 0.09), borderColor: ring,
+      alignItems: 'center', justifyContent: 'center',
+      ...(tier?.key === 'goat' ? { shadowColor: theme.flame, shadowOpacity: 0.8, shadowRadius: size * 0.3, shadowOffset: { width: 0, height: 0 }, elevation: 6 } : {}),
+    }}>
+      <Text style={{ color: tier ? tier.c : theme.text, fontSize: fs, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{level}</Text>
+    </View>
+  );
+}
+
+// İnce XP çubuğu — mevcut seviye içindeki ilerleme.
+function XpBar({ xp, level, height = 8, color }: { xp: number; level: number; height?: number; color?: string }) {
+  const need = xpForNextLevel(level);
+  const pct = level >= LEVEL_CAP ? 1 : Math.max(0, Math.min(1, xp / need));
+  const c = color ?? levelTier(level)?.c ?? theme.primary;
+  return (
+    <View style={{ height, borderRadius: height / 2, backgroundColor: theme.navyWell, overflow: 'hidden' }}>
+      <View style={{ width: `${Math.round(pct * 100)}%`, height: '100%', borderRadius: height / 2, backgroundColor: c }} />
+    </View>
+  );
+}
+
+// ---- Seviye atlama kutlaması — maç ÇIKIŞINDA, kupa popup'ından sonra ----
+export function LevelUpPopup({ toLevel, diamonds, emoteIds, powerIds = [], hasReward = true, onClose, onGoToRoad }: {
+  toLevel: number; diamonds: number; emoteIds: string[]; powerIds?: string[]; onClose: () => void;
+  hasReward?: boolean; // bu atlayışta toplanacak ödül var mı (yalnız ×5 seviyeleri taşır)
+  onGoToRoad?: () => void; // "Ödülü Topla" → Seviye Yolu'nu bu seviyede açar
+}) {
+  const a = useRef(new Animated.Value(0)).current;
+  const badge = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(a, { toValue: 1, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+    Animated.sequence([
+      Animated.delay(120),
+      Animated.spring(badge, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }),
+    ]).start();
+  }, [a, badge]);
+  const tier = levelTier(toLevel);
+  const frameJustUnlocked = toLevel % 10 === 0 && tier;
+  const accent = tier?.c ?? theme.primary;
+  return (
+    <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 70, backgroundColor: theme.scrim, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, opacity: a }]}>
+      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+      <View style={{ width: '100%', maxWidth: 330, backgroundColor: theme.panelInk, borderRadius: 26, padding: 2, borderWidth: 2, borderColor: accent, borderBottomColor: darken(accent, 0.35), shadowColor: accent, shadowOpacity: 0.55, shadowRadius: 26, shadowOffset: { width: 0, height: 0 }, elevation: 20 }}>
+        <View style={{ backgroundColor: theme.card, borderRadius: 23, alignItems: 'center', paddingVertical: 22, paddingHorizontal: 18, overflow: 'hidden' }}>
+          {/* ışın patlaması */}
+          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <View key={i} style={{ position: 'absolute', left: '50%', top: 62, width: 3, height: 130, marginLeft: -1.5, backgroundColor: withAlpha(accent, 0.14), transform: [{ rotate: `${i * 45}deg` }] }} />
+            ))}
+          </View>
+          <Animated.View style={{ transform: [{ scale: badge.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1] }) }] }}>
+            <LevelBadge level={toLevel} size={86} />
+          </Animated.View>
+          <Text style={{ color: theme.text, fontSize: 21, fontFamily: 'Poppins-Black', letterSpacing: 0.6, marginTop: 12, ...engrave('lg') }}>{t('level.levelUp')}</Text>
+          <Text style={{ color: accent, fontSize: 14, fontFamily: 'Poppins-ExtraBold', marginTop: 2, ...engrave('sm') }}>{t('level.reached', { n: String(toLevel) })}</Text>
+
+          {/* ödüller — elmas çipi yalnız gerçekten elmas varsa (ara seviyeler ödülsüz) */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+            {diamonds > 0 ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.panelInnerFill, borderRadius: 999, borderWidth: 1.5, borderColor: theme.gem, paddingHorizontal: 13, paddingVertical: 6 }}>
+                <GemIcon size={16} />
+                <Text style={{ color: theme.gemText, fontSize: 14, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>+{diamonds}</Text>
+              </View>
+            ) : null}
+            {emoteIds.map((id) => (
+              <View key={id} style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: theme.panelInnerFill, borderWidth: 1.5, borderColor: theme.accent, alignItems: 'center', justifyContent: 'center' }}>
+                <EmoteSticker id={id} size={36} play={false} />
+              </View>
+            ))}
+            {powerIds.map((id) => (
+              <PowerArt key={id} powerId={id as PowerId} size={46} well />
+            ))}
+          </View>
+          {emoteIds.length > 0 ? (
+            <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', marginTop: 6 }}>{t('level.emoteUnlocked')}</Text>
+          ) : null}
+          {frameJustUnlocked ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 10, backgroundColor: withAlpha(accent, 0.14), borderRadius: 999, borderWidth: 1.5, borderColor: accent, paddingHorizontal: 12, paddingVertical: 5 }}>
+              <Ionicons name="shield-checkmark" size={14} color={accent} />
+              <Text style={{ color: accent, fontSize: 12, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t('level.frameUnlocked', { name: t(tier!.nameKey) })}</Text>
+            </View>
+          ) : null}
+
+          {/* ödüller toplamalı: yalnız bu atlayışta ödül VARSA yola çağır */}
+          {hasReward ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10 }}>
+              <Ionicons name="gift" size={13} color={theme.accent} />
+              <Text style={{ color: theme.accent, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t('level.claimHint')}</Text>
+            </View>
+          ) : null}
+
+          <View style={{ alignSelf: 'stretch', marginTop: 16, gap: 8 }}>
+            {hasReward && onGoToRoad ? (
+              <>
+                <Btn big kind="accent" label={t('level.claim')} onPress={onGoToRoad} />
+                <Btn kind="ghost" label={t('common.continue')} onPress={onClose} />
+              </>
+            ) : (
+              <Btn big kind="primary" label={t('common.continue')} onPress={onClose} />
+            )}
+          </View>
+        </View>
+      </View>
+    </Animated.View>
+  );
+}
+
+// ---- Seviye Yolu — ortadan inen DOLAN kanal + sağlı-sollu ödül kartları ----
+// Kanal, geçilen seviyelerde o bölümün KADEME rengiyle dolar; mevcut seviyenin
+// segmenti XP oranınca kısmen dolar ve ucunda ışıyan bir kafa noktası taşır.
+// Kartlar zikzak dizilir; 5'in katları ifade, 10'un katları çerçeve vitrinidir.
+const ROAD_ROW_H = 92;
+const ROAD_ROW_H_MILESTONE = 132; // 5'in katları: büyük ödül satırı
+const ROAD_TRACK_W = 16;
+const roadRowH = (n: number) => (n % 5 === 0 ? ROAD_ROW_H_MILESTONE : ROAD_ROW_H);
+const roadRowTop = (n: number) => { let y = 0; for (let i = 1; i < n; i++) y += roadRowH(i); return y; };
+
+function segmentColor(n: number): string {
+  // n → n+1 segmentinin rengi: bulunduğu onluğun kademe rengi (ilk onluk zümrüt)
+  return levelTier(Math.floor(n / 10) * 10)?.c ?? theme.primary;
+}
+
+function RoadRow({ n, level, xp, claimed, premiumOwned, premiumClaimed, onFramePress, onClaim, onBuyPremium }: {
+  n: number; level: number; xp: number;
+  claimed: boolean; // bu seviyenin ödülü toplandı mı
+  premiumOwned: boolean;   // Premium Yol açık mı
+  premiumClaimed: boolean; // premium şeridin bu seviyesi toplandı mı
+  onFramePress?: (tier: LevelTier, unlocked: boolean) => void;
+  onClaim?: (n: number, pos: { x: number; y: number }, track?: 'free' | 'premium') => void;
+  onBuyPremium?: () => void; // kilitli premium karta dokunuldu → satın alma
+}) {
+  const done = n < level;
+  const current = n === level;
+  const reached = n <= level;
+  const claimable = reached && n % 5 === 0 && !claimed; // ödül YALNIZ 5'in katlarında
+  const tier = levelTier(n);
+  const isFrame = n % 10 === 0;
+  const powerId = LEVEL_POWER_UNLOCKS[n];
+  const milestone = n % 5 === 0; // tüm ödül seviyeleri büyük karttır (güç ya da çerçeve)
+  const segAbove = segmentColor(n - 1);
+  const segBelow = segmentColor(n);
+  const nodeColor = done || current ? (tier?.c ?? segmentColor(n)) : theme.border;
+  const left = n % 2 === 1; // tek seviyeler solda, çiftler sağda
+  const fillPct = current && level < LEVEL_CAP ? Math.max(0, Math.min(1, xp / xpForNextLevel(level))) : 0;
+
+  // kilometre taşı vurgu rengi: çerçevede kademe rengi, güçte gücün rengi, ifadede amber
+  const mColor = isFrame ? (tier?.c ?? theme.accent) : powerId ? POWERS[powerId].color : theme.accent;
+  const gems = levelRewardGems(n);
+  const gemChip = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: theme.panelInnerFill, borderRadius: 999, borderWidth: 1, borderColor: withAlpha(theme.gem, 0.5), paddingHorizontal: 7, paddingVertical: 3 }}>
+      <GemIcon size={11} />
+      <Text style={{ color: theme.gemText, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>+{gems}</Text>
+    </View>
+  );
+  const card = milestone ? (
+    // BÜYÜK ÖDÜL kartı: kilitliyken canlı önizleme, TOPLANABİLİRKEN parlak ve
+    // renkli (dokun → topla), toplanınca yeşil AÇILDI
+    <View style={{
+      flex: 1,
+      backgroundColor: claimable ? lighten(theme.card, 0.06) : theme.card,
+      borderRadius: 17,
+      borderWidth: claimable ? 3 : 2.5,
+      borderColor: claimable ? lighten(mColor, 0.12) : current ? mColor : claimed ? withAlpha(theme.primary, 0.7) : withAlpha(mColor, 0.55),
+      paddingVertical: 10, paddingHorizontal: 12,
+      opacity: reached ? 1 : 0.88,
+      shadowColor: claimable ? mColor : mColor,
+      shadowOpacity: claimable ? 0.8 : current ? 0.55 : 0.22,
+      shadowRadius: claimable ? 15 : current ? 12 : 8,
+      shadowOffset: { width: 0, height: 0 }, elevation: claimable ? 10 : current ? 8 : 4,
+    }}>
+      {/* yüzen bandrol — toplanabilirken DOLU renkli 'ÖDÜLÜ TOPLA' */}
+      <View style={{
+        position: 'absolute', top: -10, right: 10, flexDirection: 'row', alignItems: 'center', gap: 3,
+        backgroundColor: claimable ? mColor : claimed ? darken(theme.primary, 0.55) : darken(mColor, 0.55),
+        borderRadius: 999, borderWidth: 1.5,
+        borderColor: claimable ? lighten(mColor, 0.35) : claimed ? theme.primary : mColor,
+        paddingHorizontal: 7, paddingVertical: 2.5,
+        ...(claimable ? { shadowColor: mColor, shadowOpacity: 0.9, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 12 } : {}),
+      }}>
+        <Ionicons name={claimable ? 'gift' : claimed ? 'checkmark-circle' : 'star'} size={9} color={claimable ? theme.ink : claimed ? theme.primary : lighten(mColor, 0.2)} />
+        <Text style={{ color: claimable ? theme.ink : claimed ? theme.primary : lighten(mColor, 0.25), fontSize: 8.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5 }}>
+          {(claimable ? t('level.claim') : claimed ? t('level.frameOwned') : t('level.bigReward')).toLocaleUpperCase(currentLang())}
+        </Text>
+      </View>
+      <Text numberOfLines={1} style={{ color: done ? theme.muted : theme.text, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.4, ...engrave('sm') }}>
+        {t('level.levelN', { n: String(n) }).toLocaleUpperCase(currentLang())}
+      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 7 }}>
+        {isFrame && tier ? (
+          <Pressable onPress={() => onFramePress?.(tier, claimed)} hitSlop={6} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
+            <FrameArt tierKey={tier.key} size={54} locked={!claimed} well />
+          </Pressable>
+        ) : powerId ? (
+          <View>
+            <PowerArt powerId={powerId} size={54} locked={!claimed && !claimable} well />
+            {!claimed && !claimable ? (
+              <View style={{ position: 'absolute', right: -5, bottom: -5, width: 19, height: 19, borderRadius: 10, backgroundColor: theme.panelInk, borderWidth: 1.5, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="lock-closed" size={10} color={theme.muted} />
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text numberOfLines={2} style={{ color: claimed ? theme.muted : claimable ? lighten(mColor, 0.15) : mColor, fontSize: 10.5, lineHeight: 14, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.3, ...engrave('sm') }}>
+            {(isFrame && tier
+              ? t('level.tierFrameName', { name: t(tier.nameKey) })
+              : powerId
+                ? t(POWERS[powerId].nameKey)
+                : '').toLocaleUpperCase(currentLang())}
+          </Text>
+          {gemChip}
+        </View>
+      </View>
+    </View>
+  ) : (
+    <View style={{
+      flex: 1,
+      backgroundColor: claimable ? lighten(theme.card, 0.06) : theme.card,
+      borderRadius: 15,
+      borderWidth: claimable ? 2.5 : 1.5,
+      borderColor: claimable ? lighten(segBelow, 0.15) : current ? nodeColor : claimed ? withAlpha(nodeColor, 0.45) : theme.border,
+      paddingVertical: 9, paddingHorizontal: 11,
+      opacity: reached ? 1 : 0.6,
+      ...(claimable
+        ? { shadowColor: segBelow, shadowOpacity: 0.7, shadowRadius: 12, shadowOffset: { width: 0, height: 0 }, elevation: 8 }
+        : current ? { shadowColor: nodeColor, shadowOpacity: 0.5, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 7 } : {}),
+    }}>
+      <Text style={{ color: claimed ? theme.muted : theme.text, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.4, ...engrave('sm') }}>
+        {t('level.levelN', { n: String(n) }).toLocaleUpperCase(currentLang())}
+      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 }}>
+        {n === 1 ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Ionicons name="flag" size={11} color={theme.muted} />
+            <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold' }}>{t('level.start')}</Text>
+          </View>
+        ) : done ? (
+          // Ödülsüz ara seviye: geçildi işareti — toplanacak bir şey yok
+          <Ionicons name="checkmark-circle" size={14} color={withAlpha(theme.primary, 0.7)} />
+        ) : (
+          <Ionicons name="ellipse-outline" size={11} color={theme.border} />
+        )}
+      </View>
+    </View>
+  );
+
+  // toplanabilir kart dokunuşla ödülünü verir (dokunuş noktası uçuş başlangıcı)
+  const pressableCard = claimable && onClaim ? (
+    <Pressable
+      style={({ pressed }) => ({ flex: 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}
+      onPress={(e) => onClaim(n, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY }, 'free')}
+    >
+      {card}
+    </Pressable>
+  ) : card;
+
+  // ---- PREMIUM şerit kartı — ücretsiz kartın KARŞI yakasında, görkemli:
+  // altın çift çerçeve + koyu mor kadife zemin + PREMIUM bandrolü. Kilitliyken
+  // loş + kilit (dokun → satın alma), açıkken TOPLA parlaması / AÇILDI.
+  const pPower = PREMIUM_LEVEL_POWERS[n];
+  const pGems = premiumRewardGems(n);
+  const pClaimable = premiumOwned && reached && milestone && !premiumClaimed;
+  const premiumCard = milestone ? (
+    <Pressable
+      style={({ pressed }) => ({ flex: 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}
+      onPress={(e) => {
+        if (!premiumOwned) { onBuyPremium?.(); return; }
+        if (pClaimable && onClaim) onClaim(n, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY }, 'premium');
+      }}
+    >
+      <View style={{
+        flex: 1, backgroundColor: darken(theme.gold, 0.55), borderRadius: 18, padding: 2,
+        ...(pClaimable ? { shadowColor: theme.gold, shadowOpacity: 0.85, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 10 } : {}),
+      }}>
+        <View style={{
+          flex: 1, backgroundColor: '#241539', borderRadius: 16,
+          borderWidth: 2, borderColor: premiumOwned ? (pClaimable ? lighten(theme.gold, 0.2) : withAlpha(theme.gold, 0.75)) : withAlpha(theme.gold, 0.35),
+          paddingVertical: 10, paddingHorizontal: 12,
+          opacity: premiumOwned || pClaimable ? 1 : 0.8,
+        }}>
+          {/* PREMIUM bandrolü */}
+          <View style={{
+            position: 'absolute', top: -10, left: 10, flexDirection: 'row', alignItems: 'center', gap: 3,
+            backgroundColor: theme.gold, borderRadius: 999, borderWidth: 1.5, borderColor: lighten(theme.gold, 0.4),
+            paddingHorizontal: 7, paddingVertical: 2,
+          }}>
+            <Ionicons name="diamond" size={9} color={theme.ink} />
+            <Text style={{ color: theme.ink, fontSize: 8.5, fontFamily: 'Poppins-Black', letterSpacing: 0.8 }}>{t('premium.ribbon')}</Text>
+          </View>
+          {/* durum bandrolü — toplanabilir/toplandı */}
+          {premiumOwned && (pClaimable || premiumClaimed) ? (
+            <View style={{
+              position: 'absolute', top: -10, right: 10, flexDirection: 'row', alignItems: 'center', gap: 3,
+              backgroundColor: pClaimable ? theme.gold : darken(theme.primary, 0.55),
+              borderRadius: 999, borderWidth: 1.5, borderColor: pClaimable ? lighten(theme.gold, 0.35) : theme.primary,
+              paddingHorizontal: 7, paddingVertical: 2.5,
+            }}>
+              <Ionicons name={pClaimable ? 'gift' : 'checkmark-circle'} size={9} color={pClaimable ? theme.ink : theme.primary} />
+              <Text style={{ color: pClaimable ? theme.ink : theme.primary, fontSize: 8.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5 }}>
+                {(pClaimable ? t('level.claim') : t('level.frameOwned')).toLocaleUpperCase(currentLang())}
+              </Text>
+            </View>
+          ) : null}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
+            {pPower ? (
+              <View>
+                <PowerArt powerId={pPower} size={50} locked={!premiumOwned} />
+                {!premiumOwned ? (
+                  <View style={{ position: 'absolute', right: -5, bottom: -5, width: 19, height: 19, borderRadius: 10, backgroundColor: theme.panelInk, borderWidth: 1.5, borderColor: withAlpha(theme.gold, 0.6), alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="lock-closed" size={10} color={theme.gold} />
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text numberOfLines={2} style={{ color: premiumClaimed ? theme.muted : lighten(theme.gold, 0.15), fontSize: 10.5, lineHeight: 14, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.3, ...engrave('sm') }}>
+                {(pPower ? t(POWERS[pPower].nameKey) : '').toLocaleUpperCase(currentLang())}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: withAlpha(theme.gold, 0.12), borderRadius: 999, borderWidth: 1, borderColor: withAlpha(theme.gold, 0.5), paddingHorizontal: 7, paddingVertical: 3 }}>
+                <GemIcon size={11} />
+                <Text style={{ color: lighten(theme.gold, 0.2), fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>+{pGems}</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    </Pressable>
+  ) : null;
+
+  // düğümden karta uzanan bağ çizgisi
+  const tie = (
+    <View style={{ width: 16, height: 2, borderRadius: 1, backgroundColor: withAlpha(nodeColor, done || current ? 0.6 : 0.25) }} />
+  );
+
+  return (
+    <View style={{ height: roadRowH(n), flexDirection: 'row', alignItems: 'center' }}>
+      {/* SOL yuva — ücretsiz kart solda değilse ×5 satırında premium kart burada */}
+      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
+        {left ? pressableCard : premiumCard}
+        {left ? tie : premiumCard ? tie : null}
+      </View>
+      {/* ORTA kanal — beveled tüp + dolum + düğüm */}
+      <View style={{ width: 52, alignItems: 'center', alignSelf: 'stretch' }}>
+        <View style={{ flex: 1, width: ROAD_TRACK_W, backgroundColor: theme.panelInk, borderLeftWidth: 1.5, borderRightWidth: 1.5, borderColor: darken(theme.card, 0.35), overflow: 'hidden' }}>
+          {/* Dolgu KESİKSİZ akar: parça uçları yuvarlatılmaz (radius 0), satır
+              sınırında bir sonraki parçayla boşluksuz birleşir */}
+          <View style={{ flex: 1, marginHorizontal: 2.5, backgroundColor: n === 1 ? 'transparent' : done || current ? segAbove : theme.navyWell }} />
+        </View>
+        <View style={{
+          width: current ? 44 : milestone ? 38 : 32,
+          height: current ? 44 : milestone ? 38 : 32,
+          borderRadius: 22,
+          backgroundColor: done ? nodeColor : theme.panelInk,
+          borderWidth: current ? 3 : 2.5, borderColor: nodeColor,
+          alignItems: 'center', justifyContent: 'center',
+          ...(current ? { shadowColor: nodeColor, shadowOpacity: 0.9, shadowRadius: 12, shadowOffset: { width: 0, height: 0 }, elevation: 10 } : milestone && done ? { shadowColor: nodeColor, shadowOpacity: 0.5, shadowRadius: 7, shadowOffset: { width: 0, height: 0 }, elevation: 5 } : {}),
+        }}>
+          {done ? (
+            <Ionicons name="checkmark" size={milestone ? 19 : 16} color={theme.ink} />
+          ) : (
+            <Text style={{ color: current ? nodeColor : theme.muted, fontSize: current ? 16 : 12.5, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{n}</Text>
+          )}
+        </View>
+        <View style={{ flex: 1, width: ROAD_TRACK_W, backgroundColor: theme.panelInk, borderLeftWidth: 1.5, borderRightWidth: 1.5, borderColor: darken(theme.card, 0.35), overflow: 'hidden' }}>
+          <View style={{ flex: 1, marginHorizontal: 2.5, backgroundColor: n === LEVEL_CAP ? 'transparent' : done ? segBelow : theme.navyWell, overflow: 'hidden' }}>
+            {current && fillPct > 0 ? (
+              <>
+                <View style={{ height: `${Math.round(fillPct * 100)}%`, backgroundColor: segBelow }} />
+                <View style={{ position: 'absolute', top: `${Math.round(fillPct * 100)}%`, left: -1, right: -1, height: 7, marginTop: -3.5, borderRadius: 4, backgroundColor: lighten(segBelow, 0.45), shadowColor: segBelow, shadowOpacity: 1, shadowRadius: 7, shadowOffset: { width: 0, height: 0 }, elevation: 8 }} />
+              </>
+            ) : null}
+          </View>
+        </View>
+      </View>
+      {/* SAĞ yuva — ücretsiz kart sağda değilse ×5 satırında premium kart burada */}
+      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }}>
+        {!left ? tie : premiumCard ? tie : null}
+        {!left ? pressableCard : premiumCard}
+      </View>
+    </View>
+  );
+}
+
+// Toplanan elmasların karttan başlıktaki elmas hapına akışı (modal içi, hafif).
+function RoadClaimFly({ from, to, amount, onDone }: {
+  from: { x: number; y: number }; to: { x: number; y: number }; amount: number; onDone: () => void;
+}) {
+  const count = Math.max(4, Math.min(8, Math.round(amount / 12)));
+  const parts = useRef(
+    Array.from({ length: 8 }, () => ({ x: new Animated.Value(0), y: new Animated.Value(0), s: new Animated.Value(0), o: new Animated.Value(0) })),
+  ).current;
+  useEffect(() => {
+    let done = 0;
+    for (let i = 0; i < count; i++) {
+      const g = parts[i]!;
+      g.x.setValue(from.x + (Math.random() - 0.5) * 46);
+      g.y.setValue(from.y + (Math.random() - 0.5) * 30);
+      g.s.setValue(0);
+      g.o.setValue(0);
+      setTimeout(() => {
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(g.o, { toValue: 1, duration: 80, useNativeDriver: true }),
+            Animated.spring(g.s, { toValue: 1, friction: 5, tension: 150, useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(g.x, { toValue: to.x, duration: 460, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.y, { toValue: to.y, duration: 460, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.s, { toValue: 0.5, duration: 460, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(g.s, { toValue: 0.15, duration: 100, useNativeDriver: true }),
+            Animated.timing(g.o, { toValue: 0, duration: 100, useNativeDriver: true }),
+          ]),
+        ]).start(() => { done += 1; if (done === count) onDone(); });
+      }, 60 + i * 60);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 60 }]}>
+      {parts.slice(0, count).map((g, i) => (
+        <Animated.View key={i} style={{
+          position: 'absolute', left: -10, top: -10,
+          shadowColor: theme.gem, shadowOpacity: 0.9, shadowRadius: 7, shadowOffset: { width: 0, height: 0 }, elevation: 9,
+          opacity: g.o,
+          transform: [{ translateX: g.x }, { translateY: g.y }, { scale: g.s }],
+        }}>
+          <GemIcon size={20} />
+        </Animated.View>
+      ))}
+    </View>
+  );
+}
+
+// ---- Sezon geri sayımı — yol SEZONLUKTUR (her ay başa döner, Europe/Istanbul).
+// Ay sonuna kalan süreyi canlı gösterir; dakikada bir tazelenir.
+function msToSeasonEnd(): number {
+  const IST_OFFSET = 3 * 3600_000; // Istanbul = UTC+3 (DST yok)
+  const ist = new Date(Date.now() + IST_OFFSET);
+  const nextMonthStartIst = Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth() + 1, 1);
+  return nextMonthStartIst - IST_OFFSET - Date.now();
+}
+
+function SeasonCountdown() {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => setTick((n) => n + 1), 60_000);
+    return () => clearInterval(iv);
+  }, []);
+  const ms = Math.max(0, msToSeasonEnd());
+  const d = Math.floor(ms / 86_400_000);
+  const h = Math.floor((ms % 86_400_000) / 3_600_000);
+  const m = Math.max(1, Math.floor((ms % 3_600_000) / 60_000));
+  const left = d > 0 ? t('season.daysHours', { d: String(d), h: String(h) }) : t('season.hoursMin', { h: String(h), m: String(m) });
+  const urgent = d < 3; // son 3 gün: kırmızıya döner, aciliyet hissi
+  const c = urgent ? theme.danger : theme.accent;
+  return (
+    <View style={{
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      backgroundColor: withAlpha(c, 0.12), borderRadius: 999,
+      borderWidth: 1.5, borderColor: withAlpha(c, 0.55),
+      paddingHorizontal: 12, paddingVertical: 5, alignSelf: 'center',
+    }}>
+      <Ionicons name="hourglass" size={12} color={c} />
+      <Text style={{ color: c, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>
+        {t('season.endsIn', { t: left })}
+      </Text>
+    </View>
+  );
+}
+
+export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremium, lastClaim }: {
+  visible: boolean; profile: ProfileView | null; onClose: () => void;
+  onClaim?: (level: number, track?: 'free' | 'premium') => void; // karta dokununca sunucuya claim gönder
+  onBuyPremium?: () => void; // Premium Yol satın alma isteği
+  lastClaim?: { level: number; diamonds: number; emoteId: string | null; frameTier: string | null; powerId: string | null; track?: 'free' | 'premium'; seq: number } | null;
+}) {
+  const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
+  const level = profile?.level ?? 1;
+  const xp = profile?.xp ?? 0;
+  const [framePrev, setFramePrev] = useState<{ tier: LevelTier; unlocked: boolean } | null>(null);
+  // Yol aşağı kaydırılınca beliren "en yukarı dön" düğmesi
+  const [showTopBtn, setShowTopBtn] = useState(false);
+  // Premium Yol: satın alma onay penceresi
+  const [buyOpen, setBuyOpen] = useState(false);
+  const premiumOwned = profile?.premiumRoad ?? false;
+  const claimedSet = useMemo(() => new Set(profile?.claimedLevels ?? []), [profile?.claimedLevels]);
+  const claimedPremiumSet = useMemo(() => new Set(profile?.claimedPremium ?? []), [profile?.claimedPremium]);
+  // --- toplama animasyonu: dokunulan karttan başlığın elmas hapına elmas uçar ---
+  const pillRef = useRef<View>(null);
+  const pillPos = useRef({ x: SCREEN_W - 54, y: 40 });
+  const claimPos = useRef<{ x: number; y: number } | null>(null);
+  const claimBusy = useRef(false);
+  const [claimFly, setClaimFly] = useState<{ from: { x: number; y: number }; amount: number; key: number } | null>(null);
+  const [celeb, setCeleb] = useState<{ tierKey?: string; emoteId?: string; powerId?: PowerId } | null>(null);
+  const [shownDiamonds, setShownDiamonds] = useState(profile?.diamonds ?? 0);
+  const lastSeq = useRef(lastClaim?.seq ?? 0);
+  useEffect(() => {
+    // uçuş yoksa hap gerçek bakiyeyi izler
+    if (!claimFly) setShownDiamonds(profile?.diamonds ?? 0);
+  }, [profile?.diamonds, claimFly]);
+  useEffect(() => {
+    if (!visible || !lastClaim || lastClaim.seq === lastSeq.current) return;
+    lastSeq.current = lastClaim.seq;
+    claimBusy.current = false;
+    // hap toplanan miktar KADAR eksik gösterir; elmaslar inince tamamlanır
+    setShownDiamonds(Math.max(0, (profile?.diamonds ?? 0) - lastClaim.diamonds));
+    setClaimFly({ from: claimPos.current ?? { x: SCREEN_W / 2, y: 300 }, amount: lastClaim.diamonds, key: lastClaim.seq });
+  }, [visible, lastClaim, profile?.diamonds]);
+  const handleClaimPress = useCallback((n: number, pos: { x: number; y: number }, track: 'free' | 'premium' = 'free') => {
+    if (claimBusy.current || !onClaim) return;
+    claimBusy.current = true;
+    claimPos.current = pos;
+    onClaim(n, track);
+  }, [onClaim]);
+  const handleFlyDone = useCallback(() => {
+    setClaimFly(null);
+    setShownDiamonds(profile?.diamonds ?? 0);
+    // elmaslar indikten sonra büyük ödülün kutlaması: çerçeve, özel ifade ya da güç
+    if (lastClaim?.frameTier) setCeleb({ tierKey: lastClaim.frameTier });
+    else if (lastClaim?.emoteId) setCeleb({ emoteId: lastClaim.emoteId });
+    else if (lastClaim?.powerId) setCeleb({ powerId: lastClaim.powerId as PowerId });
+  }, [profile?.diamonds, lastClaim?.frameTier, lastClaim?.emoteId, lastClaim?.powerId]);
+  // sıradaki 5'in katı = sıradaki büyük ödül (çerçeve ya da özel ifade)
+  const nextMilestone = level >= LEVEL_CAP ? null : Math.min(LEVEL_CAP, (Math.floor(level / 5) + 1) * 5);
+  const nextIsFrame = nextMilestone != null && nextMilestone % 10 === 0;
+  const nextTier = nextMilestone != null ? levelTier(nextMilestone) : null;
+  const nextPower = nextMilestone != null ? LEVEL_POWER_UNLOCKS[nextMilestone] : undefined;
+  const nextColor = nextIsFrame ? (nextTier?.c ?? theme.accent) : nextPower ? POWERS[nextPower].color : theme.accent;
+  useEffect(() => {
+    if (!visible) return;
+    const tm = setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(0, roadRowTop(level) - ROAD_ROW_H), animated: false });
+    }, 60);
+    return () => clearTimeout(tm);
+  }, [visible, level]);
+  if (!visible) return null;
+
+  return (
+    <Modal visible transparent animationType="slide" presentationStyle="overFullScreen" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <ScreenBg />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: insets.top + 8, paddingBottom: 12, paddingHorizontal: 14, backgroundColor: theme.bg2, borderBottomWidth: 2, borderBottomColor: theme.cardLip }}>
+          <Pressable onPress={onClose} hitSlop={10} style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 14, backgroundColor: pressed ? theme.bg2 : theme.card, borderWidth: 2, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', transform: [{ translateY: pressed ? 2 : 0 }] })}>
+            <Ionicons name="chevron-back" size={22} color={theme.text} />
+          </Pressable>
+          <Text style={{ flex: 1, color: theme.text, fontFamily: 'Poppins-Black', fontSize: 17, letterSpacing: 0.5, ...engrave('lg') }}>{t('level.roadTitle').toLocaleUpperCase(currentLang())}</Text>
+          <View
+            ref={pillRef}
+            collapsable={false}
+            onLayout={() => pillRef.current?.measureInWindow((x, y, w, h) => { if (w > 0) pillPos.current = { x: x + w / 2, y: y + h / 2 }; })}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.card, borderRadius: 999, borderWidth: 2, borderColor: withAlpha(theme.gem, 0.6), paddingHorizontal: 10, paddingVertical: 5 }}
+          >
+            <GemIcon size={14} />
+            <Text style={{ color: theme.gemText, fontSize: 13, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>{shownDiamonds}</Text>
+          </View>
+          <LevelBadge level={level} size={38} />
+        </View>
+        <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+          {/* Sezon geri sayımı — yol her ay yenilenir */}
+          <View style={{ marginBottom: 8 }}>
+            <SeasonCountdown />
+          </View>
+          <GamePanel hero bodyStyle={{ gap: 8, paddingVertical: 14 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <LevelBadge level={level} size={52} />
+              <View style={{ flex: 1, gap: 5 }}>
+                <Text style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t('level.levelN', { n: String(level) })}</Text>
+                {level < LEVEL_CAP ? (
+                  <>
+                    <XpBar xp={xp} level={level} height={10} />
+                    <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{t('level.toNext', { n: String(xpForNextLevel(level) - xp) })}</Text>
+                  </>
+                ) : (
+                  <Text style={{ color: theme.flame, fontSize: 12, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t('level.maxed')}</Text>
+                )}
+              </View>
+            </View>
+          </GamePanel>
+          {/* Sıradaki büyük ödül — heyecan kancası; dokununca o satıra kayar */}
+          {nextMilestone ? (
+            <Pressable
+              onPress={() => scrollRef.current?.scrollTo({ y: Math.max(0, roadRowTop(nextMilestone) - ROAD_ROW_H * 0.7), animated: true })}
+              style={({ pressed }) => ({ marginTop: 8, transform: [{ translateY: pressed ? 2 : 0 }] })}
+            >
+              <View style={{ backgroundColor: darken(theme.card, 0.5), borderRadius: 17, paddingBottom: 2.5 }}>
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 10,
+                  backgroundColor: theme.card, borderRadius: 17, borderWidth: 2,
+                  borderColor: withAlpha(nextColor, 0.7), paddingVertical: 8, paddingHorizontal: 11,
+                }}>
+                  {nextIsFrame && nextTier ? (
+                    <FrameArt tierKey={nextTier.key} size={44} well />
+                  ) : nextPower ? (
+                    <PowerArt powerId={nextPower} size={44} well />
+                  ) : null}
+                  <View style={{ flex: 1, gap: 1 }}>
+                    <Text style={{ color: theme.muted, fontSize: 9, fontFamily: 'Poppins-ExtraBold', letterSpacing: 1.1 }}>{t('level.nextReward').toLocaleUpperCase(currentLang())}</Text>
+                    <Text numberOfLines={1} style={{ color: nextColor, fontSize: 13, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.3, ...engrave('sm') }}>
+                      {(nextIsFrame && nextTier ? t('level.tierFrameName', { name: t(nextTier.nameKey) }) : nextPower ? t(POWERS[nextPower].nameKey) : '').toLocaleUpperCase(currentLang())}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'center', gap: 2 }}>
+                    <View style={{ backgroundColor: withAlpha(nextColor, 0.14), borderRadius: 999, borderWidth: 1, borderColor: withAlpha(nextColor, 0.55), paddingHorizontal: 8, paddingVertical: 3 }}>
+                      <Text style={{ color: nextColor, fontSize: 10, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>{t('level.levelsLeft', { n: String(nextMilestone - level) })}</Text>
+                    </View>
+                    <Ionicons name="chevron-down" size={13} color={theme.muted} />
+                  </View>
+                </View>
+              </View>
+            </Pressable>
+          ) : null}
+          {/* PREMIUM YOL banner'ı — açık değilken görkemli altın davet */}
+          {!premiumOwned ? (
+            <Pressable onPress={() => setBuyOpen(true)} style={({ pressed }) => ({ marginTop: 8, transform: [{ translateY: pressed ? 2 : 0 }] })}>
+              <View style={{ backgroundColor: darken(theme.gold, 0.55), borderRadius: 18, padding: 2, shadowColor: theme.gold, shadowOpacity: 0.55, shadowRadius: 12, shadowOffset: { width: 0, height: 0 }, elevation: 9 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: '#241539', borderRadius: 16, borderWidth: 2, borderColor: withAlpha(theme.gold, 0.8), paddingVertical: 10, paddingHorizontal: 12 }}>
+                  <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: withAlpha(theme.gold, 0.15), borderWidth: 2, borderColor: theme.gold, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="diamond" size={20} color={theme.gold} />
+                  </View>
+                  <View style={{ flex: 1, gap: 1 }}>
+                    <Text style={{ color: lighten(theme.gold, 0.25), fontSize: 13.5, fontFamily: 'Poppins-Black', letterSpacing: 0.6, ...engrave('sm') }}>{t('premium.bannerTitle').toLocaleUpperCase(currentLang())}</Text>
+                    <Text numberOfLines={2} style={{ color: theme.muted, fontSize: 10.5, lineHeight: 14, fontFamily: 'Poppins-SemiBold' }}>{t('premium.bannerDesc')}</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.gold, borderRadius: 999, borderWidth: 1.5, borderColor: lighten(theme.gold, 0.4), paddingHorizontal: 10, paddingVertical: 5 }}>
+                    <GemIcon size={13} />
+                    <Text style={{ color: theme.ink, fontSize: 12.5, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{PREMIUM_ROAD_PRICE}</Text>
+                  </View>
+                </View>
+              </View>
+            </Pressable>
+          ) : null}
+        </View>
+        <ScrollView
+          ref={scrollRef}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: insets.bottom + 26 }}
+          showsVerticalScrollIndicator={false}
+          onScroll={(e) => setShowTopBtn(e.nativeEvent.contentOffset.y > ROAD_ROW_H * 2)}
+          scrollEventThrottle={32}
+        >
+          {Array.from({ length: LEVEL_CAP }, (_, i) => (
+            <RoadRow
+              key={i + 1} n={i + 1} level={level} xp={xp}
+              claimed={claimedSet.has(i + 1)}
+              premiumOwned={premiumOwned}
+              premiumClaimed={claimedPremiumSet.has(i + 1)}
+              onFramePress={(tier, unlocked) => setFramePrev({ tier, unlocked: unlocked || ownsFrame(profile, tier.key) })}
+              onClaim={handleClaimPress}
+              onBuyPremium={() => setBuyOpen(true)}
+            />
+          ))}
+        </ScrollView>
+        {showTopBtn ? (
+          <Pressable
+            onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+            hitSlop={8}
+            style={({ pressed }) => ({
+              position: 'absolute', right: 16, bottom: insets.bottom + 18,
+              width: 46, height: 46, borderRadius: 16,
+              backgroundColor: pressed ? theme.bg2 : theme.card,
+              borderWidth: 2, borderColor: withAlpha(theme.accent, 0.6),
+              alignItems: 'center', justifyContent: 'center',
+              transform: [{ translateY: pressed ? 2 : 0 }],
+              shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 4 },
+            })}
+          >
+            <Ionicons name="chevron-up" size={24} color={theme.accent} />
+          </Pressable>
+        ) : null}
+        {claimFly ? (
+          <RoadClaimFly key={claimFly.key} from={claimFly.from} to={pillPos.current} amount={claimFly.amount} onDone={handleFlyDone} />
+        ) : null}
+        {celeb ? (
+          <FrameUnlockCelebration tierKey={celeb.tierKey} emoteId={celeb.emoteId} powerId={celeb.powerId} onDone={() => setCeleb(null)} />
+        ) : null}
+        {/* Premium Yol satın alma onayı — faydalar + fiyat */}
+        <GameModal visible={buyOpen} onClose={() => setBuyOpen(false)} title={t('premium.bannerTitle').toLocaleUpperCase(currentLang())} icon="diamond">
+          <View style={{ alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <PowerArt powerId="xp2x" size={52} />
+              <PowerArt powerId="shield" size={52} />
+              <PowerArt powerId="streak" size={52} />
+            </View>
+            <Text style={{ color: theme.text, fontSize: 13, lineHeight: 19, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>
+              {t('premium.confirmBody')}
+            </Text>
+          </View>
+          <View style={{ gap: 8 }}>
+            <Btn big kind="accent" gem label={t('premium.unlockBtn', { n: String(PREMIUM_ROAD_PRICE) })} onPress={() => { setBuyOpen(false); onBuyPremium?.(); }} />
+            <Btn kind="ghost" label={t('power.cancel')} onPress={() => setBuyOpen(false)} />
+          </View>
+        </GameModal>
+        <FramePreviewModal tier={framePrev?.tier ?? null} unlocked={framePrev?.unlocked ?? false} visible={framePrev != null} onClose={() => setFramePrev(null)} />
+      </View>
+    </Modal>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent', padding: 22, justifyContent: 'center' },
   center: { alignItems: 'center', gap: 6 },
@@ -8927,9 +10733,8 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: theme.panelInnerFill, // recessed inner well
     color: theme.text,
-    borderColor: theme.border,
+    borderColor: theme.border, // tek parça halka — üstte kesik yok
     borderWidth: 2,
-    borderTopColor: theme.cardLip, // dark top edge = sunken
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 13,
@@ -8939,12 +10744,12 @@ const styles = StyleSheet.create({
   },
   lobbyName: { color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') },
   // Recessed waiting chip (lobby waiting / wait-host states)
-  lobbyWaitChip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, alignSelf: 'center', backgroundColor: theme.panelInnerFill, borderRadius: 14, borderWidth: 2, borderColor: theme.border, borderTopColor: theme.cardLip, paddingVertical: 10, paddingHorizontal: 16 },
+  lobbyWaitChip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, alignSelf: 'center', backgroundColor: theme.panelInnerFill, borderRadius: 14, borderWidth: 2, borderColor: theme.border, paddingVertical: 10, paddingHorizontal: 16 },
   teamsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
-  teamCard: { flex: 1, backgroundColor: theme.card, borderRadius: 16, padding: 14, alignItems: 'center', gap: 8, borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss, borderBottomWidth: 4, borderBottomColor: theme.cardLip, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 5 }, elevation: 7 },
+  teamCard: { flex: 1, backgroundColor: theme.card, borderRadius: 16, padding: 14, alignItems: 'center', gap: 8, borderWidth: 2, borderColor: theme.border, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 5 }, elevation: 7 },
   teamName: { color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') },
   plus: { color: theme.accent, fontSize: 22, fontFamily: 'Poppins-Black', ...engrave('sm') },
-  passHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: withAlpha(theme.accent, 0.12), borderRadius: 12, paddingVertical: 7, paddingHorizontal: 12, marginBottom: 8, borderWidth: 1.5, borderColor: theme.border, borderTopColor: theme.cardLip, borderLeftWidth: 3, borderLeftColor: theme.accent },
+  passHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: withAlpha(theme.accent, 0.12), borderRadius: 12, paddingVertical: 7, paddingHorizontal: 12, marginBottom: 8, borderWidth: 1.5, borderColor: theme.border, borderLeftWidth: 3, borderLeftColor: theme.accent },
   passHintText: { color: theme.accent, fontSize: 12, fontFamily: 'Poppins-SemiBold', flexShrink: 1 },
   playerPhoto: { width: 104, height: 104, borderRadius: 52, marginTop: 10, borderWidth: 3, borderColor: theme.primary, backgroundColor: theme.card },
   matched: { color: theme.text, fontSize: 19, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginTop: 4, ...engrave('sm') },
@@ -8953,7 +10758,7 @@ const styles = StyleSheet.create({
   fixRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   fixText: { color: theme.accent, fontSize: 12, fontFamily: 'Poppins-SemiBold' },
   teamResultRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  teamResult: { flex: 1, backgroundColor: theme.card, borderRadius: 16, borderWidth: 2, borderColor: theme.border, borderTopColor: theme.panelTopGloss, borderBottomWidth: 4, borderBottomColor: theme.cardLip, padding: 12, alignItems: 'center', gap: 6, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+  teamResult: { flex: 1, backgroundColor: theme.card, borderRadius: 16, borderWidth: 2, borderColor: theme.border, padding: 12, alignItems: 'center', gap: 6, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
   teamResultName: { color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') },
   teamResultYears: { color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', textAlign: 'center' },
   careerList: { alignSelf: 'stretch', maxHeight: 220 },
@@ -8991,10 +10796,7 @@ const styles = StyleSheet.create({
     padding: 12,
     marginVertical: 4,
     borderWidth: 2,
-    borderColor: theme.border,
-    borderTopColor: theme.panelTopGloss,
-    borderBottomWidth: 3,
-    borderBottomColor: theme.cardLip,
+    borderColor: theme.border, // tek parça halka — alt kenar da görünür
     shadowColor: '#000',
     shadowOpacity: 0.3,
     shadowRadius: 7,

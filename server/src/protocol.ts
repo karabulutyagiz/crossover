@@ -58,6 +58,21 @@ export interface ProfileView {
   socialPackUntil: string | null; // ISO date or null
   arena: ArenaView;
   avatar: string | null; // chosen profile-picture id (e.g. 'pp7') or null
+  xp: number;    // mevcut seviye içindeki ilerleme
+  level: number; // 1..50
+  selectedFrame: string | null; // takılı profil çerçevesi (bronze..goat) ya da null
+  claimedLevels: number[]; // Seviye Yolu'nda toplanmış ödül seviyeleri
+  powerXp2x?: number;       // envanterdeki 2x XP jetonu adedi
+  powerShield?: number;     // envanterdeki kupa kalkanı adedi
+  xpBoostUntil?: string | null; // aktif 2x XP penceresinin bitişi (ISO) ya da null
+  shieldArmed?: boolean;    // kuşanılmış kupa kalkanı
+  winStreak?: number;       // güncel dereceli galibiyet serisi
+  bestStreak?: number;      // tüm zamanların en yüksek serisi
+  powerStreak?: number;     // envanterdeki Seri Geri Yükleme adedi
+  lostStreak?: number;      // son mağlubiyette kırılan seri (geri yüklenebilir)
+  premiumRoad?: boolean;    // Premium Seviye Yolu açık mı (sezonluk)
+  claimedPremium?: number[]; // Premium şeritte toplanmış ödül seviyeleri
+  ownedFrames?: string[];   // KALICI çerçeve sahipliği (sezonlar arası korunur)
 }
 
 export interface PlayerView {
@@ -70,6 +85,8 @@ export interface PlayerView {
   trophies?: number;
   arena?: ArenaView;
   avatar?: string | null;
+  level?: number; // eşleşme kartındaki seviye rozeti için
+  frame?: string | null; // takılı profil çerçevesi — rakip de görür
 }
 
 export interface RoomView {
@@ -102,9 +119,15 @@ export type ClientMsg =
   | { type: 'rematch_response'; accept: boolean }
   | { type: 'send_emote'; emoteId: string } // show an emote to the opponent during a match
   | { type: 'buy_emote'; emoteId: string } // purchase a premium emote with diamonds
-  | { type: 'equip_emotes'; emoteIds: string[] } // set the match loadout (max 3 visual)
+  | { type: 'equip_emotes'; emoteIds: string[] } // set the match loadout (max 8 stickers)
   | { type: 'buy_avatar'; avatarId: string } // purchase a premium profile avatar with diamonds
   | { type: 'set_avatar'; avatar: string | null } // choose/select profile picture ('pp7' or null)
+  | { type: 'set_frame'; frameId: string | null }
+  | { type: 'claim_level_reward'; level: number; track?: 'free' | 'premium' } // Seviye Yolu kartına dokunarak ödül topla (şerit seçimiyle)
+  | { type: 'buy_premium_road' } // Premium Seviye Yolu'nu 1000 elmasla aç
+  | { type: 'buy_power'; powerId: 'xp2x' | 'shield' | 'streak' } // mağazadan güç satın al
+  | { type: 'use_power'; powerId: 'xp2x' | 'shield' | 'streak' } // envanterdeki tek kullanımlık gücü etkinleştir
+  | { type: 'get_my_stats' } // profil istatistikleri: seri rekoru + mod bazlı K/M
   | { type: 'verify_purchase'; receipt: string } // validate an Apple IAP receipt → grant diamonds
   | { type: 'grant_ad_reward' } // watched a rewarded ad → credit a few diamonds (capped server-side)
   | { type: 'search_clubs'; reqId: string; q: string }
@@ -181,7 +204,13 @@ export type ServerMsg =
   | { type: 'rematch_requested'; byId: string; byName: string } // opponent wants to play again
   | { type: 'rematch_waiting' } // your rematch request was sent, waiting for opponent
   | { type: 'rematch_declined' } // opponent declined your rematch request
-  | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView; diamonds?: number; arenaReward?: number }
+  | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView; diamonds?: number; arenaReward?: number; shielded?: boolean; winStreak?: number; bestStreak?: number } // shielded: Kupa Kalkanı bu mağlubiyetin kupa kaybını emdi
+  | { type: 'xp_update'; xp: number; level: number; xpForNext: number; gained: number; leveledUp: { level: number; diamonds: number; emoteId?: string; powerId?: string }[]; diamonds?: number; boosted?: boolean }
+  | { type: 'level_reward_claimed'; level: number; diamonds: number; emoteId: string | null; frameTier: string | null; powerId?: string | null; track?: 'free' | 'premium'; profile: ProfileView } // yol kartından ödül toplandı // maç sonu seviye ilerlemesi
+  | { type: 'premium_road_purchased'; profile: ProfileView } // Premium Yol açıldı
+  | { type: 'power_purchased'; powerId: string; profile: ProfileView } // mağazadan güç alındı
+  | { type: 'power_used'; powerId: string; profile: ProfileView } // güç etkinleştirildi (jeton düştü / kalkan kuşanıldı)
+  | { type: 'my_stats'; winStreak: number; bestStreak: number; modes: { mode: string; wins: number; losses: number }[] } // profil istatistikleri
   | { type: 'emote'; fromId: string; emoteId: string } // a player in the room sent an emote
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string } // store purchase succeeded
   | { type: 'avatar_purchased'; profile: ProfileView; avatarId: string }
@@ -230,6 +259,7 @@ export interface ConversationView {
   lastMessageAt: string;
   unreadCount: number;
   avatar?: string | null;
+  frame?: string | null; // takılı profil çerçevesi
 }
 
 export interface PublicProfile {
@@ -241,6 +271,7 @@ export interface PublicProfile {
   losses: number;
   arena: ArenaView;
   avatar?: string | null;
+  frame?: string | null; // takılı profil çerçevesi
 }
 
 export interface MatchHistoryView {
@@ -270,6 +301,7 @@ export interface FriendView {
   arena: ArenaView;
   online: boolean;
   avatar?: string | null;
+  frame?: string | null; // takılı profil çerçevesi
   lastSeen?: string | null; // ISO; when they were last online (for offline friends)
 }
 

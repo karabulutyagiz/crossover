@@ -6,12 +6,13 @@ import { listScopes, listNationalities } from '../game/verify.ts';
 import {
   findOrCreateUser, findOrCreateUserByProvider, createGuestUser, getUser, changeDisplayName,
   grantDevEmotesIfNeeded,
-  setUsername, buyEmote, setEquippedEmotes, setAvatar, buyAvatar, touchLastSeen, getLeaderboard, grantAdReward,
+  setUsername, buyEmote, setEquippedEmotes, setAvatar, setSelectedFrame, buyAvatar, touchLastSeen, getLeaderboard, grantAdReward, usePower, getModeStats, buyPremiumRoad, buyPower,
   listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
   removeFriend, searchUsers, getMatchHistory, deleteAccount,
   type UserProfile,
 } from '../game/rank.ts';
 import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
+import { claimLevelReward } from '../game/level.ts';
 import { censorMessage } from '../game/username.ts';
 import { verifyApplePurchase } from '../game/iap.ts';
 import { registerPushToken, sendPushToUsers, startPushCrons } from '../game/push.ts';
@@ -45,6 +46,21 @@ function toProfileView(p: UserProfile): ProfileView {
     socialPackUntil: p.socialPackUntil,
     arena: p.arena,
     avatar: p.avatar,
+    xp: p.xp,
+    level: p.level,
+    selectedFrame: p.selectedFrame,
+    claimedLevels: p.claimedLevels,
+    powerXp2x: p.powerXp2x,
+    powerShield: p.powerShield,
+    xpBoostUntil: p.xpBoostUntil,
+    shieldArmed: p.shieldArmed,
+    winStreak: p.winStreak,
+    bestStreak: p.bestStreak,
+    powerStreak: p.powerStreak,
+    lostStreak: p.lostStreak,
+    premiumRoad: p.premiumRoad,
+    claimedPremium: p.claimedPremium,
+    ownedFrames: p.ownedFrames,
   };
 }
 
@@ -408,6 +424,112 @@ export function startServer(port: number): Server {
         return;
       }
 
+      // Profil çerçevesi tak/kaldır (seviye ödülü). Hesap güncellenir, sonra
+      // maçtaki rakibe ve çevrimiçi arkadaşlara anında yansıtılır.
+      if (msg.type === 'set_frame') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          const result = await setSelectedFrame(userProfile!.id, msg.frameId ?? null);
+          if (!result.ok) return transport.send({ type: 'error', message: result.error });
+          userProfile = result.profile;
+          transport.send({ type: 'profile', profile: toProfileView(result.profile) });
+          if (ctx?.room) ctx.room.setFrameFor(userProfile!.id, result.profile.selectedFrame);
+          const friends = await listFriends(userProfile!.id);
+          for (const f of friends) sendToUser(f.userId, await getFriendsData(f.userId));
+        })();
+        return;
+      }
+
+      // Seviye Yolu kartına dokunuldu — ödülü tek seferlik ver, taze profili gönder.
+      if (msg.type === 'claim_level_reward') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          const result = await claimLevelReward(userProfile!.id, msg.level, msg.track ?? 'free');
+          if (!result.ok) return transport.send({ type: 'error', message: result.error });
+          const fresh = await getUser(userProfile!.id);
+          if (fresh) userProfile = fresh;
+          transport.send({
+            type: 'level_reward_claimed',
+            level: result.claim.level,
+            diamonds: result.claim.diamonds,
+            emoteId: result.claim.emoteId,
+            frameTier: result.claim.frameTier,
+            powerId: result.claim.powerId,
+            track: result.claim.track,
+            profile: toProfileView(userProfile!),
+          });
+        })();
+        return;
+      }
+
+      // Profil istatistikleri: seri rekoru + mod bazlı kazanma/kaybetme kırılımı.
+      if (msg.type === 'get_my_stats') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          try {
+            const fresh = await getUser(userProfile!.id);
+            if (fresh) userProfile = fresh;
+            const modes = await getModeStats(userProfile!.id);
+            transport.send({ type: 'my_stats', winStreak: userProfile!.winStreak, bestStreak: userProfile!.bestStreak, modes });
+          } catch (err) {
+            console.error('[get_my_stats] failed:', err instanceof Error ? err.message : err);
+            transport.send({ type: 'error', message: 'İstatistikler alınamadı' });
+          }
+        })();
+        return;
+      }
+
+      // Premium Seviye Yolu satın alma — 1000 elmas, tek seferlik, atomik.
+      if (msg.type === 'buy_premium_road') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          try {
+            const result = await buyPremiumRoad(userProfile!.id);
+            if (!result.ok) return transport.send({ type: 'error', message: result.error });
+            userProfile = result.profile;
+            transport.send({ type: 'premium_road_purchased', profile: toProfileView(result.profile) });
+          } catch (err) {
+            console.error('[buy_premium_road] failed:', err instanceof Error ? err.message : err);
+            transport.send({ type: 'error', message: 'Satın alma başarısız' });
+          }
+        })();
+        return;
+      }
+
+      // Mağazadan güç satın alma — elmas düşer, envanter artar (atomik).
+      if (msg.type === 'buy_power') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          try {
+            const result = await buyPower(userProfile!.id, msg.powerId);
+            if (!result.ok) return transport.send({ type: 'error', message: result.error });
+            userProfile = result.profile;
+            transport.send({ type: 'power_purchased', powerId: msg.powerId, profile: toProfileView(result.profile) });
+          } catch (err) {
+            console.error('[buy_power] failed:', err instanceof Error ? err.message : err);
+            transport.send({ type: 'error', message: 'Satın alma başarısız' });
+          }
+        })();
+        return;
+      }
+
+      // Özel güç etkinleştirme: 2x XP jetonu (1 saat) ya da Kupa Kalkanı kuşan.
+      if (msg.type === 'use_power') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          try {
+            const result = await usePower(userProfile!.id, msg.powerId);
+            if (!result.ok) return transport.send({ type: 'error', message: result.error });
+            userProfile = result.profile;
+            transport.send({ type: 'power_used', powerId: msg.powerId, profile: toProfileView(result.profile) });
+          } catch (err) {
+            console.error('[use_power] failed:', err instanceof Error ? err.message : err);
+            transport.send({ type: 'error', message: 'Güç kullanılamadı' });
+          }
+        })();
+        return;
+      }
+
       if (msg.type === 'buy_avatar') {
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce kayıt ol' });
         void (async () => {
@@ -596,8 +718,8 @@ export function startServer(port: number): Server {
         const room = manager.createRoom();
         if (inv.options?.scope) room.scope = inv.options.scope;
         room.gameMode = requestedMode;
-        const resA = room.addPlayer(inv.fromName, inv.transport, true, inv.fromUserId, inv.userProfile?.trophies, inv.userProfile?.arena, inv.userProfile?.avatar);
-        const resB = room.addPlayer(userProfile.displayName, transport, false, userProfile.id, userProfile.trophies, userProfile.arena, userProfile.avatar);
+        const resA = room.addPlayer(inv.fromName, inv.transport, true, inv.fromUserId, inv.userProfile?.trophies, inv.userProfile?.arena, inv.userProfile?.avatar, inv.userProfile?.level, inv.userProfile?.selectedFrame);
+        const resB = room.addPlayer(userProfile.displayName, transport, false, userProfile.id, userProfile.trophies, userProfile.arena, userProfile.avatar, userProfile.level, userProfile.selectedFrame);
         if (resA.ok) inv.setCtx({ room, playerId: resA.id, userProfile: inv.userProfile });
         if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
         setTimeout(() => { if (room.size === 2) room.handle(resA.ok ? resA.id : '', { type: 'start' }); }, 3500);
@@ -618,7 +740,7 @@ export function startServer(port: number): Server {
           if (!u) return transport.send({ type: 'error', message: 'Kullanıcı bulunamadı' });
           transport.send({
             type: 'user_profile',
-            profile: { userId: u.id, displayName: u.displayName, selectedAvatar: u.selectedAvatar, trophies: u.trophies, wins: u.wins, losses: u.losses, arena: u.arena, avatar: u.avatar },
+            profile: { userId: u.id, displayName: u.displayName, selectedAvatar: u.selectedAvatar, trophies: u.trophies, wins: u.wins, losses: u.losses, arena: u.arena, avatar: u.avatar, frame: u.selectedFrame },
           });
         })();
         return;
@@ -716,7 +838,7 @@ export function startServer(port: number): Server {
         void (async () => {
           // Get distinct conversation partners with last message + unread count
           const { rows } = await pool.query<{
-            partner_id: string; partner_name: string; partner_avatar: string | null; last_body: string; last_at: string; unread: string;
+            partner_id: string; partner_name: string; partner_avatar: string | null; partner_frame: string | null; last_body: string; last_at: string; unread: string;
           }>(`
             WITH convos AS (
               SELECT
@@ -730,6 +852,7 @@ export function startServer(port: number): Server {
               c.partner_id,
               u.display_name AS partner_name,
               COALESCE(u.avatar, u.selected_avatar) AS partner_avatar,
+              u.selected_frame AS partner_frame,
               c.body AS last_body,
               c.created_at AS last_at,
               COALESCE((SELECT COUNT(*) FROM messages WHERE from_user = c.partner_id AND to_user = $1 AND read_at IS NULL), 0) AS unread
@@ -748,6 +871,7 @@ export function startServer(port: number): Server {
             lastMessageAt: r.last_at,
             unreadCount: Number(r.unread),
             avatar: r.partner_avatar ?? null,
+            frame: r.partner_frame ?? null,
           }));
           transport.send({ type: 'conversation_list', conversations });
         })();
@@ -825,10 +949,11 @@ export function startServer(port: number): Server {
             if (partner && partner.ws.readyState === partner.ws.OPEN) {
               // Create room and add both
               const room = manager.createRoom();
+              room.ranked = true; // yalnız hızlı eşleşme kupa + XP verir
               if (msg.options?.scope) room.scope = msg.options.scope;
               room.gameMode = requestedMode;
-              const resA = room.addPlayer(partner.name, partner.transport, true, partner.userProfile?.id ?? partner.userId, partner.userProfile?.trophies, partner.userProfile?.arena, partner.userProfile?.avatar);
-              const resB = room.addPlayer(name, transport, false, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
+              const resA = room.addPlayer(partner.name, partner.transport, true, partner.userProfile?.id ?? partner.userId, partner.userProfile?.trophies, partner.userProfile?.arena, partner.userProfile?.avatar, partner.userProfile?.level, partner.userProfile?.selectedFrame);
+              const resB = room.addPlayer(name, transport, false, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level, userProfile?.selectedFrame);
               if (resA.ok) partner.setCtx({ room, playerId: resA.id, userProfile: partner.userProfile });
               if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
               // Auto-start after matchup reveal delay
@@ -860,18 +985,19 @@ export function startServer(port: number): Server {
           if (msg.options?.scope) room.scope = msg.options.scope;
           if (msg.options?.mode) room.gameMode = msg.options.mode;
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, true, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
+          const res = room.addPlayer(name, transport, true, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level, userProfile?.selectedFrame);
           if (res.ok) ctx = { room, playerId: res.id, userProfile };
           return;
         }
         if (msg.type === 'create_solo') {
           userProfile = await ensureProfileLoaded(userProfile, msg.userId, ws);
-          if (!canUseMode(userProfile, msg.options?.mode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
+          // Bot antrenman maçında TÜM modlar serbest — Sosyal Paket kilidi yalnız
+          // insanlarla oynanan (find_match / oda / davet) maçlara uygulanır.
           const room = manager.createRoom();
           if (msg.options?.scope) room.scope = msg.options.scope;
           if (msg.options?.mode) room.gameMode = msg.options.mode;
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, true, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
+          const res = room.addPlayer(name, transport, true, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level, userProfile?.selectedFrame);
           if (res.ok) ctx = { room, playerId: res.id, userProfile };
           const bot = new BotPlayer({ difficulty: msg.options?.difficulty, scope: room.scope, mode: room.gameMode });
           const botRes = room.addPlayer('Bot', bot, false);
@@ -884,7 +1010,7 @@ export function startServer(port: number): Server {
           if (!room) return transport.send({ type: 'error', message: 'Room not found' });
           if (!canUseMode(userProfile, room.gameMode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, false, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar);
+          const res = room.addPlayer(name, transport, false, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level, userProfile?.selectedFrame);
           if (!res.ok) return transport.send({ type: 'error', message: res.error });
           ctx = { room, playerId: res.id, userProfile };
           return;

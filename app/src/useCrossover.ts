@@ -42,12 +42,20 @@ export interface LeaderboardEntry {
   losses: number;
   arena: { name: string; icon: string; minTrophies: number };
   avatar?: string | null;
+  frame?: string | null; // takılı profil çerçevesi
 }
 
 export type FriendInfo = FriendView;
 
 export interface GameState {
   connected: boolean;
+  // Bu hesabın giriş yolu: apple/google/facebook = sosyal, null = MİSAFİR.
+  // Misafir hesaplarda ad değiştirme yoktur (UI bu alana bakar).
+  authProvider: 'apple' | 'google' | 'facebook' | null;
+  // ELLE kurulan özel oda lobiden dolduğunda true: ev sahibi matchup
+  // gösteriminden sonra maçı OTOMATİK başlatmalı (hızlı eşleşme/davet
+  // odalarını sunucu başlatır; onlarda bu bayrak hiç kalkmaz).
+  matchupAutoStart: boolean;
   phase: Phase;
   room: RoomView | null;
   error: string | null;
@@ -63,7 +71,13 @@ export interface GameState {
   playerResults: PlayerRef[];
   scopes: ScopesList | null;
   profile: ProfileView | null;
-  trophyDelta: { trophies: number; delta: number; arena: ArenaView; arenaReward?: number } | null;
+  trophyDelta: { trophies: number; delta: number; arena: ArenaView; arenaReward?: number; shielded?: boolean } | null;
+  // Maç sonu seviye ilerlemesi (xp_update) — popup App katmanında maç ÇIKIŞINDA gösterilir
+  xpGain: { xp: number; level: number; xpForNext: number; gained: number; leveledUp: { level: number; diamonds: number; emoteId?: string; powerId?: string }[]; boosted?: boolean } | null;
+  // Seviye Yolu'nda son toplanan ödül — modal içi animasyonlar bunu izler
+  lastClaim: { level: number; diamonds: number; emoteId: string | null; frameTier: string | null; powerId: string | null; track: 'free' | 'premium'; seq: number } | null;
+  // Profil istatistikleri (get_my_stats ile istenir): seri rekoru + mod kırılımı
+  myStats: { winStreak: number; bestStreak: number; modes: { mode: string; wins: number; losses: number }[] } | null;
   leaderboard: LeaderboardEntry[];
   friends: FriendInfo[];
   friendRequests: FriendRequestView[];
@@ -127,6 +141,8 @@ function sortConversations(convos: ConversationView[]): ConversationView[] {
 
 export const initialState: GameState = {
   connected: false,
+  authProvider: null,
+  matchupAutoStart: false,
   phase: 'home',
   room: null,
   error: null,
@@ -143,6 +159,9 @@ export const initialState: GameState = {
   scopes: null,
   profile: null,
   trophyDelta: null,
+  xpGain: null,
+  lastClaim: null,
+  myStats: null,
   leaderboard: [],
   friends: [],
   friendRequests: [],
@@ -186,6 +205,8 @@ const STALE_SOCKET_MS = 120_000;
 type Action =
   | ServerMsg
   | { type: '_connected'; value: boolean }
+  | { type: '_authProvider'; provider: 'apple' | 'google' | 'facebook' | null }
+  | { type: '_xp_seen' } // XP küre yağmuru oynatıldı — kazanım tüketildi
   | { type: '_reset' }
   | { type: '_logout' }
   | { type: '_picked' }
@@ -208,8 +229,14 @@ function reducer(state: GameState, action: Action): GameState {
     case '_connected':
       // A fresh (re)connect clears any lingering "couldn't connect" error.
       return { ...state, connected: action.value, error: action.value ? null : state.error };
+    case '_authProvider':
+      return { ...state, authProvider: action.provider };
+    case '_xp_seen':
+      return { ...state, xpGain: null };
     case '_reset':
-      return { ...initialState, scopes: state.scopes, profile: state.profile, friends: state.friends, isQuickMatch: false, opponentForfeit: false };
+      // xpGain korunur: XP küre yağmuru ana ekrana DÖNÜNCE akar (yeni maç
+      // başlarken countdown case'i zaten temizler).
+      return { ...initialState, scopes: state.scopes, profile: state.profile, friends: state.friends, authProvider: state.authProvider, xpGain: state.xpGain, isQuickMatch: false, opponentForfeit: false };
     case '_logout':
       return { ...initialState, scopes: state.scopes };
     case '_picked':
@@ -354,18 +381,67 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, phase: 'searching', isQuickMatch: true, opponentForfeit: false };
     case 'profile':
       return { ...state, profile: action.profile };
+    case 'level_reward_claimed':
+      return {
+        ...state,
+        profile: action.profile,
+        lastClaim: {
+          level: action.level, diamonds: action.diamonds,
+          emoteId: action.emoteId, frameTier: action.frameTier,
+          powerId: action.powerId ?? null,
+          track: action.track ?? 'free',
+          seq: (state.lastClaim?.seq ?? 0) + 1,
+        },
+      };
+    case 'power_used':
+      // Jeton düştü / kalkan kuşanıldı — sunucunun döndürdüğü taze profil geçerli
+      return { ...state, profile: action.profile };
+    case 'power_purchased':
+      // Mağazadan güç alındı — elmas düştü, envanter arttı
+      return { ...state, profile: action.profile };
+    case 'premium_road_purchased':
+      // 1000 elmas düştü, premium şerit açıldı — taze profil geçerli
+      return { ...state, profile: action.profile };
+    case 'my_stats':
+      return { ...state, myStats: { winStreak: action.winStreak, bestStreak: action.bestStreak, modes: action.modes } };
     case 'name_changed':
       return { ...state, profile: action.profile };
+    case 'xp_update': {
+      // Profili yerinde güncelle: yalnız xp/seviye — ödüller artık Seviye
+      // Yolu'ndan TOPLANIR (claim_level_reward), burada verilmez.
+      const profile = state.profile
+        ? { ...state.profile, xp: action.xp, level: action.level }
+        : state.profile;
+      // Maç ekranından çıkmadan (rövanşlarla) üst üste oynanan maçların kazanımı
+      // BİRİKİR: xp/level sunucunun son durumu, gained ve leveledUp ise yağmur
+      // (_xp_seen) tüketene dek toplanır — çıkışta TOPLAM XP çubuğa akar,
+      // seviye popup'ı da oturumda atlanan tüm seviyelerin ödüllerini gösterir.
+      const prev = state.xpGain;
+      return {
+        ...state,
+        profile,
+        xpGain: {
+          xp: action.xp,
+          level: action.level,
+          xpForNext: action.xpForNext,
+          gained: (prev?.gained ?? 0) + action.gained,
+          leveledUp: [...(prev?.leveledUp ?? []), ...action.leveledUp],
+          boosted: (prev?.boosted ?? false) || action.boosted,
+        },
+      };
+    }
     case 'trophy_update':
       return {
         ...state,
-        trophyDelta: { trophies: action.trophies, delta: action.delta, arena: action.arena, arenaReward: (action as any).arenaReward },
+        trophyDelta: { trophies: action.trophies, delta: action.delta, arena: action.arena, arenaReward: (action as any).arenaReward, shielded: action.shielded },
         profile: state.profile
           ? {
               ...state.profile,
               trophies: action.trophies,
               arena: action.arena,
               diamonds: typeof (action as any).diamonds === 'number' ? (action as any).diamonds : state.profile.diamonds,
+              winStreak: typeof action.winStreak === 'number' ? action.winStreak : state.profile.winStreak,
+              bestStreak: typeof action.bestStreak === 'number' ? action.bestStreak : state.profile.bestStreak,
             }
           : state.profile,
         notice: (action as any).arenaReward > 0 ? `+${(action as any).arenaReward} 💎` : state.notice,
@@ -413,6 +489,8 @@ function reducer(state: GameState, action: Action): GameState {
         ...state,
         room: action.room,
         phase: nextPhase,
+        // Lobiden dolan oda = elle kurulan özel oda → ev sahibi otomatik başlatır.
+        matchupAutoStart: roomFull && !hasBot && state.phase === 'lobby' ? true : state.matchupAutoStart,
         error: state.phase === 'home' ? null : state.error,
         // A friend match just began — clear any lingering invite UI on both sides.
         outgoingInvite: null,
@@ -429,6 +507,9 @@ function reducer(state: GameState, action: Action): GameState {
         locked: null,
         passedBy: [],
         trophyDelta: null,
+  xpGain: null,
+  lastClaim: null,
+        matchupAutoStart: false,
         matchOver: false,
         matchWinnerId: null,
         matchWinnerName: null,
@@ -548,10 +629,25 @@ export function useCrossover() {
       .then((provider) => {
         if (provider === 'apple' || provider === 'google' || provider === 'facebook') {
           lastAuthProviderRef.current = provider;
+          dispatch({ type: '_authProvider', provider });
         }
       })
       .catch(() => {});
   }, []);
+
+  // ELLE kurulan özel oda MATCHUP'ta asılı kalmasın (lobideki Başlat butonuna
+  // matchup geçişi yüzünden artık ulaşılamıyor): lobiden dolan odada EV SAHİBİ,
+  // eşleşme gösteriminden ~3sn sonra maçı otomatik başlatır. Hızlı eşleşme ve
+  // davet odalarını sunucu başlattığı için bu bayrak onlarda hiç kalkmaz —
+  // sunucunun kendi start'ıyla yarışıp "Game already in progress" üretmez.
+  useEffect(() => {
+    if (state.phase !== 'matchup' || !state.matchupAutoStart) return;
+    const you = state.room?.players.find((p) => p.id === state.room?.youId);
+    if (!you?.isHost) return;
+    const tm = setTimeout(() => send({ type: 'start' }), 3000);
+    return () => clearTimeout(tm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.phase, state.matchupAutoStart, state.room]);
 
   // Persist profile whenever it changes from server messages.
   const prevProfile = useRef<ProfileView | null>(null);
@@ -833,7 +929,16 @@ export function useCrossover() {
     // Guest login: the server creates a fresh account with an auto "M"+9-digit
     // username and returns its profile, which is persisted like any other — so the
     // same guest account (and its progress) comes back on the next launch.
-    guestLogin: () => connectAndSend({ type: 'guest' }),
+    guestLogin: () => {
+      // Taze misafir hesap: eski sosyal girişin sağlayıcı izi diskte kalmasın —
+      // yoksa misafir hesap yanlışlıkla "sosyal" sanılıp ad değiştirme görür.
+      // (lastAuthProviderRef null kalır; misafir → sosyal yükseltme bağlama
+      // mantığı `!ref.current` yolundan aynen çalışmaya devam eder.)
+      lastAuthProviderRef.current = null;
+      AsyncStorage.removeItem(LAST_AUTH_PROVIDER_KEY).catch(() => {});
+      dispatch({ type: '_authProvider', provider: null });
+      connectAndSend({ type: 'guest' });
+    },
     // Sign in with Apple / Google / Facebook: send the provider's identity token
     // to the server, which verifies it and returns the account profile.
     authWith: (provider: 'apple' | 'google' | 'facebook', token: string, name?: string) => {
@@ -841,6 +946,7 @@ export function useCrossover() {
       const userId = canReuseLastUser ? (state.profile?.userId ?? lastUserIdRef.current ?? undefined) : undefined;
       lastAuthProviderRef.current = provider;
       AsyncStorage.setItem(LAST_AUTH_PROVIDER_KEY, provider).catch(() => {});
+      dispatch({ type: '_authProvider', provider });
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         send({ type: 'auth', provider, token, name, userId });
       } else {
@@ -848,6 +954,8 @@ export function useCrossover() {
       }
     },
     changeName: (newName: string) => send({ type: 'change_name', newName }),
+    // XP yağmuru tamamlandı — bir daha (profil gezintisi dahil) asla tekrarlamaz
+    markXpSeen: () => dispatch({ type: '_xp_seen' }),
     setUsername: (username: string) => {
       const userId = state.profile?.userId;
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -958,6 +1066,12 @@ export function useCrossover() {
     equipEmotes: (emoteIds: string[]) => send({ type: 'equip_emotes', emoteIds }),
     buyAvatar: (avatarId: string) => send({ type: 'buy_avatar', avatarId }),
     setAvatar: (avatar: string | null) => send({ type: 'set_avatar', avatar }),
+    setFrame: (frameId: string | null) => send({ type: 'set_frame', frameId }),
+    claimLevelReward: (level: number, track: 'free' | 'premium' = 'free') => send({ type: 'claim_level_reward', level, track }),
+    buyPremiumRoad: () => send({ type: 'buy_premium_road' }),
+    buyPower: (powerId: 'xp2x' | 'shield' | 'streak') => send({ type: 'buy_power', powerId }),
+    usePower: (powerId: 'xp2x' | 'shield' | 'streak') => send({ type: 'use_power', powerId }),
+    loadMyStats: () => send({ type: 'get_my_stats' }),
     // Friends — via WebSocket for real-time notifications.
     loadFriends: () => send({ type: 'list_friends' }),
     sendFriendRequest: (targetCode?: string, targetUsername?: string) =>

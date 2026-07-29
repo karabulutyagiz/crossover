@@ -495,7 +495,8 @@ export async function commonPlayersCountryTeam(
   return rows.map((r) => ({ name: r.name, imageUrl: r.image_url }));
 }
 
-/** Players who played for the club AND whose normalized name starts with the letter. */
+/** Players who played for the club AND any WORD of whose name starts with the
+ *  letter (ad YA DA soyad — "L" hem Lukaku'yu hem Lionel'i kabul eder). */
 export async function commonPlayersLetterTeam(
   clubId: number,
   letter: string,
@@ -506,7 +507,7 @@ export async function commonPlayersLetterTeam(
     `SELECT p.name, p.image_url
        FROM players p
        JOIN player_clubs pc ON pc.player_id = p.id
-      WHERE pc.club_id = $1 AND p.name_norm LIKE $2 || '%'
+      WHERE pc.club_id = $1 AND (p.name_norm LIKE $2 || '%' OR p.name_norm LIKE '% ' || $2 || '%')
       ORDER BY (p.image_url IS NOT NULL) DESC,
                (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) DESC
       LIMIT $3`,
@@ -533,7 +534,7 @@ export async function hasPlayersLetterTeam(clubId: number, letter: string): Prom
   const { rows } = await pool.query<{ n: string }>(
     `SELECT count(*) AS n FROM players p
        JOIN player_clubs pc ON pc.player_id = p.id
-      WHERE pc.club_id = $1 AND p.name_norm LIKE $2 || '%'
+      WHERE pc.club_id = $1 AND (p.name_norm LIKE $2 || '%' OR p.name_norm LIKE '% ' || $2 || '%')
       LIMIT 1`,
     [clubId, prefix],
   );
@@ -644,13 +645,14 @@ export async function verifyLetterTeamGuess(
   };
   if (!norm) return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
 
-  // Fuzzy candidates among players who played for the club AND whose name starts with the letter
+  // Fuzzy candidates among players who played for the club AND any WORD of whose
+  // name starts with the letter — soyadı harfle başlayan da geçerli ("L" → Romelu Lukaku)
   const { rows: cands } = await pool.query<{ id: string; name: string; sim: number; image_url: string | null }>(
     `SELECT p.id, p.name, p.image_url, word_similarity($1, p.name_norm) AS sim
        FROM players p
        JOIN player_clubs pc ON pc.player_id = p.id
       WHERE pc.club_id = $2
-        AND p.name_norm LIKE $3 || '%'
+        AND (p.name_norm LIKE $3 || '%' OR p.name_norm LIKE '% ' || $3 || '%')
         AND word_similarity($1, p.name_norm) >= $4
       ORDER BY sim DESC,
                (p.image_url IS NOT NULL) DESC,

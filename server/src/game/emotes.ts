@@ -5,7 +5,8 @@
 //     always available in a match — NOT stored, NOT equipped.
 //   - VISUAL emotes: graphic stickers sold in the store as weekly drops (3/week).
 //     Bought with diamonds (stored in users.owned_emotes), then the player
-//     EQUIPS up to 3 into their loadout (users.equipped_emotes) for matches.
+//     EQUIPS up to MAX_EQUIPPED into their loadout (users.equipped_emotes).
+//     The 4 character faces are ALWAYS available in a match regardless of slots.
 // Keep these ids in sync with app/src/emotes.tsx.
 
 // Quick-chat TEXT phrases — free, always available in a match, NOT collectible
@@ -20,20 +21,25 @@ const FACE_IDS = new Set(FACE_EMOTES);
 export const FREE_EMOTES: readonly string[] = [...TEXT_EMOTES, ...FACE_EMOTES];
 
 // Max sticker emotes a player can equip at once (loadout slots).
-export const MAX_EQUIPPED = 6;
+export const MAX_EQUIPPED = 8;
 
-// Visual emotes, grouped by weekly drop (`week`). Add 3 new each week.
+// Visual emotes, grouped by weekly drop (`week`). İfadelerin TEK kazanım yolu
+// mağazadır (Seviye Yolu ifade vermez) — eski yol ifadeleri de burada satılır.
 interface VisualDef { id: string; price: number; week: number }
 const VISUAL_EMOTES: readonly VisualDef[] = [
-  { id: 'ball', price: 300, week: 1 }, // Zıplayan Top — bouncing-ball premium emote (drop 1)
+  { id: 'ball', price: 300, week: 1 },       // Zıplayan Top
+  { id: 'footballer', price: 250, week: 1 }, // Futbolcu
+  { id: 'kick', price: 250, week: 1 },       // Şut!
+  { id: 'squad', price: 300, week: 1 },      // Kadro
+  { id: 'pitch', price: 300, week: 1 },      // Taktik Tahtası
+  { id: 'euro2024', price: 500, week: 1 },   // EURO 2024
 ];
 
 const VISUAL_IDS = new Set(VISUAL_EMOTES.map((e) => e.id));
 
-// Animated (Lottie→WebP) emotes. NOT sold in the store (no price, never in the
-// weekly drops) but they ARE equippable like visual emotes. Granted to specific
-// accounts (see the owned_emotes grant). Keep ids in sync with app/src/emotes.tsx.
-export const ANIM_EMOTES: readonly string[] = ['footballer', 'worldcup', 'kick', 'squad', 'pitch', 'euro2024'];
+// Yalnız hesaba özel bahşedilen (satılmayan) animasyonlu ifadeler. Eski yol
+// ifadeleri mağazaya taşındı; burada kalan tek örnek worldcup'tır.
+export const ANIM_EMOTES: readonly string[] = ['worldcup'];
 const ANIM_IDS = new Set(ANIM_EMOTES);
 
 const PRICE = new Map<string, number>([

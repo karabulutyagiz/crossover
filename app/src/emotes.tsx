@@ -84,6 +84,17 @@ export const PREMIUM_EMOTES: EmoteMeta[] = [
   // shows the settled final frame as a static preview (this animation's frame 0 is blank).
   { id: 'ball', kind: 'lottieJson', color: theme.gold, week: 1, animJson: ballEmoji, previewProgress: 1,
     premium: { name: 'Zıplayan Top', price: 300, desc: 'Top sekiyor, rakip şaşırıyor!' } },
+  // Mağazada satılan diğer ifadeler — vitrin yalnız 3 ürün, hepsi tek bölümde.
+  { id: 'footballer', kind: 'lottie', phrase: '', color: theme.primary, week: 1, anim: require('../assets/emotes/footballer.webp'), still: require('../assets/emotes/still-footballer.png'),
+    premium: { name: 'Futbolcu', price: 250, desc: '' } },
+  { id: 'kick', kind: 'lottie', phrase: '', color: theme.blue, week: 1, anim: require('../assets/emotes/kick.webp'), still: require('../assets/emotes/still-kick.png'),
+    premium: { name: 'Şut!', price: 250, desc: '' } },
+  { id: 'squad', kind: 'lottie', phrase: '', color: theme.accent, week: 1, anim: require('../assets/emotes/squad.webp'), still: require('../assets/emotes/still-squad.png'),
+    premium: { name: 'Kadro', price: 300, desc: '' } },
+  { id: 'pitch', kind: 'lottie', phrase: '', color: theme.purple, week: 1, anim: require('../assets/emotes/pitch.webp'), still: require('../assets/emotes/still-pitch.png'),
+    premium: { name: 'Taktik Tahtası', price: 300, desc: '' } },
+  { id: 'euro2024', kind: 'lottieJson', phrase: '', color: theme.gold, week: 1, animJson: logoEmoji,
+    premium: { name: 'EURO 2024', price: 500, desc: '' } },
 ];
 
 // Animated emotes (rendered from the downloaded Lottie files into looping WebPs).
@@ -96,12 +107,8 @@ export const PREMIUM_EMOTES: EmoteMeta[] = [
 // RN Image bile animasyonu oynatabiliyor — dünya kupasının ışınları dönmeye
 // devam ediyordu); PNG'nin ise oynayacak karesi yok. Garanti durağan.
 export const ANIM_EMOTES: EmoteMeta[] = [
-  { id: 'footballer', kind: 'lottie', phrase: '', color: theme.primary, anim: require('../assets/emotes/footballer.webp'), still: require('../assets/emotes/still-footballer.png') },
+  // Satılmayan (yalnız bahşedilen) ifadeler.
   { id: 'worldcup',   kind: 'lottie', phrase: '', color: theme.gold,    anim: require('../assets/emotes/worldcup.webp'),   still: require('../assets/emotes/still-worldcup.png') },
-  { id: 'kick',       kind: 'lottie', phrase: '', color: theme.blue,    anim: require('../assets/emotes/kick.webp'),       still: require('../assets/emotes/still-kick.png') },
-  { id: 'squad',      kind: 'lottie', phrase: '', color: theme.accent,  anim: require('../assets/emotes/squad.webp'),      still: require('../assets/emotes/still-squad.png') },
-  { id: 'pitch',      kind: 'lottie', phrase: '', color: theme.purple,  anim: require('../assets/emotes/pitch.webp'),      still: require('../assets/emotes/still-pitch.png') },
-  { id: 'euro2024',   kind: 'lottieJson', phrase: '', color: theme.gold, animJson: logoEmoji },
 ];
 
 // Visual (premium) emotes grouped by their weekly drop, newest first.
@@ -134,14 +141,14 @@ export function ownsEmote(profile: ProfileView | null, id: string): boolean {
 }
 
 // Emotes the player can currently pick from in a match: the free text quick-chats
-// (always) + the equipped sticker loadout (up to MAX_EQUIPPED faces/anim/premium).
-// If the player hasn't set up a loadout yet, default the stickers to the 4 faces.
+// + the 4 character faces (HERKESTE, slota eklense de eklenmese de) + the equipped
+// sticker loadout. Slottaki yüzler filtrelenir ki panelde iki kez görünmesinler.
 export function loadoutEmotes(profile: ProfileView | null): EmoteMeta[] {
+  const faceIds = new Set(FACE_EMOTES.map((e) => e.id));
   const equipped = (profile?.equippedEmotes ?? [])
     .map((id) => getEmote(id))
-    .filter((e): e is EmoteMeta => Boolean(e));
-  const stickers = equipped.length ? equipped : FACE_EMOTES;
-  return [...TEXT_EMOTES, ...stickers];
+    .filter((e): e is EmoteMeta => Boolean(e) && !faceIds.has(e!.id));
+  return [...TEXT_EMOTES, ...FACE_EMOTES, ...equipped];
 }
 
 // Owned emotes (for the store / inventory ownership display).
@@ -238,8 +245,8 @@ function WebpSticker({ source, still, size, play }: { source: number; still?: nu
   return <ExpoImage source={source} style={{ width: size, height: size }} contentFit="contain" autoplay />;
 }
 
-export function EmoteSticker({ id, size, play = true, onFinish }: {
-  id: string; size: number; play?: boolean; onFinish?: () => void;
+export function EmoteSticker({ id, size, play = true, loop = false, onFinish }: {
+  id: string; size: number; play?: boolean; loop?: boolean; onFinish?: () => void;
 }) {
   const meta = getEmote(id);
   if (!meta) return null;
@@ -248,7 +255,8 @@ export function EmoteSticker({ id, size, play = true, onFinish }: {
     if (!play) {
       return <LottieView source={meta.animJson as any} autoPlay={false} loop={false} progress={meta.previewProgress ?? 0} style={{ width: size, height: size }} />;
     }
-    return <LottieView source={meta.animJson as any} autoPlay loop={false} onAnimationFinish={onFinish} style={{ width: size, height: size }} />;
+    // loop: mağaza önizlemesi gibi sürekli oynaması gereken yerler (onFinish yok)
+    return <LottieView source={meta.animJson as any} autoPlay loop={loop} onAnimationFinish={loop ? undefined : onFinish} style={{ width: size, height: size }} />;
   }
   if (meta.kind === 'lottie' && meta.anim != null) {
     return <WebpSticker source={meta.anim} still={meta.still} size={size} play={play} />;
