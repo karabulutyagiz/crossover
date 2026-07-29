@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "Crossover Web",
+    "slug": "crossover-web",
+    "scheme": "crossover-web",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}

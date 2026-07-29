@@ -1180,6 +1180,18 @@ function ShineSweep({ width, height, delay = 0, duration = 650, loop = false, lo
 // Native driver only; a fixed timer fires onDone so the splash never blocks.
 const SLAM_TOTAL_MS = 2500;
 const SLAM_WORD = 'CROSSOVER';
+
+// Studio byline under the wordmark — rendered on every screen that shows the
+// CROSSOVER lockup (splash / loading / login) so the brand block never changes
+// between scenes.
+const BRAND_BYLINE = 'BY Games';
+function BrandByline({ style }: { style?: object }) {
+  return (
+    <Text style={[{ color: theme.muted, fontSize: 12.5, letterSpacing: 5, fontFamily: 'Poppins-ExtraBold', marginTop: 7, includeFontPadding: false, ...engrave('sm') }, style]}>
+      {BRAND_BYLINE}
+    </Text>
+  );
+}
 // giriş.jpeg oranları: geniş harf aralıklı, daha ufak beyaz logotip + büyük işaret
 const SLAM_FONT = Math.min(30, SCREEN_W * 0.074);
 const SLAM_WM_W = Math.min(SCREEN_W * 0.88, 380);
@@ -1320,6 +1332,10 @@ export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => voi
             ))}
           </View>
           <ShineSweep width={SLAM_WM_W} height={SLAM_FONT * 1.4} delay={1900} duration={620} tint={theme.accent} opacity={0.3} band={0.24} />
+          {/* byline fades in with the last stamped letter */}
+          <Animated.View style={{ opacity: letters[letters.length - 1]! }}>
+            <BrandByline />
+          </Animated.View>
         </View>
       </Animated.View>
       {/* fade-from-navy veil (on top of everything) — mockup zemininde siyah yok */}
@@ -1412,6 +1428,7 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
               <Text key={i} style={{ color: theme.text, fontSize: SLAM_FONT, letterSpacing: 3, marginHorizontal: 2, includeFontPadding: false, fontFamily: 'Poppins-Black', ...engrave('lg') }}>{ch}</Text>
             ))}
           </View>
+          <BrandByline />
         </View>
       </View>
 
@@ -2332,6 +2349,7 @@ export function LoginScreen({ state, actions }: Props) {
               <Text key={i} style={{ color: theme.text, fontSize: SLAM_FONT, letterSpacing: 3, marginHorizontal: 2, includeFontPadding: false, fontFamily: 'Poppins-Black', ...engrave('lg') }}>{ch}</Text>
             ))}
           </View>
+          <BrandByline />
         </Animated.View>
 
         <Animated.View style={{ paddingBottom: 16, opacity: intro, transform: [{ translateY: intro.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }] }}>

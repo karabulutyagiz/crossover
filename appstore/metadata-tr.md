@@ -50,6 +50,9 @@ Gerçek transfer verileriyle on binlerce futbolcu ve kulüp. Futbol hafızanı t
 
 Hemen indir, ilk düellona başla!
 
+Kullanım Koşulları (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+Gizlilik Politikası: https://crossoverfootball.com/gizlilik/
+
 ## Sürüm Notları / What's New (v1.0)
 Crossover'ın ilk sürümü burada!
 • Gerçek zamanlı 1v1 futbol düelloları

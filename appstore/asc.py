@@ -92,7 +92,10 @@ Sıralamada yüksel, en iyi oyuncularla yarış.
 
 Gerçek transfer verileriyle on binlerce futbolcu ve kulüp. Futbol hafızanı test etmeye hazır mısın?
 
-Hemen indir, ilk düellona başla!"""
+Hemen indir, ilk düellona başla!
+
+Kullanım Koşulları (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+Gizlilik Politikası: https://crossoverfootball.com/gizlilik/"""
 
 META = {
     "name": "Crossover: Futbol Düellosu",

@@ -17,3 +17,6 @@ deploy/seed/*.sql.gz
 
 # iCloud-safe deps (node_modules symlinked to .nosync)
 node_modules.nosync/
+
+__pycache__/
+server/node_modules
