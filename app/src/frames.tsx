@@ -24,10 +24,14 @@ export const FRAME_SCALE: Record<string, number> = {
 
 // Avatarın üstüne bindirilen çerçeve kaplaması. Yerleşimi etkilemez
 // (absolute + pointerEvents none); avatarın olduğu HER yerde kullanılır.
+// TIGHTEN: sanatın deliği yumuşak kenarlı olduğundan bire bir ölçek araya
+// boşluk hissi bırakıyordu — çerçeve %10 sıkılır, halka avatarın kenarına
+// bindirilir: boşluk kalmaz, çerçeve daha tok ve net okunur.
+const FRAME_TIGHTEN = 0.9;
 export function FrameOverlay({ frameId, size }: { frameId?: string | null; size: number }) {
   const src = frameId ? FRAME_ART[frameId] : null;
   if (!src) return null;
-  const f = Math.round(size * (FRAME_SCALE[frameId!] ?? 2.2));
+  const f = Math.round(size * (FRAME_SCALE[frameId!] ?? 2.2) * FRAME_TIGHTEN);
   const off = Math.round((size - f) / 2);
   return (
     <View pointerEvents="none" style={{ position: 'absolute', left: off, top: off, width: f, height: f }}>

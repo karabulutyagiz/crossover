@@ -87,6 +87,10 @@ export class Room {
   readonly code: string;
   scope: Scope = { type: 'all' }; // which clubs are allowed (set at creation)
   gameMode: GameMode = 'team-team'; // game mode (set at creation)
+  // Yalnız hızlı eşleşme (find_match) odaları kupa + XP verir. Arkadaş daveti
+  // ve oda-kodu maçları dostluk maçıdır: iki hesap anlaşıp hükmen galibiyetle
+  // XP/elmas kasamasın diye bu odalarda hiçbir ödül yazılmaz.
+  ranked = false;
   private players = new Map<string, Player>();
   status: RoomStatus = 'lobby';
   private round: Round | null = null;
@@ -229,17 +233,20 @@ export class Room {
       this.matchOver = true;
       this.status = 'result';
       this.broadcast({ type: 'opponent_left', forfeit: true });
-      // Award trophies: winner wins, leaver loses
+      // Award trophies: winner wins, leaver loses. Yalnız dereceli maçta —
+      // dostluk maçındaki hükmen sonuç görsel kalır, ödül yazılmaz.
+      if (!this.ranked) { this.broadcastState(); return; }
       void (async () => {
         try {
           if (winner.userId) {
             const { profile, delta, arenaReward } = await applyMatchResult(winner.userId, true);
-            winner.transport.send({ type: 'trophy_update', trophies: profile.trophies, delta, arena: profile.arena, diamonds: profile.diamonds, arenaReward });
+            winner.transport.send({ type: 'trophy_update', trophies: profile.trophies, delta, arena: profile.arena, diamonds: profile.diamonds, arenaReward, winStreak: profile.winStreak, bestStreak: profile.bestStreak });
             const xpRes = await awardMatchXp(winner.userId, true, false);
             if (xpRes) winner.transport.send({ type: 'xp_update', ...xpRes });
           }
           if (p.userId) {
-            await applyMatchResult(p.userId, false);
+            // Terk eden mağlubiyeti: kalkan onu KORUMAZ (leaver bayrağı)
+            await applyMatchResult(p.userId, false, { leaver: true });
             await awardMatchXp(p.userId, false, false); // ayrılan: mağlubiyet XP'si (gönderilemez — gitti)
           }
         } catch { /* DB error — skip silently */ }
@@ -899,7 +906,8 @@ export class Room {
     } else {
       const hasBot = [...this.players.values()].some((p) => p.transport.isBot);
       if (!hasBot) {
-        void this.updateTrophies(winner!);
+        if (this.ranked) void this.updateTrophies(winner!);
+        // dostluk maçı (davet / oda kodu): kupa da XP de yok
       } else {
         // Bot maçı: kupa yok ama SEVİYE XP'si var (yarım puan, günlük tavanlı)
         void (async () => {
@@ -964,7 +972,7 @@ export class Room {
       if (p.transport.isBot || !p.userId) continue;
       const won = p.id === winner.id;
       try {
-        const { profile, delta, arenaReward } = await applyMatchResult(p.userId, won);
+        const { profile, delta, arenaReward, shielded } = await applyMatchResult(p.userId, won);
         p.transport.send({
           type: 'trophy_update',
           trophies: profile.trophies,
@@ -972,6 +980,9 @@ export class Room {
           arena: profile.arena,
           diamonds: profile.diamonds,
           arenaReward,
+          shielded,
+          winStreak: profile.winStreak,
+          bestStreak: profile.bestStreak,
         });
         // Seviye XP'si — kupadan bağımsız, kaybeden de kazanır
         const xpRes = await awardMatchXp(p.userId, won, false);

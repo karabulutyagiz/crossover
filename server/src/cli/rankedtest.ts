@@ -1,6 +1,6 @@
-// End-to-end test for: registered names, first-to-3 match, auto-advance between
-// rounds, and the rematch request/accept flow. Drives two WS clients against a
-// running server (npm run dev). Usage: npx tsx src/cli/matchtest.ts
+// End-to-end test for the RANKED path: two clients meet via find_match and the
+// winner DOES receive trophies + XP (friendly rooms are covered by matchtest.ts,
+// which asserts the opposite). Usage: npx tsx src/cli/rankedtest.ts
 import { WebSocket } from 'ws';
 import type { ClientMsg, ServerMsg } from '../protocol.ts';
 
@@ -52,10 +52,6 @@ async function resolveClub(c: Client, reqId: string, q: string): Promise<number>
   return res.clubs[0].id;
 }
 
-// Play one round: A picks Galatasaray, B picks Inter Milan, A answers "Icardi"
-// (Mauro Icardi played for both — a verified common player for these two clubs).
-// Use exact club names so search resolves unambiguously (plain "Inter" matches a
-// futsal side by trigram similarity, which shares no players with Galatasaray).
 async function playRound(A: Client, B: Client): Promise<Extract<ServerMsg, { type: 'result' }>> {
   await A.wait('pick_phase');
   const gala = await resolveClub(A, 'a', 'Galatasaray');
@@ -75,64 +71,39 @@ async function main() {
   const B = new Client('B');
   await A.open(); await B.open();
 
-  // Register names (capture userId so trophies can be awarded)
-  A.send({ type: 'register', name: 'Ali' });
+  A.send({ type: 'register', name: 'RankA' });
   const aProf = (await A.wait('profile')).profile;
-  B.send({ type: 'register', name: 'Veli' });
-  const bProf = (await B.wait('profile')).profile;
+  B.send({ type: 'register', name: 'RankB' });
+  await B.wait('profile');
 
-  // Room code path
-  A.send({ type: 'create_room', name: 'Ali', userId: aProf.userId });
-  const st = await A.wait('room_state');
-  const code = st.room.code;
-  B.send({ type: 'join_room', code, name: 'Veli', userId: bProf.userId });
+  // Ranked path: both queue via find_match (same mode, ±100 trophies → paired).
+  A.send({ type: 'find_match', name: 'RankA', userId: aProf.userId });
+  await A.wait('searching');
+  B.send({ type: 'find_match', name: 'RankB' });
+  await A.wait('room_state');
   await B.wait('room_state');
+  check(true, 'matchmade room created via find_match');
 
-  A.send({ type: 'start' });
-
-  // Play rounds until the match ends (A wins each → first to 3).
+  // Play until the match ends (A wins each round → first to 3).
   let last: Extract<ServerMsg, { type: 'result' }> | null = null;
   for (let i = 1; i <= 5; i++) {
     const result = await playRound(A, B);
-    const names = result.players.map((p) => p.name).sort().join(',');
     console.log(`  round ${i}: scores ${result.players.map((p) => `${p.name}=${p.score}`).join(' ')} matchOver=${result.matchOver}`);
-    check(names === 'Ali,Veli', `round ${i}: names are registered (Ali,Veli) — got ${names}`);
     last = result;
     if (result.matchOver) break;
-    await A.wait('countdown'); // rounds auto-advance after a short pause
+    await A.wait('countdown');
   }
+  check(last!.matchOver === true, 'match ended');
 
-  check(last!.matchOver === true, 'match ended automatically');
-  check(last!.target === 3, 'win target is 3');
-  check(last!.winnerName === 'Ali', `winner is Ali — got ${last!.winnerName}`);
-  const aliScore = last!.players.find((p) => p.name === 'Ali')?.score ?? 0;
-  check(aliScore === 3, `Ali reached 3 — got ${aliScore}`);
-
-  // Dostluk maçı (oda kodu): kupa/XP farm koruması — trophy_update GELMEMELİ.
-  // (Kupa + XP yalnız find_match ile kurulan dereceli odalarda yazılır.)
-  const gotTrophy = await Promise.race([
-    A.wait('trophy_update', 3_000).then(() => true).catch(() => false),
-    sleep(2_000).then(() => false),
-  ]);
-  check(!gotTrophy, 'friendly (room-code) match awards no trophies/XP');
-
-  // Rematch: A requests, B should get the request, B accepts → new match.
-  A.send({ type: 'play_again' });
-  await A.wait('rematch_waiting');
-  check(true, 'requester got rematch_waiting');
-  const req = await B.wait('rematch_requested');
-  check(req.byName === 'Ali', `opponent saw request from Ali — got ${req.byName}`);
-  B.send({ type: 'rematch_response', accept: true });
-  const cd = await A.wait('countdown');
-  check(cd.n >= 1 && cd.n <= 3, 'new match countdown started after accept');
-  // Scores reset for the new match (the real proof a fresh match began)
-  const fresh = await playRound(A, B);
-  const aliFresh = fresh.players.find((p) => p.name === 'Ali')?.score ?? 99;
-  check(aliFresh === 1, `scores reset for rematch (Ali=1 after one round) — got ${aliFresh}`);
+  // Dereceli maç: kupa VE XP yazılmalı.
+  const tu = await A.wait('trophy_update');
+  check(tu.delta > 0, `winner gained trophies — got ${tu.delta}`);
+  const xp = await A.wait('xp_update');
+  check(xp.gained > 0, `winner gained XP — got ${xp.gained}`);
 
   A.close(); B.close();
-  console.log(failed ? '\n❌ MATCHTEST FAILED' : '\n✅ MATCHTEST PASSED');
+  console.log(failed ? '\n❌ RANKEDTEST FAILED' : '\n✅ RANKEDTEST PASSED');
   process.exitCode = failed ? 1 : 0;
 }
 
-main().catch((err) => { console.error('matchtest error:', err); process.exitCode = 1; });
+main().catch((err) => { console.error('rankedtest error:', err); process.exitCode = 1; });

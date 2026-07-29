@@ -8,8 +8,10 @@
 // Ödüller TOPLAMALIDIR (Clash Royale pass modeli): seviyeye ulaşmak ödülü
 // yalnız HAZIR yapar; oyuncu Seviye Yolu'nda karta dokunup toplar
 // (claim_level_reward). Toplanan seviyeler users.claimed_levels'ta tutulur.
-//   * Her seviye: +20 elmas; 5'in katları: +70 elmas ve (varsa) özel ifade
-//   * 10'un katları: kademe çerçevesi — TAKMAK için de toplanmış olması şart
+// Ödül YALNIZ 5'in katlarında vardır (ara seviyeler boş ilerleme adımıdır):
+//   * 5/15/25/35/45: güç + 50 elmas
+//   * 10/20/30/40/50: kademe çerçevesi + 100 elmas (takmak için toplanmış olmalı)
+// İfadeler Yol'dan KAZANILMAZ — yalnız mağazadan satın alınır (emotes.ts).
 import { pool } from '../db/pool.ts';
 
 export const LEVEL_CAP = 50;
@@ -18,20 +20,44 @@ export function xpForNext(level: number): number {
   return 100 + (level - 1) * 25;
 }
 
-// 5'in katı seviyelerde açılan, mağazada satılmayan özel ifadeler.
-// (İstemcideki ANIM_EMOTES setiyle birebir aynı kimlikler.)
-export const LEVEL_EMOTES: Record<number, string> = {
-  5: 'footballer',
-  15: 'kick',
-  25: 'squad',
-  35: 'pitch',
-  45: 'euro2024',
+// Özel güçler — Seviye Yolu'ndan kazanılan TEK KULLANIMLIK, stoklanabilir
+// tüketilebilirler (elmasla SATILMAZ). Çerçeve olmayan ×5 seviyelerinde
+// dönüşümlü dağıtılır.
+//   xp2x  : 1 saat boyunca kazanılan tüm XP ikiye katlanır
+//   shield: kuşanılır; sıradaki dereceli mağlubiyette kupa kaybını bir kez emer
+//   streak: son mağlubiyette kırılan galibiyet serisini geri yükler (anında)
+export type PowerId = 'xp2x' | 'shield' | 'streak';
+export const LEVEL_POWERS: Record<number, PowerId> = {
+  5: 'xp2x',
+  15: 'shield',
+  25: 'streak',
+  35: 'xp2x',
+  45: 'shield',
 };
+
+// ---- PREMIUM Seviye Yolu ----
+// 1000 elmasla bir kez açılır (users.premium_road). Ücretsiz yolun YANINDA
+// akan ikinci şerit: HER ×5 seviyesinde bir güç (dönüşümlü) + daha dolgun
+// elmas (×5: 100, ×10: 200, zirve 50: 300 → toplam 1600💎 + 10 güç).
+export const PREMIUM_ROAD_PRICE = 1000;
+export const PREMIUM_LEVEL_POWERS: Record<number, PowerId> = {
+  5: 'xp2x', 10: 'shield', 15: 'streak',
+  20: 'xp2x', 25: 'shield', 30: 'streak',
+  35: 'xp2x', 40: 'shield', 45: 'streak',
+  50: 'xp2x',
+};
+
+export function premiumRewardDiamonds(level: number): number {
+  if (level % 5 !== 0) return 0;
+  if (level === LEVEL_CAP) return 300;
+  return level % 10 === 0 ? 200 : 100;
+}
 
 export interface LevelUpReward {
   level: number;
   diamonds: number;
   emoteId?: string;
+  powerId?: PowerId; // bu seviyenin Yol ödülü bir güçse (toplamak claim ile)
 }
 
 export interface XpAward {
@@ -41,6 +67,7 @@ export interface XpAward {
   gained: number;      // bu maçtan kazanılan XP
   leveledUp: LevelUpReward[];
   diamonds?: number;   // ödüller sonrası güncel bakiye (değiştiyse)
+  boosted?: boolean;   // 2x XP jetonu penceresi aktifken kazanıldı
 }
 
 interface LevelRow {
@@ -51,12 +78,13 @@ interface LevelRow {
   bot_xp_today: number | null;
   diamonds: number;
   owned_emotes: string[] | null;
+  xp_boost_until: string | null;
 }
 
 export async function awardMatchXp(userId: string, won: boolean, vsBot: boolean): Promise<XpAward | null> {
   if (!userId) return null;
   const { rows } = await pool.query<LevelRow>(
-    `SELECT xp, level, last_win_day, bot_xp_day, bot_xp_today, diamonds, owned_emotes
+    `SELECT xp, level, last_win_day, bot_xp_day, bot_xp_today, diamonds, owned_emotes, xp_boost_until
      FROM users WHERE id = $1`,
     [userId],
   );
@@ -64,12 +92,15 @@ export async function awardMatchXp(userId: string, won: boolean, vsBot: boolean)
   if (!u) return null;
 
   const today = new Date().toISOString().slice(0, 10);
+  // 2x XP jetonu: pencere açıkken kazanılan ham XP ikiye katlanır. Bot maçında
+  // katlama TAVANDAN ÖNCE uygulanır — günlük 60 XP bot tavanı delinmez.
+  const boosted = !!u.xp_boost_until && new Date(u.xp_boost_until).getTime() > Date.now();
   let gained = 0;
   let botToday = u.bot_xp_day === today ? (u.bot_xp_today ?? 0) : 0;
   let lastWinDay = u.last_win_day;
 
   if (vsBot) {
-    const raw = won ? 15 : 5;
+    const raw = (won ? 15 : 5) * (boosted ? 2 : 1);
     gained = Math.max(0, Math.min(raw, 60 - botToday)); // günlük bot tavanı
     botToday += gained;
   } else {
@@ -78,6 +109,7 @@ export async function awardMatchXp(userId: string, won: boolean, vsBot: boolean)
       gained += 50; // günün ilk gerçek galibiyeti
       lastWinDay = today;
     }
+    if (boosted) gained *= 2;
   }
 
   // Seviye atlama döngüsü — ÖDÜL VERİLMEZ; hangi ödüllerin hazır olduğu
@@ -88,7 +120,7 @@ export async function awardMatchXp(userId: string, won: boolean, vsBot: boolean)
   while (level < LEVEL_CAP && xp >= xpForNext(level)) {
     xp -= xpForNext(level);
     level += 1;
-    leveledUp.push({ level, diamonds: levelRewardDiamonds(level), emoteId: LEVEL_EMOTES[level] });
+    leveledUp.push({ level, diamonds: levelRewardDiamonds(level), powerId: LEVEL_POWERS[level] });
   }
   if (level >= LEVEL_CAP) xp = Math.min(xp, xpForNext(LEVEL_CAP)); // tavanda sabitlenir
 
@@ -106,12 +138,16 @@ export async function awardMatchXp(userId: string, won: boolean, vsBot: boolean)
     xpForNext: xpForNext(level),
     gained,
     leveledUp,
+    boosted,
   };
 }
 
 // Bir seviyenin toplanabilir elmas ödülü (yolda gösterilenle birebir).
+// Yalnız 5'in katları ödül taşır: güç seviyeleri 50, çerçeve seviyeleri 100.
+// Ara seviyeler 0 — toplanacak bir şey yoktur.
 export function levelRewardDiamonds(level: number): number {
-  return level % 5 === 0 ? 70 : 20;
+  if (level % 5 !== 0) return 0;
+  return level % 10 === 0 ? 100 : 50;
 }
 
 export interface ClaimResult {
@@ -119,6 +155,8 @@ export interface ClaimResult {
   diamonds: number;        // bu toplamayla verilen elmas
   emoteId: string | null;  // bu toplamayla açılan özel ifade
   frameTier: string | null; // bu toplamayla açılan çerçeve kademesi
+  powerId: PowerId | null; // bu toplamayla envantere eklenen güç
+  track: 'free' | 'premium'; // hangi şeritten toplandı
 }
 
 const FRAME_TIER_BY_LEVEL: Record<number, string> = { 10: 'bronze', 20: 'silver', 30: 'gold', 40: 'diamond', 50: 'goat' };
@@ -128,20 +166,38 @@ const FRAME_TIER_BY_LEVEL: Record<number, string> = { 10: 'bronze', 20: 'silver'
 export async function claimLevelReward(
   userId: string,
   level: number,
+  track: 'free' | 'premium' = 'free',
 ): Promise<{ ok: true; claim: ClaimResult } | { ok: false; error: string }> {
   if (!userId) return { ok: false, error: 'Önce giriş yap' };
-  if (!Number.isInteger(level) || level < 2 || level > LEVEL_CAP) return { ok: false, error: 'Geçersiz seviye' };
-  const diamonds = levelRewardDiamonds(level);
-  const emoteId = LEVEL_EMOTES[level] ?? null;
+  // Yalnız 5'in katları ödül taşır — ara seviyelerde toplanacak bir şey yok.
+  if (!Number.isInteger(level) || level < 5 || level > LEVEL_CAP || level % 5 !== 0) {
+    return { ok: false, error: 'Geçersiz seviye' };
+  }
+  const premium = track === 'premium';
+  const diamonds = premium ? premiumRewardDiamonds(level) : levelRewardDiamonds(level);
+  const powerId = (premium ? PREMIUM_LEVEL_POWERS : LEVEL_POWERS)[level] ?? null;
+  // Güç/claim sütunları kendi sabit haritalarımızdan gelir (kullanıcı girdisi
+  // değil); tek claim garantisi UPDATE'in kendi denetiminde. Premium şerit
+  // yalnız premium_road açıkken toplanabilir.
+  const powerCol = powerId === 'xp2x' ? 'power_xp2x' : powerId === 'shield' ? 'power_shield' : powerId === 'streak' ? 'power_streak' : null;
+  const claimedCol = premium ? 'claimed_premium' : 'claimed_levels';
+  // Çerçeve sahipliği KALICI kayda da işlenir (owned_frames) — sezon sıfırlansa
+  // bile kazanılmış çerçeve takılabilir kalır.
+  const frameTier = premium ? null : FRAME_TIER_BY_LEVEL[level] ?? null;
   const { rows } = await pool.query<{ id: string }>(
     `UPDATE users SET
        diamonds = diamonds + $3,
-       owned_emotes = (SELECT ARRAY(SELECT DISTINCT e FROM unnest(owned_emotes || $4::text[]) AS e)),
-       claimed_levels = array_append(claimed_levels, $2)
-     WHERE id = $1 AND level >= $2 AND NOT (claimed_levels @> ARRAY[$2::int])
+       ${claimedCol} = array_append(${claimedCol}, $2)${powerCol ? `,
+       ${powerCol} = ${powerCol} + 1` : ''}${frameTier ? `,
+       owned_frames = (SELECT ARRAY(SELECT DISTINCT f FROM unnest(owned_frames || $4::text[]) AS f))` : ''}
+     WHERE id = $1 AND level >= $2 AND NOT (${claimedCol} @> ARRAY[$2::int])${premium ? `
+       AND premium_road = TRUE` : ''}
      RETURNING id`,
-    [userId, level, diamonds, emoteId ? [emoteId] : []],
+    frameTier ? [userId, level, diamonds, [frameTier]] : [userId, level, diamonds],
   );
-  if (!rows[0]) return { ok: false, error: 'Bu ödül henüz açılmadı ya da zaten toplandı' };
-  return { ok: true, claim: { level, diamonds, emoteId, frameTier: FRAME_TIER_BY_LEVEL[level] ?? null } };
+  if (!rows[0]) {
+    if (premium) return { ok: false, error: "Premium Yol açık değil ya da bu ödül zaten toplandı" };
+    return { ok: false, error: 'Bu ödül henüz açılmadı ya da zaten toplandı' };
+  }
+  return { ok: true, claim: { level, diamonds, emoteId: null, frameTier, powerId, track } };
 }

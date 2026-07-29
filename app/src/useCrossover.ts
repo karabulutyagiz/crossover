@@ -71,11 +71,13 @@ export interface GameState {
   playerResults: PlayerRef[];
   scopes: ScopesList | null;
   profile: ProfileView | null;
-  trophyDelta: { trophies: number; delta: number; arena: ArenaView; arenaReward?: number } | null;
+  trophyDelta: { trophies: number; delta: number; arena: ArenaView; arenaReward?: number; shielded?: boolean } | null;
   // Maç sonu seviye ilerlemesi (xp_update) — popup App katmanında maç ÇIKIŞINDA gösterilir
-  xpGain: { xp: number; level: number; xpForNext: number; gained: number; leveledUp: { level: number; diamonds: number; emoteId?: string }[] } | null;
+  xpGain: { xp: number; level: number; xpForNext: number; gained: number; leveledUp: { level: number; diamonds: number; emoteId?: string; powerId?: string }[]; boosted?: boolean } | null;
   // Seviye Yolu'nda son toplanan ödül — modal içi animasyonlar bunu izler
-  lastClaim: { level: number; diamonds: number; emoteId: string | null; frameTier: string | null; seq: number } | null;
+  lastClaim: { level: number; diamonds: number; emoteId: string | null; frameTier: string | null; powerId: string | null; track: 'free' | 'premium'; seq: number } | null;
+  // Profil istatistikleri (get_my_stats ile istenir): seri rekoru + mod kırılımı
+  myStats: { winStreak: number; bestStreak: number; modes: { mode: string; wins: number; losses: number }[] } | null;
   leaderboard: LeaderboardEntry[];
   friends: FriendInfo[];
   friendRequests: FriendRequestView[];
@@ -159,6 +161,7 @@ export const initialState: GameState = {
   trophyDelta: null,
   xpGain: null,
   lastClaim: null,
+  myStats: null,
   leaderboard: [],
   friends: [],
   friendRequests: [],
@@ -385,9 +388,22 @@ function reducer(state: GameState, action: Action): GameState {
         lastClaim: {
           level: action.level, diamonds: action.diamonds,
           emoteId: action.emoteId, frameTier: action.frameTier,
+          powerId: action.powerId ?? null,
+          track: action.track ?? 'free',
           seq: (state.lastClaim?.seq ?? 0) + 1,
         },
       };
+    case 'power_used':
+      // Jeton düştü / kalkan kuşanıldı — sunucunun döndürdüğü taze profil geçerli
+      return { ...state, profile: action.profile };
+    case 'power_purchased':
+      // Mağazadan güç alındı — elmas düştü, envanter arttı
+      return { ...state, profile: action.profile };
+    case 'premium_road_purchased':
+      // 1000 elmas düştü, premium şerit açıldı — taze profil geçerli
+      return { ...state, profile: action.profile };
+    case 'my_stats':
+      return { ...state, myStats: { winStreak: action.winStreak, bestStreak: action.bestStreak, modes: action.modes } };
     case 'name_changed':
       return { ...state, profile: action.profile };
     case 'xp_update': {
@@ -396,22 +412,36 @@ function reducer(state: GameState, action: Action): GameState {
       const profile = state.profile
         ? { ...state.profile, xp: action.xp, level: action.level }
         : state.profile;
+      // Maç ekranından çıkmadan (rövanşlarla) üst üste oynanan maçların kazanımı
+      // BİRİKİR: xp/level sunucunun son durumu, gained ve leveledUp ise yağmur
+      // (_xp_seen) tüketene dek toplanır — çıkışta TOPLAM XP çubuğa akar,
+      // seviye popup'ı da oturumda atlanan tüm seviyelerin ödüllerini gösterir.
+      const prev = state.xpGain;
       return {
         ...state,
         profile,
-        xpGain: { xp: action.xp, level: action.level, xpForNext: action.xpForNext, gained: action.gained, leveledUp: action.leveledUp },
+        xpGain: {
+          xp: action.xp,
+          level: action.level,
+          xpForNext: action.xpForNext,
+          gained: (prev?.gained ?? 0) + action.gained,
+          leveledUp: [...(prev?.leveledUp ?? []), ...action.leveledUp],
+          boosted: (prev?.boosted ?? false) || action.boosted,
+        },
       };
     }
     case 'trophy_update':
       return {
         ...state,
-        trophyDelta: { trophies: action.trophies, delta: action.delta, arena: action.arena, arenaReward: (action as any).arenaReward },
+        trophyDelta: { trophies: action.trophies, delta: action.delta, arena: action.arena, arenaReward: (action as any).arenaReward, shielded: action.shielded },
         profile: state.profile
           ? {
               ...state.profile,
               trophies: action.trophies,
               arena: action.arena,
               diamonds: typeof (action as any).diamonds === 'number' ? (action as any).diamonds : state.profile.diamonds,
+              winStreak: typeof action.winStreak === 'number' ? action.winStreak : state.profile.winStreak,
+              bestStreak: typeof action.bestStreak === 'number' ? action.bestStreak : state.profile.bestStreak,
             }
           : state.profile,
         notice: (action as any).arenaReward > 0 ? `+${(action as any).arenaReward} 💎` : state.notice,
@@ -1023,7 +1053,11 @@ export function useCrossover() {
     buyAvatar: (avatarId: string) => send({ type: 'buy_avatar', avatarId }),
     setAvatar: (avatar: string | null) => send({ type: 'set_avatar', avatar }),
     setFrame: (frameId: string | null) => send({ type: 'set_frame', frameId }),
-    claimLevelReward: (level: number) => send({ type: 'claim_level_reward', level }),
+    claimLevelReward: (level: number, track: 'free' | 'premium' = 'free') => send({ type: 'claim_level_reward', level, track }),
+    buyPremiumRoad: () => send({ type: 'buy_premium_road' }),
+    buyPower: (powerId: 'xp2x' | 'shield' | 'streak') => send({ type: 'buy_power', powerId }),
+    usePower: (powerId: 'xp2x' | 'shield' | 'streak') => send({ type: 'use_power', powerId }),
+    loadMyStats: () => send({ type: 'get_my_stats' }),
     // Friends — via WebSocket for real-time notifications.
     loadFriends: () => send({ type: 'list_friends' }),
     sendFriendRequest: (targetCode?: string, targetUsername?: string) =>

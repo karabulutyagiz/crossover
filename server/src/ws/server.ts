@@ -6,7 +6,7 @@ import { listScopes, listNationalities } from '../game/verify.ts';
 import {
   findOrCreateUser, findOrCreateUserByProvider, createGuestUser, getUser, changeDisplayName,
   grantDevEmotesIfNeeded,
-  setUsername, buyEmote, setEquippedEmotes, setAvatar, setSelectedFrame, buyAvatar, touchLastSeen, getLeaderboard, grantAdReward,
+  setUsername, buyEmote, setEquippedEmotes, setAvatar, setSelectedFrame, buyAvatar, touchLastSeen, getLeaderboard, grantAdReward, usePower, getModeStats, buyPremiumRoad, buyPower,
   listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
   removeFriend, searchUsers, getMatchHistory,
   type UserProfile,
@@ -50,6 +50,17 @@ function toProfileView(p: UserProfile): ProfileView {
     level: p.level,
     selectedFrame: p.selectedFrame,
     claimedLevels: p.claimedLevels,
+    powerXp2x: p.powerXp2x,
+    powerShield: p.powerShield,
+    xpBoostUntil: p.xpBoostUntil,
+    shieldArmed: p.shieldArmed,
+    winStreak: p.winStreak,
+    bestStreak: p.bestStreak,
+    powerStreak: p.powerStreak,
+    lostStreak: p.lostStreak,
+    premiumRoad: p.premiumRoad,
+    claimedPremium: p.claimedPremium,
+    ownedFrames: p.ownedFrames,
   };
 }
 
@@ -433,7 +444,7 @@ export function startServer(port: number): Server {
       if (msg.type === 'claim_level_reward') {
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
         void (async () => {
-          const result = await claimLevelReward(userProfile!.id, msg.level);
+          const result = await claimLevelReward(userProfile!.id, msg.level, msg.track ?? 'free');
           if (!result.ok) return transport.send({ type: 'error', message: result.error });
           const fresh = await getUser(userProfile!.id);
           if (fresh) userProfile = fresh;
@@ -443,8 +454,78 @@ export function startServer(port: number): Server {
             diamonds: result.claim.diamonds,
             emoteId: result.claim.emoteId,
             frameTier: result.claim.frameTier,
+            powerId: result.claim.powerId,
+            track: result.claim.track,
             profile: toProfileView(userProfile!),
           });
+        })();
+        return;
+      }
+
+      // Profil istatistikleri: seri rekoru + mod bazlı kazanma/kaybetme kırılımı.
+      if (msg.type === 'get_my_stats') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          try {
+            const fresh = await getUser(userProfile!.id);
+            if (fresh) userProfile = fresh;
+            const modes = await getModeStats(userProfile!.id);
+            transport.send({ type: 'my_stats', winStreak: userProfile!.winStreak, bestStreak: userProfile!.bestStreak, modes });
+          } catch (err) {
+            console.error('[get_my_stats] failed:', err instanceof Error ? err.message : err);
+            transport.send({ type: 'error', message: 'İstatistikler alınamadı' });
+          }
+        })();
+        return;
+      }
+
+      // Premium Seviye Yolu satın alma — 1000 elmas, tek seferlik, atomik.
+      if (msg.type === 'buy_premium_road') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          try {
+            const result = await buyPremiumRoad(userProfile!.id);
+            if (!result.ok) return transport.send({ type: 'error', message: result.error });
+            userProfile = result.profile;
+            transport.send({ type: 'premium_road_purchased', profile: toProfileView(result.profile) });
+          } catch (err) {
+            console.error('[buy_premium_road] failed:', err instanceof Error ? err.message : err);
+            transport.send({ type: 'error', message: 'Satın alma başarısız' });
+          }
+        })();
+        return;
+      }
+
+      // Mağazadan güç satın alma — elmas düşer, envanter artar (atomik).
+      if (msg.type === 'buy_power') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          try {
+            const result = await buyPower(userProfile!.id, msg.powerId);
+            if (!result.ok) return transport.send({ type: 'error', message: result.error });
+            userProfile = result.profile;
+            transport.send({ type: 'power_purchased', powerId: msg.powerId, profile: toProfileView(result.profile) });
+          } catch (err) {
+            console.error('[buy_power] failed:', err instanceof Error ? err.message : err);
+            transport.send({ type: 'error', message: 'Satın alma başarısız' });
+          }
+        })();
+        return;
+      }
+
+      // Özel güç etkinleştirme: 2x XP jetonu (1 saat) ya da Kupa Kalkanı kuşan.
+      if (msg.type === 'use_power') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          try {
+            const result = await usePower(userProfile!.id, msg.powerId);
+            if (!result.ok) return transport.send({ type: 'error', message: result.error });
+            userProfile = result.profile;
+            transport.send({ type: 'power_used', powerId: msg.powerId, profile: toProfileView(result.profile) });
+          } catch (err) {
+            console.error('[use_power] failed:', err instanceof Error ? err.message : err);
+            transport.send({ type: 'error', message: 'Güç kullanılamadı' });
+          }
         })();
         return;
       }
@@ -848,6 +929,7 @@ export function startServer(port: number): Server {
             if (partner && partner.ws.readyState === partner.ws.OPEN) {
               // Create room and add both
               const room = manager.createRoom();
+              room.ranked = true; // yalnız hızlı eşleşme kupa + XP verir
               if (msg.options?.scope) room.scope = msg.options.scope;
               room.gameMode = requestedMode;
               const resA = room.addPlayer(partner.name, partner.transport, true, partner.userProfile?.id ?? partner.userId, partner.userProfile?.trophies, partner.userProfile?.arena, partner.userProfile?.avatar, partner.userProfile?.level, partner.userProfile?.selectedFrame);
@@ -889,7 +971,8 @@ export function startServer(port: number): Server {
         }
         if (msg.type === 'create_solo') {
           userProfile = await ensureProfileLoaded(userProfile, msg.userId, ws);
-          if (!canUseMode(userProfile, msg.options?.mode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
+          // Bot antrenman maçında TÜM modlar serbest — Sosyal Paket kilidi yalnız
+          // insanlarla oynanan (find_match / oda / davet) maçlara uygulanır.
           const room = manager.createRoom();
           if (msg.options?.scope) room.scope = msg.options.scope;
           if (msg.options?.mode) room.gameMode = msg.options.mode;

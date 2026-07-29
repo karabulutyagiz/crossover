@@ -241,3 +241,33 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS bot_xp_today INT NOT NULL DEFAULT 0;
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS selected_frame TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS claimed_levels INT[] NOT NULL DEFAULT '{}';
+
+-- Özel güçler (Seviye Yolu ödülü; tek kullanımlık, stoklanabilir envanter)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS power_xp2x INT NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS power_shield INT NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS xp_boost_until TIMESTAMPTZ; -- aktif 2x XP penceresinin bitişi
+ALTER TABLE users ADD COLUMN IF NOT EXISTS shield_armed BOOLEAN NOT NULL DEFAULT FALSE; -- kuşanılmış kupa kalkanı
+
+-- Galibiyet serisi (yalnız dereceli maçlar): güncel seri + tüm zamanların en iyisi
+ALTER TABLE users ADD COLUMN IF NOT EXISTS win_streak INT NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS best_streak INT NOT NULL DEFAULT 0;
+
+-- Seri Geri Yükleme gücü: envanter adedi + son kırılan serinin değeri
+ALTER TABLE users ADD COLUMN IF NOT EXISTS power_streak INT NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS lost_streak INT NOT NULL DEFAULT 0;
+
+-- Premium Seviye Yolu: 1000 elmasla açılan paralel ödül şeridi
+ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_road BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS claimed_premium INT[] NOT NULL DEFAULT '{}';
+
+-- Aylık sezonlar: yol ilerlemesi + premium her ay sıfırlanır; kozmetikler kalır
+ALTER TABLE users ADD COLUMN IF NOT EXISTS season_id TEXT; -- 'YYYY-MM' (Europe/Istanbul)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS owned_frames TEXT[] NOT NULL DEFAULT '{}'; -- kalıcı çerçeve sahipliği
+-- Tek seferlik geri doldurma: bu güne dek claim edilmiş ×10 seviyeleri kalıcı sahipliğe çevir
+UPDATE users SET owned_frames = (
+  SELECT COALESCE(array_agg(DISTINCT f), '{}') FROM (
+    SELECT CASE lv WHEN 10 THEN 'bronze' WHEN 20 THEN 'silver' WHEN 30 THEN 'gold' WHEN 40 THEN 'diamond' WHEN 50 THEN 'goat' END AS f
+    FROM unnest(claimed_levels) AS lv WHERE lv % 10 = 0
+  ) s WHERE f IS NOT NULL
+)
+WHERE owned_frames = '{}' AND EXISTS (SELECT 1 FROM unnest(claimed_levels) lv WHERE lv % 10 = 0);

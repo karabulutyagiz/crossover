@@ -1,4 +1,5 @@
 import { pool } from '../db/pool.ts';
+import { PREMIUM_ROAD_PRICE } from './level.ts';
 import { emotePrice, isFreeEmote, isEquippableEmote, MAX_EQUIPPED, ALL_COLLECTIBLE_EMOTES } from './emotes.ts';
 import { avatarPrice, canUseAvatar, DEFAULT_AVATAR_ID, isAvatar, isFreeAvatar } from './avatars.ts';
 import { validateUsername } from './username.ts';
@@ -68,10 +69,46 @@ export interface UserProfile {
   level: number; // 1..50 — asla düşmez
   selectedFrame: string | null; // takılı profil çerçevesi (bronze..goat) ya da null
   claimedLevels: number[]; // Seviye Yolu'nda toplanmış ödül seviyeleri
+  powerXp2x: number;       // envanterdeki 2x XP jetonu adedi
+  powerShield: number;     // envanterdeki kupa kalkanı adedi
+  xpBoostUntil: string | null; // aktif 2x XP penceresinin bitişi (ISO) ya da null
+  shieldArmed: boolean;    // kuşanılmış kalkan — sıradaki dereceli mağlubiyeti emer
+  winStreak: number;       // güncel dereceli galibiyet serisi (mağlubiyette sıfırlanır)
+  bestStreak: number;      // tüm zamanların en yüksek serisi
+  powerStreak: number;     // envanterdeki Seri Geri Yükleme adedi
+  lostStreak: number;      // son mağlubiyette kırılan seri (geri yüklenebilir değer)
+  premiumRoad: boolean;    // Premium Seviye Yolu açık mı (sezonluk)
+  claimedPremium: number[]; // Premium şeritte toplanmış ödül seviyeleri
+  ownedFrames: string[];   // KALICI çerçeve sahipliği (sezonlar arası korunur)
 }
 
 function isFutureIso(iso: string | null | undefined): iso is string {
   return !!iso && new Date(iso).getTime() > Date.now();
+}
+
+// ---- Aylık sezon (Europe/Istanbul, UTC+3 sabit) ----
+// Yol ilerlemesi SEZONLUKTUR: ay değişince level/xp/claim'ler ve Premium Yol
+// sıfırlanır. Kozmetikler (çerçeve sahipliği owned_frames'te), elmas, güç
+// envanteri ve istatistikler KALIR. season_id NULL ise yalnız damgalanır —
+// mevcut oyuncuların ilerlemesi ilk kurulumda silinmez.
+export function currentSeasonId(): string {
+  const ist = new Date(Date.now() + 3 * 3600_000); // Istanbul = UTC+3 (DST yok)
+  return ist.toISOString().slice(0, 7); // 'YYYY-MM'
+}
+
+async function ensureSeason(row: DbUser): Promise<DbUser> {
+  const cur = currentSeasonId();
+  if (row.season_id === cur) return row;
+  if (!row.season_id) {
+    const { rows } = await pool.query<DbUser>(
+      `UPDATE users SET season_id = $2 WHERE id = $1 RETURNING *`, [row.id, cur]);
+    return rows[0] ?? { ...row, season_id: cur };
+  }
+  const { rows } = await pool.query<DbUser>(
+    `UPDATE users SET season_id = $2, level = 1, xp = 0,
+       claimed_levels = '{}', claimed_premium = '{}', premium_road = FALSE
+     WHERE id = $1 RETURNING *`, [row.id, cur]);
+  return rows[0] ?? row;
 }
 
 async function clearExpiredSocialPackIfNeeded(row: DbUser): Promise<DbUser> {
@@ -221,17 +258,29 @@ export async function getUser(userId: string): Promise<UserProfile | null> {
     [userId],
   );
   if (!rows[0]) return null;
-  return toProfile(await clearExpiredSocialPackIfNeeded(rows[0]));
+  return toProfile(await ensureSeason(await clearExpiredSocialPackIfNeeded(rows[0])));
 }
 
 export async function applyMatchResult(
   userId: string,
   won: boolean,
-): Promise<{ profile: UserProfile; delta: number; arenaReward: number }> {
+  opts?: { leaver?: boolean }, // hükmen mağlubiyette AYRILAN taraf — kalkan onu korumaz
+): Promise<{ profile: UserProfile; delta: number; arenaReward: number; shielded: boolean }> {
   // Read current trophies to determine arena-specific delta
   const user = await getUser(userId);
   if (!user) throw new Error('User not found');
-  const delta = trophyDelta(user.trophies, won);
+  // Kupa Kalkanı: kuşanılıysa dereceli mağlubiyette kupa kaybını BİR KEZ emer
+  // (maçı terk eden korunmaz). Tüketim atomik — eşzamanlı iki mağlubiyet tek
+  // kalkanı iki kez kullanamaz.
+  let shielded = false;
+  if (!won && !opts?.leaver) {
+    const { rows: sr } = await pool.query<{ id: string }>(
+      `UPDATE users SET shield_armed = FALSE WHERE id = $1 AND shield_armed = TRUE RETURNING id`,
+      [userId],
+    );
+    shielded = sr.length > 0;
+  }
+  const delta = shielded ? 0 : trophyDelta(user.trophies, won);
   const prevArenaIdx = ARENAS.findIndex((a) => a.name === user.arena.name);
 
   const { rows } = await pool.query<DbUser>(
@@ -266,6 +315,11 @@ export async function applyMatchResult(
         SET trophies = r.next_trophies,
             wins = r.wins + (CASE WHEN $3 THEN 1 ELSE 0 END),
             losses = r.losses + (CASE WHEN $3 THEN 0 ELSE 1 END),
+            -- Seri: galibiyette +1, mağlubiyette sıfır; rekor hiç düşmez.
+            -- Kırılan seri lost_streak'e yazılır — Seri Geri Yükleme gücü onu geri getirir.
+            win_streak = CASE WHEN $3 THEN COALESCE(u.win_streak, 0) + 1 ELSE 0 END,
+            best_streak = GREATEST(COALESCE(u.best_streak, 0), CASE WHEN $3 THEN COALESCE(u.win_streak, 0) + 1 ELSE 0 END),
+            lost_streak = CASE WHEN NOT $3 AND COALESCE(u.win_streak, 0) > 0 THEN u.win_streak ELSE COALESCE(u.lost_streak, 0) END,
             diamonds = u.diamonds +
               CASE
                 WHEN r.next_arena_idx > r.highest_arena_rewarded THEN (
@@ -286,7 +340,107 @@ export async function applyMatchResult(
   const arenaReward = nextArenaIdx > prevArenaIdx
     ? ARENA_DIAMOND_REWARDS.slice(prevArenaIdx + 1, nextArenaIdx + 1).reduce((sum, n) => sum + n, 0)
     : 0;
-  return { profile, delta, arenaReward };
+  return { profile, delta, arenaReward, shielded };
+}
+
+// ---- Özel güçler (Seviye Yolu ödülü, tek kullanımlık) ----
+// Etkinleştirme atomiktir: adet denetimi + düşüm + etki tek UPDATE'te — çifte
+// dokunuş ikinci jetonu yakmaz, aktifken yeniden basmak stok eritmez.
+export async function usePower(
+  userId: string,
+  powerId: 'xp2x' | 'shield' | 'streak',
+): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
+  if (!userId) return { ok: false, error: 'Önce giriş yap' };
+  if (powerId === 'xp2x') {
+    const { rows } = await pool.query<DbUser>(
+      `UPDATE users SET power_xp2x = power_xp2x - 1, xp_boost_until = now() + interval '1 hour'
+       WHERE id = $1 AND power_xp2x > 0 AND (xp_boost_until IS NULL OR xp_boost_until < now())
+       RETURNING *`,
+      [userId],
+    );
+    if (rows[0]) return { ok: true, profile: toProfile(rows[0]) };
+    const u = await getUser(userId);
+    if (u?.xpBoostUntil) return { ok: false, error: '2x XP zaten aktif' };
+    return { ok: false, error: 'Kullanılabilir 2x XP jetonun yok' };
+  }
+  if (powerId === 'shield') {
+    const { rows } = await pool.query<DbUser>(
+      `UPDATE users SET power_shield = power_shield - 1, shield_armed = TRUE
+       WHERE id = $1 AND power_shield > 0 AND shield_armed = FALSE
+       RETURNING *`,
+      [userId],
+    );
+    if (rows[0]) return { ok: true, profile: toProfile(rows[0]) };
+    const u = await getUser(userId);
+    if (u?.shieldArmed) return { ok: false, error: 'Kupa Kalkanı zaten kuşanılı' };
+    return { ok: false, error: 'Kullanılabilir Kupa Kalkanın yok' };
+  }
+  if (powerId === 'streak') {
+    // Anında etki: son kırılan seri mevcut serinin ÜZERİNE eklenir (araya giren
+    // galibiyetler kaybolmaz), rekor gerekiyorsa yükselir, kırık kayıt tüketilir.
+    const { rows } = await pool.query<DbUser>(
+      `UPDATE users SET
+         power_streak = power_streak - 1,
+         win_streak = win_streak + lost_streak,
+         best_streak = GREATEST(best_streak, win_streak + lost_streak),
+         lost_streak = 0
+       WHERE id = $1 AND power_streak > 0 AND lost_streak > 0
+       RETURNING *`,
+      [userId],
+    );
+    if (rows[0]) return { ok: true, profile: toProfile(rows[0]) };
+    const u = await getUser(userId);
+    if (u && u.powerStreak <= 0) return { ok: false, error: 'Kullanılabilir Seri Geri Yükleme yok' };
+    return { ok: false, error: 'Geri yüklenecek kırık bir seri yok' };
+  }
+  return { ok: false, error: 'Bilinmeyen güç' };
+}
+
+// ---- Güç satın alma (mağaza) ----
+// Güçler Seviye Yolu'ndan kazanılır AMA mağazadan elmasla da alınabilir.
+// Atomik: bakiye denetimi + düşüm + envanter artışı tek UPDATE'te.
+export const POWER_PRICES: Record<'xp2x' | 'shield' | 'streak', number> = {
+  xp2x: 150,
+  shield: 250,
+  streak: 300,
+};
+
+export async function buyPower(
+  userId: string,
+  powerId: 'xp2x' | 'shield' | 'streak',
+): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
+  if (!userId) return { ok: false, error: 'Önce giriş yap' };
+  const price = POWER_PRICES[powerId];
+  if (!price) return { ok: false, error: 'Bilinmeyen güç' };
+  const col = powerId === 'xp2x' ? 'power_xp2x' : powerId === 'shield' ? 'power_shield' : 'power_streak';
+  const { rows } = await pool.query<DbUser>(
+    `UPDATE users SET diamonds = diamonds - $2, ${col} = ${col} + 1
+     WHERE id = $1 AND diamonds >= $2
+     RETURNING *`,
+    [userId, price],
+  );
+  if (rows[0]) return { ok: true, profile: toProfile(rows[0]) };
+  const u = await getUser(userId);
+  return { ok: false, error: `Yetersiz elmas (${u?.diamonds ?? 0}/${price})` };
+}
+
+// ---- Premium Seviye Yolu satın alma ----
+// Tek seferlik: 1000 elmas düşülür, premium_road açılır. Atomik — çift dokunuş
+// iki kez ücret alamaz, bakiye yetmezse hiçbir şey değişmez.
+export async function buyPremiumRoad(
+  userId: string,
+): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
+  if (!userId) return { ok: false, error: 'Önce giriş yap' };
+  const { rows } = await pool.query<DbUser>(
+    `UPDATE users SET diamonds = diamonds - $2, premium_road = TRUE
+     WHERE id = $1 AND premium_road = FALSE AND diamonds >= $2
+     RETURNING *`,
+    [userId, PREMIUM_ROAD_PRICE],
+  );
+  if (rows[0]) return { ok: true, profile: toProfile(rows[0]) };
+  const u = await getUser(userId);
+  if (u?.premiumRoad) return { ok: false, error: 'Premium Yol zaten açık' };
+  return { ok: false, error: `Yetersiz elmas (${u?.diamonds ?? 0}/${PREMIUM_ROAD_PRICE})` };
 }
 
 export async function changeDisplayName(
@@ -365,8 +519,8 @@ export async function setSelectedFrame(
     if (!min) return { ok: false, error: 'Geçersiz çerçeve' };
     const user = await getUser(userId);
     if (!user) return { ok: false, error: 'Kullanıcı bulunamadı' };
-    if (user.level < min) return { ok: false, error: `Bu çerçeve için seviye ${min} gerekli` };
-    if (!user.claimedLevels.includes(min)) return { ok: false, error: 'Önce Seviye Yolu\'ndan bu çerçevenin ödülünü topla' };
+    // Sahiplik KALICIDIR (owned_frames) — sezon sıfırlansa da kazanılmış çerçeve takılabilir
+    if (!user.ownedFrames.includes(frameId)) return { ok: false, error: 'Önce Seviye Yolu\'ndan bu çerçevenin ödülünü topla' };
   }
   const { rows } = await pool.query<DbUser>(
     `UPDATE users SET selected_frame = $2 WHERE id = $1 RETURNING *`,
@@ -728,6 +882,18 @@ interface DbUser {
   level: number | null;
   selected_frame: string | null;
   claimed_levels: number[] | null;
+  power_xp2x: number | null;
+  power_shield: number | null;
+  xp_boost_until: string | null;
+  shield_armed: boolean | null;
+  win_streak: number | null;
+  best_streak: number | null;
+  power_streak: number | null;
+  lost_streak: number | null;
+  premium_road: boolean | null;
+  claimed_premium: number[] | null;
+  season_id: string | null;
+  owned_frames: string[] | null;
 }
 
 // Stamp the user's last-online time (on connect and disconnect) for "last seen".
@@ -757,7 +923,32 @@ function toProfile(row: DbUser): UserProfile {
     level: row.level ?? 1,
     selectedFrame: row.selected_frame ?? null,
     claimedLevels: row.claimed_levels ?? [],
+    powerXp2x: row.power_xp2x ?? 0,
+    powerShield: row.power_shield ?? 0,
+    xpBoostUntil: isFutureIso(row.xp_boost_until) ? row.xp_boost_until : null,
+    shieldArmed: row.shield_armed ?? false,
+    winStreak: row.win_streak ?? 0,
+    bestStreak: row.best_streak ?? 0,
+    powerStreak: row.power_streak ?? 0,
+    lostStreak: row.lost_streak ?? 0,
+    premiumRoad: row.premium_road ?? false,
+    claimedPremium: row.claimed_premium ?? [],
+    ownedFrames: row.owned_frames ?? [],
   };
+}
+
+// ---- Mod bazlı istatistikler (profil ekranı) ----
+// Kaynak: match_history — bot/dostluk/dereceli TÜM maçlar mod kırılımında sayılır.
+export interface ModeStat { mode: string; wins: number; losses: number }
+export async function getModeStats(userId: string): Promise<ModeStat[]> {
+  const { rows } = await pool.query<{ game_mode: string; wins: string; losses: string }>(
+    `SELECT game_mode,
+            COUNT(*) FILTER (WHERE won) AS wins,
+            COUNT(*) FILTER (WHERE NOT won) AS losses
+     FROM match_history WHERE player_id = $1 GROUP BY game_mode`,
+    [userId],
+  );
+  return rows.map((r) => ({ mode: r.game_mode, wins: Number(r.wins), losses: Number(r.losses) }));
 }
 
 // ---- Match History ----

@@ -512,7 +512,7 @@ function AppRoot() {
     if (state.phase === 'countdown' || state.phase === 'matchup' || state.phase === 'pick') { setMatchOverPopup(null); setPendingLevelUp(null); heldArena.current = null; }
   }, [state.phase]);
   // ---- Seviye atlama zinciri: kupa popup'ı → seviye popup'ı → arena kutlaması ----
-  const [pendingLevelUp, setPendingLevelUp] = useState<null | { toLevel: number; diamonds: number; emoteIds: string[] }>(null);
+  const [pendingLevelUp, setPendingLevelUp] = useState<null | { toLevel: number; diamonds: number; emoteIds: string[]; powerIds: string[]; hasReward: boolean }>(null);
   const pendingLevelUpRef = useRef(pendingLevelUp);
   pendingLevelUpRef.current = pendingLevelUp;
   const heldArena = useRef<{ amount: number; arenaName: string } | null>(null);
@@ -523,6 +523,9 @@ function AppRoot() {
       toLevel: lu[lu.length - 1]!.level,
       diamonds: lu.reduce((sum, l) => sum + l.diamonds, 0),
       emoteIds: lu.map((l) => l.emoteId).filter((e): e is string => Boolean(e)),
+      powerIds: lu.map((l) => l.powerId).filter((p): p is string => Boolean(p)),
+      // Ödül yalnız ×5 seviyelerinde — arada kalan atlayışlarda "Ödülü Topla" çıkmaz
+      hasReward: lu.some((l) => l.diamonds > 0 || Boolean(l.powerId) || l.level % 10 === 0),
     });
   }, [state.xpGain]);
   const releaseHeldArena = useCallback(() => {
@@ -1082,7 +1085,10 @@ function AppRoot() {
           toLevel={pendingLevelUp.toLevel}
           diamonds={pendingLevelUp.diamonds}
           emoteIds={pendingLevelUp.emoteIds}
+          powerIds={pendingLevelUp.powerIds}
+          hasReward={pendingLevelUp.hasReward}
           onClose={dismissLevelUp}
+          onGoToRoad={() => { setLevelRoadOpen(true); dismissLevelUp(); }}
         />
       ) : null}
 
@@ -1091,7 +1097,8 @@ function AppRoot() {
         visible={levelRoadOpen}
         profile={state.profile}
         onClose={() => setLevelRoadOpen(false)}
-        onClaim={(n) => actions.claimLevelReward(n)}
+        onClaim={(n, track) => actions.claimLevelReward(n, track)}
+        onBuyPremium={() => actions.buyPremiumRoad()}
         lastClaim={state.lastClaim}
       />
 
