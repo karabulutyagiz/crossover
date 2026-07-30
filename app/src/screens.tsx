@@ -20,7 +20,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
-import { theme, engrave } from './theme';
+import { theme, engrave, shadowSoft, shadowRow, shadowRaised, shadowModal, shadowTabBar } from './theme';
 import { t, currentLang, setLanguage, LANGUAGES } from './i18n';
 import type { MessageKey } from './i18n';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -321,20 +321,20 @@ function PulseRing({ size = 120, color = theme.primary, children }: { size?: num
   );
 }
 
-// ---- Btn 2.1 ----------------------------------------------------------------
-// Palette derived from theme tokens — ONE mint/gold/blue/red/purple in the app.
-// CR-grade face: dark ink outline around the whole body + a single-hue tonal
-// ramp on the face (top-lit toy, NOT a multi-color web gradient).
+// ---- Btn 3.0 — BROADCAST PRESTIGE ------------------------------------------
+// One filled tone face per variant: subtle vertical shade + 1px top light +
+// integrated darker bottom slice + colored (variant-dark) soft shadow. NO glass
+// dome, NO dark ink outline, NO chunky lip. Label is DARK-ON-FACE (premium),
+// except danger (white on red, convention). Press = scale + shadow-collapse + dim.
 let _btnSeq = 0;
 type BtnKind = 'primary' | 'ghost' | 'accent' | 'blue' | 'danger' | 'purple';
-const rampOf = (face: string, lip: string) => ({ hi: lighten(face, 0.3), face, lip });
-const BTN_PALETTE: Record<BtnKind, { hi: string; face: string; lip: string }> = {
-  primary: rampOf(theme.primary, theme.primaryDark),
-  accent: rampOf(theme.accent, theme.accentDark),
-  blue: rampOf(theme.blue, theme.blueDark),
-  danger: rampOf(theme.danger, theme.dangerDark),
-  purple: rampOf(theme.purple, theme.purpleDark),
-  ghost: { hi: 'transparent', face: 'transparent', lip: theme.border },
+// face color + shadow ink + dark on-face text per variant.
+const BTN_FACE: Record<Exclude<BtnKind, 'ghost'>, { face: string; sh: string; on: string }> = {
+  primary: { face: theme.primary, sh: theme.primaryDark, on: theme.onPrimary },
+  accent: { face: theme.accent, sh: theme.accentDark, on: theme.onAccent },
+  blue: { face: theme.blue, sh: theme.blueDark, on: theme.onBlue },
+  purple: { face: theme.purple, sh: theme.purpleDark, on: theme.onPurple },
+  danger: { face: theme.danger, sh: theme.dangerDark, on: '#FFFFFF' },
 };
 
 export function Btn({
@@ -364,29 +364,22 @@ export function Btn({
 }) {
   const press = useRef(new Animated.Value(0)).current;
   const btnGid = useRef(`btn${_btnSeq++}`).current;
-  const pal = BTN_PALETTE[kind] ?? BTN_PALETTE.primary;
   const ghost = kind === 'ghost';
+  const fv = BTN_FACE[(kind as Exclude<BtnKind, 'ghost'>)] ?? BTN_FACE.primary;
   const inert = Boolean(disabled || loading);
   const ghostTint = tint ?? theme.primary;
-  // Disabled = desaturated at FULL geometry (no 4px layout jump).
-  const face = disabled ? theme.bg2 : pal.face;
-  const lip = disabled ? theme.cardLip : darken(pal.face, 0.42);
-  // CR signature: WHITE label with a dark cast on painted faces (dark-on-bright
-  // reads web). Ghost keeps quiet white; disabled goes muted.
-  const fg = disabled ? theme.muted : theme.text;
-  const radius = big ? 16 : compact ? 11 : 14;
-  const depth = ghost ? 2 : big ? 5 : compact ? 3 : 4;
-  const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, depth] });
-  const glow = big && (kind === 'primary' || kind === 'accent') && !inert;
+  // Disabled = tone shift to surface1 at FULL geometry (no layout jump).
+  const face = disabled ? theme.surface1 : fv.face;
+  // Prestige: DARK-on-face label (danger keeps white). Ghost/disabled → text/muted.
+  const fg = disabled ? theme.muted : ghost ? (tint ?? theme.text) : fv.on;
+  const radius = big ? 14 : compact ? 10 : 12;
+  // Press = scale + shadow-collapse + slight dim (no chunky translate).
+  const pressScale = press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.972] });
+  const pressDim = press.interpolate({ inputRange: [0, 1], outputRange: [0, 0.10] });
   const padV = big ? 16 : compact ? 9 : 13;
-  const font = big ? 18 : compact ? 13 : 15;
+  const font = big ? 17 : compact ? 13 : 15;
   const iconSz = big ? 23 : compact ? 15 : 19;
-  // White label with a strong dark cast (CR reads bold-white-on-color); ghost engraves.
-  const emboss = ghost
-    ? engrave('sm')
-    : disabled
-      ? {}
-      : { textShadowColor: 'rgba(4,9,24,0.55)', textShadowOffset: { width: 0, height: 1.5 }, textShadowRadius: 1.5 };
+  const emboss = {}; // no cast on button labels (dark-on-face reads clean)
   void icon; // decorative icons intentionally not rendered inside buttons
   // Exception: `gem` — a PRICE button must show what currency it charges, so the
   // crystal logo (the same GemIcon as the HUD counter) sits right before the number.
@@ -423,84 +416,67 @@ export function Btn({
       onPressIn={() => Animated.timing(press, { toValue: 1, duration: PRESS_IN_MS, useNativeDriver: true }).start()}
       onPressOut={() => Animated.timing(press, { toValue: 0, duration: PRESS_OUT_MS, useNativeDriver: true }).start()}
       onPress={inert ? undefined : onPress}
-      style={{
-        marginVertical: 6,
-        borderRadius: radius + 2,
-        ...(glow ? { shadowColor: pal.face, shadowOpacity: 0.5, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 10 } : {}),
-      }}
+      style={{ marginVertical: 6, borderRadius: radius }}
     >
       {ghost ? (
-        // Ghost: glowSoft fill + tint ring. NO rest glow — glow is for hero CTAs only.
+        // Ghost: the ONE sanctioned thin outline (1.5px tint), transparent body.
         <Animated.View
           style={{
-            transform: [{ translateY: ty }],
-            backgroundColor: disabled ? withAlpha(theme.muted, 0.08) : tint ? withAlpha(ghostTint, 0.16) : theme.glowSoft,
+            transform: [{ scale: pressScale }],
             borderRadius: radius,
-            borderWidth: 2,
-            borderColor: disabled ? theme.border : ghostTint,
+            borderWidth: 1.5,
+            borderColor: disabled ? withAlpha(theme.border, 0.6) : withAlpha(ghostTint, 0.9),
             paddingVertical: big ? 14 : compact ? 7 : 11,
             paddingHorizontal: 18,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
+            overflow: 'hidden',
           }}
         >
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: ghostTint, opacity: press.interpolate({ inputRange: [0, 1], outputRange: [0, 0.12] }) }]} />
           {content}
         </Animated.View>
       ) : (
-        // CLASH-ROYALE button: chunky body with a dark ink outline + deep bottom
-        // lip; the face carries a vertical gradient AND a glossy highlight pill
-        // over the top half (the glass shine is what makes it read premium).
-        <View
+        // Prestige face: filled tone + subtle vertical shade, 1px top light, 2px
+        // integrated bottom slice, colored (variant-dark) soft shadow that
+        // collapses on press. No glass dome, no ink outline, no chunky lip.
+        <Animated.View
           style={{
-            backgroundColor: lip,
-            borderRadius: radius + 4,
-            borderWidth: 2,
-            borderColor: disabled ? theme.cardLip : darken(pal.face, 0.5),
-            paddingBottom: depth, // ALWAYS — disabled keeps full geometry
-            shadowColor: '#000',
-            shadowOpacity: disabled ? 0.14 : 0.34,
-            shadowRadius: 7,
-            shadowOffset: { width: 0, height: 5 },
-            elevation: disabled ? 2 : 6,
+            transform: [{ scale: pressScale }],
+            backgroundColor: face,
+            borderRadius: radius,
+            paddingVertical: padV,
+            paddingHorizontal: 18,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
+            ...(disabled
+              ? { borderWidth: 1, borderColor: withAlpha(theme.border, 0.6) }
+              : { shadowColor: fv.sh, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 6 }),
           }}
         >
-          <Animated.View
-            style={{
-              transform: [{ translateY: ty }],
-              backgroundColor: face,
-              borderRadius: radius,
-              paddingVertical: padV,
-              paddingHorizontal: 18,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              overflow: 'hidden',
-            }}
-          >
-            {!disabled ? (
-              // Body gradient + a SMOOTH top gloss (white→transparent), so the
-              // shine reads like a glass dome, not a slapped-on white band.
-              <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
-                <Defs>
-                  <SvgGradient id={btnGid} x1="0" y1="0" x2="0" y2="1">
-                    <Stop offset="0" stopColor={lighten(face, 0.52)} />
-                    <Stop offset="0.5" stopColor={face} />
-                    <Stop offset="1" stopColor={darken(face, 0.3)} />
-                  </SvgGradient>
-                  <SvgGradient id={`${btnGid}g`} x1="0" y1="0" x2="0" y2="1">
-                    <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.5" />
-                    <Stop offset="0.55" stopColor="#FFFFFF" stopOpacity="0.06" />
-                    <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
-                  </SvgGradient>
-                </Defs>
-                <Rect width="100%" height="100%" fill={`url(#${btnGid})`} />
-                <Rect x={4} y={3} rx={radius - 4} width="92%" height="55%" fill={`url(#${btnGid}g)`} />
-              </Svg>
-            ) : null}
-            {content}
-          </Animated.View>
-        </View>
+          {!disabled ? (
+            <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
+              <Defs>
+                <SvgGradient id={btnGid} x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor={lighten(face, 0.1)} />
+                  <Stop offset="1" stopColor={darken(face, 0.13)} />
+                </SvgGradient>
+              </Defs>
+              <Rect width="100%" height="100%" fill={`url(#${btnGid})`} />
+            </Svg>
+          ) : null}
+          {!disabled ? (
+            <>
+              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.16 }} />
+              <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: darken(face, 0.4), opacity: 0.85 }} />
+            </>
+          ) : null}
+          {content}
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#04091A', opacity: pressDim }]} />
+        </Animated.View>
       )}
     </Pressable>
   );
@@ -509,31 +485,35 @@ export function Btn({
 // ---- Chip 2.0 ---------------------------------------------------------------
 // Mini-bevel option chip with real press physics. `active` = selected state.
 function Chip({ icon, label, onPress, active = false }: { icon: IoniconName; label: string; onPress: () => void; active?: boolean }) {
-  const { ty, onIn, onOut } = usePressLip(2);
+  // Prestige chip: tone-ladder selection (surface2 → surface3), no ring. Active
+  // reads from a filled lighter face + primary label + a 2.5px bottom focus bar.
   return (
-    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1 }}>
-      <View style={{ backgroundColor: theme.cardLip, borderRadius: 13, paddingBottom: 2 }}>
-        <Animated.View
+    <Pressable onPress={onPress} style={{ flex: 1 }}>
+      {({ pressed }) => (
+        <View
           style={{
-            transform: [{ translateY: ty }],
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 5,
-            backgroundColor: active ? theme.glowSoft : theme.card,
-            borderWidth: 1.5,
-            borderColor: active ? theme.primary : theme.border,
+            backgroundColor: active ? theme.surface3 : theme.surface2,
             borderRadius: 12,
             paddingVertical: 10,
             paddingHorizontal: 6,
+            overflow: 'hidden',
+            transform: [{ scale: pressed ? 0.97 : 1 }],
+            ...shadowRow,
           }}
         >
-          <Ionicons name={icon} size={14} color={theme.accent} />
-          <Text numberOfLines={1} style={{ color: theme.text, fontSize: 11, fontFamily: 'Poppins-ExtraBold', flexShrink: 1, ...engrave('sm') }}>
+          {/* 1px top light + integrated bottom slice — depth without a frame */}
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: active ? 0.16 : 0.08 }} />
+          {active ? <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2.5, backgroundColor: theme.primary }} /> : null}
+          <Ionicons name={icon} size={14} color={active ? theme.primary : theme.textSub} />
+          <Text numberOfLines={1} style={{ color: active ? theme.text : theme.textSub, fontSize: 11, fontFamily: 'Poppins-ExtraBold', flexShrink: 1 }}>
             {label}
           </Text>
-        </Animated.View>
-      </View>
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -548,26 +528,29 @@ function GamePanel({ children, hero = false, tint, accentStripe, compact = false
 }) {
   const gid = useRef(`gp${_gpSeq++}`).current;
   const r = compact ? 14 : 18;
-  const fr = compact ? 12 : 16;
-  const frameColor = tint ?? (hero ? theme.frameGold : theme.border);
-  const frameBot = tint ? darken(tint) : (hero ? theme.accentDark : theme.cardLip);
+  // Prestige surface: depth from the tone ladder + a 1px top photon + an
+  // integrated bottom slice + a soft NAVY shadow — never a drawn ink frame.
+  const face = hero ? theme.surface3 : theme.surface2;
+  const sh = hero ? shadowRaised : compact ? shadowRow : shadowSoft;
+  const stripe = accentStripe ?? tint;
   return (
-    <View style={[{ backgroundColor: hero ? theme.panelInk : theme.bg2, borderRadius: r, padding: 2, borderWidth: 2, borderColor: frameColor, borderBottomColor: frameBot, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: compact ? 6 : 12, shadowOffset: { width: 0, height: compact ? 4 : 6 }, elevation: compact ? 5 : 9 }, style]}>
-      <View style={[{ backgroundColor: theme.card, borderRadius: fr, borderTopWidth: 1, borderTopColor: theme.panelTopGloss, borderBottomWidth: 3, borderBottomColor: theme.cardLip, overflow: 'hidden', padding: 12 }, bodyStyle]}>
+    <View style={[{ backgroundColor: face, borderRadius: r, ...sh }, style]}>
+      <View style={[{ backgroundColor: face, borderRadius: r, overflow: 'hidden', padding: 12 }, bodyStyle]}>
         {hero ? (
           <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
             <Defs>
               <SvgGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={theme.panelTop} />
-                <Stop offset="0.5" stopColor={theme.card} />
-                <Stop offset="1" stopColor={theme.panelBot} />
+                <Stop offset="0" stopColor={lighten(face, 0.08)} />
+                <Stop offset="1" stopColor={darken(face, 0.1)} />
               </SvgGradient>
             </Defs>
             <Rect width="100%" height="100%" fill={`url(#${gid})`} />
-            <Rect width="100%" height="50%" fill="#FFFFFF" opacity={0.05} />
           </Svg>
         ) : null}
-        {accentStripe ? <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: accentStripe, borderTopLeftRadius: fr, borderBottomLeftRadius: fr }} /> : null}
+        {/* 1px top light + 2px integrated bottom slice */}
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: hero ? 0.16 : 0.08 }} />
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.3 }} />
+        {stripe ? <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: stripe }} /> : null}
         {children}
       </View>
     </View>
@@ -599,11 +582,9 @@ export function GameModal({ visible, onClose, onExited, title, icon, danger = fa
   }, [visible, a]);
   if (!mounted && !visible) return null;
   const clamped = a.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' });
-  const frameColor = coach ? theme.primary : theme.frameGold;
-  const frameBot = coach ? theme.primaryDark : theme.frameGoldDark;
-  const bannerBg = danger ? theme.danger : theme.accent;
-  const bannerBot = danger ? theme.dangerDark : theme.accentDark;
-  const bannerFg = danger ? theme.text : theme.ink;
+  // Broadcast Premium: one clean surface, hairline border, a single 3px accent
+  // strip along the top carries the modal's mood (danger red / coach green / gold).
+  const strip = danger ? theme.danger : coach ? theme.primary : theme.accent;
   return (
     <Modal visible transparent animationType="none" onRequestClose={onClose}>
       <Animated.View style={{ flex: 1, backgroundColor: theme.scrim, opacity: clamped }}>
@@ -616,31 +597,34 @@ export function GameModal({ visible, onClose, onExited, title, icon, danger = fa
               width: '100%', maxWidth: 360,
               transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) }],
               opacity: clamped,
-              backgroundColor: theme.panelInk, borderRadius: 22, padding: 2,
-              borderWidth: 2, borderColor: frameColor, borderBottomColor: frameBot, overflow: 'hidden',
-              shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 24, shadowOffset: { width: 0, height: 14 }, elevation: 24,
+              backgroundColor: theme.modalFace, borderRadius: 22, overflow: 'hidden',
+              ...shadowModal,
             }}
           >
-            <Pressable onPress={() => {}} style={{ backgroundColor: theme.card, borderRadius: 20, overflow: 'hidden', borderBottomWidth: 3, borderBottomColor: theme.cardLip }}>
+            <Pressable onPress={() => {}}>
+              {/* faint light-catching top edge (NOT a frame) + mood strip */}
+              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.06, zIndex: 6 }} />
+              <View style={{ height: 3, backgroundColor: strip }} />
               {title ? (
-                <View style={{ height: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 46, backgroundColor: bannerBg, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.35)', borderBottomWidth: 3, borderBottomColor: bannerBot }}>
-                  {icon ? <Ionicons name={icon} size={18} color={bannerFg} /> : null}
-                  <Text numberOfLines={1} style={{ color: bannerFg, fontFamily: 'Poppins-ExtraBold', fontSize: 16, letterSpacing: 0.5, textTransform: 'uppercase' }}>{title}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingLeft: 20, paddingRight: 56, paddingTop: 16, paddingBottom: 2 }}>
+                  <View style={{ width: 4, height: 17, borderRadius: 2, backgroundColor: strip }} />
+                  {icon ? <Ionicons name={icon} size={16} color={strip} /> : null}
+                  <Text numberOfLines={1} style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15, letterSpacing: 1, textTransform: 'uppercase', flexShrink: 1 }}>{title}</Text>
                 </View>
               ) : null}
-              <View style={{ padding: 20, paddingTop: title ? 16 : 20, gap: 12 }}>{children}</View>
+              <View style={{ padding: 20, paddingTop: title ? 12 : 20, gap: 12 }}>{children}</View>
               <Pressable
                 onPress={onClose}
                 hitSlop={8}
                 style={({ pressed }) => ({
-                  position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15,
-                  backgroundColor: pressed ? darken(theme.cardLip, 0.35) : theme.cardLip,
-                  borderWidth: 2, borderColor: theme.accentDark,
+                  position: 'absolute', top: 12, right: 12, width: 32, height: 32, borderRadius: 16,
+                  backgroundColor: theme.well,
                   alignItems: 'center', justifyContent: 'center', zIndex: 5,
-                  transform: [{ translateY: pressed ? 1 : 0 }],
+                  transform: [{ scale: pressed ? 0.9 : 1 }],
+                  opacity: pressed ? 0.8 : 1,
                 })}
               >
-                <Ionicons name="close" size={16} color={theme.accent} />
+                <Ionicons name="close" size={16} color={theme.textSub} />
               </Pressable>
             </Pressable>
           </Animated.View>
@@ -672,19 +656,22 @@ function ScreenHeader({ title, onBack, icon, right }: {
   title: string; onBack?: () => void; icon?: IoniconName; right?: ReactNode;
 }) {
   return (
-    <View style={{ alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 14, backgroundColor: theme.bg2, borderBottomWidth: 2, borderBottomColor: theme.cardLip, marginBottom: 12 }}>
+    <View style={{ alignSelf: 'stretch', marginBottom: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 14, backgroundColor: theme.surface1 }}>
       {onBack ? (
         <Pressable
           onPress={onBack}
           hitSlop={8}
           style={({ pressed }) => ({
-            width: 40, height: 40, borderRadius: 14,
-            backgroundColor: pressed ? theme.bg2 : theme.card,
-            borderWidth: 2, borderColor: theme.border,
+            width: 40, height: 40, borderRadius: 13,
+            backgroundColor: theme.surface2,
             alignItems: 'center', justifyContent: 'center',
-            transform: [{ translateY: pressed ? 2 : 0 }],
+            overflow: 'hidden',
+            transform: [{ scale: pressed ? 0.94 : 1 }],
+            ...shadowRow,
           })}
         >
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
           <Ionicons name="chevron-back" size={22} color={theme.text} />
         </Pressable>
       ) : <View style={{ width: 40 }} />}
@@ -693,6 +680,10 @@ function ScreenHeader({ title, onBack, icon, right }: {
         <Text numberOfLines={1} style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 18, letterSpacing: 0.5, textTransform: 'uppercase', ...engrave('lg') }}>{title}</Text>
       </View>
       {right ?? <View style={{ width: 40 }} />}
+      </View>
+      {/* integrated hairline base — a light-catching edge, not an ink frame */}
+      <View pointerEvents="none" style={{ height: 1, backgroundColor: theme.shadowInk, opacity: 0.35 }} />
+      <View pointerEvents="none" style={{ height: 1, backgroundColor: '#FFFFFF', opacity: 0.04 }} />
     </View>
   );
 }
@@ -705,31 +696,30 @@ function GameInput({ icon, error = false, containerStyle, style, onFocus, onBlur
   icon?: IoniconName; error?: boolean; containerStyle?: any; inputRef?: Ref<TextInput>;
 }) {
   const [focused, setFocused] = useState(false);
-  const halo = useRef(new Animated.Value(0)).current;
+  const tick = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(halo, { toValue: focused ? 1 : 0, duration: 150, useNativeDriver: true }).start();
-  }, [focused, halo]);
-  const ring = error ? theme.danger : theme.primary;
+    Animated.timing(tick, { toValue: focused ? 1 : 0, duration: 150, useNativeDriver: true }).start();
+  }, [focused, tick]);
+  const accent = error ? theme.danger : theme.focusBar;
+  // Prestige input: a recessed well (darkest tone) that reads sunken from an
+  // inner top-shadow. Focus = a left accent tick + a whisper wash — NO ring, NO
+  // outer glow halo. Error keeps the same language in danger red.
   return (
     <View style={[{ marginVertical: 6 }, containerStyle]}>
-      <Animated.View
-        pointerEvents="none"
-        style={{
-          position: 'absolute', top: -3, left: -3, right: -3, bottom: -3, borderRadius: 17,
-          borderWidth: 3, borderColor: error ? withAlpha(theme.danger, 0.28) : theme.glowSoft,
-          opacity: halo,
-        }}
-      />
       <View
         style={{
           flexDirection: 'row', alignItems: 'center',
-          backgroundColor: theme.panelInnerFill, // recessed inner well
-          borderRadius: 14, borderWidth: 2,
-          borderColor: error ? theme.danger : focused ? ring : theme.border, // tek parça halka
+          backgroundColor: theme.well, // recessed inner well
+          borderRadius: 14, overflow: 'hidden',
           paddingHorizontal: 14,
         }}
       >
-        {icon ? <Ionicons name={icon} size={16} color={focused ? ring : theme.muted} style={{ marginRight: 8 }} /> : null}
+        {/* inner top shadow — sells the recess without a drawn frame */}
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
+        {/* focus/error wash + left accent tick */}
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: error ? withAlpha(theme.danger, 0.08) : theme.selectWash, opacity: error ? 1 : tick }]} />
+        <Animated.View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, backgroundColor: accent, opacity: error ? 1 : tick }} />
+        {icon ? <Ionicons name={icon} size={16} color={focused || error ? accent : theme.muted} style={{ marginRight: 8 }} /> : null}
         <TextInput
           ref={inputRef}
           placeholderTextColor={theme.muted}
@@ -751,34 +741,37 @@ function GameRow({ icon, iconColor = theme.accent, leading, label, sublabel, rig
   icon?: IoniconName; iconColor?: string; leading?: ReactNode; label: string; sublabel?: string; right?: ReactNode; chevron?: boolean;
   onPress?: () => void; selected?: boolean; locked?: boolean; tint?: string; style?: any; children?: ReactNode;
 }) {
-  const { ty, onIn, onOut } = usePressLip(2);
+  const press = useRef(new Animated.Value(0)).current;
+  const scale = press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.985] });
+  const dim = press.interpolate({ inputRange: [0, 1], outputRange: [0, 0.06] });
+  const onIn = useCallback(() => Animated.timing(press, { toValue: 1, duration: PRESS_IN_MS, useNativeDriver: true }).start(), [press]);
+  const onOut = useCallback(() => Animated.timing(press, { toValue: 0, duration: PRESS_OUT_MS, useNativeDriver: true }).start(), [press]);
   const check = useRef(new Animated.Value(selected ? 1 : 0)).current;
   useEffect(() => {
     if (selected) Animated.spring(check, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }).start();
     else Animated.timing(check, { toValue: 0, duration: 120, useNativeDriver: true }).start();
   }, [selected, check]);
-  const ring = selected ? theme.primary : tint ?? theme.border;
+  const face = selected ? theme.surface3 : theme.surface2;
   const fgLabel = locked ? theme.muted : theme.text;
-  const gemRing = locked ? theme.border : darken(iconColor, 0.25);
   const body = (
-    <View
-      style={{
-        backgroundColor: theme.cardLip, borderRadius: 15, paddingBottom: 3, marginVertical: 4,
-        shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 5,
-      }}
+    <Animated.View
+      style={[{
+        transform: [{ scale }],
+        flexDirection: 'row', alignItems: 'center', gap: 11,
+        backgroundColor: face, borderRadius: 14, overflow: 'hidden',
+        paddingVertical: 12, paddingHorizontal: 12, marginVertical: 4,
+        ...shadowRow,
+      }, style]}
     >
-      <Animated.View
-        style={[{
-          transform: [{ translateY: ty }],
-          flexDirection: 'row', alignItems: 'center', gap: 11,
-          backgroundColor: theme.card, borderRadius: 14, overflow: 'hidden',
-          borderWidth: 2, borderColor: ring,
-          paddingVertical: 12, paddingHorizontal: 12,
-        }, style]}
-      >
-        {selected ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: theme.glowSoft }]} /> : null}
+      {/* prestige depth: top light + integrated bottom slice (no ring) */}
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: selected ? 0.14 : 0.07 }} />
+      <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
+      {selected ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: theme.selectWash }]} /> : null}
+      {selected ? <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3.5, backgroundColor: theme.primary }} /> : tint ? <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3.5, backgroundColor: tint }} /> : null}
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#04091A', opacity: dim }]} />
         {leading || icon ? (
-          <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: theme.cardLip, borderWidth: 1.5, borderColor: gemRing, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: theme.well, alignItems: 'center', justifyContent: 'center' }}>
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.05, borderTopLeftRadius: 11, borderTopRightRadius: 11 }} />
             {leading ?? <Ionicons name={icon!} size={18} color={locked ? theme.muted : iconColor} />}
           </View>
         ) : null}
@@ -788,8 +781,8 @@ function GameRow({ icon, iconColor = theme.accent, leading, label, sublabel, rig
           {children}
         </View>
         {locked ? (
-          <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: theme.accent, borderBottomWidth: 2, borderBottomColor: theme.accentDark, alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="lock-closed" size={12} color={theme.ink} />
+          <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="lock-closed" size={12} color={theme.onAccent} />
           </View>
         ) : selected ? (
           <Animated.View style={{ transform: [{ scale: check }] }}>
@@ -798,8 +791,7 @@ function GameRow({ icon, iconColor = theme.accent, leading, label, sublabel, rig
         ) : (
           right ?? (chevron ? <Ionicons name="chevron-forward" size={16} color={theme.muted} /> : null)
         )}
-      </Animated.View>
-    </View>
+    </Animated.View>
   );
   if (!onPress) return body;
   return (
@@ -834,7 +826,7 @@ function SectionHeader({ label, icon, color = theme.muted, style }: { label: str
     <View style={[{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14, marginBottom: 6 }, style]}>
       {icon ? <Ionicons name={icon} size={13} color={color === theme.muted ? theme.accent : color} /> : null}
       <Text style={{ color, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 2, textTransform: 'uppercase' }}>{label}</Text>
-      <View style={{ flex: 1, height: 1, backgroundColor: theme.border, opacity: 0.6 }} />
+      <View style={{ flex: 1, height: 1, backgroundColor: theme.hairline }} />
     </View>
   );
 }
@@ -843,7 +835,8 @@ function SectionHeader({ label, icon, color = theme.muted, style }: { label: str
 function EmptyState({ icon, title, hint, cta, style }: { icon: IoniconName; title: string; hint?: string; cta?: ReactNode; style?: any }) {
   return (
     <View style={[{ alignItems: 'center', gap: 10, paddingVertical: 28, paddingHorizontal: 18 }, style]}>
-      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.panelInnerFill, borderWidth: 2, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.well, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
         <Ionicons name={icon} size={28} color={theme.muted} />
       </View>
       <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') }}>{title}</Text>
@@ -969,12 +962,15 @@ function SkipChip({ onPress, style }: { onPress: () => void; style?: any }) {
         <View
           style={{
             flexDirection: 'row', alignItems: 'center', gap: 4,
-            backgroundColor: pressed ? theme.bg2 : theme.card,
+            backgroundColor: theme.surface2,
             borderRadius: 12, paddingHorizontal: 12, paddingVertical: 7,
-            borderWidth: 1.5, borderColor: theme.border,
-            transform: [{ translateY: pressed ? 2 : 0 }],
+            borderTopWidth: 1, borderTopColor: theme.topLight,
+            overflow: 'hidden',
+            transform: [{ scale: pressed ? 0.97 : 1 }],
+            ...shadowRow,
           }}
         >
+          {pressed ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#04091A', opacity: 0.1 }]} /> : null}
           <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12, ...engrave('sm') }}>{t('common.skip')}</Text>
           <Ionicons name="chevron-forward" size={12} color={theme.muted} />
         </View>
@@ -1196,9 +1192,12 @@ const SLAM_WORD = 'CROSSOVER';
 // CROSSOVER lockup (splash / loading / login) so the brand block never changes
 // between scenes.
 const BRAND_BYLINE = 'BY Games';
-function BrandByline({ style }: { style?: object }) {
+function BrandByline({ style, ready = true }: { style?: object; ready?: boolean }) {
+  // FOUT guard (same as the wordmark): before Poppins loads, render a
+  // weight-matched SYSTEM font so "BY Games" never flashes from a thin fallback
+  // and then snaps to ExtraBold. Once fonts are ready, use the real face.
   return (
-    <Text style={[{ color: theme.muted, fontSize: 12.5, letterSpacing: 5, fontFamily: 'Poppins-ExtraBold', marginTop: 7, includeFontPadding: false, ...engrave('sm') }, style]}>
+    <Text style={[{ color: theme.muted, fontSize: 12.5, letterSpacing: 5, fontFamily: ready ? 'Poppins-ExtraBold' : undefined, fontWeight: ready ? undefined : '800', marginTop: 7, includeFontPadding: false, ...engrave('sm') }, style]}>
       {BRAND_BYLINE}
     </Text>
   );
@@ -1343,9 +1342,10 @@ export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => voi
             ))}
           </View>
           <ShineSweep width={SLAM_WM_W} height={SLAM_FONT * 1.4} delay={1900} duration={620} tint={theme.accent} opacity={0.3} band={0.24} />
-          {/* byline fades in with the last stamped letter */}
-          <Animated.View style={{ opacity: letters[letters.length - 1]! }}>
-            <BrandByline />
+          {/* byline fades in with the last stamped letter — but stays hidden until
+              fonts are ready so "BY Games" never appears in a fallback face first */}
+          <Animated.View style={{ opacity: fontsReady ? letters[letters.length - 1]! : 0 }}>
+            <BrandByline ready={fontsReady} />
           </Animated.View>
         </View>
       </Animated.View>
@@ -1447,7 +1447,7 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
       <Animated.View style={{ position: 'absolute', left: 24, right: 24, bottom: 56, gap: 14, opacity: kit, transform: [{ translateY: kit.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] }}>
         <GamePanel compact bodyStyle={{ padding: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}>
-            <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: theme.cardLip, borderWidth: 1.5, borderColor: theme.accentDark, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: theme.well, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="bulb" size={18} color={theme.accent} />
             </View>
             <View style={{ flex: 1 }}>
@@ -1457,8 +1457,8 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
           </View>
         </GamePanel>
 
-        <View style={{ height: LOAD_BAR_H, borderRadius: 13, backgroundColor: theme.panelInk, borderWidth: 2, borderColor: theme.border, padding: 2, justifyContent: 'center' }}>
-          <View style={{ flex: 1, borderRadius: 10, backgroundColor: theme.panelInnerFill, overflow: 'hidden' }}>
+        <View style={{ height: LOAD_BAR_H, borderRadius: 13, backgroundColor: theme.well, padding: 2, justifyContent: 'center' }}>
+          <View style={{ flex: 1, borderRadius: 10, backgroundColor: theme.well, overflow: 'hidden' }}>
             {/* glossy mint fill slab (full width, slid in from the left on the native
                 driver): top gloss + dark lip + hot leading cap + looping shine */}
             <Animated.View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: LOAD_BAR_INNER, borderRadius: 10, backgroundColor: theme.primary, overflow: 'hidden', transform: [{ translateX: fill.interpolate({ inputRange: [0, 1], outputRange: [-LOAD_BAR_INNER, 0] }) }] }}>
@@ -1467,7 +1467,7 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
               <View style={{ position: 'absolute', top: 2, bottom: 2, right: 2, width: 6, borderRadius: 3, backgroundColor: lighten(theme.primary, 0.55), opacity: 0.9 }} />
               <ShineSweep width={LOAD_BAR_INNER} height={LOAD_BAR_H - 8} loop delay={350} duration={900} loopGap={900} opacity={0.35} band={0.22} />
             </Animated.View>
-            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: '#000000', opacity: 0.28 }} />
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
             <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF', opacity: blink.interpolate({ inputRange: [0, 1], outputRange: [0, 0.45] }) }]} />
           </View>
           <Text style={{ position: 'absolute', alignSelf: 'center', color: theme.text, fontSize: 12, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5, ...engrave('sm') }}>{pct}%</Text>
@@ -1555,9 +1555,9 @@ function CoachGate({ visible, wrong, stepLabel, body, cta, ctaIcon, onPress }: {
           width: '100%',
           opacity: a.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
           transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }],
-          backgroundColor: theme.card, borderRadius: 18, borderWidth: 1, borderColor: theme.border,
+          backgroundColor: theme.modalFace, borderRadius: 18, borderTopWidth: 1, borderTopColor: theme.topLight,
           paddingVertical: 24, paddingHorizontal: 22, alignItems: 'center',
-          shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 16,
+          ...shadowModal,
         }}
       >
         <Text style={{ color: accent, fontFamily: 'Poppins-ExtraBold', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 10 }}>{stepLabel}</Text>
@@ -1829,7 +1829,7 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
       {step >= 2 ? (
         <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16, paddingBottom: Math.max(insets.bottom, 16) }}>
           <Animated.View style={{ transform: [{ scale: bubble }], opacity: bubble }}>
-            <View style={{ backgroundColor: theme.card, borderRadius: 18, borderWidth: 1, borderColor: theme.border, padding: 22, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 16 }}>
+            <View style={{ backgroundColor: theme.modalFace, borderRadius: 18, borderTopWidth: 1, borderTopColor: theme.topLight, padding: 22, alignItems: 'center', ...shadowModal }}>
               <Text style={{ color: theme.text, fontSize: 14.5, fontFamily: 'Poppins-SemiBold', lineHeight: 22, textAlign: 'center', marginBottom: 16 }}>{cur.gate}</Text>
               <Pressable
                 onPress={onGate}
@@ -2000,16 +2000,17 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
         <Animated.View style={[styles.emoteSheetBackdrop, { opacity: sheetA.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }) }]}>
           <Pressable style={{ flex: 1 }} onPress={() => setOpen(false)} />
           <Animated.View style={{ transform: [{ translateY: sheetA.interpolate({ inputRange: [0, 1], outputRange: [440, 0] }) }] }}>
-            {/* Gold top rim over a panelInk edge → card face with a panelTopGloss inner line */}
-            <View style={{ backgroundColor: theme.panelInk, borderTopLeftRadius: 30, borderTopRightRadius: 30, borderTopWidth: 2, borderTopColor: theme.frameGold, paddingTop: 3 }}>
+            {/* Prestige bottom-sheet: surface1 edge → modalFace body, depth from a
+                1px top-light + the soft navy shadow (no drawn gold frame) */}
+            <View style={{ backgroundColor: theme.surface1, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingTop: 3, ...shadowModal }}>
               <View
                 style={{
-                  backgroundColor: theme.card, borderTopLeftRadius: 26, borderTopRightRadius: 26,
-                  borderTopWidth: 1, borderTopColor: theme.panelTopGloss,
+                  backgroundColor: theme.modalFace, borderTopLeftRadius: 26, borderTopRightRadius: 26,
+                  borderTopWidth: 1, borderTopColor: theme.topLight,
                   paddingTop: 10, paddingHorizontal: 18, paddingBottom: Math.max(insets.bottom, 16) + 12,
                 }}
               >
-                <View style={{ width: 42, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: 'center', marginBottom: 16 }} />
+                <View style={{ width: 42, height: 4, borderRadius: 2, backgroundColor: theme.hairline, alignSelf: 'center', marginBottom: 16 }} />
 
                 {/* Quick-chat text messages (no emoji — just text, Clash-Royale style) */}
                 <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 1.5, marginBottom: 9, marginLeft: 2 }}>{t('emote.quickChat')}</Text>
@@ -2019,10 +2020,11 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
                       key={e.id}
                       onPress={() => { actions.sendEmote(e.id); setOpen(false); }}
                       style={({ pressed }) => ({
-                        flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.bg,
+                        flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.surface2,
                         borderRadius: 22, paddingVertical: 11, paddingHorizontal: 16,
-                        borderWidth: 1.5, borderColor: theme.border,
-                                    transform: [{ translateY: pressed ? 2 : 0 }],
+                        borderTopWidth: 1, borderTopColor: theme.topLight,
+                        transform: [{ scale: pressed ? 0.97 : 1 }],
+                        ...shadowRow,
                       })}
                     >
                       <Ionicons name="chatbubble-ellipses" size={14} color={theme.primary} />
@@ -2340,6 +2342,7 @@ export function LoginScreen({ state, actions }: Props) {
   const [appleAvailable, setAppleAvailable] = useState(false);
   const [hasInternet, setHasInternet] = useState(true);
   const [showOfflinePulse, setShowOfflinePulse] = useState(false);
+  const [authErr, setAuthErr] = useState<string | null>(null);
   const intro = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(() => setAppleAvailable(false));
@@ -2376,6 +2379,7 @@ export function LoginScreen({ state, actions }: Props) {
   }, [response]);
 
   const signInApple = async () => {
+    setAuthErr(null);
     try {
       const cred = await AppleAuthentication.signInAsync({
         requestedScopes: [
@@ -2388,9 +2392,16 @@ export function LoginScreen({ state, actions }: Props) {
         const family = cred.fullName?.familyName ?? '';
         const name = `${given} ${family}`.trim() || undefined;
         actions.authWith('apple', cred.identityToken, name);
+      } else {
+        setAuthErr(t('error.appleSignIn'));
       }
-    } catch {
-      /* user canceled the Apple sheet */
+    } catch (e: any) {
+      // ERR_REQUEST_CANCELED = the user dismissed the sheet — stay silent. Any
+      // OTHER error is a real failure the reviewer needs to see, not swallow.
+      const code = e?.code ?? '';
+      if (code !== 'ERR_REQUEST_CANCELED' && code !== 'ERR_CANCELED') {
+        setAuthErr(t('error.appleSignIn'));
+      }
     }
   };
 
@@ -2414,12 +2425,17 @@ export function LoginScreen({ state, actions }: Props) {
 
         <Animated.View style={{ paddingBottom: 16, opacity: intro, transform: [{ translateY: intro.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }] }}>
           <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 18, marginBottom: 8 }}>{t('login.hint')}</Text>
+          {/* Never GATE login on NetInfo: its reachability probe returns false on
+              some review/restricted networks even when the internet works, which
+              would make these buttons silently do nothing. Always attempt — the
+              connection layer (with its 15s watchdog) surfaces a real error if it
+              genuinely fails. We only flash the offline beacon as a fast hint. */}
           {Platform.OS === 'ios' && appleAvailable ? (
-            <AppleSignInBtn onPress={() => { if (hasInternet) void signInApple(); else setShowOfflinePulse(true); }} />
+            <AppleSignInBtn onPress={() => { if (!hasInternet) setShowOfflinePulse(true); void signInApple(); }} />
           ) : null}
-          <GoogleSignInBtn onPress={() => { if (hasInternet) void promptAsync(); else setShowOfflinePulse(true); }} disabled={!request} />
-          {!isNetworkErrorMessage(state.error) && state.error ? <ErrorBanner message={state.error} /> : null}
-          <Pressable onPress={() => { if (hasInternet) actions.guestLogin(); else setShowOfflinePulse(true); }} style={({ pressed }) => ({ marginTop: 6, paddingVertical: 12, opacity: pressed ? 0.55 : 1 })}>
+          <GoogleSignInBtn onPress={() => { if (!hasInternet) setShowOfflinePulse(true); void promptAsync(); }} disabled={!request} />
+          {(state.error || authErr) ? <ErrorBanner message={state.error || authErr!} /> : null}
+          <Pressable onPress={() => { if (!hasInternet) setShowOfflinePulse(true); actions.guestLogin(); }} style={({ pressed }) => ({ marginTop: 6, paddingVertical: 12, opacity: pressed ? 0.55 : 1 })}>
             <Text style={{ color: theme.muted, fontSize: 15, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{t('login.guest')}</Text>
           </Pressable>
         </Animated.View>
@@ -2447,7 +2463,8 @@ export function UsernameScreen({ state, actions }: Props) {
       <Animated.View style={{ flex: 1, justifyContent: 'center', transform: [{ translateY: intro.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }], opacity: intro }}>
         <GamePanel hero tint={valid ? theme.primary : theme.frameGold} bodyStyle={{ gap: 14, padding: 22 }}>
           <View style={{ alignItems: 'center', gap: 8 }}>
-            <View style={{ width: 78, height: 78, borderRadius: 24, backgroundColor: theme.panelInnerFill, borderWidth: 2, borderColor: valid ? theme.primary : theme.accent, borderBottomWidth: 5, borderBottomColor: valid ? theme.primaryDark : theme.accentDark, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 78, height: 78, borderRadius: 24, backgroundColor: theme.well, borderTopWidth: 2, borderTopColor: valid ? theme.primary : theme.accent, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.35 }} />
               <Ionicons name="person" size={38} color={valid ? theme.primary : theme.accent} />
             </View>
             <Text style={{ color: theme.text, fontFamily: 'Poppins-Black', fontSize: 24, textAlign: 'center', ...engrave('lg') }}>{t('username.title')}</Text>
@@ -2500,7 +2517,7 @@ function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void })
       onPressOut={() => Animated.timing(press, { toValue: 0, duration: PRESS_OUT_MS, useNativeDriver: true }).start()}
       style={{ marginVertical: 4 }}
     >
-      <View style={{ backgroundColor: darken(theme.primary, 0.4), borderRadius: 22, borderWidth: 2, borderColor: darken(theme.primary, 0.5), paddingBottom: 6, shadowColor: '#000', shadowOpacity: 0.34, shadowRadius: 8, shadowOffset: { width: 0, height: 5 }, elevation: 8 }}>
+      <View style={{ backgroundColor: darken(theme.primary, 0.4), borderRadius: 22, paddingBottom: 6, shadowColor: theme.primaryDark, shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}>
         <Animated.View
           onLayout={(e) => setW(e.nativeEvent.layout.width)}
           style={{ transform: [{ translateY: ty }], backgroundColor: theme.primary, borderRadius: 18, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
@@ -2567,8 +2584,10 @@ function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName
   const linkChip = (pressed: boolean) => ({
     flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7,
     paddingVertical: 11, paddingHorizontal: 11, borderRadius: 12,
-    backgroundColor: pressed ? theme.bg2 : theme.bg, borderWidth: 1.5, borderColor: theme.border,
-    transform: [{ translateY: pressed ? 2 : 0 }],
+    backgroundColor: pressed ? theme.well : theme.surface2,
+    borderTopWidth: 1 as const, borderTopColor: theme.topLight,
+    transform: [{ scale: pressed ? 0.98 : 1 }],
+    ...shadowRow,
   });
   const linkTxt = { color: theme.text, fontSize: 12, fontFamily: 'Poppins-SemiBold', flex: 1 };
 
@@ -2634,7 +2653,7 @@ function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName
         <Text style={[linkTxt, { flex: 0, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5 }]}>{t('settings.founders')}</Text>
       </Pressable>
 
-      <View style={{ height: 1, backgroundColor: theme.border, marginTop: 18, marginBottom: 8 }} />
+      <View style={{ height: 1, backgroundColor: theme.hairline, marginTop: 18, marginBottom: 8 }} />
       <GameRow
         icon="log-out"
         iconColor={theme.danger}
@@ -2659,7 +2678,7 @@ function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName
 
       {/* Hesabı Sil — App Store 5.1.1(v): hesap oluşturan uygulamalar uygulama
           içinden kalıcı hesap silme sunmak zorunda. Yıkıcı → çift onaylı. */}
-      <View style={{ height: 1, backgroundColor: theme.border, marginTop: 8, marginBottom: 8 }} />
+      <View style={{ height: 1, backgroundColor: theme.hairline, marginTop: 8, marginBottom: 8 }} />
       <GameRow
         icon="trash"
         iconColor={theme.danger}
@@ -2733,25 +2752,28 @@ function PopupCard({ visible, title, icon, onClose, children }: {
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim, opacity: clamped }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         </Animated.View>
-        <Animated.View style={{ opacity: clamped, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }) }], backgroundColor: theme.card, borderRadius: 22, borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark, maxHeight: '80%', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 20 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 11 }}>
-            <Ionicons name={icon} size={20} color={theme.accent} />
-            <Text style={[{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 17, marginLeft: 8, flex: 1 }, engrave('sm')]} numberOfLines={1}>{title}</Text>
+        <Animated.View style={{ opacity: clamped, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }) }], backgroundColor: theme.modalFace, borderRadius: 22, maxHeight: '80%', overflow: 'hidden', ...shadowModal }}>
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.06, zIndex: 6 }} />
+          <View style={{ height: 3, backgroundColor: theme.accent }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 18, paddingTop: 13, paddingBottom: 11 }}>
+            <View style={{ width: 4, height: 17, borderRadius: 2, backgroundColor: theme.accent }} />
+            <Ionicons name={icon} size={17} color={theme.accent} />
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 16, letterSpacing: 0.6, flex: 1 }} numberOfLines={1}>{title}</Text>
             <Pressable
               onPress={onClose}
               hitSlop={10}
               style={({ pressed }) => ({
                 width: 32, height: 32, borderRadius: 16,
-                backgroundColor: pressed ? darken(theme.panelInnerFill, 0.25) : theme.panelInnerFill,
+                backgroundColor: theme.well,
                 alignItems: 'center', justifyContent: 'center',
-                borderWidth: 1, borderColor: theme.border,
-                transform: [{ translateY: pressed ? 1 : 0 }],
+                transform: [{ scale: pressed ? 0.9 : 1 }],
+                opacity: pressed ? 0.8 : 1,
               })}
             >
-              <Ionicons name="close" size={18} color={theme.text} />
+              <Ionicons name="close" size={16} color={theme.textSub} />
             </Pressable>
           </View>
-          <View style={{ height: 1, backgroundColor: theme.border }} />
+          <View style={{ height: 1, backgroundColor: theme.hairline }} />
           {children}
         </Animated.View>
       </View>
@@ -2787,7 +2809,7 @@ export function NewsModal({ visible, onClose }: { visible: boolean; onClose: () 
           GameModal — it doesn't swallow this ScrollView's vertical drag. */}
       <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, gap: 12 }}>
         {NEWS.map((item) => (
-          <View key={item.id} style={{ backgroundColor: theme.panelInnerFill, borderRadius: 16, borderWidth: 1.5, borderColor: theme.border, padding: 15, gap: 9 }}>
+          <View key={item.id} style={{ backgroundColor: theme.surface2, borderRadius: 16, borderTopWidth: 1, borderTopColor: theme.topLight, padding: 15, gap: 9, ...shadowRow }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: theme.card, borderWidth: 1.5, borderColor: item.tint, borderBottomColor: darken(item.tint), alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name={item.icon} size={21} color={item.tint} />
@@ -3348,11 +3370,12 @@ function GhostPanel({ title, icon, ghost, height, onPress, children, locked = fa
 }) {
   const { ty, scale, onIn, onOut } = usePressLip(2);
   const body = (
-    <View style={{ backgroundColor: darken(theme.card, 0.52), borderRadius: 20, paddingBottom: 3, shadowColor: '#000', shadowOpacity: 0.34, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
+    <View style={{ backgroundColor: theme.surface2, borderRadius: 20, ...shadowSoft }}>
       <Animated.View style={{
         transform: onPress ? [{ translateY: ty }, { scale }] : [], height, borderRadius: 18, overflow: 'hidden',
-        backgroundColor: theme.card, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.14)', padding: 11,
+        backgroundColor: theme.surface2, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.14)', padding: 11,
       }}>
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
         <GhostStack icon={ghost} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
           {icon ? <Ionicons name={icon} size={17} color={theme.muted} /> : null}
@@ -3626,8 +3649,8 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               autoCorrect={false}
               returnKeyType="go"
               style={{
-                flex: 1, height: 34, borderRadius: 11, backgroundColor: theme.navyWell,
-                borderWidth: 1.5, borderColor: theme.border,
+                flex: 1, height: 34, borderRadius: 11, backgroundColor: theme.well,
+                borderTopWidth: 2, borderTopColor: theme.shadowInk,
                 color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12.5, letterSpacing: 1.2,
                 paddingHorizontal: 8, textAlign: 'center',
               }}
@@ -3756,14 +3779,16 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 search bar + hint), but the "search bar" is paint only: the WHOLE card
                 is one button that pages across to Friends and focuses its add input. */}
             <View style={{ width: cardW }}>
-              <Pressable onPress={() => onGoToFriends?.()} style={({ pressed }) => ({ backgroundColor: darken(theme.card, 0.52), borderRadius: 20, paddingBottom: 3, transform: [{ translateY: pressed ? 2 : 0 }] })}>
-                <View pointerEvents="none" style={{ height: 128, borderRadius: 18, backgroundColor: theme.card, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.14)', padding: 11 }}>
+              <Pressable onPress={() => onGoToFriends?.()} style={({ pressed }) => ({ backgroundColor: theme.surface2, borderRadius: 20, transform: [{ translateY: pressed ? 2 : 0 }], ...shadowSoft })}>
+                <View pointerEvents="none" style={{ height: 128, borderRadius: 18, overflow: 'hidden', backgroundColor: theme.surface2, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.14)', padding: 11 }}>
+                  <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
                   <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{t('home.findFriends')}</Text>
                   <View style={{
                     flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8,
-                    height: 32, borderRadius: 16, backgroundColor: theme.navyWell,
-                    borderWidth: 1.5, borderColor: theme.border, paddingHorizontal: 9,
+                    height: 32, borderRadius: 16, backgroundColor: theme.well, overflow: 'hidden',
+                    paddingHorizontal: 9,
                   }}>
+                    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
                     <Ionicons name="search" size={13} color={theme.muted} />
                     <Text style={{ flex: 1, color: withAlpha(theme.muted, 0.5), fontFamily: 'Poppins-SemiBold', fontSize: 11.5 }} numberOfLines={1}>
                       {t('friends.usernamePlaceholder')}
@@ -4167,10 +4192,11 @@ function MatchExitButton({ onPress }: { onPress: () => void }) {
       hitSlop={8}
       style={({ pressed }) => ({
         width: 40, height: 40, borderRadius: 14,
-        backgroundColor: pressed ? theme.bg2 : theme.card,
-        borderWidth: 2, borderColor: theme.border,
+        backgroundColor: pressed ? theme.surface1 : theme.surface2,
+        borderTopWidth: 1, borderTopColor: theme.topLight,
         alignItems: 'center', justifyContent: 'center',
         transform: [{ translateY: pressed ? 2 : 0 }],
+        ...shadowRow,
       })}
     >
       <Ionicons name="close" size={20} color={theme.danger} />
@@ -4198,7 +4224,8 @@ function PlayerBar({ state, onEmotePress }: { state: GameState; onEmotePress?: (
         </View>
       </View>
       {/* Running score — recessed well; your side leads in mint */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.panelInnerFill, borderRadius: 10, borderWidth: 1.5, borderColor: theme.border, paddingHorizontal: 10, paddingVertical: 2 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.well, borderRadius: 10, overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 2 }}>
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
         <Text style={{ color: theme.primary, fontSize: 15, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{you?.score ?? 0}</Text>
         <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold' }}>-</Text>
         <Text style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{opp.score ?? 0}</Text>
@@ -4269,12 +4296,12 @@ function MatchTimer({ endsAt, urgentAt = 5, fallbackSecs, style }: {
     <Animated.View
       style={[{
         flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center',
-        backgroundColor: theme.panelInnerFill, borderRadius: 14,
-        borderWidth: 2, borderColor: theme.border,
+        backgroundColor: theme.well, borderRadius: 14, overflow: 'hidden',
         paddingVertical: 4, paddingHorizontal: 14,
         transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.09] }) }],
       }, style]}
     >
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
       <Ionicons name="time-outline" size={16} color={color} />
       <Text style={{ color, fontSize: 22, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{shown}</Text>
     </Animated.View>
@@ -4436,10 +4463,10 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
               key={l}
               style={({ pressed }) => ({
                 width: 48, height: 48, borderRadius: 12,
-                backgroundColor: theme.card,
-                borderWidth: 2, borderColor: theme.border,
+                backgroundColor: theme.surface2,
+                borderTopWidth: 1, borderTopColor: theme.topLight,
                     alignItems: 'center', justifyContent: 'center',
-                shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: 4,
+                ...shadowRow,
                 transform: [{ translateY: pressed ? 2 : 0 }],
               })}
               onPress={() => { setLastPick({ kind: 'letter', label: l }); actions.pickLetter(l); }}
@@ -4521,10 +4548,10 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
             onPress={() => { setLastPick({ kind: 'team', label: c.name, logoUrl: c.logoUrl ?? null }); actions.pickTeam(c.id); }}
             style={({ pressed }) => ({
               width: '31.5%' as const, alignItems: 'center' as const, gap: 7,
-              backgroundColor: theme.card, borderRadius: 14,
-              borderWidth: 2, borderColor: theme.border,
+              backgroundColor: theme.surface2, borderRadius: 14,
+              borderTopWidth: 1, borderTopColor: theme.topLight,
                 paddingVertical: 12, paddingHorizontal: 4,
-              shadowColor: '#000', shadowOpacity: pressed ? 0.15 : 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: pressed ? 2 : 4,
+              ...shadowRow,
               transform: [{ translateY: pressed ? 2 : 0 }],
             })}
           >
@@ -4915,7 +4942,8 @@ export function DiamondCelebration({
               shadowColor: theme.gem, shadowOpacity: 0.45, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 18,
             }}
           >
-            <View style={{ backgroundColor: theme.card, borderRadius: 20, overflow: 'hidden', borderBottomWidth: 3, borderBottomColor: theme.cardLip }}>
+            <View style={{ backgroundColor: theme.modalFace, borderRadius: 20, overflow: 'hidden' }}>
+              <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28, zIndex: 5 }} />
               {/* Gold banner strip */}
               <View style={{ height: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 46, backgroundColor: theme.accent, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.35)', borderBottomWidth: 3, borderBottomColor: theme.accentDark }}>
                 <Ionicons name="sparkles" size={18} color={theme.ink} />
@@ -5087,7 +5115,8 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
       />
 
       {/* Cost / balance in a recessed summary well */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: theme.panelInnerFill, borderRadius: 12, borderWidth: 1.5, borderColor: theme.border, paddingVertical: 10, paddingHorizontal: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: theme.well, borderRadius: 12, overflow: 'hidden', paddingVertical: 10, paddingHorizontal: 12 }}>
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
         <Text style={styles.muted}>{t('store.cost')}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Text style={{ color: canAfford ? theme.gemText : theme.danger, fontFamily: 'Poppins-ExtraBold', fontSize: 15, fontVariant: ['tabular-nums'] }}>{cost}</Text>
@@ -5262,12 +5291,12 @@ function WeeklyCountdown() {
     <Animated.View
       style={{
         flexDirection: 'row', alignItems: 'center', gap: 4,
-        backgroundColor: theme.panelInnerFill, borderRadius: 999,
-        borderWidth: 1.5, borderColor: theme.border, // dark top = sunken
+        backgroundColor: theme.well, borderRadius: 999, overflow: 'hidden', // dark top = sunken
         paddingHorizontal: 9, paddingVertical: 3,
         transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) }],
       }}
     >
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
       <Ionicons name="time-outline" size={12} color={theme.danger} />
       <Text style={{ color: theme.danger, fontSize: 10, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.3, fontVariant: ['tabular-nums'] }}>{label}</Text>
     </Animated.View>
@@ -5284,7 +5313,7 @@ function AdRewardCard({ adLoading, adsWatched, onWatch }: { adLoading: boolean; 
         onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
         style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
       >
-        <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: theme.well, borderWidth: 2, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
           <Ionicons name="play" size={24} color={theme.primary} style={{ marginLeft: 2 }} />
         </View>
         <View style={{ flex: 1 }}>
@@ -5348,8 +5377,10 @@ function EmoteShopTile({ emote, owned, width, onPress }: {
       <Animated.View style={{
         transform: [{ scale }],
         width, height: width, borderRadius: 16,
-        backgroundColor: theme.card, borderWidth: 2, borderColor: owned ? withAlpha(theme.primary, 0.6) : theme.border,
+        backgroundColor: theme.surface2,
+        ...(owned ? { borderWidth: 2, borderColor: withAlpha(theme.primary, 0.6) } : { borderTopWidth: 1, borderTopColor: theme.topLight }),
         alignItems: 'center', justifyContent: 'center',
+        ...shadowRow,
       }}>
         <EmoteSticker id={emote.id} size={Math.round(width * 0.68)} play={false} />
         {owned ? (
@@ -5735,7 +5766,9 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
       <GameModal visible={confirmOpen} onClose={() => setConfirmOpen(false)} title={t('store.confirmBuyTitle')} icon="cart">
         {confirmEmote ? (
           <View style={{ alignItems: 'center', gap: 10 }}>
-            <View style={{ width: 136, height: 136, borderRadius: 22, backgroundColor: theme.panelInnerFill, borderWidth: 2, borderColor: theme.accent, borderBottomWidth: 4, borderBottomColor: theme.accentDark, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 136, height: 136, borderRadius: 22, backgroundColor: theme.surface3, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', ...shadowRaised }}>
+              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
+              <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
               {/* animasyon YALNIZ burada oynar — pencere her açılışta baştan başlar */}
               <EmoteSticker key={confirmOpen ? `${confirmEmote.id}-open` : `${confirmEmote.id}-closed`} id={confirmEmote.id} size={108} play loop />
             </View>
@@ -5797,12 +5830,12 @@ function PurchaseOverlay() {
         style={{
           width: '100%', maxWidth: 280,
           opacity: fade, transform: [{ scale }],
-          backgroundColor: theme.panelInk, borderRadius: 22, padding: 2,
-          borderWidth: 2, borderColor: theme.frameGold, borderBottomColor: theme.frameGoldDark,
-          shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 24, shadowOffset: { width: 0, height: 14 }, elevation: 24,
+          backgroundColor: theme.modalFace, borderRadius: 22,
+          ...shadowModal,
         }}
       >
-        <View style={{ backgroundColor: theme.card, borderRadius: 20, overflow: 'hidden', borderTopWidth: 1, borderTopColor: theme.panelTopGloss, borderBottomWidth: 3, borderBottomColor: theme.cardLip, alignItems: 'center', paddingVertical: 24, paddingHorizontal: 20 }}>
+        <View style={{ backgroundColor: theme.modalFace, borderRadius: 22, overflow: 'hidden', borderTopWidth: 1, borderTopColor: theme.topLight, alignItems: 'center', paddingVertical: 24, paddingHorizontal: 20 }}>
+          <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
           <BrandMark size={72} glow />
           <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginTop: 14, lineHeight: 18 }}>{t('store.processing')}</Text>
           <View style={{ marginTop: 12 }}><GameSpinner /></View>
@@ -5858,9 +5891,9 @@ const DiscoverableEmoteCard = memo(function DiscoverableEmoteCard({ emote, width
       <Animated.View
         style={{
           paddingVertical: 10,
-          backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
-          borderWidth: 2, borderColor: theme.border,
+          backgroundColor: theme.surface2, borderRadius: 14, alignItems: 'center',
           overflow: 'hidden',
+          ...shadowRow,
           transform: [
             // Clash-Royale pop: the active card rises off the row — scale YOK
             // (raster büyütme = bulanıklık; ifade normal boyutunda kalır).
@@ -5869,6 +5902,7 @@ const DiscoverableEmoteCard = memo(function DiscoverableEmoteCard({ emote, width
           ],
         }}
       >
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
         <View style={{ width: 58, height: 58, alignItems: 'center', justifyContent: 'center' }}>
           {active ? (
             <EmoteSticker key={`${emote.id}-anim`} id={emote.id} size={58} play onFinish={() => onPreviewEnd(emote.id)} />
@@ -5879,7 +5913,7 @@ const DiscoverableEmoteCard = memo(function DiscoverableEmoteCard({ emote, width
         {/* locked dim — lifts while the preview plays; the frame stays crisp */}
         <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(theme.panelInk, 0.45), opacity: ring.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]} />
         {/* mini padlock disc */}
-        <View style={{ position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: 10, backgroundColor: theme.cardLip, borderWidth: 1.5, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: 10, backgroundColor: theme.surface2, borderTopWidth: 1, borderTopColor: theme.topLight, alignItems: 'center', justifyContent: 'center' }}>
           <Ionicons name="lock-closed" size={10} color={theme.muted} />
         </View>
         {/* highlight ring — "currently playing" */}
@@ -5918,7 +5952,7 @@ function ActionFlap({ visible, label, tone, disabled = false, onPress }: {
           backgroundColor: lip,
           borderBottomLeftRadius: 12, borderBottomRightRadius: 12,
           paddingBottom: pressed ? 1 : 3,
-          shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 5, shadowOffset: { width: 0, height: 4 }, elevation: 7,
+          shadowColor: theme.shadowInk, shadowOpacity: 0.35, shadowRadius: 5, shadowOffset: { width: 0, height: 4 }, elevation: 7,
         })}
       >
         <View style={{ backgroundColor: face, borderBottomLeftRadius: 10, borderBottomRightRadius: 10, alignItems: 'center', paddingVertical: 5 }}>
@@ -6048,8 +6082,9 @@ function CollectibleEmoteCard({ emote, width, isEquipped, blocked, active, onPre
         <Animated.View
           style={{
             paddingVertical: 10,
-            backgroundColor: theme.card, borderRadius: 14, alignItems: 'center',
-            borderWidth: 2, borderColor: theme.border,
+            backgroundColor: theme.surface2, borderRadius: 14, alignItems: 'center',
+            borderTopWidth: 1, borderTopColor: theme.topLight,
+            ...shadowRow,
             transform: [
               { translateY: lift.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }) },
               { scale: pressScale },
@@ -6130,13 +6165,15 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
     // Seri Geri Yükleme yalnız kırık bir seri varken kullanılabilir
     const streakBlocked = id === 'streak' && lostStreak <= 0;
     return (
-      <View key={id} style={{ backgroundColor: darken(theme.card, 0.5), borderRadius: 19, paddingBottom: 3 }}>
+      <View key={id} style={{ borderRadius: 19, ...shadowRaised }}>
         <View style={{
-          backgroundColor: theme.card, borderRadius: 19, borderWidth: 2,
+          backgroundColor: active ? theme.surface3 : theme.surface2, borderRadius: 19, borderWidth: 2,
           borderColor: active ? meta.color : withAlpha(meta.color, count > 0 ? 0.55 : 0.25),
           padding: 12,
           ...(active ? { shadowColor: meta.color, shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 0 }, elevation: 8 } : {}),
         }}>
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08, borderTopLeftRadius: 17, borderTopRightRadius: 17 }} />
+          <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28, borderBottomLeftRadius: 17, borderBottomRightRadius: 17 }} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <View>
               <PowerArt powerId={id} size={62} locked={count === 0 && !active} />
@@ -6359,7 +6396,7 @@ export function CollectionScreen({ state, actions }: Props) {
           title={t('tab.collection')}
           icon="albums"
           right={
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.panelInnerFill, borderRadius: 999, borderWidth: 1.5, borderColor: theme.border, paddingHorizontal: 9, paddingVertical: 5 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.surface2, borderRadius: 999, borderTopWidth: 1, borderTopColor: theme.topLight, ...shadowRow, paddingHorizontal: 9, paddingVertical: 5 }}>
               <Ionicons name="albums" size={12} color={theme.accent} />
               <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 11, fontVariant: ['tabular-nums'] }}>{collectible.length}/{allEmotes.length}</Text>
             </View>
@@ -6376,10 +6413,11 @@ export function CollectionScreen({ state, actions }: Props) {
                 onPress={() => setColTab(key)}
                 style={({ pressed }) => ({
                   flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  backgroundColor: sel ? withAlpha(theme.primary, 0.16) : theme.card,
-                  borderRadius: 15, borderWidth: 2,
-                  borderColor: sel ? theme.primary : theme.border,
+                  backgroundColor: sel ? withAlpha(theme.primary, 0.16) : theme.surface2,
+                  borderRadius: 15,
+                  ...(sel ? { borderWidth: 2, borderColor: theme.primary } : { borderTopWidth: 1, borderTopColor: theme.topLight }),
                   paddingVertical: 9,
+                  ...shadowRow,
                   transform: [{ translateY: pressed ? 2 : 0 }],
                 })}
               >
@@ -6416,12 +6454,18 @@ export function CollectionScreen({ state, actions }: Props) {
                   }}
                   style={({ pressed }) => ({
                     width: 72, height: 72, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: shown ? theme.card : theme.panelInnerFill,
-                    borderWidth: 2, borderColor: sel ? theme.danger : shown ? theme.primary : theme.border,
-                    borderStyle: (shown ? 'solid' : 'dashed') as 'solid' | 'dashed',
+                    overflow: 'hidden',
+                    backgroundColor: shown ? theme.surface2 : theme.well,
+                    ...(sel
+                      ? { borderWidth: 2, borderColor: theme.danger }
+                      : shown
+                        ? { borderWidth: 2, borderColor: theme.primary }
+                        : {}),
                     transform: [{ translateY: pressed ? 2 : 0 }],
                   })}
                 >
+                  {/* boş yuva = sunken well: dış çerçeve yerine iç üst gölge */}
+                  {!shown ? <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} /> : null}
                   {/* slotta ifade DURAĞAN — animasyon yalnız kart önizlemesinde oynar */}
                   {shown ? <EmoteSticker id={em.id} size={54} play={false} /> : <Ionicons name="add" size={26} color={theme.muted} />}
                   {/* iniş parlaması — yuva bir nefes yeşil ışır */}
@@ -6582,13 +6626,13 @@ export function FriendProfileModal({ profile, onClose }: { profile: PublicProfil
             <GamePanel hero tint={color} style={{ marginBottom: 14 }} bodyStyle={{ alignItems: 'center', paddingVertical: 22 }}>
               <AvatarBadge avatarId={profile?.avatar ?? profile?.selectedAvatar} size={104} ringColor={color} frameId={profile?.frame} />
               <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 22, marginTop: 12, ...engrave('lg') }} numberOfLines={1}>{profile?.displayName}</Text>
-              {/* Beveled gold trophies chip (mini-bevel: card face on a cardLip lip) */}
-              <View style={{ backgroundColor: theme.cardLip, borderRadius: 13, paddingBottom: 2, marginTop: 8 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.card, borderRadius: 12, borderWidth: 1.5, borderColor: withAlpha(color, 0.45), paddingHorizontal: 14, paddingVertical: 6 }}>
-                  <Ionicons name="trophy" size={15} color={theme.gold} />
-                  <Text style={{ color: theme.gold, fontFamily: 'Poppins-ExtraBold', fontSize: 15, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{profile?.trophies ?? 0}</Text>
-                  <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>· {profile?.arena ? arenaLabel(profile.arena.name) : ''}</Text>
-                </View>
+              {/* Gold trophies chip — surface2 face + arena-tint accent ring, integrated depth */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.surface2, borderRadius: 12, overflow: 'hidden', borderWidth: 1.5, borderColor: withAlpha(color, 0.45), paddingHorizontal: 14, paddingVertical: 6, marginTop: 8, ...shadowRow }}>
+                <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
+                <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
+                <Ionicons name="trophy" size={15} color={theme.gold} />
+                <Text style={{ color: theme.gold, fontFamily: 'Poppins-ExtraBold', fontSize: 15, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{profile?.trophies ?? 0}</Text>
+                <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>· {profile?.arena ? arenaLabel(profile.arena.name) : ''}</Text>
               </View>
             </GamePanel>
 
@@ -6646,19 +6690,22 @@ function BevelRow({ onPress, ring, wash = false, outerStyle, style, children }: 
   const face = (pressed: boolean) => (
     <View
       style={[{
-        backgroundColor: theme.cardLip, borderRadius: 15, paddingBottom: pressed ? 1 : 3,
-        shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4,
+        borderRadius: 15,
+        ...shadowRow,
       }, outerStyle]}
     >
       <View
         style={[{
           flexDirection: 'row', alignItems: 'center', gap: 10,
-          backgroundColor: pressed ? darken(theme.card, 0.14) : theme.card,
+          backgroundColor: pressed ? darken(theme.surface2, 0.14) : theme.surface2,
           borderRadius: 14, padding: 12, overflow: 'hidden',
-          borderWidth: 2, borderColor: ring ?? theme.border,
+          ...(ring ? { borderWidth: 2, borderColor: ring } : {}),
           transform: [{ translateY: pressed ? 2 : 0 }],
         }, style]}
       >
+        {/* prestige depth: top light + integrated bottom slice (no default ring) */}
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.07 }} />
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
         {wash ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: theme.glowSoft }]} /> : null}
         {children}
       </View>
@@ -6706,10 +6753,10 @@ function SegmentedTabs<K extends string>({ tabs, active, onChange }: {
     <View
       style={{
         flexDirection: 'row', gap: 3, padding: 3,
-        backgroundColor: theme.panelInnerFill, borderRadius: 15,
-        borderWidth: 2, borderColor: theme.border, // dark top = sunken
+        backgroundColor: theme.well, borderRadius: 15, overflow: 'hidden', // dark top = sunken
       }}
     >
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
       {tabs.map((tab) => (
         <SegmentTab key={tab.key} icon={tab.icon} label={tab.label} badge={tab.badge ?? 0} active={tab.key === active} onPress={() => onChange(tab.key)} />
       ))}
@@ -6780,10 +6827,11 @@ function ModalBackBtn({ onPress }: { onPress: () => void }) {
       hitSlop={8}
       style={({ pressed }) => ({
         width: 34, height: 34, borderRadius: 12,
-        backgroundColor: pressed ? theme.bg2 : theme.card,
-        borderWidth: 2, borderColor: theme.border,
+        backgroundColor: pressed ? theme.well : theme.surface2,
+        borderTopWidth: 1, borderTopColor: theme.topLight,
         alignItems: 'center', justifyContent: 'center',
         transform: [{ translateY: pressed ? 2 : 0 }],
+        ...shadowRow,
       })}
     >
       <Ionicons name="chevron-back" size={18} color={theme.text} />
@@ -7004,17 +7052,16 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
           <View
             style={{
               flex: 1, alignItems: 'center', justifyContent: 'center',
-              backgroundColor: theme.panelInnerFill, borderRadius: 14, paddingVertical: 12,
-              borderWidth: 2, borderColor: theme.border, // dark top = sunken
+              backgroundColor: theme.well, borderRadius: 14, paddingVertical: 12, overflow: 'hidden', // dark top = sunken
             }}
           >
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
             <Text style={styles.friendCode}>{profile?.userId?.slice(0, 8).toUpperCase() ?? '...'}</Text>
           </View>
           <MiniIconBtn
             icon={copied ? 'checkmark' : 'copy-outline'}
-            face={theme.card}
-            lip={theme.cardLip}
-            ringColor={theme.border}
+            face={theme.surface2}
+            lip={theme.shadowInk}
             fg={copied ? theme.primary : theme.accent}
             size={38}
             onPress={() => {
@@ -7065,7 +7112,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
               <BevelRow key={u.userId} outerStyle={{ marginBottom: 6 }} style={{ paddingVertical: 9 }}>
                 <Avatar avatar={null} name={u.displayName} size={34} ring={theme.primary} ringWidth={1.5} iconColor={theme.primary} iconSize={15} />
                 <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13, flex: 1, ...engrave('sm') }} numberOfLines={1}>{u.displayName}</Text>
-                <MiniIconBtn icon="eye" face={theme.card} lip={theme.cardLip} ringColor={theme.border} fg={theme.text} onPress={() => actions.getUserProfile(u.userId)} />
+                <MiniIconBtn icon="eye" face={theme.surface2} lip={theme.shadowInk} fg={theme.text} onPress={() => actions.getUserProfile(u.userId)} />
                 <MiniIconBtn icon="person-add" face={theme.primary} lip={theme.primaryDark} fg={theme.ink} onPress={() => { if (isGuest) { setGuestGateOpen(true); return; } actions.sendFriendRequest(undefined, u.displayName); }} />
               </BevelRow>
             ))}
@@ -7192,7 +7239,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                 <Text style={{ color: f.online ? theme.primary : theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }} numberOfLines={1}>{f.online ? t('common.online') : lastSeenLabel(f.lastSeen)}</Text>
               </View>
               {/* Trophy on the far right */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.bg2, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5, borderWidth: 1, borderColor: theme.border }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.surface1, borderRadius: 12, borderTopWidth: 1, borderTopColor: theme.topLight, paddingHorizontal: 9, paddingVertical: 5 }}>
                 <Ionicons name="trophy" size={13} color={theme.gold} />
                 <Text style={{ color: theme.gold, fontFamily: 'Poppins-ExtraBold', fontSize: 13, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{f.trophies}</Text>
               </View>
@@ -7239,22 +7286,23 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
               <View style={{ position: 'absolute', left, top, width: W, zIndex: 2, elevation: 20 }} pointerEvents="box-none">
                 {/* GamePanel-compact frame language + 150ms spring pop anchored at the tail */}
                 <SpringPop>
-                  <View style={{ backgroundColor: theme.bg2, borderRadius: 15, padding: 2, borderWidth: 2, borderColor: theme.border, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 16 }}>
-                    <View style={{ backgroundColor: theme.card, borderRadius: 13, borderTopWidth: 1, borderTopColor: theme.panelTopGloss, borderBottomWidth: 3, borderBottomColor: theme.cardLip, overflow: 'hidden' }}>
-                      <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5, textAlign: 'center', paddingTop: 9, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: theme.border }} numberOfLines={1}>
+                  <View style={{ backgroundColor: theme.surface1, borderRadius: 15, ...shadowModal }}>
+                    <View style={{ backgroundColor: theme.modalFace, borderRadius: 15, borderTopWidth: 1, borderTopColor: theme.topLight, overflow: 'hidden' }}>
+                      <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28, zIndex: 5 }} />
+                      <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5, textAlign: 'center', paddingTop: 9, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: theme.hairline }} numberOfLines={1}>
                         {menuFriend.displayName}
                       </Text>
                       <Row color={theme.text} label={t('friends.friendlyMatch')} onPress={() => { const id = menuFriend.userId; setMenuFriend(null); setMatchPage({ key: 'mode', dir: 1 }); setMatchModal(id); }} />
-                      <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
+                      <View style={{ height: 1, backgroundColor: theme.hairline, marginHorizontal: 10 }} />
                       <Row color={theme.text} label={t('friends.sendMessage')} onPress={() => { const id = menuFriend.userId; setMenuFriend(null); actions.openChat(id); }} />
-                      <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
+                      <View style={{ height: 1, backgroundColor: theme.hairline, marginHorizontal: 10 }} />
                       <Row color={theme.text} label={t('friends.viewProfile')} onPress={() => { const id = menuFriend.userId; setMenuFriend(null); actions.getUserProfile(id); }} />
-                      <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 10 }} />
+                      <View style={{ height: 1, backgroundColor: theme.hairline, marginHorizontal: 10 }} />
                       <Row color={theme.danger} label={t('friends.removeFriend')} onPress={() => { const f = menuFriend; setMenuFriend(null); setConfirmRemove(f); }} />
                     </View>
                   </View>
                   {/* downward tail pointing at the row — matches the frame ring */}
-                  <View style={{ position: 'absolute', bottom: -7, left: tailLeft, width: 15, height: 15, backgroundColor: theme.bg2, transform: [{ rotate: '45deg' }], borderRightWidth: 2, borderBottomWidth: 2, borderColor: theme.cardLip }} />
+                  <View style={{ position: 'absolute', bottom: -7, left: tailLeft, width: 15, height: 15, backgroundColor: theme.modalFace, transform: [{ rotate: '45deg' }], borderRightWidth: 2, borderBottomWidth: 2, borderColor: theme.shadowInk }} />
                 </SpringPop>
               </View>
             );
@@ -7496,7 +7544,7 @@ function SwipeBackWrap({ children, onBack }: { children: (softBack: () => void) 
     <GestureDetector gesture={pan}>
       <View style={{ flex: 1, backgroundColor: 'transparent' }}>
         {/* Foreground page that slides */}
-        <Animated.View style={{ flex: 1, backgroundColor: theme.bg, transform: [{ translateX }], shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: -10, height: 0 }, elevation: 16 }}>
+        <Animated.View style={{ flex: 1, backgroundColor: theme.bg, transform: [{ translateX }], shadowColor: theme.shadowInk, shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: -10, height: 0 }, elevation: 16 }}>
           {children(() => closeWithAnimation(1))}
         </Animated.View>
       </View>
@@ -7646,17 +7694,20 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: 12,
         paddingTop: insets.top + 8, paddingBottom: 10, paddingHorizontal: 14,
-        backgroundColor: theme.bg2, borderBottomWidth: 2, borderBottomColor: theme.cardLip,
+        backgroundColor: theme.surface1, borderTopWidth: 1, borderTopColor: theme.topLight,
+        ...shadowSoft,
       }}>
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
         <Pressable
           onPress={onBack ?? actions.closeChat}
           hitSlop={10}
           style={({ pressed }) => ({
             width: 40, height: 40, borderRadius: 14,
-            backgroundColor: pressed ? theme.bg2 : theme.card,
-            borderWidth: 2, borderColor: theme.border,
+            backgroundColor: pressed ? theme.surface3 : theme.surface2,
+            borderTopWidth: 1, borderTopColor: theme.topLight,
             alignItems: 'center', justifyContent: 'center',
             transform: [{ translateY: pressed ? 2 : 0 }],
+            ...shadowRow,
           })}
         >
           <Ionicons name="chevron-back" size={22} color={theme.text} />
@@ -7715,17 +7766,18 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
                 <View style={{ flexDirection: isMe ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 6, maxWidth: '80%' }}>
                   <AvatarBadge avatarId={isMe ? (state.profile?.avatar ?? state.profile?.selectedAvatar) : (friend?.avatar ?? friend?.selectedAvatar)} size={28} ringColor={isMe ? theme.primary : theme.border} frameId={isMe ? state.profile?.selectedFrame : friend?.frame} />
                   <View style={{
-                    backgroundColor: isMe ? theme.primary : theme.card,
+                    backgroundColor: isMe ? theme.primary : theme.surface2,
                     borderRadius: 16,
                     borderBottomRightRadius: isMe ? 4 : 16,
                     borderBottomLeftRadius: isMe ? 16 : 4,
                     paddingHorizontal: 14, paddingVertical: 9,
                     // mine: top-lit mint toy with a primaryDark lip;
-                    // theirs: card face ring with a cardLip bottom edge.
-                    borderWidth: isMe ? 0 : 1.5, borderColor: theme.border,
-                    borderTopWidth: 1.5, borderTopColor: isMe ? 'rgba(255,255,255,0.30)' : theme.border,
-                    borderBottomWidth: 2.5, borderBottomColor: isMe ? theme.primaryDark : theme.cardLip,
+                    // theirs: surface2 face with topLight edge + integrated shadowInk slice.
+                    ...(isMe
+                      ? { borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.30)', borderBottomWidth: 2.5, borderBottomColor: theme.primaryDark }
+                      : { borderTopWidth: 1, borderTopColor: theme.topLight, overflow: 'hidden' as const, ...shadowRow }),
                   }}>
+                    {!isMe ? <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} /> : null}
                     <Text style={{ color: isMe ? theme.ink : theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold' }}>{m.body}</Text>
                     <Text style={{ color: isMe ? withAlpha(theme.ink, 0.55) : theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', marginTop: 3, textAlign: 'right' }}>
                       {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -7739,7 +7791,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
         {isTyping ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
             <AvatarBadge avatarId={friend?.avatar ?? friend?.selectedAvatar} size={28} ringColor={theme.border} frameId={friend?.frame} />
-            <View style={{ backgroundColor: theme.card, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: theme.border, flexDirection: 'row', gap: 4 }}>
+            <View style={{ backgroundColor: theme.surface2, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 1, borderTopColor: theme.topLight, ...shadowRow, flexDirection: 'row', gap: 4 }}>
               <TypingDot delay={0} />
               <TypingDot delay={150} />
               <TypingDot delay={300} />
@@ -7758,7 +7810,8 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
           transform: [{ translateY: barTY }],
           flexDirection: 'row', alignItems: 'flex-end', gap: 8,
           paddingHorizontal: 12, paddingTop: 8, paddingBottom: kbOpen ? 8 : Math.max(insets.bottom, 12),
-          backgroundColor: theme.bg2, borderTopWidth: 2, borderTopColor: theme.cardLip,
+          backgroundColor: theme.surface1, borderTopWidth: 1, borderTopColor: theme.topLight,
+          ...shadowTabBar,
           zIndex: 50, elevation: 50,
         }}
       >
@@ -7766,7 +7819,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
             the keyboard. The iOS 26 keyboard has transparent rounded TOP corners —
             without this the darker chat bg peeked through them as two notches
             ("klavyenin sol üst ve sağ üst köşesi boşluk"). */}
-        <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: '100%', height: 40, backgroundColor: theme.bg2 }} />
+        <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: '100%', height: 40, backgroundColor: theme.surface1 }} />
         <GameInput
           inputRef={inputRef}
           placeholder={t('chat.placeholder')}
@@ -7802,13 +7855,13 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
               // Idle: quiet flat well. Ready: solid primary.
               <View
                 style={{
-                  width: 44, height: 44, borderRadius: 22, marginBottom: 2,
-                  backgroundColor: hasText ? theme.primary : theme.panelInnerFill,
-                  borderWidth: hasText ? 0 : 1, borderColor: theme.border,
+                  width: 44, height: 44, borderRadius: 22, marginBottom: 2, overflow: 'hidden',
+                  backgroundColor: hasText ? theme.primary : theme.well,
                   alignItems: 'center', justifyContent: 'center',
                   opacity: pressed && hasText ? 0.85 : 1,
                 }}
               >
+                {!hasText ? <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} /> : null}
                 <Ionicons name="send" size={19} color={hasText ? theme.ink : theme.muted} />
               </View>
             );
@@ -8184,8 +8237,10 @@ function AvatarTile({ avatarId, owned, selected, price, onPress }: {
   }, [selected, check]);
   return (
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ width: '31%', minWidth: 96 }}>
-      <View style={{ backgroundColor: selected ? theme.primaryDark : theme.cardLip, borderRadius: 17, paddingBottom: 3 }}>
-        <Animated.View style={{ transform: [{ translateY: ty }], backgroundColor: theme.card, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 8, borderWidth: 2, borderColor: selected ? theme.primary : theme.border, alignItems: 'center' }}>
+      <View style={{ backgroundColor: theme.shadowInk, borderRadius: 17, ...shadowRow }}>
+        <Animated.View style={{ transform: [{ translateY: ty }], backgroundColor: selected ? theme.surface3 : theme.surface2, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 8, overflow: 'hidden', ...(selected ? { borderWidth: 2, borderColor: theme.primary } : {}), alignItems: 'center' }}>
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
+          <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
           <AvatarBadge avatarId={avatarId} size={58} locked={!owned} dimmed={!owned} ringColor={selected ? theme.primary : undefined} />
           {owned ? (
             <Text style={{ color: selected ? theme.primary : theme.muted, fontSize: 10, marginTop: 4, fontFamily: 'Poppins-ExtraBold' }}>{selected ? t('profile.inUse') : t('profile.ready')}</Text>
@@ -8321,7 +8376,7 @@ export function ArenasScreen({ state, actions }: Props) {
                   {/* Locked = art-only dim + padlock chip; text stays legible (no whole-card opacity) */}
                   <Image source={arena.img} resizeMode="contain" style={{ width: '100%', height: '100%', opacity: isLocked ? 0.55 : 1, shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 4, shadowOffset: { width: 0, height: 3 } }} />
                   {isLocked ? (
-                    <View style={{ position: 'absolute', top: -2, right: -2, width: 20, height: 20, borderRadius: 10, backgroundColor: theme.cardLip, borderWidth: 1.5, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{ position: 'absolute', top: -2, right: -2, width: 20, height: 20, borderRadius: 10, backgroundColor: theme.surface2, borderTopWidth: 1, borderTopColor: theme.topLight, alignItems: 'center', justifyContent: 'center' }}>
                       <Ionicons name="lock-closed" size={10} color={theme.muted} />
                     </View>
                   ) : null}
@@ -8345,8 +8400,9 @@ export function ArenasScreen({ state, actions }: Props) {
 
               {/* Progress bar for the current arena — the LoadingScreen recipe at small scale */}
               {isCurrent ? (
-                <View style={{ height: 20, borderRadius: 12, backgroundColor: theme.panelInk, borderWidth: 2, borderColor: theme.border, padding: 2, marginTop: 12, justifyContent: 'center' }}>
-                  <View style={{ flex: 1, borderRadius: 8, backgroundColor: theme.panelInnerFill, overflow: 'hidden' }}>
+                <View style={{ height: 20, borderRadius: 12, backgroundColor: theme.well, overflow: 'hidden', padding: 2, marginTop: 12, justifyContent: 'center' }}>
+                  <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
+                  <View style={{ flex: 1, borderRadius: 8, backgroundColor: theme.well, overflow: 'hidden' }}>
                     {progress > 0.01 ? (
                       <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${Math.max(5, progress * 100)}%`, borderRadius: 8, backgroundColor: arena.color, overflow: 'hidden' }}>
                         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '46%', backgroundColor: 'rgba(255,255,255,0.32)' }} />
@@ -8725,11 +8781,11 @@ function MatchHistoryCard({ match: m, myName }: { match: MatchHistoryView; myNam
     <View
       key={key}
       style={{
-        backgroundColor: theme.panelInnerFill, borderRadius: 10, padding: 8, marginBottom: 4,
-        borderTopWidth: 1, borderTopColor: theme.cardLip,
+        backgroundColor: theme.well, borderRadius: 10, padding: 8, marginBottom: 4, overflow: 'hidden',
         borderLeftWidth: 3, borderLeftColor: mine ? theme.primary : theme.danger,
       }}
     >
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
         <MatchHistoryLeadBadge mode={(r.mode as GameMode) ?? (m.gameMode as GameMode) ?? 'team-team'} country={r.country} letter={r.letter} teamA={r.teamA} teamALogo={r.teamALogo} size={18} />
         <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold' }}>+</Text>
@@ -8787,7 +8843,7 @@ function MatchHistoryCard({ match: m, myName }: { match: MatchHistoryView; myNam
             ? myRounds.map((r, i) => roundChip(r, true, i))
             : <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginTop: 8 }}>—</Text>}
         </View>
-        <View style={{ width: 1, backgroundColor: theme.border, marginVertical: 4 }} />
+        <View style={{ width: 1, backgroundColor: theme.hairline, marginVertical: 4 }} />
         <View style={{ flex: 1 }}>
           {oppRounds.length > 0
             ? oppRounds.map((r, i) => roundChip(r, false, i))
@@ -9022,7 +9078,7 @@ function TrophyDeltaChip({ delta, trophies }: { delta: number; trophies: number 
         transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
         flexDirection: 'row', alignItems: 'stretch', marginTop: 8,
         borderRadius: 10, overflow: 'hidden',
-        shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 4,
+        ...shadowRow,
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: color, paddingHorizontal: 10, paddingVertical: 4, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.4)', borderBottomWidth: 2, borderBottomColor: darken(color, 0.4) }}>
@@ -9399,7 +9455,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
               const renderList = (list: typeof r.commonPlayers) => (
                 <GamePanel compact style={{ marginTop: 6 }} bodyStyle={{ padding: 8, gap: 6 }}>
                   {list.map((cp, i) => (
-                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: theme.panelInnerFill, borderRadius: 10, borderWidth: 1.5, borderColor: theme.border, paddingVertical: 6, paddingHorizontal: 8 }}>
+                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: theme.surface2, borderRadius: 10, borderTopWidth: 1, borderTopColor: theme.topLight, ...shadowRow, paddingVertical: 6, paddingHorizontal: 8 }}>
                       {cp.imageUrl ? (
                         <CachedImage uri={cp.imageUrl} style={styles.commonPhoto} contentFit="cover" />
                       ) : (
@@ -9437,13 +9493,14 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
 
         {/* Running match score — one recessed strip, leader tinted mint */}
         <View style={styles.scoreRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.panelInnerFill, borderRadius: 16, borderWidth: 2, borderColor: theme.border, paddingVertical: 8, paddingHorizontal: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.well, borderRadius: 16, overflow: 'hidden', paddingVertical: 8, paddingHorizontal: 14 }}>
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
             {room.players.map((p, i) => {
               const other = room.players[1 - i];
               const leads = (p.score ?? 0) > (other?.score ?? 0);
               return (
                 <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  {i > 0 ? <View style={{ width: 1.5, height: 22, backgroundColor: theme.border }} /> : null}
+                  {i > 0 ? <View style={{ width: 1.5, height: 22, backgroundColor: theme.hairline }} /> : null}
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                     <Avatar avatar={p.avatar} name={p.name} size={22} ring={leads ? theme.primary : theme.border} ringWidth={1.5} iconColor={theme.muted} iconSize={13} frameId={p.frame} />
                     <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', maxWidth: 72 }} numberOfLines={1}>{p.name}</Text>
@@ -9825,8 +9882,9 @@ export function FrameArt({ tierKey, size, locked = false, well = false }: { tier
   return (
     <View style={{
       width: size, height: size, alignItems: 'center', justifyContent: 'center',
-      ...(well ? { backgroundColor: theme.panelInnerFill, borderRadius: size * 0.28, borderWidth: 1.5, borderColor: theme.border } : {}),
+      ...(well ? { backgroundColor: theme.well, borderRadius: size * 0.28, overflow: 'hidden' } : {}),
     }}>
+      {well ? <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} /> : null}
       <Image source={src} style={{ width: art, height: art, opacity: locked ? 0.32 : 1 }} resizeMode="contain" />
       {locked ? (
         // absoluteFill + iç ortalama: rozet her platformda halkanın TAM merkezinde
@@ -10565,8 +10623,9 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
     <Modal visible transparent animationType="slide" presentationStyle="overFullScreen" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
         <ScreenBg />
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: insets.top + 8, paddingBottom: 12, paddingHorizontal: 14, backgroundColor: theme.bg2, borderBottomWidth: 2, borderBottomColor: theme.cardLip }}>
-          <Pressable onPress={onClose} hitSlop={10} style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 14, backgroundColor: pressed ? theme.bg2 : theme.card, borderWidth: 2, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', transform: [{ translateY: pressed ? 2 : 0 }] })}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: insets.top + 8, paddingBottom: 12, paddingHorizontal: 14, backgroundColor: theme.surface1, borderTopWidth: 1, borderTopColor: theme.topLight, ...shadowSoft }}>
+          <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
+          <Pressable onPress={onClose} hitSlop={10} style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 14, backgroundColor: pressed ? theme.surface1 : theme.surface2, borderTopWidth: 1, borderTopColor: theme.topLight, alignItems: 'center', justifyContent: 'center', transform: [{ translateY: pressed ? 2 : 0 }], ...shadowRow })}>
             <Ionicons name="chevron-back" size={22} color={theme.text} />
           </Pressable>
           <Text style={{ flex: 1, color: theme.text, fontFamily: 'Poppins-Black', fontSize: 17, letterSpacing: 0.5, ...engrave('lg') }}>{t('level.roadTitle').toLocaleUpperCase(currentLang())}</Text>
@@ -10683,13 +10742,14 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
             style={({ pressed }) => ({
               position: 'absolute', right: 16, bottom: insets.bottom + 18,
               width: 46, height: 46, borderRadius: 16,
-              backgroundColor: pressed ? theme.bg2 : theme.card,
+              backgroundColor: pressed ? theme.surface1 : theme.surface2,
               borderWidth: 2, borderColor: withAlpha(theme.accent, 0.6),
               alignItems: 'center', justifyContent: 'center',
               transform: [{ translateY: pressed ? 2 : 0 }],
-              shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 4 },
+              ...shadowRow,
             })}
           >
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08, borderTopLeftRadius: 16, borderTopRightRadius: 16 }} />
             <Ionicons name="chevron-up" size={24} color={theme.accent} />
           </Pressable>
         ) : null}
@@ -10731,10 +10791,10 @@ const styles = StyleSheet.create({
   code: { color: theme.accent, fontSize: 32, fontFamily: 'Poppins-Black', textAlign: 'center', letterSpacing: 4 },
   muted: { color: theme.muted, textAlign: 'center', fontSize: 12, fontFamily: 'Poppins-SemiBold' },
   input: {
-    backgroundColor: theme.panelInnerFill, // recessed inner well
+    backgroundColor: theme.well, // recessed inner well
     color: theme.text,
-    borderColor: theme.border, // tek parça halka — üstte kesik yok
-    borderWidth: 2,
+    borderTopWidth: 2,
+    borderTopColor: theme.shadowInk, // sunken inner top shadow (no drawn ring)
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 13,
@@ -10744,21 +10804,21 @@ const styles = StyleSheet.create({
   },
   lobbyName: { color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') },
   // Recessed waiting chip (lobby waiting / wait-host states)
-  lobbyWaitChip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, alignSelf: 'center', backgroundColor: theme.panelInnerFill, borderRadius: 14, borderWidth: 2, borderColor: theme.border, paddingVertical: 10, paddingHorizontal: 16 },
+  lobbyWaitChip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, alignSelf: 'center', backgroundColor: theme.well, borderRadius: 14, borderTopWidth: 2, borderTopColor: theme.shadowInk, paddingVertical: 10, paddingHorizontal: 16 },
   teamsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
-  teamCard: { flex: 1, backgroundColor: theme.card, borderRadius: 16, padding: 14, alignItems: 'center', gap: 8, borderWidth: 2, borderColor: theme.border, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 5 }, elevation: 7 },
+  teamCard: { flex: 1, backgroundColor: theme.surface2, borderRadius: 16, padding: 14, alignItems: 'center', gap: 8, borderTopWidth: 1, borderTopColor: theme.topLight, ...shadowRow },
   teamName: { color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') },
   plus: { color: theme.accent, fontSize: 22, fontFamily: 'Poppins-Black', ...engrave('sm') },
-  passHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: withAlpha(theme.accent, 0.12), borderRadius: 12, paddingVertical: 7, paddingHorizontal: 12, marginBottom: 8, borderWidth: 1.5, borderColor: theme.border, borderLeftWidth: 3, borderLeftColor: theme.accent },
+  passHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: withAlpha(theme.accent, 0.12), borderRadius: 12, paddingVertical: 7, paddingHorizontal: 12, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: theme.accent },
   passHintText: { color: theme.accent, fontSize: 12, fontFamily: 'Poppins-SemiBold', flexShrink: 1 },
   playerPhoto: { width: 104, height: 104, borderRadius: 52, marginTop: 10, borderWidth: 3, borderColor: theme.primary, backgroundColor: theme.card },
   matched: { color: theme.text, fontSize: 19, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginTop: 4, ...engrave('sm') },
   matchScore: { color: theme.text, fontSize: 46, fontFamily: 'Poppins-Black', letterSpacing: 3, marginTop: 6, fontVariant: ['tabular-nums'], ...engrave('lg') },
-  matchBanner: { alignItems: 'center', gap: 2, backgroundColor: theme.card, borderRadius: 20, borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark, paddingVertical: 18, paddingHorizontal: 14, marginBottom: 14, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 12 },
+  matchBanner: { alignItems: 'center', gap: 2, backgroundColor: theme.surface3, borderRadius: 20, borderWidth: 2, borderColor: theme.frameGold, borderBottomWidth: 4, borderBottomColor: theme.frameGoldDark, paddingVertical: 18, paddingHorizontal: 14, marginBottom: 14, ...shadowRaised },
   fixRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   fixText: { color: theme.accent, fontSize: 12, fontFamily: 'Poppins-SemiBold' },
   teamResultRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  teamResult: { flex: 1, backgroundColor: theme.card, borderRadius: 16, borderWidth: 2, borderColor: theme.border, padding: 12, alignItems: 'center', gap: 6, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+  teamResult: { flex: 1, backgroundColor: theme.surface2, borderRadius: 16, borderTopWidth: 1, borderTopColor: theme.topLight, padding: 12, alignItems: 'center', gap: 6, ...shadowRow },
   teamResultName: { color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') },
   teamResultYears: { color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', textAlign: 'center' },
   careerList: { alignSelf: 'stretch', maxHeight: 220 },
@@ -10769,7 +10829,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     paddingHorizontal: 4,
     borderBottomWidth: 1,
-    borderBottomColor: theme.border,
+    borderBottomColor: theme.hairline,
   },
   careerRowHi: { backgroundColor: theme.glowSoft, borderRadius: 8 },
   careerClub: { color: theme.text, fontSize: 12, flex: 1, fontFamily: 'Poppins-SemiBold' },
@@ -10786,22 +10846,20 @@ const styles = StyleSheet.create({
   emoteFabBottom: { right: 18, bottom: 28 },
   emoteFabTop: { right: 18, top: 8 },
   emoteSheetBackdrop: { flex: 1, backgroundColor: theme.scrim, justifyContent: 'flex-end' },
-  // store emotes — raised-row bevel (2px ring + panelTopGloss top + 3px cardLip lip + shadow)
+  // store emotes — raised-row bevel: surface2 face + topLight top edge + integrated shadowInk bottom slice + navy shadow
   storeEmoteCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: theme.card,
+    backgroundColor: theme.surface2,
     borderRadius: 14,
     padding: 12,
     marginVertical: 4,
-    borderWidth: 2,
-    borderColor: theme.border, // tek parça halka — alt kenar da görünür
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 7,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
+    borderTopWidth: 1,
+    borderTopColor: theme.topLight,
+    borderBottomWidth: 2,
+    borderBottomColor: theme.shadowInk,
+    ...shadowRow,
   },
   storeEmoteName: { color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') },
   storeEmoteDesc: { color: theme.muted, fontSize: 11, marginTop: 2, fontFamily: 'Poppins-SemiBold' },

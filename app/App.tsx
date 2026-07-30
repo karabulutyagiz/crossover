@@ -57,7 +57,7 @@ import {
   darken,
   withAlpha,
 } from './src/screens';
-import { theme, engrave } from './src/theme';
+import { theme, engrave, shadowRow, shadowModal, shadowTabBar } from './src/theme';
 import { GemIcon } from './src/GemIcon';
 import { installGlobalErrorHandlers, track } from './src/telemetry';
 import type { ImageSourcePropType } from 'react-native';
@@ -191,7 +191,9 @@ function TabButton({ active = false, locked = false, icon, activeIcon, label, on
     >
       {/* the mockup's active marker: a green rule along the tab's top edge, over a
           barely-there wash that lifts the active tab off the bar */}
-      <Animated.View pointerEvents="none" style={[s.tabActiveWash, { opacity: act }]} />
+      <Animated.View pointerEvents="none" style={[s.tabActiveWash, { opacity: act }]}>
+        <View style={s.tabActiveTopLight} />
+      </Animated.View>
       <Animated.View pointerEvents="none" style={[s.tabIndicator, { opacity: act, transform: [{ scaleX: act }] }]} />
       <Animated.View style={[s.tabInner, { opacity: locked ? 0.4 : 1, transform: [{ translateY: press.interpolate({ inputRange: [0, 1], outputRange: [0, 2] }) }] }]}>
         <Animated.View style={{ transform: [{ scale: iconPop }] }}>
@@ -231,7 +233,8 @@ function PlayTab({ active, label, onPress }: { active: boolean; label: string; o
       <Animated.View style={[s.tabInner, { transform: [{ translateY: press.interpolate({ inputRange: [0, 1], outputRange: [0, 2] }) }] }]}>
         <View style={s.playTabSlot}>
           <Animated.View style={[s.playTabBall, { transform: [{ translateY: -18 }, { scale: pop }] }]}>
-            <Ionicons name="football" size={28} color={theme.ink} />
+            <View pointerEvents="none" style={s.playTabBallTopLight} />
+            <Ionicons name="football" size={28} color={theme.onPrimary} />
           </Animated.View>
         </View>
         <Text style={[s.tabLabel, active && s.tabLabelActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
@@ -1186,12 +1189,8 @@ const s = StyleSheet.create({
     borderTopWidth: 1.5,
     borderTopColor: 'rgba(255,255,255,0.07)',
     paddingTop: 11,
-    // Upward shadow — the bar physically sits over the content.
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: -5 },
-    elevation: 10,
+    // Upward navy shadow — the bar physically sits over the content.
+    ...shadowTabBar,
     // The centre ball breaks above the bar; let it.
     overflow: 'visible',
   },
@@ -1206,17 +1205,22 @@ const s = StyleSheet.create({
     position: 'absolute', top: -TAB_TOP_INSET, left: '14%', right: '14%',
     height: 3.5, borderRadius: 2, backgroundColor: theme.primary,
   },
-  // Active-tab box: a clearly-defined green-tinted rounded rectangle with a border
-  // (was a near-invisible 0.045 white wash) so the selected tab reads at a glance.
+  // Active-tab box (Broadcast Prestige): a filled raised tone — NOT a ring. The
+  // top green rule (tabIndicator) + green label carry the selection; the wash is
+  // a soft lift, its 1px top light reads as the selected surface catching the bar light.
   tabActiveWash: {
     position: 'absolute', top: -TAB_TOP_INSET + 4, left: 6, right: 6, bottom: 5,
     borderRadius: 13,
-    backgroundColor: 'rgba(22,178,122,0.15)',
-    borderWidth: 1.5, borderColor: 'rgba(22,178,122,0.55)',
+    backgroundColor: 'rgba(22,178,122,0.16)',
+    overflow: 'hidden',
+  },
+  tabActiveTopLight: {
+    position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+    backgroundColor: '#FFFFFF', opacity: 0.1,
   },
   tabLock: {
     position: 'absolute', top: -4, right: -8, width: 14, height: 14, borderRadius: 7,
-    backgroundColor: theme.accent, borderBottomWidth: 1.5, borderBottomColor: theme.accentDark,
+    backgroundColor: theme.accent,
     alignItems: 'center', justifyContent: 'center',
   },
   tabBadge: {
@@ -1235,10 +1239,15 @@ const s = StyleSheet.create({
     position: 'absolute', bottom: 0,
     width: 48, height: 48, borderRadius: 24,
     backgroundColor: theme.primary,
-    borderWidth: 3, borderColor: theme.tabBar,
+    borderWidth: 3, borderColor: theme.tabBar, // cutout ring separating the ball from the bar
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 6, shadowOffset: { width: 0, height: 4 },
+    shadowColor: theme.primaryDark, shadowOpacity: 0.5, shadowRadius: 9, shadowOffset: { width: 0, height: 5 },
     elevation: 8,
+    overflow: 'hidden',
+  },
+  playTabBallTopLight: {
+    position: 'absolute', top: 0, left: 0, right: 0, height: 3,
+    backgroundColor: '#FFFFFF', opacity: 0.18,
   },
   tabLabel: { color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' },
   tabLabelActive: { color: theme.primary },
@@ -1278,16 +1287,16 @@ const s = StyleSheet.create({
   inviteBanner: {
     position: 'absolute', left: 10, right: 10, zIndex: 100, // top comes from the safe-area inset
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: theme.card, borderRadius: 16, padding: 12,
-    borderWidth: 2, borderColor: theme.primary, borderBottomWidth: 4, borderBottomColor: theme.primaryDark,
-    shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 16,
+    backgroundColor: theme.modalFace, borderRadius: 16, padding: 12,
+    borderTopWidth: 2, borderTopColor: theme.primary, // green identity kept as an accent strip, not a frame
+    ...shadowModal,
   },
   topBanner: {
     position: 'absolute', left: 10, right: 10, zIndex: 110, // top comes from the safe-area inset
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: theme.card, borderRadius: 16, paddingVertical: 10, paddingHorizontal: 12,
-    borderWidth: 2, borderColor: theme.primary, borderBottomWidth: 4, borderBottomColor: theme.primaryDark,
-    shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 18,
+    backgroundColor: theme.modalFace, borderRadius: 16, paddingVertical: 10, paddingHorizontal: 12,
+    borderTopWidth: 2, borderTopColor: theme.primary,
+    ...shadowModal,
   },
   inviteName: { color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15, ...engrave('sm') },
   inviteSub: { color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold' },
@@ -1301,8 +1310,8 @@ const s = StyleSheet.create({
     paddingTop: 18, // moved down — was sitting too high under the notch
     paddingBottom: 8,
   },
-  // One opaque HUD counter language (spec §14 — no glass): recessed panelInnerFill
-  // trough, dark top edge = sunken, bright content sits inside it.
+  // One opaque HUD counter language (Broadcast Prestige): a solid raised pill —
+  // surface1 face, 1px top-light, soft navy shadow. No outline ring.
   hudPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1310,19 +1319,15 @@ const s = StyleSheet.create({
     overflow: 'hidden',
     minWidth: 148, // longer left↔right
     justifyContent: 'center',
-    backgroundColor: theme.panelInnerFill,
+    backgroundColor: theme.surface1,
     borderRadius: 19,
-    borderWidth: 2,
-    borderColor: theme.border, // tek parça halka — üstte kesik yok
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    borderTopWidth: 1,
+    borderTopColor: theme.topLight, // 1px photon, not a frame
+    ...shadowRow,
   },
   hudPillPressed: {
-    backgroundColor: theme.bg2, // fill brightens
-    transform: [{ translateY: 1 }],
+    backgroundColor: theme.surface2, // fill brightens
+    transform: [{ scale: 0.97 }],
   },
   trophyText: {
     color: theme.gold,

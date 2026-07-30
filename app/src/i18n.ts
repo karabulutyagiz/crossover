@@ -400,6 +400,7 @@ const tr = {
   'error.connect': 'Sunucuya bağlanılamadı',
   'error.disconnected': 'Bağlantı koptu',
   'error.opponentLeft': 'Rakip ayrıldı',
+  'error.appleSignIn': 'Apple ile giriş yapılamadı, tekrar dene',
   'login.noInternet': 'Internet Yok',
   'login.noInternetHint': 'Oyuna girmek icin internet baglantini kontrol et.',
 
@@ -961,6 +962,7 @@ const en: typeof tr = {
   'error.connect': 'Could not connect to the server',
   'error.disconnected': 'Connection lost',
   'error.opponentLeft': 'Opponent left',
+  'error.appleSignIn': 'Apple sign-in failed, please try again',
   'login.noInternet': 'No Internet',
   'login.noInternetHint': 'Check your internet connection to enter the game.',
 

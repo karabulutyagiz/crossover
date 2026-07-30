@@ -694,7 +694,22 @@ export function useCrossover() {
     wsRef.current = ws;
     connectingSince.current = Date.now();
     connectKind.current = (first as { type?: string }).type ?? '';
+    // Connection watchdog: a WSS handshake that never completes (blocked network,
+    // dead DNS, TLS stall, unreachable host) leaves the socket in CONNECTING
+    // forever — neither onopen nor onerror fires — and the UI is stuck with no
+    // feedback (a login button that looks "not functioning"). Force a failure.
+    let connectWatchdog: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      if (wsRef.current !== ws) return;
+      if (ws.readyState === WebSocket.OPEN) return;
+      try { ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null; ws.close(); } catch { /* ignore */ }
+      wsRef.current = null;
+      connectingSince.current = 0;
+      dispatch({ type: '_connected', value: false });
+      if (!opts?.silent) dispatch({ type: 'error', message: t('error.connect') });
+    }, 15000);
+    const clearWatchdog = () => { if (connectWatchdog) { clearTimeout(connectWatchdog); connectWatchdog = null; } };
     ws.onopen = () => {
+      clearWatchdog();
       if (wsRef.current !== ws) return; // superseded by a newer socket
       connectingSince.current = 0;
       lastSocketActivity.current = Date.now();
@@ -755,13 +770,14 @@ export function useCrossover() {
       }
     };
     ws.onclose = () => {
+      clearWatchdog();
       if (wsRef.current !== ws) return; // an old, superseded socket closing — ignore
       connectingSince.current = 0;
       dispatch({ type: '_connected', value: false });
     };
     // Background keepalive reconnects must stay silent — only surface a connection
     // error when the user actively triggered this connection (find_match, etc.).
-    ws.onerror = () => { if (!opts?.silent) dispatch({ type: 'error', message: t('error.connect') }); };
+    ws.onerror = () => { clearWatchdog(); if (!opts?.silent) dispatch({ type: 'error', message: t('error.connect') }); };
   }, []);
 
   const send = useCallback((msg: ClientMsg) => {

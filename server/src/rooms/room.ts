@@ -501,12 +501,37 @@ export class Room {
     if (this.allPicked()) this.beginReveal();
   }
 
+  // A round can only be revealed if every required pick is present. When a player
+  // vanishes mid-pick, pickRoles()/picks lose entries and the reveal would deref
+  // `undefined` — which USED TO throw an uncaught exception and crash the whole
+  // process, dropping every player in every room. Instead we bail the round.
+  private bailRound(reason: string): void {
+    log.warn('round_bail', { room: this.code, mode: this.gameMode, reason, players: this.players.size, status: this.status });
+    this.clearTimers();
+    const humansLeft = [...this.players.values()].some((pl) => !pl.transport.isBot);
+    if (this.players.size === 0 || !humansLeft) {
+      this.players.clear();
+      this.clearDisconnectTimers();
+      this.onEmpty(this.code);
+      return;
+    }
+    // Someone is still here — don't strand them on a frozen pick screen. Reset to
+    // lobby (same shape as the opponent-left path) so they can start a new match.
+    this.status = 'lobby';
+    this.round = null;
+    this.matchOver = false;
+    this.rematchBy = null;
+    this.broadcast({ type: 'opponent_left' });
+    this.broadcastState();
+  }
+
   private beginReveal(): void {
     if (!this.round) return;
 
     if (this.gameMode === 'player-player') {
-      const playerA = this.round.playerAPick!;
-      const playerB = this.round.playerBPick!;
+      const playerA = this.round.playerAPick;
+      const playerB = this.round.playerBPick;
+      if (!playerA || !playerB) return this.bailRound('missing player pick');
       const pseudoA: ClubRef = { id: playerA.id, name: playerA.name, logoUrl: playerA.imageUrl };
       const pseudoB: ClubRef = { id: playerB.id, name: playerB.name, logoUrl: playerB.imageUrl };
       this.round.teamA = pseudoA;
@@ -518,8 +543,9 @@ export class Room {
     } else if (this.gameMode === 'team-team') {
       // Original behavior: both picks are teams
       const ids = [...this.players.keys()];
-      const a = this.round.picks.get(ids[0]!)!;
-      const b = this.round.picks.get(ids[1]!)!;
+      const a = ids[0] != null ? this.round.picks.get(ids[0]) : undefined;
+      const b = ids[1] != null ? this.round.picks.get(ids[1]) : undefined;
+      if (!a || !b) return this.bailRound('missing team pick');
       this.round.teamA = a;
       this.round.teamB = b;
       this.status = 'reveal';
@@ -527,11 +553,12 @@ export class Room {
       this.broadcast({ type: 'reveal_teams', teamA: a, teamB: b, mode: 'team-team' });
       void this.afterRevealTeamTeam(a, b);
     } else if (this.gameMode === 'country-team') {
-      const country = this.round.countryPick!;
+      const country = this.round.countryPick;
       // Find the team pick (the player with role 'team')
       const roles = this.pickRoles();
-      const teamPlayerId = [...roles.entries()].find(([, r]) => r === 'team')![0];
-      const club = this.round.picks.get(teamPlayerId)!;
+      const teamPlayerId = [...roles.entries()].find(([, r]) => r === 'team')?.[0];
+      const club = teamPlayerId != null ? this.round.picks.get(teamPlayerId) : undefined;
+      if (!country || !club) return this.bailRound('missing country/team pick');
       const pseudoCountry: ClubRef = { id: 0, name: country, logoUrl: null };
       this.round.teamA = pseudoCountry;
       this.round.teamB = club;
@@ -541,10 +568,11 @@ export class Room {
       void this.afterRevealCountryTeam(club, country);
     } else {
       // letter-team
-      const letter = this.round.letterPick!;
+      const letter = this.round.letterPick;
       const roles = this.pickRoles();
-      const teamPlayerId = [...roles.entries()].find(([, r]) => r === 'team')![0];
-      const club = this.round.picks.get(teamPlayerId)!;
+      const teamPlayerId = [...roles.entries()].find(([, r]) => r === 'team')?.[0];
+      const club = teamPlayerId != null ? this.round.picks.get(teamPlayerId) : undefined;
+      if (!letter || !club) return this.bailRound('missing letter/team pick');
       const pseudoLetter: ClubRef = { id: 0, name: letter, logoUrl: null };
       this.round.teamA = pseudoLetter;
       this.round.teamB = club;
