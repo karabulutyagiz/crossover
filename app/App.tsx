@@ -144,6 +144,17 @@ const DiamondPill = memo(function DiamondPill({ countAnim, fillAnim, pillRef, on
 
 // A red count badge riding a tab icon's top-right corner. Only ever rendered for a
 // positive count — callers pass null when there is nothing to announce.
+// Perf: inactive pager pages skip re-renders entirely — their last committed tree
+// stays on screen and they re-render the moment they become active. Without this,
+// EVERY ws message / reducer dispatch re-rendered all four heavy tab screens at
+// once, which is what made taps and swipes stutter on device.
+const TabFreeze = memo(
+  function TabFreeze({ children }: { active: boolean; children: ReactNode }) {
+    return <>{children}</>;
+  },
+  (prev, next) => !prev.active && !next.active, // both inactive → skip render
+);
+
 function TabBadge({ count }: { count: number }) {
   return (
     <View pointerEvents="none" style={s.tabBadge}>
@@ -956,11 +967,15 @@ function AppRoot() {
             the shared bar is shown here instead. */}
         <View style={{ width: SCREEN_W, flex: 1 }}>
           {state.profile ? renderResourceBar(activeTab === 0) : null}
-          <StoreScreen {...props} scrollToSection={storeSection} onDiamondCelebration={(c) => setGemCelebration({ kind: 'purchase', amount: c.amount, img: c.img })} />
+          <TabFreeze active={activeTab === 0}>
+            <StoreScreen {...props} scrollToSection={storeSection} onDiamondCelebration={(c) => setGemCelebration({ kind: 'purchase', amount: c.amount, img: c.img })} />
+          </TabFreeze>
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
           {state.profile ? renderResourceBar(activeTab === 1) : null}
-          <CollectionScreen {...props} />
+          <TabFreeze active={activeTab === 1}>
+            <CollectionScreen {...props} />
+          </TabFreeze>
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
           {state.phase !== 'home' && state.profile ? renderResourceBar(activeTab === 2) : null}
@@ -968,7 +983,9 @@ function AppRoot() {
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
           {state.profile ? renderResourceBar(activeTab === 3) : null}
-          <FriendsScreen {...props} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} focusAddFriendSeq={friendsAddSeq} />
+          <TabFreeze active={activeTab === 3}>
+            <FriendsScreen {...props} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} focusAddFriendSeq={friendsAddSeq} />
+          </TabFreeze>
         </View>
       </Animated.ScrollView>
 
