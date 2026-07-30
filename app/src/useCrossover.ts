@@ -200,6 +200,7 @@ export const initialState: GameState = {
 const PROFILE_KEY = '@crossover_profile';
 const LAST_USER_ID_KEY = '@crossover_last_user_id';
 const LAST_AUTH_PROVIDER_KEY = '@crossover_last_auth_provider';
+const SCOPES_KEY = '@crossover_scopes'; // cached leagues/countries/nationalities (load once, refresh in bg)
 const STALE_SOCKET_MS = 120_000;
 
 type Action =
@@ -865,9 +866,19 @@ export function useCrossover() {
     return () => { clearInterval(iv); appSub.remove(); };
   }, [state.profile?.userId, state.profile?.displayName, state.phase, connectAndSend]);
 
-  // Load available leagues/countries once for the scope picker.
+  // Leagues/countries/nationalities for the scope picker. Load INSTANTLY from the
+  // on-device cache first (works offline, no launch-time network wait), then
+  // refresh from the backend in the background and re-cache. So it's fetched at
+  // most once per launch to refresh — never blocking, and available immediately
+  // from the phone's storage after the very first successful load.
   useEffect(() => {
     let alive = true;
+    AsyncStorage.getItem(SCOPES_KEY)
+      .then((raw) => {
+        if (!alive || !raw) return;
+        try { dispatch({ type: '_scopes', scopes: JSON.parse(raw) as ScopesList }); } catch { /* stale/corrupt cache — ignore */ }
+      })
+      .catch(() => {});
     fetch(`${HTTP_URL}/config`)
       .then((r) => r.json())
       .then((cfg: { maintenance?: boolean; minIosBuild?: number }) => {
@@ -881,9 +892,11 @@ export function useCrossover() {
     fetch(`${HTTP_URL}/scopes`)
       .then((r) => r.json())
       .then((s: ScopesList) => {
-        if (alive) dispatch({ type: '_scopes', scopes: s });
+        if (!alive) return;
+        dispatch({ type: '_scopes', scopes: s });
+        AsyncStorage.setItem(SCOPES_KEY, JSON.stringify(s)).catch(() => {}); // cache for the next launch
       })
-      .catch(() => {});
+      .catch(() => {}); // offline / server down → the cached scopes above stay in effect
     return () => {
       alive = false;
     };
