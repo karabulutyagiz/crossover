@@ -81,15 +81,38 @@ docker exec crossover-db-1 pg_dump -U crossover -d crossover --no-owner \
 # (DB yalnızca BOŞ volume'da seed'den dolar; volume varsa mevcut veri korunur.)
 ```
 
-## ⚠️ Kalan tek iş — mobil uygulamayı yeniden derle
+## Uygulama hangi adrese bağlanır — İKİ uç nokta
 
-App hâlâ eski AWS adresine (`wss://15-237-97-221.nip.io`) derlenmiş. Yeni adrese
-geçmek için `app/` içinde:
+`app/src/config.ts` artık tek URL değil, **sıralı bir liste** tutar ve ilki
+açılmazsa 6 sn içinde otomatik ikinciye devreder:
+
+| Sıra | Adres | Not |
+|---|---|---|
+| 1 | `wss://api.crossoverfootball.com` | Birincil — gerçek alan adı (Hostinger DNS) |
+| 2 | `wss://168-222-180-190.nip.io` | Yedek — aynı sunucu, wildcard DNS |
+
+**Neden:** App Store 1.0 iki kez Guideline 2.1(a) ile reddedildi ("guest login →
+hata mesajı") — oysa sunucu eriştiğimiz her ağdan sağlıklıydı. Tek uç nokta
+`*.nip.io` idi; bu tür ücretsiz wildcard-DNS host'ları kurumsal DNS/proxy
+filtrelerinde kategorik olarak engellenir ve **her giriş bu sokete bağlı**
+olduğu için erişemeyen bir ağda uygulama tamamen kullanılamaz hâle gelir.
+
+> Bu yüzden **iki Caddy bloğu da yaşamalı**: nip.io bloğunu silme, o artık yedek.
+
+### api.crossoverfootball.com'u kurma (tek seferlik)
 
 ```bash
-EXPO_PUBLIC_SERVER_URL=wss://168-222-180-190.nip.io \
-  eas build --platform ios --profile production
+# 1. Hostinger DNS:  api  A  168.222.180.190  (TTL 300)
+dig +short api.crossoverfootball.com        # → 168.222.180.190 görmeli
+
+# 2. Caddy bloğu (mevcut blokları BOZMADAN ekle)
+cp /root/transyol/Caddyfile /root/transyol/Caddyfile.bak-api
+cat /opt/crossover/deploy/caddy-crossover-api.snippet >> /root/transyol/Caddyfile
+docker exec transyol-caddy-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+
+# 3. Doğrula (sertifikayı Caddy ilk istekte kendi alır)
+curl https://api.crossoverfootball.com/health   # → {"ok":true,"rooms":0}
 ```
 
-Yeni build TestFlight'a çıkana kadar eski istemciler eski (askıya alınmış)
-sunucuya bakmaya devam eder.
+Yerel geliştirmede liste tek adresle ezilir:
+`EXPO_PUBLIC_SERVER_URL=ws://localhost:8080 npx expo start`

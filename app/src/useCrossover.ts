@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // NetInfo may not be available in Expo Go — graceful fallback
 let NetInfo: any;
 try { NetInfo = require('@react-native-community/netinfo').default; } catch { NetInfo = null; }
-import { SERVER_URL, HTTP_URL, APP_BUILD_NUMBER } from './config';
+import { SERVER_URLS, setActiveServerUrl, fetchApi, APP_BUILD_NUMBER } from './config';
 import { currentLang, t } from './i18n';
 import { getPushToken, requestPushPermission } from './notifications';
 import { OfflineRoom } from './offline/room';
@@ -201,6 +201,12 @@ const PROFILE_KEY = '@crossover_profile';
 const LAST_USER_ID_KEY = '@crossover_last_user_id';
 const LAST_AUTH_PROVIDER_KEY = '@crossover_last_auth_provider';
 const SCOPES_KEY = '@crossover_scopes'; // cached leagues/countries/nationalities (load once, refresh in bg)
+const ENDPOINT_KEY = '@crossover_endpoint'; // last server URL that connected on THIS network
+// Per-host connect budget. A host that is DNS/proxy-blocked never errors — the
+// socket just sits in CONNECTING — so each candidate needs its own deadline
+// before we move to the next. Kept short enough that walking every endpoint
+// still beats the old single 15s wait.
+const CONNECT_TIMEOUT_MS = 6000;
 const STALE_SOCKET_MS = 120_000;
 
 type Action =
@@ -603,6 +609,10 @@ export function useCrossover() {
   const offlineRoomRef = useRef<OfflineRoom | null>(null);
   const lastUserIdRef = useRef<string | null>(null);
   const lastAuthProviderRef = useRef<'apple' | 'google' | 'facebook' | null>(null);
+  // Index into SERVER_URLS to try FIRST — seeded from whichever endpoint last
+  // connected on this device, so a network that blocks one host pays the
+  // discovery cost once instead of on every launch.
+  const preferredEndpoint = useRef(0);
 
   // Seed the offline DB only AFTER first paint + interactions settle, so the one-time 8MB
   // load never blocks/janks app launch. (Only runs once; subsequent launches no-op.)
@@ -632,6 +642,12 @@ export function useCrossover() {
           lastAuthProviderRef.current = provider;
           dispatch({ type: '_authProvider', provider });
         }
+      })
+      .catch(() => {});
+    AsyncStorage.getItem(ENDPOINT_KEY)
+      .then((url) => {
+        const i = url ? SERVER_URLS.indexOf(url) : -1;
+        if (i >= 0) { preferredEndpoint.current = i; setActiveServerUrl(url!); }
       })
       .catch(() => {});
   }, []);
@@ -691,94 +707,128 @@ export function useCrossover() {
       prev.onopen = null; prev.onmessage = null; prev.onclose = null; prev.onerror = null;
       try { prev.close(); } catch { /* ignore */ }
     }
-    const ws = new WebSocket(SERVER_URL);
-    wsRef.current = ws;
     connectingSince.current = Date.now();
     connectKind.current = (first as { type?: string }).type ?? '';
-    // Connection watchdog: a WSS handshake that never completes (blocked network,
-    // dead DNS, TLS stall, unreachable host) leaves the socket in CONNECTING
-    // forever — neither onopen nor onerror fires — and the UI is stuck with no
-    // feedback (a login button that looks "not functioning"). Force a failure.
-    let connectWatchdog: ReturnType<typeof setTimeout> | null = setTimeout(() => {
-      if (wsRef.current !== ws) return;
-      if (ws.readyState === WebSocket.OPEN) return;
-      try { ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null; ws.close(); } catch { /* ignore */ }
-      wsRef.current = null;
-      connectingSince.current = 0;
-      dispatch({ type: '_connected', value: false });
-      if (!opts?.silent) dispatch({ type: 'error', message: t('error.connect') });
-    }, 15000);
-    const clearWatchdog = () => { if (connectWatchdog) { clearTimeout(connectWatchdog); connectWatchdog = null; } };
-    ws.onopen = () => {
-      clearWatchdog();
-      if (wsRef.current !== ws) return; // superseded by a newer socket
-      connectingSince.current = 0;
-      lastSocketActivity.current = Date.now();
-      dispatch({ type: '_connected', value: true });
-      ws.send(JSON.stringify(first));
-    };
-    ws.onmessage = (e) => {
-      try {
-        const m = JSON.parse(String(e.data)) as ServerMsg;
-        lastSocketActivity.current = Date.now();
-        dispatch(m);
-        const mt = (m as { type?: string }).type;
-        if (mt === 'account_deleted') {
-          // Server confirmed permanent deletion — wipe ALL local identity so the
-          // account can't be auto-restored, tear the socket down, back to login.
-          AsyncStorage.multiRemove([PROFILE_KEY, LAST_USER_ID_KEY, LAST_AUTH_PROVIDER_KEY]).catch(() => {});
-          lastUserIdRef.current = null;
-          prevProfile.current = null;
-          pendingAfterAuth.current = [];
-          pendingAfterResume.current = [];
-          if (offlineRoomRef.current) { try { offlineRoomRef.current.leave(); } catch { /* ignore */ } offlineRoomRef.current = null; }
-          try { ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null; ws.close(); } catch { /* ignore */ }
-          if (wsRef.current === ws) wsRef.current = null;
-          dispatch({ type: '_logout' });
-          return;
-        }
-        if (mt === 'profile' && pendingAfterAuth.current.length && ws.readyState === WebSocket.OPEN) {
-          const queue = pendingAfterAuth.current;
-          pendingAfterAuth.current = [];
-          for (const pending of queue) ws.send(JSON.stringify(pending));
-        }
-        if (mt === 'room_state' && pendingAfterResume.current.length && ws.readyState === WebSocket.OPEN) {
-          const queue = pendingAfterResume.current;
-          pendingAfterResume.current = [];
-          for (const pending of queue) ws.send(JSON.stringify(pending));
-        }
-        // Resolve the OLDEST pending IAP verification (FIFO — a concurrent verify
-        // used to clobber the single slot and orphan the first promise, leaving
-        // the "processing securely" overlay up forever). Generic 'error' frames
-        // are deliberately NOT consumed here: the server emits them from dozens
-        // of unrelated paths, and settling a verify on one desynced the FIFO —
-        // stray verifies settle via their own 20s timeout instead.
-        if (mt === 'diamonds_granted') { pendingVerify.current.shift()?.resolve(); }
-        // Rewarded-ad grant result — its own channel, never touches pendingVerify.
-        if (mt === 'ad_reward_result') {
-          const r = m as { ok?: boolean; granted?: number; error?: string };
-          if (r.ok) pendingAdReward.current?.resolve(r.granted ?? 0);
-          else pendingAdReward.current?.reject(new Error(r.error ?? 'Ödül verilemedi'));
-          pendingAdReward.current = null;
-        }
-        // A friend request just arrived in real time — pull the authoritative
-        // list so it shows with a real requestId (accept/reject works instantly).
-        if (mt === 'friend_request_received' && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'list_friends' }));
-        }
-      } catch (err) {
-        captureError(err, { where: 'ws_onmessage' });
+
+    // Walk the endpoint list until one comes up. A host that a network BLOCKS
+    // (enterprise DNS/proxy filtering — how App Review saw every login "fail")
+    // never errors: the socket sits in CONNECTING forever, neither onopen nor
+    // onerror fires. So each candidate gets its own deadline, and only when the
+    // whole list is exhausted do we tell the user we couldn't connect.
+    const attempt = (step: number) => {
+      if (step >= SERVER_URLS.length) {
+        wsRef.current = null;
+        connectingSince.current = 0;
+        dispatch({ type: '_connected', value: false });
+        if (!opts?.silent) dispatch({ type: 'error', message: t('error.connect') });
+        return;
       }
+      const url = SERVER_URLS[(preferredEndpoint.current + step) % SERVER_URLS.length]!;
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
+      let opened = false;  // the handshake completed on THIS socket
+      let settled = false; // this attempt has been decided (opened, or moved on)
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const clearWatchdog = () => { if (timer) { clearTimeout(timer); timer = null; } };
+      // Give up on this host and try the next one — silently: a fallback that
+      // works must never flash a connection error at the user.
+      const nextHost = () => {
+        if (settled) return;
+        settled = true;
+        clearWatchdog();
+        try { ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null; ws.close(); } catch { /* ignore */ }
+        if (wsRef.current !== ws) return; // superseded by a newer connect — drop this chain
+        wsRef.current = null;
+        attempt(step + 1);
+      };
+      timer = setTimeout(nextHost, CONNECT_TIMEOUT_MS);
+      ws.onopen = () => {
+        opened = true;
+        settled = true;
+        clearWatchdog();
+        if (wsRef.current !== ws) return; // superseded by a newer socket
+        connectingSince.current = 0;
+        lastSocketActivity.current = Date.now();
+        // Remember which host this network actually allows: every later connect
+        // (and every REST call) starts there instead of re-walking the list.
+        preferredEndpoint.current = SERVER_URLS.indexOf(url);
+        setActiveServerUrl(url);
+        AsyncStorage.setItem(ENDPOINT_KEY, url).catch(() => {});
+        dispatch({ type: '_connected', value: true });
+        ws.send(JSON.stringify(first));
+      };
+      ws.onmessage = (e) => {
+        try {
+          const m = JSON.parse(String(e.data)) as ServerMsg;
+          lastSocketActivity.current = Date.now();
+          dispatch(m);
+          const mt = (m as { type?: string }).type;
+          if (mt === 'account_deleted') {
+            // Server confirmed permanent deletion — wipe ALL local identity so the
+            // account can't be auto-restored, tear the socket down, back to login.
+            AsyncStorage.multiRemove([PROFILE_KEY, LAST_USER_ID_KEY, LAST_AUTH_PROVIDER_KEY]).catch(() => {});
+            lastUserIdRef.current = null;
+            prevProfile.current = null;
+            pendingAfterAuth.current = [];
+            pendingAfterResume.current = [];
+            if (offlineRoomRef.current) { try { offlineRoomRef.current.leave(); } catch { /* ignore */ } offlineRoomRef.current = null; }
+            try { ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null; ws.close(); } catch { /* ignore */ }
+            if (wsRef.current === ws) wsRef.current = null;
+            dispatch({ type: '_logout' });
+            return;
+          }
+          if (mt === 'profile' && pendingAfterAuth.current.length && ws.readyState === WebSocket.OPEN) {
+            const queue = pendingAfterAuth.current;
+            pendingAfterAuth.current = [];
+            for (const pending of queue) ws.send(JSON.stringify(pending));
+          }
+          if (mt === 'room_state' && pendingAfterResume.current.length && ws.readyState === WebSocket.OPEN) {
+            const queue = pendingAfterResume.current;
+            pendingAfterResume.current = [];
+            for (const pending of queue) ws.send(JSON.stringify(pending));
+          }
+          // Resolve the OLDEST pending IAP verification (FIFO — a concurrent verify
+          // used to clobber the single slot and orphan the first promise, leaving
+          // the "processing securely" overlay up forever). Generic 'error' frames
+          // are deliberately NOT consumed here: the server emits them from dozens
+          // of unrelated paths, and settling a verify on one desynced the FIFO —
+          // stray verifies settle via their own 20s timeout instead.
+          if (mt === 'diamonds_granted') { pendingVerify.current.shift()?.resolve(); }
+          // Rewarded-ad grant result — its own channel, never touches pendingVerify.
+          if (mt === 'ad_reward_result') {
+            const r = m as { ok?: boolean; granted?: number; error?: string };
+            if (r.ok) pendingAdReward.current?.resolve(r.granted ?? 0);
+            else pendingAdReward.current?.reject(new Error(r.error ?? 'Ödül verilemedi'));
+            pendingAdReward.current = null;
+          }
+          // A friend request just arrived in real time — pull the authoritative
+          // list so it shows with a real requestId (accept/reject works instantly).
+          if (mt === 'friend_request_received' && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'list_friends' }));
+          }
+        } catch (err) {
+          captureError(err, { where: 'ws_onmessage' });
+        }
+      };
+      ws.onclose = () => {
+        // Closed WITHOUT ever opening → this endpoint is unusable on this
+        // network; move to the next one instead of reporting a failure.
+        if (!opened) { nextHost(); return; }
+        clearWatchdog();
+        if (wsRef.current !== ws) return; // an old, superseded socket closing — ignore
+        connectingSince.current = 0;
+        dispatch({ type: '_connected', value: false });
+      };
+      // An error BEFORE the handshake means only this endpoint failed — fall
+      // through to the next. Once open, keep the old behaviour: background
+      // keepalive reconnects stay silent, user-triggered ones surface the error.
+      ws.onerror = () => {
+        if (!opened) { nextHost(); return; }
+        clearWatchdog();
+        if (!opts?.silent) dispatch({ type: 'error', message: t('error.connect') });
+      };
     };
-    ws.onclose = () => {
-      clearWatchdog();
-      if (wsRef.current !== ws) return; // an old, superseded socket closing — ignore
-      connectingSince.current = 0;
-      dispatch({ type: '_connected', value: false });
-    };
-    // Background keepalive reconnects must stay silent — only surface a connection
-    // error when the user actively triggered this connection (find_match, etc.).
-    ws.onerror = () => { clearWatchdog(); if (!opts?.silent) dispatch({ type: 'error', message: t('error.connect') }); };
+    attempt(0);
   }, []);
 
   const send = useCallback((msg: ClientMsg) => {
@@ -879,7 +929,7 @@ export function useCrossover() {
         try { dispatch({ type: '_scopes', scopes: JSON.parse(raw) as ScopesList }); } catch { /* stale/corrupt cache — ignore */ }
       })
       .catch(() => {});
-    fetch(`${HTTP_URL}/config`)
+    fetchApi('/config')
       .then((r) => r.json())
       .then((cfg: { maintenance?: boolean; minIosBuild?: number }) => {
         if (!alive) return;
@@ -889,7 +939,7 @@ export function useCrossover() {
         }
       })
       .catch(() => {});
-    fetch(`${HTTP_URL}/scopes`)
+    fetchApi('/scopes')
       .then((r) => r.json())
       .then((s: ScopesList) => {
         if (!alive) return;
@@ -932,7 +982,7 @@ export function useCrossover() {
       }, 15000);
     }),
     openLeaderboard: () => {
-      fetch(`${HTTP_URL}/leaderboard`)
+      fetchApi('/leaderboard')
         .then((r) => r.json())
         .then((entries: LeaderboardEntry[]) => dispatch({ type: '_leaderboard', entries }))
         .catch(() => {});

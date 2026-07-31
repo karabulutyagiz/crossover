@@ -1,0 +1,26 @@
+# ── Crossover game backend on the REAL domain (additive) ──────────────────
+#
+# WHY: the backend was only reachable at 168-222-180-190.nip.io. App Review
+# rejected v1.0 twice under Guideline 2.1(a) ("guest login → error message")
+# while the server was healthy from every network we could test — free
+# wildcard-DNS hosts like *.nip.io are routinely category-blocked by enterprise
+# DNS/proxy filters, and every login needs this socket. The app now tries
+# api.crossoverfootball.com first and falls back to the nip.io host, so BOTH
+# blocks below must stay live.
+#
+# PREREQUISITE — Hostinger DNS:  api  A  168.222.180.190   (TTL 300)
+#   verify:  dig +short api.crossoverfootball.com   → 168.222.180.190
+#
+# Append this block to /root/transyol/Caddyfile (keep the existing
+# 168-222-180-190.nip.io block — it is the fallback), then reload:
+#   cp /root/transyol/Caddyfile /root/transyol/Caddyfile.bak-api
+#   cat /opt/crossover/deploy/caddy-crossover-api.snippet >> /root/transyol/Caddyfile
+#   docker exec transyol-caddy-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+#
+# Caddy provisions the TLS certificate automatically on first request.
+# Verify:  curl https://api.crossoverfootball.com/health  → {"ok":true,"rooms":0}
+
+api.crossoverfootball.com {
+	reverse_proxy crossover-app-1:8080
+	encode gzip
+}
