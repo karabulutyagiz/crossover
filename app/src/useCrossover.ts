@@ -29,6 +29,7 @@ import type {
   ServerMsg,
   MessageView,
   ConversationView,
+  BlockedUserView,
 } from './protocol';
 
 export type Phase = 'home' | 'arenas' | 'leaderboard' | 'matchHistory' | 'profile' | 'searching' | 'matchup' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
@@ -120,6 +121,7 @@ export interface GameState {
   conversations: ConversationView[];
   totalUnread: number;
   typingFrom: Record<string, boolean>;  // userId → isTyping
+  blockedUsers: BlockedUserView[];      // guideline 1.2 — shown in Settings, unblockable there
   // Transient top banner notification (friend request / new message). Auto-dismisses.
   banner: { id: number; kind: 'friend_request' | 'message'; name: string; body?: string; userId?: string } | null;
 }
@@ -198,6 +200,7 @@ export const initialState: GameState = {
   conversations: [],
   totalUnread: 0,
   typingFrom: {},
+  blockedUsers: [],
   banner: null,
 };
 
@@ -387,6 +390,33 @@ function reducer(state: GameState, action: Action): GameState {
       };
     case 'typing':
       return { ...state, typingFrom: { ...state.typingFrom, [(action as any).fromUserId]: (action as any).isTyping } };
+
+    // ---- User-generated-content safety (App Store guideline 1.2) ----
+    case 'blocked_list':
+      return { ...state, blockedUsers: (action as any).users ?? [] };
+    case 'user_blocked': {
+      // Drop the blocked person from every live list immediately — waiting for a
+      // server refresh would leave them briefly visible and still tappable.
+      const id = (action as any).userId as string;
+      const conversations = state.conversations.filter((c) => c.userId !== id);
+      return {
+        ...state,
+        friends: state.friends.filter((f) => f.userId !== id),
+        conversations,
+        totalUnread: conversations.reduce((s, c) => s + c.unreadCount, 0),
+        chatWith: state.chatWith === id ? null : state.chatWith,
+        chatMessages: state.chatWith === id ? [] : state.chatMessages,
+      };
+    }
+    case 'user_unblocked':
+      return { ...state, blockedUsers: state.blockedUsers.filter((b) => b.userId !== (action as any).userId) };
+    case 'message_deleted': {
+      const mid = (action as any).messageId as string;
+      return {
+        ...state,
+        chatMessages: state.chatMessages.map((m) => (m.id === mid ? { ...m, body: '', deleted: true } : m)),
+      };
+    }
 
     case 'searching':
       return { ...state, phase: 'searching', isQuickMatch: true, opponentForfeit: false };
@@ -780,7 +810,13 @@ export function useCrossover() {
             dispatch({ type: '_logout' });
             return;
           }
-          if (mt === 'profile' && pendingAfterAuth.current.length && ws.readyState === WebSocket.OPEN) {
+          // The login screen states that continuing accepts the Terms, so record
+        // that agreement the moment a session is established (guideline 1.2).
+        // The server only writes it once, so re-sending on reconnect is a no-op.
+        if (mt === 'profile' && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'accept_terms' }));
+        }
+        if (mt === 'profile' && pendingAfterAuth.current.length && ws.readyState === WebSocket.OPEN) {
             const queue = pendingAfterAuth.current;
             pendingAfterAuth.current = [];
             for (const pending of queue) ws.send(JSON.stringify(pending));
@@ -1201,6 +1237,15 @@ export function useCrossover() {
       send({ type: 'send_message', toUserId, body: b });
     },
     markRead: (fromUserId: string) => send({ type: 'mark_read', fromUserId }),
+    // ---- User-generated-content safety (App Store guideline 1.2) ----
+    blockUser: (userId: string) => send({ type: 'block_user', userId }),
+    unblockUser: (userId: string) => send({ type: 'unblock_user', userId }),
+    listBlocked: () => send({ type: 'list_blocked' }),
+    // messageId omitted → reports the user rather than one specific message.
+    reportContent: (userId: string, reason: string, messageId?: string) =>
+      send({ type: 'report_content', userId, reason, messageId }),
+    deleteMessage: (messageId: string) => send({ type: 'delete_message', messageId }),
+    acceptTerms: () => send({ type: 'accept_terms' }),
     // ---- Push notifications ----
     // Ask permission → fetch the Expo push token → register it with the server.
     // NOT auto-run — the UI triggers it (permission prompt / silent re-register

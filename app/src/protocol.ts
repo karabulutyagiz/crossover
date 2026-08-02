@@ -206,6 +206,14 @@ export type ClientMsg =
   | { type: 'mark_read'; fromUserId: string }
   | { type: 'typing_start'; toUserId: string }
   | { type: 'typing_stop'; toUserId: string }
+  // ---- User-generated-content safety (App Store guideline 1.2) ----
+  | { type: 'block_user'; userId: string }
+  | { type: 'unblock_user'; userId: string }
+  | { type: 'list_blocked' }
+  // messageId omitted → reporting the USER rather than one message.
+  | { type: 'report_content'; userId: string; reason: string; messageId?: string }
+  | { type: 'delete_message'; messageId: string } // remove your OWN message
+  | { type: 'accept_terms' }                      // EULA agreement, recorded server-side
   | { type: 'register_push'; token: string; platform: 'ios' | 'android'; lang?: string }
   // Permanently delete the signed-in account and all its data (App Store 5.1.1(v)).
   | { type: 'delete_account' };
@@ -269,7 +277,19 @@ export type ServerMsg =
   | { type: 'messages_marked_read'; fromUserId: string }
   | { type: 'typing'; fromUserId: string; isTyping: boolean }
   | { type: 'account_deleted' } // account permanently deleted — client wipes local state
+  // ---- User-generated-content safety (App Store guideline 1.2) ----
+  | { type: 'blocked_list'; users: BlockedUserView[] }
+  | { type: 'user_blocked'; userId: string }
+  | { type: 'user_unblocked'; userId: string }
+  | { type: 'report_filed' }                          // report accepted — show the 24h notice
+  | { type: 'message_deleted'; messageId: string }    // sent to BOTH sides of the chat
   | { type: 'error'; message: string };
+
+export interface BlockedUserView {
+  userId: string;
+  displayName: string;
+  avatar: string | null;
+}
 
 export interface MessageView {
   id: string;
@@ -278,6 +298,7 @@ export interface MessageView {
   toId: string;
   body: string;
   createdAt: string;
+  deleted?: boolean; // sender removed it — render a placeholder, not the text
 }
 
 export interface ConversationView {

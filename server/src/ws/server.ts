@@ -14,6 +14,9 @@ import {
 import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
 import { claimLevelReward } from '../game/level.ts';
 import { censorMessage } from '../game/username.ts';
+import {
+  blockUser, unblockUser, listBlocked, isBlockedBetween, reportContent, deleteOwnMessage, acceptTerms,
+} from '../game/moderation.ts';
 import { verifyApplePurchase } from '../game/iap.ts';
 import { registerPushToken, sendPushToUsers, startPushCrons } from '../game/push.ts';
 import { pool } from '../db/pool.ts';
@@ -647,7 +650,7 @@ export function startServer(port: number): Server {
       }
       if (msg.type === 'search_users') {
         void (async () => {
-          const users = await searchUsers(msg.query);
+          const users = await searchUsers(msg.query, userProfile?.id);
           transport.send({ type: 'user_search_results', users });
         })();
         return;
@@ -669,34 +672,45 @@ export function startServer(port: number): Server {
         const requestedMode = msg.options?.mode ?? 'team-team';
         if (!canUseMode(userProfile, requestedMode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
         const fromId = userProfile.id;
-        const key = `${fromId}:${msg.friendId}`;
-        // Replace any prior pending invite to the same friend.
-        const prev = pendingInvites.get(key);
-        if (prev) clearTimeout(prev.timer);
-        // Auto-expire after 30s so it can't hang forever.
-        const timer = setTimeout(() => {
-          if (pendingInvites.get(key)) {
-            pendingInvites.delete(key);
-            sendToUser(msg.friendId, { type: 'match_invite_cancelled' });
+        const inviterProfile = userProfile;
+        void (async () => {
+          // Guideline 1.2: blocking must close match invites too. Blocking already
+          // drops the friendship, but a stale client list could still fire one —
+          // the server is what says no. Awaited: the invite must NOT be created
+          // while the check is still in flight.
+          if (await isBlockedBetween(fromId, msg.friendId)) {
+            transport.send({ type: 'error', message: 'Bu kullanıcıya davet gönderemezsin' });
+            return;
           }
-        }, 30_000);
-        pendingInvites.set(key, {
-          fromUserId: fromId,
-          toUserId: msg.friendId,
-          fromName: userProfile.displayName,
-          transport,
-          ws,
-          userProfile,
-          options: msg.options,
-          setCtx: (c) => { ctx = c; },
-          timer,
-        });
-        sendToUser(msg.friendId, {
-          type: 'match_invite_received',
-          fromId,
-          fromName: userProfile.displayName,
-          options: msg.options,
-        });
+          const key = `${fromId}:${msg.friendId}`;
+          // Replace any prior pending invite to the same friend.
+          const prev = pendingInvites.get(key);
+          if (prev) clearTimeout(prev.timer);
+          // Auto-expire after 30s so it can't hang forever.
+          const timer = setTimeout(() => {
+            if (pendingInvites.get(key)) {
+              pendingInvites.delete(key);
+              sendToUser(msg.friendId, { type: 'match_invite_cancelled' });
+            }
+          }, 30_000);
+          pendingInvites.set(key, {
+            fromUserId: fromId,
+            toUserId: msg.friendId,
+            fromName: inviterProfile.displayName,
+            transport,
+            ws,
+            userProfile: inviterProfile,
+            options: msg.options,
+            setCtx: (c) => { ctx = c; },
+            timer,
+          });
+          sendToUser(msg.friendId, {
+            type: 'match_invite_received',
+            fromId,
+            fromName: inviterProfile.displayName,
+            options: msg.options,
+          });
+        })();
         return;
       }
       if (msg.type === 'respond_match_invite') {
@@ -764,6 +778,12 @@ export function startServer(port: number): Server {
         if (!rawBody || rawBody.length > 500) return;
         const body = censorMessage(rawBody);
         void (async () => {
+          // Guideline 1.2 block gate. Checked in BOTH directions: a one-way check
+          // would still let the person you blocked keep messaging you.
+          if (await isBlockedBetween(userProfile!.id, msg.toUserId)) {
+            transport.send({ type: 'error', message: 'Bu kullanıcıya mesaj gönderemezsin' });
+            return;
+          }
           const { rows } = await pool.query<{ id: string; created_at: string }>(
             `INSERT INTO messages (from_user, to_user, body) VALUES ($1, $2, $3) RETURNING id, created_at`,
             [userProfile!.id, msg.toUserId, body],
@@ -813,9 +833,9 @@ export function startServer(port: number): Server {
           const params: any[] = [userProfile!.id, msg.withUserId];
           if (msg.before) params.push(msg.before);
           const { rows } = await pool.query<{
-            id: string; from_user: string; to_user: string; body: string; created_at: string; from_name: string;
+            id: string; from_user: string; to_user: string; body: string; created_at: string; from_name: string; deleted_at: string | null;
           }>(
-            `SELECT m.id, m.from_user, m.to_user, m.body, m.created_at, u.display_name as from_name
+            `SELECT m.id, m.from_user, m.to_user, m.body, m.created_at, m.deleted_at, u.display_name as from_name
              FROM messages m
              JOIN users u ON u.id = m.from_user
              WHERE ((m.from_user = $1 AND m.to_user = $2) OR (m.from_user = $2 AND m.to_user = $1))
@@ -829,8 +849,11 @@ export function startServer(port: number): Server {
             fromId: r.from_user,
             fromName: r.from_name,
             toId: r.to_user,
-            body: r.body,
+            // A removed message keeps its row (reports need the evidence) but its
+            // text must never reach a client again.
+            body: r.deleted_at ? '' : r.body,
             createdAt: r.created_at,
+            ...(r.deleted_at ? { deleted: true } : {}),
           }));
           transport.send({ type: 'message_list', messages: messages.reverse(), withUserId: msg.withUserId });
         })();
@@ -862,6 +885,13 @@ export function startServer(port: number): Server {
             FROM convos c
             JOIN users u ON u.id = c.partner_id
             WHERE c.rn = 1
+              -- Guideline 1.2: a blocked person disappears from the inbox, in both
+              -- directions. Without this the chat stays listed and looks reachable.
+              AND NOT EXISTS (
+                SELECT 1 FROM blocked_users b
+                 WHERE (b.blocker_id = $1 AND b.blocked_id = c.partner_id)
+                    OR (b.blocker_id = c.partner_id AND b.blocked_id = $1)
+              )
             ORDER BY c.created_at DESC, c.partner_id ASC
             LIMIT 50
           `, [userProfile!.id]);
@@ -901,6 +931,74 @@ export function startServer(port: number): Server {
       if (msg.type === 'typing_stop') {
         if (!userProfile) return;
         sendToUser(msg.toUserId, { type: 'typing', fromUserId: userProfile!.id, isTyping: false });
+        return;
+      }
+
+      // ---- User-generated-content safety (App Store guideline 1.2) ----
+      if (msg.type === 'block_user') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        if (msg.userId === userProfile.id) return;
+        void (async () => {
+          await blockUser(userProfile!.id, msg.userId);
+          transport.send({ type: 'user_blocked', userId: msg.userId });
+          // Blocking removed the friendship — refresh both lists so neither side
+          // is left showing a friend the server no longer has.
+          transport.send(await getFriendsData(userProfile!.id));
+          sendToUser(msg.userId, await getFriendsData(msg.userId));
+        })().catch((err) => {
+          log.warn('block_failed', { error: err instanceof Error ? err.message : String(err) });
+          transport.send({ type: 'error', message: 'Kullanıcı engellenemedi' });
+        });
+        return;
+      }
+      if (msg.type === 'unblock_user') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          await unblockUser(userProfile!.id, msg.userId);
+          transport.send({ type: 'user_unblocked', userId: msg.userId });
+          transport.send({ type: 'blocked_list', users: await listBlocked(userProfile!.id) });
+        })().catch(() => transport.send({ type: 'error', message: 'İşlem başarısız' }));
+        return;
+      }
+      if (msg.type === 'list_blocked') {
+        if (!userProfile) return;
+        void (async () => {
+          transport.send({ type: 'blocked_list', users: await listBlocked(userProfile!.id) });
+        })().catch(() => {});
+        return;
+      }
+      if (msg.type === 'report_content') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        if (msg.userId === userProfile.id) return;
+        void (async () => {
+          await reportContent(userProfile!.id, msg.userId, msg.reason ?? 'unspecified', msg.messageId);
+          transport.send({ type: 'report_filed' });
+        })().catch((err) => {
+          log.warn('report_failed', { error: err instanceof Error ? err.message : String(err) });
+          transport.send({ type: 'error', message: 'Şikâyet gönderilemedi' });
+        });
+        return;
+      }
+      if (msg.type === 'delete_message') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          // Look the recipient up BEFORE the soft-delete so we can tell them too —
+          // "remove from the feed" has to clear the other side, not just my view.
+          const { rows } = await pool.query<{ to_user: string }>(
+            `SELECT to_user FROM messages WHERE id = $1 AND from_user = $2`,
+            [msg.messageId, userProfile!.id],
+          );
+          const ok = await deleteOwnMessage(userProfile!.id, msg.messageId);
+          if (!ok) return;
+          transport.send({ type: 'message_deleted', messageId: msg.messageId });
+          const to = rows[0]?.to_user;
+          if (to) sendToUser(to, { type: 'message_deleted', messageId: msg.messageId });
+        })().catch(() => transport.send({ type: 'error', message: 'Mesaj silinemedi' }));
+        return;
+      }
+      if (msg.type === 'accept_terms') {
+        if (!userProfile) return;
+        void acceptTerms(userProfile.id).catch(() => {});
         return;
       }
 

@@ -34,7 +34,7 @@ import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, Lin
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState, FriendInfo, LeaderboardEntry } from './useCrossover';
 import { initialState } from './useCrossover';
-import type { ClubRef, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, SpellInfo } from './protocol';
+import type { BlockedUserView, ClubRef, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, SpellInfo } from './protocol';
 import {
   EmoteCallout,
   EmoteSticker,
@@ -142,6 +142,13 @@ type Actions = {
   closeChat: () => void;
   sendMessage: (toUserId: string, body: string) => void;
   markRead: (fromUserId: string) => void;
+  // ---- User-generated-content safety (App Store guideline 1.2) ----
+  blockUser: (userId: string) => void;
+  unblockUser: (userId: string) => void;
+  listBlocked: () => void;
+  reportContent: (userId: string, reason: string, messageId?: string) => void;
+  deleteMessage: (messageId: string) => void;
+  acceptTerms: () => void;
   typingStart: (toUserId: string) => void;
   typingStop: (toUserId: string) => void;
   leave: () => void;
@@ -2441,6 +2448,20 @@ export function LoginScreen({ state, actions }: Props) {
           <Pressable onPress={() => { if (!hasInternet) setShowOfflinePulse(true); actions.guestLogin(); }} style={({ pressed }) => ({ marginTop: 6, paddingVertical: 12, opacity: pressed ? 0.55 : 1 })}>
             <Text style={{ color: theme.muted, fontSize: 15, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{t('login.guest')}</Text>
           </Pressable>
+          {/* Guideline 1.2 requires users to AGREE to terms that spell out the
+              zero-tolerance rule, and 3.1.2(c) requires the links to work. Both
+              are satisfied here, on the screen every sign-in path passes through. */}
+          <Text style={{ color: theme.muted, fontSize: 10.5, lineHeight: 15, fontFamily: 'Poppins-SemiBold', textAlign: 'center', paddingHorizontal: 12, marginTop: 2 }}>
+            {t('terms.agree')}
+          </Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 6 }}>
+            <Pressable onPress={() => openLink(INFO_LINKS.terms)} hitSlop={8}>
+              <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', textDecorationLine: 'underline' }}>{t('store.termsLink')}</Text>
+            </Pressable>
+            <Pressable onPress={() => openLink(INFO_LINKS.privacy)} hitSlop={8}>
+              <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', textDecorationLine: 'underline' }}>{t('store.privacyLink')}</Text>
+            </Pressable>
+          </View>
         </Animated.View>
       </View>
 
@@ -2575,8 +2596,12 @@ const linkChip = (pressed: boolean) => ({
 });
 const linkTxt = { color: theme.text, fontSize: 12, fontFamily: 'Poppins-SemiBold', flex: 1 };
 
+// Shown IN the app (guideline 1.2: "provide contact information in the app
+// itself, giving users the ability to report inappropriate activity").
+const SUPPORT_EMAIL = 'yagizkarabulutmedya@gmail.com';
+
 // ---- Settings Panel (inside hamburger menu) ----
-function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName, onNeedDiamonds, onLogout, onDeleteAccount }: {
+function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName, onNeedDiamonds, onLogout, onDeleteAccount, blocked, onListBlocked, onUnblock }: {
   onLanguageChange: () => void;
   diamonds: number;
   // Yalnız Apple/Google hesapları ad değiştirebilir — misafirlerde bölüm HİÇ çizilmez.
@@ -2585,11 +2610,17 @@ function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName
   onNeedDiamonds: () => void;
   onLogout: () => void;
   onDeleteAccount: () => void;
+  // Guideline 1.2 — the blocked list has to be reviewable and reversible.
+  blocked: BlockedUserView[];
+  onListBlocked: () => void;
+  onUnblock: (userId: string) => void;
 }) {
   const [langPicker, setLangPicker] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [logoutConfirm, setLogoutConfirm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [blockedOpen, setBlockedOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
   const activeLang = currentLang();
   const activeName = LANGUAGES.find((l) => l.code === activeLang)?.name ?? activeLang;
 
@@ -2662,6 +2693,24 @@ function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName
         <Text style={[linkTxt, { flex: 0, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5 }]}>{t('settings.founders')}</Text>
       </Pressable>
 
+      {/* ---- Guideline 1.2: safety controls, reachable without leaving the app ---- */}
+      <View style={{ height: 1, backgroundColor: theme.hairline, marginTop: 18, marginBottom: 8 }} />
+      <GameRow
+        icon="ban"
+        iconColor={theme.muted}
+        label={t('mod.blockedUsers')}
+        right={blocked.length ? <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>{blocked.length}</Text> : undefined}
+        chevron
+        onPress={() => { onListBlocked(); setBlockedOpen(true); }}
+      />
+      <GameRow
+        icon="flag"
+        iconColor={theme.muted}
+        label={t('mod.contactTitle')}
+        chevron
+        onPress={() => setContactOpen(true)}
+      />
+
       <View style={{ height: 1, backgroundColor: theme.hairline, marginTop: 18, marginBottom: 8 }} />
       <GameRow
         icon="log-out"
@@ -2708,6 +2757,38 @@ function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName
             <Btn label={t('profile.deleteAccountConfirmBtn')} kind="danger" icon="trash" onPress={() => { setDeleteConfirm(false); onDeleteAccount(); }} />
           </View>
         </View>
+      </GameModal>
+
+      {/* Blocked users — reviewable and reversible (guideline 1.2). */}
+      <PopupCard visible={blockedOpen} title={t('mod.blockedUsers')} icon="ban" onClose={() => setBlockedOpen(false)}>
+        <ScrollView style={{ maxHeight: 430 }} contentContainerStyle={{ padding: 12 }} showsVerticalScrollIndicator={false}>
+          {blocked.length === 0 ? (
+            <EmptyState icon="ban" title={t('mod.noBlocked')} />
+          ) : blocked.map((b) => (
+            <GameRow
+              key={b.userId}
+              icon="person"
+              label={b.displayName}
+              right={(
+                <Pressable onPress={() => onUnblock(b.userId)} hitSlop={8} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+                  <Text style={{ color: theme.primary, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>{t('mod.unblock')}</Text>
+                </Pressable>
+              )}
+            />
+          ))}
+        </ScrollView>
+      </PopupCard>
+
+      {/* In-app contact for reporting inappropriate activity — Apple requires the
+          developer's contact to be inside the app, not only on the website. */}
+      <GameModal visible={contactOpen} onClose={() => setContactOpen(false)} title={t('mod.contactTitle')} icon="flag">
+        <Text style={{ color: theme.muted, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 19 }}>
+          {t('mod.contactBody')}
+        </Text>
+        <Text selectable style={{ color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>
+          {SUPPORT_EMAIL}
+        </Text>
+        <Btn big icon="mail" label={t('mod.contactAction')} onPress={() => openLink(`mailto:${SUPPORT_EMAIL}?subject=Crossover%20-%20Report`)} />
       </GameModal>
 
       {/* Language picker — GameRow rows (cardLip bevel + press physics + spring
@@ -3858,6 +3939,9 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
             onNeedDiamonds={() => { setMenuOpen(false); onGoToStore?.('diamonds'); }}
             onLogout={() => { setMenuOpen(false); void actions.logout(); }}
             onDeleteAccount={() => { setMenuOpen(false); actions.deleteAccount(); }}
+            blocked={state.blockedUsers}
+            onListBlocked={() => actions.listBlocked()}
+            onUnblock={(userId) => actions.unblockUser(userId)}
           />
           {/* Ad değiştirme vb. sunucu hataları ("Bu kullanıcı adı zaten dolu")
               pencere İÇİNDE görünsün — ana ekrandaki bant modalın altında kalıyor */}
@@ -7751,8 +7835,41 @@ function SwipeBackWrap({ children, onBack }: { children: (softBack: () => void) 
 // Architecture: fullScreen overlay modal with an absolute input bar. The input
 // bar follows the native keyboard frame directly instead of relying on KAV, so
 // the send button remains touchable while the keyboard is open.
+// Guideline 1.2 report flow. Shared by the chat and the friend profile so a
+// report is always one tap from wherever the offending content is seen.
+const REPORT_REASONS: { key: MessageKey; value: string }[] = [
+  { key: 'mod.reasonAbuse', value: 'abuse' },
+  { key: 'mod.reasonHate', value: 'hate' },
+  { key: 'mod.reasonSexual', value: 'sexual' },
+  { key: 'mod.reasonSpam', value: 'spam' },
+  { key: 'mod.reasonOther', value: 'other' },
+];
+
+function ReportReasonModal({ visible, onClose, onPick }: {
+  visible: boolean;
+  onClose: () => void;
+  onPick: (reason: string) => void;
+}) {
+  return (
+    <GameModal visible={visible} onClose={onClose} title={t('mod.reportTitle')} icon="flag" danger>
+      <Text style={{ color: theme.muted, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 19, marginBottom: 4 }}>
+        {t('mod.reportBody')}
+      </Text>
+      {REPORT_REASONS.map((r) => (
+        <GameRow key={r.value} icon="flag-outline" label={t(r.key)} chevron onPress={() => onPick(r.value)} />
+      ))}
+    </GameModal>
+  );
+}
+
 function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void }) {
   const [text, setText] = useState('');
+  // Guideline 1.2 moderation surfaces, all reachable from the conversation.
+  const [chatMenu, setChatMenu] = useState(false);                              // header ⋯ sheet
+  const [msgAction, setMsgAction] = useState<{ id: string; mine: boolean } | null>(null); // long-pressed bubble
+  const [reportFor, setReportFor] = useState<{ messageId?: string } | null>(null);        // reason picker
+  const [blockConfirm, setBlockConfirm] = useState(false);
+  const [reportSent, setReportSent] = useState(false);
   const [kbOpen, setKbOpen] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [inputBarHeight, setInputBarHeight] = useState(86);
@@ -7938,6 +8055,23 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
             {isTyping ? t('chat.typing') : friend?.online ? t('common.online') : t('common.offline')}
           </Text>
         </View>
+        {/* Guideline 1.2 — block / report the person you are talking to. Must be
+            reachable from the conversation itself, not buried in settings. */}
+        <Pressable
+          onPress={() => setChatMenu(true)}
+          hitSlop={10}
+          accessibilityLabel={t('mod.report')}
+          style={({ pressed }) => ({
+            width: 40, height: 40, borderRadius: 14,
+            backgroundColor: pressed ? theme.surface3 : theme.surface2,
+            borderTopWidth: 1, borderTopColor: theme.topLight,
+            alignItems: 'center', justifyContent: 'center',
+            transform: [{ translateY: pressed ? 2 : 0 }],
+            ...shadowRow,
+          })}
+        >
+          <Ionicons name="ellipsis-horizontal" size={20} color={theme.text} />
+        </Pressable>
       </View>
 
       {/* Messages — bottom padding reserves the input bar AND (on iOS, where the
@@ -7976,6 +8110,13 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
           </View>
         ) : messages.map((m) => {
           const isMe = m.fromId === myId;
+          // Guideline 1.2 — long-press opens the moderation sheet: report anyone
+          // else's message, delete your own. Skipped on an already-removed bubble
+          // and on the optimistic 'local-' echo (no server id to act on yet).
+          const actionable = !m.deleted && !m.id.startsWith('local-');
+          const onLongPress = actionable
+            ? () => setMsgAction({ id: m.id, mine: isMe })
+            : undefined;
           // Own bubbles never animate in: the optimistic local- entry appears
           // instantly, and the server echo swaps the id (RiseIn remounts) — an
           // entrance animation there replayed as a visible blink.
@@ -7984,7 +8125,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
               <View style={{ alignItems: isMe ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
                 <View style={{ flexDirection: isMe ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 6, maxWidth: '80%' }}>
                   <AvatarBadge avatarId={isMe ? (state.profile?.avatar ?? state.profile?.selectedAvatar) : (friend?.avatar ?? friend?.selectedAvatar)} size={28} ringColor={isMe ? theme.primary : theme.border} frameId={isMe ? state.profile?.selectedFrame : friend?.frame} />
-                  <View style={{
+                  <Pressable onLongPress={onLongPress} delayLongPress={350} style={{
                     backgroundColor: isMe ? theme.primary : theme.surface2,
                     borderRadius: 16,
                     borderBottomRightRadius: isMe ? 4 : 16,
@@ -7997,11 +8138,15 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
                       : { borderTopWidth: 1, borderTopColor: theme.topLight, overflow: 'hidden' as const, ...shadowRow }),
                   }}>
                     {!isMe ? <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} /> : null}
-                    <Text style={{ color: isMe ? theme.ink : theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold' }}>{m.body}</Text>
+                    {m.deleted ? (
+                      <Text style={{ color: isMe ? withAlpha(theme.ink, 0.6) : theme.muted, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', fontStyle: 'italic' }}>{t('mod.deleted')}</Text>
+                    ) : (
+                      <Text style={{ color: isMe ? theme.ink : theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold' }}>{m.body}</Text>
+                    )}
                     <Text style={{ color: isMe ? withAlpha(theme.ink, 0.55) : theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', marginTop: 3, textAlign: 'right' }}>
                       {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </Text>
-                  </View>
+                  </Pressable>
                 </View>
               </View>
             </RiseIn>
@@ -8087,6 +8232,82 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
           }}
         </Pressable>
       </Animated.View>
+
+      {/* ---- Guideline 1.2 moderation sheets ---- */}
+      <GameModal visible={chatMenu} onClose={() => setChatMenu(false)} title={friend?.displayName ?? ''} icon="person">
+        <GameRow
+          icon="flag-outline"
+          iconColor={theme.danger}
+          label={t('mod.report')}
+          chevron
+          onPress={() => { setChatMenu(false); setReportFor({}); }}
+        />
+        <GameRow
+          icon="ban-outline"
+          iconColor={theme.danger}
+          label={t('mod.block')}
+          chevron
+          onPress={() => { setChatMenu(false); setBlockConfirm(true); }}
+        />
+      </GameModal>
+
+      {/* Long-pressed bubble: report anyone's, delete your own. */}
+      <GameModal visible={!!msgAction} onClose={() => setMsgAction(null)} title={t('mod.messageTitle')} icon="chatbubble">
+        {msgAction?.mine ? (
+          <GameRow
+            icon="trash-outline"
+            iconColor={theme.danger}
+            label={t('mod.deleteMessage')}
+            sublabel={t('mod.deleteMessageBody')}
+            chevron
+            onPress={() => { const id = msgAction.id; setMsgAction(null); actions.deleteMessage(id); }}
+          />
+        ) : (
+          <GameRow
+            icon="flag-outline"
+            iconColor={theme.danger}
+            label={t('mod.report')}
+            chevron
+            onPress={() => { const id = msgAction!.id; setMsgAction(null); setReportFor({ messageId: id }); }}
+          />
+        )}
+      </GameModal>
+
+      <ReportReasonModal
+        visible={!!reportFor}
+        onClose={() => setReportFor(null)}
+        onPick={(reason) => {
+          if (chatWith) actions.reportContent(chatWith, reason, reportFor?.messageId);
+          setReportFor(null);
+          setReportSent(true);
+        }}
+      />
+
+      {/* The 24-hour commitment is stated back to the reporter, so the promise in
+          the EULA is visible at the moment it matters. */}
+      <GameModal visible={reportSent} onClose={() => setReportSent(false)} title={t('mod.reportSentTitle')} icon="checkmark-circle">
+        <Text style={{ color: theme.muted, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 19 }}>
+          {t('mod.reportSentBody')}
+        </Text>
+        <Btn big label={t('settings.confirm')} onPress={() => setReportSent(false)} />
+      </GameModal>
+
+      <GameModal visible={blockConfirm} onClose={() => setBlockConfirm(false)} title={t('mod.blockTitle')} icon="ban" danger>
+        <Text style={{ color: theme.muted, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 19 }}>
+          {t('mod.blockBody', { name: friend?.displayName ?? '' })}
+        </Text>
+        <Btn
+          big
+          kind="danger"
+          icon="ban"
+          label={t('mod.block')}
+          onPress={() => {
+            setBlockConfirm(false);
+            if (chatWith) actions.blockUser(chatWith);
+            (onBack ?? actions.closeChat)();
+          }}
+        />
+      </GameModal>
     </View>
   );
 }

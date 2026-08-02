@@ -279,3 +279,46 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS training_boost_until TIMESTAMPTZ; -- 
 
 -- Sosyal Paket Jetonu: kullanıldığında Sosyal Paket süresine +24 saat ekler
 ALTER TABLE users ADD COLUMN IF NOT EXISTS power_socialtoken INT NOT NULL DEFAULT 0;
+
+-- ---------------------------------------------------------------------------
+-- Kullanıcı içeriği güvenliği (App Store Guideline 1.2)
+-- Apple, anonim içerik üretilebilen uygulamalarda engelleme, şikâyet, kendi
+-- içeriğini silme ve 24 saat içinde işlem yapma mekanizmalarını ZORUNLU tutuyor.
+-- ---------------------------------------------------------------------------
+
+-- Engelleme tek yönlüdür (A, B'yi engeller) ama kapılar ÇİFT yönlü uygulanır:
+-- engellenen taraf da engelleyene ulaşamaz.
+CREATE TABLE IF NOT EXISTS blocked_users (
+  blocker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  blocked_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (blocker_id, blocked_id),
+  CHECK (blocker_id <> blocked_id)
+);
+-- "beni kim engelledi" yönü de sorgulanıyor (send_message kapısı çift yönlü).
+CREATE INDEX IF NOT EXISTS idx_blocked_reverse ON blocked_users (blocked_id);
+
+-- Şikâyetler. body_snapshot kasıtlı: şikâyet edilen mesaj silinse bile
+-- moderasyon kaydı içeriği korur, yoksa 24 saatlik inceleme anlamsız kalır.
+CREATE TABLE IF NOT EXISTS content_reports (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  reporter_id   UUID REFERENCES users(id) ON DELETE SET NULL,
+  reported_id   UUID REFERENCES users(id) ON DELETE SET NULL,
+  message_id    UUID,           -- NULL = mesaj değil, kullanıcı şikâyeti
+  body_snapshot TEXT,
+  reason        TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'open',  -- open | actioned | dismissed
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_reports_open ON content_reports (status, created_at DESC);
+
+-- Kendi mesajını kaldırma: satır silinmez, işaretlenir — şikâyet incelemesi ve
+-- karşı tarafın tutarlı görünümü için.
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+
+-- İhlal eden hesabın erişiminin sonlandırılması (24 saat taahhüdünün yaptırımı).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT;
+
+-- EULA onayı: Apple, kullanıcıların koşulları KABUL ETMESİNİ şart koşuyor.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ;

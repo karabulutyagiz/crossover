@@ -3,6 +3,8 @@ import { PREMIUM_ROAD_PRICE } from './level.ts';
 import { emotePrice, isFreeEmote, isEquippableEmote, MAX_EQUIPPED, ALL_COLLECTIBLE_EMOTES } from './emotes.ts';
 import { avatarPrice, canUseAvatar, DEFAULT_AVATAR_ID, isAvatar, isFreeAvatar } from './avatars.ts';
 import { validateUsername } from './username.ts';
+// moderation.ts only pulls in the pool + logger, so this import cannot cycle back.
+import { isBlockedBetween } from './moderation.ts';
 
 // ---- Trophy arenas (Clash Royale style) ----
 export interface Arena {
@@ -890,6 +892,11 @@ export async function sendFriendRequest(
   if (!target) return { ok: false, error: 'Kullanıcı bulunamadı' };
   if (target.id === fromUserId) return { ok: false, error: 'Kendine istek gönderemezsin' };
 
+  // Guideline 1.2: a block must close EVERY contact path, not just DMs — otherwise
+  // a blocked user simply re-opens the channel with a friend request. Deliberately
+  // the same "not found" wording as an unknown user, so a block isn't disclosed.
+  if (await isBlockedBetween(fromUserId, target.id)) return { ok: false, error: 'Kullanıcı bulunamadı' };
+
   // Already friends?
   const already = await pool.query(
     `SELECT 1 FROM friendships WHERE user_id = $1 AND friend_id = $2`,
@@ -944,13 +951,27 @@ export async function removeFriend(userId: string, friendId: string): Promise<vo
 }
 
 /** Search users by exact username match. */
-export async function searchUsers(query: string): Promise<{ userId: string; displayName: string }[]> {
+// `viewerId` is optional only so older callers keep compiling — pass it whenever
+// there is a signed-in user, otherwise the block filter below can't apply and a
+// blocked account stays findable (and re-addable), which defeats the block.
+export async function searchUsers(query: string, viewerId?: string): Promise<{ userId: string; displayName: string }[]> {
   if (!query || query.trim().length < 2) return [];
+  const params: unknown[] = [query.trim()];
+  let blockClause = '';
+  if (viewerId) {
+    params.push(viewerId);
+    blockClause = `AND NOT EXISTS (
+      SELECT 1 FROM blocked_users b
+       WHERE (b.blocker_id = $2 AND b.blocked_id = users.id)
+          OR (b.blocker_id = users.id AND b.blocked_id = $2)
+    )`;
+  }
   const { rows } = await pool.query<{ id: string; display_name: string }>(
     `SELECT id, display_name FROM users
       WHERE username_set = true AND lower(display_name) = lower($1)
+      ${blockClause}
       LIMIT 10`,
-    [query.trim()],
+    params,
   );
   return rows.map((r) => ({ userId: r.id, displayName: r.display_name }));
 }
