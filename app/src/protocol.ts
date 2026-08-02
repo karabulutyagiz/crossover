@@ -87,6 +87,9 @@ export interface ProfileView {
   bestStreak?: number;      // tüm zamanların en yüksek serisi
   powerStreak?: number;     // envanterdeki Seri Geri Yükleme adedi
   lostStreak?: number;      // son mağlubiyette kırılan seri (geri yüklenebilir)
+  powerTraining?: number;       // envanterdeki Antrenman Bileti adedi
+  trainingBoostUntil?: string | null; // aktif Antrenman Bileti penceresinin bitişi (ISO)
+  powerSocialToken?: number;    // envanterdeki Sosyal Paket Jetonu adedi
   premiumRoad?: boolean;    // Premium Seviye Yolu açık mı (sezonluk)
   claimedPremium?: number[]; // Premium şeritte toplanmış ödül seviyeleri
   ownedFrames?: string[];   // KALICI çerçeve sahipliği (sezonlar arası korunur)
@@ -179,8 +182,8 @@ export type ClientMsg =
   | { type: 'set_frame'; frameId: string | null }
   | { type: 'claim_level_reward'; level: number; track?: 'free' | 'premium' } // Seviye Yolu kartına dokunarak ödül topla (şerit seçimiyle)
   | { type: 'buy_premium_road' } // Premium Seviye Yolu'nu 1000 elmasla aç
-  | { type: 'buy_power'; powerId: 'xp2x' | 'shield' | 'streak' } // mağazadan güç satın al
-  | { type: 'use_power'; powerId: 'xp2x' | 'shield' | 'streak' } // envanterdeki tek kullanımlık gücü etkinleştir
+  | { type: 'buy_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken' } // mağazadan güç satın al
+  | { type: 'use_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken' } // envanterdeki tek kullanımlık gücü etkinleştir
   | { type: 'get_my_stats' } // profil istatistikleri: seri rekoru + mod bazlı K/M
   | { type: 'verify_purchase'; receipt: string }
   | { type: 'grant_ad_reward' }
@@ -212,7 +215,7 @@ export type ServerMsg =
   | { type: 'profile'; profile: ProfileView }
   | { type: 'name_changed'; profile: ProfileView }
   | { type: 'countdown'; n: number }
-  | { type: 'pick_phase'; endsAt: number; pickRole?: PickRole }
+  | { type: 'pick_phase'; endsAt: number; pickRole?: PickRole; usedClubIds?: number[]; usedCountries?: string[] } // maç boyu seçilmiş takım/ülkeler (karart+kilitle)
   | { type: 'team_picked'; playerId: string }
   | { type: 'reveal_teams'; teamA: ClubRef; teamB: ClubRef; mode?: GameMode; country?: string; letter?: string }
   | { type: 'guess_phase'; endsAt: number }

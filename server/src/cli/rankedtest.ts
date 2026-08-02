@@ -3,6 +3,7 @@
 // which asserts the opposite). Usage: npx tsx src/cli/rankedtest.ts
 import { WebSocket } from 'ws';
 import type { ClientMsg, ServerMsg } from '../protocol.ts';
+import { pool, closePool } from '../db/pool.ts';
 
 const URL = process.env.WS_URL ?? 'ws://localhost:8080';
 
@@ -45,21 +46,33 @@ function check(cond: boolean, label: string) {
   if (!cond) failed = true;
 }
 
-async function resolveClub(c: Client, reqId: string, q: string): Promise<number> {
-  c.send({ type: 'search_clubs', reqId, q });
-  const res = await c.wait('club_results');
-  if (!res.clubs[0]) throw new Error(`No club for "${q}"`);
-  return res.clubs[0].id;
+// Round kulüpleri artık MAÇ boyunca tekrar seçilemez (used-teams kısıtı, room.ts)
+// — her round'un DB'den taze, ortak-oyunculu bir çift alması gerekir.
+async function freshCrossover(exclude: Set<number>): Promise<{ aId: number; bId: number; player: string }> {
+  const { rows } = await pool.query<{ a: string; b: string; player_name: string }>(
+    `SELECT pc1.club_id AS a, pc2.club_id AS b, p.name AS player_name
+       FROM player_clubs pc1
+       JOIN player_clubs pc2 ON pc2.player_id = pc1.player_id AND pc2.club_id <> pc1.club_id
+       JOIN players p ON p.id = pc1.player_id
+       JOIN clubs c1 ON c1.id = pc1.club_id AND c1.is_national = FALSE
+       JOIN clubs c2 ON c2.id = pc2.club_id AND c2.is_national = FALSE
+      WHERE pc1.club_id <> ALL($1::bigint[]) AND pc2.club_id <> ALL($1::bigint[])
+      ORDER BY random() LIMIT 1`,
+    [[...exclude]],
+  );
+  const r = rows[0];
+  if (!r) throw new Error('freshCrossover: kullanılabilir taze çift kalmadı');
+  return { aId: Number(r.a), bId: Number(r.b), player: r.player_name };
 }
 
-async function playRound(A: Client, B: Client): Promise<Extract<ServerMsg, { type: 'result' }>> {
+async function playRound(A: Client, B: Client, exclude: Set<number>): Promise<Extract<ServerMsg, { type: 'result' }>> {
   await A.wait('pick_phase');
-  const gala = await resolveClub(A, 'a', 'Galatasaray');
-  const inter = await resolveClub(B, 'b', 'Inter Milan');
-  A.send({ type: 'pick_team', clubId: gala });
-  B.send({ type: 'pick_team', clubId: inter });
+  const { aId, bId, player } = await freshCrossover(exclude);
+  exclude.add(aId); exclude.add(bId);
+  A.send({ type: 'pick_team', clubId: aId });
+  B.send({ type: 'pick_team', clubId: bId });
   await A.wait('guess_phase');
-  A.send({ type: 'submit_guess', text: 'Icardi' });
+  A.send({ type: 'submit_guess', text: player });
   await sleep(40);
   B.send({ type: 'submit_guess', text: 'zzzznobody' });
   return A.wait('result');
@@ -86,8 +99,9 @@ async function main() {
 
   // Play until the match ends (A wins each round → first to 3).
   let last: Extract<ServerMsg, { type: 'result' }> | null = null;
+  const exclude = new Set<number>();
   for (let i = 1; i <= 5; i++) {
-    const result = await playRound(A, B);
+    const result = await playRound(A, B, exclude);
     console.log(`  round ${i}: scores ${result.players.map((p) => `${p.name}=${p.score}`).join(' ')} matchOver=${result.matchOver}`);
     last = result;
     if (result.matchOver) break;
@@ -102,8 +116,9 @@ async function main() {
   check(xp.gained > 0, `winner gained XP — got ${xp.gained}`);
 
   A.close(); B.close();
+  await closePool();
   console.log(failed ? '\n❌ RANKEDTEST FAILED' : '\n✅ RANKEDTEST PASSED');
   process.exitCode = failed ? 1 : 0;
 }
 
-main().catch((err) => { console.error('rankedtest error:', err); process.exitCode = 1; });
+main().catch(async (err) => { console.error('rankedtest error:', err); await closePool().catch(() => {}); process.exitCode = 1; });

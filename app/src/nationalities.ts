@@ -82,7 +82,7 @@ export const NATIONALITIES: Nationality[] = [
   { value: 'Slovakia', displayName: 'Slovakya', flag: '🇸🇰' },
   { value: 'Slovenia', displayName: 'Slovenya', flag: '🇸🇮' },
   { value: 'Tunisia', displayName: 'Tunus', flag: '🇹🇳' },
-  { value: 'Turkey', displayName: 'Türkiye', flag: '🇹🇷' },
+  { value: 'Türkiye', displayName: 'Türkiye', flag: '🇹🇷' }, // DB p.nationality='Türkiye' (Türkçe) ile birebir
   { value: 'Ukraine', displayName: 'Ukrayna', flag: '🇺🇦' },
   { value: 'Uruguay', displayName: 'Uruguay', flag: '🇺🇾' },
   { value: 'Venezuela', displayName: 'Venezuela', flag: '🇻🇪' },

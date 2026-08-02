@@ -27,6 +27,7 @@ export const theme = {
   gem: '#A855F7', // premium-currency crystal (GemIcon re-exports this as GEM_COLOR)
   gemDark: '#6F38A3', // gem lip/bevel (gem darkened 0.34)
   flame: '#FF7A45', // top arena tier (GOAT) ramp color
+  flameDark: '#C0431C', // flame lip/bevel (flame darkened)
   danger: '#FF5468',
   dangerDark: '#CB3346',
   gold: '#FFD740',

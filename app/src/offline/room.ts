@@ -55,11 +55,13 @@ export class OfflineRoom {
   // and the last pick's country to avoid two from the same league in a row.
   private recentBotPicks: number[] = [];
   private lastBotCountry: string | null = null;
+  // Bu maçta seçilmiş takımlar — bir daha seçilemez (istemci karartır, bot kaçınır)
+  private usedClubIds = new Set<number>();
 
   // Pick the bot's team from the difficulty pool and record it for the no-repeat
-  // and no-same-country-twice rules.
+  // and no-same-country-twice rules; bu maçta kullanılmış takımlardan da kaçınır.
   private async pickBotTeam(playerTeamId: number | null): Promise<ClubRef | null> {
-    const pick = await botPickFromPool(this.difficulty, playerTeamId, this.recentBotPicks, this.lastBotCountry);
+    const pick = await botPickFromPool(this.difficulty, playerTeamId, [...this.recentBotPicks, ...this.usedClubIds], this.lastBotCountry);
     if (!pick) {
       // Pool unavailable for some reason — fall back to the old band picker.
       const r = await randomClub(this.difficulty);
@@ -133,6 +135,7 @@ export class OfflineRoom {
 
   async handlePick(clubId: number) {
     if (!this.round) return;
+    if (this.usedClubIds.has(clubId)) return; // bu maçta zaten seçilmiş
     // Player picks, bot auto-picks
     const clubs = await offlineSearchClubs('', 200);
     const club = clubs.find(c => c.id === clubId);
@@ -249,7 +252,7 @@ export class OfflineRoom {
     this.round = { answered: false, passedBy: new Set() };
     this.botAnswer = null;
     const endsAt = Date.now() + PICK_MS;
-    this.dispatch({ type: 'pick_phase', endsAt, pickRole: 'team' } as any);
+    this.dispatch({ type: 'pick_phase', endsAt, pickRole: 'team', usedClubIds: [...this.usedClubIds], usedCountries: [] } as any);
 
     // Auto-pick timeout
     this.timers.push(setTimeout(() => {
@@ -274,6 +277,10 @@ export class OfflineRoom {
 
   private async revealTeams() {
     if (!this.round?.teamA || !this.round?.teamB) return;
+
+    // Bu turun takımlarını maç-boyu kullanıldı kümesine ekle (bir daha seçilemez)
+    this.usedClubIds.add(this.round.teamA.id);
+    this.usedClubIds.add(this.round.teamB.id);
 
     this.dispatch({
       type: 'reveal_teams',

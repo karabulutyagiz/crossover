@@ -49,28 +49,42 @@ function check(cond: boolean, label: string) {
   if (!cond) failed = true;
 }
 
-async function resolveClub(c: Client, reqId: string, q: string): Promise<number> {
-  c.send({ type: 'search_clubs', reqId, q });
-  const res = await c.wait('club_results');
-  if (!res.clubs[0]) throw new Error(`No club for "${q}"`);
-  return res.clubs[0].id;
+// Round kulüpleri artık MAÇ boyunca tekrar seçilemez (used-teams kısıtı, room.ts)
+// — her round'un DB'den taze, ortak-oyunculu bir çift alması gerekir; aksi halde
+// 2. round Galatasaray/Inter'i tekrar seçmeye çalışır ve sunucu tarafından reddedilir.
+async function freshCrossover(exclude: Set<number>): Promise<{ aId: number; bId: number; player: string }> {
+  const { rows } = await pool.query<{ a: string; b: string; player_name: string }>(
+    `SELECT pc1.club_id AS a, pc2.club_id AS b, p.name AS player_name
+       FROM player_clubs pc1
+       JOIN player_clubs pc2 ON pc2.player_id = pc1.player_id AND pc2.club_id <> pc1.club_id
+       JOIN players p ON p.id = pc1.player_id
+       JOIN clubs c1 ON c1.id = pc1.club_id AND c1.is_national = FALSE
+       JOIN clubs c2 ON c2.id = pc2.club_id AND c2.is_national = FALSE
+      WHERE pc1.club_id <> ALL($1::bigint[]) AND pc2.club_id <> ALL($1::bigint[])
+      ORDER BY random() LIMIT 1`,
+    [[...exclude]],
+  );
+  const r = rows[0];
+  if (!r) throw new Error('freshCrossover: kullanılabilir taze çift kalmadı');
+  return { aId: Number(r.a), bId: Number(r.b), player: r.player_name };
 }
 
-// One round where `scorer` answers correctly (Icardi: Galatasaray + Inter).
-async function playRound(A: Client, B: Client, scorer: 'A' | 'B') {
+// One round where `scorer` answers correctly with a taze ortak oyuncu.
+async function playRound(A: Client, B: Client, scorer: 'A' | 'B', exclude: Set<number>) {
   await A.wait('pick_phase');
-  const gala = await resolveClub(A, 'a', 'Galatasaray');
-  const inter = await resolveClub(B, 'b', 'Inter Milan');
-  A.send({ type: 'pick_team', clubId: gala });
-  B.send({ type: 'pick_team', clubId: inter });
+  const { aId, bId, player } = await freshCrossover(exclude);
+  exclude.add(aId); exclude.add(bId);
+  A.send({ type: 'pick_team', clubId: aId });
+  B.send({ type: 'pick_team', clubId: bId });
   await A.wait('guess_phase');
-  (scorer === 'A' ? A : B).send({ type: 'submit_guess', text: 'Icardi' });
+  (scorer === 'A' ? A : B).send({ type: 'submit_guess', text: player });
   return A.wait('result');
 }
 
 async function playMatch(A: Client, B: Client, winner: 'A' | 'B') {
+  const exclude = new Set<number>();
   for (let i = 0; i < 5; i++) {
-    const r = await playRound(A, B, winner);
+    const r = await playRound(A, B, winner, exclude);
     if (r.matchOver) return;
     await A.wait('countdown');
   }
@@ -160,7 +174,7 @@ async function main() {
   // ---- PREMIUM YOL: kilit → yetersiz bakiye → satın alma → claim → tekrarlar ----
   A2.send({ type: 'claim_level_reward', level: 5, track: 'premium' });
   const ePre = await A2.wait('error');
-  check(/Premium/i.test(ePre.message), `premium claim without unlock blocked — "${ePre.message}"`);
+  check(/CO Pass/i.test(ePre.message), `premium claim without unlock blocked — "${ePre.message}"`);
   A2.send({ type: 'buy_premium_road' });
   const ePoor = await A2.wait('error');
   check(/Yetersiz/i.test(ePoor.message), `insufficient purchase blocked — "${ePoor.message}"`);
@@ -173,8 +187,8 @@ async function main() {
   check(/zaten/i.test(eTwice.message), `double purchase blocked — "${eTwice.message}"`);
   A2.send({ type: 'claim_level_reward', level: 5, track: 'premium' });
   const pc = await A2.wait('level_reward_claimed');
-  check(pc.track === 'premium' && pc.powerId === 'xp2x' && pc.diamonds === 100, `premium 5 → xp2x +100💎 — got ${pc.track}/${pc.powerId}/${pc.diamonds}`);
-  check((pc.profile.claimedPremium ?? []).includes(5) && (pc.profile.powerXp2x ?? 0) === 1, 'premium claim kaydı + envanter arttı');
+  check(pc.track === 'premium' && pc.powerId === 'shield' && pc.diamonds === 100, `premium 5 → shield +100💎 — got ${pc.track}/${pc.powerId}/${pc.diamonds}`);
+  check((pc.profile.claimedPremium ?? []).includes(5) && (pc.profile.powerShield ?? 0) === 1, 'premium claim kaydı + envanter arttı');
   A2.send({ type: 'claim_level_reward', level: 5, track: 'premium' });
   const eDup = await A2.wait('error');
   check(/toplandı|değil/i.test(eDup.message), `premium double-claim blocked — "${eDup.message}"`);
@@ -182,7 +196,9 @@ async function main() {
   // ---- MAĞAZADAN GÜÇ SATIN ALMA ----
   A2.send({ type: 'buy_power', powerId: 'xp2x' });
   const pb = await A2.wait('power_purchased');
-  check(pb.powerId === 'xp2x' && (pb.profile.powerXp2x ?? 0) === 2 && pb.profile.diamonds === 950,
+  // Premium 5. seviye artık 'shield' veriyor (xp2x değil) — bu xp2x bakiyesi
+  // yalnız bu mağaza alımından gelir, 1 olmalı (elmas matematiği değişmedi).
+  check(pb.powerId === 'xp2x' && (pb.profile.powerXp2x ?? 0) === 1 && pb.profile.diamonds === 950,
     `store power buy → xp2x x${pb.profile.powerXp2x}, kalan ${pb.profile.diamonds}💎`);
 
   A2.close(); B2.close();

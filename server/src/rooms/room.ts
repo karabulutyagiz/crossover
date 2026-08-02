@@ -10,6 +10,8 @@ import {
   commonPlayersLetterTeam,
   hasPlayersCountryTeam,
   hasPlayersLetterTeam,
+  pickCountryForClub,
+  pickClubForCountry,
   randomClub,
   botPickFromPool,
   searchPlayers,
@@ -103,6 +105,11 @@ export class Room {
   private matchRounds: MatchRound[] = [];
   private recentBotPicks: number[] = []; // last bot team ids (no-repeat within 10)
   private disconnectTimers = new Map<string, NodeJS.Timeout>();
+  // Maç boyunca seçilmiş takımlar/ülkeler — bir kez seçilen bir daha seçilemez
+  // (maç bitene kadar). İstemci bunları karartıp devre dışı bırakır; sunucu da
+  // tekrar seçimi reddeder. Her maç başında sıfırlanır.
+  private usedClubIds = new Set<number>();
+  private usedCountries = new Set<string>();
 
   constructor(code: string, onEmpty: (code: string) => void) {
     this.code = code;
@@ -151,6 +158,13 @@ export class Room {
     }
     return null;
   }
+
+  // Bot'un VERİ-GÜDÜMLÜ ülke-takım seçimi için oda-içi durum erişimcileri: bot,
+  // insanın bu turdaki seçimine UYUMLU (ortak-oyunculu) bir eş seçebilsin ve maç
+  // boyu kullanılmışları dışlayabilsin diye. (Ülke seçimi tur-başına tek değerdir.)
+  roundCountryPick(): string | null { return this.round?.countryPick ?? null; }
+  usedCountriesList(): string[] { return [...this.usedCountries]; } // normalize (küçük harf)
+  usedClubIdsList(): number[] { return [...this.usedClubIds]; }
 
   // Update a player's avatar mid-match (by persistent userId) and push fresh state
   // so the opponent sees the new profile picture instantly.
@@ -335,9 +349,14 @@ export class Room {
     this.rematchBy = null;
     this.roundNumber = 0;
     this.matchRounds = [];
+    this.usedClubIds.clear();
+    this.usedCountries.clear();
+    this.recentBotPicks = [];
     for (const p of this.players.values()) { p.score = 0; p.wrongCount = 0; }
     this.beginCountdown();
   }
+
+  private static normCountry(c: string): string { return c.trim().toLowerCase(); }
 
   private beginCountdown(): void {
     this.clearTimers();
@@ -364,16 +383,64 @@ export class Room {
     this.broadcastState();
     const endsAt = Date.now() + PICK_MS;
     const roles = this.pickRoles();
-    // Send each player their specific pickRole
+    // Send each player their specific pickRole + this match's already-used teams/
+    // countries so the client can darken and disable them.
+    const usedClubIds = [...this.usedClubIds];
+    const usedCountries = [...this.usedCountries];
     for (const [id, role] of roles) {
-      this.sendTo(id, { type: 'pick_phase', endsAt, pickRole: role });
+      this.sendTo(id, { type: 'pick_phase', endsAt, pickRole: role, usedClubIds, usedCountries });
     }
     const t = setTimeout(() => this.autoPickRemaining(), PICK_MS);
     this.timers.push(t);
   }
 
+  // Ülke-takım: eksik seçim(ler)i VERİ-GÜDÜMLÜ tamamla. Bot, karşı tarafın seçtiğine
+  // göre GARANTİLİ ortak-oyunculu bir eş seçer (takıma → oynanabilir milliyet, ülkeye
+  // → o milliyetten oyuncusu olan takım). İkisi de idle ise uyumlu bir çift üretir.
+  // Milliyet değerleri DB'deki GERÇEK p.nationality string'leridir (ör. 'Türkiye') —
+  // artık 'Turkey' gibi uyuşmayan sabitler yok. Böylece "oyuncu var ama tur atlandı"
+  // hatası tamamen imkânsızlaşır.
+  private async resolveCountryTeamAutoPicks(): Promise<void> {
+    if (!this.round) return;
+    const roles = this.pickRoles();
+    const teamId = [...roles.entries()].find(([, r]) => r === 'team')?.[0];
+    const countryId = [...roles.entries()].find(([, r]) => r === 'country')?.[0];
+    if (!teamId || !countryId) return;
+    const usedCountriesLower = [...this.usedCountries];
+
+    // 1) Takım seçilmemişse: ülke seçiliyse O ÜLKEDEN oyuncusu olan takım, değilse genel bot seçimi
+    if (!this.round.picks.has(teamId)) {
+      const avoid = [...this.recentBotPicks, ...this.usedClubIds];
+      let club = this.round.countryPick
+        ? await pickClubForCountry(this.round.countryPick, avoid)
+        : null;
+      if (!club) {
+        club = this.scope.type === 'all' ? await botPickFromPool('medium', null, avoid) : await randomClub(this.scope, 'medium');
+        for (let tries = 0; club && this.usedClubIds.has(club.id) && tries < 8; tries++) club = await randomClub(this.scope, 'medium');
+      }
+      if (club) {
+        this.round.picks.set(teamId, club);
+        if (this.scope.type === 'all') { this.recentBotPicks.push(club.id); if (this.recentBotPicks.length > 10) this.recentBotPicks.shift(); }
+        this.broadcast({ type: 'team_picked', playerId: teamId });
+      }
+    }
+
+    // 2) Ülke seçilmemişse: SEÇİLEN TAKIMA oynanabilir (ortak-oyunculu) bir milliyet seç
+    if (!this.round.countryPick) {
+      const teamPick = this.round.picks.get(teamId);
+      this.round.countryPick = await pickCountryForClub(teamPick ? Number(teamPick.id) : null, usedCountriesLower);
+      this.broadcast({ type: 'team_picked', playerId: countryId });
+    }
+  }
+
   private async autoPickRemaining(): Promise<void> {
     if (this.status !== 'pick' || !this.round) return;
+    // Ülke-takımı veri-güdümlü çöz (asla yanlış tur atlamaz), diğer modlar aşağıdaki genel akış.
+    if (this.gameMode === 'country-team') {
+      await this.resolveCountryTeamAutoPicks();
+      if (this.allPicked()) this.beginReveal();
+      return;
+    }
     const roles = this.pickRoles();
     for (const [id, role] of roles) {
       if (this.round.picks.has(id) || (role === 'country' && this.round.countryPick) || (role === 'letter' && this.round.letterPick)) continue;
@@ -395,9 +462,15 @@ export class Room {
         // preferring a crossover with the human's team. League-scoped rooms keep the
         // old popularity picker so the pick stays inside the chosen league.
         const humanPick = [...this.round.picks.values()][0];
-        const club = this.scope.type === 'all'
-          ? await botPickFromPool('medium', humanPick ? Number(humanPick.id) : null, this.recentBotPicks)
+        // Bot da bu maçta kullanılmış takımlardan kaçınır
+        const avoid = [...this.recentBotPicks, ...this.usedClubIds];
+        let club = this.scope.type === 'all'
+          ? await botPickFromPool('medium', humanPick ? Number(humanPick.id) : null, avoid)
           : await randomClub(this.scope, 'medium');
+        // Scoped oda picker'ı exclude almadığından kullanılmışa denk gelirse birkaç kez yeniden dene
+        for (let tries = 0; club && this.usedClubIds.has(club.id) && tries < 8; tries++) {
+          club = await randomClub(this.scope, 'medium');
+        }
         if (club) {
           if (this.scope.type === 'all') {
             this.recentBotPicks.push(club.id);
@@ -407,9 +480,11 @@ export class Room {
           this.broadcast({ type: 'team_picked', playerId: id });
         }
       } else if (role === 'country') {
-        // Auto-pick a RANDOM popular footballing nation (was hardcoded to Turkey).
+        // Auto-pick a RANDOM popular footballing nation, kullanılmışlar hariç.
         const popular = ['Turkey', 'Brazil', 'France', 'Argentina', 'Germany', 'Spain', 'Italy', 'Portugal', 'Netherlands', 'England'];
-        this.round.countryPick = popular[Math.floor(Math.random() * popular.length)]!;
+        const avail = popular.filter((c) => !this.usedCountries.has(Room.normCountry(c)));
+        const pick = (avail.length ? avail : popular)[Math.floor(Math.random() * (avail.length ? avail.length : popular.length))]!;
+        this.round.countryPick = pick;
         this.broadcast({ type: 'team_picked', playerId: id });
       } else if (role === 'letter') {
         // Auto-pick a random letter
@@ -441,6 +516,10 @@ export class Room {
     const roles = this.pickRoles();
     if (roles.get(playerId) !== 'team') return; // wrong role
     if (this.round.picks.has(playerId)) return;
+    // Bu maçta zaten seçilmiş takım yeniden seçilemez
+    if (this.usedClubIds.has(clubId)) {
+      return this.sendTo(playerId, { type: 'error', message: 'Bu takım bu maçta zaten seçildi' });
+    }
     void this.lockPick(playerId, clubId);
   }
 
@@ -449,6 +528,10 @@ export class Room {
     const roles = this.pickRoles();
     if (roles.get(playerId) !== 'country') return;
     if (this.round.countryPick) return; // already picked
+    // Bu maçta zaten seçilmiş ülke yeniden seçilemez
+    if (this.usedCountries.has(Room.normCountry(country))) {
+      return this.sendTo(playerId, { type: 'error', message: 'Bu ülke bu maçta zaten seçildi' });
+    }
     this.round.countryPick = country;
     this.broadcast({ type: 'team_picked', playerId });
     if (this.allPicked()) this.beginReveal();
@@ -501,8 +584,47 @@ export class Room {
     if (this.allPicked()) this.beginReveal();
   }
 
+  // Bu turda açığa çıkan takım/ülkeleri maç-boyu "kullanıldı" kümesine işler.
+  // player-player modu takım/ülke içermez — atlanır.
+  private markUsedForRound(): void {
+    if (!this.round) return;
+    if (this.gameMode === 'player-player') return;
+    for (const club of this.round.picks.values()) {
+      if (club?.id) this.usedClubIds.add(club.id);
+    }
+    if (this.round.countryPick) this.usedCountries.add(Room.normCountry(this.round.countryPick));
+  }
+
+  // Reveal için gereken TÜM pick'ler yerinde mi? (beginReveal'in non-null erişimleri
+  // için ön-koşul.) allPicked() rol-bazlı sayar; bu ise beginReveal'in GERÇEKTEN
+  // okuyacağı slot'ları (ids[0]/ids[1], team pick + ülke/harf) birebir doğrular.
+  private revealPicksReady(): boolean {
+    if (!this.round) return false;
+    if (this.gameMode === 'player-player') {
+      return Boolean(this.round.playerAPick && this.round.playerBPick);
+    }
+    if (this.gameMode === 'team-team') {
+      const ids = [...this.players.keys()];
+      return ids.length >= 2 && this.round.picks.has(ids[0]!) && this.round.picks.has(ids[1]!);
+    }
+    // country-team / letter-team: bir 'team' rolü seçili + ülke/harf değeri mevcut
+    const teamId = [...this.pickRoles().entries()].find(([, r]) => r === 'team')?.[0];
+    if (!teamId || !this.round.picks.has(teamId)) return false;
+    if (this.gameMode === 'country-team') return Boolean(this.round.countryPick);
+    return Boolean(this.round.letterPick); // letter-team
+  }
+
   private beginReveal(): void {
     if (!this.round) return;
+    // GÜVENLİK: disconnect/reconnect yarışında bir pick eksik kalırsa aşağıdaki
+    // non-null (`!`) erişimler undefined döndürüp süreci çökertirdi (tüm maçlar
+    // düşer → "internet yok"). Eksikse sessizce çık — round, disconnect temizliğiyle
+    // (finalizeClose) veya bir sonraki döngüde toparlanır.
+    if (!this.revealPicksReady()) {
+      log.warn('reveal_missing_picks', { room: this.code, mode: this.gameMode, status: this.status });
+      return;
+    }
+    this.markUsedForRound();
 
     if (this.gameMode === 'player-player') {
       const playerA = this.round.playerAPick!;
@@ -559,6 +681,7 @@ export class Room {
 
   private async afterRevealTeamTeam(a: ClubRef, b: ClubRef): Promise<void> {
     if (!this.round || this.round.finished || this.status !== 'reveal') return;
+    if (!a || !b) return; // güvenlik: eksik pick ile çağrılırsa çökme yerine sessizce çık
     if (a.id === b.id) {
       const t = setTimeout(() => this.skipSameTeam(), 2200);
       this.timers.push(t);

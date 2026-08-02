@@ -528,6 +528,53 @@ export async function hasPlayersCountryTeam(clubId: number, country: string): Pr
   return Number(rows[0]?.n ?? 0) > 0;
 }
 
+// Bot'un ülke-takım seçimini VERİ-GÜDÜMLÜ yapan yardımcılar: bot, karşı tarafın
+// seçtiğine göre GARANTİLİ oynanabilir (ortak oyuncusu olan) bir eş seçer; böylece
+// "oyuncu var ama tur atlandı" hatası asla olmaz. Milliyet değerleri DB'deki gerçek
+// p.nationality string'leridir (İngilizce/Türkçe karışık — ör. Türkiye), asla
+// uydurma bir sabit değil.
+
+/** Verilen takımda oynamış oyuncusu OLAN bir milliyet döndürür (yoksa popüler bir gerçek milliyet). */
+export async function pickCountryForClub(clubId: number | null, excludeLower: string[] = []): Promise<string> {
+  const excl = excludeLower.length ? excludeLower : [];
+  if (clubId != null) {
+    const { rows } = await pool.query<{ nationality: string }>(
+      `SELECT p.nationality FROM player_clubs pc
+         JOIN players p ON p.id = pc.player_id
+        WHERE pc.club_id = $1 AND p.nationality IS NOT NULL AND lower(p.nationality) <> ALL($2::text[])
+        GROUP BY p.nationality
+        ORDER BY random() LIMIT 1`,
+      [clubId, excl],
+    );
+    if (rows[0]) return rows[0].nationality;
+  }
+  // Takım bilinmiyorsa (nadir: her iki taraf da idle) — yeterince oyuncusu olan popüler bir milliyet
+  const { rows } = await pool.query<{ nationality: string }>(
+    `SELECT nationality FROM players
+      WHERE nationality IS NOT NULL AND lower(nationality) <> ALL($1::text[])
+      GROUP BY nationality ORDER BY count(DISTINCT id) DESC LIMIT 12`,
+    [excl],
+  );
+  const cands = rows.map((r) => r.nationality);
+  return cands[Math.floor(Math.random() * cands.length)] ?? 'Türkiye';
+}
+
+/** Verilen milliyetten oyuncusu OLAN bir kulüp döndürür (yoksa null). */
+export async function pickClubForCountry(country: string, excludeIds: number[] = []): Promise<ClubHit | null> {
+  const excl = excludeIds.length ? excludeIds : [-1];
+  const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
+    `SELECT c.id, c.name, c.logo_url FROM clubs c
+       JOIN player_clubs pc ON pc.club_id = c.id
+       JOIN players p ON p.id = pc.player_id
+      WHERE p.nationality = $1 AND c.is_national = false AND c.id <> ALL($2::bigint[])
+      GROUP BY c.id, c.name, c.logo_url
+      ORDER BY random() LIMIT 1`,
+    [country, excl],
+  );
+  const r = rows[0];
+  return r ? { id: Number(r.id), name: r.name, logoUrl: r.logo_url } : null;
+}
+
 /** Are there any valid players for a letter-team combination? */
 export async function hasPlayersLetterTeam(clubId: number, letter: string): Promise<boolean> {
   const prefix = letter.toLowerCase();

@@ -80,6 +80,9 @@ export interface UserProfile {
   premiumRoad: boolean;    // Premium Seviye Yolu açık mı (sezonluk)
   claimedPremium: number[]; // Premium şeritte toplanmış ödül seviyeleri
   ownedFrames: string[];   // KALICI çerçeve sahipliği (sezonlar arası korunur)
+  powerTraining: number;       // envanterdeki Antrenman Bileti adedi
+  trainingBoostUntil: string | null; // aktif Antrenman Bileti penceresinin bitişi (ISO) ya da null
+  powerSocialToken: number;    // envanterdeki Sosyal Paket Jetonu adedi
 }
 
 function isFutureIso(iso: string | null | undefined): iso is string {
@@ -432,7 +435,7 @@ export async function applyMatchResult(
 // dokunuş ikinci jetonu yakmaz, aktifken yeniden basmak stok eritmez.
 export async function usePower(
   userId: string,
-  powerId: 'xp2x' | 'shield' | 'streak',
+  powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken',
 ): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
   if (!userId) return { ok: false, error: 'Önce giriş yap' };
   if (powerId === 'xp2x') {
@@ -477,26 +480,55 @@ export async function usePower(
     if (u && u.powerStreak <= 0) return { ok: false, error: 'Kullanılabilir Seri Geri Yükleme yok' };
     return { ok: false, error: 'Geri yüklenecek kırık bir seri yok' };
   }
+  if (powerId === 'training') {
+    // Antrenman Bileti: 1 SAATLİK pencere boyunca bot maçlarındaki 60 XP günlük
+    // tavanını kaldırır. Aktifken (pencere dolmadan) yeniden kullanmak engellenir.
+    const { rows } = await pool.query<DbUser>(
+      `UPDATE users SET power_training = power_training - 1, training_boost_until = now() + interval '1 hour'
+       WHERE id = $1 AND power_training > 0 AND (training_boost_until IS NULL OR training_boost_until < now())
+       RETURNING *`,
+      [userId],
+    );
+    if (rows[0]) return { ok: true, profile: toProfile(rows[0]) };
+    const u = await getUser(userId);
+    if (u?.trainingBoostUntil) return { ok: false, error: 'Antrenman Bileti zaten aktif' };
+    return { ok: false, error: 'Kullanılabilir Antrenman Biletin yok' };
+  }
+  if (powerId === 'socialtoken') {
+    // Sosyal Paket Jetonu: süreye +24 saat ekler. Aktif bir paketin ÜSTÜNE eklenir
+    // (GREATEST ile mevcut bitiş ya da şu an, hangisi ileriyse, esas alınır).
+    const { rows } = await pool.query<DbUser>(
+      `UPDATE users SET power_socialtoken = power_socialtoken - 1,
+         social_pack_until = GREATEST(COALESCE(social_pack_until, now()), now()) + interval '24 hours'
+       WHERE id = $1 AND power_socialtoken > 0
+       RETURNING *`,
+      [userId],
+    );
+    if (rows[0]) return { ok: true, profile: toProfile(rows[0]) };
+    return { ok: false, error: 'Kullanılabilir Sosyal Paket Jetonun yok' };
+  }
   return { ok: false, error: 'Bilinmeyen güç' };
 }
 
 // ---- Güç satın alma (mağaza) ----
 // Güçler Seviye Yolu'ndan kazanılır AMA mağazadan elmasla da alınabilir.
 // Atomik: bakiye denetimi + düşüm + envanter artışı tek UPDATE'te.
-export const POWER_PRICES: Record<'xp2x' | 'shield' | 'streak', number> = {
+export const POWER_PRICES: Record<'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken', number> = {
   xp2x: 150,
   shield: 250,
   streak: 300,
+  training: 250,
+  socialtoken: 350,
 };
 
 export async function buyPower(
   userId: string,
-  powerId: 'xp2x' | 'shield' | 'streak',
+  powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken',
 ): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
   if (!userId) return { ok: false, error: 'Önce giriş yap' };
   const price = POWER_PRICES[powerId];
   if (!price) return { ok: false, error: 'Bilinmeyen güç' };
-  const col = powerId === 'xp2x' ? 'power_xp2x' : powerId === 'shield' ? 'power_shield' : 'power_streak';
+  const col = powerId === 'xp2x' ? 'power_xp2x' : powerId === 'shield' ? 'power_shield' : powerId === 'streak' ? 'power_streak' : powerId === 'training' ? 'power_training' : 'power_socialtoken';
   const { rows } = await pool.query<DbUser>(
     `UPDATE users SET diamonds = diamonds - $2, ${col} = ${col} + 1
      WHERE id = $1 AND diamonds >= $2
@@ -523,7 +555,7 @@ export async function buyPremiumRoad(
   );
   if (rows[0]) return { ok: true, profile: toProfile(rows[0]) };
   const u = await getUser(userId);
-  if (u?.premiumRoad) return { ok: false, error: 'Premium Yol zaten açık' };
+  if (u?.premiumRoad) return { ok: false, error: 'CO Pass zaten açık' };
   return { ok: false, error: `Yetersiz elmas (${u?.diamonds ?? 0}/${PREMIUM_ROAD_PRICE})` };
 }
 
@@ -978,6 +1010,10 @@ interface DbUser {
   claimed_premium: number[] | null;
   season_id: string | null;
   owned_frames: string[] | null;
+  power_training: number | null;
+  training_boost_day: string | null;
+  training_boost_until: string | null;
+  power_socialtoken: number | null;
 }
 
 // Stamp the user's last-online time (on connect and disconnect) for "last seen".
@@ -1018,6 +1054,9 @@ function toProfile(row: DbUser): UserProfile {
     premiumRoad: row.premium_road ?? false,
     claimedPremium: row.claimed_premium ?? [],
     ownedFrames: row.owned_frames ?? [],
+    powerTraining: row.power_training ?? 0,
+    trainingBoostUntil: isFutureIso(row.training_boost_until) ? row.training_boost_until : null,
+    powerSocialToken: row.power_socialtoken ?? 0,
   };
 }
 

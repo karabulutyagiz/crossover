@@ -48,21 +48,33 @@ function check(cond: boolean, label: string) {
   if (!cond) failed = true;
 }
 
-async function resolveClub(c: Client, reqId: string, q: string): Promise<number> {
-  c.send({ type: 'search_clubs', reqId, q });
-  const res = await c.wait('club_results');
-  if (!res.clubs[0]) throw new Error(`No club for "${q}"`);
-  return res.clubs[0].id;
+// Round kulüpleri artık MAÇ boyunca tekrar seçilemez (used-teams kısıtı, room.ts)
+// — her round'un DB'den taze, ortak-oyunculu bir çift alması gerekir.
+async function freshCrossover(exclude: Set<number>): Promise<{ aId: number; bId: number; player: string }> {
+  const { rows } = await pool.query<{ a: string; b: string; player_name: string }>(
+    `SELECT pc1.club_id AS a, pc2.club_id AS b, p.name AS player_name
+       FROM player_clubs pc1
+       JOIN player_clubs pc2 ON pc2.player_id = pc1.player_id AND pc2.club_id <> pc1.club_id
+       JOIN players p ON p.id = pc1.player_id
+       JOIN clubs c1 ON c1.id = pc1.club_id AND c1.is_national = FALSE
+       JOIN clubs c2 ON c2.id = pc2.club_id AND c2.is_national = FALSE
+      WHERE pc1.club_id <> ALL($1::bigint[]) AND pc2.club_id <> ALL($1::bigint[])
+      ORDER BY random() LIMIT 1`,
+    [[...exclude]],
+  );
+  const r = rows[0];
+  if (!r) throw new Error('freshCrossover: kullanılabilir taze çift kalmadı');
+  return { aId: Number(r.a), bId: Number(r.b), player: r.player_name };
 }
 
-async function playRound(A: Client, B: Client, scorer: 'A' | 'B') {
+async function playRound(A: Client, B: Client, scorer: 'A' | 'B', exclude: Set<number>) {
   await A.wait('pick_phase');
-  const gala = await resolveClub(A, 'a', 'Galatasaray');
-  const inter = await resolveClub(B, 'b', 'Inter Milan');
-  A.send({ type: 'pick_team', clubId: gala });
-  B.send({ type: 'pick_team', clubId: inter });
+  const { aId, bId, player } = await freshCrossover(exclude);
+  exclude.add(aId); exclude.add(bId);
+  A.send({ type: 'pick_team', clubId: aId });
+  B.send({ type: 'pick_team', clubId: bId });
   await A.wait('guess_phase');
-  (scorer === 'A' ? A : B).send({ type: 'submit_guess', text: 'Icardi' });
+  (scorer === 'A' ? A : B).send({ type: 'submit_guess', text: player });
   return A.wait('result');
 }
 
@@ -79,8 +91,9 @@ async function playRankedMatch(aUserId: string, winner: 'A' | 'B') {
   await A.wait('searching');
   B.send({ type: 'find_match', name: 'StrB' });
   await A.wait('room_state'); await B.wait('room_state');
+  const exclude = new Set<number>();
   for (let i = 0; i < 5; i++) {
-    const r = await playRound(A, B, winner);
+    const r = await playRound(A, B, winner, exclude);
     if (r.matchOver) break;
     await A.wait('countdown');
   }

@@ -31,10 +31,24 @@ export const AVATARS: Record<string, number> = {
   pp18: require('../assets/avatars/pp18.png'),
   pp19: require('../assets/avatars/pp19.png'),
   pp20: require('../assets/avatars/pp20.png'),
+  pp21: require('../assets/avatars/pp21.png'),
+  pp22: require('../assets/avatars/pp22.png'),
+  pp23: require('../assets/avatars/pp23.png'),
+  pp24: require('../assets/avatars/pp24.png'),
+  pp25: require('../assets/avatars/pp25.png'),
+  pp26: require('../assets/avatars/pp26.png'),
+  pp27: require('../assets/avatars/pp27.png'),
+  pp28: require('../assets/avatars/pp28.png'),
+  pp29: require('../assets/avatars/pp29.png'),
+  pp30: require('../assets/avatars/pp30.png'),
+  pp31: require('../assets/avatars/pp31.png'),
+  pp32: require('../assets/avatars/pp32.png'),
+  pp33: require('../assets/avatars/pp33.png'),
+  pp34: require('../assets/avatars/pp34.png'),
 };
 
 // Ordered list for the picker grid.
-export const AVATAR_IDS: string[] = Array.from({ length: 20 }, (_, i) => `pp${i + 1}`);
+export const AVATAR_IDS: string[] = Array.from({ length: 34 }, (_, i) => `pp${i + 1}`);
 
 export function avatarSource(avatar?: string | null): number | undefined {
   return avatar ? AVATARS[avatar] : undefined;

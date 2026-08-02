@@ -119,8 +119,8 @@ type Actions = {
   setFrame: (frameId: string | null) => void; // profil çerçevesi tak/kaldır
   claimLevelReward: (level: number, track?: 'free' | 'premium') => void; // Seviye Yolu kartından ödül topla
   buyPremiumRoad: () => void; // Premium Yol'u 1000 elmasla aç
-  buyPower: (powerId: 'xp2x' | 'shield' | 'streak') => void; // mağazadan güç satın al
-  usePower: (powerId: 'xp2x' | 'shield' | 'streak') => void; // envanterdeki tek kullanımlık gücü etkinleştir
+  buyPower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => void; // mağazadan güç satın al
+  usePower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => void; // envanterdeki tek kullanımlık gücü etkinleştir
   loadMyStats: () => void; // profil istatistiklerini iste (my_stats yanıtı)
   verifyPurchase: (receipt: string) => Promise<void>;
   grantAdReward: () => Promise<number>;
@@ -326,7 +326,7 @@ function PulseRing({ size = 120, color = theme.primary, children }: { size?: num
 // CR-grade face: dark ink outline around the whole body + a single-hue tonal
 // ramp on the face (top-lit toy, NOT a multi-color web gradient).
 let _btnSeq = 0;
-type BtnKind = 'primary' | 'ghost' | 'accent' | 'blue' | 'danger' | 'purple';
+type BtnKind = 'primary' | 'ghost' | 'accent' | 'blue' | 'danger' | 'purple' | 'flame';
 const rampOf = (face: string, lip: string) => ({ hi: lighten(face, 0.3), face, lip });
 const BTN_PALETTE: Record<BtnKind, { hi: string; face: string; lip: string }> = {
   primary: rampOf(theme.primary, theme.primaryDark),
@@ -334,6 +334,7 @@ const BTN_PALETTE: Record<BtnKind, { hi: string; face: string; lip: string }> = 
   blue: rampOf(theme.blue, theme.blueDark),
   danger: rampOf(theme.danger, theme.dangerDark),
   purple: rampOf(theme.purple, theme.purpleDark),
+  flame: rampOf(theme.flame, theme.flameDark),
   ghost: { hi: 'transparent', face: 'transparent', lip: theme.border },
 };
 
@@ -3192,7 +3193,10 @@ function ProfilePill({ name, avatarId, tier, pct, color, onPress, fillAnim, fram
     return () => setXpRemeasure(null);
   }, [measureBar]);
   return (
-    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1, minWidth: 108 }}>
+    // marginLeft: takılı çerçeve avatarın çok dışına taşar; hap tam sol köşede
+    // olunca çerçevenin sol yayı ekran kenarında kesiliyordu. Hapı birkaç piksel
+    // sağa alarak (çerçeve varken) sol yay ekran kenarından kurtulur, tam görünür.
+    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1, minWidth: 108, marginLeft: frameId ? 14 : 0 }}>
       <View style={{ backgroundColor: darken(theme.card, 0.5), borderRadius: 24, paddingBottom: 2.5 }}>
         <Animated.View style={{
           transform: [{ translateY: ty }, { scale }],
@@ -3383,7 +3387,7 @@ const ROOM_CODE_LEN = 6;
 const HOME_MODES: GameMode[] = ['country-team', 'letter-team'];
 const PACK_MODES: GameMode[] = ['country-team', 'letter-team'];
 
-export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, overlayBusy, gemCountAnimOverride, gemFillAnimOverride }: Props) {
+export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, onOpenLevelRoad, overlayBusy, gemCountAnimOverride, gemFillAnimOverride }: Props) {
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [scope, setScope] = useState<Scope>({ type: 'all' });
   const [mode, setMode] = useState<GameMode>('team-team');
@@ -3526,7 +3530,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         />
         <GemPill count={profile?.diamonds ?? 0} onPress={() => onGoToStore?.('diamonds')} countAnim={gemCountAnim} fillAnim={gemFillAnim} innerRef={gemPillRef} />
         {SCREEN_W >= TOPBAR_ROOMY_W ? (
-          <RoundIconBtn icon="ribbon" tint={hasPack ? theme.accent : theme.text} onPress={() => onGoToStore?.('socialPack')} />
+          <RoundIconBtn icon="time" onPress={() => onOpenMatchHistory?.()} />
         ) : null}
         <RoundIconBtn icon="notifications" dot={newsUnread} onPress={() => { setNewsOpen(true); setNewsUnread(false); AsyncStorage.setItem(NEWS_READ_KEY, LATEST_NEWS_ID).catch(() => {}); }} />
         <RoundIconBtn icon="settings-sharp" onPress={() => setMenuOpen(true)} />
@@ -3734,19 +3738,19 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               />
             </View>
             <View style={{ width: cardW }}>
-              {/* Match history card (was the leaderboard card — user decision: the
-                  leaderboard stays on the hero podium badge; this slot shows the
-                  player's own match history instead). */}
+              {/* Seviye Yolu kartı (eskiden müsabaka geçmişi kartıydı — geçmiş artık
+                  yalnız Profil ekranından erişiliyor; bu carousel slotu artık
+                  seviye ilerlemesini gösteriyor ve Seviye Yolu'nu açıyor). */}
               <ArtCard
-                title={t('menu.matchHistory')}
+                title={t('level.roadTitle')}
                 tint={theme.blue}
                 height={128}
-                onPress={() => onOpenMatchHistory?.()}
+                onPress={() => onOpenLevelRoad?.()}
                 art={
                   <View style={StyleSheet.absoluteFill}>
-                    <Image source={EMOTE_ART.worldcup} resizeMode="contain" style={{ position: 'absolute', right: -2, top: 24, width: '60%', height: '58%' }} />
+                    <Image source={XP_STAR} resizeMode="contain" style={{ position: 'absolute', right: -2, top: 24, width: '60%', height: '58%' }} />
                     <Text style={{ position: 'absolute', left: 11, top: 10, color: theme.text, fontSize: 11, fontFamily: 'Poppins-SemiBold', width: '58%', ...engrave('sm') }} numberOfLines={3}>
-                      {t('home.matchHistoryHint')}
+                      {t('home.levelRoadHint')}
                     </Text>
                   </View>
                 }
@@ -4114,7 +4118,9 @@ export function MatchupScreen({ state }: Props) {
 
   const renderPlayer = (p: typeof you, color: string, slideY: Animated.AnimatedInterpolation<number>, fallbackAvatar?: string | null, fallbackFrame?: string | null) => (
     <Animated.View style={{ transform: [{ translateY: slideY }], opacity: anim, alignSelf: 'stretch' }}>
-      <GamePanel compact tint={color} bodyStyle={{ alignItems: 'center', gap: 6, paddingVertical: 14 }}>
+      {/* Alt kenar da tint rengi (eskiden darken(tint) koyu kalıp "kesik" görünüyordu) —
+          çerçeve isim kutusunun etrafını TAM sarar; derinlik gölgeden gelir. */}
+      <GamePanel compact tint={color} style={{ borderBottomColor: color }} bodyStyle={{ alignItems: 'center', gap: 6, paddingVertical: 14 }}>
         <Avatar avatar={p?.avatar ?? fallbackAvatar} name={p?.name} size={64} ring={color} ringWidth={3} bg={theme.card} iconColor={color} iconSize={30} frameId={p?.frame ?? fallbackFrame} />
         <Text style={{ color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{p?.name ?? '?'}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -4188,7 +4194,7 @@ function PlayerBar({ state, onEmotePress }: { state: GameState; onEmotePress?: (
   if (!room || !opp) return null;
   const color = opp.arena ? arenaColor(opp.arena.name) : theme.muted;
   return (
-    <GamePanel compact style={{ flex: 1 }} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 5, paddingHorizontal: 10 }}>
+    <GamePanel compact style={{ flex: 1, borderBottomColor: theme.border }} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 5, paddingHorizontal: 10 }}>
       <Avatar avatar={opp.avatar} name={opp.name} size={30} ring={color} ringWidth={2} iconColor={color} iconSize={15} frameId={opp.frame} />
       <View style={{ flex: 1 }}>
         <Text numberOfLines={1} style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{opp.name}</Text>
@@ -4220,7 +4226,9 @@ export function CountdownScreen({ state }: Props) {
   return (
     <Screen>
       <View style={styles.center}>
-        <View style={{ width: 172, height: 172, borderRadius: 86, borderWidth: 5, borderColor: theme.primary, borderTopColor: lighten(theme.primary, 0.35), borderBottomColor: theme.primaryDark, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.panelInk, shadowColor: theme.primary, shadowOpacity: 0.65, shadowRadius: 28, shadowOffset: { width: 0, height: 0 }, elevation: 18 }}>
+        {/* Halka TAMAMEN yeşil kaplar: alt kenar da theme.primary (eskiden primaryDark
+            koyu arka planda "kesik" görünüyordu). Üstte yalnız ince bir parlaklık kalır. */}
+        <View style={{ width: 172, height: 172, borderRadius: 86, borderWidth: 5, borderColor: theme.primary, borderTopColor: lighten(theme.primary, 0.28), alignItems: 'center', justifyContent: 'center', backgroundColor: theme.panelInk, shadowColor: theme.primary, shadowOpacity: 0.65, shadowRadius: 28, shadowOffset: { width: 0, height: 0 }, elevation: 18 }}>
           <View style={{ width: 140, height: 140, borderRadius: 70, backgroundColor: theme.card, borderWidth: 2, borderColor: withAlpha(theme.primary, 0.33), alignItems: 'center', justifyContent: 'center' }}>
             <Animated.Text style={{ color: theme.text, fontSize: n > 0 ? 88 : 50, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], transform: [{ scale }], opacity: a, ...engrave('lg') }}>
               {n > 0 ? n : 'GO!'}
@@ -4479,15 +4487,26 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
           autoFocus={!tutorial}
         />
         <ScrollView style={{ alignSelf: 'stretch', flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          {filtered.map((n) => (
-            <GameRow
-              key={n.value}
-              leading={<Text style={{ fontSize: 18 }}>{n.flag}</Text>}
-              label={n.displayName}
-              chevron
-              onPress={() => { setLastPick({ kind: 'country', label: n.displayName, flag: n.flag }); actions.pickCountry(n.value); }}
-            />
-          ))}
+          {filtered.map((n) => {
+            // Bu maçta seçilmiş ülke: karart + tıklanamaz + "seçildi" rozeti
+            const used = state.usedCountries.includes(n.value.trim().toLowerCase());
+            return (
+              <GameRow
+                key={n.value}
+                leading={<Text style={{ fontSize: 18 }}>{n.flag}</Text>}
+                label={n.displayName}
+                chevron={!used}
+                style={used ? { opacity: 0.4 } : undefined}
+                right={used ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.panelInnerFill, borderRadius: 999, borderWidth: 1, borderColor: theme.border, paddingHorizontal: 8, paddingVertical: 3 }}>
+                    <Ionicons name="checkmark-done" size={12} color={theme.muted} />
+                    <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-ExtraBold' }}>{t('pick.used').toLocaleUpperCase(currentLang())}</Text>
+                  </View>
+                ) : undefined}
+                onPress={used ? undefined : () => { setLastPick({ kind: 'country', label: n.displayName, flag: n.flag }); actions.pickCountry(n.value); }}
+              />
+            );
+          })}
           {filtered.length === 0 && countryQ.trim() ? (
             <EmptyState icon="search" title={t('common.noResults')} style={{ paddingVertical: 16 }} />
           ) : null}
@@ -4515,25 +4534,36 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
         contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', gap: 8, paddingVertical: 8 }}
         showsVerticalScrollIndicator={false}
       >
-        {state.clubResults.map((c: ClubRef) => (
-          <Pressable
-            key={c.id}
-            onPress={() => { setLastPick({ kind: 'team', label: c.name, logoUrl: c.logoUrl ?? null }); actions.pickTeam(c.id); }}
-            style={({ pressed }) => ({
-              width: '31.5%' as const, alignItems: 'center' as const, gap: 7,
-              backgroundColor: theme.card, borderRadius: 14,
-              borderWidth: 2, borderColor: theme.border,
-                paddingVertical: 12, paddingHorizontal: 4,
-              shadowColor: '#000', shadowOpacity: pressed ? 0.15 : 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: pressed ? 2 : 4,
-              transform: [{ translateY: pressed ? 2 : 0 }],
-            })}
-          >
-            <ClubBadge name={c.name} size={46} logoUrl={c.logoUrl} />
-            <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }} numberOfLines={2}>
-              {c.name}
-            </Text>
-          </Pressable>
-        ))}
+        {state.clubResults.map((c: ClubRef) => {
+          // Bu maçta seçilmiş takım: hafif karanlık + tıklanamaz + kilit rozeti
+          const used = state.usedClubIds.includes(c.id);
+          return (
+            <Pressable
+              key={c.id}
+              disabled={used}
+              onPress={() => { setLastPick({ kind: 'team', label: c.name, logoUrl: c.logoUrl ?? null }); actions.pickTeam(c.id); }}
+              style={({ pressed }) => ({
+                width: '31.5%' as const, alignItems: 'center' as const, gap: 7,
+                backgroundColor: theme.card, borderRadius: 14,
+                borderWidth: 2, borderColor: theme.border,
+                  paddingVertical: 12, paddingHorizontal: 4,
+                opacity: used ? 0.38 : 1,
+                shadowColor: '#000', shadowOpacity: pressed ? 0.15 : 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: pressed ? 2 : 4,
+                transform: [{ translateY: used ? 0 : pressed ? 2 : 0 }],
+              })}
+            >
+              <ClubBadge name={c.name} size={46} logoUrl={c.logoUrl} />
+              <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }} numberOfLines={2}>
+                {c.name}
+              </Text>
+              {used ? (
+                <View pointerEvents="none" style={{ position: 'absolute', top: 6, right: 6, width: 20, height: 20, borderRadius: 10, backgroundColor: theme.panelInk, borderWidth: 1.5, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="lock-closed" size={11} color={theme.muted} />
+                </View>
+              ) : null}
+            </Pressable>
+          );
+        })}
         {state.clubResults.length === 0 && q.trim() ? (
           <EmptyState icon="search" title={t('common.noResults')} style={{ width: '100%', paddingVertical: 16 }} />
         ) : null}
@@ -5498,6 +5528,8 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
   const [confirmOpen, setConfirmOpen] = useState(false);
   // Mağazadan güç satın alma onayı
   const [confirmPower, setConfirmPower] = useState<PowerId | null>(null);
+  // CO Pass satın alma onayı (mağazadan doğrudan)
+  const [confirmCoPass, setConfirmCoPass] = useState(false);
   // İfade vitrini kutu boyu — konteyner genişliğinden ölçülür (kesilme olmasın)
   const [shelfW, setShelfW] = useState(0);
 
@@ -5582,6 +5614,49 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
           </View>
         </Animated.View>
 
+        {/* CO Pass — Seviye Yolu'ndaki premium şeridin mağazadaki karşılığı;
+            kalıcı, tek seferlik satın alma (sezon sıfırlamasında yeniden alınır). */}
+        <Animated.View style={sectionIn(1)} onLayout={(e) => { sectionYRef.current['coPass'] = e.nativeEvent.layout.y; }}>
+          <SectionHeader label={t('store.coPassSection')} icon="medal" />
+          <View style={{ marginVertical: 5 }}>
+            <GamePanel hero>
+              <View style={{ gap: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Ionicons name="medal" size={24} color={theme.gold} />
+                  <Text style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t('premium.bannerTitle')}</Text>
+                </View>
+                <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold' }}>
+                  {t('premium.bannerDesc')}
+                </Text>
+                {profile?.premiumRoad ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: theme.panelInnerFill, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10, borderWidth: 1, borderColor: theme.primary, marginTop: 2 }}>
+                    <Ionicons name="checkmark-circle" size={16} color={theme.primary} />
+                    <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>{t('store.badgeActive')}</Text>
+                  </View>
+                ) : (
+                  <View style={{ alignSelf: 'flex-start', marginTop: 4 }}>
+                    <Btn
+                      compact
+                      kind="accent"
+                      gem
+                      label={String(PREMIUM_ROAD_PRICE)}
+                      onPress={() => {
+                        if ((profile?.diamonds ?? 0) >= PREMIUM_ROAD_PRICE) setConfirmCoPass(true);
+                        else setShowNotEnough(true);
+                      }}
+                    />
+                  </View>
+                )}
+              </View>
+            </GamePanel>
+            <Ribbon
+              label={t('premium.ribbon')}
+              color={theme.gold}
+              style={{ position: 'absolute', top: -7, right: 12, transform: [{ rotate: '-2deg' }], zIndex: 3 }}
+            />
+          </View>
+        </Animated.View>
+
         {/* Haftalık ifade dükkanı — sıralama kullanıcı kararı: Sosyal Paket'in
             hemen altında, elmasların üstünde (satışlar burada — koleksiyonda değil) */}
         <Animated.View style={sectionIn(1)}>
@@ -5628,9 +5703,9 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
         {/* Güçler — tek kullanımlık, stoklanabilir; Seviye Yolu dışında buradan da alınır */}
         <Animated.View style={sectionIn(2)}>
           <SectionHeader label={t('store.powers')} icon="flash" />
-          {(['xp2x', 'shield', 'streak'] as PowerId[]).map((pid) => {
+          {(['xp2x', 'shield', 'streak', 'training', 'socialtoken'] as PowerId[]).map((pid) => {
             const price = POWER_PRICES[pid];
-            const count = pid === 'xp2x' ? (profile?.powerXp2x ?? 0) : pid === 'shield' ? (profile?.powerShield ?? 0) : (profile?.powerStreak ?? 0);
+            const count = pid === 'xp2x' ? (profile?.powerXp2x ?? 0) : pid === 'shield' ? (profile?.powerShield ?? 0) : pid === 'streak' ? (profile?.powerStreak ?? 0) : pid === 'training' ? (profile?.powerTraining ?? 0) : (profile?.powerSocialToken ?? 0);
             return (
               <View key={pid} style={styles.storeEmoteCard}>
                 <View>
@@ -5729,6 +5804,22 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
             </View>
           </View>
         ) : null}
+      </GameModal>
+
+      {/* CO Pass satın alma onayı */}
+      <GameModal
+        visible={confirmCoPass}
+        onClose={() => setConfirmCoPass(false)}
+        title={t('premium.bannerTitle').toLocaleUpperCase(currentLang())}
+        icon="medal"
+      >
+        <View style={{ alignItems: 'center', gap: 10 }}>
+          <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 18 }}>{t('premium.confirmBody')}</Text>
+          <View style={{ alignSelf: 'stretch', marginTop: 4, gap: 8 }}>
+            <Btn big kind="accent" gem label={t('premium.unlockBtn', { n: String(PREMIUM_ROAD_PRICE) })} onPress={() => { setConfirmCoPass(false); actions.buyPremiumRoad(); }} />
+            <Btn label={t('store.cancel')} kind="ghost" onPress={() => setConfirmCoPass(false)} />
+          </View>
+        </View>
       </GameModal>
 
       {/* İfade satın alma onayı — animasyonlu CANLI önizleme: alıcı ne aldığını görür */}
@@ -6113,19 +6204,24 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
   const boostActive = boostUntil > Date.now();
   const armed = profile?.shieldArmed ?? false;
   const lostStreak = profile?.lostStreak ?? 0;
+  const trainingUntil = profile?.trainingBoostUntil ? new Date(profile.trainingBoostUntil).getTime() : 0;
+  const trainingActive = trainingUntil > Date.now();
   const counts: Record<PowerId, number> = {
     xp2x: profile?.powerXp2x ?? 0,
     shield: profile?.powerShield ?? 0,
     streak: profile?.powerStreak ?? 0,
+    training: profile?.powerTraining ?? 0,
+    socialtoken: profile?.powerSocialToken ?? 0,
   };
-  const anyOwnedOrActive = counts.xp2x > 0 || counts.shield > 0 || counts.streak > 0 || boostActive || armed;
+  const anyOwnedOrActive = counts.xp2x > 0 || counts.shield > 0 || counts.streak > 0 || counts.training > 0 || counts.socialtoken > 0 || boostActive || armed || trainingActive;
 
   const renderCard = (id: PowerId) => {
     const meta = POWERS[id];
     const count = counts[id];
-    const active = id === 'xp2x' ? boostActive : id === 'shield' ? armed : false;
+    const active = id === 'xp2x' ? boostActive : id === 'shield' ? armed : id === 'training' ? trainingActive : false;
     const activeLabel = id === 'xp2x'
       ? t('power.activeLeft', { t: fmtTimeLeft(boostUntil - Date.now()) })
+      : id === 'training' ? t('power.activeLeft', { t: fmtTimeLeft(trainingUntil - Date.now()) })
       : t('power.armed');
     // Seri Geri Yükleme yalnız kırık bir seri varken kullanılabilir
     const streakBlocked = id === 'streak' && lostStreak <= 0;
@@ -6153,7 +6249,7 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
           </View>
           {active ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10, backgroundColor: withAlpha(meta.color, 0.14), borderRadius: 999, borderWidth: 1.5, borderColor: withAlpha(meta.color, 0.6), paddingVertical: 6 }}>
-              <Ionicons name={id === 'xp2x' ? 'time' : 'shield-checkmark'} size={14} color={meta.color} />
+              <Ionicons name={id === 'xp2x' ? 'time' : id === 'shield' ? 'shield-checkmark' : 'infinite'} size={14} color={meta.color} />
               <Text style={{ color: meta.color, fontSize: 12, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{activeLabel}</Text>
             </View>
           ) : (
@@ -6164,7 +6260,7 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
                   <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>{t('power.streakNone')}</Text>
                 </View>
               ) : count > 0 ? (
-                <Btn kind={id === 'xp2x' ? 'accent' : id === 'shield' ? 'blue' : 'primary'} label={t('power.use')} onPress={() => setConfirmId(id)} />
+                <Btn kind={meta.kind} label={t('power.use')} onPress={() => setConfirmId(id)} />
               ) : (
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 7 }}>
                   <Ionicons name="lock-closed" size={12} color={theme.muted} />
@@ -6189,9 +6285,7 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
     <>
       <SectionHeader label={t('collection.tabPowers').toLocaleUpperCase(currentLang())} icon="flash" style={{ marginBottom: 8 }} />
       <View style={{ gap: 12 }}>
-        {renderCard('xp2x')}
-        {renderCard('shield')}
-        {renderCard('streak')}
+        {(['xp2x', 'shield', 'streak', 'training', 'socialtoken'] as PowerId[]).map(renderCard)}
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 12, paddingHorizontal: 4 }}>
         <Ionicons name="information-circle" size={14} color={theme.muted} style={{ marginTop: 1 }} />
@@ -6215,7 +6309,7 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
               {t(confirmMeta.confirmKey)}
             </Text>
             <View style={{ gap: 8 }}>
-              <Btn big kind={confirmId === 'xp2x' ? 'accent' : confirmId === 'shield' ? 'blue' : 'primary'} label={t('power.use')} onPress={() => { const id = confirmId; setConfirmId(null); onUse(id); }} />
+              <Btn big kind={confirmMeta.kind} label={t('power.use')} onPress={() => { const id = confirmId; setConfirmId(null); onUse(id); }} />
               <Btn kind="ghost" label={t('power.cancel')} onPress={() => setConfirmId(null)} />
             </View>
           </>
@@ -7584,6 +7678,30 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
     const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const onFrame = Keyboard.addListener(frameEvt, setKeyboardFrame);
     const onHide = Keyboard.addListener(hideEvt, resetKeyboardFrame);
+    // KESİN DÜZELTME: Sohbet bir RN <Modal> (yeni native pencere) içinde açılıyor.
+    // İlk açılışta "Will" olayı bu pencere geçişiyle çakışıp BAYAT/yanlış bir
+    // çerçeve bildirebilir — çubuk klavyenin arkasında kalır ya da "kaybolur"
+    // ("ilk girildiğinde arama çubuğu kayboluyor"). "Did" olayları OS klavye
+    // geçişini TAMAMEN bitirdikten SONRA gelir ve her zaman doğrudur; burada
+    // sessizce (animasyonsuz, anlık) SON durumu dayatarak "Will" ne olursa
+    // olsun çubuğu kesin doğru yere kilitler. "Will" zaten doğruysa bu no-op'tur.
+    const confirmShow = (e: any) => {
+      const endY = e?.endCoordinates?.screenY ?? SCREEN_H;
+      const height = Math.max(0, SCREEN_H - endY);
+      if (height <= 0) return;
+      setKeyboardHeight(height);
+      setKbOpen(true);
+      barTY.setValue(-height);
+    };
+    const confirmHide = () => {
+      setKeyboardHeight(0);
+      setKbOpen(false);
+      barTY.setValue(0);
+    };
+    // Android zaten frameEvt/hideEvt için "Did" olaylarını kullanıyor — ekstra
+    // doğrulama yalnız iOS'ta (Will/Did ayrımının olduğu platformda) gerekli.
+    const onDidShow = Platform.OS === 'ios' ? Keyboard.addListener('keyboardDidShow', confirmShow) : null;
+    const onDidHide = Platform.OS === 'ios' ? Keyboard.addListener('keyboardDidHide', confirmHide) : null;
     // Sohbet, klavye ZATEN açıkken açıldıysa frame olayı bir daha gelmez ve
     // giriş çubuğu klavyenin arkasında (ekran dibinde) kalırdı — mount anında
     // klavyenin mevcut ölçüsünü okuyup çubuğu HEMEN doğru yere koy.
@@ -7594,7 +7712,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
       barTY.setValue(Platform.OS === 'ios' ? -m.height : 0);
       setTimeout(scrollToBottom, 50);
     }
-    return () => { onFrame.remove(); onHide.remove(); };
+    return () => { onFrame.remove(); onHide.remove(); onDidShow?.remove(); onDidHide?.remove(); };
   }, [scrollToBottom]);
 
   // Publish the composer's top edge so SwipeBackWrap ignores gestures over it.
@@ -7894,6 +8012,9 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
             {([
               'pp7', 'pp11', 'pp12', 'pp13', 'pp14', 'pp15', 'pp16', 'pp17',
+              // pp.jpeg'ten eklenen yeni karakterler (pp21-31: 150, pp32-34: 250)
+              'pp21', 'pp22', 'pp23', 'pp24', 'pp25', 'pp26', 'pp27', 'pp28', 'pp29', 'pp30', 'pp31',
+              'pp32', 'pp33', 'pp34',
               'pp1', 'pp2', 'pp3', 'pp4', 'pp5', 'pp6', 'pp8', 'pp9', 'pp10',
               'pp19', 'pp20', 'pp18',
             ]).map((avatarId) => {
@@ -8049,7 +8170,9 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
     <Screen>
       <ScreenHeader title={t('profile.title')} icon="person" onBack={actions.closeProfile} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
-        <View style={{ alignItems: 'center', gap: 8, marginVertical: 10 }}>
+        {/* marginTop: çerçeve avatarın çok üstüne taşar (özellikle GOAT tacı) — çerçeve
+            takılıyken bloğu aşağı iterek üst yayın başlığın altında kesilmesini önler */}
+        <View style={{ alignItems: 'center', gap: 8, marginTop: 10 + (p.selectedFrame ? Math.min(56, Math.round((104 * ((FRAME_SCALE[p.selectedFrame] ?? 2.1) - 1)) / 2 * 0.6)) : 0), marginBottom: 10 }}>
           <Pressable onPress={() => setShowAvatarPage(true)} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.97 : 1 }] })}>
             <View>
               <AvatarBadge avatarId={p.avatar ?? p.selectedAvatar} size={104} ringColor={color} frameId={p.selectedFrame} />
@@ -9724,37 +9847,41 @@ export function unclaimedLevelCount(p: ProfileView | null): number {
 // ---- Özel güçler — Seviye Yolu'ndan kazanılan TEK KULLANIMLIK tüketilebilirler.
 // Elmasla satılmaz; kullanılmadıkça envanterde birikir (sunucudaki LEVEL_POWERS
 // ve powers kataloglarıyla birebir aynı kimlikler/seviyeler).
-export type PowerId = 'xp2x' | 'shield' | 'streak';
+export type PowerId = 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken';
 export const POWERS: Record<PowerId, {
   icon: ComponentProps<typeof Ionicons>['name'];
   color: string;
+  kind: BtnKind;
+  badgeIcon: ComponentProps<typeof Ionicons>['name'];
   nameKey: MessageKey;
   descKey: MessageKey;
   confirmKey: MessageKey;
 }> = {
-  xp2x: { icon: 'flash', color: theme.gold, nameKey: 'power.xp2xName', descKey: 'power.xp2xDesc', confirmKey: 'power.confirmXp2x' },
-  shield: { icon: 'shield', color: theme.blue, nameKey: 'power.shieldName', descKey: 'power.shieldDesc', confirmKey: 'power.confirmShield' },
-  streak: { icon: 'flame', color: theme.primary, nameKey: 'power.streakName', descKey: 'power.streakDesc', confirmKey: 'power.confirmStreak' },
+  xp2x: { icon: 'flash', color: theme.gold, kind: 'accent', badgeIcon: 'refresh', nameKey: 'power.xp2xName', descKey: 'power.xp2xDesc', confirmKey: 'power.confirmXp2x' },
+  shield: { icon: 'shield', color: theme.blue, kind: 'blue', badgeIcon: 'refresh', nameKey: 'power.shieldName', descKey: 'power.shieldDesc', confirmKey: 'power.confirmShield' },
+  streak: { icon: 'flame', color: theme.primary, kind: 'primary', badgeIcon: 'refresh', nameKey: 'power.streakName', descKey: 'power.streakDesc', confirmKey: 'power.confirmStreak' },
+  training: { icon: 'barbell', color: theme.purple, kind: 'purple', badgeIcon: 'barbell', nameKey: 'power.trainingName', descKey: 'power.trainingDesc', confirmKey: 'power.confirmTraining' },
+  socialtoken: { icon: 'people', color: theme.flame, kind: 'flame', badgeIcon: 'people', nameKey: 'power.socialtokenName', descKey: 'power.socialtokenDesc', confirmKey: 'power.confirmSocialtoken' },
 };
 export const LEVEL_POWER_UNLOCKS: Record<number, PowerId> = {
   5: 'xp2x',
   15: 'shield',
   25: 'streak',
-  35: 'xp2x',
-  45: 'shield',
+  35: 'training',
+  45: 'socialtoken',
 };
 
 // ---- PREMIUM Seviye Yolu (sunucudaki PREMIUM_* sabitleriyle birebir) ----
 // 1000 elmasla bir kez açılır; her ×5 seviyesinde EKSTRA güç + daha dolgun elmas.
+// Dağıtım: her güç şeritte TAM 2 kez + ücretsiz şeritle ORTAK seviyelerde
+// (5/15/25/35/45) asla aynı güç değil (aynı satırda iki kart hiç aynı olmaz).
 export const PREMIUM_ROAD_PRICE = 1000;
 export const PREMIUM_LEVEL_POWERS: Record<number, PowerId> = {
-  5: 'xp2x', 10: 'shield', 15: 'streak',
-  20: 'xp2x', 25: 'shield', 30: 'streak',
-  35: 'xp2x', 40: 'shield', 45: 'streak',
-  50: 'xp2x',
+  5: 'shield', 10: 'streak', 15: 'xp2x', 20: 'socialtoken', 25: 'training',
+  30: 'shield', 35: 'socialtoken', 40: 'xp2x', 45: 'streak', 50: 'training',
 };
 // Mağaza güç fiyatları (sunucudaki POWER_PRICES ile birebir)
-export const POWER_PRICES: Record<PowerId, number> = { xp2x: 150, shield: 250, streak: 300 };
+export const POWER_PRICES: Record<PowerId, number> = { xp2x: 150, shield: 250, streak: 300, training: 250, socialtoken: 350 };
 
 export function premiumRewardGems(n: number): number {
   if (n % 5 !== 0) return 0;
@@ -9768,6 +9895,8 @@ const POWER_ART: Partial<Record<PowerId, number>> = {
   xp2x: require('../assets/power-xp2x.png'),
   shield: require('../assets/power-shield.png'),
   streak: require('../assets/power-streak.png'), // seri.jpeg'ten birebir
+  training: require('../assets/power-training.png'), // özellik2.jpeg'ten birebir
+  socialtoken: require('../assets/power-socialtoken.png'), // özellik2.jpeg'ten birebir
 };
 export function PowerArt({ powerId, size, locked }: { powerId: PowerId; size: number; locked?: boolean; well?: boolean }) {
   const art = POWER_ART[powerId];
@@ -9794,7 +9923,7 @@ export function PowerArt({ powerId, size, locked }: { powerId: PowerId; size: nu
         <Ionicons name={meta.icon} size={Math.round(size * 0.48)} color={c} />
       </View>
       <View style={{ position: 'absolute', right: -size * 0.02, bottom: -size * 0.02, width: size * 0.34, height: size * 0.34, borderRadius: size * 0.17, backgroundColor: locked ? theme.border : meta.color, borderWidth: 1.5, borderColor: darken(theme.card, 0.45), alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name="refresh" size={Math.round(size * 0.2)} color={theme.ink} />
+        <Ionicons name={meta.badgeIcon} size={Math.round(size * 0.2)} color={theme.ink} />
       </View>
     </View>
   );
@@ -9882,101 +10011,253 @@ export function FramePreviewModal({ tier, unlocked, visible, onClose, equipped, 
 // Clash Royale sandık açılışı duygusu: karanlık sahne → büyüyen ışıma →
 // beyaz parlama → ödül yaylanarak iner; şok halkası + kıvılcım patlaması,
 // arkada ağır dönen ışık huzmeleri; ödülün adı damgalanır.
+// Değeri YALNIZ bir kez üretir — useRef(new X()) kalıbının aksine initializer her
+// render'da yeniden çalışıp çöp üretmez (kutlamada ~60 Animated.Value + config sabit kalır).
+function useConst<T>(init: () => T): T {
+  const ref = useRef<T | null>(null);
+  if (ref.current === null) ref.current = init();
+  return ref.current;
+}
+
 export function FrameUnlockCelebration({ tierKey, emoteId, powerId, onDone }: { tierKey?: string | null; emoteId?: string | null; powerId?: PowerId | null; onDone: () => void }) {
+  // Güç meta'sı — bilinmeyen powerId (callsite'taki `as PowerId` cast'i tip güvenliğini
+  // deler) POWERS'ta yoksa undefined kalır; böylece isPower false olur ve kademe dalı
+  // gibi çökmeden (POWERS[powerId].color TypeError'ı olmadan) sessizce ele alınır.
+  const powerMeta = powerId ? POWERS[powerId] : undefined;
   const isEmote = !tierKey && Boolean(emoteId);
-  const isPower = !tierKey && !emoteId && Boolean(powerId);
+  const isPower = !tierKey && !emoteId && Boolean(powerMeta);
   const tier = LEVEL_TIERS.find((tr) => tr.key === tierKey) ?? LEVEL_TIERS[0]!;
-  const glowColor = isPower && powerId ? POWERS[powerId].color : isEmote ? theme.accent : tier.c;
-  const glow = useRef(new Animated.Value(0)).current;    // sahneyi ısıtan ışıma
-  const flash = useRef(new Animated.Value(0)).current;   // patlama anı beyazı
-  const frameIn = useRef(new Animated.Value(0)).current; // çerçeve girişi
-  const rays = useRef(new Animated.Value(0)).current;    // huzme dönüşü
-  const raysO = useRef(new Animated.Value(0)).current;
-  const ring = useRef(new Animated.Value(0)).current;    // şok halkası
-  const titleIn = useRef(new Animated.Value(0)).current;
-  const btnIn = useRef(new Animated.Value(0)).current;
+  const glowColor = powerMeta ? powerMeta.color : isEmote ? theme.accent : tier.c;
+  const accent = lighten(glowColor, 0.4);
+  // Soğuk kademeler (gümüş/elmas) → kristal kıymık parçacıklar; sıcaklar → köz.
+  const isShard = tierKey === 'silver' || tierKey === 'diamond';
+  const big = Math.min(SCREEN_W * 0.72, 300);
+  const uid = isEmote ? `e-${emoteId}` : isPower ? `p-${powerId}` : `f-${tier.key}`;
+
+  // ---- tek seferlik giriş (useConst: initializer yalnız BİR kez çalışır) ----
+  const glow = useConst(() => new Animated.Value(0));    // sahneyi ısıtan ışıma
+  const flash = useConst(() => new Animated.Value(0));   // patlama anı beyazı
+  const frameIn = useConst(() => new Animated.Value(0)); // çerçeve girişi
+  const ringFx = useConst(() => new Animated.Value(0));  // şok halkası
+  const titleIn = useConst(() => new Animated.Value(0));
+  const btnIn = useConst(() => new Animated.Value(0));
   const [btnReady, setBtnReady] = useState(false); // görünmeden tıklanamasın
-  const sparks = useRef(Array.from({ length: 12 }, () => new Animated.Value(0))).current;
-  const sparkDirs = useRef(Array.from({ length: 12 }, (_, i) => {
-    const a = (Math.PI * 2 * i) / 12 + (i % 2 ? 0.26 : 0);
-    const r = 120 + (i % 3) * 36;
+  const sparks = useConst(() => Array.from({ length: 14 }, () => new Animated.Value(0)));
+  const sparkDirs = useConst(() => Array.from({ length: 14 }, (_, i) => {
+    const a = (Math.PI * 2 * i) / 14 + (i % 2 ? 0.24 : 0);
+    const r = 118 + (i % 3) * 40;
     return { x: Math.cos(a) * r, y: Math.sin(a) * r };
-  })).current;
+  }));
+
+  // ---- sürekli ambient ----
+  const spinA = useConst(() => new Animated.Value(0));   // huzme dönüşü (yavaş)
+  const spinB = useConst(() => new Animated.Value(0));   // yörünge halkası 1
+  const spinC = useConst(() => new Animated.Value(0));   // yörünge halkası 2 (ters)
+  const pulse = useConst(() => new Animated.Value(0));   // ışıma nefesi
+  const bob = useConst(() => new Animated.Value(0));     // madalyon süzülüşü
+  const N = 22; // ambient parçacık (köz / kristal)
+  const parts = useConst(() => Array.from({ length: N }, () => new Animated.Value(0)));
+  const partCfg = useConst(() => Array.from({ length: N }, () => {
+    const ang = Math.random() * Math.PI * 2;
+    const rad = 55 + Math.random() * 155;
+    return {
+      x0: Math.cos(ang) * rad, y0: Math.sin(ang) * rad * 0.92,
+      dur: 2800 + Math.random() * 3200, delay: Math.random() * 3400,
+      size: 3 + Math.random() * 5.5, rise: -(45 + Math.random() * 155),
+      drift: (Math.random() - 0.5) * 90, white: Math.random() < 0.42,
+      rot: `${Math.round(Math.random() * 360)}deg`,
+    };
+  }));
+  const TW = 12; // ışıltı (parlayıp sönen)
+  const tw = useConst(() => Array.from({ length: TW }, () => new Animated.Value(0)));
+  const twCfg = useConst(() => Array.from({ length: TW }, () => {
+    const ang = Math.random() * Math.PI * 2; const rad = 85 + Math.random() * 195;
+    return { x: Math.cos(ang) * rad, y: Math.sin(ang) * rad * 0.96, dur: 620 + Math.random() * 900, delay: Math.random() * 2600, size: 2 + Math.random() * 3 };
+  }));
+
   useEffect(() => {
-    Animated.loop(Animated.timing(rays, { toValue: 1, duration: 14000, easing: Easing.linear, useNativeDriver: true })).start();
+    const loops: Animated.CompositeAnimation[] = [];
+    const run = (a: Animated.CompositeAnimation) => { loops.push(a); a.start(); };
+    run(Animated.loop(Animated.timing(spinA, { toValue: 1, duration: 17000, easing: Easing.linear, useNativeDriver: true })));
+    run(Animated.loop(Animated.timing(spinB, { toValue: 1, duration: 12000, easing: Easing.linear, useNativeDriver: true })));
+    run(Animated.loop(Animated.timing(spinC, { toValue: 1, duration: 9000, easing: Easing.linear, useNativeDriver: true })));
+    run(Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 1500, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ])));
+    run(Animated.loop(Animated.sequence([
+      Animated.timing(bob, { toValue: 1, duration: 2400, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(bob, { toValue: 0, duration: 2400, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ])));
+    parts.forEach((p, i) => run(Animated.sequence([
+      Animated.delay(partCfg[i]!.delay),
+      Animated.loop(Animated.timing(p, { toValue: 1, duration: partCfg[i]!.dur, easing: Easing.linear, useNativeDriver: true })),
+    ])));
+    tw.forEach((s, i) => run(Animated.sequence([
+      Animated.delay(twCfg[i]!.delay),
+      Animated.loop(Animated.sequence([
+        Animated.timing(s, { toValue: 1, duration: twCfg[i]!.dur, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(s, { toValue: 0, duration: twCfg[i]!.dur, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ])),
+    ])));
+    // giriş patlaması
     Animated.sequence([
-      Animated.timing(glow, { toValue: 1, duration: 620, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      Animated.timing(glow, { toValue: 1, duration: 560, easing: Easing.in(Easing.quad), useNativeDriver: true }),
       Animated.parallel([
-        Animated.timing(flash, { toValue: 1, duration: 90, useNativeDriver: true }),
-        Animated.timing(raysO, { toValue: 1, duration: 240, useNativeDriver: true }),
-        Animated.timing(ring, { toValue: 1, duration: 640, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-        Animated.spring(frameIn, { toValue: 1, friction: 5, tension: 46, useNativeDriver: true }),
+        Animated.timing(ringFx, { toValue: 1, duration: 640, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.spring(frameIn, { toValue: 1, friction: 5, tension: 44, useNativeDriver: true }),
         ...sparks.map((s, i) => Animated.sequence([
-          Animated.delay(40 + (i % 4) * 45),
-          Animated.timing(s, { toValue: 1, duration: 720, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+          Animated.delay(30 + (i % 4) * 40),
+          Animated.timing(s, { toValue: 1, duration: 760, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
         ])),
       ]),
     ]).start();
-    Animated.sequence([Animated.delay(760), Animated.timing(flash, { toValue: 0, duration: 300, useNativeDriver: true })]).start();
-    Animated.sequence([Animated.delay(900), Animated.spring(titleIn, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true })]).start();
+    // flaş — TEK deterministik zincir (yükselir → tamamen söner, takılmaz)
+    Animated.sequence([
+      Animated.delay(540),
+      Animated.timing(flash, { toValue: 0.6, duration: 80, useNativeDriver: true }),
+      Animated.timing(flash, { toValue: 0, duration: 380, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+    ]).start();
+    Animated.sequence([Animated.delay(840), Animated.spring(titleIn, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true })]).start();
     const btnTimer = setTimeout(() => {
       setBtnReady(true);
       Animated.timing(btnIn, { toValue: 1, duration: 240, useNativeDriver: true }).start();
     }, 1500);
-    return () => clearTimeout(btnTimer);
+    return () => { clearTimeout(btnTimer); loops.forEach((l) => l.stop()); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const spin = rays.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-  const big = Math.min(SCREEN_W * 0.72, 300);
+
+  const rotA = spinA.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const rotB = spinB.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const rotC = spinC.interpolate({ inputRange: [0, 1], outputRange: ['360deg', '0deg'] });
+  const ringSize = big * 1.55;
+
   return (
     <Modal visible transparent animationType="fade" statusBarTranslucent>
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(4,7,18,0.94)', alignItems: 'center', justifyContent: 'center' }]}>
-        {/* ağır dönen ışık huzmeleri */}
-        <Animated.View pointerEvents="none" style={{ position: 'absolute', opacity: raysO.interpolate({ inputRange: [0, 1], outputRange: [0, 0.9] }), transform: [{ rotate: spin }] }}>
-          <Svg width={SCREEN_W * 1.3} height={SCREEN_W * 1.3} viewBox="-100 -100 200 200">
-            {Array.from({ length: 12 }, (_, i) => (
-              <Polygon key={i} points="0,0 -4.5,-100 4.5,-100" fill={glowColor} opacity={i % 2 ? 0.07 : 0.15} transform={`rotate(${i * 30})`} />
-            ))}
-          </Svg>
-        </Animated.View>
-        {/* merkez ışıma */}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(3,5,12,0.985)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }]}>
+        {/* kademe renkli geniş ambient yıkama (girişte belirir) — ekran köşegenine
+            yakın boyut yeter (perf: aşırı büyük translucent yüzey overdraw yükü) */}
         <Animated.View pointerEvents="none" style={{ position: 'absolute', opacity: glow }}>
-          <Svg width={360} height={360}>
+          <Svg width={SCREEN_W * 1.42} height={SCREEN_W * 1.42}>
             <Defs>
-              <RadialGradient id={`fglow-${isEmote ? 'emote' : tier.key}`} cx="50%" cy="50%" r="50%">
-                <Stop offset="0%" stopColor={glowColor} stopOpacity={0.55} />
-                <Stop offset="60%" stopColor={glowColor} stopOpacity={0.18} />
+              <RadialGradient id={`wash-${uid}`} cx="50%" cy="50%" r="50%">
+                <Stop offset="0%" stopColor={glowColor} stopOpacity={0.24} />
+                <Stop offset="42%" stopColor={glowColor} stopOpacity={0.09} />
                 <Stop offset="100%" stopColor={glowColor} stopOpacity={0} />
               </RadialGradient>
             </Defs>
-            <Circle cx={180} cy={180} r={180} fill={`url(#fglow-${isEmote ? 'emote' : tier.key})`} />
+            <Circle cx={SCREEN_W * 0.71} cy={SCREEN_W * 0.71} r={SCREEN_W * 0.71} fill={`url(#wash-${uid})`} />
           </Svg>
         </Animated.View>
-        {/* şok halkası */}
+
+        {/* ağır dönen ışık huzmeleri (goat mockup'ındaki çapraz altın çizgiler).
+            Dönen ama İÇERİĞİ SABİT katman: donanım dokusuna rasterize et → dönüş
+            önbelleğe alınmış tek dokuyu çevirir, her kare yeniden çizim yok. */}
+        <Animated.View pointerEvents="none" shouldRasterizeIOS renderToHardwareTextureAndroid style={{ position: 'absolute', opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.85] }), transform: [{ rotate: rotA }] }}>
+          <Svg width={SCREEN_W * 1.45} height={SCREEN_W * 1.45} viewBox="-100 -100 200 200">
+            <Defs>
+              <SvgGradient id={`ray-${uid}`} x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={accent} stopOpacity={0} />
+                <Stop offset="0.5" stopColor={accent} stopOpacity={0.5} />
+                <Stop offset="1" stopColor={glowColor} stopOpacity={0} />
+              </SvgGradient>
+            </Defs>
+            {Array.from({ length: 12 }, (_, i) => (
+              <Polygon key={i} points="0,0 -3.2,-115 3.2,-115" fill={i % 3 === 0 ? `url(#ray-${uid})` : glowColor} opacity={i % 3 === 0 ? 0.9 : i % 2 ? 0.06 : 0.12} transform={`rotate(${i * 30})`} />
+            ))}
+          </Svg>
+        </Animated.View>
+
+        {/* yörünge enerji halkaları — kesikli yaylar döner (elmas mockup'ındaki girdap) */}
+        <Animated.View pointerEvents="none" shouldRasterizeIOS renderToHardwareTextureAndroid style={{ position: 'absolute', opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.85] }), transform: [{ rotate: rotB }, { scaleY: 0.82 }] }}>
+          <Svg width={ringSize} height={ringSize}>
+            <Circle cx={ringSize / 2} cy={ringSize / 2} r={ringSize / 2 - 6} fill="none" stroke={accent} strokeWidth={3} strokeLinecap="round" strokeDasharray="120 210" opacity={0.85} />
+            <Circle cx={ringSize / 2} cy={ringSize / 2} r={ringSize / 2 - 22} fill="none" stroke={glowColor} strokeWidth={2} strokeLinecap="round" strokeDasharray="60 260" opacity={0.6} />
+          </Svg>
+        </Animated.View>
+        <Animated.View pointerEvents="none" shouldRasterizeIOS renderToHardwareTextureAndroid style={{ position: 'absolute', opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.7] }), transform: [{ rotate: rotC }, { scaleY: 0.82 }] }}>
+          <Svg width={ringSize * 0.78} height={ringSize * 0.78}>
+            <Circle cx={ringSize * 0.39} cy={ringSize * 0.39} r={ringSize * 0.39 - 5} fill="none" stroke={lighten(glowColor, 0.2)} strokeWidth={2.4} strokeLinecap="round" strokeDasharray="90 190" opacity={0.8} />
+          </Svg>
+        </Animated.View>
+
+        {/* merkez ışıma — nabız gibi nefes alır */}
+        <Animated.View pointerEvents="none" style={{ position: 'absolute', opacity: Animated.multiply(glow, pulse.interpolate({ inputRange: [0, 1], outputRange: [0.75, 1] })), transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1.12] }) }] }}>
+          <Svg width={400} height={400}>
+            <Defs>
+              <RadialGradient id={`core-${uid}`} cx="50%" cy="50%" r="50%">
+                <Stop offset="0%" stopColor={glowColor} stopOpacity={0.6} />
+                <Stop offset="55%" stopColor={glowColor} stopOpacity={0.2} />
+                <Stop offset="100%" stopColor={glowColor} stopOpacity={0} />
+              </RadialGradient>
+            </Defs>
+            <Circle cx={200} cy={200} r={200} fill={`url(#core-${uid})`} />
+          </Svg>
+        </Animated.View>
+
+        {/* ambient parçacıklar — sürekli süzülüp sönerek yükselen köz / kristal */}
+        {parts.map((p, i) => {
+          const c = partCfg[i]!;
+          return (
+            <Animated.View key={`pt${i}`} pointerEvents="none" style={{
+              position: 'absolute',
+              width: c.size, height: c.size,
+              borderRadius: isShard ? 1.5 : c.size,
+              backgroundColor: c.white ? '#FFFFFF' : accent,
+              opacity: Animated.multiply(glow, p.interpolate({ inputRange: [0, 0.14, 0.7, 1], outputRange: [0, 1, 0.85, 0] })),
+              transform: [
+                { translateX: p.interpolate({ inputRange: [0, 1], outputRange: [c.x0, c.x0 + c.drift] }) },
+                { translateY: p.interpolate({ inputRange: [0, 1], outputRange: [c.y0, c.y0 + c.rise] }) },
+                { scale: p.interpolate({ inputRange: [0, 0.16, 1], outputRange: [0.3, 1, 0.35] }) },
+                { rotate: c.rot },
+              ],
+            }} />
+          );
+        })}
+
+        {/* ışıltılar — sabit dağınık noktalar parlayıp söner */}
+        {tw.map((s, i) => {
+          const c = twCfg[i]!;
+          return (
+            <Animated.View key={`tw${i}`} pointerEvents="none" style={{
+              position: 'absolute', left: '50%', top: '50%',
+              width: c.size, height: c.size, borderRadius: c.size, marginLeft: c.x - c.size / 2, marginTop: c.y - c.size / 2,
+              backgroundColor: '#FFFFFF',
+              opacity: Animated.multiply(glow, s),
+              transform: [{ scale: s.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1.4] }) }],
+            }} />
+          );
+        })}
+
+        {/* şok halkası (giriş) */}
         <Animated.View pointerEvents="none" style={{
           position: 'absolute', width: big, height: big, borderRadius: big / 2,
           borderWidth: 3, borderColor: lighten(glowColor, 0.35),
-          opacity: ring.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.9, 0] }),
-          transform: [{ scale: ring.interpolate({ inputRange: [0, 1], outputRange: [0.35, 2.1] }) }],
+          opacity: ringFx.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.9, 0] }),
+          transform: [{ scale: ringFx.interpolate({ inputRange: [0, 1], outputRange: [0.35, 2.1] }) }],
         }} />
-        {/* kıvılcımlar */}
+
+        {/* kıvılcım patlaması (giriş) */}
         {sparks.map((s, i) => (
-          <Animated.View key={i} pointerEvents="none" style={{
+          <Animated.View key={`sp${i}`} pointerEvents="none" style={{
             position: 'absolute', width: i % 3 ? 7 : 10, height: i % 3 ? 7 : 10, borderRadius: 6,
             backgroundColor: i % 2 ? '#FFFFFF' : lighten(glowColor, 0.25),
             opacity: s.interpolate({ inputRange: [0, 0.12, 0.75, 1], outputRange: [0, 1, 0.9, 0] }),
             transform: [
               { translateX: s.interpolate({ inputRange: [0, 1], outputRange: [0, sparkDirs[i]!.x] }) },
-              { translateY: s.interpolate({ inputRange: [0, 1], outputRange: [0, sparkDirs[i]!.y + 26] }) },
+              { translateY: s.interpolate({ inputRange: [0, 1], outputRange: [0, sparkDirs[i]!.y] }) },
               { scale: s.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0.3, 1.15, 0.4] }) },
             ],
           }} />
         ))}
-        {/* çerçeve — yaylanarak iner (gölge YOK: kare box-shadow izi bırakır,
-             ışıma radyal Svg + görselin kendi parlaklığından gelir) */}
+
+        {/* çerçeve/madalyon — yaylanarak iner, sonra hafifçe süzülür */}
         <Animated.View style={{
           opacity: frameIn,
-          transform: [{ scale: frameIn.interpolate({ inputRange: [0, 1], outputRange: [0.18, 1] }) }],
+          transform: [
+            { scale: frameIn.interpolate({ inputRange: [0, 1], outputRange: [0.18, 1] }) },
+            { translateY: bob.interpolate({ inputRange: [0, 1], outputRange: [7, -9] }) },
+          ],
         }}>
           {isPower && powerId ? (
             <PowerArt powerId={powerId} size={Math.round(big * 0.66)} />
@@ -9986,20 +10267,29 @@ export function FrameUnlockCelebration({ tierKey, emoteId, powerId, onDone }: { 
             <FrameArt tierKey={tier.key} size={big} />
           )}
         </Animated.View>
+
         {/* patlama beyazı — en üstte */}
         <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF', opacity: flash.interpolate({ inputRange: [0, 1], outputRange: [0, 0.85] }) }]} />
-        {/* kademe adı damgası */}
+
+        {/* kademe adı damgası + ayraç */}
         <Animated.View style={{
-          position: 'absolute', bottom: '20%', left: 0, right: 0, alignItems: 'center',
+          position: 'absolute', bottom: '19%', left: 0, right: 0, alignItems: 'center',
           opacity: titleIn, transform: [{ scale: titleIn.interpolate({ inputRange: [0, 1], outputRange: [1.6, 1] }) }],
         }}>
-          <Text style={{ color: glowColor, fontSize: isEmote || isPower ? 26 : 30, fontFamily: 'Poppins-Black', letterSpacing: 1.6, ...engrave('lg') }}>
-            {(isPower && powerId ? t(POWERS[powerId].nameKey) : isEmote ? t('level.exclusiveEmote') : t(tier.nameKey)).toLocaleUpperCase(currentLang())}
+          <Text style={{ color: glowColor, fontSize: isEmote || isPower ? 26 : 32, fontFamily: 'Poppins-Black', letterSpacing: 1.8, ...engrave('lg') }}>
+            {(powerMeta ? t(powerMeta.nameKey) : isEmote ? t('level.exclusiveEmote') : t(tier.nameKey)).toLocaleUpperCase(currentLang())}
           </Text>
-          <Text style={{ color: theme.text, fontSize: 15.5, fontFamily: 'Poppins-ExtraBold', marginTop: 2, letterSpacing: 3.2, ...engrave('sm') }}>
+          <Text style={{ color: theme.text, fontSize: 15.5, fontFamily: 'Poppins-ExtraBold', marginTop: 2, letterSpacing: 3.4, ...engrave('sm') }}>
             {isPower ? t('power.celebUnlocked') : isEmote ? t('level.emoteCelebUnlocked') : t('level.frameCelebUnlocked')}
           </Text>
+          {/* ince ayraç — çizgi · kademe elması · çizgi (mockup'taki gibi) */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: 12 }}>
+            <View style={{ width: 46, height: 2, borderRadius: 1, backgroundColor: withAlpha(glowColor, 0.55) }} />
+            <View style={{ width: 12, height: 12, backgroundColor: glowColor, transform: [{ rotate: '45deg' }], borderRadius: 2, shadowColor: glowColor, shadowOpacity: 0.9, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } }} />
+            <View style={{ width: 46, height: 2, borderRadius: 1, backgroundColor: withAlpha(glowColor, 0.55) }} />
+          </View>
         </Animated.View>
+
         {/* devam — zamanı gelince render edilir (görünmez buton tık yemesin) */}
         {btnReady ? (
           <Animated.View style={{ position: 'absolute', bottom: 60, left: 40, right: 40, opacity: btnIn }}>
@@ -10235,37 +10525,7 @@ function RoadRow({ n, level, xp, claimed, premiumOwned, premiumClaimed, onFrameP
         </View>
       </View>
     </View>
-  ) : (
-    <View style={{
-      flex: 1,
-      backgroundColor: claimable ? lighten(theme.card, 0.06) : theme.card,
-      borderRadius: 15,
-      borderWidth: claimable ? 2.5 : 1.5,
-      borderColor: claimable ? lighten(segBelow, 0.15) : current ? nodeColor : claimed ? withAlpha(nodeColor, 0.45) : theme.border,
-      paddingVertical: 9, paddingHorizontal: 11,
-      opacity: reached ? 1 : 0.6,
-      ...(claimable
-        ? { shadowColor: segBelow, shadowOpacity: 0.7, shadowRadius: 12, shadowOffset: { width: 0, height: 0 }, elevation: 8 }
-        : current ? { shadowColor: nodeColor, shadowOpacity: 0.5, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 7 } : {}),
-    }}>
-      <Text style={{ color: claimed ? theme.muted : theme.text, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.4, ...engrave('sm') }}>
-        {t('level.levelN', { n: String(n) }).toLocaleUpperCase(currentLang())}
-      </Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 }}>
-        {n === 1 ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Ionicons name="flag" size={11} color={theme.muted} />
-            <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold' }}>{t('level.start')}</Text>
-          </View>
-        ) : done ? (
-          // Ödülsüz ara seviye: geçildi işareti — toplanacak bir şey yok
-          <Ionicons name="checkmark-circle" size={14} color={withAlpha(theme.primary, 0.7)} />
-        ) : (
-          <Ionicons name="ellipse-outline" size={11} color={theme.border} />
-        )}
-      </View>
-    </View>
-  );
+  ) : null; // Ödülsüz ara seviyede yan kutucuk YOK — numara zaten ortadaki düğümde yazıyor
 
   // toplanabilir kart dokunuşla ödülünü verir (dokunuş noktası uçuş başlangıcı)
   const pressableCard = claimable && onClaim ? (
@@ -10296,52 +10556,52 @@ function RoadRow({ n, level, xp, claimed, premiumOwned, premiumClaimed, onFrameP
         ...(pClaimable ? { shadowColor: theme.gold, shadowOpacity: 0.85, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 10 } : {}),
       }}>
         <View style={{
-          flex: 1, backgroundColor: '#241539', borderRadius: 16,
+          flex: 1, backgroundColor: '#241539', borderRadius: 14,
           borderWidth: 2, borderColor: premiumOwned ? (pClaimable ? lighten(theme.gold, 0.2) : withAlpha(theme.gold, 0.75)) : withAlpha(theme.gold, 0.35),
-          paddingVertical: 10, paddingHorizontal: 12,
+          paddingVertical: 7, paddingHorizontal: 9,
           opacity: premiumOwned || pClaimable ? 1 : 0.8,
         }}>
-          {/* PREMIUM bandrolü */}
+          {/* CO PASS bandrolü — kısaltılmış, dar kartta sağdaki durum bandrolüyle çakışmasın */}
           <View style={{
-            position: 'absolute', top: -10, left: 10, flexDirection: 'row', alignItems: 'center', gap: 3,
+            position: 'absolute', top: -9, left: 8, flexDirection: 'row', alignItems: 'center', gap: 2,
             backgroundColor: theme.gold, borderRadius: 999, borderWidth: 1.5, borderColor: lighten(theme.gold, 0.4),
-            paddingHorizontal: 7, paddingVertical: 2,
+            paddingHorizontal: 5, paddingVertical: 1.5,
           }}>
-            <Ionicons name="diamond" size={9} color={theme.ink} />
-            <Text style={{ color: theme.ink, fontSize: 8.5, fontFamily: 'Poppins-Black', letterSpacing: 0.8 }}>{t('premium.ribbon')}</Text>
+            <Ionicons name="diamond" size={7} color={theme.ink} />
+            <Text style={{ color: theme.ink, fontSize: 7, fontFamily: 'Poppins-Black', letterSpacing: 0.5 }}>{t('premium.ribbon')}</Text>
           </View>
-          {/* durum bandrolü — toplanabilir/toplandı */}
+          {/* durum bandrolü — toplanabilir/toplandı (kısa metin: TOPLA/AÇILDI) */}
           {premiumOwned && (pClaimable || premiumClaimed) ? (
             <View style={{
-              position: 'absolute', top: -10, right: 10, flexDirection: 'row', alignItems: 'center', gap: 3,
+              position: 'absolute', top: -9, right: 8, flexDirection: 'row', alignItems: 'center', gap: 2,
               backgroundColor: pClaimable ? theme.gold : darken(theme.primary, 0.55),
               borderRadius: 999, borderWidth: 1.5, borderColor: pClaimable ? lighten(theme.gold, 0.35) : theme.primary,
-              paddingHorizontal: 7, paddingVertical: 2.5,
+              paddingHorizontal: 5, paddingVertical: 2,
             }}>
-              <Ionicons name={pClaimable ? 'gift' : 'checkmark-circle'} size={9} color={pClaimable ? theme.ink : theme.primary} />
-              <Text style={{ color: pClaimable ? theme.ink : theme.primary, fontSize: 8.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5 }}>
-                {(pClaimable ? t('level.claim') : t('level.frameOwned')).toLocaleUpperCase(currentLang())}
+              <Ionicons name={pClaimable ? 'gift' : 'checkmark-circle'} size={7} color={pClaimable ? theme.ink : theme.primary} />
+              <Text style={{ color: pClaimable ? theme.ink : theme.primary, fontSize: 7, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.3 }}>
+                {(pClaimable ? t('level.claimShort') : t('level.frameOwned')).toLocaleUpperCase(currentLang())}
               </Text>
             </View>
           ) : null}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5 }}>
             {pPower ? (
               <View>
-                <PowerArt powerId={pPower} size={50} locked={!premiumOwned} />
+                <PowerArt powerId={pPower} size={40} locked={!premiumOwned} />
                 {!premiumOwned ? (
-                  <View style={{ position: 'absolute', right: -5, bottom: -5, width: 19, height: 19, borderRadius: 10, backgroundColor: theme.panelInk, borderWidth: 1.5, borderColor: withAlpha(theme.gold, 0.6), alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons name="lock-closed" size={10} color={theme.gold} />
+                  <View style={{ position: 'absolute', right: -4, bottom: -4, width: 16, height: 16, borderRadius: 8, backgroundColor: theme.panelInk, borderWidth: 1.5, borderColor: withAlpha(theme.gold, 0.6), alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="lock-closed" size={8} color={theme.gold} />
                   </View>
                 ) : null}
               </View>
             ) : null}
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text numberOfLines={2} style={{ color: premiumClaimed ? theme.muted : lighten(theme.gold, 0.15), fontSize: 10.5, lineHeight: 14, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.3, ...engrave('sm') }}>
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text numberOfLines={2} style={{ color: premiumClaimed ? theme.muted : lighten(theme.gold, 0.15), fontSize: 9.5, lineHeight: 12, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.2, ...engrave('sm') }}>
                 {(pPower ? t(POWERS[pPower].nameKey) : '').toLocaleUpperCase(currentLang())}
               </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: withAlpha(theme.gold, 0.12), borderRadius: 999, borderWidth: 1, borderColor: withAlpha(theme.gold, 0.5), paddingHorizontal: 7, paddingVertical: 3 }}>
-                <GemIcon size={11} />
-                <Text style={{ color: lighten(theme.gold, 0.2), fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>+{pGems}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-start', backgroundColor: withAlpha(theme.gold, 0.12), borderRadius: 999, borderWidth: 1, borderColor: withAlpha(theme.gold, 0.5), paddingHorizontal: 6, paddingVertical: 2.5 }}>
+                <GemIcon size={10} />
+                <Text style={{ color: lighten(theme.gold, 0.2), fontSize: 9.5, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>+{pGems}</Text>
               </View>
             </View>
           </View>
@@ -10357,10 +10617,11 @@ function RoadRow({ n, level, xp, claimed, premiumOwned, premiumClaimed, onFrameP
 
   return (
     <View style={{ height: roadRowH(n), flexDirection: 'row', alignItems: 'center' }}>
-      {/* SOL yuva — ücretsiz kart solda değilse ×5 satırında premium kart burada */}
+      {/* SOL yuva — yalnız ödül (milestone) seviyelerinde kart gösterilir; ara
+          seviyelerde boş kalır (numara ortadaki düğümde zaten yazıyor) */}
       <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
-        {left ? pressableCard : premiumCard}
-        {left ? tie : premiumCard ? tie : null}
+        {milestone ? (left ? pressableCard : premiumCard) : null}
+        {milestone ? tie : null}
       </View>
       {/* ORTA kanal — beveled tüp + dolum + düğüm */}
       <View style={{ width: 52, alignItems: 'center', alignSelf: 'stretch' }}>
@@ -10395,10 +10656,10 @@ function RoadRow({ n, level, xp, claimed, premiumOwned, premiumClaimed, onFrameP
           </View>
         </View>
       </View>
-      {/* SAĞ yuva — ücretsiz kart sağda değilse ×5 satırında premium kart burada */}
+      {/* SAĞ yuva — yalnız ödül (milestone) seviyelerinde kart gösterilir */}
       <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }}>
-        {!left ? tie : premiumCard ? tie : null}
-        {!left ? pressableCard : premiumCard}
+        {milestone ? tie : null}
+        {milestone ? (!left ? pressableCard : premiumCard) : null}
       </View>
     </View>
   );
