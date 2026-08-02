@@ -7870,6 +7870,8 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
   const [reportFor, setReportFor] = useState<{ messageId?: string } | null>(null);        // reason picker
   const [blockConfirm, setBlockConfirm] = useState(false);
   const [reportSent, setReportSent] = useState(false);
+  const [guestGate, setGuestGate] = useState(false);
+  const isGuest = state.authProvider == null;
   const [kbOpen, setKbOpen] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [inputBarHeight, setInputBarHeight] = useState(86);
@@ -8010,6 +8012,9 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
 
   const onSend = useCallback(() => {
     if (!text.trim() || !chatWith) return;
+    // Guideline 1.2 — no anonymous posting. The server refuses a guest's message
+    // anyway; this turns that refusal into the sign-in offer instead of an error.
+    if (isGuest) { setGuestGate(true); return; }
     if (sendingRef.current) return;
     sendingRef.current = true;
     actions.sendMessage(chatWith, text.trim());
@@ -8291,6 +8296,8 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
         </Text>
         <Btn big label={t('settings.confirm')} onPress={() => setReportSent(false)} />
       </GameModal>
+
+      <GuestGateModal visible={guestGate} onClose={() => setGuestGate(false)} actions={actions} />
 
       <GameModal visible={blockConfirm} onClose={() => setBlockConfirm(false)} title={t('mod.blockTitle')} icon="ban" danger>
         <Text style={{ color: theme.muted, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 19 }}>

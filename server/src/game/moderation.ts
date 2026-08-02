@@ -133,6 +133,28 @@ export async function isBanned(userId: string): Promise<boolean> {
   return Boolean(rows[0]?.banned_at);
 }
 
+/**
+ * True when the account is tied to a real identity provider (Apple / Google /
+ * Facebook) rather than being a guest.
+ *
+ * This is the hinge of the guideline 1.2 rejection. App Review's finding was
+ * "the app enables users to post content ANONYMOUSLY": a guest account is minted
+ * with a random M-number, no credential and no verification, and could then send
+ * direct messages. Requiring a verified identity before any user-visible content
+ * can be created removes the anonymity itself, rather than treating its symptoms.
+ * Guests keep everything else — playing, the store, arenas, leaderboards.
+ */
+export async function isIdentifiedAccount(userId: string): Promise<boolean> {
+  const { rows } = await pool.query<{ n: number }>(
+    `SELECT 1 AS n FROM users
+      WHERE id = $1
+        AND (apple_sub IS NOT NULL OR google_sub IS NOT NULL OR facebook_sub IS NOT NULL)
+      LIMIT 1`,
+    [userId],
+  );
+  return rows.length > 0;
+}
+
 /** Record that the user accepted the EULA (guideline 1.2 requires agreement). */
 export async function acceptTerms(userId: string): Promise<void> {
   await pool.query(

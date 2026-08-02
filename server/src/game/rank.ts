@@ -4,7 +4,7 @@ import { emotePrice, isFreeEmote, isEquippableEmote, MAX_EQUIPPED, ALL_COLLECTIB
 import { avatarPrice, canUseAvatar, DEFAULT_AVATAR_ID, isAvatar, isFreeAvatar } from './avatars.ts';
 import { validateUsername } from './username.ts';
 // moderation.ts only pulls in the pool + logger, so this import cannot cycle back.
-import { isBlockedBetween } from './moderation.ts';
+import { isBlockedBetween, isIdentifiedAccount } from './moderation.ts';
 
 // ---- Trophy arenas (Clash Royale style) ----
 export interface Arena {
@@ -874,6 +874,12 @@ export async function sendFriendRequest(
   targetUsername?: string,
 ): Promise<{ ok: true; toUserId: string; toName: string } | { ok: false; error: string }> {
   if (!fromUserId) return { ok: false, error: 'Önce giriş yap' };
+  // Guideline 1.2 — a friendship is the doorway to messaging, so it needs the
+  // same verified-identity requirement. Enforced here (server), not only in the
+  // UI's guest gate, which a modified client could skip.
+  if (!(await isIdentifiedAccount(fromUserId))) {
+    return { ok: false, error: 'Arkadaş eklemek için Apple veya Google ile giriş yap' };
+  }
 
   let target: { id: string; display_name: string } | null = null;
   if (targetCode) {

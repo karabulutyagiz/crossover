@@ -16,7 +16,13 @@ import { claimLevelReward } from '../game/level.ts';
 import { censorMessage } from '../game/username.ts';
 import {
   blockUser, unblockUser, listBlocked, isBlockedBetween, reportContent, deleteOwnMessage, acceptTerms,
+  isIdentifiedAccount,
 } from '../game/moderation.ts';
+
+// Guideline 1.2: no anonymous posting. Any path that creates content another
+// user sees requires a verified Apple/Google/Facebook identity — a guest can
+// play everything, but cannot message or add friends.
+const GUEST_BLOCKED_MSG = 'Mesajlaşmak için Apple veya Google ile giriş yap';
 import { verifyApplePurchase } from '../game/iap.ts';
 import { registerPushToken, sendPushToUsers, startPushCrons } from '../game/push.ts';
 import { pool } from '../db/pool.ts';
@@ -778,6 +784,12 @@ export function startServer(port: number): Server {
         if (!rawBody || rawBody.length > 500) return;
         const body = censorMessage(rawBody);
         void (async () => {
+          // Guideline 1.2 — no ANONYMOUS content. Enforced server-side, not just
+          // in the UI: this is the exact finding App Review cited.
+          if (!(await isIdentifiedAccount(userProfile!.id))) {
+            transport.send({ type: 'error', message: GUEST_BLOCKED_MSG });
+            return;
+          }
           // Guideline 1.2 block gate. Checked in BOTH directions: a one-way check
           // would still let the person you blocked keep messaging you.
           if (await isBlockedBetween(userProfile!.id, msg.toUserId)) {
