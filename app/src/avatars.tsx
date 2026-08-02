@@ -12,6 +12,9 @@ export interface AvatarMeta {
 
 export const PREMIUM_FOOTBALLER_IDS = ['pp1', 'pp2', 'pp3', 'pp4', 'pp5', 'pp6', 'pp8', 'pp9', 'pp10'] as const;
 export const PREMIUM_ANIMAL_IDS = ['pp18', 'pp19', 'pp20'] as const;
+// pp.jpeg'ten eklenen yeni karakter avatarları: pp21-pp31 → 150, pp32-pp34 → 250
+export const NEW_150_IDS: string[] = Array.from({ length: 11 }, (_, i) => `pp${21 + i}`); // pp21..pp31
+export const NEW_250_IDS = ['pp32', 'pp33', 'pp34'] as const; // kurukafa, uzaylı, korsan
 
 const LABELS: Record<string, string> = {
   pp1: 'Futbolcu 1',
@@ -34,15 +37,33 @@ const LABELS: Record<string, string> = {
   pp18: 'Kartal',
   pp19: 'Aslan',
   pp20: 'Kanarya',
+  pp21: 'Kulaklıklı',
+  pp22: 'Kapüşonlu',
+  pp23: 'Yeşilli',
+  pp24: 'Taraftar',
+  pp25: 'Maskeli',
+  pp26: 'Sporcu Kız',
+  pp27: 'Mavi Kapüşon',
+  pp28: 'Gözlüklü',
+  pp29: 'Robot',
+  pp30: 'Mor Kapüşon',
+  pp31: 'Ninja II',
+  pp32: 'Kurukafa',
+  pp33: 'Uzaylı',
+  pp34: 'Korsan',
 };
 
 const META = new Map<string, AvatarMeta>();
-for (let i = 1; i <= 20; i++) {
+for (let i = 1; i <= 34; i++) {
   const id = `pp${i}`;
   META.set(id, {
     id,
     label: LABELS[id] ?? id.toUpperCase(),
-    price: PREMIUM_FOOTBALLER_IDS.includes(id as any) ? 150 : PREMIUM_ANIMAL_IDS.includes(id as any) ? 250 : 0,
+    price: PREMIUM_FOOTBALLER_IDS.includes(id as any) ? 250
+      : PREMIUM_ANIMAL_IDS.includes(id as any) ? 350
+      : NEW_150_IDS.includes(id) ? 150
+      : (NEW_250_IDS as readonly string[]).includes(id) ? 250
+      : 0,
   });
 }
 

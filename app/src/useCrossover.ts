@@ -102,6 +102,8 @@ export interface GameState {
   iReady: boolean;
   // Game mode & pick role for the current round
   pickRole: PickRole | null;
+  usedClubIds: number[];   // bu maçta seçilmiş takımlar (karart+kilitle)
+  usedCountries: string[]; // bu maçta seçilmiş ülkeler (normalize edilmiş)
   revealMode: GameMode | null;
   revealCountry: string | null;
   revealLetter: string | null;
@@ -181,6 +183,8 @@ export const initialState: GameState = {
   readyCountdownEndsAt: null,
   iReady: false,
   pickRole: null,
+  usedClubIds: [],
+  usedCountries: [],
   revealMode: null,
   revealCountry: null,
   revealLetter: null,
@@ -514,7 +518,6 @@ function reducer(state: GameState, action: Action): GameState {
         locked: null,
         passedBy: [],
         trophyDelta: null,
-  xpGain: null,
   lastClaim: null,
         matchupAutoStart: false,
         matchOver: false,
@@ -527,7 +530,7 @@ function reducer(state: GameState, action: Action): GameState {
         iReady: false,
       };
     case 'pick_phase':
-      return { ...state, phase: 'pick', picked: false, pickEndsAt: action.endsAt, pickRole: (action as any).pickRole ?? 'team', teams: null, locked: null, passedBy: [], result: null, clubResults: [] };
+      return { ...state, phase: 'pick', picked: false, pickEndsAt: action.endsAt, pickRole: (action as any).pickRole ?? 'team', usedClubIds: (action as any).usedClubIds ?? [], usedCountries: (action as any).usedCountries ?? [], teams: null, locked: null, passedBy: [], result: null, clubResults: [] };
     case 'reveal_teams':
       return {
         ...state,
@@ -1059,31 +1062,19 @@ export function useCrossover() {
     createRoom: (name: string, options?: GameOptions) =>
       connectAndSend({ type: 'create_room', name, userId: state.profile?.userId, options }),
     createSolo: (name: string, options?: GameOptions) => {
-      track('solo_create', { difficulty: options?.difficulty ?? 'medium', mode: options?.mode ?? 'team-team' });
-      // Try online first; fall back to offline if no network
-      const checkNet = NetInfo ? NetInfo.fetch() : Promise.resolve({ isConnected: true });
-      checkNet.then((netState: any) => {
-        if (netState.isConnected) {
-          connectAndSend({ type: 'create_solo', name, userId: state.profile?.userId, options });
-        } else {
-          // Offline bot match
-          const room = new OfflineRoom({
-            dispatch,
-            difficulty: options?.difficulty ?? 'medium',
-            scope: options?.scope ?? { type: 'all' },
-            gameMode: options?.mode ?? 'team-team',
-            playerName: name,
-            playerTrophies: state.profile?.trophies ?? 0,
-            playerArena: state.profile?.arena ?? { name: 'Mahalle Sahası', icon: '🏟️', minTrophies: 0 },
-            playerAvatar: state.profile?.avatar ?? null,
-          });
-          offlineRoomRef.current = room;
-          room.start();
-        }
-      }).catch(() => {
-        // NetInfo failed — try online anyway
-        connectAndSend({ type: 'create_solo', name, userId: state.profile?.userId, options });
-      });
+      const mode = options?.mode ?? 'team-team';
+      track('solo_create', { difficulty: options?.difficulty ?? 'medium', mode });
+      // KALICI ÇÖZÜM — mod ve logo bozulmasını KÖKTEN bitirir.
+      // Bot maçları ARTIK HER ZAMAN sunucuya gider. Sebep: çevrimdışı oda yalnız
+      // takım-takım oynatabiliyor ve kulüp logoları sunucudan geldiği için gösteremiyordu.
+      // NetInfo simülatörde/bazı ağlarda internet olmasına rağmen yanlış "offline"
+      // döndürüp maçı çevrimdışı odaya atıyor, böylece ülke-takım SESSİZCE takım-takıma
+      // düşüyor ve logolar beyaz bayrak oluyordu. Artık NetInfo'ya hiç güvenmiyoruz:
+      // connectAndSend zaten sağlam bir yeniden-bağlanma/kurtarma mantığına sahip;
+      // gerçekten internet yoksa dürüst bir "bağlantı hatası" gösterir (sessizce yanlış
+      // modda/logosuz oynatmaz). Böylece "ülke-takım seçince takım-takım oluyor" ve
+      // "logo yerine beyaz bayrak" hataları bir daha ASLA yaşanmaz.
+      connectAndSend({ type: 'create_solo', name, userId: state.profile?.userId, options });
     },
     joinRoom: (code: string, name: string) =>
       connectAndSend({ type: 'join_room', code: code.toUpperCase(), name, userId: state.profile?.userId }),
@@ -1148,8 +1139,8 @@ export function useCrossover() {
     setFrame: (frameId: string | null) => send({ type: 'set_frame', frameId }),
     claimLevelReward: (level: number, track: 'free' | 'premium' = 'free') => send({ type: 'claim_level_reward', level, track }),
     buyPremiumRoad: () => send({ type: 'buy_premium_road' }),
-    buyPower: (powerId: 'xp2x' | 'shield' | 'streak') => send({ type: 'buy_power', powerId }),
-    usePower: (powerId: 'xp2x' | 'shield' | 'streak') => send({ type: 'use_power', powerId }),
+    buyPower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => send({ type: 'buy_power', powerId }),
+    usePower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => send({ type: 'use_power', powerId }),
     loadMyStats: () => send({ type: 'get_my_stats' }),
     // Friends — via WebSocket for real-time notifications.
     loadFriends: () => send({ type: 'list_friends' }),

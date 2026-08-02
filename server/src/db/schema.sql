@@ -271,3 +271,11 @@ UPDATE users SET owned_frames = (
   ) s WHERE f IS NOT NULL
 )
 WHERE owned_frames = '{}' AND EXISTS (SELECT 1 FROM unnest(claimed_levels) lv WHERE lv % 10 = 0);
+
+-- Antrenman Bileti: kullanıldığı gün bot maçlarındaki 60 XP günlük tavanını kaldırır
+ALTER TABLE users ADD COLUMN IF NOT EXISTS power_training INT NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS training_boost_day TEXT; -- (eski, artık kullanılmıyor)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS training_boost_until TIMESTAMPTZ; -- aktif Antrenman Bileti penceresinin bitişi (1 saat)
+
+-- Sosyal Paket Jetonu: kullanıldığında Sosyal Paket süresine +24 saat ekler
+ALTER TABLE users ADD COLUMN IF NOT EXISTS power_socialtoken INT NOT NULL DEFAULT 0;

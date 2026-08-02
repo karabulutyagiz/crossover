@@ -5,6 +5,7 @@ import {
   AppState,
   Dimensions,
   Easing,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -861,7 +862,7 @@ function AppRoot() {
         screen = <ResultScreen {...props} />;
         break;
       default:
-        screen = <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} />;
+        screen = <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} onOpenLevelRoad={() => setLevelRoadOpen(true)} />;
     }
     return (
       <View style={[s.root, { paddingTop: insets.top }]}>
@@ -895,7 +896,7 @@ function AppRoot() {
     ? <ArenasScreen {...props} />
     : state.phase === 'profile'
     ? <ProfileScreen {...props} onOpenMatchHistory={openMatchHistory} onOpenLevelRoad={() => setLevelRoadOpen(true)} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
-    : <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} onLanguageChange={() => {
+    : <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLanguageChange={() => {
         setOverlay(null);
         setStoreSection(null);
         setActiveTab(2);
@@ -931,11 +932,11 @@ function AppRoot() {
   return (
     <View key={`app-${langKey}`} style={[s.root, { paddingTop: insets.top }]}>
       <StatusBar style="light" />
-      {/* Backdrop: the calm menu weave is the always-present base; the night-stadium
-          photo (the green pitch) cross-fades OVER it on the Oyna tab, driven by the
-          pager's native scroll offset — so a swipe fades the pitch in/out on the
-          native thread and never blanks or reloads the background. Only rendered on
-          the home phase; Arenas/Profile keep the flat menu backdrop. */}
+      {/* Backdrop: calm navy menu weave base on every tab. On the home (Oyna) tab a
+          CLEAN green-pitch overlay fades in at the bottom. The old stadium photo's
+          blurry floodlit sky and the grainy noise band (the "karıncalı" strip behind
+          Hemen Oyna) were cut — bg-home-pitch.png keeps only the tidy pitch: transparent
+          above, soft-faded into the navy, no dark scrim. */}
       <ScreenBg variant="menu" />
       {state.phase === 'home' ? (
         <Animated.View
@@ -944,7 +945,7 @@ function AppRoot() {
             opacity: scrollX.interpolate({ inputRange: [SCREEN_W, 2 * SCREEN_W, 3 * SCREEN_W], outputRange: [0, 1, 0], extrapolate: 'clamp' }),
           }]}
         >
-          <ScreenBg variant="stadium" />
+          <Image source={require('./assets/bg-home-pitch.png')} style={[StyleSheet.absoluteFill, { width: '100%', height: '100%' }]} resizeMode="cover" />
         </Animated.View>
       ) : null}
 

@@ -1,6 +1,6 @@
 import type { Room, Transport } from './room.ts';
 import type { ClientMsg, ClubRef, Difficulty, GameMode, ServerMsg, Scope } from '../protocol.ts';
-import { randomClub, botPickFromPool, randomPlayer, botCommonPlayersRanked, commonPlayersCountryTeam, commonPlayersLetterTeam, commonClubs } from '../game/verify.ts';
+import { randomClub, botPickFromPool, randomPlayer, botCommonPlayersRanked, commonPlayersCountryTeam, commonPlayersLetterTeam, commonClubs, pickCountryForClub, pickClubForCountry } from '../game/verify.ts';
 
 // Bot answer delay (ms) per difficulty — how long you get to beat it. HARD knows
 // the answer but no longer rushes, so the human still has a chance to compete.
@@ -10,7 +10,10 @@ const DELAYS: Record<Difficulty, [number, number]> = {
   hard: [4500, 8500],
 };
 
-const POPULAR_COUNTRIES = ['Turkey', 'Brazil', 'France', 'Argentina', 'Germany', 'Spain', 'Italy', 'Portugal', 'Netherlands', 'England'];
+// Yalnız SON ÇARE fallback: ülke-takım seçimi artık VERİ-GÜDÜMLÜ (pickCountryForClub).
+// Değerler DB'deki p.nationality ile BİREBİR olmalı — Türkiye DB'de 'Türkiye' saklanır,
+// 'Turkey' HİÇBİR oyuncuyla eşleşmez (eski tur-atlama hatasının kaynağıydı).
+const POPULAR_COUNTRIES = ['Türkiye', 'Brazil', 'France', 'Argentina', 'Germany', 'Spain', 'Italy', 'Portugal', 'Netherlands', 'England'];
 const LETTERS = 'ABCDEFGHIJKLMNOPRSTUVYZ';
 
 export interface BotOptions {
@@ -35,6 +38,9 @@ export class BotPlayer implements Transport {
   // Stored from reveal for new modes
   private revealCountry?: string;
   private revealLetter?: string;
+  // Ülke-takım: bu turdaki rolüm ve seçtim-mi bayrağı (reaktif, çift-seçim koruması)
+  private ctRole: string = 'team';
+  private ctPicked = false;
 
   constructor(opts: BotOptions = {}) {
     this.difficulty = opts.difficulty ?? 'medium';
@@ -53,7 +59,24 @@ export class BotPlayer implements Transport {
   send(msg: ServerMsg): void {
     switch (msg.type) {
       case 'pick_phase':
-        void this.pick(msg.pickRole ?? 'team');
+        this.ctRole = msg.pickRole ?? 'team';
+        this.ctPicked = false;
+        if (this.mode === 'country-team') {
+          // VERİ-GÜDÜMLÜ + REAKTİF: insanın seçimini bekle ('team_picked'), sonra ONA
+          // UYUMLU (ortak-oyunculu) eşi seç → tur ASLA yanlış atlanmaz. Emniyet:
+          // insan çok yavaşsa ~7sn'de eldeki bilgiyle seç; hiç seçmezse odanın
+          // autoPickRemaining'i (10sn) her iki tarafı veri-güdümlü doldurur.
+          this.clearTimer();
+          this.timer = setTimeout(() => { void this.pickCountryTeamReactive(); }, 6800 + Math.floor(Math.random() * 800));
+          break;
+        }
+        void this.pick(this.ctRole);
+        break;
+      case 'team_picked':
+        // Ülke-takımda rakip (insan) seçince ANINDA uyumlu eşimizi seçelim.
+        if (this.mode === 'country-team' && (msg as any).playerId !== this.id && !this.ctPicked) {
+          void this.pickCountryTeamReactive();
+        }
         break;
       case 'reveal_teams':
         this.teams = { teamA: msg.teamA, teamB: msg.teamB };
@@ -126,6 +149,38 @@ export class BotPlayer implements Transport {
     this.act({ type: 'pick_team', clubId: club.id });
   }
 
+  // Ülke-takım VERİ-GÜDÜMLÜ seçim: insanın bu turdaki seçimini oku, ONA ortak-oyunculu
+  // (dolayısıyla ASLA yanlış-atlanmayan) bir eş seç. Rolüm 'country' ise insanın
+  // takımından oyuncusu olan bir milliyet; rolüm 'team' ise insanın ülkesinden oyuncusu
+  // olan bir kulüp seçerim. İnsan henüz seçmediyse gerçek-değerli güvenli bir fallback
+  // kullanılır (yine de doğru DB değeri — asla 'Turkey' gibi uyuşmayan bir sabit değil).
+  private async pickCountryTeamReactive(): Promise<void> {
+    if (this.ctPicked || !this.room) return;
+    this.clearTimer();
+    if (this.ctRole === 'country') {
+      const humanTeam = this.room.otherTeamPick(this.id); // insanın seçtiği kulüp id (varsa)
+      const country = await pickCountryForClub(humanTeam, this.room.usedCountriesList());
+      if (this.ctPicked) return;
+      this.ctPicked = true;
+      this.act({ type: 'pick_country', country });
+    } else if (this.ctRole === 'team') {
+      const humanCountry = this.room.roundCountryPick(); // insanın seçtiği ülke (varsa)
+      const avoid = [...this.room.usedClubIdsList(), ...this.recentPicks];
+      let club = humanCountry ? await pickClubForCountry(humanCountry, avoid) : null;
+      if (!club) {
+        // İnsan henüz ülke seçmemiş (nadir) — normal havuz/scope seçimi
+        club = this.scope.type === 'all'
+          ? await botPickFromPool(this.difficulty, null, this.recentPicks)
+          : await randomClub(this.scope, this.difficulty);
+      }
+      if (!club || this.ctPicked) return;
+      this.ctPicked = true;
+      this.recentPicks.push(club.id);
+      if (this.recentPicks.length > 10) this.recentPicks.shift();
+      this.act({ type: 'pick_team', clubId: club.id });
+    }
+  }
+
   private async prepareAnswer(): Promise<void> {
     if (!this.teams) return;
 
@@ -182,6 +237,7 @@ export class BotPlayer implements Transport {
     this.answer = null;
     this.revealCountry = undefined;
     this.revealLetter = undefined;
+    this.ctPicked = false;
   }
 
   private clearTimer(): void {
