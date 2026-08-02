@@ -2549,15 +2549,31 @@ function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void })
   );
 }
 
-// External info links (placeholders — swap for the real URLs when ready).
+// External info links. These MUST all resolve: they used to point at the parked
+// crossover.gg placeholder domain, and App Store review cited the dead Terms /
+// privacy links under guideline 3.1.2(c). Every entry here is a live page on
+// crossoverfootball.com — verify before changing one.
 const INFO_LINKS = {
-  help: 'https://crossover.gg/yardim',
-  privacy: 'https://crossover.gg/gizlilik',
-  parents: 'https://crossover.gg/ebeveyn',
-  terms: 'https://crossover.gg/kosullar',
-  founders: 'https://crossover.gg/kurucular',
+  help: 'https://crossoverfootball.com/destek/',
+  privacy: 'https://crossoverfootball.com/gizlilik/',
+  parents: 'https://crossoverfootball.com/ebeveyn/',
+  terms: 'https://crossoverfootball.com/kosullar/',
+  founders: 'https://crossoverfootball.com/',
 };
 const openLink = (url: string) => { Linking.openURL(url).catch(() => {}); };
+
+// Shared chip style for the external-link rows. Module scope, not local to
+// SettingsPanel: the Store's subscription disclosure (guideline 3.1.2c) renders
+// the same Terms / privacy chips.
+const linkChip = (pressed: boolean) => ({
+  flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7,
+  paddingVertical: 11, paddingHorizontal: 11, borderRadius: 12,
+  backgroundColor: pressed ? theme.well : theme.surface2,
+  borderTopWidth: 1 as const, borderTopColor: theme.topLight,
+  transform: [{ scale: pressed ? 0.98 : 1 }],
+  ...shadowRow,
+});
+const linkTxt = { color: theme.text, fontSize: 12, fontFamily: 'Poppins-SemiBold', flex: 1 };
 
 // ---- Settings Panel (inside hamburger menu) ----
 function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName, onNeedDiamonds, onLogout, onDeleteAccount }: {
@@ -2583,16 +2599,6 @@ function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName
     setLangPicker(false);
     onLanguageChange();
   };
-
-  const linkChip = (pressed: boolean) => ({
-    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7,
-    paddingVertical: 11, paddingHorizontal: 11, borderRadius: 12,
-    backgroundColor: pressed ? theme.well : theme.surface2,
-    borderTopWidth: 1 as const, borderTopColor: theme.topLight,
-    transform: [{ scale: pressed ? 0.98 : 1 }],
-    ...shadowRow,
-  });
-  const linkTxt = { color: theme.text, fontSize: 12, fontFamily: 'Poppins-SemiBold', flex: 1 };
 
   return (
     <View style={{ paddingBottom: 4 }}>
@@ -5468,6 +5474,7 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
 
   // ── Apple In-App Purchase (StoreKit): consumable diamond packs + auto-renewable Social Pack ──
   const [buying, setBuying] = useState<string | null>(null); // productId mid-purchase
+  const [restoring, setRestoring] = useState(false); // user-initiated Restore in flight
   const [activeSubId, setActiveSubId] = useState<string | null>(null); // active Social Pack plan id (StoreKit entitlement)
   const onPurchaseSuccess = useCallback(async (purchase: Purchase) => {
     const isSub = SOCIAL_PACK_IDS.includes(purchase.productId);
@@ -5541,6 +5548,42 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
     Promise.resolve(requestPurchase({ request: { apple }, type: isSub ? 'subs' : 'in-app' })).catch(() => setBuying(null));
   }, [buying, requestPurchase, products, subscriptions, profile?.userId]);
 
+  // Guideline 3.1.1: a DISTINCT, user-initiated Restore. The launch-time replay in
+  // the effect above does NOT satisfy this — App Review names that case explicitly
+  // ("automatically restoring purchases on launch will not resolve this issue").
+  // Re-verifies every StoreKit entitlement server-side, so a reinstall or a second
+  // device gets its Social Pack back (and any diamonds whose grant never landed).
+  const restorePurchases = useCallback(async () => {
+    if (restoring) return;
+    setRestoring(true);
+    try {
+      const ps: Purchase[] = (await getAvailablePurchases()) ?? [];
+      const sub = ps.find((p) => SOCIAL_PACK_IDS.includes(p.productId));
+      setActiveSubId(sub ? sub.productId : null);
+      let restored = 0;
+      for (const p of ps) {
+        const jws = p.purchaseToken ?? (await getTransactionJwsIOS(p.productId));
+        if (!jws) continue;
+        try {
+          await actionsRef.current.verifyPurchase(jws);
+          await iapFinishTransaction({ purchase: p, isConsumable: !SOCIAL_PACK_IDS.includes(p.productId) });
+          restored += 1;
+        } catch { /* one bad entitlement must not abort the rest of the restore */ }
+      }
+      track('restore_purchases', { restored });
+      openStoreDialog({
+        title: t('store.restoreTitle'),
+        body: restored > 0 ? t('store.restoreDone') : t('store.restoreNone'),
+        icon: restored > 0 ? 'checkmark-circle' : 'information-circle',
+      });
+    } catch (err) {
+      captureError(err, { where: 'restore_purchases' });
+      openStoreDialog({ title: t('store.restoreTitle'), body: t('store.restoreFailed'), icon: 'alert-circle', danger: true });
+    } finally {
+      setRestoring(false);
+    }
+  }, [restoring, openStoreDialog]);
+
   useEffect(() => {
     if (scrollToSection && storeScrollRef.current) {
       // 'top' is the re-tap toggle's return trip — plain scroll to the very top.
@@ -5569,16 +5612,26 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
   const [shelfW, setShelfW] = useState(0);
 
   // Staggered section entrance: fade + 12px rise, 200ms each, 40ms stagger.
-  const sectionAnims = useRef(Array.from({ length: 4 }, () => new Animated.Value(0))).current;
+  // One entry per animated store section (socialPack, coPass, freeDiamonds,
+  // diamonds, restore). Keep in sync with the highest sectionIn(i) below —
+  // sectionIn falls back rather than dereferencing undefined if it drifts.
+  const sectionAnims = useRef(Array.from({ length: 5 }, () => new Animated.Value(0))).current;
   useEffect(() => {
     Animated.stagger(40, sectionAnims.map((v) =>
       Animated.timing(v, { toValue: 1, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: true }),
     )).start();
   }, [sectionAnims]);
-  const sectionIn = (i: number) => ({
-    opacity: sectionAnims[i]!,
-    transform: [{ translateY: sectionAnims[i]!.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
-  });
+  const sectionIn = (i: number) => {
+    // Never `sectionAnims[i]!` — an index past the end used to deref undefined and
+    // take the whole Store screen down at render time (TS can't see it through the
+    // non-null assertion). Falling back to the first value degrades the stagger,
+    // not the screen.
+    const v = sectionAnims[i] ?? sectionAnims[0]!;
+    return {
+      opacity: v,
+      transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+    };
+  };
 
   // Entitlement flips (plan buttons ⇄ AKTİF chip) crossfade instead of snapping.
   const packFlip = useRef(new Animated.Value(1)).current;
@@ -5638,6 +5691,35 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
                       );
                     })}
                   </Animated.View>
+                ) : null}
+                {/* Subscription disclosure — guideline 3.1.2(c) requires the title,
+                    the length, the price AND working Terms/privacy links to be
+                    inside the purchase flow itself, not only in the metadata. The
+                    title + price are on the buttons above; length, auto-renewal
+                    terms and the two links live here. */}
+                {!hasActivePack ? (
+                  <View style={{ marginTop: 10, gap: 8 }}>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {SOCIAL_PACK.map((sp) => (
+                        <Text key={sp.id} style={{ flex: 1, color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>
+                          {`${t(`store.${sp.id}` as MessageKey)} · ${t(sp.id === 'weekly' ? 'store.subLengthWeekly' : 'store.subLengthMonthly')} · ${priceFor(sp.productId, sp.price)}`}
+                        </Text>
+                      ))}
+                    </View>
+                    <Text style={{ color: theme.muted, fontSize: 10, lineHeight: 15, fontFamily: 'Poppins-SemiBold' }}>
+                      {t('store.autoRenewNote')}
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <Pressable style={({ pressed }) => [linkChip(pressed), { flex: 1 }]} onPress={() => openLink(INFO_LINKS.terms)}>
+                        <Ionicons name="document-text-outline" size={14} color={theme.muted} />
+                        <Text style={linkTxt} numberOfLines={1}>{t('store.termsLink')}</Text>
+                      </Pressable>
+                      <Pressable style={({ pressed }) => [linkChip(pressed), { flex: 1 }]} onPress={() => openLink(INFO_LINKS.privacy)}>
+                        <Ionicons name="shield-checkmark-outline" size={14} color={theme.muted} />
+                        <Text style={linkTxt} numberOfLines={1}>{t('store.privacyLink')}</Text>
+                      </Pressable>
+                    </View>
+                  </View>
                 ) : null}
               </View>
             </GamePanel>
@@ -5786,6 +5868,21 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
               onBuy={() => buy(pack.productId)}
             />
           ))}
+        </Animated.View>
+
+        {/* Guideline 3.1.1 — a distinct, always-visible Restore action. Kept at the
+            end of the store (after the packs) so it reads as a utility, not an
+            offer, but it is never hidden behind a menu. */}
+        <Animated.View style={[sectionIn(4), { marginTop: 6, marginBottom: 4 }]}>
+          <Btn
+            big
+            kind="ghost"
+            icon="refresh"
+            label={t('store.restore')}
+            loading={restoring}
+            disabled={restoring}
+            onPress={() => { void restorePurchases(); }}
+          />
         </Animated.View>
       </ScrollView>
 
