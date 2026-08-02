@@ -1,0 +1,45 @@
+# What EAS Build must NOT upload. When this file exists it REPLACES .gitignore
+# for the build archive, so everything .gitignore excluded has to be repeated
+# here — anything omitted starts getting uploaded again.
+#
+# Why it exists: the build-121/122 archives were 325 MB (~2 min upload) because
+# app/node_modules is a real 628 MB directory on this machine, not the symlink
+# it used to be. EAS installs dependencies from package-lock.json on the build
+# server, so shipping them is pure waste.
+
+# dependencies — reinstalled on the build server from package-lock.json
+node_modules/
+node_modules.nosync/
+# iCloud sync duplicates ("node_modules 2", "assets 2", …) — the space stops
+# the plain node_modules/ pattern from matching them.
+* 2/
+* 2.*
+
+# Expo / build output
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.metro-health-check*
+
+# generated native projects (EAS generates them from the config)
+/ios
+/android
+.kotlin/
+*.orig.*
+
+# secrets and signing material — must never leave this machine
+*.jks
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
+.env*.local
+
+# noise
+.DS_Store
+*.tsbuildinfo
+npm-debug.*
+yarn-debug.*
+yarn-error.*
