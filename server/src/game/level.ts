@@ -45,7 +45,7 @@ export const LEVEL_POWERS: Record<number, PowerId> = {
 // şanslı değil; (2) ücretsiz şeritle ORTAK seviyelerde (5/15/25/35/45) premium
 // ödülü ÜCRETSİZ ödülüyle ASLA aynı değildir — aynı satırda iki kart aynı
 // gücü göstermez.
-export const PREMIUM_ROAD_PRICE = 1000;
+export const PREMIUM_ROAD_PRICE = 2000;
 export const PREMIUM_LEVEL_POWERS: Record<number, PowerId> = {
   5: 'shield', 10: 'streak', 15: 'xp2x', 20: 'socialtoken', 25: 'training',
   30: 'shield', 35: 'socialtoken', 40: 'xp2x', 45: 'streak', 50: 'training',

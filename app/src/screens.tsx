@@ -315,7 +315,10 @@ function PulseRing({ size = 120, color = theme.primary, children }: { size?: num
     <Animated.View
       style={{
         width: size, height: size, borderRadius: size / 2,
-        borderWidth: 4, borderColor: color, borderTopColor: lighten(color, 0.35), borderBottomColor: darken(color),
+        // UNIFORM border color all the way around — per-side (top-light/bottom-dark)
+        // colors make iOS render a rounded border as 4 segments with visible seams at
+        // the diagonals, so the green ring looked "cut". One color = one continuous ring.
+        borderWidth: 4, borderColor: color,
         backgroundColor: theme.panelInk, alignItems: 'center', justifyContent: 'center',
         shadowColor: color, shadowOpacity: 0.55, shadowRadius: 18, shadowOffset: { width: 0, height: 0 }, elevation: 12,
         transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.045] }) }],
@@ -3509,6 +3512,11 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const [botOpen, setBotOpen] = useState(false);
   const [modesOpen, setModesOpen] = useState(false);
   const [socialPackPopup, setSocialPackPopup] = useState(false);
+  // iOS presents ONE native <Modal> at a time; open the upsell only AFTER the
+  // modes modal's native dismissal finishes (via GameModal onExited), else the two
+  // overlap and the app FREEZES (dead touches + scroll). Same race the avatar
+  // picker guards against (see insufficientOnExit).
+  const socialUpsellOnExit = useRef(false);
   const [newsOpen, setNewsOpen] = useState(false);
   const [newsUnread, setNewsUnread] = useState(false);
   // Show the bell's red pip until the user has opened the feed at the latest item.
@@ -3610,8 +3618,8 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
 
   const startMode = useCallback((m: GameMode) => {
     if (PACK_MODES.includes(m) && !hasPack) {
+      socialUpsellOnExit.current = true; // hand off AFTER modes modal dismisses (onExited)
       setModesOpen(false);
-      setSocialPackPopup(true);
       return;
     }
     setModesOpen(false);
@@ -3627,7 +3635,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       {/* ── 1. TOP BAR ── one row, exactly as the mockup: the profile pill flexes to
            absorb whatever the fixed-width gem pill and button trio leave behind.
            paddingTop: ödül habercisinin üst taşması scroll sınırında kırpılmasın */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 4 }}>
         <ProfilePill
           name={playerName}
           avatarId={profile?.avatar ?? profile?.selectedAvatar}
@@ -3658,7 +3666,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         onLayout={(e) => setHero({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
         // minHeight must clear the absolutely-positioned rail: top(2) + 2 badges (44 circle
         // + 14.5 chip overlap) + 12 gap = 131. Anything less and the rail spills onto the CTA.
-        style={{ alignItems: 'center', justifyContent: 'center', marginTop: 8, marginBottom: 2, minHeight: 134 }}
+        style={{ alignItems: 'center', justifyContent: 'center', marginTop: 3, marginBottom: 0, minHeight: 134 }}
       >
         <HeroConfetti w={hero.w} h={hero.h} />
         {/* The hero unit — the two balls + the CROSSOVER lettering lifted WHOLE
@@ -3701,7 +3709,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       </View>
 
       {/* ── 4. GRID ── */}
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 3 }}>
         <ArtCard
           title={t('home.modesTitle')}
           tint={theme.amber}
@@ -3778,7 +3786,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         </GhostPanel>
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 10, alignItems: 'flex-end' }}>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 6, alignItems: 'flex-end' }}>
         <ArtCard
           title={arenaLabel(profile?.arena.name ?? '')}
           tint={theme.card}
@@ -3823,7 +3831,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       {/* ── 5. CAROUSEL ── */}
       {/* marginBottom clears the tab bar's raised centre ball, which breaks ~18pt above
           the bar and would otherwise sit on this strip's captions. */}
-      <View onLayout={(e) => setRailW(e.nativeEvent.layout.width)} style={{ marginTop: 10, marginBottom: 18 }}>
+      <View onLayout={(e) => setRailW(e.nativeEvent.layout.width)} style={{ marginTop: 5, marginBottom: 10 }}>
         {cardW > 0 ? (
           <ScrollView
             horizontal
@@ -3901,7 +3909,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       <NetworkErrorBeacon visible={isNetworkErrorMessage(state.error)} />
 
       {/* ── Mode picker ── */}
-      <GameModal visible={modesOpen} onClose={() => setModesOpen(false)} title={t('home.modesTitle').toLocaleUpperCase(currentLang())} icon="football">
+      <GameModal visible={modesOpen} onClose={() => setModesOpen(false)} onExited={() => { if (socialUpsellOnExit.current) { socialUpsellOnExit.current = false; setSocialPackPopup(true); } }} title={t('home.modesTitle').toLocaleUpperCase(currentLang())} icon="football">
         <Text style={[styles.muted, { textAlign: 'center', marginBottom: 6 }]}>{t('home.specialModeBody')}</Text>
         {HOME_MODES.map((m) => {
           const locked = PACK_MODES.includes(m) && !hasPack;
@@ -4203,8 +4211,10 @@ function VsBadge({ size = 48 }: { size?: number }) {
       style={{
         width: size, height: size, borderRadius: size / 2, backgroundColor: theme.accent,
         alignItems: 'center', justifyContent: 'center',
-        borderTopWidth: 2, borderTopColor: 'rgba(255,255,255,0.55)',
-        borderBottomWidth: 4, borderBottomColor: theme.accentDark,
+        // CONTINUOUS rim: top-only + bottom-only borders leave the left/right of a
+        // circle border-less, so the coin's edge looked "cut". One uniform border
+        // wraps the whole coin; depth comes from the gold glow shadow.
+        borderWidth: 2, borderColor: theme.accentDark,
         shadowColor: theme.accent, shadowOpacity: 0.6, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 8,
       }}
     >
@@ -4347,7 +4357,7 @@ export function CountdownScreen({ state }: Props) {
       <View style={styles.center}>
         {/* Halka TAMAMEN yeşil kaplar: alt kenar da theme.primary (eskiden primaryDark
             koyu arka planda "kesik" görünüyordu). Üstte yalnız ince bir parlaklık kalır. */}
-        <View style={{ width: 172, height: 172, borderRadius: 86, borderWidth: 5, borderColor: theme.primary, borderTopColor: lighten(theme.primary, 0.28), alignItems: 'center', justifyContent: 'center', backgroundColor: theme.panelInk, shadowColor: theme.primary, shadowOpacity: 0.65, shadowRadius: 28, shadowOffset: { width: 0, height: 0 }, elevation: 18 }}>
+        <View style={{ width: 172, height: 172, borderRadius: 86, borderWidth: 5, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.panelInk, shadowColor: theme.primary, shadowOpacity: 0.65, shadowRadius: 28, shadowOffset: { width: 0, height: 0 }, elevation: 18 }}>
           <View style={{ width: 140, height: 140, borderRadius: 70, backgroundColor: theme.card, borderWidth: 2, borderColor: withAlpha(theme.primary, 0.33), alignItems: 'center', justifyContent: 'center' }}>
             <Animated.Text style={{ color: theme.text, fontSize: n > 0 ? 88 : 50, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], transform: [{ scale }], opacity: a, ...engrave('lg') }}>
               {n > 0 ? n : 'GO!'}
@@ -5216,6 +5226,12 @@ const SOCIAL_PACK = [
 ];
 const SOCIAL_PACK_IDS = SOCIAL_PACK.map((s) => s.productId);
 
+// CO Pass (Premium Level Road) — a CONSUMABLE bought with real money as an
+// alternative to 2000 diamonds. productId must match the ASC Consumable + server
+// (com.crossover.copass). Fallback price shows until StoreKit loads the real one.
+const COPASS_PRODUCT_ID = 'com.crossover.copass';
+const COPASS_FALLBACK_PRICE = '₺350';
+
 function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
   visible: boolean;
   diamonds: number;
@@ -5595,7 +5611,7 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
   const replayedRef = useRef(false);
   useEffect(() => {
     if (!connected) { replayedRef.current = false; return; }
-    fetchProducts({ skus: DIAMOND_PRODUCT_IDS, type: 'in-app' }).catch(() => {});  // consumables
+    fetchProducts({ skus: [...DIAMOND_PRODUCT_IDS, COPASS_PRODUCT_ID], type: 'in-app' }).catch(() => {});  // consumables + CO Pass
     fetchProducts({ skus: SOCIAL_PACK_IDS, type: 'subs' }).catch(() => {});         // auto-renewable
     if (replayedRef.current) return;
     replayedRef.current = true;
@@ -5688,6 +5704,14 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
   // animasyonu boyunca ekranda kalsın diye ayrı `open` bayrağıyla tutulur.
   const [confirmEmote, setConfirmEmote] = useState<EmoteMeta | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Open "not enough gems" only AFTER the buy-confirm modal's native dismissal
+  // finishes (via onExited) — flipping both in one commit overlaps two native
+  // <Modal>s and iOS freezes the app (dead touches + scroll).
+  const notEnoughOnExit = useRef(false);
+  // CO Pass modal hands off to another native surface after its own dismissal:
+  // 'notEnough' → the insufficient-diamonds popup, 'buyMoney' → the StoreKit sheet.
+  // Deferring past the modal's exit avoids the two-native-surfaces freeze.
+  const coPassExit = useRef<null | 'notEnough' | 'buyMoney'>(null);
   // Mağazadan güç satın alma onayı
   const [confirmPower, setConfirmPower] = useState<PowerId | null>(null);
   // CO Pass satın alma onayı (mağazadan doğrudan)
@@ -5842,8 +5866,7 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
                       gem
                       label={String(PREMIUM_ROAD_PRICE)}
                       onPress={() => {
-                        if ((profile?.diamonds ?? 0) >= PREMIUM_ROAD_PRICE) setConfirmCoPass(true);
-                        else setShowNotEnough(true);
+                        setConfirmCoPass(true); // modal offers BOTH 2000 diamonds and ₺ purchase
                       }}
                     />
                   </View>
@@ -6026,20 +6049,31 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
       <GameModal
         visible={confirmCoPass}
         onClose={() => setConfirmCoPass(false)}
+        onExited={() => {
+          const a = coPassExit.current; coPassExit.current = null;
+          if (a === 'notEnough') setShowNotEnough(true);
+          else if (a === 'buyMoney') buy(COPASS_PRODUCT_ID);
+        }}
         title={t('premium.bannerTitle').toLocaleUpperCase(currentLang())}
         icon="medal"
       >
         <View style={{ alignItems: 'center', gap: 10 }}>
           <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 18 }}>{t('premium.confirmBody')}</Text>
           <View style={{ alignSelf: 'stretch', marginTop: 4, gap: 8 }}>
-            <Btn big kind="accent" gem label={t('premium.unlockBtn', { n: String(PREMIUM_ROAD_PRICE) })} onPress={() => { setConfirmCoPass(false); actions.buyPremiumRoad(); }} />
+            {/* Buy with 2000 diamonds — or fall through to the "not enough" popup */}
+            <Btn big kind="accent" gem label={t('premium.unlockBtn', { n: String(PREMIUM_ROAD_PRICE) })} onPress={() => {
+              if ((profile?.diamonds ?? 0) >= PREMIUM_ROAD_PRICE) { setConfirmCoPass(false); actions.buyPremiumRoad(); }
+              else { coPassExit.current = 'notEnough'; setConfirmCoPass(false); }
+            }} />
+            {/* Or buy with real money (StoreKit) — always available, no diamonds needed */}
+            <Btn big kind="blue" icon="card" label={t('premium.buyWithMoney', { price: priceFor(COPASS_PRODUCT_ID, COPASS_FALLBACK_PRICE) })} onPress={() => { coPassExit.current = 'buyMoney'; setConfirmCoPass(false); }} />
             <Btn label={t('store.cancel')} kind="ghost" onPress={() => setConfirmCoPass(false)} />
           </View>
         </View>
       </GameModal>
 
       {/* İfade satın alma onayı — animasyonlu CANLI önizleme: alıcı ne aldığını görür */}
-      <GameModal visible={confirmOpen} onClose={() => setConfirmOpen(false)} title={t('store.confirmBuyTitle')} icon="cart">
+      <GameModal visible={confirmOpen} onClose={() => setConfirmOpen(false)} onExited={() => { if (notEnoughOnExit.current) { notEnoughOnExit.current = false; setShowNotEnough(true); } }} title={t('store.confirmBuyTitle')} icon="cart">
         {confirmEmote ? (
           <View style={{ alignItems: 'center', gap: 10 }}>
             <View style={{ width: 136, height: 136, borderRadius: 22, backgroundColor: theme.surface3, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', ...shadowRaised }}>
@@ -6071,7 +6105,7 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
                     label={String(confirmEmote.premium?.price ?? 0)}
                     onPress={() => {
                       if ((profile?.diamonds ?? 0) >= (confirmEmote.premium?.price ?? 0)) { actions.buyEmote(confirmEmote.id); setConfirmOpen(false); }
-                      else { setConfirmOpen(false); setShowNotEnough(true); }
+                      else { notEnoughOnExit.current = true; setConfirmOpen(false); }
                     }}
                   />
                   <Btn label={t('store.cancel')} kind="ghost" onPress={() => setConfirmOpen(false)} />
@@ -6788,7 +6822,7 @@ export function CollectionScreen({ state, actions }: Props) {
           ) : (
             // 100% completion is a celebration, not a muted empty box.
             <GamePanel compact style={{ flex: 1 }} bodyStyle={{ alignItems: 'center', gap: 8, paddingVertical: 18 }}>
-              <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: theme.panelInnerFill, borderWidth: 2, borderColor: theme.accent, borderTopColor: theme.accentDark, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: theme.panelInnerFill, borderWidth: 2, borderColor: theme.accent, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="trophy" size={26} color={theme.gold} />
               </View>
               <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') }}>{t('collection.allOwned')}</Text>
@@ -7268,6 +7302,12 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
   const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 }); // tap anchor for the popover
   const [confirmRemove, setConfirmRemove] = useState<FriendInfo | null>(null); // remove confirmation
   const [socialPackPopup, setSocialPackPopup] = useState(false);
+  // The match-setup modal hands off to another native <Modal> (the social-pack
+  // upsell or the invite-waiting dialog). iOS presents ONE modal at a time, so we
+  // stash the intent and run it in matchModal's onExited — after its native
+  // dismissal — never in the same commit (which overlaps two modals and FREEZES
+  // the app: dead touches + no scroll).
+  const matchExitAction = useRef<null | { kind: 'social' } | { kind: 'invite'; fid: string; name: string; options: GameOptions }>(null);
   const menuActionLock = useRef(false);
   const addInputRef = useRef<TextInput>(null);   // empty-state CTA → focus add-friend input
   const msgSearchRef = useRef<TextInput>(null);  // empty-state CTA → focus message search
@@ -7318,6 +7358,10 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
       actions.sendFriendRequest(undefined, val);
     }
     setAddInput('');
+    // İstek gönderilince klavye kapansın — submit'te (return) TextInput odakta kalıp
+    // klavyeyi açık bırakıyordu ("klavye full açık kalıyor"). Blur + dismiss birlikte.
+    addInputRef.current?.blur();
+    Keyboard.dismiss();
   };
 
   return (
@@ -7337,12 +7381,9 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
             <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
             <Text style={styles.friendCode}>{profile?.userId?.slice(0, 8).toUpperCase() ?? '...'}</Text>
           </View>
-          <MiniIconBtn
-            icon={copied ? 'checkmark' : 'copy-outline'}
-            face={theme.surface2}
-            lip={theme.shadowInk}
-            fg={copied ? theme.primary : theme.accent}
-            size={38}
+          {/* Kopyala butonu kod kutusuyla AYNI yükseklikte (alignSelf:stretch), ÜSTTE
+              hiçbir çizgi/highlight YOK (kullanıcı isteği) — düz, tam kapalı üst. */}
+          <Pressable
             onPress={() => {
               const code = profile?.userId?.slice(0, 8).toUpperCase();
               if (code) {
@@ -7351,7 +7392,16 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                 setTimeout(() => setCopied(false), 2000);
               }
             }}
-          />
+            hitSlop={6}
+            style={({ pressed }) => ({
+              width: 52, alignSelf: 'stretch', borderRadius: 14,
+              backgroundColor: pressed ? darken(theme.surface2, 0.12) : theme.surface2,
+              alignItems: 'center', justifyContent: 'center',
+              transform: [{ translateY: pressed ? 1 : 0 }],
+            })}
+          >
+            <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={20} color={copied ? theme.primary : theme.accent} />
+          </Pressable>
           <CopiedPill visible={copied} />
         </View>
 
@@ -7392,7 +7442,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                 <Avatar avatar={null} name={u.displayName} size={34} ring={theme.primary} ringWidth={1.5} iconColor={theme.primary} iconSize={15} />
                 <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13, flex: 1, ...engrave('sm') }} numberOfLines={1}>{u.displayName}</Text>
                 <MiniIconBtn icon="eye" face={theme.surface2} lip={theme.shadowInk} fg={theme.text} onPress={() => actions.getUserProfile(u.userId)} />
-                <MiniIconBtn icon="person-add" face={theme.primary} lip={theme.primaryDark} fg={theme.ink} onPress={() => { if (isGuest) { setGuestGateOpen(true); return; } actions.sendFriendRequest(undefined, u.displayName); }} />
+                <MiniIconBtn icon="person-add" face={theme.primary} lip={theme.primaryDark} fg={theme.ink} onPress={() => { if (isGuest) { setGuestGateOpen(true); return; } actions.sendFriendRequest(undefined, u.displayName); Keyboard.dismiss(); }} />
               </BevelRow>
             ))}
           </View>
@@ -7605,6 +7655,13 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
       <GameModal
         visible={matchModal !== null}
         onClose={() => setMatchModal(null)}
+        onExited={() => {
+          const a = matchExitAction.current;
+          matchExitAction.current = null;
+          if (!a) return;
+          if (a.kind === 'social') setSocialPackPopup(true);
+          else actions.inviteFriendMatch(a.fid, a.name, a.options);
+        }}
         title={(
           matchPage.key === 'mode' ? t('friends.matchModeTitle')
           : matchPage.key === 'scope' ? t('friends.scopeTitle')
@@ -7626,8 +7683,8 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                   chevron
                   onPress={() => {
                     if (locked) {
+                      matchExitAction.current = { kind: 'social' }; // upsell fires in onExited
                       setMatchModal(null);
-                      setSocialPackPopup(true);
                       return;
                     }
                     setMatchMode(m);
@@ -7646,9 +7703,11 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                 iconColor={theme.primary}
                 label={t('scope.all')}
                 onPress={() => {
-                  if (!matchModal) return; // dialog already exiting
-                  actions.inviteFriendMatch(matchModal, friends.find((f) => f.userId === matchModal)?.displayName ?? 'Arkadaş', { mode: matchMode });
-                  setMatchModal(null);
+                  const fid = matchModal;
+                  if (!fid) return; // dialog already exiting
+                  const name = friends.find((f) => f.userId === fid)?.displayName ?? 'Arkadaş';
+                  matchExitAction.current = { kind: 'invite', fid, name, options: { mode: matchMode } };
+                  setMatchModal(null); // invite (+ waiting modal) fires in onExited, after native dismissal
                 }}
               />
               <GameRow icon="trophy" label={t('scope.pickLeague')} chevron onPress={() => setMatchPage({ key: 'league', dir: 1 })} />
@@ -7664,9 +7723,11 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                 kind={matchPage.key}
                 scopes={state.scopes}
                 onPick={(s) => {
-                  if (!matchModal) return; // dialog already exiting
-                  actions.inviteFriendMatch(matchModal, friends.find((f) => f.userId === matchModal)?.displayName ?? 'Arkadaş', { mode: matchMode, scope: s });
-                  setMatchModal(null);
+                  const fid = matchModal;
+                  if (!fid) return; // dialog already exiting
+                  const name = friends.find((f) => f.userId === fid)?.displayName ?? 'Arkadaş';
+                  matchExitAction.current = { kind: 'invite', fid, name, options: { mode: matchMode, scope: s } };
+                  setMatchModal(null); // invite (+ waiting modal) fires in onExited, after native dismissal
                 }}
               />
             </>
@@ -8536,8 +8597,8 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
           <Btn
             big
             kind="accent"
-            icon="storefront"
-            label={t('friends.goToStore')}
+            icon="diamond"
+            label={t('store.goToDiamonds')}
             onPress={() => {
               setShowInsufficientPopup(false);
               actions.closeProfile();
@@ -9869,7 +9930,78 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
                 <TeamResultCard team={r.teamB} spells={r.spellsB} played={playedB} />
               ) : null}
             </View>
+          </>
+        ) : null}
 
+        {/* Running match score — one recessed strip, leader tinted mint */}
+        <View style={styles.scoreRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.well, borderRadius: 16, overflow: 'hidden', paddingVertical: 8, paddingHorizontal: 14 }}>
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
+            {room.players.map((p, i) => {
+              const other = room.players[1 - i];
+              const leads = (p.score ?? 0) > (other?.score ?? 0);
+              return (
+                <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  {i > 0 ? <View style={{ width: 1.5, height: 22, backgroundColor: theme.hairline }} /> : null}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                    <Avatar avatar={p.avatar} name={p.name} size={22} ring={leads ? theme.primary : theme.border} ringWidth={1.5} iconColor={theme.muted} iconSize={13} frameId={p.frame} />
+                    <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', maxWidth: 72 }} numberOfLines={1}>{p.name}</Text>
+                    <Text style={{ color: leads ? theme.primary : theme.text, fontSize: 15, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>
+                      {p.score}/{state.winTarget}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
+        {matchOver ? (
+          <>
+            {state.rematchState === 'incoming' ? (
+              <>
+                <Text style={[styles.muted, { marginBottom: 4 }]}>
+                  {t('result.rematchIncoming', { name: state.rematchByName ?? '' })}
+                </Text>
+                <Btn label={t('result.accept')} kind="accent" icon="checkmark-circle" onPress={actions.acceptRematch} />
+                <Btn label={t('result.decline')} kind="ghost" icon="close" onPress={actions.declineRematch} />
+              </>
+            ) : state.rematchState === 'waiting' ? (
+              <View style={styles.center}>
+                <GameSpinner />
+                <Text style={styles.muted}>{t('result.rematchWaiting')}</Text>
+              </View>
+            ) : state.rematchState === 'declined' ? (
+              <>
+                <Text style={[styles.muted, { color: theme.danger }]}>{t('result.rematchDeclined')}</Text>
+                <Btn label={t('result.tryAgain')} kind="accent" icon="refresh" onPress={actions.playAgain} />
+              </>
+            ) : (
+              <Btn label={t('result.playAgain')} kind="accent" icon="refresh" onPress={actions.playAgain} />
+            )}
+          </>
+        ) : state.waitingReady ? (
+          state.iReady ? (
+            <View style={styles.center}>
+              <Ionicons name="checkmark-circle" size={28} color={theme.primary} />
+              <Text style={styles.muted}>{t('result.readyWaiting')}</Text>
+            </View>
+          ) : (
+            <ReadyButton state={state} onPress={actions.ready} />
+          )
+        ) : (
+          <View style={styles.center}>
+            <GameSpinner />
+            <Text style={styles.muted}>{t('result.nextRound')}</Text>
+          </View>
+        )}
+        <View style={{ height: 10 }} />
+        <Btn label={t('result.leave')} kind="ghost" icon="close" onPress={actions.leave} />
+
+        {/* Kariyer + diğer oynamış oyuncular — Hazır/Çık'ın ALTINDA: Hazır butonu
+            kariyer listesini beklemeden her zaman ekranda görünür olsun diye taşındı. */}
+        {r.reason !== 'no_common' && r.reason !== 'same_team' ? (
+          <>
             {r.allClubs.length ? (
               <>
                 <Text style={styles.sectionLabel}>{t('result.career')}</Text>
@@ -9942,71 +10074,6 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
             })()}
           </>
         ) : null}
-
-        {/* Running match score — one recessed strip, leader tinted mint */}
-        <View style={styles.scoreRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.well, borderRadius: 16, overflow: 'hidden', paddingVertical: 8, paddingHorizontal: 14 }}>
-            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
-            {room.players.map((p, i) => {
-              const other = room.players[1 - i];
-              const leads = (p.score ?? 0) > (other?.score ?? 0);
-              return (
-                <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  {i > 0 ? <View style={{ width: 1.5, height: 22, backgroundColor: theme.hairline }} /> : null}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                    <Avatar avatar={p.avatar} name={p.name} size={22} ring={leads ? theme.primary : theme.border} ringWidth={1.5} iconColor={theme.muted} iconSize={13} frameId={p.frame} />
-                    <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', maxWidth: 72 }} numberOfLines={1}>{p.name}</Text>
-                    <Text style={{ color: leads ? theme.primary : theme.text, fontSize: 15, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>
-                      {p.score}/{state.winTarget}
-                    </Text>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        </View>
-
-        {matchOver ? (
-          <>
-            {state.rematchState === 'incoming' ? (
-              <>
-                <Text style={[styles.muted, { marginBottom: 4 }]}>
-                  {t('result.rematchIncoming', { name: state.rematchByName ?? '' })}
-                </Text>
-                <Btn label={t('result.accept')} kind="accent" icon="checkmark-circle" onPress={actions.acceptRematch} />
-                <Btn label={t('result.decline')} kind="ghost" icon="close" onPress={actions.declineRematch} />
-              </>
-            ) : state.rematchState === 'waiting' ? (
-              <View style={styles.center}>
-                <GameSpinner />
-                <Text style={styles.muted}>{t('result.rematchWaiting')}</Text>
-              </View>
-            ) : state.rematchState === 'declined' ? (
-              <>
-                <Text style={[styles.muted, { color: theme.danger }]}>{t('result.rematchDeclined')}</Text>
-                <Btn label={t('result.tryAgain')} kind="accent" icon="refresh" onPress={actions.playAgain} />
-              </>
-            ) : (
-              <Btn label={t('result.playAgain')} kind="accent" icon="refresh" onPress={actions.playAgain} />
-            )}
-          </>
-        ) : state.waitingReady ? (
-          state.iReady ? (
-            <View style={styles.center}>
-              <Ionicons name="checkmark-circle" size={28} color={theme.primary} />
-              <Text style={styles.muted}>{t('result.readyWaiting')}</Text>
-            </View>
-          ) : (
-            <ReadyButton state={state} onPress={actions.ready} />
-          )
-        ) : (
-          <View style={styles.center}>
-            <GameSpinner />
-            <Text style={styles.muted}>{t('result.nextRound')}</Text>
-          </View>
-        )}
-        <View style={{ height: 10 }} />
-        <Btn label={t('result.leave')} kind="ghost" icon="close" onPress={actions.leave} />
       </ScrollView>
       {matchOver && youWon ? <Confetti /> : null}
       {!tutorial ? <EmoteLayer state={state} actions={actions} fab="top-right" /> : null}
@@ -10258,10 +10325,10 @@ export const LEVEL_POWER_UNLOCKS: Record<number, PowerId> = {
 };
 
 // ---- PREMIUM Seviye Yolu (sunucudaki PREMIUM_* sabitleriyle birebir) ----
-// 1000 elmasla bir kez açılır; her ×5 seviyesinde EKSTRA güç + daha dolgun elmas.
+// 2000 elmasla (ya da ₺350 IAP ile) açılır; her ×5 seviyesinde EKSTRA güç + daha dolgun elmas.
 // Dağıtım: her güç şeritte TAM 2 kez + ücretsiz şeritle ORTAK seviyelerde
 // (5/15/25/35/45) asla aynı güç değil (aynı satırda iki kart hiç aynı olmaz).
-export const PREMIUM_ROAD_PRICE = 1000;
+export const PREMIUM_ROAD_PRICE = 2000;
 export const PREMIUM_LEVEL_POWERS: Record<number, PowerId> = {
   5: 'shield', 10: 'streak', 15: 'xp2x', 20: 'socialtoken', 25: 'training',
   30: 'shield', 35: 'socialtoken', 40: 'xp2x', 45: 'streak', 50: 'training',

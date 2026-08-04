@@ -768,8 +768,18 @@ export interface LeaderboardEntry {
 }
 
 export async function getLeaderboard(limit = 50): Promise<LeaderboardEntry[]> {
+  // Keep the board clean: only REAL players who have actually earned trophies.
+  //   • trophies > 0            → drops empty/never-played accounts and test junk.
+  //   • has an identity provider → drops guests (auto "M#########" accounts, which
+  //     are provider-less) and CLI/dev `register`-only test accounts.
+  // Guests get username_set=true, so that flag can't tell them apart — the reliable
+  // guest signal is "no apple/google/facebook/game-center identity".
   const { rows } = await pool.query<DbUser>(
-    `SELECT * FROM users ORDER BY trophies DESC, wins DESC LIMIT $1`,
+    `SELECT * FROM users
+       WHERE trophies > 0
+         AND (apple_sub IS NOT NULL OR google_sub IS NOT NULL OR facebook_sub IS NOT NULL OR game_center_id IS NOT NULL)
+       ORDER BY trophies DESC, wins DESC
+       LIMIT $1`,
     [limit],
   );
   return rows.map((r, i) => ({
