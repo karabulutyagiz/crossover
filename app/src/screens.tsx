@@ -5239,6 +5239,16 @@ const SOCIAL_PACK = [
 ];
 const SOCIAL_PACK_IDS = SOCIAL_PACK.map((s) => s.productId);
 
+/**
+ * Smallest diamond pack that closes a shortfall. When a player is 250 gems short
+ * we open the cheapest pack that actually covers it rather than dumping them in
+ * the store to work it out themselves. Falls back to the largest pack if even
+ * that is not enough (nothing else could satisfy the purchase anyway).
+ */
+function packForShortfall(missing: number): typeof DIAMOND_PACKS[number] {
+  return DIAMOND_PACKS.find((p) => p.amount >= missing) ?? DIAMOND_PACKS[DIAMOND_PACKS.length - 1]!;
+}
+
 // CO Pass (Premium Level Road) — a CONSUMABLE bought with real money as an
 // alternative to 2000 diamonds. productId must match the ASC Consumable + server
 // (com.crossover.copass). Fallback price shows until StoreKit loads the real one.
@@ -5597,6 +5607,11 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
       await actions.verifyPurchase(jws);
       await iapFinishTransaction({ purchase, isConsumable: !isSub });
       track('purchase_success', { productId: purchase.productId, kind: isSub ? 'subscription' : 'diamonds' });
+      // The shortfall popup was only up to explain the auto-opened sheet — once
+      // the diamonds actually land it has nothing left to say. (A CANCELLED
+      // sheet deliberately leaves it open; that is handled in onPurchaseError.)
+      setShowNotEnough(false);
+      setShortfall(null);
       // Trigger celebration animation for diamond purchases
       if (!isSub) {
         const pack = DIAMOND_PACKS.find((p) => p.productId === purchase.productId);
@@ -5712,6 +5727,10 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
 
   // "Not enough gems" dialog (weekly emote shop) — its CTA deep-links to the packs.
   const [showNotEnough, setShowNotEnough] = useState(false);
+  // How short the player was, and which pack we auto-opened for them. Held while
+  // the StoreKit sheet is up so the popup can stay behind it: dismissing Apple
+  // Pay must leave this explaining what happened, not vanish silently.
+  const [shortfall, setShortfall] = useState<{ missing: number; productId: string } | null>(null);
   // Satın alma onayı: fiyat butonu artık DOĞRUDAN satın almaz — animasyonlu
   // önizlemeli "emin misin?" penceresi açar. İçerik, pencerenin çıkış
   // animasyonu boyunca ekranda kalsın diye ayrı `open` bayrağıyla tutulur.
@@ -6021,21 +6040,58 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
       </GameModal>
 
       {/* Not enough gems for a weekly emote → gold CTA scrolls to the diamond packs */}
-      <GameModal visible={showNotEnough} onClose={() => setShowNotEnough(false)} title={t('store.notEnoughGemsTitle')} icon="diamond">
-        <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
-          {t('store.notEnoughGemsBody')}
-        </Text>
-        <Btn
-          big
-          kind="accent"
-          icon="diamond"
-          label={t('store.goToDiamonds')}
-          onPress={() => {
-            setShowNotEnough(false);
-            const y = sectionYRef.current['diamonds'];
-            if (y !== undefined) storeScrollRef.current?.scrollTo({ y, animated: true });
-          }}
-        />
+      {/* Insufficient diamonds. When we know exactly how short the player is we
+          auto-open the cheapest covering pack's StoreKit sheet (fired from the
+          previous modal's onExited) and keep THIS popup behind it — dismissing
+          Apple Pay lands back here rather than on a blank screen, and "Al" can
+          re-open the sheet. Without a known shortfall it degrades to the old
+          "go to the diamond packs" behaviour. */}
+      <GameModal visible={showNotEnough} onClose={() => { setShowNotEnough(false); setShortfall(null); }} title={t('store.notEnoughGemsTitle')} icon="diamond">
+        {shortfall ? (() => {
+          const pack = DIAMOND_PACKS.find((p) => p.productId === shortfall.productId) ?? DIAMOND_PACKS[0]!;
+          return (
+            <>
+              <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+                {t('store.notEnoughNeed', { n: String(shortfall.missing) })}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: theme.panelInnerFill, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, borderTopWidth: 1, borderTopColor: theme.topLight }}>
+                <ExpoImage source={pack.img} style={{ width: 34, height: 34 }} contentFit="contain" />
+                <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>{pack.label}</Text>
+                <GemIcon size={13} />
+                <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>{pack.amount}</Text>
+              </View>
+              <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>
+                {t('store.notEnoughProcessing')}
+              </Text>
+              <Btn
+                big
+                kind="accent"
+                icon="cart"
+                loading={buying === pack.productId}
+                label={`${t('store.buyNow')} · ${priceFor(pack.productId, pack.price)}`}
+                onPress={() => buy(pack.productId)}
+              />
+              <Btn label={t('store.cancel')} kind="ghost" onPress={() => { setShowNotEnough(false); setShortfall(null); }} />
+            </>
+          );
+        })() : (
+          <>
+            <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+              {t('store.notEnoughGemsBody')}
+            </Text>
+            <Btn
+              big
+              kind="accent"
+              icon="diamond"
+              label={t('store.goToDiamonds')}
+              onPress={() => {
+                setShowNotEnough(false);
+                const y = sectionYRef.current['diamonds'];
+                if (y !== undefined) storeScrollRef.current?.scrollTo({ y, animated: true });
+              }}
+            />
+          </>
+        )}
       </GameModal>
 
       {/* Güç satın alma onayı */}
@@ -6086,7 +6142,17 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
       </GameModal>
 
       {/* İfade satın alma onayı — animasyonlu CANLI önizleme: alıcı ne aldığını görür */}
-      <GameModal visible={confirmOpen} onClose={() => setConfirmOpen(false)} onExited={() => { if (notEnoughOnExit.current) { notEnoughOnExit.current = false; setShowNotEnough(true); } }} title={t('store.confirmBuyTitle')} icon="cart">
+      <GameModal visible={confirmOpen} onClose={() => setConfirmOpen(false)} onExited={() => {
+          if (!notEnoughOnExit.current) return;
+          notEnoughOnExit.current = false;
+          setShowNotEnough(true);
+          // Open Apple Pay straight away for the pack that covers the shortfall —
+          // the popup above stays behind it, so cancelling the sheet returns to an
+          // explanation instead of an empty screen. StoreKit's sheet is a system
+          // surface, not an RN <Modal>, so it cannot cause the two-modal freeze.
+          // GameModal re-captures onExited on every render, so these are current.
+          if (shortfall) buy(shortfall.productId);
+        }} title={t('store.confirmBuyTitle')} icon="cart">
         {confirmEmote ? (
           <View style={{ alignItems: 'center', gap: 10 }}>
             <View style={{ width: 136, height: 136, borderRadius: 22, backgroundColor: theme.surface3, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', ...shadowRaised }}>
@@ -6117,8 +6183,18 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
                     gem
                     label={String(confirmEmote.premium?.price ?? 0)}
                     onPress={() => {
-                      if ((profile?.diamonds ?? 0) >= (confirmEmote.premium?.price ?? 0)) { actions.buyEmote(confirmEmote.id); setConfirmOpen(false); }
-                      else { notEnoughOnExit.current = true; setConfirmOpen(false); }
+                      const price = confirmEmote.premium?.price ?? 0;
+                      const have = profile?.diamonds ?? 0;
+                      if (have >= price) { actions.buyEmote(confirmEmote.id); setConfirmOpen(false); }
+                      else {
+                        // Short: remember how short and which pack covers it. The
+                        // handoff (and the StoreKit sheet) fire from onExited —
+                        // opening either while this modal is still animating out
+                        // leaves two native modals up and freezes iOS.
+                        setShortfall({ missing: price - have, productId: packForShortfall(price - have).productId });
+                        notEnoughOnExit.current = true;
+                        setConfirmOpen(false);
+                      }
                     }}
                   />
                   <Btn label={t('store.cancel')} kind="ghost" onPress={() => setConfirmOpen(false)} />

@@ -278,6 +278,10 @@ const tr = {
   'store.restoreDone': 'Satın alımların geri yüklendi.',
   'store.restoreNone': 'Geri yüklenecek bir satın alım bulunamadı.',
   'store.restoreFailed': 'Satın alımlar geri yüklenemedi. Lütfen tekrar dene.',
+  // Yetersiz elmas → kapsayan paketi otomatik aç
+  'store.notEnoughNeed': 'Elmasın yetersiz — {n} elmas eksik.',
+  'store.notEnoughProcessing': 'Satın alma ekranı açılıyor. Vazgeçersen bu pencere açık kalır.',
+  'store.buyNow': 'Al',
   // Kullanıcı içeriği güvenliği — App Store 1.2
   'mod.block': 'Engelle',
   'mod.unblock': 'Engeli kaldır',
@@ -899,6 +903,9 @@ const en: typeof tr = {
   'store.restoreDone': 'Your purchases have been restored.',
   'store.restoreNone': 'No purchases found to restore.',
   'store.restoreFailed': 'Could not restore purchases. Please try again.',
+  'store.notEnoughNeed': 'Not enough diamonds — you need {n} more.',
+  'store.notEnoughProcessing': 'Opening the purchase sheet. If you cancel, this stays open.',
+  'store.buyNow': 'Buy',
   'mod.block': 'Block',
   'mod.unblock': 'Unblock',
   'mod.blockTitle': 'Block user',
