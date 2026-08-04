@@ -3509,6 +3509,11 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const [botOpen, setBotOpen] = useState(false);
   const [modesOpen, setModesOpen] = useState(false);
   const [socialPackPopup, setSocialPackPopup] = useState(false);
+  // iOS presents ONE native <Modal> at a time; open the upsell only AFTER the
+  // modes modal's native dismissal finishes (via GameModal onExited), else the two
+  // overlap and the app FREEZES (dead touches + scroll). Same race the avatar
+  // picker guards against (see insufficientOnExit).
+  const socialUpsellOnExit = useRef(false);
   const [newsOpen, setNewsOpen] = useState(false);
   const [newsUnread, setNewsUnread] = useState(false);
   // Show the bell's red pip until the user has opened the feed at the latest item.
@@ -3610,8 +3615,8 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
 
   const startMode = useCallback((m: GameMode) => {
     if (PACK_MODES.includes(m) && !hasPack) {
+      socialUpsellOnExit.current = true; // hand off AFTER modes modal dismisses (onExited)
       setModesOpen(false);
-      setSocialPackPopup(true);
       return;
     }
     setModesOpen(false);
@@ -3901,7 +3906,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       <NetworkErrorBeacon visible={isNetworkErrorMessage(state.error)} />
 
       {/* ── Mode picker ── */}
-      <GameModal visible={modesOpen} onClose={() => setModesOpen(false)} title={t('home.modesTitle').toLocaleUpperCase(currentLang())} icon="football">
+      <GameModal visible={modesOpen} onClose={() => setModesOpen(false)} onExited={() => { if (socialUpsellOnExit.current) { socialUpsellOnExit.current = false; setSocialPackPopup(true); } }} title={t('home.modesTitle').toLocaleUpperCase(currentLang())} icon="football">
         <Text style={[styles.muted, { textAlign: 'center', marginBottom: 6 }]}>{t('home.specialModeBody')}</Text>
         {HOME_MODES.map((m) => {
           const locked = PACK_MODES.includes(m) && !hasPack;
@@ -5688,6 +5693,10 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
   // animasyonu boyunca ekranda kalsın diye ayrı `open` bayrağıyla tutulur.
   const [confirmEmote, setConfirmEmote] = useState<EmoteMeta | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Open "not enough gems" only AFTER the buy-confirm modal's native dismissal
+  // finishes (via onExited) — flipping both in one commit overlaps two native
+  // <Modal>s and iOS freezes the app (dead touches + scroll).
+  const notEnoughOnExit = useRef(false);
   // Mağazadan güç satın alma onayı
   const [confirmPower, setConfirmPower] = useState<PowerId | null>(null);
   // CO Pass satın alma onayı (mağazadan doğrudan)
@@ -6039,7 +6048,7 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
       </GameModal>
 
       {/* İfade satın alma onayı — animasyonlu CANLI önizleme: alıcı ne aldığını görür */}
-      <GameModal visible={confirmOpen} onClose={() => setConfirmOpen(false)} title={t('store.confirmBuyTitle')} icon="cart">
+      <GameModal visible={confirmOpen} onClose={() => setConfirmOpen(false)} onExited={() => { if (notEnoughOnExit.current) { notEnoughOnExit.current = false; setShowNotEnough(true); } }} title={t('store.confirmBuyTitle')} icon="cart">
         {confirmEmote ? (
           <View style={{ alignItems: 'center', gap: 10 }}>
             <View style={{ width: 136, height: 136, borderRadius: 22, backgroundColor: theme.surface3, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', ...shadowRaised }}>
@@ -6071,7 +6080,7 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
                     label={String(confirmEmote.premium?.price ?? 0)}
                     onPress={() => {
                       if ((profile?.diamonds ?? 0) >= (confirmEmote.premium?.price ?? 0)) { actions.buyEmote(confirmEmote.id); setConfirmOpen(false); }
-                      else { setConfirmOpen(false); setShowNotEnough(true); }
+                      else { notEnoughOnExit.current = true; setConfirmOpen(false); }
                     }}
                   />
                   <Btn label={t('store.cancel')} kind="ghost" onPress={() => setConfirmOpen(false)} />
@@ -7268,6 +7277,12 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
   const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 }); // tap anchor for the popover
   const [confirmRemove, setConfirmRemove] = useState<FriendInfo | null>(null); // remove confirmation
   const [socialPackPopup, setSocialPackPopup] = useState(false);
+  // The match-setup modal hands off to another native <Modal> (the social-pack
+  // upsell or the invite-waiting dialog). iOS presents ONE modal at a time, so we
+  // stash the intent and run it in matchModal's onExited — after its native
+  // dismissal — never in the same commit (which overlaps two modals and FREEZES
+  // the app: dead touches + no scroll).
+  const matchExitAction = useRef<null | { kind: 'social' } | { kind: 'invite'; fid: string; name: string; options: GameOptions }>(null);
   const menuActionLock = useRef(false);
   const addInputRef = useRef<TextInput>(null);   // empty-state CTA → focus add-friend input
   const msgSearchRef = useRef<TextInput>(null);  // empty-state CTA → focus message search
@@ -7605,6 +7620,13 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
       <GameModal
         visible={matchModal !== null}
         onClose={() => setMatchModal(null)}
+        onExited={() => {
+          const a = matchExitAction.current;
+          matchExitAction.current = null;
+          if (!a) return;
+          if (a.kind === 'social') setSocialPackPopup(true);
+          else actions.inviteFriendMatch(a.fid, a.name, a.options);
+        }}
         title={(
           matchPage.key === 'mode' ? t('friends.matchModeTitle')
           : matchPage.key === 'scope' ? t('friends.scopeTitle')
@@ -7626,8 +7648,8 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                   chevron
                   onPress={() => {
                     if (locked) {
+                      matchExitAction.current = { kind: 'social' }; // upsell fires in onExited
                       setMatchModal(null);
-                      setSocialPackPopup(true);
                       return;
                     }
                     setMatchMode(m);
@@ -7646,9 +7668,11 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                 iconColor={theme.primary}
                 label={t('scope.all')}
                 onPress={() => {
-                  if (!matchModal) return; // dialog already exiting
-                  actions.inviteFriendMatch(matchModal, friends.find((f) => f.userId === matchModal)?.displayName ?? 'Arkadaş', { mode: matchMode });
-                  setMatchModal(null);
+                  const fid = matchModal;
+                  if (!fid) return; // dialog already exiting
+                  const name = friends.find((f) => f.userId === fid)?.displayName ?? 'Arkadaş';
+                  matchExitAction.current = { kind: 'invite', fid, name, options: { mode: matchMode } };
+                  setMatchModal(null); // invite (+ waiting modal) fires in onExited, after native dismissal
                 }}
               />
               <GameRow icon="trophy" label={t('scope.pickLeague')} chevron onPress={() => setMatchPage({ key: 'league', dir: 1 })} />
@@ -7664,9 +7688,11 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                 kind={matchPage.key}
                 scopes={state.scopes}
                 onPick={(s) => {
-                  if (!matchModal) return; // dialog already exiting
-                  actions.inviteFriendMatch(matchModal, friends.find((f) => f.userId === matchModal)?.displayName ?? 'Arkadaş', { mode: matchMode, scope: s });
-                  setMatchModal(null);
+                  const fid = matchModal;
+                  if (!fid) return; // dialog already exiting
+                  const name = friends.find((f) => f.userId === fid)?.displayName ?? 'Arkadaş';
+                  matchExitAction.current = { kind: 'invite', fid, name, options: { mode: matchMode, scope: s } };
+                  setMatchModal(null); // invite (+ waiting modal) fires in onExited, after native dismissal
                 }}
               />
             </>
