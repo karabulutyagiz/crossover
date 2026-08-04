@@ -27,6 +27,8 @@
     "verify": "tsx src/cli/verify.ts",
     "playtest": "tsx src/cli/playtest.ts",
     "bot": "tsx src/cli/bot.ts",
+    "test:difficulty": "tsx src/cli/difftest-invariants.ts",
+    "probe:difficulty": "tsx src/cli/difftest.ts",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
     "check:production": "node src/cli/production-check.mjs"
   },

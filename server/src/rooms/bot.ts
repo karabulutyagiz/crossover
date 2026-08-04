@@ -2,13 +2,55 @@ import type { Room, Transport } from './room.ts';
 import type { ClientMsg, ClubRef, Difficulty, GameMode, ServerMsg, Scope } from '../protocol.ts';
 import { randomClub, botPickFromPool, randomPlayer, botCommonPlayersRanked, commonPlayersCountryTeam, commonPlayersLetterTeam, commonClubs, pickCountryForClub, pickClubForCountry } from '../game/verify.ts';
 
-// Bot answer delay (ms) per difficulty — how long you get to beat it. HARD knows
-// the answer but no longer rushes, so the human still has a chance to compete.
-const DELAYS: Record<Difficulty, [number, number]> = {
-  easy: [9000, 16000],
-  medium: [4000, 9000],
-  hard: [4500, 8500],
+// ─────────────────────────────────────────────────────────────────────────────
+// BOT DIFFICULTY — SINGLE SOURCE OF TRUTH.
+// This is the ONLY place difficulty is defined. It has regressed repeatedly because
+// the knobs were scattered and someone kept softening HARD "to give the human a
+// chance", which quietly collapsed HARD into MEDIUM so all tiers felt identical.
+// To make that impossible:
+//   • all three knobs (answer delay + know-rates) live here, and
+//   • validateDifficulty() below THROWS at import (before the server serves
+//     anything) if the tiers ever stop being clearly separated — a collapsed
+//     config can therefore never start or reach production.
+// Contract: HARD must be faster AND smarter than MEDIUM, MEDIUM than EASY.
+// Verified by src/cli/difftest-invariants.ts (static) and src/cli/difftest.ts (live).
+export interface DiffParams {
+  /** Answer latency band [min,max] ms — how long the human has to beat the bot. */
+  delayMs: [number, number];
+  /** "Do I know it" probability for modes with no fame signal (country/letter/player). */
+  knowBase: number;
+  /** team-team base "do I know it" before the fame bonus (see decideAnswer). */
+  fameBaseTeam: number;
+}
+export const DIFFICULTY: Record<Difficulty, DiffParams> = {
+  // slow + often clueless → a beginner wins; the bot hands you most rounds.
+  easy:   { delayMs: [10000, 17000], knowBase: 0.30, fameBaseTeam: 0.15 },
+  // mid tempo → knows the famous crossovers, misses the obscure ones.
+  medium: { delayMs: [5000, 9000],   knowBase: 0.70, fameBaseTeam: 0.50 },
+  // fast + always knows → you must buzz almost immediately to win.
+  hard:   { delayMs: [2000, 4500],   knowBase: 1.00, fameBaseTeam: 1.00 },
 };
+// Extra "do I know it" a famous crossover adds on top of fameBaseTeam (team-team).
+const FAME_BONUS = 0.30;
+
+// Guard against the recurring "easy/medium/hard all feel the same" regression:
+// throws at module load if the tiers are no longer clearly distinct.
+export function validateDifficulty(D: Record<Difficulty, DiffParams> = DIFFICULTY): void {
+  const { easy, medium, hard } = D;
+  const errs: string[] = [];
+  if (!(easy.delayMs[0] < easy.delayMs[1])) errs.push('easy delay band inverted');
+  if (!(medium.delayMs[0] < medium.delayMs[1])) errs.push('medium delay band inverted');
+  if (!(hard.delayMs[0] < hard.delayMs[1])) errs.push('hard delay band inverted');
+  // Non-overlapping, strictly ordered latency bands (hard fastest, easy slowest).
+  if (!(hard.delayMs[1] <= medium.delayMs[0])) errs.push(`hard.max(${hard.delayMs[1]}) must be <= medium.min(${medium.delayMs[0]})`);
+  if (!(medium.delayMs[1] <= easy.delayMs[0])) errs.push(`medium.max(${medium.delayMs[1]}) must be <= easy.min(${easy.delayMs[0]})`);
+  // Strictly increasing know-rates.
+  if (!(easy.knowBase < medium.knowBase && medium.knowBase < hard.knowBase)) errs.push('knowBase must strictly increase easy<medium<hard');
+  if (!(easy.fameBaseTeam < medium.fameBaseTeam && medium.fameBaseTeam < hard.fameBaseTeam)) errs.push('fameBaseTeam must strictly increase easy<medium<hard');
+  if (hard.knowBase !== 1 || hard.fameBaseTeam !== 1) errs.push('hard must always know (knowBase=fameBaseTeam=1)');
+  if (errs.length) throw new Error('BOT DIFFICULTY tiers collapsed — refusing to start:\n  - ' + errs.join('\n  - '));
+}
+validateDifficulty();
 
 // Yalnız SON ÇARE fallback: ülke-takım seçimi artık VERİ-GÜDÜMLÜ (pickCountryForClub).
 // Değerler DB'deki p.nationality ile BİREBİR olmalı — Türkiye DB'de 'Türkiye' saklanır,
@@ -44,7 +86,7 @@ export class BotPlayer implements Transport {
 
   constructor(opts: BotOptions = {}) {
     this.difficulty = opts.difficulty ?? 'medium';
-    const [min, max] = DELAYS[this.difficulty];
+    const [min, max] = DIFFICULTY[this.difficulty].delayMs;
     this.minDelayMs = min;
     this.maxDelayMs = max;
     this.scope = opts.scope ?? { type: 'all' };
@@ -203,8 +245,8 @@ export class BotPlayer implements Transport {
 
   // Difficulty-based "do I know it" chance for modes without a fame signal.
   private knows(): boolean {
-    if (this.difficulty === 'hard') return true;
-    return Math.random() < (this.difficulty === 'medium' ? 0.65 : 0.35);
+    const p = DIFFICULTY[this.difficulty].knowBase;
+    return p >= 1 || Math.random() < p;
   }
   private pickName(names: string[]): string | null {
     return names.length ? names[Math.floor(Math.random() * names.length)]! : null;
@@ -216,8 +258,8 @@ export class BotPlayer implements Transport {
       return ranked[Math.floor(Math.random() * Math.min(3, ranked.length))]!.name;
     }
     const fameNorm = Math.max(0, Math.min(1, (ranked[0]!.fame - 40) / 200));
-    const base = this.difficulty === 'medium' ? 0.45 : 0.20;
-    if (Math.random() > base + 0.45 * fameNorm) return null;
+    const p = DIFFICULTY[this.difficulty].fameBaseTeam + FAME_BONUS * fameNorm;
+    if (Math.random() > p) return null;
     const half = ranked.slice(0, Math.max(1, Math.ceil(ranked.length / 2)));
     return half[Math.floor(Math.random() * half.length)]!.name;
   }
