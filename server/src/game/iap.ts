@@ -34,6 +34,11 @@ const SOCIAL_PACK_PRODUCTS = new Set<string>([
 ]);
 const SOCIAL_PACK_WEEKLY_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 
+// CO Pass (Premium Level Road) bought with real money instead of diamonds.
+// The road is SEASONAL (premium_road resets each month), so this is a CONSUMABLE
+// the player can buy again next season — not a one-time non-consumable.
+const COPASS_PRODUCT = 'com.crossover.copass';
+
 function daysInMonth(year: number, monthIndex: number): number {
   return new Date(year, monthIndex + 1, 0).getDate();
 }
@@ -135,6 +140,19 @@ export async function verifyApplePurchase(
     const until = socialPackExpiryMs(pid, base);
     if (until && until > Date.now()) {
       await pool.query(`UPDATE users SET social_pack_until = $2 WHERE id = $1`, [userId, new Date(until).toISOString()]);
+    }
+  }
+
+  // CO Pass — unlock the premium level road for the current season (idempotent).
+  if (pid === COPASS_PRODUCT) {
+    const ins = await pool.query(
+      `INSERT INTO processed_transactions (transaction_id, user_id, product_id, diamonds)
+         VALUES ($1, $2, $3, 0)
+       ON CONFLICT (transaction_id) DO NOTHING`,
+      [tx.transactionId, userId, pid],
+    );
+    if (ins.rowCount && ins.rowCount > 0) {
+      await pool.query(`UPDATE users SET premium_road = TRUE WHERE id = $1`, [userId]);
     }
   }
 
