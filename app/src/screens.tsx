@@ -7906,13 +7906,16 @@ const REPORT_REASONS: { key: MessageKey; value: string }[] = [
   { key: 'mod.reasonOther', value: 'other' },
 ];
 
-function ReportReasonModal({ visible, onClose, onPick }: {
+function ReportReasonModal({ visible, onClose, onExited, onPick }: {
   visible: boolean;
   onClose: () => void;
+  // Forwarded so the caller can hand off to the next modal only AFTER this one's
+  // native <Modal> has unmounted — two mounted at once freezes iOS.
+  onExited?: () => void;
   onPick: (reason: string) => void;
 }) {
   return (
-    <GameModal visible={visible} onClose={onClose} title={t('mod.reportTitle')} icon="flag" danger>
+    <GameModal visible={visible} onClose={onClose} onExited={onExited} title={t('mod.reportTitle')} icon="flag" danger>
       <Text style={{ color: theme.muted, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 19, marginBottom: 4 }}>
         {t('mod.reportBody')}
       </Text>
@@ -7933,6 +7936,22 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
   const [reportSent, setReportSent] = useState(false);
   const [guestGate, setGuestGate] = useState(false);
   const isGuest = state.authProvider == null;
+  // Modal→modal handoff. GameModal keeps its native <Modal> mounted for the 160ms
+  // exit animation, so opening the next one in the same handler leaves TWO native
+  // modals mounted and iOS kills touch AND scroll for the whole screen (the tab
+  // "freezes" — it still scrolls sideways but not vertically). Every transition
+  // below records what to open, and the closing modal's onExited performs it.
+  type PendingOpen = { kind: 'report'; messageId?: string } | { kind: 'block' } | { kind: 'reportSent' };
+  const [pendingOpen, setPendingOpen] = useState<PendingOpen | null>(null);
+  const runPendingOpen = useCallback(() => {
+    setPendingOpen((p) => {
+      if (!p) return null;
+      if (p.kind === 'report') setReportFor({ messageId: p.messageId });
+      else if (p.kind === 'block') setBlockConfirm(true);
+      else setReportSent(true);
+      return null;
+    });
+  }, []);
   const [kbOpen, setKbOpen] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [inputBarHeight, setInputBarHeight] = useState(86);
@@ -8300,25 +8319,25 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
       </Animated.View>
 
       {/* ---- Guideline 1.2 moderation sheets ---- */}
-      <GameModal visible={chatMenu} onClose={() => setChatMenu(false)} title={friend?.displayName ?? ''} icon="person">
+      <GameModal visible={chatMenu} onClose={() => setChatMenu(false)} onExited={runPendingOpen} title={friend?.displayName ?? ''} icon="person">
         <GameRow
           icon="flag-outline"
           iconColor={theme.danger}
           label={t('mod.report')}
           chevron
-          onPress={() => { setChatMenu(false); setReportFor({}); }}
+          onPress={() => { setPendingOpen({ kind: 'report' }); setChatMenu(false); }}
         />
         <GameRow
           icon="ban-outline"
           iconColor={theme.danger}
           label={t('mod.block')}
           chevron
-          onPress={() => { setChatMenu(false); setBlockConfirm(true); }}
+          onPress={() => { setPendingOpen({ kind: 'block' }); setChatMenu(false); }}
         />
       </GameModal>
 
       {/* Long-pressed bubble: report anyone's, delete your own. */}
-      <GameModal visible={!!msgAction} onClose={() => setMsgAction(null)} title={t('mod.messageTitle')} icon="chatbubble">
+      <GameModal visible={!!msgAction} onClose={() => setMsgAction(null)} onExited={runPendingOpen} title={t('mod.messageTitle')} icon="chatbubble">
         {msgAction?.mine ? (
           <GameRow
             icon="trash-outline"
@@ -8334,7 +8353,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
             iconColor={theme.danger}
             label={t('mod.report')}
             chevron
-            onPress={() => { const id = msgAction!.id; setMsgAction(null); setReportFor({ messageId: id }); }}
+            onPress={() => { setPendingOpen({ kind: 'report', messageId: msgAction!.id }); setMsgAction(null); }}
           />
         )}
       </GameModal>
@@ -8342,10 +8361,11 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
       <ReportReasonModal
         visible={!!reportFor}
         onClose={() => setReportFor(null)}
+        onExited={runPendingOpen}
         onPick={(reason) => {
           if (chatWith) actions.reportContent(chatWith, reason, reportFor?.messageId);
+          setPendingOpen({ kind: 'reportSent' });
           setReportFor(null);
-          setReportSent(true);
         }}
       />
 
