@@ -919,7 +919,11 @@ export function ScreenBg({ variant = 'menu' }: { variant?: BgVariant }) {
   );
 }
 
-function Screen({ children, scroll, bg, pad, contentCenter = true }: { children: ReactNode; scroll?: boolean; noPitch?: boolean; bg?: ReactNode; pad?: number; contentCenter?: boolean }) {
+function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = false }: { children: ReactNode; scroll?: boolean; noPitch?: boolean; bg?: ReactNode; pad?: number; contentCenter?: boolean; fillTablet?: boolean }) {
+  // On an iPad a top-packed screen leaves the lower third empty — the "boşluk"
+  // complaint. `fillTablet` spreads the sections down the taller window instead.
+  // Phones keep the original top-packed layout.
+  const isTablet = useIsTablet();
   // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
   return (
     <KeyboardAvoidingView
@@ -947,7 +951,7 @@ function Screen({ children, scroll, bg, pad, contentCenter = true }: { children:
       {scroll ? (
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ flexGrow: 1, justifyContent: contentCenter ? 'center' : 'flex-start' }}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: contentCenter ? 'center' : (fillTablet && isTablet ? 'space-between' : 'flex-start') }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets
@@ -3632,7 +3636,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const codeReady = joinCode.length === ROOM_CODE_LEN;
 
   return (
-    <Screen scroll pad={16} contentCenter={false}>
+    <Screen scroll pad={16} contentCenter={false} fillTablet>
       {/* ── 1. TOP BAR ── one row, exactly as the mockup: the profile pill flexes to
            absorb whatever the fixed-width gem pill and button trio leave behind.
            paddingTop: ödül habercisinin üst taşması scroll sınırında kırpılmasın */}
