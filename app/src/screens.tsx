@@ -4017,7 +4017,9 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 is one button that pages across to Friends and focuses its add input. */}
             <View style={{ width: cardW }}>
               <Pressable onPress={() => onGoToFriends?.()} style={({ pressed }) => ({ backgroundColor: theme.surface2, borderRadius: 20, transform: [{ translateY: pressed ? 2 : 0 }], ...shadowSoft })}>
-                <View pointerEvents="none" style={{ height: 128, borderRadius: 18, overflow: 'hidden', backgroundColor: theme.surface2, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.14)', padding: 11 }}>
+                {/* Same two defects as the other cards, same cure: no white-alpha rim
+                    (reads grey), and the inner radius matches the flush wrapper (20). */}
+                <View pointerEvents="none" style={{ height: 128, borderRadius: 20, overflow: 'hidden', backgroundColor: theme.surface2, padding: 11 }}>
                   <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
                   <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{t('home.findFriends')}</Text>
                   <View style={{
