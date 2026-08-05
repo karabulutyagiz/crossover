@@ -34,6 +34,30 @@
               "com.googleusercontent.apps.85689499254-iu4ap4sl6rqhpeonj00avg390pnhnlsn"
             ]
           }
+        ],
+        "CFBundleDevelopmentRegion": "tr",
+        "CFBundleLocalizations": [
+          "tr",
+          "en",
+          "ar",
+          "de",
+          "es",
+          "fa",
+          "fi",
+          "fr",
+          "id",
+          "it",
+          "ja",
+          "ko",
+          "ms",
+          "nl",
+          "no",
+          "pt",
+          "ru",
+          "th",
+          "vi",
+          "zh-Hans",
+          "zh-Hant"
         ]
       }
     },
