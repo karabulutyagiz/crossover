@@ -2938,7 +2938,7 @@ export const NEWS_READ_KEY = '@crossover_news_read';
 
 export function NewsModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   return (
-    <PopupCard visible={visible} title="Haberler" icon="megaphone" onClose={onClose}>
+    <PopupCard visible={visible} title={t('home.news')} icon="megaphone" onClose={onClose}>
       {/* PopupCard's scrim is a SIBLING (not a parent) of the card, so — unlike
           GameModal — it doesn't swallow this ScrollView's vertical drag. */}
       <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, gap: 12 }}>
@@ -3454,7 +3454,7 @@ function GemPill({ count, onPress, countAnim, fillAnim, innerRef }: {
 
 // The mockup's bright art cards: an art field up top, a dark caption band across
 // the bottom carrying the title. `art` is drawn into the field and may overhang it.
-function ArtCard({ title, tint, art, height, onPress, grade, strip, arrow = false }: {
+function ArtCard({ title, tint, art, height, onPress, grade, strip, arrow = false, pillBar }: {
   title: string; tint: string; art?: ReactNode; height: number; onPress: () => void;
   // Mockup faces are a DIAGONAL ramp (light at the top-left, deep at the
   // bottom-right), not a flat fill — measured off COF ANA EKRAN.jpeg. Opt-in per
@@ -3469,6 +3469,10 @@ function ArtCard({ title, tint, art, height, onPress, grade, strip, arrow = fals
   strip?: string;
   // Mockup puts a round → button at the band's right end.
   arrow?: boolean;
+  // Mockup's INSET pill footer (Sosyal Paket "AKTİF", Seviye Yolu): a rounded
+  // bar floated inside the card with margins, label left + outlined round →
+  // inside it. Replaces the full-width strip when set.
+  pillBar?: { fill: string };
 }) {
   const { ty, scale, onIn, onOut } = usePressLip(2);
   const gradId = useRef(`artGrad${++_btnSeq}`).current;
@@ -3518,6 +3522,19 @@ function ArtCard({ title, tint, art, height, onPress, grade, strip, arrow = fals
             </Svg>
           ) : null}
           <View style={StyleSheet.absoluteFill}>{art}</View>
+          {pillBar ? (
+            <View style={{
+              position: 'absolute', left: 8, right: 8, bottom: 8, height: 34,
+              borderRadius: 17, backgroundColor: pillBar.fill,
+              paddingLeft: 10, paddingRight: 5,
+              flexDirection: 'row', alignItems: 'center', gap: 4,
+            }}>
+              <Text style={{ flex: 1, color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{title}</Text>
+              <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.34)', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="arrow-forward" size={11} color="rgba(255,255,255,0.9)" />
+              </View>
+            </View>
+          ) : (
           <View style={{
             position: 'absolute', left: 0, right: 0, bottom: 0,
             backgroundColor: strip ?? withAlpha(darken(tint, 0.66), 0.94),
@@ -3535,6 +3552,7 @@ function ArtCard({ title, tint, art, height, onPress, grade, strip, arrow = fals
               </View>
             ) : null}
           </View>
+          )}
         </Animated.View>
       </View>
     </Pressable>
@@ -3984,13 +4002,13 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 title={hasPack ? t('store.badgeActive') : t('store.socialPackTitle')}
                 tint={theme.purple}
                 grade={{ from: '#6236C1', mid: '#4A2A9E', to: '#251A63' }}
-                strip="#231B57"
-                arrow
+                pillBar={{ fill: '#1E1856' }}
                 height={128}
                 onPress={() => onGoToStore?.('socialPack')}
                 art={
                   <View style={StyleSheet.absoluteFill}>
-                    <Image source={EMOTE_ART.squad} resizeMode="contain" style={{ position: 'absolute', right: -2, top: 26, width: '74%', height: '58%' }} />
+                    {/* Mockup placement: players sit right-of-centre, feet on the pill. */}
+                    <Image source={EMOTE_ART.squad} resizeMode="contain" style={{ position: 'absolute', right: 0, bottom: 44, width: '68%', height: '58%' }} />
                     <Text style={{ position: 'absolute', left: 11, top: 10, color: theme.text, fontSize: 11, fontFamily: 'Poppins-SemiBold', width: '58%', ...engrave('sm') }} numberOfLines={3}>
                       {t('home.socialPackShort')}
                     </Text>
@@ -4006,13 +4024,13 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 title={t('level.roadTitle')}
                 tint={theme.blue}
                 grade={{ from: '#1466BE', mid: '#064B92', to: '#01234A' }}
-                strip="#011F42"
-                arrow
+                pillBar={{ fill: '#051E3C' }}
                 height={128}
                 onPress={() => onOpenLevelRoad?.()}
                 art={
                   <View style={StyleSheet.absoluteFill}>
-                    <Image source={XP_STAR} resizeMode="contain" style={{ position: 'absolute', right: -2, top: 24, width: '60%', height: '58%' }} />
+                    {/* Mockup placement: the medal floats right-of-centre, above the pill. */}
+                    <Image source={XP_STAR} resizeMode="contain" style={{ position: 'absolute', right: 0, top: '14%', width: '54%', height: '58%' }} />
                     <Text style={{ position: 'absolute', left: 11, top: 10, color: theme.text, fontSize: 11, fontFamily: 'Poppins-SemiBold', width: '58%', ...engrave('sm') }} numberOfLines={3}>
                       {t('home.levelRoadHint')}
                     </Text>
@@ -4020,33 +4038,26 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 }
               />
             </View>
-            {/* Find a friend — looks exactly like the old inline-search card (title +
-                search bar + hint), but the "search bar" is paint only: the WHOLE card
-                is one button that pages across to Friends and focuses its add input. */}
+            {/* Yenilikler — geçmiş duyurular. Kart, üst bardaki zil ile aynı
+                NewsModal'ı açar (tüm duyuru listesi); okunmamış varsa nokta. */}
             <View style={{ width: cardW }}>
-              <Pressable onPress={() => onGoToFriends?.()} style={({ pressed }) => ({ backgroundColor: theme.surface2, borderRadius: 20, transform: [{ translateY: pressed ? 2 : 0 }], ...shadowSoft })}>
-                {/* Same two defects as the other cards, same cure: no white-alpha rim
-                    (reads grey), and the inner radius matches the flush wrapper (20). */}
-                <View pointerEvents="none" style={{ height: 128, borderRadius: 20, overflow: 'hidden', backgroundColor: theme.surface2, padding: 11 }}>
-                  <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
-                  <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{t('home.findFriends')}</Text>
-                  <View style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8,
-                    height: 32, borderRadius: 16, backgroundColor: theme.well, overflow: 'hidden',
-                    paddingHorizontal: 9,
-                  }}>
-                    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
-                    <Ionicons name="search" size={13} color={theme.muted} />
-                    <Text style={{ flex: 1, color: withAlpha(theme.muted, 0.5), fontFamily: 'Poppins-SemiBold', fontSize: 11.5 }} numberOfLines={1}>
-                      {t('friends.usernamePlaceholder')}
-                    </Text>
-                    <Ionicons name="arrow-forward-circle" size={19} color={theme.primary} />
-                  </View>
-                  <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', marginTop: 10 }} numberOfLines={3}>
-                    {t('home.findFriendsHint')}
-                  </Text>
-                </View>
-              </Pressable>
+              <GhostPanel
+                title={t('home.news')}
+                icon="megaphone"
+                ghost="megaphone"
+                height={128}
+                onPress={() => { setNewsOpen(true); setNewsUnread(false); AsyncStorage.setItem(NEWS_READ_KEY, LATEST_NEWS_ID).catch(() => {}); }}
+              >
+                {newsUnread ? (
+                  <View pointerEvents="none" style={{ position: 'absolute', top: 10, right: 10, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.danger }} />
+                ) : null}
+                <Text style={{ color: theme.text, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', marginTop: 9 }} numberOfLines={2}>
+                  {NEWS[0]?.title ?? ''}
+                </Text>
+                <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', marginTop: 6 }} numberOfLines={2}>
+                  {t('home.newsHint')}
+                </Text>
+              </GhostPanel>
             </View>
           </ScrollView>
         ) : null}

@@ -83,6 +83,8 @@ const tr = {
   'home.codePlaceholder': 'ODA KODU',
   'home.modesTitle': 'Mücadele Modu',
   'home.roomCodeLabel': 'Oda kodun var mı?',
+  'home.news': 'Yenilikler',
+  'home.newsHint': 'Geçmiş duyuruları gör',
   'home.findFriends': 'Arkadaş Bul',
   'home.findFriendsHint': 'Yeni arkadaşlar ekle.',
 
@@ -729,6 +731,8 @@ const en: typeof tr = {
   'home.codePlaceholder': 'ROOM CODE',
   'home.modesTitle': 'Challenge Mode',
   'home.roomCodeLabel': 'Got a room code?',
+  'home.news': "What's New",
+  'home.newsHint': 'See past announcements',
   'home.findFriends': 'Find Friends',
   'home.findFriendsHint': 'Add new friends.',
 
