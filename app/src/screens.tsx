@@ -1623,9 +1623,12 @@ function TutorialHint({ visible, text }: { visible: boolean; text: string }) {
     <Animated.View
       pointerEvents="none"
       style={{
-        position: 'absolute', top: 96, left: 16, right: 16, alignItems: 'center',
+        // Anchored to the BOTTOM: the compact pick/guess tops left no clear band
+        // up there — at top:96 the bubble sat on the player bar + title row.
+        // The lower third is empty in both tutorial steps, so it floats there.
+        position: 'absolute', bottom: 96, left: 16, right: 16, alignItems: 'center',
         opacity: a,
-        transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [-12, 0] }) }],
+        transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
       }}
     >
       <View style={{ backgroundColor: theme.card, borderRadius: 12, borderWidth: 1, borderColor: theme.primary, paddingVertical: 10, paddingHorizontal: 16, maxWidth: '100%' }}>
@@ -1784,7 +1787,9 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
     Animated.spring(bubble, { toValue: 1, useNativeDriver: true, friction: 7, tension: 80 }).start();
   }, [step, wrong, gateOpen]);
 
-  const future = Date.now() + 9_999_999;
+  // Sane practice countdown — 9_999_999 rendered as a nonsense "9986" in the
+  // pick/guess timer pill. Nothing depends on it expiring (actions are no-ops).
+  const future = Date.now() + 95_000;
   const room = {
     code: '', status: (step === 0 ? 'pick' : step === 1 ? 'guess' : 'result') as RoomView['status'],
     youId: 'you',
@@ -4598,8 +4603,8 @@ function MatchTimer({ endsAt, urgentAt = 5, fallbackSecs, style }: {
   );
 }
 
-function PickTimer({ pickEndsAt }: { pickEndsAt: number | null }) {
-  return <MatchTimer endsAt={pickEndsAt} urgentAt={3} fallbackSecs={10} style={{ marginTop: 6 }} />;
+function PickTimer({ pickEndsAt, style }: { pickEndsAt: number | null; style?: any }) {
+  return <MatchTimer endsAt={pickEndsAt} urgentAt={3} fallbackSecs={10} style={style ?? { marginTop: 6 }} />;
 }
 
 // What the local player chose this round — kept as UI state so the waiting
@@ -4640,16 +4645,19 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
     if (!state.picked) setLastPick(null);
   }, [state.picked]);
 
-  // Top chrome shared by every pick state: exit button + opponent HUD, then title + timer.
+  // Top chrome shared by every pick state: exit button + opponent HUD, then a
+  // SINGLE compact row (title left, timer right). The old stacked h1 + timer
+  // pill pushed the search field ~90pt down — "pick'te üstte çok boşluk"; the
+  // guess screen's dense top (bar → content immediately) is the reference.
   const header = (title: string) => (
     <>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0, gap: 10, marginBottom: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0, gap: 10, marginBottom: 12 }}>
         <MatchExitButton onPress={handleLeave} />
         <PlayerBar state={state} onEmotePress={tutorial ? undefined : () => setEmoteOpen(true)} />
       </View>
-      <View style={{ alignItems: 'center', marginBottom: 8 }}>
-        <Text style={styles.h1}>{title}</Text>
-        <PickTimer pickEndsAt={state.pickEndsAt} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <Text style={[styles.h1, { marginVertical: 0, textAlign: 'left' }]}>{title}</Text>
+        <PickTimer pickEndsAt={state.pickEndsAt} style={{ marginTop: 0 }} />
       </View>
     </>
   );
@@ -4663,7 +4671,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   if (state.picked) {
     return (
       <Screen>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0, gap: 10, marginBottom: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0, gap: 10, marginBottom: 12 }}>
           <MatchExitButton onPress={handleLeave} />
           <PlayerBar state={state} onEmotePress={tutorial ? undefined : () => setEmoteOpen(true)} />
         </View>
@@ -4745,7 +4753,10 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   // ---- Letter picker ----
   if (role === 'letter') {
     return (
-      <Screen>
+      // contentCenter={false}: the letter grid is shorter than the viewport, so the
+      // Screen default (justifyContent center) floated the whole block down and
+      // left a big gap above the header — every pick state is top-anchored.
+      <Screen contentCenter={false}>
         {header(t('pick.titleLetter'))}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 12 }}>
           {PICK_LETTERS.map((l) => (

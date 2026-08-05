@@ -22,6 +22,8 @@ import { t, setLanguage } from './src/i18n';
 // see appstore/upload-screenshots.py for the capture pipeline.
 const DEV_SHOT_MODE = false;
 const DEV_SHOT_LANG = 'tr';
+// Dev-only: force the tutorial (antrenman) flow to inspect its layout. NEVER ships true.
+const FORCE_TUTORIAL_DEV = false;
 import { setGemTarget } from './src/gemTarget';
 import { addNotificationTapListener, getPushPermissionGranted, setBadge } from './src/notifications';
 import {
@@ -819,7 +821,7 @@ function AppRoot() {
   }
 
   // First-time interactive tutorial (after sign-in + username, before the game).
-  if (tutorialSeen === false) {
+  if (FORCE_TUTORIAL_DEV || tutorialSeen === false) {
     return (
       <TutorialScreen
         onDone={() => {
