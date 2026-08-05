@@ -4643,7 +4643,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   // Top chrome shared by every pick state: exit button + opponent HUD, then title + timer.
   const header = (title: string) => (
     <>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4, marginBottom: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0, gap: 10, marginBottom: 8 }}>
         <MatchExitButton onPress={handleLeave} />
         <PlayerBar state={state} onEmotePress={tutorial ? undefined : () => setEmoteOpen(true)} />
       </View>
@@ -4663,7 +4663,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   if (state.picked) {
     return (
       <Screen>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4, marginBottom: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0, gap: 10, marginBottom: 8 }}>
           <MatchExitButton onPress={handleLeave} />
           <PlayerBar state={state} onEmotePress={tutorial ? undefined : () => setEmoteOpen(true)} />
         </View>
@@ -11794,7 +11794,10 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: 'transparent', padding: 22, justifyContent: 'center' },
+  // Top padding is deliberately tighter than the sides: the app root already
+  // pays the safe-area inset, and 22pt more read as a void above every header
+  // ("üstte çok boşluk"). Sides/bottom keep the original breathing room.
+  screen: { flex: 1, backgroundColor: 'transparent', paddingHorizontal: 22, paddingTop: 10, paddingBottom: 22, justifyContent: 'center' },
   center: { alignItems: 'center', gap: 6 },
   h1: { color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginVertical: 6, letterSpacing: 0.5, ...engrave('lg') },
   label: { color: theme.muted, fontSize: 10, letterSpacing: 2, textAlign: 'center', fontFamily: 'Poppins-SemiBold' },
