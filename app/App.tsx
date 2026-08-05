@@ -413,6 +413,11 @@ function AppRoot() {
   const [expiredSocialPack, setExpiredSocialPack] = useState(false); // Social Pack expired popup
   const [overlay, setOverlay] = useState<'leaderboard' | 'matchHistory' | null>(null); // centered popups
   const [gemCelebration, setGemCelebration] = useState<GemCelebration | null>(null);
+  // Elmas-harcamalı her satın almanın "Tamam"lı onayı (sunucu *_purchased mesajı).
+  const [purchaseAck, setPurchaseAck] = useState<NonNullable<GameState['lastPurchase']> | null>(null);
+  const lastPurchaseSeq = state.lastPurchase?.seq ?? 0;
+  useEffect(() => { if (state.lastPurchase) setPurchaseAck(state.lastPurchase); // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastPurchaseSeq]);
   const diamondsShownRef = useRef(0); // last value pushed to the pill (fallback when profile is briefly absent)
   const gainAnimatingRef = useRef(false); // sayaç dönerken tutma efekti araya girmesin
   const csAnim = useRef(new Animated.Value(0)).current; // coming-soon pop/float
@@ -1133,6 +1138,18 @@ function AppRoot() {
           onDone={handleGemCelebrationDone}
         />
       ) : null}
+
+      {/* Her elmas-harcamalı satın almanın "Tamam"lı onayı — sunucu *_purchased
+          mesajı düşürünce çıkar. Elmas paketleri hariç (DiamondCelebration). */}
+        <GameModal visible={purchaseAck != null} onClose={() => setPurchaseAck(null)} title={t('purchase.doneTitle')} icon="checkmark-circle">
+          <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+            {purchaseAck?.kind === 'power' ? t('purchase.powerBody')
+              : purchaseAck?.kind === 'emote' ? t('purchase.emoteBody')
+              : purchaseAck?.kind === 'avatar' ? t('purchase.avatarBody')
+              : t('purchase.premiumRoadBody')}
+          </Text>
+          <Btn big label={t('settings.confirm')} onPress={() => setPurchaseAck(null)} />
+        </GameModal>
 
       {/* Expired Social Pack popup */}
       <GameModal

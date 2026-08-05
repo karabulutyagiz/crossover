@@ -122,6 +122,10 @@ export interface GameState {
   totalUnread: number;
   typingFrom: Record<string, boolean>;  // userId → isTyping
   blockedUsers: BlockedUserView[];      // guideline 1.2 — shown in Settings, unblockable there
+  // Son elmas-harcamalı satın alma — App bunun seq'ini izleyip "Satın Alma
+  // Başarılı" onayını gösterir (kullanıcı isteği: her satın alma kendini duyursun).
+  // Elmas PAKETLERİ hariç: onların kutlaması DiamondCelebration.
+  lastPurchase: { kind: 'power' | 'premiumRoad' | 'emote' | 'avatar'; id?: string; seq: number } | null;
   // Transient top banner notification (friend request / new message). Auto-dismisses.
   banner: { id: number; kind: 'friend_request' | 'message'; name: string; body?: string; userId?: string } | null;
 }
@@ -201,6 +205,7 @@ export const initialState: GameState = {
   totalUnread: 0,
   typingFrom: {},
   blockedUsers: [],
+  lastPurchase: null,
   banner: null,
 };
 
@@ -439,10 +444,10 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, profile: action.profile };
     case 'power_purchased':
       // Mağazadan güç alındı — elmas düştü, envanter arttı
-      return { ...state, profile: action.profile };
+      return { ...state, profile: action.profile, lastPurchase: { kind: 'power', id: (action as any).powerId, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
     case 'premium_road_purchased':
-      // 1000 elmas düştü, premium şerit açıldı — taze profil geçerli
-      return { ...state, profile: action.profile };
+      // Elmasla ya da ₺ IAP ile — iki yol da bu mesajı düşürür, tek onay yeter
+      return { ...state, profile: action.profile, lastPurchase: { kind: 'premiumRoad', id: undefined, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
     case 'my_stats':
       return { ...state, myStats: { winStreak: action.winStreak, bestStreak: action.bestStreak, modes: action.modes } };
     case 'name_changed':
@@ -500,9 +505,9 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, emoteSeq: n, emotes: { ...state.emotes, [action.fromId]: { emoteId: action.emoteId, n } } };
     }
     case 'emote_purchased':
-      return { ...state, profile: action.profile };
+      return { ...state, profile: action.profile, lastPurchase: { kind: 'emote', id: (action as any).emoteId, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
     case 'avatar_purchased':
-      return { ...state, profile: action.profile };
+      return { ...state, profile: action.profile, lastPurchase: { kind: 'avatar', id: (action as any).avatarId, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
     case 'diamonds_granted': {
       const g = (action as { granted?: number }).granted ?? 0;
       // Diamonds → toast; Social Pack / silent re-validate (granted 0) → no toast, the

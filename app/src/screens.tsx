@@ -5745,8 +5745,13 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
       // sheet deliberately leaves it open; that is handled in onPurchaseError.)
       setShowNotEnough(false);
       setShortfall(null);
-      // Trigger celebration animation for diamond purchases
-      if (!isSub) {
+      if (isSub) {
+        // Social Pack: explicit "activated" confirmation, dismissed with Tamam.
+        // (CO Pass gets its popup from the GLOBAL premium_road_purchased ack —
+        // the server sends that for the IAP path too, so no local dialog here
+        // or it would double up.)
+        openStoreDialog({ title: t('purchase.doneTitle'), body: t('purchase.socialPackBody'), icon: 'checkmark-circle' });
+      } else if (purchase.productId !== COPASS_PRODUCT_ID) {
         const pack = DIAMOND_PACKS.find((p) => p.productId === purchase.productId);
         if (pack) onDiamondCelebration?.({ amount: pack.amount, img: pack.img });
       }
