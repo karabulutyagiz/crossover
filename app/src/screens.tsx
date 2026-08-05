@@ -29,7 +29,6 @@ import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
 import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget } from './gemTarget';
 import { Avatar } from './Avatar';
-import { CONTENT_MAX_W } from './layout';
 import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -944,29 +943,17 @@ function Screen({ children, scroll, bg, pad, contentCenter = true }: { children:
           intercepts scroll); tapping empty background area still dismisses. Scroll-area
           taps are handled by each ScrollView's keyboardShouldPersistTaps="handled". */}
       <Pressable style={StyleSheet.absoluteFill} onPress={() => Keyboard.dismiss()} accessible={false} />
-      {/* iPad: hold the content to a phone-width column and centre it. The
-          background (rendered above, and the app-level ScreenBg) still fills the
-          whole window, so the sides read as art rather than as dead space.
-          `width: '100%'` means phones are completely unaffected. */}
       {scroll ? (
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{
-            flexGrow: 1,
-            justifyContent: contentCenter ? 'center' : 'flex-start',
-            width: '100%', maxWidth: CONTENT_MAX_W, alignSelf: 'center',
-          }}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: contentCenter ? 'center' : 'flex-start' }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets
         >
           {children}
         </ScrollView>
-      ) : (
-        <View style={{ flex: 1, width: '100%', maxWidth: CONTENT_MAX_W, alignSelf: 'center' }}>
-          {children}
-        </View>
-      )}
+      ) : children}
     </KeyboardAvoidingView>
   );
 }
@@ -8198,9 +8185,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
   }, [text, chatWith, actions, focusInputSoon]);
 
   return (
-    // iPad: the conversation is held to the same phone-width column as every
-    // other screen, centred, so the bubbles don't stretch across the window.
-    <View style={{ flex: 1, backgroundColor: theme.bg, width: '100%', maxWidth: CONTENT_MAX_W, alignSelf: 'center' }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
       {/* Header — ScreenHeader language: beveled 40px back button, chrome bar
           with a 2px cardLip edge, engraved name; safe-area top (no magic 54). */}
       <View style={{

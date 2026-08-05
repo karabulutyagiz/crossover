@@ -59,7 +59,6 @@ import {
   withAlpha,
 } from './src/screens';
 import { theme, engrave, shadowRow, shadowModal, shadowTabBar } from './src/theme';
-import { CONTENT_MAX_W } from './src/layout';
 import { GemIcon } from './src/GemIcon';
 import { installGlobalErrorHandlers, track } from './src/telemetry';
 import type { ImageSourcePropType } from 'react-native';
@@ -998,10 +997,6 @@ function AppRoot() {
       <View style={[s.tabBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         {/* 1px top gloss just under the cardLip edge — the bar is a raised surface. */}
         <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: theme.panelTopGloss }} />
-        {/* iPad: the bar surface stays full-bleed (it is chrome), but the tabs
-            themselves collapse into the same centred content column as the rest
-            of the app — otherwise five tabs spread across ~1024pt. */}
-        <View style={{ flexDirection: 'row', flex: 1, width: '100%', maxWidth: CONTENT_MAX_W, alignSelf: 'center' }}>
         {TABS.map((tab, idx) => {
           const onPress = () => {
             if (idx === 2 && activeTab === 2) {
@@ -1043,7 +1038,6 @@ function AppRoot() {
             />
           );
         })}
-        </View>
         {/* Tournaments — locked, coming soon */}
         <TabButton locked icon="trophy-outline" label={t('tab.tournaments')} onPress={showComingSoon} />
       </View>
