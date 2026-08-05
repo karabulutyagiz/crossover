@@ -1682,6 +1682,31 @@ function CelebrationSparks() {
 // Cycles the REAL match/social screens with the tutorial's mock data (real club
 // crests) so clean marketing screenshots can be captured in the simulator without
 // tap automation. Enabled by the DEV_SHOT flag in App.tsx; never ships enabled.
+// Screenshot data is FICTIONAL on purpose: App Review rejected v1.0 under 4.1
+// (copycats) citing "Galatasaray–Real Madrid / Wesley Sneijder" in metadata.
+// Store screenshots must never show real clubs/players again — the in-app
+// tutorial keeps real crests (in-app content was not cited), but DevShot feeds
+// the marketing captures, so it uses the approved fictional set.
+const SHOT_CLUBS: ClubRef[] = [
+  { id: 9001, name: 'Zirve SK', logoUrl: null },
+  { id: 9002, name: 'Liman SK', logoUrl: null },
+  { id: 9003, name: 'Vadi SK', logoUrl: null },
+  { id: 9004, name: 'Nehir SK', logoUrl: null },
+  { id: 9005, name: 'Kuzey SK', logoUrl: null },
+  { id: 9006, name: 'Orman SK', logoUrl: null },
+];
+const SHOT_TEAM_A: ClubRef = SHOT_CLUBS[0]!;
+const SHOT_TEAM_B: ClubRef = SHOT_CLUBS[1]!;
+const SHOT_CAREER = [
+  { clubId: 9003, clubName: 'Vadi SK', logoUrl: null, startYear: 2014, endYear: 2017 },
+  { clubId: 9002, clubName: 'Liman SK', logoUrl: null, startYear: 2017, endYear: 2020 },
+  { clubId: 9001, clubName: 'Zirve SK', logoUrl: null, startYear: 2020, endYear: 2024 },
+  { clubId: 9005, clubName: 'Kuzey SK', logoUrl: null, startYear: 2024, endYear: null },
+];
+const SHOT_SPELL_A = [SHOT_CAREER[2]!]; // Zirve SK
+const SHOT_SPELL_B = [SHOT_CAREER[1]!]; // Liman SK
+const SHOT_PLAYER = 'Onur Demir';
+
 const SHOT_PROFILE = {
   ...TUT_PROFILE, displayName: 'Yağız', trophies: 340, diamonds: 1250, wins: 27, losses: 9,
 };
@@ -1699,7 +1724,7 @@ export function DevShotScreen() {
   }, []);
   const kind = (['pick', 'guess', 'result', 'friends', 'arenas'] as const)[ix]!;
   const insets = useSafeAreaInsets();
-  const future = Date.now() + 3600_000;
+  const future = Date.now() + 23_000; // sayaç ekranda ~20sn gibi doğal görünsün (3600 değil)
   const room = {
     code: '', status: (kind === 'pick' ? 'pick' : kind === 'guess' ? 'guess' : 'result') as RoomView['status'],
     youId: 'you',
@@ -1715,30 +1740,31 @@ export function DevShotScreen() {
     room,
     phase: kind === 'pick' ? 'pick' : kind === 'guess' ? 'guess' : 'result',
     pickRole: 'team', picked: false, pickEndsAt: future, guessEndsAt: future,
-    clubResults: TUT_CLUBS,
-    teams: { teamA: TUT_A, teamB: TUT_B },
+    clubResults: SHOT_CLUBS,
+    teams: { teamA: SHOT_TEAM_A, teamB: SHOT_TEAM_B },
     revealMode: 'team-team', matchOver: false,
     friends: SHOT_FRIENDS as GameState['friends'],
     result: kind === 'result'
       ? {
           correct: true, reason: 'both', autocorrected: false,
-          answeredById: 'you', answeredByName: 'Yağız', guess: 'Wesley Sneijder',
-          teamA: TUT_A, teamB: TUT_B,
-          matchedPlayerName: 'Wesley Sneijder', matchedPlayerImageUrl: null,
-          spellsA: TUT_SPELL_A, spellsB: TUT_SPELL_B, allClubs: TUT_CAREER,
-          commonPlayers: [{ name: 'Wesley Sneijder', imageUrl: null }],
+          answeredById: 'you', answeredByName: 'Yağız', guess: SHOT_PLAYER,
+          teamA: SHOT_TEAM_A, teamB: SHOT_TEAM_B,
+          matchedPlayerName: SHOT_PLAYER, matchedPlayerImageUrl: null,
+          spellsA: SHOT_SPELL_A, spellsB: SHOT_SPELL_B, allClubs: SHOT_CAREER,
+          commonPlayers: [{ name: SHOT_PLAYER, imageUrl: null }],
         }
       : null,
   };
   const acts = new Proxy({}, { get: () => () => {} }) as unknown as Actions;
   const matchLike = kind === 'pick' || kind === 'guess' || kind === 'result';
   return (
-    // +84: content sits BELOW Expo Go's floating Tools bubble, so the bubble
-    // lands on plain navy and can be painted out of the capture cleanly.
+    // Capture pipeline: +84 reserves a band for Expo Go's Tools bubble, and the
+    // background is SOLID navy (no ScreenBg crosshatch) on purpose — post-
+    // processing erases the bubble and cuts the band out seamlessly, which a
+    // patterned background would make impossible without visible seams.
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top + 84 }}>
-      <ScreenBg variant={matchLike ? 'match' : 'menu'} />
       {kind === 'pick' ? <PickTeamScreen state={st} actions={acts} tutorial />
-        : kind === 'guess' ? <GuessScreen state={st} actions={acts} tutorial />
+        : kind === 'guess' ? <GuessScreen state={st} actions={acts} tutorial prefill={SHOT_PLAYER} />
         : kind === 'result' ? <ResultScreen state={st} actions={acts} tutorial />
         : kind === 'friends' ? <FriendsScreen state={st} actions={acts} />
         : <ArenasScreen state={st} actions={acts} />}
@@ -4885,11 +4911,13 @@ function GuessStatusPanel({ icon, iconColor, stripe, text }: { icon: IoniconName
   );
 }
 
-export function GuessScreen({ state, actions, tutorial }: Props) {
+export function GuessScreen({ state, actions, tutorial, prefill }: Props & { prefill?: string }) {
   // Tutorial: the answer arrives PRE-FILLED and locked — the player only taps
-  // Send (typing "Wesley Sneijder" on a first launch was busywork + kept the
-  // keyboard out of the guided flow).
-  const [text, setText] = useState(tutorial ? 'Wesley Sneijder' : '');
+  // Send. `prefill` overrides the tutorial's real name: DevShot marketing
+  // captures must show the FICTIONAL player (4.1 — real names in store
+  // screenshots were cited in the v1.0 rejection), while the in-app tutorial
+  // keeps Sneijder.
+  const [text, setText] = useState(prefill ?? (tutorial ? 'Wesley Sneijder' : ''));
   const teams = state.teams;
   const room = state.room!;
   const youAnswered = state.locked?.byId === room.youId;

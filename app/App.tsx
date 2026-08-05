@@ -18,6 +18,10 @@ import { useFonts } from 'expo-font';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCrossover, type GameState } from './src/useCrossover';
 import { t, setLanguage } from './src/i18n';
+// Marketing-capture mode: DevShotScreen + forced language. NEVER ships true —
+// see appstore/upload-screenshots.py for the capture pipeline.
+const DEV_SHOT_MODE = false;
+const DEV_SHOT_LANG = 'tr';
 import { setGemTarget } from './src/gemTarget';
 import { addNotificationTapListener, getPushPermissionGranted, setBadge } from './src/notifications';
 import {
@@ -484,7 +488,7 @@ function AppRoot() {
     // Read saved language
     AsyncStorage.getItem('@crossover_lang').then((v) => {
       if (!v) return;
-      setLanguage(v);
+      if (!DEV_SHOT_MODE) setLanguage(v); // cekim kipinde kayitli dil ezmesin
       setLangKey((k) => k + 1);
     }).catch(() => {});
     AsyncStorage.getItem('@crossover_tutorial_seen')
@@ -776,7 +780,8 @@ function AppRoot() {
 
   // APP-STORE SCREENSHOT HARNESS — flip to true ONLY while capturing marketing
   // shots in the simulator (cycles real screens with mock data); never ship true.
-  const DEV_SHOT = false;
+  const DEV_SHOT = DEV_SHOT_MODE;
+  if (DEV_SHOT) setLanguage(DEV_SHOT_LANG);
   if (DEV_SHOT) return <View style={{ flex: 1 }}><StatusBar style="light" /><DevShotScreen /></View>;
 
   // Splash screen: cinematic brand opening; dismisses itself via onDone.
