@@ -3437,37 +3437,61 @@ function GemPill({ count, onPress, countAnim, fillAnim, innerRef }: {
 
 // The mockup's bright art cards: an art field up top, a dark caption band across
 // the bottom carrying the title. `art` is drawn into the field and may overhang it.
-function ArtCard({ title, tint, art, height, onPress, graded = false }: {
+function ArtCard({ title, tint, art, height, onPress, grade, strip, arrow = false }: {
   title: string; tint: string; art?: ReactNode; height: number; onPress: () => void;
-  // `graded`: the mockup's tone ladder — lighter at the top, deeper at the
-  // bottom — instead of one flat fill. Opt-in per card so the pitch card
-  // (Mahalle Sahası) keeps its photographic face untouched.
-  graded?: boolean;
+  // Mockup faces are a DIAGONAL ramp (light at the top-left, deep at the
+  // bottom-right), not a flat fill — measured off COF ANA EKRAN.jpeg. Opt-in per
+  // card so the pitch card (Mahalle Sahası) keeps its photographic face.
+  grade?: { from: string; to: string };
+  // The label band is the card's own deep tone in the mockup, not near-black.
+  strip?: string;
+  // Mockup puts a round → button at the band's right end.
+  arrow?: boolean;
 }) {
   const { ty, scale, onIn, onOut } = usePressLip(2);
   const gradId = useRef(`artGrad${++_btnSeq}`).current;
+  // The round → only fits once the card is wide enough. On a phone these tiles
+  // are ~126pt and the arrow pushed the label into an ellipsis ("Sosyal…"), so
+  // it appears from tablet-ish widths up — where the mockup's proportions hold.
+  const [cardW, setCardW] = useState(0);
+  const showArrow = arrow && cardW >= 150;
   return (
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1 }}>
       <View style={{ backgroundColor: darken(tint, 0.55), borderRadius: 20, paddingBottom: 3, shadowColor: '#000', shadowOpacity: 0.34, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
-        <Animated.View style={{
-          transform: [{ translateY: ty }, { scale }], height, borderRadius: 18, overflow: 'hidden',
-          backgroundColor: tint, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.26)',
-        }}>
-          {graded ? (
+        <Animated.View
+          onLayout={(e) => setCardW(e.nativeEvent.layout.width)}
+          style={{
+            transform: [{ translateY: ty }, { scale }], height, borderRadius: 18, overflow: 'hidden',
+            backgroundColor: tint, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.26)',
+          }}>
+          {grade ? (
             <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
               <Defs>
-                <SvgGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0" stopColor={lighten(tint, 0.22)} />
-                  <Stop offset="0.55" stopColor={tint} />
-                  <Stop offset="1" stopColor={darken(tint, 0.3)} />
+                <SvgGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
+                  <Stop offset="0" stopColor={grade.from} />
+                  <Stop offset="1" stopColor={grade.to} />
                 </SvgGradient>
               </Defs>
               <Rect width="100%" height="100%" fill={`url(#${gradId})`} />
             </Svg>
           ) : null}
           <View style={StyleSheet.absoluteFill}>{art}</View>
-          <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: withAlpha(darken(tint, 0.66), 0.94), paddingHorizontal: 11, paddingVertical: 7 }}>
-            <Text style={{ color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{title}</Text>
+          <View style={{
+            position: 'absolute', left: 0, right: 0, bottom: 0,
+            backgroundColor: strip ?? withAlpha(darken(tint, 0.66), 0.94),
+            paddingHorizontal: 11, paddingVertical: 7,
+            flexDirection: 'row', alignItems: 'center', gap: 8,
+          }}>
+            <Text style={{ flex: 1, color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{title}</Text>
+            {showArrow ? (
+              <View style={{
+                width: 24, height: 24, borderRadius: 12,
+                borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.34)',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Ionicons name="arrow-forward" size={13} color="rgba(255,255,255,0.9)" />
+              </View>
+            ) : null}
           </View>
         </Animated.View>
       </View>
@@ -3770,18 +3794,26 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         <ArtCard
           title={t('home.modesTitle')}
           tint={theme.amber}
-          graded
+          grade={{ from: '#C98A34', to: '#7A4410' }}
+          strip="#3A2109"
+          arrow
           height={142}
           onPress={() => setModesOpen(true)}
           art={
             <View style={StyleSheet.absoluteFill}>
               {/* a faint sun glow so the amber face isn't flat, then the ball-duel
                   scene — two brand balls clashing under the gold VS coin */}
-              <View pointerEvents="none" style={{ position: 'absolute', top: -30, left: -20, right: -20, height: 120 }}>
+              {/* The glow used to live in a 120pt-tall box whose bottom edge cut the
+                  radial gradient mid-fade, leaving a hard horizontal seam across
+                  the card above the balls ("top tam oturmamış gibi"). Filling the
+                  whole card and letting the gradient reach zero well inside it
+                  removes the edge entirely. */}
+              <View pointerEvents="none" style={StyleSheet.absoluteFill}>
                 <Svg width="100%" height="100%">
                   <Defs>
-                    <RadialGradient id="amberGlow" cx="50%" cy="40%" r="60%">
+                    <RadialGradient id="amberGlow" cx="50%" cy="22%" r="78%">
                       <Stop offset="0" stopColor={lighten(theme.amber, 0.4)} stopOpacity={0.9} />
+                      <Stop offset="0.62" stopColor={lighten(theme.amber, 0.12)} stopOpacity={0.28} />
                       <Stop offset="1" stopColor={theme.amber} stopOpacity={0} />
                     </RadialGradient>
                   </Defs>
@@ -3904,7 +3936,9 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               <ArtCard
                 title={hasPack ? t('store.badgeActive') : t('store.socialPackTitle')}
                 tint={theme.purple}
-                graded
+                grade={{ from: '#5E34BC', to: '#372086' }}
+                strip="#231B57"
+                arrow
                 height={128}
                 onPress={() => onGoToStore?.('socialPack')}
                 art={
@@ -3924,7 +3958,9 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               <ArtCard
                 title={t('level.roadTitle')}
                 tint={theme.blue}
-                graded
+                grade={{ from: '#1160B4', to: '#022A5B' }}
+                strip="#011F42"
+                arrow
                 height={128}
                 onPress={() => onOpenLevelRoad?.()}
                 art={
