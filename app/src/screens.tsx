@@ -873,6 +873,9 @@ export type BgVariant = 'home' | 'stadium' | 'store' | 'menu' | 'match';
 const BG_HOME = require('../assets/bg-home.png');   // royal-blue arena backdrop (legacy home)
 // Faint ball watermark for the hero Play button (mockup's green face).
 const BALL_WATERMARK = require('../assets/ball-card-white.png');
+// Hero Play button face, sampled from the mockup.
+const HERO_PLAY_MID = '#198C65';
+const HERO_PLAY_LIP = '#073E2D';   // deeper than the face's #0B5B42 foot
 const BG_STORE = require('../assets/bg-store.png');  // violet gem-shop backdrop (Mağaza)
 const BG_MENU = require('../assets/bg-menu.png');    // calm navy backdrop (collection/friends/sub-screens)
 // Night-stadium photograph behind HOME v4 — the one asset the whole home look rests
@@ -2551,17 +2554,23 @@ function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void })
       onPressOut={() => Animated.timing(press, { toValue: 0, duration: PRESS_OUT_MS, useNativeDriver: true }).start()}
       style={{ marginVertical: 4 }}
     >
-      <View style={{ backgroundColor: darken(theme.primary, 0.4), borderRadius: 22, paddingBottom: 6, shadowColor: theme.primaryDark, shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}>
+      {/* Colours and geometry measured off the mockup (COF ANA EKRAN.jpeg), not
+          eyeballed: the face ramps #9BDCBA → #0B5B42 top-to-bottom, and the
+          corner radius is 0.26 of the button height (32px on a 124px button). */}
+      <View style={{ backgroundColor: HERO_PLAY_LIP, borderRadius: 17, paddingBottom: 6, shadowColor: HERO_PLAY_LIP, shadowOpacity: 0.45, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}>
         <Animated.View
           onLayout={(e) => setW(e.nativeEvent.layout.width)}
-          style={{ transform: [{ translateY: ty }], backgroundColor: theme.primary, borderRadius: 18, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+          style={{ transform: [{ translateY: ty }], backgroundColor: HERO_PLAY_MID, borderRadius: 14, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
         >
           <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
             <Defs>
               <SvgGradient id="heroPlayG" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={lighten(theme.primary, 0.52)} />
-                <Stop offset="0.5" stopColor={theme.primary} />
-                <Stop offset="1" stopColor={darken(theme.primary, 0.3)} />
+                <Stop offset="0" stopColor="#9BDCBA" />
+                <Stop offset="0.18" stopColor="#72C79E" />
+                <Stop offset="0.38" stopColor="#3DA77F" />
+                <Stop offset="0.58" stopColor="#198C65" />
+                <Stop offset="0.80" stopColor="#0D6D51" />
+                <Stop offset="1" stopColor="#0B5B42" />
               </SvgGradient>
               <SvgGradient id="heroPlayGloss" x1="0" y1="0" x2="0" y2="1">
                 <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.5" />
@@ -2570,7 +2579,7 @@ function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void })
               </SvgGradient>
             </Defs>
             <Rect width="100%" height="100%" fill="url(#heroPlayG)" />
-            <Rect x={5} y={3} rx={15} width="94%" height="54%" fill="url(#heroPlayGloss)" />
+            <Rect x={5} y={3} rx={12} width="94%" height="34%" fill="url(#heroPlayGloss)" />
           </Svg>
           {/* Mockup's faint ball watermark bleeding off the right edge — the green
               face reads as a pitch object, not a plain slab. */}
@@ -2578,7 +2587,10 @@ function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void })
             <Image source={BALL_WATERMARK} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
           </View>
           {w > 0 ? <ShineSweep width={w} height={64} loop delay={1600} duration={800} loopGap={3600} opacity={0.22} band={0.2} /> : null}
-          <Text numberOfLines={1} style={{ color: theme.text, fontSize: 22, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.8, textShadowColor: 'rgba(4,9,24,0.55)', textShadowOffset: { width: 0, height: 1.5 }, textShadowRadius: 1.5 }}>{label}</Text>
+          {/* The mockup sets this label in an italic cut. Poppins ships here in
+              upright weights only, so the slant is applied as a transform —
+              fontStyle:'italic' does not synthesise for a custom family on iOS. */}
+          <Text numberOfLines={1} style={{ color: theme.text, fontSize: 22, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.8, transform: [{ skewX: '-9deg' }], textShadowColor: 'rgba(4,9,24,0.55)', textShadowOffset: { width: 0, height: 1.5 }, textShadowRadius: 1.5 }}>{label}</Text>
         </Animated.View>
       </View>
     </Pressable>
