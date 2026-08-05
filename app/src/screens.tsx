@@ -3466,7 +3466,14 @@ function ArtCard({ title, tint, art, height, onPress, grade, strip, arrow = fals
         <Animated.View
           onLayout={(e) => setCardW(e.nativeEvent.layout.width)}
           style={{
-            transform: [{ translateY: ty }, { scale }], height, borderRadius: 18, overflow: 'hidden',
+            transform: [{ translateY: ty }, { scale }], height, overflow: 'hidden',
+            // Nested radii must follow the geometry or the outer lip's darker fill
+            // bleeds around the corners as a thin arc — THAT is the "not seated"
+            // edge, not the highlight. The wrapper is radius 20 and insets this
+            // view by 3 at the BOTTOM only, so the top corners must match 20
+            // exactly and only the bottom pair shrinks by the inset.
+            borderTopLeftRadius: 20, borderTopRightRadius: 20,
+            borderBottomLeftRadius: 17, borderBottomRightRadius: 17,
             backgroundColor: tint,
             // NO separate top border. A white-alpha rim over a coloured face reads as a
             // GREY hairline, and because a border is stroked independently of the fill
@@ -3557,9 +3564,12 @@ function GhostPanel({ title, icon, ghost, height, onPress, children, locked = fa
   const { ty, scale, onIn, onOut } = usePressLip(2);
   const gradId = useRef(`ghostGrad${++_btnSeq}`).current;
   const body = (
-    <View style={{ backgroundColor: theme.surface2, borderRadius: 20, ...shadowSoft }}>
+    // The wrapper must carry the SAME face as the panel, otherwise a toned panel
+    // shows the old surface2 through the corner arc.
+    <View style={{ backgroundColor: tone ?? theme.surface2, borderRadius: 20, ...shadowSoft }}>
       <Animated.View style={{
-        transform: onPress ? [{ translateY: ty }, { scale }] : [], height, borderRadius: 18, overflow: 'hidden',
+        // Flush with the wrapper on every side → identical radius, no bleed.
+        transform: onPress ? [{ translateY: ty }, { scale }] : [], height, borderRadius: 20, overflow: 'hidden',
         backgroundColor: tone ?? theme.surface2, padding: 11,
         // Same reasoning as ArtCard: no white-alpha rim. The highlight is drawn as
         // part of the face (below), tinted from the surface so it never reads grey.
