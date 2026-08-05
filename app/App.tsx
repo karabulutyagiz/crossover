@@ -1007,8 +1007,6 @@ function AppRoot() {
 
       {/* Bottom Tab Bar */}
       <View style={[s.tabBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        {/* 1px top gloss just under the cardLip edge — the bar is a raised surface. */}
-        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: theme.panelTopGloss }} />
         {TABS.map((tab, idx) => {
           const onPress = () => {
             if (idx === 2 && activeTab === 2) {
@@ -1201,20 +1199,21 @@ function AppRoot() {
   );
 }
 
-const TAB_TOP_INSET = 12.5; // s.tabBar borderTopWidth (1.5) + paddingTop (11)
+const TAB_TOP_INSET = 12.5; // s.tabBar paddingTop (12.5, no top border) — indicator still lands on the bar's outer edge
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG_TOP }, // navy behind the patterned ScreenBg (no header seam); top inset applied via safe-area
-  // The mockup's bar: a flat deep-navy slab with rounded top corners, its own
-  // hairline top edge, and the content shadowed up off it.
+  // The mockup's bar: a flat deep-navy slab with rounded top corners and the
+  // content shadowed up off it. NO top hairline/gloss: the light per-side border
+  // and the straight 1px gloss strip both read as a stray gray line squared off
+  // across the rounded corners (per-side border colors on rounded views are
+  // kit-banned; the gloss can't be clipped while the ball needs overflow visible).
   tabBar: {
     flexDirection: 'row',
     backgroundColor: theme.tabBar,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    borderTopWidth: 1.5,
-    borderTopColor: 'rgba(255,255,255,0.07)',
-    paddingTop: 11,
+    paddingTop: 12.5, // absorbs the removed borderTopWidth (1.5) so TAB_TOP_INSET geometry is unchanged
     // Upward navy shadow — the bar physically sits over the content.
     ...shadowTabBar,
     // The centre ball breaks above the bar; let it.

@@ -2309,8 +2309,24 @@ const MODE_ICON: Record<GameMode, IoniconName> = {
   'player-player': 'people',
 };
 
+// Transfermarkt competition code → league display name. The server's /scopes
+// endpoint sends leagues as raw TM codes (the clubs.league column: TR1, GB1…)
+// with no displayName, so we map them here on the client (also fixes codes
+// already cached in AsyncStorage). Codes verified against live /scopes data;
+// unknown codes fall back to the raw value.
+const LEAGUE_DISPLAY: Record<string, string> = {
+  TR1: 'Süper Lig',
+  GB1: 'Premier League',
+  ES1: 'LaLiga',
+  IT1: 'Serie A',
+  L1: 'Bundesliga',
+  FR1: 'Ligue 1',
+  NL1: 'Eredivisie',
+  PO1: 'Liga Portugal',
+};
+
 function scopeLabel(scope: Scope): string {
-  return scope.type === 'all' ? t('scope.all') : scope.value;
+  return scope.type === 'all' ? t('scope.all') : (LEAGUE_DISPLAY[scope.value] ?? scope.value);
 }
 
 // Bot-dialog pages (difficulty home + mode/scope pickers) — ONE mounted GameModal
@@ -2596,7 +2612,12 @@ function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void })
       {/* Colours and geometry measured off the mockup (COF ANA EKRAN.jpeg), not
           eyeballed: the face ramps #9BDCBA → #0B5B42 top-to-bottom, and the
           corner radius is 0.26 of the button height (32px on a 124px button). */}
-      <View style={{ backgroundColor: HERO_PLAY_LIP, borderRadius: 17, paddingBottom: 6, shadowColor: HERO_PLAY_LIP, shadowOpacity: 0.45, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}>
+      {/* Shadow is navy INK, not the lip green: shadowColor HERO_PLAY_LIP at
+          0.45/r12 bloomed a fuzzy light-green haze onto the navy behind the
+          button and swallowed the dark lip — pixel-verified (17,38,70) haze over
+          the (19,32,75) background, lip gone entirely at the corner taper.
+          shadowInk at the sibling cards' 0.34/r7 keeps the #073E2D seat crisp. */}
+      <View style={{ backgroundColor: HERO_PLAY_LIP, borderRadius: 17, paddingBottom: 6, shadowColor: theme.shadowInk, shadowOpacity: 0.34, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 8 }}>
         <Animated.View
           onLayout={(e) => setW(e.nativeEvent.layout.width)}
           style={{
@@ -3241,7 +3262,9 @@ function HeroConfetti({ w, h }: { w: number; h: number }) {
     // sat visibly frozen in a row above the hero ("konfeti yukarıda takılı");
     // clipped, they only exist while falling through the box and the loop's
     // top-reset happens off-screen, so entry/exit/loop all read seamless.
-    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}>
+    // width: w (not absoluteFill): the clip box must end where the piece field ends,
+    // so sway/rotation can never carry a piece under the hero's right badge rail.
+    <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: w, overflow: 'hidden' }}>
       {CONFETTI.map((p, i) => <ConfettiPiece key={i} p={p} w={w} h={h} />)}
     </View>
   );
@@ -3383,11 +3406,15 @@ function ProfilePill({ name, avatarId, tier, pct, color, onPress, fillAnim, fram
     // olunca çerçevenin sol yayı ekran kenarında kesiliyordu. Hapı birkaç piksel
     // sağa alarak (çerçeve varken) sol yay ekran kenarından kurtulur, tam görünür.
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1, minWidth: 108, marginLeft: frameId ? 14 : 0 }}>
-      <View style={{ backgroundColor: darken(theme.card, 0.5), borderRadius: 24, paddingBottom: 2.5 }}>
+      {/* Radii are exact, not clamped: face is 41pt tall (34 avatar + 2x3.5 pad) so a
+          shared radius 24 clamps differently on face (20.5) vs wrapper (21.75) and the
+          lighter face corner pokes past the lip as a light arc. Nested-radius rule:
+          wrapper top = face radius (0 top inset), wrapper bottom = face + 2.5 lip. */}
+      <View style={{ backgroundColor: darken(theme.card, 0.5), borderTopLeftRadius: 20.5, borderTopRightRadius: 20.5, borderBottomLeftRadius: 23, borderBottomRightRadius: 23, paddingBottom: 2.5 }}>
         <Animated.View style={{
           transform: [{ translateY: ty }, { scale }],
           flexDirection: 'row', alignItems: 'center', gap: 8,
-          backgroundColor: theme.card, borderRadius: 24,
+          backgroundColor: theme.card, borderRadius: 20.5,
           paddingVertical: 3.5, paddingLeft: 3.5, paddingRight: 10,
         }}>
           <View>
@@ -3447,11 +3474,13 @@ function GemPill({ count, onPress, countAnim, fillAnim, innerRef }: {
   const shown = countAnim ? animCount : count;
   return (
     <Pressable ref={innerRef} onPress={onPress} onPressIn={onIn} onPressOut={onOut}>
-      <View style={{ backgroundColor: darken(theme.card, 0.5), borderRadius: 18, paddingBottom: 2.5 }}>
+      {/* Same radius-clamp fix as ProfilePill: face is 30pt tall (23 plus-button +
+          2x3.5 pad) → face 15, wrapper top 15, wrapper bottom 15 + 2.5 lip = 17.5. */}
+      <View style={{ backgroundColor: darken(theme.card, 0.5), borderTopLeftRadius: 15, borderTopRightRadius: 15, borderBottomLeftRadius: 17.5, borderBottomRightRadius: 17.5, paddingBottom: 2.5 }}>
         <Animated.View style={{
           transform: [{ translateY: ty }, { scale }],
           flexDirection: 'row', alignItems: 'center', gap: 5,
-          backgroundColor: theme.card, borderRadius: 18, overflow: 'hidden',
+          backgroundColor: theme.card, borderRadius: 15, overflow: 'hidden',
           paddingVertical: 3.5, paddingLeft: 7, paddingRight: 3.5,
         }}>
           {fillAnim ? (
@@ -3512,9 +3541,18 @@ function ArtCard({ title, tint, art, height, onPress, grade, strip, arrow = fals
   // it appears from tablet-ish widths up — where the mockup's proportions hold.
   const [cardW, setCardW] = useState(0);
   const showArrow = arrow && cardW >= 150;
+  // The 3pt seat under the face must be the DARKEST rung of the card's ladder.
+  // It used to be darken(tint, 0.55) computed off the FLAT tint, which on strip/
+  // graded cards came out LIGHTER than what actually touches it — the footer
+  // strip (#5E3C12 under Mücadele's #3A2109) or the radial's deep outer field
+  // (#463073 under Sosyal Paket's #251A63) — so a pale band + mismatched arcs
+  // showed under the footer. Pixel-verified on the user's screenshot. Seat the
+  // lip off the darkest visible bottom element instead; cards with neither (the
+  // photographic Mahalle Sahası face) keep the old tone byte-identical.
+  const lipFill = strip ? darken(strip, 0.3) : grade ? darken(grade.to, 0.3) : darken(tint, 0.55);
   return (
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1 }}>
-      <View style={{ backgroundColor: darken(tint, 0.55), borderRadius: 20, paddingBottom: 3, shadowColor: '#000', shadowOpacity: 0.34, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
+      <View style={{ backgroundColor: lipFill, borderRadius: 20, paddingBottom: 3, shadowColor: theme.shadowInk, shadowOpacity: 0.34, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
         <Animated.View
           onLayout={(e) => setCardW(e.nativeEvent.layout.width)}
           style={{
@@ -3845,7 +3883,11 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         // + 14.5 chip overlap) + 12 gap = 131. Anything less and the rail spills onto the CTA.
         style={{ alignItems: 'center', justifyContent: 'center', marginTop: 3, marginBottom: 0, minHeight: 134 }}
       >
-        <HeroConfetti w={hero.w} h={hero.h} />
+        {/* w excludes the right badge rail (44px RailBadge circles at right:0 + 12px
+            margin): pieces falling BEHIND the translucent badge faces read as artifacts —
+            a white ribbon as a gray slab over the trophy cup, a purple piece as a notch
+            poking out of the ring's right edge. */}
+        <HeroConfetti w={Math.max(0, hero.w - 56)} h={hero.h} />
         {/* The hero unit — the two balls + the CROSSOVER lettering lifted WHOLE
             from the Top.jpeg mockup as one image (feathered edges melt into the
             night sky), so it is pixel-for-pixel the photo composition. */}
@@ -4228,8 +4270,9 @@ function ScopeListPage({ kind, scopes, onPick }: {
 }) {
   const allList = kind === 'league' ? scopes?.leagues ?? [] : scopes?.countries ?? [];
   const [search, setSearch] = useState('');
+  const optionLabel = (o: { value: string; displayName?: string }) => o.displayName ?? LEAGUE_DISPLAY[o.value] ?? o.value;
   const filtered = search.trim()
-    ? allList.filter((o) => (o.displayName ?? o.value).toLowerCase().includes(search.toLowerCase()))
+    ? allList.filter((o) => optionLabel(o).toLowerCase().includes(search.toLowerCase()))
     : allList;
   const countChip = (count: number) => (
     <View style={{ backgroundColor: theme.cardLip, borderRadius: 8, borderWidth: 1, borderColor: theme.accentDark, paddingHorizontal: 7, paddingVertical: 2 }}>
@@ -4264,7 +4307,7 @@ function ScopeListPage({ kind, scopes, onPick }: {
                   <Ionicons name={kind === 'league' ? 'trophy' : 'flag'} size={18} color={theme.muted} />
                 )
               }
-              label={o.displayName ?? o.value}
+              label={optionLabel(o)}
               right={countChip(o.count)}
               onPress={() => onPick({ type: kind === 'league' ? 'league' : 'country', value: o.value })}
             />
@@ -5867,15 +5910,20 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
   // Cross-screen insufficient-diamonds arrivals (avatar, name change, level
   // road): a caller recorded its shortfall and jumped here — open the covering
   // pack's sheet with the AL/VAZGEC popup behind it, same as the emote flow.
+  // No dep array ON PURPOSE: the slot is take-once, so checking every commit is
+  // free — keying on [scrollToSection] silently dropped a second arrival with
+  // the same section (avatar shortfall twice → storeSection already 'diamonds'
+  // → effect never re-ran → no popup, and the stale pending value opened an
+  // Apple Pay sheet on a later, unrelated store visit). No cleanup either: the
+  // popup's own re-render would cancel the 380ms sheet timer.
   useEffect(() => {
     const missing = takePendingShortfall();
     if (missing == null) return;
     const pack = packForShortfall(missing);
     setShortfall({ missing, productId: pack.productId });
     setShowNotEnough(true);
-    const tm = setTimeout(() => buyRef.current(pack.productId), 380);
-    return () => clearTimeout(tm);
-  }, [scrollToSection]);
+    setTimeout(() => buyRef.current(pack.productId), 380);
+  });
 
   // Guideline 3.1.1: a DISTINCT, user-initiated Restore. The launch-time replay in
   // the effect above does NOT satisfy this — App Review names that case explicitly
@@ -5939,8 +5987,10 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
   const [confirmOpen, setConfirmOpen] = useState(false);
   // Open "not enough gems" only AFTER the buy-confirm modal's native dismissal
   // finishes (via onExited) — flipping both in one commit overlaps two native
-  // <Modal>s and iOS freezes the app (dead touches + scroll).
-  const notEnoughOnExit = useRef(false);
+  // <Modal>s and iOS freezes the app (dead touches + scroll). Holds the missing
+  // amount recorded at confirm (null = nothing pending) — the powerShortfall
+  // pattern, so the handoff never depends on render-closure state.
+  const notEnoughOnExit = useRef<number | null>(null);
   // CO Pass modal hands off to another native surface after its own dismissal:
   // 'notEnough' → the insufficient-diamonds popup, 'buyMoney' → the StoreKit sheet.
   // Deferring past the modal's exit avoids the two-native-surfaces freeze.
@@ -6308,7 +6358,8 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
           const pack = packForShortfall(m);
           setShortfall({ missing: m, productId: pack.productId });
           setShowNotEnough(true);
-          buyRef.current(pack.productId);
+          // Popup first; sheet after its presentation settles (see emote flow).
+          setTimeout(() => buyRef.current(pack.productId), 380);
         }}
         title={confirmPower ? t(POWERS[confirmPower].nameKey).toLocaleUpperCase(currentLang()) : ''}
         icon={confirmPower ? POWERS[confirmPower].icon : 'flash'}
@@ -6344,7 +6395,7 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
             const pack = packForShortfall(m);
             setShortfall({ missing: m, productId: pack.productId });
             setShowNotEnough(true);
-            buyRef.current(pack.productId);
+            setTimeout(() => buyRef.current(pack.productId), 380);
           }
           else if (a === 'buyMoney') buy(COPASS_PRODUCT_ID);
         }}
@@ -6368,15 +6419,20 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
 
       {/* İfade satın alma onayı — animasyonlu CANLI önizleme: alıcı ne aldığını görür */}
       <GameModal visible={confirmOpen} onClose={() => setConfirmOpen(false)} onExited={() => {
-          if (!notEnoughOnExit.current) return;
-          notEnoughOnExit.current = false;
+          const m = notEnoughOnExit.current;
+          if (m == null) return;
+          notEnoughOnExit.current = null;
+          const pack = packForShortfall(m);
+          setShortfall({ missing: m, productId: pack.productId });
           setShowNotEnough(true);
-          // Open Apple Pay straight away for the pack that covers the shortfall —
-          // the popup above stays behind it, so cancelling the sheet returns to an
-          // explanation instead of an empty screen. StoreKit's sheet is a system
-          // surface, not an RN <Modal>, so it cannot cause the two-modal freeze.
-          // GameModal re-captures onExited on every render, so these are current.
-          if (shortfall) buy(shortfall.productId);
+          // Popup FIRST; the sheet only after the popup's native presentation
+          // has settled (380ms — the same sequencing the cross-screen arrival
+          // effect uses). Calling buy() in the same tick raced the popup's
+          // presentation against the StoreKit sheet (or, with products not yet
+          // loaded, mounted the coming-soon GameModal in the SAME commit as
+          // this popup) — iOS wedged the presentation and every touch/scroll
+          // died. Cancelling Apple Pay still lands back on this popup.
+          setTimeout(() => buyRef.current(pack.productId), 380);
         }} title={t('store.confirmBuyTitle')} icon="cart">
         {confirmEmote ? (
           <View style={{ alignItems: 'center', gap: 10 }}>
@@ -6412,12 +6468,11 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
                       const have = profile?.diamonds ?? 0;
                       if (have >= price) { actions.buyEmote(confirmEmote.id); setConfirmOpen(false); }
                       else {
-                        // Short: remember how short and which pack covers it. The
-                        // handoff (and the StoreKit sheet) fire from onExited —
-                        // opening either while this modal is still animating out
-                        // leaves two native modals up and freezes iOS.
-                        setShortfall({ missing: price - have, productId: packForShortfall(price - have).productId });
-                        notEnoughOnExit.current = true;
+                        // Short: remember how short. The handoff (popup, then
+                        // the delayed StoreKit sheet) fires from onExited —
+                        // opening anything while this modal is still animating
+                        // out leaves two native modals up and freezes iOS.
+                        notEnoughOnExit.current = price - have;
                         setConfirmOpen(false);
                       }
                     }}
