@@ -4051,10 +4051,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 {newsUnread ? (
                   <View pointerEvents="none" style={{ position: 'absolute', top: 10, right: 10, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.danger }} />
                 ) : null}
-                <Text style={{ color: theme.text, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', marginTop: 9 }} numberOfLines={2}>
-                  {NEWS[0]?.title ?? ''}
-                </Text>
-                <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', marginTop: 6 }} numberOfLines={2}>
+                <Text style={{ color: theme.muted, fontSize: 11.5, lineHeight: 17, fontFamily: 'Poppins-SemiBold', marginTop: 9 }} numberOfLines={3}>
                   {t('home.newsHint')}
                 </Text>
               </GhostPanel>

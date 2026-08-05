@@ -84,7 +84,7 @@ const tr = {
   'home.modesTitle': 'Mücadele Modu',
   'home.roomCodeLabel': 'Oda kodun var mı?',
   'home.news': 'Yenilikler',
-  'home.newsHint': 'Geçmiş duyuruları gör',
+  'home.newsHint': 'Geçmiş duyuruları ve yenilikleri gör',
   'home.findFriends': 'Arkadaş Bul',
   'home.findFriendsHint': 'Yeni arkadaşlar ekle.',
 
@@ -732,7 +732,7 @@ const en: typeof tr = {
   'home.modesTitle': 'Challenge Mode',
   'home.roomCodeLabel': 'Got a room code?',
   'home.news': "What's New",
-  'home.newsHint': 'See past announcements',
+  'home.newsHint': 'See past announcements and updates',
   'home.findFriends': 'Find Friends',
   'home.findFriendsHint': 'Add new friends.',
 
