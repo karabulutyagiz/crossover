@@ -29,6 +29,7 @@ import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
 import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget } from './gemTarget';
 import { Avatar } from './Avatar';
+import { useIsTablet, useWindow } from './layout';
 import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -6652,6 +6653,7 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
 }
 
 export function CollectionScreen({ state, actions }: Props) {
+  const { width: winW } = useWindow();
   const profile = state.profile;
   const equipped = profile?.equippedEmotes ?? [];
   // Sekmeler: İfadeler (yuvalar + koleksiyon) | Güçler (tek kullanımlık envanter)
@@ -6756,7 +6758,14 @@ export function CollectionScreen({ state, actions }: Props) {
   const allEmotes: EmoteMeta[] = [...FACE_EMOTES, ...PREMIUM_EMOTES, ...ANIM_EMOTES];
   const discoverable = allEmotes.filter((e) => !ownsEmote(profile, e.id));
   const COL_GAP = 8;
-  const COL_W = Math.floor((SCREEN_W - 44 - COL_GAP * 3) / 4);
+  // Fix the CELL size and derive the column count from the window, instead of
+  // fixing 4 columns and dividing the width among them. On an iPad the old
+  // formula produced 188pt cells (vs ~87pt on a phone) — a tiny emoji floating
+  // in a huge card. Now the cells stay phone-sized and more of them fit.
+  const COL_TARGET_W = 92;
+  const gridW = winW - 44;
+  const COLS = Math.max(4, Math.floor((gridW + COL_GAP) / (COL_TARGET_W + COL_GAP)));
+  const COL_W = Math.floor((gridW - COL_GAP * (COLS - 1)) / COLS);
   const full = equipped.length >= EMOTE_SLOTS;
 
   const renderEmoteCard = (e: EmoteMeta) => {
