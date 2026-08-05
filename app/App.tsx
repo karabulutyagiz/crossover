@@ -1115,6 +1115,7 @@ function AppRoot() {
 
       {/* Seviye Yolu — tam ekran ilerleme/ödül haritası; ödüller karta dokunarak toplanır */}
       <LevelRoadModal
+        onNeedDiamonds={() => { setLevelRoadOpen(false); setStoreSection('diamonds'); goToTab(0); }}
         visible={levelRoadOpen}
         profile={state.profile}
         onClose={() => setLevelRoadOpen(false)}

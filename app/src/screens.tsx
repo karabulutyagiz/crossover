@@ -30,6 +30,7 @@ import { GemIcon, GEM_COLOR } from './GemIcon';
 import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget } from './gemTarget';
 import { Avatar } from './Avatar';
 import { useIsTablet, useWindow } from './layout';
+import { setPendingShortfall, takePendingShortfall } from './shortfall';
 import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -924,11 +925,15 @@ export function ScreenBg({ variant = 'menu' }: { variant?: BgVariant }) {
   );
 }
 
-function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = false }: { children: ReactNode; scroll?: boolean; noPitch?: boolean; bg?: ReactNode; pad?: number; contentCenter?: boolean; fillTablet?: boolean }) {
+function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = false, lockWhenFits = false }: { children: ReactNode; scroll?: boolean; noPitch?: boolean; bg?: ReactNode; pad?: number; contentCenter?: boolean; fillTablet?: boolean; lockWhenFits?: boolean }) {
   // On an iPad a top-packed screen leaves the lower third empty — the "boşluk"
   // complaint. `fillTablet` spreads the sections down the taller window instead.
   // Phones keep the original top-packed layout.
   const isTablet = useIsTablet();
+  // lockWhenFits: measured, not assumed — scrolling turns off only when the
+  // content genuinely fits the viewport, so small phones keep scrolling.
+  const [vpH, setVpH] = useState(0);
+  const [contentH, setContentH] = useState(0);
   // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
   return (
     <KeyboardAvoidingView
@@ -956,6 +961,9 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
       {scroll ? (
         <ScrollView
           style={{ flex: 1 }}
+          onLayout={(e) => setVpH(e.nativeEvent.layout.height)}
+          onContentSizeChange={(_w, h) => setContentH(h)}
+          scrollEnabled={!lockWhenFits || contentH > vpH + 2}
           contentContainerStyle={{ flexGrow: 1, justifyContent: contentCenter ? 'center' : (fillTablet && isTablet ? 'space-between' : 'flex-start') }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -1918,7 +1926,7 @@ function TransientCallout({ emoteId, onDone }: { emoteId: string; onDone?: () =>
   const by = bob.interpolate({ inputRange: [0, 1], outputRange: [0, -7] });
   const op = a.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0, 1, 1] });
   return (
-    <Animated.View style={{ opacity: op, transform: [{ scale }, { rotate: rot }, { translateY: by }] }}>
+    <Animated.View pointerEvents="none" style={{ opacity: op, transform: [{ scale }, { rotate: rot }, { translateY: by }] }}>
       <EmoteCallout id={emoteId} />
     </Animated.View>
   );
@@ -2690,7 +2698,7 @@ function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName
                 <GemIcon size={13} />
               </View>
             )}
-            onPress={() => { if (diamonds < 1000) onNeedDiamonds(); else setRenameOpen(true); }}
+            onPress={() => { if (diamonds < 1000) { setPendingShortfall(1000 - diamonds); onNeedDiamonds(); } else setRenameOpen(true); }}
           />
 
           <ChangeNameModal
@@ -3751,7 +3759,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const codeReady = joinCode.length === ROOM_CODE_LEN;
 
   return (
-    <Screen scroll pad={16} contentCenter={false} fillTablet>
+    <Screen scroll pad={16} contentCenter={false} fillTablet lockWhenFits>
       {/* ── 1. TOP BAR ── one row, exactly as the mockup: the profile pill flexes to
            absorb whatever the fixed-width gem pill and button trio leave behind.
            paddingTop: ödül habercisinin üst taşması scroll sınırında kırpılmasın */}
@@ -5800,6 +5808,22 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
     const apple = { sku: productId, appAccountToken: profile?.userId ?? undefined };
     Promise.resolve(requestPurchase({ request: { apple }, type: isSub ? 'subs' : 'in-app' })).catch(() => setBuying(null));
   }, [buying, requestPurchase, products, subscriptions, profile?.userId]);
+  // Effects and modal-exit handlers below need the CURRENT buy without being in
+  // its dependency chain.
+  const buyRef = useRef(buy); buyRef.current = buy;
+
+  // Cross-screen insufficient-diamonds arrivals (avatar, name change, level
+  // road): a caller recorded its shortfall and jumped here — open the covering
+  // pack's sheet with the AL/VAZGEC popup behind it, same as the emote flow.
+  useEffect(() => {
+    const missing = takePendingShortfall();
+    if (missing == null) return;
+    const pack = packForShortfall(missing);
+    setShortfall({ missing, productId: pack.productId });
+    setShowNotEnough(true);
+    const tm = setTimeout(() => buyRef.current(pack.productId), 380);
+    return () => clearTimeout(tm);
+  }, [scrollToSection]);
 
   // Guideline 3.1.1: a DISTINCT, user-initiated Restore. The launch-time replay in
   // the effect above does NOT satisfy this — App Review names that case explicitly
@@ -5869,8 +5893,10 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
   // 'notEnough' → the insufficient-diamonds popup, 'buyMoney' → the StoreKit sheet.
   // Deferring past the modal's exit avoids the two-native-surfaces freeze.
   const coPassExit = useRef<null | 'notEnough' | 'buyMoney'>(null);
+  const coPassMissing = useRef<number | null>(null);
   // Mağazadan güç satın alma onayı
   const [confirmPower, setConfirmPower] = useState<PowerId | null>(null);
+  const powerShortfall = useRef<number | null>(null); // insufficient at confirm -> hand off on exit
   // CO Pass satın alma onayı (mağazadan doğrudan)
   const [confirmCoPass, setConfirmCoPass] = useState(false);
   // İfade vitrini kutu boyu — konteyner genişliğinden ölçülür (kesilme olmasın)
@@ -6223,6 +6249,15 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
       <GameModal
         visible={confirmPower != null}
         onClose={() => setConfirmPower(null)}
+        onExited={() => {
+          const m = powerShortfall.current;
+          if (m == null) return;
+          powerShortfall.current = null;
+          const pack = packForShortfall(m);
+          setShortfall({ missing: m, productId: pack.productId });
+          setShowNotEnough(true);
+          buyRef.current(pack.productId);
+        }}
         title={confirmPower ? t(POWERS[confirmPower].nameKey).toLocaleUpperCase(currentLang()) : ''}
         icon={confirmPower ? POWERS[confirmPower].icon : 'flash'}
       >
@@ -6232,7 +6267,13 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
             <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 18 }}>{t(POWERS[confirmPower].descKey)}</Text>
             <Text style={{ color: theme.text, fontSize: 12, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{t('power.buyConfirm')}</Text>
             <View style={{ alignSelf: 'stretch', marginTop: 4, gap: 8 }}>
-              <Btn big kind="primary" gem label={String(POWER_PRICES[confirmPower])} onPress={() => { const pid = confirmPower; setConfirmPower(null); actions.buyPower(pid); }} />
+              <Btn big kind="primary" gem label={String(POWER_PRICES[confirmPower])} onPress={() => {
+              const pid = confirmPower;
+              const price = POWER_PRICES[pid];
+              const have = profile?.diamonds ?? 0;
+              if (have >= price) { setConfirmPower(null); actions.buyPower(pid); }
+              else { powerShortfall.current = price - have; setConfirmPower(null); }
+            }} />
               <Btn label={t('store.cancel')} kind="ghost" onPress={() => setConfirmPower(null)} />
             </View>
           </View>
@@ -6245,7 +6286,14 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
         onClose={() => setConfirmCoPass(false)}
         onExited={() => {
           const a = coPassExit.current; coPassExit.current = null;
-          if (a === 'notEnough') setShowNotEnough(true);
+          if (a === 'notEnough') {
+            const m = coPassMissing.current ?? PREMIUM_ROAD_PRICE;
+            coPassMissing.current = null;
+            const pack = packForShortfall(m);
+            setShortfall({ missing: m, productId: pack.productId });
+            setShowNotEnough(true);
+            buyRef.current(pack.productId);
+          }
           else if (a === 'buyMoney') buy(COPASS_PRODUCT_ID);
         }}
         title={t('premium.bannerTitle').toLocaleUpperCase(currentLang())}
@@ -6257,7 +6305,7 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
             {/* Buy with 2000 diamonds — or fall through to the "not enough" popup */}
             <Btn big kind="accent" gem label={t('premium.unlockBtn', { n: String(PREMIUM_ROAD_PRICE) })} onPress={() => {
               if ((profile?.diamonds ?? 0) >= PREMIUM_ROAD_PRICE) { setConfirmCoPass(false); actions.buyPremiumRoad(); }
-              else { coPassExit.current = 'notEnough'; setConfirmCoPass(false); }
+              else { coPassExit.current = 'notEnough'; coPassMissing.current = PREMIUM_ROAD_PRICE - (profile?.diamonds ?? 0); setConfirmCoPass(false); }
             }} />
             {/* Or buy with real money (StoreKit) — always available, no diamonds needed */}
             <Btn big kind="blue" icon="card" label={t('premium.buyWithMoney', { price: priceFor(COPASS_PRODUCT_ID, COPASS_FALLBACK_PRICE) })} onPress={() => { coPassExit.current = 'buyMoney'; setConfirmCoPass(false); }} />
@@ -8650,6 +8698,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
   const [confirmAvatarId, setConfirmAvatarId] = useState<string | null>(null);
   const [showAvatarPage, setShowAvatarPage] = useState(false);
   const [showInsufficientPopup, setShowInsufficientPopup] = useState(false);
+  const insufficientMissing = useRef<number | null>(null);
   // Set on confirm: close the picker page once the confirm dialog's exit
   // animation completes (GameModal onExited) — no setTimeout handoff chains.
   const closePickerOnExit = useRef(false);
@@ -8736,8 +8785,16 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
           visible={pendingAvatar !== null}
           onClose={() => setPendingAvatarId(null)}
           onExited={() => {
-            if (insufficientOnExit.current) {
-              insufficientOnExit.current = false;
+            if (!insufficientOnExit.current) return;
+            insufficientOnExit.current = false;
+            const m = insufficientMissing.current;
+            insufficientMissing.current = null;
+            if (m != null && onGoToStore) {
+              // Unified flow: Store opens the covering pack's sheet with the
+              // AL/VAZGEC popup behind it (see shortfall.ts).
+              setPendingShortfall(m);
+              onGoToStore('diamonds');
+            } else {
               setShowInsufficientPopup(true);
             }
           }}
@@ -8773,8 +8830,10 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
                         actions.buyAvatar(pendingAvatar.id);
                         setPendingAvatarId(null);
                       } else {
-                        // Close this modal first; its onExited opens the popup.
+                        // Close first; onExited hands off to the Store, which opens
+                        // the covering pack's sheet with the popup behind it.
                         insufficientOnExit.current = true;
+                        insufficientMissing.current = avatarPrice(pendingAvatar.id) - p.diamonds;
                         setPendingAvatarId(null);
                       }
                     }}
@@ -11457,10 +11516,11 @@ function SeasonCountdown() {
   );
 }
 
-export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremium, lastClaim }: {
+export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremium, onNeedDiamonds, lastClaim }: {
   visible: boolean; profile: ProfileView | null; onClose: () => void;
   onClaim?: (level: number, track?: 'free' | 'premium') => void; // karta dokununca sunucuya claim gönder
   onBuyPremium?: () => void; // Premium Yol satın alma isteği
+  onNeedDiamonds?: () => void; // yetersiz elmas -> Store'a devret (shortfall kaydedilmis)
   lastClaim?: { level: number; diamonds: number; emoteId: string | null; frameTier: string | null; powerId: string | null; track?: 'free' | 'premium'; seq: number } | null;
 }) {
   const insets = useSafeAreaInsets();
@@ -11678,7 +11738,11 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
             </Text>
           </View>
           <View style={{ gap: 8 }}>
-            <Btn big kind="accent" gem label={t('premium.unlockBtn', { n: String(PREMIUM_ROAD_PRICE) })} onPress={() => { setBuyOpen(false); onBuyPremium?.(); }} />
+            <Btn big kind="accent" gem label={t('premium.unlockBtn', { n: String(PREMIUM_ROAD_PRICE) })} onPress={() => {
+              const have = profile?.diamonds ?? 0;
+              if (have >= PREMIUM_ROAD_PRICE) { setBuyOpen(false); onBuyPremium?.(); }
+              else { setPendingShortfall(PREMIUM_ROAD_PRICE - have); setBuyOpen(false); onClose(); onNeedDiamonds?.(); }
+            }} />
             <Btn kind="ghost" label={t('power.cancel')} onPress={() => setBuyOpen(false)} />
           </View>
         </GameModal>
