@@ -3,20 +3,29 @@
     "name": "Crossover Football",
     "slug": "crossover",
     "scheme": "crossover",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.crossover.football",
-      "buildNumber": "122",
+      "buildNumber": "123",
       "usesAppleSignIn": true,
       "infoPlist": {
         "CADisableMinimumFrameDurationOnPhone": true,
         "ITSAppUsesNonExemptEncryption": false,
         "NSUserTrackingUsageDescription": "Reklam deneyimini kişiselleştirmek için izin istiyoruz.",
         "SKAdNetworkItems": [
+          {
+            "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork"
+          },
+          {
+            "SKAdNetworkIdentifier": "4fzdc2evr5.skadnetwork"
+          },
+          {
+            "SKAdNetworkIdentifier": "2fnua5tdw4.skadnetwork"
+          },
           {
             "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork"
           },
@@ -33,10 +42,36 @@
             "CFBundleURLSchemes": [
               "com.googleusercontent.apps.85689499254-iu4ap4sl6rqhpeonj00avg390pnhnlsn"
             ]
+          },
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.85689499254-iu4ap4sl6rqhpeonj00avg390pnhnlsn"
+            ]
           }
         ],
         "CFBundleDevelopmentRegion": "tr",
         "CFBundleLocalizations": [
+          "tr",
+          "en",
+          "ar",
+          "de",
+          "es",
+          "fa",
+          "fi",
+          "fr",
+          "id",
+          "it",
+          "ja",
+          "ko",
+          "ms",
+          "nl",
+          "no",
+          "pt",
+          "ru",
+          "th",
+          "vi",
+          "zh-Hans",
+          "zh-Hant",
           "tr",
           "en",
           "ar",
@@ -108,6 +143,12 @@
       "eas": {
         "projectId": "fff58543-c2d6-4a7d-85af-5bd2da3a6a3f"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/fff58543-c2d6-4a7d-85af-5bd2da3a6a3f"
     }
   }
 }
