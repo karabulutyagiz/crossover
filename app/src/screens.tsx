@@ -3467,7 +3467,13 @@ function ArtCard({ title, tint, art, height, onPress, grade, strip, arrow = fals
           onLayout={(e) => setCardW(e.nativeEvent.layout.width)}
           style={{
             transform: [{ translateY: ty }, { scale }], height, borderRadius: 18, overflow: 'hidden',
-            backgroundColor: tint, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.26)',
+            backgroundColor: tint,
+            // Measured on the mockup: the top highlight is ONE pixel of a 1023px-wide
+            // render (≈0.4pt) and it is a LIGHTENED CARD HUE, not white — #6236C1
+            // lifts to #8B62DA. The old 1.5pt white rim read as a drawn line once the
+            // radial face got brighter behind it.
+            borderTopWidth: grade ? 0.8 : 1.5,
+            borderTopColor: grade ? lighten(grade.from, 0.25) : 'rgba(255,255,255,0.26)',
           }}>
           {grade ? (
             <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
