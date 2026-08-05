@@ -3442,7 +3442,12 @@ function ArtCard({ title, tint, art, height, onPress, grade, strip, arrow = fals
   // Mockup faces are a DIAGONAL ramp (light at the top-left, deep at the
   // bottom-right), not a flat fill — measured off COF ANA EKRAN.jpeg. Opt-in per
   // card so the pitch card (Mahalle Sahası) keeps its photographic face.
-  grade?: { from: string; to: string };
+  // Measured off the mockup as a BRIGHTNESS MAP, not guessed: each row is
+  // brightest at its centre and every row dims going down (top-centre 345 →
+  // bottom 137 in RGB sum). That is a radial glow anchored near the top edge,
+  // not the linear ramp this used to draw — which is why the faces still read
+  // "flat" after the first pass. `from` is the glow core, `to` the outer field.
+  grade?: { from: string; to: string; mid?: string };
   // The label band is the card's own deep tone in the mockup, not near-black.
   strip?: string;
   // Mockup puts a round → button at the band's right end.
@@ -3467,12 +3472,16 @@ function ArtCard({ title, tint, art, height, onPress, grade, strip, arrow = fals
           {grade ? (
             <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
               <Defs>
-                <SvgGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
+                <RadialGradient id={gradId} cx="50%" cy="6%" r="118%">
                   <Stop offset="0" stopColor={grade.from} />
+                  <Stop offset="0.52" stopColor={grade.mid ?? grade.from} />
                   <Stop offset="1" stopColor={grade.to} />
-                </SvgGradient>
+                </RadialGradient>
               </Defs>
               <Rect width="100%" height="100%" fill={`url(#${gradId})`} />
+              {/* Faint swoosh arcs the mockup sweeps across the lower-left. */}
+              <Path d="M -6 78 Q 34 58 92 66" stroke="rgba(255,255,255,0.10)" strokeWidth="1.6" fill="none" />
+              <Path d="M -6 90 Q 40 68 104 78" stroke="rgba(255,255,255,0.07)" strokeWidth="1.4" fill="none" />
             </Svg>
           ) : null}
           <View style={StyleSheet.absoluteFill}>{art}</View>
@@ -3794,7 +3803,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         <ArtCard
           title={t('home.modesTitle')}
           tint={theme.amber}
-          grade={{ from: '#C98A34', to: '#7A4410' }}
+          grade={{ from: '#D9973B', mid: '#B7762A', to: '#6B3A0D' }}
           strip="#3A2109"
           arrow
           height={142}
@@ -3936,7 +3945,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               <ArtCard
                 title={hasPack ? t('store.badgeActive') : t('store.socialPackTitle')}
                 tint={theme.purple}
-                grade={{ from: '#5E34BC', to: '#372086' }}
+                grade={{ from: '#6236C1', mid: '#4A2A9E', to: '#251A63' }}
                 strip="#231B57"
                 arrow
                 height={128}
@@ -3958,7 +3967,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               <ArtCard
                 title={t('level.roadTitle')}
                 tint={theme.blue}
-                grade={{ from: '#1160B4', to: '#022A5B' }}
+                grade={{ from: '#1466BE', mid: '#064B92', to: '#01234A' }}
                 strip="#011F42"
                 arrow
                 height={128}
