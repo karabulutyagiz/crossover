@@ -871,6 +871,8 @@ const SCREEN_H = Dimensions.get('window').height;
 export const BG_TOP = '#0E2347'; // navy shown behind the bg image (frame before load / root)
 export type BgVariant = 'home' | 'stadium' | 'store' | 'menu' | 'match';
 const BG_HOME = require('../assets/bg-home.png');   // royal-blue arena backdrop (legacy home)
+// Faint ball watermark for the hero Play button (mockup's green face).
+const BALL_WATERMARK = require('../assets/ball-card-white.png');
 const BG_STORE = require('../assets/bg-store.png');  // violet gem-shop backdrop (Mağaza)
 const BG_MENU = require('../assets/bg-menu.png');    // calm navy backdrop (collection/friends/sub-screens)
 // Night-stadium photograph behind HOME v4 — the one asset the whole home look rests
@@ -2570,6 +2572,11 @@ function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void })
             <Rect width="100%" height="100%" fill="url(#heroPlayG)" />
             <Rect x={5} y={3} rx={15} width="94%" height="54%" fill="url(#heroPlayGloss)" />
           </Svg>
+          {/* Mockup's faint ball watermark bleeding off the right edge — the green
+              face reads as a pitch object, not a plain slab. */}
+          <View pointerEvents="none" style={{ position: 'absolute', right: -14, top: -10, width: 92, height: 92, opacity: 0.13 }}>
+            <Image source={BALL_WATERMARK} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+          </View>
           {w > 0 ? <ShineSweep width={w} height={64} loop delay={1600} duration={800} loopGap={3600} opacity={0.22} band={0.2} /> : null}
           <Text numberOfLines={1} style={{ color: theme.text, fontSize: 22, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.8, textShadowColor: 'rgba(4,9,24,0.55)', textShadowOffset: { width: 0, height: 1.5 }, textShadowRadius: 1.5 }}>{label}</Text>
         </Animated.View>
@@ -3418,10 +3425,15 @@ function GemPill({ count, onPress, countAnim, fillAnim, innerRef }: {
 
 // The mockup's bright art cards: an art field up top, a dark caption band across
 // the bottom carrying the title. `art` is drawn into the field and may overhang it.
-function ArtCard({ title, tint, art, height, onPress }: {
+function ArtCard({ title, tint, art, height, onPress, graded = false }: {
   title: string; tint: string; art?: ReactNode; height: number; onPress: () => void;
+  // `graded`: the mockup's tone ladder — lighter at the top, deeper at the
+  // bottom — instead of one flat fill. Opt-in per card so the pitch card
+  // (Mahalle Sahası) keeps its photographic face untouched.
+  graded?: boolean;
 }) {
   const { ty, scale, onIn, onOut } = usePressLip(2);
+  const gradId = useRef(`artGrad${++_btnSeq}`).current;
   return (
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1 }}>
       <View style={{ backgroundColor: darken(tint, 0.55), borderRadius: 20, paddingBottom: 3, shadowColor: '#000', shadowOpacity: 0.34, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
@@ -3429,6 +3441,18 @@ function ArtCard({ title, tint, art, height, onPress }: {
           transform: [{ translateY: ty }, { scale }], height, borderRadius: 18, overflow: 'hidden',
           backgroundColor: tint, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.26)',
         }}>
+          {graded ? (
+            <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
+              <Defs>
+                <SvgGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor={lighten(tint, 0.22)} />
+                  <Stop offset="0.55" stopColor={tint} />
+                  <Stop offset="1" stopColor={darken(tint, 0.3)} />
+                </SvgGradient>
+              </Defs>
+              <Rect width="100%" height="100%" fill={`url(#${gradId})`} />
+            </Svg>
+          ) : null}
           <View style={StyleSheet.absoluteFill}>{art}</View>
           <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: withAlpha(darken(tint, 0.66), 0.94), paddingHorizontal: 11, paddingVertical: 7 }}>
             <Text style={{ color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{title}</Text>
@@ -3465,17 +3489,33 @@ function GhostStack({ icon }: { icon: IoniconName }) {
 // The mockup's navy panels: title row up top, ghost stack in the corner, free
 // content below. Pressable only when `onPress` is given (the Özel Mod panel owns
 // its own inner controls instead).
-function GhostPanel({ title, icon, ghost, height, onPress, children, locked = false }: {
+function GhostPanel({ title, icon, ghost, height, onPress, children, locked = false, tone }: {
   title: string; icon?: IoniconName; ghost: IoniconName; height: number;
   onPress?: () => void; children?: ReactNode; locked?: boolean;
+  // `tone`: give the panel its own colour face (a tone ladder over it) instead
+  // of the default flat surface2 — the mockup tints Bot Maçı green.
+  tone?: string;
 }) {
   const { ty, scale, onIn, onOut } = usePressLip(2);
+  const gradId = useRef(`ghostGrad${++_btnSeq}`).current;
   const body = (
     <View style={{ backgroundColor: theme.surface2, borderRadius: 20, ...shadowSoft }}>
       <Animated.View style={{
         transform: onPress ? [{ translateY: ty }, { scale }] : [], height, borderRadius: 18, overflow: 'hidden',
         backgroundColor: theme.surface2, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.14)', padding: 11,
       }}>
+        {tone ? (
+          <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
+            <Defs>
+              <SvgGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={lighten(tone, 0.16)} />
+                <Stop offset="0.55" stopColor={tone} />
+                <Stop offset="1" stopColor={darken(tone, 0.34)} />
+              </SvgGradient>
+            </Defs>
+            <Rect width="100%" height="100%" fill={`url(#${gradId})`} />
+          </Svg>
+        ) : null}
         <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
         <GhostStack icon={ghost} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
@@ -3718,6 +3758,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         <ArtCard
           title={t('home.modesTitle')}
           tint={theme.amber}
+          graded
           height={142}
           onPress={() => setModesOpen(true)}
           art={
@@ -3827,6 +3868,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
           icon="people"
           ghost="game-controller"
           height={96}
+          tone={darken(theme.primary, 0.74)}
           onPress={() => { setBotPage({ key: 'bot', dir: 1 }); setBotOpen(true); }}
         >
           <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', marginTop: 6 }} numberOfLines={2}>{t('home.soloShort')}</Text>
@@ -3850,6 +3892,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               <ArtCard
                 title={hasPack ? t('store.badgeActive') : t('store.socialPackTitle')}
                 tint={theme.purple}
+                graded
                 height={128}
                 onPress={() => onGoToStore?.('socialPack')}
                 art={
@@ -3869,6 +3912,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               <ArtCard
                 title={t('level.roadTitle')}
                 tint={theme.blue}
+                graded
                 height={128}
                 onPress={() => onOpenLevelRoad?.()}
                 art={
