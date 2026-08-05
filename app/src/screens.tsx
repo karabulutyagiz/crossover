@@ -2560,7 +2560,16 @@ function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void })
       <View style={{ backgroundColor: HERO_PLAY_LIP, borderRadius: 17, paddingBottom: 6, shadowColor: HERO_PLAY_LIP, shadowOpacity: 0.45, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}>
         <Animated.View
           onLayout={(e) => setW(e.nativeEvent.layout.width)}
-          style={{ transform: [{ translateY: ty }], backgroundColor: HERO_PLAY_MID, borderRadius: 14, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+          style={{
+            transform: [{ translateY: ty }], backgroundColor: HERO_PLAY_MID,
+            // Radius-bleed class (same as ArtCard): flush on top/sides → must MATCH
+            // the shell's 17; inset 6 at the bottom → 17 − 6 = 11. The uniform 14 let
+            // the dark #073E2D lip curl around the top corners as a thin arc —
+            // pixel-proven on the simulator before this fix.
+            borderTopLeftRadius: 17, borderTopRightRadius: 17,
+            borderBottomLeftRadius: 11, borderBottomRightRadius: 11,
+            paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+          }}
         >
           <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
             <Defs>
@@ -3489,16 +3498,12 @@ function ArtCard({ title, tint, art, height, onPress, grade, strip, arrow = fals
                   <Stop offset="0.52" stopColor={grade.mid ?? grade.from} />
                   <Stop offset="1" stopColor={grade.to} />
                 </RadialGradient>
-                {/* The mockup's top highlight: one hairline of a LIGHTENED CARD HUE
-                    (#6236C1 → #8B62DA), painted into the face so it shares the fill's
-                    geometry instead of being stroked over it. */}
-                <SvgGradient id={`${gradId}Top`} x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0" stopColor={lighten(grade.from, 0.3)} stopOpacity="0.85" />
-                  <Stop offset="1" stopColor={lighten(grade.from, 0.3)} stopOpacity="0" />
-                </SvgGradient>
               </Defs>
+              {/* NO top-highlight strip. Every attempt at one (white border, thin
+                  border, in-fill hairline) reads on device as a foreign line across
+                  the card top — measured #7C5FC6 over a #5B37B8 body on the user's
+                  own screenshot. The radial face carries its own light; nothing else. */}
               <Rect width="100%" height="100%" fill={`url(#${gradId})`} />
-              <Rect width="100%" height="3" fill={`url(#${gradId}Top)`} />
               {/* Faint swoosh arcs the mockup sweeps across the lower-left. */}
               <Path d="M -6 78 Q 34 58 92 66" stroke="rgba(255,255,255,0.10)" strokeWidth="1.6" fill="none" />
               <Path d="M -6 90 Q 40 68 104 78" stroke="rgba(255,255,255,0.07)" strokeWidth="1.4" fill="none" />
@@ -3586,8 +3591,6 @@ function GhostPanel({ title, icon, ghost, height, onPress, children, locked = fa
             <Rect width="100%" height="100%" fill={`url(#${gradId})`} />
           </Svg>
         ) : null}
-        {/* Hue-derived top highlight for every panel, toned or not. */}
-        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: lighten(tone ?? theme.surface2, 0.26) }} />
         <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
         <GhostStack icon={ghost} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
@@ -10060,18 +10063,25 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
             transform: [{ scale: verdictA.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }) }],
           }]}
         >
-          {/* Check/cross in a beveled medallion — colored face, darkened lip, top gloss, glow */}
-          <View
-            style={{
-              width: matchOver ? 52 : 72, height: matchOver ? 52 : 72, borderRadius: matchOver ? 26 : 36,
-              backgroundColor: color,
-              borderTopWidth: 2, borderTopColor: 'rgba(255,255,255,0.45)',
-              borderBottomWidth: matchOver ? 3 : 4, borderBottomColor: darken(color),
-              alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <Ionicons name={icon} size={matchOver ? 26 : 38} color={theme.ink} />
-          </View>
+          {/* Check/cross medallion. Built from two stacked FILLS, never per-side
+              borders: iOS draws a rounded border as four segments, so a light-top/
+              dark-bottom border pair leaves diagonal seams (the ring reads "cut" —
+              see PulseRing's comment), and the asymmetric widths (top 2 / bottom 4)
+              shifted the glyph's content box 1px off the visual centre. A face
+              circle over a darker lip circle offset downwards gives the same bevel
+              with one continuous edge and a truly centred glyph. */}
+          {(() => {
+            const d = matchOver ? 52 : 72;
+            const lip = matchOver ? 3 : 4;
+            return (
+              <View style={{ width: d, height: d + lip }}>
+                <View style={{ position: 'absolute', top: lip, width: d, height: d, borderRadius: d / 2, backgroundColor: darken(color) }} />
+                <View style={{ width: d, height: d, borderRadius: d / 2, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name={icon} size={matchOver ? 26 : 38} color={theme.ink} />
+                </View>
+              </View>
+            );
+          })()}
           <Text style={[styles.h1, { color }]}>{headline}</Text>
           {r.reason === 'same_team' ? (
             <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.sameTeam')}</Text>
