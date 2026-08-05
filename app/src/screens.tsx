@@ -3468,12 +3468,11 @@ function ArtCard({ title, tint, art, height, onPress, grade, strip, arrow = fals
           style={{
             transform: [{ translateY: ty }, { scale }], height, borderRadius: 18, overflow: 'hidden',
             backgroundColor: tint,
-            // Measured on the mockup: the top highlight is ONE pixel of a 1023px-wide
-            // render (≈0.4pt) and it is a LIGHTENED CARD HUE, not white — #6236C1
-            // lifts to #8B62DA. The old 1.5pt white rim read as a drawn line once the
-            // radial face got brighter behind it.
-            borderTopWidth: grade ? 0.8 : 1.5,
-            borderTopColor: grade ? lighten(grade.from, 0.25) : 'rgba(255,255,255,0.26)',
+            // NO separate top border. A white-alpha rim over a coloured face reads as a
+            // GREY hairline, and because a border is stroked independently of the fill
+            // it never quite meets the rounded corners — which is what kept looking
+            // "not seated" no matter how thin it got. The highlight is now part of the
+            // surface itself (first stop of the gradient below), so there is no seam.
           }}>
           {grade ? (
             <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -3483,8 +3482,16 @@ function ArtCard({ title, tint, art, height, onPress, grade, strip, arrow = fals
                   <Stop offset="0.52" stopColor={grade.mid ?? grade.from} />
                   <Stop offset="1" stopColor={grade.to} />
                 </RadialGradient>
+                {/* The mockup's top highlight: one hairline of a LIGHTENED CARD HUE
+                    (#6236C1 → #8B62DA), painted into the face so it shares the fill's
+                    geometry instead of being stroked over it. */}
+                <SvgGradient id={`${gradId}Top`} x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor={lighten(grade.from, 0.3)} stopOpacity="0.85" />
+                  <Stop offset="1" stopColor={lighten(grade.from, 0.3)} stopOpacity="0" />
+                </SvgGradient>
               </Defs>
               <Rect width="100%" height="100%" fill={`url(#${gradId})`} />
+              <Rect width="100%" height="3" fill={`url(#${gradId}Top)`} />
               {/* Faint swoosh arcs the mockup sweeps across the lower-left. */}
               <Path d="M -6 78 Q 34 58 92 66" stroke="rgba(255,255,255,0.10)" strokeWidth="1.6" fill="none" />
               <Path d="M -6 90 Q 40 68 104 78" stroke="rgba(255,255,255,0.07)" strokeWidth="1.4" fill="none" />
@@ -3553,7 +3560,9 @@ function GhostPanel({ title, icon, ghost, height, onPress, children, locked = fa
     <View style={{ backgroundColor: theme.surface2, borderRadius: 20, ...shadowSoft }}>
       <Animated.View style={{
         transform: onPress ? [{ translateY: ty }, { scale }] : [], height, borderRadius: 18, overflow: 'hidden',
-        backgroundColor: theme.surface2, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.14)', padding: 11,
+        backgroundColor: tone ?? theme.surface2, padding: 11,
+        // Same reasoning as ArtCard: no white-alpha rim. The highlight is drawn as
+        // part of the face (below), tinted from the surface so it never reads grey.
       }}>
         {tone ? (
           <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -3567,6 +3576,8 @@ function GhostPanel({ title, icon, ghost, height, onPress, children, locked = fa
             <Rect width="100%" height="100%" fill={`url(#${gradId})`} />
           </Svg>
         ) : null}
+        {/* Hue-derived top highlight for every panel, toned or not. */}
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: lighten(tone ?? theme.surface2, 0.26) }} />
         <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
         <GhostStack icon={ghost} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
