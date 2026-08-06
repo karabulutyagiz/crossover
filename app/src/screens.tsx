@@ -7850,6 +7850,10 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
   // open from the menu Modal's onDismiss (iOS); Android has no onDismiss, so it
   // opens directly (Android tolerates the swap).
   const menuExitInvite = useRef<string | null>(null);
+  // Menüden açılan DİĞER pencereler (profil / sohbet) de menü modalı kapanana
+  // kadar bekler: iki native modal aynı anda sunulunca iOS görünmez bir modal
+  // bırakıyor ve uygulama donuyordu.
+  const menuExitAction = useRef<null | { kind: 'profile' | 'chat'; id: string }>(null);
   const menuActionLock = useRef(false);
   const addInputRef = useRef<TextInput>(null);   // empty-state CTA → focus add-friend input
   const msgSearchRef = useRef<TextInput>(null);  // empty-state CTA → focus message search
@@ -8123,7 +8127,13 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
       <NetworkErrorBeacon visible={isNetworkErrorMessage(state.error)} />
 
       {/* Friend actions — small Clash-Royale-style popover above the tapped row */}
-      <Modal visible={menuFriend !== null} transparent animationType="none" onRequestClose={() => setMenuFriend(null)} onDismiss={() => { const fid = menuExitInvite.current; menuExitInvite.current = null; if (fid) { setMatchPage({ key: 'mode', dir: 1 }); setMatchModal(fid); } }}>
+      <Modal visible={menuFriend !== null} transparent animationType="none" onRequestClose={() => setMenuFriend(null)} onDismiss={() => {
+        const fid = menuExitInvite.current; menuExitInvite.current = null;
+        if (fid) { setMatchPage({ key: 'mode', dir: 1 }); setMatchModal(fid); return; }
+        const a = menuExitAction.current; menuExitAction.current = null;
+        if (a?.kind === 'profile') actions.getUserProfile(a.id);
+        else if (a?.kind === 'chat') actions.openChat(a.id);
+      }}>
         <View style={{ flex: 1 }} pointerEvents="box-none">
           <Pressable style={[StyleSheet.absoluteFill, { zIndex: 0 }]} onPress={() => setMenuFriend(null)} />
           {menuFriend ? (() => {
@@ -8165,9 +8175,9 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                       </Text>
                       <Row color={theme.text} label={t('friends.friendlyMatch')} onPress={() => { menuExitInvite.current = menuFriend.userId; setMenuFriend(null); if (Platform.OS !== 'ios') { const fid = menuExitInvite.current; menuExitInvite.current = null; if (fid) { setMatchPage({ key: 'mode', dir: 1 }); setMatchModal(fid); } } }} />
                       <View style={{ height: 1, backgroundColor: theme.hairline, marginHorizontal: 10 }} />
-                      <Row color={theme.text} label={t('friends.sendMessage')} onPress={() => { const id = menuFriend.userId; setMenuFriend(null); actions.openChat(id); }} />
+                      <Row color={theme.text} label={t('friends.sendMessage')} onPress={() => { menuExitAction.current = { kind: 'chat', id: menuFriend.userId }; setMenuFriend(null); if (Platform.OS !== 'ios') { const a = menuExitAction.current; menuExitAction.current = null; if (a) actions.openChat(a.id); } }} />
                       <View style={{ height: 1, backgroundColor: theme.hairline, marginHorizontal: 10 }} />
-                      <Row color={theme.text} label={t('friends.viewProfile')} onPress={() => { const id = menuFriend.userId; setMenuFriend(null); actions.getUserProfile(id); }} />
+                      <Row color={theme.text} label={t('friends.viewProfile')} onPress={() => { menuExitAction.current = { kind: 'profile', id: menuFriend.userId }; setMenuFriend(null); if (Platform.OS !== 'ios') { const a = menuExitAction.current; menuExitAction.current = null; if (a) actions.getUserProfile(a.id); } }} />
                       <View style={{ height: 1, backgroundColor: theme.hairline, marginHorizontal: 10 }} />
                       <Row color={theme.danger} label={t('friends.removeFriend')} onPress={() => { const f = menuFriend; setMenuFriend(null); setConfirmRemove(f); }} />
                     </View>

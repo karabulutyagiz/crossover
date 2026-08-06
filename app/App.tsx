@@ -507,7 +507,14 @@ function AppRoot() {
   // Elmas-harcamalı her satın almanın "Tamam"lı onayı (sunucu *_purchased mesajı).
   const [purchaseAck, setPurchaseAck] = useState<NonNullable<GameState['lastPurchase']> | null>(null);
   const lastPurchaseSeq = state.lastPurchase?.seq ?? 0;
-  useEffect(() => { if (state.lastPurchase) setPurchaseAck(state.lastPurchase); // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Onay penceresi, satın almanın yapıldığı ekrandaki onay/işlem penceresinin
+  // çıkış animasyonu bitmeden AÇILMAZ (aynı iki-modal çakışması: ekran donuyordu).
+  useEffect(() => {
+    if (!state.lastPurchase) return;
+    const p = state.lastPurchase;
+    const tm = setTimeout(() => setPurchaseAck(p), 420);
+    return () => clearTimeout(tm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastPurchaseSeq]);
   const diamondsShownRef = useRef(0); // last value pushed to the pill (fallback when profile is briefly absent)
   const gainAnimatingRef = useRef(false); // sayaç dönerken tutma efekti araya girmesin
@@ -1284,7 +1291,17 @@ function AppRoot() {
       />
 
       {/* Centered popups (leaderboard / match history) — open over everything, not fullscreen */}
-      <LeaderboardModal visible={overlay === 'leaderboard'} entries={state.leaderboard} onClose={() => setOverlay(null)} onViewProfile={(userId) => actions.getUserProfile(userId)} />
+      {/* DONMA DÜZELTMESİ: profil AYNI ANDA açılmaz — liderlik penceresi önce
+          kapanır, profil onun 160ms'lik çıkış animasyonundan SONRA istenir.
+          İkisi üst üste binince iOS iki native modalı aynı anda sunmaya çalışıp
+          görünmez bir modal bırakıyor ve TÜM dokunuşlar ölüyordu (uygulama
+          "donuyor" — ancak kapatıp açınca düzeliyordu). */}
+      <LeaderboardModal
+        visible={overlay === 'leaderboard'}
+        entries={state.leaderboard}
+        onClose={() => setOverlay(null)}
+        onViewProfile={(userId) => { setOverlay(null); setTimeout(() => actions.getUserProfile(userId), 260); }}
+      />
       <MatchHistoryModal visible={overlay === 'matchHistory'} history={state.matchHistory} myName={state.profile?.displayName ?? ''} onClose={() => setOverlay(null)} />
       <FriendProfileModal
         profile={state.viewProfile}
