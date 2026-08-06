@@ -1256,6 +1256,7 @@ function AppRoot() {
             oppWrong={matchOverPopup.oppWrong}
             winnerName={matchOverPopup.winnerName}
             trophyDelta={matchOverPopup.trophyDelta}
+            xpGained={state.xpGain?.gained ?? null}
           />
           <View style={{ maxWidth: 320, width: '100%', alignSelf: 'center' }}>
             <Btn big kind={matchOverPopup.youWon ? 'primary' : 'ghost'} label={t('common.continue')} onPress={dismissMatchOverPopup} />

@@ -10125,9 +10125,10 @@ function TrophyFly({ target, onDone, count = 9 }: { target: { x: number; y: numb
 // Match-over banner, styled after the Kupa-popup mockup: a coloured card (blue win /
 // purple loss) with a ringed trophy medallion, confetti on a win, and a recessed
 // panel showing the score and the arena-based trophy delta (+green / −red).
-export function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong, winnerName, trophyDelta }: {
+export function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong, winnerName, trophyDelta, xpGained }: {
   youWon: boolean; youScore: number; oppScore: number; youWrong: number; oppWrong: number;
   winnerName: string | null; trophyDelta: { delta: number; trophies: number; shielded?: boolean } | null;
+  xpGained?: number | null; // maçtan kazanılan XP — popup'ta görünür, ana menüde küre uçuşuyla çubuğa akar
 }) {
   const a = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -10201,6 +10202,13 @@ export function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong
               </View>
             ) : null}
           </>
+        ) : null}
+        {xpGained ? (
+          // Kazanılan XP — kaybeden de görür (XP kupadan bağımsız): mint rozet.
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, backgroundColor: withAlpha(theme.primary, 0.16), borderRadius: 999, borderWidth: 1.5, borderColor: withAlpha(theme.primary, 0.6), paddingHorizontal: 12, paddingVertical: 5 }}>
+            <Ionicons name="flash" size={14} color={theme.primary} />
+            <Text style={{ color: lighten(theme.primary, 0.2), fontSize: 13, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>+{xpGained} XP</Text>
+          </View>
         ) : null}
       </View>
     </Animated.View>
@@ -10704,7 +10712,18 @@ export function GemOrbFly({ amount, onDone }: { amount: number; onDone: () => vo
 }
 
 export const LEVEL_CAP = 50;
-export const xpForNextLevel = (level: number) => 100 + (level - 1) * 25;
+// SUNUCUYLA AYNI kademeli bantlar (server/src/game/level.ts xpForNext) —
+// aylık sezona ayarlı, toplam 9.460 XP. İkisi birlikte değişmeli.
+export const xpForNextLevel = (level: number): number => {
+  if (level <= 1) return 40;
+  if (level === 2) return 60;
+  if (level <= 5) return 80;
+  if (level <= 10) return 120;
+  if (level <= 20) return 160;
+  if (level <= 30) return 200;
+  if (level <= 40) return 240;
+  return 280;
+};
 
 // Çerçeve kademeleri — 10'un katlarında açılır; renkler tema paletinden.
 export interface LevelTier { key: string; min: number; nameKey: MessageKey; c: string; dark: string }
