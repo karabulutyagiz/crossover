@@ -381,9 +381,10 @@ function TopBanner({
 // modal — the sender keeps using the app ("yukarıda çancık"); at 0 the invite
 // is voided on both ends (the server's own 30s timer + this cancel), a decline
 // surfaces as the named toast from the reducer.
-function OutgoingInviteBanner({ invite, onCancel }: {
+function OutgoingInviteBanner({ invite, onCancel, offsetY = 0 }: {
   invite: { toId: string; toName: string; expiresAt: number };
   onCancel: () => void;
+  offsetY?: number; // pushed below the INCOMING InviteBanner when both are up
 }) {
   const insets = useSafeAreaInsets();
   const y = useRef(new Animated.Value(-160)).current;
@@ -403,7 +404,7 @@ function OutgoingInviteBanner({ invite, onCancel }: {
   }, [invite.toId, invite.expiresAt, y]);
   const urgent = secs <= 5;
   return (
-    <Animated.View style={[s.topBanner, { top: insets.top + 6, transform: [{ translateY: y }] }]}>
+    <Animated.View style={[s.topBanner, { top: insets.top + 6 + offsetY, transform: [{ translateY: y }] }]}>
       <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.accent }}>
         <Ionicons name="notifications" size={20} color={theme.accent} />
       </View>
@@ -1160,6 +1161,9 @@ function AppRoot() {
       {state.outgoingInvite ? (
         <OutgoingInviteBanner
           invite={state.outgoingInvite}
+          // Both strips anchor at the same top slot — an incoming invite takes
+          // priority (its accept/reject must stay tappable), ours drops below it.
+          offsetY={state.matchInvite ? 86 : 0}
           onCancel={() => { if (state.outgoingInvite) actions.cancelMatchInvite(state.outgoingInvite.toId); }}
         />
       ) : null}

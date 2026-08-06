@@ -1237,6 +1237,9 @@ export function useCrossover() {
       dispatch({ type: '_set_outgoing', invite: null });
     },
     respondMatchInvite: (fromId: string, accept: boolean) => {
+      // Accepting someone ELSE's invite starts a match — our own pending invite
+      // must be voided first or the third friend keeps a ghost invite.
+      if (accept) dropPendingInvite();
       send({ type: 'respond_match_invite', fromId, accept });
       dispatch({ type: '_dismiss_invite' });
     },
