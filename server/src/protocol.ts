@@ -166,7 +166,10 @@ export type ClientMsg =
   // Save this device's Expo push token (client mirror must stay in sync).
   | { type: 'register_push'; token: string; platform: 'ios' | 'android'; lang?: string }
   // Permanently delete the signed-in account and all its data (App Store 5.1.1(v)).
-  | { type: 'delete_account' };
+  | { type: 'delete_account' }
+  // Bilinçli maç terki (X onayı / arka plan hükmeni): reconnect grace atlanır,
+  // rakip hükmen sonucu ANINDA görür.
+  | { type: 'leave_match' };
 
 // ---- Server -> Client ----
 export interface RoundResult {

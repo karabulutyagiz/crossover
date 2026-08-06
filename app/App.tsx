@@ -29,6 +29,7 @@ import { setGemTarget } from './src/gemTarget';
 import { addNotificationTapListener, getPushPermissionGranted, setBadge } from './src/notifications';
 import {
   DevShotScreen,
+  TrophyFlight,
   SplashScreen,
   LoadingScreen,
   ScreenBg,
@@ -467,6 +468,9 @@ function AppRoot() {
   const [expiredSocialPack, setExpiredSocialPack] = useState(false); // Social Pack expired popup
   const [overlay, setOverlay] = useState<'leaderboard' | 'matchHistory' | null>(null); // centered popups
   const [gemCelebration, setGemCelebration] = useState<GemCelebration | null>(null);
+  // Maç sonrası kupa uçuşu (elmas kutlamasının kupa karşılığı): flight → land.
+  const [trophyFlight, setTrophyFlight] = useState<null | { delta: number; after: (() => void) | null }>(null);
+  const [trophyLand, setTrophyLand] = useState<{ delta: number; seq: number } | null>(null);
   // Elmas-harcamalı her satın almanın "Tamam"lı onayı (sunucu *_purchased mesajı).
   const [purchaseAck, setPurchaseAck] = useState<NonNullable<GameState['lastPurchase']> | null>(null);
   const lastPurchaseSeq = state.lastPurchase?.seq ?? 0;
@@ -636,17 +640,44 @@ function AppRoot() {
     setMatchOverPopup((cur) => {
       const reward = cur?.trophyDelta.arenaReward ?? 0;
       const arenaName = cur?.trophyDelta.arena?.name;
-      if (reward > 0 && arenaName) {
-        if (pendingLevelUpRef.current) {
-          // seviye popup'ı araya girecek — arena kutlaması ONDAN sonra
-          heldArena.current = { amount: reward, arenaName };
-        } else {
-          setGemCelebration((current) => current ?? { kind: 'arenaReward', amount: reward, arenaName });
+      // Arena/seviye zinciri KUPA UÇUŞUNDAN sonra: uçuş hafif bir overlay,
+      // arena kutlaması ise Modal — aynı anda açılsalar Modal uçuşu örter.
+      const chain = () => {
+        if (reward > 0 && arenaName) {
+          if (pendingLevelUpRef.current) {
+            // seviye popup'ı araya girecek — arena kutlaması ONDAN sonra
+            heldArena.current = { amount: reward, arenaName };
+          } else {
+            setGemCelebration((current) => current ?? { kind: 'arenaReward', amount: reward, arenaName });
+          }
         }
-      }
+      };
+      const delta = cur?.trophyDelta.delta ?? 0;
+      if (delta !== 0) setTrophyFlight((f) => f ?? { delta, after: chain });
+      else chain();
       return null;
     });
   }, []);
+
+  // Popup'suz kupa deltaları (hükmen kazanan rakip modalından çıkınca; X'le
+  // çekilen kendi kaybını ana menüde görür): delta gelince sakla, ana menüye
+  // dönünce uçur. Aynı delta nesnesi bir kez uçar.
+  const pendingHomeFlight = useRef<number | null>(null);
+  const lastStashedDelta = useRef<GameState['trophyDelta']>(null);
+  useEffect(() => {
+    const td = state.trophyDelta;
+    if (!td || !td.delta || state.matchOver) return; // normal maç sonu: popup yolu
+    if (lastStashedDelta.current === td) return;
+    lastStashedDelta.current = td;
+    pendingHomeFlight.current = td.delta;
+  }, [state.trophyDelta, state.matchOver]);
+  useEffect(() => {
+    if (state.phase !== 'home') return;
+    const d = pendingHomeFlight.current;
+    if (d == null) return;
+    pendingHomeFlight.current = null;
+    setTrophyFlight((f) => f ?? { delta: d, after: null });
+  }, [state.phase, state.trophyDelta]);
 
   useEffect(() => {
     // Hükmen (rakip ayrıldı) gibi matchOver YAKALANMAYAN durumlarda arena ödülü
@@ -976,7 +1007,7 @@ function AppRoot() {
         screen = <ResultScreen {...props} />;
         break;
       default:
-        screen = <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} onOpenLevelRoad={() => setLevelRoadOpen(true)} />;
+        screen = <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} trophyLand={trophyLand} trophyHold={trophyFlight?.delta ?? null} onOpenLevelRoad={() => setLevelRoadOpen(true)} />;
     }
     return (
       <View style={[s.root, { paddingTop: insets.top }]}>
@@ -1010,7 +1041,7 @@ function AppRoot() {
     ? <ArenasScreen {...props} />
     : state.phase === 'profile'
     ? <ProfileScreen {...props} onOpenMatchHistory={openMatchHistory} onOpenLevelRoad={() => setLevelRoadOpen(true)} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
-    : <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLanguageChange={() => {
+    : <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} trophyLand={trophyLand} trophyHold={trophyFlight?.delta ?? null} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLanguageChange={() => {
         setOverlay(null);
         setStoreSection(null);
         setActiveTab(2);
@@ -1189,6 +1220,17 @@ function AppRoot() {
           // priority (its accept/reject must stay tappable), ours drops below it.
           offsetY={state.matchInvite ? 86 : 0}
           onCancel={() => { if (state.outgoingInvite) actions.cancelMatchInvite(state.outgoingInvite.toId); }}
+        />
+      ) : null}
+      {trophyFlight ? (
+        <TrophyFlight
+          delta={trophyFlight.delta}
+          onDone={() => {
+            const f = trophyFlight;
+            setTrophyFlight(null);
+            setTrophyLand((s) => ({ delta: f.delta, seq: (s?.seq ?? 0) + 1 }));
+            f.after?.();
+          }}
         />
       ) : null}
       <TopBanner

@@ -1316,8 +1316,16 @@ export function useCrossover() {
         offlineRoomRef.current.leave();
         offlineRoomRef.current = null;
       }
-      wsRef.current?.close();
+      // Deliberate exit: tell the server BEFORE closing — a bare socket close
+      // gets the 12s reconnect grace and the opponent would keep playing
+      // against nobody ("anlık multiplayer bu").
+      send({ type: 'leave_match' } as any);
+      // Soketi hemen DEĞİL kısa gecikmeyle kapat: sunucu çekilme cezasını
+      // (trophy_update, delta<0) bu pencerede yollar — ana menüde kupa düşüş
+      // animasyonu bu mesajla oynar. State yine ANINDA sıfırlanır.
+      const wsToClose = wsRef.current;
       wsRef.current = null;
+      setTimeout(() => { try { wsToClose?.close(); } catch { /* already closed */ } }, 1200);
       dispatch({ type: '_reset' });
     },
     // ANTI-CHEAT: the app went to the BACKGROUND mid-match — "başka uygulamaya
@@ -1328,6 +1336,7 @@ export function useCrossover() {
         offlineRoomRef.current.leave();
         offlineRoomRef.current = null;
       }
+      send({ type: 'leave_match' } as any); // rakip ANINDA görsün (grace yok)
       wsRef.current?.close();
       wsRef.current = null;
       dispatch({ type: '_reset' });

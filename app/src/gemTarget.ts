@@ -29,3 +29,21 @@ export function setXpRemeasure(fn: (() => void) | null): void {
 export function remeasureXpTarget(): void {
   xpRemeasureFn?.();
 }
+
+// Ana ekran kupa rozetinin (RailBadge) ekran-uzayı merkezi — maç sonrası kupa
+// uçuşunun hedefi. HomeScreen ölçer; uçuş başlamadan taze ölçüm istenebilir.
+export const trophyTarget = { x: 0, y: 0, measured: false };
+
+export function setTrophyTarget(x: number, y: number): void {
+  trophyTarget.x = x;
+  trophyTarget.y = y;
+  trophyTarget.measured = true;
+}
+
+let trophyRemeasureFn: (() => void) | null = null;
+export function setTrophyRemeasure(fn: (() => void) | null): void {
+  trophyRemeasureFn = fn;
+}
+export function remeasureTrophyTarget(): void {
+  trophyRemeasureFn?.();
+}

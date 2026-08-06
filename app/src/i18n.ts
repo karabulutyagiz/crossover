@@ -444,8 +444,8 @@ const tr = {
 
   // leave confirmation
   'leave.bannerTitle': 'DİKKAT',
-  'leave.confirmTitle': 'Çıkış yapmak istediğinize emin misiniz?',
-  'leave.confirmBody': 'Çıkış yaptığınız halde kupa kaybedeceksiniz.',
+  'leave.confirmTitle': 'Maçtan çekilmek istediğine emin misin?',
+  'leave.confirmBody': 'Çekilirsen hükmen mağlup sayılırsın ve KUPA KAYBEDERSİN.',
   'leave.confirm': 'Evet, Çık',
   'leave.cancel': 'Vazgeç',
 
@@ -1071,7 +1071,7 @@ const en: typeof tr = {
 
   'leave.bannerTitle': 'HOLD ON',
   'leave.confirmTitle': 'Are you sure you want to leave?',
-  'leave.confirmBody': 'You will lose trophies if you leave.',
+  'leave.confirmBody': 'Leaving forfeits the match and you WILL LOSE TROPHIES.',
   'leave.confirm': 'Yes, Leave',
   'leave.cancel': 'Cancel',
 

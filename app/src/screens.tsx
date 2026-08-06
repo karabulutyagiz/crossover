@@ -27,7 +27,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image as ExpoImage } from 'expo-image';
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
-import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget } from './gemTarget';
+import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget, trophyTarget, setTrophyTarget, setTrophyRemeasure, remeasureTrophyTarget } from './gemTarget';
 import { Avatar } from './Avatar';
 import { useIsTablet, useWindow } from './layout';
 import { setPendingShortfall, takePendingShortfall } from './shortfall';
@@ -172,6 +172,10 @@ interface Props {
   // App'in tutmalı/dönüşlü elmas sayacı — verilirse ana ekran hapı bunu izler
   // (ödül uçuşu sırasında sayaç ödül ÖNCESİ değerde tutulur, iniş sonrası döner)
   gemCountAnimOverride?: Animated.Value;
+  // Maç sonrası kupa kutlaması: uçuş bitince sayaç from→to döner (seq artar);
+  // uçuş beklerken rozet ESKİ değeri gösterir (trophyHold = delta).
+  trophyLand?: { delta: number; seq: number } | null;
+  trophyHold?: number | null;
   gemFillAnimOverride?: Animated.Value;
   onGoToFriends?: () => void; // page the tab ScrollView across to the Friends tab
   focusAddFriendSeq?: number; // bumped by App when Home's find-friend card is tapped → Friends focuses its add-friend input
@@ -3717,7 +3721,7 @@ const ROOM_CODE_LEN = 6;
 const HOME_MODES: GameMode[] = ['country-team', 'letter-team'];
 const PACK_MODES: GameMode[] = ['country-team', 'letter-team'];
 
-export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, onOpenLevelRoad, overlayBusy, gemCountAnimOverride, gemFillAnimOverride }: Props) {
+export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, onOpenLevelRoad, overlayBusy, gemCountAnimOverride, gemFillAnimOverride, trophyLand, trophyHold }: Props) {
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [scope, setScope] = useState<Scope>({ type: 'all' });
   const [mode, setMode] = useState<GameMode>('team-team');
@@ -3765,8 +3769,46 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const trophyFillAnim = useRef(new Animated.Value(0)).current;
   const trophyBadgeRef = useRef<View>(null);
   useEffect(() => {
+    // Uçuş beklerken/sürerken rozet ESKİ değeri tutar; kupalar konunca
+    // land-effect sayacı döndürür (elmas hapindaki tutma kuralının aynısı).
+    if (trophyHold != null && trophyHold !== 0) {
+      trophyCountAnim.stopAnimation();
+      trophyCountAnim.setValue(Math.max(0, (profile?.trophies ?? 0) - trophyHold));
+      return;
+    }
     trophyCountAnim.setValue(profile?.trophies ?? 0);
-  }, [profile?.trophies, trophyCountAnim]);
+  }, [profile?.trophies, trophyCountAnim, trophyHold]);
+
+  // Kupa rozeti = uçuşun hedefi (elmas hapının setGemTarget kalıbı).
+  const measureTrophyBadge = useCallback(() => {
+    (trophyBadgeRef.current as View | null)?.measureInWindow((x, y, w, h) => {
+      if (w > 0 && h > 0) setTrophyTarget(x + w / 2, y + h * 0.42);
+    });
+  }, []);
+  useEffect(() => {
+    setTrophyRemeasure(measureTrophyBadge);
+    const id = requestAnimationFrame(measureTrophyBadge);
+    return () => { cancelAnimationFrame(id); setTrophyRemeasure(null); };
+  }, [measureTrophyBadge]);
+
+  // Kupalar rozete kondu → sayaç from→to + altın dolum süpürmesi.
+  const lastTrophyLandSeq = useRef(0);
+  useEffect(() => {
+    if (!trophyLand || trophyLand.seq === lastTrophyLandSeq.current) return;
+    lastTrophyLandSeq.current = trophyLand.seq;
+    const to = profile?.trophies ?? 0;
+    const from = Math.max(0, to - trophyLand.delta);
+    trophyCountAnim.stopAnimation();
+    trophyCountAnim.setValue(from);
+    Animated.timing(trophyCountAnim, { toValue: to, duration: 900, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    trophyFillAnim.stopAnimation();
+    trophyFillAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(trophyFillAnim, { toValue: 1, duration: 650, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(trophyFillAnim, { toValue: 0, duration: 240, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trophyLand?.seq]);
 
   // Arena tier drives the mockup's "level" slots. ARENA_DATA runs highest→lowest,
   // so the human-facing tier number counts up from the bottom (Mahalle = 1).
@@ -5141,6 +5183,79 @@ const SPARK_DIRS = Array.from({ length: 6 }, (_, i) => {
   const a = (Math.PI * 2 * i) / 6 - Math.PI / 2;
   return { x: Math.cos(a) * 86, y: Math.sin(a) * 70 };
 });
+
+// ---- Maç sonrası kupa uçuşu — elmas kutlamasının kardeşi (spec §14: ≤7 parça) ----
+// Modal DEĞİL, hafif overlay: kazançta kupalar ekran ortasından rozete uçar;
+// kayıpta rozetten kopup aşağı dökülür. Bitince onDone (sayaç dönüşü App
+// üzerinden HomeScreen'e "land" olarak iletilir).
+export function TrophyFlight({ delta, onDone }: { delta: number; onDone: () => void }) {
+  const gain = delta > 0;
+  const n = Math.min(7, Math.max(3, Math.round(Math.abs(delta) / 8)));
+  const anims = useRef(Array.from({ length: 7 }, () => ({
+    x: new Animated.Value(0), y: new Animated.Value(0),
+    scale: new Animated.Value(0), opacity: new Animated.Value(0),
+  }))).current;
+  const screenW = Dimensions.get('window').width;
+  const screenH = Dimensions.get('window').height;
+
+  useEffect(() => {
+    remeasureTrophyTarget();
+    const badge = () => ({
+      x: trophyTarget.measured ? trophyTarget.x : screenW - 40,
+      y: trophyTarget.measured ? trophyTarget.y : 330,
+    });
+    let completed = 0;
+    const finishOne = () => { completed += 1; if (completed === n) onDone(); };
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    for (let i = 0; i < n; i++) {
+      const g = anims[i]!;
+      const b = badge();
+      const from = gain
+        ? { x: screenW / 2 + (Math.random() - 0.5) * 110, y: screenH * 0.44 + (Math.random() - 0.5) * 80 }
+        : { x: b.x, y: b.y };
+      const to = gain
+        ? b
+        : { x: b.x + (Math.random() - 0.5) * 140, y: b.y + 190 + Math.random() * 90 };
+      g.x.setValue(from.x); g.y.setValue(from.y); g.scale.setValue(0); g.opacity.setValue(0);
+      timers.push(setTimeout(() => {
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(g.opacity, { toValue: 1, duration: 90, useNativeDriver: true }),
+            Animated.spring(g.scale, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(g.x, { toValue: to.x, duration: 560, easing: gain ? Easing.in(Easing.quad) : Easing.out(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.y, { toValue: to.y, duration: 560, easing: gain ? Easing.in(Easing.quad) : Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.scale, { toValue: gain ? 0.42 : 0.7, duration: 560, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(g.scale, { toValue: gain ? 0.16 : 0.4, duration: 130, useNativeDriver: true }),
+            Animated.timing(g.opacity, { toValue: 0, duration: 130, useNativeDriver: true }),
+          ]),
+        ]).start(finishOne);
+      }, i * 80));
+    }
+    return () => timers.forEach(clearTimeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 60 }]}>
+      {anims.slice(0, n).map((g, i) => (
+        <Animated.View
+          key={i}
+          style={{
+            position: 'absolute', left: -14, top: -14,
+            opacity: g.opacity,
+            transform: [{ translateX: g.x }, { translateY: g.y }, { scale: g.scale }],
+          }}
+        >
+          <Ionicons name="trophy" size={28} color={gain ? theme.gold : theme.muted} style={{ textShadowColor: 'rgba(5,11,31,0.55)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 }} />
+        </Animated.View>
+      ))}
+    </View>
+  );
+}
 
 export function DiamondCelebration({
   amount,

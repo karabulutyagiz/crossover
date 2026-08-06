@@ -199,6 +199,15 @@ export class Room {
     return { ok: false, error: 'Maça geri dönülemedi' };
   }
 
+  // Explicit, DELIBERATE exit (X button / background-forfeit): no reconnect
+  // grace — the opponent must see the forfeit INSTANTLY ("anlık multiplayer").
+  // The socket close that follows finds the player already gone (no-op).
+  explicitLeave(playerId: string): void {
+    const timer = this.disconnectTimers.get(playerId);
+    if (timer) { clearTimeout(timer); this.disconnectTimers.delete(playerId); }
+    this.finalizeClose(playerId);
+  }
+
   handleClose(playerId: string): void {
     const p = this.players.get(playerId);
     if (!p) return;
@@ -260,8 +269,14 @@ export class Room {
           }
           if (p.userId) {
             // Terk eden mağlubiyeti: kalkan onu KORUMAZ (leaver bayrağı)
-            await applyMatchResult(p.userId, false, { leaver: true });
-            await awardMatchXp(p.userId, false, false); // ayrılan: mağlubiyet XP'si (gönderilemez — gitti)
+            const leaverRes = await applyMatchResult(p.userId, false, { leaver: true });
+            await awardMatchXp(p.userId, false, false); // ayrılan: mağlubiyet XP'si
+            // Bilinçli çıkışta istemci soketi ~1.2sn açık tutar: kupa düşüşü
+            // (delta<0) ana menüde animasyonla gösterilir. Soket kapandıysa
+            // sessizce düşer — sonraki girişte profil zaten günceldir.
+            try {
+              p.transport.send({ type: 'trophy_update', trophies: leaverRes.profile.trophies, delta: leaverRes.delta, arena: leaverRes.profile.arena, diamonds: leaverRes.profile.diamonds, winStreak: leaverRes.profile.winStreak, bestStreak: leaverRes.profile.bestStreak });
+            } catch { /* socket gone */ }
           }
         } catch { /* DB error — skip silently */ }
       })();
