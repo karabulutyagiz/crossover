@@ -49,25 +49,74 @@ UPDATE clubs SET name =
 WHERE country = 'Türkiye';
 
 -- Youth/reserve spells count toward the PARENT club (user rule: any official
--- appearance in the shirt counts — TM logs e.g. Özyakup's Arsenal years under
--- "Arsenal FC U21", which broke Beşiktaş–Arsenal rounds). Conservative: strip
--- one trailing youth token, require an EXACT parent name match, leave the rest.
--- Mirrors deploy/repoint-youth-clubs.sql (the one-off prod migration).
+-- appearance in the shirt counts). Names COLLIDE across countries ("Arsenal
+-- FC" = Arsenal de Sarandí!), so: variant strip (youth token, then fc/cf/fk/sk),
+-- country-gated when known (most popular same-country parent), single-candidate
+-- only when country is NULL. Mirrors deploy/repoint-youth-clubs.sql.
 WITH youth AS (
-  SELECT c.id AS child_id,
+  SELECT c.id AS child_id, c.country,
          trim(regexp_replace(c.name_norm,
-           '\s*(u-?[0-9]{1,2}|b|ii|iii|reserves?|castilla|primavera|jong|amateure)\s*$', '')) AS parent_norm
+           '\s*(u-?[0-9]{1,2}|b|ii|iii|reserves?|castilla|primavera|jong|amateure)\s*$', '')) AS v1
     FROM clubs c
    WHERE c.name_norm ~ '(\mu-?[0-9]{1,2}$|\mii$|\miii$|\mb$|reserves?$|castilla$|primavera$|amateure$)'
+), variants AS (
+  SELECT child_id, country, v1 AS parent_norm FROM youth
+  UNION
+  SELECT child_id, country,
+         trim(regexp_replace(v1, '(^(fc|cf|fk|sk)\s+|\s+(fc|cf|fk|sk)$)', ''))
+    FROM youth
+   WHERE trim(regexp_replace(v1, '(^(fc|cf|fk|sk)\s+|\s+(fc|cf|fk|sk)$)', '')) <> v1
+), cands AS (
+  SELECT v.child_id, v.country AS child_country, p.id AS parent_id,
+         p.country AS parent_country, p.popularity
+    FROM variants v
+    JOIN clubs p ON p.name_norm = v.parent_norm AND p.id <> v.child_id
 ), map AS (
-  SELECT y.child_id, p.id AS parent_id
-    FROM youth y
-    JOIN clubs p ON p.name_norm = y.parent_norm AND p.id <> y.child_id
+  (SELECT DISTINCT ON (child_id) child_id, parent_id
+     FROM cands
+    WHERE child_country IS NOT NULL AND parent_country = child_country
+    ORDER BY child_id, popularity DESC)
+  UNION ALL
+  (SELECT child_id, min(parent_id)
+     FROM cands
+    WHERE child_country IS NULL
+    GROUP BY child_id
+   HAVING count(DISTINCT parent_id) = 1)
 )
 UPDATE player_clubs pc
    SET club_id = m.parent_id
   FROM map m
  WHERE pc.club_id = m.child_id;
+
+-- Curated legends re-merge: deploy/legends.sql seeds persistent legends_*
+-- source tables (players TM can no longer give us — bot wall). They live
+-- OUTSIDE the tm_* staging, so every future swap re-merges them here.
+-- No-op until legends.sql has been applied once.
+DO $$
+BEGIN
+  IF to_regclass('legends_players') IS NOT NULL THEN
+    EXECUTE $m$
+      INSERT INTO clubs (id, name, name_norm, country)
+      SELECT lc.id, lc.name, lc.name_norm, lc.country FROM legends_clubs lc
+      WHERE NOT EXISTS (SELECT 1 FROM clubs c WHERE c.id = lc.id OR c.name_norm = lc.name_norm);
+
+      INSERT INTO players (id, name, name_norm, birth_year, nationality)
+      SELECT lp.id, lp.name, lp.name_norm, lp.birth_year, lp.nationality FROM legends_players lp
+      WHERE NOT EXISTS (SELECT 1 FROM players p WHERE p.id = lp.id OR p.name_norm = lp.name_norm);
+
+      INSERT INTO player_clubs (player_id, club_id, start_year, end_year)
+      SELECT ls.player_id,
+             COALESCE((SELECT c2.id FROM clubs c2 JOIN legends_clubs lc2 ON lc2.id = ls.club_id
+                        WHERE c2.name_norm = lc2.name_norm LIMIT 1), ls.club_id),
+             ls.start_year, ls.end_year
+        FROM legends_spells ls
+       WHERE EXISTS (SELECT 1 FROM players p WHERE p.id = ls.player_id)
+         AND NOT EXISTS (SELECT 1 FROM player_clubs pc
+                          WHERE pc.player_id = ls.player_id AND pc.club_id = ls.club_id
+                            AND pc.start_year IS NOT DISTINCT FROM ls.start_year);
+    $m$;
+  END IF;
+END $$;
 
 -- Popularity = number of players per club (bot difficulty + search ranking).
 UPDATE clubs SET popularity = sub.n
