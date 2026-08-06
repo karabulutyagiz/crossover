@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
 import {
   Image,
   type ImageSourcePropType,
@@ -644,6 +644,37 @@ function GamePanel({ children, hero = false, tint, accentStripe, compact = false
 // ---- GameModal — THE dialog. Native Alert.alert is banned for game flows. ----
 // Spring pop-in + 160ms animated exit (scale/fade, scrim fades with it) +
 // pressed close gem. Keeps the Modal mounted during the exit animation.
+// ---- SafeModal — TÜM native pencerelerin tek kapısı ----
+// iOS'ta AYNI SEVİYEDEKİ iki modalı aynı anda sunmak UIKit'in sunum zincirini
+// kilitler: ekranda görünmez bir modal kalır, tüm dokunuşlar ölür ("uygulama
+// donuyor", çökme kaydı yok). Burada sunum modalTraffic slotundan geçer; slot
+// doluysa pencere SIRAYA girer ve öndeki kapanınca açılır.
+//
+// İÇ İÇE pencereler MUAF: bir modalın kendi ağacındaki modal (ör. Seviye
+// Yolu'nun içindeki onay penceresi) iOS'ta yasal bir zincirdir — onu da
+// sıraya alsaydık asla açılamaz, özellik ölürdü. Derinlik context ile taşınır.
+const ModalDepthCtx = createContext(0);
+
+function SafeModal({ visible = true, children, ...rest }: ComponentProps<typeof Modal>) {
+  const depth = useContext(ModalDepthCtx);
+  const nested = depth > 0;
+  const [present, setPresent] = useState(false);
+  useEffect(() => {
+    if (!visible) { setPresent(false); return undefined; }
+    if (nested) { setPresent(true); return undefined; }
+    return whenModalSlotFree(() => setPresent(true));
+  }, [visible, nested]);
+  useEffect(() => {
+    if (!present || nested) return undefined;
+    return acquireModalSlot();
+  }, [present, nested]);
+  return (
+    <Modal {...rest} visible={present}>
+      <ModalDepthCtx.Provider value={depth + 1}>{children}</ModalDepthCtx.Provider>
+    </Modal>
+  );
+}
+
 export function GameModal({ visible, onClose, onExited, title, icon, danger = false, coach = false, children }: {
   visible: boolean; onClose: () => void; onExited?: () => void; title?: string; icon?: IoniconName; danger?: boolean; coach?: boolean; children: ReactNode;
 }) {
@@ -651,24 +682,14 @@ export function GameModal({ visible, onClose, onExited, title, icon, danger = fa
   const [mounted, setMounted] = useState(false);
   const onExitedRef = useRef(onExited);
   onExitedRef.current = onExited;
-  // SUNUM SIRASI: başka bir modal ekrandayken bu modal sunulmaz, sıraya girer
-  // (modalTraffic). iOS'ta üst üste sunum görünmez bir modal bırakıp TÜM
-  // dokunuşları öldürüyordu — uygulama "donuyor", çökme kaydı da yok.
+  // Sunum sırası SafeModal'da (modalTraffic) — burada yalnız animasyon durumu.
   useEffect(() => {
-    if (!visible) return undefined;
-    return whenModalSlotFree(() => {
-      setMounted(true);
-      Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
-  // Ekrandayken slotu tutar; kalkınca bırakır → sıradaki modal sunulur.
+    if (!visible) return;
+    setMounted(true);
+    Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
+  }, [visible, a]);
   useEffect(() => {
-    if (!mounted) return undefined;
-    return acquireModalSlot();
-  }, [mounted]);
-  useEffect(() => {
-    if (visible) return; // giriş animasyonu sıraya-girme etkisinde başlar
+    if (visible) return;
     Animated.timing(a, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
       if (finished) {
         setMounted(false);
@@ -682,7 +703,7 @@ export function GameModal({ visible, onClose, onExited, title, icon, danger = fa
   // strip along the top carries the modal's mood (danger red / coach green / gold).
   const strip = danger ? theme.danger : coach ? theme.primary : theme.accent;
   return (
-    <Modal visible transparent animationType="none" onRequestClose={onClose}>
+    <SafeModal visible transparent animationType="none" onRequestClose={onClose}>
       <Animated.View style={{ flex: 1, backgroundColor: theme.scrim, opacity: clamped }}>
         {/* Inert the instant `visible` flips false — the 160ms exit must not be
             hit-testable (double-tapped confirms re-fired actions, e.g. double gem charges) */}
@@ -728,7 +749,7 @@ export function GameModal({ visible, onClose, onExited, title, icon, danger = fa
           </Animated.View>
         </Pressable>
       </Animated.View>
-    </Modal>
+    </SafeModal>
   );
 }
 
@@ -2200,7 +2221,7 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
         />
       ) : null}
 
-      <Modal visible={open || sheetMounted} transparent animationType="none" onRequestClose={() => setOpen(false)}>
+      <SafeModal visible={open || sheetMounted} transparent animationType="none" onRequestClose={() => setOpen(false)}>
         <Animated.View style={[styles.emoteSheetBackdrop, { opacity: sheetA.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }) }]}>
           <Pressable style={{ flex: 1 }} onPress={() => setOpen(false)} />
           <Animated.View style={{ transform: [{ translateY: sheetA.interpolate({ inputRange: [0, 1], outputRange: [440, 0] }) }] }}>
@@ -2248,7 +2269,7 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
             </View>
           </Animated.View>
         </Animated.View>
-      </Modal>
+      </SafeModal>
     </>
   );
 }
@@ -3038,19 +3059,12 @@ function PopupCard({ visible, title, icon, onClose, children }: {
   // centered cards never use animationType='fade'/'slide' (spec §7).
   const a = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(false);
-  // GameModal'daki sunum sırasının aynısı — bkz. modalTraffic.
+  // Sunum sırası SafeModal'da (modalTraffic) — burada yalnız animasyon durumu.
   useEffect(() => {
-    if (!visible) return undefined;
-    return whenModalSlotFree(() => {
-      setMounted(true);
-      Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
-  useEffect(() => {
-    if (!mounted) return undefined;
-    return acquireModalSlot();
-  }, [mounted]);
+    if (!visible) return;
+    setMounted(true);
+    Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
+  }, [visible, a]);
   useEffect(() => {
     if (visible) return;
     Animated.timing(a, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
@@ -3060,7 +3074,7 @@ function PopupCard({ visible, title, icon, onClose, children }: {
   if (!mounted) return null;
   const clamped = a.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' });
   return (
-    <Modal visible transparent animationType="none" onRequestClose={onClose}>
+    <SafeModal visible transparent animationType="none" onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 18 }}>
         {/* Backdrop catches outside taps. It is a SIBLING of the card (not a parent),
             so it never swallows the inner ScrollView's scroll gestures. */}
@@ -3092,7 +3106,7 @@ function PopupCard({ visible, title, icon, onClose, children }: {
           {children}
         </Animated.View>
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 
@@ -3856,7 +3870,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const [botOpen, setBotOpen] = useState(false);
   const [modesOpen, setModesOpen] = useState(false);
   const [socialPackPopup, setSocialPackPopup] = useState(false);
-  // iOS presents ONE native <Modal> at a time; open the upsell only AFTER the
+  // iOS presents ONE native <SafeModal> at a time; open the upsell only AFTER the
   // modes modal's native dismissal finishes (via GameModal onExited), else the two
   // overlap and the app FREEZES (dead touches + scroll). Same race the avatar
   // picker guards against (see insufficientOnExit).
@@ -5509,7 +5523,7 @@ export function DiamondCelebration({
   };
 
   return (
-    <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={handleClose}>
+    <SafeModal visible transparent animationType="none" statusBarTranslucent onRequestClose={handleClose}>
       <View style={StyleSheet.absoluteFill}>
         {/* Scrim fades with the card's own animated value (Modal animates nothing) */}
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim, opacity: cardOpacity }]}>
@@ -5675,7 +5689,7 @@ export function DiamondCelebration({
           ))}
         </View>
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 
@@ -6235,7 +6249,7 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
   const [confirmOpen, setConfirmOpen] = useState(false);
   // Open "not enough gems" only AFTER the buy-confirm modal's native dismissal
   // finishes (via onExited) — flipping both in one commit overlaps two native
-  // <Modal>s and iOS freezes the app (dead touches + scroll). Holds the missing
+  // <SafeModal>s and iOS freezes the app (dead touches + scroll). Holds the missing
   // amount recorded at confirm (null = nothing pending) — the powerShortfall
   // pattern, so the handoff never depends on render-closure state.
   const notEnoughOnExit = useRef<number | null>(null);
@@ -7490,7 +7504,7 @@ export function FriendProfileModal({ profile, onClose, relation, onAddFriend }: 
   const [requestSent, setRequestSent] = useState(false);
   useEffect(() => { setRequestSent(false); }, [profile?.userId]);
   return (
-    <Modal visible={!!profile} animationType="slide" onRequestClose={onClose} presentationStyle="overFullScreen" transparent>
+    <SafeModal visible={!!profile} animationType="slide" onRequestClose={onClose} presentationStyle="overFullScreen" transparent>
       <View style={{ flex: 1, backgroundColor: BG_TOP }}>
         <ScreenBg />
         <View style={{ flex: 1, paddingTop: insets.top }}>
@@ -7534,7 +7548,7 @@ export function FriendProfileModal({ profile, onClose, relation, onAddFriend }: 
           </View>
         </View>
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 
@@ -7881,7 +7895,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
   const [menuH, setMenuH] = useState(222); // measured popover height — hard-coding it mis-seats the panel when labels wrap (long locales / large type)
   const [confirmRemove, setConfirmRemove] = useState<FriendInfo | null>(null); // remove confirmation
   const [socialPackPopup, setSocialPackPopup] = useState(false);
-  // The match-setup modal hands off to another native <Modal> (the social-pack
+  // The match-setup modal hands off to another native <SafeModal> (the social-pack
   // upsell or the invite-waiting dialog). iOS presents ONE modal at a time, so we
   // stash the intent and run it in matchModal's onExited — after its native
   // dismissal — never in the same commit (which overlaps two modals and FREEZES
@@ -8170,7 +8184,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
       <NetworkErrorBeacon visible={isNetworkErrorMessage(state.error)} />
 
       {/* Friend actions — small Clash-Royale-style popover above the tapped row */}
-      <Modal visible={menuFriend !== null} transparent animationType="none" onRequestClose={() => setMenuFriend(null)} onDismiss={() => {
+      <SafeModal visible={menuFriend !== null} transparent animationType="none" onRequestClose={() => setMenuFriend(null)} onDismiss={() => {
         const fid = menuExitInvite.current; menuExitInvite.current = null;
         if (fid) { setMatchPage({ key: 'mode', dir: 1 }); setMatchModal(fid); return; }
         const a = menuExitAction.current; menuExitAction.current = null;
@@ -8232,7 +8246,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
             );
           })() : null}
         </View>
-      </Modal>
+      </SafeModal>
 
       {/* Remove-friend confirmation */}
       <GameModal visible={confirmRemove !== null} onClose={() => setConfirmRemove(null)} title={t('friends.removeConfirmTitle')} icon="warning" danger>
@@ -8336,23 +8350,16 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
         <Btn label={t('friends.goToStore')} kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); onGoToStore?.('socialPack'); }} />
       </GameModal>
 
-      {/* Tapped a friend → their public profile (aramadan gelen yabancıya da tek dokunuşla istek) */}
-      <FriendProfileModal
-        profile={state.viewProfile}
-        onClose={actions.closeUserProfile}
-        relation={!state.viewProfile ? undefined
-          : state.viewProfile.userId === state.profile?.userId ? 'self'
-          : friends.some((f) => f.userId === state.viewProfile!.userId) ? 'friend'
-          : 'none'}
-        onAddFriend={() => { if (state.viewProfile) actions.sendFriendRequest(undefined, state.viewProfile.displayName); }}
-      />
-
+      {/* Profil penceresi YALNIZ App.tsx'te render edilir. Burada bir İKİNCİSİ
+          daha vardı: aynı state (state.viewProfile) iki native modalı birden
+          sunmaya çalışıyordu — donmanın ta kendisi; sıraya alınsa bile profil
+          kapanınca aynısı bir kez daha açılırdı. */}
       {/* Chat screen — WhatsApp style, swipe-back enabled */}
-      <Modal visible={state.chatWith !== null} transparent animationType="none" presentationStyle="overFullScreen" onRequestClose={actions.closeChat}>
+      <SafeModal visible={state.chatWith !== null} transparent animationType="none" presentationStyle="overFullScreen" onRequestClose={actions.closeChat}>
         <SwipeBackWrap onBack={actions.closeChat}>
           {(softBack) => <ChatScreen state={state} actions={actions} onBack={softBack} />}
         </SwipeBackWrap>
-      </Modal>
+      </SafeModal>
 
       {/* Misafir kapısı — arkadaş eklemek kayıt ister */}
       <GuestGateModal visible={guestGateOpen} onClose={() => setGuestGateOpen(false)} actions={actions} />
@@ -8503,7 +8510,7 @@ function ReportReasonModal({ visible, onClose, onExited, onPick }: {
   visible: boolean;
   onClose: () => void;
   // Forwarded so the caller can hand off to the next modal only AFTER this one's
-  // native <Modal> has unmounted — two mounted at once freezes iOS.
+  // native <SafeModal> has unmounted — two mounted at once freezes iOS.
   onExited?: () => void;
   onPick: (reason: string) => void;
 }) {
@@ -8529,7 +8536,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
   const [reportSent, setReportSent] = useState(false);
   const [guestGate, setGuestGate] = useState(false);
   const isGuest = state.authProvider == null;
-  // Modal→modal handoff. GameModal keeps its native <Modal> mounted for the 160ms
+  // Modal→modal handoff. GameModal keeps its native <SafeModal> mounted for the 160ms
   // exit animation, so opening the next one in the same handler leaves TWO native
   // modals mounted and iOS kills touch AND scroll for the whole screen (the tab
   // "freezes" — it still scrolls sideways but not vertically). Every transition
@@ -8626,7 +8633,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
     const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const onFrame = Keyboard.addListener(frameEvt, setKeyboardFrame);
     const onHide = Keyboard.addListener(hideEvt, resetKeyboardFrame);
-    // KESİN DÜZELTME: Sohbet bir RN <Modal> (yeni native pencere) içinde açılıyor.
+    // KESİN DÜZELTME: Sohbet bir RN <SafeModal> (yeni native pencere) içinde açılıyor.
     // İlk açılışta "Will" olayı bu pencere geçişiyle çakışıp BAYAT/yanlış bir
     // çerçeve bildirebilir — çubuk klavyenin arkasında kalır ya da "kaybolur"
     // ("ilk girildiğinde arama çubuğu kayboluyor"). "Did" olayları OS klavye
@@ -9059,7 +9066,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
   const confirmAvatar = confirmAvatarId ? avatarMeta(confirmAvatarId) : null;
   const canAffordPending = pendingAvatar ? p.diamonds >= avatarPrice(pendingAvatar.id) : false;
 
-  // Avatar picker — an INLINE page, deliberately NOT a native <Modal>.
+  // Avatar picker — an INLINE page, deliberately NOT a native <SafeModal>.
   //
   // It used to be a presentationStyle="fullScreen" Modal with the confirm/purchase
   // GameModals (themselves Modals) nested inside it. Confirming a change dismissed BOTH
@@ -10306,7 +10313,7 @@ function TrophyFly({ target, onDone, count = 9 }: { target: { x: number; y: numb
   // Rendered in a Modal so absoluteFill maps to the whole window — the same
   // coordinate space measureInWindow / Dimensions gave us for origin and target.
   return (
-    <Modal visible transparent animationType="none" statusBarTranslucent>
+    <SafeModal visible transparent animationType="none" statusBarTranslucent>
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {parts.map((g, i) => (
           <Animated.View key={i} style={{ position: 'absolute', left: -15, top: -15, opacity: g.o, transform: [{ translateX: g.x }, { translateY: g.y }, { scale: g.s }] }}>
@@ -10314,7 +10321,7 @@ function TrophyFly({ target, onDone, count = 9 }: { target: { x: number; y: numb
           </Animated.View>
         ))}
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 
@@ -10798,7 +10805,7 @@ function XpOrbFly({ gained, target, onDone, onOrbLand }: { gained: number; targe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <Modal visible transparent animationType="none" statusBarTranslucent>
+    <SafeModal visible transparent animationType="none" statusBarTranslucent>
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {/* +N XP çipi */}
         <Animated.View style={{
@@ -10822,7 +10829,7 @@ function XpOrbFly({ gained, target, onDone, onOrbLand }: { gained: number; targe
           </Animated.View>
         ))}
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 
@@ -10877,7 +10884,7 @@ export function GemOrbFly({ amount, onDone }: { amount: number; onDone: () => vo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <Modal visible transparent animationType="none" statusBarTranslucent>
+    <SafeModal visible transparent animationType="none" statusBarTranslucent>
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {/* +N elmas çipi */}
         <Animated.View style={{
@@ -10901,7 +10908,7 @@ export function GemOrbFly({ amount, onDone }: { amount: number; onDone: () => vo
           </Animated.View>
         ))}
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 
@@ -11107,7 +11114,7 @@ export function FramePreviewModal({ tier, unlocked, visible, onClose, equipped, 
   if (!visible || !tier) return null;
   const big = Math.min(SCREEN_W * 0.8, 330);
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+    <SafeModal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim, alignItems: 'center', justifyContent: 'center', padding: 24 }]} onPress={onClose}>
         <FrameArt tierKey={tier.key} size={big} locked={!unlocked} />
         <Text style={{ color: tier.c, fontSize: 24, fontFamily: 'Poppins-Black', letterSpacing: 1.2, marginTop: 6, ...engrave('lg') }}>
@@ -11132,7 +11139,7 @@ export function FramePreviewModal({ tier, unlocked, visible, onClose, equipped, 
         ) : null}
         <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', marginTop: 16 }}>{t('common.close')}</Text>
       </Pressable>
-    </Modal>
+    </SafeModal>
   );
 }
 
@@ -11262,7 +11269,7 @@ export function FrameUnlockCelebration({ tierKey, emoteId, powerId, onDone }: { 
   const ringSize = big * 1.55;
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent>
+    <SafeModal visible transparent animationType="fade" statusBarTranslucent>
       <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(3,5,12,0.985)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }]}>
         {/* kademe renkli geniş ambient yıkama (girişte belirir) — ekran köşegenine
             yakın boyut yeter (perf: aşırı büyük translucent yüzey overdraw yükü) */}
@@ -11426,7 +11433,7 @@ export function FrameUnlockCelebration({ tierKey, emoteId, powerId, onDone }: { 
           </Animated.View>
         ) : null}
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 
@@ -11956,7 +11963,7 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
   if (!visible) return null;
 
   return (
-    <Modal visible transparent animationType="slide" presentationStyle="overFullScreen" onRequestClose={onClose}>
+    <SafeModal visible transparent animationType="slide" presentationStyle="overFullScreen" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
         <ScreenBg />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: insets.top + 8, paddingBottom: 12, paddingHorizontal: 14, backgroundColor: theme.surface1, borderTopWidth: 1, borderTopColor: theme.topLight, ...shadowSoft }}>
@@ -12122,7 +12129,7 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
         </GameModal>
         <FramePreviewModal tier={framePrev?.tier ?? null} unlocked={framePrev?.unlocked ?? false} visible={framePrev != null} onClose={() => setFramePrev(null)} />
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 

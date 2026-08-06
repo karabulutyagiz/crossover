@@ -12,6 +12,9 @@
 // birincisi kapanır kapanmaz sunulur.
 let presented = 0;
 const waiters = new Set<() => void>();
+// iOS'un modal kapanış animasyonu (~300ms) + emniyet payı.
+const DISMISS_ANIM_MS = 340;
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Bir modal sunuldu. Dönen fonksiyon çağrılınca slot serbest kalır. */
 export function acquireModalSlot(): () => void {
@@ -22,11 +25,20 @@ export function acquireModalSlot(): () => void {
     released = true;
     presented = Math.max(0, presented - 1);
     if (presented === 0 && waiters.size > 0) {
-      // Sırada bekleyenlerin İLKİ açılır; kalanlar o kapanınca tekrar denenir
-      // (aynı anda ikisini birden salmak bugu geri getirirdi).
-      const [first] = waiters;
-      waiters.delete(first!);
-      first!();
+      // KAPANIŞ ANİMASYONU: React bileşeni kaldırınca native modal HEMEN yok
+      // olmaz — iOS onu animasyonla kapatır (~300ms). O sırada sıradakini
+      // sunmak bugu aynen geri getiriyordu (ör. Seviye Yolu kapanırken mağaza
+      // popup'ı). Bu yüzden slot boşalınca kısa bir nefes payı bırakılır.
+      if (flushTimer) clearTimeout(flushTimer);
+      flushTimer = setTimeout(() => {
+        flushTimer = null;
+        if (presented !== 0 || waiters.size === 0) return;
+        // Sırada bekleyenlerin İLKİ açılır; kalanlar o kapanınca tekrar denenir
+        // (aynı anda ikisini birden salmak bugu geri getirirdi).
+        const [first] = waiters;
+        waiters.delete(first!);
+        first!();
+      }, DISMISS_ANIM_MS);
     }
   };
 }
