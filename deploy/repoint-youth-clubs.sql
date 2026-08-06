@@ -41,23 +41,43 @@ WITH youth AS (
          p.country AS parent_country, p.popularity
     FROM variants v
     JOIN clubs p ON p.name_norm = v.parent_norm AND p.id <> v.child_id
-), map AS (
-  -- country known: same-country candidates only, most popular wins
+)
+-- Eşleme iki adımda kullanılacak → geçici tabloya çıkar.
+SELECT * INTO TEMP map_t FROM (
   (SELECT DISTINCT ON (child_id) child_id, parent_id
      FROM cands
     WHERE child_country IS NOT NULL AND parent_country = child_country
     ORDER BY child_id, popularity DESC)
   UNION ALL
-  -- country unknown: unambiguous single candidate only
   (SELECT child_id, min(parent_id)
      FROM cands
     WHERE child_country IS NULL
     GROUP BY child_id
    HAVING count(DISTINCT parent_id) = 1)
-)
+) m;
+
+-- uq_player_clubs (player, club, COALESCE(start,-1)) ile ÇAKIŞACAK genç satırlar
+-- zaten ebeveyndeki dönemin kopyasıdır → sil.
+DELETE FROM player_clubs pc
+ USING map_t m
+ WHERE pc.club_id = m.child_id
+   AND EXISTS (SELECT 1 FROM player_clubs x
+                WHERE x.player_id = pc.player_id AND x.club_id = m.parent_id
+                  AND COALESCE(x.start_year, -1) = COALESCE(pc.start_year, -1));
+
+-- Aynı oyuncunun İKİ genç satırı aynı (ebeveyn, yıl)a düşerse birini sil.
+DELETE FROM player_clubs pc
+ USING map_t m, player_clubs pc2, map_t m2
+ WHERE pc.club_id = m.child_id
+   AND pc2.club_id = m2.child_id
+   AND pc.player_id = pc2.player_id
+   AND m.parent_id = m2.parent_id
+   AND COALESCE(pc.start_year, -1) = COALESCE(pc2.start_year, -1)
+   AND pc.ctid > pc2.ctid;
+
 UPDATE player_clubs pc
    SET club_id = m.parent_id
-  FROM map m
+  FROM map_t m
  WHERE pc.club_id = m.child_id;
 
 COMMIT;
