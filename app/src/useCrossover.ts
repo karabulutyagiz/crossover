@@ -1323,9 +1323,25 @@ export function useCrossover() {
       // Soketi hemen DEĞİL kısa gecikmeyle kapat: sunucu çekilme cezasını
       // (trophy_update, delta<0) bu pencerede yollar — ana menüde kupa düşüş
       // animasyonu bu mesajla oynar. State yine ANINDA sıfırlanır.
+      //
+      // EMEKLİLİK ŞART (donma düzeltmesi): eski soketin onmessage'ı guard'sız
+      // dispatch ediyor — pencere boyunca gelen bayat room_state/opponent_left
+      // _reset SONRASI state'i maç fazına geri fırlatıp uygulamayı sürücüsüz
+      // bir ekranda donduruyordu. Emekli sokette YALNIZ trophy_update/xp_update
+      // geçer; onclose/onerror da sökülür (yeni bağlantıya hayalet düşmesin).
       const wsToClose = wsRef.current;
       wsRef.current = null;
-      setTimeout(() => { try { wsToClose?.close(); } catch { /* already closed */ } }, 1200);
+      if (wsToClose) {
+        wsToClose.onopen = null; wsToClose.onerror = null; wsToClose.onclose = null;
+        wsToClose.onmessage = (e) => {
+          try {
+            const m = JSON.parse(String(e.data)) as ServerMsg;
+            const mt = (m as { type?: string }).type;
+            if (mt === 'trophy_update' || mt === 'xp_update') dispatch(m);
+          } catch { /* yut */ }
+        };
+        setTimeout(() => { try { wsToClose.onmessage = null; wsToClose.close(); } catch { /* kapalı */ } }, 1200);
+      }
       dispatch({ type: '_reset' });
     },
     // ANTI-CHEAT: the app went to the BACKGROUND mid-match — "başka uygulamaya
