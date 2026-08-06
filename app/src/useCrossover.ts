@@ -86,6 +86,8 @@ export interface GameState {
   matchInvite: { fromId: string; fromName: string; options?: GameOptions } | null;
   // An invite I sent that's awaiting the friend's answer (30s window).
   outgoingInvite: { toId: string; toName: string; expiresAt: number } | null;
+  // Server /config says this binary is below minIosBuild — App.tsx hard-gates on it.
+  updateRequired: boolean;
   // A friend's public profile I'm currently viewing.
   viewProfile: PublicProfile | null;
   // Transient success notice (e.g. "friend request sent"), shown green then cleared.
@@ -176,6 +178,7 @@ export const initialState: GameState = {
   userSearchResults: [],
   matchInvite: null,
   outgoingInvite: null,
+  updateRequired: false,
   viewProfile: null,
   notice: null,
   matchHistory: [],
@@ -237,6 +240,7 @@ type Action =
   | { type: '_set_outgoing'; invite: GameState['outgoingInvite'] }
   | { type: '_close_profile' }
   | { type: '_dismiss_invite' }
+  | { type: '_update_required' }
   | { type: '_clear_notice' }
   | { type: '_clear_banner' }
   | { type: '_ready' }
@@ -294,13 +298,22 @@ function reducer(state: GameState, action: Action): GameState {
     case 'match_invite_received':
       return { ...state, matchInvite: { fromId: (action as any).fromId, fromName: (action as any).fromName, options: (action as any).options } };
     case 'match_invite_declined':
-      return { ...state, outgoingInvite: null, error: t('friends.inviteDeclined') };
+      // Named when we still know who was invited — "Kerem daveti reddetti".
+      return {
+        ...state,
+        outgoingInvite: null,
+        error: state.outgoingInvite?.toName
+          ? t('friends.inviteDeclinedBy', { name: state.outgoingInvite.toName })
+          : t('friends.inviteDeclined'),
+      };
     case 'match_invite_cancelled':
       return { ...state, matchInvite: null };
     case 'user_profile':
       return { ...state, viewProfile: (action as any).profile };
     case 'match_history_list':
       return { ...state, matchHistory: (action as any).matches ?? [] };
+    case '_update_required' as any:
+      return { ...state, updateRequired: true };
     case '_dismiss_invite' as any:
       return { ...state, matchInvite: null };
     case '_set_outgoing' as any:
@@ -979,7 +992,9 @@ export function useCrossover() {
         if (!alive) return;
         if (cfg.maintenance) dispatch({ type: 'error', message: 'Bakım modundayız, birazdan tekrar dene' });
         if (typeof cfg.minIosBuild === 'number' && APP_BUILD_NUMBER < cfg.minIosBuild) {
-          dispatch({ type: 'error', message: 'Yeni sürüm gerekli. Lütfen uygulamayı güncelle.' });
+          // Hard gate (was a transient toast): App.tsx swaps the whole tree for
+          // the update screen — nothing is playable until the store update.
+          dispatch({ type: '_update_required' });
         }
       })
       .catch(() => {});
@@ -995,6 +1010,18 @@ export function useCrossover() {
       alive = false;
     };
   }, []);
+
+  // A pending friendly-match invite must not outlive the sender's next move.
+  // The old full-screen waiting modal made this impossible by blocking; the
+  // non-blocking banner lets the sender start a bot/quick match or invite
+  // someone else — without this, the OLD invite stays alive server-side and the
+  // first friend's accept would yank the sender out of whatever they entered.
+  const dropPendingInvite = () => {
+    const inv = state.outgoingInvite;
+    if (!inv) return;
+    send({ type: 'cancel_match_invite', toId: inv.toId });
+    dispatch({ type: '_set_outgoing', invite: null });
+  };
 
   const actions = {
     // Send an Apple IAP receipt to the server for validation; resolves when the
@@ -1088,6 +1115,7 @@ export function useCrossover() {
       }
     },
     findMatch: (options?: GameOptions) => {
+      dropPendingInvite();
       track('match_find', { mode: options?.mode ?? 'team-team' });
       // Carry the registered name + account id: this fresh socket hasn't sent
       // `register`, so without them the player would be a nameless "Oyuncu" with
@@ -1100,9 +1128,12 @@ export function useCrossover() {
       wsRef.current = null;
       dispatch({ type: '_reset' });
     },
-    createRoom: (name: string, options?: GameOptions) =>
-      connectAndSend({ type: 'create_room', name, userId: state.profile?.userId, options }),
+    createRoom: (name: string, options?: GameOptions) => {
+      dropPendingInvite();
+      connectAndSend({ type: 'create_room', name, userId: state.profile?.userId, options });
+    },
     createSolo: (name: string, options?: GameOptions) => {
+      dropPendingInvite();
       const mode = options?.mode ?? 'team-team';
       track('solo_create', { difficulty: options?.difficulty ?? 'medium', mode });
       // KALICI ÇÖZÜM — mod ve logo bozulmasını KÖKTEN bitirir.
@@ -1117,8 +1148,10 @@ export function useCrossover() {
       // "logo yerine beyaz bayrak" hataları bir daha ASLA yaşanmaz.
       connectAndSend({ type: 'create_solo', name, userId: state.profile?.userId, options });
     },
-    joinRoom: (code: string, name: string) =>
-      connectAndSend({ type: 'join_room', code: code.toUpperCase(), name, userId: state.profile?.userId }),
+    joinRoom: (code: string, name: string) => {
+      dropPendingInvite();
+      connectAndSend({ type: 'join_room', code: code.toUpperCase(), name, userId: state.profile?.userId });
+    },
     start: () => {
       if (offlineRoomRef.current) return offlineRoomRef.current.start();
       send({ type: 'start' });
@@ -1192,6 +1225,10 @@ export function useCrossover() {
     removeFriend: (friendId: string) => send({ type: 'remove_friend', friendId }),
     searchUsers: (query: string) => send({ type: 'search_users', query }),
     inviteFriendMatch: (friendId: string, friendName: string, options?: GameOptions) => {
+      // Re-inviting the SAME friend just replaces (server does too); a pending
+      // invite to a DIFFERENT friend is cancelled so it can't ghost-accept.
+      const prev = state.outgoingInvite;
+      if (prev && prev.toId !== friendId) send({ type: 'cancel_match_invite', toId: prev.toId });
       send({ type: 'invite_friend_match', friendId, options });
       dispatch({ type: '_set_outgoing', invite: { toId: friendId, toName: friendName, expiresAt: Date.now() + 30_000 } });
     },

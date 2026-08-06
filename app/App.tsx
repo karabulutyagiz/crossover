@@ -6,6 +6,7 @@ import {
   Dimensions,
   Easing,
   Image,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -369,6 +370,49 @@ function TopBanner({
         </View>
       </Pressable>
       <Pressable onPress={onClose} hitSlop={8} style={({ pressed }) => ({ paddingHorizontal: 4, transform: [{ translateY: pressed ? 1 : 0 }], opacity: pressed ? 0.7 : 1 })}>
+        <Ionicons name="close" size={18} color={theme.muted} />
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+// Sender-side friendly-match banner: non-blocking top strip with a live 30→0
+// countdown while the friend decides. Replaces the old full-screen waiting
+// modal — the sender keeps using the app ("yukarıda çancık"); at 0 the invite
+// is voided on both ends (the server's own 30s timer + this cancel), a decline
+// surfaces as the named toast from the reducer.
+function OutgoingInviteBanner({ invite, onCancel }: {
+  invite: { toId: string; toName: string; expiresAt: number };
+  onCancel: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const y = useRef(new Animated.Value(-160)).current;
+  const [secs, setSecs] = useState(() => Math.max(0, Math.ceil((invite.expiresAt - Date.now()) / 1000)));
+  // Latest cancel without re-running the interval effect (identity changes per render).
+  const cancelRef = useRef(onCancel);
+  cancelRef.current = onCancel;
+  useEffect(() => {
+    y.setValue(-160);
+    Animated.spring(y, { toValue: 0, friction: 8, tension: 70, useNativeDriver: true }).start();
+    const id = setInterval(() => {
+      const s = Math.max(0, Math.ceil((invite.expiresAt - Date.now()) / 1000));
+      setSecs(s);
+      if (s <= 0) { clearInterval(id); cancelRef.current(); }
+    }, 250);
+    return () => clearInterval(id);
+  }, [invite.toId, invite.expiresAt, y]);
+  const urgent = secs <= 5;
+  return (
+    <Animated.View style={[s.topBanner, { top: insets.top + 6, transform: [{ translateY: y }] }]}>
+      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.accent }}>
+        <Ionicons name="notifications" size={20} color={theme.accent} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={s.inviteName} numberOfLines={1}>{invite.toName}</Text>
+        <Text style={s.inviteSub} numberOfLines={1}>{t('friends.inviteSent')}</Text>
+      </View>
+      <Text style={{ color: urgent ? theme.danger : theme.accent, fontFamily: 'Poppins-Black', fontSize: 22, fontVariant: ['tabular-nums'] }}>{secs}</Text>
+      <Pressable onPress={onCancel} hitSlop={8} style={({ pressed }) => ({ paddingHorizontal: 4, opacity: pressed ? 0.7 : 1 })}>
         <Ionicons name="close" size={18} color={theme.muted} />
       </Pressable>
     </Animated.View>
@@ -799,6 +843,39 @@ function AppRoot() {
   // Login gate: nothing is accessible until the user signs in (Apple/Google).
   // MUST come AFTER all hooks above — an early return before useCallback changes
   // the hook count between renders (Rules of Hooks) and crashes right after login.
+  // HARD update gate — the server's /config said this build is below minIosBuild.
+  // Nothing else mounts (login included): the ONLY way forward is the App Store.
+  // Must stay AFTER all hooks (Rules of Hooks, same as the login gate below).
+  if (state.updateRequired) {
+    return (
+      <View style={[s.root, { paddingTop: insets.top }]}>
+        <StatusBar style="light" />
+        <ScreenBg />
+        <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 26 }}>
+          <View style={{ backgroundColor: theme.modalFace, borderRadius: 22, padding: 24, alignItems: 'center', ...shadowModal }}>
+            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.accent, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+              <Ionicons name="cloud-download" size={30} color={theme.accent} />
+            </View>
+            <Text style={{ color: theme.text, fontSize: 19, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginBottom: 6 }}>{t('update.title')}</Text>
+            <Text style={{ color: theme.muted, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', lineHeight: 20, textAlign: 'center', marginBottom: 18 }}>{t('update.body')}</Text>
+            <Btn
+              big
+              label={t('update.cta')}
+              icon="arrow-up-circle"
+              onPress={() => {
+                // itms-apps jumps straight into the App Store app (the OS
+                // backgrounds us — "uygulamadan atsın"); https is the fallback.
+                Linking.openURL('itms-apps://apps.apple.com/app/id6778542426').catch(() =>
+                  Linking.openURL('https://apps.apple.com/app/id6778542426').catch(() => {}),
+                );
+              }}
+            />
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   if (!state.profile) {
     return (
       <View style={[s.root, { paddingTop: insets.top }]}>
@@ -1078,6 +1155,12 @@ function AppRoot() {
           invite={state.matchInvite}
           onAccept={() => actions.respondMatchInvite(state.matchInvite!.fromId, true)}
           onReject={() => actions.respondMatchInvite(state.matchInvite!.fromId, false)}
+        />
+      ) : null}
+      {state.outgoingInvite ? (
+        <OutgoingInviteBanner
+          invite={state.outgoingInvite}
+          onCancel={() => { if (state.outgoingInvite) actions.cancelMatchInvite(state.outgoingInvite.toId); }}
         />
       ) : null}
       <TopBanner

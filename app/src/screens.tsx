@@ -7217,86 +7217,8 @@ export function CollectionScreen({ state, actions }: Props) {
   );
 }
 
-// Waiting overlay shown to the inviter while the friend decides (30s window).
-// GameModal + the hero-wait dialect (spec §9): the friend's avatar sits inside
-// a pulsing glowSoft halo while an Svg ring drains down the 30s countdown.
-const INVITE_WINDOW_MS = 30_000;
-function InviteWaitingModal({ invite, avatarId, onCancel }: {
-  invite: GameState['outgoingInvite']; avatarId?: string | null; onCancel: () => void;
-}) {
-  const [leftMs, setLeftMs] = useState(INVITE_WINDOW_MS);
-  // Keep the last invite rendered through GameModal's 160ms exit animation.
-  const lastInvite = useRef(invite);
-  if (invite) lastInvite.current = invite;
-  const shown = invite ?? lastInvite.current;
-
-  useEffect(() => {
-    if (!invite) return;
-    const tick = () => {
-      const ms = Math.max(0, invite.expiresAt - Date.now());
-      setLeftMs(ms);
-      if (ms <= 0) onCancel();
-    };
-    tick();
-    const id = setInterval(tick, 100); // 10fps keeps the draining ring smooth
-    return () => clearInterval(id);
-  }, [invite?.toId, invite?.expiresAt]);
-
-  // Pulsing glowSoft halo behind the avatar (native driver scale/opacity only).
-  // Gated on an active invite — the component itself stays mounted in
-  // FriendsScreen, so an unconditional loop would churn forever.
-  const pulse = useRef(new Animated.Value(0)).current;
-  const hasInvite = !!invite;
-  useEffect(() => {
-    if (!hasInvite) return;
-    const loop = Animated.loop(Animated.sequence([
-      Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      Animated.timing(pulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-    ]));
-    loop.start();
-    return () => { loop.stop(); pulse.setValue(0); };
-  }, [hasInvite, pulse]);
-
-  const secs = Math.ceil(leftMs / 1000);
-  const frac = Math.min(1, Math.max(0, leftMs / INVITE_WINDOW_MS));
-  const urgent = secs <= 5;
-  const RING = 118;
-  const STROKE = 6;
-  const R = (RING - STROKE) / 2;
-  const C = 2 * Math.PI * R;
-
-  return (
-    <GameModal visible={!!invite} onClose={onCancel} title={t('friends.friendlyMatch')} icon="flash">
-      <View style={{ alignItems: 'center', gap: 8 }}>
-        <View style={{ width: RING + 20, height: RING + 20, alignItems: 'center', justifyContent: 'center' }}>
-          <Animated.View
-            pointerEvents="none"
-            style={{
-              position: 'absolute', width: RING + 16, height: RING + 16, borderRadius: (RING + 16) / 2,
-              backgroundColor: theme.glowSoft,
-              opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }),
-              transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1.04] }) }],
-            }}
-          />
-          {/* countdown ring draining around the avatar */}
-          <Svg width={RING} height={RING} style={{ position: 'absolute', transform: [{ rotate: '-90deg' }] }}>
-            <Circle cx={RING / 2} cy={RING / 2} r={R} stroke={theme.panelInnerFill} strokeWidth={STROKE} fill="none" />
-            <Circle
-              cx={RING / 2} cy={RING / 2} r={R}
-              stroke={urgent ? theme.danger : theme.primary} strokeWidth={STROKE} fill="none" strokeLinecap="round"
-              strokeDasharray={`${C}`} strokeDashoffset={C * (1 - frac)}
-            />
-          </Svg>
-          <AvatarBadge avatarId={avatarId} size={RING - STROKE * 2 - 14} ringColor={theme.border} />
-        </View>
-        <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 17, ...engrave('sm') }} numberOfLines={1}>{shown?.toName}</Text>
-        <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{t('friends.waitingAccept')}</Text>
-        <Text style={{ color: urgent ? theme.danger : theme.accent, fontFamily: 'Poppins-Black', fontSize: 34, fontVariant: ['tabular-nums'], ...engrave('lg') }}>{secs}</Text>
-      </View>
-      <Btn label={t('searching.cancel')} kind="ghost" icon="close" onPress={onCancel} />
-    </GameModal>
-  );
-}
+// (Sender-side waiting UI is now the OutgoingInviteBanner top strip in App.tsx —
+// the old InviteWaitingModal blocked the whole Friends screen for 30s.)
 
 // A friend's public profile (tapped from the friends list).
 export function FriendProfileModal({ profile, onClose }: { profile: PublicProfile | null; onClose: () => void }) {
@@ -7685,6 +7607,12 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
   // dismissal — never in the same commit (which overlaps two modals and FREEZES
   // the app: dead touches + no scroll).
   const matchExitAction = useRef<null | { kind: 'social' } | { kind: 'invite'; fid: string; name: string; options: GameOptions }>(null);
+  // Friendly-match tap in the row menu: the match dialog must NOT open in the
+  // same commit that dismisses the menu Modal (same-tick native modal swap —
+  // the second presentation can silently fail on iOS). Stash the friend id and
+  // open from the menu Modal's onDismiss (iOS); Android has no onDismiss, so it
+  // opens directly (Android tolerates the swap).
+  const menuExitInvite = useRef<string | null>(null);
   const menuActionLock = useRef(false);
   const addInputRef = useRef<TextInput>(null);   // empty-state CTA → focus add-friend input
   const msgSearchRef = useRef<TextInput>(null);  // empty-state CTA → focus message search
@@ -7958,7 +7886,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
       <NetworkErrorBeacon visible={isNetworkErrorMessage(state.error)} />
 
       {/* Friend actions — small Clash-Royale-style popover above the tapped row */}
-      <Modal visible={menuFriend !== null} transparent animationType="none" onRequestClose={() => setMenuFriend(null)}>
+      <Modal visible={menuFriend !== null} transparent animationType="none" onRequestClose={() => setMenuFriend(null)} onDismiss={() => { const fid = menuExitInvite.current; menuExitInvite.current = null; if (fid) { setMatchPage({ key: 'mode', dir: 1 }); setMatchModal(fid); } }}>
         <View style={{ flex: 1 }} pointerEvents="box-none">
           <Pressable style={[StyleSheet.absoluteFill, { zIndex: 0 }]} onPress={() => setMenuFriend(null)} />
           {menuFriend ? (() => {
@@ -7998,7 +7926,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                       <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5, textAlign: 'center', paddingTop: 9, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: theme.hairline }} numberOfLines={1}>
                         {menuFriend.displayName}
                       </Text>
-                      <Row color={theme.text} label={t('friends.friendlyMatch')} onPress={() => { const id = menuFriend.userId; setMenuFriend(null); setMatchPage({ key: 'mode', dir: 1 }); setMatchModal(id); }} />
+                      <Row color={theme.text} label={t('friends.friendlyMatch')} onPress={() => { menuExitInvite.current = menuFriend.userId; setMenuFriend(null); if (Platform.OS !== 'ios') { const fid = menuExitInvite.current; menuExitInvite.current = null; if (fid) { setMatchPage({ key: 'mode', dir: 1 }); setMatchModal(fid); } } }} />
                       <View style={{ height: 1, backgroundColor: theme.hairline, marginHorizontal: 10 }} />
                       <Row color={theme.text} label={t('friends.sendMessage')} onPress={() => { const id = menuFriend.userId; setMenuFriend(null); actions.openChat(id); }} />
                       <View style={{ height: 1, backgroundColor: theme.hairline, marginHorizontal: 10 }} />
@@ -8117,16 +8045,6 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
         <Text style={[styles.muted, { textAlign: 'center', marginBottom: 8 }]}>{t('friends.socialPackRequiredBody')}</Text>
         <Btn label={t('friends.goToStore')} kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); onGoToStore?.('socialPack'); }} />
       </GameModal>
-
-      {/* Outgoing invite — waiting for the friend to accept (30s) */}
-      <InviteWaitingModal
-        invite={state.outgoingInvite}
-        avatarId={(() => {
-          const f = friends.find((fr) => fr.userId === state.outgoingInvite?.toId);
-          return f?.avatar ?? f?.selectedAvatar;
-        })()}
-        onCancel={() => { if (state.outgoingInvite) actions.cancelMatchInvite(state.outgoingInvite.toId); }}
-      />
 
       {/* Tapped a friend → their public profile */}
       <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
