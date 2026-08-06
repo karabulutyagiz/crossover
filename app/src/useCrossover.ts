@@ -1320,6 +1320,19 @@ export function useCrossover() {
       wsRef.current = null;
       dispatch({ type: '_reset' });
     },
+    // ANTI-CHEAT: the app went to the BACKGROUND mid-match — "başka uygulamaya
+    // girip cevaba bakıyor". Same exit as leave() (socket close = forfeit for
+    // the opponent), plus a toast so the player knows exactly why they lost.
+    forfeitFromBackground: () => {
+      if (offlineRoomRef.current) {
+        offlineRoomRef.current.leave();
+        offlineRoomRef.current = null;
+      }
+      wsRef.current?.close();
+      wsRef.current = null;
+      dispatch({ type: '_reset' });
+      dispatch({ type: 'error', message: t('match.leftBackground') } as any);
+    },
     logout: async () => {
       const lastUserId = state.profile?.userId ?? lastUserIdRef.current;
       if (offlineRoomRef.current) {

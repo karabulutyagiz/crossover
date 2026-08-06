@@ -114,6 +114,9 @@ const TAB_DEFS: { key: string; labelKey: 'tab.store' | 'tab.collection' | 'tab.g
 
 // Phases that show the main tab bar (non-game screens)
 const TAB_PHASES = new Set(['home', 'arenas', 'leaderboard', 'matchHistory', 'profile']);
+// Phases where backgrounding the app forfeits the (PvP) match — the whole
+// competitive window from the matchup reveal to the between-rounds result.
+const FORFEIT_PHASES = new Set(['matchup', 'countdown', 'pick', 'reveal', 'guess', 'result']);
 
 // HUD gem counter. Memoized + owns the count-anim listener, so the per-frame
 // setState during gain animations re-renders ONLY this pill, never the app tree.
@@ -798,6 +801,27 @@ function AppRoot() {
     const sub = AppState.addEventListener('change', (st) => { if (st === 'active') setBadge(badgeTotal); });
     return () => sub.remove();
   }, [badgeTotal]);
+
+  // ANTI-CHEAT: backgrounding the app mid-match (PvP) = instant forfeit — the
+  // known abuse is switching out to look the answer up. Only a real
+  // 'background' triggers ('inactive' — control center, call banner, app
+  // switcher peek — is NOT punished). Bot matches, tutorial (fake state),
+  // lobby/searching and finished matches are exempt.
+  const forfeitCtxRef = useRef<{ eligible: boolean; forfeit: () => void }>({ eligible: false, forfeit: () => {} });
+  forfeitCtxRef.current = {
+    eligible:
+      !!state.room &&
+      !state.matchOver &&
+      !state.room.players.some((p) => p.name === 'Bot') &&
+      FORFEIT_PHASES.has(state.phase),
+    forfeit: actions.forfeitFromBackground,
+  };
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st === 'background' && forfeitCtxRef.current.eligible) forfeitCtxRef.current.forfeit();
+    });
+    return () => sub.remove();
+  }, []);
 
   // Tap routing: every tap (warm or cold-start) stashes its route in the module
   // ref and bumps a counter; the consuming effect below navigates once the app
