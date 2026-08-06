@@ -9,7 +9,13 @@
 
 # dependencies — reinstalled on the build server from package-lock.json
 node_modules/
+node_modules/**
 node_modules.nosync/
+node_modules.nosync/**
+# Bazı sürümlerde yalnız sondaki eğik çizgili kalıp yeterli olmuyor (arşiv 338 MB
+# çıktı ve yükleme koptu): eğik çizgisiz + ** biçimleri emniyet için eklendi.
+node_modules
+node_modules.nosync
 # iCloud sync duplicates ("node_modules 2", "assets 2", …) — the space stops
 # the plain node_modules/ pattern from matching them.
 * 2/
