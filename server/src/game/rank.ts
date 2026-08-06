@@ -30,8 +30,9 @@ export function getArena(trophies: number): Arena {
   return ARENAS[0]!;
 }
 
-// Trophy gain/loss scales by arena — higher arenas are harder to climb.
-// [win, loss] per arena index
+// Arena bazlı [win, loss] — artık SABİT sonuç değil, rakip-farkı bandının
+// MERKEZİ (aşağıda trophyDelta). Alt arenalar pozitif-toplam (%50 galibiyetle
+// tırmanılır, CR 'trophy infusion'), Şampiyonlar sıfır-toplam, GOAT negatif-toplam.
 const TROPHY_TABLE: [number, number][] = [
   [+30, -10],   // Mahalle Sahası     — easy climb, gentle losses
   [+28, -14],   // Amatör Lig         — still forgiving
@@ -44,11 +45,30 @@ const TROPHY_TABLE: [number, number][] = [
 
 const ARENA_DIAMOND_REWARDS = [50, 100, 150, 200, 300, 500, 1000] as const;
 
-function trophyDelta(trophies: number, won: boolean): number {
+// ---- Rakip-farkına duyarlı kupa formülü (CR modeli + Valorant kuralları) ----
+// Araştırma-temelli tasarım (wf_f3742eb6): CR topluluk modeli 'değişim ≈ baz ±
+// round(fark/12)', gözlenen doygunluk +43/-17 → ayar ±13 kapaklı (bizim ±200
+// eşleşme penceresinin kenarında tam değer). Valorant kuralı: galibiyet HER
+// ZAMAN öder (min +5); kayıp asla kazanca dönmez, taban -48. Rakip verisi
+// yok/bozuksa fark 0 → eski sabit tabloyla bire bir (güvenli geri düşüş).
+const DIFF_DIVISOR = 12;
+const MAX_ADJUST = 13;
+const WIN_MIN = 5;
+const WIN_MAX = 43;      // maks baz galibiyet (30) + MAX_ADJUST — CR'ın gözlenen tavanı
+const LOSS_MAX_MAG = 48; // maks |baz kayıp| (35) + MAX_ADJUST
+
+function clampN(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v));
+}
+
+function trophyDelta(trophies: number, won: boolean, opponentTrophies: number | null): number {
   const arena = getArena(trophies);
   const idx = ARENAS.indexOf(arena);
   const [win, loss] = TROPHY_TABLE[idx] ?? TROPHY_TABLE[0]!;
-  return won ? win : loss;
+  const oppOk = typeof opponentTrophies === 'number' && Number.isFinite(opponentTrophies) && opponentTrophies >= 0;
+  const adjust = oppOk ? clampN(Math.round(((opponentTrophies as number) - trophies) / DIFF_DIVISOR), -MAX_ADJUST, MAX_ADJUST) : 0;
+  if (won) return clampN(win + adjust, WIN_MIN, WIN_MAX);
+  return clampN(loss + adjust, -LOSS_MAX_MAG, 0);
 }
 
 export interface UserProfile {
@@ -353,7 +373,9 @@ export async function deleteAccount(userId: string): Promise<boolean> {
 export async function applyMatchResult(
   userId: string,
   won: boolean,
-  opts?: { leaver?: boolean }, // hükmen mağlubiyette AYRILAN taraf — kalkan onu korumaz
+  // leaver: hükmen mağlubiyette AYRILAN taraf — kalkan onu korumaz.
+  // opponentTrophies: rakibin MAÇ BAŞI kupası (bot dahil) — dinamik delta farkı.
+  opts?: { leaver?: boolean; opponentTrophies?: number | null },
 ): Promise<{ profile: UserProfile; delta: number; arenaReward: number; shielded: boolean }> {
   // Read current trophies to determine arena-specific delta
   const user = await getUser(userId);
@@ -369,7 +391,11 @@ export async function applyMatchResult(
     );
     shielded = sr.length > 0;
   }
-  const delta = shielded ? 0 : trophyDelta(user.trophies, won);
+  // ETKİN delta: 0 tabanının altına inecek kayıp, kalan kupa kadar kırpılır —
+  // kullanıcı 0'dayken '-10' DEĞİL gerçek değişimi (0) görür. SQL'deki
+  // GREATEST(0, …) emniyet kemeri olarak durur.
+  const raw = shielded ? 0 : trophyDelta(user.trophies, won, opts?.opponentTrophies ?? null);
+  const delta = won ? raw : Math.max(raw, -user.trophies);
   const prevArenaIdx = ARENAS.findIndex((a) => a.name === user.arena.name);
 
   const { rows } = await pool.query<DbUser>(

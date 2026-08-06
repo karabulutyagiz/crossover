@@ -262,14 +262,14 @@ export class Room {
       void (async () => {
         try {
           if (winner.userId) {
-            const { profile, delta, arenaReward } = await applyMatchResult(winner.userId, true);
+            const { profile, delta, arenaReward } = await applyMatchResult(winner.userId, true, { opponentTrophies: p.trophies ?? null });
             winner.transport.send({ type: 'trophy_update', trophies: profile.trophies, delta, arena: profile.arena, diamonds: profile.diamonds, arenaReward, winStreak: profile.winStreak, bestStreak: profile.bestStreak });
             const xpRes = await awardMatchXp(winner.userId, true, false);
             if (xpRes) winner.transport.send({ type: 'xp_update', ...xpRes });
           }
           if (p.userId) {
             // Terk eden mağlubiyeti: kalkan onu KORUMAZ (leaver bayrağı)
-            const leaverRes = await applyMatchResult(p.userId, false, { leaver: true });
+            const leaverRes = await applyMatchResult(p.userId, false, { leaver: true, opponentTrophies: winner.trophies ?? null });
             await awardMatchXp(p.userId, false, false); // ayrılan: mağlubiyet XP'si
             // Bilinçli çıkışta istemci soketi ~1.2sn açık tutar: kupa düşüşü
             // (delta<0) ana menüde animasyonla gösterilir. Soket kapandıysa
@@ -1138,8 +1138,10 @@ export class Room {
     for (const p of this.players.values()) {
       if (p.transport.isBot || !p.userId) continue;
       const won = p.id === winner.id;
+      // Rakibin MAÇ BAŞI kupası: dinamik delta (CR usulü) farka göre hesaplanır.
+      const opp = [...this.players.values()].find((x) => x.id !== p.id);
       try {
-        const { profile, delta, arenaReward, shielded } = await applyMatchResult(p.userId, won);
+        const { profile, delta, arenaReward, shielded } = await applyMatchResult(p.userId, won, { opponentTrophies: opp?.trophies ?? null });
         p.transport.send({
           type: 'trophy_update',
           trophies: profile.trophies,

@@ -7336,11 +7336,19 @@ export function CollectionScreen({ state, actions }: Props) {
 // the old InviteWaitingModal blocked the whole Friends screen for 30s.)
 
 // A friend's public profile (tapped from the friends list).
-export function FriendProfileModal({ profile, onClose }: { profile: PublicProfile | null; onClose: () => void }) {
+export function FriendProfileModal({ profile, onClose, relation, onAddFriend }: {
+  profile: PublicProfile | null; onClose: () => void;
+  // 'none' + onAddFriend → istatistiklerin altında "Arkadaş Ekle" düğmesi
+  // (liderlik tablosundan bakılan yabancılar). 'self'/'friend' → düğme yok.
+  relation?: 'self' | 'friend' | 'none'; onAddFriend?: () => void;
+}) {
   const insets = useSafeAreaInsets();
   const total = (profile?.wins ?? 0) + (profile?.losses ?? 0);
   const winRate = total ? Math.round(((profile?.wins ?? 0) / total) * 100) : 0;
   const color = profile ? arenaColor(profile.arena.name) : theme.primary;
+  // İstek bu açılışta gönderildiyse düğme "gönderildi" durumuna kilitlenir.
+  const [requestSent, setRequestSent] = useState(false);
+  useEffect(() => { setRequestSent(false); }, [profile?.userId]);
   return (
     <Modal visible={!!profile} animationType="slide" onRequestClose={onClose} presentationStyle="overFullScreen" transparent>
       <View style={{ flex: 1, backgroundColor: BG_TOP }}>
@@ -7369,6 +7377,18 @@ export function FriendProfileModal({ profile, onClose }: { profile: PublicProfil
               <StatCard icon="skull-outline" color={theme.danger} label={t('stats.losses')} value={profile?.losses ?? 0} />
               <StatCard icon="stats-chart" color={theme.blue} label={t('stats.winRate')} value={`${winRate}%`} />
             </View>
+            {relation === 'none' && onAddFriend ? (
+              <View style={{ marginTop: 14 }}>
+                <Btn
+                  big
+                  label={requestSent ? t('friends.requestSentShort') : t('friends.addFriend')}
+                  icon={requestSent ? 'checkmark-circle' : 'person-add'}
+                  kind={requestSent ? 'ghost' : 'primary'}
+                  disabled={requestSent}
+                  onPress={() => { setRequestSent(true); onAddFriend(); }}
+                />
+              </View>
+            ) : null}
           </View>
         </View>
       </View>
@@ -8161,8 +8181,16 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
         <Btn label={t('friends.goToStore')} kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); onGoToStore?.('socialPack'); }} />
       </GameModal>
 
-      {/* Tapped a friend → their public profile */}
-      <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
+      {/* Tapped a friend → their public profile (aramadan gelen yabancıya da tek dokunuşla istek) */}
+      <FriendProfileModal
+        profile={state.viewProfile}
+        onClose={actions.closeUserProfile}
+        relation={!state.viewProfile ? undefined
+          : state.viewProfile.userId === state.profile?.userId ? 'self'
+          : friends.some((f) => f.userId === state.viewProfile!.userId) ? 'friend'
+          : 'none'}
+        onAddFriend={() => { if (state.viewProfile) actions.sendFriendRequest(undefined, state.viewProfile.displayName); }}
+      />
 
       {/* Chat screen — WhatsApp style, swipe-back enabled */}
       <Modal visible={state.chatWith !== null} transparent animationType="none" presentationStyle="overFullScreen" onRequestClose={actions.closeChat}>

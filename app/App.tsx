@@ -1242,7 +1242,16 @@ function AppRoot() {
       {/* Centered popups (leaderboard / match history) — open over everything, not fullscreen */}
       <LeaderboardModal visible={overlay === 'leaderboard'} entries={state.leaderboard} onClose={() => setOverlay(null)} onViewProfile={(userId) => actions.getUserProfile(userId)} />
       <MatchHistoryModal visible={overlay === 'matchHistory'} history={state.matchHistory} myName={state.profile?.displayName ?? ''} onClose={() => setOverlay(null)} />
-      <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
+      <FriendProfileModal
+        profile={state.viewProfile}
+        onClose={actions.closeUserProfile}
+        // Liderlik tablosundan bakılan profil: arkadaş değilse tek dokunuşla istek
+        relation={!state.viewProfile ? undefined
+          : state.viewProfile.userId === state.profile?.userId ? 'self'
+          : state.friends.some((f) => f.userId === state.viewProfile!.userId) ? 'friend'
+          : 'none'}
+        onAddFriend={() => { if (state.viewProfile) actions.sendFriendRequest(undefined, state.viewProfile.displayName); }}
+      />
 
       {/* Kupa kazanma/kaybetme popup'ı — maçtan ÇIKINCA burada, ana menünün üstünde */}
       {matchOverPopup ? (
