@@ -29,7 +29,7 @@ import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
 import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget, trophyTarget, setTrophyTarget, setTrophyRemeasure, remeasureTrophyTarget } from './gemTarget';
 import { Avatar } from './Avatar';
-import { useIsTablet, useWindow } from './layout';
+import { useIsTablet, useWindow, useContentMaxWidth, BASE_W as BASE_W_LIMIT, BASE_H as BASE_H_LIMIT } from './layout';
 import { setPendingShortfall, takePendingShortfall } from './shortfall';
 import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
@@ -460,41 +460,51 @@ export function Btn({
         // Prestige face: filled tone + subtle vertical shade, 1px top light, 2px
         // integrated bottom slice, colored (variant-dark) soft shadow that
         // collapses on press. No glass dome, no ink outline, no chunky lip.
+        // iOS clips a layer's own shadow when overflow:'hidden' sits on the same
+        // node → GamePanel split: outer casts the shadow, inner face clips.
         <Animated.View
           style={{
             transform: [{ scale: pressScale }],
             backgroundColor: face,
             borderRadius: radius,
-            paddingVertical: padV,
-            paddingHorizontal: 18,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
             ...(disabled
-              ? { borderWidth: 1, borderColor: withAlpha(theme.border, 0.6) }
+              ? null
               : { shadowColor: fv.sh, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 6 }),
           }}
         >
-          {!disabled ? (
-            <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
-              <Defs>
-                <SvgGradient id={btnGid} x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0" stopColor={lighten(face, 0.1)} />
-                  <Stop offset="1" stopColor={darken(face, 0.13)} />
-                </SvgGradient>
-              </Defs>
-              <Rect width="100%" height="100%" fill={`url(#${btnGid})`} />
-            </Svg>
-          ) : null}
-          {!disabled ? (
-            <>
-              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.16 }} />
-              <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: darken(face, 0.4), opacity: 0.85 }} />
-            </>
-          ) : null}
-          {content}
-          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#04091A', opacity: pressDim }]} />
+          <View
+            style={{
+              backgroundColor: face,
+              borderRadius: radius,
+              paddingVertical: padV,
+              paddingHorizontal: 18,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              ...(disabled ? { borderWidth: 1, borderColor: withAlpha(theme.border, 0.6) } : null),
+            }}
+          >
+            {!disabled ? (
+              <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
+                <Defs>
+                  <SvgGradient id={btnGid} x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor={lighten(face, 0.1)} />
+                    <Stop offset="1" stopColor={darken(face, 0.13)} />
+                  </SvgGradient>
+                </Defs>
+                <Rect width="100%" height="100%" fill={`url(#${btnGid})`} />
+              </Svg>
+            ) : null}
+            {!disabled ? (
+              <>
+                <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.16 }} />
+                <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: darken(face, 0.4), opacity: 0.85 }} />
+              </>
+            ) : null}
+            {content}
+            <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#04091A', opacity: pressDim }]} />
+          </View>
         </Animated.View>
       )}
     </Pressable>
@@ -509,28 +519,37 @@ function Chip({ icon, label, onPress, active = false }: { icon: IoniconName; lab
   return (
     <Pressable onPress={onPress} style={{ flex: 1 }}>
       {({ pressed }) => (
+        // iOS clips a layer's own shadow under overflow:'hidden' → GamePanel
+        // split: outer carries shadowRow, inner face carries the clip + strips.
         <View
           style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 5,
             backgroundColor: active ? theme.surface3 : theme.surface2,
             borderRadius: 12,
-            paddingVertical: 10,
-            paddingHorizontal: 6,
-            overflow: 'hidden',
             transform: [{ scale: pressed ? 0.97 : 1 }],
             ...shadowRow,
           }}
         >
-          {/* 1px top light + integrated bottom slice — depth without a frame */}
-          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: active ? 0.16 : 0.08 }} />
-          {active ? <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2.5, backgroundColor: theme.primary }} /> : null}
-          <Ionicons name={icon} size={14} color={active ? theme.primary : theme.textSub} />
-          <Text numberOfLines={1} style={{ color: active ? theme.text : theme.textSub, fontSize: 11, fontFamily: 'Poppins-ExtraBold', flexShrink: 1 }}>
-            {label}
-          </Text>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 5,
+              backgroundColor: active ? theme.surface3 : theme.surface2,
+              borderRadius: 12,
+              paddingVertical: 10,
+              paddingHorizontal: 6,
+              overflow: 'hidden',
+            }}
+          >
+            {/* 1px top light + integrated bottom slice — depth without a frame */}
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: active ? 0.16 : 0.08 }} />
+            {active ? <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2.5, backgroundColor: theme.primary }} /> : null}
+            <Ionicons name={icon} size={14} color={active ? theme.primary : theme.textSub} />
+            <Text numberOfLines={1} style={{ color: active ? theme.text : theme.textSub, fontSize: 11, fontFamily: 'Poppins-ExtraBold', flexShrink: 1 }}>
+              {label}
+            </Text>
+          </View>
         </View>
       )}
     </Pressable>
@@ -616,11 +635,13 @@ export function GameModal({ visible, onClose, onExited, title, icon, danger = fa
               width: '100%', maxWidth: 360,
               transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) }],
               opacity: clamped,
-              backgroundColor: theme.modalFace, borderRadius: 22, overflow: 'hidden',
+              backgroundColor: theme.modalFace, borderRadius: 22,
               ...shadowModal,
             }}
           >
-            <Pressable onPress={() => {}}>
+            {/* clip (3px mood strip + corners) lives HERE, not on the shadow-casting
+                face above — iOS masksToBounds would kill the modal drop shadow */}
+            <Pressable onPress={() => {}} style={{ borderRadius: 22, overflow: 'hidden' }}>
               {/* faint light-catching top edge (NOT a frame) + mood strip */}
               <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.06, zIndex: 6 }} />
               <View style={{ height: 3, backgroundColor: strip }} />
@@ -653,13 +674,20 @@ export function GameModal({ visible, onClose, onExited, title, icon, danger = fa
   );
 }
 
-// ---- RankBadge (unchanged) ---------------------------------------------------
+// ---- RankBadge ---------------------------------------------------------------
 function RankBadge({ rank, size = 28 }: { rank: number; size?: number }) {
   if (rank <= 3) {
     const c = [theme.gold, theme.silver, theme.bronze][rank - 1]!;
     return (
-      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.6)', borderBottomWidth: 2, borderBottomColor: darken(c), alignItems: 'center', justifyContent: 'center', shadowColor: c, shadowOpacity: 0.5, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 5 }}>
-        <Text style={{ color: theme.ink, fontFamily: 'Poppins-Black', fontSize: size * 0.46 }}>{rank}</Text>
+      // Glow rides the outer wrapper — overflow:'hidden' on the face (needed to
+      // clip the strips) kills a layer's own shadow on iOS. Top-light + bottom
+      // slice replace the per-side borders, which seam at the diagonals on a circle.
+      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c, shadowColor: c, shadowOpacity: 0.5, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 5 }}>
+        <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.16 }} />
+          <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: darken(c) }} />
+          <Text style={{ color: theme.ink, fontFamily: 'Poppins-Black', fontSize: size * 0.46 }}>{rank}</Text>
+        </View>
       </View>
     );
   }
@@ -773,15 +801,22 @@ function GameRow({ icon, iconColor = theme.accent, leading, label, sublabel, rig
   const face = selected ? theme.surface3 : theme.surface2;
   const fgLabel = locked ? theme.muted : theme.text;
   const body = (
+    // iOS clips a layer's own shadow under overflow:'hidden' → GamePanel split:
+    // outer carries shadowRow (+ caller style), inner face carries the clip.
     <Animated.View
       style={[{
         transform: [{ scale }],
-        flexDirection: 'row', alignItems: 'center', gap: 11,
-        backgroundColor: face, borderRadius: 14, overflow: 'hidden',
-        paddingVertical: 12, paddingHorizontal: 12, marginVertical: 4,
+        backgroundColor: face, borderRadius: 14, marginVertical: 4,
         ...shadowRow,
       }, style]}
     >
+      <View
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 11,
+          backgroundColor: face, borderRadius: 14, overflow: 'hidden',
+          paddingVertical: 12, paddingHorizontal: 12,
+        }}
+      >
       {/* prestige depth: top light + integrated bottom slice (no ring) */}
       <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: selected ? 0.14 : 0.07 }} />
       <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
@@ -810,6 +845,7 @@ function GameRow({ icon, iconColor = theme.accent, leading, label, sublabel, rig
         ) : (
           right ?? (chevron ? <Ionicons name="chevron-forward" size={16} color={theme.muted} /> : null)
         )}
+      </View>
     </Animated.View>
   );
   if (!onPress) return body;
@@ -824,17 +860,23 @@ function GameRow({ icon, iconColor = theme.accent, leading, label, sublabel, rig
 function Ribbon({ label, color = theme.accent, icon, style }: { label: string; color?: string; icon?: IoniconName; style?: any }) {
   const fg = color === theme.danger ? theme.text : theme.ink;
   return (
-    <View
-      style={[{
-        flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-start',
-        backgroundColor: color, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3,
-        borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.4)',
-        borderBottomWidth: 2, borderBottomColor: darken(color, 0.4),
-        shadowColor: color, shadowOpacity: 0.35, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 4,
-      }, style]}
-    >
-      {icon ? <Ionicons name={icon} size={10} color={fg} /> : null}
-      <Text style={{ color: fg, fontSize: 9.5, fontFamily: 'Poppins-Black', letterSpacing: 1, textTransform: 'uppercase' }}>{label}</Text>
+    // Btn 3.0 recipe: colored glow rides the outer wrapper (overflow:'hidden'
+    // clips a layer's own shadow on iOS); top-light + integrated bottom slice
+    // replace the per-side borders, which seam mid-arc on rounded corners.
+    <View style={[{ alignSelf: 'flex-start', backgroundColor: color, borderRadius: 8, shadowColor: color, shadowOpacity: 0.35, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 4 }, style]}>
+      <View
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 3,
+          backgroundColor: color, borderRadius: 8, paddingHorizontal: 8,
+          paddingTop: 4, paddingBottom: 5, // old paddingVertical 3 + removed 1px/2px borders — same footprint
+          overflow: 'hidden',
+        }}
+      >
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.16 }} />
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: darken(color, 0.4), opacity: 0.85 }} />
+        {icon ? <Ionicons name={icon} size={10} color={fg} /> : null}
+        <Text style={{ color: fg, fontSize: 9.5, fontFamily: 'Poppins-Black', letterSpacing: 1, textTransform: 'uppercase' }}>{label}</Text>
+      </View>
     </View>
   );
 }
@@ -871,8 +913,17 @@ function EmptyState({ icon, title, hint, cta, style }: { icon: IoniconName; titl
 // with two faint warm/cool glows. Replaces the old football-pitch pattern.
 // Full-screen patterned background (navy, Clash-Royale-like): deep-blue gradient
 // + a faint diagonal stripe pattern + soft glows. Sits behind every screen.
-const SCREEN_W = Dimensions.get('window').width;
-const SCREEN_H = Dimensions.get('window').height;
+// Tuval boyutu: tablette gerçek pencere değil, ölçeklenen telefon tuvali
+// (App.tsx ScaledRoot) — animasyon/ızgara matematiği bunun içinde kalmalı.
+// Ölçekli tuvalin ölçüsü — bileşen içi Dimensions okumaları bunu kullanır.
+function canvasSize(): { width: number; height: number } {
+  const w = Dimensions.get('window').width;
+  const h = Dimensions.get('window').height;
+  return w >= 700 ? { width: BASE_W_LIMIT, height: BASE_H_LIMIT } : { width: w, height: h };
+}
+
+const SCREEN_W = Math.min(Dimensions.get('window').width, BASE_W_LIMIT);
+const SCREEN_H = Dimensions.get('window').width >= 700 ? BASE_H_LIMIT : Dimensions.get('window').height;
 export const BG_TOP = '#0E2347'; // navy shown behind the bg image (frame before load / root)
 export type BgVariant = 'home' | 'stadium' | 'store' | 'menu' | 'match';
 const BG_HOME = require('../assets/bg-home.png');   // royal-blue arena backdrop (legacy home)
@@ -949,10 +1000,13 @@ export function ScreenBg({ variant = 'menu' }: { variant?: BgVariant }) {
 }
 
 function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = false, lockWhenFits = false }: { children: ReactNode; scroll?: boolean; noPitch?: boolean; bg?: ReactNode; pad?: number; contentCenter?: boolean; fillTablet?: boolean; lockWhenFits?: boolean }) {
-  // On an iPad a top-packed screen leaves the lower third empty — the "boşluk"
-  // complaint. `fillTablet` spreads the sections down the taller window instead.
-  // Phones keep the original top-packed layout.
+  // iPad = telefon düzeninin ORTALANMIŞ hâli (kullanıcı kuralı, layout.ts).
+  // `fillTablet` (dikey yayma) BİLEREK devre dışı: kartların arasını açıp
+  // telefondan farklı bir ekran üretiyordu. Prop imzada kalıyor — çağrı yerleri
+  // dokunulmadan kaldı ve ileride tekrar istenirse tek yerden açılır.
+  void fillTablet;
   const isTablet = useIsTablet();
+  const maxW = useContentMaxWidth();
   // lockWhenFits: measured, not assumed — scrolling turns off only when the
   // content genuinely fits the viewport, so small phones keep scrolling.
   const [vpH, setVpH] = useState(0);
@@ -987,14 +1041,16 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
           onLayout={(e) => setVpH(e.nativeEvent.layout.height)}
           onContentSizeChange={(_w, h) => setContentH(h)}
           scrollEnabled={!lockWhenFits || contentH > vpH + 2}
-          contentContainerStyle={{ flexGrow: 1, justifyContent: contentCenter ? 'center' : (fillTablet && isTablet ? 'space-between' : 'flex-start') }}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: contentCenter ? 'center' : 'flex-start' }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets
         >
-          {children}
+          {maxW ? <View style={{ width: '100%', maxWidth: maxW, alignSelf: 'center' }}>{children}</View> : children}
         </ScrollView>
-      ) : children}
+      ) : (
+        maxW ? <View style={{ flex: 1, width: '100%', maxWidth: maxW, alignSelf: 'center' }}>{children}</View> : children
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -1013,20 +1069,22 @@ function SkipChip({ onPress, style }: { onPress: () => void; style?: any }) {
   return (
     <Pressable onPress={onPress} hitSlop={10} style={style}>
       {({ pressed }) => (
-        <View
-          style={{
-            flexDirection: 'row', alignItems: 'center', gap: 4,
-            backgroundColor: theme.surface2,
-            borderRadius: 12, paddingHorizontal: 12, paddingVertical: 7,
-            borderTopWidth: 1, borderTopColor: theme.topLight,
-            overflow: 'hidden',
-            transform: [{ scale: pressed ? 0.97 : 1 }],
-            ...shadowRow,
-          }}
-        >
-          {pressed ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#04091A', opacity: 0.1 }]} /> : null}
-          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12, ...engrave('sm') }}>{t('common.skip')}</Text>
-          <Ionicons name="chevron-forward" size={12} color={theme.muted} />
+        // iOS clips a layer's own shadow under overflow:'hidden' → GamePanel
+        // split: outer carries shadowRow, inner face carries the clip.
+        <View style={{ backgroundColor: theme.surface2, borderRadius: 12, transform: [{ scale: pressed ? 0.97 : 1 }], ...shadowRow }}>
+          <View
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 4,
+              backgroundColor: theme.surface2,
+              borderRadius: 12, paddingHorizontal: 12, paddingVertical: 7,
+              borderTopWidth: 1, borderTopColor: theme.topLight,
+              overflow: 'hidden',
+            }}
+          >
+            {pressed ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#04091A', opacity: 0.1 }]} /> : null}
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12, ...engrave('sm') }}>{t('common.skip')}</Text>
+            <Ionicons name="chevron-forward" size={12} color={theme.muted} />
+          </View>
         </View>
       )}
     </Pressable>
@@ -1053,23 +1111,25 @@ function IntroSlide({ slide, index, active, scrollX }: { slide: (typeof INTRO_SL
           </>
         ) : (
           <>
-            {/* Slides 2–3 — beveled badge tile in the BrandMark construction:
-                panelInk face, slide-color ring, darkened lip, top-half gloss,
-                one-shot ShineSweep when the page gains focus. */}
-            <View
-              style={{
-                width: INTRO_TILE, height: INTRO_TILE, borderRadius: INTRO_TILE * 0.24,
-                backgroundColor: theme.panelInk,
-                borderWidth: 2, borderColor: slide.color,
-                borderBottomWidth: 5, borderBottomColor: darken(slide.color),
-                alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-                marginBottom: 26,
-                shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 8,
-              }}
-            >
-              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '50%', backgroundColor: '#FFFFFF', opacity: 0.05 }} />
-              <Ionicons name={slide.icon} size={72} color={slide.color} />
-              {active ? <ShineSweep width={INTRO_TILE} height={INTRO_TILE} delay={260} duration={700} opacity={0.3} band={0.3} /> : null}
+            {/* Slides 2–3 — badge tile in the Broadcast Prestige idiom: panelInk
+                face + uniform slide-color ring + 1px top-light + integrated bottom
+                slice; navy shadow rides the outer wrapper because overflow:'hidden'
+                (needed for the strips + ShineSweep) clips a layer's own shadow on
+                iOS. One-shot ShineSweep when the page gains focus. */}
+            <View style={{ backgroundColor: theme.panelInk, borderRadius: INTRO_TILE * 0.24, marginBottom: 26, shadowColor: theme.shadowInk, shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}>
+              <View
+                style={{
+                  width: INTRO_TILE, height: INTRO_TILE, borderRadius: INTRO_TILE * 0.24,
+                  backgroundColor: theme.panelInk,
+                  borderWidth: 2, borderColor: slide.color,
+                  alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                }}
+              >
+                <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.16 }} />
+                <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: darken(slide.color) }} />
+                <Ionicons name={slide.icon} size={72} color={slide.color} />
+                {active ? <ShineSweep width={INTRO_TILE} height={INTRO_TILE} delay={260} duration={700} opacity={0.3} band={0.3} /> : null}
+              </View>
             </View>
             <Text style={{ color: theme.text, fontSize: 26, fontFamily: 'Poppins-Black', letterSpacing: 1, textAlign: 'center', marginBottom: 12, ...engrave('lg') }}>{t(slide.titleKey)}</Text>
           </>
@@ -1417,7 +1477,7 @@ export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => voi
 const LOADING_TIPS: MessageKey[] = ['loading.tip1', 'loading.tip2', 'loading.tip3', 'loading.tip4'];
 const LOAD_BAR_H = 24;
 const LOAD_BAR_W = SCREEN_W - 48;      // bottom block spans 24px side margins
-const LOAD_BAR_INNER = LOAD_BAR_W - 8; // minus 2px frame border + 2px well padding per side
+const LOAD_BAR_INNER = LOAD_BAR_W - 4; // minus the well's 2px padding per side — there is no frame border; -8 left the slab 4px short of the track at 100%
 export function LoadingScreen({ state, actions, onReady }: Props & { onReady: () => void }) {
   const [pct, setPct] = useState(0);
   const done = useRef(false);
@@ -1995,16 +2055,17 @@ function EmoteCoin({ onPress, size = 52, style }: { onPress: () => void; size?: 
   const { ty, onIn, onOut } = usePressLip(2);
   return (
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} hitSlop={6} style={style}>
-      <View style={{ backgroundColor: theme.accentDark, borderRadius: size / 2 + 2, paddingBottom: 3, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 6 }}>
+      <View style={{ backgroundColor: theme.accentDark, borderRadius: size / 2, paddingBottom: 3, shadowColor: theme.shadowInk, shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 6 }}>
         <Animated.View
           style={{
             transform: [{ translateY: ty }],
             width: size, height: size, borderRadius: size / 2,
             backgroundColor: theme.accent,
-            borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.30)',
-            alignItems: 'center', justifyContent: 'center',
+            alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
           }}
         >
+          {/* top-light overlay, not a borderTop — per-side border colors seam at the diagonals on a circle */}
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.16 }} />
           <Ionicons name="chatbubble-ellipses" size={Math.round(size * 0.46)} color={theme.ink} />
         </Animated.View>
       </View>
@@ -2672,7 +2733,9 @@ function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void })
               </SvgGradient>
             </Defs>
             <Rect width="100%" height="100%" fill="url(#heroPlayG)" />
-            <Rect x={5} y={3} rx={12} width="94%" height="34%" fill="url(#heroPlayGloss)" />
+            {/* symmetric px insets — a %-width over a px-x drifts the right inset
+                with button width; rx stays 17 − 5 inset = 12 (nested radius rule) */}
+            <Rect x={5} y={3} rx={12} width={Math.max(0, w - 10)} height="34%" fill="url(#heroPlayGloss)" />
           </Svg>
           {/* Mockup's faint ball watermark bleeding off the right edge — the green
               face reads as a pitch object, not a plain slab. */}
@@ -4409,8 +4472,9 @@ export function OpponentForfeitModal({ visible, onFindNew, onGoHome, trophyDelta
       <View
         style={{
           alignSelf: 'center', width: 64, height: 64, borderRadius: 32,
+          // CONTINUOUS rim (VsBadge rule): per-side colors seam at the diagonals
+          // on a circle. One uniform ring; depth comes from the gold glow below.
           backgroundColor: theme.card, borderWidth: 2, borderColor: theme.accent,
-          borderTopColor: lighten(theme.accent, 0.3), borderBottomColor: theme.accentDark,
           alignItems: 'center', justifyContent: 'center',
           shadowColor: theme.accent, shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 6,
         }}
@@ -5215,8 +5279,7 @@ export function TrophyFlight({ delta, onDone }: { delta: number; onDone: () => v
     x: new Animated.Value(0), y: new Animated.Value(0),
     scale: new Animated.Value(0), opacity: new Animated.Value(0),
   }))).current;
-  const screenW = Dimensions.get('window').width;
-  const screenH = Dimensions.get('window').height;
+  const { width: screenW, height: screenH } = canvasSize();
 
   useEffect(() => {
     remeasureTrophyTarget();
@@ -5302,8 +5365,7 @@ export function DiamondCelebration({
     opacity: new Animated.Value(0),
   }))).current;
 
-  const screenW = Dimensions.get('window').width;
-  const screenH = Dimensions.get('window').height;
+  const { width: screenW, height: screenH } = canvasSize();
   const originX = screenW / 2;        // gems launch from the card centre
   const originY = screenH * 0.46;
   // Fly into the real diamond counter (measured by App.tsx). Read this at close
@@ -5443,11 +5505,11 @@ export function DiamondCelebration({
               opacity: cardOpacity, transform: [{ scale: cardScale }],
               backgroundColor: theme.panelInk, borderRadius: 22, padding: 2,
               borderWidth: 2, borderColor: theme.gem, borderBottomColor: theme.gemDark,
-              overflow: 'hidden',
+              // no overflow:'hidden' here — it would clip this layer's own gem glow on iOS; the inner face clips itself
               shadowColor: theme.gem, shadowOpacity: 0.45, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 18,
             }}
           >
-            <View style={{ backgroundColor: theme.modalFace, borderRadius: 20, overflow: 'hidden' }}>
+            <View style={{ backgroundColor: theme.modalFace, borderRadius: 18, overflow: 'hidden' }}>
               <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28, zIndex: 5 }} />
               {/* Gold banner strip */}
               <View style={{ height: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 46, backgroundColor: theme.accent, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.35)', borderBottomWidth: 3, borderBottomColor: theme.accentDark }}>
@@ -5495,7 +5557,9 @@ export function DiamondCelebration({
                     >
                       <View
                         style={{
-                          backgroundColor: theme.card, borderRadius: 12,
+                          backgroundColor: theme.card,
+                          // lip radius 13, flush top/sides, 2px bottom lip → 13 top / 11 bottom (nested-radius rule)
+                          borderTopLeftRadius: 13, borderTopRightRadius: 13, borderBottomLeftRadius: 11, borderBottomRightRadius: 11,
                           borderWidth: 1.5, borderColor: arenaVisual.color,
                           paddingHorizontal: 14, paddingVertical: 7,
                         }}
@@ -5850,7 +5914,14 @@ function AdRewardCard({ adLoading, adsWatched, onWatch }: { adLoading: boolean; 
           {adsWatched > 0 ? <Text style={[styles.muted, { fontSize: 10 }]}>{t('store.adsWatchedToday', { n: adsWatched })}</Text> : null}
         </View>
       </View>
-      {size.w > 0 ? <ShineSweep width={size.w} height={size.h} loop delay={600} duration={900} loopGap={2800} opacity={0.16} band={0.24} /> : null}
+      {/* Sweep the full panel face, not the content row: the -12 offset escapes the
+          body's 12px padding (Yoga insets absolute children by parent padding) and the
+          face's own rounded overflow:'hidden' clips the band at the card edge. */}
+      {size.w > 0 ? (
+        <View pointerEvents="none" style={{ position: 'absolute', top: -12, left: -12 }}>
+          <ShineSweep width={size.w + 24} height={size.h + 24} loop delay={600} duration={900} loopGap={2800} opacity={0.16} band={0.24} />
+        </View>
+      ) : null}
     </GamePanel>
   );
 }
@@ -6355,7 +6426,7 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
                 <View>
                   <PowerArt powerId={pid} size={56} />
                   {count > 0 ? (
-                    <View style={{ position: 'absolute', right: -6, top: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 4, backgroundColor: POWERS[pid].color, borderWidth: 2, borderColor: darken(theme.card, 0.45), alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{ position: 'absolute', right: -6, top: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 4, backgroundColor: POWERS[pid].color, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
                       <Text style={{ color: theme.ink, fontSize: 10, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>x{count}</Text>
                     </View>
                   ) : null}
@@ -6571,11 +6642,13 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
         }} title={t('store.confirmBuyTitle')} icon="cart">
         {confirmEmote ? (
           <View style={{ alignItems: 'center', gap: 10 }}>
-            <View style={{ width: 136, height: 136, borderRadius: 22, backgroundColor: theme.surface3, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', ...shadowRaised }}>
-              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
-              <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
-              {/* animasyon YALNIZ burada oynar — pencere her açılışta baştan başlar */}
-              <EmoteSticker key={confirmOpen ? `${confirmEmote.id}-open` : `${confirmEmote.id}-closed`} id={confirmEmote.id} size={108} play loop />
+            <View style={{ borderRadius: 22, backgroundColor: theme.surface3, ...shadowRaised }}>
+              <View style={{ width: 136, height: 136, borderRadius: 22, backgroundColor: theme.surface3, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
+                <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
+                <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
+                {/* animasyon YALNIZ burada oynar — pencere her açılışta baştan başlar */}
+                <EmoteSticker key={confirmOpen ? `${confirmEmote.id}-open` : `${confirmEmote.id}-closed`} id={confirmEmote.id} size={108} play loop />
+              </View>
             </View>
             {ownsEmote(profile, confirmEmote.id) ? (
               <>
@@ -6731,7 +6804,7 @@ const DiscoverableEmoteCard = memo(function DiscoverableEmoteCard({ emote, width
           <Ionicons name="lock-closed" size={10} color={theme.muted} />
         </View>
         {/* highlight ring — "currently playing" */}
-        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 12, borderWidth: 2, borderColor: theme.primary, opacity: ring }]} />
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 14, borderWidth: 2, borderColor: theme.primary, opacity: ring }]} />
       </Animated.View>
     </Pressable>
   );
@@ -6769,11 +6842,15 @@ function ActionFlap({ visible, label, tone, disabled = false, onPress }: {
           shadowColor: theme.shadowInk, shadowOpacity: 0.35, shadowRadius: 5, shadowOffset: { width: 0, height: 4 }, elevation: 7,
         })}
       >
-        <View style={{ backgroundColor: face, borderBottomLeftRadius: 10, borderBottomRightRadius: 10, alignItems: 'center', paddingVertical: 5 }}>
-          <Text style={{ color: disabled ? theme.muted : theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 11, letterSpacing: 0.5, textShadowColor: 'rgba(4,9,24,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 1 }}>
-            {label}
-          </Text>
-        </View>
+        {({ pressed }) => (
+          // inner bottom radius = outer 12 − lip inset (3 unpressed / 1 pressed), so the
+          // corner seam tracks the press together with paddingBottom
+          <View style={{ backgroundColor: face, borderBottomLeftRadius: pressed ? 11 : 9, borderBottomRightRadius: pressed ? 11 : 9, alignItems: 'center', paddingVertical: 5 }}>
+            <Text style={{ color: disabled ? theme.muted : theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 11, letterSpacing: 0.5, textShadowColor: 'rgba(4,9,24,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 1 }}>
+              {label}
+            </Text>
+          </View>
+        )}
       </Pressable>
     </Animated.View>
   );
@@ -6919,7 +6996,7 @@ function CollectibleEmoteCard({ emote, width, isEquipped, blocked, active, onPre
             </View>
           </Animated.View>
           {/* önizleme halkası */}
-          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 12, borderWidth: 2, borderColor: isEquipped ? theme.danger : theme.primary, opacity: ring }]} />
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderTopLeftRadius: 13, borderTopRightRadius: 13, borderBottomLeftRadius: 14, borderBottomRightRadius: 14, borderWidth: 2, borderColor: isEquipped ? theme.danger : theme.primary, opacity: ring }]} />
         </Animated.View>
       </Pressable>
       <ActionFlap
@@ -6984,15 +7061,16 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
     // Seri Geri Yükleme yalnız kırık bir seri varken kullanılabilir
     const streakBlocked = id === 'streak' && lostStreak <= 0;
     return (
-      <View key={id} style={{ borderRadius: 19, ...shadowRaised }}>
+      <View key={id} style={{ borderRadius: 19, ...shadowRaised, ...(active ? { shadowColor: meta.color, shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 0 }, elevation: 8 } : {}) }}>
         <View style={{
           backgroundColor: active ? theme.surface3 : theme.surface2, borderRadius: 19, borderWidth: 2,
           borderColor: active ? meta.color : withAlpha(meta.color, count > 0 ? 0.55 : 0.25),
-          padding: 12,
-          ...(active ? { shadowColor: meta.color, shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 0 }, elevation: 8 } : {}),
+          // strips clip at the r19 corners here; shadows (raised + active glow)
+          // live on the wrapper — overflow:'hidden' clips a layer's OWN shadow on iOS
+          padding: 12, overflow: 'hidden',
         }}>
-          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08, borderTopLeftRadius: 17, borderTopRightRadius: 17 }} />
-          <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28, borderBottomLeftRadius: 17, borderBottomRightRadius: 17 }} />
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
+          <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <View>
               <PowerArt powerId={id} size={62} locked={count === 0 && !active} />
@@ -7382,12 +7460,14 @@ export function FriendProfileModal({ profile, onClose, relation, onAddFriend }: 
               <AvatarBadge avatarId={profile?.avatar ?? profile?.selectedAvatar} size={104} ringColor={color} frameId={profile?.frame} />
               <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 22, marginTop: 12, ...engrave('lg') }} numberOfLines={1}>{profile?.displayName}</Text>
               {/* Gold trophies chip — surface2 face + arena-tint accent ring, integrated depth */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.surface2, borderRadius: 12, overflow: 'hidden', borderWidth: 1.5, borderColor: withAlpha(color, 0.45), paddingHorizontal: 14, paddingVertical: 6, marginTop: 8, ...shadowRow }}>
-                <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
-                <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
-                <Ionicons name="trophy" size={15} color={theme.gold} />
-                <Text style={{ color: theme.gold, fontFamily: 'Poppins-ExtraBold', fontSize: 15, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{profile?.trophies ?? 0}</Text>
-                <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>· {profile?.arena ? arenaLabel(profile.arena.name) : ''}</Text>
+              <View style={{ borderRadius: 12, backgroundColor: theme.surface2, marginTop: 8, ...shadowRow }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.surface2, borderRadius: 12, overflow: 'hidden', borderWidth: 1.5, borderColor: withAlpha(color, 0.45), paddingHorizontal: 14, paddingVertical: 6 }}>
+                  <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
+                  <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
+                  <Ionicons name="trophy" size={15} color={theme.gold} />
+                  <Text style={{ color: theme.gold, fontFamily: 'Poppins-ExtraBold', fontSize: 15, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{profile?.trophies ?? 0}</Text>
+                  <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>· {profile?.arena ? arenaLabel(profile.arena.name) : ''}</Text>
+                </View>
               </View>
             </GamePanel>
 
@@ -7542,7 +7622,9 @@ function SegmentTab({ icon, label, badge, active, onPress }: {
           style={{
             transform: [{ translateY: ty }],
             flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-            paddingVertical: 9, borderRadius: 10,
+            paddingVertical: 9,
+            // primaryDark lip: radius 11, flush top/sides, 2px bottom lip when active → 11 top / 9 bottom
+            borderTopLeftRadius: 11, borderTopRightRadius: 11, borderBottomLeftRadius: 9, borderBottomRightRadius: 9,
             backgroundColor: active ? theme.primary : 'transparent',
             borderTopWidth: active ? 1.5 : 0, borderTopColor: 'rgba(255,255,255,0.30)',
           }}
@@ -7754,6 +7836,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
   const [matchMode, setMatchMode] = useState<GameMode>('team-team');
   const [menuFriend, setMenuFriend] = useState<FriendInfo | null>(null); // tapped friend → actions popover
   const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 }); // tap anchor for the popover
+  const [menuH, setMenuH] = useState(222); // measured popover height — hard-coding it mis-seats the panel when labels wrap (long locales / large type)
   const [confirmRemove, setConfirmRemove] = useState<FriendInfo | null>(null); // remove confirmation
   const [socialPackPopup, setSocialPackPopup] = useState(false);
   // The match-setup modal hands off to another native <Modal> (the social-pack
@@ -8021,7 +8104,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
             >
               <View style={{ position: 'relative' }}>
                 <AvatarBadge avatarId={f.avatar ?? f.selectedAvatar} size={38} ringColor={theme.accent} frameId={f.frame} />
-                {f.online ? <View style={{ position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: 6, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
+                {f.online ? <View style={{ position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15, ...engrave('sm') }} numberOfLines={1}>{f.displayName}</Text>
@@ -8046,7 +8129,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
           <Pressable style={[StyleSheet.absoluteFill, { zIndex: 0 }]} onPress={() => setMenuFriend(null)} />
           {menuFriend ? (() => {
             const W = 236;
-            const H = 222;
+            const H = menuH; // measured via onLayout below; 222 only until the first layout
             const left = Math.max(8, Math.min(menuPos.x - W / 2, SCREEN_W - W - 8));
             const top = Math.max(56, menuPos.y - H - 14);
             const tailLeft = Math.min(Math.max(menuPos.x - left - 8, 18), W - 34);
@@ -8072,7 +8155,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
               </Pressable>
             );
             return (
-              <View style={{ position: 'absolute', left, top, width: W, zIndex: 2, elevation: 20 }} pointerEvents="box-none">
+              <View style={{ position: 'absolute', left, top, width: W, zIndex: 2, elevation: 20 }} pointerEvents="box-none" onLayout={(e) => { const h = Math.round(e.nativeEvent.layout.height); if (h > 0 && h !== menuH) setMenuH(h); }}>
                 {/* GamePanel-compact frame language + 150ms spring pop anchored at the tail */}
                 <SpringPop>
                   <View style={{ backgroundColor: theme.surface1, borderRadius: 15, ...shadowModal }}>
@@ -8274,7 +8357,7 @@ const SWIPE_THRESHOLD = 0.24; // fraction of screen width to trigger back
 const chatComposerTop = { y: Number.POSITIVE_INFINITY };
 
 function SwipeBackWrap({ children, onBack }: { children: (softBack: () => void) => ReactNode; onBack: () => void }) {
-  const screenW = Dimensions.get('window').width;
+  const screenW = canvasSize().width;
   const translateX = useRef(new Animated.Value(screenW)).current;
   const closingRef = useRef(false);
   const ignoreRef = useRef(false);
@@ -8760,7 +8843,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
           accessibilityRole="button"
           accessibilityLabel={t('chat.send')}
           hitSlop={8}
-          style={{ marginBottom: 2 }}
+          style={{ marginBottom: 2 }} // the ONE baseline nudge vs the composer — do not repeat it on the inner circle
         >
           {({ pressed }) => {
             const hasText = !!text.trim();
@@ -8770,7 +8853,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
               // Idle: quiet flat well. Ready: solid primary.
               <View
                 style={{
-                  width: 44, height: 44, borderRadius: 22, marginBottom: 2, overflow: 'hidden',
+                  width: 44, height: 44, borderRadius: 22, overflow: 'hidden',
                   backgroundColor: hasText ? theme.primary : theme.well,
                   alignItems: 'center', justifyContent: 'center',
                   opacity: pressed && hasText ? 0.85 : 1,
@@ -9170,7 +9253,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
                   const worn = p.selectedFrame === tr.key;
                   return (
                     <Pressable key={tr.key} onPress={() => setFramePrev({ tier: tr, unlocked: true })} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
-                      <View style={worn ? { borderRadius: 56 * 0.28, borderWidth: 2, borderColor: tr.c, margin: -2 } : undefined}>
+                      <View style={worn ? { borderRadius: 56 * 0.28 + 2, borderWidth: 2, borderColor: tr.c, margin: -2 } : undefined}>
                         <FrameArt tierKey={tr.key} size={56} well />
                       </View>
                       {worn ? (
@@ -9384,7 +9467,7 @@ export function ArenasScreen({ state, actions }: Props) {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <View style={{ width: isCurrent ? 96 : 74, height: isCurrent ? 88 : 68, alignItems: 'center', justifyContent: 'center' }}>
                   {/* Locked = art-only dim + padlock chip; text stays legible (no whole-card opacity) */}
-                  <Image source={arena.img} resizeMode="contain" style={{ width: '100%', height: '100%', opacity: isLocked ? 0.55 : 1, shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 4, shadowOffset: { width: 0, height: 3 } }} />
+                  <Image source={arena.img} resizeMode="contain" style={{ width: '100%', height: '100%', opacity: isLocked ? 0.55 : 1, shadowColor: theme.shadowInk, shadowOpacity: 0.45, shadowRadius: 4, shadowOffset: { width: 0, height: 3 } }} />
                   {isLocked ? (
                     <View style={{ position: 'absolute', top: -2, right: -2, width: 20, height: 20, borderRadius: 10, backgroundColor: theme.surface2, borderTopWidth: 1, borderTopColor: theme.topLight, alignItems: 'center', justifyContent: 'center' }}>
                       <Ionicons name="lock-closed" size={10} color={theme.muted} />
@@ -9450,7 +9533,13 @@ export function ArenasScreen({ state, actions }: Props) {
                 <View onLayout={(e) => setHeroSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
                   <GamePanel hero tint={arena.color} bodyStyle={{ padding: 14 }}>
                     {cardInner}
-                    {heroSize.w > 0 ? <ShineSweep width={heroSize.w - 8} height={heroSize.h - 8} delay={420} duration={720} opacity={0.22} band={0.26} /> : null}
+                    {/* Full-face sweep: -14 offset escapes the body's 14px padding (Yoga insets
+                        absolute children by it); the face's rounded overflow:'hidden' clips at the card edge. */}
+                    {heroSize.w > 0 ? (
+                      <View pointerEvents="none" style={{ position: 'absolute', top: -14, left: -14 }}>
+                        <ShineSweep width={heroSize.w} height={heroSize.h} delay={420} duration={720} opacity={0.22} band={0.26} />
+                      </View>
+                    ) : null}
                   </GamePanel>
                 </View>
               ) : (
@@ -10129,8 +10218,7 @@ const WIN_CONFETTI: { l: `${number}%`; t: `${number}%`; c: string; w: number; h:
 // (mirrors the diamond gem-fly). Calls onDone once every trophy has landed, so the
 // caller can then run the counter's fill + count-up.
 function TrophyFly({ target, onDone, count = 9 }: { target: { x: number; y: number }; onDone: () => void; count?: number }) {
-  const screenW = Dimensions.get('window').width;
-  const screenH = Dimensions.get('window').height;
+  const { width: screenW, height: screenH } = canvasSize();
   const originX = screenW / 2;
   const originY = screenH * 0.42;
   const parts = useRef(
@@ -10613,8 +10701,7 @@ export function xpOrbTiming(gained: number): { count: number; firstArrival: numb
 }
 
 function XpOrbFly({ gained, target, onDone, onOrbLand }: { gained: number; target: { x: number; y: number }; onDone: () => void; onOrbLand?: () => void }) {
-  const screenW = Dimensions.get('window').width;
-  const screenH = Dimensions.get('window').height;
+  const { width: screenW, height: screenH } = canvasSize();
   const originX = screenW / 2;
   const originY = screenH * 0.4;
   const chip = useRef(new Animated.Value(0)).current;
@@ -10691,8 +10778,7 @@ function XpOrbFly({ gained, target, onDone, onOrbLand }: { gained: number; targe
 // XpOrbFly ile aynı dil: ortada "+N 💎" çipi, elmas taneleri sırayla sağ üstteki
 // elmas hapına süzülür. Sayaç dönüşü App.tsx'te uçuş bitince başlar.
 export function GemOrbFly({ amount, onDone }: { amount: number; onDone: () => void }) {
-  const screenW = Dimensions.get('window').width;
-  const screenH = Dimensions.get('window').height;
+  const { width: screenW, height: screenH } = canvasSize();
   const originX = screenW / 2;
   const originY = screenH * 0.4;
   const chip = useRef(new Animated.Value(0)).current;
@@ -10874,12 +10960,19 @@ const POWER_ART: Partial<Record<PowerId, number>> = {
   training: require('../assets/power-training.png'), // özellik2.jpeg'ten birebir
   socialtoken: require('../assets/power-socialtoken.png'), // özellik2.jpeg'ten birebir
 };
-export function PowerArt({ powerId, size, locked }: { powerId: PowerId; size: number; locked?: boolean; well?: boolean }) {
+export function PowerArt({ powerId, size, locked, well = false }: { powerId: PowerId; size: number; locked?: boolean; well?: boolean }) {
   const art = POWER_ART[powerId];
+  // well: FrameArt ile aynı yuva dili — theme.well plaka + üstte 2px iç gölge
+  // şeridi, sanat 8px içeride (yol/popup şeritlerinde çerçevelerle aynı oturma).
+  const inner = size - (well ? 8 : 0);
   if (art != null) {
     return (
-      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-        <Image source={art} style={{ width: size, height: size, opacity: locked ? 0.45 : 1 }} resizeMode="contain" />
+      <View style={{
+        width: size, height: size, alignItems: 'center', justifyContent: 'center',
+        ...(well ? { backgroundColor: theme.well, borderRadius: size * 0.28, overflow: 'hidden' } : {}),
+      }}>
+        {well ? <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} /> : null}
+        <Image source={art} style={{ width: inner, height: inner, opacity: locked ? 0.45 : 1 }} resizeMode="contain" />
       </View>
     );
   }
@@ -10887,20 +10980,27 @@ export function PowerArt({ powerId, size, locked }: { powerId: PowerId; size: nu
   // sağ altta geri-sarma mini rozeti. Özel sanat gelince POWER_ART'a eklenir.
   const meta = POWERS[powerId];
   const c = locked ? theme.muted : meta.color;
-  return (
+  const medallion = (
     <View style={{
-      width: size, height: size, borderRadius: size / 2,
+      width: inner, height: inner, borderRadius: inner / 2,
       backgroundColor: darken(theme.card, 0.35),
-      borderWidth: Math.max(2, size * 0.045), borderColor: withAlpha(c, locked ? 0.4 : 0.85),
+      borderWidth: Math.max(2, inner * 0.045), borderColor: withAlpha(c, locked ? 0.4 : 0.85),
       alignItems: 'center', justifyContent: 'center',
     }}>
-      <View pointerEvents="none" style={{ position: 'absolute', width: size * 0.82, height: size * 0.82, borderRadius: size * 0.41, backgroundColor: withAlpha(c, locked ? 0.07 : 0.18) }} />
+      <View pointerEvents="none" style={{ position: 'absolute', width: inner * 0.82, height: inner * 0.82, borderRadius: inner * 0.41, backgroundColor: withAlpha(c, locked ? 0.07 : 0.18) }} />
       <View style={{ opacity: locked ? 0.55 : 1 }}>
-        <Ionicons name={meta.icon} size={Math.round(size * 0.48)} color={c} />
+        <Ionicons name={meta.icon} size={Math.round(inner * 0.48)} color={c} />
       </View>
-      <View style={{ position: 'absolute', right: -size * 0.02, bottom: -size * 0.02, width: size * 0.34, height: size * 0.34, borderRadius: size * 0.17, backgroundColor: locked ? theme.border : meta.color, borderWidth: 1.5, borderColor: darken(theme.card, 0.45), alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name={meta.badgeIcon} size={Math.round(size * 0.2)} color={theme.ink} />
+      <View style={{ position: 'absolute', right: -inner * 0.02, bottom: -inner * 0.02, width: inner * 0.34, height: inner * 0.34, borderRadius: inner * 0.17, backgroundColor: locked ? theme.border : meta.color, borderWidth: 1.5, borderColor: darken(theme.card, 0.45), alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name={meta.badgeIcon} size={Math.round(inner * 0.2)} color={theme.ink} />
       </View>
+    </View>
+  );
+  if (!well) return medallion;
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.well, borderRadius: size * 0.28, overflow: 'hidden' }}>
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
+      {medallion}
     </View>
   );
 }
@@ -11331,11 +11431,14 @@ export function LevelUpPopup({ toLevel, diamonds, emoteIds, powerIds = [], hasRe
     <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 70, backgroundColor: theme.scrim, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, opacity: a }]}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       <View style={{ width: '100%', maxWidth: 330, backgroundColor: theme.panelInk, borderRadius: 26, padding: 2, borderWidth: 2, borderColor: accent, borderBottomColor: darken(accent, 0.35), shadowColor: accent, shadowOpacity: 0.55, shadowRadius: 26, shadowOffset: { width: 0, height: 0 }, elevation: 20 }}>
-        <View style={{ backgroundColor: theme.card, borderRadius: 23, alignItems: 'center', paddingVertical: 22, paddingHorizontal: 18, overflow: 'hidden' }}>
-          {/* ışın patlaması */}
+        <View style={{ backgroundColor: theme.card, borderRadius: 22, alignItems: 'center', paddingVertical: 22, paddingHorizontal: 18, overflow: 'hidden' }}>
+          {/* ışın patlaması — RN bir view'ı KENDİ merkezinden döndürür: ışının orta
+              noktası (top + 65) rozet merkeziyle (22 pad + 43 yarı-rozet = 65)
+              çakışmalı → top: 0. Eski top: 62 tüm patlamayı ~62px aşağı, 'LEVEL
+              UP' başlığının içine kaydırıyordu. */}
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
             {Array.from({ length: 8 }).map((_, i) => (
-              <View key={i} style={{ position: 'absolute', left: '50%', top: 62, width: 3, height: 130, marginLeft: -1.5, backgroundColor: withAlpha(accent, 0.14), transform: [{ rotate: `${i * 45}deg` }] }} />
+              <View key={i} style={{ position: 'absolute', left: '50%', top: 0, width: 3, height: 130, marginLeft: -1.5, backgroundColor: withAlpha(accent, 0.14), transform: [{ rotate: `${i * 45}deg` }] }} />
             ))}
           </View>
           <Animated.View style={{ transform: [{ scale: badge.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1] }) }] }}>
@@ -11533,7 +11636,7 @@ function RoadRow({ n, level, xp, claimed, premiumOwned, premiumClaimed, onFrameP
         ...(pClaimable ? { shadowColor: theme.gold, shadowOpacity: 0.85, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 10 } : {}),
       }}>
         <View style={{
-          flex: 1, backgroundColor: '#241539', borderRadius: 14,
+          flex: 1, backgroundColor: '#241539', borderRadius: 16,
           borderWidth: 2, borderColor: premiumOwned ? (pClaimable ? lighten(theme.gold, 0.2) : withAlpha(theme.gold, 0.75)) : withAlpha(theme.gold, 0.35),
           paddingVertical: 7, paddingHorizontal: 9,
           opacity: premiumOwned || pClaimable ? 1 : 0.8,
@@ -11851,7 +11954,9 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
               <View style={{ backgroundColor: darken(theme.card, 0.5), borderRadius: 17, paddingBottom: 2.5 }}>
                 <View style={{
                   flexDirection: 'row', alignItems: 'center', gap: 10,
-                  backgroundColor: theme.card, borderRadius: 17, borderWidth: 2,
+                  backgroundColor: theme.card, borderWidth: 2,
+                  // radius-17 lip, flush top/sides, 2.5px bottom lip → 17 top / 14.5 bottom
+                  borderTopLeftRadius: 17, borderTopRightRadius: 17, borderBottomLeftRadius: 14.5, borderBottomRightRadius: 14.5,
                   borderColor: withAlpha(nextColor, 0.7), paddingVertical: 8, paddingHorizontal: 11,
                 }}>
                   {nextIsFrame && nextTier ? (
@@ -11930,7 +12035,9 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
               ...shadowRow,
             })}
           >
-            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08, borderTopLeftRadius: 16, borderTopRightRadius: 16 }} />
+            {/* top-light inset past the r16 corner arcs — a 1px strip can't carry a corner
+                radius, and the button has no overflow:'hidden' (it would clip shadowRow) */}
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 14, right: 14, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
             <Ionicons name="chevron-up" size={24} color={theme.accent} />
           </Pressable>
         ) : null}

@@ -12,6 +12,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,6 +26,7 @@ const DEV_SHOT_MODE = false;
 const DEV_SHOT_LANG = 'tr';
 // Dev-only: force the tutorial (antrenman) flow to inspect its layout. NEVER ships true.
 const FORCE_TUTORIAL_DEV = false;
+import { BASE_W, BASE_H, uiScaleFor } from './src/layout';
 import { setGemTarget } from './src/gemTarget';
 import { addNotificationTapListener, getPushPermissionGranted, setBadge } from './src/notifications';
 import {
@@ -87,7 +89,8 @@ try {
 }
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
-const { width: SCREEN_W } = Dimensions.get('window');
+// Tuval genişliği (tablette ölçeklenen telefon tuvali — bkz. ScaledRoot).
+const SCREEN_W = Math.min(Dimensions.get('window').width, BASE_W);
 // Once-per-install push permission prompt marker.
 const PUSH_PROMPTED_KEY = '@crossover_push_prompted';
 
@@ -141,12 +144,14 @@ const DiamondPill = memo(function DiamondPill({ countAnim, fillAnim, pillRef, on
   return (
     <Pressable ref={pillRef} onLayout={onMeasure} onPress={onPress}>
       {({ pressed }) => (
-        <View style={[s.hudPill, { paddingLeft: 20, paddingRight: 5, paddingVertical: 5 }, pressed && s.hudPillPressed]}>
-          <Animated.View pointerEvents="none" style={[s.diamondFill, { transform: [{ scaleX: fillAnim }] }]} />
-          <GemIcon size={20} />
-          <Text style={s.diamondText}>{count}</Text>
-          <View style={s.diamondPlus}>
-            <Ionicons name="add" size={12} color={theme.ink} />
+        <View style={s.hudPillShadow}>
+          <View style={[s.hudPill, { paddingLeft: 20, paddingRight: 5, paddingVertical: 5 }, pressed && s.hudPillPressed]}>
+            <Animated.View pointerEvents="none" style={[s.diamondFill, { transform: [{ scaleX: fillAnim }] }]} />
+            <GemIcon size={20} />
+            <Text style={s.diamondText}>{count}</Text>
+            <View style={s.diamondPlus}>
+              <Ionicons name="add" size={12} color={theme.ink} />
+            </View>
           </View>
         </View>
       )}
@@ -245,8 +250,10 @@ function PlayTab({ active, label, onPress }: { active: boolean; label: string; o
       <Animated.View style={[s.tabInner, { transform: [{ translateY: press.interpolate({ inputRange: [0, 1], outputRange: [0, 2] }) }] }]}>
         <View style={s.playTabSlot}>
           <Animated.View style={[s.playTabBall, { transform: [{ translateY: -18 }, { scale: pop }] }]}>
-            <View pointerEvents="none" style={s.playTabBallTopLight} />
-            <Ionicons name="football" size={28} color={theme.onPrimary} />
+            <View style={s.playTabBallFace}>
+              <View pointerEvents="none" style={s.playTabBallTopLight} />
+              <Ionicons name="football" size={28} color={theme.onPrimary} />
+            </View>
           </Animated.View>
         </View>
         <Text style={[s.tabLabel, active && s.tabLabelActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
@@ -429,8 +436,25 @@ function OutgoingInviteBanner({ invite, onCancel, offsetY = 0 }: {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AppRoot />
+      <ScaledRoot />
     </SafeAreaProvider>
+  );
+}
+
+// iPad = "aynı iPhone ekranı, büyük hâli" (kullanıcı kuralı 2026-08-06).
+// Arayüz her zaman BASE_W×BASE_H telefon tuvalinde çizilir; tablette tek bir
+// transform ile ekrana oturana kadar büyütülür. Böylece kart/yazı/boşluk
+// oranları telefondakiyle BİREBİR aynı kalır — iPad'e özel yayılmış düzen yok.
+function ScaledRoot() {
+  const { width, height } = useWindowDimensions();
+  const k = uiScaleFor(width, height);
+  if (k === 1) return <AppRoot />;
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+      <View style={{ width: BASE_W, height: BASE_H, transform: [{ scale: k }] }}>
+        <AppRoot />
+      </View>
+    </View>
   );
 }
 
@@ -1065,9 +1089,11 @@ function AppRoot() {
     <View style={s.resourceBar}>
       <Pressable onPress={() => { actions.openArenas(); goToTab(2); }}>
         {({ pressed }) => (
-          <View style={[s.hudPill, { paddingHorizontal: 24, paddingVertical: 8 }, pressed && s.hudPillPressed]}>
-            <Ionicons name="trophy" size={18} color={theme.accent} />
-            <Text style={s.trophyText}>{state.profile?.trophies ?? 0}</Text>
+          <View style={s.hudPillShadow}>
+            <View style={[s.hudPill, { paddingHorizontal: 24, paddingVertical: 8 }, pressed && s.hudPillPressed]}>
+              <Ionicons name="trophy" size={18} color={theme.accent} />
+              <Text style={s.trophyText}>{state.profile?.trophies ?? 0}</Text>
+            </View>
           </View>
         )}
       </Pressable>
@@ -1438,9 +1464,16 @@ const s = StyleSheet.create({
     backgroundColor: theme.primary,
     borderWidth: 3, borderColor: theme.tabBar, // cutout ring separating the ball from the bar
     alignItems: 'center', justifyContent: 'center',
+    // no overflow:'hidden' here — iOS masksToBounds would clip the ball's own
+    // green shadow; the top-light clip lives on playTabBallFace instead.
     shadowColor: theme.primaryDark, shadowOpacity: 0.5, shadowRadius: 9, shadowOffset: { width: 0, height: 5 },
     elevation: 8,
-    overflow: 'hidden',
+  },
+  // Inner clipping circle seated inside the 3px cutout ring (radius 24 − 3 = 21).
+  playTabBallFace: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    borderRadius: 21, overflow: 'hidden',
+    alignItems: 'center', justifyContent: 'center',
   },
   playTabBallTopLight: {
     position: 'absolute', top: 0, left: 0, right: 0, height: 3,
@@ -1509,6 +1542,13 @@ const s = StyleSheet.create({
   },
   // One opaque HUD counter language (Broadcast Prestige): a solid raised pill —
   // surface1 face, 1px top-light, soft navy shadow. No outline ring.
+  // Split in two: iOS clips a layer's own shadow when overflow:'hidden' sits on
+  // the same node, so hudPillShadow casts and hudPill clips (GamePanel pattern).
+  hudPillShadow: {
+    backgroundColor: theme.surface1,
+    borderRadius: 19,
+    ...shadowRow,
+  },
   hudPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1520,7 +1560,6 @@ const s = StyleSheet.create({
     borderRadius: 19,
     borderTopWidth: 1,
     borderTopColor: theme.topLight, // 1px photon, not a frame
-    ...shadowRow,
   },
   hudPillPressed: {
     backgroundColor: theme.surface2, // fill brightens
