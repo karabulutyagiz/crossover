@@ -354,13 +354,18 @@ function reducer(state: GameState, action: Action): GameState {
       // Update conversation list
       const existingIdx = nextConvos.findIndex(c => c.userId === partnerId);
       if (existingIdx >= 0) {
-        const updated = { ...nextConvos[existingIdx]!, lastMessage: msg.body, lastMessageAt: msg.createdAt };
+        const updated = {
+          ...nextConvos[existingIdx]!,
+          lastMessage: msg.body,
+          lastMessageAt: msg.createdAt,
+          displayName: nextConvos[existingIdx]!.displayName || state.friends.find(f => f.userId === partnerId)?.displayName || msg.fromName,
+        };
         // Increment unread if message is from the partner and we're NOT in that chat
         if (msg.fromId !== myId && state.chatWith !== partnerId) {
           updated.unreadCount = (updated.unreadCount ?? 0) + 1;
           nextUnread = nextUnread + 1;
         }
-        nextConvos = [updated, ...nextConvos.filter((_, i) => i !== existingIdx)];
+        nextConvos = sortConversations([updated, ...nextConvos.filter((_, i) => i !== existingIdx)]);
       } else {
         const isIncoming = msg.fromId !== myId;
         nextConvos = [{

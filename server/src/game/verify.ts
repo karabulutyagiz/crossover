@@ -509,20 +509,28 @@ export async function commonPlayersDetailed(
 
 // ---- Country-Team & Letter-Team helpers ----
 
-// Nationality spellings drift between data sources: the Transfermarkt rebuild
-// stores Turkey as the Turkish "Türkiye", while the app's country picker sends
-// the English "Turkey" (nationalities.ts). Matching on a single exact string
-// then wrongly reports "no common players" and SKIPS the round. Match against
-// EVERY known spelling instead — this is the permanent fix (it survives future
-// rebuilds regardless of which spelling the importer writes). Add an entry here
-// if a later data rebuild localizes another nationality.
-const NATIONALITY_ALIASES: Record<string, string[]> = {
-  turkey: ['Turkey', 'Türkiye'],
-  'türkiye': ['Turkey', 'Türkiye'],
-};
-/** All DB spellings a picked country value should match (self if no alias). */
-export function nationalityMatchValues(country: string): string[] {
-  return NATIONALITY_ALIASES[country.trim().toLowerCase()] ?? [country];
+const MIN_SPELL_YEAR = 1980;
+const ACTIVE_SPELL_SQL = `COALESCE(pc.end_year, pc.start_year, 9999) >= ${MIN_SPELL_YEAR}`;
+
+const NATIONALITY_ALIAS_GROUPS = [
+  ['Turkey', 'Türkiye'],
+  ['United Arab Emirates', 'United-Arab-Emirates'],
+  ['Saudi Arabia', 'Saudi-Arabia'],
+  ['Korea, South', 'South Korea', 'South-Korea'],
+  ['Czech Republic', 'Czech-Republic'],
+  ['Northern Ireland', 'Northern-Ireland'],
+  ['Bosnia-Herzegovina', 'Bosnia and Herzegovina'],
+  ['United States', 'USA'],
+] as const;
+
+function nationalityVariants(country: string): string[] {
+  const variants = new Set<string>([country]);
+  const normalized = normalize(country);
+  for (const group of NATIONALITY_ALIAS_GROUPS) {
+    if (!group.some((entry) => normalize(entry) === normalized)) continue;
+    for (const entry of group) variants.add(entry);
+  }
+  return [...variants];
 }
 
 /** Players who played for the club AND have the given nationality. */
@@ -531,15 +539,26 @@ export async function commonPlayersCountryTeam(
   country: string,
   limit = 5,
 ): Promise<CommonPlayerInfo[]> {
+  const countries = nationalityVariants(country);
   const { rows } = await pool.query<{ name: string; image_url: string | null }>(
-    `SELECT p.name, p.image_url
-       FROM players p
-       JOIN player_clubs pc ON pc.player_id = p.id
-      WHERE pc.club_id = $1 AND p.nationality = ANY($2)
-      ORDER BY (p.image_url IS NOT NULL) DESC,
-               (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) DESC
+    `SELECT picked.name, picked.image_url
+       FROM (
+         SELECT DISTINCT ON (p.id)
+                p.id,
+                p.name,
+                p.image_url,
+                (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) AS career_count
+           FROM players p
+           JOIN player_clubs pc ON pc.player_id = p.id
+          WHERE pc.club_id = $1
+            AND ${ACTIVE_SPELL_SQL}
+            AND p.nationality = ANY($2)
+          ORDER BY p.id
+       ) AS picked
+      ORDER BY (picked.image_url IS NOT NULL) DESC,
+               picked.career_count DESC
       LIMIT $3`,
-    [clubId, nationalityMatchValues(country), limit],
+    [clubId, countries, limit],
   );
   return rows.map((r) => ({ name: r.name, imageUrl: r.image_url }));
 }
@@ -567,12 +586,15 @@ export async function commonPlayersLetterTeam(
 
 /** Are there any valid players for a country-team combination? */
 export async function hasPlayersCountryTeam(clubId: number, country: string): Promise<boolean> {
+  const countries = nationalityVariants(country);
   const { rows } = await pool.query<{ n: string }>(
     `SELECT count(*) AS n FROM players p
        JOIN player_clubs pc ON pc.player_id = p.id
-      WHERE pc.club_id = $1 AND p.nationality = ANY($2)
+      WHERE pc.club_id = $1
+        AND ${ACTIVE_SPELL_SQL}
+        AND p.nationality = ANY($2)
       LIMIT 1`,
-    [clubId, nationalityMatchValues(country)],
+    [clubId, countries],
   );
   return Number(rows[0]?.n ?? 0) > 0;
 }
@@ -661,19 +683,31 @@ export async function verifyCountryTeamGuess(
   };
   if (!norm) return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
 
+  const countries = nationalityVariants(country);
+
   // Fuzzy candidates among players who played for the club AND have the nationality
   const { rows: cands } = await pool.query<{ id: string; name: string; sim: number; image_url: string | null }>(
-    `SELECT p.id, p.name, p.image_url, word_similarity($1, p.name_norm) AS sim
-       FROM players p
-       JOIN player_clubs pc ON pc.player_id = p.id
-      WHERE pc.club_id = $2
-        AND p.nationality = ANY($3)
-        AND word_similarity($1, p.name_norm) >= $4
-      ORDER BY sim DESC,
-               (p.image_url IS NOT NULL) DESC,
-               (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) DESC
+    `SELECT picked.id, picked.name, picked.image_url, picked.sim
+       FROM (
+         SELECT DISTINCT ON (p.id)
+                p.id,
+                p.name,
+                p.image_url,
+                word_similarity($1, p.name_norm) AS sim,
+                (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) AS career_count
+           FROM players p
+           JOIN player_clubs pc ON pc.player_id = p.id
+          WHERE pc.club_id = $2
+            AND ${ACTIVE_SPELL_SQL}
+            AND p.nationality = ANY($3)
+            AND word_similarity($1, p.name_norm) >= $4
+          ORDER BY p.id, sim DESC, (p.image_url IS NOT NULL) DESC, career_count DESC
+       ) AS picked
+      ORDER BY picked.sim DESC,
+               (picked.image_url IS NOT NULL) DESC,
+               picked.career_count DESC
       LIMIT 15`,
-    [norm, clubId, nationalityMatchValues(country), config.verifyMatchThreshold],
+    [norm, clubId, countries, config.verifyMatchThreshold],
   );
 
   const eligible = cands.map((c) => ({ id: Number(c.id), name: c.name, sim: Number(c.sim), imageUrl: c.image_url }));

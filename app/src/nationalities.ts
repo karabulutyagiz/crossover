@@ -17,7 +17,7 @@ export const NATIONALITIES: Nationality[] = [
   { value: 'Argentina', displayName: 'Arjantin', flag: '🇦🇷' },
   { value: 'Australia', displayName: 'Avustralya', flag: '🇦🇺' },
   { value: 'Austria', displayName: 'Avusturya', flag: '🇦🇹' },
-  { value: 'United Arab Emirates', displayName: 'BAE', flag: '🇦🇪' },
+  { value: 'United-Arab-Emirates', displayName: 'BAE', flag: '🇦🇪' },
   { value: 'Belgium', displayName: 'Belçika', flag: '🇧🇪' },
   { value: 'Bosnia-Herzegovina', displayName: 'Bosna Hersek', flag: '🇧🇦' },
   { value: 'Brazil', displayName: 'Brezilya', flag: '🇧🇷' },

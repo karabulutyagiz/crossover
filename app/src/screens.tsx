@@ -922,7 +922,26 @@ export function ScreenBg({ variant = 'menu' }: { variant?: BgVariant }) {
             <Stop offset="0.70" stopColor="#06101F" stopOpacity={0.40} />
             <Stop offset="1" stopColor="#06101F" stopOpacity={0.84} />
           </SvgGradient>
+          <SvgGradient id="bgstripe" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.038} />
+            <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0.012} />
+          </SvgGradient>
         </Defs>
+        {/* Baturalp'in diyagonal ince çizgileri (origin/main) — bgshade/bgphoto üstünü örter */}
+        {Array.from({ length: 30 }).map((_, i) => {
+          const x = -SCREEN_W + i * 72;
+          return (
+            <Line
+              key={`stripe-${i}`}
+              x1={x}
+              y1={0}
+              x2={x + SCREEN_H * 1.25}
+              y2={SCREEN_H}
+              stroke="url(#bgstripe)"
+              strokeWidth={1.2}
+            />
+          );
+        })}
         <Rect x="0" y="0" width="100%" height="100%" fill={photo ? 'url(#bgphoto)' : 'url(#bgshade)'} />
       </Svg>
     </View>
@@ -2044,6 +2063,7 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
   const dismissedMine = useRef(-1);
   const showTheirs = theirs && theirs.n > dismissedOpp.current;
   const showMine = mine && mine.n > dismissedMine.current;
+
 
   return (
     <>
@@ -8417,6 +8437,13 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasTyping = useRef(false);
   const sendingRef = useRef(false);
+  const keepKeyboardOpenRef = useRef(false);
+
+  const refocusInput = useCallback(() => {
+    inputRef.current?.focus();
+    requestAnimationFrame(() => inputRef.current?.focus());
+    setTimeout(() => inputRef.current?.focus(), 40);
+  }, []);
 
   // Auto-scroll to bottom whenever content grows (new message, typing indicator)
   // or the ScrollView layout changes (keyboard opens → ScrollView shrinks).
@@ -8535,6 +8562,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
     if (isGuest) { setGuestGate(true); return; }
     if (sendingRef.current) return;
     sendingRef.current = true;
+    keepKeyboardOpenRef.current = true;
     actions.sendMessage(chatWith, text.trim());
     setText('');
     if (wasTyping.current) {

@@ -696,6 +696,14 @@ function AppRoot() {
     return () => cancelAnimationFrame(id);
   }, [activeTab, measureDiamondPill]);
 
+  useEffect(() => {
+    if (!TAB_PHASES.has(state.phase)) return;
+    const id = requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ x: activeTab * SCREEN_W, animated: false });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [state.phase, activeTab, langKey]);
+
   // Auto-show Social Pack renewal popup when it has expired.
   useEffect(() => {
     const until = state.profile?.socialPackUntil;
@@ -1109,6 +1117,7 @@ function AppRoot() {
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true, listener: onScrollLive })}
         scrollEventThrottle={16}
         contentOffset={{ x: 2 * SCREEN_W, y: 0 }}
+        onLayout={() => scrollRef.current?.scrollTo({ x: activeTab * SCREEN_W, animated: false })}
         style={{ flex: 1 }}
       >
         {/* Each page is fully self-contained: its own top bar lives INSIDE it and
