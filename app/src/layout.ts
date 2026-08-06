@@ -44,10 +44,27 @@ export function useGridColumns(phoneColumns: number): number {
 export const BASE_W = 430;
 export const BASE_H = 932;
 
-/** Tablet'te tuvali ekrana oturtan tek ölçek katsayısı (telefonda 1). */
+/**
+ * Tablet ölçeği: tuvalin YÜKSEKLİĞİ ekrana tam oturur (telefonda 1).
+ * Genişlik ayrıca tuvalin kendisi genişletilerek doldurulur — bkz.
+ * canvasSizeFor: böylece kenarda bant kalmaz.
+ */
 export function uiScaleFor(winW: number, winH: number): number {
   if (winW < TABLET_MIN_W) return 1;
-  return Math.min(winW / BASE_W, winH / BASE_H);
+  return winH / BASE_H;
+}
+
+/**
+ * Çizim tuvalinin mantıksal ölçüsü. Tablette YÜKSEKLİK telefon tuvaliyle aynı
+ * (BASE_H) ama GENİŞLİK ekranı dolduracak kadar geniştir (ölçekten sonra tam
+ * ekran). Arka planlar (saha/degrade/tab barı) bu tuvali doldurduğu için
+ * kenarda bant OLUŞMAZ; içerik ise Screen primitive'inde BASE_W'lik telefon
+ * kolonuna ortalanır — büyük oyunların "arka plan tam ekran, arayüz tasarım
+ * alanında" kalıbı.
+ */
+export function canvasSizeFor(winW: number, winH: number): { width: number; height: number } {
+  if (winW < TABLET_MIN_W) return { width: winW, height: winH };
+  return { width: (winW * BASE_H) / winH, height: BASE_H };
 }
 
 /**
@@ -56,12 +73,13 @@ export function uiScaleFor(winW: number, winH: number): number {
  * bunu kullanmalı — gerçek iPad genişliği kullanılırsa tuvalin dışına taşar.
  */
 export function useContentMaxWidth(): number | undefined {
-  return undefined; // ölçekli tuvalde kolon sınırına gerek yok
+  const { width } = useWindowDimensions();
+  // Tablette içerik telefon kolonunda kalır (arka plan tuvali doldurur).
+  return width >= TABLET_MIN_W ? BASE_W : undefined;
 }
 
 /** Live window size — replaces module-load `Dimensions.get('window')` reads. */
 export function useWindow(): { width: number; height: number } {
   const { width, height } = useWindowDimensions();
-  // Tablette gerçek pencere DEĞİL, çizim yapılan tuval döner.
-  return width >= TABLET_MIN_W ? { width: BASE_W, height: BASE_H } : { width, height };
+  return canvasSizeFor(width, height); // gerçek pencere değil, çizim tuvali
 }

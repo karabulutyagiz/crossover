@@ -29,7 +29,7 @@ import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
 import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget, trophyTarget, setTrophyTarget, setTrophyRemeasure, remeasureTrophyTarget } from './gemTarget';
 import { Avatar } from './Avatar';
-import { useIsTablet, useWindow, useContentMaxWidth, BASE_W as BASE_W_LIMIT, BASE_H as BASE_H_LIMIT } from './layout';
+import { useIsTablet, useWindow, useContentMaxWidth, canvasSizeFor } from './layout';
 import { setPendingShortfall, takePendingShortfall } from './shortfall';
 import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
@@ -917,13 +917,12 @@ function EmptyState({ icon, title, hint, cta, style }: { icon: IoniconName; titl
 // (App.tsx ScaledRoot) — animasyon/ızgara matematiği bunun içinde kalmalı.
 // Ölçekli tuvalin ölçüsü — bileşen içi Dimensions okumaları bunu kullanır.
 function canvasSize(): { width: number; height: number } {
-  const w = Dimensions.get('window').width;
-  const h = Dimensions.get('window').height;
-  return w >= 700 ? { width: BASE_W_LIMIT, height: BASE_H_LIMIT } : { width: w, height: h };
+  const { width, height } = Dimensions.get('window');
+  return canvasSizeFor(width, height);
 }
 
-const SCREEN_W = Math.min(Dimensions.get('window').width, BASE_W_LIMIT);
-const SCREEN_H = Dimensions.get('window').width >= 700 ? BASE_H_LIMIT : Dimensions.get('window').height;
+const SCREEN_W = canvasSize().width;
+const SCREEN_H = canvasSize().height;
 export const BG_TOP = '#0E2347'; // navy shown behind the bg image (frame before load / root)
 export type BgVariant = 'home' | 'stadium' | 'store' | 'menu' | 'match';
 const BG_HOME = require('../assets/bg-home.png');   // royal-blue arena backdrop (legacy home)

@@ -26,7 +26,7 @@ const DEV_SHOT_MODE = false;
 const DEV_SHOT_LANG = 'tr';
 // Dev-only: force the tutorial (antrenman) flow to inspect its layout. NEVER ships true.
 const FORCE_TUTORIAL_DEV = false;
-import { BASE_W, BASE_H, uiScaleFor } from './src/layout';
+import { BASE_H, uiScaleFor, canvasSizeFor } from './src/layout';
 import { setGemTarget } from './src/gemTarget';
 import { addNotificationTapListener, getPushPermissionGranted, setBadge } from './src/notifications';
 import {
@@ -89,8 +89,8 @@ try {
 }
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
-// Tuval genişliği (tablette ölçeklenen telefon tuvali — bkz. ScaledRoot).
-const SCREEN_W = Math.min(Dimensions.get('window').width, BASE_W);
+// Tuval genişliği (tablette ekranı dolduran geniş tuval — bkz. ScaledRoot).
+const SCREEN_W = canvasSizeFor(Dimensions.get('window').width, Dimensions.get('window').height).width;
 // Once-per-install push permission prompt marker.
 const PUSH_PROMPTED_KEY = '@crossover_push_prompted';
 
@@ -449,9 +449,18 @@ function ScaledRoot() {
   const { width, height } = useWindowDimensions();
   const k = uiScaleFor(width, height);
   if (k === 1) return <AppRoot />;
+  // Tuval ekranı TAM doldurur (genişlik canvasSizeFor'dan gelir, yükseklik
+  // BASE_H) ve tek transform ile büyütülür: kenarda bant YOK, arka plan/saha
+  // kenardan kenara akar; içerik Screen primitive'inde 430pt telefon kolonunda
+  // ortalanır — büyük mobil oyunların "arka plan tam ekran, arayüz tasarım
+  // alanında" kalıbı.
+  const canvas = canvasSizeFor(width, height);
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-      <View style={{ width: BASE_W, height: BASE_H, transform: [{ scale: k }] }}>
+    // transformOrigin 'top left': varsayılan merkez-ölçek tuvali sola/yukarı
+    // kaydırıp üst barı kırpıyordu; sol-üstten büyütünce tuval ekranı birebir
+    // doldurur (genişlik = canvasSizeFor, yükseklik = BASE_H, ikisi de ×k).
+    <View style={{ flex: 1, backgroundColor: BG_TOP, overflow: 'hidden' }}>
+      <View style={{ width: canvas.width, height: canvas.height, transform: [{ scale: k }], transformOrigin: 'top left' }}>
         <AppRoot />
       </View>
     </View>
