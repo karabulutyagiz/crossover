@@ -75,7 +75,7 @@ export async function fetchApi(path: string, timeoutMs = 8000): Promise<Response
 export const SERVER_URL = SERVER_URLS[0]!;
 export const HTTP_URL = httpFor(SERVER_URL);
 
-export const APP_BUILD_NUMBER = 123;
+export const APP_BUILD_NUMBER = 124;
 
 // Google OAuth client IDs (from Google Cloud → Credentials).
 export const GOOGLE_IOS_CLIENT_ID =
