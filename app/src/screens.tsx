@@ -27,6 +27,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image as ExpoImage } from 'expo-image';
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
+import { acquireModalSlot, whenModalSlotFree } from './modalTraffic';
 import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget, trophyTarget, setTrophyTarget, setTrophyRemeasure, remeasureTrophyTarget } from './gemTarget';
 import { Avatar } from './Avatar';
 import { useIsTablet, useWindow, useContentMaxWidth, canvasSizeFor } from './layout';
@@ -647,23 +648,35 @@ export function GameModal({ visible, onClose, onExited, title, icon, danger = fa
   visible: boolean; onClose: () => void; onExited?: () => void; title?: string; icon?: IoniconName; danger?: boolean; coach?: boolean; children: ReactNode;
 }) {
   const a = useRef(new Animated.Value(0)).current;
-  const [mounted, setMounted] = useState(visible);
+  const [mounted, setMounted] = useState(false);
   const onExitedRef = useRef(onExited);
   onExitedRef.current = onExited;
+  // SUNUM SIRASI: başka bir modal ekrandayken bu modal sunulmaz, sıraya girer
+  // (modalTraffic). iOS'ta üst üste sunum görünmez bir modal bırakıp TÜM
+  // dokunuşları öldürüyordu — uygulama "donuyor", çökme kaydı da yok.
   useEffect(() => {
-    if (visible) {
+    if (!visible) return undefined;
+    return whenModalSlotFree(() => {
       setMounted(true);
       Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
-    } else {
-      Animated.timing(a, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
-        if (finished) {
-          setMounted(false);
-          onExitedRef.current?.(); // exit animation done — safe to hand off (no timer chains)
-        }
-      });
-    }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+  // Ekrandayken slotu tutar; kalkınca bırakır → sıradaki modal sunulur.
+  useEffect(() => {
+    if (!mounted) return undefined;
+    return acquireModalSlot();
+  }, [mounted]);
+  useEffect(() => {
+    if (visible) return; // giriş animasyonu sıraya-girme etkisinde başlar
+    Animated.timing(a, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
+      if (finished) {
+        setMounted(false);
+        onExitedRef.current?.(); // exit animation done — safe to hand off (no timer chains)
+      }
+    });
   }, [visible, a]);
-  if (!mounted && !visible) return null;
+  if (!mounted) return null;
   const clamped = a.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' });
   // Broadcast Premium: one clean surface, hairline border, a single 3px accent
   // strip along the top carries the modal's mood (danger red / coach green / gold).
@@ -3024,18 +3037,27 @@ function PopupCard({ visible, title, icon, onClose, children }: {
   // Spring pop-in + 160ms animated exit (scrim fades with the same value) —
   // centered cards never use animationType='fade'/'slide' (spec §7).
   const a = useRef(new Animated.Value(0)).current;
-  const [mounted, setMounted] = useState(visible);
+  const [mounted, setMounted] = useState(false);
+  // GameModal'daki sunum sırasının aynısı — bkz. modalTraffic.
   useEffect(() => {
-    if (visible) {
+    if (!visible) return undefined;
+    return whenModalSlotFree(() => {
       setMounted(true);
       Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
-    } else {
-      Animated.timing(a, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
-        if (finished) setMounted(false);
-      });
-    }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+  useEffect(() => {
+    if (!mounted) return undefined;
+    return acquireModalSlot();
+  }, [mounted]);
+  useEffect(() => {
+    if (visible) return;
+    Animated.timing(a, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
+      if (finished) setMounted(false);
+    });
   }, [visible, a]);
-  if (!mounted && !visible) return null;
+  if (!mounted) return null;
   const clamped = a.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' });
   return (
     <Modal visible transparent animationType="none" onRequestClose={onClose}>
