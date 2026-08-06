@@ -347,6 +347,31 @@ let _btnSeq = 0;
 // it is expressed in the Broadcast Prestige language here, NOT the old lip ramp.
 type BtnKind = 'primary' | 'ghost' | 'accent' | 'blue' | 'danger' | 'purple' | 'flame';
 // face color + shadow ink + dark on-face text per variant.
+// ---- Kaplamalı (asset) düğme derileri ----
+// Kaynak: satın alınan "glossy buttons" seti. Sayfadaki düğmelerin üstünde
+// İngilizce yazı BASILI olduğu için yalnız GÖVDE kullanılıyor: sol kapak +
+// kelime arasından alınan yazısız orta dilim + sağ kapak birleştirilip 9-dilim
+// (capInsets) hâline getirildi — böylece her genişlikte köşeler/eğim bozulmaz,
+// yazıyı biz basıyoruz (Türkçe + kendi tipografimiz).
+const BTN_SKINS = {
+  green:  { src: require('../assets/btn/btn-green.png'),  caps: { top: 17, left: 16, bottom: 17, right: 18 } },
+  orange: { src: require('../assets/btn/btn-orange.png'), caps: { top: 17, left: 17, bottom: 17, right: 18 } },
+  blue:   { src: require('../assets/btn/btn-blue.png'),   caps: { top: 17, left: 16, bottom: 17, right: 18 } },
+} as const;
+type BtnSkinName = keyof typeof BTN_SKINS;
+// Hangi düğme türü hangi deriyi kullanır. Listede olmayanlar (danger, purple,
+// flame) vektör görünümünde kalır — sette o renkler yok, uydurmak yerine
+// mevcut dil korunuyor.
+const BTN_SKIN_FOR: Partial<Record<BtnKind, BtnSkinName>> = {
+  primary: 'green',
+  accent: 'orange',
+  blue: 'blue',
+  ghost: 'blue',
+};
+// Basılı yazının orijinalindeki gibi: koyu gövde + açık dış hat (okunurluk).
+const SKIN_LABEL_COLOR = '#3A1B08';
+const SKIN_LABEL_SHADOW = { textShadowColor: 'rgba(255,255,255,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 1.5 } as const;
+
 const BTN_FACE: Record<Exclude<BtnKind, 'ghost'>, { face: string; sh: string; on: string }> = {
   primary: { face: theme.primary, sh: theme.primaryDark, on: theme.onPrimary },
   accent: { face: theme.accent, sh: theme.accentDark, on: theme.onAccent },
@@ -387,10 +412,14 @@ export function Btn({
   const fv = BTN_FACE[(kind as Exclude<BtnKind, 'ghost'>)] ?? BTN_FACE.primary;
   const inert = Boolean(disabled || loading);
   const ghostTint = tint ?? theme.primary;
+  const skinName = BTN_SKIN_FOR[kind];
+  const skin = skinName ? BTN_SKINS[skinName] : undefined;
+  const skinH = big ? 60 : compact ? 44 : 52;
   // Disabled = tone shift to surface1 at FULL geometry (no layout jump).
   const face = disabled ? theme.surface1 : fv.face;
   // Prestige: DARK-on-face label (danger keeps white). Ghost/disabled → text/muted.
-  const fg = disabled ? theme.muted : ghost ? (tint ?? theme.text) : fv.on;
+  // Kaplamalı gövdede yazı, setin orijinalindeki gibi koyu + açık dış hatlı.
+  const fg = disabled ? theme.muted : skin ? SKIN_LABEL_COLOR : ghost ? (tint ?? theme.text) : fv.on;
   const radius = big ? 14 : compact ? 10 : 12;
   // Press = scale + shadow-collapse + slight dim (no chunky translate).
   const pressScale = press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.972] });
@@ -398,7 +427,7 @@ export function Btn({
   const padV = big ? 16 : compact ? 9 : 13;
   const font = big ? 17 : compact ? 13 : 15;
   const iconSz = big ? 23 : compact ? 15 : 19;
-  const emboss = {}; // no cast on button labels (dark-on-face reads clean)
+  const emboss = skin ? SKIN_LABEL_SHADOW : {}; // kaplamada açık dış hat, düz yüzde kabartma yok
   void icon; // decorative icons intentionally not rendered inside buttons
   // Exception: `gem` — a PRICE button must show what currency it charges, so the
   // crystal logo (the same GemIcon as the HUD counter) sits right before the number.
@@ -437,7 +466,23 @@ export function Btn({
       onPress={inert ? undefined : onPress}
       style={{ marginVertical: 6, borderRadius: radius }}
     >
-      {ghost ? (
+      {skin && !inert ? (
+        // Kaplamalı gövde: 9-dilim asset (capInsets) + kendi yazımız.
+        // Yükseklik sabit tutulur ki dikey kapaklar (üst kavis + alt dudak)
+        // ezilmesin; genişlik esner, orta dilim yatayda uzar.
+        <Animated.View style={{ transform: [{ scale: pressScale }], height: skinH, justifyContent: 'center' }}>
+          <Image
+            source={skin.src}
+            resizeMode="stretch"
+            capInsets={skin.caps}
+            style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, width: undefined, height: undefined }}
+          />
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, gap: 8 }}>
+            {content}
+          </View>
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#04091A', opacity: pressDim, borderRadius: radius }]} />
+        </Animated.View>
+      ) : ghost ? (
         // Ghost: the ONE sanctioned thin outline (1.5px tint), transparent body.
         <Animated.View
           style={{
@@ -2685,7 +2730,8 @@ function arenaColor(name: string): string {
 function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void }) {
   const press = useRef(new Animated.Value(0)).current;
   const [w, setW] = useState(0);
-  const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, 5] });
+  const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, 4] });
+  const skin = BTN_SKINS.green;
   return (
     <Pressable
       onPress={onPress}
@@ -2693,61 +2739,36 @@ function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void })
       onPressOut={() => Animated.timing(press, { toValue: 0, duration: PRESS_OUT_MS, useNativeDriver: true }).start()}
       style={{ marginVertical: 4 }}
     >
-      {/* Colours and geometry measured off the mockup (COF ANA EKRAN.jpeg), not
-          eyeballed: the face ramps #9BDCBA → #0B5B42 top-to-bottom, and the
-          corner radius is 0.26 of the button height (32px on a 124px button). */}
-      {/* Shadow is navy INK, not the lip green: shadowColor HERO_PLAY_LIP at
-          0.45/r12 bloomed a fuzzy light-green haze onto the navy behind the
-          button and swallowed the dark lip — pixel-verified (17,38,70) haze over
-          the (19,32,75) background, lip gone entirely at the corner taper.
-          shadowInk at the sibling cards' 0.34/r7 keeps the #073E2D seat crisp. */}
-      <View style={{ backgroundColor: HERO_PLAY_LIP, borderRadius: 17, paddingBottom: 6, shadowColor: theme.shadowInk, shadowOpacity: 0.34, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 8 }}>
-        <Animated.View
-          onLayout={(e) => setW(e.nativeEvent.layout.width)}
+      {/* Gövde artık satın alınan "glossy" setinin 9-dilim yeşil düğmesi
+          (BTN_SKINS). Ölçülmüş SVG degrade + ayrı dudak katmanı kaldırıldı:
+          asset zaten kendi kavisini, parlaklığını ve alt dudağını taşıyor.
+          Korunanlar: hafif basma çökmesi, top filigranı ve eğik etiket. */}
+      <Animated.View
+        onLayout={(e) => setW(e.nativeEvent.layout.width)}
+        style={{ transform: [{ translateY: ty }], height: 64, justifyContent: 'center' }}
+      >
+        <Image
+          source={skin.src}
+          resizeMode="stretch"
+          capInsets={skin.caps}
+          style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, width: undefined, height: undefined }}
+        />
+        <View pointerEvents="none" style={{ position: 'absolute', right: -10, top: -6, width: 92, height: 92, opacity: 0.13 }}>
+          <Image source={BALL_WATERMARK} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+        </View>
+        {w > 0 ? <ShineSweep width={w} height={64} loop delay={1600} duration={800} loopGap={3600} opacity={0.18} band={0.2} /> : null}
+        {/* Etiket: setin basılı yazısı gibi koyu gövde + açık dış hat; eğim
+            transform ile (Poppins burada italik kesim taşımıyor). */}
+        <Text
+          numberOfLines={1}
           style={{
-            transform: [{ translateY: ty }], backgroundColor: HERO_PLAY_MID,
-            // Radius-bleed class (same as ArtCard): flush on top/sides → must MATCH
-            // the shell's 17; inset 6 at the bottom → 17 − 6 = 11. The uniform 14 let
-            // the dark #073E2D lip curl around the top corners as a thin arc —
-            // pixel-proven on the simulator before this fix.
-            borderTopLeftRadius: 17, borderTopRightRadius: 17,
-            borderBottomLeftRadius: 11, borderBottomRightRadius: 11,
-            paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+            color: SKIN_LABEL_COLOR, fontSize: 23, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.8,
+            textAlign: 'center', transform: [{ skewX: '-9deg' }], ...SKIN_LABEL_SHADOW,
           }}
         >
-          <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
-            <Defs>
-              <SvgGradient id="heroPlayG" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="#9BDCBA" />
-                <Stop offset="0.18" stopColor="#72C79E" />
-                <Stop offset="0.38" stopColor="#3DA77F" />
-                <Stop offset="0.58" stopColor="#198C65" />
-                <Stop offset="0.80" stopColor="#0D6D51" />
-                <Stop offset="1" stopColor="#0B5B42" />
-              </SvgGradient>
-              <SvgGradient id="heroPlayGloss" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.5" />
-                <Stop offset="0.55" stopColor="#FFFFFF" stopOpacity="0.06" />
-                <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
-              </SvgGradient>
-            </Defs>
-            <Rect width="100%" height="100%" fill="url(#heroPlayG)" />
-            {/* symmetric px insets — a %-width over a px-x drifts the right inset
-                with button width; rx stays 17 − 5 inset = 12 (nested radius rule) */}
-            <Rect x={5} y={3} rx={12} width={Math.max(0, w - 10)} height="34%" fill="url(#heroPlayGloss)" />
-          </Svg>
-          {/* Mockup's faint ball watermark bleeding off the right edge — the green
-              face reads as a pitch object, not a plain slab. */}
-          <View pointerEvents="none" style={{ position: 'absolute', right: -14, top: -10, width: 92, height: 92, opacity: 0.13 }}>
-            <Image source={BALL_WATERMARK} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
-          </View>
-          {w > 0 ? <ShineSweep width={w} height={64} loop delay={1600} duration={800} loopGap={3600} opacity={0.22} band={0.2} /> : null}
-          {/* The mockup sets this label in an italic cut. Poppins ships here in
-              upright weights only, so the slant is applied as a transform —
-              fontStyle:'italic' does not synthesise for a custom family on iOS. */}
-          <Text numberOfLines={1} style={{ color: theme.text, fontSize: 22, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.8, transform: [{ skewX: '-9deg' }], textShadowColor: 'rgba(4,9,24,0.55)', textShadowOffset: { width: 0, height: 1.5 }, textShadowRadius: 1.5 }}>{label}</Text>
-        </Animated.View>
-      </View>
+          {label}
+        </Text>
+      </Animated.View>
     </Pressable>
   );
 }
