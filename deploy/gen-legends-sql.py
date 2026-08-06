@@ -42,20 +42,26 @@ ALIAS = {
     'sporting lisbon': 'sporting cp', 'porto': 'fc porto',
     'psg': 'paris saint-germain', 'fenerbahce sk': 'fenerbahce',
     'newells old boys': 'newells old boys club',
+    'river plate': 'ca river plate',   # fuzzy otherwise lands on 'river plate b'
+    'cannes': 'as cannes',             # fuzzy otherwise lands on 'cannes b'
 }
 
 data = json.load(open(SRC))
 players = data if isinstance(data, list) else data.get('players', [])
 
-existing = {r[0] for r in psql('SELECT name_norm FROM tm_players')}
+existing_ids = {int(r[0]) for r in psql('SELECT id FROM tm_players')}
+existing_names = {r[0] for r in psql('SELECT name_norm FROM tm_players')}
 
 def resolve_club(name: str):
     n = norm(name)
     if n in clubs: return clubs[n], None
     if n in ALIAS and ALIAS[n] in clubs: return clubs[ALIAS[n]], None
     # single fuzzy pass via trigram on the DB side
+    # youth/B/reserve entities are never the intended target of a career spell
     rows = psql(f"SELECT id, name_norm, similarity({q(n)}, name_norm) s FROM tm_clubs "
-                f"WHERE similarity({q(n)}, name_norm) > 0.55 ORDER BY s DESC LIMIT 1")
+                f"WHERE similarity({q(n)}, name_norm) > 0.55 "
+                f"AND name_norm !~ '(\\mu-?[0-9]{{1,2}}$|\\mii$|\\miii$|\\mb$|reserves?$|castilla$|primavera$)' "
+                f"ORDER BY s DESC LIMIT 1")
     if rows: return int(rows[0][0]), rows[0][1]
     return None, None
 
@@ -66,8 +72,14 @@ new_clubs, sql_players, sql_spells, skipped = {}, [], [], []
 for i, p in enumerate(players):
     name = p['name'].strip()
     nn = norm(name)
-    if nn in existing:
-        skipped.append(f"SKIP (already in DB): {name}")
+    tm = p.get('tmId')
+    # Skip ONLY a true identity match (same TM id) — a bare name collision is a
+    # NAMESAKE (three lower-league Romários exist; the legend still goes in).
+    if tm and tm in existing_ids:
+        skipped.append(f"SKIP (same TM id already in DB): {name}")
+        continue
+    if not tm and nn in existing_names:
+        skipped.append(f"SKIP (no tmId + name exists, unverifiable): {name}")
         continue
     pid = p.get('tmId') or (synth_player + i)
     by = p.get('birthYear')
@@ -99,9 +111,10 @@ CREATE TABLE IF NOT EXISTS legends_clubs (
   id bigint PRIMARY KEY, name text NOT NULL, name_norm text NOT NULL, country text
 );
 CREATE TABLE IF NOT EXISTS legends_spells (
-  player_id bigint NOT NULL, club_id bigint NOT NULL, start_year int, end_year int,
-  PRIMARY KEY (player_id, club_id, start_year)
+  player_id bigint NOT NULL, club_id bigint NOT NULL, start_year int, end_year int
 );
+CREATE UNIQUE INDEX IF NOT EXISTS legends_spells_uq
+  ON legends_spells (player_id, club_id, COALESCE(start_year, -1));
 TRUNCATE legends_players, legends_clubs, legends_spells;"""]
 
 if sql_players:
@@ -121,7 +134,7 @@ WHERE NOT EXISTS (SELECT 1 FROM clubs c WHERE c.id = lc.id OR c.name_norm = lc.n
 
 INSERT INTO players (id, name, name_norm, birth_year, nationality)
 SELECT lp.id, lp.name, lp.name_norm, lp.birth_year, lp.nationality FROM legends_players lp
-WHERE NOT EXISTS (SELECT 1 FROM players p WHERE p.id = lp.id OR p.name_norm = lp.name_norm);
+WHERE NOT EXISTS (SELECT 1 FROM players p WHERE p.id = lp.id); -- id-only: namesakes are legitimate
 
 INSERT INTO player_clubs (player_id, club_id, start_year, end_year)
 SELECT ls.player_id,

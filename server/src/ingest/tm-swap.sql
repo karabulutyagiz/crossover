@@ -102,7 +102,7 @@ BEGIN
 
       INSERT INTO players (id, name, name_norm, birth_year, nationality)
       SELECT lp.id, lp.name, lp.name_norm, lp.birth_year, lp.nationality FROM legends_players lp
-      WHERE NOT EXISTS (SELECT 1 FROM players p WHERE p.id = lp.id OR p.name_norm = lp.name_norm);
+      WHERE NOT EXISTS (SELECT 1 FROM players p WHERE p.id = lp.id); -- id-only: namesakes are legitimate
 
       INSERT INTO player_clubs (player_id, club_id, start_year, end_year)
       SELECT ls.player_id,
