@@ -185,13 +185,26 @@ async function clubProfiles(): Promise<void> {
 }
 
 // ---- transfers -> career spells ----------------------------------------------
+// Careers KEEP youth/reserve/B spells (only women's teams and non-clubs are
+// dropped): tm-swap.sql re-points them to the parent club, so "played even one
+// official minute in the shirt" counts — e.g. Özyakup's Arsenal years live under
+// "Arsenal FC U21" on TM and must land on Arsenal FC. Unresolvable youth clubs
+// stay as rows but A_TEAM_ONLY already hides them from every picker.
+const WOMEN_TEAM = /(frauen|women|\bkadin\b|femen|femin|ladies)/i;
+function keepCareerClub(name: string | undefined | null): boolean {
+  if (!name) return false;
+  if (NOT_A_CLUB.test(name.trim())) return false;
+  if (WOMEN_TEAM.test(name)) return false;
+  return true;
+}
+
 function spellsFromTransfers(transfers: any[]): Map<number, { name: string; start: number | null; end: number | null }> {
   const sorted = [...transfers].sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? '')));
   const byClub = new Map<number, { name: string; start: number | null; end: number | null }>();
   for (let i = 0; i < sorted.length; i++) {
     const t = sorted[i]!;
     const to = t.clubTo ?? t.to;
-    if (!to?.id || !isSeniorClub(to.name)) continue;
+    if (!to?.id || !keepCareerClub(to.name)) continue;
     const cid = Number(to.id);
     const startY = t.date ? Number(String(t.date).slice(0, 4)) : null;
     const next = sorted[i + 1];

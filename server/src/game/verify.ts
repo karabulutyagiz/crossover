@@ -947,7 +947,14 @@ export async function verifyGuess(
   if (!correct) {
     const SIM_BAND = 0.13;
     const nearTop = eligible.filter((c) => c.sim >= eligible[0]!.sim - SIM_BAND);
-    matched = mostFamous(nearTop);
+    // Context beats raw fame: a near-top candidate tied to THIS round's clubs is
+    // far more plausibly who the human meant — "sergen" in a TS–BJK round is
+    // Sergen Yalçın, never a lower-league namesake with a bigger current club.
+    const inMatch = nearTop.filter((c) => {
+      const m = memberBy.get(c.id);
+      return Boolean(m?.inA || m?.inB);
+    });
+    matched = mostFamous(inMatch.length > 0 ? inMatch : nearTop);
   }
 
   const allClubs = await getPlayerSpells(matched.id);

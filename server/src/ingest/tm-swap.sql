@@ -48,6 +48,27 @@ UPDATE clubs SET name =
    'Balikesir','Balıkesir'),'Kirklareli','Kırklareli'),'Inegöl','İnegöl')
 WHERE country = 'Türkiye';
 
+-- Youth/reserve spells count toward the PARENT club (user rule: any official
+-- appearance in the shirt counts — TM logs e.g. Özyakup's Arsenal years under
+-- "Arsenal FC U21", which broke Beşiktaş–Arsenal rounds). Conservative: strip
+-- one trailing youth token, require an EXACT parent name match, leave the rest.
+-- Mirrors deploy/repoint-youth-clubs.sql (the one-off prod migration).
+WITH youth AS (
+  SELECT c.id AS child_id,
+         trim(regexp_replace(c.name_norm,
+           '\s*(u-?[0-9]{1,2}|b|ii|iii|reserves?|castilla|primavera|jong|amateure)\s*$', '')) AS parent_norm
+    FROM clubs c
+   WHERE c.name_norm ~ '(\mu-?[0-9]{1,2}$|\mii$|\miii$|\mb$|reserves?$|castilla$|primavera$|amateure$)'
+), map AS (
+  SELECT y.child_id, p.id AS parent_id
+    FROM youth y
+    JOIN clubs p ON p.name_norm = y.parent_norm AND p.id <> y.child_id
+)
+UPDATE player_clubs pc
+   SET club_id = m.parent_id
+  FROM map m
+ WHERE pc.club_id = m.child_id;
+
 -- Popularity = number of players per club (bot difficulty + search ranking).
 UPDATE clubs SET popularity = sub.n
 FROM (SELECT club_id, count(*) AS n FROM player_clubs GROUP BY club_id) sub
