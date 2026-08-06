@@ -1,0 +1,8 @@
+# App Store "Yenilikler" (whatsNew) STANDART metni — her güncellemede bu kullanılır.
+# Kullanıcı kuralı (2026-08-06): sürüm notlarında hep bu sabit mesaj yazılır.
+
+[tr]
+Merhaba futbol severler! Bu versiyonda çeşitli küçük hata düzeltmeleri ve iyileştirmeler yaptık. İyi oyunlar!
+
+[en-US]
+Hello football fans! This version brings various small bug fixes and improvements. Enjoy the game!
