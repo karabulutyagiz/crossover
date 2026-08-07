@@ -10006,15 +10006,22 @@ function PlayerPhoto({ uri, size = 32 }: { uri: string | null; size?: number }) 
 // THE match-history card — one component for the popup (MatchHistoryModal) and
 // the fullscreen MatchHistoryScreen: GamePanel compact tinted by the result,
 // Ribbon verdict chip, engraved Poppins-Black score, recessed round wells.
+// Maç geçmişi kartı — savaş günlüğü dili (Clash Royale kalıbı, araştırma
+// reçetesi): sonuç DÖRT ayrı yolla anlatılır, çünkü tek başına renk yeterli
+// değildir (renk körlüğü + gri baskı testi):
+//   1) dolu madalyon (galibiyet) vs HALKA (mağlubiyet) — silüet farkı
+//   2) kartın sol kenar şeridi + hafif ton yıkaması
+//   3) skorda kazananın rakamı parlak, kaybedenin sönük
+//   4) kupa farkının İŞARETİ
+// Ayrıntı (turlar) varsayılan KAPALI: liste taranabilir kalır, merak eden açar.
 function MatchHistoryCard({ match: m, myName }: { match: MatchHistoryView; myName: string }) {
+  const [open, setOpen] = useState(false);
   const myRounds = m.rounds.filter((r) => r.answeredBy === myName);
   const oppRounds = m.rounds.filter((r) => r.answeredBy !== myName);
-  const pArena = arenaForTrophies(m.playerTrophies);
-  const oArena = arenaForTrophies(m.opponentTrophies);
   const tint = m.won ? theme.primary : theme.danger;
+  const delta = (m.playerTrophies ?? 0) - (m.opponentTrophies ?? 0); // gösterim amaçlı fark
+  const oArena = arenaForTrophies(m.opponentTrophies);
 
-  // Round chip: recessed panelInnerFill well (dark top edge = sunken) with a
-  // mine/theirs stripe. Metadata never dips under the 10px caption floor.
   const roundChip = (r: MatchHistoryView['rounds'][number], mine: boolean, key: number) => (
     <View
       key={key}
@@ -10036,59 +10043,65 @@ function MatchHistoryCard({ match: m, myName }: { match: MatchHistoryView; myNam
     </View>
   );
 
-  const side = (name: string, arena: ReturnType<typeof arenaForTrophies>, trophies: number) => (
-    <View style={{ flex: 1, alignItems: 'center' }}>
-      <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{name}</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-        <Ionicons name={arena.icon} size={11} color={arena.color} />
-        <Text style={{ color: arena.color, fontSize: 10, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{trophies}</Text>
-      </View>
-      <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', marginTop: 1 }} numberOfLines={1}>{arenaLabel(arena.name)}</Text>
-    </View>
-  );
-
   return (
-    <GamePanel compact tint={tint} style={{ marginBottom: 12 }} bodyStyle={{ padding: 0 }}>
-      {/* Result + score + mode/date band, washed in the result tint */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: withAlpha(tint, 0.10) }}>
-        <Ribbon
-          label={m.won ? t('matchHistory.won') : t('matchHistory.lost')}
-          color={m.won ? theme.accent : theme.danger}
-          icon={m.won ? 'trophy' : 'close-circle'}
-        />
-        <Text style={{ color: theme.text, fontSize: 22, fontFamily: 'Poppins-Black', letterSpacing: 2, fontVariant: ['tabular-nums'], ...engrave('lg') }}>
-          {m.playerScore} - {m.opponentScore}
-        </Text>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold' }}>{MODE_LABEL((m.gameMode as GameMode) ?? 'team-team')}</Text>
-          <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{shortDate(m.playedAt)}</Text>
+    <Pressable
+      onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setOpen((o) => !o); }}
+      style={({ pressed }) => ({ marginBottom: 10, transform: [{ scale: pressed ? 0.985 : 1 }, { translateY: pressed ? 2 : 0 }] })}
+    >
+      <GamePanel compact tint={tint} bodyStyle={{ padding: 0 }}>
+        {/* Sonuç şeridi — sol kenarda, tam boy */}
+        <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: tint, zIndex: 3 }} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingLeft: 14, paddingRight: 12, paddingVertical: 10, backgroundColor: withAlpha(tint, 0.08) }}>
+          {/* 1) Silüet: galibiyette DOLU madalyon, mağlubiyette HALKA */}
+          {m.won ? (
+            <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.3 }} />
+              <Ionicons name="trophy" size={17} color={theme.onAccent} />
+            </View>
+          ) : (
+            <View style={{ width: 34, height: 34, borderRadius: 17, borderWidth: 2.5, borderColor: theme.danger, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="close" size={17} color={theme.danger} />
+            </View>
+          )}
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text numberOfLines={1} style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-ExtraBold' }}>{m.opponentName}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+              <Ionicons name={oArena.icon} size={11} color={oArena.color} />
+              <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold' }} numberOfLines={1}>
+                {arenaLabel(oArena.name)} · {MODE_LABEL((m.gameMode as GameMode) ?? 'team-team')}
+              </Text>
+            </View>
+          </View>
+          {/* 3) Skor: kazananın rakamı parlak, kaybedenin sönük — renksiz de okunur */}
+          <View style={{ alignItems: 'flex-end', gap: 3 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+              <Text style={{ color: m.won ? theme.text : theme.textSub, fontSize: 24, fontFamily: 'Poppins-Black', letterSpacing: 1.2, fontVariant: ['tabular-nums'], ...engrave('lg') }}>{m.playerScore}</Text>
+              <Text style={{ color: theme.muted, fontSize: 18, fontFamily: 'Poppins-Black', marginHorizontal: 3 }}>-</Text>
+              <Text style={{ color: m.won ? theme.textSub : theme.text, fontSize: 24, fontFamily: 'Poppins-Black', letterSpacing: 1.2, fontVariant: ['tabular-nums'], ...engrave('lg') }}>{m.opponentScore}</Text>
+            </View>
+            <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{shortDate(m.playedAt)}</Text>
+          </View>
         </View>
-      </View>
 
-      {/* Head-to-head */}
-      <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 }}>
-        {side(m.playerName || myName, pArena, m.playerTrophies)}
-        <View style={{ justifyContent: 'center', paddingHorizontal: 8 }}>
-          <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t('common.vs')}</Text>
-        </View>
-        {side(m.opponentName, oArena, m.opponentTrophies)}
-      </View>
+        {/* Ayrıntı satırı: tek şevron — "aç/kapa" demek, "git" değil */}
+        {m.rounds.length > 0 ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, height: 26, borderTopWidth: 1, borderTopColor: theme.hairline }}>
+            <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', flex: 1 }}>
+              {t('matchHistory.rounds', { n: String(m.rounds.length) })}
+            </Text>
+            <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={14} color={theme.muted} />
+          </View>
+        ) : null}
 
-      {/* Rounds detail — who answered which pairing */}
-      <View style={{ flexDirection: 'row', paddingHorizontal: 10, paddingTop: 4, paddingBottom: 12, gap: 6 }}>
-        <View style={{ flex: 1 }}>
-          {myRounds.length > 0
-            ? myRounds.map((r, i) => roundChip(r, true, i))
-            : <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginTop: 8 }}>—</Text>}
-        </View>
-        <View style={{ width: 1, backgroundColor: theme.hairline, marginVertical: 4 }} />
-        <View style={{ flex: 1 }}>
-          {oppRounds.length > 0
-            ? oppRounds.map((r, i) => roundChip(r, false, i))
-            : <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginTop: 8 }}>—</Text>}
-        </View>
-      </View>
-    </GamePanel>
+        {open && m.rounds.length > 0 ? (
+          <View style={{ flexDirection: 'row', paddingHorizontal: 10, paddingTop: 8, paddingBottom: 12, gap: 6 }}>
+            <View style={{ flex: 1 }}>{myRounds.map((r, i) => roundChip(r, true, i))}</View>
+            {myRounds.length > 0 && oppRounds.length > 0 ? <View style={{ width: 1, backgroundColor: theme.hairline, marginVertical: 4 }} /> : null}
+            <View style={{ flex: 1 }}>{oppRounds.map((r, i) => roundChip(r, false, i))}</View>
+          </View>
+        ) : null}
+      </GamePanel>
+    </Pressable>
   );
 }
 
