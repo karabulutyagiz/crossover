@@ -11,6 +11,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Animated, Easing, PanResponder, Platform, Dimensions, Linking, LayoutAnimation } from 'react-native';
@@ -660,6 +661,14 @@ const ModalDepthCtx = createContext(0);
 function SafeModal({ visible = true, children, ...rest }: ComponentProps<typeof Modal>) {
   const depth = useContext(ModalDepthCtx);
   const nested = depth > 0;
+  // TABLETTE TAŞMA DÜZELTMESİ: modal içeriği, ölçekli tuvalin (ScaledRoot)
+  // transform'unu miras alır ama düzenini GERÇEK pencere genişliğine (ör.
+  // 1032pt) göre kurar; sonra 1.48x büyüyünce ekranın dışına taşar ve
+  // kenarlardan kesilir. İçeriği tuval ölçüsüne kilitleyip ortalıyoruz —
+  // ölçekten sonra ekranı tam doldurur.
+  const win = useWindowDimensions();
+  const canvas = canvasSizeFor(win.width, win.height);
+  const needsCanvasBox = canvas.width !== win.width;
   const [present, setPresent] = useState(false);
   useEffect(() => {
     if (!visible) { setPresent(false); return undefined; }
@@ -672,7 +681,13 @@ function SafeModal({ visible = true, children, ...rest }: ComponentProps<typeof 
   }, [present, nested]);
   return (
     <Modal {...rest} visible={present}>
-      <ModalDepthCtx.Provider value={depth + 1}>{children}</ModalDepthCtx.Provider>
+      <ModalDepthCtx.Provider value={depth + 1}>
+        {needsCanvasBox ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: canvas.width, height: canvas.height }}>{children}</View>
+          </View>
+        ) : children}
+      </ModalDepthCtx.Provider>
     </Modal>
   );
 }
