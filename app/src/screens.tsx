@@ -3095,29 +3095,37 @@ function PopupCard({ visible, title, icon, onClose, children }: {
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim, opacity: clamped }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         </Animated.View>
-        <Animated.View style={{ opacity: clamped, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }) }], backgroundColor: theme.modalFace, borderRadius: 22, maxHeight: '80%', overflow: 'hidden', ...shadowModal }}>
-          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.06, zIndex: 6 }} />
-          <View style={{ height: 3, backgroundColor: theme.accent }} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 18, paddingTop: 13, paddingBottom: 11 }}>
-            <View style={{ width: 4, height: 17, borderRadius: 2, backgroundColor: theme.accent }} />
-            <Ionicons name={icon} size={17} color={theme.accent} />
-            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 16, letterSpacing: 0.6, flex: 1 }} numberOfLines={1}>{title}</Text>
+        {/* GameModal ile AYNI üç katmanlı düğme anatomisi: koyu dış kontur →
+            altın pah → yüz. Bu pencere (lider tablosu / müsabaka geçmişi /
+            yenilikler) eskiden ince-hairline dildeydi ve düğmelerin yanında
+            başka bir uygulamadan gelmiş gibi duruyordu. */}
+        <Animated.View style={{ opacity: clamped, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }) }], backgroundColor: '#0B1428', borderRadius: 28, padding: 3.5, paddingBottom: 6, maxHeight: '80%', ...shadowModal }}>
+        <View style={{ backgroundColor: darken(theme.accent, 0.35), borderRadius: 24, padding: 2.5, paddingBottom: 4, overflow: 'hidden' }}>
+        <View style={{ backgroundColor: theme.modalFace, borderRadius: 21, overflow: 'hidden' }}>
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.16, zIndex: 6 }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 18, paddingVertical: 11, backgroundColor: theme.accent, overflow: 'hidden' }}>
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.34 }} />
+            <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2.5, backgroundColor: darken(theme.accent, 0.42) }} />
+            <Ionicons name={icon} size={17} color={SKIN_LABEL_COLOR} />
+            <Text style={{ color: SKIN_LABEL_COLOR, fontFamily: 'Poppins-ExtraBold', fontSize: 15, letterSpacing: 1, textTransform: 'uppercase', flex: 1, ...SKIN_LABEL_SHADOW }} numberOfLines={1}>{title}</Text>
             <Pressable
               onPress={onClose}
               hitSlop={10}
               style={({ pressed }) => ({
                 width: 32, height: 32, borderRadius: 16,
-                backgroundColor: theme.well,
+                backgroundColor: darken(theme.accent, 0.3),
+                borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.3)',
                 alignItems: 'center', justifyContent: 'center',
                 transform: [{ scale: pressed ? 0.9 : 1 }],
                 opacity: pressed ? 0.8 : 1,
               })}
             >
-              <Ionicons name="close" size={16} color={theme.textSub} />
+              <Ionicons name="close" size={16} color={SKIN_LABEL_COLOR} />
             </Pressable>
           </View>
-          <View style={{ height: 1, backgroundColor: theme.hairline }} />
           {children}
+        </View>
+        </View>
         </Animated.View>
       </View>
     </SafeModal>
