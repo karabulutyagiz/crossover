@@ -618,7 +618,9 @@ function GamePanel({ children, hero = false, tint, accentStripe, compact = false
   const sh = hero ? shadowRaised : compact ? shadowRow : shadowSoft;
   const stripe = accentStripe ?? tint;
   return (
-    <View style={[{ backgroundColor: face, borderRadius: r, ...sh }, style]}>
+    // Düğmelerle AYNI anatomi: koyu dış kontur → yüz. Paneller eskiden konturusuz
+    // düz yüzeylerdi; parlak/kalın düğmelerin yanında şekil dili tutmuyordu.
+    <View style={[{ backgroundColor: theme.shadowInk, borderRadius: r + 3, padding: 2.5, ...sh }, style]}>
       <View style={[{ backgroundColor: face, borderRadius: r, overflow: 'hidden', padding: 12 }, bodyStyle]}>
         {hero ? (
           <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -699,9 +701,15 @@ export function GameModal({ visible, onClose, onExited, title, icon, danger = fa
   }, [visible, a]);
   if (!mounted) return null;
   const clamped = a.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' });
-  // Broadcast Premium: one clean surface, hairline border, a single 3px accent
-  // strip along the top carries the modal's mood (danger red / coach green / gold).
+  // Pencere dili artık DÜĞMELERLE aynı aileden (satın alınan glossy set):
+  // kalın koyu kontur + iç açık pah + üst parlaklık + sıcak alt dudak. Eskiden
+  // pencereler ince-hairline "yayın grafiği" dilindeydi, düğmeler kalın oyuncak
+  // dilinde — ikisi bir arada yamalı duruyordu ("ne alaka bu buton bu UI").
   const strip = danger ? theme.danger : coach ? theme.primary : theme.accent;
+  // Düğme setinden ölçülen tonlar: dış kontur #79380C sınıfı koyu kahve-siyah,
+  // alt dudak sıcak turuncu (#AF773C), üst kenar açık.
+  const FRAME = '#0B1428';
+  const LIP = darken(strip, 0.35);
   return (
     <SafeModal visible transparent animationType="none" onRequestClose={onClose}>
       <Animated.View style={{ flex: 1, backgroundColor: theme.scrim, opacity: clamped }}>
@@ -714,38 +722,44 @@ export function GameModal({ visible, onClose, onExited, title, icon, danger = fa
               width: '100%', maxWidth: 360,
               transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) }],
               opacity: clamped,
-              backgroundColor: theme.modalFace, borderRadius: 22,
+              // DÜĞME ANATOMİSİ (üç katman): koyu dış kontur → sıcak pah → yüz.
+              // Düğmelerde kontur her yanı sarar ve altta kalınlaşır; pencereler
+              // eskiden ince hairline'dı, bu yüzden yan yana yamalı duruyordu.
+              backgroundColor: FRAME, borderRadius: 28, padding: 3.5, paddingBottom: 6,
               ...shadowModal,
             }}
           >
-            {/* clip (3px mood strip + corners) lives HERE, not on the shadow-casting
+            <View style={{ backgroundColor: LIP, borderRadius: 24, padding: 2.5, paddingBottom: 4 }}>
+            {/* clip (mood band + corners) lives HERE, not on the shadow-casting
                 face above — iOS masksToBounds would kill the modal drop shadow */}
-            <Pressable onPress={() => {}} style={{ borderRadius: 22, overflow: 'hidden' }}>
-              {/* faint light-catching top edge (NOT a frame) + mood strip */}
-              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.06, zIndex: 6 }} />
-              <View style={{ height: 3, backgroundColor: strip }} />
+            <Pressable onPress={() => {}} style={{ backgroundColor: theme.modalFace, borderRadius: 21, overflow: 'hidden' }}>
+              {/* üst pah + hafif cam parlaklığı (düğme yüzlerindeki gibi) */}
+              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.16, zIndex: 6 }} />
               {title ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingLeft: 20, paddingRight: 56, paddingTop: 16, paddingBottom: 2 }}>
-                  <View style={{ width: 4, height: 17, borderRadius: 2, backgroundColor: strip }} />
-                  {icon ? <Ionicons name={icon} size={16} color={strip} /> : null}
-                  <Text numberOfLines={1} style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15, letterSpacing: 1, textTransform: 'uppercase', flexShrink: 1 }}>{title}</Text>
+                <View style={{ backgroundColor: strip, paddingLeft: 18, paddingRight: 54, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 9, overflow: 'hidden' }}>
+                  <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.34 }} />
+                  <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2.5, backgroundColor: darken(strip, 0.42) }} />
+                  {icon ? <Ionicons name={icon} size={17} color={SKIN_LABEL_COLOR} /> : null}
+                  <Text numberOfLines={1} style={{ color: SKIN_LABEL_COLOR, fontFamily: 'Poppins-ExtraBold', fontSize: 15, letterSpacing: 1, textTransform: 'uppercase', flexShrink: 1, ...SKIN_LABEL_SHADOW }}>{title}</Text>
                 </View>
               ) : null}
-              <View style={{ padding: 20, paddingTop: title ? 12 : 20, gap: 12 }}>{children}</View>
+              <View style={{ padding: 20, paddingTop: title ? 16 : 20, gap: 12 }}>{children}</View>
               <Pressable
                 onPress={onClose}
                 hitSlop={8}
                 style={({ pressed }) => ({
-                  position: 'absolute', top: 12, right: 12, width: 32, height: 32, borderRadius: 16,
-                  backgroundColor: theme.well,
+                  position: 'absolute', top: title ? 7 : 12, right: 12, width: 32, height: 32, borderRadius: 16,
+                  backgroundColor: title ? darken(strip, 0.3) : theme.well,
+                  borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.3)',
                   alignItems: 'center', justifyContent: 'center', zIndex: 5,
                   transform: [{ scale: pressed ? 0.9 : 1 }],
                   opacity: pressed ? 0.8 : 1,
                 })}
               >
-                <Ionicons name="close" size={16} color={theme.textSub} />
+                <Ionicons name="close" size={16} color={title ? SKIN_LABEL_COLOR : theme.textSub} />
               </Pressable>
             </Pressable>
+            </View>
           </Animated.View>
         </Pressable>
       </Animated.View>
