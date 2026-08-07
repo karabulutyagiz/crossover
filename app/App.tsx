@@ -516,7 +516,6 @@ function AppRoot() {
     return () => clearTimeout(tm);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastPurchaseSeq]);
-  useEffect(() => { const tm = setTimeout(() => setOverlay('matchHistory'), 12000); return () => clearTimeout(tm); }, []);
   const diamondsShownRef = useRef(0); // last value pushed to the pill (fallback when profile is briefly absent)
   const gainAnimatingRef = useRef(false); // sayaç dönerken tutma efekti araya girmesin
   const csAnim = useRef(new Animated.Value(0)).current; // coming-soon pop/float
