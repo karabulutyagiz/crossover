@@ -505,14 +505,17 @@ function AppRoot() {
   const [trophyFlight, setTrophyFlight] = useState<null | { delta: number; after: (() => void) | null }>(null);
   const [trophyLand, setTrophyLand] = useState<{ delta: number; seq: number } | null>(null);
   // Elmas-harcamalı her satın almanın "Tamam"lı onayı (sunucu *_purchased mesajı).
+  // Görünürlük ve içerik AYRI tutulur: "Tamam" içeriği null'lasaydı 160ms'lik
+  // kapanış animasyonu boyunca metin fallback'e (CO Pass yazısına) düşüyordu.
   const [purchaseAck, setPurchaseAck] = useState<NonNullable<GameState['lastPurchase']> | null>(null);
+  const [purchaseAckVisible, setPurchaseAckVisible] = useState(false);
   const lastPurchaseSeq = state.lastPurchase?.seq ?? 0;
   // Onay penceresi, satın almanın yapıldığı ekrandaki onay/işlem penceresinin
   // çıkış animasyonu bitmeden AÇILMAZ (aynı iki-modal çakışması: ekran donuyordu).
   useEffect(() => {
     if (!state.lastPurchase) return;
     const p = state.lastPurchase;
-    const tm = setTimeout(() => setPurchaseAck(p), 420);
+    const tm = setTimeout(() => { setPurchaseAck(p); setPurchaseAckVisible(true); }, 420);
     return () => clearTimeout(tm);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastPurchaseSeq]);
@@ -1370,14 +1373,15 @@ function AppRoot() {
 
       {/* Her elmas-harcamalı satın almanın "Tamam"lı onayı — sunucu *_purchased
           mesajı düşürünce çıkar. Elmas paketleri hariç (DiamondCelebration). */}
-        <GameModal visible={purchaseAck != null} onClose={() => setPurchaseAck(null)} title={t('purchase.doneTitle')} icon="checkmark-circle">
+        <GameModal visible={purchaseAckVisible} onClose={() => setPurchaseAckVisible(false)} onExited={() => setPurchaseAck(null)} title={t('purchase.doneTitle')} icon="checkmark-circle">
           <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
             {purchaseAck?.kind === 'power' ? t('purchase.powerBody')
               : purchaseAck?.kind === 'emote' ? t('purchase.emoteBody')
               : purchaseAck?.kind === 'avatar' ? t('purchase.avatarBody')
-              : t('purchase.premiumRoadBody')}
+              : purchaseAck?.kind === 'premiumRoad' ? t('purchase.premiumRoadBody')
+              : null}
           </Text>
-          <Btn big label={t('settings.confirm')} onPress={() => setPurchaseAck(null)} />
+          <Btn big label={t('settings.confirm')} onPress={() => setPurchaseAckVisible(false)} />
         </GameModal>
 
       {/* Expired Social Pack popup */}
