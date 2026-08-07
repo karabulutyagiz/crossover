@@ -3135,42 +3135,100 @@ function PopupCard({ visible, title, icon, onClose, children }: {
 // ---- News / announcements feed (opened from the Home bell icon) ----
 // Static for now; swap NEWS for a server `/news` fetch later without touching the UI
 // or the bell wiring. Newest item first — its id drives the unread pip.
-type NewsItem = { id: string; date: string; title: string; body: string; icon: any; tint: string };
+// Etiketli, ISO tarihli haber modeli. "Etiket yok + nokta ayraçlı mutlak tarih"
+// ikilisi, akışı editoryal değil ÜRETİLMİŞ gösteren en belirgin izlerdendi.
+type NewsItem = { id: string; tag: string; date: string; title: string; body: string; icon: any; tint: string };
 const NEWS: NewsItem[] = [
-  { id: '2026-07-20-ball', date: '20.07.2026', icon: 'football', tint: theme.gold,
+  { id: '2026-07-20-ball', tag: 'YENİ İFADE', date: '2026-07-20', icon: 'football', tint: theme.gold,
     title: 'Yeni: Zıplayan Top emote!',
     body: "Mağaza'dan Zıplayan Top premium emote'unu al, maç içinde rakibini şaşırt. Koleksiyondan loadout'una ekle." },
-  { id: '2026-07-14-social', date: '14.07.2026', icon: 'people', tint: theme.primary,
+  { id: '2026-07-14-social', tag: 'YENİ ÖZELLİK', date: '2026-07-14', icon: 'people', tint: theme.primary,
     title: 'Sosyal Paket geldi',
     body: 'Ülke-Takım ve Harf-Takım modlarını arkadaşlarınla oyna. Haftalık veya aylık Sosyal Paket ile kilidi aç.' },
-  { id: '2026-07-01-arena', date: '01.07.2026', icon: 'trophy', tint: theme.accent,
+  { id: '2026-07-01-arena', tag: 'REKABET', date: '2026-07-01', icon: 'trophy', tint: theme.accent,
     title: 'Arenalar ve kupalar',
     body: "Maç kazandıkça kupa topla, Mahalle Sahası'ndan GOAT'a yüksel. Her arena atlayışında elmas ödülü seni bekliyor." },
-  { id: 'welcome', date: '01.06.2026', icon: 'sparkles', tint: theme.blue,
+  { id: 'welcome', tag: 'HOŞ GELDİN', date: '2026-06-01', icon: 'sparkles', tint: theme.blue,
     title: "Crossover'a hoş geldin!",
     body: "İki takım seç; ikisinde de oynamış futbolcuyu ilk yazan kazanır. Bot'a karşı çalış, arkadaşınla oda kur ya da hızlı eşleşmeye gir." },
 ];
 export const LATEST_NEWS_ID = NEWS[0]?.id ?? '';
 export const NEWS_READ_KEY = '@crossover_news_read';
 
-export function NewsModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+// Göreli zaman — mutlak "20.07.2026" yerine. Bir haftadan eskiler kısa mutlak.
+function relDate(iso: string): string {
+  const ts = new Date(iso).getTime();
+  if (!Number.isFinite(ts)) return iso;
+  const days = Math.floor((Date.now() - ts) / 86_400_000);
+  if (days <= 0) return t('time.today');
+  if (days === 1) return t('time.yesterday');
+  if (days < 7) return t('time.daysAgo', { n: String(days) });
+  const d = new Date(ts);
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// Kategori çipi — her gerçek oyun haberinin taşıdığı editoryal işaret.
+function NewsTag({ label, tint }: { label: string; tint: string }) {
+  return (
+    <View style={{ backgroundColor: tint, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2.5, overflow: 'hidden' }}>
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.3 }} />
+      <Text style={{ color: SKIN_LABEL_COLOR, fontFamily: 'Poppins-Black', fontSize: 9, letterSpacing: 0.8 }}>{label}</Text>
+    </View>
+  );
+}
+
+// Bölüm başlığı: etiket + sağa doğru incelen çizgi (kenara DAYANMAZ).
+function SectionLabel({ label }: { label: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14, marginBottom: 2 }}>
+      <Text style={{ color: theme.muted, fontFamily: 'Poppins-Black', fontSize: 11, letterSpacing: 1.2 }}>{label}</Text>
+      <View style={{ flex: 1, height: 1, backgroundColor: theme.hairline }} />
+      <View style={{ width: 28 }} />
+    </View>
+  );
+}
+
+// Tek haber satırı. Eski hâlindeki 38pt "renkli çerçeveli ikon kutucuğu" şablon
+// izinin ta kendisiydi: artık çerçevesiz, tint'in %18 alfasıyla dolu 64pt disk.
+// Metin sütunu her satırda aynı x'te (12+64+12=88) başlar → başlıklar hizalanır.
+function NewsRow({ item, unread }: { item: NewsItem; unread: boolean }) {
+  return (
+    <View style={{ backgroundColor: theme.surface2, borderRadius: 16, overflow: 'hidden', ...shadowRow }}>
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.07 }} />
+      {unread ? <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, backgroundColor: item.tint }} /> : null}
+      <View style={{ flexDirection: 'row', padding: 12, gap: 12 }}>
+        <View style={{ width: 64, height: 64, borderRadius: 14, backgroundColor: withAlpha(item.tint, 0.18), alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name={item.icon} size={30} color={item.tint} />
+        </View>
+        <View style={{ flex: 1, gap: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <NewsTag label={item.tag} tint={item.tint} />
+            {unread ? <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: item.tint }} /> : null}
+            <View style={{ flex: 1 }} />
+            <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{relDate(item.date)}</Text>
+          </View>
+          <Text numberOfLines={1} style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15 }}>{item.title}</Text>
+          <Text numberOfLines={2} style={{ color: theme.textSub, fontFamily: 'Poppins-SemiBold', fontSize: 13, lineHeight: 19 }}>{item.body}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+export function NewsModal({ visible, onClose, seenIds }: { visible: boolean; onClose: () => void; seenIds?: string[] }) {
+  const seen = new Set(seenIds ?? []);
+  const items = [...NEWS].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const fresh = items.filter((i) => !seen.has(i.id));
+  const older = items.filter((i) => seen.has(i.id));
   return (
     <PopupCard visible={visible} title={t('home.news')} icon="megaphone" onClose={onClose}>
       {/* PopupCard's scrim is a SIBLING (not a parent) of the card, so — unlike
           GameModal — it doesn't swallow this ScrollView's vertical drag. */}
-      <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, gap: 12 }}>
-        {NEWS.map((item) => (
-          <View key={item.id} style={{ backgroundColor: theme.surface2, borderRadius: 16, borderTopWidth: 1, borderTopColor: theme.topLight, padding: 15, gap: 9, ...shadowRow }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: theme.card, borderWidth: 1.5, borderColor: item.tint, borderBottomColor: darken(item.tint), alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name={item.icon} size={21} color={item.tint} />
-              </View>
-              <Text style={{ flex: 1, color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 17, ...engrave('sm') }} numberOfLines={2}>{item.title}</Text>
-            </View>
-            <Text style={{ color: theme.muted, fontSize: 15, lineHeight: 22, fontFamily: 'Poppins-SemiBold' }}>{item.body}</Text>
-            <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold', opacity: 0.7 }}>{item.date}</Text>
-          </View>
-        ))}
+      <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: 18, gap: 10 }}>
+        {fresh.length > 0 && older.length > 0 ? <SectionLabel label={t('news.new')} /> : null}
+        {fresh.map((item) => <NewsRow key={item.id} item={item} unread />)}
+        {older.length > 0 && fresh.length > 0 ? <SectionLabel label={t('news.earlier')} /> : null}
+        {older.map((item) => <NewsRow key={item.id} item={item} unread={false} />)}
       </ScrollView>
     </PopupCard>
   );
