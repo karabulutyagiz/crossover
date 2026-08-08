@@ -194,6 +194,13 @@ CREATE TABLE IF NOT EXISTS processed_transactions (
   diamonds       INT  NOT NULL,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Apple ortamı ('Production' | 'Sandbox') ve gerçek satın alma zamanı. Admin
+-- paneli sandbox/test alımlarını (environment='Sandbox') gelirden çıkarır.
+-- Bu takipten ÖNCEKİ eski satırlarda environment NULL kalır; onlar yayın+test
+-- filtresini geçtiyse gerçek sayılır (kullanıcı teyidi). Yeni alımlarda ortam
+-- doğrulayıcıdan geldiği için asla NULL olmaz.
+ALTER TABLE processed_transactions ADD COLUMN IF NOT EXISTS environment TEXT;
+ALTER TABLE processed_transactions ADD COLUMN IF NOT EXISTS purchase_date TIMESTAMPTZ;
 
 -- ---- Direct messages between friends ----
 CREATE TABLE IF NOT EXISTS messages (

@@ -24,6 +24,7 @@ import {
 // play everything, but cannot message or add friends.
 const GUEST_BLOCKED_MSG = 'Mesajlaşmak için Apple veya Google ile giriş yap';
 import { verifyApplePurchase } from '../game/iap.ts';
+import { getAdminStats } from '../game/admin.ts';
 import { registerPushToken, sendPushToUsers, startPushCrons } from '../game/push.ts';
 import { pool } from '../db/pool.ts';
 import { log } from '../logger.ts';
@@ -234,8 +235,30 @@ export function startServer(port: number): Server {
     const query = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
 
     if (req.method === 'OPTIONS') {
-      res.writeHead(204, { ...cors, 'access-control-allow-methods': 'GET,POST', 'access-control-allow-headers': 'content-type' });
+      res.writeHead(204, { ...cors, 'access-control-allow-methods': 'GET,POST', 'access-control-allow-headers': 'content-type, authorization' });
       res.end();
+      return;
+    }
+
+    // ---- Admin panel (token-gated) ----
+    // Bütün oyun/gelir istatistikleri. ADMIN_TOKEN boşsa uç tamamen kapalı; yanlış
+    // veya eksik token her zaman 401 (veri sızmaz). Panel bunu 10 sn'de bir çeker.
+    if (path === '/admin/api/stats') {
+      const auth = req.headers['authorization'] ?? '';
+      const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+      if (!config.adminToken || token !== config.adminToken) {
+        res.writeHead(401, cors);
+        res.end(JSON.stringify({ error: 'unauthorized' }));
+        return;
+      }
+      const liveRoom = manager.liveStats();
+      getAdminStats({ online: onlineUsers.size, queue: matchQueue.length, ...liveRoom })
+        .then((stats) => { res.writeHead(200, cors); res.end(JSON.stringify(stats)); })
+        .catch((e) => {
+          log.error('admin_stats_failed', { message: e instanceof Error ? e.message : String(e) });
+          res.writeHead(500, cors);
+          res.end(JSON.stringify({ error: 'server' }));
+        });
       return;
     }
 

@@ -1,0 +1,15 @@
+# ── Crossover admin panel (istatistik dashboard) ──
+# İZOLE, salt-okunur nginx container'ı (başka projelere dokunmaz):
+#   docker run -d --name crossover-admin-1 --restart unless-stopped --network shared-net \
+#     -v /opt/crossover/admin:/usr/share/nginx/html:ro nginx:alpine
+# Güncelleme:  rsync admin/ → /opt/crossover/admin/  (nginx canlı servis eder, restart yok)
+#
+# Bu bloğu /root/transyol/Caddyfile'a ekle, sonra:
+#   docker exec transyol-caddy-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+# ÖN KOŞUL: admin.crossoverfootball.com A kaydı → 168.222.180.190 (Hostinger DNS).
+# NOT: Panelin verisi ayrı gelir — api.crossoverfootball.com/admin/api/stats (ADMIN_TOKEN korumalı).
+
+admin.crossoverfootball.com {
+	reverse_proxy crossover-admin-1:80
+	encode gzip
+}

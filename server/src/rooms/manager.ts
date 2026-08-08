@@ -22,6 +22,31 @@ export class RoomManager {
     return this.rooms.size;
   }
 
+  // Admin paneli için canlı oda istatistikleri: açık oda sayısı, o an maçta olan
+  // insan oyuncular, lobide bekleyenler, bot maçı sayısı ve duruma göre dağılım.
+  liveStats(): {
+    rooms: number;
+    playersInMatch: number;
+    inLobby: number;
+    botMatches: number;
+    byStatus: Record<string, number>;
+  } {
+    let rooms = 0;
+    let playersInMatch = 0;
+    let inLobby = 0;
+    let botMatches = 0;
+    const byStatus: Record<string, number> = {};
+    for (const room of this.rooms.values()) {
+      const s = room.liveSnapshot();
+      rooms++;
+      byStatus[s.status] = (byStatus[s.status] ?? 0) + 1;
+      if (s.bots > 0) botMatches++;
+      if (s.status === 'lobby') inLobby += s.humans;
+      else playersInMatch += s.humans;
+    }
+    return { rooms, playersInMatch, inLobby, botMatches, byStatus };
+  }
+
   private genCode(): string {
     for (let attempt = 0; attempt < 50; attempt++) {
       let code = '';

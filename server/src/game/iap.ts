@@ -86,12 +86,15 @@ const sandboxVerifier = makeVerifier(Environment.SANDBOX);
 
 // Verify a signed transaction JWS. Try Production first; sandbox transactions fail there
 // (environment mismatch) so fall back to the Sandbox verifier (replaces the old 21007 dance).
-async function decodeTransaction(jws: string) {
+// Hangi doğrulayıcı çözdüyse ortam ODUR: prod doğrularsa Production, sandbox'a
+// düşerse Sandbox. Bu, tx.environment alanı gelmese bile ortamı GÜVENİLİR verir
+// (admin paneli sandbox alımları saymasın diye şart).
+async function decodeTransaction(jws: string): Promise<{ tx: any; verifierEnv: string }> {
   if (prodVerifier) {
-    try { return await prodVerifier.verifyAndDecodeTransaction(jws); } catch { /* try sandbox */ }
+    try { return { tx: await prodVerifier.verifyAndDecodeTransaction(jws), verifierEnv: 'Production' }; } catch { /* try sandbox */ }
   }
   if (sandboxVerifier) {
-    return await sandboxVerifier.verifyAndDecodeTransaction(jws);
+    return { tx: await sandboxVerifier.verifyAndDecodeTransaction(jws), verifierEnv: 'Sandbox' };
   }
   throw new Error('no verifier');
 }
@@ -105,8 +108,11 @@ export async function verifyApplePurchase(
   if (!appleRootCAs.length) return { ok: false, error: 'Satın alma şu an kapalı' };
 
   let tx;
+  let verifierEnv = 'Production';
   try {
-    tx = await decodeTransaction(jws);
+    const decoded = await decodeTransaction(jws);
+    tx = decoded.tx;
+    verifierEnv = decoded.verifierEnv;
   } catch {
     return { ok: false, error: 'Makbuz doğrulanamadı, tekrar dene' };
   }
@@ -117,14 +123,26 @@ export async function verifyApplePurchase(
   let granted = 0; // diamonds credited this call
   const pid = tx.productId;
 
+  // Ortam (Production/Sandbox) + Apple'ın gerçek satın alma zamanı. Admin paneli
+  // YALNIZ Production (gerçek para) alımları saysın diye kaydedilir: sandbox
+  // (TestFlight/test) alımları da doğrulanıp buraya düşer, `environment` onları ayırır.
+  const environment: string =
+    typeof (tx as { environment?: unknown }).environment === 'string' && (tx as { environment: string }).environment
+      ? (tx as { environment: string }).environment
+      : verifierEnv;
+  const purchaseIso: string | null =
+    Number.isFinite(Number(tx.purchaseDate)) && Number(tx.purchaseDate) > 0
+      ? new Date(Number(tx.purchaseDate)).toISOString()
+      : null;
+
   // Diamonds (consumable) — credit once per transaction (idempotent via PK).
   const amount = DIAMOND_PRODUCTS[pid];
   if (amount) {
     const ins = await pool.query(
-      `INSERT INTO processed_transactions (transaction_id, user_id, product_id, diamonds)
-         VALUES ($1, $2, $3, $4)
+      `INSERT INTO processed_transactions (transaction_id, user_id, product_id, diamonds, environment, purchase_date)
+         VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (transaction_id) DO NOTHING`,
-      [tx.transactionId, userId, pid, amount],
+      [tx.transactionId, userId, pid, amount, environment, purchaseIso],
     );
     if (ins.rowCount && ins.rowCount > 0) {
       await pool.query(`UPDATE users SET diamonds = diamonds + $2 WHERE id = $1`, [userId, amount]);
@@ -134,6 +152,16 @@ export async function verifyApplePurchase(
 
   // Social Pack — grant the exact duration for the purchased plan.
   if (SOCIAL_PACK_PRODUCTS.has(pid)) {
+    // Record the sale so it is countable in the admin panel. Idempotent via the PK:
+    // a re-delivered transaction never double-counts, while each renewal (a NEW
+    // transactionId) is correctly counted as a fresh sale. diamonds=0 (no diamonds
+    // granted here) — the row exists purely for sales accounting.
+    await pool.query(
+      `INSERT INTO processed_transactions (transaction_id, user_id, product_id, diamonds, environment, purchase_date)
+         VALUES ($1, $2, $3, 0, $4, $5)
+       ON CONFLICT (transaction_id) DO NOTHING`,
+      [tx.transactionId, userId, pid, environment, purchaseIso],
+    );
     const purchasedAt = Number(tx.purchaseDate ?? 0);
     const fallbackExpiry = Number(tx.expiresDate ?? 0);
     const base = purchasedAt > 0 ? purchasedAt : fallbackExpiry;
@@ -146,10 +174,10 @@ export async function verifyApplePurchase(
   // CO Pass — unlock the premium level road for the current season (idempotent).
   if (pid === COPASS_PRODUCT) {
     const ins = await pool.query(
-      `INSERT INTO processed_transactions (transaction_id, user_id, product_id, diamonds)
-         VALUES ($1, $2, $3, 0)
+      `INSERT INTO processed_transactions (transaction_id, user_id, product_id, diamonds, environment, purchase_date)
+         VALUES ($1, $2, $3, 0, $4, $5)
        ON CONFLICT (transaction_id) DO NOTHING`,
-      [tx.transactionId, userId, pid],
+      [tx.transactionId, userId, pid, environment, purchaseIso],
     );
     if (ins.rowCount && ins.rowCount > 0) {
       await pool.query(`UPDATE users SET premium_road = TRUE WHERE id = $1`, [userId]);

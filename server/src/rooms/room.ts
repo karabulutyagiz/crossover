@@ -166,6 +166,17 @@ export class Room {
   usedCountriesList(): string[] { return [...this.usedCountries]; } // normalize (küçük harf)
   usedClubIdsList(): number[] { return [...this.usedClubIds]; }
 
+  // Admin paneli için anlık oda özeti: durum + bağlı (canlı) insan ve bot sayısı.
+  liveSnapshot(): { status: RoomStatus; humans: number; bots: number } {
+    let humans = 0;
+    let bots = 0;
+    for (const p of this.players.values()) {
+      if (p.transport.isBot) bots++;
+      else if (p.connected) humans++;
+    }
+    return { status: this.status, humans, bots };
+  }
+
   // Update a player's avatar mid-match (by persistent userId) and push fresh state
   // so the opponent sees the new profile picture instantly.
   setAvatarFor(userId: string, avatar: string | null): void {
