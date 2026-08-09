@@ -207,6 +207,21 @@
     </div>
   </div>
 
+  <!-- Ads -->
+  <div class="section-title">Reklam — Ödüllü Video (+5 elmas)</div>
+  <div class="grid g-live">
+    <div class="card kpi accent-mint"><div class="label">Bugün izlenme</div><div class="value" id="a_today">–</div><div class="sub">son 24 saat</div></div>
+    <div class="card kpi"><div class="label">7 gün izlenme</div><div class="value" id="a_7d">–</div><div class="sub"><span id="a_users">–</span> benzersiz izleyici</div></div>
+    <div class="card kpi accent-gold"><div class="label">Toplam izlenme</div><div class="value" id="a_total">–</div><div class="sub">dağıtılan: <span id="a_diamonds">–</span> elmas</div></div>
+    <div class="card kpi accent-blue"><div class="label">Tahminî reklam geliri</div><div class="value" id="a_est">–</div><div class="sub">eCPM $<input id="a_ecpm" type="number" step="0.5" min="0" style="width:54px;background:transparent;border:1px solid var(--line);border-radius:6px;color:inherit;padding:2px 4px;font-size:12px"> varsayımıyla</div></div>
+  </div>
+  <div class="card chart-card" style="margin-top:12px">
+    <h3>Günlük reklam izlenmesi</h3>
+    <p class="hint">İzleme günlüğü 10.08.2026'da açıldı — öncesi sayılamıyor. Buradaki gelir <b>tahmindir</b> (izlenme × eCPM); kesin rakam AdMob panelinde.</p>
+    <div class="bars" id="c_ads"></div>
+    <div class="axis"><span id="c_ads_start">—</span><span id="c_ads_end">—</span></div>
+  </div>
+
   <!-- Users -->
   <div class="section-title">Kullanıcılar</div>
   <div class="grid g-kpi">
@@ -390,6 +405,25 @@
     // charts
     barChart("c_revenue", (R.daily||[]), "revenue", true, "c_rev_start", "c_rev_end", function(d){ return d.day + " · ₺" + trMoney(d.revenue) + " (" + d.sales + " satış)"; });
     barChart("c_users", (s.usersDaily||[]), "n", false, "c_usr_start", "c_usr_end", function(d){ return d.day + " · " + d.n + " kayıt"; });
+
+    // ── Reklam (ödüllü video) ──
+    var A = s.ads || {};
+    $("a_today").textContent    = (A.today  == null ? "–" : A.today);
+    $("a_7d").textContent       = (A.last7d == null ? "–" : A.last7d);
+    $("a_total").textContent    = (A.total  == null ? "–" : A.total);
+    $("a_users").textContent    = (A.uniqueUsers == null ? "–" : A.uniqueUsers);
+    $("a_diamonds").textContent = (A.total == null ? "–" : (A.total * (A.rewardPerView || 5)).toLocaleString("tr-TR"));
+    var ecpmEl = $("a_ecpm");
+    if (ecpmEl && !ecpmEl.value) ecpmEl.value = localStorage.getItem("adEcpmUsd") || "8";
+    function renderAdEst(){
+      if (!ecpmEl) return;
+      localStorage.setItem("adEcpmUsd", ecpmEl.value);
+      var e = parseFloat(ecpmEl.value) || 0;
+      $("a_est").textContent = "$" + (((A.total || 0) / 1000) * e).toFixed(2);
+    }
+    if (ecpmEl) ecpmEl.oninput = renderAdEst;
+    renderAdEst();
+    barChart("c_ads", (A.daily||[]), "n", false, "c_ads_start", "c_ads_end", function(d){ return d.day + " · " + d.n + " izlenme"; });
 
     var U = s.users || {};
     $("u_total").textContent  = trNum(U.total);

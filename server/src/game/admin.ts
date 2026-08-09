@@ -75,6 +75,8 @@ export async function getAdminStats(live: LiveStats) {
     reports,
     messages,
     purchases,
+    ads,
+    adsDaily,
   ] = await Promise.all([
     // ── Kullanıcılar / aktiflik (yayın sonrası, test hariç) ──
     pool.query(`
@@ -178,6 +180,28 @@ export async function getAdminStats(live: LiveStats) {
         AND ${notTest('u.display_name')}
       ORDER BY at DESC
       LIMIT 500`),
+
+    // ── Ödüllü reklam izlemeleri (ad_rewards günlüğü; test hesapları hariç).
+    //    Tablo 10.08.2026'da eklendi — öncesi sayılamaz (geçmiş günlük yoktu). ──
+    pool.query(`
+      SELECT
+        count(*)::int AS total,
+        count(*) FILTER (WHERE ar.granted_at >= now() - interval '1 day')::int  AS today,
+        count(*) FILTER (WHERE ar.granted_at >= now() - interval '7 days')::int AS last7d,
+        count(DISTINCT ar.user_id)::int AS unique_users
+      FROM ad_rewards ar
+      JOIN users u ON u.id = ar.user_id
+      WHERE ${notTest('u.display_name')}`),
+
+    // ── Günlük reklam izleme serisi ──
+    pool.query<{ day: string; n: number }>(`
+      SELECT to_char(date_trunc('day', ar.granted_at AT TIME ZONE 'Europe/Istanbul'), 'YYYY-MM-DD') AS day,
+             count(*)::int AS n
+      FROM ad_rewards ar
+      JOIN users u ON u.id = ar.user_id
+      WHERE ${notTest('u.display_name')}
+      GROUP BY 1
+      ORDER BY 1`),
   ]);
 
   const u = users.rows[0] as any;
@@ -248,6 +272,14 @@ export async function getAdminStats(live: LiveStats) {
       byProduct: products,
       purchases: purchaseList,
       daily: dailySales,
+    },
+    ads: {
+      total: (ads.rows[0] as any).total,
+      today: (ads.rows[0] as any).today,
+      last7d: (ads.rows[0] as any).last7d,
+      uniqueUsers: (ads.rows[0] as any).unique_users,
+      daily: adsDaily.rows,
+      rewardPerView: 5, // +5 elmas/izleme — app'teki AD_REWARD ile senkron
     },
     matches: { total: m.total, today: m.today, last7d: m.last7d, modes: modes.rows },
     arenas: arenaDist,

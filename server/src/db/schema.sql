@@ -202,6 +202,17 @@ CREATE TABLE IF NOT EXISTS processed_transactions (
 ALTER TABLE processed_transactions ADD COLUMN IF NOT EXISTS environment TEXT;
 ALTER TABLE processed_transactions ADD COLUMN IF NOT EXISTS purchase_date TIMESTAMPTZ;
 
+-- ---- Ödüllü reklam izleme günlüğü (admin paneli) ----
+-- users tablosundaki ad_reward_count her gün sıfırlanır; tarihsel toplam ve
+-- günlük seri için her başarılı ödül burada bir satırdır. Tablo eklendiği
+-- günden itibaren sayar (geçmişe dönük veri yok).
+CREATE TABLE IF NOT EXISTS ad_rewards (
+  id         BIGSERIAL PRIMARY KEY,
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  granted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ad_rewards_at ON ad_rewards (granted_at);
+
 -- ---- Direct messages between friends ----
 CREATE TABLE IF NOT EXISTS messages (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

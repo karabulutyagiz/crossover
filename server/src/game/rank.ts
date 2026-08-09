@@ -705,6 +705,9 @@ export async function grantAdReward(
     const capped = !!chk.rows[0]?.today && (chk.rows[0]?.c ?? 0) >= AD_REWARD_DAILY_CAP;
     return { ok: false, error: capped ? 'Günlük reklam ödülü sınırına ulaştın' : 'Çok hızlı, birazdan tekrar dene' };
   }
+  // Admin paneli sayaçları: kalıcı izleme günlüğü. Günlük kayıt hatası ödülü
+  // asla engellememeli — bilinçli fire-and-forget.
+  pool.query(`INSERT INTO ad_rewards (user_id) VALUES ($1)`, [userId]).catch(() => {});
   return { ok: true, profile: toProfile(rows[0]), granted: AD_REWARD };
 }
 
