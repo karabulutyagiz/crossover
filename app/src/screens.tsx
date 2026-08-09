@@ -139,6 +139,7 @@ type Actions = {
   getUserProfile: (userId: string) => void;
   closeUserProfile: () => void;
   clearNotice: () => void;
+  clearFriendNotice: () => void;
   dismissMatchInvite: () => void;
   findMatchAgain: () => void;
   loadConversations: () => void;
@@ -7180,6 +7181,7 @@ function fmtTimeLeft(ms: number): string {
 
 function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (id: PowerId) => void }) {
   const [confirmId, setConfirmId] = useState<PowerId | null>(null);
+  const [noStreakOpen, setNoStreakOpen] = useState(false); // "geri yüklenecek kırık seri yok" bilgi popup'ı (güç TÜKETİLMEZ)
   // 2x XP geri sayımı canlı kalsın — yarım dakikada bir tazele
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -7200,6 +7202,10 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
     socialtoken: profile?.powerSocialToken ?? 0,
   };
   const anyOwnedOrActive = counts.xp2x > 0 || counts.shield > 0 || counts.streak > 0 || counts.training > 0 || counts.socialtoken > 0 || boostActive || armed || trainingActive;
+  // Koleksiyonda YALNIZ sahip olunan (adet>0) ya da AKTİF (kuşanılı kalkan /
+  // süren 2xXP·Antrenman) güçler görünür — sahip olunmayan hiçbir şekilde gösterilmez.
+  const isActive = (id: PowerId) => (id === 'xp2x' ? boostActive : id === 'shield' ? armed : id === 'training' ? trainingActive : false);
+  const visiblePowers = (['xp2x', 'shield', 'streak', 'training', 'socialtoken'] as PowerId[]).filter((id) => counts[id] > 0 || isActive(id));
 
   const renderCard = (id: PowerId) => {
     const meta = POWERS[id];
@@ -7209,8 +7215,6 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
       ? t('power.activeLeft', { t: fmtTimeLeft(boostUntil - Date.now()) })
       : id === 'training' ? t('power.activeLeft', { t: fmtTimeLeft(trainingUntil - Date.now()) })
       : t('power.armed');
-    // Seri Geri Yükleme yalnız kırık bir seri varken kullanılabilir
-    const streakBlocked = id === 'streak' && lostStreak <= 0;
     return (
       <View key={id} style={{ borderRadius: 19, ...shadowRaised, ...(active ? { shadowColor: meta.color, shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 0 }, elevation: 8 } : {}) }}>
         <View style={{
@@ -7243,13 +7247,9 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
             </View>
           ) : (
             <View style={{ marginTop: 10 }}>
-              {count > 0 && streakBlocked ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 7 }}>
-                  <Ionicons name="information-circle" size={13} color={theme.muted} />
-                  <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>{t('power.streakNone')}</Text>
-                </View>
-              ) : count > 0 ? (
-                <Btn kind={meta.kind} label={t('power.use')} onPress={() => setConfirmId(id)} />
+              {count > 0 ? (
+                // Seri Geri Yükleme: kırık seri yoksa güç TÜKETİLMEZ — sadece bilgi popup'ı çıkar.
+                <Btn kind={meta.kind} label={t('power.use')} onPress={() => { if (id === 'streak' && lostStreak <= 0) setNoStreakOpen(true); else setConfirmId(id); }} />
               ) : (
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 7 }}>
                   <Ionicons name="lock-closed" size={12} color={theme.muted} />
@@ -7273,15 +7273,21 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
   return (
     <>
       <SectionHeader label={t('collection.tabPowers').toLocaleUpperCase(currentLang())} icon="flash" style={{ marginBottom: 8 }} />
-      <View style={{ gap: 12 }}>
-        {(['xp2x', 'shield', 'streak', 'training', 'socialtoken'] as PowerId[]).map(renderCard)}
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 12, paddingHorizontal: 4 }}>
-        <Ionicons name="information-circle" size={14} color={theme.muted} style={{ marginTop: 1 }} />
-        <Text style={{ flex: 1, color: theme.muted, fontSize: 11, lineHeight: 15, fontFamily: 'Poppins-SemiBold' }}>
-          {t('power.oneTime')}{anyOwnedOrActive ? '' : ` ${t('power.earnHint')}`}
-        </Text>
-      </View>
+      {visiblePowers.length > 0 ? (
+        <>
+          <View style={{ gap: 12 }}>
+            {visiblePowers.map(renderCard)}
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 12, paddingHorizontal: 4 }}>
+            <Ionicons name="information-circle" size={14} color={theme.muted} style={{ marginTop: 1 }} />
+            <Text style={{ flex: 1, color: theme.muted, fontSize: 11, lineHeight: 15, fontFamily: 'Poppins-SemiBold' }}>
+              {t('power.oneTime')}
+            </Text>
+          </View>
+        </>
+      ) : (
+        <EmptyState icon="flash" title={t('power.earnHint')} hint={t('power.emptyHint')} />
+      )}
       {/* Onay — güç tek kullanımlık, yanlışlıkla yakılmasın */}
       <GameModal
         visible={confirmId != null}
@@ -7303,6 +7309,21 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
             </View>
           </>
         ) : null}
+      </GameModal>
+      {/* Kırık seri yok — güç TÜKETİLMEZ (envanterde kalır), sadece bilgilendirir. */}
+      <GameModal
+        visible={noStreakOpen}
+        onClose={() => setNoStreakOpen(false)}
+        title={t('power.streakName').toLocaleUpperCase(currentLang())}
+        icon="flame"
+      >
+        <View style={{ alignItems: 'center', marginBottom: 10 }}>
+          <PowerArt powerId="streak" size={68} />
+        </View>
+        <Text style={{ color: theme.text, fontSize: 13.5, lineHeight: 19, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginBottom: 12 }}>
+          {t('power.streakNone')}
+        </Text>
+        <Btn big kind="primary" label={t('common.continue')} onPress={() => setNoStreakOpen(false)} />
       </GameModal>
     </>
   );
@@ -8019,6 +8040,12 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
     const id = setTimeout(() => actions.clearNotice(), 2600);
     return () => clearTimeout(id);
   }, [state.notice]);
+  // Aynı şekilde arkadaş bildirimi (zaten arkadaş / davet reddedildi) — YALNIZ burada.
+  useEffect(() => {
+    if (!state.friendNotice) return;
+    const id = setTimeout(() => actions.clearFriendNotice(), 2600);
+    return () => clearTimeout(id);
+  }, [state.friendNotice]);
   const requests = state.friendRequests;
 
   useEffect(() => {
@@ -8131,6 +8158,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
         )}
         {!isNetworkErrorMessage(state.error) && state.error ? <ToastPill kind="error" text={state.error} /> : null}
         {state.notice ? <ToastPill kind="ok" text={state.notice} /> : null}
+        {state.friendNotice ? <ToastPill kind={state.friendNotice.kind} text={state.friendNotice.text} /> : null}
 
         {/* Username search results — same bevel voice as the friend rows */}
         {searchMode === 'username' && state.userSearchResults.length > 0 ? (
@@ -10452,8 +10480,11 @@ export function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong
   const accent = youWon ? theme.blue : theme.purple;                 // ring / glow
   const cardFill = youWon ? '#1E52C0' : '#432A9E';                    // card body
   const insetFill = youWon ? 'rgba(8,20,60,0.5)' : 'rgba(18,8,52,0.5)'; // score panel well
-  const gain = trophyDelta ? trophyDelta.delta >= 0 : youWon;
-  const deltaColor = gain ? theme.primary : theme.danger;            // +green / −red
+  // Kalkanlı mağlubiyet: kupa kaybı emildi → net 0. "+0" (kazanç gibi yeşil) DEĞİL,
+  // "−0" göster (kalkan mavisi); alttaki "kalkan kurtardı" rozeti nedenini açıklar.
+  const shielded = !!trophyDelta?.shielded;
+  const gain = trophyDelta ? (shielded ? false : trophyDelta.delta >= 0) : youWon;
+  const deltaColor = shielded ? theme.blue : (gain ? theme.primary : theme.danger); // +yeşil / −kırmızı; kalkan=mavi
 
   return (
     <Animated.View
