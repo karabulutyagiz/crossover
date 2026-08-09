@@ -328,6 +328,12 @@ export function startServer(port: number): Server {
         }
       }
 
+      // İstemci yetenek bayrakları: kayıt sınıfı mesajlarla gelir, transport'a
+      // işlenir; oda kuralları (ör. wrongopen) bunlara bakar.
+      if ((msg.type === 'register' || msg.type === 'guest' || msg.type === 'auth' || msg.type === 'resume_room') && Array.isArray(msg.caps)) {
+        transport.caps = msg.caps.filter((c): c is string => typeof c === 'string').slice(0, 8);
+      }
+
       // Register creates/loads a user profile (can happen before or without a room).
       if (msg.type === 'register') {
         void (async () => {

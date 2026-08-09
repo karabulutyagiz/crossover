@@ -131,6 +131,19 @@ export interface OfflineClub {
   logoUrl: string | null;
 }
 
+// Medya ön indirme (mediaPrefetch.ts): cihaza kaydedilecek TÜM kulüp armaları.
+// Oyuncu sayısına göre sıralı — indirme yarıda kesilirse en çok görünenler önce inmiş olur.
+export async function allClubLogoUrls(): Promise<string[]> {
+  const d = getDB();
+  const rows = await d.getAllAsync(
+    `SELECT c.logo FROM clubs c
+     LEFT JOIN spells s ON s.club_id = c.id
+     WHERE c.logo IS NOT NULL AND c.logo <> ''
+     GROUP BY c.id ORDER BY COUNT(s.club_id) DESC`,
+  );
+  return rows.map((r: any) => r.logo as string);
+}
+
 export async function searchClubs(query: string, limit = 30): Promise<OfflineClub[]> {
   const d = getDB();
   if (!query.trim()) {

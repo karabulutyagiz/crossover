@@ -9,6 +9,7 @@ import { currentLang, t } from './i18n';
 import { getPushToken, requestPushPermission } from './notifications';
 import { OfflineRoom } from './offline/room';
 import { initOfflineDB } from './offline/db';
+import { startMediaPrefetch } from './mediaPrefetch';
 import { captureError, track } from './telemetry';
 import type {
   ArenaView,
@@ -66,6 +67,12 @@ export interface GameState {
   pickEndsAt: number | null;
   guessEndsAt: number | null;
   locked: { byId: string; byName: string } | null;
+  // wrongopen kuralı: yanlış yazan turu yakmaz. oppWrong = rakibin yanlış denemesi
+  // (banner için), youBurned = bu turda hakkın bitti, tooLateSeq = "rakip senden
+  // önce gönderdi" bildirimi sayacı (her artışta toast).
+  oppWrong: { byName: string; guess: string; seq: number } | null;
+  youBurned: boolean;
+  tooLateSeq: number;
   passedBy: string[]; // player ids who passed this round
   result: RoundResult | null;
   clubResults: ClubRef[];
@@ -162,6 +169,9 @@ export const initialState: GameState = {
   pickEndsAt: null,
   guessEndsAt: null,
   locked: null,
+  oppWrong: null,
+  youBurned: false,
+  tooLateSeq: 0,
   passedBy: [],
   result: null,
   clubResults: [],
@@ -583,7 +593,7 @@ function reducer(state: GameState, action: Action): GameState {
         iReady: false,
       };
     case 'pick_phase':
-      return { ...state, phase: 'pick', picked: false, pickEndsAt: action.endsAt, pickRole: (action as any).pickRole ?? 'team', usedClubIds: (action as any).usedClubIds ?? [], usedCountries: (action as any).usedCountries ?? [], teams: null, locked: null, passedBy: [], result: null, clubResults: [] };
+      return { ...state, phase: 'pick', picked: false, pickEndsAt: action.endsAt, pickRole: (action as any).pickRole ?? 'team', usedClubIds: (action as any).usedClubIds ?? [], usedCountries: (action as any).usedCountries ?? [], teams: null, locked: null, oppWrong: null, youBurned: false, passedBy: [], result: null, clubResults: [] };
     case 'reveal_teams':
       return {
         ...state,
@@ -594,9 +604,23 @@ function reducer(state: GameState, action: Action): GameState {
         revealLetter: (action as any).letter ?? null,
       };
     case 'guess_phase':
-      return { ...state, phase: 'guess', guessEndsAt: action.endsAt };
+      return { ...state, phase: 'guess', guessEndsAt: action.endsAt, locked: null, oppWrong: null, youBurned: false, tooLateSeq: 0 };
     case 'guess_locked':
       return { ...state, locked: { byId: action.byId, byName: action.byName } };
+    case 'wrong_guess': {
+      // Yanlış yazan turu yakmadı: kilit kalkar, yazan bu turda susturulur.
+      const you = action.byId === state.room?.youId;
+      return {
+        ...state,
+        locked: null,
+        youBurned: you ? true : state.youBurned,
+        oppWrong: you ? state.oppWrong : { byName: action.byName, guess: action.guess, seq: (state.oppWrong?.seq ?? 0) + 1 },
+      };
+    }
+    case 'guess_denied':
+      return action.reason === 'too_late'
+        ? { ...state, tooLateSeq: state.tooLateSeq + 1 }
+        : { ...state, youBurned: true };
     case 'pass_locked':
       return { ...state, passedBy: state.passedBy.includes(action.byId) ? state.passedBy : [...state.passedBy, action.byId] };
     case 'result':
@@ -672,8 +696,12 @@ export function useCrossover() {
 
   // Seed the offline DB only AFTER first paint + interactions settle, so the one-time 8MB
   // load never blocks/janks app launch. (Only runs once; subsequent launches no-op.)
+  // Ardından kulüp armaları cihaza önceden indirilir (mediaPrefetch) — armalar
+  // ilk görüşte bile ağ beklemeden diskten gelsin.
   useEffect(() => {
-    const task = InteractionManager.runAfterInteractions(() => { initOfflineDB().catch(() => {}); });
+    const task = InteractionManager.runAfterInteractions(() => {
+      initOfflineDB().then(() => startMediaPrefetch()).catch(() => {});
+    });
     return () => task.cancel?.();
   }, []);
 
@@ -752,6 +780,13 @@ export function useCrossover() {
   // resolve an in-flight IAP verification by sharing the diamonds_granted message.
   const pendingAdReward = useRef<{ resolve: (granted: number) => void; reject: (e: Error) => void } | null>(null);
 
+  // Kayıt sınıfı mesajlara istemci yetenek bayraklarını ekler. 'wrongopen':
+  // sunucu, iki taraf da destekliyorsa "yanlış cevap turu yakmaz" kuralını açar.
+  const withCaps = (msg: ClientMsg): ClientMsg =>
+    msg.type === 'register' || msg.type === 'guest' || msg.type === 'auth' || msg.type === 'resume_room'
+      ? ({ ...msg, caps: ['wrongopen'] } as ClientMsg)
+      : msg;
+
   const connectAndSend = useCallback((first: ClientMsg, opts?: { silent?: boolean }) => {
     // Detach the previous socket's handlers BEFORE closing it. Otherwise its
     // onclose fires a tick later (after we've already created the new socket) and
@@ -811,7 +846,7 @@ export function useCrossover() {
         setActiveServerUrl(url);
         AsyncStorage.setItem(ENDPOINT_KEY, url).catch(() => {});
         dispatch({ type: '_connected', value: true });
-        ws.send(JSON.stringify(first));
+        ws.send(JSON.stringify(withCaps(first)));
       };
       ws.onmessage = (e) => {
         try {
@@ -842,12 +877,12 @@ export function useCrossover() {
         if (mt === 'profile' && pendingAfterAuth.current.length && ws.readyState === WebSocket.OPEN) {
             const queue = pendingAfterAuth.current;
             pendingAfterAuth.current = [];
-            for (const pending of queue) ws.send(JSON.stringify(pending));
+            for (const pending of queue) ws.send(JSON.stringify(withCaps(pending)));
           }
           if (mt === 'room_state' && pendingAfterResume.current.length && ws.readyState === WebSocket.OPEN) {
             const queue = pendingAfterResume.current;
             pendingAfterResume.current = [];
-            for (const pending of queue) ws.send(JSON.stringify(pending));
+            for (const pending of queue) ws.send(JSON.stringify(withCaps(pending)));
           }
           // Resolve the OLDEST pending IAP verification (FIFO — a concurrent verify
           // used to clobber the single slot and orphan the first promise, leaving
@@ -920,7 +955,7 @@ export function useCrossover() {
       return;
     }
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(msg));
+      ws.send(JSON.stringify(withCaps(msg)));
     } else {
       if (canReconnectWithoutRoom) {
         reconnectAndSendAuthed();

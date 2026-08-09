@@ -15,7 +15,7 @@ export interface SpellInfo {
   endYear: number | null;
 }
 
-export type VerifyReason = 'both' | 'not_both' | 'no_match' | 'timeout' | 'no_common' | 'same_team' | 'passed';
+export type VerifyReason = 'both' | 'not_both' | 'no_match' | 'timeout' | 'no_common' | 'same_team' | 'passed' | 'all_wrong';
 
 export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
 
@@ -158,10 +158,12 @@ export type ClientMsg =
   | { type: 'create_room'; name: string; userId?: string; options?: GameOptions }
   | { type: 'create_solo'; name: string; userId?: string; options?: GameOptions }
   | { type: 'join_room'; code: string; name: string; userId?: string }
-  | { type: 'resume_room'; code: string; userId: string }
-  | { type: 'register'; name: string; gameCenterId?: string; userId?: string }
-  | { type: 'guest' } // guest login → server creates an account with an auto "M"+9-digit username
-  | { type: 'auth'; provider: 'apple' | 'google' | 'facebook'; token: string; name?: string; userId?: string }
+  // caps: istemci yetenek bayrakları — 'wrongopen' = yanlış cevapta turun rakibe
+  // açılmasını (wrong_guess/guess_denied) anlar. useCrossover kayıt mesajlarına ekler.
+  | { type: 'resume_room'; code: string; userId: string; caps?: string[] }
+  | { type: 'register'; name: string; gameCenterId?: string; userId?: string; caps?: string[] }
+  | { type: 'guest'; caps?: string[] } // guest login → server creates an account with an auto "M"+9-digit username
+  | { type: 'auth'; provider: 'apple' | 'google' | 'facebook'; token: string; name?: string; userId?: string; caps?: string[] }
   | { type: 'change_name'; newName: string }
   | { type: 'set_username'; username: string; userId?: string }
   | { type: 'find_match'; name?: string; userId?: string; options?: GameOptions }
@@ -228,6 +230,9 @@ export type ServerMsg =
   | { type: 'reveal_teams'; teamA: ClubRef; teamB: ClubRef; mode?: GameMode; country?: string; letter?: string }
   | { type: 'guess_phase'; endsAt: number }
   | { type: 'guess_locked'; byId: string; byName: string }
+  // wrongopen kuralı: yanlış cevap turu yakmaz — yazan susturulur, rakip devam eder.
+  | { type: 'wrong_guess'; byId: string; byName: string; guess: string; wrongCount: number }
+  | { type: 'guess_denied'; reason: 'too_late' | 'burned' }
   | { type: 'pass_locked'; byId: string; byName: string }
   | {
       type: 'result';

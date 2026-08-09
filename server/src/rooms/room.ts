@@ -52,6 +52,9 @@ const RECONNECT_GRACE_MS = 12_000;
 export interface Transport {
   send(msg: ServerMsg): void;
   readonly isBot: boolean;
+  // İstemcinin bildirdiği yetenek bayrakları (ws/server.ts kayıt sırasında yazar).
+  // 'wrongopen': yanlış cevapta turun açık kalmasını ve yeni mesajları anlar.
+  caps?: string[];
 }
 
 interface Player {
@@ -82,6 +85,11 @@ interface Round {
   teamB?: ClubRef;
   answeredBy?: string;
   passedBy?: Set<string>; // players who chose to pass this round
+  // wrongopen kuralı: bu turda yanlış yazıp hakkı biten oyuncular. Yanlış cevap
+  // turu YAKMAZ (kasıtlı yanlışla tur kilitleme istismarını kapatır) — yazan
+  // susturulur, rakip kalan sürede cevaplayabilir.
+  burned?: Set<string>;
+  guessEndsAt?: number; // tahmin süresinin bittiği an — yeniden kurulan zamanlayıcı için
   finished: boolean;
 }
 
@@ -840,19 +848,64 @@ export class Room {
     this.status = 'guess';
     this.broadcastState();
     const endsAt = Date.now() + GUESS_MS;
+    this.round.guessEndsAt = endsAt;
     this.broadcast({ type: 'guess_phase', endsAt });
     const t = setTimeout(() => this.endRoundTimeout(), GUESS_MS);
     this.timers.push(t);
   }
 
+  // wrongopen kuralı yalnız odadaki TÜM insan istemciler destekliyorsa uygulanır;
+  // eski istemcili odalar bugünkü (ilk yazan turu kapatır) kuralda kalır — yoksa
+  // eski istemcinin arayüzü kilitli kalırdı. Botlar her zaman uyumludur.
+  private wrongOpenEnabled(): boolean {
+    return [...this.players.values()].every(
+      (p) => p.transport.isBot || p.transport.caps?.includes('wrongopen'),
+    );
+  }
+
   private handleGuess(playerId: string, text: string): void {
     if (this.status !== 'guess' || !this.round || this.round.finished) return;
-    if (this.round.answeredBy) return;
+    if (this.round.burned?.has(playerId)) {
+      this.players.get(playerId)?.transport.send({ type: 'guess_denied', reason: 'burned' });
+      return;
+    }
+    if (this.round.answeredBy) {
+      // Rakip milisaniyelerle önce gönderdiyse bunu SESSİZCE yutma — "ben de doğru
+      // yazmıştım, niye olmadı" hissinin ilacı bu açık geri bildirim.
+      this.players.get(playerId)?.transport.send({ type: 'guess_denied', reason: 'too_late' });
+      return;
+    }
     if (this.round.passedBy?.has(playerId)) return; // you already passed this round
     this.round.answeredBy = playerId;
     const p = this.players.get(playerId);
     this.broadcast({ type: 'guess_locked', byId: playerId, byName: p?.name ?? '' });
     void this.evaluate(playerId, text);
+  }
+
+  // Yanlış cevap sonrası turu yeniden açar: yazan susturulur, kilit kalkar,
+  // kalan süre için zamanlayıcı yeniden kurulur.
+  //   'open'       → tur açık kaldı, rakip deneyebilir (sonuç YAYINLANMAZ)
+  //   'all_burned' → herkes yandı, tur 'all_wrong' ile bitirilmeli
+  //   'closed'     → kural kapalı / süre dibi — eski davranış (tur biter)
+  private reopenAfterWrong(playerId: string, guess: string): 'open' | 'all_burned' | 'closed' {
+    if (!this.round) return 'closed';
+    const p = this.players.get(playerId);
+    const remaining = (this.round.guessEndsAt ?? 0) - Date.now();
+    // Süre dibindeyse (rakibe gerçekçi bir şans kalmadıysa) eski davranış kalsın.
+    if (!this.wrongOpenEnabled() || remaining < 2_000) return 'closed';
+    (this.round.burned ??= new Set()).add(playerId);
+    this.round.answeredBy = undefined;
+    this.broadcast({
+      type: 'wrong_guess',
+      byId: playerId,
+      byName: p?.name ?? '',
+      guess,
+      wrongCount: p?.wrongCount ?? 0,
+    });
+    if (this.round.burned.size >= this.players.size) return 'all_burned';
+    const t = setTimeout(() => this.endRoundTimeout(), remaining);
+    this.timers.push(t);
+    return 'open';
   }
 
   // A player passes. If every player passes, the round is voided (no points)
@@ -919,6 +972,20 @@ export class Room {
         if (p.wrongCount >= MAX_WRONG) {
           const opponent = [...this.players.values()].find((o) => o.id !== p.id);
           if (opponent) opponent.score = WIN_TARGET;
+        } else {
+          // wrongopen: yanlış turu yakmaz — yazan susturulur, rakip devam eder.
+          const r = this.reopenAfterWrong(playerId, text);
+          if (r === 'open') return;
+          if (r === 'all_burned') {
+            this.finishRound({
+              correct: false, reason: 'all_wrong', autocorrected: false,
+              answeredById: null, answeredByName: null, guess: '',
+              teamA: this.round.teamA, teamB: this.round.teamB,
+              matchedPlayerName: null, matchedPlayerImageUrl: null,
+              spellsA: [], spellsB: [], allClubs: [], commonPlayers: common,
+            });
+            return;
+          }
         }
       }
 
@@ -965,6 +1032,20 @@ export class Room {
       if (p.wrongCount >= MAX_WRONG) {
         const opponent = [...this.players.values()].find((o) => o.id !== p.id);
         if (opponent) opponent.score = WIN_TARGET;
+      } else {
+        // wrongopen: yanlış turu yakmaz — yazan susturulur, rakip devam eder.
+        const r = this.reopenAfterWrong(playerId, text);
+        if (r === 'open') return;
+        if (r === 'all_burned') {
+          this.finishRound({
+            correct: false, reason: 'all_wrong', autocorrected: false,
+            answeredById: null, answeredByName: null, guess: '',
+            teamA: v.teamA, teamB: v.teamB,
+            matchedPlayerName: null, matchedPlayerImageUrl: null,
+            spellsA: [], spellsB: [], allClubs: [], commonPlayers: common,
+          });
+          return;
+        }
       }
     }
 

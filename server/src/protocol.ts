@@ -104,10 +104,13 @@ export type ClientMsg =
   | { type: 'create_room'; name: string; userId?: string; options?: GameOptions }
   | { type: 'create_solo'; name: string; userId?: string; options?: GameOptions }
   | { type: 'join_room'; code: string; name: string; userId?: string }
-  | { type: 'resume_room'; code: string; userId: string } // reconnect a dropped player during grace period
-  | { type: 'register'; name: string; gameCenterId?: string; userId?: string }
-  | { type: 'guest' } // guest login → server creates an account with an auto "M"+9-digit username
-  | { type: 'auth'; provider: 'apple' | 'google' | 'facebook'; token: string; name?: string; userId?: string }
+  // caps: istemci yetenek bayrakları ('wrongopen' = yanlış cevapta turun rakibe
+  // açılmasını ve wrong_guess/guess_denied mesajlarını anlar). Eski istemciler
+  // göndermez → sunucu o odalarda eski (kilitli) kuralı uygular.
+  | { type: 'resume_room'; code: string; userId: string; caps?: string[] } // reconnect a dropped player during grace period
+  | { type: 'register'; name: string; gameCenterId?: string; userId?: string; caps?: string[] }
+  | { type: 'guest'; caps?: string[] } // guest login → server creates an account with an auto "M"+9-digit username
+  | { type: 'auth'; provider: 'apple' | 'google' | 'facebook'; token: string; name?: string; userId?: string; caps?: string[] }
   | { type: 'change_name'; newName: string }
   | { type: 'set_username'; username: string; userId?: string } // one-time unique username after sign-in
   | { type: 'find_match'; name?: string; userId?: string; options?: GameOptions } // ranked matchmaking
@@ -174,7 +177,7 @@ export type ClientMsg =
 // ---- Server -> Client ----
 export interface RoundResult {
   correct: boolean;
-  reason: VerifyReason | 'timeout' | 'no_common' | 'same_team' | 'passed';
+  reason: VerifyReason | 'timeout' | 'no_common' | 'same_team' | 'passed' | 'all_wrong';
   autocorrected: boolean;
   answeredById: string | null;
   answeredByName: string | null;
@@ -201,6 +204,11 @@ export type ServerMsg =
   | { type: 'reveal_teams'; teamA: ClubRef; teamB: ClubRef; mode?: GameMode; country?: string; letter?: string }
   | { type: 'guess_phase'; endsAt: number }
   | { type: 'guess_locked'; byId: string; byName: string }
+  // Yeni kural (wrongopen odaları): yanlış cevap turu YAKMAZ — yazan susturulur,
+  // rakibin kilidi açılır. wrongCount o oyuncunun toplam çarpısıdır (3 = hükmen).
+  | { type: 'wrong_guess'; byId: string; byName: string; guess: string; wrongCount: number }
+  // Kişiye özel ret: 'too_late' = rakip senden önce gönderdi; 'burned' = bu turda hakkın bitti.
+  | { type: 'guess_denied'; reason: 'too_late' | 'burned' }
   | { type: 'pass_locked'; byId: string; byName: string } // a player chose to pass this round
   // matchOver: a player reached `target` wins → the match is over (offer rematch).
   | {

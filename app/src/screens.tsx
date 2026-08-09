@@ -5343,11 +5343,26 @@ export function GuessScreen({ state, actions, tutorial, prefill }: Props & { pre
         <Animated.View style={{ opacity: phaseIn, transform: [{ translateY: phaseIn.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
           <MatchTimer endsAt={state.phase === 'guess' ? state.guessEndsAt : null} urgentAt={5} style={{ marginTop: 8, marginBottom: 4 }} />
           {someoneElseAnswered ? (
+            <>
+              <GuessStatusPanel
+                icon="lock-closed"
+                iconColor={theme.danger}
+                stripe={theme.danger}
+                text={t('guess.locked', { name: state.locked?.byName ?? '' })}
+              />
+              {state.tooLateSeq > 0 ? (
+                <View style={styles.passHint}>
+                  <Ionicons name="flash" size={14} color={theme.accent} />
+                  <Text style={styles.passHintText}>{t('guess.tooLate', { name: state.locked?.byName ?? '' })}</Text>
+                </View>
+              ) : null}
+            </>
+          ) : state.youBurned ? (
             <GuessStatusPanel
-              icon="lock-closed"
+              icon="close-circle"
               iconColor={theme.danger}
               stripe={theme.danger}
-              text={t('guess.locked', { name: state.locked?.byName ?? '' })}
+              text={t('guess.youBurned')}
             />
           ) : youPassed ? (
             <GuessStatusPanel
@@ -5371,6 +5386,12 @@ export function GuessScreen({ state, actions, tutorial, prefill }: Props & { pre
                 <View style={styles.passHint}>
                   <Ionicons name="play-skip-forward" size={14} color={theme.accent} />
                   <Text style={styles.passHintText}>{t('guess.oppPassed')}</Text>
+                </View>
+              ) : null}
+              {state.oppWrong ? (
+                <View style={styles.passHint}>
+                  <Ionicons name="close-circle" size={14} color={theme.danger} />
+                  <Text style={styles.passHintText}>{t('guess.oppWrong', { name: state.oppWrong.byName, guess: state.oppWrong.guess })}</Text>
                 </View>
               ) : null}
               <GameInput
@@ -10541,6 +10562,8 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
       return { icon: 'information' as IoniconName, color: theme.accent, headline: t('result.roundSkipped') };
     if (r.reason === 'passed')
       return { icon: 'play-skip-forward' as IoniconName, color: theme.accent, headline: t('result.roundSkipped') };
+    if (r.reason === 'all_wrong')
+      return { icon: 'close-circle' as IoniconName, color: theme.danger, headline: t('result.allWrongTitle') };
     if (r.reason === 'timeout')
       return { icon: 'time' as IoniconName, color: theme.muted, headline: t('result.timeUp') };
     return r.correct
@@ -10613,6 +10636,12 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
             </Text>
           ) : r.reason === 'passed' ? (
             <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.passed')}</Text>
+          ) : r.reason === 'all_wrong' ? (
+            <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.allWrong')}</Text>
+          ) : null}
+          {/* "Ben de doğru yazmıştım" hissinin ilacı: kaybeden tarafa hızı açıkça söyle */}
+          {r.correct && r.answeredById != null && r.answeredById !== room.youId ? (
+            <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.faster', { name: r.answeredByName ?? '' })}</Text>
           ) : null}
           {state.revealMode === 'player-player' && r.correct ? (
             <Animated.View style={photoStyle}>
