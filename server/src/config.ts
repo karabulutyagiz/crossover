@@ -34,4 +34,7 @@ export const config = {
   pushEnabled: (process.env.PUSH_ENABLED ?? '1') === '1',
   minIosBuild: Number(process.env.MIN_IOS_BUILD ?? '1'),
   minAndroidVersionCode: Number(process.env.MIN_ANDROID_VERSION_CODE ?? '1'),
+  // Admin paneli bearer anahtarı — /admin/api/* uçlarını korur. Boşsa admin API
+  // tamamen kapalıdır (her istek 401 döner), yani anahtar tanımlanmadan veri sızmaz.
+  adminToken: process.env.ADMIN_TOKEN ?? '',
 } as const;

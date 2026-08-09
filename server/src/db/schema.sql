@@ -194,6 +194,13 @@ CREATE TABLE IF NOT EXISTS processed_transactions (
   diamonds       INT  NOT NULL,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Apple ortamı ('Production' | 'Sandbox') ve gerçek satın alma zamanı. Admin
+-- paneli sandbox/test alımlarını (environment='Sandbox') gelirden çıkarır.
+-- Bu takipten ÖNCEKİ eski satırlarda environment NULL kalır; onlar yayın+test
+-- filtresini geçtiyse gerçek sayılır (kullanıcı teyidi). Yeni alımlarda ortam
+-- doğrulayıcıdan geldiği için asla NULL olmaz.
+ALTER TABLE processed_transactions ADD COLUMN IF NOT EXISTS environment TEXT;
+ALTER TABLE processed_transactions ADD COLUMN IF NOT EXISTS purchase_date TIMESTAMPTZ;
 
 -- ---- Direct messages between friends ----
 CREATE TABLE IF NOT EXISTS messages (
@@ -322,3 +329,14 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT;
 
 -- EULA onayı: Apple, kullanıcıların koşulları KABUL ETMESİNİ şart koşuyor.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ;
+
+-- ---------------------------------------------------------------------------
+-- Admin paneli kullanıcıları (e-posta + şifre girişi). Şifre ASLA düz metin
+-- saklanmaz: scrypt ile `salt:hash` (hex) olarak tutulur. Oyuncu 'users'
+-- tablosundan tamamen ayrıdır — bunlar yalnız istatistik panelinin yöneticileri.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS admin_users (
+  email         TEXT PRIMARY KEY,           -- küçük harfe normalize edilmiş e-posta
+  password_hash TEXT NOT NULL,              -- scrypt: 'salt:hash' (hex)
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);

@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Crossover — Yönetim Paneli</title>
+<style>
+  :root{
+    --bg:#0B1020; --bg2:#0B1838; --surface:#111a33; --surface2:#16223f;
+    --line:#22335c; --text:#e8eefc; --muted:#8aa0c6; --mint:#27E58B; --gold:#F5C518;
+    --blue:#3DA5FF; --purple:#9b7bff; --flame:#ff7a59; --danger:#ff5470;
+    --radius:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:radial-gradient(1200px 600px at 50% -10%, #13224a 0%, var(--bg) 60%) fixed;
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  a{color:var(--mint)}
+  .wrap{max-width:1200px;margin:0 auto;padding:20px 16px 64px}
+
+  /* ── Login ── */
+  #login{
+    position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:var(--bg);z-index:50;padding:20px;
+  }
+  .login-card{
+    width:100%;max-width:360px;background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--radius);padding:28px 24px;text-align:center;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);
+  }
+  .login-card h1{font-size:20px;margin:0 0 4px}
+  .login-card p{color:var(--muted);font-size:13px;margin:0 0 20px}
+  .login-card input{
+    width:100%;padding:13px 14px;border-radius:12px;border:1px solid var(--line);
+    background:var(--bg2);color:var(--text);font-size:16px;outline:none;
+  }
+  .login-card input:focus{border-color:var(--mint)}
+  .btn{
+    display:inline-block;width:100%;margin-top:12px;padding:13px 14px;border:none;
+    border-radius:12px;background:var(--mint);color:#06231a;font-weight:800;font-size:15px;
+    cursor:pointer;transition:filter .15s;
+  }
+  .btn:hover{filter:brightness(1.06)}
+  .btn.secondary{background:transparent;border:1px solid var(--line);color:var(--muted);font-weight:600}
+  .login-err{color:var(--danger);font-size:13px;margin-top:12px;min-height:18px}
+
+  /* ── Header ── */
+  header.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:10px}
+  .brand .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--mint),#0ea968);display:flex;align-items:center;justify-content:center;font-weight:900;color:#06231a}
+  .brand h1{font-size:18px;margin:0}
+  .brand small{color:var(--muted);font-size:12px}
+  .top-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .status-dot{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+  .dot.ok{background:var(--mint);box-shadow:0 0 10px var(--mint)}
+  .dot.err{background:var(--danger)}
+  .top-actions button{padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer}
+  .top-actions button:hover{color:var(--text)}
+
+  /* ── Sections & grids ── */
+  .section-title{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:26px 4px 12px;font-weight:700}
+  .grid{display:grid;gap:12px}
+  .g-live{grid-template-columns:repeat(4,1fr)}
+  .g-kpi{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+  @media(max-width:640px){.g-live{grid-template-columns:repeat(2,1fr)}}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+  .kpi{position:relative;overflow:hidden}
+  .kpi .label{font-size:12px;color:var(--muted);margin-bottom:6px}
+  .kpi .value{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+  .kpi .sub{font-size:11px;color:var(--muted);margin-top:4px}
+  .kpi.accent-mint .value{color:var(--mint)}
+  .kpi.accent-gold .value{color:var(--gold)}
+  .kpi.accent-blue .value{color:var(--blue)}
+  .kpi.accent-danger .value{color:var(--danger)}
+  .kpi .pulse{position:absolute;top:14px;right:14px;width:8px;height:8px;border-radius:50%;background:var(--mint);box-shadow:0 0 0 0 rgba(39,229,139,.6);animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(39,229,139,.5)}70%{box-shadow:0 0 0 10px rgba(39,229,139,0)}100%{box-shadow:0 0 0 0 rgba(39,229,139,0)}}
+
+  /* ── Revenue table ── */
+  .rev-head{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .rev-total{font-size:32px;font-weight:900;color:var(--gold);font-variant-numeric:tabular-nums}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  tr:last-child td{border-bottom:none}
+  .prod-tag{font-size:11px;color:var(--muted)}
+
+  /* ── Charts ── */
+  .chart-card h3{margin:0 0 4px;font-size:15px}
+  .chart-card p.hint{margin:0 0 14px;color:var(--muted);font-size:12px}
+  .bars{display:flex;align-items:flex-end;gap:3px;height:140px}
+  .bars .bar{flex:1;background:linear-gradient(180deg,var(--mint),#0e7d4f);border-radius:4px 4px 0 0;min-height:2px;position:relative;transition:height .3s}
+  .bars .bar.gold{background:linear-gradient(180deg,var(--gold),#b8860b)}
+  .bars .bar:hover{filter:brightness(1.2)}
+  .bars .bar .tip{display:none;position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:#000;border:1px solid var(--line);border-radius:8px;padding:5px 8px;font-size:11px;white-space:nowrap;z-index:5;margin-bottom:6px}
+  .bars .bar:hover .tip{display:block}
+  .axis{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:6px}
+
+  .hbar-row{display:flex;align-items:center;gap:10px;margin:8px 0}
+  .hbar-row .name{width:120px;font-size:13px;color:var(--muted);flex-shrink:0}
+  .hbar-track{flex:1;height:14px;background:var(--bg2);border-radius:7px;overflow:hidden}
+  .hbar-fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--purple));border-radius:7px;transition:width .3s}
+  .hbar-row .cnt{width:56px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums}
+
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:820px){.two-col{grid-template-columns:1fr}}
+  .muted{color:var(--muted)}
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<!-- ── Login gate ── -->
+<div id="login">
+  <div class="login-card">
+    <div class="brand" style="justify-content:center;margin-bottom:14px">
+      <div class="logo">CO</div>
+    </div>
+    <h1>Yönetim Paneli</h1>
+    <p>Devam etmek için giriş yap.</p>
+    <input id="email" type="email" placeholder="E-posta" autocomplete="username" style="margin-bottom:8px" />
+    <input id="pw" type="password" placeholder="Şifre" autocomplete="current-password" />
+    <button class="btn" id="loginBtn">Giriş</button>
+    <div class="login-err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- ── Dashboard ── -->
+<div class="wrap hidden" id="dash">
+  <header class="top">
+    <div class="brand">
+      <div class="logo">CO</div>
+      <div>
+        <h1>Crossover Paneli</h1>
+        <small id="genAt">—</small>
+      </div>
+    </div>
+    <div class="top-actions">
+      <span class="status-dot"><span class="dot" id="statusDot"></span><span id="statusText">bağlanıyor…</span></span>
+      <button id="refreshBtn">Yenile</button>
+      <button id="autoBtn">Otomatik: Açık</button>
+      <button id="logoutBtn">Çıkış</button>
+    </div>
+  </header>
+
+  <!-- Live -->
+  <div class="section-title">Canlı</div>
+  <div class="grid g-live">
+    <div class="card kpi accent-mint"><span class="pulse"></span><div class="label">Şu an çevrimiçi</div><div class="value" id="l_online">–</div><div class="sub">açık oturum</div></div>
+    <div class="card kpi accent-blue"><div class="label">Maçta</div><div class="value" id="l_match">–</div><div class="sub">oyuncu · <span id="l_rooms">–</span> oda</div></div>
+    <div class="card kpi"><div class="label">Kuyrukta</div><div class="value" id="l_queue">–</div><div class="sub">eşleşme bekliyor</div></div>
+    <div class="card kpi"><div class="label">Bot maçı</div><div class="value" id="l_bot">–</div><div class="sub">süren pratik</div></div>
+  </div>
+
+  <!-- Revenue -->
+  <div class="section-title">Gelir</div>
+  <div class="card">
+    <div class="rev-head">
+      <div>
+        <div class="muted" style="font-size:12px">Toplam tahmini gelir (brüt, ₺)</div>
+        <div class="rev-total" id="r_total">–</div>
+      </div>
+      <div style="text-align:right">
+        <div class="muted" style="font-size:12px">Bugün</div>
+        <div style="font-size:22px;font-weight:800;color:var(--mint)" id="r_today">–</div>
+        <div class="muted" style="font-size:11px"><span id="r_salesToday">–</span> satış bugün · <span id="r_totalSales">–</span> toplam</div>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Ürün</th><th class="num">Satış</th><th class="num">Birim ₺</th><th class="num">Gelir ₺</th></tr></thead>
+        <tbody id="r_rows"></tbody>
+      </table>
+    </div>
+    <p class="hint" style="margin-top:10px">Yalnız <b>gerçek (Production)</b>, tamamlanmış satın alımlar — sandbox/test alımları ve yayın (04.08.2026) öncesi ile test hesapları hariç. Gelir, müşteri ödediği brüt fiyattan hesaplanır (Apple ~%15–30 kesinti ve vergi hariç).</p>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <h3 style="margin:0 0 4px;font-size:15px">Satın alımlar — kim, ne aldı</h3>
+    <p class="hint" style="margin:0 0 12px">En yeni önce.</p>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Kullanıcı</th><th>Ürün</th><th class="num">₺</th><th>Tarih</th></tr></thead>
+        <tbody id="p_rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="two-col" style="margin-top:12px">
+    <div class="card chart-card">
+      <h3>Günlük gelir</h3><p class="hint">Son 30 gün (₺)</p>
+      <div class="bars" id="c_revenue"></div>
+      <div class="axis"><span id="c_rev_start">—</span><span id="c_rev_end">—</span></div>
+    </div>
+    <div class="card chart-card">
+      <h3>Günlük yeni kullanıcı</h3><p class="hint">Son 30 gün (kayıt)</p>
+      <div class="bars" id="c_users"></div>
+      <div class="axis"><span id="c_usr_start">—</span><span id="c_usr_end">—</span></div>
+    </div>
+  </div>
+
+  <!-- Users -->
+  <div class="section-title">Kullanıcılar</div>
+  <div class="grid g-kpi">
+    <div class="card kpi accent-gold"><div class="label">Toplam kayıt (≈ yükleme)</div><div class="value" id="u_total">–</div></div>
+    <div class="card kpi"><div class="label">Bugün yeni</div><div class="value" id="u_today">–</div><div class="sub">7g: <span id="u_7d">–</span> · 30g: <span id="u_30d">–</span></div></div>
+    <div class="card kpi accent-mint"><div class="label">Günlük aktif (DAU)</div><div class="value" id="u_dau">–</div><div class="sub">7g aktif: <span id="u_wau">–</span></div></div>
+    <div class="card kpi"><div class="label">Kimlikli / Misafir</div><div class="value" id="u_idguest">–</div><div class="sub">Apple/Google/FB vs misafir</div></div>
+    <div class="card kpi"><div class="label">Aktif Sosyal Paket</div><div class="value" id="u_social">–</div></div>
+    <div class="card kpi"><div class="label">Premium Yol açık</div><div class="value" id="u_premium">–</div></div>
+    <div class="card kpi"><div class="label">Dolaşımdaki elmas</div><div class="value" id="u_diamonds">–</div></div>
+    <div class="card kpi accent-danger"><div class="label">Açık şikâyet</div><div class="value" id="u_reports">–</div><div class="sub">yasaklı: <span id="u_banned">–</span></div></div>
+  </div>
+
+  <!-- Game -->
+  <div class="section-title">Oyun</div>
+  <div class="two-col">
+    <div class="card chart-card">
+      <h3>Mod dağılımı</h3><p class="hint">match_history (oyuncu başına kayıt)</p>
+      <div id="g_modes"></div>
+    </div>
+    <div class="card chart-card">
+      <h3>Arena dağılımı</h3><p class="hint">kupaya göre oyuncu sayısı</p>
+      <div id="g_arenas"></div>
+    </div>
+  </div>
+  <div class="grid g-kpi" style="margin-top:12px">
+    <div class="card kpi"><div class="label">Toplam maç kaydı</div><div class="value" id="m_total">–</div></div>
+    <div class="card kpi"><div class="label">Bugünkü maç</div><div class="value" id="m_today">–</div><div class="sub">7g: <span id="m_7d">–</span></div></div>
+    <div class="card kpi"><div class="label">Toplam mesaj</div><div class="value" id="msg_total">–</div><div class="sub">bugün: <span id="msg_today">–</span></div></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  // Oyun sunucusu API'si (soketle aynı, sıralı yedekli).
+  var API_BASES = ["https://api.crossoverfootball.com", "https://168-222-180-190.nip.io"];
+  var TOKEN_KEY = "cx_admin_token";
+  var REFRESH_MS = 10000;
+
+  var token = localStorage.getItem(TOKEN_KEY) || "";
+  var autoOn = true;
+  var timer = null;
+
+  var $ = function(id){ return document.getElementById(id); };
+  var trNum = function(n){ return (n==null?0:n).toLocaleString("tr-TR"); };
+  var trMoney = function(n){ return (n==null?0:n).toLocaleString("tr-TR",{minimumFractionDigits:2,maximumFractionDigits:2}); };
+
+  // ── Auth / fetch ──
+  function fetchStats(){
+    var errLast = null;
+    var chain = Promise.reject();
+    API_BASES.forEach(function(base){
+      chain = chain.catch(function(){
+        var ctrl = new AbortController();
+        var t = setTimeout(function(){ ctrl.abort(); }, 9000);
+        return fetch(base + "/admin/api/stats", {
+          headers: { "Authorization": "Bearer " + token },
+          signal: ctrl.signal
+        }).then(function(res){
+          clearTimeout(t);
+          if(res.status === 401){ var e=new Error("unauthorized"); e.code=401; throw e; }
+          if(!res.ok) throw new Error("HTTP " + res.status);
+          return res.json();
+        });
+      });
+    });
+    return chain;
+  }
+
+  function showLogin(msg){
+    $("dash").classList.add("hidden");
+    $("login").classList.remove("hidden");
+    $("loginErr").textContent = msg || "";
+    $("email").focus();
+  }
+  function showDash(){
+    $("login").classList.add("hidden");
+    $("dash").classList.remove("hidden");
+  }
+
+  function doLogin(){
+    var email = $("email").value.trim();
+    var pw = $("pw").value;
+    if(!email || !pw){ $("loginErr").textContent = "E-posta ve şifre gir."; return; }
+    $("loginErr").textContent = "Kontrol ediliyor…";
+    loginRequest(email, pw).then(function(tok){
+      token = tok;
+      localStorage.setItem(TOKEN_KEY, token);
+      showDash();
+      tick();
+      start();
+    }).catch(function(e){
+      if(e && e.code === 401) $("loginErr").textContent = "E-posta veya şifre hatalı.";
+      else $("loginErr").textContent = "Sunucuya ulaşılamadı.";
+    });
+  }
+
+  // E-posta+şifreyi sunucuya gönder, imzalı oturum jetonu al (endpoint'ler sıralı yedekli).
+  function loginRequest(email, pw){
+    var chain = Promise.reject();
+    API_BASES.forEach(function(base){
+      chain = chain.catch(function(){
+        var ctrl = new AbortController();
+        var t = setTimeout(function(){ ctrl.abort(); }, 9000);
+        return fetch(base + "/admin/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email, password: pw }),
+          signal: ctrl.signal
+        }).then(function(res){
+          clearTimeout(t);
+          if(res.status === 401){ var e = new Error("bad"); e.code = 401; throw e; }
+          if(!res.ok) throw new Error("HTTP " + res.status);
+          return res.json();
+        }).then(function(j){
+          if(!j || !j.token) throw new Error("no token");
+          return j.token;
+        });
+      });
+    });
+    return chain;
+  }
+
+  function logout(){
+    stop();
+    token = "";
+    localStorage.removeItem(TOKEN_KEY);
+    $("pw").value = "";
+    showLogin("");
+  }
+
+  function setStatus(ok, text){
+    var d = $("statusDot");
+    d.className = "dot " + (ok ? "ok" : "err");
+    $("statusText").textContent = text;
+  }
+
+  // ── Polling ──
+  function tick(){
+    fetchStats().then(function(stats){
+      render(stats);
+      setStatus(true, "canlı");
+    }).catch(function(e){
+      if(e && e.code === 401){ logout(); showLogin("Oturum düştü, tekrar gir."); return; }
+      setStatus(false, "bağlantı yok");
+    });
+  }
+  function start(){ stop(); if(autoOn){ timer = setInterval(tick, REFRESH_MS); } }
+  function stop(){ if(timer){ clearInterval(timer); timer = null; } }
+
+  // ── Render ──
+  function render(s){
+    var L = s.live || {};
+    $("l_online").textContent = trNum(L.online);
+    $("l_match").textContent  = trNum(L.playersInMatch);
+    $("l_rooms").textContent  = trNum(L.rooms);
+    $("l_queue").textContent  = trNum(L.queue);
+    $("l_bot").textContent    = trNum(L.botMatches);
+
+    var R = s.revenue || {};
+    $("r_total").textContent      = "₺" + trMoney(R.totalTry);
+    $("r_today").textContent      = "₺" + trMoney(R.revenueToday);
+    $("r_salesToday").textContent = trNum(R.salesToday);
+    $("r_totalSales").textContent = trNum(R.totalSales);
+    var rows = (R.byProduct || []).map(function(p){
+      return "<tr><td>" + esc(p.label) + "<div class='prod-tag'>" + esc(p.productId) + "</div></td>"
+        + "<td class='num'>" + trNum(p.sales) + "</td>"
+        + "<td class='num'>" + (p.priceTry ? "₺"+trMoney(p.priceTry) : "—") + "</td>"
+        + "<td class='num'>₺" + trMoney(p.revenueTry) + "</td></tr>";
+    }).join("");
+    $("r_rows").innerHTML = rows || "<tr><td colspan='4' class='muted'>Henüz satış yok.</td></tr>";
+
+    var plist = (R.purchases || []).map(function(p){
+      return "<tr><td>" + esc(p.user) + "</td><td>" + esc(p.label) + "</td>"
+        + "<td class='num'>₺" + trMoney(p.priceTry) + "</td>"
+        + "<td>" + fmtDateTime(p.at) + "</td></tr>";
+    }).join("");
+    $("p_rows").innerHTML = plist || "<tr><td colspan='4' class='muted'>Henüz gerçek satın alım yok.</td></tr>";
+
+    // charts
+    barChart("c_revenue", (R.daily||[]), "revenue", true, "c_rev_start", "c_rev_end", function(d){ return d.day + " · ₺" + trMoney(d.revenue) + " (" + d.sales + " satış)"; });
+    barChart("c_users", (s.usersDaily||[]), "n", false, "c_usr_start", "c_usr_end", function(d){ return d.day + " · " + d.n + " kayıt"; });
+
+    var U = s.users || {};
+    $("u_total").textContent  = trNum(U.total);
+    $("u_today").textContent  = trNum(U.newToday);
+    $("u_7d").textContent     = trNum(U.new7d);
+    $("u_30d").textContent    = trNum(U.new30d);
+    $("u_dau").textContent    = trNum(U.dau);
+    $("u_wau").textContent    = trNum(U.wau);
+    $("u_idguest").textContent= trNum(U.identified) + " / " + trNum(U.guests);
+    $("u_social").textContent = trNum(U.activeSocialPack);
+    $("u_premium").textContent= trNum(U.premiumRoadActive);
+    $("u_diamonds").textContent = trNum(U.diamondsCirculating);
+    $("u_reports").textContent  = trNum((s.moderation||{}).openReports);
+    $("u_banned").textContent   = trNum(U.banned);
+
+    // modes / arenas
+    hbars("g_modes", (s.matches&&s.matches.modes||[]).map(function(m){ return { name: modeLabel(m.game_mode), count: m.n }; }));
+    hbars("g_arenas", (s.arenas||[]).map(function(a){ return { name: a.name, count: a.count }; }));
+
+    var M = s.matches || {};
+    $("m_total").textContent = trNum(M.total);
+    $("m_today").textContent = trNum(M.today);
+    $("m_7d").textContent    = trNum(M.last7d);
+    var MS = s.messages || {};
+    $("msg_total").textContent = trNum(MS.total);
+    $("msg_today").textContent = trNum(MS.today);
+
+    var g = s.generatedAt ? new Date(s.generatedAt) : new Date();
+    var since = s.since ? s.since.split("-").reverse().join(".") : "";
+    $("genAt").textContent = (since ? since + "'dan beri · test hesapları hariç · " : "") + "güncelleme " + g.toLocaleTimeString("tr-TR");
+  }
+
+  function barChart(elId, data, field, gold, startId, endId, tipFn){
+    var el = $(elId); if(!el) return;
+    if(!data.length){ el.innerHTML = "<span class='muted' style='font-size:12px'>Veri yok</span>"; $(startId).textContent="—"; $(endId).textContent="—"; return; }
+    var max = data.reduce(function(m,d){ return Math.max(m, d[field]||0); }, 0) || 1;
+    el.innerHTML = data.map(function(d){
+      var h = Math.round(((d[field]||0)/max)*100);
+      return "<div class='bar" + (gold?" gold":"") + "' style='height:" + h + "%'><span class='tip'>" + esc(tipFn(d)) + "</span></div>";
+    }).join("");
+    $(startId).textContent = shortDay(data[0].day);
+    $(endId).textContent = shortDay(data[data.length-1].day);
+  }
+
+  function hbars(elId, items){
+    var el = $(elId); if(!el) return;
+    var max = items.reduce(function(m,i){ return Math.max(m, i.count||0); }, 0) || 1;
+    el.innerHTML = items.map(function(i){
+      var w = Math.round(((i.count||0)/max)*100);
+      return "<div class='hbar-row'><span class='name'>" + esc(i.name) + "</span>"
+        + "<span class='hbar-track'><span class='hbar-fill' style='width:" + w + "%'></span></span>"
+        + "<span class='cnt'>" + trNum(i.count) + "</span></div>";
+    }).join("") || "<span class='muted' style='font-size:12px'>Veri yok</span>";
+  }
+
+  function modeLabel(m){
+    return ({ "team-team":"Takım–Takım", "country-team":"Ülke–Takım", "letter-team":"Harf–Takım", "player-player":"Oyuncu–Oyuncu" })[m] || m;
+  }
+  function shortDay(d){ var p=(d||"").split("-"); return p.length===3 ? p[2]+"."+p[1] : d; }
+  function fmtDateTime(iso){ if(!iso) return "—"; var d=new Date(iso); if(isNaN(d.getTime())) return esc(iso); return d.toLocaleDateString("tr-TR")+" "+d.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"}); }
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]; }); }
+
+  // ── Wire up ──
+  $("loginBtn").addEventListener("click", doLogin);
+  $("email").addEventListener("keydown", function(e){ if(e.key==="Enter") $("pw").focus(); });
+  $("pw").addEventListener("keydown", function(e){ if(e.key==="Enter") doLogin(); });
+  $("refreshBtn").addEventListener("click", tick);
+  $("logoutBtn").addEventListener("click", logout);
+  $("autoBtn").addEventListener("click", function(){
+    autoOn = !autoOn;
+    this.textContent = "Otomatik: " + (autoOn ? "Açık" : "Kapalı");
+    if(autoOn) start(); else stop();
+  });
+  document.addEventListener("visibilitychange", function(){
+    if(document.hidden) stop();
+    else if(autoOn && !$("dash").classList.contains("hidden")) { tick(); start(); }
+  });
+
+  // ── Boot ──
+  if(token){
+    fetchStats().then(function(stats){ showDash(); render(stats); setStatus(true,"canlı"); start(); })
+      .catch(function(e){ showLogin(e && e.code===401 ? "" : ""); });
+  } else {
+    showLogin("");
+  }
+})();
+</script>
+</body>
+</html>
