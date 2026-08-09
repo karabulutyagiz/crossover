@@ -434,7 +434,9 @@ export async function applyMatchResult(
             -- Kırılan seri lost_streak'e yazılır — Seri Geri Yükleme gücü onu geri getirir.
             win_streak = CASE WHEN $3 THEN COALESCE(u.win_streak, 0) + 1 ELSE 0 END,
             best_streak = GREATEST(COALESCE(u.best_streak, 0), CASE WHEN $3 THEN COALESCE(u.win_streak, 0) + 1 ELSE 0 END),
-            lost_streak = CASE WHEN NOT $3 AND COALESCE(u.win_streak, 0) > 0 THEN u.win_streak ELSE COALESCE(u.lost_streak, 0) END,
+            -- Kırılan seri YALNIZ kırıldığı maçtan hemen sonra geri yüklenebilir:
+            -- bir maç daha oynanınca (galibiyet ya da seri kırmayan mağlubiyet) sıfırlanır.
+            lost_streak = CASE WHEN NOT $3 AND COALESCE(u.win_streak, 0) > 0 THEN u.win_streak ELSE 0 END,
             diamonds = u.diamonds +
               CASE
                 WHEN r.next_arena_idx > r.highest_arena_rewarded THEN (

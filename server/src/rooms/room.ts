@@ -286,7 +286,7 @@ export class Room {
             // (delta<0) ana menüde animasyonla gösterilir. Soket kapandıysa
             // sessizce düşer — sonraki girişte profil zaten günceldir.
             try {
-              p.transport.send({ type: 'trophy_update', trophies: leaverRes.profile.trophies, delta: leaverRes.delta, arena: leaverRes.profile.arena, diamonds: leaverRes.profile.diamonds, winStreak: leaverRes.profile.winStreak, bestStreak: leaverRes.profile.bestStreak });
+              p.transport.send({ type: 'trophy_update', trophies: leaverRes.profile.trophies, delta: leaverRes.delta, arena: leaverRes.profile.arena, diamonds: leaverRes.profile.diamonds, winStreak: leaverRes.profile.winStreak, bestStreak: leaverRes.profile.bestStreak, lostStreak: leaverRes.profile.lostStreak });
             } catch { /* socket gone */ }
           }
         } catch { /* DB error — skip silently */ }
@@ -1163,6 +1163,7 @@ export class Room {
           shielded,
           winStreak: profile.winStreak,
           bestStreak: profile.bestStreak,
+          lostStreak: profile.lostStreak,
         });
         // Seviye XP'si — kupadan bağımsız, kaybeden de kazanır
         const xpRes = await awardMatchXp(p.userId, won, false);
