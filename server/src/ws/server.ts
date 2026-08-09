@@ -25,6 +25,7 @@ import {
 const GUEST_BLOCKED_MSG = 'Mesajlaşmak için Apple veya Google ile giriş yap';
 import { verifyApplePurchase } from '../game/iap.ts';
 import { getAdminStats } from '../game/admin.ts';
+import { checkLogin, issueToken, verifyToken } from '../game/adminAuth.ts';
 import { registerPushToken, sendPushToUsers, startPushCrons } from '../game/push.ts';
 import { pool } from '../db/pool.ts';
 import { log } from '../logger.ts';
@@ -240,13 +241,28 @@ export function startServer(port: number): Server {
       return;
     }
 
-    // ---- Admin panel (token-gated) ----
-    // Bütün oyun/gelir istatistikleri. ADMIN_TOKEN boşsa uç tamamen kapalı; yanlış
-    // veya eksik token her zaman 401 (veri sızmaz). Panel bunu 10 sn'de bir çeker.
+    // ---- Admin panel: e-posta + şifre girişi → imzalı oturum jetonu ----
+    // Giriş: e-posta+şifre admin_users'a karşı doğrulanır, süreli imzalı jeton verilir.
+    if (path === '/admin/api/login' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => { body += chunk; if (body.length > 10_000) req.destroy(); });
+      req.on('end', () => {
+        void (async () => {
+          let email = '';
+          let password = '';
+          try { const j = JSON.parse(body || '{}'); email = String(j.email ?? ''); password = String(j.password ?? ''); } catch { /* geçersiz gövde */ }
+          const ok = await checkLogin(email, password);
+          if (!ok) { res.writeHead(401, cors); res.end(JSON.stringify({ error: 'invalid' })); return; }
+          res.writeHead(200, cors); res.end(JSON.stringify({ ok: true, token: issueToken(email) }));
+        })().catch(() => { res.writeHead(500, cors); res.end(JSON.stringify({ error: 'server' })); });
+      });
+      return;
+    }
+    // İstatistikler: yalnız geçerli (imzalı, süresi geçmemiş) oturum jetonuyla.
     if (path === '/admin/api/stats') {
       const auth = req.headers['authorization'] ?? '';
       const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-      if (!config.adminToken || token !== config.adminToken) {
+      if (!verifyToken(token)) {
         res.writeHead(401, cors);
         res.end(JSON.stringify({ error: 'unauthorized' }));
         return;

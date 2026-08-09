@@ -125,8 +125,9 @@
       <div class="logo">CO</div>
     </div>
     <h1>Yönetim Paneli</h1>
-    <p>Devam etmek için panel şifresini gir.</p>
-    <input id="pw" type="password" placeholder="Panel şifresi" autocomplete="current-password" />
+    <p>Devam etmek için giriş yap.</p>
+    <input id="email" type="email" placeholder="E-posta" autocomplete="username" style="margin-bottom:8px" />
+    <input id="pw" type="password" placeholder="Şifre" autocomplete="current-password" />
     <button class="btn" id="loginBtn">Giriş</button>
     <div class="login-err" id="loginErr"></div>
   </div>
@@ -280,7 +281,7 @@
     $("dash").classList.add("hidden");
     $("login").classList.remove("hidden");
     $("loginErr").textContent = msg || "";
-    $("pw").focus();
+    $("email").focus();
   }
   function showDash(){
     $("login").classList.add("hidden");
@@ -288,19 +289,46 @@
   }
 
   function doLogin(){
-    var pw = $("pw").value.trim();
-    if(!pw){ $("loginErr").textContent = "Şifre gir."; return; }
-    token = pw;
+    var email = $("email").value.trim();
+    var pw = $("pw").value;
+    if(!email || !pw){ $("loginErr").textContent = "E-posta ve şifre gir."; return; }
     $("loginErr").textContent = "Kontrol ediliyor…";
-    fetchStats().then(function(stats){
+    loginRequest(email, pw).then(function(tok){
+      token = tok;
       localStorage.setItem(TOKEN_KEY, token);
       showDash();
-      render(stats);
+      tick();
       start();
     }).catch(function(e){
-      if(e && e.code === 401) $("loginErr").textContent = "Şifre yanlış.";
+      if(e && e.code === 401) $("loginErr").textContent = "E-posta veya şifre hatalı.";
       else $("loginErr").textContent = "Sunucuya ulaşılamadı.";
     });
+  }
+
+  // E-posta+şifreyi sunucuya gönder, imzalı oturum jetonu al (endpoint'ler sıralı yedekli).
+  function loginRequest(email, pw){
+    var chain = Promise.reject();
+    API_BASES.forEach(function(base){
+      chain = chain.catch(function(){
+        var ctrl = new AbortController();
+        var t = setTimeout(function(){ ctrl.abort(); }, 9000);
+        return fetch(base + "/admin/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email, password: pw }),
+          signal: ctrl.signal
+        }).then(function(res){
+          clearTimeout(t);
+          if(res.status === 401){ var e = new Error("bad"); e.code = 401; throw e; }
+          if(!res.ok) throw new Error("HTTP " + res.status);
+          return res.json();
+        }).then(function(j){
+          if(!j || !j.token) throw new Error("no token");
+          return j.token;
+        });
+      });
+    });
+    return chain;
   }
 
   function logout(){
@@ -426,6 +454,7 @@
 
   // ── Wire up ──
   $("loginBtn").addEventListener("click", doLogin);
+  $("email").addEventListener("keydown", function(e){ if(e.key==="Enter") $("pw").focus(); });
   $("pw").addEventListener("keydown", function(e){ if(e.key==="Enter") doLogin(); });
   $("refreshBtn").addEventListener("click", tick);
   $("logoutBtn").addEventListener("click", logout);

@@ -329,3 +329,14 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT;
 
 -- EULA onayı: Apple, kullanıcıların koşulları KABUL ETMESİNİ şart koşuyor.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ;
+
+-- ---------------------------------------------------------------------------
+-- Admin paneli kullanıcıları (e-posta + şifre girişi). Şifre ASLA düz metin
+-- saklanmaz: scrypt ile `salt:hash` (hex) olarak tutulur. Oyuncu 'users'
+-- tablosundan tamamen ayrıdır — bunlar yalnız istatistik panelinin yöneticileri.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS admin_users (
+  email         TEXT PRIMARY KEY,           -- küçük harfe normalize edilmiş e-posta
+  password_hash TEXT NOT NULL,              -- scrypt: 'salt:hash' (hex)
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
