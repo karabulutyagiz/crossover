@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
 import {
   Image,
   type ImageSourcePropType,
@@ -11,6 +11,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Animated, Easing, PanResponder, Platform, Dimensions, Linking, LayoutAnimation } from 'react-native';
@@ -27,8 +28,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image as ExpoImage } from 'expo-image';
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
-import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget } from './gemTarget';
+import { acquireModalSlot, whenModalSlotFree } from './modalTraffic';
+import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget, trophyTarget, setTrophyTarget, setTrophyRemeasure, remeasureTrophyTarget } from './gemTarget';
 import { Avatar } from './Avatar';
+import { useIsTablet, useWindow, useContentMaxWidth, canvasSizeFor } from './layout';
+import { setPendingShortfall, takePendingShortfall } from './shortfall';
 import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -170,6 +174,10 @@ interface Props {
   // App'in tutmalı/dönüşlü elmas sayacı — verilirse ana ekran hapı bunu izler
   // (ödül uçuşu sırasında sayaç ödül ÖNCESİ değerde tutulur, iniş sonrası döner)
   gemCountAnimOverride?: Animated.Value;
+  // Maç sonrası kupa kutlaması: uçuş bitince sayaç from→to döner (seq artar);
+  // uçuş beklerken rozet ESKİ değeri gösterir (trophyHold = delta).
+  trophyLand?: { delta: number; seq: number } | null;
+  trophyHold?: number | null;
   gemFillAnimOverride?: Animated.Value;
   onGoToFriends?: () => void; // page the tab ScrollView across to the Friends tab
   focusAddFriendSeq?: number; // bumped by App when Home's find-friend card is tapped → Friends focuses its add-friend input
@@ -341,6 +349,31 @@ let _btnSeq = 0;
 // it is expressed in the Broadcast Prestige language here, NOT the old lip ramp.
 type BtnKind = 'primary' | 'ghost' | 'accent' | 'blue' | 'danger' | 'purple' | 'flame';
 // face color + shadow ink + dark on-face text per variant.
+// ---- Kaplamalı (asset) düğme derileri ----
+// Kaynak: satın alınan "glossy buttons" seti. Sayfadaki düğmelerin üstünde
+// İngilizce yazı BASILI olduğu için yalnız GÖVDE kullanılıyor: sol kapak +
+// kelime arasından alınan yazısız orta dilim + sağ kapak birleştirilip 9-dilim
+// (capInsets) hâline getirildi — böylece her genişlikte köşeler/eğim bozulmaz,
+// yazıyı biz basıyoruz (Türkçe + kendi tipografimiz).
+const BTN_SKINS = {
+  green:  { src: require('../assets/btn/btn-green.png'),  caps: { top: 17, left: 16, bottom: 17, right: 18 } },
+  orange: { src: require('../assets/btn/btn-orange.png'), caps: { top: 17, left: 17, bottom: 17, right: 18 } },
+  blue:   { src: require('../assets/btn/btn-blue.png'),   caps: { top: 17, left: 16, bottom: 17, right: 18 } },
+} as const;
+type BtnSkinName = keyof typeof BTN_SKINS;
+// Hangi düğme türü hangi deriyi kullanır. Listede olmayanlar (danger, purple,
+// flame) vektör görünümünde kalır — sette o renkler yok, uydurmak yerine
+// mevcut dil korunuyor.
+const BTN_SKIN_FOR: Partial<Record<BtnKind, BtnSkinName>> = {
+  primary: 'green',
+  accent: 'orange',
+  blue: 'blue',
+  ghost: 'blue',
+};
+// Basılı yazının orijinalindeki gibi: koyu gövde + açık dış hat (okunurluk).
+const SKIN_LABEL_COLOR = '#3A1B08';
+const SKIN_LABEL_SHADOW = { textShadowColor: 'rgba(255,255,255,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 1.5 } as const;
+
 const BTN_FACE: Record<Exclude<BtnKind, 'ghost'>, { face: string; sh: string; on: string }> = {
   primary: { face: theme.primary, sh: theme.primaryDark, on: theme.onPrimary },
   accent: { face: theme.accent, sh: theme.accentDark, on: theme.onAccent },
@@ -381,10 +414,14 @@ export function Btn({
   const fv = BTN_FACE[(kind as Exclude<BtnKind, 'ghost'>)] ?? BTN_FACE.primary;
   const inert = Boolean(disabled || loading);
   const ghostTint = tint ?? theme.primary;
+  const skinName = BTN_SKIN_FOR[kind];
+  const skin = skinName ? BTN_SKINS[skinName] : undefined;
+  const skinH = big ? 60 : compact ? 44 : 52;
   // Disabled = tone shift to surface1 at FULL geometry (no layout jump).
   const face = disabled ? theme.surface1 : fv.face;
   // Prestige: DARK-on-face label (danger keeps white). Ghost/disabled → text/muted.
-  const fg = disabled ? theme.muted : ghost ? (tint ?? theme.text) : fv.on;
+  // Kaplamalı gövdede yazı, setin orijinalindeki gibi koyu + açık dış hatlı.
+  const fg = disabled ? theme.muted : skin ? SKIN_LABEL_COLOR : ghost ? (tint ?? theme.text) : fv.on;
   const radius = big ? 14 : compact ? 10 : 12;
   // Press = scale + shadow-collapse + slight dim (no chunky translate).
   const pressScale = press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.972] });
@@ -392,7 +429,7 @@ export function Btn({
   const padV = big ? 16 : compact ? 9 : 13;
   const font = big ? 17 : compact ? 13 : 15;
   const iconSz = big ? 23 : compact ? 15 : 19;
-  const emboss = {}; // no cast on button labels (dark-on-face reads clean)
+  const emboss = skin ? SKIN_LABEL_SHADOW : {}; // kaplamada açık dış hat, düz yüzde kabartma yok
   void icon; // decorative icons intentionally not rendered inside buttons
   // Exception: `gem` — a PRICE button must show what currency it charges, so the
   // crystal logo (the same GemIcon as the HUD counter) sits right before the number.
@@ -431,7 +468,23 @@ export function Btn({
       onPress={inert ? undefined : onPress}
       style={{ marginVertical: 6, borderRadius: radius }}
     >
-      {ghost ? (
+      {skin && !inert ? (
+        // Kaplamalı gövde: 9-dilim asset (capInsets) + kendi yazımız.
+        // Yükseklik sabit tutulur ki dikey kapaklar (üst kavis + alt dudak)
+        // ezilmesin; genişlik esner, orta dilim yatayda uzar.
+        <Animated.View style={{ transform: [{ scale: pressScale }], height: skinH, justifyContent: 'center' }}>
+          <Image
+            source={skin.src}
+            resizeMode="stretch"
+            capInsets={skin.caps}
+            style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, width: undefined, height: undefined }}
+          />
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, gap: 8 }}>
+            {content}
+          </View>
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#04091A', opacity: pressDim, borderRadius: radius }]} />
+        </Animated.View>
+      ) : ghost ? (
         // Ghost: the ONE sanctioned thin outline (1.5px tint), transparent body.
         <Animated.View
           style={{
@@ -454,41 +507,51 @@ export function Btn({
         // Prestige face: filled tone + subtle vertical shade, 1px top light, 2px
         // integrated bottom slice, colored (variant-dark) soft shadow that
         // collapses on press. No glass dome, no ink outline, no chunky lip.
+        // iOS clips a layer's own shadow when overflow:'hidden' sits on the same
+        // node → GamePanel split: outer casts the shadow, inner face clips.
         <Animated.View
           style={{
             transform: [{ scale: pressScale }],
             backgroundColor: face,
             borderRadius: radius,
-            paddingVertical: padV,
-            paddingHorizontal: 18,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
             ...(disabled
-              ? { borderWidth: 1, borderColor: withAlpha(theme.border, 0.6) }
+              ? null
               : { shadowColor: fv.sh, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 6 }),
           }}
         >
-          {!disabled ? (
-            <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
-              <Defs>
-                <SvgGradient id={btnGid} x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0" stopColor={lighten(face, 0.1)} />
-                  <Stop offset="1" stopColor={darken(face, 0.13)} />
-                </SvgGradient>
-              </Defs>
-              <Rect width="100%" height="100%" fill={`url(#${btnGid})`} />
-            </Svg>
-          ) : null}
-          {!disabled ? (
-            <>
-              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.16 }} />
-              <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: darken(face, 0.4), opacity: 0.85 }} />
-            </>
-          ) : null}
-          {content}
-          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#04091A', opacity: pressDim }]} />
+          <View
+            style={{
+              backgroundColor: face,
+              borderRadius: radius,
+              paddingVertical: padV,
+              paddingHorizontal: 18,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              ...(disabled ? { borderWidth: 1, borderColor: withAlpha(theme.border, 0.6) } : null),
+            }}
+          >
+            {!disabled ? (
+              <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
+                <Defs>
+                  <SvgGradient id={btnGid} x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor={lighten(face, 0.1)} />
+                    <Stop offset="1" stopColor={darken(face, 0.13)} />
+                  </SvgGradient>
+                </Defs>
+                <Rect width="100%" height="100%" fill={`url(#${btnGid})`} />
+              </Svg>
+            ) : null}
+            {!disabled ? (
+              <>
+                <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.16 }} />
+                <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: darken(face, 0.4), opacity: 0.85 }} />
+              </>
+            ) : null}
+            {content}
+            <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#04091A', opacity: pressDim }]} />
+          </View>
         </Animated.View>
       )}
     </Pressable>
@@ -503,28 +566,37 @@ function Chip({ icon, label, onPress, active = false }: { icon: IoniconName; lab
   return (
     <Pressable onPress={onPress} style={{ flex: 1 }}>
       {({ pressed }) => (
+        // iOS clips a layer's own shadow under overflow:'hidden' → GamePanel
+        // split: outer carries shadowRow, inner face carries the clip + strips.
         <View
           style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 5,
             backgroundColor: active ? theme.surface3 : theme.surface2,
             borderRadius: 12,
-            paddingVertical: 10,
-            paddingHorizontal: 6,
-            overflow: 'hidden',
             transform: [{ scale: pressed ? 0.97 : 1 }],
             ...shadowRow,
           }}
         >
-          {/* 1px top light + integrated bottom slice — depth without a frame */}
-          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: active ? 0.16 : 0.08 }} />
-          {active ? <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2.5, backgroundColor: theme.primary }} /> : null}
-          <Ionicons name={icon} size={14} color={active ? theme.primary : theme.textSub} />
-          <Text numberOfLines={1} style={{ color: active ? theme.text : theme.textSub, fontSize: 11, fontFamily: 'Poppins-ExtraBold', flexShrink: 1 }}>
-            {label}
-          </Text>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 5,
+              backgroundColor: active ? theme.surface3 : theme.surface2,
+              borderRadius: 12,
+              paddingVertical: 10,
+              paddingHorizontal: 6,
+              overflow: 'hidden',
+            }}
+          >
+            {/* 1px top light + integrated bottom slice — depth without a frame */}
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: active ? 0.16 : 0.08 }} />
+            {active ? <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2.5, backgroundColor: theme.primary }} /> : null}
+            <Ionicons name={icon} size={14} color={active ? theme.primary : theme.textSub} />
+            <Text numberOfLines={1} style={{ color: active ? theme.text : theme.textSub, fontSize: 11, fontFamily: 'Poppins-ExtraBold', flexShrink: 1 }}>
+              {label}
+            </Text>
+          </View>
         </View>
       )}
     </Pressable>
@@ -547,7 +619,9 @@ function GamePanel({ children, hero = false, tint, accentStripe, compact = false
   const sh = hero ? shadowRaised : compact ? shadowRow : shadowSoft;
   const stripe = accentStripe ?? tint;
   return (
-    <View style={[{ backgroundColor: face, borderRadius: r, ...sh }, style]}>
+    // Düğmelerle AYNI anatomi: koyu dış kontur → yüz. Paneller eskiden konturusuz
+    // düz yüzeylerdi; parlak/kalın düğmelerin yanında şekil dili tutmuyordu.
+    <View style={[{ backgroundColor: theme.shadowInk, borderRadius: r + 3, padding: 2.5, ...sh }, style]}>
       <View style={[{ backgroundColor: face, borderRadius: r, overflow: 'hidden', padding: 12 }, bodyStyle]}>
         {hero ? (
           <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -573,33 +647,86 @@ function GamePanel({ children, hero = false, tint, accentStripe, compact = false
 // ---- GameModal — THE dialog. Native Alert.alert is banned for game flows. ----
 // Spring pop-in + 160ms animated exit (scale/fade, scrim fades with it) +
 // pressed close gem. Keeps the Modal mounted during the exit animation.
+// ---- SafeModal — TÜM native pencerelerin tek kapısı ----
+// iOS'ta AYNI SEVİYEDEKİ iki modalı aynı anda sunmak UIKit'in sunum zincirini
+// kilitler: ekranda görünmez bir modal kalır, tüm dokunuşlar ölür ("uygulama
+// donuyor", çökme kaydı yok). Burada sunum modalTraffic slotundan geçer; slot
+// doluysa pencere SIRAYA girer ve öndeki kapanınca açılır.
+//
+// İÇ İÇE pencereler MUAF: bir modalın kendi ağacındaki modal (ör. Seviye
+// Yolu'nun içindeki onay penceresi) iOS'ta yasal bir zincirdir — onu da
+// sıraya alsaydık asla açılamaz, özellik ölürdü. Derinlik context ile taşınır.
+const ModalDepthCtx = createContext(0);
+
+function SafeModal({ visible = true, children, ...rest }: ComponentProps<typeof Modal>) {
+  const depth = useContext(ModalDepthCtx);
+  const nested = depth > 0;
+  // TABLETTE TAŞMA DÜZELTMESİ: modal içeriği, ölçekli tuvalin (ScaledRoot)
+  // transform'unu miras alır ama düzenini GERÇEK pencere genişliğine (ör.
+  // 1032pt) göre kurar; sonra 1.48x büyüyünce ekranın dışına taşar ve
+  // kenarlardan kesilir. İçeriği tuval ölçüsüne kilitleyip ortalıyoruz —
+  // ölçekten sonra ekranı tam doldurur.
+  const win = useWindowDimensions();
+  const canvas = canvasSizeFor(win.width, win.height);
+  const needsCanvasBox = canvas.width !== win.width;
+  const [present, setPresent] = useState(false);
+  useEffect(() => {
+    if (!visible) { setPresent(false); return undefined; }
+    if (nested) { setPresent(true); return undefined; }
+    return whenModalSlotFree(() => setPresent(true));
+  }, [visible, nested]);
+  useEffect(() => {
+    if (!present || nested) return undefined;
+    return acquireModalSlot();
+  }, [present, nested]);
+  return (
+    <Modal {...rest} visible={present}>
+      <ModalDepthCtx.Provider value={depth + 1}>
+        {needsCanvasBox ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: canvas.width, height: canvas.height }}>{children}</View>
+          </View>
+        ) : children}
+      </ModalDepthCtx.Provider>
+    </Modal>
+  );
+}
+
 export function GameModal({ visible, onClose, onExited, title, icon, danger = false, coach = false, children }: {
   visible: boolean; onClose: () => void; onExited?: () => void; title?: string; icon?: IoniconName; danger?: boolean; coach?: boolean; children: ReactNode;
 }) {
   const a = useRef(new Animated.Value(0)).current;
-  const [mounted, setMounted] = useState(visible);
+  const [mounted, setMounted] = useState(false);
   const onExitedRef = useRef(onExited);
   onExitedRef.current = onExited;
+  // Sunum sırası SafeModal'da (modalTraffic) — burada yalnız animasyon durumu.
   useEffect(() => {
-    if (visible) {
-      setMounted(true);
-      Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
-    } else {
-      Animated.timing(a, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
-        if (finished) {
-          setMounted(false);
-          onExitedRef.current?.(); // exit animation done — safe to hand off (no timer chains)
-        }
-      });
-    }
+    if (!visible) return;
+    setMounted(true);
+    Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
   }, [visible, a]);
-  if (!mounted && !visible) return null;
+  useEffect(() => {
+    if (visible) return;
+    Animated.timing(a, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
+      if (finished) {
+        setMounted(false);
+        onExitedRef.current?.(); // exit animation done — safe to hand off (no timer chains)
+      }
+    });
+  }, [visible, a]);
+  if (!mounted) return null;
   const clamped = a.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' });
-  // Broadcast Premium: one clean surface, hairline border, a single 3px accent
-  // strip along the top carries the modal's mood (danger red / coach green / gold).
+  // Pencere dili artık DÜĞMELERLE aynı aileden (satın alınan glossy set):
+  // kalın koyu kontur + iç açık pah + üst parlaklık + sıcak alt dudak. Eskiden
+  // pencereler ince-hairline "yayın grafiği" dilindeydi, düğmeler kalın oyuncak
+  // dilinde — ikisi bir arada yamalı duruyordu ("ne alaka bu buton bu UI").
   const strip = danger ? theme.danger : coach ? theme.primary : theme.accent;
+  // Düğme setinden ölçülen tonlar: dış kontur #79380C sınıfı koyu kahve-siyah,
+  // alt dudak sıcak turuncu (#AF773C), üst kenar açık.
+  const FRAME = '#0B1428';
+  const LIP = darken(strip, 0.35);
   return (
-    <Modal visible transparent animationType="none" onRequestClose={onClose}>
+    <SafeModal visible transparent animationType="none" onRequestClose={onClose}>
       <Animated.View style={{ flex: 1, backgroundColor: theme.scrim, opacity: clamped }}>
         {/* Inert the instant `visible` flips false — the 160ms exit must not be
             hit-testable (double-tapped confirms re-fired actions, e.g. double gem charges) */}
@@ -610,50 +737,65 @@ export function GameModal({ visible, onClose, onExited, title, icon, danger = fa
               width: '100%', maxWidth: 360,
               transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) }],
               opacity: clamped,
-              backgroundColor: theme.modalFace, borderRadius: 22, overflow: 'hidden',
+              // DÜĞME ANATOMİSİ (üç katman): koyu dış kontur → sıcak pah → yüz.
+              // Düğmelerde kontur her yanı sarar ve altta kalınlaşır; pencereler
+              // eskiden ince hairline'dı, bu yüzden yan yana yamalı duruyordu.
+              backgroundColor: FRAME, borderRadius: 28, padding: 3.5, paddingBottom: 6,
               ...shadowModal,
             }}
           >
-            <Pressable onPress={() => {}}>
-              {/* faint light-catching top edge (NOT a frame) + mood strip */}
-              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.06, zIndex: 6 }} />
-              <View style={{ height: 3, backgroundColor: strip }} />
+            <View style={{ backgroundColor: LIP, borderRadius: 24, padding: 2.5, paddingBottom: 4 }}>
+            {/* clip (mood band + corners) lives HERE, not on the shadow-casting
+                face above — iOS masksToBounds would kill the modal drop shadow */}
+            <Pressable onPress={() => {}} style={{ backgroundColor: theme.modalFace, borderRadius: 21, overflow: 'hidden' }}>
+              {/* üst pah + hafif cam parlaklığı (düğme yüzlerindeki gibi) */}
+              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.16, zIndex: 6 }} />
               {title ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingLeft: 20, paddingRight: 56, paddingTop: 16, paddingBottom: 2 }}>
-                  <View style={{ width: 4, height: 17, borderRadius: 2, backgroundColor: strip }} />
-                  {icon ? <Ionicons name={icon} size={16} color={strip} /> : null}
-                  <Text numberOfLines={1} style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15, letterSpacing: 1, textTransform: 'uppercase', flexShrink: 1 }}>{title}</Text>
+                <View style={{ backgroundColor: strip, paddingLeft: 18, paddingRight: 54, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 9, overflow: 'hidden' }}>
+                  <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.34 }} />
+                  <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2.5, backgroundColor: darken(strip, 0.42) }} />
+                  {icon ? <Ionicons name={icon} size={17} color={SKIN_LABEL_COLOR} /> : null}
+                  <Text numberOfLines={1} style={{ color: SKIN_LABEL_COLOR, fontFamily: 'Poppins-ExtraBold', fontSize: 15, letterSpacing: 1, textTransform: 'uppercase', flexShrink: 1, ...SKIN_LABEL_SHADOW }}>{title}</Text>
                 </View>
               ) : null}
-              <View style={{ padding: 20, paddingTop: title ? 12 : 20, gap: 12 }}>{children}</View>
+              <View style={{ padding: 20, paddingTop: title ? 16 : 20, gap: 12 }}>{children}</View>
               <Pressable
                 onPress={onClose}
                 hitSlop={8}
                 style={({ pressed }) => ({
-                  position: 'absolute', top: 12, right: 12, width: 32, height: 32, borderRadius: 16,
-                  backgroundColor: theme.well,
+                  position: 'absolute', top: title ? 7 : 12, right: 12, width: 32, height: 32, borderRadius: 16,
+                  backgroundColor: title ? darken(strip, 0.3) : theme.well,
+                  borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.3)',
                   alignItems: 'center', justifyContent: 'center', zIndex: 5,
                   transform: [{ scale: pressed ? 0.9 : 1 }],
                   opacity: pressed ? 0.8 : 1,
                 })}
               >
-                <Ionicons name="close" size={16} color={theme.textSub} />
+                <Ionicons name="close" size={16} color={title ? SKIN_LABEL_COLOR : theme.textSub} />
               </Pressable>
             </Pressable>
+            </View>
           </Animated.View>
         </Pressable>
       </Animated.View>
-    </Modal>
+    </SafeModal>
   );
 }
 
-// ---- RankBadge (unchanged) ---------------------------------------------------
+// ---- RankBadge ---------------------------------------------------------------
 function RankBadge({ rank, size = 28 }: { rank: number; size?: number }) {
   if (rank <= 3) {
     const c = [theme.gold, theme.silver, theme.bronze][rank - 1]!;
     return (
-      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.6)', borderBottomWidth: 2, borderBottomColor: darken(c), alignItems: 'center', justifyContent: 'center', shadowColor: c, shadowOpacity: 0.5, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 5 }}>
-        <Text style={{ color: theme.ink, fontFamily: 'Poppins-Black', fontSize: size * 0.46 }}>{rank}</Text>
+      // Glow rides the outer wrapper — overflow:'hidden' on the face (needed to
+      // clip the strips) kills a layer's own shadow on iOS. Top-light + bottom
+      // slice replace the per-side borders, which seam at the diagonals on a circle.
+      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c, shadowColor: c, shadowOpacity: 0.5, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 5 }}>
+        <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.16 }} />
+          <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: darken(c) }} />
+          <Text style={{ color: theme.ink, fontFamily: 'Poppins-Black', fontSize: size * 0.46 }}>{rank}</Text>
+        </View>
       </View>
     );
   }
@@ -767,15 +909,22 @@ function GameRow({ icon, iconColor = theme.accent, leading, label, sublabel, rig
   const face = selected ? theme.surface3 : theme.surface2;
   const fgLabel = locked ? theme.muted : theme.text;
   const body = (
+    // iOS clips a layer's own shadow under overflow:'hidden' → GamePanel split:
+    // outer carries shadowRow (+ caller style), inner face carries the clip.
     <Animated.View
       style={[{
         transform: [{ scale }],
-        flexDirection: 'row', alignItems: 'center', gap: 11,
-        backgroundColor: face, borderRadius: 14, overflow: 'hidden',
-        paddingVertical: 12, paddingHorizontal: 12, marginVertical: 4,
+        backgroundColor: face, borderRadius: 14, marginVertical: 4,
         ...shadowRow,
       }, style]}
     >
+      <View
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 11,
+          backgroundColor: face, borderRadius: 14, overflow: 'hidden',
+          paddingVertical: 12, paddingHorizontal: 12,
+        }}
+      >
       {/* prestige depth: top light + integrated bottom slice (no ring) */}
       <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: selected ? 0.14 : 0.07 }} />
       <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
@@ -804,6 +953,7 @@ function GameRow({ icon, iconColor = theme.accent, leading, label, sublabel, rig
         ) : (
           right ?? (chevron ? <Ionicons name="chevron-forward" size={16} color={theme.muted} /> : null)
         )}
+      </View>
     </Animated.View>
   );
   if (!onPress) return body;
@@ -818,17 +968,23 @@ function GameRow({ icon, iconColor = theme.accent, leading, label, sublabel, rig
 function Ribbon({ label, color = theme.accent, icon, style }: { label: string; color?: string; icon?: IoniconName; style?: any }) {
   const fg = color === theme.danger ? theme.text : theme.ink;
   return (
-    <View
-      style={[{
-        flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-start',
-        backgroundColor: color, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3,
-        borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.4)',
-        borderBottomWidth: 2, borderBottomColor: darken(color, 0.4),
-        shadowColor: color, shadowOpacity: 0.35, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 4,
-      }, style]}
-    >
-      {icon ? <Ionicons name={icon} size={10} color={fg} /> : null}
-      <Text style={{ color: fg, fontSize: 9.5, fontFamily: 'Poppins-Black', letterSpacing: 1, textTransform: 'uppercase' }}>{label}</Text>
+    // Btn 3.0 recipe: colored glow rides the outer wrapper (overflow:'hidden'
+    // clips a layer's own shadow on iOS); top-light + integrated bottom slice
+    // replace the per-side borders, which seam mid-arc on rounded corners.
+    <View style={[{ alignSelf: 'flex-start', backgroundColor: color, borderRadius: 8, shadowColor: color, shadowOpacity: 0.35, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 4 }, style]}>
+      <View
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 3,
+          backgroundColor: color, borderRadius: 8, paddingHorizontal: 8,
+          paddingTop: 4, paddingBottom: 5, // old paddingVertical 3 + removed 1px/2px borders — same footprint
+          overflow: 'hidden',
+        }}
+      >
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.16 }} />
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: darken(color, 0.4), opacity: 0.85 }} />
+        {icon ? <Ionicons name={icon} size={10} color={fg} /> : null}
+        <Text style={{ color: fg, fontSize: 9.5, fontFamily: 'Poppins-Black', letterSpacing: 1, textTransform: 'uppercase' }}>{label}</Text>
+      </View>
     </View>
   );
 }
@@ -865,11 +1021,24 @@ function EmptyState({ icon, title, hint, cta, style }: { icon: IoniconName; titl
 // with two faint warm/cool glows. Replaces the old football-pitch pattern.
 // Full-screen patterned background (navy, Clash-Royale-like): deep-blue gradient
 // + a faint diagonal stripe pattern + soft glows. Sits behind every screen.
-const SCREEN_W = Dimensions.get('window').width;
-const SCREEN_H = Dimensions.get('window').height;
+// Tuval boyutu: tablette gerçek pencere değil, ölçeklenen telefon tuvali
+// (App.tsx ScaledRoot) — animasyon/ızgara matematiği bunun içinde kalmalı.
+// Ölçekli tuvalin ölçüsü — bileşen içi Dimensions okumaları bunu kullanır.
+function canvasSize(): { width: number; height: number } {
+  const { width, height } = Dimensions.get('window');
+  return canvasSizeFor(width, height);
+}
+
+const SCREEN_W = canvasSize().width;
+const SCREEN_H = canvasSize().height;
 export const BG_TOP = '#0E2347'; // navy shown behind the bg image (frame before load / root)
 export type BgVariant = 'home' | 'stadium' | 'store' | 'menu' | 'match';
 const BG_HOME = require('../assets/bg-home.png');   // royal-blue arena backdrop (legacy home)
+// Faint ball watermark for the hero Play button (mockup's green face).
+const BALL_WATERMARK = require('../assets/ball-card-white.png');
+// Hero Play button face, sampled from the mockup.
+const HERO_PLAY_MID = '#198C65';
+const HERO_PLAY_LIP = '#073E2D';   // deeper than the face's #0B5B42 foot
 const BG_STORE = require('../assets/bg-store.png');  // violet gem-shop backdrop (Mağaza)
 const BG_MENU = require('../assets/bg-menu.png');    // calm navy backdrop (collection/friends/sub-screens)
 // Night-stadium photograph behind HOME v4 — the one asset the whole home look rests
@@ -911,14 +1080,44 @@ export function ScreenBg({ variant = 'menu' }: { variant?: BgVariant }) {
             <Stop offset="0.70" stopColor="#06101F" stopOpacity={0.40} />
             <Stop offset="1" stopColor="#06101F" stopOpacity={0.84} />
           </SvgGradient>
+          <SvgGradient id="bgstripe" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.038} />
+            <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0.012} />
+          </SvgGradient>
         </Defs>
+        {/* Baturalp'in diyagonal ince çizgileri (origin/main) — bgshade/bgphoto üstünü örter */}
+        {Array.from({ length: 30 }).map((_, i) => {
+          const x = -SCREEN_W + i * 72;
+          return (
+            <Line
+              key={`stripe-${i}`}
+              x1={x}
+              y1={0}
+              x2={x + SCREEN_H * 1.25}
+              y2={SCREEN_H}
+              stroke="url(#bgstripe)"
+              strokeWidth={1.2}
+            />
+          );
+        })}
         <Rect x="0" y="0" width="100%" height="100%" fill={photo ? 'url(#bgphoto)' : 'url(#bgshade)'} />
       </Svg>
     </View>
   );
 }
 
-function Screen({ children, scroll, bg, pad, contentCenter = true }: { children: ReactNode; scroll?: boolean; noPitch?: boolean; bg?: ReactNode; pad?: number; contentCenter?: boolean }) {
+function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = false, lockWhenFits = false }: { children: ReactNode; scroll?: boolean; noPitch?: boolean; bg?: ReactNode; pad?: number; contentCenter?: boolean; fillTablet?: boolean; lockWhenFits?: boolean }) {
+  // iPad = telefon düzeninin ORTALANMIŞ hâli (kullanıcı kuralı, layout.ts).
+  // `fillTablet` (dikey yayma) BİLEREK devre dışı: kartların arasını açıp
+  // telefondan farklı bir ekran üretiyordu. Prop imzada kalıyor — çağrı yerleri
+  // dokunulmadan kaldı ve ileride tekrar istenirse tek yerden açılır.
+  void fillTablet;
+  const isTablet = useIsTablet();
+  const maxW = useContentMaxWidth();
+  // lockWhenFits: measured, not assumed — scrolling turns off only when the
+  // content genuinely fits the viewport, so small phones keep scrolling.
+  const [vpH, setVpH] = useState(0);
+  const [contentH, setContentH] = useState(0);
   // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
   return (
     <KeyboardAvoidingView
@@ -946,14 +1145,19 @@ function Screen({ children, scroll, bg, pad, contentCenter = true }: { children:
       {scroll ? (
         <ScrollView
           style={{ flex: 1 }}
+          onLayout={(e) => setVpH(e.nativeEvent.layout.height)}
+          onContentSizeChange={(_w, h) => setContentH(h)}
+          scrollEnabled={!lockWhenFits || contentH > vpH + 2}
           contentContainerStyle={{ flexGrow: 1, justifyContent: contentCenter ? 'center' : 'flex-start' }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets
         >
-          {children}
+          {maxW ? <View style={{ width: '100%', maxWidth: maxW, alignSelf: 'center' }}>{children}</View> : children}
         </ScrollView>
-      ) : children}
+      ) : (
+        maxW ? <View style={{ flex: 1, width: '100%', maxWidth: maxW, alignSelf: 'center' }}>{children}</View> : children
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -972,20 +1176,22 @@ function SkipChip({ onPress, style }: { onPress: () => void; style?: any }) {
   return (
     <Pressable onPress={onPress} hitSlop={10} style={style}>
       {({ pressed }) => (
-        <View
-          style={{
-            flexDirection: 'row', alignItems: 'center', gap: 4,
-            backgroundColor: theme.surface2,
-            borderRadius: 12, paddingHorizontal: 12, paddingVertical: 7,
-            borderTopWidth: 1, borderTopColor: theme.topLight,
-            overflow: 'hidden',
-            transform: [{ scale: pressed ? 0.97 : 1 }],
-            ...shadowRow,
-          }}
-        >
-          {pressed ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#04091A', opacity: 0.1 }]} /> : null}
-          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12, ...engrave('sm') }}>{t('common.skip')}</Text>
-          <Ionicons name="chevron-forward" size={12} color={theme.muted} />
+        // iOS clips a layer's own shadow under overflow:'hidden' → GamePanel
+        // split: outer carries shadowRow, inner face carries the clip.
+        <View style={{ backgroundColor: theme.surface2, borderRadius: 12, transform: [{ scale: pressed ? 0.97 : 1 }], ...shadowRow }}>
+          <View
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 4,
+              backgroundColor: theme.surface2,
+              borderRadius: 12, paddingHorizontal: 12, paddingVertical: 7,
+              borderTopWidth: 1, borderTopColor: theme.topLight,
+              overflow: 'hidden',
+            }}
+          >
+            {pressed ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#04091A', opacity: 0.1 }]} /> : null}
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12, ...engrave('sm') }}>{t('common.skip')}</Text>
+            <Ionicons name="chevron-forward" size={12} color={theme.muted} />
+          </View>
         </View>
       )}
     </Pressable>
@@ -1012,23 +1218,25 @@ function IntroSlide({ slide, index, active, scrollX }: { slide: (typeof INTRO_SL
           </>
         ) : (
           <>
-            {/* Slides 2–3 — beveled badge tile in the BrandMark construction:
-                panelInk face, slide-color ring, darkened lip, top-half gloss,
-                one-shot ShineSweep when the page gains focus. */}
-            <View
-              style={{
-                width: INTRO_TILE, height: INTRO_TILE, borderRadius: INTRO_TILE * 0.24,
-                backgroundColor: theme.panelInk,
-                borderWidth: 2, borderColor: slide.color,
-                borderBottomWidth: 5, borderBottomColor: darken(slide.color),
-                alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-                marginBottom: 26,
-                shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 8,
-              }}
-            >
-              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '50%', backgroundColor: '#FFFFFF', opacity: 0.05 }} />
-              <Ionicons name={slide.icon} size={72} color={slide.color} />
-              {active ? <ShineSweep width={INTRO_TILE} height={INTRO_TILE} delay={260} duration={700} opacity={0.3} band={0.3} /> : null}
+            {/* Slides 2–3 — badge tile in the Broadcast Prestige idiom: panelInk
+                face + uniform slide-color ring + 1px top-light + integrated bottom
+                slice; navy shadow rides the outer wrapper because overflow:'hidden'
+                (needed for the strips + ShineSweep) clips a layer's own shadow on
+                iOS. One-shot ShineSweep when the page gains focus. */}
+            <View style={{ backgroundColor: theme.panelInk, borderRadius: INTRO_TILE * 0.24, marginBottom: 26, shadowColor: theme.shadowInk, shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}>
+              <View
+                style={{
+                  width: INTRO_TILE, height: INTRO_TILE, borderRadius: INTRO_TILE * 0.24,
+                  backgroundColor: theme.panelInk,
+                  borderWidth: 2, borderColor: slide.color,
+                  alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                }}
+              >
+                <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.16 }} />
+                <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: darken(slide.color) }} />
+                <Ionicons name={slide.icon} size={72} color={slide.color} />
+                {active ? <ShineSweep width={INTRO_TILE} height={INTRO_TILE} delay={260} duration={700} opacity={0.3} band={0.3} /> : null}
+              </View>
             </View>
             <Text style={{ color: theme.text, fontSize: 26, fontFamily: 'Poppins-Black', letterSpacing: 1, textAlign: 'center', marginBottom: 12, ...engrave('lg') }}>{t(slide.titleKey)}</Text>
           </>
@@ -1376,7 +1584,7 @@ export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => voi
 const LOADING_TIPS: MessageKey[] = ['loading.tip1', 'loading.tip2', 'loading.tip3', 'loading.tip4'];
 const LOAD_BAR_H = 24;
 const LOAD_BAR_W = SCREEN_W - 48;      // bottom block spans 24px side margins
-const LOAD_BAR_INNER = LOAD_BAR_W - 8; // minus 2px frame border + 2px well padding per side
+const LOAD_BAR_INNER = LOAD_BAR_W - 4; // minus the well's 2px padding per side — there is no frame border; -8 left the slab 4px short of the track at 100%
 export function LoadingScreen({ state, actions, onReady }: Props & { onReady: () => void }) {
   const [pct, setPct] = useState(0);
   const done = useRef(false);
@@ -1605,9 +1813,12 @@ function TutorialHint({ visible, text }: { visible: boolean; text: string }) {
     <Animated.View
       pointerEvents="none"
       style={{
-        position: 'absolute', top: 96, left: 16, right: 16, alignItems: 'center',
+        // Anchored to the BOTTOM: the compact pick/guess tops left no clear band
+        // up there — at top:96 the bubble sat on the player bar + title row.
+        // The lower third is empty in both tutorial steps, so it floats there.
+        position: 'absolute', bottom: 96, left: 16, right: 16, alignItems: 'center',
         opacity: a,
-        transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [-12, 0] }) }],
+        transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
       }}
     >
       <View style={{ backgroundColor: theme.card, borderRadius: 12, borderWidth: 1, borderColor: theme.primary, paddingVertical: 10, paddingHorizontal: 16, maxWidth: '100%' }}>
@@ -1664,6 +1875,31 @@ function CelebrationSparks() {
 // Cycles the REAL match/social screens with the tutorial's mock data (real club
 // crests) so clean marketing screenshots can be captured in the simulator without
 // tap automation. Enabled by the DEV_SHOT flag in App.tsx; never ships enabled.
+// Screenshot data is FICTIONAL on purpose: App Review rejected v1.0 under 4.1
+// (copycats) citing "Galatasaray–Real Madrid / Wesley Sneijder" in metadata.
+// Store screenshots must never show real clubs/players again — the in-app
+// tutorial keeps real crests (in-app content was not cited), but DevShot feeds
+// the marketing captures, so it uses the approved fictional set.
+const SHOT_CLUBS: ClubRef[] = [
+  { id: 9001, name: 'Zirve SK', logoUrl: null },
+  { id: 9002, name: 'Liman SK', logoUrl: null },
+  { id: 9003, name: 'Vadi SK', logoUrl: null },
+  { id: 9004, name: 'Nehir SK', logoUrl: null },
+  { id: 9005, name: 'Kuzey SK', logoUrl: null },
+  { id: 9006, name: 'Orman SK', logoUrl: null },
+];
+const SHOT_TEAM_A: ClubRef = SHOT_CLUBS[0]!;
+const SHOT_TEAM_B: ClubRef = SHOT_CLUBS[1]!;
+const SHOT_CAREER = [
+  { clubId: 9003, clubName: 'Vadi SK', logoUrl: null, startYear: 2014, endYear: 2017 },
+  { clubId: 9002, clubName: 'Liman SK', logoUrl: null, startYear: 2017, endYear: 2020 },
+  { clubId: 9001, clubName: 'Zirve SK', logoUrl: null, startYear: 2020, endYear: 2024 },
+  { clubId: 9005, clubName: 'Kuzey SK', logoUrl: null, startYear: 2024, endYear: null },
+];
+const SHOT_SPELL_A = [SHOT_CAREER[2]!]; // Zirve SK
+const SHOT_SPELL_B = [SHOT_CAREER[1]!]; // Liman SK
+const SHOT_PLAYER = 'Onur Demir';
+
 const SHOT_PROFILE = {
   ...TUT_PROFILE, displayName: 'Yağız', trophies: 340, diamonds: 1250, wins: 27, losses: 9,
 };
@@ -1681,7 +1917,7 @@ export function DevShotScreen() {
   }, []);
   const kind = (['pick', 'guess', 'result', 'friends', 'arenas'] as const)[ix]!;
   const insets = useSafeAreaInsets();
-  const future = Date.now() + 3600_000;
+  const future = Date.now() + 23_000; // sayaç ekranda ~20sn gibi doğal görünsün (3600 değil)
   const room = {
     code: '', status: (kind === 'pick' ? 'pick' : kind === 'guess' ? 'guess' : 'result') as RoomView['status'],
     youId: 'you',
@@ -1697,30 +1933,31 @@ export function DevShotScreen() {
     room,
     phase: kind === 'pick' ? 'pick' : kind === 'guess' ? 'guess' : 'result',
     pickRole: 'team', picked: false, pickEndsAt: future, guessEndsAt: future,
-    clubResults: TUT_CLUBS,
-    teams: { teamA: TUT_A, teamB: TUT_B },
+    clubResults: SHOT_CLUBS,
+    teams: { teamA: SHOT_TEAM_A, teamB: SHOT_TEAM_B },
     revealMode: 'team-team', matchOver: false,
     friends: SHOT_FRIENDS as GameState['friends'],
     result: kind === 'result'
       ? {
           correct: true, reason: 'both', autocorrected: false,
-          answeredById: 'you', answeredByName: 'Yağız', guess: 'Wesley Sneijder',
-          teamA: TUT_A, teamB: TUT_B,
-          matchedPlayerName: 'Wesley Sneijder', matchedPlayerImageUrl: null,
-          spellsA: TUT_SPELL_A, spellsB: TUT_SPELL_B, allClubs: TUT_CAREER,
-          commonPlayers: [{ name: 'Wesley Sneijder', imageUrl: null }],
+          answeredById: 'you', answeredByName: 'Yağız', guess: SHOT_PLAYER,
+          teamA: SHOT_TEAM_A, teamB: SHOT_TEAM_B,
+          matchedPlayerName: SHOT_PLAYER, matchedPlayerImageUrl: null,
+          spellsA: SHOT_SPELL_A, spellsB: SHOT_SPELL_B, allClubs: SHOT_CAREER,
+          commonPlayers: [{ name: SHOT_PLAYER, imageUrl: null }],
         }
       : null,
   };
   const acts = new Proxy({}, { get: () => () => {} }) as unknown as Actions;
   const matchLike = kind === 'pick' || kind === 'guess' || kind === 'result';
   return (
-    // +84: content sits BELOW Expo Go's floating Tools bubble, so the bubble
-    // lands on plain navy and can be painted out of the capture cleanly.
+    // Capture pipeline: +84 reserves a band for Expo Go's Tools bubble, and the
+    // background is SOLID navy (no ScreenBg crosshatch) on purpose — post-
+    // processing erases the bubble and cuts the band out seamlessly, which a
+    // patterned background would make impossible without visible seams.
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top + 84 }}>
-      <ScreenBg variant={matchLike ? 'match' : 'menu'} />
       {kind === 'pick' ? <PickTeamScreen state={st} actions={acts} tutorial />
-        : kind === 'guess' ? <GuessScreen state={st} actions={acts} tutorial />
+        : kind === 'guess' ? <GuessScreen state={st} actions={acts} tutorial prefill={SHOT_PLAYER} />
         : kind === 'result' ? <ResultScreen state={st} actions={acts} tutorial />
         : kind === 'friends' ? <FriendsScreen state={st} actions={acts} />
         : <ArenasScreen state={st} actions={acts} />}
@@ -1740,7 +1977,9 @@ export function TutorialScreen({ onDone }: { onDone: () => void }) {
     Animated.spring(bubble, { toValue: 1, useNativeDriver: true, friction: 7, tension: 80 }).start();
   }, [step, wrong, gateOpen]);
 
-  const future = Date.now() + 9_999_999;
+  // Sane practice countdown — 9_999_999 rendered as a nonsense "9986" in the
+  // pick/guess timer pill. Nothing depends on it expiring (actions are no-ops).
+  const future = Date.now() + 95_000;
   const room = {
     code: '', status: (step === 0 ? 'pick' : step === 1 ? 'guess' : 'result') as RoomView['status'],
     youId: 'you',
@@ -1908,7 +2147,7 @@ function TransientCallout({ emoteId, onDone }: { emoteId: string; onDone?: () =>
   const by = bob.interpolate({ inputRange: [0, 1], outputRange: [0, -7] });
   const op = a.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0, 1, 1] });
   return (
-    <Animated.View style={{ opacity: op, transform: [{ scale }, { rotate: rot }, { translateY: by }] }}>
+    <Animated.View pointerEvents="none" style={{ opacity: op, transform: [{ scale }, { rotate: rot }, { translateY: by }] }}>
       <EmoteCallout id={emoteId} />
     </Animated.View>
   );
@@ -1923,16 +2162,17 @@ function EmoteCoin({ onPress, size = 52, style }: { onPress: () => void; size?: 
   const { ty, onIn, onOut } = usePressLip(2);
   return (
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} hitSlop={6} style={style}>
-      <View style={{ backgroundColor: theme.accentDark, borderRadius: size / 2 + 2, paddingBottom: 3, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 6 }}>
+      <View style={{ backgroundColor: theme.accentDark, borderRadius: size / 2, paddingBottom: 3, shadowColor: theme.shadowInk, shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 6 }}>
         <Animated.View
           style={{
             transform: [{ translateY: ty }],
             width: size, height: size, borderRadius: size / 2,
             backgroundColor: theme.accent,
-            borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.30)',
-            alignItems: 'center', justifyContent: 'center',
+            alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
           }}
         >
+          {/* top-light overlay, not a borderTop — per-side border colors seam at the diagonals on a circle */}
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.16 }} />
           <Ionicons name="chatbubble-ellipses" size={Math.round(size * 0.46)} color={theme.ink} />
         </Animated.View>
       </View>
@@ -1992,6 +2232,7 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
   const showTheirs = theirs && theirs.n > dismissedOpp.current;
   const showMine = mine && mine.n > dismissedMine.current;
 
+
   return (
     <>
       <View pointerEvents="none" style={styles.emoteTop}>
@@ -2009,7 +2250,7 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
         />
       ) : null}
 
-      <Modal visible={open || sheetMounted} transparent animationType="none" onRequestClose={() => setOpen(false)}>
+      <SafeModal visible={open || sheetMounted} transparent animationType="none" onRequestClose={() => setOpen(false)}>
         <Animated.View style={[styles.emoteSheetBackdrop, { opacity: sheetA.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }) }]}>
           <Pressable style={{ flex: 1 }} onPress={() => setOpen(false)} />
           <Animated.View style={{ transform: [{ translateY: sheetA.interpolate({ inputRange: [0, 1], outputRange: [440, 0] }) }] }}>
@@ -2057,7 +2298,7 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
             </View>
           </Animated.View>
         </Animated.View>
-      </Modal>
+      </SafeModal>
     </>
   );
 }
@@ -2260,8 +2501,24 @@ const MODE_ICON: Record<GameMode, IoniconName> = {
   'player-player': 'people',
 };
 
+// Transfermarkt competition code → league display name. The server's /scopes
+// endpoint sends leagues as raw TM codes (the clubs.league column: TR1, GB1…)
+// with no displayName, so we map them here on the client (also fixes codes
+// already cached in AsyncStorage). Codes verified against live /scopes data;
+// unknown codes fall back to the raw value.
+const LEAGUE_DISPLAY: Record<string, string> = {
+  TR1: 'Süper Lig',
+  GB1: 'Premier League',
+  ES1: 'LaLiga',
+  IT1: 'Serie A',
+  L1: 'Bundesliga',
+  FR1: 'Ligue 1',
+  NL1: 'Eredivisie',
+  PO1: 'Liga Portugal',
+};
+
 function scopeLabel(scope: Scope): string {
-  return scope.type === 'all' ? t('scope.all') : scope.value;
+  return scope.type === 'all' ? t('scope.all') : (LEAGUE_DISPLAY[scope.value] ?? scope.value);
 }
 
 // Bot-dialog pages (difficulty home + mode/scope pickers) — ONE mounted GameModal
@@ -2536,7 +2793,8 @@ function arenaColor(name: string): string {
 function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void }) {
   const press = useRef(new Animated.Value(0)).current;
   const [w, setW] = useState(0);
-  const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, 5] });
+  const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, 4] });
+  const skin = BTN_SKINS.green;
   return (
     <Pressable
       onPress={onPress}
@@ -2544,31 +2802,36 @@ function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void })
       onPressOut={() => Animated.timing(press, { toValue: 0, duration: PRESS_OUT_MS, useNativeDriver: true }).start()}
       style={{ marginVertical: 4 }}
     >
-      <View style={{ backgroundColor: darken(theme.primary, 0.4), borderRadius: 22, paddingBottom: 6, shadowColor: theme.primaryDark, shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}>
-        <Animated.View
-          onLayout={(e) => setW(e.nativeEvent.layout.width)}
-          style={{ transform: [{ translateY: ty }], backgroundColor: theme.primary, borderRadius: 18, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+      {/* Gövde artık satın alınan "glossy" setinin 9-dilim yeşil düğmesi
+          (BTN_SKINS). Ölçülmüş SVG degrade + ayrı dudak katmanı kaldırıldı:
+          asset zaten kendi kavisini, parlaklığını ve alt dudağını taşıyor.
+          Korunanlar: hafif basma çökmesi, top filigranı ve eğik etiket. */}
+      <Animated.View
+        onLayout={(e) => setW(e.nativeEvent.layout.width)}
+        style={{ transform: [{ translateY: ty }], height: 64, justifyContent: 'center' }}
+      >
+        <Image
+          source={skin.src}
+          resizeMode="stretch"
+          capInsets={skin.caps}
+          style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, width: undefined, height: undefined }}
+        />
+        <View pointerEvents="none" style={{ position: 'absolute', right: -10, top: -6, width: 92, height: 92, opacity: 0.13 }}>
+          <Image source={BALL_WATERMARK} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+        </View>
+        {w > 0 ? <ShineSweep width={w} height={64} loop delay={1600} duration={800} loopGap={3600} opacity={0.18} band={0.2} /> : null}
+        {/* Etiket: setin basılı yazısı gibi koyu gövde + açık dış hat; eğim
+            transform ile (Poppins burada italik kesim taşımıyor). */}
+        <Text
+          numberOfLines={1}
+          style={{
+            color: SKIN_LABEL_COLOR, fontSize: 23, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.8,
+            textAlign: 'center', transform: [{ skewX: '-9deg' }], ...SKIN_LABEL_SHADOW,
+          }}
         >
-          <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
-            <Defs>
-              <SvgGradient id="heroPlayG" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={lighten(theme.primary, 0.52)} />
-                <Stop offset="0.5" stopColor={theme.primary} />
-                <Stop offset="1" stopColor={darken(theme.primary, 0.3)} />
-              </SvgGradient>
-              <SvgGradient id="heroPlayGloss" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.5" />
-                <Stop offset="0.55" stopColor="#FFFFFF" stopOpacity="0.06" />
-                <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
-              </SvgGradient>
-            </Defs>
-            <Rect width="100%" height="100%" fill="url(#heroPlayG)" />
-            <Rect x={5} y={3} rx={15} width="94%" height="54%" fill="url(#heroPlayGloss)" />
-          </Svg>
-          {w > 0 ? <ShineSweep width={w} height={64} loop delay={1600} duration={800} loopGap={3600} opacity={0.22} band={0.2} /> : null}
-          <Text numberOfLines={1} style={{ color: theme.text, fontSize: 22, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.8, textShadowColor: 'rgba(4,9,24,0.55)', textShadowOffset: { width: 0, height: 1.5 }, textShadowRadius: 1.5 }}>{label}</Text>
-        </Animated.View>
-      </View>
+          {label}
+        </Text>
+      </Animated.View>
     </Pressable>
   );
 }
@@ -2657,7 +2920,7 @@ function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName
                 <GemIcon size={13} />
               </View>
             )}
-            onPress={() => { if (diamonds < 1000) onNeedDiamonds(); else setRenameOpen(true); }}
+            onPress={() => { if (diamonds < 1000) { setPendingShortfall(1000 - diamonds); onNeedDiamonds(); } else setRenameOpen(true); }}
           />
 
           <ChangeNameModal
@@ -2824,95 +3087,163 @@ function PopupCard({ visible, title, icon, onClose, children }: {
   // Spring pop-in + 160ms animated exit (scrim fades with the same value) —
   // centered cards never use animationType='fade'/'slide' (spec §7).
   const a = useRef(new Animated.Value(0)).current;
-  const [mounted, setMounted] = useState(visible);
+  const [mounted, setMounted] = useState(false);
+  // Sunum sırası SafeModal'da (modalTraffic) — burada yalnız animasyon durumu.
   useEffect(() => {
-    if (visible) {
-      setMounted(true);
-      Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
-    } else {
-      Animated.timing(a, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
-        if (finished) setMounted(false);
-      });
-    }
+    if (!visible) return;
+    setMounted(true);
+    Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
   }, [visible, a]);
-  if (!mounted && !visible) return null;
+  useEffect(() => {
+    if (visible) return;
+    Animated.timing(a, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
+      if (finished) setMounted(false);
+    });
+  }, [visible, a]);
+  if (!mounted) return null;
   const clamped = a.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' });
   return (
-    <Modal visible transparent animationType="none" onRequestClose={onClose}>
+    <SafeModal visible transparent animationType="none" onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 18 }}>
         {/* Backdrop catches outside taps. It is a SIBLING of the card (not a parent),
             so it never swallows the inner ScrollView's scroll gestures. */}
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim, opacity: clamped }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         </Animated.View>
-        <Animated.View style={{ opacity: clamped, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }) }], backgroundColor: theme.modalFace, borderRadius: 22, maxHeight: '80%', overflow: 'hidden', ...shadowModal }}>
-          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.06, zIndex: 6 }} />
-          <View style={{ height: 3, backgroundColor: theme.accent }} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 18, paddingTop: 13, paddingBottom: 11 }}>
-            <View style={{ width: 4, height: 17, borderRadius: 2, backgroundColor: theme.accent }} />
-            <Ionicons name={icon} size={17} color={theme.accent} />
-            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 16, letterSpacing: 0.6, flex: 1 }} numberOfLines={1}>{title}</Text>
+        {/* GameModal ile AYNI üç katmanlı düğme anatomisi: koyu dış kontur →
+            altın pah → yüz. Bu pencere (lider tablosu / müsabaka geçmişi /
+            yenilikler) eskiden ince-hairline dildeydi ve düğmelerin yanında
+            başka bir uygulamadan gelmiş gibi duruyordu. */}
+        <Animated.View style={{ opacity: clamped, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }) }], backgroundColor: '#0B1428', borderRadius: 28, padding: 3.5, paddingBottom: 6, maxHeight: '80%', ...shadowModal }}>
+        <View style={{ backgroundColor: darken(theme.accent, 0.35), borderRadius: 24, padding: 2.5, paddingBottom: 4, overflow: 'hidden' }}>
+        <View style={{ backgroundColor: theme.modalFace, borderRadius: 21, overflow: 'hidden' }}>
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.16, zIndex: 6 }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 18, paddingVertical: 11, backgroundColor: theme.accent, overflow: 'hidden' }}>
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.34 }} />
+            <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2.5, backgroundColor: darken(theme.accent, 0.42) }} />
+            <Ionicons name={icon} size={17} color={SKIN_LABEL_COLOR} />
+            <Text style={{ color: SKIN_LABEL_COLOR, fontFamily: 'Poppins-ExtraBold', fontSize: 15, letterSpacing: 1, textTransform: 'uppercase', flex: 1, ...SKIN_LABEL_SHADOW }} numberOfLines={1}>{title}</Text>
             <Pressable
               onPress={onClose}
               hitSlop={10}
               style={({ pressed }) => ({
                 width: 32, height: 32, borderRadius: 16,
-                backgroundColor: theme.well,
+                backgroundColor: darken(theme.accent, 0.3),
+                borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.3)',
                 alignItems: 'center', justifyContent: 'center',
                 transform: [{ scale: pressed ? 0.9 : 1 }],
                 opacity: pressed ? 0.8 : 1,
               })}
             >
-              <Ionicons name="close" size={16} color={theme.textSub} />
+              <Ionicons name="close" size={16} color={SKIN_LABEL_COLOR} />
             </Pressable>
           </View>
-          <View style={{ height: 1, backgroundColor: theme.hairline }} />
           {children}
+        </View>
+        </View>
         </Animated.View>
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 
 // ---- News / announcements feed (opened from the Home bell icon) ----
 // Static for now; swap NEWS for a server `/news` fetch later without touching the UI
 // or the bell wiring. Newest item first — its id drives the unread pip.
-type NewsItem = { id: string; date: string; title: string; body: string; icon: any; tint: string };
+// Etiketli, ISO tarihli haber modeli. "Etiket yok + nokta ayraçlı mutlak tarih"
+// ikilisi, akışı editoryal değil ÜRETİLMİŞ gösteren en belirgin izlerdendi.
+type NewsItem = { id: string; tag: string; date: string; title: string; body: string; icon: any; tint: string };
 const NEWS: NewsItem[] = [
-  { id: '2026-07-20-ball', date: '20.07.2026', icon: 'football', tint: theme.gold,
+  { id: '2026-07-20-ball', tag: 'YENİ İFADE', date: '2026-07-20', icon: 'football', tint: theme.gold,
     title: 'Yeni: Zıplayan Top emote!',
     body: "Mağaza'dan Zıplayan Top premium emote'unu al, maç içinde rakibini şaşırt. Koleksiyondan loadout'una ekle." },
-  { id: '2026-07-14-social', date: '14.07.2026', icon: 'people', tint: theme.primary,
+  { id: '2026-07-14-social', tag: 'YENİ ÖZELLİK', date: '2026-07-14', icon: 'people', tint: theme.primary,
     title: 'Sosyal Paket geldi',
     body: 'Ülke-Takım ve Harf-Takım modlarını arkadaşlarınla oyna. Haftalık veya aylık Sosyal Paket ile kilidi aç.' },
-  { id: '2026-07-01-arena', date: '01.07.2026', icon: 'trophy', tint: theme.accent,
+  { id: '2026-07-01-arena', tag: 'REKABET', date: '2026-07-01', icon: 'trophy', tint: theme.accent,
     title: 'Arenalar ve kupalar',
     body: "Maç kazandıkça kupa topla, Mahalle Sahası'ndan GOAT'a yüksel. Her arena atlayışında elmas ödülü seni bekliyor." },
-  { id: 'welcome', date: '01.06.2026', icon: 'sparkles', tint: theme.blue,
+  { id: 'welcome', tag: 'HOŞ GELDİN', date: '2026-06-01', icon: 'sparkles', tint: theme.blue,
     title: "Crossover'a hoş geldin!",
     body: "İki takım seç; ikisinde de oynamış futbolcuyu ilk yazan kazanır. Bot'a karşı çalış, arkadaşınla oda kur ya da hızlı eşleşmeye gir." },
 ];
 export const LATEST_NEWS_ID = NEWS[0]?.id ?? '';
 export const NEWS_READ_KEY = '@crossover_news_read';
 
-export function NewsModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+// Göreli zaman — mutlak "20.07.2026" yerine. Bir haftadan eskiler kısa mutlak.
+function relDate(iso: string): string {
+  const ts = new Date(iso).getTime();
+  if (!Number.isFinite(ts)) return iso;
+  const days = Math.floor((Date.now() - ts) / 86_400_000);
+  if (days <= 0) return t('time.today');
+  if (days === 1) return t('time.yesterday');
+  if (days < 7) return t('time.daysAgo', { n: String(days) });
+  const d = new Date(ts);
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// Kategori çipi — her gerçek oyun haberinin taşıdığı editoryal işaret.
+function NewsTag({ label, tint }: { label: string; tint: string }) {
   return (
-    <PopupCard visible={visible} title="Haberler" icon="megaphone" onClose={onClose}>
+    <View style={{ backgroundColor: tint, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2.5, overflow: 'hidden' }}>
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.3 }} />
+      <Text style={{ color: SKIN_LABEL_COLOR, fontFamily: 'Poppins-Black', fontSize: 9, letterSpacing: 0.8 }}>{label}</Text>
+    </View>
+  );
+}
+
+// Bölüm başlığı: etiket + sağa doğru incelen çizgi (kenara DAYANMAZ).
+function SectionLabel({ label }: { label: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14, marginBottom: 2 }}>
+      <Text style={{ color: theme.muted, fontFamily: 'Poppins-Black', fontSize: 11, letterSpacing: 1.2 }}>{label}</Text>
+      <View style={{ flex: 1, height: 1, backgroundColor: theme.hairline }} />
+      <View style={{ width: 28 }} />
+    </View>
+  );
+}
+
+// Tek haber satırı. Eski hâlindeki 38pt "renkli çerçeveli ikon kutucuğu" şablon
+// izinin ta kendisiydi: artık çerçevesiz, tint'in %18 alfasıyla dolu 64pt disk.
+// Metin sütunu her satırda aynı x'te (12+64+12=88) başlar → başlıklar hizalanır.
+function NewsRow({ item, unread }: { item: NewsItem; unread: boolean }) {
+  return (
+    <View style={{ backgroundColor: theme.surface2, borderRadius: 16, overflow: 'hidden', ...shadowRow }}>
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.07 }} />
+      {unread ? <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, backgroundColor: item.tint }} /> : null}
+      <View style={{ flexDirection: 'row', padding: 12, gap: 12 }}>
+        <View style={{ width: 64, height: 64, borderRadius: 14, backgroundColor: withAlpha(item.tint, 0.18), alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name={item.icon} size={30} color={item.tint} />
+        </View>
+        <View style={{ flex: 1, gap: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <NewsTag label={item.tag} tint={item.tint} />
+            {unread ? <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: item.tint }} /> : null}
+            <View style={{ flex: 1 }} />
+            <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{relDate(item.date)}</Text>
+          </View>
+          <Text numberOfLines={1} style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15 }}>{item.title}</Text>
+          <Text numberOfLines={2} style={{ color: theme.textSub, fontFamily: 'Poppins-SemiBold', fontSize: 13, lineHeight: 19 }}>{item.body}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+export function NewsModal({ visible, onClose, seenIds }: { visible: boolean; onClose: () => void; seenIds?: string[] }) {
+  const seen = new Set(seenIds ?? []);
+  const items = [...NEWS].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const fresh = items.filter((i) => !seen.has(i.id));
+  const older = items.filter((i) => seen.has(i.id));
+  return (
+    <PopupCard visible={visible} title={t('home.news')} icon="megaphone" onClose={onClose}>
       {/* PopupCard's scrim is a SIBLING (not a parent) of the card, so — unlike
           GameModal — it doesn't swallow this ScrollView's vertical drag. */}
-      <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, gap: 12 }}>
-        {NEWS.map((item) => (
-          <View key={item.id} style={{ backgroundColor: theme.surface2, borderRadius: 16, borderTopWidth: 1, borderTopColor: theme.topLight, padding: 15, gap: 9, ...shadowRow }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: theme.card, borderWidth: 1.5, borderColor: item.tint, borderBottomColor: darken(item.tint), alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name={item.icon} size={21} color={item.tint} />
-              </View>
-              <Text style={{ flex: 1, color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 17, ...engrave('sm') }} numberOfLines={2}>{item.title}</Text>
-            </View>
-            <Text style={{ color: theme.muted, fontSize: 15, lineHeight: 22, fontFamily: 'Poppins-SemiBold' }}>{item.body}</Text>
-            <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold', opacity: 0.7 }}>{item.date}</Text>
-          </View>
-        ))}
+      <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: 18, gap: 10 }}>
+        {fresh.length > 0 && older.length > 0 ? <SectionLabel label={t('news.new')} /> : null}
+        {fresh.map((item) => <NewsRow key={item.id} item={item} unread />)}
+        {older.length > 0 && fresh.length > 0 ? <SectionLabel label={t('news.earlier')} /> : null}
+        {older.map((item) => <NewsRow key={item.id} item={item} unread={false} />)}
       </ScrollView>
     </PopupCard>
   );
@@ -3169,7 +3500,9 @@ function HeroConfetti({ w, h }: { w: number; h: number }) {
     // sat visibly frozen in a row above the hero ("konfeti yukarıda takılı");
     // clipped, they only exist while falling through the box and the loop's
     // top-reset happens off-screen, so entry/exit/loop all read seamless.
-    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}>
+    // width: w (not absoluteFill): the clip box must end where the piece field ends,
+    // so sway/rotation can never carry a piece under the hero's right badge rail.
+    <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: w, overflow: 'hidden' }}>
       {CONFETTI.map((p, i) => <ConfettiPiece key={i} p={p} w={w} h={h} />)}
     </View>
   );
@@ -3311,11 +3644,15 @@ function ProfilePill({ name, avatarId, tier, pct, color, onPress, fillAnim, fram
     // olunca çerçevenin sol yayı ekran kenarında kesiliyordu. Hapı birkaç piksel
     // sağa alarak (çerçeve varken) sol yay ekran kenarından kurtulur, tam görünür.
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1, minWidth: 108, marginLeft: frameId ? 14 : 0 }}>
-      <View style={{ backgroundColor: darken(theme.card, 0.5), borderRadius: 24, paddingBottom: 2.5 }}>
+      {/* Radii are exact, not clamped: face is 41pt tall (34 avatar + 2x3.5 pad) so a
+          shared radius 24 clamps differently on face (20.5) vs wrapper (21.75) and the
+          lighter face corner pokes past the lip as a light arc. Nested-radius rule:
+          wrapper top = face radius (0 top inset), wrapper bottom = face + 2.5 lip. */}
+      <View style={{ backgroundColor: darken(theme.card, 0.5), borderTopLeftRadius: 20.5, borderTopRightRadius: 20.5, borderBottomLeftRadius: 23, borderBottomRightRadius: 23, paddingBottom: 2.5 }}>
         <Animated.View style={{
           transform: [{ translateY: ty }, { scale }],
           flexDirection: 'row', alignItems: 'center', gap: 8,
-          backgroundColor: theme.card, borderRadius: 24,
+          backgroundColor: theme.card, borderRadius: 20.5,
           paddingVertical: 3.5, paddingLeft: 3.5, paddingRight: 10,
         }}>
           <View>
@@ -3375,11 +3712,13 @@ function GemPill({ count, onPress, countAnim, fillAnim, innerRef }: {
   const shown = countAnim ? animCount : count;
   return (
     <Pressable ref={innerRef} onPress={onPress} onPressIn={onIn} onPressOut={onOut}>
-      <View style={{ backgroundColor: darken(theme.card, 0.5), borderRadius: 18, paddingBottom: 2.5 }}>
+      {/* Same radius-clamp fix as ProfilePill: face is 30pt tall (23 plus-button +
+          2x3.5 pad) → face 15, wrapper top 15, wrapper bottom 15 + 2.5 lip = 17.5. */}
+      <View style={{ backgroundColor: darken(theme.card, 0.5), borderTopLeftRadius: 15, borderTopRightRadius: 15, borderBottomLeftRadius: 17.5, borderBottomRightRadius: 17.5, paddingBottom: 2.5 }}>
         <Animated.View style={{
           transform: [{ translateY: ty }, { scale }],
           flexDirection: 'row', alignItems: 'center', gap: 5,
-          backgroundColor: theme.card, borderRadius: 18, overflow: 'hidden',
+          backgroundColor: theme.card, borderRadius: 15, overflow: 'hidden',
           paddingVertical: 3.5, paddingLeft: 7, paddingRight: 3.5,
         }}>
           {fillAnim ? (
@@ -3413,21 +3752,114 @@ function GemPill({ count, onPress, countAnim, fillAnim, innerRef }: {
 
 // The mockup's bright art cards: an art field up top, a dark caption band across
 // the bottom carrying the title. `art` is drawn into the field and may overhang it.
-function ArtCard({ title, tint, art, height, onPress }: {
+function ArtCard({ title, tint, art, height, onPress, grade, strip, arrow = false, pillBar }: {
   title: string; tint: string; art?: ReactNode; height: number; onPress: () => void;
+  // Mockup faces are a DIAGONAL ramp (light at the top-left, deep at the
+  // bottom-right), not a flat fill — measured off COF ANA EKRAN.jpeg. Opt-in per
+  // card so the pitch card (Mahalle Sahası) keeps its photographic face.
+  // Measured off the mockup as a BRIGHTNESS MAP, not guessed: each row is
+  // brightest at its centre and every row dims going down (top-centre 345 →
+  // bottom 137 in RGB sum). That is a radial glow anchored near the top edge,
+  // not the linear ramp this used to draw — which is why the faces still read
+  // "flat" after the first pass. `from` is the glow core, `to` the outer field.
+  grade?: { from: string; to: string; mid?: string };
+  // The label band is the card's own deep tone in the mockup, not near-black.
+  strip?: string;
+  // Mockup puts a round → button at the band's right end.
+  arrow?: boolean;
+  // Mockup's INSET pill footer (Sosyal Paket "AKTİF", Seviye Yolu): a rounded
+  // bar floated inside the card with margins, label left + outlined round →
+  // inside it. Replaces the full-width strip when set.
+  pillBar?: { fill: string };
 }) {
   const { ty, scale, onIn, onOut } = usePressLip(2);
+  const gradId = useRef(`artGrad${++_btnSeq}`).current;
+  // The round → only fits once the card is wide enough. On a phone these tiles
+  // are ~126pt and the arrow pushed the label into an ellipsis ("Sosyal…"), so
+  // it appears from tablet-ish widths up — where the mockup's proportions hold.
+  const [cardW, setCardW] = useState(0);
+  const showArrow = arrow && cardW >= 150;
+  // The 3pt seat under the face must be the DARKEST rung of the card's ladder.
+  // It used to be darken(tint, 0.55) computed off the FLAT tint, which on strip/
+  // graded cards came out LIGHTER than what actually touches it — the footer
+  // strip (#5E3C12 under Mücadele's #3A2109) or the radial's deep outer field
+  // (#463073 under Sosyal Paket's #251A63) — so a pale band + mismatched arcs
+  // showed under the footer. Pixel-verified on the user's screenshot. Seat the
+  // lip off the darkest visible bottom element instead; cards with neither (the
+  // photographic Mahalle Sahası face) keep the old tone byte-identical.
+  const lipFill = strip ? darken(strip, 0.3) : grade ? darken(grade.to, 0.3) : darken(tint, 0.55);
   return (
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1 }}>
-      <View style={{ backgroundColor: darken(tint, 0.55), borderRadius: 20, paddingBottom: 3, shadowColor: '#000', shadowOpacity: 0.34, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
-        <Animated.View style={{
-          transform: [{ translateY: ty }, { scale }], height, borderRadius: 18, overflow: 'hidden',
-          backgroundColor: tint, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.26)',
-        }}>
+      <View style={{ backgroundColor: lipFill, borderRadius: 20, paddingBottom: 3, shadowColor: theme.shadowInk, shadowOpacity: 0.34, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
+        <Animated.View
+          onLayout={(e) => setCardW(e.nativeEvent.layout.width)}
+          style={{
+            transform: [{ translateY: ty }, { scale }], height, overflow: 'hidden',
+            // Nested radii must follow the geometry or the outer lip's darker fill
+            // bleeds around the corners as a thin arc — THAT is the "not seated"
+            // edge, not the highlight. The wrapper is radius 20 and insets this
+            // view by 3 at the BOTTOM only, so the top corners must match 20
+            // exactly and only the bottom pair shrinks by the inset.
+            borderTopLeftRadius: 20, borderTopRightRadius: 20,
+            borderBottomLeftRadius: 17, borderBottomRightRadius: 17,
+            backgroundColor: tint,
+            // NO separate top border. A white-alpha rim over a coloured face reads as a
+            // GREY hairline, and because a border is stroked independently of the fill
+            // it never quite meets the rounded corners — which is what kept looking
+            // "not seated" no matter how thin it got. The highlight is now part of the
+            // surface itself (first stop of the gradient below), so there is no seam.
+          }}>
+          {grade ? (
+            <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
+              <Defs>
+                <RadialGradient id={gradId} cx="50%" cy="6%" r="118%">
+                  <Stop offset="0" stopColor={grade.from} />
+                  <Stop offset="0.52" stopColor={grade.mid ?? grade.from} />
+                  <Stop offset="1" stopColor={grade.to} />
+                </RadialGradient>
+              </Defs>
+              {/* NO top-highlight strip. Every attempt at one (white border, thin
+                  border, in-fill hairline) reads on device as a foreign line across
+                  the card top — measured #7C5FC6 over a #5B37B8 body on the user's
+                  own screenshot. The radial face carries its own light; nothing else. */}
+              <Rect width="100%" height="100%" fill={`url(#${gradId})`} />
+              {/* Faint swoosh arcs the mockup sweeps across the lower-left. */}
+              <Path d="M -6 78 Q 34 58 92 66" stroke="rgba(255,255,255,0.10)" strokeWidth="1.6" fill="none" />
+              <Path d="M -6 90 Q 40 68 104 78" stroke="rgba(255,255,255,0.07)" strokeWidth="1.4" fill="none" />
+            </Svg>
+          ) : null}
           <View style={StyleSheet.absoluteFill}>{art}</View>
-          <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: withAlpha(darken(tint, 0.66), 0.94), paddingHorizontal: 11, paddingVertical: 7 }}>
-            <Text style={{ color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{title}</Text>
+          {pillBar ? (
+            <View style={{
+              position: 'absolute', left: 8, right: 8, bottom: 8, height: 34,
+              borderRadius: 17, backgroundColor: pillBar.fill,
+              paddingLeft: 10, paddingRight: 5,
+              flexDirection: 'row', alignItems: 'center', gap: 4,
+            }}>
+              <Text style={{ flex: 1, color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{title}</Text>
+              <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.34)', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="arrow-forward" size={11} color="rgba(255,255,255,0.9)" />
+              </View>
+            </View>
+          ) : (
+          <View style={{
+            position: 'absolute', left: 0, right: 0, bottom: 0,
+            backgroundColor: strip ?? withAlpha(darken(tint, 0.66), 0.94),
+            paddingHorizontal: 11, paddingVertical: 7,
+            flexDirection: 'row', alignItems: 'center', gap: 8,
+          }}>
+            <Text style={{ flex: 1, color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{title}</Text>
+            {showArrow ? (
+              <View style={{
+                width: 24, height: 24, borderRadius: 12,
+                borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.34)',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Ionicons name="arrow-forward" size={13} color="rgba(255,255,255,0.9)" />
+              </View>
+            ) : null}
           </View>
+          )}
         </Animated.View>
       </View>
     </Pressable>
@@ -3460,17 +3892,38 @@ function GhostStack({ icon }: { icon: IoniconName }) {
 // The mockup's navy panels: title row up top, ghost stack in the corner, free
 // content below. Pressable only when `onPress` is given (the Özel Mod panel owns
 // its own inner controls instead).
-function GhostPanel({ title, icon, ghost, height, onPress, children, locked = false }: {
+function GhostPanel({ title, icon, ghost, height, onPress, children, locked = false, tone }: {
   title: string; icon?: IoniconName; ghost: IoniconName; height: number;
   onPress?: () => void; children?: ReactNode; locked?: boolean;
+  // `tone`: give the panel its own colour face (a tone ladder over it) instead
+  // of the default flat surface2 — the mockup tints Bot Maçı green.
+  tone?: string;
 }) {
   const { ty, scale, onIn, onOut } = usePressLip(2);
+  const gradId = useRef(`ghostGrad${++_btnSeq}`).current;
   const body = (
-    <View style={{ backgroundColor: theme.surface2, borderRadius: 20, ...shadowSoft }}>
+    // The wrapper must carry the SAME face as the panel, otherwise a toned panel
+    // shows the old surface2 through the corner arc.
+    <View style={{ backgroundColor: tone ?? theme.surface2, borderRadius: 20, ...shadowSoft }}>
       <Animated.View style={{
-        transform: onPress ? [{ translateY: ty }, { scale }] : [], height, borderRadius: 18, overflow: 'hidden',
-        backgroundColor: theme.surface2, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.14)', padding: 11,
+        // Flush with the wrapper on every side → identical radius, no bleed.
+        transform: onPress ? [{ translateY: ty }, { scale }] : [], height, borderRadius: 20, overflow: 'hidden',
+        backgroundColor: tone ?? theme.surface2, padding: 11,
+        // Same reasoning as ArtCard: no white-alpha rim. The highlight is drawn as
+        // part of the face (below), tinted from the surface so it never reads grey.
       }}>
+        {tone ? (
+          <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
+            <Defs>
+              <SvgGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={lighten(tone, 0.16)} />
+                <Stop offset="0.55" stopColor={tone} />
+                <Stop offset="1" stopColor={darken(tone, 0.34)} />
+              </SvgGradient>
+            </Defs>
+            <Rect width="100%" height="100%" fill={`url(#${gradId})`} />
+          </Svg>
+        ) : null}
         <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
         <GhostStack icon={ghost} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
@@ -3502,7 +3955,7 @@ const ROOM_CODE_LEN = 6;
 const HOME_MODES: GameMode[] = ['country-team', 'letter-team'];
 const PACK_MODES: GameMode[] = ['country-team', 'letter-team'];
 
-export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, onOpenLevelRoad, overlayBusy, gemCountAnimOverride, gemFillAnimOverride }: Props) {
+export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, onOpenLevelRoad, overlayBusy, gemCountAnimOverride, gemFillAnimOverride, trophyLand, trophyHold }: Props) {
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [scope, setScope] = useState<Scope>({ type: 'all' });
   const [mode, setMode] = useState<GameMode>('team-team');
@@ -3512,7 +3965,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const [botOpen, setBotOpen] = useState(false);
   const [modesOpen, setModesOpen] = useState(false);
   const [socialPackPopup, setSocialPackPopup] = useState(false);
-  // iOS presents ONE native <Modal> at a time; open the upsell only AFTER the
+  // iOS presents ONE native <SafeModal> at a time; open the upsell only AFTER the
   // modes modal's native dismissal finishes (via GameModal onExited), else the two
   // overlap and the app FREEZES (dead touches + scroll). Same race the avatar
   // picker guards against (see insufficientOnExit).
@@ -3550,8 +4003,46 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const trophyFillAnim = useRef(new Animated.Value(0)).current;
   const trophyBadgeRef = useRef<View>(null);
   useEffect(() => {
+    // Uçuş beklerken/sürerken rozet ESKİ değeri tutar; kupalar konunca
+    // land-effect sayacı döndürür (elmas hapindaki tutma kuralının aynısı).
+    if (trophyHold != null && trophyHold !== 0) {
+      trophyCountAnim.stopAnimation();
+      trophyCountAnim.setValue(Math.max(0, (profile?.trophies ?? 0) - trophyHold));
+      return;
+    }
     trophyCountAnim.setValue(profile?.trophies ?? 0);
-  }, [profile?.trophies, trophyCountAnim]);
+  }, [profile?.trophies, trophyCountAnim, trophyHold]);
+
+  // Kupa rozeti = uçuşun hedefi (elmas hapının setGemTarget kalıbı).
+  const measureTrophyBadge = useCallback(() => {
+    (trophyBadgeRef.current as View | null)?.measureInWindow((x, y, w, h) => {
+      if (w > 0 && h > 0) setTrophyTarget(x + w / 2, y + h * 0.42);
+    });
+  }, []);
+  useEffect(() => {
+    setTrophyRemeasure(measureTrophyBadge);
+    const id = requestAnimationFrame(measureTrophyBadge);
+    return () => { cancelAnimationFrame(id); setTrophyRemeasure(null); };
+  }, [measureTrophyBadge]);
+
+  // Kupalar rozete kondu → sayaç from→to + altın dolum süpürmesi.
+  const lastTrophyLandSeq = useRef(0);
+  useEffect(() => {
+    if (!trophyLand || trophyLand.seq === lastTrophyLandSeq.current) return;
+    lastTrophyLandSeq.current = trophyLand.seq;
+    const to = profile?.trophies ?? 0;
+    const from = Math.max(0, to - trophyLand.delta);
+    trophyCountAnim.stopAnimation();
+    trophyCountAnim.setValue(from);
+    Animated.timing(trophyCountAnim, { toValue: to, duration: 900, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    trophyFillAnim.stopAnimation();
+    trophyFillAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(trophyFillAnim, { toValue: 1, duration: 650, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(trophyFillAnim, { toValue: 0, duration: 240, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trophyLand?.seq]);
 
   // Arena tier drives the mockup's "level" slots. ARENA_DATA runs highest→lowest,
   // so the human-facing tier number counts up from the bottom (Mahalle = 1).
@@ -3631,7 +4122,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const codeReady = joinCode.length === ROOM_CODE_LEN;
 
   return (
-    <Screen scroll pad={16} contentCenter={false}>
+    <Screen scroll pad={16} contentCenter={false} fillTablet lockWhenFits>
       {/* ── 1. TOP BAR ── one row, exactly as the mockup: the profile pill flexes to
            absorb whatever the fixed-width gem pill and button trio leave behind.
            paddingTop: ödül habercisinin üst taşması scroll sınırında kırpılmasın */}
@@ -3668,7 +4159,11 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         // + 14.5 chip overlap) + 12 gap = 131. Anything less and the rail spills onto the CTA.
         style={{ alignItems: 'center', justifyContent: 'center', marginTop: 3, marginBottom: 0, minHeight: 134 }}
       >
-        <HeroConfetti w={hero.w} h={hero.h} />
+        {/* w excludes the right badge rail (44px RailBadge circles at right:0 + 12px
+            margin): pieces falling BEHIND the translucent badge faces read as artifacts —
+            a white ribbon as a gray slab over the trophy cup, a purple piece as a notch
+            poking out of the ring's right edge. */}
+        <HeroConfetti w={Math.max(0, hero.w - 56)} h={hero.h} />
         {/* The hero unit — the two balls + the CROSSOVER lettering lifted WHOLE
             from the Top.jpeg mockup as one image (feathered edges melt into the
             night sky), so it is pixel-for-pixel the photo composition. */}
@@ -3713,17 +4208,26 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         <ArtCard
           title={t('home.modesTitle')}
           tint={theme.amber}
+          grade={{ from: '#D9973B', mid: '#B7762A', to: '#6B3A0D' }}
+          strip="#3A2109"
+          arrow
           height={142}
           onPress={() => setModesOpen(true)}
           art={
             <View style={StyleSheet.absoluteFill}>
               {/* a faint sun glow so the amber face isn't flat, then the ball-duel
                   scene — two brand balls clashing under the gold VS coin */}
-              <View pointerEvents="none" style={{ position: 'absolute', top: -30, left: -20, right: -20, height: 120 }}>
+              {/* The glow used to live in a 120pt-tall box whose bottom edge cut the
+                  radial gradient mid-fade, leaving a hard horizontal seam across
+                  the card above the balls ("top tam oturmamış gibi"). Filling the
+                  whole card and letting the gradient reach zero well inside it
+                  removes the edge entirely. */}
+              <View pointerEvents="none" style={StyleSheet.absoluteFill}>
                 <Svg width="100%" height="100%">
                   <Defs>
-                    <RadialGradient id="amberGlow" cx="50%" cy="40%" r="60%">
+                    <RadialGradient id="amberGlow" cx="50%" cy="22%" r="78%">
                       <Stop offset="0" stopColor={lighten(theme.amber, 0.4)} stopOpacity={0.9} />
+                      <Stop offset="0.62" stopColor={lighten(theme.amber, 0.12)} stopOpacity={0.28} />
                       <Stop offset="1" stopColor={theme.amber} stopOpacity={0} />
                     </RadialGradient>
                   </Defs>
@@ -3822,6 +4326,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
           icon="people"
           ghost="game-controller"
           height={96}
+          tone={darken(theme.primary, 0.74)}
           onPress={() => { setBotPage({ key: 'bot', dir: 1 }); setBotOpen(true); }}
         >
           <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', marginTop: 6 }} numberOfLines={2}>{t('home.soloShort')}</Text>
@@ -3845,11 +4350,14 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               <ArtCard
                 title={hasPack ? t('store.badgeActive') : t('store.socialPackTitle')}
                 tint={theme.purple}
+                grade={{ from: '#6236C1', mid: '#4A2A9E', to: '#251A63' }}
+                pillBar={{ fill: '#1E1856' }}
                 height={128}
                 onPress={() => onGoToStore?.('socialPack')}
                 art={
                   <View style={StyleSheet.absoluteFill}>
-                    <Image source={EMOTE_ART.squad} resizeMode="contain" style={{ position: 'absolute', right: -2, top: 26, width: '74%', height: '58%' }} />
+                    {/* Mockup placement: players sit right-of-centre, feet on the pill. */}
+                    <Image source={EMOTE_ART.squad} resizeMode="contain" style={{ position: 'absolute', right: 0, bottom: 44, width: '68%', height: '58%' }} />
                     <Text style={{ position: 'absolute', left: 11, top: 10, color: theme.text, fontSize: 11, fontFamily: 'Poppins-SemiBold', width: '58%', ...engrave('sm') }} numberOfLines={3}>
                       {t('home.socialPackShort')}
                     </Text>
@@ -3864,11 +4372,14 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               <ArtCard
                 title={t('level.roadTitle')}
                 tint={theme.blue}
+                grade={{ from: '#1466BE', mid: '#064B92', to: '#01234A' }}
+                pillBar={{ fill: '#051E3C' }}
                 height={128}
                 onPress={() => onOpenLevelRoad?.()}
                 art={
                   <View style={StyleSheet.absoluteFill}>
-                    <Image source={XP_STAR} resizeMode="contain" style={{ position: 'absolute', right: -2, top: 24, width: '60%', height: '58%' }} />
+                    {/* Mockup placement: the medal floats right-of-centre, above the pill. */}
+                    <Image source={XP_STAR} resizeMode="contain" style={{ position: 'absolute', right: 0, top: '14%', width: '54%', height: '58%' }} />
                     <Text style={{ position: 'absolute', left: 11, top: 10, color: theme.text, fontSize: 11, fontFamily: 'Poppins-SemiBold', width: '58%', ...engrave('sm') }} numberOfLines={3}>
                       {t('home.levelRoadHint')}
                     </Text>
@@ -3876,31 +4387,23 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 }
               />
             </View>
-            {/* Find a friend — looks exactly like the old inline-search card (title +
-                search bar + hint), but the "search bar" is paint only: the WHOLE card
-                is one button that pages across to Friends and focuses its add input. */}
+            {/* Yenilikler — geçmiş duyurular. Kart, üst bardaki zil ile aynı
+                NewsModal'ı açar (tüm duyuru listesi); okunmamış varsa nokta. */}
             <View style={{ width: cardW }}>
-              <Pressable onPress={() => onGoToFriends?.()} style={({ pressed }) => ({ backgroundColor: theme.surface2, borderRadius: 20, transform: [{ translateY: pressed ? 2 : 0 }], ...shadowSoft })}>
-                <View pointerEvents="none" style={{ height: 128, borderRadius: 18, overflow: 'hidden', backgroundColor: theme.surface2, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.14)', padding: 11 }}>
-                  <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
-                  <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{t('home.findFriends')}</Text>
-                  <View style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8,
-                    height: 32, borderRadius: 16, backgroundColor: theme.well, overflow: 'hidden',
-                    paddingHorizontal: 9,
-                  }}>
-                    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
-                    <Ionicons name="search" size={13} color={theme.muted} />
-                    <Text style={{ flex: 1, color: withAlpha(theme.muted, 0.5), fontFamily: 'Poppins-SemiBold', fontSize: 11.5 }} numberOfLines={1}>
-                      {t('friends.usernamePlaceholder')}
-                    </Text>
-                    <Ionicons name="arrow-forward-circle" size={19} color={theme.primary} />
-                  </View>
-                  <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', marginTop: 10 }} numberOfLines={3}>
-                    {t('home.findFriendsHint')}
-                  </Text>
-                </View>
-              </Pressable>
+              <GhostPanel
+                title={t('home.news')}
+                icon="megaphone"
+                ghost="megaphone"
+                height={128}
+                onPress={() => { setNewsOpen(true); setNewsUnread(false); AsyncStorage.setItem(NEWS_READ_KEY, LATEST_NEWS_ID).catch(() => {}); }}
+              >
+                {newsUnread ? (
+                  <View pointerEvents="none" style={{ position: 'absolute', top: 10, right: 10, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.danger }} />
+                ) : null}
+                <Text style={{ color: theme.muted, fontSize: 11.5, lineHeight: 17, fontFamily: 'Poppins-SemiBold', marginTop: 9 }} numberOfLines={3}>
+                  {t('home.newsHint')}
+                </Text>
+              </GhostPanel>
             </View>
           </ScrollView>
         ) : null}
@@ -4043,8 +4546,9 @@ function ScopeListPage({ kind, scopes, onPick }: {
 }) {
   const allList = kind === 'league' ? scopes?.leagues ?? [] : scopes?.countries ?? [];
   const [search, setSearch] = useState('');
+  const optionLabel = (o: { value: string; displayName?: string }) => o.displayName ?? LEAGUE_DISPLAY[o.value] ?? o.value;
   const filtered = search.trim()
-    ? allList.filter((o) => (o.displayName ?? o.value).toLowerCase().includes(search.toLowerCase()))
+    ? allList.filter((o) => optionLabel(o).toLowerCase().includes(search.toLowerCase()))
     : allList;
   const countChip = (count: number) => (
     <View style={{ backgroundColor: theme.cardLip, borderRadius: 8, borderWidth: 1, borderColor: theme.accentDark, paddingHorizontal: 7, paddingVertical: 2 }}>
@@ -4079,7 +4583,7 @@ function ScopeListPage({ kind, scopes, onPick }: {
                   <Ionicons name={kind === 'league' ? 'trophy' : 'flag'} size={18} color={theme.muted} />
                 )
               }
-              label={o.displayName ?? o.value}
+              label={optionLabel(o)}
               right={countChip(o.count)}
               onPress={() => onPick({ type: kind === 'league' ? 'league' : 'country', value: o.value })}
             />
@@ -4119,8 +4623,9 @@ export function OpponentForfeitModal({ visible, onFindNew, onGoHome, trophyDelta
       <View
         style={{
           alignSelf: 'center', width: 64, height: 64, borderRadius: 32,
+          // CONTINUOUS rim (VsBadge rule): per-side colors seam at the diagonals
+          // on a circle. One uniform ring; depth comes from the gold glow below.
           backgroundColor: theme.card, borderWidth: 2, borderColor: theme.accent,
-          borderTopColor: lighten(theme.accent, 0.3), borderBottomColor: theme.accentDark,
           alignItems: 'center', justifyContent: 'center',
           shadowColor: theme.accent, shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 6,
         }}
@@ -4418,8 +4923,8 @@ function MatchTimer({ endsAt, urgentAt = 5, fallbackSecs, style }: {
   );
 }
 
-function PickTimer({ pickEndsAt }: { pickEndsAt: number | null }) {
-  return <MatchTimer endsAt={pickEndsAt} urgentAt={3} fallbackSecs={10} style={{ marginTop: 6 }} />;
+function PickTimer({ pickEndsAt, style }: { pickEndsAt: number | null; style?: any }) {
+  return <MatchTimer endsAt={pickEndsAt} urgentAt={3} fallbackSecs={10} style={style ?? { marginTop: 6 }} />;
 }
 
 // What the local player chose this round — kept as UI state so the waiting
@@ -4460,16 +4965,19 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
     if (!state.picked) setLastPick(null);
   }, [state.picked]);
 
-  // Top chrome shared by every pick state: exit button + opponent HUD, then title + timer.
+  // Top chrome shared by every pick state: exit button + opponent HUD, then a
+  // SINGLE compact row (title left, timer right). The old stacked h1 + timer
+  // pill pushed the search field ~90pt down — "pick'te üstte çok boşluk"; the
+  // guess screen's dense top (bar → content immediately) is the reference.
   const header = (title: string) => (
     <>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4, marginBottom: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0, gap: 10, marginBottom: 12 }}>
         <MatchExitButton onPress={handleLeave} />
         <PlayerBar state={state} onEmotePress={tutorial ? undefined : () => setEmoteOpen(true)} />
       </View>
-      <View style={{ alignItems: 'center', marginBottom: 8 }}>
-        <Text style={styles.h1}>{title}</Text>
-        <PickTimer pickEndsAt={state.pickEndsAt} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <Text style={[styles.h1, { marginVertical: 0, textAlign: 'left' }]}>{title}</Text>
+        <PickTimer pickEndsAt={state.pickEndsAt} style={{ marginTop: 0 }} />
       </View>
     </>
   );
@@ -4483,7 +4991,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   if (state.picked) {
     return (
       <Screen>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4, marginBottom: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0, gap: 10, marginBottom: 12 }}>
           <MatchExitButton onPress={handleLeave} />
           <PlayerBar state={state} onEmotePress={tutorial ? undefined : () => setEmoteOpen(true)} />
         </View>
@@ -4565,7 +5073,10 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   // ---- Letter picker ----
   if (role === 'letter') {
     return (
-      <Screen>
+      // contentCenter={false}: the letter grid is shorter than the viewport, so the
+      // Screen default (justifyContent center) floated the whole block down and
+      // left a big gap above the header — every pick state is top-anchored.
+      <Screen contentCenter={false}>
         {header(t('pick.titleLetter'))}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 12 }}>
           {PICK_LETTERS.map((l) => (
@@ -4731,11 +5242,13 @@ function GuessStatusPanel({ icon, iconColor, stripe, text }: { icon: IoniconName
   );
 }
 
-export function GuessScreen({ state, actions, tutorial }: Props) {
+export function GuessScreen({ state, actions, tutorial, prefill }: Props & { prefill?: string }) {
   // Tutorial: the answer arrives PRE-FILLED and locked — the player only taps
-  // Send (typing "Wesley Sneijder" on a first launch was busywork + kept the
-  // keyboard out of the guided flow).
-  const [text, setText] = useState(tutorial ? 'Wesley Sneijder' : '');
+  // Send. `prefill` overrides the tutorial's real name: DevShot marketing
+  // captures must show the FICTIONAL player (4.1 — real names in store
+  // screenshots were cited in the v1.0 rejection), while the in-app tutorial
+  // keeps Sneijder.
+  const [text, setText] = useState(prefill ?? (tutorial ? 'Wesley Sneijder' : ''));
   const teams = state.teams;
   const room = state.room!;
   const youAnswered = state.locked?.byId === room.youId;
@@ -4906,6 +5419,78 @@ const SPARK_DIRS = Array.from({ length: 6 }, (_, i) => {
   return { x: Math.cos(a) * 86, y: Math.sin(a) * 70 };
 });
 
+// ---- Maç sonrası kupa uçuşu — elmas kutlamasının kardeşi (spec §14: ≤7 parça) ----
+// Modal DEĞİL, hafif overlay: kazançta kupalar ekran ortasından rozete uçar;
+// kayıpta rozetten kopup aşağı dökülür. Bitince onDone (sayaç dönüşü App
+// üzerinden HomeScreen'e "land" olarak iletilir).
+export function TrophyFlight({ delta, onDone }: { delta: number; onDone: () => void }) {
+  const gain = delta > 0;
+  const n = Math.min(7, Math.max(3, Math.round(Math.abs(delta) / 8)));
+  const anims = useRef(Array.from({ length: 7 }, () => ({
+    x: new Animated.Value(0), y: new Animated.Value(0),
+    scale: new Animated.Value(0), opacity: new Animated.Value(0),
+  }))).current;
+  const { width: screenW, height: screenH } = canvasSize();
+
+  useEffect(() => {
+    remeasureTrophyTarget();
+    const badge = () => ({
+      x: trophyTarget.measured ? trophyTarget.x : screenW - 40,
+      y: trophyTarget.measured ? trophyTarget.y : 330,
+    });
+    let completed = 0;
+    const finishOne = () => { completed += 1; if (completed === n) onDone(); };
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    for (let i = 0; i < n; i++) {
+      const g = anims[i]!;
+      const b = badge();
+      const from = gain
+        ? { x: screenW / 2 + (Math.random() - 0.5) * 110, y: screenH * 0.44 + (Math.random() - 0.5) * 80 }
+        : { x: b.x, y: b.y };
+      const to = gain
+        ? b
+        : { x: b.x + (Math.random() - 0.5) * 140, y: b.y + 190 + Math.random() * 90 };
+      g.x.setValue(from.x); g.y.setValue(from.y); g.scale.setValue(0); g.opacity.setValue(0);
+      timers.push(setTimeout(() => {
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(g.opacity, { toValue: 1, duration: 90, useNativeDriver: true }),
+            Animated.spring(g.scale, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(g.x, { toValue: to.x, duration: 560, easing: gain ? Easing.in(Easing.quad) : Easing.out(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.y, { toValue: to.y, duration: 560, easing: gain ? Easing.in(Easing.quad) : Easing.in(Easing.quad), useNativeDriver: true }),
+            Animated.timing(g.scale, { toValue: gain ? 0.42 : 0.7, duration: 560, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(g.scale, { toValue: gain ? 0.16 : 0.4, duration: 130, useNativeDriver: true }),
+            Animated.timing(g.opacity, { toValue: 0, duration: 130, useNativeDriver: true }),
+          ]),
+        ]).start(finishOne);
+      }, i * 80));
+    }
+    return () => timers.forEach(clearTimeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 60 }]}>
+      {anims.slice(0, n).map((g, i) => (
+        <Animated.View
+          key={i}
+          style={{
+            position: 'absolute', left: -14, top: -14,
+            opacity: g.opacity,
+            transform: [{ translateX: g.x }, { translateY: g.y }, { scale: g.scale }],
+          }}
+        >
+          <Ionicons name="trophy" size={28} color={gain ? theme.gold : theme.muted} style={{ textShadowColor: 'rgba(5,11,31,0.55)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 }} />
+        </Animated.View>
+      ))}
+    </View>
+  );
+}
+
 export function DiamondCelebration({
   amount,
   img,
@@ -4931,8 +5516,7 @@ export function DiamondCelebration({
     opacity: new Animated.Value(0),
   }))).current;
 
-  const screenW = Dimensions.get('window').width;
-  const screenH = Dimensions.get('window').height;
+  const { width: screenW, height: screenH } = canvasSize();
   const originX = screenW / 2;        // gems launch from the card centre
   const originY = screenH * 0.46;
   // Fly into the real diamond counter (measured by App.tsx). Read this at close
@@ -5034,7 +5618,7 @@ export function DiamondCelebration({
   };
 
   return (
-    <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={handleClose}>
+    <SafeModal visible transparent animationType="none" statusBarTranslucent onRequestClose={handleClose}>
       <View style={StyleSheet.absoluteFill}>
         {/* Scrim fades with the card's own animated value (Modal animates nothing) */}
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim, opacity: cardOpacity }]}>
@@ -5072,11 +5656,11 @@ export function DiamondCelebration({
               opacity: cardOpacity, transform: [{ scale: cardScale }],
               backgroundColor: theme.panelInk, borderRadius: 22, padding: 2,
               borderWidth: 2, borderColor: theme.gem, borderBottomColor: theme.gemDark,
-              overflow: 'hidden',
+              // no overflow:'hidden' here — it would clip this layer's own gem glow on iOS; the inner face clips itself
               shadowColor: theme.gem, shadowOpacity: 0.45, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 18,
             }}
           >
-            <View style={{ backgroundColor: theme.modalFace, borderRadius: 20, overflow: 'hidden' }}>
+            <View style={{ backgroundColor: theme.modalFace, borderRadius: 18, overflow: 'hidden' }}>
               <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28, zIndex: 5 }} />
               {/* Gold banner strip */}
               <View style={{ height: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 46, backgroundColor: theme.accent, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.35)', borderBottomWidth: 3, borderBottomColor: theme.accentDark }}>
@@ -5124,7 +5708,9 @@ export function DiamondCelebration({
                     >
                       <View
                         style={{
-                          backgroundColor: theme.card, borderRadius: 12,
+                          backgroundColor: theme.card,
+                          // lip radius 13, flush top/sides, 2px bottom lip → 13 top / 11 bottom (nested-radius rule)
+                          borderTopLeftRadius: 13, borderTopRightRadius: 13, borderBottomLeftRadius: 11, borderBottomRightRadius: 11,
                           borderWidth: 1.5, borderColor: arenaVisual.color,
                           paddingHorizontal: 14, paddingVertical: 7,
                         }}
@@ -5198,7 +5784,7 @@ export function DiamondCelebration({
           ))}
         </View>
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 
@@ -5225,6 +5811,16 @@ const SOCIAL_PACK = [
   { id: 'monthly', label: 'Aylık', price: '₺89,99', productId: 'com.crossover.socialpack.monthly' },
 ];
 const SOCIAL_PACK_IDS = SOCIAL_PACK.map((s) => s.productId);
+
+/**
+ * Smallest diamond pack that closes a shortfall. When a player is 250 gems short
+ * we open the cheapest pack that actually covers it rather than dumping them in
+ * the store to work it out themselves. Falls back to the largest pack if even
+ * that is not enough (nothing else could satisfy the purchase anyway).
+ */
+function packForShortfall(missing: number): typeof DIAMOND_PACKS[number] {
+  return DIAMOND_PACKS.find((p) => p.amount >= missing) ?? DIAMOND_PACKS[DIAMOND_PACKS.length - 1]!;
+}
 
 // CO Pass (Premium Level Road) — a CONSUMABLE bought with real money as an
 // alternative to 2000 diamonds. productId must match the ASC Consumable + server
@@ -5469,7 +6065,14 @@ function AdRewardCard({ adLoading, adsWatched, onWatch }: { adLoading: boolean; 
           {adsWatched > 0 ? <Text style={[styles.muted, { fontSize: 10 }]}>{t('store.adsWatchedToday', { n: adsWatched })}</Text> : null}
         </View>
       </View>
-      {size.w > 0 ? <ShineSweep width={size.w} height={size.h} loop delay={600} duration={900} loopGap={2800} opacity={0.16} band={0.24} /> : null}
+      {/* Sweep the full panel face, not the content row: the -12 offset escapes the
+          body's 12px padding (Yoga insets absolute children by parent padding) and the
+          face's own rounded overflow:'hidden' clips the band at the card edge. */}
+      {size.w > 0 ? (
+        <View pointerEvents="none" style={{ position: 'absolute', top: -12, left: -12 }}>
+          <ShineSweep width={size.w + 24} height={size.h + 24} loop delay={600} duration={900} loopGap={2800} opacity={0.16} band={0.24} />
+        </View>
+      ) : null}
     </GamePanel>
   );
 }
@@ -5584,8 +6187,18 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
       await actions.verifyPurchase(jws);
       await iapFinishTransaction({ purchase, isConsumable: !isSub });
       track('purchase_success', { productId: purchase.productId, kind: isSub ? 'subscription' : 'diamonds' });
-      // Trigger celebration animation for diamond purchases
-      if (!isSub) {
+      // The shortfall popup was only up to explain the auto-opened sheet — once
+      // the diamonds actually land it has nothing left to say. (A CANCELLED
+      // sheet deliberately leaves it open; that is handled in onPurchaseError.)
+      setShowNotEnough(false);
+      setShortfall(null);
+      if (isSub) {
+        // Social Pack: explicit "activated" confirmation, dismissed with Tamam.
+        // (CO Pass gets its popup from the GLOBAL premium_road_purchased ack —
+        // the server sends that for the IAP path too, so no local dialog here
+        // or it would double up.)
+        openStoreDialog({ title: t('purchase.doneTitle'), body: t('purchase.socialPackBody'), icon: 'checkmark-circle' });
+      } else if (purchase.productId !== COPASS_PRODUCT_ID) {
         const pack = DIAMOND_PACKS.find((p) => p.productId === purchase.productId);
         if (pack) onDiamondCelebration?.({ amount: pack.amount, img: pack.img });
       }
@@ -5647,6 +6260,27 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
     const apple = { sku: productId, appAccountToken: profile?.userId ?? undefined };
     Promise.resolve(requestPurchase({ request: { apple }, type: isSub ? 'subs' : 'in-app' })).catch(() => setBuying(null));
   }, [buying, requestPurchase, products, subscriptions, profile?.userId]);
+  // Effects and modal-exit handlers below need the CURRENT buy without being in
+  // its dependency chain.
+  const buyRef = useRef(buy); buyRef.current = buy;
+
+  // Cross-screen insufficient-diamonds arrivals (avatar, name change, level
+  // road): a caller recorded its shortfall and jumped here — open the covering
+  // pack's sheet with the AL/VAZGEC popup behind it, same as the emote flow.
+  // No dep array ON PURPOSE: the slot is take-once, so checking every commit is
+  // free — keying on [scrollToSection] silently dropped a second arrival with
+  // the same section (avatar shortfall twice → storeSection already 'diamonds'
+  // → effect never re-ran → no popup, and the stale pending value opened an
+  // Apple Pay sheet on a later, unrelated store visit). No cleanup either: the
+  // popup's own re-render would cancel the 380ms sheet timer.
+  useEffect(() => {
+    const missing = takePendingShortfall();
+    if (missing == null) return;
+    const pack = packForShortfall(missing);
+    setShortfall({ missing, productId: pack.productId });
+    setShowNotEnough(true);
+    setTimeout(() => buyRef.current(pack.productId), 380);
+  });
 
   // Guideline 3.1.1: a DISTINCT, user-initiated Restore. The launch-time replay in
   // the effect above does NOT satisfy this — App Review names that case explicitly
@@ -5699,6 +6333,10 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
 
   // "Not enough gems" dialog (weekly emote shop) — its CTA deep-links to the packs.
   const [showNotEnough, setShowNotEnough] = useState(false);
+  // How short the player was, and which pack we auto-opened for them. Held while
+  // the StoreKit sheet is up so the popup can stay behind it: dismissing Apple
+  // Pay must leave this explaining what happened, not vanish silently.
+  const [shortfall, setShortfall] = useState<{ missing: number; productId: string } | null>(null);
   // Satın alma onayı: fiyat butonu artık DOĞRUDAN satın almaz — animasyonlu
   // önizlemeli "emin misin?" penceresi açar. İçerik, pencerenin çıkış
   // animasyonu boyunca ekranda kalsın diye ayrı `open` bayrağıyla tutulur.
@@ -5706,14 +6344,18 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
   const [confirmOpen, setConfirmOpen] = useState(false);
   // Open "not enough gems" only AFTER the buy-confirm modal's native dismissal
   // finishes (via onExited) — flipping both in one commit overlaps two native
-  // <Modal>s and iOS freezes the app (dead touches + scroll).
-  const notEnoughOnExit = useRef(false);
+  // <SafeModal>s and iOS freezes the app (dead touches + scroll). Holds the missing
+  // amount recorded at confirm (null = nothing pending) — the powerShortfall
+  // pattern, so the handoff never depends on render-closure state.
+  const notEnoughOnExit = useRef<number | null>(null);
   // CO Pass modal hands off to another native surface after its own dismissal:
   // 'notEnough' → the insufficient-diamonds popup, 'buyMoney' → the StoreKit sheet.
   // Deferring past the modal's exit avoids the two-native-surfaces freeze.
   const coPassExit = useRef<null | 'notEnough' | 'buyMoney'>(null);
+  const coPassMissing = useRef<number | null>(null);
   // Mağazadan güç satın alma onayı
   const [confirmPower, setConfirmPower] = useState<PowerId | null>(null);
+  const powerShortfall = useRef<number | null>(null); // insufficient at confirm -> hand off on exit
   // CO Pass satın alma onayı (mağazadan doğrudan)
   const [confirmCoPass, setConfirmCoPass] = useState(false);
   // İfade vitrini kutu boyu — konteyner genişliğinden ölçülür (kesilme olmasın)
@@ -5935,7 +6577,7 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
                 <View>
                   <PowerArt powerId={pid} size={56} />
                   {count > 0 ? (
-                    <View style={{ position: 'absolute', right: -6, top: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 4, backgroundColor: POWERS[pid].color, borderWidth: 2, borderColor: darken(theme.card, 0.45), alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{ position: 'absolute', right: -6, top: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 4, backgroundColor: POWERS[pid].color, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
                       <Text style={{ color: theme.ink, fontSize: 10, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>x{count}</Text>
                     </View>
                   ) : null}
@@ -6008,27 +6650,74 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
       </GameModal>
 
       {/* Not enough gems for a weekly emote → gold CTA scrolls to the diamond packs */}
-      <GameModal visible={showNotEnough} onClose={() => setShowNotEnough(false)} title={t('store.notEnoughGemsTitle')} icon="diamond">
-        <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
-          {t('store.notEnoughGemsBody')}
-        </Text>
-        <Btn
-          big
-          kind="accent"
-          icon="diamond"
-          label={t('store.goToDiamonds')}
-          onPress={() => {
-            setShowNotEnough(false);
-            const y = sectionYRef.current['diamonds'];
-            if (y !== undefined) storeScrollRef.current?.scrollTo({ y, animated: true });
-          }}
-        />
+      {/* Insufficient diamonds. When we know exactly how short the player is we
+          auto-open the cheapest covering pack's StoreKit sheet (fired from the
+          previous modal's onExited) and keep THIS popup behind it — dismissing
+          Apple Pay lands back here rather than on a blank screen, and "Al" can
+          re-open the sheet. Without a known shortfall it degrades to the old
+          "go to the diamond packs" behaviour. */}
+      <GameModal visible={showNotEnough} onClose={() => { setShowNotEnough(false); setShortfall(null); }} title={t('store.notEnoughGemsTitle')} icon="diamond">
+        {shortfall ? (() => {
+          const pack = DIAMOND_PACKS.find((p) => p.productId === shortfall.productId) ?? DIAMOND_PACKS[0]!;
+          return (
+            <>
+              <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+                {t('store.notEnoughNeed', { n: String(shortfall.missing) })}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: theme.panelInnerFill, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, borderTopWidth: 1, borderTopColor: theme.topLight }}>
+                <ExpoImage source={pack.img} style={{ width: 34, height: 34 }} contentFit="contain" />
+                <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>{pack.label}</Text>
+                <GemIcon size={13} />
+                <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>{pack.amount}</Text>
+              </View>
+              <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>
+                {t('store.notEnoughProcessing')}
+              </Text>
+              <Btn
+                big
+                kind="accent"
+                icon="cart"
+                loading={buying === pack.productId}
+                label={`${t('store.buyNow')} · ${priceFor(pack.productId, pack.price)}`}
+                onPress={() => buy(pack.productId)}
+              />
+              <Btn label={t('store.cancel')} kind="ghost" onPress={() => { setShowNotEnough(false); setShortfall(null); }} />
+            </>
+          );
+        })() : (
+          <>
+            <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+              {t('store.notEnoughGemsBody')}
+            </Text>
+            <Btn
+              big
+              kind="accent"
+              icon="diamond"
+              label={t('store.goToDiamonds')}
+              onPress={() => {
+                setShowNotEnough(false);
+                const y = sectionYRef.current['diamonds'];
+                if (y !== undefined) storeScrollRef.current?.scrollTo({ y, animated: true });
+              }}
+            />
+          </>
+        )}
       </GameModal>
 
       {/* Güç satın alma onayı */}
       <GameModal
         visible={confirmPower != null}
         onClose={() => setConfirmPower(null)}
+        onExited={() => {
+          const m = powerShortfall.current;
+          if (m == null) return;
+          powerShortfall.current = null;
+          const pack = packForShortfall(m);
+          setShortfall({ missing: m, productId: pack.productId });
+          setShowNotEnough(true);
+          // Popup first; sheet after its presentation settles (see emote flow).
+          setTimeout(() => buyRef.current(pack.productId), 380);
+        }}
         title={confirmPower ? t(POWERS[confirmPower].nameKey).toLocaleUpperCase(currentLang()) : ''}
         icon={confirmPower ? POWERS[confirmPower].icon : 'flash'}
       >
@@ -6038,7 +6727,13 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
             <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 18 }}>{t(POWERS[confirmPower].descKey)}</Text>
             <Text style={{ color: theme.text, fontSize: 12, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{t('power.buyConfirm')}</Text>
             <View style={{ alignSelf: 'stretch', marginTop: 4, gap: 8 }}>
-              <Btn big kind="primary" gem label={String(POWER_PRICES[confirmPower])} onPress={() => { const pid = confirmPower; setConfirmPower(null); actions.buyPower(pid); }} />
+              <Btn big kind="primary" gem label={String(POWER_PRICES[confirmPower])} onPress={() => {
+              const pid = confirmPower;
+              const price = POWER_PRICES[pid];
+              const have = profile?.diamonds ?? 0;
+              if (have >= price) { setConfirmPower(null); actions.buyPower(pid); }
+              else { powerShortfall.current = price - have; setConfirmPower(null); }
+            }} />
               <Btn label={t('store.cancel')} kind="ghost" onPress={() => setConfirmPower(null)} />
             </View>
           </View>
@@ -6051,7 +6746,14 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
         onClose={() => setConfirmCoPass(false)}
         onExited={() => {
           const a = coPassExit.current; coPassExit.current = null;
-          if (a === 'notEnough') setShowNotEnough(true);
+          if (a === 'notEnough') {
+            const m = coPassMissing.current ?? PREMIUM_ROAD_PRICE;
+            coPassMissing.current = null;
+            const pack = packForShortfall(m);
+            setShortfall({ missing: m, productId: pack.productId });
+            setShowNotEnough(true);
+            setTimeout(() => buyRef.current(pack.productId), 380);
+          }
           else if (a === 'buyMoney') buy(COPASS_PRODUCT_ID);
         }}
         title={t('premium.bannerTitle').toLocaleUpperCase(currentLang())}
@@ -6063,7 +6765,7 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
             {/* Buy with 2000 diamonds — or fall through to the "not enough" popup */}
             <Btn big kind="accent" gem label={t('premium.unlockBtn', { n: String(PREMIUM_ROAD_PRICE) })} onPress={() => {
               if ((profile?.diamonds ?? 0) >= PREMIUM_ROAD_PRICE) { setConfirmCoPass(false); actions.buyPremiumRoad(); }
-              else { coPassExit.current = 'notEnough'; setConfirmCoPass(false); }
+              else { coPassExit.current = 'notEnough'; coPassMissing.current = PREMIUM_ROAD_PRICE - (profile?.diamonds ?? 0); setConfirmCoPass(false); }
             }} />
             {/* Or buy with real money (StoreKit) — always available, no diamonds needed */}
             <Btn big kind="blue" icon="card" label={t('premium.buyWithMoney', { price: priceFor(COPASS_PRODUCT_ID, COPASS_FALLBACK_PRICE) })} onPress={() => { coPassExit.current = 'buyMoney'; setConfirmCoPass(false); }} />
@@ -6073,14 +6775,31 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
       </GameModal>
 
       {/* İfade satın alma onayı — animasyonlu CANLI önizleme: alıcı ne aldığını görür */}
-      <GameModal visible={confirmOpen} onClose={() => setConfirmOpen(false)} onExited={() => { if (notEnoughOnExit.current) { notEnoughOnExit.current = false; setShowNotEnough(true); } }} title={t('store.confirmBuyTitle')} icon="cart">
+      <GameModal visible={confirmOpen} onClose={() => setConfirmOpen(false)} onExited={() => {
+          const m = notEnoughOnExit.current;
+          if (m == null) return;
+          notEnoughOnExit.current = null;
+          const pack = packForShortfall(m);
+          setShortfall({ missing: m, productId: pack.productId });
+          setShowNotEnough(true);
+          // Popup FIRST; the sheet only after the popup's native presentation
+          // has settled (380ms — the same sequencing the cross-screen arrival
+          // effect uses). Calling buy() in the same tick raced the popup's
+          // presentation against the StoreKit sheet (or, with products not yet
+          // loaded, mounted the coming-soon GameModal in the SAME commit as
+          // this popup) — iOS wedged the presentation and every touch/scroll
+          // died. Cancelling Apple Pay still lands back on this popup.
+          setTimeout(() => buyRef.current(pack.productId), 380);
+        }} title={t('store.confirmBuyTitle')} icon="cart">
         {confirmEmote ? (
           <View style={{ alignItems: 'center', gap: 10 }}>
-            <View style={{ width: 136, height: 136, borderRadius: 22, backgroundColor: theme.surface3, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', ...shadowRaised }}>
-              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
-              <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
-              {/* animasyon YALNIZ burada oynar — pencere her açılışta baştan başlar */}
-              <EmoteSticker key={confirmOpen ? `${confirmEmote.id}-open` : `${confirmEmote.id}-closed`} id={confirmEmote.id} size={108} play loop />
+            <View style={{ borderRadius: 22, backgroundColor: theme.surface3, ...shadowRaised }}>
+              <View style={{ width: 136, height: 136, borderRadius: 22, backgroundColor: theme.surface3, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
+                <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
+                <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
+                {/* animasyon YALNIZ burada oynar — pencere her açılışta baştan başlar */}
+                <EmoteSticker key={confirmOpen ? `${confirmEmote.id}-open` : `${confirmEmote.id}-closed`} id={confirmEmote.id} size={108} play loop />
+              </View>
             </View>
             {ownsEmote(profile, confirmEmote.id) ? (
               <>
@@ -6104,8 +6823,17 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
                     gem
                     label={String(confirmEmote.premium?.price ?? 0)}
                     onPress={() => {
-                      if ((profile?.diamonds ?? 0) >= (confirmEmote.premium?.price ?? 0)) { actions.buyEmote(confirmEmote.id); setConfirmOpen(false); }
-                      else { notEnoughOnExit.current = true; setConfirmOpen(false); }
+                      const price = confirmEmote.premium?.price ?? 0;
+                      const have = profile?.diamonds ?? 0;
+                      if (have >= price) { actions.buyEmote(confirmEmote.id); setConfirmOpen(false); }
+                      else {
+                        // Short: remember how short. The handoff (popup, then
+                        // the delayed StoreKit sheet) fires from onExited —
+                        // opening anything while this modal is still animating
+                        // out leaves two native modals up and freezes iOS.
+                        notEnoughOnExit.current = price - have;
+                        setConfirmOpen(false);
+                      }
                     }}
                   />
                   <Btn label={t('store.cancel')} kind="ghost" onPress={() => setConfirmOpen(false)} />
@@ -6227,7 +6955,7 @@ const DiscoverableEmoteCard = memo(function DiscoverableEmoteCard({ emote, width
           <Ionicons name="lock-closed" size={10} color={theme.muted} />
         </View>
         {/* highlight ring — "currently playing" */}
-        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 12, borderWidth: 2, borderColor: theme.primary, opacity: ring }]} />
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 14, borderWidth: 2, borderColor: theme.primary, opacity: ring }]} />
       </Animated.View>
     </Pressable>
   );
@@ -6265,11 +6993,15 @@ function ActionFlap({ visible, label, tone, disabled = false, onPress }: {
           shadowColor: theme.shadowInk, shadowOpacity: 0.35, shadowRadius: 5, shadowOffset: { width: 0, height: 4 }, elevation: 7,
         })}
       >
-        <View style={{ backgroundColor: face, borderBottomLeftRadius: 10, borderBottomRightRadius: 10, alignItems: 'center', paddingVertical: 5 }}>
-          <Text style={{ color: disabled ? theme.muted : theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 11, letterSpacing: 0.5, textShadowColor: 'rgba(4,9,24,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 1 }}>
-            {label}
-          </Text>
-        </View>
+        {({ pressed }) => (
+          // inner bottom radius = outer 12 − lip inset (3 unpressed / 1 pressed), so the
+          // corner seam tracks the press together with paddingBottom
+          <View style={{ backgroundColor: face, borderBottomLeftRadius: pressed ? 11 : 9, borderBottomRightRadius: pressed ? 11 : 9, alignItems: 'center', paddingVertical: 5 }}>
+            <Text style={{ color: disabled ? theme.muted : theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 11, letterSpacing: 0.5, textShadowColor: 'rgba(4,9,24,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 1 }}>
+              {label}
+            </Text>
+          </View>
+        )}
       </Pressable>
     </Animated.View>
   );
@@ -6415,7 +7147,7 @@ function CollectibleEmoteCard({ emote, width, isEquipped, blocked, active, onPre
             </View>
           </Animated.View>
           {/* önizleme halkası */}
-          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 12, borderWidth: 2, borderColor: isEquipped ? theme.danger : theme.primary, opacity: ring }]} />
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderTopLeftRadius: 13, borderTopRightRadius: 13, borderBottomLeftRadius: 14, borderBottomRightRadius: 14, borderWidth: 2, borderColor: isEquipped ? theme.danger : theme.primary, opacity: ring }]} />
         </Animated.View>
       </Pressable>
       <ActionFlap
@@ -6480,15 +7212,16 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
     // Seri Geri Yükleme yalnız kırık bir seri varken kullanılabilir
     const streakBlocked = id === 'streak' && lostStreak <= 0;
     return (
-      <View key={id} style={{ borderRadius: 19, ...shadowRaised }}>
+      <View key={id} style={{ borderRadius: 19, ...shadowRaised, ...(active ? { shadowColor: meta.color, shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 0 }, elevation: 8 } : {}) }}>
         <View style={{
           backgroundColor: active ? theme.surface3 : theme.surface2, borderRadius: 19, borderWidth: 2,
           borderColor: active ? meta.color : withAlpha(meta.color, count > 0 ? 0.55 : 0.25),
-          padding: 12,
-          ...(active ? { shadowColor: meta.color, shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 0 }, elevation: 8 } : {}),
+          // strips clip at the r19 corners here; shadows (raised + active glow)
+          // live on the wrapper — overflow:'hidden' clips a layer's OWN shadow on iOS
+          padding: 12, overflow: 'hidden',
         }}>
-          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08, borderTopLeftRadius: 17, borderTopRightRadius: 17 }} />
-          <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28, borderBottomLeftRadius: 17, borderBottomRightRadius: 17 }} />
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
+          <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <View>
               <PowerArt powerId={id} size={62} locked={count === 0 && !active} />
@@ -6576,6 +7309,7 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
 }
 
 export function CollectionScreen({ state, actions }: Props) {
+  const { width: winW } = useWindow();
   const profile = state.profile;
   const equipped = profile?.equippedEmotes ?? [];
   // Sekmeler: İfadeler (yuvalar + koleksiyon) | Güçler (tek kullanımlık envanter)
@@ -6680,7 +7414,14 @@ export function CollectionScreen({ state, actions }: Props) {
   const allEmotes: EmoteMeta[] = [...FACE_EMOTES, ...PREMIUM_EMOTES, ...ANIM_EMOTES];
   const discoverable = allEmotes.filter((e) => !ownsEmote(profile, e.id));
   const COL_GAP = 8;
-  const COL_W = Math.floor((SCREEN_W - 44 - COL_GAP * 3) / 4);
+  // Fix the CELL size and derive the column count from the window, instead of
+  // fixing 4 columns and dividing the width among them. On an iPad the old
+  // formula produced 188pt cells (vs ~87pt on a phone) — a tiny emoji floating
+  // in a huge card. Now the cells stay phone-sized and more of them fit.
+  const COL_TARGET_W = 92;
+  const gridW = winW - 44;
+  const COLS = Math.max(4, Math.floor((gridW + COL_GAP) / (COL_TARGET_W + COL_GAP)));
+  const COL_W = Math.floor((gridW - COL_GAP * (COLS - 1)) / COLS);
   const full = equipped.length >= EMOTE_SLOTS;
 
   const renderEmoteCard = (e: EmoteMeta) => {
@@ -6840,95 +7581,25 @@ export function CollectionScreen({ state, actions }: Props) {
   );
 }
 
-// Waiting overlay shown to the inviter while the friend decides (30s window).
-// GameModal + the hero-wait dialect (spec §9): the friend's avatar sits inside
-// a pulsing glowSoft halo while an Svg ring drains down the 30s countdown.
-const INVITE_WINDOW_MS = 30_000;
-function InviteWaitingModal({ invite, avatarId, onCancel }: {
-  invite: GameState['outgoingInvite']; avatarId?: string | null; onCancel: () => void;
-}) {
-  const [leftMs, setLeftMs] = useState(INVITE_WINDOW_MS);
-  // Keep the last invite rendered through GameModal's 160ms exit animation.
-  const lastInvite = useRef(invite);
-  if (invite) lastInvite.current = invite;
-  const shown = invite ?? lastInvite.current;
-
-  useEffect(() => {
-    if (!invite) return;
-    const tick = () => {
-      const ms = Math.max(0, invite.expiresAt - Date.now());
-      setLeftMs(ms);
-      if (ms <= 0) onCancel();
-    };
-    tick();
-    const id = setInterval(tick, 100); // 10fps keeps the draining ring smooth
-    return () => clearInterval(id);
-  }, [invite?.toId, invite?.expiresAt]);
-
-  // Pulsing glowSoft halo behind the avatar (native driver scale/opacity only).
-  // Gated on an active invite — the component itself stays mounted in
-  // FriendsScreen, so an unconditional loop would churn forever.
-  const pulse = useRef(new Animated.Value(0)).current;
-  const hasInvite = !!invite;
-  useEffect(() => {
-    if (!hasInvite) return;
-    const loop = Animated.loop(Animated.sequence([
-      Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      Animated.timing(pulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-    ]));
-    loop.start();
-    return () => { loop.stop(); pulse.setValue(0); };
-  }, [hasInvite, pulse]);
-
-  const secs = Math.ceil(leftMs / 1000);
-  const frac = Math.min(1, Math.max(0, leftMs / INVITE_WINDOW_MS));
-  const urgent = secs <= 5;
-  const RING = 118;
-  const STROKE = 6;
-  const R = (RING - STROKE) / 2;
-  const C = 2 * Math.PI * R;
-
-  return (
-    <GameModal visible={!!invite} onClose={onCancel} title={t('friends.friendlyMatch')} icon="flash">
-      <View style={{ alignItems: 'center', gap: 8 }}>
-        <View style={{ width: RING + 20, height: RING + 20, alignItems: 'center', justifyContent: 'center' }}>
-          <Animated.View
-            pointerEvents="none"
-            style={{
-              position: 'absolute', width: RING + 16, height: RING + 16, borderRadius: (RING + 16) / 2,
-              backgroundColor: theme.glowSoft,
-              opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }),
-              transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1.04] }) }],
-            }}
-          />
-          {/* countdown ring draining around the avatar */}
-          <Svg width={RING} height={RING} style={{ position: 'absolute', transform: [{ rotate: '-90deg' }] }}>
-            <Circle cx={RING / 2} cy={RING / 2} r={R} stroke={theme.panelInnerFill} strokeWidth={STROKE} fill="none" />
-            <Circle
-              cx={RING / 2} cy={RING / 2} r={R}
-              stroke={urgent ? theme.danger : theme.primary} strokeWidth={STROKE} fill="none" strokeLinecap="round"
-              strokeDasharray={`${C}`} strokeDashoffset={C * (1 - frac)}
-            />
-          </Svg>
-          <AvatarBadge avatarId={avatarId} size={RING - STROKE * 2 - 14} ringColor={theme.border} />
-        </View>
-        <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 17, ...engrave('sm') }} numberOfLines={1}>{shown?.toName}</Text>
-        <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{t('friends.waitingAccept')}</Text>
-        <Text style={{ color: urgent ? theme.danger : theme.accent, fontFamily: 'Poppins-Black', fontSize: 34, fontVariant: ['tabular-nums'], ...engrave('lg') }}>{secs}</Text>
-      </View>
-      <Btn label={t('searching.cancel')} kind="ghost" icon="close" onPress={onCancel} />
-    </GameModal>
-  );
-}
+// (Sender-side waiting UI is now the OutgoingInviteBanner top strip in App.tsx —
+// the old InviteWaitingModal blocked the whole Friends screen for 30s.)
 
 // A friend's public profile (tapped from the friends list).
-export function FriendProfileModal({ profile, onClose }: { profile: PublicProfile | null; onClose: () => void }) {
+export function FriendProfileModal({ profile, onClose, relation, onAddFriend }: {
+  profile: PublicProfile | null; onClose: () => void;
+  // 'none' + onAddFriend → istatistiklerin altında "Arkadaş Ekle" düğmesi
+  // (liderlik tablosundan bakılan yabancılar). 'self'/'friend' → düğme yok.
+  relation?: 'self' | 'friend' | 'none'; onAddFriend?: () => void;
+}) {
   const insets = useSafeAreaInsets();
   const total = (profile?.wins ?? 0) + (profile?.losses ?? 0);
   const winRate = total ? Math.round(((profile?.wins ?? 0) / total) * 100) : 0;
   const color = profile ? arenaColor(profile.arena.name) : theme.primary;
+  // İstek bu açılışta gönderildiyse düğme "gönderildi" durumuna kilitlenir.
+  const [requestSent, setRequestSent] = useState(false);
+  useEffect(() => { setRequestSent(false); }, [profile?.userId]);
   return (
-    <Modal visible={!!profile} animationType="slide" onRequestClose={onClose} presentationStyle="overFullScreen" transparent>
+    <SafeModal visible={!!profile} animationType="slide" onRequestClose={onClose} presentationStyle="overFullScreen" transparent>
       <View style={{ flex: 1, backgroundColor: BG_TOP }}>
         <ScreenBg />
         <View style={{ flex: 1, paddingTop: insets.top }}>
@@ -6940,12 +7611,14 @@ export function FriendProfileModal({ profile, onClose }: { profile: PublicProfil
               <AvatarBadge avatarId={profile?.avatar ?? profile?.selectedAvatar} size={104} ringColor={color} frameId={profile?.frame} />
               <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 22, marginTop: 12, ...engrave('lg') }} numberOfLines={1}>{profile?.displayName}</Text>
               {/* Gold trophies chip — surface2 face + arena-tint accent ring, integrated depth */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.surface2, borderRadius: 12, overflow: 'hidden', borderWidth: 1.5, borderColor: withAlpha(color, 0.45), paddingHorizontal: 14, paddingVertical: 6, marginTop: 8, ...shadowRow }}>
-                <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
-                <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
-                <Ionicons name="trophy" size={15} color={theme.gold} />
-                <Text style={{ color: theme.gold, fontFamily: 'Poppins-ExtraBold', fontSize: 15, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{profile?.trophies ?? 0}</Text>
-                <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>· {profile?.arena ? arenaLabel(profile.arena.name) : ''}</Text>
+              <View style={{ borderRadius: 12, backgroundColor: theme.surface2, marginTop: 8, ...shadowRow }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.surface2, borderRadius: 12, overflow: 'hidden', borderWidth: 1.5, borderColor: withAlpha(color, 0.45), paddingHorizontal: 14, paddingVertical: 6 }}>
+                  <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
+                  <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
+                  <Ionicons name="trophy" size={15} color={theme.gold} />
+                  <Text style={{ color: theme.gold, fontFamily: 'Poppins-ExtraBold', fontSize: 15, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{profile?.trophies ?? 0}</Text>
+                  <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>· {profile?.arena ? arenaLabel(profile.arena.name) : ''}</Text>
+                </View>
               </View>
             </GamePanel>
 
@@ -6955,10 +7628,22 @@ export function FriendProfileModal({ profile, onClose }: { profile: PublicProfil
               <StatCard icon="skull-outline" color={theme.danger} label={t('stats.losses')} value={profile?.losses ?? 0} />
               <StatCard icon="stats-chart" color={theme.blue} label={t('stats.winRate')} value={`${winRate}%`} />
             </View>
+            {relation === 'none' && onAddFriend ? (
+              <View style={{ marginTop: 14 }}>
+                <Btn
+                  big
+                  label={requestSent ? t('friends.requestSentShort') : t('friends.addFriend')}
+                  icon={requestSent ? 'checkmark-circle' : 'person-add'}
+                  kind={requestSent ? 'ghost' : 'primary'}
+                  disabled={requestSent}
+                  onPress={() => { setRequestSent(true); onAddFriend(); }}
+                />
+              </View>
+            ) : null}
           </View>
         </View>
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 
@@ -7088,7 +7773,9 @@ function SegmentTab({ icon, label, badge, active, onPress }: {
           style={{
             transform: [{ translateY: ty }],
             flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-            paddingVertical: 9, borderRadius: 10,
+            paddingVertical: 9,
+            // primaryDark lip: radius 11, flush top/sides, 2px bottom lip when active → 11 top / 9 bottom
+            borderTopLeftRadius: 11, borderTopRightRadius: 11, borderBottomLeftRadius: 9, borderBottomRightRadius: 9,
             backgroundColor: active ? theme.primary : 'transparent',
             borderTopWidth: active ? 1.5 : 0, borderTopColor: 'rgba(255,255,255,0.30)',
           }}
@@ -7300,14 +7987,25 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
   const [matchMode, setMatchMode] = useState<GameMode>('team-team');
   const [menuFriend, setMenuFriend] = useState<FriendInfo | null>(null); // tapped friend → actions popover
   const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 }); // tap anchor for the popover
+  const [menuH, setMenuH] = useState(222); // measured popover height — hard-coding it mis-seats the panel when labels wrap (long locales / large type)
   const [confirmRemove, setConfirmRemove] = useState<FriendInfo | null>(null); // remove confirmation
   const [socialPackPopup, setSocialPackPopup] = useState(false);
-  // The match-setup modal hands off to another native <Modal> (the social-pack
+  // The match-setup modal hands off to another native <SafeModal> (the social-pack
   // upsell or the invite-waiting dialog). iOS presents ONE modal at a time, so we
   // stash the intent and run it in matchModal's onExited — after its native
   // dismissal — never in the same commit (which overlaps two modals and FREEZES
   // the app: dead touches + no scroll).
   const matchExitAction = useRef<null | { kind: 'social' } | { kind: 'invite'; fid: string; name: string; options: GameOptions }>(null);
+  // Friendly-match tap in the row menu: the match dialog must NOT open in the
+  // same commit that dismisses the menu Modal (same-tick native modal swap —
+  // the second presentation can silently fail on iOS). Stash the friend id and
+  // open from the menu Modal's onDismiss (iOS); Android has no onDismiss, so it
+  // opens directly (Android tolerates the swap).
+  const menuExitInvite = useRef<string | null>(null);
+  // Menüden açılan DİĞER pencereler (profil / sohbet) de menü modalı kapanana
+  // kadar bekler: iki native modal aynı anda sunulunca iOS görünmez bir modal
+  // bırakıyor ve uygulama donuyordu.
+  const menuExitAction = useRef<null | { kind: 'profile' | 'chat'; id: string }>(null);
   const menuActionLock = useRef(false);
   const addInputRef = useRef<TextInput>(null);   // empty-state CTA → focus add-friend input
   const msgSearchRef = useRef<TextInput>(null);  // empty-state CTA → focus message search
@@ -7561,7 +8259,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
             >
               <View style={{ position: 'relative' }}>
                 <AvatarBadge avatarId={f.avatar ?? f.selectedAvatar} size={38} ringColor={theme.accent} frameId={f.frame} />
-                {f.online ? <View style={{ position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: 6, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
+                {f.online ? <View style={{ position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15, ...engrave('sm') }} numberOfLines={1}>{f.displayName}</Text>
@@ -7581,12 +8279,18 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
       <NetworkErrorBeacon visible={isNetworkErrorMessage(state.error)} />
 
       {/* Friend actions — small Clash-Royale-style popover above the tapped row */}
-      <Modal visible={menuFriend !== null} transparent animationType="none" onRequestClose={() => setMenuFriend(null)}>
+      <SafeModal visible={menuFriend !== null} transparent animationType="none" onRequestClose={() => setMenuFriend(null)} onDismiss={() => {
+        const fid = menuExitInvite.current; menuExitInvite.current = null;
+        if (fid) { setMatchPage({ key: 'mode', dir: 1 }); setMatchModal(fid); return; }
+        const a = menuExitAction.current; menuExitAction.current = null;
+        if (a?.kind === 'profile') actions.getUserProfile(a.id);
+        else if (a?.kind === 'chat') actions.openChat(a.id);
+      }}>
         <View style={{ flex: 1 }} pointerEvents="box-none">
           <Pressable style={[StyleSheet.absoluteFill, { zIndex: 0 }]} onPress={() => setMenuFriend(null)} />
           {menuFriend ? (() => {
             const W = 236;
-            const H = 222;
+            const H = menuH; // measured via onLayout below; 222 only until the first layout
             const left = Math.max(8, Math.min(menuPos.x - W / 2, SCREEN_W - W - 8));
             const top = Math.max(56, menuPos.y - H - 14);
             const tailLeft = Math.min(Math.max(menuPos.x - left - 8, 18), W - 34);
@@ -7612,7 +8316,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
               </Pressable>
             );
             return (
-              <View style={{ position: 'absolute', left, top, width: W, zIndex: 2, elevation: 20 }} pointerEvents="box-none">
+              <View style={{ position: 'absolute', left, top, width: W, zIndex: 2, elevation: 20 }} pointerEvents="box-none" onLayout={(e) => { const h = Math.round(e.nativeEvent.layout.height); if (h > 0 && h !== menuH) setMenuH(h); }}>
                 {/* GamePanel-compact frame language + 150ms spring pop anchored at the tail */}
                 <SpringPop>
                   <View style={{ backgroundColor: theme.surface1, borderRadius: 15, ...shadowModal }}>
@@ -7621,11 +8325,11 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                       <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.5, textAlign: 'center', paddingTop: 9, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: theme.hairline }} numberOfLines={1}>
                         {menuFriend.displayName}
                       </Text>
-                      <Row color={theme.text} label={t('friends.friendlyMatch')} onPress={() => { const id = menuFriend.userId; setMenuFriend(null); setMatchPage({ key: 'mode', dir: 1 }); setMatchModal(id); }} />
+                      <Row color={theme.text} label={t('friends.friendlyMatch')} onPress={() => { menuExitInvite.current = menuFriend.userId; setMenuFriend(null); if (Platform.OS !== 'ios') { const fid = menuExitInvite.current; menuExitInvite.current = null; if (fid) { setMatchPage({ key: 'mode', dir: 1 }); setMatchModal(fid); } } }} />
                       <View style={{ height: 1, backgroundColor: theme.hairline, marginHorizontal: 10 }} />
-                      <Row color={theme.text} label={t('friends.sendMessage')} onPress={() => { const id = menuFriend.userId; setMenuFriend(null); actions.openChat(id); }} />
+                      <Row color={theme.text} label={t('friends.sendMessage')} onPress={() => { menuExitAction.current = { kind: 'chat', id: menuFriend.userId }; setMenuFriend(null); if (Platform.OS !== 'ios') { const a = menuExitAction.current; menuExitAction.current = null; if (a) actions.openChat(a.id); } }} />
                       <View style={{ height: 1, backgroundColor: theme.hairline, marginHorizontal: 10 }} />
-                      <Row color={theme.text} label={t('friends.viewProfile')} onPress={() => { const id = menuFriend.userId; setMenuFriend(null); actions.getUserProfile(id); }} />
+                      <Row color={theme.text} label={t('friends.viewProfile')} onPress={() => { menuExitAction.current = { kind: 'profile', id: menuFriend.userId }; setMenuFriend(null); if (Platform.OS !== 'ios') { const a = menuExitAction.current; menuExitAction.current = null; if (a) actions.getUserProfile(a.id); } }} />
                       <View style={{ height: 1, backgroundColor: theme.hairline, marginHorizontal: 10 }} />
                       <Row color={theme.danger} label={t('friends.removeFriend')} onPress={() => { const f = menuFriend; setMenuFriend(null); setConfirmRemove(f); }} />
                     </View>
@@ -7637,7 +8341,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
             );
           })() : null}
         </View>
-      </Modal>
+      </SafeModal>
 
       {/* Remove-friend confirmation */}
       <GameModal visible={confirmRemove !== null} onClose={() => setConfirmRemove(null)} title={t('friends.removeConfirmTitle')} icon="warning" danger>
@@ -7741,25 +8445,16 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
         <Btn label={t('friends.goToStore')} kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); onGoToStore?.('socialPack'); }} />
       </GameModal>
 
-      {/* Outgoing invite — waiting for the friend to accept (30s) */}
-      <InviteWaitingModal
-        invite={state.outgoingInvite}
-        avatarId={(() => {
-          const f = friends.find((fr) => fr.userId === state.outgoingInvite?.toId);
-          return f?.avatar ?? f?.selectedAvatar;
-        })()}
-        onCancel={() => { if (state.outgoingInvite) actions.cancelMatchInvite(state.outgoingInvite.toId); }}
-      />
-
-      {/* Tapped a friend → their public profile */}
-      <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
-
+      {/* Profil penceresi YALNIZ App.tsx'te render edilir. Burada bir İKİNCİSİ
+          daha vardı: aynı state (state.viewProfile) iki native modalı birden
+          sunmaya çalışıyordu — donmanın ta kendisi; sıraya alınsa bile profil
+          kapanınca aynısı bir kez daha açılırdı. */}
       {/* Chat screen — WhatsApp style, swipe-back enabled */}
-      <Modal visible={state.chatWith !== null} transparent animationType="none" presentationStyle="overFullScreen" onRequestClose={actions.closeChat}>
+      <SafeModal visible={state.chatWith !== null} transparent animationType="none" presentationStyle="overFullScreen" onRequestClose={actions.closeChat}>
         <SwipeBackWrap onBack={actions.closeChat}>
           {(softBack) => <ChatScreen state={state} actions={actions} onBack={softBack} />}
         </SwipeBackWrap>
-      </Modal>
+      </SafeModal>
 
       {/* Misafir kapısı — arkadaş eklemek kayıt ister */}
       <GuestGateModal visible={guestGateOpen} onClose={() => setGuestGateOpen(false)} actions={actions} />
@@ -7816,7 +8511,7 @@ const SWIPE_THRESHOLD = 0.24; // fraction of screen width to trigger back
 const chatComposerTop = { y: Number.POSITIVE_INFINITY };
 
 function SwipeBackWrap({ children, onBack }: { children: (softBack: () => void) => ReactNode; onBack: () => void }) {
-  const screenW = Dimensions.get('window').width;
+  const screenW = canvasSize().width;
   const translateX = useRef(new Animated.Value(screenW)).current;
   const closingRef = useRef(false);
   const ignoreRef = useRef(false);
@@ -7906,13 +8601,16 @@ const REPORT_REASONS: { key: MessageKey; value: string }[] = [
   { key: 'mod.reasonOther', value: 'other' },
 ];
 
-function ReportReasonModal({ visible, onClose, onPick }: {
+function ReportReasonModal({ visible, onClose, onExited, onPick }: {
   visible: boolean;
   onClose: () => void;
+  // Forwarded so the caller can hand off to the next modal only AFTER this one's
+  // native <SafeModal> has unmounted — two mounted at once freezes iOS.
+  onExited?: () => void;
   onPick: (reason: string) => void;
 }) {
   return (
-    <GameModal visible={visible} onClose={onClose} title={t('mod.reportTitle')} icon="flag" danger>
+    <GameModal visible={visible} onClose={onClose} onExited={onExited} title={t('mod.reportTitle')} icon="flag" danger>
       <Text style={{ color: theme.muted, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 19, marginBottom: 4 }}>
         {t('mod.reportBody')}
       </Text>
@@ -7933,6 +8631,22 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
   const [reportSent, setReportSent] = useState(false);
   const [guestGate, setGuestGate] = useState(false);
   const isGuest = state.authProvider == null;
+  // Modal→modal handoff. GameModal keeps its native <SafeModal> mounted for the 160ms
+  // exit animation, so opening the next one in the same handler leaves TWO native
+  // modals mounted and iOS kills touch AND scroll for the whole screen (the tab
+  // "freezes" — it still scrolls sideways but not vertically). Every transition
+  // below records what to open, and the closing modal's onExited performs it.
+  type PendingOpen = { kind: 'report'; messageId?: string } | { kind: 'block' } | { kind: 'reportSent' };
+  const [pendingOpen, setPendingOpen] = useState<PendingOpen | null>(null);
+  const runPendingOpen = useCallback(() => {
+    setPendingOpen((p) => {
+      if (!p) return null;
+      if (p.kind === 'report') setReportFor({ messageId: p.messageId });
+      else if (p.kind === 'block') setBlockConfirm(true);
+      else setReportSent(true);
+      return null;
+    });
+  }, []);
   const [kbOpen, setKbOpen] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [inputBarHeight, setInputBarHeight] = useState(86);
@@ -7960,6 +8674,13 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasTyping = useRef(false);
   const sendingRef = useRef(false);
+  const keepKeyboardOpenRef = useRef(false);
+
+  const refocusInput = useCallback(() => {
+    inputRef.current?.focus();
+    requestAnimationFrame(() => inputRef.current?.focus());
+    setTimeout(() => inputRef.current?.focus(), 40);
+  }, []);
 
   // Auto-scroll to bottom whenever content grows (new message, typing indicator)
   // or the ScrollView layout changes (keyboard opens → ScrollView shrinks).
@@ -8007,7 +8728,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
     const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const onFrame = Keyboard.addListener(frameEvt, setKeyboardFrame);
     const onHide = Keyboard.addListener(hideEvt, resetKeyboardFrame);
-    // KESİN DÜZELTME: Sohbet bir RN <Modal> (yeni native pencere) içinde açılıyor.
+    // KESİN DÜZELTME: Sohbet bir RN <SafeModal> (yeni native pencere) içinde açılıyor.
     // İlk açılışta "Will" olayı bu pencere geçişiyle çakışıp BAYAT/yanlış bir
     // çerçeve bildirebilir — çubuk klavyenin arkasında kalır ya da "kaybolur"
     // ("ilk girildiğinde arama çubuğu kayboluyor"). "Did" olayları OS klavye
@@ -8078,6 +8799,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
     if (isGuest) { setGuestGate(true); return; }
     if (sendingRef.current) return;
     sendingRef.current = true;
+    keepKeyboardOpenRef.current = true;
     actions.sendMessage(chatWith, text.trim());
     setText('');
     if (wasTyping.current) {
@@ -8275,7 +8997,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
           accessibilityRole="button"
           accessibilityLabel={t('chat.send')}
           hitSlop={8}
-          style={{ marginBottom: 2 }}
+          style={{ marginBottom: 2 }} // the ONE baseline nudge vs the composer — do not repeat it on the inner circle
         >
           {({ pressed }) => {
             const hasText = !!text.trim();
@@ -8285,7 +9007,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
               // Idle: quiet flat well. Ready: solid primary.
               <View
                 style={{
-                  width: 44, height: 44, borderRadius: 22, marginBottom: 2, overflow: 'hidden',
+                  width: 44, height: 44, borderRadius: 22, overflow: 'hidden',
                   backgroundColor: hasText ? theme.primary : theme.well,
                   alignItems: 'center', justifyContent: 'center',
                   opacity: pressed && hasText ? 0.85 : 1,
@@ -8300,25 +9022,25 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
       </Animated.View>
 
       {/* ---- Guideline 1.2 moderation sheets ---- */}
-      <GameModal visible={chatMenu} onClose={() => setChatMenu(false)} title={friend?.displayName ?? ''} icon="person">
+      <GameModal visible={chatMenu} onClose={() => setChatMenu(false)} onExited={runPendingOpen} title={friend?.displayName ?? ''} icon="person">
         <GameRow
           icon="flag-outline"
           iconColor={theme.danger}
           label={t('mod.report')}
           chevron
-          onPress={() => { setChatMenu(false); setReportFor({}); }}
+          onPress={() => { setPendingOpen({ kind: 'report' }); setChatMenu(false); }}
         />
         <GameRow
           icon="ban-outline"
           iconColor={theme.danger}
           label={t('mod.block')}
           chevron
-          onPress={() => { setChatMenu(false); setBlockConfirm(true); }}
+          onPress={() => { setPendingOpen({ kind: 'block' }); setChatMenu(false); }}
         />
       </GameModal>
 
       {/* Long-pressed bubble: report anyone's, delete your own. */}
-      <GameModal visible={!!msgAction} onClose={() => setMsgAction(null)} title={t('mod.messageTitle')} icon="chatbubble">
+      <GameModal visible={!!msgAction} onClose={() => setMsgAction(null)} onExited={runPendingOpen} title={t('mod.messageTitle')} icon="chatbubble">
         {msgAction?.mine ? (
           <GameRow
             icon="trash-outline"
@@ -8334,7 +9056,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
             iconColor={theme.danger}
             label={t('mod.report')}
             chevron
-            onPress={() => { const id = msgAction!.id; setMsgAction(null); setReportFor({ messageId: id }); }}
+            onPress={() => { setPendingOpen({ kind: 'report', messageId: msgAction!.id }); setMsgAction(null); }}
           />
         )}
       </GameModal>
@@ -8342,10 +9064,11 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
       <ReportReasonModal
         visible={!!reportFor}
         onClose={() => setReportFor(null)}
+        onExited={runPendingOpen}
         onPick={(reason) => {
           if (chatWith) actions.reportContent(chatWith, reason, reportFor?.messageId);
+          setPendingOpen({ kind: 'reportSent' });
           setReportFor(null);
-          setReportSent(true);
         }}
       />
 
@@ -8408,6 +9131,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
   const [confirmAvatarId, setConfirmAvatarId] = useState<string | null>(null);
   const [showAvatarPage, setShowAvatarPage] = useState(false);
   const [showInsufficientPopup, setShowInsufficientPopup] = useState(false);
+  const insufficientMissing = useRef<number | null>(null);
   // Set on confirm: close the picker page once the confirm dialog's exit
   // animation completes (GameModal onExited) — no setTimeout handoff chains.
   const closePickerOnExit = useRef(false);
@@ -8437,7 +9161,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
   const confirmAvatar = confirmAvatarId ? avatarMeta(confirmAvatarId) : null;
   const canAffordPending = pendingAvatar ? p.diamonds >= avatarPrice(pendingAvatar.id) : false;
 
-  // Avatar picker — an INLINE page, deliberately NOT a native <Modal>.
+  // Avatar picker — an INLINE page, deliberately NOT a native <SafeModal>.
   //
   // It used to be a presentationStyle="fullScreen" Modal with the confirm/purchase
   // GameModals (themselves Modals) nested inside it. Confirming a change dismissed BOTH
@@ -8494,8 +9218,16 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
           visible={pendingAvatar !== null}
           onClose={() => setPendingAvatarId(null)}
           onExited={() => {
-            if (insufficientOnExit.current) {
-              insufficientOnExit.current = false;
+            if (!insufficientOnExit.current) return;
+            insufficientOnExit.current = false;
+            const m = insufficientMissing.current;
+            insufficientMissing.current = null;
+            if (m != null && onGoToStore) {
+              // Unified flow: Store opens the covering pack's sheet with the
+              // AL/VAZGEC popup behind it (see shortfall.ts).
+              setPendingShortfall(m);
+              onGoToStore('diamonds');
+            } else {
               setShowInsufficientPopup(true);
             }
           }}
@@ -8531,8 +9263,10 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
                         actions.buyAvatar(pendingAvatar.id);
                         setPendingAvatarId(null);
                       } else {
-                        // Close this modal first; its onExited opens the popup.
+                        // Close first; onExited hands off to the Store, which opens
+                        // the covering pack's sheet with the popup behind it.
                         insufficientOnExit.current = true;
+                        insufficientMissing.current = avatarPrice(pendingAvatar.id) - p.diamonds;
                         setPendingAvatarId(null);
                       }
                     }}
@@ -8673,7 +9407,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
                   const worn = p.selectedFrame === tr.key;
                   return (
                     <Pressable key={tr.key} onPress={() => setFramePrev({ tier: tr, unlocked: true })} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
-                      <View style={worn ? { borderRadius: 56 * 0.28, borderWidth: 2, borderColor: tr.c, margin: -2 } : undefined}>
+                      <View style={worn ? { borderRadius: 56 * 0.28 + 2, borderWidth: 2, borderColor: tr.c, margin: -2 } : undefined}>
                         <FrameArt tierKey={tr.key} size={56} well />
                       </View>
                       {worn ? (
@@ -8887,7 +9621,7 @@ export function ArenasScreen({ state, actions }: Props) {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <View style={{ width: isCurrent ? 96 : 74, height: isCurrent ? 88 : 68, alignItems: 'center', justifyContent: 'center' }}>
                   {/* Locked = art-only dim + padlock chip; text stays legible (no whole-card opacity) */}
-                  <Image source={arena.img} resizeMode="contain" style={{ width: '100%', height: '100%', opacity: isLocked ? 0.55 : 1, shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 4, shadowOffset: { width: 0, height: 3 } }} />
+                  <Image source={arena.img} resizeMode="contain" style={{ width: '100%', height: '100%', opacity: isLocked ? 0.55 : 1, shadowColor: theme.shadowInk, shadowOpacity: 0.45, shadowRadius: 4, shadowOffset: { width: 0, height: 3 } }} />
                   {isLocked ? (
                     <View style={{ position: 'absolute', top: -2, right: -2, width: 20, height: 20, borderRadius: 10, backgroundColor: theme.surface2, borderTopWidth: 1, borderTopColor: theme.topLight, alignItems: 'center', justifyContent: 'center' }}>
                       <Ionicons name="lock-closed" size={10} color={theme.muted} />
@@ -8953,7 +9687,13 @@ export function ArenasScreen({ state, actions }: Props) {
                 <View onLayout={(e) => setHeroSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
                   <GamePanel hero tint={arena.color} bodyStyle={{ padding: 14 }}>
                     {cardInner}
-                    {heroSize.w > 0 ? <ShineSweep width={heroSize.w - 8} height={heroSize.h - 8} delay={420} duration={720} opacity={0.22} band={0.26} /> : null}
+                    {/* Full-face sweep: -14 offset escapes the body's 14px padding (Yoga insets
+                        absolute children by it); the face's rounded overflow:'hidden' clips at the card edge. */}
+                    {heroSize.w > 0 ? (
+                      <View pointerEvents="none" style={{ position: 'absolute', top: -14, left: -14 }}>
+                        <ShineSweep width={heroSize.w} height={heroSize.h} delay={420} duration={720} opacity={0.22} band={0.26} />
+                      </View>
+                    ) : null}
                   </GamePanel>
                 </View>
               ) : (
@@ -9281,15 +10021,22 @@ function PlayerPhoto({ uri, size = 32 }: { uri: string | null; size?: number }) 
 // THE match-history card — one component for the popup (MatchHistoryModal) and
 // the fullscreen MatchHistoryScreen: GamePanel compact tinted by the result,
 // Ribbon verdict chip, engraved Poppins-Black score, recessed round wells.
+// Maç geçmişi kartı — savaş günlüğü dili (Clash Royale kalıbı, araştırma
+// reçetesi): sonuç DÖRT ayrı yolla anlatılır, çünkü tek başına renk yeterli
+// değildir (renk körlüğü + gri baskı testi):
+//   1) dolu madalyon (galibiyet) vs HALKA (mağlubiyet) — silüet farkı
+//   2) kartın sol kenar şeridi + hafif ton yıkaması
+//   3) skorda kazananın rakamı parlak, kaybedenin sönük
+//   4) kupa farkının İŞARETİ
+// Ayrıntı (turlar) varsayılan KAPALI: liste taranabilir kalır, merak eden açar.
 function MatchHistoryCard({ match: m, myName }: { match: MatchHistoryView; myName: string }) {
+  const [open, setOpen] = useState(false);
   const myRounds = m.rounds.filter((r) => r.answeredBy === myName);
   const oppRounds = m.rounds.filter((r) => r.answeredBy !== myName);
-  const pArena = arenaForTrophies(m.playerTrophies);
-  const oArena = arenaForTrophies(m.opponentTrophies);
   const tint = m.won ? theme.primary : theme.danger;
+  const delta = (m.playerTrophies ?? 0) - (m.opponentTrophies ?? 0); // gösterim amaçlı fark
+  const oArena = arenaForTrophies(m.opponentTrophies);
 
-  // Round chip: recessed panelInnerFill well (dark top edge = sunken) with a
-  // mine/theirs stripe. Metadata never dips under the 10px caption floor.
   const roundChip = (r: MatchHistoryView['rounds'][number], mine: boolean, key: number) => (
     <View
       key={key}
@@ -9311,59 +10058,65 @@ function MatchHistoryCard({ match: m, myName }: { match: MatchHistoryView; myNam
     </View>
   );
 
-  const side = (name: string, arena: ReturnType<typeof arenaForTrophies>, trophies: number) => (
-    <View style={{ flex: 1, alignItems: 'center' }}>
-      <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{name}</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-        <Ionicons name={arena.icon} size={11} color={arena.color} />
-        <Text style={{ color: arena.color, fontSize: 10, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{trophies}</Text>
-      </View>
-      <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', marginTop: 1 }} numberOfLines={1}>{arenaLabel(arena.name)}</Text>
-    </View>
-  );
-
   return (
-    <GamePanel compact tint={tint} style={{ marginBottom: 12 }} bodyStyle={{ padding: 0 }}>
-      {/* Result + score + mode/date band, washed in the result tint */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: withAlpha(tint, 0.10) }}>
-        <Ribbon
-          label={m.won ? t('matchHistory.won') : t('matchHistory.lost')}
-          color={m.won ? theme.accent : theme.danger}
-          icon={m.won ? 'trophy' : 'close-circle'}
-        />
-        <Text style={{ color: theme.text, fontSize: 22, fontFamily: 'Poppins-Black', letterSpacing: 2, fontVariant: ['tabular-nums'], ...engrave('lg') }}>
-          {m.playerScore} - {m.opponentScore}
-        </Text>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold' }}>{MODE_LABEL((m.gameMode as GameMode) ?? 'team-team')}</Text>
-          <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{shortDate(m.playedAt)}</Text>
+    <Pressable
+      onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setOpen((o) => !o); }}
+      style={({ pressed }) => ({ marginBottom: 10, transform: [{ scale: pressed ? 0.985 : 1 }, { translateY: pressed ? 2 : 0 }] })}
+    >
+      <GamePanel compact tint={tint} bodyStyle={{ padding: 0 }}>
+        {/* Sonuç şeridi — sol kenarda, tam boy */}
+        <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: tint, zIndex: 3 }} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingLeft: 14, paddingRight: 12, paddingVertical: 10, backgroundColor: withAlpha(tint, 0.08) }}>
+          {/* 1) Silüet: galibiyette DOLU madalyon, mağlubiyette HALKA */}
+          {m.won ? (
+            <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.3 }} />
+              <Ionicons name="trophy" size={17} color={theme.onAccent} />
+            </View>
+          ) : (
+            <View style={{ width: 34, height: 34, borderRadius: 17, borderWidth: 2.5, borderColor: theme.danger, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="close" size={17} color={theme.danger} />
+            </View>
+          )}
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text numberOfLines={1} style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-ExtraBold' }}>{m.opponentName}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+              <Ionicons name={oArena.icon} size={11} color={oArena.color} />
+              <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold' }} numberOfLines={1}>
+                {arenaLabel(oArena.name)} · {MODE_LABEL((m.gameMode as GameMode) ?? 'team-team')}
+              </Text>
+            </View>
+          </View>
+          {/* 3) Skor: kazananın rakamı parlak, kaybedenin sönük — renksiz de okunur */}
+          <View style={{ alignItems: 'flex-end', gap: 3 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+              <Text style={{ color: m.won ? theme.text : theme.textSub, fontSize: 24, fontFamily: 'Poppins-Black', letterSpacing: 1.2, fontVariant: ['tabular-nums'], ...engrave('lg') }}>{m.playerScore}</Text>
+              <Text style={{ color: theme.muted, fontSize: 18, fontFamily: 'Poppins-Black', marginHorizontal: 3 }}>-</Text>
+              <Text style={{ color: m.won ? theme.textSub : theme.text, fontSize: 24, fontFamily: 'Poppins-Black', letterSpacing: 1.2, fontVariant: ['tabular-nums'], ...engrave('lg') }}>{m.opponentScore}</Text>
+            </View>
+            <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{shortDate(m.playedAt)}</Text>
+          </View>
         </View>
-      </View>
 
-      {/* Head-to-head */}
-      <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 }}>
-        {side(m.playerName || myName, pArena, m.playerTrophies)}
-        <View style={{ justifyContent: 'center', paddingHorizontal: 8 }}>
-          <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t('common.vs')}</Text>
-        </View>
-        {side(m.opponentName, oArena, m.opponentTrophies)}
-      </View>
+        {/* Ayrıntı satırı: tek şevron — "aç/kapa" demek, "git" değil */}
+        {m.rounds.length > 0 ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, height: 26, borderTopWidth: 1, borderTopColor: theme.hairline }}>
+            <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', flex: 1 }}>
+              {t('matchHistory.rounds', { n: String(m.rounds.length) })}
+            </Text>
+            <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={14} color={theme.muted} />
+          </View>
+        ) : null}
 
-      {/* Rounds detail — who answered which pairing */}
-      <View style={{ flexDirection: 'row', paddingHorizontal: 10, paddingTop: 4, paddingBottom: 12, gap: 6 }}>
-        <View style={{ flex: 1 }}>
-          {myRounds.length > 0
-            ? myRounds.map((r, i) => roundChip(r, true, i))
-            : <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginTop: 8 }}>—</Text>}
-        </View>
-        <View style={{ width: 1, backgroundColor: theme.hairline, marginVertical: 4 }} />
-        <View style={{ flex: 1 }}>
-          {oppRounds.length > 0
-            ? oppRounds.map((r, i) => roundChip(r, false, i))
-            : <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginTop: 8 }}>—</Text>}
-        </View>
-      </View>
-    </GamePanel>
+        {open && m.rounds.length > 0 ? (
+          <View style={{ flexDirection: 'row', paddingHorizontal: 10, paddingTop: 8, paddingBottom: 12, gap: 6 }}>
+            <View style={{ flex: 1 }}>{myRounds.map((r, i) => roundChip(r, true, i))}</View>
+            {myRounds.length > 0 && oppRounds.length > 0 ? <View style={{ width: 1, backgroundColor: theme.hairline, marginVertical: 4 }} /> : null}
+            <View style={{ flex: 1 }}>{oppRounds.map((r, i) => roundChip(r, false, i))}</View>
+          </View>
+        ) : null}
+      </GamePanel>
+    </Pressable>
   );
 }
 
@@ -9632,8 +10385,7 @@ const WIN_CONFETTI: { l: `${number}%`; t: `${number}%`; c: string; w: number; h:
 // (mirrors the diamond gem-fly). Calls onDone once every trophy has landed, so the
 // caller can then run the counter's fill + count-up.
 function TrophyFly({ target, onDone, count = 9 }: { target: { x: number; y: number }; onDone: () => void; count?: number }) {
-  const screenW = Dimensions.get('window').width;
-  const screenH = Dimensions.get('window').height;
+  const { width: screenW, height: screenH } = canvasSize();
   const originX = screenW / 2;
   const originY = screenH * 0.42;
   const parts = useRef(
@@ -9669,7 +10421,7 @@ function TrophyFly({ target, onDone, count = 9 }: { target: { x: number; y: numb
   // Rendered in a Modal so absoluteFill maps to the whole window — the same
   // coordinate space measureInWindow / Dimensions gave us for origin and target.
   return (
-    <Modal visible transparent animationType="none" statusBarTranslucent>
+    <SafeModal visible transparent animationType="none" statusBarTranslucent>
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {parts.map((g, i) => (
           <Animated.View key={i} style={{ position: 'absolute', left: -15, top: -15, opacity: g.o, transform: [{ translateX: g.x }, { translateY: g.y }, { scale: g.s }] }}>
@@ -9677,16 +10429,17 @@ function TrophyFly({ target, onDone, count = 9 }: { target: { x: number; y: numb
           </Animated.View>
         ))}
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 
 // Match-over banner, styled after the Kupa-popup mockup: a coloured card (blue win /
 // purple loss) with a ringed trophy medallion, confetti on a win, and a recessed
 // panel showing the score and the arena-based trophy delta (+green / −red).
-export function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong, winnerName, trophyDelta }: {
+export function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong, winnerName, trophyDelta, xpGained }: {
   youWon: boolean; youScore: number; oppScore: number; youWrong: number; oppWrong: number;
   winnerName: string | null; trophyDelta: { delta: number; trophies: number; shielded?: boolean } | null;
+  xpGained?: number | null; // maçtan kazanılan XP — popup'ta görünür, ana menüde küre uçuşuyla çubuğa akar
 }) {
   const a = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -9761,6 +10514,13 @@ export function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong
             ) : null}
           </>
         ) : null}
+        {xpGained ? (
+          // Kazanılan XP — kaybeden de görür (XP kupadan bağımsız): mint rozet.
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, backgroundColor: withAlpha(theme.primary, 0.16), borderRadius: 999, borderWidth: 1.5, borderColor: withAlpha(theme.primary, 0.6), paddingHorizontal: 12, paddingVertical: 5 }}>
+            <Ionicons name="flash" size={14} color={theme.primary} />
+            <Text style={{ color: lighten(theme.primary, 0.2), fontSize: 13, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>+{xpGained} XP</Text>
+          </View>
+        ) : null}
       </View>
     </Animated.View>
   );
@@ -9823,18 +10583,25 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
             transform: [{ scale: verdictA.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }) }],
           }]}
         >
-          {/* Check/cross in a beveled medallion — colored face, darkened lip, top gloss, glow */}
-          <View
-            style={{
-              width: matchOver ? 52 : 72, height: matchOver ? 52 : 72, borderRadius: matchOver ? 26 : 36,
-              backgroundColor: color,
-              borderTopWidth: 2, borderTopColor: 'rgba(255,255,255,0.45)',
-              borderBottomWidth: matchOver ? 3 : 4, borderBottomColor: darken(color),
-              alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <Ionicons name={icon} size={matchOver ? 26 : 38} color={theme.ink} />
-          </View>
+          {/* Check/cross medallion. Built from two stacked FILLS, never per-side
+              borders: iOS draws a rounded border as four segments, so a light-top/
+              dark-bottom border pair leaves diagonal seams (the ring reads "cut" —
+              see PulseRing's comment), and the asymmetric widths (top 2 / bottom 4)
+              shifted the glyph's content box 1px off the visual centre. A face
+              circle over a darker lip circle offset downwards gives the same bevel
+              with one continuous edge and a truly centred glyph. */}
+          {(() => {
+            const d = matchOver ? 52 : 72;
+            const lip = matchOver ? 3 : 4;
+            return (
+              <View style={{ width: d, height: d + lip }}>
+                <View style={{ position: 'absolute', top: lip, width: d, height: d, borderRadius: d / 2, backgroundColor: darken(color) }} />
+                <View style={{ width: d, height: d, borderRadius: d / 2, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name={icon} size={matchOver ? 26 : 38} color={theme.ink} />
+                </View>
+              </View>
+            );
+          })()}
           <Text style={[styles.h1, { color }]}>{headline}</Text>
           {r.reason === 'same_team' ? (
             <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.sameTeam')}</Text>
@@ -10101,8 +10868,7 @@ export function xpOrbTiming(gained: number): { count: number; firstArrival: numb
 }
 
 function XpOrbFly({ gained, target, onDone, onOrbLand }: { gained: number; target: { x: number; y: number }; onDone: () => void; onOrbLand?: () => void }) {
-  const screenW = Dimensions.get('window').width;
-  const screenH = Dimensions.get('window').height;
+  const { width: screenW, height: screenH } = canvasSize();
   const originX = screenW / 2;
   const originY = screenH * 0.4;
   const chip = useRef(new Animated.Value(0)).current;
@@ -10147,7 +10913,7 @@ function XpOrbFly({ gained, target, onDone, onOrbLand }: { gained: number; targe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <Modal visible transparent animationType="none" statusBarTranslucent>
+    <SafeModal visible transparent animationType="none" statusBarTranslucent>
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {/* +N XP çipi */}
         <Animated.View style={{
@@ -10171,7 +10937,7 @@ function XpOrbFly({ gained, target, onDone, onOrbLand }: { gained: number; targe
           </Animated.View>
         ))}
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 
@@ -10179,8 +10945,7 @@ function XpOrbFly({ gained, target, onDone, onOrbLand }: { gained: number; targe
 // XpOrbFly ile aynı dil: ortada "+N 💎" çipi, elmas taneleri sırayla sağ üstteki
 // elmas hapına süzülür. Sayaç dönüşü App.tsx'te uçuş bitince başlar.
 export function GemOrbFly({ amount, onDone }: { amount: number; onDone: () => void }) {
-  const screenW = Dimensions.get('window').width;
-  const screenH = Dimensions.get('window').height;
+  const { width: screenW, height: screenH } = canvasSize();
   const originX = screenW / 2;
   const originY = screenH * 0.4;
   const chip = useRef(new Animated.Value(0)).current;
@@ -10227,7 +10992,7 @@ export function GemOrbFly({ amount, onDone }: { amount: number; onDone: () => vo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <Modal visible transparent animationType="none" statusBarTranslucent>
+    <SafeModal visible transparent animationType="none" statusBarTranslucent>
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {/* +N elmas çipi */}
         <Animated.View style={{
@@ -10251,12 +11016,23 @@ export function GemOrbFly({ amount, onDone }: { amount: number; onDone: () => vo
           </Animated.View>
         ))}
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 
 export const LEVEL_CAP = 50;
-export const xpForNextLevel = (level: number) => 100 + (level - 1) * 25;
+// SUNUCUYLA AYNI kademeli bantlar (server/src/game/level.ts xpForNext) —
+// aylık sezona ayarlı, toplam 9.460 XP. İkisi birlikte değişmeli.
+export const xpForNextLevel = (level: number): number => {
+  if (level <= 1) return 40;
+  if (level === 2) return 60;
+  if (level <= 5) return 80;
+  if (level <= 10) return 120;
+  if (level <= 20) return 160;
+  if (level <= 30) return 200;
+  if (level <= 40) return 240;
+  return 280;
+};
 
 // Çerçeve kademeleri — 10'un katlarında açılır; renkler tema paletinden.
 export interface LevelTier { key: string; min: number; nameKey: MessageKey; c: string; dark: string }
@@ -10351,12 +11127,19 @@ const POWER_ART: Partial<Record<PowerId, number>> = {
   training: require('../assets/power-training.png'), // özellik2.jpeg'ten birebir
   socialtoken: require('../assets/power-socialtoken.png'), // özellik2.jpeg'ten birebir
 };
-export function PowerArt({ powerId, size, locked }: { powerId: PowerId; size: number; locked?: boolean; well?: boolean }) {
+export function PowerArt({ powerId, size, locked, well = false }: { powerId: PowerId; size: number; locked?: boolean; well?: boolean }) {
   const art = POWER_ART[powerId];
+  // well: FrameArt ile aynı yuva dili — theme.well plaka + üstte 2px iç gölge
+  // şeridi, sanat 8px içeride (yol/popup şeritlerinde çerçevelerle aynı oturma).
+  const inner = size - (well ? 8 : 0);
   if (art != null) {
     return (
-      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-        <Image source={art} style={{ width: size, height: size, opacity: locked ? 0.45 : 1 }} resizeMode="contain" />
+      <View style={{
+        width: size, height: size, alignItems: 'center', justifyContent: 'center',
+        ...(well ? { backgroundColor: theme.well, borderRadius: size * 0.28, overflow: 'hidden' } : {}),
+      }}>
+        {well ? <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} /> : null}
+        <Image source={art} style={{ width: inner, height: inner, opacity: locked ? 0.45 : 1 }} resizeMode="contain" />
       </View>
     );
   }
@@ -10364,20 +11147,27 @@ export function PowerArt({ powerId, size, locked }: { powerId: PowerId; size: nu
   // sağ altta geri-sarma mini rozeti. Özel sanat gelince POWER_ART'a eklenir.
   const meta = POWERS[powerId];
   const c = locked ? theme.muted : meta.color;
-  return (
+  const medallion = (
     <View style={{
-      width: size, height: size, borderRadius: size / 2,
+      width: inner, height: inner, borderRadius: inner / 2,
       backgroundColor: darken(theme.card, 0.35),
-      borderWidth: Math.max(2, size * 0.045), borderColor: withAlpha(c, locked ? 0.4 : 0.85),
+      borderWidth: Math.max(2, inner * 0.045), borderColor: withAlpha(c, locked ? 0.4 : 0.85),
       alignItems: 'center', justifyContent: 'center',
     }}>
-      <View pointerEvents="none" style={{ position: 'absolute', width: size * 0.82, height: size * 0.82, borderRadius: size * 0.41, backgroundColor: withAlpha(c, locked ? 0.07 : 0.18) }} />
+      <View pointerEvents="none" style={{ position: 'absolute', width: inner * 0.82, height: inner * 0.82, borderRadius: inner * 0.41, backgroundColor: withAlpha(c, locked ? 0.07 : 0.18) }} />
       <View style={{ opacity: locked ? 0.55 : 1 }}>
-        <Ionicons name={meta.icon} size={Math.round(size * 0.48)} color={c} />
+        <Ionicons name={meta.icon} size={Math.round(inner * 0.48)} color={c} />
       </View>
-      <View style={{ position: 'absolute', right: -size * 0.02, bottom: -size * 0.02, width: size * 0.34, height: size * 0.34, borderRadius: size * 0.17, backgroundColor: locked ? theme.border : meta.color, borderWidth: 1.5, borderColor: darken(theme.card, 0.45), alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name={meta.badgeIcon} size={Math.round(size * 0.2)} color={theme.ink} />
+      <View style={{ position: 'absolute', right: -inner * 0.02, bottom: -inner * 0.02, width: inner * 0.34, height: inner * 0.34, borderRadius: inner * 0.17, backgroundColor: locked ? theme.border : meta.color, borderWidth: 1.5, borderColor: darken(theme.card, 0.45), alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name={meta.badgeIcon} size={Math.round(inner * 0.2)} color={theme.ink} />
       </View>
+    </View>
+  );
+  if (!well) return medallion;
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.well, borderRadius: size * 0.28, overflow: 'hidden' }}>
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
+      {medallion}
     </View>
   );
 }
@@ -10432,7 +11222,7 @@ export function FramePreviewModal({ tier, unlocked, visible, onClose, equipped, 
   if (!visible || !tier) return null;
   const big = Math.min(SCREEN_W * 0.8, 330);
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+    <SafeModal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim, alignItems: 'center', justifyContent: 'center', padding: 24 }]} onPress={onClose}>
         <FrameArt tierKey={tier.key} size={big} locked={!unlocked} />
         <Text style={{ color: tier.c, fontSize: 24, fontFamily: 'Poppins-Black', letterSpacing: 1.2, marginTop: 6, ...engrave('lg') }}>
@@ -10457,7 +11247,7 @@ export function FramePreviewModal({ tier, unlocked, visible, onClose, equipped, 
         ) : null}
         <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', marginTop: 16 }}>{t('common.close')}</Text>
       </Pressable>
-    </Modal>
+    </SafeModal>
   );
 }
 
@@ -10587,7 +11377,7 @@ export function FrameUnlockCelebration({ tierKey, emoteId, powerId, onDone }: { 
   const ringSize = big * 1.55;
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent>
+    <SafeModal visible transparent animationType="fade" statusBarTranslucent>
       <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(3,5,12,0.985)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }]}>
         {/* kademe renkli geniş ambient yıkama (girişte belirir) — ekran köşegenine
             yakın boyut yeter (perf: aşırı büyük translucent yüzey overdraw yükü) */}
@@ -10751,7 +11541,7 @@ export function FrameUnlockCelebration({ tierKey, emoteId, powerId, onDone }: { 
           </Animated.View>
         ) : null}
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 
@@ -10808,11 +11598,14 @@ export function LevelUpPopup({ toLevel, diamonds, emoteIds, powerIds = [], hasRe
     <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 70, backgroundColor: theme.scrim, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, opacity: a }]}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       <View style={{ width: '100%', maxWidth: 330, backgroundColor: theme.panelInk, borderRadius: 26, padding: 2, borderWidth: 2, borderColor: accent, borderBottomColor: darken(accent, 0.35), shadowColor: accent, shadowOpacity: 0.55, shadowRadius: 26, shadowOffset: { width: 0, height: 0 }, elevation: 20 }}>
-        <View style={{ backgroundColor: theme.card, borderRadius: 23, alignItems: 'center', paddingVertical: 22, paddingHorizontal: 18, overflow: 'hidden' }}>
-          {/* ışın patlaması */}
+        <View style={{ backgroundColor: theme.card, borderRadius: 22, alignItems: 'center', paddingVertical: 22, paddingHorizontal: 18, overflow: 'hidden' }}>
+          {/* ışın patlaması — RN bir view'ı KENDİ merkezinden döndürür: ışının orta
+              noktası (top + 65) rozet merkeziyle (22 pad + 43 yarı-rozet = 65)
+              çakışmalı → top: 0. Eski top: 62 tüm patlamayı ~62px aşağı, 'LEVEL
+              UP' başlığının içine kaydırıyordu. */}
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
             {Array.from({ length: 8 }).map((_, i) => (
-              <View key={i} style={{ position: 'absolute', left: '50%', top: 62, width: 3, height: 130, marginLeft: -1.5, backgroundColor: withAlpha(accent, 0.14), transform: [{ rotate: `${i * 45}deg` }] }} />
+              <View key={i} style={{ position: 'absolute', left: '50%', top: 0, width: 3, height: 130, marginLeft: -1.5, backgroundColor: withAlpha(accent, 0.14), transform: [{ rotate: `${i * 45}deg` }] }} />
             ))}
           </View>
           <Animated.View style={{ transform: [{ scale: badge.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1] }) }] }}>
@@ -11010,7 +11803,7 @@ function RoadRow({ n, level, xp, claimed, premiumOwned, premiumClaimed, onFrameP
         ...(pClaimable ? { shadowColor: theme.gold, shadowOpacity: 0.85, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 10 } : {}),
       }}>
         <View style={{
-          flex: 1, backgroundColor: '#241539', borderRadius: 14,
+          flex: 1, backgroundColor: '#241539', borderRadius: 16,
           borderWidth: 2, borderColor: premiumOwned ? (pClaimable ? lighten(theme.gold, 0.2) : withAlpha(theme.gold, 0.75)) : withAlpha(theme.gold, 0.35),
           paddingVertical: 7, paddingHorizontal: 9,
           opacity: premiumOwned || pClaimable ? 1 : 0.8,
@@ -11208,10 +12001,11 @@ function SeasonCountdown() {
   );
 }
 
-export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremium, lastClaim }: {
+export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremium, onNeedDiamonds, lastClaim }: {
   visible: boolean; profile: ProfileView | null; onClose: () => void;
   onClaim?: (level: number, track?: 'free' | 'premium') => void; // karta dokununca sunucuya claim gönder
   onBuyPremium?: () => void; // Premium Yol satın alma isteği
+  onNeedDiamonds?: () => void; // yetersiz elmas -> Store'a devret (shortfall kaydedilmis)
   lastClaim?: { level: number; diamonds: number; emoteId: string | null; frameTier: string | null; powerId: string | null; track?: 'free' | 'premium'; seq: number } | null;
 }) {
   const insets = useSafeAreaInsets();
@@ -11277,7 +12071,7 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
   if (!visible) return null;
 
   return (
-    <Modal visible transparent animationType="slide" presentationStyle="overFullScreen" onRequestClose={onClose}>
+    <SafeModal visible transparent animationType="slide" presentationStyle="overFullScreen" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
         <ScreenBg />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: insets.top + 8, paddingBottom: 12, paddingHorizontal: 14, backgroundColor: theme.surface1, borderTopWidth: 1, borderTopColor: theme.topLight, ...shadowSoft }}>
@@ -11327,7 +12121,9 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
               <View style={{ backgroundColor: darken(theme.card, 0.5), borderRadius: 17, paddingBottom: 2.5 }}>
                 <View style={{
                   flexDirection: 'row', alignItems: 'center', gap: 10,
-                  backgroundColor: theme.card, borderRadius: 17, borderWidth: 2,
+                  backgroundColor: theme.card, borderWidth: 2,
+                  // radius-17 lip, flush top/sides, 2.5px bottom lip → 17 top / 14.5 bottom
+                  borderTopLeftRadius: 17, borderTopRightRadius: 17, borderBottomLeftRadius: 14.5, borderBottomRightRadius: 14.5,
                   borderColor: withAlpha(nextColor, 0.7), paddingVertical: 8, paddingHorizontal: 11,
                 }}>
                   {nextIsFrame && nextTier ? (
@@ -11406,7 +12202,9 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
               ...shadowRow,
             })}
           >
-            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08, borderTopLeftRadius: 16, borderTopRightRadius: 16 }} />
+            {/* top-light inset past the r16 corner arcs — a 1px strip can't carry a corner
+                radius, and the button has no overflow:'hidden' (it would clip shadowRow) */}
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 14, right: 14, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
             <Ionicons name="chevron-up" size={24} color={theme.accent} />
           </Pressable>
         ) : null}
@@ -11429,18 +12227,25 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
             </Text>
           </View>
           <View style={{ gap: 8 }}>
-            <Btn big kind="accent" gem label={t('premium.unlockBtn', { n: String(PREMIUM_ROAD_PRICE) })} onPress={() => { setBuyOpen(false); onBuyPremium?.(); }} />
+            <Btn big kind="accent" gem label={t('premium.unlockBtn', { n: String(PREMIUM_ROAD_PRICE) })} onPress={() => {
+              const have = profile?.diamonds ?? 0;
+              if (have >= PREMIUM_ROAD_PRICE) { setBuyOpen(false); onBuyPremium?.(); }
+              else { setPendingShortfall(PREMIUM_ROAD_PRICE - have); setBuyOpen(false); onClose(); onNeedDiamonds?.(); }
+            }} />
             <Btn kind="ghost" label={t('power.cancel')} onPress={() => setBuyOpen(false)} />
           </View>
         </GameModal>
         <FramePreviewModal tier={framePrev?.tier ?? null} unlocked={framePrev?.unlocked ?? false} visible={framePrev != null} onClose={() => setFramePrev(null)} />
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: 'transparent', padding: 22, justifyContent: 'center' },
+  // Top padding is deliberately tighter than the sides: the app root already
+  // pays the safe-area inset, and 22pt more read as a void above every header
+  // ("üstte çok boşluk"). Sides/bottom keep the original breathing room.
+  screen: { flex: 1, backgroundColor: 'transparent', paddingHorizontal: 22, paddingTop: 10, paddingBottom: 22, justifyContent: 'center' },
   center: { alignItems: 'center', gap: 6 },
   h1: { color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginVertical: 6, letterSpacing: 0.5, ...engrave('lg') },
   label: { color: theme.muted, fontSize: 10, letterSpacing: 2, textAlign: 'center', fontFamily: 'Poppins-SemiBold' },

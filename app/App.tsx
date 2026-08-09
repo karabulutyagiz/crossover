@@ -6,11 +6,13 @@ import {
   Dimensions,
   Easing,
   Image,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,10 +20,18 @@ import { useFonts } from 'expo-font';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCrossover, type GameState } from './src/useCrossover';
 import { t, setLanguage } from './src/i18n';
+// Marketing-capture mode: DevShotScreen + forced language. NEVER ships true —
+// see appstore/upload-screenshots.py for the capture pipeline.
+const DEV_SHOT_MODE = false;
+const DEV_SHOT_LANG = 'tr';
+// Dev-only: force the tutorial (antrenman) flow to inspect its layout. NEVER ships true.
+const FORCE_TUTORIAL_DEV = false;
+import { BASE_H, uiScaleFor, canvasSizeFor } from './src/layout';
 import { setGemTarget } from './src/gemTarget';
 import { addNotificationTapListener, getPushPermissionGranted, setBadge } from './src/notifications';
 import {
   DevShotScreen,
+  TrophyFlight,
   SplashScreen,
   LoadingScreen,
   ScreenBg,
@@ -79,7 +89,8 @@ try {
 }
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
-const { width: SCREEN_W } = Dimensions.get('window');
+// Tuval genişliği (tablette ekranı dolduran geniş tuval — bkz. ScaledRoot).
+const SCREEN_W = canvasSizeFor(Dimensions.get('window').width, Dimensions.get('window').height).width;
 // Once-per-install push permission prompt marker.
 const PUSH_PROMPTED_KEY = '@crossover_push_prompted';
 
@@ -107,6 +118,9 @@ const TAB_DEFS: { key: string; labelKey: 'tab.store' | 'tab.collection' | 'tab.g
 
 // Phases that show the main tab bar (non-game screens)
 const TAB_PHASES = new Set(['home', 'arenas', 'leaderboard', 'matchHistory', 'profile']);
+// Phases where backgrounding the app forfeits the (PvP) match — the whole
+// competitive window from the matchup reveal to the between-rounds result.
+const FORFEIT_PHASES = new Set(['matchup', 'countdown', 'pick', 'reveal', 'guess', 'result']);
 
 // HUD gem counter. Memoized + owns the count-anim listener, so the per-frame
 // setState during gain animations re-renders ONLY this pill, never the app tree.
@@ -130,12 +144,14 @@ const DiamondPill = memo(function DiamondPill({ countAnim, fillAnim, pillRef, on
   return (
     <Pressable ref={pillRef} onLayout={onMeasure} onPress={onPress}>
       {({ pressed }) => (
-        <View style={[s.hudPill, { paddingLeft: 20, paddingRight: 5, paddingVertical: 5 }, pressed && s.hudPillPressed]}>
-          <Animated.View pointerEvents="none" style={[s.diamondFill, { transform: [{ scaleX: fillAnim }] }]} />
-          <GemIcon size={20} />
-          <Text style={s.diamondText}>{count}</Text>
-          <View style={s.diamondPlus}>
-            <Ionicons name="add" size={12} color={theme.ink} />
+        <View style={s.hudPillShadow}>
+          <View style={[s.hudPill, { paddingLeft: 20, paddingRight: 5, paddingVertical: 5 }, pressed && s.hudPillPressed]}>
+            <Animated.View pointerEvents="none" style={[s.diamondFill, { transform: [{ scaleX: fillAnim }] }]} />
+            <GemIcon size={20} />
+            <Text style={s.diamondText}>{count}</Text>
+            <View style={s.diamondPlus}>
+              <Ionicons name="add" size={12} color={theme.ink} />
+            </View>
           </View>
         </View>
       )}
@@ -234,8 +250,10 @@ function PlayTab({ active, label, onPress }: { active: boolean; label: string; o
       <Animated.View style={[s.tabInner, { transform: [{ translateY: press.interpolate({ inputRange: [0, 1], outputRange: [0, 2] }) }] }]}>
         <View style={s.playTabSlot}>
           <Animated.View style={[s.playTabBall, { transform: [{ translateY: -18 }, { scale: pop }] }]}>
-            <View pointerEvents="none" style={s.playTabBallTopLight} />
-            <Ionicons name="football" size={28} color={theme.onPrimary} />
+            <View style={s.playTabBallFace}>
+              <View pointerEvents="none" style={s.playTabBallTopLight} />
+              <Ionicons name="football" size={28} color={theme.onPrimary} />
+            </View>
           </Animated.View>
         </View>
         <Text style={[s.tabLabel, active && s.tabLabelActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
@@ -369,13 +387,83 @@ function TopBanner({
   );
 }
 
+// Sender-side friendly-match banner: non-blocking top strip with a live 30→0
+// countdown while the friend decides. Replaces the old full-screen waiting
+// modal — the sender keeps using the app ("yukarıda çancık"); at 0 the invite
+// is voided on both ends (the server's own 30s timer + this cancel), a decline
+// surfaces as the named toast from the reducer.
+function OutgoingInviteBanner({ invite, onCancel, offsetY = 0 }: {
+  invite: { toId: string; toName: string; expiresAt: number };
+  onCancel: () => void;
+  offsetY?: number; // pushed below the INCOMING InviteBanner when both are up
+}) {
+  const insets = useSafeAreaInsets();
+  const y = useRef(new Animated.Value(-160)).current;
+  const [secs, setSecs] = useState(() => Math.max(0, Math.ceil((invite.expiresAt - Date.now()) / 1000)));
+  // Latest cancel without re-running the interval effect (identity changes per render).
+  const cancelRef = useRef(onCancel);
+  cancelRef.current = onCancel;
+  useEffect(() => {
+    y.setValue(-160);
+    Animated.spring(y, { toValue: 0, friction: 8, tension: 70, useNativeDriver: true }).start();
+    const id = setInterval(() => {
+      const s = Math.max(0, Math.ceil((invite.expiresAt - Date.now()) / 1000));
+      setSecs(s);
+      if (s <= 0) { clearInterval(id); cancelRef.current(); }
+    }, 250);
+    return () => clearInterval(id);
+  }, [invite.toId, invite.expiresAt, y]);
+  const urgent = secs <= 5;
+  return (
+    <Animated.View style={[s.topBanner, { top: insets.top + 6 + offsetY, transform: [{ translateY: y }] }]}>
+      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.accent }}>
+        <Ionicons name="notifications" size={20} color={theme.accent} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={s.inviteName} numberOfLines={1}>{invite.toName}</Text>
+        <Text style={s.inviteSub} numberOfLines={1}>{t('friends.inviteSent')}</Text>
+      </View>
+      <Text style={{ color: urgent ? theme.danger : theme.accent, fontFamily: 'Poppins-Black', fontSize: 22, fontVariant: ['tabular-nums'] }}>{secs}</Text>
+      <Pressable onPress={onCancel} hitSlop={8} style={({ pressed }) => ({ paddingHorizontal: 4, opacity: pressed ? 0.7 : 1 })}>
+        <Ionicons name="close" size={18} color={theme.muted} />
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 // Safe-area context must wrap everything that calls useSafeAreaInsets (screens,
 // banners, tab bar) — the provider lives in the default export, the app in AppRoot.
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AppRoot />
+      <ScaledRoot />
     </SafeAreaProvider>
+  );
+}
+
+// iPad = "aynı iPhone ekranı, büyük hâli" (kullanıcı kuralı 2026-08-06).
+// Arayüz her zaman BASE_W×BASE_H telefon tuvalinde çizilir; tablette tek bir
+// transform ile ekrana oturana kadar büyütülür. Böylece kart/yazı/boşluk
+// oranları telefondakiyle BİREBİR aynı kalır — iPad'e özel yayılmış düzen yok.
+function ScaledRoot() {
+  const { width, height } = useWindowDimensions();
+  const k = uiScaleFor(width, height);
+  if (k === 1) return <AppRoot />;
+  // Tuval ekranı TAM doldurur (genişlik canvasSizeFor'dan gelir, yükseklik
+  // BASE_H) ve tek transform ile büyütülür: kenarda bant YOK, arka plan/saha
+  // kenardan kenara akar; içerik Screen primitive'inde 430pt telefon kolonunda
+  // ortalanır — büyük mobil oyunların "arka plan tam ekran, arayüz tasarım
+  // alanında" kalıbı.
+  const canvas = canvasSizeFor(width, height);
+  return (
+    // transformOrigin 'top left': varsayılan merkez-ölçek tuvali sola/yukarı
+    // kaydırıp üst barı kırpıyordu; sol-üstten büyütünce tuval ekranı birebir
+    // doldurur (genişlik = canvasSizeFor, yükseklik = BASE_H, ikisi de ×k).
+    <View style={{ flex: 1, backgroundColor: BG_TOP, overflow: 'hidden' }}>
+      <View style={{ width: canvas.width, height: canvas.height, transform: [{ scale: k }], transformOrigin: 'top left' }}>
+        <AppRoot />
+      </View>
+    </View>
   );
 }
 
@@ -413,6 +501,21 @@ function AppRoot() {
   const [expiredSocialPack, setExpiredSocialPack] = useState(false); // Social Pack expired popup
   const [overlay, setOverlay] = useState<'leaderboard' | 'matchHistory' | null>(null); // centered popups
   const [gemCelebration, setGemCelebration] = useState<GemCelebration | null>(null);
+  // Maç sonrası kupa uçuşu (elmas kutlamasının kupa karşılığı): flight → land.
+  const [trophyFlight, setTrophyFlight] = useState<null | { delta: number; after: (() => void) | null }>(null);
+  const [trophyLand, setTrophyLand] = useState<{ delta: number; seq: number } | null>(null);
+  // Elmas-harcamalı her satın almanın "Tamam"lı onayı (sunucu *_purchased mesajı).
+  const [purchaseAck, setPurchaseAck] = useState<NonNullable<GameState['lastPurchase']> | null>(null);
+  const lastPurchaseSeq = state.lastPurchase?.seq ?? 0;
+  // Onay penceresi, satın almanın yapıldığı ekrandaki onay/işlem penceresinin
+  // çıkış animasyonu bitmeden AÇILMAZ (aynı iki-modal çakışması: ekran donuyordu).
+  useEffect(() => {
+    if (!state.lastPurchase) return;
+    const p = state.lastPurchase;
+    const tm = setTimeout(() => setPurchaseAck(p), 420);
+    return () => clearTimeout(tm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastPurchaseSeq]);
   const diamondsShownRef = useRef(0); // last value pushed to the pill (fallback when profile is briefly absent)
   const gainAnimatingRef = useRef(false); // sayaç dönerken tutma efekti araya girmesin
   const csAnim = useRef(new Animated.Value(0)).current; // coming-soon pop/float
@@ -479,7 +582,7 @@ function AppRoot() {
     // Read saved language
     AsyncStorage.getItem('@crossover_lang').then((v) => {
       if (!v) return;
-      setLanguage(v);
+      if (!DEV_SHOT_MODE) setLanguage(v); // cekim kipinde kayitli dil ezmesin
       setLangKey((k) => k + 1);
     }).catch(() => {});
     AsyncStorage.getItem('@crossover_tutorial_seen')
@@ -577,17 +680,44 @@ function AppRoot() {
     setMatchOverPopup((cur) => {
       const reward = cur?.trophyDelta.arenaReward ?? 0;
       const arenaName = cur?.trophyDelta.arena?.name;
-      if (reward > 0 && arenaName) {
-        if (pendingLevelUpRef.current) {
-          // seviye popup'ı araya girecek — arena kutlaması ONDAN sonra
-          heldArena.current = { amount: reward, arenaName };
-        } else {
-          setGemCelebration((current) => current ?? { kind: 'arenaReward', amount: reward, arenaName });
+      // Arena/seviye zinciri KUPA UÇUŞUNDAN sonra: uçuş hafif bir overlay,
+      // arena kutlaması ise Modal — aynı anda açılsalar Modal uçuşu örter.
+      const chain = () => {
+        if (reward > 0 && arenaName) {
+          if (pendingLevelUpRef.current) {
+            // seviye popup'ı araya girecek — arena kutlaması ONDAN sonra
+            heldArena.current = { amount: reward, arenaName };
+          } else {
+            setGemCelebration((current) => current ?? { kind: 'arenaReward', amount: reward, arenaName });
+          }
         }
-      }
+      };
+      const delta = cur?.trophyDelta.delta ?? 0;
+      if (delta !== 0) setTrophyFlight((f) => f ?? { delta, after: chain });
+      else chain();
       return null;
     });
   }, []);
+
+  // Popup'suz kupa deltaları (hükmen kazanan rakip modalından çıkınca; X'le
+  // çekilen kendi kaybını ana menüde görür): delta gelince sakla, ana menüye
+  // dönünce uçur. Aynı delta nesnesi bir kez uçar.
+  const pendingHomeFlight = useRef<number | null>(null);
+  const lastStashedDelta = useRef<GameState['trophyDelta']>(null);
+  useEffect(() => {
+    const td = state.trophyDelta;
+    if (!td || !td.delta || state.matchOver) return; // normal maç sonu: popup yolu
+    if (lastStashedDelta.current === td) return;
+    lastStashedDelta.current = td;
+    pendingHomeFlight.current = td.delta;
+  }, [state.trophyDelta, state.matchOver]);
+  useEffect(() => {
+    if (state.phase !== 'home') return;
+    const d = pendingHomeFlight.current;
+    if (d == null) return;
+    pendingHomeFlight.current = null;
+    setTrophyFlight((f) => f ?? { delta: d, after: null });
+  }, [state.phase, state.trophyDelta]);
 
   useEffect(() => {
     // Hükmen (rakip ayrıldı) gibi matchOver YAKALANMAYAN durumlarda arena ödülü
@@ -605,6 +735,14 @@ function AppRoot() {
     const id = requestAnimationFrame(() => measureDiamondPill());
     return () => cancelAnimationFrame(id);
   }, [activeTab, measureDiamondPill]);
+
+  useEffect(() => {
+    if (!TAB_PHASES.has(state.phase)) return;
+    const id = requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ x: activeTab * SCREEN_W, animated: false });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [state.phase, activeTab, langKey]);
 
   // Auto-show Social Pack renewal popup when it has expired.
   useEffect(() => {
@@ -743,6 +881,27 @@ function AppRoot() {
     return () => sub.remove();
   }, [badgeTotal]);
 
+  // ANTI-CHEAT: backgrounding the app mid-match (PvP) = instant forfeit — the
+  // known abuse is switching out to look the answer up. Only a real
+  // 'background' triggers ('inactive' — control center, call banner, app
+  // switcher peek — is NOT punished). Bot matches, tutorial (fake state),
+  // lobby/searching and finished matches are exempt.
+  const forfeitCtxRef = useRef<{ eligible: boolean; forfeit: () => void }>({ eligible: false, forfeit: () => {} });
+  forfeitCtxRef.current = {
+    eligible:
+      !!state.room &&
+      !state.matchOver &&
+      !state.room.players.some((p) => p.name === 'Bot') &&
+      FORFEIT_PHASES.has(state.phase),
+    forfeit: actions.forfeitFromBackground,
+  };
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st === 'background' && forfeitCtxRef.current.eligible) forfeitCtxRef.current.forfeit();
+    });
+    return () => sub.remove();
+  }, []);
+
   // Tap routing: every tap (warm or cold-start) stashes its route in the module
   // ref and bumps a counter; the consuming effect below navigates once the app
   // is ready (loaded + profile), which also covers taps that launched the app.
@@ -771,7 +930,8 @@ function AppRoot() {
 
   // APP-STORE SCREENSHOT HARNESS — flip to true ONLY while capturing marketing
   // shots in the simulator (cycles real screens with mock data); never ship true.
-  const DEV_SHOT = false;
+  const DEV_SHOT = DEV_SHOT_MODE;
+  if (DEV_SHOT) setLanguage(DEV_SHOT_LANG);
   if (DEV_SHOT) return <View style={{ flex: 1 }}><StatusBar style="light" /><DevShotScreen /></View>;
 
   // Splash screen: cinematic brand opening; dismisses itself via onDone.
@@ -787,6 +947,39 @@ function AppRoot() {
   // Login gate: nothing is accessible until the user signs in (Apple/Google).
   // MUST come AFTER all hooks above — an early return before useCallback changes
   // the hook count between renders (Rules of Hooks) and crashes right after login.
+  // HARD update gate — the server's /config said this build is below minIosBuild.
+  // Nothing else mounts (login included): the ONLY way forward is the App Store.
+  // Must stay AFTER all hooks (Rules of Hooks, same as the login gate below).
+  if (state.updateRequired) {
+    return (
+      <View style={[s.root, { paddingTop: insets.top }]}>
+        <StatusBar style="light" />
+        <ScreenBg />
+        <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 26 }}>
+          <View style={{ backgroundColor: theme.modalFace, borderRadius: 22, padding: 24, alignItems: 'center', ...shadowModal }}>
+            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.accent, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+              <Ionicons name="cloud-download" size={30} color={theme.accent} />
+            </View>
+            <Text style={{ color: theme.text, fontSize: 19, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginBottom: 6 }}>{t('update.title')}</Text>
+            <Text style={{ color: theme.muted, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', lineHeight: 20, textAlign: 'center', marginBottom: 18 }}>{t('update.body')}</Text>
+            <Btn
+              big
+              label={t('update.cta')}
+              icon="arrow-up-circle"
+              onPress={() => {
+                // itms-apps jumps straight into the App Store app (the OS
+                // backgrounds us — "uygulamadan atsın"); https is the fallback.
+                Linking.openURL('itms-apps://apps.apple.com/app/id6778542426').catch(() =>
+                  Linking.openURL('https://apps.apple.com/app/id6778542426').catch(() => {}),
+                );
+              }}
+            />
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   if (!state.profile) {
     return (
       <View style={[s.root, { paddingTop: insets.top }]}>
@@ -809,7 +1002,7 @@ function AppRoot() {
   }
 
   // First-time interactive tutorial (after sign-in + username, before the game).
-  if (tutorialSeen === false) {
+  if (FORCE_TUTORIAL_DEV || tutorialSeen === false) {
     return (
       <TutorialScreen
         onDone={() => {
@@ -862,7 +1055,7 @@ function AppRoot() {
         screen = <ResultScreen {...props} />;
         break;
       default:
-        screen = <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} onOpenLevelRoad={() => setLevelRoadOpen(true)} />;
+        screen = <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} trophyLand={trophyLand} trophyHold={trophyFlight?.delta ?? null} onOpenLevelRoad={() => setLevelRoadOpen(true)} />;
     }
     return (
       <View style={[s.root, { paddingTop: insets.top }]}>
@@ -896,7 +1089,7 @@ function AppRoot() {
     ? <ArenasScreen {...props} />
     : state.phase === 'profile'
     ? <ProfileScreen {...props} onOpenMatchHistory={openMatchHistory} onOpenLevelRoad={() => setLevelRoadOpen(true)} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
-    : <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLanguageChange={() => {
+    : <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} trophyLand={trophyLand} trophyHold={trophyFlight?.delta ?? null} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLanguageChange={() => {
         setOverlay(null);
         setStoreSection(null);
         setActiveTab(2);
@@ -912,9 +1105,11 @@ function AppRoot() {
     <View style={s.resourceBar}>
       <Pressable onPress={() => { actions.openArenas(); goToTab(2); }}>
         {({ pressed }) => (
-          <View style={[s.hudPill, { paddingHorizontal: 24, paddingVertical: 8 }, pressed && s.hudPillPressed]}>
-            <Ionicons name="trophy" size={18} color={theme.accent} />
-            <Text style={s.trophyText}>{state.profile?.trophies ?? 0}</Text>
+          <View style={s.hudPillShadow}>
+            <View style={[s.hudPill, { paddingHorizontal: 24, paddingVertical: 8 }, pressed && s.hudPillPressed]}>
+              <Ionicons name="trophy" size={18} color={theme.accent} />
+              <Text style={s.trophyText}>{state.profile?.trophies ?? 0}</Text>
+            </View>
           </View>
         )}
       </Pressable>
@@ -964,6 +1159,7 @@ function AppRoot() {
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true, listener: onScrollLive })}
         scrollEventThrottle={16}
         contentOffset={{ x: 2 * SCREEN_W, y: 0 }}
+        onLayout={() => scrollRef.current?.scrollTo({ x: activeTab * SCREEN_W, animated: false })}
         style={{ flex: 1 }}
       >
         {/* Each page is fully self-contained: its own top bar lives INSIDE it and
@@ -995,8 +1191,6 @@ function AppRoot() {
 
       {/* Bottom Tab Bar */}
       <View style={[s.tabBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        {/* 1px top gloss just under the cardLip edge — the bar is a raised surface. */}
-        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: theme.panelTopGloss }} />
         {TABS.map((tab, idx) => {
           const onPress = () => {
             if (idx === 2 && activeTab === 2) {
@@ -1070,6 +1264,26 @@ function AppRoot() {
           onReject={() => actions.respondMatchInvite(state.matchInvite!.fromId, false)}
         />
       ) : null}
+      {state.outgoingInvite ? (
+        <OutgoingInviteBanner
+          invite={state.outgoingInvite}
+          // Both strips anchor at the same top slot — an incoming invite takes
+          // priority (its accept/reject must stay tappable), ours drops below it.
+          offsetY={state.matchInvite ? 86 : 0}
+          onCancel={() => { if (state.outgoingInvite) actions.cancelMatchInvite(state.outgoingInvite.toId); }}
+        />
+      ) : null}
+      {trophyFlight ? (
+        <TrophyFlight
+          delta={trophyFlight.delta}
+          onDone={() => {
+            const f = trophyFlight;
+            setTrophyFlight(null);
+            setTrophyLand((s) => ({ delta: f.delta, seq: (s?.seq ?? 0) + 1 }));
+            f.after?.();
+          }}
+        />
+      ) : null}
       <TopBanner
         banner={state.banner}
         onClose={actions.clearBanner}
@@ -1077,9 +1291,28 @@ function AppRoot() {
       />
 
       {/* Centered popups (leaderboard / match history) — open over everything, not fullscreen */}
-      <LeaderboardModal visible={overlay === 'leaderboard'} entries={state.leaderboard} onClose={() => setOverlay(null)} onViewProfile={(userId) => actions.getUserProfile(userId)} />
+      {/* DONMA DÜZELTMESİ: profil AYNI ANDA açılmaz — liderlik penceresi önce
+          kapanır, profil onun 160ms'lik çıkış animasyonundan SONRA istenir.
+          İkisi üst üste binince iOS iki native modalı aynı anda sunmaya çalışıp
+          görünmez bir modal bırakıyor ve TÜM dokunuşlar ölüyordu (uygulama
+          "donuyor" — ancak kapatıp açınca düzeliyordu). */}
+      <LeaderboardModal
+        visible={overlay === 'leaderboard'}
+        entries={state.leaderboard}
+        onClose={() => setOverlay(null)}
+        onViewProfile={(userId) => { setOverlay(null); setTimeout(() => actions.getUserProfile(userId), 260); }}
+      />
       <MatchHistoryModal visible={overlay === 'matchHistory'} history={state.matchHistory} myName={state.profile?.displayName ?? ''} onClose={() => setOverlay(null)} />
-      <FriendProfileModal profile={state.viewProfile} onClose={actions.closeUserProfile} />
+      <FriendProfileModal
+        profile={state.viewProfile}
+        onClose={actions.closeUserProfile}
+        // Liderlik tablosundan bakılan profil: arkadaş değilse tek dokunuşla istek
+        relation={!state.viewProfile ? undefined
+          : state.viewProfile.userId === state.profile?.userId ? 'self'
+          : state.friends.some((f) => f.userId === state.viewProfile!.userId) ? 'friend'
+          : 'none'}
+        onAddFriend={() => { if (state.viewProfile) actions.sendFriendRequest(undefined, state.viewProfile.displayName); }}
+      />
 
       {/* Kupa kazanma/kaybetme popup'ı — maçtan ÇIKINCA burada, ana menünün üstünde */}
       {matchOverPopup ? (
@@ -1093,6 +1326,7 @@ function AppRoot() {
             oppWrong={matchOverPopup.oppWrong}
             winnerName={matchOverPopup.winnerName}
             trophyDelta={matchOverPopup.trophyDelta}
+            xpGained={state.xpGain?.gained ?? null}
           />
           <View style={{ maxWidth: 320, width: '100%', alignSelf: 'center' }}>
             <Btn big kind={matchOverPopup.youWon ? 'primary' : 'ghost'} label={t('common.continue')} onPress={dismissMatchOverPopup} />
@@ -1115,6 +1349,7 @@ function AppRoot() {
 
       {/* Seviye Yolu — tam ekran ilerleme/ödül haritası; ödüller karta dokunarak toplanır */}
       <LevelRoadModal
+        onNeedDiamonds={() => { setLevelRoadOpen(false); setStoreSection('diamonds'); goToTab(0); }}
         visible={levelRoadOpen}
         profile={state.profile}
         onClose={() => setLevelRoadOpen(false)}
@@ -1132,6 +1367,18 @@ function AppRoot() {
           onDone={handleGemCelebrationDone}
         />
       ) : null}
+
+      {/* Her elmas-harcamalı satın almanın "Tamam"lı onayı — sunucu *_purchased
+          mesajı düşürünce çıkar. Elmas paketleri hariç (DiamondCelebration). */}
+        <GameModal visible={purchaseAck != null} onClose={() => setPurchaseAck(null)} title={t('purchase.doneTitle')} icon="checkmark-circle">
+          <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+            {purchaseAck?.kind === 'power' ? t('purchase.powerBody')
+              : purchaseAck?.kind === 'emote' ? t('purchase.emoteBody')
+              : purchaseAck?.kind === 'avatar' ? t('purchase.avatarBody')
+              : t('purchase.premiumRoadBody')}
+          </Text>
+          <Btn big label={t('settings.confirm')} onPress={() => setPurchaseAck(null)} />
+        </GameModal>
 
       {/* Expired Social Pack popup */}
       <GameModal
@@ -1176,20 +1423,21 @@ function AppRoot() {
   );
 }
 
-const TAB_TOP_INSET = 12.5; // s.tabBar borderTopWidth (1.5) + paddingTop (11)
+const TAB_TOP_INSET = 12.5; // s.tabBar paddingTop (12.5, no top border) — indicator still lands on the bar's outer edge
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG_TOP }, // navy behind the patterned ScreenBg (no header seam); top inset applied via safe-area
-  // The mockup's bar: a flat deep-navy slab with rounded top corners, its own
-  // hairline top edge, and the content shadowed up off it.
+  // The mockup's bar: a flat deep-navy slab with rounded top corners and the
+  // content shadowed up off it. NO top hairline/gloss: the light per-side border
+  // and the straight 1px gloss strip both read as a stray gray line squared off
+  // across the rounded corners (per-side border colors on rounded views are
+  // kit-banned; the gloss can't be clipped while the ball needs overflow visible).
   tabBar: {
     flexDirection: 'row',
     backgroundColor: theme.tabBar,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    borderTopWidth: 1.5,
-    borderTopColor: 'rgba(255,255,255,0.07)',
-    paddingTop: 11,
+    paddingTop: 12.5, // absorbs the removed borderTopWidth (1.5) so TAB_TOP_INSET geometry is unchanged
     // Upward navy shadow — the bar physically sits over the content.
     ...shadowTabBar,
     // The centre ball breaks above the bar; let it.
@@ -1242,9 +1490,16 @@ const s = StyleSheet.create({
     backgroundColor: theme.primary,
     borderWidth: 3, borderColor: theme.tabBar, // cutout ring separating the ball from the bar
     alignItems: 'center', justifyContent: 'center',
+    // no overflow:'hidden' here — iOS masksToBounds would clip the ball's own
+    // green shadow; the top-light clip lives on playTabBallFace instead.
     shadowColor: theme.primaryDark, shadowOpacity: 0.5, shadowRadius: 9, shadowOffset: { width: 0, height: 5 },
     elevation: 8,
-    overflow: 'hidden',
+  },
+  // Inner clipping circle seated inside the 3px cutout ring (radius 24 − 3 = 21).
+  playTabBallFace: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    borderRadius: 21, overflow: 'hidden',
+    alignItems: 'center', justifyContent: 'center',
   },
   playTabBallTopLight: {
     position: 'absolute', top: 0, left: 0, right: 0, height: 3,
@@ -1313,6 +1568,13 @@ const s = StyleSheet.create({
   },
   // One opaque HUD counter language (Broadcast Prestige): a solid raised pill —
   // surface1 face, 1px top-light, soft navy shadow. No outline ring.
+  // Split in two: iOS clips a layer's own shadow when overflow:'hidden' sits on
+  // the same node, so hudPillShadow casts and hudPill clips (GamePanel pattern).
+  hudPillShadow: {
+    backgroundColor: theme.surface1,
+    borderRadius: 19,
+    ...shadowRow,
+  },
   hudPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1324,7 +1586,6 @@ const s = StyleSheet.create({
     borderRadius: 19,
     borderTopWidth: 1,
     borderTopColor: theme.topLight, // 1px photon, not a frame
-    ...shadowRow,
   },
   hudPillPressed: {
     backgroundColor: theme.surface2, // fill brightens

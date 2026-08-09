@@ -1,0 +1,2120 @@
+{
+ "players": [
+  {
+   "name": "Sergen Yalçın",
+   "birthYear": 1972,
+   "nationality": "Türkiye",
+   "tmId": 6904,
+   "confidence": "high",
+   "sources": [
+    "https://en.wikipedia.org/wiki/Sergen_Yal%C3%A7%C4%B1n",
+    "https://tr.wikipedia.org/wiki/Sergen_Yal%C3%A7%C4%B1n",
+    "https://www.tff.org/Default.aspx?pageId=526&kisiId=23828",
+    "https://www.national-football-teams.com/player/6817/Sergen_Yalcin.html"
+   ],
+   "spells": [
+    {
+     "club": "Beşiktaş",
+     "from": 1991,
+     "to": 1997
+    },
+    {
+     "club": "İstanbulspor",
+     "from": 1997,
+     "to": 1999
+    },
+    {
+     "club": "Fenerbahçe",
+     "from": 1999,
+     "to": 1999
+    },
+    {
+     "club": "Galatasaray",
+     "from": 1999,
+     "to": 2000
+    },
+    {
+     "club": "Trabzonspor",
+     "from": 2000,
+     "to": 2001
+    },
+    {
+     "club": "Galatasaray",
+     "from": 2001,
+     "to": 2002
+    },
+    {
+     "club": "Beşiktaş",
+     "from": 2002,
+     "to": 2006
+    },
+    {
+     "club": "Şekerspor",
+     "from": 2006,
+     "to": 2007
+    },
+    {
+     "club": "Eskişehirspor",
+     "from": 2007,
+     "to": 2008
+    }
+   ]
+  },
+  {
+   "name": "Tayfur Havutçu",
+   "birthYear": 1970,
+   "nationality": "Türkiye",
+   "tmId": 6869,
+   "confidence": "high",
+   "sources": [
+    "https://en.wikipedia.org/wiki/Tayfur_Havut%C3%A7u",
+    "https://tr.wikipedia.org/wiki/Tayfur_Havut%C3%A7u",
+    "https://www.tff.org/Default.aspx?pageId=526&kisiId=25194",
+    "https://datencenter.dfb.de/personen/tayfur-havutcu/spieler/spiele-in-saison/2-bundesliga/1992-1993/sv-darmstadt-98",
+    "https://dewiki.de/Lexikon/Tayfur_Havut%C3%A7u"
+   ],
+   "spells": [
+    {
+     "club": "Darmstadt 98",
+     "from": 1992,
+     "to": 1993
+    },
+    {
+     "club": "Fenerbahçe",
+     "from": 1993,
+     "to": 1995
+    },
+    {
+     "club": "Kocaelispor",
+     "from": 1995,
+     "to": 1997
+    },
+    {
+     "club": "Beşiktaş",
+     "from": 1997,
+     "to": 2006
+    }
+   ]
+  },
+  {
+   "name": "Ahmet Dursun",
+   "birthYear": 1978,
+   "nationality": "Türkiye",
+   "tmId": 6863,
+   "confidence": "high",
+   "sources": [
+    "https://en.wikipedia.org/wiki/Ahmet_Dursun",
+    "https://tr.wikipedia.org/wiki/Ahmet_Dursun",
+    "https://www.tff.org/Default.aspx?pageId=526&kisiId=27550",
+    "https://www.transfermarkt.us/ahmet-dursun/profil/spieler/6863"
+   ],
+   "spells": [
+    {
+     "club": "SG Wattenscheid 09",
+     "from": 1995,
+     "to": 1996
+    },
+    {
+     "club": "Kocaelispor",
+     "from": 1996,
+     "to": 1999
+    },
+    {
+     "club": "Beşiktaş",
+     "from": 1999,
+     "to": 2003
+    },
+    {
+     "club": "Tianjin Teda",
+     "from": 2004,
+     "to": 2004
+    },
+    {
+     "club": "İstanbulspor",
+     "from": 2004,
+     "to": 2005
+    },
+    {
+     "club": "Beşiktaş",
+     "from": 2005,
+     "to": 2006
+    },
+    {
+     "club": "Şekerspor",
+     "from": 2006,
+     "to": 2006
+    },
+    {
+     "club": "Antalyaspor",
+     "from": 2007,
+     "to": 2007
+    },
+    {
+     "club": "MKE Ankaragücü",
+     "from": 2007,
+     "to": 2008
+    },
+    {
+     "club": "Kocaelispor",
+     "from": 2008,
+     "to": 2009
+    },
+    {
+     "club": "Khazar Lankaran",
+     "from": 2009,
+     "to": 2010
+    },
+    {
+     "club": "Kocaelispor",
+     "from": 2010,
+     "to": 2010
+    },
+    {
+     "club": "Adanaspor",
+     "from": 2010,
+     "to": 2011
+    },
+    {
+     "club": "Eyüpspor",
+     "from": 2011,
+     "to": 2012
+    },
+    {
+     "club": "Eyüpspor",
+     "from": 2014,
+     "to": 2014
+    },
+    {
+     "club": "Büyükdere SK",
+     "from": 2016,
+     "to": 2016
+    },
+    {
+     "club": "Tokatspor",
+     "from": 2018,
+     "to": 2018
+    }
+   ]
+  },
+  {
+   "name": "Oktay Derelioğlu",
+   "birthYear": 1975,
+   "nationality": "Türkiye",
+   "tmId": 4752,
+   "confidence": "high",
+   "sources": [
+    "https://en.wikipedia.org/wiki/Oktay_Derelio%C4%9Flu",
+    "https://tr.wikipedia.org/wiki/Oktay_Derelio%C4%9Flu",
+    "https://www.tff.org/Default.aspx?pageId=526&kisiId=25481",
+    "https://www.national-football-teams.com/player/11380/Oktay_Derelioglu.html"
+   ],
+   "spells": [
+    {
+     "club": "Fatih Karagümrük",
+     "from": 1990,
+     "to": 1992
+    },
+    {
+     "club": "Trabzonspor",
+     "from": 1992,
+     "to": 1993
+    },
+    {
+     "club": "Beşiktaş",
+     "from": 1993,
+     "to": 1999
+    },
+    {
+     "club": "Siirtspor",
+     "from": 1999,
+     "to": 1999
+    },
+    {
+     "club": "Gaziantepspor",
+     "from": 1999,
+     "to": 2000
+    },
+    {
+     "club": "Las Palmas",
+     "from": 2000,
+     "to": 2000
+    },
+    {
+     "club": "Trabzonspor",
+     "from": 2000,
+     "to": 2001
+    },
+    {
+     "club": "Fenerbahçe",
+     "from": 2001,
+     "to": 2003
+    },
+    {
+     "club": "Samsunspor",
+     "from": 2003,
+     "to": 2003
+    },
+    {
+     "club": "1. FC Nürnberg",
+     "from": 2003,
+     "to": 2004
+    },
+    {
+     "club": "Akçaabat Sebatspor",
+     "from": 2004,
+     "to": 2004
+    },
+    {
+     "club": "Khazar Lankaran",
+     "from": 2004,
+     "to": 2005
+    },
+    {
+     "club": "Sakaryaspor",
+     "from": 2005,
+     "to": 2005
+    },
+    {
+     "club": "Diyarbakırspor",
+     "from": 2006,
+     "to": 2006
+    },
+    {
+     "club": "İstanbulspor",
+     "from": 2006,
+     "to": 2007
+    },
+    {
+     "club": "Yalovaspor",
+     "from": 2007,
+     "to": 2007
+    },
+    {
+     "club": "Fatih Karagümrük",
+     "from": 2007,
+     "to": 2008
+    }
+   ]
+  },
+  {
+   "name": "İlhan Mansız",
+   "birthYear": 1975,
+   "nationality": "Türkiye",
+   "tmId": 6875,
+   "confidence": "high",
+   "sources": [
+    "https://en.wikipedia.org/wiki/%C4%B0lhan_Mans%C4%B1z",
+    "https://tr.wikipedia.org/wiki/%C4%B0lhan_Mans%C4%B1z",
+    "https://www.tff.org/Default.aspx?pageId=526&kisiId=26703",
+    "https://dewiki.de/Lexikon/%C4%B0lhan_Mans%C4%B1z",
+    "https://www.transfermarkt.us/ilhan-mansiz/profil/spieler/6875"
+   ],
+   "spells": [
+    {
+     "club": "1. FC Köln II",
+     "from": 1994,
+     "to": 1995
+    },
+    {
+     "club": "Gençlerbirliği",
+     "from": 1995,
+     "to": 1996
+    },
+    {
+     "club": "Türk Gücü München",
+     "from": 1996,
+     "to": 1997
+    },
+    {
+     "club": "Kuşadasıspor",
+     "from": 1997,
+     "to": 1998
+    },
+    {
+     "club": "Samsunspor",
+     "from": 1998,
+     "to": 2001
+    },
+    {
+     "club": "Beşiktaş",
+     "from": 2001,
+     "to": 2004
+    },
+    {
+     "club": "Vissel Kobe",
+     "from": 2004,
+     "to": 2004
+    },
+    {
+     "club": "Hertha BSC",
+     "from": 2005,
+     "to": 2005
+    },
+    {
+     "club": "MKE Ankaragücü",
+     "from": 2005,
+     "to": 2006
+    }
+   ]
+  },
+  {
+   "name": "Hakan Ünsal",
+   "birthYear": 1973,
+   "nationality": "Türkiye",
+   "tmId": 8050,
+   "confidence": "medium",
+   "sources": [
+    "https://en.wikipedia.org/wiki/Hakan_%C3%9Cnsal",
+    "https://tr.wikipedia.org/wiki/Hakan_%C3%9Cnsal",
+    "https://www.transfermarkt.us/hakan-unsal/profil/spieler/8050",
+    "https://www.national-football-teams.com/player/8277/Hakan_Uensal.html",
+    "https://www.brt.com.tr/biyografiler/hakan-unsal-965",
+    "https://www.biyografiler.com/kimdir/hakan-unsal"
+   ],
+   "spells": [
+    {
+     "club": "Eyüpspor",
+     "from": 1991,
+     "to": 1993
+    },
+    {
+     "club": "Karabükspor",
+     "from": 1993,
+     "to": 1994
+    },
+    {
+     "club": "Galatasaray",
+     "from": 1994,
+     "to": 2002
+    },
+    {
+     "club": "Blackburn Rovers",
+     "from": 2002,
+     "to": 2002
+    },
+    {
+     "club": "Galatasaray",
+     "from": 2002,
+     "to": 2005
+    },
+    {
+     "club": "Çaykur Rizespor",
+     "from": 2005,
+     "to": 2006
+    }
+   ]
+  },
+  {
+   "name": "Arif Erdem",
+   "birthYear": 1972,
+   "nationality": "Türkiye",
+   "tmId": 3377,
+   "confidence": "high",
+   "sources": [
+    "https://en.wikipedia.org/wiki/Arif_Erdem",
+    "https://tr.wikipedia.org/wiki/Arif_Erdem",
+    "https://www.transfermarkt.us/arif-erdem/profil/spieler/3377",
+    "https://www.national-football-teams.com/player/6785/Arif_Erdem.html",
+    "https://alchetron.com/Arif-Erdem"
+   ],
+   "spells": [
+    {
+     "club": "Zeytinburnuspor",
+     "from": 1990,
+     "to": 1991
+    },
+    {
+     "club": "Galatasaray",
+     "from": 1991,
+     "to": 2000
+    },
+    {
+     "club": "Real Sociedad",
+     "from": 2000,
+     "to": 2000
+    },
+    {
+     "club": "Galatasaray",
+     "from": 2000,
+     "to": 2005
+    }
+   ]
+  },
+  {
+   "name": "Bülent Korkmaz",
+   "birthYear": 1968,
+   "nationality": "Türkiye",
+   "tmId": 3380,
+   "confidence": "high",
+   "sources": [
+    "https://en.wikipedia.org/wiki/B%C3%BClent_Korkmaz",
+    "https://tr.wikipedia.org/wiki/B%C3%BClent_Korkmaz",
+    "https://www.transfermarkt.us/bulent-korkmaz/profil/spieler/3380",
+    "https://www.national-football-teams.com/player/6801/Buelent_Korkmaz.html"
+   ],
+   "spells": [
+    {
+     "club": "Galatasaray",
+     "from": 1987,
+     "to": 2005
+    }
+   ]
+  },
+  {
+   "name": "Ümit Davala",
+   "birthYear": 1973,
+   "nationality": "Türkiye",
+   "tmId": 3381,
+   "confidence": "medium",
+   "sources": [
+    "https://en.wikipedia.org/wiki/%C3%9Cmit_Davala",
+    "https://tr.wikipedia.org/wiki/%C3%9Cmit_Davala",
+    "https://www.transfermarkt.us/umit-davala/profil/spieler/3381",
+    "https://www.national-football-teams.com/player/6832/Uemit_Davala.html",
+    "https://en-academic.com/dic.nsf/enwiki/1392094"
+   ],
+   "spells": [
+    {
+     "club": "Türkspor Mannheim",
+     "from": 1992,
+     "to": 1994
+    },
+    {
+     "club": "Afyonspor",
+     "from": 1994,
+     "to": 1994
+    },
+    {
+     "club": "İstanbulspor",
+     "from": 1994,
+     "to": 1996
+    },
+    {
+     "club": "Diyarbakırspor",
+     "from": 1996,
+     "to": 1996
+    },
+    {
+     "club": "Galatasaray",
+     "from": 1996,
+     "to": 2001
+    },
+    {
+     "club": "Milan",
+     "from": 2001,
+     "to": 2002
+    },
+    {
+     "club": "Inter",
+     "from": 2002,
+     "to": 2004
+    },
+    {
+     "club": "Galatasaray",
+     "from": 2002,
+     "to": 2003
+    },
+    {
+     "club": "Werder Bremen",
+     "from": 2003,
+     "to": 2004
+    },
+    {
+     "club": "Werder Bremen",
+     "from": 2004,
+     "to": 2006
+    }
+   ]
+  },
+  {
+   "name": "Ergün Penbe",
+   "birthYear": 1972,
+   "nationality": "Türkiye",
+   "tmId": 8052,
+   "confidence": "high",
+   "sources": [
+    "https://en.wikipedia.org/wiki/Erg%C3%BCn_Penbe",
+    "https://tr.wikipedia.org/wiki/Erg%C3%BCn_Penbe",
+    "https://www.transfermarkt.us/ergun-penbe/profil/spieler/8052",
+    "https://www.national-football-teams.com/player/6823/Erguen_Penbe.html"
+   ],
+   "spells": [
+    {
+     "club": "Kilimli Belediyespor",
+     "from": 1990,
+     "to": 1992
+    },
+    {
+     "club": "Gençlerbirliği",
+     "from": 1992,
+     "to": 1994
+    },
+    {
+     "club": "Galatasaray",
+     "from": 1994,
+     "to": 2007
+    },
+    {
+     "club": "Gaziantepspor",
+     "from": 2007,
+     "to": 2008
+    }
+   ]
+  },
+  {
+   "name": "Gheorghe Hagi",
+   "birthYear": 1965,
+   "nationality": "Romania",
+   "tmId": 7939,
+   "confidence": "high",
+   "sources": [
+    "https://ro.wikipedia.org/wiki/Gheorghe_Hagi",
+    "https://www.transfermarkt.us/gheorghe-hagi/profil/spieler/7939",
+    "https://www.transfermarkt.us/gheorghe-hagi/transfers/spieler/7939"
+   ],
+   "spells": [
+    {
+     "club": "Farul Constanța",
+     "from": 1982,
+     "to": 1983
+    },
+    {
+     "club": "Sportul Studențesc",
+     "from": 1983,
+     "to": 1987
+    },
+    {
+     "club": "Steaua București",
+     "from": 1987,
+     "to": 1990
+    },
+    {
+     "club": "Real Madrid",
+     "from": 1990,
+     "to": 1992
+    },
+    {
+     "club": "Brescia",
+     "from": 1992,
+     "to": 1994
+    },
+    {
+     "club": "Barcelona",
+     "from": 1994,
+     "to": 1996
+    },
+    {
+     "club": "Galatasaray",
+     "from": 1996,
+     "to": 2001
+    }
+   ]
+  },
+  {
+   "name": "Gheorghe Popescu",
+   "birthYear": 1967,
+   "nationality": "Romania",
+   "tmId": 3129,
+   "confidence": "high",
+   "sources": [
+    "https://ro.wikipedia.org/wiki/Gheorghe_Popescu",
+    "https://kids.kiddle.co/Gheorghe_Popescu",
+    "https://www.transfermarkt.us/gheorghe-popescu/transfers/spieler/3129"
+   ],
+   "spells": [
+    {
+     "club": "Dunărea Calafat",
+     "from": 1982,
+     "to": 1984
+    },
+    {
+     "club": "Universitatea Craiova",
+     "from": 1985,
+     "to": 1990
+    },
+    {
+     "club": "Steaua București",
+     "from": 1988,
+     "to": 1988
+    },
+    {
+     "club": "PSV Eindhoven",
+     "from": 1990,
+     "to": 1994
+    },
+    {
+     "club": "Tottenham Hotspur",
+     "from": 1994,
+     "to": 1995
+    },
+    {
+     "club": "Barcelona",
+     "from": 1995,
+     "to": 1997
+    },
+    {
+     "club": "Galatasaray",
+     "from": 1997,
+     "to": 2001
+    },
+    {
+     "club": "Lecce",
+     "from": 2001,
+     "to": 2002
+    },
+    {
+     "club": "Dinamo București",
+     "from": 2002,
+     "to": 2002
+    },
+    {
+     "club": "Hannover 96",
+     "from": 2002,
+     "to": 2003
+    }
+   ]
+  },
+  {
+   "name": "Cláudio Taffarel",
+   "birthYear": 1966,
+   "nationality": "Brazil",
+   "tmId": 5855,
+   "confidence": "high",
+   "sources": [
+    "https://pt.wikipedia.org/wiki/Cl%C3%A1udio_Taffarel",
+    "https://www.transfermarkt.us/claudio-taffarel/profil/spieler/5855",
+    "https://www.transfermarkt.us/claudio-taffarel/transfers/spieler/5855"
+   ],
+   "spells": [
+    {
+     "club": "Internacional",
+     "from": 1985,
+     "to": 1990
+    },
+    {
+     "club": "Parma",
+     "from": 1990,
+     "to": 1993
+    },
+    {
+     "club": "Reggiana",
+     "from": 1993,
+     "to": 1994
+    },
+    {
+     "club": "Atlético Mineiro",
+     "from": 1995,
+     "to": 1998
+    },
+    {
+     "club": "Galatasaray",
+     "from": 1998,
+     "to": 2001
+    },
+    {
+     "club": "Parma",
+     "from": 2001,
+     "to": 2003
+    }
+   ]
+  },
+  {
+   "name": "Adrian Ilie",
+   "birthYear": 1974,
+   "nationality": "Romania",
+   "tmId": 9536,
+   "confidence": "high",
+   "sources": [
+    "https://ro.wikipedia.org/wiki/Adrian_Ilie",
+    "https://kids.kiddle.co/Adrian_Ilie",
+    "https://sportslens.com/news/no-deal-or-no-deal-the-story-of-adrian-ilie-and-terek-grozny/",
+    "https://www.transfermarkt.us/adrian-ilie/erfolge/spieler/9536"
+   ],
+   "spells": [
+    {
+     "club": "Electroputere Craiova",
+     "from": 1991,
+     "to": 1993
+    },
+    {
+     "club": "Steaua București",
+     "from": 1993,
+     "to": 1996
+    },
+    {
+     "club": "Galatasaray",
+     "from": 1996,
+     "to": 1998
+    },
+    {
+     "club": "Valencia",
+     "from": 1998,
+     "to": 2002
+    },
+    {
+     "club": "Alavés",
+     "from": 2002,
+     "to": 2003
+    },
+    {
+     "club": "Beşiktaş",
+     "from": 2003,
+     "to": 2004
+    },
+    {
+     "club": "Zürich",
+     "from": 2004,
+     "to": 2005
+    },
+    {
+     "club": "Germinal Beerschot",
+     "from": 2005,
+     "to": 2006
+    }
+   ]
+  },
+  {
+   "name": "Mário Jardel",
+   "birthYear": 1973,
+   "nationality": "Brazil",
+   "tmId": 3625,
+   "confidence": "high",
+   "sources": [
+    "https://alchetron.com/M%C3%A1rio-Jardel",
+    "https://www.zerozero.pt/jogador/mario-jardel/1293",
+    "https://www.footballdatabase.eu/en/player/details/2165-mario-jardel"
+   ],
+   "spells": [
+    {
+     "club": "Vasco da Gama",
+     "from": 1991,
+     "to": 1996
+    },
+    {
+     "club": "Grêmio",
+     "from": 1995,
+     "to": 1996
+    },
+    {
+     "club": "Porto",
+     "from": 1996,
+     "to": 2000
+    },
+    {
+     "club": "Galatasaray",
+     "from": 2000,
+     "to": 2001
+    },
+    {
+     "club": "Sporting CP",
+     "from": 2001,
+     "to": 2003
+    },
+    {
+     "club": "Bolton Wanderers",
+     "from": 2003,
+     "to": 2004
+    },
+    {
+     "club": "Ancona",
+     "from": 2004,
+     "to": 2004
+    },
+    {
+     "club": "Newell's Old Boys",
+     "from": 2004,
+     "to": 2005
+    },
+    {
+     "club": "Goiás",
+     "from": 2005,
+     "to": 2006
+    },
+    {
+     "club": "Beira-Mar",
+     "from": 2006,
+     "to": 2007
+    },
+    {
+     "club": "Anorthosis Famagusta",
+     "from": 2007,
+     "to": 2007
+    },
+    {
+     "club": "Newcastle Jets",
+     "from": 2007,
+     "to": 2008
+    },
+    {
+     "club": "Criciúma",
+     "from": 2008,
+     "to": 2008
+    },
+    {
+     "club": "Ferroviário",
+     "from": 2009,
+     "to": 2009
+    },
+    {
+     "club": "América-CE",
+     "from": 2009,
+     "to": 2009
+    },
+    {
+     "club": "Flamengo-PI",
+     "from": 2010,
+     "to": 2010
+    },
+    {
+     "club": "Cherno More",
+     "from": 2010,
+     "to": 2010
+    },
+    {
+     "club": "Rio Negro",
+     "from": 2011,
+     "to": 2011
+    }
+   ]
+  },
+  {
+   "name": "Pascal Nouma",
+   "birthYear": 1972,
+   "nationality": "France",
+   "tmId": 5333,
+   "confidence": "high",
+   "sources": [
+    "https://www.besoccer.com/player/pascal-nouma-432872",
+    "https://globalsportsarchive.com/people/soccer/pascal-nouma/239711/",
+    "https://histoiredupsg.fr/pascal-nouma/",
+    "https://www.transfermarkt.us/pascal-nouma/profil/spieler/5333"
+   ],
+   "spells": [
+    {
+     "club": "Paris Saint-Germain",
+     "from": 1989,
+     "to": 1992
+    },
+    {
+     "club": "Lille",
+     "from": 1992,
+     "to": 1993
+    },
+    {
+     "club": "Caen",
+     "from": 1993,
+     "to": 1994
+    },
+    {
+     "club": "Paris Saint-Germain",
+     "from": 1994,
+     "to": 1996
+    },
+    {
+     "club": "Strasbourg",
+     "from": 1996,
+     "to": 1998
+    },
+    {
+     "club": "Lens",
+     "from": 1998,
+     "to": 2000
+    },
+    {
+     "club": "Beşiktaş",
+     "from": 2000,
+     "to": 2001
+    },
+    {
+     "club": "Marseille",
+     "from": 2001,
+     "to": 2002
+    },
+    {
+     "club": "Beşiktaş",
+     "from": 2002,
+     "to": 2003
+    },
+    {
+     "club": "Al-Khor",
+     "from": 2003,
+     "to": 2004
+    },
+    {
+     "club": "Livingston",
+     "from": 2004,
+     "to": 2005
+    }
+   ]
+  },
+  {
+   "name": "Daniel Amokachi",
+   "birthYear": 1972,
+   "nationality": "Nigeria",
+   "tmId": 92287,
+   "confidence": "medium",
+   "sources": [
+    "https://www.toffeeweb.com/players/profiles/Amokachi.php",
+    "https://www.transfermarkt.us/daniel-amokachi/profil/spieler/92287",
+    "https://www.nigeriagalleria.com/Nigeria/Personality-Profiles/Footballers/Daniel-Amokachi.html",
+    "https://kids.kiddle.co/Daniel_Amokachi"
+   ],
+   "spells": [
+    {
+     "club": "Ranchers Bees",
+     "from": 1989,
+     "to": 1990
+    },
+    {
+     "club": "Club Brugge",
+     "from": 1990,
+     "to": 1994
+    },
+    {
+     "club": "Everton",
+     "from": 1994,
+     "to": 1996
+    },
+    {
+     "club": "Beşiktaş",
+     "from": 1996,
+     "to": 1999
+    },
+    {
+     "club": "US Créteil",
+     "from": 2000,
+     "to": 2001
+    },
+    {
+     "club": "Colorado Rapids",
+     "from": 2002,
+     "to": 2002
+    },
+    {
+     "club": "Nasarawa United",
+     "from": 2005,
+     "to": 2006
+    }
+   ]
+  },
+  {
+   "name": "Mehmet Özdilek",
+   "birthYear": 1966,
+   "nationality": "Türkiye",
+   "tmId": 17126,
+   "confidence": "high",
+   "sources": [
+    "https://www.transfermarkt.us/mehmet-ozdilek/profil/spieler/17126",
+    "https://www.haberler.com/mehmet-ozdilek/biyografisi/",
+    "https://www.yeniakit.com.tr/biyografi/mehmet-ozdilek"
+   ],
+   "spells": [
+    {
+     "club": "Kahramanmaraşspor",
+     "from": 1984,
+     "to": 1988
+    },
+    {
+     "club": "Beşiktaş",
+     "from": 1988,
+     "to": 2001
+    }
+   ]
+  },
+  {
+   "name": "Recep Çetin",
+   "birthYear": 1965,
+   "nationality": "Türkiye",
+   "tmId": 92275,
+   "confidence": "high",
+   "sources": [
+    "https://www.istanbulsportd.org/takoz-recep-recep-cetin/",
+    "https://www.transfermarkt.us/recep-cetin/nationalmannschaft/spieler/92275",
+    "https://www.haberler.com/recep-cetin/biyografisi/"
+   ],
+   "spells": [
+    {
+     "club": "Boluspor",
+     "from": 1984,
+     "to": 1988
+    },
+    {
+     "club": "Beşiktaş",
+     "from": 1988,
+     "to": 1998
+    },
+    {
+     "club": "Trabzonspor",
+     "from": 1998,
+     "to": 1999
+    },
+    {
+     "club": "İstanbulspor",
+     "from": 1999,
+     "to": 2001
+    }
+   ]
+  },
+  {
+   "name": "Feyyaz Uçar",
+   "birthYear": 1963,
+   "nationality": "Türkiye",
+   "tmId": 92239,
+   "confidence": "high",
+   "sources": [
+    "https://www.transfermarkt.us/feyyaz-ucar/profil/spieler/92239",
+    "https://www.fanatik.com.tr/besiktas/feyyaz-ucar-nereli-kac-yasinda-feyyaz-ucar-hangi-takimlarda-oynadi-hangi-takimlari-calistirdi-2199307",
+    "https://www.sabah.com.tr/feyyaz-ucar-kimdir"
+   ],
+   "spells": [
+    {
+     "club": "Beşiktaş",
+     "from": 1982,
+     "to": 1994
+    },
+    {
+     "club": "Fenerbahçe",
+     "from": 1994,
+     "to": 1996
+    },
+    {
+     "club": "Antalyaspor",
+     "from": 1995,
+     "to": 1996
+    },
+    {
+     "club": "Kuşadasıspor",
+     "from": 1996,
+     "to": 1997
+    }
+   ]
+  },
+  {
+   "name": "Oğuz Çetin",
+   "birthYear": 1963,
+   "nationality": "Türkiye",
+   "tmId": 92221,
+   "confidence": "high",
+   "sources": [
+    "https://www.national-football-teams.com/player/18204/Oguz_Cetin.html",
+    "https://www.tff.org/Default.aspx?pageID=30&kisiID=22293",
+    "https://www.transfermarkt.com.tr/oguz-cetin/transfers/spieler/92221"
+   ],
+   "spells": [
+    {
+     "club": "Sakaryaspor",
+     "from": 1981,
+     "to": 1988
+    },
+    {
+     "club": "Fenerbahçe",
+     "from": 1988,
+     "to": 1996
+    },
+    {
+     "club": "İstanbulspor",
+     "from": 1996,
+     "to": 1999
+    },
+    {
+     "club": "Adanaspor",
+     "from": 1999,
+     "to": 2000
+    }
+   ]
+  },
+  {
+   "name": "Rıdvan Dilmen",
+   "birthYear": 1962,
+   "nationality": "Türkiye",
+   "tmId": 92222,
+   "confidence": "medium",
+   "sources": [
+    "https://www.national-football-teams.com/player/19024/Ridvan_Dilmen.html",
+    "https://www.tff.org/Default.aspx?pageID=30&kisiID=22297",
+    "https://www.transfermarkt.us/ridvan-dilmen/profil/spieler/92222"
+   ],
+   "spells": [
+    {
+     "club": "Nazilli Sümerspor",
+     "from": 1977,
+     "to": 1979
+    },
+    {
+     "club": "Muğlaspor",
+     "from": 1979,
+     "to": 1980
+    },
+    {
+     "club": "Boluspor",
+     "from": 1980,
+     "to": 1983
+    },
+    {
+     "club": "Sarıyer",
+     "from": 1983,
+     "to": 1987
+    },
+    {
+     "club": "Fenerbahçe",
+     "from": 1987,
+     "to": 1995
+    }
+   ]
+  },
+  {
+   "name": "Aykut Kocaman",
+   "birthYear": 1965,
+   "nationality": "Türkiye",
+   "tmId": 92225,
+   "confidence": "high",
+   "sources": [
+    "https://www.national-football-teams.com/player/33296/Aykut_Kocaman.html",
+    "https://www.transfermarkt.com.tr/aykut-kocaman/detaillierteleistungsdaten/spieler/92225"
+   ],
+   "spells": [
+    {
+     "club": "Sakaryaspor",
+     "from": 1984,
+     "to": 1988
+    },
+    {
+     "club": "Fenerbahçe",
+     "from": 1988,
+     "to": 1996
+    },
+    {
+     "club": "İstanbulspor",
+     "from": 1996,
+     "to": 2000
+    }
+   ]
+  },
+  {
+   "name": "Elvir Bolić",
+   "birthYear": 1971,
+   "nationality": "Bosnia-Herzegovina",
+   "tmId": 6867,
+   "confidence": "high",
+   "sources": [
+    "https://www.national-football-teams.com/player/896/Elvir_Bolic.html",
+    "https://www.transfermarkt.com.tr/elvir-bolic/profil/spieler/6867"
+   ],
+   "spells": [
+    {
+     "club": "Čelik Zenica",
+     "from": 1988,
+     "to": 1991
+    },
+    {
+     "club": "Red Star Belgrade",
+     "from": 1991,
+     "to": 1992
+    },
+    {
+     "club": "Galatasaray",
+     "from": 1992,
+     "to": 1993
+    },
+    {
+     "club": "Gaziantepspor",
+     "from": 1993,
+     "to": 1995
+    },
+    {
+     "club": "Fenerbahçe",
+     "from": 1995,
+     "to": 2000
+    },
+    {
+     "club": "Rayo Vallecano",
+     "from": 2000,
+     "to": 2003
+    },
+    {
+     "club": "İstanbulspor",
+     "from": 2003,
+     "to": 2004
+    },
+    {
+     "club": "Gençlerbirliği",
+     "from": 2004,
+     "to": 2004
+    },
+    {
+     "club": "Malatyaspor",
+     "from": 2005,
+     "to": 2005
+    },
+    {
+     "club": "İstanbulspor",
+     "from": 2005,
+     "to": 2006
+    },
+    {
+     "club": "Rijeka",
+     "from": 2006,
+     "to": 2007
+    }
+   ]
+  },
+  {
+   "name": "Elvir Baljić",
+   "birthYear": 1974,
+   "nationality": "Bosnia-Herzegovina",
+   "tmId": 6900,
+   "confidence": "medium",
+   "sources": [
+    "https://www.national-football-teams.com/player/892/Elvir_Baljic.html",
+    "https://www.transfermarkt.com.tr/elvir-baljic/nationalmannschaft/spieler/6900"
+   ],
+   "spells": [
+    {
+     "club": "FK Sarajevo",
+     "from": 1993,
+     "to": 1995
+    },
+    {
+     "club": "Bursaspor",
+     "from": 1995,
+     "to": 1998
+    },
+    {
+     "club": "Fenerbahçe",
+     "from": 1998,
+     "to": 1999
+    },
+    {
+     "club": "Real Madrid",
+     "from": 1999,
+     "to": 2002
+    },
+    {
+     "club": "Fenerbahçe",
+     "from": 2000,
+     "to": 2001
+    },
+    {
+     "club": "Rayo Vallecano",
+     "from": 2001,
+     "to": 2002
+    },
+    {
+     "club": "Galatasaray",
+     "from": 2002,
+     "to": 2004
+    },
+    {
+     "club": "Konyaspor",
+     "from": 2005,
+     "to": 2005
+    },
+    {
+     "club": "Ankaragücü",
+     "from": 2005,
+     "to": 2006
+    },
+    {
+     "club": "İstanbulspor",
+     "from": 2006,
+     "to": 2008
+    }
+   ]
+  },
+  {
+   "name": "Jay-Jay Okocha",
+   "birthYear": 1973,
+   "nationality": "Nigeria",
+   "tmId": 3708,
+   "confidence": "high",
+   "sources": [
+    "https://www.national-football-teams.com/player/4844/Jay_Jay_Okocha.html",
+    "https://www.playmakerstats.com/player/jay-jay-okocha/1290",
+    "https://en.wikipedia.org/wiki/Premier_League_Soccer_(India)"
+   ],
+   "spells": [
+    {
+     "club": "Enugu Rangers",
+     "from": 1989,
+     "to": 1990
+    },
+    {
+     "club": "Borussia Neunkirchen",
+     "from": 1990,
+     "to": 1992
+    },
+    {
+     "club": "Eintracht Frankfurt",
+     "from": 1992,
+     "to": 1996
+    },
+    {
+     "club": "Fenerbahçe",
+     "from": 1996,
+     "to": 1998
+    },
+    {
+     "club": "Paris Saint-Germain",
+     "from": 1998,
+     "to": 2002
+    },
+    {
+     "club": "Bolton Wanderers",
+     "from": 2002,
+     "to": 2006
+    },
+    {
+     "club": "Qatar SC",
+     "from": 2006,
+     "to": 2007
+    },
+    {
+     "club": "Hull City",
+     "from": 2007,
+     "to": 2008
+    }
+   ]
+  },
+  {
+   "name": "Ariel Ortega",
+   "birthYear": 1974,
+   "nationality": "Argentina",
+   "tmId": 4147,
+   "confidence": "medium",
+   "sources": [
+    "https://www.bdfa.com.ar/jugadores-ARIEL-ARNALDO-ORTEGA-438.html",
+    "https://www.diariodecuyo.com.ar/pasiondeportiva/Debut-y-caida-del-Burro-20110116-0066.html",
+    "https://alchetron.com/Ariel-Ortega"
+   ],
+   "spells": [
+    {
+     "club": "River Plate",
+     "from": 1991,
+     "to": 1997
+    },
+    {
+     "club": "Valencia",
+     "from": 1997,
+     "to": 1998
+    },
+    {
+     "club": "Sampdoria",
+     "from": 1998,
+     "to": 1999
+    },
+    {
+     "club": "Parma",
+     "from": 1999,
+     "to": 2000
+    },
+    {
+     "club": "River Plate",
+     "from": 2000,
+     "to": 2002
+    },
+    {
+     "club": "Fenerbahçe",
+     "from": 2002,
+     "to": 2003
+    },
+    {
+     "club": "Newell's Old Boys",
+     "from": 2004,
+     "to": 2006
+    },
+    {
+     "club": "River Plate",
+     "from": 2006,
+     "to": 2012
+    },
+    {
+     "club": "Independiente Rivadavia",
+     "from": 2008,
+     "to": 2009
+    },
+    {
+     "club": "All Boys",
+     "from": 2011,
+     "to": 2011
+    },
+    {
+     "club": "Defensores de Belgrano",
+     "from": 2011,
+     "to": 2012
+    }
+   ]
+  },
+  {
+   "name": "Alpay Özalan",
+   "birthYear": 1973,
+   "nationality": "Türkiye",
+   "tmId": 3504,
+   "confidence": "high",
+   "sources": [
+    "https://arsiv.mackolik.com/Futbolcu/5814/Alpay-Ozalan",
+    "https://www.karar.com/karar-biyografi/alpay-ozalan-kimdir-kac-yasinda-aslen-nereli-ne-is-yapar-1642223",
+    "https://www.sabah.com.tr/alpay-ozalan-kimdir"
+   ],
+   "spells": [
+    {
+     "club": "Soma Linyitspor",
+     "from": 1991,
+     "to": 1992
+    },
+    {
+     "club": "Altay",
+     "from": 1992,
+     "to": 1993
+    },
+    {
+     "club": "Beşiktaş",
+     "from": 1993,
+     "to": 1999
+    },
+    {
+     "club": "Fenerbahçe",
+     "from": 1999,
+     "to": 2000
+    },
+    {
+     "club": "Aston Villa",
+     "from": 2000,
+     "to": 2004
+    },
+    {
+     "club": "Incheon United",
+     "from": 2004,
+     "to": 2004
+    },
+    {
+     "club": "Urawa Red Diamonds",
+     "from": 2004,
+     "to": 2005
+    },
+    {
+     "club": "1. FC Köln",
+     "from": 2005,
+     "to": 2008
+    }
+   ]
+  },
+  {
+   "name": "Tanju Çolak",
+   "birthYear": 1963,
+   "nationality": "Türkiye",
+   "tmId": 90976,
+   "confidence": "high",
+   "sources": [
+    "https://www.istanbulsportd.org/tanju-colak/",
+    "https://www.biyografya.com/tr/biographies/tanju-colak-529272a5",
+    "https://www.gazetearena.com/samsunsporun-efsane-golcusu-tanju-colak-kimdir"
+   ],
+   "spells": [
+    {
+     "club": "Samsunspor",
+     "from": 1981,
+     "to": 1987
+    },
+    {
+     "club": "Galatasaray",
+     "from": 1987,
+     "to": 1991
+    },
+    {
+     "club": "Fenerbahçe",
+     "from": 1991,
+     "to": 1993
+    },
+    {
+     "club": "İstanbulspor",
+     "from": 1993,
+     "to": 1994
+    }
+   ]
+  },
+  {
+   "name": "Ali Gültiken",
+   "birthYear": 1965,
+   "nationality": "Türkiye",
+   "tmId": 92276,
+   "confidence": "high",
+   "sources": [
+    "https://www.bolgegundem.com.tr/ali-gultiken-kimdir-kac-yasinda-aslen-nerelidir-hangi-takimlarda-oynadi-ali-gultike-1437549h.htm",
+    "https://www.mackolik.com/futbolcu/a-g%C3%BCltiken/3edvjatlo9pqsul8pkbxfexn9",
+    "https://bjk.com.tr/tr/oyuncu/368/item"
+   ],
+   "spells": [
+    {
+     "club": "Beşiktaş",
+     "from": 1984,
+     "to": 1995
+    },
+    {
+     "club": "Kayserispor",
+     "from": 1995,
+     "to": 1996
+    }
+   ]
+  },
+  {
+   "name": "Hami Mandıralı",
+   "birthYear": 1968,
+   "nationality": "Türkiye",
+   "tmId": 84880,
+   "confidence": "high",
+   "sources": [
+    "https://www.national-football-teams.com/player/14004/Hami_Mandirali.html",
+    "https://www.tff.org/Default.aspx?pageId=526&kisiId=21364",
+    "https://www.haberler.com/hami-mandirali/biyografisi/"
+   ],
+   "spells": [
+    {
+     "club": "Trabzonspor",
+     "from": 1984,
+     "to": 1998
+    },
+    {
+     "club": "Schalke 04",
+     "from": 1998,
+     "to": 1999
+    },
+    {
+     "club": "Trabzonspor",
+     "from": 1999,
+     "to": 2002
+    },
+    {
+     "club": "Ankaragücü",
+     "from": 2002,
+     "to": 2002
+    }
+   ]
+  },
+  {
+   "name": "Ünal Karaman",
+   "birthYear": 1966,
+   "nationality": "Türkiye",
+   "tmId": 115016,
+   "confidence": "high",
+   "sources": [
+    "https://www.national-football-teams.com/player/18993/Uenal_Karaman.html",
+    "https://www.tff.org/Default.aspx?pageId=526&kisiId=21353"
+   ],
+   "spells": [
+    {
+     "club": "Gaziantepspor",
+     "from": 1984,
+     "to": 1987
+    },
+    {
+     "club": "Malatyaspor",
+     "from": 1987,
+     "to": 1990
+    },
+    {
+     "club": "Trabzonspor",
+     "from": 1990,
+     "to": 1999
+    },
+    {
+     "club": "Ankaragücü",
+     "from": 1999,
+     "to": 2000
+    }
+   ]
+  },
+  {
+   "name": "Abdullah Ercan",
+   "birthYear": 1971,
+   "nationality": "Türkiye",
+   "tmId": 7236,
+   "confidence": "high",
+   "sources": [
+    "https://www.national-football-teams.com/player/11383/Abdullah_Ercan.html",
+    "https://www.tff.org/Default.aspx?pageId=526&kisiId=21366"
+   ],
+   "spells": [
+    {
+     "club": "Trabzonspor",
+     "from": 1990,
+     "to": 1999
+    },
+    {
+     "club": "Fenerbahçe",
+     "from": 1999,
+     "to": 2003
+    },
+    {
+     "club": "Galatasaray",
+     "from": 2003,
+     "to": 2004
+    },
+    {
+     "club": "İstanbulspor",
+     "from": 2004,
+     "to": 2006
+    }
+   ]
+  },
+  {
+   "name": "Orhan Çıkırıkçı",
+   "birthYear": 1967,
+   "nationality": "Türkiye",
+   "tmId": 103796,
+   "confidence": "high",
+   "sources": [
+    "https://www.national-football-teams.com/player/19007/Orhan_Cikirikci.html",
+    "https://www.tff.org/Default.aspx?pageId=526&kisiId=21365"
+   ],
+   "spells": [
+    {
+     "club": "Çorluspor",
+     "from": null,
+     "to": 1988
+    },
+    {
+     "club": "Eskişehirspor",
+     "from": 1988,
+     "to": 1989
+    },
+    {
+     "club": "Trabzonspor",
+     "from": 1989,
+     "to": 2002
+    },
+    {
+     "club": "Akçaabat Sebatspor",
+     "from": 2001,
+     "to": 2002
+    }
+   ]
+  },
+  {
+   "name": "Metin Tekin",
+   "birthYear": 1964,
+   "nationality": "Türkiye",
+   "tmId": 92281,
+   "confidence": "high",
+   "sources": [
+    "https://www.national-football-teams.com/player/18996/Metin_Tekin.html",
+    "https://grokipedia.com/page/Metin_Tekin",
+    "https://www.transfermarkt.us/metin-tekin/rueckennummern/spieler/92281"
+   ],
+   "spells": [
+    {
+     "club": "Beşiktaş",
+     "from": 1982,
+     "to": 1997
+    },
+    {
+     "club": "Vanspor",
+     "from": 1997,
+     "to": 1997
+    }
+   ]
+  },
+  {
+   "name": "Romário",
+   "birthYear": 1966,
+   "nationality": "Brazil",
+   "tmId": 7942,
+   "confidence": "medium",
+   "sources": [
+    "https://pt.wikipedia.org/wiki/Rom%C3%A1rio",
+    "https://www.bdfutbol.com/en/t/t1997-9836.html",
+    "https://www.transfermarkt.us/romario/profil/spieler/7942"
+   ],
+   "spells": [
+    {
+     "club": "Vasco da Gama",
+     "from": 1985,
+     "to": 1988
+    },
+    {
+     "club": "PSV Eindhoven",
+     "from": 1988,
+     "to": 1993
+    },
+    {
+     "club": "Barcelona",
+     "from": 1993,
+     "to": 1995
+    },
+    {
+     "club": "Flamengo",
+     "from": 1995,
+     "to": 1996
+    },
+    {
+     "club": "Valencia",
+     "from": 1996,
+     "to": 1997
+    },
+    {
+     "club": "Flamengo",
+     "from": 1997,
+     "to": 1997
+    },
+    {
+     "club": "Valencia",
+     "from": 1997,
+     "to": 1998
+    },
+    {
+     "club": "Flamengo",
+     "from": 1998,
+     "to": 1999
+    },
+    {
+     "club": "Vasco da Gama",
+     "from": 2000,
+     "to": 2002
+    },
+    {
+     "club": "Fluminense",
+     "from": 2002,
+     "to": 2004
+    },
+    {
+     "club": "Al Sadd",
+     "from": 2003,
+     "to": 2003
+    },
+    {
+     "club": "Vasco da Gama",
+     "from": 2005,
+     "to": 2006
+    },
+    {
+     "club": "Miami FC",
+     "from": 2006,
+     "to": 2006
+    },
+    {
+     "club": "Adelaide United",
+     "from": 2006,
+     "to": 2006
+    },
+    {
+     "club": "Vasco da Gama",
+     "from": 2007,
+     "to": 2008
+    },
+    {
+     "club": "América-RJ",
+     "from": 2009,
+     "to": 2009
+    }
+   ]
+  },
+  {
+   "name": "Washington",
+   "birthYear": 1975,
+   "nationality": "Brazil",
+   "tmId": 7080,
+   "confidence": "medium",
+   "sources": [
+    "https://pt.wikipedia.org/wiki/Washington_Stecanela_Cerqueira",
+    "https://ja.wikipedia.org/wiki/%E3%83%AF%E3%82%B7%E3%83%B3%E3%83%88%E3%83%B3%E3%83%BB%E3%82%B9%E3%83%86%E3%82%AB%E3%83%8D%E3%83%AD%E3%83%BB%E3%82%BB%E3%83%AB%E3%82%B1%E3%82%A4%E3%83%A9",
+    "https://www.bdfutbol.com/en/j/j32611.html",
+    "https://www.futebolinterior.com.br/washington-coracao-valente-83-gols-em-106-jogos-pela-ponte-preta/",
+    "https://www.transfermarkt.us/washington/profil/spieler/7080"
+   ],
+   "spells": [
+    {
+     "club": "Caxias",
+     "from": 1993,
+     "to": 1999
+    },
+    {
+     "club": "Internacional",
+     "from": 1997,
+     "to": 1997
+    },
+    {
+     "club": "Grêmio",
+     "from": 1997,
+     "to": 1997
+    },
+    {
+     "club": "Ponte Preta",
+     "from": 1998,
+     "to": 1998
+    },
+    {
+     "club": "Paraná Clube",
+     "from": 1999,
+     "to": 2000
+    },
+    {
+     "club": "Ponte Preta",
+     "from": 2000,
+     "to": 2002
+    },
+    {
+     "club": "Fenerbahçe",
+     "from": 2002,
+     "to": 2003
+    },
+    {
+     "club": "Atlético Paranaense",
+     "from": 2004,
+     "to": 2004
+    },
+    {
+     "club": "Tokyo Verdy",
+     "from": 2005,
+     "to": 2005
+    },
+    {
+     "club": "Urawa Red Diamonds",
+     "from": 2006,
+     "to": 2007
+    },
+    {
+     "club": "Fluminense",
+     "from": 2008,
+     "to": 2008
+    },
+    {
+     "club": "São Paulo",
+     "from": 2009,
+     "to": 2010
+    },
+    {
+     "club": "Fluminense",
+     "from": 2010,
+     "to": 2011
+    }
+   ]
+  },
+  {
+   "name": "Zinedine Zidane",
+   "birthYear": 1972,
+   "nationality": "France",
+   "tmId": 3111,
+   "confidence": "high",
+   "sources": [
+    "https://fr.wikipedia.org/wiki/Zin%C3%A9dine_Zidane",
+    "https://www.transfermarkt.us/zinedine-zidane/profil/spieler/3111"
+   ],
+   "spells": [
+    {
+     "club": "Cannes",
+     "from": 1989,
+     "to": 1992
+    },
+    {
+     "club": "Bordeaux",
+     "from": 1992,
+     "to": 1996
+    },
+    {
+     "club": "Juventus",
+     "from": 1996,
+     "to": 2001
+    },
+    {
+     "club": "Real Madrid",
+     "from": 2001,
+     "to": 2006
+    }
+   ]
+  },
+  {
+   "name": "Gabriel Batistuta",
+   "birthYear": 1969,
+   "nationality": "Argentina",
+   "tmId": 5959,
+   "confidence": "high",
+   "sources": [
+    "https://es.wikipedia.org/wiki/Gabriel_Batistuta",
+    "https://www.transfermarkt.us/gabriel-batistuta/profil/spieler/5959"
+   ],
+   "spells": [
+    {
+     "club": "Newell's Old Boys",
+     "from": 1988,
+     "to": 1989
+    },
+    {
+     "club": "River Plate",
+     "from": 1989,
+     "to": 1990
+    },
+    {
+     "club": "Boca Juniors",
+     "from": 1990,
+     "to": 1991
+    },
+    {
+     "club": "Fiorentina",
+     "from": 1991,
+     "to": 2000
+    },
+    {
+     "club": "Roma",
+     "from": 2000,
+     "to": 2003
+    },
+    {
+     "club": "Inter",
+     "from": 2003,
+     "to": 2003
+    },
+    {
+     "club": "Al-Arabi",
+     "from": 2003,
+     "to": 2005
+    }
+   ]
+  },
+  {
+   "name": "Roberto Baggio",
+   "birthYear": 1967,
+   "nationality": "Italy",
+   "tmId": 4153,
+   "confidence": "high",
+   "sources": [
+    "https://it.wikipedia.org/wiki/Roberto_Baggio",
+    "https://www.transfermarkt.us/roberto-baggio/profil/spieler/4153"
+   ],
+   "spells": [
+    {
+     "club": "Vicenza",
+     "from": 1982,
+     "to": 1985
+    },
+    {
+     "club": "Fiorentina",
+     "from": 1985,
+     "to": 1990
+    },
+    {
+     "club": "Juventus",
+     "from": 1990,
+     "to": 1995
+    },
+    {
+     "club": "Milan",
+     "from": 1995,
+     "to": 1997
+    },
+    {
+     "club": "Bologna",
+     "from": 1997,
+     "to": 1998
+    },
+    {
+     "club": "Inter",
+     "from": 1998,
+     "to": 2000
+    },
+    {
+     "club": "Brescia",
+     "from": 2000,
+     "to": 2004
+    }
+   ]
+  },
+  {
+   "name": "Diego Maradona",
+   "birthYear": 1960,
+   "nationality": "Argentina",
+   "tmId": 8024,
+   "confidence": "high",
+   "sources": [
+    "https://es.wikipedia.org/wiki/Diego_Armando_Maradona",
+    "https://www.transfermarkt.us/diego-maradona/profil/spieler/8024"
+   ],
+   "spells": [
+    {
+     "club": "Argentinos Juniors",
+     "from": 1976,
+     "to": 1981
+    },
+    {
+     "club": "Boca Juniors",
+     "from": 1981,
+     "to": 1982
+    },
+    {
+     "club": "Barcelona",
+     "from": 1982,
+     "to": 1984
+    },
+    {
+     "club": "Napoli",
+     "from": 1984,
+     "to": 1992
+    },
+    {
+     "club": "Sevilla",
+     "from": 1992,
+     "to": 1993
+    },
+    {
+     "club": "Newell's Old Boys",
+     "from": 1993,
+     "to": 1994
+    },
+    {
+     "club": "Boca Juniors",
+     "from": 1995,
+     "to": 1997
+    }
+   ]
+  },
+  {
+   "name": "Dennis Bergkamp",
+   "birthYear": 1969,
+   "nationality": "Netherlands",
+   "tmId": 3187,
+   "confidence": "high",
+   "sources": [
+    "https://nl.wikipedia.org/wiki/Dennis_Bergkamp",
+    "https://www.transfermarkt.us/dennis-bergkamp/transfers/spieler/3187"
+   ],
+   "spells": [
+    {
+     "club": "Ajax",
+     "from": 1986,
+     "to": 1993
+    },
+    {
+     "club": "Inter",
+     "from": 1993,
+     "to": 1995
+    },
+    {
+     "club": "Arsenal",
+     "from": 1995,
+     "to": 2006
+    }
+   ]
+  },
+  {
+   "name": "Marco van Basten",
+   "birthYear": 1964,
+   "nationality": "Netherlands",
+   "tmId": 74471,
+   "confidence": "high",
+   "sources": [
+    "https://nl.wikipedia.org/wiki/Marco_van_Basten",
+    "https://www.transfermarkt.us/marco-van-basten/profil/spieler/74471"
+   ],
+   "spells": [
+    {
+     "club": "Ajax",
+     "from": 1981,
+     "to": 1987
+    },
+    {
+     "club": "Milan",
+     "from": 1987,
+     "to": 1995
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,46 @@
+# ── Crossover media (kulüp armaları + oyuncu fotoğrafları) ────────────────
+#
+# NEDEN: clubs.logo_url / players.image_url doğrudan Transfermarkt'ın CDN'ine
+# (tmssl.akamaized.net, img.a.transfermarkt.technology) hotlink'liyordu. Bu,
+# uygulamadaki HER armanın üçüncü bir tarafın sunucusuna bağlı olması demekti —
+# referer kontrolü ya da rate-limit koysalar tüm görseller aynı anda kırılırdı,
+# App Store incelemesi sırasında dahil (hakem bunu "bozuk uygulama" olarak görür).
+#
+# ÖNEMLİ: bu blok mevcut crossoverfootball.com bloğunun İÇİNE eklenir; ayrı bir
+# konteyner kullanılır (crossover-media-1), böylece site konteynerine hiç
+# dokunulmaz.
+#
+# ⚠️ DENENİP BAŞARISIZ OLAN YOL: media'yı crossover-web-1'e ikinci bir mount
+# olarak (-v /opt/crossover/media:/usr/share/nginx/html/media:ro) eklemek
+# ÇALIŞMAZ — üst dizin (html) salt-okunur bağlı olduğu için Docker mount
+# noktasını oluşturamaz ve konteyner hiç başlamaz. Bu denendi ve siteyi ~1 dk
+# düşürdü. Ayrı konteyner + Caddy yönlendirmesi doğru yol.
+#
+# Kurulum:
+#   docker run -d --name crossover-media-1 --restart unless-stopped \
+#     --network shared-net -v /opt/crossover/media:/usr/share/nginx/html:ro \
+#     nginx:alpine
+#
+#   /root/transyol/Caddyfile içindeki crossoverfootball.com bloğunu şu hâle getir
+#   (yedek: Caddyfile.bak-media), sonra validate + reload:
+#
+#     crossoverfootball.com {
+#         handle_path /media/* {
+#             reverse_proxy crossover-media-1:80
+#         }
+#         handle {
+#             reverse_proxy crossover-web-1:80
+#         }
+#         encode gzip
+#     }
+#
+#   docker exec transyol-caddy-1 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+#   docker exec transyol-caddy-1 caddy reload   --config /etc/caddy/Caddyfile --adapter caddyfile
+#
+# Doğrulama:
+#   curl -I https://crossoverfootball.com/media/clubs/1002.png   → 200 image/png
+#   curl -I https://crossoverfootball.com/kosullar/              → 200 (site bozulmadı)
+#
+# İlgili scriptler:
+#   deploy/mirror-media.sh     — görselleri indirir (resumable, DB'ye dokunmaz)
+#   deploy/swap-media-urls.sh  — DB URL'lerini çevirir (--apply / --rollback)

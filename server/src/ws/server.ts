@@ -632,6 +632,13 @@ export function startServer(port: number): Server {
 
       // Permanently delete the signed-in account and all its data (App Store 5.1.1(v)),
       // then tear down the session so the client returns to the login screen.
+      if (msg.type === 'leave_match') {
+        // Deliberate exit (X onayı / arka plan hükmeni): reconnect grace YOK —
+        // rakip hükmen sonucu ANINDA görür. Ardından gelen soket kapanışı
+        // oyuncuyu zaten silinmiş bulur (no-op).
+        if (ctx) { ctx.room.explicitLeave(ctx.playerId); ctx = null; }
+        return;
+      }
       if (msg.type === 'delete_account') {
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
         const uid = userProfile.id;

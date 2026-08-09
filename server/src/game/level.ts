@@ -16,8 +16,21 @@ import { pool } from '../db/pool.ts';
 
 export const LEVEL_CAP = 50;
 
+// Kademeli bantlar (Brawl Stars pass modeli) — AYLIK sezona ayarlı:
+// toplam 9.460 XP (eski 34.300'dü). İlk seviye tek galibiyetle patlar (40;
+// günün ilk galibiyeti 90 XP = L1 + L2'nin çoğu), düzenli oyuncu (~11 gerçek
+// maç/gün, %55 galibiyet ≈ 360 XP/gün) 50'yi ~26. günde bitirir, günübirlik
+// (4-5 maç) ay sonunda ~28-36 bandına gelir. Kaynaklı tasarım: workflow
+// wf_0fe4e95b — Valorant/Fortnite/Brawl Stars/CR pass eğrileri.
 export function xpForNext(level: number): number {
-  return 100 + (level - 1) * 25;
+  if (level <= 1) return 40;
+  if (level === 2) return 60;
+  if (level <= 5) return 80;
+  if (level <= 10) return 120;
+  if (level <= 20) return 160;
+  if (level <= 30) return 200;
+  if (level <= 40) return 240;
+  return 280; // 41+ (tavan dahil — UI'da 0'a bölme olmasın)
 }
 
 // Özel güçler — Seviye Yolu'ndan kazanılan TEK KULLANIMLIK, stoklanabilir
@@ -117,11 +130,11 @@ export async function awardMatchXp(userId: string, won: boolean, vsBot: boolean)
     botToday += gained;
   } else {
     gained = won ? 40 : 15;
+    if (boosted) gained *= 2; // 2x YALNIZ maç XP'sini katlar
     if (won && lastWinDay !== today) {
-      gained += 50; // günün ilk gerçek galibiyeti
+      gained += 50; // günün ilk gerçek galibiyeti — 2x'ten etkilenmez (sınırlı değer)
       lastWinDay = today;
     }
-    if (boosted) gained *= 2;
   }
 
   // Seviye atlama döngüsü — ÖDÜL VERİLMEZ; hangi ödüllerin hazır olduğu

@@ -196,6 +196,39 @@ function editAccepts(guessNorm: string, nameNorm: string): boolean {
   return guessNorm.length >= EDIT_MIN_GUESS_LEN && editCloseness(guessNorm, nameNorm) >= EDIT_ACCEPT;
 }
 
+// ---- Vowel-dropped fast typing ("srgjn" → "Sergen") ----
+// Skipping vowels while typing fast is a common REAL typo class, but it scores
+// terribly on both trigram (almost no shared trigrams) and plain edit distance
+// ("srgjn"→"sergen" = 0.667, below EDIT_ACCEPT). Compare consonant SKELETONS
+// instead — and only when the guess itself is (near-)vowel-free: a fully
+// vowelled guess is a different NAME, not this typo class, so "rivaldo" can
+// never become "ronaldo" through this gate. Bare stubs stay out via the length
+// guards ("ser"/"srg" are too short).
+const VOWELS_RE = /[aeiou]/g;
+function consonantSkeleton(s: string): string {
+  return s.replace(/[^a-z]/g, '').replace(VOWELS_RE, '');
+}
+function vowelDropAccepts(guessNorm: string, nameNorm: string): boolean {
+  const flat = guessNorm.replace(/[^a-z]/g, '');
+  const vowels = (flat.match(VOWELS_RE) ?? []).length;
+  if (flat.length < 4 || vowels > 1) return false; // not vowel-dropped typing
+  const gs = consonantSkeleton(guessNorm);
+  if (gs.length < 4) return false;
+  for (const target of [nameNorm, ...nameNorm.split(' ')]) {
+    const ts = consonantSkeleton(target);
+    if (ts.length >= 3 && editDistance(gs, ts) <= 1) return true;
+  }
+  return false;
+}
+
+// Anti-stub guard for the TRIGRAM autocorrect path: a half-typed prefix must
+// not win the round ("ser" → Sergen is a lazy stab, not a typo — user rule).
+// The guess must be ≥4 chars AND cover ≥60% of some real token of the name.
+function notAStub(guessNorm: string, nameNorm: string): boolean {
+  if (guessNorm.length < 4) return false;
+  return nameNorm.split(' ').some((t) => t.length >= 4 && guessNorm.length >= Math.ceil(t.length * 0.6));
+}
+
 const EASY_TOP = 20;    // top 20 only
 const MEDIUM_FROM = 21; // skip the mega-famous
 const MEDIUM_TO = 80;
@@ -476,20 +509,28 @@ export async function commonPlayersDetailed(
 
 // ---- Country-Team & Letter-Team helpers ----
 
-// Nationality spellings drift between data sources: the Transfermarkt rebuild
-// stores Turkey as the Turkish "Türkiye", while the app's country picker sends
-// the English "Turkey" (nationalities.ts). Matching on a single exact string
-// then wrongly reports "no common players" and SKIPS the round. Match against
-// EVERY known spelling instead — this is the permanent fix (it survives future
-// rebuilds regardless of which spelling the importer writes). Add an entry here
-// if a later data rebuild localizes another nationality.
-const NATIONALITY_ALIASES: Record<string, string[]> = {
-  turkey: ['Turkey', 'Türkiye'],
-  'türkiye': ['Turkey', 'Türkiye'],
-};
-/** All DB spellings a picked country value should match (self if no alias). */
-export function nationalityMatchValues(country: string): string[] {
-  return NATIONALITY_ALIASES[country.trim().toLowerCase()] ?? [country];
+const MIN_SPELL_YEAR = 1980;
+const ACTIVE_SPELL_SQL = `COALESCE(pc.end_year, pc.start_year, 9999) >= ${MIN_SPELL_YEAR}`;
+
+const NATIONALITY_ALIAS_GROUPS = [
+  ['Turkey', 'Türkiye'],
+  ['United Arab Emirates', 'United-Arab-Emirates'],
+  ['Saudi Arabia', 'Saudi-Arabia'],
+  ['Korea, South', 'South Korea', 'South-Korea'],
+  ['Czech Republic', 'Czech-Republic'],
+  ['Northern Ireland', 'Northern-Ireland'],
+  ['Bosnia-Herzegovina', 'Bosnia and Herzegovina'],
+  ['United States', 'USA'],
+] as const;
+
+function nationalityVariants(country: string): string[] {
+  const variants = new Set<string>([country]);
+  const normalized = normalize(country);
+  for (const group of NATIONALITY_ALIAS_GROUPS) {
+    if (!group.some((entry) => normalize(entry) === normalized)) continue;
+    for (const entry of group) variants.add(entry);
+  }
+  return [...variants];
 }
 
 /** Players who played for the club AND have the given nationality. */
@@ -498,15 +539,26 @@ export async function commonPlayersCountryTeam(
   country: string,
   limit = 5,
 ): Promise<CommonPlayerInfo[]> {
+  const countries = nationalityVariants(country);
   const { rows } = await pool.query<{ name: string; image_url: string | null }>(
-    `SELECT p.name, p.image_url
-       FROM players p
-       JOIN player_clubs pc ON pc.player_id = p.id
-      WHERE pc.club_id = $1 AND p.nationality = ANY($2)
-      ORDER BY (p.image_url IS NOT NULL) DESC,
-               (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) DESC
+    `SELECT picked.name, picked.image_url
+       FROM (
+         SELECT DISTINCT ON (p.id)
+                p.id,
+                p.name,
+                p.image_url,
+                (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) AS career_count
+           FROM players p
+           JOIN player_clubs pc ON pc.player_id = p.id
+          WHERE pc.club_id = $1
+            AND ${ACTIVE_SPELL_SQL}
+            AND p.nationality = ANY($2)
+          ORDER BY p.id
+       ) AS picked
+      ORDER BY (picked.image_url IS NOT NULL) DESC,
+               picked.career_count DESC
       LIMIT $3`,
-    [clubId, nationalityMatchValues(country), limit],
+    [clubId, countries, limit],
   );
   return rows.map((r) => ({ name: r.name, imageUrl: r.image_url }));
 }
@@ -534,12 +586,15 @@ export async function commonPlayersLetterTeam(
 
 /** Are there any valid players for a country-team combination? */
 export async function hasPlayersCountryTeam(clubId: number, country: string): Promise<boolean> {
+  const countries = nationalityVariants(country);
   const { rows } = await pool.query<{ n: string }>(
     `SELECT count(*) AS n FROM players p
        JOIN player_clubs pc ON pc.player_id = p.id
-      WHERE pc.club_id = $1 AND p.nationality = ANY($2)
+      WHERE pc.club_id = $1
+        AND ${ACTIVE_SPELL_SQL}
+        AND p.nationality = ANY($2)
       LIMIT 1`,
-    [clubId, nationalityMatchValues(country)],
+    [clubId, countries],
   );
   return Number(rows[0]?.n ?? 0) > 0;
 }
@@ -628,19 +683,31 @@ export async function verifyCountryTeamGuess(
   };
   if (!norm) return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
 
+  const countries = nationalityVariants(country);
+
   // Fuzzy candidates among players who played for the club AND have the nationality
   const { rows: cands } = await pool.query<{ id: string; name: string; sim: number; image_url: string | null }>(
-    `SELECT p.id, p.name, p.image_url, word_similarity($1, p.name_norm) AS sim
-       FROM players p
-       JOIN player_clubs pc ON pc.player_id = p.id
-      WHERE pc.club_id = $2
-        AND p.nationality = ANY($3)
-        AND word_similarity($1, p.name_norm) >= $4
-      ORDER BY sim DESC,
-               (p.image_url IS NOT NULL) DESC,
-               (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) DESC
+    `SELECT picked.id, picked.name, picked.image_url, picked.sim
+       FROM (
+         SELECT DISTINCT ON (p.id)
+                p.id,
+                p.name,
+                p.image_url,
+                word_similarity($1, p.name_norm) AS sim,
+                (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) AS career_count
+           FROM players p
+           JOIN player_clubs pc ON pc.player_id = p.id
+          WHERE pc.club_id = $2
+            AND ${ACTIVE_SPELL_SQL}
+            AND p.nationality = ANY($3)
+            AND word_similarity($1, p.name_norm) >= $4
+          ORDER BY p.id, sim DESC, (p.image_url IS NOT NULL) DESC, career_count DESC
+       ) AS picked
+      ORDER BY picked.sim DESC,
+               (picked.image_url IS NOT NULL) DESC,
+               picked.career_count DESC
       LIMIT 15`,
-    [norm, clubId, nationalityMatchValues(country), config.verifyMatchThreshold],
+    [norm, clubId, countries, config.verifyMatchThreshold],
   );
 
   const eligible = cands.map((c) => ({ id: Number(c.id), name: c.name, sim: Number(c.sim), imageUrl: c.image_url }));
@@ -656,8 +723,12 @@ export async function verifyCountryTeamGuess(
   if (exactCluster.length > 0) {
     matched = exactCluster[0]!;
     correct = true;
-  } else if (eligible[0]!.sim >= AUTOCORRECT_MIN || editAccepts(norm, normalize(eligible[0]!.name))) {
-    // close typo of a valid answer (trigram OR edit-distance close) → accept
+  } else if (
+    (eligible[0]!.sim >= AUTOCORRECT_MIN && notAStub(norm, normalize(eligible[0]!.name)))
+    || editAccepts(norm, normalize(eligible[0]!.name))
+    || vowelDropAccepts(norm, normalize(eligible[0]!.name))
+  ) {
+    // close typo of a valid answer (trigram / edit-distance / vowel-drop) → accept
     matched = eligible[0]!;
     correct = true;
     autocorrected = true;
@@ -743,7 +814,8 @@ export async function verifyLetterTeamGuess(
     // letter, so a single letter (or tiny stub) sharing it must not win the round.
     // Closeness = trigram OR edit-distance; the length guards stay for both paths.
     const matchedNorm = normalize(matched.name);
-    if ((matched.sim >= AUTOCORRECT_MIN || editAccepts(norm, matchedNorm)) && norm.length >= 4 && norm.length >= matchedNorm.length * 0.5) {
+    if (((matched.sim >= AUTOCORRECT_MIN || editAccepts(norm, matchedNorm)) && norm.length >= 4 && norm.length >= matchedNorm.length * 0.5)
+      || vowelDropAccepts(norm, matchedNorm)) {
       correct = true;
       autocorrected = true;
     } else {
@@ -929,14 +1001,41 @@ export async function verifyGuess(
     // ("pijanic" → Pjanić), while EDIT_ACCEPT keeps rivaldo/ronaldo-style
     // confusions and garbage out.
     const bothAccepted = eligible.filter(
-      (c) => playedBoth(c.id) && (c.sim >= AUTOCORRECT_MIN || editAccepts(norm, c.nameNorm)),
+      (c) => playedBoth(c.id)
+        && ((c.sim >= AUTOCORRECT_MIN && notAStub(norm, c.nameNorm))
+          || editAccepts(norm, c.nameNorm)
+          || vowelDropAccepts(norm, c.nameNorm)),
     );
     if (bothAccepted.length > 0) {
       matched = mostFamous(bothAccepted);
       correct = true;
       autocorrected = true;
     } else {
-      correct = false;
+      // The candidate SQL's trigram gate can miss a heavy-but-genuine typo of a
+      // VALID answer entirely ("srgjn" shares almost no trigrams with
+      // "sergen"). The valid-answer set of this round is tiny, so check every
+      // both-team player directly through the SAME strict gates — garbage and
+      // stubs still die in editAccepts/vowelDropAccepts.
+      const { rows: bothRows } = await pool.query<{ id: string; name: string; name_norm: string; image_url: string | null }>(
+        `SELECT p.id, p.name, p.name_norm, p.image_url
+           FROM players p
+          WHERE EXISTS (SELECT 1 FROM player_clubs a WHERE a.player_id = p.id AND a.club_id = $1)
+            AND EXISTS (SELECT 1 FROM player_clubs b WHERE b.player_id = p.id AND b.club_id = $2)
+          ORDER BY (p.image_url IS NOT NULL) DESC,
+                   (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC
+          LIMIT 200`,
+        [teamAId, teamBId],
+      );
+      const rescue = bothRows
+        .map((r) => ({ id: Number(r.id), name: r.name, nameNorm: r.name_norm, sim: 0, imageUrl: r.image_url }))
+        .filter((r) => editAccepts(norm, r.nameNorm) || vowelDropAccepts(norm, r.nameNorm));
+      if (rescue.length > 0) {
+        matched = rescue[0]!; // rows arrive fame-ordered (photo, career size)
+        correct = true;
+        autocorrected = true;
+      } else {
+        correct = false;
+      }
     }
   }
 
@@ -947,7 +1046,14 @@ export async function verifyGuess(
   if (!correct) {
     const SIM_BAND = 0.13;
     const nearTop = eligible.filter((c) => c.sim >= eligible[0]!.sim - SIM_BAND);
-    matched = mostFamous(nearTop);
+    // Context beats raw fame: a near-top candidate tied to THIS round's clubs is
+    // far more plausibly who the human meant — "sergen" in a TS–BJK round is
+    // Sergen Yalçın, never a lower-league namesake with a bigger current club.
+    const inMatch = nearTop.filter((c) => {
+      const m = memberBy.get(c.id);
+      return Boolean(m?.inA || m?.inB);
+    });
+    matched = mostFamous(inMatch.length > 0 ? inMatch : nearTop);
   }
 
   const allClubs = await getPlayerSpells(matched.id);
