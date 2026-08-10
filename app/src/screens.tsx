@@ -4760,15 +4760,23 @@ function ScopeListPage({ kind, scopes, onPick }: {
 }
 
 // ---- Lobby ----
-function LeaveConfirmModal({ visible, onCancel, onConfirm }: { visible: boolean; onCancel: () => void; onConfirm: () => void }) {
+// Çıkış onayı ÜÇ tonda konuşur (kullanıcı kuralı, 2026-08-10): dereceli maçta
+// kupa cezası AÇIKÇA yazar; dostluk maçında yalnız hükmen (kupa yok — "kupa
+// kaybedersin" yazmak yalan olurdu); bot/lobi gibi bedelsiz yerlerde yalnız
+// "emin misin?" sorulur.
+function LeaveConfirmModal({ visible, kind = 'ranked', onCancel, onConfirm }: {
+  visible: boolean; kind?: 'ranked' | 'forfeit' | 'plain'; onCancel: () => void; onConfirm: () => void;
+}) {
   return (
     <GameModal visible={visible} onClose={onCancel} title={t('leave.bannerTitle')} icon="warning" danger>
       <Text style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') }}>
         {t('leave.confirmTitle')}
       </Text>
-      <Text style={{ color: theme.muted, fontSize: 13, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 19 }}>
-        {t('leave.confirmBody')}
-      </Text>
+      {kind !== 'plain' ? (
+        <Text style={{ color: theme.muted, fontSize: 13, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 19 }}>
+          {t(kind === 'ranked' ? 'leave.confirmBody' : 'leave.confirmBodyForfeit')}
+        </Text>
+      ) : null}
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <View style={{ flex: 1 }}>
           <Btn label={t('leave.cancel')} kind="ghost" onPress={onCancel} />
@@ -4868,7 +4876,8 @@ export function LobbyScreen({ state, actions }: Props) {
       )}
       <View style={{ height: 16 }} />
       <Btn label={t('result.leave')} kind="ghost" icon="close" onPress={() => needConfirm ? setShowLeaveConfirm(true) : actions.leave()} />
-      <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
+      {/* Lobi maç DEĞİL: ayrılmanın bedeli yok — yalnız "emin misin?" sorulur. */}
+      <LeaveConfirmModal visible={showLeaveConfirm} kind="plain" onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
     </Screen>
   );
 }
@@ -5123,7 +5132,10 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   const [emoteOpen, setEmoteOpen] = useState(false);
   const [lastPick, setLastPick] = useState<LastPick | null>(null);
   const hasBot = state.room?.players.some((p) => p.name === 'Bot');
-  const handleLeave = () => hasBot ? actions.leave() : setShowLeaveConfirm(true);
+  // Çarpı HER maçta sorar (kullanıcı kuralı 2026-08-10): botta yalnız "emin
+  // misin", derecelide kupa uyarısı, dostlukta kupasız hükmen metni.
+  const leaveKind = hasBot ? ('plain' as const) : state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
+  const handleLeave = () => tutorial ? actions.leave() : setShowLeaveConfirm(true);
 
   const onChange = (text: string) => {
     setQ(text);
@@ -5262,7 +5274,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
     <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} />
   ) : null;
   const leaveModal = (
-    <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
+    <LeaveConfirmModal visible={showLeaveConfirm} kind={leaveKind} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
   );
 
   if (state.picked) {
@@ -5507,7 +5519,10 @@ export function GuessScreen({ state, actions, tutorial, prefill }: Props & { pre
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [emoteOpen, setEmoteOpen] = useState(false);
   const hasBot = room.players.some((p) => p.name === 'Bot');
-  const handleLeave = () => hasBot ? actions.leave() : setShowLeaveConfirm(true);
+  // Çarpı HER maçta sorar (kullanıcı kuralı 2026-08-10): botta yalnız "emin
+  // misin", derecelide kupa uyarısı, dostlukta kupasız hükmen metni.
+  const leaveKind = hasBot ? ('plain' as const) : state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
+  const handleLeave = () => tutorial ? actions.leave() : setShowLeaveConfirm(true);
 
   // Reveal animation: teams slide in from the sides, the VS badge pops.
   const reveal = useRef(new Animated.Value(0)).current;
@@ -5657,7 +5672,7 @@ export function GuessScreen({ state, actions, tutorial, prefill }: Props & { pre
       )}
       {/* trailing room so the last button can scroll clear of the keyboard on short screens */}
       <View style={{ height: 32 }} />
-      <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
+      <LeaveConfirmModal visible={showLeaveConfirm} kind={leaveKind} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
       {!tutorial ? <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} /> : null}
     </Screen>
   );
@@ -11076,7 +11091,10 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
   // kaybetti (2026-08-10). Maç BİTTİYSE çıkış serbesttir, onay sorulmaz.
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const hasBot = room.players.some((p) => p.name === 'Bot');
-  const handleLeave = () => (hasBot || matchOver || tutorial) ? actions.leave() : setShowLeaveConfirm(true);
+  // Çarpı/Çık HER maçta sorar (maç bittiyse ya da tutorial'daysa hariç):
+  // botta yalnız "emin misin", derecelide kupa uyarısı, dostlukta kupasız hükmen.
+  const leaveKind = hasBot ? ('plain' as const) : state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
+  const handleLeave = () => (matchOver || tutorial) ? actions.leave() : setShowLeaveConfirm(true);
 
   const { icon, color, headline } = useMemo(() => {
     if (r.reason === 'same_team')
@@ -11328,7 +11346,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
         )}
         <View style={{ height: 10 }} />
         <Btn label={t('result.leave')} kind="ghost" icon="close" onPress={handleLeave} />
-        <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
+        <LeaveConfirmModal visible={showLeaveConfirm} kind={leaveKind} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
 
         {/* Kariyer + diğer oynamış oyuncular — Hazır/Çık'ın ALTINDA: Hazır butonu
             kariyer listesini beklemeden her zaman ekranda görünür olsun diye taşındı.
