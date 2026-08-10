@@ -857,12 +857,19 @@ export class Room {
     this.timers.push(t);
   }
 
-  // wrongopen kuralı yalnız odadaki TÜM insan istemciler destekliyorsa uygulanır;
-  // eski istemcili odalar bugünkü (ilk yazan turu kapatır) kuralda kalır — yoksa
-  // eski istemcinin arayüzü kilitli kalırdı. Botlar her zaman uyumludur.
-  private wrongOpenEnabled(): boolean {
+  // wrongopen kuralı, yanlış yazanın DIŞINDA cevap hakkı süren tüm insan
+  // istemciler destekliyorsa uygulanır. Yanlış yazanın KENDİ isteminin desteği
+  // aranmaz: o zaten susturuluyor — eski istemcisi tur bitene dek "kilitli"
+  // görünse de işlevsel bir kaybı yok. Böylece eski istemciyle bağlanan bir
+  // oyuncu kasıtlı yanlış cevapla GÜNCEL istemcili rakibinin turunu kilitleyemez;
+  // eski kural yalnız KURBANIN istemcisi wrong_guess'i anlamıyorsa kalır (onun
+  // arayüzü kilitli kalacağı için tur açık tutulamaz). Botlar her zaman uyumludur.
+  private wrongOpenEnabled(guesserId: string): boolean {
     return [...this.players.values()].every(
-      (p) => p.transport.isBot || p.transport.caps?.includes('wrongopen'),
+      (p) => p.transport.isBot
+        || p.id === guesserId
+        || this.round?.burned?.has(p.id)
+        || p.transport.caps?.includes('wrongopen'),
     );
   }
 
@@ -895,7 +902,7 @@ export class Room {
     const p = this.players.get(playerId);
     const remaining = (this.round.guessEndsAt ?? 0) - Date.now();
     // Süre dibindeyse (rakibe gerçekçi bir şans kalmadıysa) eski davranış kalsın.
-    if (!this.wrongOpenEnabled() || remaining < 2_000) return 'closed';
+    if (!this.wrongOpenEnabled(playerId) || remaining < 2_000) return 'closed';
     (this.round.burned ??= new Set()).add(playerId);
     this.round.answeredBy = undefined;
     this.broadcast({

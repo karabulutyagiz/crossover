@@ -101,19 +101,22 @@ export interface RoomView {
 
 // ---- Client -> Server ----
 export type ClientMsg =
-  | { type: 'create_room'; name: string; userId?: string; options?: GameOptions }
-  | { type: 'create_solo'; name: string; userId?: string; options?: GameOptions }
-  | { type: 'join_room'; code: string; name: string; userId?: string }
+  | { type: 'create_room'; name: string; userId?: string; options?: GameOptions; caps?: string[] }
+  | { type: 'create_solo'; name: string; userId?: string; options?: GameOptions; caps?: string[] }
+  | { type: 'join_room'; code: string; name: string; userId?: string; caps?: string[] }
   // caps: istemci yetenek bayrakları ('wrongopen' = yanlış cevapta turun rakibe
   // açılmasını ve wrong_guess/guess_denied mesajlarını anlar). Eski istemciler
   // göndermez → sunucu o odalarda eski (kilitli) kuralı uygular.
   | { type: 'resume_room'; code: string; userId: string; caps?: string[] } // reconnect a dropped player during grace period
   | { type: 'register'; name: string; gameCenterId?: string; userId?: string; caps?: string[] }
+  // NOT: caps bağlantı-kuran DÖRT mesajda da taşınır (find_match/create_room/
+  // create_solo/join_room) — maç soketleri taze açıldığı için register'daki
+  // bayraklar onlara ulaşmıyordu ve wrongopen dereceli maçlarda hiç açılmıyordu.
   | { type: 'guest'; caps?: string[] } // guest login → server creates an account with an auto "M"+9-digit username
   | { type: 'auth'; provider: 'apple' | 'google' | 'facebook'; token: string; name?: string; userId?: string; caps?: string[] }
   | { type: 'change_name'; newName: string }
   | { type: 'set_username'; username: string; userId?: string } // one-time unique username after sign-in
-  | { type: 'find_match'; name?: string; userId?: string; options?: GameOptions } // ranked matchmaking
+  | { type: 'find_match'; name?: string; userId?: string; options?: GameOptions; caps?: string[] } // ranked matchmaking
   | { type: 'start' }
   | { type: 'pick_team'; clubId: number }
   | { type: 'pick_country'; country: string }  // country-team mode: pick a nationality

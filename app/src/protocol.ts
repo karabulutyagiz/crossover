@@ -155,9 +155,12 @@ export interface RoundResult {
 }
 
 export type ClientMsg =
-  | { type: 'create_room'; name: string; userId?: string; options?: GameOptions }
-  | { type: 'create_solo'; name: string; userId?: string; options?: GameOptions }
-  | { type: 'join_room'; code: string; name: string; userId?: string }
+  // caps bağlantı-kuran DÖRT maç mesajında da taşınır (create_room/create_solo/
+  // join_room/find_match): maç soketleri taze açılır, register buradan geçmez —
+  // caps yalnız kayıt mesajlarında kalınca wrongopen dereceli maçta hiç açılmıyordu.
+  | { type: 'create_room'; name: string; userId?: string; options?: GameOptions; caps?: string[] }
+  | { type: 'create_solo'; name: string; userId?: string; options?: GameOptions; caps?: string[] }
+  | { type: 'join_room'; code: string; name: string; userId?: string; caps?: string[] }
   // caps: istemci yetenek bayrakları — 'wrongopen' = yanlış cevapta turun rakibe
   // açılmasını (wrong_guess/guess_denied) anlar. useCrossover kayıt mesajlarına ekler.
   | { type: 'resume_room'; code: string; userId: string; caps?: string[] }
@@ -166,7 +169,7 @@ export type ClientMsg =
   | { type: 'auth'; provider: 'apple' | 'google' | 'facebook'; token: string; name?: string; userId?: string; caps?: string[] }
   | { type: 'change_name'; newName: string }
   | { type: 'set_username'; username: string; userId?: string }
-  | { type: 'find_match'; name?: string; userId?: string; options?: GameOptions }
+  | { type: 'find_match'; name?: string; userId?: string; options?: GameOptions; caps?: string[] }
   | { type: 'start' }
   | { type: 'pick_team'; clubId: number }
   | { type: 'pick_country'; country: string }

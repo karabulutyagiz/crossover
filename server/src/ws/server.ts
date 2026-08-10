@@ -156,6 +156,31 @@ interface PendingInvite {
 // Track online users for real-time friend notifications.
 const onlineUsers = new Map<string, Set<WebSocket>>(); // userId → all open sockets
 
+// ---- wrongopen caps KÖPRÜSÜ ----
+// Maç soketleri taze açılır ve ilk mesajları find_match/create_room/create_solo/
+// join_room'dur — register buradan geçmediği için istemcinin kayıtta duyurduğu
+// yetenek bayrakları maç soketine hiç ulaşmıyordu ve wrongopen kuralı dereceli
+// maçlarda HİÇ açılmıyordu (yalnız presence soketini kullanan arkadaş davetleri
+// çalışıyordu). Çözüm iki katman: (1) bu dört mesaj artık caps taşıyabilir,
+// (2) taşımıyorsa hesabın EN SON kimlik-bildiren soketinde duyurduğu bayraklar
+// buradan maç soketine kopyalanır — güncel istemciler OTA beklemeden korunur.
+// Kimlik mesajı caps'siz gelirse önbellek [] ile EZİLİR: eski build'e dönen bir
+// hesap yanlışlıkla "wrongopen anlıyor" sayılıp arayüzü kilitlenmesin.
+const userCaps = new Map<string, string[]>(); // userId → son duyurulan caps
+
+/** Kimlik-bildiren soket (register/guest/auth/resume): duyurulan caps'i kaydet. */
+function recordCaps(transport: Transport, profileId: string): void {
+  userCaps.set(profileId, transport.caps ?? []);
+}
+
+/** Bağlantı-kuran maç soketi: caps bildirmediyse hesabın son duyurusunu taşı. */
+function bridgeCaps(transport: Transport, profile: UserProfile | undefined): void {
+  if (!profile) return;
+  if (transport.caps) { userCaps.set(profile.id, transport.caps); return; }
+  const cached = userCaps.get(profile.id);
+  if (cached && cached.length > 0) transport.caps = cached;
+}
+
 function addOnline(userId: string, ws: WebSocket): void {
   let set = onlineUsers.get(userId);
   if (!set) { set = new Set(); onlineUsers.set(userId, set); }
@@ -356,9 +381,13 @@ export function startServer(port: number): Server {
         }
       }
 
-      // İstemci yetenek bayrakları: kayıt sınıfı mesajlarla gelir, transport'a
-      // işlenir; oda kuralları (ör. wrongopen) bunlara bakar.
-      if ((msg.type === 'register' || msg.type === 'guest' || msg.type === 'auth' || msg.type === 'resume_room') && Array.isArray(msg.caps)) {
+      // İstemci yetenek bayrakları: kayıt sınıfı VE bağlantı-kuran maç
+      // mesajlarıyla gelir, transport'a işlenir; oda kuralları (ör. wrongopen)
+      // bunlara bakar. Maç mesajları listede olmadığında dereceli maçlar caps'siz
+      // kalıyordu — wrongopen kuralı sahada hiç açılmıyordu.
+      if ((msg.type === 'register' || msg.type === 'guest' || msg.type === 'auth' || msg.type === 'resume_room'
+           || msg.type === 'find_match' || msg.type === 'create_room' || msg.type === 'create_solo' || msg.type === 'join_room')
+          && Array.isArray(msg.caps)) {
         transport.caps = msg.caps.filter((c): c is string => typeof c === 'string').slice(0, 8);
       }
 
@@ -374,6 +403,7 @@ export function startServer(port: number): Server {
           const profile = await grantDevEmotesIfNeeded(loaded);
           userProfile = profile;
           addOnline(profile.id, ws);
+          recordCaps(transport, profile.id);
           transport.send({
             type: 'profile',
             profile: toProfileView(profile),
@@ -406,6 +436,7 @@ export function startServer(port: number): Server {
             const profile = await grantDevEmotesIfNeeded(linked);
             userProfile = profile;
             addOnline(profile.id, ws);
+            recordCaps(transport, profile.id);
             transport.send({ type: 'profile', profile: toProfileView(profile) });
           } catch (err) {
             console.error(`[auth:${msg.provider}] verify failed:`, err instanceof Error ? err.message : err);
@@ -425,6 +456,7 @@ export function startServer(port: number): Server {
             const profile = await createGuestUser();
             userProfile = profile;
             addOnline(profile.id, ws);
+            recordCaps(transport, profile.id);
             transport.send({ type: 'profile', profile: toProfileView(profile) });
           } catch (err) {
             console.error('[guest] create failed:', err instanceof Error ? err.message : err);
@@ -1120,7 +1152,7 @@ export function startServer(port: number): Server {
           if (rejectIfBanned(u ?? undefined, transport)) return;
           const resumed = room.resumePlayer(msg.userId, transport);
           if (!resumed.ok) return transport.send({ type: 'error', message: resumed.error });
-          if (u) { userProfile = u; addOnline(u.id, ws); }
+          if (u) { userProfile = u; addOnline(u.id, ws); recordCaps(transport, u.id); }
           ctx = { room, playerId: resumed.id, userProfile: u ?? undefined };
           log.info('room_resumed', { room: msg.code, userId: msg.userId });
           return;
@@ -1133,6 +1165,7 @@ export function startServer(port: number): Server {
             userProfile = await ensureProfileLoaded(userProfile, msg.userId, ws);
             // Banlıysa bağlantıda profil BIRAKILMAZ — sonraki mesajlar da profilsiz kalsın.
             if (rejectIfBanned(userProfile, transport)) { userProfile = undefined; return; }
+            bridgeCaps(transport, userProfile); // wrongopen: presence soketindeki caps'i maç soketine taşı
             // Prefer the registered profile name; fall back to the name the client
             // sent with the request (the matchmaking socket may not have registered).
             const name = userProfile?.displayName ?? msg.name ?? 'Oyuncu';
@@ -1194,6 +1227,7 @@ export function startServer(port: number): Server {
         if (msg.type === 'create_room') {
           userProfile = await ensureProfileLoaded(userProfile, msg.userId, ws);
           if (rejectIfBanned(userProfile, transport)) { userProfile = undefined; return; }
+          bridgeCaps(transport, userProfile);
           if (!canUseMode(userProfile, msg.options?.mode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
           const room = manager.createRoom();
           if (msg.options?.scope) room.scope = msg.options.scope;
@@ -1206,6 +1240,7 @@ export function startServer(port: number): Server {
         if (msg.type === 'create_solo') {
           userProfile = await ensureProfileLoaded(userProfile, msg.userId, ws);
           if (rejectIfBanned(userProfile, transport)) { userProfile = undefined; return; }
+          bridgeCaps(transport, userProfile);
           // Bot antrenman maçında TÜM modlar serbest — Sosyal Paket kilidi yalnız
           // insanlarla oynanan (find_match / oda / davet) maçlara uygulanır.
           const room = manager.createRoom();
@@ -1222,6 +1257,7 @@ export function startServer(port: number): Server {
         if (msg.type === 'join_room') {
           userProfile = await ensureProfileLoaded(userProfile, msg.userId, ws);
           if (rejectIfBanned(userProfile, transport)) { userProfile = undefined; return; }
+          bridgeCaps(transport, userProfile);
           const room = manager.get(msg.code);
           if (!room) return transport.send({ type: 'error', message: 'Room not found' });
           if (!canUseMode(userProfile, room.gameMode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
