@@ -44,8 +44,9 @@ const GUESS_MS = 30_000;
 const MAX_PLAYERS = 2;
 const WIN_TARGET = 3; // first to this many round wins takes the match
 const MAX_WRONG = 3; // 3 wrong answers → opponent wins the match
-const INTER_ROUND_MS = 5_000; // pause on the result screen before the next round auto-starts
-const READY_TIMEOUT_MS = 20_000;
+// Result screen pause: one visible 10→0 countdown, then the next round
+// auto-starts (both players pressing "Hazır" skips the wait).
+const INTER_ROUND_MS = 10_000;
 const RECONNECT_GRACE_MS = 12_000;
 
 // A player's link to the outside world: a real WebSocket client, or a bot.
@@ -1155,12 +1156,12 @@ export class Room {
       // One 10s countdown shown immediately (10 → 0). At 0 the next round starts
       // automatically; if both players press "Hazır" sooner, it advances right away.
       this.readyPlayers = new Set();
-      const endsAt = Date.now() + 10_000;
+      const endsAt = Date.now() + INTER_ROUND_MS;
       this.broadcast({ type: 'waiting_ready' });
       this.broadcast({ type: 'ready_countdown', endsAt });
       const t = setTimeout(() => {
         if (this.status === 'result' && !this.matchOver) this.beginCountdown();
-      }, 10_000);
+      }, INTER_ROUND_MS);
       this.timers.push(t);
     } else {
       const hasBot = [...this.players.values()].some((p) => p.transport.isBot);

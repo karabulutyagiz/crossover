@@ -105,6 +105,7 @@ export interface UserProfile {
   powerTraining: number;       // envanterdeki Antrenman Bileti adedi
   trainingBoostUntil: string | null; // aktif Antrenman Bileti penceresinin bitişi (ISO) ya da null
   powerSocialToken: number;    // envanterdeki Sosyal Paket Jetonu adedi
+  bannedAt: string | null;     // kural ihlali askısı — doluysa bağlantı katmanı girişi reddeder
 }
 
 function isFutureIso(iso: string | null | undefined): iso is string {
@@ -741,14 +742,20 @@ export async function buyEmote(
   return { ok: true, profile: toProfile(rows[0]) };
 }
 
-// Set the player's equipped visual-emote loadout (max 3). Keeps only valid
-// visual emote ids, dedupes, and caps at MAX_EQUIPPED.
+// Set the player's equipped visual-emote loadout. Keeps only emote ids the
+// player may actually equip — catalog-valid AND (free OR owned) — dedupes, and
+// caps at MAX_EQUIPPED. Ownership is enforced HERE, not in the UI: a crafted
+// client must not be able to equip stickers it never bought.
 export async function setEquippedEmotes(
   userId: string,
   ids: string[],
 ): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
   if (!userId) return { ok: false, error: 'Önce giriş yap' };
-  const clean = [...new Set(ids)].filter(isEquippableEmote).slice(0, MAX_EQUIPPED);
+  const user = await getUser(userId);
+  if (!user) return { ok: false, error: 'Kullanıcı bulunamadı' };
+  const clean = [...new Set(ids)]
+    .filter((id) => isEquippableEmote(id) && (isFreeEmote(id) || user.ownedEmotes.includes(id)))
+    .slice(0, MAX_EQUIPPED);
   const { rows } = await pool.query<DbUser>(
     `UPDATE users SET equipped_emotes = $2 WHERE id = $1 RETURNING *`,
     [userId, clean],
@@ -1023,25 +1030,6 @@ export async function searchUsers(query: string, viewerId?: string): Promise<{ u
   return rows.map((r) => ({ userId: r.id, displayName: r.display_name }));
 }
 
-// ---- Matchmaking ----
-
-export async function findMatch(
-  userId: string,
-  trophyRange = 200,
-): Promise<UserProfile | null> {
-  const user = await getUser(userId);
-  if (!user) return null;
-  const { rows } = await pool.query<DbUser>(
-    `SELECT * FROM users
-     WHERE id != $1
-       AND trophies BETWEEN $2 AND $3
-     ORDER BY random()
-     LIMIT 1`,
-    [userId, Math.max(0, user.trophies - trophyRange), user.trophies + trophyRange],
-  );
-  return rows[0] ? toProfile(rows[0]) : null;
-}
-
 // ---- Internals ----
 
 interface DbUser {
@@ -1082,6 +1070,7 @@ interface DbUser {
   training_boost_day: string | null;
   training_boost_until: string | null;
   power_socialtoken: number | null;
+  banned_at: string | null;
 }
 
 // Stamp the user's last-online time (on connect and disconnect) for "last seen".
@@ -1125,6 +1114,7 @@ function toProfile(row: DbUser): UserProfile {
     powerTraining: row.power_training ?? 0,
     trainingBoostUntil: isFutureIso(row.training_boost_until) ? row.training_boost_until : null,
     powerSocialToken: row.power_socialtoken ?? 0,
+    bannedAt: row.banned_at ?? null,
   };
 }
 

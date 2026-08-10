@@ -12,6 +12,7 @@ import {
   type UserProfile,
 } from '../game/rank.ts';
 import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
+import { isFreeEmote } from '../game/emotes.ts';
 import { claimLevelReward } from '../game/level.ts';
 import { censorMessage } from '../game/username.ts';
 import {
@@ -23,6 +24,10 @@ import {
 // user sees requires a verified Apple/Google/Facebook identity — a guest can
 // play everything, but cannot message or add friends.
 const GUEST_BLOCKED_MSG = 'Mesajlaşmak için Apple veya Google ile giriş yap';
+// Kural ihlali askısı (users.banned_at): banlı hesap HİÇBİR kimlik yolundan
+// (register/auth/resume/oda kurma) oturum açamaz — ban yalnız DB'de bir bayrak
+// olarak durmasın, bağlantı katmanında fiilen uygulansın.
+const BANNED_MSG = 'Hesabın kural ihlali nedeniyle askıya alındı';
 import { verifyApplePurchase } from '../game/iap.ts';
 import { getAdminStats } from '../game/admin.ts';
 import { checkLogin, issueToken, verifyToken } from '../game/adminAuth.ts';
@@ -95,6 +100,7 @@ interface QueueEntry {
   userProfile?: UserProfile;
   options?: import('../protocol.ts').GameOptions;
   setCtx: (c: ConnCtx) => void;
+  since: number; // kuyruğa giriş anı — bekledikçe kupa bandı genişler
 }
 
 const SOCIAL_PACK_REQUIRED = 'Bu mod için iki oyuncuda da Sosyal Paket aktif olmalı';
@@ -103,7 +109,19 @@ const RATE_MAX_MESSAGES = 90;
 const RATE_MAX_TYPING = 120; // separate lane: exempt-from-main-cap typing still can't flood
 // Ranked pairing: match on trophy proximity, NOT arena identity — two players a
 // couple of matches apart (e.g. 500 vs 450) must pair even across an arena border.
+// The band WIDENS with the waiting player's queue time (seyrek kuyrukta ±100
+// dışındaki oyuncu süresiz bekliyordu): +100 kupa her 15 sn'de, tavan ±1000.
+// Eşleşme yalnız yeni bir find_match geldiğinde denendiği için zamanlayıcı yok —
+// bekleyenin o ana kadarki süresi bandı büyütür.
 const MATCH_TROPHY_RANGE = 100;
+const MATCH_RANGE_WIDEN_STEP = 100;
+const MATCH_RANGE_WIDEN_EVERY_MS = 15_000;
+const MATCH_RANGE_MAX = 1000;
+
+function queueTrophyRange(waitedMs: number): number {
+  const widened = MATCH_TROPHY_RANGE + Math.floor(waitedMs / MATCH_RANGE_WIDEN_EVERY_MS) * MATCH_RANGE_WIDEN_STEP;
+  return Math.min(MATCH_RANGE_MAX, widened);
+}
 
 function remoteIp(req: import('node:http').IncomingMessage): string {
   return String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? 'unknown').split(',')[0]!.trim();
@@ -169,8 +187,17 @@ async function ensureProfileLoaded(
   if (current || !userId) return current;
   const profile = await getUser(userId).catch(() => null);
   if (!profile) return current;
+  // Banlı profil online sayılmaz; çağıran yol bannedAt'e bakıp isteği reddeder.
+  if (profile.bannedAt) return profile;
   addOnline(profile.id, ws);
   return profile;
+}
+
+/** Banlı hesabı reddet — true dönerse çağıran yol isteği İPTAL etmelidir. */
+function rejectIfBanned(profile: UserProfile | undefined, transport: Transport): boolean {
+  if (!profile?.bannedAt) return false;
+  transport.send({ type: 'error', message: BANNED_MSG });
+  return true;
 }
 
 /** Build a friends_list message with online status. */
@@ -342,6 +369,7 @@ export function startServer(port: number): Server {
           const loaded =
             (msg.userId ? await getUser(msg.userId) : null) ??
             (await findOrCreateUser(msg.gameCenterId ?? null, msg.name));
+          if (rejectIfBanned(loaded, transport)) return;
           const profile = await grantDevEmotesIfNeeded(loaded);
           userProfile = profile;
           addOnline(profile.id, ws);
@@ -366,13 +394,15 @@ export function startServer(port: number): Server {
                   : await verifyGoogleToken(msg.token);
             const name =
               msg.name?.trim() || verified.name || verified.email?.split('@')[0] || 'Oyuncu';
-            const profile = await grantDevEmotesIfNeeded(await findOrCreateUserByProvider(
+            const linked = await findOrCreateUserByProvider(
               msg.provider,
               verified.sub,
               verified.email ?? null,
               name,
               msg.userId,
-            ));
+            );
+            if (rejectIfBanned(linked, transport)) return;
+            const profile = await grantDevEmotesIfNeeded(linked);
             userProfile = profile;
             addOnline(profile.id, ws);
             transport.send({ type: 'profile', profile: toProfileView(profile) });
@@ -893,6 +923,13 @@ export function startServer(port: number): Server {
       if (msg.type === 'list_messages') {
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
         void (async () => {
+          // Guideline 1.2 engel kapısı — list_conversations'la tutarlı: engelli
+          // biriyle geçmiş dökümü de açılamaz (iki yönlü). Boş liste döner ki
+          // istemci sohbeti sessizce kapatabilsin.
+          if (await isBlockedBetween(userProfile!.id, msg.withUserId)) {
+            transport.send({ type: 'message_list', messages: [], withUserId: msg.withUserId });
+            return;
+          }
           const beforeClause = msg.before ? `AND m.created_at < $3` : '';
           const params: any[] = [userProfile!.id, msg.withUserId];
           if (msg.before) params.push(msg.before);
@@ -987,14 +1024,15 @@ export function startServer(port: number): Server {
         })();
         return;
       }
-      if (msg.type === 'typing_start') {
+      if (msg.type === 'typing_start' || msg.type === 'typing_stop') {
         if (!userProfile) return;
-        sendToUser(msg.toUserId, { type: 'typing', fromUserId: userProfile!.id, isTyping: true });
-        return;
-      }
-      if (msg.type === 'typing_stop') {
-        if (!userProfile) return;
-        sendToUser(msg.toUserId, { type: 'typing', fromUserId: userProfile!.id, isTyping: false });
+        const isTyping = msg.type === 'typing_start';
+        void (async () => {
+          // Engellenen kişiye "yazıyor…" sinyali de sızmasın — send_message'la
+          // aynı iki yönlü kapı. (PK-indexli tek satır sorgu; typing hacmi için ucuz.)
+          if (await isBlockedBetween(userProfile!.id, msg.toUserId)) return;
+          sendToUser(msg.toUserId, { type: 'typing', fromUserId: userProfile!.id, isTyping });
+        })();
         return;
       }
 
@@ -1075,9 +1113,12 @@ export function startServer(port: number): Server {
         if (msg.type === 'resume_room') {
           const room = manager.get(msg.code);
           if (!room) return transport.send({ type: 'error', message: 'Maç bulunamadı' });
+          // Ban kontrolü ODAYA dokunmadan önce: resumePlayer transport'u değiştirir,
+          // reddedilecek bir bağlantıya oda devretmek yarım kalmış durum bırakırdı.
+          const u = await getUser(msg.userId).catch(() => null);
+          if (rejectIfBanned(u ?? undefined, transport)) return;
           const resumed = room.resumePlayer(msg.userId, transport);
           if (!resumed.ok) return transport.send({ type: 'error', message: resumed.error });
-          const u = await getUser(msg.userId).catch(() => null);
           if (u) { userProfile = u; addOnline(u.id, ws); }
           ctx = { room, playerId: resumed.id, userProfile: u ?? undefined };
           log.info('room_resumed', { room: msg.code, userId: msg.userId });
@@ -1089,6 +1130,8 @@ export function startServer(port: number): Server {
             // server profile once so room membership and trophy updates never trust
             // a stale/spoofed client-sent user id over the authenticated account.
             userProfile = await ensureProfileLoaded(userProfile, msg.userId, ws);
+            // Banlıysa bağlantıda profil BIRAKILMAZ — sonraki mesajlar da profilsiz kalsın.
+            if (rejectIfBanned(userProfile, transport)) { userProfile = undefined; return; }
             // Prefer the registered profile name; fall back to the name the client
             // sent with the request (the matchmaking socket may not have registered).
             const name = userProfile?.displayName ?? msg.name ?? 'Oyuncu';
@@ -1104,11 +1147,14 @@ export function startServer(port: number): Server {
               return;
             }
             const myTrophies = userProfile?.trophies ?? 0;
+            const pairNow = Date.now();
             const partnerIdx = matchQueue.findIndex(
               (e) => e.ws.readyState === e.ws.OPEN
                 && (e.options?.mode ?? 'team-team') === requestedMode
                 && canUseMode(e.userProfile, requestedMode)
-                && Math.abs((e.userProfile?.trophies ?? 0) - myTrophies) <= MATCH_TROPHY_RANGE,
+                // Band, BEKLEYENİN kuyruk süresiyle genişler: yeni gelen dar bantta
+                // eşleşemese de uzun süredir bekleyenin büyümüş bandına düşebilir.
+                && Math.abs((e.userProfile?.trophies ?? 0) - myTrophies) <= queueTrophyRange(pairNow - e.since),
             );
             const partner = partnerIdx >= 0 ? matchQueue.splice(partnerIdx, 1)[0]! : undefined;
             if (partner && partner.ws.readyState === partner.ws.OPEN) {
@@ -1135,6 +1181,7 @@ export function startServer(port: number): Server {
                 userProfile,
                 options: msg.options,
                 setCtx: (c) => { ctx = c; },
+                since: pairNow,
               };
               matchQueue.push(entry);
               transport.send({ type: 'searching' as any });
@@ -1145,6 +1192,7 @@ export function startServer(port: number): Server {
 
         if (msg.type === 'create_room') {
           userProfile = await ensureProfileLoaded(userProfile, msg.userId, ws);
+          if (rejectIfBanned(userProfile, transport)) { userProfile = undefined; return; }
           if (!canUseMode(userProfile, msg.options?.mode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
           const room = manager.createRoom();
           if (msg.options?.scope) room.scope = msg.options.scope;
@@ -1156,6 +1204,7 @@ export function startServer(port: number): Server {
         }
         if (msg.type === 'create_solo') {
           userProfile = await ensureProfileLoaded(userProfile, msg.userId, ws);
+          if (rejectIfBanned(userProfile, transport)) { userProfile = undefined; return; }
           // Bot antrenman maçında TÜM modlar serbest — Sosyal Paket kilidi yalnız
           // insanlarla oynanan (find_match / oda / davet) maçlara uygulanır.
           const room = manager.createRoom();
@@ -1171,6 +1220,7 @@ export function startServer(port: number): Server {
         }
         if (msg.type === 'join_room') {
           userProfile = await ensureProfileLoaded(userProfile, msg.userId, ws);
+          if (rejectIfBanned(userProfile, transport)) { userProfile = undefined; return; }
           const room = manager.get(msg.code);
           if (!room) return transport.send({ type: 'error', message: 'Room not found' });
           if (!canUseMode(userProfile, room.gameMode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
@@ -1181,6 +1231,18 @@ export function startServer(port: number): Server {
           return;
         }
         return transport.send({ type: 'error', message: 'Create or join a room first' });
+      }
+
+      // send_emote sahiplik kapısı: oda katalog kontrolü yapar ama sahipliği
+      // bilmez — modifiye bir istemci satın almadığı çıkartmayı rakibe
+      // gönderemesin. Ücretsizler (hızlı sohbet + 4 yüz) herkese açık; gerisi
+      // owned_emotes'ta olmalı. Sessiz düşürülür: meşru istemci UI'ı yalnız
+      // sahip olunanları listeler, bu yola hiç girmez. (Botlar bu handler'dan
+      // geçmez — oda içi bot emote'ları etkilenmez.)
+      if (msg.type === 'send_emote'
+          && !isFreeEmote(msg.emoteId)
+          && !userProfile?.ownedEmotes.includes(msg.emoteId)) {
+        return;
       }
 
       ctx.room.handle(ctx.playerId, msg);

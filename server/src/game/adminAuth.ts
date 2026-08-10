@@ -37,6 +37,10 @@ export async function upsertAdminUser(email: string, pw: string): Promise<void> 
 }
 
 export async function checkLogin(email: string, pw: string): Promise<boolean> {
+  // ADMIN_TOKEN yoksa admin API tamamen KAPALIDIR (docker-compose sözleşmesi:
+  // "Empty = admin API off"). Anahtarsız girişe izin vermek, jetonların sabit
+  // 'unset-secret' ile imzalanması — yani sahtelenebilir olması — demekti.
+  if (!config.adminToken) return false;
   const e = (email ?? '').trim().toLowerCase();
   if (!e || !pw) return false;
   const { rows } = await pool.query<{ password_hash: string }>(
@@ -48,8 +52,11 @@ export async function checkLogin(email: string, pw: string): Promise<boolean> {
 }
 
 // ── İmzalı oturum jetonu (stateless) ──
+// Çağıranlar config.adminToken'ı doğrulamış olmalı (checkLogin / verifyToken);
+// boş anahtarla ASLA imza üretilmez — sabit bir yedek anahtar sahtelenebilirdi.
 function sign(data: string): string {
-  return crypto.createHmac('sha256', config.adminToken || 'unset-secret').update(data).digest('hex');
+  if (!config.adminToken) throw new Error('ADMIN_TOKEN unset — admin API disabled');
+  return crypto.createHmac('sha256', config.adminToken).update(data).digest('hex');
 }
 
 export function issueToken(email: string): string {
@@ -60,7 +67,7 @@ export function issueToken(email: string): string {
 
 /** Geçerliyse jetonun sahibinin e-postasını, değilse null döner. */
 export function verifyToken(token: string): string | null {
-  if (!token) return null;
+  if (!config.adminToken || !token) return null;
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   const [b64, expStr, mac] = parts as [string, string, string];
