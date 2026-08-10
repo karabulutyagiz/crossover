@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from 'react';
+import { memo, startTransition, useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   Animated,
@@ -836,8 +836,14 @@ function AppRoot() {
     programmaticScroll.current = false; // drag settled — resume live updates
     const x = e.nativeEvent.contentOffset.x;
     const idx = Math.round(x / SCREEN_W);
-    setActiveTab(idx);
-    if (idx !== 2) resetHomePhase();
+    // startTransition: bu setState KÖKÜ (4 sekme ekranını birden) yeniden
+    // çizdirir; acil işaretlenince render, sayfanın oturma karesine denk gelip
+    // JS thread'i tıkıyordu — iniş "pat" diye hissediliyordu. Ertelemek native
+    // kaydırmayı etkilemez (scrollX native driver'da), yalnız çizimi yumuşatır.
+    startTransition(() => {
+      setActiveTab(idx);
+      if (idx !== 2) resetHomePhase();
+    });
   }, [resetHomePhase]);
 
   // Live tab tracking DURING the swipe so the bottom-nav green marker flips the
@@ -847,7 +853,12 @@ function AppRoot() {
   const onScrollLive = useCallback((e: any) => {
     if (programmaticScroll.current) return;
     const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
-    setActiveTab((prev) => (prev === idx || idx < 0 || idx > 3 ? prev : idx));
+    // Parmak ekrandayken yarı noktayı geçince tetiklenen tam-ağaç render'ı da
+    // acil olmaktan çıkarılır — jest sürerken kare düşürmesin (yeşil işaret
+    // birkaç ms geç yanar, fark edilmez).
+    startTransition(() => {
+      setActiveTab((prev) => (prev === idx || idx < 0 || idx > 3 ? prev : idx));
+    });
   }, []);
 
   // Leaderboard / match-history open as centered popups (App-level overlay), not fullscreen.

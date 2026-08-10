@@ -3111,37 +3111,33 @@ function PopupCard({ visible, title, icon, onClose, children }: {
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim, opacity: clamped }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         </Animated.View>
-        {/* GameModal ile AYNI üç katmanlı düğme anatomisi: koyu dış kontur →
-            altın pah → yüz. Bu pencere (lider tablosu / müsabaka geçmişi /
-            yenilikler) eskiden ince-hairline dildeydi ve düğmelerin yanında
-            başka bir uygulamadan gelmiş gibi duruyordu. */}
-        <Animated.View style={{ opacity: clamped, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }) }], backgroundColor: '#0B1428', borderRadius: 28, padding: 3.5, paddingBottom: 6, maxHeight: '80%', ...shadowModal }}>
-        <View style={{ backgroundColor: darken(theme.accent, 0.35), borderRadius: 24, padding: 2.5, paddingBottom: 4, overflow: 'hidden' }}>
-        <View style={{ backgroundColor: theme.modalFace, borderRadius: 21, overflow: 'hidden' }}>
-          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.16, zIndex: 6 }} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 18, paddingVertical: 11, backgroundColor: theme.accent, overflow: 'hidden' }}>
-            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.34 }} />
-            <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2.5, backgroundColor: darken(theme.accent, 0.42) }} />
-            <Ionicons name={icon} size={17} color={SKIN_LABEL_COLOR} />
-            <Text style={{ color: SKIN_LABEL_COLOR, fontFamily: 'Poppins-ExtraBold', fontSize: 15, letterSpacing: 1, textTransform: 'uppercase', flex: 1, ...SKIN_LABEL_SHADOW }} numberOfLines={1}>{title}</Text>
+        {/* "Broadcast Premium" pencere dili (kullanıcı onaylı yön, 2026-07-30):
+            TEK temiz kart yüzeyi + 3px üst aksan şeridi + sol aksan çubuklu
+            başlık + sessiz dairesel X. Düğme anatomisinin (altın pah + renkli
+            başlık bandı) pencereye taşınmış hâli kullanıcıya "şablon işi"
+            okundu — 2026-08-10'da geri alındı. `icon` prop'u API uyumu için
+            duruyor; bu dilde çizilmiyor. */}
+        <Animated.View style={{ opacity: clamped, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }) }], backgroundColor: theme.modalFace, borderRadius: 22, borderWidth: 1, borderColor: theme.hairline, overflow: 'hidden', maxHeight: '80%', ...shadowModal }}>
+          <View pointerEvents="none" style={{ height: 3, backgroundColor: theme.accent }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 13, paddingBottom: 11 }}>
+            <View style={{ width: 4, height: 17, borderRadius: 2, backgroundColor: theme.accent }} />
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 16, flex: 1 }} numberOfLines={1}>{title}</Text>
             <Pressable
               onPress={onClose}
               hitSlop={10}
               style={({ pressed }) => ({
-                width: 32, height: 32, borderRadius: 16,
-                backgroundColor: darken(theme.accent, 0.3),
-                borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.3)',
+                width: 30, height: 30, borderRadius: 15,
+                backgroundColor: theme.surface2,
                 alignItems: 'center', justifyContent: 'center',
                 transform: [{ scale: pressed ? 0.9 : 1 }],
-                opacity: pressed ? 0.8 : 1,
+                opacity: pressed ? 0.75 : 1,
               })}
             >
-              <Ionicons name="close" size={16} color={SKIN_LABEL_COLOR} />
+              <Ionicons name="close" size={15} color={theme.muted} />
             </Pressable>
           </View>
+          <View style={{ height: 1, backgroundColor: theme.hairline, marginHorizontal: 16 }} />
           {children}
-        </View>
-        </View>
         </Animated.View>
       </View>
     </SafeModal>
@@ -3154,20 +3150,10 @@ function PopupCard({ visible, title, icon, onClose, children }: {
 // Etiketli, ISO tarihli haber modeli. "Etiket yok + nokta ayraçlı mutlak tarih"
 // ikilisi, akışı editoryal değil ÜRETİLMİŞ gösteren en belirgin izlerdendi.
 type NewsItem = { id: string; tag: string; date: string; title: string; body: string; icon: any; tint: string };
-const NEWS: NewsItem[] = [
-  { id: '2026-07-20-ball', tag: 'YENİ İFADE', date: '2026-07-20', icon: 'football', tint: theme.gold,
-    title: 'Yeni: Zıplayan Top emote!',
-    body: "Mağaza'dan Zıplayan Top premium emote'unu al, maç içinde rakibini şaşırt. Koleksiyondan loadout'una ekle." },
-  { id: '2026-07-14-social', tag: 'YENİ ÖZELLİK', date: '2026-07-14', icon: 'people', tint: theme.primary,
-    title: 'Sosyal Paket geldi',
-    body: 'Ülke-Takım ve Harf-Takım modlarını arkadaşlarınla oyna. Haftalık veya aylık Sosyal Paket ile kilidi aç.' },
-  { id: '2026-07-01-arena', tag: 'REKABET', date: '2026-07-01', icon: 'trophy', tint: theme.accent,
-    title: 'Arenalar ve kupalar',
-    body: "Maç kazandıkça kupa topla, Mahalle Sahası'ndan GOAT'a yüksel. Her arena atlayışında elmas ödülü seni bekliyor." },
-  { id: 'welcome', tag: 'HOŞ GELDİN', date: '2026-06-01', icon: 'sparkles', tint: theme.blue,
-    title: "Crossover'a hoş geldin!",
-    body: "İki takım seç; ikisinde de oynamış futbolcuyu ilk yazan kazanır. Bot'a karşı çalış, arkadaşınla oda kur ya da hızlı eşleşmeye gir." },
-];
+// Boş tutulur: buraya yalnız GERÇEK, editör elinden çıkmış duyurular girer
+// (kullanıcı kararı 2026-08-10 — lansman dolgu metinleri kaldırıldı). Akış
+// boşken NewsModal EmptyState gösterir, zil noktası hiç yanmaz.
+const NEWS: NewsItem[] = [];
 export const LATEST_NEWS_ID = NEWS[0]?.id ?? '';
 export const NEWS_READ_KEY = '@crossover_news_read';
 
@@ -3241,10 +3227,16 @@ export function NewsModal({ visible, onClose, seenIds }: { visible: boolean; onC
       {/* PopupCard's scrim is a SIBLING (not a parent) of the card, so — unlike
           GameModal — it doesn't swallow this ScrollView's vertical drag. */}
       <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: 18, gap: 10 }}>
-        {fresh.length > 0 && older.length > 0 ? <SectionLabel label={t('news.new')} /> : null}
-        {fresh.map((item) => <NewsRow key={item.id} item={item} unread />)}
-        {older.length > 0 && fresh.length > 0 ? <SectionLabel label={t('news.earlier')} /> : null}
-        {older.map((item) => <NewsRow key={item.id} item={item} unread={false} />)}
+        {items.length === 0 ? (
+          <EmptyState icon="megaphone" title={t('news.empty')} hint={t('news.emptyHint')} />
+        ) : (
+          <>
+            {fresh.length > 0 && older.length > 0 ? <SectionLabel label={t('news.new')} /> : null}
+            {fresh.map((item) => <NewsRow key={item.id} item={item} unread />)}
+            {older.length > 0 && fresh.length > 0 ? <SectionLabel label={t('news.earlier')} /> : null}
+            {older.map((item) => <NewsRow key={item.id} item={item} unread={false} />)}
+          </>
+        )}
       </ScrollView>
     </PopupCard>
   );
@@ -3975,7 +3967,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const [newsUnread, setNewsUnread] = useState(false);
   // Show the bell's red pip until the user has opened the feed at the latest item.
   useEffect(() => {
-    AsyncStorage.getItem(NEWS_READ_KEY).then((v) => setNewsUnread(v !== LATEST_NEWS_ID)).catch(() => {});
+    AsyncStorage.getItem(NEWS_READ_KEY).then((v) => setNewsUnread(NEWS.length > 0 && v !== LATEST_NEWS_ID)).catch(() => {});
   }, []);
   const [joinCode, setJoinCode] = useState('');
   const [hero, setHero] = useState({ w: 0, h: 0 });
