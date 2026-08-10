@@ -12,12 +12,20 @@
 // birincisi kapanır kapanmaz sunulur.
 let presented = 0;
 const waiters = new Set<() => void>();
-// iOS'un modal kapanış animasyonu (~300ms) + emniyet payı.
-const DISMISS_ANIM_MS = 340;
+// Nefes payı ADAPTİF (2026-08-10): pay, KAPANAN modalın animasyon türüne göre
+// seçilir. animationType="none" (pencerelerin büyük çoğunluğu — çıkışı JS
+// animasyonu yapar, native kapanış anlıktır) için uzun pay gereksizdi ve her
+// pencere→pencere geçişini ~yarım saniye "takılıyormuş" gibi gösteriyordu.
+const DISMISS_ANIM_MS = 340; // sistem animasyonlu kapanış (slide/fade ~300ms)
+const DISMISS_NONE_MS = 100; // animationType="none": anlık kapanış + küçük pay
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** Bir modal sunuldu. Dönen fonksiyon çağrılınca slot serbest kalır. */
-export function acquireModalSlot(): () => void {
+/**
+ * Bir modal sunuldu. Dönen fonksiyon çağrılınca slot serbest kalır.
+ * `animatedDismiss`: kapanışı iOS'un sistem animasyonu yapıyorsa true
+ * (animationType slide/fade) — sıradaki pencere o animasyon bitene dek bekler.
+ */
+export function acquireModalSlot(animatedDismiss = true): () => void {
   presented += 1;
   let released = false;
   return () => {
@@ -26,9 +34,8 @@ export function acquireModalSlot(): () => void {
     presented = Math.max(0, presented - 1);
     if (presented === 0 && waiters.size > 0) {
       // KAPANIŞ ANİMASYONU: React bileşeni kaldırınca native modal HEMEN yok
-      // olmaz — iOS onu animasyonla kapatır (~300ms). O sırada sıradakini
-      // sunmak bugu aynen geri getiriyordu (ör. Seviye Yolu kapanırken mağaza
-      // popup'ı). Bu yüzden slot boşalınca kısa bir nefes payı bırakılır.
+      // olmayabilir; kapanış tamamlanmadan sıradakini sunmak donma bugunu
+      // aynen geri getiriyordu (ör. Seviye Yolu kapanırken mağaza popup'ı).
       if (flushTimer) clearTimeout(flushTimer);
       flushTimer = setTimeout(() => {
         flushTimer = null;
@@ -38,7 +45,7 @@ export function acquireModalSlot(): () => void {
         const [first] = waiters;
         waiters.delete(first!);
         first!();
-      }, DISMISS_ANIM_MS);
+      }, animatedDismiss ? DISMISS_ANIM_MS : DISMISS_NONE_MS);
     }
   };
 }

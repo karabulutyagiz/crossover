@@ -676,10 +676,13 @@ function SafeModal({ visible = true, children, ...rest }: ComponentProps<typeof 
     if (nested) { setPresent(true); return undefined; }
     return whenModalSlotFree(() => setPresent(true));
   }, [visible, nested]);
+  // Kapanış türü trafik kapısına bildirilir: "none" pencereler (çoğunluk)
+  // anında kapanır → sıradaki pencere 340ms değil ~100ms sonra açılır.
+  const animatedDismiss = rest.animationType === 'slide' || rest.animationType === 'fade';
   useEffect(() => {
     if (!present || nested) return undefined;
-    return acquireModalSlot();
-  }, [present, nested]);
+    return acquireModalSlot(animatedDismiss);
+  }, [present, nested, animatedDismiss]);
   return (
     <Modal {...rest} visible={present}>
       <ModalDepthCtx.Provider value={depth + 1}>

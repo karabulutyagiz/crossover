@@ -510,12 +510,15 @@ function AppRoot() {
   const [purchaseAck, setPurchaseAck] = useState<NonNullable<GameState['lastPurchase']> | null>(null);
   const [purchaseAckVisible, setPurchaseAckVisible] = useState(false);
   const lastPurchaseSeq = state.lastPurchase?.seq ?? 0;
-  // Onay penceresi, satın almanın yapıldığı ekrandaki onay/işlem penceresinin
-  // çıkış animasyonu bitmeden AÇILMAZ (aynı iki-modal çakışması: ekran donuyordu).
+  // Onay penceresi, satın almanın yapıldığı ekrandaki onay/işlem penceresi
+  // kapanmadan AÇILMAZ (iki-modal çakışması ekranı donduruyordu). Sıralamayı
+  // artık SafeModal kuyruğu garanti ediyor — buradaki eski 420ms kör bekleme
+  // her satın almayı yarım saniye "takılıyormuş" gibi gösteriyordu; kalan
+  // küçük pay yalnız aynı karedeki state yığılmasını dağıtmak için.
   useEffect(() => {
     if (!state.lastPurchase) return;
     const p = state.lastPurchase;
-    const tm = setTimeout(() => { setPurchaseAck(p); setPurchaseAckVisible(true); }, 420);
+    const tm = setTimeout(() => { setPurchaseAck(p); setPurchaseAckVisible(true); }, 60);
     return () => clearTimeout(tm);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastPurchaseSeq]);
@@ -1333,7 +1336,10 @@ function AppRoot() {
         visible={overlay === 'leaderboard'}
         entries={state.leaderboard}
         onClose={() => setOverlay(null)}
-        onViewProfile={(userId) => { setOverlay(null); setTimeout(() => actions.getUserProfile(userId), 260); }}
+        // Profil isteği HEMEN gider (ağ gecikmesi kapanış animasyonuyla örtüşür);
+        // sunum güvenliği kör zamanlayıcıya değil SafeModal kuyruğuna emanet —
+        // liderlik penceresi tam kapanmadan profil penceresi sunulMAZ.
+        onViewProfile={(userId) => { setOverlay(null); actions.getUserProfile(userId); }}
       />
       <MatchHistoryModal visible={overlay === 'matchHistory'} history={state.matchHistory} myName={state.profile?.displayName ?? ''} onClose={() => setOverlay(null)} />
       <FriendProfileModal
