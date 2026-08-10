@@ -571,7 +571,7 @@ export async function buyPower(
 }
 
 // ---- Premium Seviye Yolu satın alma ----
-// Tek seferlik: 1000 elmas düşülür, premium_road açılır. Atomik — çift dokunuş
+// Tek seferlik: PREMIUM_ROAD_PRICE (2000) elmas düşülür, premium_road açılır. Atomik — çift dokunuş
 // iki kez ücret alamaz, bakiye yetmezse hiçbir şey değişmez.
 export async function buyPremiumRoad(
   userId: string,

@@ -52,8 +52,8 @@ export const LEVEL_POWERS: Record<number, PowerId> = {
 
 // ---- PREMIUM Seviye Yolu ----
 // 1000 elmasla bir kez açılır (users.premium_road). Ücretsiz yolun YANINDA
-// akan ikinci şerit: HER ×5 seviyesinde bir güç + daha dolgun elmas (×5: 100,
-// ×10: 200, zirve 50: 300 → toplam 1600💎 + 10 güç). Dağıtım İKİ kurala göre
+// akan ikinci şerit: HER ×5 seviyesinde bir güç + daha dolgun elmas (×5: 200,
+// ×10: 300, zirve 50: 400 → toplam 2600💎 + 10 güç). Dağıtım İKİ kurala göre
 // tasarlandı: (1) her güç premium şeritte TAM 2 kez çıkar — hiçbiri diğerinden
 // şanslı değil; (2) ücretsiz şeritle ORTAK seviyelerde (5/15/25/35/45) premium
 // ödülü ÜCRETSİZ ödülüyle ASLA aynı değildir — aynı satırda iki kart aynı
@@ -66,8 +66,8 @@ export const PREMIUM_LEVEL_POWERS: Record<number, PowerId> = {
 
 export function premiumRewardDiamonds(level: number): number {
   if (level % 5 !== 0) return 0;
-  if (level === LEVEL_CAP) return 300;
-  return level % 10 === 0 ? 200 : 100;
+  if (level === LEVEL_CAP) return 400;
+  return level % 10 === 0 ? 300 : 200;
 }
 
 export interface LevelUpReward {

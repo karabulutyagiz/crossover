@@ -11169,8 +11169,8 @@ export const POWER_PRICES: Record<PowerId, number> = { xp2x: 150, shield: 250, s
 
 export function premiumRewardGems(n: number): number {
   if (n % 5 !== 0) return 0;
-  if (n === LEVEL_CAP) return 300;
-  return n % 10 === 0 ? 200 : 100;
+  if (n === LEVEL_CAP) return 400;
+  return n % 10 === 0 ? 300 : 200;
 }
 
 // Güç rozetleri — özellik.jpeg'ten birebir kesilmiş gerçek sanatlar (altın 2x
