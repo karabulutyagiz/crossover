@@ -5518,6 +5518,22 @@ export function GuessScreen({ state, actions, tutorial, prefill }: Props & { pre
   const oppPassed = state.passedBy.some((id) => id !== room.youId);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [emoteOpen, setEmoteOpen] = useState(false);
+  // wrongretry cezası: ilk yanlıştan sonra youRetryAt'e kadar input kilitli,
+  // saniye sayacı akar; süre dolunca "son hakkın" ipucuyla input yeniden açılır.
+  // Tik YALNIZ ceza penceresi boyunca çalışır (kendini söndüren interval).
+  const retryAt = state.youRetryAt;
+  const [, setRetryTick] = useState(0);
+  useEffect(() => {
+    if (!retryAt || Date.now() >= retryAt) return undefined;
+    const id = setInterval(() => {
+      setRetryTick((v) => v + 1);
+      if (Date.now() >= retryAt) clearInterval(id);
+    }, 250);
+    return () => clearInterval(id);
+  }, [retryAt]);
+  const coolingDown = !!retryAt && Date.now() < retryAt && !state.youBurned;
+  const retrySecs = coolingDown ? Math.max(1, Math.ceil(((retryAt ?? 0) - Date.now()) / 1000)) : 0;
+  const onLastChance = !!retryAt && !coolingDown && !state.youBurned; // ikinci hak açık
   const hasBot = room.players.some((p) => p.name === 'Bot');
   // Çarpı HER maçta sorar (kullanıcı kuralı 2026-08-10): botta yalnız "emin
   // misin", derecelide kupa uyarısı, dostlukta kupasız hükmen metni.
@@ -5621,6 +5637,13 @@ export function GuessScreen({ state, actions, tutorial, prefill }: Props & { pre
                 </View>
               ) : null}
             </>
+          ) : coolingDown ? (
+            <GuessStatusPanel
+              icon="hourglass"
+              iconColor={theme.accent}
+              stripe={theme.accent}
+              text={t('guess.retryWait', { secs: String(retrySecs) })}
+            />
           ) : state.youBurned ? (
             <GuessStatusPanel
               icon="close-circle"
@@ -5656,6 +5679,12 @@ export function GuessScreen({ state, actions, tutorial, prefill }: Props & { pre
                 <View style={styles.passHint}>
                   <Ionicons name="close-circle" size={14} color={theme.danger} />
                   <Text style={styles.passHintText}>{t('guess.oppWrong', { name: state.oppWrong.byName, guess: state.oppWrong.guess })}</Text>
+                </View>
+              ) : null}
+              {onLastChance ? (
+                <View style={styles.passHint}>
+                  <Ionicons name="flash" size={14} color={theme.accent} />
+                  <Text style={styles.passHintText}>{t('guess.retryNow')}</Text>
                 </View>
               ) : null}
               <GuessControls

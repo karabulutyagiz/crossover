@@ -209,9 +209,12 @@ export type ServerMsg =
   | { type: 'guess_locked'; byId: string; byName: string }
   // Yeni kural (wrongopen odaları): yanlış cevap turu YAKMAZ — yazan susturulur,
   // rakibin kilidi açılır. wrongCount o oyuncunun toplam çarpısıdır (3 = hükmen).
-  | { type: 'wrong_guess'; byId: string; byName: string; guess: string; wrongCount: number }
+  // retryAt: yanlış yazana tanınan İKİNCİ HAK penceresinin açıldığı an (epoch ms).
+  // Yalnız ilk yanlışta ve istemci 'wrongretry' bildirdiyse dolu gelir; yoksa
+  // yazan bu tur için kesin susturulmuştur (eski davranış).
+  | { type: 'wrong_guess'; byId: string; byName: string; guess: string; wrongCount: number; retryAt?: number }
   // Kişiye özel ret: 'too_late' = rakip senden önce gönderdi; 'burned' = bu turda hakkın bitti.
-  | { type: 'guess_denied'; reason: 'too_late' | 'burned' }
+  | { type: 'guess_denied'; reason: 'too_late' | 'burned' | 'cooldown' }
   | { type: 'pass_locked'; byId: string; byName: string } // a player chose to pass this round
   // matchOver: a player reached `target` wins → the match is over (offer rematch).
   | {

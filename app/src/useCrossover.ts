@@ -71,6 +71,9 @@ export interface GameState {
   // önce gönderdi" bildirimi sayacı (her artışta toast).
   oppWrong: { byName: string; guess: string; seq: number } | null;
   youBurned: boolean;
+  // wrongretry: ilk yanlıştan sonra İKİNCİ hakkın açıldığı an (epoch ms) ya da
+  // null. Doluyken süre geçmemişse ceza sayacı gösterilir; geçince input açılır.
+  youRetryAt: number | null;
   tooLateSeq: number;
   passedBy: string[]; // player ids who passed this round
   result: RoundResult | null;
@@ -189,7 +192,7 @@ export const initialState: GameState = {
   guessEndsAt: null,
   locked: null,
   oppWrong: null,
-  youBurned: false,
+  youBurned: false, youRetryAt: null,
   tooLateSeq: 0,
   passedBy: [],
   result: null,
@@ -633,7 +636,7 @@ function reducer(state: GameState, action: Action): GameState {
         iReady: false,
       };
     case 'pick_phase':
-      return { ...state, phase: 'pick', picked: false, pickEndsAt: action.endsAt, pickRole: (action as any).pickRole ?? 'team', usedClubIds: (action as any).usedClubIds ?? [], usedCountries: (action as any).usedCountries ?? [], teams: null, locked: null, oppWrong: null, youBurned: false, passedBy: [], result: null, clubResults: [] };
+      return { ...state, phase: 'pick', picked: false, pickEndsAt: action.endsAt, pickRole: (action as any).pickRole ?? 'team', usedClubIds: (action as any).usedClubIds ?? [], usedCountries: (action as any).usedCountries ?? [], teams: null, locked: null, oppWrong: null, youBurned: false, youRetryAt: null, passedBy: [], result: null, clubResults: [] };
     case 'reveal_teams':
       return {
         ...state,
@@ -644,20 +647,25 @@ function reducer(state: GameState, action: Action): GameState {
         revealLetter: (action as any).letter ?? null,
       };
     case 'guess_phase':
-      return { ...state, phase: 'guess', guessEndsAt: action.endsAt, locked: null, oppWrong: null, youBurned: false, tooLateSeq: 0 };
+      return { ...state, phase: 'guess', guessEndsAt: action.endsAt, locked: null, oppWrong: null, youBurned: false, youRetryAt: null, tooLateSeq: 0 };
     case 'guess_locked':
       return { ...state, locked: { byId: action.byId, byName: action.byName } };
     case 'wrong_guess': {
-      // Yanlış yazan turu yakmadı: kilit kalkar, yazan bu turda susturulur.
+      // Yanlış yazan turu yakmadı: kilit kalkar. retryAt doluysa yazanın 5 sn
+      // ceza sonrası BİR hakkı daha var (yanmadı); yoksa bu tur susturuldu.
       const you = action.byId === state.room?.youId;
       return {
         ...state,
         locked: null,
-        youBurned: you ? true : state.youBurned,
+        youBurned: you ? (action.retryAt ? state.youBurned : true) : state.youBurned,
+        youRetryAt: you && action.retryAt ? action.retryAt : state.youRetryAt,
         oppWrong: you ? state.oppWrong : { byName: action.byName, guess: action.guess, seq: (state.oppWrong?.seq ?? 0) + 1 },
       };
     }
     case 'guess_denied':
+      // 'cooldown': ceza sayacı zaten ekranda — sunucunun reddi sessiz kalır
+      // (arayüz kilidi + sunucu kuralı çifte emniyet, kullanıcıya yeni bilgi yok).
+      if (action.reason === 'cooldown') return state;
       return action.reason === 'too_late'
         ? { ...state, tooLateSeq: state.tooLateSeq + 1 }
         : { ...state, youBurned: true };
@@ -831,7 +839,7 @@ export function useCrossover() {
   const withCaps = (msg: ClientMsg): ClientMsg =>
     msg.type === 'register' || msg.type === 'guest' || msg.type === 'auth' || msg.type === 'resume_room'
     || msg.type === 'find_match' || msg.type === 'create_room' || msg.type === 'create_solo' || msg.type === 'join_room'
-      ? ({ ...msg, caps: ['wrongopen'] } as ClientMsg)
+      ? ({ ...msg, caps: ['wrongopen', 'wrongretry'] } as ClientMsg)
       : msg;
 
   const connectAndSend = useCallback((first: ClientMsg, opts?: { silent?: boolean }) => {

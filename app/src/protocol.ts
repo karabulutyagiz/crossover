@@ -234,8 +234,10 @@ export type ServerMsg =
   | { type: 'guess_phase'; endsAt: number }
   | { type: 'guess_locked'; byId: string; byName: string }
   // wrongopen kuralı: yanlış cevap turu yakmaz — yazan susturulur, rakip devam eder.
-  | { type: 'wrong_guess'; byId: string; byName: string; guess: string; wrongCount: number }
-  | { type: 'guess_denied'; reason: 'too_late' | 'burned' }
+  // retryAt: yanlış yazana tanınan İKİNCİ HAK penceresinin açıldığı an (epoch ms).
+  // Yalnız ilk yanlışta ve istemci 'wrongretry' bildirdiyse dolu gelir.
+  | { type: 'wrong_guess'; byId: string; byName: string; guess: string; wrongCount: number; retryAt?: number }
+  | { type: 'guess_denied'; reason: 'too_late' | 'burned' | 'cooldown' }
   | { type: 'pass_locked'; byId: string; byName: string }
   | {
       type: 'result';

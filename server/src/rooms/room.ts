@@ -41,6 +41,8 @@ import type {
 const COUNTDOWN_FROM = 3;
 const PICK_MS = 10_000;
 const GUESS_MS = 30_000;
+// İlk yanlış cevabın cezası: bu kadar bekleyip BİR hak daha (wrongretry kuralı).
+const WRONG_RETRY_MS = 5_000;
 const MAX_PLAYERS = 2;
 const WIN_TARGET = 3; // first to this many round wins takes the match
 const MAX_WRONG = 3; // 3 wrong answers → opponent wins the match
@@ -90,6 +92,11 @@ interface Round {
   // turu YAKMAZ (kasıtlı yanlışla tur kilitleme istismarını kapatır) — yazan
   // susturulur, rakip kalan sürede cevaplayabilir.
   burned?: Set<string>;
+  // wrongretry (kullanıcı kuralı 2026-08-11): İLK yanlış oyuncuyu yakmaz —
+  // 5 sn ceza penceresi sonrası BİR hakkı daha vardır. playerId → ikinci
+  // hakkın açıldığı an (epoch ms). Kayıtlıysa ve İKİNCİ yanlış gelirse
+  // (ya da şartlar tutmazsa) oyuncu burned'e düşer.
+  wrongRetryAt?: Map<string, number>;
   guessEndsAt?: number; // tahmin süresinin bittiği an — yeniden kurulan zamanlayıcı için
   finished: boolean;
 }
@@ -879,6 +886,13 @@ export class Room {
       this.players.get(playerId)?.transport.send({ type: 'guess_denied', reason: 'burned' });
       return;
     }
+    // İkinci hakkın 5 sn cezası dolmadan gelen deneme SUNUCUDA reddedilir —
+    // arayüz kilidi istemcide olsa da kural buradan geçer (hile korumalı).
+    const retryAt = this.round.wrongRetryAt?.get(playerId);
+    if (retryAt != null && Date.now() < retryAt) {
+      this.players.get(playerId)?.transport.send({ type: 'guess_denied', reason: 'cooldown' });
+      return;
+    }
     if (this.round.answeredBy) {
       // Rakip milisaniyelerle önce gönderdiyse bunu SESSİZCE yutma — "ben de doğru
       // yazmıştım, niye olmadı" hissinin ilacı bu açık geri bildirim.
@@ -903,7 +917,24 @@ export class Room {
     const remaining = (this.round.guessEndsAt ?? 0) - Date.now();
     // Süre dibindeyse (rakibe gerçekçi bir şans kalmadıysa) eski davranış kalsın.
     if (!this.wrongOpenEnabled(playerId) || remaining < 2_000) return 'closed';
-    (this.round.burned ??= new Set()).add(playerId);
+    // İKİNCİ HAK (kullanıcı kuralı 2026-08-11): İLK yanlışta oyuncu yanmaz —
+    // WRONG_RETRY_MS ceza penceresi sonrası bir hakkı daha olur. Şartlar:
+    // istemcisi 'wrongretry' bilir (eski istemcinin arayüzü kilitli kalır,
+    // hak tanımak anlamsız), bot değildir (bot ikinci kez denemez) ve sürede
+    // cezadan sonra gerçekçi pay vardır. İkinci yanlış — ya da şartlar
+    // tutmayan ilk yanlış — kesin susturur (eski kural).
+    const firstWrong = !this.round.wrongRetryAt?.has(playerId);
+    const canRetry = firstWrong
+      && !p?.transport.isBot
+      && !!p?.transport.caps?.includes('wrongretry')
+      && remaining > WRONG_RETRY_MS + 1_500;
+    let retryAt: number | undefined;
+    if (canRetry) {
+      retryAt = Date.now() + WRONG_RETRY_MS;
+      (this.round.wrongRetryAt ??= new Map()).set(playerId, retryAt);
+    } else {
+      (this.round.burned ??= new Set()).add(playerId);
+    }
     this.round.answeredBy = undefined;
     this.broadcast({
       type: 'wrong_guess',
@@ -911,8 +942,9 @@ export class Room {
       byName: p?.name ?? '',
       guess,
       wrongCount: p?.wrongCount ?? 0,
+      retryAt,
     });
-    if (this.round.burned.size >= this.players.size) return 'all_burned';
+    if ((this.round.burned?.size ?? 0) >= this.players.size) return 'all_burned';
     const t = setTimeout(() => this.endRoundTimeout(), remaining);
     this.timers.push(t);
     return 'open';
@@ -978,8 +1010,13 @@ export class Room {
       if (ppv.correct && p) {
         p.score += 1;
       } else if (!ppv.correct && p) {
-        p.wrongCount += 1;
-        if (p.wrongCount >= MAX_WRONG) {
+        // İkinci-hak (retry) yanlışı MAX_WRONG'a SAYILMAZ: tanınan ek hak,
+        // maç-kaybı sayacını hızlandıran bir tuzağa dönüşmesin. Turun İLK
+        // yanlışı sayar (wrongRetryAt kaydı reopenAfterWrong'da atıldığından
+        // burada varlığı "bu bir retry yanlışı" demektir).
+        const isRetryWrong = this.round.wrongRetryAt?.has(playerId) ?? false;
+        if (!isRetryWrong) p.wrongCount += 1;
+        if (!isRetryWrong && p.wrongCount >= MAX_WRONG) {
           const opponent = [...this.players.values()].find((o) => o.id !== p.id);
           if (opponent) opponent.score = WIN_TARGET;
         } else {
@@ -1038,8 +1075,11 @@ export class Room {
     if (v.correct && p) {
       p.score += 1;
     } else if (!v.correct && p) {
-      p.wrongCount += 1;
-      if (p.wrongCount >= MAX_WRONG) {
+      // Retry yanlışı MAX_WRONG'a sayılmaz (yukarıdaki player-player bloğuyla
+      // aynı gerekçe): ek hak, maç-kaybı sayacını hızlandırmamalı.
+      const isRetryWrong = this.round.wrongRetryAt?.has(playerId) ?? false;
+      if (!isRetryWrong) p.wrongCount += 1;
+      if (!isRetryWrong && p.wrongCount >= MAX_WRONG) {
         const opponent = [...this.players.values()].find((o) => o.id !== p.id);
         if (opponent) opponent.score = WIN_TARGET;
       } else {
