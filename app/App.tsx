@@ -628,9 +628,27 @@ function AppRoot() {
       trophyDelta: state.trophyDelta,
     });
   }, [state.matchOver, state.trophyDelta, state.room, state.matchWinnerId, state.matchWinnerName]);
+  // Maç ortasında ÇIKIŞ (forfeit): kupa cezası gelince AYNI kaybetme popup'ını göster
+  // (yeşil "Devam et" butonu + düşen kupa miktarı popup'ta).
+  const forfeitCaptured = useRef(false);
+  useEffect(() => {
+    const fl = state.forfeitLoss;
+    if (!fl) { forfeitCaptured.current = false; return; }
+    if (forfeitCaptured.current) return;
+    forfeitCaptured.current = true;
+    setMatchOverPopup({
+      youWon: false,
+      youScore: fl.youScore,
+      oppScore: fl.oppScore,
+      youWrong: 0,
+      oppWrong: 0,
+      winnerName: fl.opponentName,
+      trophyDelta: { trophies: fl.trophies, delta: fl.delta, arena: fl.arena, arenaReward: 0, shielded: false },
+    });
+  }, [state.forfeitLoss]);
   // Rövanş/yeni maç başlarsa bekleyen popup düşer (bayat maçın popup'ı gösterilmez).
   useEffect(() => {
-    if (state.phase === 'countdown' || state.phase === 'matchup' || state.phase === 'pick') { setMatchOverPopup(null); setPendingLevelUp(null); heldArena.current = null; }
+    if (state.phase === 'countdown' || state.phase === 'matchup' || state.phase === 'pick') { setMatchOverPopup(null); setPendingLevelUp(null); heldArena.current = null; actions.clearForfeitLoss(); }
   }, [state.phase]);
   // ---- Seviye atlama zinciri: kupa popup'ı → seviye popup'ı → arena kutlaması ----
   const [pendingLevelUp, setPendingLevelUp] = useState<null | { toLevel: number; diamonds: number; emoteIds: string[]; powerIds: string[]; hasReward: boolean }>(null);
@@ -680,6 +698,7 @@ function AppRoot() {
   }, [state.profile?.diamonds, gemCelebration, setDiamondDisplayInstant, diamondFillAnim, measureDiamondPill]);
 
   const dismissMatchOverPopup = useCallback(() => {
+    actions.clearForfeitLoss(); // forfeit popup'ıysa bekleyen kaybı temizle (zaten null ise no-op)
     setMatchOverPopup((cur) => {
       const reward = cur?.trophyDelta.arenaReward ?? 0;
       const arenaName = cur?.trophyDelta.arena?.name;
@@ -709,7 +728,7 @@ function AppRoot() {
   const lastStashedDelta = useRef<GameState['trophyDelta']>(null);
   useEffect(() => {
     const td = state.trophyDelta;
-    if (!td || !td.delta || state.matchOver) return; // normal maç sonu: popup yolu
+    if (!td || !td.delta || state.matchOver || state.forfeitLoss) return; // normal maç sonu / forfeit popup'ı: kupa uçuşunu popup dismiss'i yapar
     if (lastStashedDelta.current === td) return;
     lastStashedDelta.current = td;
     pendingHomeFlight.current = td.delta;
@@ -1332,7 +1351,7 @@ function AppRoot() {
             xpGained={state.xpGain?.gained ?? null}
           />
           <View style={{ maxWidth: 320, width: '100%', alignSelf: 'center' }}>
-            <Btn big kind={matchOverPopup.youWon ? 'primary' : 'ghost'} label={t('common.continue')} onPress={dismissMatchOverPopup} />
+            <Btn big kind="primary" label={t('common.continue')} onPress={dismissMatchOverPopup} />
           </View>
         </View>
       ) : null}

@@ -226,7 +226,7 @@ export type ServerMsg =
   | { type: 'rematch_requested'; byId: string; byName: string } // opponent wants to play again
   | { type: 'rematch_waiting' } // your rematch request was sent, waiting for opponent
   | { type: 'rematch_declined' } // opponent declined your rematch request
-  | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView; diamonds?: number; arenaReward?: number; shielded?: boolean; winStreak?: number; bestStreak?: number } // shielded: Kupa Kalkanı bu mağlubiyetin kupa kaybını emdi
+  | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView; diamonds?: number; arenaReward?: number; shielded?: boolean; winStreak?: number; bestStreak?: number; lostStreak?: number } // shielded: Kupa Kalkanı bu mağlubiyetin kupa kaybını emdi; lostStreak: geri yüklenebilir kırık seri (maç sonrası 0'a döner)
   | { type: 'xp_update'; xp: number; level: number; xpForNext: number; gained: number; leveledUp: { level: number; diamonds: number; emoteId?: string; powerId?: string }[]; diamonds?: number; boosted?: boolean }
   | { type: 'level_reward_claimed'; level: number; diamonds: number; emoteId: string | null; frameTier: string | null; powerId?: string | null; track?: 'free' | 'premium'; profile: ProfileView } // yol kartından ödül toplandı // maç sonu seviye ilerlemesi
   | { type: 'premium_road_purchased'; profile: ProfileView } // Premium Yol açıldı
