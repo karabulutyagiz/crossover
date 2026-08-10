@@ -1,5 +1,6 @@
-import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
+import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
 import {
+  FlatList,
   Image,
   type ImageSourcePropType,
   Keyboard,
@@ -15,7 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Animated, Easing, PanResponder, Platform, Dimensions, Linking, LayoutAnimation } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { PanGestureHandler, State, type PanGestureHandlerStateChangeEvent } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -38,10 +39,11 @@ import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, Lin
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState, FriendInfo, LeaderboardEntry } from './useCrossover';
 import { initialState } from './useCrossover';
-import type { BlockedUserView, ClubRef, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, SpellInfo } from './protocol';
+import type { BlockedUserView, ClubRef, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, ScopeOption, SpellInfo } from './protocol';
 import {
   EmoteCallout,
   EmoteSticker,
+  EmoteWarmup,
   emotePhrase,
   PREMIUM_EMOTES,
   ANIM_EMOTES,
@@ -182,6 +184,10 @@ interface Props {
   gemFillAnimOverride?: Animated.Value;
   onGoToFriends?: () => void; // page the tab ScrollView across to the Friends tab
   focusAddFriendSeq?: number; // bumped by App when Home's find-friend card is tapped → Friends focuses its add-friend input
+  // Home sekmesi pager'da GÖRÜNÜR mü — dekoratif sonsuz döngüler (hero konfetisi)
+  // sekme ekran dışındayken durdurulur (#8). TabFreeze'in freshOnDeactivate'i
+  // sayesinde deaktivasyon karesi bu prop'un false halini ağaca taşır.
+  heroAnimsActive?: boolean;
 }
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -671,7 +677,14 @@ function SafeModal({ visible = true, children, ...rest }: ComponentProps<typeof 
   const canvas = canvasSizeFor(win.width, win.height);
   const needsCanvasBox = canvas.width !== win.width;
   const [present, setPresent] = useState(false);
-  useEffect(() => {
+  // useLayoutEffect (2026-08-10): pasif effect'le bu kapı HER pencereye boyadan
+  // önce +1 boş commit ekliyordu (ilk commit <Modal visible={false}> = native'de
+  // hiçbir şey). Layout effect'te setPresent aynı kare içinde senkron flush
+  // edilir → sunum isteği dokunulan karede çıkar. Kuyruk anlamı DEĞİŞMEZ:
+  // gövde bire bir aynı — slot boşsa whenModalSlotFree geri çağırmayı zaten
+  // senkron çalıştırır, doluysa geri çağırma yine sonradan (zamanlayıcıdan)
+  // gelir ve iptal fonksiyonu aynen cleanup olarak döner.
+  useLayoutEffect(() => {
     if (!visible) { setPresent(false); return undefined; }
     if (nested) { setPresent(true); return undefined; }
     return whenModalSlotFree(() => setPresent(true));
@@ -696,15 +709,29 @@ function SafeModal({ visible = true, children, ...rest }: ComponentProps<typeof 
   );
 }
 
-export function GameModal({ visible, onClose, onExited, title, icon, danger = false, coach = false, children }: {
-  visible: boolean; onClose: () => void; onExited?: () => void; title?: string; icon?: IoniconName; danger?: boolean; coach?: boolean; children: ReactNode;
+export function GameModal({ visible, onClose, onExited, onShown, title, icon, danger = false, coach = false, children }: {
+  // onShown: native sunum GERÇEKTEN tamamlandığında (RN Modal onShow) çağrılır.
+  // "Bu pencere sunulduktan SONRA sunulmalı" el sıkışmaları (ör. StoreKit
+  // sayfası) kör zamanlayıcı yerine bu olaya bağlanır — modalTraffic pencereyi
+  // sıraya alsa bile olay sunumdan önce asla gelmez.
+  visible: boolean; onClose: () => void; onExited?: () => void; onShown?: () => void; title?: string; icon?: IoniconName; danger?: boolean; coach?: boolean; children: ReactNode;
 }) {
   const a = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(false);
   const onExitedRef = useRef(onExited);
   onExitedRef.current = onExited;
+  const onShownRef = useRef(onShown);
+  onShownRef.current = onShown;
+  // Kimliği sabit sarmalayıcı: Modal'a her render'da yeni onShow gitmesin.
+  const handleShow = useCallback(() => { onShownRef.current?.(); }, []);
   // Sunum sırası SafeModal'da (modalTraffic) — burada yalnız animasyon durumu.
-  useEffect(() => {
+  // useLayoutEffect (2026-08-10): pasif gate sunumdan önce 2 boş commit yiyordu
+  // (visible → null → mounted → Modal visible=false → present) ve yay o görünmez
+  // commit'lerde başlıyordu — pencere ~0.87 ölçekte, yayın ortasında beliriyordu
+  // ("sönük pat"). Senkron flush ile mount + SafeModal sunum isteği + yayın
+  // başlangıcı aynı kare paketinde: yayın ilk karesi = ilk görünen kare.
+  // Çıkış effect'i pasif KALIR — kapanış animasyonu boya sonrası başlayabilir.
+  useLayoutEffect(() => {
     if (!visible) return;
     setMounted(true);
     Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
@@ -730,7 +757,7 @@ export function GameModal({ visible, onClose, onExited, title, icon, danger = fa
   const FRAME = '#0B1428';
   const LIP = darken(strip, 0.35);
   return (
-    <SafeModal visible transparent animationType="none" onRequestClose={onClose}>
+    <SafeModal visible transparent animationType="none" onRequestClose={onClose} onShow={handleShow}>
       <Animated.View style={{ flex: 1, backgroundColor: theme.scrim, opacity: clamped }}>
         {/* Inert the instant `visible` flips false — the 160ms exit must not be
             hit-testable (double-tapped confirms re-fired actions, e.g. double gem charges) */}
@@ -2794,7 +2821,9 @@ function arenaColor(name: string): string {
 
 // The home console's dominant action — one oversized primary button with a
 // periodic shine pass. Same Btn anatomy (ink outline → lip → top-lit face).
-function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void }) {
+// memo: HomeScreen'in her render'ında (tuş vuruşu, popup açılışı, ws dispatch)
+// bu ağır primitifler boşa yeniden çizilmesin — tüm props ilkel/sabit kimlikli.
+const HeroPlayBtn = memo(function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void }) {
   const press = useRef(new Animated.Value(0)).current;
   const [w, setW] = useState(0);
   const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, 4] });
@@ -2838,7 +2867,7 @@ function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void })
       </Animated.View>
     </Pressable>
   );
-}
+});
 
 // External info links. These MUST all resolve: they used to point at the parked
 // crossover.gg placeholder domain, and App Store review cited the dead Terms /
@@ -2924,7 +2953,7 @@ function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName
                 <GemIcon size={13} />
               </View>
             )}
-            onPress={() => { if (diamonds < 1000) { setPendingShortfall(1000 - diamonds); onNeedDiamonds(); } else setRenameOpen(true); }}
+            onPress={() => { if (diamonds < 1000) { recordShortfall(1000 - diamonds); onNeedDiamonds(); } else setRenameOpen(true); }}
           />
 
           <ChangeNameModal
@@ -3093,7 +3122,10 @@ function PopupCard({ visible, title, icon, onClose, children }: {
   const a = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(false);
   // Sunum sırası SafeModal'da (modalTraffic) — burada yalnız animasyon durumu.
-  useEffect(() => {
+  // useLayoutEffect (2026-08-10): GameModal'daki gerekçenin aynısı — pasif gate
+  // sunum öncesi boş commit'ler ekliyor, yay görünmez karelerde başlıyordu.
+  // Senkron flush ile yayın ilk karesi = ilk görünen kare. Çıkış pasif kalır.
+  useLayoutEffect(() => {
     if (!visible) return;
     setMounted(true);
     Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
@@ -3254,15 +3286,32 @@ export function LeaderboardModal({ visible, entries, onClose, onViewProfile }: {
   // Loading ≠ empty: shimmer skeletons during the fetch window, then a crafted
   // EmptyState if the board is genuinely empty (spec §9).
   const graceOver = useLoadGrace(visible && entries.length === 0);
+  // onViewProfile App'in her render'ında yeni kapanış — latest-ref ile sabitlenir
+  // ki memo(LeaderboardRow) tutsun (satır başına taze closure memo'yu bozuyordu,
+  // pano açıkken her dispatch 50 satırı yeniden çiziyordu). Tanımsızsa undefined
+  // geçilir → satırlar bugünkü gibi devre dışı kalır.
+  const vpRef = useRef(onViewProfile);
+  vpRef.current = onViewProfile;
+  const onView = useCallback((id: string) => vpRef.current?.(id), []);
   return (
     <PopupCard visible={visible} title={t('menu.leaderboard')} icon="podium" onClose={onClose}>
-      <ScrollView style={{ maxHeight: 460 }} contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 10 }} showsVerticalScrollIndicator={false}>
-        {entries.length === 0 ? (
-          graceOver ? <LeaderboardEmpty onPlay={onClose} /> : <SkeletonRows rows={4} />
-        ) : entries.map((entry) => (
-          <LeaderboardRow key={entry.rank} entry={entry} onPress={onViewProfile ? () => onViewProfile(entry.userId) : undefined} />
-        ))}
-      </ScrollView>
+      {/* FlatList (2026-08-10): düz ScrollView 50 satırı (~750 view) popup yayı
+          çalışırken TEK commit'te basıyordu; görünür alan ~6 satır. Aynı
+          maxHeight/padding — pikseller aynı, ekran dışı satırlar tembel basar.
+          removeClippedSubviews kapalı: RankBadge parıltı gölgesi kırpılmasın. */}
+      <FlatList
+        data={entries}
+        style={{ maxHeight: 460 }}
+        contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 10 }}
+        showsVerticalScrollIndicator={false}
+        keyExtractor={(e) => String(e.rank)}
+        initialNumToRender={8}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        removeClippedSubviews={false}
+        ListEmptyComponent={graceOver ? <LeaderboardEmpty onPlay={onClose} /> : <SkeletonRows rows={4} />}
+        renderItem={({ item }) => <LeaderboardRow entry={item} onView={onViewProfile ? onView : undefined} />}
+      />
     </PopupCard>
   );
 }
@@ -3270,13 +3319,23 @@ export function LeaderboardModal({ visible, entries, onClose, onViewProfile }: {
 export function MatchHistoryModal({ visible, history, myName, onClose }: { visible: boolean; history: GameState['matchHistory']; myName: string; onClose: () => void }) {
   return (
     <PopupCard visible={visible} title={t('menu.matchHistory')} icon="time" onClose={onClose}>
-      <ScrollView style={{ maxHeight: 500 }} contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 12 }} showsVerticalScrollIndicator={false}>
-        {history.length === 0 ? (
-          <EmptyState icon="time" title={t('matchHistory.empty')} hint={t('matchHistory.emptyHint')} />
-        ) : history.map((m) => (
-          <MatchHistoryCard key={m.id} match={m} myName={myName} />
-        ))}
-      </ScrollView>
+      {/* FlatList (2026-08-10): geçmiş SINIRSIZ (sunucu sorgusunda LIMIT yok) —
+          düz ScrollView her maçı popup yayı sırasında tek commit'te basıyordu,
+          açılış hesap yaşlandıkça ağırlaşıyordu. Aynı maxHeight/padding;
+          removeClippedSubviews kapalı ki kart gölgeleri kenarda kırpılmasın. */}
+      <FlatList
+        data={history}
+        style={{ maxHeight: 500 }}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 12 }}
+        showsVerticalScrollIndicator={false}
+        keyExtractor={(m) => m.id}
+        initialNumToRender={6}
+        maxToRenderPerBatch={8}
+        windowSize={7}
+        removeClippedSubviews={false}
+        ListEmptyComponent={<EmptyState icon="time" title={t('matchHistory.empty')} hint={t('matchHistory.emptyHint')} />}
+        renderItem={({ item }) => <MatchHistoryCard match={item} myName={myName} />}
+      />
     </PopupCard>
   );
 }
@@ -3469,15 +3528,21 @@ const CONFETTI = Array.from({ length: 18 }, (_, i) => ({
 
 // One shard: falls top→bottom on a linear loop (resets off-screen, so seamless),
 // spinning as it goes and swaying left/right. Native driver — no per-frame JS.
-function ConfettiPiece({ p, w, h }: { p: (typeof CONFETTI)[number]; w: number; h: number }) {
+function ConfettiPiece({ p, w, h, visible }: { p: (typeof CONFETTI)[number]; w: number; h: number; visible: boolean }) {
   const t = useRef(new Animated.Value(0)).current;
   useEffect(() => {
+    // Görünmezken döngü çalışmaz ve parça klips kutusunun ÜSTÜNE park eder
+    // (setValue(0) → translateY -20; overflow:hidden gizler). setValue'suz
+    // durdurmak parçayı düşüşün ortasında donmuş bırakıyordu — ekran kayarken
+    // yarı görünür kalırdı. Dönüşte başlangıç yolu aynen yeniden koşar
+    // (uygulama açılışındaki stagger dolumuyla birebir aynı görünüm).
+    if (!visible) { t.setValue(0); return undefined; }
     const loop = Animated.loop(
       Animated.timing(t, { toValue: 1, duration: p.dur, easing: Easing.linear, useNativeDriver: true }),
     );
     const start = setTimeout(() => loop.start(), p.delay);
     return () => { clearTimeout(start); loop.stop(); };
-  }, [t, p.dur, p.delay]);
+  }, [visible, t, p.dur, p.delay]);
   const translateY = t.interpolate({ inputRange: [0, 1], outputRange: [-20, h + 20] });
   const translateX = t.interpolate({ inputRange: [0, 0.25, 0.5, 0.75, 1], outputRange: [0, p.sway, 0, -p.sway, 0] });
   const rotate = t.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${360 * p.spins}deg`] });
@@ -3488,7 +3553,9 @@ function ConfettiPiece({ p, w, h }: { p: (typeof CONFETTI)[number]; w: number; h
   );
 }
 
-function HeroConfetti({ w, h }: { w: number; h: number }) {
+// memo: w/h yerleşimden sonra sabittir — 18 ConfettiPiece ağacı HomeScreen'in
+// her render'ında yeniden uzlaştırılmasın (döngüler zaten native tarafta akar).
+const HeroConfetti = memo(function HeroConfetti({ w, h, visible = true }: { w: number; h: number; visible?: boolean }) {
   if (w <= 0 || h <= 0) return null;
   return (
     // overflow hidden is load-bearing: while a piece waits out its stagger delay
@@ -3499,14 +3566,16 @@ function HeroConfetti({ w, h }: { w: number; h: number }) {
     // width: w (not absoluteFill): the clip box must end where the piece field ends,
     // so sway/rotation can never carry a piece under the hero's right badge rail.
     <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: w, overflow: 'hidden' }}>
-      {CONFETTI.map((p, i) => <ConfettiPiece key={i} p={p} w={w} h={h} />)}
+      {CONFETTI.map((p, i) => <ConfettiPiece key={i} p={p} w={w} h={h} visible={visible} />)}
     </View>
   );
-}
+});
 
 // A floating counter beside the hero: round art badge with its value on a dark
 // caption chip clipped to the badge's bottom edge.
-function RailBadge({ icon, iconColor, ringColor, value, onPress, countAnim, fillAnim, innerRef }: {
+// memo: sayaç animasyonu render'ı atlar (countAnim listener'ı iç state'i sürer),
+// bu yüzden rozet yalnız value/onPress kimliği değişince yeniden çizilmeli.
+const RailBadge = memo(function RailBadge({ icon, iconColor, ringColor, value, onPress, countAnim, fillAnim, innerRef }: {
   // value verilmezse rozet SAYISIZ çizilir (ör. liderlik tablosu rozeti)
   icon: IoniconName; iconColor: string; ringColor: string; value?: string; onPress: () => void;
   countAnim?: Animated.Value; fillAnim?: Animated.Value; innerRef?: Ref<View>;
@@ -3551,12 +3620,12 @@ function RailBadge({ icon, iconColor, ringColor, value, onPress, countAnim, fill
       </Animated.View>
     </Pressable>
   );
-}
+});
 
 // ---- top bar --------------------------------------------------------------
 
 // Raised round button — the mockup's pack / bell / gear trio.
-function RoundIconBtn({ icon, onPress, dot = false, tint = theme.text }: {
+const RoundIconBtn = memo(function RoundIconBtn({ icon, onPress, dot = false, tint = theme.text }: {
   icon: IoniconName; onPress: () => void; dot?: boolean; tint?: string;
 }) {
   const { ty, scale, onIn, onOut } = usePressLip(2);
@@ -3577,7 +3646,7 @@ function RoundIconBtn({ icon, onPress, dot = false, tint = theme.text }: {
       ) : null}
     </Pressable>
   );
-}
+});
 
 // Profile pill: avatar (tier-ringed, tier-badged) · name · progress trough.
 // The mockup's "level" is this game's ARENA TIER (1–7, Mahalle→GOAT) and its XP
@@ -3614,7 +3683,9 @@ function ClaimHerald({ count }: { count: number }) {
   );
 }
 
-function ProfilePill({ name, avatarId, tier, pct, color, onPress, fillAnim, frameId, claimBadge, boosted }: {
+// memo: XP çubuğu fillAnim (sabit kimlikli Animated.Value) üzerinden native
+// akar; hap yalnız isim/seviye/pct gibi ilkel props değişince yeniden çizilir.
+const ProfilePill = memo(function ProfilePill({ name, avatarId, tier, pct, color, onPress, fillAnim, frameId, claimBadge, boosted }: {
   name: string; avatarId?: string | null; tier: number; pct: number; color: string; onPress: () => void;
   // Verilirse çubuk bu 0..1 animasyon değeriyle dolar (XP küre yağmuru sırasında)
   fillAnim?: Animated.Value;
@@ -3687,12 +3758,14 @@ function ProfilePill({ name, avatarId, tier, pct, color, onPress, fillAnim, fram
       </View>
     </Pressable>
   );
-}
+});
 
 // Currency pill — the mockup's coin capsule. This game has exactly one currency
 // (diamonds), so the coin slot carries the gem and the capsule's green "+" goes
 // straight to the diamond aisle of the store.
-function GemPill({ count, onPress, countAnim, fillAnim, innerRef }: {
+// memo: RailBadge ile aynı sözleşme — sayaç listener'la içeriden akar, hap
+// yalnız count/onPress kimliği değişince yeniden çizilir (toLocaleString dahil).
+const GemPill = memo(function GemPill({ count, onPress, countAnim, fillAnim, innerRef }: {
   count: number; onPress: () => void;
   countAnim?: Animated.Value; fillAnim?: Animated.Value; innerRef?: Ref<View>;
 }) {
@@ -3742,13 +3815,15 @@ function GemPill({ count, onPress, countAnim, fillAnim, innerRef }: {
       </View>
     </Pressable>
   );
-}
+});
 
 // ---- cards ----------------------------------------------------------------
 
 // The mockup's bright art cards: an art field up top, a dark caption band across
 // the bottom carrying the title. `art` is drawn into the field and may overhang it.
-function ArtCard({ title, tint, art, height, onPress, grade, strip, arrow = false, pillBar }: {
+// memo: kartın SVG radial yüzü pahalı — `art`/`grade` sabit kimlikli verildiği
+// sürece (modül sabiti ya da useMemo) kart, ekran render'larını komple atlar.
+const ArtCard = memo(function ArtCard({ title, tint, art, height, onPress, grade, strip, arrow = false, pillBar }: {
   title: string; tint: string; art?: ReactNode; height: number; onPress: () => void;
   // Mockup faces are a DIAGONAL ramp (light at the top-left, deep at the
   // bottom-right), not a flat fill — measured off COF ANA EKRAN.jpeg. Opt-in per
@@ -3860,7 +3935,7 @@ function ArtCard({ title, tint, art, height, onPress, grade, strip, arrow = fals
       </View>
     </Pressable>
   );
-}
+});
 
 // The faded tilted card-stack watermark bleeding off the mockup's navy panels.
 function GhostStack({ icon }: { icon: IoniconName }) {
@@ -3888,7 +3963,9 @@ function GhostStack({ icon }: { icon: IoniconName }) {
 // The mockup's navy panels: title row up top, ghost stack in the corner, free
 // content below. Pressable only when `onPress` is given (the Özel Mod panel owns
 // its own inner controls instead).
-function GhostPanel({ title, icon, ghost, height, onPress, children, locked = false, tone }: {
+// memo: children inline verildiğinde bail edemez (eleman kimliği taze) ama
+// diğer HUD primitifleriyle aynı sözleşmeyi taşısın diye yine sarılır.
+const GhostPanel = memo(function GhostPanel({ title, icon, ghost, height, onPress, children, locked = false, tone }: {
   title: string; icon?: IoniconName; ghost: IoniconName; height: number;
   onPress?: () => void; children?: ReactNode; locked?: boolean;
   // `tone`: give the panel its own colour face (a tone ladder over it) instead
@@ -3933,7 +4010,7 @@ function GhostPanel({ title, icon, ghost, height, onPress, children, locked = fa
   );
   if (!onPress) return <View style={{ flex: 1 }}>{body}</View>;
   return <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1 }}>{body}</Pressable>;
-}
+});
 
 // ---- the screen -----------------------------------------------------------
 
@@ -3951,7 +4028,44 @@ const ROOM_CODE_LEN = 6;
 const HOME_MODES: GameMode[] = ['country-team', 'letter-team'];
 const PACK_MODES: GameMode[] = ['country-team', 'letter-team'];
 
-export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, onOpenLevelRoad, overlayBusy, gemCountAnimOverride, gemFillAnimOverride, trophyLand, trophyHold }: Props) {
+// "Mücadele Modu" kartının yüzü hiçbir props/state okumaz (tema + modül-scope
+// RivalryArt + sabit renkler) — her HomeScreen render'ında (tuş vuruşu, popup
+// açılışı, ws dispatch) SVG radial + 3 görselli ağacı yeniden kurmamak için
+// modül sabiti. Sabit eleman/nesne kimliği ayrıca memo(ArtCard)'ın bu kartı
+// komple atlamasını sağlar ("amberGlow" id'si zaten sabit ve tekil).
+const MODES_CARD_GRADE = { from: '#D9973B', mid: '#B7762A', to: '#6B3A0D' };
+const MODES_CARD_ART = (
+  <View style={StyleSheet.absoluteFill}>
+    {/* a faint sun glow so the amber face isn't flat, then the ball-duel
+        scene — two brand balls clashing under the gold VS coin */}
+    {/* The glow used to live in a 120pt-tall box whose bottom edge cut the
+        radial gradient mid-fade, leaving a hard horizontal seam across
+        the card above the balls ("top tam oturmamış gibi"). Filling the
+        whole card and letting the gradient reach zero well inside it
+        removes the edge entirely. */}
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <Svg width="100%" height="100%">
+        <Defs>
+          <RadialGradient id="amberGlow" cx="50%" cy="22%" r="78%">
+            <Stop offset="0" stopColor={lighten(theme.amber, 0.4)} stopOpacity={0.9} />
+            <Stop offset="0.62" stopColor={lighten(theme.amber, 0.12)} stopOpacity={0.28} />
+            <Stop offset="1" stopColor={theme.amber} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill="url(#amberGlow)" />
+      </Svg>
+    </View>
+    <RivalryArt />
+  </View>
+);
+// Carousel kartlarının degrade/pill sabitleri — inline nesne literal'i her
+// render'da yeni kimlik üretip memo(ArtCard)'ı sessizce boşa çıkarır.
+const SOCIAL_CARD_GRADE = { from: '#6236C1', mid: '#4A2A9E', to: '#251A63' };
+const SOCIAL_CARD_PILL = { fill: '#1E1856' };
+const ROAD_CARD_GRADE = { from: '#1466BE', mid: '#064B92', to: '#01234A' };
+const ROAD_CARD_PILL = { fill: '#051E3C' };
+
+export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, onOpenLevelRoad, overlayBusy, gemCountAnimOverride, gemFillAnimOverride, trophyLand, trophyHold, heroAnimsActive = true }: Props) {
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [scope, setScope] = useState<Scope>({ type: 'all' });
   const [mode, setMode] = useState<GameMode>('team-team');
@@ -4113,9 +4227,80 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
     actions.findMatch({ mode: m });
   }, [actions, hasPack]);
 
+  // ---- Sabit kimlikli onPress'ler: memo'lu HUD primitifleri (ProfilePill /
+  // GemPill / RailBadge / RoundIconBtn / ArtCard / HeroPlayBtn) ancak props
+  // kimliği sabitse bail edebilir. App'ten gelen yönlendirme callback'leri ve
+  // `actions` her App render'ında tazelenebildiğinden en-son-değer ref kalıbı:
+  // sarmalayıcının kimliği sabit, basış anında DAİMA güncel fonksiyon çağrılır
+  // (bayat closure sınıfı hatası bilerek imkânsız kılınır). ----
+  const navRef = useRef({ actions, onGoToStore, onOpenMatchHistory, onOpenLeaderboard, onOpenLevelRoad });
+  navRef.current = { actions, onGoToStore, onOpenMatchHistory, onOpenLeaderboard, onOpenLevelRoad };
+  const openProfile = useCallback(() => navRef.current.actions.openProfile(), []);
+  const openArenas = useCallback(() => navRef.current.actions.openArenas(), []);
+  const startQuickMatch = useCallback(() => navRef.current.actions.findMatch({ mode: 'team-team' }), []);
+  const openStoreDiamonds = useCallback(() => navRef.current.onGoToStore?.('diamonds'), []);
+  const openStoreSocial = useCallback(() => navRef.current.onGoToStore?.('socialPack'), []);
+  const openHistory = useCallback(() => navRef.current.onOpenMatchHistory?.(), []);
+  const openBoard = useCallback(() => navRef.current.onOpenLeaderboard?.(), []);
+  const openRoad = useCallback(() => navRef.current.onOpenLevelRoad?.(), []);
+  // setState setter'ları zaten sabit — [] deps güvenli.
+  const openMenu = useCallback(() => setMenuOpen(true), []);
+  const openModes = useCallback(() => setModesOpen(true), []);
+  const openBot = useCallback(() => { setBotPage({ key: 'bot', dir: 1 }); setBotOpen(true); }, []);
+  // Zil ve "Yenilikler" kartı aynı davranışı paylaşır (feed açılır, pip söner).
+  const openNews = useCallback(() => { setNewsOpen(true); setNewsUnread(false); AsyncStorage.setItem(NEWS_READ_KEY, LATEST_NEWS_ID).catch(() => {}); }, []);
+
   // Three across, as the mockup — the row is (3 cards + 2 gaps) wide.
   const cardW = railW > 0 ? (railW - 2 * CAROUSEL_GAP) / 3 : 0;
   const codeReady = joinCode.length === ROOM_CODE_LEN;
+
+  // Kart sanatları: inline eleman her render'da yeni kimlik alır ve
+  // memo(ArtCard)'ı boşa çıkarırdı. Arena sanatı yalnız kupa sayısının
+  // fonksiyonu (curTier/nextTier/arenaPct hepsi trophies'ten türer); carousel
+  // sanatları tamamen statik — t() çıktıları dil değişiminde App'in langKey
+  // remount'u ile tazelendiğinden [] deps güvenli.
+  const arenaArt = useMemo(() => (
+    <View style={StyleSheet.absoluteFill}>
+      {/* Arena render fills the frame as a horizontal strip. The isometric stadium
+          is diamond-shaped, so its PNG has transparent top corners; the render is
+          scaled up past the box so the stadium body covers them instead of leaving
+          the card colour showing through. Clipped by the box's overflow:hidden. */}
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 30, overflow: 'hidden' }}>
+        <Image source={curTier.img} resizeMode="cover" style={{ width: '100%', height: '100%', transform: [{ scale: 1.5 }, { translateY: 6 }] }} />
+      </View>
+      <View style={{ position: 'absolute', right: 12, top: 7, flexDirection: 'row', gap: 2 }}>
+        {Array.from({ length: 3 }, (_, i) => (
+          <Ionicons key={i} name="star" size={12} color={i < Math.ceil(arenaPct * 3) ? theme.gold : 'rgba(255,255,255,0.22)'} />
+        ))}
+      </View>
+      {nextTier ? (
+        <View style={{ position: 'absolute', left: 11, top: 9, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+          <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }} numberOfLines={1}>{`${trophies}/${nextTier.min}`}</Text>
+          <Ionicons name="trophy" size={11} color={theme.accent} />
+        </View>
+      ) : (
+        <Text style={{ position: 'absolute', left: 11, top: 9, color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{t('home.topArena')}</Text>
+      )}
+    </View>
+  ), [trophies, curTier, nextTier, arenaPct]);
+  const socialArt = useMemo(() => (
+    <View style={StyleSheet.absoluteFill}>
+      {/* Mockup placement: players sit right-of-centre, feet on the pill. */}
+      <Image source={EMOTE_ART.squad} resizeMode="contain" style={{ position: 'absolute', right: 0, bottom: 44, width: '68%', height: '58%' }} />
+      <Text style={{ position: 'absolute', left: 11, top: 10, color: theme.text, fontSize: 11, fontFamily: 'Poppins-SemiBold', width: '58%', ...engrave('sm') }} numberOfLines={3}>
+        {t('home.socialPackShort')}
+      </Text>
+    </View>
+  ), []);
+  const roadArt = useMemo(() => (
+    <View style={StyleSheet.absoluteFill}>
+      {/* Mockup placement: the medal floats right-of-centre, above the pill. */}
+      <Image source={XP_STAR} resizeMode="contain" style={{ position: 'absolute', right: 0, top: '14%', width: '54%', height: '58%' }} />
+      <Text style={{ position: 'absolute', left: 11, top: 10, color: theme.text, fontSize: 11, fontFamily: 'Poppins-SemiBold', width: '58%', ...engrave('sm') }} numberOfLines={3}>
+        {t('home.levelRoadHint')}
+      </Text>
+    </View>
+  ), []);
 
   return (
     <Screen scroll pad={16} contentCenter={false} fillTablet lockWhenFits>
@@ -4131,16 +4316,16 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
           color={lvlColor}
           fillAnim={xpBarAnim}
           frameId={profile?.selectedFrame}
-          onPress={actions.openProfile}
+          onPress={openProfile}
           claimBadge={unclaimedLevelCount(profile)}
           boosted={Boolean(profile?.xpBoostUntil && new Date(profile.xpBoostUntil).getTime() > Date.now())}
         />
-        <GemPill count={profile?.diamonds ?? 0} onPress={() => onGoToStore?.('diamonds')} countAnim={gemCountAnim} fillAnim={gemFillAnim} innerRef={gemPillRef} />
+        <GemPill count={profile?.diamonds ?? 0} onPress={openStoreDiamonds} countAnim={gemCountAnim} fillAnim={gemFillAnim} innerRef={gemPillRef} />
         {SCREEN_W >= TOPBAR_ROOMY_W ? (
-          <RoundIconBtn icon="time" onPress={() => onOpenMatchHistory?.()} />
+          <RoundIconBtn icon="time" onPress={openHistory} />
         ) : null}
-        <RoundIconBtn icon="notifications" dot={newsUnread} onPress={() => { setNewsOpen(true); setNewsUnread(false); AsyncStorage.setItem(NEWS_READ_KEY, LATEST_NEWS_ID).catch(() => {}); }} />
-        <RoundIconBtn icon="settings-sharp" onPress={() => setMenuOpen(true)} />
+        <RoundIconBtn icon="notifications" dot={newsUnread} onPress={openNews} />
+        <RoundIconBtn icon="settings-sharp" onPress={openMenu} />
       </View>
 
       {/* XP küre yağmuru (maç sonrası) */}
@@ -4159,7 +4344,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
             margin): pieces falling BEHIND the translucent badge faces read as artifacts —
             a white ribbon as a gray slab over the trophy cup, a purple piece as a notch
             poking out of the ring's right edge. */}
-        <HeroConfetti w={Math.max(0, hero.w - 56)} h={hero.h} />
+        <HeroConfetti w={Math.max(0, hero.w - 56)} h={hero.h} visible={heroAnimsActive} />
         {/* The hero unit — the two balls + the CROSSOVER lettering lifted WHOLE
             from the Top.jpeg mockup as one image (feathered edges melt into the
             night sky), so it is pixel-for-pixel the photo composition. */}
@@ -4169,9 +4354,9 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
           resizeMode="contain"
         />
         <View style={{ position: 'absolute', right: 0, top: 2, gap: 12 }}>
-          <RailBadge icon="trophy" iconColor={theme.gold} ringColor={theme.purple} value={String(trophies)} onPress={actions.openArenas} countAnim={trophyCountAnim} fillAnim={trophyFillAnim} innerRef={trophyBadgeRef} />
+          <RailBadge icon="trophy" iconColor={theme.gold} ringColor={theme.purple} value={String(trophies)} onPress={openArenas} countAnim={trophyCountAnim} fillAnim={trophyFillAnim} innerRef={trophyBadgeRef} />
           {/* liderlik rozeti SAYISIZ — altındaki galibiyet sayısı kullanıcı isteğiyle kaldırıldı */}
-          <RailBadge icon="podium" iconColor={theme.accent} ringColor={theme.accentDark} onPress={() => onOpenLeaderboard?.()} />
+          <RailBadge icon="podium" iconColor={theme.accent} ringColor={theme.accentDark} onPress={openBoard} />
         </View>
       </View>
 
@@ -4196,7 +4381,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
             </View>
           </View>
         ) : null}
-        <HeroPlayBtn label={t('home.quickMatch')} onPress={() => actions.findMatch({ mode: 'team-team' })} />
+        <HeroPlayBtn label={t('home.quickMatch')} onPress={startQuickMatch} />
       </View>
 
       {/* ── 4. GRID ── */}
@@ -4204,35 +4389,12 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         <ArtCard
           title={t('home.modesTitle')}
           tint={theme.amber}
-          grade={{ from: '#D9973B', mid: '#B7762A', to: '#6B3A0D' }}
+          grade={MODES_CARD_GRADE}
           strip="#3A2109"
           arrow
           height={142}
-          onPress={() => setModesOpen(true)}
-          art={
-            <View style={StyleSheet.absoluteFill}>
-              {/* a faint sun glow so the amber face isn't flat, then the ball-duel
-                  scene — two brand balls clashing under the gold VS coin */}
-              {/* The glow used to live in a 120pt-tall box whose bottom edge cut the
-                  radial gradient mid-fade, leaving a hard horizontal seam across
-                  the card above the balls ("top tam oturmamış gibi"). Filling the
-                  whole card and letting the gradient reach zero well inside it
-                  removes the edge entirely. */}
-              <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-                <Svg width="100%" height="100%">
-                  <Defs>
-                    <RadialGradient id="amberGlow" cx="50%" cy="22%" r="78%">
-                      <Stop offset="0" stopColor={lighten(theme.amber, 0.4)} stopOpacity={0.9} />
-                      <Stop offset="0.62" stopColor={lighten(theme.amber, 0.12)} stopOpacity={0.28} />
-                      <Stop offset="1" stopColor={theme.amber} stopOpacity={0} />
-                    </RadialGradient>
-                  </Defs>
-                  <Rect width="100%" height="100%" fill="url(#amberGlow)" />
-                </Svg>
-              </View>
-              <RivalryArt />
-            </View>
-          }
+          onPress={openModes}
+          art={MODES_CARD_ART}
         />
         {/* Özel Mod — the private-room flow. createRoom/joinRoom have existed in
             useCrossover (797/826) with a working LobbyScreen, but nothing in the UI
@@ -4291,31 +4453,8 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
           title={arenaLabel(profile?.arena.name ?? '')}
           tint={theme.card}
           height={96}
-          onPress={actions.openArenas}
-          art={
-            <View style={StyleSheet.absoluteFill}>
-              {/* Arena render fills the frame as a horizontal strip. The isometric stadium
-                  is diamond-shaped, so its PNG has transparent top corners; the render is
-                  scaled up past the box so the stadium body covers them instead of leaving
-                  the card colour showing through. Clipped by the box's overflow:hidden. */}
-              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 30, overflow: 'hidden' }}>
-                <Image source={curTier.img} resizeMode="cover" style={{ width: '100%', height: '100%', transform: [{ scale: 1.5 }, { translateY: 6 }] }} />
-              </View>
-              <View style={{ position: 'absolute', right: 12, top: 7, flexDirection: 'row', gap: 2 }}>
-                {Array.from({ length: 3 }, (_, i) => (
-                  <Ionicons key={i} name="star" size={12} color={i < Math.ceil(arenaPct * 3) ? theme.gold : 'rgba(255,255,255,0.22)'} />
-                ))}
-              </View>
-              {nextTier ? (
-                <View style={{ position: 'absolute', left: 11, top: 9, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                  <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }} numberOfLines={1}>{`${trophies}/${nextTier.min}`}</Text>
-                  <Ionicons name="trophy" size={11} color={theme.accent} />
-                </View>
-              ) : (
-                <Text style={{ position: 'absolute', left: 11, top: 9, color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{t('home.topArena')}</Text>
-              )}
-            </View>
-          }
+          onPress={openArenas}
+          art={arenaArt}
         />
         <GhostPanel
           title={t('home.solo')}
@@ -4323,7 +4462,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
           ghost="game-controller"
           height={96}
           tone={darken(theme.primary, 0.74)}
-          onPress={() => { setBotPage({ key: 'bot', dir: 1 }); setBotOpen(true); }}
+          onPress={openBot}
         >
           <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', marginTop: 6 }} numberOfLines={2}>{t('home.soloShort')}</Text>
         </GhostPanel>
@@ -4346,19 +4485,11 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               <ArtCard
                 title={hasPack ? t('store.badgeActive') : t('store.socialPackTitle')}
                 tint={theme.purple}
-                grade={{ from: '#6236C1', mid: '#4A2A9E', to: '#251A63' }}
-                pillBar={{ fill: '#1E1856' }}
+                grade={SOCIAL_CARD_GRADE}
+                pillBar={SOCIAL_CARD_PILL}
                 height={128}
-                onPress={() => onGoToStore?.('socialPack')}
-                art={
-                  <View style={StyleSheet.absoluteFill}>
-                    {/* Mockup placement: players sit right-of-centre, feet on the pill. */}
-                    <Image source={EMOTE_ART.squad} resizeMode="contain" style={{ position: 'absolute', right: 0, bottom: 44, width: '68%', height: '58%' }} />
-                    <Text style={{ position: 'absolute', left: 11, top: 10, color: theme.text, fontSize: 11, fontFamily: 'Poppins-SemiBold', width: '58%', ...engrave('sm') }} numberOfLines={3}>
-                      {t('home.socialPackShort')}
-                    </Text>
-                  </View>
-                }
+                onPress={openStoreSocial}
+                art={socialArt}
               />
             </View>
             <View style={{ width: cardW }}>
@@ -4368,19 +4499,11 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               <ArtCard
                 title={t('level.roadTitle')}
                 tint={theme.blue}
-                grade={{ from: '#1466BE', mid: '#064B92', to: '#01234A' }}
-                pillBar={{ fill: '#051E3C' }}
+                grade={ROAD_CARD_GRADE}
+                pillBar={ROAD_CARD_PILL}
                 height={128}
-                onPress={() => onOpenLevelRoad?.()}
-                art={
-                  <View style={StyleSheet.absoluteFill}>
-                    {/* Mockup placement: the medal floats right-of-centre, above the pill. */}
-                    <Image source={XP_STAR} resizeMode="contain" style={{ position: 'absolute', right: 0, top: '14%', width: '54%', height: '58%' }} />
-                    <Text style={{ position: 'absolute', left: 11, top: 10, color: theme.text, fontSize: 11, fontFamily: 'Poppins-SemiBold', width: '58%', ...engrave('sm') }} numberOfLines={3}>
-                      {t('home.levelRoadHint')}
-                    </Text>
-                  </View>
-                }
+                onPress={openRoad}
+                art={roadArt}
               />
             </View>
             {/* Yenilikler — geçmiş duyurular. Kart, üst bardaki zil ile aynı
@@ -4391,7 +4514,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 icon="megaphone"
                 ghost="megaphone"
                 height={128}
-                onPress={() => { setNewsOpen(true); setNewsUnread(false); AsyncStorage.setItem(NEWS_READ_KEY, LATEST_NEWS_ID).catch(() => {}); }}
+                onPress={openNews}
               >
                 {newsUnread ? (
                   <View pointerEvents="none" style={{ position: 'absolute', top: 10, right: 10, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.danger }} />
@@ -4535,6 +4658,44 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
 // Searchable league/country scope list — one page shared by the bot dialog (home)
 // and the friendly-match dialog (friends). Skeletons while scopes load; crafted
 // EmptyState for no results. Key it by `kind` so the search resets per page.
+// Perf: sunucu TÜM lig/ülkeleri LİMİTSİZ yollar — eski düz map + ScrollView,
+// onlarca beveled satırı + arma görselini modal sayfa kaymasıyla AYNI frame'de
+// mount ediyordu ve her tuş vuruşu hepsini yeniden reconcile ediyordu. FlatList
+// yalnız görünür satırları mount eder; satırlar memo'lu ScopeRow olduğundan tuş
+// vuruşları onları atlar.
+const scopeOptionLabel = (o: { value: string; displayName?: string }) => o.displayName ?? LEAGUE_DISPLAY[o.value] ?? o.value;
+const scopeCountChip = (count: number) => (
+  <View style={{ backgroundColor: theme.cardLip, borderRadius: 8, borderWidth: 1, borderColor: theme.accentDark, paddingHorizontal: 7, paddingVertical: 2 }}>
+    <Text style={{ color: theme.accent, fontSize: 10, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{count}</Text>
+  </View>
+);
+type ScopeRowItem = { o: ScopeOption; label: string; lower: string };
+const scopeKeyExtractor = (x: ScopeRowItem) => x.o.value;
+const ScopeRow = memo(function ScopeRow({ kind, value, label, logoUrl, count, onPickScope }: {
+  kind: 'league' | 'country';
+  value: string;
+  label: string;
+  logoUrl?: string | null;
+  count: number;
+  onPickScope: (kind: 'league' | 'country', value: string) => void;
+}) {
+  return (
+    <GameRow
+      leading={
+        kind === 'league' && logoUrl ? (
+          <CachedImage uri={logoUrl} style={{ width: 24, height: 24 }} contentFit="contain" />
+        ) : kind === 'country' && logoUrl ? (
+          <Text style={{ fontSize: 18 }}>{logoUrl}</Text>
+        ) : (
+          <Ionicons name={kind === 'league' ? 'trophy' : 'flag'} size={18} color={theme.muted} />
+        )
+      }
+      label={label}
+      right={scopeCountChip(count)}
+      onPress={() => onPickScope(kind, value)}
+    />
+  );
+});
 function ScopeListPage({ kind, scopes, onPick }: {
   kind: 'league' | 'country';
   scopes: GameState['scopes'];
@@ -4542,15 +4703,33 @@ function ScopeListPage({ kind, scopes, onPick }: {
 }) {
   const allList = kind === 'league' ? scopes?.leagues ?? [] : scopes?.countries ?? [];
   const [search, setSearch] = useState('');
-  const optionLabel = (o: { value: string; displayName?: string }) => o.displayName ?? LEAGUE_DISPLAY[o.value] ?? o.value;
-  const filtered = search.trim()
-    ? allList.filter((o) => optionLabel(o).toLowerCase().includes(search.toLowerCase()))
-    : allList;
-  const countChip = (count: number) => (
-    <View style={{ backgroundColor: theme.cardLip, borderRadius: 8, borderWidth: 1, borderColor: theme.accentDark, paddingHorizontal: 7, paddingVertical: 2 }}>
-      <Text style={{ color: theme.accent, fontSize: 10, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{count}</Text>
-    </View>
+  // Etiketler bir kez normalize edilir (allList değişmedikçe) — eskiden her tuş
+  // vuruşu tüm liste için optionLabel().toLowerCase()'i yeniden koşturuyordu.
+  const indexed = useMemo(
+    () => allList.map((o) => { const label = scopeOptionLabel(o); return { o, label, lower: label.toLowerCase() }; }),
+    [allList],
   );
+  // Eski davranışla birebir: sorgu TRİMLENMEDEN normalize edilir, filtre yalnız
+  // trim'li hali doluysa uygulanır.
+  const q = search.trim() ? search.toLowerCase() : '';
+  const filtered = useMemo(() => (q ? indexed.filter((x) => x.lower.includes(q)) : indexed), [indexed, q]);
+  // onPick iki çağrı yerinde de inline closure — ref üzerinden sabitlenir ki
+  // memo'lu ScopeRow'lar parent her render olduğunda boşuna yeniden çizilmesin.
+  const onPickRef = useRef(onPick);
+  onPickRef.current = onPick;
+  const onPickScope = useCallback((k: 'league' | 'country', value: string) => onPickRef.current({ type: k, value }), []);
+  // autoFocus klavye istemini liste mount'u + ModalPager'ın 200ms kaymasıyla
+  // aynı frame'e bindiriyordu — focus 2 frame sonraya ertelenir: algılanmaz ama
+  // sayfa kayması akıcı kalır.
+  const searchRef = useRef<TextInput>(null);
+  useEffect(() => {
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(() => searchRef.current?.focus()); });
+    return () => { cancelAnimationFrame(raf1); if (raf2) cancelAnimationFrame(raf2); };
+  }, []);
+  const renderItem = useCallback(({ item }: { item: ScopeRowItem }) => (
+    <ScopeRow kind={kind} value={item.o.value} label={item.label} logoUrl={item.o.logoUrl} count={item.o.count} onPickScope={onPickScope} />
+  ), [kind, onPickScope]);
   return (
     <>
       <GameInput
@@ -4558,34 +4737,24 @@ function ScopeListPage({ kind, scopes, onPick }: {
         placeholder={kind === 'league' ? t('scope.searchLeague') : t('scope.searchCountry')}
         value={search}
         onChangeText={setSearch}
-        autoFocus
+        inputRef={searchRef}
       />
-      <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        {allList.length === 0 ? (
+      <FlatList
+        style={{ maxHeight: 320 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        data={filtered}
+        keyExtractor={scopeKeyExtractor}
+        renderItem={renderItem}
+        initialNumToRender={10}
+        windowSize={5}
+        ListEmptyComponent={allList.length === 0 ? (
           // Loading skeleton — never confused with "empty".
           <SkeletonRows rows={3} />
-        ) : filtered.length === 0 ? (
-          <EmptyState icon="search" title={t('common.noResults')} />
         ) : (
-          filtered.map((o) => (
-            <GameRow
-              key={o.value}
-              leading={
-                kind === 'league' && o.logoUrl ? (
-                  <CachedImage uri={o.logoUrl} style={{ width: 24, height: 24 }} contentFit="contain" />
-                ) : kind === 'country' && o.logoUrl ? (
-                  <Text style={{ fontSize: 18 }}>{o.logoUrl}</Text>
-                ) : (
-                  <Ionicons name={kind === 'league' ? 'trophy' : 'flag'} size={18} color={theme.muted} />
-                )
-              }
-              label={optionLabel(o)}
-              right={countChip(o.count)}
-              onPress={() => onPick({ type: kind === 'league' ? 'league' : 'country', value: o.value })}
-            />
-          ))
+          <EmptyState icon="search" title={t('common.noResults')} />
         )}
-      </ScrollView>
+      />
     </>
   );
 }
@@ -4855,6 +5024,10 @@ export function CountdownScreen({ state }: Props) {
   const scale = a.interpolate({ inputRange: [0, 1], outputRange: [2.4, 1] });
   return (
     <Screen>
+      {/* Animasyonlu WebP emote'larının oturum başına bir kez görünmez ısınması
+          (#28): ilk emote patlaması ve emote sayfası açılışı decode'a takılmasın.
+          Geri sayım doğal pencere — tur başlayınca ekran zaten unmount olur. */}
+      <EmoteWarmup />
       <View style={styles.center}>
         {/* Halka TAMAMEN yeşil kaplar: alt kenar da theme.primary (eskiden primaryDark
             koyu arka planda "kesik" görünüyordu). Üstte yalnız ince bir parlaklık kalır. */}
@@ -4931,6 +5104,16 @@ type LastPick =
   | { kind: 'country'; label: string; flag: string }
   | { kind: 'letter'; label: string };
 
+// Turkish-insensitive search: normalize İ→i, Ş→s, Ü→u, Ö→o, Ç→c, Ğ→g, ı→i.
+// Module scope + önceden normalize edilmiş NAT_INDEX: eskiden ülke seçicide her
+// tuş vuruşu 83 ülke × displayName+value için bu 7 zincirli regex'i yeniden
+// koşturuyordu — 10 sn'lik pick sayacı işlerken. Bir kez hesaplanır.
+const trLower = (s: string) =>
+  s.replace(/İ/g, 'i').replace(/I/g, 'i').replace(/ı/g, 'i')
+    .replace(/[ŞşŞ]/g, 's').replace(/[ÜüÜ]/g, 'u').replace(/[ÖöÖ]/g, 'o')
+    .replace(/[ÇçÇ]/g, 'c').replace(/[ĞğĞ]/g, 'g').toLowerCase();
+const NAT_INDEX = NATIONALITIES.map((n) => ({ n, d: trLower(n.displayName), v: trLower(n.value) }));
+
 export function PickTeamScreen({ state, actions, tutorial }: Props) {
   const [q, setQ] = useState('');
   const [countryQ, setCountryQ] = useState('');
@@ -4960,6 +5143,104 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   useEffect(() => {
     if (!state.picked) setLastPick(null);
   }, [state.picked]);
+
+  // Sarkan debounce: ekran unmount olduktan sonra timer patlayıp searchClubs/
+  // searchPlayers göndermesin.
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  // Tuş vuruşu (setQ/setCountryQ) koca ekranı yeniden çizer; grid/satır
+  // elemanları burada memo'lanır ki sonuçlar değişmedikçe AYNI element
+  // referansları dönsün — React kimliği değişmeyen elementin alt ağacını
+  // olduğu gibi atlar, klavye açıkken yalnız TextInput reconcile edilir.
+  // (Closure'lar actions/setLastPick'i sonuçların son değiştiği render'dan
+  // yakalar: setLastPick sabit bir setState, pick* yalnız send'i sarar — pick
+  // fazı ortasında kimlikleri değişse de davranışları değişmez.)
+  // NOT: Hook'lar aşağıdaki erken return'lerden ÖNCE koşmak zorunda (rules of
+  // hooks) — rolü olmayan listeler boş dizidir, maliyeti yok.
+  const clubCells = useMemo(() => {
+    return state.clubResults.map((c: ClubRef) => {
+      // Already picked in THIS match: dimmed, unpressable, lock badge. (Feature
+      // from the powers branch, restyled into Broadcast Prestige — no #000
+      // shadow and no 2px frame, which the redesign retired.)
+      const used = state.usedClubIds.includes(c.id);
+      return (
+        <Pressable
+          key={c.id}
+          disabled={used}
+          onPress={() => { setLastPick({ kind: 'team', label: c.name, logoUrl: c.logoUrl ?? null }); actions.pickTeam(c.id); }}
+          style={({ pressed }) => ({
+            width: '31.5%' as const, alignItems: 'center' as const, gap: 7,
+            backgroundColor: theme.surface2, borderRadius: 14,
+            borderTopWidth: 1, borderTopColor: theme.topLight,
+              paddingVertical: 12, paddingHorizontal: 4,
+            opacity: used ? 0.38 : 1,
+            ...shadowRow,
+            transform: [{ translateY: used ? 0 : pressed ? 2 : 0 }],
+          })}
+        >
+          <ClubBadge name={c.name} size={46} logoUrl={c.logoUrl} />
+          <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }} numberOfLines={2}>
+            {c.name}
+          </Text>
+          {used ? (
+            <View pointerEvents="none" style={{ position: 'absolute', top: 6, right: 6, width: 20, height: 20, borderRadius: 10, backgroundColor: theme.panelInk, borderTopWidth: 1, borderTopColor: theme.topLight, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="lock-closed" size={11} color={theme.muted} />
+            </View>
+          ) : null}
+        </Pressable>
+      );
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.clubResults, state.usedClubIds]);
+
+  const playerRows = useMemo(() => {
+    return state.playerResults.map((p: PlayerRef) => (
+      <GameRow
+        key={p.id}
+        leading={
+          p.imageUrl ? (
+            <CachedImage uri={p.imageUrl} style={{ width: 32, height: 32, borderRadius: 16 }} contentFit="cover" />
+          ) : (
+            <Ionicons name="person" size={18} color={theme.muted} />
+          )
+        }
+        label={p.name}
+        chevron
+        onPress={() => { setLastPick({ kind: 'player', label: p.name, imageUrl: p.imageUrl ?? null }); actions.pickPlayer(p.id); }}
+      />
+    ));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.playerResults]);
+
+  // Ülke listesi: sabit NAT_INDEX üzerinden filtre — sorgu render başına BİR
+  // kez normalize edilir. usedCountries dizisinin kimliği değil DEĞERİ dep'tir;
+  // reducer diziyi yeniden kursa bile memo boşa düşmez.
+  const usedCountriesKey = state.usedCountries.join('|');
+  const countryRows = useMemo(() => {
+    const nq = trLower(countryQ);
+    const list = countryQ.trim() ? NAT_INDEX.filter((x) => x.d.includes(nq) || x.v.includes(nq)) : NAT_INDEX;
+    return list.map(({ n }) => {
+      // Bu maçta seçilmiş ülke: karart + tıklanamaz + "seçildi" rozeti
+      const used = state.usedCountries.includes(n.value.trim().toLowerCase());
+      return (
+        <GameRow
+          key={n.value}
+          leading={<Text style={{ fontSize: 18 }}>{n.flag}</Text>}
+          label={n.displayName}
+          chevron={!used}
+          style={used ? { opacity: 0.4 } : undefined}
+          right={used ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.panelInnerFill, borderRadius: 999, borderWidth: 1, borderColor: theme.border, paddingHorizontal: 8, paddingVertical: 3 }}>
+              <Ionicons name="checkmark-done" size={12} color={theme.muted} />
+              <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-ExtraBold' }}>{t('pick.used').toLocaleUpperCase(currentLang())}</Text>
+            </View>
+          ) : undefined}
+          onPress={used ? undefined : () => { setLastPick({ kind: 'country', label: n.displayName, flag: n.flag }); actions.pickCountry(n.value); }}
+        />
+      );
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countryQ, usedCountriesKey]);
 
   // Top chrome shared by every pick state: exit button + opponent HUD, then a
   // SINGLE compact row (title left, timer right). The old stacked h1 + timer
@@ -5041,21 +5322,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
           autoFocus={!tutorial}
         />
         <ScrollView style={{ alignSelf: 'stretch', flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          {state.playerResults.map((p: PlayerRef) => (
-            <GameRow
-              key={p.id}
-              leading={
-                p.imageUrl ? (
-                  <CachedImage uri={p.imageUrl} style={{ width: 32, height: 32, borderRadius: 16 }} contentFit="cover" />
-                ) : (
-                  <Ionicons name="person" size={18} color={theme.muted} />
-                )
-              }
-              label={p.name}
-              chevron
-              onPress={() => { setLastPick({ kind: 'player', label: p.name, imageUrl: p.imageUrl ?? null }); actions.pickPlayer(p.id); }}
-            />
-          ))}
+          {playerRows}
           {state.playerResults.length === 0 && q.trim() ? (
             <EmptyState icon="search" title={t('common.noResults')} style={{ paddingVertical: 16 }} />
           ) : null}
@@ -5101,17 +5368,6 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
 
   // ---- Country picker ----
   if (role === 'country') {
-    // Turkish-insensitive search: normalize İ→i, Ş→s, Ü→u, Ö→o, Ç→c, Ğ→g, ı→i
-    const trLower = (s: string) =>
-      s.replace(/İ/g, 'i').replace(/I/g, 'i').replace(/ı/g, 'i')
-        .replace(/[ŞşŞ]/g, 's').replace(/[ÜüÜ]/g, 'u').replace(/[ÖöÖ]/g, 'o')
-        .replace(/[ÇçÇ]/g, 'c').replace(/[ĞğĞ]/g, 'g').toLowerCase();
-    const filtered = countryQ.trim()
-      ? NATIONALITIES.filter((n) => {
-          const q = trLower(countryQ);
-          return trLower(n.displayName).includes(q) || trLower(n.value).includes(q);
-        })
-      : NATIONALITIES;
     return (
       <Screen>
         {header(t('pick.titleCountry'))}
@@ -5123,27 +5379,8 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
           autoFocus={!tutorial}
         />
         <ScrollView style={{ alignSelf: 'stretch', flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          {filtered.map((n) => {
-            // Bu maçta seçilmiş ülke: karart + tıklanamaz + "seçildi" rozeti
-            const used = state.usedCountries.includes(n.value.trim().toLowerCase());
-            return (
-              <GameRow
-                key={n.value}
-                leading={<Text style={{ fontSize: 18 }}>{n.flag}</Text>}
-                label={n.displayName}
-                chevron={!used}
-                style={used ? { opacity: 0.4 } : undefined}
-                right={used ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.panelInnerFill, borderRadius: 999, borderWidth: 1, borderColor: theme.border, paddingHorizontal: 8, paddingVertical: 3 }}>
-                    <Ionicons name="checkmark-done" size={12} color={theme.muted} />
-                    <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-ExtraBold' }}>{t('pick.used').toLocaleUpperCase(currentLang())}</Text>
-                  </View>
-                ) : undefined}
-                onPress={used ? undefined : () => { setLastPick({ kind: 'country', label: n.displayName, flag: n.flag }); actions.pickCountry(n.value); }}
-              />
-            );
-          })}
-          {filtered.length === 0 && countryQ.trim() ? (
+          {countryRows}
+          {countryRows.length === 0 && countryQ.trim() ? (
             <EmptyState icon="search" title={t('common.noResults')} style={{ paddingVertical: 16 }} />
           ) : null}
         </ScrollView>
@@ -5170,38 +5407,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
         contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', gap: 8, paddingVertical: 8 }}
         showsVerticalScrollIndicator={false}
       >
-        {state.clubResults.map((c: ClubRef) => {
-          // Already picked in THIS match: dimmed, unpressable, lock badge. (Feature
-          // from the powers branch, restyled into Broadcast Prestige — no #000
-          // shadow and no 2px frame, which the redesign retired.)
-          const used = state.usedClubIds.includes(c.id);
-          return (
-            <Pressable
-              key={c.id}
-              disabled={used}
-              onPress={() => { setLastPick({ kind: 'team', label: c.name, logoUrl: c.logoUrl ?? null }); actions.pickTeam(c.id); }}
-              style={({ pressed }) => ({
-                width: '31.5%' as const, alignItems: 'center' as const, gap: 7,
-                backgroundColor: theme.surface2, borderRadius: 14,
-                borderTopWidth: 1, borderTopColor: theme.topLight,
-                  paddingVertical: 12, paddingHorizontal: 4,
-                opacity: used ? 0.38 : 1,
-                ...shadowRow,
-                transform: [{ translateY: used ? 0 : pressed ? 2 : 0 }],
-              })}
-            >
-              <ClubBadge name={c.name} size={46} logoUrl={c.logoUrl} />
-              <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }} numberOfLines={2}>
-                {c.name}
-              </Text>
-              {used ? (
-                <View pointerEvents="none" style={{ position: 'absolute', top: 6, right: 6, width: 20, height: 20, borderRadius: 10, backgroundColor: theme.panelInk, borderTopWidth: 1, borderTopColor: theme.topLight, alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="lock-closed" size={11} color={theme.muted} />
-                </View>
-              ) : null}
-            </Pressable>
-          );
-        })}
+        {clubCells}
         {state.clubResults.length === 0 && q.trim() ? (
           <EmptyState icon="search" title={t('common.noResults')} style={{ width: '100%', paddingVertical: 16 }} />
         ) : null}
@@ -5238,13 +5444,60 @@ function GuessStatusPanel({ icon, iconColor, stripe, text }: { icon: IoniconName
   );
 }
 
+// Tahmin input'unun state'i BURADA yaşar: her tuş vuruşu yalnız bu küçük alt
+// ağacı yeniden çizer — koca GuessScreen (takım kartları, MatchTimer, emote
+// katmanı, PlayerBar) WS state değişmeden reconcile edilmez; hızlı yazan biri
+// sayaç işlerken saniyede ~10 tam ekran render'ı ödemesin. textRef taslağı
+// unmount/remount boyunca korur: wrongopen akışında rakip cevap kilidi alıp
+// yanılınca input geri gelir — eski ekran-kökü state'iyle birebir aynı davranış.
+// İlk-geçerli-cevap-kazanır kuralı ve kilit davranışı DEĞİŞMEZ: youAnswered/
+// editable/disabled mantığı ve submit çağrıları aynen buradadır.
+function GuessControls({ placeholder, youAnswered, tutorial, onSubmit, onPass, textRef }: {
+  placeholder: string;
+  youAnswered: boolean;
+  tutorial?: boolean;
+  onSubmit: (guess: string) => void;
+  onPass: () => void;
+  textRef: { current: string };
+}) {
+  const [text, setTextState] = useState(textRef.current);
+  const setText = (v: string) => { textRef.current = v; setTextState(v); };
+  return (
+    <>
+      <GameInput
+        placeholder={placeholder}
+        value={text}
+        onChangeText={setText}
+        autoFocus={!tutorial}
+        editable={!youAnswered && !tutorial}
+        returnKeyType="send"
+        onSubmitEditing={() => text.trim() && onSubmit(text.trim())}
+      />
+      <Btn
+        label={t('guess.send')}
+        icon="send"
+        onPress={() => onSubmit(text.trim())}
+        disabled={!text.trim() || youAnswered}
+      />
+      <View style={{ height: 8 }} />
+      <Btn
+        label={t('guess.pass')}
+        kind="ghost"
+        icon="play-skip-forward"
+        onPress={onPass}
+        disabled={youAnswered}
+      />
+    </>
+  );
+}
+
 export function GuessScreen({ state, actions, tutorial, prefill }: Props & { prefill?: string }) {
   // Tutorial: the answer arrives PRE-FILLED and locked — the player only taps
   // Send. `prefill` overrides the tutorial's real name: DevShot marketing
   // captures must show the FICTIONAL player (4.1 — real names in store
   // screenshots were cited in the v1.0 rejection), while the in-app tutorial
   // keeps Sneijder.
-  const [text, setText] = useState(prefill ?? (tutorial ? 'Wesley Sneijder' : ''));
+  const guessTextRef = useRef(prefill ?? (tutorial ? 'Wesley Sneijder' : ''));
   const teams = state.teams;
   const room = state.room!;
   const youAnswered = state.locked?.byId === room.youId;
@@ -5390,28 +5643,13 @@ export function GuessScreen({ state, actions, tutorial, prefill }: Props & { pre
                   <Text style={styles.passHintText}>{t('guess.oppWrong', { name: state.oppWrong.byName, guess: state.oppWrong.guess })}</Text>
                 </View>
               ) : null}
-              <GameInput
+              <GuessControls
                 placeholder={state.revealMode === 'player-player' ? t('guess.placeholderClub') : t('guess.placeholder')}
-                value={text}
-                onChangeText={setText}
-                autoFocus={!tutorial}
-                editable={!youAnswered && !tutorial}
-                returnKeyType="send"
-                onSubmitEditing={() => text.trim() && actions.submitGuess(text.trim())}
-              />
-              <Btn
-                label={t('guess.send')}
-                icon="send"
-                onPress={() => actions.submitGuess(text.trim())}
-                disabled={!text.trim() || youAnswered}
-              />
-              <View style={{ height: 8 }} />
-              <Btn
-                label={t('guess.pass')}
-                kind="ghost"
-                icon="play-skip-forward"
-                onPress={actions.pass}
-                disabled={youAnswered}
+                youAnswered={youAnswered}
+                tutorial={tutorial}
+                onSubmit={actions.submitGuess}
+                onPass={actions.pass}
+                textRef={guessTextRef}
               />
             </>
           )}
@@ -6153,7 +6391,31 @@ function EmoteShopTile({ emote, owned, width, onPress }: {
   );
 }
 
-export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebration }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | 'top' | null }) {
+// Mağaza + koleksiyonda listelenen güç kimlikleri — render başına yeni dizi
+// kurmamak için modül sabiti (sıra, iki listede de aynen bu).
+const POWER_ID_LIST: PowerId[] = ['xp2x', 'shield', 'streak', 'training', 'socialtoken'];
+
+// Kıtlık kaydı ↔ dilim-memo el sıkışması: StoreScreen artık memo'lu (aşağıdaki
+// karşılaştırıcı) ve take-once kıtlık yuvasını tüketen depsiz efekt RENDER'a
+// bağımlı. İkinci bir kıtlık aynı scrollToSection/profil ile gelirse hiçbir
+// karşılaştırılan prop değişmez ve memo efekti aç bırakırdı (popup kaybolur,
+// bayat pending sonraki ziyarette Apple Pay açardı). Bu yüzden her kayıt bu
+// sayacı artırır; karşılaştırıcı sayaç tüketilmemişken bilerek false döner
+// (render → efekt yuvayı alır → sayaç eşitlenir → memo yeniden tutar).
+let shortfallArrivalSeq = 0;
+let shortfallConsumedSeq = 0;
+function recordShortfall(missing: number): void {
+  setPendingShortfall(missing);
+  shortfallArrivalSeq++;
+}
+
+// DİLİM-MEMO SÖZLEŞMESİ: StoreScreen state'ten YALNIZ `state.profile` okur
+// (notice/error mağaza sekmesinde çizilmez — bkz. adReward yorumu). Ekrana yeni
+// bir `state.X` okuması eklersen aşağıdaki karşılaştırıcıya da eklemek
+// ZORUNDASIN; yoksa ekran o alana karşı körleşir. `actions` kimliğinin sabit
+// olması useCrossover'daki actions-useMemo'suna dayanır (sabit değilse memo
+// zararsız bir no-op'a düşer — eski davranış).
+export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToSection, onDiamondCelebration }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | 'top' | null }) {
   const profile = state.profile;
   // One skinned dialog for every store notice (pending/failed/coming-soon/ad errors) —
   // replaces the five native Alert.alert sites. Content stays mounted through the
@@ -6263,8 +6525,18 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
       }
     }).catch(() => {});
   }, [connected, fetchProducts]);
-  const priceFor = (productId: string, fallback: string) =>
-    (([...(products as { id?: string; displayPrice?: string }[]), ...(subscriptions as { id?: string; displayPrice?: string }[])]).find((p) => p.id === productId)?.displayPrice) ?? fallback;
+  // Fiyat sözlüğü: render başına ~12 priceFor çağrısı vardı ve her biri
+  // [...products, ...subscriptions] dizisini yeniden kurup lineer arıyordu.
+  // Ürün listeleri değişince BİR kez Map kurulur; ilk eşleşme kazanır ve
+  // displayPrice'sız kayıt da yuvayı tutar — eski find() ile birebir aynı sonuç.
+  const priceMap = useMemo(() => {
+    const m = new Map<string, string | undefined>();
+    for (const p of [...(products as { id?: string; displayPrice?: string }[]), ...(subscriptions as { id?: string; displayPrice?: string }[])]) {
+      if (p.id != null && !m.has(p.id)) m.set(p.id, p.displayPrice);
+    }
+    return m;
+  }, [products, subscriptions]);
+  const priceFor = (productId: string, fallback: string) => priceMap.get(productId) ?? fallback;
   const buy = useCallback((productId: string) => {
     if (buying) return;
     // Until the product exists in App Store Connect it won't load — show a gentle
@@ -6281,6 +6553,42 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
   // its dependency chain.
   const buyRef = useRef(buy); buyRef.current = buy;
 
+  // ── Kıtlık → StoreKit el sıkışması: OLAY GÜDÜMLÜ, kör zamanlayıcı değil ──
+  // Eski akış "yetersiz elmas" penceresini açıp 380ms kör setTimeout ile sayfayı
+  // ateşliyordu: her seferinde ~350ms ölü bekleme, üstelik kuyruklu sunumlarda
+  // (ör. Seviye Yolu'nun slide kapanışı modalTraffic'te pencereyi 340ms tutar)
+  // yarış payı ~40ms'e düşüyordu. Şimdi bekleyen ürün bir ref'te durur ve
+  // pencerenin GERÇEK native sunumu (GameModal onShown ← RN Modal onShow)
+  // ateşler — sayfa asla sunumdan önce açılamaz. İki emniyet:
+  //  1) pencere ZATEN sunuluysa (ikinci kıtlık aynı pencereye gelir, visible
+  //     false→true geçişi yok → onShow tekrar GELMEZ) bir sonraki karede ateşle;
+  //  2) onShown hiç gelmezse 600ms'lik tek atımlık taban zamanlayıcı eski
+  //     davranışı korur — asla asılı kalmaz. Olay/zamanlayıcıdan önce çalışan
+  //     diğerini iptal eder ve ürün kimliği ateşlemeden ÖNCE boşaltılır:
+  //     çift ateşleme yapısal olarak imkânsız (buy'ın kendi `buying` kilidi de
+  //     ayrıca durur).
+  const pendingBuyRef = useRef<string | null>(null);
+  const notEnoughShownRef = useRef(false); // pencere şu an native sunulu mu (onShown/onExited günceller)
+  const pendingBuyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firePendingBuy = useCallback(() => {
+    if (pendingBuyTimerRef.current) { clearTimeout(pendingBuyTimerRef.current); pendingBuyTimerRef.current = null; }
+    const pid = pendingBuyRef.current;
+    if (pid == null) return;
+    pendingBuyRef.current = null;
+    buyRef.current(pid);
+  }, []);
+  // Ortak kıtlık dizisi — dört çağrı yeri (ekranlar arası varış, güç / CO Pass /
+  // ifade onayı) aynı akışı paylaşır: popup'ı aç, sayfayı sunum-sonrasına kuyrukla.
+  const openShortfallSheet = useCallback((missing: number) => {
+    const pack = packForShortfall(missing);
+    setShortfall({ missing, productId: pack.productId });
+    setShowNotEnough(true);
+    pendingBuyRef.current = pack.productId;
+    if (pendingBuyTimerRef.current) { clearTimeout(pendingBuyTimerRef.current); pendingBuyTimerRef.current = null; }
+    if (notEnoughShownRef.current) requestAnimationFrame(firePendingBuy);
+    else pendingBuyTimerRef.current = setTimeout(firePendingBuy, 600);
+  }, [firePendingBuy]);
+
   // Cross-screen insufficient-diamonds arrivals (avatar, name change, level
   // road): a caller recorded its shortfall and jumped here — open the covering
   // pack's sheet with the AL/VAZGEC popup behind it, same as the emote flow.
@@ -6289,14 +6597,15 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
   // the same section (avatar shortfall twice → storeSection already 'diamonds'
   // → effect never re-ran → no popup, and the stale pending value opened an
   // Apple Pay sheet on a later, unrelated store visit). No cleanup either: the
-  // popup's own re-render would cancel the 380ms sheet timer.
+  // pending-buy handoff lives in refs outside this effect, so there is nothing
+  // a re-run could cancel.
   useEffect(() => {
+    // Sayaç ÖNCE eşitlenir (yuva boş olsa bile): memo karşılaştırıcısı yeniden
+    // tutmaya başlar; yeni bir kayıt sayacı tekrar artırıp render'ı zorlar.
+    shortfallConsumedSeq = shortfallArrivalSeq;
     const missing = takePendingShortfall();
     if (missing == null) return;
-    const pack = packForShortfall(missing);
-    setShortfall({ missing, productId: pack.productId });
-    setShowNotEnough(true);
-    setTimeout(() => buyRef.current(pack.productId), 380);
+    openShortfallSheet(missing);
   });
 
   // Guideline 3.1.1: a DISTINCT, user-initiated Restore. The launch-time replay in
@@ -6347,6 +6656,10 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
 
   // Does the user have a Social Pack right now (server-authoritative expiry)?
   const hasActivePack = !!(profile?.socialPackUntil && new Date(profile.socialPackUntil) > new Date());
+
+  // Haftalık vitrin grupları: emoteWeeks() statik PREMIUM_EMOTES üzerinde saf
+  // bir gruplama — her render'da Map + sort yapmak yerine bir kez kurulur.
+  const weeks = useMemo(() => emoteWeeks(), []);
 
   // "Not enough gems" dialog (weekly emote shop) — its CTA deep-links to the packs.
   const [showNotEnough, setShowNotEnough] = useState(false);
@@ -6543,7 +6856,7 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
         {/* Haftalık ifade dükkanı — sıralama kullanıcı kararı: Sosyal Paket'in
             hemen altında, elmasların üstünde (satışlar burada — koleksiyonda değil) */}
         <Animated.View style={sectionIn(1)}>
-          {emoteWeeks().map(({ week, emotes }) => {
+          {weeks.map(({ week, emotes }) => {
             // Sahip olunan ifadeler vitrinde GÖSTERİLMEZ — yalnız alınabilir olanlar
             const unowned = emotes.filter((e) => !ownsEmote(profile, e.id));
             if (unowned.length === 0) return null;
@@ -6586,7 +6899,7 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
         {/* Güçler — tek kullanımlık, stoklanabilir; Seviye Yolu dışında buradan da alınır */}
         <Animated.View style={sectionIn(2)}>
           <SectionHeader label={t('store.powers')} icon="flash" />
-          {(['xp2x', 'shield', 'streak', 'training', 'socialtoken'] as PowerId[]).map((pid) => {
+          {POWER_ID_LIST.map((pid) => {
             const price = POWER_PRICES[pid];
             const count = pid === 'xp2x' ? (profile?.powerXp2x ?? 0) : pid === 'shield' ? (profile?.powerShield ?? 0) : pid === 'streak' ? (profile?.powerStreak ?? 0) : pid === 'training' ? (profile?.powerTraining ?? 0) : (profile?.powerSocialToken ?? 0);
             return (
@@ -6673,7 +6986,13 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
           Apple Pay lands back here rather than on a blank screen, and "Al" can
           re-open the sheet. Without a known shortfall it degrades to the old
           "go to the diamond packs" behaviour. */}
-      <GameModal visible={showNotEnough} onClose={() => { setShowNotEnough(false); setShortfall(null); }} title={t('store.notEnoughGemsTitle')} icon="diamond">
+      <GameModal
+        visible={showNotEnough}
+        onClose={() => { setShowNotEnough(false); setShortfall(null); }}
+        // Sunum GERÇEKTEN tamamlandı → bekleyen StoreKit alımı şimdi güvenle açılabilir.
+        onShown={() => { notEnoughShownRef.current = true; firePendingBuy(); }}
+        onExited={() => { notEnoughShownRef.current = false; }}
+        title={t('store.notEnoughGemsTitle')} icon="diamond">
         {shortfall ? (() => {
           const pack = DIAMOND_PACKS.find((p) => p.productId === shortfall.productId) ?? DIAMOND_PACKS[0]!;
           return (
@@ -6729,11 +7048,8 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
           const m = powerShortfall.current;
           if (m == null) return;
           powerShortfall.current = null;
-          const pack = packForShortfall(m);
-          setShortfall({ missing: m, productId: pack.productId });
-          setShowNotEnough(true);
-          // Popup first; sheet after its presentation settles (see emote flow).
-          setTimeout(() => buyRef.current(pack.productId), 380);
+          // Popup önce; StoreKit sayfası popup'ın GERÇEK sunum sinyaliyle (kör 380ms değil).
+          openShortfallSheet(m);
         }}
         title={confirmPower ? t(POWERS[confirmPower].nameKey).toLocaleUpperCase(currentLang()) : ''}
         icon={confirmPower ? POWERS[confirmPower].icon : 'flash'}
@@ -6766,10 +7082,7 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
           if (a === 'notEnough') {
             const m = coPassMissing.current ?? PREMIUM_ROAD_PRICE;
             coPassMissing.current = null;
-            const pack = packForShortfall(m);
-            setShortfall({ missing: m, productId: pack.productId });
-            setShowNotEnough(true);
-            setTimeout(() => buyRef.current(pack.productId), 380);
+            openShortfallSheet(m); // popup oturunca StoreKit (kör 380ms değil)
           }
           else if (a === 'buyMoney') buy(COPASS_PRODUCT_ID);
         }}
@@ -6796,17 +7109,11 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
           const m = notEnoughOnExit.current;
           if (m == null) return;
           notEnoughOnExit.current = null;
-          const pack = packForShortfall(m);
-          setShortfall({ missing: m, productId: pack.productId });
-          setShowNotEnough(true);
-          // Popup FIRST; the sheet only after the popup's native presentation
-          // has settled (380ms — the same sequencing the cross-screen arrival
-          // effect uses). Calling buy() in the same tick raced the popup's
-          // presentation against the StoreKit sheet (or, with products not yet
-          // loaded, mounted the coming-soon GameModal in the SAME commit as
-          // this popup) — iOS wedged the presentation and every touch/scroll
-          // died. Cancelling Apple Pay still lands back on this popup.
-          setTimeout(() => buyRef.current(pack.productId), 380);
+          // Popup FIRST; StoreKit sayfası popup'ın gerçek sunum sinyaliyle
+          // (openShortfallThenBuy). Aynı tick'te buy() çağırmak popup sunumunu
+          // StoreKit sayfasıyla yarıştırıyordu — iOS sunumu kilitleyip tüm
+          // dokunuşları öldürüyordu. Apple Pay iptali yine bu popup'a döner.
+          openShortfallSheet(m);
         }} title={t('store.confirmBuyTitle')} icon="cart">
         {confirmEmote ? (
           <View style={{ alignItems: 'center', gap: 10 }}>
@@ -6864,7 +7171,15 @@ export function StoreScreen({ state, actions, scrollToSection, onDiamondCelebrat
       {buying ? <PurchaseOverlay /> : null}
     </Screen>
   );
-}
+}, (p, n) =>
+  // Sözleşme yukarıdaki blok yorumunda. Bekleyen kıtlık varken bilerek render'a
+  // düşülür (take-once efektin çalışması render ister).
+  shortfallConsumedSeq === shortfallArrivalSeq &&
+  p.state.profile === n.state.profile &&
+  p.actions === n.actions &&
+  p.scrollToSection === n.scrollToSection &&
+  p.onDiamondCelebration === n.onDiamondCelebration
+);
 
 // Mid-payment wait: a GameModal-anatomy card (panelInk ring → gold frame → card
 // face with cardLip lip) carrying the REAL BrandMark. 150ms scrim fade + spring
@@ -7117,9 +7432,14 @@ function FlyingEmote({ flight, onEnd }: { flight: EmoteFlight; onEnd: (key: numb
 // Owned-emote card — dokun: animasyon KARTTA oynar (statik dinlenme hali) ve
 // altına birleşik KULLAN flap'i çıkar; kuşanma yalnız flap'e basınca olur.
 // KULLAN, çıkartma kutusunu ölçüp konumu üst katmana verir (uçuş oradan başlar).
-function CollectibleEmoteCard({ emote, width, isEquipped, blocked, active, onPreview, onUse, onRemove }: {
+// memo — kardeşi DiscoverableEmoteCard ile aynı sözleşme: emote modül-sabiti
+// dizilerden gelir (kimliği sabit), callback'ler CollectionScreen'de sabitlenir;
+// bir önizleme dokunuşu artık yalnız etkilenen 2 kartı yeniden çizer. onUse /
+// onRemove bu yüzden emote'u parametre olarak GERİ verir (kart başına closure
+// üretilmesin diye).
+const CollectibleEmoteCard = memo(function CollectibleEmoteCard({ emote, width, isEquipped, blocked, active, onPreview, onUse, onRemove }: {
   emote: EmoteMeta; width: number; isEquipped: boolean; blocked: boolean;
-  active: boolean; onPreview: (id: string | null) => void; onUse: (from: FlightRect | null) => void; onRemove: () => void;
+  active: boolean; onPreview: (id: string | null) => void; onUse: (e: EmoteMeta, from: FlightRect | null) => void; onRemove: (id: string) => void;
 }) {
   const stickerBoxRef = useRef<View>(null);
   const ring = useRef(new Animated.Value(0)).current;
@@ -7173,16 +7493,16 @@ function CollectibleEmoteCard({ emote, width, isEquipped, blocked, active, onPre
         tone={isEquipped ? 'danger' : 'primary'}
         disabled={flapDisabled}
         onPress={() => {
-          if (isEquipped) { onRemove(); onPreview(null); return; }
+          if (isEquipped) { onRemove(emote.id); onPreview(null); return; }
           const node = stickerBoxRef.current;
-          if (node) node.measureInWindow((x, y, w, h) => onUse({ x, y, w, h }));
-          else onUse(null); // ölçüm yolu yoksa animasyonsuz kuşan — işlev asla kaybolmaz
+          if (node) node.measureInWindow((x, y, w, h) => onUse(emote, { x, y, w, h }));
+          else onUse(emote, null); // ölçüm yolu yoksa animasyonsuz kuşan — işlev asla kaybolmaz
           onPreview(null);
         }}
       />
     </View>
   );
-}
+});
 
 // ---- Collection (emotes / loadout) ----
 const EMOTE_SLOTS = 8;
@@ -7221,7 +7541,7 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
   // Koleksiyonda YALNIZ sahip olunan (adet>0) ya da AKTİF (kuşanılı kalkan /
   // süren 2xXP·Antrenman) güçler görünür — sahip olunmayan hiçbir şekilde gösterilmez.
   const isActive = (id: PowerId) => (id === 'xp2x' ? boostActive : id === 'shield' ? armed : id === 'training' ? trainingActive : false);
-  const visiblePowers = (['xp2x', 'shield', 'streak', 'training', 'socialtoken'] as PowerId[]).filter((id) => counts[id] > 0 || isActive(id));
+  const visiblePowers = POWER_ID_LIST.filter((id) => counts[id] > 0 || isActive(id));
 
   const renderCard = (id: PowerId) => {
     const meta = POWERS[id];
@@ -7345,7 +7665,11 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
   );
 }
 
-export function CollectionScreen({ state, actions }: Props) {
+// DİLİM-MEMO SÖZLEŞMESİ (StoreScreen'dekiyle aynı kural): CollectionScreen
+// state'ten YALNIZ `state.profile` okur. Ekrana yeni bir `state.X` okuması
+// eklersen aşağıdaki karşılaştırıcıya da eklemek ZORUNDASIN. `actions` sabitliği
+// useCrossover'daki actions-useMemo'suna dayanır (değilse memo no-op'a düşer).
+export const CollectionScreen = memo(function CollectionScreen({ state, actions }: Props) {
   const { width: winW } = useWindow();
   const profile = state.profile;
   const equipped = profile?.equippedEmotes ?? [];
@@ -7436,6 +7760,17 @@ export function CollectionScreen({ state, actions }: Props) {
     });
   };
 
+  // Kart callback'leri sabit kimlikli — memo(CollectibleEmoteCard) ancak böyle
+  // tutar (önizleme dokunuşu artık yalnız etkilenen 2 kartı çizer; ws dispatch
+  // ızgarayı komple atlar). startFlight/toggleEquip her render'da tazelenir
+  // (equipped/flights yakalar); en-son-değer ref'i sayesinde sabit sarmalayıcı
+  // basış anında DAİMA güncel fonksiyonu çağırır — bayat closure imkânsız.
+  const startFlightRef = useRef(startFlight); startFlightRef.current = startFlight;
+  const toggleEquipRef = useRef(toggleEquip); toggleEquipRef.current = toggleEquip;
+  const onCardPreview = useCallback((id: string | null) => { setPreviewId(id); setSlotSel(null); }, []);
+  const onCardUse = useCallback((e: EmoteMeta, from: FlightRect | null) => startFlightRef.current(e, from), []);
+  const onCardRemove = useCallback((id: string) => toggleEquipRef.current(id), []);
+
   // Collectible sticker emotes the player owns: the 4 character faces (free) + any
   // owned premium + the animated emotes they've been granted. Quick-chat TEXT
   // phrases are NOT collectible and never appear here. Nothing is "pinned" — the
@@ -7472,9 +7807,9 @@ export function CollectionScreen({ state, actions }: Props) {
         isEquipped={isEquipped}
         blocked={blocked}
         active={previewId === e.id}
-        onPreview={(id) => { setPreviewId(id); setSlotSel(null); }}
-        onUse={(from) => startFlight(e, from)}
-        onRemove={() => toggleEquip(e.id)}
+        onPreview={onCardPreview}
+        onUse={onCardUse}
+        onRemove={onCardRemove}
       />
     );
   };
@@ -7616,7 +7951,7 @@ export function CollectionScreen({ state, actions }: Props) {
       </View>
     </Screen>
   );
-}
+}, (p, n) => p.state.profile === n.state.profile && p.actions === n.actions);
 
 // (Sender-side waiting UI is now the OutgoingInviteBanner top strip in App.tsx —
 // the old InviteWaitingModal blocked the whole Friends screen for 30s.)
@@ -8011,6 +8346,73 @@ function SpringPop({ style, children }: { style?: any; children: ReactNode }) {
   );
 }
 
+// ---- Arkadaş / sohbet satırları — memo'lu, YALNIZ ilkel props ----
+// Ekleme girişi + mesaj araması FriendsScreen'in kendi state'i: her tuş vuruşu
+// ve her typing/presence dispatch'i tüm ekranı yeniden çizer(di). Satırlar ilkel
+// props'lu memo bileşenlere çekilince bu render'lar satır alt-ağaçlarını atlar —
+// yalnız kendi metni/durumu/typing/unread'i değişen satır çizilir.
+// statusText/timeText BİLEREK ebeveynde hesaplanır: memo'lu satırın içinde
+// hesaplansaydı props'u hiç değişmeyen satır "5 dk önce"de sonsuza dek donardı;
+// ebeveynin her render'ı ucuz string'i tazeler, memo da string'i karşılaştırır.
+const FriendRow = memo(function FriendRow({ userId, displayName, online, trophies, statusText, avatarId, frameId, onMenu }: {
+  userId: string; displayName: string; online: boolean; trophies: number; statusText: string;
+  avatarId?: string | null; frameId?: string | null;
+  onMenu: (userId: string, x: number, y: number) => void;
+}) {
+  return (
+    <BevelRow
+      onPress={(e) => onMenu(userId, e.nativeEvent.pageX, e.nativeEvent.pageY)}
+      ring={online ? theme.primary : undefined}
+      outerStyle={{ marginBottom: 8 }}
+      style={{ gap: 12 }}
+    >
+      <View style={{ position: 'relative' }}>
+        <AvatarBadge avatarId={avatarId} size={38} ringColor={theme.accent} frameId={frameId} />
+        {online ? <View style={{ position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15, ...engrave('sm') }} numberOfLines={1}>{displayName}</Text>
+        <Text style={{ color: online ? theme.primary : theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }} numberOfLines={1}>{statusText}</Text>
+      </View>
+      {/* Trophy on the far right */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.surface1, borderRadius: 12, borderTopWidth: 1, borderTopColor: theme.topLight, paddingHorizontal: 9, paddingVertical: 5 }}>
+        <Ionicons name="trophy" size={13} color={theme.gold} />
+        <Text style={{ color: theme.gold, fontFamily: 'Poppins-ExtraBold', fontSize: 13, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{trophies}</Text>
+      </View>
+    </BevelRow>
+  );
+});
+
+const ConversationRow = memo(function ConversationRow({ userId, displayName, online, typing, unreadCount, lastMessage, timeText, avatarId, frameId, onOpen }: {
+  userId: string; displayName: string; online: boolean; typing: boolean; unreadCount: number;
+  lastMessage: string; timeText: string; avatarId?: string | null; frameId?: string | null;
+  onOpen: (userId: string) => void;
+}) {
+  return (
+    <BevelRow
+      onPress={() => onOpen(userId)}
+      ring={unreadCount > 0 ? theme.primary : undefined}
+      wash={unreadCount > 0}
+      outerStyle={{ marginBottom: 8 }}
+    >
+      <View style={{ position: 'relative' }}>
+        <AvatarBadge avatarId={avatarId} size={44} ringColor={online ? theme.primary : theme.border} frameId={frameId} />
+        {online ? <View style={{ position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14, ...engrave('sm') }} numberOfLines={1}>{displayName}</Text>
+        <Text style={{ color: typing ? theme.primary : unreadCount > 0 ? theme.text : theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold' }} numberOfLines={1}>
+          {typing ? t('chat.typing') : lastMessage}
+        </Text>
+      </View>
+      <View style={{ alignItems: 'flex-end', gap: 4 }}>
+        <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{timeText}</Text>
+        <CountBadge count={unreadCount} />
+      </View>
+    </BevelRow>
+  );
+});
+
 export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }: Props) {
   const [addInput, setAddInput] = useState('');
   const [searchMode, setSearchMode] = useState<'code' | 'username'>('code');
@@ -8049,6 +8451,22 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
   const profile = state.profile;
   const hasSocialPack = profile?.socialPackUntil ? new Date(profile.socialPackUntil) > new Date() : false;
   const friends = state.friends;
+
+  // Memo'lu satırların sabit kimlikli handler'ları. En-son-değer ref kalıbı:
+  // actions/friends her render'da tazelenebilir, sarmalayıcı basış anında DAİMA
+  // güncelini kullanır (bayat closure imkânsız). Menü, satırdaki f nesnesini
+  // kapatmak yerine userId ile en güncel listeden bulur — arkadaş bu arada
+  // listeden düştüyse sessizce vazgeçer (eskisi bayat nesneyle açardı).
+  const actionsRef = useRef(actions); actionsRef.current = actions;
+  const friendsRef = useRef(friends); friendsRef.current = friends;
+  const onOpenChat = useCallback((userId: string) => actionsRef.current.openChat(userId), []);
+  const onFriendMenu = useCallback((userId: string, x: number, y: number) => {
+    const f = friendsRef.current.find((fr) => fr.userId === userId);
+    if (!f) return;
+    menuActionLock.current = false;
+    setMenuPos({ x, y });
+    setMenuFriend(f);
+  }, []);
 
   // Auto-clear the transient "request sent" notice.
   useEffect(() => {
@@ -8261,28 +8679,19 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                 cta={<Btn label={t('friends.search')} kind="ghost" icon="search" onPress={() => msgSearchRef.current?.focus()} />}
               />
             ) : state.conversations.map(c => (
-              <BevelRow
+              <ConversationRow
                 key={c.userId}
-                onPress={() => actions.openChat(c.userId)}
-                ring={c.unreadCount > 0 ? theme.primary : undefined}
-                wash={c.unreadCount > 0}
-                outerStyle={{ marginBottom: 8 }}
-              >
-                <View style={{ position: 'relative' }}>
-                  <AvatarBadge avatarId={c.avatar ?? c.selectedAvatar} size={44} ringColor={c.online ? theme.primary : theme.border} frameId={c.frame} />
-                  {c.online ? <View style={{ position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14, ...engrave('sm') }} numberOfLines={1}>{c.displayName}</Text>
-                  <Text style={{ color: state.typingFrom[c.userId] ? theme.primary : c.unreadCount > 0 ? theme.text : theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold' }} numberOfLines={1}>
-                    {state.typingFrom[c.userId] ? t('chat.typing') : c.lastMessage}
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                  <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{shortDate(c.lastMessageAt)}</Text>
-                  <CountBadge count={c.unreadCount} />
-                </View>
-              </BevelRow>
+                userId={c.userId}
+                displayName={c.displayName}
+                online={c.online}
+                typing={!!state.typingFrom[c.userId]}
+                unreadCount={c.unreadCount}
+                lastMessage={c.lastMessage}
+                timeText={shortDate(c.lastMessageAt)}
+                avatarId={c.avatar ?? c.selectedAvatar}
+                frameId={c.frame}
+                onOpen={onOpenChat}
+              />
             ))}
           </>
         ) : /* Friends tab */ friends.length === 0 ? (
@@ -8294,27 +8703,17 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
           />
         ) : (
           friends.map((f) => (
-            <BevelRow
+            <FriendRow
               key={f.userId}
-              onPress={(e) => { menuActionLock.current = false; setMenuPos({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY }); setMenuFriend(f); }}
-              ring={f.online ? theme.primary : undefined}
-              outerStyle={{ marginBottom: 8 }}
-              style={{ gap: 12 }}
-            >
-              <View style={{ position: 'relative' }}>
-                <AvatarBadge avatarId={f.avatar ?? f.selectedAvatar} size={38} ringColor={theme.accent} frameId={f.frame} />
-                {f.online ? <View style={{ position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card }} /> : null}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15, ...engrave('sm') }} numberOfLines={1}>{f.displayName}</Text>
-                <Text style={{ color: f.online ? theme.primary : theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }} numberOfLines={1}>{f.online ? t('common.online') : lastSeenLabel(f.lastSeen)}</Text>
-              </View>
-              {/* Trophy on the far right */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.surface1, borderRadius: 12, borderTopWidth: 1, borderTopColor: theme.topLight, paddingHorizontal: 9, paddingVertical: 5 }}>
-                <Ionicons name="trophy" size={13} color={theme.gold} />
-                <Text style={{ color: theme.gold, fontFamily: 'Poppins-ExtraBold', fontSize: 13, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{f.trophies}</Text>
-              </View>
-            </BevelRow>
+              userId={f.userId}
+              displayName={f.displayName}
+              online={f.online}
+              trophies={f.trophies}
+              statusText={f.online ? t('common.online') : lastSeenLabel(f.lastSeen)}
+              avatarId={f.avatar ?? f.selectedAvatar}
+              frameId={f.frame}
+              onMenu={onFriendMenu}
+            />
           ))
         )}
         </CrossFade>
@@ -8542,6 +8941,59 @@ function RiseIn({ animate, children }: { animate: boolean; children: ReactNode }
   );
 }
 
+// ---- MessageBubble ----
+// Tek mesaj balonu, memo'lu ve TAMAMEN primitive prop'lu: composer'daki her tuş
+// vuruşu (setText) ve her klavye frame'i (setKeyboardHeight/setKbOpen)
+// ChatScreen'i yeniden çizer — balonlar memo'landığı için o commit'lerde yalnız
+// giriş çubuğu kabuğu reconcile edilir, 150 mesajlık geçmiş değil. Zaman
+// damgası (Hermes'te pahalı Intl çağrısı) da böylece mesaj başına bir kez
+// hesaplanır, tuş vuruşu başına değil. profile/friend OBJELERİ geçirilmez —
+// obje kimliği her dispatch'te değişip memo'yu boşa düşürürdü.
+const MessageBubble = memo(function MessageBubble({ id, body, deleted, mine, createdAt, avatarId, frameId, actionable, animate, onAction }: {
+  id: string;
+  body: string;
+  deleted: boolean;
+  mine: boolean;
+  createdAt: string;
+  avatarId?: string | null;
+  frameId?: string | null;
+  actionable: boolean;
+  animate: boolean;
+  onAction: (id: string, mine: boolean) => void;
+}) {
+  return (
+    <RiseIn animate={animate}>
+      <View style={{ alignItems: mine ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
+        <View style={{ flexDirection: mine ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 6, maxWidth: '80%' }}>
+          <AvatarBadge avatarId={avatarId} size={28} ringColor={mine ? theme.primary : theme.border} frameId={frameId} />
+          <Pressable onLongPress={actionable ? () => onAction(id, mine) : undefined} delayLongPress={350} style={{
+            backgroundColor: mine ? theme.primary : theme.surface2,
+            borderRadius: 16,
+            borderBottomRightRadius: mine ? 4 : 16,
+            borderBottomLeftRadius: mine ? 16 : 4,
+            paddingHorizontal: 14, paddingVertical: 9,
+            // mine: top-lit mint toy with a primaryDark lip;
+            // theirs: surface2 face with topLight edge + integrated shadowInk slice.
+            ...(mine
+              ? { borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.30)', borderBottomWidth: 2.5, borderBottomColor: theme.primaryDark }
+              : { borderTopWidth: 1, borderTopColor: theme.topLight, overflow: 'hidden' as const, ...shadowRow }),
+          }}>
+            {!mine ? <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} /> : null}
+            {deleted ? (
+              <Text style={{ color: mine ? withAlpha(theme.ink, 0.6) : theme.muted, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', fontStyle: 'italic' }}>{t('mod.deleted')}</Text>
+            ) : (
+              <Text style={{ color: mine ? theme.ink : theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold' }}>{body}</Text>
+            )}
+            <Text style={{ color: mine ? withAlpha(theme.ink, 0.55) : theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', marginTop: 3, textAlign: 'right' }}>
+              {new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </RiseIn>
+  );
+});
+
 // ---- Swipe-back wrapper ----
 // Horizontal drag anywhere closes the full-screen chat softly. Supports both
 // directions because users describe the gesture differently; vertical scrolls are
@@ -8599,35 +9051,70 @@ function SwipeBackWrap({ children, onBack }: { children: (softBack: () => void) 
   const springBack = useCallback(() => {
     Animated.spring(translateX, { toValue: 0, useNativeDriver: true, friction: 8, tension: 80 }).start();
   }, [translateX]);
-  const pan = useMemo(() => Gesture.Pan()
-    .activeOffsetX([-14, 14])
-    .failOffsetY([-12, 12])
-    .runOnJS(true)
-    .onBegin((e) => { ignoreRef.current = e.absoluteY >= chatComposerTop.y; })
-    .onUpdate((e) => {
-      if (!ignoreRef.current && !closingRef.current) translateX.setValue(e.translationX);
-    })
-    .onEnd((e) => {
-      if (ignoreRef.current || closingRef.current) return;
-      const pastThreshold = Math.abs(e.translationX) > screenW * SWIPE_THRESHOLD;
-      const fastFlick = Math.abs(e.velocityX) > 450 && Math.abs(e.translationX) > 34; // px/s (RNGH), not px/ms
-      if (pastThreshold || fastFlick) closeWithAnimation(e.translationX >= 0 ? 1 : -1);
+  // Parmak takibi tamamen NATIVE tarafta: Animated.event, translationX'i her
+  // jest karesinde JS'e uğramadan doğrudan native Animated düğümüne yazar. Eski
+  // runOnJS(true) + translateX.setValue hattı her karede JS thread'e atlıyordu —
+  // WS dispatch'leri/mesaj listesi render'ı sürerken panel parmağın gerisinde
+  // kalıp takılıyordu (8783'teki "ekran takılıyor" sınıfı jank). Composer
+  // koruması da native hızda: BEGAN'da tek bir gate.setValue(0), çarpan olarak
+  // jesti anında etkisizleştirir — bir enabled prop'unu flip edip re-render
+  // beklemek JS meşgulken tam da bu düzeltmenin hedeflediği anda gecikirdi.
+  const gestureX = useRef(new Animated.Value(0)).current;
+  const gate = useRef(new Animated.Value(1)).current;
+  const activeRef = useRef(false); // jest gerçekten aktifleşti mi (FAILED'de ofset aktarma)
+  const dragX = useMemo(() => Animated.add(translateX, Animated.multiply(gestureX, gate)), [translateX, gestureX, gate]);
+  const onGestureEvent = useMemo(
+    () => Animated.event([{ nativeEvent: { translationX: gestureX } }], { useNativeDriver: true }),
+    [gestureX],
+  );
+  const onHandlerStateChange = useCallback((e: PanGestureHandlerStateChangeEvent) => {
+    const { state: st, translationX: tx, velocityX: vx, absoluteY } = e.nativeEvent;
+    if (st === State.BEGAN) {
+      ignoreRef.current = absoluteY >= chatComposerTop.y || closingRef.current;
+      activeRef.current = false;
+      gestureX.setValue(0);
+      gate.setValue(ignoreRef.current ? 0 : 1);
+      return;
+    }
+    if (st === State.ACTIVE) { activeRef.current = true; return; }
+    if (st !== State.END && st !== State.CANCELLED && st !== State.FAILED) return;
+    const wasActive = activeRef.current;
+    activeRef.current = false;
+    if (ignoreRef.current || closingRef.current || !wasActive) {
+      // Görsel hiç kıpırdamadı (gate=0 ya da aktivasyon olmadı) — sadece
+      // bir sonraki jest için jest değerini sıfırla.
+      gestureX.setValue(0);
+      return;
+    }
+    // Ofseti tek JS tick'inde jest değerinden ana değere aktar (aynı batch →
+    // görünür sıçrama yok), sonra eski eşik/flick kararı AYNEN.
+    translateX.setValue(tx);
+    gestureX.setValue(0);
+    if (st === State.END) {
+      const pastThreshold = Math.abs(tx) > screenW * SWIPE_THRESHOLD;
+      const fastFlick = Math.abs(vx) > 450 && Math.abs(tx) > 34; // px/s (RNGH), not px/ms
+      if (pastThreshold || fastFlick) closeWithAnimation(tx >= 0 ? 1 : -1);
       else springBack();
-    })
-    .onFinalize((_e, success) => {
+    } else {
       // Cancelled without a clean end (another gesture took over) → spring back.
-      if (!success && !closingRef.current) springBack();
-    }), [closeWithAnimation, screenW, springBack, translateX]);
+      springBack();
+    }
+  }, [closeWithAnimation, gate, gestureX, screenW, springBack, translateX]);
 
   return (
-    <GestureDetector gesture={pan}>
+    <PanGestureHandler
+      activeOffsetX={[-14, 14]}
+      failOffsetY={[-12, 12]}
+      onGestureEvent={onGestureEvent}
+      onHandlerStateChange={onHandlerStateChange}
+    >
       <View style={{ flex: 1, backgroundColor: 'transparent' }}>
         {/* Foreground page that slides */}
-        <Animated.View style={{ flex: 1, backgroundColor: theme.bg, transform: [{ translateX }], shadowColor: theme.shadowInk, shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: -10, height: 0 }, elevation: 16 }}>
+        <Animated.View style={{ flex: 1, backgroundColor: theme.bg, transform: [{ translateX: dragX }], shadowColor: theme.shadowInk, shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: -10, height: 0 }, elevation: 16 }}>
           {children(() => closeWithAnimation(1))}
         </Animated.View>
       </View>
-    </GestureDetector>
+    </PanGestureHandler>
   );
 }
 
@@ -8714,6 +9201,14 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
   const friend = state.friends.find(f => f.userId === chatWith) ?? state.conversations.find(c => c.userId === chatWith);
   const myId = state.profile?.userId;
   const messages = state.chatMessages;
+  // Memo'lu MessageBubble için TEK sabit long-press callback'i (setMsgAction
+  // setter'ı sabittir) + primitive avatar/çerçeve prop'ları — obje geçirmek
+  // balon memo'sunu her render'da boşa düşürürdü.
+  const onMsgAction = useCallback((id: string, mine: boolean) => setMsgAction({ id, mine }), []);
+  const myAvatarId = state.profile?.avatar ?? state.profile?.selectedAvatar;
+  const myFrameId = state.profile?.selectedFrame;
+  const friendAvatarId = friend?.avatar ?? friend?.selectedAvatar;
+  const friendFrameId = friend?.frame;
   const isTyping = chatWith ? state.typingFrom[chatWith] : false;
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasTyping = useRef(false);
@@ -8946,42 +9441,23 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
           // else's message, delete your own. Skipped on an already-removed bubble
           // and on the optimistic 'local-' echo (no server id to act on yet).
           const actionable = !m.deleted && !m.id.startsWith('local-');
-          const onLongPress = actionable
-            ? () => setMsgAction({ id: m.id, mine: isMe })
-            : undefined;
           // Own bubbles never animate in: the optimistic local- entry appears
-          // instantly, and the server echo swaps the id (RiseIn remounts) — an
+          // instantly, and the server echo swaps the id (bubble remounts) — an
           // entrance animation there replayed as a visible blink.
           return (
-            <RiseIn key={m.id} animate={animReady.current && !isMe}>
-              <View style={{ alignItems: isMe ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
-                <View style={{ flexDirection: isMe ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 6, maxWidth: '80%' }}>
-                  <AvatarBadge avatarId={isMe ? (state.profile?.avatar ?? state.profile?.selectedAvatar) : (friend?.avatar ?? friend?.selectedAvatar)} size={28} ringColor={isMe ? theme.primary : theme.border} frameId={isMe ? state.profile?.selectedFrame : friend?.frame} />
-                  <Pressable onLongPress={onLongPress} delayLongPress={350} style={{
-                    backgroundColor: isMe ? theme.primary : theme.surface2,
-                    borderRadius: 16,
-                    borderBottomRightRadius: isMe ? 4 : 16,
-                    borderBottomLeftRadius: isMe ? 16 : 4,
-                    paddingHorizontal: 14, paddingVertical: 9,
-                    // mine: top-lit mint toy with a primaryDark lip;
-                    // theirs: surface2 face with topLight edge + integrated shadowInk slice.
-                    ...(isMe
-                      ? { borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.30)', borderBottomWidth: 2.5, borderBottomColor: theme.primaryDark }
-                      : { borderTopWidth: 1, borderTopColor: theme.topLight, overflow: 'hidden' as const, ...shadowRow }),
-                  }}>
-                    {!isMe ? <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} /> : null}
-                    {m.deleted ? (
-                      <Text style={{ color: isMe ? withAlpha(theme.ink, 0.6) : theme.muted, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', fontStyle: 'italic' }}>{t('mod.deleted')}</Text>
-                    ) : (
-                      <Text style={{ color: isMe ? theme.ink : theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold' }}>{m.body}</Text>
-                    )}
-                    <Text style={{ color: isMe ? withAlpha(theme.ink, 0.55) : theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', marginTop: 3, textAlign: 'right' }}>
-                      {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
-            </RiseIn>
+            <MessageBubble
+              key={m.id}
+              id={m.id}
+              body={m.body}
+              deleted={!!m.deleted}
+              mine={isMe}
+              createdAt={m.createdAt}
+              avatarId={isMe ? myAvatarId : friendAvatarId}
+              frameId={isMe ? myFrameId : friendFrameId}
+              actionable={actionable}
+              animate={animReady.current && !isMe}
+              onAction={onMsgAction}
+            />
           );
         })}
         {isTyping ? (
@@ -9269,7 +9745,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
             if (m != null && onGoToStore) {
               // Unified flow: Store opens the covering pack's sheet with the
               // AL/VAZGEC popup behind it (see shortfall.ts).
-              setPendingShortfall(m);
+              recordShortfall(m);
               onGoToStore('diamonds');
             } else {
               setShowInsufficientPopup(true);
@@ -9899,11 +10375,16 @@ const RANK_COLORS = [theme.gold, theme.silver, theme.bronze];
 // THE leaderboard row — one component for the popup (LeaderboardModal) and the
 // fullscreen LeaderboardScreen: RankBadge + GamePanel compact with a medal
 // accent stripe for the top 3, pressed 2px depress, tap opens the profile.
-function LeaderboardRow({ entry, onPress }: { entry: LeaderboardEntry; onPress?: () => void }) {
+// memo (2026-08-10): pano açıkken HER reducer dispatch'i tüm satırları (50 ×
+// ~15 view + arenaLabel/toLocaleUpperCase/t() işi) yeniden çiziyordu — satıra
+// dokunuşun basılı-karesi bu yüzden takılıyordu. entry nesnesi yalnız
+// _leaderboard yanıtında değişir → sığ karşılaştırma tutar. onPress yerine
+// SABİT onView(userId) alınır; satır İÇİNDEKİ closure memo'yu bozmaz.
+const LeaderboardRow = memo(function LeaderboardRow({ entry, onView }: { entry: LeaderboardEntry; onView?: (userId: string) => void }) {
   return (
     <Pressable
-      onPress={onPress}
-      disabled={!onPress}
+      onPress={onView ? () => onView(entry.userId) : undefined}
+      disabled={!onView}
       style={({ pressed }) => ({ marginVertical: 4, transform: [{ translateY: pressed ? 2 : 0 }] })}
     >
       <GamePanel compact accentStripe={entry.rank <= 3 ? RANK_COLORS[entry.rank - 1] : undefined} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingLeft: 12 }}>
@@ -9921,7 +10402,7 @@ function LeaderboardRow({ entry, onPress }: { entry: LeaderboardEntry; onPress?:
       </GamePanel>
     </Pressable>
   );
-}
+});
 
 // Loading ≠ empty (spec §9): lists shimmer 3–4 skeleton panels while fetching,
 // and only resolve into a crafted EmptyState once the fetch window has passed.
@@ -10073,10 +10554,14 @@ function PlayerPhoto({ uri, size = 32 }: { uri: string | null; size?: number }) 
 //   3) skorda kazananın rakamı parlak, kaybedenin sönük
 //   4) kupa farkının İŞARETİ
 // Ayrıntı (turlar) varsayılan KAPALI: liste taranabilir kalır, merak eden açar.
-function MatchHistoryCard({ match: m, myName }: { match: MatchHistoryView; myName: string }) {
+// memo (2026-08-10): liste artık sanal (FlatList) — sığ karşılaştırma, popup
+// açıkken gelen alakasız dispatch'lerin tüm kartları yeniden çizmesini keser
+// (match nesnesi yalnız _match_history yanıtında değişir). Tur süzgeçleri de
+// yalnız veri değişince koşar; her render'da iki .filter turu atılıyordu.
+const MatchHistoryCard = memo(function MatchHistoryCard({ match: m, myName }: { match: MatchHistoryView; myName: string }) {
   const [open, setOpen] = useState(false);
-  const myRounds = m.rounds.filter((r) => r.answeredBy === myName);
-  const oppRounds = m.rounds.filter((r) => r.answeredBy !== myName);
+  const myRounds = useMemo(() => m.rounds.filter((r) => r.answeredBy === myName), [m.rounds, myName]);
+  const oppRounds = useMemo(() => m.rounds.filter((r) => r.answeredBy !== myName), [m.rounds, myName]);
   const tint = m.won ? theme.primary : theme.danger;
   const delta = (m.playerTrophies ?? 0) - (m.opponentTrophies ?? 0); // gösterim amaçlı fark
   const oArena = arenaForTrophies(m.opponentTrophies);
@@ -10162,7 +10647,7 @@ function MatchHistoryCard({ match: m, myName }: { match: MatchHistoryView; myNam
       </GamePanel>
     </Pressable>
   );
-}
+});
 
 export function MatchHistoryScreen({ state, actions }: Props) {
   const history = state.matchHistory;
@@ -10228,6 +10713,12 @@ export function LeaderboardScreen({ state, actions }: Props) {
   // Loading ≠ empty: skeleton shimmer during the fetch window, then EmptyState.
   const graceOver = useLoadGrace(lb.length === 0);
   const top3 = lb.filter((e) => e.rank >= 1 && e.rank <= 3);
+  // memo(LeaderboardRow) için sabit kimlikli dokunuş: actions her AppRoot
+  // render'ında yeni nesne — latest-ref güncel kalmayı garanti eder, kimlik
+  // sabit kalır (satır başına taze closure memo'yu bozuyordu).
+  const actionsRef = useRef(actions);
+  actionsRef.current = actions;
+  const onView = useCallback((id: string) => actionsRef.current.getUserProfile(id), []);
   return (
     <Screen>
       <ScreenHeader title={t('leaderboard.title')} icon="trophy" onBack={actions.closeLeaderboard} />
@@ -10244,7 +10735,7 @@ export function LeaderboardScreen({ state, actions }: Props) {
         ) : null}
         {lb.map((entry) => (
           <View key={entry.rank} style={{ marginBottom: 4 }}>
-            <LeaderboardRow entry={entry} onPress={() => actions.getUserProfile(entry.userId)} />
+            <LeaderboardRow entry={entry} onView={onView} />
           </View>
         ))}
         {lb.length === 0 ? (
@@ -10580,6 +11071,12 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
   const opp = room.players.find((p) => p.id !== room.youId);
   const matchOver = state.matchOver;
   const youWon = state.matchWinnerId != null && state.matchWinnerId === room.youId;
+  // Tur arası Çık = hükmen mağlubiyet (kupa cezası). Diğer maç-içi ekranlar
+  // (Pick/Guess) onay soruyordu, burası sormuyordu — kullanıcı uyarısız kupa
+  // kaybetti (2026-08-10). Maç BİTTİYSE çıkış serbesttir, onay sorulmaz.
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const hasBot = room.players.some((p) => p.name === 'Bot');
+  const handleLeave = () => (hasBot || matchOver || tutorial) ? actions.leave() : setShowLeaveConfirm(true);
 
   const { icon, color, headline } = useMemo(() => {
     if (r.reason === 'same_team')
@@ -10614,6 +11111,18 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
     opacity: photoA.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' as const }),
     transform: [{ scale: photoA.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }],
   };
+
+  // Fold-altı bölümler ilk commit'e GİRMEZ: 'result' dispatch'iyle aynı frame'de
+  // 10-20 CareerRow + ortak-oyuncu görsel listesi (+ galibiyette 32 değerli
+  // konfeti) mount etmek verdict pop'unun ilk karesini geciktiriyordu. Bir frame
+  // sonra (rAF) mount edilirler — Hazır/Çık'ın altında, fold altında oldukları
+  // için piksel farkı yok; native spring'ler ikinci commit boyunca akmaya devam
+  // eder.
+  const [late, setLate] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setLate(true));
+    return () => cancelAnimationFrame(id);
+  }, [r]);
 
   const playedA = r.spellsA.length > 0;
   const playedB = r.spellsB.length > 0;
@@ -10818,11 +11327,13 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
           </View>
         )}
         <View style={{ height: 10 }} />
-        <Btn label={t('result.leave')} kind="ghost" icon="close" onPress={actions.leave} />
+        <Btn label={t('result.leave')} kind="ghost" icon="close" onPress={handleLeave} />
+        <LeaveConfirmModal visible={showLeaveConfirm} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
 
         {/* Kariyer + diğer oynamış oyuncular — Hazır/Çık'ın ALTINDA: Hazır butonu
-            kariyer listesini beklemeden her zaman ekranda görünür olsun diye taşındı. */}
-        {r.reason !== 'no_common' && r.reason !== 'same_team' ? (
+            kariyer listesini beklemeden her zaman ekranda görünür olsun diye taşındı.
+            `late`: bir frame gecikmeli mount (yukarıdaki rAF yorumu). */}
+        {late && r.reason !== 'no_common' && r.reason !== 'same_team' ? (
           <>
             {r.allClubs.length ? (
               <>
@@ -10897,7 +11408,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
           </>
         ) : null}
       </ScrollView>
-      {matchOver && youWon ? <Confetti /> : null}
+      {late && matchOver && youWon ? <Confetti /> : null}
       {!tutorial ? <EmoteLayer state={state} actions={actions} fab="top-right" /> : null}
     </Screen>
   );
@@ -11729,13 +12240,20 @@ const ROAD_ROW_H_MILESTONE = 132; // 5'in katları: büyük ödül satırı
 const ROAD_TRACK_W = 16;
 const roadRowH = (n: number) => (n % 5 === 0 ? ROAD_ROW_H_MILESTONE : ROAD_ROW_H);
 const roadRowTop = (n: number) => { let y = 0; for (let i = 1; i < n; i++) y += roadRowH(i); return y; };
+// FlatList veri kaynağı — seviye numaraları 1..LEVEL_CAP, modül sabiti ki liste
+// kimliği render'lar arasında değişmesin.
+const ROAD_LEVELS: number[] = Array.from({ length: LEVEL_CAP }, (_, i) => i + 1);
 
 function segmentColor(n: number): string {
   // n → n+1 segmentinin rengi: bulunduğu onluğun kademe rengi (ilk onluk zümrüt)
   return levelTier(Math.floor(n / 10) * 10)?.c ?? theme.primary;
 }
 
-function RoadRow({ n, level, xp, claimed, premiumOwned, premiumClaimed, onFramePress, onClaim, onBuyPremium }: {
+// memo (2026-08-10): yol açıkken her kök dispatch'i ve claim/celeb/showTopBtn
+// state değişimleri 50 satırı BİRDEN çiziyordu — tam da RoadClaimFly
+// parçacıkları uçarken. Prop'lar ilkel + 3 SABİT callback (LevelRoadModal
+// useCallback'leri); sığ karşılaştırma yalnız gerçekten değişen satırı çizer.
+const RoadRow = memo(function RoadRow({ n, level, xp, claimed, premiumOwned, premiumClaimed, onFramePress, onClaim, onBuyPremium }: {
   n: number; level: number; xp: number;
   claimed: boolean; // bu seviyenin ödülü toplandı mı
   premiumOwned: boolean;   // Premium Yol açık mı
@@ -11965,7 +12483,7 @@ function RoadRow({ n, level, xp, claimed, premiumOwned, premiumClaimed, onFrameP
       </View>
     </View>
   );
-}
+});
 
 // Toplanan elmasların karttan başlıktaki elmas hapına akışı (modal içi, hafif).
 function RoadClaimFly({ from, to, amount, onDone }: {
@@ -12064,7 +12582,7 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
   lastClaim?: { level: number; diamonds: number; emoteId: string | null; frameTier: string | null; powerId: string | null; track?: 'free' | 'premium'; seq: number } | null;
 }) {
   const insets = useSafeAreaInsets();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<FlatList<number>>(null);
   const level = profile?.level ?? 1;
   const xp = profile?.xp ?? 0;
   const [framePrev, setFramePrev] = useState<{ tier: LevelTier; unlocked: boolean } | null>(null);
@@ -12102,6 +12620,16 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
     claimPos.current = pos;
     onClaim(n, track);
   }, [onClaim]);
+  // memo(RoadRow) ancak SABİT callback'lerle tutar — satır içi ok fonksiyonları
+  // her render'da yeni kimlikti ve memo hiç devreye giremezdi. profile latest-ref
+  // üzerinden okunur: dokunma anında güncel değer istenir, eski değere ihtiyaç
+  // duyan yol yok.
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
+  const handleFramePress = useCallback((tier: LevelTier, unlocked: boolean) => {
+    setFramePrev({ tier, unlocked: unlocked || ownsFrame(profileRef.current, tier.key) });
+  }, []);
+  const handleBuyPremium = useCallback(() => setBuyOpen(true), []);
   const handleFlyDone = useCallback(() => {
     setClaimFly(null);
     setShownDiamonds(profile?.diamonds ?? 0);
@@ -12116,13 +12644,9 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
   const nextTier = nextMilestone != null ? levelTier(nextMilestone) : null;
   const nextPower = nextMilestone != null ? LEVEL_POWER_UNLOCKS[nextMilestone] : undefined;
   const nextColor = nextIsFrame ? (nextTier?.c ?? theme.accent) : nextPower ? POWERS[nextPower].color : theme.accent;
-  useEffect(() => {
-    if (!visible) return;
-    const tm = setTimeout(() => {
-      scrollRef.current?.scrollTo({ y: Math.max(0, roadRowTop(level) - ROAD_ROW_H), animated: false });
-    }, 60);
-    return () => clearTimeout(tm);
-  }, [visible, level]);
+  // Açılış konumu artık FlatList'in initialScrollIndex'inde (satır boyları
+  // deterministik → senkron): eski 60ms'lik kör zamanlayıcı yolu önce y=0'da
+  // gösterip sonra zıplatıyordu.
   if (!visible) return null;
 
   return (
@@ -12170,7 +12694,7 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
           {/* Sıradaki büyük ödül — heyecan kancası; dokununca o satıra kayar */}
           {nextMilestone ? (
             <Pressable
-              onPress={() => scrollRef.current?.scrollTo({ y: Math.max(0, roadRowTop(nextMilestone) - ROAD_ROW_H * 0.7), animated: true })}
+              onPress={() => scrollRef.current?.scrollToOffset({ offset: Math.max(0, roadRowTop(nextMilestone) - ROAD_ROW_H * 0.7), animated: true })}
               style={({ pressed }) => ({ marginTop: 8, transform: [{ translateY: pressed ? 2 : 0 }] })}
             >
               <View style={{ backgroundColor: darken(theme.card, 0.5), borderRadius: 17, paddingBottom: 2.5 }}>
@@ -12223,29 +12747,47 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
             </Pressable>
           ) : null}
         </View>
-        <ScrollView
+        {/* FlatList (2026-08-10): düz ScrollView 50 RoadRow'u (~1000 view, çok
+            katmanlı gölgeli kilometre taşı kartları) modal slide başlamadan TEK
+            commit'te basıyordu — dokunuştan görünmeye dek tüm mount bedeli
+            ödeniyordu. Satır boyları deterministik (roadRowH) → getItemLayout +
+            initialScrollIndex açılışı senkron doğru konuma getirir; ekran dışı
+            satırlar tembel basar. Aynı padding — pikseller aynı.
+            removeClippedSubviews kapalı: kilometre taşı parıltı gölgeleri
+            pencere kenarında kırpılmasın (Android'de varsayılan açık). */}
+        <FlatList
           ref={scrollRef}
+          data={ROAD_LEVELS}
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: insets.bottom + 26 }}
           showsVerticalScrollIndicator={false}
           onScroll={(e) => setShowTopBtn(e.nativeEvent.contentOffset.y > ROAD_ROW_H * 2)}
           scrollEventThrottle={32}
-        >
-          {Array.from({ length: LEVEL_CAP }, (_, i) => (
+          keyExtractor={(n) => String(n)}
+          // Ofsetlere contentContainer paddingTop'u (8) dahildir — getItemLayout
+          // padding'i bilmez; katılmazsa pencere hesabı ve açılış konumu 8px kayar.
+          getItemLayout={(_, index) => ({ length: roadRowH(index + 1), offset: 8 + roadRowTop(index + 1), index })}
+          // Eski scrollTo hedefiyle aynı niyet (roadRowTop(level) - ROAD_ROW_H):
+          // mevcut seviyenin BİR satır üstü görünür → 0 tabanlı indeks level-2.
+          initialScrollIndex={Math.max(0, level - 2)}
+          initialNumToRender={8}
+          windowSize={5}
+          removeClippedSubviews={false}
+          renderItem={({ item: n }) => (
             <RoadRow
-              key={i + 1} n={i + 1} level={level} xp={xp}
-              claimed={claimedSet.has(i + 1)}
+              n={n} level={level} xp={xp}
+              claimed={claimedSet.has(n)}
               premiumOwned={premiumOwned}
-              premiumClaimed={claimedPremiumSet.has(i + 1)}
-              onFramePress={(tier, unlocked) => setFramePrev({ tier, unlocked: unlocked || ownsFrame(profile, tier.key) })}
+              premiumClaimed={claimedPremiumSet.has(n)}
+              onFramePress={handleFramePress}
               onClaim={handleClaimPress}
-              onBuyPremium={() => setBuyOpen(true)}
+              onBuyPremium={handleBuyPremium}
             />
-          ))}
-        </ScrollView>
+          )}
+        />
         {showTopBtn ? (
           <Pressable
-            onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+            onPress={() => scrollRef.current?.scrollToOffset({ offset: 0, animated: true })}
             hitSlop={8}
             style={({ pressed }) => ({
               position: 'absolute', right: 16, bottom: insets.bottom + 18,
@@ -12285,7 +12827,7 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
             <Btn big kind="accent" gem label={t('premium.unlockBtn', { n: String(PREMIUM_ROAD_PRICE) })} onPress={() => {
               const have = profile?.diamonds ?? 0;
               if (have >= PREMIUM_ROAD_PRICE) { setBuyOpen(false); onBuyPremium?.(); }
-              else { setPendingShortfall(PREMIUM_ROAD_PRICE - have); setBuyOpen(false); onClose(); onNeedDiamonds?.(); }
+              else { recordShortfall(PREMIUM_ROAD_PRICE - have); setBuyOpen(false); onClose(); onNeedDiamonds?.(); }
             }} />
             <Btn kind="ghost" label={t('power.cancel')} onPress={() => setBuyOpen(false)} />
           </View>

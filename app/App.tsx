@@ -1,4 +1,4 @@
-import { memo, startTransition, useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from 'react';
+import { memo, startTransition, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   Animated,
@@ -6,6 +6,7 @@ import {
   Dimensions,
   Easing,
   Image,
+  InteractionManager,
   Linking,
   Pressable,
   ScrollView,
@@ -161,15 +162,55 @@ const DiamondPill = memo(function DiamondPill({ countAnim, fillAnim, pillRef, on
 
 // A red count badge riding a tab icon's top-right corner. Only ever rendered for a
 // positive count — callers pass null when there is nothing to announce.
+// Pasif sayfaların elmas hapına her render'da yeni `() => {}` gitmesin —
+// DiamondPill'in memo'sunu sessizce bozan TEK prop buydu.
+const NOOP = () => {};
+
 // Perf: inactive pager pages skip re-renders entirely — their last committed tree
 // stays on screen and they re-render the moment they become active. Without this,
 // EVERY ws message / reducer dispatch re-rendered all four heavy tab screens at
 // once, which is what made taps and swipes stutter on device.
+// Tembel kurulum: pasif sayfalar İLK kurulumda da boş kalır — maç giriş/çıkışında
+// 4 ağır ekran TEK commit'te kuruluyordu (dönüşteki "pat" hissi). Aktif sekme
+// aktivasyonla aynı commit'te kurulur; diğerleri etkileşimler bitince warmDelay
+// kadar bekleyip KADEMELİ, düşük öncelikli commit'lerde ısınır — kullanıcı daha
+// kaydıramadan hazırdırlar. Sayfa sarmalayıcıları (width: SCREEN_W) pager'da
+// kaldığı için scroll ofsetleri/piksel düzeni değişmez.
 const TabFreeze = memo(
-  function TabFreeze({ children }: { active: boolean; children: ReactNode }) {
-    return <>{children}</>;
+  function TabFreeze({ active, warmDelay = 0, children }: {
+    active: boolean;
+    warmDelay?: number;
+    // Ana (Oyna) yuvası: sekmeden ÇIKARKEN resetHomePhase children'ı değiştirir
+    // (Arena/Profil → Home) — o kare atlanırsa donmuş ağaç Arena/Profil kalır ve
+    // geri kaydırırken yarım saniye görünür. Bu bayrak deaktivasyon karesini çizdirir.
+    freshOnDeactivate?: boolean;
+    // KAYDIRMA yolu deaktivasyonu jestin ortasında yapar (onScrollLive) ve phase
+    // reset'i onScrollEnd'e kalır — o render prev.active=false ile gelir ve
+    // freshOnDeactivate tek başına yakalayamaz (hakem bulgusu). freezeKey
+    // (home yuvasında state.phase) değişince karşılaştırıcı dondurmayı DELER:
+    // Arena/Profil→Home değişimi pasifken de bir kez commit'lenir.
+    freezeKey?: unknown;
+    children: ReactNode;
+  }) {
+    const [everActive, setEverActive] = useState(active);
+    if (active && !everActive) setEverActive(true); // aktivasyonla AYNI commit'te kurul (render-phase promote)
+    useEffect(() => {
+      if (everActive) return; // aktif kuruldu — ısıtma gereksiz
+      let clearWarm: (() => void) | undefined;
+      const h = InteractionManager.runAfterInteractions(() => {
+        const id = setTimeout(() => startTransition(() => setEverActive(true)), warmDelay);
+        clearWarm = () => clearTimeout(id);
+      });
+      return () => { h.cancel(); clearWarm?.(); };
+      // everActive tek yönlü (false→true), warmDelay sabit — yalnız kurulumda çalışır
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    return <>{everActive ? children : null}</>;
   },
-  (prev, next) => !prev.active && !next.active, // both inactive → skip render
+  // Skip: hedef durum pasifse — deaktive OLAN sekmenin son render'ı da atlanır
+  // (children aynı state'ten türüyor, çıktı birebir aynıydı; oturma karesinde
+  // boşa çizilen üçüncü ağır ekrandı). İstisna: freshOnDeactivate (yukarı bkz.).
+  (prev, next) => !next.active && !(next.freshOnDeactivate && prev.active) && prev.freezeKey === next.freezeKey,
 );
 
 function TabBadge({ count }: { count: number }) {
@@ -179,6 +220,52 @@ function TabBadge({ count }: { count: number }) {
     </View>
   );
 }
+
+type ComingSoonBadgeHandle = { show: () => void };
+
+// Turnuvalar "yakında" rozeti. KALICI monte: animasyon değeri 0'da yatarken
+// opacity 0 + pointerEvents none → piksel olarak yokla birebir aynı. Eski sürüm
+// AppRoot state'iyle (setComingSoon) her göster/gizle'de TÜM kök ağacı yeniden
+// çizdiriyor ve yay JS sürücüsünde akıyordu; native tek-atım da kurulum/söküm
+// yarışından ötürü güvenilmezdi (taze Animated düğümünü aynı karede bağlayıp
+// başlatmak). Düğüm bir kez bağlanıp HİÇ sökülmediği için iki yarış da yapısal
+// olarak imkânsız — aynı zamanlama/eğriler, native sürücüde, kök render'ı sıfır.
+const ComingSoonBadge = memo(function ComingSoonBadge({ handleRef }: { handleRef: RefObject<ComingSoonBadgeHandle | null> }) {
+  const a = useRef(new Animated.Value(0)).current;
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null); // göster/gizle yaşam döngüsünün tek sahibi
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  useImperativeHandle(handleRef, () => ({
+    show() {
+      if (timer.current) return; // zaten görünür — tekrar dokunuşlar yok sayılır
+      a.setValue(0);
+      Animated.spring(a, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }).start();
+      timer.current = setTimeout(() => {
+        Animated.timing(a, { toValue: 0, duration: 220, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(() => {
+          timer.current = null;
+        });
+      }, 2200);
+    },
+  }), [a]);
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View
+        style={{
+          opacity: a,
+          transform: [
+            { scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) },
+            { translateY: a.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) },
+          ],
+        }}
+      >
+        <View style={s.comingSoonWrap}>
+          <Text style={s.comingSoonTextBack}>{t('common.comingSoon').toUpperCase()}</Text>
+          <Text style={s.comingSoonTextMid}>{t('common.comingSoon').toUpperCase()}</Text>
+          <Text style={s.comingSoonTextFront}>{t('common.comingSoon').toUpperCase()}</Text>
+        </View>
+      </Animated.View>
+    </View>
+  );
+});
 
 // One tab, per the mockup: a green indicator LINE across the top edge of the active
 // tab (not a pill), green icon + label when active, muted periwinkle otherwise. The
@@ -470,7 +557,19 @@ function ScaledRoot() {
 function AppRoot() {
   const insets = useSafeAreaInsets();
   const { state, actions } = useCrossover();
-  const props = { state, actions };
+  // Profil isteği nöbetçisi: pencere yalnız SON İSTENEN kullanıcının cevabını
+  // gösterir. Eski "son kapatılan" nöbetçisi herhangi bir cevapla düşüyordu —
+  // A'ya bak/kapat, B'ye bak: A'nın geç cevabı B'nin kartına A'nın kimliğini
+  // yazabiliyor ve arkadaşlık isteği YANLIŞ kişiye gidebiliyordu (hakem bulgusu).
+  // Ekranlardan yapılan çağrılar da (Arkadaşlar → Profili Gör) nöbetçiden
+  // geçsin diye getUserProfile props katmanında sarılır; actions kimliği sabit
+  // olduğundan sarmalayıcı da useMemo ile sabittir.
+  const requestedProfileRef = useRef<string | null>(null);
+  const actionsForScreens = useMemo(() => ({
+    ...actions,
+    getUserProfile: (userId: string) => { requestedProfileRef.current = userId; actions.getUserProfile(userId); },
+  }), [actions]);
+  const props = { state, actions: actionsForScreens };
   const scrollRef = useRef<ScrollView>(null);
   // Native-driven pager offset — powers ONLY the stadium-photo cross-fade on the
   // Oyna tab (the green pitch the home look rests on). Driven by Animated.event
@@ -497,9 +596,14 @@ function AppRoot() {
   const [loaded, setLoaded] = useState(false); // Clash-Royale-style entry loading (warms logo cache)
   const [storeSection, setStoreSection] = useState<'socialPack' | 'diamonds' | 'top' | null>(null);
   const storeAtDiamondsRef = useRef(false); // re-tap toggle: diamonds ↔ back to top
-  const [comingSoon, setComingSoon] = useState(false); // Turnuvalar — greyed "coming soon"
+  const csRef = useRef<ComingSoonBadgeHandle | null>(null); // Turnuvalar — "yakında" rozeti (kalıcı monte, bkz. ComingSoonBadge)
   const [expiredSocialPack, setExpiredSocialPack] = useState(false); // Social Pack expired popup
   const [overlay, setOverlay] = useState<'leaderboard' | 'matchHistory' | null>(null); // centered popups
+  // Liderlik satırından profil: pencere satırın KENDİ verisiyle ANINDA açılır —
+  // gösterdiği her alan (ad/avatar/çerçeve/kupa/arena/G-M) LeaderboardEntry'de
+  // zaten var. user_profile cevabı gelince aynı alanları üzerine yazar; kullanıcı
+  // ağ turu boyunca ölü ekrana bakmaz ("satıra dokununca takılıyor" hissinin kalanı).
+  const [entryProfile, setEntryProfile] = useState<GameState['viewProfile']>(null);
   const [gemCelebration, setGemCelebration] = useState<GemCelebration | null>(null);
   // Maç sonrası kupa uçuşu (elmas kutlamasının kupa karşılığı): flight → land.
   const [trophyFlight, setTrophyFlight] = useState<null | { delta: number; after: (() => void) | null }>(null);
@@ -524,8 +628,6 @@ function AppRoot() {
   }, [lastPurchaseSeq]);
   const diamondsShownRef = useRef(0); // last value pushed to the pill (fallback when profile is briefly absent)
   const gainAnimatingRef = useRef(false); // sayaç dönerken tutma efekti araya girmesin
-  const csAnim = useRef(new Animated.Value(0)).current; // coming-soon pop/float
-  const csTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // owns the coming-soon show/hide lifecycle
   const prevHadActiveSocialPackRef = useRef<boolean | undefined>(undefined);
   const [fontsLoaded, fontError] = useFonts({
     'Poppins-Black': require('./assets/fonts/Poppins-Black.ttf'),
@@ -792,24 +894,6 @@ function AppRoot() {
     return () => clearTimeout(id);
   }, [state.profile?.socialPackUntil]);
 
-  // Show the "coming soon" badge: pop in, hold, animate out, unmount. The timer ref
-  // owns the whole lifecycle so a re-tap while it's visible is ignored and the hide
-  // always fires (the old effect-driven version could get stuck visible). JS driver —
-  // the native one-shot proved flaky here.
-  const showComingSoon = useCallback(() => {
-    if (csTimer.current) return; // already showing — ignore repeat taps
-    setComingSoon(true);
-    csAnim.setValue(0);
-    Animated.spring(csAnim, { toValue: 1, friction: 6, tension: 90, useNativeDriver: false }).start();
-    csTimer.current = setTimeout(() => {
-      Animated.timing(csAnim, { toValue: 0, duration: 220, easing: Easing.in(Easing.quad), useNativeDriver: false }).start(() => {
-        csTimer.current = null;
-        setComingSoon(false);
-      });
-    }, 2200);
-  }, [csAnim]);
-  useEffect(() => () => { if (csTimer.current) clearTimeout(csTimer.current); }, []);
-
   // When switching away from the home tab, reset any home-slot sub-screen
   // (arenas, leaderboard, matchHistory, profile) back to the main home screen —
   // so swiping to Collection/Friends and back never leaves Profile open.
@@ -871,7 +955,24 @@ function AppRoot() {
   // Home's find-friend card → Friends tab, landing focused on the add-friend search.
   // A bumped sequence (not a boolean) so every tap re-triggers the focus effect.
   const [friendsAddSeq, setFriendsAddSeq] = useState(0);
-  const goToFriendSearch = useCallback(() => { setFriendsAddSeq((s) => s + 1); goToTab(3); }, [goToTab]);
+  const goToFriendSearch = useCallback(() => {
+    // Tembel kurulum (TabFreeze): sekme bu dokunuşla İLK kez kuruluyor olabilir.
+    // Seq artışı kurulum commit'ine denk gelirse FriendsScreen'in ref tohumu
+    // (handledAddSeq = useRef(focusAddFriendSeq)) onu "işlenmiş" sayıp odağı
+    // yutar — önce sekme (kurulum), artış sonraki karede.
+    goToTab(3);
+    requestAnimationFrame(() => setFriendsAddSeq((s) => s + 1));
+  }, [goToTab]);
+
+  // Bayat user_profile süpürücüsü: cevap SON İSTENEN kullanıcıya ait değilse
+  // (kart kapatıldı → ref null, ya da bu arada başka satıra basıldı → ref başka
+  // userId) state temizlenir — pencere ne yeniden açılır ne yanlış kimlik
+  // gösterir. (Render'daki filtre aynı kareyi zaten gizler; bu efekt süpürür.)
+  useEffect(() => {
+    if (!state.viewProfile) return;
+    if (state.viewProfile.userId !== requestedProfileRef.current) actions.closeUserProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.viewProfile]);
 
   // ---- Push notifications --------------------------------------------------
   // Once-per-install permission prompt: ~2s after the user first lands on the
@@ -1125,7 +1226,7 @@ function AppRoot() {
     ? <ArenasScreen {...props} />
     : state.phase === 'profile'
     ? <ProfileScreen {...props} onOpenMatchHistory={openMatchHistory} onOpenLevelRoad={() => setLevelRoadOpen(true)} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
-    : <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} trophyLand={trophyLand} trophyHold={trophyFlight?.delta ?? null} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLanguageChange={() => {
+    : <HomeScreen {...props} heroAnimsActive={activeTab === 2} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} trophyLand={trophyLand} trophyHold={trophyFlight?.delta ?? null} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLanguageChange={() => {
         setOverlay(null);
         setStoreSection(null);
         setActiveTab(2);
@@ -1153,12 +1254,19 @@ function AppRoot() {
         countAnim={diamondCountAnim}
         fillAnim={diamondFillAnim}
         pillRef={active ? diamondPillRef : dummyPillRef}
-        onMeasure={active ? measureDiamondPill : () => {}}
+        onMeasure={active ? measureDiamondPill : NOOP}
         onPress={openDiamondStore}
         shownRef={diamondsShownRef}
       />
     </View>
   );
+
+  // Liderlikten açılan profil: sunucu cevabı (varsa) satır verisini ezer — değerler
+  // aynı olduğundan görsel fark yok. Filtre POZİTİF kimlik ister: cevap ancak
+  // SON İSTENEN kullanıcıya aitse gösterilir; bayat/yanlış-kimlik kareleri
+  // gizlenir (yukarıdaki süpürme efekti state'i de temizler).
+  const serverProfile = state.viewProfile && state.viewProfile.userId === requestedProfileRef.current ? state.viewProfile : null;
+  const shownProfile = serverProfile ?? entryProfile;
 
   return (
     <View key={`app-${langKey}`} style={[s.root, { paddingTop: insets.top }]}>
@@ -1203,23 +1311,28 @@ function AppRoot() {
             the shared bar is shown here instead. */}
         <View style={{ width: SCREEN_W, flex: 1 }}>
           {state.profile ? renderResourceBar(activeTab === 0) : null}
-          <TabFreeze active={activeTab === 0}>
+          <TabFreeze active={activeTab === 0} warmDelay={400}>
             <StoreScreen {...props} scrollToSection={storeSection} onDiamondCelebration={(c) => setGemCelebration({ kind: 'purchase', amount: c.amount, img: c.img })} />
           </TabFreeze>
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
           {state.profile ? renderResourceBar(activeTab === 1) : null}
-          <TabFreeze active={activeTab === 1}>
+          <TabFreeze active={activeTab === 1} warmDelay={700}>
             <CollectionScreen {...props} />
           </TabFreeze>
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
           {state.phase !== 'home' && state.profile ? renderResourceBar(activeTab === 2) : null}
-          {homeContent}
+          {/* Ana yuva da donar — önceden 4 sayfadan tek çıplak olan buydu ve HER ws
+              dispatch'i (mesaj, typing, satın alma onayı, liderlik cevabı) en ağır
+              ekranı (HomeScreen) perde arkasında boşa yeniden çizdiriyordu. */}
+          <TabFreeze active={activeTab === 2} freshOnDeactivate freezeKey={state.phase} warmDelay={550}>
+            {homeContent}
+          </TabFreeze>
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
           {state.profile ? renderResourceBar(activeTab === 3) : null}
-          <TabFreeze active={activeTab === 3}>
+          <TabFreeze active={activeTab === 3} warmDelay={1000}>
             <FriendsScreen {...props} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} focusAddFriendSeq={friendsAddSeq} />
           </TabFreeze>
         </View>
@@ -1269,29 +1382,11 @@ function AppRoot() {
           );
         })}
         {/* Tournaments — locked, coming soon */}
-        <TabButton locked icon="trophy-outline" label={t('tab.tournaments')} onPress={showComingSoon} />
+        <TabButton locked icon="trophy-outline" label={t('tab.tournaments')} onPress={() => csRef.current?.show()} />
       </View>
 
       {/* Tournaments → standalone 3D coming-soon lettering, no bubble/background. */}
-      {comingSoon ? (
-        <View pointerEvents="none" style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
-          <Animated.View
-            style={{
-              opacity: csAnim,
-              transform: [
-                { scale: csAnim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) },
-                { translateY: csAnim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) },
-              ],
-            }}
-          >
-            <View style={s.comingSoonWrap}>
-              <Text style={s.comingSoonTextBack}>{t('common.comingSoon').toUpperCase()}</Text>
-              <Text style={s.comingSoonTextMid}>{t('common.comingSoon').toUpperCase()}</Text>
-              <Text style={s.comingSoonTextFront}>{t('common.comingSoon').toUpperCase()}</Text>
-            </View>
-          </Animated.View>
-        </View>
-      ) : null}
+      <ComingSoonBadge handleRef={csRef} />
 
       {state.matchInvite ? (
         <InviteBanner
@@ -1339,18 +1434,38 @@ function AppRoot() {
         // Profil isteği HEMEN gider (ağ gecikmesi kapanış animasyonuyla örtüşür);
         // sunum güvenliği kör zamanlayıcıya değil SafeModal kuyruğuna emanet —
         // liderlik penceresi tam kapanmadan profil penceresi sunulMAZ.
-        onViewProfile={(userId) => { setOverlay(null); actions.getUserProfile(userId); }}
+        // Pencere satırın kendi verisiyle ANINDA dolar (entryProfile) — ağ turu
+        // beklerken ölü ekran kalmaz; cevap gelince aynı alanları üzerine yazar.
+        onViewProfile={(userId) => {
+          setOverlay(null);
+          requestedProfileRef.current = userId; // nöbetçi HER istekte kilitlenir (satır verisi olmasa da)
+          const e = state.leaderboard.find((x) => x.userId === userId);
+          if (e) {
+            setEntryProfile({
+              userId: e.userId, displayName: e.displayName, selectedAvatar: e.avatar ?? '',
+              trophies: e.trophies, wins: e.wins, losses: e.losses, arena: e.arena,
+              avatar: e.avatar, frame: e.frame,
+            });
+          }
+          actions.getUserProfile(userId);
+        }}
       />
       <MatchHistoryModal visible={overlay === 'matchHistory'} history={state.matchHistory} myName={state.profile?.displayName ?? ''} onClose={() => setOverlay(null)} />
       <FriendProfileModal
-        profile={state.viewProfile}
-        onClose={actions.closeUserProfile}
+        profile={shownProfile}
+        onClose={() => {
+          // Kapanışta nöbetçi boşalır: artık HİÇBİR cevap beklenmiyor — geç gelen
+          // user_profile süpürme efektine takılır, pencere yeniden açılamaz.
+          requestedProfileRef.current = null;
+          setEntryProfile(null);
+          actions.closeUserProfile();
+        }}
         // Liderlik tablosundan bakılan profil: arkadaş değilse tek dokunuşla istek
-        relation={!state.viewProfile ? undefined
-          : state.viewProfile.userId === state.profile?.userId ? 'self'
-          : state.friends.some((f) => f.userId === state.viewProfile!.userId) ? 'friend'
+        relation={!shownProfile ? undefined
+          : shownProfile.userId === state.profile?.userId ? 'self'
+          : state.friends.some((f) => f.userId === shownProfile.userId) ? 'friend'
           : 'none'}
-        onAddFriend={() => { if (state.viewProfile) actions.sendFriendRequest(undefined, state.viewProfile.displayName); }}
+        onAddFriend={() => { if (shownProfile) actions.sendFriendRequest(undefined, shownProfile.displayName); }}
       />
 
       {/* Kupa kazanma/kaybetme popup'ı — maçtan ÇIKINCA burada, ana menünün üstünde */}

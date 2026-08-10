@@ -16,7 +16,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 interface ExClub { id: number; name: string; norm: string; country: string | null; league: string | null; logo: string | null }
 interface ExPlayer { id: number; name: string; norm: string; nat: string | null; img: string | null }
 interface ExSpell { p: number; c: number; s: number | null; e: number | null }
-interface OfflineData { clubs: ExClub[]; players: ExPlayer[]; spells: ExSpell[] }
 
 // ---------- normalize (mirrors server/src/game/normalize.ts) ----------
 const TK: Record<string, string> = { ı:'i',İ:'i',ş:'s',Ş:'s',ğ:'g',Ğ:'g',ü:'u',Ü:'u',ö:'o',Ö:'o',ç:'c',Ç:'c' };
@@ -50,7 +49,7 @@ function similarity(a: string, b: string): number {
 // ---------- DB singleton ----------
 const DB_NAME = 'crossover_offline.db';
 const DATA_VERSION_KEY = '@offline_data_v';
-const CURRENT_VERSION = '3'; // bump when data.json changes
+const CURRENT_VERSION = '3'; // bump when the data changes (export-offline.ts → data.json → split-offline-data.mjs → data/*)
 
 let db: any = null;
 
@@ -62,7 +61,12 @@ export async function initOfflineDB(): Promise<void> {
   if (stored === CURRENT_VERSION) return; // already populated
 
   console.log('[offline] Loading data into SQLite...');
-  const raw: OfflineData = require('./data.json');
+  // Nefes payı: tohumlama yalnız ilk açılışta / veri sürümü değişince koşar ve o an
+  // kullanıcı büyük olasılıkla giriş ekranıyla uğraşıyordur — ağır ilk require'dan
+  // önce dokunuşlara alan bırak. DB açma + sürüm kontrolü YUKARIDA, beklemeden
+  // yapıldı (getDB tüketicileri handle'ı erken bulsun); sorgular online'da zaten
+  // sunucuya gittiği için bu bekleme kimseyi geciktirmez.
+  await new Promise((r) => setTimeout(r, 1500));
 
   await db.execAsync('DROP TABLE IF EXISTS spells');
   await db.execAsync('DROP TABLE IF EXISTS players');
@@ -106,9 +110,31 @@ export async function initOfflineDB(): Promise<void> {
     }
     await d.execAsync('COMMIT');
   };
-  await bulk('clubs', 6, raw.clubs, (c: ExClub) => [c.id, c.name, c.norm, c.country, c.league, c.logo]);
-  await bulk('players', 5, raw.players, (p: ExPlayer) => [p.id, p.name, p.norm, p.nat, p.img]);
-  await bulk('spells', 4, raw.spells, (s: ExSpell) => [s.p, s.c, s.s, s.e], false);
+  // Eskiden tek bir ~6MB data.json require'ı vardı: Hermes ~98k nesneyi TEK
+  // kesintisiz blokta kurarken JS thread'i yüzlerce ms kilitleniyordu — tam da
+  // ilk oturumun giriş dokunuşları sırasında. Veri artık 7 parça halinde
+  // (data/ altında, app/scripts/split-offline-data.mjs üretir): her parça ayrı
+  // require edilir, aralarda event loop'a dönülür — hiçbir blok ~100ms'i aşmaz.
+  // Eklenen satırlar ve CURRENT_VERSION disiplini bire bir aynı; yalnız parse
+  // zamanlaması değişti. (require yolları Metro için statik dize kalmalı.)
+  const breathe = () => new Promise((r) => setTimeout(r, 0));
+  const toClub = (c: ExClub) => [c.id, c.name, c.norm, c.country, c.league, c.logo];
+  const toPlayer = (p: ExPlayer) => [p.id, p.name, p.norm, p.nat, p.img];
+  const toSpell = (s: ExSpell) => [s.p, s.c, s.s, s.e];
+
+  await bulk('clubs', 6, require('./data/clubs.json') as ExClub[], toClub);
+  await breathe();
+  await bulk('players', 5, require('./data/players-1.json') as ExPlayer[], toPlayer);
+  await breathe();
+  await bulk('players', 5, require('./data/players-2.json') as ExPlayer[], toPlayer);
+  await breathe();
+  await bulk('spells', 4, require('./data/spells-1.json') as ExSpell[], toSpell, false);
+  await breathe();
+  await bulk('spells', 4, require('./data/spells-2.json') as ExSpell[], toSpell, false);
+  await breathe();
+  await bulk('spells', 4, require('./data/spells-3.json') as ExSpell[], toSpell, false);
+  await breathe();
+  await bulk('spells', 4, require('./data/spells-4.json') as ExSpell[], toSpell, false);
 
   // Indexes for fast lookups
   await db.execAsync('CREATE INDEX IF NOT EXISTS idx_spells_club ON spells(club_id)');

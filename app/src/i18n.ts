@@ -9,26 +9,12 @@
 // Server-originated text (error messages, arena names) stays as the server
 // sends it for now; that needs message codes from the server to localize.
 import { getLocales } from 'expo-localization';
-// Per-language dictionaries (translated from the English base). One JSON per language.
-import pt from './i18n-locales/pt.json';
-import es from './i18n-locales/es.json';
-import fr from './i18n-locales/fr.json';
-import de from './i18n-locales/de.json';
-import it from './i18n-locales/it.json';
-import nl from './i18n-locales/nl.json';
-import no from './i18n-locales/no.json';
-import fi from './i18n-locales/fi.json';
-import ru from './i18n-locales/ru.json';
-import zhHans from './i18n-locales/zh-Hans.json';
-import zhHant from './i18n-locales/zh-Hant.json';
-import ko from './i18n-locales/ko.json';
-import ja from './i18n-locales/ja.json';
-import ar from './i18n-locales/ar.json';
-import fa from './i18n-locales/fa.json';
-import ms from './i18n-locales/ms.json';
-import id from './i18n-locales/id.json';
-import th from './i18n-locales/th.json';
-import vi from './i18n-locales/vi.json';
+// Per-language dictionaries (translated from the English base). One JSON per
+// language — intentionally NOT imported here: parsing all 19 of them ran at
+// module init on the launch critical path (i18n is required by
+// App/screens/useCrossover before first frame) even though only one locale is
+// ever active. They are require()d lazily via LOCALE_LOADERS below, the first
+// time their language becomes active.
 
 type Params = Record<string, string | number>;
 
@@ -1345,12 +1331,44 @@ const en: typeof tr = {
 
 export type MessageKey = keyof typeof tr;
 
-const DICTS: Record<string, Partial<typeof tr>> = {
-  tr, en,
-  pt, es, fr, de, it, nl, no, fi, ru,
-  'zh-Hans': zhHans, 'zh-Hant': zhHant,
-  ko, ja, ar, fa, ms, id, th, vi,
+// Base (tr) + fallback (en) live inline above and are needed for every first
+// render; the other languages join this map lazily through getDict() below.
+const DICTS: Record<string, Partial<typeof tr>> = { tr, en };
+
+// One loader per translated locale. Metro resolves literal require() paths
+// statically, so each JSON stays in the bundle but is parsed only on first
+// use instead of at startup — 19 dictionary parses off the cold-start path.
+const LOCALE_LOADERS: Record<string, () => Partial<typeof tr>> = {
+  pt: () => require('./i18n-locales/pt.json'),
+  es: () => require('./i18n-locales/es.json'),
+  fr: () => require('./i18n-locales/fr.json'),
+  de: () => require('./i18n-locales/de.json'),
+  it: () => require('./i18n-locales/it.json'),
+  nl: () => require('./i18n-locales/nl.json'),
+  no: () => require('./i18n-locales/no.json'),
+  fi: () => require('./i18n-locales/fi.json'),
+  ru: () => require('./i18n-locales/ru.json'),
+  'zh-Hans': () => require('./i18n-locales/zh-Hans.json'),
+  'zh-Hant': () => require('./i18n-locales/zh-Hant.json'),
+  ko: () => require('./i18n-locales/ko.json'),
+  ja: () => require('./i18n-locales/ja.json'),
+  ar: () => require('./i18n-locales/ar.json'),
+  fa: () => require('./i18n-locales/fa.json'),
+  ms: () => require('./i18n-locales/ms.json'),
+  id: () => require('./i18n-locales/id.json'),
+  th: () => require('./i18n-locales/th.json'),
+  vi: () => require('./i18n-locales/vi.json'),
 };
+
+// Resolve a language's dictionary, parsing its JSON on first use and caching
+// it in DICTS so the parse happens at most once per session.
+function getDict(code: string): Partial<typeof tr> | undefined {
+  const hit = DICTS[code];
+  if (hit) return hit;
+  const load = LOCALE_LOADERS[code];
+  if (!load) return undefined;
+  return (DICTS[code] = load());
+}
 
 const EXTRA_DICTS: Record<string, Partial<typeof tr>> = {
   es: {
@@ -1438,7 +1456,8 @@ export const LANGUAGES: { code: string; name: string }[] = [
 function resolveLang(): string {
   try {
     const code = getLocales()[0]?.languageCode?.toLowerCase();
-    if (code && DICTS[code]) return code;
+    // Check the loader map too — lazily-loaded languages are not in DICTS yet.
+    if (code && (DICTS[code] || LOCALE_LOADERS[code])) return code;
   } catch {
     /* fall through to default */
   }
@@ -1446,6 +1465,16 @@ function resolveLang(): string {
 }
 
 let currentLanguage = resolveLang();
+
+// Merged lookup table (full dict + EXTRA_DICTS overrides) for the active
+// language. Cached because t() sits on the render hot path — every WS message
+// re-renders whole screens, and each t() call used to re-spread ~700 keys into
+// a fresh object. Rebuilt only on language change; the langKey remount in
+// App.tsx re-renders everything right after setLanguage, so no stale strings.
+function mergeDict(code: string): Partial<typeof tr> {
+  return { ...(getDict(code) ?? {}), ...(EXTRA_DICTS[code] ?? {}) };
+}
+let activeDict: Partial<typeof tr> = mergeDict(currentLanguage);
 
 /** Get the current language code. */
 export function currentLang(): string {
@@ -1461,16 +1490,23 @@ export function setLanguage(code: string): void {
   // Accept any listed language; t() falls back to English for codes without a
   // dictionary yet, so the choice still persists and shows as selected.
   if (LANGUAGES.some((l) => l.code === code)) currentLanguage = code;
+  // Refresh the cached merged dict unconditionally — a no-op when the code was
+  // rejected, and keeping it outside the guard makes the invalidation
+  // impossible to miss. Synchronous, so every render after this call (the
+  // langKey remount included) already sees the new language.
+  activeDict = mergeDict(currentLanguage);
 }
 
 // Translate a key, optionally interpolating {placeholders}. Falls back to
 // English, then to the key itself, so a missing translation never crashes.
 export function t(key: MessageKey, params?: Params): string {
-  const dict = { ...(DICTS[currentLanguage] ?? {}), ...(EXTRA_DICTS[currentLanguage] ?? {}) } as Partial<typeof tr>;
-  let str = dict[key] ?? en[key] ?? tr[key] ?? key;
+  let str = activeDict[key] ?? en[key] ?? tr[key] ?? key;
   if (params) {
     for (const [k, v] of Object.entries(params)) {
-      str = str.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
+      // split/join instead of a per-call `new RegExp`: identical output for
+      // every real placeholder key, no regex compile per param, and values
+      // containing '$' can never be misread as replacement patterns.
+      str = str.split(`{${k}}`).join(String(v));
     }
   }
   return str;

@@ -4,7 +4,7 @@
 // emotes are sold in the store and rendered as looping RN-`Animated` stickers —
 // no GIF/sprite assets and no extra native deps, so they run fine in Expo Go.
 // Keep these ids in sync with server/src/game/emotes.ts.
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Image as RNImage, StyleSheet, Text, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -243,6 +243,40 @@ function WebpSticker({ source, still, size, play }: { source: number; still?: nu
     return <RNImage source={still ?? source} style={{ width: size, height: size }} resizeMode="contain" />;
   }
   return <ExpoImage source={source} style={{ width: size, height: size }} contentFit="contain" autoplay />;
+}
+
+// ---- Ön ısıtma: animasyonlu WebP çıkartmaları -------------------------------
+// 250-470KB'lik animasyonlu WebP'ler İLK kullanımda decode ediliyordu: rakibin
+// emote'u tahmin ekranına düşünce decode pop-in yayıyla yarışıyor, emote paneli
+// de açılış yayı sırasında tüm çıkartmaları birden çözüyordu. Bu katman 5 WebP'yi
+// (rakip hangisine sahipse gelsin diye HEPSİNİ) görünmezce, EmoteCallout'un
+// GERÇEK boyutunda oynatıp expo-image bellek önbelleğine çözer — 1x1 ısıtma işe
+// yaramaz, expo-image decode'u görünüm boyutuna küçültür. Oturum başına bir kez
+// koşar. Sayaç ekranı gibi KISA ÖMÜRLÜ, maç öncesi sakin bir yere monte edilir
+// (CountdownScreen); yanlış bir yere monte edilse bile süresiz gizli döngüye
+// dönüşmesin diye kendini birkaç saniyede söndürür (arka plan animasyon yasağı).
+let emotesWarmed = false;
+const WARM_SIZE = 88; // EmoteCallout'un varsayılan sticker boyutuyla AYNI kalmalı
+export function EmoteWarmup() {
+  const [active, setActive] = useState(() => !emotesWarmed);
+  useEffect(() => {
+    if (!active) return;
+    emotesWarmed = true;
+    // Decode toplamda birkaç yüz ms sürer; 6sn her cihaza yeter. Sonra katman
+    // kendini kaldırır — çözülmüş kareler expo-image bellek önbelleğinde kalır.
+    const id = setTimeout(() => setActive(false), 6000);
+    return () => clearTimeout(id);
+  }, [active]);
+  if (!active) return null;
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', width: WARM_SIZE, height: WARM_SIZE, opacity: 0, overflow: 'hidden' }}>
+      {[...PREMIUM_EMOTES, ...ANIM_EMOTES]
+        .filter((e) => e.kind === 'lottie' && e.anim != null)
+        .map((e) => (
+          <ExpoImage key={e.id} source={e.anim} style={{ width: WARM_SIZE, height: WARM_SIZE }} contentFit="contain" autoplay />
+        ))}
+    </View>
+  );
 }
 
 export function EmoteSticker({ id, size, play = true, loop = false, onFinish }: {

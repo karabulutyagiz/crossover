@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { AppState, type AppStateStatus, InteractionManager, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // NetInfo may not be available in Expo Go — graceful fallback
@@ -7,9 +7,8 @@ try { NetInfo = require('@react-native-community/netinfo').default; } catch { Ne
 import { SERVER_URLS, setActiveServerUrl, fetchApi, APP_BUILD_NUMBER } from './config';
 import { currentLang, t } from './i18n';
 import { getPushToken, requestPushPermission } from './notifications';
-import { OfflineRoom } from './offline/room';
 import { initOfflineDB } from './offline/db';
-import { startMediaPrefetch } from './mediaPrefetch';
+import { startMediaPrefetch, setMediaPrefetchMatchActive } from './mediaPrefetch';
 import { captureError, track } from './telemetry';
 import type {
   ArenaView,
@@ -147,8 +146,22 @@ export interface GameState {
 
 // --- Messaging helpers: stable ordering + de-dupe, so live pushes and (possibly
 // out-of-order / duplicated) list responses converge to one time-sorted view. ---
+// Hermes'te (JIT yok) Date.parse pahalı ve mergeMessages her gelen mesajda TÜM
+// listeyi yeniden sıralıyor — aynı ISO string'i binlerce kez parse etmemek için
+// sınırlı bir modül cache'i. NaN de cache'lenir (nullish değil; compareIsoAsc
+// NaN'ı zaten ele alıyor). Sınır aşımında komple temizlik: nadir ve ucuz.
+const isoTs = new Map<string, number>();
+function parseIso(s: string): number {
+  let v = isoTs.get(s);
+  if (v === undefined) {
+    if (isoTs.size > 4096) isoTs.clear();
+    v = Date.parse(s);
+    isoTs.set(s, v);
+  }
+  return v;
+}
 function compareIsoAsc(a: string, b: string): number {
-  const ta = Date.parse(a), tb = Date.parse(b);
+  const ta = parseIso(a), tb = parseIso(b);
   if (!Number.isNaN(ta) && !Number.isNaN(tb) && ta !== tb) return ta - tb;
   return a.localeCompare(b);
 }
@@ -398,7 +411,9 @@ function reducer(state: GameState, action: Action): GameState {
           updated.unreadCount = (updated.unreadCount ?? 0) + 1;
           nextUnread = nextUnread + 1;
         }
-        nextConvos = sortConversations([updated, ...nextConvos.filter((_, i) => i !== existingIdx)]);
+        // Sıralama TEK yerde (aşağıdaki return'deki sortConversations) — burada da
+        // sıralamak aynı diziyi her mesajda İKİ kez sıralıyordu; sonuç birebir aynı.
+        nextConvos = [updated, ...nextConvos.filter((_, i) => i !== existingIdx)];
       } else {
         const isIncoming = msg.fromId !== myId;
         nextConvos = [{
@@ -702,6 +717,13 @@ function saveProfile(profile: ProfileView): void {
 
 export function useCrossover() {
   const [state, dispatch] = useReducer(reducer, initialState);
+  // En güncel state'e ref üzerinden erişim ("latest ref" deseni): send/actions
+  // kimlikleri SABİT kalırken her çağrı o anki state'i okur. Bu olmadan actions
+  // her render'da baştan kuruluyor ve alttaki hiçbir memo sınırı tutmuyordu.
+  // (useReducer state'i render replay'de yeniden okunduğu için render sırasında
+  // atama startTransition'la da güvenli.)
+  const stateRef = useRef(state);
+  stateRef.current = state;
   const wsRef = useRef<WebSocket | null>(null);
   const connectingSince = useRef(0); // when the current socket started CONNECTING (0 = not connecting)
   const connectKind = useRef(''); // first-message type of the in-flight connect ('register'/'resume_room'/…)
@@ -711,7 +733,6 @@ export function useCrossover() {
   // vanished ("üst üste gönder basınca göndermiyor"). Flushed in order on auth.
   const pendingAfterAuth = useRef<ClientMsg[]>([]);
   const pendingAfterResume = useRef<ClientMsg[]>([]);
-  const offlineRoomRef = useRef<OfflineRoom | null>(null);
   // Maç ortasında çıkışta (forfeit) kaybetme popup'ı için: reset SONRASI gelen
   // kupa cezasını bu bağlamla eşleştir (yalnız dereceli, gerçek-rakipli maçta set).
   const forfeitCtxRef = useRef<{ youScore: number; oppScore: number; opponentName: string } | null>(null);
@@ -733,6 +754,12 @@ export function useCrossover() {
     });
     return () => task.cancel?.();
   }, []);
+
+  // Maç sırasında arma ön-indirme dalgaları DURUR — indirme, maçın WS turlarıyla
+  // radyo/ağı yarıştırmasın (ilk oturum jank kaynağı). Oda kapanınca (null)
+  // kaldığı yerden sürer; _reset/_logout da room'u null yaptığından kapsanır.
+  const inRoom = state.room != null;
+  useEffect(() => { setMediaPrefetchMatchActive(inRoom); }, [inRoom]);
 
   // On mount: load saved profile from AsyncStorage.
   useEffect(() => {
@@ -765,20 +792,6 @@ export function useCrossover() {
       .catch(() => {});
   }, []);
 
-  // ELLE kurulan özel oda MATCHUP'ta asılı kalmasın (lobideki Başlat butonuna
-  // matchup geçişi yüzünden artık ulaşılamıyor): lobiden dolan odada EV SAHİBİ,
-  // eşleşme gösteriminden ~3sn sonra maçı otomatik başlatır. Hızlı eşleşme ve
-  // davet odalarını sunucu başlattığı için bu bayrak onlarda hiç kalkmaz —
-  // sunucunun kendi start'ıyla yarışıp "Game already in progress" üretmez.
-  useEffect(() => {
-    if (state.phase !== 'matchup' || !state.matchupAutoStart) return;
-    const you = state.room?.players.find((p) => p.id === state.room?.youId);
-    if (!you?.isHost) return;
-    const tm = setTimeout(() => send({ type: 'start' }), 3000);
-    return () => clearTimeout(tm);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.phase, state.matchupAutoStart, state.room]);
-
   // Persist profile whenever it changes from server messages.
   const prevProfile = useRef<ProfileView | null>(null);
   useEffect(() => {
@@ -809,10 +822,15 @@ export function useCrossover() {
   // resolve an in-flight IAP verification by sharing the diamonds_granted message.
   const pendingAdReward = useRef<{ resolve: (granted: number) => void; reject: (e: Error) => void } | null>(null);
 
-  // Kayıt sınıfı mesajlara istemci yetenek bayraklarını ekler. 'wrongopen':
-  // sunucu, iki taraf da destekliyorsa "yanlış cevap turu yakmaz" kuralını açar.
+  // Kayıt sınıfı VE bağlantı-kuran maç mesajlarına istemci yetenek bayraklarını
+  // ekler. 'wrongopen': sunucu, cevap hakkı süren taraflar destekliyorsa "yanlış
+  // cevap turu yakmaz" kuralını açar. Maç mesajları (find_match/create_room/
+  // create_solo/join_room) listede DEĞİLKEN taze maç soketleri caps'siz kalıyor
+  // ve kural dereceli maçlarda hiç açılmıyordu — kasıtlı yanlış cevapla tur
+  // kilitleme istismarı bu yüzden sahada sürüyordu.
   const withCaps = (msg: ClientMsg): ClientMsg =>
     msg.type === 'register' || msg.type === 'guest' || msg.type === 'auth' || msg.type === 'resume_room'
+    || msg.type === 'find_match' || msg.type === 'create_room' || msg.type === 'create_solo' || msg.type === 'join_room'
       ? ({ ...msg, caps: ['wrongopen'] } as ClientMsg)
       : msg;
 
@@ -899,7 +917,6 @@ export function useCrossover() {
             prevProfile.current = null;
             pendingAfterAuth.current = [];
             pendingAfterResume.current = [];
-            if (offlineRoomRef.current) { try { offlineRoomRef.current.leave(); } catch { /* ignore */ } offlineRoomRef.current = null; }
             try { ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null; ws.close(); } catch { /* ignore */ }
             if (wsRef.current === ws) wsRef.current = null;
             dispatch({ type: '_logout' });
@@ -965,14 +982,17 @@ export function useCrossover() {
     attempt(0);
   }, []);
 
+  // send kimliği SABİT: state'i render closure'ından değil stateRef'ten okur —
+  // her çağrı o anki fazı/odayı/profili görür (davranış aynı), ama kimlik hiç
+  // değişmediği için actions useMemo'su ve alttaki memo sınırları bozulmaz.
   const send = useCallback((msg: ClientMsg) => {
     const ws = wsRef.current;
-    const canReconnectWithoutRoom = ['home', 'arenas', 'leaderboard', 'matchHistory', 'profile'].includes(state.phase);
-    const canResumeRoom = Boolean(state.room?.code && state.profile?.userId && !canReconnectWithoutRoom);
+    const canReconnectWithoutRoom = ['home', 'arenas', 'leaderboard', 'matchHistory', 'profile'].includes(stateRef.current.phase);
+    const canResumeRoom = Boolean(stateRef.current.room?.code && stateRef.current.profile?.userId && !canReconnectWithoutRoom);
     const staleOpen = ws?.readyState === WebSocket.OPEN && lastSocketActivity.current > 0 && Date.now() - lastSocketActivity.current > STALE_SOCKET_MS;
     const reconnectAndSendAuthed = () => {
-      const uid = state.profile?.userId;
-      const name = state.profile?.displayName;
+      const uid = stateRef.current.profile?.userId;
+      const name = stateRef.current.profile?.displayName;
       if (uid && name) {
         pendingAfterAuth.current.push(msg);
         // A REGISTER reconnect is already in flight → the queued message will
@@ -998,15 +1018,15 @@ export function useCrossover() {
         reconnectAndSendAuthed();
         return;
       }
-      if (canResumeRoom && state.room && state.profile) {
+      if (canResumeRoom && stateRef.current.room && stateRef.current.profile) {
         pendingAfterResume.current.push(msg);
         // Same in-flight guard as the auth path: while a RESUME connect is mid-
         // handshake, rapid in-match sends (guess/emote taps) must only queue —
         // re-entering connectAndSend restarted the handshake on every tap.
         const cur = wsRef.current;
         if (!(cur && cur.readyState === WebSocket.CONNECTING && connectKind.current === 'resume_room' && connectingSince.current > 0 && Date.now() - connectingSince.current < 8000)) {
-          connectAndSend({ type: 'resume_room', code: state.room.code, userId: state.profile.userId }, { silent: true });
-          track('room_resume_attempt', { phase: state.phase });
+          connectAndSend({ type: 'resume_room', code: stateRef.current.room.code, userId: stateRef.current.profile.userId }, { silent: true });
+          track('room_resume_attempt', { phase: stateRef.current.phase });
         }
         return;
       }
@@ -1014,7 +1034,22 @@ export function useCrossover() {
       dispatch({ type: 'error', message: t('error.disconnected') });
       dispatch({ type: '_reset' });
     }
-  }, [connectAndSend, state.phase, state.profile?.userId, state.profile?.displayName, state.room?.code]);
+  }, [connectAndSend]);
+
+  // ELLE kurulan özel oda MATCHUP'ta asılı kalmasın (lobideki Başlat butonuna
+  // matchup geçişi yüzünden artık ulaşılamıyor): lobiden dolan odada EV SAHİBİ,
+  // eşleşme gösteriminden ~3sn sonra maçı otomatik başlatır. Hızlı eşleşme ve
+  // davet odalarını sunucu başlattığı için bu bayrak onlarda hiç kalkmaz —
+  // sunucunun kendi start'ıyla yarışıp "Game already in progress" üretmez.
+  // (send artık kararlı ve deps'te; deps render'da değerlendirildiği için bu
+  // effect send tanımının ALTINDA durmak zorunda — TDZ.)
+  useEffect(() => {
+    if (state.phase !== 'matchup' || !state.matchupAutoStart) return;
+    const you = state.room?.players.find((p) => p.id === state.room?.youId);
+    if (!you?.isHost) return;
+    const tm = setTimeout(() => send({ type: 'start' }), 3000);
+    return () => clearTimeout(tm);
+  }, [state.phase, state.matchupAutoStart, state.room, send]);
 
   // Presence: keep an authenticated socket open whenever signed in (cold start +
   // after matches) so friend requests arrive in real time. Reconnects if dropped.
@@ -1088,409 +1123,385 @@ export function useCrossover() {
     };
   }, []);
 
-  // A pending friendly-match invite must not outlive the sender's next move.
-  // The old full-screen waiting modal made this impossible by blocking; the
-  // non-blocking banner lets the sender start a bot/quick match or invite
-  // someone else — without this, the OLD invite stays alive server-side and the
-  // first friend's accept would yank the sender out of whatever they entered.
-  const dropPendingInvite = () => {
-    const inv = state.outgoingInvite;
-    if (!inv) return;
-    send({ type: 'cancel_match_invite', toId: inv.toId });
-    dispatch({ type: '_set_outgoing', invite: null });
-  };
-
-  const actions = {
-    // Send an Apple IAP receipt to the server for validation; resolves when the
-    // server confirms diamonds were granted (diamonds_granted), rejects otherwise.
-    verifyPurchase: (receipt: string) => new Promise<void>((resolve, reject) => {
-      const ws = wsRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN) { reject(new Error('disconnected')); return; }
-      // Settle via THIS entry, never a shared slot: the timeout always rejects
-      // this promise if it's still queued, so it can never be orphaned (which
-      // used to leave the purchase overlay stuck on "processing securely").
-      const entry = { resolve, reject };
-      pendingVerify.current.push(entry);
-      ws.send(JSON.stringify({ type: 'verify_purchase', receipt }));
-      setTimeout(() => {
-        const idx = pendingVerify.current.indexOf(entry);
-        if (idx >= 0) { pendingVerify.current.splice(idx, 1); reject(new Error('timeout')); }
-      }, 20000);
-    }),
-    // Watched a rewarded ad → ask the server to credit diamonds (server-capped).
-    // Resolves with the granted amount (server-authoritative) on its own
-    // ad_reward_result channel, or rejects with the cap/throttle reason.
-    grantAdReward: () => new Promise<number>((resolve, reject) => {
-      const ws = wsRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN) { reject(new Error('disconnected')); return; }
-      pendingAdReward.current = { resolve, reject };
-      ws.send(JSON.stringify({ type: 'grant_ad_reward' }));
-      setTimeout(() => {
-        if (pendingAdReward.current) { pendingAdReward.current.reject(new Error('timeout')); pendingAdReward.current = null; }
-      }, 15000);
-    }),
-    openLeaderboard: () => {
-      fetchApi('/leaderboard')
-        .then((r) => r.json())
-        .then((entries: LeaderboardEntry[]) => dispatch({ type: '_leaderboard', entries }))
-        .catch(() => {});
-    },
-    closeLeaderboard: () => dispatch({ type: '_phase', phase: 'home' }),
-    openArenas: () => dispatch({ type: '_phase', phase: 'arenas' }),
-    closeArenas: () => dispatch({ type: '_phase', phase: 'home' }),
-    openProfile: () => dispatch({ type: '_phase', phase: 'profile' }),
-    closeProfile: () => dispatch({ type: '_phase', phase: 'home' }),
-    openMatchHistory: () => {
-      // Data only — match history now shows as a centered popup, not a fullscreen phase.
-      send({ type: 'list_match_history' });
-    },
-    closeMatchHistory: () => dispatch({ type: '_phase', phase: 'home' }),
-    register: (name: string, gameCenterId?: string) => {
-      const userId = state.profile?.userId;
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        send({ type: 'register', name, gameCenterId, userId });
-      } else {
-        connectAndSend({ type: 'register', name, gameCenterId, userId });
-      }
-    },
-    // Guest login: the server creates a fresh account with an auto "M"+9-digit
-    // username and returns its profile, which is persisted like any other — so the
-    // same guest account (and its progress) comes back on the next launch.
-    guestLogin: () => {
-      // Taze misafir hesap: eski sosyal girişin sağlayıcı izi diskte kalmasın —
-      // yoksa misafir hesap yanlışlıkla "sosyal" sanılıp ad değiştirme görür.
-      // (lastAuthProviderRef null kalır; misafir → sosyal yükseltme bağlama
-      // mantığı `!ref.current` yolundan aynen çalışmaya devam eder.)
-      lastAuthProviderRef.current = null;
-      AsyncStorage.removeItem(LAST_AUTH_PROVIDER_KEY).catch(() => {});
-      dispatch({ type: '_authProvider', provider: null });
-      connectAndSend({ type: 'guest' });
-    },
-    // Sign in with Apple / Google / Facebook: send the provider's identity token
-    // to the server, which verifies it and returns the account profile.
-    authWith: (provider: 'apple' | 'google' | 'facebook', token: string, name?: string) => {
-      const canReuseLastUser = !lastAuthProviderRef.current || lastAuthProviderRef.current === provider;
-      const userId = canReuseLastUser ? (state.profile?.userId ?? lastUserIdRef.current ?? undefined) : undefined;
-      lastAuthProviderRef.current = provider;
-      AsyncStorage.setItem(LAST_AUTH_PROVIDER_KEY, provider).catch(() => {});
-      dispatch({ type: '_authProvider', provider });
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        send({ type: 'auth', provider, token, name, userId });
-      } else {
-        connectAndSend({ type: 'auth', provider, token, name, userId });
-      }
-    },
-    changeName: (newName: string) => send({ type: 'change_name', newName }),
-    // XP yağmuru tamamlandı — bir daha (profil gezintisi dahil) asla tekrarlamaz
-    markXpSeen: () => dispatch({ type: '_xp_seen' }),
-    setUsername: (username: string) => {
-      const userId = state.profile?.userId;
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        send({ type: 'set_username', username, userId });
-      } else {
-        connectAndSend({ type: 'set_username', username, userId });
-      }
-    },
-    findMatch: (options?: GameOptions) => {
-      dropPendingInvite();
-      track('match_find', { mode: options?.mode ?? 'team-team' });
-      // Carry the registered name + account id: this fresh socket hasn't sent
-      // `register`, so without them the player would be a nameless "Oyuncu" with
-      // no trophies awarded.
-      dispatch({ type: '_set_game_options', options: options ?? null } as any);
-      connectAndSend({ type: 'find_match', name: state.profile?.displayName, userId: state.profile?.userId, options });
-    },
-    cancelSearch: () => {
-      wsRef.current?.close();
-      wsRef.current = null;
-      dispatch({ type: '_reset' });
-    },
-    createRoom: (name: string, options?: GameOptions) => {
-      dropPendingInvite();
-      connectAndSend({ type: 'create_room', name, userId: state.profile?.userId, options });
-    },
-    createSolo: (name: string, options?: GameOptions) => {
-      dropPendingInvite();
-      const mode = options?.mode ?? 'team-team';
-      track('solo_create', { difficulty: options?.difficulty ?? 'medium', mode });
-      // KALICI ÇÖZÜM — mod ve logo bozulmasını KÖKTEN bitirir.
-      // Bot maçları ARTIK HER ZAMAN sunucuya gider. Sebep: çevrimdışı oda yalnız
-      // takım-takım oynatabiliyor ve kulüp logoları sunucudan geldiği için gösteremiyordu.
-      // NetInfo simülatörde/bazı ağlarda internet olmasına rağmen yanlış "offline"
-      // döndürüp maçı çevrimdışı odaya atıyor, böylece ülke-takım SESSİZCE takım-takıma
-      // düşüyor ve logolar beyaz bayrak oluyordu. Artık NetInfo'ya hiç güvenmiyoruz:
-      // connectAndSend zaten sağlam bir yeniden-bağlanma/kurtarma mantığına sahip;
-      // gerçekten internet yoksa dürüst bir "bağlantı hatası" gösterir (sessizce yanlış
-      // modda/logosuz oynatmaz). Böylece "ülke-takım seçince takım-takım oluyor" ve
-      // "logo yerine beyaz bayrak" hataları bir daha ASLA yaşanmaz.
-      connectAndSend({ type: 'create_solo', name, userId: state.profile?.userId, options });
-    },
-    joinRoom: (code: string, name: string) => {
-      dropPendingInvite();
-      connectAndSend({ type: 'join_room', code: code.toUpperCase(), name, userId: state.profile?.userId });
-    },
-    start: () => {
-      if (offlineRoomRef.current) return offlineRoomRef.current.start();
-      send({ type: 'start' });
-    },
-    pickTeam: (clubId: number) => {
-      if (offlineRoomRef.current) {
-        dispatch({ type: '_picked' });
-        offlineRoomRef.current.handlePick(clubId);
-        return;
-      }
-      send({ type: 'pick_team', clubId });
-      dispatch({ type: '_picked' });
-    },
-    pickCountry: (country: string) => {
-      send({ type: 'pick_country', country });
-      dispatch({ type: '_picked' });
-    },
-    pickLetter: (letter: string) => {
-      send({ type: 'pick_letter', letter });
-      dispatch({ type: '_picked' });
-    },
-    searchClubs: (q: string) => {
-      if (offlineRoomRef.current) return offlineRoomRef.current.searchClubs(q);
-      send({ type: 'search_clubs', reqId: 'q', q });
-    },
-    searchPlayers: (q: string) => send({ type: 'search_players', q }),
-    pickPlayer: (playerId: number) => {
-      send({ type: 'pick_player', playerId });
-      dispatch({ type: '_picked' });
-    },
-    submitGuess: (text: string) => {
-      track('guess_submit', { length: text.trim().length });
-      if (offlineRoomRef.current) return void offlineRoomRef.current.submitGuess(text);
-      send({ type: 'submit_guess', text });
-    },
-    pass: () => {
-      track('round_pass');
-      if (offlineRoomRef.current) return offlineRoomRef.current.pass();
-      send({ type: 'pass' });
-    },
-    ready: () => {
-      if (offlineRoomRef.current) {
-        dispatch({ type: '_ready' as any });
-        offlineRoomRef.current.ready();
-        return;
-      }
-      send({ type: 'ready' });
-      dispatch({ type: '_ready' as any });
-    },
-    playAgain: () => send({ type: 'play_again' }),
-    acceptRematch: () => send({ type: 'rematch_response', accept: true }),
-    declineRematch: () => send({ type: 'rematch_response', accept: false }),
-    sendEmote: (emoteId: string) => send({ type: 'send_emote', emoteId }),
-    clearEmote: (playerId: string) => dispatch({ type: '_clear_emote', playerId }),
-    buyEmote: (emoteId: string) => send({ type: 'buy_emote', emoteId }),
-    equipEmotes: (emoteIds: string[]) => send({ type: 'equip_emotes', emoteIds }),
-    buyAvatar: (avatarId: string) => send({ type: 'buy_avatar', avatarId }),
-    setAvatar: (avatar: string | null) => send({ type: 'set_avatar', avatar }),
-    setFrame: (frameId: string | null) => send({ type: 'set_frame', frameId }),
-    claimLevelReward: (level: number, track: 'free' | 'premium' = 'free') => send({ type: 'claim_level_reward', level, track }),
-    buyPremiumRoad: () => send({ type: 'buy_premium_road' }),
-    buyPower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => send({ type: 'buy_power', powerId }),
-    usePower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => send({ type: 'use_power', powerId }),
-    loadMyStats: () => send({ type: 'get_my_stats' }),
-    // Friends — via WebSocket for real-time notifications.
-    loadFriends: () => send({ type: 'list_friends' }),
-    sendFriendRequest: (targetCode?: string, targetUsername?: string) => {
-      friendOpRef.current = Date.now();
-      send({ type: 'send_friend_request', targetCode, targetUsername });
-    },
-    respondFriendRequest: (requestId: string, accept: boolean) => {
-      friendOpRef.current = Date.now();
-      send({ type: 'respond_friend_request', requestId, accept });
-    },
-    removeFriend: (friendId: string) => send({ type: 'remove_friend', friendId }),
-    searchUsers: (query: string) => send({ type: 'search_users', query }),
-    inviteFriendMatch: (friendId: string, friendName: string, options?: GameOptions) => {
-      friendOpRef.current = Date.now();
-      // Re-inviting the SAME friend just replaces (server does too); a pending
-      // invite to a DIFFERENT friend is cancelled so it can't ghost-accept.
-      const prev = state.outgoingInvite;
-      if (prev && prev.toId !== friendId) send({ type: 'cancel_match_invite', toId: prev.toId });
-      send({ type: 'invite_friend_match', friendId, options });
-      dispatch({ type: '_set_outgoing', invite: { toId: friendId, toName: friendName, expiresAt: Date.now() + 30_000 } });
-    },
-    cancelMatchInvite: (toId: string) => {
-      send({ type: 'cancel_match_invite', toId });
+  // actions kimliği SABİT (useMemo): her AppRoot render'ında ~90 closure'ı
+  // baştan yaratmak alttaki TÜM memo sınırlarını deliyordu ve her WS mesajında
+  // boşuna GC baskısı üretiyordu. Gövdeler en güncel state'i stateRef'ten okur
+  // (stale closure yok); send/connectAndSend kararlı olduğundan bu nesne
+  // uygulama ömrü boyunca aynı kalır. Davranış birebir aynı.
+  const actions = useMemo(() => {
+    // A pending friendly-match invite must not outlive the sender's next move.
+    // The old full-screen waiting modal made this impossible by blocking; the
+    // non-blocking banner lets the sender start a bot/quick match or invite
+    // someone else — without this, the OLD invite stays alive server-side and the
+    // first friend's accept would yank the sender out of whatever they entered.
+    const dropPendingInvite = () => {
+      const inv = stateRef.current.outgoingInvite;
+      if (!inv) return;
+      send({ type: 'cancel_match_invite', toId: inv.toId });
       dispatch({ type: '_set_outgoing', invite: null });
-    },
-    respondMatchInvite: (fromId: string, accept: boolean) => {
-      // Accepting someone ELSE's invite starts a match — our own pending invite
-      // must be voided first or the third friend keeps a ghost invite.
-      if (accept) dropPendingInvite();
-      send({ type: 'respond_match_invite', fromId, accept });
-      dispatch({ type: '_dismiss_invite' });
-    },
-    getUserProfile: (userId: string) => send({ type: 'get_user_profile', userId }),
-    closeUserProfile: () => dispatch({ type: '_close_profile' }),
-    clearNotice: () => dispatch({ type: '_clear_notice' }),
-    clearFriendNotice: () => dispatch({ type: '_clear_friend_notice' } as any),
-    clearBanner: () => dispatch({ type: '_clear_banner' }),
-    dismissMatchInvite: () => dispatch({ type: '_dismiss_invite' }),
-    findMatchAgain: () => {
-      const options = state.lastGameOptions ?? undefined;
-      dispatch({ type: '_set_game_options', options: options ?? null } as any);
-      connectAndSend({ type: 'find_match', name: state.profile?.displayName, userId: state.profile?.userId, options });
-    },
-    // ---- Direct Messages ----
-    loadConversations: () => send({ type: 'list_conversations' }),
-    openChat: (userId: string) => {
-      dispatch({ type: '_open_chat', userId } as any);
-      send({ type: 'list_messages', withUserId: userId });
-      send({ type: 'mark_read', fromUserId: userId });
-    },
-    closeChat: () => dispatch({ type: '_close_chat' } as any),
-    sendMessage: (toUserId: string, body: string) => {
-      const b = body.trim();
-      if (!b) return;
-      // Optimistic local echo: the bubble appears the instant Send is pressed
-      // instead of after the server round-trip (whose delay/drop read as "Send
-      // doesn't work"). Reuses the message_received reducer (chat + conversation
-      // list both update); reconciled there when the real echo lands.
-      if (state.profile) {
-        const local: MessageView = {
-          id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          fromId: state.profile.userId,
-          fromName: state.profile.displayName ?? '',
-          toId: toUserId,
-          body: b,
-          createdAt: new Date().toISOString(),
-        };
-        dispatch({ type: 'message_received', message: local } as any);
-      }
-      send({ type: 'send_message', toUserId, body: b });
-    },
-    markRead: (fromUserId: string) => send({ type: 'mark_read', fromUserId }),
-    // ---- User-generated-content safety (App Store guideline 1.2) ----
-    blockUser: (userId: string) => send({ type: 'block_user', userId }),
-    unblockUser: (userId: string) => send({ type: 'unblock_user', userId }),
-    listBlocked: () => send({ type: 'list_blocked' }),
-    // messageId omitted → reports the user rather than one specific message.
-    reportContent: (userId: string, reason: string, messageId?: string) =>
-      send({ type: 'report_content', userId, reason, messageId }),
-    deleteMessage: (messageId: string) => send({ type: 'delete_message', messageId }),
-    acceptTerms: () => send({ type: 'accept_terms' }),
-    // ---- Push notifications ----
-    // Ask permission → fetch the Expo push token → register it with the server.
-    // NOT auto-run — the UI triggers it (permission prompt / silent re-register
-    // on later launches when permission is already granted). Every step is
-    // guarded: in Expo Go the token is null and this quietly does nothing.
-    registerPush: async () => {
-      try {
-        const granted = await requestPushPermission();
-        if (!granted) return;
-        const token = await getPushToken();
-        if (!token) return;
-        const platform = Platform.OS === 'android' ? ('android' as const) : ('ios' as const);
-        // send() so reconnect queueing applies (register → queued msg after auth).
-        send({ type: 'register_push', token, platform, lang: currentLang() });
-      } catch (err) {
-        captureError(err, { where: 'register_push' });
-      }
-    },
-    typingStart: (toUserId: string) => send({ type: 'typing_start', toUserId }),
-    typingStop: (toUserId: string) => send({ type: 'typing_stop', toUserId }),
-    leave: () => {
-      if (offlineRoomRef.current) {
-        offlineRoomRef.current.leave();
-        offlineRoomRef.current = null;
-      }
-      // Maç ortasında dereceli maçtan çıkış = FORFEIT (kaybetme). Kupa cezası
-      // (trophy_update) reset SONRASI gelir; onu yakalayıp kaybetme popup'ı göster.
-      // Yalnız: hızlı eşleşme + maç bitmemiş + rakip zaten ayrılmamış + GERÇEK rakip.
-      {
-        const fRoom = state.room;
-        const fOpp = fRoom?.players.find((p) => p.id !== fRoom.youId);
-        const fYou = fRoom?.players.find((p) => p.id === fRoom.youId);
-        const isRankedForfeit = state.isQuickMatch && !state.matchOver && !state.opponentForfeit && !!fOpp && !(fOpp.name || '').includes('Bot');
-        forfeitCtxRef.current = isRankedForfeit ? { youScore: fYou?.score ?? 0, oppScore: fOpp?.score ?? 0, opponentName: fOpp?.name ?? '' } : null;
-      }
-      // Deliberate exit: tell the server BEFORE closing — a bare socket close
-      // gets the 12s reconnect grace and the opponent would keep playing
-      // against nobody ("anlık multiplayer bu").
-      send({ type: 'leave_match' } as any);
-      // Soketi hemen DEĞİL kısa gecikmeyle kapat: sunucu çekilme cezasını
-      // (trophy_update, delta<0) bu pencerede yollar — ana menüde kupa düşüş
-      // animasyonu bu mesajla oynar. State yine ANINDA sıfırlanır.
-      //
-      // EMEKLİLİK ŞART (donma düzeltmesi): eski soketin onmessage'ı guard'sız
-      // dispatch ediyor — pencere boyunca gelen bayat room_state/opponent_left
-      // _reset SONRASI state'i maç fazına geri fırlatıp uygulamayı sürücüsüz
-      // bir ekranda donduruyordu. Emekli sokette YALNIZ trophy_update/xp_update
-      // geçer; onclose/onerror da sökülür (yeni bağlantıya hayalet düşmesin).
-      const wsToClose = wsRef.current;
-      wsRef.current = null;
-      if (wsToClose) {
-        wsToClose.onopen = null; wsToClose.onerror = null; wsToClose.onclose = null;
-        wsToClose.onmessage = (e) => {
-          try {
-            const m = JSON.parse(String(e.data)) as ServerMsg;
-            const mt = (m as { type?: string }).type;
-            if (mt === 'trophy_update' || mt === 'xp_update') dispatch(m);
-            // Forfeit kupa cezası geldi → kaybetme popup'ını bu delta ile göster.
-            if (mt === 'trophy_update' && forfeitCtxRef.current) {
-              const tu = m as ServerMsg & { type: 'trophy_update' };
-              dispatch({ type: '_forfeit_loss', delta: tu.delta, trophies: tu.trophies, arena: tu.arena, ...forfeitCtxRef.current });
-              forfeitCtxRef.current = null;
-            }
-          } catch { /* yut */ }
-        };
-        setTimeout(() => { try { wsToClose.onmessage = null; wsToClose.close(); } catch { /* kapalı */ } }, 1200);
-      }
-      dispatch({ type: '_reset' });
-    },
-    clearForfeitLoss: () => dispatch({ type: '_clear_forfeit_loss' }),
-    // ANTI-CHEAT: the app went to the BACKGROUND mid-match — "başka uygulamaya
-    // girip cevaba bakıyor". Same exit as leave() (socket close = forfeit for
-    // the opponent), plus a toast so the player knows exactly why they lost.
-    forfeitFromBackground: () => {
-      if (offlineRoomRef.current) {
-        offlineRoomRef.current.leave();
-        offlineRoomRef.current = null;
-      }
-      send({ type: 'leave_match' } as any); // rakip ANINDA görsün (grace yok)
-      wsRef.current?.close();
-      wsRef.current = null;
-      dispatch({ type: '_reset' });
-      dispatch({ type: 'error', message: t('match.leftBackground') } as any);
-    },
-    logout: async () => {
-      const lastUserId = state.profile?.userId ?? lastUserIdRef.current;
-      if (offlineRoomRef.current) {
-        offlineRoomRef.current.leave();
-        offlineRoomRef.current = null;
-      }
-      const ws = wsRef.current;
-      if (ws) {
-        ws.onopen = null;
-        ws.onmessage = null;
-        ws.onclose = null;
-        ws.onerror = null;
-        try { ws.close(); } catch { /* ignore */ }
-      }
-      wsRef.current = null;
-      connectingSince.current = 0;
-      prevProfile.current = null;
-      pendingVerify.current = [];
-      pendingAdReward.current = null;
-      // Never let account A's queued sends flush under account B's session.
-      pendingAfterAuth.current = [];
-      pendingAfterResume.current = [];
-      lastUserIdRef.current = lastUserId ?? null;
-      try {
-        if (lastUserId) await AsyncStorage.setItem(LAST_USER_ID_KEY, lastUserId);
-        await AsyncStorage.removeItem(PROFILE_KEY);
-      } catch {
-        // Even if storage removal fails, still force the UI back to login.
-      }
-      dispatch({ type: '_logout' });
-    },
-    deleteAccount: () => send({ type: 'delete_account' }),
-  };
+    };
+    return {
+      // Send an Apple IAP receipt to the server for validation; resolves when the
+      // server confirms diamonds were granted (diamonds_granted), rejects otherwise.
+      verifyPurchase: (receipt: string) => new Promise<void>((resolve, reject) => {
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) { reject(new Error('disconnected')); return; }
+        // Settle via THIS entry, never a shared slot: the timeout always rejects
+        // this promise if it's still queued, so it can never be orphaned (which
+        // used to leave the purchase overlay stuck on "processing securely").
+        const entry = { resolve, reject };
+        pendingVerify.current.push(entry);
+        ws.send(JSON.stringify({ type: 'verify_purchase', receipt }));
+        setTimeout(() => {
+          const idx = pendingVerify.current.indexOf(entry);
+          if (idx >= 0) { pendingVerify.current.splice(idx, 1); reject(new Error('timeout')); }
+        }, 20000);
+      }),
+      // Watched a rewarded ad → ask the server to credit diamonds (server-capped).
+      // Resolves with the granted amount (server-authoritative) on its own
+      // ad_reward_result channel, or rejects with the cap/throttle reason.
+      grantAdReward: () => new Promise<number>((resolve, reject) => {
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) { reject(new Error('disconnected')); return; }
+        pendingAdReward.current = { resolve, reject };
+        ws.send(JSON.stringify({ type: 'grant_ad_reward' }));
+        setTimeout(() => {
+          if (pendingAdReward.current) { pendingAdReward.current.reject(new Error('timeout')); pendingAdReward.current = null; }
+        }, 15000);
+      }),
+      openLeaderboard: () => {
+        fetchApi('/leaderboard')
+          .then((r) => r.json())
+          .then((entries: LeaderboardEntry[]) => dispatch({ type: '_leaderboard', entries }))
+          .catch(() => {});
+      },
+      closeLeaderboard: () => dispatch({ type: '_phase', phase: 'home' }),
+      openArenas: () => dispatch({ type: '_phase', phase: 'arenas' }),
+      closeArenas: () => dispatch({ type: '_phase', phase: 'home' }),
+      openProfile: () => dispatch({ type: '_phase', phase: 'profile' }),
+      closeProfile: () => dispatch({ type: '_phase', phase: 'home' }),
+      openMatchHistory: () => {
+        // Data only — match history now shows as a centered popup, not a fullscreen phase.
+        send({ type: 'list_match_history' });
+      },
+      closeMatchHistory: () => dispatch({ type: '_phase', phase: 'home' }),
+      register: (name: string, gameCenterId?: string) => {
+        const userId = stateRef.current.profile?.userId;
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          send({ type: 'register', name, gameCenterId, userId });
+        } else {
+          connectAndSend({ type: 'register', name, gameCenterId, userId });
+        }
+      },
+      // Guest login: the server creates a fresh account with an auto "M"+9-digit
+      // username and returns its profile, which is persisted like any other — so the
+      // same guest account (and its progress) comes back on the next launch.
+      guestLogin: () => {
+        // Taze misafir hesap: eski sosyal girişin sağlayıcı izi diskte kalmasın —
+        // yoksa misafir hesap yanlışlıkla "sosyal" sanılıp ad değiştirme görür.
+        // (lastAuthProviderRef null kalır; misafir → sosyal yükseltme bağlama
+        // mantığı `!ref.current` yolundan aynen çalışmaya devam eder.)
+        lastAuthProviderRef.current = null;
+        AsyncStorage.removeItem(LAST_AUTH_PROVIDER_KEY).catch(() => {});
+        dispatch({ type: '_authProvider', provider: null });
+        connectAndSend({ type: 'guest' });
+      },
+      // Sign in with Apple / Google / Facebook: send the provider's identity token
+      // to the server, which verifies it and returns the account profile.
+      authWith: (provider: 'apple' | 'google' | 'facebook', token: string, name?: string) => {
+        const canReuseLastUser = !lastAuthProviderRef.current || lastAuthProviderRef.current === provider;
+        const userId = canReuseLastUser ? (stateRef.current.profile?.userId ?? lastUserIdRef.current ?? undefined) : undefined;
+        lastAuthProviderRef.current = provider;
+        AsyncStorage.setItem(LAST_AUTH_PROVIDER_KEY, provider).catch(() => {});
+        dispatch({ type: '_authProvider', provider });
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          send({ type: 'auth', provider, token, name, userId });
+        } else {
+          connectAndSend({ type: 'auth', provider, token, name, userId });
+        }
+      },
+      changeName: (newName: string) => send({ type: 'change_name', newName }),
+      // XP yağmuru tamamlandı — bir daha (profil gezintisi dahil) asla tekrarlamaz
+      markXpSeen: () => dispatch({ type: '_xp_seen' }),
+      setUsername: (username: string) => {
+        const userId = stateRef.current.profile?.userId;
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          send({ type: 'set_username', username, userId });
+        } else {
+          connectAndSend({ type: 'set_username', username, userId });
+        }
+      },
+      findMatch: (options?: GameOptions) => {
+        dropPendingInvite();
+        track('match_find', { mode: options?.mode ?? 'team-team' });
+        // Carry the registered name + account id: this fresh socket hasn't sent
+        // `register`, so without them the player would be a nameless "Oyuncu" with
+        // no trophies awarded.
+        dispatch({ type: '_set_game_options', options: options ?? null } as any);
+        connectAndSend({ type: 'find_match', name: stateRef.current.profile?.displayName, userId: stateRef.current.profile?.userId, options });
+      },
+      cancelSearch: () => {
+        wsRef.current?.close();
+        wsRef.current = null;
+        dispatch({ type: '_reset' });
+      },
+      createRoom: (name: string, options?: GameOptions) => {
+        dropPendingInvite();
+        connectAndSend({ type: 'create_room', name, userId: stateRef.current.profile?.userId, options });
+      },
+      createSolo: (name: string, options?: GameOptions) => {
+        dropPendingInvite();
+        const mode = options?.mode ?? 'team-team';
+        track('solo_create', { difficulty: options?.difficulty ?? 'medium', mode });
+        // KALICI ÇÖZÜM — mod ve logo bozulmasını KÖKTEN bitirir.
+        // Bot maçları ARTIK HER ZAMAN sunucuya gider. Sebep: çevrimdışı oda yalnız
+        // takım-takım oynatabiliyor ve kulüp logoları sunucudan geldiği için gösteremiyordu.
+        // NetInfo simülatörde/bazı ağlarda internet olmasına rağmen yanlış "offline"
+        // döndürüp maçı çevrimdışı odaya atıyor, böylece ülke-takım SESSİZCE takım-takıma
+        // düşüyor ve logolar beyaz bayrak oluyordu. Artık NetInfo'ya hiç güvenmiyoruz:
+        // connectAndSend zaten sağlam bir yeniden-bağlanma/kurtarma mantığına sahip;
+        // gerçekten internet yoksa dürüst bir "bağlantı hatası" gösterir (sessizce yanlış
+        // modda/logosuz oynatmaz). Böylece "ülke-takım seçince takım-takım oluyor" ve
+        // "logo yerine beyaz bayrak" hataları bir daha ASLA yaşanmaz.
+        connectAndSend({ type: 'create_solo', name, userId: stateRef.current.profile?.userId, options });
+      },
+      joinRoom: (code: string, name: string) => {
+        dropPendingInvite();
+        connectAndSend({ type: 'join_room', code: code.toUpperCase(), name, userId: stateRef.current.profile?.userId });
+      },
+      start: () => send({ type: 'start' }),
+      pickTeam: (clubId: number) => {
+        send({ type: 'pick_team', clubId });
+        dispatch({ type: '_picked' });
+      },
+      pickCountry: (country: string) => {
+        send({ type: 'pick_country', country });
+        dispatch({ type: '_picked' });
+      },
+      pickLetter: (letter: string) => {
+        send({ type: 'pick_letter', letter });
+        dispatch({ type: '_picked' });
+      },
+      searchClubs: (q: string) => send({ type: 'search_clubs', reqId: 'q', q }),
+      searchPlayers: (q: string) => send({ type: 'search_players', q }),
+      pickPlayer: (playerId: number) => {
+        send({ type: 'pick_player', playerId });
+        dispatch({ type: '_picked' });
+      },
+      submitGuess: (text: string) => {
+        track('guess_submit', { length: text.trim().length });
+        send({ type: 'submit_guess', text });
+      },
+      pass: () => {
+        track('round_pass');
+        send({ type: 'pass' });
+      },
+      ready: () => {
+        send({ type: 'ready' });
+        dispatch({ type: '_ready' as any });
+      },
+      playAgain: () => send({ type: 'play_again' }),
+      acceptRematch: () => send({ type: 'rematch_response', accept: true }),
+      declineRematch: () => send({ type: 'rematch_response', accept: false }),
+      sendEmote: (emoteId: string) => send({ type: 'send_emote', emoteId }),
+      clearEmote: (playerId: string) => dispatch({ type: '_clear_emote', playerId }),
+      buyEmote: (emoteId: string) => send({ type: 'buy_emote', emoteId }),
+      equipEmotes: (emoteIds: string[]) => send({ type: 'equip_emotes', emoteIds }),
+      buyAvatar: (avatarId: string) => send({ type: 'buy_avatar', avatarId }),
+      setAvatar: (avatar: string | null) => send({ type: 'set_avatar', avatar }),
+      setFrame: (frameId: string | null) => send({ type: 'set_frame', frameId }),
+      claimLevelReward: (level: number, track: 'free' | 'premium' = 'free') => send({ type: 'claim_level_reward', level, track }),
+      buyPremiumRoad: () => send({ type: 'buy_premium_road' }),
+      buyPower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => send({ type: 'buy_power', powerId }),
+      usePower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => send({ type: 'use_power', powerId }),
+      loadMyStats: () => send({ type: 'get_my_stats' }),
+      // Friends — via WebSocket for real-time notifications.
+      loadFriends: () => send({ type: 'list_friends' }),
+      sendFriendRequest: (targetCode?: string, targetUsername?: string) => {
+        friendOpRef.current = Date.now();
+        send({ type: 'send_friend_request', targetCode, targetUsername });
+      },
+      respondFriendRequest: (requestId: string, accept: boolean) => {
+        friendOpRef.current = Date.now();
+        send({ type: 'respond_friend_request', requestId, accept });
+      },
+      removeFriend: (friendId: string) => send({ type: 'remove_friend', friendId }),
+      searchUsers: (query: string) => send({ type: 'search_users', query }),
+      inviteFriendMatch: (friendId: string, friendName: string, options?: GameOptions) => {
+        friendOpRef.current = Date.now();
+        // Re-inviting the SAME friend just replaces (server does too); a pending
+        // invite to a DIFFERENT friend is cancelled so it can't ghost-accept.
+        const prev = stateRef.current.outgoingInvite;
+        if (prev && prev.toId !== friendId) send({ type: 'cancel_match_invite', toId: prev.toId });
+        send({ type: 'invite_friend_match', friendId, options });
+        dispatch({ type: '_set_outgoing', invite: { toId: friendId, toName: friendName, expiresAt: Date.now() + 30_000 } });
+      },
+      cancelMatchInvite: (toId: string) => {
+        send({ type: 'cancel_match_invite', toId });
+        dispatch({ type: '_set_outgoing', invite: null });
+      },
+      respondMatchInvite: (fromId: string, accept: boolean) => {
+        // Accepting someone ELSE's invite starts a match — our own pending invite
+        // must be voided first or the third friend keeps a ghost invite.
+        if (accept) dropPendingInvite();
+        send({ type: 'respond_match_invite', fromId, accept });
+        dispatch({ type: '_dismiss_invite' });
+      },
+      getUserProfile: (userId: string) => send({ type: 'get_user_profile', userId }),
+      closeUserProfile: () => dispatch({ type: '_close_profile' }),
+      clearNotice: () => dispatch({ type: '_clear_notice' }),
+      clearFriendNotice: () => dispatch({ type: '_clear_friend_notice' } as any),
+      clearBanner: () => dispatch({ type: '_clear_banner' }),
+      dismissMatchInvite: () => dispatch({ type: '_dismiss_invite' }),
+      findMatchAgain: () => {
+        const options = stateRef.current.lastGameOptions ?? undefined;
+        dispatch({ type: '_set_game_options', options: options ?? null } as any);
+        connectAndSend({ type: 'find_match', name: stateRef.current.profile?.displayName, userId: stateRef.current.profile?.userId, options });
+      },
+      // ---- Direct Messages ----
+      loadConversations: () => send({ type: 'list_conversations' }),
+      openChat: (userId: string) => {
+        dispatch({ type: '_open_chat', userId } as any);
+        send({ type: 'list_messages', withUserId: userId });
+        send({ type: 'mark_read', fromUserId: userId });
+      },
+      closeChat: () => dispatch({ type: '_close_chat' } as any),
+      sendMessage: (toUserId: string, body: string) => {
+        const b = body.trim();
+        if (!b) return;
+        // Optimistic local echo: the bubble appears the instant Send is pressed
+        // instead of after the server round-trip (whose delay/drop read as "Send
+        // doesn't work"). Reuses the message_received reducer (chat + conversation
+        // list both update); reconciled there when the real echo lands.
+        if (stateRef.current.profile) {
+          const local: MessageView = {
+            id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            fromId: stateRef.current.profile.userId,
+            fromName: stateRef.current.profile.displayName ?? '',
+            toId: toUserId,
+            body: b,
+            createdAt: new Date().toISOString(),
+          };
+          dispatch({ type: 'message_received', message: local } as any);
+        }
+        send({ type: 'send_message', toUserId, body: b });
+      },
+      markRead: (fromUserId: string) => send({ type: 'mark_read', fromUserId }),
+      // ---- User-generated-content safety (App Store guideline 1.2) ----
+      blockUser: (userId: string) => send({ type: 'block_user', userId }),
+      unblockUser: (userId: string) => send({ type: 'unblock_user', userId }),
+      listBlocked: () => send({ type: 'list_blocked' }),
+      // messageId omitted → reports the user rather than one specific message.
+      reportContent: (userId: string, reason: string, messageId?: string) =>
+        send({ type: 'report_content', userId, reason, messageId }),
+      deleteMessage: (messageId: string) => send({ type: 'delete_message', messageId }),
+      acceptTerms: () => send({ type: 'accept_terms' }),
+      // ---- Push notifications ----
+      // Ask permission → fetch the Expo push token → register it with the server.
+      // NOT auto-run — the UI triggers it (permission prompt / silent re-register
+      // on later launches when permission is already granted). Every step is
+      // guarded: in Expo Go the token is null and this quietly does nothing.
+      registerPush: async () => {
+        try {
+          const granted = await requestPushPermission();
+          if (!granted) return;
+          const token = await getPushToken();
+          if (!token) return;
+          const platform = Platform.OS === 'android' ? ('android' as const) : ('ios' as const);
+          // send() so reconnect queueing applies (register → queued msg after auth).
+          send({ type: 'register_push', token, platform, lang: currentLang() });
+        } catch (err) {
+          captureError(err, { where: 'register_push' });
+        }
+      },
+      typingStart: (toUserId: string) => send({ type: 'typing_start', toUserId }),
+      typingStop: (toUserId: string) => send({ type: 'typing_stop', toUserId }),
+      leave: () => {
+        // Maç ortasında dereceli maçtan çıkış = FORFEIT (kaybetme). Kupa cezası
+        // (trophy_update) reset SONRASI gelir; onu yakalayıp kaybetme popup'ı göster.
+        // Yalnız: hızlı eşleşme + maç bitmemiş + rakip zaten ayrılmamış + GERÇEK rakip.
+        {
+          const fRoom = stateRef.current.room;
+          const fOpp = fRoom?.players.find((p) => p.id !== fRoom.youId);
+          const fYou = fRoom?.players.find((p) => p.id === fRoom.youId);
+          const isRankedForfeit = stateRef.current.isQuickMatch && !stateRef.current.matchOver && !stateRef.current.opponentForfeit && !!fOpp && !(fOpp.name || '').includes('Bot');
+          forfeitCtxRef.current = isRankedForfeit ? { youScore: fYou?.score ?? 0, oppScore: fOpp?.score ?? 0, opponentName: fOpp?.name ?? '' } : null;
+        }
+        // Deliberate exit: tell the server BEFORE closing — a bare socket close
+        // gets the 12s reconnect grace and the opponent would keep playing
+        // against nobody ("anlık multiplayer bu").
+        send({ type: 'leave_match' } as any);
+        // Soketi hemen DEĞİL kısa gecikmeyle kapat: sunucu çekilme cezasını
+        // (trophy_update, delta<0) bu pencerede yollar — ana menüde kupa düşüş
+        // animasyonu bu mesajla oynar. State yine ANINDA sıfırlanır.
+        //
+        // EMEKLİLİK ŞART (donma düzeltmesi): eski soketin onmessage'ı guard'sız
+        // dispatch ediyor — pencere boyunca gelen bayat room_state/opponent_left
+        // _reset SONRASI state'i maç fazına geri fırlatıp uygulamayı sürücüsüz
+        // bir ekranda donduruyordu. Emekli sokette YALNIZ trophy_update/xp_update
+        // geçer; onclose/onerror da sökülür (yeni bağlantıya hayalet düşmesin).
+        const wsToClose = wsRef.current;
+        wsRef.current = null;
+        if (wsToClose) {
+          wsToClose.onopen = null; wsToClose.onerror = null; wsToClose.onclose = null;
+          wsToClose.onmessage = (e) => {
+            try {
+              const m = JSON.parse(String(e.data)) as ServerMsg;
+              const mt = (m as { type?: string }).type;
+              if (mt === 'trophy_update' || mt === 'xp_update') dispatch(m);
+              // Forfeit kupa cezası geldi → kaybetme popup'ını bu delta ile göster.
+              if (mt === 'trophy_update' && forfeitCtxRef.current) {
+                const tu = m as ServerMsg & { type: 'trophy_update' };
+                dispatch({ type: '_forfeit_loss', delta: tu.delta, trophies: tu.trophies, arena: tu.arena, ...forfeitCtxRef.current });
+                forfeitCtxRef.current = null;
+              }
+            } catch { /* yut */ }
+          };
+          setTimeout(() => { try { wsToClose.onmessage = null; wsToClose.close(); } catch { /* kapalı */ } }, 1200);
+        }
+        dispatch({ type: '_reset' });
+      },
+      clearForfeitLoss: () => dispatch({ type: '_clear_forfeit_loss' }),
+      // ANTI-CHEAT: the app went to the BACKGROUND mid-match — "başka uygulamaya
+      // girip cevaba bakıyor". Same exit as leave() (socket close = forfeit for
+      // the opponent), plus a toast so the player knows exactly why they lost.
+      forfeitFromBackground: () => {
+        send({ type: 'leave_match' } as any); // rakip ANINDA görsün (grace yok)
+        wsRef.current?.close();
+        wsRef.current = null;
+        dispatch({ type: '_reset' });
+        dispatch({ type: 'error', message: t('match.leftBackground') } as any);
+      },
+      logout: async () => {
+        const lastUserId = stateRef.current.profile?.userId ?? lastUserIdRef.current;
+        const ws = wsRef.current;
+        if (ws) {
+          ws.onopen = null;
+          ws.onmessage = null;
+          ws.onclose = null;
+          ws.onerror = null;
+          try { ws.close(); } catch { /* ignore */ }
+        }
+        wsRef.current = null;
+        connectingSince.current = 0;
+        prevProfile.current = null;
+        pendingVerify.current = [];
+        pendingAdReward.current = null;
+        // Never let account A's queued sends flush under account B's session.
+        pendingAfterAuth.current = [];
+        pendingAfterResume.current = [];
+        lastUserIdRef.current = lastUserId ?? null;
+        try {
+          if (lastUserId) await AsyncStorage.setItem(LAST_USER_ID_KEY, lastUserId);
+          await AsyncStorage.removeItem(PROFILE_KEY);
+        } catch {
+          // Even if storage removal fails, still force the UI back to login.
+        }
+        dispatch({ type: '_logout' });
+      },
+      deleteAccount: () => send({ type: 'delete_account' }),
+    };
+  }, [send, connectAndSend]);
 
   return { state, actions };
 }
