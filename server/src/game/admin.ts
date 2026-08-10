@@ -77,6 +77,10 @@ export async function getAdminStats(live: LiveStats) {
     purchases,
     ads,
     adsDaily,
+    playtime,
+    playtimeTop,
+    playtimeDaily,
+    matchDur,
   ] = await Promise.all([
     // ── Kullanıcılar / aktiflik (yayın sonrası, test hariç) ──
     pool.query(`
@@ -202,6 +206,54 @@ export async function getAdminStats(live: LiveStats) {
       WHERE ${notTest('u.display_name')}
       GROUP BY 1
       ORDER BY 1`),
+
+    // ── Oyunda kalınan süre (play_sessions günlüğü; 10.08.2026'da açıldı —
+    //    öncesi ölçülemez). Test hesapları hariç. ──
+    pool.query(`
+      SELECT
+        COALESCE(sum(ps.duration_secs), 0)::bigint AS total_secs,
+        COALESCE(sum(ps.duration_secs) FILTER (WHERE ps.started_at >= now() - interval '1 day'), 0)::bigint  AS secs_today,
+        COALESCE(sum(ps.duration_secs) FILTER (WHERE ps.started_at >= now() - interval '7 days'), 0)::bigint AS secs_7d,
+        count(*)::int AS sessions,
+        count(*) FILTER (WHERE ps.started_at >= now() - interval '1 day')::int AS sessions_today,
+        count(DISTINCT ps.user_id) FILTER (WHERE ps.started_at >= now() - interval '1 day')::int AS users_today,
+        COALESCE(avg(ps.duration_secs), 0)::float AS avg_secs
+      FROM play_sessions ps
+      JOIN users u ON u.id = ps.user_id
+      WHERE ${notTest('u.display_name')}`),
+
+    // ── En çok oynayanlar (toplam süre, tüm zaman) ──
+    pool.query<{ display_name: string; secs: string; sessions: number }>(`
+      SELECT u.display_name, sum(ps.duration_secs)::bigint AS secs, count(*)::int AS sessions
+      FROM play_sessions ps
+      JOIN users u ON u.id = ps.user_id
+      WHERE ${notTest('u.display_name')}
+      GROUP BY u.display_name
+      ORDER BY secs DESC
+      LIMIT 20`),
+
+    // ── Günlük toplam oyun süresi serisi (dk) ──
+    pool.query<{ day: string; minutes: number; users: number }>(`
+      SELECT to_char(date_trunc('day', ps.started_at AT TIME ZONE 'Europe/Istanbul'), 'YYYY-MM-DD') AS day,
+             round(sum(ps.duration_secs) / 60.0)::int AS minutes,
+             count(DISTINCT ps.user_id)::int AS users
+      FROM play_sessions ps
+      JOIN users u ON u.id = ps.user_id
+      WHERE ${notTest('u.display_name')}
+      GROUP BY 1
+      ORDER BY 1`),
+
+    // ── Ortalama maç süresi (yalnız süresi ölçülmüş kayıtlar; 0 = eski kayıt).
+    //    PvP ve bot ayrımı opponent_id NULL'dan. ──
+    pool.query(`
+      SELECT
+        COALESCE(avg(mh.duration_secs) FILTER (WHERE mh.duration_secs > 0), 0)::float AS avg_secs,
+        COALESCE(avg(mh.duration_secs) FILTER (WHERE mh.duration_secs > 0 AND mh.opponent_id IS NOT NULL), 0)::float AS avg_pvp_secs,
+        COALESCE(avg(mh.duration_secs) FILTER (WHERE mh.duration_secs > 0 AND mh.opponent_id IS NULL), 0)::float AS avg_bot_secs,
+        count(*) FILTER (WHERE mh.duration_secs > 0)::int AS measured
+      FROM match_history mh
+      JOIN users u ON u.id = mh.player_id
+      WHERE mh.played_at >= ${LAUNCH_TS} AND ${notTest('u.display_name')}`),
   ]);
 
   const u = users.rows[0] as any;
@@ -282,6 +334,23 @@ export async function getAdminStats(live: LiveStats) {
       rewardPerView: 5, // +5 elmas/izleme — app'teki AD_REWARD ile senkron
     },
     matches: { total: m.total, today: m.today, last7d: m.last7d, modes: modes.rows },
+    playtime: {
+      totalSecs: Number((playtime.rows[0] as any).total_secs),
+      secsToday: Number((playtime.rows[0] as any).secs_today),
+      secs7d: Number((playtime.rows[0] as any).secs_7d),
+      sessions: (playtime.rows[0] as any).sessions,
+      sessionsToday: (playtime.rows[0] as any).sessions_today,
+      usersToday: (playtime.rows[0] as any).users_today,
+      avgSessionSecs: Math.round((playtime.rows[0] as any).avg_secs),
+      topPlayers: playtimeTop.rows.map((r) => ({ user: r.display_name, secs: Number(r.secs), sessions: r.sessions })),
+      daily: playtimeDaily.rows,
+    },
+    matchDuration: {
+      avgSecs: Math.round((matchDur.rows[0] as any).avg_secs),
+      avgPvpSecs: Math.round((matchDur.rows[0] as any).avg_pvp_secs),
+      avgBotSecs: Math.round((matchDur.rows[0] as any).avg_bot_secs),
+      measured: (matchDur.rows[0] as any).measured,
+    },
     arenas: arenaDist,
     usersDaily: usersDaily.rows,
     moderation: { openReports: (reports.rows[0] as any).open },

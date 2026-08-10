@@ -252,6 +252,26 @@
     <div class="card kpi"><div class="label">Bugünkü maç</div><div class="value" id="m_today">–</div><div class="sub">7g: <span id="m_7d">–</span></div></div>
     <div class="card kpi"><div class="label">Toplam mesaj</div><div class="value" id="msg_total">–</div><div class="sub">bugün: <span id="msg_today">–</span></div></div>
   </div>
+
+  <!-- Playtime -->
+  <div class="section-title">Oyun Süresi</div>
+  <div class="grid g-kpi">
+    <div class="card kpi accent-mint"><div class="label">Bugün toplam süre</div><div class="value" id="t_today">–</div><div class="sub"><span id="t_sessToday">–</span> oturum · <span id="t_usersToday">–</span> oyuncu</div></div>
+    <div class="card kpi"><div class="label">Ortalama oturum</div><div class="value" id="t_avgSess">–</div><div class="sub">bağlantı başına oyunda kalış</div></div>
+    <div class="card kpi accent-gold"><div class="label">Ortalama maç süresi</div><div class="value" id="t_avgMatch">–</div><div class="sub">PvP: <span id="t_avgPvp">–</span> · Bot: <span id="t_avgBot">–</span></div></div>
+    <div class="card kpi"><div class="label">Toplam süre</div><div class="value" id="t_total">–</div><div class="sub">7g: <span id="t_7d">–</span> · <span id="t_sessions">–</span> oturum</div></div>
+  </div>
+  <div class="two-col" style="margin-top:12px">
+    <div class="card chart-card">
+      <h3>Günlük oyun süresi</h3><p class="hint">Günlük toplam dakika — günlük 10.08.2026'da açıldı, öncesi ölçülemedi</p>
+      <div class="bars" id="c_playtime"></div>
+      <div class="axis"><span id="c_pt_start">—</span><span id="c_pt_end">—</span></div>
+    </div>
+    <div class="card chart-card">
+      <h3>En çok oynayanlar</h3><p class="hint">toplam süre (dakika) — ilk 20</p>
+      <div id="t_top"></div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -451,6 +471,22 @@
     $("msg_total").textContent = trNum(MS.total);
     $("msg_today").textContent = trNum(MS.today);
 
+    // ── Oyun süresi (play_sessions günlüğü; eski sunucuda alan yoksa "–" kalır) ──
+    var T = s.playtime || {};
+    $("t_today").textContent      = fmtDur(T.secsToday);
+    $("t_sessToday").textContent  = trNum(T.sessionsToday);
+    $("t_usersToday").textContent = trNum(T.usersToday);
+    $("t_avgSess").textContent    = fmtDur(T.avgSessionSecs);
+    var MD = s.matchDuration || {};
+    $("t_avgMatch").textContent = fmtDur(MD.avgSecs);
+    $("t_avgPvp").textContent   = fmtDur(MD.avgPvpSecs);
+    $("t_avgBot").textContent   = fmtDur(MD.avgBotSecs);
+    $("t_total").textContent    = fmtDur(T.totalSecs);
+    $("t_7d").textContent       = fmtDur(T.secs7d);
+    $("t_sessions").textContent = trNum(T.sessions);
+    barChart("c_playtime", (T.daily||[]), "minutes", false, "c_pt_start", "c_pt_end", function(d){ return d.day + " · " + trNum(d.minutes) + " dk (" + d.users + " oyuncu)"; });
+    hbars("t_top", (T.topPlayers||[]).map(function(p){ return { name: p.user, count: Math.round((p.secs||0)/60) }; }));
+
     var g = s.generatedAt ? new Date(s.generatedAt) : new Date();
     var since = s.since ? s.since.split("-").reverse().join(".") : "";
     $("genAt").textContent = (since ? since + "'dan beri · test hesapları hariç · " : "") + "güncelleme " + g.toLocaleTimeString("tr-TR");
@@ -483,6 +519,16 @@
     return ({ "team-team":"Takım–Takım", "country-team":"Ülke–Takım", "letter-team":"Harf–Takım", "player-player":"Oyuncu–Oyuncu" })[m] || m;
   }
   function shortDay(d){ var p=(d||"").split("-"); return p.length===3 ? p[2]+"."+p[1] : d; }
+  // Saniyeyi insan diline çevir: 42 sn / 18 dk / 3 sa 24 dk.
+  function fmtDur(secs){
+    if(secs == null) return "–";
+    secs = Math.round(secs);
+    if(secs < 60) return secs + " sn";
+    var m = Math.round(secs / 60);
+    if(m < 60) return m + " dk";
+    var h = Math.floor(m / 60), rm = m % 60;
+    return h + " sa" + (rm ? " " + rm + " dk" : "");
+  }
   function fmtDateTime(iso){ if(!iso) return "—"; var d=new Date(iso); if(isNaN(d.getTime())) return esc(iso); return d.toLocaleDateString("tr-TR")+" "+d.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"}); }
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]; }); }
 

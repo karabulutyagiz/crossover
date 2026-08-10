@@ -351,3 +351,27 @@ CREATE TABLE IF NOT EXISTS admin_users (
   password_hash TEXT NOT NULL,              -- scrypt: 'salt:hash' (hex)
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ---------------------------------------------------------------------------
+-- Oturum günlüğü (admin istatistikleri): bağlantı başına "oyunda kalınan süre".
+-- ws bağlantısı kimlik bağladıysa kapanışta tek satır yazılır (ws/server.ts).
+-- 5 sn'den kısa oturumlar gürültüdür (anlık reconnect) — hiç yazılmaz;
+-- süre 6 saatte kırpılır (askıda kalmış soket şişirmesin).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS play_sessions (
+  id            BIGSERIAL PRIMARY KEY,
+  user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  started_at    TIMESTAMPTZ NOT NULL,
+  ended_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  duration_secs INT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_play_sessions_user    ON play_sessions (user_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_play_sessions_started ON play_sessions (started_at);
+
+-- Migration: match_history.duration_secs — maç süresi (sn). Eski kayıtlar 0 = bilinmiyor;
+-- ortalamalar duration_secs > 0 filtresiyle alınır.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'match_history' AND column_name = 'duration_secs') THEN
+    ALTER TABLE match_history ADD COLUMN duration_secs INT NOT NULL DEFAULT 0;
+  END IF;
+END $$;

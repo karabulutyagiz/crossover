@@ -1173,13 +1173,29 @@ export async function saveMatchHistory(
   won: boolean,
   gameMode: string,
   rounds: MatchRound[],
+  durationSecs = 0, // maç süresi (sn); 0 = bilinmiyor (eski istemci/kayıt)
 ): Promise<void> {
   await pool.query(
     `INSERT INTO match_history (player_id, player_name, opponent_id, opponent_name, player_score, opponent_score,
-       won, player_trophies, opponent_trophies, game_mode, rounds)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+       won, player_trophies, opponent_trophies, game_mode, rounds, duration_secs)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
     [playerId, playerName, opponentId, opponentName, playerScore, opponentScore, won,
-     playerTrophies, opponentTrophies, gameMode, JSON.stringify(rounds)],
+     playerTrophies, opponentTrophies, gameMode, JSON.stringify(rounds), durationSecs],
+  );
+}
+
+// ── Oturum günlüğü (admin istatistikleri) ───────────────────────────────────
+// ws bağlantısı kapanınca çağrılır: kullanıcının bu bağlantıda oyunda kaldığı
+// süreyi yazar. 5 sn altı gürültü (anlık reconnect) yazılmaz; 6 saat üstü
+// askıda kalmış soket varsayılıp kırpılır. Hata yutulur — istatistik uğruna
+// kapanış akışı asla bozulmaz (çağıran zaten catch'ler, bu ikinci emniyet).
+export async function recordPlaySession(userId: string, startedAtMs: number): Promise<void> {
+  const rawSecs = Math.round((Date.now() - startedAtMs) / 1000);
+  if (rawSecs < 5) return;
+  const durationSecs = Math.min(rawSecs, 6 * 3600);
+  await pool.query(
+    `INSERT INTO play_sessions (user_id, started_at, duration_secs) VALUES ($1, $2, $3)`,
+    [userId, new Date(startedAtMs).toISOString(), durationSecs],
   );
 }
 

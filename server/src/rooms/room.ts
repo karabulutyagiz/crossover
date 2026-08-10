@@ -110,6 +110,7 @@ export class Room {
   private onEmpty: (code: string) => void;
   private matchOver = false; // true once a player reaches WIN_TARGET
   private rematchBy: string | null = null;
+  private matchStartedAt = 0; // startMatch anı (ms) — maç süresi istatistiği için
   private readyPlayers = new Set<string>();
   private matchRounds: MatchRound[] = [];
   private recentBotPicks: number[] = []; // last bot team ids (no-repeat within 10)
@@ -387,6 +388,7 @@ export class Room {
     this.usedClubIds.clear();
     this.usedCountries.clear();
     this.recentBotPicks = [];
+    this.matchStartedAt = Date.now(); // maç süresi ölçümü (admin istatistikleri)
     for (const p of this.players.values()) { p.score = 0; p.wrongCount = 0; }
     this.beginCountdown();
   }
@@ -1210,6 +1212,7 @@ export class Room {
           p.score > opp.score,
           this.gameMode,
           [...myRounds, ...oppRounds],
+          this.matchStartedAt ? Math.max(0, Math.round((Date.now() - this.matchStartedAt) / 1000)) : 0,
         );
       } catch { /* DB error — skip silently */ }
     }

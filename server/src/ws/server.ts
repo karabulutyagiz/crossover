@@ -8,7 +8,7 @@ import {
   grantDevEmotesIfNeeded,
   setUsername, buyEmote, setEquippedEmotes, setAvatar, setSelectedFrame, buyAvatar, touchLastSeen, getLeaderboard, grantAdReward, usePower, getModeStats, buyPremiumRoad, buyPower,
   listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
-  removeFriend, searchUsers, getMatchHistory, deleteAccount,
+  removeFriend, searchUsers, getMatchHistory, deleteAccount, recordPlaySession,
   type UserProfile,
 } from '../game/rank.ts';
 import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
@@ -323,6 +323,7 @@ export function startServer(port: number): Server {
     let userProfile: UserProfile | undefined;
     const transport = wsTransport(ws);
     const ip = remoteIp(req);
+    const connectedAt = Date.now(); // oturum süresi günlüğü (admin istatistikleri)
     let windowStart = Date.now();
     let messageCount = 0;
     let typingCount = 0;
@@ -1250,6 +1251,9 @@ export function startServer(port: number): Server {
 
     ws.on('close', () => {
       log.info('ws_close', { ip, userId: userProfile?.id, room: ctx?.room.code });
+      // Oturum günlüğü: kimlik bağlanmış her bağlantının süresi yazılır
+      // (ateşle-unut; 'error' sonrası da 'close' HER ZAMAN gelir → tek yazım).
+      if (userProfile) recordPlaySession(userProfile.id, connectedAt).catch(() => {});
       // Remove from online users tracking — but only if THIS socket is the one
       // registered (a fresh reconnect may have already replaced it).
       if (userProfile) removeOnline(userProfile.id, ws);
