@@ -717,6 +717,12 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
   visible: boolean; onClose: () => void; onExited?: () => void; onShown?: () => void; title?: string; icon?: IoniconName; danger?: boolean; coach?: boolean; children: ReactNode;
 }) {
   const a = useRef(new Animated.Value(0)).current;
+  // Karartma KARTTAN AYRI koşar (büyük-stüdyo kalıbı, araştırma 2026-08-11):
+  // backdrop ~140ms'de biter, kart 0.92→1 ölçekle ~200ms kuyruksuz ease-out
+  // (cubic-bezier(0.22,1,0.36,1)) oturur. Eski yayın ~450ms kuyruğu karartmayı
+  // kart yerleştikten SONRA da koyulaştırıyordu — "arkasında bir şey açılıyor
+  // gibi kararıyor" hissinin kökü buydu.
+  const scrim = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(false);
   const onExitedRef = useRef(onExited);
   onExitedRef.current = onExited;
@@ -726,25 +732,26 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
   const handleShow = useCallback(() => { onShownRef.current?.(); }, []);
   // Sunum sırası SafeModal'da (modalTraffic) — burada yalnız animasyon durumu.
   // useLayoutEffect (2026-08-10): pasif gate sunumdan önce 2 boş commit yiyordu
-  // (visible → null → mounted → Modal visible=false → present) ve yay o görünmez
-  // commit'lerde başlıyordu — pencere ~0.87 ölçekte, yayın ortasında beliriyordu
-  // ("sönük pat"). Senkron flush ile mount + SafeModal sunum isteği + yayın
-  // başlangıcı aynı kare paketinde: yayın ilk karesi = ilk görünen kare.
+  // (visible → null → mounted → Modal visible=false → present) ve giriş o görünmez
+  // commit'lerde başlıyordu. Senkron flush ile mount + SafeModal sunum isteği +
+  // girişin başlangıcı aynı kare paketinde: ilk kare = ilk görünen kare.
   // Çıkış effect'i pasif KALIR — kapanış animasyonu boya sonrası başlayabilir.
   useLayoutEffect(() => {
     if (!visible) return;
     setMounted(true);
-    Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
-  }, [visible, a]);
+    Animated.timing(a, { toValue: 1, duration: 200, easing: Easing.bezier(0.22, 1, 0.36, 1), useNativeDriver: true }).start();
+    Animated.timing(scrim, { toValue: 1, duration: 140, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+  }, [visible, a, scrim]);
   useEffect(() => {
     if (visible) return;
+    Animated.timing(scrim, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start();
     Animated.timing(a, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
       if (finished) {
         setMounted(false);
         onExitedRef.current?.(); // exit animation done — safe to hand off (no timer chains)
       }
     });
-  }, [visible, a]);
+  }, [visible, a, scrim]);
   if (!mounted) return null;
   const clamped = a.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' });
   // Pencere dili artık DÜĞMELERLE aynı aileden (satın alınan glossy set):
@@ -758,7 +765,11 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
   const LIP = darken(strip, 0.35);
   return (
     <SafeModal visible transparent animationType="none" onRequestClose={onClose} onShow={handleShow}>
-      <Animated.View style={{ flex: 1, backgroundColor: theme.scrim, opacity: clamped }}>
+      {/* Karartma KENDİ değeriyle (scrim) sürülür: 140ms'de oturur ve kartın
+          hareketinden bağımsızdır. Kartın opacity'sine bağlıyken karartma da
+          kartın uzun kuyruğunu izliyordu — "arkasında bir şey açılıyor gibi
+          kararıyor" hissinin kaynağı buydu. */}
+      <Animated.View style={{ flex: 1, backgroundColor: theme.scrim, opacity: scrim }}>
         {/* Inert the instant `visible` flips false — the 160ms exit must not be
             hit-testable (double-tapped confirms re-fired actions, e.g. double gem charges) */}
         <Pressable pointerEvents={visible ? 'auto' : 'none'} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }} onPress={onClose}>
@@ -766,7 +777,10 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
             pointerEvents={visible ? 'auto' : 'none'}
             style={{
               width: '100%', maxWidth: 360,
-              transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) }],
+              // 0.92→1: büyük-stüdyo kalıbı. Eski 0.82 + yay, kartı uzaktan
+              // fırlatıp yerine oturtuyordu; kısa ölçek + kuyruksuz eğri
+              // "yerinde beliriyor" hissi verir (araştırma 2026-08-11).
+              transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }],
               opacity: clamped,
               // DÜĞME ANATOMİSİ (üç katman): koyu dış kontur → sıcak pah → yüz.
               // Düğmelerde kontur her yanı sarar ve altta kalınlaşır; pencereler
@@ -3117,25 +3131,29 @@ function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName
 function PopupCard({ visible, title, icon, onClose, children }: {
   visible: boolean; title: string; icon: IoniconName; onClose: () => void; children: ReactNode;
 }) {
-  // Spring pop-in + 160ms animated exit (scrim fades with the same value) —
+  // Kart 200ms kuyruksuz eğriyle (0.92→1) oturur; karartma AYRI değerle 140ms'de
+  // biter — GameModal ile aynı dil (bkz. oradaki gerekçe, 2026-08-11).
   // centered cards never use animationType='fade'/'slide' (spec §7).
   const a = useRef(new Animated.Value(0)).current;
+  const scrim = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(false);
   // Sunum sırası SafeModal'da (modalTraffic) — burada yalnız animasyon durumu.
   // useLayoutEffect (2026-08-10): GameModal'daki gerekçenin aynısı — pasif gate
-  // sunum öncesi boş commit'ler ekliyor, yay görünmez karelerde başlıyordu.
-  // Senkron flush ile yayın ilk karesi = ilk görünen kare. Çıkış pasif kalır.
+  // sunum öncesi boş commit'ler ekliyor, giriş görünmez karelerde başlıyordu.
+  // Senkron flush ile girişin ilk karesi = ilk görünen kare. Çıkış pasif kalır.
   useLayoutEffect(() => {
     if (!visible) return;
     setMounted(true);
-    Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
-  }, [visible, a]);
+    Animated.timing(a, { toValue: 1, duration: 200, easing: Easing.bezier(0.22, 1, 0.36, 1), useNativeDriver: true }).start();
+    Animated.timing(scrim, { toValue: 1, duration: 140, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+  }, [visible, a, scrim]);
   useEffect(() => {
     if (visible) return;
+    Animated.timing(scrim, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start();
     Animated.timing(a, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
       if (finished) setMounted(false);
     });
-  }, [visible, a]);
+  }, [visible, a, scrim]);
   if (!mounted) return null;
   const clamped = a.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' });
   return (
@@ -3143,7 +3161,7 @@ function PopupCard({ visible, title, icon, onClose, children }: {
       <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 18 }}>
         {/* Backdrop catches outside taps. It is a SIBLING of the card (not a parent),
             so it never swallows the inner ScrollView's scroll gestures. */}
-        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim, opacity: clamped }]}>
+        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim, opacity: scrim }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         </Animated.View>
         {/* "Broadcast Premium" pencere dili (kullanıcı onaylı yön, 2026-07-30):
@@ -3152,7 +3170,7 @@ function PopupCard({ visible, title, icon, onClose, children }: {
             başlık bandı) pencereye taşınmış hâli kullanıcıya "şablon işi"
             okundu — 2026-08-10'da geri alındı. `icon` prop'u API uyumu için
             duruyor; bu dilde çizilmiyor. */}
-        <Animated.View style={{ opacity: clamped, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }) }], backgroundColor: theme.modalFace, borderRadius: 22, borderWidth: 1, borderColor: theme.hairline, overflow: 'hidden', maxHeight: '80%', ...shadowModal }}>
+        <Animated.View style={{ opacity: clamped, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }], backgroundColor: theme.modalFace, borderRadius: 22, borderWidth: 1, borderColor: theme.hairline, overflow: 'hidden', maxHeight: '80%', ...shadowModal }}>
           <View pointerEvents="none" style={{ height: 3, backgroundColor: theme.accent }} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 13, paddingBottom: 11 }}>
             <View style={{ width: 4, height: 17, borderRadius: 2, backgroundColor: theme.accent }} />
@@ -8015,9 +8033,36 @@ export function FriendProfileModal({ profile, onClose, relation, onAddFriend }: 
   // İstek bu açılışta gönderildiyse düğme "gönderildi" durumuna kilitlenir.
   const [requestSent, setRequestSent] = useState(false);
   useEffect(() => { setRequestSent(false); }, [profile?.userId]);
+  // GİRİŞ ANİMASYONU — "kasılarak açılıyor" düzeltmesi (2026-08-11):
+  // Eskiden native animationType="slide" kullanılıyordu; iOS o slide'ı sunum
+  // anında başlatır ama JS thread aynı karede bu ağır ağacı (ScreenBg, hero
+  // panel, 104pt çerçeveli avatar, 3 StatCard) kuruyordu → slide takılarak
+  // akıyordu. Artık sunum ANINDA (animationType="none", modalTraffic da 100ms
+  // hızlı kapısını kullanır) ve hareket NATIVE DRIVER'da koşar: JS ne kadar
+  // meşgul olursa olsun UI thread'de pürüzsüz. Eğri ve süreler büyük-stüdyo
+  // kalıbı: 220ms, cubic-bezier(0.22,1,0.36,1), kısa yükseliş + fade.
+  const visible = !!profile;
+  const enter = useRef(new Animated.Value(0)).current;
+  const [mounted, setMounted] = useState(false);
+  useLayoutEffect(() => {
+    if (!visible) return;
+    setMounted(true);
+    enter.setValue(0);
+    Animated.timing(enter, { toValue: 1, duration: 220, easing: Easing.bezier(0.22, 1, 0.36, 1), useNativeDriver: true }).start();
+  }, [visible, enter]);
+  useEffect(() => {
+    if (visible) return;
+    Animated.timing(enter, { toValue: 0, duration: 150, easing: Easing.in(Easing.quad), useNativeDriver: true })
+      .start(({ finished }) => { if (finished) setMounted(false); });
+  }, [visible, enter]);
+  if (!mounted) return null;
   return (
-    <SafeModal visible={!!profile} animationType="slide" onRequestClose={onClose} presentationStyle="overFullScreen" transparent>
-      <View style={{ flex: 1, backgroundColor: BG_TOP }}>
+    <SafeModal visible animationType="none" onRequestClose={onClose} presentationStyle="overFullScreen" transparent>
+      <Animated.View style={{
+        flex: 1, backgroundColor: BG_TOP,
+        opacity: enter,
+        transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [34, 0] }) }],
+      }}>
         <ScreenBg />
         <View style={{ flex: 1, paddingTop: insets.top }}>
           <ScreenHeader title={t('profile.title')} icon="person" onBack={onClose} />
@@ -8059,7 +8104,7 @@ export function FriendProfileModal({ profile, onClose, relation, onAddFriend }: 
             ) : null}
           </View>
         </View>
-      </View>
+      </Animated.View>
     </SafeModal>
   );
 }
