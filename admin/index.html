@@ -71,6 +71,17 @@
   .g-kpi{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
   @media(max-width:640px){.g-live{grid-template-columns:repeat(2,1fr)}}
 
+  /* ── Canlı listeler: aktif maçlar + çevrimiçi kullanıcılar ── */
+  .live-list{max-height:340px;overflow-y:auto}
+  .match-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .match-row:last-child{border-bottom:none}
+  .match-row .vs{font-size:14px}
+  .match-row .meta{font-size:11px;color:var(--muted);white-space:nowrap}
+  .online-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line)}
+  .online-row:last-child{border-bottom:none}
+  .online-row .dot{width:8px;height:8px;border-radius:50%;background:var(--mint);box-shadow:0 0 6px var(--mint);flex:none}
+  .badge-pvp{font-size:10px;font-weight:700;color:var(--mint);border:1px solid var(--mint);border-radius:5px;padding:0 5px;margin-left:6px}
+
   .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
   .kpi{position:relative;overflow:hidden}
   .kpi .label{font-size:12px;color:var(--muted);margin-bottom:6px}
@@ -158,6 +169,19 @@
     <div class="card kpi accent-blue"><div class="label">Maçta</div><div class="value" id="l_match">–</div><div class="sub">oyuncu · <span id="l_rooms">–</span> oda</div></div>
     <div class="card kpi"><div class="label">Kuyrukta</div><div class="value" id="l_queue">–</div><div class="sub">eşleşme bekliyor</div></div>
     <div class="card kpi"><div class="label">Bot maçı</div><div class="value" id="l_bot">–</div><div class="sub">süren pratik</div></div>
+  </div>
+
+  <div class="two-col" style="margin-top:12px">
+    <div class="card">
+      <h3 style="margin:0 0 4px;font-size:15px">Aktif maçlar</h3>
+      <p class="hint" style="margin:0 0 10px">O an süren odalar — kim kime karşı oynuyor.</p>
+      <div class="live-list" id="l_matches"></div>
+    </div>
+    <div class="card">
+      <h3 style="margin:0 0 4px;font-size:15px">Çevrimiçi kullanıcılar</h3>
+      <p class="hint" style="margin:0 0 10px">Açık oturumu olan hesaplar (kupaya göre).</p>
+      <div class="live-list" id="l_onlineList"></div>
+    </div>
   </div>
 
   <!-- Revenue -->
@@ -401,6 +425,39 @@
     $("l_rooms").textContent  = trNum(L.rooms);
     $("l_queue").textContent  = trNum(L.queue);
     $("l_bot").textContent    = trNum(L.botMatches);
+
+    // ── Aktif maçlar (kim kime karşı) ──
+    var statusTr = { lobby:"lobide bekliyor", countdown:"geri sayım", pick:"takım seçme", reveal:"açıklama", guess:"tahmin", result:"sonuç" };
+    function pPill(p){
+      if(!p) return "<span class='muted'>bekleniyor…</span>";
+      if(p.isBot) return "<b>🤖 Bot</b>";
+      var t = (p.trophies!=null ? " <span class='muted'>"+trNum(p.trophies)+"🏆</span>" : "");
+      var off = p.connected===false ? " <span class='muted'>(bağlantı kesik)</span>" : "";
+      return "<b>"+esc(p.name)+"</b>"+t+off;
+    }
+    var mlist = (L.matches || []).slice().sort(function(a,b){
+      // Önce insan-insan süren maçlar, sonra bot, en son lobiler
+      function rank(m){ var hh = !m.bot && (m.humans>=2) && m.status!=="lobby"; return hh?0:(m.status!=="lobby"?1:2); }
+      return rank(a)-rank(b);
+    }).map(function(m){
+      var ps = m.players || [];
+      var pvp = !m.bot && ps.filter(function(x){return !x.isBot;}).length>=2;
+      var vs = pPill(ps[0]) + " <span class='muted'>vs</span> " + pPill(ps[1]);
+      var score = ps.length===2 ? ps.map(function(x){return x.score;}).join(" – ") : "";
+      return "<div class='match-row'>"
+        + "<div class='vs'>" + vs + (pvp?"<span class='badge-pvp'>PvP</span>":"") + "</div>"
+        + "<div class='meta'>" + (statusTr[m.status]||esc(m.status))
+        + (score!==""?" · "+esc(score):"") + " · " + esc(m.code) + "</div>"
+        + "</div>";
+    }).join("");
+    $("l_matches").innerHTML = mlist || "<div class='muted'>Şu an süren maç/oda yok.</div>";
+
+    // ── Çevrimiçi kullanıcılar ──
+    var olist = (L.onlineUsers || []).map(function(u){
+      return "<div class='online-row'><span class='dot'></span><b>"+esc(u.name)+"</b>"
+        + "<span class='muted' style='margin-left:auto'>"+trNum(u.trophies)+" 🏆</span></div>";
+    }).join("");
+    $("l_onlineList").innerHTML = olist || "<div class='muted'>Kimse çevrimiçi değil.</div>";
 
     var R = s.revenue || {};
     $("r_total").textContent      = "₺" + trMoney(R.totalTry);

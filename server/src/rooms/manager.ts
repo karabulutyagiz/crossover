@@ -4,6 +4,9 @@ import { Room } from './room.ts';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CODE_LEN = 6;
 
+// Ayrıntılı canlı maç kartı (admin paneli) — Room.matchInfo()'nun dönüş tipi.
+export type MatchInfo = ReturnType<Room['matchInfo']>;
+
 export class RoomManager {
   private rooms = new Map<string, Room>();
 
@@ -45,6 +48,11 @@ export class RoomManager {
       else playersInMatch += s.humans;
     }
     return { rooms, playersInMatch, inLobby, botMatches, byStatus };
+  }
+
+  // Admin paneli için o an açık her odanın ayrıntılı kartı (kim kime karşı).
+  liveMatches(): MatchInfo[] {
+    return [...this.rooms.values()].map((r) => r.matchInfo());
   }
 
   private genCode(): string {

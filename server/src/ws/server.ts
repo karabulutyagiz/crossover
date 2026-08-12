@@ -320,7 +320,13 @@ export function startServer(port: number): Server {
         return;
       }
       const liveRoom = manager.liveStats();
-      getAdminStats({ online: onlineUsers.size, queue: matchQueue.length, ...liveRoom })
+      getAdminStats({
+        online: onlineUsers.size,
+        queue: matchQueue.length,
+        ...liveRoom,
+        matches: manager.liveMatches(),         // kim kime karşı — ayrıntılı
+        onlineUserIds: [...onlineUsers.keys()],  // isimler DB'den çözülür
+      })
         .then((stats) => { res.writeHead(200, cors); res.end(JSON.stringify(stats)); })
         .catch((e) => {
           log.error('admin_stats_failed', { message: e instanceof Error ? e.message : String(e) });

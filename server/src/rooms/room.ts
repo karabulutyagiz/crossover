@@ -194,6 +194,32 @@ export class Room {
     return { status: this.status, humans, bots };
   }
 
+  // Admin paneli için ayrıntılı canlı maç kartı: oda kodu, durum ve oyuncular
+  // (isim + kalıcı hesap id + kupa + skor). "Kim kime karşı oynuyor" görünsün diye.
+  matchInfo(): {
+    code: string;
+    status: RoomStatus;
+    bot: boolean;
+    humans: number;
+    players: { name: string; userId: string | null; trophies: number | null; score: number; connected: boolean; isBot: boolean }[];
+  } {
+    const players = [...this.players.values()].map((p) => ({
+      name: p.name,
+      userId: p.userId ?? null,
+      trophies: p.trophies ?? null,
+      score: p.score,
+      connected: p.connected,
+      isBot: p.transport.isBot,
+    }));
+    return {
+      code: this.code,
+      status: this.status,
+      bot: players.some((p) => p.isBot),
+      humans: players.filter((p) => !p.isBot).length,
+      players,
+    };
+  }
+
   // Update a player's avatar mid-match (by persistent userId) and push fresh state
   // so the opponent sees the new profile picture instantly.
   setAvatarFor(userId: string, avatar: string | null): void {

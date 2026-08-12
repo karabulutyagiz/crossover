@@ -7,6 +7,7 @@
 // Canlı sayaçlar (o an çevrimiçi / maçta / kuyrukta) bellekten `live` gelir.
 // Yetkilendirme ws/server.ts'te (ADMIN_TOKEN) yapılır.
 import { pool } from '../db/pool.ts';
+import type { MatchInfo } from '../rooms/manager.ts';
 
 // ── %100 gerçek filtreleri ──────────────────────────────────────────────────
 // Yayın günü (Europe/Istanbul). Değişirse burayı güncelle.
@@ -61,6 +62,8 @@ export interface LiveStats {
   inLobby: number;
   botMatches: number;
   byStatus: Record<string, number>;
+  matches?: MatchInfo[];       // o an açık odalar — kim kime karşı (bellekten)
+  onlineUserIds?: string[];    // çevrimiçi hesap id'leri — isim/kupa DB'den çözülür
 }
 
 export async function getAdminStats(live: LiveStats) {
@@ -298,10 +301,23 @@ export async function getAdminStats(live: LiveStats) {
   const m = matches.rows[0] as any;
   const msg = messages.rows[0] as any;
 
+  // Çevrimiçi kullanıcıların isim/kupası (canlı liste). id'ler bellekten geldi,
+  // isim DB'den çözülür — kupaya göre azalan sırada.
+  const { onlineUserIds, ...liveRest } = live;
+  let onlineList: { userId: string; name: string; trophies: number }[] = [];
+  if (onlineUserIds && onlineUserIds.length) {
+    const onl = await pool.query(
+      `SELECT id::text AS id, display_name, trophies FROM users
+        WHERE id::text = ANY($1) ORDER BY trophies DESC, display_name`,
+      [onlineUserIds],
+    );
+    onlineList = onl.rows.map((r: any) => ({ userId: r.id, name: r.display_name, trophies: r.trophies }));
+  }
+
   return {
     generatedAt: new Date().toISOString(),
     since: '2026-08-04', // istatistiklerin başlangıç (yayın) tarihi — panelde gösterilir
-    live,
+    live: { ...liveRest, onlineUsers: onlineList },
     users: {
       total: u.total,
       newToday: u.new_today,
