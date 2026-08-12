@@ -4337,9 +4337,10 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         // takılı çerçevenin tacı için: çerçeve tuvalinin yukarı taşması kadar boşluk
         // (goat ~36, kısa çerçeveler ~20) — tam sığsın, kırpılmasın. FrameOverlay ile
         // aynı formül: size*(SCALE*TIGHTEN-1)/2 + küçük pay.
-        profile?.selectedFrame ? Math.ceil(34 * ((FRAME_SCALE[profile.selectedFrame] ?? 3.15) * 0.9 - 1) / 2) + 4 : 0,
+        // +8 emniyet payı (goat ~40, ~13px boşluk) — cihaz/alt-piksel varyasyonuna karşı
+        profile?.selectedFrame ? Math.ceil(34 * ((FRAME_SCALE[profile.selectedFrame] ?? 3.15) * 0.9 - 1) / 2) + 8 : 0,
         // ödül habercisi (top:-7, animasyonla ~8-9px yukarı) için yeter boşluk
-        unclaimedLevelCount(profile) > 0 ? 14 : 0,
+        unclaimedLevelCount(profile) > 0 ? 16 : 0,
       ) }}>
         <ProfilePill
           name={playerName}
