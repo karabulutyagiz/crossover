@@ -123,8 +123,48 @@ async function main() {
   const bScore = res.players.find((p) => p.name === 'RetryTestB')?.score ?? 0;
   check(res.result?.correct === true && bScore === 1, `tur rakibe açık kaldı, B doğruyla aldı — B skoru ${bScore}`);
 
-  await pool.query(`DELETE FROM users WHERE display_name IN ('RetryTestA','RetryTestB')`);
   A.close(); B.close();
+
+  // ── ESKİ İSTEMCİLİ RAKİP (kullanıcı raporu 2026-08-13) ────────────────────
+  // Kural eskiden rakibin istemcisi 'wrongopen' bilmiyorsa sessizce KAPANIYOR,
+  // yanlış cevap turu kilitliyordu — oyuncuya "bazen çalışıyor bazen
+  // çalışmıyor" gibi görünüyordu (kiminle eşleştiğine bağlıydı). Artık tur
+  // her hâlükârda açık kalmalı ve eski istemci taze guess_phase ile açılmalı.
+  const C = new Client('C'); const D = new Client('D');
+  await C.open(); await D.open();
+  C.send({ type: 'register', name: 'RetryTestC', caps: ['wrongopen', 'wrongretry'] } as any);
+  const cProf = (await C.wait('profile')).profile;
+  D.send({ type: 'register', name: 'RetryTestD' } as any); // caps YOK = eski istemci
+  const dProf = (await D.wait('profile')).profile;
+  await pool.query(`UPDATE users SET trophies = 500 WHERE id = $1 OR id = $2`, [cProf.userId, dProf.userId]);
+  C.send({ type: 'find_match', name: 'RetryTestC', userId: cProf.userId });
+  D.send({ type: 'find_match', name: 'RetryTestD', userId: dProf.userId });
+  await C.wait('room_state'); await D.wait('room_state');
+  await C.wait('pick_phase');
+  const pair2 = await freshCrossover(new Set());
+  C.send({ type: 'pick_team', clubId: pair2.aId });
+  D.send({ type: 'pick_team', clubId: pair2.bId });
+  await C.wait('guess_phase'); await D.wait('guess_phase');
+  console.log('  eski istemcili rakip senaryosu — C yanlış yazıyor…');
+  C.send({ type: 'submit_guess', text: 'zzzznobody' });
+  // D (eski istemci) turun kapanmasını DEĞİL, yeniden açılmasını görmeli.
+  const resync = await Promise.race([
+    D.wait('guess_phase', 6_000),
+    sleep(5_500).then(() => null),
+  ]);
+  check(!!resync, 'eski istemcili rakip taze guess_phase aldı (tur KİLİTLENMEDİ)');
+  // Ve gerçekten cevaplayabilmeli: doğru cevapla turu alır.
+  D.send({ type: 'submit_guess', text: pair2.player });
+  const res2 = await Promise.race([
+    D.wait('result', 8_000),
+    sleep(7_500).then(() => null),
+  ]);
+  const dScore = res2 ? (res2 as any).players.find((p: any) => p.name === 'RetryTestD')?.score ?? 0 : 0;
+  check(!!res2 && (res2 as any).result?.correct === true && dScore === 1,
+    `eski istemci yeniden açılan turda cevap verebildi — D skoru ${dScore}`);
+  C.close(); D.close();
+
+  await pool.query(`DELETE FROM users WHERE display_name IN ('RetryTestA','RetryTestB','RetryTestC','RetryTestD')`);
   await closePool();
   console.log(failed ? '\n❌ WRONGRETRYTEST FAILED' : '\n✅ WRONGRETRYTEST PASSED');
   process.exitCode = failed ? 1 : 0;

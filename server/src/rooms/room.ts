@@ -890,20 +890,38 @@ export class Room {
     this.timers.push(t);
   }
 
-  // wrongopen kuralı, yanlış yazanın DIŞINDA cevap hakkı süren tüm insan
-  // istemciler destekliyorsa uygulanır. Yanlış yazanın KENDİ isteminin desteği
-  // aranmaz: o zaten susturuluyor — eski istemcisi tur bitene dek "kilitli"
-  // görünse de işlevsel bir kaybı yok. Böylece eski istemciyle bağlanan bir
-  // oyuncu kasıtlı yanlış cevapla GÜNCEL istemcili rakibinin turunu kilitleyemez;
-  // eski kural yalnız KURBANIN istemcisi wrong_guess'i anlamıyorsa kalır (onun
-  // arayüzü kilitli kalacağı için tur açık tutulamaz). Botlar her zaman uyumludur.
-  private wrongOpenEnabled(guesserId: string): boolean {
-    return [...this.players.values()].every(
-      (p) => p.transport.isBot
-        || p.id === guesserId
-        || this.round?.burned?.has(p.id)
-        || p.transport.caps?.includes('wrongopen'),
-    );
+  // Turu yeniden açtıktan sonra, 'wrongopen' BİLMEYEN istemcileri taze bir
+  // guess_phase ile yeniden senkronlar.
+  //
+  // NEDEN (kullanıcı raporu 2026-08-13: "bazen çalışıyor bazen çalışmıyor"):
+  // Kural eskiden RAKİBİN istemcisi wrong_guess'i anlıyorsa açılıyordu; eski
+  // sürümlü biriyle eşleşince sessizce kapanıyordu. Oyuncu açısından bu, kendi
+  // yaptığı bir şeye değil KİMİNLE eşleştiğine bağlı olduğu için rastgele
+  // görünüyordu. Artık kural HERKESTE açık: eski istemci wrong_guess'i
+  // anlamasa da guess_phase'i anlar (ilk günden beri protokolde) ve o mesaj
+  // `locked`ı temizleyip girişi yeniden açar. Aynı tur, aynı bitiş anı.
+  //
+  // Yalnız hâlâ hakkı olanlara gönderilir: yazan (susturulan/cezalı) ve yanmış
+  // oyuncular hariç — onların kilitli kalması DOĞRU. Güncel istemcilere de
+  // gönderilmez: onlar wrong_guess'i zaten işliyor ve guess_phase, gösterdikleri
+  // "rakip yanlış yazdı" ipucunu/ceza sayacını sıfırlardı.
+  private resyncLegacyClientsAfterWrong(guesserId: string): void {
+    const endsAt = this.round?.guessEndsAt;
+    if (!endsAt) return;
+    const now = Date.now();
+    for (const p of this.players.values()) {
+      if (p.id === guesserId || p.transport.isBot) continue;
+      if (this.round?.burned?.has(p.id)) continue;
+      // Ceza (wrongretry cooldown) penceresindeki oyuncuya da GÖNDERİLMEZ:
+      // guess_phase sayacı sıfırlar, ona "yazabilirsin" görüntüsü verirdi;
+      // sunucu yine reddederdi ama yanıltıcı olurdu. Bugün bu durum zaten
+      // oluşamaz (cooldown 'wrongretry' ister, istemci iki bayrağı birlikte
+      // gönderir) — koruma o eşleşmeye GÜVENMEMEK için burada, açıkça.
+      const retryAt = this.round?.wrongRetryAt?.get(p.id);
+      if (retryAt != null && now < retryAt) continue;
+      if (p.transport.caps?.includes('wrongopen')) continue;
+      p.transport.send({ type: 'guess_phase', endsAt });
+    }
   }
 
   private handleGuess(playerId: string, text: string): void {
@@ -942,7 +960,9 @@ export class Room {
     const p = this.players.get(playerId);
     const remaining = (this.round.guessEndsAt ?? 0) - Date.now();
     // Süre dibindeyse (rakibe gerçekçi bir şans kalmadıysa) eski davranış kalsın.
-    if (!this.wrongOpenEnabled(playerId) || remaining < 2_000) return 'closed';
+    // Not: artık istemci sürümüne BAKILMAZ — eski istemciler aşağıda taze bir
+    // guess_phase ile senkronlanır (bkz. resyncLegacyClientsAfterWrong).
+    if (remaining < 2_000) return 'closed';
     // İKİNCİ HAK (kullanıcı kuralı 2026-08-11): İLK yanlışta oyuncu yanmaz —
     // WRONG_RETRY_MS ceza penceresi sonrası bir hakkı daha olur. Şartlar:
     // istemcisi 'wrongretry' bilir (eski istemcinin arayüzü kilitli kalır,
@@ -971,6 +991,9 @@ export class Room {
       retryAt,
     });
     if ((this.round.burned?.size ?? 0) >= this.players.size) return 'all_burned';
+    // Eski istemciler wrong_guess'i yok sayar ve guess_locked yüzünden kilitli
+    // kalırdı — taze guess_phase onları aynı turda yeniden açar.
+    this.resyncLegacyClientsAfterWrong(playerId);
     const t = setTimeout(() => this.endRoundTimeout(), remaining);
     this.timers.push(t);
     return 'open';
