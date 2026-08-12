@@ -4327,8 +4327,20 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
     <Screen scroll pad={16} contentCenter={false} fillTablet lockWhenFits>
       {/* ── 1. TOP BAR ── one row, exactly as the mockup: the profile pill flexes to
            absorb whatever the fixed-width gem pill and button trio leave behind.
-           paddingTop: ödül habercisinin üst taşması scroll sınırında kırpılmasın */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 4 }}>
+           paddingTop: HEM ödül habercisi (~8px) HEM takılı çerçevenin tacı (goat ~30px)
+           avatar/pill kutusunun ÜSTÜNE taşar; ScrollView'ın üst kenarı (content y=0)
+           bunları kırpıyordu (kullanıcı "üstü görünmüyor, kaydırmak gerekiyor" dedi).
+           Yukarıda yeterli boşluk açarız: çerçeve varken tacın TAMAMI sığsın (34) —
+           avatarı KÜÇÜLTMEDEN; çerçeve yoksa yalnız haberci için az boşluk (12/4) yeter. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: Math.max(
+        4,
+        // takılı çerçevenin tacı için: çerçeve tuvalinin yukarı taşması kadar boşluk
+        // (goat ~36, kısa çerçeveler ~20) — tam sığsın, kırpılmasın. FrameOverlay ile
+        // aynı formül: size*(SCALE*TIGHTEN-1)/2 + küçük pay.
+        profile?.selectedFrame ? Math.ceil(34 * ((FRAME_SCALE[profile.selectedFrame] ?? 3.15) * 0.9 - 1) / 2) + 4 : 0,
+        // ödül habercisi (top:-7, animasyonla ~8-9px yukarı) için yeter boşluk
+        unclaimedLevelCount(profile) > 0 ? 14 : 0,
+      ) }}>
         <ProfilePill
           name={playerName}
           avatarId={profile?.avatar ?? profile?.selectedAvatar}
