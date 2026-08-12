@@ -4,7 +4,7 @@
 import { Image, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
-import { FrameOverlay, containedAvatarSize } from './frames';
+import { FrameOverlay } from './frames';
 import { theme } from './theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -57,7 +57,7 @@ export function avatarSource(avatar?: string | null): number | undefined {
 // A self-contained circular avatar: the chosen picture filling a circular frame,
 // or a person/bot fallback icon. Replaces the old `<View circle><Ionicons person/></View>`.
 export function Avatar({
-  avatar, name, size, ring, ringWidth = 2, bg, iconColor, iconSize, frameId, frameFit,
+  avatar, name, size, ring, ringWidth = 2, bg, iconColor, iconSize, frameId,
 }: {
   avatar?: string | null;
   name?: string;          // used to pick the bot fallback icon
@@ -68,43 +68,28 @@ export function Avatar({
   iconColor?: string;
   iconSize?: number;
   frameId?: string | null; // takılı profil çerçevesi — daire kırpmasının DIŞINA çizilir
-  // Sıkışık başlık gibi yerlerde: çerçeve `size` KUTUSUNA sığar (taşmaz), avatar
-  // deliğe göre küçülür. Değer, görünür çerçevenin kutuya oranıdır (~1.15 önerilir).
-  // Verilmezse çerçeve eskisi gibi kutunun dışına taşar (diğer ekranlar değişmez).
-  frameFit?: number;
 }) {
   const src = avatarSource(avatar);
   const fallback: IoniconName = name === 'Bot' ? 'game-controller' : 'person';
-  const renderCircle = (d: number) => (
+  const circle = (
     <View style={{
-      width: d, height: d, borderRadius: d / 2,
+      width: size, height: size, borderRadius: size / 2,
       backgroundColor: src ? '#0b1020' : (bg ?? theme.bg2),
       borderWidth: ring ? ringWidth : 0, borderColor: ring,
       alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
     }}>
       {src ? (
-        <Image source={src} style={{ width: d * 1.06, height: d * 1.06 }} resizeMode="cover" />
+        <Image source={src} style={{ width: size * 1.06, height: size * 1.06 }} resizeMode="cover" />
       ) : (
-        <Ionicons name={fallback} size={iconSize ?? d * 0.55} color={iconColor ?? theme.muted} />
+        <Ionicons name={fallback} size={iconSize ?? size * 0.55} color={iconColor ?? theme.muted} />
       )}
     </View>
   );
-  if (!frameId) return renderCircle(size);
-  // fit modu: çerçeve + avatar birlikte `size` kutusuna sığar; hiçbir şey taşıp
-  // ekran kenarına/komşu öğelere kesilmez. Avatar deliğe göre küçülür, ikisi de merkezli.
-  if (frameFit) {
-    const inner = containedAvatarSize(frameId, size, frameFit);
-    return (
-      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-        {renderCircle(inner)}
-        <FrameOverlay frameId={frameId} size={size} fit={frameFit} />
-      </View>
-    );
-  }
-  // varsayılan: çerçeve daire kırpmasından etkilenmesin diye kırpmasız sarmalayıcı (taşabilir)
+  if (!frameId) return circle;
+  // çerçeve daire kırpmasından etkilenmesin diye kırpmasız sarmalayıcı
   return (
     <View style={{ width: size, height: size }}>
-      {renderCircle(size)}
+      {circle}
       <FrameOverlay frameId={frameId} size={size} />
     </View>
   );
