@@ -90,7 +90,6 @@ export function AvatarBadge({
   dimmed = false,
   ringColor,
   frameId,
-  frameFit,
 }: {
   avatarId?: string | null;
   size?: number;
@@ -98,11 +97,10 @@ export function AvatarBadge({
   dimmed?: boolean;
   ringColor?: string;
   frameId?: string | null; // takılı profil çerçevesi — avatarın etrafına oturur
-  frameFit?: number; // sıkışık yerde çerçeveyi kutuya sığdır (taşmasın) — bkz. Avatar
 }) {
   return (
     <View style={{ opacity: dimmed ? 0.55 : 1 }}>
-      <Avatar avatar={avatarId ?? null} size={size} ring={ringColor} iconColor={ringColor ?? theme.muted} frameId={frameId} frameFit={frameFit} />
+      <Avatar avatar={avatarId ?? null} size={size} ring={ringColor} iconColor={ringColor ?? theme.muted} frameId={frameId} />
       {locked ? (
         <View style={{ position: 'absolute', right: -1, bottom: -1, width: Math.round(size * 0.42), height: Math.round(size * 0.42), borderRadius: size, backgroundColor: 'rgba(6,19,31,0.92)', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#FFFFFF22' }}>
           <Ionicons name="lock-closed" size={Math.round(size * 0.18)} color="#F5C518" />

@@ -3725,10 +3725,12 @@ const ProfilePill = memo(function ProfilePill({ name, avatarId, tier, pct, color
     return () => setXpRemeasure(null);
   }, [measureBar]);
   return (
-    // Çerçeve artık `frameFit` ile avatar KUTUSUNA sığıyor (taşmıyor), dolayısıyla
-    // eski "hapı 14px sağa it" band-aid'ine gerek yok — o hile satırı taşırıp sağdaki
-    // buton dizisini iterek ayar butonunu ekran kenarında kesiyordu. Kaldırıldı:
-    // artık üst bar çerçeveli/çerçevesiz birebir aynı yerleşimde.
+    // Çerçeve TAM boyutta çizilir (avatar küçülmez) — süslü halka avatarın etrafına
+    // taşar, tamamen görünür. Eski "hapı 14px sağa it" band-aid'i KALDIRILDI: o hile
+    // flex:1 hapı zaten dolu satırda büyütüp sağdaki buton dizisini iterek ayar
+    // butonunu ekran kenarında kesiyordu. Artık hap sabit → butonlar çerçeveli/
+    // çerçevesiz birebir aynı yerde, hiçbiri kesilmez; çerçevenin sol yayı da yaslı
+    // konumda ekran içinde kalır (kesilmez).
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1, minWidth: 108 }}>
       {/* Radii are exact, not clamped: face is 41pt tall (34 avatar + 2x3.5 pad) so a
           shared radius 24 clamps differently on face (20.5) vs wrapper (21.75) and the
@@ -3742,7 +3744,7 @@ const ProfilePill = memo(function ProfilePill({ name, avatarId, tier, pct, color
           paddingVertical: 3.5, paddingLeft: 3.5, paddingRight: 10,
         }}>
           <View>
-            <AvatarBadge avatarId={avatarId} size={34} ringColor={color} frameId={frameId} frameFit={1.15} />
+            <AvatarBadge avatarId={avatarId} size={34} ringColor={color} frameId={frameId} />
             <View style={{
               position: 'absolute', right: -3, bottom: -2,
               minWidth: 17, height: 17, borderRadius: 9, paddingHorizontal: 2.5,
