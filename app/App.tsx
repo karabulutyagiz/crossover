@@ -1,5 +1,6 @@
 import { memo, startTransition, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from 'react';
 import { StatusBar } from 'expo-status-bar';
+import * as NativeSplash from 'expo-splash-screen';
 import {
   Animated,
   AppState,
@@ -21,6 +22,31 @@ import { useFonts } from 'expo-font';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCrossover, type GameState } from './src/useCrossover';
 import { t, setLanguage } from './src/i18n';
+
+// ── AÇILIŞTAKİ BEYAZ KARE (kullanıcı raporu 2026-08-13) ────────────────────
+// Native splash, RN kök görünümü bağlanır bağlanmaz KENDİLİĞİNDEN kapanıyordu;
+// React daha tek kare çizmeden kapandığı için arada boş (beyaz) kök görünüyor
+// ve oyun "geç açılıyormuş" gibi hissettiriyordu. Bu çağrı, kapanmayı bizim
+// kontrolümüze alır: native splash, JS kendi açılış ekranını BOYAYANA kadar
+// ekranda kalır (aşağıda hideAsync). Modül kapsamında çağrılır — bundle'ın ilk
+// satırlarında, otomatik kapanma penceresinden önce çalışması şart.
+// Hata yutulur: native modül yoksa (web) uygulama yine açılmalı.
+// TÜMÜ try/catch İÇİNDE: burası modül kapsamı — atılan SENKRON bir hata (ör.
+// API adı bir yamada değişmiş, modül tanımsız) tüm paketi düşürür ve OTA ile
+// giden bu kod canlı uygulamada 0.1 sn'lik beyazı KALICI beyaz ekrana
+// çevirirdi. Promise .catch'i yalnız reddi yakalar, senkron atışı yakalamaz.
+try {
+  NativeSplash.preventAutoHideAsync().catch(() => {});
+  // Devir-teslim sert kesme değil kısa çapraz geçiş: native splash (lacivert +
+  // logo) ile JS açılış ekranı (lacivert) arasındaki tek görünür fark logonun
+  // kaybolmasıdır; 150ms fade bunu dikişsiz yapar.
+  NativeSplash.setOptions?.({ duration: 150, fade: true });
+  // SON EMNİYET: AppRoot hiç mount olmazsa (bundle'da erken hata) içerideki
+  // zamanlayıcı da çalışmaz ve kullanıcı native splash'ta sonsuza dek asılı
+  // kalırdı. Modül kapsamındaki bu ağ, uygulamayı her hâlükârda açığa çıkarır.
+  setTimeout(() => { try { NativeSplash.hideAsync().catch(() => {}); } catch { /* yut */ } }, 6000);
+} catch { /* native splash yönetimi yoksa açılış yine de sürmeli */ }
+
 // Marketing-capture mode: DevShotScreen + forced language. NEVER ships true —
 // see appstore/upload-screenshots.py for the capture pipeline.
 const DEV_SHOT_MODE = false;
@@ -592,6 +618,27 @@ function AppRoot() {
   const tabGuardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeTab, setActiveTab] = useState(2); // start on Home (store=0, collection=1, home=2)
   const [splash, setSplash] = useState(true);
+  // Native splash DEVİR-TESLİMİ: yukarıdaki preventAutoHideAsync ile ekranda
+  // tutuluyor; ancak JS kendi açılış ekranını GERÇEKTEN boyadıktan sonra
+  // kaldırılır. İki ardışık rAF: ilki layout'tan sonraki kareyi, ikincisi o
+  // karenin boyanmış olmasını garantiler — tek rAF'ta kaldırınca arada hâlâ
+  // bir boş kare kalabiliyordu.
+  const nativeSplashHidden = useRef(false);
+  const hideNativeSplash = useCallback(() => {
+    if (nativeSplashHidden.current) return;
+    nativeSplashHidden.current = true;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      try { NativeSplash.hideAsync().catch(() => {}); } catch { /* yut */ }
+    }));
+  }, []);
+  // (Devretme tetikleyicisi fontsReady'nin TANIMINDAN SONRA — bağımlılık dizisi
+  // render anında değerlendirildiği için burada okumak TDZ hatası olurdu.)
+  // EMNİYET AĞI: beklenmedik bir yol (DevShot modu, erken hata) yüzünden açılış
+  // ekranı hiç boyanmazsa uygulama native splash'ta asılı kalmasın.
+  useEffect(() => {
+    const tm = setTimeout(hideNativeSplash, 3500);
+    return () => clearTimeout(tm);
+  }, [hideNativeSplash]);
   const [tutorialSeen, setTutorialSeen] = useState<boolean | null>(null);
   const [loaded, setLoaded] = useState(false); // Clash-Royale-style entry loading (warms logo cache)
   const [storeSection, setStoreSection] = useState<'socialPack' | 'diamonds' | 'top' | null>(null);
@@ -635,6 +682,14 @@ function AppRoot() {
     'Poppins-SemiBold': require('./assets/fonts/Poppins-SemiBold.ttf'),
   });
   const fontsReady = fontsLoaded || !!fontError; // don't get stuck if a font fails
+  // NATIVE SPLASH DEVRİ — tetikleyici fontsReady, layout DEĞİL: açılış ekranı
+  // Poppins ile çiziliyor; fontlar gelmeden devretsek ilk kare fontsuz (bozuk)
+  // görünürdü. Fontlar hazır olana dek markalı native splash ekranda kalır —
+  // beklemek, çirkin kareden iyidir. (fontsReady font HATASINDA da true olur:
+  // sonsuz bekleme yok; ayrıca yukarıdaki 3.5 sn'lik ağ altta duruyor.)
+  useEffect(() => {
+    if (fontsReady) hideNativeSplash();
+  }, [fontsReady, hideNativeSplash]);
 
   const [langKey, setLangKey] = useState(0); // increment to force full remount after language change
   const TABS = TAB_DEFS.map((tab) => ({ ...tab, label: t(tab.labelKey) }));
@@ -1074,7 +1129,9 @@ function AppRoot() {
   // Splash screen: cinematic brand opening; dismisses itself via onDone.
   if (splash || !fontsReady) {
     return (
-      <View style={{ flex: 1 }}>
+      // Lacivert zemin: native splash kalktığı anda altta beyaz değil marka
+      // rengi bulunsun (devir fontsReady effect'inde yapılır, bkz. yukarısı).
+      <View style={{ flex: 1, backgroundColor: BG_TOP }}>
         <StatusBar style="light" />
         <SplashScreen onDone={() => setSplash(false)} fontsReady={fontsReady} />
       </View>

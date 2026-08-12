@@ -7,6 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "backgroundColor": "#0B1838",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.crossover.football",
@@ -113,7 +114,14 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0B1838"
+          "backgroundColor": "#0B1838",
+          "image": "./assets/logo-mark.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "dark": {
+            "backgroundColor": "#0B1838",
+            "image": "./assets/logo-mark.png"
+          }
         }
       ],
       "expo-localization",
