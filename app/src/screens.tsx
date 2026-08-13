@@ -3813,18 +3813,23 @@ const GemPill = memo(function GemPill({ count, onPress, countAnim, fillAnim, inn
         <Animated.View style={{
           transform: [{ translateY: ty }, { scale }],
           flexDirection: 'row', alignItems: 'center', gap: 5,
-          backgroundColor: theme.card, borderRadius: 15, overflow: 'hidden',
+          backgroundColor: theme.card, borderRadius: 15,
           paddingVertical: 3.5, paddingLeft: 7, paddingRight: 3.5,
         }}>
+          {/* Gem-kazanım dolgusu AYRI bir overflow:hidden sarmalayıcıda kırpılır
+              (yuvarlak hapa otursun). Yüzden overflow:'hidden' KALDIRILDI — çünkü o,
+              sağdaki "+" butonunun alt kısmını hapın yuvarlak köşesine kırpıyordu
+              (kullanıcı bulgusu: "artı butonunun en altında ufak kesik"). */}
           {fillAnim ? (
-            <Animated.View
-              pointerEvents="none"
-              style={{
-                position: 'absolute', left: 0, top: 0, bottom: 0, right: 0,
-                backgroundColor: withAlpha(GEM_COLOR, 0.34),
-                transformOrigin: 'left', transform: [{ scaleX: fillAnim }],
-              }}
-            />
+            <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, right: 0, borderRadius: 15, overflow: 'hidden' }}>
+              <Animated.View
+                style={{
+                  position: 'absolute', left: 0, top: 0, bottom: 0, right: 0,
+                  backgroundColor: withAlpha(GEM_COLOR, 0.34),
+                  transformOrigin: 'left', transform: [{ scaleX: fillAnim }],
+                }}
+              />
+            </View>
           ) : null}
           <GemIcon size={17} />
           <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12, fontVariant: ['tabular-nums'], maxWidth: 62, ...engrave('sm') }} numberOfLines={1}>
