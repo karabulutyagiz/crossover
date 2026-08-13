@@ -1151,7 +1151,7 @@ export function ScreenBg({ variant = 'menu' }: { variant?: BgVariant }) {
   );
 }
 
-function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = false, lockWhenFits = false }: { children: ReactNode; scroll?: boolean; noPitch?: boolean; bg?: ReactNode; pad?: number; contentCenter?: boolean; fillTablet?: boolean; lockWhenFits?: boolean }) {
+function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = false, lockWhenFits = false, header }: { children: ReactNode; scroll?: boolean; noPitch?: boolean; bg?: ReactNode; pad?: number; contentCenter?: boolean; fillTablet?: boolean; lockWhenFits?: boolean; header?: ReactNode }) {
   // iPad = telefon düzeninin ORTALANMIŞ hâli (kullanıcı kuralı, layout.ts).
   // `fillTablet` (dikey yayma) BİLEREK devre dışı: kartların arasını açıp
   // telefondan farklı bir ekran üretiyordu. Prop imzada kalıyor — çağrı yerleri
@@ -1187,6 +1187,11 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
           intercepts scroll); tapping empty background area still dismisses. Scroll-area
           taps are handled by each ScrollView's keyboardShouldPersistTaps="handled". */}
       <Pressable style={StyleSheet.absoluteFill} onPress={() => Keyboard.dismiss()} accessible={false} />
+      {/* Sabit başlık (opsiyonel): ScrollView'ın DIŞINDA, üstünde çizilir. Böylece
+          içindeki üst bar KAYDIRILMAZ ve içeriğin scroll bütçesine EKLENMEZ; ayrıca
+          takılı çerçevenin tacı/ödül habercisi ScrollView üst-kenarına kırpılmadan
+          KAV padding'i + güvenli-alan boşluğuna yukarı taşabilir (bkz. HomeScreen). */}
+      {header ? (maxW ? <View style={{ width: '100%', maxWidth: maxW, alignSelf: 'center' }}>{header}</View> : header) : null}
       {scroll ? (
         <ScrollView
           style={{ flex: 1 }}
@@ -4324,44 +4329,38 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   ), []);
 
   return (
-    <Screen scroll pad={16} contentCenter={false} fillTablet lockWhenFits>
-      {/* ── 1. TOP BAR ── one row, exactly as the mockup: the profile pill flexes to
-           absorb whatever the fixed-width gem pill and button trio leave behind.
-           paddingTop: HEM ödül habercisi (~8px) HEM takılı çerçevenin tacı (goat ~30px)
-           avatar/pill kutusunun ÜSTÜNE taşar; ScrollView'ın üst kenarı (content y=0)
-           bunları kırpıyordu (kullanıcı "üstü görünmüyor, kaydırmak gerekiyor" dedi).
-           Yukarıda yeterli boşluk açarız: çerçeve varken tacın TAMAMI sığsın (34) —
-           avatarı KÜÇÜLTMEDEN; çerçeve yoksa yalnız haberci için az boşluk (12/4) yeter. */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: Math.max(
-        4,
-        // takılı çerçevenin tacı için: çerçeve tuvalinin yukarı taşması kadar boşluk
-        // (goat ~36, kısa çerçeveler ~20) — tam sığsın, kırpılmasın. FrameOverlay ile
-        // aynı formül: size*(SCALE*TIGHTEN-1)/2 + küçük pay.
-        // +8 emniyet payı (goat ~40, ~13px boşluk) — cihaz/alt-piksel varyasyonuna karşı
-        profile?.selectedFrame ? Math.ceil(34 * ((FRAME_SCALE[profile.selectedFrame] ?? 3.15) * 0.9 - 1) / 2) + 8 : 0,
-        // ödül habercisi (top:-7, animasyonla ~8-9px yukarı) için yeter boşluk
-        unclaimedLevelCount(profile) > 0 ? 16 : 0,
-      ) }}>
-        <ProfilePill
-          name={playerName}
-          avatarId={profile?.avatar ?? profile?.selectedAvatar}
-          tier={lvl}
-          pct={xpPct}
-          color={lvlColor}
-          fillAnim={xpBarAnim}
-          frameId={profile?.selectedFrame}
-          onPress={openProfile}
-          claimBadge={unclaimedLevelCount(profile)}
-          boosted={Boolean(profile?.xpBoostUntil && new Date(profile.xpBoostUntil).getTime() > Date.now())}
-        />
-        <GemPill count={profile?.diamonds ?? 0} onPress={openStoreDiamonds} countAnim={gemCountAnim} fillAnim={gemFillAnim} innerRef={gemPillRef} />
-        {SCREEN_W >= TOPBAR_ROOMY_W ? (
-          <RoundIconBtn icon="time" onPress={openHistory} />
-        ) : null}
-        <RoundIconBtn icon="notifications" dot={newsUnread} onPress={openNews} />
-        <RoundIconBtn icon="settings-sharp" onPress={openMenu} />
-      </View>
-
+    <Screen
+      scroll pad={16} contentCenter={false} fillTablet lockWhenFits
+      // ── 1. TOP BAR ── artık SABİT BAŞLIK: ScrollView'ın DIŞINDA çizilir.
+      // (1) Scroll bütçesine EKLENMEZ → içerik aşağı itilmez, ekran KAYMAZ
+      //     (kullanıcı: "ekran kayıyor, kartlar yeşil alana giriyor").
+      // (2) Takılı çerçevenin tacı + ödül habercisi, ScrollView üst-kenarına
+      //     KIRPILMADAN KAV padding'i + güvenli-alan boşluğuna (saate DOĞRU) yukarı
+      //     taşar — "üstteki yeri kullan" dediğin bu. Büyük lacivert boşluk YOK;
+      //     paddingTop yalnız tacı saatin biraz altına indirecek kadar küçük.
+      header={
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: profile?.selectedFrame ? 10 : (unclaimedLevelCount(profile) > 0 ? 6 : 0) }}>
+          <ProfilePill
+            name={playerName}
+            avatarId={profile?.avatar ?? profile?.selectedAvatar}
+            tier={lvl}
+            pct={xpPct}
+            color={lvlColor}
+            fillAnim={xpBarAnim}
+            frameId={profile?.selectedFrame}
+            onPress={openProfile}
+            claimBadge={unclaimedLevelCount(profile)}
+            boosted={Boolean(profile?.xpBoostUntil && new Date(profile.xpBoostUntil).getTime() > Date.now())}
+          />
+          <GemPill count={profile?.diamonds ?? 0} onPress={openStoreDiamonds} countAnim={gemCountAnim} fillAnim={gemFillAnim} innerRef={gemPillRef} />
+          {SCREEN_W >= TOPBAR_ROOMY_W ? (
+            <RoundIconBtn icon="time" onPress={openHistory} />
+          ) : null}
+          <RoundIconBtn icon="notifications" dot={newsUnread} onPress={openNews} />
+          <RoundIconBtn icon="settings-sharp" onPress={openMenu} />
+        </View>
+      }
+    >
       {/* XP küre yağmuru (maç sonrası) */}
       {xpFly != null ? (
         <XpOrbFly gained={xpFly} target={{ x: xpTarget.x, y: xpTarget.y }} onOrbLand={onXpOrbLand} onDone={() => { xpFlyPlanRef.current = null; setXpFly(null); actions.markXpSeen(); }} />
