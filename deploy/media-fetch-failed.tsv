@@ -1,0 +1,582 @@
+player:4752	hata	Oktay Derelioğlu | HTTPError: HTTP Error 403: Forbidden
+player:5959	hata	Gabriel Batistuta | TimeoutError: timed out
+player:6867	hata	Elvir Bolić | TimeoutError: The read operation timed out
+player:6875	hata	İlhan Mansız | HTTPError: HTTP Error 403: Forbidden
+player:6900	hata	Elvir Baljić | HTTPError: HTTP Error 403: Forbidden
+player:6904	hata	Sergen Yalçın | TimeoutError: The read operation timed out
+player:7080	hata	Washington | HTTPError: HTTP Error 403: Forbidden
+player:7236	hata	Abdullah Ercan | TimeoutError: timed out
+player:8024	hata	Diego Maradona | HTTPError: HTTP Error 503: Service Temporarily Unavailable
+player:8050	hata	Hakan Ünsal | HTTPError: HTTP Error 503: Service Temporarily Unavailable
+player:92222	hata	Rıdvan Dilmen | HTTPError: HTTP Error 503: Service Temporarily Unavailable
+player:103796	hata	Orhan Çıkırıkçı | HTTPError: HTTP Error 403: Forbidden
+player:115016	hata	Ünal Karaman | HTTPError: HTTP Error 503: Service Temporarily Unavailable
+club:524	hata	Gaziantepspor | HTTPError: HTTP Error 503: Service Unavailable
+club:2722	hata	SPAL | HTTPError: HTTP Error 403: Forbidden
+club:1506	hata	Karabükspor | HTTPError: HTTP Error 403: Forbidden
+club:6894	hata	K. Erciyesspor | HTTPError: HTTP Error 500: Internal Server Error
+club:3336	hata	Desportivo Aves | HTTPError: HTTP Error 500: Internal Server Error
+club:524	hata	Gaziantepspor | HTTPError: HTTP Error 500: Internal Server Error
+club:2722	hata	SPAL | HTTPError: HTTP Error 500: Internal Server Error
+club:1506	hata	Karabükspor | HTTPError: HTTP Error 500: Internal Server Error
+club:6894	hata	K. Erciyesspor | HTTPError: HTTP Error 500: Internal Server Error
+club:3336	hata	Desportivo Aves | HTTPError: HTTP Error 500: Internal Server Error
+club:10483	hata	Hacettepe | HTTPError: HTTP Error 500: Internal Server Error
+club:19771	hata	Akhisarspor | HTTPError: HTTP Error 500: Internal Server Error
+club:3216	hata	Mersin IY | HTTPError: HTTP Error 500: Internal Server Error
+club:2323	hata	Orduspor | HTTPError: HTTP Error 500: Internal Server Error
+club:3161	hata	Tours FC | HTTPError: HTTP Error 500: Internal Server Error
+club:10787	hata	Marítimo B | HTTPError: HTTP Error 500: Internal Server Error
+club:4361	hata	Varese | HTTPError: HTTP Error 500: Internal Server Error
+club:976	hata	União Madeira | HTTPError: HTTP Error 500: Internal Server Error
+club:10872	hata	G. Bordeaux B | HTTPError: HTTP Error 500: Internal Server Error
+club:2750	hata	Bucaspor | HTTPError: HTTP Error 500: Internal Server Error
+club:2457	hata	B SAD | TimeoutError: timed out
+club:29228	hata	Mouscron | HTTPError: HTTP Error 503: Service Unavailable
+club:2868	hata	Real Madrid C | HTTPError: HTTP Error 500: Internal Server Error
+club:12963	hata	Boavista Y19 | HTTPError: HTTP Error 500: Internal Server Error
+club:4718	hata	Virtus Lanciano | HTTPError: HTTP Error 500: Internal Server Error
+club:12381	hata	1461 Trabzon | HTTPError: HTTP Error 500: Internal Server Error
+club:1161	hata	Chamois Niort | HTTPError: HTTP Error 500: Internal Server Error
+club:2861	hata	KV Oostende | HTTPError: HTTP Error 500: Internal Server Error
+club:12555	hata	Ofspor | HTTPError: HTTP Error 500: Internal Server Error
+club:204	hata	Lierse SK | HTTPError: HTTP Error 500: Internal Server Error
+club:498	hata	KSC Lokeren | HTTPError: HTTP Error 500: Internal Server Error
+club:11250	hata	Tokatspor  | HTTPError: HTTP Error 500: Internal Server Error
+club:1389	hata	AGOVV | HTTPError: HTTP Error 500: Internal Server Error
+club:566	hata	Beerschot AC | HTTPError: HTTP Error 500: Internal Server Error
+club:12511	hata	Kocaeli Birlik | HTTPError: HTTP Error 500: Internal Server Error
+club:1087	hata	UD Salamanca | HTTPError: HTTP Error 500: Internal Server Error
+club:13499	hata	Astra Giurgiu | TimeoutError: timed out
+club:37968	hata	Nigde Anadolu | HTTPError: HTTP Error 500: Internal Server Error
+club:27143	hata	Antalya Kemer | HTTPError: HTTP Error 500: Internal Server Error
+club:10155	hata	San Marino | HTTPError: HTTP Error 500: Internal Server Error
+club:29095	hata	Extremadura | HTTPError: HTTP Error 500: Internal Server Error
+club:18950	hata	Matera | HTTPError: HTTP Error 500: Internal Server Error
+club:13225	hata	Reus Deportiu | HTTPError: HTTP Error 500: Internal Server Error
+club:1284	hata	SC Veendam | TimeoutError: timed out
+club:12181	hata	San Fernando CD | HTTPError: HTTP Error 500: Internal Server Error
+club:2376	hata	Aydinspor 1923 | HTTPError: HTTP Error 500: Internal Server Error
+club:4104	hata	Viareggio | HTTPError: HTTP Error 500: Internal Server Error
+club:26132	hata	UE Costa Brava | HTTPError: HTTP Error 500: Internal Server Error
+club:63954	hata	Barcelona C | HTTPError: HTTP Error 500: Internal Server Error
+club:4652	hata	Denizli Belediye | HTTPError: HTTP Error 500: Internal Server Error
+club:15064	hata	Guaratinguetá | HTTPError: HTTP Error 500: Internal Server Error
+club:2977	hata	KSV Roeselare | HTTPError: HTTP Error 500: Internal Server Error
+club:5743	hata	Sekerspor | HTTPError: HTTP Error 500: Internal Server Error
+club:1511	hata	A.Sebatspor | TimeoutError: timed out
+club:271	hata	Litex Lovech | HTTPError: HTTP Error 500: Internal Server Error
+club:14928	hata	Bozüyükspor  | HTTPError: HTTP Error 500: Internal Server Error
+club:6248	hata	NK Domzale | TimeoutError: timed out
+club:1089	hata	Darlington | HTTPError: HTTP Error 500: Internal Server Error
+club:34559	hata	Lorca FC | HTTPError: HTTP Error 500: Internal Server Error
+club:11158	hata	Oyak Renaultspor | HTTPError: HTTP Error 500: Internal Server Error
+club:12466	hata	Orhangazispor | HTTPError: HTTP Error 500: Internal Server Error
+club:3064	hata	Hereford Utd. | HTTPError: HTTP Error 500: Internal Server Error
+club:1411	hata	RAEC Mons | HTTPError: HTTP Error 500: Internal Server Error
+club:3842	hata	Izmirspor | HTTPError: HTTP Error 500: Internal Server Error
+club:11675	hata	Beylerbeyi | HTTPError: HTTP Error 503: Service Unavailable
+club:49829	hata	Adiyaman FK | HTTPError: HTTP Error 500: Internal Server Error
+club:38290	hata	Pro Piacenza | HTTPError: HTTP Error 500: Internal Server Error
+club:11337	hata	Foligno | HTTPError: HTTP Error 500: Internal Server Error
+club:26119	hata	Athl. Marseille | HTTPError: HTTP Error 500: Internal Server Error
+club:22302	hata	Lupa Roma | HTTPError: HTTP Error 500: Internal Server Error
+club:8698	hata	Barueri | HTTPError: HTTP Error 500: Internal Server Error
+club:8174	hata	FC Vaslui | HTTPError: HTTP Error 500: Internal Server Error
+club:740	hata	Yimpas Yozgat | HTTPError: HTTP Error 500: Internal Server Error
+club:45278	hata	ATK | HTTPError: HTTP Error 500: Internal Server Error
+club:54704	hata	Brentford B | TimeoutError: timed out
+club:12666	hata	Atl. Madrid C | HTTPError: HTTP Error 500: Internal Server Error
+club:45275	hata	Pune City | HTTPError: HTTP Error 500: Internal Server Error
+club:8690	hata	Kastamonuspor | HTTPError: HTTP Error 500: Internal Server Error
+club:3841	hata	I. Güngörenspor | HTTPError: HTTP Error 500: Internal Server Error
+club:8104	hata	Gaz Metan | HTTPError: HTTP Error 500: Internal Server Error
+club:27078	hata	Kirikhanspor | HTTPError: HTTP Error 500: Internal Server Error
+club:3898	hata	FC Brüssel | HTTPError: HTTP Error 500: Internal Server Error
+club:53283	hata	CP El Ejido | HTTPError: HTTP Error 500: Internal Server Error
+club:2783	hata	Metalurg D. | HTTPError: HTTP Error 500: Internal Server Error
+club:643	hata	Haarlem | HTTPError: HTTP Error 500: Internal Server Error
+club:606	hata	Poli Ejido | HTTPError: HTTP Error 500: Internal Server Error
+club:55932	hata	Belenenses S15 | HTTPError: HTTP Error 500: Internal Server Error
+club:11961	hata	Aprilia | HTTPError: HTTP Error 500: Internal Server Error
+club:2439	hata	Kuban Krasnodar | HTTPError: HTTP Error 500: Internal Server Error
+club:3933	hata	Nuneaton | HTTPError: HTTP Error 500: Internal Server Error
+club:7409	hata	Vastese | HTTPError: HTTP Error 500: Internal Server Error
+club:5595	hata	Mardinspor | HTTPError: HTTP Error 500: Internal Server Error
+club:1291	hata	Siirtspor | HTTPError: HTTP Error 500: Internal Server Error
+club:3239	hata	UE Lleida | HTTPError: HTTP Error 500: Internal Server Error
+club:11933	hata	Adiyamanspor | HTTPError: HTTP Error 500: Internal Server Error
+club:6163	hata	FK Senica | HTTPError: HTTP Error 500: Internal Server Error
+club:8305	hata	AC Ajaccio B | TimeoutError: timed out
+club:32125	hata	Mosta FC | HTTPError: HTTP Error 503: Service Unavailable
+club:2477	hata	Karpaty Lviv | HTTPError: HTTP Error 500: Internal Server Error
+club:8715	hata	Pandurii  | HTTPError: HTTP Error 500: Internal Server Error
+club:15447	hata	Ontinyent | HTTPError: HTTP Error 500: Internal Server Error
+club:9851	hata	Körfez Isk. | HTTPError: HTTP Error 500: Internal Server Error
+club:1073	hata	KSK Beveren | HTTPError: HTTP Error 500: Internal Server Error
+club:28559	hata	CA Bastia | HTTPError: HTTP Error 500: Internal Server Error
+club:12939	hata	Cankiri Belediye | HTTPError: HTTP Error 500: Internal Server Error
+club:8701	hata	Alki Larnaca | TimeoutError: timed out
+club:2436	hata	Macclesfield | HTTPError: HTTP Error 500: Internal Server Error
+club:39871	hata	Payasspor | HTTPError: HTTP Error 500: Internal Server Error
+club:16650	hata	FCM Targu Mures | HTTPError: HTTP Error 500: Internal Server Error
+club:6342	hata	White Star | HTTPError: HTTP Error 500: Internal Server Error
+club:4628	hata	Merinosspor | HTTPError: HTTP Error 500: Internal Server Error
+club:649	hata	Haladás | TimeoutError: timed out
+club:2321	hata	KMSK Deinze | HTTPError: HTTP Error 500: Internal Server Error
+club:74773	hata	Akhisar 45 FSK | HTTPError: HTTP Error 500: Internal Server Error
+club:54498	hata	Sicula Leonzio | HTTPError: HTTP Error 500: Internal Server Error
+club:54532	hata	Boavista CJ | HTTPError: HTTP Error 500: Internal Server Error
+club:3266	hata	Corinthians-AL | HTTPError: HTTP Error 500: Internal Server Error
+club:62049	hata	Siirt IÖI | HTTPError: HTTP Error 500: Internal Server Error
+club:14699	hata	Corinthians B | HTTPError: HTTP Error 500: Internal Server Error
+club:5138	hata	Tiburones Rojos | HTTPError: HTTP Error 500: Internal Server Error
+club:17250	hata	BJ Renhe | TimeoutError: timed out
+club:41545	hata	Cizre Spor | HTTPError: HTTP Error 500: Internal Server Error
+club:36590	hata	ACS Poli | HTTPError: HTTP Error 500: Internal Server Error
+club:33304	hata	DL Pro | TimeoutError: timed out
+club:10693	hata	FC Baku | HTTPError: HTTP Error 500: Internal Server Error
+club:15466	hata	Inter B | HTTPError: HTTP Error 500: Internal Server Error
+club:3719	hata	Khimki | HTTPError: HTTP Error 500: Internal Server Error
+club:8841	hata	Khazar Lankaran | HTTPError: HTTP Error 500: Internal Server Error
+club:16200	hata	Valencia CF You | HTTPError: HTTP Error 503: Service Unavailable
+club:5219	hata	AOK Kerkyra | HTTPError: HTTP Error 500: Internal Server Error
+club:1518	hata	Türk Telekom | HTTPError: HTTP Error 500: Internal Server Error
+club:9353	hata	Cisco Roma | HTTPError: HTTP Error 500: Internal Server Error
+club:1433	hata	Exc. Mouscron | HTTPError: HTTP Error 500: Internal Server Error
+club:11110	hata	Ünyespor  | HTTPError: HTTP Error 500: Internal Server Error
+club:44870	hata	Almere City FC  | HTTPError: HTTP Error 500: Internal Server Error
+club:1111	hata	Eendracht Aalst | HTTPError: HTTP Error 500: Internal Server Error
+club:10948	hata	GuaZ FC | HTTPError: HTTP Error 500: Internal Server Error
+club:524	hata	Gaziantepspor | HTTPError: HTTP Error 500: Internal Server Error
+club:2722	hata	SPAL | HTTPError: HTTP Error 500: Internal Server Error
+club:1506	hata	Karabükspor | HTTPError: HTTP Error 500: Internal Server Error
+club:6894	hata	K. Erciyesspor | HTTPError: HTTP Error 500: Internal Server Error
+club:3336	hata	Desportivo Aves | HTTPError: HTTP Error 500: Internal Server Error
+club:10483	hata	Hacettepe | HTTPError: HTTP Error 500: Internal Server Error
+club:19771	hata	Akhisarspor | HTTPError: HTTP Error 500: Internal Server Error
+club:3216	hata	Mersin IY | HTTPError: HTTP Error 500: Internal Server Error
+club:2323	hata	Orduspor | HTTPError: HTTP Error 500: Internal Server Error
+club:3161	hata	Tours FC | HTTPError: HTTP Error 500: Internal Server Error
+club:10787	hata	Marítimo B | HTTPError: HTTP Error 500: Internal Server Error
+club:4361	hata	Varese | HTTPError: HTTP Error 500: Internal Server Error
+club:976	hata	União Madeira | HTTPError: HTTP Error 500: Internal Server Error
+club:10872	hata	G. Bordeaux B | HTTPError: HTTP Error 503: Service Unavailable
+club:2750	hata	Bucaspor | HTTPError: HTTP Error 500: Internal Server Error
+club:2457	hata	B SAD | HTTPError: HTTP Error 500: Internal Server Error
+club:524	hata	Gaziantepspor | HTTPError: HTTP Error 500: Internal Server Error
+club:2722	hata	SPAL | HTTPError: HTTP Error 500: Internal Server Error
+club:1506	hata	Karabükspor | HTTPError: HTTP Error 500: Internal Server Error
+club:6894	hata	K. Erciyesspor | HTTPError: HTTP Error 500: Internal Server Error
+club:3336	hata	Desportivo Aves | HTTPError: HTTP Error 500: Internal Server Error
+club:10483	hata	Hacettepe | HTTPError: HTTP Error 500: Internal Server Error
+club:19771	hata	Akhisarspor | HTTPError: HTTP Error 500: Internal Server Error
+club:3216	hata	Mersin IY | HTTPError: HTTP Error 500: Internal Server Error
+club:2323	hata	Orduspor | HTTPError: HTTP Error 500: Internal Server Error
+club:3161	hata	Tours FC | HTTPError: HTTP Error 503: Service Unavailable
+club:10787	hata	Marítimo B | HTTPError: HTTP Error 500: Internal Server Error
+club:4361	hata	Varese | HTTPError: HTTP Error 500: Internal Server Error
+club:976	hata	União Madeira | HTTPError: HTTP Error 500: Internal Server Error
+club:10872	hata	G. Bordeaux B | HTTPError: HTTP Error 500: Internal Server Error
+club:2750	hata	Bucaspor | TimeoutError: timed out
+club:2457	hata	B SAD | HTTPError: HTTP Error 500: Internal Server Error
+club:29228	hata	Mouscron | HTTPError: HTTP Error 500: Internal Server Error
+club:2868	hata	Real Madrid C | HTTPError: HTTP Error 500: Internal Server Error
+club:12963	hata	Boavista Y19 | HTTPError: HTTP Error 500: Internal Server Error
+club:4718	hata	Virtus Lanciano | HTTPError: HTTP Error 500: Internal Server Error
+club:12381	hata	1461 Trabzon | HTTPError: HTTP Error 500: Internal Server Error
+club:1161	hata	Chamois Niort | HTTPError: HTTP Error 500: Internal Server Error
+club:2861	hata	KV Oostende | HTTPError: HTTP Error 500: Internal Server Error
+club:12555	hata	Ofspor | HTTPError: HTTP Error 500: Internal Server Error
+club:204	hata	Lierse SK | HTTPError: HTTP Error 500: Internal Server Error
+club:498	hata	KSC Lokeren | HTTPError: HTTP Error 500: Internal Server Error
+club:11250	hata	Tokatspor  | HTTPError: HTTP Error 500: Internal Server Error
+club:1389	hata	AGOVV | HTTPError: HTTP Error 503: Service Unavailable
+club:566	hata	Beerschot AC | HTTPError: HTTP Error 500: Internal Server Error
+club:12511	hata	Kocaeli Birlik | HTTPError: HTTP Error 500: Internal Server Error
+club:1087	hata	UD Salamanca | HTTPError: HTTP Error 500: Internal Server Error
+club:13499	hata	Astra Giurgiu | HTTPError: HTTP Error 500: Internal Server Error
+club:37968	hata	Nigde Anadolu | HTTPError: HTTP Error 500: Internal Server Error
+club:27143	hata	Antalya Kemer | TimeoutError: timed out
+club:10155	hata	San Marino | HTTPError: HTTP Error 500: Internal Server Error
+club:29095	hata	Extremadura | HTTPError: HTTP Error 500: Internal Server Error
+club:18950	hata	Matera | HTTPError: HTTP Error 500: Internal Server Error
+club:13225	hata	Reus Deportiu | HTTPError: HTTP Error 500: Internal Server Error
+club:1284	hata	SC Veendam | HTTPError: HTTP Error 500: Internal Server Error
+club:12181	hata	San Fernando CD | HTTPError: HTTP Error 500: Internal Server Error
+club:2376	hata	Aydinspor 1923 | HTTPError: HTTP Error 500: Internal Server Error
+club:4104	hata	Viareggio | HTTPError: HTTP Error 500: Internal Server Error
+club:26132	hata	UE Costa Brava | HTTPError: HTTP Error 500: Internal Server Error
+club:63954	hata	Barcelona C | HTTPError: HTTP Error 500: Internal Server Error
+club:4652	hata	Denizli Belediye | TimeoutError: timed out
+club:15064	hata	Guaratinguetá | HTTPError: HTTP Error 500: Internal Server Error
+club:2977	hata	KSV Roeselare | HTTPError: HTTP Error 500: Internal Server Error
+club:5743	hata	Sekerspor | HTTPError: HTTP Error 500: Internal Server Error
+club:1511	hata	A.Sebatspor | HTTPError: HTTP Error 500: Internal Server Error
+club:271	hata	Litex Lovech | HTTPError: HTTP Error 500: Internal Server Error
+club:14928	hata	Bozüyükspor  | HTTPError: HTTP Error 500: Internal Server Error
+club:6248	hata	NK Domzale | HTTPError: HTTP Error 500: Internal Server Error
+club:1089	hata	Darlington | HTTPError: HTTP Error 500: Internal Server Error
+club:34559	hata	Lorca FC | HTTPError: HTTP Error 500: Internal Server Error
+club:11158	hata	Oyak Renaultspor | HTTPError: HTTP Error 500: Internal Server Error
+club:12466	hata	Orhangazispor | HTTPError: HTTP Error 500: Internal Server Error
+club:3064	hata	Hereford Utd. | HTTPError: HTTP Error 500: Internal Server Error
+club:1411	hata	RAEC Mons | HTTPError: HTTP Error 500: Internal Server Error
+club:3842	hata	Izmirspor | HTTPError: HTTP Error 503: Service Unavailable
+club:11675	hata	Beylerbeyi | HTTPError: HTTP Error 500: Internal Server Error
+club:49829	hata	Adiyaman FK | HTTPError: HTTP Error 500: Internal Server Error
+club:38290	hata	Pro Piacenza | HTTPError: HTTP Error 500: Internal Server Error
+club:11337	hata	Foligno | HTTPError: HTTP Error 500: Internal Server Error
+club:26119	hata	Athl. Marseille | HTTPError: HTTP Error 500: Internal Server Error
+club:22302	hata	Lupa Roma | HTTPError: HTTP Error 500: Internal Server Error
+club:8698	hata	Barueri | HTTPError: HTTP Error 500: Internal Server Error
+club:8174	hata	FC Vaslui | HTTPError: HTTP Error 500: Internal Server Error
+club:740	hata	Yimpas Yozgat | HTTPError: HTTP Error 500: Internal Server Error
+club:45278	hata	ATK | HTTPError: HTTP Error 500: Internal Server Error
+club:54704	hata	Brentford B | HTTPError: HTTP Error 500: Internal Server Error
+club:12666	hata	Atl. Madrid C | HTTPError: HTTP Error 500: Internal Server Error
+club:45275	hata	Pune City | HTTPError: HTTP Error 500: Internal Server Error
+club:8690	hata	Kastamonuspor | HTTPError: HTTP Error 500: Internal Server Error
+club:3841	hata	I. Güngörenspor | HTTPError: HTTP Error 500: Internal Server Error
+club:8104	hata	Gaz Metan | HTTPError: HTTP Error 500: Internal Server Error
+club:27078	hata	Kirikhanspor | HTTPError: HTTP Error 500: Internal Server Error
+club:3898	hata	FC Brüssel | HTTPError: HTTP Error 500: Internal Server Error
+club:53283	hata	CP El Ejido | HTTPError: HTTP Error 500: Internal Server Error
+club:2783	hata	Metalurg D. | HTTPError: HTTP Error 500: Internal Server Error
+club:643	hata	Haarlem | HTTPError: HTTP Error 500: Internal Server Error
+club:606	hata	Poli Ejido | HTTPError: HTTP Error 500: Internal Server Error
+club:55932	hata	Belenenses S15 | HTTPError: HTTP Error 500: Internal Server Error
+club:11961	hata	Aprilia | HTTPError: HTTP Error 500: Internal Server Error
+club:2439	hata	Kuban Krasnodar | HTTPError: HTTP Error 500: Internal Server Error
+club:3933	hata	Nuneaton | HTTPError: HTTP Error 500: Internal Server Error
+club:7409	hata	Vastese | TimeoutError: timed out
+club:5595	hata	Mardinspor | HTTPError: HTTP Error 500: Internal Server Error
+club:1291	hata	Siirtspor | HTTPError: HTTP Error 500: Internal Server Error
+club:3239	hata	UE Lleida | HTTPError: HTTP Error 503: Service Unavailable
+club:11933	hata	Adiyamanspor | HTTPError: HTTP Error 500: Internal Server Error
+club:6163	hata	FK Senica | HTTPError: HTTP Error 500: Internal Server Error
+club:8305	hata	AC Ajaccio B | HTTPError: HTTP Error 500: Internal Server Error
+club:32125	hata	Mosta FC | HTTPError: HTTP Error 500: Internal Server Error
+club:2477	hata	Karpaty Lviv | HTTPError: HTTP Error 500: Internal Server Error
+club:8715	hata	Pandurii  | HTTPError: HTTP Error 500: Internal Server Error
+club:15447	hata	Ontinyent | HTTPError: HTTP Error 500: Internal Server Error
+club:9851	hata	Körfez Isk. | HTTPError: HTTP Error 500: Internal Server Error
+club:1073	hata	KSK Beveren | TimeoutError: timed out
+club:28559	hata	CA Bastia | TimeoutError: timed out
+club:12939	hata	Cankiri Belediye | HTTPError: HTTP Error 500: Internal Server Error
+club:8701	hata	Alki Larnaca | TimeoutError: timed out
+club:2436	hata	Macclesfield | HTTPError: HTTP Error 500: Internal Server Error
+club:39871	hata	Payasspor | HTTPError: HTTP Error 500: Internal Server Error
+club:16650	hata	FCM Targu Mures | HTTPError: HTTP Error 500: Internal Server Error
+club:6342	hata	White Star | HTTPError: HTTP Error 500: Internal Server Error
+club:4628	hata	Merinosspor | HTTPError: HTTP Error 500: Internal Server Error
+club:649	hata	Haladás | HTTPError: HTTP Error 500: Internal Server Error
+club:2321	hata	KMSK Deinze | HTTPError: HTTP Error 500: Internal Server Error
+club:74773	hata	Akhisar 45 FSK | HTTPError: HTTP Error 500: Internal Server Error
+club:54498	hata	Sicula Leonzio | HTTPError: HTTP Error 500: Internal Server Error
+club:54532	hata	Boavista CJ | HTTPError: HTTP Error 500: Internal Server Error
+club:3266	hata	Corinthians-AL | TimeoutError: timed out
+club:62049	hata	Siirt IÖI | HTTPError: HTTP Error 500: Internal Server Error
+club:14699	hata	Corinthians B | HTTPError: HTTP Error 500: Internal Server Error
+club:5138	hata	Tiburones Rojos | HTTPError: HTTP Error 500: Internal Server Error
+club:17250	hata	BJ Renhe | HTTPError: HTTP Error 500: Internal Server Error
+club:41545	hata	Cizre Spor | HTTPError: HTTP Error 500: Internal Server Error
+club:36590	hata	ACS Poli | HTTPError: HTTP Error 500: Internal Server Error
+club:33304	hata	DL Pro | HTTPError: HTTP Error 503: Service Unavailable
+club:10693	hata	FC Baku | HTTPError: HTTP Error 500: Internal Server Error
+club:15466	hata	Inter B | HTTPError: HTTP Error 500: Internal Server Error
+club:3719	hata	Khimki | HTTPError: HTTP Error 500: Internal Server Error
+club:8841	hata	Khazar Lankaran | HTTPError: HTTP Error 500: Internal Server Error
+club:16200	hata	Valencia CF You | HTTPError: HTTP Error 500: Internal Server Error
+club:5219	hata	AOK Kerkyra | HTTPError: HTTP Error 500: Internal Server Error
+club:1518	hata	Türk Telekom | HTTPError: HTTP Error 500: Internal Server Error
+club:9353	hata	Cisco Roma | HTTPError: HTTP Error 500: Internal Server Error
+club:1433	hata	Exc. Mouscron | HTTPError: HTTP Error 500: Internal Server Error
+club:11110	hata	Ünyespor  | HTTPError: HTTP Error 500: Internal Server Error
+club:44870	hata	Almere City FC  | HTTPError: HTTP Error 500: Internal Server Error
+club:1111	hata	Eendracht Aalst | HTTPError: HTTP Error 500: Internal Server Error
+club:10948	hata	GuaZ FC | HTTPError: HTTP Error 500: Internal Server Error
+club:11988	hata	Atl. Onubense | HTTPError: HTTP Error 500: Internal Server Error
+club:37463	hata	Delta PT | HTTPError: HTTP Error 500: Internal Server Error
+club:4053	hata	Ciudad Murcia | HTTPError: HTTP Error 500: Internal Server Error
+club:32013	hata	Racing Roma | HTTPError: HTTP Error 500: Internal Server Error
+club:1766	hata	Erzurumspor | HTTPError: HTTP Error 503: Service Unavailable
+club:3271	hata	Maia | HTTPError: HTTP Error 500: Internal Server Error
+club:22219	hata	JS Suning | HTTPError: HTTP Error 500: Internal Server Error
+club:8422	hata	Atl. Sorocaba | HTTPError: HTTP Error 500: Internal Server Error
+club:56966	hata	Albissola | HTTPError: HTTP Error 500: Internal Server Error
+club:1320	hata	SZ FC | HTTPError: HTTP Error 500: Internal Server Error
+club:1512	hata	Arsinspor | HTTPError: HTTP Error 500: Internal Server Error
+club:37965	hata	Manavgatspor | HTTPError: HTTP Error 500: Internal Server Error
+club:15541	hata	Al-Ahli (UAE) | HTTPError: HTTP Error 500: Internal Server Error
+club:18916	hata	GZ R&F | HTTPError: HTTP Error 500: Internal Server Error
+club:55555	hata	Tsarsko Selo | HTTPError: HTTP Error 500: Internal Server Error
+club:25643	hata	MLS Pool | HTTPError: HTTP Error 500: Internal Server Error
+club:36630	hata	HB CFFC | HTTPError: HTTP Error 500: Internal Server Error
+club:7074	hata	Poli. Timisoara | HTTPError: HTTP Error 500: Internal Server Error
+club:1781	hata	Afyonkarahisar | HTTPError: HTTP Error 500: Internal Server Error
+club:11738	hata	J.Malucelli | HTTPError: HTTP Error 500: Internal Server Error
+club:11380	hata	FC Buzau | HTTPError: HTTP Error 500: Internal Server Error
+club:50260	hata	Inter de Madrid | HTTPError: HTTP Error 500: Internal Server Error
+club:12383	hata	Gaskispor | HTTPError: HTTP Error 500: Internal Server Error
+club:4688	hata	Gloria Bistrita | HTTPError: HTTP Error 500: Internal Server Error
+club:95875	hata	FC Marco | HTTPError: HTTP Error 500: Internal Server Error
+club:99641	hata	Kücükcekmece SK | HTTPError: HTTP Error 500: Internal Server Error
+club:114309	hata	Wimbledon FC | HTTPError: HTTP Error 500: Internal Server Error
+club:856	hata	SV Mattersburg | HTTPError: HTTP Error 500: Internal Server Error
+club:14704	hata	Grêmio B | HTTPError: HTTP Error 500: Internal Server Error
+club:6450	hata	WH Zall | HTTPError: HTTP Error 500: Internal Server Error
+club:12502	hata	Alicante | HTTPError: HTTP Error 500: Internal Server Error
+club:4687	hata	FC Brasov | HTTPError: HTTP Error 500: Internal Server Error
+club:15585	hata	Niort B | HTTPError: HTTP Error 500: Internal Server Error
+club:15847	hata	Vizela Y19 | TimeoutError: timed out
+club:10680	hata	Bidvest Wits FC | HTTPError: HTTP Error 500: Internal Server Error
+club:50835	hata	Konya Eregli | HTTPError: HTTP Error 500: Internal Server Error
+club:8738	hata	AS Pizzighettone | HTTPError: HTTP Error 500: Internal Server Error
+club:37961	hata	1920 Maras Spor | TimeoutError: timed out
+club:13451	hata	Beykozspor | HTTPError: HTTP Error 500: Internal Server Error
+club:59	hata	Campomaiorense | HTTPError: HTTP Error 500: Internal Server Error
+club:16656	hata	Athletico-PR B | HTTPError: HTTP Error 500: Internal Server Error
+club:59535	hata	Académica S17 | HTTPError: HTTP Error 500: Internal Server Error
+club:3691	hata	Tom Tomsk | HTTPError: HTTP Error 500: Internal Server Error
+club:25267	hata	Le Pontet | TimeoutError: timed out
+club:9007	hata	Arsenal Kyiv | TimeoutError: timed out
+club:32805	hata	Vit./AGOVV Jgd. | TimeoutError: timed out
+club:4535	hata	Odivelas | TimeoutError: timed out
+club:27627	hata	T. Akcaabat | TimeoutError: timed out
+club:68028	hata	Al-Jabalain  | TimeoutError: timed out
+club:25264	hata	Levante UD Yout | TimeoutError: timed out
+club:44858	hata	Alki Oroklini | TimeoutError: timed out
+club:27187	hata	Yildirim Bosna | TimeoutError: timed out
+club:6642	hata	Chivas USA | TimeoutError: timed out
+club:6414	hata	Metalist Kharkiv | TimeoutError: timed out
+club:74695	hata	Türk Metal 1963 | TimeoutError: timed out
+club:6227	hata	RB Juniors | TimeoutError: timed out
+club:91510	hata	Dolomiti  | TimeoutError: timed out
+club:2891	hata	SuperSport Utd. | TimeoutError: timed out
+club:23959	hata	Almancilense | TimeoutError: timed out
+club:75761	hata	Malatya Arguvan | TimeoutError: timed out
+club:8707	hata	Kirsehirspor | TimeoutError: timed out
+club:50702	hata	Ünye 1957 | TimeoutError: timed out
+club:33600	hata	Huracán | HTTPError: HTTP Error 500: Internal Server Error
+club:49734	hata	Jumilla | HTTPError: HTTP Error 500: Internal Server Error
+club:9528	hata	Montichiari | HTTPError: HTTP Error 500: Internal Server Error
+club:6994	hata	Metalurg Z. | HTTPError: HTTP Error 500: Internal Server Error
+club:21475	hata	Academica Clince | HTTPError: HTTP Error 500: Internal Server Error
+club:11614	hata	UD Las Palmas C | HTTPError: HTTP Error 500: Internal Server Error
+club:41916	hata	Inter Escaldes | HTTPError: HTTP Error 500: Internal Server Error
+club:20706	hata	Alacatispor | HTTPError: HTTP Error 500: Internal Server Error
+club:16655	hata	Atlético-MG B | HTTPError: HTTP Error 500: Internal Server Error
+club:46933	hata	Castelvetro | HTTPError: HTTP Error 500: Internal Server Error
+club:35272	hata	CZ Mighty Lions | HTTPError: HTTP Error 500: Internal Server Error
+club:61163	hata	Rio Ave B | HTTPError: HTTP Error 500: Internal Server Error
+club:57928	hata	Marítimo S15 | HTTPError: HTTP Error 500: Internal Server Error
+club:2926	hata	Ajax Cape Town | HTTPError: HTTP Error 500: Internal Server Error
+club:22800	hata	Clitheroe | HTTPError: HTTP Error 500: Internal Server Error
+club:16487	hata	Lucena | HTTPError: HTTP Error 500: Internal Server Error
+club:3172	hata	CS Visé | HTTPError: HTTP Error 500: Internal Server Error
+club:21698	hata	DHSC | HTTPError: HTTP Error 500: Internal Server Error
+club:1079	hata	Liaoning FC | HTTPError: HTTP Error 500: Internal Server Error
+club:60551	hata	SC Dnipro-1 | HTTPError: HTTP Error 500: Internal Server Error
+club:50615	hata	Oriental Dragon | TimeoutError: timed out
+club:7294	hata	WKE | HTTPError: HTTP Error 500: Internal Server Error
+club:7086	hata	Portosantense | HTTPError: HTTP Error 500: Internal Server Error
+club:1326	hata	CQ Dangdai Lif. | HTTPError: HTTP Error 500: Internal Server Error
+club:18008	hata	Tours B | HTTPError: HTTP Error 500: Internal Server Error
+club:61987	hata	Città S.Agata | HTTPError: HTTP Error 500: Internal Server Error
+club:39799	hata	Balcova Yasam | HTTPError: HTTP Error 500: Internal Server Error
+club:31122	hata	Arsuz Karaagac | HTTPError: HTTP Error 500: Internal Server Error
+club:100152	hata	Toulouse For. | TimeoutError: timed out
+club:7475	hata	AE Pafos  | HTTPError: HTTP Error 500: Internal Server Error
+club:60039	hata	Traversetolo | HTTPError: HTTP Error 500: Internal Server Error
+club:41658	hata	Magusa TG | HTTPError: HTTP Error 500: Internal Server Error
+club:2703	hata	Alania | HTTPError: HTTP Error 500: Internal Server Error
+club:39151	hata	Ottawa Fury | HTTPError: HTTP Error 503: Service Unavailable
+club:30208	hata	Gafanha | HTTPError: HTTP Error 503: Service Unavailable
+club:10880	hata	CS Sedan B | TimeoutError: timed out
+club:100148	hata	Montpellier For | HTTPError: HTTP Error 500: Internal Server Error
+club:20379	hata	Alcobendas | HTTPError: HTTP Error 500: Internal Server Error
+club:28956	hata	AEL Kalloni | HTTPError: HTTP Error 500: Internal Server Error
+club:54536	hata	Nibbiano | HTTPError: HTTP Error 500: Internal Server Error
+club:46677	hata	Ödemis Spor | HTTPError: HTTP Error 500: Internal Server Error
+club:39974	hata	Vefaspor | HTTPError: HTTP Error 500: Internal Server Error
+club:3053	hata	Northwich Vic | HTTPError: HTTP Error 500: Internal Server Error
+club:15824	hata	Sri Pahang  | HTTPError: HTTP Error 500: Internal Server Error
+club:23302	hata	Dalkurd | HTTPError: HTTP Error 500: Internal Server Error
+club:2725	hata	CD Ourense | HTTPError: HTTP Error 500: Internal Server Error
+club:9710	hata	Dubai CSC | HTTPError: HTTP Error 500: Internal Server Error
+club:55361	hata	PDHAE | HTTPError: HTTP Error 500: Internal Server Error
+club:86349	hata	Develi Gücü SK | HTTPError: HTTP Error 500: Internal Server Error
+club:14701	hata	Santos B | HTTPError: HTTP Error 500: Internal Server Error
+club:11126	hata	Mordovia | HTTPError: HTTP Error 503: Service Unavailable
+club:3896	hata	Granada 74 | HTTPError: HTTP Error 503: Service Unavailable
+club:2180	hata	La Louviere | HTTPError: HTTP Error 500: Internal Server Error
+club:21727	hata	Batatais-SP | HTTPError: HTTP Error 500: Internal Server Error
+club:50742	hata	Aksehir Spor | HTTPError: HTTP Error 500: Internal Server Error
+club:65711	hata	San Ignacio | HTTPError: HTTP Error 500: Internal Server Error
+club:41756	hata	Ribelle | HTTPError: HTTP Error 500: Internal Server Error
+club:32721	hata	Academia Hagi | HTTPError: HTTP Error 500: Internal Server Error
+club:2227	hata	SC Tavriya | HTTPError: HTTP Error 500: Internal Server Error
+club:51471	hata	Adrense | HTTPError: HTTP Error 500: Internal Server Error
+club:45484	hata	Cigli Belediye | HTTPError: HTTP Error 500: Internal Server Error
+club:43434	hata	Istanbul BB Jgd | HTTPError: HTTP Error 500: Internal Server Error
+club:236	hata	CD Logroñés | HTTPError: HTTP Error 500: Internal Server Error
+club:21604	hata	Farroupilha-RS | HTTPError: HTTP Error 500: Internal Server Error
+club:47029	hata	AFC Croydon | HTTPError: HTTP Error 500: Internal Server Error
+club:6993	hata	FC Mariupol | HTTPError: HTTP Error 500: Internal Server Error
+club:15157	hata	Lüleburgazspor | HTTPError: HTTP Error 500: Internal Server Error
+club:33717	hata	Morpeth Town | HTTPError: HTTP Error 500: Internal Server Error
+club:15474	hata	68 Yeni Aksaray | HTTPError: HTTP Error 500: Internal Server Error
+club:22203	hata	Giacomense | HTTPError: HTTP Error 500: Internal Server Error
+club:8287	hata	Belluno | HTTPError: HTTP Error 500: Internal Server Error
+club:12392	hata	Marmaris Bld GSK | HTTPError: HTTP Error 500: Internal Server Error
+club:11877	hata	Rot-Weiss Essen  | HTTPError: HTTP Error 500: Internal Server Error
+club:37944	hata	Arhavi Spor | HTTPError: HTTP Error 500: Internal Server Error
+club:50213	hata	CD Gerena | HTTPError: HTTP Error 500: Internal Server Error
+club:811	hata	Extremadura | HTTPError: HTTP Error 500: Internal Server Error
+club:42216	hata	Mickleover | HTTPError: HTTP Error 500: Internal Server Error
+club:38995	hata	FC Messina | HTTPError: HTTP Error 500: Internal Server Error
+club:28958	hata	Lusitanos | HTTPError: HTTP Error 500: Internal Server Error
+club:13242	hata	CD Puertollano | HTTPError: HTTP Error 500: Internal Server Error
+club:20330	hata	NEC Amateurs | HTTPError: HTTP Error 500: Internal Server Error
+club:6249	hata	Dynamo-2 Kyiv | HTTPError: HTTP Error 500: Internal Server Error
+club:83362	hata	Varese | TimeoutError: timed out
+club:49866	hata	Varzim B | HTTPError: HTTP Error 500: Internal Server Error
+club:50834	hata	Erdemli Bld | HTTPError: HTTP Error 500: Internal Server Error
+club:12565	hata	Belediye Bingöl | HTTPError: HTTP Error 500: Internal Server Error
+club:61758	hata	Boavista B | HTTPError: HTTP Error 500: Internal Server Error
+club:61166	hata	Real SC U155 | HTTPError: HTTP Error 500: Internal Server Error
+club:2749	hata	Salihli Bld | HTTPError: HTTP Error 500: Internal Server Error
+club:20681	hata	Corumspor | HTTPError: HTTP Error 500: Internal Server Error
+club:32405	hata	Nacional-MG | HTTPError: HTTP Error 500: Internal Server Error
+club:15066	hata	Hércules CF B | HTTPError: HTTP Error 500: Internal Server Error
+club:25922	hata	Sangiustese | HTTPError: HTTP Error 500: Internal Server Error
+club:13243	hata	Uni. Las Palmas | HTTPError: HTTP Error 500: Internal Server Error
+club:43445	hata	Baglum Spor | HTTPError: HTTP Error 503: Service Unavailable
+club:32624	hata	Torre Levante | HTTPError: HTTP Error 500: Internal Server Error
+club:28560	hata	Thonon Évian B | HTTPError: HTTP Error 503: Service Unavailable
+club:44884	hata	AltoVicentino | HTTPError: HTTP Error 500: Internal Server Error
+club:8343	hata	Leonidas | HTTPError: HTTP Error 500: Internal Server Error
+club:45320	hata	Mersin 33 FK | HTTPError: HTTP Error 500: Internal Server Error
+club:34649	hata	Bogliasco | HTTPError: HTTP Error 500: Internal Server Error
+club:66181	hata	Dogan TBSK | HTTPError: HTTP Error 500: Internal Server Error
+club:58401	hata	Famalicão S15 | HTTPError: HTTP Error 500: Internal Server Error
+club:19934	hata	EHC | HTTPError: HTTP Error 500: Internal Server Error
+club:43700	hata	Bigaspor | HTTPError: HTTP Error 500: Internal Server Error
+club:11640	hata	CD Numancia B | HTTPError: HTTP Error 500: Internal Server Error
+club:84006	hata	Rize ÖI | HTTPError: HTTP Error 500: Internal Server Error
+club:50912	hata	Siverek Bld | HTTPError: HTTP Error 500: Internal Server Error
+club:10341	hata	CFC Hertha 06 | HTTPError: HTTP Error 500: Internal Server Error
+club:10684	hata	Rah Ahan | HTTPError: HTTP Error 500: Internal Server Error
+club:6996	hata	Goverla | HTTPError: HTTP Error 500: Internal Server Error
+club:11487	hata	Haaglandia Zon. | HTTPError: HTTP Error 500: Internal Server Error
+club:14967	hata	Real Sociedad Y | HTTPError: HTTP Error 500: Internal Server Error
+club:38479	hata	Real Vicenza | HTTPError: HTTP Error 500: Internal Server Error
+club:63520	hata	Sona | HTTPError: HTTP Error 503: Service Unavailable
+club:44887	hata	Go Ahead Eagles | HTTPError: HTTP Error 500: Internal Server Error
+club:29301	hata	BJ BSU | HTTPError: HTTP Error 500: Internal Server Error
+club:9713	hata	Fort Lauderdale | HTTPError: HTTP Error 500: Internal Server Error
+club:9536	hata	Benfica Luanda | HTTPError: HTTP Error 500: Internal Server Error
+club:20100	hata	Vestsjaelland | HTTPError: HTTP Error 500: Internal Server Error
+club:11907	hata	Dacia | HTTPError: HTTP Error 500: Internal Server Error
+club:12820	hata	US Palermo Yout | HTTPError: HTTP Error 500: Internal Server Error
+club:50891	hata	Ortaca Belediye | TimeoutError: timed out
+club:16668	hata	Grenoble B | HTTPError: HTTP Error 500: Internal Server Error
+club:3536	hata	Rush. & Diamon. | HTTPError: HTTP Error 500: Internal Server Error
+club:55454	hata	Yataganspor | HTTPError: HTTP Error 500: Internal Server Error
+club:32768	hata	Gzira Utd. | HTTPError: HTTP Error 500: Internal Server Error
+club:32142	hata	FSV Frankf. Jgd | TimeoutError: timed out
+club:36628	hata	GZ H. Zhicheng | HTTPError: HTTP Error 500: Internal Server Error
+club:69505	hata	Uzunköprüspor | HTTPError: HTTP Error 500: Internal Server Error
+club:49284	hata	SC Farense Y17 | HTTPError: HTTP Error 500: Internal Server Error
+club:38987	hata	QD Huanghai | HTTPError: HTTP Error 500: Internal Server Error
+club:45132	hata	Zonguldakspor | HTTPError: HTTP Error 500: Internal Server Error
+club:27473	hata	Flamengo-SP | HTTPError: HTTP Error 500: Internal Server Error
+club:6071	hata	CD Tiancheng | HTTPError: HTTP Error 500: Internal Server Error
+club:8554	hata	APOP Kinyras | HTTPError: HTTP Error 500: Internal Server Error
+club:2854	hata	SC Kruisland | HTTPError: HTTP Error 500: Internal Server Error
+club:75542	hata	Boyabat 1868 | HTTPError: HTTP Error 500: Internal Server Error
+club:50846	hata	Yunusemre Spor | HTTPError: HTTP Error 500: Internal Server Error
+club:29292	hata	FC Presikhaaf | HTTPError: HTTP Error 500: Internal Server Error
+club:94713	hata	Sacavenense S17 | HTTPError: HTTP Error 500: Internal Server Error
+club:72275	hata	SC Farense Y15 | HTTPError: HTTP Error 500: Internal Server Error
+club:21687	hata	UJA Maccabi | HTTPError: HTTP Error 500: Internal Server Error
+club:7972	hata	Lorca Deportiva | HTTPError: HTTP Error 500: Internal Server Error
+club:50738	hata	Karasuspor | HTTPError: HTTP Error 500: Internal Server Error
+club:16666	hata	Flamengo B | HTTPError: HTTP Error 500: Internal Server Error
+club:50780	hata	Southampton Aca | HTTPError: HTTP Error 500: Internal Server Error
+club:60524	hata	Yunus Emre Bld | HTTPError: HTTP Error 500: Internal Server Error
+club:55927	hata	PO Xylotymbou | HTTPError: HTTP Error 500: Internal Server Error
+club:76315	hata	Görükle Ipek | HTTPError: HTTP Error 500: Internal Server Error
+club:9837	hata	Redditch | HTTPError: HTTP Error 500: Internal Server Error
+club:94714	hata	Sacavenense S15 | HTTPError: HTTP Error 500: Internal Server Error
+club:50757	hata	Gönen Belediye | HTTPError: HTTP Error 500: Internal Server Error
+club:18773	hata	Karsspor | URLError: <urlopen error [Errno 61] Connection refused>
+club:29512	hata	Chatham | URLError: <urlopen error [Errno 61] Connection refused>
+club:2922	hata	CD Onda | URLError: <urlopen error [Errno 61] Connection refused>
+club:34381	hata	Palestrina | URLError: <urlopen error [Errno 61] Connection refused>
+club:28170	hata	FC Edmonton | URLError: <urlopen error [Errno 61] Connection refused>
+club:6678	hata	Thrasyvoulos | URLError: <urlopen error [Errno 61] Connection refused>
+club:62158	hata	Mola | URLError: <urlopen error [Errno 61] Connection refused>
+club:4482	hata	Volyn Lutsk | URLError: <urlopen error [Errno 61] Connection refused>
+club:90252	hata	1966 Edremit | URLError: <urlopen error [Errno 61] Connection refused>
+club:50832	hata	Ladik Belediye | URLError: <urlopen error [Errno 61] Connection refused>
+club:94203	hata	Pasteleira S17 | URLError: <urlopen error [Errno 61] Connection refused>
+club:44963	hata	Bövinghausen | URLError: <urlopen error [Errno 61] Connection refused>
+club:12438	hata	Volga NN | URLError: <urlopen error [Errno 61] Connection refused>
+club:83824	hata	Cesme Bld. Spor | URLError: <urlopen error [Errno 61] Connection refused>
+club:58777	hata	Sanjoanense S17 | URLError: <urlopen error [Errno 61] Connection refused>
+club:27662	hata	Lamezia | URLError: <urlopen error [Errno 61] Connection refused>
+club:10695	hata	Soligorsk | URLError: <urlopen error [Errno 61] Connection refused>
+club:3683	hata	Hendon | URLError: <urlopen error [Errno 61] Connection refused>
+club:10730	hata	US Roye | URLError: <urlopen error [Errno 61] Connection refused>
+club:135	hata	Chmel Blsany | URLError: <urlopen error [Errno 61] Connection refused>
+club:21179	hata	Coria CF | URLError: <urlopen error [Errno 61] Connection refused>
+club:68301	hata	S.Maria Cilento | URLError: <urlopen error [Errno 61] Connection refused>
+club:39950	hata	Independiente B | URLError: <urlopen error [Errno 61] Connection refused>
+club:49590	hata	Anamur Belediye | URLError: <urlopen error [Errno 61] Connection refused>
+club:3743	hata	FFA C. of Excel | URLError: <urlopen error [Errno 61] Connection refused>
+club:31442	hata	Mitra Kukar | URLError: <urlopen error [Errno 61] Connection refused>
+club:45191	hata	Sobrado | URLError: <urlopen error [Errno 61] Connection refused>
+club:60743	hata	Beylikdüzü | URLError: <urlopen error [Errno 61] Connection refused>
+club:12376	hata	Araklispor  | URLError: <urlopen error [Errno 61] Connection refused>
+club:3827	hata	Thurrock | URLError: <urlopen error [Errno 61] Connection refused>
+club:20831	hata	Santa Rita-AL | URLError: <urlopen error [Errno 61] Connection refused>
+club:49592	hata	Yeni Canspor | URLError: <urlopen error [Errno 61] Connection refused>
+club:85234	hata	Mazidagi Fosfat | URLError: <urlopen error [Errno 61] Connection refused>
+club:58133	hata	Union S.Giorgio | URLError: <urlopen error [Errno 61] Connection refused>
+club:31552	hata	Rayo Cantabria | URLError: <urlopen error [Errno 61] Connection refused>
+club:93797	hata	Al-Ittifaq | URLError: <urlopen error [Errno 61] Connection refused>
+club:30504	hata	Atl. Venezuela | URLError: <urlopen error [Errno 61] Connection refused>
+club:101850	hata	Wythenshawe | URLError: <urlopen error [Errno 61] Connection refused>
+club:11609	hata	Austria Kärnten | URLError: <urlopen error [Errno 61] Connection refused>
+club:94204	hata	Pasteleira S15 | URLError: <urlopen error [Errno 61] Connection refused>
+club:69166	hata	Memphis 901 | URLError: <urlopen error [Errno 61] Connection refused>
+club:44745	hata	Pelikaan-S | URLError: <urlopen error [Errno 61] Connection refused>
+club:7670	hata	Cassis Carnoux | URLError: <urlopen error [Errno 61] Connection refused>
+club:74561	hata	Kullar 1975 | URLError: <urlopen error [Errno 61] Connection refused>
+club:107818	hata	Al-Ula | URLError: <urlopen error [Errno 61] Connection refused>
+club:112648	hata	Entente SSG Jgd | URLError: <urlopen error [Errno 61] Connection refused>
+club:79095	hata	Six-Fours Brusc | URLError: <urlopen error [Errno 61] Connection refused>
+club:64333	hata	SC Espinho S17 | URLError: <urlopen error [Errno 61] Connection refused>
+club:78642	hata	Carlos Stein | URLError: <urlopen error [Errno 61] Connection refused>
+club:46830	hata	Iglesias | URLError: <urlopen error [Errno 61] Connection refused>
+club:19176	hata	Monterotondo | URLError: <urlopen error [Errno 61] Connection refused>
+club:32079	hata	Angra-RJ | URLError: <urlopen error [Errno 61] Connection refused>
+club:39186	hata	B.Cekmece Bld | URLError: <urlopen error [Errno 61] Connection refused>
+club:84230	hata	AS Arta/Solar7 | URLError: <urlopen error [Errno 61] Connection refused>
+club:3803	hata	Mérida UD | URLError: <urlopen error [Errno 61] Connection refused>
+club:27198	hata	HinterReggio | URLError: <urlopen error [Errno 61] Connection refused>
+club:65482	hata	Ulubey Belediye | URLError: <urlopen error [Errno 61] Connection refused>
+club:13357	hata	Lobos BUAP | URLError: <urlopen error [Errno 61] Connection refused>
+club:22274	hata	Valle d'Aosta | URLError: <urlopen error [Errno 61] Connection refused>
+club:32073	hata	AC Barnechea | URLError: <urlopen error [Errno 61] Connection refused>
+club:42005	hata	Hessen Dreieich | URLError: <urlopen error [Errno 61] Connection refused>
+club:21044	hata	Armilla | URLError: <urlopen error [Errno 61] Connection refused>
+club:50551	hata	Zaferspor | URLError: <urlopen error [Errno 61] Connection refused>
+club:27319	hata	GS Mazara | URLError: <urlopen error [Errno 61] Connection refused>
+club:85902	hata	Punjab FC | URLError: <urlopen error [Errno 61] Connection refused>
+club:7242	hata	Infesta | URLError: <urlopen error [Errno 61] Connection refused>
+club:3649	hata	Bangor City | URLError: <urlopen error [Errno 61] Connection refused>
+club:17238	hata	NC Bayi Hengyuan | URLError: <urlopen error [Errno 61] Connection refused>
+club:49444	hata	IFA Spor | URLError: <urlopen error [Errno 61] Connection refused>

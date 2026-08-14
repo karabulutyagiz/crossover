@@ -3,7 +3,9 @@
 // %100 GERÇEK istatistik kuralı (kullanıcı talebi):
 //   1) Yayın tarihi ÖNCESİ sayılmaz. Oyun 04.08.2026'da yayınlandı; öncesi test
 //      aşamasıdır. Her sorgu bu tarihten itibaren (İstanbul) filtrelenir.
-//   2) Test/dev hesapları hariç (satın alımlar dahil). Kaynak: rank.ts DEV_ACCOUNTS.
+//   2) Test/dev hesapları kullanıcı/oyun istatistiklerinden hariç. Satın almalarda
+//      yalnız Apple `environment='Production'` sayılır; Production transaction gerçek
+//      App Store satışıdır, satın alan hesap test adı taşısa bile gelirden düşülmez.
 // Canlı sayaçlar (o an çevrimiçi / maçta / kuyrukta) bellekten `live` gelir.
 // Yetkilendirme ws/server.ts'te (ADMIN_TOKEN) yapılır.
 import { pool } from '../db/pool.ts';
@@ -19,6 +21,8 @@ const TEST_ACCOUNTS = ['yagiz', 'bloodsucker'];
 // Sabit liste (kullanıcı girdisi değil) — enjeksiyon riski yok.
 const notTest = (col = 'display_name') =>
   `lower(${col}) NOT IN (${TEST_ACCOUNTS.map((a) => `'${a}'`).join(', ')})`;
+const isGuestSql = (alias = 'u') =>
+  `(${alias}.apple_sub IS NULL AND ${alias}.google_sub IS NULL AND ${alias}.facebook_sub IS NULL AND ${alias}.game_center_id IS NULL)`;
 
 // Ürün → müşteri fiyatı (₺, brüt — Apple kesintisi/vergi HARİÇ). App'teki
 // DIAMOND_PACKS / SOCIAL_PACK / COPASS fallback fiyatlarıyla birebir.
@@ -113,26 +117,31 @@ export async function getAdminStats(live: LiveStats, day?: string) {
       FROM users
       WHERE created_at >= ${LAUNCH_TS} AND ${notTest()}`),
 
-    // ── Ürün bazında satış (yayın sonrası; Production + eski etiketsiz kayıtlar; sandbox ve test hesap hariç) ──
-    pool.query<{ product_id: string; sales: number; diamonds: string }>(`
-      SELECT pt.product_id, count(*)::int AS sales, COALESCE(sum(pt.diamonds),0)::bigint AS diamonds
+    // ── Ürün bazında satış (yayın sonrası; yalnız güvenilir Production; sandbox/TestFlight ve eski etiketsiz kayıtlar hariç) ──
+    pool.query<{ product_id: string; sales: number; guest_sales: number; identified_sales: number; diamonds: string; price_milliunits: string | null; guest_price_milliunits: string | null; identified_price_milliunits: string | null; currency: string | null }>(`
+      SELECT pt.product_id, count(*)::int AS sales, COALESCE(sum(pt.diamonds),0)::bigint AS diamonds,
+             sum(pt.price_milliunits)::bigint AS price_milliunits,
+             sum(pt.price_milliunits) FILTER (WHERE ${isGuestSql('u')})::bigint AS guest_price_milliunits,
+             sum(pt.price_milliunits) FILTER (WHERE NOT ${isGuestSql('u')})::bigint AS identified_price_milliunits,
+             min(pt.currency) FILTER (WHERE pt.currency IS NOT NULL) AS currency
+             , count(*) FILTER (WHERE ${isGuestSql('u')})::int AS guest_sales
+             , count(*) FILTER (WHERE NOT ${isGuestSql('u')})::int AS identified_sales
       FROM processed_transactions pt
       JOIN users u ON u.id = pt.user_id
       WHERE COALESCE(pt.purchase_date, pt.created_at) >= ${LAUNCH_TS}
-        AND (pt.environment = 'Production' OR pt.environment IS NULL)
-        AND ${notTest('u.display_name')}
+        AND pt.environment = 'Production'
       GROUP BY pt.product_id
       ORDER BY sales DESC`),
 
-    // ── Günlük satış serisi (yayından bugüne; Production + eski etiketsiz; sandbox hariç) ──
-    pool.query<{ day: string; product_id: string; sales: number }>(`
+    // ── Günlük satış serisi (yayından bugüne; yalnız Production; sandbox/TestFlight ve eski etiketsiz kayıtlar hariç) ──
+    pool.query<{ day: string; product_id: string; sales: number; price_milliunits: string | null }>(`
       SELECT to_char(date_trunc('day', COALESCE(pt.purchase_date, pt.created_at) AT TIME ZONE 'Europe/Istanbul'), 'YYYY-MM-DD') AS day,
-             pt.product_id, count(*)::int AS sales
+             pt.product_id, count(*)::int AS sales,
+             sum(pt.price_milliunits)::bigint AS price_milliunits
       FROM processed_transactions pt
       JOIN users u ON u.id = pt.user_id
       WHERE COALESCE(pt.purchase_date, pt.created_at) >= ${LAUNCH_TS}
-        AND (pt.environment = 'Production' OR pt.environment IS NULL)
-        AND ${notTest('u.display_name')}
+        AND pt.environment = 'Production'
       GROUP BY 1, 2
       ORDER BY 1`),
 
@@ -187,14 +196,24 @@ export async function getAdminStats(live: LiveStats, day?: string) {
       FROM messages
       WHERE created_at >= ${LAUNCH_TS}`),
 
-    // ── Tek tek satın alımlar (kim, ne aldı) — gelirle AYNI gerçek-satın-alım filtresi ──
-    pool.query<{ display_name: string; product_id: string; at: string }>(`
-      SELECT u.display_name, pt.product_id, COALESCE(pt.purchase_date, pt.created_at) AS at
+    // ── Tek tek satın alımlar (kim, ne aldı). TestFlight/Sandbox ve eski
+    // etiketsiz kayıtlar görünmez; yalnız Apple tarafından Production olarak
+    // doğrulanmış transaction'lar listelenir.
+    pool.query<{ display_name: string | null; product_id: string; at: string; is_guest: boolean; user_id: string | null; in_revenue: boolean; exclude_reason: string | null; price_milliunits: string | null; currency: string | null }>(`
+      SELECT u.id::text AS user_id, u.display_name, pt.product_id, COALESCE(pt.purchase_date, pt.created_at) AS at,
+             pt.price_milliunits, pt.currency,
+             ${isGuestSql('u')} AS is_guest,
+             (
+               COALESCE(pt.purchase_date, pt.created_at) >= ${LAUNCH_TS}
+               AND pt.environment = 'Production'
+             ) AS in_revenue,
+             NULLIF(concat_ws(', ',
+               CASE WHEN COALESCE(pt.purchase_date, pt.created_at) < ${LAUNCH_TS} THEN 'Yayın öncesi' END,
+               CASE WHEN pt.environment != 'Production' THEN COALESCE(pt.environment, 'TestFlight/Sandbox') END
+             ), '') AS exclude_reason
       FROM processed_transactions pt
-      JOIN users u ON u.id = pt.user_id
-      WHERE COALESCE(pt.purchase_date, pt.created_at) >= ${LAUNCH_TS}
-        AND (pt.environment = 'Production' OR pt.environment IS NULL)
-        AND ${notTest('u.display_name')}
+      LEFT JOIN users u ON u.id = pt.user_id
+      WHERE pt.environment = 'Production'
       ORDER BY at DESC
       LIMIT 500`),
 
@@ -271,23 +290,46 @@ export async function getAdminStats(live: LiveStats, day?: string) {
 
   const u = users.rows[0] as any;
 
-  const products = byProduct.rows.map((r) => ({
-    productId: r.product_id,
-    label: labelOf(r.product_id),
-    sales: r.sales,
-    diamonds: Number(r.diamonds),
-    priceTry: priceOf(r.product_id),
-    revenueTry: +(r.sales * priceOf(r.product_id)).toFixed(2),
-  }));
+  const revenueOf = (productId: string, sales: number, milliunits: string | number | null | undefined): number => {
+    const n = Number(milliunits);
+    if (Number.isFinite(n) && n > 0) return +(n / 1000).toFixed(2);
+    return +(sales * priceOf(productId)).toFixed(2);
+  };
+
+  const products = byProduct.rows.map((r) => {
+    const revenueTry = revenueOf(r.product_id, r.sales, r.price_milliunits);
+    return {
+      productId: r.product_id,
+      label: labelOf(r.product_id),
+      sales: r.sales,
+      guestSales: r.guest_sales,
+      identifiedSales: r.identified_sales,
+      diamonds: Number(r.diamonds),
+      priceTry: r.sales > 0 ? +(revenueTry / r.sales).toFixed(2) : priceOf(r.product_id),
+      currency: r.currency ?? 'TRY',
+      revenueTry,
+      guestRevenueTry: revenueOf(r.product_id, r.guest_sales, r.guest_price_milliunits),
+      identifiedRevenueTry: revenueOf(r.product_id, r.identified_sales, r.identified_price_milliunits),
+    };
+  });
   const totalRevenue = +products.reduce((s, p) => s + p.revenueTry, 0).toFixed(2);
   const totalSales = products.reduce((s, p) => s + p.sales, 0);
+  const guestRevenue = +products.reduce((s, p) => s + p.guestRevenueTry, 0).toFixed(2);
+  const identifiedRevenue = +(totalRevenue - guestRevenue).toFixed(2);
+  const guestSales = products.reduce((s, p) => s + p.guestSales, 0);
+  const identifiedSales = totalSales - guestSales;
 
   // Tek tek satın alımlar: kim, hangi ürünü, ne zaman aldı.
   const purchaseList = purchases.rows.map((r) => ({
-    user: r.display_name,
+    user: r.display_name ?? 'Silinmiş kullanıcı',
+    userId: r.user_id,
+    accountType: r.is_guest ? 'guest' : 'identified',
+    inRevenue: r.in_revenue,
+    excludeReason: r.in_revenue ? null : (r.exclude_reason ?? 'Gelire dahil değil'),
     label: labelOf(r.product_id),
     productId: r.product_id,
-    priceTry: priceOf(r.product_id),
+    priceTry: revenueOf(r.product_id, 1, r.price_milliunits),
+    currency: r.currency ?? 'TRY',
     at: r.at,
   }));
 
@@ -295,7 +337,7 @@ export async function getAdminStats(live: LiveStats, day?: string) {
   for (const r of salesDaily.rows) {
     const cur = dayMap.get(r.day) ?? { day: r.day, sales: 0, revenue: 0 };
     cur.sales += r.sales;
-    cur.revenue += r.sales * priceOf(r.product_id);
+    cur.revenue += revenueOf(r.product_id, r.sales, r.price_milliunits);
     dayMap.set(r.day, cur);
   }
   const dailySales = [...dayMap.values()]
@@ -346,6 +388,10 @@ export async function getAdminStats(live: LiveStats, day?: string) {
     revenue: {
       totalTry: totalRevenue,
       totalSales,
+      guestTry: guestRevenue,
+      guestSales,
+      identifiedTry: identifiedRevenue,
+      identifiedSales,
       revenueToday,
       salesToday,
       byProduct: products,

@@ -91,6 +91,7 @@
   .online-row:last-child{border-bottom:none}
   .online-row .dot{width:8px;height:8px;border-radius:50%;background:var(--mint);box-shadow:0 0 6px var(--mint);flex:none}
   .badge-pvp{font-size:10px;font-weight:700;color:var(--mint);border:1px solid var(--mint);border-radius:5px;padding:0 5px;margin-left:6px}
+  .badge-bot{font-size:10px;font-weight:800;color:#06231a;background:var(--gold);border-radius:5px;padding:1px 6px;margin-left:6px;letter-spacing:.04em}
 
   .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
   .kpi{position:relative;overflow:hidden}
@@ -113,6 +114,10 @@
   td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   tr:last-child td{border-bottom:none}
   .prod-tag{font-size:11px;color:var(--muted)}
+  .type-badge{display:inline-flex;align-items:center;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:800;letter-spacing:.02em;white-space:nowrap}
+  .type-badge.guest{background:rgba(245,197,24,.14);color:var(--gold);border:1px solid rgba(245,197,24,.35)}
+  .type-badge.identified{background:rgba(39,229,139,.12);color:var(--mint);border:1px solid rgba(39,229,139,.3)}
+  .type-badge.excluded{background:rgba(138,160,198,.12);color:var(--muted);border:1px solid rgba(138,160,198,.28);margin-top:4px}
 
   /* ── Charts ── */
   .chart-card h3{margin:0 0 4px;font-size:15px}
@@ -247,6 +252,7 @@
         <div class="muted" style="font-size:12px" id="r_dayLabel">Seçili gün</div>
         <div style="font-size:22px;font-weight:800;color:var(--mint)" id="r_today">–</div>
         <div class="muted" style="font-size:11px"><span id="r_salesToday">–</span> satış seçili gün · <span id="r_totalSales">–</span> toplam</div>
+        <div class="muted" style="font-size:11px">Misafir: <span id="r_guestSales">–</span> satış / <span id="r_guestTry">–</span> · Kimlikli: <span id="r_identifiedSales">–</span> / <span id="r_identifiedTry">–</span></div>
       </div>
     </div>
     <div style="overflow-x:auto">
@@ -255,15 +261,15 @@
         <tbody id="r_rows"></tbody>
       </table>
     </div>
-    <p class="hint" style="margin-top:10px">Yalnız <b>gerçek (Production)</b>, tamamlanmış satın alımlar — sandbox/test alımları ve yayın (04.08.2026) öncesi ile test hesapları hariç. Gelir, müşteri ödediği brüt fiyattan hesaplanır (Apple ~%15–30 kesinti ve vergi hariç).</p>
+    <p class="hint" style="margin-top:10px">Yalnız Apple tarafından <b>Production</b> olarak doğrulanmış, yayın sonrası tamamlanmış satın alımlar — TestFlight/Sandbox ve eski etiketsiz kayıtlar hariç. Gelir, müşteri ödediği brüt fiyattan hesaplanır (Apple ~%15–30 kesinti ve vergi hariç).</p>
   </div>
 
   <div class="card" style="margin-top:12px">
     <h3 style="margin:0 0 4px;font-size:15px">Satın alımlar — kim, ne aldı</h3>
-    <p class="hint" style="margin:0 0 12px">En yeni önce.</p>
+    <p class="hint" style="margin:0 0 12px">En yeni önce. TestFlight/Sandbox ve eski etiketsiz transaction kayıtları gösterilmez.</p>
     <div style="overflow-x:auto">
       <table>
-        <thead><tr><th>Kullanıcı</th><th>Ürün</th><th class="num">₺</th><th>Tarih</th></tr></thead>
+        <thead><tr><th>Kullanıcı</th><th>Hesap</th><th>Ürün</th><th class="num">₺</th><th>Tarih</th></tr></thead>
         <tbody id="p_rows"></tbody>
       </table>
     </div>
@@ -497,7 +503,7 @@
     var statusTr = { lobby:"lobide bekliyor", countdown:"geri sayım", pick:"takım seçme", reveal:"açıklama", guess:"tahmin", result:"sonuç" };
     function pPill(p){
       if(!p) return "<span class='muted'>bekleniyor…</span>";
-      if(p.isBot) return "<b>🤖 Bot</b>";
+      if(p.isBot) return "<span class='badge-bot'>BOT</span>";
       var t = (p.trophies!=null ? " <span class='muted'>"+trNum(p.trophies)+"🏆</span>" : "");
       var off = p.connected===false ? " <span class='muted'>(bağlantı kesik)</span>" : "";
       return "<b>"+esc(p.name)+"</b>"+t+off;
@@ -537,20 +543,28 @@
     $("r_today").textContent      = "₺" + trMoney(R.revenueToday);
     $("r_salesToday").textContent = trNum(R.salesToday);
     $("r_totalSales").textContent = trNum(R.totalSales);
+    $("r_guestSales").textContent = trNum(R.guestSales);
+    $("r_guestTry").textContent = "₺" + trMoney(R.guestTry);
+    $("r_identifiedSales").textContent = trNum(R.identifiedSales);
+    $("r_identifiedTry").textContent = "₺" + trMoney(R.identifiedTry);
     var rows = (R.byProduct || []).map(function(p){
       return "<tr><td>" + esc(p.label) + "<div class='prod-tag'>" + esc(p.productId) + "</div></td>"
-        + "<td class='num'>" + trNum(p.sales) + "</td>"
+        + "<td class='num'>" + trNum(p.sales) + "<div class='prod-tag'>Misafir: " + trNum(p.guestSales) + " · Kimlikli: " + trNum(p.identifiedSales) + "</div></td>"
         + "<td class='num'>" + (p.priceTry ? "₺"+trMoney(p.priceTry) : "—") + "</td>"
         + "<td class='num'>₺" + trMoney(p.revenueTry) + "</td></tr>";
     }).join("");
     $("r_rows").innerHTML = rows || "<tr><td colspan='4' class='muted'>Henüz satış yok.</td></tr>";
 
     var plist = (R.purchases || []).map(function(p){
-      return "<tr><td>" + esc(p.user) + "</td><td>" + esc(p.label) + "</td>"
+      var isGuest = p.accountType === "guest";
+      return "<tr><td>" + esc(p.user) + (p.userId ? "<div class='prod-tag'>" + esc(p.userId) + "</div>" : "") + "</td>"
+        + "<td><span class='type-badge " + (isGuest ? "guest" : "identified") + "'>" + (isGuest ? "Misafir" : "Kimlikli") + "</span>"
+        + (p.inRevenue === false ? "<div><span class='type-badge excluded'>" + esc(p.excludeReason || "Gelire dahil değil") + "</span></div>" : "") + "</td>"
+        + "<td>" + esc(p.label) + "</td>"
         + "<td class='num'>₺" + trMoney(p.priceTry) + "</td>"
         + "<td>" + fmtDateTime(p.at) + "</td></tr>";
     }).join("");
-    $("p_rows").innerHTML = plist || "<tr><td colspan='4' class='muted'>Henüz gerçek satın alım yok.</td></tr>";
+    $("p_rows").innerHTML = plist || "<tr><td colspan='5' class='muted'>Henüz gerçek satın alım yok.</td></tr>";
 
     // charts
     barChart("c_revenue", (R.daily||[]), "revenue", true, "c_rev_start", "c_rev_end", function(d){ return d.day + " · ₺" + trMoney(d.revenue) + " (" + d.sales + " satış)"; });

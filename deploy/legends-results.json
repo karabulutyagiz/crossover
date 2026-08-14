@@ -5,13 +5,14 @@
    "birthYear": 1972,
    "nationality": "Türkiye",
    "tmId": 6904,
-   "confidence": "high",
-   "sources": [
-    "https://en.wikipedia.org/wiki/Sergen_Yal%C3%A7%C4%B1n",
-    "https://tr.wikipedia.org/wiki/Sergen_Yal%C3%A7%C4%B1n",
-    "https://www.tff.org/Default.aspx?pageId=526&kisiId=23828",
-    "https://www.national-football-teams.com/player/6817/Sergen_Yalcin.html"
-   ],
+    "confidence": "high",
+    "sources": [
+     "https://en.wikipedia.org/wiki/Sergen_Yal%C3%A7%C4%B1n",
+     "https://tr.wikipedia.org/wiki/Sergen_Yal%C3%A7%C4%B1n",
+     "https://www.transfermarkt.com.tr/siirtspor/startseite/verein/1291",
+     "https://www.tff.org/Default.aspx?pageId=526&kisiId=23828",
+     "https://www.national-football-teams.com/player/6817/Sergen_Yalcin.html"
+    ],
    "spells": [
     {
      "club": "Beşiktaş",
@@ -22,6 +23,11 @@
      "club": "İstanbulspor",
      "from": 1997,
      "to": 1999
+    },
+    {
+     "club": "Siirt JetPA Spor",
+     "from": 1999,
+     "to": 2002
     },
     {
      "club": "Fenerbahçe",
@@ -49,7 +55,7 @@
      "to": 2006
     },
     {
-     "club": "Şekerspor",
+     "club": "Tuğranspor",
      "from": 2006,
      "to": 2007
     },
@@ -140,7 +146,7 @@
      "to": 2006
     },
     {
-     "club": "Şekerspor",
+     "club": "Tuğranspor",
      "from": 2006,
      "to": 2006
     },

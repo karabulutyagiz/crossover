@@ -72,6 +72,73 @@ docker compose logs -f app
 docker compose up -d --build app     # kod güncellemesi (DB volume'a dokunmaz)
 ```
 
+## Ölçekleme notu
+
+Canlı oyun odaları, hızlı eşleşme kuyruğu ve reconnect grace state'i şu an
+`crossover-app-1` Node sürecinin belleğinde tutulur. Bu yüzden mevcut mimaride
+app servisini `--scale app=2` gibi birden fazla instance'a çıkarmayın: iki oyuncu
+farklı process'lere düşerse oda, matchmaking ve reconnect state'i bölünür. Yatay
+ölçekleme gerektiğinde önce sticky WebSocket yönlendirme + Redis/pubsub veya ortak
+room store eklenmelidir.
+
+## Hybrid matchmaking rollout
+
+Yeni gerçek-oyuncu-öncelikli bot fallback sistemi server-side ayarlanır.
+Mobil App Store build'i gerekmez; eski yüklü client'lar aynı `find_match` WebSocket
+mesajını kullanır. Üretimde açık kalmalıdır; aksi halde düşük insan trafiğinde
+oyuncular rakip beklerken takılabilir.
+
+Canlı için önerilen ayar:
+
+```bash
+HYBRID_MATCHMAKING_ENABLED=1
+BOT_FALLBACK_ENABLED=1
+BOT_FALLBACK_PERCENTAGE=100
+docker compose up -d --build app
+```
+
+Kademeli açma gerekiyorsa:
+
+```bash
+# 10% fallback: gerçek oyuncu bulunamazsa yalnız aramaların küçük bir kısmına bot girer
+HYBRID_MATCHMAKING_ENABLED=1
+BOT_FALLBACK_ENABLED=1
+BOT_FALLBACK_PERCENTAGE=10
+BOT_FALLBACK_MIN_DELAY_MS=1800
+BOT_FALLBACK_MAX_DELAY_MS=3800
+docker compose up -d app
+```
+
+Sonra aynı değişkenle `25`, `50`, `100` değerlerine çıkılabilir. Acil durumda
+erken bot fallback kapatılabilir; timeout güvenlik ağı yine oyuncuyu beklemede
+bırakmamak için bot başlatır:
+
+```bash
+HYBRID_MATCHMAKING_ENABLED=1
+BOT_FALLBACK_ENABLED=0
+BOT_FALLBACK_PERCENTAGE=0
+docker compose up -d app
+```
+
+Önemli log event'leri:
+`matchmaking_started`, `matchmaking_expanded`, `human_match_found`,
+`bot_fallback_started`, `bot_match_started`, `matchmaking_cancelled`,
+`matchmaking_timeout`, `duplicate_assignment_prevented`, `match_completed`,
+`settlement_error`.
+
+DB migration additive ve güvenlidir: `match_settlements` idempotency tablosu eklenir,
+mevcut üretim kullanıcıları/kupaları/profilleri/maç geçmişi değiştirilmez veya silinmez.
+Kod migration çalışmadan da in-memory guard ile çalışır, ancak production için migration
+önerilir:
+
+```bash
+cd /opt/crossover
+docker compose exec app npm run migrate
+```
+
+Yeni bot fallback maçları normal `Room` state machine'inden geçer; botlar sosyal
+grafiklerde gerçek kullanıcı olarak yaratılmaz.
+
 ## Yedek / geri yükleme
 
 ```bash

@@ -1,0 +1,164 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1024 1024">
+<!-- ═══════════ STYLE BLOCK v1 — El Diez · IDENTICAL ACROSS ALL EMOTES ═══════════ -->
+<defs>
+  <!-- banded toon gradients: lit / mid(80%V,+blue) / shadow(55-60%V,+blue-violet) -->
+  <linearGradient id="g-skin" x1="0.22" y1="0.02" x2="0.78" y2="0.98">
+    <stop offset="0.46" stop-color="#E8B48A"/><stop offset="0.56" stop-color="#BE8368"/>
+    <stop offset="0.76" stop-color="#BE8368"/><stop offset="0.87" stop-color="#765051"/>
+  </linearGradient>
+  <radialGradient id="g-skin-r" cx="0.38" cy="0.30" r="0.85">
+    <stop offset="0.52" stop-color="#E8B48A"/><stop offset="0.63" stop-color="#BE8368"/>
+    <stop offset="0.82" stop-color="#BE8368"/><stop offset="0.93" stop-color="#765051"/>
+  </radialGradient>
+  <linearGradient id="g-jersey" x1="0.22" y1="0.02" x2="0.78" y2="0.98">
+    <stop offset="0.44" stop-color="#F7F9FC"/><stop offset="0.55" stop-color="#C9D4E6"/>
+    <stop offset="0.77" stop-color="#C9D4E6"/><stop offset="0.88" stop-color="#8E9CC2"/>
+  </linearGradient>
+  <linearGradient id="g-stripe" x1="0.22" y1="0.02" x2="0.78" y2="0.98">
+    <stop offset="0.44" stop-color="#75AADB"/><stop offset="0.55" stop-color="#5477AF"/>
+    <stop offset="0.77" stop-color="#5477AF"/><stop offset="0.88" stop-color="#444F78"/>
+  </linearGradient>
+  <linearGradient id="g-hair" x1="0.25" y1="0.05" x2="0.75" y2="0.95">
+    <stop offset="0.40" stop-color="#3B2B20"/><stop offset="0.52" stop-color="#322018"/>
+    <stop offset="0.74" stop-color="#322018"/><stop offset="0.86" stop-color="#261A22"/>
+  </linearGradient>
+  <linearGradient id="g-accent" x1="0.22" y1="0.02" x2="0.78" y2="0.98">
+    <stop offset="0.46" stop-color="#F6B40E"/><stop offset="0.58" stop-color="#CF7800"/>
+    <stop offset="0.80" stop-color="#CF7800"/><stop offset="0.92" stop-color="#8D4915"/>
+  </linearGradient>
+  <!-- ambient occlusion + soft FX blurs -->
+  <filter id="f-ao" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="9"/></filter>
+  <filter id="f-ao-t" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="5"/></filter>
+  <filter id="f-soft" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="3"/></filter>
+</defs>
+<!-- ═══════════ END STYLE BLOCK ═══════════ -->
+
+<!-- ─── POSE GEOMETRY (defs local to this emote) ─── -->
+<defs>
+  <!-- torso: hunched, shoulders collapsed inward and raised (angry base, works for the wail) -->
+  <path id="p-torso" d="M 348,660 C 356,608 396,576 448,566 L 596,566 C 650,576 690,610 698,662 C 708,724 708,812 700,880 C 694,922 688,936 684,944 L 362,944 C 356,930 350,914 346,878 C 338,808 340,720 348,660 Z"/>
+  <!-- puffed short sleeves on the shoulder humps -->
+  <path id="p-slvL" d="M 352,652 C 322,676 306,716 306,760 C 330,778 364,782 392,770 C 384,728 384,688 394,656 Z"/>
+  <path id="p-slvR" d="M 692,656 C 722,682 736,722 734,766 C 710,782 678,786 650,774 C 660,732 660,692 650,660 Z"/>
+  <!-- forearms rising from the sleeves to the cheeks -->
+  <path id="p-armL" d="M 314,762 C 312,716 324,672 352,640 L 416,672 C 394,700 384,732 382,768 Z"/>
+  <path id="p-armR" d="M 728,768 C 730,722 718,678 690,646 L 626,678 C 648,706 658,738 660,774 Z"/>
+  <!-- fists pressed to the cheeks -->
+  <path id="p-fistL" d="M 342,626 C 330,588 350,554 388,548 C 426,542 454,566 456,602 C 458,634 436,656 400,660 C 368,664 350,652 342,626 Z"/>
+  <path id="p-fistR" d="M 700,632 C 712,594 692,560 654,554 C 616,548 588,572 586,608 C 584,640 606,662 642,666 C 674,670 692,658 700,632 Z"/>
+  <!-- head: big egg, drooped low (chin sunk toward the chest) -->
+  <path id="p-head" d="M 362,470 C 356,364 424,296 512,292 C 602,288 668,352 670,456 C 672,552 616,628 518,636 C 424,644 368,574 362,470 Z"/>
+  <!-- shaggy hair mass (symmetric-ish, tufts at both sides) -->
+  <path id="p-hairback" d="M 512,282 C 594,280 654,324 672,386 C 692,446 696,498 692,546 C 712,522 722,490 724,456 C 738,514 724,576 690,614 C 704,610 716,600 726,588 C 718,638 680,670 630,676 C 656,646 666,614 662,586 C 628,624 574,642 524,638 C 472,642 418,624 386,586 C 382,614 392,646 418,676 C 370,670 332,636 324,588 C 334,600 346,610 360,614 C 328,576 314,514 328,456 C 330,490 340,522 360,546 C 356,498 360,446 380,386 C 398,324 430,284 512,282 Z"/>
+  <!-- fringe = hair cap over crown + spiky bottom edge -->
+  <path id="p-fringe" d="M 366,428 C 358,340 424,290 512,286 C 602,282 664,340 666,420 C 660,400 644,384 626,378 C 636,396 640,416 636,436 C 620,406 600,390 578,386 C 586,406 586,428 578,446 C 564,416 544,400 520,398 C 524,418 518,438 506,452 C 498,426 484,410 464,404 C 464,422 456,438 442,446 C 436,426 428,412 414,406 C 416,426 412,442 402,454 C 388,446 380,462 372,452 C 366,444 368,436 366,428 Z"/>
+</defs>
+
+<!-- ─── FX BEHIND: flying tear droplets both sides ─── -->
+<g id="fx-drops" fill="#9BD1FF">
+  <path d="M 268,560 C 254,580 250,598 260,610 C 270,620 286,616 290,602 C 293,586 284,570 268,560 Z"/>
+  <path d="M 240,682 C 230,696 227,710 234,719 C 242,727 254,724 257,713 C 259,701 252,690 240,682 Z"/>
+  <path d="M 764,566 C 778,586 782,604 772,616 C 762,626 746,622 742,608 C 739,592 748,576 764,566 Z"/>
+  <path d="M 792,690 C 802,704 805,718 798,727 C 790,735 778,732 775,721 C 773,709 780,698 792,690 Z"/>
+</g>
+
+<!-- ─── CHARACTER (back → front) ─── -->
+<!-- hair mass (head group drooped: everything head-related rides translate(0,16)) -->
+<g transform="translate(0,16)">
+  <use href="#p-hairback" fill="#1E1830" opacity="0.9" transform="translate(6,7)"/>
+  <use href="#p-hairback" fill="url(#g-hair)"/>
+  <path fill="#7FB2FF" opacity="0.7" d="M 668,378 C 684,432 686,494 676,542 C 698,510 710,462 706,416 C 702,390 686,374 668,378 Z"/>
+</g>
+
+<!-- torso -->
+<use href="#p-torso" fill="#1E1830" opacity="0.9" transform="translate(6,7)"/>
+<use href="#p-torso" fill="url(#g-jersey)"/>
+<clipPath id="c-torso"><use href="#p-torso"/></clipPath>
+<g clip-path="url(#c-torso)">
+  <path fill="url(#g-stripe)" d="M 386,556 L 442,556 434,952 380,952 Z"/>
+  <path fill="url(#g-stripe)" d="M 496,554 L 552,554 554,952 494,952 Z"/>
+  <path fill="url(#g-stripe)" d="M 606,556 L 662,556 672,952 610,952 Z"/>
+  <path fill="#8E9CC2" opacity="0.55" d="M 652,600 C 690,690 696,830 682,944 L 740,944 740,580 Z"/>
+  <path fill="#8E9CC2" opacity="0.5" d="M 346,916 L 700,912 700,944 346,944 Z"/>
+</g>
+<!-- torso rim -->
+<path fill="#7FB2FF" opacity="0.7" d="M 690,686 C 706,750 708,850 698,924 C 714,846 716,738 700,678 C 696,668 690,676 690,686 Z"/>
+
+<!-- sleeves -->
+<use href="#p-slvL" fill="#1E1830" opacity="0.9" transform="translate(5,6)"/>
+<use href="#p-slvL" fill="url(#g-jersey)"/>
+<use href="#p-slvR" fill="#1E1830" opacity="0.9" transform="translate(5,6)"/>
+<use href="#p-slvR" fill="url(#g-jersey)"/>
+<clipPath id="c-slvL"><use href="#p-slvL"/></clipPath>
+<g clip-path="url(#c-slvL)"><path fill="url(#g-stripe)" d="M 330,644 L 370,642 366,790 322,790 Z"/></g>
+<clipPath id="c-slvR"><use href="#p-slvR"/></clipPath>
+<g clip-path="url(#c-slvR)"><path fill="url(#g-stripe)" d="M 672,648 L 712,652 720,794 676,792 Z"/></g>
+<path fill="#2A2140" opacity="0.30" filter="url(#f-ao-t)" d="M 390,668 C 400,692 402,732 396,766 L 412,764 C 416,726 412,690 404,662 Z"/>
+<path fill="#2A2140" opacity="0.30" filter="url(#f-ao-t)" d="M 652,672 C 644,696 642,736 648,770 L 632,766 C 628,730 634,694 642,666 Z"/>
+
+<!-- head (drooped) + face -->
+<g transform="translate(0,16)">
+  <use href="#p-head" fill="#1E1830" opacity="0.9" transform="translate(6,7)"/>
+  <use href="#p-head" fill="url(#g-skin-r)"/>
+  <!-- head rim -->
+  <path fill="#7FB2FF" opacity="0.75" d="M 654,376 C 670,414 674,468 664,520 C 682,472 682,410 666,372 C 662,366 656,368 654,376 Z"/>
+  <!-- skin specular -->
+  <ellipse cx="452" cy="386" rx="54" ry="30" fill="#FFE9CF" opacity="0.5" filter="url(#f-soft)" transform="rotate(-14 452 386)"/>
+
+  <!-- FACE — CRY: inverted-V brows, squeezed-shut ∪ eyes, wide wail mouth, tear streams -->
+  <g id="face">
+    <ellipse cx="440" cy="512" rx="38" ry="24" fill="#BE8368" opacity="0.5" filter="url(#f-ao-t)"/>
+    <ellipse cx="600" cy="510" rx="36" ry="23" fill="#BE8368" opacity="0.5" filter="url(#f-ao-t)"/>
+    <!-- brows: inner corners pulled high (inverted V of worry) -->
+    <path fill="#2E211A" d="M 400,462 C 420,442 456,424 492,416 L 498,438 C 466,446 434,462 414,480 Z"/>
+    <path fill="#2E211A" d="M 632,460 C 612,440 576,422 540,414 L 534,436 C 566,444 598,460 618,478 Z"/>
+    <!-- worry crease between the brows -->
+    <path fill="none" stroke="#BE8368" stroke-width="8" stroke-linecap="round" d="M 504,430 L 510,452 M 528,428 L 522,450"/>
+    <!-- eyes: squeezed shut, bulging DOWN (sad arcs) -->
+    <path fill="none" stroke="#2E211A" stroke-width="16" stroke-linecap="round" d="M 408,486 C 426,510 462,512 480,490"/>
+    <path fill="none" stroke="#2E211A" stroke-width="16" stroke-linecap="round" d="M 552,490 C 570,512 606,510 624,486"/>
+    <!-- tear streams: wide arcs from the outer corners, outward and down -->
+    <path fill="#9BD1FF" d="M 398,492 C 366,520 344,566 336,618 C 354,626 374,624 388,612 C 392,566 400,528 416,502 C 412,494 404,488 398,492 Z"/>
+    <path fill="#9BD1FF" d="M 634,490 C 666,518 688,564 696,616 C 678,624 658,622 644,610 C 640,564 632,526 616,500 C 620,492 628,486 634,490 Z"/>
+    <!-- tear shine -->
+    <path fill="#E4F3FF" opacity="0.8" d="M 386,510 C 372,528 362,552 356,580 C 362,582 368,580 372,576 C 376,550 382,528 392,512 Z"/>
+    <path fill="#E4F3FF" opacity="0.8" d="M 646,508 C 660,526 670,550 676,578 C 670,580 664,578 660,574 C 656,548 650,526 640,510 Z"/>
+    <!-- nose bump -->
+    <path fill="#BE8368" d="M 504,508 C 516,504 528,508 532,518 C 524,524 510,524 504,518 Z"/>
+    <!-- mouth: wide open wail — corners dragged down, deep cavity, tongue low -->
+    <path fill="#5C2431" d="M 434,570 C 466,542 566,542 600,568 C 604,616 576,650 516,652 C 456,654 430,618 434,570 Z"/>
+    <clipPath id="c-mouth"><path d="M 434,570 C 466,542 566,542 600,568 C 604,616 576,650 516,652 C 456,654 430,618 434,570 Z"/></clipPath>
+    <g clip-path="url(#c-mouth)">
+      <path fill="#C4586B" d="M 458,652 C 462,624 486,608 516,608 C 546,608 568,622 572,648 Z"/>
+    </g>
+    <!-- wail corner creases -->
+    <path fill="none" stroke="#765051" stroke-width="8" stroke-linecap="round" d="M 424,566 C 416,560 410,552 408,544"/>
+    <path fill="none" stroke="#765051" stroke-width="8" stroke-linecap="round" d="M 610,564 C 618,558 624,550 626,542"/>
+  </g>
+  <!-- fringe -->
+  <use href="#p-fringe" fill="url(#g-hair)"/>
+  <path fill="#4E3A2C" opacity="0.8" d="M 394,366 C 426,340 480,328 526,334 C 490,334 442,346 416,370 C 406,378 398,374 394,366 Z"/>
+</g>
+
+<!-- forearms + fists pressed to the cheeks (over the face) -->
+<use href="#p-armL" fill="#1E1830" opacity="0.9" transform="translate(5,6)"/>
+<use href="#p-armL" fill="url(#g-skin)"/>
+<use href="#p-armR" fill="#1E1830" opacity="0.9" transform="translate(5,6)"/>
+<use href="#p-armR" fill="url(#g-skin)"/>
+<!-- wrist tape (left arm signature) -->
+<path fill="url(#g-jersey)" d="M 344,700 L 408,668 394,636 332,668 Z"/>
+<path fill="#8E9CC2" opacity="0.6" d="M 344,700 L 408,668 402,658 338,690 Z"/>
+<use href="#p-fistL" fill="#1E1830" opacity="0.9" transform="translate(5,6)"/>
+<use href="#p-fistL" fill="url(#g-skin)"/>
+<use href="#p-fistR" fill="#1E1830" opacity="0.9" transform="translate(5,6)"/>
+<use href="#p-fistR" fill="url(#g-skin)"/>
+<!-- straight knuckle lines -->
+<path fill="none" stroke="#765051" stroke-width="7" stroke-linecap="round" d="M 368,576 L 366,608 M 392,566 L 390,602 M 418,570 L 418,602"/>
+<path fill="none" stroke="#765051" stroke-width="7" stroke-linecap="round" d="M 674,582 L 676,614 M 650,572 L 652,608 M 624,576 L 624,608"/>
+<!-- fist AO against the cheeks -->
+<path fill="#2A2140" opacity="0.30" filter="url(#f-ao-t)" d="M 452,600 C 464,614 468,632 464,648 C 476,634 476,612 466,598 Z"/>
+<path fill="#2A2140" opacity="0.30" filter="url(#f-ao-t)" d="M 590,606 C 578,620 574,638 578,654 C 566,640 566,618 576,604 Z"/>
+
+<!-- AO: chin shadow onto the chest -->
+<path fill="#2A2140" opacity="0.34" filter="url(#f-ao)" d="M 442,646 C 476,672 566,672 600,642 C 590,696 556,718 520,718 C 484,718 452,698 442,646 Z"/>
+</svg>

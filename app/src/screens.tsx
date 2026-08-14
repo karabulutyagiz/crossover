@@ -1151,7 +1151,7 @@ export function ScreenBg({ variant = 'menu' }: { variant?: BgVariant }) {
   );
 }
 
-function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = false, lockWhenFits = false, header }: { children: ReactNode; scroll?: boolean; noPitch?: boolean; bg?: ReactNode; pad?: number; contentCenter?: boolean; fillTablet?: boolean; lockWhenFits?: boolean; header?: ReactNode }) {
+function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = false, lockWhenFits = false, lockScroll = false, header }: { children: ReactNode; scroll?: boolean; noPitch?: boolean; bg?: ReactNode; pad?: number; contentCenter?: boolean; fillTablet?: boolean; lockWhenFits?: boolean; lockScroll?: boolean; header?: ReactNode }) {
   // iPad = telefon düzeninin ORTALANMIŞ hâli (kullanıcı kuralı, layout.ts).
   // `fillTablet` (dikey yayma) BİLEREK devre dışı: kartların arasını açıp
   // telefondan farklı bir ekran üretiyordu. Prop imzada kalıyor — çağrı yerleri
@@ -1166,7 +1166,7 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
   // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
   return (
     <KeyboardAvoidingView
-      style={[styles.screen, pad !== undefined && { padding: pad }]}
+      style={[styles.screen, !contentCenter && { justifyContent: 'flex-start' }, pad !== undefined && { padding: pad }]}
       // Scroll screens let the ScrollView's `automaticallyAdjustKeyboardInsets` do the
       // work (it insets AND scrolls the focused input above the keyboard); only fixed
       // (non-scroll) screens need the KAV to pad. Running both double-shifts the layout
@@ -1197,7 +1197,7 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
           style={{ flex: 1 }}
           onLayout={(e) => setVpH(e.nativeEvent.layout.height)}
           onContentSizeChange={(_w, h) => setContentH(h)}
-          scrollEnabled={!lockWhenFits || contentH > vpH + 2}
+          scrollEnabled={!lockScroll && (!lockWhenFits || contentH > vpH + 2)}
           contentContainerStyle={{ flexGrow: 1, justifyContent: contentCenter ? 'center' : 'flex-start' }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -2842,7 +2842,7 @@ function arenaColor(name: string): string {
 // periodic shine pass. Same Btn anatomy (ink outline → lip → top-lit face).
 // memo: HomeScreen'in her render'ında (tuş vuruşu, popup açılışı, ws dispatch)
 // bu ağır primitifler boşa yeniden çizilmesin — tüm props ilkel/sabit kimlikli.
-const HeroPlayBtn = memo(function HeroPlayBtn({ label, onPress }: { label: string; onPress: () => void }) {
+const HeroPlayBtn = memo(function HeroPlayBtn({ label, onPress, height = 64 }: { label: string; onPress: () => void; height?: number }) {
   const press = useRef(new Animated.Value(0)).current;
   const [w, setW] = useState(0);
   const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, 4] });
@@ -2860,7 +2860,7 @@ const HeroPlayBtn = memo(function HeroPlayBtn({ label, onPress }: { label: strin
           Korunanlar: hafif basma çökmesi, top filigranı ve eğik etiket. */}
       <Animated.View
         onLayout={(e) => setW(e.nativeEvent.layout.width)}
-        style={{ transform: [{ translateY: ty }], height: 64, justifyContent: 'center' }}
+        style={{ transform: [{ translateY: ty }], height, justifyContent: 'center' }}
       >
         <Image
           source={skin.src}
@@ -2871,13 +2871,13 @@ const HeroPlayBtn = memo(function HeroPlayBtn({ label, onPress }: { label: strin
         <View pointerEvents="none" style={{ position: 'absolute', right: -10, top: -6, width: 92, height: 92, opacity: 0.13 }}>
           <Image source={BALL_WATERMARK} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
         </View>
-        {w > 0 ? <ShineSweep width={w} height={64} loop delay={1600} duration={800} loopGap={3600} opacity={0.18} band={0.2} /> : null}
+        {w > 0 ? <ShineSweep width={w} height={height} loop delay={1600} duration={800} loopGap={3600} opacity={0.18} band={0.2} /> : null}
         {/* Etiket: setin basılı yazısı gibi koyu gövde + açık dış hat; eğim
             transform ile (Poppins burada italik kesim taşımıyor). */}
         <Text
           numberOfLines={1}
           style={{
-            color: SKIN_LABEL_COLOR, fontSize: 23, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.8,
+            color: SKIN_LABEL_COLOR, fontSize: Math.round(height * 0.36), fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.8,
             textAlign: 'center', transform: [{ skewX: '-9deg' }], ...SKIN_LABEL_SHADOW,
           }}
         >
@@ -3130,6 +3130,41 @@ function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName
   );
 }
 
+const PROFILE_MODE_ORDER: GameMode[] = ['team-team', 'country-team', 'letter-team', 'player-player'];
+function modeStatFor(stats: { mode: string; wins: number; losses: number }[] | undefined | null, mode: GameMode): { wins: number; losses: number } {
+  const s = stats?.find((m) => m.mode === mode);
+  return { wins: s?.wins ?? 0, losses: s?.losses ?? 0 };
+}
+
+function ModeStatChip({ mode, wins, losses }: { mode: GameMode; wins: number; losses: number }) {
+  const total = wins + losses;
+  const pct = total ? Math.round((wins / total) * 100) : 0;
+  const c = mode === 'team-team' ? theme.primary : mode === 'country-team' ? theme.blue : mode === 'letter-team' ? theme.accent : theme.purple;
+  return (
+    <GamePanel compact accentStripe={c} style={{ flex: 1 }} bodyStyle={{ paddingVertical: 9, paddingHorizontal: 9 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+        <Ionicons name={MODE_ICON[mode]} size={13} color={c} />
+        <Text numberOfLines={1} style={{ flex: 1, color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{MODE_LABEL(mode)}</Text>
+      </View>
+      <Text style={{ color: c, fontSize: 16, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{wins}G</Text>
+      <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold' }}>{losses}M · %{pct}</Text>
+    </GamePanel>
+  );
+}
+
+function ModeStatsGrid({ stats }: { stats?: { mode: string; wins: number; losses: number }[] | null }) {
+  return (
+    <View style={{ gap: 8 }}>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {PROFILE_MODE_ORDER.slice(0, 2).map((mode) => <ModeStatChip key={mode} mode={mode} {...modeStatFor(stats, mode)} />)}
+      </View>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {PROFILE_MODE_ORDER.slice(2).map((mode) => <ModeStatChip key={mode} mode={mode} {...modeStatFor(stats, mode)} />)}
+      </View>
+    </View>
+  );
+}
+
 // Centered "letter" popup shell — gold-framed card, title + top-right X, scrollable
 // body. Everything that used to open fullscreen (leaderboard, match history) now uses
 // this so it pops in the middle of the screen instead of taking it over.
@@ -3300,9 +3335,20 @@ export function NewsModal({ visible, onClose, seenIds }: { visible: boolean; onC
   );
 }
 
-export function LeaderboardModal({ visible, entries, onClose, onViewProfile }: {
+function MyLeaderboardRank({ rank }: { rank?: number }) {
+  if (!rank) return null;
+  return (
+    <View style={{ marginHorizontal: 14, marginTop: 2, marginBottom: 10, borderRadius: 14, backgroundColor: theme.well, borderWidth: 1, borderColor: theme.hairline, paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+      <Ionicons name="podium" size={13} color={theme.accent} />
+      <Text style={{ color: theme.text, fontSize: 12, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{t('leaderboard.myRank', { rank: `#${rank}` })}</Text>
+    </View>
+  );
+}
+
+export function LeaderboardModal({ visible, entries, myUserId, onClose, onViewProfile }: {
   visible: boolean;
   entries: GameState['leaderboard'];
+  myUserId?: string | null;
   onClose: () => void;
   onViewProfile?: (userId: string) => void;
 }) {
@@ -3316,6 +3362,7 @@ export function LeaderboardModal({ visible, entries, onClose, onViewProfile }: {
   const vpRef = useRef(onViewProfile);
   vpRef.current = onViewProfile;
   const onView = useCallback((id: string) => vpRef.current?.(id), []);
+  const myRank = entries.find((e) => e.userId === myUserId)?.rank;
   return (
     <PopupCard visible={visible} title={t('menu.leaderboard')} icon="podium" onClose={onClose}>
       {/* FlatList (2026-08-10): düz ScrollView 50 satırı (~750 view) popup yayı
@@ -3335,6 +3382,7 @@ export function LeaderboardModal({ visible, entries, onClose, onViewProfile }: {
         ListEmptyComponent={graceOver ? <LeaderboardEmpty onPlay={onClose} /> : <SkeletonRows rows={4} />}
         renderItem={({ item }) => <LeaderboardRow entry={item} onView={onViewProfile ? onView : undefined} />}
       />
+      <MyLeaderboardRank rank={myRank} />
     </PopupCard>
   );
 }
@@ -4113,6 +4161,8 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const socialUpsellOnExit = useRef(false);
   const [newsOpen, setNewsOpen] = useState(false);
   const [newsUnread, setNewsUnread] = useState(false);
+  const insets = useSafeAreaInsets();
+  const win = useWindow();
   // Show the bell's red pip until the user has opened the feed at the latest item.
   useEffect(() => {
     AsyncStorage.getItem(NEWS_READ_KEY).then((v) => setNewsUnread(NEWS.length > 0 && v !== LATEST_NEWS_ID)).catch(() => {});
@@ -4126,6 +4176,21 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const hasPack = !!(profile?.socialPackUntil && new Date(profile.socialPackUntil) > new Date());
   const playerName = profile?.displayName ?? t('home.namePlaceholder');
   const trophies = profile?.trophies ?? 0;
+  const frameTopPad = profile?.selectedFrame
+    ? Math.ceil(34 * ((FRAME_SCALE[profile.selectedFrame] ?? 3.15) * 0.9 - 1) / 2) + 8
+    : 0;
+  const claimTopPad = unclaimedLevelCount(profile) > 0 ? 16 : 0;
+  const homeTopPad = Math.max(4, frameTopPad, claimTopPad);
+  const visibleHomeH = Math.max(520, win.height - insets.top - Math.max(insets.bottom, 12) - 128);
+  const homeScale = Math.max(0.34, Math.min(1, (visibleHomeH - homeTopPad - 463) / 177));
+  const myRank = state.leaderboard.find((e) => e.userId === profile?.userId)?.rank;
+  const heroBoxH = Math.round(92 + 42 * homeScale);
+  const playH = Math.round(46 + 18 * homeScale);
+  const primaryCardH = Math.round(112 + 30 * homeScale);
+  const secondaryCardH = Math.round(72 + 24 * homeScale);
+  const carouselCardH = Math.round(82 + 46 * homeScale);
+  const gapSm = Math.round(3 + 3 * homeScale);
+  const gapMd = Math.round(5 + 5 * homeScale);
 
   // HUD counters: the gem pill and trophy badge are driven by these anim values
   // (RailBadge/GemPill read them via listener), kept in lock-step with the profile.
@@ -4247,6 +4312,9 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
     actions.loadFriends();
     actions.loadConversations();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (profile?.userId && state.leaderboard.length === 0) actions.openLeaderboard();
+  }, [profile?.userId, state.leaderboard.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startMode = useCallback((m: GameMode) => {
     if (PACK_MODES.includes(m) && !hasPack) {
@@ -4344,7 +4412,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       //     taşar — "üstteki yeri kullan" dediğin bu. Büyük lacivert boşluk YOK;
       //     paddingTop yalnız tacı saatin biraz altına indirecek kadar küçük.
       header={
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: profile?.selectedFrame ? 10 : (unclaimedLevelCount(profile) > 0 ? 6 : 0) }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: homeTopPad }}>
           <ProfilePill
             name={playerName}
             avatarId={profile?.avatar ?? profile?.selectedAvatar}
@@ -4376,7 +4444,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         onLayout={(e) => setHero({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
         // minHeight must clear the absolutely-positioned rail: top(2) + 2 badges (44 circle
         // + 14.5 chip overlap) + 12 gap = 131. Anything less and the rail spills onto the CTA.
-        style={{ alignItems: 'center', justifyContent: 'center', marginTop: 3, marginBottom: 0, minHeight: 134 }}
+        style={{ alignItems: 'center', justifyContent: 'center', marginTop: gapSm, marginBottom: 0, minHeight: heroBoxH }}
       >
         {/* w excludes the right badge rail (44px RailBadge circles at right:0 + 12px
             margin): pieces falling BEHIND the translucent badge faces read as artifacts —
@@ -4388,13 +4456,12 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
             night sky), so it is pixel-for-pixel the photo composition. */}
         <Image
           source={HERO_ART}
-          style={{ width: SCREEN_W * 0.652, height: SCREEN_W * 0.652 * (320 / 708) }}
+          style={{ width: SCREEN_W * (0.55 + 0.102 * homeScale), height: SCREEN_W * (0.55 + 0.102 * homeScale) * (320 / 708) }}
           resizeMode="contain"
         />
         <View style={{ position: 'absolute', right: 0, top: 2, gap: 12 }}>
           <RailBadge icon="trophy" iconColor={theme.gold} ringColor={theme.purple} value={String(trophies)} onPress={openArenas} countAnim={trophyCountAnim} fillAnim={trophyFillAnim} innerRef={trophyBadgeRef} />
-          {/* liderlik rozeti SAYISIZ — altındaki galibiyet sayısı kullanıcı isteğiyle kaldırıldı */}
-          <RailBadge icon="podium" iconColor={theme.accent} ringColor={theme.accentDark} onPress={openBoard} />
+          <RailBadge icon="podium" iconColor={theme.accent} ringColor={theme.accentDark} value={myRank ? `#${myRank}` : '—'} onPress={openBoard} />
         </View>
       </View>
 
@@ -4419,25 +4486,25 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
             </View>
           </View>
         ) : null}
-        <HeroPlayBtn label={t('home.quickMatch')} onPress={startQuickMatch} />
+        <HeroPlayBtn label={t('home.quickMatch')} onPress={startQuickMatch} height={playH} />
       </View>
 
       {/* ── 4. GRID ── */}
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 3 }}>
+      <View style={{ flexDirection: 'row', gap: gapMd, marginTop: gapSm }}>
         <ArtCard
           title={t('home.modesTitle')}
           tint={theme.amber}
           grade={MODES_CARD_GRADE}
           strip="#3A2109"
           arrow
-          height={142}
+          height={primaryCardH}
           onPress={openModes}
           art={MODES_CARD_ART}
         />
         {/* Özel Mod — the private-room flow. createRoom/joinRoom have existed in
             useCrossover (797/826) with a working LobbyScreen, but nothing in the UI
             had called them; this panel is their entry point. */}
-        <GhostPanel title={t('home.specialMode')} ghost="key" height={142}>
+        <GhostPanel title={t('home.specialMode')} ghost="key" height={primaryCardH}>
           <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', marginTop: 9 }} numberOfLines={1}>{t('home.roomCodeLabel')}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 }}>
             <TextInput
@@ -4486,11 +4553,11 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         </GhostPanel>
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 6, alignItems: 'flex-end' }}>
+      <View style={{ flexDirection: 'row', gap: gapMd, marginTop: gapSm, alignItems: 'flex-end' }}>
         <ArtCard
           title={arenaLabel(profile?.arena.name ?? '')}
           tint={theme.card}
-          height={96}
+          height={secondaryCardH}
           onPress={openArenas}
           art={arenaArt}
         />
@@ -4498,7 +4565,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
           title={t('home.solo')}
           icon="people"
           ghost="game-controller"
-          height={96}
+          height={secondaryCardH}
           tone={darken(theme.primary, 0.74)}
           onPress={openBot}
         >
@@ -4509,7 +4576,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       {/* ── 5. CAROUSEL ── */}
       {/* marginBottom clears the tab bar's raised centre ball, which breaks ~18pt above
           the bar and would otherwise sit on this strip's captions. */}
-      <View onLayout={(e) => setRailW(e.nativeEvent.layout.width)} style={{ marginTop: 5, marginBottom: 10 }}>
+      <View onLayout={(e) => setRailW(e.nativeEvent.layout.width)} style={{ marginTop: gapSm, marginBottom: Math.max(4, Math.round(10 * homeScale)) }}>
         {cardW > 0 ? (
           <ScrollView
             horizontal
@@ -4525,7 +4592,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 tint={theme.purple}
                 grade={SOCIAL_CARD_GRADE}
                 pillBar={SOCIAL_CARD_PILL}
-                height={128}
+                height={carouselCardH}
                 onPress={openStoreSocial}
                 art={socialArt}
               />
@@ -4539,7 +4606,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 tint={theme.blue}
                 grade={ROAD_CARD_GRADE}
                 pillBar={ROAD_CARD_PILL}
-                height={128}
+                height={carouselCardH}
                 onPress={openRoad}
                 art={roadArt}
               />
@@ -4551,7 +4618,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 title={t('home.news')}
                 icon="megaphone"
                 ghost="megaphone"
-                height={128}
+                height={carouselCardH}
                 onPress={openNews}
               >
                 {newsUnread ? (
@@ -4815,21 +4882,23 @@ function LeaveConfirmModal({ visible, kind = 'ranked', onCancel, onConfirm }: {
           {t(kind === 'ranked' ? 'leave.confirmBody' : 'leave.confirmBodyForfeit')}
         </Text>
       ) : null}
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <View style={{ flex: 1 }}>
-          <Btn label={t('leave.cancel')} kind="ghost" onPress={onCancel} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Btn label={t('leave.confirm')} kind="danger" onPress={onConfirm} />
-        </View>
+      <View style={{ flexDirection: 'row', gap: 12, alignSelf: 'stretch', marginTop: 2 }}>
+        <Pressable onPress={onCancel} style={({ pressed }) => ({ flex: 1, height: 50, borderRadius: 16, borderWidth: 1.5, borderColor: withAlpha(theme.text, 0.18), backgroundColor: pressed ? withAlpha(theme.text, 0.08) : withAlpha(theme.text, 0.04), alignItems: 'center', justifyContent: 'center', transform: [{ scale: pressed ? 0.985 : 1 }] })}>
+          <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14, ...engrave('sm') }}>{t('leave.cancel')}</Text>
+        </Pressable>
+        <Pressable onPress={onConfirm} style={({ pressed }) => ({ flex: 1.12, height: 50, borderRadius: 16, backgroundColor: theme.danger, alignItems: 'center', justifyContent: 'center', shadowColor: theme.danger, shadowOpacity: 0.34, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 8, transform: [{ scale: pressed ? 0.985 : 1 }] })}>
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, borderTopLeftRadius: 16, borderTopRightRadius: 16, backgroundColor: 'rgba(255,255,255,0.22)' }} />
+          <Text style={{ color: '#fff', fontFamily: 'Poppins-Black', fontSize: 14, letterSpacing: 0.2, ...engrave('sm') }}>{t('leave.confirm')}</Text>
+        </Pressable>
       </View>
     </GameModal>
   );
 }
 
-export function OpponentForfeitModal({ visible, onFindNew, onGoHome, trophyDelta }: { visible: boolean; onFindNew: () => void; onGoHome: () => void; trophyDelta?: { delta: number; trophies: number } | null }) {
+export function OpponentForfeitModal({ visible, reason, onFindNew, onGoHome, trophyDelta, showFindNew = true }: { visible: boolean; reason?: 'cheat' | null; onFindNew: () => void; onGoHome: () => void; trophyDelta?: { delta: number; trophies: number } | null; showFindNew?: boolean }) {
+  const cheat = reason === 'cheat';
   return (
-    <GameModal visible={visible} onClose={onGoHome} title={t('opponent.bannerTitle')} icon="exit">
+    <GameModal visible={visible} onClose={onGoHome} title={t(cheat ? 'opponent.cheatBannerTitle' : 'opponent.bannerTitle')} icon={cheat ? 'shield-checkmark' : 'exit'}>
       {/* Exit icon in a beveled medallion (card face + accent ring + soft gold glow) */}
       <View
         style={{
@@ -4841,10 +4910,10 @@ export function OpponentForfeitModal({ visible, onFindNew, onGoHome, trophyDelta
           shadowColor: theme.accent, shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 6,
         }}
       >
-        <Ionicons name="exit-outline" size={30} color={theme.accent} />
+        <Ionicons name={cheat ? 'shield-checkmark' : 'exit-outline'} size={30} color={theme.accent} />
       </View>
       <Text style={{ color: theme.muted, fontSize: 13, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 19 }}>
-        {t('opponent.leftTitle')}
+        {t(cheat ? 'opponent.cheatTitle' : 'opponent.leftTitle')}
       </Text>
       {/* Forfeit is always a win for whoever stays → show the trophies gained (chip
           shows +delta and the new total), mirroring the match-over screen. */}
@@ -4853,7 +4922,7 @@ export function OpponentForfeitModal({ visible, onFindNew, onGoHome, trophyDelta
           <TrophyDeltaChip delta={trophyDelta.delta} trophies={trophyDelta.trophies} />
         </View>
       ) : null}
-      <Btn label={t('opponent.findNew')} icon="flash" onPress={onFindNew} />
+      {showFindNew ? <Btn label={t('opponent.findNew')} icon="flash" onPress={onFindNew} /> : null}
       <Btn label={t('opponent.goHome')} kind="ghost" icon="home" onPress={onGoHome} />
     </GameModal>
   );
@@ -5169,10 +5238,9 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [emoteOpen, setEmoteOpen] = useState(false);
   const [lastPick, setLastPick] = useState<LastPick | null>(null);
-  const hasBot = state.room?.players.some((p) => p.name === 'Bot');
   // Çarpı HER maçta sorar (kullanıcı kuralı 2026-08-10): botta yalnız "emin
   // misin", derecelide kupa uyarısı, dostlukta kupasız hükmen metni.
-  const leaveKind = hasBot ? ('plain' as const) : state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
+  const leaveKind = state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
   const handleLeave = () => tutorial ? actions.leave() : setShowLeaveConfirm(true);
 
   const onChange = (text: string) => {
@@ -5572,10 +5640,9 @@ export function GuessScreen({ state, actions, tutorial, prefill }: Props & { pre
   const coolingDown = !!retryAt && Date.now() < retryAt && !state.youBurned;
   const retrySecs = coolingDown ? Math.max(1, Math.ceil(((retryAt ?? 0) - Date.now()) / 1000)) : 0;
   const onLastChance = !!retryAt && !coolingDown && !state.youBurned; // ikinci hak açık
-  const hasBot = room.players.some((p) => p.name === 'Bot');
   // Çarpı HER maçta sorar (kullanıcı kuralı 2026-08-10): botta yalnız "emin
   // misin", derecelide kupa uyarısı, dostlukta kupasız hükmen metni.
-  const leaveKind = hasBot ? ('plain' as const) : state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
+  const leaveKind = state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
   const handleLeave = () => tutorial ? actions.leave() : setShowLeaveConfirm(true);
 
   // Reveal animation: teams slide in from the sides, the VS badge pops.
@@ -8092,7 +8159,10 @@ export function FriendProfileModal({ profile, onClose, relation, onAddFriend }: 
             {/* Identity block — hero panel tinted by the friend's arena */}
             <GamePanel hero tint={color} style={{ marginBottom: 14 }} bodyStyle={{ alignItems: 'center', paddingVertical: 22 }}>
               <AvatarBadge avatarId={profile?.avatar ?? profile?.selectedAvatar} size={104} ringColor={color} frameId={profile?.frame} />
-              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 22, marginTop: 12, ...engrave('lg') }} numberOfLines={1}>{profile?.displayName}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 12, maxWidth: '100%' }}>
+                <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 22, ...engrave('lg'), flexShrink: 1 }} numberOfLines={1}>{profile?.displayName}</Text>
+                {profile?.isBot ? <Ribbon label="BOT" color={theme.gold} /> : null}
+              </View>
               {/* Gold trophies chip — surface2 face + arena-tint accent ring, integrated depth */}
               <View style={{ borderRadius: 12, backgroundColor: theme.surface2, marginTop: 8, ...shadowRow }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.surface2, borderRadius: 12, overflow: 'hidden', borderWidth: 1.5, borderColor: withAlpha(color, 0.45), paddingHorizontal: 14, paddingVertical: 6 }}>
@@ -8113,16 +8183,10 @@ export function FriendProfileModal({ profile, onClose, relation, onAddFriend }: 
             </View>
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
               <StatCard icon="flame" color={theme.flame} label={t('stats.bestStreak')} value={profile?.bestStreak ?? 0} />
-              {([['team-team', 'mode.teamTeam'], ['country-team', 'mode.countryTeam']] as const).map(([modeId, labelKey]) => {
-                const s = profileModes.find((m) => m.mode === modeId);
-                return <StatCard key={modeId} icon={MODE_ICON[modeId]} color={modeId === 'team-team' ? theme.primary : theme.blue} label={t(labelKey)} value={modeScoreText(s)} />;
-              })}
             </View>
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-              {([['letter-team', 'mode.letterTeam']] as const).map(([modeId, labelKey]) => {
-                const s = profileModes.find((m) => m.mode === modeId);
-                return <StatCard key={modeId} icon={MODE_ICON[modeId]} color={theme.accent} label={t(labelKey)} value={modeScoreText(s)} />;
-              })}
+            <View style={{ marginTop: 12 }}>
+              <SectionHeader label={t('stats.modeBreakdown')} icon="analytics" />
+              <ModeStatsGrid stats={profile?.modeStats ?? profileModes} />
             </View>
             {relation === 'none' && onAddFriend ? (
               <View style={{ marginTop: 14 }}>
@@ -10079,28 +10143,13 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
           <StatCard icon="stats-chart" color={theme.purple} label={t('stats.winRateShort')} value={`%${winRate}`} />
         </View>
 
-        {/* Detaylı istatistikler: seri rekoru + yalnız dereceli mod kırılımı.
-            Bot/dostluk ve oyuncu-oyuncu modu server tarafında hariç tutulur. */}
+        {/* Detaylı istatistikler — seri rekoru + tüm modlarda G/M/% kırılımı */}
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
           <StatCard icon="flame" color={theme.flame} label={t('stats.bestStreak')} value={state.myStats?.bestStreak ?? p.bestStreak ?? 0} />
-          {([['team-team', 'mode.teamTeam'], ['country-team', 'mode.countryTeam']] as const).map(([modeId, labelKey]) => {
-            const s = state.myStats?.modes.find((m) => m.mode === modeId);
-            return (
-              <StatCard
-                key={modeId}
-                icon={MODE_ICON[modeId]}
-                color={modeId === 'team-team' ? theme.primary : theme.blue}
-                label={t(labelKey)}
-                value={t('stats.winLossShort', { wins: s?.wins ?? 0, losses: s?.losses ?? 0 })}
-              />
-            );
-          })}
         </View>
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-          {([['letter-team', 'mode.letterTeam']] as const).map(([modeId, labelKey]) => {
-            const s = state.myStats?.modes.find((m) => m.mode === modeId);
-            return <StatCard key={modeId} icon={MODE_ICON[modeId]} color={theme.accent} label={t(labelKey)} value={t('stats.winLossShort', { wins: s?.wins ?? 0, losses: s?.losses ?? 0 })} />;
-          })}
+        <View style={{ marginTop: 10 }}>
+          <SectionHeader label={t('stats.modeBreakdown')} icon="analytics" />
+          <ModeStatsGrid stats={state.myStats?.modes} />
         </View>
 
         <View style={{ marginTop: 16 }}>
@@ -10216,6 +10265,8 @@ function LadderConnector({ topColor, bottomColor, active, future }: {
 export function ArenasScreen({ state, actions }: Props) {
   const trophies = state.profile?.trophies ?? 0;
   const currentArenaIdx = ARENA_DATA.findIndex((a) => trophies >= a.min && trophies <= a.max);
+  const currentArenaUnlockIdx = Math.max(0, ARENA_DATA.length - 1 - Math.max(0, currentArenaIdx));
+  const highestUnlockedArenaIdx = Math.max(currentArenaUnlockIdx, state.profile?.highestArenaRewarded ?? 0);
   const scrollRef = useRef<ScrollView>(null);
 
   // Land on the player's own arena, not the top of the list. The rows have very
@@ -10263,7 +10314,8 @@ export function ArenasScreen({ state, actions }: Props) {
         {/* Arenas listed top-to-bottom (highest first) */}
         {ARENA_DATA.map((arena, idx) => {
           const isCurrent = idx === currentArenaIdx;
-          const isLocked = trophies < arena.min;
+          const arenaUnlockIdx = ARENA_DATA.length - 1 - idx;
+          const isLocked = highestUnlockedArenaIdx < arenaUnlockIdx;
           const isPassed = trophies > arena.max;
           const maxLabel = arena.max === 99999 ? '∞' : String(arena.max);
 
@@ -10522,12 +10574,20 @@ const LeaderboardRow = memo(function LeaderboardRow({ entry, onView }: { entry: 
         <RankBadge rank={entry.rank} size={28} />
         <Avatar avatar={entry.avatar} name={entry.displayName} size={30} ring={theme.primary} ringWidth={1.5} iconColor={theme.primary} iconSize={14} frameId={entry.frame} />
         <View style={{ flex: 1 }}>
-          <Text numberOfLines={1} style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{entry.displayName}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            <Text numberOfLines={1} style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm'), flexShrink: 1 }}>{entry.displayName}</Text>
+            {entry.isBot ? <Ribbon label="BOT" color={theme.gold} /> : null}
+          </View>
           <Text numberOfLines={1} style={{ color: theme.accent, fontSize: 10, fontFamily: 'Poppins-SemiBold' }}>{arenaLabel(entry.arena.name).toLocaleUpperCase(currentLang())}</Text>
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-          <Ionicons name="trophy" size={12} color={theme.accent} />
-          <Text style={{ color: theme.accent, fontSize: 13, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{entry.trophies}</Text>
+        <View style={{ alignItems: 'flex-end', gap: 3 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+            <Ionicons name="trophy" size={12} color={theme.accent} />
+            <Text style={{ color: theme.accent, fontSize: 13, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{entry.trophies}</Text>
+          </View>
+          <View style={{ backgroundColor: entry.rank <= 3 ? withAlpha(RANK_COLORS[entry.rank - 1]!, 0.2) : theme.well, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2, borderWidth: 1, borderColor: entry.rank <= 3 ? RANK_COLORS[entry.rank - 1]! : theme.hairline }}>
+            <Text style={{ color: entry.rank <= 3 ? RANK_COLORS[entry.rank - 1]! : theme.muted, fontSize: 9.5, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>#{entry.rank}</Text>
+          </View>
         </View>
         <Text style={{ color: theme.muted, fontSize: 10, width: 40, textAlign: 'right', fontFamily: 'Poppins-SemiBold' }}>{t('stats.record', { wins: entry.wins, losses: entry.losses })}</Text>
       </GamePanel>
@@ -10841,6 +10901,7 @@ function PodiumSpot({ entry, onPress }: { entry: LeaderboardEntry; onPress: () =
 
 export function LeaderboardScreen({ state, actions }: Props) {
   const lb = state.leaderboard;
+  const myRank = lb.find((e) => e.userId === state.profile?.userId)?.rank;
   // Loading ≠ empty: skeleton shimmer during the fetch window, then EmptyState.
   const graceOver = useLoadGrace(lb.length === 0);
   const top3 = lb.filter((e) => e.rank >= 1 && e.rank <= 3);
@@ -10872,6 +10933,7 @@ export function LeaderboardScreen({ state, actions }: Props) {
         {lb.length === 0 ? (
           graceOver ? <LeaderboardEmpty onPlay={actions.closeLeaderboard} /> : <SkeletonRows rows={4} />
         ) : null}
+        <MyLeaderboardRank rank={myRank} />
       </ScrollView>
     </Screen>
   );
@@ -11102,9 +11164,10 @@ function TrophyFly({ target, onDone, count = 9 }: { target: { x: number; y: numb
 // Match-over banner, styled after the Kupa-popup mockup: a coloured card (blue win /
 // purple loss) with a ringed trophy medallion, confetti on a win, and a recessed
 // panel showing the score and the arena-based trophy delta (+green / −red).
-export function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong, winnerName, trophyDelta, xpGained }: {
+export function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong, winnerName, trophyDelta, reason, xpGained }: {
   youWon: boolean; youScore: number; oppScore: number; youWrong: number; oppWrong: number;
   winnerName: string | null; trophyDelta: { delta: number; trophies: number; shielded?: boolean } | null;
+  reason?: 'cheat';
   xpGained?: number | null; // maçtan kazanılan XP — popup'ta görünür, ana menüde küre uçuşuyla çubuğa akar
 }) {
   const a = useRef(new Animated.Value(0)).current;
@@ -11153,6 +11216,12 @@ export function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong
           resizeMode="cover"
         />
       </View>
+      {reason === 'cheat' ? (
+        <View style={{ marginTop: -4, marginBottom: 12, alignItems: 'center', gap: 4 }}>
+          <Text style={{ color: '#fff', fontFamily: 'Poppins-Black', fontSize: 22, textAlign: 'center', ...engrave('sm') }}>{t('match.cheatDetectedTitle')}</Text>
+          <Text style={{ color: withAlpha('#fff', 0.82), fontFamily: 'Poppins-SemiBold', fontSize: 13, textAlign: 'center', lineHeight: 18 }}>{t('match.cheatDetectedBody')}</Text>
+        </View>
+      ) : null}
 
       {/* Recessed panel: score + divider + trophy delta */}
       <View
@@ -11206,10 +11275,9 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
   // (Pick/Guess) onay soruyordu, burası sormuyordu — kullanıcı uyarısız kupa
   // kaybetti (2026-08-10). Maç BİTTİYSE çıkış serbesttir, onay sorulmaz.
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
-  const hasBot = room.players.some((p) => p.name === 'Bot');
   // Çarpı/Çık HER maçta sorar (maç bittiyse ya da tutorial'daysa hariç):
   // botta yalnız "emin misin", derecelide kupa uyarısı, dostlukta kupasız hükmen.
-  const leaveKind = hasBot ? ('plain' as const) : state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
+  const leaveKind = state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
   const handleLeave = () => (matchOver || tutorial) ? actions.leave() : setShowLeaveConfirm(true);
 
   const { icon, color, headline } = useMemo(() => {

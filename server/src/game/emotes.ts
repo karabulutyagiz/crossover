@@ -33,6 +33,7 @@ const VISUAL_EMOTES: readonly VisualDef[] = [
   { id: 'squad', price: 300, week: 1 },      // Kadro
   { id: 'pitch', price: 300, week: 1 },      // Taktik Tahtası
   { id: 'euro2024', price: 500, week: 1 },   // EURO 2024
+  { id: 'diez_jersey_raise', price: 500, week: 2 }, // El Diez Forma
 ];
 
 const VISUAL_IDS = new Set(VISUAL_EMOTES.map((e) => e.id));

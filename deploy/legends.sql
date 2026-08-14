@@ -75,6 +75,8 @@ INSERT INTO legends_clubs(id,name,name_norm,country) VALUES (980000016, 'Caxias'
 INSERT INTO legends_clubs(id,name,name_norm,country) VALUES (980000017, 'Grêmio', 'gremio', 'Türkiye');
 INSERT INTO legends_clubs(id,name,name_norm,country) VALUES (980000018, 'Ponte Preta', 'ponte preta', 'Türkiye');
 INSERT INTO legends_clubs(id,name,name_norm,country) VALUES (980000019, 'Paraná Clube', 'parana clube', 'Türkiye');
+INSERT INTO legends_clubs(id,name,name_norm,country) VALUES (5743, 'Tuğranspor', 'tugranspor', 'Türkiye');
+INSERT INTO legends_clubs(id,name,name_norm,country) VALUES (1291, 'Siirt JetPA Spor', 'siirt jetpa spor', 'Türkiye');
 INSERT INTO legends_spells(player_id,club_id,start_year,end_year) VALUES
   (103796, 20707, NULL, 1988),
   (103796, 449, 1989, 2002),
@@ -233,6 +235,7 @@ INSERT INTO legends_spells(player_id,club_id,start_year,end_year) VALUES
   (6904, 141, 2001, 2002),
   (6904, 36, 1999, 1999),
   (6904, 449, 2000, 2001),
+  (6904, 1291, 1999, 2002),
   (6904, 5743, 2006, 2007),
   (6904, 825, 2007, 2008),
   (6904, 924, 1997, 1999),
@@ -344,6 +347,26 @@ INSERT INTO clubs (id, name, name_norm, country)
 SELECT lc.id, lc.name, lc.name_norm, lc.country FROM legends_clubs lc
 WHERE NOT EXISTS (SELECT 1 FROM clubs c WHERE c.id = lc.id OR c.name_norm = lc.name_norm);
 
+UPDATE clubs
+   SET name = 'Siirt JetPA Spor',
+       name_norm = 'siirt jetpa spor',
+       aliases = (
+         SELECT array_agg(DISTINCT a)
+           FROM unnest(aliases || ARRAY['siirt jetpa', 'siirtjetpa', 'siirt jet pa', 'siirtspor', 'siirtspor 1969 2014']::text[]) AS t(a)
+       ),
+       logo_url = COALESCE(logo_url, 'https://tmssl.akamaized.net//images/wappen/big/1291.png')
+ WHERE id = 1291;
+
+UPDATE clubs
+   SET name = 'Tuğranspor',
+       name_norm = 'tugranspor',
+       aliases = (
+         SELECT array_agg(DISTINCT a)
+           FROM unnest(aliases || ARRAY['turan spor', 'turanspor', 'sekerspor', 'seker spor', 'etimesgut sekerspor']::text[]) AS t(a)
+       ),
+       logo_url = COALESCE(logo_url, 'https://tmssl.akamaized.net//images/wappen/big/5743.png')
+ WHERE id = 5743;
+
 INSERT INTO players (id, name, name_norm, birth_year, nationality)
 SELECT lp.id, lp.name, lp.name_norm, lp.birth_year, lp.nationality FROM legends_players lp
 WHERE NOT EXISTS (SELECT 1 FROM players p WHERE p.id = lp.id); -- id-only: namesakes are legitimate
@@ -365,7 +388,7 @@ WHERE clubs.id = sub.club_id;
 
 COMMIT;
 
--- Smoke: Sergen Yalçın must resolve with a Beşiktaş AND Trabzonspor membership.
+-- Smoke: Sergen Yalçın must resolve with Beşiktaş, Trabzonspor, and Siirt JetPA memberships.
 SELECT p.name, c.name AS club, pc.start_year, pc.end_year
   FROM players p JOIN player_clubs pc ON pc.player_id = p.id JOIN clubs c ON c.id = pc.club_id
  WHERE p.name_norm = 'sergen yalcin' ORDER BY pc.start_year;

@@ -69,6 +69,36 @@ function socialPackExpiryMs(productId: string, purchaseMs: number): number | nul
   return null;
 }
 
+function txIso(ms: unknown): string | null {
+  const n = Number(ms);
+  return Number.isFinite(n) && n > 0 ? new Date(n).toISOString() : null;
+}
+
+function txText(value: unknown): string | null {
+  return typeof value === 'string' && value ? value : null;
+}
+
+function txPriceMilliunits(tx: any): number | null {
+  const n = Number(tx?.price);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+}
+
+async function updateTransactionMetadata(transactionId: string, meta: readonly [string, string | null, number | null, string | null, string | null, string | null, string | null, string | null]): Promise<void> {
+  await pool.query(
+    `UPDATE processed_transactions SET
+       environment = COALESCE($2, environment),
+       purchase_date = COALESCE($3, purchase_date),
+       price_milliunits = COALESCE($4, price_milliunits),
+       currency = COALESCE($5, currency),
+       storefront = COALESCE($6, storefront),
+       transaction_reason = COALESCE($7, transaction_reason),
+       transaction_type = COALESCE($8, transaction_type),
+       revocation_date = COALESCE($9, revocation_date)
+     WHERE transaction_id = $1`,
+    [transactionId, ...meta],
+  );
+}
+
 // Apple root CAs (public certs) for JWS signature verification.
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const certsDir = join(__dirname, '../../certs');
@@ -130,26 +160,35 @@ export async function verifyApplePurchase(
     typeof (tx as { environment?: unknown }).environment === 'string' && (tx as { environment: string }).environment
       ? (tx as { environment: string }).environment
       : verifierEnv;
-  const purchaseIso: string | null =
-    Number.isFinite(Number(tx.purchaseDate)) && Number(tx.purchaseDate) > 0
-      ? new Date(Number(tx.purchaseDate)).toISOString()
-      : null;
+  const purchaseIso = txIso(tx.purchaseDate);
+  const txMeta = [
+    environment,
+    purchaseIso,
+    txPriceMilliunits(tx),
+    txText(tx.currency),
+    txText(tx.storefront),
+    txText(tx.transactionReason),
+    txText(tx.type),
+    txIso(tx.revocationDate),
+  ] as const;
 
   // Diamonds (consumable) — credit once per transaction (idempotent via PK).
   const amount = DIAMOND_PRODUCTS[pid];
   if (amount) {
     const ins = await pool.query<{ inserted: boolean }>(
-      `INSERT INTO processed_transactions (transaction_id, user_id, product_id, diamonds, environment, purchase_date)
-         VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (transaction_id) DO UPDATE SET
-         environment = COALESCE(processed_transactions.environment, EXCLUDED.environment),
-         purchase_date = COALESCE(processed_transactions.purchase_date, EXCLUDED.purchase_date)
-       RETURNING (xmax = 0) AS inserted`,
-      [tx.transactionId, userId, pid, amount, environment, purchaseIso],
+      `INSERT INTO processed_transactions (
+         transaction_id, user_id, product_id, diamonds, environment, purchase_date,
+         price_milliunits, currency, storefront, transaction_reason, transaction_type, revocation_date
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       ON CONFLICT (transaction_id) DO NOTHING
+       RETURNING TRUE AS inserted`,
+      [tx.transactionId, userId, pid, amount, ...txMeta],
     );
     if (ins.rows[0]?.inserted) {
       await pool.query(`UPDATE users SET diamonds = diamonds + $2 WHERE id = $1`, [userId, amount]);
       granted += amount;
+    } else {
+      await updateTransactionMetadata(tx.transactionId, txMeta);
     }
   }
 
@@ -160,12 +199,20 @@ export async function verifyApplePurchase(
     // transactionId) is correctly counted as a fresh sale. diamonds=0 (no diamonds
     // granted here) — the row exists purely for sales accounting.
     await pool.query(
-      `INSERT INTO processed_transactions (transaction_id, user_id, product_id, diamonds, environment, purchase_date)
-         VALUES ($1, $2, $3, 0, $4, $5)
+      `INSERT INTO processed_transactions (
+         transaction_id, user_id, product_id, diamonds, environment, purchase_date,
+         price_milliunits, currency, storefront, transaction_reason, transaction_type, revocation_date
+       ) VALUES ($1, $2, $3, 0, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (transaction_id) DO UPDATE SET
-         environment = COALESCE(processed_transactions.environment, EXCLUDED.environment),
-         purchase_date = COALESCE(processed_transactions.purchase_date, EXCLUDED.purchase_date)`,
-      [tx.transactionId, userId, pid, environment, purchaseIso],
+         environment = COALESCE(EXCLUDED.environment, processed_transactions.environment),
+         purchase_date = COALESCE(EXCLUDED.purchase_date, processed_transactions.purchase_date),
+         price_milliunits = COALESCE(EXCLUDED.price_milliunits, processed_transactions.price_milliunits),
+         currency = COALESCE(EXCLUDED.currency, processed_transactions.currency),
+         storefront = COALESCE(EXCLUDED.storefront, processed_transactions.storefront),
+         transaction_reason = COALESCE(EXCLUDED.transaction_reason, processed_transactions.transaction_reason),
+         transaction_type = COALESCE(EXCLUDED.transaction_type, processed_transactions.transaction_type),
+         revocation_date = COALESCE(EXCLUDED.revocation_date, processed_transactions.revocation_date)`,
+      [tx.transactionId, userId, pid, ...txMeta],
     );
     const purchasedAt = Number(tx.purchaseDate ?? 0);
     const fallbackExpiry = Number(tx.expiresDate ?? 0);
@@ -179,16 +226,18 @@ export async function verifyApplePurchase(
   // CO Pass — unlock the premium level road for the current season (idempotent).
   if (pid === COPASS_PRODUCT) {
     const ins = await pool.query<{ inserted: boolean }>(
-      `INSERT INTO processed_transactions (transaction_id, user_id, product_id, diamonds, environment, purchase_date)
-         VALUES ($1, $2, $3, 0, $4, $5)
-       ON CONFLICT (transaction_id) DO UPDATE SET
-         environment = COALESCE(processed_transactions.environment, EXCLUDED.environment),
-         purchase_date = COALESCE(processed_transactions.purchase_date, EXCLUDED.purchase_date)
-       RETURNING (xmax = 0) AS inserted`,
-      [tx.transactionId, userId, pid, environment, purchaseIso],
+      `INSERT INTO processed_transactions (
+         transaction_id, user_id, product_id, diamonds, environment, purchase_date,
+         price_milliunits, currency, storefront, transaction_reason, transaction_type, revocation_date
+       ) VALUES ($1, $2, $3, 0, $4, $5, $6, $7, $8, $9, $10, $11)
+       ON CONFLICT (transaction_id) DO NOTHING
+       RETURNING TRUE AS inserted`,
+      [tx.transactionId, userId, pid, ...txMeta],
     );
     if (ins.rows[0]?.inserted) {
       await pool.query(`UPDATE users SET premium_road = TRUE WHERE id = $1`, [userId]);
+    } else {
+      await updateTransactionMetadata(tx.transactionId, txMeta);
     }
   }
 

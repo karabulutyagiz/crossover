@@ -76,6 +76,7 @@ export interface ProfileView {
   premiumRoad?: boolean;    // Premium Seviye Yolu açık mı (sezonluk)
   claimedPremium?: number[]; // Premium şeritte toplanmış ödül seviyeleri
   ownedFrames?: string[];   // KALICI çerçeve sahipliği (sezonlar arası korunur)
+  highestArenaRewarded?: number; // ulaşılıp açılmış en yüksek arena index'i (0=Mahalle)
 }
 
 export interface PlayerView {
@@ -85,6 +86,7 @@ export interface PlayerView {
   wrongCount: number;
   isHost: boolean;
   connected: boolean;
+  isBot?: boolean;
   trophies?: number;
   arena?: ArenaView;
   avatar?: string | null;
@@ -175,7 +177,7 @@ export type ClientMsg =
   | { type: 'delete_account' }
   // Bilinçli maç terki (X onayı / arka plan hükmeni): reconnect grace atlanır,
   // rakip hükmen sonucu ANINDA görür.
-  | { type: 'leave_match' };
+  | { type: 'leave_match'; reason?: 'leave' | 'cheat' };
 
 // ---- Server -> Client ----
 export interface RoundResult {
@@ -208,7 +210,7 @@ export type ServerMsg =
   | { type: 'guess_phase'; endsAt: number }
   | { type: 'guess_locked'; byId: string; byName: string }
   // Yeni kural (wrongopen odaları): yanlış cevap turu YAKMAZ — yazan susturulur,
-  // rakibin kilidi açılır. wrongCount o oyuncunun toplam çarpısıdır (3 = hükmen).
+  // rakibin kilidi açılır. wrongCount o oyuncunun maçtaki toplam yanlış sayısıdır.
   // retryAt: yanlış yazana tanınan İKİNCİ HAK penceresinin açıldığı an (epoch ms).
   // Yalnız ilk yanlışta ve istemci 'wrongretry' bildirdiyse dolu gelir; yoksa
   // yazan bu tur için kesin susturulmuştur (eski davranış).
@@ -232,7 +234,7 @@ export type ServerMsg =
   | { type: 'rematch_requested'; byId: string; byName: string } // opponent wants to play again
   | { type: 'rematch_waiting' } // your rematch request was sent, waiting for opponent
   | { type: 'rematch_declined' } // opponent declined your rematch request
-  | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView; diamonds?: number; arenaReward?: number; shielded?: boolean; winStreak?: number; bestStreak?: number; lostStreak?: number } // shielded: Kupa Kalkanı bu mağlubiyetin kupa kaybını emdi; lostStreak: geri yüklenebilir kırık seri (maç sonrası 0'a döner)
+  | { type: 'trophy_update'; trophies: number; delta: number; arena: ArenaView; diamonds?: number; arenaReward?: number; highestArenaRewarded?: number; shielded?: boolean; winStreak?: number; bestStreak?: number; lostStreak?: number } // shielded: Kupa Kalkanı bu mağlubiyetin kupa kaybını emdi; lostStreak: geri yüklenebilir kırık seri (maç sonrası 0'a döner)
   | { type: 'xp_update'; xp: number; level: number; xpForNext: number; gained: number; leveledUp: { level: number; diamonds: number; emoteId?: string; powerId?: string }[]; diamonds?: number; boosted?: boolean }
   | { type: 'level_reward_claimed'; level: number; diamonds: number; emoteId: string | null; frameTier: string | null; powerId?: string | null; track?: 'free' | 'premium'; profile: ProfileView } // yol kartından ödül toplandı // maç sonu seviye ilerlemesi
   | { type: 'premium_road_purchased'; profile: ProfileView } // Premium Yol açıldı
@@ -247,7 +249,7 @@ export type ServerMsg =
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
   | { type: 'player_results'; players: PlayerRef[] }
   | { type: 'searching' }
-  | { type: 'opponent_left'; forfeit?: boolean }
+  | { type: 'opponent_left'; forfeit?: boolean; forfeitReason?: 'cheat' }
   // ---- Friends ----
   | { type: 'friend_request_received'; requestId: string; fromId: string; fromName: string }
   | { type: 'friend_request_sent' }
@@ -316,6 +318,8 @@ export interface PublicProfile {
   bestStreak?: number;    // tüm zamanların en yüksek galibiyet serisi (herkese açık)
   // Mod bazında dereceli maç kırılımı. Bot/dostluk ve oyuncu-oyuncu modu hariç.
   modes?: { mode: string; wins: number; losses: number }[];
+  isBot?: boolean;
+  modeStats?: { mode: string; wins: number; losses: number }[];
 }
 
 export interface MatchHistoryView {

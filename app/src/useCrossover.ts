@@ -44,6 +44,8 @@ export interface LeaderboardEntry {
   arena: { name: string; icon: string; minTrophies: number };
   avatar?: string | null;
   frame?: string | null; // takılı profil çerçevesi
+  isBot?: boolean;
+  modeStats?: { mode: string; wins: number; losses: number }[];
 }
 
 export type FriendInfo = FriendView;
@@ -128,9 +130,10 @@ export interface GameState {
   emoteSeq: number;
   isQuickMatch: boolean;
   opponentForfeit: boolean;
+  opponentForfeitReason: 'cheat' | null;
   // Maç ortasında ÇIKIŞ (forfeit) = kaybetme. Kupa cezası (trophy_update) reset
   // SONRASI gelir; onunla kaybetme popup'ı gösterilir. null = gösterilecek bir şey yok.
-  forfeitLoss: { delta: number; trophies: number; arena: ArenaView; youScore: number; oppScore: number; opponentName: string } | null;
+  forfeitLoss: { delta: number; trophies: number; arena: ArenaView; youScore: number; oppScore: number; opponentName: string; reason?: 'cheat' } | null;
   lastGameOptions: GameOptions | null;
   // Direct messages
   chatWith: string | null;
@@ -234,6 +237,7 @@ export const initialState: GameState = {
   emoteSeq: 0,
   isQuickMatch: false,
   opponentForfeit: false,
+  opponentForfeitReason: null,
   forfeitLoss: null,
   lastGameOptions: null,
   chatWith: null,
@@ -280,9 +284,10 @@ type Action =
   | { type: '_clear_friend_notice' }
   | { type: '_clear_banner' }
   | { type: '_ready' }
+  | { type: '_quick_match_started' }
   | { type: '_set_game_options'; options: GameOptions | null }
   | { type: '_clear_emote'; playerId: string }
-  | { type: '_forfeit_loss'; delta: number; trophies: number; arena: ArenaView; youScore: number; oppScore: number; opponentName: string }
+  | { type: '_forfeit_loss'; delta: number; trophies: number; arena: ArenaView; youScore: number; oppScore: number; opponentName: string; reason?: 'cheat' }
   | { type: '_clear_forfeit_loss' };
 
 function reducer(state: GameState, action: Action): GameState {
@@ -295,13 +300,13 @@ function reducer(state: GameState, action: Action): GameState {
     case '_xp_seen':
       return { ...state, xpGain: null };
     case '_forfeit_loss':
-      return { ...state, forfeitLoss: { delta: action.delta, trophies: action.trophies, arena: action.arena, youScore: action.youScore, oppScore: action.oppScore, opponentName: action.opponentName } };
+      return { ...state, forfeitLoss: { delta: action.delta, trophies: action.trophies, arena: action.arena, youScore: action.youScore, oppScore: action.oppScore, opponentName: action.opponentName, reason: action.reason } };
     case '_clear_forfeit_loss':
       return state.forfeitLoss ? { ...state, forfeitLoss: null } : state;
     case '_reset':
       // xpGain korunur: XP küre yağmuru ana ekrana DÖNÜNCE akar (yeni maç
       // başlarken countdown case'i zaten temizler).
-      return { ...initialState, scopes: state.scopes, profile: state.profile, friends: state.friends, authProvider: state.authProvider, xpGain: state.xpGain, isQuickMatch: false, opponentForfeit: false };
+      return { ...initialState, scopes: state.scopes, profile: state.profile, friends: state.friends, authProvider: state.authProvider, xpGain: state.xpGain, isQuickMatch: false, opponentForfeit: false, opponentForfeitReason: null };
     case '_logout':
       return { ...initialState, scopes: state.scopes };
     case '_picked':
@@ -319,6 +324,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, friends: action.friends };
     case '_ready':
       return { ...state, iReady: true };
+    case '_quick_match_started':
+      return { ...state, isQuickMatch: true, opponentForfeit: false, opponentForfeitReason: null };
     case '_set_game_options':
       return { ...state, lastGameOptions: (action as any).options };
 
@@ -338,6 +345,7 @@ function reducer(state: GameState, action: Action): GameState {
     case 'friend_removed':
       return { ...state, friends: state.friends.filter((f) => f.userId !== (action as any).friendId) };
     case 'match_invite_received':
+      if (state.room) return state;
       return { ...state, matchInvite: { fromId: (action as any).fromId, fromName: (action as any).fromName, options: (action as any).options } };
     case 'match_invite_declined':
       // Reddedilme YALNIZ Arkadaşlar ekranında görünür — ana oyun ekranında değil.
@@ -493,7 +501,7 @@ function reducer(state: GameState, action: Action): GameState {
     }
 
     case 'searching':
-      return { ...state, phase: 'searching', isQuickMatch: true, opponentForfeit: false };
+      return { ...state, phase: 'searching', isQuickMatch: true, opponentForfeit: false, opponentForfeitReason: null };
     case 'profile':
       return { ...state, profile: action.profile };
     case 'level_reward_claimed':
@@ -555,6 +563,7 @@ function reducer(state: GameState, action: Action): GameState {
               trophies: action.trophies,
               arena: action.arena,
               diamonds: typeof (action as any).diamonds === 'number' ? (action as any).diamonds : state.profile.diamonds,
+              highestArenaRewarded: typeof (action as any).highestArenaRewarded === 'number' ? (action as any).highestArenaRewarded : state.profile.highestArenaRewarded,
               winStreak: typeof action.winStreak === 'number' ? action.winStreak : state.profile.winStreak,
               bestStreak: typeof action.bestStreak === 'number' ? action.bestStreak : state.profile.bestStreak,
               // Kırılan seri maç sonrası 0'a döner (yalnız kırıldığı maçtan sonra geri yüklenebilir).
@@ -702,7 +711,7 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, playerResults: (action as any).players ?? [] };
     case 'opponent_left':
       if (action.forfeit) {
-        return { ...state, opponentForfeit: true };
+        return { ...state, opponentForfeit: true, opponentForfeitReason: action.forfeitReason === 'cheat' ? 'cheat' : null };
       }
       return { ...state, phase: 'lobby', error: t('error.opponentLeft'), teams: null, result: null, locked: null };
     case 'error':
@@ -743,7 +752,7 @@ export function useCrossover() {
   const pendingAfterResume = useRef<ClientMsg[]>([]);
   // Maç ortasında çıkışta (forfeit) kaybetme popup'ı için: reset SONRASI gelen
   // kupa cezasını bu bağlamla eşleştir (yalnız dereceli, gerçek-rakipli maçta set).
-  const forfeitCtxRef = useRef<{ youScore: number; oppScore: number; opponentName: string } | null>(null);
+  const forfeitCtxRef = useRef<{ youScore: number; oppScore: number; opponentName: string; reason?: 'cheat' } | null>(null);
   const friendOpRef = useRef(0); // son arkadaş işleminin zamanı — sonraki sunucu 'error'ını Arkadaşlar ekranına yönlendirmek için
   const lastUserIdRef = useRef<string | null>(null);
   const lastAuthProviderRef = useRef<'apple' | 'google' | 'facebook' | null>(null);
@@ -913,6 +922,8 @@ export function useCrossover() {
           if (m.type === 'error' && Date.now() - friendOpRef.current < 6000) {
             friendOpRef.current = 0;
             dispatch({ type: '_friend_notice', text: (m as { message: string }).message, kind: 'error' } as any);
+          } else if (m.type === 'match_invite_received' && stateRef.current.room) {
+            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'respond_match_invite', fromId: m.fromId, accept: false }));
           } else {
             dispatch(m);
           }
@@ -1148,6 +1159,46 @@ export function useCrossover() {
       send({ type: 'cancel_match_invite', toId: inv.toId });
       dispatch({ type: '_set_outgoing', invite: null });
     };
+    const forfeitCurrentMatch = (reason: 'leave' | 'cheat') => {
+      // Maç ortasında dereceli maçtan çıkış = FORFEIT (kaybetme). Kupa cezası
+      // (trophy_update) reset SONRASI gelir; onu yakalayıp kaybetme popup'ı göster.
+      const fRoom = stateRef.current.room;
+      const fOpp = fRoom?.players.find((p) => p.id !== fRoom.youId);
+      const fYou = fRoom?.players.find((p) => p.id === fRoom.youId);
+      const isRankedForfeit = stateRef.current.isQuickMatch && !stateRef.current.matchOver && !stateRef.current.opponentForfeit && !!fOpp;
+      forfeitCtxRef.current = isRankedForfeit ? { youScore: fYou?.score ?? 0, oppScore: fOpp?.score ?? 0, opponentName: fOpp?.name ?? '', reason: reason === 'cheat' ? 'cheat' : undefined } : null;
+
+      // Soketi hemen DEĞİL kısa gecikmeyle kapat: sunucu çekilme cezasını
+      // (trophy_update, delta<0) bu pencerede yollar — ana menüde kupa düşüş
+      // popup'ı bu mesajla oynar. State yine ANINDA sıfırlanır.
+      const wsToClose = wsRef.current;
+      // Deliberate exit must use the current socket directly. The generic send()
+      // may choose a reconnect/resume path if state changed, which turns an X tap
+      // into a plain socket close and leaves the opponent waiting for grace.
+      if (wsToClose?.readyState === WebSocket.OPEN) {
+        try { wsToClose.send(JSON.stringify(reason === 'cheat' ? { type: 'leave_match', reason: 'cheat' } : { type: 'leave_match' })); } catch { /* ignore */ }
+      } else {
+        send(reason === 'cheat' ? { type: 'leave_match', reason: 'cheat' } : { type: 'leave_match' });
+      }
+      wsRef.current = null;
+      if (wsToClose) {
+        wsToClose.onopen = null; wsToClose.onerror = null; wsToClose.onclose = null;
+        wsToClose.onmessage = (e) => {
+          try {
+            const m = JSON.parse(String(e.data)) as ServerMsg;
+            const mt = (m as { type?: string }).type;
+            if (mt === 'trophy_update' || mt === 'xp_update') dispatch(m);
+            if (mt === 'trophy_update' && forfeitCtxRef.current) {
+              const tu = m as ServerMsg & { type: 'trophy_update' };
+              dispatch({ type: '_forfeit_loss', delta: tu.delta, trophies: tu.trophies, arena: tu.arena, ...forfeitCtxRef.current });
+              forfeitCtxRef.current = null;
+            }
+          } catch { /* yut */ }
+        };
+        setTimeout(() => { try { wsToClose.onmessage = null; wsToClose.close(); } catch { /* kapalı */ } }, 1200);
+      }
+      dispatch({ type: '_reset' });
+    };
     return {
       // Send an Apple IAP receipt to the server for validation; resolves when the
       // server confirms diamonds were granted (diamonds_granted), rejects otherwise.
@@ -1178,10 +1229,12 @@ export function useCrossover() {
         }, 15000);
       }),
       openLeaderboard: () => {
-        fetchApi('/leaderboard')
+        const userId = stateRef.current.profile?.userId;
+        const path = userId ? `/leaderboard?userId=${encodeURIComponent(userId)}` : '/leaderboard';
+        fetchApi(`${path}${path.includes('?') ? '&' : '?'}_=${Date.now()}`)
           .then((r) => r.json())
           .then((entries: LeaderboardEntry[]) => dispatch({ type: '_leaderboard', entries }))
-          .catch(() => {});
+          .catch((err) => captureError(err, { where: 'leaderboard_fetch' }));
       },
       closeLeaderboard: () => dispatch({ type: '_phase', phase: 'home' }),
       openArenas: () => dispatch({ type: '_phase', phase: 'arenas' }),
@@ -1246,6 +1299,7 @@ export function useCrossover() {
         // `register`, so without them the player would be a nameless "Oyuncu" with
         // no trophies awarded.
         dispatch({ type: '_set_game_options', options: options ?? null } as any);
+        dispatch({ type: '_quick_match_started' });
         connectAndSend({ type: 'find_match', name: stateRef.current.profile?.displayName, userId: stateRef.current.profile?.userId, options });
       },
       cancelSearch: () => {
@@ -1364,6 +1418,7 @@ export function useCrossover() {
       findMatchAgain: () => {
         const options = stateRef.current.lastGameOptions ?? undefined;
         dispatch({ type: '_set_game_options', options: options ?? null } as any);
+        dispatch({ type: '_quick_match_started' });
         connectAndSend({ type: 'find_match', name: stateRef.current.profile?.displayName, userId: stateRef.current.profile?.userId, options });
       },
       // ---- Direct Messages ----
@@ -1424,62 +1479,12 @@ export function useCrossover() {
       },
       typingStart: (toUserId: string) => send({ type: 'typing_start', toUserId }),
       typingStop: (toUserId: string) => send({ type: 'typing_stop', toUserId }),
-      leave: () => {
-        // Maç ortasında dereceli maçtan çıkış = FORFEIT (kaybetme). Kupa cezası
-        // (trophy_update) reset SONRASI gelir; onu yakalayıp kaybetme popup'ı göster.
-        // Yalnız: hızlı eşleşme + maç bitmemiş + rakip zaten ayrılmamış + GERÇEK rakip.
-        {
-          const fRoom = stateRef.current.room;
-          const fOpp = fRoom?.players.find((p) => p.id !== fRoom.youId);
-          const fYou = fRoom?.players.find((p) => p.id === fRoom.youId);
-          const isRankedForfeit = stateRef.current.isQuickMatch && !stateRef.current.matchOver && !stateRef.current.opponentForfeit && !!fOpp && !(fOpp.name || '').includes('Bot');
-          forfeitCtxRef.current = isRankedForfeit ? { youScore: fYou?.score ?? 0, oppScore: fOpp?.score ?? 0, opponentName: fOpp?.name ?? '' } : null;
-        }
-        // Deliberate exit: tell the server BEFORE closing — a bare socket close
-        // gets the 12s reconnect grace and the opponent would keep playing
-        // against nobody ("anlık multiplayer bu").
-        send({ type: 'leave_match' } as any);
-        // Soketi hemen DEĞİL kısa gecikmeyle kapat: sunucu çekilme cezasını
-        // (trophy_update, delta<0) bu pencerede yollar — ana menüde kupa düşüş
-        // animasyonu bu mesajla oynar. State yine ANINDA sıfırlanır.
-        //
-        // EMEKLİLİK ŞART (donma düzeltmesi): eski soketin onmessage'ı guard'sız
-        // dispatch ediyor — pencere boyunca gelen bayat room_state/opponent_left
-        // _reset SONRASI state'i maç fazına geri fırlatıp uygulamayı sürücüsüz
-        // bir ekranda donduruyordu. Emekli sokette YALNIZ trophy_update/xp_update
-        // geçer; onclose/onerror da sökülür (yeni bağlantıya hayalet düşmesin).
-        const wsToClose = wsRef.current;
-        wsRef.current = null;
-        if (wsToClose) {
-          wsToClose.onopen = null; wsToClose.onerror = null; wsToClose.onclose = null;
-          wsToClose.onmessage = (e) => {
-            try {
-              const m = JSON.parse(String(e.data)) as ServerMsg;
-              const mt = (m as { type?: string }).type;
-              if (mt === 'trophy_update' || mt === 'xp_update') dispatch(m);
-              // Forfeit kupa cezası geldi → kaybetme popup'ını bu delta ile göster.
-              if (mt === 'trophy_update' && forfeitCtxRef.current) {
-                const tu = m as ServerMsg & { type: 'trophy_update' };
-                dispatch({ type: '_forfeit_loss', delta: tu.delta, trophies: tu.trophies, arena: tu.arena, ...forfeitCtxRef.current });
-                forfeitCtxRef.current = null;
-              }
-            } catch { /* yut */ }
-          };
-          setTimeout(() => { try { wsToClose.onmessage = null; wsToClose.close(); } catch { /* kapalı */ } }, 1200);
-        }
-        dispatch({ type: '_reset' });
-      },
+      leave: () => { forfeitCurrentMatch('leave'); },
       clearForfeitLoss: () => dispatch({ type: '_clear_forfeit_loss' }),
       // ANTI-CHEAT: the app went to the BACKGROUND mid-match — "başka uygulamaya
       // girip cevaba bakıyor". Same exit as leave() (socket close = forfeit for
       // the opponent), plus a toast so the player knows exactly why they lost.
-      forfeitFromBackground: () => {
-        send({ type: 'leave_match' } as any); // rakip ANINDA görsün (grace yok)
-        wsRef.current?.close();
-        wsRef.current = null;
-        dispatch({ type: '_reset' });
-        dispatch({ type: 'error', message: t('match.leftBackground') } as any);
-      },
+      forfeitFromBackground: () => { forfeitCurrentMatch('cheat'); },
       logout: async () => {
         const lastUserId = stateRef.current.profile?.userId ?? lastUserIdRef.current;
         const ws = wsRef.current;

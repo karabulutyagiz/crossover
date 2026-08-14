@@ -8,15 +8,16 @@
 import { DIFFICULTY } from '../rooms/bot.ts';
 
 const { easy, medium, hard } = DIFFICULTY;
+const median = (d: typeof easy) => (d.delayMs[0] + d.delayMs[1]) / 2;
 const checks: [string, boolean][] = [
-  ['HARD is fastest: hard.max <= medium.min', hard.delayMs[1] <= medium.delayMs[0]],
-  ['MEDIUM faster than EASY: medium.max <= easy.min', medium.delayMs[1] <= easy.delayMs[0]],
+  ['HARD median is fastest', median(hard) < median(medium)],
+  ['MEDIUM median faster than EASY', median(medium) < median(easy)],
   ['easy delay band valid', easy.delayMs[0] < easy.delayMs[1]],
   ['medium delay band valid', medium.delayMs[0] < medium.delayMs[1]],
   ['hard delay band valid', hard.delayMs[0] < hard.delayMs[1]],
   ['knowBase increases easy<medium<hard', easy.knowBase < medium.knowBase && medium.knowBase < hard.knowBase],
   ['fameBaseTeam increases easy<medium<hard', easy.fameBaseTeam < medium.fameBaseTeam && medium.fameBaseTeam < hard.fameBaseTeam],
-  ['HARD always knows (know=fame=1)', hard.knowBase === 1 && hard.fameBaseTeam === 1],
+  ['HARD remains fallible', hard.knowBase < 0.96 && hard.fameBaseTeam < 0.96],
 ];
 
 let ok = true;
@@ -30,8 +31,8 @@ console.log(
   `\nHARD   ${hard.delayMs.join('-')}ms  know ${Math.round(hard.knowBase * 100)}%`,
 );
 if (!ok) {
-  console.error('\n❌ Bot difficulty tiers are NOT clearly distinct — this is the regression. Fix DIFFICULTY in src/rooms/bot.ts.');
+  console.error('\nBot difficulty tiers are NOT clearly distinct. Fix DIFFICULTY in src/rooms/bot.ts.');
   process.exit(1);
 }
-console.log('\n✅ Bot difficulty tiers are clearly distinct.');
+console.log('\nBot difficulty tiers are clearly distinct and fallible.');
 process.exit(0);

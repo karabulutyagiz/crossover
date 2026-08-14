@@ -245,6 +245,7 @@ const tr = {
   'leaderboard.emptyHint': 'Maç kazan, kupa topla ve sıralamaya gir!',
   'leaderboard.viewProfile': 'Profili Görüntüle',
   'leaderboard.sendFriendRequest': 'Arkadaşlık İsteği Gönder',
+  'leaderboard.myRank': 'Sen {rank}. sıradasın',
 
   // store
   'store.title': 'Mağaza',
@@ -388,6 +389,8 @@ const tr = {
   'friends.addFriend': 'Arkadaş Ekle',
   'friends.requestSentShort': 'İstek Gönderildi',
   'match.leftBackground': 'Uygulamadan çıktığın için maçtan çekilmiş sayıldın.',
+  'match.cheatDetectedTitle': 'Kopya çekme algılandı',
+  'match.cheatDetectedBody': 'Maç sırasında başka uygulamaya geçtiğin için hükmen mağlup sayıldın.',
   'update.title': 'Güncelleme Var',
   'update.body': 'Devam etmek için uygulamanın son sürümünü indirmen gerekiyor.',
   'update.cta': 'Güncelle',
@@ -457,6 +460,8 @@ const tr = {
   // opponent left popup
   'opponent.bannerTitle': 'RAKİP AYRILDI',
   'opponent.leftTitle': 'Rakibiniz maçtan ayrıldı',
+  'opponent.cheatBannerTitle': 'HÜKMEN GALİBİYET',
+  'opponent.cheatTitle': 'Rakibin kopya çektiği algılandığı için hükmen yendin.',
   'opponent.findNew': 'Yeni Rakip Bul',
   'opponent.goHome': 'Ana Sayfaya Dön',
 
@@ -559,6 +564,7 @@ const tr = {
   'stats.trophies': 'Kupa',
   'stats.diamonds': 'Elmas',
   'stats.record': '{wins}G {losses}M',
+  'stats.modeBreakdown': 'Mod Galibiyetleri',
 
   'fact.1': 'Pele, kariyeri boyunca 1.281 gol attı ve bu rekor hâlâ tartışılıyor.',
   'fact.2': 'Camp Nou, Avrupa\'nın en büyük stadyumu olarak 99.354 kişi kapasitesine sahiptir.',
@@ -911,6 +917,7 @@ const en: typeof tr = {
   'leaderboard.emptyHint': 'Win matches, collect trophies and enter the rankings!',
   'leaderboard.viewProfile': 'View Profile',
   'leaderboard.sendFriendRequest': 'Send Friend Request',
+  'leaderboard.myRank': 'You are ranked {rank}',
 
   'store.title': 'Store',
   'store.socialPackSection': 'SOCIAL PACK',
@@ -1042,6 +1049,8 @@ const en: typeof tr = {
   'friends.addFriend': 'Add Friend',
   'friends.requestSentShort': 'Request Sent',
   'match.leftBackground': 'You left the app mid-match, so you forfeited.',
+  'match.cheatDetectedTitle': 'Cheating detected',
+  'match.cheatDetectedBody': 'You switched to another app during the match, so you forfeited.',
   'update.title': 'Update Available',
   'update.body': 'You need the latest version of the app to keep playing.',
   'update.cta': 'Update',
@@ -1105,6 +1114,8 @@ const en: typeof tr = {
 
   'opponent.bannerTitle': 'OPPONENT LEFT',
   'opponent.leftTitle': 'Your opponent left the match',
+  'opponent.cheatBannerTitle': 'FORFEIT WIN',
+  'opponent.cheatTitle': 'Your opponent was detected switching apps, so you won by forfeit.',
   'opponent.findNew': 'Find New Opponent',
   'opponent.goHome': 'Go Home',
 
@@ -1202,6 +1213,7 @@ const en: typeof tr = {
   'stats.trophies': 'Trophies',
   'stats.diamonds': 'Diamonds',
   'stats.record': '{wins}W {losses}L',
+  'stats.modeBreakdown': 'Mode Wins',
 
   'fact.1': 'Pele scored 1,281 goals in his career, and the record is still debated.',
   'fact.2': 'Camp Nou is the biggest stadium in Europe with a capacity of 99,354.',

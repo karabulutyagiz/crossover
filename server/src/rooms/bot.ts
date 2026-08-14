@@ -1,6 +1,20 @@
 import type { Room, Transport } from './room.ts';
 import type { ClientMsg, ClubRef, Difficulty, GameMode, ServerMsg, Scope } from '../protocol.ts';
-import { randomClub, botPickFromPool, randomPlayer, botCommonPlayersRanked, commonPlayersCountryTeam, commonPlayersLetterTeam, commonClubs, pickCountryForClub, pickClubForCountry } from '../game/verify.ts';
+import {
+  randomClub, botPickFromPool, randomPlayer, botCommonPlayersRanked, commonPlayersCountryTeam,
+  commonPlayersLetterTeam, commonClubs, pickCountryForClub, pickClubForCountry,
+  plausibleWrongPlayersTeamTeam, plausibleWrongPlayersCountryTeam, plausibleWrongPlayersLetterTeam,
+  plausibleWrongClubsPlayerPlayer,
+} from '../game/verify.ts';
+import type { BotProfile, BotArchetype } from '../matchmaking/botProfiles.ts';
+import {
+  decideBotAnswer, difficultyFromScore,
+  difficultyScore, pickWrongName, rngForBotRound, type BotCognitiveState, type BotDecision,
+  type QuestionDifficulty,
+} from '../matchmaking/botDecision.ts';
+import { getQuestionDifficulty, type QuestionDifficultyEstimate } from '../matchmaking/questionDifficulty.ts';
+import { mathRandom, pick, triangular, type RandomSource } from '../matchmaking/random.ts';
+import { normalize } from '../game/normalize.ts';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BOT DIFFICULTY — SINGLE SOURCE OF TRUTH.
@@ -23,16 +37,13 @@ export interface DiffParams {
   fameBaseTeam: number;
 }
 export const DIFFICULTY: Record<Difficulty, DiffParams> = {
-  // slow + often clueless → a beginner wins; the bot hands you most rounds.
-  easy:   { delayMs: [10000, 17000], knowBase: 0.30, fameBaseTeam: 0.15 },
-  // mid tempo → knows the famous crossovers, misses the obscure ones.
-  medium: { delayMs: [5000, 9000],   knowBase: 0.70, fameBaseTeam: 0.50 },
-  // fast + always knows → you must buzz almost immediately to win.
-  hard:   { delayMs: [2000, 4500],   knowBase: 1.00, fameBaseTeam: 1.00 },
+  // slow + often unsure; still occasionally finds obvious answers.
+  easy:   { delayMs: [9000, 17000], knowBase: 0.30, fameBaseTeam: 0.18 },
+  // mid tempo → knows famous crossovers, misses obscure ones.
+  medium: { delayMs: [4500, 10500], knowBase: 0.62, fameBaseTeam: 0.48 },
+  // strong but fallible. Even hard bots must not automatically know the answer.
+  hard:   { delayMs: [1800, 7600],  knowBase: 0.84, fameBaseTeam: 0.78 },
 };
-// Extra "do I know it" a famous crossover adds on top of fameBaseTeam (team-team).
-const FAME_BONUS = 0.30;
-
 // Guard against the recurring "easy/medium/hard all feel the same" regression:
 // throws at module load if the tiers are no longer clearly distinct.
 export function validateDifficulty(D: Record<Difficulty, DiffParams> = DIFFICULTY): void {
@@ -41,13 +52,13 @@ export function validateDifficulty(D: Record<Difficulty, DiffParams> = DIFFICULT
   if (!(easy.delayMs[0] < easy.delayMs[1])) errs.push('easy delay band inverted');
   if (!(medium.delayMs[0] < medium.delayMs[1])) errs.push('medium delay band inverted');
   if (!(hard.delayMs[0] < hard.delayMs[1])) errs.push('hard delay band inverted');
-  // Non-overlapping, strictly ordered latency bands (hard fastest, easy slowest).
-  if (!(hard.delayMs[1] <= medium.delayMs[0])) errs.push(`hard.max(${hard.delayMs[1]}) must be <= medium.min(${medium.delayMs[0]})`);
-  if (!(medium.delayMs[1] <= easy.delayMs[0])) errs.push(`medium.max(${medium.delayMs[1]}) must be <= easy.min(${easy.delayMs[0]})`);
+  // Median latency must be ordered, but bands may overlap so timings look human.
+  const med = (d: DiffParams) => (d.delayMs[0] + d.delayMs[1]) / 2;
+  if (!(med(hard) < med(medium) && med(medium) < med(easy))) errs.push('median latency must order hard<medium<easy');
   // Strictly increasing know-rates.
   if (!(easy.knowBase < medium.knowBase && medium.knowBase < hard.knowBase)) errs.push('knowBase must strictly increase easy<medium<hard');
   if (!(easy.fameBaseTeam < medium.fameBaseTeam && medium.fameBaseTeam < hard.fameBaseTeam)) errs.push('fameBaseTeam must strictly increase easy<medium<hard');
-  if (hard.knowBase !== 1 || hard.fameBaseTeam !== 1) errs.push('hard must always know (knowBase=fameBaseTeam=1)');
+  if (hard.knowBase >= 0.96 || hard.fameBaseTeam >= 0.96) errs.push('hard must stay fallible; no tier may always know');
   if (errs.length) throw new Error('BOT DIFFICULTY tiers collapsed — refusing to start:\n  - ' + errs.join('\n  - '));
 }
 validateDifficulty();
@@ -62,10 +73,15 @@ export interface BotOptions {
   difficulty?: Difficulty;
   scope?: Scope;
   mode?: GameMode;
+  profile?: BotProfile;
 }
 
 export class BotPlayer implements Transport {
   readonly isBot = true;
+  readonly botArchetype?: string;
+  readonly botSkill?: number;
+  readonly botSkillMean?: number;
+  readonly botSkillUncertainty?: number;
   private room: Room | null = null;
   private id = '';
   private teams: { teamA: ClubRef; teamB: ClubRef } | null = null;
@@ -76,6 +92,7 @@ export class BotPlayer implements Transport {
   private readonly scope: Scope;
   private readonly difficulty: Difficulty;
   private readonly mode: GameMode;
+  private readonly profile: BotProfile | null;
   private recentPicks: number[] = []; // last bot team ids (no-repeat within 10)
   // Stored from reveal for new modes
   private revealCountry?: string;
@@ -83,15 +100,43 @@ export class BotPlayer implements Transport {
   // Ülke-takım: bu turdaki rolüm ve seçtim-mi bayrağı (reaktif, çift-seçim koruması)
   private ctRole: string = 'team';
   private ctPicked = false;
+  private questionDifficulty: QuestionDifficulty = 'normal';
+  private answerKnown = false;
+  private wrongGuess: string | null = null;
+  private lastGuessDelayMs = 0;
+  private emoteTimer: NodeJS.Timeout | null = null;
+  private questionEstimate: QuestionDifficultyEstimate | null = null;
+  private botDecision: BotDecision | null = null;
+  private rng: RandomSource = mathRandom;
+  private cognitiveState: BotCognitiveState | null = null;
+  private decisionSerial = 0;
+  private botScore = 0;
+  private opponentScore = 0;
+  private guessPhaseStartedAt = 0;
+  private previousOpponentTempoMs: number | null = null;
 
   constructor(opts: BotOptions = {}) {
-    this.difficulty = opts.difficulty ?? 'medium';
+    this.profile = opts.profile ?? null;
+    this.botArchetype = this.profile?.behaviorArchetype;
+    this.botSkill = this.profile?.skillRating;
+    this.botSkillMean = this.profile?.skillMean;
+    this.botSkillUncertainty = this.profile?.skillUncertainty;
+    this.difficulty = opts.difficulty ?? opts.profile?.difficulty ?? 'medium';
     const [min, max] = DIFFICULTY[this.difficulty].delayMs;
     this.minDelayMs = min;
     this.maxDelayMs = max;
     this.scope = opts.scope ?? { type: 'all' };
     this.mode = opts.mode ?? 'team-team';
   }
+
+  getArchetype(): BotArchetype | null { return this.profile?.behaviorArchetype ?? null; }
+  getSkillRating(): number | null { return this.profile?.skillRating ?? null; }
+  getSkillMean(): number | null { return this.profile?.skillMean ?? null; }
+  getSkillUncertainty(): number | null { return this.profile?.skillUncertainty ?? null; }
+  getLastGuessDelayMs(): number { return this.lastGuessDelayMs; }
+  getLastCognitiveState(): BotCognitiveState | null { return this.cognitiveState; }
+  getLastQuestionDifficultyScore(): number | null { return this.questionEstimate?.difficultyScore ?? null; }
+  getLastDecision(): BotDecision | null { return this.botDecision; }
 
   bind(room: Room, id: string): void {
     this.room = room;
@@ -127,7 +172,16 @@ export class BotPlayer implements Transport {
         void this.prepareAnswer();
         break;
       case 'guess_phase':
+        this.guessPhaseStartedAt = Date.now();
         this.scheduleGuess();
+        break;
+      case 'guess_locked':
+        if ((msg as any).byId !== this.id && this.guessPhaseStartedAt > 0) {
+          this.previousOpponentTempoMs = Date.now() - this.guessPhaseStartedAt;
+        }
+        break;
+      case 'wrong_guess':
+        if (msg.byId !== this.id) this.maybeEmote(['gotcha', 'smile', 'ok'], 0.34, [420, 1400]);
         break;
       case 'pass_locked':
         // Opponent passed. Agree to pass too (voiding the round) with a
@@ -141,12 +195,15 @@ export class BotPlayer implements Transport {
         }
         break;
       case 'waiting_ready' as any:
-        setTimeout(() => this.act({ type: 'ready' }), 500);
+        setTimeout(() => this.act({ type: 'ready' }), 420 + Math.floor(Math.random() * 1600));
         break;
       case 'rematch_requested':
-        this.act({ type: 'rematch_response', accept: true });
+        this.respondToRematch();
         break;
       case 'result':
+        this.reactToResult(msg as Extract<ServerMsg, { type: 'result' }>);
+        this.reset();
+        break;
       case 'opponent_left':
         this.reset();
         break;
@@ -157,6 +214,38 @@ export class BotPlayer implements Transport {
 
   private act(msg: ClientMsg): void {
     this.room?.handle(this.id, msg);
+  }
+
+  private maybeEmote(ids: string[], chance: number, delay: [number, number] = [500, 1800]): void {
+    if (!this.room || this.emoteTimer || Math.random() > chance) return;
+    const id = ids[Math.floor(Math.random() * ids.length)]!;
+    const ms = delay[0] + Math.floor(Math.random() * Math.max(1, delay[1] - delay[0]));
+    this.emoteTimer = setTimeout(() => {
+      this.emoteTimer = null;
+      this.act({ type: 'send_emote', emoteId: id });
+    }, ms);
+  }
+
+  private reactToResult(msg: Extract<ServerMsg, { type: 'result' }>): void {
+    const me = msg.players.find((p) => p.id === this.id);
+    const opp = msg.players.find((p) => p.id !== this.id);
+    if (!me || !opp) return;
+    this.botScore = me.score;
+    this.opponentScore = opp.score;
+    const emoteScale = this.profile?.emoteFrequency ?? 0.32;
+    if (msg.result.answeredById === this.id && msg.result.correct) this.maybeEmote(['smile', 'ok', 'gg'], 0.72 * emoteScale, [500, 1600]);
+    else if (msg.result.answeredById && msg.result.answeredById !== this.id && msg.result.correct) this.maybeEmote(me.score + 1 < opp.score ? ['angry', 'cry'] : ['gg', 'congrats'], 0.46 * emoteScale, [700, 1900]);
+    else if (msg.result.reason === 'passed') this.maybeEmote(['gg', 'luck'], 0.26 * emoteScale, [700, 1800]);
+    if (msg.matchOver) this.maybeEmote(me.score > opp.score ? ['gg', 'smile', 'ok'] : ['gg', 'cry'], 0.88 * emoteScale, [900, 2400]);
+  }
+
+  private respondToRematch(): void {
+    const acceptP = this.profile?.rematchAcceptance ?? 0.58;
+    const accept = Math.random() < acceptP;
+    const delay = accept
+      ? 850 + Math.floor(Math.random() * 3600)
+      : 1200 + Math.floor(Math.random() * 4200);
+    setTimeout(() => this.act({ type: 'rematch_response', accept }), delay);
   }
 
   private async pick(role: string): Promise<void> {
@@ -225,52 +314,138 @@ export class BotPlayer implements Transport {
 
   private async prepareAnswer(): Promise<void> {
     if (!this.teams) return;
+    this.wrongGuess = null;
+    this.answer = null;
+    this.answerKnown = false;
+    this.botDecision = null;
+    this.cognitiveState = null;
+    this.questionEstimate = null;
 
     if (this.mode === 'player-player') {
       const clubs = await commonClubs(this.teams.teamA.id, this.teams.teamB.id, 6);
-      this.answer = this.knows() ? this.pickName(clubs.map((c) => c.name)) : null;
+      const wrongs = await plausibleWrongClubsPlayerPlayer(this.teams.teamA.id, this.teams.teamB.id);
+      await this.decidePreparedAnswer(clubs.map((c) => c.name), wrongs, 'player_history');
     } else if (this.revealCountry && this.teams.teamB) {
       const players = await commonPlayersCountryTeam(this.teams.teamB.id, this.revealCountry, 6);
-      this.answer = this.knows() ? this.pickName(players.map((p) => p.name)) : null;
+      const wrongs = await plausibleWrongPlayersCountryTeam(this.teams.teamB.id, this.revealCountry);
+      await this.decidePreparedAnswer(players.map((p) => p.name), wrongs, 'national_teams');
     } else if (this.revealLetter && this.teams.teamB) {
       const players = await commonPlayersLetterTeam(this.teams.teamB.id, this.revealLetter, 6);
-      this.answer = this.knows() ? this.pickName(players.map((p) => p.name)) : null;
+      const wrongs = await plausibleWrongPlayersLetterTeam(this.teams.teamB.id, this.revealLetter);
+      await this.decidePreparedAnswer(players.map((p) => p.name), wrongs, 'journeymen');
     } else {
-      // Team-team: HARD always knows; EASY/MEDIUM know famous crossovers more often
-      // and simply miss obscure ones (human-like), leaving the round for the player.
       const ranked = await botCommonPlayersRanked(this.teams.teamA.id, this.teams.teamB.id, 8);
-      this.answer = this.decideAnswer(ranked);
+      const wrongs = await plausibleWrongPlayersTeamTeam(this.teams.teamA.id, this.teams.teamB.id);
+      await this.decidePreparedAnswer(ranked.map((p) => p.name), wrongs, this.domainForTeams());
     }
   }
 
+  private async decidePreparedAnswer(validNames: string[], wrongCandidates: string[], domain: import('../matchmaking/botProfiles.ts').KnowledgeDomain): Promise<void> {
+    if (!this.teams) return;
+    this.questionEstimate = await getQuestionDifficulty(this.mode, this.teams.teamA.id, this.teams.teamB.id, this.revealCountry ?? this.revealLetter ?? null);
+    this.questionDifficulty = difficultyFromScore(this.questionEstimate.difficultyScore);
+    if (this.profile) {
+      this.rng = rngForBotRound(this.profile, ++this.decisionSerial, this.questionEstimate.questionKey);
+      this.botDecision = decideBotAnswer(this.profile, {
+        difficultyScore: this.questionEstimate.difficultyScore,
+        answerPopularity: this.questionEstimate.answerPopularity,
+        domain,
+        botScore: this.botScore,
+        opponentScore: this.opponentScore,
+        previousTempoMs: this.previousOpponentTempoMs,
+        rng: this.rng,
+      });
+      this.cognitiveState = this.botDecision.cognitiveState;
+      this.answerKnown = this.botDecision.knowsAnswer;
+      this.answer = this.botDecision.willAnswer && !this.botDecision.shouldMistake
+        ? (pick(this.rng, validNames) ?? null)
+        : null;
+      this.wrongGuess = this.botDecision.willAnswer && this.botDecision.shouldMistake
+        ? pickWrongName(this.rng, wrongCandidates, validNames)
+        : null;
+      return;
+    }
+    this.answerKnown = this.legacyKnows(validNames.length, this.questionEstimate.answerPopularity);
+    this.answer = this.answerKnown ? this.pickName(validNames) : null;
+    this.wrongGuess = !this.answerKnown && Math.random() < 0.08 + difficultyScore(this.questionDifficulty) * 0.12
+      ? this.pickWrongGuess(validNames, wrongCandidates)
+      : null;
+  }
+
   // Difficulty-based "do I know it" chance for modes without a fame signal.
-  private knows(): boolean {
-    const p = DIFFICULTY[this.difficulty].knowBase;
-    return p >= 1 || Math.random() < p;
+  private legacyKnows(answerCount: number, popularity: number): boolean {
+    const base = DIFFICULTY[this.difficulty].knowBase;
+    const abundance = Math.max(0, Math.min(0.18, answerCount * 0.025));
+    const p = Math.max(0.02, Math.min(0.92, base + abundance + popularity * 0.10 - difficultyScore(this.questionDifficulty) * 0.18));
+    return Math.random() < p;
   }
   private pickName(names: string[]): string | null {
     return names.length ? names[Math.floor(Math.random() * names.length)]! : null;
   }
-  // Team-team: weight the "do I know it" chance by how famous the crossover is.
-  private decideAnswer(ranked: { name: string; fame: number }[]): string | null {
-    if (!ranked.length) return null;
-    if (this.difficulty === 'hard') {
-      return ranked[Math.floor(Math.random() * Math.min(3, ranked.length))]!.name;
-    }
-    const fameNorm = Math.max(0, Math.min(1, (ranked[0]!.fame - 40) / 200));
-    const p = DIFFICULTY[this.difficulty].fameBaseTeam + FAME_BONUS * fameNorm;
-    if (Math.random() > p) return null;
-    const half = ranked.slice(0, Math.max(1, Math.ceil(ranked.length / 2)));
-    return half[Math.floor(Math.random() * half.length)]!.name;
+
+  private domainForTeams(): import('../matchmaking/botProfiles.ts').KnowledgeDomain {
+    const a = this.teams?.teamA.name.toLocaleLowerCase('tr-TR') ?? '';
+    const b = this.teams?.teamB.name.toLocaleLowerCase('tr-TR') ?? '';
+    if (/galatasaray|fenerbah|besiktas|trabzon|basaksehir|konyaspor/.test(`${a} ${b}`)) return 'turkey';
+    if (/real madrid|barcelona|manchester|liverpool|arsenal|chelsea|bayern|juventus|inter|milan|psg/.test(`${a} ${b}`)) return 'europe_elite';
+    return 'journeymen';
   }
 
   private scheduleGuess(): void {
     this.clearTimer();
     const span = Math.max(0, this.maxDelayMs - this.minDelayMs);
-    const delay = this.minDelayMs + Math.floor(Math.random() * (span + 1));
+    const delay = this.profile
+      ? (this.botDecision?.reactionDelayMs ?? this.profile.responseMedianMs)
+      : this.minDelayMs + Math.floor(span * triangular(mathRandom));
+    this.lastGuessDelayMs = delay;
     this.timer = setTimeout(() => {
-      if (this.answer) this.act({ type: 'submit_guess', text: this.answer });
+      if (this.botDecision && !this.botDecision.willAnswer) return;
+      const text = this.wrongGuess ?? this.humanizeKnownAnswer(this.answer);
+      if (text) this.act({ type: 'submit_guess', text });
     }, delay);
+  }
+
+  private humanizeKnownAnswer(answer: string | null): string | null {
+    if (!answer || !this.profile) return answer;
+    // Real players often rely on the verifier's autocorrect: surname/first-name or
+    // one dropped letter feels human, while the canonical full name every time does not.
+    const tokens = answer.split(/\s+/).map((t) => t.trim()).filter((t) => normalize(t).length >= 4);
+    if (!tokens.length) return answer;
+    const p = this.profile;
+    const shortChance = p.behaviorArchetype === 'STRONG' ? 0.76
+      : p.behaviorArchetype === 'CAREFUL' ? 0.46
+        : p.behaviorArchetype === 'CASUAL' ? 0.28
+          : 0.56;
+    const typoChance = p.behaviorArchetype === 'FAST_RISKY' ? 0.30
+      : p.behaviorArchetype === 'STRONG' ? 0.18
+        : p.behaviorArchetype === 'CASUAL' ? 0.10
+          : 0.16;
+    let text = answer;
+    const rng = this.profile ? this.rng : mathRandom;
+    if (rng.next() < shortChance) {
+      const surname = tokens[tokens.length - 1]!;
+      const first = tokens[0]!;
+      text = rng.next() < 0.62 ? surname : first;
+    }
+    if (rng.next() < typoChance) text = this.safeTypo(text, rng);
+    return text;
+  }
+
+  private safeTypo(text: string, rng: RandomSource = mathRandom): string {
+    const chars = [...text];
+    const letterIdx = chars.map((c, i) => (/^[A-Za-zÇĞİÖŞÜçğıöşü]$/.test(c) ? i : -1)).filter((i) => i >= 0);
+    if (letterIdx.length < 5) return text;
+    const idx = letterIdx[1 + Math.floor(rng.next() * Math.max(1, letterIdx.length - 2))]!;
+    if (rng.next() < 0.55) chars.splice(idx, 1);
+    else chars[idx] = chars[idx]!.toLocaleLowerCase('tr-TR');
+    return chars.join('');
+  }
+
+  private pickWrongGuess(validNames: string[], candidates: string[] = []): string | null {
+    const names = candidates.length ? candidates : ['Hakan', 'Emre', 'Alex', 'Arda', 'Burak', 'Drogba', 'Ronaldo', 'Nani', 'Turan', 'Mertens', 'Sosa', 'Talisca'];
+    const valid = new Set(validNames.map((n) => n.toLowerCase()));
+    const pool = names.filter((n) => !valid.has(n.toLowerCase()));
+    return pool.length ? pool[Math.floor(Math.random() * pool.length)]! : null;
   }
 
   private reset(): void {
@@ -280,12 +455,24 @@ export class BotPlayer implements Transport {
     this.revealCountry = undefined;
     this.revealLetter = undefined;
     this.ctPicked = false;
+    this.questionDifficulty = 'normal';
+    this.answerKnown = false;
+    this.wrongGuess = null;
+    this.lastGuessDelayMs = 0;
+    this.questionEstimate = null;
+    this.botDecision = null;
+    this.cognitiveState = null;
+    this.guessPhaseStartedAt = 0;
   }
 
   private clearTimer(): void {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
+    }
+    if (this.emoteTimer) {
+      clearTimeout(this.emoteTimer);
+      this.emoteTimer = null;
     }
   }
 }

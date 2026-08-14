@@ -160,6 +160,17 @@ CREATE TABLE IF NOT EXISTS match_history (
 );
 CREATE INDEX IF NOT EXISTS idx_match_history_player ON match_history (player_id, played_at DESC);
 
+-- Idempotency guard for server-authoritative match settlement. Additive only:
+-- existing match/trophy/profile data is untouched. A room inserts its match_id
+-- once before applying trophies/XP; duplicate timers/events cannot settle twice.
+CREATE TABLE IF NOT EXISTS match_settlements (
+  match_id   UUID PRIMARY KEY,
+  room_code  TEXT NOT NULL,
+  reason     TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_match_settlements_created_at ON match_settlements (created_at DESC);
+
 -- Migration: add player_name column if missing
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'match_history' AND column_name = 'player_name') THEN
@@ -241,6 +252,12 @@ CREATE TABLE IF NOT EXISTS processed_transactions (
 -- doğrulayıcıdan geldiği için asla NULL olmaz.
 ALTER TABLE processed_transactions ADD COLUMN IF NOT EXISTS environment TEXT;
 ALTER TABLE processed_transactions ADD COLUMN IF NOT EXISTS purchase_date TIMESTAMPTZ;
+ALTER TABLE processed_transactions ADD COLUMN IF NOT EXISTS price_milliunits BIGINT;
+ALTER TABLE processed_transactions ADD COLUMN IF NOT EXISTS currency TEXT;
+ALTER TABLE processed_transactions ADD COLUMN IF NOT EXISTS storefront TEXT;
+ALTER TABLE processed_transactions ADD COLUMN IF NOT EXISTS transaction_reason TEXT;
+ALTER TABLE processed_transactions ADD COLUMN IF NOT EXISTS transaction_type TEXT;
+ALTER TABLE processed_transactions ADD COLUMN IF NOT EXISTS revocation_date TIMESTAMPTZ;
 
 -- ---- Ödüllü reklam izleme günlüğü (admin paneli) ----
 -- users tablosundaki ad_reward_count her gün sıfırlanır; tarihsel toplam ve

@@ -24,6 +24,9 @@ import { applyMatchResult, getUser, saveMatchHistory, type MatchRound } from '..
 import { awardMatchXp } from '../game/level.ts';
 import { isEmote } from '../game/emotes.ts';
 import { log } from '../logger.ts';
+import { getQuestionDifficulty, recordQuestionOutcome, type QuestionDifficultyEstimate } from '../matchmaking/questionDifficulty.ts';
+import { recordTelemetry } from '../matchmaking/telemetry.ts';
+import { defaultSkillProfile, updateSkillAfterMatch, type SkillRoundSignal } from '../matchmaking/skillRating.ts';
 import type {
   ClientMsg,
   ServerMsg,
@@ -45,16 +48,24 @@ const GUESS_MS = 30_000;
 const WRONG_RETRY_MS = 5_000;
 const MAX_PLAYERS = 2;
 const WIN_TARGET = 3; // first to this many round wins takes the match
-const MAX_WRONG = 3; // 3 wrong answers → opponent wins the match
 // Result screen pause: one visible 10→0 countdown, then the next round
 // auto-starts (both players pressing "Hazır" skips the wait).
 const INTER_ROUND_MS = 10_000;
 const RECONNECT_GRACE_MS = 12_000;
+type ForfeitReason = 'leave' | 'cheat' | 'disconnect';
 
 // A player's link to the outside world: a real WebSocket client, or a bot.
 export interface Transport {
   send(msg: ServerMsg): void;
   readonly isBot: boolean;
+  readonly botArchetype?: string;
+  readonly botSkill?: number;
+  readonly botSkillMean?: number;
+  readonly botSkillUncertainty?: number;
+  getLastGuessDelayMs?(): number;
+  getLastCognitiveState?(): string | null;
+  getLastQuestionDifficultyScore?(): number | null;
+  getLastDecision?(): { cognitiveState: string; reactionDelayMs: number; willAnswer: boolean; shouldMistake: boolean; shouldTimeout: boolean } | null;
   // İstemcinin bildirdiği yetenek bayrakları (ws/server.ts kayıt sırasında yazar).
   // 'wrongopen': yanlış cevapta turun açık kalmasını ve yeni mesajları anlar.
   caps?: string[];
@@ -74,6 +85,9 @@ interface Player {
   avatar?: string | null; // chosen profile-picture id
   level?: number; // eşleşme kartındaki seviye rozeti
   frame?: string | null; // takılı profil çerçevesi
+  skillMean?: number;
+  skillUncertainty?: number;
+  skillMatchesPlayed?: number;
 }
 
 interface Round {
@@ -100,6 +114,10 @@ interface Round {
   // (ya da şartlar tutmazsa) oyuncu burned'e düşer.
   wrongRetryAt?: Map<string, number>;
   guessEndsAt?: number; // tahmin süresinin bittiği an — yeniden kurulan zamanlayıcı için
+  guessStartedAt?: number;
+  question?: QuestionDifficultyEstimate;
+  skillSignalRecorded?: Set<string>;
+  wrongAttempts?: Map<string, number>;
   finished: boolean;
 }
 
@@ -111,6 +129,9 @@ export class Room {
   // ve oda-kodu maçları dostluk maçıdır: iki hesap anlaşıp hükmen galibiyetle
   // XP/elmas kasamasın diye bu odalarda hiçbir ödül yazılmaz.
   ranked = false;
+  // Hybrid matchmaking fallback botları dereceli maç hissini korur; klasik
+  // create_solo pratik botları bu bayrağı açmaz ve eski XP-only davranışta kalır.
+  rankedBotRewards = false;
   private players = new Map<string, Player>();
   status: RoomStatus = 'lobby';
   private round: Round | null = null;
@@ -120,8 +141,13 @@ export class Room {
   private matchOver = false; // true once a player reaches WIN_TARGET
   private rematchBy: string | null = null;
   private matchStartedAt = 0; // startMatch anı (ms) — maç süresi istatistiği için
+  private matchId = randomUUID();
+  private settlementStarted = false;
+  private matchTelemetryClosed = false;
   private readyPlayers = new Set<string>();
   private matchRounds: MatchRound[] = [];
+  private skillRoundSignals = new Map<string, SkillRoundSignal[]>();
+  private lastTrophyDeltaByUser = new Map<string, number>();
   private recentBotPicks: number[] = []; // last bot team ids (no-repeat within 10)
   private disconnectTimers = new Map<string, NodeJS.Timeout>();
   // Maç boyunca seçilmiş takımlar/ülkeler — bir kez seçilen bir daha seçilemez
@@ -146,6 +172,9 @@ export class Room {
     avatar?: string | null,
     level?: number,
     frame?: string | null,
+    skillMean?: number,
+    skillUncertainty?: number,
+    skillMatchesPlayed?: number,
   ): { ok: true; id: string } | { ok: false; error: string } {
     if (this.players.size >= MAX_PLAYERS) return { ok: false, error: 'Room is full' };
     const id = randomUUID();
@@ -163,6 +192,9 @@ export class Room {
       avatar: avatar ?? null,
       level,
       frame: frame ?? null,
+      skillMean,
+      skillUncertainty,
+      skillMatchesPlayed,
     });
     this.broadcastState();
     return { ok: true, id };
@@ -203,7 +235,7 @@ export class Room {
     status: RoomStatus;
     bot: boolean;
     humans: number;
-    players: { name: string; userId: string | null; trophies: number | null; score: number; connected: boolean; isBot: boolean }[];
+    players: { name: string; userId: string | null; trophies: number | null; score: number; connected: boolean; isBot: boolean; skillMean?: number | null; skillUncertainty?: number | null; botArchetype?: string | null; botCognitiveState?: string | null }[];
   } {
     const players = [...this.players.values()].map((p) => ({
       name: p.name,
@@ -212,6 +244,10 @@ export class Room {
       score: p.score,
       connected: p.connected,
       isBot: p.transport.isBot,
+      skillMean: p.skillMean ?? p.transport.botSkillMean ?? null,
+      skillUncertainty: p.skillUncertainty ?? p.transport.botSkillUncertainty ?? null,
+      botArchetype: p.transport.botArchetype ?? null,
+      botCognitiveState: p.transport.getLastCognitiveState?.() ?? null,
     }));
     return {
       code: this.code,
@@ -258,10 +294,10 @@ export class Room {
   // Explicit, DELIBERATE exit (X button / background-forfeit): no reconnect
   // grace — the opponent must see the forfeit INSTANTLY ("anlık multiplayer").
   // The socket close that follows finds the player already gone (no-op).
-  explicitLeave(playerId: string): void {
+  explicitLeave(playerId: string, reason: Extract<ForfeitReason, 'leave' | 'cheat'> = 'leave'): void {
     const timer = this.disconnectTimers.get(playerId);
     if (timer) { clearTimeout(timer); this.disconnectTimers.delete(playerId); }
-    this.finalizeClose(playerId);
+    this.finalizeClose(playerId, reason);
   }
 
   handleClose(playerId: string): void {
@@ -274,16 +310,16 @@ export class Room {
       if (prev) clearTimeout(prev);
       const timer = setTimeout(() => {
         this.disconnectTimers.delete(playerId);
-        this.finalizeClose(playerId);
+        this.finalizeClose(playerId, 'disconnect');
       }, RECONNECT_GRACE_MS);
       this.disconnectTimers.set(playerId, timer);
       log.warn('player_disconnect_grace', { room: this.code, playerId, userId: p.userId, status: this.status });
       return;
     }
-    this.finalizeClose(playerId);
+    this.finalizeClose(playerId, 'disconnect');
   }
 
-  private finalizeClose(playerId: string): void {
+  private finalizeClose(playerId: string, reason: ForfeitReason = 'disconnect'): void {
     const p = this.players.get(playerId);
     if (!p) return;
     this.clearTimers();
@@ -293,6 +329,60 @@ export class Room {
     // "kaçtı" sayılıp kalan oyuncuya İKİNCİ bir galibiyet ödülü yazılıyordu.)
     const wasInMatch = this.status !== 'lobby' && !this.matchOver;
     const hasBot = p.transport.isBot || [...this.players.values()].some((pl) => pl.id !== playerId && pl.transport.isBot);
+
+    if (wasInMatch && hasBot && this.ranked && this.rankedBotRewards && !p.transport.isBot && p.userId) {
+      const bot = [...this.players.values()].find((pl) => pl.id !== playerId && pl.transport.isBot);
+      void (async () => {
+        try {
+          if (!(await this.claimSettlement('bot_forfeit'))) return;
+          const playerSkill = this.playerSkillFor(p);
+          const botSkill = this.playerSkillFor(bot);
+          const leaverRes = await applyMatchResult(p.userId!, false, {
+            leaver: true,
+            opponentTrophies: bot?.trophies ?? null,
+            playerSkillMean: playerSkill.skillMean,
+            playerSkillUncertainty: playerSkill.skillUncertainty,
+            opponentSkillMean: botSkill.skillMean,
+            opponentSkillUncertainty: botSkill.skillUncertainty,
+          });
+          const xpRes = await awardMatchXp(p.userId!, false, false);
+          await updateSkillAfterMatch(p.userId!, p.trophies ?? leaverRes.profile.trophies, {
+            opponentType: 'BOT',
+            opponentSkillMean: botSkill.skillMean,
+            opponentSkillUncertainty: botSkill.skillUncertainty,
+            won: false,
+            scoreFor: p.score,
+            scoreAgainst: bot?.score ?? WIN_TARGET,
+            rounds: this.skillRoundSignals.get(p.id) ?? [],
+          }).catch((err) => log.warn('skill_update_failed', { matchId: this.matchId, userId: p.userId, error: err instanceof Error ? err.message : String(err) }));
+          try {
+            p.transport.send({ type: 'trophy_update', trophies: leaverRes.profile.trophies, delta: leaverRes.delta, arena: leaverRes.profile.arena, diamonds: leaverRes.profile.diamonds, highestArenaRewarded: leaverRes.profile.highestArenaRewarded, winStreak: leaverRes.profile.winStreak, bestStreak: leaverRes.profile.bestStreak, lostStreak: leaverRes.profile.lostStreak });
+            if (xpRes) p.transport.send({ type: 'xp_update', ...xpRes });
+          } catch { /* socket may already be gone */ }
+          recordTelemetry({
+            eventName: 'match_finished',
+            matchId: this.matchId,
+            roomCode: this.code,
+            playerId: p.userId,
+            opponentType: 'BOT',
+            payload: {
+              matchResult: 'loss',
+              forfeitReason: reason,
+              playerSkillMean: playerSkill.skillMean,
+              opponentSkillMean: botSkill.skillMean,
+              expectedWinProbability: leaverRes.expectedWinProbability,
+              trophyDelta: leaverRes.delta,
+              scoreFor: p.score,
+              scoreAgainst: bot?.score ?? WIN_TARGET,
+              durationSec: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0,
+            },
+          });
+          log.info('match_completed', { matchId: this.matchId, opponentType: 'BOT', result: reason === 'cheat' ? 'cheat_forfeit_loss' : 'forfeit_loss', forfeitReason: reason, durationSec: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0, botArchetype: bot?.transport.botArchetype, botSkill: bot?.transport.botSkill });
+        } catch (err) {
+          log.error('settlement_error', { matchId: this.matchId, reason: 'bot_forfeit', error: err instanceof Error ? err.message : String(err) });
+        }
+      })();
+    }
 
     this.players.delete(playerId);
 
@@ -311,30 +401,107 @@ export class Room {
       winner.score = WIN_TARGET;
       this.matchOver = true;
       this.status = 'result';
-      this.broadcast({ type: 'opponent_left', forfeit: true });
+      this.broadcast({ type: 'opponent_left', forfeit: true, forfeitReason: reason === 'cheat' ? 'cheat' : undefined });
       // Award trophies: winner wins, leaver loses. Yalnız dereceli maçta —
       // dostluk maçındaki hükmen sonuç görsel kalır, ödül yazılmaz.
       if (!this.ranked) { this.broadcastState(); return; }
       void (async () => {
         try {
+          if (!(await this.claimSettlement('human_forfeit'))) return;
           if (winner.userId) {
-            const { profile, delta, arenaReward } = await applyMatchResult(winner.userId, true, { opponentTrophies: p.trophies ?? null });
-            winner.transport.send({ type: 'trophy_update', trophies: profile.trophies, delta, arena: profile.arena, diamonds: profile.diamonds, arenaReward, winStreak: profile.winStreak, bestStreak: profile.bestStreak });
+            const winnerSkill = this.playerSkillFor(winner);
+            const leaverSkill = this.playerSkillFor(p);
+            const { profile, delta, arenaReward, expectedWinProbability } = await applyMatchResult(winner.userId, true, {
+              opponentTrophies: p.trophies ?? null,
+              playerSkillMean: winnerSkill.skillMean,
+              playerSkillUncertainty: winnerSkill.skillUncertainty,
+              opponentSkillMean: leaverSkill.skillMean,
+              opponentSkillUncertainty: leaverSkill.skillUncertainty,
+            });
+            winner.transport.send({ type: 'trophy_update', trophies: profile.trophies, delta, arena: profile.arena, diamonds: profile.diamonds, arenaReward, highestArenaRewarded: profile.highestArenaRewarded, winStreak: profile.winStreak, bestStreak: profile.bestStreak });
             const xpRes = await awardMatchXp(winner.userId, true, false);
             if (xpRes) winner.transport.send({ type: 'xp_update', ...xpRes });
+            await updateSkillAfterMatch(winner.userId, winner.trophies ?? profile.trophies, {
+              opponentType: 'HUMAN',
+              opponentSkillMean: leaverSkill.skillMean,
+              opponentSkillUncertainty: leaverSkill.skillUncertainty,
+              won: true,
+              scoreFor: winner.score,
+              scoreAgainst: p.score,
+              rounds: this.skillRoundSignals.get(winner.id) ?? [],
+            }).catch((err) => log.warn('skill_update_failed', { matchId: this.matchId, userId: winner.userId, error: err instanceof Error ? err.message : String(err) }));
+            recordTelemetry({
+              eventName: 'match_finished',
+              matchId: this.matchId,
+              roomCode: this.code,
+              playerId: winner.userId,
+              opponentId: p.userId ?? null,
+              opponentType: 'HUMAN',
+              payload: {
+                matchResult: 'win',
+                forfeitReason: reason,
+                playerSkillMean: winnerSkill.skillMean,
+                opponentSkillMean: leaverSkill.skillMean,
+                expectedWinProbability,
+                trophyDelta: delta,
+                scoreFor: winner.score,
+                scoreAgainst: p.score,
+                durationSec: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0,
+              },
+            });
           }
           if (p.userId) {
             // Terk eden mağlubiyeti: kalkan onu KORUMAZ (leaver bayrağı)
-            const leaverRes = await applyMatchResult(p.userId, false, { leaver: true, opponentTrophies: winner.trophies ?? null });
+            const leaverSkill = this.playerSkillFor(p);
+            const winnerSkill = this.playerSkillFor(winner);
+            const leaverRes = await applyMatchResult(p.userId, false, {
+              leaver: true,
+              opponentTrophies: winner.trophies ?? null,
+              playerSkillMean: leaverSkill.skillMean,
+              playerSkillUncertainty: leaverSkill.skillUncertainty,
+              opponentSkillMean: winnerSkill.skillMean,
+              opponentSkillUncertainty: winnerSkill.skillUncertainty,
+            });
             await awardMatchXp(p.userId, false, false); // ayrılan: mağlubiyet XP'si
+            await updateSkillAfterMatch(p.userId, p.trophies ?? leaverRes.profile.trophies, {
+              opponentType: 'HUMAN',
+              opponentSkillMean: winnerSkill.skillMean,
+              opponentSkillUncertainty: winnerSkill.skillUncertainty,
+              won: false,
+              scoreFor: p.score,
+              scoreAgainst: winner.score,
+              rounds: this.skillRoundSignals.get(p.id) ?? [],
+            }).catch((err) => log.warn('skill_update_failed', { matchId: this.matchId, userId: p.userId, error: err instanceof Error ? err.message : String(err) }));
             // Bilinçli çıkışta istemci soketi ~1.2sn açık tutar: kupa düşüşü
             // (delta<0) ana menüde animasyonla gösterilir. Soket kapandıysa
             // sessizce düşer — sonraki girişte profil zaten günceldir.
             try {
-              p.transport.send({ type: 'trophy_update', trophies: leaverRes.profile.trophies, delta: leaverRes.delta, arena: leaverRes.profile.arena, diamonds: leaverRes.profile.diamonds, winStreak: leaverRes.profile.winStreak, bestStreak: leaverRes.profile.bestStreak, lostStreak: leaverRes.profile.lostStreak });
+              p.transport.send({ type: 'trophy_update', trophies: leaverRes.profile.trophies, delta: leaverRes.delta, arena: leaverRes.profile.arena, diamonds: leaverRes.profile.diamonds, highestArenaRewarded: leaverRes.profile.highestArenaRewarded, winStreak: leaverRes.profile.winStreak, bestStreak: leaverRes.profile.bestStreak, lostStreak: leaverRes.profile.lostStreak });
             } catch { /* socket gone */ }
+            recordTelemetry({
+              eventName: 'match_finished',
+              matchId: this.matchId,
+              roomCode: this.code,
+              playerId: p.userId,
+              opponentId: winner.userId ?? null,
+              opponentType: 'HUMAN',
+              payload: {
+                matchResult: 'loss',
+                forfeitReason: reason,
+                playerSkillMean: leaverSkill.skillMean,
+                opponentSkillMean: winnerSkill.skillMean,
+                expectedWinProbability: leaverRes.expectedWinProbability,
+                trophyDelta: leaverRes.delta,
+                scoreFor: p.score,
+                scoreAgainst: winner.score,
+                durationSec: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0,
+              },
+            });
           }
-        } catch { /* DB error — skip silently */ }
+          log.info('match_completed', { matchId: this.matchId, opponentType: 'HUMAN', result: reason === 'cheat' ? 'cheat_forfeit' : 'forfeit', forfeitReason: reason, durationSec: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0 });
+        } catch (err) {
+          log.error('settlement_error', { matchId: this.matchId, reason: 'human_forfeit', error: err instanceof Error ? err.message : String(err) });
+        }
       })();
       this.broadcastState();
     } else {
@@ -418,13 +585,35 @@ export class Room {
   private startMatch(): void {
     this.matchOver = false;
     this.rematchBy = null;
+    this.matchId = randomUUID();
+    this.settlementStarted = false;
+    this.matchTelemetryClosed = false;
     this.roundNumber = 0;
     this.matchRounds = [];
+    this.skillRoundSignals.clear();
+    this.lastTrophyDeltaByUser.clear();
     this.usedClubIds.clear();
     this.usedCountries.clear();
     this.recentBotPicks = [];
     this.matchStartedAt = Date.now(); // maç süresi ölçümü (admin istatistikleri)
     for (const p of this.players.values()) { p.score = 0; p.wrongCount = 0; }
+    const hasBot = [...this.players.values()].some((p) => p.transport.isBot);
+    for (const p of this.players.values()) {
+      recordTelemetry({
+        eventName: 'match_started',
+        matchId: this.matchId,
+        roomCode: this.code,
+        playerId: p.userId ?? null,
+        opponentType: hasBot ? 'BOT' : 'HUMAN',
+        payload: {
+          opponentType: hasBot ? 'BOT' : 'HUMAN',
+          playerSkillMean: p.skillMean,
+          playerSkillUncertainty: p.skillUncertainty,
+          playerTrophies: p.trophies,
+          gameMode: this.gameMode,
+        },
+      });
+    }
     this.beginCountdown();
   }
 
@@ -692,6 +881,14 @@ export class Room {
     if (this.round.countryPick) this.usedCountries.add(Room.normCountry(this.round.countryPick));
   }
 
+  private shouldLockUsedForRound(result: RoundResult): boolean {
+    if (this.gameMode === 'player-player') return false;
+    // Only a direct double-pass on a truly empty crossover stays reusable.
+    if (result.reason !== 'passed') return true;
+    if ((this.round?.wrongAttempts?.size ?? 0) > 0) return true;
+    return result.commonPlayers.length > 0;
+  }
+
   // Reveal için gereken TÜM pick'ler yerinde mi? (beginReveal'in non-null erişimleri
   // için ön-koşul.) allPicked() rol-bazlı sayar; bu ise beginReveal'in GERÇEKTEN
   // okuyacağı slot'ları (ids[0]/ids[1], team pick + ülke/harf) birebir doğrular.
@@ -721,8 +918,6 @@ export class Room {
       log.warn('reveal_missing_picks', { room: this.code, mode: this.gameMode, status: this.status });
       return;
     }
-    this.markUsedForRound();
-
     if (this.gameMode === 'player-player') {
       const playerA = this.round.playerAPick;
       const playerB = this.round.playerBPick;
@@ -886,10 +1081,37 @@ export class Room {
     this.status = 'guess';
     this.broadcastState();
     const endsAt = Date.now() + GUESS_MS;
+    this.round.guessStartedAt = Date.now();
     this.round.guessEndsAt = endsAt;
     this.broadcast({ type: 'guess_phase', endsAt });
+    void this.ensureRoundQuestion().then((question) => {
+      if (!question || !this.round || this.round.finished) return;
+      recordTelemetry({
+        eventName: 'round_started',
+        matchId: this.matchId,
+        roomCode: this.code,
+        opponentType: [...this.players.values()].some((p) => p.transport.isBot) ? 'BOT' : 'HUMAN',
+        payload: {
+          roundNumber: this.roundNumber + 1,
+          gameMode: this.gameMode,
+          questionKey: question.questionKey,
+          questionDifficulty: question.difficultyScore,
+          validAnswerCount: question.validAnswerCount,
+          answerPopularity: question.answerPopularity,
+        },
+      });
+    }).catch((err) => log.warn('question_difficulty_failed', { room: this.code, matchId: this.matchId, error: err instanceof Error ? err.message : String(err) }));
     const t = setTimeout(() => this.endRoundTimeout(), GUESS_MS);
     this.timers.push(t);
+  }
+
+  private async ensureRoundQuestion(): Promise<QuestionDifficultyEstimate | null> {
+    if (!this.round?.teamA || !this.round.teamB) return null;
+    if (this.round.question) return this.round.question;
+    const extra = this.gameMode === 'country-team' ? this.round.countryPick : this.gameMode === 'letter-team' ? this.round.letterPick : null;
+    const q = await getQuestionDifficulty(this.gameMode, this.round.teamA.id, this.round.teamB.id, extra ?? null);
+    if (this.round?.teamA?.id === q.teamAId || this.round?.teamA) this.round.question = q;
+    return q;
   }
 
   // Turu yeniden açtıktan sonra, 'wrongopen' BİLMEYEN istemcileri taze bir
@@ -977,6 +1199,8 @@ export class Room {
       (this.round.burned ??= new Set()).add(playerId);
     }
     this.round.pendingGuesses?.delete(playerId);
+    const wrongs = this.round.wrongAttempts ??= new Map();
+    wrongs.set(playerId, (wrongs.get(playerId) ?? 0) + 1);
     this.broadcast({
       type: 'wrong_guess',
       byId: playerId,
@@ -984,6 +1208,22 @@ export class Room {
       guess: '',
       wrongCount: p?.wrongCount ?? 0,
       retryAt,
+    });
+    const responseTimeMs = this.round.guessStartedAt ? Math.max(0, Date.now() - this.round.guessStartedAt) : null;
+    recordTelemetry({
+      eventName: 'player_answered',
+      matchId: this.matchId,
+      roomCode: this.code,
+      playerId: p?.userId ?? null,
+      opponentType: p?.transport.isBot ? 'BOT' : 'HUMAN',
+      payload: {
+        questionKey: this.round.question?.questionKey,
+        responseTimeMs,
+        correct: false,
+        guess,
+        cognitiveState: p?.transport.getLastCognitiveState?.() ?? undefined,
+        matchScore: this.scorePayload(),
+      },
     });
     if ((this.round.burned?.size ?? 0) >= this.players.size) return 'all_burned';
     // Eski istemciler wrong_guess'i yok sayar ve guess_locked yüzünden kilitli
@@ -1055,29 +1295,21 @@ export class Room {
       if (ppv.correct && p) {
         p.score += 1;
       } else if (!ppv.correct && p) {
-        // İkinci-hak (retry) yanlışı MAX_WRONG'a SAYILMAZ: tanınan ek hak,
-        // maç-kaybı sayacını hızlandıran bir tuzağa dönüşmesin. Turun İLK
-        // yanlışı sayar (wrongRetryAt kaydı reopenAfterWrong'da atıldığından
-        // burada varlığı "bu bir retry yanlışı" demektir).
+        // İkinci-hak (retry) yanlışı toplam yanlış sayacına işlenmez.
         const isRetryWrong = this.round.wrongRetryAt?.has(playerId) ?? false;
         if (!isRetryWrong) p.wrongCount += 1;
-        if (!isRetryWrong && p.wrongCount >= MAX_WRONG) {
-          const opponent = [...this.players.values()].find((o) => o.id !== p.id);
-          if (opponent) opponent.score = WIN_TARGET;
-        } else {
-          // wrongopen: yanlış turu yakmaz — yazan susturulur, rakip devam eder.
-          const r = this.reopenAfterWrong(playerId, text);
-          if (r === 'open') return;
-          if (r === 'all_burned') {
-            this.finishRound({
-              correct: false, reason: 'all_wrong', autocorrected: false,
-              answeredById: null, answeredByName: null, guess: '',
-              teamA: this.round.teamA, teamB: this.round.teamB,
-              matchedPlayerName: null, matchedPlayerImageUrl: null,
-              spellsA: [], spellsB: [], allClubs: [], commonPlayers: common,
-            });
-            return;
-          }
+        // wrongopen: yanlış turu yakmaz — yazan susturulur, rakip devam eder.
+        const r = this.reopenAfterWrong(playerId, text);
+        if (r === 'open') return;
+        if (r === 'all_burned') {
+          this.finishRound({
+            correct: false, reason: 'all_wrong', autocorrected: false,
+            answeredById: null, answeredByName: null, guess: '',
+            teamA: this.round.teamA, teamB: this.round.teamB,
+            matchedPlayerName: null, matchedPlayerImageUrl: null,
+            spellsA: [], spellsB: [], allClubs: [], commonPlayers: common,
+          });
+          return;
         }
       }
 
@@ -1123,27 +1355,21 @@ export class Room {
     if (v.correct && p) {
       p.score += 1;
     } else if (!v.correct && p) {
-      // Retry yanlışı MAX_WRONG'a sayılmaz (yukarıdaki player-player bloğuyla
-      // aynı gerekçe): ek hak, maç-kaybı sayacını hızlandırmamalı.
+      // Retry yanlışı toplam yanlış sayacına işlenmez.
       const isRetryWrong = this.round.wrongRetryAt?.has(playerId) ?? false;
       if (!isRetryWrong) p.wrongCount += 1;
-      if (!isRetryWrong && p.wrongCount >= MAX_WRONG) {
-        const opponent = [...this.players.values()].find((o) => o.id !== p.id);
-        if (opponent) opponent.score = WIN_TARGET;
-      } else {
-        // wrongopen: yanlış turu yakmaz — yazan susturulur, rakip devam eder.
-        const r = this.reopenAfterWrong(playerId, text);
-        if (r === 'open') return;
-        if (r === 'all_burned') {
-          this.finishRound({
-            correct: false, reason: 'all_wrong', autocorrected: false,
-            answeredById: null, answeredByName: null, guess: '',
-            teamA: v.teamA, teamB: v.teamB,
-            matchedPlayerName: null, matchedPlayerImageUrl: null,
-            spellsA: [], spellsB: [], allClubs: [], commonPlayers: common,
-          });
-          return;
-        }
+      // wrongopen: yanlış turu yakmaz — yazan susturulur, rakip devam eder.
+      const r = this.reopenAfterWrong(playerId, text);
+      if (r === 'open') return;
+      if (r === 'all_burned') {
+        this.finishRound({
+          correct: false, reason: 'all_wrong', autocorrected: false,
+          answeredById: null, answeredByName: null, guess: '',
+          teamA: v.teamA, teamB: v.teamB,
+          matchedPlayerName: null, matchedPlayerImageUrl: null,
+          spellsA: [], spellsB: [], allClubs: [], commonPlayers: common,
+        });
+        return;
       }
     }
 
@@ -1205,9 +1431,13 @@ export class Room {
 
   private finishRound(result: RoundResult): void {
     if (!this.round) return;
+    const question = this.round.question;
+    const answeredBy = result.answeredById ? this.players.get(result.answeredById) : undefined;
+    const responseTimeMs = result.answeredById && this.round.guessStartedAt ? Math.max(0, Date.now() - this.round.guessStartedAt) : null;
     this.round.finished = true;
     this.clearTimers();
     this.status = 'result';
+    if (this.shouldLockUsedForRound(result)) this.markUsedForRound();
     this.roundNumber += 1;
 
     // Collect winning round info (only rounds where someone scored)
@@ -1249,6 +1479,8 @@ export class Room {
     });
     this.broadcastState();
 
+    this.recordRoundOutcome(result, question ?? null, answeredBy ?? null, responseTimeMs);
+
     if (!this.matchOver) {
       // One 10s countdown shown immediately (10 → 0). At 0 the next round starts
       // automatically; if both players press "Hazır" sooner, it advances right away.
@@ -1262,8 +1494,8 @@ export class Room {
       this.timers.push(t);
     } else {
       const hasBot = [...this.players.values()].some((p) => p.transport.isBot);
-      if (!hasBot) {
-        if (this.ranked) void this.updateTrophies(winner!);
+      if (!hasBot || this.rankedBotRewards) {
+        if (this.ranked) void this.settleMatch(winner!, hasBot ? 'bot_match_complete' : 'match_complete');
         // dostluk maçı (davet / oda kodu): kupa da XP de yok
       } else {
         // Bot maçı: kupa yok ama SEVİYE XP'si var (yarım puan, günlük tavanlı)
@@ -1302,7 +1534,7 @@ export class Room {
         const oppUser = opp.userId ? await getUser(opp.userId) : null;
         await saveMatchHistory(
           p.userId, p.name, pUser?.trophies ?? 0,
-          opp.userId ?? null, opp.name, oppUser?.trophies ?? 0,
+          opp.userId ?? null, opp.name, oppUser?.trophies ?? opp.trophies ?? 0,
           p.score, opp.score,
           p.score > opp.score,
           this.gameMode,
@@ -1326,14 +1558,32 @@ export class Room {
   }
 
   // ---- trophy updates ----
+  private async settleMatch(winner: Player, reason: string): Promise<void> {
+    if (!(await this.claimSettlement(reason))) return;
+    await this.updateTrophies(winner);
+  }
+
   private async updateTrophies(winner: Player): Promise<void> {
+    const hasBot = [...this.players.values()].some((p) => p.transport.isBot);
+    const bot = [...this.players.values()].find((p) => p.transport.isBot);
+    const trophyDeltas: { userId: string; delta: number; expectedWinProbability?: number }[] = [];
     for (const p of this.players.values()) {
       if (p.transport.isBot || !p.userId) continue;
       const won = p.id === winner.id;
       // Rakibin MAÇ BAŞI kupası: dinamik delta (CR usulü) farka göre hesaplanır.
       const opp = [...this.players.values()].find((x) => x.id !== p.id);
       try {
-        const { profile, delta, arenaReward, shielded } = await applyMatchResult(p.userId, won, { opponentTrophies: opp?.trophies ?? null });
+        const playerSkill = this.playerSkillFor(p);
+        const opponentSkill = this.playerSkillFor(opp);
+        const { profile, delta, arenaReward, shielded, expectedWinProbability } = await applyMatchResult(p.userId, won, {
+          opponentTrophies: opp?.trophies ?? null,
+          playerSkillMean: playerSkill.skillMean,
+          playerSkillUncertainty: playerSkill.skillUncertainty,
+          opponentSkillMean: opponentSkill.skillMean,
+          opponentSkillUncertainty: opponentSkill.skillUncertainty,
+        });
+        trophyDeltas.push({ userId: p.userId, delta, expectedWinProbability });
+        this.lastTrophyDeltaByUser.set(p.userId, delta);
         p.transport.send({
           type: 'trophy_update',
           trophies: profile.trophies,
@@ -1341,6 +1591,7 @@ export class Room {
           arena: profile.arena,
           diamonds: profile.diamonds,
           arenaReward,
+          highestArenaRewarded: profile.highestArenaRewarded,
           shielded,
           winStreak: profile.winStreak,
           bestStreak: profile.bestStreak,
@@ -1349,19 +1600,225 @@ export class Room {
         // Seviye XP'si — kupadan bağımsız, kaybeden de kazanır
         const xpRes = await awardMatchXp(p.userId, won, false);
         if (xpRes) p.transport.send({ type: 'xp_update', ...xpRes });
-      } catch {
-        // DB error — skip silently
+        const updatedSkill = await updateSkillAfterMatch(p.userId, p.trophies ?? profile.trophies, {
+          opponentType: hasBot ? 'BOT' : 'HUMAN',
+          opponentSkillMean: opponentSkill.skillMean,
+          opponentSkillUncertainty: opponentSkill.skillUncertainty,
+          won,
+          scoreFor: p.score,
+          scoreAgainst: opp?.score ?? 0,
+          rounds: this.skillRoundSignals.get(p.id) ?? [],
+        });
+        p.skillMean = updatedSkill.skillMean;
+        p.skillUncertainty = updatedSkill.skillUncertainty;
+        p.skillMatchesPlayed = updatedSkill.matchesPlayed;
+      } catch (err) {
+        log.error('settlement_error', { matchId: this.matchId, userId: p.userId, error: err instanceof Error ? err.message : String(err) });
       }
     }
+    const matchResult = hasBot ? (winner.transport.isBot ? 'loss' : 'win') : 'completed';
+    log.info('match_completed', {
+      matchId: this.matchId,
+      opponentType: hasBot ? 'BOT' : 'HUMAN',
+      result: matchResult,
+      matchResult,
+      durationSec: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0,
+      botArchetype: bot?.transport.botArchetype,
+      botSkill: bot?.transport.botSkill,
+    });
+    this.recordMatchFinishedTelemetry(winner, hasBot, trophyDeltas);
+  }
+
+  private playerSkillFor(p: Player | undefined): { skillMean: number; skillUncertainty: number; matchesPlayed: number } {
+    if (!p) return { skillMean: 1000, skillUncertainty: 240, matchesPlayed: 0 };
+    if (p.transport.isBot) {
+      return {
+        skillMean: p.transport.botSkillMean ?? Math.round(760 + (p.transport.botSkill ?? 0.5) * 920),
+        skillUncertainty: p.transport.botSkillUncertainty ?? 120,
+        matchesPlayed: 100,
+      };
+    }
+    if (typeof p.skillMean === 'number') {
+      return { skillMean: p.skillMean, skillUncertainty: p.skillUncertainty ?? 220, matchesPlayed: p.skillMatchesPlayed ?? 0 };
+    }
+    const fallback = defaultSkillProfile(p.userId ?? p.id, p.trophies ?? 0);
+    return { skillMean: fallback.skillMean, skillUncertainty: fallback.skillUncertainty, matchesPlayed: 0 };
+  }
+
+  private recordMatchFinishedTelemetry(winner: Player, hasBot: boolean, deltas: { userId: string; delta: number; expectedWinProbability?: number }[]): void {
+    if (this.matchTelemetryClosed) return;
+    this.matchTelemetryClosed = true;
+    const players = [...this.players.values()];
+    for (const p of players) {
+      if (p.transport.isBot || !p.userId) continue;
+      const opp = players.find((x) => x.id !== p.id);
+      const d = deltas.find((x) => x.userId === p.userId);
+      recordTelemetry({
+        eventName: 'match_finished',
+        matchId: this.matchId,
+        roomCode: this.code,
+        playerId: p.userId,
+        opponentId: opp?.userId ?? null,
+        opponentType: hasBot ? 'BOT' : 'HUMAN',
+        payload: {
+          matchResult: p.id === winner.id ? 'win' : 'loss',
+          opponentType: hasBot ? 'BOT' : 'HUMAN',
+          playerSkillMean: p.skillMean,
+          playerSkillUncertainty: p.skillUncertainty,
+          opponentSkillMean: this.playerSkillFor(opp).skillMean,
+          botSkill: opp?.transport.botSkill,
+          playerTrophies: p.trophies,
+          opponentTrophies: opp?.trophies,
+          expectedWinProbability: d?.expectedWinProbability,
+          trophyDelta: d?.delta,
+          scoreFor: p.score,
+          scoreAgainst: opp?.score ?? 0,
+          durationSec: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0,
+          gameMode: this.gameMode,
+        },
+      });
+    }
+  }
+
+  private recordRoundOutcome(
+    result: RoundResult,
+    question: QuestionDifficultyEstimate | null,
+    answeredBy: Player | null,
+    responseTimeMs: number | null,
+  ): void {
+    if (!this.round) return;
+    const hasBot = [...this.players.values()].some((p) => p.transport.isBot);
+    const recorded = this.round.skillSignalRecorded ??= new Set<string>();
+    for (const p of this.players.values()) {
+      const playerAnswered = result.answeredById === p.id;
+      const timedOut = result.reason === 'timeout' && !result.answeredById;
+      const correct = playerAnswered && result.correct;
+      const mistake = playerAnswered && !result.correct;
+      const signal: SkillRoundSignal = {
+        difficultyScore: question?.difficultyScore ?? p.transport.getLastQuestionDifficultyScore?.() ?? 0.5,
+        correct,
+        answered: playerAnswered,
+        responseTimeMs: playerAnswered ? responseTimeMs : null,
+        timedOut,
+        mistake: mistake || (this.round.wrongAttempts?.has(p.id) ?? false),
+        mode: this.gameMode,
+        answerPopularity: question?.answerPopularity,
+      };
+      if (!p.transport.isBot && p.userId) {
+        const list = this.skillRoundSignals.get(p.id) ?? [];
+        list.push(signal);
+        this.skillRoundSignals.set(p.id, list);
+      }
+      if (question && !recorded.has(`${question.questionKey}:${p.id}`)) {
+        recorded.add(`${question.questionKey}:${p.id}`);
+        void recordQuestionOutcome({
+          questionKey: question.questionKey,
+          mode: this.gameMode,
+          teamAId: question.teamAId,
+          teamBId: question.teamBId,
+          extraKey: question.extraKey,
+          opponentType: p.transport.isBot ? 'BOT' : 'HUMAN',
+          answered: playerAnswered,
+          correct,
+          timedOut,
+          responseTimeMs: playerAnswered ? responseTimeMs : null,
+          playerSkillMean: p.skillMean ?? null,
+        }).catch((err) => log.warn('question_outcome_failed', { room: this.code, error: err instanceof Error ? err.message : String(err) }));
+      }
+    }
+    if (answeredBy) {
+      recordTelemetry({
+        eventName: 'player_answered',
+        matchId: this.matchId,
+        roomCode: this.code,
+        playerId: answeredBy.userId ?? null,
+        opponentType: answeredBy.transport.isBot ? 'BOT' : 'HUMAN',
+        payload: {
+          questionKey: question?.questionKey,
+          questionDifficulty: question?.difficultyScore,
+          responseTimeMs,
+          correct: result.correct,
+          botCognitiveState: answeredBy.transport.getLastCognitiveState?.() ?? undefined,
+          matchScore: this.scorePayload(),
+        },
+      });
+      if (answeredBy.transport.isBot) {
+        recordTelemetry({
+          eventName: 'bot_decision_created',
+          matchId: this.matchId,
+          roomCode: this.code,
+          opponentType: 'BOT',
+          payload: {
+            questionKey: question?.questionKey,
+            botSkill: answeredBy.transport.botSkill,
+            botSkillMean: answeredBy.transport.botSkillMean,
+            botCognitiveState: answeredBy.transport.getLastCognitiveState?.() ?? undefined,
+            chosenReactionDelay: answeredBy.transport.getLastGuessDelayMs?.(),
+            decision: answeredBy.transport.getLastDecision?.(),
+          },
+        });
+      }
+    }
+    recordTelemetry({
+      eventName: 'round_finished',
+      matchId: this.matchId,
+      roomCode: this.code,
+      opponentType: hasBot ? 'BOT' : 'HUMAN',
+      payload: {
+        questionKey: question?.questionKey,
+        questionDifficulty: question?.difficultyScore,
+        answeredById: result.answeredById,
+        answeredByBot: answeredBy?.transport.isBot ?? false,
+        correct: result.correct,
+        reason: result.reason,
+        responseTimeMs,
+        score: this.scorePayload(),
+      },
+    });
+  }
+
+  private scorePayload(): { players: { name: string; score: number; isBot: boolean }[] } {
+    return { players: [...this.players.values()].map((p) => ({ name: p.name, score: p.score, isBot: p.transport.isBot })) };
+  }
+
+  private async claimSettlement(reason: string): Promise<boolean> {
+    if (this.settlementStarted) {
+      log.warn('duplicate_settlement_prevented', { matchId: this.matchId, reason, room: this.code });
+      return false;
+    }
+    this.settlementStarted = true;
+    try {
+      await pool.query(
+        `INSERT INTO match_settlements(match_id, room_code, reason) VALUES($1, $2, $3)`,
+        [this.matchId, this.code, reason],
+      );
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === '23505') {
+        log.warn('duplicate_settlement_prevented', { matchId: this.matchId, reason, room: this.code, source: 'db' });
+        return false;
+      }
+      // Backward-compatible deploy safety: if the additive migration was not run
+      // yet, keep the in-memory guard active rather than blocking live matches.
+      if (code !== '42P01') throw err;
+      log.warn('settlement_table_missing', { matchId: this.matchId, room: this.code });
+    }
+    log.info('match_settlement_started', { matchId: this.matchId, reason, room: this.code, ranked: this.ranked, rankedBotRewards: this.rankedBotRewards });
+    return true;
   }
 
   // ---- rematch ----
   private requestRematch(playerId: string): void {
     if (this.status !== 'result' || !this.matchOver) return;
-    if (this.rematchBy && this.rematchBy !== playerId) return this.startMatch();
+    if (this.rematchBy && this.rematchBy !== playerId) {
+      const p = this.players.get(playerId);
+      recordTelemetry({ eventName: 'rematch_accepted', matchId: this.matchId, roomCode: this.code, playerId: p?.userId ?? null, opponentType: [...this.players.values()].some((x) => x.transport.isBot) ? 'BOT' : 'HUMAN' });
+      return this.startMatch();
+    }
     this.rematchBy = playerId;
     const p = this.players.get(playerId);
     this.sendTo(playerId, { type: 'rematch_waiting' });
+    recordTelemetry({ eventName: 'rematch_offered', matchId: this.matchId, roomCode: this.code, playerId: p?.userId ?? null, opponentType: [...this.players.values()].some((x) => x.transport.isBot) ? 'BOT' : 'HUMAN' });
     for (const [id, other] of this.players) {
       if (id === playerId) continue;
       other.transport.send({ type: 'rematch_requested', byId: playerId, byName: p?.name ?? '' });
@@ -1371,6 +1828,8 @@ export class Room {
   private respondRematch(playerId: string, accept: boolean): void {
     if (!this.rematchBy || this.rematchBy === playerId) return;
     if (accept) {
+      const p = this.players.get(playerId);
+      recordTelemetry({ eventName: 'rematch_accepted', matchId: this.matchId, roomCode: this.code, playerId: p?.userId ?? null, opponentType: [...this.players.values()].some((x) => x.transport.isBot) ? 'BOT' : 'HUMAN' });
       this.startMatch();
     } else {
       this.sendTo(this.rematchBy, { type: 'rematch_declined' });
@@ -1415,6 +1874,7 @@ export class Room {
       wrongCount: p.wrongCount,
       isHost: p.isHost,
       connected: p.connected,
+      isBot: p.transport.isBot,
       trophies: p.trophies,
       arena: p.arena,
       avatar: p.avatar,

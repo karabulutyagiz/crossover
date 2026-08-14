@@ -28,6 +28,10 @@
     "playtest": "tsx src/cli/playtest.ts",
     "bot": "tsx src/cli/bot.ts",
     "test:difficulty": "tsx src/cli/difftest-invariants.ts",
+    "test:hybrid-matchmaking": "tsx src/cli/hybridmatchtest.ts",
+    "test:opponent-system": "tsx src/cli/opponent-invariants.ts",
+    "sim:opponent": "tsx src/cli/opponent-sim.ts",
+    "check:protocol": "tsx src/cli/check-protocol-drift.ts",
     "probe:difficulty": "tsx src/cli/difftest.ts",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
     "check:production": "node src/cli/production-check.mjs"

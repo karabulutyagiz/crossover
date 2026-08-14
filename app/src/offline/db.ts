@@ -143,6 +143,7 @@ export async function initOfflineDB(): Promise<void> {
   await bulk('spells', 4, require('./data/spells-3.json') as ExSpell[], toSpell, false);
   await breathe();
   await bulk('spells', 4, require('./data/spells-4.json') as ExSpell[], toSpell, false);
+  await seedCuratedCorrections(d);
 
   // Indexes for fast lookups
   await db.execAsync('CREATE INDEX IF NOT EXISTS idx_spells_club ON spells(club_id)');
@@ -150,6 +151,32 @@ export async function initOfflineDB(): Promise<void> {
 
   await AsyncStorage.setItem(DATA_VERSION_KEY, CURRENT_VERSION);
   console.log('[offline] DB ready');
+}
+
+async function seedCuratedCorrections(d: any): Promise<void> {
+  await d.runAsync(
+    `INSERT OR REPLACE INTO clubs (id, name, norm, country, league, logo)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [5743, 'Tuğranspor', 'tugranspor turan spor turanspor sekerspor seker spor etimesgut sekerspor', 'Türkiye', 'TR1', 'https://tmssl.akamaized.net//images/wappen/big/5743.png'],
+  );
+  await d.runAsync(
+    `INSERT OR REPLACE INTO clubs (id, name, norm, country, league, logo)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [1291, 'Siirt JetPA Spor', 'siirtjetpa siirt jetpa siirt jet pa siirtspor siirtspor 1969 2014', 'Türkiye', 'TR1', 'https://tmssl.akamaized.net//images/wappen/big/1291.png'],
+  );
+  await d.runAsync(
+    `INSERT OR IGNORE INTO players (id, name, norm, nat, img)
+     VALUES (?, ?, ?, ?, ?)`,
+    [6904, 'Sergen Yalçın', 'sergen yalcin', 'Türkiye', 'https://img.a.transfermarkt.technology/portrait/header/6904-1750689958.jpeg?lm=1'],
+  );
+  await d.runAsync(
+    `INSERT INTO spells (player_id, club_id, start_year, end_year)
+     SELECT ?, ?, ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM spells WHERE player_id = ? AND club_id = ? AND start_year = ?
+      )`,
+    [6904, 1291, 1999, 2002, 6904, 1291, 1999],
+  );
 }
 
 function getDB(): any {

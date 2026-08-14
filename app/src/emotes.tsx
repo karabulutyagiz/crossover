@@ -95,6 +95,8 @@ export const PREMIUM_EMOTES: EmoteMeta[] = [
     premium: { name: 'Taktik Tahtası', price: 300, desc: '' } },
   { id: 'euro2024', kind: 'lottieJson', phrase: '', color: theme.gold, week: 1, animJson: logoEmoji,
     premium: { name: 'EURO 2024', price: 500, desc: '' } },
+  { id: 'diez_jersey_raise', kind: 'lottie', phrase: '', color: theme.gold, week: 2, anim: require('../assets/emotes/diez-jersey-raise.webp'), still: require('../assets/emotes/still-diez-jersey-raise.png'),
+    premium: { name: 'El Diez Forma', price: 500, desc: '' } },
 ];
 
 // Animated emotes (rendered from the downloaded Lottie files into looping WebPs).

@@ -766,7 +766,7 @@ function AppRoot() {
   // kutlaması da popup kapatıldıktan SONRA zincirlenir — maç ekranı temiz kalır.
   const [matchOverPopup, setMatchOverPopup] = useState<null | {
     youWon: boolean; youScore: number; oppScore: number; youWrong: number; oppWrong: number;
-    winnerName: string | null; trophyDelta: NonNullable<GameState['trophyDelta']>;
+    winnerName: string | null; trophyDelta: NonNullable<GameState['trophyDelta']>; reason?: 'cheat';
   }>(null);
   const matchOverCaptured = useRef(false);
   const [levelRoadOpen, setLevelRoadOpen] = useState(false);
@@ -804,6 +804,7 @@ function AppRoot() {
       oppWrong: 0,
       winnerName: fl.opponentName,
       trophyDelta: { trophies: fl.trophies, delta: fl.delta, arena: fl.arena, arenaReward: 0, shielded: false },
+      reason: fl.reason,
     });
   }, [state.forfeitLoss]);
   // Rövanş/yeni maç başlarsa bekleyen popup düşer (bayat maçın popup'ı gösterilmez).
@@ -1073,23 +1074,30 @@ function AppRoot() {
     return () => sub.remove();
   }, [badgeTotal]);
 
-  // ANTI-CHEAT: backgrounding the app mid-match (PvP) = instant forfeit — the
-  // known abuse is switching out to look the answer up. Only a real
-  // 'background' triggers ('inactive' — control center, call banner, app
-  // switcher peek — is NOT punished). Bot matches, tutorial (fake state),
-  // lobby/searching and finished matches are exempt.
-  const forfeitCtxRef = useRef<{ eligible: boolean; forfeit: () => void }>({ eligible: false, forfeit: () => {} });
+  // ANTI-CHEAT: leaving the app mid-match (PvP) = instant forfeit. iOS often
+  // reports app-switch/home gestures as 'inactive' before 'background', so both
+  // states are punished during the competitive window. Lobby/searching and
+  // finished matches are exempt.
+  const forfeitCtxRef = useRef<{ eligible: boolean; forfeit: () => void; fired: boolean }>({ eligible: false, forfeit: () => {}, fired: false });
+  const opponentIsBot = state.room?.players.some((p) => p.id !== state.room?.youId && p.isBot) ?? false;
   forfeitCtxRef.current = {
     eligible:
       !!state.room &&
       !state.matchOver &&
-      !state.room.players.some((p) => p.name === 'Bot') &&
+      state.isQuickMatch &&
+      state.room.players.length === 2 &&
+      !opponentIsBot &&
       FORFEIT_PHASES.has(state.phase),
     forfeit: actions.forfeitFromBackground,
+    fired: forfeitCtxRef.current.fired,
   };
   useEffect(() => {
     const sub = AppState.addEventListener('change', (st) => {
-      if (st === 'background' && forfeitCtxRef.current.eligible) forfeitCtxRef.current.forfeit();
+      if ((st === 'inactive' || st === 'background') && forfeitCtxRef.current.eligible && !forfeitCtxRef.current.fired) {
+        forfeitCtxRef.current.fired = true;
+        forfeitCtxRef.current.forfeit();
+      }
+      if (st === 'active') forfeitCtxRef.current.fired = false;
     });
     return () => sub.remove();
   }, []);
@@ -1270,9 +1278,11 @@ function AppRoot() {
         />
         <OpponentForfeitModal
           visible={state.opponentForfeit}
+          reason={state.opponentForfeitReason}
           onFindNew={actions.findMatchAgain}
           onGoHome={actions.leave}
           trophyDelta={state.trophyDelta}
+          showFindNew={state.isQuickMatch}
         />
       </View>
     );
@@ -1487,6 +1497,7 @@ function AppRoot() {
       <LeaderboardModal
         visible={overlay === 'leaderboard'}
         entries={state.leaderboard}
+        myUserId={state.profile?.userId}
         onClose={() => setOverlay(null)}
         // Profil isteği HEMEN gider (ağ gecikmesi kapanış animasyonuyla örtüşür);
         // sunum güvenliği kör zamanlayıcıya değil SafeModal kuyruğuna emanet —
@@ -1501,7 +1512,7 @@ function AppRoot() {
             setEntryProfile({
               userId: e.userId, displayName: e.displayName, selectedAvatar: e.avatar ?? '',
               trophies: e.trophies, wins: e.wins, losses: e.losses, arena: e.arena,
-              avatar: e.avatar, frame: e.frame,
+              avatar: e.avatar, frame: e.frame, isBot: e.isBot,
             });
           }
           actions.getUserProfile(userId);
@@ -1519,6 +1530,7 @@ function AppRoot() {
         }}
         // Liderlik tablosundan bakılan profil: arkadaş değilse tek dokunuşla istek
         relation={!shownProfile ? undefined
+          : shownProfile.isBot ? 'friend'
           : shownProfile.userId === state.profile?.userId ? 'self'
           : state.friends.some((f) => f.userId === shownProfile.userId) ? 'friend'
           : 'none'}
@@ -1537,6 +1549,7 @@ function AppRoot() {
             oppWrong={matchOverPopup.oppWrong}
             winnerName={matchOverPopup.winnerName}
             trophyDelta={matchOverPopup.trophyDelta}
+            reason={matchOverPopup.reason}
             xpGained={state.xpGain?.gained ?? null}
           />
           <View style={{ maxWidth: 320, width: '100%', alignSelf: 'center' }}>

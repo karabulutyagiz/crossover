@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomManager } from '../rooms/manager.ts';
@@ -6,7 +7,7 @@ import { listScopes, listNationalities } from '../game/verify.ts';
 import {
   findOrCreateUser, findOrCreateUserByProvider, createGuestUser, getUser, changeDisplayName,
   grantDevEmotesIfNeeded,
-  setUsername, buyEmote, setEquippedEmotes, setAvatar, setSelectedFrame, buyAvatar, touchLastSeen, getLeaderboard, grantAdReward, usePower, getModeStats, getRankedProfileStats, buyPremiumRoad, buyPower,
+  setUsername, buyEmote, setEquippedEmotes, setAvatar, setSelectedFrame, buyAvatar, touchLastSeen, getLeaderboard, grantAdReward, usePower, getModeStats, getRankedProfileStats, buyPremiumRoad, buyPower, getLeaderboardBotProfile, getBotPressureProfile,
   listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
   removeFriend, searchUsers, getMatchHistory, deleteAccount, recordPlaySession,
   type UserProfile,
@@ -35,6 +36,12 @@ import { registerPushToken, sendPushToUsers, startPushCrons } from '../game/push
 import { pool } from '../db/pool.ts';
 import { log } from '../logger.ts';
 import { config } from '../config.ts';
+import { validateClientMsg } from './validateClientMsg.ts';
+import { MatchmakingOrchestrator, randomBotFallbackDelayMs, shouldUseBotFallback, type HybridMatchmakingConfig, type MatchmakingState } from '../matchmaking/policy.ts';
+import { selectBotProfileForSkill, type BotProfile } from '../matchmaking/botProfiles.ts';
+import { defaultSkillProfile, getOrCreateSkillProfile, type SkillProfile } from '../matchmaking/skillRating.ts';
+import { getTrophyVelocity } from '../matchmaking/trophyIntegrity.ts';
+import { getOpponentKpis, recordTelemetry } from '../matchmaking/telemetry.ts';
 import type { Room, Transport } from '../rooms/room.ts';
 import type { MessageView, ConversationView } from '../protocol.ts';
 import type { ClientMsg, GameMode, ProfileView, ServerMsg } from '../protocol.ts';
@@ -80,6 +87,7 @@ function toProfileView(p: UserProfile): ProfileView {
     premiumRoad: p.premiumRoad,
     claimedPremium: p.claimedPremium,
     ownedFrames: p.ownedFrames,
+    highestArenaRewarded: p.highestArenaRewarded,
   };
 }
 
@@ -93,6 +101,13 @@ function wsTransport(ws: WebSocket): Transport {
 }
 
 interface QueueEntry {
+  requestId?: string;
+  state?: MatchmakingState;
+  assigned?: boolean;
+  timers?: Set<ReturnType<typeof setTimeout>>;
+  fallbackAt?: number;
+  botProfile?: BotProfile;
+  skillProfile?: SkillProfile;
   transport: Transport;
   ws: WebSocket;
   name: string;
@@ -107,20 +122,42 @@ const SOCIAL_PACK_REQUIRED = 'Bu mod için iki oyuncuda da Sosyal Paket aktif ol
 const RATE_WINDOW_MS = 10_000;
 const RATE_MAX_MESSAGES = 90;
 const RATE_MAX_TYPING = 120; // separate lane: exempt-from-main-cap typing still can't flood
-// Ranked pairing: match on trophy proximity, NOT arena identity — two players a
-// couple of matches apart (e.g. 500 vs 450) must pair even across an arena border.
-// The band WIDENS with the waiting player's queue time (seyrek kuyrukta ±100
-// dışındaki oyuncu süresiz bekliyordu): +100 kupa her 15 sn'de, tavan ±1000.
-// Eşleşme yalnız yeni bir find_match geldiğinde denendiği için zamanlayıcı yok —
-// bekleyenin o ana kadarki süresi bandı büyütür.
-const MATCH_TROPHY_RANGE = 100;
-const MATCH_RANGE_WIDEN_STEP = 100;
-const MATCH_RANGE_WIDEN_EVERY_MS = 15_000;
-const MATCH_RANGE_MAX = 1000;
+function hybridCfg(): HybridMatchmakingConfig {
+  return config.matchmaking;
+}
 
-function queueTrophyRange(waitedMs: number): number {
-  const widened = MATCH_TROPHY_RANGE + Math.floor(waitedMs / MATCH_RANGE_WIDEN_EVERY_MS) * MATCH_RANGE_WIDEN_STEP;
-  return Math.min(MATCH_RANGE_MAX, widened);
+function sameScope(a: import('../protocol.ts').Scope | undefined, b: import('../protocol.ts').Scope | undefined): boolean {
+  const aa = a ?? { type: 'all' as const };
+  const bb = b ?? { type: 'all' as const };
+  return aa.type === bb.type && ('value' in aa ? aa.value : '') === ('value' in bb ? bb.value : '');
+}
+
+function clearQueueTimers(entry: QueueEntry): void {
+  for (const t of entry.timers ?? []) clearTimeout(t);
+  entry.timers?.clear();
+}
+
+function removeQueueEntry(queue: QueueEntry[], entry: QueueEntry): void {
+  const idx = queue.indexOf(entry);
+  if (idx >= 0) queue.splice(idx, 1);
+}
+
+function cancelQueueEntry(queue: QueueEntry[], entry: QueueEntry, reason: string): void {
+  if (entry.assigned) return;
+  entry.assigned = true;
+  entry.state = 'CANCELLED';
+  clearQueueTimers(entry);
+  removeQueueEntry(queue, entry);
+  log.info('matchmaking_cancelled', { requestId: entry.requestId, userId: entry.userProfile?.id ?? entry.userId, reason, durationMs: Date.now() - entry.since });
+}
+
+function reserveQueueEntry(queue: QueueEntry[], entry: QueueEntry): boolean {
+  if (entry.assigned || entry.state === 'CANCELLED' || entry.ws.readyState !== entry.ws.OPEN) return false;
+  entry.assigned = true;
+  entry.state = 'OPPONENT_RESERVED';
+  clearQueueTimers(entry);
+  removeQueueEntry(queue, entry);
+  return true;
 }
 
 function remoteIp(req: import('node:http').IncomingMessage): string {
@@ -242,9 +279,339 @@ export function startServer(port: number): Server {
   const manager = new RoomManager();
   startPushCrons();
   const matchQueue: QueueEntry[] = [];
+  const orchestrator = new MatchmakingOrchestrator(hybridCfg());
   const pendingInvites = new Map<string, PendingInvite>(); // `${fromUserId}:${toUserId}`
+  const activeSearchByWs = new WeakMap<WebSocket, string>();
+
+  function failQueuedSearch(entry: QueueEntry, event: string, message: string, extra: Record<string, unknown> = {}): void {
+    entry.assigned = true;
+    entry.state = 'FAILED';
+    clearQueueTimers(entry);
+    removeQueueEntry(matchQueue, entry);
+    activeSearchByWs.delete(entry.ws);
+    log.warn(event, {
+      requestId: entry.requestId,
+      userId: entry.userProfile?.id ?? entry.userId,
+      searchDurationMs: Date.now() - entry.since,
+      startingTrophies: entryTrophies(entry),
+      ...extra,
+    });
+    try { entry.transport.send({ type: 'error', message }); } catch { /* ignore */ }
+    try { entry.ws.close(); } catch { /* ignore */ }
+  }
+
+  function safeAutoStart(room: Room, playerId: string, source: string, requestId?: string): void {
+    try {
+      if (room.size === 2) room.handle(playerId, { type: 'start' });
+    } catch (err) {
+      log.error('room_autostart_failed', {
+        source,
+        requestId,
+        room: room.code,
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+    }
+  }
+
+  function reservePair(a: QueueEntry, b: QueueEntry): boolean {
+    if (a === b || a.assigned || b.assigned || a.ws.readyState !== a.ws.OPEN || b.ws.readyState !== b.ws.OPEN) {
+      log.warn('duplicate_assignment_prevented', { a: a.requestId, b: b.requestId, reason: 'pair_reserve_failed' });
+      return false;
+    }
+    a.assigned = true; b.assigned = true;
+    a.state = 'OPPONENT_RESERVED'; b.state = 'OPPONENT_RESERVED';
+    clearQueueTimers(a); clearQueueTimers(b);
+    removeQueueEntry(matchQueue, a); removeQueueEntry(matchQueue, b);
+    if (a.requestId) activeSearchByWs.delete(a.ws);
+    if (b.requestId) activeSearchByWs.delete(b.ws);
+    return true;
+  }
+
+  function entryMode(e: QueueEntry): GameMode { return e.options?.mode ?? 'team-team'; }
+  function entryTrophies(e: QueueEntry): number { return e.userProfile?.trophies ?? 0; }
+  function entrySkillMean(e: QueueEntry): number | undefined { return e.skillProfile?.skillMean; }
+  function entrySkillUncertainty(e: QueueEntry): number | undefined { return e.skillProfile?.skillUncertainty; }
+
+  function findHumanPartner(entry: QueueEntry): QueueEntry | undefined {
+    if (config.matchmaking.debug.simulateNoOnlinePlayers || config.matchmaking.debug.forceBot) return undefined;
+    const now = Date.now();
+    return matchQueue.find((e) => {
+      if (e === entry || e.assigned || e.ws.readyState !== e.ws.OPEN) return false;
+      const mode = entryMode(entry);
+      return entryMode(e) === mode
+        && sameScope(e.options?.scope, entry.options?.scope)
+        && canUseMode(e.userProfile, mode)
+        && orchestrator.compatibleHumans(
+          { trophies: entryTrophies(e), skillMean: entrySkillMean(e), skillUncertainty: entrySkillUncertainty(e), elapsedMs: now - e.since },
+          { trophies: entryTrophies(entry), skillMean: entrySkillMean(entry), skillUncertainty: entrySkillUncertainty(entry), elapsedMs: now - entry.since },
+        );
+    });
+  }
+
+  function hasPotentialHumanPartner(entry: QueueEntry): boolean {
+    if (config.matchmaking.debug.simulateNoOnlinePlayers || config.matchmaking.debug.forceBot) return false;
+    const mode = entryMode(entry);
+    return matchQueue.some((e) => {
+      if (e === entry || e.assigned || e.ws.readyState !== e.ws.OPEN) return false;
+      return entryMode(e) === mode
+        && sameScope(e.options?.scope, entry.options?.scope)
+        && canUseMode(e.userProfile, mode)
+        && orchestrator.potentialHuman(
+          { trophies: entryTrophies(e), skillMean: entrySkillMean(e), skillUncertainty: entrySkillUncertainty(e) },
+          { trophies: entryTrophies(entry), skillMean: entrySkillMean(entry), skillUncertainty: entrySkillUncertainty(entry) },
+        );
+    });
+  }
+
+  function startHumanMatch(a: QueueEntry, b: QueueEntry): boolean {
+    if (!reservePair(a, b)) return false;
+    const room = manager.createRoom();
+    room.ranked = true;
+    if (a.options?.scope) room.scope = a.options.scope;
+    room.gameMode = entryMode(a);
+    a.state = 'MATCH_FOUND'; b.state = 'MATCH_FOUND';
+    const resA = room.addPlayer(a.name, a.transport, true, a.userProfile?.id ?? a.userId, a.userProfile?.trophies, a.userProfile?.arena, a.userProfile?.avatar, a.userProfile?.level, a.userProfile?.selectedFrame, a.skillProfile?.skillMean, a.skillProfile?.skillUncertainty, a.skillProfile?.matchesPlayed);
+    const resB = room.addPlayer(b.name, b.transport, false, b.userProfile?.id ?? b.userId, b.userProfile?.trophies, b.userProfile?.arena, b.userProfile?.avatar, b.userProfile?.level, b.userProfile?.selectedFrame, b.skillProfile?.skillMean, b.skillProfile?.skillUncertainty, b.skillProfile?.matchesPlayed);
+    if (resA.ok) a.setCtx({ room, playerId: resA.id, userProfile: a.userProfile });
+    if (resB.ok) b.setCtx({ room, playerId: resB.id, userProfile: b.userProfile });
+    a.state = 'STARTING_MATCH'; b.state = 'STARTING_MATCH';
+    const now = Date.now();
+    log.info('human_match_found', {
+      requestIdA: a.requestId, requestIdB: b.requestId,
+      searchDurationMs: Math.max(now - a.since, now - b.since),
+      startingTrophiesA: entryTrophies(a), startingTrophiesB: entryTrophies(b),
+      trophyDifference: Math.abs(entryTrophies(a) - entryTrophies(b)),
+      mode: room.gameMode,
+    });
+    recordTelemetry({
+      eventName: 'human_opponent_found',
+      roomCode: room.code,
+      playerId: a.userProfile?.id ?? a.userId ?? null,
+      opponentId: b.userProfile?.id ?? b.userId ?? null,
+      opponentType: 'HUMAN',
+      payload: {
+        requestIdA: a.requestId,
+        requestIdB: b.requestId,
+        queueDuration: Math.max(now - a.since, now - b.since),
+        playerSkillMean: a.skillProfile?.skillMean,
+        opponentSkillMean: b.skillProfile?.skillMean,
+        playerTrophies: entryTrophies(a),
+        opponentTrophies: entryTrophies(b),
+        trophyDifference: Math.abs(entryTrophies(a) - entryTrophies(b)),
+        skillDifference: Math.abs((a.skillProfile?.skillMean ?? 0) - (b.skillProfile?.skillMean ?? 0)),
+        mode: room.gameMode,
+      },
+    });
+    setTimeout(() => safeAutoStart(room, resA.ok ? resA.id : '', 'human_match', a.requestId), 3500);
+    return true;
+  }
+
+  async function startBotMatch(entry: QueueEntry): Promise<boolean> {
+    if (!reserveQueueEntry(matchQueue, entry)) {
+      log.warn('duplicate_assignment_prevented', { requestId: entry.requestId, reason: 'bot_reserve_failed' });
+      return false;
+    }
+    const playerTrophies = entryTrophies(entry);
+    const pressureProfile = entry.userProfile?.id
+      ? await getBotPressureProfile(entry.userProfile.id).catch(() => ({ pressure: 0, relief: 0, botWins: 0, botGames: 0, recentWins: 0, recentGames: 0, winStreak: 0, trophyGain30m: 0, botWins30m: 0 }))
+      : undefined;
+    const skillProfile = entry.skillProfile ?? (entry.userProfile?.id
+      ? await getOrCreateSkillProfile(entry.userProfile.id, playerTrophies).catch((err) => {
+        log.warn('bot_skill_profile_fallback', {
+          requestId: entry.requestId,
+          userId: entry.userProfile?.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return defaultSkillProfile(entry.userProfile!.id, playerTrophies);
+      })
+      : undefined);
+    const velocity = entry.userProfile?.id ? await getTrophyVelocity(entry.userProfile.id).catch(() => ({ pressure: 0 })) : { pressure: 0 };
+    const botProfile = selectBotProfileForSkill({
+      userKey: entry.userProfile?.id ?? entry.userId ?? entry.requestId ?? entry.name,
+      playerTrophies,
+      playerSkillMean: skillProfile?.skillMean ?? 1000,
+      playerSkillUncertainty: skillProfile?.skillUncertainty ?? 350,
+      playerMatchesPlayed: skillProfile?.matchesPlayed ?? 0,
+      recentCooldown: config.matchmaking.recentBotCooldown,
+      forcedArchetype: config.matchmaking.debug.botArchetype,
+      forcedSkill: config.matchmaking.debug.botSkill,
+      pressureProfile,
+      velocityPressure: velocity.pressure,
+      seed: `${entry.requestId ?? entry.userId ?? entry.name}:${Date.now()}`,
+    });
+    entry.botProfile = botProfile;
+    const room = manager.createRoom();
+    room.ranked = true;
+    room.rankedBotRewards = true;
+    if (entry.options?.scope) room.scope = entry.options.scope;
+    room.gameMode = entryMode(entry);
+    log.info('bot_fallback_started', {
+      requestId: entry.requestId,
+      searchDurationMs: Date.now() - entry.since,
+      startingTrophies: playerTrophies,
+      arena: entry.userProfile?.arena.name,
+      botArchetype: botProfile.behaviorArchetype,
+      botSkill: Number(botProfile.skillRating.toFixed(3)),
+      botPressure: pressureProfile?.pressure,
+      botRelief: pressureProfile?.relief,
+      botWins: pressureProfile?.botWins,
+      botGames: pressureProfile?.botGames,
+      botWinStreak: pressureProfile?.winStreak,
+      trophyGain30m: pressureProfile?.trophyGain30m,
+      botWins30m: pressureProfile?.botWins30m,
+      trophyDifference: botProfile.trophyRating - playerTrophies,
+      playerSkillMean: skillProfile?.skillMean,
+      playerSkillUncertainty: skillProfile?.skillUncertainty,
+      botSkillMean: botProfile.skillMean,
+    });
+    recordTelemetry({
+      eventName: 'bot_fallback_created',
+      roomCode: room.code,
+      playerId: entry.userProfile?.id ?? entry.userId ?? null,
+      opponentType: 'BOT',
+      payload: {
+        requestId: entry.requestId,
+        queueDuration: Date.now() - entry.since,
+        playerSkillMean: skillProfile?.skillMean,
+        playerSkillUncertainty: skillProfile?.skillUncertainty,
+        botSkill: botProfile.skillRating,
+        botSkillMean: botProfile.skillMean,
+        botArchetype: botProfile.behaviorArchetype,
+        playerTrophies,
+        opponentTrophies: botProfile.trophyRating,
+        trophyVelocityPressure: velocity.pressure,
+        mode: room.gameMode,
+      },
+    });
+    if (entry.userProfile?.id) {
+      pool.query(
+        `INSERT INTO bot_opponent_history (user_id, bot_id, bot_name, archetype, skill_mean)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [entry.userProfile.id, botProfile.id, botProfile.displayName, botProfile.behaviorArchetype, botProfile.skillMean],
+      ).catch(() => {});
+    }
+    const human = room.addPlayer(entry.name, entry.transport, true, entry.userProfile?.id ?? entry.userId, entry.userProfile?.trophies, entry.userProfile?.arena, entry.userProfile?.avatar, entry.userProfile?.level, entry.userProfile?.selectedFrame, skillProfile?.skillMean, skillProfile?.skillUncertainty, skillProfile?.matchesPlayed);
+    const bot = new BotPlayer({ difficulty: botProfile.difficulty, scope: room.scope, mode: room.gameMode, profile: botProfile });
+    const botRes = room.addPlayer(botProfile.displayName, bot, false, undefined, botProfile.trophyRating, botProfile.arena, botProfile.avatarId, botProfile.level, botProfile.frame, botProfile.skillMean, botProfile.skillUncertainty, 100);
+    if (human.ok) entry.setCtx({ room, playerId: human.id, userProfile: entry.userProfile });
+    if (botRes.ok) bot.bind(room, botRes.id);
+    entry.state = 'STARTING_MATCH';
+    log.info('bot_match_started', {
+      requestId: entry.requestId,
+      searchDurationMs: Date.now() - entry.since,
+      startingTrophies: playerTrophies,
+      opponentTrophies: botProfile.trophyRating,
+      botArchetype: botProfile.behaviorArchetype,
+      botSkill: Number(botProfile.skillRating.toFixed(3)),
+      mode: room.gameMode,
+    });
+    setTimeout(() => safeAutoStart(room, human.ok ? human.id : '', 'bot_match', entry.requestId), 3500);
+    return true;
+  }
+
+  function enqueueHybrid(entry: QueueEntry): void {
+    const cfg = hybridCfg();
+    entry.state = 'SEARCHING_CLOSE';
+    entry.timers ??= new Set();
+    log.info('matchmaking_started', {
+      requestId: entry.requestId,
+      userId: entry.userProfile?.id ?? entry.userId,
+      startingTrophies: entryTrophies(entry),
+      arena: entry.userProfile?.arena.name,
+      mode: entryMode(entry),
+      botFallbackEnabled: config.matchmaking.botFallbackEnabled,
+      botFallbackPercentage: config.matchmaking.botFallbackPercentage,
+      skillMean: entry.skillProfile?.skillMean,
+      skillUncertainty: entry.skillProfile?.skillUncertainty,
+    });
+    recordTelemetry({
+      eventName: 'matchmaking_started',
+      playerId: entry.userProfile?.id ?? entry.userId ?? null,
+      payload: {
+        requestId: entry.requestId,
+        playerSkillMean: entry.skillProfile?.skillMean,
+        playerSkillUncertainty: entry.skillProfile?.skillUncertainty,
+        playerTrophies: entryTrophies(entry),
+        mode: entryMode(entry),
+        botFallbackEnabled: config.matchmaking.botFallbackEnabled,
+      },
+    });
+
+    const immediate = findHumanPartner(entry);
+    if (immediate && startHumanMatch(immediate, entry)) return;
+
+    matchQueue.push(entry);
+    entry.transport.send({ type: 'searching' });
+
+    const expandedTimer = setTimeout(() => {
+      if (entry.assigned || entry.ws.readyState !== entry.ws.OPEN) return;
+      entry.state = 'SEARCHING_EXPANDED';
+      log.info('matchmaking_expanded', { requestId: entry.requestId, userId: entry.userProfile?.id ?? entry.userId, searchDurationMs: Date.now() - entry.since, range: cfg.expandedTrophyRange });
+    }, cfg.realPlayerSearchWindowMs);
+    entry.timers.add(expandedTimer);
+
+    const fallbackDelay = randomBotFallbackDelayMs(cfg, matchQueue.length);
+    entry.fallbackAt = entry.since + fallbackDelay;
+    const scheduleFallbackAttempt = (delayMs: number) => {
+      const t = setTimeout(() => {
+        entry.timers?.delete(t);
+        if (entry.assigned || entry.ws.readyState !== entry.ws.OPEN) return;
+        const partner = findHumanPartner(entry);
+        if (partner && startHumanMatch(partner, entry)) return;
+        if (config.matchmaking.debug.forceHumanSearch || config.matchmaking.debug.simulateTimeout) return;
+        if (!config.matchmaking.botFallbackEnabled && !config.matchmaking.debug.forceBot) return;
+        if (!config.matchmaking.debug.forceBot && !shouldUseBotFallback(config.matchmaking.botFallbackPercentage)) return;
+
+        const elapsedMs = Date.now() - entry.since;
+        const potentialHuman = hasPotentialHumanPartner(entry);
+        if (!config.matchmaking.debug.forceBot && orchestrator.shouldHoldForHuman(elapsedMs, potentialHuman)) {
+          log.info('bot_fallback_deferred_for_human_liquidity', {
+            requestId: entry.requestId,
+            userId: entry.userProfile?.id ?? entry.userId,
+            searchDurationMs: elapsedMs,
+            retryMs: cfg.botFallbackRetryMs,
+            potentialQueueDepth: matchQueue.length - 1,
+          });
+          scheduleFallbackAttempt(cfg.botFallbackRetryMs);
+          return;
+        }
+
+        void startBotMatch(entry).catch((err) => {
+          log.error('bot_match_start_failed', { requestId: entry.requestId, error: err instanceof Error ? err.message : String(err) });
+          failQueuedSearch(entry, 'matchmaking_bot_start_failed', 'Rakip bulunamadı', { error: err instanceof Error ? err.message : String(err) });
+        });
+      }, Math.max(0, delayMs));
+      entry.timers?.add(t);
+    };
+    scheduleFallbackAttempt(fallbackDelay);
+
+    const timeoutTimer = setTimeout(() => {
+      if (entry.assigned || entry.ws.readyState !== entry.ws.OPEN) return;
+      const partner = findHumanPartner(entry);
+      if (partner && startHumanMatch(partner, entry)) return;
+      if (config.matchmaking.debug.forceHumanSearch || config.matchmaking.debug.simulateTimeout) {
+        failQueuedSearch(entry, 'matchmaking_timeout', 'Rakip bulunamadı, tekrar dene');
+        return;
+      }
+      log.warn('matchmaking_timeout_bot_safety', {
+        requestId: entry.requestId,
+        userId: entry.userProfile?.id ?? entry.userId,
+        searchDurationMs: Date.now() - entry.since,
+        startingTrophies: entryTrophies(entry),
+      });
+      void startBotMatch(entry).catch((err) => {
+        log.error('bot_match_start_failed', { requestId: entry.requestId, reason: 'timeout_safety', error: err instanceof Error ? err.message : String(err) });
+        failQueuedSearch(entry, 'matchmaking_timeout_bot_failed', 'Rakip bulunamadı, tekrar dene', { error: err instanceof Error ? err.message : String(err) });
+      });
+    }, cfg.matchmakingTimeoutMs);
+    entry.timers.add(timeoutTimer);
+  }
+
   const http = createServer((req, res) => {
-    const cors = { 'content-type': 'application/json', 'access-control-allow-origin': '*' };
+    const cors = { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'cache-control': 'no-store', pragma: 'no-cache' };
+    const path = (req.url ?? '').split('?')[0];
+    const query = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
     if (req.url === '/health') {
       res.writeHead(200, cors);
       res.end(JSON.stringify({ ok: true, rooms: manager.count }));
@@ -259,6 +626,23 @@ export function startServer(port: number): Server {
       }));
       return;
     }
+    if (path === '/admin/api/opponent-kpis') {
+      const auth = req.headers['authorization'] ?? '';
+      const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+      if (!verifyToken(token)) {
+        res.writeHead(401, cors);
+        res.end(JSON.stringify({ error: 'unauthorized' }));
+        return;
+      }
+      getOpponentKpis()
+        .then((stats) => { res.writeHead(200, cors); res.end(JSON.stringify(stats)); })
+        .catch((e) => {
+          log.error('opponent_kpis_failed', { message: e instanceof Error ? e.message : String(e) });
+          res.writeHead(500, cors);
+          res.end(JSON.stringify({ error: 'server' }));
+        });
+      return;
+    }
     if (req.url === '/scopes') {
       Promise.all([listScopes(), listNationalities()])
         .then(([scopes, nationalities]) => {
@@ -271,21 +655,20 @@ export function startServer(port: number): Server {
         });
       return;
     }
-    if (req.url === '/leaderboard') {
-      getLeaderboard(50)
+    if (path === '/leaderboard') {
+      getLeaderboard(50, query.get('userId') ?? undefined)
         .then((lb) => {
           res.writeHead(200, cors);
           res.end(JSON.stringify(lb));
         })
-        .catch(() => {
+        .catch((err) => {
+          log.error('leaderboard_failed', { error: err instanceof Error ? err.message : String(err) });
           res.writeHead(500, cors);
           res.end(JSON.stringify([]));
         });
       return;
     }
     // ---- Friends (over HTTP — no persistent socket on the Friends screen) ----
-    const path = (req.url ?? '').split('?')[0];
-    const query = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204, { ...cors, 'access-control-allow-methods': 'GET,POST', 'access-control-allow-headers': 'content-type, authorization' });
@@ -348,34 +731,66 @@ export function startServer(port: number): Server {
     res.end();
   });
 
+  http.on('clientError', (err, socket) => {
+    log.warn('http_client_error', { error: err.message });
+    try { socket.end('HTTP/1.1 400 Bad Request\r\n\r\n'); } catch { /* ignore */ }
+  });
+
+  http.on('error', (err) => {
+    log.error('http_server_error', { error: err.message, stack: err.stack });
+  });
+
   const wss = new WebSocketServer({ server: http });
+
+  wss.on('error', (err) => {
+    log.error('ws_server_error', { error: err.message, stack: err.stack });
+  });
 
   wss.on('connection', (ws: WebSocket, req) => {
     let ctx: ConnCtx | null = null;
     let userProfile: UserProfile | undefined;
     const transport = wsTransport(ws);
     const ip = remoteIp(req);
+    let explicitLeavePending: 'leave' | 'cheat' | null = null;
     const connectedAt = Date.now(); // oturum süresi günlüğü (admin istatistikleri)
     let windowStart = Date.now();
     let messageCount = 0;
     let typingCount = 0;
     log.info('ws_connect', { ip });
 
-    ws.on('message', async (data) => {
+    const reportSocketTaskFailure = (task: string, err: unknown): void => {
+      log.error('ws_task_failed', {
+        task,
+        ip,
+        userId: userProfile?.id,
+        room: ctx?.room.code,
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+      try { transport.send({ type: 'error', message: 'Sunucu hatası, tekrar dene' }); } catch { /* ignore */ }
+    };
+
+    ws.on('message', (data) => {
+      void (async () => {
+      let currentType: string | undefined;
+      try {
       const now = Date.now();
       if (now - windowStart > RATE_WINDOW_MS) { windowStart = now; messageCount = 0; typingCount = 0; }
-      let msg: ClientMsg;
+      let raw: unknown;
       try {
-        msg = JSON.parse(data.toString()) as ClientMsg;
+        raw = JSON.parse(data.toString());
       } catch {
+        messageCount += 1;
+        if (messageCount > RATE_MAX_MESSAGES) return;
         return transport.send({ type: 'error', message: 'Invalid JSON' });
       }
-      // Rate limit AFTER parse, exempting typing_start/typing_stop by their parsed
-      // type (a raw-substring exemption would be spoofable from a message body).
-      // Typing fires around every keystroke — counting it burned ~2/3 of the budget
-      // and rapid chatting hit the cap, silently dropping real send_message frames.
-      // Typing gets its own generous cap so an exempt flood can't fan out unbounded.
-      if (msg.type === 'typing_start' || msg.type === 'typing_stop') {
+      const rawType = typeof raw === 'object' && raw !== null && !Array.isArray(raw) && typeof (raw as { type?: unknown }).type === 'string'
+        ? (raw as { type: string }).type
+        : undefined;
+      currentType = rawType;
+      // Rate limit BEFORE validation too: malformed messages must not bypass the
+      // cap by returning early. Typing frames keep their separate lane by raw type.
+      if (rawType === 'typing_start' || rawType === 'typing_stop') {
         typingCount += 1;
         if (typingCount > RATE_MAX_TYPING) return;
       } else {
@@ -387,6 +802,13 @@ export function startServer(port: number): Server {
           return;
         }
       }
+      const validated = validateClientMsg(raw);
+      if (!validated.ok) {
+        log.warn('ws_invalid_message', { ip, reason: validated.error, userId: userProfile?.id });
+        return transport.send({ type: 'error', message: 'Invalid message' });
+      }
+      const msg = validated.msg;
+      currentType = msg.type;
 
       // İstemci yetenek bayrakları: kayıt sınıfı VE bağlantı-kuran maç
       // mesajlarıyla gelir, transport'a işlenir; oda kuralları (ör. wrongopen)
@@ -415,7 +837,7 @@ export function startServer(port: number): Server {
             type: 'profile',
             profile: toProfileView(profile),
           });
-        })();
+        })().catch((err) => reportSocketTaskFailure('register', err));
         return;
       }
 
@@ -712,7 +1134,8 @@ export function startServer(port: number): Server {
         // Deliberate exit (X onayı / arka plan hükmeni): reconnect grace YOK —
         // rakip hükmen sonucu ANINDA görür. Ardından gelen soket kapanışı
         // oyuncuyu zaten silinmiş bulur (no-op).
-        if (ctx) { ctx.room.explicitLeave(ctx.playerId); ctx = null; }
+        explicitLeavePending = msg.reason === 'cheat' ? 'cheat' : 'leave';
+        if (ctx) { ctx.room.explicitLeave(ctx.playerId, explicitLeavePending); ctx = null; }
         return;
       }
       if (msg.type === 'delete_account') {
@@ -852,6 +1275,11 @@ export function startServer(port: number): Server {
           sendToUser(inv.fromUserId, { type: 'match_invite_declined', byId: userProfile.id });
           return;
         }
+        if (ctx) {
+          sendToUser(inv.fromUserId, { type: 'match_invite_declined', byId: userProfile.id });
+          transport.send({ type: 'match_invite_cancelled' });
+          return;
+        }
         const requestedMode = inv.options?.mode ?? 'team-team';
         if (!canUseMode(userProfile, requestedMode) || !canUseMode(inv.userProfile, requestedMode)) {
           sendToUser(inv.fromUserId, { type: 'match_invite_declined', byId: userProfile.id });
@@ -863,11 +1291,13 @@ export function startServer(port: number): Server {
         const room = manager.createRoom();
         if (inv.options?.scope) room.scope = inv.options.scope;
         room.gameMode = requestedMode;
-        const resA = room.addPlayer(inv.fromName, inv.transport, true, inv.fromUserId, inv.userProfile?.trophies, inv.userProfile?.arena, inv.userProfile?.avatar, inv.userProfile?.level, inv.userProfile?.selectedFrame);
-        const resB = room.addPlayer(userProfile.displayName, transport, false, userProfile.id, userProfile.trophies, userProfile.arena, userProfile.avatar, userProfile.level, userProfile.selectedFrame);
+        const invSkill = inv.userProfile?.id ? await getOrCreateSkillProfile(inv.userProfile.id, inv.userProfile.trophies).catch(() => undefined) : undefined;
+        const mySkill = userProfile.id ? await getOrCreateSkillProfile(userProfile.id, userProfile.trophies).catch(() => undefined) : undefined;
+        const resA = room.addPlayer(inv.fromName, inv.transport, true, inv.fromUserId, inv.userProfile?.trophies, inv.userProfile?.arena, inv.userProfile?.avatar, inv.userProfile?.level, inv.userProfile?.selectedFrame, invSkill?.skillMean, invSkill?.skillUncertainty, invSkill?.matchesPlayed);
+        const resB = room.addPlayer(userProfile.displayName, transport, false, userProfile.id, userProfile.trophies, userProfile.arena, userProfile.avatar, userProfile.level, userProfile.selectedFrame, mySkill?.skillMean, mySkill?.skillUncertainty, mySkill?.matchesPlayed);
         if (resA.ok) inv.setCtx({ room, playerId: resA.id, userProfile: inv.userProfile });
         if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
-        setTimeout(() => { if (room.size === 2) room.handle(resA.ok ? resA.id : '', { type: 'start' }); }, 3500);
+        setTimeout(() => safeAutoStart(room, resA.ok ? resA.id : '', 'friend_match'), 3500);
         return;
       }
       if (msg.type === 'cancel_match_invite') {
@@ -881,6 +1311,14 @@ export function startServer(port: number): Server {
       if (msg.type === 'get_user_profile') {
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
         void (async () => {
+          const bot = getLeaderboardBotProfile(msg.userId);
+          if (bot) {
+            transport.send({
+              type: 'user_profile',
+              profile: { userId: bot.userId, displayName: bot.displayName, selectedAvatar: bot.avatar ?? '', trophies: bot.trophies, wins: bot.wins, losses: bot.losses, arena: bot.arena, avatar: bot.avatar, frame: bot.frame, isBot: true, modeStats: bot.modeStats },
+            });
+            return;
+          }
           const u = await getUser(msg.userId);
           if (!u) return transport.send({ type: 'error', message: 'Kullanıcı bulunamadı' });
           const stats = await getRankedProfileStats(u.id);
@@ -898,6 +1336,7 @@ export function startServer(port: number): Server {
               frame: u.selectedFrame,
               bestStreak: u.bestStreak,
               modes: stats.modes,
+              modeStats: stats.modes,
             },
           });
         })();
@@ -1191,8 +1630,9 @@ export function startServer(port: number): Server {
             const name = userProfile?.displayName ?? msg.name ?? 'Oyuncu';
             // Remove stale entries for this ws (if they spammed the button)
             for (let i = matchQueue.length - 1; i >= 0; i--) {
-              if (matchQueue[i]!.ws === ws) matchQueue.splice(i, 1);
+              if (matchQueue[i]!.ws === ws) cancelQueueEntry(matchQueue, matchQueue[i]!, 'replaced_by_new_find_match');
             }
+            activeSearchByWs.delete(ws);
             // Try to pair with someone already waiting
             // Match by game mode AND arena: only pair players in the same arena
             const requestedMode = msg.options?.mode ?? 'team-team';
@@ -1200,47 +1640,30 @@ export function startServer(port: number): Server {
               transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
               return;
             }
-            const myTrophies = userProfile?.trophies ?? 0;
-            const pairNow = Date.now();
-            const partnerIdx = matchQueue.findIndex(
-              (e) => e.ws.readyState === e.ws.OPEN
-                && (e.options?.mode ?? 'team-team') === requestedMode
-                && canUseMode(e.userProfile, requestedMode)
-                // Band, BEKLEYENİN kuyruk süresiyle genişler: yeni gelen dar bantta
-                // eşleşemese de uzun süredir bekleyenin büyümüş bandına düşebilir.
-                && Math.abs((e.userProfile?.trophies ?? 0) - myTrophies) <= queueTrophyRange(pairNow - e.since),
-            );
-            const partner = partnerIdx >= 0 ? matchQueue.splice(partnerIdx, 1)[0]! : undefined;
-            if (partner && partner.ws.readyState === partner.ws.OPEN) {
-              // Create room and add both
-              const room = manager.createRoom();
-              room.ranked = true; // yalnız hızlı eşleşme kupa + XP verir
-              if (msg.options?.scope) room.scope = msg.options.scope;
-              room.gameMode = requestedMode;
-              const resA = room.addPlayer(partner.name, partner.transport, true, partner.userProfile?.id ?? partner.userId, partner.userProfile?.trophies, partner.userProfile?.arena, partner.userProfile?.avatar, partner.userProfile?.level, partner.userProfile?.selectedFrame);
-              const resB = room.addPlayer(name, transport, false, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level, userProfile?.selectedFrame);
-              if (resA.ok) partner.setCtx({ room, playerId: resA.id, userProfile: partner.userProfile });
-              if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
-              // Auto-start after matchup reveal delay
-              setTimeout(() => {
-                if (room.size === 2) room.handle(resA.ok ? resA.id : '', { type: 'start' });
-              }, 3500);
-            } else {
-              // No partner yet — wait in queue
-              const entry: QueueEntry = {
-                transport,
-                ws,
-                name,
-                userId: userProfile?.id ?? msg.userId,
-                userProfile,
-                options: msg.options,
-                setCtx: (c) => { ctx = c; },
-                since: pairNow,
-              };
-              matchQueue.push(entry);
-              transport.send({ type: 'searching' as any });
-            }
-          })();
+            // Every quick-match request must go through the timer-backed queue.
+            // The previous human-only path had no timeout/bot safety net, so stale
+            // rollout flags could leave players searching indefinitely.
+            const requestId = randomUUID();
+            const skillProfile = userProfile?.id ? await getOrCreateSkillProfile(userProfile.id, userProfile.trophies).catch(() => undefined) : undefined;
+            const entry: QueueEntry = {
+              requestId,
+              state: 'SEARCHING_CLOSE',
+              assigned: false,
+              timers: new Set(),
+              transport,
+              ws,
+              name,
+              userId: userProfile?.id ?? msg.userId,
+              userProfile,
+              skillProfile,
+              options: msg.options,
+              setCtx: (c) => { ctx = c; },
+              since: Date.now(),
+            };
+            activeSearchByWs.set(ws, requestId);
+            enqueueHybrid(entry);
+            return;
+          })().catch((err) => reportSocketTaskFailure('find_match', err));
           return;
         }
 
@@ -1253,7 +1676,8 @@ export function startServer(port: number): Server {
           if (msg.options?.scope) room.scope = msg.options.scope;
           if (msg.options?.mode) room.gameMode = msg.options.mode;
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, true, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level, userProfile?.selectedFrame);
+          const skill = userProfile?.id ? await getOrCreateSkillProfile(userProfile.id, userProfile.trophies).catch(() => undefined) : undefined;
+          const res = room.addPlayer(name, transport, true, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level, userProfile?.selectedFrame, skill?.skillMean, skill?.skillUncertainty, skill?.matchesPlayed);
           if (res.ok) ctx = { room, playerId: res.id, userProfile };
           return;
         }
@@ -1267,7 +1691,8 @@ export function startServer(port: number): Server {
           if (msg.options?.scope) room.scope = msg.options.scope;
           if (msg.options?.mode) room.gameMode = msg.options.mode;
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, true, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level, userProfile?.selectedFrame);
+          const skill = userProfile?.id ? await getOrCreateSkillProfile(userProfile.id, userProfile.trophies).catch(() => undefined) : undefined;
+          const res = room.addPlayer(name, transport, true, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level, userProfile?.selectedFrame, skill?.skillMean, skill?.skillUncertainty, skill?.matchesPlayed);
           if (res.ok) ctx = { room, playerId: res.id, userProfile };
           const bot = new BotPlayer({ difficulty: msg.options?.difficulty, scope: room.scope, mode: room.gameMode });
           const botRes = room.addPlayer('Bot', bot, false);
@@ -1282,7 +1707,8 @@ export function startServer(port: number): Server {
           if (!room) return transport.send({ type: 'error', message: 'Room not found' });
           if (!canUseMode(userProfile, room.gameMode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
           const name = userProfile?.displayName ?? msg.name;
-          const res = room.addPlayer(name, transport, false, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level, userProfile?.selectedFrame);
+          const skill = userProfile?.id ? await getOrCreateSkillProfile(userProfile.id, userProfile.trophies).catch(() => undefined) : undefined;
+          const res = room.addPlayer(name, transport, false, userProfile?.id ?? msg.userId, userProfile?.trophies, userProfile?.arena, userProfile?.avatar, userProfile?.level, userProfile?.selectedFrame, skill?.skillMean, skill?.skillUncertainty, skill?.matchesPlayed);
           if (!res.ok) return transport.send({ type: 'error', message: res.error });
           ctx = { room, playerId: res.id, userProfile };
           return;
@@ -1303,10 +1729,32 @@ export function startServer(port: number): Server {
       }
 
       ctx.room.handle(ctx.playerId, msg);
+      } catch (err) {
+        log.error('ws_message_failed', {
+          ip,
+          userId: userProfile?.id,
+          room: ctx?.room.code,
+          messageType: currentType,
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        });
+        try { transport.send({ type: 'error', message: 'Sunucu hatası, tekrar dene' }); } catch { /* ignore */ }
+      }
+      })();
     });
 
     ws.on('close', () => {
       log.info('ws_close', { ip, userId: userProfile?.id, room: ctx?.room.code });
+      recordTelemetry({
+        eventName: 'session_exit',
+        roomCode: ctx?.room.code,
+        playerId: userProfile?.id ?? null,
+        payload: {
+          durationSec: Math.round((Date.now() - connectedAt) / 1000),
+          hadRoom: Boolean(ctx),
+          explicitLeave: Boolean(explicitLeavePending),
+        },
+      });
       // Oturum günlüğü: kimlik bağlanmış her bağlantının süresi yazılır
       // (ateşle-unut; 'error' sonrası da 'close' HER ZAMAN gelir → tek yazım).
       if (userProfile) recordPlaySession(userProfile.id, connectedAt).catch(() => {});
@@ -1323,15 +1771,24 @@ export function startServer(port: number): Server {
       }
       // Remove from matchmaking queue if waiting
       for (let i = matchQueue.length - 1; i >= 0; i--) {
-        if (matchQueue[i]!.ws === ws) matchQueue.splice(i, 1);
+        if (matchQueue[i]!.ws === ws) cancelQueueEntry(matchQueue, matchQueue[i]!, 'socket_close');
       }
-      if (ctx) ctx.room.handleClose(ctx.playerId);
+      activeSearchByWs.delete(ws);
+      if (ctx) {
+        if (explicitLeavePending) ctx.room.explicitLeave(ctx.playerId, explicitLeavePending);
+        else ctx.room.handleClose(ctx.playerId);
+      }
     });
     ws.on('error', () => {
       for (let i = matchQueue.length - 1; i >= 0; i--) {
-        if (matchQueue[i]!.ws === ws) matchQueue.splice(i, 1);
+        if (matchQueue[i]!.ws === ws) cancelQueueEntry(matchQueue, matchQueue[i]!, 'socket_error');
       }
-      if (ctx) ctx.room.handleClose(ctx.playerId);
+      activeSearchByWs.delete(ws);
+      if (ctx) {
+        if (explicitLeavePending) ctx.room.explicitLeave(ctx.playerId, explicitLeavePending);
+        else ctx.room.handleClose(ctx.playerId);
+      }
+      log.warn('ws_error', { ip, userId: userProfile?.id, room: ctx?.room.code });
     });
   });
 

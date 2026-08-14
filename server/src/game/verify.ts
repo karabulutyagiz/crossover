@@ -64,6 +64,16 @@ const A_TEAM_ONLY = `
   AND c.name_norm <> 'atletico madrileno'
   AND c.name_norm <> 'atletico mg'
 `;
+const CLUB_ALIAS_MATCH = `EXISTS (
+  SELECT 1 FROM unnest(c.aliases) a
+  WHERE a = $1 OR a LIKE '%' || $1 || '%' OR a % $1
+)`;
+const CLUB_ALIAS_PREFIX = `EXISTS (
+  SELECT 1 FROM unnest(c.aliases) a
+  WHERE a LIKE $1 || '%'
+)`;
+const CLUB_ALIAS_SIM = `COALESCE((SELECT MAX(similarity(a, $1)) FROM unnest(c.aliases) a), 0)`;
+const CLUB_ALIAS_WORD_SIM = `COALESCE((SELECT MAX(word_similarity($1, a)) FROM unnest(c.aliases) a), 0)`;
 
 function clubDisplayName(id: number, name: string): string {
   return id === 13 ? 'Atletico Madrid' : name;
@@ -127,19 +137,19 @@ export async function searchClubs(
   // (e.g. "bar" → Barcelona, not "FC Barcelona Atlètic"), then prefix, similarity.
   const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
     `SELECT c.id, c.name, c.logo_url,
-            similarity(c.name_norm, $1) AS sim,
+            GREATEST(similarity(c.name_norm, $1), ${CLUB_ALIAS_SIM}) AS sim,
             COALESCE(NULLIF(c.popularity, 0), (SELECT COUNT(*) FROM player_clubs pc2 WHERE pc2.club_id = c.id)) AS members
        FROM clubs c
       WHERE c.is_national = false
         AND c.logo_url IS NOT NULL
         AND EXISTS (SELECT 1 FROM player_clubs pc WHERE pc.club_id = c.id)
-        AND (c.name_norm LIKE '%' || $1 || '%' OR c.name_norm % $1)
+        AND (c.name_norm LIKE '%' || $1 || '%' OR c.name_norm % $1 OR ${CLUB_ALIAS_MATCH})
         ${A_TEAM_ONLY}
         ${scopeSql}
-      ORDER BY (c.name_norm = $1) DESC,
+      ORDER BY (c.name_norm = $1 OR $1 = ANY(c.aliases)) DESC,
                (c.league IS NOT NULL) DESC,
                members DESC,
-               (c.name_norm LIKE $1 || '%') DESC,
+               (c.name_norm LIKE $1 || '%' OR ${CLUB_ALIAS_PREFIX}) DESC,
                sim DESC,
                length(c.name) ASC
       LIMIT $${limitIdx}`,
@@ -569,6 +579,29 @@ export async function commonPlayersDetailed(
   return rows.map((r) => ({ name: r.name, imageUrl: r.image_url }));
 }
 
+export async function plausibleWrongPlayersTeamTeam(teamAId: number, teamBId: number, limit = 16): Promise<string[]> {
+  const { rows } = await pool.query<{ name: string }>(
+    `WITH side_players AS (
+       SELECT DISTINCT p.id, p.name, p.image_url,
+              MAX(GREATEST(COALESCE(c.popularity, 0), (SELECT count(*) FROM player_clubs x WHERE x.club_id = pc2.club_id))) AS fame
+         FROM players p
+         JOIN player_clubs pc ON pc.player_id = p.id AND pc.club_id IN ($1, $2)
+         JOIN player_clubs pc2 ON pc2.player_id = p.id
+         JOIN clubs c ON c.id = pc2.club_id
+        WHERE NOT (
+          EXISTS (SELECT 1 FROM player_clubs a WHERE a.player_id = p.id AND a.club_id = $1)
+          AND EXISTS (SELECT 1 FROM player_clubs b WHERE b.player_id = p.id AND b.club_id = $2)
+        )
+        GROUP BY p.id, p.name, p.image_url
+     )
+     SELECT name FROM side_players
+      ORDER BY (image_url IS NOT NULL) DESC, fame DESC, random()
+      LIMIT $3`,
+    [teamAId, teamBId, limit],
+  );
+  return rows.map((r) => r.name);
+}
+
 // ---- Country-Team & Letter-Team helpers ----
 
 const MIN_SPELL_YEAR = 1980;
@@ -625,6 +658,26 @@ export async function commonPlayersCountryTeam(
   return rows.map((r) => ({ name: r.name, imageUrl: r.image_url }));
 }
 
+export async function plausibleWrongPlayersCountryTeam(clubId: number, country: string, limit = 16): Promise<string[]> {
+  const countries = nationalityVariants(country);
+  const { rows } = await pool.query<{ name: string }>(
+    `WITH cands AS (
+       SELECT DISTINCT p.id, p.name, p.image_url,
+              CASE WHEN pc.club_id = $1 THEN 1 ELSE 0 END AS club_side,
+              (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) AS career_count
+         FROM players p
+         JOIN player_clubs pc ON pc.player_id = p.id
+        WHERE (pc.club_id = $1 OR p.nationality = ANY($2))
+          AND NOT (pc.club_id = $1 AND p.nationality = ANY($2))
+     )
+     SELECT name FROM cands
+      ORDER BY club_side DESC, (image_url IS NOT NULL) DESC, career_count DESC, random()
+      LIMIT $3`,
+    [clubId, countries, limit],
+  );
+  return rows.map((r) => r.name);
+}
+
 /** Players who played for the club AND any WORD of whose name starts with the
  *  letter (ad YA DA soyad — "L" hem Lukaku'yu hem Lionel'i kabul eder). */
 export async function commonPlayersLetterTeam(
@@ -644,6 +697,23 @@ export async function commonPlayersLetterTeam(
     [clubId, prefix, limit],
   );
   return rows.map((r) => ({ name: r.name, imageUrl: r.image_url }));
+}
+
+export async function plausibleWrongPlayersLetterTeam(clubId: number, letter: string, limit = 16): Promise<string[]> {
+  const prefix = letter.toLowerCase();
+  const { rows } = await pool.query<{ name: string }>(
+    `SELECT DISTINCT p.name
+       FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id
+      WHERE pc.club_id = $1
+        AND NOT (p.name_norm LIKE $2 || '%' OR p.name_norm LIKE '% ' || $2 || '%')
+      ORDER BY (p.image_url IS NOT NULL) DESC,
+               (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) DESC,
+               random()
+      LIMIT $3`,
+    [clubId, prefix, limit],
+  );
+  return rows.map((r) => r.name);
 }
 
 /** Are there any valid players for a country-team combination? */
@@ -1230,6 +1300,27 @@ export async function commonClubs(
   return rows.map(r => ({ id: Number(r.id), name: r.name, logoUrl: r.logo_url }));
 }
 
+export async function plausibleWrongClubsPlayerPlayer(playerAId: number, playerBId: number, limit = 12): Promise<string[]> {
+  const { rows } = await pool.query<{ name: string }>(
+    `WITH side_clubs AS (
+       SELECT DISTINCT c.id, c.name, c.logo_url, COALESCE(c.popularity, 0) AS popularity
+         FROM clubs c
+         JOIN player_clubs pc ON pc.club_id = c.id
+        WHERE c.is_national = false
+          AND pc.player_id IN ($1, $2)
+          AND NOT (
+            EXISTS (SELECT 1 FROM player_clubs a WHERE a.player_id = $1 AND a.club_id = c.id)
+            AND EXISTS (SELECT 1 FROM player_clubs b WHERE b.player_id = $2 AND b.club_id = c.id)
+          )
+     )
+     SELECT name FROM side_clubs
+      ORDER BY (logo_url IS NOT NULL) DESC, popularity DESC, random()
+      LIMIT $3`,
+    [playerAId, playerBId, limit],
+  );
+  return rows.map((r) => r.name);
+}
+
 export interface VerifyPlayerPlayerResult {
   correct: boolean;
   matchedClubId: number | null;
@@ -1251,9 +1342,10 @@ export async function verifyPlayerPlayerGuess(
   // Fuzzy-find club candidates
   const { rows: candidates } = await pool.query<{ id: string; name: string; name_norm: string; logo_url: string | null; sim: number }>(
     `SELECT c.id, c.name, c.name_norm, c.logo_url,
-            word_similarity($1, c.name_norm) AS sim
+            GREATEST(word_similarity($1, c.name_norm), ${CLUB_ALIAS_WORD_SIM}) AS sim
      FROM clubs c
-     WHERE c.is_national = false AND word_similarity($1, c.name_norm) >= ${config.verifyMatchThreshold}
+     WHERE c.is_national = false
+       AND GREATEST(word_similarity($1, c.name_norm), ${CLUB_ALIAS_WORD_SIM}) >= ${config.verifyMatchThreshold}
      ORDER BY sim DESC
      LIMIT 25`,
     [norm],

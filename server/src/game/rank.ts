@@ -3,6 +3,7 @@ import { PREMIUM_ROAD_PRICE } from './level.ts';
 import { emotePrice, isFreeEmote, isEquippableEmote, MAX_EQUIPPED, ALL_COLLECTIBLE_EMOTES } from './emotes.ts';
 import { avatarPrice, canUseAvatar, DEFAULT_AVATAR_ID, isAvatar, isFreeAvatar } from './avatars.ts';
 import { validateUsername } from './username.ts';
+import { trophyDeltaExpectedScore } from '../matchmaking/trophyIntegrity.ts';
 // moderation.ts only pulls in the pool + logger, so this import cannot cycle back.
 import { isBlockedBetween, isIdentifiedAccount } from './moderation.ts';
 
@@ -105,6 +106,7 @@ export interface UserProfile {
   powerTraining: number;       // envanterdeki Antrenman Bileti adedi
   trainingBoostUntil: string | null; // aktif Antrenman Bileti penceresinin bitişi (ISO) ya da null
   powerSocialToken: number;    // envanterdeki Sosyal Paket Jetonu adedi
+  highestArenaRewarded: number; // ulaşılıp açılmış/ödülü işlenmiş en yüksek arena index'i
   bannedAt: string | null;     // kural ihlali askısı — doluysa bağlantı katmanı girişi reddeder
 }
 
@@ -376,8 +378,15 @@ export async function applyMatchResult(
   won: boolean,
   // leaver: hükmen mağlubiyette AYRILAN taraf — kalkan onu korumaz.
   // opponentTrophies: rakibin MAÇ BAŞI kupası (bot dahil) — dinamik delta farkı.
-  opts?: { leaver?: boolean; opponentTrophies?: number | null },
-): Promise<{ profile: UserProfile; delta: number; arenaReward: number; shielded: boolean }> {
+  opts?: {
+    leaver?: boolean;
+    opponentTrophies?: number | null;
+    playerSkillMean?: number | null;
+    playerSkillUncertainty?: number | null;
+    opponentSkillMean?: number | null;
+    opponentSkillUncertainty?: number | null;
+  },
+): Promise<{ profile: UserProfile; delta: number; arenaReward: number; shielded: boolean; expectedWinProbability?: number }> {
   // Read current trophies to determine arena-specific delta
   const user = await getUser(userId);
   if (!user) throw new Error('User not found');
@@ -395,9 +404,22 @@ export async function applyMatchResult(
   // ETKİN delta: 0 tabanının altına inecek kayıp, kalan kupa kadar kırpılır —
   // kullanıcı 0'dayken '-10' DEĞİL gerçek değişimi (0) görür. SQL'deki
   // GREATEST(0, …) emniyet kemeri olarak durur.
-  const raw = shielded ? 0 : trophyDelta(user.trophies, won, opts?.opponentTrophies ?? null);
+  const expectedCalc = !shielded
+    && typeof opts?.playerSkillMean === 'number'
+    && typeof opts?.opponentSkillMean === 'number'
+    ? trophyDeltaExpectedScore({
+        playerSkillMean: opts.playerSkillMean,
+        opponentSkillMean: opts.opponentSkillMean,
+        playerSkillUncertainty: opts.playerSkillUncertainty ?? undefined,
+        opponentSkillUncertainty: opts.opponentSkillUncertainty ?? undefined,
+        won,
+        playerTrophies: user.trophies,
+        opponentTrophies: opts.opponentTrophies ?? null,
+      })
+    : null;
+  const raw = shielded ? 0 : (expectedCalc?.delta ?? trophyDelta(user.trophies, won, opts?.opponentTrophies ?? null));
   const delta = won ? raw : Math.max(raw, -user.trophies);
-  const prevArenaIdx = ARENAS.findIndex((a) => a.name === user.arena.name);
+  const prevRewardedArenaIdx = Math.max(0, Math.min(ARENAS.length - 1, user.highestArenaRewarded));
 
   const { rows } = await pool.query<DbUser>(
     `WITH next_state AS (
@@ -454,11 +476,11 @@ export async function applyMatchResult(
     [userId, delta, won, [...ARENA_DIAMOND_REWARDS]],
   );
   const profile = toProfile(rows[0]!);
-  const nextArenaIdx = ARENAS.findIndex((a) => a.name === profile.arena.name);
-  const arenaReward = nextArenaIdx > prevArenaIdx
-    ? ARENA_DIAMOND_REWARDS.slice(prevArenaIdx + 1, nextArenaIdx + 1).reduce((sum, n) => sum + n, 0)
+  const nextRewardedArenaIdx = Math.max(0, Math.min(ARENAS.length - 1, profile.highestArenaRewarded));
+  const arenaReward = nextRewardedArenaIdx > prevRewardedArenaIdx
+    ? ARENA_DIAMOND_REWARDS.slice(prevRewardedArenaIdx + 1, nextRewardedArenaIdx + 1).reduce((sum, n) => sum + n, 0)
     : 0;
-  return { profile, delta, arenaReward, shielded };
+  return { profile, delta, arenaReward, shielded, expectedWinProbability: expectedCalc?.expectedWinProbability };
 }
 
 // ---- Özel güçler (Seviye Yolu ödülü, tek kullanımlık) ----
@@ -803,25 +825,23 @@ export interface LeaderboardEntry {
   arena: Arena;
   avatar: string | null;
   frame: string | null; // takılı profil çerçevesi
+  isBot?: boolean;
 }
 
-export async function getLeaderboard(limit = 50): Promise<LeaderboardEntry[]> {
-  // Keep the board clean: only REAL players who have actually earned trophies.
-  //   • trophies > 0            → drops empty/never-played accounts and test junk.
-  //   • has an identity provider → drops guests (auto "M#########" accounts, which
-  //     are provider-less) and CLI/dev `register`-only test accounts.
-  // Guests get username_set=true, so that flag can't tell them apart — the reliable
-  // guest signal is "no apple/google/facebook/game-center identity".
+export async function getLeaderboard(limit = 50, viewerUserId?: string): Promise<LeaderboardEntry[]> {
+  // Show every account that has actually earned trophies. The app's "my rank"
+  // footer depends on the current user being present even if they are a guest.
+  const viewerUuid = viewerUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(viewerUserId)
+    ? viewerUserId
+    : null;
   const { rows } = await pool.query<DbUser>(
     `SELECT * FROM users
        WHERE trophies > 0
-         AND (apple_sub IS NOT NULL OR google_sub IS NOT NULL OR facebook_sub IS NOT NULL OR game_center_id IS NOT NULL)
-       ORDER BY trophies DESC, wins DESC
-       LIMIT $1`,
-    [limit],
+          OR ($1::uuid IS NOT NULL AND id = $1::uuid)
+       ORDER BY trophies DESC, wins DESC`,
+    [viewerUuid],
   );
-  return rows.map((r, i) => ({
-    rank: i + 1,
+  const entries: Omit<LeaderboardEntry, 'rank'>[] = rows.map((r) => ({
     userId: r.id,
     displayName: r.display_name,
     trophies: r.trophies,
@@ -831,6 +851,16 @@ export async function getLeaderboard(limit = 50): Promise<LeaderboardEntry[]> {
     avatar: r.avatar ?? null,
     frame: r.selected_frame ?? null,
   }));
+  const rankedUsers = entries
+    .sort((a, b) => b.trophies - a.trophies || b.wins - a.wins || a.displayName.localeCompare(b.displayName))
+    .map((e, i) => ({ ...e, rank: i + 1 }));
+  const ranked = rankedUsers;
+  const top = ranked.slice(0, limit);
+  if (viewerUuid && !top.some((e) => e.userId === viewerUuid)) {
+    const mine = ranked.find((e) => e.userId === viewerUuid);
+    if (mine) return [...top, mine];
+  }
+  return top;
 }
 
 // ---- Friends ----
@@ -1114,6 +1144,7 @@ function toProfile(row: DbUser): UserProfile {
     powerTraining: row.power_training ?? 0,
     trainingBoostUntil: isFutureIso(row.training_boost_until) ? row.training_boost_until : null,
     powerSocialToken: row.power_socialtoken ?? 0,
+    highestArenaRewarded: Math.max(0, Math.min(ARENAS.length - 1, row.highest_arena_rewarded ?? 0)),
     bannedAt: row.banned_at ?? null,
   };
 }
@@ -1152,6 +1183,66 @@ export async function getRankedProfileStats(userId: string): Promise<{ wins: num
     losses: Number(rows[0]?.losses ?? 0),
     modes: await getModeStats(userId),
   };
+}
+
+export function botModeStats(seed: number): ModeStat[] {
+  const base = Math.max(20, Math.round(seed / 18));
+  return [
+    { mode: 'team-team', wins: base + 28, losses: Math.max(8, Math.round(base * 0.34)) },
+    { mode: 'country-team', wins: Math.round(base * 0.72), losses: Math.max(6, Math.round(base * 0.28)) },
+    { mode: 'letter-team', wins: Math.round(base * 0.58), losses: Math.max(5, Math.round(base * 0.32)) },
+    { mode: 'player-player', wins: Math.round(base * 0.22), losses: Math.max(3, Math.round(base * 0.18)) },
+  ];
+}
+
+export function getLeaderboardBotProfile(userId: string): (Omit<LeaderboardEntry, 'rank'> & { modeStats: ModeStat[] }) | null {
+  void userId;
+  return null;
+}
+
+export async function getBotPressureProfile(userId: string): Promise<{ pressure: number; relief: number; botWins: number; botGames: number; recentWins: number; recentGames: number; winStreak: number; trophyGain30m: number; botWins30m: number }> {
+  const [{ rows }, userRes] = await Promise.all([
+    pool.query<{ won: boolean; opponent_id: string | null; played_at: string; player_trophies: number }>(
+      `SELECT won, opponent_id::text AS opponent_id, played_at, player_trophies
+         FROM match_history
+        WHERE player_id = $1
+        ORDER BY played_at DESC
+        LIMIT 24`,
+      [userId],
+    ),
+    pool.query<{ trophies: number; win_streak: number | null }>('SELECT trophies, win_streak FROM users WHERE id = $1', [userId]),
+  ]);
+  const user = userRes.rows[0];
+  const recentGames = rows.length;
+  const recentWins = rows.filter((r) => r.won).length;
+  const botRows = rows.filter((r) => r.opponent_id == null);
+  const botGames = botRows.length;
+  const botWins = botRows.filter((r) => r.won).length;
+  const now = Date.now();
+  const rows30m = rows.filter((r) => now - new Date(r.played_at).getTime() <= 30 * 60_000);
+  const botWins30m = rows30m.filter((r) => r.opponent_id == null && r.won).length;
+  const oldest30mTrophies = rows30m.length ? Math.min(...rows30m.map((r) => Number(r.player_trophies) || 0)) : (user?.trophies ?? 0);
+  const trophyGain30m = Math.max(0, (user?.trophies ?? oldest30mTrophies) - oldest30mTrophies);
+  const winStreak = Math.max(0, user?.win_streak ?? 0);
+  const botRate = botGames >= 3 ? botWins / botGames : 0;
+  const formRate = recentGames >= 5 ? recentWins / recentGames : 0;
+  const recentLosses = recentGames - recentWins;
+  const lossStreak = rows.findIndex((r) => r.won);
+  const normalizedLossStreak = lossStreak < 0 ? Math.min(recentGames, 5) : lossStreak;
+  const streakBonus = winStreak >= 8 ? 0.30 : winStreak >= 5 ? 0.20 : winStreak >= 3 ? 0.12 : 0;
+  const botFarmBonus = botGames >= 6 && botRate >= 0.83 ? 0.42 : botGames >= 4 && botRate >= 0.75 ? 0.32 : botGames >= 3 && botRate >= 0.66 ? 0.20 : 0;
+  const formBonus = formRate >= 0.85 ? 0.22 : formRate >= 0.72 ? 0.15 : formRate >= 0.64 ? 0.09 : 0;
+  const burstBonus = trophyGain30m >= 350 ? 0.34 : trophyGain30m >= 220 ? 0.24 : trophyGain30m >= 120 ? 0.14 : 0;
+  const burstBotBonus = botWins30m >= 8 ? 0.24 : botWins30m >= 5 ? 0.17 : botWins30m >= 3 ? 0.10 : 0;
+  const relief = clampN(
+    (recentGames >= 5 && formRate <= 0.35 ? 0.24 : recentGames >= 4 && formRate <= 0.45 ? 0.14 : 0)
+    + (normalizedLossStreak >= 3 ? 0.20 : normalizedLossStreak >= 2 ? 0.10 : 0)
+    + (recentGames >= 6 && recentLosses >= 4 ? 0.10 : 0),
+    0,
+    0.42,
+  );
+  const rawPressure = botFarmBonus + formBonus + streakBonus + burstBonus + burstBotBonus;
+  return { pressure: clampN(rawPressure - relief, 0, 0.82), relief, botWins, botGames, recentWins, recentGames, winStreak, trophyGain30m, botWins30m };
 }
 
 // ---- Match History ----
