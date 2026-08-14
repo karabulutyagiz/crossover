@@ -202,23 +202,6 @@
   </div>
 
   <!-- Live -->
-  <div class="card" id="liveTopBox" style="border-color:var(--gold);margin-bottom:12px">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-      <h2 style="margin:0;font-size:18px;color:var(--gold)">CANLI MAÇLAR / AKTİF KULLANICILAR</h2>
-      <span class="muted" style="font-size:12px">Bu blok anlık veridir</span>
-    </div>
-    <div class="two-col live-panels">
-      <div>
-        <h3 style="margin:0 0 6px;font-size:15px">Aktif maçlar</h3>
-        <div class="live-list" id="l_matches_top"></div>
-      </div>
-      <div>
-        <h3 style="margin:0 0 6px;font-size:15px">Çevrimiçi kullanıcılar</h3>
-        <div class="live-list" id="l_onlineList_top"></div>
-      </div>
-    </div>
-  </div>
-
   <div class="section-title">Canlı</div>
   <div class="grid g-live">
     <div class="card kpi accent-mint"><span class="pulse"></span><div class="label">Şu an çevrimiçi</div><div class="value" id="l_online">–</div><div class="sub">açık oturum</div></div>
@@ -526,7 +509,6 @@
         + "</div>";
     }).join("");
     $("l_matches").innerHTML = mlist || "<div class='muted'>Şu an süren maç/oda yok.</div>";
-    if ($("l_matches_top")) $("l_matches_top").innerHTML = $("l_matches").innerHTML;
 
     // ── Çevrimiçi kullanıcılar ──
     var onlineItems = L.onlineUsers || [];
@@ -536,7 +518,6 @@
         + "<span class='muted' style='margin-left:auto'>"+trNum(u.trophies)+" 🏆</span></div>";
     }).join("");
     $("l_onlineList").innerHTML = olist || "<div class='muted'>Kimse çevrimiçi değil.</div>";
-    if ($("l_onlineList_top")) $("l_onlineList_top").innerHTML = $("l_onlineList").innerHTML;
 
     var R = s.revenue || {};
     $("r_total").textContent      = "₺" + trMoney(R.totalTry);
