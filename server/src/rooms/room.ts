@@ -233,6 +233,7 @@ export class Room {
   matchInfo(): {
     code: string;
     status: RoomStatus;
+    gameMode: GameMode;
     bot: boolean;
     humans: number;
     players: { name: string; userId: string | null; trophies: number | null; score: number; connected: boolean; isBot: boolean; skillMean?: number | null; skillUncertainty?: number | null; botArchetype?: string | null; botCognitiveState?: string | null }[];
@@ -252,6 +253,7 @@ export class Room {
     return {
       code: this.code,
       status: this.status,
+      gameMode: this.gameMode,
       bot: players.some((p) => p.isBot),
       humans: players.filter((p) => !p.isBot).length,
       players,

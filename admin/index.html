@@ -92,6 +92,7 @@
   .online-row .dot{width:8px;height:8px;border-radius:50%;background:var(--mint);box-shadow:0 0 6px var(--mint);flex:none}
   .badge-pvp{font-size:10px;font-weight:700;color:var(--mint);border:1px solid var(--mint);border-radius:5px;padding:0 5px;margin-left:6px}
   .badge-bot{font-size:10px;font-weight:800;color:#06231a;background:var(--gold);border-radius:5px;padding:1px 6px;margin-left:6px;letter-spacing:.04em}
+  .badge-mode{display:inline-block;font-size:10px;font-weight:800;color:var(--blue);border:1px solid rgba(61,165,255,.65);border-radius:5px;padding:1px 6px;margin-right:6px;letter-spacing:.02em;white-space:nowrap}
 
   .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
   .kpi{position:relative;overflow:hidden}
@@ -484,6 +485,7 @@
 
     // ── Aktif maçlar (kim kime karşı) ──
     var statusTr = { lobby:"lobide bekliyor", countdown:"geri sayım", pick:"takım seçme", reveal:"açıklama", guess:"tahmin", result:"sonuç" };
+    var modeTr = { "team-team":"Takım-Takım", "country-team":"Ülke-Takım", "letter-team":"Harf-Takım", "player-player":"Oyuncu-Oyuncu" };
     function pPill(p){
       if(!p) return "<span class='muted'>bekleniyor…</span>";
       if(p.isBot) return "<span class='badge-bot'>BOT</span>";
@@ -502,9 +504,10 @@
       var pvp = !m.bot && ps.filter(function(x){return !x.isBot;}).length>=2;
       var vs = pPill(ps[0]) + " <span class='muted'>vs</span> " + pPill(ps[1]);
       var score = ps.length===2 ? ps.map(function(x){return x.score;}).join(" – ") : "";
+      var mode = modeTr[m.gameMode] || modeTr[m.mode] || m.gameMode || m.mode || "Mod bilinmiyor";
       return "<div class='match-row'>"
         + "<div class='vs'>" + vs + (pvp?"<span class='badge-pvp'>PvP</span>":"") + "</div>"
-        + "<div class='meta'>" + (statusTr[m.status]||esc(m.status))
+        + "<div class='meta'><span class='badge-mode'>" + esc(mode) + "</span>" + (statusTr[m.status]||esc(m.status))
         + (score!==""?" · "+esc(score):"") + " · " + esc(m.code) + "</div>"
         + "</div>";
     }).join("");
