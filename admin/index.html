@@ -211,16 +211,22 @@
     <div class="card kpi"><div class="label">Bot maçı</div><div class="value" id="l_bot">–</div><div class="sub">süren pratik</div></div>
   </div>
 
-  <div class="two-col live-panels" id="livePanels" style="margin-top:12px">
-    <div class="card">
-      <h3 style="margin:0 0 4px;font-size:15px">Aktif maçlar</h3>
-      <p class="hint" style="margin:0 0 10px">O an süren odalar — kim kime karşı oynuyor. <b id="l_matchesCount">0</b> kayıt</p>
-      <div class="live-list" id="l_matches"></div>
+  <div class="card" id="livePanels" style="border-color:var(--gold);margin-top:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+      <h2 style="margin:0;font-size:18px;color:var(--gold)">CANLI MAÇLAR / AKTİF KULLANICILAR</h2>
+      <span class="muted" style="font-size:12px">Bu blok anlık veridir</span>
     </div>
-    <div class="card">
-      <h3 style="margin:0 0 4px;font-size:15px">Çevrimiçi kullanıcılar</h3>
-      <p class="hint" style="margin:0 0 10px">Açık oturumu olan hesaplar (kupaya göre). <b id="l_onlineCount">0</b> kayıt</p>
-      <div class="live-list" id="l_onlineList"></div>
+    <div class="two-col live-panels">
+      <div>
+        <h3 style="margin:0 0 4px;font-size:15px">Aktif maçlar</h3>
+        <p class="hint" style="margin:0 0 10px">O an süren odalar — kim kime karşı oynuyor. <b id="l_matchesCount">0</b> kayıt</p>
+        <div class="live-list" id="l_matches"></div>
+      </div>
+      <div>
+        <h3 style="margin:0 0 4px;font-size:15px">Çevrimiçi kullanıcılar</h3>
+        <p class="hint" style="margin:0 0 10px">Açık oturumu olan hesaplar (kupaya göre). <b id="l_onlineCount">0</b> kayıt</p>
+        <div class="live-list" id="l_onlineList"></div>
+      </div>
     </div>
   </div>
 
