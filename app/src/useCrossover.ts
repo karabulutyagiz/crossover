@@ -658,7 +658,11 @@ function reducer(state: GameState, action: Action): GameState {
     case 'guess_phase':
       return { ...state, phase: 'guess', guessEndsAt: action.endsAt, locked: null, oppWrong: null, youBurned: false, youRetryAt: null, tooLateSeq: 0 };
     case 'guess_locked':
-      return { ...state, locked: { byId: action.byId, byName: action.byName } };
+      // Rakibin yazması bizim input'u kapatmaz. Eski backend/istemci akışından
+      // gelebilen guess_locked yalnız kendi gönderimimizi bekletmek için anlamlı.
+      return action.byId === state.room?.youId
+        ? { ...state, locked: { byId: action.byId, byName: action.byName } }
+        : state;
     case 'wrong_guess': {
       // Yanlış yazan turu yakmadı: kilit kalkar. retryAt doluysa yazanın 5 sn
       // ceza sonrası BİR hakkı daha var (yanmadı); yoksa bu tur susturuldu.
