@@ -86,7 +86,9 @@ interface Round {
   playerBPick?: { id: number; name: string; imageUrl: string | null };
   teamA?: ClubRef;
   teamB?: ClubRef;
-  answeredBy?: string;
+  // Players whose guess is currently being verified. This prevents one player
+  // from double-submitting, without locking the opponent's input.
+  pendingGuesses?: Set<string>;
   passedBy?: Set<string>; // players who chose to pass this round
   // wrongopen kuralı: bu turda yanlış yazıp hakkı biten oyuncular. Yanlış cevap
   // turu YAKMAZ (kasıtlı yanlışla tur kilitleme istismarını kapatır) — yazan
@@ -926,6 +928,7 @@ export class Room {
 
   private handleGuess(playerId: string, text: string): void {
     if (this.status !== 'guess' || !this.round || this.round.finished) return;
+    if (this.round.pendingGuesses?.has(playerId)) return;
     if (this.round.burned?.has(playerId)) {
       this.players.get(playerId)?.transport.send({ type: 'guess_denied', reason: 'burned' });
       return;
@@ -937,16 +940,8 @@ export class Room {
       this.players.get(playerId)?.transport.send({ type: 'guess_denied', reason: 'cooldown' });
       return;
     }
-    if (this.round.answeredBy) {
-      // Rakip milisaniyelerle önce gönderdiyse bunu SESSİZCE yutma — "ben de doğru
-      // yazmıştım, niye olmadı" hissinin ilacı bu açık geri bildirim.
-      this.players.get(playerId)?.transport.send({ type: 'guess_denied', reason: 'too_late' });
-      return;
-    }
     if (this.round.passedBy?.has(playerId)) return; // you already passed this round
-    this.round.answeredBy = playerId;
-    const p = this.players.get(playerId);
-    this.broadcast({ type: 'guess_locked', byId: playerId, byName: p?.name ?? '' });
+    (this.round.pendingGuesses ??= new Set()).add(playerId);
     void this.evaluate(playerId, text);
   }
 
@@ -981,12 +976,12 @@ export class Room {
     } else {
       (this.round.burned ??= new Set()).add(playerId);
     }
-    this.round.answeredBy = undefined;
+    this.round.pendingGuesses?.delete(playerId);
     this.broadcast({
       type: 'wrong_guess',
       byId: playerId,
       byName: p?.name ?? '',
-      guess,
+      guess: '',
       wrongCount: p?.wrongCount ?? 0,
       retryAt,
     });
@@ -994,8 +989,6 @@ export class Room {
     // Eski istemciler wrong_guess'i yok sayar ve guess_locked yüzünden kilitli
     // kalırdı — taze guess_phase onları aynı turda yeniden açar.
     this.resyncLegacyClientsAfterWrong(playerId);
-    const t = setTimeout(() => this.endRoundTimeout(), remaining);
-    this.timers.push(t);
     return 'open';
   }
 
@@ -1003,7 +996,7 @@ export class Room {
   // and play moves on to a fresh team pick.
   private handlePass(playerId: string): void {
     if (this.status !== 'guess' || !this.round || this.round.finished) return;
-    if (this.round.answeredBy) return; // someone already buzzed in
+    if (this.round.pendingGuesses?.has(playerId)) return;
     if (!this.round.passedBy) this.round.passedBy = new Set();
     if (this.round.passedBy.has(playerId)) return;
     this.round.passedBy.add(playerId);
@@ -1047,13 +1040,16 @@ export class Room {
 
   private async evaluate(playerId: string, text: string): Promise<void> {
     if (!this.round?.teamA || !this.round.teamB) return;
-    this.clearTimers();
+    const round = this.round;
 
     // ---- player-player mode: guess is a club name ----
     if (this.gameMode === 'player-player' && this.round.playerAPick && this.round.playerBPick) {
       const ppv = await verifyPlayerPlayerGuess(this.round.playerAPick.id, this.round.playerBPick.id, text);
       const clubs = await commonClubs(this.round.playerAPick.id, this.round.playerBPick.id, 5);
       const common: { name: string; imageUrl: string | null }[] = clubs.map((c) => ({ name: c.name, imageUrl: c.logoUrl }));
+
+      if (this.round !== round || !this.round || this.round.finished) return;
+      this.round.pendingGuesses?.delete(playerId);
 
       const p = this.players.get(playerId);
       if (ppv.correct && p) {
@@ -1119,6 +1115,9 @@ export class Room {
       v = await verifyGuess(this.round.teamA.id, this.round.teamB.id, text);
       common = await commonPlayersDetailed(this.round.teamA.id, this.round.teamB.id, 5);
     }
+
+    if (this.round !== round || !this.round || this.round.finished) return;
+    this.round.pendingGuesses?.delete(playerId);
 
     const p = this.players.get(playerId);
     if (v.correct && p) {
@@ -1309,6 +1308,7 @@ export class Room {
           this.gameMode,
           [...myRounds, ...oppRounds],
           this.matchStartedAt ? Math.max(0, Math.round((Date.now() - this.matchStartedAt) / 1000)) : 0,
+          this.ranked,
         );
       } catch { /* DB error — skip silently */ }
     }

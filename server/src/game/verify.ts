@@ -61,7 +61,27 @@ const A_TEAM_ONLY = `
   AND c.name_norm !~* '(women|femen|femin|femmin|frauen|kadin|ladies)'
   AND c.name_norm !~* '(^|[^a-z])(u-?1[2-9]|u-?2[0-3]|sub-?[0-9]|youth|jugend|primavera|juvenil|altyapi|akademi|academy|junior|jeugd)([^a-z]|$)'
   AND c.name_norm !~* '( b| ii| iii| reserves?| castilla)$'
+  AND c.name_norm <> 'atletico madrileno'
+  AND c.name_norm <> 'atletico mg'
 `;
+
+function clubDisplayName(id: number, name: string): string {
+  return id === 13 ? 'Atletico Madrid' : name;
+}
+
+function clubHitFromRow(r: { id: string; name: string; logo_url: string | null }): ClubHit {
+  const id = Number(r.id);
+  return { id, name: clubDisplayName(id, r.name), logoUrl: r.logo_url };
+}
+
+async function canonicalClubHit(id: number): Promise<ClubHit | null> {
+  const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
+    'SELECT id, name, logo_url FROM clubs WHERE id = $1',
+    [id],
+  );
+  const r = rows[0];
+  return r ? clubHitFromRow(r) : null;
+}
 
 export async function searchClubs(
   query: string,
@@ -69,6 +89,10 @@ export async function searchClubs(
   limit = 24,
 ): Promise<ClubHit[]> {
   const norm = normalize(query);
+  if (norm.startsWith('atletico')) {
+    const atletico = await canonicalClubHit(13);
+    return atletico ? [atletico] : [];
+  }
   // Empty query → the most popular teams, so the picker's logo grid opens full
   // (no empty gap) and then filters down as the user types.
   if (!norm) {
@@ -91,7 +115,7 @@ export async function searchClubs(
         LIMIT $${p.length}`,
       p,
     );
-    return rows.map((r) => ({ id: Number(r.id), name: r.name, logoUrl: r.logo_url }));
+    return rows.map(clubHitFromRow);
   }
   const params: unknown[] = [norm];
   const scopeSql = scopeClause(scope, params);
@@ -121,7 +145,7 @@ export async function searchClubs(
       LIMIT $${limitIdx}`,
     params,
   );
-  return rows.map((r) => ({ id: Number(r.id), name: r.name, logoUrl: r.logo_url }));
+  return rows.map(clubHitFromRow);
 }
 
 // Reference list of known league names — used only for documentation.
@@ -221,6 +245,44 @@ function vowelDropAccepts(guessNorm: string, nameNorm: string): boolean {
   return false;
 }
 
+function nameTokens(nameNorm: string): string[] {
+  return nameNorm.split(' ').filter((t) => t.length > 0);
+}
+
+function tokenSetIncludesAll(haystack: Set<string>, needles: string[]): boolean {
+  return needles.length > 0 && needles.every((t) => haystack.has(t));
+}
+
+// Prefer a valid answer when the typed name clearly identifies one of this
+// round's actual answers. `word_similarity('pedro', 'luis pedro cavanda') = 1`,
+// so the generic fuzzy pass could otherwise judge the wrong Pedro while the
+// result screen lists the real shared Pedro below. This resolver runs only over
+// players who played for BOTH teams and rewards exact full-name/token coverage
+// before falling back to the typo gates used by the generic matcher.
+function validAnswerNameScore(guessNorm: string, playerNameNorm: string): number {
+  if (!guessNorm || !playerNameNorm) return 0;
+  if (guessNorm === playerNameNorm) return 100;
+  const guessTokens = nameTokens(guessNorm);
+  const playerTokens = nameTokens(playerNameNorm);
+  const guessSet = new Set(guessTokens);
+  const playerSet = new Set(playerTokens);
+
+  // Stored short name, user wrote a fuller real-world name: "pedro rodriguez"
+  // should still resolve to Transfermarkt's stored "Pedro".
+  if (playerTokens.length === 1 && guessSet.has(playerTokens[0]!)) return 92;
+  // Surname / unique token answer: "sosa" -> "jose sosa".
+  if (guessTokens.length === 1 && playerSet.has(guessTokens[0]!)) return 86 - Math.min(playerTokens.length, 6);
+  // Tokens supplied in any order: "ronaldo cristiano" -> "cristiano ronaldo".
+  if (tokenSetIncludesAll(guessSet, playerTokens)) return 82;
+  if (tokenSetIncludesAll(playerSet, guessTokens)) return 78;
+
+  if (editAccepts(guessNorm, playerNameNorm)
+    || vowelDropAccepts(guessNorm, playerNameNorm)) {
+    return 62;
+  }
+  return 0;
+}
+
 // Anti-stub guard for the TRIGRAM autocorrect path: a half-typed prefix must
 // not win the round ("ser" → Sergen is a lazy stab, not a typo — user rule).
 // The guess must be ≥4 chars AND cover ≥60% of some real token of the name.
@@ -271,7 +333,7 @@ export async function randomClub(
 
   const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(sql, params);
   const r = rows[0];
-  return r ? { id: Number(r.id), name: r.name, logoUrl: r.logo_url } : null;
+  return r ? clubHitFromRow(r) : null;
 }
 
 // Resolve the fixed difficulty pools to club ids once (cached for the process).
@@ -285,7 +347,7 @@ async function resolvedPools(): Promise<Record<'easy' | 'medium' | 'hard', numbe
         `SELECT c.id FROM clubs c
           WHERE c.is_national = false AND c.logo_url IS NOT NULL
             AND EXISTS (SELECT 1 FROM player_clubs pc WHERE pc.club_id = c.id)
-            AND c.name_norm NOT LIKE '%u21%' AND c.name_norm NOT LIKE '%u23%' AND c.name_norm NOT LIKE '% b'
+            ${A_TEAM_ONLY}
             AND (c.name_norm = $1 OR c.name_norm % $1 OR c.name_norm LIKE '%' || $1 || '%')
           ORDER BY (c.name_norm = $1) DESC, (c.league IS NOT NULL) DESC, similarity(c.name_norm, $1) DESC,
                    (SELECT COUNT(*) FROM player_clubs pc2 WHERE pc2.club_id = c.id) DESC, length(c.name) ASC
@@ -326,7 +388,7 @@ export async function botPickFromPool(
     `SELECT id, name, logo_url FROM clubs WHERE id = $1`, [id],
   );
   const r = rows[0];
-  return r ? { id: Number(r.id), name: r.name, logoUrl: r.logo_url } : null;
+  return r ? clubHitFromRow(r) : null;
 }
 
 export interface ScopeOption {
@@ -860,7 +922,7 @@ async function getClub(id: number): Promise<ClubHit | null> {
     [id],
   );
   const r = rows[0];
-  return r ? { id: Number(r.id), name: r.name, logoUrl: r.logo_url } : null;
+  return r ? clubHitFromRow(r) : null;
 }
 
 async function getPlayerSpells(playerId: number): Promise<SpellInfo[]> {
@@ -882,7 +944,7 @@ async function getPlayerSpells(playerId: number): Promise<SpellInfo[]> {
   );
   return rows.map((r) => ({
     clubId: Number(r.club_id),
-    clubName: r.club_name,
+    clubName: clubDisplayName(Number(r.club_id), r.club_name),
     logoUrl: r.logo_url,
     startYear: r.start_year,
     endYear: r.end_year,
@@ -973,24 +1035,60 @@ export async function verifyGuess(
   type Cand = (typeof eligible)[number];
   const mostFamous = (cs: Cand[]): Cand => cs.reduce((best, c) => (fameOf(c.id) > fameOf(best.id) ? c : best));
 
+  const { rows: allBothRows } = await pool.query<{ id: string; name: string; name_norm: string; image_url: string | null; fame: string }>(
+    `SELECT p.id, p.name, p.name_norm, p.image_url,
+            MAX(GREATEST(COALESCE(c.popularity, 0),
+                         (SELECT count(*) FROM player_clubs x WHERE x.club_id = pc.club_id))) AS fame
+       FROM players p
+       JOIN player_clubs a ON a.player_id = p.id AND a.club_id = $1
+       JOIN player_clubs b ON b.player_id = p.id AND b.club_id = $2
+       JOIN player_clubs pc ON pc.player_id = p.id
+       JOIN clubs c ON c.id = pc.club_id
+      GROUP BY p.id, p.name, p.name_norm, p.image_url
+      ORDER BY (p.image_url IS NOT NULL) DESC, fame DESC
+      LIMIT 300`,
+    [teamAId, teamBId],
+  );
+  const validNameMatches = allBothRows
+    .map((r) => ({
+      id: Number(r.id),
+      name: r.name,
+      nameNorm: r.name_norm,
+      sim: 0,
+      imageUrl: r.image_url,
+      fame: Number(r.fame),
+      score: validAnswerNameScore(norm, r.name_norm),
+    }))
+    .filter((r) => r.score > 0)
+    .sort((a, b) => b.score - a.score || b.fame - a.fame);
+
+  // Players matched strongly enough to be "the specific name you typed" (covers
+  // same-name variants like R9 "Ronaldo" vs "Cristiano Ronaldo").
+  const exactCluster = eligible.filter((c) => c.sim >= config.verifyExactThreshold);
+  const exactBoth = exactCluster.filter((c) => playedBoth(c.id));
+  // If the user typed a full non-answer name (e.g. "Luis Pedro Cavanda"), do not
+  // rescue it through a shorter valid token ("Pedro"). Bare one-token answers are
+  // still allowed to resolve against the full valid-answer set below.
+  const strictFullNameMiss = nameTokens(norm).length > 1 && exactCluster.length > 0 && exactBoth.length === 0;
+
   // Candidates are ordered by similarity descending; the best is index 0.
   let matched = eligible[0]!;
   let correct: boolean;
   let autocorrected = false;
 
-  // Players matched strongly enough to be "the specific name you typed" (covers
-  // same-name variants like R9 "Ronaldo" vs "Cristiano Ronaldo").
-  const exactCluster = eligible.filter((c) => c.sim >= config.verifyExactThreshold);
-
-  if (exactCluster.length > 0) {
+  if (!strictFullNameMiss && validNameMatches.length > 0) {
+    const best = validNameMatches[0]!;
+    matched = { id: best.id, name: best.name, nameNorm: best.nameNorm, sim: best.score >= 78 ? 1 : best.sim, imageUrl: best.imageUrl };
+    correct = true;
+    autocorrected = best.score < 78;
+  } else if (exactCluster.length > 0) {
     // You clearly named a specific player → judge them strictly. If any of the
     // same-name players played both, that's who you meant. ("Ronaldinho" has no
     // such variant, so it stays wrong — never auto-corrected to "Ronaldo".)
     // Same-name ties break by fame: "ronaldo" means Cristiano/R9, never a
     // lower-division namesake.
-    const bothInCluster = exactCluster.filter((c) => playedBoth(c.id));
-    matched = bothInCluster.length > 0 ? mostFamous(bothInCluster) : mostFamous(exactCluster);
-    correct = bothInCluster.length > 0;
+    matched = exactBoth.length > 0 ? mostFamous(exactBoth) : mostFamous(exactCluster);
+    correct = exactBoth.length > 0;
   } else {
     // Approximate spelling (a typo) → auto-correct to the closest player who
     // actually played BOTH teams. BUT only when the match is genuinely close, so a
@@ -1016,17 +1114,7 @@ export async function verifyGuess(
       // "sergen"). The valid-answer set of this round is tiny, so check every
       // both-team player directly through the SAME strict gates — garbage and
       // stubs still die in editAccepts/vowelDropAccepts.
-      const { rows: bothRows } = await pool.query<{ id: string; name: string; name_norm: string; image_url: string | null }>(
-        `SELECT p.id, p.name, p.name_norm, p.image_url
-           FROM players p
-          WHERE EXISTS (SELECT 1 FROM player_clubs a WHERE a.player_id = p.id AND a.club_id = $1)
-            AND EXISTS (SELECT 1 FROM player_clubs b WHERE b.player_id = p.id AND b.club_id = $2)
-          ORDER BY (p.image_url IS NOT NULL) DESC,
-                   (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC
-          LIMIT 200`,
-        [teamAId, teamBId],
-      );
-      const rescue = bothRows
+      const rescue = allBothRows
         .map((r) => ({ id: Number(r.id), name: r.name, nameNorm: r.name_norm, sim: 0, imageUrl: r.image_url }))
         .filter((r) => editAccepts(norm, r.nameNorm) || vowelDropAccepts(norm, r.nameNorm));
       if (rescue.length > 0) {

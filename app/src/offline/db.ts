@@ -49,9 +49,17 @@ function similarity(a: string, b: string): number {
 // ---------- DB singleton ----------
 const DB_NAME = 'crossover_offline.db';
 const DATA_VERSION_KEY = '@offline_data_v';
-const CURRENT_VERSION = '3'; // bump when the data changes (export-offline.ts → data.json → split-offline-data.mjs → data/*)
+const CURRENT_VERSION = '6'; // bump when the data changes (export-offline.ts → data.json → split-offline-data.mjs → data/*)
 
 let db: any = null;
+
+function clubDisplayName(id: number, name: string): string {
+  return id === 13 ? 'Atletico Madrid' : name;
+}
+
+function clubHitFromRow(r: any): OfflineClub {
+  return { id: r.id, name: clubDisplayName(r.id, r.name), logoUrl: r.logo };
+}
 
 export async function initOfflineDB(): Promise<void> {
   if (db) return;
@@ -122,7 +130,7 @@ export async function initOfflineDB(): Promise<void> {
   const toPlayer = (p: ExPlayer) => [p.id, p.name, p.norm, p.nat, p.img];
   const toSpell = (s: ExSpell) => [s.p, s.c, s.s, s.e];
 
-  await bulk('clubs', 6, require('./data/clubs.json') as ExClub[], toClub);
+  await bulk('clubs', 7, require('./data/clubs.json') as ExClub[], toClub);
   await breathe();
   await bulk('players', 5, require('./data/players-1.json') as ExPlayer[], toPlayer);
   await breathe();
@@ -178,24 +186,29 @@ export async function searchClubs(query: string, limit = 30): Promise<OfflineClu
     const favIds: number[] = BOT_POOL_IDS.easy ?? [];
     const favPh = favIds.map(() => '?').join(',');
     const favRows = favIds.length
-      ? await d.getAllAsync(`SELECT id, name, logo FROM clubs WHERE id IN (${favPh})`, favIds)
+      ? await d.getAllAsync(`SELECT id, name, logo FROM clubs WHERE id IN (${favPh}) AND name NOT LIKE '__hidden_%'`, favIds)
       : [];
     const favById = new Map<number, any>(favRows.map((r: any) => [r.id, r]));
     const ordered = favIds.map((id) => favById.get(id)).filter(Boolean);
     const rest = await d.getAllAsync(
       `SELECT c.id, c.name, c.logo FROM clubs c
        JOIN spells s ON s.club_id = c.id
-       ${favIds.length ? `WHERE c.id NOT IN (${favPh})` : ''}
+       WHERE c.name NOT LIKE '__hidden_%'
+         ${favIds.length ? `AND c.id NOT IN (${favPh})` : ''}
        GROUP BY c.id ORDER BY COUNT(*) DESC LIMIT ?`,
       [...favIds, limit],
     );
     const combined = [...ordered, ...rest].slice(0, limit);
-    return combined.map((r: any) => ({ id: r.id, name: r.name, logoUrl: r.logo }));
+    return combined.map(clubHitFromRow);
   }
   const norm = normalize(query);
+  if (norm.startsWith('atletico')) {
+    const row = await d.getFirstAsync(`SELECT id, name, logo FROM clubs WHERE id = 13`);
+    return row ? [clubHitFromRow(row)] : [];
+  }
   // SQLite doesn't have pg_trgm — use LIKE + in-memory similarity ranking
   const rows = await d.getAllAsync(
-    `SELECT id, name, norm, logo FROM clubs WHERE norm LIKE ? LIMIT 200`,
+    `SELECT id, name, norm, logo FROM clubs WHERE norm LIKE ? AND name NOT LIKE '__hidden_%' LIMIT 200`,
     [`%${norm}%`],
   );
   // Rank by similarity
@@ -203,7 +216,7 @@ export async function searchClubs(query: string, limit = 30): Promise<OfflineClu
     .map((r: any) => ({ ...r, sim: similarity(norm, r.norm) }))
     .sort((a: any, b: any) => b.sim - a.sim)
     .slice(0, limit);
-  return ranked.map((r: any) => ({ id: r.id, name: r.name, logoUrl: r.logo }));
+  return ranked.map(clubHitFromRow);
 }
 
 export async function randomClub(difficulty: 'easy' | 'medium' | 'hard'): Promise<OfflineClub | null> {
@@ -215,20 +228,25 @@ export async function randomClub(difficulty: 'easy' | 'medium' | 'hard'): Promis
     rows = await d.getAllAsync(
       `SELECT c.id, c.name, c.logo FROM clubs c
        JOIN spells s ON s.club_id = c.id
+       WHERE c.name NOT LIKE '__hidden_%'
        GROUP BY c.id ORDER BY COUNT(*) DESC LIMIT 20`,
     );
   } else if (difficulty === 'medium') {
     rows = await d.getAllAsync(
       `SELECT id, name, logo FROM (
          SELECT c.id, c.name, c.logo, ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC) AS rn
-         FROM clubs c JOIN spells s ON s.club_id = c.id GROUP BY c.id
+          FROM clubs c JOIN spells s ON s.club_id = c.id
+          WHERE c.name NOT LIKE '__hidden_%'
+          GROUP BY c.id
        ) WHERE rn BETWEEN 21 AND 80`,
     );
   } else {
     rows = await d.getAllAsync(
       `SELECT id, name, logo FROM (
          SELECT c.id, c.name, c.logo, ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC) AS rn
-         FROM clubs c JOIN spells s ON s.club_id = c.id GROUP BY c.id
+          FROM clubs c JOIN spells s ON s.club_id = c.id
+          WHERE c.name NOT LIKE '__hidden_%'
+          GROUP BY c.id
        ) WHERE rn BETWEEN 81 AND 250`,
     );
   }
@@ -258,7 +276,7 @@ export async function botPickFromPool(
   if (!poolIds.length) return null;
   const ph = poolIds.map(() => '?').join(',');
   const all: any[] = await d.getAllAsync(
-    `SELECT id, name, logo, country FROM clubs WHERE id IN (${ph})`, poolIds,
+    `SELECT id, name, logo, country FROM clubs WHERE id IN (${ph}) AND name NOT LIKE '__hidden_%'`, poolIds,
   );
   if (!all.length) return null;
   let cands = all.filter((c) => !excludeIds.includes(c.id));

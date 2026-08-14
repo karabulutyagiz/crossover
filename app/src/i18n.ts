@@ -151,7 +151,7 @@ const tr = {
   'guess.retryNow': 'Son hakkın — dikkatli yaz!',
   'guess.oppPassed': 'Rakip pas geçti — sen de pas geçersen el atlanır',
   'guess.locked': '{name} cevaplıyor…',
-  'guess.oppWrong': '{name} yanlış denedi: “{guess}” — sıra sende, süre işliyor!',
+  'guess.oppWrong': '{name} yanlış cevap yazdı — süre işliyor!',
   'guess.youBurned': 'Yanlış cevap — bu turda hakkın doldu. Rakip hâlâ deneyebilir.',
   'guess.tooLate': '{name} senden önce gönderdi',
   'guess.youAnswered': 'Cevabın gönderildi',
@@ -553,6 +553,7 @@ const tr = {
   // stats labels
   'stats.wins': 'Galibiyet',
   'stats.losses': 'Mağlubiyet',
+  'stats.winLossShort': '{wins}G / {losses}M',
   'stats.winRate': 'Kazanma %',
   'stats.winRateShort': 'Kazanma',
   'stats.trophies': 'Kupa',
@@ -822,7 +823,7 @@ const en: typeof tr = {
   'guess.retryNow': 'Last chance — make it count!',
   'guess.oppPassed': 'Opponent passed — pass too to skip this round',
   'guess.locked': '{name} is answering…',
-  'guess.oppWrong': '{name} guessed wrong: “{guess}” — your turn, clock is running!',
+  'guess.oppWrong': '{name} guessed wrong — clock is running!',
   'guess.youBurned': 'Wrong answer — you are out this round. Your opponent can still try.',
   'guess.tooLate': '{name} submitted before you',
   'guess.youAnswered': 'Your answer was sent',
@@ -1195,6 +1196,7 @@ const en: typeof tr = {
 
   'stats.wins': 'Wins',
   'stats.losses': 'Losses',
+  'stats.winLossShort': '{wins}W / {losses}L',
   'stats.winRate': 'Win %',
   'stats.winRateShort': 'Win Rate',
   'stats.trophies': 'Trophies',

@@ -6,7 +6,7 @@ import { listScopes, listNationalities } from '../game/verify.ts';
 import {
   findOrCreateUser, findOrCreateUserByProvider, createGuestUser, getUser, changeDisplayName,
   grantDevEmotesIfNeeded,
-  setUsername, buyEmote, setEquippedEmotes, setAvatar, setSelectedFrame, buyAvatar, touchLastSeen, getLeaderboard, grantAdReward, usePower, getModeStats, buyPremiumRoad, buyPower,
+  setUsername, buyEmote, setEquippedEmotes, setAvatar, setSelectedFrame, buyAvatar, touchLastSeen, getLeaderboard, grantAdReward, usePower, getModeStats, getRankedProfileStats, buyPremiumRoad, buyPower,
   listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
   removeFriend, searchUsers, getMatchHistory, deleteAccount, recordPlaySession,
   type UserProfile,
@@ -320,13 +320,14 @@ export function startServer(port: number): Server {
         return;
       }
       const liveRoom = manager.liveStats();
+      const day = query.get('day') ?? undefined;
       getAdminStats({
         online: onlineUsers.size,
         queue: matchQueue.length,
         ...liveRoom,
         matches: manager.liveMatches(),         // kim kime karşı — ayrıntılı
         onlineUserIds: [...onlineUsers.keys()],  // isimler DB'den çözülür
-      })
+      }, day)
         .then((stats) => { res.writeHead(200, cors); res.end(JSON.stringify(stats)); })
         .catch((e) => {
           log.error('admin_stats_failed', { message: e instanceof Error ? e.message : String(e) });
@@ -595,8 +596,8 @@ export function startServer(port: number): Server {
           try {
             const fresh = await getUser(userProfile!.id);
             if (fresh) userProfile = fresh;
-            const modes = await getModeStats(userProfile!.id);
-            transport.send({ type: 'my_stats', winStreak: userProfile!.winStreak, bestStreak: userProfile!.bestStreak, modes });
+            const stats = await getRankedProfileStats(userProfile!.id);
+            transport.send({ type: 'my_stats', winStreak: userProfile!.winStreak, bestStreak: userProfile!.bestStreak, wins: stats.wins, losses: stats.losses, modes: stats.modes });
           } catch (err) {
             console.error('[get_my_stats] failed:', err instanceof Error ? err.message : err);
             transport.send({ type: 'error', message: 'İstatistikler alınamadı' });
@@ -882,9 +883,22 @@ export function startServer(port: number): Server {
         void (async () => {
           const u = await getUser(msg.userId);
           if (!u) return transport.send({ type: 'error', message: 'Kullanıcı bulunamadı' });
+          const stats = await getRankedProfileStats(u.id);
           transport.send({
             type: 'user_profile',
-            profile: { userId: u.id, displayName: u.displayName, selectedAvatar: u.selectedAvatar, trophies: u.trophies, wins: u.wins, losses: u.losses, arena: u.arena, avatar: u.avatar, frame: u.selectedFrame },
+            profile: {
+              userId: u.id,
+              displayName: u.displayName,
+              selectedAvatar: u.selectedAvatar,
+              trophies: u.trophies,
+              wins: stats.wins,
+              losses: stats.losses,
+              arena: u.arena,
+              avatar: u.avatar,
+              frame: u.selectedFrame,
+              bestStreak: u.bestStreak,
+              modes: stats.modes,
+            },
           });
         })();
         return;

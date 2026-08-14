@@ -66,7 +66,17 @@ export interface LiveStats {
   onlineUserIds?: string[];    // çevrimiçi hesap id'leri — isim/kupa DB'den çözülür
 }
 
-export async function getAdminStats(live: LiveStats) {
+function dayBoundsSql(day: string | null | undefined): { startSql: string; endSql: string; label: string } {
+  const safe = /^\d{4}-\d{2}-\d{2}$/.test(day ?? '') ? day! : new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Istanbul' });
+  return {
+    startSql: `(DATE '${safe}'::timestamp AT TIME ZONE 'Europe/Istanbul')`,
+    endSql: `((DATE '${safe}' + INTERVAL '1 day')::timestamp AT TIME ZONE 'Europe/Istanbul')`,
+    label: safe,
+  };
+}
+
+export async function getAdminStats(live: LiveStats, day?: string) {
+  const selectedDay = dayBoundsSql(day);
   const [
     users,
     byProduct,
@@ -89,12 +99,12 @@ export async function getAdminStats(live: LiveStats) {
     pool.query(`
       SELECT
         count(*)::int AS total,
-        count(*) FILTER (WHERE created_at >= now() - interval '1 day')::int  AS new_today,
+        count(*) FILTER (WHERE created_at >= ${selectedDay.startSql} AND created_at < ${selectedDay.endSql})::int  AS new_today,
         count(*) FILTER (WHERE created_at >= now() - interval '7 days')::int  AS new_7d,
         count(*) FILTER (WHERE created_at >= now() - interval '30 days')::int AS new_30d,
         count(*) FILTER (WHERE apple_sub IS NOT NULL OR google_sub IS NOT NULL OR facebook_sub IS NOT NULL)::int AS identified,
         count(*) FILTER (WHERE apple_sub IS NULL AND google_sub IS NULL AND facebook_sub IS NULL AND game_center_id IS NULL)::int AS guests,
-        count(*) FILTER (WHERE last_seen >= now() - interval '1 day')::int  AS dau,
+        count(*) FILTER (WHERE last_seen >= ${selectedDay.startSql} AND last_seen < ${selectedDay.endSql})::int  AS dau,
         count(*) FILTER (WHERE last_seen >= now() - interval '7 days')::int AS wau,
         COALESCE(sum(diamonds),0)::bigint AS diamonds_circulating,
         count(*) FILTER (WHERE social_pack_until > now())::int AS active_social_pack,
@@ -139,7 +149,7 @@ export async function getAdminStats(live: LiveStats) {
     pool.query(`
       SELECT
         count(*)::int AS total,
-        count(*) FILTER (WHERE mh.played_at >= now() - interval '1 day')::int  AS today,
+        count(*) FILTER (WHERE mh.played_at >= ${selectedDay.startSql} AND mh.played_at < ${selectedDay.endSql})::int  AS today,
         count(*) FILTER (WHERE mh.played_at >= now() - interval '7 days')::int AS last7d
       FROM match_history mh
       JOIN users u ON u.id = mh.player_id
@@ -173,7 +183,7 @@ export async function getAdminStats(live: LiveStats) {
     pool.query(`
       SELECT
         count(*)::int AS total,
-        count(*) FILTER (WHERE created_at >= now() - interval '1 day')::int AS today
+        count(*) FILTER (WHERE created_at >= ${selectedDay.startSql} AND created_at < ${selectedDay.endSql})::int AS today
       FROM messages
       WHERE created_at >= ${LAUNCH_TS}`),
 
@@ -193,7 +203,7 @@ export async function getAdminStats(live: LiveStats) {
     pool.query(`
       SELECT
         count(*)::int AS total,
-        count(*) FILTER (WHERE ar.granted_at >= now() - interval '1 day')::int  AS today,
+        count(*) FILTER (WHERE ar.granted_at >= ${selectedDay.startSql} AND ar.granted_at < ${selectedDay.endSql})::int  AS today,
         count(*) FILTER (WHERE ar.granted_at >= now() - interval '7 days')::int AS last7d,
         count(DISTINCT ar.user_id)::int AS unique_users
       FROM ad_rewards ar
@@ -215,11 +225,11 @@ export async function getAdminStats(live: LiveStats) {
     pool.query(`
       SELECT
         COALESCE(sum(ps.duration_secs), 0)::bigint AS total_secs,
-        COALESCE(sum(ps.duration_secs) FILTER (WHERE ps.started_at >= now() - interval '1 day'), 0)::bigint  AS secs_today,
+        COALESCE(sum(ps.duration_secs) FILTER (WHERE ps.started_at >= ${selectedDay.startSql} AND ps.started_at < ${selectedDay.endSql}), 0)::bigint  AS secs_today,
         COALESCE(sum(ps.duration_secs) FILTER (WHERE ps.started_at >= now() - interval '7 days'), 0)::bigint AS secs_7d,
         count(*)::int AS sessions,
-        count(*) FILTER (WHERE ps.started_at >= now() - interval '1 day')::int AS sessions_today,
-        count(DISTINCT ps.user_id) FILTER (WHERE ps.started_at >= now() - interval '1 day')::int AS users_today,
+        count(*) FILTER (WHERE ps.started_at >= ${selectedDay.startSql} AND ps.started_at < ${selectedDay.endSql})::int AS sessions_today,
+        count(DISTINCT ps.user_id) FILTER (WHERE ps.started_at >= ${selectedDay.startSql} AND ps.started_at < ${selectedDay.endSql})::int AS users_today,
         COALESCE(avg(ps.duration_secs), 0)::float AS avg_secs
       FROM play_sessions ps
       JOIN users u ON u.id = ps.user_id
@@ -291,9 +301,9 @@ export async function getAdminStats(live: LiveStats) {
   const dailySales = [...dayMap.values()]
     .map((d) => ({ ...d, revenue: +d.revenue.toFixed(2) }))
     .sort((a, b) => a.day.localeCompare(b.day));
-  const today = dailySales.length ? dailySales[dailySales.length - 1] : null;
-  const revenueToday = today && today.day === istanbulToday() ? today.revenue : 0;
-  const salesToday = today && today.day === istanbulToday() ? today.sales : 0;
+  const selectedSalesDay = dailySales.find((d) => d.day === selectedDay.label) ?? null;
+  const revenueToday = selectedSalesDay ? selectedSalesDay.revenue : 0;
+  const salesToday = selectedSalesDay ? selectedSalesDay.sales : 0;
 
   const arenaRow = arenas.rows[0] as any;
   const arenaDist = ARENA_NAMES.map((name, i) => ({ name, count: Number(arenaRow[`a${i}`] ?? 0) }));
@@ -317,6 +327,7 @@ export async function getAdminStats(live: LiveStats) {
   return {
     generatedAt: new Date().toISOString(),
     since: '2026-08-04', // istatistiklerin başlangıç (yayın) tarihi — panelde gösterilir
+    selectedDay: selectedDay.label,
     live: { ...liveRest, onlineUsers: onlineList },
     users: {
       total: u.total,

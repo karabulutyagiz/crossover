@@ -238,7 +238,7 @@ export type ServerMsg =
   | { type: 'premium_road_purchased'; profile: ProfileView } // Premium Yol açıldı
   | { type: 'power_purchased'; powerId: string; profile: ProfileView } // mağazadan güç alındı
   | { type: 'power_used'; powerId: string; profile: ProfileView } // güç etkinleştirildi (jeton düştü / kalkan kuşanıldı)
-  | { type: 'my_stats'; winStreak: number; bestStreak: number; modes: { mode: string; wins: number; losses: number }[] } // profil istatistikleri
+  | { type: 'my_stats'; winStreak: number; bestStreak: number; wins: number; losses: number; modes: { mode: string; wins: number; losses: number }[] } // profil istatistikleri
   | { type: 'emote'; fromId: string; emoteId: string } // a player in the room sent an emote
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string } // store purchase succeeded
   | { type: 'avatar_purchased'; profile: ProfileView; avatarId: string }
@@ -313,6 +313,9 @@ export interface PublicProfile {
   arena: ArenaView;
   avatar?: string | null;
   frame?: string | null; // takılı profil çerçevesi
+  bestStreak?: number;    // tüm zamanların en yüksek galibiyet serisi (herkese açık)
+  // Mod bazında dereceli maç kırılımı. Bot/dostluk ve oyuncu-oyuncu modu hariç.
+  modes?: { mode: string; wins: number; losses: number }[];
 }
 
 export interface MatchHistoryView {

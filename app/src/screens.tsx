@@ -5716,7 +5716,7 @@ export function GuessScreen({ state, actions, tutorial, prefill }: Props & { pre
               {state.oppWrong ? (
                 <View style={styles.passHint}>
                   <Ionicons name="close-circle" size={14} color={theme.danger} />
-                  <Text style={styles.passHintText}>{t('guess.oppWrong', { name: state.oppWrong.byName, guess: state.oppWrong.guess })}</Text>
+                  <Text style={styles.passHintText}>{t('guess.oppWrong', { name: state.oppWrong.byName })}</Text>
                 </View>
               ) : null}
               {onLastChance ? (
@@ -8048,6 +8048,8 @@ export function FriendProfileModal({ profile, onClose, relation, onAddFriend }: 
   const insets = useSafeAreaInsets();
   const total = (profile?.wins ?? 0) + (profile?.losses ?? 0);
   const winRate = total ? Math.round(((profile?.wins ?? 0) / total) * 100) : 0;
+  const profileModes = profile?.modes ?? [];
+  const modeScoreText = (s?: { wins: number; losses: number }) => t('stats.winLossShort', { wins: s?.wins ?? 0, losses: s?.losses ?? 0 });
   const color = profile ? arenaColor(profile.arena.name) : theme.primary;
   // İstek bu açılışta gönderildiyse düğme "gönderildi" durumuna kilitlenir.
   const [requestSent, setRequestSent] = useState(false);
@@ -8108,6 +8110,19 @@ export function FriendProfileModal({ profile, onClose, relation, onAddFriend }: 
               <StatCard icon="trophy" color={theme.primary} label={t('stats.wins')} value={profile?.wins ?? 0} />
               <StatCard icon="skull-outline" color={theme.danger} label={t('stats.losses')} value={profile?.losses ?? 0} />
               <StatCard icon="stats-chart" color={theme.blue} label={t('stats.winRate')} value={`${winRate}%`} />
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+              <StatCard icon="flame" color={theme.flame} label={t('stats.bestStreak')} value={profile?.bestStreak ?? 0} />
+              {([['team-team', 'mode.teamTeam'], ['country-team', 'mode.countryTeam']] as const).map(([modeId, labelKey]) => {
+                const s = profileModes.find((m) => m.mode === modeId);
+                return <StatCard key={modeId} icon={MODE_ICON[modeId]} color={modeId === 'team-team' ? theme.primary : theme.blue} label={t(labelKey)} value={modeScoreText(s)} />;
+              })}
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+              {([['letter-team', 'mode.letterTeam']] as const).map(([modeId, labelKey]) => {
+                const s = profileModes.find((m) => m.mode === modeId);
+                return <StatCard key={modeId} icon={MODE_ICON[modeId]} color={theme.accent} label={t(labelKey)} value={modeScoreText(s)} />;
+              })}
             </View>
             {relation === 'none' && onAddFriend ? (
               <View style={{ marginTop: 14 }}>
@@ -9735,10 +9750,10 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
 // ---- Profile ----
 function StatCard({ icon, color, label, value, gem }: { icon?: IoniconName; color: string; label: string; value: number | string; gem?: boolean }) {
   return (
-    <GamePanel compact accentStripe={color} style={{ flex: 1 }} bodyStyle={{ alignItems: 'center', gap: 4, paddingVertical: 16 }}>
+    <GamePanel compact accentStripe={color} style={{ flex: 1, minHeight: 104 }} bodyStyle={{ alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 14 }}>
       {gem ? <GemIcon size={24} /> : icon ? <Ionicons name={icon} size={22} color={color} /> : null}
       <Text style={{ color: theme.text, fontSize: 24, fontFamily: 'Poppins-Black', ...engrave('sm') }}>{value}</Text>
-      <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>{label}</Text>
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{label}</Text>
     </GamePanel>
   );
 }
@@ -9782,8 +9797,10 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
       </Screen>
     );
   }
-  const total = p.wins + p.losses;
-  const winRate = total ? Math.round((p.wins / total) * 100) : 0;
+  const rankedWins = state.myStats?.wins ?? p.wins;
+  const rankedLosses = state.myStats?.losses ?? p.losses;
+  const total = rankedWins + rankedLosses;
+  const winRate = total ? Math.round((rankedWins / total) * 100) : 0;
   const color = arenaColor(p.arena.name);
   const arenaArt = getArenaDataByName(p.arena.name);
   const pendingAvatar = pendingAvatarId ? avatarMeta(pendingAvatarId) : null;
@@ -10057,27 +10074,32 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
           <StatCard gem color={GEM_COLOR} label={t('stats.diamonds')} value={p.diamonds} />
         </View>
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-          <StatCard icon="checkmark-circle" color={theme.primary} label={t('stats.wins')} value={p.wins} />
-          <StatCard icon="close-circle" color={theme.danger} label={t('stats.losses')} value={p.losses} />
+          <StatCard icon="checkmark-circle" color={theme.primary} label={t('stats.wins')} value={rankedWins} />
+          <StatCard icon="close-circle" color={theme.danger} label={t('stats.losses')} value={rankedLosses} />
           <StatCard icon="stats-chart" color={theme.purple} label={t('stats.winRateShort')} value={`%${winRate}`} />
         </View>
 
-        {/* Detaylı istatistikler — G/M/% kutularıyla aynı dil: seri rekoru +
-            yalnız Ülke-Takım ve Harf-Takım başarı yüzdeleri (get_my_stats) */}
+        {/* Detaylı istatistikler: seri rekoru + yalnız dereceli mod kırılımı.
+            Bot/dostluk ve oyuncu-oyuncu modu server tarafında hariç tutulur. */}
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
           <StatCard icon="flame" color={theme.flame} label={t('stats.bestStreak')} value={state.myStats?.bestStreak ?? p.bestStreak ?? 0} />
-          {([['country-team', 'mode.countryTeam'], ['letter-team', 'mode.letterTeam']] as const).map(([modeId, labelKey]) => {
+          {([['team-team', 'mode.teamTeam'], ['country-team', 'mode.countryTeam']] as const).map(([modeId, labelKey]) => {
             const s = state.myStats?.modes.find((m) => m.mode === modeId);
-            const total = (s?.wins ?? 0) + (s?.losses ?? 0);
             return (
               <StatCard
                 key={modeId}
                 icon={MODE_ICON[modeId]}
-                color={modeId === 'country-team' ? theme.blue : theme.accent}
+                color={modeId === 'team-team' ? theme.primary : theme.blue}
                 label={t(labelKey)}
-                value={total > 0 ? `%${Math.round(((s?.wins ?? 0) / total) * 100)}` : '—'}
+                value={t('stats.winLossShort', { wins: s?.wins ?? 0, losses: s?.losses ?? 0 })}
               />
             );
+          })}
+        </View>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+          {([['letter-team', 'mode.letterTeam']] as const).map(([modeId, labelKey]) => {
+            const s = state.myStats?.modes.find((m) => m.mode === modeId);
+            return <StatCard key={modeId} icon={MODE_ICON[modeId]} color={theme.accent} label={t(labelKey)} value={t('stats.winLossShort', { wins: s?.wins ?? 0, losses: s?.losses ?? 0 })} />;
           })}
         </View>
 

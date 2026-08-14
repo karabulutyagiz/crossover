@@ -138,13 +138,16 @@ export async function verifyApplePurchase(
   // Diamonds (consumable) — credit once per transaction (idempotent via PK).
   const amount = DIAMOND_PRODUCTS[pid];
   if (amount) {
-    const ins = await pool.query(
+    const ins = await pool.query<{ inserted: boolean }>(
       `INSERT INTO processed_transactions (transaction_id, user_id, product_id, diamonds, environment, purchase_date)
          VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (transaction_id) DO NOTHING`,
+       ON CONFLICT (transaction_id) DO UPDATE SET
+         environment = COALESCE(processed_transactions.environment, EXCLUDED.environment),
+         purchase_date = COALESCE(processed_transactions.purchase_date, EXCLUDED.purchase_date)
+       RETURNING (xmax = 0) AS inserted`,
       [tx.transactionId, userId, pid, amount, environment, purchaseIso],
     );
-    if (ins.rowCount && ins.rowCount > 0) {
+    if (ins.rows[0]?.inserted) {
       await pool.query(`UPDATE users SET diamonds = diamonds + $2 WHERE id = $1`, [userId, amount]);
       granted += amount;
     }
@@ -159,7 +162,9 @@ export async function verifyApplePurchase(
     await pool.query(
       `INSERT INTO processed_transactions (transaction_id, user_id, product_id, diamonds, environment, purchase_date)
          VALUES ($1, $2, $3, 0, $4, $5)
-       ON CONFLICT (transaction_id) DO NOTHING`,
+       ON CONFLICT (transaction_id) DO UPDATE SET
+         environment = COALESCE(processed_transactions.environment, EXCLUDED.environment),
+         purchase_date = COALESCE(processed_transactions.purchase_date, EXCLUDED.purchase_date)`,
       [tx.transactionId, userId, pid, environment, purchaseIso],
     );
     const purchasedAt = Number(tx.purchaseDate ?? 0);
@@ -173,13 +178,16 @@ export async function verifyApplePurchase(
 
   // CO Pass — unlock the premium level road for the current season (idempotent).
   if (pid === COPASS_PRODUCT) {
-    const ins = await pool.query(
+    const ins = await pool.query<{ inserted: boolean }>(
       `INSERT INTO processed_transactions (transaction_id, user_id, product_id, diamonds, environment, purchase_date)
          VALUES ($1, $2, $3, 0, $4, $5)
-       ON CONFLICT (transaction_id) DO NOTHING`,
+       ON CONFLICT (transaction_id) DO UPDATE SET
+         environment = COALESCE(processed_transactions.environment, EXCLUDED.environment),
+         purchase_date = COALESCE(processed_transactions.purchase_date, EXCLUDED.purchase_date)
+       RETURNING (xmax = 0) AS inserted`,
       [tx.transactionId, userId, pid, environment, purchaseIso],
     );
-    if (ins.rowCount && ins.rowCount > 0) {
+    if (ins.rows[0]?.inserted) {
       await pool.query(`UPDATE users SET premium_road = TRUE WHERE id = $1`, [userId]);
     }
   }

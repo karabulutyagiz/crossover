@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta http-equiv="Cache-Control" content="no-store" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <meta name="robots" content="noindex, nofollow" />
 <title>Crossover — Yönetim Paneli</title>
 <style>
@@ -57,6 +60,13 @@
   .brand h1{font-size:18px;margin:0}
   .brand small{color:var(--muted);font-size:12px}
   .top-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .date-filter{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px}
+  .date-filter input{background:var(--surface);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:7px 9px;font-size:12px;color-scheme:dark}
+  .date-filter button{margin:0;padding:7px 10px;border-radius:10px;border:1px solid var(--mint);background:rgba(39,229,139,.12);color:var(--mint);font-weight:800;font-size:12px;cursor:pointer}
+  .filter-card{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;border-color:var(--mint)}
+  .filter-card .date-filter{font-size:13px;flex:1}
+  .filter-card .date-filter input{flex:1;max-width:220px}
+  .filter-card .date-filter button{min-width:92px}
   .status-dot{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}
   .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
   .dot.ok{background:var(--mint);box-shadow:0 0 10px var(--mint)}
@@ -72,10 +82,10 @@
   @media(max-width:640px){.g-live{grid-template-columns:repeat(2,1fr)}}
 
   /* ── Canlı listeler: aktif maçlar + çevrimiçi kullanıcılar ── */
-  .live-list{max-height:340px;overflow-y:auto}
+  .live-list{max-height:340px;min-height:44px;overflow-y:auto;border-top:1px solid rgba(255,255,255,.04)}
   .match-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
   .match-row:last-child{border-bottom:none}
-  .match-row .vs{font-size:14px}
+  .match-row .vs{font-size:14px;min-width:0;overflow-wrap:anywhere}
   .match-row .meta{font-size:11px;color:var(--muted);white-space:nowrap}
   .online-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line)}
   .online-row:last-child{border-bottom:none}
@@ -123,6 +133,22 @@
 
   .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   @media(max-width:820px){.two-col{grid-template-columns:1fr}}
+  @media(max-width:640px){
+    .wrap{padding:14px 10px 48px}
+    header.top{align-items:flex-start}
+    .top-actions{width:100%;align-items:stretch}
+    .filter-card{display:block}
+    .filter-card .date-filter{width:100%;justify-content:space-between}
+    .filter-card .date-filter input{flex:1;min-width:0;max-width:none}
+    .filter-card .date-filter button{min-width:96px}
+    .live-panels{display:flex;flex-direction:column;gap:12px}
+    .live-panels .card{display:block;width:100%;min-width:0}
+    .live-list{max-height:none;overflow:visible}
+    .match-row{align-items:flex-start;flex-direction:column;gap:4px}
+    .match-row .meta{white-space:normal}
+    .online-row{min-width:0}
+    .online-row b{min-width:0;overflow-wrap:anywhere}
+  }
   .muted{color:var(--muted)}
   .hidden{display:none!important}
 </style>
@@ -162,7 +188,32 @@
     </div>
   </header>
 
+  <div class="card filter-card" id="adminDayFilterCard">
+    <div>
+      <div class="label" style="font-size:12px;color:var(--muted);margin-bottom:4px">Gün Filtresi</div>
+      <div style="font-size:13px;color:var(--text);font-weight:700">Seçilen günün 00:00–23:59 istatistikleri</div>
+    </div>
+    <div class="date-filter"><span>Tarih</span><input id="dayFilter" type="date" /><button id="applyDayBtn" type="button">Uygula</button></div>
+  </div>
+
   <!-- Live -->
+  <div class="card" id="liveTopBox" style="border-color:var(--gold);margin-bottom:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+      <h2 style="margin:0;font-size:18px;color:var(--gold)">CANLI MAÇLAR / AKTİF KULLANICILAR</h2>
+      <span class="muted" style="font-size:12px">Bu blok anlık veridir</span>
+    </div>
+    <div class="two-col live-panels">
+      <div>
+        <h3 style="margin:0 0 6px;font-size:15px">Aktif maçlar</h3>
+        <div class="live-list" id="l_matches_top"></div>
+      </div>
+      <div>
+        <h3 style="margin:0 0 6px;font-size:15px">Çevrimiçi kullanıcılar</h3>
+        <div class="live-list" id="l_onlineList_top"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="section-title">Canlı</div>
   <div class="grid g-live">
     <div class="card kpi accent-mint"><span class="pulse"></span><div class="label">Şu an çevrimiçi</div><div class="value" id="l_online">–</div><div class="sub">açık oturum</div></div>
@@ -171,15 +222,15 @@
     <div class="card kpi"><div class="label">Bot maçı</div><div class="value" id="l_bot">–</div><div class="sub">süren pratik</div></div>
   </div>
 
-  <div class="two-col" style="margin-top:12px">
+  <div class="two-col live-panels" id="livePanels" style="margin-top:12px">
     <div class="card">
       <h3 style="margin:0 0 4px;font-size:15px">Aktif maçlar</h3>
-      <p class="hint" style="margin:0 0 10px">O an süren odalar — kim kime karşı oynuyor.</p>
+      <p class="hint" style="margin:0 0 10px">O an süren odalar — kim kime karşı oynuyor. <b id="l_matchesCount">0</b> kayıt</p>
       <div class="live-list" id="l_matches"></div>
     </div>
     <div class="card">
       <h3 style="margin:0 0 4px;font-size:15px">Çevrimiçi kullanıcılar</h3>
-      <p class="hint" style="margin:0 0 10px">Açık oturumu olan hesaplar (kupaya göre).</p>
+      <p class="hint" style="margin:0 0 10px">Açık oturumu olan hesaplar (kupaya göre). <b id="l_onlineCount">0</b> kayıt</p>
       <div class="live-list" id="l_onlineList"></div>
     </div>
   </div>
@@ -193,9 +244,9 @@
         <div class="rev-total" id="r_total">–</div>
       </div>
       <div style="text-align:right">
-        <div class="muted" style="font-size:12px">Bugün</div>
+        <div class="muted" style="font-size:12px" id="r_dayLabel">Seçili gün</div>
         <div style="font-size:22px;font-weight:800;color:var(--mint)" id="r_today">–</div>
-        <div class="muted" style="font-size:11px"><span id="r_salesToday">–</span> satış bugün · <span id="r_totalSales">–</span> toplam</div>
+        <div class="muted" style="font-size:11px"><span id="r_salesToday">–</span> satış seçili gün · <span id="r_totalSales">–</span> toplam</div>
       </div>
     </div>
     <div style="overflow-x:auto">
@@ -234,7 +285,7 @@
   <!-- Ads -->
   <div class="section-title">Reklam — Ödüllü Video (+5 elmas)</div>
   <div class="grid g-live">
-    <div class="card kpi accent-mint"><div class="label">Bugün izlenme</div><div class="value" id="a_today">–</div><div class="sub">son 24 saat</div></div>
+    <div class="card kpi accent-mint"><div class="label">Seçili gün izlenme</div><div class="value" id="a_today">–</div><div class="sub" id="a_dayLabel">gün filtresi</div></div>
     <div class="card kpi"><div class="label">7 gün izlenme</div><div class="value" id="a_7d">–</div><div class="sub"><span id="a_users">–</span> benzersiz izleyici</div></div>
     <div class="card kpi accent-gold"><div class="label">Toplam izlenme</div><div class="value" id="a_total">–</div><div class="sub">dağıtılan: <span id="a_diamonds">–</span> elmas</div></div>
     <div class="card kpi accent-blue"><div class="label">Tahminî reklam geliri</div><div class="value" id="a_est">–</div><div class="sub">eCPM $<input id="a_ecpm" type="number" step="0.5" min="0" style="width:54px;background:transparent;border:1px solid var(--line);border-radius:6px;color:inherit;padding:2px 4px;font-size:12px"> varsayımıyla</div></div>
@@ -250,7 +301,7 @@
   <div class="section-title">Kullanıcılar</div>
   <div class="grid g-kpi">
     <div class="card kpi accent-gold"><div class="label">Toplam kayıt (≈ yükleme)</div><div class="value" id="u_total">–</div></div>
-    <div class="card kpi"><div class="label">Bugün yeni</div><div class="value" id="u_today">–</div><div class="sub">7g: <span id="u_7d">–</span> · 30g: <span id="u_30d">–</span></div></div>
+    <div class="card kpi"><div class="label">Seçili gün yeni</div><div class="value" id="u_today">–</div><div class="sub">7g: <span id="u_7d">–</span> · 30g: <span id="u_30d">–</span></div></div>
     <div class="card kpi accent-mint"><div class="label">Günlük aktif (DAU)</div><div class="value" id="u_dau">–</div><div class="sub">7g aktif: <span id="u_wau">–</span></div></div>
     <div class="card kpi"><div class="label">Kimlikli / Misafir</div><div class="value" id="u_idguest">–</div><div class="sub">Apple/Google/FB vs misafir</div></div>
     <div class="card kpi"><div class="label">Aktif Sosyal Paket</div><div class="value" id="u_social">–</div></div>
@@ -273,14 +324,14 @@
   </div>
   <div class="grid g-kpi" style="margin-top:12px">
     <div class="card kpi"><div class="label">Toplam maç kaydı</div><div class="value" id="m_total">–</div></div>
-    <div class="card kpi"><div class="label">Bugünkü maç</div><div class="value" id="m_today">–</div><div class="sub">7g: <span id="m_7d">–</span></div></div>
-    <div class="card kpi"><div class="label">Toplam mesaj</div><div class="value" id="msg_total">–</div><div class="sub">bugün: <span id="msg_today">–</span></div></div>
+    <div class="card kpi"><div class="label">Seçili gün maç</div><div class="value" id="m_today">–</div><div class="sub">7g: <span id="m_7d">–</span></div></div>
+    <div class="card kpi"><div class="label">Toplam mesaj</div><div class="value" id="msg_total">–</div><div class="sub">seçili gün: <span id="msg_today">–</span></div></div>
   </div>
 
   <!-- Playtime -->
   <div class="section-title">Oyun Süresi</div>
   <div class="grid g-kpi">
-    <div class="card kpi accent-mint"><div class="label">Bugün toplam süre</div><div class="value" id="t_today">–</div><div class="sub"><span id="t_sessToday">–</span> oturum · <span id="t_usersToday">–</span> oyuncu</div></div>
+    <div class="card kpi accent-mint"><div class="label">Seçili gün toplam süre</div><div class="value" id="t_today">–</div><div class="sub"><span id="t_sessToday">–</span> oturum · <span id="t_usersToday">–</span> oyuncu</div></div>
     <div class="card kpi"><div class="label">Ortalama oturum</div><div class="value" id="t_avgSess">–</div><div class="sub">bağlantı başına oyunda kalış</div></div>
     <div class="card kpi accent-gold"><div class="label">Ortalama maç süresi</div><div class="value" id="t_avgMatch">–</div><div class="sub">PvP: <span id="t_avgPvp">–</span> · Bot: <span id="t_avgBot">–</span></div></div>
     <div class="card kpi"><div class="label">Toplam süre</div><div class="value" id="t_total">–</div><div class="sub">7g: <span id="t_7d">–</span> · <span id="t_sessions">–</span> oturum</div></div>
@@ -309,6 +360,12 @@
   var token = localStorage.getItem(TOKEN_KEY) || "";
   var autoOn = true;
   var timer = null;
+  var selectedDay = "";
+  var todayKey = function(){
+    var parts = new Intl.DateTimeFormat('en-CA', { timeZone:'Europe/Istanbul', year:'numeric', month:'2-digit', day:'2-digit' }).formatToParts(new Date());
+    var m = {}; parts.forEach(function(p){ m[p.type] = p.value; });
+    return m.year + '-' + m.month + '-' + m.day;
+  };
 
   var $ = function(id){ return document.getElementById(id); };
   var trNum = function(n){ return (n==null?0:n).toLocaleString("tr-TR"); };
@@ -318,11 +375,12 @@
   function fetchStats(){
     var errLast = null;
     var chain = Promise.reject();
+    var day = selectedDay || ($("dayFilter") && $("dayFilter").value) || todayKey();
     API_BASES.forEach(function(base){
       chain = chain.catch(function(){
         var ctrl = new AbortController();
         var t = setTimeout(function(){ ctrl.abort(); }, 9000);
-        return fetch(base + "/admin/api/stats", {
+        return fetch(base + "/admin/api/stats?day=" + encodeURIComponent(day), {
           headers: { "Authorization": "Bearer " + token },
           signal: ctrl.signal
         }).then(function(res){
@@ -417,8 +475,17 @@
   function start(){ stop(); if(autoOn){ timer = setInterval(tick, REFRESH_MS); } }
   function stop(){ if(timer){ clearInterval(timer); timer = null; } }
 
+  function applySelectedDay(){
+    selectedDay = ($("dayFilter") && $("dayFilter").value) || todayKey();
+    tick();
+  }
+
   // ── Render ──
   function render(s){
+    selectedDay = selectedDay || s.selectedDay || todayKey();
+    if ($("dayFilter") && $("dayFilter").value !== selectedDay) $("dayFilter").value = selectedDay;
+    if ($("r_dayLabel")) $("r_dayLabel").textContent = "Seçili gün (" + shortDay(s.selectedDay || todayKey()) + ")";
+    if ($("a_dayLabel")) $("a_dayLabel").textContent = shortDay(s.selectedDay || todayKey());
     var L = s.live || {};
     $("l_online").textContent = trNum(L.online);
     $("l_match").textContent  = trNum(L.playersInMatch);
@@ -435,11 +502,13 @@
       var off = p.connected===false ? " <span class='muted'>(bağlantı kesik)</span>" : "";
       return "<b>"+esc(p.name)+"</b>"+t+off;
     }
-    var mlist = (L.matches || []).slice().sort(function(a,b){
+    var matchItems = (L.matches || []).slice().sort(function(a,b){
       // Önce insan-insan süren maçlar, sonra bot, en son lobiler
       function rank(m){ var hh = !m.bot && (m.humans>=2) && m.status!=="lobby"; return hh?0:(m.status!=="lobby"?1:2); }
       return rank(a)-rank(b);
-    }).map(function(m){
+    });
+    if ($("l_matchesCount")) $("l_matchesCount").textContent = trNum(matchItems.length);
+    var mlist = matchItems.map(function(m){
       var ps = m.players || [];
       var pvp = !m.bot && ps.filter(function(x){return !x.isBot;}).length>=2;
       var vs = pPill(ps[0]) + " <span class='muted'>vs</span> " + pPill(ps[1]);
@@ -451,13 +520,17 @@
         + "</div>";
     }).join("");
     $("l_matches").innerHTML = mlist || "<div class='muted'>Şu an süren maç/oda yok.</div>";
+    if ($("l_matches_top")) $("l_matches_top").innerHTML = $("l_matches").innerHTML;
 
     // ── Çevrimiçi kullanıcılar ──
-    var olist = (L.onlineUsers || []).map(function(u){
+    var onlineItems = L.onlineUsers || [];
+    if ($("l_onlineCount")) $("l_onlineCount").textContent = trNum(onlineItems.length);
+    var olist = onlineItems.map(function(u){
       return "<div class='online-row'><span class='dot'></span><b>"+esc(u.name)+"</b>"
         + "<span class='muted' style='margin-left:auto'>"+trNum(u.trophies)+" 🏆</span></div>";
     }).join("");
     $("l_onlineList").innerHTML = olist || "<div class='muted'>Kimse çevrimiçi değil.</div>";
+    if ($("l_onlineList_top")) $("l_onlineList_top").innerHTML = $("l_onlineList").innerHTML;
 
     var R = s.revenue || {};
     $("r_total").textContent      = "₺" + trMoney(R.totalTry);
@@ -594,6 +667,10 @@
   $("email").addEventListener("keydown", function(e){ if(e.key==="Enter") $("pw").focus(); });
   $("pw").addEventListener("keydown", function(e){ if(e.key==="Enter") doLogin(); });
   $("refreshBtn").addEventListener("click", tick);
+  selectedDay = todayKey();
+  $("dayFilter").value = selectedDay;
+  $("dayFilter").addEventListener("keydown", function(e){ if(e.key === "Enter") applySelectedDay(); });
+  $("applyDayBtn").addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); applySelectedDay(); });
   $("logoutBtn").addEventListener("click", logout);
   $("autoBtn").addEventListener("click", function(){
     autoOn = !autoOn;

@@ -1119,17 +1119,39 @@ function toProfile(row: DbUser): UserProfile {
 }
 
 // ---- Mod bazlı istatistikler (profil ekranı) ----
-// Kaynak: match_history — bot/dostluk/dereceli TÜM maçlar mod kırılımında sayılır.
+// Kaynak: match_history — yalnız dereceli hızlı eşleşmeler sayılır. Bot/dostluk
+// kayıtları ve oyuncu-oyuncu modu profil kırılımına girmez.
 export interface ModeStat { mode: string; wins: number; losses: number }
 export async function getModeStats(userId: string): Promise<ModeStat[]> {
   const { rows } = await pool.query<{ game_mode: string; wins: string; losses: string }>(
     `SELECT game_mode,
             COUNT(*) FILTER (WHERE won) AS wins,
             COUNT(*) FILTER (WHERE NOT won) AS losses
-     FROM match_history WHERE player_id = $1 GROUP BY game_mode`,
+     FROM match_history
+     WHERE player_id = $1
+       AND ranked = TRUE
+       AND game_mode <> 'player-player'
+     GROUP BY game_mode`,
     [userId],
   );
   return rows.map((r) => ({ mode: r.game_mode, wins: Number(r.wins), losses: Number(r.losses) }));
+}
+
+export async function getRankedProfileStats(userId: string): Promise<{ wins: number; losses: number; modes: ModeStat[] }> {
+  const { rows } = await pool.query<{ wins: string; losses: string }>(
+    `SELECT COUNT(*) FILTER (WHERE won) AS wins,
+            COUNT(*) FILTER (WHERE NOT won) AS losses
+       FROM match_history
+      WHERE player_id = $1
+        AND ranked = TRUE
+        AND game_mode <> 'player-player'`,
+    [userId],
+  );
+  return {
+    wins: Number(rows[0]?.wins ?? 0),
+    losses: Number(rows[0]?.losses ?? 0),
+    modes: await getModeStats(userId),
+  };
 }
 
 // ---- Match History ----
@@ -1174,13 +1196,14 @@ export async function saveMatchHistory(
   gameMode: string,
   rounds: MatchRound[],
   durationSecs = 0, // maç süresi (sn); 0 = bilinmiyor (eski istemci/kayıt)
+  ranked = false,
 ): Promise<void> {
   await pool.query(
     `INSERT INTO match_history (player_id, player_name, opponent_id, opponent_name, player_score, opponent_score,
-       won, player_trophies, opponent_trophies, game_mode, rounds, duration_secs)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+       won, player_trophies, opponent_trophies, game_mode, rounds, duration_secs, ranked)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
     [playerId, playerName, opponentId, opponentName, playerScore, opponentScore, won,
-     playerTrophies, opponentTrophies, gameMode, JSON.stringify(rounds), durationSecs],
+     playerTrophies, opponentTrophies, gameMode, JSON.stringify(rounds), durationSecs, ranked],
   );
 }
 

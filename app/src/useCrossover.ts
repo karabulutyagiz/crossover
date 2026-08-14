@@ -87,7 +87,7 @@ export interface GameState {
   // Seviye Yolu'nda son toplanan ödül — modal içi animasyonlar bunu izler
   lastClaim: { level: number; diamonds: number; emoteId: string | null; frameTier: string | null; powerId: string | null; track: 'free' | 'premium'; seq: number } | null;
   // Profil istatistikleri (get_my_stats ile istenir): seri rekoru + mod kırılımı
-  myStats: { winStreak: number; bestStreak: number; modes: { mode: string; wins: number; losses: number }[] } | null;
+  myStats: { winStreak: number; bestStreak: number; wins: number; losses: number; modes: { mode: string; wins: number; losses: number }[] } | null;
   leaderboard: LeaderboardEntry[];
   friends: FriendInfo[];
   friendRequests: FriendRequestView[];
@@ -518,7 +518,7 @@ function reducer(state: GameState, action: Action): GameState {
       // Elmasla ya da ₺ IAP ile — iki yol da bu mesajı düşürür, tek onay yeter
       return { ...state, profile: action.profile, lastPurchase: { kind: 'premiumRoad', id: undefined, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
     case 'my_stats':
-      return { ...state, myStats: { winStreak: action.winStreak, bestStreak: action.bestStreak, modes: action.modes } };
+      return { ...state, myStats: { winStreak: action.winStreak, bestStreak: action.bestStreak, wins: action.wins, losses: action.losses, modes: action.modes } };
     case 'name_changed':
       return { ...state, profile: action.profile };
     case 'xp_update': {
@@ -659,7 +659,7 @@ function reducer(state: GameState, action: Action): GameState {
         locked: null,
         youBurned: you ? (action.retryAt ? state.youBurned : true) : state.youBurned,
         youRetryAt: you && action.retryAt ? action.retryAt : state.youRetryAt,
-        oppWrong: you ? state.oppWrong : { byName: action.byName, guess: action.guess, seq: (state.oppWrong?.seq ?? 0) + 1 },
+        oppWrong: you ? state.oppWrong : { byName: action.byName, guess: '', seq: (state.oppWrong?.seq ?? 0) + 1 },
       };
     }
     case 'guess_denied':

@@ -154,6 +154,7 @@ CREATE TABLE IF NOT EXISTS match_history (
   player_trophies INT NOT NULL DEFAULT 0,
   opponent_trophies INT NOT NULL DEFAULT 0,
   game_mode       TEXT NOT NULL DEFAULT 'team-team',
+  ranked          BOOLEAN NOT NULL DEFAULT FALSE,
   rounds          JSONB NOT NULL DEFAULT '[]',     -- winning rounds: [{teamA, teamALogo, teamB, teamBLogo, player, playerImageUrl, answeredBy}]
   played_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -165,6 +166,45 @@ DO $$ BEGIN
     ALTER TABLE match_history ADD COLUMN player_name TEXT NOT NULL DEFAULT '';
   END IF;
 END $$;
+
+-- Migration: match_history.ranked — yalnız hızlı eşleşme/dereceli maçlar profil
+-- mod istatistiklerinde sayılır; bot/dostluk kayıtları history'de kalır ama
+-- profil kırılımına girmez.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'match_history' AND column_name = 'ranked') THEN
+    ALTER TABLE match_history ADD COLUMN ranked BOOLEAN NOT NULL DEFAULT FALSE;
+  END IF;
+END $$;
+
+-- One-time safe backfill for old history rows created before `ranked` existed.
+-- `users.wins/losses` were always updated only by ranked quick matches, so for
+-- each user we mark at most that many recent non-bot Team-Team rows as ranked.
+-- Social/friendly modes and bot rows stay excluded from profile mode stats.
+WITH ranked_counts AS (
+  SELECT player_id, count(*)::int AS n
+    FROM match_history
+   WHERE ranked = TRUE
+   GROUP BY player_id
+), needs AS (
+  SELECT u.id AS user_id, GREATEST(0, (u.wins + u.losses) - COALESCE(rc.n, 0))::int AS need
+    FROM users u
+    LEFT JOIN ranked_counts rc ON rc.player_id = u.id
+   WHERE (u.wins + u.losses) > COALESCE(rc.n, 0)
+), candidates AS (
+  SELECT mh.id,
+         row_number() OVER (PARTITION BY mh.player_id ORDER BY mh.played_at DESC, mh.id DESC) AS rn,
+         n.need
+    FROM match_history mh
+    JOIN needs n ON n.user_id = mh.player_id
+   WHERE mh.ranked = FALSE
+     AND mh.opponent_id IS NOT NULL
+     AND mh.game_mode = 'team-team'
+)
+UPDATE match_history mh
+   SET ranked = TRUE
+  FROM candidates c
+ WHERE mh.id = c.id
+   AND c.rn <= c.need;
 
 -- Bookkeeping for ingest runs.
 CREATE TABLE IF NOT EXISTS ingest_log (
