@@ -32,7 +32,7 @@ const voiceLines = [
   'Futbol bilgine güveniyor musun?',
   'Takımını seç, düelloya gir.',
   'Rakibinden önce futbolcuyu bul.',
-  'kıros ovır futbol ap sıtorda.',
+  'kıros ovır futbol ep sıtorda.',
   'Hemen indir, oyna!',
 ];
 
@@ -147,13 +147,10 @@ function svgFrame(i) {
 
   if (time < 2.7) {
     body += screenshotFrame(img.screenHome, time / 0.7, 0.72, 110);
-    body += caption('Futbol bilgine güveniyor musun?', 1660);
   } else if (time < 5.6) {
     body += screenshotFrame(img.screenPick, (time - 2.7) / 0.7, 0.72, 94);
-    body += caption('Takımını seç, düelloya gir', 1660);
   } else if (time < 8.6) {
     body += screenshotFrame(img.screenGuess, (time - 5.6) / 0.7, 0.72, 94);
-    body += caption('Rakibinden önce doğru futbolcuyu bul', 1660);
   } else if (time < 12.0) {
     body += phoneMock((time - 8.6) / 1.35);
   } else {
