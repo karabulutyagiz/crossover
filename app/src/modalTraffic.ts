@@ -51,14 +51,25 @@ export function acquireModalSlot(animatedDismiss = true): () => void {
 }
 
 /**
- * Slot boşsa geri çağırmayı HEMEN çalıştırır, doluysa sıraya alır.
- * Dönen fonksiyon beklemeyi iptal eder (modal açılmadan kapatılırsa).
+ * Slot boşsa slotu AYIRIP geri çağırmayı hemen çalıştırır, doluysa sıraya alır.
+ * Dönen fonksiyon beklemeyi iptal eder ya da ayrılmış slotu serbest bırakır.
  */
-export function whenModalSlotFree(run: () => void): () => void {
-  if (presented === 0) {
+export function whenModalSlotFree(run: () => void, animatedDismiss = true): () => void {
+  let release: (() => void) | null = null;
+  let cancelled = false;
+  const start = () => {
+    if (cancelled) return;
+    release = acquireModalSlot(animatedDismiss);
     run();
-    return () => {};
+  };
+  if (presented === 0 && waiters.size === 0 && !flushTimer) {
+    start();
+    return () => { cancelled = true; release?.(); };
   }
-  waiters.add(run);
-  return () => { waiters.delete(run); };
+  waiters.add(start);
+  return () => {
+    cancelled = true;
+    waiters.delete(start);
+    release?.();
+  };
 }

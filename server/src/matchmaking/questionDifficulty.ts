@@ -1,4 +1,5 @@
 import { pool } from '../db/pool.ts';
+import { countryTeamAnswerStats } from '../game/verify.ts';
 import type { GameMode } from '../protocol.ts';
 import { opponentConfig } from './opponentConfig.ts';
 import { clamp } from './random.ts';
@@ -200,17 +201,8 @@ async function playerPlayerHeuristic(playerAId: number, playerBId: number): Prom
 }
 
 async function countryTeamHeuristic(clubId: number, country: string): Promise<{ heuristicDifficulty: number; validAnswerCount: number; answerPopularity: number }> {
-  const { rows } = await pool.query<{ count: string; fame: string }>(
-    `SELECT count(DISTINCT p.id) AS count,
-            COALESCE(MAX(GREATEST(COALESCE(c.popularity, 0), (SELECT count(*) FROM player_clubs x WHERE x.club_id = pc2.club_id))), 0) AS fame
-       FROM players p
-       JOIN player_clubs pc ON pc.player_id = p.id AND pc.club_id = $1
-       JOIN player_clubs pc2 ON pc2.player_id = p.id
-       JOIN clubs c ON c.id = pc2.club_id
-      WHERE p.nationality = $2`,
-    [clubId, country],
-  );
-  return fromCountAndFame(Number(rows[0]?.count ?? 0), Number(rows[0]?.fame ?? 0));
+  const stats = await countryTeamAnswerStats(clubId, country);
+  return fromCountAndFame(stats.count, stats.fame);
 }
 
 async function letterTeamHeuristic(clubId: number, letter: string): Promise<{ heuristicDifficulty: number; validAnswerCount: number; answerPopularity: number }> {

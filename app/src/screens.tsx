@@ -6,17 +6,20 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Modal,
+  type ModalProps,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  type TextInputProps,
   View,
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Animated, Easing, PanResponder, Platform, Dimensions, Linking, LayoutAnimation } from 'react-native';
-import { PanGestureHandler, State, type PanGestureHandlerStateChangeEvent } from 'react-native-gesture-handler';
+import { State } from 'react-native-gesture-handler/lib/commonjs/State';
+import { PanGestureHandler } from 'react-native-gesture-handler/lib/commonjs/handlers/PanGestureHandler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -29,7 +32,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image as ExpoImage } from 'expo-image';
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { GemIcon, GEM_COLOR } from './GemIcon';
-import { acquireModalSlot, whenModalSlotFree } from './modalTraffic';
+import { whenModalSlotFree } from './modalTraffic';
+import { dismissActiveInput } from './keyboardLifecycle';
 import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget, trophyTarget, setTrophyTarget, setTrophyRemeasure, remeasureTrophyTarget } from './gemTarget';
 import { Avatar } from './Avatar';
 import { useIsTablet, useWindow, useContentMaxWidth, canvasSizeFor } from './layout';
@@ -191,6 +195,7 @@ interface Props {
 }
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
+type PanGestureHandlerStateChangeEvent = { nativeEvent: { state: number; translationX: number; velocityX: number; absoluteY: number } };
 
 // Map a trophy arena to a vector icon (emojis don't render on every device).
 function arenaIcon(arena: { minTrophies: number }): IoniconName {
@@ -665,7 +670,7 @@ function GamePanel({ children, hero = false, tint, accentStripe, compact = false
 // sıraya alsaydık asla açılamaz, özellik ölürdü. Derinlik context ile taşınır.
 const ModalDepthCtx = createContext(0);
 
-function SafeModal({ visible = true, children, ...rest }: ComponentProps<typeof Modal>) {
+function SafeModal({ visible = true, children, onRequestClose, ...rest }: ModalProps) {
   const depth = useContext(ModalDepthCtx);
   const nested = depth > 0;
   // TABLETTE TAŞMA DÜZELTMESİ: modal içeriği, ölçekli tuvalin (ScaledRoot)
@@ -677,6 +682,18 @@ function SafeModal({ visible = true, children, ...rest }: ComponentProps<typeof 
   const canvas = canvasSizeFor(win.width, win.height);
   const needsCanvasBox = canvas.width !== win.width;
   const [present, setPresent] = useState(false);
+  // Kapanış türü trafik kapısına bildirilir: "none" pencereler (çoğunluk)
+  // anında kapanır → sıradaki pencere 340ms değil ~100ms sonra açılır.
+  const animatedDismiss = rest.animationType === 'slide' || rest.animationType === 'fade';
+  const wasVisibleRef = useRef(false);
+  useLayoutEffect(() => {
+    if (visible || wasVisibleRef.current) dismissActiveInput();
+    wasVisibleRef.current = visible;
+  }, [visible]);
+  const handleRequestClose = useCallback<NonNullable<ModalProps['onRequestClose']>>((event) => {
+    dismissActiveInput();
+    onRequestClose?.(event);
+  }, [onRequestClose]);
   // useLayoutEffect (2026-08-10): pasif effect'le bu kapı HER pencereye boyadan
   // önce +1 boş commit ekliyordu (ilk commit <Modal visible={false}> = native'de
   // hiçbir şey). Layout effect'te setPresent aynı kare içinde senkron flush
@@ -687,17 +704,10 @@ function SafeModal({ visible = true, children, ...rest }: ComponentProps<typeof 
   useLayoutEffect(() => {
     if (!visible) { setPresent(false); return undefined; }
     if (nested) { setPresent(true); return undefined; }
-    return whenModalSlotFree(() => setPresent(true));
-  }, [visible, nested]);
-  // Kapanış türü trafik kapısına bildirilir: "none" pencereler (çoğunluk)
-  // anında kapanır → sıradaki pencere 340ms değil ~100ms sonra açılır.
-  const animatedDismiss = rest.animationType === 'slide' || rest.animationType === 'fade';
-  useEffect(() => {
-    if (!present || nested) return undefined;
-    return acquireModalSlot(animatedDismiss);
-  }, [present, nested, animatedDismiss]);
+    return whenModalSlotFree(() => setPresent(true), animatedDismiss);
+  }, [visible, nested, animatedDismiss]);
   return (
-    <Modal {...rest} visible={present}>
+    <Modal {...rest} visible={present} onRequestClose={handleRequestClose}>
       <ModalDepthCtx.Provider value={depth + 1}>
         {needsCanvasBox ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -730,6 +740,15 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
   onShownRef.current = onShown;
   // Kimliği sabit sarmalayıcı: Modal'a her render'da yeni onShow gitmesin.
   const handleShow = useCallback(() => { onShownRef.current?.(); }, []);
+  const handleClose = useCallback(() => {
+    dismissActiveInput();
+    onClose();
+  }, [onClose]);
+  const wasVisibleRef = useRef(false);
+  useLayoutEffect(() => {
+    if (visible || wasVisibleRef.current) dismissActiveInput();
+    wasVisibleRef.current = visible;
+  }, [visible]);
   // Sunum sırası SafeModal'da (modalTraffic) — burada yalnız animasyon durumu.
   // useLayoutEffect (2026-08-10): pasif gate sunumdan önce 2 boş commit yiyordu
   // (visible → null → mounted → Modal visible=false → present) ve giriş o görünmez
@@ -764,7 +783,7 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
   const FRAME = '#0B1428';
   const LIP = darken(strip, 0.35);
   return (
-    <SafeModal visible transparent animationType="none" onRequestClose={onClose} onShow={handleShow}>
+    <SafeModal visible transparent animationType="none" onRequestClose={handleClose} onShow={handleShow}>
       {/* Karartma KENDİ değeriyle (scrim) sürülür: 140ms'de oturur ve kartın
           hareketinden bağımsızdır. Kartın opacity'sine bağlıyken karartma da
           kartın uzun kuyruğunu izliyordu — "arkasında bir şey açılıyor gibi
@@ -772,7 +791,7 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
       <Animated.View style={{ flex: 1, backgroundColor: theme.scrim, opacity: scrim }}>
         {/* Inert the instant `visible` flips false — the 160ms exit must not be
             hit-testable (double-tapped confirms re-fired actions, e.g. double gem charges) */}
-        <Pressable pointerEvents={visible ? 'auto' : 'none'} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }} onPress={onClose}>
+        <Pressable pointerEvents={visible ? 'auto' : 'none'} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }} onPress={handleClose}>
           <Animated.View
             pointerEvents={visible ? 'auto' : 'none'}
             style={{
@@ -805,7 +824,7 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
               ) : null}
               <View style={{ padding: 20, paddingTop: title ? 16 : 20, gap: 12 }}>{children}</View>
               <Pressable
-                onPress={onClose}
+                onPress={handleClose}
                 hitSlop={8}
                 style={({ pressed }) => ({
                   position: 'absolute', top: title ? 7 : 12, right: 12, width: 32, height: 32, borderRadius: 16,
@@ -860,7 +879,7 @@ function ScreenHeader({ title, onBack, icon, right }: {
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 14, backgroundColor: theme.surface1 }}>
       {onBack ? (
         <Pressable
-          onPress={onBack}
+          onPress={() => { dismissActiveInput(); onBack(); }}
           hitSlop={8}
           style={({ pressed }) => ({
             width: 40, height: 40, borderRadius: 13,
@@ -892,10 +911,32 @@ function ScreenHeader({ title, onBack, icon, right }: {
 // Replaces styles.searchBox / modalSearchBox / friendInput. Forward-compatible
 // with all TextInput props; `icon` renders a leading glyph inside the well;
 // `inputRef` reaches the underlying TextInput (imperative focus flows).
-function GameInput({ icon, error = false, containerStyle, style, onFocus, onBlur, inputRef, ...rest }: ComponentProps<typeof TextInput> & {
+type TextInputEventHandler = (event: any) => void;
+
+function useInputFocusLifecycle(onFocus?: TextInputEventHandler, onBlur?: TextInputEventHandler) {
+  const focusedRef = useRef(false);
+  useEffect(() => () => {
+    if (focusedRef.current) dismissActiveInput();
+  }, []);
+  const handleFocus = useCallback((e: any) => {
+    focusedRef.current = true;
+    onFocus?.(e);
+  }, [onFocus]);
+  const handleBlur = useCallback((e: any) => {
+    focusedRef.current = false;
+    onBlur?.(e);
+  }, [onBlur]);
+  return useMemo(() => ({ onFocus: handleFocus, onBlur: handleBlur }), [handleFocus, handleBlur]);
+}
+
+function GameInput({ icon, error = false, containerStyle, style, onFocus, onBlur, inputRef, ...rest }: TextInputProps & {
   icon?: IoniconName; error?: boolean; containerStyle?: any; inputRef?: Ref<TextInput>;
 }) {
   const [focused, setFocused] = useState(false);
+  const focusLifecycle = useInputFocusLifecycle(
+    (e) => { setFocused(true); onFocus?.(e); },
+    (e) => { setFocused(false); onBlur?.(e); },
+  );
   const tick = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(tick, { toValue: focused ? 1 : 0, duration: 150, useNativeDriver: true }).start();
@@ -924,9 +965,10 @@ function GameInput({ icon, error = false, containerStyle, style, onFocus, onBlur
           ref={inputRef}
           placeholderTextColor={theme.muted}
           keyboardAppearance="dark"
+          rejectResponderTermination={false}
           {...rest}
-          onFocus={(e) => { setFocused(true); onFocus?.(e); }}
-          onBlur={(e) => { setFocused(false); onBlur?.(e); }}
+          onFocus={focusLifecycle.onFocus}
+          onBlur={focusLifecycle.onBlur}
           style={[{ flex: 1, color: theme.text, paddingVertical: 13, fontSize: 14, fontFamily: 'Poppins-SemiBold' }, style]}
         />
       </View>
@@ -1163,6 +1205,7 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
   // content genuinely fits the viewport, so small phones keep scrolling.
   const [vpH, setVpH] = useState(0);
   const [contentH, setContentH] = useState(0);
+  useEffect(() => () => dismissActiveInput(), []);
   // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
   return (
     <KeyboardAvoidingView
@@ -1186,7 +1229,7 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
           children (so no layout shift) and sits under the ScrollViews (so it never
           intercepts scroll); tapping empty background area still dismisses. Scroll-area
           taps are handled by each ScrollView's keyboardShouldPersistTaps="handled". */}
-      <Pressable style={StyleSheet.absoluteFill} onPress={() => Keyboard.dismiss()} accessible={false} />
+      <Pressable style={StyleSheet.absoluteFill} onPress={dismissActiveInput} accessible={false} />
       {/* Sabit başlık (opsiyonel): ScrollView'ın DIŞINDA, üstünde çizilir. Böylece
           içindeki üst bar KAYDIRILMAZ ve içeriğin scroll bütçesine EKLENMEZ; ayrıca
           takılı çerçevenin tacı/ödül habercisi ScrollView üst-kenarına kırpılmadan
@@ -1201,6 +1244,7 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
           contentContainerStyle={{ flexGrow: 1, justifyContent: contentCenter ? 'center' : 'flex-start' }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           automaticallyAdjustKeyboardInsets
         >
           {maxW ? <View style={{ width: '100%', maxWidth: maxW, alignSelf: 'center' }}>{children}</View> : children}
@@ -4168,6 +4212,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
     AsyncStorage.getItem(NEWS_READ_KEY).then((v) => setNewsUnread(NEWS.length > 0 && v !== LATEST_NEWS_ID)).catch(() => {});
   }, []);
   const [joinCode, setJoinCode] = useState('');
+  const roomCodeInputFocus = useInputFocusLifecycle();
   const [hero, setHero] = useState({ w: 0, h: 0 });
   const [railW, setRailW] = useState(0);
 
@@ -4317,6 +4362,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   }, [profile?.userId, state.leaderboard.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startMode = useCallback((m: GameMode) => {
+    dismissActiveInput();
     if (PACK_MODES.includes(m) && !hasPack) {
       socialUpsellOnExit.current = true; // hand off AFTER modes modal dismisses (onExited)
       setModesOpen(false);
@@ -4334,20 +4380,20 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   // (bayat closure sınıfı hatası bilerek imkânsız kılınır). ----
   const navRef = useRef({ actions, onGoToStore, onOpenMatchHistory, onOpenLeaderboard, onOpenLevelRoad });
   navRef.current = { actions, onGoToStore, onOpenMatchHistory, onOpenLeaderboard, onOpenLevelRoad };
-  const openProfile = useCallback(() => navRef.current.actions.openProfile(), []);
-  const openArenas = useCallback(() => navRef.current.actions.openArenas(), []);
-  const startQuickMatch = useCallback(() => navRef.current.actions.findMatch({ mode: 'team-team' }), []);
-  const openStoreDiamonds = useCallback(() => navRef.current.onGoToStore?.('diamonds'), []);
-  const openStoreSocial = useCallback(() => navRef.current.onGoToStore?.('socialPack'), []);
-  const openHistory = useCallback(() => navRef.current.onOpenMatchHistory?.(), []);
-  const openBoard = useCallback(() => navRef.current.onOpenLeaderboard?.(), []);
-  const openRoad = useCallback(() => navRef.current.onOpenLevelRoad?.(), []);
+  const openProfile = useCallback(() => { dismissActiveInput(); navRef.current.actions.openProfile(); }, []);
+  const openArenas = useCallback(() => { dismissActiveInput(); navRef.current.actions.openArenas(); }, []);
+  const startQuickMatch = useCallback(() => { dismissActiveInput(); navRef.current.actions.findMatch({ mode: 'team-team' }); }, []);
+  const openStoreDiamonds = useCallback(() => { dismissActiveInput(); navRef.current.onGoToStore?.('diamonds'); }, []);
+  const openStoreSocial = useCallback(() => { dismissActiveInput(); navRef.current.onGoToStore?.('socialPack'); }, []);
+  const openHistory = useCallback(() => { dismissActiveInput(); navRef.current.onOpenMatchHistory?.(); }, []);
+  const openBoard = useCallback(() => { dismissActiveInput(); navRef.current.onOpenLeaderboard?.(); }, []);
+  const openRoad = useCallback(() => { dismissActiveInput(); navRef.current.onOpenLevelRoad?.(); }, []);
   // setState setter'ları zaten sabit — [] deps güvenli.
-  const openMenu = useCallback(() => setMenuOpen(true), []);
-  const openModes = useCallback(() => setModesOpen(true), []);
-  const openBot = useCallback(() => { setBotPage({ key: 'bot', dir: 1 }); setBotOpen(true); }, []);
+  const openMenu = useCallback(() => { dismissActiveInput(); setMenuOpen(true); }, []);
+  const openModes = useCallback(() => { dismissActiveInput(); setModesOpen(true); }, []);
+  const openBot = useCallback(() => { dismissActiveInput(); setBotPage({ key: 'bot', dir: 1 }); setBotOpen(true); }, []);
   // Zil ve "Yenilikler" kartı aynı davranışı paylaşır (feed açılır, pip söner).
-  const openNews = useCallback(() => { setNewsOpen(true); setNewsUnread(false); AsyncStorage.setItem(NEWS_READ_KEY, LATEST_NEWS_ID).catch(() => {}); }, []);
+  const openNews = useCallback(() => { dismissActiveInput(); setNewsOpen(true); setNewsUnread(false); AsyncStorage.setItem(NEWS_READ_KEY, LATEST_NEWS_ID).catch(() => {}); }, []);
 
   // Three across, as the mockup — the row is (3 cards + 2 gaps) wide.
   const cardW = railW > 0 ? (railW - 2 * CAROUSEL_GAP) / 3 : 0;
@@ -4510,12 +4556,14 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
             <TextInput
               value={joinCode}
               onChangeText={(v) => setJoinCode(v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, ROOM_CODE_LEN))}
-              onSubmitEditing={() => { if (codeReady) { actions.joinRoom(joinCode, playerName); setJoinCode(''); } }}
+              onSubmitEditing={() => { if (codeReady) { dismissActiveInput(); actions.joinRoom(joinCode, playerName); setJoinCode(''); } }}
               placeholder={t('home.codePlaceholder')}
               placeholderTextColor={withAlpha(theme.muted, 0.5)}
               autoCapitalize="characters"
               autoCorrect={false}
               returnKeyType="go"
+              rejectResponderTermination={false}
+              {...roomCodeInputFocus}
               style={{
                 flex: 1, height: 34, borderRadius: 11, backgroundColor: theme.well,
                 borderTopWidth: 2, borderTopColor: theme.shadowInk,
@@ -4525,7 +4573,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
             />
             <Pressable
               disabled={!codeReady}
-              onPress={() => { actions.joinRoom(joinCode, playerName); setJoinCode(''); }}
+              onPress={() => { dismissActiveInput(); actions.joinRoom(joinCode, playerName); setJoinCode(''); }}
               style={({ pressed }) => ({
                 width: 34, height: 34, borderRadius: 17,
                 backgroundColor: codeReady ? theme.primary : theme.navyWell,
@@ -4538,7 +4586,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
             </Pressable>
           </View>
           <Pressable
-            onPress={() => actions.createRoom(playerName, opts)}
+            onPress={() => { dismissActiveInput(); actions.createRoom(playerName, opts); }}
             style={({ pressed }) => ({
               marginTop: 8, height: 32, borderRadius: 11,
               backgroundColor: withAlpha(theme.blue, 0.22),
@@ -4847,6 +4895,7 @@ function ScopeListPage({ kind, scopes, onPick }: {
       <FlatList
         style={{ maxHeight: 320 }}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         showsVerticalScrollIndicator={false}
         data={filtered}
         keyExtractor={scopeKeyExtractor}
@@ -5439,7 +5488,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
           onChangeText={onPlayerChange}
           autoFocus={!tutorial}
         />
-        <ScrollView style={{ alignSelf: 'stretch', flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScrollView style={{ alignSelf: 'stretch', flex: 1 }} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} showsVerticalScrollIndicator={false}>
           {playerRows}
           {state.playerResults.length === 0 && q.trim() ? (
             <EmptyState icon="search" title={t('common.noResults')} style={{ paddingVertical: 16 }} />
@@ -5496,7 +5545,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
           onChangeText={setCountryQ}
           autoFocus={!tutorial}
         />
-        <ScrollView style={{ alignSelf: 'stretch', flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScrollView style={{ alignSelf: 'stretch', flex: 1 }} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} showsVerticalScrollIndicator={false}>
           {countryRows}
           {countryRows.length === 0 && countryQ.trim() ? (
             <EmptyState icon="search" title={t('common.noResults')} style={{ paddingVertical: 16 }} />
@@ -5522,6 +5571,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
       <ScrollView
         style={{ alignSelf: 'stretch', flex: 1 }}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', gap: 8, paddingVertical: 8 }}
         showsVerticalScrollIndicator={false}
       >
@@ -8647,7 +8697,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
   // listeden düştüyse sessizce vazgeçer (eskisi bayat nesneyle açardı).
   const actionsRef = useRef(actions); actionsRef.current = actions;
   const friendsRef = useRef(friends); friendsRef.current = friends;
-  const onOpenChat = useCallback((userId: string) => actionsRef.current.openChat(userId), []);
+  const onOpenChat = useCallback((userId: string) => { dismissActiveInput(); actionsRef.current.openChat(userId); }, []);
   const onFriendMenu = useCallback((userId: string, x: number, y: number) => {
     const f = friendsRef.current.find((fr) => fr.userId === userId);
     if (!f) return;
@@ -8707,13 +8757,12 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
     setAddInput('');
     // İstek gönderilince klavye kapansın — submit'te (return) TextInput odakta kalıp
     // klavyeyi açık bırakıyordu ("klavye full açık kalıyor"). Blur + dismiss birlikte.
-    addInputRef.current?.blur();
-    Keyboard.dismiss();
+    dismissActiveInput();
   };
 
   return (
     <Screen>
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} automaticallyAdjustKeyboardInsets>
         <ScreenHeader title={t('friends.title')} icon="people" />
 
         {/* Your code — recessed trough (engraved code) + mini beveled copy button + copied pill */}
@@ -8790,7 +8839,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                 <Avatar avatar={null} name={u.displayName} size={34} ring={theme.primary} ringWidth={1.5} iconColor={theme.primary} iconSize={15} />
                 <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13, flex: 1, ...engrave('sm') }} numberOfLines={1}>{u.displayName}</Text>
                 <MiniIconBtn icon="eye" face={theme.surface2} lip={theme.shadowInk} fg={theme.text} onPress={() => actions.getUserProfile(u.userId)} />
-                <MiniIconBtn icon="person-add" face={theme.primary} lip={theme.primaryDark} fg={theme.ink} onPress={() => { if (isGuest) { setGuestGateOpen(true); return; } actions.sendFriendRequest(undefined, u.displayName); Keyboard.dismiss(); }} />
+                <MiniIconBtn icon="person-add" face={theme.primary} lip={theme.primaryDark} fg={theme.ink} onPress={() => { if (isGuest) { setGuestGateOpen(true); return; } actions.sendFriendRequest(undefined, u.displayName); dismissActiveInput(); }} />
               </BevelRow>
             ))}
           </View>
@@ -8848,7 +8897,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
               const q = msgSearch.trim().toLowerCase();
               const matches = friends.filter(f => f.displayName.toLowerCase().includes(q) && !state.conversations.some(c => c.userId === f.userId));
               return matches.length > 0 ? matches.map(f => (
-                <BevelRow key={f.userId} onPress={() => { setMsgSearch(''); actions.openChat(f.userId); }} outerStyle={{ marginBottom: 6 }} style={{ padding: 10 }}>
+                <BevelRow key={f.userId} onPress={() => { setMsgSearch(''); onOpenChat(f.userId); }} outerStyle={{ marginBottom: 6 }} style={{ padding: 10 }}>
                   <Avatar avatar={f.avatar} name={f.displayName} size={36} ring={theme.primary} iconColor={theme.primary} iconSize={16} frameId={f.frame} />
                   <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14, flex: 1, ...engrave('sm') }} numberOfLines={1}>{f.displayName}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.primary, borderRadius: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.30)', borderBottomWidth: 2, borderBottomColor: theme.primaryDark, paddingHorizontal: 10, paddingVertical: 5 }}>
@@ -8915,7 +8964,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
         if (fid) { setMatchPage({ key: 'mode', dir: 1 }); setMatchModal(fid); return; }
         const a = menuExitAction.current; menuExitAction.current = null;
         if (a?.kind === 'profile') actions.getUserProfile(a.id);
-        else if (a?.kind === 'chat') actions.openChat(a.id);
+        else if (a?.kind === 'chat') onOpenChat(a.id);
       }}>
         <View style={{ flex: 1 }} pointerEvents="box-none">
           <Pressable style={[StyleSheet.absoluteFill, { zIndex: 0 }]} onPress={() => setMenuFriend(null)} />
@@ -8958,7 +9007,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                       </Text>
                       <Row color={theme.text} label={t('friends.friendlyMatch')} onPress={() => { menuExitInvite.current = menuFriend.userId; setMenuFriend(null); if (Platform.OS !== 'ios') { const fid = menuExitInvite.current; menuExitInvite.current = null; if (fid) { setMatchPage({ key: 'mode', dir: 1 }); setMatchModal(fid); } } }} />
                       <View style={{ height: 1, backgroundColor: theme.hairline, marginHorizontal: 10 }} />
-                      <Row color={theme.text} label={t('friends.sendMessage')} onPress={() => { menuExitAction.current = { kind: 'chat', id: menuFriend.userId }; setMenuFriend(null); if (Platform.OS !== 'ios') { const a = menuExitAction.current; menuExitAction.current = null; if (a) actions.openChat(a.id); } }} />
+                      <Row color={theme.text} label={t('friends.sendMessage')} onPress={() => { menuExitAction.current = { kind: 'chat', id: menuFriend.userId }; setMenuFriend(null); if (Platform.OS !== 'ios') { const a = menuExitAction.current; menuExitAction.current = null; if (a) onOpenChat(a.id); } }} />
                       <View style={{ height: 1, backgroundColor: theme.hairline, marginHorizontal: 10 }} />
                       <Row color={theme.text} label={t('friends.viewProfile')} onPress={() => { menuExitAction.current = { kind: 'profile', id: menuFriend.userId }; setMenuFriend(null); if (Platform.OS !== 'ios') { const a = menuExitAction.current; menuExitAction.current = null; if (a) actions.getUserProfile(a.id); } }} />
                       <View style={{ height: 1, backgroundColor: theme.hairline, marginHorizontal: 10 }} />
@@ -9205,7 +9254,7 @@ function SwipeBackWrap({ children, onBack }: { children: (softBack: () => void) 
     closingRef.current = true;
     // Retire the keyboard up front so the slide-out and the keyboard teardown
     // don't race the unmount (backing out with the keyboard up froze the screen).
-    Keyboard.dismiss();
+    dismissActiveInput();
     Animated.timing(translateX, {
       toValue: direction >= 0 ? screenW : -screenW,
       duration: 210,
@@ -9550,7 +9599,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
       }}>
         <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
         <Pressable
-          onPress={onBack ?? actions.closeChat}
+          onPress={() => { dismissActiveInput(); (onBack ?? actions.closeChat)(); }}
           hitSlop={10}
           style={({ pressed }) => ({
             width: 40, height: 40, borderRadius: 14,
@@ -9573,7 +9622,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
         {/* Guideline 1.2 — block / report the person you are talking to. Must be
             reachable from the conversation itself, not buried in settings. */}
         <Pressable
-          onPress={() => setChatMenu(true)}
+          onPress={() => { dismissActiveInput(); setChatMenu(true); }}
           hitSlop={10}
           accessibilityLabel={t('mod.report')}
           style={({ pressed }) => ({
@@ -9608,7 +9657,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
       >
         {/* Boş alana dokunmak klavyeyi indirir (balon/çip dokunuşları kendi
             işleyicilerine gitmeye devam eder — bu sarmalayıcıya düşmez) */}
-        <Pressable accessible={false} onPress={() => Keyboard.dismiss()}>
+        <Pressable accessible={false} onPress={dismissActiveInput}>
         {messages.length === 0 ? (
           <View style={{ marginTop: 28 }}>
             <EmptyState icon="chatbubbles" title={t('chat.sayHello')} hint={t('chat.noMessages')} />
@@ -9801,6 +9850,7 @@ function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void })
           icon="ban"
           label={t('mod.block')}
           onPress={() => {
+            dismissActiveInput();
             setBlockConfirm(false);
             if (chatWith) actions.blockUser(chatWith);
             (onBack ?? actions.closeChat)();

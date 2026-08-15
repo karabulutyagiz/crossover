@@ -1,10 +1,24 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
+    "allowJs": false,
     "strict": true,
     // node_modules is a symlink to node_modules.nosync (keeps iCloud away).
     // Without this, tsc resolves realpaths and stops treating it as node_modules.
-    "preserveSymlinks": true
+    "preserveSymlinks": true,
+    "paths": {
+      "@expo/vector-icons": ["./src/types/expo-vector-icons"],
+      "expo": ["./src/types/expo"],
+      "expo-apple-authentication": ["./src/types/expo-apple-authentication"],
+      "expo-auth-session/providers/google": ["./src/types/expo-auth-session-google"],
+      "expo-clipboard": ["./src/types/expo-clipboard"],
+      "expo-font": ["./src/types/expo-font"],
+      "expo-image": ["./src/types/expo-image"],
+      "react-native-gesture-handler": ["./src/types/react-native-gesture-handler"],
+      "react-native-gesture-handler/lib/commonjs/State": ["./src/types/react-native-gesture-handler-state"],
+      "react-native-gesture-handler/lib/commonjs/handlers/PanGestureHandler": ["./src/types/react-native-gesture-handler-pan"]
+    }
   },
-  "exclude": ["node_modules", "node_modules.nosync"]
+  "include": ["App.tsx", "index.ts", "src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["node_modules", "node_modules.nosync", "node_modules 2", ".expo", "dist"]
 }

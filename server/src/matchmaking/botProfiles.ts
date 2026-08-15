@@ -93,8 +93,12 @@ const HUMAN_HANDLES = [
   'mert1905', 'kerem17', 'deniz61', 'yigit1907', 'alperen10', 'batuhan34',
   'furkan1903', 'doruk7', 'kaan35', 'emirhan8', 'burak1905', 'umut10', 'onur61',
   'taha23', 'eren1907', 'baris11', 'yusuf1903', 'mehmetali9', 'kadir34',
+  'atlas', 'emir', 'kaan', 'arda', 'mert', 'kerem', 'efe', 'deniz', 'batu', 'doruk',
+  'yigit', 'kuzey', 'bora', 'mete', 'sarp', 'baris', 'atlasbaba', 'emirbaba',
+  'kaanbaba', 'ardababa', 'mertbaba', 'efebaba', 'denizbaba', 'baturbaba',
 ];
 
+const GUEST_STYLE_HANDLE_WEIGHT = 0.08;
 const HUMAN_HANDLE_WEIGHT = 0.78;
 
 const AVATARS = Array.from({ length: 34 }, (_, i) => `pp${i + 1}`);
@@ -108,6 +112,16 @@ function hashUnit(seed: string): number {
 
 function rngFor(seed?: string): RandomSource {
   return seed ? new SeededRandom(seed) : mathRandom;
+}
+
+function guestStyleHandle(rng: RandomSource): string {
+  let digits = String(1 + Math.floor(rng.next() * 9));
+  for (let i = 0; i < 8; i++) digits += Math.floor(rng.next() * 10);
+  return `M${digits}`;
+}
+
+function identityForName(name: string): { id: string; name: string } {
+  return { id: `bot_${hashUnit(name).toString().slice(2, 10)}`, name };
 }
 
 function weightedTrophyOffset(playerTrophies: number, pressure: number, rng: RandomSource): number {
@@ -209,13 +223,23 @@ function profileDomains(archetype: BotArchetype, rng: RandomSource): { favorite:
 
 function chooseIdentity(userKey: string, recentCooldown: number, rng: RandomSource): { id: string; name: string } {
   const recent = recentByUser.get(userKey) ?? [];
+  if (rng.next() < GUEST_STYLE_HANDLE_WEIGHT) {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const candidate = identityForName(guestStyleHandle(rng));
+      if (!recent.includes(candidate.id)) {
+        const nextRecent = [candidate.id, ...recent.filter((id) => id !== candidate.id)].slice(0, Math.max(1, recentCooldown));
+        recentByUser.set(userKey, nextRecent);
+        return candidate;
+      }
+    }
+  }
   const preferred = rng.next() < HUMAN_HANDLE_WEIGHT ? HUMAN_HANDLES : THEMED_HANDLES;
   const fallback = preferred === HUMAN_HANDLES ? THEMED_HANDLES : HUMAN_HANDLES;
-  let candidates = preferred.map((name) => ({ id: `bot_${hashUnit(name).toString().slice(2, 10)}`, name }));
+  let candidates = preferred.map(identityForName);
   let filtered = candidates.filter((c) => !recent.includes(c.id));
   if (filtered.length >= Math.min(12, candidates.length)) candidates = filtered;
   else {
-    const fallbackCandidates = fallback.map((name) => ({ id: `bot_${hashUnit(name).toString().slice(2, 10)}`, name }));
+    const fallbackCandidates = fallback.map(identityForName);
     filtered = [...candidates, ...fallbackCandidates].filter((c) => !recent.includes(c.id));
     if (filtered.length) candidates = filtered;
   }

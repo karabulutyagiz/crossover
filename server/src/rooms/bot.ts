@@ -1,10 +1,11 @@
 import type { Room, Transport } from './room.ts';
 import type { ClientMsg, ClubRef, Difficulty, GameMode, ServerMsg, Scope } from '../protocol.ts';
 import {
-  randomClub, botPickFromPool, randomPlayer, botCommonPlayersRanked, commonPlayersCountryTeam,
+  randomClub, botPickFromPool, randomPlayer, botCommonPlayersRanked, getValidPlayersForCountryAndClub,
   commonPlayersLetterTeam, commonClubs, pickCountryForClub, pickClubForCountry,
-  plausibleWrongPlayersTeamTeam, plausibleWrongPlayersCountryTeam, plausibleWrongPlayersLetterTeam,
+  plausibleWrongPlayersTeamTeam, plausibleWrongPlayersLetterTeam,
   plausibleWrongClubsPlayerPlayer,
+  type CountryTeamAnswerCandidate,
 } from '../game/verify.ts';
 import type { BotProfile, BotArchetype } from '../matchmaking/botProfiles.ts';
 import {
@@ -15,6 +16,8 @@ import {
 import { getQuestionDifficulty, type QuestionDifficultyEstimate } from '../matchmaking/questionDifficulty.ts';
 import { mathRandom, pick, triangular, type RandomSource } from '../matchmaking/random.ts';
 import { normalize } from '../game/normalize.ts';
+import { log } from '../logger.ts';
+import { validateCountryTeamBotCandidate } from './countryTeamBotValidation.ts';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BOT DIFFICULTY — SINGLE SOURCE OF TRUTH.
@@ -86,6 +89,7 @@ export class BotPlayer implements Transport {
   private id = '';
   private teams: { teamA: ClubRef; teamB: ClubRef } | null = null;
   private answer: string | null = null;
+  private answerPlayerId: number | null = null;
   private timer: NodeJS.Timeout | null = null;
   private readonly minDelayMs: number;
   private readonly maxDelayMs: number;
@@ -316,6 +320,7 @@ export class BotPlayer implements Transport {
     if (!this.teams) return;
     this.wrongGuess = null;
     this.answer = null;
+    this.answerPlayerId = null;
     this.answerKnown = false;
     this.botDecision = null;
     this.cognitiveState = null;
@@ -326,9 +331,20 @@ export class BotPlayer implements Transport {
       const wrongs = await plausibleWrongClubsPlayerPlayer(this.teams.teamA.id, this.teams.teamB.id);
       await this.decidePreparedAnswer(clubs.map((c) => c.name), wrongs, 'player_history');
     } else if (this.revealCountry && this.teams.teamB) {
-      const players = await commonPlayersCountryTeam(this.teams.teamB.id, this.revealCountry, 6);
-      const wrongs = await plausibleWrongPlayersCountryTeam(this.teams.teamB.id, this.revealCountry);
-      await this.decidePreparedAnswer(players.map((p) => p.name), wrongs, 'national_teams');
+      const players = await getValidPlayersForCountryAndClub(this.teams.teamB.id, this.revealCountry, 8);
+      log.info('country_team_bot_candidate_count', {
+        countryId: this.revealCountry,
+        clubId: this.teams.teamB.id,
+        candidateCount: players.length,
+      });
+      if (players.length === 0) {
+        log.warn('country_team_bot_no_valid_answer', {
+          countryId: this.revealCountry,
+          clubId: this.teams.teamB.id,
+          action: 'NO_ANSWER',
+        });
+      }
+      await this.decidePreparedAnswer(players.map((p) => p.canonicalName), [], 'national_teams', { countryTeamPlayers: players });
     } else if (this.revealLetter && this.teams.teamB) {
       const players = await commonPlayersLetterTeam(this.teams.teamB.id, this.revealLetter, 6);
       const wrongs = await plausibleWrongPlayersLetterTeam(this.teams.teamB.id, this.revealLetter);
@@ -340,10 +356,20 @@ export class BotPlayer implements Transport {
     }
   }
 
-  private async decidePreparedAnswer(validNames: string[], wrongCandidates: string[], domain: import('../matchmaking/botProfiles.ts').KnowledgeDomain): Promise<void> {
+  private async decidePreparedAnswer(
+    validNames: string[],
+    wrongCandidates: string[],
+    domain: import('../matchmaking/botProfiles.ts').KnowledgeDomain,
+    opts: { countryTeamPlayers?: CountryTeamAnswerCandidate[] } = {},
+  ): Promise<void> {
     if (!this.teams) return;
     this.questionEstimate = await getQuestionDifficulty(this.mode, this.teams.teamA.id, this.teams.teamB.id, this.revealCountry ?? this.revealLetter ?? null);
     this.questionDifficulty = difficultyFromScore(this.questionEstimate.difficultyScore);
+    const countryTeamPlayers = opts.countryTeamPlayers;
+    const pickCountryTeamAnswer = (rng: RandomSource): CountryTeamAnswerCandidate | null => {
+      if (!countryTeamPlayers?.length) return null;
+      return pick(rng, countryTeamPlayers) ?? null;
+    };
     if (this.profile) {
       this.rng = rngForBotRound(this.profile, ++this.decisionSerial, this.questionEstimate.questionKey);
       this.botDecision = decideBotAnswer(this.profile, {
@@ -357,19 +383,35 @@ export class BotPlayer implements Transport {
       });
       this.cognitiveState = this.botDecision.cognitiveState;
       this.answerKnown = this.botDecision.knowsAnswer;
-      this.answer = this.botDecision.willAnswer && !this.botDecision.shouldMistake
-        ? (pick(this.rng, validNames) ?? null)
-        : null;
-      this.wrongGuess = this.botDecision.willAnswer && this.botDecision.shouldMistake
-        ? pickWrongName(this.rng, wrongCandidates, validNames)
-        : null;
+      if (countryTeamPlayers) {
+        const selected = this.botDecision.willAnswer && !this.botDecision.shouldMistake ? pickCountryTeamAnswer(this.rng) : null;
+        this.answer = selected?.canonicalName ?? null;
+        this.answerPlayerId = selected?.playerId ?? null;
+        this.wrongGuess = null;
+        if (this.botDecision.willAnswer && this.botDecision.shouldMistake) {
+          log.info('country_team_bot_invalid_candidate_rejected', {
+            countryId: this.revealCountry,
+            clubId: this.teams.teamB.id,
+            finalValid: false,
+            action: 'REJECTED',
+          });
+        }
+        return;
+      }
+      this.answer = this.botDecision.willAnswer && !this.botDecision.shouldMistake ? (pick(this.rng, validNames) ?? null) : null;
+      this.wrongGuess = this.botDecision.willAnswer && this.botDecision.shouldMistake ? pickWrongName(this.rng, wrongCandidates, validNames) : null;
       return;
     }
     this.answerKnown = this.legacyKnows(validNames.length, this.questionEstimate.answerPopularity);
+    if (countryTeamPlayers) {
+      const selected = this.answerKnown ? pickCountryTeamAnswer(mathRandom) : null;
+      this.answer = selected?.canonicalName ?? null;
+      this.answerPlayerId = selected?.playerId ?? null;
+      this.wrongGuess = null;
+      return;
+    }
     this.answer = this.answerKnown ? this.pickName(validNames) : null;
-    this.wrongGuess = !this.answerKnown && Math.random() < 0.08 + difficultyScore(this.questionDifficulty) * 0.12
-      ? this.pickWrongGuess(validNames, wrongCandidates)
-      : null;
+    this.wrongGuess = !this.answerKnown && Math.random() < 0.08 + difficultyScore(this.questionDifficulty) * 0.12 ? this.pickWrongGuess(validNames, wrongCandidates) : null;
   }
 
   // Difficulty-based "do I know it" chance for modes without a fame signal.
@@ -399,10 +441,31 @@ export class BotPlayer implements Transport {
       : this.minDelayMs + Math.floor(span * triangular(mathRandom));
     this.lastGuessDelayMs = delay;
     this.timer = setTimeout(() => {
-      if (this.botDecision && !this.botDecision.willAnswer) return;
-      const text = this.wrongGuess ?? this.humanizeKnownAnswer(this.answer);
-      if (text) this.act({ type: 'submit_guess', text });
+      void this.submitScheduledGuess();
     }, delay);
+  }
+
+  private async submitScheduledGuess(): Promise<void> {
+    if (this.botDecision && !this.botDecision.willAnswer) return;
+    const text = this.wrongGuess ?? this.humanizeKnownAnswer(this.answer);
+    if (!text) return;
+    if (this.mode === 'country-team') {
+      const safeText = await this.validatedCountryTeamSubmission(text);
+      if (!safeText) return;
+      this.act({ type: 'submit_guess', text: safeText });
+      return;
+    }
+    this.act({ type: 'submit_guess', text });
+  }
+
+  private async validatedCountryTeamSubmission(text: string): Promise<string | null> {
+    const result = await validateCountryTeamBotCandidate({
+      countryId: this.revealCountry ?? null,
+      clubId: this.teams?.teamB?.id ?? null,
+      candidatePlayerId: this.answerPlayerId,
+      candidateText: text,
+    });
+    return result.submitText;
   }
 
   private humanizeKnownAnswer(answer: string | null): string | null {
@@ -452,6 +515,7 @@ export class BotPlayer implements Transport {
     this.clearTimer();
     this.teams = null;
     this.answer = null;
+    this.answerPlayerId = null;
     this.revealCountry = undefined;
     this.revealLetter = undefined;
     this.ctPicked = false;

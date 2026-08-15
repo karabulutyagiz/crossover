@@ -607,6 +607,19 @@ export async function plausibleWrongPlayersTeamTeam(teamAId: number, teamBId: nu
 const MIN_SPELL_YEAR = 1980;
 const ACTIVE_SPELL_SQL = `COALESCE(pc.end_year, pc.start_year, 9999) >= ${MIN_SPELL_YEAR}`;
 
+export interface CountryTeamAnswerCandidate {
+  playerId: number;
+  canonicalName: string;
+  imageUrl: string | null;
+  confidence: 1;
+  popularityScore: number;
+  fame: number;
+}
+
+function popularityScoreFromFame(fame: number): number {
+  return Number(Math.max(0, Math.min(1, Math.log10(Math.max(1, fame)) / 9.5)).toFixed(4));
+}
+
 const NATIONALITY_ALIAS_GROUPS = [
   ['Turkey', 'Türkiye'],
   ['United Arab Emirates', 'United-Arab-Emirates'],
@@ -634,28 +647,107 @@ export async function commonPlayersCountryTeam(
   country: string,
   limit = 5,
 ): Promise<CommonPlayerInfo[]> {
+  const players = await getValidPlayersForCountryAndClub(clubId, country, limit);
+  return players.map((p) => ({ name: p.canonicalName, imageUrl: p.imageUrl }));
+}
+
+export async function getValidPlayersForCountryAndClub(
+  clubId: number,
+  country: string,
+  limit = 12,
+): Promise<CountryTeamAnswerCandidate[]> {
   const countries = nationalityVariants(country);
-  const { rows } = await pool.query<{ name: string; image_url: string | null }>(
-    `SELECT picked.name, picked.image_url
-       FROM (
-         SELECT DISTINCT ON (p.id)
-                p.id,
-                p.name,
-                p.image_url,
-                (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) AS career_count
-           FROM players p
-           JOIN player_clubs pc ON pc.player_id = p.id
-          WHERE pc.club_id = $1
-            AND ${ACTIVE_SPELL_SQL}
-            AND p.nationality = ANY($2)
-          ORDER BY p.id
-       ) AS picked
-      ORDER BY (picked.image_url IS NOT NULL) DESC,
-               picked.career_count DESC
+  const { rows } = await pool.query<{ id: string; name: string; image_url: string | null; fame: string; career_count: string }>(
+    `SELECT p.id,
+            p.name,
+            p.image_url,
+            count(DISTINCT pc2.club_id) AS career_count,
+            COALESCE(MAX(GREATEST(COALESCE(c2.popularity, 0), (SELECT count(*) FROM player_clubs x WHERE x.club_id = pc2.club_id))), 0) AS fame
+       FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id AND pc.club_id = $1
+       JOIN clubs c ON c.id = pc.club_id AND c.is_national = false
+       LEFT JOIN player_clubs pc2 ON pc2.player_id = p.id
+       LEFT JOIN clubs c2 ON c2.id = pc2.club_id
+      WHERE ${ACTIVE_SPELL_SQL}
+        AND p.nationality = ANY($2)
+      GROUP BY p.id, p.name, p.image_url
+      ORDER BY (p.image_url IS NOT NULL) DESC,
+               fame DESC,
+               career_count DESC,
+               p.name ASC
       LIMIT $3`,
     [clubId, countries, limit],
   );
-  return rows.map((r) => ({ name: r.name, imageUrl: r.image_url }));
+  return rows.map((r) => {
+    const fame = Number(r.fame);
+    return {
+      playerId: Number(r.id),
+      canonicalName: r.name,
+      imageUrl: r.image_url,
+      confidence: 1,
+      popularityScore: popularityScoreFromFame(fame),
+      fame,
+    };
+  });
+}
+
+export async function validateCountryTeamPlayerId(
+  clubId: number,
+  country: string,
+  playerId: number,
+): Promise<{ valid: boolean; player: CountryTeamAnswerCandidate | null }> {
+  if (!Number.isFinite(clubId) || !Number.isFinite(playerId) || !country.trim()) {
+    return { valid: false, player: null };
+  }
+  const countries = nationalityVariants(country);
+  const { rows } = await pool.query<{ id: string; name: string; image_url: string | null; fame: string }>(
+    `SELECT p.id,
+            p.name,
+            p.image_url,
+            COALESCE(MAX(GREATEST(COALESCE(c2.popularity, 0), (SELECT count(*) FROM player_clubs x WHERE x.club_id = pc2.club_id))), 0) AS fame
+       FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id AND pc.club_id = $1
+       JOIN clubs c ON c.id = pc.club_id AND c.is_national = false
+       LEFT JOIN player_clubs pc2 ON pc2.player_id = p.id
+       LEFT JOIN clubs c2 ON c2.id = pc2.club_id
+      WHERE p.id = $3
+        AND ${ACTIVE_SPELL_SQL}
+        AND p.nationality = ANY($2)
+      GROUP BY p.id, p.name, p.image_url
+      LIMIT 1`,
+    [clubId, countries, playerId],
+  );
+  const r = rows[0];
+  if (!r) return { valid: false, player: null };
+  const fame = Number(r.fame);
+  return {
+    valid: true,
+    player: {
+      playerId: Number(r.id),
+      canonicalName: r.name,
+      imageUrl: r.image_url,
+      confidence: 1,
+      popularityScore: popularityScoreFromFame(fame),
+      fame,
+    },
+  };
+}
+
+export async function countryTeamAnswerStats(clubId: number, country: string): Promise<{ count: number; fame: number }> {
+  const countries = nationalityVariants(country);
+  const { rows } = await pool.query<{ count: string; fame: string }>(
+    `SELECT count(DISTINCT p.id) AS count,
+            COALESCE(MAX(GREATEST(COALESCE(c2.popularity, 0), (SELECT count(*) FROM player_clubs x WHERE x.club_id = pc2.club_id))), 0) AS fame
+       FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id AND pc.club_id = $1
+       JOIN clubs c ON c.id = pc.club_id AND c.is_national = false
+       JOIN player_clubs pc2 ON pc2.player_id = p.id
+       JOIN clubs c2 ON c2.id = pc2.club_id
+      WHERE ${ACTIVE_SPELL_SQL}
+        AND p.nationality = ANY($2)`,
+    [clubId, countries],
+  );
+  return { count: Number(rows[0]?.count ?? 0), fame: Number(rows[0]?.fame ?? 0) };
 }
 
 export async function plausibleWrongPlayersCountryTeam(clubId: number, country: string, limit = 16): Promise<string[]> {
@@ -719,16 +811,18 @@ export async function plausibleWrongPlayersLetterTeam(clubId: number, letter: st
 /** Are there any valid players for a country-team combination? */
 export async function hasPlayersCountryTeam(clubId: number, country: string): Promise<boolean> {
   const countries = nationalityVariants(country);
-  const { rows } = await pool.query<{ n: string }>(
-    `SELECT count(*) AS n FROM players p
-       JOIN player_clubs pc ON pc.player_id = p.id
-      WHERE pc.club_id = $1
-        AND ${ACTIVE_SPELL_SQL}
-        AND p.nationality = ANY($2)
-      LIMIT 1`,
+  const { rows } = await pool.query<{ ok: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+         FROM players p
+         JOIN player_clubs pc ON pc.player_id = p.id AND pc.club_id = $1
+         JOIN clubs c ON c.id = pc.club_id AND c.is_national = false
+        WHERE ${ACTIVE_SPELL_SQL}
+          AND p.nationality = ANY($2)
+     ) AS ok`,
     [clubId, countries],
   );
-  return Number(rows[0]?.n ?? 0) > 0;
+  return rows[0]?.ok === true;
 }
 
 // Bot'un ülke-takım seçimini VERİ-GÜDÜMLÜ yapan yardımcılar: bot, karşı tarafın
@@ -744,7 +838,11 @@ export async function pickCountryForClub(clubId: number | null, excludeLower: st
     const { rows } = await pool.query<{ nationality: string }>(
       `SELECT p.nationality FROM player_clubs pc
          JOIN players p ON p.id = pc.player_id
-        WHERE pc.club_id = $1 AND p.nationality IS NOT NULL AND lower(p.nationality) <> ALL($2::text[])
+         JOIN clubs c ON c.id = pc.club_id AND c.is_national = false
+        WHERE pc.club_id = $1
+          AND ${ACTIVE_SPELL_SQL}
+          AND p.nationality IS NOT NULL
+          AND lower(p.nationality) <> ALL($2::text[])
         GROUP BY p.nationality
         ORDER BY random() LIMIT 1`,
       [clubId, excl],
@@ -765,14 +863,22 @@ export async function pickCountryForClub(clubId: number | null, excludeLower: st
 /** Verilen milliyetten oyuncusu OLAN bir kulüp döndürür (yoksa null). */
 export async function pickClubForCountry(country: string, excludeIds: number[] = []): Promise<ClubHit | null> {
   const excl = excludeIds.length ? excludeIds : [-1];
+  const countries = nationalityVariants(country);
   const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
     `SELECT c.id, c.name, c.logo_url FROM clubs c
        JOIN player_clubs pc ON pc.club_id = c.id
        JOIN players p ON p.id = pc.player_id
-      WHERE p.nationality = $1 AND c.is_national = false AND c.id <> ALL($2::bigint[])
+      WHERE p.nationality = ANY($1)
+        AND ${ACTIVE_SPELL_SQL}
+        AND c.is_national = false
+        AND c.logo_url IS NOT NULL
+        ${A_TEAM_ONLY}
+        AND c.id <> ALL($2::bigint[])
       GROUP BY c.id, c.name, c.logo_url
-      ORDER BY random() LIMIT 1`,
-    [country, excl],
+      ORDER BY COALESCE(NULLIF(c.popularity, 0), (SELECT COUNT(*) FROM player_clubs pc2 WHERE pc2.club_id = c.id)) DESC,
+               random()
+      LIMIT 1`,
+    [countries, excl],
   );
   const r = rows[0];
   return r ? { id: Number(r.id), name: r.name, logoUrl: r.logo_url } : null;
@@ -868,6 +974,11 @@ export async function verifyCountryTeamGuess(
     // loose/garbage match → not accepted
     matched = eligible[0]!;
     correct = false;
+  }
+
+  if (correct) {
+    const idCheck = await validateCountryTeamPlayerId(clubId, country, matched.id);
+    correct = idCheck.valid;
   }
 
   const allClubs = await getPlayerSpells(matched.id);

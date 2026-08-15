@@ -98,6 +98,7 @@ import {
 import { theme, engrave, shadowRow, shadowModal, shadowTabBar } from './src/theme';
 import { GemIcon } from './src/GemIcon';
 import { installGlobalErrorHandlers, track } from './src/telemetry';
+import { dismissActiveInput } from './src/keyboardLifecycle';
 import type { ImageSourcePropType } from 'react-native';
 
 type GemCelebration =
@@ -591,10 +592,32 @@ function AppRoot() {
   // geçsin diye getUserProfile props katmanında sarılır; actions kimliği sabit
   // olduğundan sarmalayıcı da useMemo ile sabittir.
   const requestedProfileRef = useRef<string | null>(null);
-  const actionsForScreens = useMemo(() => ({
-    ...actions,
-    getUserProfile: (userId: string) => { requestedProfileRef.current = userId; actions.getUserProfile(userId); },
-  }), [actions]);
+  const actionsForScreens = useMemo(() => {
+    const dismissThen = (fn: (...args: any[]) => any) => (...args: any[]) => {
+      dismissActiveInput();
+      return fn(...args);
+    };
+    return {
+      ...actions,
+      openArenas: dismissThen(actions.openArenas),
+      closeArenas: dismissThen(actions.closeArenas),
+      openProfile: dismissThen(actions.openProfile),
+      closeProfile: dismissThen(actions.closeProfile),
+      findMatch: dismissThen(actions.findMatch),
+      cancelSearch: dismissThen(actions.cancelSearch),
+      createRoom: dismissThen(actions.createRoom),
+      createSolo: dismissThen(actions.createSolo),
+      joinRoom: dismissThen(actions.joinRoom),
+      start: dismissThen(actions.start),
+      leave: dismissThen(actions.leave),
+      playAgain: dismissThen(actions.playAgain),
+      findMatchAgain: dismissThen(actions.findMatchAgain),
+      respondMatchInvite: dismissThen(actions.respondMatchInvite),
+      openChat: dismissThen(actions.openChat),
+      closeChat: dismissThen(actions.closeChat),
+      getUserProfile: (userId: string) => { dismissActiveInput(); requestedProfileRef.current = userId; actions.getUserProfile(userId); },
+    };
+  }, [actions]);
   const props = { state, actions: actionsForScreens };
   const scrollRef = useRef<ScrollView>(null);
   // Native-driven pager offset — powers ONLY the stadium-photo cross-fade on the
@@ -617,6 +640,7 @@ function AppRoot() {
   const programmaticScroll = useRef(false); // true right after a tab tap — ignore scroll events
   const tabGuardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeTab, setActiveTab] = useState(2); // start on Home (store=0, collection=1, home=2)
+  const settledTabRef = useRef(2); // focus lifecycle follows committed pages, not mid-drag preview state
   const [splash, setSplash] = useState(true);
   // Native splash DEVİR-TESLİMİ: yukarıdaki preventAutoHideAsync ile ekranda
   // tutuluyor; ancak JS kendi açılış ekranını GERÇEKTEN boyadıktan sonra
@@ -693,6 +717,18 @@ function AppRoot() {
 
   const [langKey, setLangKey] = useState(0); // increment to force full remount after language change
   const TABS = TAB_DEFS.map((tab) => ({ ...tab, label: t(tab.labelKey) }));
+
+  const phaseRef = useRef(state.phase);
+  useEffect(() => {
+    if (phaseRef.current !== state.phase) {
+      dismissActiveInput();
+      phaseRef.current = state.phase;
+    }
+  }, [state.phase]);
+
+  useEffect(() => () => {
+    if (tabGuardTimer.current) clearTimeout(tabGuardTimer.current);
+  }, []);
 
   const setDiamondDisplayInstant = useCallback((value: number) => {
     diamondCountAnim.stopAnimation();
@@ -961,24 +997,37 @@ function AppRoot() {
   }, [state.phase, actions]);
 
   const goToTab = useCallback((idx: number) => {
+    if (idx !== settledTabRef.current) dismissActiveInput();
+    settledTabRef.current = idx;
     // Tab taps jump INSTANTLY (no animated slide) so rapid tapping never flickers the
     // green pill across in-between pages. The guard ignores the stray scroll event the
     // jump fires, and a timer (reset on every tap) re-enables live swipe tracking once
     // the user stops tapping — onMomentumScrollEnd doesn't fire for instant scrolls.
     programmaticScroll.current = true;
     if (tabGuardTimer.current) clearTimeout(tabGuardTimer.current);
-    tabGuardTimer.current = setTimeout(() => { programmaticScroll.current = false; }, 260);
+    tabGuardTimer.current = setTimeout(() => { programmaticScroll.current = false; tabGuardTimer.current = null; }, 260);
     setActiveTab(idx);
     scrollRef.current?.scrollTo({ x: idx * SCREEN_W, animated: false });
     storeAtDiamondsRef.current = false; // fresh tab entry → re-tap toggle starts at "diamonds"
     if (idx !== 2) resetHomePhase(); // home lives at index 2 (store=0, collection=1, home=2, friends=3)
   }, [resetHomePhase]);
 
+  const onScrollBeginDrag = useCallback(() => {
+    if (tabGuardTimer.current) clearTimeout(tabGuardTimer.current);
+    tabGuardTimer.current = null;
+    programmaticScroll.current = false; // a real gesture owns the pager from this point
+  }, []);
+
   const onScrollEnd = useCallback((e: any) => {
     if (tabGuardTimer.current) clearTimeout(tabGuardTimer.current);
+    tabGuardTimer.current = null;
     programmaticScroll.current = false; // drag settled — resume live updates
     const x = e.nativeEvent.contentOffset.x;
-    const idx = Math.round(x / SCREEN_W);
+    const idx = Math.max(0, Math.min(3, Math.round(x / SCREEN_W)));
+    if (idx !== settledTabRef.current) {
+      dismissActiveInput();
+      settledTabRef.current = idx;
+    }
     // startTransition: bu setState KÖKÜ (4 sekme ekranını birden) yeniden
     // çizdirir; acil işaretlenince render, sayfanın oturma karesine denk gelip
     // JS thread'i tıkıyordu — iniş "pat" diye hissediliyordu. Ertelemek native
@@ -1005,8 +1054,8 @@ function AppRoot() {
   }, []);
 
   // Leaderboard / match-history open as centered popups (App-level overlay), not fullscreen.
-  const openLeaderboard = useCallback(() => { actions.openLeaderboard(); setOverlay('leaderboard'); }, [actions]);
-  const openMatchHistory = useCallback(() => { actions.openMatchHistory(); setOverlay('matchHistory'); }, [actions]);
+  const openLeaderboard = useCallback(() => { dismissActiveInput(); actions.openLeaderboard(); setOverlay('leaderboard'); }, [actions]);
+  const openMatchHistory = useCallback(() => { dismissActiveInput(); actions.openMatchHistory(); setOverlay('matchHistory'); }, [actions]);
   const openDiamondStore = useCallback(() => { setStoreSection('diamonds'); goToTab(0); }, [goToTab]);
   // Home's find-friend card → Friends tab, landing focused on the add-friend search.
   // A bumped sequence (not a boolean) so every tap re-triggers the focus effect.
@@ -1093,6 +1142,7 @@ function AppRoot() {
   };
   useEffect(() => {
     const sub = AppState.addEventListener('change', (st) => {
+      if (st === 'background') dismissActiveInput();
       if ((st === 'inactive' || st === 'background') && forfeitCtxRef.current.eligible && !forfeitCtxRef.current.fired) {
         forfeitCtxRef.current.fired = true;
         forfeitCtxRef.current.forfeit();
@@ -1294,8 +1344,10 @@ function AppRoot() {
     : state.phase === 'profile'
     ? <ProfileScreen {...props} onOpenMatchHistory={openMatchHistory} onOpenLevelRoad={() => setLevelRoadOpen(true)} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
     : <HomeScreen {...props} heroAnimsActive={activeTab === 2} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} trophyLand={trophyLand} trophyHold={trophyFlight?.delta ?? null} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLanguageChange={() => {
+        dismissActiveInput();
         setOverlay(null);
         setStoreSection(null);
+        settledTabRef.current = 2;
         setActiveTab(2);
         setLoaded(false);
         setLangKey((k) => k + 1);
@@ -1307,7 +1359,7 @@ function AppRoot() {
   // fade or resize, so a swipe is one seamless slide: no pop, no gap, no vertical jump.
   const renderResourceBar = (active: boolean) => (
     <View style={s.resourceBar}>
-      <Pressable onPress={() => { actions.openArenas(); goToTab(2); }}>
+      <Pressable onPress={() => { dismissActiveInput(); actions.openArenas(); goToTab(2); }}>
         {({ pressed }) => (
           <View style={s.hudPillShadow}>
             <View style={[s.hudPill, { paddingHorizontal: 24, paddingVertical: 8 }, pressed && s.hudPillPressed]}>
@@ -1365,6 +1417,8 @@ function AppRoot() {
         // descendant TextInput. Per-tab ScrollViews use "handled".
         keyboardShouldPersistTaps="always"
         showsHorizontalScrollIndicator={false}
+        onScrollBeginDrag={onScrollBeginDrag}
+        onScrollEndDrag={onScrollEnd}
         onMomentumScrollEnd={onScrollEnd}
         // Feed the raw offset to scrollX on the native thread (stadium cross-fade).
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true, listener: onScrollLive })}
@@ -1409,6 +1463,7 @@ function AppRoot() {
       <View style={[s.tabBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         {TABS.map((tab, idx) => {
           const onPress = () => {
+            dismissActiveInput();
             if (idx === 2 && activeTab === 2) {
               // Re-tapping the active Oyna tab opens Arenas (Clash Royale style);
               // from any other home-slot sub-screen (Profile, Arenas) it returns
@@ -1449,7 +1504,7 @@ function AppRoot() {
           );
         })}
         {/* Tournaments — locked, coming soon */}
-        <TabButton locked icon="trophy-outline" label={t('tab.tournaments')} onPress={() => csRef.current?.show()} />
+        <TabButton locked icon="trophy-outline" label={t('tab.tournaments')} onPress={() => { dismissActiveInput(); csRef.current?.show(); }} />
       </View>
 
       {/* Tournaments → standalone 3D coming-soon lettering, no bubble/background. */}
