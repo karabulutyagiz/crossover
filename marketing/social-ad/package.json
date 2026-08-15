@@ -4,7 +4,8 @@
   "description": "15-second vertical Crossover Football social media ad renderer.",
   "main": "render-crossover-ad.mjs",
   "scripts": {
-    "render": "node render-crossover-ad.mjs"
+    "render": "node render-crossover-ad.mjs",
+    "render:en": "node render-crossover-ad-en.mjs"
   },
   "keywords": [],
   "author": "",
