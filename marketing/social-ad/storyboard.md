@@ -7,10 +7,10 @@
 
 ## Timeline
 
-- 0.0-2.5s: Gameplay-style challenge screen, "Futbol bilgine güveniyor musun?"
-- 2.5-5.5s: Team duel and answer moment, "Rakibinden önce doğru futbolcuyu bul."
-- 5.5-8.5s: Four mode badges, "Takım, ülke, harf ve oyuncu modlarında kapış."
-- 8.5-12.0s: Phone mockup with home screen; side logos collide in center.
+- 0.0-2.7s: Real home screen, "Futbol bilgine güveniyor musun?"
+- 2.7-5.6s: Real team-pick screen, "Takımını seç, düelloya gir."
+- 5.6-8.6s: Real guess screen, "Rakibinden önce doğru futbolcuyu bul."
+- 8.6-12.0s: Phone mockup only; logo balls slide from the sides and collide inside the phone.
 - 12.0-15.0s: Final App Store call-to-action.
 
 ## Voiceover

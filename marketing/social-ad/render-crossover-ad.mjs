@@ -17,14 +17,24 @@ const DURATION = 15;
 const TOTAL = FPS * DURATION;
 
 const assets = {
-  bg: path.join(root, 'app/assets/bg-stadium.jpg'),
-  home: path.join(root, 'app/assets/bg-home.png'),
-  hero: path.join(root, 'app/assets/hero-crossover.png'),
+  screenHome: path.join(root, 'website/screens/home.png'),
+  screenPick: path.join(root, 'website/screens/pick.png'),
+  screenGuess: path.join(root, 'website/screens/guess.png'),
+  screenCorrect: path.join(root, 'website/screens/correct.png'),
+  screenLobby: path.join(root, 'website/screens/lobby.png'),
+  bgHome: path.join(root, 'app/assets/bg-home.png'),
   logo: path.join(root, 'app/assets/cof-logo.png'),
+  mark: path.join(root, 'app/assets/logo-mark.png'),
   icon: path.join(root, 'app/assets/icon.png'),
-  duel: path.join(root, 'app/assets/card-duel-blue.png'),
-  ball: path.join(root, 'app/assets/ball-hero-white.png'),
 };
+
+const voiceLines = [
+  'Futbol bilgine güveniyor musun?',
+  'Takımını seç, düelloya gir.',
+  'Rakibinden önce futbolcuyu bul.',
+  'Crossover Football App Store’da.',
+  'Hemen indir, oyna!',
+];
 
 function esc(s) {
   return String(s)
@@ -44,148 +54,159 @@ const img = Object.fromEntries(await Promise.all(Object.entries(assets).map(asyn
 
 const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
 const ease = (x) => 1 - Math.pow(1 - clamp(x), 3);
+const easeInOut = (x) => {
+  x = clamp(x);
+  return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+};
 const pop = (x) => {
   x = clamp(x);
-  return x < 0.7 ? 1.15 * ease(x / 0.7) : 1.15 - 0.15 * ease((x - 0.7) / 0.3);
+  return x < 0.66 ? 1.08 * ease(x / 0.66) : 1.08 - 0.08 * ease((x - 0.66) / 0.34);
 };
 
-function textBlock(lines, x, y, size, color = '#fff', anchor = 'middle', weight = 900) {
-  return lines.map((line, i) => `<text x="${x}" y="${y + i * size * 1.18}" text-anchor="${anchor}" font-size="${size}" font-weight="${weight}" fill="${color}" letter-spacing="-.5">${esc(line)}</text>`).join('');
+function darkHomeBg() {
+  return `<image href="${img.bgHome}" x="0" y="0" width="1080" height="1920" preserveAspectRatio="xMidYMid slice"/>
+    <rect x="0" y="0" width="1080" height="1920" fill="#070d1c" opacity=".74"/>
+    <rect x="0" y="0" width="1080" height="1920" fill="url(#topGlow)"/>`;
 }
 
-function pill(label, x, y, color) {
-  return `<g transform="translate(${x} ${y})">
-    <rect x="0" y="0" width="360" height="86" rx="28" fill="rgba(11,16,32,.72)" stroke="${color}" stroke-width="3"/>
-    <text x="180" y="55" text-anchor="middle" font-size="34" font-weight="900" fill="${color}">${esc(label)}</text>
+function screenshotFrame(href, t, scale = 0.84, y = 112) {
+  const p = pop(t);
+  const sw = 1206 * scale * p;
+  const sh = 2622 * scale * p;
+  const x = (W - sw) / 2;
+  return `<g filter="url(#phoneShadow)">
+    <rect x="${x - 16}" y="${y - 18}" width="${sw + 32}" height="${sh + 36}" rx="72" fill="#050914" stroke="#293657" stroke-width="5"/>
+    <clipPath id="clipShot"><rect x="${x}" y="${y}" width="${sw}" height="${Math.min(sh, 1688)}" rx="58"/></clipPath>
+    <image href="${href}" x="${x}" y="${y}" width="${sw}" height="${sh}" preserveAspectRatio="xMidYMin slice" clip-path="url(#clipShot)"/>
   </g>`;
 }
 
-function phone(x, y, scale, screen = 'home') {
-  const sw = 360 * scale, sh = 740 * scale;
-  const ix = x + 22 * scale, iy = y + 58 * scale, iw = sw - 44 * scale, ih = sh - 116 * scale;
-  const screenImg = screen === 'game' ? img.bg : img.home;
-  return `<g transform="translate(${x} ${y}) scale(${scale})">
-    <rect x="0" y="0" width="360" height="740" rx="58" fill="#050912" stroke="#dbe7ff" stroke-width="8"/>
-    <rect x="22" y="58" width="316" height="624" rx="32" fill="#0b1020"/>
-    <clipPath id="screenClip"><rect x="22" y="58" width="316" height="624" rx="32"/></clipPath>
-    <image href="${screenImg}" x="22" y="58" width="316" height="624" preserveAspectRatio="xMidYMid slice" clip-path="url(#screenClip)"/>
-    <rect x="120" y="24" width="120" height="22" rx="11" fill="#06080d"/>
-    <image href="${img.logo}" x="75" y="190" width="210" height="168" preserveAspectRatio="xMidYMid meet" opacity="${screen === 'home' ? 1 : 0}"/>
-    <text x="180" y="405" text-anchor="middle" font-size="34" font-weight="900" fill="#fff">CROSSOVER</text>
-    <text x="180" y="446" text-anchor="middle" font-size="28" font-weight="800" fill="#27E58B">FOOTBALL</text>
+function headline(lines, y, size = 66, color = '#fff') {
+  return lines.map((line, i) => `<text x="540" y="${y + i * size * 1.12}" text-anchor="middle" font-size="${size}" font-weight="1000" fill="${color}" letter-spacing="-.9">${esc(line)}</text>`).join('');
+}
+
+function caption(text, y) {
+  return `<rect x="76" y="${y - 78}" width="928" height="132" rx="36" fill="rgba(7,13,28,.78)" stroke="#273656" stroke-width="3"/>
+    <text x="540" y="${y + 4}" text-anchor="middle" font-size="44" font-weight="900" fill="#fff">${esc(text)}</text>`;
+}
+
+function phoneMock(t) {
+  const px = 136;
+  const py = 372;
+  const pw = 390;
+  const ph = 812;
+  const left = -250 + easeInOut(t) * 410;
+  const right = 1080 - easeInOut(t) * 420;
+  const impact = t > 0.64 && t < 0.78 ? 1 + Math.sin((t - 0.64) / 0.14 * Math.PI) * 0.08 : 1;
+  return `<g filter="url(#phoneShadow)">
+    <rect x="${px}" y="${py}" width="${pw}" height="${ph}" rx="64" fill="#050914" stroke="#dbe6ff" stroke-width="8"/>
+    <rect x="${px + 22}" y="${py + 54}" width="${pw - 44}" height="${ph - 108}" rx="38" fill="#080e1f"/>
+    <clipPath id="phoneScreen"><rect x="${px + 22}" y="${py + 54}" width="${pw - 44}" height="${ph - 108}" rx="38"/></clipPath>
+    <g clip-path="url(#phoneScreen)">
+      <image href="${img.bgHome}" x="${px + 22}" y="${py + 54}" width="${pw - 44}" height="${ph - 108}" preserveAspectRatio="xMidYMid slice" opacity=".35"/>
+      <rect x="${px + 22}" y="${py + 54}" width="${pw - 44}" height="${ph - 108}" fill="#060b18" opacity=".72"/>
+      <g transform="translate(${left} ${py + 260}) scale(${impact})">
+        <clipPath id="logoLeft"><rect x="0" y="0" width="350" height="330"/></clipPath>
+        <image href="${img.logo}" x="0" y="0" width="690" height="552" preserveAspectRatio="xMidYMid meet" clip-path="url(#logoLeft)"/>
+      </g>
+      <g transform="translate(${right} ${py + 260}) scale(${impact})">
+        <clipPath id="logoRight"><rect x="350" y="0" width="350" height="330"/></clipPath>
+        <image href="${img.logo}" x="0" y="0" width="690" height="552" preserveAspectRatio="xMidYMid meet" clip-path="url(#logoRight)"/>
+      </g>
+      <text x="${px + pw / 2}" y="${py + 620}" text-anchor="middle" font-size="38" font-weight="1000" fill="#37e68d">CROSSOVER</text>
+    </g>
+    <rect x="${px + 132}" y="${py + 24}" width="126" height="22" rx="11" fill="#02040a"/>
+  </g>
+  <g>
+    <text x="735" y="620" text-anchor="middle" font-size="70" font-weight="1000" fill="#fff">Crossover</text>
+    <text x="735" y="698" text-anchor="middle" font-size="70" font-weight="1000" fill="#37e68d">Football</text>
+    <text x="735" y="800" text-anchor="middle" font-size="35" font-weight="800" fill="#aeb8cf">Futbol zekanı konuştur</text>
   </g>`;
 }
 
-function gameCard(title, subtitle, t, extra = '') {
-  const yy = 260 + 18 * Math.sin(t * Math.PI * 2);
-  return `<rect x="70" y="${yy}" width="940" height="620" rx="54" fill="rgba(9,15,33,.82)" stroke="#27E58B" stroke-width="4"/>
-    <text x="540" y="${yy + 84}" text-anchor="middle" font-size="48" font-weight="900" fill="#F5C518">${esc(title)}</text>
-    <text x="540" y="${yy + 140}" text-anchor="middle" font-size="30" font-weight="800" fill="#9fb5dd">${esc(subtitle)}</text>
-    <g transform="translate(162 ${yy + 210})">
-      <rect x="0" y="0" width="320" height="190" rx="32" fill="#10295b" stroke="#3DA5FF" stroke-width="3"/>
-      <text x="160" y="86" text-anchor="middle" font-size="34" font-weight="900" fill="#fff">GALATASARAY</text>
-      <text x="160" y="132" text-anchor="middle" font-size="26" font-weight="800" fill="#F5C518">Takım A</text>
+function finalCta(t) {
+  const s = pop(t);
+  return `<g transform="translate(540 330) scale(${s})">
+      <image href="${img.icon}" x="-170" y="-170" width="340" height="340"/>
     </g>
-    <image href="${img.duel}" x="451" y="${yy + 250}" width="178" height="176"/>
-    <g transform="translate(598 ${yy + 210})">
-      <rect x="0" y="0" width="320" height="190" rx="32" fill="#172d1f" stroke="#27E58B" stroke-width="3"/>
-      <text x="160" y="86" text-anchor="middle" font-size="34" font-weight="900" fill="#fff">CHELSEA</text>
-      <text x="160" y="132" text-anchor="middle" font-size="26" font-weight="800" fill="#27E58B">Takım B</text>
-    </g>
-    ${extra}`;
+    ${headline(['ŞİMDİ', 'APP STORE’DA'], 720, 86)}
+    <rect x="160" y="1016" width="760" height="142" rx="48" fill="#37e68d"/>
+    <text x="540" y="1108" text-anchor="middle" font-size="54" font-weight="1000" fill="#061021">HEMEN İNDİR, OYNA!</text>
+    <text x="540" y="1285" text-anchor="middle" font-size="38" font-weight="900" fill="#f7c915">Crossover Football</text>`;
 }
 
 function svgFrame(i) {
   const time = i / FPS;
-  const bgShift = -160 + 24 * Math.sin(time * 0.7);
-  let body = `<image href="${img.bg}" x="0" y="${bgShift}" width="1080" height="2400" preserveAspectRatio="xMidYMid slice"/>
-    <rect x="0" y="0" width="1080" height="1920" fill="url(#shade)"/>
-    <circle cx="120" cy="220" r="260" fill="#27E58B" opacity=".10"/>
-    <circle cx="980" cy="1550" r="360" fill="#3DA5FF" opacity=".12"/>`;
+  let body = darkHomeBg();
 
-  if (time < 2.5) {
-    const s = pop(time / 0.8);
-    body += gameCard('FUTBOL BİLGİNE', 'güveniyor musun?', time, `<g transform="translate(540 1090) scale(${s})"><text x="0" y="0" text-anchor="middle" font-size="76" font-weight="1000" fill="#fff">MEYDAN OKUMA</text></g>`);
-  } else if (time < 5.5) {
-    const p = ease((time - 2.5) / 0.8);
-    body += gameCard('RAKİBİNDEN ÖNCE', 'doğru futbolcuyu bul', time, `<g transform="translate(150 1000)">
-      <rect x="0" y="0" width="780" height="120" rx="32" fill="#081124" stroke="#F5C518" stroke-width="3"/>
-      <text x="36" y="76" font-size="46" font-weight="900" fill="#fff">Cevap: </text>
-      <text x="230" y="76" font-size="46" font-weight="900" fill="#27E58B">Drogba</text>
-      <rect x="${230 + p * 220}" y="32" width="6" height="62" fill="#27E58B" opacity="${i % 16 < 8 ? 1 : .25}"/>
-    </g>`);
-  } else if (time < 8.5) {
-    body += `<text x="540" y="245" text-anchor="middle" font-size="72" font-weight="1000" fill="#fff">4 FARKLI MOD</text>
-      <text x="540" y="320" text-anchor="middle" font-size="34" font-weight="800" fill="#9fb5dd">Her maç başka bir futbol hafızası testi</text>
-      ${pill('Takım - Takım', 150, 520, '#27E58B')}
-      ${pill('Ülke - Takım', 570, 520, '#3DA5FF')}
-      ${pill('Harf - Takım', 150, 660, '#F5C518')}
-      ${pill('Oyuncu - Oyuncu', 570, 660, '#ff7a59')}
-      ${phone(326, 900 + 16 * Math.sin(time * 4), 1.18, 'game')}`;
-  } else if (time < 12) {
-    const p = ease((time - 8.5) / 1.1);
-    const left = -260 + p * 415;
-    const right = 1080 - p * 415;
-    const bump = time > 9.7 && time < 10.1 ? 1.12 : 1;
-    body += `<rect x="0" y="0" width="1080" height="1920" fill="#0B1020" opacity=".78"/>
-      <g transform="translate(${left} 735) scale(${bump})"><image href="${img.logo}" x="0" y="0" width="260" height="210"/></g>
-      <g transform="translate(${right} 735) scale(${bump})"><image href="${img.logo}" x="0" y="0" width="260" height="210"/></g>
-      ${phone(110, 520, 1.12, 'home')}
-      ${textBlock(['Crossover', 'Football'], 705, 705, 72, '#fff', 'middle', 1000)}
-      <text x="705" y="895" text-anchor="middle" font-size="38" font-weight="900" fill="#27E58B">Futbol zekanı konuştur</text>`;
+  if (time < 2.7) {
+    body += screenshotFrame(img.screenHome, time / 0.7, 0.72, 110);
+    body += caption('Futbol bilgine güveniyor musun?', 1660);
+  } else if (time < 5.6) {
+    body += screenshotFrame(img.screenPick, (time - 2.7) / 0.7, 0.72, 94);
+    body += caption('Takımını seç, düelloya gir', 1660);
+  } else if (time < 8.6) {
+    body += screenshotFrame(img.screenGuess, (time - 5.6) / 0.7, 0.72, 94);
+    body += caption('Rakibinden önce doğru futbolcuyu bul', 1660);
+  } else if (time < 12.0) {
+    body += phoneMock((time - 8.6) / 1.35);
   } else {
-    const p = pop((time - 12) / 0.7);
-    body += `<rect x="0" y="0" width="1080" height="1920" fill="#061021" opacity=".82"/>
-      <g transform="translate(348 210) scale(${p})"><image href="${img.icon}" x="0" y="0" width="384" height="384" rx="80"/></g>
-      ${textBlock(['ŞİMDİ', 'APP STORE\'DA'], 540, 760, 86, '#fff', 'middle', 1000)}
-      <rect x="190" y="1030" width="700" height="138" rx="44" fill="#27E58B"/>
-      <text x="540" y="1118" text-anchor="middle" font-size="52" font-weight="1000" fill="#06231a">HEMEN İNDİR, OYNA!</text>
-      <text x="540" y="1335" text-anchor="middle" font-size="46" font-weight="900" fill="#F5C518">Crossover Football</text>`;
+    body += finalCta((time - 12) / 0.7);
   }
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
     <defs>
-      <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#081024" stop-opacity=".20"/><stop offset="1" stop-color="#050812" stop-opacity=".84"/></linearGradient>
+      <linearGradient id="topGlow" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#101a38" stop-opacity=".20"/><stop offset="1" stop-color="#020611" stop-opacity=".65"/></linearGradient>
+      <filter id="phoneShadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="26" stdDeviation="24" flood-color="#000" flood-opacity=".55"/></filter>
       <style>text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif}</style>
     </defs>
     ${body}
   </svg>`;
 }
 
+function run(cmd, args, opts = {}) {
+  const r = spawnSync(cmd, args, { stdio: 'inherit', ...opts });
+  if (r.status !== 0) throw new Error(`${cmd} failed: ${args.join(' ')}`);
+}
+
+async function makeVoice() {
+  const out = path.join(outDir, 'voiceover.m4a');
+  const edgeMp3 = path.join(outDir, 'voiceover-edge.mp3');
+  const text = voiceLines.join(' ');
+  const edge = path.join(outDir, '.venv/bin/edge-tts');
+  if (existsSync(edge)) {
+    run(edge, ['--voice', 'tr-TR-AhmetNeural', '--rate', '+14%', '--text', text, '--write-media', edgeMp3]);
+    run(ffmpegPath, ['-y', '-i', edgeMp3, '-af', 'aresample=44100,volume=1.1', '-c:a', 'aac', '-b:a', '160k', out]);
+    await fs.rm(edgeMp3, { force: true });
+    return out;
+  }
+  const aiff = path.join(outDir, 'voiceover.aiff');
+  run('say', ['-v', 'Yelda', '-r', '188', text, '-o', aiff]);
+  run(ffmpegPath, ['-y', '-i', aiff, '-af', 'aresample=44100,volume=1.25', '-c:a', 'aac', '-b:a', '160k', out]);
+  await fs.rm(aiff, { force: true });
+  return out;
+}
+
 async function main() {
   await fs.rm(frameDir, { recursive: true, force: true });
   await fs.mkdir(frameDir, { recursive: true });
   for (let i = 0; i < TOTAL; i++) {
-    const svg = svgFrame(i);
-    await sharp(Buffer.from(svg)).png().toFile(path.join(frameDir, `frame-${String(i).padStart(4, '0')}.png`));
+    await sharp(Buffer.from(svgFrame(i))).png().toFile(path.join(frameDir, `frame-${String(i).padStart(4, '0')}.png`));
     if (i % 60 === 0) process.stdout.write(`frame ${i}/${TOTAL}\n`);
   }
 
-  const voiceTxt = path.join(outDir, 'voiceover.txt');
-  const voiceAiff = path.join(outDir, 'voiceover.aiff');
-  const voiceM4a = path.join(outDir, 'voiceover.m4a');
+  const voice = await makeVoice();
   const musicWav = path.join(outDir, 'bed.wav');
   const videoNoAudio = path.join(outDir, 'crossover-social-ad-15s-video.mp4');
   const finalVideo = path.join(outDir, 'crossover-social-ad-15s.mp4');
 
-  const say = spawnSync('say', ['-v', 'Yelda', '-r', '188', '-f', voiceTxt, '-o', voiceAiff], { stdio: 'inherit' });
-  if (say.status !== 0) throw new Error('voiceover generation failed');
-
-  const ff = ffmpegPath;
-  const run = (args) => {
-    const r = spawnSync(ff, args, { stdio: 'inherit' });
-    if (r.status !== 0) throw new Error(`ffmpeg failed: ${args.join(' ')}`);
-  };
-
-  run(['-y', '-f', 'lavfi', '-i', 'sine=frequency=82:duration=15', '-f', 'lavfi', '-i', 'sine=frequency=164:duration=15', '-filter_complex', '[0:a]volume=0.08[a0];[1:a]volume=0.04[a1];[a0][a1]amix=inputs=2,afade=t=in:st=0:duration=0.3,afade=t=out:st=14.4:duration=0.6', musicWav]);
-  run(['-y', '-i', voiceAiff, '-af', 'aresample=44100,volume=1.55', '-c:a', 'aac', '-b:a', '128k', voiceM4a]);
-  run(['-y', '-framerate', String(FPS), '-i', path.join(frameDir, 'frame-%04d.png'), '-t', String(DURATION), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-level', '4.1', '-movflags', '+faststart', '-crf', '20', videoNoAudio]);
-  run(['-y', '-i', videoNoAudio, '-i', voiceM4a, '-i', musicWav, '-filter_complex', '[1:a]adelay=200|200,apad,atrim=0:15[v];[2:a]volume=0.45[m];[v][m]amix=inputs=2:duration=first:dropout_transition=0[a]', '-map', '0:v:0', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', finalVideo]);
+  run(ffmpegPath, ['-y', '-f', 'lavfi', '-i', 'sine=frequency=98:duration=15', '-f', 'lavfi', '-i', 'sine=frequency=196:duration=15', '-filter_complex', '[0:a]volume=0.035[a0];[1:a]volume=0.018[a1];[a0][a1]amix=inputs=2,afade=t=in:st=0:duration=0.25,afade=t=out:st=14.35:duration=0.65', musicWav]);
+  run(ffmpegPath, ['-y', '-framerate', String(FPS), '-i', path.join(frameDir, 'frame-%04d.png'), '-t', String(DURATION), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-level', '4.1', '-movflags', '+faststart', '-crf', '18', videoNoAudio]);
+  run(ffmpegPath, ['-y', '-i', videoNoAudio, '-i', voice, '-i', musicWav, '-filter_complex', '[1:a]adelay=150|150,apad,atrim=0:15,volume=1.45[v];[2:a]volume=0.18[m];[v][m]amix=inputs=2:duration=first:dropout_transition=0[a]', '-map', '0:v:0', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', finalVideo]);
 
   await fs.rm(frameDir, { recursive: true, force: true });
   await fs.rm(videoNoAudio, { force: true });
   await fs.rm(musicWav, { force: true });
-  await fs.rm(voiceAiff, { force: true });
   console.log(`Wrote ${finalVideo}`);
 }
 
