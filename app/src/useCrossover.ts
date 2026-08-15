@@ -526,7 +526,11 @@ function reducer(state: GameState, action: Action): GameState {
       // Elmasla ya da ₺ IAP ile — iki yol da bu mesajı düşürür, tek onay yeter
       return { ...state, profile: action.profile, lastPurchase: { kind: 'premiumRoad', id: undefined, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
     case 'my_stats':
-      return { ...state, myStats: { winStreak: action.winStreak, bestStreak: action.bestStreak, wins: action.wins, losses: action.losses, modes: action.modes } };
+      return {
+        ...state,
+        profile: state.profile ? { ...state.profile, wins: action.wins, losses: action.losses, winStreak: action.winStreak, bestStreak: action.bestStreak } : state.profile,
+        myStats: { winStreak: action.winStreak, bestStreak: action.bestStreak, wins: action.wins, losses: action.losses, modes: action.modes },
+      };
     case 'name_changed':
       return { ...state, profile: action.profile };
     case 'xp_update': {

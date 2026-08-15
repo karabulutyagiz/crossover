@@ -265,7 +265,7 @@ export type ServerMsg =
   | { type: 'premium_road_purchased'; profile: ProfileView } // Premium Yol açıldı
   | { type: 'power_purchased'; powerId: string; profile: ProfileView } // mağazadan güç alındı
   | { type: 'power_used'; powerId: string; profile: ProfileView } // güç etkinleştirildi
-  | { type: 'my_stats'; winStreak: number; bestStreak: number; wins: number; losses: number; modes: { mode: string; wins: number; losses: number }[] } // profil istatistikleri
+  | { type: 'my_stats'; winStreak: number; bestStreak: number; wins: number; losses: number; modes: { mode: string; wins: number; losses: number }[] } // profil istatistikleri: sadece ranked hızlı eşleşme
   | { type: 'emote'; fromId: string; emoteId: string }
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string }
   | { type: 'avatar_purchased'; profile: ProfileView; avatarId: string }

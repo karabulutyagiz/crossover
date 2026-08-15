@@ -316,7 +316,7 @@ export interface PublicProfile {
   avatar?: string | null;
   frame?: string | null; // takılı profil çerçevesi
   bestStreak?: number;    // tüm zamanların en yüksek galibiyet serisi (herkese açık)
-  // Mod bazında dereceli maç kırılımı. Bot/dostluk ve oyuncu-oyuncu modu hariç.
+  // Mod bazında dereceli maç kırılımı. Solo zorluk botu ve dostluk/oda maçları hariç.
   modes?: { mode: string; wins: number; losses: number }[];
   isBot?: boolean;
   modeStats?: { mode: string; wins: number; losses: number }[];

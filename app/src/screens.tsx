@@ -3190,8 +3190,11 @@ function ModeStatChip({ mode, wins, losses }: { mode: GameMode; wins: number; lo
         <Ionicons name={MODE_ICON[mode]} size={13} color={c} />
         <Text numberOfLines={1} style={{ flex: 1, color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{MODE_LABEL(mode)}</Text>
       </View>
-      <Text style={{ color: c, fontSize: 16, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{wins}G</Text>
-      <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold' }}>{losses}M · %{pct}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+        <Text style={{ color: c, fontSize: 16, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{wins}G</Text>
+        <Text style={{ color: theme.danger, fontSize: 16, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{losses}M</Text>
+      </View>
+      <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold' }}>%{pct}</Text>
     </GamePanel>
   );
 }

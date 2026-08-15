@@ -1150,8 +1150,8 @@ function toProfile(row: DbUser): UserProfile {
 }
 
 // ---- Mod bazlı istatistikler (profil ekranı) ----
-// Kaynak: match_history — yalnız dereceli hızlı eşleşmeler sayılır. Bot/dostluk
-// kayıtları ve oyuncu-oyuncu modu profil kırılımına girmez.
+// Kaynak: match_history — yalnız dereceli hızlı eşleşmeler sayılır. Zorluk seçilen
+// solo bot maçları ve dostluk/oda maçları ranked=false kaldığı için profil kırılımına girmez.
 export interface ModeStat { mode: string; wins: number; losses: number }
 export async function getModeStats(userId: string): Promise<ModeStat[]> {
   const { rows } = await pool.query<{ game_mode: string; wins: string; losses: string }>(
@@ -1160,9 +1160,8 @@ export async function getModeStats(userId: string): Promise<ModeStat[]> {
             COUNT(*) FILTER (WHERE NOT won) AS losses
      FROM match_history
      WHERE player_id = $1
-       AND ranked = TRUE
-       AND game_mode <> 'player-player'
-     GROUP BY game_mode`,
+        AND ranked = TRUE
+      GROUP BY game_mode`,
     [userId],
   );
   return rows.map((r) => ({ mode: r.game_mode, wins: Number(r.wins), losses: Number(r.losses) }));
@@ -1174,8 +1173,7 @@ export async function getRankedProfileStats(userId: string): Promise<{ wins: num
             COUNT(*) FILTER (WHERE NOT won) AS losses
        FROM match_history
       WHERE player_id = $1
-        AND ranked = TRUE
-        AND game_mode <> 'player-player'`,
+        AND ranked = TRUE`,
     [userId],
   );
   return {
@@ -1206,6 +1204,7 @@ export async function getBotPressureProfile(userId: string): Promise<{ pressure:
       `SELECT won, opponent_id::text AS opponent_id, played_at, player_trophies
          FROM match_history
         WHERE player_id = $1
+          AND ranked = TRUE
         ORDER BY played_at DESC
         LIMIT 24`,
       [userId],

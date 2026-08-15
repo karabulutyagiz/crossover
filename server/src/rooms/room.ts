@@ -331,6 +331,7 @@ export class Room {
     // "kaçtı" sayılıp kalan oyuncuya İKİNCİ bir galibiyet ödülü yazılıyordu.)
     const wasInMatch = this.status !== 'lobby' && !this.matchOver;
     const hasBot = p.transport.isBot || [...this.players.values()].some((pl) => pl.id !== playerId && pl.transport.isBot);
+    const forfeitOpponent = [...this.players.values()].find((pl) => pl.id !== playerId);
 
     if (wasInMatch && hasBot && this.ranked && this.rankedBotRewards && !p.transport.isBot && p.userId) {
       const bot = [...this.players.values()].find((pl) => pl.id !== playerId && pl.transport.isBot);
@@ -380,6 +381,7 @@ export class Room {
             },
           });
           log.info('match_completed', { matchId: this.matchId, opponentType: 'BOT', result: reason === 'cheat' ? 'cheat_forfeit_loss' : 'forfeit_loss', forfeitReason: reason, durationSec: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0, botArchetype: bot?.transport.botArchetype, botSkill: bot?.transport.botSkill });
+          await this.saveForfeitHistory(p, bot ?? forfeitOpponent, false);
         } catch (err) {
           log.error('settlement_error', { matchId: this.matchId, reason: 'bot_forfeit', error: err instanceof Error ? err.message : String(err) });
         }
@@ -501,6 +503,7 @@ export class Room {
             });
           }
           log.info('match_completed', { matchId: this.matchId, opponentType: 'HUMAN', result: reason === 'cheat' ? 'cheat_forfeit' : 'forfeit', forfeitReason: reason, durationSec: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0 });
+          await this.saveForfeitHistory(p, winner, true);
         } catch (err) {
           log.error('settlement_error', { matchId: this.matchId, reason: 'human_forfeit', error: err instanceof Error ? err.message : String(err) });
         }
@@ -1542,9 +1545,56 @@ export class Room {
           this.gameMode,
           [...myRounds, ...oppRounds],
           this.matchStartedAt ? Math.max(0, Math.round((Date.now() - this.matchStartedAt) / 1000)) : 0,
-          this.ranked,
+          this.countsForProfileStats(),
         );
       } catch { /* DB error — skip silently */ }
+    }
+  }
+
+  private countsForProfileStats(): boolean {
+    const hasBot = [...this.players.values()].some((p) => p.transport.isBot);
+    return this.ranked && (!hasBot || this.rankedBotRewards);
+  }
+
+  private async saveForfeitHistory(leaver: Player, opponent: Player | undefined, saveOpponentRow: boolean): Promise<void> {
+    if (!opponent || !this.countsForProfileStats()) return;
+    const duration = this.matchStartedAt ? Math.max(0, Math.round((Date.now() - this.matchStartedAt) / 1000)) : 0;
+    const rounds = this.matchRounds.map((r) => ({
+      teamA: r.teamA, teamALogo: r.teamALogo,
+      teamB: r.teamB, teamBLogo: r.teamBLogo,
+      player: r.player, playerImageUrl: r.playerImageUrl,
+      answeredBy: r.answeredBy,
+      mode: r.mode, country: r.country, letter: r.letter,
+    }));
+    try {
+      const leaverUser = leaver.userId ? await getUser(leaver.userId) : null;
+      const opponentUser = opponent.userId ? await getUser(opponent.userId) : null;
+      if (leaver.userId && !leaver.transport.isBot) {
+        await saveMatchHistory(
+          leaver.userId, leaver.name, leaverUser?.trophies ?? 0,
+          opponent.userId ?? null, opponent.name, opponentUser?.trophies ?? opponent.trophies ?? 0,
+          leaver.score, WIN_TARGET,
+          false,
+          this.gameMode,
+          rounds,
+          duration,
+          true,
+        );
+      }
+      if (saveOpponentRow && opponent.userId && !opponent.transport.isBot) {
+        await saveMatchHistory(
+          opponent.userId, opponent.name, opponentUser?.trophies ?? 0,
+          leaver.userId ?? null, leaver.name, leaverUser?.trophies ?? leaver.trophies ?? 0,
+          WIN_TARGET, leaver.score,
+          true,
+          this.gameMode,
+          rounds,
+          duration,
+          true,
+        );
+      }
+    } catch (err) {
+      log.warn('match_history_forfeit_failed', { matchId: this.matchId, room: this.code, error: err instanceof Error ? err.message : String(err) });
     }
   }
 
