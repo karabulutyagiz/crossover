@@ -9,7 +9,7 @@ import {
   grantDevEmotesIfNeeded,
   setUsername, buyEmote, setEquippedEmotes, setAvatar, setSelectedFrame, buyAvatar, touchLastSeen, getLeaderboard, grantAdReward, usePower, getModeStats, getRankedProfileStats, buyPremiumRoad, buyPower, getLeaderboardBotProfile, getBotPressureProfile,
   listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
-  removeFriend, searchUsers, getMatchHistory, deleteAccount, recordPlaySession,
+  removeFriend, searchUsers, getMatchHistory, deleteAccount, recordPlaySession, getArena,
   type UserProfile,
 } from '../game/rank.ts';
 import { verifyAppleToken, verifyGoogleToken, verifyFacebookToken } from '../game/auth.ts';
@@ -330,6 +330,13 @@ export function startServer(port: number): Server {
 
   function entryMode(e: QueueEntry): GameMode { return e.options?.mode ?? 'team-team'; }
   function entryTrophies(e: QueueEntry): number { return e.userProfile?.trophies ?? 0; }
+  function entryArenaKey(entry: QueueEntry): string {
+    const arena = entry.userProfile?.arena ?? getArena(entryTrophies(entry));
+    return `${arena.minTrophies}:${arena.name}`;
+  }
+  function sameArena(a: QueueEntry, b: QueueEntry): boolean {
+    return entryArenaKey(a) === entryArenaKey(b);
+  }
   function entrySkillMean(e: QueueEntry): number | undefined { return e.skillProfile?.skillMean; }
   function entrySkillUncertainty(e: QueueEntry): number | undefined { return e.skillProfile?.skillUncertainty; }
 
@@ -341,6 +348,7 @@ export function startServer(port: number): Server {
       const mode = entryMode(entry);
       return entryMode(e) === mode
         && sameScope(e.options?.scope, entry.options?.scope)
+        && sameArena(e, entry)
         && canUseMode(e.userProfile, mode)
         && orchestrator.compatibleHumans(
           { trophies: entryTrophies(e), skillMean: entrySkillMean(e), skillUncertainty: entrySkillUncertainty(e), elapsedMs: now - e.since },
@@ -356,6 +364,7 @@ export function startServer(port: number): Server {
       if (e === entry || e.assigned || e.ws.readyState !== e.ws.OPEN) return false;
       return entryMode(e) === mode
         && sameScope(e.options?.scope, entry.options?.scope)
+        && sameArena(e, entry)
         && canUseMode(e.userProfile, mode)
         && orchestrator.potentialHuman(
           { trophies: entryTrophies(e), skillMean: entrySkillMean(e), skillUncertainty: entrySkillUncertainty(e) },
@@ -381,6 +390,7 @@ export function startServer(port: number): Server {
       requestIdA: a.requestId, requestIdB: b.requestId,
       searchDurationMs: Math.max(now - a.since, now - b.since),
       startingTrophiesA: entryTrophies(a), startingTrophiesB: entryTrophies(b),
+      arenaA: entryArenaKey(a), arenaB: entryArenaKey(b),
       trophyDifference: Math.abs(entryTrophies(a) - entryTrophies(b)),
       mode: room.gameMode,
     });
@@ -398,6 +408,8 @@ export function startServer(port: number): Server {
         opponentSkillMean: b.skillProfile?.skillMean,
         playerTrophies: entryTrophies(a),
         opponentTrophies: entryTrophies(b),
+        playerArena: entryArenaKey(a),
+        opponentArena: entryArenaKey(b),
         trophyDifference: Math.abs(entryTrophies(a) - entryTrophies(b)),
         skillDifference: Math.abs((a.skillProfile?.skillMean ?? 0) - (b.skillProfile?.skillMean ?? 0)),
         mode: room.gameMode,

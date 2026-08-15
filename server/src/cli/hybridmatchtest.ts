@@ -1,4 +1,4 @@
-import { ARENAS } from '../game/rank.ts';
+import { ARENAS, getArena } from '../game/rank.ts';
 import { selectBotProfile, botTrophiesForPlayer } from '../matchmaking/botProfiles.ts';
 import { compatibleTrophies, potentialTrophyCompatibility, randomBotFallbackDelayMs, shouldHoldForHumanLiquidity, trophyRangeForElapsed } from '../matchmaking/policy.ts';
 
@@ -30,6 +30,7 @@ for (const trophies of [0, 80, 240, 520, 1240, 2300, 3900, 5200]) {
     assert(bot.trophyRating >= 0, 'negative bot trophies');
     assert(ARENAS.includes(bot.arena), 'unknown bot arena');
     assert(bot.arena.minTrophies <= bot.trophyRating, 'impossible bot arena/trophy combo');
+    assert(bot.arena === getArena(trophies), `bot arena mismatch for ${trophies}: ${bot.trophyRating}`);
     assert(bot.avatarId.startsWith('pp'), 'missing avatar');
     assert(bot.skillRating >= 0.1 && bot.skillRating <= 0.98, 'skill out of range');
     difficulties.set(bot.difficulty, (difficulties.get(bot.difficulty) ?? 0) + 1);

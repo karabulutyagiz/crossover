@@ -146,6 +146,15 @@ export function botTrophiesForPlayer(playerTrophies: number, pressure = 0, rng: 
   return Math.max(0, adjusted);
 }
 
+function sameArenaTrophiesForPlayer(playerTrophies: number, botTrophies: number): number {
+  const playerArena = getArena(playerTrophies);
+  const arenaIndex = ARENAS.findIndex((arena) => arena.minTrophies === playerArena.minTrophies && arena.name === playerArena.name);
+  const nextArena = arenaIndex >= 0 ? ARENAS[arenaIndex + 1] : undefined;
+  const min = playerArena.minTrophies;
+  const max = nextArena ? nextArena.minTrophies - 1 : Number.MAX_SAFE_INTEGER;
+  return Math.round(clamp(botTrophies, min, max));
+}
+
 export function skillMeanFromTrophies(playerTrophies: number): number {
   return Math.round(1000 + clamp(Math.sqrt(Math.max(0, playerTrophies)) * 5.2, 0, 430));
 }
@@ -327,7 +336,7 @@ export function selectBotProfileForSkill(input: AdaptiveBotProfileInput): BotPro
     Math.round(clamp(responseMedianMs - responseVarianceMs * 0.75, cfg.botReactionMinMs, cfg.botReactionMaxMs - 1000)),
     Math.round(clamp(responseMedianMs + responseVarianceMs * 1.15, cfg.botReactionMinMs + 900, cfg.botReactionMaxMs)),
   ];
-  const trophyRating = botTrophiesForPlayer(input.playerTrophies, pressure, rng);
+  const trophyRating = sameArenaTrophiesForPlayer(input.playerTrophies, botTrophiesForPlayer(input.playerTrophies, pressure, rng));
   const arena = getArena(trophyRating);
   const avatarId = AVATARS[Math.floor(hashUnit(`${identity.id}:${trophyRating}:${seed}`) * AVATARS.length)] ?? 'pp7';
   const domains = profileDomains(archetype, rng);
