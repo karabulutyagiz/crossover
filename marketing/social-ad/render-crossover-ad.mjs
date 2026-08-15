@@ -32,7 +32,7 @@ const voiceLines = [
   'Futbol bilgine güveniyor musun?',
   'Takımını seç, düelloya gir.',
   'Rakibinden önce futbolcuyu bul.',
-  'Crossover Football App Store’da.',
+  'kıros ovır futbol ap sıtorda.',
   'Hemen indir, oyna!',
 ];
 
@@ -95,8 +95,12 @@ function phoneMock(t) {
   const py = 372;
   const pw = 390;
   const ph = 812;
-  const left = -250 + easeInOut(t) * 410;
-  const right = 1080 - easeInOut(t) * 420;
+  const logoW = 250;
+  const logoH = 200;
+  const logoX = px + pw / 2 - logoW / 2;
+  const logoY = py + 306;
+  const left = -260 * (1 - easeInOut(t));
+  const right = 260 * (1 - easeInOut(t));
   const impact = t > 0.64 && t < 0.78 ? 1 + Math.sin((t - 0.64) / 0.14 * Math.PI) * 0.08 : 1;
   return `<g filter="url(#phoneShadow)">
     <rect x="${px}" y="${py}" width="${pw}" height="${ph}" rx="64" fill="#050914" stroke="#dbe6ff" stroke-width="8"/>
@@ -105,15 +109,17 @@ function phoneMock(t) {
     <g clip-path="url(#phoneScreen)">
       <image href="${img.bgHome}" x="${px + 22}" y="${py + 54}" width="${pw - 44}" height="${ph - 108}" preserveAspectRatio="xMidYMid slice" opacity=".35"/>
       <rect x="${px + 22}" y="${py + 54}" width="${pw - 44}" height="${ph - 108}" fill="#060b18" opacity=".72"/>
-      <g transform="translate(${left} ${py + 260}) scale(${impact})">
-        <clipPath id="logoLeft"><rect x="0" y="0" width="350" height="330"/></clipPath>
-        <image href="${img.logo}" x="0" y="0" width="690" height="552" preserveAspectRatio="xMidYMid meet" clip-path="url(#logoLeft)"/>
+      <g transform="translate(${px + pw / 2} ${logoY + logoH / 2}) scale(${impact}) translate(${-px - pw / 2} ${-logoY - logoH / 2})">
+      <g transform="translate(${left} 0)">
+        <clipPath id="logoLeft"><rect x="${logoX}" y="${logoY}" width="${logoW / 2}" height="${logoH}"/></clipPath>
+        <image href="${img.logo}" x="${logoX}" y="${logoY}" width="${logoW}" height="${logoH}" preserveAspectRatio="xMidYMid meet" clip-path="url(#logoLeft)"/>
       </g>
-      <g transform="translate(${right} ${py + 260}) scale(${impact})">
-        <clipPath id="logoRight"><rect x="350" y="0" width="350" height="330"/></clipPath>
-        <image href="${img.logo}" x="0" y="0" width="690" height="552" preserveAspectRatio="xMidYMid meet" clip-path="url(#logoRight)"/>
+      <g transform="translate(${right} 0)">
+        <clipPath id="logoRight"><rect x="${logoX + logoW / 2}" y="${logoY}" width="${logoW / 2}" height="${logoH}"/></clipPath>
+        <image href="${img.logo}" x="${logoX}" y="${logoY}" width="${logoW}" height="${logoH}" preserveAspectRatio="xMidYMid meet" clip-path="url(#logoRight)"/>
       </g>
-      <text x="${px + pw / 2}" y="${py + 620}" text-anchor="middle" font-size="38" font-weight="1000" fill="#37e68d">CROSSOVER</text>
+      </g>
+      <text x="${px + pw / 2}" y="${py + 624}" text-anchor="middle" font-size="38" font-weight="1000" fill="#37e68d">CROSSOVER</text>
     </g>
     <rect x="${px + 132}" y="${py + 24}" width="126" height="22" rx="11" fill="#02040a"/>
   </g>
