@@ -22,12 +22,13 @@ const assets = {
   screenGuess: path.join(root, 'website/screens/guess.png'),
 };
 
-const voiceLines = [
-  'Futbol bilgini tek modda değil.',
-  'İki takımda oynayan futbolcuyu bul.',
-  'Ülke ve takım modunda hafızanı zorla.',
-  'Harf ve takım modunda hızını konuştur.',
-  "Crossover Football'u hemen indir, oyna!",
+const voiceSegments = [
+  { at: 0.25, text: 'Üç farklı futbol düellosu.' },
+  { at: 2.75, text: 'Takım takım: ortak oyuncu.' },
+  { at: 5.35, text: 'Ülke takım: milliyet ve kulüp.' },
+  { at: 8.05, text: 'Harf takım: harfle başlayan oyuncu.' },
+  { at: 10.85, text: 'Her maç farklı test.' },
+  { at: 12.70, text: 'İndir, oyna!' },
 ];
 
 function esc(s) {
@@ -236,17 +237,24 @@ function run(cmd, args) {
 
 async function makeVoice() {
   const out = path.join(__dirname, 'voiceover-modes.m4a');
-  const edgeMp3 = path.join(__dirname, 'voiceover-modes-edge.mp3');
-  const text = voiceLines.join(' ');
   const edge = path.join(__dirname, '.venv/bin/edge-tts');
+  const segmentFiles = voiceSegments.map((_, i) => path.join(__dirname, `voiceover-modes-${i}.mp3`));
   if (existsSync(edge)) {
-    run(edge, ['--voice', 'tr-TR-AhmetNeural', '--rate', '+12%', '--text', text, '--write-media', edgeMp3]);
-    run(ffmpegPath, ['-y', '-i', edgeMp3, '-af', 'aresample=44100,volume=1.1', '-c:a', 'aac', '-b:a', '160k', out]);
-    await fs.rm(edgeMp3, { force: true });
+    for (let i = 0; i < voiceSegments.length; i++) {
+      run(edge, ['--voice', 'tr-TR-AhmetNeural', '--rate', '+20%', '--text', voiceSegments[i].text, '--write-media', segmentFiles[i]]);
+    }
+    const inputs = segmentFiles.flatMap((file) => ['-i', file]);
+    const filters = voiceSegments.map((seg, i) => {
+      const delay = Math.round(seg.at * 1000);
+      return `[${i}:a]adelay=${delay}|${delay},apad,atrim=0:${DURATION}[v${i}]`;
+    });
+    const mixInputs = voiceSegments.map((_, i) => `[v${i}]`).join('');
+    run(ffmpegPath, ['-y', ...inputs, '-filter_complex', `${filters.join(';')};${mixInputs}amix=inputs=${voiceSegments.length}:duration=longest:dropout_transition=0,atrim=0:${DURATION},aresample=44100,volume=1.08[a]`, '-map', '[a]', '-c:a', 'aac', '-b:a', '160k', out]);
+    await Promise.all(segmentFiles.map((file) => fs.rm(file, { force: true })));
     return out;
   }
   const aiff = path.join(__dirname, 'voiceover-modes.aiff');
-  run('say', ['-v', 'Yelda', '-r', '188', text, '-o', aiff]);
+  run('say', ['-v', 'Yelda', '-r', '188', voiceSegments.map((seg) => seg.text).join(' '), '-o', aiff]);
   run(ffmpegPath, ['-y', '-i', aiff, '-af', 'aresample=44100,volume=1.25', '-c:a', 'aac', '-b:a', '160k', out]);
   await fs.rm(aiff, { force: true });
   return out;
@@ -271,7 +279,7 @@ async function main() {
 
   run(ffmpegPath, ['-y', '-f', 'lavfi', '-i', 'sine=frequency=92:duration=15', '-f', 'lavfi', '-i', 'sine=frequency=184:duration=15', '-filter_complex', '[0:a]volume=0.032[a0];[1:a]volume=0.018[a1];[a0][a1]amix=inputs=2,afade=t=in:st=0:duration=0.25,afade=t=out:st=14.35:duration=0.65', musicWav]);
   run(ffmpegPath, ['-y', '-framerate', String(FPS), '-i', path.join(frameDir, 'frame-%04d.png'), '-t', String(DURATION), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-level', '4.1', '-movflags', '+faststart', '-crf', '18', videoNoAudio]);
-  run(ffmpegPath, ['-y', '-i', videoNoAudio, '-i', voice, '-i', musicWav, '-filter_complex', '[1:a]adelay=120|120,apad,atrim=0:15,volume=1.45[v];[2:a]volume=0.18[m];[v][m]amix=inputs=2:duration=first:dropout_transition=0[a]', '-map', '0:v:0', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', finalVideo]);
+  run(ffmpegPath, ['-y', '-i', videoNoAudio, '-i', voice, '-i', musicWav, '-filter_complex', '[1:a]apad,atrim=0:15,volume=1.45[v];[2:a]volume=0.18[m];[v][m]amix=inputs=2:duration=first:dropout_transition=0[a]', '-map', '0:v:0', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', finalVideo]);
 
   await fs.rm(frameDir, { recursive: true, force: true });
   await fs.rm(videoNoAudio, { force: true });

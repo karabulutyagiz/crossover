@@ -1,5 +1,6 @@
-Futbol bilgini tek modda değil.
-İki takımda oynayan futbolcuyu bul.
-Ülke ve takım modunda hafızanı zorla.
-Harf ve takım modunda hızını konuştur.
-Crossover Football'u hemen indir, oyna!
+0.25s Üç farklı futbol düellosu.
+2.75s Takım takım: ortak oyuncu.
+5.35s Ülke takım: milliyet ve kulüp.
+8.05s Harf takım: harfle başlayan oyuncu.
+10.85s Her maç farklı test.
+12.70s İndir, oyna!
