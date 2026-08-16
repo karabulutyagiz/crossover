@@ -357,6 +357,7 @@
   var autoOn = true;
   var timer = null;
   var selectedDay = "";
+  var autoTodayMode = true;
   var todayKey = function(){
     var parts = new Intl.DateTimeFormat('en-CA', { timeZone:'Europe/Istanbul', year:'numeric', month:'2-digit', day:'2-digit' }).formatToParts(new Date());
     var m = {}; parts.forEach(function(p){ m[p.type] = p.value; });
@@ -371,6 +372,7 @@
   function fetchStats(){
     var errLast = null;
     var chain = Promise.reject();
+    syncTodayIfNeeded();
     var day = selectedDay || ($("dayFilter") && $("dayFilter").value) || todayKey();
     API_BASES.forEach(function(base){
       chain = chain.catch(function(){
@@ -473,7 +475,15 @@
 
   function applySelectedDay(){
     selectedDay = ($("dayFilter") && $("dayFilter").value) || todayKey();
+    autoTodayMode = selectedDay === todayKey();
     tick();
+  }
+
+  function syncTodayIfNeeded(){
+    var today = todayKey();
+    if(!autoTodayMode || selectedDay === today) return;
+    selectedDay = today;
+    if($("dayFilter")) $("dayFilter").value = today;
   }
 
   // ── Render ──
@@ -672,6 +682,7 @@
   $("pw").addEventListener("keydown", function(e){ if(e.key==="Enter") doLogin(); });
   $("refreshBtn").addEventListener("click", tick);
   selectedDay = todayKey();
+  autoTodayMode = true;
   $("dayFilter").value = selectedDay;
   $("dayFilter").addEventListener("keydown", function(e){ if(e.key === "Enter") applySelectedDay(); });
   $("applyDayBtn").addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); applySelectedDay(); });
