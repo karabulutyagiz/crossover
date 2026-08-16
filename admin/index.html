@@ -590,8 +590,10 @@
     barChart("c_ads", (A.daily||[]), "n", false, "c_ads_start", "c_ads_end", function(d){ return d.day + " · " + d.n + " izlenme"; });
 
     var U = s.users || {};
+    var selectedUserDay = s.selectedDay || selectedDay || todayKey();
+    var selectedDailyUsers = (s.usersDaily || []).find(function(d){ return d.day === selectedUserDay; });
     $("u_total").textContent  = trNum(U.total);
-    $("u_today").textContent  = trNum(U.newToday);
+    $("u_today").textContent  = trNum(selectedDailyUsers ? selectedDailyUsers.n : 0);
     $("u_7d").textContent     = trNum(U.new7d);
     $("u_30d").textContent    = trNum(U.new30d);
     $("u_dau").textContent    = trNum(U.dau);
