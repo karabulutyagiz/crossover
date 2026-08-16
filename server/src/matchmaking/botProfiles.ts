@@ -80,6 +80,7 @@ const THEMED_HANDLES = [
   'GolDefteri', 'Transferci', 'CizgiAdam', 'PresGucu', 'KornerUstasi', 'SantraKafa',
   'FutbolArsivi', 'AvrupaGecesi', 'LigHafizasi', 'SahaKartali', 'OnNumara', 'ForvetAkli',
   'PasHaritasi', 'KupaYolu', 'GolYolu', 'MacGunu', 'TakimRuhu', 'KilitPas',
+  'DerbiAdam', 'SahaAdam', 'GolcuKafa', 'ScoutAbi', 'RondoAbi', 'KanatAdam',
 ];
 
 const HUMAN_HANDLES = [
@@ -96,10 +97,14 @@ const HUMAN_HANDLES = [
   'atlas', 'emir', 'kaan', 'arda', 'mert', 'kerem', 'efe', 'deniz', 'batu', 'doruk',
   'yigit', 'kuzey', 'bora', 'mete', 'sarp', 'baris', 'atlasbaba', 'emirbaba',
   'kaanbaba', 'ardababa', 'mertbaba', 'efebaba', 'denizbaba', 'baturbaba',
+  'batuhan', 'berkay', 'kaaninho', 'emirhan', 'alperen', 'musti', 'memo', 'apo',
+  'semih', 'ardaabi', 'kereminho', 'mertinho', 'oguz', 'alican', 'efeabi', 'umutabi',
+  'quaresma', 'alex', 'hagi', 'sneijder', 'drogba', 'messi', 'ronaldo', 'neymar',
+  'modric', 'iniesta', 'xavi', 'pirlo', 'totti', 'delpiero', 'rooney', 'kaka',
 ];
 
-const GUEST_STYLE_HANDLE_WEIGHT = 0.08;
-const HUMAN_HANDLE_WEIGHT = 0.78;
+const GUEST_STYLE_HANDLE_WEIGHT = 0.04;
+const HUMAN_HANDLE_WEIGHT = 0.86;
 
 const AVATARS = Array.from({ length: 34 }, (_, i) => `pp${i + 1}`);
 const DOMAINS: KnowledgeDomain[] = ['europe_elite', 'turkey', 'national_teams', 'journeymen', 'obscure_leagues', 'player_history'];

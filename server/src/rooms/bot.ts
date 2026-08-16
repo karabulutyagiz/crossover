@@ -1,7 +1,7 @@
 import type { Room, Transport } from './room.ts';
 import type { ClientMsg, ClubRef, Difficulty, GameMode, ServerMsg, Scope } from '../protocol.ts';
 import {
-  randomClub, botPickFromPool, randomPlayer, botCommonPlayersRanked, getValidPlayersForCountryAndClub,
+  randomClub, botPickFromPool, botPickHumanLike, randomPlayer, botCommonPlayersRanked, getValidPlayersForCountryAndClub,
   commonPlayersLetterTeam, commonClubs, pickCountryForClub, pickClubForCountry,
   plausibleWrongPlayersTeamTeam, plausibleWrongPlayersLetterTeam,
   plausibleWrongClubsPlayerPlayer,
@@ -276,8 +276,10 @@ export class BotPlayer implements Transport {
   private async pickTeam(): Promise<void> {
     const humanTeam = this.room?.otherTeamPick(this.id) ?? null;
     const club = this.scope.type === 'all'
-      ? await botPickFromPool(this.difficulty, humanTeam, this.recentPicks)
-      : await randomClub(this.scope, this.difficulty);
+      ? this.profile
+        ? await botPickHumanLike(humanTeam, this.recentPicks)
+        : await botPickFromPool(this.difficulty, humanTeam, this.recentPicks)
+      : await randomClub(this.scope, this.profile ? 'medium' : this.difficulty);
     if (!club) return;
     this.recentPicks.push(club.id);
     if (this.recentPicks.length > 10) this.recentPicks.shift();
@@ -305,8 +307,10 @@ export class BotPlayer implements Transport {
       if (!club) {
         // İnsan henüz ülke seçmemiş (nadir) — normal havuz/scope seçimi
         club = this.scope.type === 'all'
-          ? await botPickFromPool(this.difficulty, null, this.recentPicks)
-          : await randomClub(this.scope, this.difficulty);
+          ? this.profile
+            ? await botPickHumanLike(null, this.recentPicks)
+            : await botPickFromPool(this.difficulty, null, this.recentPicks)
+          : await randomClub(this.scope, this.profile ? 'medium' : this.difficulty);
       }
       if (!club || this.ctPicked) return;
       this.ctPicked = true;
@@ -475,23 +479,37 @@ export class BotPlayer implements Transport {
     const tokens = answer.split(/\s+/).map((t) => t.trim()).filter((t) => normalize(t).length >= 4);
     if (!tokens.length) return answer;
     const p = this.profile;
-    const shortChance = p.behaviorArchetype === 'STRONG' ? 0.76
-      : p.behaviorArchetype === 'CAREFUL' ? 0.46
-        : p.behaviorArchetype === 'CASUAL' ? 0.28
-          : 0.56;
-    const typoChance = p.behaviorArchetype === 'FAST_RISKY' ? 0.30
-      : p.behaviorArchetype === 'STRONG' ? 0.18
-        : p.behaviorArchetype === 'CASUAL' ? 0.10
-          : 0.16;
+    const shortChance = p.behaviorArchetype === 'STRONG' ? 0.88
+      : p.behaviorArchetype === 'CAREFUL' ? 0.70
+        : p.behaviorArchetype === 'CASUAL' ? 0.58
+          : 0.80;
+    const typoChance = p.behaviorArchetype === 'FAST_RISKY' ? 0.20
+      : p.behaviorArchetype === 'STRONG' ? 0.08
+        : p.behaviorArchetype === 'CASUAL' ? 0.07
+          : 0.10;
     let text = answer;
     const rng = this.profile ? this.rng : mathRandom;
     if (rng.next() < shortChance) {
-      const surname = tokens[tokens.length - 1]!;
-      const first = tokens[0]!;
-      text = rng.next() < 0.62 ? surname : first;
+      text = this.shortHumanAnswer(tokens, rng);
     }
+    if (rng.next() < 0.42) text = text.toLocaleLowerCase('tr-TR');
     if (rng.next() < typoChance) text = this.safeTypo(text, rng);
     return text;
+  }
+
+  private shortHumanAnswer(tokens: string[], rng: RandomSource): string {
+    const lower = tokens.map((t) => t.toLocaleLowerCase('tr-TR'));
+    const surnameParticles = new Set(['de', 'da', 'di', 'van', 'von', 'der', 'den', 'del', 'dos', 'bin', 'el']);
+    if (tokens.length >= 2 && surnameParticles.has(lower[tokens.length - 2]!)) {
+      return `${tokens[tokens.length - 2]} ${tokens[tokens.length - 1]}`;
+    }
+    if (tokens.length >= 3 && surnameParticles.has(lower[tokens.length - 3]!)) {
+      return `${tokens[tokens.length - 3]} ${tokens[tokens.length - 2]} ${tokens[tokens.length - 1]}`;
+    }
+    const last = tokens[tokens.length - 1]!;
+    const first = tokens[0]!;
+    if (tokens.length >= 3 && rng.next() < 0.26) return `${tokens[tokens.length - 2]} ${last}`;
+    return rng.next() < 0.78 ? last : first;
   }
 
   private safeTypo(text: string, rng: RandomSource = mathRandom): string {

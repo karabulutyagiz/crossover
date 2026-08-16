@@ -306,6 +306,19 @@ const MEDIUM_FROM = 21; // skip the mega-famous
 const MEDIUM_TO = 80;
 const HARD_FROM = 81;
 const HARD_TO = 250;
+const HUMANLIKE_COUNTRIES = ['Türkiye', 'Brazil', 'France', 'Argentina', 'Germany', 'Spain', 'Italy', 'Portugal', 'Netherlands', 'England'];
+
+function pickWeightedClub<T extends { pop: number }>(rows: T[]): T | undefined {
+  if (!rows.length) return undefined;
+  const weights = rows.map((r, i) => Math.max(1, Math.sqrt(Math.max(1, Number(r.pop) || 1)) / (1 + i * 0.18)));
+  const total = weights.reduce((a, b) => a + b, 0);
+  let roll = Math.random() * total;
+  for (let i = 0; i < rows.length; i++) {
+    roll -= weights[i]!;
+    if (roll <= 0) return rows[i];
+  }
+  return rows[0];
+}
 
 export async function randomClub(
   scope: Scope = { type: 'all' },
@@ -399,6 +412,43 @@ export async function botPickFromPool(
   );
   const r = rows[0];
   return r ? clubHitFromRow(r) : null;
+}
+
+// Matchmaking fallback botları zorluk seçilen solo bot gibi davranmaz: gerçek bir
+// oyuncu hissi için easy+medium bilinirlikte takımları karışık seçer, hard/obscure
+// havuzuna düşmez. İnsan bir takım seçtiyse ortak oyunculu seçenekler önceliklidir.
+export async function botPickHumanLike(playerTeamId: number | null, excludeIds: number[] = []): Promise<ClubHit | null> {
+  const pools = await resolvedPools();
+  const base = Math.random() < 0.46 ? pools.easy : pools.medium;
+  const backup = base === pools.easy ? pools.medium : pools.easy;
+  let cands = [...base, ...backup.filter((id) => Math.random() < 0.28)].filter((id) => !excludeIds.includes(id));
+  if (!cands.length) cands = [...base, ...backup];
+  if (playerTeamId != null) {
+    const { rows } = await pool.query<{ cid: string; pop: string }>(
+      `SELECT DISTINCT pc2.club_id AS cid,
+              COALESCE(NULLIF(c.popularity, 0), (SELECT COUNT(*) FROM player_clubs pc3 WHERE pc3.club_id = c.id)) AS pop
+         FROM player_clubs pc1
+         JOIN player_clubs pc2 ON pc2.player_id = pc1.player_id
+         JOIN clubs c ON c.id = pc2.club_id
+        WHERE pc1.club_id = $1 AND pc2.club_id = ANY($2)
+        ORDER BY pop DESC, random()
+        LIMIT 18`,
+      [playerTeamId, cands],
+    );
+    const cross = rows.map((r) => ({ id: Number(r.cid), pop: Number(r.pop) || 1 }));
+    if (cross.length) cands = cross.map((r) => r.id);
+  }
+  const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null; pop: string }>(
+    `SELECT id, name, logo_url,
+            COALESCE(NULLIF(popularity, 0), (SELECT COUNT(*) FROM player_clubs pc WHERE pc.club_id = clubs.id)) AS pop
+       FROM clubs
+      WHERE id = ANY($1)
+      ORDER BY pop DESC, random()
+      LIMIT 16`,
+    [cands],
+  );
+  const picked = pickWeightedClub(rows.map((r) => ({ ...r, pop: Number(r.pop) || 1 })));
+  return picked ? clubHitFromRow(picked) : null;
 }
 
 export interface ScopeOption {
@@ -835,8 +885,8 @@ export async function hasPlayersCountryTeam(clubId: number, country: string): Pr
 export async function pickCountryForClub(clubId: number | null, excludeLower: string[] = []): Promise<string> {
   const excl = excludeLower.length ? excludeLower : [];
   if (clubId != null) {
-    const { rows } = await pool.query<{ nationality: string }>(
-      `SELECT p.nationality FROM player_clubs pc
+    const { rows } = await pool.query<{ nationality: string; n: string }>(
+      `SELECT p.nationality, count(DISTINCT p.id) AS n FROM player_clubs pc
          JOIN players p ON p.id = pc.player_id
          JOIN clubs c ON c.id = pc.club_id AND c.is_national = false
         WHERE pc.club_id = $1
@@ -844,10 +894,14 @@ export async function pickCountryForClub(clubId: number | null, excludeLower: st
           AND p.nationality IS NOT NULL
           AND lower(p.nationality) <> ALL($2::text[])
         GROUP BY p.nationality
-        ORDER BY random() LIMIT 1`,
-      [clubId, excl],
+        ORDER BY (CASE WHEN p.nationality = ANY($3::text[]) THEN 0 ELSE 1 END), n DESC, random()
+        LIMIT 8`,
+      [clubId, excl, HUMANLIKE_COUNTRIES],
     );
-    if (rows[0]) return rows[0].nationality;
+    if (rows[0]) {
+      const top = rows.slice(0, Math.min(5, rows.length));
+      return top[Math.floor(Math.random() * top.length)]!.nationality;
+    }
   }
   // Takım bilinmiyorsa (nadir: her iki taraf da idle) — yeterince oyuncusu olan popüler bir milliyet
   const { rows } = await pool.query<{ nationality: string }>(
@@ -864,8 +918,10 @@ export async function pickCountryForClub(clubId: number | null, excludeLower: st
 export async function pickClubForCountry(country: string, excludeIds: number[] = []): Promise<ClubHit | null> {
   const excl = excludeIds.length ? excludeIds : [-1];
   const countries = nationalityVariants(country);
-  const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
-    `SELECT c.id, c.name, c.logo_url FROM clubs c
+  const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null; pop: string }>(
+    `SELECT c.id, c.name, c.logo_url,
+            COALESCE(NULLIF(c.popularity, 0), (SELECT COUNT(*) FROM player_clubs pc2 WHERE pc2.club_id = c.id)) AS pop
+       FROM clubs c
        JOIN player_clubs pc ON pc.club_id = c.id
        JOIN players p ON p.id = pc.player_id
       WHERE p.nationality = ANY($1)
@@ -875,12 +931,11 @@ export async function pickClubForCountry(country: string, excludeIds: number[] =
         ${A_TEAM_ONLY}
         AND c.id <> ALL($2::bigint[])
       GROUP BY c.id, c.name, c.logo_url
-      ORDER BY COALESCE(NULLIF(c.popularity, 0), (SELECT COUNT(*) FROM player_clubs pc2 WHERE pc2.club_id = c.id)) DESC,
-               random()
-      LIMIT 1`,
+       ORDER BY pop DESC, random()
+       LIMIT 14`,
     [countries, excl],
   );
-  const r = rows[0];
+  const r = pickWeightedClub(rows.map((row) => ({ ...row, pop: Number(row.pop) || 1 })));
   return r ? { id: Number(r.id), name: r.name, logoUrl: r.logo_url } : null;
 }
 
