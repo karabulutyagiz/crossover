@@ -359,7 +359,7 @@ export class Room {
             rounds: this.skillRoundSignals.get(p.id) ?? [],
           }).catch((err) => log.warn('skill_update_failed', { matchId: this.matchId, userId: p.userId, error: err instanceof Error ? err.message : String(err) }));
           try {
-            p.transport.send({ type: 'trophy_update', trophies: leaverRes.profile.trophies, delta: leaverRes.delta, arena: leaverRes.profile.arena, diamonds: leaverRes.profile.diamonds, highestArenaRewarded: leaverRes.profile.highestArenaRewarded, winStreak: leaverRes.profile.winStreak, bestStreak: leaverRes.profile.bestStreak, lostStreak: leaverRes.profile.lostStreak });
+            p.transport.send({ type: 'trophy_update', trophies: leaverRes.profile.trophies, delta: leaverRes.delta, arena: leaverRes.profile.arena, diamonds: leaverRes.profile.diamonds, highestArenaRewarded: leaverRes.profile.highestArenaRewarded, shielded: leaverRes.shielded, winStreak: leaverRes.profile.winStreak, bestStreak: leaverRes.profile.bestStreak, lostStreak: leaverRes.profile.lostStreak });
             if (xpRes) p.transport.send({ type: 'xp_update', ...xpRes });
           } catch { /* socket may already be gone */ }
           recordTelemetry({
@@ -455,7 +455,8 @@ export class Room {
             });
           }
           if (p.userId) {
-            // Terk eden mağlubiyeti: kalkan onu KORUMAZ (leaver bayrağı)
+            // Terk eden mağlubiyeti: kuşanılmış kalkan varsa bu dereceli maçta
+            // geçerli sayılır ve kupa kaybını emer.
             const leaverSkill = this.playerSkillFor(p);
             const winnerSkill = this.playerSkillFor(winner);
             const leaverRes = await applyMatchResult(p.userId, false, {
@@ -480,7 +481,7 @@ export class Room {
             // (delta<0) ana menüde animasyonla gösterilir. Soket kapandıysa
             // sessizce düşer — sonraki girişte profil zaten günceldir.
             try {
-              p.transport.send({ type: 'trophy_update', trophies: leaverRes.profile.trophies, delta: leaverRes.delta, arena: leaverRes.profile.arena, diamonds: leaverRes.profile.diamonds, highestArenaRewarded: leaverRes.profile.highestArenaRewarded, winStreak: leaverRes.profile.winStreak, bestStreak: leaverRes.profile.bestStreak, lostStreak: leaverRes.profile.lostStreak });
+              p.transport.send({ type: 'trophy_update', trophies: leaverRes.profile.trophies, delta: leaverRes.delta, arena: leaverRes.profile.arena, diamonds: leaverRes.profile.diamonds, highestArenaRewarded: leaverRes.profile.highestArenaRewarded, shielded: leaverRes.shielded, winStreak: leaverRes.profile.winStreak, bestStreak: leaverRes.profile.bestStreak, lostStreak: leaverRes.profile.lostStreak });
             } catch { /* socket gone */ }
             recordTelemetry({
               eventName: 'match_finished',

@@ -1,7 +1,8 @@
 // End-to-end test for the POWERS system (Seviye Yolu güçleri):
 //   claim (level 4 → xp2x, level 7 → shield) → use (atomic, double-use blocked)
 //   → ranked match with 2x XP (gained doubled, boosted flag)
-//   → ranked defeat with armed shield (delta 0, shielded flag, disarmed after).
+//   → armed shield is consumed by the next ranked match; if that match is a loss,
+//     delta 0 + shielded flag are emitted.
 // Needs a running server (WS_URL) + direct DB access (DATABASE_URL) to set levels.
 // Usage: WS_URL=ws://localhost:8084 npx tsx src/cli/powertest.ts
 import { WebSocket } from 'ws';
@@ -137,6 +138,7 @@ async function main() {
   check(/kuşanılı|yok/i.test(e2.message), `second shield blocked — "${e2.message}"`);
 
   // ---- RANKED WIN with 2x: gained = (40 + 50 ilk galibiyet) × 2 = 180 ----
+  // Armed shield is consumed by the first ranked match even when the player wins.
   A.send({ type: 'find_match', name: 'PowA', userId: aProf.userId });
   await A.wait('searching');
   B.send({ type: 'find_match', name: 'PowB' });
@@ -146,6 +148,10 @@ async function main() {
   check(xpWin.boosted === true, 'xp_update carries boosted flag');
   check(xpWin.gained === 180, `boosted first-win XP = 180 — got ${xpWin.gained}`);
   await A.wait('trophy_update');
+  const consumedOnWin = await pool.query<{ shield_armed: boolean }>(`SELECT shield_armed FROM users WHERE id = $1`, [aProf.userId]);
+  check(consumedOnWin.rows[0]?.shield_armed === false, 'shield consumed after the next ranked match even on win');
+
+  await pool.query(`UPDATE users SET power_shield = power_shield + 1 WHERE id = $1`, [aProf.userId]);
 
   // ---- RANKED LOSS with armed shield: delta 0 + shielded, sonra kalkan düşer ----
   // İlk maçın odası bağlantı ctx'inde kalır — ikinci maç TAZE bağlantılarla kurulur.
@@ -158,6 +164,9 @@ async function main() {
   await A2.wait('profile');
   B2.send({ type: 'guest' });
   await B2.wait('profile');
+  A2.send({ type: 'use_power', powerId: 'shield' });
+  const u3 = await A2.wait('power_used');
+  check(u3.profile.shieldArmed === true, 'shield re-armed for loss test');
   A2.send({ type: 'find_match', name: 'PowA', userId: aProf.userId });
   await A2.wait('searching');
   B2.send({ type: 'find_match', name: 'PowB2' });

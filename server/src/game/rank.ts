@@ -95,7 +95,7 @@ export interface UserProfile {
   powerXp2x: number;       // envanterdeki 2x XP jetonu adedi
   powerShield: number;     // envanterdeki kupa kalkanı adedi
   xpBoostUntil: string | null; // aktif 2x XP penceresinin bitişi (ISO) ya da null
-  shieldArmed: boolean;    // kuşanılmış kalkan — sıradaki dereceli mağlubiyeti emer
+  shieldArmed: boolean;    // kuşanılmış kalkan — sıradaki dereceli maçta tüketilir, kayıpta korur
   winStreak: number;       // güncel dereceli galibiyet serisi (mağlubiyette sıfırlanır)
   bestStreak: number;      // tüm zamanların en yüksek serisi
   powerStreak: number;     // envanterdeki Seri Geri Yükleme adedi
@@ -376,7 +376,8 @@ export async function deleteAccount(userId: string): Promise<boolean> {
 export async function applyMatchResult(
   userId: string,
   won: boolean,
-  // leaver: hükmen mağlubiyette AYRILAN taraf — kalkan onu korumaz.
+  // leaver: hükmen mağlubiyette AYRILAN taraf. Kuşanılmış kalkan varsa bu maçta
+  // geçerli sayılır; bir sonraki dereceli sonuç kazanılsa/kaybedilse/çıkılsa tüketilir.
   // opponentTrophies: rakibin MAÇ BAŞI kupası (bot dahil) — dinamik delta farkı.
   opts?: {
     leaver?: boolean;
@@ -390,17 +391,15 @@ export async function applyMatchResult(
   // Read current trophies to determine arena-specific delta
   const user = await getUser(userId);
   if (!user) throw new Error('User not found');
-  // Kupa Kalkanı: kuşanılıysa dereceli mağlubiyette kupa kaybını BİR KEZ emer
-  // (maçı terk eden korunmaz). Tüketim atomik — eşzamanlı iki mağlubiyet tek
-  // kalkanı iki kez kullanamaz.
-  let shielded = false;
-  if (!won && !opts?.leaver) {
-    const { rows: sr } = await pool.query<{ id: string }>(
-      `UPDATE users SET shield_armed = FALSE WHERE id = $1 AND shield_armed = TRUE RETURNING id`,
-      [userId],
-    );
-    shielded = sr.length > 0;
-  }
+  // Kupa Kalkanı: kuşanıldıktan sonraki ilk dereceli sonuçta tüketilir. Sonuç
+  // mağlubiyetse (hükmen çıkış dahil) kupa kaybını emer; galibiyette yalnız tüketilir.
+  // Tüketim atomik — eşzamanlı sonuçlar tek kalkanı iki kez kullanamaz.
+  const { rows: shieldRows } = await pool.query<{ id: string }>(
+    `UPDATE users SET shield_armed = FALSE WHERE id = $1 AND shield_armed = TRUE RETURNING id`,
+    [userId],
+  );
+  const shieldConsumed = shieldRows.length > 0;
+  const shielded = shieldConsumed && !won;
   // ETKİN delta: 0 tabanının altına inecek kayıp, kalan kupa kadar kırpılır —
   // kullanıcı 0'dayken '-10' DEĞİL gerçek değişimi (0) görür. SQL'deki
   // GREATEST(0, …) emniyet kemeri olarak durur.

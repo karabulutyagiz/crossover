@@ -37,7 +37,7 @@ export function xpForNext(level: number): number {
 // tüketilebilirler (elmasla SATILMAZ). Çerçeve olmayan ×5 seviyelerinde
 // dönüşümlü dağıtılır.
 //   xp2x  : 1 saat boyunca kazanılan tüm XP ikiye katlanır
-//   shield: kuşanılır; sıradaki dereceli mağlubiyette kupa kaybını bir kez emer
+//   shield: kuşanılır; sıradaki dereceli maçta tüketilir, mağlubiyette kupa kaybını emer
 //   streak: son mağlubiyette kırılan galibiyet serisini geri yükler (anında)
 //   training: 1 saat boyunca bot maçlarındaki günlük 60 XP tavanı kalkar
 //   socialtoken: Sosyal Paket süresine +24 saat ekler (yoksa şimdiden başlar, varsa üstüne eklenir)
