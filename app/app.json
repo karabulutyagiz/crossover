@@ -127,6 +127,15 @@
       "expo-localization",
       "expo-web-browser",
       "expo-apple-authentication",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundPlayback": false,
+          "enableBackgroundRecording": false
+        }
+      ],
       "expo-font",
       "expo-sqlite",
       "react-native-iap",

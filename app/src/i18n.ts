@@ -230,6 +230,10 @@ const tr = {
   'settings.changeLangConfirm': 'Dil ayarlarını değiştirmek istediğine emin misin?',
   'settings.cancel': 'İptal',
   'settings.confirm': 'Tamam',
+  'settings.feedback': 'Ses ve Titreşim',
+  'settings.music': 'Müzik',
+  'settings.sfx': 'Ses Efektleri',
+  'settings.haptics': 'Titreşim',
 
   // match history
   'matchHistory.title': 'Müsabaka Geçmişi',
@@ -904,6 +908,10 @@ const en: typeof tr = {
   'settings.changeLangConfirm': 'Are you sure you want to change the language?',
   'settings.cancel': 'Cancel',
   'settings.confirm': 'OK',
+  'settings.feedback': 'Audio & Haptics',
+  'settings.music': 'Music',
+  'settings.sfx': 'Sound Effects',
+  'settings.haptics': 'Haptics',
 
   'matchHistory.title': 'Match History',
   'matchHistory.empty': 'No matches yet',

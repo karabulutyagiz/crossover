@@ -64,6 +64,9 @@ import { AvatarBadge, avatarMeta, avatarPrice, ownsAvatar } from './avatars';
 import { FRAME_ART as FRAME_ART_MAP, FRAME_SCALE, FrameOverlay } from './frames';
 import { NATIONALITIES } from './nationalities';
 import { captureError, track } from './telemetry';
+import { GameFeedbackEvent } from './feedback/events';
+import { triggerFeedback } from './feedback/GameFeedback';
+import { useFeedbackPreferences } from './feedback/useFeedbackPreferences';
 // react-native-iap v15 (StoreKit2) — native module, absent in Expo Go. Wrap the require
 // in try/catch so the app still loads in Expo Go (Store shows "coming soon"); the real
 // module is present in dev/prod builds. v15 is the version compatible with RN's prebuilt-
@@ -407,6 +410,7 @@ export function Btn({
   tint,
   badge,
   gem,
+  feedback,
 }: {
   label: string;
   onPress: () => void;
@@ -419,6 +423,7 @@ export function Btn({
   tint?: string;     // NEW: ghost-only ring/fill tint (e.g. theme.danger for a danger ghost)
   badge?: string;    // NEW: fixed-width tabular-nums ink pill beside the label (countdowns)
   gem?: boolean;     // NEW: gem-price button — the crystal logo sits before the label ("💎 300")
+  feedback?: GameFeedbackEvent;
 }) {
   const press = useRef(new Animated.Value(0)).current;
   const btnGid = useRef(`btn${_btnSeq++}`).current;
@@ -472,10 +477,14 @@ export function Btn({
       ) : null}
     </>
   );
+  const feedbackEvent = feedback ?? (kind === 'danger' ? GameFeedbackEvent.UI_ERROR : kind === 'ghost' ? GameFeedbackEvent.UI_BACK : GameFeedbackEvent.UI_TAP);
   return (
     <Pressable
       disabled={inert}
-      onPressIn={() => Animated.timing(press, { toValue: 1, duration: PRESS_IN_MS, useNativeDriver: true }).start()}
+      onPressIn={() => {
+        if (!inert) triggerFeedback(feedbackEvent);
+        Animated.timing(press, { toValue: 1, duration: PRESS_IN_MS, useNativeDriver: true }).start();
+      }}
       onPressOut={() => Animated.timing(press, { toValue: 0, duration: PRESS_OUT_MS, useNativeDriver: true }).start()}
       onPress={inert ? undefined : onPress}
       style={{ marginVertical: 6, borderRadius: radius }}
@@ -2985,6 +2994,33 @@ function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName
   const [contactOpen, setContactOpen] = useState(false);
   const activeLang = currentLang();
   const activeName = LANGUAGES.find((l) => l.code === activeLang)?.name ?? activeLang;
+  const { prefs: feedbackPrefs, setPreference: setFeedbackPreference } = useFeedbackPreferences();
+
+  const feedbackToggle = (key: 'music' | 'sfx' | 'haptics', label: string, icon: IoniconName) => {
+    const enabled = feedbackPrefs[key];
+    return (
+      <Pressable
+        onPress={() => {
+          const next = !enabled;
+          triggerFeedback(next ? GameFeedbackEvent.UI_TOGGLE_ON : GameFeedbackEvent.UI_TOGGLE_OFF);
+          setFeedbackPreference(key, next).catch(() => {});
+        }}
+        style={({ pressed }) => ({
+          flexDirection: 'row', alignItems: 'center', gap: 10,
+          backgroundColor: theme.surface2, borderRadius: 14, borderTopWidth: 1, borderTopColor: theme.topLight,
+          paddingVertical: 11, paddingHorizontal: 12, marginTop: 8,
+          transform: [{ translateY: pressed ? 2 : 0 }],
+          ...shadowRow,
+        })}
+      >
+        <Ionicons name={icon} size={18} color={enabled ? theme.primary : theme.muted} />
+        <Text style={{ flex: 1, color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>{label}</Text>
+        <View style={{ width: 48, height: 28, borderRadius: 14, backgroundColor: enabled ? withAlpha(theme.primary, 0.28) : theme.well, borderWidth: 1.5, borderColor: enabled ? theme.primary : theme.border, padding: 3, alignItems: enabled ? 'flex-end' : 'flex-start' }}>
+          <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: enabled ? theme.primary : theme.muted }} />
+        </View>
+      </Pressable>
+    );
+  };
 
   const doChangeLang = (code: string) => {
     setLanguage(code);
@@ -3002,6 +3038,36 @@ function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName
         right={<Ionicons name="chevron-down" size={16} color={theme.muted} />}
         onPress={() => setLangPicker(true)}
       />
+
+      <SectionHeader label={t('settings.feedback')} icon="volume-high" style={{ marginTop: 18 }} />
+      {feedbackToggle('music', t('settings.music'), 'musical-notes')}
+      {feedbackToggle('sfx', t('settings.sfx'), 'volume-medium')}
+      {feedbackToggle('haptics', t('settings.haptics'), 'phone-portrait')}
+      {__DEV__ ? (
+        <GamePanel compact style={{ marginTop: 10 }} bodyStyle={{ padding: 10 }}>
+          <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 1, marginBottom: 6 }}>FEEDBACK TEST</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {([
+              ['UI Tap', GameFeedbackEvent.UI_TAP],
+              ['Correct', GameFeedbackEvent.ANSWER_CORRECT],
+              ['Wrong', GameFeedbackEvent.ANSWER_WRONG],
+              ['Timer', GameFeedbackEvent.TIMER_CRITICAL],
+              ['Countdown', GameFeedbackEvent.COUNTDOWN_1],
+              ['Match Found', GameFeedbackEvent.MATCH_FOUND],
+              ['Victory', GameFeedbackEvent.MATCH_WIN],
+              ['Defeat', GameFeedbackEvent.MATCH_LOSE],
+              ['Trophy', GameFeedbackEvent.TROPHY_GAIN],
+              ['Level Up', GameFeedbackEvent.LEVEL_UP],
+              ['Arena', GameFeedbackEvent.ARENA_UNLOCK],
+              ['Ronaldo', GameFeedbackEvent.SPECIAL_PLAYER_RONALDO],
+            ] as const).map(([label, event]) => (
+              <Pressable key={event} onPress={() => triggerFeedback(event)} style={({ pressed }) => ({ backgroundColor: pressed ? theme.surface3 : theme.surface2, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7, borderTopWidth: 1, borderTopColor: theme.topLight })}>
+                <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold' }}>{label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </GamePanel>
+      ) : null}
 
       {/* Ad Değiştir (1000 elmas) — YALNIZ Apple/Google hesapları; misafirde bölüm yok */}
       {canChangeName ? (
@@ -5232,6 +5298,14 @@ function MatchTimer({ endsAt, urgentAt = 5, fallbackSecs, style }: {
   }, [endsAt]);
   const shown = secs ?? fallbackSecs ?? null;
   const urgent = endsAt != null && secs !== null && secs <= urgentAt;
+  const lastShownRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (endsAt == null || secs == null || secs === lastShownRef.current) return;
+    lastShownRef.current = secs;
+    if (secs <= 0) triggerFeedback(GameFeedbackEvent.TIMEOUT);
+    else if (secs <= 2) triggerFeedback(GameFeedbackEvent.TIMER_CRITICAL);
+    else if (secs <= 5) triggerFeedback(GameFeedbackEvent.TIMER_WARNING);
+  }, [endsAt, secs]);
   const pulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (!urgent) { pulse.stopAnimation(); pulse.setValue(0); return; }
@@ -5647,6 +5721,7 @@ function GuessControls({ placeholder, youAnswered, tutorial, onSubmit, onPass, t
       <Btn
         label={t('guess.send')}
         icon="send"
+        feedback={GameFeedbackEvent.ANSWER_SUBMIT}
         onPress={() => onSubmit(text.trim())}
         disabled={!text.trim() || youAnswered}
       />

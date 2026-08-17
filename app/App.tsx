@@ -100,6 +100,10 @@ import { GemIcon } from './src/GemIcon';
 import { installGlobalErrorHandlers, track } from './src/telemetry';
 import { dismissActiveInput } from './src/keyboardLifecycle';
 import type { ImageSourcePropType } from 'react-native';
+import { initAudioService, playAmbience, playMusic, stopAmbience, stopMusic } from './src/feedback/AudioService';
+import { AmbienceTrack, GameFeedbackEvent, MusicTrack } from './src/feedback/events';
+import { isRonaldoAnswer, triggerFeedback } from './src/feedback/GameFeedback';
+import { loadFeedbackPreferences } from './src/feedback/preferences';
 
 type GemCelebration =
   | { kind: 'purchase'; amount: number; img?: ImageSourcePropType }
@@ -317,7 +321,10 @@ function TabButton({ active = false, locked = false, icon, activeIcon, label, on
     <Pressable
       style={s.tab}
       onPress={onPress}
-      onPressIn={() => Animated.timing(press, { toValue: 1, duration: 60, useNativeDriver: true }).start()}
+      onPressIn={() => {
+        triggerFeedback(locked ? GameFeedbackEvent.UI_ERROR : GameFeedbackEvent.UI_TAB_SWITCH);
+        Animated.timing(press, { toValue: 1, duration: 60, useNativeDriver: true }).start();
+      }}
       onPressOut={() => Animated.timing(press, { toValue: 0, duration: 110, useNativeDriver: true }).start()}
     >
       {/* the mockup's active marker: a green rule along the tab's top edge, over a
@@ -358,7 +365,10 @@ function PlayTab({ active, label, onPress }: { active: boolean; label: string; o
     <Pressable
       style={s.tab}
       onPress={onPress}
-      onPressIn={() => Animated.timing(press, { toValue: 1, duration: 60, useNativeDriver: true }).start()}
+      onPressIn={() => {
+        triggerFeedback(GameFeedbackEvent.UI_TAB_SWITCH);
+        Animated.timing(press, { toValue: 1, duration: 60, useNativeDriver: true }).start();
+      }}
       onPressOut={() => Animated.timing(press, { toValue: 0, duration: 110, useNativeDriver: true }).start()}
     >
       <Animated.View style={[s.tabInner, { transform: [{ translateY: press.interpolate({ inputRange: [0, 1], outputRange: [0, 2] }) }] }]}>
@@ -775,6 +785,8 @@ function AppRoot() {
 
   useEffect(() => {
     installGlobalErrorHandlers();
+    initAudioService();
+    loadFeedbackPreferences().catch(() => {});
     track('app_start');
     // Kick off the AdMob SDK once so rewarded ads can load (no-op in Expo Go).
     initMobileAds?.().catch((e: unknown) => console.warn('AdMob init failed', e));
@@ -789,12 +801,77 @@ function AppRoot() {
       .catch(() => setTutorialSeen(true));
   }, []);
 
+  useEffect(() => {
+    if (!loaded || splash || !state.profile?.usernameSet) {
+      stopMusic(180);
+      stopAmbience(120);
+      return;
+    }
+    if (TAB_PHASES.has(state.phase)) {
+      stopAmbience(220);
+      playMusic(MusicTrack.MAIN_MENU, 420);
+      return;
+    }
+    stopMusic(360);
+    if (state.phase === 'pick' || state.phase === 'reveal' || state.phase === 'guess' || state.phase === 'result') {
+      playAmbience(AmbienceTrack.STADIUM, 340);
+    } else {
+      stopAmbience(220);
+    }
+  }, [loaded, splash, state.profile?.usernameSet, state.phase]);
+
+  const lastCountdownRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (state.phase !== 'countdown') { lastCountdownRef.current = null; return; }
+    const n = state.countdown ?? 0;
+    if (lastCountdownRef.current === n) return;
+    lastCountdownRef.current = n;
+    if (n === 3) triggerFeedback(GameFeedbackEvent.COUNTDOWN_3);
+    else if (n === 2) triggerFeedback(GameFeedbackEvent.COUNTDOWN_2);
+    else if (n === 1) triggerFeedback(GameFeedbackEvent.COUNTDOWN_1);
+    else if (n <= 0) triggerFeedback(GameFeedbackEvent.MATCH_START);
+  }, [state.phase, state.countdown]);
+
+  const lastMatchupRoomRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (state.phase !== 'matchup' || !state.room?.code) return;
+    if (lastMatchupRoomRef.current === state.room.code) return;
+    lastMatchupRoomRef.current = state.room.code;
+    triggerFeedback(GameFeedbackEvent.MATCH_FOUND);
+  }, [state.phase, state.room?.code]);
+
+  const lastResultRef = useRef<GameState['result'] | null>(null);
+  useEffect(() => {
+    const r = state.result;
+    if (state.phase !== 'result' || !r || lastResultRef.current === r) return;
+    lastResultRef.current = r;
+    const youId = state.room?.youId;
+    if (r.reason === 'timeout') {
+      triggerFeedback(GameFeedbackEvent.TIMEOUT);
+      return;
+    }
+    if (!r.correct) {
+      triggerFeedback(GameFeedbackEvent.ANSWER_WRONG);
+      return;
+    }
+    const byYou = r.answeredById === youId;
+    if (byYou && isRonaldoAnswer(r.guess)) triggerFeedback(GameFeedbackEvent.SPECIAL_PLAYER_RONALDO);
+    else triggerFeedback(byYou ? GameFeedbackEvent.ANSWER_CORRECT : GameFeedbackEvent.OPPONENT_CORRECT);
+  }, [state.phase, state.result, state.room?.youId]);
+
   const handleGemCelebrationDone = useCallback(() => {
     const diamonds = state.profile?.diamonds ?? diamondsShownRef.current;
     const amount = gemCelebration?.amount ?? 0;
     setGemCelebration(null);
     animateDiamondGain(Math.max(0, diamonds - amount), diamonds, amount);
   }, [state.profile?.diamonds, gemCelebration, animateDiamondGain]);
+
+  const gemCelebrationFeedbackRef = useRef<typeof gemCelebration>(null);
+  useEffect(() => {
+    if (!gemCelebration || gemCelebrationFeedbackRef.current === gemCelebration) return;
+    gemCelebrationFeedbackRef.current = gemCelebration;
+    triggerFeedback(gemCelebration.kind === 'arenaReward' ? GameFeedbackEvent.ARENA_UNLOCK : GameFeedbackEvent.DIAMOND_GAIN);
+  }, [gemCelebration]);
 
   // ---- Maç sonu kupa popup'ı: MAÇ EKRANINDA DEĞİL, ana menüye dönünce ----
   // Maç biterken veri burada yakalanır (leave sonrası state sıfırlanır, o yüzden
@@ -824,6 +901,12 @@ function AppRoot() {
       trophyDelta: state.trophyDelta,
     });
   }, [state.matchOver, state.trophyDelta, state.room, state.matchWinnerId, state.matchWinnerName]);
+  const matchOverFeedbackRef = useRef<typeof matchOverPopup>(null);
+  useEffect(() => {
+    if (!matchOverPopup || matchOverFeedbackRef.current === matchOverPopup) return;
+    matchOverFeedbackRef.current = matchOverPopup;
+    triggerFeedback(matchOverPopup.youWon ? GameFeedbackEvent.MATCH_WIN : GameFeedbackEvent.MATCH_LOSE);
+  }, [matchOverPopup]);
   // Maç ortasında ÇIKIŞ (forfeit): kupa cezası gelince AYNI kaybetme popup'ını göster
   // (yeşil "Devam et" butonu + düşen kupa miktarı popup'ta).
   const forfeitCaptured = useRef(false);
@@ -855,6 +938,7 @@ function AppRoot() {
   useEffect(() => {
     const lu = state.xpGain?.leveledUp;
     if (!lu || lu.length === 0) return;
+    triggerFeedback(GameFeedbackEvent.LEVEL_UP);
     setPendingLevelUp({
       toLevel: lu[lu.length - 1]!.level,
       diamonds: lu.reduce((sum, l) => sum + l.diamonds, 0),

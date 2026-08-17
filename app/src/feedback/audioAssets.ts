@@ -1,0 +1,55 @@
+import { AmbienceTrack, AudioEvent, MusicTrack } from './events';
+
+export const SFX_ASSETS: Record<AudioEvent, number> = {
+  [AudioEvent.UI_TAP]: require('../../assets/audio/ui/uiTap.wav'),
+  [AudioEvent.UI_CONFIRM]: require('../../assets/audio/ui/uiConfirm.wav'),
+  [AudioEvent.UI_BACK]: require('../../assets/audio/ui/uiBack.wav'),
+  [AudioEvent.UI_CLOSE]: require('../../assets/audio/ui/uiClose.wav'),
+  [AudioEvent.UI_OPEN]: require('../../assets/audio/ui/uiOpen.wav'),
+  [AudioEvent.UI_TAB_SWITCH]: require('../../assets/audio/ui/uiTabSwitch.wav'),
+  [AudioEvent.UI_TOGGLE_ON]: require('../../assets/audio/ui/uiToggleOn.wav'),
+  [AudioEvent.UI_TOGGLE_OFF]: require('../../assets/audio/ui/uiToggleOff.wav'),
+  [AudioEvent.UI_PURCHASE]: require('../../assets/audio/ui/uiPurchase.wav'),
+  [AudioEvent.UI_ERROR]: require('../../assets/audio/ui/uiError.wav'),
+  [AudioEvent.COUNTDOWN_3]: require('../../assets/audio/match/countdown3.wav'),
+  [AudioEvent.COUNTDOWN_2]: require('../../assets/audio/match/countdown2.wav'),
+  [AudioEvent.COUNTDOWN_1]: require('../../assets/audio/match/countdown1.wav'),
+  [AudioEvent.MATCH_START]: require('../../assets/audio/match/matchStart.wav'),
+  [AudioEvent.ANSWER_CORRECT]: require('../../assets/audio/match/answerCorrect.wav'),
+  [AudioEvent.ANSWER_WRONG]: require('../../assets/audio/match/answerWrong.wav'),
+  [AudioEvent.OPPONENT_CORRECT]: require('../../assets/audio/match/opponentCorrect.wav'),
+  [AudioEvent.ANSWER_SUBMIT]: require('../../assets/audio/match/answerSubmit.wav'),
+  [AudioEvent.TIMER_WARNING]: require('../../assets/audio/match/timerWarning.wav'),
+  [AudioEvent.TIMER_CRITICAL]: require('../../assets/audio/match/timerCritical.wav'),
+  [AudioEvent.TIMEOUT_IMPACT]: require('../../assets/audio/match/timeoutImpact.wav'),
+  [AudioEvent.ROUND_WIN]: require('../../assets/audio/match/roundWin.wav'),
+  [AudioEvent.ROUND_LOSE]: require('../../assets/audio/match/roundLose.wav'),
+  [AudioEvent.MATCH_WIN]: require('../../assets/audio/match/matchWin.wav'),
+  [AudioEvent.MATCH_LOSE]: require('../../assets/audio/match/matchLose.wav'),
+  [AudioEvent.DRAW]: require('../../assets/audio/match/draw.wav'),
+  [AudioEvent.SCORE_GAIN]: require('../../assets/audio/match/scoreGain.wav'),
+  [AudioEvent.SCORE_LOSE]: require('../../assets/audio/match/scoreLose.wav'),
+  [AudioEvent.MATCHMAKING_FOUND]: require('../../assets/audio/match/matchmakingFound.wav'),
+  [AudioEvent.XP_GAIN]: require('../../assets/audio/progression/xpGain.wav'),
+  [AudioEvent.LEVEL_UP]: require('../../assets/audio/progression/levelUp.wav'),
+  [AudioEvent.TROPHY_GAIN]: require('../../assets/audio/progression/trophyGain.wav'),
+  [AudioEvent.TROPHY_LOSS]: require('../../assets/audio/progression/trophyLoss.wav'),
+  [AudioEvent.ARENA_UNLOCK]: require('../../assets/audio/progression/arenaUnlock.wav'),
+  [AudioEvent.REWARD_OPEN]: require('../../assets/audio/progression/rewardOpen.wav'),
+  [AudioEvent.DIAMOND_GAIN]: require('../../assets/audio/progression/diamondGain.wav'),
+  [AudioEvent.ACHIEVEMENT]: require('../../assets/audio/progression/achievement.wav'),
+  [AudioEvent.EMOTE_SEND]: require('../../assets/audio/social/emoteSend.wav'),
+  [AudioEvent.EMOTE_RECEIVE]: require('../../assets/audio/social/emoteReceive.wav'),
+  [AudioEvent.NOTIFICATION]: require('../../assets/audio/social/notification.wav'),
+  [AudioEvent.SPECIAL_RONALDO_IMPACT]: require('../../assets/audio/special/ronaldoImpact.wav'),
+  [AudioEvent.SPECIAL_RONALDO_CELEBRATION]: require('../../assets/audio/special/ronaldoCelebration.wav'),
+  [AudioEvent.SPECIAL_CROWD_PUNCH]: require('../../assets/audio/special/crowdPunch.wav'),
+};
+
+export const MUSIC_ASSETS: Record<MusicTrack, number> = {
+  [MusicTrack.MAIN_MENU]: require('../../assets/audio/music/mainMenu.wav'),
+};
+
+export const AMBIENCE_ASSETS: Record<AmbienceTrack, number> = {
+  [AmbienceTrack.STADIUM]: require('../../assets/audio/ambience/stadiumAmbience.wav'),
+};
