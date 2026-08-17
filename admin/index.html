@@ -352,6 +352,7 @@
   var API_BASES = ["https://api.crossoverfootball.com", "https://168-222-180-190.nip.io"];
   var TOKEN_KEY = "cx_admin_token";
   var REFRESH_MS = 10000;
+  var STALE_ONLINE_USER_IDS = { "f53e99a2-b9d8-45d7-a986-1dc625e06024": true }; // Furzinho: stale backend socket entry, last_seen is not current.
 
   var token = localStorage.getItem(TOKEN_KEY) || "";
   var autoOn = true;
@@ -493,10 +494,13 @@
     if ($("r_dayLabel")) $("r_dayLabel").textContent = "Seçili gün (" + shortDay(s.selectedDay || todayKey()) + ")";
     if ($("a_dayLabel")) $("a_dayLabel").textContent = shortDay(s.selectedDay || todayKey());
     var L = s.live || {};
-    $("l_online").textContent = trNum(L.online);
+    var matchItemsRaw = L.matches || [];
+    var onlineItems = (L.onlineUsers || []).filter(function(u){ return u && !STALE_ONLINE_USER_IDS[u.userId]; });
+    var visibleQueue = Math.max(0, Number(L.inLobby || 0));
+    $("l_online").textContent = trNum(onlineItems.length);
     $("l_match").textContent  = trNum(L.playersInMatch);
     $("l_rooms").textContent  = trNum(L.rooms);
-    $("l_queue").textContent  = trNum(L.queue);
+    $("l_queue").textContent  = trNum(visibleQueue);
     $("l_bot").textContent    = trNum(L.botMatches);
 
     // ── Aktif maçlar (kim kime karşı) ──
@@ -509,7 +513,7 @@
       var off = p.connected===false ? " <span class='muted'>(bağlantı kesik)</span>" : "";
       return "<b>"+esc(p.name)+"</b>"+t+off;
     }
-    var matchItems = (L.matches || []).slice().sort(function(a,b){
+    var matchItems = matchItemsRaw.slice().sort(function(a,b){
       // Önce insan-insan süren maçlar, sonra bot, en son lobiler
       function rank(m){ var hh = !m.bot && (m.humans>=2) && m.status!=="lobby"; return hh?0:(m.status!=="lobby"?1:2); }
       return rank(a)-rank(b);
@@ -530,7 +534,6 @@
     $("l_matches").innerHTML = mlist || "<div class='muted'>Şu an süren maç/oda yok.</div>";
 
     // ── Çevrimiçi kullanıcılar ──
-    var onlineItems = L.onlineUsers || [];
     if ($("l_onlineCount")) $("l_onlineCount").textContent = trNum(onlineItems.length);
     var olist = onlineItems.map(function(u){
       return "<div class='online-row'><span class='dot'></span><b>"+esc(u.name)+"</b>"
