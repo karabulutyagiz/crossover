@@ -6,7 +6,8 @@
   "scripts": {
     "render": "node render-crossover-ad.mjs",
     "render:en": "node render-crossover-ad-en.mjs",
-    "render:modes": "node render-crossover-ad-modes.mjs"
+    "render:modes": "node render-crossover-ad-modes.mjs",
+    "render:countdown": "node render-crossover-ad-countdown.mjs"
   },
   "keywords": [],
   "author": "",
