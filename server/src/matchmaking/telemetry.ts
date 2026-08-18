@@ -59,6 +59,9 @@ export async function getOpponentKpis(): Promise<Record<string, unknown>> {
     winRates: [],
     responseTimes: [],
     trophy: { trophy_delta_30d: 0, avg_trophy_delta: 0 },
+    trophyEconomy: { trophies_created: 0, trophies_destroyed: 0, bot_trophies_injected: 0, avg_reward_multiplier: 1 },
+    matchmakingDirector: { p50_queue_ms: 0, p95_queue_ms: 0, avg_match_quality: 0, bot_selection_rate: 0 },
+    antiFarm: { high_risk_rewards: 0, avg_farm_risk: 0, reduced_rewards: 0 },
     rematchRate: 0,
     closeMatchRate: 0,
   };
@@ -113,6 +116,28 @@ export async function getOpponentKpis(): Promise<Record<string, unknown>> {
          WHERE event_name = 'match_finished'
            AND created_at >= now() - interval '30 days'`),
     ]);
+    const [ledger, decision, farm] = await Promise.all([
+      pool.query(`
+        SELECT COALESCE(sum(GREATEST(delta, 0)), 0)::int AS trophies_created,
+               COALESCE(sum(GREATEST(-delta, 0)), 0)::int AS trophies_destroyed,
+               COALESCE(sum(CASE WHEN source = 'BOT_TO_HUMAN_INJECTION' THEN GREATEST(delta, 0) ELSE 0 END), 0)::int AS bot_trophies_injected,
+               COALESCE(avg(final_multiplier), 1)::float AS avg_reward_multiplier
+          FROM trophy_ledger
+         WHERE created_at >= now() - interval '30 days'`).catch(() => ({ rows: [] } as any)),
+      pool.query(`
+        SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY queue_duration_ms) AS p50_queue_ms,
+               percentile_cont(0.95) WITHIN GROUP (ORDER BY queue_duration_ms) AS p95_queue_ms,
+               avg(match_quality_score)::float AS avg_match_quality,
+               avg(CASE WHEN selected_opponent_type = 'BOT' THEN 1 ELSE 0 END)::float AS bot_selection_rate
+          FROM match_decision_traces
+         WHERE created_at >= now() - interval '30 days'`).catch(() => ({ rows: [] } as any)),
+      pool.query(`
+        SELECT count(*) FILTER (WHERE farm_risk_level IN ('HIGH', 'CRITICAL'))::int AS high_risk_rewards,
+               avg(farm_risk_score)::float AS avg_farm_risk,
+               count(*) FILTER (WHERE final_multiplier < 0.99)::int AS reduced_rewards
+          FROM trophy_ledger
+         WHERE created_at >= now() - interval '30 days'`).catch(() => ({ rows: [] } as any)),
+    ]);
     const mm = matchmaking.rows[0] as any;
     const offered = Number((rematch.rows[0] as any)?.offered ?? 0);
     const accepted = Number((rematch.rows[0] as any)?.accepted ?? 0);
@@ -129,6 +154,9 @@ export async function getOpponentKpis(): Promise<Record<string, unknown>> {
       winRates: wins.rows,
       responseTimes: responseTimes.rows,
       trophy: trophy.rows[0] ?? { trophy_delta_30d: 0, avg_trophy_delta: 0 },
+      trophyEconomy: ledger.rows[0] ?? { trophies_created: 0, trophies_destroyed: 0, bot_trophies_injected: 0, avg_reward_multiplier: 1 },
+      matchmakingDirector: decision.rows[0] ?? { p50_queue_ms: 0, p95_queue_ms: 0, avg_match_quality: 0, bot_selection_rate: 0 },
+      antiFarm: farm.rows[0] ?? { high_risk_rewards: 0, avg_farm_risk: 0, reduced_rewards: 0 },
       rematchRate: offered ? accepted / offered : 0,
       closeMatchRate: Number((closeMatches.rows[0] as any)?.close_match_rate ?? 0),
     };

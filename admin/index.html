@@ -189,6 +189,7 @@
     <div class="top-actions">
       <span class="status-dot"><span class="dot" id="statusDot"></span><span id="statusText">bağlanıyor…</span></span>
       <button id="refreshBtn">Yenile</button>
+      <button id="marketingBtn">Pazarlama</button>
       <button id="autoBtn">Otomatik: Açık</button>
       <button id="logoutBtn">Çıkış</button>
     </div>
@@ -689,6 +690,7 @@
   $("email").addEventListener("keydown", function(e){ if(e.key==="Enter") $("pw").focus(); });
   $("pw").addEventListener("keydown", function(e){ if(e.key==="Enter") doLogin(); });
   $("refreshBtn").addEventListener("click", tick);
+  $("marketingBtn").addEventListener("click", function(){ window.location.href = "./marketing.html"; });
   selectedDay = todayKey();
   autoTodayMode = true;
   $("dayFilter").value = selectedDay;

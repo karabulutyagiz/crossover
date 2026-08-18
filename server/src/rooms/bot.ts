@@ -77,10 +77,12 @@ export interface BotOptions {
   scope?: Scope;
   mode?: GameMode;
   profile?: BotProfile;
+  exposeBotToClient?: boolean;
 }
 
 export class BotPlayer implements Transport {
   readonly isBot = true;
+  readonly exposeBotToClient: boolean;
   readonly botArchetype?: string;
   readonly botSkill?: number;
   readonly botSkillMean?: number;
@@ -120,6 +122,7 @@ export class BotPlayer implements Transport {
   private previousOpponentTempoMs: number | null = null;
 
   constructor(opts: BotOptions = {}) {
+    this.exposeBotToClient = opts.exposeBotToClient ?? true;
     this.profile = opts.profile ?? null;
     this.botArchetype = this.profile?.behaviorArchetype;
     this.botSkill = this.profile?.skillRating;

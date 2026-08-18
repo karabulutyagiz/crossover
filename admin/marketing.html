@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta http-equiv="Cache-Control" content="no-store" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Crossover - Pazarlama Asistanı</title>
+<style>
+  :root{
+    --bg:#07101d; --bg2:#0b1838; --surface:#111a33; --surface2:#16223f;
+    --line:#22335c; --line2:#2f4370; --text:#e8eefc; --muted:#8aa0c6;
+    --mint:#27E58B; --gold:#F5C518; --blue:#3DA5FF; --purple:#9b7bff;
+    --flame:#ff7a59; --danger:#ff5470; --grass:#0d6d48; --radius:18px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    min-height:100vh;color:var(--text);
+    background:
+      radial-gradient(900px 480px at 15% -10%, rgba(39,229,139,.18), transparent 60%),
+      radial-gradient(900px 520px at 85% 0%, rgba(61,165,255,.14), transparent 60%),
+      linear-gradient(180deg, #07101d 0%, #0a1020 100%);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  button,input,textarea,select{font:inherit}
+  a{color:var(--mint);text-decoration:none}
+  .wrap{width:min(1220px,100%);margin:0 auto;padding:22px 16px 64px}
+  .top{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:10px}
+  .logo{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,var(--mint),#0ea968);display:flex;align-items:center;justify-content:center;color:#052518;font-weight:950;box-shadow:0 12px 36px rgba(39,229,139,.18)}
+  .brand h1{font-size:18px;margin:0;letter-spacing:-.02em}
+  .brand small{display:block;color:var(--muted);font-size:12px;margin-top:1px}
+  .top-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .link-btn,.btn{border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:12px;padding:10px 12px;font-weight:800;font-size:13px;cursor:pointer}
+  .link-btn:hover,.btn:hover{border-color:var(--mint);filter:brightness(1.05)}
+  .btn.primary{border-color:rgba(39,229,139,.45);background:var(--mint);color:#052518}
+  .btn.ghost{background:transparent;color:var(--muted)}
+  .btn.danger{border-color:rgba(255,84,112,.45);background:rgba(255,84,112,.12);color:#ff9aac}
+  .btn.small{padding:7px 9px;border-radius:10px;font-size:12px}
+  .hero{display:grid;grid-template-columns:1.12fr .88fr;gap:16px;margin-bottom:16px}
+  .panel,.card{background:rgba(17,26,51,.88);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 24px 70px rgba(0,0,0,.28)}
+  .hero-copy{padding:28px;position:relative;overflow:hidden}
+  .hero-copy:after{content:"";position:absolute;inset:auto -120px -160px auto;width:300px;height:300px;background:radial-gradient(circle, rgba(245,197,24,.14), transparent 65%);pointer-events:none}
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(39,229,139,.3);background:rgba(39,229,139,.08);color:var(--mint);border-radius:999px;padding:7px 10px;font-size:12px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+  .hero h2{font-size:clamp(30px,5vw,58px);line-height:.96;margin:16px 0 14px;letter-spacing:-.07em;max-width:780px}
+  .hero p{color:#b7c6e2;font-size:16px;line-height:1.55;max-width:720px;margin:0 0 18px}
+  .hero-actions{display:flex;gap:10px;flex-wrap:wrap}
+  .pitch-card{padding:18px;position:relative;overflow:hidden;background:
+    linear-gradient(90deg, rgba(255,255,255,.055) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255,255,255,.045) 1px, transparent 1px),
+    linear-gradient(135deg, rgba(13,109,72,.92), rgba(10,38,58,.92));
+    background-size:36px 36px,36px 36px,auto;border-color:rgba(39,229,139,.22)}
+  .pitch{position:relative;min-height:310px;border:1px solid rgba(232,238,252,.2);border-radius:22px;padding:18px;display:flex;align-items:center;justify-content:center}
+  .pitch:before{content:"";position:absolute;top:50%;left:0;right:0;border-top:1px solid rgba(232,238,252,.18)}
+  .pitch:after{content:"";position:absolute;width:112px;height:112px;border:1px solid rgba(232,238,252,.18);border-radius:50%;top:50%;left:50%;transform:translate(-50%,-50%)}
+  .connector{position:relative;z-index:1;width:100%;display:grid;grid-template-columns:1fr minmax(34px,.3fr) auto minmax(34px,.3fr) 1fr;align-items:center;gap:12px}
+  .club-chip,.player-chip{border:1px solid rgba(255,255,255,.16);background:rgba(7,16,29,.72);backdrop-filter:blur(10px);border-radius:18px;padding:14px;box-shadow:0 18px 40px rgba(0,0,0,.28)}
+  .club-chip b{display:block;font-size:15px}.club-chip span,.player-chip span{display:block;color:var(--muted);font-size:12px;margin-top:4px}
+  .player-chip{min-width:126px;text-align:center;border-color:rgba(245,197,24,.48);box-shadow:0 0 0 6px rgba(245,197,24,.06),0 18px 40px rgba(0,0,0,.28)}
+  .player-chip b{display:block;color:var(--gold);font-size:20px;letter-spacing:-.03em}
+  .line{height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);min-width:42px}
+  .policy{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid rgba(245,197,24,.3);background:rgba(245,197,24,.08);border-radius:16px;padding:14px 16px;margin-bottom:16px}
+  .policy b{color:var(--gold)}.policy span{color:#d8c98a;font-size:13px;line-height:1.4}
+  .grid{display:grid;grid-template-columns:.95fr 1.05fr;gap:16px;align-items:start}
+  .card{padding:18px}.card h3{margin:0 0 6px;font-size:17px;letter-spacing:-.02em}.hint{margin:0 0 14px;color:var(--muted);font-size:13px;line-height:1.45}
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{display:flex;flex-direction:column;gap:7px}.field.full{grid-column:1/-1}
+  label{color:#b6c5e2;font-size:12px;font-weight:850;letter-spacing:.04em;text-transform:uppercase}
+  input,textarea,select{width:100%;border:1px solid var(--line);background:var(--bg2);color:var(--text);border-radius:12px;padding:11px 12px;outline:none}
+  textarea{min-height:92px;resize:vertical;line-height:1.45}
+  input:focus,textarea:focus,select:focus{border-color:var(--mint);box-shadow:0 0 0 3px rgba(39,229,139,.1)}
+  .composer-actions{display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap}.composer-actions .btn.primary{flex:1;min-width:180px}
+  .guard-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}.guard{border:1px solid var(--line);background:rgba(11,24,56,.64);border-radius:14px;padding:12px}.guard b{display:block;font-size:18px}.guard span{display:block;color:var(--muted);font-size:12px;margin-top:3px}.bar{height:7px;background:#0a1020;border-radius:999px;overflow:hidden;margin-top:10px}.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--mint),var(--gold));border-radius:inherit}
+  .searches{display:flex;flex-wrap:wrap;gap:8px}.searches a{display:inline-flex;border:1px solid var(--line);background:rgba(11,24,56,.62);border-radius:999px;padding:8px 10px;color:#cfe0ff;font-size:12px;font-weight:800}.searches a:hover{border-color:var(--mint);color:var(--mint)}
+  .toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:18px 0 10px;flex-wrap:wrap}.tabs{display:flex;gap:8px;flex-wrap:wrap}.tab{border:1px solid var(--line);background:rgba(17,26,51,.72);color:var(--muted);border-radius:999px;padding:8px 11px;font-weight:850;font-size:12px;cursor:pointer}.tab.active{background:rgba(39,229,139,.13);border-color:rgba(39,229,139,.45);color:var(--mint)}
+  .items{display:grid;gap:12px}.item{border:1px solid var(--line);background:rgba(17,26,51,.86);border-radius:18px;padding:15px}.item.approved{border-color:rgba(39,229,139,.36)}.item.rejected{opacity:.58}.item-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}.meta{display:flex;gap:7px;flex-wrap:wrap;align-items:center}.pill{display:inline-flex;align-items:center;border:1px solid var(--line);background:rgba(11,24,56,.72);border-radius:999px;padding:5px 8px;color:#c8d8f4;font-size:11px;font-weight:850}.pill.ok{border-color:rgba(39,229,139,.4);color:var(--mint);background:rgba(39,229,139,.08)}.pill.warn{border-color:rgba(245,197,24,.45);color:var(--gold);background:rgba(245,197,24,.09)}.pill.bad{border-color:rgba(255,84,112,.45);color:#ff9aac;background:rgba(255,84,112,.08)}
+  .item-title{margin:10px 0 4px;font-size:16px;font-weight:900}.item-url{color:var(--muted);font-size:12px;word-break:break-all}.comment-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.comment-box{border:1px solid rgba(47,67,112,.75);background:#0a1224;border-radius:14px;padding:12px}.comment-box h4{margin:0 0 8px;font-size:12px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}.variant{border:1px solid transparent;border-radius:12px;padding:9px;margin-top:8px;background:rgba(255,255,255,.035);cursor:pointer}.variant:first-of-type{margin-top:0}.variant.selected{border-color:rgba(39,229,139,.55);background:rgba(39,229,139,.08)}.variant p{margin:0;color:#edf3ff;font-size:14px;line-height:1.42}.variant small{display:block;margin-top:6px;color:var(--muted);font-size:11px}.duplicate{color:#ffbd72}.item-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.empty{border:1px dashed var(--line2);border-radius:18px;padding:28px;text-align:center;color:var(--muted);background:rgba(17,26,51,.42)}
+  .toast{position:fixed;right:16px;bottom:16px;background:#07101d;border:1px solid rgba(39,229,139,.45);color:var(--text);padding:12px 14px;border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.38);opacity:0;transform:translateY(12px);transition:.18s;pointer-events:none;z-index:20}.toast.show{opacity:1;transform:translateY(0)}
+  @media(max-width:900px){.hero,.grid{grid-template-columns:1fr}.pitch{min-height:240px}.guard-grid,.comment-grid{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}.club-chip{padding:11px}.player-chip{min-width:106px}}
+  @media(max-width:560px){.wrap{padding:14px 10px 44px}.hero-copy,.card{padding:15px}.hero h2{font-size:32px}.policy{grid-template-columns:1fr}.top-actions{width:100%}.link-btn,.top-actions .btn{flex:1;text-align:center}.connector{grid-template-columns:1fr}.line{height:18px;width:2px;justify-self:center;min-width:0;background:linear-gradient(180deg,transparent,var(--gold),transparent)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="logo">CO</div>
+      <div>
+        <h1>Crossover Pazarlama Asistanı</h1>
+        <small>TR/EN yorum taslağı, insan onayı ve kopyalama kuyruğu</small>
+      </div>
+    </div>
+    <div class="top-actions">
+      <a class="link-btn" href="./index.html">Yönetim paneli</a>
+      <button class="btn ghost" id="exportBtn" type="button">Dışa aktar</button>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="panel hero-copy">
+      <span class="eyebrow">Safe social workflow</span>
+      <h2>Futbol hafızasını yoruma çevir, spam riskini dışarıda bırak.</h2>
+      <p>X, TikTok ve Instagram için Crossover Football yorumlarını Türkçe ve İngilizce üret. Paylaşım otomatik yapılmaz; her metin önce onaylanır, sonra tek tıkla kopyalanır.</p>
+      <div class="hero-actions">
+        <button class="btn primary" id="seedBtn" type="button">Örnek adayları yükle</button>
+        <button class="btn ghost" id="resetFormBtn" type="button">Formu sıfırla</button>
+      </div>
+    </div>
+    <div class="panel pitch-card" aria-hidden="true">
+      <div class="pitch">
+        <div class="connector">
+          <div class="club-chip"><b>Galatasaray</b><span>kulüp A</span></div>
+          <div class="line"></div>
+          <div class="player-chip"><b>?</b><span>ortak oyuncu</span></div>
+          <div class="line"></div>
+          <div class="club-chip"><b>Inter</b><span>kulüp B</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="policy">
+    <span><b>Kural:</b> Bu panel otomatik yorum atmaz, hesaplara giriş yapmaz ve platformları scrape etmez. Sadece ilgili içeriğe uygun taslak üretir, onaylanan metni kopyalamanı sağlar.</span>
+    <span class="pill warn">Onaysız paylaşım yok</span>
+  </div>
+
+  <main class="grid">
+    <section class="card">
+      <h3>Aday video/post ekle</h3>
+      <p class="hint">URL zorunlu değil ama sonradan hangi içeriğe yorum yapacağını takip etmek için önerilir.</p>
+      <div class="form-grid">
+        <div class="field">
+          <label for="platform">Platform</label>
+          <select id="platform">
+            <option value="x">X</option>
+            <option value="tiktok">TikTok</option>
+            <option value="instagram">Instagram</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="language">Dil</label>
+          <select id="language">
+            <option value="both">TR + EN</option>
+            <option value="tr">Sadece TR</option>
+            <option value="en">Sadece EN</option>
+          </select>
+        </div>
+        <div class="field full">
+          <label for="url">Post/video URL</label>
+          <input id="url" type="url" placeholder="https://..." autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="clubs">Takımlar</label>
+          <input id="clubs" type="text" placeholder="Galatasaray - Inter" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="player">Bilinen oyuncu</label>
+          <input id="player" type="text" placeholder="Opsiyonel" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="tone">Ton</label>
+          <select id="tone">
+            <option value="competitive">Rekabetçi</option>
+            <option value="friendly">Samimi</option>
+            <option value="expert">Futbol nerd</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="cta">CTA</label>
+          <select id="cta">
+            <option value="appstore">App Store'da arat</option>
+            <option value="soft">Yumuşak bahset</option>
+            <option value="none">CTA yok</option>
+          </select>
+        </div>
+        <div class="field full">
+          <label for="context">İçerik notu</label>
+          <textarea id="context" placeholder="Örn: eski transfer videosu, iki takım bağlantısı, maç sonu tartışması"></textarea>
+        </div>
+      </div>
+      <div class="composer-actions">
+        <button class="btn primary" id="generateBtn" type="button">Taslak üret ve kuyruğa ekle</button>
+        <button class="btn ghost" id="clearAllBtn" type="button">Tüm kuyruğu temizle</button>
+      </div>
+    </section>
+
+    <aside class="card">
+      <h3>Yayın güvenliği</h3>
+      <p class="hint">Günlük onay sayısı ve tekrar eden metinler spam riskini düşürmek için takip edilir.</p>
+      <div class="guard-grid" id="guardGrid"></div>
+      <h3 style="margin-top:18px">İçerik bulma kısayolları</h3>
+      <p class="hint">Bunlar sadece arama sayfası açar; otomatik toplama veya yorum atma yoktur.</p>
+      <div class="searches">
+        <a href="https://x.com/search?q=football%20transfer%20history&src=typed_query&f=live" target="_blank" rel="noreferrer">X transfer history</a>
+        <a href="https://x.com/search?q=futbol%20transfer%20ge%C3%A7mi%C5%9Fi&src=typed_query&f=live" target="_blank" rel="noreferrer">X TR futbol</a>
+        <a href="https://www.tiktok.com/search?q=football%20trivia" target="_blank" rel="noreferrer">TikTok trivia</a>
+        <a href="https://www.tiktok.com/search?q=futbol%20bilgi%20yar%C4%B1%C5%9Fmas%C4%B1" target="_blank" rel="noreferrer">TikTok TR</a>
+        <a href="https://www.instagram.com/explore/tags/footballtrivia/" target="_blank" rel="noreferrer">IG footballtrivia</a>
+        <a href="https://www.instagram.com/explore/tags/futbol/" target="_blank" rel="noreferrer">IG futbol</a>
+      </div>
+    </aside>
+  </main>
+
+  <section class="toolbar">
+    <div>
+      <h3 style="margin:0">Yorum kuyruğu</h3>
+      <p class="hint" style="margin:4px 0 0">Taslak seç, onayla, sonra ilgili platformda paylaşmak için kopyala.</p>
+    </div>
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-filter="all" type="button">Hepsi</button>
+      <button class="tab" data-filter="draft" type="button">Taslak</button>
+      <button class="tab" data-filter="approved" type="button">Onaylı</button>
+      <button class="tab" data-filter="copied" type="button">Kopyalanan</button>
+      <button class="tab" data-filter="rejected" type="button">Reddedilen</button>
+    </div>
+  </section>
+  <section class="items" id="items"></section>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+  var STORAGE_KEY = "cx_marketing_assistant_v1";
+  var DAILY_LIMITS = { x: 20, tiktok: 18, instagram: 15 };
+  var PLATFORM_LABELS = { x: "X", tiktok: "TikTok", instagram: "Instagram" };
+  var state = loadState();
+  var currentFilter = "all";
+  var $ = function(id){ return document.getElementById(id); };
+
+  function loadState(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){
+        var parsed = JSON.parse(raw);
+        if(parsed && Array.isArray(parsed.items)) return parsed;
+      }
+    }catch(e){}
+    return { items: [] };
+  }
+
+  function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  function nowIso(){ return new Date().toISOString(); }
+  function todayKey(iso){ return (iso ? new Date(iso) : new Date()).toISOString().slice(0,10); }
+  function uid(){ return "m" + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+  function esc(s){ return String(s == null ? "" : s).replace(/[&<>\"']/g, function(c){ return ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]; }); }
+  function clean(s){ return String(s || "").trim().replace(/\s+/g," "); }
+  function labelPlatform(p){ return PLATFORM_LABELS[p] || p; }
+  function safeUrl(url){
+    url = clean(url);
+    return /^https?:\/\//i.test(url) ? url : "";
+  }
+
+  function splitClubs(clubs){
+    var parts = clean(clubs).split(/\s+(?:-|vs|v|x)\s+|\s*\/\s*|\s*,\s*/i).filter(Boolean);
+    if(parts.length >= 2) return [parts[0], parts[1]];
+    return [];
+  }
+
+  function clubPhraseTr(clubs){
+    var p = splitClubs(clubs);
+    if(p.length >= 2) return p[0] + " ve " + p[1];
+    return clean(clubs) || "bu iki takım";
+  }
+
+  function clubPhraseEn(clubs){
+    var p = splitClubs(clubs);
+    if(p.length >= 2) return p[0] + " and " + p[1];
+    return clean(clubs) || "these two clubs";
+  }
+
+  function ctaTr(cta){
+    if(cta === "none") return "";
+    if(cta === "soft") return " Crossover Football'da tam böyle bağlantılar var.";
+    return " App Store'da Crossover Football diye aratabilirsiniz.";
+  }
+
+  function ctaEn(cta){
+    if(cta === "none") return "";
+    if(cta === "soft") return " Crossover Football is built around exactly these links.";
+    return " Search Crossover Football on the App Store.";
+  }
+
+  function toneLeadTr(tone){
+    if(tone === "friendly") return "Futbol hafızasına güvenenlere güzel soru:";
+    if(tone === "expert") return "Transfer geçmişi bilenler için net test:";
+    return "Bunu hızlı bulan futbolu gerçekten takip ediyordur:";
+  }
+
+  function toneLeadEn(tone){
+    if(tone === "friendly") return "Nice one for football memory fans:";
+    if(tone === "expert") return "Proper transfer-history test:";
+    return "If you get this fast, you really know football:";
+  }
+
+  function platformHintTr(platform){
+    if(platform === "tiktok") return "Yorumlara spoiler bırakmadan deneyin.";
+    if(platform === "instagram") return "Arkadaşına sor, bakalım kim önce buluyor.";
+    return "Cevabı yazmadan önce bir düşün.";
+  }
+
+  function platformHintEn(platform){
+    if(platform === "tiktok") return "Try it without dropping spoilers.";
+    if(platform === "instagram") return "Send it to a friend and see who gets it first.";
+    return "Think before you drop the answer.";
+  }
+
+  function buildComments(input){
+    var trClubs = clubPhraseTr(input.clubs);
+    var enClubs = clubPhraseEn(input.clubs);
+    var contextTr = input.context ? clean(input.context) + ". " : "";
+    var contextEn = input.context ? "This clip feels made for football trivia. " : "";
+    var playerTr = input.player ? " Ortak oyuncu " + clean(input.player) + " ise fazla iyi soru olur." : "";
+    var playerEn = input.player ? " If the shared player is " + clean(input.player) + ", that is a serious round." : "";
+    var comments = { tr: [], en: [] };
+
+    comments.tr.push(
+      contextTr + "Bu tam Crossover Football sorusu gibi: " + trClubs + " iki takımda da oynamış oyuncuyu kim daha hızlı bulur?" + ctaTr(input.cta)
+    );
+    comments.tr.push(
+      toneLeadTr(input.tone) + " " + trClubs + " ortak futbolcusu kim?" + playerTr + ctaTr(input.cta)
+    );
+    comments.tr.push(
+      "Bu tarz kulüp bağlantılarını seviyorsan Crossover Football tam senlik. " + trClubs + " için ortak oyuncuyu bulmaya çalışıyorsun. " + platformHintTr(input.platform)
+    );
+
+    comments.en.push(
+      contextEn + "This is basically a Crossover Football round: who played for both " + enClubs + "?" + ctaEn(input.cta)
+    );
+    comments.en.push(
+      toneLeadEn(input.tone) + " name the shared player between " + enClubs + "." + playerEn + ctaEn(input.cta)
+    );
+    comments.en.push(
+      "If you like football trivia and transfer links, Crossover Football is exactly that: guess the player who played for both " + enClubs + ". " + platformHintEn(input.platform)
+    );
+
+    comments.tr = comments.tr.map(limitComment).map(clean);
+    comments.en = comments.en.map(limitComment).map(clean);
+    return comments;
+  }
+
+  function limitComment(text){
+    var max = 250;
+    text = clean(text);
+    if(text.length <= max) return text;
+    return text.slice(0, max - 1).replace(/\s+\S*$/, "") + "...";
+  }
+
+  function formInput(){
+    return {
+      platform: $("platform").value,
+      language: $("language").value,
+      url: clean($("url").value),
+      clubs: clean($("clubs").value),
+      player: clean($("player").value),
+      tone: $("tone").value,
+      cta: $("cta").value,
+      context: clean($("context").value)
+    };
+  }
+
+  function createCandidate(){
+    var input = formInput();
+    if(!input.clubs && !input.context){
+      showToast("Takım veya içerik notu gir.", true);
+      $("clubs").focus();
+      return;
+    }
+    var comments = buildComments(input);
+    if(input.language === "tr") comments.en = [];
+    if(input.language === "en") comments.tr = [];
+    state.items.unshift({
+      id: uid(), platform: input.platform, language: input.language, url: input.url,
+      clubs: input.clubs, player: input.player, tone: input.tone, cta: input.cta,
+      context: input.context, comments: comments, selected: { tr: 0, en: 0 },
+      status: "draft", createdAt: nowIso(), approvedAt: null, copiedAt: null,
+      copied: { tr: false, en: false }
+    });
+    saveState();
+    render();
+    showToast("Taslak kuyruğa eklendi.");
+  }
+
+  function seedExamples(){
+    var examples = [
+      { platform:"x", language:"both", clubs:"Galatasaray - Inter", player:"", tone:"competitive", cta:"appstore", context:"Icardi ve eski transfer bağlantıları konuşuluyor" },
+      { platform:"tiktok", language:"both", clubs:"Fenerbahçe - Real Madrid", player:"", tone:"friendly", cta:"soft", context:"Efsane oyuncular ve nostalji videosu" },
+      { platform:"instagram", language:"both", clubs:"Barcelona - Manchester City", player:"", tone:"expert", cta:"appstore", context:"Guardiola dönemi oyuncu bağlantıları" }
+    ];
+    examples.reverse().forEach(function(input){
+      state.items.unshift({
+        id: uid(), platform: input.platform, language: input.language, url: "", clubs: input.clubs,
+        player: input.player, tone: input.tone, cta: input.cta, context: input.context,
+        comments: buildComments(input), selected: { tr: 0, en: 0 }, status: "draft",
+        createdAt: nowIso(), approvedAt: null, copiedAt: null, copied: { tr: false, en: false }
+      });
+    });
+    saveState();
+    render();
+    showToast("Örnek adaylar eklendi.");
+  }
+
+  function selectedText(item, lang){
+    var list = item.comments && item.comments[lang] || [];
+    return list[item.selected && item.selected[lang] || 0] || "";
+  }
+
+  function isDuplicate(text, itemId){
+    var normalized = clean(text).toLowerCase();
+    if(!normalized) return false;
+    return state.items.some(function(item){
+      if(item.id === itemId) return false;
+      return [selectedText(item,"tr"), selectedText(item,"en")].some(function(t){ return clean(t).toLowerCase() === normalized; });
+    });
+  }
+
+  function approveItem(id){
+    var item = findItem(id);
+    if(!item) return;
+    item.status = "approved";
+    item.approvedAt = nowIso();
+    saveState(); render(); showToast("Yorum onaylandı. Artık kopyalayabilirsin.");
+  }
+
+  function rejectItem(id){
+    var item = findItem(id);
+    if(!item) return;
+    item.status = "rejected";
+    saveState(); render(); showToast("Taslak reddedildi.");
+  }
+
+  function regenerateItem(id){
+    var item = findItem(id);
+    if(!item) return;
+    item.comments = buildComments(item);
+    item.selected = { tr: 0, en: 0 };
+    item.status = "draft";
+    item.approvedAt = null;
+    item.copied = { tr: false, en: false };
+    item.copiedAt = null;
+    saveState(); render(); showToast("Yeni varyasyonlar üretildi.");
+  }
+
+  function copyComment(id, lang){
+    var item = findItem(id);
+    if(!item) return;
+    if(item.status !== "approved"){
+      showToast("Önce yorumu onayla.", true);
+      return;
+    }
+    var text = selectedText(item, lang);
+    if(!text) return;
+    writeClipboard(text).then(function(){
+      item.copied[lang] = true;
+      item.copiedAt = nowIso();
+      saveState(); render(); showToast((lang === "tr" ? "TR" : "EN") + " yorum kopyalandı.");
+    }).catch(function(){ showToast("Kopyalama başarısız oldu.", true); });
+  }
+
+  function writeClipboard(text){
+    if(navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+    return new Promise(function(resolve){
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      document.body.removeChild(area);
+      resolve();
+    });
+  }
+
+  function chooseVariant(id, lang, index){
+    var item = findItem(id);
+    if(!item) return;
+    item.selected[lang] = index;
+    saveState(); render();
+  }
+
+  function findItem(id){ return state.items.find(function(item){ return item.id === id; }); }
+
+  function countsToday(){
+    var today = todayKey();
+    return state.items.reduce(function(acc,item){
+      if(item.approvedAt && todayKey(item.approvedAt) === today){
+        acc[item.platform] = (acc[item.platform] || 0) + 1;
+      }
+      return acc;
+    }, { x:0, tiktok:0, instagram:0 });
+  }
+
+  function renderGuard(){
+    var counts = countsToday();
+    $("guardGrid").innerHTML = Object.keys(DAILY_LIMITS).map(function(platform){
+      var limit = DAILY_LIMITS[platform];
+      var used = counts[platform] || 0;
+      var pct = Math.min(100, Math.round((used / limit) * 100));
+      return "<div class='guard'><b>" + used + " / " + limit + "</b><span>" + esc(labelPlatform(platform)) + " günlük onay</span><div class='bar'><i style='width:" + pct + "%'></i></div></div>";
+    }).join("");
+  }
+
+  function render(){
+    renderGuard();
+    var items = filteredItems();
+    $("items").innerHTML = items.length ? items.map(renderItem).join("") : "<div class='empty'>Kuyruk boş. Bir futbol içeriği notu girip taslak üret.</div>";
+  }
+
+  function filteredItems(){
+    return state.items.filter(function(item){
+      if(currentFilter === "all") return true;
+      if(currentFilter === "copied") return item.copied && (item.copied.tr || item.copied.en);
+      return item.status === currentFilter;
+    });
+  }
+
+  function renderItem(item){
+    var statusPill = item.status === "approved" ? "<span class='pill ok'>Onaylı</span>" : item.status === "rejected" ? "<span class='pill bad'>Reddedildi</span>" : "<span class='pill warn'>Taslak</span>";
+    var title = item.clubs || item.context || "Futbol içeriği";
+    var created = new Date(item.createdAt).toLocaleString("tr-TR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" });
+    var link = safeUrl(item.url);
+    return "<article class='item " + esc(item.status) + "' data-id='" + esc(item.id) + "'>"
+      + "<div class='item-head'><div class='meta'>"
+      + "<span class='pill'>" + esc(labelPlatform(item.platform)) + "</span>" + statusPill
+      + (item.copied && (item.copied.tr || item.copied.en) ? "<span class='pill ok'>Kopyalandı</span>" : "")
+      + "<span class='pill'>" + esc(created) + "</span></div>"
+      + "<div class='item-actions' style='margin-top:0'>" + actionButtons(item) + "</div></div>"
+      + "<div class='item-title'>" + esc(title) + "</div>"
+      + (item.context ? "<div class='hint' style='margin-bottom:6px'>" + esc(item.context) + "</div>" : "")
+      + (link ? "<div class='item-url'><a href='" + esc(link) + "' target='_blank' rel='noreferrer'>" + esc(link) + "</a></div>" : "")
+      + "<div class='comment-grid'>" + renderLanguageBox(item,"tr","Türkçe") + renderLanguageBox(item,"en","English") + "</div>"
+      + "</article>";
+  }
+
+  function actionButtons(item){
+    var buttons = "";
+    if(item.status !== "approved") buttons += "<button class='btn small primary' data-action='approve' type='button'>Onayla</button>";
+    buttons += "<button class='btn small ghost' data-action='regen' type='button'>Varyasyon üret</button>";
+    if(item.status !== "rejected") buttons += "<button class='btn small danger' data-action='reject' type='button'>Reddet</button>";
+    return buttons;
+  }
+
+  function renderLanguageBox(item, lang, title){
+    var list = item.comments && item.comments[lang] || [];
+    if(!list.length) return "<div class='comment-box'><h4>" + esc(title) + "</h4><p class='hint'>Bu dil için taslak üretilmedi.</p></div>";
+    var variants = list.map(function(text,index){
+      var selected = (item.selected && item.selected[lang] || 0) === index;
+      var duplicate = isDuplicate(text, item.id);
+      return "<div class='variant " + (selected ? "selected" : "") + "' data-action='variant' data-lang='" + lang + "' data-index='" + index + "'>"
+        + "<p>" + esc(text) + "</p>"
+        + "<small>" + text.length + " karakter" + (duplicate ? " <span class='duplicate'>Tekrar uyarısı</span>" : "") + "</small>"
+        + "</div>";
+    }).join("");
+    var copyLabel = lang === "tr" ? "TR kopyala" : "EN copy";
+    var copied = item.copied && item.copied[lang];
+    return "<div class='comment-box'><h4>" + esc(title) + "</h4>" + variants
+      + "<div class='item-actions'><button class='btn small " + (item.status === "approved" ? "primary" : "ghost") + "' data-action='copy' data-lang='" + lang + "' type='button'>" + (copied ? "Tekrar kopyala" : copyLabel) + "</button></div></div>";
+  }
+
+  function resetForm(){
+    ["url","clubs","player","context"].forEach(function(id){ $(id).value = ""; });
+    $("platform").value = "x";
+    $("language").value = "both";
+    $("tone").value = "competitive";
+    $("cta").value = "appstore";
+  }
+
+  function exportData(){
+    var data = JSON.stringify(state.items, null, 2);
+    var blob = new Blob([data], { type:"application/json" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "crossover-marketing-queue.json";
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(a.href);
+    document.body.removeChild(a);
+  }
+
+  function clearAll(){
+    if(!state.items.length){ showToast("Kuyruk zaten boş."); return; }
+    if(!confirm("Tüm pazarlama kuyruğu silinsin mi?")) return;
+    state.items = [];
+    saveState(); render(); showToast("Kuyruk temizlendi.");
+  }
+
+  function showToast(message, bad){
+    var toast = $("toast");
+    toast.textContent = message;
+    toast.style.borderColor = bad ? "rgba(255,84,112,.55)" : "rgba(39,229,139,.45)";
+    toast.classList.add("show");
+    clearTimeout(showToast.t);
+    showToast.t = setTimeout(function(){ toast.classList.remove("show"); }, 2200);
+  }
+
+  $("generateBtn").addEventListener("click", createCandidate);
+  $("seedBtn").addEventListener("click", seedExamples);
+  $("resetFormBtn").addEventListener("click", resetForm);
+  $("clearAllBtn").addEventListener("click", clearAll);
+  $("exportBtn").addEventListener("click", exportData);
+  $("tabs").addEventListener("click", function(e){
+    var btn = e.target.closest(".tab");
+    if(!btn) return;
+    currentFilter = btn.getAttribute("data-filter") || "all";
+    Array.prototype.forEach.call($("tabs").querySelectorAll(".tab"), function(tab){ tab.classList.toggle("active", tab === btn); });
+    render();
+  });
+  $("items").addEventListener("click", function(e){
+    var actionEl = e.target.closest("[data-action]");
+    if(!actionEl) return;
+    var itemEl = e.target.closest(".item");
+    if(!itemEl) return;
+    var id = itemEl.getAttribute("data-id");
+    var action = actionEl.getAttribute("data-action");
+    if(action === "approve") approveItem(id);
+    if(action === "reject") rejectItem(id);
+    if(action === "regen") regenerateItem(id);
+    if(action === "copy") copyComment(id, actionEl.getAttribute("data-lang"));
+    if(action === "variant") chooseVariant(id, actionEl.getAttribute("data-lang"), Number(actionEl.getAttribute("data-index")) || 0);
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

@@ -36,6 +36,11 @@ import { selectBotProfileForSkill, type BotProfile } from '../matchmaking/botPro
 import { defaultSkillProfile, getOrCreateSkillProfile, type SkillProfile } from '../matchmaking/skillRating.ts';
 import { getTrophyVelocity } from '../matchmaking/trophyIntegrity.ts';
 import { getOpponentKpis, recordTelemetry } from '../matchmaking/telemetry.ts';
+import { liveOpsConfig, progressionSegment } from '../matchmaking/liveOpsConfig.ts';
+import { candidateScore, estimateQueueHealth, type QueueHealth } from '../matchmaking/queueHealth.ts';
+import { assessFarmRisk, recordBotExposure } from '../matchmaking/antiFarm.ts';
+import { botAvailabilityMultiplier, getTrophyEconomyState } from '../matchmaking/trophyEconomy.ts';
+import { recordDecisionTrace } from '../matchmaking/decisionTrace.ts';
 import type { Room, Transport } from '../rooms/room.ts';
 import type { MessageView, ConversationView } from '../protocol.ts';
 import type { ClientMsg, GameMode, ProfileView, ServerMsg } from '../protocol.ts';
@@ -124,6 +129,8 @@ interface QueueEntry {
   options?: import('../protocol.ts').GameOptions;
   setCtx: (c: ConnCtx) => void;
   since: number; // kuyruğa giriş anı — bekledikçe kupa bandı genişler
+  lastQueueHealth?: QueueHealth;
+  lastCandidateScore?: number;
 }
 
 const SOCIAL_PACK_REQUIRED = 'Bu mod için iki oyuncuda da Sosyal Paket aktif olmalı';
@@ -348,13 +355,25 @@ export function startServer(port: number): Server {
   function entrySkillMean(e: QueueEntry): number | undefined { return e.skillProfile?.skillMean; }
   function entrySkillUncertainty(e: QueueEntry): number | undefined { return e.skillProfile?.skillUncertainty; }
 
-  function findHumanPartner(entry: QueueEntry): QueueEntry | undefined {
+  async function farmRiskBetween(entry: QueueEntry, candidate: QueueEntry): Promise<number> {
+    if (!entry.userProfile?.id || !candidate.userProfile?.id) return 0;
+    try {
+      const risk = await assessFarmRisk({ playerId: entry.userProfile.id, opponentId: candidate.userProfile.id, opponentType: 'HUMAN' });
+      return risk.score;
+    } catch (err) {
+      log.warn('farm_risk_lookup_failed', { requestId: entry.requestId, error: err instanceof Error ? err.message : String(err) });
+      return 0;
+    }
+  }
+
+  async function findHumanPartner(entry: QueueEntry): Promise<QueueEntry | undefined> {
     if (config.matchmaking.debug.simulateNoOnlinePlayers || config.matchmaking.debug.forceBot) return undefined;
     const now = Date.now();
-    return matchQueue.find((e) => {
-      if (e === entry || e.assigned || e.ws.readyState !== e.ws.OPEN) return false;
+    const candidates: QueueEntry[] = [];
+    for (const e of matchQueue) {
+      if (e === entry || e.assigned || e.ws.readyState !== e.ws.OPEN) continue;
       const mode = entryMode(entry);
-      return entryMode(e) === mode
+      const ok = entryMode(e) === mode
         && sameScope(e.options?.scope, entry.options?.scope)
         && sameArena(e, entry)
         && canUseMode(e.userProfile, mode)
@@ -362,7 +381,26 @@ export function startServer(port: number): Server {
           { trophies: entryTrophies(e), skillMean: entrySkillMean(e), skillUncertainty: entrySkillUncertainty(e), elapsedMs: now - e.since },
           { trophies: entryTrophies(entry), skillMean: entrySkillMean(entry), skillUncertainty: entrySkillUncertainty(entry), elapsedMs: now - entry.since },
         );
-    });
+      if (ok) candidates.push(e);
+    }
+    const snapshots = matchQueue
+      .filter((e) => e !== entry && !e.assigned && e.ws.readyState === e.ws.OPEN && entryMode(e) === entryMode(entry) && sameScope(e.options?.scope, entry.options?.scope))
+      .map((e) => ({ trophies: entryTrophies(e), skillMean: entrySkillMean(e), skillUncertainty: entrySkillUncertainty(e), elapsedMs: now - e.since }));
+    const health = estimateQueueHealth({ trophies: entryTrophies(entry), skillMean: entrySkillMean(entry), skillUncertainty: entrySkillUncertainty(entry), elapsedMs: now - entry.since }, snapshots, now);
+    entry.lastQueueHealth = health;
+    let best: QueueEntry | undefined;
+    let bestScore = -Infinity;
+    for (const e of candidates) {
+      const farmRisk = await farmRiskBetween(entry, e);
+      const score = candidateScore(
+        { trophies: entryTrophies(entry), skillMean: entrySkillMean(entry), skillUncertainty: entrySkillUncertainty(entry), elapsedMs: now - entry.since },
+        { trophies: entryTrophies(e), skillMean: entrySkillMean(e), skillUncertainty: entrySkillUncertainty(e), elapsedMs: now - e.since, farmRisk },
+        health,
+      );
+      if (score > bestScore) { best = e; bestScore = score; }
+    }
+    entry.lastCandidateScore = Number.isFinite(bestScore) ? bestScore : undefined;
+    return best;
   }
 
   function hasPotentialHumanPartner(entry: QueueEntry): boolean {
@@ -423,6 +461,22 @@ export function startServer(port: number): Server {
         mode: room.gameMode,
       },
     });
+    recordDecisionTrace({
+      matchId: (room as unknown as { matchId?: string }).matchId,
+      playerId: a.userProfile?.id ?? a.userId ?? null,
+      queueStart: a.since,
+      queueDurationMs: now - a.since,
+      humanCandidatesFound: matchQueue.length + 1,
+      selectedOpponentType: 'HUMAN',
+      selectedOpponentId: b.userProfile?.id ?? b.userId ?? null,
+      selectedOpponentMmr: b.skillProfile?.skillMean ?? null,
+      playerMmr: a.skillProfile?.skillMean ?? null,
+      mmrDifference: typeof a.skillProfile?.skillMean === 'number' && typeof b.skillProfile?.skillMean === 'number' ? Math.abs(a.skillProfile.skillMean - b.skillProfile.skillMean) : null,
+      queueHealth: a.lastQueueHealth as unknown as Record<string, unknown>,
+      formScore: a.skillProfile?.currentForm ?? null,
+      matchQualityScore: a.lastCandidateScore ?? null,
+      selectionReason: 'best_human_candidate',
+    });
     setTimeout(() => safeAutoStart(room, resA.ok ? resA.id : '', 'human_match', a.requestId), 3500);
     return true;
   }
@@ -433,6 +487,11 @@ export function startServer(port: number): Server {
       return false;
     }
     const playerTrophies = entryTrophies(entry);
+    const live = liveOpsConfig();
+    if (!live.killSwitches.botMatchmakingEnabled) {
+      failQueuedSearch(entry, 'bot_matchmaking_disabled', 'Rakip bulunamadı, tekrar dene');
+      return false;
+    }
     const pressureProfile = entry.userProfile?.id
       ? await getBotPressureProfile(entry.userProfile.id).catch(() => ({ pressure: 0, relief: 0, botWins: 0, botGames: 0, recentWins: 0, recentGames: 0, winStreak: 0, trophyGain30m: 0, botWins30m: 0 }))
       : undefined;
@@ -446,6 +505,12 @@ export function startServer(port: number): Server {
         return defaultSkillProfile(entry.userProfile!.id, playerTrophies);
       })
       : undefined);
+    const economyAtStart = await getTrophyEconomyState().catch(() => ({ state: 'HEALTHY' as const, botInjectionToday: 0, trophiesCreatedToday: 0, trophiesDestroyedToday: 0, dailyInflation: 0, botBudgetRemaining: 0, botRewardMultiplier: 0.5 }));
+    const segmentAtStart = progressionSegment(playerTrophies, skillProfile?.matchesPlayed ?? 0);
+    if (!config.matchmaking.debug.forceBot && botAvailabilityMultiplier(segmentAtStart, economyAtStart) <= 0) {
+      failQueuedSearch(entry, 'bot_unavailable_for_progression_segment', 'Rakip bulunamadı, tekrar dene', { segment: segmentAtStart, economyState: economyAtStart.state });
+      return false;
+    }
     const velocity = entry.userProfile?.id ? await getTrophyVelocity(entry.userProfile.id).catch(() => ({ pressure: 0 })) : { pressure: 0 };
     const botProfile = selectBotProfileForSkill({
       userKey: entry.userProfile?.id ?? entry.userId ?? entry.requestId ?? entry.name,
@@ -512,10 +577,13 @@ export function startServer(port: number): Server {
       ).catch(() => {});
     }
     const human = room.addPlayer(entry.name, entry.transport, true, entry.userProfile?.id ?? entry.userId, entry.userProfile?.trophies, entry.userProfile?.arena, entry.userProfile?.avatar, entry.userProfile?.level, entry.userProfile?.selectedFrame, skillProfile?.skillMean, skillProfile?.skillUncertainty, skillProfile?.matchesPlayed);
-    const bot = new BotPlayer({ difficulty: botProfile.difficulty, scope: room.scope, mode: room.gameMode, profile: botProfile });
+    const bot = new BotPlayer({ difficulty: botProfile.difficulty, scope: room.scope, mode: room.gameMode, profile: botProfile, exposeBotToClient: false });
     const botRes = room.addPlayer(botProfile.displayName, bot, false, undefined, botProfile.trophyRating, botProfile.arena, botProfile.avatarId, botProfile.level, botProfile.frame, botProfile.skillMean, botProfile.skillUncertainty, 100);
     if (human.ok) entry.setCtx({ room, playerId: human.id, userProfile: entry.userProfile });
     if (botRes.ok) bot.bind(room, botRes.id);
+    if (entry.userProfile?.id) {
+      void recordBotExposure(entry.userProfile.id, botProfile.id, (room as unknown as { matchId?: string }).matchId ?? '', segmentAtStart);
+    }
     entry.state = 'STARTING_MATCH';
     log.info('bot_match_started', {
       requestId: entry.requestId,
@@ -527,6 +595,23 @@ export function startServer(port: number): Server {
       mode: room.gameMode,
     });
     setTimeout(() => safeAutoStart(room, human.ok ? human.id : '', 'bot_match', entry.requestId), 3500);
+    recordDecisionTrace({
+      matchId: (room as unknown as { matchId?: string }).matchId,
+      playerId: entry.userProfile?.id ?? entry.userId ?? null,
+      queueStart: entry.since,
+      queueDurationMs: Date.now() - entry.since,
+      humanCandidatesFound: matchQueue.length,
+      selectedOpponentType: 'BOT',
+      selectedOpponentId: botProfile.id,
+      selectedOpponentMmr: botProfile.skillMean,
+      playerMmr: skillProfile?.skillMean ?? null,
+      mmrDifference: typeof skillProfile?.skillMean === 'number' ? Math.abs(skillProfile.skillMean - botProfile.skillMean) : null,
+      botSkill: botProfile.skillRating,
+      queueHealth: entry.lastQueueHealth as unknown as Record<string, unknown>,
+      formScore: skillProfile?.currentForm ?? null,
+      trophyEconomyState: economyAtStart.state,
+      selectionReason: 'queue_health_bot_fallback',
+    });
     return true;
   }
 
@@ -558,11 +643,12 @@ export function startServer(port: number): Server {
       },
     });
 
-    const immediate = findHumanPartner(entry);
-    if (immediate && startHumanMatch(immediate, entry)) return;
-
     matchQueue.push(entry);
     entry.transport.send({ type: 'searching' });
+
+    void findHumanPartner(entry).then((immediate) => {
+      if (immediate && startHumanMatch(immediate, entry)) return;
+    }).catch((err) => log.warn('initial_human_partner_lookup_failed', { requestId: entry.requestId, error: err instanceof Error ? err.message : String(err) }));
 
     const expandedTimer = setTimeout(() => {
       if (entry.assigned || entry.ws.readyState !== entry.ws.OPEN) return;
@@ -577,30 +663,43 @@ export function startServer(port: number): Server {
       const t = setTimeout(() => {
         entry.timers?.delete(t);
         if (entry.assigned || entry.ws.readyState !== entry.ws.OPEN) return;
-        const partner = findHumanPartner(entry);
-        if (partner && startHumanMatch(partner, entry)) return;
-        if (config.matchmaking.debug.forceHumanSearch || config.matchmaking.debug.simulateTimeout) return;
-        if (!config.matchmaking.botFallbackEnabled && !config.matchmaking.debug.forceBot) return;
-        if (!config.matchmaking.debug.forceBot && !shouldUseBotFallback(config.matchmaking.botFallbackPercentage)) return;
+        void findHumanPartner(entry).then(async (partner) => {
+          if (partner && startHumanMatch(partner, entry)) return;
+          if (config.matchmaking.debug.forceHumanSearch || config.matchmaking.debug.simulateTimeout) return;
+          if (!config.matchmaking.botFallbackEnabled && !config.matchmaking.debug.forceBot) return;
+          if (!config.matchmaking.debug.forceBot && !shouldUseBotFallback(config.matchmaking.botFallbackPercentage)) return;
 
-        const elapsedMs = Date.now() - entry.since;
-        const potentialHuman = hasPotentialHumanPartner(entry);
-        if (!config.matchmaking.debug.forceBot && orchestrator.shouldHoldForHuman(elapsedMs, potentialHuman)) {
-          log.info('bot_fallback_deferred_for_human_liquidity', {
-            requestId: entry.requestId,
-            userId: entry.userProfile?.id ?? entry.userId,
-            searchDurationMs: elapsedMs,
-            retryMs: cfg.botFallbackRetryMs,
-            potentialQueueDepth: matchQueue.length - 1,
+          const elapsedMs = Date.now() - entry.since;
+          const potentialHuman = hasPotentialHumanPartner(entry);
+          const live = liveOpsConfig();
+          const economy = await getTrophyEconomyState().catch(() => ({ state: 'HEALTHY', botRewardMultiplier: 0.5, botBudgetRemaining: 0 }));
+          const segment = progressionSegment(entryTrophies(entry), entry.skillProfile?.matchesPlayed ?? 0);
+          const botAvailability = botAvailabilityMultiplier(segment, economy as any);
+          const health = entry.lastQueueHealth ?? estimateQueueHealth({ trophies: entryTrophies(entry), skillMean: entrySkillMean(entry), skillUncertainty: entrySkillUncertainty(entry), elapsedMs }, matchQueue.map((e) => ({ trophies: entryTrophies(e), skillMean: entrySkillMean(e), skillUncertainty: entrySkillUncertainty(e), elapsedMs: Date.now() - e.since })));
+          if (!config.matchmaking.debug.forceBot && (botAvailability <= 0 || (health.queueHealthScore > live.matchmaking.queueHealthBotThreshold && elapsedMs < live.matchmaking.maxSearchMs))) {
+            log.info('bot_fallback_deferred_by_queue_health', { requestId: entry.requestId, segment, queueHealth: health.queueHealthScore, botAvailability, retryMs: cfg.botFallbackRetryMs });
+            scheduleFallbackAttempt(cfg.botFallbackRetryMs);
+            return;
+          }
+
+          if (!config.matchmaking.debug.forceBot && orchestrator.shouldHoldForHuman(elapsedMs, potentialHuman)) {
+            log.info('bot_fallback_deferred_for_human_liquidity', {
+              requestId: entry.requestId,
+              userId: entry.userProfile?.id ?? entry.userId,
+              searchDurationMs: elapsedMs,
+              retryMs: cfg.botFallbackRetryMs,
+              potentialQueueDepth: matchQueue.length - 1,
+            });
+            scheduleFallbackAttempt(cfg.botFallbackRetryMs);
+            return;
+          }
+
+          void startBotMatch(entry).catch((err) => {
+            log.error('bot_match_start_failed', { requestId: entry.requestId, error: err instanceof Error ? err.message : String(err) });
+            failQueuedSearch(entry, 'matchmaking_bot_start_failed', 'Rakip bulunamadı', { error: err instanceof Error ? err.message : String(err) });
           });
-          scheduleFallbackAttempt(cfg.botFallbackRetryMs);
-          return;
-        }
-
-        void startBotMatch(entry).catch((err) => {
-          log.error('bot_match_start_failed', { requestId: entry.requestId, error: err instanceof Error ? err.message : String(err) });
-          failQueuedSearch(entry, 'matchmaking_bot_start_failed', 'Rakip bulunamadı', { error: err instanceof Error ? err.message : String(err) });
-        });
+        }).catch((err) => log.warn('fallback_partner_lookup_failed', { requestId: entry.requestId, error: err instanceof Error ? err.message : String(err) }));
+        return;
       }, Math.max(0, delayMs));
       entry.timers?.add(t);
     };
@@ -608,22 +707,24 @@ export function startServer(port: number): Server {
 
     const timeoutTimer = setTimeout(() => {
       if (entry.assigned || entry.ws.readyState !== entry.ws.OPEN) return;
-      const partner = findHumanPartner(entry);
-      if (partner && startHumanMatch(partner, entry)) return;
-      if (config.matchmaking.debug.forceHumanSearch || config.matchmaking.debug.simulateTimeout) {
-        failQueuedSearch(entry, 'matchmaking_timeout', 'Rakip bulunamadı, tekrar dene');
-        return;
-      }
-      log.warn('matchmaking_timeout_bot_safety', {
-        requestId: entry.requestId,
-        userId: entry.userProfile?.id ?? entry.userId,
-        searchDurationMs: Date.now() - entry.since,
-        startingTrophies: entryTrophies(entry),
-      });
-      void startBotMatch(entry).catch((err) => {
-        log.error('bot_match_start_failed', { requestId: entry.requestId, reason: 'timeout_safety', error: err instanceof Error ? err.message : String(err) });
-        failQueuedSearch(entry, 'matchmaking_timeout_bot_failed', 'Rakip bulunamadı, tekrar dene', { error: err instanceof Error ? err.message : String(err) });
-      });
+      void findHumanPartner(entry).then((partner) => {
+        if (partner && startHumanMatch(partner, entry)) return;
+        if (config.matchmaking.debug.forceHumanSearch || config.matchmaking.debug.simulateTimeout) {
+          failQueuedSearch(entry, 'matchmaking_timeout', 'Rakip bulunamadı, tekrar dene');
+          return;
+        }
+        log.warn('matchmaking_timeout_bot_safety', {
+          requestId: entry.requestId,
+          userId: entry.userProfile?.id ?? entry.userId,
+          searchDurationMs: Date.now() - entry.since,
+          startingTrophies: entryTrophies(entry),
+        });
+        void startBotMatch(entry).catch((err) => {
+          log.error('bot_match_start_failed', { requestId: entry.requestId, reason: 'timeout_safety', error: err instanceof Error ? err.message : String(err) });
+          failQueuedSearch(entry, 'matchmaking_timeout_bot_failed', 'Rakip bulunamadı, tekrar dene', { error: err instanceof Error ? err.message : String(err) });
+        });
+      }).catch((err) => failQueuedSearch(entry, 'matchmaking_timeout_lookup_failed', 'Rakip bulunamadı, tekrar dene', { error: err instanceof Error ? err.message : String(err) }));
+      return;
     }, cfg.matchmakingTimeoutMs);
     entry.timers.add(timeoutTimer);
   }

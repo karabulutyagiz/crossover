@@ -15,6 +15,14 @@ export interface SimulationSummary {
   impossibleResults: string[];
   cohorts: Record<string, { matches: number; playerWinRate: number; avgTrophyDelta: number }>;
   responseTime: { min: number; p50: number; p95: number; max: number };
+  population?: PopulationSimulationSummary[];
+}
+
+export interface PopulationSimulationSummary {
+  players: number;
+  estimatedBotRate: number;
+  medianQueueMs: number;
+  p95QueueMs: number;
 }
 
 const COHORTS = [
@@ -143,5 +151,30 @@ export function runMatchSimulation(matches = 10_000, seed = 'cof-sim'): Simulati
     impossibleResults,
     cohorts: cohortSummary,
     responseTime: { min: sorted[0] ?? 0, p50: p(0.5), p95: p(0.95), max: sorted[sorted.length - 1] ?? 0 },
+    population: runPopulationSimulation(seed),
   };
+}
+
+export function runPopulationSimulation(seed = 'cof-population-sim'): PopulationSimulationSummary[] {
+  const rng = new SeededRandom(seed);
+  return [100, 1000, 10000, 100000].map((players) => {
+    const density = Math.min(1, Math.log10(players) / 5);
+    const queueSamples: number[] = [];
+    let botMatches = 0;
+    const matches = 2000;
+    for (let i = 0; i < matches; i++) {
+      const localDensity = clamp(density + (rng.next() - 0.5) * 0.18, 0.02, 1);
+      const wait = Math.round(350 + (1 - localDensity) * (7200 + rng.next() * 5500));
+      queueSamples.push(wait);
+      const botP = clamp(0.82 * (1 - localDensity) ** 1.55, 0.015, 0.88);
+      if (rng.next() < botP) botMatches += 1;
+    }
+    queueSamples.sort((a, b) => a - b);
+    return {
+      players,
+      estimatedBotRate: Number((botMatches / matches).toFixed(4)),
+      medianQueueMs: queueSamples[Math.floor(queueSamples.length * 0.5)] ?? 0,
+      p95QueueMs: queueSamples[Math.floor(queueSamples.length * 0.95)] ?? 0,
+    };
+  });
 }

@@ -27,6 +27,9 @@ import { log } from '../logger.ts';
 import { getQuestionDifficulty, recordQuestionOutcome, type QuestionDifficultyEstimate } from '../matchmaking/questionDifficulty.ts';
 import { recordTelemetry } from '../matchmaking/telemetry.ts';
 import { defaultSkillProfile, updateSkillAfterMatch, type SkillRoundSignal } from '../matchmaking/skillRating.ts';
+import { assessFarmRisk, recordOpponentHistory } from '../matchmaking/antiFarm.ts';
+import { getTrophyEconomyState } from '../matchmaking/trophyEconomy.ts';
+import { trophyRiskMultipliers } from '../matchmaking/trophyRisk.ts';
 import type {
   ClientMsg,
   ServerMsg,
@@ -58,6 +61,7 @@ type ForfeitReason = 'leave' | 'cheat' | 'disconnect';
 export interface Transport {
   send(msg: ServerMsg): void;
   readonly isBot: boolean;
+  readonly exposeBotToClient?: boolean;
   readonly botArchetype?: string;
   readonly botSkill?: number;
   readonly botSkillMean?: number;
@@ -244,7 +248,7 @@ export class Room {
       trophies: p.trophies ?? null,
       score: p.score,
       connected: p.connected,
-      isBot: p.transport.isBot,
+      isBot: p.transport.isBot && p.transport.exposeBotToClient !== false,
       skillMean: p.skillMean ?? p.transport.botSkillMean ?? null,
       skillUncertainty: p.skillUncertainty ?? p.transport.botSkillUncertainty ?? null,
       botArchetype: p.transport.botArchetype ?? null,
@@ -347,7 +351,13 @@ export class Room {
             playerSkillUncertainty: playerSkill.skillUncertainty,
             opponentSkillMean: botSkill.skillMean,
             opponentSkillUncertainty: botSkill.skillUncertainty,
+            matchId: this.matchId,
+            opponentRef: bot?.name ?? 'bot',
+            opponentType: 'BOT',
+            ledgerReason: 'bot_forfeit_loss',
+            ledgerMetadata: { forfeitReason: reason },
           });
+          await recordOpponentHistory({ matchId: this.matchId, playerId: p.userId!, opponentType: 'BOT', winnerId: null, won: false, trophyDelta: leaverRes.delta, durationSecs: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0 });
           const xpRes = await awardMatchXp(p.userId!, false, false);
           await updateSkillAfterMatch(p.userId!, p.trophies ?? leaverRes.profile.trophies, {
             opponentType: 'BOT',
@@ -421,7 +431,13 @@ export class Room {
               playerSkillUncertainty: winnerSkill.skillUncertainty,
               opponentSkillMean: leaverSkill.skillMean,
               opponentSkillUncertainty: leaverSkill.skillUncertainty,
+              matchId: this.matchId,
+              opponentId: p.userId ?? null,
+              opponentType: 'HUMAN',
+              ledgerReason: 'human_forfeit_win',
+              ledgerMetadata: { forfeitReason: reason },
             });
+            await recordOpponentHistory({ matchId: this.matchId, playerId: winner.userId, opponentId: p.userId ?? null, opponentType: 'HUMAN', winnerId: winner.userId, won: true, trophyDelta: delta, durationSecs: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0 });
             winner.transport.send({ type: 'trophy_update', trophies: profile.trophies, delta, arena: profile.arena, diamonds: profile.diamonds, arenaReward, highestArenaRewarded: profile.highestArenaRewarded, winStreak: profile.winStreak, bestStreak: profile.bestStreak });
             const xpRes = await awardMatchXp(winner.userId, true, false);
             if (xpRes) winner.transport.send({ type: 'xp_update', ...xpRes });
@@ -466,7 +482,13 @@ export class Room {
               playerSkillUncertainty: leaverSkill.skillUncertainty,
               opponentSkillMean: winnerSkill.skillMean,
               opponentSkillUncertainty: winnerSkill.skillUncertainty,
+              matchId: this.matchId,
+              opponentId: winner.userId ?? null,
+              opponentType: 'HUMAN',
+              ledgerReason: 'human_forfeit_loss',
+              ledgerMetadata: { forfeitReason: reason },
             });
+            await recordOpponentHistory({ matchId: this.matchId, playerId: p.userId, opponentId: winner.userId ?? null, opponentType: 'HUMAN', winnerId: winner.userId ?? null, won: false, trophyDelta: leaverRes.delta, durationSecs: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0 });
             await awardMatchXp(p.userId, false, false); // ayrılan: mağlubiyet XP'si
             await updateSkillAfterMatch(p.userId, p.trophies ?? leaverRes.profile.trophies, {
               opponentType: 'HUMAN',
@@ -1628,12 +1650,50 @@ export class Room {
       try {
         const playerSkill = this.playerSkillFor(p);
         const opponentSkill = this.playerSkillFor(opp);
+        const opponentType = hasBot ? 'BOT' : 'HUMAN';
+        const durationSecs = this.matchStartedAt ? Math.max(0, Math.round((Date.now() - this.matchStartedAt) / 1000)) : 0;
+        const [farmRisk, economy] = await Promise.all([
+          assessFarmRisk({ playerId: p.userId, opponentId: opp?.userId ?? null, opponentType, playerWon: won }).catch((err) => {
+            log.warn('farm_risk_settlement_failed', { matchId: this.matchId, userId: p.userId, error: err instanceof Error ? err.message : String(err) });
+            return { score: 0, level: 'LOW' as const, pairRewardMultiplier: 1, botRewardMultiplier: 1, repeatedPairCount24h: 0, botExposureCount: 0, reasons: [] };
+          }),
+          getTrophyEconomyState().catch((err) => {
+            log.warn('economy_state_failed', { matchId: this.matchId, error: err instanceof Error ? err.message : String(err) });
+            return { state: 'HEALTHY' as const, botInjectionToday: 0, trophiesCreatedToday: 0, trophiesDestroyedToday: 0, dailyInflation: 0, botBudgetRemaining: 0, botRewardMultiplier: 1 };
+          }),
+        ]);
+        const multipliers = trophyRiskMultipliers({ opponentType, farm: farmRisk, economy });
         const { profile, delta, arenaReward, shielded, expectedWinProbability } = await applyMatchResult(p.userId, won, {
           opponentTrophies: opp?.trophies ?? null,
           playerSkillMean: playerSkill.skillMean,
           playerSkillUncertainty: playerSkill.skillUncertainty,
           opponentSkillMean: opponentSkill.skillMean,
           opponentSkillUncertainty: opponentSkill.skillUncertainty,
+          matchId: this.matchId,
+          opponentId: opp?.userId ?? null,
+          opponentRef: opp?.transport.isBot ? opp.name : null,
+          opponentType,
+          antiFarmMultiplier: multipliers.antiFarmMultiplier,
+          botEconomyMultiplier: multipliers.botEconomyMultiplier,
+          farmRiskScore: farmRisk.score,
+          farmRiskLevel: farmRisk.level,
+          economyState: economy.state,
+          ledgerMetadata: {
+            reasons: multipliers.reasons,
+            scoreFor: p.score,
+            scoreAgainst: opp?.score ?? 0,
+            gameMode: this.gameMode,
+          },
+        });
+        await recordOpponentHistory({
+          matchId: this.matchId,
+          playerId: p.userId,
+          opponentId: opp?.userId ?? null,
+          opponentType,
+          winnerId: winner.userId ?? null,
+          won,
+          trophyDelta: delta,
+          durationSecs,
         });
         trophyDeltas.push({ userId: p.userId, delta, expectedWinProbability });
         this.lastTrophyDeltaByUser.set(p.userId, delta);

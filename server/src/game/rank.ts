@@ -386,41 +386,54 @@ export async function applyMatchResult(
     playerSkillUncertainty?: number | null;
     opponentSkillMean?: number | null;
     opponentSkillUncertainty?: number | null;
+    matchId?: string;
+    opponentId?: string | null;
+    opponentRef?: string | null;
+    opponentType?: 'HUMAN' | 'BOT';
+    antiFarmMultiplier?: number;
+    botEconomyMultiplier?: number;
+    farmRiskScore?: number;
+    farmRiskLevel?: string;
+    economyState?: string;
+    ledgerReason?: string;
+    ledgerMetadata?: Record<string, unknown>;
   },
 ): Promise<{ profile: UserProfile; delta: number; arenaReward: number; shielded: boolean; expectedWinProbability?: number }> {
-  // Read current trophies to determine arena-specific delta
-  const user = await getUser(userId);
-  if (!user) throw new Error('User not found');
-  // Kupa Kalkanı: kuşanıldıktan sonraki ilk dereceli sonuçta tüketilir. Sonuç
-  // mağlubiyetse (hükmen çıkış dahil) kupa kaybını emer; galibiyette yalnız tüketilir.
-  // Tüketim atomik — eşzamanlı sonuçlar tek kalkanı iki kez kullanamaz.
-  const { rows: shieldRows } = await pool.query<{ id: string }>(
-    `UPDATE users SET shield_armed = FALSE WHERE id = $1 AND shield_armed = TRUE RETURNING id`,
-    [userId],
-  );
-  const shieldConsumed = shieldRows.length > 0;
-  const shielded = shieldConsumed && !won;
-  // ETKİN delta: 0 tabanının altına inecek kayıp, kalan kupa kadar kırpılır —
-  // kullanıcı 0'dayken '-10' DEĞİL gerçek değişimi (0) görür. SQL'deki
-  // GREATEST(0, …) emniyet kemeri olarak durur.
-  const expectedCalc = !shielded
-    && typeof opts?.playerSkillMean === 'number'
-    && typeof opts?.opponentSkillMean === 'number'
-    ? trophyDeltaExpectedScore({
-        playerSkillMean: opts.playerSkillMean,
-        opponentSkillMean: opts.opponentSkillMean,
-        playerSkillUncertainty: opts.playerSkillUncertainty ?? undefined,
-        opponentSkillUncertainty: opts.opponentSkillUncertainty ?? undefined,
-        won,
-        playerTrophies: user.trophies,
-        opponentTrophies: opts.opponentTrophies ?? null,
-      })
-    : null;
-  const raw = shielded ? 0 : (expectedCalc?.delta ?? trophyDelta(user.trophies, won, opts?.opponentTrophies ?? null));
-  const delta = won ? raw : Math.max(raw, -user.trophies);
-  const prevRewardedArenaIdx = Math.max(0, Math.min(ARENAS.length - 1, user.highestArenaRewarded));
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const userRes = await client.query<DbUser>(`SELECT * FROM users WHERE id = $1 FOR UPDATE`, [userId]);
+    const rowUser = userRes.rows[0];
+    if (!rowUser) throw new Error('User not found');
+    const user = toProfile(rowUser);
+    // Kupa Kalkanı: kuşanıldıktan sonraki ilk dereceli sonuçta tüketilir. Sonuç
+    // mağlubiyetse (hükmen çıkış dahil) kupa kaybını emer; galibiyette yalnız tüketilir.
+    const { rows: shieldRows } = await client.query<{ id: string }>(
+        `UPDATE users SET shield_armed = FALSE WHERE id = $1 AND shield_armed = TRUE RETURNING id`,
+        [userId],
+      );
+    const shieldConsumed = shieldRows.length > 0;
+    const shielded = shieldConsumed && !won;
+    const expectedCalc = !shielded
+      && typeof opts?.playerSkillMean === 'number'
+      && typeof opts?.opponentSkillMean === 'number'
+      ? trophyDeltaExpectedScore({
+          playerSkillMean: opts.playerSkillMean,
+          opponentSkillMean: opts.opponentSkillMean,
+          playerSkillUncertainty: opts.playerSkillUncertainty ?? undefined,
+          opponentSkillUncertainty: opts.opponentSkillUncertainty ?? undefined,
+          won,
+          playerTrophies: user.trophies,
+          opponentTrophies: opts.opponentTrophies ?? null,
+        })
+      : null;
+    const baseRaw = shielded ? 0 : (expectedCalc?.delta ?? trophyDelta(user.trophies, won, opts?.opponentTrophies ?? null));
+    const finalMultiplier = Math.max(0, Math.min(1.25, (opts?.antiFarmMultiplier ?? 1) * (opts?.botEconomyMultiplier ?? 1)));
+    const raw = won && baseRaw > 0 ? Math.max(finalMultiplier > 0 ? 1 : 0, Math.round(baseRaw * finalMultiplier)) : baseRaw;
+    const delta = won ? raw : Math.max(raw, -user.trophies);
+    const prevRewardedArenaIdx = Math.max(0, Math.min(ARENAS.length - 1, user.highestArenaRewarded));
 
-  const { rows } = await pool.query<DbUser>(
+    const { rows } = await client.query<DbUser>(
     `WITH next_state AS (
        SELECT
          id,
@@ -473,13 +486,42 @@ export async function applyMatchResult(
        WHERE u.id = r.id
        RETURNING u.*`,
     [userId, delta, won, [...ARENA_DIAMOND_REWARDS]],
-  );
-  const profile = toProfile(rows[0]!);
-  const nextRewardedArenaIdx = Math.max(0, Math.min(ARENAS.length - 1, profile.highestArenaRewarded));
-  const arenaReward = nextRewardedArenaIdx > prevRewardedArenaIdx
-    ? ARENA_DIAMOND_REWARDS.slice(prevRewardedArenaIdx + 1, nextRewardedArenaIdx + 1).reduce((sum, n) => sum + n, 0)
-    : 0;
-  return { profile, delta, arenaReward, shielded, expectedWinProbability: expectedCalc?.expectedWinProbability };
+    );
+    const profile = toProfile(rows[0]!);
+    const nextRewardedArenaIdx = Math.max(0, Math.min(ARENAS.length - 1, profile.highestArenaRewarded));
+    const arenaReward = nextRewardedArenaIdx > prevRewardedArenaIdx
+      ? ARENA_DIAMOND_REWARDS.slice(prevRewardedArenaIdx + 1, nextRewardedArenaIdx + 1).reduce((sum, n) => sum + n, 0)
+      : 0;
+    if (opts?.matchId) {
+      const opponentType = opts.opponentType ?? (opts.opponentId ? 'HUMAN' : 'BOT');
+      const source = opponentType === 'BOT'
+        ? (delta >= 0 ? 'BOT_TO_HUMAN_INJECTION' : 'HUMAN_TO_BOT_SINK')
+        : 'HUMAN_TO_HUMAN_TRANSFER';
+      await client.query(
+        `INSERT INTO trophy_ledger
+           (match_id, player_id, before_trophies, delta, after_trophies, opponent_id, opponent_ref, opponent_type,
+            source, reason, expected_win_probability, anti_farm_multiplier, bot_economy_multiplier, final_multiplier,
+            farm_risk_score, farm_risk_level, economy_state, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb)
+         ON CONFLICT (match_id, player_id, reason) DO NOTHING`,
+        [
+          opts.matchId, userId, user.trophies, delta, profile.trophies, opts.opponentId ?? null, opts.opponentRef ?? null, opponentType,
+          source, opts.ledgerReason ?? 'match_settlement', expectedCalc?.expectedWinProbability ?? null,
+          opts.antiFarmMultiplier ?? 1, opts.botEconomyMultiplier ?? 1, finalMultiplier,
+          opts.farmRiskScore ?? 0, opts.farmRiskLevel ?? 'LOW', opts.economyState ?? 'HEALTHY', JSON.stringify(opts.ledgerMetadata ?? {}),
+        ],
+      ).catch((err) => {
+        if ((err as { code?: string }).code !== '42P01') throw err;
+      });
+    }
+    await client.query('COMMIT');
+    return { profile, delta, arenaReward, shielded, expectedWinProbability: expectedCalc?.expectedWinProbability };
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // ---- Özel güçler (Seviye Yolu ödülü, tek kullanımlık) ----
