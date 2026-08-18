@@ -21,8 +21,11 @@ const TEST_ACCOUNTS = ['yagiz', 'bloodsucker'];
 // Sabit liste (kullanıcı girdisi değil) — enjeksiyon riski yok.
 const notTest = (col = 'display_name') =>
   `lower(${col}) NOT IN (${TEST_ACCOUNTS.map((a) => `'${a}'`).join(', ')})`;
+// Admin panelinde "Misafir" etiketi yalnız sunucunun otomatik ürettiği guest
+// hesaplara aittir. Kimliği bağlı olmayan ama özel kullanıcı adı taşıyan hesaplar
+// burada misafir diye gösterilmez; aksi halde manuel/legacy hesaplar yanlış görünür.
 const isGuestSql = (alias = 'u') =>
-  `(${alias}.apple_sub IS NULL AND ${alias}.google_sub IS NULL AND ${alias}.facebook_sub IS NULL AND ${alias}.game_center_id IS NULL)`;
+  `(${alias}.id IS NOT NULL AND ${alias}.apple_sub IS NULL AND ${alias}.google_sub IS NULL AND ${alias}.facebook_sub IS NULL AND ${alias}.game_center_id IS NULL AND ${alias}.display_name ~ '^M[0-9]{9}$')`;
 
 // Ürün → müşteri fiyatı (₺, brüt — Apple kesintisi/vergi HARİÇ). App'teki
 // DIAMOND_PACKS / SOCIAL_PACK / COPASS fallback fiyatlarıyla birebir.
@@ -106,8 +109,8 @@ export async function getAdminStats(live: LiveStats, day?: string) {
         count(*) FILTER (WHERE created_at >= ${selectedDay.startSql} AND created_at < ${selectedDay.endSql})::int  AS new_today,
         count(*) FILTER (WHERE created_at >= now() - interval '7 days')::int  AS new_7d,
         count(*) FILTER (WHERE created_at >= now() - interval '30 days')::int AS new_30d,
-        count(*) FILTER (WHERE apple_sub IS NOT NULL OR google_sub IS NOT NULL OR facebook_sub IS NOT NULL)::int AS identified,
-        count(*) FILTER (WHERE apple_sub IS NULL AND google_sub IS NULL AND facebook_sub IS NULL AND game_center_id IS NULL)::int AS guests,
+        count(*) FILTER (WHERE NOT ${isGuestSql('users')})::int AS identified,
+        count(*) FILTER (WHERE ${isGuestSql('users')})::int AS guests,
         count(*) FILTER (WHERE last_seen >= ${selectedDay.startSql} AND last_seen < ${selectedDay.endSql})::int  AS dau,
         count(*) FILTER (WHERE last_seen >= now() - interval '7 days')::int AS wau,
         COALESCE(sum(diamonds),0)::bigint AS diamonds_circulating,
@@ -118,31 +121,31 @@ export async function getAdminStats(live: LiveStats, day?: string) {
       WHERE created_at >= ${LAUNCH_TS} AND ${notTest()}`),
 
     // ── Ürün bazında satış (yayın sonrası; yalnız güvenilir Production; sandbox/TestFlight ve eski etiketsiz kayıtlar hariç) ──
-    pool.query<{ product_id: string; sales: number; guest_sales: number; identified_sales: number; diamonds: string; price_milliunits: string | null; guest_price_milliunits: string | null; identified_price_milliunits: string | null; currency: string | null }>(`
-      SELECT pt.product_id, count(*)::int AS sales, COALESCE(sum(pt.diamonds),0)::bigint AS diamonds,
+    pool.query<{ product_id: string; currency: string | null; sales: number; priced_sales: number; guest_sales: number; identified_sales: number; diamonds: string; price_milliunits: string | null; guest_price_milliunits: string | null; guest_priced_sales: number; identified_price_milliunits: string | null; identified_priced_sales: number }>(`
+      SELECT pt.product_id, pt.currency, count(*)::int AS sales, count(pt.price_milliunits)::int AS priced_sales, COALESCE(sum(pt.diamonds),0)::bigint AS diamonds,
              sum(pt.price_milliunits)::bigint AS price_milliunits,
              sum(pt.price_milliunits) FILTER (WHERE ${isGuestSql('u')})::bigint AS guest_price_milliunits,
+             count(pt.price_milliunits) FILTER (WHERE ${isGuestSql('u')})::int AS guest_priced_sales,
              sum(pt.price_milliunits) FILTER (WHERE NOT ${isGuestSql('u')})::bigint AS identified_price_milliunits,
-             min(pt.currency) FILTER (WHERE pt.currency IS NOT NULL) AS currency
+             count(pt.price_milliunits) FILTER (WHERE NOT ${isGuestSql('u')})::int AS identified_priced_sales
              , count(*) FILTER (WHERE ${isGuestSql('u')})::int AS guest_sales
              , count(*) FILTER (WHERE NOT ${isGuestSql('u')})::int AS identified_sales
-      FROM processed_transactions pt
-      JOIN users u ON u.id = pt.user_id
+       FROM processed_transactions pt
+      LEFT JOIN users u ON u.id = pt.user_id
       WHERE COALESCE(pt.purchase_date, pt.created_at) >= ${LAUNCH_TS}
         AND pt.environment = 'Production'
-      GROUP BY pt.product_id
+      GROUP BY pt.product_id, pt.currency
       ORDER BY sales DESC`),
 
     // ── Günlük satış serisi (yayından bugüne; yalnız Production; sandbox/TestFlight ve eski etiketsiz kayıtlar hariç) ──
-    pool.query<{ day: string; product_id: string; sales: number; price_milliunits: string | null }>(`
+    pool.query<{ day: string; product_id: string; currency: string | null; sales: number; priced_sales: number; price_milliunits: string | null }>(`
       SELECT to_char(date_trunc('day', COALESCE(pt.purchase_date, pt.created_at) AT TIME ZONE 'Europe/Istanbul'), 'YYYY-MM-DD') AS day,
-             pt.product_id, count(*)::int AS sales,
+             pt.product_id, pt.currency, count(*)::int AS sales, count(pt.price_milliunits)::int AS priced_sales,
              sum(pt.price_milliunits)::bigint AS price_milliunits
       FROM processed_transactions pt
-      JOIN users u ON u.id = pt.user_id
       WHERE COALESCE(pt.purchase_date, pt.created_at) >= ${LAUNCH_TS}
         AND pt.environment = 'Production'
-      GROUP BY 1, 2
+      GROUP BY 1, 2, 3
       ORDER BY 1`),
 
     // ── Günlük yeni kullanıcı serisi ──
@@ -290,28 +293,75 @@ export async function getAdminStats(live: LiveStats, day?: string) {
 
   const u = users.rows[0] as any;
 
-  const revenueOf = (productId: string, sales: number, milliunits: string | number | null | undefined): number => {
+  const originalAmountOf = (milliunits: string | number | null | undefined): number | null => {
     const n = Number(milliunits);
-    if (Number.isFinite(n) && n > 0) return +(n / 1000).toFixed(2);
-    return +(sales * priceOf(productId)).toFixed(2);
+    return Number.isFinite(n) && n > 0 ? +(n / 1000).toFixed(2) : null;
+  };
+  const revenueTryOf = (productId: string, sales: number, pricedSales: number, milliunits: string | number | null | undefined, currency: string | null | undefined): number => {
+    const fallback = priceOf(productId);
+    const count = Number(sales) || 0;
+    const priced = Math.max(0, Math.min(count, Number(pricedSales) || 0));
+    const missing = Math.max(0, count - priced);
+    const n = Number(milliunits);
+    if (currency === 'TRY' && Number.isFinite(n) && n > 0) return +(n / 1000 + missing * fallback).toFixed(2);
+    // Apple `price` is in the transaction currency. For non-TRY purchases the
+    // admin total must stay TRY, so use our App Store TRY catalog price as the TL
+    // equivalent while still showing the original currency beside each purchase.
+    return +(count * fallback).toFixed(2);
   };
 
-  const products = byProduct.rows.map((r) => {
-    const revenueTry = revenueOf(r.product_id, r.sales, r.price_milliunits);
-    return {
+  const productMap = new Map<string, {
+    productId: string;
+    label: string;
+    sales: number;
+    guestSales: number;
+    identifiedSales: number;
+    diamonds: number;
+    revenueTry: number;
+    guestRevenueTry: number;
+    identifiedRevenueTry: number;
+    currencies: Set<string>;
+  }>();
+  for (const r of byProduct.rows) {
+    const revenueTry = revenueTryOf(r.product_id, r.sales, r.priced_sales, r.price_milliunits, r.currency);
+    const item = productMap.get(r.product_id) ?? {
       productId: r.product_id,
       label: labelOf(r.product_id),
-      sales: r.sales,
-      guestSales: r.guest_sales,
-      identifiedSales: r.identified_sales,
-      diamonds: Number(r.diamonds),
-      priceTry: r.sales > 0 ? +(revenueTry / r.sales).toFixed(2) : priceOf(r.product_id),
-      currency: r.currency ?? 'TRY',
-      revenueTry,
-      guestRevenueTry: revenueOf(r.product_id, r.guest_sales, r.guest_price_milliunits),
-      identifiedRevenueTry: revenueOf(r.product_id, r.identified_sales, r.identified_price_milliunits),
+      sales: 0,
+      guestSales: 0,
+      identifiedSales: 0,
+      diamonds: 0,
+      revenueTry: 0,
+      guestRevenueTry: 0,
+      identifiedRevenueTry: 0,
+      currencies: new Set<string>(),
     };
-  });
+    item.sales += r.sales;
+    item.guestSales += r.guest_sales;
+    item.identifiedSales += r.identified_sales;
+    item.diamonds += Number(r.diamonds);
+    item.revenueTry += revenueTry;
+    item.guestRevenueTry += revenueTryOf(r.product_id, r.guest_sales, r.guest_priced_sales, r.guest_price_milliunits, r.currency);
+    item.identifiedRevenueTry += revenueTryOf(r.product_id, r.identified_sales, r.identified_priced_sales, r.identified_price_milliunits, r.currency);
+    item.currencies.add(r.currency ?? 'TRY');
+    productMap.set(r.product_id, item);
+  }
+  const products = [...productMap.values()].map((r) => {
+    const revenueTry = +r.revenueTry.toFixed(2);
+    return {
+      productId: r.productId,
+      label: r.label,
+      sales: r.sales,
+      guestSales: r.guestSales,
+      identifiedSales: r.identifiedSales,
+      diamonds: r.diamonds,
+      priceTry: r.sales > 0 ? +(revenueTry / r.sales).toFixed(2) : priceOf(r.productId),
+      currency: r.currencies.size === 1 ? [...r.currencies][0] : 'mixed',
+      revenueTry,
+      guestRevenueTry: +r.guestRevenueTry.toFixed(2),
+      identifiedRevenueTry: +r.identifiedRevenueTry.toFixed(2),
+    };
+  }).sort((a, b) => b.sales - a.sales);
   const totalRevenue = +products.reduce((s, p) => s + p.revenueTry, 0).toFixed(2);
   const totalSales = products.reduce((s, p) => s + p.sales, 0);
   const guestRevenue = +products.reduce((s, p) => s + p.guestRevenueTry, 0).toFixed(2);
@@ -328,7 +378,9 @@ export async function getAdminStats(live: LiveStats, day?: string) {
     excludeReason: r.in_revenue ? null : (r.exclude_reason ?? 'Gelire dahil değil'),
     label: labelOf(r.product_id),
     productId: r.product_id,
-    priceTry: revenueOf(r.product_id, 1, r.price_milliunits),
+    priceTry: revenueTryOf(r.product_id, 1, r.price_milliunits ? 1 : 0, r.price_milliunits, r.currency),
+    originalPrice: originalAmountOf(r.price_milliunits),
+    originalCurrency: r.currency ?? 'TRY',
     currency: r.currency ?? 'TRY',
     at: r.at,
   }));
@@ -337,7 +389,7 @@ export async function getAdminStats(live: LiveStats, day?: string) {
   for (const r of salesDaily.rows) {
     const cur = dayMap.get(r.day) ?? { day: r.day, sales: 0, revenue: 0 };
     cur.sales += r.sales;
-    cur.revenue += revenueOf(r.product_id, r.sales, r.price_milliunits);
+    cur.revenue += revenueTryOf(r.product_id, r.sales, r.priced_sales, r.price_milliunits, r.currency);
     dayMap.set(r.day, cur);
   }
   const dailySales = [...dayMap.values()]

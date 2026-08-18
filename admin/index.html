@@ -560,11 +560,14 @@
 
     var plist = (R.purchases || []).map(function(p){
       var isGuest = p.accountType === "guest";
+      var original = p.originalCurrency && p.originalCurrency !== "TRY" && p.originalPrice != null
+        ? "<div class='prod-tag'>" + esc(p.originalCurrency) + " " + trMoney(p.originalPrice) + " → TL karşılığı</div>"
+        : "";
       return "<tr><td>" + esc(p.user) + (p.userId ? "<div class='prod-tag'>" + esc(p.userId) + "</div>" : "") + "</td>"
         + "<td><span class='type-badge " + (isGuest ? "guest" : "identified") + "'>" + (isGuest ? "Misafir" : "Kimlikli") + "</span>"
         + (p.inRevenue === false ? "<div><span class='type-badge excluded'>" + esc(p.excludeReason || "Gelire dahil değil") + "</span></div>" : "") + "</td>"
         + "<td>" + esc(p.label) + "</td>"
-        + "<td class='num'>₺" + trMoney(p.priceTry) + "</td>"
+        + "<td class='num'>₺" + trMoney(p.priceTry) + original + "</td>"
         + "<td>" + fmtDateTime(p.at) + "</td></tr>";
     }).join("");
     $("p_rows").innerHTML = plist || "<tr><td colspan='5' class='muted'>Henüz gerçek satın alım yok.</td></tr>";
