@@ -248,7 +248,7 @@ export class Room {
       trophies: p.trophies ?? null,
       score: p.score,
       connected: p.connected,
-      isBot: p.transport.isBot && p.transport.exposeBotToClient !== false,
+      isBot: p.transport.isBot,
       skillMean: p.skillMean ?? p.transport.botSkillMean ?? null,
       skillUncertainty: p.skillUncertainty ?? p.transport.botSkillUncertainty ?? null,
       botArchetype: p.transport.botArchetype ?? null,
