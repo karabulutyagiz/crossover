@@ -69,8 +69,12 @@ Doğrulama: `curl https://168-222-180-190.nip.io/health` → `{"ok":true,"rooms"
 cd /opt/crossover
 docker compose ps
 docker compose logs -f app
-docker compose up -d --build app     # kod güncellemesi (DB volume'a dokunmaz)
+./deploy/safe-app-deploy.sh          # rooms=0 değilse app'i restart etmez
 ```
+
+Canlı maç varken app container'ı recreate edilmez. `/health` çıktısındaki `rooms`
+değeri `0` olmadan deploy/restart yapma; aksi halde aktif odadaki oyuncular düşer.
+Script build öncesi ve restart hemen öncesi iki kez kontrol eder.
 
 ## Ölçekleme notu
 
