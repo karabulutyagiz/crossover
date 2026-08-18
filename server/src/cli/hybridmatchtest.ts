@@ -26,7 +26,7 @@ for (const trophies of [0, 80, 240, 520, 1240, 2300, 3900, 5200]) {
   for (let i = 0; i < 80; i++) {
     const bot = selectBotProfile(`test-${trophies}`, trophies, 6);
     assert(bot.displayName && !/bot|cpu|ai|computer|ivan|hugo|luca|marco|bruno|diego|dante/i.test(bot.displayName), `bad bot name: ${bot.displayName}`);
-    assert(/^[A-Za-zÇĞİÖŞÜçğıöşü0-9]+$/.test(bot.displayName), `bot name should look like a player handle: ${bot.displayName}`);
+    assert(/^[A-Za-zÇĞİÖŞÜçğıöşü]+$/.test(bot.displayName), `bot name should not contain numbers or symbols: ${bot.displayName}`);
     assert(bot.trophyRating >= 0, 'negative bot trophies');
     assert(ARENAS.includes(bot.arena), 'unknown bot arena');
     assert(bot.arena.minTrophies <= bot.trophyRating, 'impossible bot arena/trophy combo');

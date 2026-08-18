@@ -76,7 +76,7 @@ export interface AdaptiveBotProfileInput {
 const THEMED_HANDLES = [
   'DerbiKral', 'SahaUstasi', 'GolHafiza', 'FutbolDefteri', 'TopCambazi', 'PasUstasi',
   'ScoutKafa', 'TribunKusu', 'KupaAvcisi', 'RondoSever', 'KaleciRuhu', 'TaktikUsta',
-  'OrtaSaha10', 'KanatHizi', 'FormaArsivi', 'RetroGolcu', 'LigGezgini', 'Kramponcu',
+  'OrtaSaha', 'KanatHizi', 'FormaArsivi', 'RetroGolcu', 'LigGezgini', 'Kramponcu',
   'GolDefteri', 'Transferci', 'CizgiAdam', 'PresGucu', 'KornerUstasi', 'SantraKafa',
   'FutbolArsivi', 'AvrupaGecesi', 'LigHafizasi', 'SahaKartali', 'OnNumara', 'ForvetAkli',
   'PasHaritasi', 'KupaYolu', 'GolYolu', 'MacGunu', 'TakimRuhu', 'KilitPas',
@@ -84,26 +84,19 @@ const THEMED_HANDLES = [
 ];
 
 const HUMAN_HANDLES = [
-  'emir7', 'kaan10', 'arda61', 'mert53', 'kerem9', 'berke8', 'efe1907', 'deniz35',
-  'atlas11', 'batu16', 'ozan1903', 'tuna55', 'doruk34', 'can21', 'alp06', 'yigit35',
-  'baran16', 'eren41', 'burak11', 'umut58', 'onur17', 'tolga20', 'bora23', 'mete48',
-  'kuzey52', 'furkan26', 'sarp07', 'salih27', 'yusuf19', 'enes38',
-  'ali1905', 'veli10', 'ahmet34', 'mehmet17', 'mustafa61', 'hasan35', 'huseyin8',
-  'ibrahim23', 'murat11', 'selim7', 'emre41', 'kaan1903', 'arda10', 'berat55',
-  'enes1907', 'oguzhan6', 'samet16', 'talha27', 'hamza9', 'omer35', 'efe10',
-  'mert1905', 'kerem17', 'deniz61', 'yigit1907', 'alperen10', 'batuhan34',
-  'furkan1903', 'doruk7', 'kaan35', 'emirhan8', 'burak1905', 'umut10', 'onur61',
-  'taha23', 'eren1907', 'baris11', 'yusuf1903', 'mehmetali9', 'kadir34',
-  'atlas', 'emir', 'kaan', 'arda', 'mert', 'kerem', 'efe', 'deniz', 'batu', 'doruk',
-  'yigit', 'kuzey', 'bora', 'mete', 'sarp', 'baris', 'atlasbaba', 'emirbaba',
-  'kaanbaba', 'ardababa', 'mertbaba', 'efebaba', 'denizbaba', 'baturbaba',
-  'batuhan', 'berkay', 'kaaninho', 'emirhan', 'alperen', 'musti', 'memo', 'apo',
-  'semih', 'ardaabi', 'kereminho', 'mertinho', 'oguz', 'alican', 'efeabi', 'umutabi',
-  'quaresma', 'alex', 'hagi', 'sneijder', 'drogba', 'messi', 'ronaldo', 'neymar',
-  'modric', 'iniesta', 'xavi', 'pirlo', 'totti', 'delpiero', 'rooney', 'kaka',
+  'Emir', 'Kaan', 'Arda', 'Mert', 'Kerem', 'Berke', 'Efe', 'Deniz',
+  'Atlas', 'Batu', 'Ozan', 'Tuna', 'Doruk', 'Can', 'Alp', 'Yigit',
+  'Baran', 'Eren', 'Burak', 'Umut', 'Onur', 'Tolga', 'Bora', 'Mete',
+  'Kuzey', 'Furkan', 'Sarp', 'Salih', 'Yusuf', 'Enes', 'Ali', 'Veli',
+  'Ahmet', 'Mehmet', 'Mustafa', 'Hasan', 'Huseyin', 'Ibrahim', 'Murat', 'Selim',
+  'Emre', 'Berat', 'Oguzhan', 'Samet', 'Talha', 'Hamza', 'Omer', 'Alperen',
+  'Batuhan', 'Taha', 'Baris', 'Mehmetali', 'Kadir', 'Berkay', 'Emirhan', 'Semih',
+  'Alican', 'Serkan', 'Cem', 'Cenk', 'Sinan', 'Volkan', 'Yasin', 'Tarik',
+  'Hakan', 'Gokhan', 'Koray', 'Anil', 'Berk', 'Kubilay', 'Cihan', 'Eray',
+  'Tolgahan', 'Alparslan', 'Ege', 'Toprak', 'Ruzgar', 'Poyraz', 'Aras',
 ];
 
-const GUEST_STYLE_HANDLE_WEIGHT = 0.04;
+const GUEST_STYLE_HANDLE_WEIGHT = 0;
 const HUMAN_HANDLE_WEIGHT = 0.86;
 
 const AVATARS = Array.from({ length: 34 }, (_, i) => `pp${i + 1}`);
