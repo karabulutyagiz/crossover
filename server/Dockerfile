@@ -12,6 +12,7 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
 COPY certs ./certs
+COPY admin ./admin
 
 # Fail the image build before replacing the live container if imports/types drift.
 RUN npm run typecheck

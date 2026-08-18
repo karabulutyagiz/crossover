@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomManager } from '../rooms/manager.ts';
 import { BotPlayer } from '../rooms/bot.ts';
@@ -20,15 +23,6 @@ import {
   blockUser, unblockUser, listBlocked, isBlockedBetween, reportContent, deleteOwnMessage, acceptTerms,
   isIdentifiedAccount,
 } from '../game/moderation.ts';
-
-// Guideline 1.2: no anonymous posting. Any path that creates content another
-// user sees requires a verified Apple/Google/Facebook identity — a guest can
-// play everything, but cannot message or add friends.
-const GUEST_BLOCKED_MSG = 'Mesajlaşmak için Apple veya Google ile giriş yap';
-// Kural ihlali askısı (users.banned_at): banlı hesap HİÇBİR kimlik yolundan
-// (register/auth/resume/oda kurma) oturum açamaz — ban yalnız DB'de bir bayrak
-// olarak durmasın, bağlantı katmanında fiilen uygulansın.
-const BANNED_MSG = 'Hesabın kural ihlali nedeniyle askıya alındı';
 import { verifyApplePurchase } from '../game/iap.ts';
 import { getAdminStats } from '../game/admin.ts';
 import { checkLogin, issueToken, verifyToken } from '../game/adminAuth.ts';
@@ -45,6 +39,20 @@ import { getOpponentKpis, recordTelemetry } from '../matchmaking/telemetry.ts';
 import type { Room, Transport } from '../rooms/room.ts';
 import type { MessageView, ConversationView } from '../protocol.ts';
 import type { ClientMsg, GameMode, ProfileView, ServerMsg } from '../protocol.ts';
+
+// Guideline 1.2: no anonymous posting. Any path that creates content another
+// user sees requires a verified Apple/Google/Facebook identity — a guest can
+// play everything, but cannot message or add friends.
+const GUEST_BLOCKED_MSG = 'Mesajlaşmak için Apple veya Google ile giriş yap';
+// Kural ihlali askısı (users.banned_at): banlı hesap HİÇBİR kimlik yolundan
+// (register/auth/resume/oda kurma) oturum açamaz — ban yalnız DB'de bir bayrak
+// olarak durmasın, bağlantı katmanında fiilen uygulansın.
+const BANNED_MSG = 'Hesabın kural ihlali nedeniyle askıya alındı';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const adminHtml = (() => {
+  try { return readFileSync(join(__dirname, '../../admin/index.html'), 'utf8'); }
+  catch { return null; }
+})();
 
 interface ConnCtx {
   room: Room;
@@ -636,6 +644,16 @@ export function startServer(port: number): Server {
         minIosBuild: config.minIosBuild,
         minAndroidVersionCode: config.minAndroidVersionCode,
       }));
+      return;
+    }
+    if ((path === '/admin' || path === '/admin/') && req.method === 'GET') {
+      if (!adminHtml) {
+        res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
+        res.end('Admin panel is not bundled in this server image.');
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', pragma: 'no-cache' });
+      res.end(adminHtml);
       return;
     }
     if (path === '/admin/api/opponent-kpis') {
