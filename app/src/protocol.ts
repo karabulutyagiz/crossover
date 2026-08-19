@@ -240,7 +240,8 @@ export type ServerMsg =
   // wrongopen kuralı: yanlış cevap turu yakmaz — yazan susturulur, rakip devam eder.
   // wrongCount oyuncunun maçtaki toplam yanlış sayısıdır; maç sonucunu tek başına belirlemez.
   // retryAt: yanlış yazana tanınan İKİNCİ HAK penceresinin açıldığı an (epoch ms).
-  // Yalnız ilk yanlışta ve istemci 'wrongretry' bildirdiyse dolu gelir.
+  // İlk yanlışta her insan oyuncuya dolu gelir (server-authoritative — caps'siz
+  // eski istemci de aynı hakkı alır, kullanıcı raporu 2026-08-19).
   | { type: 'wrong_guess'; byId: string; byName: string; guess: string; wrongCount: number; retryAt?: number }
   | { type: 'guess_denied'; reason: 'too_late' | 'burned' | 'cooldown' }
   | { type: 'pass_locked'; byId: string; byName: string }

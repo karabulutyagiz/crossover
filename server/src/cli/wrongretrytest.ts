@@ -164,7 +164,51 @@ async function main() {
     `eski istemci yeniden açılan turda cevap verebildi — D skoru ${dScore}`);
   C.close(); D.close();
 
-  await pool.query(`DELETE FROM users WHERE display_name IN ('RetryTestA','RetryTestB','RetryTestC','RetryTestD')`);
+  // ── ESKİ İSTEMCİLİ YAZAN (kullanıcı raporu 2026-08-19) ────────────────────
+  // İkinci hak sunucu tarafında caps'ten bağımsızdır: yazanın istemcisi
+  // 'wrongretry' bildirmese de ilk yanlışta 5 sn ceza + BİR hak daha alır
+  // (eski davranış caps'siz yazanı YAKIYORDU → göndere basınca aksiyon yok,
+  // doğru cevap da 'burned' ile kabul edilmiyordu). Eski istemci arayüzünü
+  // yeniden açan taze guess_phase'i de almalı.
+  const E = new Client('E'); const F = new Client('F');
+  await E.open(); await F.open();
+  E.send({ type: 'register', name: 'RetryTestE' } as any); // caps YOK = eski istemci
+  const eProf = (await E.wait('profile')).profile;
+  F.send({ type: 'register', name: 'RetryTestF', caps: ['wrongopen', 'wrongretry'] } as any);
+  const fProf = (await F.wait('profile')).profile;
+  await pool.query(`UPDATE users SET trophies = 500 WHERE id = $1 OR id = $2`, [eProf.userId, fProf.userId]);
+  E.send({ type: 'find_match', name: 'RetryTestE', userId: eProf.userId });
+  F.send({ type: 'find_match', name: 'RetryTestF', userId: fProf.userId });
+  await E.wait('room_state'); await F.wait('room_state');
+  await E.wait('pick_phase');
+  const pair3 = await freshCrossover(new Set());
+  E.send({ type: 'pick_team', clubId: pair3.aId });
+  F.send({ type: 'pick_team', clubId: pair3.bId });
+  await E.wait('guess_phase'); await F.wait('guess_phase');
+  console.log('  eski istemcili YAZAN senaryosu — E (caps’siz) yanlış yazıyor…');
+  E.send({ type: 'submit_guess', text: 'zzzznobody' });
+  const wE = await E.wait('wrong_guess', 10_000);
+  check(typeof (wE as any).retryAt === 'number', 'caps’siz yazan ilk yanlışta YANMADI (retryAt DOLU)');
+  // E eski istemci: wrong_guess'i anlamaz, arayüzünü açan guess_phase almalı.
+  const resyncE = await Promise.race([
+    E.wait('guess_phase', 6_000),
+    sleep(5_500).then(() => null),
+  ]);
+  check(!!resyncE, 'caps’siz yazan taze guess_phase aldı (ikinci hak için arayüz açıldı)');
+  // Ceza dolunca DOĞRU cevap kabul edilmeli (raporun 2. şikayeti).
+  const eRetryAt = Number((wE as any).retryAt ?? 0);
+  await sleep(Math.max(0, eRetryAt - Date.now()) + 300);
+  E.send({ type: 'submit_guess', text: pair3.player });
+  const resE = await Promise.race([
+    E.wait('result', 8_000),
+    sleep(7_500).then(() => null),
+  ]);
+  const eScore = resE ? (resE as any).players.find((p: any) => p.name === 'RetryTestE')?.score ?? 0 : 0;
+  check(!!resE && (resE as any).result?.correct === true && eScore === 1,
+    `caps’siz yazan ceza sonrası DOĞRU cevabıyla turu aldı — E skoru ${eScore}`);
+  E.close(); F.close();
+
+  await pool.query(`DELETE FROM users WHERE display_name IN ('RetryTestA','RetryTestB','RetryTestC','RetryTestD','RetryTestE','RetryTestF')`);
   await closePool();
   console.log(failed ? '\n❌ WRONGRETRYTEST FAILED' : '\n✅ WRONGRETRYTEST PASSED');
   process.exitCode = failed ? 1 : 0;

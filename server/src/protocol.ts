@@ -212,8 +212,9 @@ export type ServerMsg =
   // Yeni kural (wrongopen odaları): yanlış cevap turu YAKMAZ — yazan susturulur,
   // rakibin kilidi açılır. wrongCount o oyuncunun maçtaki toplam yanlış sayısıdır.
   // retryAt: yanlış yazana tanınan İKİNCİ HAK penceresinin açıldığı an (epoch ms).
-  // Yalnız ilk yanlışta ve istemci 'wrongretry' bildirdiyse dolu gelir; yoksa
-  // yazan bu tur için kesin susturulmuştur (eski davranış).
+  // İlk yanlışta HER insan oyuncuya dolu gelir (kural server-authoritative'dir,
+  // istemci 'wrongretry' bildirmese de — kullanıcı raporu 2026-08-19); yoksa
+  // yazan bu tur için kesin susturulmuştur (bot / süre dibi / ikinci yanlış).
   | { type: 'wrong_guess'; byId: string; byName: string; guess: string; wrongCount: number; retryAt?: number }
   // Kişiye özel ret: 'too_late' = rakip senden önce gönderdi; 'burned' = bu turda hakkın bitti.
   | { type: 'guess_denied'; reason: 'too_late' | 'burned' | 'cooldown' }

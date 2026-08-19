@@ -1153,24 +1153,28 @@ export class Room {
   // anlamasa da guess_phase'i anlar (ilk günden beri protokolde) ve o mesaj
   // `locked`ı temizleyip girişi yeniden açar. Aynı tur, aynı bitiş anı.
   //
-  // Yalnız hâlâ hakkı olanlara gönderilir: yazan (susturulan/cezalı) ve yanmış
-  // oyuncular hariç — onların kilitli kalması DOĞRU. Güncel istemcilere de
-  // gönderilmez: onlar wrong_guess'i zaten işliyor ve guess_phase, gösterdikleri
-  // "rakip yanlış yazdı" ipucunu/ceza sayacını sıfırlardı.
+  // Yalnız hâlâ hakkı olanlara gönderilir: yanmış oyuncular ve ceza penceresindeki
+  // RAKİPLER hariç — onların kilitli kalması DOĞRU. CAPS'SİZ YAZAN DAHİL edilir:
+  // ikinci hakkı server-authoritative'tir (kullanıcı raporu 2026-08-19) ve eski
+  // istemcinin arayüzünü yeniden açması için guess_phase'e ihtiyacı vardır.
+  // Güncel istemcilere gönderilmez: onlar wrong_guess'i zaten işliyor ve
+  // guess_phase, gösterdikleri "rakip yanlış yazdı" ipucunu/ceza sayacını sıfırlardı.
   private resyncLegacyClientsAfterWrong(guesserId: string): void {
     const endsAt = this.round?.guessEndsAt;
     if (!endsAt) return;
     const now = Date.now();
     for (const p of this.players.values()) {
-      if (p.id === guesserId || p.transport.isBot) continue;
+      if (p.transport.isBot) continue;
       if (this.round?.burned?.has(p.id)) continue;
-      // Ceza (wrongretry cooldown) penceresindeki oyuncuya da GÖNDERİLMEZ:
+      // Ceza (wrongretry cooldown) penceresindeki RAKİP oyuncuya GÖNDERİLMEZ:
       // guess_phase sayacı sıfırlar, ona "yazabilirsin" görüntüsü verirdi;
-      // sunucu yine reddederdi ama yanıltıcı olurdu. Bugün bu durum zaten
-      // oluşamaz (cooldown 'wrongretry' ister, istemci iki bayrağı birlikte
-      // gönderir) — koruma o eşleşmeye GÜVENMEMEK için burada, açıkça.
+      // sunucu yine reddederdi ama yanıltıcı olurdu. YAZAN oyuncu bu kuralın
+      // DIŞINDADIR: o az önce yeni hak kazanmıştır ve eski istemci arayüzünü
+      // yeniden açmak için guess_phase'e ihtiyaç duyar (wrong_guess'i anlamaz).
       const retryAt = this.round?.wrongRetryAt?.get(p.id);
-      if (retryAt != null && now < retryAt) continue;
+      if (p.id !== guesserId && retryAt != null && now < retryAt) continue;
+      // wrongopen anlayan istemciler wrong_guess'i zaten işliyor; guess_phase,
+      // gösterdikleri "rakip yanlış yazdı" ipucunu/ceza sayacını sıfırlardı.
       if (p.transport.caps?.includes('wrongopen')) continue;
       p.transport.send({ type: 'guess_phase', endsAt });
     }
@@ -1210,14 +1214,17 @@ export class Room {
     if (remaining < 2_000) return 'closed';
     // İKİNCİ HAK (kullanıcı kuralı 2026-08-11): İLK yanlışta oyuncu yanmaz —
     // WRONG_RETRY_MS ceza penceresi sonrası bir hakkı daha olur. Şartlar:
-    // istemcisi 'wrongretry' bilir (eski istemcinin arayüzü kilitli kalır,
-    // hak tanımak anlamsız), bot değildir (bot ikinci kez denemez) ve sürede
-    // cezadan sonra gerçekçi pay vardır. İkinci yanlış — ya da şartlar
-    // tutmayan ilk yanlış — kesin susturur (eski kural).
+    // bot değildir (bot ikinci kez denemez) ve sürede cezadan sonra gerçekçi
+    // pay vardır. İstemci SÜRÜMÜNE BAKILMAZ: hak server-authoritative'dir —
+    // eski/caps'siz bir istemci de aynı hakkı alır (kullanıcı raporu 2026-08-19:
+    // yanlış cevap sonrası "aksiyon yok" tuzağı, kuralın caps'e bağlı olmasından
+    // doğuyordu; bu yüzden davranış telefona/build'e göre değişiyordu). Eski
+    // istemcinin arayüzü resyncLegacyClientsAfterWrong ile taze guess_phase
+    // alarak yeniden açılır. İkinci yanlış — ya da şartlar tutmayan ilk yanlış
+    // (bot / süre dibi) — kesin susturur (eski kural).
     const firstWrong = !this.round.wrongRetryAt?.has(playerId);
     const canRetry = firstWrong
       && !p?.transport.isBot
-      && !!p?.transport.caps?.includes('wrongretry')
       && remaining > WRONG_RETRY_MS + 1_500;
     let retryAt: number | undefined;
     if (canRetry) {
