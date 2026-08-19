@@ -11068,21 +11068,25 @@ export function LeaderboardScreen({ state, actions }: Props) {
 }
 
 // ---- Result ----
-function TeamResultCard({ team, spells, played }: { team: ClubRef; spells: SpellInfo[]; played: boolean }) {
+function TeamResultCard({ team, spells, played }: { team: ClubRef; spells: SpellInfo[]; played: boolean | null }) {
   return (
-    <View style={[styles.teamResult, { borderColor: played ? theme.primary : theme.danger }]}>
+    <View style={[styles.teamResult, { borderColor: played == null ? theme.border : played ? theme.primary : theme.danger }]}>
       <ClubBadge name={team.name} size={40} logoUrl={team.logoUrl} />
       <Text style={styles.teamResultName} numberOfLines={2}>
         {team.name}
       </Text>
-      <Ionicons
-        name={played ? 'checkmark-circle' : 'close-circle'}
-        size={20}
-        color={played ? theme.primary : theme.danger}
-      />
-      <Text style={styles.teamResultYears}>
-        {played ? spells.map(yearsText).filter(Boolean).join(', ') || t('career.played') : t('career.notPlayed')}
-      </Text>
+      {played == null ? null : (
+        <>
+          <Ionicons
+            name={played ? 'checkmark-circle' : 'close-circle'}
+            size={20}
+            color={played ? theme.primary : theme.danger}
+          />
+          <Text style={styles.teamResultYears}>
+            {played ? spells.map(yearsText).filter(Boolean).join(', ') || t('career.played') : t('career.notPlayed')}
+          </Text>
+        </>
+      )}
     </View>
   );
 }
@@ -11456,6 +11460,10 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
 
   const playedA = r.spellsA.length > 0;
   const playedB = r.spellsB.length > 0;
+  // Geçerli bir oyuncu söylenmediyse (timeout / passed / all_wrong / no_match)
+  // takım kartlarında "oynadı/oynamadı" kararı gösterilmez — değerlendirilecek
+  // bir cevap yoktur; takımlar yalnızca nötr halde görünür.
+  const answered = !!(r.matchedPlayerName || r.matchedClubName);
 
   return (
     <Screen>
@@ -11573,8 +11581,8 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
                   </View>
                 </>
               ) : state.revealMode === 'country-team' ? (
-                /* Country card: flag + name + checkmark only */
-                <View style={[styles.teamResult, { borderColor: theme.primary }]}>
+                /* Country card: flag + name (+ checkmark only when there was an answer) */
+                <View style={[styles.teamResult, { borderColor: answered ? theme.primary : theme.border }]}>
                   {/* Flag emoji framed in the ClubBadge white circular chip */}
                   <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: theme.text, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                     <Text style={{ fontSize: 28 }}>{NATIONALITIES.find((n) => n.value === state.revealCountry)?.flag ?? '🏳️'}</Text>
@@ -11582,13 +11590,13 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
                   <Text style={styles.teamResultName} numberOfLines={2}>
                     {NATIONALITIES.find((n) => n.value === state.revealCountry)?.displayName ?? r.teamA.name}
                   </Text>
-                  <Ionicons name="checkmark-circle" size={20} color={theme.primary} />
+                  {answered ? <Ionicons name="checkmark-circle" size={20} color={theme.primary} /> : null}
                 </View>
               ) : state.revealMode === 'letter-team' ? null : (
-                <TeamResultCard team={r.teamA} spells={r.spellsA} played={playedA} />
+                <TeamResultCard team={r.teamA} spells={r.spellsA} played={answered ? playedA : null} />
               )}
               {state.revealMode !== 'player-player' ? (
-                <TeamResultCard team={r.teamB} spells={r.spellsB} played={playedB} />
+                <TeamResultCard team={r.teamB} spells={r.spellsB} played={answered ? playedB : null} />
               ) : null}
             </View>
           </>
