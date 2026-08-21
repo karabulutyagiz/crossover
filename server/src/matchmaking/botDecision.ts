@@ -1,4 +1,5 @@
 import type { BotProfile, KnowledgeDomain } from './botProfiles.ts';
+import { liveOpsConfig } from './liveOpsConfig.ts';
 import { opponentConfig } from './opponentConfig.ts';
 import { SeededRandom, chance, clamp, logNormal, mathRandom, pick, type RandomSource } from './random.ts';
 
@@ -22,6 +23,12 @@ export interface BotDecision {
   shouldMistake: boolean;
   shouldTimeout: boolean;
   reactionDelayMs: number;
+  knowsProbability: number;
+  wrongAssociationProbability: number;
+  timeoutProbability: number;
+  participationProbability: number;
+  difficultyScore: number;
+  answerPopularity: number;
 }
 
 export function difficultyScore(kind: QuestionDifficulty): number {
@@ -54,12 +61,16 @@ export function classifyAnswerList(count: number): QuestionDifficulty {
 }
 
 export function botKnowsProbability(profile: BotProfile, context: BotQuestionContext): number {
+  const live = liveOpsConfig();
   const difficulty = clamp(context.difficultyScore, 0, 1);
   const popularity = clamp(context.answerPopularity ?? 0.35, 0, 1);
   const domainFamiliarity = context.domain ? domainModifier(profile, context.domain) : 1;
-  const base = profile.footballKnowledge * (1 - difficulty * 0.72) + popularity * 0.16;
+  const depthFit = clamp(profile.questionDepthTolerance * (1.05 - difficulty * 0.42), 0, 1);
+  const base = profile.footballKnowledge * (1 - difficulty * 0.70) + depthFit * 0.18 + popularity * (0.12 + (1 - difficulty) * 0.08);
   const accuracyAnchor = difficulty < 0.34 ? profile.easyAccuracy : difficulty < 0.72 ? profile.mediumAccuracy : profile.hardAccuracy;
-  const p = (base * 0.54 + accuracyAnchor * 0.46) * domainFamiliarity;
+  const raw = (base * 0.50 + accuracyAnchor * 0.50) * domainFamiliarity;
+  const floor = live.killSwitches.botKnowledgeFloorEnabled ? knowledgeFloor(difficulty, popularity) : 0;
+  const p = Math.max(raw, floor);
   return clamp(p, 0.015, 0.985);
 }
 
@@ -67,11 +78,13 @@ export function decideBotAnswer(profile: BotProfile, context: BotQuestionContext
   const rng = context.rng ?? mathRandom;
   const cfg = opponentConfig();
   const difficulty = clamp(context.difficultyScore, 0, 1);
+  const popularity = clamp(context.answerPopularity ?? 0.35, 0, 1);
   const pressure = matchPressure(profile, context);
   const knowsP = clamp(botKnowsProbability(profile, context) + pressure.knowledgeBias, 0.01, 0.985);
   const knows = chance(rng, knowsP);
   const wrongAssociationP = clamp(profile.mistakeProbability + difficulty * 0.10 + pressure.mistakeBias, cfg.botErrorMin, cfg.botErrorMax);
   const timeoutP = clamp(profile.timeoutProbability + difficulty * 0.12 - profile.confidence * 0.035, cfg.botTimeoutMin, cfg.botTimeoutMax);
+  const participationP = clamp(profile.participationRate - difficulty * 0.16 + popularity * 0.06 + pressure.speedBias * 0.6, 0.18, 0.995);
   let cognitiveState: BotCognitiveState;
   if (knows) {
     const instantP = clamp((1 - difficulty) * 0.38 + profile.reactionSpeed * 0.22 + (context.answerPopularity ?? 0) * 0.18, 0.02, 0.72);
@@ -80,12 +93,14 @@ export function decideBotAnswer(profile: BotProfile, context: BotQuestionContext
     cognitiveState = 'WRONG_ASSOCIATION';
   } else if (chance(rng, clamp(0.32 + profile.confidence * 0.18 - difficulty * 0.18, 0.10, 0.55))) {
     cognitiveState = 'UNSURE';
+  } else if (chance(rng, participationP * clamp(0.48 - difficulty * 0.22, 0.12, 0.50))) {
+    cognitiveState = 'UNSURE';
   } else {
     cognitiveState = 'NO_ANSWER';
   }
   const shouldTimeout = cognitiveState === 'NO_ANSWER' || (cognitiveState === 'UNSURE' && chance(rng, timeoutP));
   const shouldMistake = cognitiveState === 'WRONG_ASSOCIATION' || (knows && chance(rng, clamp(profile.mistakeProbability * (0.30 + profile.riskTolerance * 0.42) + pressure.mistakeBias, 0, 0.26)));
-  const willAnswer = !shouldTimeout && (knows || cognitiveState === 'WRONG_ASSOCIATION' || (cognitiveState === 'UNSURE' && chance(rng, profile.riskTolerance * 0.38)));
+  const willAnswer = !shouldTimeout && (knows || cognitiveState === 'WRONG_ASSOCIATION' || (cognitiveState === 'UNSURE' && chance(rng, participationP * (0.36 + profile.riskTolerance * 0.26))));
   const reactionDelayMs = reactionDelayMsForState(profile, cognitiveState, context, rng);
   return {
     cognitiveState,
@@ -94,6 +109,12 @@ export function decideBotAnswer(profile: BotProfile, context: BotQuestionContext
     shouldMistake,
     shouldTimeout,
     reactionDelayMs,
+    knowsProbability: Number(knowsP.toFixed(4)),
+    wrongAssociationProbability: Number(wrongAssociationP.toFixed(4)),
+    timeoutProbability: Number(timeoutP.toFixed(4)),
+    participationProbability: Number(participationP.toFixed(4)),
+    difficultyScore: Number(difficulty.toFixed(4)),
+    answerPopularity: Number(popularity.toFixed(4)),
   };
 }
 
@@ -131,7 +152,8 @@ function reactionDelayMsForState(profile: BotProfile, state: BotCognitiveState, 
   const median = profile.responseMedianMs
     * stateFactor[state]
     * (0.78 + difficulty * 0.58)
-    * (1 - pressure.speedBias + tempoBias);
+    * (1 - pressure.speedBias + tempoBias)
+    * (1.06 - profile.inputSpeed * 0.10);
   const sigma = clamp(0.20 + (1 - profile.consistency) * 0.38 + difficulty * 0.10, 0.16, 0.64);
   let delay = logNormal(rng, median, sigma);
   if (chance(rng, profile.hesitationProbability + difficulty * 0.08)) delay += 450 + rng.next() * (2400 + difficulty * 2400);
@@ -147,10 +169,20 @@ function matchPressure(profile: BotProfile, context: BotQuestionContext): { spee
   const ahead = Math.max(0, botScore - oppScore);
   const aggression = profile.aggression;
   return {
-    speedBias: clamp(behind * 0.035 * aggression - ahead * 0.018 * (1 - aggression), -0.06, 0.08),
-    mistakeBias: clamp(behind * 0.018 * aggression - ahead * 0.010, -0.025, 0.045),
-    knowledgeBias: 0,
+    speedBias: clamp(behind * 0.035 * aggression - ahead * 0.018 * (1 - aggression) - (1 - profile.pressureHandling) * ahead * 0.012, -0.06, 0.08),
+    mistakeBias: clamp(behind * 0.018 * aggression - ahead * 0.010 + (1 - profile.pressureHandling) * (behind + ahead) * 0.010, -0.025, 0.052),
+    knowledgeBias: clamp((profile.answerConfidence - 0.5) * 0.035 - (1 - profile.pressureHandling) * ahead * 0.006, -0.035, 0.035),
   };
+}
+
+function knowledgeFloor(difficulty: number, popularity: number): number {
+  const floor = liveOpsConfig().botDifficulty.knowledgeFloorByDifficulty;
+  const popularityGate = clamp(0.38 + popularity * 0.78, 0, 1);
+  if (difficulty < 0.24) return floor.veryEasy * popularityGate;
+  if (difficulty < 0.44) return floor.easy * popularityGate;
+  if (difficulty < 0.68) return floor.medium * clamp(0.24 + popularity * 0.90, 0, 1);
+  if (difficulty < 0.86) return floor.hard * clamp(0.18 + popularity * 0.72, 0, 1);
+  return floor.obscure * clamp(0.12 + popularity * 0.55, 0, 1);
 }
 
 function domainModifier(profile: BotProfile, domain: KnowledgeDomain): number {

@@ -61,6 +61,7 @@ export async function getOpponentKpis(): Promise<Record<string, unknown>> {
     trophy: { trophy_delta_30d: 0, avg_trophy_delta: 0 },
     trophyEconomy: { trophies_created: 0, trophies_destroyed: 0, bot_trophies_injected: 0, avg_reward_multiplier: 1 },
     matchmakingDirector: { p50_queue_ms: 0, p95_queue_ms: 0, avg_match_quality: 0, bot_selection_rate: 0 },
+    botDifficulty: [],
     antiFarm: { high_risk_rewards: 0, avg_farm_risk: 0, reduced_rewards: 0 },
     rematchRate: 0,
     closeMatchRate: 0,
@@ -116,7 +117,7 @@ export async function getOpponentKpis(): Promise<Record<string, unknown>> {
          WHERE event_name = 'match_finished'
            AND created_at >= now() - interval '30 days'`),
     ]);
-    const [ledger, decision, farm] = await Promise.all([
+    const [ledger, decision, farm, botDifficulty] = await Promise.all([
       pool.query(`
         SELECT COALESCE(sum(GREATEST(delta, 0)), 0)::int AS trophies_created,
                COALESCE(sum(GREATEST(-delta, 0)), 0)::int AS trophies_destroyed,
@@ -135,8 +136,30 @@ export async function getOpponentKpis(): Promise<Record<string, unknown>> {
         SELECT count(*) FILTER (WHERE farm_risk_level IN ('HIGH', 'CRITICAL'))::int AS high_risk_rewards,
                avg(farm_risk_score)::float AS avg_farm_risk,
                count(*) FILTER (WHERE final_multiplier < 0.99)::int AS reduced_rewards
-          FROM trophy_ledger
-         WHERE created_at >= now() - interval '30 days'`).catch(() => ({ rows: [] } as any)),
+           FROM trophy_ledger
+          WHERE created_at >= now() - interval '30 days'`).catch(() => ({ rows: [] } as any)),
+      pool.query(`
+        SELECT b.segment,
+               COALESCE(b.director_snapshot->>'competitiveState', 'UNKNOWN') AS competitive_state,
+               b.bot_difficulty,
+               b.bot_archetype,
+               count(*)::int AS matches,
+               avg(b.selected_bot_skill)::float AS avg_bot_skill,
+               avg(b.estimated_player_win_probability)::float AS avg_estimated_player_win_probability,
+               avg(NULLIF(b.director_snapshot->>'competitiveEnjoymentScore', '')::double precision)::float AS avg_competitive_enjoyment_score,
+               avg(NULLIF(b.director_snapshot->>'frustrationRiskScore', '')::double precision)::float AS avg_frustration_risk_score,
+               avg(NULLIF(b.director_snapshot->>'momentumScore', '')::double precision)::float AS avg_momentum_score,
+               avg(NULLIF(b.director_snapshot->>'blowoutRisk', '')::double precision)::float AS avg_blowout_risk,
+               avg(b.response_median_ms)::float AS avg_response_median_ms,
+               avg(CASE WHEN m.payload->>'matchResult' = 'win' THEN 1 WHEN m.payload ? 'matchResult' THEN 0 END)::float AS player_win_rate
+          FROM bot_match_profiles b
+          LEFT JOIN match_telemetry m
+            ON m.match_id = b.match_id
+           AND m.event_name = 'match_finished'
+           AND m.player_id = b.user_id
+         WHERE b.created_at >= now() - interval '30 days'
+          GROUP BY b.segment, COALESCE(b.director_snapshot->>'competitiveState', 'UNKNOWN'), b.bot_difficulty, b.bot_archetype
+          ORDER BY b.segment, competitive_state, b.bot_difficulty, matches DESC`).catch(() => ({ rows: [] } as any)),
     ]);
     const mm = matchmaking.rows[0] as any;
     const offered = Number((rematch.rows[0] as any)?.offered ?? 0);
@@ -156,6 +179,7 @@ export async function getOpponentKpis(): Promise<Record<string, unknown>> {
       trophy: trophy.rows[0] ?? { trophy_delta_30d: 0, avg_trophy_delta: 0 },
       trophyEconomy: ledger.rows[0] ?? { trophies_created: 0, trophies_destroyed: 0, bot_trophies_injected: 0, avg_reward_multiplier: 1 },
       matchmakingDirector: decision.rows[0] ?? { p50_queue_ms: 0, p95_queue_ms: 0, avg_match_quality: 0, bot_selection_rate: 0 },
+      botDifficulty: botDifficulty.rows,
       antiFarm: farm.rows[0] ?? { high_risk_rewards: 0, avg_farm_risk: 0, reduced_rewards: 0 },
       rematchRate: offered ? accepted / offered : 0,
       closeMatchRate: Number((closeMatches.rows[0] as any)?.close_match_rate ?? 0),

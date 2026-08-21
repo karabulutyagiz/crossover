@@ -8,6 +8,10 @@ export interface LiveOpsMatchmakingConfig {
   killSwitches: {
     botMatchmakingEnabled: boolean;
     adaptiveDifficultyEnabled: boolean;
+    newPlayerProtectionEnabled: boolean;
+    recoveryAdjustmentEnabled: boolean;
+    botKnowledgeFloorEnabled: boolean;
+    botDifficultyLiveTuningEnabled: boolean;
     antiFarmEnabled: boolean;
     trophyEconomyControllerEnabled: boolean;
     recoveryMatchesEnabled: boolean;
@@ -39,6 +43,40 @@ export interface LiveOpsMatchmakingConfig {
     cooldownMs: number;
     intentionalLossBlockThreshold: number;
   };
+  botDifficulty: {
+    algorithmVersion: string;
+    balanceVersion: string;
+    liveOpsSkillOffsetMmr: number;
+    newPlayerSkillOffsetMmr: number;
+    earlyProgressionSkillOffsetMmr: number;
+    recoveryMaxAdjustmentMmr: number;
+    dominanceMaxAdjustmentMmr: number;
+    lossStreakSensitivity: number;
+    blowoutLossWeight: number;
+    closeLossWeight: number;
+    intentionalLossBlockThreshold: number;
+    maxBotSkillStepMmr: number;
+    smurfAccelerationMmr: number;
+    frustrationAdjustmentMmr: number;
+    momentumAdjustmentMmr: number;
+    blowoutSensitivity: number;
+    emoteFrustrationSensitivity: number;
+    targetCompetitiveProbabilityByState: Record<CompetitiveState, { min: number; max: number }>;
+    engagementWeights: {
+      closeness: number;
+      lowFrustration: number;
+      masteryOpportunity: number;
+      nonToxicity: number;
+    };
+    targetWinProbabilityBySegment: Record<ProgressionSegment, { min: number; max: number }>;
+    knowledgeFloorByDifficulty: {
+      veryEasy: number;
+      easy: number;
+      medium: number;
+      hard: number;
+      obscure: number;
+    };
+  };
   antiFarm: {
     repeatedOpponentWindowMs: number;
     pairDecayStart: number;
@@ -60,6 +98,7 @@ export interface LiveOpsMatchmakingConfig {
 }
 
 export type ProgressionSegment = 'NEW_PLAYER' | 'EARLY' | 'MID' | 'HIGH' | 'ELITE';
+export type CompetitiveState = 'STRUGGLING' | 'SLIGHTLY_STRUGGLING' | 'BALANCED' | 'PERFORMING_WELL' | 'DOMINATING';
 
 const DEFAULTS: LiveOpsMatchmakingConfig = {
   rollout: {
@@ -70,6 +109,10 @@ const DEFAULTS: LiveOpsMatchmakingConfig = {
   killSwitches: {
     botMatchmakingEnabled: true,
     adaptiveDifficultyEnabled: true,
+    newPlayerProtectionEnabled: true,
+    recoveryAdjustmentEnabled: true,
+    botKnowledgeFloorEnabled: true,
+    botDifficultyLiveTuningEnabled: true,
     antiFarmEnabled: true,
     trophyEconomyControllerEnabled: true,
     recoveryMatchesEnabled: true,
@@ -100,6 +143,52 @@ const DEFAULTS: LiveOpsMatchmakingConfig = {
     maxAdjustmentMmr: 115,
     cooldownMs: 45 * 60_000,
     intentionalLossBlockThreshold: 0.62,
+  },
+  botDifficulty: {
+    algorithmVersion: 'engagement-safe-director-v2',
+    balanceVersion: '2026-08-21-engagement-first',
+    liveOpsSkillOffsetMmr: 0,
+    newPlayerSkillOffsetMmr: 150,
+    earlyProgressionSkillOffsetMmr: 78,
+    recoveryMaxAdjustmentMmr: 95,
+    dominanceMaxAdjustmentMmr: 130,
+    lossStreakSensitivity: 0.17,
+    blowoutLossWeight: 0.20,
+    closeLossWeight: 0.05,
+    intentionalLossBlockThreshold: 0.62,
+    maxBotSkillStepMmr: 90,
+    smurfAccelerationMmr: 185,
+    frustrationAdjustmentMmr: 95,
+    momentumAdjustmentMmr: 130,
+    blowoutSensitivity: 0.22,
+    emoteFrustrationSensitivity: 0.72,
+    targetCompetitiveProbabilityByState: {
+      STRUGGLING: { min: 0.60, max: 0.70 },
+      SLIGHTLY_STRUGGLING: { min: 0.56, max: 0.64 },
+      BALANCED: { min: 0.49, max: 0.56 },
+      PERFORMING_WELL: { min: 0.47, max: 0.54 },
+      DOMINATING: { min: 0.44, max: 0.51 },
+    },
+    engagementWeights: {
+      closeness: 0.36,
+      lowFrustration: 0.28,
+      masteryOpportunity: 0.18,
+      nonToxicity: 0.18,
+    },
+    targetWinProbabilityBySegment: {
+      NEW_PLAYER: { min: 0.60, max: 0.70 },
+      EARLY: { min: 0.56, max: 0.64 },
+      MID: { min: 0.49, max: 0.56 },
+      HIGH: { min: 0.47, max: 0.54 },
+      ELITE: { min: 0.45, max: 0.52 },
+    },
+    knowledgeFloorByDifficulty: {
+      veryEasy: 0.74,
+      easy: 0.62,
+      medium: 0.34,
+      hard: 0.16,
+      obscure: 0.06,
+    },
   },
   antiFarm: {
     repeatedOpponentWindowMs: 24 * 60 * 60_000,
@@ -132,11 +221,15 @@ export function liveOpsConfig(): LiveOpsMatchmakingConfig {
       experimentSalt: str('MATCHMAKING_EXPERIMENT_SALT', DEFAULTS.rollout.experimentSalt),
     },
     killSwitches: {
-      botMatchmakingEnabled: bool('BOT_MATCHMAKING_ENABLED', DEFAULTS.killSwitches.botMatchmakingEnabled),
-      adaptiveDifficultyEnabled: bool('ADAPTIVE_DIFFICULTY_ENABLED', DEFAULTS.killSwitches.adaptiveDifficultyEnabled),
-      antiFarmEnabled: bool('ANTI_FARM_ENABLED', DEFAULTS.killSwitches.antiFarmEnabled),
-      trophyEconomyControllerEnabled: bool('TROPHY_ECONOMY_CONTROLLER_ENABLED', DEFAULTS.killSwitches.trophyEconomyControllerEnabled),
-      recoveryMatchesEnabled: bool('RECOVERY_MATCHES_ENABLED', DEFAULTS.killSwitches.recoveryMatchesEnabled),
+      botMatchmakingEnabled: boolAny(['BOT_MATCHMAKING_ENABLED'], DEFAULTS.killSwitches.botMatchmakingEnabled),
+      adaptiveDifficultyEnabled: boolAny(['ADAPTIVE_BOT_DIFFICULTY_ENABLED', 'ADAPTIVE_DIFFICULTY_ENABLED'], DEFAULTS.killSwitches.adaptiveDifficultyEnabled),
+      newPlayerProtectionEnabled: boolAny(['NEW_PLAYER_PROTECTION_ENABLED'], DEFAULTS.killSwitches.newPlayerProtectionEnabled),
+      recoveryAdjustmentEnabled: boolAny(['RECOVERY_ADJUSTMENT_ENABLED', 'RECOVERY_MATCHES_ENABLED'], DEFAULTS.killSwitches.recoveryAdjustmentEnabled),
+      botKnowledgeFloorEnabled: boolAny(['BOT_KNOWLEDGE_FLOOR_ENABLED'], DEFAULTS.killSwitches.botKnowledgeFloorEnabled),
+      botDifficultyLiveTuningEnabled: boolAny(['BOT_DIFFICULTY_LIVE_TUNING_ENABLED'], DEFAULTS.killSwitches.botDifficultyLiveTuningEnabled),
+      antiFarmEnabled: boolAny(['ANTI_FARM_ENABLED'], DEFAULTS.killSwitches.antiFarmEnabled),
+      trophyEconomyControllerEnabled: boolAny(['TROPHY_ECONOMY_CONTROLLER_ENABLED'], DEFAULTS.killSwitches.trophyEconomyControllerEnabled),
+      recoveryMatchesEnabled: boolAny(['RECOVERY_MATCHES_ENABLED', 'RECOVERY_ADJUSTMENT_ENABLED'], DEFAULTS.killSwitches.recoveryMatchesEnabled),
     },
     matchmaking: {
       initialMmrWindow: int('MM_INITIAL_MMR_WINDOW', DEFAULTS.matchmaking.initialMmrWindow),
@@ -153,6 +246,52 @@ export function liveOpsConfig(): LiveOpsMatchmakingConfig {
     },
     bots: DEFAULTS.bots,
     recovery: DEFAULTS.recovery,
+    botDifficulty: {
+      algorithmVersion: str('BOT_DIFFICULTY_ALGORITHM_VERSION', DEFAULTS.botDifficulty.algorithmVersion),
+      balanceVersion: str('BOT_DIFFICULTY_BALANCE_VERSION', DEFAULTS.botDifficulty.balanceVersion),
+      liveOpsSkillOffsetMmr: intAny(['BOT_DIFFICULTY_LIVEOPS_OFFSET_MMR'], DEFAULTS.botDifficulty.liveOpsSkillOffsetMmr),
+      newPlayerSkillOffsetMmr: intAny(['NEW_PLAYER_SKILL_OFFSET_MMR'], DEFAULTS.botDifficulty.newPlayerSkillOffsetMmr),
+      earlyProgressionSkillOffsetMmr: intAny(['EARLY_PROGRESSION_SKILL_OFFSET_MMR'], DEFAULTS.botDifficulty.earlyProgressionSkillOffsetMmr),
+      recoveryMaxAdjustmentMmr: intAny(['RECOVERY_MAX_ADJUSTMENT_MMR', 'RECOVERY_MAX_ADJUSTMENT'], DEFAULTS.botDifficulty.recoveryMaxAdjustmentMmr),
+      dominanceMaxAdjustmentMmr: intAny(['DOMINANCE_MAX_ADJUSTMENT_MMR', 'DOMINANCE_MAX_ADJUSTMENT'], DEFAULTS.botDifficulty.dominanceMaxAdjustmentMmr),
+      lossStreakSensitivity: numAny(['LOSS_STREAK_SENSITIVITY'], DEFAULTS.botDifficulty.lossStreakSensitivity),
+      blowoutLossWeight: numAny(['BLOWOUT_LOSS_WEIGHT'], DEFAULTS.botDifficulty.blowoutLossWeight),
+      closeLossWeight: numAny(['CLOSE_LOSS_WEIGHT'], DEFAULTS.botDifficulty.closeLossWeight),
+      intentionalLossBlockThreshold: numAny(['INTENTIONAL_LOSS_BLOCK_THRESHOLD'], DEFAULTS.botDifficulty.intentionalLossBlockThreshold),
+      maxBotSkillStepMmr: intAny(['MAX_BOT_SKILL_STEP_MMR', 'BOT_SKILL_SMOOTHING_MMR'], DEFAULTS.botDifficulty.maxBotSkillStepMmr),
+      smurfAccelerationMmr: intAny(['SMURF_ACCELERATION_MMR'], DEFAULTS.botDifficulty.smurfAccelerationMmr),
+      frustrationAdjustmentMmr: intAny(['FRUSTRATION_ADJUSTMENT_MMR'], DEFAULTS.botDifficulty.frustrationAdjustmentMmr),
+      momentumAdjustmentMmr: intAny(['MOMENTUM_ADJUSTMENT_MMR'], DEFAULTS.botDifficulty.momentumAdjustmentMmr),
+      blowoutSensitivity: numAny(['BLOWOUT_SENSITIVITY'], DEFAULTS.botDifficulty.blowoutSensitivity),
+      emoteFrustrationSensitivity: numAny(['EMOTE_FRUSTRATION_SENSITIVITY'], DEFAULTS.botDifficulty.emoteFrustrationSensitivity),
+      targetCompetitiveProbabilityByState: {
+        STRUGGLING: stateBand('STRUGGLING', DEFAULTS.botDifficulty.targetCompetitiveProbabilityByState.STRUGGLING),
+        SLIGHTLY_STRUGGLING: stateBand('SLIGHTLY_STRUGGLING', DEFAULTS.botDifficulty.targetCompetitiveProbabilityByState.SLIGHTLY_STRUGGLING),
+        BALANCED: stateBand('BALANCED', DEFAULTS.botDifficulty.targetCompetitiveProbabilityByState.BALANCED),
+        PERFORMING_WELL: stateBand('PERFORMING_WELL', DEFAULTS.botDifficulty.targetCompetitiveProbabilityByState.PERFORMING_WELL),
+        DOMINATING: stateBand('DOMINATING', DEFAULTS.botDifficulty.targetCompetitiveProbabilityByState.DOMINATING),
+      },
+      engagementWeights: {
+        closeness: numAny(['ENGAGEMENT_WEIGHT_CLOSENESS'], DEFAULTS.botDifficulty.engagementWeights.closeness),
+        lowFrustration: numAny(['ENGAGEMENT_WEIGHT_LOW_FRUSTRATION'], DEFAULTS.botDifficulty.engagementWeights.lowFrustration),
+        masteryOpportunity: numAny(['ENGAGEMENT_WEIGHT_MASTERY'], DEFAULTS.botDifficulty.engagementWeights.masteryOpportunity),
+        nonToxicity: numAny(['ENGAGEMENT_WEIGHT_NON_TOXICITY'], DEFAULTS.botDifficulty.engagementWeights.nonToxicity),
+      },
+      targetWinProbabilityBySegment: {
+        NEW_PLAYER: winBand('NEW_PLAYER', DEFAULTS.botDifficulty.targetWinProbabilityBySegment.NEW_PLAYER),
+        EARLY: winBand('EARLY', DEFAULTS.botDifficulty.targetWinProbabilityBySegment.EARLY),
+        MID: winBand('MID', DEFAULTS.botDifficulty.targetWinProbabilityBySegment.MID),
+        HIGH: winBand('HIGH', DEFAULTS.botDifficulty.targetWinProbabilityBySegment.HIGH),
+        ELITE: winBand('ELITE', DEFAULTS.botDifficulty.targetWinProbabilityBySegment.ELITE),
+      },
+      knowledgeFloorByDifficulty: {
+        veryEasy: numAny(['KNOWLEDGE_FLOOR_VERY_EASY'], DEFAULTS.botDifficulty.knowledgeFloorByDifficulty.veryEasy),
+        easy: numAny(['KNOWLEDGE_FLOOR_EASY'], DEFAULTS.botDifficulty.knowledgeFloorByDifficulty.easy),
+        medium: numAny(['KNOWLEDGE_FLOOR_MEDIUM'], DEFAULTS.botDifficulty.knowledgeFloorByDifficulty.medium),
+        hard: numAny(['KNOWLEDGE_FLOOR_HARD'], DEFAULTS.botDifficulty.knowledgeFloorByDifficulty.hard),
+        obscure: numAny(['KNOWLEDGE_FLOOR_OBSCURE'], DEFAULTS.botDifficulty.knowledgeFloorByDifficulty.obscure),
+      },
+    },
     antiFarm: DEFAULTS.antiFarm,
     trophyEconomy: DEFAULTS.trophyEconomy,
   };
@@ -186,6 +325,24 @@ function validate(cfg: LiveOpsMatchmakingConfig): boolean {
   if (m.preferredRealWaitMs < 0 || m.botEligibilityWaitMs < 0 || m.maxSearchMs < m.botEligibilityWaitMs) return false;
   if (cfg.trophyEconomy.minMultiplier < 0 || cfg.trophyEconomy.maxMultiplier > 2 || cfg.trophyEconomy.minMultiplier > cfg.trophyEconomy.maxMultiplier) return false;
   if (cfg.antiFarm.pairDecayFloor < 0 || cfg.antiFarm.pairDecayFloor > 1) return false;
+  for (const band of Object.values(cfg.botDifficulty.targetWinProbabilityBySegment)) {
+    if (band.min < 0.25 || band.max > 0.80 || band.min > band.max) return false;
+  }
+  for (const band of Object.values(cfg.botDifficulty.targetCompetitiveProbabilityByState)) {
+    if (band.min < 0.25 || band.max > 0.80 || band.min > band.max) return false;
+  }
+  for (const floor of Object.values(cfg.botDifficulty.knowledgeFloorByDifficulty)) {
+    if (floor < 0 || floor > 0.95) return false;
+  }
+  if (cfg.botDifficulty.frustrationAdjustmentMmr < 0 || cfg.botDifficulty.frustrationAdjustmentMmr > 260) return false;
+  if (cfg.botDifficulty.momentumAdjustmentMmr < 0 || cfg.botDifficulty.momentumAdjustmentMmr > 320) return false;
+  if (cfg.botDifficulty.blowoutSensitivity < 0 || cfg.botDifficulty.blowoutSensitivity > 1) return false;
+  if (cfg.botDifficulty.emoteFrustrationSensitivity < 0 || cfg.botDifficulty.emoteFrustrationSensitivity > 1) return false;
+  for (const weight of Object.values(cfg.botDifficulty.engagementWeights)) {
+    if (weight < 0 || weight > 5) return false;
+  }
+  const totalWeight = Object.values(cfg.botDifficulty.engagementWeights).reduce((sum, n) => sum + n, 0);
+  if (totalWeight <= 0) return false;
   return true;
 }
 
@@ -195,6 +352,14 @@ function bool(name: string, fallback: boolean): boolean {
   return raw === '1' || raw.toLowerCase() === 'true';
 }
 
+function boolAny(names: string[], fallback: boolean): boolean {
+  for (const name of names) {
+    const raw = process.env[name];
+    if (raw != null && raw !== '') return raw === '1' || raw.toLowerCase() === 'true';
+  }
+  return fallback;
+}
+
 function num(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw == null || raw === '') return fallback;
@@ -202,9 +367,34 @@ function num(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function numAny(names: string[], fallback: number): number {
+  for (const name of names) {
+    const raw = process.env[name];
+    if (raw == null || raw === '') continue;
+    const n = Number(raw);
+    if (Number.isFinite(n)) return n;
+  }
+  return fallback;
+}
+
 function int(name: string, fallback: number): number { return Math.round(num(name, fallback)); }
+function intAny(names: string[], fallback: number): number { return Math.round(numAny(names, fallback)); }
 function pct(name: string, fallback: number): number { return Math.max(0, Math.min(100, num(name, fallback))); }
 function str(name: string, fallback: string): string { return process.env[name] || fallback; }
+
+function winBand(segment: ProgressionSegment, fallback: { min: number; max: number }): { min: number; max: number } {
+  const prefix = `TARGET_WIN_PROBABILITY_${segment}`;
+  const min = numAny([`${prefix}_MIN`], fallback.min);
+  const max = numAny([`${prefix}_MAX`], fallback.max);
+  return { min: Math.max(0.25, Math.min(0.80, min)), max: Math.max(0.25, Math.min(0.80, max)) };
+}
+
+function stateBand(state: CompetitiveState, fallback: { min: number; max: number }): { min: number; max: number } {
+  const prefix = `TARGET_COMPETITIVE_PROBABILITY_${state}`;
+  const min = numAny([`${prefix}_MIN`], fallback.min);
+  const max = numAny([`${prefix}_MAX`], fallback.max);
+  return { min: Math.max(0.25, Math.min(0.80, min)), max: Math.max(0.25, Math.min(0.80, max)) };
+}
 
 function rolloutStageEnv(name: string, fallback: RolloutStage): RolloutStage {
   const raw = process.env[name];

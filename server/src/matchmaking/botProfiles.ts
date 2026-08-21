@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
 import { ARENAS, getArena, type Arena } from '../game/rank.ts';
-import type { Difficulty } from '../protocol.ts';
+import type { Difficulty, GameMode } from '../protocol.ts';
+import { runBotDifficultyDirector, type BotDifficultyDirectorOutput } from './botDifficultyDirector.ts';
 import { opponentConfig } from './opponentConfig.ts';
 import { SeededRandom, clamp, intBetween, mathRandom, normal, pick, weightedPick, type RandomSource } from './random.ts';
+import type { SkillRecentMatch } from './skillRating.ts';
 
 export type BotArchetype = 'FAST_RISKY' | 'BALANCED' | 'CAREFUL' | 'CASUAL' | 'STRONG' | 'SPECIALIST';
 export type ReactionSpeedProfile = 'fast' | 'balanced' | 'slow' | 'swingy';
@@ -18,6 +20,13 @@ export interface BotProfile {
   /** Hidden rating-scale skill used for expected-score trophies/matchmaking. */
   skillMean: number;
   skillUncertainty: number;
+  difficultyDirector?: BotDifficultyDirectorOutput;
+  knowledgeDepth: number;
+  recallConsistency: number;
+  inputSpeed: number;
+  pressureHandling: number;
+  answerConfidence: number;
+  questionDepthTolerance: number;
   footballKnowledge: number;
   reactionSpeed: number;
   confidence: number;
@@ -34,6 +43,7 @@ export interface BotProfile {
   hesitationProbability: number;
   mistakeProbability: number;
   timeoutProbability: number;
+  participationRate: number;
   preferredDecisionDelay: [number, number];
   favoriteKnowledgeDomains: KnowledgeDomain[];
   weakKnowledgeDomains: KnowledgeDomain[];
@@ -70,6 +80,16 @@ export interface AdaptiveBotProfileInput {
   forcedSkill?: number;
   pressureProfile?: BotPressureProfile;
   velocityPressure?: number;
+  gameMode?: GameMode;
+  queueHealthScore?: number | null;
+  accuracyEma?: number;
+  responseTimeEmaMs?: number | null;
+  easyQuestionAccuracy?: number;
+  mediumQuestionAccuracy?: number;
+  hardQuestionAccuracy?: number;
+  currentForm?: number;
+  recentMatches?: SkillRecentMatch[];
+  recentBotExposure?: number;
   seed?: string;
 }
 
@@ -262,6 +282,26 @@ export function selectBotProfileForSkill(input: AdaptiveBotProfileInput): BotPro
   const seed = input.seed ?? `${input.userKey}:${Date.now()}:${Math.random()}`;
   const rng = rngFor(seed);
   const identity = chooseIdentity(input.userKey, input.recentCooldown, rng);
+  const director = runBotDifficultyDirector({
+    playerId: input.userKey,
+    playerHiddenMmr: input.playerSkillMean,
+    playerSkillUncertainty: input.playerSkillUncertainty,
+    playerTrophies: input.playerTrophies,
+    matchesPlayed: input.playerMatchesPlayed,
+    recentMatches: input.recentMatches,
+    accuracyEma: input.accuracyEma,
+    responseTimeEmaMs: input.responseTimeEmaMs,
+    easyQuestionAccuracy: input.easyQuestionAccuracy,
+    mediumQuestionAccuracy: input.mediumQuestionAccuracy,
+    hardQuestionAccuracy: input.hardQuestionAccuracy,
+    currentForm: input.currentForm,
+    pressureProfile: input.pressureProfile,
+    velocityPressure: input.velocityPressure,
+    questionMode: input.gameMode,
+    queueHealthScore: input.queueHealthScore,
+    recentBotExposure: input.recentBotExposure,
+    rng,
+  });
   const pressure = clamp(
     (input.pressureProfile?.pressure ?? 0)
       - (input.pressureProfile?.relief ?? 0) * 0.35
@@ -274,7 +314,8 @@ export function selectBotProfileForSkill(input: AdaptiveBotProfileInput): BotPro
     ? cfg.newPlayerDifficultyBias * 260 * (1 - input.playerMatchesPlayed / 8) * clamp(uncertainty / cfg.skillUncertaintyMax, 0.35, 1)
     : 0;
   const targetSpread = clamp(cfg.targetSkillDifference * 0.55 + uncertainty * 0.14, 30, 135);
-  const targetMean = input.playerSkillMean - onboardingBias + pressure * 115 + normal(rng, 0, targetSpread);
+  const legacyTargetMean = input.playerSkillMean - onboardingBias + pressure * 115 + normal(rng, 0, targetSpread);
+  const targetMean = director.enabled ? director.targetSkillMean : legacyTargetMean;
   const forcedMean = typeof input.forcedSkill === 'number' && Number.isFinite(input.forcedSkill)
     ? botSkillMeanFromFraction(input.forcedSkill)
     : null;
@@ -308,14 +349,20 @@ export function selectBotProfileForSkill(input: AdaptiveBotProfileInput): BotPro
     STRONG: 0.12,
     SPECIALIST: 0.02,
   };
-  const footballKnowledge = clamp(baseSkill + archetypeKnowledgeBias[archetype] + normal(rng, 0, 0.035), 0.08, 0.98);
-  const reactionSpeed = clamp(baseSkill + reactionBias[archetype] + normal(rng, 0, 0.04), 0.08, 0.98);
-  const confidence = clamp(0.35 + baseSkill * 0.48 + riskBias[archetype] * 0.25 + normal(rng, 0, 0.05), 0.12, 0.94);
-  const consistency = clamp(0.42 + baseSkill * 0.42 + (archetype === 'CAREFUL' ? 0.14 : archetype === 'FAST_RISKY' ? -0.12 : 0) + normal(rng, 0, 0.04), 0.15, 0.96);
+  const knowledgeDepth = director.enabled ? director.knowledgeDepth : baseSkill;
+  const recallConsistency = director.enabled ? director.recallConsistency : clamp(0.42 + baseSkill * 0.42, 0.15, 0.96);
+  const inputSpeed = director.enabled ? director.inputSpeed : baseSkill;
+  const pressureHandling = director.enabled ? director.pressureHandling : clamp(0.30 + baseSkill * 0.50, 0.12, 0.96);
+  const answerConfidence = director.enabled ? director.answerConfidence : clamp(0.35 + baseSkill * 0.48, 0.12, 0.94);
+  const questionDepthTolerance = director.enabled ? director.questionDepthTolerance : knowledgeDepth;
+  const footballKnowledge = clamp(knowledgeDepth + archetypeKnowledgeBias[archetype] * 0.72 + normal(rng, 0, 0.030), 0.12, 0.98);
+  const reactionSpeed = clamp(inputSpeed + reactionBias[archetype] * 0.75 + normal(rng, 0, 0.035), 0.08, 0.98);
+  const confidence = clamp(answerConfidence + riskBias[archetype] * 0.18 + normal(rng, 0, 0.045), 0.12, 0.94);
+  const consistency = clamp(recallConsistency + (archetype === 'CAREFUL' ? 0.10 : archetype === 'FAST_RISKY' ? -0.10 : 0) + normal(rng, 0, 0.035), 0.15, 0.96);
   const riskTolerance = clamp(0.42 + riskBias[archetype] + confidence * 0.18 + normal(rng, 0, 0.035), 0.08, 0.96);
-  const easyAccuracy = clamp(0.50 + footballKnowledge * 0.47 + consistency * 0.04, 0.36, 0.985);
-  const mediumAccuracy = clamp(0.30 + footballKnowledge * 0.55 + consistency * 0.05, 0.16, 0.96);
-  const hardAccuracy = clamp(0.08 + footballKnowledge * 0.66 + (archetype === 'SPECIALIST' ? 0.03 : 0), 0.035, 0.91);
+  const easyAccuracy = clamp(0.54 + footballKnowledge * 0.38 + consistency * 0.05, 0.48, 0.985);
+  const mediumAccuracy = clamp(0.22 + questionDepthTolerance * 0.50 + footballKnowledge * 0.16 + consistency * 0.05, 0.14, 0.96);
+  const hardAccuracy = clamp(0.05 + questionDepthTolerance * 0.58 + (archetype === 'SPECIALIST' ? 0.03 : 0), 0.035, 0.91);
   const answerAccuracy = clamp(easyAccuracy * 0.34 + mediumAccuracy * 0.42 + hardAccuracy * 0.24, 0.12, 0.95);
   const reactionSpeedProfile: ReactionSpeedProfile = archetype === 'FAST_RISKY' || archetype === 'STRONG'
     ? 'fast'
@@ -324,12 +371,13 @@ export function selectBotProfileForSkill(input: AdaptiveBotProfileInput): BotPro
       : archetype === 'CASUAL'
         ? 'swingy'
         : 'balanced';
-  const medianBase = 7200 - reactionSpeed * 3900 + (archetype === 'CAREFUL' ? 850 : archetype === 'FAST_RISKY' ? -500 : 0);
+  const medianBase = 7600 - reactionSpeed * 4100 + (director.enabled ? director.newPlayerProtection * 950 : 0) + (archetype === 'CAREFUL' ? 850 : archetype === 'FAST_RISKY' ? -500 : 0);
   const responseMedianMs = Math.round(clamp(medianBase + normal(rng, 0, 420), cfg.botReactionMinMs + 250, cfg.botReactionMaxMs - 1400));
   const responseVarianceMs = Math.round(clamp(900 + (1 - consistency) * 3200 + (reactionSpeedProfile === 'swingy' ? 1800 : 0), 450, 6400));
   const mistakeProbability = clamp((1 - answerAccuracy) * (0.28 + riskTolerance * 0.42) + (1 - consistency) * 0.06, cfg.botErrorMin, cfg.botErrorMax);
   const timeoutProbability = clamp((1 - footballKnowledge) * 0.10 + (1 - confidence) * 0.05 + (archetype === 'CAREFUL' ? 0.025 : 0), cfg.botTimeoutMin, cfg.botTimeoutMax);
   const hesitationProbability = clamp((1 - confidence) * 0.34 + (archetype === 'CAREFUL' ? 0.18 : archetype === 'FAST_RISKY' ? -0.08 : 0), 0.04, 0.62);
+  const participationRate = clamp(0.74 + confidence * 0.14 + pressureHandling * 0.10 - timeoutProbability * 0.18, 0.58, 0.985);
   const preferredDecisionDelay: [number, number] = [
     Math.round(clamp(responseMedianMs - responseVarianceMs * 0.75, cfg.botReactionMinMs, cfg.botReactionMaxMs - 1000)),
     Math.round(clamp(responseMedianMs + responseVarianceMs * 1.15, cfg.botReactionMinMs + 900, cfg.botReactionMaxMs)),
@@ -338,6 +386,7 @@ export function selectBotProfileForSkill(input: AdaptiveBotProfileInput): BotPro
   const arena = getArena(trophyRating);
   const avatarId = AVATARS[Math.floor(hashUnit(`${identity.id}:${trophyRating}:${seed}`) * AVATARS.length)] ?? 'pp7';
   const domains = profileDomains(archetype, rng);
+  const emoteSuppression = director.enabled ? director.emoteSuppression : 0;
 
   return {
     id: identity.id,
@@ -347,6 +396,13 @@ export function selectBotProfileForSkill(input: AdaptiveBotProfileInput): BotPro
     skillRating: baseSkill,
     skillMean,
     skillUncertainty: Math.round(clamp(95 + (1 - consistency) * 120, 70, 240)),
+    difficultyDirector: director,
+    knowledgeDepth,
+    recallConsistency,
+    inputSpeed,
+    pressureHandling,
+    answerConfidence,
+    questionDepthTolerance,
     footballKnowledge,
     reactionSpeed,
     confidence,
@@ -363,10 +419,11 @@ export function selectBotProfileForSkill(input: AdaptiveBotProfileInput): BotPro
     hesitationProbability,
     mistakeProbability,
     timeoutProbability,
+    participationRate,
     preferredDecisionDelay,
     favoriteKnowledgeDomains: domains.favorite,
     weakKnowledgeDomains: domains.weak,
-    emoteFrequency: clamp(cfg.emoteProbability * (0.65 + confidence * 0.7 + riskTolerance * 0.35), 0.03, 0.72),
+    emoteFrequency: clamp(cfg.emoteProbability * (0.65 + confidence * 0.7 + riskTolerance * 0.35) * (1 - emoteSuppression), 0.015, 0.72),
     rematchAcceptance: clamp(cfg.rematchProbability * (0.72 + (archetype === 'CAREFUL' ? -0.10 : 0) + confidence * 0.34), 0.12, 0.88),
     seed,
     arena,

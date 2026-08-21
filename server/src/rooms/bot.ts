@@ -14,7 +14,7 @@ import {
   type QuestionDifficulty,
 } from '../matchmaking/botDecision.ts';
 import { getQuestionDifficulty, type QuestionDifficultyEstimate } from '../matchmaking/questionDifficulty.ts';
-import { mathRandom, pick, triangular, type RandomSource } from '../matchmaking/random.ts';
+import { clamp, mathRandom, pick, triangular, type RandomSource } from '../matchmaking/random.ts';
 import { normalize } from '../game/normalize.ts';
 import { log } from '../logger.ts';
 import { validateCountryTeamBotCandidate } from './countryTeamBotValidation.ts';
@@ -80,10 +80,13 @@ export interface BotOptions {
   exposeBotToClient?: boolean;
 }
 
+type BotEmoteTone = 'neutral' | 'taunt' | 'celebrate' | 'supportive' | 'self_deprecating';
+
 export class BotPlayer implements Transport {
   readonly isBot = true;
   readonly exposeBotToClient: boolean;
   readonly botArchetype?: string;
+  readonly botProfileId?: string;
   readonly botSkill?: number;
   readonly botSkillMean?: number;
   readonly botSkillUncertainty?: number;
@@ -124,6 +127,7 @@ export class BotPlayer implements Transport {
   constructor(opts: BotOptions = {}) {
     this.exposeBotToClient = opts.exposeBotToClient ?? true;
     this.profile = opts.profile ?? null;
+    this.botProfileId = this.profile?.id;
     this.botArchetype = this.profile?.behaviorArchetype;
     this.botSkill = this.profile?.skillRating;
     this.botSkillMean = this.profile?.skillMean;
@@ -144,6 +148,7 @@ export class BotPlayer implements Transport {
   getLastCognitiveState(): BotCognitiveState | null { return this.cognitiveState; }
   getLastQuestionDifficultyScore(): number | null { return this.questionEstimate?.difficultyScore ?? null; }
   getLastDecision(): BotDecision | null { return this.botDecision; }
+  getBotDifficultyDirector(): NonNullable<BotProfile['difficultyDirector']> | null { return this.profile?.difficultyDirector ?? null; }
 
   bind(room: Room, id: string): void {
     this.room = room;
@@ -188,7 +193,7 @@ export class BotPlayer implements Transport {
         }
         break;
       case 'wrong_guess':
-        if (msg.byId !== this.id) this.maybeEmote(['gotcha', 'smile', 'ok'], 0.34, [420, 1400]);
+        if (msg.byId !== this.id) this.maybeEmote(['gotcha', 'smile', 'ok'], 0.34, [420, 1400], 'taunt');
         break;
       case 'pass_locked':
         // Opponent passed. Agree to pass too (voiding the round) with a
@@ -223,14 +228,43 @@ export class BotPlayer implements Transport {
     this.room?.handle(this.id, msg);
   }
 
-  private maybeEmote(ids: string[], chance: number, delay: [number, number] = [500, 1800]): void {
-    if (!this.room || this.emoteTimer || Math.random() > chance) return;
-    const id = ids[Math.floor(Math.random() * ids.length)]!;
+  private maybeEmote(ids: string[], chance: number, delay: [number, number] = [500, 1800], tone: BotEmoteTone = 'neutral'): void {
+    if (!this.room || this.emoteTimer) return;
+    const allowed = this.frustrationAwareEmotes(ids, tone);
+    if (!allowed.length || Math.random() > chance * this.emoteChanceScale(tone)) return;
+    const id = allowed[Math.floor(Math.random() * allowed.length)]!;
     const ms = delay[0] + Math.floor(Math.random() * Math.max(1, delay[1] - delay[0]));
     this.emoteTimer = setTimeout(() => {
       this.emoteTimer = null;
       this.act({ type: 'send_emote', emoteId: id });
     }, ms);
+  }
+
+  private emoteChanceScale(tone: BotEmoteTone): number {
+    const suppression = this.profile?.difficultyDirector?.emoteSuppression ?? 0;
+    if (tone === 'supportive' || tone === 'self_deprecating') return clamp(1 - suppression * 0.25, 0.40, 1);
+    if (tone === 'taunt') return clamp(1 - suppression * 1.15, 0, 1);
+    return clamp(1 - suppression * 0.75, 0.10, 1);
+  }
+
+  private frustrationAwareEmotes(ids: string[], tone: BotEmoteTone): string[] {
+    const suppression = this.profile?.difficultyDirector?.emoteSuppression ?? 0;
+    if (suppression < 0.25) return ids;
+    const toxic = new Set(['gotcha', 'angry']);
+    let allowed = ids.filter((id) => !toxic.has(id));
+    if (tone === 'taunt') {
+      if (suppression >= 0.70) return [];
+      allowed = allowed.filter((id) => id === 'ok' || id === 'smile' || id === 'gg');
+    }
+    if (tone === 'celebrate' && suppression >= 0.55 && this.botScore >= this.opponentScore) {
+      allowed = allowed.filter((id) => id === 'gg' || id === 'ok');
+    }
+    if (tone === 'self_deprecating' && suppression >= 0.65) {
+      allowed = allowed.filter((id) => id === 'gg' || id === 'luck');
+    }
+    if (allowed.length) return allowed;
+    if (tone === 'supportive') return ['gg'];
+    return suppression < 0.60 ? ['ok'] : [];
   }
 
   private reactToResult(msg: Extract<ServerMsg, { type: 'result' }>): void {
@@ -240,10 +274,10 @@ export class BotPlayer implements Transport {
     this.botScore = me.score;
     this.opponentScore = opp.score;
     const emoteScale = this.profile?.emoteFrequency ?? 0.32;
-    if (msg.result.answeredById === this.id && msg.result.correct) this.maybeEmote(['smile', 'ok', 'gg'], 0.72 * emoteScale, [500, 1600]);
-    else if (msg.result.answeredById && msg.result.answeredById !== this.id && msg.result.correct) this.maybeEmote(me.score + 1 < opp.score ? ['angry', 'cry'] : ['gg', 'congrats'], 0.46 * emoteScale, [700, 1900]);
-    else if (msg.result.reason === 'passed') this.maybeEmote(['gg', 'luck'], 0.26 * emoteScale, [700, 1800]);
-    if (msg.matchOver) this.maybeEmote(me.score > opp.score ? ['gg', 'smile', 'ok'] : ['gg', 'cry'], 0.88 * emoteScale, [900, 2400]);
+    if (msg.result.answeredById === this.id && msg.result.correct) this.maybeEmote(['smile', 'ok', 'gg'], 0.72 * emoteScale, [500, 1600], 'celebrate');
+    else if (msg.result.answeredById && msg.result.answeredById !== this.id && msg.result.correct) this.maybeEmote(me.score + 1 < opp.score ? ['angry', 'cry'] : ['gg', 'congrats'], 0.46 * emoteScale, [700, 1900], me.score + 1 < opp.score ? 'self_deprecating' : 'supportive');
+    else if (msg.result.reason === 'passed') this.maybeEmote(['gg', 'luck'], 0.26 * emoteScale, [700, 1800], 'supportive');
+    if (msg.matchOver) this.maybeEmote(me.score > opp.score ? ['gg', 'smile', 'ok'] : ['gg', 'cry'], 0.88 * emoteScale, [900, 2400], me.score > opp.score ? 'celebrate' : 'self_deprecating');
   }
 
   private respondToRematch(): void {

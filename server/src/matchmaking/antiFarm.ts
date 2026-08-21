@@ -75,13 +75,14 @@ export async function recordOpponentHistory(args: {
   won: boolean;
   trophyDelta: number;
   durationSecs: number;
+  answerPattern?: Record<string, unknown>;
 }): Promise<void> {
   try {
     await pool.query(
-      `INSERT INTO opponent_history (match_id, player_id, opponent_id, opponent_type, pair_key, winner_id, won, trophy_delta, duration_secs)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO opponent_history (match_id, player_id, opponent_id, opponent_type, pair_key, winner_id, won, trophy_delta, duration_secs, answer_pattern)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
        ON CONFLICT DO NOTHING`,
-      [args.matchId, args.playerId, args.opponentId ?? null, args.opponentType, args.opponentId ? pairKeyFor(args.playerId, args.opponentId) : null, args.winnerId ?? null, args.won, args.trophyDelta, args.durationSecs],
+      [args.matchId, args.playerId, args.opponentId ?? null, args.opponentType, args.opponentId ? pairKeyFor(args.playerId, args.opponentId) : null, args.winnerId ?? null, args.won, args.trophyDelta, args.durationSecs, JSON.stringify(args.answerPattern ?? {})],
     );
   } catch (err) {
     if ((err as { code?: string }).code !== '42P01') throw err;

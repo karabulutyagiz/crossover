@@ -1,4 +1,4 @@
-import { decideBotAnswer } from '../matchmaking/botDecision.ts';
+import { botKnowsProbability, decideBotAnswer } from '../matchmaking/botDecision.ts';
 import { selectBotProfileForSkill } from '../matchmaking/botProfiles.ts';
 import { MatchmakingOrchestrator, randomBotFallbackDelayMs } from '../matchmaking/policy.ts';
 import { candidateScore, dynamicMmrWindow, estimateQueueHealth } from '../matchmaking/queueHealth.ts';
@@ -56,9 +56,36 @@ check(expectedScore(1300, 900) > expectedScore(900, 1300), 'expected-score order
 
 const bot = selectBotProfileForSkill({ userKey: 'test-user', playerTrophies: 800, playerSkillMean: 1100, playerSkillUncertainty: 170, playerMatchesPlayed: 30, recentCooldown: 8, seed: 'invariant-bot' });
 check(bot.skillMean > 850 && bot.skillMean < 1350, 'bot skill tracks player skill');
+check(bot.difficultyDirector?.targetBotSkill != null && bot.knowledgeDepth >= 0 && bot.questionDepthTolerance >= 0, 'bot profile includes multidimensional director output');
+check((bot.difficultyDirector?.competitiveEnjoymentScore ?? -1) >= 0 && (bot.difficultyDirector?.competitiveEnjoymentScore ?? 2) <= 1, 'bot director emits bounded competitive enjoyment score');
+check(['STRUGGLING', 'SLIGHTLY_STRUGGLING', 'BALANCED', 'PERFORMING_WELL', 'DOMINATING'].includes(bot.difficultyDirector?.competitiveState ?? ''), 'bot director emits internal competitive state');
 const explicitBot = new BotPlayer({ profile: bot });
 const hiddenFallbackBot = new BotPlayer({ profile: bot, exposeBotToClient: false });
 check(explicitBot.exposeBotToClient && !hiddenFallbackBot.exposeBotToClient, 'fallback bots can hide client bot ribbon while explicit bot mode stays visible');
+
+const beginnerBot = selectBotProfileForSkill({ userKey: 'beginner-test', playerTrophies: 0, playerSkillMean: 900, playerSkillUncertainty: 350, playerMatchesPlayed: 0, recentCooldown: 8, accuracyEma: 0.38, responseTimeEmaMs: 6800, seed: 'beginner-protection' });
+check((beginnerBot.difficultyDirector?.estimatedPlayerWinProbability ?? 0) >= 0.58, 'new player bot is player-favorable but not forced-win');
+check(beginnerBot.skillMean < 900, 'new player protection lowers bot skill below uncertain beginner prior');
+const losingRecent = Array.from({ length: 4 }, (_, i) => ({ at: new Date(Date.now() - i * 60_000).toISOString(), opponentType: 'BOT' as const, opponentSkillMean: 980, won: false, expected: 0.5, scoreFor: 1, scoreAgainst: 3, accuracy: 0.28, medianResponseTimeMs: 7200, skillDelta: -18 }));
+const recoveryBot = selectBotProfileForSkill({ userKey: 'recovery-test', playerTrophies: 70, playerSkillMean: 910, playerSkillUncertainty: 330, playerMatchesPlayed: 4, recentCooldown: 8, recentMatches: losingRecent, accuracyEma: 0.30, responseTimeEmaMs: 7200, seed: 'recovery-protection' });
+check((recoveryBot.difficultyDirector?.recoveryAdjustmentMmr ?? 0) < 0, 'loss streak recovery lowers target difficulty gradually');
+check(['STRUGGLING', 'SLIGHTLY_STRUGGLING'].includes(recoveryBot.difficultyDirector?.competitiveState ?? ''), 'loss streak maps to struggling competitive state');
+check((recoveryBot.difficultyDirector?.emoteSuppression ?? 0) > 0, 'struggling players get bot emote suppression');
+const intentionalRecent = Array.from({ length: 5 }, (_, i) => ({ at: new Date(Date.now() - i * 60_000).toISOString(), opponentType: 'BOT' as const, opponentSkillMean: 980, won: false, expected: 0.5, scoreFor: 0, scoreAgainst: 3, accuracy: 0, medianResponseTimeMs: null, skillDelta: -18 }));
+const intentionalBot = selectBotProfileForSkill({ userKey: 'intentional-test', playerTrophies: 80, playerSkillMean: 910, playerSkillUncertainty: 330, playerMatchesPlayed: 5, recentCooldown: 8, recentMatches: intentionalRecent, accuracyEma: 0.05, responseTimeEmaMs: null, seed: 'intentional-loss' });
+check((intentionalBot.difficultyDirector?.intentionalLossRisk ?? 0) >= 0.45, 'intentional loss risk is detected from zero-interaction losses');
+check((intentionalBot.difficultyDirector?.recoveryAdjustmentMmr ?? -1) === 0, 'intentional loss risk blocks recovery adjustment');
+check((intentionalBot.difficultyDirector?.frustrationAdjustmentMmr ?? -1) === 0, 'intentional loss risk blocks frustration adjustment');
+check(intentionalBot.difficultyDirector?.competitiveState !== 'STRUGGLING', 'intentional loss risk does not receive struggling state band');
+const smurfRecent = Array.from({ length: 3 }, (_, i) => ({ at: new Date(Date.now() - i * 60_000).toISOString(), opponentType: 'BOT' as const, opponentSkillMean: 980, won: true, expected: 0.5, scoreFor: 3, scoreAgainst: 0, accuracy: 0.9, medianResponseTimeMs: 1700, skillDelta: 24 }));
+const smurfBot = selectBotProfileForSkill({ userKey: 'smurf-test', playerTrophies: 0, playerSkillMean: 1280, playerSkillUncertainty: 330, playerMatchesPlayed: 3, recentCooldown: 8, recentMatches: smurfRecent, accuracyEma: 0.9, responseTimeEmaMs: 1700, hardQuestionAccuracy: 0.78, seed: 'smurf-calibration' });
+check(smurfBot.skillMean >= 1160, 'strong new accounts calibrate toward harder legal bots');
+check(['PERFORMING_WELL', 'DOMINATING'].includes(smurfBot.difficultyDirector?.competitiveState ?? ''), 'dominant new accounts get elevated competitive state');
+const obviousKnow = botKnowsProbability(beginnerBot, { difficultyScore: 0.12, answerPopularity: 0.90 });
+const mediumKnow = botKnowsProbability(beginnerBot, { difficultyScore: 0.58, answerPopularity: 0.40 });
+const obscureKnow = botKnowsProbability(beginnerBot, { difficultyScore: 0.93, answerPopularity: 0.12 });
+check(obviousKnow >= 0.65, 'low-level bots retain mainstream football knowledge floor');
+check(obviousKnow > mediumKnow && mediumKnow > obscureKnow, 'knowledge curve decays with question depth');
 
 const health = estimateQueueHealth(
   { trophies: 800, skillMean: 1100, skillUncertainty: 150, elapsedMs: 1200 },

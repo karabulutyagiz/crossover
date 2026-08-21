@@ -26,6 +26,8 @@ import { isEmote } from '../game/emotes.ts';
 import { log } from '../logger.ts';
 import { getQuestionDifficulty, recordQuestionOutcome, type QuestionDifficultyEstimate } from '../matchmaking/questionDifficulty.ts';
 import { recordTelemetry } from '../matchmaking/telemetry.ts';
+import { recordBotRoundOutcome } from '../matchmaking/botTelemetry.ts';
+import type { BotDifficultyDirectorOutput } from '../matchmaking/botDifficultyDirector.ts';
 import { defaultSkillProfile, updateSkillAfterMatch, type SkillRoundSignal } from '../matchmaking/skillRating.ts';
 import { assessFarmRisk, recordOpponentHistory } from '../matchmaking/antiFarm.ts';
 import { getTrophyEconomyState } from '../matchmaking/trophyEconomy.ts';
@@ -57,12 +59,21 @@ const INTER_ROUND_MS = 10_000;
 const RECONNECT_GRACE_MS = 12_000;
 type ForfeitReason = 'leave' | 'cheat' | 'disconnect';
 
+function finiteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
 // A player's link to the outside world: a real WebSocket client, or a bot.
 export interface Transport {
   send(msg: ServerMsg): void;
   readonly isBot: boolean;
   readonly exposeBotToClient?: boolean;
   readonly botArchetype?: string;
+  readonly botProfileId?: string;
   readonly botSkill?: number;
   readonly botSkillMean?: number;
   readonly botSkillUncertainty?: number;
@@ -70,6 +81,7 @@ export interface Transport {
   getLastCognitiveState?(): string | null;
   getLastQuestionDifficultyScore?(): number | null;
   getLastDecision?(): { cognitiveState: string; reactionDelayMs: number; willAnswer: boolean; shouldMistake: boolean; shouldTimeout: boolean } | null;
+  getBotDifficultyDirector?(): BotDifficultyDirectorOutput | null;
   // İstemcinin bildirdiği yetenek bayrakları (ws/server.ts kayıt sırasında yazar).
   // 'wrongopen': yanlış cevapta turun açık kalmasını ve yeni mesajları anlar.
   caps?: string[];
@@ -145,7 +157,8 @@ export class Room {
   private matchOver = false; // true once a player reaches WIN_TARGET
   private rematchBy: string | null = null;
   private matchStartedAt = 0; // startMatch anı (ms) — maç süresi istatistiği için
-  private matchId = randomUUID();
+  private matchId: string = randomUUID();
+  private nextMatchId: string | null = null;
   private settlementStarted = false;
   private matchTelemetryClosed = false;
   private readyPlayers = new Set<string>();
@@ -163,6 +176,15 @@ export class Room {
   constructor(code: string, onEmpty: (code: string) => void) {
     this.code = code;
     this.onEmpty = onEmpty;
+  }
+
+  assignNextMatchId(matchId: string): void {
+    this.nextMatchId = matchId;
+    this.matchId = matchId;
+  }
+
+  currentMatchId(): string {
+    return this.matchId;
   }
 
   // ---- membership ----
@@ -388,6 +410,7 @@ export class Room {
               scoreFor: p.score,
               scoreAgainst: bot?.score ?? WIN_TARGET,
               durationSec: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0,
+              ...this.matchQualityPayload(p, bot ?? forfeitOpponent),
             },
           });
           log.info('match_completed', { matchId: this.matchId, opponentType: 'BOT', result: reason === 'cheat' ? 'cheat_forfeit_loss' : 'forfeit_loss', forfeitReason: reason, durationSec: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0, botArchetype: bot?.transport.botArchetype, botSkill: bot?.transport.botSkill });
@@ -467,6 +490,7 @@ export class Room {
                 scoreFor: winner.score,
                 scoreAgainst: p.score,
                 durationSec: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0,
+                ...this.matchQualityPayload(winner, p),
               },
             });
           }
@@ -522,6 +546,7 @@ export class Room {
                 scoreFor: p.score,
                 scoreAgainst: winner.score,
                 durationSec: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0,
+                ...this.matchQualityPayload(p, winner),
               },
             });
           }
@@ -613,7 +638,8 @@ export class Room {
   private startMatch(): void {
     this.matchOver = false;
     this.rematchBy = null;
-    this.matchId = randomUUID();
+    this.matchId = this.nextMatchId ?? randomUUID();
+    this.nextMatchId = null;
     this.settlementStarted = false;
     this.matchTelemetryClosed = false;
     this.roundNumber = 0;
@@ -626,6 +652,7 @@ export class Room {
     this.matchStartedAt = Date.now(); // maç süresi ölçümü (admin istatistikleri)
     for (const p of this.players.values()) { p.score = 0; p.wrongCount = 0; }
     const hasBot = [...this.players.values()].some((p) => p.transport.isBot);
+    const bot = [...this.players.values()].find((p) => p.transport.isBot);
     for (const p of this.players.values()) {
       recordTelemetry({
         eventName: 'match_started',
@@ -639,6 +666,13 @@ export class Room {
           playerSkillUncertainty: p.skillUncertainty,
           playerTrophies: p.trophies,
           gameMode: this.gameMode,
+          botProfileId: bot?.transport.botProfileId,
+          botArchetype: bot?.transport.botArchetype,
+          botSkill: bot?.transport.botSkill,
+          botSkillMean: bot?.transport.botSkillMean,
+          botCompetitiveState: stringOrNull(bot?.transport.getBotDifficultyDirector?.()?.competitiveState),
+          botCompetitiveEnjoymentScore: finiteNumber(bot?.transport.getBotDifficultyDirector?.()?.competitiveEnjoymentScore),
+          botFrustrationRiskScore: finiteNumber(bot?.transport.getBotDifficultyDirector?.()?.frustrationRiskScore),
         },
       });
     }
@@ -1252,6 +1286,8 @@ export class Room {
       playerId: p?.userId ?? null,
       opponentType: p?.transport.isBot ? 'BOT' : 'HUMAN',
       payload: {
+        actorType: p?.transport.isBot ? 'BOT' : 'HUMAN',
+        matchOpponentType: [...this.players.values()].some((x) => x.transport.isBot) ? 'BOT' : 'HUMAN',
         questionKey: this.round.question?.questionKey,
         responseTimeMs,
         correct: false,
@@ -1701,6 +1737,7 @@ export class Room {
           won,
           trophyDelta: delta,
           durationSecs,
+          answerPattern: this.answerPatternFor(p, opp),
         });
         trophyDeltas.push({ userId: p.userId, delta, expectedWinProbability });
         this.lastTrophyDeltaByUser.set(p.userId, delta);
@@ -1765,6 +1802,49 @@ export class Room {
     return { skillMean: fallback.skillMean, skillUncertainty: fallback.skillUncertainty, matchesPlayed: 0 };
   }
 
+  private answerPatternFor(player: Player, opponent: Player | undefined): Record<string, unknown> {
+    const signals = this.skillRoundSignals.get(player.id) ?? [];
+    const responseTimes = signals.map((s) => s.responseTimeMs).filter((n): n is number => typeof n === 'number' && Number.isFinite(n));
+    const avgResponse = responseTimes.length ? Math.round(responseTimes.reduce((sum, n) => sum + n, 0) / responseTimes.length) : null;
+    return {
+      rounds: signals.length,
+      answered: signals.filter((s) => s.answered).length,
+      correct: signals.filter((s) => s.correct).length,
+      mistakes: signals.filter((s) => s.mistake).length,
+      timeouts: signals.filter((s) => s.timedOut).length,
+      avgResponseTimeMs: avgResponse,
+      scoreFor: player.score,
+      scoreAgainst: opponent?.score ?? 0,
+      scoreDifference: player.score - (opponent?.score ?? 0),
+      closeMatch: Math.abs(player.score - (opponent?.score ?? 0)) <= 1,
+      blowout: Math.abs(player.score - (opponent?.score ?? 0)) >= 3,
+      opponentIsBot: opponent?.transport.isBot ?? false,
+      botSkill: opponent?.transport.botSkill ?? null,
+      botSkillMean: opponent?.transport.botSkillMean ?? null,
+      gameMode: this.gameMode,
+    };
+  }
+
+  private matchQualityPayload(player: Player, opponent: Player | undefined): Record<string, unknown> {
+    const scoreAgainst = opponent?.score ?? 0;
+    const scoreMargin = player.score - scoreAgainst;
+    const absMargin = Math.abs(scoreMargin);
+    const competitiveQualityScore = Math.max(0, Math.min(1, 1 - Math.max(0, absMargin - 1) / Math.max(1, WIN_TARGET - 1)));
+    const director = opponent?.transport.isBot ? opponent.transport.getBotDifficultyDirector?.() ?? null : null;
+    return {
+      scoreMargin,
+      closeMatch: absMargin <= 1,
+      blowout: absMargin >= WIN_TARGET,
+      competitiveQualityScore: Number(competitiveQualityScore.toFixed(4)),
+      botCompetitiveState: stringOrNull(director?.competitiveState),
+      botCompetitiveEnjoymentScore: finiteNumber(director?.competitiveEnjoymentScore),
+      botFrustrationRiskScore: finiteNumber(director?.frustrationRiskScore),
+      botMomentumScore: finiteNumber(director?.momentumScore),
+      botBlowoutRisk: finiteNumber(director?.blowoutRisk),
+      botTargetCompetitiveProbability: finiteNumber(director?.targetCompetitiveProbability),
+    };
+  }
+
   private recordMatchFinishedTelemetry(winner: Player, hasBot: boolean, deltas: { userId: string; delta: number; expectedWinProbability?: number }[]): void {
     if (this.matchTelemetryClosed) return;
     this.matchTelemetryClosed = true;
@@ -1795,6 +1875,7 @@ export class Room {
           scoreAgainst: opp?.score ?? 0,
           durationSec: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0,
           gameMode: this.gameMode,
+          ...this.matchQualityPayload(p, opp),
         },
       });
     }
@@ -1808,6 +1889,8 @@ export class Room {
   ): void {
     if (!this.round) return;
     const hasBot = [...this.players.values()].some((p) => p.transport.isBot);
+    const botPlayer = [...this.players.values()].find((p) => p.transport.isBot) ?? null;
+    const botDecision = botPlayer?.transport.getLastDecision?.() as Record<string, unknown> | null | undefined;
     const recorded = this.round.skillSignalRecorded ??= new Set<string>();
     for (const p of this.players.values()) {
       const playerAnswered = result.answeredById === p.id;
@@ -1854,6 +1937,8 @@ export class Room {
         playerId: answeredBy.userId ?? null,
         opponentType: answeredBy.transport.isBot ? 'BOT' : 'HUMAN',
         payload: {
+          actorType: answeredBy.transport.isBot ? 'BOT' : 'HUMAN',
+          matchOpponentType: hasBot ? 'BOT' : 'HUMAN',
           questionKey: question?.questionKey,
           questionDifficulty: question?.difficultyScore,
           responseTimeMs,
@@ -1895,6 +1980,28 @@ export class Room {
         score: this.scorePayload(),
       },
     });
+    if (hasBot) {
+      recordBotRoundOutcome({
+        matchId: this.matchId,
+        roomCode: this.code,
+        roundNumber: this.roundNumber,
+        gameMode: this.gameMode,
+        questionKey: question?.questionKey,
+        questionDifficulty: question?.difficultyScore,
+        answerPopularity: question?.answerPopularity,
+        validAnswerCount: question?.validAnswerCount,
+        botId: botPlayer?.transport.botProfileId ?? null,
+        botSkill: botPlayer?.transport.botSkill ?? null,
+        botSkillMean: botPlayer?.transport.botSkillMean ?? null,
+        decision: botDecision ?? null,
+        answeredByBot: answeredBy?.transport.isBot ?? false,
+        answeredByHuman: Boolean(answeredBy && !answeredBy.transport.isBot),
+        correct: result.correct,
+        reason: result.reason,
+        responseTimeMs,
+        score: this.scorePayload(),
+      });
+    }
   }
 
   private scorePayload(): { players: { name: string; score: number; isBot: boolean }[] } {

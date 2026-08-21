@@ -41,6 +41,7 @@ import { candidateScore, estimateQueueHealth, type QueueHealth } from '../matchm
 import { assessFarmRisk, recordBotExposure } from '../matchmaking/antiFarm.ts';
 import { botAvailabilityMultiplier, getTrophyEconomyState } from '../matchmaking/trophyEconomy.ts';
 import { recordDecisionTrace } from '../matchmaking/decisionTrace.ts';
+import { botProfileSnapshot, recordBotMatchProfile } from '../matchmaking/botTelemetry.ts';
 import type { Room, Transport } from '../rooms/room.ts';
 import type { MessageView, ConversationView } from '../protocol.ts';
 import type { ClientMsg, GameMode, ProfileView, ServerMsg } from '../protocol.ts';
@@ -422,6 +423,8 @@ export function startServer(port: number): Server {
   function startHumanMatch(a: QueueEntry, b: QueueEntry): boolean {
     if (!reservePair(a, b)) return false;
     const room = manager.createRoom();
+    const matchId = randomUUID();
+    room.assignNextMatchId(matchId);
     room.ranked = true;
     if (a.options?.scope) room.scope = a.options.scope;
     room.gameMode = entryMode(a);
@@ -442,6 +445,7 @@ export function startServer(port: number): Server {
     });
     recordTelemetry({
       eventName: 'human_opponent_found',
+      matchId,
       roomCode: room.code,
       playerId: a.userProfile?.id ?? a.userId ?? null,
       opponentId: b.userProfile?.id ?? b.userId ?? null,
@@ -462,7 +466,7 @@ export function startServer(port: number): Server {
       },
     });
     recordDecisionTrace({
-      matchId: (room as unknown as { matchId?: string }).matchId,
+      matchId,
       playerId: a.userProfile?.id ?? a.userId ?? null,
       queueStart: a.since,
       queueDurationMs: now - a.since,
@@ -512,6 +516,7 @@ export function startServer(port: number): Server {
       return false;
     }
     const velocity = entry.userProfile?.id ? await getTrophyVelocity(entry.userProfile.id).catch(() => ({ pressure: 0 })) : { pressure: 0 };
+    const mode = entryMode(entry);
     const botProfile = selectBotProfileForSkill({
       userKey: entry.userProfile?.id ?? entry.userId ?? entry.requestId ?? entry.name,
       playerTrophies,
@@ -523,14 +528,26 @@ export function startServer(port: number): Server {
       forcedSkill: config.matchmaking.debug.botSkill,
       pressureProfile,
       velocityPressure: velocity.pressure,
+      gameMode: mode,
+      queueHealthScore: entry.lastQueueHealth?.queueHealthScore ?? null,
+      accuracyEma: skillProfile?.overallAccuracy,
+      responseTimeEmaMs: skillProfile?.medianCorrectResponseTimeMs ?? null,
+      easyQuestionAccuracy: skillProfile?.easyQuestionAccuracy,
+      mediumQuestionAccuracy: skillProfile?.mediumQuestionAccuracy,
+      hardQuestionAccuracy: skillProfile?.hardQuestionAccuracy,
+      currentForm: skillProfile?.currentForm,
+      recentMatches: skillProfile?.recentMatches,
+      recentBotExposure: pressureProfile?.botGames,
       seed: `${entry.requestId ?? entry.userId ?? entry.name}:${Date.now()}`,
     });
     entry.botProfile = botProfile;
     const room = manager.createRoom();
+    const matchId = randomUUID();
+    room.assignNextMatchId(matchId);
     room.ranked = true;
     room.rankedBotRewards = true;
     if (entry.options?.scope) room.scope = entry.options.scope;
-    room.gameMode = entryMode(entry);
+    room.gameMode = mode;
     log.info('bot_fallback_started', {
       requestId: entry.requestId,
       searchDurationMs: Date.now() - entry.since,
@@ -538,6 +555,7 @@ export function startServer(port: number): Server {
       arena: entry.userProfile?.arena.name,
       botArchetype: botProfile.behaviorArchetype,
       botSkill: Number(botProfile.skillRating.toFixed(3)),
+      botDifficultyDirector: botProfile.difficultyDirector,
       botPressure: pressureProfile?.pressure,
       botRelief: pressureProfile?.relief,
       botWins: pressureProfile?.botWins,
@@ -552,6 +570,7 @@ export function startServer(port: number): Server {
     });
     recordTelemetry({
       eventName: 'bot_fallback_created',
+      matchId,
       roomCode: room.code,
       playerId: entry.userProfile?.id ?? entry.userId ?? null,
       opponentType: 'BOT',
@@ -563,11 +582,29 @@ export function startServer(port: number): Server {
         botSkill: botProfile.skillRating,
         botSkillMean: botProfile.skillMean,
         botArchetype: botProfile.behaviorArchetype,
+        botDifficulty: botProfile.difficulty,
+        botProfile: botProfileSnapshot(botProfile),
+        botDifficultyDirector: botProfile.difficultyDirector,
         playerTrophies,
         opponentTrophies: botProfile.trophyRating,
         trophyVelocityPressure: velocity.pressure,
         mode: room.gameMode,
       },
+    });
+    recordBotMatchProfile({
+      matchId,
+      roomCode: room.code,
+      userId: entry.userProfile?.id ?? entry.userId ?? null,
+      gameMode: room.gameMode,
+      playerTrophies,
+      playerSkillMean: skillProfile?.skillMean ?? null,
+      playerSkillUncertainty: skillProfile?.skillUncertainty ?? null,
+      playerMatchesPlayed: skillProfile?.matchesPlayed ?? null,
+      profile: botProfile,
+      queueDurationMs: Date.now() - entry.since,
+      queueHealth: entry.lastQueueHealth as unknown as Record<string, unknown>,
+      pressureProfile: pressureProfile as unknown as Record<string, unknown>,
+      economyState: economyAtStart.state,
     });
     if (entry.userProfile?.id) {
       pool.query(
@@ -582,7 +619,7 @@ export function startServer(port: number): Server {
     if (human.ok) entry.setCtx({ room, playerId: human.id, userProfile: entry.userProfile });
     if (botRes.ok) bot.bind(room, botRes.id);
     if (entry.userProfile?.id) {
-      void recordBotExposure(entry.userProfile.id, botProfile.id, (room as unknown as { matchId?: string }).matchId ?? '', segmentAtStart);
+      void recordBotExposure(entry.userProfile.id, botProfile.id, matchId, segmentAtStart);
     }
     entry.state = 'STARTING_MATCH';
     log.info('bot_match_started', {
@@ -596,7 +633,7 @@ export function startServer(port: number): Server {
     });
     setTimeout(() => safeAutoStart(room, human.ok ? human.id : '', 'bot_match', entry.requestId), 3500);
     recordDecisionTrace({
-      matchId: (room as unknown as { matchId?: string }).matchId,
+      matchId,
       playerId: entry.userProfile?.id ?? entry.userId ?? null,
       queueStart: entry.since,
       queueDurationMs: Date.now() - entry.since,
@@ -609,8 +646,11 @@ export function startServer(port: number): Server {
       botSkill: botProfile.skillRating,
       queueHealth: entry.lastQueueHealth as unknown as Record<string, unknown>,
       formScore: skillProfile?.currentForm ?? null,
+      frustrationRisk: botProfile.difficultyDirector?.frustrationRisk ?? null,
+      farmRisk: botProfile.difficultyDirector?.intentionalLossRisk ?? null,
       trophyEconomyState: economyAtStart.state,
-      selectionReason: 'queue_health_bot_fallback',
+      matchQualityScore: botProfile.difficultyDirector?.estimatedPlayerWinProbability ?? null,
+      selectionReason: botProfile.difficultyDirector?.enabled ? 'engagement_safe_difficulty_director' : 'queue_health_bot_fallback',
     });
     return true;
   }
