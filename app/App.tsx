@@ -120,6 +120,20 @@ try {
   // native module unavailable (Expo Go) — ads disabled gracefully
 }
 
+type ExpoUpdatesModule = {
+  isEnabled?: boolean;
+  checkForUpdateAsync?: () => Promise<{ isAvailable: boolean }>;
+  fetchUpdateAsync?: () => Promise<unknown>;
+  reloadAsync?: () => Promise<void>;
+};
+
+let expoUpdates: ExpoUpdatesModule | null = null;
+try {
+  expoUpdates = require('expo-updates');
+} catch {
+  // native module unavailable (Expo Go) — OTA checks disabled gracefully
+}
+
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 // Tuval genişliği (tablette ekranı dolduran geniş tuval — bkz. ScaledRoot).
 const SCREEN_W = canvasSizeFor(Dimensions.get('window').width, Dimensions.get('window').height).width;
@@ -729,12 +743,39 @@ function AppRoot() {
   const TABS = TAB_DEFS.map((tab) => ({ ...tab, label: t(tab.labelKey) }));
 
   const phaseRef = useRef(state.phase);
+  const otaInFlightRef = useRef(false);
+  const lastOtaCheckAtRef = useRef(0);
   useEffect(() => {
     if (phaseRef.current !== state.phase) {
       dismissActiveInput();
       phaseRef.current = state.phase;
     }
   }, [state.phase]);
+
+  const checkForOtaUpdate = useCallback(async () => {
+    if (!expoUpdates?.isEnabled || !expoUpdates.checkForUpdateAsync || !expoUpdates.fetchUpdateAsync || !expoUpdates.reloadAsync) return;
+    if (otaInFlightRef.current || FORFEIT_PHASES.has(String(phaseRef.current))) return;
+    const now = Date.now();
+    if (now - lastOtaCheckAtRef.current < 5 * 60_000) return;
+    lastOtaCheckAtRef.current = now;
+    otaInFlightRef.current = true;
+    try {
+      const update = await expoUpdates.checkForUpdateAsync();
+      if (!update.isAvailable || FORFEIT_PHASES.has(String(phaseRef.current))) return;
+      await expoUpdates.fetchUpdateAsync();
+      if (!FORFEIT_PHASES.has(String(phaseRef.current))) await expoUpdates.reloadAsync();
+    } catch {
+      // OTA failures must never block startup or foreground resume.
+    } finally {
+      otaInFlightRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    const id = setTimeout(() => { checkForOtaUpdate(); }, 1500);
+    const sub = AppState.addEventListener('change', (st) => { if (st === 'active') checkForOtaUpdate(); });
+    return () => { clearTimeout(id); sub.remove(); };
+  }, [checkForOtaUpdate]);
 
   useEffect(() => () => {
     if (tabGuardTimer.current) clearTimeout(tabGuardTimer.current);

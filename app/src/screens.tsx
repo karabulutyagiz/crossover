@@ -3356,10 +3356,17 @@ function PopupCard({ visible, title, icon, onClose, children }: {
 // Etiketli, ISO tarihli haber modeli. "Etiket yok + nokta ayraçlı mutlak tarih"
 // ikilisi, akışı editoryal değil ÜRETİLMİŞ gösteren en belirgin izlerdendi.
 type NewsItem = { id: string; tag: string; date: string; title: string; body: string; icon: any; tint: string };
-// Boş tutulur: buraya yalnız GERÇEK, editör elinden çıkmış duyurular girer
-// (kullanıcı kararı 2026-08-10 — lansman dolgu metinleri kaldırıldı). Akış
-// boşken NewsModal EmptyState gösterir, zil noktası hiç yanmaz.
-const NEWS: NewsItem[] = [];
+const NEWS: NewsItem[] = [
+  {
+    id: '2026-08-21-outage-fix',
+    tag: 'DÜZELTME',
+    date: '2026-08-21',
+    title: 'Kesinti sorunu çözüldü',
+    body: 'Bazı oyuncularda görülen bağlantı kesintisi sorunu giderildi.',
+    icon: 'wifi',
+    tint: theme.accent,
+  },
+];
 export const LATEST_NEWS_ID = NEWS[0]?.id ?? '';
 export const NEWS_READ_KEY = '@crossover_news_read';
 
