@@ -21,6 +21,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { useFonts } from 'expo-font';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCrossover, type GameState } from './src/useCrossover';
+import type { GameMode } from './src/protocol';
 import { t, setLanguage } from './src/i18n';
 
 // ── AÇILIŞTAKİ BEYAZ KARE (kullanıcı raporu 2026-08-13) ────────────────────
@@ -37,14 +38,9 @@ import { t, setLanguage } from './src/i18n';
 // çevirirdi. Promise .catch'i yalnız reddi yakalar, senkron atışı yakalamaz.
 try {
   NativeSplash.preventAutoHideAsync().catch(() => {});
-  // Devir-teslim sert kesme değil kısa çapraz geçiş: native splash (lacivert +
-  // logo) ile JS açılış ekranı (lacivert) arasındaki tek görünür fark logonun
-  // kaybolmasıdır; 150ms fade bunu dikişsiz yapar.
-  NativeSplash.setOptions?.({ duration: 150, fade: true });
-  // SON EMNİYET: AppRoot hiç mount olmazsa (bundle'da erken hata) içerideki
-  // zamanlayıcı da çalışmaz ve kullanıcı native splash'ta sonsuza dek asılı
-  // kalırdı. Modül kapsamındaki bu ağ, uygulamayı her hâlükârda açığa çıkarır.
-  setTimeout(() => { try { NativeSplash.hideAsync().catch(() => {}); } catch { /* yut */ } }, 6000);
+  // Native splash is intentionally a plain brand-colour hold. The React intro owns
+  // all logo animation, so the handoff must not fade out a duplicate native logo.
+  NativeSplash.setOptions?.({ duration: 80, fade: true });
 } catch { /* native splash yönetimi yoksa açılış yine de sürmeli */ }
 
 // Marketing-capture mode: DevShotScreen + forced language. NEVER ships true —
@@ -56,6 +52,7 @@ const FORCE_TUTORIAL_DEV = false;
 import { BASE_H, uiScaleFor, canvasSizeFor } from './src/layout';
 import { setGemTarget } from './src/gemTarget';
 import { addNotificationTapListener, getPushPermissionGranted, setBadge } from './src/notifications';
+import { fetchApi } from './src/config';
 import {
   DevShotScreen,
   TrophyFlight,
@@ -76,6 +73,7 @@ import {
   CollectionScreen,
   FriendsScreen,
   DiamondCelebration,
+  FeedbackCenterModal,
   LobbyScreen,
   MatchupScreen,
   CountdownScreen,
@@ -92,6 +90,9 @@ import {
   LevelRoadModal,
   Btn,
   MODE_LABEL,
+  POWERS,
+  POWER_PRICES,
+  PowerArt,
   darken,
   withAlpha,
 } from './src/screens';
@@ -100,14 +101,68 @@ import { GemIcon } from './src/GemIcon';
 import { installGlobalErrorHandlers, track } from './src/telemetry';
 import { dismissActiveInput } from './src/keyboardLifecycle';
 import type { ImageSourcePropType } from 'react-native';
-import { initAudioService, playAmbience, playMusic, stopAmbience, stopMusic } from './src/feedback/AudioService';
-import { AmbienceTrack, GameFeedbackEvent, MusicTrack } from './src/feedback/events';
-import { isRonaldoAnswer, triggerFeedback } from './src/feedback/GameFeedback';
+import { initAudioService, setAudioScene, type AudioScene } from './src/feedback/AudioService';
+import { GameFeedbackEvent } from './src/feedback/events';
+import { isRonaldoAnswer, triggerDiamondCollectTick, triggerFeedback } from './src/feedback/GameFeedback';
 import { loadFeedbackPreferences } from './src/feedback/preferences';
+import {
+  evaluateMonetizationOffer,
+  hasActiveSocialPack,
+  loadMonetizationConfig,
+  loadOfferCaps,
+  markMatchCompleted,
+  markOfferDismissed,
+  markPostMatchOfferSeen,
+  markPurchaseDeclined,
+  markPurchaseSucceeded,
+  markSocialPackOfferSeen,
+  PROMOTION_TIMING,
+  saveOfferCaps,
+  setPendingAutoUsePower,
+  setPendingDiamondIntent,
+  takePendingAutoUsePower,
+  type MonetizationOffer,
+  type MonetizationRemoteConfig,
+  type OfferCaps,
+  type OfferEngineContext,
+  type PowerId,
+} from './src/monetization';
+import { setPendingShortfall } from './src/shortfall';
+import {
+  ENGAGEMENT_CONFIG,
+  EngagementPriority,
+  closeEngagement,
+  createEngagementRuntime,
+  enqueueEngagement,
+  evaluateFeedbackEngagement,
+  evaluateRatingEngagement,
+  evaluateSocialPackEngagement,
+  engagementLog,
+  isActivePlayEligible,
+  loadEngagementState,
+  recordActiveSeconds,
+  recordMatchFinished,
+  recordPurchaseSuccess,
+  resetEngagementState,
+  saveEngagementState,
+  takeNextEngagement,
+  type EngagementQueueItem,
+  type EngagementRuntimeState,
+} from './src/engagement';
+import { requestNativeReview } from './src/ReviewService';
 
 type GemCelebration =
   | { kind: 'purchase'; amount: number; img?: ImageSourcePropType }
   | { kind: 'arenaReward'; amount: number; arenaName: string };
+
+function powerCount(profile: GameState['profile'], powerId: PowerId): number {
+  if (!profile) return 0;
+  if (powerId === 'xp2x') return profile.powerXp2x ?? 0;
+  if (powerId === 'shield') return profile.powerShield ?? 0;
+  if (powerId === 'streak') return profile.powerStreak ?? 0;
+  if (powerId === 'training') return profile.powerTraining ?? 0;
+  return profile.powerSocialToken ?? 0;
+}
 
 // AdMob must be initialized once at startup or no ad (incl. rewarded) will ever
 // load. Native module — absent in Expo Go, so require it guarded.
@@ -118,20 +173,6 @@ try {
   initMobileAds = () => mobileAds().initialize();
 } catch {
   // native module unavailable (Expo Go) — ads disabled gracefully
-}
-
-type ExpoUpdatesModule = {
-  isEnabled?: boolean;
-  checkForUpdateAsync?: () => Promise<{ isAvailable: boolean }>;
-  fetchUpdateAsync?: () => Promise<unknown>;
-  reloadAsync?: () => Promise<void>;
-};
-
-let expoUpdates: ExpoUpdatesModule | null = null;
-try {
-  expoUpdates = require('expo-updates');
-} catch {
-  // native module unavailable (Expo Go) — OTA checks disabled gracefully
 }
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -145,6 +186,7 @@ const PUSH_PROMPTED_KEY = '@crossover_push_prompted';
 // consumed by an App effect once the app is actually navigable.
 type PushRoute = { kind: 'message'; fromId: string } | { kind: 'store' } | { kind: 'reengage' };
 const pendingPushRoute: { current: PushRoute | null } = { current: null };
+const appSessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
 function parsePushRoute(data: any): PushRoute | null {
   if (data?.kind === 'message' && typeof data.fromId === 'string' && data.fromId) {
@@ -171,9 +213,10 @@ const FORFEIT_PHASES = new Set(['matchup', 'countdown', 'pick', 'reveal', 'guess
 // HUD gem counter. Memoized + owns the count-anim listener, so the per-frame
 // setState during gain animations re-renders ONLY this pill, never the app tree.
 // The purple gain sweep is a native-driver scaleX on a left-anchored layer.
-const DiamondPill = memo(function DiamondPill({ countAnim, fillAnim, pillRef, onMeasure, onPress, shownRef }: {
+const DiamondPill = memo(function DiamondPill({ countAnim, fillAnim, pulseAnim, pillRef, onMeasure, onPress, shownRef }: {
   countAnim: Animated.Value;
   fillAnim: Animated.Value;
+  pulseAnim?: Animated.Value;
   pillRef: RefObject<View | null>;
   onMeasure: () => void;
   onPress: () => void;
@@ -183,6 +226,8 @@ const DiamondPill = memo(function DiamondPill({ countAnim, fillAnim, pillRef, on
   shownRef: RefObject<number>;
 }) {
   const [count, setCount] = useState(() => shownRef.current ?? 0);
+  const pulseScale = pulseAnim?.interpolate({ inputRange: [0, 0.45, 1], outputRange: [1, 1.055, 1] }) ?? 1;
+  const pulseGlow = pulseAnim?.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 0.42, 0] }) ?? 0;
   useEffect(() => {
     const id = countAnim.addListener(({ value }) => setCount(Math.max(0, Math.round(value))));
     return () => countAnim.removeListener(id);
@@ -190,8 +235,9 @@ const DiamondPill = memo(function DiamondPill({ countAnim, fillAnim, pillRef, on
   return (
     <Pressable ref={pillRef} onLayout={onMeasure} onPress={onPress}>
       {({ pressed }) => (
-        <View style={s.hudPillShadow}>
+        <Animated.View style={[s.hudPillShadow, { transform: [{ scale: pulseScale }] }]}>
           <View style={[s.hudPill, { paddingLeft: 20, paddingRight: 5, paddingVertical: 5 }, pressed && s.hudPillPressed]}>
+            <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 999, backgroundColor: theme.gem, opacity: pulseGlow }]} />
             <Animated.View pointerEvents="none" style={[s.diamondFill, { transform: [{ scaleX: fillAnim }] }]} />
             <GemIcon size={20} />
             <Text style={s.diamondText}>{count}</Text>
@@ -199,7 +245,7 @@ const DiamondPill = memo(function DiamondPill({ countAnim, fillAnim, pillRef, on
               <Ionicons name="add" size={12} color={theme.ink} />
             </View>
           </View>
-        </View>
+        </Animated.View>
       )}
     </Pressable>
   );
@@ -336,7 +382,7 @@ function TabButton({ active = false, locked = false, icon, activeIcon, label, on
       style={s.tab}
       onPress={onPress}
       onPressIn={() => {
-        triggerFeedback(locked ? GameFeedbackEvent.UI_ERROR : GameFeedbackEvent.UI_TAB_SWITCH);
+        triggerFeedback(locked ? GameFeedbackEvent.UI_DISABLED : GameFeedbackEvent.UI_NAVIGATION);
         Animated.timing(press, { toValue: 1, duration: 60, useNativeDriver: true }).start();
       }}
       onPressOut={() => Animated.timing(press, { toValue: 0, duration: 110, useNativeDriver: true }).start()}
@@ -380,7 +426,7 @@ function PlayTab({ active, label, onPress }: { active: boolean; label: string; o
       style={s.tab}
       onPress={onPress}
       onPressIn={() => {
-        triggerFeedback(GameFeedbackEvent.UI_TAB_SWITCH);
+        triggerFeedback(GameFeedbackEvent.UI_NAVIGATION);
         Animated.timing(press, { toValue: 1, duration: 60, useNativeDriver: true }).start();
       }}
       onPressOut={() => Animated.timing(press, { toValue: 0, duration: 110, useNativeDriver: true }).start()}
@@ -654,6 +700,7 @@ function AppRoot() {
   const diamondPillRef = useRef<View>(null); // measured so purchase animations fly gems onto it
   const diamondCountAnim = useRef(new Animated.Value(0)).current;
   const diamondFillAnim = useRef(new Animated.Value(0)).current;
+  const diamondPulseAnim = useRef(new Animated.Value(0)).current;
   const measureDiamondPill = useCallback(() => {
     diamondPillRef.current?.measureInWindow((x, y, w, h) => {
       // Aim for the inner body of the pill so flying gems visibly reach the
@@ -666,11 +713,9 @@ function AppRoot() {
   const [activeTab, setActiveTab] = useState(2); // start on Home (store=0, collection=1, home=2)
   const settledTabRef = useRef(2); // focus lifecycle follows committed pages, not mid-drag preview state
   const [splash, setSplash] = useState(true);
-  // Native splash DEVİR-TESLİMİ: yukarıdaki preventAutoHideAsync ile ekranda
-  // tutuluyor; ancak JS kendi açılış ekranını GERÇEKTEN boyadıktan sonra
-  // kaldırılır. İki ardışık rAF: ilki layout'tan sonraki kareyi, ikincisi o
-  // karenin boyanmış olmasını garantiler — tek rAF'ta kaldırınca arada hâlâ
-  // bir boş kare kalabiliyordu.
+  // Native splash handoff: keep the plain native hold until the React intro has
+  // actually laid out and fonts are ready. Hiding on fontsReady alone can reveal
+  // a background-only frame before the intro's first valid render.
   const nativeSplashHidden = useRef(false);
   const hideNativeSplash = useCallback(() => {
     if (nativeSplashHidden.current) return;
@@ -679,20 +724,20 @@ function AppRoot() {
       try { NativeSplash.hideAsync().catch(() => {}); } catch { /* yut */ }
     }));
   }, []);
-  // (Devretme tetikleyicisi fontsReady'nin TANIMINDAN SONRA — bağımlılık dizisi
-  // render anında değerlendirildiği için burada okumak TDZ hatası olurdu.)
-  // EMNİYET AĞI: beklenmedik bir yol (DevShot modu, erken hata) yüzünden açılış
-  // ekranı hiç boyanmazsa uygulama native splash'ta asılı kalmasın.
-  useEffect(() => {
-    const tm = setTimeout(hideNativeSplash, 3500);
-    return () => clearTimeout(tm);
+  const introFrameReadyRef = useRef(false);
+  const markIntroFrameReady = useCallback(() => {
+    if (introFrameReadyRef.current) return;
+    introFrameReadyRef.current = true;
+    hideNativeSplash();
   }, [hideNativeSplash]);
   const [tutorialSeen, setTutorialSeen] = useState<boolean | null>(null);
+  const [tutorialAccepted, setTutorialAccepted] = useState(false);
   const [loaded, setLoaded] = useState(false); // Clash-Royale-style entry loading (warms logo cache)
   const [storeSection, setStoreSection] = useState<'socialPack' | 'diamonds' | 'top' | null>(null);
   const storeAtDiamondsRef = useRef(false); // re-tap toggle: diamonds ↔ back to top
   const csRef = useRef<ComingSoonBadgeHandle | null>(null); // Turnuvalar — "yakında" rozeti (kalıcı monte, bkz. ComingSoonBadge)
   const [expiredSocialPack, setExpiredSocialPack] = useState(false); // Social Pack expired popup
+  const [pushPrompt, setPushPrompt] = useState(false);
   const [overlay, setOverlay] = useState<'leaderboard' | 'matchHistory' | null>(null); // centered popups
   // Liderlik satırından profil: pencere satırın KENDİ verisiyle ANINDA açılır —
   // gösterdiği her alan (ad/avatar/çerçeve/kupa/arena/G-M) LeaderboardEntry'de
@@ -708,7 +753,27 @@ function AppRoot() {
   // kapanış animasyonu boyunca metin fallback'e (CO Pass yazısına) düşüyordu.
   const [purchaseAck, setPurchaseAck] = useState<NonNullable<GameState['lastPurchase']> | null>(null);
   const [purchaseAckVisible, setPurchaseAckVisible] = useState(false);
+  const [offerCaps, setOfferCaps] = useState<OfferCaps | null>(null);
+  const [monetizationConfig, setMonetizationConfig] = useState<MonetizationRemoteConfig | null>(null);
+  const [contextualOffer, setContextualOffer] = useState<MonetizationOffer | null>(null);
+  const [contextualOfferVisible, setContextualOfferVisible] = useState(false);
+  const [engagementState, setEngagementState] = useState<EngagementRuntimeState>(() => createEngagementRuntime());
+  const [activeEngagement, setActiveEngagement] = useState<EngagementQueueItem | null>(null);
+  const [feedbackPromptVisible, setFeedbackPromptVisible] = useState(false);
+  const [feedbackCenterVisible, setFeedbackCenterVisible] = useState(false);
+  const [feedbackInitialCategory, setFeedbackInitialCategory] = useState<'bug' | undefined>(undefined);
+  const [ratingPromptVisible, setRatingPromptVisible] = useState(false);
+  const pendingOfferCtxRef = useRef<OfferEngineContext | null>(null);
+  const socialPackQueuedThisSessionRef = useRef(false);
+  const promotionTransitionRef = useRef(false);
   const lastPurchaseSeq = state.lastPurchase?.seq ?? 0;
+  const updateEngagement = useCallback((updater: (state: EngagementRuntimeState) => EngagementRuntimeState) => {
+    setEngagementState((current) => {
+      const next = updater(current);
+      if (next !== current) saveEngagementState(next).catch(() => {});
+      return next;
+    });
+  }, []);
   // Onay penceresi, satın almanın yapıldığı ekrandaki onay/işlem penceresi
   // kapanmadan AÇILMAZ (iki-modal çakışması ekranı donduruyordu). Sıralamayı
   // artık SafeModal kuyruğu garanti ediyor — buradaki eski 420ms kör bekleme
@@ -718,9 +783,55 @@ function AppRoot() {
     if (!state.lastPurchase) return;
     const p = state.lastPurchase;
     const tm = setTimeout(() => { setPurchaseAck(p); setPurchaseAckVisible(true); }, 60);
+    setOfferCaps((caps) => {
+      if (!caps) return caps;
+      const next = markPurchaseSucceeded(caps);
+      saveOfferCaps(next).catch(() => {});
+      return next;
+    });
+    updateEngagement((s) => recordPurchaseSuccess(s, p.kind === 'premiumRoad'));
+    if (p.kind === 'power') {
+      track('item_purchase_completed', { product: p.id, diamond_balance: state.profile?.diamonds ?? 0 });
+      track('postmatch_offer_purchase', { product: p.id, currentDiamonds: state.profile?.diamonds ?? 0, appSessionId });
+      const powerId = takePendingAutoUsePower(p.id);
+      if (powerId) {
+        track('item_used', { product: powerId, source_screen: 'auto_after_purchase' });
+        setTimeout(() => actions.usePower(powerId), 120);
+      }
+    } else if (p.kind === 'emote' || p.kind === 'avatar' || p.kind === 'premiumRoad') {
+      track('item_purchase_completed', { product: p.id ?? p.kind, kind: p.kind, diamond_balance: state.profile?.diamonds ?? 0 });
+    }
     return () => clearTimeout(tm);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastPurchaseSeq]);
+  }, [lastPurchaseSeq, updateEngagement]);
+
+  useEffect(() => {
+    let alive = true;
+    loadEngagementState().then((s) => { if (alive) setEngagementState(s); }).catch(() => {});
+    Promise.all([
+      loadOfferCaps(),
+      loadMonetizationConfig(() => fetchApi('/monetization-config', 3500).then((r) => r.json())),
+    ])
+      .then(([caps, cfg]) => { if (alive) { setOfferCaps(caps); setMonetizationConfig(cfg); } })
+      .catch(() => { if (alive) { setOfferCaps({ sessionOffers: 0, lastOfferAt: 0, lastSocialPackOfferAt: 0, offersSeenToday: 0, dayKey: new Date().toISOString().slice(0, 10), seenByOffer: {}, dismissedByOffer: {}, postMatchSeenCount: 0, matchesSincePostMatchOffer: 3, lastPostMatchOfferAt: 0, lastDeclineAt: 0, lastPurchaseAt: 0 }); setMonetizationConfig(null); } });
+    return () => { alive = false; };
+  }, []);
+
+  const enqueuePromotion = useCallback((item: EngagementQueueItem) => {
+    updateEngagement((s) => enqueueEngagement(s, item));
+  }, [updateEngagement]);
+
+
+  const completeTutorialChoice = useCallback((accepted: boolean) => {
+    if (accepted) {
+      setTutorialAccepted(true);
+      return;
+    }
+    setTutorialAccepted(false);
+    setTutorialSeen(true);
+    AsyncStorage.setItem('@crossover_tutorial_seen', '1').catch(() => {});
+    track('tutorial_prompt_skipped');
+  }, []);
   const diamondsShownRef = useRef(0); // last value pushed to the pill (fallback when profile is briefly absent)
   const gainAnimatingRef = useRef(false); // sayaç dönerken tutma efekti araya girmesin
   const prevHadActiveSocialPackRef = useRef<boolean | undefined>(undefined);
@@ -730,52 +841,16 @@ function AppRoot() {
     'Poppins-SemiBold': require('./assets/fonts/Poppins-SemiBold.ttf'),
   });
   const fontsReady = fontsLoaded || !!fontError; // don't get stuck if a font fails
-  // NATIVE SPLASH DEVRİ — tetikleyici fontsReady, layout DEĞİL: açılış ekranı
-  // Poppins ile çiziliyor; fontlar gelmeden devretsek ilk kare fontsuz (bozuk)
-  // görünürdü. Fontlar hazır olana dek markalı native splash ekranda kalır —
-  // beklemek, çirkin kareden iyidir. (fontsReady font HATASINDA da true olur:
-  // sonsuz bekleme yok; ayrıca yukarıdaki 3.5 sn'lik ağ altta duruyor.)
-  useEffect(() => {
-    if (fontsReady) hideNativeSplash();
-  }, [fontsReady, hideNativeSplash]);
-
   const [langKey, setLangKey] = useState(0); // increment to force full remount after language change
   const TABS = TAB_DEFS.map((tab) => ({ ...tab, label: t(tab.labelKey) }));
 
   const phaseRef = useRef(state.phase);
-  const otaInFlightRef = useRef(false);
-  const lastOtaCheckAtRef = useRef(0);
   useEffect(() => {
     if (phaseRef.current !== state.phase) {
       dismissActiveInput();
       phaseRef.current = state.phase;
     }
   }, [state.phase]);
-
-  const checkForOtaUpdate = useCallback(async () => {
-    if (!expoUpdates?.isEnabled || !expoUpdates.checkForUpdateAsync || !expoUpdates.fetchUpdateAsync || !expoUpdates.reloadAsync) return;
-    if (otaInFlightRef.current || FORFEIT_PHASES.has(String(phaseRef.current))) return;
-    const now = Date.now();
-    if (now - lastOtaCheckAtRef.current < 5 * 60_000) return;
-    lastOtaCheckAtRef.current = now;
-    otaInFlightRef.current = true;
-    try {
-      const update = await expoUpdates.checkForUpdateAsync();
-      if (!update.isAvailable || FORFEIT_PHASES.has(String(phaseRef.current))) return;
-      await expoUpdates.fetchUpdateAsync();
-      if (!FORFEIT_PHASES.has(String(phaseRef.current))) await expoUpdates.reloadAsync();
-    } catch {
-      // OTA failures must never block startup or foreground resume.
-    } finally {
-      otaInFlightRef.current = false;
-    }
-  }, []);
-
-  useEffect(() => {
-    const id = setTimeout(() => { checkForOtaUpdate(); }, 1500);
-    const sub = AppState.addEventListener('change', (st) => { if (st === 'active') checkForOtaUpdate(); });
-    return () => { clearTimeout(id); sub.remove(); };
-  }, [checkForOtaUpdate]);
 
   useEffect(() => () => {
     if (tabGuardTimer.current) clearTimeout(tabGuardTimer.current);
@@ -787,10 +862,10 @@ function AppRoot() {
     diamondsShownRef.current = Math.max(0, Math.round(value));
   }, [diamondCountAnim]);
 
-  const animateDiamondGain = useCallback((from: number, to: number, amount: number) => {
+  const animateDiamondGain = useCallback((from: number, to: number, amount: number, durationOverride?: number) => {
     const safeFrom = Math.max(0, Math.round(from));
     const safeTo = Math.max(0, Math.round(to));
-    const duration = Math.min(1800, Math.max(850, 450 + Math.round(Math.log10(Math.max(amount, 10)) * 520)));
+    const duration = durationOverride ?? Math.min(1800, Math.max(850, 450 + Math.round(Math.log10(Math.max(amount, 10)) * 520)));
     diamondCountAnim.stopAnimation();
     diamondFillAnim.stopAnimation();
     diamondCountAnim.setValue(safeFrom);
@@ -824,11 +899,23 @@ function AppRoot() {
     ]).start();
   }, [diamondCountAnim, diamondFillAnim]);
 
+  const pulseDiamondPill = useCallback(() => {
+    diamondPulseAnim.stopAnimation();
+    diamondPulseAnim.setValue(0);
+    Animated.timing(diamondPulseAnim, {
+      toValue: 1,
+      duration: 260,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start(() => diamondPulseAnim.setValue(0));
+  }, [diamondPulseAnim]);
+
   useEffect(() => {
     installGlobalErrorHandlers();
     initAudioService();
     loadFeedbackPreferences().catch(() => {});
-    track('app_start');
+    track('app_start', { appSessionId });
+    if (__DEV__) console.log('[APP SESSION] Cold launch detected', { appSessionId });
     // Kick off the AdMob SDK once so rewarded ads can load (no-op in Expo Go).
     initMobileAds?.().catch((e: unknown) => console.warn('AdMob init failed', e));
     // Read saved language
@@ -844,21 +931,26 @@ function AppRoot() {
 
   useEffect(() => {
     if (!loaded || splash || !state.profile?.usernameSet) {
-      stopMusic(180);
-      stopAmbience(120);
+      setAudioScene('BOOT', 180);
       return;
     }
+    let scene: AudioScene = 'HOME';
     if (TAB_PHASES.has(state.phase)) {
-      stopAmbience(220);
-      playMusic(MusicTrack.MAIN_MENU, 420);
-      return;
-    }
-    stopMusic(360);
-    if (state.phase === 'pick' || state.phase === 'reveal' || state.phase === 'guess' || state.phase === 'result') {
-      playAmbience(AmbienceTrack.STADIUM, 340);
+      scene = 'HOME';
+    } else if (state.phase === 'searching' || state.phase === 'lobby') {
+      scene = 'MATCHMAKING';
+    } else if (state.phase === 'matchup') {
+      scene = 'MATCH_FOUND';
+    } else if (state.phase === 'countdown') {
+      scene = 'COUNTDOWN';
+    } else if (state.phase === 'pick' || state.phase === 'reveal' || state.phase === 'guess') {
+      scene = 'MATCH_ACTIVE';
+    } else if (state.phase === 'result') {
+      scene = 'RESULT';
     } else {
-      stopAmbience(220);
+      scene = 'HOME';
     }
+    setAudioScene(scene, scene === 'HOME' ? 420 : 260);
   }, [loaded, splash, state.profile?.usernameSet, state.phase]);
 
   const lastCountdownRef = useRef<number | null>(null);
@@ -900,19 +992,48 @@ function AppRoot() {
     else triggerFeedback(byYou ? GameFeedbackEvent.ANSWER_CORRECT : GameFeedbackEvent.OPPONENT_CORRECT);
   }, [state.phase, state.result, state.room?.youId]);
 
+  const lastScoreRef = useRef<{ roomCode: string; you: number; opp: number } | null>(null);
+  useEffect(() => {
+    const room = state.room;
+    if (!room || !room.code || state.phase === 'home' || state.phase === 'searching' || state.phase === 'matchup' || state.phase === 'countdown') {
+      lastScoreRef.current = room?.code ? { roomCode: room.code, you: 0, opp: 0 } : null;
+      return;
+    }
+    const you = room.players.find((p) => p.id === room.youId)?.score ?? 0;
+    const opp = room.players.find((p) => p.id !== room.youId)?.score ?? 0;
+    const last = lastScoreRef.current;
+    if (!last || last.roomCode !== room.code) {
+      lastScoreRef.current = { roomCode: room.code, you, opp };
+      return;
+    }
+    if (you > last.you) triggerFeedback(GameFeedbackEvent.ROUND_WIN);
+    else if (opp > last.opp) triggerFeedback(GameFeedbackEvent.ROUND_LOSE);
+    lastScoreRef.current = { roomCode: room.code, you, opp };
+  }, [state.phase, state.room]);
+
   const handleGemCelebrationDone = useCallback(() => {
+    triggerFeedback(GameFeedbackEvent.DIAMOND_COLLECTION_COMPLETE);
+    pulseDiamondPill();
+    setGemCelebration(null);
+  }, [pulseDiamondPill]);
+
+  const handleGemFlightStart = useCallback((durationMs: number) => {
     const diamonds = state.profile?.diamonds ?? diamondsShownRef.current;
     const amount = gemCelebration?.amount ?? 0;
-    setGemCelebration(null);
-    animateDiamondGain(Math.max(0, diamonds - amount), diamonds, amount);
+    animateDiamondGain(Math.max(0, diamonds - amount), diamonds, amount, durationMs);
   }, [state.profile?.diamonds, gemCelebration, animateDiamondGain]);
+
+  const handleGemCollectTick = useCallback((progress: number) => {
+    triggerDiamondCollectTick(progress);
+  }, []);
 
   const gemCelebrationFeedbackRef = useRef<typeof gemCelebration>(null);
   useEffect(() => {
     if (!gemCelebration || gemCelebrationFeedbackRef.current === gemCelebration) return;
     gemCelebrationFeedbackRef.current = gemCelebration;
-    triggerFeedback(gemCelebration.kind === 'arenaReward' ? GameFeedbackEvent.ARENA_UNLOCK : GameFeedbackEvent.DIAMOND_GAIN);
-  }, [gemCelebration]);
+    if (gemCelebration.kind === 'arenaReward') triggerFeedback(GameFeedbackEvent.ARENA_UNLOCK);
+    else updateEngagement((s) => recordPurchaseSuccess(s, false));
+  }, [gemCelebration, updateEngagement]);
 
   // ---- Maç sonu kupa popup'ı: MAÇ EKRANINDA DEĞİL, ana menüye dönünce ----
   // Maç biterken veri burada yakalanır (leave sonrası state sıfırlanır, o yüzden
@@ -923,11 +1044,13 @@ function AppRoot() {
     winnerName: string | null; trophyDelta: NonNullable<GameState['trophyDelta']>; reason?: 'cheat';
   }>(null);
   const matchOverCaptured = useRef(false);
+  const postMatchOfferCapturedRef = useRef<string | null>(null);
   const [levelRoadOpen, setLevelRoadOpen] = useState(false);
   useEffect(() => {
     if (!state.matchOver || !state.trophyDelta) { matchOverCaptured.current = false; return; }
     if (matchOverCaptured.current) return;
     matchOverCaptured.current = true;
+    updateEngagement((s) => recordMatchFinished(s));
     const ps = state.room?.players ?? [];
     const youId = state.room?.youId;
     const you = ps.find((p) => p.id === youId);
@@ -941,12 +1064,33 @@ function AppRoot() {
       winnerName: state.matchWinnerName ?? null,
       trophyDelta: state.trophyDelta,
     });
-  }, [state.matchOver, state.trophyDelta, state.room, state.matchWinnerId, state.matchWinnerName]);
+    const offerKey = `${state.room?.code ?? 'match'}:${state.trophyDelta.trophies}:${state.trophyDelta.delta}:${state.matchWinnerId ?? 'draw'}`;
+    if (postMatchOfferCapturedRef.current !== offerKey) {
+      postMatchOfferCapturedRef.current = offerKey;
+      const youWon = state.matchWinnerId != null && state.matchWinnerId === youId;
+      pendingOfferCtxRef.current = {
+        profile: state.profile,
+        trophyDelta: state.trophyDelta.delta,
+        shielded: state.trophyDelta.shielded,
+        youWon,
+        xpGained: state.xpGain?.gained ?? null,
+        youScore: you?.score ?? 0,
+        oppScore: opp?.score ?? 0,
+      };
+      if (__DEV__) console.log('[MATCH] Finished source=matchOver', { result: youWon ? 'WIN' : 'LOSS', trophyDelta: state.trophyDelta.delta, youScore: you?.score ?? 0, oppScore: opp?.score ?? 0 });
+      setOfferCaps((caps) => {
+        if (!caps) return caps;
+        const next = markMatchCompleted(caps);
+        saveOfferCaps(next).catch(() => {});
+        return next;
+      });
+    }
+  }, [state.matchOver, state.trophyDelta, state.room, state.matchWinnerId, state.matchWinnerName, state.profile, state.xpGain?.gained, updateEngagement]);
   const matchOverFeedbackRef = useRef<typeof matchOverPopup>(null);
   useEffect(() => {
     if (!matchOverPopup || matchOverFeedbackRef.current === matchOverPopup) return;
     matchOverFeedbackRef.current = matchOverPopup;
-    triggerFeedback(matchOverPopup.youWon ? GameFeedbackEvent.MATCH_WIN : GameFeedbackEvent.MATCH_LOSE);
+    triggerFeedback(matchOverPopup.winnerName == null ? GameFeedbackEvent.MATCH_DRAW : matchOverPopup.youWon ? GameFeedbackEvent.MATCH_WIN : GameFeedbackEvent.MATCH_LOSE);
   }, [matchOverPopup]);
   // Maç ortasında ÇIKIŞ (forfeit): kupa cezası gelince AYNI kaybetme popup'ını göster
   // (yeşil "Devam et" butonu + düşen kupa miktarı popup'ta).
@@ -1041,7 +1185,137 @@ function AppRoot() {
       else chain();
       return null;
     });
-  }, []);
+  }, [actions]);
+
+  const modalBlocked = Boolean(
+    matchOverPopup ||
+    pendingLevelUp ||
+    trophyFlight ||
+    gemCelebration ||
+    purchaseAckVisible ||
+    expiredSocialPack ||
+    pushPrompt ||
+    levelRoadOpen ||
+    overlay ||
+    feedbackPromptVisible ||
+    feedbackCenterVisible ||
+    ratingPromptVisible ||
+    Boolean(activeEngagement) ||
+    promotionTransitionRef.current
+  );
+
+  useEffect(() => {
+    if (!isActivePlayEligible(state.phase, modalBlocked)) return;
+    const id = setInterval(() => {
+      updateEngagement((s) => recordActiveSeconds(s, 5));
+      if (__DEV__) engagementLog('activePlaySeconds', { activeSessionSeconds: engagementState.activeSessionSeconds + 5, totalActivePlaySeconds: engagementState.totalActivePlaySeconds + 5 });
+    }, 5000);
+    return () => clearInterval(id);
+  }, [state.phase, modalBlocked, updateEngagement, engagementState.activeSessionSeconds, engagementState.totalActivePlaySeconds]);
+
+  useEffect(() => {
+    if (!loaded || splash || state.phase !== 'home' || !state.profile?.usernameSet) return;
+    if (modalBlocked || contextualOffer || contextualOfferVisible) return;
+    const { state: nextState, item: next } = takeNextEngagement(engagementState, state.phase, modalBlocked);
+    if (!next) return;
+    promotionTransitionRef.current = true;
+    setEngagementState(nextState);
+    saveEngagementState(nextState).catch(() => {});
+    setActiveEngagement(next);
+    if (next.kind === 'FEEDBACK_PROMPT') setFeedbackPromptVisible(true);
+    else if (next.kind === 'RATING_PROMPT') setRatingPromptVisible(true);
+    else if (next.monetizationOffer) {
+      setContextualOffer(next.monetizationOffer);
+      setContextualOfferVisible(true);
+    }
+    track('engagement_impression', {
+      engagement_id: next.id,
+      kind: next.kind,
+      source: next.source,
+      screen: state.phase,
+      appSessionId,
+      ...next.metadata,
+    });
+    requestAnimationFrame(() => { promotionTransitionRef.current = false; });
+  }, [loaded, splash, state.phase, state.profile?.usernameSet, modalBlocked, contextualOffer, contextualOfferVisible, engagementState, appSessionId]);
+
+  useEffect(() => {
+    if (!offerCaps || !monetizationConfig) return;
+    if (!pendingOfferCtxRef.current) return;
+    if (state.phase !== 'home') return;
+    if (modalBlocked) return;
+    const tm = setTimeout(() => {
+      const pending = pendingOfferCtxRef.current;
+      if (!pending || !offerCaps || !monetizationConfig) return;
+      const ctx = { ...pending, profile: state.profile ?? pending.profile };
+      pendingOfferCtxRef.current = null;
+      if (__DEV__) console.log('[MATCH] Finished', { result: ctx.youWon ? 'WIN' : 'LOSS', trophyDelta: ctx.trophyDelta, youScore: ctx.youScore, oppScore: ctx.oppScore });
+      const offer = evaluateMonetizationOffer(ctx, offerCaps, monetizationConfig);
+      if (!offer) return;
+      const nextCaps = markPostMatchOfferSeen(offerCaps, offer.offerId);
+      setOfferCaps(nextCaps);
+      saveOfferCaps(nextCaps).catch(() => {});
+      const metadata = { offerType: offer.offerType, offer_id: offer.offerId, trigger: offer.trigger, product: offer.product, matchResult: ctx.youWon ? 'win' : 'loss', trophyDelta: ctx.trophyDelta ?? 0, winStreak: ctx.profile?.winStreak ?? 0, lossStreak: ctx.profile?.lostStreak ?? 0, currentDiamonds: ctx.profile?.diamonds ?? 0, ...offer.analyticsMetadata };
+      track('engagement_eligible', { kind: 'POST_MATCH_OFFER', screen: state.phase, appSessionId, ...metadata });
+      enqueuePromotion({ id: `post_match_${offer.offerId}`, kind: 'POST_MATCH_OFFER', priority: EngagementPriority.GAMEPLAY_RESULT, source: offer.trigger, createdAt: Date.now(), monetizationOffer: offer, metadata });
+    }, PROMOTION_TIMING.postMatchSettleDelayMs);
+    return () => clearTimeout(tm);
+  }, [offerCaps, monetizationConfig, state.phase, state.profile, modalBlocked, enqueuePromotion]);
+
+  useEffect(() => {
+    if (!loaded || splash || !offerCaps || !monetizationConfig) return;
+    if (socialPackQueuedThisSessionRef.current) return;
+    if (state.phase !== 'home' || !state.profile?.usernameSet) return;
+    if (modalBlocked) return;
+    if (hasActiveSocialPack(state.profile)) return;
+    const engagement = evaluateSocialPackEngagement(state.profile, engagementState, hasActiveSocialPack(state.profile), ENGAGEMENT_CONFIG);
+    if (!engagement) return;
+    socialPackQueuedThisSessionRef.current = true;
+    const offer: MonetizationOffer = {
+      offerId: 'social_pack_discovery',
+      offerType: 'social_pack',
+      trigger: 'social_pack_discovery',
+      priority: EngagementPriority.DISCOVERY,
+      titleKey: 'socialPack.startupTitle',
+      bodyKey: 'socialPack.startupBody',
+      ctaKey: 'socialPack.startupCta',
+      secondaryKey: 'common.close',
+      analyticsMetadata: { appSessionId },
+    };
+    const nextCaps = markSocialPackOfferSeen(offerCaps, offer.offerId);
+    setOfferCaps(nextCaps);
+    saveOfferCaps(nextCaps).catch(() => {});
+    const metadata = { offer_id: offer.offerId, trigger: offer.trigger, currentDiamonds: state.profile?.diamonds ?? 0, ...offer.analyticsMetadata };
+    track('engagement_eligible', { kind: 'SOCIAL_PACK_DISCOVERY', screen: state.phase, appSessionId, ...metadata });
+    enqueuePromotion({ ...engagement, monetizationOffer: offer, metadata });
+  }, [loaded, splash, offerCaps, monetizationConfig, state.phase, state.profile, modalBlocked, enqueuePromotion, engagementState, appSessionId]);
+
+  useEffect(() => {
+    if (!loaded || splash || state.phase !== 'home' || !state.profile?.usernameSet || modalBlocked) return;
+    const feedback = evaluateFeedbackEngagement(state.profile, engagementState);
+    if (feedback) {
+      track('engagement_eligible', { kind: feedback.kind, source: feedback.source, activePlaySeconds: engagementState.totalActivePlaySeconds, completedMatches: engagementState.totalMatches, appSessionId });
+      enqueuePromotion(feedback);
+      return;
+    }
+    const rating = evaluateRatingEngagement(state.profile, engagementState, Boolean(state.trophyDelta?.arenaReward));
+    if (rating) {
+      track('rating_prompt_eligible', { source: rating.source, activePlaySeconds: engagementState.totalActivePlaySeconds, completedMatches: engagementState.totalMatches, appSessionId });
+      enqueuePromotion(rating);
+    }
+  }, [loaded, splash, state.phase, state.profile, state.trophyDelta?.arenaReward, modalBlocked, engagementState, enqueuePromotion, appSessionId]);
+
+  const dismissContextualOffer = useCallback(() => {
+    const offer = contextualOffer;
+    setContextualOfferVisible(false);
+    updateEngagement((s) => closeEngagement(s, activeEngagement, true));
+    setActiveEngagement(null);
+    if (!offer || !offerCaps) return;
+    const nextCaps = markPurchaseDeclined(markOfferDismissed(offerCaps, offer.offerId));
+    setOfferCaps(nextCaps);
+    saveOfferCaps(nextCaps).catch(() => {});
+    track('engagement_dismissed', { kind: activeEngagement?.kind, offer_id: offer.offerId, trigger: offer.trigger, product: offer.product, offerType: offer.offerType, screen: state.phase, appSessionId, currentDiamonds: state.profile?.diamonds ?? 0 });
+  }, [contextualOffer, offerCaps, state.phase, state.profile?.diamonds, updateEngagement, activeEngagement, appSessionId]);
 
   // Popup'suz kupa deltaları (hükmen kazanan rakip modalından çıkınca; X'le
   // çekilen kendi kaybını ana menüde görür): delta gelince sakla, ana menüye
@@ -1093,11 +1367,12 @@ function AppRoot() {
     const until = state.profile?.socialPackUntil;
     const hasActivePack = !!(until && new Date(until).getTime() > Date.now());
     const hadActivePack = prevHadActiveSocialPackRef.current;
+    if (!hadActivePack && hasActivePack) updateEngagement((s) => recordPurchaseSuccess(s, true));
     if (hadActivePack && !hasActivePack) {
       setExpiredSocialPack(true);
     }
     prevHadActiveSocialPackRef.current = hasActivePack;
-  }, [state.profile?.socialPackUntil]);
+  }, [state.profile?.socialPackUntil, updateEngagement]);
 
   useEffect(() => {
     const until = state.profile?.socialPackUntil;
@@ -1136,6 +1411,88 @@ function AppRoot() {
     storeAtDiamondsRef.current = false; // fresh tab entry → re-tap toggle starts at "diamonds"
     if (idx !== 2) resetHomePhase(); // home lives at index 2 (store=0, collection=1, home=2, friends=3)
   }, [resetHomePhase]);
+
+  const acceptContextualOffer = useCallback(() => {
+    const offer = contextualOffer;
+    const profile = state.profile;
+    if (!offer || !profile) return;
+    updateEngagement((s) => closeEngagement(s, activeEngagement, false));
+    setActiveEngagement(null);
+    if (offer.offerType === 'social_pack') {
+      setContextualOfferVisible(false);
+      track('engagement_primary_clicked', { kind: activeEngagement?.kind, offer_id: offer.offerId, trigger: offer.trigger, screen: state.phase, appSessionId, currentDiamonds: profile.diamonds, social_token_count: profile.powerSocialToken ?? 0 });
+      track('social_pack_paywall_open', { source: offer.trigger, offer_id: offer.offerId, appSessionId });
+      track('social_pack_purchase_started', { offer_id: offer.offerId, screen: state.phase, appSessionId });
+      setStoreSection('socialPack');
+      goToTab(0);
+      return;
+    }
+    if (offer.offerType !== 'power' || !offer.product) return;
+    const powerId = offer.product;
+    setContextualOfferVisible(false);
+    track('engagement_primary_clicked', { kind: activeEngagement?.kind, offer_id: offer.offerId, trigger: offer.trigger, product: powerId, offerType: offer.offerType, screen: state.phase, appSessionId, currentDiamonds: profile.diamonds, trophyDelta: offer.analyticsMetadata?.trophyDelta ?? offer.analyticsMetadata?.trophy_delta });
+    if (powerCount(profile, powerId) > 0) {
+      actions.usePower(powerId);
+      return;
+    }
+    const required = POWER_PRICES[powerId];
+    const current = profile.diamonds ?? 0;
+    if (current >= required) {
+      if (offer.autoUseAfterPurchase) setPendingAutoUsePower(powerId);
+      actions.buyPower(powerId);
+      return;
+    }
+    const missing = required - current;
+    track('diamond_insufficient_balance', { source: offer.trigger, offerType: offer.offerType, product: powerId, requiredDiamonds: required, currentDiamonds: current, missingDiamonds: missing, screen: state.phase, appSessionId });
+    setPendingDiamondIntent({ source: offer.trigger, product: 'power', powerId, requiredDiamonds: required, currentBalance: current, missingDiamonds: missing, autoUseAfterPurchase: offer.autoUseAfterPurchase });
+    setPendingShortfall(missing, { required, current, source: offer.trigger });
+    setStoreSection('diamonds');
+    goToTab(0);
+  }, [contextualOffer, state.profile, actions, goToTab, state.phase, updateEngagement, activeEngagement, appSessionId]);
+
+  const useSocialTokenFromLockedMode = useCallback(() => {
+    const rawMode = activeEngagement?.metadata?.mode;
+    const mode = typeof rawMode === 'string' ? rawMode : undefined;
+    setContextualOfferVisible(false);
+    updateEngagement((s) => closeEngagement(s, activeEngagement, false));
+    track('engagement_primary_clicked', { kind: activeEngagement?.kind, action: 'use_token', mode, appSessionId, screen: state.phase });
+    track('premium_mode_preview_completed', { mode, action: 'use_token' });
+    actions.usePower('socialtoken');
+    setActiveEngagement(null);
+  }, [actions, activeEngagement, appSessionId, state.phase, updateEngagement]);
+
+  const dismissFeedbackPrompt = useCallback(() => {
+    setFeedbackPromptVisible(false);
+    updateEngagement((s) => closeEngagement(s, activeEngagement, true));
+    track('engagement_dismissed', { kind: activeEngagement?.kind, appSessionId, screen: state.phase });
+    setActiveEngagement(null);
+  }, [activeEngagement, appSessionId, state.phase, updateEngagement]);
+
+  const openFeedbackFromPrompt = useCallback((category?: 'bug') => {
+    setFeedbackPromptVisible(false);
+    setFeedbackInitialCategory(category);
+    setFeedbackCenterVisible(true);
+    updateEngagement((s) => closeEngagement(s, activeEngagement, false));
+    track('engagement_primary_clicked', { kind: activeEngagement?.kind, category: category ?? 'general', appSessionId, screen: state.phase });
+    track('feedback_opened', { source: 'proactive_prompt', category: category ?? 'general', appSessionId });
+    setActiveEngagement(null);
+  }, [activeEngagement, appSessionId, state.phase, updateEngagement]);
+
+  const dismissRatingPrompt = useCallback(() => {
+    setRatingPromptVisible(false);
+    updateEngagement((s) => closeEngagement(s, activeEngagement, true));
+    track('engagement_dismissed', { kind: activeEngagement?.kind, appSessionId, screen: state.phase });
+    setActiveEngagement(null);
+  }, [activeEngagement, appSessionId, state.phase, updateEngagement]);
+
+  const requestRatingFromPrompt = useCallback(() => {
+    setRatingPromptVisible(false);
+    updateEngagement((s) => closeEngagement(s, activeEngagement, false));
+    track('engagement_primary_clicked', { kind: activeEngagement?.kind, appSessionId, screen: state.phase });
+    track('rating_request_attempted', { source: activeEngagement?.source, appSessionId });
+    requestNativeReview().catch(() => {});
+    setActiveEngagement(null);
+  }, [activeEngagement, appSessionId, state.phase, updateEngagement]);
 
   const onScrollBeginDrag = useCallback(() => {
     if (tabGuardTimer.current) clearTimeout(tabGuardTimer.current);
@@ -1182,6 +1539,56 @@ function AppRoot() {
   const openLeaderboard = useCallback(() => { dismissActiveInput(); actions.openLeaderboard(); setOverlay('leaderboard'); }, [actions]);
   const openMatchHistory = useCallback(() => { dismissActiveInput(); actions.openMatchHistory(); setOverlay('matchHistory'); }, [actions]);
   const openDiamondStore = useCallback(() => { setStoreSection('diamonds'); goToTab(0); }, [goToTab]);
+  const enqueueLockedSocialMode = useCallback((mode: GameMode) => {
+    const profile = state.profile;
+    const metadata = { mode, currentDiamonds: profile?.diamonds ?? 0, social_token_count: profile?.powerSocialToken ?? 0 };
+    const offer: MonetizationOffer = {
+      offerId: `social_pack_locked_${mode}`,
+      offerType: 'social_pack',
+      trigger: 'premium_mode_locked',
+      priority: EngagementPriority.PLAYER_REQUESTED,
+      titleKey: 'friends.socialPackRequired',
+      bodyKey: 'socialPack.previewBody',
+      ctaKey: 'socialPack.unlockCta',
+      secondaryKey: 'common.continue',
+      analyticsMetadata: metadata,
+    };
+    track('engagement_eligible', { kind: 'SOCIAL_PACK_LOCKED_MODE', screen: state.phase, appSessionId, ...metadata });
+    enqueuePromotion({ id: `locked_mode_${mode}_${Date.now()}`, kind: 'SOCIAL_PACK_LOCKED_MODE', priority: EngagementPriority.PLAYER_REQUESTED, source: 'premium_mode_locked', createdAt: Date.now(), playerRequested: true, monetizationOffer: offer, metadata });
+  }, [appSessionId, enqueuePromotion, state.phase, state.profile]);
+  const enqueueDevOffer = useCallback((kind: 'social' | 'loss' | 'win' | 'shield' | 'power') => {
+    const profile = state.profile;
+    if (!profile) return;
+    const metadata = { dev: true, appSessionId, currentDiamonds: profile.diamonds };
+    if (kind === 'social') {
+      const offer: MonetizationOffer = { offerId: `dev_social_${Date.now()}`, offerType: 'social_pack', trigger: 'social_pack_discovery', priority: EngagementPriority.CRITICAL, titleKey: 'socialPack.startupTitle', bodyKey: 'socialPack.startupBody', ctaKey: 'socialPack.startupCta', secondaryKey: 'common.close', analyticsMetadata: metadata };
+      enqueuePromotion({ id: offer.offerId, kind: 'DEV_TEST', priority: EngagementPriority.CRITICAL, source: 'dev_social', createdAt: Date.now(), playerRequested: true, monetizationOffer: offer, metadata });
+      return;
+    }
+    const product = kind === 'shield' ? 'shield' : kind === 'power' ? 'training' : kind === 'win' ? 'xp2x' : 'training';
+    const offer: MonetizationOffer = {
+      offerId: `dev_${kind}_${Date.now()}`,
+      offerType: 'power',
+      trigger: kind === 'win' ? 'post_win_xp' : 'post_match_loss',
+      priority: EngagementPriority.CRITICAL,
+      product,
+      titleKey: kind === 'shield' ? 'monetization.shieldLossTitle' : kind === 'win' ? 'monetization.bigWinXpTitle' : 'monetization.closeLossTitle',
+      bodyKey: kind === 'shield' ? 'monetization.shieldLossBody' : kind === 'win' ? 'monetization.xpBoostBody' : 'monetization.closeLossBody',
+      ctaKey: kind === 'shield' ? 'monetization.buyShieldCta' : kind === 'win' ? 'monetization.buyXpCta' : 'monetization.inspectPowerCta',
+      secondaryKey: 'common.continue',
+      autoUseAfterPurchase: false,
+      analyticsMetadata: metadata,
+    };
+    enqueuePromotion({ id: offer.offerId, kind: 'DEV_TEST', priority: EngagementPriority.CRITICAL, source: `dev_${kind}`, createdAt: Date.now(), playerRequested: true, monetizationOffer: offer, metadata });
+  }, [enqueuePromotion, state.profile]);
+
+  const enqueueDevEngagement = useCallback((kind: 'feedback' | 'rating') => {
+    enqueuePromotion({ id: `dev_${kind}_${Date.now()}`, kind: kind === 'feedback' ? 'FEEDBACK_PROMPT' : 'RATING_PROMPT', priority: EngagementPriority.CRITICAL, source: `dev_${kind}`, createdAt: Date.now(), playerRequested: true, metadata: { dev: true, appSessionId } });
+  }, [enqueuePromotion, appSessionId]);
+
+  const resetDevEngagement = useCallback(() => {
+    resetEngagementState().then((s) => { setEngagementState(s); engagementLog('Reset Engagement State', { sessionId: s.sessionId }); }).catch(() => {});
+  }, []);
   // Home's find-friend card → Friends tab, landing focused on the add-friend search.
   // A bumped sequence (not a boolean) so every tap re-triggers the focus effect.
   const [friendsAddSeq, setFriendsAddSeq] = useState(0);
@@ -1208,7 +1615,6 @@ function AppRoot() {
   // Once-per-install permission prompt: ~2s after the user first lands on the
   // home tab (loaded && phase 'home'). The AsyncStorage key marks it shown so
   // it never nags again; declining keeps notifications off until they revisit.
-  const [pushPrompt, setPushPrompt] = useState(false);
   const pushPromptChecked = useRef(false); // one arm per launch
   useEffect(() => {
     if (!loaded || state.phase !== 'home' || !state.profile || pushPromptChecked.current) return;
@@ -1220,7 +1626,7 @@ function AppRoot() {
         setTimeout(() => {
           setPushPrompt(true);
           AsyncStorage.setItem(PUSH_PROMPTED_KEY, '1').catch(() => {});
-        }, 2000);
+        }, 4000);
       })
       .catch(() => {});
   }, [loaded, state.phase, state.profile]);
@@ -1316,7 +1722,7 @@ function AppRoot() {
       // rengi bulunsun (devir fontsReady effect'inde yapılır, bkz. yukarısı).
       <View style={{ flex: 1, backgroundColor: BG_TOP }}>
         <StatusBar style="light" />
-        <SplashScreen onDone={() => setSplash(false)} fontsReady={fontsReady} />
+        <SplashScreen onDone={() => setSplash(false)} fontsReady={fontsReady} onFirstFrameReady={markIntroFrameReady} />
       </View>
     );
   }
@@ -1379,14 +1785,40 @@ function AppRoot() {
   }
 
   // First-time interactive tutorial (after sign-in + username, before the game).
-  if (FORCE_TUTORIAL_DEV || tutorialSeen === false) {
+  if (FORCE_TUTORIAL_DEV || (tutorialSeen === false && tutorialAccepted)) {
     return (
       <TutorialScreen
         onDone={() => {
           setTutorialSeen(true);
+          setTutorialAccepted(false);
           AsyncStorage.setItem('@crossover_tutorial_seen', '1').catch(() => {});
+          track('tutorial_completed');
         }}
       />
+    );
+  }
+
+  if (tutorialSeen === false) {
+    return (
+      <View style={[s.root, { paddingTop: insets.top }]}> 
+        <StatusBar style="light" />
+        <ScreenBg />
+        <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 26 }}>
+          <View style={{ backgroundColor: theme.modalFace, borderRadius: 24, padding: 22, alignItems: 'center', ...shadowModal }}>
+            <View style={{ width: 66, height: 66, borderRadius: 33, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+              <Ionicons name="school" size={31} color={theme.primary} />
+            </View>
+            <Text style={{ color: theme.text, fontSize: 20, fontFamily: 'Poppins-Black', textAlign: 'center', marginBottom: 8, ...engrave('sm') }}>
+              {t('tutorial.promptTitle')}
+            </Text>
+            <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', lineHeight: 20, textAlign: 'center', marginBottom: 18 }}>
+              {t('tutorial.promptBody')}
+            </Text>
+            <Btn big label={t('tutorial.promptYes')} icon="play" onPress={() => { track('tutorial_prompt_accepted'); completeTutorialChoice(true); }} />
+            <Btn label={t('tutorial.promptNo')} kind="ghost" onPress={() => completeTutorialChoice(false)} />
+          </View>
+        </View>
+      </View>
     );
   }
 
@@ -1432,7 +1864,7 @@ function AppRoot() {
         screen = <ResultScreen {...props} />;
         break;
       default:
-        screen = <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} trophyLand={trophyLand} trophyHold={trophyFlight?.delta ?? null} onOpenLevelRoad={() => setLevelRoadOpen(true)} />;
+        screen = <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} trophyLand={trophyLand} trophyHold={trophyFlight?.delta ?? null} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLockedSocialMode={enqueueLockedSocialMode} />;
     }
     return (
       <View style={[s.root, { paddingTop: insets.top }]}>
@@ -1468,7 +1900,7 @@ function AppRoot() {
     ? <ArenasScreen {...props} />
     : state.phase === 'profile'
     ? <ProfileScreen {...props} onOpenMatchHistory={openMatchHistory} onOpenLevelRoad={() => setLevelRoadOpen(true)} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
-    : <HomeScreen {...props} heroAnimsActive={activeTab === 2} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} trophyLand={trophyLand} trophyHold={trophyFlight?.delta ?? null} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLanguageChange={() => {
+    : <HomeScreen {...props} heroAnimsActive={activeTab === 2} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} trophyLand={trophyLand} trophyHold={trophyFlight?.delta ?? null} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLockedSocialMode={enqueueLockedSocialMode} onLanguageChange={() => {
         dismissActiveInput();
         setOverlay(null);
         setStoreSection(null);
@@ -1497,6 +1929,7 @@ function AppRoot() {
       <DiamondPill
         countAnim={diamondCountAnim}
         fillAnim={diamondFillAnim}
+        pulseAnim={diamondPulseAnim}
         pillRef={active ? diamondPillRef : dummyPillRef}
         onMeasure={active ? measureDiamondPill : NOOP}
         onPress={openDiamondStore}
@@ -1579,7 +2012,7 @@ function AppRoot() {
         <View style={{ width: SCREEN_W, flex: 1 }}>
           {state.profile ? renderResourceBar(activeTab === 3) : null}
           <TabFreeze active={activeTab === 3} warmDelay={1000}>
-            <FriendsScreen {...props} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} focusAddFriendSeq={friendsAddSeq} />
+            <FriendsScreen {...props} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} onLockedSocialMode={enqueueLockedSocialMode} focusAddFriendSeq={friendsAddSeq} />
           </TabFreeze>
         </View>
       </Animated.ScrollView>
@@ -1634,6 +2067,29 @@ function AppRoot() {
 
       {/* Tournaments → standalone 3D coming-soon lettering, no bubble/background. */}
       <ComingSoonBadge handleRef={csRef} />
+
+      {__DEV__ && state.phase === 'home' ? (
+        <View style={{ position: 'absolute', left: 12, right: 12, bottom: Math.max(insets.bottom, 12) + 78, gap: 6, alignItems: 'center', zIndex: 30 }} pointerEvents="box-none">
+          <Text style={{ color: theme.muted, fontFamily: 'Poppins-ExtraBold', fontSize: 8.5 }}>
+            ENG {Math.round(engagementState.activeSessionSeconds)}s q:{engagementState.queuedEngagements.length} active:{activeEngagement?.kind ?? '-'}
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
+          {(['social', 'loss', 'win', 'shield', 'power'] as const).map((k) => (
+            <Pressable key={k} onPress={() => enqueueDevOffer(k)} style={({ pressed }) => ({ backgroundColor: pressed ? theme.surface3 : theme.surface2, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6, opacity: 0.9 })}>
+              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 9 }}>{k}</Text>
+            </Pressable>
+          ))}
+          {(['feedback', 'rating'] as const).map((k) => (
+            <Pressable key={k} onPress={() => enqueueDevEngagement(k)} style={({ pressed }) => ({ backgroundColor: pressed ? theme.surface3 : theme.surface2, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6, opacity: 0.9 })}>
+              <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 9 }}>{k}</Text>
+            </Pressable>
+          ))}
+          <Pressable onPress={resetDevEngagement} style={({ pressed }) => ({ backgroundColor: pressed ? theme.danger : withAlpha(theme.danger, 0.2), borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6, opacity: 0.9 })}>
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 9 }}>reset</Text>
+          </Pressable>
+          </View>
+        </View>
+      ) : null}
 
       {state.matchInvite ? (
         <InviteBanner
@@ -1768,6 +2224,8 @@ function AppRoot() {
           img={gemCelebration.kind === 'purchase' ? gemCelebration.img : undefined}
           variant={gemCelebration.kind === 'arenaReward' ? 'arenaReward' : 'purchase'}
           arenaName={gemCelebration.kind === 'arenaReward' ? gemCelebration.arenaName : undefined}
+          onFlightStart={handleGemFlightStart}
+          onCollectTick={handleGemCollectTick}
           onDone={handleGemCelebrationDone}
         />
       ) : null}
@@ -1802,6 +2260,80 @@ function AppRoot() {
           label={t('common.continue')}
           onPress={() => { setExpiredSocialPack(false); setStoreSection('socialPack'); goToTab(0); }}
         />
+      </GameModal>
+
+      <GameModal
+        visible={contextualOfferVisible}
+        onClose={dismissContextualOffer}
+        onExited={() => { if (!contextualOfferVisible) setContextualOffer(null); }}
+        title={contextualOffer ? t(contextualOffer.titleKey as any) : ''}
+        icon={contextualOffer?.offerType === 'social_pack' ? 'people' : contextualOffer?.product ? POWERS[contextualOffer.product].icon : 'flash'}
+        coach
+      >
+        {contextualOffer?.offerType === 'power' && contextualOffer.product ? (
+          <View style={{ alignItems: 'center', gap: 10 }}>
+            <PowerArt powerId={contextualOffer.product} size={88} />
+            <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+              {t(contextualOffer.bodyKey as any)}
+            </Text>
+            <Text style={{ color: theme.text, fontSize: 12, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>
+              {powerCount(state.profile, contextualOffer.product) > 0 ? t('monetization.inInventory') : t('monetization.powerPrice', { n: String(POWER_PRICES[contextualOffer.product]) })}
+            </Text>
+            <Btn big kind="accent" icon={POWERS[contextualOffer.product].icon} label={t(contextualOffer.ctaKey as any)} onPress={acceptContextualOffer} />
+            <Btn kind="ghost" label={t(contextualOffer.secondaryKey as any)} onPress={dismissContextualOffer} />
+          </View>
+        ) : contextualOffer?.offerType === 'social_pack' ? (
+          <View style={{ alignItems: 'center', gap: 10 }}>
+            <View style={{ flexDirection: 'row', gap: 8, alignSelf: 'stretch' }}>
+              <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.blue, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.blue, 0.45) }}>
+                <Text style={{ fontSize: 23 }}>🇹🇷</Text>
+                <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.countryTeamLabel')}</Text>
+              </View>
+              <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.purple, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.purple, 0.45) }}>
+                <Text style={{ fontSize: 24 }}>🔤</Text>
+                <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.letterTeamLabel')}</Text>
+              </View>
+              <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.primary, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.primary, 0.45) }}>
+                <Text style={{ fontSize: 24 }}>⚽</Text>
+                <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.specialModesLabel')}</Text>
+              </View>
+            </View>
+            <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+              {t(contextualOffer.bodyKey as any)}
+            </Text>
+            {activeEngagement?.kind === 'SOCIAL_PACK_LOCKED_MODE' && (state.profile?.powerSocialToken ?? 0) > 0 ? (
+              <Btn big kind="accent" icon="ticket" label={t('socialPack.useTokenCta')} onPress={useSocialTokenFromLockedMode} />
+            ) : (
+              <Btn big kind="accent" icon="people" label={t(contextualOffer.ctaKey as any)} onPress={acceptContextualOffer} />
+            )}
+            <Btn kind="ghost" label={t(contextualOffer.secondaryKey as any)} onPress={dismissContextualOffer} />
+          </View>
+        ) : null}
+      </GameModal>
+
+      <GameModal visible={feedbackPromptVisible} onClose={dismissFeedbackPrompt} title="COF’u Birlikte Geliştirelim" icon="chatbubbles">
+        <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+          Eklememizi veya değiştirmemizi istediğin bir şey var mı? Fikrini gerçekten merak ediyoruz.
+        </Text>
+        <Btn big kind="primary" icon="create" label="Görüşümü Yaz" onPress={() => openFeedbackFromPrompt()} />
+        <Btn kind="ghost" icon="warning" label="Bir Sorun Bildir" onPress={() => openFeedbackFromPrompt('bug')} />
+        <Btn kind="ghost" label="Daha Sonra" onPress={dismissFeedbackPrompt} />
+      </GameModal>
+
+      <FeedbackCenterModal
+        visible={feedbackCenterVisible}
+        playerId={state.profile?.userId ?? null}
+        initialCategory={feedbackInitialCategory}
+        context={{ source: 'proactive_prompt', phase: state.phase, arenaName: state.profile?.arena?.name, activePlaySeconds: engagementState.totalActivePlaySeconds, totalMatches: engagementState.totalMatches }}
+        onClose={() => { setFeedbackCenterVisible(false); setFeedbackInitialCategory(undefined); }}
+      />
+
+      <GameModal visible={ratingPromptVisible} onClose={dismissRatingPrompt} title="Maçlar Sarıyor mu?" icon="star">
+        <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+          App Store’daki değerlendirmen COF’un daha fazla futbolsevere ulaşmasına yardımcı olur.
+        </Text>
+        <Btn big kind="primary" icon="star" label="Değerlendir" onPress={requestRatingFromPrompt} />
+        <Btn kind="ghost" label="Şimdi Değil" onPress={dismissRatingPrompt} />
       </GameModal>
 
       {/* Push permission prompt — once per install, coach-framed. */}

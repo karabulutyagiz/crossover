@@ -10,13 +10,21 @@
 // One slot, take-once (the gemTarget.ts pattern): a stale value must never
 // re-fire on a later visit to the store.
 let pending: number | null = null;
+let pendingReason: { required?: number; current?: number; source?: string } | null = null;
 
-export function setPendingShortfall(missing: number): void {
+export function setPendingShortfall(missing: number, reason?: { required?: number; current?: number; source?: string }): void {
   pending = missing > 0 ? Math.ceil(missing) : null;
+  pendingReason = pending == null ? null : (reason ?? null);
 }
 
 export function takePendingShortfall(): number | null {
   const p = pending;
   pending = null;
   return p;
+}
+
+export function takePendingShortfallReason(): { required?: number; current?: number; source?: string } | null {
+  const r = pendingReason;
+  pendingReason = null;
+  return r;
 }

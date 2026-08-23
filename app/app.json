@@ -3,15 +3,14 @@
     "name": "Crossover Football",
     "slug": "crossover",
     "scheme": "crossover",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
     "backgroundColor": "#0B1838",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.crossover.football",
-      "buildNumber": "127",
+      "buildNumber": "133",
       "usesAppleSignIn": true,
       "infoPlist": {
         "CADisableMinimumFrameDurationOnPhone": true,
@@ -99,7 +98,7 @@
     },
     "android": {
       "package": "com.crossover.football",
-      "versionCode": 127,
+      "versionCode": 130,
       "adaptiveIcon": {
         "backgroundColor": "#0B1838",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -116,15 +115,13 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#0B1838",
-          "image": "./assets/logo-mark.png",
-          "imageWidth": 200,
           "resizeMode": "contain",
           "dark": {
-            "backgroundColor": "#0B1838",
-            "image": "./assets/logo-mark.png"
+            "backgroundColor": "#0B1838"
           }
         }
       ],
+      "./plugins/withPlainIosSplash",
       "expo-localization",
       "expo-web-browser",
       "expo-apple-authentication",

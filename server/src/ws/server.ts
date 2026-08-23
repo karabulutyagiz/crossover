@@ -787,6 +787,92 @@ export function startServer(port: number): Server {
       }));
       return;
     }
+    if (req.url === '/monetization-config') {
+      res.writeHead(200, cors);
+      res.end(JSON.stringify({
+        enabled: process.env.MONETIZATION_ENABLED !== '0',
+        holdoutPercent: Number(process.env.MONETIZATION_HOLDOUT_PERCENT ?? '0'),
+        maxSessionOffers: Number(process.env.MONETIZATION_MAX_SESSION_OFFERS ?? '1'),
+        maxDailyOffers: Number(process.env.MONETIZATION_MAX_DAILY_OFFERS ?? '3'),
+        globalCooldownMs: Number(process.env.MONETIZATION_GLOBAL_COOLDOWN_MS ?? String(8 * 60 * 1000)),
+        socialPackCooldownMs: Number(process.env.SOCIAL_PACK_POPUP_COOLDOWN_MS ?? String(3 * 24 * 60 * 60 * 1000)),
+        minSessionForSocialPackDiscovery: Number(process.env.SOCIAL_PACK_MIN_SESSION ?? '1'),
+        minStreakLost: Number(process.env.STREAK_RESTORE_MIN_STREAK ?? '3'),
+        largeTrophyLoss: Number(process.env.TROPHY_SHIELD_LARGE_LOSS ?? '20'),
+        nearLevelXpRemaining: Number(process.env.XP_OFFER_NEAR_LEVEL_REMAINING ?? '180'),
+        arenaProtectionDistance: Number(process.env.ARENA_PROTECTION_DISTANCE ?? '35'),
+        maxSameOfferDismissals: Number(process.env.MONETIZATION_MAX_SAME_DISMISSALS ?? '2'),
+        offers: {
+          streakRestore: process.env.OFFER_STREAK_RESTORE !== '0',
+          trophyShield: process.env.OFFER_TROPHY_SHIELD !== '0',
+          xpBoost: process.env.OFFER_XP_BOOST !== '0',
+          socialPackDiscovery: process.env.OFFER_SOCIAL_PACK_DISCOVERY !== '0',
+        },
+      }));
+      return;
+    }
+    if (path === '/feedback' && req.method === 'OPTIONS') {
+      res.writeHead(204, { ...cors, 'access-control-allow-methods': 'POST, OPTIONS', 'access-control-allow-headers': 'content-type' });
+      res.end();
+      return;
+    }
+    if (path === '/feedback' && req.method === 'POST') {
+      let raw = '';
+      req.on('data', (chunk) => {
+        raw += chunk;
+        if (raw.length > 16_384) req.destroy();
+      });
+      req.on('end', async () => {
+        try {
+          const body = JSON.parse(raw || '{}') as Record<string, unknown>;
+          const category = typeof body.category === 'string' ? body.category : '';
+          const message = typeof body.message === 'string' ? body.message.trim() : '';
+          if (!['suggestion', 'bug', 'gameplay', 'purchase', 'general'].includes(category) || message.length < 4 || message.length > 1200) {
+            res.writeHead(400, cors);
+            res.end(JSON.stringify({ error: 'invalid_feedback' }));
+            return;
+          }
+          const playerId = typeof body.playerId === 'string' && body.playerId.length <= 80 ? body.playerId : null;
+          const ip = String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '').split(',')[0]?.trim() ?? '';
+          await pool.query(`CREATE TABLE IF NOT EXISTS player_feedback (
+            id uuid PRIMARY KEY,
+            category text NOT NULL,
+            message text NOT NULL,
+            player_id text,
+            platform text,
+            app_version text,
+            build_number integer,
+            os_version text,
+            device_model text,
+            context jsonb NOT NULL DEFAULT '{}'::jsonb,
+            ip_hash text,
+            created_at timestamptz NOT NULL DEFAULT now()
+          )`);
+          const recent = await pool.query(
+            `SELECT count(*)::int AS count FROM player_feedback WHERE created_at > now() - interval '10 minutes' AND (player_id = $1 OR ip_hash = md5($2))`,
+            [playerId ?? '', ip]
+          );
+          if (Number(recent.rows[0]?.count ?? 0) >= 3) {
+            res.writeHead(429, cors);
+            res.end(JSON.stringify({ error: 'rate_limited' }));
+            return;
+          }
+          await pool.query(
+            `INSERT INTO player_feedback (id, category, message, player_id, platform, app_version, build_number, os_version, device_model, context, ip_hash)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,md5($11))`,
+            [randomUUID(), category, message, playerId, body.platform ?? null, body.appVersion ?? null, Number(body.buildNumber ?? 0) || null, body.osVersion ?? null, body.deviceModel ?? null, JSON.stringify(body.context && typeof body.context === 'object' ? body.context : {}), ip]
+          );
+          log.info('player_feedback_received', { category, playerId, platform: body.platform, messageLength: message.length });
+          res.writeHead(200, cors);
+          res.end(JSON.stringify({ ok: true }));
+        } catch (err) {
+          log.warn('player_feedback_failed', { error: err instanceof Error ? err.message : String(err) });
+          res.writeHead(500, cors);
+          res.end(JSON.stringify({ error: 'feedback_failed' }));
+        }
+      });
+      return;
+    }
     if ((path === '/admin' || path === '/admin/') && req.method === 'GET') {
       if (!adminHtml) {
         res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });

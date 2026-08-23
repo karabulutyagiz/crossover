@@ -31,13 +31,15 @@ import type { MessageKey } from './i18n';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image as ExpoImage } from 'expo-image';
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
+import { submitPlayerFeedback, type PlayerFeedbackCategory } from './feedbackSubmit';
 import { GemIcon, GEM_COLOR } from './GemIcon';
 import { whenModalSlotFree } from './modalTraffic';
 import { dismissActiveInput } from './keyboardLifecycle';
 import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget, trophyTarget, setTrophyTarget, setTrophyRemeasure, remeasureTrophyTarget } from './gemTarget';
 import { Avatar } from './Avatar';
 import { useIsTablet, useWindow, useContentMaxWidth, canvasSizeFor } from './layout';
-import { setPendingShortfall, takePendingShortfall } from './shortfall';
+import { setPendingShortfall, takePendingShortfall, takePendingShortfallReason } from './shortfall';
+import { setPendingAutoUsePower, takePendingDiamondIntent, type DiamondIntent } from './monetization';
 import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -180,6 +182,7 @@ interface Props {
   onOpenLeaderboard?: () => void; // open the centered leaderboard popup (App-level overlay)
   onOpenMatchHistory?: () => void; // open the centered match-history popup (App-level overlay)
   onOpenLevelRoad?: () => void; // Seviye Yolu tam ekranını aç (App-level modal)
+  onLockedSocialMode?: (mode: GameMode) => void; // Social Pack-gated mode tapped; App-level engagement owns the upsell
   overlayBusy?: boolean; // App-katmanı popup zinciri sürüyor mu (XP yağmuru bekler)
   // App'in tutmalı/dönüşlü elmas sayacı — verilirse ana ekran hapı bunu izler
   // (ödül uçuşu sırasında sayaç ödül ÖNCESİ değerde tutulur, iniş sonrası döner)
@@ -262,15 +265,16 @@ export function withAlpha(hex: string, alpha: number): string {
 // THE press standard: 60ms depress in / 110ms release out, native driver.
 const PRESS_IN_MS = 60;
 const PRESS_OUT_MS = 110;
-function usePressLip(depth = 2) {
+function usePressLip(depth = 2, feedback?: GameFeedbackEvent | null) {
   const press = useRef(new Animated.Value(0)).current;
   const ty = press.interpolate({ inputRange: [0, 1], outputRange: [0, depth] });
   // A tiny scale-down alongside the lip. The lip alone (a 2px shift) is too subtle
   // to register as feedback; the scale makes every press read as instant.
   const scale = press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.965] });
   const onIn = useCallback(() => {
+    if (feedback) triggerFeedback(feedback);
     Animated.timing(press, { toValue: 1, duration: PRESS_IN_MS, useNativeDriver: true }).start();
-  }, [press]);
+  }, [feedback, press]);
   const onOut = useCallback(() => {
     Animated.timing(press, { toValue: 0, duration: PRESS_OUT_MS, useNativeDriver: true }).start();
   }, [press]);
@@ -278,11 +282,12 @@ function usePressLip(depth = 2) {
 }
 
 // Spring press-scale for tile/cell touchables (sticker cells, crest taps).
-function usePressScale(to = 0.92) {
+function usePressScale(to = 0.92, feedback?: GameFeedbackEvent | null) {
   const v = useRef(new Animated.Value(1)).current;
   const onIn = useCallback(() => {
+    if (feedback) triggerFeedback(feedback);
     Animated.spring(v, { toValue: to, friction: 5, tension: 300, useNativeDriver: true }).start();
-  }, [v, to]);
+  }, [feedback, v, to]);
   const onOut = useCallback(() => {
     Animated.spring(v, { toValue: 1, friction: 5, tension: 300, useNativeDriver: true }).start();
   }, [v]);
@@ -477,7 +482,7 @@ export function Btn({
       ) : null}
     </>
   );
-  const feedbackEvent = feedback ?? (kind === 'danger' ? GameFeedbackEvent.UI_ERROR : kind === 'ghost' ? GameFeedbackEvent.UI_BACK : GameFeedbackEvent.UI_TAP);
+  const feedbackEvent = feedback ?? (kind === 'danger' ? GameFeedbackEvent.UI_DESTRUCTIVE : gem ? GameFeedbackEvent.UI_PURCHASE : kind === 'ghost' ? GameFeedbackEvent.UI_SECONDARY : big ? GameFeedbackEvent.UI_PRIMARY : GameFeedbackEvent.UI_TAP);
   return (
     <Pressable
       disabled={inert}
@@ -800,7 +805,7 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
       <Animated.View style={{ flex: 1, backgroundColor: theme.scrim, opacity: scrim }}>
         {/* Inert the instant `visible` flips false — the 160ms exit must not be
             hit-testable (double-tapped confirms re-fired actions, e.g. double gem charges) */}
-        <Pressable pointerEvents={visible ? 'auto' : 'none'} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }} onPress={handleClose}>
+        <Pressable pointerEvents={visible ? 'auto' : 'none'} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }} onPress={() => { triggerFeedback(GameFeedbackEvent.UI_CLOSE); handleClose(); }}>
           <Animated.View
             pointerEvents={visible ? 'auto' : 'none'}
             style={{
@@ -821,8 +826,7 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
             {/* clip (mood band + corners) lives HERE, not on the shadow-casting
                 face above — iOS masksToBounds would kill the modal drop shadow */}
             <Pressable onPress={() => {}} style={{ backgroundColor: theme.modalFace, borderRadius: 21, overflow: 'hidden' }}>
-              {/* üst pah + hafif cam parlaklığı (düğme yüzlerindeki gibi) */}
-              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.16, zIndex: 6 }} />
+              {!danger ? <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.16, zIndex: 6 }} /> : null}
               {title ? (
                 <View style={{ backgroundColor: strip, paddingLeft: 18, paddingRight: 54, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 9, overflow: 'hidden' }}>
                   <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.34 }} />
@@ -834,6 +838,7 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
               <View style={{ padding: 20, paddingTop: title ? 16 : 20, gap: 12 }}>{children}</View>
               <Pressable
                 onPress={handleClose}
+                onPressIn={() => triggerFeedback(GameFeedbackEvent.UI_CLOSE)}
                 hitSlop={8}
                 style={({ pressed }) => ({
                   position: 'absolute', top: title ? 7 : 12, right: 12, width: 32, height: 32, borderRadius: 16,
@@ -943,7 +948,7 @@ function GameInput({ icon, error = false, containerStyle, style, onFocus, onBlur
 }) {
   const [focused, setFocused] = useState(false);
   const focusLifecycle = useInputFocusLifecycle(
-    (e) => { setFocused(true); onFocus?.(e); },
+    (e) => { triggerFeedback(GameFeedbackEvent.UI_TAP); setFocused(true); onFocus?.(e); },
     (e) => { setFocused(false); onBlur?.(e); },
   );
   const tick = useRef(new Animated.Value(0)).current;
@@ -995,7 +1000,10 @@ function GameRow({ icon, iconColor = theme.accent, leading, label, sublabel, rig
   const press = useRef(new Animated.Value(0)).current;
   const scale = press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.985] });
   const dim = press.interpolate({ inputRange: [0, 1], outputRange: [0, 0.06] });
-  const onIn = useCallback(() => Animated.timing(press, { toValue: 1, duration: PRESS_IN_MS, useNativeDriver: true }).start(), [press]);
+  const onIn = useCallback(() => {
+    triggerFeedback(locked ? GameFeedbackEvent.UI_DISABLED : GameFeedbackEvent.UI_CARD);
+    Animated.timing(press, { toValue: 1, duration: PRESS_IN_MS, useNativeDriver: true }).start();
+  }, [locked, press]);
   const onOut = useCallback(() => Animated.timing(press, { toValue: 0, duration: PRESS_OUT_MS, useNativeDriver: true }).start(), [press]);
   const check = useRef(new Animated.Value(selected ? 1 : 0)).current;
   useEffect(() => {
@@ -1166,8 +1174,8 @@ export function ScreenBg({ variant = 'menu' }: { variant?: BgVariant }) {
           <SvgGradient id="bgshade" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor="#04060F" stopOpacity={0.32} />
             <Stop offset="0.22" stopColor="#04060F" stopOpacity={0.04} />
-            <Stop offset="0.80" stopColor="#04060F" stopOpacity={0.04} />
-            <Stop offset="1" stopColor="#04060F" stopOpacity={0.44} />
+            <Stop offset="0.80" stopColor="#04060F" stopOpacity={0.02} />
+            <Stop offset="1" stopColor="#04060F" stopOpacity={0.08} />
           </SvgGradient>
           <SvgGradient id="bgphoto" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor="#06101F" stopOpacity={0.78} />
@@ -1202,7 +1210,7 @@ export function ScreenBg({ variant = 'menu' }: { variant?: BgVariant }) {
   );
 }
 
-function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = false, lockWhenFits = false, lockScroll = false, header }: { children: ReactNode; scroll?: boolean; noPitch?: boolean; bg?: ReactNode; pad?: number; contentCenter?: boolean; fillTablet?: boolean; lockWhenFits?: boolean; lockScroll?: boolean; header?: ReactNode }) {
+function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = false, lockWhenFits = false, lockScroll = false, header, keyboardShouldPersistTaps = 'handled' }: { children: ReactNode; scroll?: boolean; noPitch?: boolean; bg?: ReactNode; pad?: number; contentCenter?: boolean; fillTablet?: boolean; lockWhenFits?: boolean; lockScroll?: boolean; header?: ReactNode; keyboardShouldPersistTaps?: ComponentProps<typeof ScrollView>['keyboardShouldPersistTaps'] }) {
   // iPad = telefon düzeninin ORTALANMIŞ hâli (kullanıcı kuralı, layout.ts).
   // `fillTablet` (dikey yayma) BİLEREK devre dışı: kartların arasını açıp
   // telefondan farklı bir ekran üretiyordu. Prop imzada kalıyor — çağrı yerleri
@@ -1250,9 +1258,12 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
           onLayout={(e) => setVpH(e.nativeEvent.layout.height)}
           onContentSizeChange={(_w, h) => setContentH(h)}
           scrollEnabled={!lockScroll && (!lockWhenFits || contentH > vpH + 2)}
+          bounces={!lockScroll}
+          alwaysBounceVertical={!lockScroll}
+          overScrollMode={lockScroll ? 'never' : 'auto'}
           contentContainerStyle={{ flexGrow: 1, justifyContent: contentCenter ? 'center' : 'flex-start' }}
           showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
+          keyboardShouldPersistTaps={keyboardShouldPersistTaps}
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           automaticallyAdjustKeyboardInsets
         >
@@ -1543,7 +1554,7 @@ const SLAM_SPARKS: { a: number; d: number; s: number; c: string }[] = [
   { a: -90, d: 148, s: 4, c: theme.text },
 ];
 
-export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => void; fontsReady?: boolean }) {
+export function SplashScreen({ onDone, fontsReady = true, onFirstFrameReady }: { onDone?: () => void; fontsReady?: boolean; onFirstFrameReady?: () => void }) {
   const veil = useRef(new Animated.Value(1)).current;      // navy cover → fades out
   const fly = useRef(new Animated.Value(0)).current;       // both halves rush in 0→1 (contact)
   const impact = useRef(new Animated.Value(0)).current;    // horizontal squeeze & recover
@@ -1555,6 +1566,20 @@ export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => voi
   // The exit timer must call the LATEST onDone, not the mount-time closure.
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
+  const onFirstFrameReadyRef = useRef(onFirstFrameReady);
+  onFirstFrameReadyRef.current = onFirstFrameReady;
+  const firstFrameSent = useRef(false);
+  const laidOut = useRef(false);
+  const sendFirstFrameReady = useCallback(() => {
+    if (firstFrameSent.current || !fontsReady || !laidOut.current) return;
+    firstFrameSent.current = true;
+    requestAnimationFrame(() => requestAnimationFrame(() => onFirstFrameReadyRef.current?.()));
+  }, [fontsReady]);
+  const handleFirstLayout = useCallback(() => {
+    laidOut.current = true;
+    sendFirstFrameReady();
+  }, [sendFirstFrameReady]);
+  useEffect(() => { sendFirstFrameReady(); }, [sendFirstFrameReady]);
 
   useEffect(() => {
     const anim = Animated.sequence([
@@ -1603,6 +1628,7 @@ export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => voi
   const shakeTY = shake.interpolate({ inputRange: [0, 0.18, 0.42, 0.66, 0.85, 1], outputRange: [0, 7, -5, 3, -1, 0] });
   const HALF_W = SLAM_BADGE / 2;
   return (
+    <View style={{ flex: 1, backgroundColor: BG_TOP }} onLayout={handleFirstLayout}>
     <OpeningBackdrop>
       <Animated.View style={{ alignItems: 'center', transform: [{ translateX: shakeTX }, { translateY: shakeTY }] }}>
         {/* badge (two clipped halves that assemble at centre) + impact FX */}
@@ -1676,6 +1702,7 @@ export function SplashScreen({ onDone, fontsReady = true }: { onDone?: () => voi
       {/* fade-from-navy veil (on top of everything) — mockup zemininde siyah yok */}
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: theme.bg, opacity: veil }]} />
     </OpeningBackdrop>
+    </View>
   );
 }
 
@@ -2285,7 +2312,7 @@ function EmoteCoin({ onPress, size = 52, style }: { onPress: () => void; size?: 
 
 // Sticker cell in the emote sheet — spring press-scale 0.92 (spec §11).
 function EmoteStickerCell({ emote, onPress }: { emote: EmoteMeta; onPress: () => void }) {
-  const { scale, onIn, onOut } = usePressScale();
+  const { scale, onIn, onOut } = usePressScale(0.92, GameFeedbackEvent.UI_CARD);
   return (
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ alignItems: 'center', width: 72 }}>
       <Animated.View style={{ transform: [{ scale }], alignItems: 'center' }}>
@@ -2836,6 +2863,8 @@ export function LoginScreen({ state, actions }: Props) {
 // One-time unique username pick, shown after sign-in before anything else.
 export function UsernameScreen({ state, actions }: Props) {
   const [name, setName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const intro = useRef(new Animated.Value(0)).current;
   const trimmed = name.trim();
   const valid =
@@ -2845,6 +2874,18 @@ export function UsernameScreen({ state, actions }: Props) {
   useEffect(() => {
     Animated.spring(intro, { toValue: 1, friction: 7, tension: 72, useNativeDriver: true }).start();
   }, [intro]);
+  useEffect(() => {
+    if (!state.error) return;
+    submittingRef.current = false;
+    setSubmitting(false);
+  }, [state.error]);
+  const submitUsername = useCallback(() => {
+    if (!valid || submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    dismissActiveInput();
+    actions.setUsername(trimmed);
+  }, [actions, trimmed, valid]);
   return (
     <Screen>
       <Animated.View style={{ flex: 1, justifyContent: 'center', transform: [{ translateY: intro.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }], opacity: intro }}>
@@ -2866,6 +2907,8 @@ export function UsernameScreen({ state, actions }: Props) {
             maxLength={16}
             error={!valid && trimmed.length > 0}
             autoFocus
+            returnKeyType="done"
+            onSubmitEditing={submitUsername}
           />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, justifyContent: 'center' }}>
             <Ionicons name={valid ? 'checkmark-circle' : 'information-circle'} size={15} color={valid ? theme.primary : theme.muted} />
@@ -2875,8 +2918,9 @@ export function UsernameScreen({ state, actions }: Props) {
             label={t('username.create')}
             icon="checkmark"
             kind="primary"
-            onPress={() => actions.setUsername(trimmed)}
-            disabled={!valid}
+            onPress={submitUsername}
+            disabled={!valid || submitting}
+            loading={submitting}
             big
           />
           {!isNetworkErrorMessage(state.error) && state.error ? <ErrorBanner message={state.error} style={{ marginVertical: 0 }} /> : null}
@@ -2903,7 +2947,7 @@ const HeroPlayBtn = memo(function HeroPlayBtn({ label, onPress, height = 64 }: {
   return (
     <Pressable
       onPress={onPress}
-      onPressIn={() => Animated.timing(press, { toValue: 1, duration: PRESS_IN_MS, useNativeDriver: true }).start()}
+      onPressIn={() => { triggerFeedback(GameFeedbackEvent.UI_PLAY); Animated.timing(press, { toValue: 1, duration: PRESS_IN_MS, useNativeDriver: true }).start(); }}
       onPressOut={() => Animated.timing(press, { toValue: 0, duration: PRESS_OUT_MS, useNativeDriver: true }).start()}
       style={{ marginVertical: 4 }}
     >
@@ -2971,10 +3015,99 @@ const linkTxt = { color: theme.text, fontSize: 12, fontFamily: 'Poppins-SemiBold
 // itself, giving users the ability to report inappropriate activity").
 const SUPPORT_EMAIL = 'yagizkarabulutmedya@gmail.com';
 
+const FEEDBACK_CATEGORIES: { id: PlayerFeedbackCategory; icon: IoniconName; title: string; body: string }[] = [
+  { id: 'suggestion', icon: 'bulb', title: 'Öneri', body: 'Oyuna ekleyelim dediğin fikirler.' },
+  { id: 'bug', icon: 'warning', title: 'Sorun Bildir', body: 'Çalışmayan veya garip görünen bir şey.' },
+  { id: 'gameplay', icon: 'game-controller', title: 'Oyun Deneyimi', body: 'Modlar, denge, botlar veya maç hissi.' },
+  { id: 'purchase', icon: 'diamond', title: 'Satın Alma', body: 'Elmas veya Social Pack ile ilgili destek.' },
+  { id: 'general', icon: 'heart', title: 'Genel Görüş', body: 'Aklındaki başka her şey.' },
+];
+
+export function FeedbackCenterModal({ visible, playerId, context, initialCategory, onClose }: {
+  visible: boolean;
+  playerId?: string | null;
+  context?: Record<string, unknown>;
+  initialCategory?: PlayerFeedbackCategory;
+  onClose: () => void;
+}) {
+  const [category, setCategory] = useState<PlayerFeedbackCategory | null>(initialCategory ?? null);
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!visible) return;
+    setCategory(initialCategory ?? null);
+    setMessage('');
+    setSending(false);
+    setSent(false);
+    setError(null);
+  }, [visible, initialCategory]);
+  const selected = FEEDBACK_CATEGORIES.find((c) => c.id === category) ?? null;
+  const canSend = Boolean(category && message.trim().length >= 4 && message.length <= 1200 && !sending);
+  const send = () => {
+    if (!category || !canSend) return;
+    setSending(true);
+    setError(null);
+    submitPlayerFeedback({ category, message, playerId, context })
+      .then(() => {
+        track('feedback_submitted', { category, source: typeof context?.source === 'string' ? context.source : 'unknown', message_length: message.trim().length });
+        triggerFeedback(GameFeedbackEvent.PURCHASE_CONFIRMED);
+        setSent(true);
+      })
+      .catch(() => setError('Gönderilemedi. Bağlantını kontrol edip tekrar deneyebilirsin.'))
+      .finally(() => setSending(false));
+  };
+  return (
+    <GameModal visible={visible} onClose={onClose} title={sent ? 'Teşekkürler!' : 'Görüş & Destek'} icon={sent ? 'checkmark-circle' : 'chatbubbles'}>
+      {sent ? (
+        <View style={{ alignItems: 'center', gap: 12 }}>
+          <View style={{ width: 62, height: 62, borderRadius: 31, backgroundColor: withAlpha(theme.primary, 0.18), alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.primary }}>
+            <Ionicons name="checkmark" size={34} color={theme.primary} />
+          </View>
+          <Text style={{ color: theme.text, fontSize: 17, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>Geri bildirimin bize ulaştı.</Text>
+          <Text style={{ color: theme.muted, fontSize: 13.5, lineHeight: 20, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>COF’u birlikte daha iyi hale getiriyoruz.</Text>
+          <Btn big label="Tamam" onPress={onClose} />
+        </View>
+      ) : !category ? (
+        <View style={{ gap: 9 }}>
+          <Text style={{ color: theme.muted, fontSize: 13.5, lineHeight: 20, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginBottom: 2 }}>Eklememizi, düzeltmemizi veya değiştirmemizi istediğin bir şey var mı?</Text>
+          {FEEDBACK_CATEGORIES.map((c) => (
+            <GameRow key={c.id} icon={c.icon} iconColor={theme.primary} label={c.title} sublabel={c.body} chevron onPress={() => { triggerFeedback(GameFeedbackEvent.UI_TAP); setCategory(c.id); }} />
+          ))}
+        </View>
+      ) : (
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={{ gap: 10 }}>
+            <Pressable onPress={() => setCategory(null)} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, flexDirection: 'row', alignItems: 'center', gap: 8 })}>
+              <Ionicons name="chevron-back" size={17} color={theme.primary} />
+              <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>{selected?.title}</Text>
+            </Pressable>
+            <TextInput
+              value={message}
+              onChangeText={(v) => { setMessage(v.slice(0, 1200)); if (error) setError(null); }}
+              multiline
+              placeholder="Bize neyi anlatmak istersin?"
+              placeholderTextColor={theme.muted}
+              textAlignVertical="top"
+              style={{ minHeight: 140, maxHeight: 220, color: theme.text, backgroundColor: theme.well, borderRadius: 16, borderWidth: 1.5, borderColor: error ? theme.danger : theme.border, padding: 12, fontFamily: 'Poppins-SemiBold', fontSize: 14, lineHeight: 20 }}
+            />
+            <Text style={{ color: message.length > 1180 ? theme.danger : theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 11, textAlign: 'right' }}>{message.length}/1200</Text>
+            {error ? <Text style={{ color: theme.danger, fontFamily: 'Poppins-SemiBold', fontSize: 12.5, textAlign: 'center' }}>{error}</Text> : null}
+            <Btn big label={sending ? 'Gönderiliyor...' : 'Gönder'} disabled={!canSend} onPress={send} />
+          </View>
+        </KeyboardAvoidingView>
+      )}
+    </GameModal>
+  );
+}
+
 // ---- Settings Panel (inside hamburger menu) ----
-function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName, onNeedDiamonds, onLogout, onDeleteAccount, blocked, onListBlocked, onUnblock }: {
+function SettingsPanel({ onLanguageChange, diamonds, playerId, arenaName, canChangeName, onChangeName, onNeedDiamonds, onLogout, onDeleteAccount, blocked, onListBlocked, onUnblock }: {
   onLanguageChange: () => void;
   diamonds: number;
+  playerId?: string | null;
+  arenaName?: string | null;
   // Yalnız Apple/Google hesapları ad değiştirebilir — misafirlerde bölüm HİÇ çizilmez.
   canChangeName: boolean;
   onChangeName: (name: string) => void;
@@ -2992,6 +3125,7 @@ function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [blockedOpen, setBlockedOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const activeLang = currentLang();
   const activeName = LANGUAGES.find((l) => l.code === activeLang)?.name ?? activeLang;
   const { prefs: feedbackPrefs, setPreference: setFeedbackPreference } = useFeedbackPreferences();
@@ -3043,6 +3177,16 @@ function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName
       {feedbackToggle('music', t('settings.music'), 'musical-notes')}
       {feedbackToggle('sfx', t('settings.sfx'), 'volume-medium')}
       {feedbackToggle('haptics', t('settings.haptics'), 'phone-portrait')}
+
+      <SectionHeader label="Görüş, Öneri ve Destek" icon="chatbubbles" style={{ marginTop: 18 }} />
+      <GameRow
+        icon="chatbubbles"
+        iconColor={theme.primary}
+        label="Görüş & Destek"
+        right={<Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>Yaz</Text>}
+        chevron
+        onPress={() => setFeedbackOpen(true)}
+      />
       {__DEV__ ? (
         <GamePanel compact style={{ marginTop: 10 }} bodyStyle={{ padding: 10 }}>
           <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 1, marginBottom: 6 }}>FEEDBACK TEST</Text>
@@ -3186,6 +3330,13 @@ function SettingsPanel({ onLanguageChange, diamonds, canChangeName, onChangeName
           </View>
         </View>
       </GameModal>
+
+      <FeedbackCenterModal
+        visible={feedbackOpen}
+        playerId={playerId}
+        context={{ source: 'settings', arenaName, diamonds }}
+        onClose={() => setFeedbackOpen(false)}
+      />
 
       {/* Blocked users — reviewable and reversible (guideline 1.2). */}
       <PopupCard visible={blockedOpen} title={t('mod.blockedUsers')} icon="ban" onClose={() => setBlockedOpen(false)}>
@@ -3356,17 +3507,10 @@ function PopupCard({ visible, title, icon, onClose, children }: {
 // Etiketli, ISO tarihli haber modeli. "Etiket yok + nokta ayraçlı mutlak tarih"
 // ikilisi, akışı editoryal değil ÜRETİLMİŞ gösteren en belirgin izlerdendi.
 type NewsItem = { id: string; tag: string; date: string; title: string; body: string; icon: any; tint: string };
-const NEWS: NewsItem[] = [
-  {
-    id: '2026-08-21-outage-fix',
-    tag: 'DÜZELTME',
-    date: '2026-08-21',
-    title: 'Kesinti sorunu çözüldü',
-    body: 'Bazı oyuncularda görülen bağlantı kesintisi sorunu giderildi.',
-    icon: 'wifi',
-    tint: theme.accent,
-  },
-];
+// Boş tutulur: buraya yalnız GERÇEK, editör elinden çıkmış duyurular girer
+// (kullanıcı kararı 2026-08-10 — lansman dolgu metinleri kaldırıldı). Akış
+// boşken NewsModal EmptyState gösterir, zil noktası hiç yanmaz.
+const NEWS: NewsItem[] = [];
 export const LATEST_NEWS_ID = NEWS[0]?.id ?? '';
 export const NEWS_READ_KEY = '@crossover_news_read';
 
@@ -3771,7 +3915,7 @@ const RailBadge = memo(function RailBadge({ icon, iconColor, ringColor, value, o
   icon: IoniconName; iconColor: string; ringColor: string; value?: string; onPress: () => void;
   countAnim?: Animated.Value; fillAnim?: Animated.Value; innerRef?: Ref<View>;
 }) {
-  const { scale, onIn, onOut } = usePressScale();
+  const { scale, onIn, onOut } = usePressScale(0.92, GameFeedbackEvent.UI_CARD);
   // When a count animation is supplied (trophy reward), the number ticks from it.
   const [animVal, setAnimVal] = useState(value);
   useEffect(() => {
@@ -3819,7 +3963,7 @@ const RailBadge = memo(function RailBadge({ icon, iconColor, ringColor, value, o
 const RoundIconBtn = memo(function RoundIconBtn({ icon, onPress, dot = false, tint = theme.text }: {
   icon: IoniconName; onPress: () => void; dot?: boolean; tint?: string;
 }) {
-  const { ty, scale, onIn, onOut } = usePressLip(2);
+  const { ty, scale, onIn, onOut } = usePressLip(2, GameFeedbackEvent.UI_TAP);
   return (
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} hitSlop={4}>
       <View style={{ backgroundColor: darken(theme.navyChip, 0.5), borderRadius: 18, paddingBottom: 2.5 }}>
@@ -3884,7 +4028,7 @@ const ProfilePill = memo(function ProfilePill({ name, avatarId, tier, pct, color
   claimBadge?: number; // toplanmamış Seviye Yolu ödülü sayısı (0 = rozet yok)
   boosted?: boolean; // 2x XP jetonu penceresi aktif — çubuğun ucunda altın "2x"
 }) {
-  const { ty, scale, onIn, onOut } = usePressLip(2);
+  const { ty, scale, onIn, onOut } = usePressLip(2, GameFeedbackEvent.UI_TAP);
   const barRef = useRef<View>(null);
   const measureBar = useCallback(() => {
     // XP kürelerinin hedefi: çubuğun ekran-uzayı merkezi
@@ -3963,7 +4107,7 @@ const GemPill = memo(function GemPill({ count, onPress, countAnim, fillAnim, inn
   count: number; onPress: () => void;
   countAnim?: Animated.Value; fillAnim?: Animated.Value; innerRef?: Ref<View>;
 }) {
-  const { ty, scale, onIn, onOut } = usePressLip(2);
+  const { ty, scale, onIn, onOut } = usePressLip(2, GameFeedbackEvent.UI_PURCHASE);
   // When an external count animation is supplied (arena/purchase reward), the
   // displayed number ticks from that value; otherwise it just shows `count`.
   const [animCount, setAnimCount] = useState(count);
@@ -4042,7 +4186,7 @@ const ArtCard = memo(function ArtCard({ title, tint, art, height, onPress, grade
   // inside it. Replaces the full-width strip when set.
   pillBar?: { fill: string };
 }) {
-  const { ty, scale, onIn, onOut } = usePressLip(2);
+  const { ty, scale, onIn, onOut } = usePressLip(2, GameFeedbackEvent.UI_CARD);
   const gradId = useRef(`artGrad${++_btnSeq}`).current;
   // The round → only fits once the card is wide enough. On a phone these tiles
   // are ~126pt and the arrow pushed the label into an ellipsis ("Sosyal…"), so
@@ -4060,7 +4204,7 @@ const ArtCard = memo(function ArtCard({ title, tint, art, height, onPress, grade
   const lipFill = strip ? darken(strip, 0.3) : grade ? darken(grade.to, 0.3) : darken(tint, 0.55);
   return (
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1 }}>
-      <View style={{ backgroundColor: lipFill, borderRadius: 20, paddingBottom: 3, shadowColor: theme.shadowInk, shadowOpacity: 0.34, shadowRadius: 7, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
+      <View style={{ backgroundColor: lipFill, borderRadius: 20, paddingBottom: 3, shadowOpacity: 0, elevation: 0 }}>
         <Animated.View
           onLayout={(e) => setCardW(e.nativeEvent.layout.width)}
           style={{
@@ -4171,12 +4315,12 @@ const GhostPanel = memo(function GhostPanel({ title, icon, ghost, height, onPres
   // of the default flat surface2 — the mockup tints Bot Maçı green.
   tone?: string;
 }) {
-  const { ty, scale, onIn, onOut } = usePressLip(2);
+  const { ty, scale, onIn, onOut } = usePressLip(2, onPress ? GameFeedbackEvent.UI_CARD : null);
   const gradId = useRef(`ghostGrad${++_btnSeq}`).current;
   const body = (
     // The wrapper must carry the SAME face as the panel, otherwise a toned panel
     // shows the old surface2 through the corner arc.
-    <View style={{ backgroundColor: tone ?? theme.surface2, borderRadius: 20, ...shadowSoft }}>
+    <View style={{ backgroundColor: tone ?? theme.surface2, borderRadius: 20, shadowOpacity: 0, elevation: 0 }}>
       <Animated.View style={{
         // Flush with the wrapper on every side → identical radius, no bleed.
         transform: onPress ? [{ translateY: ty }, { scale }] : [], height, borderRadius: 20, overflow: 'hidden',
@@ -4196,7 +4340,6 @@ const GhostPanel = memo(function GhostPanel({ title, icon, ghost, height, onPres
             <Rect width="100%" height="100%" fill={`url(#${gradId})`} />
           </Svg>
         ) : null}
-        <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
         <GhostStack icon={ghost} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
           {icon ? <Ionicons name={icon} size={17} color={theme.muted} /> : null}
@@ -4222,6 +4365,11 @@ const CAROUSEL_GAP = 8;
 // Below this width the one-row top bar cannot seat all three round buttons without
 // starving the profile pill, so the pack shortcut (duplicated in the Store tab) steps out.
 const TOPBAR_ROOMY_W = 360;
+const HOME_SCREEN_PAD = 16;
+const HOME_TAB_BAR_BASE_H = 66;
+const HOME_HEADER_ROW_H = 46;
+const HOME_DESIGN_BODY_MIN_H = 407;
+const HOME_DESIGN_BODY_RANGE_H = 204;
 // Room codes are always exactly this long — server/src/rooms/manager.ts:5 (CODE_LEN).
 const ROOM_CODE_LEN = 6;
 const HOME_MODES: GameMode[] = ['country-team', 'letter-team'];
@@ -4264,7 +4412,7 @@ const SOCIAL_CARD_PILL = { fill: '#1E1856' };
 const ROAD_CARD_GRADE = { from: '#1466BE', mid: '#064B92', to: '#01234A' };
 const ROAD_CARD_PILL = { fill: '#051E3C' };
 
-export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, onOpenLevelRoad, overlayBusy, gemCountAnimOverride, gemFillAnimOverride, trophyLand, trophyHold, heroAnimsActive = true }: Props) {
+export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, onOpenLevelRoad, onLockedSocialMode, overlayBusy, gemCountAnimOverride, gemFillAnimOverride, trophyLand, trophyHold, heroAnimsActive = true }: Props) {
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [scope, setScope] = useState<Scope>({ type: 'all' });
   const [mode, setMode] = useState<GameMode>('team-team');
@@ -4273,7 +4421,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const [menuSub, setMenuSub] = useState<'settings' | null>(null);
   const [botOpen, setBotOpen] = useState(false);
   const [modesOpen, setModesOpen] = useState(false);
-  const [socialPackPopup, setSocialPackPopup] = useState(false);
+  const [lockedModePreview, setLockedModePreview] = useState<GameMode | null>(null);
   // iOS presents ONE native <SafeModal> at a time; open the upsell only AFTER the
   // modes modal's native dismissal finishes (via GameModal onExited), else the two
   // overlap and the app FREEZES (dead touches + scroll). Same race the avatar
@@ -4298,19 +4446,23 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const playerName = profile?.displayName ?? t('home.namePlaceholder');
   const trophies = profile?.trophies ?? 0;
   const frameTopPad = profile?.selectedFrame
-    ? Math.ceil(34 * ((FRAME_SCALE[profile.selectedFrame] ?? 3.15) * 0.9 - 1) / 2) + 8
+    ? Math.ceil(34 * ((FRAME_SCALE[profile.selectedFrame] ?? 3.15) * 0.9 - 1) / 2) + 10
     : 0;
-  const claimTopPad = unclaimedLevelCount(profile) > 0 ? 16 : 0;
-  const homeTopPad = Math.max(4, frameTopPad, claimTopPad);
-  const visibleHomeH = Math.max(520, win.height - insets.top - Math.max(insets.bottom, 12) - 128);
-  const homeScale = Math.max(0.34, Math.min(1, (visibleHomeH - homeTopPad - 463) / 177));
-  const myRank = state.leaderboard.find((e) => e.userId === profile?.userId)?.rank;
-  const heroBoxH = Math.round(92 + 42 * homeScale);
-  const playH = Math.round(46 + 18 * homeScale);
-  const primaryCardH = Math.round(112 + 30 * homeScale);
-  const secondaryCardH = Math.round(72 + 24 * homeScale);
-  const carouselCardH = Math.round(82 + 46 * homeScale);
-  const gapSm = Math.round(3 + 3 * homeScale);
+  const claimTopPad = unclaimedLevelCount(profile) > 0 ? 18 : 0;
+  const homeTopPad = Math.max(8, frameTopPad, claimTopPad);
+  const tabReserveH = HOME_TAB_BAR_BASE_H + Math.max(insets.bottom, 12);
+  const homeViewportH = Math.max(0, win.height - insets.top - tabReserveH);
+  const bodyBudgetH = Math.max(0, homeViewportH - HOME_SCREEN_PAD * 2 - homeTopPad - HOME_HEADER_ROW_H);
+  const homeScale = Math.max(0.18, Math.min(1, (bodyBudgetH - HOME_DESIGN_BODY_MIN_H) / HOME_DESIGN_BODY_RANGE_H));
+  const myLeaderboardEntry = state.leaderboard.find((e) => e.userId === profile?.userId);
+  const myRank = myLeaderboardEntry?.rank;
+  const leaderboardRankFetchKeyRef = useRef<string | null>(null);
+  const heroBoxH = Math.round(88 + 46 * homeScale);
+  const playH = Math.round(48 + 16 * homeScale);
+  const primaryCardH = Math.round(112 + 28 * homeScale);
+  const secondaryCardH = Math.round(72 + 22 * homeScale);
+  const carouselCardH = Math.round(82 + 38 * homeScale);
+  const gapSm = Math.round(2 + 4 * homeScale);
   const gapMd = Math.round(5 + 5 * homeScale);
 
   // HUD counters: the gem pill and trophy badge are driven by these anim values
@@ -4434,19 +4586,32 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
     actions.loadConversations();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (profile?.userId && state.leaderboard.length === 0) actions.openLeaderboard();
-  }, [profile?.userId, state.leaderboard.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    const uid = profile?.userId;
+    if (!uid) { leaderboardRankFetchKeyRef.current = null; return; }
+    const trophiesKey = profile?.trophies ?? 0;
+    const fetchKey = `${uid}:${trophiesKey}`;
+    if (myLeaderboardEntry?.trophies === trophiesKey) {
+      leaderboardRankFetchKeyRef.current = fetchKey;
+      return;
+    }
+    if (leaderboardRankFetchKeyRef.current === fetchKey) return;
+    leaderboardRankFetchKeyRef.current = fetchKey;
+    actions.openLeaderboard();
+  }, [profile?.userId, profile?.trophies, myLeaderboardEntry?.trophies]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startMode = useCallback((m: GameMode) => {
     dismissActiveInput();
     if (PACK_MODES.includes(m) && !hasPack) {
+      setLockedModePreview(m);
       socialUpsellOnExit.current = true; // hand off AFTER modes modal dismisses (onExited)
       setModesOpen(false);
+      track('premium_mode_locked_clicked', { mode: m, social_token_count: profile?.powerSocialToken ?? 0 });
+      track('premium_mode_preview_viewed', { mode: m, social_token_count: profile?.powerSocialToken ?? 0 });
       return;
     }
     setModesOpen(false);
     actions.findMatch({ mode: m });
-  }, [actions, hasPack]);
+  }, [actions, hasPack, onLockedSocialMode]);
 
   // ---- Sabit kimlikli onPress'ler: memo'lu HUD primitifleri (ProfilePill /
   // GemPill / RailBadge / RoundIconBtn / ArtCard / HeroPlayBtn) ancak props
@@ -4525,16 +4690,12 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
 
   return (
     <Screen
-      scroll pad={16} contentCenter={false} fillTablet lockWhenFits
-      // ── 1. TOP BAR ── artık SABİT BAŞLIK: ScrollView'ın DIŞINDA çizilir.
-      // (1) Scroll bütçesine EKLENMEZ → içerik aşağı itilmez, ekran KAYMAZ
-      //     (kullanıcı: "ekran kayıyor, kartlar yeşil alana giriyor").
-      // (2) Takılı çerçevenin tacı + ödül habercisi, ScrollView üst-kenarına
-      //     KIRPILMADAN KAV padding'i + güvenli-alan boşluğuna (saate DOĞRU) yukarı
-      //     taşar — "üstteki yeri kullan" dediğin bu. Büyük lacivert boşluk YOK;
-      //     paddingTop yalnız tacı saatin biraz altına indirecek kadar küçük.
+      pad={HOME_SCREEN_PAD} contentCenter={false} fillTablet
+      // ── 1. TOP BAR ── fixed lobby header. It reserves the full visual overhang
+      // of the selected frame / gift herald, so no decorative pixel can bleed back
+      // into the device safe area while the body still compacts below it.
       header={
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: homeTopPad }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: homeTopPad, minHeight: homeTopPad + HOME_HEADER_ROW_H, overflow: 'visible' }}>
           <ProfilePill
             name={playerName}
             avatarId={profile?.avatar ?? profile?.selectedAvatar}
@@ -4548,7 +4709,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
             boosted={Boolean(profile?.xpBoostUntil && new Date(profile.xpBoostUntil).getTime() > Date.now())}
           />
           <GemPill count={profile?.diamonds ?? 0} onPress={openStoreDiamonds} countAnim={gemCountAnim} fillAnim={gemFillAnim} innerRef={gemPillRef} />
-          {SCREEN_W >= TOPBAR_ROOMY_W ? (
+          {win.width >= TOPBAR_ROOMY_W ? (
             <RoundIconBtn icon="time" onPress={openHistory} />
           ) : null}
           <RoundIconBtn icon="notifications" dot={newsUnread} onPress={openNews} />
@@ -4578,7 +4739,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
             night sky), so it is pixel-for-pixel the photo composition. */}
         <Image
           source={HERO_ART}
-          style={{ width: SCREEN_W * (0.55 + 0.102 * homeScale), height: SCREEN_W * (0.55 + 0.102 * homeScale) * (320 / 708) }}
+          style={{ width: win.width * (0.55 + 0.102 * homeScale), height: win.width * (0.55 + 0.102 * homeScale) * (320 / 708) }}
           resizeMode="contain"
         />
         <View style={{ position: 'absolute', right: 0, top: 2, gap: 12 }}>
@@ -4640,6 +4801,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               returnKeyType="go"
               rejectResponderTermination={false}
               {...roomCodeInputFocus}
+              onFocus={(e) => { triggerFeedback(GameFeedbackEvent.UI_TAP); roomCodeInputFocus.onFocus(e); }}
               style={{
                 flex: 1, height: 34, borderRadius: 11, backgroundColor: theme.well,
                 borderTopWidth: 2, borderTopColor: theme.shadowInk,
@@ -4649,6 +4811,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
             />
             <Pressable
               disabled={!codeReady}
+              onPressIn={() => { if (codeReady) triggerFeedback(GameFeedbackEvent.UI_PRIMARY); }}
               onPress={() => { dismissActiveInput(); actions.joinRoom(joinCode, playerName); setJoinCode(''); }}
               style={({ pressed }) => ({
                 width: 34, height: 34, borderRadius: 17,
@@ -4662,6 +4825,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
             </Pressable>
           </View>
           <Pressable
+            onPressIn={() => triggerFeedback(GameFeedbackEvent.UI_CARD)}
             onPress={() => { dismissActiveInput(); actions.createRoom(playerName, opts); }}
             style={({ pressed }) => ({
               marginTop: 8, height: 32, borderRadius: 11,
@@ -4700,16 +4864,9 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       {/* ── 5. CAROUSEL ── */}
       {/* marginBottom clears the tab bar's raised centre ball, which breaks ~18pt above
           the bar and would otherwise sit on this strip's captions. */}
-      <View onLayout={(e) => setRailW(e.nativeEvent.layout.width)} style={{ marginTop: gapSm, marginBottom: Math.max(4, Math.round(10 * homeScale)) }}>
+      <View onLayout={(e) => setRailW(e.nativeEvent.layout.width)} style={{ marginTop: gapSm, marginBottom: Math.max(3, Math.round(8 * homeScale)) }}>
         {cardW > 0 ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            snapToInterval={cardW + CAROUSEL_GAP}
-            decelerationRate="fast"
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ gap: CAROUSEL_GAP }}
-          >
+          <View style={{ flexDirection: 'row', gap: CAROUSEL_GAP }}>
             <View style={{ width: cardW }}>
               <ArtCard
                 title={hasPack ? t('store.badgeActive') : t('store.socialPackTitle')}
@@ -4753,14 +4910,14 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 </Text>
               </GhostPanel>
             </View>
-          </ScrollView>
+          </View>
         ) : null}
       </View>
 
       <NetworkErrorBeacon visible={isNetworkErrorMessage(state.error)} />
 
       {/* ── Mode picker ── */}
-      <GameModal visible={modesOpen} onClose={() => setModesOpen(false)} onExited={() => { if (socialUpsellOnExit.current) { socialUpsellOnExit.current = false; setSocialPackPopup(true); } }} title={t('home.modesTitle').toLocaleUpperCase(currentLang())} icon="football">
+      <GameModal visible={modesOpen} onClose={() => setModesOpen(false)} onExited={() => { if (socialUpsellOnExit.current) { socialUpsellOnExit.current = false; if (lockedModePreview) onLockedSocialMode?.(lockedModePreview); setLockedModePreview(null); } }} title={t('home.modesTitle').toLocaleUpperCase(currentLang())} icon="football">
         <Text style={[styles.muted, { textAlign: 'center', marginBottom: 6 }]}>{t('home.specialModeBody')}</Text>
         {HOME_MODES.map((m) => {
           const locked = PACK_MODES.includes(m) && !hasPack;
@@ -4773,6 +4930,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               tint={locked ? undefined : c}
               label={MODE_LABEL(m)}
               locked={locked}
+              sublabel={locked ? t('socialPack.lockedBadge') : undefined}
               chevron={!locked}
               onPress={() => startMode(m)}
             />
@@ -4793,6 +4951,8 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
           <SettingsPanel
             onLanguageChange={() => { setMenuOpen(false); onLanguageChange?.(); }}
             diamonds={profile?.diamonds ?? 0}
+            playerId={profile?.userId ?? null}
+            arenaName={profile?.arena?.name ?? null}
             canChangeName={state.authProvider === 'apple' || state.authProvider === 'google'}
             onChangeName={(newName) => actions.changeName(newName)}
             onNeedDiamonds={() => { setMenuOpen(false); onGoToStore?.('diamonds'); }}
@@ -4876,10 +5036,6 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
 
       <NewsModal visible={newsOpen} onClose={() => setNewsOpen(false)} />
 
-      <GameModal visible={socialPackPopup} onClose={() => setSocialPackPopup(false)} title={t('friends.socialPackRequired')} icon="lock-closed">
-        <Text style={[styles.muted, { textAlign: 'center', marginBottom: 8 }]}>{t('home.specialModeLocked')}</Text>
-        <Btn label={t('friends.goToStore')} kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); onGoToStore?.('socialPack'); }} />
-      </GameModal>
     </Screen>
   );
 }
@@ -5007,12 +5163,11 @@ function LeaveConfirmModal({ visible, kind = 'ranked', onCancel, onConfirm }: {
           {t(kind === 'ranked' ? 'leave.confirmBody' : 'leave.confirmBodyForfeit')}
         </Text>
       ) : null}
-      <View style={{ flexDirection: 'row', gap: 12, alignSelf: 'stretch', marginTop: 2 }}>
-        <Pressable onPress={onCancel} style={({ pressed }) => ({ flex: 1, height: 50, borderRadius: 16, borderWidth: 1.5, borderColor: withAlpha(theme.text, 0.18), backgroundColor: pressed ? withAlpha(theme.text, 0.08) : withAlpha(theme.text, 0.04), alignItems: 'center', justifyContent: 'center', transform: [{ scale: pressed ? 0.985 : 1 }] })}>
+      <View style={{ flexDirection: 'row', gap: 12, alignSelf: 'stretch', marginTop: 2, borderTopWidth: 0, borderBottomWidth: 0 }}>
+        <Pressable onPress={onCancel} onPressIn={() => triggerFeedback(GameFeedbackEvent.UI_NEGATIVE)} style={({ pressed }) => ({ flex: 1, height: 50, borderRadius: 16, borderWidth: 0, backgroundColor: pressed ? withAlpha(theme.text, 0.08) : withAlpha(theme.text, 0.04), alignItems: 'center', justifyContent: 'center', transform: [{ scale: pressed ? 0.985 : 1 }] })}>
           <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14, ...engrave('sm') }}>{t('leave.cancel')}</Text>
         </Pressable>
-        <Pressable onPress={onConfirm} style={({ pressed }) => ({ flex: 1.12, height: 50, borderRadius: 16, backgroundColor: theme.danger, alignItems: 'center', justifyContent: 'center', shadowColor: theme.danger, shadowOpacity: 0.34, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 8, transform: [{ scale: pressed ? 0.985 : 1 }] })}>
-          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, borderTopLeftRadius: 16, borderTopRightRadius: 16, backgroundColor: 'rgba(255,255,255,0.22)' }} />
+        <Pressable onPress={onConfirm} onPressIn={() => triggerFeedback(GameFeedbackEvent.UI_DESTRUCTIVE)} style={({ pressed }) => ({ flex: 1.12, height: 50, borderRadius: 16, backgroundColor: theme.danger, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0, elevation: 0, transform: [{ scale: pressed ? 0.985 : 1 }] })}>
           <Text style={{ color: '#fff', fontFamily: 'Poppins-Black', fontSize: 14, letterSpacing: 0.2, ...engrave('sm') }}>{t('leave.confirm')}</Text>
         </Pressable>
       </View>
@@ -5208,6 +5363,7 @@ function MatchExitButton({ onPress }: { onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
+      onPressIn={() => triggerFeedback(GameFeedbackEvent.UI_CLOSE)}
       hitSlop={8}
       style={({ pressed }) => ({
         width: 40, height: 40, borderRadius: 14,
@@ -5714,6 +5870,12 @@ function GuessControls({ placeholder, youAnswered, tutorial, onSubmit, onPass, t
 }) {
   const [text, setTextState] = useState(textRef.current);
   const setText = (v: string) => { textRef.current = v; setTextState(v); };
+  const submit = () => {
+    const guess = textRef.current.trim();
+    if (!guess || youAnswered) return;
+    dismissActiveInput();
+    onSubmit(guess);
+  };
   return (
     <>
       <GameInput
@@ -5723,13 +5885,13 @@ function GuessControls({ placeholder, youAnswered, tutorial, onSubmit, onPass, t
         autoFocus={!tutorial}
         editable={!youAnswered && !tutorial}
         returnKeyType="send"
-        onSubmitEditing={() => text.trim() && onSubmit(text.trim())}
+        onSubmitEditing={submit}
       />
       <Btn
         label={t('guess.send')}
         icon="send"
         feedback={GameFeedbackEvent.ANSWER_SUBMIT}
-        onPress={() => onSubmit(text.trim())}
+        onPress={submit}
         disabled={!text.trim() || youAnswered}
       />
       <View style={{ height: 8 }} />
@@ -5805,7 +5967,7 @@ export function GuessScreen({ state, actions, tutorial, prefill }: Props & { pre
     // content pushed the input + Send/Pass buttons down under the keyboard. Anchored to
     // the top they sit in the upper screen, above the keyboard; automaticallyAdjust-
     // KeyboardInsets still scrolls the focused field into view on short screens.
-    <Screen scroll contentCenter={false}>
+    <Screen scroll contentCenter={false} keyboardShouldPersistTaps="always">
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
         <MatchExitButton onPress={handleLeave} />
         <PlayerBar state={state} onEmotePress={tutorial ? undefined : () => setEmoteOpen(true)} />
@@ -6034,12 +6196,16 @@ export function DiamondCelebration({
   amount,
   img,
   onDone,
+  onFlightStart,
+  onCollectTick,
   variant = 'purchase',
   arenaName,
 }: {
   amount: number;
   img?: ImageSourcePropType;
   onDone: () => void;
+  onFlightStart?: (durationMs: number) => void;
+  onCollectTick?: (progress: number) => void;
   variant?: 'purchase' | 'arenaReward';
   arenaName?: string;
 }) {
@@ -6622,7 +6788,7 @@ function AdRewardCard({ adLoading, adsWatched, onWatch }: { adLoading: boolean; 
 function DiamondPackRow({ pack, busy, inert, price, onBuy }: {
   pack: (typeof DIAMOND_PACKS)[number]; busy: boolean; inert: boolean; price: string; onBuy: () => void;
 }) {
-  const { ty, onIn, onOut } = usePressLip(2);
+  const { ty, onIn, onOut } = usePressLip(2, GameFeedbackEvent.UI_PURCHASE);
   return (
     <Pressable disabled={inert || busy} onPress={onBuy} onPressIn={onIn} onPressOut={onOut}>
       <Animated.View style={{ transform: [{ translateY: ty }], marginVertical: 5 }}>
@@ -6636,7 +6802,7 @@ function DiamondPackRow({ pack, busy, inert, price, onBuy }: {
                 <Text style={{ color: theme.gemText, fontFamily: 'Poppins-ExtraBold', fontSize: 13 }}>{pack.amount.toLocaleString(currentLang())}</Text>
               </View>
             </View>
-            <Btn compact kind="primary" label={price} loading={busy} disabled={inert} onPress={onBuy} />
+            <Btn compact kind="primary" label={price} loading={busy} disabled={inert} feedback={GameFeedbackEvent.UI_PURCHASE} onPress={onBuy} />
           </View>
         </GamePanel>
         {pack.best ? (
@@ -6742,6 +6908,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
   const [buying, setBuying] = useState<string | null>(null); // productId mid-purchase
   const [restoring, setRestoring] = useState(false); // user-initiated Restore in flight
   const [activeSubId, setActiveSubId] = useState<string | null>(null); // active Social Pack plan id (StoreKit entitlement)
+  const pendingDiamondIntentRef = useRef<DiamondIntent | null>(null);
   const onPurchaseSuccess = useCallback(async (purchase: Purchase) => {
     const isSub = SOCIAL_PACK_IDS.includes(purchase.productId);
     try {
@@ -6749,7 +6916,8 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
       if (!jws) throw new Error('no-jws');
       await actions.verifyPurchase(jws);
       await iapFinishTransaction({ purchase, isConsumable: !isSub });
-      track('purchase_success', { productId: purchase.productId, kind: isSub ? 'subscription' : 'diamonds' });
+      triggerFeedback(GameFeedbackEvent.PURCHASE_CONFIRMED);
+      track(isSub ? 'social_pack_purchase_success' : 'diamond_purchase_success', { product_id: purchase.productId, kind: isSub ? 'subscription' : 'diamonds', purchase_intent: pendingDiamondIntentRef.current?.source, currentDiamonds: profile?.diamonds ?? 0 });
       // The shortfall popup was only up to explain the auto-opened sheet — once
       // the diamonds actually land it has nothing left to say. (A CANCELLED
       // sheet deliberately leaves it open; that is handled in onPurchaseError.)
@@ -6764,6 +6932,14 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
       } else if (purchase.productId !== COPASS_PRODUCT_ID) {
         const pack = DIAMOND_PACKS.find((p) => p.productId === purchase.productId);
         if (pack) onDiamondCelebration?.({ amount: pack.amount, img: pack.img });
+        const intent = pendingDiamondIntentRef.current;
+        if (intent?.product === 'power') {
+          pendingDiamondIntentRef.current = null;
+          if (intent.autoUseAfterPurchase) setPendingAutoUsePower(intent.powerId);
+          track('monetization_offer_completed', { offer_id: intent.source, product: intent.powerId, missing_diamonds: intent.missingDiamonds, required_diamonds: intent.requiredDiamonds });
+          track('item_purchase_started', { product: intent.powerId, source_screen: intent.source, diamond_balance: intent.currentBalance + (pack?.amount ?? 0) });
+          actions.buyPower(intent.powerId);
+        }
       }
     } catch (err) {
       captureError(err, { where: 'purchase_success', productId: purchase.productId });
@@ -6775,7 +6951,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
   const onPurchaseError = useCallback((err: { code?: string }) => {
     setBuying(null);
     const code = err?.code ?? '';
-    track('purchase_error', { code });
+    track(/cancel/i.test(code) ? 'diamond_purchase_cancelled' : 'diamond_purchase_failed', { code });
     if (!/cancel/i.test(code)) openStoreDialog({ title: t('store.purchaseFailedTitle'), body: t('store.purchaseFailedBody'), icon: 'alert-circle', danger: true });
   }, [openStoreDialog]);
   const { connected, products, subscriptions, requestPurchase, fetchProducts } = useIAP({ onPurchaseSuccess, onPurchaseError });
@@ -6829,7 +7005,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
     if (!loaded) { openStoreDialog({ title: t('store.comingSoonTitle'), body: t('store.comingSoonBody'), icon: 'time', coach: true }); return; }
     const isSub = SOCIAL_PACK_IDS.includes(productId);
     setBuying(productId);
-    track('purchase_start', { productId, kind: isSub ? 'subscription' : 'diamonds' });
+    track(isSub ? 'social_pack_purchase_started' : 'diamond_package_selected', { product_id: productId, kind: isSub ? 'subscription' : 'diamonds', source_screen: pendingDiamondIntentRef.current?.source ?? 'store', currentDiamonds: profile?.diamonds ?? 0 });
     const apple = { sku: productId, appAccountToken: profile?.userId ?? undefined };
     Promise.resolve(requestPurchase({ request: { apple }, type: isSub ? 'subs' : 'in-app' })).catch(() => setBuying(null));
   }, [buying, requestPurchase, products, subscriptions, profile?.userId]);
@@ -6863,9 +7039,12 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
   }, []);
   // Ortak kıtlık dizisi — dört çağrı yeri (ekranlar arası varış, güç / CO Pass /
   // ifade onayı) aynı akışı paylaşır: popup'ı aç, sayfayı sunum-sonrasına kuyrukla.
-  const openShortfallSheet = useCallback((missing: number) => {
+  const openShortfallSheet = useCallback((missing: number, reason?: { required?: number; current?: number; source?: string }, intent?: DiamondIntent | null) => {
     const pack = packForShortfall(missing);
-    setShortfall({ missing, productId: pack.productId });
+    pendingDiamondIntentRef.current = intent ?? null;
+    setShortfall({ missing, productId: pack.productId, required: reason?.required, current: reason?.current, source: reason?.source, intent: intent ?? null });
+    track('diamond_store_opened', { source: reason?.source ?? intent?.source, missingDiamonds: missing, requiredDiamonds: reason?.required, currentDiamonds: reason?.current ?? profile?.diamonds ?? 0, product: intent?.product === 'power' ? intent.powerId : undefined });
+    track('diamond_offer_impression', { source: reason?.source ?? intent?.source, missingDiamonds: missing, currentDiamonds: reason?.current ?? profile?.diamonds ?? 0, product: intent?.product === 'power' ? intent.powerId : undefined });
     setShowNotEnough(true);
     pendingBuyRef.current = pack.productId;
     if (pendingBuyTimerRef.current) { clearTimeout(pendingBuyTimerRef.current); pendingBuyTimerRef.current = null; }
@@ -6888,8 +7067,10 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
     // tutmaya başlar; yeni bir kayıt sayacı tekrar artırıp render'ı zorlar.
     shortfallConsumedSeq = shortfallArrivalSeq;
     const missing = takePendingShortfall();
+    const reason = takePendingShortfallReason();
+    const intent = takePendingDiamondIntent();
     if (missing == null) return;
-    openShortfallSheet(missing);
+    openShortfallSheet(missing, reason ?? undefined, intent);
   });
 
   // Guideline 3.1.1: a DISTINCT, user-initiated Restore. The launch-time replay in
@@ -6950,7 +7131,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
   // How short the player was, and which pack we auto-opened for them. Held while
   // the StoreKit sheet is up so the popup can stay behind it: dismissing Apple
   // Pay must leave this explaining what happened, not vanish silently.
-  const [shortfall, setShortfall] = useState<{ missing: number; productId: string } | null>(null);
+  const [shortfall, setShortfall] = useState<{ missing: number; productId: string; required?: number; current?: number; source?: string; intent?: DiamondIntent | null } | null>(null);
   // Satın alma onayı: fiyat butonu artık DOĞRUDAN satın almaz — animasyonlu
   // önizlemeli "emin misin?" penceresi açar. İçerik, pencerenin çıkış
   // animasyonu boyunca ekranda kalsın diye ayrı `open` bayrağıyla tutulur.
@@ -6970,6 +7151,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
   // Mağazadan güç satın alma onayı
   const [confirmPower, setConfirmPower] = useState<PowerId | null>(null);
   const powerShortfall = useRef<number | null>(null); // insufficient at confirm -> hand off on exit
+  const powerShortfallReason = useRef<{ required?: number; current?: number; source?: string } | null>(null);
   // CO Pass satın alma onayı (mağazadan doğrudan)
   const [confirmCoPass, setConfirmCoPass] = useState(false);
   // İfade vitrini kutu boyu — konteyner genişliğinden ölçülür (kesilme olmasın)
@@ -7048,6 +7230,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
                             compact
                             loading={busy}
                             disabled={!!buying && !busy}
+                            feedback={GameFeedbackEvent.UI_PURCHASE}
                             onPress={() => buy(sp.productId)}
                           />
                           {i === 1 ? <Ribbon label={t('store.bestValue')} style={{ position: 'absolute', top: -5, right: 4, transform: [{ rotate: '-2deg' }], zIndex: 3 }} /> : null}
@@ -7116,12 +7299,13 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
                   </View>
                 ) : (
                   <View style={{ alignSelf: 'flex-start', marginTop: 4 }}>
-                    <Btn
-                      compact
-                      kind="accent"
-                      gem
-                      label={String(PREMIUM_ROAD_PRICE)}
-                      onPress={() => {
+                      <Btn
+                        compact
+                        kind="accent"
+                        gem
+                        label={String(PREMIUM_ROAD_PRICE)}
+                        feedback={GameFeedbackEvent.UI_PURCHASE}
+                        onPress={() => {
                         setConfirmCoPass(true); // modal offers BOTH 2000 diamonds and ₺ purchase
                       }}
                     />
@@ -7202,9 +7386,11 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
                   kind="primary"
                   gem
                   label={String(price)}
+                  feedback={GameFeedbackEvent.UI_PURCHASE}
                   onPress={() => {
-                    if ((profile?.diamonds ?? 0) >= price) setConfirmPower(pid);
-                    else setShowNotEnough(true);
+                    const have = profile?.diamonds ?? 0;
+                    if (have >= price) setConfirmPower(pid);
+                    else openShortfallSheet(price - have, { required: price, current: have, source: 'store_power' });
                   }}
                 />
               </View>
@@ -7282,14 +7468,35 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
           return (
             <>
               <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
-                {t('store.notEnoughNeed', { n: String(shortfall.missing) })}
+                {shortfall.intent?.product === 'power'
+                  ? t('store.notEnoughPowerNeed', { n: String(shortfall.missing) })
+                  : t('store.notEnoughNeed', { n: String(shortfall.missing) })}
               </Text>
+              {typeof shortfall.required === 'number' && typeof shortfall.current === 'number' ? (
+                <View style={{ alignSelf: 'stretch', backgroundColor: theme.well, borderRadius: 12, padding: 10, gap: 6, borderTopWidth: 1, borderTopColor: theme.shadowInk }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold' }}>{t('store.required')}</Text>
+                    <Text style={{ color: theme.text, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>{shortfall.required} 💎</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold' }}>{t('store.youHave')}</Text>
+                    <Text style={{ color: theme.text, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>{shortfall.current} 💎</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold' }}>{t('store.missing')}</Text>
+                    <Text style={{ color: theme.danger, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>{shortfall.missing} 💎</Text>
+                  </View>
+                </View>
+              ) : null}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: theme.panelInnerFill, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, borderTopWidth: 1, borderTopColor: theme.topLight }}>
                 <ExpoImage source={pack.img} style={{ width: 34, height: 34 }} contentFit="contain" />
                 <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>{pack.label}</Text>
                 <GemIcon size={13} />
                 <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>{pack.amount}</Text>
               </View>
+              <Text style={{ color: theme.primary, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>
+                {t('store.packageCoversIntent')}
+              </Text>
               <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>
                 {t('store.notEnoughProcessing')}
               </Text>
@@ -7330,10 +7537,12 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
         onClose={() => setConfirmPower(null)}
         onExited={() => {
           const m = powerShortfall.current;
-          if (m == null) return;
+          const reason = powerShortfallReason.current;
           powerShortfall.current = null;
+          powerShortfallReason.current = null;
+          if (m == null) return;
           // Popup önce; StoreKit sayfası popup'ın GERÇEK sunum sinyaliyle (kör 380ms değil).
-          openShortfallSheet(m);
+          openShortfallSheet(m, reason ?? undefined);
         }}
         title={confirmPower ? t(POWERS[confirmPower].nameKey).toLocaleUpperCase(currentLang()) : ''}
         icon={confirmPower ? POWERS[confirmPower].icon : 'flash'}
@@ -7344,12 +7553,12 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
             <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 18 }}>{t(POWERS[confirmPower].descKey)}</Text>
             <Text style={{ color: theme.text, fontSize: 12, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{t('power.buyConfirm')}</Text>
             <View style={{ alignSelf: 'stretch', marginTop: 4, gap: 8 }}>
-              <Btn big kind="primary" gem label={String(POWER_PRICES[confirmPower])} onPress={() => {
+              <Btn big kind="primary" gem label={String(POWER_PRICES[confirmPower])} feedback={GameFeedbackEvent.UI_PURCHASE} onPress={() => {
               const pid = confirmPower;
               const price = POWER_PRICES[pid];
               const have = profile?.diamonds ?? 0;
               if (have >= price) { setConfirmPower(null); actions.buyPower(pid); }
-              else { powerShortfall.current = price - have; setConfirmPower(null); }
+              else { powerShortfall.current = price - have; powerShortfallReason.current = { required: price, current: have, source: 'store_power_confirm' }; setConfirmPower(null); }
             }} />
               <Btn label={t('store.cancel')} kind="ghost" onPress={() => setConfirmPower(null)} />
             </View>
@@ -7377,12 +7586,12 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
           <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 18 }}>{t('premium.confirmBody')}</Text>
           <View style={{ alignSelf: 'stretch', marginTop: 4, gap: 8 }}>
             {/* Buy with 2000 diamonds — or fall through to the "not enough" popup */}
-            <Btn big kind="accent" gem label={t('premium.unlockBtn', { n: String(PREMIUM_ROAD_PRICE) })} onPress={() => {
+            <Btn big kind="accent" gem label={t('premium.unlockBtn', { n: String(PREMIUM_ROAD_PRICE) })} feedback={GameFeedbackEvent.UI_PURCHASE} onPress={() => {
               if ((profile?.diamonds ?? 0) >= PREMIUM_ROAD_PRICE) { setConfirmCoPass(false); actions.buyPremiumRoad(); }
               else { coPassExit.current = 'notEnough'; coPassMissing.current = PREMIUM_ROAD_PRICE - (profile?.diamonds ?? 0); setConfirmCoPass(false); }
             }} />
             {/* Or buy with real money (StoreKit) — always available, no diamonds needed */}
-            <Btn big kind="blue" icon="card" label={t('premium.buyWithMoney', { price: priceFor(COPASS_PRODUCT_ID, COPASS_FALLBACK_PRICE) })} onPress={() => { coPassExit.current = 'buyMoney'; setConfirmCoPass(false); }} />
+            <Btn big kind="blue" icon="card" label={t('premium.buyWithMoney', { price: priceFor(COPASS_PRODUCT_ID, COPASS_FALLBACK_PRICE) })} feedback={GameFeedbackEvent.UI_PURCHASE} onPress={() => { coPassExit.current = 'buyMoney'; setConfirmCoPass(false); }} />
             <Btn label={t('store.cancel')} kind="ghost" onPress={() => setConfirmCoPass(false)} />
           </View>
         </View>
@@ -7430,6 +7639,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
                     kind="primary"
                     gem
                     label={String(confirmEmote.premium?.price ?? 0)}
+                    feedback={GameFeedbackEvent.UI_PURCHASE}
                     onPress={() => {
                       const price = confirmEmote.premium?.price ?? 0;
                       const have = profile?.diamonds ?? 0;
@@ -8736,7 +8946,7 @@ const ConversationRow = memo(function ConversationRow({ userId, displayName, onl
   );
 });
 
-export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }: Props) {
+export function FriendsScreen({ state, actions, onGoToStore, onLockedSocialMode, focusAddFriendSeq }: Props) {
   const [addInput, setAddInput] = useState('');
   const [searchMode, setSearchMode] = useState<'code' | 'username'>('code');
   const [friendTab, setFriendTab] = useState<'friends' | 'requests' | 'messages'>('friends');
@@ -8751,13 +8961,12 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
   const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 }); // tap anchor for the popover
   const [menuH, setMenuH] = useState(222); // measured popover height — hard-coding it mis-seats the panel when labels wrap (long locales / large type)
   const [confirmRemove, setConfirmRemove] = useState<FriendInfo | null>(null); // remove confirmation
-  const [socialPackPopup, setSocialPackPopup] = useState(false);
   // The match-setup modal hands off to another native <SafeModal> (the social-pack
   // upsell or the invite-waiting dialog). iOS presents ONE modal at a time, so we
   // stash the intent and run it in matchModal's onExited — after its native
   // dismissal — never in the same commit (which overlaps two modals and FREEZES
   // the app: dead touches + no scroll).
-  const matchExitAction = useRef<null | { kind: 'social' } | { kind: 'invite'; fid: string; name: string; options: GameOptions }>(null);
+  const matchExitAction = useRef<null | { kind: 'social'; mode: GameMode } | { kind: 'invite'; fid: string; name: string; options: GameOptions }>(null);
   // Friendly-match tap in the row menu: the match dialog must NOT open in the
   // same commit that dismisses the menu Modal (same-tick native modal swap —
   // the second presentation can silently fail on iOS). Stash the friend id and
@@ -9128,7 +9337,7 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
           const a = matchExitAction.current;
           matchExitAction.current = null;
           if (!a) return;
-          if (a.kind === 'social') setSocialPackPopup(true);
+          if (a.kind === 'social') onLockedSocialMode?.(a.mode);
           else actions.inviteFriendMatch(a.fid, a.name, a.options);
         }}
         title={(
@@ -9152,7 +9361,9 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
                   chevron
                   onPress={() => {
                     if (locked) {
-                      matchExitAction.current = { kind: 'social' }; // upsell fires in onExited
+                      matchExitAction.current = { kind: 'social', mode: m }; // upsell fires in onExited
+                      track('premium_mode_locked_clicked', { mode: m, source: 'friendly_match', social_token_count: profile?.powerSocialToken ?? 0 });
+                      track('premium_mode_preview_viewed', { mode: m, source: 'friendly_match', social_token_count: profile?.powerSocialToken ?? 0 });
                       setMatchModal(null);
                       return;
                     }
@@ -9202,12 +9413,6 @@ export function FriendsScreen({ state, actions, onGoToStore, focusAddFriendSeq }
             </>
           )}
         </ModalPager>
-      </GameModal>
-
-      {/* Social pack upsell — the ONE GameModal pattern (same as HomeScreen's) */}
-      <GameModal visible={socialPackPopup} onClose={() => setSocialPackPopup(false)} title={t('friends.socialPackRequired')} icon="lock-closed">
-        <Text style={[styles.muted, { textAlign: 'center', marginBottom: 8 }]}>{t('friends.socialPackRequiredBody')}</Text>
-        <Btn label={t('friends.goToStore')} kind="accent" icon="storefront" onPress={() => { setSocialPackPopup(false); onGoToStore?.('socialPack'); }} />
       </GameModal>
 
       {/* Profil penceresi YALNIZ App.tsx'te render edilir. Burada bir İKİNCİSİ

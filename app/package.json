@@ -24,6 +24,7 @@
     "expo-splash-screen": "~55.0.23",
     "expo-sqlite": "~55.0.18",
     "expo-status-bar": "~55.0.6",
+    "expo-store-review": "^57.0.2",
     "expo-system-ui": "~55.0.20",
     "expo-updates": "~55.0.26",
     "expo-web-browser": "~55.0.18",

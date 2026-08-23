@@ -48,7 +48,7 @@ export function httpFor(wsUrl: string): string {
  * active endpoint first, then the rest. A host that is blocked (DNS/proxy) hangs
  * rather than erroring, so each attempt is bounded by its own timeout.
  */
-export async function fetchApi(path: string, timeoutMs = 8000): Promise<Response> {
+export async function fetchApi(path: string, timeoutMs = 8000, init?: RequestInit): Promise<Response> {
   let lastErr: unknown = null;
   for (let i = 0; i < SERVER_URLS.length; i++) {
     const idx = (activeIndex + i) % SERVER_URLS.length;
@@ -56,7 +56,7 @@ export async function fetchApi(path: string, timeoutMs = 8000): Promise<Response
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
-      const res = await fetch(base + path, { signal: ctrl.signal });
+      const res = await fetch(base + path, { ...init, signal: ctrl.signal });
       if (!res.ok) { lastErr = new Error(`HTTP ${res.status} from ${base}`); continue; }
       activeIndex = idx; // this host answers — prefer it from now on
       return res;
@@ -75,7 +75,7 @@ export async function fetchApi(path: string, timeoutMs = 8000): Promise<Response
 export const SERVER_URL = SERVER_URLS[0]!;
 export const HTTP_URL = httpFor(SERVER_URL);
 
-export const APP_BUILD_NUMBER = 126;
+export const APP_BUILD_NUMBER = 133;
 
 // Google OAuth client IDs (from Google Cloud → Credentials).
 export const GOOGLE_IOS_CLIENT_ID =
