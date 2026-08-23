@@ -10,8 +10,10 @@
 # dependencies — reinstalled on the build server from package-lock.json
 node_modules/
 node_modules/**
+node_modules
 node_modules.nosync/
 node_modules.nosync/**
+node_modules.nosync
 # Bazı sürümlerde yalnız sondaki eğik çizgili kalıp yeterli olmuyor (arşiv 338 MB
 # çıktı ve yükleme koptu): eğik çizgisiz + ** biçimleri emniyet için eklendi.
 node_modules
@@ -24,14 +26,24 @@ node_modules.nosync
 # Expo / build output
 .expo/
 dist/
+dist/**
 web-build/
+web-build/**
 expo-env.d.ts
 .metro-health-check*
+.expo/**
 
 # generated native projects (EAS generates them from the config)
 /ios
+/ios/**
+ios/
+ios/**
 /android
+/android/**
+android/
+android/**
 .kotlin/
+.kotlin/**
 *.orig.*
 
 # secrets and signing material — must never leave this machine
