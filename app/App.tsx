@@ -1390,8 +1390,11 @@ function AppRoot() {
     const metadata = { offer_id: offer.offerId, trigger: offer.trigger, currentDiamonds: state.profile?.diamonds ?? 0, ...offer.analyticsMetadata };
     track('engagement_eligible', { kind: 'SOCIAL_PACK_DISCOVERY', screen: state.phase, appSessionId, ...metadata });
     socialPackQueuedThisSessionRef.current = true;
-    recordMonetizationDiagnostic('social_pack_cold_start', { reason: 'show', socialPackEntitlement: false, sessionSocialPackShown: true, modalQueueLength: engagementState.queuedEngagements.length + 1, data: { ...baseData, RESULT: 'SHOW', ...metadata } });
-    enqueuePromotion({ ...engagement, monetizationOffer: offer, metadata });
+    const item = { ...engagement, monetizationOffer: offer, metadata };
+    setActiveEngagement(item);
+    setContextualOffer(offer);
+    setContextualOfferVisible(true);
+    recordMonetizationDiagnostic('social_pack_cold_start', { reason: 'show_direct', socialPackEntitlement: false, sessionSocialPackShown: true, modalQueueLength: engagementState.queuedEngagements.length, data: { ...baseData, RESULT: 'SHOW_DIRECT', ...metadata } });
   }, [loaded, splash, monetizationConfig, state.phase, state.profile, modalBlocked, enqueuePromotion, engagementState, appSessionId, recordMonetizationDiagnostic]);
 
   useEffect(() => {

@@ -4225,9 +4225,10 @@ const ArtCard = memo(function ArtCard({ title, tint, art, height, onPress, grade
   // lip off the darkest visible bottom element instead; cards with neither (the
   // photographic Mahalle Sahası face) keep the old tone byte-identical.
   const lipFill = strip ? darken(strip, 0.3) : grade ? darken(grade.to, 0.3) : darken(tint, 0.55);
+  const floatingPill = Boolean(pillBar);
   return (
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ flex: 1 }}>
-      <View style={{ backgroundColor: lipFill, borderRadius: 20, paddingBottom: 3, shadowOpacity: 0, elevation: 0 }}>
+      <View style={{ backgroundColor: floatingPill ? 'transparent' : lipFill, borderRadius: 20, paddingBottom: floatingPill ? 0 : 3, shadowOpacity: 0, elevation: 0 }}>
         <Animated.View
           onLayout={(e) => setCardW(e.nativeEvent.layout.width)}
           style={{
@@ -4238,7 +4239,7 @@ const ArtCard = memo(function ArtCard({ title, tint, art, height, onPress, grade
             // view by 3 at the BOTTOM only, so the top corners must match 20
             // exactly and only the bottom pair shrinks by the inset.
             borderTopLeftRadius: 20, borderTopRightRadius: 20,
-            borderBottomLeftRadius: 17, borderBottomRightRadius: 17,
+            borderBottomLeftRadius: floatingPill ? 20 : 17, borderBottomRightRadius: floatingPill ? 20 : 17,
             backgroundColor: tint,
             // NO separate top border. A white-alpha rim over a coloured face reads as a
             // GREY hairline, and because a border is stroked independently of the fill
