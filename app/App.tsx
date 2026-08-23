@@ -1355,14 +1355,6 @@ function AppRoot() {
       recordMonetizationDiagnostic('social_pack_cold_start', { reason: 'app_not_loaded', socialPackEntitlement: entitlement, sessionSocialPackShown: socialPackQueuedThisSessionRef.current, modalQueueLength: engagementState.queuedEngagements.length, data: baseData });
       return;
     }
-    if (!monetizationConfig) {
-      recordMonetizationDiagnostic('social_pack_cold_start', { reason: 'remote_config_not_ready', socialPackEntitlement: entitlement, sessionSocialPackShown: socialPackQueuedThisSessionRef.current, modalQueueLength: engagementState.queuedEngagements.length, data: baseData });
-      return;
-    }
-    if (!monetizationConfig.enabled || !monetizationConfig.offers.socialPackDiscovery) {
-      recordMonetizationDiagnostic('social_pack_cold_start', { reason: 'remote_config_disabled', socialPackEntitlement: entitlement, sessionSocialPackShown: socialPackQueuedThisSessionRef.current, modalQueueLength: engagementState.queuedEngagements.length, data: baseData });
-      return;
-    }
     if (socialPackQueuedThisSessionRef.current) {
       recordMonetizationDiagnostic('social_pack_cold_start', { reason: 'session_already_shown', socialPackEntitlement: entitlement, sessionSocialPackShown: true, modalQueueLength: engagementState.queuedEngagements.length, data: baseData });
       return;

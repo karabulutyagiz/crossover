@@ -75,7 +75,7 @@ export async function fetchApi(path: string, timeoutMs = 8000, init?: RequestIni
 export const SERVER_URL = SERVER_URLS[0]!;
 export const HTTP_URL = httpFor(SERVER_URL);
 
-export const APP_BUILD_NUMBER = 134;
+export const APP_BUILD_NUMBER = 135;
 export const APP_VERSION = '1.0.3';
 
 // Google OAuth client IDs (from Google Cloud → Credentials).

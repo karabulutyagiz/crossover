@@ -40,7 +40,7 @@ export const SFX_ASSETS: Record<AudioEvent, number> = {
   [AudioEvent.DRAW]: require('../../assets/audio/match/draw.wav'),
   [AudioEvent.SCORE_GAIN]: require('../../assets/audio/match/scoreGain.wav'),
   [AudioEvent.SCORE_LOSE]: require('../../assets/audio/match/scoreLose.wav'),
-  [AudioEvent.MATCHMAKING_FOUND]: require('../../assets/audio/match/matchFoundLatest.mp3'),
+  [AudioEvent.MATCHMAKING_FOUND]: require('../../assets/audio/match/matchFoundCharlesheffley.mp3'),
   [AudioEvent.XP_GAIN]: require('../../assets/audio/progression/xpGain.wav'),
   [AudioEvent.LEVEL_UP]: require('../../assets/audio/progression/levelUp.wav'),
   [AudioEvent.TROPHY_GAIN]: require('../../assets/audio/progression/trophyGain.wav'),
