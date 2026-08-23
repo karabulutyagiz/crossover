@@ -35,7 +35,8 @@
     "check:protocol": "tsx src/cli/check-protocol-drift.ts",
     "probe:difficulty": "tsx src/cli/difftest.ts",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
-    "check:production": "node src/cli/production-check.mjs"
+    "check:production": "node src/cli/production-check.mjs",
+    "revenue:audit": "tsx src/cli/revenue-audit.ts"
   },
   "dependencies": {
     "@apple/app-store-server-library": "^3.1.0",

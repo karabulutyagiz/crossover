@@ -88,12 +88,12 @@ async function updateTransactionMetadata(transactionId: string, meta: readonly [
     `UPDATE processed_transactions SET
        environment = COALESCE($2, environment),
        purchase_date = COALESCE($3, purchase_date),
-       price_milliunits = COALESCE($4, price_milliunits),
-       currency = COALESCE($5, currency),
-       storefront = COALESCE($6, storefront),
-       transaction_reason = COALESCE($7, transaction_reason),
-       transaction_type = COALESCE($8, transaction_type),
-       revocation_date = COALESCE($9, revocation_date)
+       price_milliunits = COALESCE(price_milliunits, $4),
+       currency = COALESCE(currency, $5),
+       storefront = COALESCE(storefront, $6),
+       transaction_reason = COALESCE(transaction_reason, $7),
+       transaction_type = COALESCE(transaction_type, $8),
+       revocation_date = COALESCE(revocation_date, $9)
      WHERE transaction_id = $1`,
     [transactionId, ...meta],
   );
@@ -204,14 +204,14 @@ export async function verifyApplePurchase(
          price_milliunits, currency, storefront, transaction_reason, transaction_type, revocation_date
        ) VALUES ($1, $2, $3, 0, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (transaction_id) DO UPDATE SET
-         environment = COALESCE(EXCLUDED.environment, processed_transactions.environment),
-         purchase_date = COALESCE(EXCLUDED.purchase_date, processed_transactions.purchase_date),
-         price_milliunits = COALESCE(EXCLUDED.price_milliunits, processed_transactions.price_milliunits),
-         currency = COALESCE(EXCLUDED.currency, processed_transactions.currency),
-         storefront = COALESCE(EXCLUDED.storefront, processed_transactions.storefront),
-         transaction_reason = COALESCE(EXCLUDED.transaction_reason, processed_transactions.transaction_reason),
-         transaction_type = COALESCE(EXCLUDED.transaction_type, processed_transactions.transaction_type),
-         revocation_date = COALESCE(EXCLUDED.revocation_date, processed_transactions.revocation_date)`,
+         environment = COALESCE(processed_transactions.environment, EXCLUDED.environment),
+         purchase_date = COALESCE(processed_transactions.purchase_date, EXCLUDED.purchase_date),
+         price_milliunits = COALESCE(processed_transactions.price_milliunits, EXCLUDED.price_milliunits),
+         currency = COALESCE(processed_transactions.currency, EXCLUDED.currency),
+         storefront = COALESCE(processed_transactions.storefront, EXCLUDED.storefront),
+         transaction_reason = COALESCE(processed_transactions.transaction_reason, EXCLUDED.transaction_reason),
+         transaction_type = COALESCE(processed_transactions.transaction_type, EXCLUDED.transaction_type),
+         revocation_date = COALESCE(processed_transactions.revocation_date, EXCLUDED.revocation_date)`,
       [tx.transactionId, userId, pid, ...txMeta],
     );
     const purchasedAt = Number(tx.purchaseDate ?? 0);
