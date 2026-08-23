@@ -977,6 +977,46 @@ export function startServer(port: number): Server {
       return;
     }
 
+    // Admin: force-close a stuck room (e.g., player waiting in lobby for 2h)
+    if (path === '/admin/api/room/close' && req.method === 'POST') {
+      const auth = req.headers['authorization'] ?? '';
+      const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+      if (!verifyToken(token)) {
+        res.writeHead(401, cors);
+        res.end(JSON.stringify({ error: 'unauthorized' }));
+        return;
+      }
+      let body = '';
+      req.on('data', (chunk) => { body += chunk; });
+      req.on('end', () => {
+        void (async () => {
+          let code = '';
+          try { const j = JSON.parse(body || '{}'); code = String(j.code ?? '').toUpperCase(); } catch { /* ignore */ }
+          if (!code) { res.writeHead(400, cors); res.end(JSON.stringify({ error: 'code required' })); return; }
+          const room = manager.get(code);
+          if (!room) { res.writeHead(404, cors); res.end(JSON.stringify({ error: 'room not found' })); return; }
+          // Disconnect all players (triggers cleanup via handleClose)
+          for (const [playerId, player] of room['players']) {
+            if (!player.transport.isBot) {
+              room.handleClose(playerId);
+            }
+          }
+          // Ensure room is removed from manager
+          if (manager.get(code)) {
+            room['onEmpty'](code);
+          }
+          log.info('admin_room_force_closed', { code });
+          res.writeHead(200, cors);
+          res.end(JSON.stringify({ ok: true, code }));
+        })().catch((e) => {
+          log.error('admin_room_close_failed', { message: e instanceof Error ? e.message : String(e) });
+          res.writeHead(500, cors);
+          res.end(JSON.stringify({ error: 'server' }));
+        });
+      });
+      return;
+    }
+
     // Friends are now managed over WebSocket (send_friend_request, list_friends, etc.)
     if (path === '/friends' || path === '/friends/add' || path === '/friends/remove') {
       res.writeHead(200, cors);
