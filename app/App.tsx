@@ -52,7 +52,7 @@ const FORCE_TUTORIAL_DEV = false;
 import { BASE_H, uiScaleFor, canvasSizeFor } from './src/layout';
 import { setGemTarget } from './src/gemTarget';
 import { addNotificationTapListener, getPushPermissionGranted, setBadge } from './src/notifications';
-import { fetchApi } from './src/config';
+import { APP_BUILD_NUMBER, APP_VERSION, fetchApi } from './src/config';
 import {
   DevShotScreen,
   TrophyFlight,
@@ -115,7 +115,6 @@ import {
   markPostMatchOfferSeen,
   markPurchaseDeclined,
   markPurchaseSucceeded,
-  markSocialPackOfferSeen,
   PROMOTION_TIMING,
   saveOfferCaps,
   setPendingAutoUsePower,
@@ -154,6 +153,28 @@ import { requestNativeReview } from './src/ReviewService';
 type GemCelebration =
   | { kind: 'purchase'; amount: number; img?: ImageSourcePropType }
   | { kind: 'arenaReward'; amount: number; arenaName: string };
+
+type MonetizationDiagnostics = {
+  appVersion: string;
+  buildNumber: number;
+  socialPackEntitlement: boolean;
+  sessionSocialPackShown: boolean;
+  modalQueueLength: number;
+  lastMonetizationEvent: string;
+  lastSuppressionReason: string;
+  updatedAt: string;
+};
+
+const INITIAL_MONETIZATION_DIAGNOSTICS: MonetizationDiagnostics = {
+  appVersion: APP_VERSION,
+  buildNumber: APP_BUILD_NUMBER,
+  socialPackEntitlement: false,
+  sessionSocialPackShown: false,
+  modalQueueLength: 0,
+  lastMonetizationEvent: 'init',
+  lastSuppressionReason: 'none',
+  updatedAt: 'not-yet',
+};
 
 function powerCount(profile: GameState['profile'], powerId: PowerId): number {
   if (!profile) return 0;
@@ -763,10 +784,27 @@ function AppRoot() {
   const [feedbackCenterVisible, setFeedbackCenterVisible] = useState(false);
   const [feedbackInitialCategory, setFeedbackInitialCategory] = useState<'bug' | undefined>(undefined);
   const [ratingPromptVisible, setRatingPromptVisible] = useState(false);
+  const [monetizationDiagnostics, setMonetizationDiagnostics] = useState<MonetizationDiagnostics>(INITIAL_MONETIZATION_DIAGNOSTICS);
   const pendingOfferCtxRef = useRef<OfferEngineContext | null>(null);
   const socialPackQueuedThisSessionRef = useRef(false);
   const promotionTransitionRef = useRef(false);
   const lastPurchaseSeq = state.lastPurchase?.seq ?? 0;
+  const recordMonetizationDiagnostic = useCallback((event: string, patch: Partial<MonetizationDiagnostics> & { reason?: string; data?: Record<string, unknown> } = {}) => {
+    const { reason, data, ...diagPatch } = patch;
+    setMonetizationDiagnostics((current) => {
+      const next: MonetizationDiagnostics = {
+        ...current,
+        ...diagPatch,
+        appVersion: APP_VERSION,
+        buildNumber: APP_BUILD_NUMBER,
+        lastMonetizationEvent: event,
+        lastSuppressionReason: reason ?? diagPatch.lastSuppressionReason ?? current.lastSuppressionReason,
+        updatedAt: new Date().toISOString(),
+      };
+      console.info('[MONETIZATION]', event, { ...next, ...(data ?? {}) });
+      return next;
+    });
+  }, []);
   const updateEngagement = useCallback((updater: (state: EngagementRuntimeState) => EngagementRuntimeState) => {
     setEngagementState((current) => {
       const next = updater(current);
@@ -816,6 +854,18 @@ function AppRoot() {
       .catch(() => { if (alive) { setOfferCaps({ sessionOffers: 0, lastOfferAt: 0, lastSocialPackOfferAt: 0, offersSeenToday: 0, dayKey: new Date().toISOString().slice(0, 10), seenByOffer: {}, dismissedByOffer: {}, postMatchSeenCount: 0, matchesSincePostMatchOffer: 3, lastPostMatchOfferAt: 0, lastDeclineAt: 0, lastPurchaseAt: 0 }); setMonetizationConfig(null); } });
     return () => { alive = false; };
   }, []);
+
+  useEffect(() => {
+    setMonetizationDiagnostics((current) => ({
+      ...current,
+      appVersion: APP_VERSION,
+      buildNumber: APP_BUILD_NUMBER,
+      socialPackEntitlement: hasActiveSocialPack(state.profile),
+      sessionSocialPackShown: socialPackQueuedThisSessionRef.current,
+      modalQueueLength: engagementState.queuedEngagements.length,
+      updatedAt: new Date().toISOString(),
+    }));
+  }, [state.profile?.socialPackUntil, engagementState.queuedEngagements.length]);
 
   const enqueuePromotion = useCallback((item: EngagementQueueItem) => {
     updateEngagement((s) => enqueueEngagement(s, item));
@@ -1214,10 +1264,19 @@ function AppRoot() {
   }, [state.phase, modalBlocked, updateEngagement, engagementState.activeSessionSeconds, engagementState.totalActivePlaySeconds]);
 
   useEffect(() => {
-    if (!loaded || splash || state.phase !== 'home' || !state.profile?.usernameSet) return;
-    if (modalBlocked || contextualOffer || contextualOfferVisible) return;
+    if (!loaded || splash || state.phase !== 'home' || !state.profile?.usernameSet) {
+      if (engagementState.queuedEngagements.length > 0) recordMonetizationDiagnostic('modal_queue_suppressed', { reason: 'home_not_ready', modalQueueLength: engagementState.queuedEngagements.length, data: { loaded, splash, phase: state.phase, usernameSet: Boolean(state.profile?.usernameSet) } });
+      return;
+    }
+    if (modalBlocked || contextualOffer || contextualOfferVisible) {
+      if (engagementState.queuedEngagements.length > 0) recordMonetizationDiagnostic('modal_queue_suppressed', { reason: 'another_modal_active', modalQueueLength: engagementState.queuedEngagements.length, data: { modalBlocked, contextualOffer: Boolean(contextualOffer), contextualOfferVisible, activeEngagement: activeEngagement?.kind ?? null } });
+      return;
+    }
     const { state: nextState, item: next } = takeNextEngagement(engagementState, state.phase, modalBlocked);
-    if (!next) return;
+    if (!next) {
+      recordMonetizationDiagnostic('modal_queue_suppressed', { reason: 'queue_empty_or_not_safe', modalQueueLength: engagementState.queuedEngagements.length, data: { phase: state.phase, modalBlocked } });
+      return;
+    }
     promotionTransitionRef.current = true;
     setEngagementState(nextState);
     saveEngagementState(nextState).catch(() => {});
@@ -1236,43 +1295,97 @@ function AppRoot() {
       appSessionId,
       ...next.metadata,
     });
+    recordMonetizationDiagnostic('modal_queue_show', { reason: 'show', modalQueueLength: nextState.queuedEngagements.length, sessionSocialPackShown: socialPackQueuedThisSessionRef.current, socialPackEntitlement: hasActiveSocialPack(state.profile), data: { kind: next.kind, source: next.source, id: next.id } });
     requestAnimationFrame(() => { promotionTransitionRef.current = false; });
-  }, [loaded, splash, state.phase, state.profile?.usernameSet, modalBlocked, contextualOffer, contextualOfferVisible, engagementState, appSessionId]);
+  }, [loaded, splash, state.phase, state.profile, state.profile?.usernameSet, modalBlocked, contextualOffer, contextualOfferVisible, engagementState, appSessionId, activeEngagement?.kind, recordMonetizationDiagnostic]);
 
   useEffect(() => {
-    if (!offerCaps || !monetizationConfig) return;
+    if (!offerCaps || !monetizationConfig) {
+      if (pendingOfferCtxRef.current) recordMonetizationDiagnostic('post_match_suppressed', { reason: 'monetization_not_ready', data: { hasOfferCaps: Boolean(offerCaps), hasConfig: Boolean(monetizationConfig) } });
+      return;
+    }
     if (!pendingOfferCtxRef.current) return;
-    if (state.phase !== 'home') return;
-    if (modalBlocked) return;
+    if (state.phase !== 'home') {
+      recordMonetizationDiagnostic('post_match_suppressed', { reason: 'not_home_yet', data: { phase: state.phase } });
+      return;
+    }
+    if (modalBlocked) {
+      recordMonetizationDiagnostic('post_match_suppressed', { reason: 'another_modal_active', data: { phase: state.phase, modalBlocked } });
+      return;
+    }
     const tm = setTimeout(() => {
       const pending = pendingOfferCtxRef.current;
-      if (!pending || !offerCaps || !monetizationConfig) return;
+      if (!pending || !offerCaps || !monetizationConfig) {
+        recordMonetizationDiagnostic('post_match_suppressed', { reason: 'pending_context_missing_after_delay', data: { hasPending: Boolean(pending), hasOfferCaps: Boolean(offerCaps), hasConfig: Boolean(monetizationConfig) } });
+        return;
+      }
       const ctx = { ...pending, profile: state.profile ?? pending.profile };
       pendingOfferCtxRef.current = null;
       if (__DEV__) console.log('[MATCH] Finished', { result: ctx.youWon ? 'WIN' : 'LOSS', trophyDelta: ctx.trophyDelta, youScore: ctx.youScore, oppScore: ctx.oppScore });
       const offer = evaluateMonetizationOffer(ctx, offerCaps, monetizationConfig);
-      if (!offer) return;
+      if (!offer) {
+        recordMonetizationDiagnostic('post_match_suppressed', { reason: 'no_eligible_offer_or_capped', data: { result: ctx.youWon ? 'win' : 'loss', trophyDelta: ctx.trophyDelta ?? 0, winStreak: ctx.profile?.winStreak ?? 0, lossStreak: ctx.profile?.lostStreak ?? 0, matchesSincePostMatchOffer: offerCaps.matchesSincePostMatchOffer, lastPostMatchOfferAt: offerCaps.lastPostMatchOfferAt, lastDeclineAt: offerCaps.lastDeclineAt, lastPurchaseAt: offerCaps.lastPurchaseAt } });
+        return;
+      }
       const nextCaps = markPostMatchOfferSeen(offerCaps, offer.offerId);
       setOfferCaps(nextCaps);
       saveOfferCaps(nextCaps).catch(() => {});
       const metadata = { offerType: offer.offerType, offer_id: offer.offerId, trigger: offer.trigger, product: offer.product, matchResult: ctx.youWon ? 'win' : 'loss', trophyDelta: ctx.trophyDelta ?? 0, winStreak: ctx.profile?.winStreak ?? 0, lossStreak: ctx.profile?.lostStreak ?? 0, currentDiamonds: ctx.profile?.diamonds ?? 0, ...offer.analyticsMetadata };
       track('engagement_eligible', { kind: 'POST_MATCH_OFFER', screen: state.phase, appSessionId, ...metadata });
+      recordMonetizationDiagnostic('post_match_candidate', { reason: 'candidate_queued', modalQueueLength: engagementState.queuedEngagements.length + 1, data: metadata });
       enqueuePromotion({ id: `post_match_${offer.offerId}`, kind: 'POST_MATCH_OFFER', priority: EngagementPriority.GAMEPLAY_RESULT, source: offer.trigger, createdAt: Date.now(), monetizationOffer: offer, metadata });
     }, PROMOTION_TIMING.postMatchSettleDelayMs);
     return () => clearTimeout(tm);
-  }, [offerCaps, monetizationConfig, state.phase, state.profile, modalBlocked, enqueuePromotion]);
+  }, [offerCaps, monetizationConfig, state.phase, state.profile, modalBlocked, enqueuePromotion, appSessionId, engagementState.queuedEngagements.length, recordMonetizationDiagnostic]);
 
   useEffect(() => {
-    if (!loaded || splash || !offerCaps || !monetizationConfig) return;
-    if (socialPackQueuedThisSessionRef.current) return;
-    if (state.phase !== 'home' || !state.profile?.usernameSet) return;
-    if (modalBlocked) return;
-    if (hasActiveSocialPack(state.profile)) return;
+    const entitlement = hasActiveSocialPack(state.profile);
+    const homeReady = loaded && !splash && state.phase === 'home' && Boolean(state.profile?.usernameSet);
+    const baseData = {
+      candidate: Boolean(state.profile?.usernameSet),
+      entitlement,
+      sessionShown: socialPackQueuedThisSessionRef.current,
+      navigationReady: state.phase === 'home',
+      homeReady,
+      anotherModal: modalBlocked,
+      hasConfig: Boolean(monetizationConfig),
+      queueLength: engagementState.queuedEngagements.length,
+    };
+    if (!loaded || splash) {
+      recordMonetizationDiagnostic('social_pack_cold_start', { reason: 'app_not_loaded', socialPackEntitlement: entitlement, sessionSocialPackShown: socialPackQueuedThisSessionRef.current, modalQueueLength: engagementState.queuedEngagements.length, data: baseData });
+      return;
+    }
+    if (!monetizationConfig) {
+      recordMonetizationDiagnostic('social_pack_cold_start', { reason: 'remote_config_not_ready', socialPackEntitlement: entitlement, sessionSocialPackShown: socialPackQueuedThisSessionRef.current, modalQueueLength: engagementState.queuedEngagements.length, data: baseData });
+      return;
+    }
+    if (!monetizationConfig.enabled || !monetizationConfig.offers.socialPackDiscovery) {
+      recordMonetizationDiagnostic('social_pack_cold_start', { reason: 'remote_config_disabled', socialPackEntitlement: entitlement, sessionSocialPackShown: socialPackQueuedThisSessionRef.current, modalQueueLength: engagementState.queuedEngagements.length, data: baseData });
+      return;
+    }
+    if (socialPackQueuedThisSessionRef.current) {
+      recordMonetizationDiagnostic('social_pack_cold_start', { reason: 'session_already_shown', socialPackEntitlement: entitlement, sessionSocialPackShown: true, modalQueueLength: engagementState.queuedEngagements.length, data: baseData });
+      return;
+    }
+    if (state.phase !== 'home' || !state.profile?.usernameSet) {
+      recordMonetizationDiagnostic('social_pack_cold_start', { reason: 'home_not_ready', socialPackEntitlement: entitlement, sessionSocialPackShown: false, modalQueueLength: engagementState.queuedEngagements.length, data: baseData });
+      return;
+    }
+    if (modalBlocked) {
+      recordMonetizationDiagnostic('social_pack_cold_start', { reason: 'another_modal_active', socialPackEntitlement: entitlement, sessionSocialPackShown: false, modalQueueLength: engagementState.queuedEngagements.length, data: baseData });
+      return;
+    }
+    if (entitlement) {
+      recordMonetizationDiagnostic('social_pack_cold_start', { reason: 'entitlement_active', socialPackEntitlement: true, sessionSocialPackShown: false, modalQueueLength: engagementState.queuedEngagements.length, data: baseData });
+      return;
+    }
     const engagement = evaluateSocialPackEngagement(state.profile, engagementState, hasActiveSocialPack(state.profile), ENGAGEMENT_CONFIG);
-    if (!engagement) return;
-    socialPackQueuedThisSessionRef.current = true;
+    if (!engagement) {
+      recordMonetizationDiagnostic('social_pack_cold_start', { reason: 'not_candidate', socialPackEntitlement: entitlement, sessionSocialPackShown: false, modalQueueLength: engagementState.queuedEngagements.length, data: baseData });
+      return;
+    }
     const offer: MonetizationOffer = {
-      offerId: 'social_pack_discovery',
+      offerId: `social_pack_cold_start_${engagementState.sessionId}`,
       offerType: 'social_pack',
       trigger: 'social_pack_discovery',
       priority: EngagementPriority.DISCOVERY,
@@ -1282,13 +1395,12 @@ function AppRoot() {
       secondaryKey: 'common.close',
       analyticsMetadata: { appSessionId },
     };
-    const nextCaps = markSocialPackOfferSeen(offerCaps, offer.offerId);
-    setOfferCaps(nextCaps);
-    saveOfferCaps(nextCaps).catch(() => {});
     const metadata = { offer_id: offer.offerId, trigger: offer.trigger, currentDiamonds: state.profile?.diamonds ?? 0, ...offer.analyticsMetadata };
     track('engagement_eligible', { kind: 'SOCIAL_PACK_DISCOVERY', screen: state.phase, appSessionId, ...metadata });
+    socialPackQueuedThisSessionRef.current = true;
+    recordMonetizationDiagnostic('social_pack_cold_start', { reason: 'show', socialPackEntitlement: false, sessionSocialPackShown: true, modalQueueLength: engagementState.queuedEngagements.length + 1, data: { ...baseData, RESULT: 'SHOW', ...metadata } });
     enqueuePromotion({ ...engagement, monetizationOffer: offer, metadata });
-  }, [loaded, splash, offerCaps, monetizationConfig, state.phase, state.profile, modalBlocked, enqueuePromotion, engagementState, appSessionId]);
+  }, [loaded, splash, monetizationConfig, state.phase, state.profile, modalBlocked, enqueuePromotion, engagementState, appSessionId, recordMonetizationDiagnostic]);
 
   useEffect(() => {
     if (!loaded || splash || state.phase !== 'home' || !state.profile?.usernameSet || modalBlocked) return;
@@ -1864,7 +1976,7 @@ function AppRoot() {
         screen = <ResultScreen {...props} />;
         break;
       default:
-        screen = <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} trophyLand={trophyLand} trophyHold={trophyFlight?.delta ?? null} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLockedSocialMode={enqueueLockedSocialMode} />;
+        screen = <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} trophyLand={trophyLand} trophyHold={trophyFlight?.delta ?? null} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLockedSocialMode={enqueueLockedSocialMode} monetizationDiagnostics={monetizationDiagnostics} />;
     }
     return (
       <View style={[s.root, { paddingTop: insets.top }]}>
@@ -1900,7 +2012,7 @@ function AppRoot() {
     ? <ArenasScreen {...props} />
     : state.phase === 'profile'
     ? <ProfileScreen {...props} onOpenMatchHistory={openMatchHistory} onOpenLevelRoad={() => setLevelRoadOpen(true)} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
-    : <HomeScreen {...props} heroAnimsActive={activeTab === 2} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} trophyLand={trophyLand} trophyHold={trophyFlight?.delta ?? null} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLockedSocialMode={enqueueLockedSocialMode} onLanguageChange={() => {
+    : <HomeScreen {...props} heroAnimsActive={activeTab === 2} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} trophyLand={trophyLand} trophyHold={trophyFlight?.delta ?? null} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLockedSocialMode={enqueueLockedSocialMode} monetizationDiagnostics={monetizationDiagnostics} onLanguageChange={() => {
         dismissActiveInput();
         setOverlay(null);
         setStoreSection(null);

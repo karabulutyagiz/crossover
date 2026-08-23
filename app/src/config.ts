@@ -76,6 +76,7 @@ export const SERVER_URL = SERVER_URLS[0]!;
 export const HTTP_URL = httpFor(SERVER_URL);
 
 export const APP_BUILD_NUMBER = 133;
+export const APP_VERSION = '1.0.3';
 
 // Google OAuth client IDs (from Google Cloud → Credentials).
 export const GOOGLE_IOS_CLIENT_ID =

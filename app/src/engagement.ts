@@ -42,6 +42,7 @@ export type EngagementQueueItem = {
   source: string;
   createdAt: number;
   playerRequested?: boolean;
+  ignoreGlobalCooldown?: boolean;
   monetizationOffer?: MonetizationOffer;
   metadata?: Record<string, unknown>;
 };
@@ -143,7 +144,12 @@ export async function loadEngagementState(): Promise<EngagementRuntimeState> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (!raw) return createEngagementRuntime();
-    return createEngagementRuntime({ ...initialPersisted(), ...(JSON.parse(raw) as Partial<EngagementPersistedState>) });
+    const persisted = { ...initialPersisted(), ...(JSON.parse(raw) as Partial<EngagementPersistedState>) };
+    // Migration: Social Pack cold-start is once per real app session, not persisted.
+    persisted.lastSocialPackImpressionAt = 0;
+    persisted.socialPackImpressions = 0;
+    persisted.socialPackDismissals = 0;
+    return createEngagementRuntime(persisted);
   } catch {
     return createEngagementRuntime();
   }
@@ -196,6 +202,7 @@ function hasProactiveBudget(state: EngagementRuntimeState, cfg = ENGAGEMENT_CONF
 }
 
 function globalCapped(state: EngagementRuntimeState, item: EngagementQueueItem, cfg = ENGAGEMENT_CONFIG): boolean {
+  if (item.ignoreGlobalCooldown) return false;
   if (item.playerRequested || item.priority >= EngagementPriority.PLAYER_REQUESTED) return false;
   if (!hasProactiveBudget(state, cfg)) return true;
   if (Date.now() - state.lastPurchaseAt < cfg.postPurchaseSuppressionMs) return true;
@@ -222,12 +229,12 @@ export function takeNextEngagement(state: EngagementRuntimeState, phase: string,
 
 export function markEngagementImpression(state: EngagementRuntimeState, item: EngagementQueueItem): EngagementRuntimeState {
   const today = dayKey();
-  const proactive = !item.playerRequested && item.priority < EngagementPriority.PLAYER_REQUESTED;
+  const proactive = !item.playerRequested && !item.ignoreGlobalCooldown && item.priority < EngagementPriority.PLAYER_REQUESTED;
   return {
     ...state,
     proactivePopupCountSessionDate: today,
     proactivePopupCountSession: proactive ? (state.proactivePopupCountSessionDate === today ? state.proactivePopupCountSession : 0) + 1 : state.proactivePopupCountSession,
-    lastSocialPackImpressionAt: item.kind === 'SOCIAL_PACK_DISCOVERY' ? Date.now() : state.lastSocialPackImpressionAt,
+    lastSocialPackImpressionAt: state.lastSocialPackImpressionAt,
     socialPackImpressions: item.kind === 'SOCIAL_PACK_DISCOVERY' ? state.socialPackImpressions + 1 : state.socialPackImpressions,
     lastFeedbackPromptAt: item.kind === 'FEEDBACK_PROMPT' ? Date.now() : state.lastFeedbackPromptAt,
     feedbackPromptCount: item.kind === 'FEEDBACK_PROMPT' ? state.feedbackPromptCount + 1 : state.feedbackPromptCount,
@@ -266,8 +273,7 @@ export function recordPurchaseSuccess(state: EngagementRuntimeState, ownsSocialP
 
 export function evaluateSocialPackEngagement(profile: ProfileView | null, state: EngagementRuntimeState, hasActivePack: boolean, cfg = ENGAGEMENT_CONFIG): EngagementQueueItem | null {
   if (!profile?.usernameSet || hasActivePack) return null;
-  if (Date.now() - state.lastSocialPackImpressionAt < cfg.socialPackCooldownMs) return null;
-  return { id: 'social_pack_discovery', kind: 'SOCIAL_PACK_DISCOVERY', priority: EngagementPriority.DISCOVERY, source: 'home_ready', createdAt: Date.now() };
+  return { id: `social_pack_discovery_${state.sessionId}`, kind: 'SOCIAL_PACK_DISCOVERY', priority: EngagementPriority.DISCOVERY, source: 'cold_start_home_ready', createdAt: Date.now(), ignoreGlobalCooldown: true };
 }
 
 export function evaluateFeedbackEngagement(profile: ProfileView | null, state: EngagementRuntimeState, cfg = ENGAGEMENT_CONFIG): EngagementQueueItem | null {

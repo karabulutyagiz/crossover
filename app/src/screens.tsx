@@ -194,6 +194,7 @@ interface Props {
   gemFillAnimOverride?: Animated.Value;
   onGoToFriends?: () => void; // page the tab ScrollView across to the Friends tab
   focusAddFriendSeq?: number; // bumped by App when Home's find-friend card is tapped → Friends focuses its add-friend input
+  monetizationDiagnostics?: Record<string, string | number | boolean | null | undefined>;
   // Home sekmesi pager'da GÖRÜNÜR mü — dekoratif sonsuz döngüler (hero konfetisi)
   // sekme ekran dışındayken durdurulur (#8). TabFreeze'in freshOnDeactivate'i
   // sayesinde deaktivasyon karesi bu prop'un false halini ağaca taşır.
@@ -1181,8 +1182,9 @@ export function ScreenBg({ variant = 'menu' }: { variant?: BgVariant }) {
             <Stop offset="0" stopColor="#06101F" stopOpacity={0.78} />
             <Stop offset="0.13" stopColor="#06101F" stopOpacity={0.34} />
             <Stop offset="0.42" stopColor="#06101F" stopOpacity={0.14} />
-            <Stop offset="0.70" stopColor="#06101F" stopOpacity={0.40} />
-            <Stop offset="1" stopColor="#06101F" stopOpacity={0.84} />
+            <Stop offset="0.72" stopColor="#06101F" stopOpacity={0.18} />
+            <Stop offset="0.90" stopColor="#06101F" stopOpacity={0.38} />
+            <Stop offset="1" stopColor="#06101F" stopOpacity={0.76} />
           </SvgGradient>
           <SvgGradient id="bgstripe" x1="0" y1="0" x2="1" y2="1">
             <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.038} />
@@ -3103,11 +3105,12 @@ export function FeedbackCenterModal({ visible, playerId, context, initialCategor
 }
 
 // ---- Settings Panel (inside hamburger menu) ----
-function SettingsPanel({ onLanguageChange, diamonds, playerId, arenaName, canChangeName, onChangeName, onNeedDiamonds, onLogout, onDeleteAccount, blocked, onListBlocked, onUnblock }: {
+function SettingsPanel({ onLanguageChange, diamonds, playerId, arenaName, monetizationDiagnostics, canChangeName, onChangeName, onNeedDiamonds, onLogout, onDeleteAccount, blocked, onListBlocked, onUnblock }: {
   onLanguageChange: () => void;
   diamonds: number;
   playerId?: string | null;
   arenaName?: string | null;
+  monetizationDiagnostics?: Record<string, string | number | boolean | null | undefined>;
   // Yalnız Apple/Google hesapları ad değiştirebilir — misafirlerde bölüm HİÇ çizilmez.
   canChangeName: boolean;
   onChangeName: (name: string) => void;
@@ -3126,6 +3129,7 @@ function SettingsPanel({ onLanguageChange, diamonds, playerId, arenaName, canCha
   const [blockedOpen, setBlockedOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const activeLang = currentLang();
   const activeName = LANGUAGES.find((l) => l.code === activeLang)?.name ?? activeLang;
   const { prefs: feedbackPrefs, setPreference: setFeedbackPreference } = useFeedbackPreferences();
@@ -3186,6 +3190,14 @@ function SettingsPanel({ onLanguageChange, diamonds, playerId, arenaName, canCha
         right={<Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>Yaz</Text>}
         chevron
         onPress={() => setFeedbackOpen(true)}
+      />
+      <GameRow
+        icon="pulse"
+        iconColor={theme.accent}
+        label="Monetization Diagnostics"
+        right={<Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>Durum</Text>}
+        chevron
+        onPress={() => setDiagnosticsOpen(true)}
       />
       {__DEV__ ? (
         <GamePanel compact style={{ marginTop: 10 }} bodyStyle={{ padding: 10 }}>
@@ -3337,6 +3349,17 @@ function SettingsPanel({ onLanguageChange, diamonds, playerId, arenaName, canCha
         context={{ source: 'settings', arenaName, diamonds }}
         onClose={() => setFeedbackOpen(false)}
       />
+
+      <GameModal visible={diagnosticsOpen} onClose={() => setDiagnosticsOpen(false)} title="Monetization Diagnostics" icon="pulse">
+        <View style={{ gap: 8 }}>
+          {Object.entries(monetizationDiagnostics ?? {}).map(([key, value]) => (
+            <View key={key} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, backgroundColor: theme.well, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 }}>
+              <Text style={{ flex: 1, color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold' }}>{key}</Text>
+              <Text selectable style={{ flex: 1, color: theme.text, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'right' }} numberOfLines={3}>{String(value)}</Text>
+            </View>
+          ))}
+        </View>
+      </GameModal>
 
       {/* Blocked users — reviewable and reversible (guideline 1.2). */}
       <PopupCard visible={blockedOpen} title={t('mod.blockedUsers')} icon="ban" onClose={() => setBlockedOpen(false)}>
@@ -4412,7 +4435,7 @@ const SOCIAL_CARD_PILL = { fill: '#1E1856' };
 const ROAD_CARD_GRADE = { from: '#1466BE', mid: '#064B92', to: '#01234A' };
 const ROAD_CARD_PILL = { fill: '#051E3C' };
 
-export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, onOpenLevelRoad, onLockedSocialMode, overlayBusy, gemCountAnimOverride, gemFillAnimOverride, trophyLand, trophyHold, heroAnimsActive = true }: Props) {
+export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, onOpenLevelRoad, onLockedSocialMode, overlayBusy, gemCountAnimOverride, gemFillAnimOverride, trophyLand, trophyHold, monetizationDiagnostics, heroAnimsActive = true }: Props) {
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [scope, setScope] = useState<Scope>({ type: 'all' });
   const [mode, setMode] = useState<GameMode>('team-team');
@@ -4953,6 +4976,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
             diamonds={profile?.diamonds ?? 0}
             playerId={profile?.userId ?? null}
             arenaName={profile?.arena?.name ?? null}
+            monetizationDiagnostics={monetizationDiagnostics}
             canChangeName={state.authProvider === 'apple' || state.authProvider === 'google'}
             onChangeName={(newName) => actions.changeName(newName)}
             onNeedDiamonds={() => { setMenuOpen(false); onGoToStore?.('diamonds'); }}
