@@ -44,6 +44,7 @@ import type {
   Scope,
   GameMode,
   PickRole,
+  CosmeticLoadoutView,
 } from '../protocol.ts';
 
 const COUNTDOWN_FROM = 3;
@@ -101,6 +102,7 @@ interface Player {
   avatar?: string | null; // chosen profile-picture id
   level?: number; // eşleşme kartındaki seviye rozeti
   frame?: string | null; // takılı profil çerçevesi
+  cosmetics?: CosmeticLoadoutView;
   skillMean?: number;
   skillUncertainty?: number;
   skillMatchesPlayed?: number;
@@ -198,6 +200,7 @@ export class Room {
     avatar?: string | null,
     level?: number,
     frame?: string | null,
+    cosmetics?: CosmeticLoadoutView,
     skillMean?: number,
     skillUncertainty?: number,
     skillMatchesPlayed?: number,
@@ -218,6 +221,7 @@ export class Room {
       avatar: avatar ?? null,
       level,
       frame: frame ?? null,
+      cosmetics,
       skillMean,
       skillUncertainty,
       skillMatchesPlayed,
@@ -293,7 +297,7 @@ export class Room {
   setAvatarFor(userId: string, avatar: string | null): void {
     let changed = false;
     for (const p of this.players.values()) {
-      if (p.userId === userId && p.avatar !== avatar) { p.avatar = avatar; changed = true; }
+      if (p.userId === userId && p.avatar !== avatar) { p.avatar = avatar; if (p.cosmetics) p.cosmetics.avatarId = avatar; changed = true; }
     }
     if (changed) this.broadcastState();
   }
@@ -302,7 +306,20 @@ export class Room {
   setFrameFor(userId: string, frame: string | null): void {
     let changed = false;
     for (const p of this.players.values()) {
-      if (p.userId === userId && p.frame !== frame) { p.frame = frame; changed = true; }
+      if (p.userId === userId && p.frame !== frame) { p.frame = frame; if (p.cosmetics) p.cosmetics.frameId = frame; changed = true; }
+    }
+    if (changed) this.broadcastState();
+  }
+
+  setCosmeticsFor(userId: string, cosmetics: CosmeticLoadoutView): void {
+    let changed = false;
+    for (const p of this.players.values()) {
+      if (p.userId === userId) {
+        p.cosmetics = cosmetics;
+        p.frame = cosmetics.frameId;
+        p.avatar = cosmetics.avatarId ?? p.avatar;
+        changed = true;
+      }
     }
     if (changed) this.broadcastState();
   }
@@ -2108,6 +2125,7 @@ export class Room {
       arena: p.arena,
       avatar: p.avatar,
       level: p.level,
+      cosmetics: p.cosmetics,
       frame: p.frame ?? null,
     }));
   }

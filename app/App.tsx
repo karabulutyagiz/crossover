@@ -149,6 +149,7 @@ import {
   type EngagementRuntimeState,
 } from './src/engagement';
 import { requestNativeReview } from './src/ReviewService';
+import { resolveMatchBackground } from './src/cosmetics';
 
 type GemCelebration =
   | { kind: 'purchase'; amount: number; img?: ImageSourcePropType }
@@ -224,6 +225,27 @@ const TAB_DEFS: { key: string; labelKey: 'tab.store' | 'tab.collection' | 'tab.g
   { key: 'home', labelKey: 'tab.game', icon: 'football-outline', activeIcon: 'football' },
   { key: 'friends', labelKey: 'tab.friends', icon: 'people-outline', activeIcon: 'people' },
 ];
+
+const MATCH_BG_ACCENT: Record<string, string> = {
+  champions_stadium: '#2E6CFF',
+  night_stadium: '#273A72',
+  fire_arena: '#FF5A2E',
+  neon_pitch: '#27E58B',
+  golden_stadium: '#F5C518',
+  goat_arena: '#C77DFF',
+};
+
+function CosmeticMatchBackground({ id }: { id: string }) {
+  const accent = MATCH_BG_ACCENT[id];
+  if (!accent) return null;
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: accent, opacity: 0.10 }]} />
+      <View style={{ position: 'absolute', left: -90, top: 80, width: 220, height: 220, borderRadius: 140, backgroundColor: accent, opacity: 0.16 }} />
+      <View style={{ position: 'absolute', right: -110, bottom: 120, width: 260, height: 260, borderRadius: 160, backgroundColor: accent, opacity: 0.13 }} />
+    </View>
+  );
+}
 
 // Phases that show the main tab bar (non-game screens)
 const TAB_PHASES = new Set(['home', 'arenas', 'leaderboard', 'matchHistory', 'profile']);
@@ -1946,6 +1968,9 @@ function AppRoot() {
 
   // Game screens (no tab bar)
   if (!showTabs) {
+    const localPlayer = state.room?.players.find((p) => p.id === state.room?.youId) ?? null;
+    const opponentPlayer = state.room?.players.find((p) => p.id !== state.room?.youId) ?? null;
+    const matchBgId = resolveMatchBackground(localPlayer, opponentPlayer);
     let screen: ReactNode;
     switch (state.phase) {
       case 'searching':
@@ -1976,6 +2001,7 @@ function AppRoot() {
     return (
       <View style={[s.root, { paddingTop: insets.top }]}>
         <StatusBar style="light" />
+        <CosmeticMatchBackground id={matchBgId} />
         <ScreenBg variant="match" />
         {screen}
         {state.matchInvite ? (

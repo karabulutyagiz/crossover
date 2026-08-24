@@ -30,6 +30,7 @@ import type {
   MessageView,
   ConversationView,
   BlockedUserView,
+  StoreCatalogView,
 } from './protocol';
 
 export type Phase = 'home' | 'arenas' | 'leaderboard' | 'matchHistory' | 'profile' | 'searching' | 'matchup' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
@@ -145,9 +146,10 @@ export interface GameState {
   // Son elmas-harcamalı satın alma — App bunun seq'ini izleyip "Satın Alma
   // Başarılı" onayını gösterir (kullanıcı isteği: her satın alma kendini duyursun).
   // Elmas PAKETLERİ hariç: onların kutlaması DiamondCelebration.
-  lastPurchase: { kind: 'power' | 'premiumRoad' | 'emote' | 'avatar'; id?: string; seq: number } | null;
+  lastPurchase: { kind: 'power' | 'premiumRoad' | 'emote' | 'avatar' | 'cosmetic'; id?: string; seq: number } | null;
   // Transient top banner notification (friend request / new message). Auto-dismisses.
   banner: { id: number; kind: 'friend_request' | 'message'; name: string; body?: string; userId?: string } | null;
+  storeCatalog: StoreCatalogView | null;
 }
 
 // --- Messaging helpers: stable ordering + de-dupe, so live pushes and (possibly
@@ -248,6 +250,7 @@ export const initialState: GameState = {
   blockedUsers: [],
   lastPurchase: null,
   banner: null,
+  storeCatalog: null,
 };
 
 const PROFILE_KEY = '@crossover_profile';
@@ -592,6 +595,12 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, profile: action.profile, lastPurchase: { kind: 'emote', id: (action as any).emoteId, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
     case 'avatar_purchased':
       return { ...state, profile: action.profile, lastPurchase: { kind: 'avatar', id: (action as any).avatarId, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
+    case 'store_catalog':
+      return { ...state, storeCatalog: action.catalog };
+    case 'cosmetic_purchased':
+      return { ...state, profile: action.profile, lastPurchase: { kind: 'cosmetic', id: (action as any).itemId, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
+    case 'cosmetic_equipped':
+      return { ...state, profile: action.profile };
     case 'diamonds_granted': {
       const g = (action as { granted?: number }).granted ?? 0;
       // Diamonds → toast; Social Pack / silent re-validate (granted 0) → no toast, the
@@ -1392,6 +1401,9 @@ export function useCrossover() {
         send({ type: 'send_friend_request', targetCode, targetUsername });
       },
       respondFriendRequest: (requestId: string, accept: boolean) => {
+      loadStoreCatalog: () => send({ type: 'get_store_catalog' }),
+      buyCosmetic: (itemId: string) => send({ type: 'buy_cosmetic', itemId, idempotencyKey: `cosmetic:${stateRef.current.profile?.userId ?? 'anon'}:${itemId}` }),
+      equipCosmetic: (cosmeticType: 'frame' | 'name_effect' | 'match_background' | 'ball' | 'intro' | 'victory_effect' | 'answer_effect', itemId: string | null) => send({ type: 'equip_cosmetic', cosmeticType, itemId }),
         friendOpRef.current = Date.now();
         send({ type: 'respond_friend_request', requestId, accept });
       },

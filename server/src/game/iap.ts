@@ -175,20 +175,51 @@ export async function verifyApplePurchase(
   // Diamonds (consumable) — credit once per transaction (idempotent via PK).
   const amount = DIAMOND_PRODUCTS[pid];
   if (amount) {
-    const ins = await pool.query<{ inserted: boolean }>(
-      `INSERT INTO processed_transactions (
-         transaction_id, user_id, product_id, diamonds, environment, purchase_date,
-         price_milliunits, currency, storefront, transaction_reason, transaction_type, revocation_date
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-       ON CONFLICT (transaction_id) DO NOTHING
-       RETURNING TRUE AS inserted`,
-      [tx.transactionId, userId, pid, amount, ...txMeta],
-    );
-    if (ins.rows[0]?.inserted) {
-      await pool.query(`UPDATE users SET diamonds = diamonds + $2 WHERE id = $1`, [userId, amount]);
-      granted += amount;
-    } else {
-      await updateTransactionMetadata(tx.transactionId, txMeta);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const ins = await client.query<{ inserted: boolean }>(
+        `INSERT INTO processed_transactions (
+           transaction_id, user_id, product_id, diamonds, environment, purchase_date,
+           price_milliunits, currency, storefront, transaction_reason, transaction_type, revocation_date
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         ON CONFLICT (transaction_id) DO NOTHING
+         RETURNING TRUE AS inserted`,
+        [tx.transactionId, userId, pid, amount, ...txMeta],
+      );
+      if (ins.rows[0]?.inserted) {
+        const before = await client.query<{ diamonds: number }>(`SELECT diamonds FROM users WHERE id = $1 FOR UPDATE`, [userId]);
+        const balanceBefore = Number(before.rows[0]?.diamonds ?? 0);
+        const balanceAfter = balanceBefore + amount;
+        await client.query(`UPDATE users SET diamonds = $2 WHERE id = $1`, [userId, balanceAfter]);
+        await client.query(
+          `INSERT INTO diamond_ledger (idempotency_key, user_id, amount, balance_before, balance_after, reason, reference_id, metadata)
+           VALUES ($1, $2, $3, $4, $5, 'IAP_PURCHASE', $6, $7::jsonb)
+           ON CONFLICT (idempotency_key) DO NOTHING`,
+          [`iap:${tx.transactionId}`, userId, amount, balanceBefore, balanceAfter, pid, JSON.stringify({ environment, transactionId: tx.transactionId })],
+        ).catch((err) => { if ((err as { code?: string }).code !== '42P01') throw err; });
+        granted += amount;
+      } else {
+        await client.query(
+          `UPDATE processed_transactions SET
+             environment = COALESCE($2, environment),
+             purchase_date = COALESCE($3, purchase_date),
+             price_milliunits = COALESCE(price_milliunits, $4),
+             currency = COALESCE(currency, $5),
+             storefront = COALESCE(storefront, $6),
+             transaction_reason = COALESCE(transaction_reason, $7),
+             transaction_type = COALESCE(transaction_type, $8),
+             revocation_date = COALESCE(revocation_date, $9)
+           WHERE transaction_id = $1`,
+          [tx.transactionId, ...txMeta],
+        );
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+      throw err;
+    } finally {
+      client.release();
     }
   }
 

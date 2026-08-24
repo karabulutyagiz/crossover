@@ -93,7 +93,48 @@ export interface ProfileView {
   premiumRoad?: boolean;    // Premium Seviye Yolu açık mı (sezonluk)
   claimedPremium?: number[]; // Premium şeritte toplanmış ödül seviyeleri
   ownedFrames?: string[];   // KALICI çerçeve sahipliği (sezonlar arası korunur)
+  ownedCosmetics?: string[];
+  equippedNameEffectId?: string | null;
+  equippedMatchBackgroundId?: string | null;
+  equippedBallId?: string | null;
+  equippedIntroId?: string | null;
+  equippedVictoryEffectId?: string | null;
+  equippedAnswerEffectId?: string | null;
   highestArenaRewarded?: number; // ulaşılıp açılmış en yüksek arena index'i (0=Mahalle)
+}
+
+export interface CosmeticLoadoutView {
+  frameId: string | null;
+  avatarId: string | null;
+  nameEffectId: string | null;
+  matchBackgroundId: string | null;
+  ballId: string | null;
+  introId: string | null;
+  victoryEffectId: string | null;
+  answerEffectId: string | null;
+  emoteIds: string[];
+}
+
+export type CosmeticType = 'frame' | 'name_effect' | 'match_background' | 'ball' | 'intro' | 'victory_effect' | 'answer_effect' | 'avatar' | 'emote';
+export type CosmeticRarity = 'common' | 'rare' | 'epic' | 'legendary' | 'mythic';
+export interface StoreCatalogItem {
+  id: string;
+  type: CosmeticType | string;
+  name: string;
+  description: string;
+  rarity: CosmeticRarity | string;
+  diamondPrice: number;
+  isLimited?: boolean;
+  availableFrom?: string;
+  availableUntil?: string;
+}
+export interface StoreCatalogView {
+  version: number;
+  serverTime: string;
+  dailyResetAt: string;
+  weeklyResetAt: string;
+  items: StoreCatalogItem[];
+  featured: string[];
 }
 
 export interface FriendView {
@@ -128,6 +169,7 @@ export interface PlayerView {
   avatar?: string | null;
   level?: number; // eşleşme kartındaki seviye rozeti
   frame?: string | null; // takılı profil çerçevesi — rakip de görür
+  cosmetics?: CosmeticLoadoutView;
 }
 
 export interface RoomView {
@@ -185,6 +227,9 @@ export type ClientMsg =
   | { type: 'buy_emote'; emoteId: string }
   | { type: 'equip_emotes'; emoteIds: string[] }
   | { type: 'buy_avatar'; avatarId: string }
+  | { type: 'buy_cosmetic'; itemId: string; idempotencyKey?: string }
+  | { type: 'equip_cosmetic'; itemId: string | null; cosmeticType: 'frame' | 'name_effect' | 'match_background' | 'ball' | 'intro' | 'victory_effect' | 'answer_effect' }
+  | { type: 'get_store_catalog' }
   | { type: 'set_avatar'; avatar: string | null }
   | { type: 'set_frame'; frameId: string | null }
   | { type: 'claim_level_reward'; level: number; track?: 'free' | 'premium' } // Seviye Yolu kartına dokunarak ödül topla (şerit seçimiyle)
@@ -270,6 +315,9 @@ export type ServerMsg =
   | { type: 'emote'; fromId: string; emoteId: string }
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string }
   | { type: 'avatar_purchased'; profile: ProfileView; avatarId: string }
+  | { type: 'store_catalog'; catalog: StoreCatalogView }
+  | { type: 'cosmetic_purchased'; profile: ProfileView; itemId: string; alreadyOwned?: boolean }
+  | { type: 'cosmetic_equipped'; profile: ProfileView; itemId: string | null; cosmeticType: string }
   | { type: 'diamonds_granted'; profile: ProfileView; granted: number }
   | { type: 'ad_reward_result'; ok: boolean; granted?: number; profile?: ProfileView; error?: string }
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }

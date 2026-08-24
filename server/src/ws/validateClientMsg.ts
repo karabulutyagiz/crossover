@@ -8,6 +8,7 @@ const PROVIDERS = new Set(['apple', 'google', 'facebook']);
 const POWER_IDS = new Set(['xp2x', 'shield', 'streak', 'training', 'socialtoken']);
 const REWARD_TRACKS = new Set(['free', 'premium']);
 const PLATFORMS = new Set(['ios', 'android']);
+const COSMETIC_TYPES = new Set(['frame', 'name_effect', 'match_background', 'ball', 'intro', 'victory_effect', 'answer_effect']);
 
 function invalid(error: string): ValidationResult {
   return { ok: false, error };
@@ -137,6 +138,7 @@ export function validateClientMsg(value: unknown): ValidationResult {
     case 'accept_terms':
     case 'delete_account':
     case 'buy_premium_road':
+    case 'get_store_catalog':
       break;
     case 'leave_match':
       if (value.reason !== undefined && value.reason !== 'leave' && value.reason !== 'cheat') return invalid('leave_match.reason is invalid');
@@ -165,6 +167,14 @@ export function validateClientMsg(value: unknown): ValidationResult {
       break;
     case 'buy_avatar':
       if (!hasString(value, 'avatarId', 80)) return invalid('buy_avatar.avatarId must be a string');
+      break;
+    case 'buy_cosmetic':
+      if (!hasString(value, 'itemId', 120)) return invalid('buy_cosmetic.itemId must be a string');
+      if (!hasOptionalString(value, 'idempotencyKey', 160)) return invalid('buy_cosmetic.idempotencyKey must be a string');
+      break;
+    case 'equip_cosmetic':
+      if (!hasOptionalNullableString(value, 'itemId', 120) || value.itemId === undefined) return invalid('equip_cosmetic.itemId must be a string or null');
+      if (typeof value.cosmeticType !== 'string' || !COSMETIC_TYPES.has(value.cosmeticType)) return invalid('equip_cosmetic.cosmeticType is invalid');
       break;
     case 'set_avatar':
       if (!hasOptionalNullableString(value, 'avatar', 80) || value.avatar === undefined) return invalid('set_avatar.avatar must be a string or null');

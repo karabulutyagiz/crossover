@@ -103,6 +103,13 @@ export interface UserProfile {
   premiumRoad: boolean;    // Premium Seviye Yolu açık mı (sezonluk)
   claimedPremium: number[]; // Premium şeritte toplanmış ödül seviyeleri
   ownedFrames: string[];   // KALICI çerçeve sahipliği (sezonlar arası korunur)
+  ownedCosmetics: string[]; // elmas mağazasından alınan kalıcı kozmetikler
+  equippedNameEffectId: string | null;
+  equippedMatchBackgroundId: string | null;
+  equippedBallId: string | null;
+  equippedIntroId: string | null;
+  equippedVictoryEffectId: string | null;
+  equippedAnswerEffectId: string | null;
   powerTraining: number;       // envanterdeki Antrenman Bileti adedi
   trainingBoostUntil: string | null; // aktif Antrenman Bileti penceresinin bitişi (ISO) ya da null
   powerSocialToken: number;    // envanterdeki Sosyal Paket Jetonu adedi
@@ -733,7 +740,7 @@ export async function setSelectedFrame(
     if (!user.ownedFrames.includes(frameId)) return { ok: false, error: 'Önce Seviye Yolu\'ndan bu çerçevenin ödülünü topla' };
   }
   const { rows } = await pool.query<DbUser>(
-    `UPDATE users SET selected_frame = $2 WHERE id = $1 RETURNING *`,
+    `UPDATE users SET selected_frame = $2, equipped_frame_id = $2 WHERE id = $1 RETURNING *`,
     [userId, frameId],
   );
   if (!rows[0]) return { ok: false, error: 'Kullanıcı bulunamadı' };
@@ -1138,6 +1145,14 @@ interface DbUser {
   season_id: string | null;
   owned_frames: string[] | null;
   power_training: number | null;
+  owned_cosmetics: string[] | null;
+  equipped_frame_id: string | null;
+  equipped_name_effect_id: string | null;
+  equipped_match_background_id: string | null;
+  equipped_ball_id: string | null;
+  equipped_intro_id: string | null;
+  equipped_victory_effect_id: string | null;
+  equipped_answer_effect_id: string | null;
   training_boost_day: string | null;
   training_boost_until: string | null;
   power_socialtoken: number | null;
@@ -1169,7 +1184,7 @@ function toProfile(row: DbUser): UserProfile {
     avatar: row.avatar ?? row.selected_avatar ?? null,
     xp: row.xp ?? 0,
     level: row.level ?? 1,
-    selectedFrame: row.selected_frame ?? null,
+    selectedFrame: row.equipped_frame_id ?? row.selected_frame ?? null,
     claimedLevels: row.claimed_levels ?? [],
     powerXp2x: row.power_xp2x ?? 0,
     powerShield: row.power_shield ?? 0,
@@ -1184,6 +1199,13 @@ function toProfile(row: DbUser): UserProfile {
     ownedFrames: row.owned_frames ?? [],
     powerTraining: row.power_training ?? 0,
     trainingBoostUntil: isFutureIso(row.training_boost_until) ? row.training_boost_until : null,
+    ownedCosmetics: row.owned_cosmetics ?? [],
+    equippedNameEffectId: row.equipped_name_effect_id ?? null,
+    equippedMatchBackgroundId: row.equipped_match_background_id ?? null,
+    equippedBallId: row.equipped_ball_id ?? 'classic_ball',
+    equippedIntroId: row.equipped_intro_id ?? null,
+    equippedVictoryEffectId: row.equipped_victory_effect_id ?? null,
+    equippedAnswerEffectId: row.equipped_answer_effect_id ?? null,
     powerSocialToken: row.power_socialtoken ?? 0,
     highestArenaRewarded: Math.max(0, Math.min(ARENAS.length - 1, row.highest_arena_rewarded ?? 0)),
     bannedAt: row.banned_at ?? null,
