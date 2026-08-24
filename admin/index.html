@@ -529,9 +529,14 @@
     // ── Aktif maçlar (kim kime karşı) ──
     var statusTr = { lobby:"lobide bekliyor", countdown:"geri sayım", pick:"takım seçme", reveal:"açıklama", guess:"tahmin", result:"sonuç" };
     var modeTr = { "team-team":"Takım-Takım", "country-team":"Ülke-Takım", "letter-team":"Harf-Takım", "player-player":"Oyuncu-Oyuncu" };
-    function pPill(p){
+    function pPill(p, ranked){
       if(!p) return "<span class='muted'>bekleniyor…</span>";
-      if(p.isBot) return "<span class='badge-bot'>BOT</span>";
+      if(p.isBot){
+        // Dereceli (hemen oyna / mücadele) maçta rakip bot: adı + "(bot)".
+        // Direkt bot antrenmanı (create_solo): olduğu gibi BOT rozeti.
+        if(ranked) return "<b>"+esc(p.name)+"</b> <span class='muted'>(bot)</span>";
+        return "<span class='badge-bot'>BOT</span>";
+      }
       var t = (p.trophies!=null ? " <span class='muted'>"+trNum(p.trophies)+"🏆</span>" : "");
       var off = p.connected===false ? " <span class='muted'>(bağlantı kesik)</span>" : "";
       return "<b>"+esc(p.name)+"</b>"+t+off;
@@ -545,7 +550,7 @@
     var mlist = matchItems.map(function(m){
       var ps = m.players || [];
       var pvp = !m.bot && ps.filter(function(x){return !x.isBot;}).length>=2;
-      var vs = pPill(ps[0]) + " <span class='muted'>vs</span> " + pPill(ps[1]);
+      var vs = pPill(ps[0], m.ranked) + " <span class='muted'>vs</span> " + pPill(ps[1], m.ranked);
       var score = ps.length===2 ? ps.map(function(x){return x.score;}).join(" – ") : "";
       var mode = modeTr[m.gameMode] || modeTr[m.mode] || m.gameMode || m.mode || "Mod bilinmiyor";
       var statusLabel = statusTr[m.status]||esc(m.status);

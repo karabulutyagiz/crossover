@@ -261,6 +261,7 @@ export class Room {
     status: RoomStatus;
     gameMode: GameMode;
     bot: boolean;
+    ranked: boolean;
     humans: number;
     players: { name: string; userId: string | null; trophies: number | null; score: number; connected: boolean; isBot: boolean; skillMean?: number | null; skillUncertainty?: number | null; botArchetype?: string | null; botCognitiveState?: string | null }[];
   } {
@@ -281,6 +282,7 @@ export class Room {
       status: this.status,
       gameMode: this.gameMode,
       bot: players.some((p) => p.isBot),
+      ranked: this.ranked,
       humans: players.filter((p) => !p.isBot).length,
       players,
     };
