@@ -6,6 +6,13 @@ dist/
 .env.local
 .DS_Store
 tmp/
+assets/sounds/generated/**/*.mp3
+assets/sounds/generated/**/*.wav
+assets/sounds/generated/**/*.pcm
+assets/sounds/generated/**/*.opus
+assets/sounds/generated/**/*.ulaw
+assets/sounds/generated/**/*.alaw
+assets/sounds/generated/**/*.json
 # DB seed dump for Docker migration — real user data, kept out of git (3.9MB).
 # Still shipped to the new server via rsync (see deploy/README.md).
 deploy/seed/*.sql.gz

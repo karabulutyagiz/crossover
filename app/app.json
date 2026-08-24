@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.crossover.football",
-      "buildNumber": "136",
+      "buildNumber": "139",
       "usesAppleSignIn": true,
       "infoPlist": {
         "CADisableMinimumFrameDurationOnPhone": true,

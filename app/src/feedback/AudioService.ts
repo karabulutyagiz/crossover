@@ -45,6 +45,9 @@ const PRIORITY: Record<AudioEvent, number> = {
   [AudioEvent.DIAMOND_COLLECT_TICK]: 50,
   [AudioEvent.DIAMOND_SETTLE]: 68,
   [AudioEvent.UI_ERROR]: 40,
+  [AudioEvent.INTRO_WHOOSH]: 82,
+  [AudioEvent.INTRO_IMPACT]: 86,
+  [AudioEvent.INTRO_LOGO_STING]: 84,
   [AudioEvent.UI_DESTRUCTIVE]: 42,
   [AudioEvent.UI_PLAY]: 40,
   [AudioEvent.UI_PRIMARY]: 34,
@@ -58,6 +61,7 @@ const PRIORITY: Record<AudioEvent, number> = {
   [AudioEvent.UI_TOGGLE_ON]: 22,
   [AudioEvent.UI_TOGGLE_OFF]: 22,
   [AudioEvent.UI_DISABLED]: 18,
+  [AudioEvent.SPLASH_ELECTRIC_IMPACT]: 88,
   [AudioEvent.UI_TAB_SWITCH]: 21,
   [AudioEvent.UI_TAP]: 20,
   [AudioEvent.SCORE_GAIN]: 45,
@@ -104,6 +108,9 @@ const BASE_MUSIC_VOLUME = 0.34;
 // Stadium ambience is broadband crowd/noise; above this it reads like speaker hiss
 // behind the music on phones. Keep it as a barely-there match bed, not a second mix.
 const BASE_AMBIENCE_VOLUME = 0.035;
+const MATCH_FOUND_PULSE_INTERVAL_MS = 330;
+const MATCH_FOUND_PULSE_MAX_MS = 3200;
+const MATCH_FOUND_POOL_SIZE = 4;
 
 let initialized = false;
 let appActive = true;
@@ -124,6 +131,23 @@ let currentScene: AudioScene = 'BOOT';
 let foregroundScene: AudioScene = 'BOOT';
 const fadeTokens = new WeakMap<Player, number>();
 
+let prewarmedPlayers = new Map<AudioEvent, Player>();
+let matchFoundPulsePlayers: Player[] = [];
+let matchFoundPulseIndex = 0;
+let matchFoundPulseTimer: ReturnType<typeof setInterval> | null = null;
+let matchFoundPulseStopTimer: ReturnType<typeof setTimeout> | null = null;
+const PREWARM_EVENTS = [
+  AudioEvent.MATCHMAKING_FOUND,
+  AudioEvent.SPLASH_ELECTRIC_IMPACT,
+  AudioEvent.INTRO_WHOOSH,
+  AudioEvent.INTRO_IMPACT,
+  AudioEvent.INTRO_LOGO_STING,
+  AudioEvent.UI_TAP,
+  AudioEvent.UI_NAVIGATION,
+  AudioEvent.UI_PRIMARY,
+  AudioEvent.UI_PLAY,
+];
+
 function log(msg: string) {
   if (typeof __DEV__ !== 'undefined' && __DEV__) console.log(`[AUDIO] ${msg}`);
 }
@@ -143,6 +167,27 @@ function releasePlayer(p: Player | null) {
   if (!p) return;
   safe(() => p.pause());
   safe(() => p.remove());
+}
+
+function playPreparedSfx(player: Player, event: AudioEvent, opts?: { volume?: number; rate?: number }) {
+  safe(() => {
+    const jitter = UI_VARIATION_EVENTS.has(event) ? (Math.random() - 0.5) : 0;
+    const volume = (opts?.volume ?? BASE_SFX_VOLUME) * (UI_VARIATION_EVENTS.has(event) ? 1 + jitter * 0.04 : 1);
+    player.volume = Math.max(0, Math.min(1, volume));
+    const rate = opts?.rate ?? (UI_VARIATION_EVENTS.has(event) ? 1 + jitter * 0.06 : 1);
+    if (rate !== 1) player.setPlaybackRate(rate);
+    player.seekTo(0).catch(() => {});
+    player.play();
+  });
+}
+
+function playMatchFoundPulse() {
+  const prefs = getFeedbackPreferences();
+  if (!prefs.sfx || !appActive) return;
+  const pool = matchFoundPulsePlayers.length ? matchFoundPulsePlayers : [prewarmedPlayers.get(AudioEvent.MATCHMAKING_FOUND)].filter(Boolean) as Player[];
+  const player = pool[matchFoundPulseIndex % Math.max(1, pool.length)];
+  matchFoundPulseIndex += 1;
+  if (player) playPreparedSfx(player, AudioEvent.MATCHMAKING_FOUND, { volume: 1 });
 }
 
 function fadeVolume(player: Player, from: number, to: number, ms: number, done?: () => void) {
@@ -215,6 +260,22 @@ export function initAudioService() {
   Object.values(SFX_ASSETS).forEach((src) => safe(() => preload(src)));
   Object.values(MUSIC_ASSETS).forEach((src) => safe(() => preload(src)));
   Object.values(AMBIENCE_ASSETS).forEach((src) => safe(() => preload(src)));
+
+  PREWARM_EVENTS.forEach((event) => {
+    safe(() => {
+      const p = createAudioPlayer(SFX_ASSETS[event]);
+      p.volume = 0;
+      prewarmedPlayers.set(event, p);
+    });
+  });
+  for (let i = 0; i < MATCH_FOUND_POOL_SIZE; i++) {
+    safe(() => {
+      const p = createAudioPlayer(SFX_ASSETS[AudioEvent.MATCHMAKING_FOUND]);
+      p.volume = 0;
+      matchFoundPulsePlayers.push(p);
+    });
+  }
+
   unsubscribePrefs = subscribeFeedbackPreferences((p) => {
     if (!p.music) {
       silenceMusic(160);
@@ -247,6 +308,7 @@ function handleAppState(st: AppStateStatus) {
 export function setAudioScene(scene: AudioScene, fadeMs = 260) {
   if (scene === currentScene && scene !== 'HOME') return;
   const prev = currentScene;
+  if (scene !== 'MATCH_FOUND') stopMatchFoundAlert();
   currentScene = scene;
   if (scene !== 'BACKGROUND') foregroundScene = scene;
   log(`${prev} -> ${scene}`);
@@ -296,21 +358,36 @@ export function playSFX(event: AudioEvent, opts?: { priority?: number; volume?: 
   if (event === AudioEvent.MATCHMAKING_FOUND && typeof __DEV__ !== 'undefined' && __DEV__) {
     console.log('[AUDIO][MATCH_FOUND] whistle fired');
   }
+
+  if (prewarmedPlayers.has(event)) {
+    const player = prewarmedPlayers.get(event)!;
+    playPreparedSfx(player, event, opts);
+    return;
+  }
+
   safe(() => {
     const player = createAudioPlayer(SFX_ASSETS[event]);
     activeSfx += 1;
-    const jitter = UI_VARIATION_EVENTS.has(event) ? (Math.random() - 0.5) : 0;
-    const volume = (opts?.volume ?? BASE_SFX_VOLUME) * (UI_VARIATION_EVENTS.has(event) ? 1 + jitter * 0.04 : 1);
-    player.volume = Math.max(0, Math.min(1, volume));
-    const rate = opts?.rate ?? (UI_VARIATION_EVENTS.has(event) ? 1 + jitter * 0.06 : 1);
-    if (rate !== 1) player.setPlaybackRate(rate);
-    player.seekTo(0).catch(() => {});
-    player.play();
+    playPreparedSfx(player, event, opts);
     setTimeout(() => {
       activeSfx = Math.max(0, activeSfx - 1);
       releasePlayer(player);
     }, 2600);
   });
+}
+
+export function startMatchFoundAlert() {
+  stopMatchFoundAlert();
+  playMatchFoundPulse();
+  matchFoundPulseTimer = setInterval(playMatchFoundPulse, MATCH_FOUND_PULSE_INTERVAL_MS);
+  matchFoundPulseStopTimer = setTimeout(stopMatchFoundAlert, MATCH_FOUND_PULSE_MAX_MS);
+}
+
+export function stopMatchFoundAlert() {
+  if (matchFoundPulseTimer) clearInterval(matchFoundPulseTimer);
+  if (matchFoundPulseStopTimer) clearTimeout(matchFoundPulseStopTimer);
+  matchFoundPulseTimer = null;
+  matchFoundPulseStopTimer = null;
 }
 
 export function playMusic(track: MusicTrack, fadeMs = 360) {
@@ -400,6 +477,7 @@ export function boostAmbience(ms = 480) {
 }
 
 export function disposeAudioService() {
+  stopMatchFoundAlert();
   unsubscribePrefs?.();
   unsubscribePrefs = null;
   appStateSub?.remove();
@@ -412,6 +490,12 @@ export function disposeAudioService() {
   ambienceTrack = null;
   desiredMusicTrack = null;
   musicState = 'idle';
+
+  prewarmedPlayers.forEach((p) => releasePlayer(p));
+  prewarmedPlayers.clear();
+  matchFoundPulsePlayers.forEach((p) => releasePlayer(p));
+  matchFoundPulsePlayers = [];
+
   initialized = false;
 }
 

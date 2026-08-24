@@ -1613,11 +1613,13 @@ export function SplashScreen({ onDone, fontsReady = true, onFirstFrameReady }: {
       ]),
     ]);
     anim.start();
+    // Full stinger starts before contact; its impact peak lands on the 640ms logo collision.
+    const impactSfx = setTimeout(() => triggerFeedback(GameFeedbackEvent.SPLASH_ELECTRIC_IMPACT), 90);
     // Hard, network-independent exit: the animation is scenery, the timer is the contract.
     const tm = setTimeout(() => {
       if (!fired.current) { fired.current = true; onDoneRef.current?.(); }
     }, SLAM_TOTAL_MS);
-    return () => { clearTimeout(tm); anim.stop(); };
+    return () => { clearTimeout(impactSfx); clearTimeout(tm); anim.stop(); };
   }, []);
 
   // Each half slides on X only (straight left/right, per the matchup metaphor);

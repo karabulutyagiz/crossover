@@ -1,5 +1,5 @@
 import { AudioEvent, GameFeedbackEvent, HapticEvent } from './events';
-import { boostAmbience, duckMusic, playSFX } from './AudioService';
+import { boostAmbience, duckMusic, playSFX, startMatchFoundAlert } from './AudioService';
 import { playHaptic } from './HapticsService';
 
 const EVENT_MAP: Partial<Record<GameFeedbackEvent, { sfx?: AudioEvent; haptic?: HapticEvent; duck?: boolean; crowd?: boolean; volume?: number; priority?: number }>> = {
@@ -25,6 +25,7 @@ const EVENT_MAP: Partial<Record<GameFeedbackEvent, { sfx?: AudioEvent; haptic?: 
   [GameFeedbackEvent.DIAMOND_COLLECTION_COMPLETE]: { sfx: AudioEvent.DIAMOND_SETTLE, haptic: HapticEvent.MEDIUM, volume: 0.76, priority: 68 },
   [GameFeedbackEvent.UI_DISABLED]: { sfx: AudioEvent.UI_DISABLED, haptic: HapticEvent.LIGHT, volume: 0.26 },
   [GameFeedbackEvent.UI_ERROR]: { sfx: AudioEvent.UI_ERROR, haptic: HapticEvent.ERROR, volume: 0.48 },
+  [GameFeedbackEvent.SPLASH_ELECTRIC_IMPACT]: { sfx: AudioEvent.SPLASH_ELECTRIC_IMPACT, haptic: HapticEvent.HEAVY, duck: true, volume: 0.96, priority: 96 },
   [GameFeedbackEvent.ANSWER_SUBMIT]: { sfx: AudioEvent.ANSWER_SUBMIT, haptic: HapticEvent.LIGHT, volume: 0.68 },
   [GameFeedbackEvent.COUNTDOWN_3]: { sfx: AudioEvent.COUNTDOWN_3, haptic: HapticEvent.LIGHT, volume: 0.72 },
   [GameFeedbackEvent.COUNTDOWN_2]: { sfx: AudioEvent.COUNTDOWN_2, haptic: HapticEvent.MEDIUM, volume: 0.82 },
@@ -38,7 +39,7 @@ const EVENT_MAP: Partial<Record<GameFeedbackEvent, { sfx?: AudioEvent; haptic?: 
   [GameFeedbackEvent.OPPONENT_CORRECT]: { sfx: AudioEvent.OPPONENT_CORRECT },
   [GameFeedbackEvent.ROUND_WIN]: { sfx: AudioEvent.ROUND_WIN, haptic: HapticEvent.SUCCESS },
   [GameFeedbackEvent.ROUND_LOSE]: { sfx: AudioEvent.ROUND_LOSE, haptic: HapticEvent.WARNING },
-  [GameFeedbackEvent.MATCH_FOUND]: { sfx: AudioEvent.MATCHMAKING_FOUND, haptic: HapticEvent.HEAVY, duck: true, volume: 0.88 },
+  [GameFeedbackEvent.MATCH_FOUND]: { sfx: AudioEvent.MATCHMAKING_FOUND, haptic: HapticEvent.HEAVY, duck: true, volume: 1, priority: 96 },
   [GameFeedbackEvent.MATCH_WIN]: { sfx: AudioEvent.MATCH_WIN, haptic: HapticEvent.SUCCESS, duck: true, crowd: true },
   [GameFeedbackEvent.MATCH_LOSE]: { sfx: AudioEvent.MATCH_LOSE, haptic: HapticEvent.WARNING, duck: true },
   [GameFeedbackEvent.MATCH_DRAW]: { sfx: AudioEvent.DRAW, haptic: HapticEvent.WARNING, duck: true },
@@ -62,6 +63,12 @@ export function triggerFeedback(event: GameFeedbackEvent) {
     playSFX(AudioEvent.SPECIAL_RONALDO_IMPACT, { priority: 90, volume: 0.86 });
     setTimeout(() => playSFX(AudioEvent.SPECIAL_RONALDO_CELEBRATION, { priority: 92, volume: 0.9 }), 130);
     setTimeout(() => playSFX(AudioEvent.SPECIAL_CROWD_PUNCH, { priority: 90, volume: 0.8 }), 620);
+    return;
+  }
+  if (event === GameFeedbackEvent.MATCH_FOUND) {
+    duckMusic(900, 0.48);
+    startMatchFoundAlert();
+    playHaptic(HapticEvent.HEAVY);
     return;
   }
   const cfg = EVENT_MAP[event];
