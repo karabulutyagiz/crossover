@@ -2,6 +2,7 @@ import { pool } from '../db/pool.ts';
 import { config } from '../config.ts';
 import { normalize } from './normalize.ts';
 import { BOT_POOLS } from './botpools.ts';
+import { createMatchClubSelectionState, selectBotTeamForMatchup } from './matchupSelection.ts';
 import type { Scope, PlayerRef } from '../protocol.ts';
 
 // Build a scope WHERE-fragment + push its param. Returns '' for 'all'.
@@ -418,37 +419,13 @@ export async function botPickFromPool(
 // oyuncu hissi için easy+medium bilinirlikte takımları karışık seçer, hard/obscure
 // havuzuna düşmez. İnsan bir takım seçtiyse ortak oyunculu seçenekler önceliklidir.
 export async function botPickHumanLike(playerTeamId: number | null, excludeIds: number[] = []): Promise<ClubHit | null> {
-  const pools = await resolvedPools();
-  const base = Math.random() < 0.46 ? pools.easy : pools.medium;
-  const backup = base === pools.easy ? pools.medium : pools.easy;
-  let cands = [...base, ...backup.filter((id) => Math.random() < 0.28)].filter((id) => !excludeIds.includes(id));
-  if (!cands.length) cands = [...base, ...backup];
-  if (playerTeamId != null) {
-    const { rows } = await pool.query<{ cid: string; pop: string }>(
-      `SELECT DISTINCT pc2.club_id AS cid,
-              COALESCE(NULLIF(c.popularity, 0), (SELECT COUNT(*) FROM player_clubs pc3 WHERE pc3.club_id = c.id)) AS pop
-         FROM player_clubs pc1
-         JOIN player_clubs pc2 ON pc2.player_id = pc1.player_id
-         JOIN clubs c ON c.id = pc2.club_id
-        WHERE pc1.club_id = $1 AND pc2.club_id = ANY($2)
-        ORDER BY pop DESC, random()
-        LIMIT 18`,
-      [playerTeamId, cands],
-    );
-    const cross = rows.map((r) => ({ id: Number(r.cid), pop: Number(r.pop) || 1 }));
-    if (cross.length) cands = cross.map((r) => r.id);
-  }
-  const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null; pop: string }>(
-    `SELECT id, name, logo_url,
-            COALESCE(NULLIF(popularity, 0), (SELECT COUNT(*) FROM player_clubs pc WHERE pc.club_id = clubs.id)) AS pop
-       FROM clubs
-      WHERE id = ANY($1)
-      ORDER BY pop DESC, random()
-      LIMIT 16`,
-    [cands],
-  );
-  const picked = pickWeightedClub(rows.map((r) => ({ ...r, pop: Number(r.pop) || 1 })));
-  return picked ? clubHitFromRow(picked) : null;
+  const selected = await selectBotTeamForMatchup({
+    playerTeamId,
+    excludeIds,
+    state: createMatchClubSelectionState(),
+  }).catch(() => null);
+  if (selected?.club) return selected.club;
+  return botPickFromPool('medium', playerTeamId, excludeIds);
 }
 
 export interface ScopeOption {

@@ -84,7 +84,7 @@ export interface GameState {
   playerResults: PlayerRef[];
   scopes: ScopesList | null;
   profile: ProfileView | null;
-  trophyDelta: { trophies: number; delta: number; arena: ArenaView; arenaReward?: number; shielded?: boolean } | null;
+  trophyDelta: { matchId?: string; trophies: number; delta: number; arena: ArenaView; arenaReward?: number; shielded?: boolean } | null;
   // Maç sonu seviye ilerlemesi (xp_update) — popup App katmanında maç ÇIKIŞINDA gösterilir
   xpGain: { xp: number; level: number; xpForNext: number; gained: number; leveledUp: { level: number; diamonds: number; emoteId?: string; powerId?: string }[]; boosted?: boolean } | null;
   // Seviye Yolu'nda son toplanan ödül — modal içi animasyonlar bunu izler
@@ -328,7 +328,7 @@ function reducer(state: GameState, action: Action): GameState {
     case '_ready':
       return { ...state, iReady: true };
     case '_quick_match_started':
-      return { ...state, isQuickMatch: true, opponentForfeit: false, opponentForfeitReason: null };
+      return { ...state, phase: 'searching', isQuickMatch: true, opponentForfeit: false, opponentForfeitReason: null };
     case '_set_game_options':
       return { ...state, lastGameOptions: (action as any).options };
 
@@ -563,7 +563,7 @@ function reducer(state: GameState, action: Action): GameState {
     case 'trophy_update':
       return {
         ...state,
-        trophyDelta: { trophies: action.trophies, delta: action.delta, arena: action.arena, arenaReward: (action as any).arenaReward, shielded: action.shielded },
+        trophyDelta: { matchId: action.matchId, trophies: action.trophies, delta: action.delta, arena: action.arena, arenaReward: (action as any).arenaReward, shielded: action.shielded },
         profile: state.profile
           ? {
               ...state.profile,
@@ -855,6 +855,18 @@ export function useCrossover() {
   // A pending rewarded-ad grant — its own channel (ad_reward_result) so it can never
   // resolve an in-flight IAP verification by sharing the diamonds_granted message.
   const pendingAdReward = useRef<{ resolve: (granted: number) => void; reject: (e: Error) => void } | null>(null);
+  const seenTrophyUpdates = useRef<Set<string>>(new Set());
+
+  const dispatchServerMessage = (m: ServerMsg): boolean => {
+    if (m.type === 'trophy_update' && m.matchId) {
+      const key = `${m.matchId}:${m.delta}:${m.trophies}`;
+      if (seenTrophyUpdates.current.has(key)) return false;
+      if (seenTrophyUpdates.current.size > 128) seenTrophyUpdates.current.clear();
+      seenTrophyUpdates.current.add(key);
+    }
+    dispatch(m);
+    return true;
+  };
 
   // Kayıt sınıfı VE bağlantı-kuran maç mesajlarına istemci yetenek bayraklarını
   // ekler. 'wrongopen': sunucu, cevap hakkı süren taraflar destekliyorsa "yanlış
@@ -942,7 +954,7 @@ export function useCrossover() {
           } else if (m.type === 'match_invite_received' && stateRef.current.room) {
             if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'respond_match_invite', fromId: m.fromId, accept: false }));
           } else {
-            dispatch(m);
+            dispatchServerMessage(m);
           }
           const mt = (m as { type?: string }).type;
           if (mt === 'account_deleted') {
@@ -1204,11 +1216,13 @@ export function useCrossover() {
           try {
             const m = JSON.parse(String(e.data)) as ServerMsg;
             const mt = (m as { type?: string }).type;
-            if (mt === 'trophy_update' || mt === 'xp_update') dispatch(m);
+            const dispatched = mt === 'trophy_update' || mt === 'xp_update' ? dispatchServerMessage(m) : false;
             if (mt === 'trophy_update' && forfeitCtxRef.current) {
               const tu = m as ServerMsg & { type: 'trophy_update' };
-              dispatch({ type: '_forfeit_loss', delta: tu.delta, trophies: tu.trophies, arena: tu.arena, ...forfeitCtxRef.current });
-              forfeitCtxRef.current = null;
+              if (dispatched) {
+                dispatch({ type: '_forfeit_loss', delta: tu.delta, trophies: tu.trophies, arena: tu.arena, ...forfeitCtxRef.current });
+                forfeitCtxRef.current = null;
+              }
             }
           } catch { /* yut */ }
         };
@@ -1387,6 +1401,9 @@ export function useCrossover() {
       buyEmote: (emoteId: string) => send({ type: 'buy_emote', emoteId }),
       equipEmotes: (emoteIds: string[]) => send({ type: 'equip_emotes', emoteIds }),
       buyAvatar: (avatarId: string) => send({ type: 'buy_avatar', avatarId }),
+      loadStoreCatalog: () => send({ type: 'get_store_catalog' }),
+      buyCosmetic: (itemId: string) => send({ type: 'buy_cosmetic', itemId, idempotencyKey: `cosmetic:${stateRef.current.profile?.userId ?? 'anon'}:${itemId}` }),
+      equipCosmetic: (cosmeticType: 'frame' | 'name_effect' | 'match_background' | 'ball' | 'intro' | 'victory_effect' | 'answer_effect', itemId: string | null) => send({ type: 'equip_cosmetic', cosmeticType, itemId }),
       setAvatar: (avatar: string | null) => send({ type: 'set_avatar', avatar }),
       setFrame: (frameId: string | null) => send({ type: 'set_frame', frameId }),
       claimLevelReward: (level: number, track: 'free' | 'premium' = 'free') => send({ type: 'claim_level_reward', level, track }),
@@ -1401,9 +1418,6 @@ export function useCrossover() {
         send({ type: 'send_friend_request', targetCode, targetUsername });
       },
       respondFriendRequest: (requestId: string, accept: boolean) => {
-      loadStoreCatalog: () => send({ type: 'get_store_catalog' }),
-      buyCosmetic: (itemId: string) => send({ type: 'buy_cosmetic', itemId, idempotencyKey: `cosmetic:${stateRef.current.profile?.userId ?? 'anon'}:${itemId}` }),
-      equipCosmetic: (cosmeticType: 'frame' | 'name_effect' | 'match_background' | 'ball' | 'intro' | 'victory_effect' | 'answer_effect', itemId: string | null) => send({ type: 'equip_cosmetic', cosmeticType, itemId }),
         friendOpRef.current = Date.now();
         send({ type: 'respond_friend_request', requestId, accept });
       },

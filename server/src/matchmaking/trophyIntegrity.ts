@@ -1,7 +1,11 @@
 import { pool } from '../db/pool.ts';
-import { opponentConfig } from './opponentConfig.ts';
 import { clamp } from './random.ts';
 import { expectedScore } from './skillRating.ts';
+
+export const TROPHY_GAIN_MIN = 28;
+export const TROPHY_GAIN_MAX = 35;
+export const TROPHY_LOSS_MIN = 15;
+export const TROPHY_LOSS_MAX = 20;
 
 export interface TrophyCalculation {
   expectedWinProbability: number;
@@ -18,6 +22,21 @@ export interface TrophyVelocity {
   pressure: number;
 }
 
+export function clampFinalTrophyDelta(args: {
+  rawDelta: number;
+  won: boolean;
+  currentTrophies: number;
+}): number {
+  const currentTrophies = Math.max(0, Math.floor(Number.isFinite(args.currentTrophies) ? args.currentTrophies : 0));
+  const rawDelta = Number.isFinite(args.rawDelta) ? args.rawDelta : 0;
+  if (args.won) {
+    return Math.round(clamp(Math.round(rawDelta), TROPHY_GAIN_MIN, TROPHY_GAIN_MAX));
+  }
+  const loss = Math.round(clamp(Math.round(Math.abs(rawDelta)), TROPHY_LOSS_MIN, TROPHY_LOSS_MAX));
+  const actualLoss = Math.min(loss, currentTrophies);
+  return actualLoss === 0 ? 0 : -actualLoss;
+}
+
 export function trophyDeltaExpectedScore(args: {
   playerSkillMean: number;
   opponentSkillMean: number;
@@ -27,27 +46,17 @@ export function trophyDeltaExpectedScore(args: {
   playerTrophies: number;
   opponentTrophies?: number | null;
 }): TrophyCalculation {
-  const cfg = opponentConfig();
   const expected = expectedScore(
     args.playerSkillMean,
     args.opponentSkillMean,
     args.playerSkillUncertainty ?? 120,
     args.opponentSkillUncertainty ?? 120,
   );
-  const arenaK = args.playerTrophies < 200 ? 34
-    : args.playerTrophies < 500 ? 32
-      : args.playerTrophies < 1000 ? 30
-        : args.playerTrophies < 2000 ? 28
-          : args.playerTrophies < 3500 ? 27
-            : 26;
-  const uncertaintyBoost = clamp((args.playerSkillUncertainty ?? 120) / 240, 0.82, 1.35);
-  const k = arenaK * uncertaintyBoost;
-  const raw = k * ((args.won ? 1 : 0) - expected);
-  let delta = args.won
-    ? Math.round(clamp(raw, cfg.trophyMinGain, cfg.trophyMaxGain))
-    : -Math.round(clamp(-raw, cfg.trophyMinLoss, cfg.trophyMaxLoss));
-  if (!args.won) delta = Math.max(delta, -Math.max(0, args.playerTrophies));
-  return { expectedWinProbability: Number(expected.toFixed(4)), delta, k: Number(k.toFixed(2)) };
+  const raw = args.won
+    ? TROPHY_GAIN_MIN + (TROPHY_GAIN_MAX - TROPHY_GAIN_MIN) * clamp((0.75 - expected) / 0.5, 0, 1)
+    : -(TROPHY_LOSS_MIN + (TROPHY_LOSS_MAX - TROPHY_LOSS_MIN) * clamp((expected - 0.25) / 0.5, 0, 1));
+  const delta = clampFinalTrophyDelta({ rawDelta: raw, won: args.won, currentTrophies: args.playerTrophies });
+  return { expectedWinProbability: Number(expected.toFixed(4)), delta, k: Number(Math.abs(raw).toFixed(2)) };
 }
 
 export async function getTrophyVelocity(userId: string): Promise<TrophyVelocity> {

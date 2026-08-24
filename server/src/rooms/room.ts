@@ -32,6 +32,8 @@ import { defaultSkillProfile, updateSkillAfterMatch, type SkillRoundSignal } fro
 import { assessFarmRisk, recordOpponentHistory } from '../matchmaking/antiFarm.ts';
 import { getTrophyEconomyState } from '../matchmaking/trophyEconomy.ts';
 import { trophyRiskMultipliers } from '../matchmaking/trophyRisk.ts';
+import { createMatchClubSelectionState, recordMatchupClubs, selectBotTeamForMatchup, type MatchClubSelectionState } from '../game/matchupSelection.ts';
+import type { KnowledgeDomain } from '../matchmaking/botProfiles.ts';
 import type {
   ClientMsg,
   ServerMsg,
@@ -44,6 +46,7 @@ import type {
   Scope,
   GameMode,
   PickRole,
+  Difficulty,
   CosmeticLoadoutView,
 } from '../protocol.ts';
 
@@ -81,7 +84,7 @@ export interface Transport {
   getLastGuessDelayMs?(): number;
   getLastCognitiveState?(): string | null;
   getLastQuestionDifficultyScore?(): number | null;
-  getLastDecision?(): { cognitiveState: string; reactionDelayMs: number; willAnswer: boolean; shouldMistake: boolean; shouldTimeout: boolean } | null;
+  getLastDecision?(): { cognitiveState: string; reactionDelayMs: number; willAnswer: boolean; shouldMistake: boolean; shouldTimeout: boolean; plannedAction?: string; retryPlan?: { enabled: boolean; delayMs: number; nextAction: string } } | null;
   getBotDifficultyDirector?(): BotDifficultyDirectorOutput | null;
   // İstemcinin bildirdiği yetenek bayrakları (ws/server.ts kayıt sırasında yazar).
   // 'wrongopen': yanlış cevapta turun açık kalmasını ve yeni mesajları anlar.
@@ -174,6 +177,7 @@ export class Room {
   // tekrar seçimi reddeder. Her maç başında sıfırlanır.
   private usedClubIds = new Set<number>();
   private usedCountries = new Set<string>();
+  private clubSelection: MatchClubSelectionState = createMatchClubSelectionState();
 
   constructor(code: string, onEmpty: (code: string) => void) {
     this.code = code;
@@ -247,6 +251,35 @@ export class Room {
   usedCountriesList(): string[] { return [...this.usedCountries]; } // normalize (küçük harf)
   usedClubIdsList(): number[] { return [...this.usedClubIds]; }
 
+  async pickBotTeamFor(
+    playerId: string,
+    difficulty: Difficulty,
+    humanTeamId: number | null,
+    extraExcludeIds: number[] = [],
+    favoriteDomains: readonly KnowledgeDomain[] = [],
+    archetype?: string | null,
+  ): Promise<ClubRef | null> {
+    const avoid = [...new Set([...this.usedClubIds, ...this.recentBotPicks, ...extraExcludeIds])];
+    if (this.scope.type === 'all') {
+      const selected = await selectBotTeamForMatchup({
+        playerTeamId: humanTeamId,
+        excludeIds: avoid,
+        state: this.clubSelection,
+        favoriteDomains,
+        archetype,
+      }).catch((err) => {
+        log.warn('bot_matchup_selection_failed', { room: this.code, playerId, error: err instanceof Error ? err.message : String(err) });
+        return null;
+      });
+      if (selected?.club) return selected.club;
+      const fallback = await botPickFromPool(difficulty, humanTeamId, avoid);
+      if (fallback) return fallback;
+    }
+    let club = await randomClub(this.scope, difficulty === 'hard' ? 'medium' : difficulty);
+    for (let tries = 0; club && avoid.includes(club.id) && tries < 8; tries++) club = await randomClub(this.scope, difficulty === 'hard' ? 'medium' : difficulty);
+    return club;
+  }
+
   // Admin paneli için anlık oda özeti: durum + bağlı (canlı) insan ve bot sayısı.
   liveSnapshot(): { status: RoomStatus; humans: number; bots: number } {
     let humans = 0;
@@ -256,6 +289,17 @@ export class Room {
       else if (p.connected) humans++;
     }
     return { status: this.status, humans, bots };
+  }
+
+  canBotAct(playerId: string): boolean {
+    if (this.status !== 'guess' || !this.round || this.round.finished) return false;
+    if (!this.players.get(playerId)?.transport.isBot) return false;
+    if (this.round.pendingGuesses?.has(playerId)) return false;
+    if (this.round.burned?.has(playerId)) return false;
+    if (this.round.passedBy?.has(playerId)) return false;
+    const retryAt = this.round.wrongRetryAt?.get(playerId);
+    if (retryAt != null && Date.now() < retryAt) return false;
+    return true;
   }
 
   // Admin paneli için ayrıntılı canlı maç kartı: oda kodu, durum ve oyuncular
@@ -410,7 +454,7 @@ export class Room {
             rounds: this.skillRoundSignals.get(p.id) ?? [],
           }).catch((err) => log.warn('skill_update_failed', { matchId: this.matchId, userId: p.userId, error: err instanceof Error ? err.message : String(err) }));
           try {
-            p.transport.send({ type: 'trophy_update', trophies: leaverRes.profile.trophies, delta: leaverRes.delta, arena: leaverRes.profile.arena, diamonds: leaverRes.profile.diamonds, highestArenaRewarded: leaverRes.profile.highestArenaRewarded, shielded: leaverRes.shielded, winStreak: leaverRes.profile.winStreak, bestStreak: leaverRes.profile.bestStreak, lostStreak: leaverRes.profile.lostStreak });
+            p.transport.send({ type: 'trophy_update', matchId: this.matchId, trophies: leaverRes.profile.trophies, delta: leaverRes.delta, arena: leaverRes.profile.arena, diamonds: leaverRes.profile.diamonds, highestArenaRewarded: leaverRes.profile.highestArenaRewarded, shielded: leaverRes.shielded, winStreak: leaverRes.profile.winStreak, bestStreak: leaverRes.profile.bestStreak, lostStreak: leaverRes.profile.lostStreak });
             if (xpRes) p.transport.send({ type: 'xp_update', ...xpRes });
           } catch { /* socket may already be gone */ }
           recordTelemetry({
@@ -480,7 +524,7 @@ export class Room {
               ledgerMetadata: { forfeitReason: reason },
             });
             await recordOpponentHistory({ matchId: this.matchId, playerId: winner.userId, opponentId: p.userId ?? null, opponentType: 'HUMAN', winnerId: winner.userId, won: true, trophyDelta: delta, durationSecs: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0 });
-            winner.transport.send({ type: 'trophy_update', trophies: profile.trophies, delta, arena: profile.arena, diamonds: profile.diamonds, arenaReward, highestArenaRewarded: profile.highestArenaRewarded, winStreak: profile.winStreak, bestStreak: profile.bestStreak });
+            winner.transport.send({ type: 'trophy_update', matchId: this.matchId, trophies: profile.trophies, delta, arena: profile.arena, diamonds: profile.diamonds, arenaReward, highestArenaRewarded: profile.highestArenaRewarded, winStreak: profile.winStreak, bestStreak: profile.bestStreak });
             const xpRes = await awardMatchXp(winner.userId, true, false);
             if (xpRes) winner.transport.send({ type: 'xp_update', ...xpRes });
             await updateSkillAfterMatch(winner.userId, winner.trophies ?? profile.trophies, {
@@ -546,7 +590,7 @@ export class Room {
             // (delta<0) ana menüde animasyonla gösterilir. Soket kapandıysa
             // sessizce düşer — sonraki girişte profil zaten günceldir.
             try {
-              p.transport.send({ type: 'trophy_update', trophies: leaverRes.profile.trophies, delta: leaverRes.delta, arena: leaverRes.profile.arena, diamonds: leaverRes.profile.diamonds, highestArenaRewarded: leaverRes.profile.highestArenaRewarded, shielded: leaverRes.shielded, winStreak: leaverRes.profile.winStreak, bestStreak: leaverRes.profile.bestStreak, lostStreak: leaverRes.profile.lostStreak });
+              p.transport.send({ type: 'trophy_update', matchId: this.matchId, trophies: leaverRes.profile.trophies, delta: leaverRes.delta, arena: leaverRes.profile.arena, diamonds: leaverRes.profile.diamonds, highestArenaRewarded: leaverRes.profile.highestArenaRewarded, shielded: leaverRes.shielded, winStreak: leaverRes.profile.winStreak, bestStreak: leaverRes.profile.bestStreak, lostStreak: leaverRes.profile.lostStreak });
             } catch { /* socket gone */ }
             recordTelemetry({
               eventName: 'match_finished',
@@ -667,6 +711,7 @@ export class Room {
     this.lastTrophyDeltaByUser.clear();
     this.usedClubIds.clear();
     this.usedCountries.clear();
+    this.clubSelection = createMatchClubSelectionState();
     this.recentBotPicks = [];
     this.matchStartedAt = Date.now(); // maç süresi ölçümü (admin istatistikleri)
     for (const p of this.players.values()) { p.score = 0; p.wrongCount = 0; }
@@ -757,7 +802,7 @@ export class Room {
         ? await pickClubForCountry(this.round.countryPick, avoid)
         : null;
       if (!club) {
-        club = this.scope.type === 'all' ? await botPickFromPool('medium', null, avoid) : await randomClub(this.scope, 'medium');
+        club = await this.pickBotTeamFor(teamId, 'medium', null, avoid);
         for (let tries = 0; club && this.usedClubIds.has(club.id) && tries < 8; tries++) club = await randomClub(this.scope, 'medium');
       }
       if (club) {
@@ -806,9 +851,7 @@ export class Room {
         const humanPick = [...this.round.picks.values()][0];
         // Bot da bu maçta kullanılmış takımlardan kaçınır
         const avoid = [...this.recentBotPicks, ...this.usedClubIds];
-        let club = this.scope.type === 'all'
-          ? await botPickFromPool('medium', humanPick ? Number(humanPick.id) : null, avoid)
-          : await randomClub(this.scope, 'medium');
+        let club = await this.pickBotTeamFor(id, 'medium', humanPick ? Number(humanPick.id) : null, avoid);
         // Scoped oda picker'ı exclude almadığından kullanılmışa denk gelirse birkaç kez yeniden dene
         for (let tries = 0; club && this.usedClubIds.has(club.id) && tries < 8; tries++) {
           club = await randomClub(this.scope, 'medium');
@@ -956,6 +999,7 @@ export class Room {
   private markUsedForRound(): void {
     if (!this.round) return;
     if (this.gameMode === 'player-player') return;
+    recordMatchupClubs(this.clubSelection, [...this.round.picks.values()].filter(Boolean));
     for (const club of this.round.picks.values()) {
       if (club?.id) this.usedClubIds.add(club.id);
     }
@@ -1268,7 +1312,9 @@ export class Room {
     // İKİNCİ HAK (kullanıcı kuralı 2026-08-11): İLK yanlışta oyuncu yanmaz —
     // WRONG_RETRY_MS ceza penceresi sonrası bir hakkı daha olur. Şartlar:
     // bot değildir (bot ikinci kez denemez) ve sürede cezadan sonra gerçekçi
-    // pay vardır. İstemci SÜRÜMÜNE BAKILMAZ: hak server-authoritative'dir —
+    // pay vardır. Botlar yalnız round başında üretilmiş retry planı varsa bu yola
+    // girer; insan yanlışına tepki olarak sonradan retry kararı üretmezler.
+    // İstemci SÜRÜMÜNE BAKILMAZ: hak server-authoritative'dir —
     // eski/caps'siz bir istemci de aynı hakkı alır (kullanıcı raporu 2026-08-19:
     // yanlış cevap sonrası "aksiyon yok" tuzağı, kuralın caps'e bağlı olmasından
     // doğuyordu; bu yüzden davranış telefona/build'e göre değişiyordu). Eski
@@ -1276,12 +1322,16 @@ export class Room {
     // alarak yeniden açılır. İkinci yanlış — ya da şartlar tutmayan ilk yanlış
     // (bot / süre dibi) — kesin susturur (eski kural).
     const firstWrong = !this.round.wrongRetryAt?.has(playerId);
+    const botRetryPlan = p?.transport.isBot ? p.transport.getLastDecision?.()?.retryPlan : undefined;
+    const botRetryMs = botRetryPlan?.enabled ? Math.max(900, Math.round(botRetryPlan.delayMs)) : null;
+    const retryMs = p?.transport.isBot ? botRetryMs : WRONG_RETRY_MS;
     const canRetry = firstWrong
-      && !p?.transport.isBot
-      && remaining > WRONG_RETRY_MS + 1_500;
+      && retryMs != null
+      && (!p?.transport.isBot || botRetryPlan?.enabled === true)
+      && remaining > retryMs + 1_500;
     let retryAt: number | undefined;
     if (canRetry) {
-      retryAt = Date.now() + WRONG_RETRY_MS;
+      retryAt = Date.now() + retryMs;
       (this.round.wrongRetryAt ??= new Map()).set(playerId, retryAt);
     } else {
       (this.round.burned ??= new Set()).add(playerId);
@@ -1762,6 +1812,7 @@ export class Room {
         this.lastTrophyDeltaByUser.set(p.userId, delta);
         p.transport.send({
           type: 'trophy_update',
+          matchId: this.matchId,
           trophies: profile.trophies,
           delta,
           arena: profile.arena,
@@ -2125,8 +2176,8 @@ export class Room {
       arena: p.arena,
       avatar: p.avatar,
       level: p.level,
-      cosmetics: p.cosmetics,
       frame: p.frame ?? null,
+      cosmetics: p.cosmetics,
     }));
   }
 

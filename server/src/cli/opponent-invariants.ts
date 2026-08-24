@@ -1,4 +1,5 @@
 import { botKnowsProbability, decideBotAnswer } from '../matchmaking/botDecision.ts';
+import { botAiConfig } from '../matchmaking/botAiConfig.ts';
 import { selectBotProfileForSkill } from '../matchmaking/botProfiles.ts';
 import { MatchmakingOrchestrator, randomBotFallbackDelayMs } from '../matchmaking/policy.ts';
 import { candidateScore, dynamicMmrWindow, estimateQueueHealth } from '../matchmaking/queueHealth.ts';
@@ -114,7 +115,7 @@ for (let i = 0; i < 200; i++) {
   else misses += 1;
   if (d.shouldMistake) mistakes += 1;
   if (d.willAnswer) delays.add(Math.round(d.reactionDelayMs / 100) * 100);
-  check(d.reactionDelayMs >= 850 && d.reactionDelayMs <= 17000, 'bot timing respects realistic bounds');
+  check(d.reactionDelayMs >= botAiConfig.timing.minHardCompleteResponseMs && d.reactionDelayMs <= botAiConfig.timing.maxCompleteResponseMs, 'bot timing respects realistic bounds');
 }
 check(delays.size > 20, 'bot timings vary');
 check(knows > 0 && misses > 0, 'bot never knows every answer automatically');

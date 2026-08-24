@@ -3,7 +3,7 @@ import { PREMIUM_ROAD_PRICE } from './level.ts';
 import { emotePrice, isFreeEmote, isEquippableEmote, MAX_EQUIPPED, ALL_COLLECTIBLE_EMOTES } from './emotes.ts';
 import { avatarPrice, canUseAvatar, DEFAULT_AVATAR_ID, isAvatar, isFreeAvatar } from './avatars.ts';
 import { validateUsername } from './username.ts';
-import { trophyDeltaExpectedScore } from '../matchmaking/trophyIntegrity.ts';
+import { clampFinalTrophyDelta, trophyDeltaExpectedScore } from '../matchmaking/trophyIntegrity.ts';
 // moderation.ts only pulls in the pool + logger, so this import cannot cycle back.
 import { isBlockedBetween, isIdentifiedAccount } from './moderation.ts';
 
@@ -31,9 +31,8 @@ export function getArena(trophies: number): Arena {
   return ARENAS[0]!;
 }
 
-// Arena bazlı [win, loss] — artık SABİT sonuç değil, rakip-farkı bandının
-// MERKEZİ (aşağıda trophyDelta). Alt arenalar pozitif-toplam (%50 galibiyetle
-// tırmanılır, CR 'trophy infusion'), Şampiyonlar sıfır-toplam, GOAT negatif-toplam.
+// Legacy fallback raw [win, loss] when MMR inputs are unavailable. This is not the
+// final trophy result: applyMatchResult always applies the production hard clamp.
 const TROPHY_TABLE: [number, number][] = [
   [+30, -10],   // Mahalle Sahası     — easy climb, gentle losses
   [+28, -14],   // Amatör Lig         — still forgiving
@@ -46,12 +45,9 @@ const TROPHY_TABLE: [number, number][] = [
 
 const ARENA_DIAMOND_REWARDS = [50, 100, 150, 200, 300, 500, 1000] as const;
 
-// ---- Rakip-farkına duyarlı kupa formülü (CR modeli + Valorant kuralları) ----
-// Araştırma-temelli tasarım (wf_f3742eb6): CR topluluk modeli 'değişim ≈ baz ±
-// round(fark/12)', gözlenen doygunluk +43/-17 → ayar ±13 kapaklı (bizim ±200
-// eşleşme penceresinin kenarında tam değer). Valorant kuralı: galibiyet HER
-// ZAMAN öder (min +5); kayıp asla kazanca dönmez, taban -48. Rakip verisi
-// yok/bozuksa fark 0 → eski sabit tabloyla bire bir (güvenli geri düşüş).
+// ---- Rakip-farkına duyarlı fallback raw delta ----
+// MMR inputs are preferred. If they are missing, this gives a rough raw value from
+// visible trophy difference; the final persisted delta is clamped in applyMatchResult.
 const DIFF_DIVISOR = 12;
 const MAX_ADJUST = 13;
 const WIN_MIN = 5;
@@ -413,6 +409,32 @@ export async function applyMatchResult(
     const rowUser = userRes.rows[0];
     if (!rowUser) throw new Error('User not found');
     const user = toProfile(rowUser);
+    if (opts?.matchId) {
+      try {
+        const previous = await client.query<{ delta: number; expected_win_probability: number | null; metadata: Record<string, unknown> | null }>(
+          `SELECT delta, expected_win_probability, metadata
+             FROM trophy_ledger
+            WHERE match_id = $1 AND player_id = $2
+            ORDER BY created_at ASC
+            LIMIT 1`,
+          [opts.matchId, userId],
+        );
+        const row = previous.rows[0];
+        if (row) {
+          const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata as Record<string, unknown> : {};
+          await client.query('COMMIT');
+          return {
+            profile: user,
+            delta: Number(row.delta),
+            arenaReward: 0,
+            shielded: metadata.shielded === true,
+            expectedWinProbability: row.expected_win_probability == null ? undefined : Number(row.expected_win_probability),
+          };
+        }
+      } catch (err) {
+        if ((err as { code?: string }).code !== '42P01') throw err;
+      }
+    }
     // Kupa Kalkanı: kuşanıldıktan sonraki ilk dereceli sonuçta tüketilir. Sonuç
     // mağlubiyetse (hükmen çıkış dahil) kupa kaybını emer; galibiyette yalnız tüketilir.
     const { rows: shieldRows } = await client.query<{ id: string }>(
@@ -436,8 +458,8 @@ export async function applyMatchResult(
       : null;
     const baseRaw = shielded ? 0 : (expectedCalc?.delta ?? trophyDelta(user.trophies, won, opts?.opponentTrophies ?? null));
     const finalMultiplier = Math.max(0, Math.min(1.25, (opts?.antiFarmMultiplier ?? 1) * (opts?.botEconomyMultiplier ?? 1)));
-    const raw = won && baseRaw > 0 ? Math.max(finalMultiplier > 0 ? 1 : 0, Math.round(baseRaw * finalMultiplier)) : baseRaw;
-    const delta = won ? raw : Math.max(raw, -user.trophies);
+    const raw = won && baseRaw > 0 ? Math.round(baseRaw * finalMultiplier) : baseRaw;
+    const delta = shielded ? 0 : clampFinalTrophyDelta({ rawDelta: raw, won, currentTrophies: user.trophies });
     const prevRewardedArenaIdx = Math.max(0, Math.min(ARENAS.length - 1, user.highestArenaRewarded));
 
     const { rows } = await client.query<DbUser>(
@@ -504,6 +526,7 @@ export async function applyMatchResult(
       const source = opponentType === 'BOT'
         ? (delta >= 0 ? 'BOT_TO_HUMAN_INJECTION' : 'HUMAN_TO_BOT_SINK')
         : 'HUMAN_TO_HUMAN_TRANSFER';
+      const ledgerMetadata = JSON.stringify({ ...(opts.ledgerMetadata ?? {}), rawTrophyDelta: raw, finalTrophyDelta: delta, shielded });
       await client.query(
         `INSERT INTO trophy_ledger
            (match_id, player_id, before_trophies, delta, after_trophies, opponent_id, opponent_ref, opponent_type,
@@ -515,7 +538,7 @@ export async function applyMatchResult(
           opts.matchId, userId, user.trophies, delta, profile.trophies, opts.opponentId ?? null, opts.opponentRef ?? null, opponentType,
           source, opts.ledgerReason ?? 'match_settlement', expectedCalc?.expectedWinProbability ?? null,
           opts.antiFarmMultiplier ?? 1, opts.botEconomyMultiplier ?? 1, finalMultiplier,
-          opts.farmRiskScore ?? 0, opts.farmRiskLevel ?? 'LOW', opts.economyState ?? 'HEALTHY', JSON.stringify(opts.ledgerMetadata ?? {}),
+          opts.farmRiskScore ?? 0, opts.farmRiskLevel ?? 'LOW', opts.economyState ?? 'HEALTHY', ledgerMetadata,
         ],
       ).catch((err) => {
         if ((err as { code?: string }).code !== '42P01') throw err;
@@ -1144,7 +1167,6 @@ interface DbUser {
   claimed_premium: number[] | null;
   season_id: string | null;
   owned_frames: string[] | null;
-  power_training: number | null;
   owned_cosmetics: string[] | null;
   equipped_frame_id: string | null;
   equipped_name_effect_id: string | null;
@@ -1153,6 +1175,7 @@ interface DbUser {
   equipped_intro_id: string | null;
   equipped_victory_effect_id: string | null;
   equipped_answer_effect_id: string | null;
+  power_training: number | null;
   training_boost_day: string | null;
   training_boost_until: string | null;
   power_socialtoken: number | null;
@@ -1197,8 +1220,6 @@ function toProfile(row: DbUser): UserProfile {
     premiumRoad: row.premium_road ?? false,
     claimedPremium: row.claimed_premium ?? [],
     ownedFrames: row.owned_frames ?? [],
-    powerTraining: row.power_training ?? 0,
-    trainingBoostUntil: isFutureIso(row.training_boost_until) ? row.training_boost_until : null,
     ownedCosmetics: row.owned_cosmetics ?? [],
     equippedNameEffectId: row.equipped_name_effect_id ?? null,
     equippedMatchBackgroundId: row.equipped_match_background_id ?? null,
@@ -1206,6 +1227,8 @@ function toProfile(row: DbUser): UserProfile {
     equippedIntroId: row.equipped_intro_id ?? null,
     equippedVictoryEffectId: row.equipped_victory_effect_id ?? null,
     equippedAnswerEffectId: row.equipped_answer_effect_id ?? null,
+    powerTraining: row.power_training ?? 0,
+    trainingBoostUntil: isFutureIso(row.training_boost_until) ? row.training_boost_until : null,
     powerSocialToken: row.power_socialtoken ?? 0,
     highestArenaRewarded: Math.max(0, Math.min(ARENAS.length - 1, row.highest_arena_rewarded ?? 0)),
     bannedAt: row.banned_at ?? null,

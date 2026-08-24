@@ -1,4 +1,5 @@
 import type { BotProfile, KnowledgeDomain } from './botProfiles.ts';
+import { botAiConfig, type BotPlannedAction } from './botAiConfig.ts';
 import { liveOpsConfig } from './liveOpsConfig.ts';
 import { opponentConfig } from './opponentConfig.ts';
 import { SeededRandom, chance, clamp, logNormal, mathRandom, pick, type RandomSource } from './random.ts';
@@ -13,6 +14,7 @@ export interface BotQuestionContext {
   botScore?: number;
   opponentScore?: number;
   previousTempoMs?: number | null;
+  answerTextLength?: number;
   rng?: RandomSource;
 }
 
@@ -23,6 +25,18 @@ export interface BotDecision {
   shouldMistake: boolean;
   shouldTimeout: boolean;
   reactionDelayMs: number;
+  plannedAction: BotPlannedAction;
+  plannedActionAtMs: number;
+  confidence: number;
+  recognitionTimeMs: number;
+  recallTimeMs: number;
+  hesitationTimeMs: number;
+  typingTimeMs: number;
+  retryPlan?: {
+    enabled: boolean;
+    delayMs: number;
+    nextAction: 'CORRECT_ANSWER' | 'PASS' | 'THINK_UNTIL_TIMEOUT';
+  };
   knowsProbability: number;
   wrongAssociationProbability: number;
   timeoutProbability: number;
@@ -101,14 +115,31 @@ export function decideBotAnswer(profile: BotProfile, context: BotQuestionContext
   const shouldTimeout = cognitiveState === 'NO_ANSWER' || (cognitiveState === 'UNSURE' && chance(rng, timeoutP));
   const shouldMistake = cognitiveState === 'WRONG_ASSOCIATION' || (knows && chance(rng, clamp(profile.mistakeProbability * (0.30 + profile.riskTolerance * 0.42) + pressure.mistakeBias, 0, 0.26)));
   const willAnswer = !shouldTimeout && (knows || cognitiveState === 'WRONG_ASSOCIATION' || (cognitiveState === 'UNSURE' && chance(rng, participationP * (0.36 + profile.riskTolerance * 0.26))));
-  const reactionDelayMs = reactionDelayMsForState(profile, cognitiveState, context, rng);
+  const plannedAction = plannedActionFor(cognitiveState, willAnswer, shouldMistake, rng);
+  const timing = timingForDecision(profile, cognitiveState, plannedAction, context, rng);
+  const confidence = clamp(knowsP * 0.58 + profile.confidence * 0.28 + popularity * 0.14 - difficulty * 0.10, 0.02, 0.99);
+  const retryPlan = plannedAction === 'WRONG_ATTEMPT_THEN_CONTINUE' && knows && chance(rng, clamp(botAiConfig.action.retryAfterWrongBaseProbability + profile.confidence * 0.18 - difficulty * 0.16, 0.04, 0.62))
+    ? {
+        enabled: true,
+        delayMs: Math.round(botAiConfig.timing.retryReconsiderMinMs + rng.next() * (botAiConfig.timing.retryReconsiderMaxMs - botAiConfig.timing.retryReconsiderMinMs)),
+        nextAction: 'CORRECT_ANSWER' as const,
+      }
+    : undefined;
   return {
     cognitiveState,
     knowsAnswer: knows,
     willAnswer,
     shouldMistake,
     shouldTimeout,
-    reactionDelayMs,
+    reactionDelayMs: timing.plannedActionAtMs,
+    plannedAction,
+    plannedActionAtMs: timing.plannedActionAtMs,
+    confidence: Number(confidence.toFixed(4)),
+    recognitionTimeMs: timing.recognitionTimeMs,
+    recallTimeMs: timing.recallTimeMs,
+    hesitationTimeMs: timing.hesitationTimeMs,
+    typingTimeMs: timing.typingTimeMs,
+    retryPlan,
     knowsProbability: Number(knowsP.toFixed(4)),
     wrongAssociationProbability: Number(wrongAssociationP.toFixed(4)),
     timeoutProbability: Number(timeoutP.toFixed(4)),
@@ -128,20 +159,30 @@ export function shouldMakeMistake(profile: BotProfile, difficulty: QuestionDiffi
 
 export function reactionDelayMs(profile: BotProfile, difficulty: QuestionDifficulty, knows: boolean): number {
   const state: BotCognitiveState = knows ? (Math.random() < 0.42 ? 'INSTANT_RECOGNITION' : 'RECALL') : (Math.random() < 0.4 ? 'UNSURE' : 'NO_ANSWER');
-  return reactionDelayMsForState(profile, state, { difficultyScore: difficultyScore(difficulty) }, mathRandom);
+  return timingForDecision(profile, state, knows ? 'CORRECT_ANSWER' : 'PASS', { difficultyScore: difficultyScore(difficulty) }, mathRandom).plannedActionAtMs;
 }
 
 export function rngForBotRound(profile: BotProfile, roundNumber: number, questionKey: string): RandomSource {
   return new SeededRandom(`${profile.seed}:${roundNumber}:${questionKey}`);
 }
 
-function reactionDelayMsForState(profile: BotProfile, state: BotCognitiveState, context: BotQuestionContext, rng: RandomSource): number {
+function plannedActionFor(state: BotCognitiveState, willAnswer: boolean, shouldMistake: boolean, rng: RandomSource): BotPlannedAction {
+  if (willAnswer && shouldMistake) return 'WRONG_ATTEMPT_THEN_CONTINUE';
+  if (willAnswer) return 'CORRECT_ANSWER';
+  if (state === 'NO_ANSWER') return chance(rng, botAiConfig.action.passBaseProbability) ? 'PASS' : 'THINK_UNTIL_TIMEOUT';
+  return chance(rng, botAiConfig.action.passBaseProbability * 0.72) ? 'PASS' : 'THINK_UNTIL_TIMEOUT';
+}
+
+function timingForDecision(profile: BotProfile, state: BotCognitiveState, action: BotPlannedAction, context: BotQuestionContext, rng: RandomSource): {
+  recognitionTimeMs: number;
+  recallTimeMs: number;
+  hesitationTimeMs: number;
+  typingTimeMs: number;
+  plannedActionAtMs: number;
+} {
   const cfg = opponentConfig();
   const difficulty = clamp(context.difficultyScore, 0, 1);
   const pressure = matchPressure(profile, context);
-  const tempoBias = typeof context.previousTempoMs === 'number'
-    ? clamp((context.previousTempoMs - 3200) / 9000, -0.10, 0.10)
-    : 0;
   const stateFactor: Record<BotCognitiveState, number> = {
     INSTANT_RECOGNITION: 0.52,
     RECALL: 1.0,
@@ -152,14 +193,36 @@ function reactionDelayMsForState(profile: BotProfile, state: BotCognitiveState, 
   const median = profile.responseMedianMs
     * stateFactor[state]
     * (0.78 + difficulty * 0.58)
-    * (1 - pressure.speedBias + tempoBias)
+    * (1 - pressure.speedBias)
     * (1.06 - profile.inputSpeed * 0.10);
   const sigma = clamp(0.20 + (1 - profile.consistency) * 0.38 + difficulty * 0.10, 0.16, 0.64);
-  let delay = logNormal(rng, median, sigma);
-  if (chance(rng, profile.hesitationProbability + difficulty * 0.08)) delay += 450 + rng.next() * (2400 + difficulty * 2400);
-  if (state === 'NO_ANSWER') delay = cfg.botReactionMaxMs + 250;
-  const floor = state === 'INSTANT_RECOGNITION' ? cfg.botReactionMinMs : cfg.botReactionMinMs + 350 + difficulty * 700;
-  return Math.round(clamp(delay, floor, cfg.botReactionMaxMs + 500));
+  const natural = logNormal(rng, median, sigma);
+  const recognitionBase = state === 'INSTANT_RECOGNITION' ? 260 : state === 'RECALL' ? 460 : state === 'WRONG_ASSOCIATION' ? 520 : state === 'UNSURE' ? 760 : 960;
+  const recognitionTimeMs = Math.round(clamp(logNormal(rng, recognitionBase * (0.92 + difficulty * 0.36), 0.22), 180, 1850));
+  const recallMedian = state === 'INSTANT_RECOGNITION' ? 520 : state === 'RECALL' ? 1250 : state === 'WRONG_ASSOCIATION' ? 980 : state === 'UNSURE' ? 2200 : 3600;
+  const recallTimeMs = Math.round(clamp(logNormal(rng, recallMedian * (0.82 + difficulty * 0.72) * (1.08 - profile.recallConsistency * 0.18), 0.34), 220, 8200));
+  const hesitationRoll = chance(rng, profile.hesitationProbability + difficulty * 0.08);
+  const hesitationTimeMs = hesitationRoll ? Math.round(240 + rng.next() * (1800 + difficulty * 3000)) : Math.round(rng.next() * 260);
+  const answerLen = clamp(context.answerTextLength ?? 11, 4, 24);
+  const typingMedian = botAiConfig.timing.typingBaseMs + answerLen * botAiConfig.timing.typingPerCharMs * (1.10 - profile.inputSpeed * 0.22);
+  const typingTimeMs = action === 'CORRECT_ANSWER' || action === 'WRONG_ATTEMPT_THEN_CONTINUE'
+    ? Math.round(clamp(logNormal(rng, typingMedian, 0.22) + rng.next() * botAiConfig.timing.typingJitterMs, 420, 2100))
+    : 0;
+  let total = Math.round((natural * 0.42) + recognitionTimeMs + recallTimeMs + hesitationTimeMs + typingTimeMs);
+  if (action === 'PASS') total = Math.round(clamp(total, botAiConfig.timing.minPassMs, botAiConfig.timing.maxPassMs));
+  if (action === 'THINK_UNTIL_TIMEOUT') {
+    const slack = botAiConfig.timing.timeoutSlackMinMs + rng.next() * (botAiConfig.timing.timeoutSlackMaxMs - botAiConfig.timing.timeoutSlackMinMs);
+    total = Math.round(clamp(cfg.botReactionMaxMs - slack, botAiConfig.timing.minPassMs, botAiConfig.timing.maxCompleteResponseMs));
+  }
+  const floor = profile.difficulty === 'hard' ? botAiConfig.timing.minHardCompleteResponseMs : botAiConfig.timing.minCompleteResponseMs;
+  if (action === 'CORRECT_ANSWER' || action === 'WRONG_ATTEMPT_THEN_CONTINUE') total = Math.max(total, floor);
+  return {
+    recognitionTimeMs,
+    recallTimeMs,
+    hesitationTimeMs,
+    typingTimeMs,
+    plannedActionAtMs: Math.round(clamp(total, floor, botAiConfig.timing.maxCompleteResponseMs)),
+  };
 }
 
 function matchPressure(profile: BotProfile, context: BotQuestionContext): { speedBias: number; mistakeBias: number; knowledgeBias: number } {

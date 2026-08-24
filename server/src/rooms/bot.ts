@@ -1,7 +1,7 @@
 import type { Room, Transport } from './room.ts';
 import type { ClientMsg, ClubRef, Difficulty, GameMode, ServerMsg, Scope } from '../protocol.ts';
 import {
-  randomClub, botPickFromPool, botPickHumanLike, randomPlayer, botCommonPlayersRanked, getValidPlayersForCountryAndClub,
+  randomClub, botPickFromPool, randomPlayer, botCommonPlayersRanked, getValidPlayersForCountryAndClub,
   commonPlayersLetterTeam, commonClubs, pickCountryForClub, pickClubForCountry,
   plausibleWrongPlayersTeamTeam, plausibleWrongPlayersLetterTeam,
   plausibleWrongClubsPlayerPlayer,
@@ -119,10 +119,10 @@ export class BotPlayer implements Transport {
   private rng: RandomSource = mathRandom;
   private cognitiveState: BotCognitiveState | null = null;
   private decisionSerial = 0;
+  private actionSerial = 0;
   private botScore = 0;
   private opponentScore = 0;
   private guessPhaseStartedAt = 0;
-  private previousOpponentTempoMs: number | null = null;
 
   constructor(opts: BotOptions = {}) {
     this.exposeBotToClient = opts.exposeBotToClient ?? true;
@@ -161,9 +161,9 @@ export class BotPlayer implements Transport {
         this.ctRole = msg.pickRole ?? 'team';
         this.ctPicked = false;
         if (this.mode === 'country-team') {
-          // VERİ-GÜDÜMLÜ + REAKTİF: insanın seçimini bekle ('team_picked'), sonra ONA
-          // UYUMLU (ortak-oyunculu) eşi seç → tur ASLA yanlış atlanmaz. Emniyet:
-          // insan çok yavaşsa ~7sn'de eldeki bilgiyle seç; hiç seçmezse odanın
+          // VERİ-GÜDÜMLÜ ama bağımsız: bot kendi timer'ı dolunca o anki paylaşılan
+          // round state'ini okur ve uyumlu eş seçer; insanın team_picked olayı botu
+          // anında tetiklemez. Emniyet: insan çok yavaşsa ~7sn'de eldeki bilgiyle seç; hiç seçmezse odanın
           // autoPickRemaining'i (10sn) her iki tarafı veri-güdümlü doldurur.
           this.clearTimer();
           this.timer = setTimeout(() => { void this.pickCountryTeamReactive(); }, 6800 + Math.floor(Math.random() * 800));
@@ -172,10 +172,8 @@ export class BotPlayer implements Transport {
         void this.pick(this.ctRole);
         break;
       case 'team_picked':
-        // Ülke-takımda rakip (insan) seçince ANINDA uyumlu eşimizi seçelim.
-        if (this.mode === 'country-team' && (msg as any).playerId !== this.id && !this.ctPicked) {
-          void this.pickCountryTeamReactive();
-        }
+        // Deliberately no immediate reaction. Country-team bots use their own
+        // pick timer and only read the shared pick state when that timer fires.
         break;
       case 'reveal_teams':
         this.teams = { teamA: msg.teamA, teamB: msg.teamB };
@@ -188,23 +186,13 @@ export class BotPlayer implements Transport {
         this.scheduleGuess();
         break;
       case 'guess_locked':
-        if ((msg as any).byId !== this.id && this.guessPhaseStartedAt > 0) {
-          this.previousOpponentTempoMs = Date.now() - this.guessPhaseStartedAt;
-        }
+        // Human answer timing must never feed back into bot speed.
         break;
       case 'wrong_guess':
-        if (msg.byId !== this.id) this.maybeEmote(['gotcha', 'smile', 'ok'], 0.34, [420, 1400], 'taunt');
+        if (msg.byId === this.id) this.scheduleRetryAfterOwnWrong(msg.retryAt);
         break;
       case 'pass_locked':
-        // Opponent passed. Agree to pass too (voiding the round) with a
-        // difficulty-based chance — easier bots skip along more readily.
-        if (msg.byId !== this.id) {
-          const agreeChance = this.difficulty === 'easy' ? 0.8 : this.difficulty === 'medium' ? 0.5 : 0.25;
-          if (Math.random() < agreeChance) {
-            this.clearTimer();
-            this.act({ type: 'pass' });
-          }
-        }
+        // Passing is part of the hidden round plan, never a response to a human pass.
         break;
       case 'waiting_ready' as any:
         setTimeout(() => this.act({ type: 'ready' }), 420 + Math.floor(Math.random() * 1600));
@@ -308,15 +296,15 @@ export class BotPlayer implements Transport {
     }
   }
 
-  // Pick the bot's team strictly from its difficulty pool (league-scoped solo games
-  // keep the popularity picker so the pick stays inside the chosen league).
+  // Pick through the room-level fun-matchup selector so all bots share the same
+  // match-level niche budget, recency protection and Turkish/global-giant weights.
   private async pickTeam(): Promise<void> {
     const humanTeam = this.room?.otherTeamPick(this.id) ?? null;
-    const club = this.scope.type === 'all'
-      ? this.profile
-        ? await botPickHumanLike(humanTeam, this.recentPicks)
-        : await botPickFromPool(this.difficulty, humanTeam, this.recentPicks)
-      : await randomClub(this.scope, this.profile ? 'medium' : this.difficulty);
+    const club = this.room
+      ? await this.room.pickBotTeamFor(this.id, this.difficulty, humanTeam, this.recentPicks, this.profile?.favoriteKnowledgeDomains ?? [], this.profile?.behaviorArchetype ?? null)
+      : this.scope.type === 'all'
+        ? await botPickFromPool(this.difficulty, humanTeam, this.recentPicks)
+        : await randomClub(this.scope, this.profile ? 'medium' : this.difficulty);
     if (!club) return;
     this.recentPicks.push(club.id);
     if (this.recentPicks.length > 10) this.recentPicks.shift();
@@ -343,11 +331,11 @@ export class BotPlayer implements Transport {
       let club = humanCountry ? await pickClubForCountry(humanCountry, avoid) : null;
       if (!club) {
         // İnsan henüz ülke seçmemiş (nadir) — normal havuz/scope seçimi
-        club = this.scope.type === 'all'
-          ? this.profile
-            ? await botPickHumanLike(null, this.recentPicks)
-            : await botPickFromPool(this.difficulty, null, this.recentPicks)
-          : await randomClub(this.scope, this.profile ? 'medium' : this.difficulty);
+        club = this.room
+          ? await this.room.pickBotTeamFor(this.id, this.difficulty, null, this.recentPicks, this.profile?.favoriteKnowledgeDomains ?? [], this.profile?.behaviorArchetype ?? null)
+          : this.scope.type === 'all'
+            ? await botPickFromPool(this.difficulty, null, this.recentPicks)
+            : await randomClub(this.scope, this.profile ? 'medium' : this.difficulty);
       }
       if (!club || this.ctPicked) return;
       this.ctPicked = true;
@@ -419,7 +407,7 @@ export class BotPlayer implements Transport {
         domain,
         botScore: this.botScore,
         opponentScore: this.opponentScore,
-        previousTempoMs: this.previousOpponentTempoMs,
+        answerTextLength: representativeAnswerLength(validNames, wrongCandidates),
         rng: this.rng,
       });
       this.cognitiveState = this.botDecision.cognitiveState;
@@ -478,15 +466,28 @@ export class BotPlayer implements Transport {
     this.clearTimer();
     const span = Math.max(0, this.maxDelayMs - this.minDelayMs);
     const delay = this.profile
-      ? (this.botDecision?.reactionDelayMs ?? this.profile.responseMedianMs)
+      ? (this.botDecision?.plannedActionAtMs ?? this.profile.responseMedianMs)
       : this.minDelayMs + Math.floor(span * triangular(mathRandom));
     this.lastGuessDelayMs = delay;
+    const serial = ++this.actionSerial;
     this.timer = setTimeout(() => {
-      void this.submitScheduledGuess();
+      void this.executePlannedAction(serial);
     }, delay);
   }
 
-  private async submitScheduledGuess(): Promise<void> {
+  private async executePlannedAction(serial: number): Promise<void> {
+    if (serial !== this.actionSerial || !this.room?.canBotAct(this.id)) return;
+    const action = this.botDecision?.plannedAction;
+    if (action === 'PASS') {
+      this.act({ type: 'pass' });
+      return;
+    }
+    if (action === 'THINK_UNTIL_TIMEOUT') return;
+    await this.submitScheduledGuess(serial);
+  }
+
+  private async submitScheduledGuess(serial = this.actionSerial): Promise<void> {
+    if (serial !== this.actionSerial || !this.room?.canBotAct(this.id)) return;
     if (this.botDecision && !this.botDecision.willAnswer) return;
     const text = this.wrongGuess ?? this.humanizeKnownAnswer(this.answer);
     if (!text) return;
@@ -497,6 +498,25 @@ export class BotPlayer implements Transport {
       return;
     }
     this.act({ type: 'submit_guess', text });
+  }
+
+  private scheduleRetryAfterOwnWrong(retryAt?: number): void {
+    const plan = this.botDecision?.retryPlan;
+    if (!plan?.enabled || !this.answer) return;
+    this.clearTimer();
+    const serial = ++this.actionSerial;
+    const plannedDelay = plan.delayMs;
+    const serverDelay = retryAt ? Math.max(0, retryAt - Date.now()) : 0;
+    const delay = Math.max(plannedDelay, serverDelay) + Math.floor(this.rng.next() * 280);
+    this.timer = setTimeout(() => {
+      if (serial !== this.actionSerial || !this.room?.canBotAct(this.id)) return;
+      if (plan.nextAction === 'CORRECT_ANSWER') {
+        this.wrongGuess = null;
+        void this.submitScheduledGuess(serial);
+      } else if (plan.nextAction === 'PASS') {
+        this.act({ type: 'pass' });
+      }
+    }, delay);
   }
 
   private async validatedCountryTeamSubmission(text: string): Promise<string | null> {
@@ -582,6 +602,7 @@ export class BotPlayer implements Transport {
     this.botDecision = null;
     this.cognitiveState = null;
     this.guessPhaseStartedAt = 0;
+    this.actionSerial += 1;
   }
 
   private clearTimer(): void {
@@ -594,4 +615,10 @@ export class BotPlayer implements Transport {
       this.emoteTimer = null;
     }
   }
+}
+
+function representativeAnswerLength(validNames: string[], wrongCandidates: string[]): number {
+  const first = validNames[0] ?? wrongCandidates[0];
+  if (!first) return 11;
+  return Math.max(4, Math.min(24, first.length));
 }

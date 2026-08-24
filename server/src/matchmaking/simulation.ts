@@ -3,7 +3,7 @@ import { selectBotProfileForSkill } from './botProfiles.ts';
 import { MatchmakingOrchestrator } from './policy.ts';
 import { SeededRandom, clamp } from './random.ts';
 import { expectedScore, type SkillRecentMatch } from './skillRating.ts';
-import { trophyDeltaExpectedScore } from './trophyIntegrity.ts';
+import { TROPHY_GAIN_MAX, TROPHY_LOSS_MIN, trophyDeltaExpectedScore } from './trophyIntegrity.ts';
 
 export interface SimulationSummary {
   matches: number;
@@ -111,7 +111,6 @@ export function runMatchSimulation(matches = 10_000, seed = 'cof-sim'): Simulati
         answerPopularity: rng.next(),
         botScore,
         opponentScore: playerScore,
-        previousTempoMs: 1200 + rng.next() * 5200,
         rng: new SeededRandom(`${seed}:round:${i}:${r}`),
       });
       botDecisions += 1;
@@ -202,7 +201,8 @@ export function runMatchSimulation(matches = 10_000, seed = 'cof-sim'): Simulati
   if (beginner && (beginner.playerWinRate < 0.48 || beginner.playerWinRate > 0.84)) impossibleResults.push(`beginner_0 win rate outside healthy range: ${beginner.playerWinRate}`);
   if (botDecisions > 0 && botTimeouts === 0) impossibleResults.push('bot never timed out');
   if (botDecisions > 0 && botMistakes === 0) impossibleResults.push('bot never made mistakes');
-  if (Math.abs(trophyInflation / Math.max(1, matches)) > 14) impossibleResults.push(`large trophy inflation: ${trophyInflation / matches}`);
+  const maxExpectedInflation = TROPHY_GAIN_MAX - TROPHY_LOSS_MIN;
+  if (Math.abs(trophyInflation / Math.max(1, matches)) > maxExpectedInflation + 2) impossibleResults.push(`large trophy inflation: ${trophyInflation / matches}`);
 
   return {
     matches,
