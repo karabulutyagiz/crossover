@@ -45,7 +45,7 @@ import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, Lin
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState, FriendInfo, LeaderboardEntry } from './useCrossover';
 import { initialState } from './useCrossover';
-import type { BlockedUserView, ClubRef, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, ScopeOption, SpellInfo } from './protocol';
+import type { BlockedUserView, ClubRef, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, ScopeOption, SpellInfo, StoreCatalogItem } from './protocol';
 import {
   EmoteCallout,
   EmoteSticker,
@@ -64,6 +64,7 @@ import {
 import type { EmoteMeta } from './emotes';
 import { AvatarBadge, avatarMeta, avatarPrice, ownsAvatar } from './avatars';
 import { FRAME_ART as FRAME_ART_MAP, FRAME_SCALE, FrameOverlay } from './frames';
+import { RARITY_COLOR, cosmeticVisual, isEquippedCosmetic, nameEffectColors, ownsStoreCosmetic } from './cosmetics';
 import { NATIONALITIES } from './nationalities';
 import { captureError, track } from './telemetry';
 import { GameFeedbackEvent } from './feedback/events';
@@ -130,6 +131,9 @@ type Actions = {
   buyEmote: (emoteId: string) => void;
   equipEmotes: (emoteIds: string[]) => void;
   buyAvatar: (avatarId: string) => void;
+  loadStoreCatalog: () => void;
+  buyCosmetic: (itemId: string) => void;
+  equipCosmetic: (cosmeticType: 'frame' | 'name_effect' | 'match_background' | 'ball' | 'intro' | 'victory_effect' | 'answer_effect', itemId: string | null) => void;
   setAvatar: (avatar: string | null) => void;
   setFrame: (frameId: string | null) => void; // profil çerçevesi tak/kaldır
   claimLevelReward: (level: number, track?: 'free' | 'premium') => void; // Seviye Yolu kartından ödül topla
@@ -5266,10 +5270,7 @@ export function LobbyScreen({ state, actions }: Props) {
       {room.players.map((p) => (
         <GamePanel key={p.id} compact accentStripe={p.isHost ? theme.accent : theme.primary} style={{ marginBottom: 8 }} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingLeft: 14 }}>
           <Avatar avatar={p.id === room.youId ? (p.avatar ?? state.profile?.avatar) : p.avatar} name={p.name} size={32} ring={p.isHost ? theme.accent : theme.primary} iconColor={p.isHost ? theme.accent : theme.muted} iconSize={18} frameId={p.id === room.youId ? (p.frame ?? state.profile?.selectedFrame) : p.frame} />
-          <Text style={styles.lobbyName}>
-            {p.name}
-            {p.id === room.youId ? t('lobby.youSuffix') : ''}
-          </Text>
+          <CosmeticName name={`${p.name}${p.id === room.youId ? t('lobby.youSuffix') : ''}`} effectId={p.id === room.youId ? state.profile?.equippedNameEffectId : p.cosmetics?.nameEffectId} style={styles.lobbyName} />
         </GamePanel>
       ))}
       <View style={{ height: 18 }} />
@@ -5340,7 +5341,7 @@ export function MatchupScreen({ state }: Props) {
           çerçeve isim kutusunun etrafını TAM sarar; derinlik gölgeden gelir. */}
       <GamePanel compact tint={color} style={{ borderBottomColor: color }} bodyStyle={{ alignItems: 'center', gap: 6, paddingVertical: 14 }}>
         <Avatar avatar={p?.avatar ?? fallbackAvatar} name={p?.name} size={64} ring={color} ringWidth={3} bg={theme.card} iconColor={color} iconSize={30} frameId={p?.frame ?? fallbackFrame} />
-        <Text style={{ color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{p?.name ?? '?'}</Text>
+        <CosmeticName name={p?.name ?? '?'} effectId={p?.cosmetics?.nameEffectId} style={{ color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             <Ionicons name="trophy" size={15} color={theme.accent} />
@@ -5417,7 +5418,7 @@ function PlayerBar({ state, onEmotePress }: { state: GameState; onEmotePress?: (
     <GamePanel compact style={{ flex: 1, borderBottomColor: theme.border }} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 5, paddingHorizontal: 10 }}>
       <Avatar avatar={opp.avatar} name={opp.name} size={30} ring={color} ringWidth={2} iconColor={color} iconSize={15} frameId={opp.frame} />
       <View style={{ flex: 1 }}>
-        <Text numberOfLines={1} style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{opp.name}</Text>
+        <CosmeticName name={opp.name} effectId={opp.cosmetics?.nameEffectId} style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
           <Ionicons name="trophy" size={10} color={theme.accent} />
           <Text style={{ color: theme.accent, fontSize: 10, fontFamily: 'Poppins-SemiBold', letterSpacing: 0.5, fontVariant: ['tabular-nums'] }}>{opp.trophies ?? 0}</Text>
@@ -6617,6 +6618,69 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
 }
 
 const AD_STORAGE_KEY = '@crossover_ad_state';
+function CosmeticPreview({ item, size = 88 }: { item: StoreCatalogItem; size?: number }) {
+  const visual = cosmeticVisual(item);
+  const accent = RARITY_COLOR[item.rarity] ?? visual.accent;
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    pulse.setValue(0);
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [item.id, pulse]);
+  const glow = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.78, 1.08] });
+  const rot = pulse.interpolate({ inputRange: [0, 1], outputRange: ['-3deg', '3deg'] });
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View style={{ position: 'absolute', width: size, height: size, borderRadius: size * 0.28, backgroundColor: accent, opacity: 0.18, transform: [{ scale: glow }] }} />
+      <View style={{ width: size * 0.86, height: size * 0.86, borderRadius: size * 0.24, backgroundColor: theme.surface3, borderWidth: 2, borderColor: accent, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        <View pointerEvents="none" style={{ position: 'absolute', left: -size * 0.25, top: -size * 0.25, width: size * 0.8, height: size * 0.8, borderRadius: size, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
+        <Animated.View style={{ transform: [{ rotate: rot }] }}>
+          <Ionicons name={visual.icon as IoniconName} size={Math.round(size * 0.42)} color={accent} />
+        </Animated.View>
+      </View>
+    </View>
+  );
+}
+
+function CosmeticShopTile({ item, owned, equipped, onPress }: { item: StoreCatalogItem; owned: boolean; equipped: boolean; onPress: () => void }) {
+  const accent = RARITY_COLOR[item.rarity] ?? theme.primary;
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [{ width: 138, minHeight: 184, borderRadius: 20, backgroundColor: theme.card, borderWidth: 1.5, borderColor: equipped ? theme.primary : accent + '88', padding: 10, opacity: pressed ? 0.86 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] }, shadowSoft]}>
+      <View style={{ alignItems: 'center', gap: 8 }}>
+        <CosmeticPreview item={item} size={84} />
+        <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12.5, textAlign: 'center' }} numberOfLines={2}>{item.name}</Text>
+        <Text style={{ color: accent, fontFamily: 'Poppins-Black', fontSize: 9.5, letterSpacing: 0.8 }}>{String(item.rarity).toUpperCase()}</Text>
+        {equipped ? (
+          <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 11 }}>KUŞANILI</Text>
+        ) : owned ? (
+          <Text style={{ color: theme.muted, fontFamily: 'Poppins-ExtraBold', fontSize: 11 }}>SAHİP</Text>
+        ) : (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><GemIcon size={12} /><Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>{item.diamondPrice}</Text></View>
+        )}
+      </View>
+    </Pressable>
+  );
+}
+
+function CosmeticName({ name, effectId, style, numberOfLines = 1 }: { name: string; effectId?: string | null; style?: any; numberOfLines?: number }) {
+  const fx = nameEffectColors(effectId);
+  return (
+    <Text
+      numberOfLines={numberOfLines}
+      style={[
+        style,
+        fx ? { color: fx.color, textShadowColor: fx.glow, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 8 } : null,
+      ]}
+    >
+      {name}
+    </Text>
+  );
+}
+
 
 // AdMob Rewarded Ad Unit IDs: test IDs during development (__DEV__), production IDs in release builds.
 // Google test rewarded IDs always serve test ads instantly with no AdMob setup needed.
@@ -6893,6 +6957,7 @@ function recordShortfall(missing: number): void {
 export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToSection, onDiamondCelebration }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | 'top' | null }) {
   const profile = state.profile;
   // One skinned dialog for every store notice (pending/failed/coming-soon/ad errors) —
+  const catalog = state.storeCatalog;
   // replaces the five native Alert.alert sites. Content stays mounted through the
   // GameModal exit animation; only `open` flips.
   const [storeDialog, setStoreDialog] = useState<{ title: string; body: string; icon: IoniconName; danger?: boolean; coach?: boolean } | null>(null);
@@ -7163,6 +7228,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
   const [confirmEmote, setConfirmEmote] = useState<EmoteMeta | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   // Open "not enough gems" only AFTER the buy-confirm modal's native dismissal
+  const [confirmCosmetic, setConfirmCosmetic] = useState<StoreCatalogItem | null>(null);
   // finishes (via onExited) — flipping both in one commit overlaps two native
   // <SafeModal>s and iOS freezes the app (dead touches + scroll). Holds the missing
   // amount recorded at confirm (null = nothing pending) — the powerShortfall
@@ -7182,6 +7248,14 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
   // İfade vitrini kutu boyu — konteyner genişliğinden ölçülür (kesilme olmasın)
   const [shelfW, setShelfW] = useState(0);
 
+  useEffect(() => { actions.loadStoreCatalog(); }, [actions]);
+  const featuredCosmetics = useMemo(() => {
+    const items = catalog?.items ?? [];
+    const byId = new Map(items.map((item) => [item.id, item]));
+    const ids = catalog?.featured ?? [];
+    const featured = ids.map((id) => byId.get(id)).filter((item): item is StoreCatalogItem => Boolean(item));
+    return featured.length ? featured : items.filter((item) => item.diamondPrice > 0).slice(0, 8);
+  }, [catalog]);
   // Staggered section entrance: fade + 12px rise, 200ms each, 40ms stagger.
   // One entry per animated store section (socialPack, coPass, freeDiamonds,
   // diamonds, restore). Keep in sync with the highest sectionIn(i) below —
@@ -7304,6 +7378,31 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
         </Animated.View>
 
         {/* CO Pass — Seviye Yolu'ndaki premium şeridin mağazadaki karşılığı;
+        <Animated.View style={sectionIn(1)}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, marginBottom: 6 }}>
+            <SectionHeader label="Daily shop" icon="sparkles" style={{ flex: 1, marginTop: 0, marginBottom: 0 }} />
+            {catalog?.dailyResetAt ? <WeeklyCountdown /> : null}
+          </View>
+          {!catalog ? (
+            <View style={[styles.storeEmoteCard, { minHeight: 94, justifyContent: 'center' }]}>
+              <GameSpinner />
+              <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 12 }}>Mağaza katalogu yükleniyor...</Text>
+            </View>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
+              {featuredCosmetics.map((item) => (
+                <CosmeticShopTile
+                  key={item.id}
+                  item={item}
+                  owned={ownsStoreCosmetic(profile, item)}
+                  equipped={isEquippedCosmetic(profile, item)}
+                  onPress={() => { track('cosmetic_viewed', { item_id: item.id, type: item.type, rarity: item.rarity }); setConfirmCosmetic(item); }}
+                />
+              ))}
+            </ScrollView>
+          )}
+        </Animated.View>
+
             kalıcı, tek seferlik satın alma (sezon sıfırlamasında yeniden alınır). */}
         <Animated.View style={sectionIn(1)} onLayout={(e) => { sectionYRef.current['coPass'] = e.nativeEvent.layout.y; }}>
           <SectionHeader label={t('store.coPassSection')} icon="medal" />
@@ -7688,6 +7787,51 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
       </GameModal>
 
       {buying ? <PurchaseOverlay /> : null}
+      <GameModal
+        visible={confirmCosmetic != null}
+        onClose={() => setConfirmCosmetic(null)}
+        title={confirmCosmetic?.name.toLocaleUpperCase(currentLang()) ?? ''}
+        icon={confirmCosmetic ? cosmeticVisual(confirmCosmetic).icon as IoniconName : 'diamond'}
+      >
+        {confirmCosmetic ? (() => {
+          const item = confirmCosmetic;
+          const owned = ownsStoreCosmetic(profile, item);
+          const equipped = isEquippedCosmetic(profile, item);
+          const short = item.diamondPrice - (profile?.diamonds ?? 0);
+          const canEquip = item.type === 'frame' || item.type === 'name_effect' || item.type === 'match_background' || item.type === 'ball' || item.type === 'intro' || item.type === 'victory_effect' || item.type === 'answer_effect';
+          return (
+            <View style={{ alignItems: 'center', gap: 10 }}>
+              <CosmeticPreview item={item} size={128} />
+              <Text style={{ color: RARITY_COLOR[item.rarity] ?? theme.primary, fontFamily: 'Poppins-Black', fontSize: 11, letterSpacing: 1 }}>{String(item.rarity).toUpperCase()}</Text>
+              <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 13, lineHeight: 19, textAlign: 'center' }}>{item.description}</Text>
+              <View style={{ alignSelf: 'stretch', backgroundColor: theme.well, borderRadius: 14, padding: 10, gap: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 12 }}>Elmasın</Text>
+                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>{profile?.diamonds ?? 0} 💎</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 12 }}>Fiyat</Text>
+                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>{item.diamondPrice} 💎</Text>
+                </View>
+              </View>
+              {equipped ? (
+                <>
+                  <Btn big kind="primary" icon="checkmark-circle" label="KUŞANILI" disabled onPress={() => {}} />
+                  {canEquip ? <Btn kind="ghost" label="ÇIKAR" onPress={() => { actions.equipCosmetic(item.type as any, item.type === 'ball' ? 'classic_ball' : null); setConfirmCosmetic(null); }} /> : null}
+                </>
+              ) : owned ? (
+                <Btn big kind="primary" icon="shirt" label="KUŞAN" feedback={GameFeedbackEvent.UI_CONFIRM} onPress={() => { track('cosmetic_equipped', { item_id: item.id, type: item.type }); actions.equipCosmetic(item.type as any, item.id); setConfirmCosmetic(null); }} />
+              ) : short > 0 ? (
+                <Btn big kind="accent" icon="diamond" label={`ELMAS AL · ${short} 💎 eksik`} feedback={GameFeedbackEvent.UI_PURCHASE} onPress={() => { track('insufficient_diamonds', { item_id: item.id, missing_diamonds: short }); setConfirmCosmetic(null); openShortfallSheet(short, { required: item.diamondPrice, current: profile?.diamonds ?? 0, source: 'cosmetic' }); }} />
+              ) : (
+                <Btn big kind="primary" gem label={`SATIN AL · ${item.diamondPrice}`} feedback={GameFeedbackEvent.UI_PURCHASE} onPress={() => { track('cosmetic_purchase_started', { item_id: item.id, type: item.type, price: item.diamondPrice }); actions.buyCosmetic(item.id); setConfirmCosmetic(null); }} />
+              )}
+              <Btn label={t('store.cancel')} kind="ghost" onPress={() => setConfirmCosmetic(null)} />
+            </View>
+          );
+        })() : null}
+      </GameModal>
+
     </Screen>
   );
 }, (p, n) =>
@@ -7696,6 +7840,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
   shortfallConsumedSeq === shortfallArrivalSeq &&
   p.state.profile === n.state.profile &&
   p.actions === n.actions &&
+  p.state.storeCatalog === n.state.storeCatalog &&
   p.scrollToSection === n.scrollToSection &&
   p.onDiamondCelebration === n.onDiamondCelebration
 );
