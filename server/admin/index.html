@@ -189,6 +189,7 @@
     <div class="top-actions">
       <span class="status-dot"><span class="dot" id="statusDot"></span><span id="statusText">bağlanıyor…</span></span>
       <button id="refreshBtn">Yenile</button>
+      <button id="marketingBtn">Pazarlama</button>
       <button id="autoBtn">Otomatik: Açık</button>
       <button id="logoutBtn">Çıkış</button>
     </div>
@@ -393,6 +394,28 @@
     return chain;
   }
 
+  // Admin: zorla oda kapat (lobide takılı oyuncu varsa)
+  function forceCloseRoom(code){
+    if(!confirm('Oda ' + code + ' kapatılsın mı? Lobide bekleyen oyuncu(lar) atılacak.')) return;
+    var ctrl = new AbortController();
+    var t = setTimeout(function(){ ctrl.abort(); }, 10000);
+    fetch(API_BASES[0] + "/admin/api/room/close", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ code: code }),
+      signal: ctrl.signal
+    }).then(function(res){
+      clearTimeout(t);
+      if(res.status === 401){ logout(); showLogin("Oturum düştü, tekrar gir."); return; }
+      if(!res.ok) throw new Error("HTTP " + res.status);
+      return res.json();
+    }).then(function(j){
+      if(j && j.ok){ alert('Oda kapatıldı: ' + code); tick(); }
+    }).catch(function(e){
+      if(e.name !== 'AbortError') alert('Hata: ' + e.message);
+    });
+  }
+
   function showLogin(msg){
     $("dash").classList.add("hidden");
     $("login").classList.remove("hidden");
@@ -525,10 +548,13 @@
       var vs = pPill(ps[0]) + " <span class='muted'>vs</span> " + pPill(ps[1]);
       var score = ps.length===2 ? ps.map(function(x){return x.score;}).join(" – ") : "";
       var mode = modeTr[m.gameMode] || modeTr[m.mode] || m.gameMode || m.mode || "Mod bilinmiyor";
+      var statusLabel = statusTr[m.status]||esc(m.status);
+      var isStuck = m.status === 'lobby' && ps.length === 1; // tek oyuncu lobide takıldıysa
       return "<div class='match-row'>"
         + "<div class='vs'>" + vs + (pvp?"<span class='badge-pvp'>PvP</span>":"") + "</div>"
-        + "<div class='meta'><span class='badge-mode'>" + esc(mode) + "</span>" + (statusTr[m.status]||esc(m.status))
+        + "<div class='meta'><span class='badge-mode'>" + esc(mode) + "</span>" + statusLabel
         + (score!==""?" · "+esc(score):"") + " · " + esc(m.code) + "</div>"
+        + (isStuck ? "<button class='btn secondary' style='margin-left:10px;padding:4px 8px;font-size:11px' onclick='forceCloseRoom(\""+esc(m.code)+"\")'>Kapat</button>" : "")
         + "</div>";
     }).join("");
     $("l_matches").innerHTML = mlist || "<div class='muted'>Şu an süren maç/oda yok.</div>";
@@ -689,6 +715,7 @@
   $("email").addEventListener("keydown", function(e){ if(e.key==="Enter") $("pw").focus(); });
   $("pw").addEventListener("keydown", function(e){ if(e.key==="Enter") doLogin(); });
   $("refreshBtn").addEventListener("click", tick);
+  $("marketingBtn").addEventListener("click", function(){ window.location.href = "./marketing.html"; });
   selectedDay = todayKey();
   autoTodayMode = true;
   $("dayFilter").value = selectedDay;
