@@ -1,4 +1,4 @@
-import { memo, startTransition, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from 'react';
+import { memo, startTransition, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import * as NativeSplash from 'expo-splash-screen';
 import {
@@ -800,6 +800,7 @@ function AppRoot() {
   const [monetizationConfig, setMonetizationConfig] = useState<MonetizationRemoteConfig | null>(null);
   const [contextualOffer, setContextualOffer] = useState<MonetizationOffer | null>(null);
   const [contextualOfferVisible, setContextualOfferVisible] = useState(false);
+  const [socialPackCampaignVisible, setSocialPackCampaignVisible] = useState(false);
   const [engagementState, setEngagementState] = useState<EngagementRuntimeState>(() => createEngagementRuntime());
   const [activeEngagement, setActiveEngagement] = useState<EngagementQueueItem | null>(null);
   const [feedbackPromptVisible, setFeedbackPromptVisible] = useState(false);
@@ -1038,7 +1039,7 @@ function AppRoot() {
   }, [state.phase, state.countdown]);
 
   const lastMatchupRoomRef = useRef<string | null>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (state.phase !== 'matchup' || !state.room?.code) return;
     if (lastMatchupRoomRef.current === state.room.code) return;
     lastMatchupRoomRef.current = state.room.code;
@@ -1272,6 +1273,7 @@ function AppRoot() {
     feedbackPromptVisible ||
     feedbackCenterVisible ||
     ratingPromptVisible ||
+    socialPackCampaignVisible ||
     Boolean(activeEngagement) ||
     promotionTransitionRef.current
   );
@@ -1398,25 +1400,11 @@ function AppRoot() {
       recordMonetizationDiagnostic('social_pack_cold_start', { reason: 'not_candidate', socialPackEntitlement: entitlement, sessionSocialPackShown: false, modalQueueLength: engagementState.queuedEngagements.length, data: baseData });
       return;
     }
-    const offer: MonetizationOffer = {
-      offerId: `social_pack_cold_start_${engagementState.sessionId}`,
-      offerType: 'social_pack',
-      trigger: 'social_pack_discovery',
-      priority: EngagementPriority.DISCOVERY,
-      titleKey: 'socialPack.startupTitle',
-      bodyKey: 'socialPack.startupBody',
-      ctaKey: 'socialPack.startupCta',
-      secondaryKey: 'common.close',
-      analyticsMetadata: { appSessionId },
-    };
-    const metadata = { offer_id: offer.offerId, trigger: offer.trigger, currentDiamonds: state.profile?.diamonds ?? 0, ...offer.analyticsMetadata };
-    track('engagement_eligible', { kind: 'SOCIAL_PACK_DISCOVERY', screen: state.phase, appSessionId, ...metadata });
+    const metadata = { offer_id: `social_pack_cold_start_${engagementState.sessionId}`, trigger: 'social_pack_discovery', currentDiamonds: state.profile?.diamonds ?? 0, appSessionId };
+    track('engagement_eligible', { kind: 'SOCIAL_PACK_DISCOVERY', screen: state.phase, ...metadata });
     socialPackQueuedThisSessionRef.current = true;
-    const item = { ...engagement, monetizationOffer: offer, metadata };
-    setActiveEngagement(item);
-    setContextualOffer(offer);
-    setContextualOfferVisible(true);
-    recordMonetizationDiagnostic('social_pack_cold_start', { reason: 'show_direct', socialPackEntitlement: false, sessionSocialPackShown: true, modalQueueLength: engagementState.queuedEngagements.length, data: { ...baseData, RESULT: 'SHOW_DIRECT', ...metadata } });
+    setSocialPackCampaignVisible(true);
+    recordMonetizationDiagnostic('social_pack_cold_start', { reason: 'show_campaign', socialPackEntitlement: false, sessionSocialPackShown: true, modalQueueLength: engagementState.queuedEngagements.length, data: { ...baseData, RESULT: 'SHOW_CAMPAIGN', ...metadata } });
   }, [loaded, splash, monetizationConfig, state.phase, state.profile, modalBlocked, enqueuePromotion, engagementState, appSessionId, recordMonetizationDiagnostic]);
 
   useEffect(() => {
@@ -1540,6 +1528,18 @@ function AppRoot() {
     storeAtDiamondsRef.current = false; // fresh tab entry → re-tap toggle starts at "diamonds"
     if (idx !== 2) resetHomePhase(); // home lives at index 2 (store=0, collection=1, home=2, friends=3)
   }, [resetHomePhase]);
+
+  const dismissSocialPackCampaign = useCallback(() => {
+    setSocialPackCampaignVisible(false);
+    track('engagement_dismissed', { kind: 'SOCIAL_PACK_DISCOVERY', source: 'cold_start_home_ready', screen: state.phase, appSessionId });
+  }, [appSessionId, state.phase]);
+
+  const acceptSocialPackCampaign = useCallback(() => {
+    setSocialPackCampaignVisible(false);
+    track('engagement_primary_clicked', { kind: 'SOCIAL_PACK_DISCOVERY', trigger: 'social_pack_discovery', screen: state.phase, appSessionId, currentDiamonds: state.profile?.diamonds ?? 0 });
+    setStoreSection('socialPack');
+    goToTab(0);
+  }, [appSessionId, goToTab, state.phase, state.profile?.diamonds]);
 
   const acceptContextualOffer = useCallback(() => {
     const offer = contextualOffer;
@@ -1968,10 +1968,10 @@ function AppRoot() {
 
   // Game screens (no tab bar)
   if (!showTabs) {
+    let screen: ReactNode;
     const localPlayer = state.room?.players.find((p) => p.id === state.room?.youId) ?? null;
     const opponentPlayer = state.room?.players.find((p) => p.id !== state.room?.youId) ?? null;
     const matchBgId = resolveMatchBackground(localPlayer, opponentPlayer);
-    let screen: ReactNode;
     switch (state.phase) {
       case 'searching':
         screen = <SearchingScreen {...props} />;
@@ -2001,8 +2001,8 @@ function AppRoot() {
     return (
       <View style={[s.root, { paddingTop: insets.top }]}>
         <StatusBar style="light" />
-        <CosmeticMatchBackground id={matchBgId} />
         <ScreenBg variant="match" />
+        <CosmeticMatchBackground id={matchBgId} />
         {screen}
         {state.matchInvite ? (
           <InviteBanner
@@ -2393,6 +2393,41 @@ function AppRoot() {
           label={t('common.continue')}
           onPress={() => { setExpiredSocialPack(false); setStoreSection('socialPack'); goToTab(0); }}
         />
+      </GameModal>
+
+      <GameModal
+        visible={socialPackCampaignVisible}
+        onClose={dismissSocialPackCampaign}
+        title={t('socialPack.startupTitle')}
+        icon="people"
+        coach
+      >
+        <View style={{ alignItems: 'center', gap: 12 }}>
+          <View style={{ flexDirection: 'row', gap: 8, alignSelf: 'stretch' }}>
+            <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.blue, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.blue, 0.45) }}>
+              <Text style={{ fontSize: 23 }}>🇹🇷</Text>
+              <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.countryTeamLabel')}</Text>
+            </View>
+            <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.purple, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.purple, 0.45) }}>
+              <Text style={{ fontSize: 24 }}>🔤</Text>
+              <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.letterTeamLabel')}</Text>
+            </View>
+            <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.primary, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.primary, 0.45) }}>
+              <Text style={{ fontSize: 24 }}>⚽</Text>
+              <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.specialModesLabel')}</Text>
+            </View>
+          </View>
+          <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+            {t('socialPack.startupBody')}
+          </Text>
+          {['socialPack.privilegeModes', 'socialPack.privilegeFriends', 'socialPack.privilegePriority'].map((key) => (
+            <View key={key} style={{ alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: withAlpha(theme.text, 0.055), borderRadius: 13, paddingHorizontal: 12, paddingVertical: 9 }}>
+              <Ionicons name="checkmark-circle" size={18} color={theme.primary} />
+              <Text style={{ flex: 1, color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', lineHeight: 17 }}>{t(key as any)}</Text>
+            </View>
+          ))}
+          <Btn big kind="accent" icon="people" label={t('socialPack.startupCta')} onPress={acceptSocialPackCampaign} />
+        </View>
       </GameModal>
 
       <GameModal

@@ -6617,7 +6617,6 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
   );
 }
 
-const AD_STORAGE_KEY = '@crossover_ad_state';
 function CosmeticPreview({ item, size = 88 }: { item: StoreCatalogItem; size?: number }) {
   const visual = cosmeticVisual(item);
   const accent = RARITY_COLOR[item.rarity] ?? visual.accent;
@@ -6681,6 +6680,7 @@ function CosmeticName({ name, effectId, style, numberOfLines = 1 }: { name: stri
   );
 }
 
+const AD_STORAGE_KEY = '@crossover_ad_state';
 
 // AdMob Rewarded Ad Unit IDs: test IDs during development (__DEV__), production IDs in release builds.
 // Google test rewarded IDs always serve test ads instantly with no AdMob setup needed.
@@ -6956,8 +6956,8 @@ function recordShortfall(missing: number): void {
 // zararsız bir no-op'a düşer — eski davranış).
 export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToSection, onDiamondCelebration }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | 'top' | null }) {
   const profile = state.profile;
-  // One skinned dialog for every store notice (pending/failed/coming-soon/ad errors) —
   const catalog = state.storeCatalog;
+  // One skinned dialog for every store notice (pending/failed/coming-soon/ad errors) —
   // replaces the five native Alert.alert sites. Content stays mounted through the
   // GameModal exit animation; only `open` flips.
   const [storeDialog, setStoreDialog] = useState<{ title: string; body: string; icon: IoniconName; danger?: boolean; coach?: boolean } | null>(null);
@@ -7227,8 +7227,8 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
   // animasyonu boyunca ekranda kalsın diye ayrı `open` bayrağıyla tutulur.
   const [confirmEmote, setConfirmEmote] = useState<EmoteMeta | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  // Open "not enough gems" only AFTER the buy-confirm modal's native dismissal
   const [confirmCosmetic, setConfirmCosmetic] = useState<StoreCatalogItem | null>(null);
+  // Open "not enough gems" only AFTER the buy-confirm modal's native dismissal
   // finishes (via onExited) — flipping both in one commit overlaps two native
   // <SafeModal>s and iOS freezes the app (dead touches + scroll). Holds the missing
   // amount recorded at confirm (null = nothing pending) — the powerShortfall
@@ -7247,7 +7247,6 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
   const [confirmCoPass, setConfirmCoPass] = useState(false);
   // İfade vitrini kutu boyu — konteyner genişliğinden ölçülür (kesilme olmasın)
   const [shelfW, setShelfW] = useState(0);
-
   useEffect(() => { actions.loadStoreCatalog(); }, [actions]);
   const featuredCosmetics = useMemo(() => {
     const items = catalog?.items ?? [];
@@ -7256,6 +7255,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
     const featured = ids.map((id) => byId.get(id)).filter((item): item is StoreCatalogItem => Boolean(item));
     return featured.length ? featured : items.filter((item) => item.diamondPrice > 0).slice(0, 8);
   }, [catalog]);
+
   // Staggered section entrance: fade + 12px rise, 200ms each, 40ms stagger.
   // One entry per animated store section (socialPack, coPass, freeDiamonds,
   // diamonds, restore). Keep in sync with the highest sectionIn(i) below —
@@ -7377,7 +7377,6 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
           </View>
         </Animated.View>
 
-        {/* CO Pass — Seviye Yolu'ndaki premium şeridin mağazadaki karşılığı;
         <Animated.View style={sectionIn(1)}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, marginBottom: 6 }}>
             <SectionHeader label="Daily shop" icon="sparkles" style={{ flex: 1, marginTop: 0, marginBottom: 0 }} />
@@ -7403,6 +7402,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
           )}
         </Animated.View>
 
+        {/* CO Pass — Seviye Yolu'ndaki premium şeridin mağazadaki karşılığı;
             kalıcı, tek seferlik satın alma (sezon sıfırlamasında yeniden alınır). */}
         <Animated.View style={sectionIn(1)} onLayout={(e) => { sectionYRef.current['coPass'] = e.nativeEvent.layout.y; }}>
           <SectionHeader label={t('store.coPassSection')} icon="medal" />
@@ -7786,7 +7786,6 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
         ) : null}
       </GameModal>
 
-      {buying ? <PurchaseOverlay /> : null}
       <GameModal
         visible={confirmCosmetic != null}
         onClose={() => setConfirmCosmetic(null)}
@@ -7832,6 +7831,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
         })() : null}
       </GameModal>
 
+      {buying ? <PurchaseOverlay /> : null}
     </Screen>
   );
 }, (p, n) =>
@@ -7839,8 +7839,8 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
   // düşülür (take-once efektin çalışması render ister).
   shortfallConsumedSeq === shortfallArrivalSeq &&
   p.state.profile === n.state.profile &&
-  p.actions === n.actions &&
   p.state.storeCatalog === n.state.storeCatalog &&
+  p.actions === n.actions &&
   p.scrollToSection === n.scrollToSection &&
   p.onDiamondCelebration === n.onDiamondCelebration
 );
