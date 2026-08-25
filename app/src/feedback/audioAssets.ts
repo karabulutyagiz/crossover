@@ -33,7 +33,7 @@ export const SFX_ASSETS: Record<AudioEvent, number> = {
   [AudioEvent.ANSWER_CORRECT]: require('../../assets/audio/match/answerCorrect.wav'),
   [AudioEvent.ANSWER_WRONG]: require('../../assets/audio/match/answerWrong.wav'),
   [AudioEvent.OPPONENT_CORRECT]: require('../../assets/audio/match/opponentCorrect.wav'),
-  [AudioEvent.ANSWER_SUBMIT]: require('../../assets/audio/match/cofSubmitSnap.wav'),
+  [AudioEvent.ANSWER_SUBMIT]: require('../../assets/audio/match/answerSubmitPremium.wav'),
   [AudioEvent.TIMER_WARNING]: require('../../assets/audio/match/timerWarning.wav'),
   [AudioEvent.TIMER_CRITICAL]: require('../../assets/audio/match/timerCritical.wav'),
   [AudioEvent.TIMEOUT_IMPACT]: require('../../assets/audio/match/timeoutImpact.wav'),

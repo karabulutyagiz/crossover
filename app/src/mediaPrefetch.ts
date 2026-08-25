@@ -21,7 +21,7 @@ import { allClubLogoUrls } from './offline/db';
 
 // offline/db.ts CURRENT_VERSION ile birlikte artmalı — data yenilenince
 // armalar da tazelensin (URL değişmese bile içerik değişmiş olabilir).
-const PREFETCH_KEY = 'media_prefetch_v3';
+const PREFETCH_KEY = 'media_prefetch_v4';
 const BATCH = 8;
 const START_DELAY_MS = 4000; // login el sıkışması + ilk fetch'ler radyoyu bırakmadan başlama
 const BATCH_GAP_MS = 250; // dalgalar arası nefes — etkileşimli istekler araya girebilsin

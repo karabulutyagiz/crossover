@@ -5493,8 +5493,8 @@ function MatchTimer({ endsAt, urgentAt = 5, fallbackSecs, style }: {
   useEffect(() => {
     if (endsAt == null || secs == null || secs === lastShownRef.current) return;
     lastShownRef.current = secs;
-    if (secs <= 0) triggerFeedback(GameFeedbackEvent.TIMEOUT);
-    else if (secs <= 2) triggerFeedback(GameFeedbackEvent.TIMER_CRITICAL);
+    if (secs <= 0) return;
+    if (secs <= 2) triggerFeedback(GameFeedbackEvent.TIMER_CRITICAL);
     else if (secs <= 5) triggerFeedback(GameFeedbackEvent.TIMER_WARNING);
   }, [endsAt, secs]);
   const pulse = useRef(new Animated.Value(0)).current;
