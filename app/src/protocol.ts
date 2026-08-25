@@ -347,7 +347,7 @@ export type ServerMsg =
   | { type: 'user_unblocked'; userId: string }
   | { type: 'report_filed' }                          // report accepted — show the 24h notice
   | { type: 'message_deleted'; messageId: string }    // sent to BOTH sides of the chat
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string; code?: string; public?: boolean };
 
 export interface BlockedUserView {
   userId: string;

@@ -34,6 +34,20 @@ import type {
 } from './protocol';
 
 export type Phase = 'home' | 'arenas' | 'leaderboard' | 'matchHistory' | 'profile' | 'searching' | 'matchup' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
+export type StoreCatalogStatus = 'idle' | 'loading' | 'success' | 'empty' | 'error';
+
+const STORE_CATALOG_TIMEOUT_MS = 10000;
+const STORE_CATALOG_ERROR_MESSAGE = 'Mağaza şu anda yüklenemedi. Tekrar dene.';
+
+function storeCatalogStatusFor(catalog: StoreCatalogView): StoreCatalogStatus {
+  return catalog.items.length > 0 ? 'success' : 'empty';
+}
+
+function isInternalServerError(action: Extract<ServerMsg, { type: 'error' }>): boolean {
+  if (action.public === false) return true;
+  if (/^(invalid_json|invalid_message|malformed_message|unknown_message|protocol_error)$/i.test(action.code ?? '')) return true;
+  return /^(Invalid JSON|Invalid message|Unexpected message|Create or join a room first)$/i.test(action.message ?? '');
+}
 
 export interface LeaderboardEntry {
   rank: number;
@@ -150,6 +164,8 @@ export interface GameState {
   // Transient top banner notification (friend request / new message). Auto-dismisses.
   banner: { id: number; kind: 'friend_request' | 'message'; name: string; body?: string; userId?: string } | null;
   storeCatalog: StoreCatalogView | null;
+  storeCatalogStatus: StoreCatalogStatus;
+  storeCatalogError: string | null;
 }
 
 // --- Messaging helpers: stable ordering + de-dupe, so live pushes and (possibly
@@ -251,6 +267,8 @@ export const initialState: GameState = {
   lastPurchase: null,
   banner: null,
   storeCatalog: null,
+  storeCatalogStatus: 'idle',
+  storeCatalogError: null,
 };
 
 const PROFILE_KEY = '@crossover_profile';
@@ -286,6 +304,8 @@ type Action =
   | { type: '_friend_notice'; text: string; kind: 'error' | 'ok' }
   | { type: '_clear_friend_notice' }
   | { type: '_clear_banner' }
+  | { type: '_store_catalog_loading' }
+  | { type: '_store_catalog_error'; message: string }
   | { type: '_ready' }
   | { type: '_quick_match_started' }
   | { type: '_set_game_options'; options: GameOptions | null }
@@ -384,6 +404,12 @@ function reducer(state: GameState, action: Action): GameState {
       return state.friendNotice ? { ...state, friendNotice: null } : state;
     case '_clear_banner' as any:
       return { ...state, banner: null };
+    case '_store_catalog_loading':
+      return { ...state, storeCatalogStatus: 'loading', storeCatalogError: null };
+    case '_store_catalog_error':
+      return state.storeCatalogStatus === 'idle' || state.storeCatalogStatus === 'loading'
+        ? { ...state, storeCatalogStatus: 'error', storeCatalogError: action.message }
+        : state;
     case '_open_chat' as any:
       return { ...state, chatWith: (action as any).userId, chatMessages: [] };
     case '_close_chat' as any:
@@ -596,7 +622,7 @@ function reducer(state: GameState, action: Action): GameState {
     case 'avatar_purchased':
       return { ...state, profile: action.profile, lastPurchase: { kind: 'avatar', id: (action as any).avatarId, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
     case 'store_catalog':
-      return { ...state, storeCatalog: action.catalog };
+      return { ...state, storeCatalog: action.catalog, storeCatalogStatus: storeCatalogStatusFor(action.catalog), storeCatalogError: null };
     case 'cosmetic_purchased':
       return { ...state, profile: action.profile, lastPurchase: { kind: 'cosmetic', id: (action as any).itemId, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
     case 'cosmetic_equipped':
@@ -732,6 +758,7 @@ function reducer(state: GameState, action: Action): GameState {
       }
       return { ...state, phase: 'lobby', error: t('error.opponentLeft'), teams: null, result: null, locked: null };
     case 'error':
+      if (isInternalServerError(action)) return state;
       // Internal protocol noise — never surface to the user.
       if (action.message === 'Create or join a room first') return state;
       // IAP receipt validation errors (sandbox/production mismatch) — silent.
@@ -767,6 +794,9 @@ export function useCrossover() {
   // vanished ("üst üste gönder basınca göndermiyor"). Flushed in order on auth.
   const pendingAfterAuth = useRef<ClientMsg[]>([]);
   const pendingAfterResume = useRef<ClientMsg[]>([]);
+  const storeCatalogTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const storeCatalogRequestSeq = useRef(0);
+  const storeCatalogPending = useRef(false);
   // Maç ortasında çıkışta (forfeit) kaybetme popup'ı için: reset SONRASI gelen
   // kupa cezasını bu bağlamla eşleştir (yalnız dereceli, gerçek-rakipli maçta set).
   const forfeitCtxRef = useRef<{ youScore: number; oppScore: number; opponentName: string; reason?: 'cheat' } | null>(null);
@@ -857,7 +887,29 @@ export function useCrossover() {
   const pendingAdReward = useRef<{ resolve: (granted: number) => void; reject: (e: Error) => void } | null>(null);
   const seenTrophyUpdates = useRef<Set<string>>(new Set());
 
+  const clearStoreCatalogTimeout = () => {
+    if (!storeCatalogTimeout.current) return;
+    clearTimeout(storeCatalogTimeout.current);
+    storeCatalogTimeout.current = null;
+  };
+
+  const finishStoreCatalogRequest = () => {
+    storeCatalogPending.current = false;
+    clearStoreCatalogTimeout();
+  };
+
+  useEffect(() => () => clearStoreCatalogTimeout(), []);
+
   const dispatchServerMessage = (m: ServerMsg): boolean => {
+    if (m.type === 'error' && isInternalServerError(m)) {
+      captureError(new Error(m.message), { where: 'ws_internal_error', code: m.code, public: m.public });
+      if (storeCatalogPending.current) {
+        finishStoreCatalogRequest();
+        dispatch({ type: '_store_catalog_error', message: STORE_CATALOG_ERROR_MESSAGE });
+      }
+      return false;
+    }
+    if (m.type === 'store_catalog') finishStoreCatalogRequest();
     if (m.type === 'trophy_update' && m.matchId) {
       const key = `${m.matchId}:${m.delta}:${m.trophies}`;
       if (seenTrophyUpdates.current.has(key)) return false;
@@ -948,7 +1000,9 @@ export function useCrossover() {
           // Arkadaş işleminden hemen sonra gelen sunucu 'error'ı (zaten arkadaşsınız,
           // kullanıcı bulunamadı vb.) ana oyun ekranında DEĞİL, yalnız Arkadaşlar
           // ekranında görünsün diye friendNotice'a yönlendirilir.
-          if (m.type === 'error' && Date.now() - friendOpRef.current < 6000) {
+          if (m.type === 'error' && isInternalServerError(m)) {
+            dispatchServerMessage(m);
+          } else if (m.type === 'error' && Date.now() - friendOpRef.current < 6000) {
             friendOpRef.current = 0;
             dispatch({ type: '_friend_notice', text: (m as { message: string }).message, kind: 'error' } as any);
           } else if (m.type === 'match_invite_received' && stateRef.current.room) {
@@ -1401,7 +1455,21 @@ export function useCrossover() {
       buyEmote: (emoteId: string) => send({ type: 'buy_emote', emoteId }),
       equipEmotes: (emoteIds: string[]) => send({ type: 'equip_emotes', emoteIds }),
       buyAvatar: (avatarId: string) => send({ type: 'buy_avatar', avatarId }),
-      loadStoreCatalog: () => send({ type: 'get_store_catalog' }),
+      loadStoreCatalog: () => {
+        const seq = storeCatalogRequestSeq.current + 1;
+        storeCatalogRequestSeq.current = seq;
+        clearStoreCatalogTimeout();
+        storeCatalogPending.current = true;
+        dispatch({ type: '_store_catalog_loading' });
+        send({ type: 'get_store_catalog' });
+        storeCatalogTimeout.current = setTimeout(() => {
+          if (storeCatalogRequestSeq.current !== seq) return;
+          storeCatalogTimeout.current = null;
+          storeCatalogPending.current = false;
+          captureError(new Error('store_catalog_timeout'), { where: 'load_store_catalog' });
+          dispatch({ type: '_store_catalog_error', message: STORE_CATALOG_ERROR_MESSAGE });
+        }, STORE_CATALOG_TIMEOUT_MS);
+      },
       buyCosmetic: (itemId: string) => send({ type: 'buy_cosmetic', itemId, idempotencyKey: `cosmetic:${stateRef.current.profile?.userId ?? 'anon'}:${itemId}` }),
       equipCosmetic: (cosmeticType: 'frame' | 'name_effect' | 'match_background' | 'ball' | 'intro' | 'victory_effect' | 'answer_effect', itemId: string | null) => send({ type: 'equip_cosmetic', cosmeticType, itemId }),
       setAvatar: (avatar: string | null) => send({ type: 'set_avatar', avatar }),

@@ -6950,15 +6950,17 @@ function recordShortfall(missing: number): void {
   shortfallArrivalSeq++;
 }
 
-// DİLİM-MEMO SÖZLEŞMESİ: StoreScreen state'ten YALNIZ `state.profile` okur
-// (notice/error mağaza sekmesinde çizilmez — bkz. adReward yorumu). Ekrana yeni
-// bir `state.X` okuması eklersen aşağıdaki karşılaştırıcıya da eklemek
-// ZORUNDASIN; yoksa ekran o alana karşı körleşir. `actions` kimliğinin sabit
-// olması useCrossover'daki actions-useMemo'suna dayanır (sabit değilse memo
-// zararsız bir no-op'a düşer — eski davranış).
-export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToSection, onDiamondCelebration }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | 'top' | null }) {
+// DİLİM-MEMO SÖZLEŞMESİ: StoreScreen state'ten YALNIZ `state.profile` ve Daily
+// Shop katalog durumunu okur (notice/error mağaza sekmesinde çizilmez — bkz.
+// adReward yorumu). Ekrana yeni bir `state.X` okuması eklersen aşağıdaki
+// karşılaştırıcıya da eklemek ZORUNDASIN; yoksa ekran o alana karşı körleşir.
+// `actions` kimliğinin sabit olması useCrossover'daki actions-useMemo'suna
+// dayanır (sabit değilse memo zararsız bir no-op'a düşer — eski davranış).
+export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToSection, onDiamondCelebration, storeActive = true }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | 'top' | null; storeActive?: boolean }) {
   const profile = state.profile;
   const catalog = state.storeCatalog;
+  const catalogStatus = state.storeCatalogStatus;
+  const catalogError = state.storeCatalogError;
   // One skinned dialog for every store notice (pending/failed/coming-soon/ad errors) —
   // replaces the five native Alert.alert sites. Content stays mounted through the
   // GameModal exit animation; only `open` flips.
@@ -7249,7 +7251,10 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
   const [confirmCoPass, setConfirmCoPass] = useState(false);
   // İfade vitrini kutu boyu — konteyner genişliğinden ölçülür (kesilme olmasın)
   const [shelfW, setShelfW] = useState(0);
-  useEffect(() => { actions.loadStoreCatalog(); }, [actions]);
+  useEffect(() => {
+    if (!storeActive || !profile || catalogStatus !== 'idle') return;
+    actions.loadStoreCatalog();
+  }, [actions, catalogStatus, profile, storeActive]);
   const featuredCosmetics = useMemo(() => {
     const items = catalog?.items ?? [];
     const byId = new Map(items.map((item) => [item.id, item]));
@@ -7384,10 +7389,23 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
             <SectionHeader label="Daily shop" icon="sparkles" style={{ flex: 1, marginTop: 0, marginBottom: 0 }} />
             {catalog?.dailyResetAt ? <WeeklyCountdown /> : null}
           </View>
-          {!catalog ? (
+          {catalogStatus === 'idle' || catalogStatus === 'loading' ? (
             <View style={[styles.storeEmoteCard, { minHeight: 94, justifyContent: 'center' }]}>
               <GameSpinner />
-              <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 12 }}>Mağaza katalogu yükleniyor...</Text>
+              <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 12 }}>Katalog yükleniyor…</Text>
+            </View>
+          ) : catalogStatus === 'error' ? (
+            <View style={[styles.storeEmoteCard, { minHeight: 132, justifyContent: 'center' }]}>
+              <EmptyState
+                icon="cloud-offline"
+                title={catalogError ?? 'Mağaza şu anda yüklenemedi. Tekrar dene.'}
+                cta={<Btn compact kind="blue" label="Tekrar dene" onPress={actions.loadStoreCatalog} />}
+                style={{ paddingVertical: 12 }}
+              />
+            </View>
+          ) : featuredCosmetics.length === 0 ? (
+            <View style={[styles.storeEmoteCard, { minHeight: 118, justifyContent: 'center' }]}>
+              <EmptyState icon="sparkles" title="Mağazada şu anda ürün yok" style={{ paddingVertical: 12 }} />
             </View>
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
@@ -7842,8 +7860,11 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
   shortfallConsumedSeq === shortfallArrivalSeq &&
   p.state.profile === n.state.profile &&
   p.state.storeCatalog === n.state.storeCatalog &&
+  p.state.storeCatalogStatus === n.state.storeCatalogStatus &&
+  p.state.storeCatalogError === n.state.storeCatalogError &&
   p.actions === n.actions &&
   p.scrollToSection === n.scrollToSection &&
+  p.storeActive === n.storeActive &&
   p.onDiamondCelebration === n.onDiamondCelebration
 );
 

@@ -1087,7 +1087,8 @@ export function startServer(port: number): Server {
       } catch {
         messageCount += 1;
         if (messageCount > RATE_MAX_MESSAGES) return;
-        return transport.send({ type: 'error', message: 'Invalid JSON' });
+        log.warn('ws_invalid_json', { ip, userId: userProfile?.id });
+        return;
       }
       const rawType = typeof raw === 'object' && raw !== null && !Array.isArray(raw) && typeof (raw as { type?: unknown }).type === 'string'
         ? (raw as { type: string }).type
@@ -1110,7 +1111,7 @@ export function startServer(port: number): Server {
       const validated = validateClientMsg(raw);
       if (!validated.ok) {
         log.warn('ws_invalid_message', { ip, reason: validated.error, userId: userProfile?.id });
-        return transport.send({ type: 'error', message: 'Invalid message' });
+        return;
       }
       const msg = validated.msg;
       currentType = msg.type;

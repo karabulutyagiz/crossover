@@ -2124,7 +2124,7 @@ function AppRoot() {
         <View style={{ width: SCREEN_W, flex: 1 }}>
           {state.profile ? renderResourceBar(activeTab === 0) : null}
           <TabFreeze active={activeTab === 0} warmDelay={400}>
-            <StoreScreen {...props} scrollToSection={storeSection} onDiamondCelebration={(c) => setGemCelebration({ kind: 'purchase', amount: c.amount, img: c.img })} />
+            <StoreScreen {...props} storeActive={activeTab === 0} scrollToSection={storeSection} onDiamondCelebration={(c) => setGemCelebration({ kind: 'purchase', amount: c.amount, img: c.img })} />
           </TabFreeze>
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
