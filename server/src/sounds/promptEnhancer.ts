@@ -85,7 +85,9 @@ function slugify(value: string): string {
 
 function fileStemFor(category: SoundEffectCategory, description: string): string {
   const text = normalizedText(description);
+  if (textHas(text, /\b(matchmaking|match found|opponent found|queue pop|found match)\b/) && textHas(text, /\b(whistle|referee)\b/)) return 'match_found_referee_whistle';
   if (textHas(text, /\b(whistle|referee)\b/)) return 'referee_whistle';
+  if (category === 'intro' && textHas(text, /\b(clan|strategy|organic|stone|wood|shield)\b/)) return 'intro_organic_logo_stinger';
   if (category === 'intro' && textHas(text, /\b(electric|electricity|shock|impact|logo|stinger)\b/)) return 'intro_electric_impact';
   if (category === 'intro') return 'intro_logo_impact';
   if (category === 'purchase' && textHas(text, /\bdiamond\b/)) return 'diamond_purchase';
@@ -134,15 +136,15 @@ function categoryTechnicalBrief(category: SoundEffectCategory, description: stri
 
   if (category === 'intro') {
     return [
-      'Premium cinematic mobile game logo impact with modern electric sports energy.',
-      'Attack: fast electric charge-up into a precise logo collision.',
-      'Transient: clean impactful snap with expensive high-frequency spark detail.',
-      'Body: tight sub-weight and polished metallic-tech resonance.',
-      'Decay: short shimmering electric tail that resolves quickly for a mobile splash screen.',
-      'Texture: sleek electricity, glassy particles, controlled air movement.',
-      'Intensity: confident major-game-company stinger, not oversized trailer noise.',
-      'Realism: stylized but premium and physically grounded.',
-      'Ambience: dry studio sound design with only subtle cinematic space.',
+      'Premium AAA mobile game logo stinger with organic, hand-crafted foley rather than synthetic AI texture.',
+      'Attack: short anticipation into a precise logo impact.',
+      'Transient: clean shield-and-stone hit with polished metal detail.',
+      'Body: tight drum weight, wood/stone contact and warm low-mid impact.',
+      'Decay: short magical sparkle tail that resolves quickly for a mobile splash screen.',
+      'Texture: real mallet, shield, stone, leather and subtle crystal shimmer.',
+      'Intensity: confident top-tier mobile strategy game polish, not oversized trailer noise.',
+      'Realism: stylized but physical and recorded-feeling.',
+      'Ambience: controlled studio space, no muddy hall reverb.',
     ].join(' ');
   }
 
@@ -289,7 +291,7 @@ function compactCategoryTechnicalBrief(category: SoundEffectCategory, descriptio
     return 'Realistic football gameplay SFX. Attack clear; transient physical; body natural Foley; decay short; texture real; intensity competitive; realism high; ambience minimal.';
   }
   if (category === 'intro') {
-    return 'Premium electric logo impact. Attack fast charge; transient crisp hit; body tight sub/metal; decay short shimmer; texture sparks/glass; intensity controlled cinematic; realism polished; ambience subtle.';
+    return 'AAA mobile logo stinger, organic not AI. Attack short build; transient shield/stone hit; body tight drum wood/metal weight; decay short magic sparkle; texture real foley; intensity polished strategy game; ambience controlled.';
   }
   if (category === 'ui') {
     return 'Premium mobile UI one-shot. Attack instant; transient soft snap; body tiny tactile touch; decay very short; texture polished; intensity low; realism tactile; ambience dry.';
@@ -315,6 +317,7 @@ function compactNegativeInstructions(category: SoundEffectCategory, description:
   if (category === 'football' && textHas(text, /\b(whistle|referee)\b/)) negatives.push('no second whistle', 'no synth tone');
   if (category === 'purchase' || category === 'reward' || category === 'victory') negatives.push('no casino jackpot');
   if (category === 'intro') negatives.push('no trailer braam', 'no long buildup');
+  if (category === 'intro') negatives.push('no AI synth', 'no generic whoosh');
   if (category === 'ui' || category === 'matchmaking') negatives.push('no ringtone', 'no long tail');
   return negatives.join(', ');
 }

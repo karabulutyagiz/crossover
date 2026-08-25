@@ -80,6 +80,7 @@ export class SoundGenerationError extends Error {
 const DEFAULT_OUTPUT_FORMAT: ElevenLabsOutputFormat = 'mp3_44100_128';
 const DEFAULT_TIMEOUT_MS = 90_000;
 const MAX_VARIATIONS = 10;
+const ELEVENLABS_TEXT_LIMIT = 450;
 const VARIATION_DIRECTIONS = [
   'Keep the same brief with the cleanest and most realistic interpretation.',
   'Keep the same brief with a slightly brighter transient and tighter decay.',
@@ -165,7 +166,11 @@ function apiKey(): string {
 function variationPrompt(prompt: string, variation: number, total: number): string {
   if (total <= 1) return prompt;
   const direction = VARIATION_DIRECTIONS[(variation - 1) % VARIATION_DIRECTIONS.length];
-  return `${prompt} Variation ${variation} of ${total}: ${direction}`;
+  const suffix = ` Variation ${variation}/${total}: ${direction}`;
+  const compactPrompt = prompt.trim().replace(/\s+/g, ' ');
+  if (compactPrompt.length + suffix.length <= ELEVENLABS_TEXT_LIMIT) return `${compactPrompt}${suffix}`;
+  const available = Math.max(0, ELEVENLABS_TEXT_LIMIT - suffix.length - 3);
+  return `${compactPrompt.slice(0, available).trimEnd()}...${suffix}`;
 }
 
 function extractApiError(raw: string): string {

@@ -108,9 +108,7 @@ const BASE_MUSIC_VOLUME = 0.34;
 // Stadium ambience is broadband crowd/noise; above this it reads like speaker hiss
 // behind the music on phones. Keep it as a barely-there match bed, not a second mix.
 const BASE_AMBIENCE_VOLUME = 0.035;
-const MATCH_FOUND_PULSE_INTERVAL_MS = 330;
-const MATCH_FOUND_PULSE_MAX_MS = 3200;
-const MATCH_FOUND_POOL_SIZE = 4;
+const MATCH_FOUND_WHISTLE_RELEASE_MS = 1800;
 
 let initialized = false;
 let appActive = true;
@@ -132,10 +130,7 @@ let foregroundScene: AudioScene = 'BOOT';
 const fadeTokens = new WeakMap<Player, number>();
 
 let prewarmedPlayers = new Map<AudioEvent, Player>();
-let matchFoundPulsePlayers: Player[] = [];
-let matchFoundPulseIndex = 0;
-let matchFoundPulseTimer: ReturnType<typeof setInterval> | null = null;
-let matchFoundPulseStopTimer: ReturnType<typeof setTimeout> | null = null;
+let matchFoundWhistleStopTimer: ReturnType<typeof setTimeout> | null = null;
 const PREWARM_EVENTS = [
   AudioEvent.MATCHMAKING_FOUND,
   AudioEvent.SPLASH_ELECTRIC_IMPACT,
@@ -181,12 +176,10 @@ function playPreparedSfx(player: Player, event: AudioEvent, opts?: { volume?: nu
   });
 }
 
-function playMatchFoundPulse() {
+function playMatchFoundWhistle() {
   const prefs = getFeedbackPreferences();
   if (!prefs.sfx || !appActive) return;
-  const pool = matchFoundPulsePlayers.length ? matchFoundPulsePlayers : [prewarmedPlayers.get(AudioEvent.MATCHMAKING_FOUND)].filter(Boolean) as Player[];
-  const player = pool[matchFoundPulseIndex % Math.max(1, pool.length)];
-  matchFoundPulseIndex += 1;
+  const player = prewarmedPlayers.get(AudioEvent.MATCHMAKING_FOUND);
   if (player) playPreparedSfx(player, AudioEvent.MATCHMAKING_FOUND, { volume: 1 });
 }
 
@@ -268,14 +261,6 @@ export function initAudioService() {
       prewarmedPlayers.set(event, p);
     });
   });
-  for (let i = 0; i < MATCH_FOUND_POOL_SIZE; i++) {
-    safe(() => {
-      const p = createAudioPlayer(SFX_ASSETS[AudioEvent.MATCHMAKING_FOUND]);
-      p.volume = 0;
-      matchFoundPulsePlayers.push(p);
-    });
-  }
-
   unsubscribePrefs = subscribeFeedbackPreferences((p) => {
     if (!p.music) {
       silenceMusic(160);
@@ -378,16 +363,13 @@ export function playSFX(event: AudioEvent, opts?: { priority?: number; volume?: 
 
 export function startMatchFoundAlert() {
   stopMatchFoundAlert();
-  playMatchFoundPulse();
-  matchFoundPulseTimer = setInterval(playMatchFoundPulse, MATCH_FOUND_PULSE_INTERVAL_MS);
-  matchFoundPulseStopTimer = setTimeout(stopMatchFoundAlert, MATCH_FOUND_PULSE_MAX_MS);
+  playMatchFoundWhistle();
+  matchFoundWhistleStopTimer = setTimeout(stopMatchFoundAlert, MATCH_FOUND_WHISTLE_RELEASE_MS);
 }
 
 export function stopMatchFoundAlert() {
-  if (matchFoundPulseTimer) clearInterval(matchFoundPulseTimer);
-  if (matchFoundPulseStopTimer) clearTimeout(matchFoundPulseStopTimer);
-  matchFoundPulseTimer = null;
-  matchFoundPulseStopTimer = null;
+  if (matchFoundWhistleStopTimer) clearTimeout(matchFoundWhistleStopTimer);
+  matchFoundWhistleStopTimer = null;
 }
 
 export function playMusic(track: MusicTrack, fadeMs = 360) {
@@ -493,8 +475,6 @@ export function disposeAudioService() {
 
   prewarmedPlayers.forEach((p) => releasePlayer(p));
   prewarmedPlayers.clear();
-  matchFoundPulsePlayers.forEach((p) => releasePlayer(p));
-  matchFoundPulsePlayers = [];
 
   initialized = false;
 }
