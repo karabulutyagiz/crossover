@@ -16,6 +16,11 @@ export const SUPPORT_MAIL = 'info@crossoverfootball.com';
 // Safe to drop once the account no longer needs the on-page tag.
 export const ADSENSE_CLIENT = 'ca-pub-5118403349234305';
 
+// GA4 web stream (crossoverfootball.com → "Web"). The custom events in
+// app.js (hero_install_click, finder_lookup, scroll_depth…) feed the same
+// gtag, so installing this one tag turns the whole event layer on.
+export const GA_ID = 'G-JKP0L2WG2D';
+
 // Android is not on Google Play yet. Until it is, the site says "yakında" and
 // never renders a Play button that would 404 the visitor.
 export const ANDROID_LIVE = false;
@@ -291,6 +296,8 @@ ${alternates}
 <meta name="apple-itunes-app" content="app-id=${APP_STORE_ID}" />
 ${ld}
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}" crossorigin="anonymous"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_ID}');</script>
 </head>
 <body>
 <a class="skip" href="#main">${t.skip}</a>
