@@ -1,5 +1,5 @@
 import { ARENAS, getArena } from '../game/rank.ts';
-import { selectBotProfile, botTrophiesForPlayer } from '../matchmaking/botProfiles.ts';
+import { selectBotProfile, selectBotProfileForSkill, botTrophiesForPlayer } from '../matchmaking/botProfiles.ts';
 import { compatibleTrophies, potentialTrophyCompatibility, randomBotFallbackDelayMs, shouldHoldForHumanLiquidity, trophyRangeForElapsed } from '../matchmaking/policy.ts';
 
 const cfg = {
@@ -39,6 +39,21 @@ for (const trophies of [0, 80, 240, 520, 1240, 2300, 3900, 5200]) {
   const sample = Array.from({ length: 200 }, () => botTrophiesForPlayer(trophies));
   assert(new Set(sample).size > 40, `trophy generation too repetitive for ${trophies}`);
 }
+
+const reservedBot = selectBotProfileForSkill({ userKey: 'reserved-test', playerTrophies: 800, playerSkillMean: 1100, playerSkillUncertainty: 170, playerMatchesPlayed: 30, recentCooldown: 8, seed: 'reserved-identity' });
+const alternateBot = selectBotProfileForSkill({
+  userKey: 'reserved-test-2',
+  playerTrophies: 800,
+  playerSkillMean: 1100,
+  playerSkillUncertainty: 170,
+  playerMatchesPlayed: 30,
+  recentCooldown: 8,
+  blockedBotIds: new Set([reservedBot.id]),
+  blockedBotDisplayNames: new Set([reservedBot.displayName.toLowerCase()]),
+  seed: 'reserved-identity',
+});
+assert(alternateBot.id !== reservedBot.id, 'active bot id should be excluded');
+assert(alternateBot.displayName.toLowerCase() !== reservedBot.displayName.toLowerCase(), 'active bot display name should be excluded');
 
 assert(trophyRangeForElapsed(0, cfg) === 100, 'initial range mismatch');
 assert(trophyRangeForElapsed(2500, cfg) === 450, 'expanded range mismatch');

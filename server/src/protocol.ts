@@ -56,6 +56,8 @@ export interface ProfileView {
   equippedEmotes: string[];
   usernameSet: boolean;
   socialPackUntil: string | null; // ISO date or null
+  outageGiftAt?: string | null;      // kesinti telafisi alındı damgası (ISO) ya da null
+  outageGiftAvailable?: boolean;     // true → istemci kesinti özür penceresini gösterir ("AL" ile tanımlanır)
   arena: ArenaView;
   avatar: string | null; // chosen profile-picture id (e.g. 'pp7') or null
   xp: number;    // mevcut seviye içindeki ilerleme
@@ -161,6 +163,7 @@ export type ClientMsg =
   | { type: 'buy_premium_road' } // Premium Seviye Yolu'nu 1000 elmasla aç
   | { type: 'buy_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken' } // mağazadan güç satın al
   | { type: 'use_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken' } // envanterdeki tek kullanımlık gücü etkinleştir
+  | { type: 'claim_outage_gift' } // kesinti telafisi: özür penceresindeki "AL"
   | { type: 'get_my_stats' } // profil istatistikleri: seri rekoru + mod bazlı K/M
   | { type: 'verify_purchase'; receipt: string } // validate an Apple IAP receipt → grant diamonds
   | { type: 'grant_ad_reward' } // watched a rewarded ad → credit a few diamonds (capped server-side)
@@ -264,6 +267,7 @@ export type ServerMsg =
   | { type: 'premium_road_purchased'; profile: ProfileView } // Premium Yol açıldı
   | { type: 'power_purchased'; powerId: string; profile: ProfileView } // mağazadan güç alındı
   | { type: 'power_used'; powerId: string; profile: ProfileView } // güç etkinleştirildi (jeton düştü / kalkan kuşanıldı)
+  | { type: 'outage_gift_claimed'; profile: ProfileView; granted: boolean } // granted=false → zaten alınmıştı
   | { type: 'my_stats'; winStreak: number; bestStreak: number; wins: number; losses: number; modes: { mode: string; wins: number; losses: number }[] } // profil istatistikleri
   | { type: 'emote'; fromId: string; emoteId: string } // a player in the room sent an emote
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string } // store purchase succeeded

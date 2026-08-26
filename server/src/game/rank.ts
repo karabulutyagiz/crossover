@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { pool } from '../db/pool.ts';
+import { config } from '../config.ts';
 import { PREMIUM_ROAD_PRICE } from './level.ts';
 import { emotePrice, isFreeEmote, isEquippableEmote, MAX_EQUIPPED, ALL_COLLECTIBLE_EMOTES } from './emotes.ts';
 import { avatarPrice, canUseAvatar, DEFAULT_AVATAR_ID, isAvatar, isFreeAvatar } from './avatars.ts';
@@ -82,6 +84,8 @@ export interface UserProfile {
   equippedEmotes: string[]; // visual emotes in the match loadout (max 3)
   usernameSet: boolean;
   socialPackUntil: string | null; // ISO date or null
+  outageGiftAt: string | null;        // kesinti telafisi alındı damgası (ISO) ya da null
+  outageGiftAvailable: boolean;       // kampanya açık VE bu hesap henüz almadı → özür penceresi gösterilir
   arena: Arena;
   avatar: string | null; // chosen profile-picture id (e.g. 'pp7') or null
   xp: number;    // mevcut seviye içindeki ilerleme
@@ -212,6 +216,23 @@ export async function seedWelcomeForNewUser(newUserId: string): Promise<void> {
 
 // ---- User CRUD ----
 
+function cleanInitialDisplayName(displayName: string): string {
+  return displayName.trim().replace(/\s+/g, ' ') || 'Oyuncu';
+}
+
+function provisionalDisplayName(base: string, attempt: number): string {
+  if (attempt === 0) return base;
+  return `${base} ${attempt < 8 ? 1000 + Math.floor(Math.random() * 9000) : randomUUID().slice(0, 8)}`;
+}
+
+async function displayNameTaken(displayName: string, exceptUserId?: string): Promise<boolean> {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM users WHERE lower(display_name) = lower($1) AND ($2::uuid IS NULL OR id <> $2::uuid) LIMIT 1`,
+    [displayName, exceptUserId ?? null],
+  );
+  return Boolean(rows[0]);
+}
+
 export async function findOrCreateUser(
   gameCenterId: string | null,
   displayName: string,
@@ -225,15 +246,28 @@ export async function findOrCreateUser(
     if (rows[0]) return toProfile(rows[0]);
   }
 
-  // Create new user
-  const { rows } = await pool.query<DbUser>(
-    `INSERT INTO users (display_name, game_center_id)
-     VALUES ($1, $2)
-     RETURNING *`,
-    [displayName, gameCenterId],
-  );
-  await seedWelcomeForNewUser(rows[0]!.id);
-  return toProfile(rows[0]!);
+  const baseName = cleanInitialDisplayName(displayName);
+  for (let attempt = 0; attempt < 16; attempt++) {
+    const candidate = provisionalDisplayName(baseName, attempt);
+    if (await displayNameTaken(candidate)) continue;
+    try {
+      const { rows } = await pool.query<DbUser>(
+        `INSERT INTO users (display_name, game_center_id)
+         VALUES ($1, $2)
+         RETURNING *`,
+        [candidate, gameCenterId],
+      );
+      await seedWelcomeForNewUser(rows[0]!.id);
+      return toProfile(rows[0]!);
+    } catch (e) {
+      if ((e as { code?: string })?.code !== '23505') throw e;
+      if (gameCenterId) {
+        const raced = await pool.query<DbUser>('SELECT * FROM users WHERE game_center_id = $1', [gameCenterId]);
+        if (raced.rows[0]) return toProfile(raced.rows[0]);
+      }
+    }
+  }
+  throw new Error('display name generation exhausted');
 }
 
 // Find (or create) a user by their Apple/Google identity. The subject id is the
@@ -261,12 +295,24 @@ export async function findOrCreateUserByProvider(
     );
     if (hinted.rows[0]) return toProfile(hinted.rows[0]);
   }
-  const { rows } = await pool.query<DbUser>(
-    `INSERT INTO users (display_name, ${col}, email) VALUES ($1, $2, $3) RETURNING *`,
-    [displayName.trim() || 'Oyuncu', sub, email],
-  );
-  await seedWelcomeForNewUser(rows[0]!.id);
-  return toProfile(rows[0]!);
+  const baseName = cleanInitialDisplayName(displayName);
+  for (let attempt = 0; attempt < 16; attempt++) {
+    const candidate = provisionalDisplayName(baseName, attempt);
+    if (await displayNameTaken(candidate)) continue;
+    try {
+      const { rows } = await pool.query<DbUser>(
+        `INSERT INTO users (display_name, ${col}, email) VALUES ($1, $2, $3) RETURNING *`,
+        [candidate, sub, email],
+      );
+      await seedWelcomeForNewUser(rows[0]!.id);
+      return toProfile(rows[0]!);
+    } catch (e) {
+      if ((e as { code?: string })?.code !== '23505') throw e;
+      const raced = await pool.query<DbUser>(`SELECT * FROM users WHERE ${col} = $1`, [sub]);
+      if (raced.rows[0]) return toProfile(raced.rows[0]);
+    }
+  }
+  throw new Error('display name generation exhausted');
 }
 
 // Guest account: no provider/credentials. Auto-assigns a unique username of the
@@ -280,11 +326,7 @@ export async function createGuestUser(): Promise<UserProfile> {
     let digits = String(1 + Math.floor(Math.random() * 9));
     for (let i = 0; i < 8; i++) digits += Math.floor(Math.random() * 10);
     const username = `M${digits}`;
-    const taken = await pool.query(
-      'SELECT 1 FROM users WHERE lower(display_name) = lower($1) LIMIT 1',
-      [username],
-    );
-    if (taken.rows.length) continue;
+    if (await displayNameTaken(username)) continue;
     try {
       const { rows } = await pool.query<DbUser>(
         `INSERT INTO users (display_name, username_set) VALUES ($1, true) RETURNING *`,
@@ -317,6 +359,42 @@ export async function grantDevEmotesIfNeeded(profile: UserProfile): Promise<User
   return rows[0] ? toProfile(rows[0]) : profile;
 }
 
+// ---- Kesinti telafisi (2026-08-25) ----
+// Zorunlu güncelleme kapısı yüzünden oyuna girilemeyen kesinti için tek seferlik
+// Sosyal Paket telafisi. Hediye KENDİLİĞİNDEN tanımlanmaz — oyuncu özür
+// penceresindeki "AL" düğmesine bastığında bu fonksiyon çağrılır.
+export function outageGiftWindowOpen(): boolean {
+  if (!config.outageGift.enabled) return false;
+  const until = Date.parse(config.outageGift.until);
+  return !Number.isFinite(until) || Date.now() <= until;
+}
+
+// GREATEST, aktif bir paket varsa süreyi onun ÜSTÜNE bindirir (yoksa şu andan
+// başlatır). `outage_gift_at IS NULL` koşulu UPDATE'in kendisinde olduğu için
+// aynı anda iki kez basılsa bile ikinci istek 0 satır günceller — hediye tek
+// seferliktir, çift veremez.
+export async function claimOutageGift(
+  userId: string,
+): Promise<{ ok: true; profile: UserProfile; granted: boolean } | { ok: false; error: string }> {
+  if (!userId) return { ok: false, error: 'Önce giriş yap' };
+  if (!outageGiftWindowOpen()) return { ok: false, error: 'Kampanya sona erdi' };
+  const { rows } = await pool.query<DbUser>(
+    `UPDATE users
+     SET social_pack_until = GREATEST(COALESCE(social_pack_until, now()), now())
+                             + make_interval(hours => $2::int),
+         outage_gift_at = now()
+     WHERE id = $1 AND outage_gift_at IS NULL
+     RETURNING *`,
+    [userId, config.outageGift.hours],
+  );
+  if (rows[0]) return { ok: true, profile: toProfile(rows[0]), granted: true };
+  // 0 satır: hediye bu hesaba zaten tanımlanmış. Hata değil — güncel profili
+  // döndür ki istemci pencereyi kapatsın.
+  const current = await getUser(userId);
+  if (!current) return { ok: false, error: 'Hesap bulunamadı' };
+  return { ok: true, profile: current, granted: false };
+}
+
 // One-time username pick after sign-in. Validates format + profanity, enforces
 // case-insensitive uniqueness, then sets display_name and marks username_set.
 export async function setUsername(
@@ -326,11 +404,7 @@ export async function setUsername(
   const v = validateUsername(username);
   if (!v.ok) return { ok: false, error: v.error ?? 'Geçersiz kullanıcı adı' };
   const name = username.trim();
-  const taken = await pool.query(
-    `SELECT 1 FROM users WHERE lower(display_name) = lower($1) AND username_set = true AND id <> $2 LIMIT 1`,
-    [name, userId],
-  );
-  if (taken.rows[0]) return { ok: false, error: 'Bu kullanıcı adı alınmış' };
+  if (await displayNameTaken(name, userId)) return { ok: false, error: 'Bu kullanıcı adı alınmış' };
   try {
     const { rows } = await pool.query<DbUser>(
       `UPDATE users SET display_name = $2, username_set = true WHERE id = $1 RETURNING *`,
@@ -338,8 +412,9 @@ export async function setUsername(
     );
     if (!rows[0]) return { ok: false, error: 'Kullanıcı bulunamadı' };
     return { ok: true, profile: toProfile(rows[0]) };
-  } catch {
+  } catch (e) {
     // unique index race → someone took it a moment ago
+    if ((e as { code?: string })?.code !== '23505') throw e;
     return { ok: false, error: 'Bu kullanıcı adı alınmış' };
   }
 }
@@ -521,6 +596,18 @@ export async function applyMatchResult(
     const arenaReward = nextRewardedArenaIdx > prevRewardedArenaIdx
       ? ARENA_DIAMOND_REWARDS.slice(prevRewardedArenaIdx + 1, nextRewardedArenaIdx + 1).reduce((sum, n) => sum + n, 0)
       : 0;
+    // GOAT arenasına İLK varış: goat çerçevesi kalıcı olarak hesaba yazılır
+    // ("goat olunca goat çerçevesi vercez"). Sahiplik owned_frames'te sezondan
+    // bağımsız yaşar; çerçevenin GÖRÜNÜMÜ istemcide kupayla evrilir (GOAT II-V).
+    if (nextRewardedArenaIdx >= ARENAS.length - 1 && prevRewardedArenaIdx < ARENAS.length - 1) {
+      const { rows: goatRows } = await client.query<{ owned_frames: string[] }>(
+        `UPDATE users SET owned_frames = array_append(owned_frames, 'goat')
+         WHERE id = $1 AND NOT ('goat' = ANY(owned_frames))
+         RETURNING owned_frames`,
+        [userId],
+      );
+      if (goatRows[0]) profile.ownedFrames = goatRows[0].owned_frames;
+    }
     if (opts?.matchId) {
       const opponentType = opts.opponentType ?? (opts.opponentId ? 'HUMAN' : 'BOT');
       const source = opponentType === 'BOT'
@@ -1147,6 +1234,7 @@ interface DbUser {
   equipped_emotes: string[] | null;
   username_set: boolean | null;
   social_pack_until: string | null;
+  outage_gift_at: string | null;
   avatar: string | null;
   last_seen: string | null;
   highest_arena_rewarded: number | null;
@@ -1203,6 +1291,8 @@ function toProfile(row: DbUser): UserProfile {
     equippedEmotes: row.equipped_emotes ?? [],
     usernameSet: row.username_set ?? false,
     socialPackUntil: isFutureIso(row.social_pack_until) ? row.social_pack_until : null,
+    outageGiftAt: row.outage_gift_at ?? null,
+    outageGiftAvailable: !row.outage_gift_at && outageGiftWindowOpen(),
     arena: getArena(row.trophies),
     avatar: row.avatar ?? row.selected_avatar ?? null,
     xp: row.xp ?? 0,

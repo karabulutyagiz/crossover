@@ -139,6 +139,7 @@ export function validateClientMsg(value: unknown): ValidationResult {
     case 'delete_account':
     case 'buy_premium_road':
     case 'get_store_catalog':
+    case 'claim_outage_gift':
       break;
     case 'leave_match':
       if (value.reason !== undefined && value.reason !== 'leave' && value.reason !== 'cheat') return invalid('leave_match.reason is invalid');

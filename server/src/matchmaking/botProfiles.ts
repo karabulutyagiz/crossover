@@ -91,6 +91,13 @@ export interface AdaptiveBotProfileInput {
   recentMatches?: SkillRecentMatch[];
   recentBotExposure?: number;
   seed?: string;
+  blockedBotIds?: ReadonlySet<string>;
+  blockedBotDisplayNames?: ReadonlySet<string>;
+}
+
+interface BotIdentity {
+  id: string;
+  name: string;
 }
 
 const THEMED_HANDLES = [
@@ -138,8 +145,35 @@ function guestStyleHandle(rng: RandomSource): string {
   return `M${digits}`;
 }
 
-function identityForName(name: string): { id: string; name: string } {
+function identityForName(name: string): BotIdentity {
   return { id: `bot_${hashUnit(name).toString().slice(2, 10)}`, name };
+}
+
+function displayNameKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function identityBlocked(identity: BotIdentity, input: Pick<AdaptiveBotProfileInput, 'blockedBotIds' | 'blockedBotDisplayNames'>): boolean {
+  return Boolean(input.blockedBotIds?.has(identity.id) || input.blockedBotDisplayNames?.has(displayNameKey(identity.name)));
+}
+
+function rememberIdentity(userKey: string, recentCooldown: number, recent: string[], identity: BotIdentity): BotIdentity {
+  const nextRecent = [identity.id, ...recent.filter((id) => id !== identity.id)].slice(0, Math.max(1, recentCooldown));
+  recentByUser.set(userKey, nextRecent);
+  return identity;
+}
+
+function availableGuestStyleIdentity(
+  rng: RandomSource,
+  recent: string[],
+  input: Pick<AdaptiveBotProfileInput, 'blockedBotIds' | 'blockedBotDisplayNames'>,
+  attempts: number,
+): BotIdentity | null {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const candidate = identityForName(guestStyleHandle(rng));
+    if (!recent.includes(candidate.id) && !identityBlocked(candidate, input)) return candidate;
+  }
+  return null;
 }
 
 function weightedTrophyOffset(playerTrophies: number, pressure: number, rng: RandomSource): number {
@@ -248,40 +282,34 @@ function profileDomains(archetype: BotArchetype, rng: RandomSource): { favorite:
   return { favorite: [...favorite], weak: [...weak].slice(0, 2) };
 }
 
-function chooseIdentity(userKey: string, recentCooldown: number, rng: RandomSource): { id: string; name: string } {
+function chooseIdentity(userKey: string, recentCooldown: number, rng: RandomSource, input: Pick<AdaptiveBotProfileInput, 'blockedBotIds' | 'blockedBotDisplayNames'>): BotIdentity {
   const recent = recentByUser.get(userKey) ?? [];
   if (rng.next() < GUEST_STYLE_HANDLE_WEIGHT) {
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const candidate = identityForName(guestStyleHandle(rng));
-      if (!recent.includes(candidate.id)) {
-        const nextRecent = [candidate.id, ...recent.filter((id) => id !== candidate.id)].slice(0, Math.max(1, recentCooldown));
-        recentByUser.set(userKey, nextRecent);
-        return candidate;
-      }
-    }
+    const guestIdentity = availableGuestStyleIdentity(rng, recent, input, 4);
+    if (guestIdentity) return rememberIdentity(userKey, recentCooldown, recent, guestIdentity);
   }
   const preferred = rng.next() < HUMAN_HANDLE_WEIGHT ? HUMAN_HANDLES : THEMED_HANDLES;
   const fallback = preferred === HUMAN_HANDLES ? THEMED_HANDLES : HUMAN_HANDLES;
-  let candidates = preferred.map(identityForName);
-  let filtered = candidates.filter((c) => !recent.includes(c.id));
-  if (filtered.length >= Math.min(12, candidates.length)) candidates = filtered;
-  else {
-    const fallbackCandidates = fallback.map(identityForName);
-    filtered = [...candidates, ...fallbackCandidates].filter((c) => !recent.includes(c.id));
-    if (filtered.length) candidates = filtered;
+  const candidates = [...preferred, ...fallback]
+    .map(identityForName)
+    .filter((candidate) => !identityBlocked(candidate, input));
+  if (!candidates.length) {
+    const guestIdentity = availableGuestStyleIdentity(rng, recent, input, 64);
+    if (guestIdentity) return rememberIdentity(userKey, recentCooldown, recent, guestIdentity);
+    throw new Error('bot identity pool exhausted');
   }
-  const pickIdx = Math.floor(rng.next() * candidates.length);
-  const selected = candidates[pickIdx] ?? candidates[0]!;
-  const nextRecent = [selected.id, ...recent.filter((id) => id !== selected.id)].slice(0, Math.max(1, recentCooldown));
-  recentByUser.set(userKey, nextRecent);
-  return selected;
+  const filtered = candidates.filter((c) => !recent.includes(c.id));
+  const pickable = filtered.length ? filtered : candidates;
+  const pickIdx = Math.floor(rng.next() * pickable.length);
+  const selected = pickable[pickIdx] ?? pickable[0]!;
+  return rememberIdentity(userKey, recentCooldown, recent, selected);
 }
 
 export function selectBotProfileForSkill(input: AdaptiveBotProfileInput): BotProfile {
   const cfg = opponentConfig();
   const seed = input.seed ?? `${input.userKey}:${Date.now()}:${Math.random()}`;
   const rng = rngFor(seed);
-  const identity = chooseIdentity(input.userKey, input.recentCooldown, rng);
+  const identity = chooseIdentity(input.userKey, input.recentCooldown, rng, input);
   const director = runBotDifficultyDirector({
     playerId: input.userKey,
     playerHiddenMmr: input.playerSkillMean,
@@ -319,7 +347,13 @@ export function selectBotProfileForSkill(input: AdaptiveBotProfileInput): BotPro
   const forcedMean = typeof input.forcedSkill === 'number' && Number.isFinite(input.forcedSkill)
     ? botSkillMeanFromFraction(input.forcedSkill)
     : null;
-  const skillMean = Math.round(clamp(forcedMean ?? targetMean, 560, 2100));
+  // ELIT BANT (2026-08-26): bot skillMean tavani sabit 2100'du ve beceri egrisi
+  // ~1660'ta doyuyordu — 2400 MMR'li bir oyuncu ust bant botlara %83 kazanip
+  // 76 maclik seri yapabildi (M240946288 vakasi). Oyuncu 2000+ ortalamadaysa
+  // botlar oyuncuyu TAKIP eder (tavan 2800'e esner) ve asagida orta/zor soru
+  // isabeti + tempo elitlesir; 2600'de tam guc.
+  const elite = clamp((input.playerSkillMean - 2000) / 600, 0, 1);
+  const skillMean = Math.round(clamp(forcedMean ?? targetMean, 560, 2100 + elite * 700));
   const baseSkill = botSkillFractionFromMean(skillMean);
   const forcedArchetype = ['FAST_RISKY', 'BALANCED', 'CAREFUL', 'CASUAL', 'STRONG', 'SPECIALIST'].includes(input.forcedArchetype ?? '')
     ? input.forcedArchetype as BotArchetype
@@ -360,9 +394,9 @@ export function selectBotProfileForSkill(input: AdaptiveBotProfileInput): BotPro
   const confidence = clamp(answerConfidence + riskBias[archetype] * 0.18 + normal(rng, 0, 0.045), 0.12, 0.94);
   const consistency = clamp(recallConsistency + (archetype === 'CAREFUL' ? 0.10 : archetype === 'FAST_RISKY' ? -0.10 : 0) + normal(rng, 0, 0.035), 0.15, 0.96);
   const riskTolerance = clamp(0.42 + riskBias[archetype] + confidence * 0.18 + normal(rng, 0, 0.035), 0.08, 0.96);
-  const easyAccuracy = clamp(0.54 + footballKnowledge * 0.38 + consistency * 0.05, 0.48, 0.985);
-  const mediumAccuracy = clamp(0.22 + questionDepthTolerance * 0.50 + footballKnowledge * 0.16 + consistency * 0.05, 0.14, 0.96);
-  const hardAccuracy = clamp(0.05 + questionDepthTolerance * 0.58 + (archetype === 'SPECIALIST' ? 0.03 : 0), 0.035, 0.91);
+  const easyAccuracy = clamp(0.54 + footballKnowledge * 0.38 + consistency * 0.05 + elite * 0.04, 0.48, 0.99);
+  const mediumAccuracy = clamp(0.22 + questionDepthTolerance * 0.50 + footballKnowledge * 0.16 + consistency * 0.05 + elite * 0.34, 0.14, 0.96);
+  const hardAccuracy = clamp(0.05 + questionDepthTolerance * 0.58 + (archetype === 'SPECIALIST' ? 0.03 : 0) + elite * 0.38, 0.035, 0.91);
   const answerAccuracy = clamp(easyAccuracy * 0.34 + mediumAccuracy * 0.42 + hardAccuracy * 0.24, 0.12, 0.95);
   const reactionSpeedProfile: ReactionSpeedProfile = archetype === 'FAST_RISKY' || archetype === 'STRONG'
     ? 'fast'
@@ -371,12 +405,12 @@ export function selectBotProfileForSkill(input: AdaptiveBotProfileInput): BotPro
       : archetype === 'CASUAL'
         ? 'swingy'
         : 'balanced';
-  const medianBase = 7600 - reactionSpeed * 4100 + (director.enabled ? director.newPlayerProtection * 950 : 0) + (archetype === 'CAREFUL' ? 850 : archetype === 'FAST_RISKY' ? -500 : 0);
+  const medianBase = 7600 - reactionSpeed * 4100 - elite * 1400 + (director.enabled ? director.newPlayerProtection * 950 : 0) + (archetype === 'CAREFUL' ? 850 : archetype === 'FAST_RISKY' ? -500 : 0);
   const responseMedianMs = Math.round(clamp(medianBase + normal(rng, 0, 420), cfg.botReactionMinMs + 250, cfg.botReactionMaxMs - 1400));
   const responseVarianceMs = Math.round(clamp(900 + (1 - consistency) * 3200 + (reactionSpeedProfile === 'swingy' ? 1800 : 0), 450, 6400));
-  const mistakeProbability = clamp((1 - answerAccuracy) * (0.28 + riskTolerance * 0.42) + (1 - consistency) * 0.06, cfg.botErrorMin, cfg.botErrorMax);
-  const timeoutProbability = clamp((1 - footballKnowledge) * 0.10 + (1 - confidence) * 0.05 + (archetype === 'CAREFUL' ? 0.025 : 0), cfg.botTimeoutMin, cfg.botTimeoutMax);
-  const hesitationProbability = clamp((1 - confidence) * 0.34 + (archetype === 'CAREFUL' ? 0.18 : archetype === 'FAST_RISKY' ? -0.08 : 0), 0.04, 0.62);
+  const mistakeProbability = clamp(((1 - answerAccuracy) * (0.28 + riskTolerance * 0.42) + (1 - consistency) * 0.06) * (1 - elite * 0.45), cfg.botErrorMin, cfg.botErrorMax);
+  const timeoutProbability = clamp(((1 - footballKnowledge) * 0.10 + (1 - confidence) * 0.05 + (archetype === 'CAREFUL' ? 0.025 : 0)) * (1 - elite * 0.6), cfg.botTimeoutMin, cfg.botTimeoutMax);
+  const hesitationProbability = clamp(((1 - confidence) * 0.34 + (archetype === 'CAREFUL' ? 0.18 : archetype === 'FAST_RISKY' ? -0.08 : 0)) * (1 - elite * 0.4), 0.04, 0.62);
   const participationRate = clamp(0.74 + confidence * 0.14 + pressureHandling * 0.10 - timeoutProbability * 0.18, 0.58, 0.985);
   const preferredDecisionDelay: [number, number] = [
     Math.round(clamp(responseMedianMs - responseVarianceMs * 0.75, cfg.botReactionMinMs, cfg.botReactionMaxMs - 1000)),

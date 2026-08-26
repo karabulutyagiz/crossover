@@ -62,6 +62,32 @@ export const config = {
   pushEnabled: (process.env.PUSH_ENABLED ?? '1') === '1',
   minIosBuild: Number(process.env.MIN_IOS_BUILD ?? '1'),
   minAndroidVersionCode: Number(process.env.MIN_ANDROID_VERSION_CODE ?? '1'),
+  storeVersionCheck: {
+    enabled: boolEnv('STORE_VERSION_CHECK_ENABLED', true),
+    cacheMs: intEnv('STORE_VERSION_CHECK_CACHE_MS', 10 * 60 * 1000),
+    timeoutMs: intEnv('STORE_VERSION_CHECK_TIMEOUT_MS', 4000),
+    staleIfErrorMs: intEnv('STORE_VERSION_CHECK_STALE_IF_ERROR_MS', 24 * 60 * 60 * 1000),
+    iosAppId: process.env.IOS_APP_STORE_ID ?? '6778542426',
+    iosBundleId: process.env.IOS_BUNDLE_ID ?? 'com.crossover.football',
+    appStoreCountry: process.env.APP_STORE_COUNTRY ?? 'tr',
+    appStoreConnectKeyId: process.env.APP_STORE_CONNECT_KEY_ID ?? '',
+    appStoreConnectIssuerId: process.env.APP_STORE_CONNECT_ISSUER_ID ?? '',
+    appStoreConnectPrivateKey: process.env.APP_STORE_CONNECT_PRIVATE_KEY ?? '',
+    androidPackageName: process.env.ANDROID_PACKAGE_NAME ?? 'com.crossover.football',
+    playStoreCountry: (process.env.PLAY_STORE_COUNTRY ?? 'TR').toUpperCase(),
+    playStoreLanguage: process.env.PLAY_STORE_LANGUAGE ?? 'en',
+    playStoreIncludeStagedReleases: boolEnv('PLAY_STORE_INCLUDE_STAGED_RELEASES', false),
+    googlePlayServiceAccountJson: process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON ?? '',
+    googlePlayClientEmail: process.env.GOOGLE_PLAY_CLIENT_EMAIL ?? '',
+    googlePlayPrivateKey: process.env.GOOGLE_PLAY_PRIVATE_KEY ?? '',
+  },
+  // Kesinti telafisi: pencere açıkken oyuna giren her hesaba bir kereye mahsus
+  // Sosyal Paket süresi eklenir. Pencere kapanınca kod kendiliğinden susar.
+  outageGift: {
+    enabled: boolEnv('OUTAGE_GIFT_ENABLED', true),
+    until: process.env.OUTAGE_GIFT_UNTIL ?? '2026-09-01T21:00:00Z',
+    hours: intEnv('OUTAGE_GIFT_HOURS', 24),
+  },
   // Admin paneli bearer anahtarı — /admin/api/* uçlarını korur. Boşsa admin API
   // tamamen kapalıdır (her istek 401 döner), yani anahtar tanımlanmadan veri sızmaz.
   adminToken: process.env.ADMIN_TOKEN ?? '',

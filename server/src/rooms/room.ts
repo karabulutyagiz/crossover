@@ -172,6 +172,8 @@ export class Room {
   private lastTrophyDeltaByUser = new Map<string, number>();
   private recentBotPicks: number[] = []; // last bot team ids (no-repeat within 10)
   private disconnectTimers = new Map<string, NodeJS.Timeout>();
+  private disposeCallbacks: Array<() => void> = [];
+  private disposed = false;
   // Maç boyunca seçilmiş takımlar/ülkeler — bir kez seçilen bir daha seçilemez
   // (maç bitene kadar). İstemci bunları karartıp devre dışı bırakır; sunucu da
   // tekrar seçimi reddeder. Her maç başında sıfırlanır.
@@ -182,6 +184,23 @@ export class Room {
   constructor(code: string, onEmpty: (code: string) => void) {
     this.code = code;
     this.onEmpty = onEmpty;
+  }
+
+  onDispose(callback: () => void): void {
+    if (this.disposed) {
+      try { callback(); } catch (err) { log.warn('room_dispose_callback_failed', { room: this.code, error: err instanceof Error ? err.message : String(err) }); }
+      return;
+    }
+    this.disposeCallbacks.push(callback);
+  }
+
+  private dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    for (const callback of this.disposeCallbacks.splice(0)) {
+      try { callback(); } catch (err) { log.warn('room_dispose_callback_failed', { room: this.code, error: err instanceof Error ? err.message : String(err) }); }
+    }
+    this.onEmpty(this.code);
   }
 
   assignNextMatchId(matchId: string): void {
@@ -443,6 +462,7 @@ export class Room {
             ledgerMetadata: { forfeitReason: reason },
           });
           await recordOpponentHistory({ matchId: this.matchId, playerId: p.userId!, opponentType: 'BOT', winnerId: null, won: false, trophyDelta: leaverRes.delta, durationSecs: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0 });
+          // Dereceli maçtan ayrılan gerçek maç mağlubiyet XP'si alır (bot dolgusu olsa da).
           const xpRes = await awardMatchXp(p.userId!, false, false);
           await updateSkillAfterMatch(p.userId!, p.trophies ?? leaverRes.profile.trophies, {
             opponentType: 'BOT',
@@ -490,7 +510,7 @@ export class Room {
     if (this.players.size === 0 || !humansLeft) {
       this.players.clear();
       this.clearDisconnectTimers();
-      this.onEmpty(this.code);
+      this.dispose();
       return;
     }
 
@@ -981,7 +1001,7 @@ export class Room {
     if (this.players.size === 0 || !humansLeft) {
       this.players.clear();
       this.clearDisconnectTimers();
-      this.onEmpty(this.code);
+      this.dispose();
       return;
     }
     // Someone is still here — don't strand them on a frozen pick screen. Reset to
@@ -1824,7 +1844,12 @@ export class Room {
           bestStreak: profile.bestStreak,
           lostStreak: profile.lostStreak,
         });
-        // Seviye XP'si — kupadan bağımsız, kaybeden de kazanır
+        // Seviye XP'si — kupadan bağımsız, kaybeden de kazanır. settleMatch
+        // YALNIZ dereceli maçta çağrılır (this.ranked kapısı) ve dereceli maç
+        // GERÇEK maç XP'si verir: oyuncu rakibinin bot dolgusu olduğunu bilmez;
+        // kupa akarken XP'nin günlük 60 bot tavanına takılması "maç kazandım,
+        // XP gelmedi" arızasıydı (2026-08-26). Tavan artık yalnız dereceli
+        // olmayan antrenman botlarında yaşar.
         const xpRes = await awardMatchXp(p.userId, won, false);
         if (xpRes) p.transport.send({ type: 'xp_update', ...xpRes });
         const updatedSkill = await updateSkillAfterMatch(p.userId, p.trophies ?? profile.trophies, {

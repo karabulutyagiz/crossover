@@ -9,7 +9,7 @@ import { BotPlayer } from '../rooms/bot.ts';
 import { listScopes, listNationalities } from '../game/verify.ts';
 import {
   findOrCreateUser, findOrCreateUserByProvider, createGuestUser, getUser, changeDisplayName,
-  grantDevEmotesIfNeeded,
+  grantDevEmotesIfNeeded, claimOutageGift,
   setUsername, buyEmote, setEquippedEmotes, setAvatar, setSelectedFrame, buyAvatar, touchLastSeen, getLeaderboard, grantAdReward, usePower, getModeStats, getRankedProfileStats, buyPremiumRoad, buyPower, getLeaderboardBotProfile, getBotPressureProfile,
   listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
   removeFriend, searchUsers, getMatchHistory, deleteAccount, recordPlaySession, getArena,
@@ -46,6 +46,7 @@ import { botProfileSnapshot, recordBotMatchProfile } from '../matchmaking/botTel
 import type { Room, Transport } from '../rooms/room.ts';
 import type { MessageView, ConversationView } from '../protocol.ts';
 import type { ClientMsg, GameMode, ProfileView, ServerMsg } from '../protocol.ts';
+import { getLiveStoreVersions, storeVersionIsNewer, type StorePlatform } from '../storeVersions.ts';
 
 // Guideline 1.2: no anonymous posting. Any path that creates content another
 // user sees requires a verified Apple/Google/Facebook identity — a guest can
@@ -60,6 +61,16 @@ const adminHtml = (() => {
   try { return readFileSync(join(__dirname, '../../admin/index.html'), 'utf8'); }
   catch { return null; }
 })();
+
+function clientPlatform(value: string | null): StorePlatform | null {
+  return value === 'ios' || value === 'android' ? value : null;
+}
+
+function clientBuild(value: string | null): number | null {
+  if (!value) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
 
 interface ConnCtx {
   room: Room;
@@ -82,6 +93,8 @@ function toProfileView(p: UserProfile): ProfileView {
     equippedEmotes: p.equippedEmotes,
     usernameSet: p.usernameSet,
     socialPackUntil: p.socialPackUntil,
+    outageGiftAt: p.outageGiftAt,
+    outageGiftAvailable: p.outageGiftAvailable,
     arena: p.arena,
     avatar: p.avatar,
     xp: p.xp,
@@ -306,6 +319,25 @@ export function startServer(port: number): Server {
   const orchestrator = new MatchmakingOrchestrator(hybridCfg());
   const pendingInvites = new Map<string, PendingInvite>(); // `${fromUserId}:${toUserId}`
   const activeSearchByWs = new WeakMap<WebSocket, string>();
+  const activeBotIds = new Set<string>();
+  const activeBotDisplayNames = new Set<string>();
+
+  function botDisplayNameKey(name: string): string {
+    return name.trim().toLowerCase();
+  }
+
+  function reserveActiveBot(profile: BotProfile): boolean {
+    const nameKey = botDisplayNameKey(profile.displayName);
+    if (activeBotIds.has(profile.id) || activeBotDisplayNames.has(nameKey)) return false;
+    activeBotIds.add(profile.id);
+    activeBotDisplayNames.add(nameKey);
+    return true;
+  }
+
+  function releaseActiveBot(profile: BotProfile): void {
+    activeBotIds.delete(profile.id);
+    activeBotDisplayNames.delete(botDisplayNameKey(profile.displayName));
+  }
 
   function failQueuedSearch(entry: QueueEntry, event: string, message: string, extra: Record<string, unknown> = {}): void {
     entry.assigned = true;
@@ -525,31 +557,46 @@ export function startServer(port: number): Server {
     }
     const velocity = entry.userProfile?.id ? await getTrophyVelocity(entry.userProfile.id).catch(() => ({ pressure: 0 })) : { pressure: 0 };
     const mode = entryMode(entry);
-    const botProfile = selectBotProfileForSkill({
-      userKey: entry.userProfile?.id ?? entry.userId ?? entry.requestId ?? entry.name,
-      playerTrophies,
-      playerSkillMean: skillProfile?.skillMean ?? 1000,
-      playerSkillUncertainty: skillProfile?.skillUncertainty ?? 350,
-      playerMatchesPlayed: skillProfile?.matchesPlayed ?? 0,
-      recentCooldown: config.matchmaking.recentBotCooldown,
-      forcedArchetype: config.matchmaking.debug.botArchetype,
-      forcedSkill: config.matchmaking.debug.botSkill,
-      pressureProfile,
-      velocityPressure: velocity.pressure,
-      gameMode: mode,
-      queueHealthScore: entry.lastQueueHealth?.queueHealthScore ?? null,
-      accuracyEma: skillProfile?.overallAccuracy,
-      responseTimeEmaMs: skillProfile?.medianCorrectResponseTimeMs ?? null,
-      easyQuestionAccuracy: skillProfile?.easyQuestionAccuracy,
-      mediumQuestionAccuracy: skillProfile?.mediumQuestionAccuracy,
-      hardQuestionAccuracy: skillProfile?.hardQuestionAccuracy,
-      currentForm: skillProfile?.currentForm,
-      recentMatches: skillProfile?.recentMatches,
-      recentBotExposure: pressureProfile?.botGames,
-      seed: `${entry.requestId ?? entry.userId ?? entry.name}:${Date.now()}`,
-    });
+    let botProfile: BotProfile | undefined;
+    const botSeed = `${entry.requestId ?? entry.userId ?? entry.name}:${Date.now()}`;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const candidate = selectBotProfileForSkill({
+        userKey: entry.userProfile?.id ?? entry.userId ?? entry.requestId ?? entry.name,
+        playerTrophies,
+        playerSkillMean: skillProfile?.skillMean ?? 1000,
+        playerSkillUncertainty: skillProfile?.skillUncertainty ?? 350,
+        playerMatchesPlayed: skillProfile?.matchesPlayed ?? 0,
+        recentCooldown: config.matchmaking.recentBotCooldown,
+        forcedArchetype: config.matchmaking.debug.botArchetype,
+        forcedSkill: config.matchmaking.debug.botSkill,
+        pressureProfile,
+        velocityPressure: velocity.pressure,
+        gameMode: mode,
+        queueHealthScore: entry.lastQueueHealth?.queueHealthScore ?? null,
+        accuracyEma: skillProfile?.overallAccuracy,
+        responseTimeEmaMs: skillProfile?.medianCorrectResponseTimeMs ?? null,
+        easyQuestionAccuracy: skillProfile?.easyQuestionAccuracy,
+        mediumQuestionAccuracy: skillProfile?.mediumQuestionAccuracy,
+        hardQuestionAccuracy: skillProfile?.hardQuestionAccuracy,
+        currentForm: skillProfile?.currentForm,
+        recentMatches: skillProfile?.recentMatches,
+        recentBotExposure: pressureProfile?.botGames,
+        blockedBotIds: activeBotIds,
+        blockedBotDisplayNames: activeBotDisplayNames,
+        seed: attempt === 0 ? botSeed : `${botSeed}:${attempt}`,
+      });
+      if (reserveActiveBot(candidate)) {
+        botProfile = candidate;
+        break;
+      }
+    }
+    if (!botProfile) {
+      failQueuedSearch(entry, 'bot_identity_pool_exhausted', 'Rakip bulunamadı, tekrar dene', { activeBotCount: activeBotIds.size });
+      return false;
+    }
     entry.botProfile = botProfile;
     const room = manager.createRoom();
+    room.onDispose(() => releaseActiveBot(botProfile));
     const matchId = randomUUID();
     room.assignNextMatchId(matchId);
     room.ranked = true;
@@ -786,13 +833,56 @@ export function startServer(port: number): Server {
       res.end(JSON.stringify({ ok: true, rooms: manager.count }));
       return;
     }
-    if (req.url === '/config') {
-      res.writeHead(200, cors);
-      res.end(JSON.stringify({
-        maintenance: config.maintenanceMode,
-        minIosBuild: config.minIosBuild,
-        minAndroidVersionCode: config.minAndroidVersionCode,
-      }));
+    if (path === '/config') {
+      void (async () => {
+        const platform = clientPlatform(query.get('platform'));
+        const version = query.get('version');
+        const build = clientBuild(query.get('build'));
+        const storeVersions = await getLiveStoreVersions();
+        const platformStoreVersion = platform === 'android' ? storeVersions.androidVersion : platform === 'ios' ? storeVersions.iosVersion : null;
+        // The forced-update gate is OPERATOR-controlled only (MIN_IOS_BUILD /
+        // MIN_ANDROID_VERSION_CODE). It must NEVER be derived from the live
+        // store version: the build number the client reports lives in the JS
+        // bundle, so an OTA can make an up-to-date install report a number
+        // below the store's — which locks every player out behind an "update"
+        // screen that has no update to install (2026-08-25 outage: App Store
+        // 1.0.2 shipped as native build 127 while its bundle still said 126,
+        // and the auto-raised minimum turned that one-off drift into a
+        // full lockout).
+        const effectiveMinIosBuild = config.minIosBuild;
+        const effectiveMinAndroidVersionCode = config.minAndroidVersionCode;
+        const updateRequired = platform === 'android'
+          ? build !== null && build < effectiveMinAndroidVersionCode
+          : platform === 'ios'
+            ? build !== null && build < effectiveMinIosBuild
+            : false;
+        // Informational only — lets the client show a soft "yeni sürüm var"
+        // nudge without ever blocking play.
+        const updateAvailable = platform === 'android'
+          ? (build !== null && storeVersions.androidVersionCode !== null && build < storeVersions.androidVersionCode) || storeVersionIsNewer(version, platformStoreVersion)
+          : platform === 'ios'
+            ? storeVersionIsNewer(version, platformStoreVersion)
+            : false;
+
+        res.writeHead(200, cors);
+        res.end(JSON.stringify({
+          maintenance: config.maintenanceMode,
+          minIosBuild: effectiveMinIosBuild,
+          minAndroidVersionCode: effectiveMinAndroidVersionCode,
+          latestIosVersion: storeVersions.iosVersion,
+          latestIosBuild: storeVersions.iosBuildNumber,
+          latestAndroidVersion: storeVersions.androidVersion,
+          latestAndroidVersionCode: storeVersions.androidVersionCode,
+          storeVersionSource: storeVersions.source,
+          storeVersionCheckedAt: storeVersions.checkedAt,
+          updateAvailable,
+          updateRequired,
+        }));
+      })().catch((err) => {
+        log.warn('config_response_failed', { error: err instanceof Error ? err.message : String(err) });
+        if (!res.headersSent) res.writeHead(500, cors);
+        res.end(JSON.stringify({ error: 'config_failed' }));
+      });
       return;
     }
     if (req.url === '/monetization-config') {
@@ -1363,6 +1453,24 @@ export function startServer(port: number): Server {
           } catch (err) {
             console.error('[buy_power] failed:', err instanceof Error ? err.message : err);
             transport.send({ type: 'error', message: 'Satın alma başarısız' });
+          }
+        })();
+        return;
+      }
+
+      // Kesinti telafisi: özür penceresindeki "AL". Hediye SADECE burada,
+      // yani oyuncunun kendi isteğiyle tanımlanır; tek seferliktir.
+      if (msg.type === 'claim_outage_gift') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          try {
+            const result = await claimOutageGift(userProfile!.id);
+            if (!result.ok) return transport.send({ type: 'error', message: result.error });
+            userProfile = result.profile;
+            transport.send({ type: 'outage_gift_claimed', profile: toProfileView(result.profile), granted: result.granted });
+          } catch (err) {
+            console.error('[claim_outage_gift] failed:', err instanceof Error ? err.message : err);
+            transport.send({ type: 'error', message: 'Hediye tanımlanamadı' });
           }
         })();
         return;

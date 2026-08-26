@@ -108,10 +108,16 @@ export function isFreeDefaultCosmetic(item: CosmeticItem): boolean {
 
 export function storeCatalog(now = new Date()): StoreCatalogView {
   const dailyResetAt = nextUtcBoundary(now, 1);
-  const weeklyResetAt = nextUtcBoundary(now, 7);
   const pool = COSMETIC_ITEMS.filter((item) => item.diamondPrice > 0);
-  const dailyIndex = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) / 86_400_000);
-  const featured = Array.from({ length: Math.min(8, pool.length) }, (_, i) => pool[(dailyIndex + i * 7) % pool.length]!.id);
+  // HAFTALIK vitrin (2026-08-26: "daily shop değil weekly shop"): seçki haftada
+  // bir, Pazartesi 00:00 UTC'de döner. Epoch günü 0 Perşembe olduğundan +3
+  // kaydırma hafta sınırlarını Pazartesi'ye oturtur — istemcideki sayaç da
+  // Pazartesi'ye sayar, ikisi aynı anda sıfırlanır.
+  const epochDay = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) / 86_400_000);
+  const weekIndex = Math.floor((epochDay + 3) / 7);
+  const weeklyResetAt = new Date(((weekIndex + 1) * 7 - 3) * 86_400_000);
+  // weekIndex*5: ardışık haftalar tek adım kaymasın, seçki gözle görülür tazelensin.
+  const featured = Array.from({ length: Math.min(8, pool.length) }, (_, i) => pool[(weekIndex * 5 + i * 7) % pool.length]!.id);
   return { version: STORE_CATALOG_VERSION, serverTime: now.toISOString(), dailyResetAt: dailyResetAt.toISOString(), weeklyResetAt: weeklyResetAt.toISOString(), items: [...COSMETIC_ITEMS], featured };
 }
 
@@ -200,6 +206,9 @@ export async function equipCosmetic(
 ): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
   const col = EQUIP_COLUMN[type];
   if (!col) return { ok: false, error: 'Geçersiz kategori' };
+  // classic_ball katalog ürünü değil, varsayılanın kendisi: eski istemciler top
+  // çıkarırken bunu gönderiyor — null say, yoksa "Geçersiz ürün"e takılır.
+  if (type === 'ball' && itemId === DEFAULT_BALL) itemId = null;
   const user = await import('./rank.ts').then((m) => m.getUser(userId));
   if (!user) return { ok: false, error: 'Kullanıcı bulunamadı' };
   if (itemId !== null) {

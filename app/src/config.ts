@@ -75,8 +75,13 @@ export async function fetchApi(path: string, timeoutMs = 8000, init?: RequestIni
 export const SERVER_URL = SERVER_URLS[0]!;
 export const HTTP_URL = httpFor(SERVER_URL);
 
-export const APP_BUILD_NUMBER = 142;
-export const APP_VERSION = '1.0.3';
+const appManifest = require('../app.json') as {
+  expo?: { version?: string; ios?: { buildNumber?: string }; android?: { versionCode?: number } };
+};
+
+export const APP_BUILD_NUMBER = Number(appManifest.expo?.ios?.buildNumber ?? 0);
+export const APP_ANDROID_VERSION_CODE = Number(appManifest.expo?.android?.versionCode ?? 0);
+export const APP_VERSION = appManifest.expo?.version ?? '0.0.0';
 
 // Google OAuth client IDs (from Google Cloud → Credentials).
 export const GOOGLE_IOS_CLIENT_ID =

@@ -45,7 +45,7 @@ import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, Lin
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState, FriendInfo, LeaderboardEntry } from './useCrossover';
 import { initialState } from './useCrossover';
-import type { BlockedUserView, ClubRef, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, ScopeOption, SpellInfo, StoreCatalogItem } from './protocol';
+import type { BlockedUserView, ClubRef, CosmeticLoadoutView, CosmeticType, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, ScopeOption, SpellInfo, StoreCatalogItem } from './protocol';
 import {
   EmoteCallout,
   EmoteSticker,
@@ -63,8 +63,9 @@ import {
 } from './emotes';
 import type { EmoteMeta } from './emotes';
 import { AvatarBadge, avatarMeta, avatarPrice, ownsAvatar } from './avatars';
-import { FRAME_ART as FRAME_ART_MAP, FRAME_SCALE, FrameOverlay } from './frames';
-import { RARITY_COLOR, cosmeticVisual, isEquippedCosmetic, nameEffectColors, ownsStoreCosmetic } from './cosmetics';
+import { FRAME_ART as FRAME_ART_MAP, FRAME_SCALE, FrameOverlay, goatStageLabel } from './frames';
+import { DEFAULT_BALL_ID, DEFAULT_MATCH_BACKGROUND_ID, RARITY_COLOR, cosmeticVisual, isEquippedCosmetic, nameEffectColors, ownsStoreCosmetic, profileLoadout, resolveMatchBackground } from './cosmetics';
+import { EffectSceneFX, NameEffectFX } from './cosmeticFx';
 import { NATIONALITIES } from './nationalities';
 import { captureError, track } from './telemetry';
 import { GameFeedbackEvent } from './feedback/events';
@@ -738,12 +739,14 @@ function SafeModal({ visible = true, children, onRequestClose, ...rest }: ModalP
   );
 }
 
-export function GameModal({ visible, onClose, onExited, onShown, title, icon, danger = false, coach = false, children }: {
+export function GameModal({ visible, onClose, onExited, onShown, title, icon, danger = false, coach = false, dismissible = true, children }: {
   // onShown: native sunum GERÇEKTEN tamamlandığında (RN Modal onShow) çağrılır.
   // "Bu pencere sunulduktan SONRA sunulmalı" el sıkışmaları (ör. StoreKit
   // sayfası) kör zamanlayıcı yerine bu olaya bağlanır — modalTraffic pencereyi
   // sıraya alsa bile olay sunumdan önce asla gelmez.
-  visible: boolean; onClose: () => void; onExited?: () => void; onShown?: () => void; title?: string; icon?: IoniconName; danger?: boolean; coach?: boolean; children: ReactNode;
+  // dismissible=false: zorunlu pencere — çarpı yok, karartmaya dokunmak ve
+  // Android geri tuşu kapatmaz. Tek çıkış içerideki eylem düğmesidir (ör. "Al").
+  visible: boolean; onClose: () => void; onExited?: () => void; onShown?: () => void; title?: string; icon?: IoniconName; danger?: boolean; coach?: boolean; dismissible?: boolean; children: ReactNode;
 }) {
   const a = useRef(new Animated.Value(0)).current;
   // Karartma KARTTAN AYRI koşar (büyük-stüdyo kalıbı, araştırma 2026-08-11):
@@ -760,9 +763,10 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
   // Kimliği sabit sarmalayıcı: Modal'a her render'da yeni onShow gitmesin.
   const handleShow = useCallback(() => { onShownRef.current?.(); }, []);
   const handleClose = useCallback(() => {
+    if (!dismissible) return; // zorunlu pencere: karartma/geri tuşu yutulur
     dismissActiveInput();
     onClose();
-  }, [onClose]);
+  }, [dismissible, onClose]);
   const wasVisibleRef = useRef(false);
   useLayoutEffect(() => {
     if (visible || wasVisibleRef.current) dismissActiveInput();
@@ -810,7 +814,7 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
       <Animated.View style={{ flex: 1, backgroundColor: theme.scrim, opacity: scrim }}>
         {/* Inert the instant `visible` flips false — the 160ms exit must not be
             hit-testable (double-tapped confirms re-fired actions, e.g. double gem charges) */}
-        <Pressable pointerEvents={visible ? 'auto' : 'none'} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }} onPress={() => { triggerFeedback(GameFeedbackEvent.UI_CLOSE); handleClose(); }}>
+        <Pressable pointerEvents={visible ? 'auto' : 'none'} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }} onPress={dismissible ? () => { triggerFeedback(GameFeedbackEvent.UI_CLOSE); handleClose(); } : undefined}>
           <Animated.View
             pointerEvents={visible ? 'auto' : 'none'}
             style={{
@@ -833,7 +837,7 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
             <Pressable onPress={() => {}} style={{ backgroundColor: theme.modalFace, borderRadius: 21, overflow: 'hidden' }}>
               {!danger ? <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.16, zIndex: 6 }} /> : null}
               {title ? (
-                <View style={{ backgroundColor: strip, paddingLeft: 18, paddingRight: 54, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 9, overflow: 'hidden' }}>
+                <View style={{ backgroundColor: strip, paddingLeft: 18, paddingRight: dismissible ? 54 : 18, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 9, overflow: 'hidden' }}>
                   <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.34 }} />
                   <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2.5, backgroundColor: darken(strip, 0.42) }} />
                   {icon ? <Ionicons name={icon} size={17} color={SKIN_LABEL_COLOR} /> : null}
@@ -841,6 +845,7 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
                 </View>
               ) : null}
               <View style={{ padding: 20, paddingTop: title ? 16 : 20, gap: 12 }}>{children}</View>
+              {dismissible ? (
               <Pressable
                 onPress={handleClose}
                 onPressIn={() => triggerFeedback(GameFeedbackEvent.UI_CLOSE)}
@@ -856,6 +861,7 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
               >
                 <Ionicons name="close" size={16} color={title ? SKIN_LABEL_COLOR : theme.textSub} />
               </Pressable>
+              ) : null}
             </Pressable>
             </View>
           </Animated.View>
@@ -3021,7 +3027,7 @@ const linkTxt = { color: theme.text, fontSize: 12, fontFamily: 'Poppins-SemiBold
 
 // Shown IN the app (guideline 1.2: "provide contact information in the app
 // itself, giving users the ability to report inappropriate activity").
-const SUPPORT_EMAIL = 'yagizkarabulutmedya@gmail.com';
+const SUPPORT_EMAIL = 'info@crossoverfootball.com';
 
 const FEEDBACK_CATEGORIES: { id: PlayerFeedbackCategory; icon: IoniconName; title: string; body: string }[] = [
   { id: 'suggestion', icon: 'bulb', title: 'Öneri', body: 'Oyuna ekleyelim dediğin fikirler.' },
@@ -4873,7 +4879,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
 
       <View style={{ flexDirection: 'row', gap: gapMd, marginTop: gapSm, alignItems: 'flex-end' }}>
         <ArtCard
-          title={arenaLabel(profile?.arena.name ?? '')}
+          title={arenaLabel(profile?.arena.name ?? '') + (profile?.arena.name === 'GOAT' ? goatStageLabel(profile?.trophies) : '')}
           tint={theme.card}
           height={secondaryCardH}
           onPress={openArenas}
@@ -5336,14 +5342,16 @@ export function MatchupScreen({ state }: Props) {
 
   const oppColor = opp?.arena ? arenaColor(opp.arena.name) : theme.muted;
   const youColor = you?.arena ? arenaColor(you.arena.name) : theme.primary;
+  const matchBg = <MatchCosmeticBackdrop backgroundId={matchBackgroundIdForState(state)} />;
 
   const renderPlayer = (p: typeof you, color: string, slideY: Animated.AnimatedInterpolation<number>, fallbackAvatar?: string | null, fallbackFrame?: string | null) => (
     <Animated.View style={{ transform: [{ translateY: slideY }], opacity: anim, alignSelf: 'stretch' }}>
       {/* Alt kenar da tint rengi (eskiden darken(tint) koyu kalıp "kesik" görünüyordu) —
-          çerçeve isim kutusunun etrafını TAM sarar; derinlik gölgeden gelir. */}
+           çerçeve isim kutusunun etrafını TAM sarar; derinlik gölgeden gelir. */}
       <GamePanel compact tint={color} style={{ borderBottomColor: color }} bodyStyle={{ alignItems: 'center', gap: 6, paddingVertical: 14 }}>
-        <Avatar avatar={p?.avatar ?? fallbackAvatar} name={p?.name} size={64} ring={color} ringWidth={3} bg={theme.card} iconColor={color} iconSize={30} frameId={p?.frame ?? fallbackFrame} />
-        <CosmeticName name={p?.name ?? '?'} effectId={p?.cosmetics?.nameEffectId} style={{ color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} />
+        <IntroEffectOverlay effectId={p?.cosmetics?.introId ?? (p?.id === room?.youId ? state.profile?.equippedIntroId : null)} accent={color} />
+        <Avatar avatar={p?.avatar ?? fallbackAvatar} name={p?.name} size={64} ring={color} ringWidth={3} bg={theme.card} iconColor={color} iconSize={30} frameId={p?.frame ?? fallbackFrame} trophies={p?.trophies} />
+        <CosmeticName name={p?.name ?? '?'} effectId={p?.cosmetics?.nameEffectId ?? (p?.id === room?.youId ? state.profile?.equippedNameEffectId : null)} style={{ color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             <Ionicons name="trophy" size={15} color={theme.accent} />
@@ -5372,12 +5380,13 @@ export function MatchupScreen({ state }: Props) {
   );
 
   return (
-    <Screen>
+    <Screen bg={matchBg}>
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 }}>
         <Text style={{ color: theme.accent, fontSize: 14, fontFamily: 'Poppins-ExtraBold', letterSpacing: 3, textTransform: 'uppercase', ...engrave('lg') }}>{t('matchup.title')}</Text>
         {renderPlayer(opp, oppColor, oppSlide)}
-        <Animated.View style={{ transform: [{ scale: vsScale }] }}>
+        <Animated.View style={{ transform: [{ scale: vsScale }], alignItems: 'center', gap: 4 }}>
           <VsBadge size={50} />
+          <MatchBall ballId={localBallIdForState(state)} size={42} />
         </Animated.View>
         {renderPlayer(you, youColor, youSlide, state.profile?.avatar, state.profile?.selectedFrame)}
       </View>
@@ -5416,9 +5425,10 @@ function PlayerBar({ state, onEmotePress }: { state: GameState; onEmotePress?: (
   const opp = room?.players.find((p) => p.id !== room.youId);
   if (!room || !opp) return null;
   const color = opp.arena ? arenaColor(opp.arena.name) : theme.muted;
+  const ballId = you?.cosmetics?.ballId ?? state.profile?.equippedBallId ?? DEFAULT_BALL_ID;
   return (
     <GamePanel compact style={{ flex: 1, borderBottomColor: theme.border }} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 5, paddingHorizontal: 10 }}>
-      <Avatar avatar={opp.avatar} name={opp.name} size={30} ring={color} ringWidth={2} iconColor={color} iconSize={15} frameId={opp.frame} />
+      <Avatar avatar={opp.avatar} name={opp.name} size={30} ring={color} ringWidth={2} iconColor={color} iconSize={15} frameId={opp.frame} trophies={opp.trophies} />
       <View style={{ flex: 1 }}>
         <CosmeticName name={opp.name} effectId={opp.cosmetics?.nameEffectId} style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
@@ -5426,6 +5436,7 @@ function PlayerBar({ state, onEmotePress }: { state: GameState; onEmotePress?: (
           <Text style={{ color: theme.accent, fontSize: 10, fontFamily: 'Poppins-SemiBold', letterSpacing: 0.5, fontVariant: ['tabular-nums'] }}>{opp.trophies ?? 0}</Text>
         </View>
       </View>
+      <MatchBall ballId={ballId} size={30} />
       {/* Running score — recessed well; your side leads in mint */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.well, borderRadius: 10, overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 2 }}>
         <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
@@ -5448,7 +5459,7 @@ export function CountdownScreen({ state }: Props) {
   }, [n, a]);
   const scale = a.interpolate({ inputRange: [0, 1], outputRange: [2.4, 1] });
   return (
-    <Screen>
+    <Screen bg={<MatchCosmeticBackdrop backgroundId={matchBackgroundIdForState(state)} />}>
       {/* Animasyonlu WebP emote'larının oturum başına bir kez görünmez ısınması
           (#28): ilk emote patlaması ve emote sayfası açılışı decode'a takılmasın.
           Geri sayım doğal pencere — tur başlayınca ekran zaten unmount olur. */}
@@ -5462,6 +5473,9 @@ export function CountdownScreen({ state }: Props) {
               {n > 0 ? n : 'GO!'}
             </Animated.Text>
           </View>
+        </View>
+        <View style={{ marginTop: 12 }}>
+          <MatchBall ballId={localBallIdForState(state)} size={54} />
         </View>
         <Text style={{ color: theme.muted, marginTop: 20, fontFamily: 'Poppins-ExtraBold', fontSize: 14, letterSpacing: 1 }}>{t('getReady')}</Text>
       </View>
@@ -5559,6 +5573,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   // misin", derecelide kupa uyarısı, dostlukta kupasız hükmen metni.
   const leaveKind = state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
   const handleLeave = () => tutorial ? actions.leave() : setShowLeaveConfirm(true);
+  const matchBg = <MatchCosmeticBackdrop backgroundId={matchBackgroundIdForState(state)} />;
 
   const onChange = (text: string) => {
     setQ(text);
@@ -5702,7 +5717,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
 
   if (state.picked) {
     return (
-      <Screen>
+      <Screen bg={matchBg}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 0, gap: 10, marginBottom: 12 }}>
           <MatchExitButton onPress={handleLeave} />
           <PlayerBar state={state} onEmotePress={tutorial ? undefined : () => setEmoteOpen(true)} />
@@ -5747,7 +5762,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
       timer.current = setTimeout(() => actions.searchPlayers(text.trim()), 140);
     };
     return (
-      <Screen>
+      <Screen bg={matchBg}>
         {header(t('pick.titlePlayer'))}
         <GameInput
           icon="search"
@@ -5774,7 +5789,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
       // contentCenter={false}: the letter grid is shorter than the viewport, so the
       // Screen default (justifyContent center) floated the whole block down and
       // left a big gap above the header — every pick state is top-anchored.
-      <Screen contentCenter={false}>
+      <Screen contentCenter={false} bg={matchBg}>
         {header(t('pick.titleLetter'))}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 12 }}>
           {PICK_LETTERS.map((l) => (
@@ -5804,7 +5819,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
   // ---- Country picker ----
   if (role === 'country') {
     return (
-      <Screen>
+      <Screen bg={matchBg}>
         {header(t('pick.titleCountry'))}
         <GameInput
           icon="search"
@@ -5827,7 +5842,7 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
 
   // ---- Team picker (default) ----
   return (
-    <Screen>
+    <Screen bg={matchBg}>
       {header(t('pick.title'))}
       <GameInput
         icon="search"
@@ -6619,6 +6634,237 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
   );
 }
 
+type EquippableCosmeticType = Exclude<CosmeticType, 'avatar' | 'emote'>;
+const EQUIPPABLE_COSMETIC_TYPES: readonly EquippableCosmeticType[] = ['frame', 'name_effect', 'match_background', 'ball', 'intro', 'victory_effect', 'answer_effect'];
+const COSMETIC_SLOT_META: readonly { type: EquippableCosmeticType; label: string; empty: string; icon: IoniconName }[] = [
+  { type: 'frame', label: 'Çerçeve', empty: 'Boş', icon: 'radio-button-on' },
+  { type: 'name_effect', label: 'İsim', empty: 'Efektsiz', icon: 'text' },
+  { type: 'match_background', label: 'Arena', empty: 'Varsayılan', icon: 'stadium' as IoniconName },
+  { type: 'ball', label: 'Top', empty: 'Classic', icon: 'football' },
+  { type: 'intro', label: 'Giriş', empty: 'Yok', icon: 'sparkles' },
+  { type: 'victory_effect', label: 'Zafer', empty: 'Yok', icon: 'trophy' },
+  { type: 'answer_effect', label: 'Cevap', empty: 'Yok', icon: 'flash' },
+];
+const COSMETIC_FALLBACK_NAMES: Record<string, string> = {
+  [DEFAULT_BALL_ID]: 'Classic',
+  bronze: 'Bronze Frame',
+  silver: 'Silver Frame',
+  gold: 'Gold Frame',
+  diamond: 'Diamond Frame',
+  goat: 'GOAT Frame',
+};
+// Kullanıcının çizdiği kozmetik asset'leri (2026-08-26 AirDrop): isim plakaları,
+// arena fotoğrafları, arma toplar. Gönderilmeyen kozmetikler kod-çizimi kalır.
+const COSMETIC_ART = {
+  fireNameplate: require('../assets/cosmetics/fire_nameplate.png'),
+  iceNameplate: require('../assets/cosmetics/ice_nameplate.png'),
+  neonPitchBg: require('../assets/cosmetics/neon_pitch_bg.jpg'),
+  nightStadiumBg: require('../assets/cosmetics/night_stadium_bg.jpg'),
+  goatBallCrest: require('../assets/cosmetics/goat_ball_crest.png'),
+  championsBallCrest: require('../assets/cosmetics/champions_ball_crest.png'),
+} as const;
+
+const MATCH_BACKGROUND_LOOK: Record<string, { top: string; bottom: string; accent: string; glow: string; line: string }> = {
+  [DEFAULT_MATCH_BACKGROUND_ID]: { top: theme.bg, bottom: '#07112B', accent: theme.primary, glow: 'rgba(22,178,122,0.18)', line: 'rgba(255,255,255,0.10)' },
+  champions_stadium: { top: '#071B45', bottom: '#111A38', accent: '#37A8FF', glow: 'rgba(55,168,255,0.34)', line: 'rgba(255,206,58,0.24)' },
+  night_stadium: { top: '#060B21', bottom: '#101C3C', accent: '#7FD7FF', glow: 'rgba(127,215,255,0.24)', line: 'rgba(127,215,255,0.16)' },
+  fire_arena: { top: '#260B10', bottom: '#0B1838', accent: '#FF7A3D', glow: 'rgba(255,90,46,0.36)', line: 'rgba(255,206,58,0.2)' },
+  neon_pitch: { top: '#031D23', bottom: '#071B45', accent: '#27E58B', glow: 'rgba(39,229,139,0.32)', line: 'rgba(39,229,139,0.24)' },
+  golden_stadium: { top: '#2A1E05', bottom: '#101C3C', accent: '#FFCE3A', glow: 'rgba(255,206,58,0.34)', line: 'rgba(255,241,166,0.18)' },
+  goat_arena: { top: '#1B0A38', bottom: '#2A120B', accent: '#D9B4FF', glow: 'rgba(199,125,255,0.36)', line: 'rgba(255,206,58,0.24)' },
+};
+
+function isEquippableCosmeticType(type: string | undefined): type is EquippableCosmeticType {
+  return EQUIPPABLE_COSMETIC_TYPES.includes(type as EquippableCosmeticType);
+}
+
+function cosmeticFallbackName(id: string | null | undefined): string {
+  if (!id) return 'Boş';
+  return COSMETIC_FALLBACK_NAMES[id] ?? id.split('_').map((p) => p ? p[0]!.toUpperCase() + p.slice(1) : p).join(' ');
+}
+
+function cosmeticEquippedId(profile: ProfileView | null | undefined, type: EquippableCosmeticType): string | null {
+  const loadout = profileLoadout(profile);
+  if (type === 'frame') return loadout.frameId;
+  if (type === 'name_effect') return loadout.nameEffectId;
+  if (type === 'match_background') return loadout.matchBackgroundId;
+  if (type === 'ball') return loadout.ballId ?? DEFAULT_BALL_ID;
+  if (type === 'intro') return loadout.introId;
+  if (type === 'victory_effect') return loadout.victoryEffectId;
+  return loadout.answerEffectId;
+}
+
+function unequipCosmeticValue(type: EquippableCosmeticType): string | null {
+  return type === 'ball' ? DEFAULT_BALL_ID : null;
+}
+
+function matchLocalLoadout(state: GameState): CosmeticLoadoutView | null {
+  const room = state.room;
+  const you = room?.players.find((p) => p.id === room.youId);
+  return you?.cosmetics ?? (state.profile ? profileLoadout(state.profile) : null);
+}
+
+function matchBackgroundIdForState(state: GameState): string {
+  const room = state.room;
+  const you = room?.players.find((p) => p.id === room.youId);
+  const opp = room?.players.find((p) => p.id !== room.youId);
+  const localCosmetics = matchLocalLoadout(state);
+  return resolveMatchBackground(localCosmetics ? { cosmetics: localCosmetics } : you, opp);
+}
+
+function localBallIdForState(state: GameState): string {
+  return matchLocalLoadout(state)?.ballId ?? DEFAULT_BALL_ID;
+}
+
+function MatchCosmeticBackdrop({ backgroundId }: { backgroundId?: string | null }) {
+  const id = backgroundId || DEFAULT_MATCH_BACKGROUND_ID;
+  const look = MATCH_BACKGROUND_LOOK[id] ?? MATCH_BACKGROUND_LOOK[DEFAULT_MATCH_BACKGROUND_ID]!;
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const anim = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    anim.start();
+    return () => anim.stop();
+  }, [pulse, id]);
+  const hot = id.includes('fire') || id.includes('goat');
+  // Çizilmiş arena fotoğrafı olan kozmetikler: fotoğraf + okunabilirlik örtüsü.
+  const bgImage = id === 'neon_pitch' ? COSMETIC_ART.neonPitchBg : id === 'night_stadium' ? COSMETIC_ART.nightStadiumBg : null;
+  if (bgImage) {
+    return (
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        <Image source={bgImage} style={[StyleSheet.absoluteFill, { width: undefined, height: undefined }]} resizeMode="cover" />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(5,9,24,0.30)' }]} />
+        <Animated.View style={{ position: 'absolute', left: -48, right: -48, bottom: SCREEN_H * 0.16, height: 110, borderRadius: 80, backgroundColor: look.glow, opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.18, 0.4] }), transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.05] }) }] }} />
+      </View>
+    );
+  }
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+        <Defs>
+          <SvgGradient id="cosmeticMatchBg" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={look.top} />
+            <Stop offset="1" stopColor={look.bottom} />
+          </SvgGradient>
+          <RadialGradient id="cosmeticMatchGlow" cx="50%" cy="22%" rx="68%" ry="40%">
+            <Stop offset="0" stopColor={look.accent} stopOpacity="0.36" />
+            <Stop offset="1" stopColor={look.accent} stopOpacity="0" />
+          </RadialGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill="url(#cosmeticMatchBg)" />
+        <Rect width="100%" height="100%" fill="url(#cosmeticMatchGlow)" />
+        <Line x1="8%" y1="58%" x2="92%" y2="58%" stroke={look.line} strokeWidth="2" />
+        <Line x1="18%" y1="72%" x2="82%" y2="72%" stroke={look.line} strokeWidth="1.4" />
+        <Circle cx="50%" cy="58%" r="54" stroke={look.line} strokeWidth="1.5" fill="none" />
+        <Rect x="14%" y="48%" width="72%" height="34%" rx="22" stroke={look.line} strokeWidth="1.5" fill="none" />
+        {hot ? Array.from({ length: 7 }).map((_, i) => (
+          <Circle key={i} cx={`${10 + i * 14}%`} cy={`${82 - (i % 2) * 9}%`} r={10 + (i % 3) * 3} fill={i % 2 ? '#FFCE3A' : '#FF7A3D'} opacity="0.18" />
+        )) : null}
+      </Svg>
+      <Animated.View style={{ position: 'absolute', left: -48, right: -48, bottom: hot ? 22 : SCREEN_H * 0.18, height: hot ? 130 : 96, borderRadius: 80, backgroundColor: look.glow, opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.32, 0.72] }), transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.05] }) }] }} />
+    </View>
+  );
+}
+
+function MiniArenaPreview({ backgroundId, size }: { backgroundId: string; size: number }) {
+  const look = MATCH_BACKGROUND_LOOK[backgroundId] ?? MATCH_BACKGROUND_LOOK[DEFAULT_MATCH_BACKGROUND_ID]!;
+  const img = backgroundId === 'neon_pitch' ? COSMETIC_ART.neonPitchBg : backgroundId === 'night_stadium' ? COSMETIC_ART.nightStadiumBg : null;
+  if (img) {
+    return (
+      <View style={{ width: size, height: size * 0.68, borderRadius: size * 0.16, overflow: 'hidden', borderWidth: 2, borderColor: look.accent }}>
+        <Image source={img} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+      </View>
+    );
+  }
+  return (
+    <View style={{ width: size, height: size * 0.68, borderRadius: size * 0.16, overflow: 'hidden', backgroundColor: look.bottom, borderWidth: 2, borderColor: look.accent }}>
+      <Svg width="100%" height="100%">
+        <Defs>
+          <SvgGradient id="arenaMini" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={look.top} />
+            <Stop offset="1" stopColor={look.bottom} />
+          </SvgGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill="url(#arenaMini)" />
+        <Circle cx="50%" cy="62%" r={size * 0.22} stroke={look.line} strokeWidth="2" fill="none" />
+        <Line x1="8%" y1="62%" x2="92%" y2="62%" stroke={look.line} strokeWidth="2" />
+        <Rect x="18%" y="42%" width="64%" height="40%" rx="10" stroke={look.line} strokeWidth="1.5" fill="none" />
+        {backgroundId.includes('fire') ? <Circle cx="50%" cy="20%" r={size * 0.2} fill="#FF7A3D" opacity="0.22" /> : null}
+      </Svg>
+    </View>
+  );
+}
+
+function MatchBall({ ballId, size = 34 }: { ballId?: string | null; size?: number }) {
+  const id = ballId || DEFAULT_BALL_ID;
+  const look = id === 'golden_ball'
+    ? { face: '#FFCE3A', ring: '#FFF1A6', seam: '#5C3A05', glow: 'rgba(255,206,58,0.38)' }
+    : id === 'fire_ball'
+      ? { face: '#FF7A3D', ring: '#FFE05C', seam: '#5C1506', glow: 'rgba(255,90,46,0.48)' }
+      : id === 'champions_ball'
+        ? { face: '#37A8FF', ring: '#FFCE3A', seam: '#06131F', glow: 'rgba(55,168,255,0.36)' }
+        : id === 'neon_ball'
+          ? { face: '#071B45', ring: '#27E58B', seam: '#7CFFB8', glow: 'rgba(39,229,139,0.42)' }
+          : id === 'goat_ball'
+            ? { face: '#D9B4FF', ring: '#FFCE3A', seam: '#3B145C', glow: 'rgba(199,125,255,0.5)' }
+            : { face: '#FFFFFF', ring: '#CBD5E8', seam: '#101C3C', glow: 'rgba(255,255,255,0.2)' };
+  const spin = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const anim = Animated.loop(Animated.timing(spin, { toValue: 1, duration: id === DEFAULT_BALL_ID ? 2400 : 1400, easing: Easing.linear, useNativeDriver: true }));
+    anim.start();
+    return () => anim.stop();
+  }, [spin, id]);
+  const crest = id === 'goat_ball' ? COSMETIC_ART.goatBallCrest : id === 'champions_ball' ? COSMETIC_ART.championsBallCrest : null;
+  if (crest) {
+    // Çizilmiş arma top: taçlı/boynuzlu amblem döndürülmez — ışıma nefesiyle süzülür.
+    return (
+      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+        <Animated.View style={{ position: 'absolute', width: size * 1.34, height: size * 1.34, borderRadius: size, backgroundColor: look.glow, opacity: spin.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.3, 0.7, 0.3] }), transform: [{ scale: spin.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.92, 1.06, 0.92] }) }] }} />
+        <Animated.Image source={crest} resizeMode="contain" style={{ width: size * 1.14, height: size * 1.14, transform: [{ translateY: spin.interpolate({ inputRange: [0, 0.5, 1], outputRange: [size * 0.03, -size * 0.045, size * 0.03] }) }] }} />
+      </View>
+    );
+  }
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View style={{ position: 'absolute', width: size * 1.32, height: size * 1.32, borderRadius: size, backgroundColor: look.glow, opacity: spin.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.32, 0.78, 0.32] }), transform: [{ scale: spin.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.9, 1.08, 0.9] }) }] }} />
+      {id === 'fire_ball' ? (
+        <Animated.View style={{ position: 'absolute', right: -size * 0.22, top: size * 0.05, width: size * 0.42, height: size * 0.75, borderRadius: size, backgroundColor: '#FFCE3A', opacity: spin.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.25, 0.85, 0.25] }), transform: [{ rotate: '-26deg' }, { scale: spin.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.8, 1.15, 0.8] }) }] }} />
+      ) : null}
+      <Animated.View style={{ width: size * 0.86, height: size * 0.86, borderRadius: size, backgroundColor: look.face, borderWidth: Math.max(2, size * 0.065), borderColor: look.ring, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }] }}>
+        <Ionicons name="football" size={Math.round(size * 0.48)} color={look.seam} />
+      </Animated.View>
+    </View>
+  );
+}
+
+function CosmeticEffectIcon({ id, type, size, accent }: { id: string; type: string; size: number; accent: string }) {
+  // Önizleme artık kozmetiğin ne YAPTIĞINI oynatır (alev/şimşek/projektör/konfeti);
+  // tür rozeti küçülüp köşeye iner — tek renk ikon dönemi kapandı.
+  const icon: IoniconName = type === 'intro' ? 'sparkles' : type === 'victory_effect' ? 'trophy' : 'flash';
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <EffectSceneFX id={id} size={size} />
+      <View style={{ position: 'absolute', right: size * 0.02, bottom: size * 0.02, width: size * 0.34, height: size * 0.34, borderRadius: size * 0.11, backgroundColor: theme.surface3, borderWidth: 1.5, borderColor: accent, alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name={icon} size={Math.round(size * 0.18)} color={accent} />
+      </View>
+    </View>
+  );
+}
+
+function CosmeticArt({ id, type, size, accent, empty = false }: { id: string | null | undefined; type: string; size: number; accent: string; empty?: boolean }) {
+  if (empty || !id) {
+    const visual = cosmeticVisual({ id: `${type}_empty`, type, name: '', description: '', rarity: 'common', diamondPrice: 0 } as StoreCatalogItem);
+    return <Ionicons name={visual.icon as IoniconName} size={Math.round(size * 0.4)} color={withAlpha(accent, 0.7)} />;
+  }
+  if (type === 'frame') return <Avatar avatar={null} name="Player" size={Math.round(size * 0.52)} ring={accent} iconColor={accent} frameId={id} />;
+  if (type === 'name_effect') return <CosmeticName name={id === 'goat_name' ? 'GOAT' : 'CROSS'} effectId={id} style={{ fontSize: Math.round(size * 0.18), fontFamily: 'Poppins-Black', color: theme.text, ...engrave('sm') }} />;
+  if (type === 'match_background') return <MiniArenaPreview backgroundId={id} size={Math.round(size * 0.78)} />;
+  if (type === 'ball') return <MatchBall ballId={id} size={Math.round(size * 0.66)} />;
+  return <CosmeticEffectIcon id={id} type={type} size={size} accent={accent} />;
+}
+
 function CosmeticPreview({ item, size = 88 }: { item: StoreCatalogItem; size?: number }) {
   const visual = cosmeticVisual(item);
   const accent = RARITY_COLOR[item.rarity] ?? visual.accent;
@@ -6633,15 +6879,12 @@ function CosmeticPreview({ item, size = 88 }: { item: StoreCatalogItem; size?: n
     return () => loop.stop();
   }, [item.id, pulse]);
   const glow = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.78, 1.08] });
-  const rot = pulse.interpolate({ inputRange: [0, 1], outputRange: ['-3deg', '3deg'] });
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <Animated.View style={{ position: 'absolute', width: size, height: size, borderRadius: size * 0.28, backgroundColor: accent, opacity: 0.18, transform: [{ scale: glow }] }} />
-      <View style={{ width: size * 0.86, height: size * 0.86, borderRadius: size * 0.24, backgroundColor: theme.surface3, borderWidth: 2, borderColor: accent, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+      <Animated.View style={{ position: 'absolute', width: size, height: size, borderRadius: size * 0.28, backgroundColor: accent, opacity: 0.2, transform: [{ scale: glow }] }} />
+      <View style={{ width: size * 0.9, height: size * 0.9, borderRadius: size * 0.24, backgroundColor: theme.surface3, borderWidth: 2, borderColor: accent, alignItems: 'center', justifyContent: 'center', overflow: 'visible' }}>
         <View pointerEvents="none" style={{ position: 'absolute', left: -size * 0.25, top: -size * 0.25, width: size * 0.8, height: size * 0.8, borderRadius: size, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
-        <Animated.View style={{ transform: [{ rotate: rot }] }}>
-          <Ionicons name={visual.icon as IoniconName} size={Math.round(size * 0.42)} color={accent} />
-        </Animated.View>
+        <CosmeticArt id={item.id} type={item.type} size={size} accent={accent} />
       </View>
     </View>
   );
@@ -6667,18 +6910,170 @@ function CosmeticShopTile({ item, owned, equipped, onPress }: { item: StoreCatal
   );
 }
 
+// Çizilmiş isim plakaları: plaka görseli ismin ARKASINA gerilir; sol taşma top
+// amblemine, sağ taşma ok ucuna yer açar, yazı koyu panele oturur.
+const NAMEPLATE_ART: Record<string, { src: number }> = {
+  fire_name: { src: COSMETIC_ART.fireNameplate },
+  ice_name: { src: COSMETIC_ART.iceNameplate },
+};
+
 function CosmeticName({ name, effectId, style, numberOfLines = 1 }: { name: string; effectId?: string | null; style?: any; numberOfLines?: number }) {
   const fx = nameEffectColors(effectId);
+  const plate = effectId ? NAMEPLATE_ART[effectId] : undefined;
+  if (fx && plate) {
+    const fs = ((StyleSheet.flatten(style) as { fontSize?: number } | undefined)?.fontSize) ?? 14;
+    return (
+      <View style={{ flexShrink: 1, maxWidth: '100%', paddingLeft: fs * 1.5, paddingRight: fs * 0.95, paddingVertical: fs * 0.52, justifyContent: 'center' }}>
+        <Image source={plate.src} style={[StyleSheet.absoluteFill, { width: undefined, height: undefined }]} resizeMode="stretch" />
+        <Text
+          numberOfLines={numberOfLines}
+          style={[
+            style,
+            { color: fx.color, textShadowColor: fx.glow, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 8 },
+          ]}
+        >
+          {name}
+        </Text>
+      </View>
+    );
+  }
+  if (fx) {
+    return (
+      <View style={{ flexShrink: 1, maxWidth: '100%' }}>
+        <NameEffectParticles effectId={effectId} />
+        <Text
+          numberOfLines={numberOfLines}
+          style={[
+            style,
+            { color: fx.color, textShadowColor: fx.glow, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: effectId === 'fire_name' ? 12 : 9 },
+          ]}
+        >
+          {name}
+        </Text>
+      </View>
+    );
+  }
   return (
     <Text
       numberOfLines={numberOfLines}
-      style={[
-        style,
-        fx ? { color: fx.color, textShadowColor: fx.glow, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 8 } : null,
-      ]}
+      style={style}
     >
       {name}
     </Text>
+  );
+}
+
+function NameEffectParticles({ effectId }: { effectId?: string | null }) {
+  // Sahneler cosmeticFx.tsx'te: her efektin kendi katmanlı kimliği var
+  // (alev dilleri, buz kristalleri, neon titremesi, altın süpürme...).
+  return <NameEffectFX effectId={effectId} />;
+}
+
+function IntroEffectOverlay({ effectId, accent }: { effectId?: string | null; accent: string }) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!effectId) return undefined;
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(a, { toValue: 1, duration: 820, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.timing(a, { toValue: 0, duration: 820, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [a, effectId]);
+  if (!effectId) return null;
+  const fire = effectId.includes('fire');
+  const lightning = effectId.includes('lightning');
+  const color = fire ? '#FF7A3D' : lightning ? '#FFE05C' : effectId.includes('goat') ? '#D9B4FF' : accent;
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <Animated.View style={{ position: 'absolute', left: 18, right: 18, top: 10, bottom: 10, borderRadius: 20, borderWidth: 2, borderColor: color, opacity: a.interpolate({ inputRange: [0, 1], outputRange: [0.18, 0.62] }), transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.04] }) }] }} />
+      {Array.from({ length: fire ? 6 : 4 }).map((_, i) => (
+        <Animated.View
+          key={i}
+          style={{
+            position: 'absolute',
+            left: fire ? `${10 + i * 16}%` : `${16 + i * 20}%`,
+            top: fire ? undefined : 18 + (i % 2) * 48,
+            bottom: fire ? 8 + (i % 2) * 6 : undefined,
+            width: lightning ? 4 : 7,
+            height: fire ? 22 : lightning ? 44 : 7,
+            borderRadius: 12,
+            backgroundColor: i % 2 ? '#FFCE3A' : color,
+            opacity: a.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.14, 0.82, 0.14] }),
+            transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [fire ? 10 : -6, fire ? -14 : 6] }) }, { rotate: lightning ? '24deg' : '0deg' }],
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+function AnswerEffectOverlay({ effectId }: { effectId?: string | null }) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!effectId) return undefined;
+    a.setValue(0);
+    Animated.timing(a, { toValue: 1, duration: 760, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [a, effectId]);
+  if (!effectId) return null;
+  const fire = effectId.includes('fire');
+  const ice = effectId.includes('ice');
+  const color = fire ? '#FF7A3D' : ice ? '#7FD7FF' : effectId.includes('champions') ? '#FFCE3A' : '#FFE05C';
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 55, overflow: 'hidden' }]}>
+      <Animated.View
+        style={{
+          position: 'absolute', top: SCREEN_H * 0.34, left: -70,
+          width: 70, height: 30, borderRadius: 18, backgroundColor: withAlpha(color, 0.26),
+          opacity: a.interpolate({ inputRange: [0, 0.12, 0.8, 1], outputRange: [0, 1, 1, 0] }),
+          transform: [{ translateX: a.interpolate({ inputRange: [0, 1], outputRange: [0, SCREEN_W + 140] }) }, { translateY: a.interpolate({ inputRange: [0, 1], outputRange: [44, -26] }) }, { rotate: '-12deg' }],
+        }}
+      >
+        <View style={{ position: 'absolute', left: -56, top: 9, width: 70, height: 10, borderRadius: 12, backgroundColor: withAlpha(color, 0.32) }} />
+        <MatchBall ballId={fire ? 'fire_ball' : ice ? 'classic_ball' : 'champions_ball'} size={30} />
+      </Animated.View>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Animated.View key={i} style={{ position: 'absolute', left: 28 + i * 68, top: SCREEN_H * 0.42 + (i % 2) * 24, width: 6, height: 6, borderRadius: 3, backgroundColor: color, opacity: a.interpolate({ inputRange: [0, 0.45, 1], outputRange: [0, 0.72, 0] }), transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [18, -34] }) }] }} />
+      ))}
+    </View>
+  );
+}
+
+function VictoryEffectOverlay({ effectId, active }: { effectId?: string | null; active: boolean }) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!active || !effectId) return undefined;
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(a, { toValue: 1, duration: 1150, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.timing(a, { toValue: 0, duration: 0, useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [a, active, effectId]);
+  if (!active || !effectId) return null;
+  const fire = effectId.includes('fire');
+  const lightning = effectId.includes('lightning');
+  const color = fire ? '#FF7A3D' : lightning ? '#FFE05C' : effectId.includes('goat') ? '#D9B4FF' : '#FFCE3A';
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 45, overflow: 'hidden' }]}>
+      {Array.from({ length: 12 }).map((_, i) => {
+        const x = 22 + ((i * 37) % Math.max(1, SCREEN_W - 44));
+        const delay = i / 12;
+        return (
+          <Animated.View
+            key={i}
+            style={{
+              position: 'absolute', left: x, top: -22,
+              width: lightning ? 5 : 8, height: fire ? 24 : lightning ? 32 : 8,
+              borderRadius: 10, backgroundColor: i % 3 === 0 ? '#FFFFFF' : color,
+              opacity: a.interpolate({ inputRange: [0, delay, Math.min(1, delay + 0.22), 1], outputRange: [0, 0, 0.9, 0] }),
+              transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [0, SCREEN_H * 0.72] }) }, { rotate: `${(i % 5) * 18 - 28}deg` }],
+            }}
+          />
+        );
+      })}
+      <Animated.View style={{ position: 'absolute', left: SCREEN_W * 0.5 - 85, top: SCREEN_H * 0.18, width: 170, height: 170, borderRadius: 90, backgroundColor: withAlpha(color, 0.24), opacity: a.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0.12, 0.55, 0.1] }), transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1.25] }) }] }} />
+    </View>
   );
 }
 
@@ -6791,15 +7186,21 @@ function nextWeeklyReset(): number {
 
 // Weekly-drop countdown: recessed timer trough (sunken top edge), tabular-nums so
 // the ticking seconds never jitter the pill width, subtle scale pulse under 1 hour.
-function WeeklyCountdown() {
+function WeeklyCountdown({ resetAt }: { resetAt?: string | null }) {
   const [now, setNow] = useState(() => Date.now());
-  const [target, setTarget] = useState(() => nextWeeklyReset());
+  // Sunucu weeklyResetAt verirse ona kilitlen (rotasyonla aynı saniyede sıfırlanır);
+  // yoksa yerel Pazartesi tahmini eski davranış olarak kalır.
+  const serverTarget = resetAt ? Date.parse(resetAt) : NaN;
+  const [target, setTarget] = useState(() => (Number.isFinite(serverTarget) ? serverTarget : nextWeeklyReset()));
+  useEffect(() => {
+    if (Number.isFinite(serverTarget) && serverTarget > Date.now()) setTarget(serverTarget);
+  }, [serverTarget]);
   useEffect(() => {
     const iv = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(iv);
   }, []);
   let ms = target - now;
-  if (ms <= 0) { const t = nextWeeklyReset(); setTarget(t); ms = t - now; }
+  if (ms <= 0) { const t = Number.isFinite(serverTarget) ? target + 7 * 86_400_000 : nextWeeklyReset(); setTarget(t); ms = t - now; }
   const s = Math.max(0, Math.floor(ms / 1000));
   const days = Math.floor(s / 86400);
   const hh = Math.floor((s % 86400) / 3600);
@@ -7386,8 +7787,8 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
 
         <Animated.View style={sectionIn(1)}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, marginBottom: 6 }}>
-            <SectionHeader label="Daily shop" icon="sparkles" style={{ flex: 1, marginTop: 0, marginBottom: 0 }} />
-            {catalog?.dailyResetAt ? <WeeklyCountdown /> : null}
+            <SectionHeader label="Weekly shop" icon="sparkles" style={{ flex: 1, marginTop: 0, marginBottom: 0 }} />
+            {catalog?.weeklyResetAt || catalog?.dailyResetAt ? <WeeklyCountdown resetAt={catalog?.weeklyResetAt} /> : null}
           </View>
           {catalogStatus === 'idle' || catalogStatus === 'loading' ? (
             <View style={[styles.storeEmoteCard, { minHeight: 94, justifyContent: 'center' }]}>
@@ -7836,7 +8237,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
               {equipped ? (
                 <>
                   <Btn big kind="primary" icon="checkmark-circle" label="KUŞANILI" disabled onPress={() => {}} />
-                  {canEquip ? <Btn kind="ghost" label="ÇIKAR" onPress={() => { actions.equipCosmetic(item.type as any, item.type === 'ball' ? 'classic_ball' : null); setConfirmCosmetic(null); }} /> : null}
+                  {canEquip ? <Btn kind="ghost" label="ÇIKAR" onPress={() => { actions.equipCosmetic(item.type as any, null); setConfirmCosmetic(null); }} /> : null}
                 </>
               ) : owned ? (
                 <Btn big kind="primary" icon="shirt" label="KUŞAN" feedback={GameFeedbackEvent.UI_CONFIRM} onPress={() => { track('cosmetic_equipped', { item_id: item.id, type: item.type }); actions.equipCosmetic(item.type as any, item.id); setConfirmCosmetic(null); }} />
@@ -8352,6 +8753,105 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
   );
 }
 
+// ---- Koleksiyon: Kozmetik paneli ------------------------------------------
+// Satın alınan HER kozmetik (isim efekti, top, arena, giriş/zafer/cevap
+// efektleri, mağaza çerçeveleri) + arena çerçeveleri tek yerde: gör, kuşan,
+// çıkar. Kategori başına TEK parça kuşanılır — yenisine dokunmak eskisini
+// otomatik değiştirir (sunucuda yuva başına tek sütun var).
+function CosmeticsLoadoutPanel({ state, actions }: Props) {
+  const profile = state.profile;
+  const catalog = state.storeCatalog;
+  useEffect(() => { if (!catalog) actions.loadStoreCatalog(); }, [catalog]);
+  const ownedByType = useMemo(() => {
+    const map: Partial<Record<EquippableCosmeticType, StoreCatalogItem[]>> = {};
+    for (const item of catalog?.items ?? []) {
+      if (!isEquippableCosmeticType(item.type)) continue;
+      if (!ownsStoreCosmetic(profile, item)) continue;
+      (map[item.type] ??= []).push(item);
+    }
+    return map;
+  }, [catalog, profile]);
+  if (!catalog) {
+    return (
+      <View style={{ alignItems: 'center', paddingVertical: 28 }}>
+        <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 12.5 }}>{t('store.loading')}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={{ gap: 18 }}>
+      <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', marginLeft: 4, lineHeight: 16 }}>{t('collection.cosmeticsHint')}</Text>
+      {COSMETIC_SLOT_META.map((meta) => {
+        const equippedId = cosmeticEquippedId(profile, meta.type);
+        const storeItems = ownedByType[meta.type] ?? [];
+        const arenaFrames = meta.type === 'frame' ? (profile?.ownedFrames ?? []) : [];
+        const isDefaultEquipped = meta.type === 'ball' ? (!equippedId || equippedId === DEFAULT_BALL_ID) : !equippedId;
+        const tiles: { id: string | null; name: string; kind: 'none' | 'arena' | 'store'; item?: StoreCatalogItem }[] = [
+          { id: null, name: meta.empty, kind: 'none' },
+          ...arenaFrames.map((f) => ({ id: f, name: cosmeticFallbackName(f), kind: 'arena' as const })),
+          ...storeItems.map((it) => ({ id: it.id, name: it.name, kind: 'store' as const, item: it })),
+        ];
+        return (
+          <View key={meta.type}>
+            <SectionHeader label={meta.label.toLocaleUpperCase(currentLang())} icon={meta.icon} style={{ marginBottom: 8 }} />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 6 }}>
+              {tiles.map((tile) => {
+                const sel = tile.id === null ? isDefaultEquipped : equippedId === tile.id;
+                return (
+                  <Pressable
+                    key={tile.id ?? 'none'}
+                    onPress={() => {
+                      if (sel) return; // zaten kuşanılı
+                      triggerFeedback(GameFeedbackEvent.UI_CONFIRM);
+                      if (meta.type === 'frame') {
+                        // Arena çerçevesi selected_frame'e, mağaza çerçevesi
+                        // equipped_frame_id'ye yazar; görünen değer equipped ??
+                        // selected olduğu için öteki sütun da temizlenir.
+                        if (tile.kind === 'arena') { actions.equipCosmetic('frame', null); actions.setFrame(tile.id); }
+                        else if (tile.kind === 'store') { actions.setFrame(null); actions.equipCosmetic('frame', tile.id); }
+                        else { actions.equipCosmetic('frame', null); actions.setFrame(null); }
+                      } else {
+                        actions.equipCosmetic(meta.type, tile.id);
+                      }
+                      track('cosmetic_equipped', { item_id: tile.id ?? 'none', type: meta.type, source: 'collection' });
+                    }}
+                    style={({ pressed }) => ({
+                      width: 108, borderRadius: 16, padding: 8, alignItems: 'center', gap: 6,
+                      backgroundColor: theme.card,
+                      borderWidth: 2, borderColor: sel ? theme.primary : withAlpha(theme.border, 0.9),
+                      opacity: pressed ? 0.85 : 1,
+                      transform: [{ scale: pressed ? 0.97 : 1 }],
+                    })}
+                  >
+                    <View style={{ width: 84, height: 84, borderRadius: 14, backgroundColor: theme.surface3, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                      <CosmeticArt
+                        id={tile.id ?? (meta.type === 'ball' ? DEFAULT_BALL_ID : null)}
+                        type={meta.type}
+                        size={84}
+                        accent={tile.item ? (RARITY_COLOR[tile.item.rarity] ?? theme.primary) : theme.muted}
+                        empty={tile.id === null && meta.type !== 'ball'}
+                      />
+                    </View>
+                    <Text numberOfLines={1} style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 10.5, textAlign: 'center' }}>{tile.name}</Text>
+                    {sel ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: withAlpha(theme.primary, 0.14), borderRadius: 999, borderWidth: 1, borderColor: theme.primary, paddingHorizontal: 7, paddingVertical: 2 }}>
+                        <Ionicons name="checkmark-circle" size={10} color={theme.primary} />
+                        <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 9 }}>KUŞANILI</Text>
+                      </View>
+                    ) : (
+                      <Text style={{ color: theme.muted, fontFamily: 'Poppins-ExtraBold', fontSize: 9.5 }}>{t('collection.use').toLocaleUpperCase(currentLang())}</Text>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 // DİLİM-MEMO SÖZLEŞMESİ (StoreScreen'dekiyle aynı kural): CollectionScreen
 // state'ten YALNIZ `state.profile` okur. Ekrana yeni bir `state.X` okuması
 // eklersen aşağıdaki karşılaştırıcıya da eklemek ZORUNDASIN. `actions` sabitliği
@@ -8361,7 +8861,7 @@ export const CollectionScreen = memo(function CollectionScreen({ state, actions 
   const profile = state.profile;
   const equipped = profile?.equippedEmotes ?? [];
   // Sekmeler: İfadeler (yuvalar + koleksiyon) | Güçler (tek kullanımlık envanter)
-  const [colTab, setColTab] = useState<'emotes' | 'powers'>('emotes');
+  const [colTab, setColTab] = useState<'emotes' | 'powers' | 'cosmetics'>('emotes');
   // The single discoverable-emote preview slot: tapping a card claims it (which
   // interrupts whichever card held it), a finished animation releases it.
   // Both handlers are stable so the memo'd cards only re-render on `active` flips.
@@ -8518,7 +9018,7 @@ export const CollectionScreen = memo(function CollectionScreen({ state, actions 
 
         {/* Sekmeler: İfadeler | Güçler — Clash tarzı iki kalın segment */}
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
-          {([['emotes', 'happy', t('collection.tabEmotes')], ['powers', 'flash', t('collection.tabPowers')]] as const).map(([key, icon, label]) => {
+          {([['emotes', 'happy', t('collection.tabEmotes')], ['cosmetics', 'shirt', t('collection.tabCosmetics')], ['powers', 'flash', t('collection.tabPowers')]] as const).map(([key, icon, label]) => {
             const sel = colTab === key;
             return (
               <Pressable
@@ -8543,6 +9043,8 @@ export const CollectionScreen = memo(function CollectionScreen({ state, actions 
 
         {colTab === 'powers' ? (
           <PowersPanel profile={profile} onUse={(id) => actions.usePower(id)} />
+        ) : colTab === 'cosmetics' ? (
+          <CosmeticsLoadoutPanel state={state} actions={actions} />
         ) : (<>
 
         {/* Loadout — 8 slots the player fills with any emotes they choose */}
@@ -8638,7 +9140,7 @@ export const CollectionScreen = memo(function CollectionScreen({ state, actions 
       </View>
     </Screen>
   );
-}, (p, n) => p.state.profile === n.state.profile && p.actions === n.actions);
+}, (p, n) => p.state.profile === n.state.profile && p.state.storeCatalog === n.state.storeCatalog && p.actions === n.actions);
 
 // (Sender-side waiting UI is now the OutgoingInviteBanner top strip in App.tsx —
 // the old InviteWaitingModal blocked the whole Friends screen for 30s.)
@@ -8696,7 +9198,7 @@ export function FriendProfileModal({ profile, onClose, relation, onAddFriend }: 
           <View style={{ paddingHorizontal: 20 }}>
             {/* Identity block — hero panel tinted by the friend's arena */}
             <GamePanel hero tint={color} style={{ marginBottom: 14 }} bodyStyle={{ alignItems: 'center', paddingVertical: 22 }}>
-              <AvatarBadge avatarId={profile?.avatar ?? profile?.selectedAvatar} size={104} ringColor={color} frameId={profile?.frame} />
+              <AvatarBadge avatarId={profile?.avatar ?? profile?.selectedAvatar} size={104} ringColor={color} frameId={profile?.frame} trophies={profile?.trophies} />
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 12, maxWidth: '100%' }}>
                 <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 22, ...engrave('lg'), flexShrink: 1 }} numberOfLines={1}>{profile?.displayName}</Text>
                 {profile?.isBot ? <Ribbon label="BOT" color={theme.gold} /> : null}
@@ -8708,7 +9210,7 @@ export function FriendProfileModal({ profile, onClose, relation, onAddFriend }: 
                   <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
                   <Ionicons name="trophy" size={15} color={theme.gold} />
                   <Text style={{ color: theme.gold, fontFamily: 'Poppins-ExtraBold', fontSize: 15, fontVariant: ['tabular-nums'], ...engrave('sm') }}>{profile?.trophies ?? 0}</Text>
-                  <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>· {profile?.arena ? arenaLabel(profile.arena.name) : ''}</Text>
+                  <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>· {profile?.arena ? arenaLabel(profile.arena.name) + (profile.arena.name === 'GOAT' ? goatStageLabel(profile.trophies) : '') : ''}</Text>
                 </View>
               </View>
             </GamePanel>
@@ -10595,7 +11097,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
         <View style={{ alignItems: 'center', gap: 8, marginTop: 10 + (p.selectedFrame ? Math.min(56, Math.round((104 * ((FRAME_SCALE[p.selectedFrame] ?? 2.1) - 1)) / 2 * 0.6)) : 0), marginBottom: 10 }}>
           <Pressable onPress={() => setShowAvatarPage(true)} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.97 : 1 }] })}>
             <View>
-              <AvatarBadge avatarId={p.avatar ?? p.selectedAvatar} size={104} ringColor={color} frameId={p.selectedFrame} />
+              <AvatarBadge avatarId={p.avatar ?? p.selectedAvatar} size={104} ringColor={color} frameId={p.selectedFrame} trophies={p.trophies} />
               {/* not: çerçeve kaplaması avatarın DIŞINA taşar (FRAME_SCALE) —
                   alttaki isim için ek boşluk aşağıda frameGap ile açılır */}
               <View style={{ position: 'absolute', bottom: 0, right: 0, width: 30, height: 30, borderRadius: 15, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.card }}>
@@ -11105,7 +11607,7 @@ const LeaderboardRow = memo(function LeaderboardRow({ entry, onView }: { entry: 
     >
       <GamePanel compact accentStripe={entry.rank <= 3 ? RANK_COLORS[entry.rank - 1] : undefined} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingLeft: 12 }}>
         <RankBadge rank={entry.rank} size={28} />
-        <Avatar avatar={entry.avatar} name={entry.displayName} size={30} ring={theme.primary} ringWidth={1.5} iconColor={theme.primary} iconSize={14} frameId={entry.frame} />
+        <Avatar avatar={entry.avatar} name={entry.displayName} size={30} ring={theme.primary} ringWidth={1.5} iconColor={theme.primary} iconSize={14} frameId={entry.frame} trophies={entry.trophies} />
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             <Text numberOfLines={1} style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm'), flexShrink: 1 }}>{entry.displayName}</Text>
@@ -11415,7 +11917,7 @@ function PodiumSpot({ entry, onPress }: { entry: LeaderboardEntry; onPress: () =
   const avSize = place === 1 ? 58 : 46;
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ flex: 1, alignItems: 'center', transform: [{ translateY: pressed ? 2 : 0 }] })}>
-      <Avatar avatar={entry.avatar} name={entry.displayName} size={avSize} ring={c} ringWidth={2.5} iconColor={c} iconSize={Math.round(avSize * 0.45)} frameId={entry.frame} />
+      <Avatar avatar={entry.avatar} name={entry.displayName} size={avSize} ring={c} ringWidth={2.5} iconColor={c} iconSize={Math.round(avSize * 0.45)} frameId={entry.frame} trophies={entry.trophies} />
       <View style={{ marginTop: -11 }}>
         <RankBadge rank={place} size={22} />
       </View>

@@ -73,6 +73,8 @@ export interface ProfileView {
   equippedEmotes: string[];
   usernameSet: boolean;
   socialPackUntil: string | null;
+  outageGiftAt?: string | null;   // kesinti telafisi alındı damgası (ISO) ya da null
+  outageGiftAvailable?: boolean;  // true → kesinti özür penceresi gösterilir ("AL" ile tanımlanır)
   arena: ArenaView;
   avatar: string | null;
   xp: number;    // mevcut seviye içindeki ilerleme
@@ -236,6 +238,7 @@ export type ClientMsg =
   | { type: 'buy_premium_road' } // Premium Seviye Yolu'nu 1000 elmasla aç
   | { type: 'buy_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken' } // mağazadan güç satın al
   | { type: 'use_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken' } // envanterdeki tek kullanımlık gücü etkinleştir
+  | { type: 'claim_outage_gift' } // kesinti telafisi: özür penceresindeki "AL"
   | { type: 'get_my_stats' } // profil istatistikleri: seri rekoru + mod bazlı K/M
   | { type: 'verify_purchase'; receipt: string }
   | { type: 'grant_ad_reward' }
@@ -311,6 +314,7 @@ export type ServerMsg =
   | { type: 'premium_road_purchased'; profile: ProfileView } // Premium Yol açıldı
   | { type: 'power_purchased'; powerId: string; profile: ProfileView } // mağazadan güç alındı
   | { type: 'power_used'; powerId: string; profile: ProfileView } // güç etkinleştirildi
+  | { type: 'outage_gift_claimed'; profile: ProfileView; granted: boolean } // granted=false → zaten alınmıştı
   | { type: 'my_stats'; winStreak: number; bestStreak: number; wins: number; losses: number; modes: { mode: string; wins: number; losses: number }[] } // profil istatistikleri: sadece ranked hızlı eşleşme
   | { type: 'emote'; fromId: string; emoteId: string }
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string }

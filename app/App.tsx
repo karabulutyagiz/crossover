@@ -3,12 +3,14 @@ import { StatusBar } from 'expo-status-bar';
 import * as NativeSplash from 'expo-splash-screen';
 import {
   Animated,
+  Alert,
   AppState,
   Dimensions,
   Easing,
   Image,
   InteractionManager,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -202,6 +204,25 @@ type IoniconName = ComponentProps<typeof Ionicons>['name'];
 const SCREEN_W = canvasSizeFor(Dimensions.get('window').width, Dimensions.get('window').height).width;
 // Once-per-install push permission prompt marker.
 const PUSH_PROMPTED_KEY = '@crossover_push_prompted';
+const IOS_APP_STORE_URL = 'itms-apps://apps.apple.com/app/id6778542426';
+const IOS_APP_STORE_FALLBACK_URL = 'https://apps.apple.com/app/id6778542426';
+const ANDROID_PLAY_STORE_URL = 'market://details?id=com.crossover.football';
+const ANDROID_PLAY_STORE_FALLBACK_URL = 'https://play.google.com/store/apps/details?id=com.crossover.football';
+
+async function openRequiredUpdateStore(): Promise<boolean> {
+  const urls = Platform.OS === 'android'
+    ? [ANDROID_PLAY_STORE_URL, ANDROID_PLAY_STORE_FALLBACK_URL]
+    : [IOS_APP_STORE_URL, IOS_APP_STORE_FALLBACK_URL];
+  for (const url of urls) {
+    try {
+      await Linking.openURL(url);
+      return true;
+    } catch {
+      // Try the next scheme/https fallback.
+    }
+  }
+  return false;
+}
 
 // Where a tapped push notification wants to land. A cold-start tap fires before
 // profile/loaded are ready, so the route is stashed in this module ref and
@@ -801,6 +822,9 @@ function AppRoot() {
   const [contextualOffer, setContextualOffer] = useState<MonetizationOffer | null>(null);
   const [contextualOfferVisible, setContextualOfferVisible] = useState(false);
   const [socialPackCampaignVisible, setSocialPackCampaignVisible] = useState(false);
+  const [outageGiftVisible, setOutageGiftVisible] = useState(false); // kesinti telafisi özür penceresi
+  const [outageGiftClaiming, setOutageGiftClaiming] = useState(false);
+  const [outageGiftDone, setOutageGiftDone] = useState(false);
   const [engagementState, setEngagementState] = useState<EngagementRuntimeState>(() => createEngagementRuntime());
   const [activeEngagement, setActiveEngagement] = useState<EngagementQueueItem | null>(null);
   const [feedbackPromptVisible, setFeedbackPromptVisible] = useState(false);
@@ -808,6 +832,7 @@ function AppRoot() {
   const [feedbackInitialCategory, setFeedbackInitialCategory] = useState<'bug' | undefined>(undefined);
   const [ratingPromptVisible, setRatingPromptVisible] = useState(false);
   const [monetizationDiagnostics, setMonetizationDiagnostics] = useState<MonetizationDiagnostics>(INITIAL_MONETIZATION_DIAGNOSTICS);
+  const requiredUpdatePromptOpenRef = useRef(false);
   const pendingOfferCtxRef = useRef<OfferEngineContext | null>(null);
   const socialPackQueuedThisSessionRef = useRef(false);
   const promotionTransitionRef = useRef(false);
@@ -928,6 +953,34 @@ function AppRoot() {
   useEffect(() => () => {
     if (tabGuardTimer.current) clearTimeout(tabGuardTimer.current);
   }, []);
+
+  const showRequiredUpdatePrompt = useCallback(() => {
+    if (requiredUpdatePromptOpenRef.current) return;
+    requiredUpdatePromptOpenRef.current = true;
+    Alert.alert(
+      t('update.title'),
+      t('update.body'),
+      [{
+        text: t('update.cta'),
+        onPress: () => {
+          requiredUpdatePromptOpenRef.current = false;
+          openRequiredUpdateStore().then((opened) => {
+            if (!opened) setTimeout(showRequiredUpdatePrompt, 250);
+          });
+        },
+      }],
+      { cancelable: false },
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!state.updateRequired || splash || !fontsReady) return;
+    showRequiredUpdatePrompt();
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st === 'active') showRequiredUpdatePrompt();
+    });
+    return () => sub.remove();
+  }, [fontsReady, showRequiredUpdatePrompt, splash, state.updateRequired]);
 
   const setDiamondDisplayInstant = useCallback((value: number) => {
     diamondCountAnim.stopAnimation();
@@ -1274,6 +1327,7 @@ function AppRoot() {
     feedbackCenterVisible ||
     ratingPromptVisible ||
     socialPackCampaignVisible ||
+    outageGiftVisible ||
     Boolean(activeEngagement) ||
     promotionTransitionRef.current
   );
@@ -1528,6 +1582,39 @@ function AppRoot() {
     storeAtDiamondsRef.current = false; // fresh tab entry → re-tap toggle starts at "diamonds"
     if (idx !== 2) resetHomePhase(); // home lives at index 2 (store=0, collection=1, home=2, friends=3)
   }, [resetHomePhase]);
+
+  // Kesinti telafisi. Hediye KENDİLİĞİNDEN tanımlanmaz: sunucu yalnızca
+  // "bu hesap henüz almadı ve kampanya açık" bilgisini (outageGiftAvailable)
+  // gönderir, paket ancak "AL"a basılınca tanımlanır (tek seferlik).
+  const outageGiftAvailable = state.profile?.outageGiftAvailable === true;
+  useEffect(() => {
+    if (outageGiftAvailable) setOutageGiftVisible(true);
+  }, [outageGiftAvailable]);
+
+  // Sunucu onayı geldiğinde pencere "TANIMLANDI" durumuna geçer.
+  const outageGiftClaimSeq = state.outageGiftClaim?.seq ?? 0;
+  useEffect(() => {
+    if (!outageGiftClaimSeq) return;
+    setOutageGiftClaiming(false);
+    setOutageGiftDone(true);
+  }, [outageGiftClaimSeq]);
+
+  // Ağ/sunucu hatasında düğme sonsuza kadar dönmesin — kısa bir emniyet süresi.
+  useEffect(() => {
+    if (!outageGiftClaiming) return;
+    const id = setTimeout(() => setOutageGiftClaiming(false), 8000);
+    return () => clearTimeout(id);
+  }, [outageGiftClaiming]);
+
+  const claimOutageGift = useCallback(() => {
+    setOutageGiftClaiming(true);
+    actions.claimOutageGift();
+  }, [actions]);
+
+  const closeOutageGift = useCallback(() => {
+    setOutageGiftVisible(false);
+    setOutageGiftDone(false);
+  }, []);
 
   const dismissSocialPackCampaign = useCallback(() => {
     setSocialPackCampaignVisible(false);
@@ -1856,41 +1943,34 @@ function AppRoot() {
     );
   }
 
-  // Login gate: nothing is accessible until the user signs in (Apple/Google).
-  // MUST come AFTER all hooks above — an early return before useCallback changes
-  // the hook count between renders (Rules of Hooks) and crashes right after login.
-  // HARD update gate — the server's /config said this build is below minIosBuild.
-  // Nothing else mounts (login included): the ONLY way forward is the App Store.
+  // HARD update gate — the server's /config said this build is below minimum.
+  // Nothing else mounts (login included): the ONLY way forward is the store prompt.
   // Must stay AFTER all hooks (Rules of Hooks, same as the login gate below).
   if (state.updateRequired) {
     return (
       <View style={[s.root, { paddingTop: insets.top }]}>
         <StatusBar style="light" />
         <ScreenBg />
-        <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 26 }}>
-          <View style={{ backgroundColor: theme.modalFace, borderRadius: 22, padding: 24, alignItems: 'center', ...shadowModal }}>
-            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.bg2, borderWidth: 2, borderColor: theme.accent, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-              <Ionicons name="cloud-download" size={30} color={theme.accent} />
-            </View>
-            <Text style={{ color: theme.text, fontSize: 19, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginBottom: 6 }}>{t('update.title')}</Text>
-            <Text style={{ color: theme.muted, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', lineHeight: 20, textAlign: 'center', marginBottom: 18 }}>{t('update.body')}</Text>
-            <Btn
-              big
-              label={t('update.cta')}
-              icon="arrow-up-circle"
-              onPress={() => {
-                // itms-apps jumps straight into the App Store app (the OS
-                // backgrounds us — "uygulamadan atsın"); https is the fallback.
-                Linking.openURL('itms-apps://apps.apple.com/app/id6778542426').catch(() =>
-                  Linking.openURL('https://apps.apple.com/app/id6778542426').catch(() => {}),
-                );
-              }}
-            />
-          </View>
+      </View>
+    );
+  }
+
+  // Do not let login/game screens race the first forced-update verdict.
+  if (!state.updateCheckComplete) {
+    return (
+      <View style={[s.root, { paddingTop: insets.top }]}>
+        <StatusBar style="light" />
+        <ScreenBg />
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
+          <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 13 }}>{t('common.loading')}</Text>
         </View>
       </View>
     );
   }
+
+  // Login gate: nothing is accessible until the user signs in (Apple/Google).
+  // MUST come AFTER all hooks above — an early return before useCallback changes
+  // the hook count between renders (Rules of Hooks) and crashes right after login.
 
   if (!state.profile) {
     return (
@@ -2393,6 +2473,47 @@ function AppRoot() {
           label={t('common.continue')}
           onPress={() => { setExpiredSocialPack(false); setStoreSection('socialPack'); goToTab(0); }}
         />
+      </GameModal>
+
+      {/* Kesinti telafisi — çarpısız/zorunlu: tek çıkış "AL" düğmesi. */}
+      <GameModal
+        visible={outageGiftVisible}
+        onClose={closeOutageGift}
+        dismissible={false}
+        title={outageGiftDone ? t('outageGift.doneTitle') : t('outageGift.title')}
+        icon="gift"
+        coach
+      >
+        <View style={{ alignItems: 'center', gap: 12 }}>
+          <View style={{ flexDirection: 'row', gap: 8, alignSelf: 'stretch' }}>
+            <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.blue, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.blue, 0.45) }}>
+              <Text style={{ fontSize: 23 }}>🇹🇷</Text>
+              <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.countryTeamLabel')}</Text>
+            </View>
+            <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.purple, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.purple, 0.45) }}>
+              <Text style={{ fontSize: 24 }}>🔤</Text>
+              <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.letterTeamLabel')}</Text>
+            </View>
+            <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.primary, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.primary, 0.45) }}>
+              <Text style={{ fontSize: 24 }}>🎁</Text>
+              <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>1 GÜN</Text>
+            </View>
+          </View>
+          <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+            {outageGiftDone ? t('outageGift.doneBody') : t('outageGift.body')}
+          </Text>
+          {['outageGift.modes', 'outageGift.stacked'].map((key) => (
+            <View key={key} style={{ alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: withAlpha(theme.text, 0.055), borderRadius: 13, paddingHorizontal: 12, paddingVertical: 9 }}>
+              <Ionicons name="checkmark-circle" size={18} color={theme.primary} />
+              <Text style={{ flex: 1, color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', lineHeight: 17 }}>{t(key as any)}</Text>
+            </View>
+          ))}
+          {outageGiftDone ? (
+            <Btn big kind="accent" icon="checkmark-circle" label={t('common.continue')} onPress={closeOutageGift} />
+          ) : (
+            <Btn big kind="accent" icon="gift" label={t('outageGift.cta')} loading={outageGiftClaiming} disabled={outageGiftClaiming} onPress={claimOutageGift} />
+          )}
+        </View>
       </GameModal>
 
       <GameModal

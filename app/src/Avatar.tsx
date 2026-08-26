@@ -57,7 +57,7 @@ export function avatarSource(avatar?: string | null): number | undefined {
 // A self-contained circular avatar: the chosen picture filling a circular frame,
 // or a person/bot fallback icon. Replaces the old `<View circle><Ionicons person/></View>`.
 export function Avatar({
-  avatar, name, size, ring, ringWidth = 2, bg, iconColor, iconSize, frameId,
+  avatar, name, size, ring, ringWidth = 2, bg, iconColor, iconSize, frameId, trophies,
 }: {
   avatar?: string | null;
   name?: string;          // used to pick the bot fallback icon
@@ -68,6 +68,7 @@ export function Avatar({
   iconColor?: string;
   iconSize?: number;
   frameId?: string | null; // takılı profil çerçevesi — daire kırpmasının DIŞINA çizilir
+  trophies?: number | null; // GOAT çerçeve aşaması bundan türer (5000+ kupada güçlenir)
 }) {
   const src = avatarSource(avatar);
   const fallback: IoniconName = name === 'Bot' ? 'game-controller' : 'person';
@@ -90,7 +91,7 @@ export function Avatar({
   return (
     <View style={{ width: size, height: size }}>
       {circle}
-      <FrameOverlay frameId={frameId} size={size} />
+      <FrameOverlay frameId={frameId} size={size} trophies={trophies} />
     </View>
   );
 }

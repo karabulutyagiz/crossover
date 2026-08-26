@@ -23,7 +23,11 @@ import 'dotenv/config';
 import { pool, closePool } from '../db/pool.ts';
 import { normalize } from '../game/normalize.ts';
 
-const API = process.env.TM_API ?? 'http://127.0.0.1:8000';
+// Birden çok API kopyası: TM_API virgullu liste alir, istekler kopyalara
+// dagitilir (tek python sureci ~0.7 istek/sn'de doyuyordu — kopya = 2x hiz).
+const API_POOL = (process.env.TM_API ?? 'http://127.0.0.1:8000').split(',').map((s) => s.trim()).filter(Boolean);
+let apiCursor = 0;
+function nextApi(): string { apiCursor = (apiCursor + 1) % API_POOL.length; return API_POOL[apiCursor]!; }
 const DELAY = Number(process.env.TM_DELAY_MS ?? 700);
 const COMPETITIONS = (process.env.TM_COMPETITIONS ??
   // Broad coverage: top leagues + second divisions + continental cups + global
@@ -62,7 +66,7 @@ async function tm(path: string): Promise<any> {
   for (let attempt = 0; attempt < 6; attempt++) {
     let r: Response;
     try {
-      r = await fetch(`${API}${path}`, { headers: { accept: 'application/json' } });
+      r = await fetch(`${nextApi()}${path}`, { headers: { accept: 'application/json' } });
     } catch {
       await sleep(3000);
       continue;
@@ -221,14 +225,19 @@ function spellsFromTransfers(transfers: any[]): Map<number, { name: string; star
 
 // ---- Phase C: player careers + photos ----------------------------------------
 async function careers(): Promise<void> {
-  const { rows } = await pool.query<{ id: string }>(
-    'SELECT id FROM tm_players WHERE done = false ORDER BY id',
+  // Profil çağrısı YALNIZ çekirdek verisi (isim/uyruk/doğum) eksik oyunculara
+  // gider — mevcut kadro bunları zaten taşıyor. Yarı yarıya istek tasarrufu:
+  // hem hız hem TM bot duvarını tetiklememe (2026-08-26: sunucu IP'si ~3k
+  // istekte yandı; bu koşu Mac IP'sinden ve daha nazik).
+  const { rows } = await pool.query<{ id: string; needs_profile: boolean }>(
+    `SELECT id, (name IS NULL OR name_norm IS NULL OR nationality IS NULL) AS needs_profile
+     FROM tm_players WHERE done = false ORDER BY id`,
   );
-  console.log(`Phase C: ${rows.length} player careers`);
+  console.log(`Phase C: ${rows.length} player careers (${rows.filter((r) => r.needs_profile).length} profilli)`);
   let n = 0, kept = 0;
-  await pMap(rows, async ({ id }) => {
+  await pMap(rows, async ({ id, needs_profile }) => {
     const pid = Number(id);
-    const prof = await tm(`/players/${pid}/profile`);
+    const prof = needs_profile ? await tm(`/players/${pid}/profile`) : null;
     if (prof) {
       const name = prof.name ?? null;
       const by = prof.dateOfBirth ? Number(String(prof.dateOfBirth).slice(0, 4)) : null;

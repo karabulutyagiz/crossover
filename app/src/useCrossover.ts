@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // NetInfo may not be available in Expo Go — graceful fallback
 let NetInfo: any;
 try { NetInfo = require('@react-native-community/netinfo').default; } catch { NetInfo = null; }
-import { SERVER_URLS, setActiveServerUrl, fetchApi, APP_BUILD_NUMBER } from './config';
+import { SERVER_URLS, setActiveServerUrl, fetchApi, APP_ANDROID_VERSION_CODE, APP_BUILD_NUMBER, APP_VERSION } from './config';
 import { currentLang, t } from './i18n';
 import { getPushToken, requestPushPermission } from './notifications';
 import { initOfflineDB } from './offline/db';
@@ -112,8 +112,12 @@ export interface GameState {
   matchInvite: { fromId: string; fromName: string; options?: GameOptions } | null;
   // An invite I sent that's awaiting the friend's answer (30s window).
   outgoingInvite: { toId: string; toName: string; expiresAt: number } | null;
-  // Server /config says this binary is below minIosBuild — App.tsx hard-gates on it.
+  // Server /config says this binary is below the platform minimum — App.tsx hard-gates on it.
   updateRequired: boolean;
+  // Kesinti telafisi "AL" sonucu — seq değişince pencere TANIMLANDI durumuna geçer.
+  outageGiftClaim: { granted: boolean; seq: number } | null;
+  // Login/game gates wait for this first server verdict so old binaries cannot race in.
+  updateCheckComplete: boolean;
   // A friend's public profile I'm currently viewing.
   viewProfile: PublicProfile | null;
   // Transient success notice (e.g. "friend request sent"), shown green then cleared.
@@ -232,6 +236,8 @@ export const initialState: GameState = {
   matchInvite: null,
   outgoingInvite: null,
   updateRequired: false,
+  outageGiftClaim: null,
+  updateCheckComplete: false,
   viewProfile: null,
   notice: null,
   friendNotice: null,
@@ -300,6 +306,7 @@ type Action =
   | { type: '_close_profile' }
   | { type: '_dismiss_invite' }
   | { type: '_update_required' }
+  | { type: '_update_check_complete' }
   | { type: '_clear_notice' }
   | { type: '_friend_notice'; text: string; kind: 'error' | 'ok' }
   | { type: '_clear_friend_notice' }
@@ -329,9 +336,9 @@ function reducer(state: GameState, action: Action): GameState {
     case '_reset':
       // xpGain korunur: XP küre yağmuru ana ekrana DÖNÜNCE akar (yeni maç
       // başlarken countdown case'i zaten temizler).
-      return { ...initialState, scopes: state.scopes, profile: state.profile, friends: state.friends, authProvider: state.authProvider, xpGain: state.xpGain, isQuickMatch: false, opponentForfeit: false, opponentForfeitReason: null };
+      return { ...initialState, scopes: state.scopes, profile: state.profile, friends: state.friends, authProvider: state.authProvider, updateRequired: state.updateRequired, updateCheckComplete: state.updateCheckComplete, xpGain: state.xpGain, isQuickMatch: false, opponentForfeit: false, opponentForfeitReason: null };
     case '_logout':
-      return { ...initialState, scopes: state.scopes };
+      return { ...initialState, scopes: state.scopes, updateRequired: state.updateRequired, updateCheckComplete: state.updateCheckComplete };
     case '_picked':
       return { ...state, picked: true };
     case '_scopes':
@@ -389,7 +396,9 @@ function reducer(state: GameState, action: Action): GameState {
     case 'match_history_list':
       return { ...state, matchHistory: (action as any).matches ?? [] };
     case '_update_required' as any:
-      return { ...state, updateRequired: true };
+      return { ...state, updateRequired: true, updateCheckComplete: true };
+    case '_update_check_complete' as any:
+      return state.updateCheckComplete ? state : { ...state, updateCheckComplete: true };
     case '_dismiss_invite' as any:
       return { ...state, matchInvite: null };
     case '_set_outgoing' as any:
@@ -548,6 +557,15 @@ function reducer(state: GameState, action: Action): GameState {
     case 'power_used':
       // Jeton düştü / kalkan kuşanıldı — sunucunun döndürdüğü taze profil geçerli
       return { ...state, profile: action.profile };
+    case 'outage_gift_claimed':
+      // Kesinti telafisi tanımlandı. Taze profilde outageGiftAvailable=false
+      // döner, böylece pencere bir daha açılmaz; seq ile de "TANIMLANDI"
+      // ekranını tetikleriz (granted=false ise hediye zaten alınmıştı).
+      return {
+        ...state,
+        profile: action.profile,
+        outageGiftClaim: { granted: (action as any).granted === true, seq: (state.outageGiftClaim?.seq ?? 0) + 1 },
+      };
     case 'power_purchased':
       // Mağazadan güç alındı — elmas düştü, envanter arttı
       return { ...state, profile: action.profile, lastPurchase: { kind: 'power', id: (action as any).powerId, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
@@ -1200,18 +1218,24 @@ export function useCrossover() {
         try { dispatch({ type: '_scopes', scopes: JSON.parse(raw) as ScopesList }); } catch { /* stale/corrupt cache — ignore */ }
       })
       .catch(() => {});
-    fetchApi('/config')
+    const appPlatform = Platform.OS === 'android' ? 'android' : 'ios';
+    const appBuild = appPlatform === 'android' ? APP_ANDROID_VERSION_CODE : APP_BUILD_NUMBER;
+    const configPath = `/config?platform=${appPlatform}&version=${encodeURIComponent(APP_VERSION)}&build=${appBuild}`;
+    fetchApi(configPath, 5000)
       .then((r) => r.json())
-      .then((cfg: { maintenance?: boolean; minIosBuild?: number }) => {
+      .then((cfg: { maintenance?: boolean; minIosBuild?: number; minAndroidVersionCode?: number; updateRequired?: boolean }) => {
         if (!alive) return;
         if (cfg.maintenance) dispatch({ type: 'error', message: 'Bakım modundayız, birazdan tekrar dene' });
-        if (typeof cfg.minIosBuild === 'number' && APP_BUILD_NUMBER < cfg.minIosBuild) {
+        const currentBuild = Platform.OS === 'android' ? APP_ANDROID_VERSION_CODE : APP_BUILD_NUMBER;
+        const minimumBuild = Platform.OS === 'android' ? cfg.minAndroidVersionCode : cfg.minIosBuild;
+        if (cfg.updateRequired === true || (typeof minimumBuild === 'number' && currentBuild < minimumBuild)) {
           // Hard gate (was a transient toast): App.tsx swaps the whole tree for
           // the update screen — nothing is playable until the store update.
           dispatch({ type: '_update_required' });
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => { if (alive) dispatch({ type: '_update_check_complete' }); });
     fetchApi('/scopes')
       .then((r) => r.json())
       .then((s: ScopesList) => {
@@ -1478,6 +1502,7 @@ export function useCrossover() {
       buyPremiumRoad: () => send({ type: 'buy_premium_road' }),
       buyPower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => send({ type: 'buy_power', powerId }),
       usePower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => send({ type: 'use_power', powerId }),
+      claimOutageGift: () => send({ type: 'claim_outage_gift' }),
       loadMyStats: () => send({ type: 'get_my_stats' }),
       // Friends — via WebSocket for real-time notifications.
       loadFriends: () => send({ type: 'list_friends' }),

@@ -92,6 +92,27 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS username_set BOOLEAN NOT NULL DEFAULT
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower
   ON users (lower(display_name)) WHERE username_set = true;
 
+-- Visible names must not collide either: social/provider-created accounts keep
+-- username_set = false until onboarding, but their display_name is still shown in
+-- matches and friends lists. Rename old duplicate provisional rows before adding
+-- the all-row unique index so deploys do not fail on legacy data.
+WITH ranked_display_names AS (
+  SELECT id,
+         row_number() OVER (
+           PARTITION BY lower(display_name)
+           ORDER BY username_set DESC, created_at ASC, id ASC
+         ) AS rn
+    FROM users
+)
+UPDATE users u
+   SET display_name = 'Oyuncu ' || replace(u.id::text, '-', '')
+  FROM ranked_display_names r
+ WHERE u.id = r.id
+   AND r.rn > 1;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_display_name_lower
+  ON users (lower(display_name));
+
 CREATE INDEX IF NOT EXISTS idx_users_trophies ON users (trophies DESC);
 CREATE INDEX IF NOT EXISTS idx_users_game_center ON users (game_center_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_apple_sub ON users (apple_sub) WHERE apple_sub IS NOT NULL;
@@ -100,6 +121,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_facebook_sub ON users (facebook_sub)
 
 -- Social pack subscription (unlocks country-team & letter-team in friend matches).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS social_pack_until TIMESTAMPTZ;
+
+-- Kesinti telafisi hediyesi: ilk verilisinde damgalanir, boylece ayni hesaba
+-- ikinci kez verilemez (grantOutageGiftIfNeeded bu sutuna bakar).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS outage_gift_at TIMESTAMPTZ;
 
 -- Chosen profile-picture id (e.g. 'pp7'); null = default person icon.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT;
