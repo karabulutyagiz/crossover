@@ -1764,7 +1764,8 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
     }
   }, [state.clubResults]);
 
-  // Fill the bar 0→100 over ~2.2s; at 100% blink the bar white, then enter home.
+  // Fill the bar 0→100 over ~2.5s (100ms x 25 tik — istek: 0.5sn daha yavas,
+  // intro stinger'in kuyrugu sayac bitmeden tamamlanir); at 100% blink, enter home.
   useEffect(() => {
     const id = setInterval(() => {
       setPct((p) => {
@@ -1779,7 +1780,7 @@ export function LoadingScreen({ state, actions, onReady }: Props & { onReady: ()
         }
         return next;
       });
-    }, 80);
+    }, 100);
     return () => clearInterval(id);
   }, []);
 

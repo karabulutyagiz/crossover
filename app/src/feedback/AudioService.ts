@@ -164,6 +164,11 @@ function releasePlayer(p: Player | null) {
   safe(() => p.remove());
 }
 
+// Varsayilan 2600ms geri donusumden daha uzun calmasi gereken sfx'ler.
+const LONG_SFX_RELEASE_MS: Partial<Record<AudioEvent, number>> = {
+  [AudioEvent.SPLASH_ELECTRIC_IMPACT]: 6500,
+};
+
 function playPreparedSfx(player: Player, event: AudioEvent, opts?: { volume?: number; rate?: number }) {
   safe(() => {
     const jitter = UI_VARIATION_EVENTS.has(event) ? (Math.random() - 0.5) : 0;
@@ -364,10 +369,14 @@ export function playSFX(event: AudioEvent, opts?: { priority?: number; volume?: 
     const player = createAudioPlayer(SFX_ASSETS[event]);
     activeSfx += 1;
     playPreparedSfx(player, event, opts);
+    // 2600ms varsayilan serbest birakma 5sn'lik intro stinger'i ortadan kesiyordu
+    // (splash 2500ms'de biter, yukleme bari cikar cikmaz ses olurdu). Uzun
+    // varliklar icin sureyi asset bazinda uzat.
+    const releaseMs = LONG_SFX_RELEASE_MS[event] ?? 2600;
     setTimeout(() => {
       activeSfx = Math.max(0, activeSfx - 1);
       releasePlayer(player);
-    }, 2600);
+    }, releaseMs);
   });
 }
 
