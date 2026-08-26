@@ -9283,7 +9283,12 @@ export function FriendProfileModal({ profile, onClose, relation, onAddFriend }: 
         <View style={{ flex: 1, paddingTop: insets.top }}>
           <ScreenHeader title={t('profile.title')} icon="person" onBack={onClose} />
 
-          <View style={{ paddingHorizontal: 20 }}>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 28 }}
+            showsVerticalScrollIndicator={false}
+            bounces
+          >
             {/* Identity block — hero panel tinted by the friend's arena */}
             <GamePanel hero tint={color} style={{ marginBottom: 14 }} bodyStyle={{ alignItems: 'center', paddingVertical: 22 }}>
               <AvatarBadge avatarId={profile?.avatar ?? profile?.selectedAvatar} size={104} ringColor={color} frameId={profile?.frame} trophies={profile?.trophies} />
@@ -9328,7 +9333,7 @@ export function FriendProfileModal({ profile, onClose, relation, onAddFriend }: 
                 />
               </View>
             ) : null}
-          </View>
+          </ScrollView>
         </View>
       </Animated.View>
     </SafeModal>
