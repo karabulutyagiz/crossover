@@ -1534,27 +1534,7 @@ function ShineSweep({ width, height, delay = 0, duration = 650, loop = false, lo
 // CROSSOVER stamps in letter-by-letter and a gold shine sweeps the wordmark.
 // The loading screen then raises its bottom kit under this same composition.
 // Native driver only; a fixed timer fires onDone so the splash never blocks.
-// SONIC-SYNC (2026-08-26): süreler COF_Premium_Logo_Sting_5s.wav'ın GERÇEK
-// dalga analizinden çıkarıldı (tahmin yok — 5ms RMS zarfı + en dik yükseliş):
-//   150ms açılış vuruşu · 1982ms buildup kabarması · 2435ms ÇARPIŞMA (algısal
-//   çat — zarf 2687'de patlar: temas→enerji açılımı) · 3639ms LOGO LOCK (en
-//   güçlü vuruş) · ~4950ms kuyruk sonu.
-// Görsel akış bu haritaya kilitli: temas karesi = 2435ms (hedef ±30ms).
-const INTRO_TIMING = {
-  audioStart: 0,
-  ignition: 150,
-  ballMotionStart: 430,
-  buildupSwell: 1982,
-  anticipation: 2315,
-  collision: 2435,
-  energyBloomPeak: 2687,
-  lettersStart: 2550,
-  logoLock: 3639,
-  bylineIn: 3720,
-  shineSweep: 3900,
-  introComplete: 5000,
-} as const;
-const SLAM_TOTAL_MS = INTRO_TIMING.introComplete;
+const SLAM_TOTAL_MS = 2500;
 const SLAM_WORD = 'CROSSOVER';
 // Dev/StrictMode yeniden mount'unda stinger'ın İKİ KEZ çalmasını engeller;
 // soğuk açılışta modül tazelendiği için her gerçek açılışta bir kez çalar.
@@ -1599,12 +1579,6 @@ export function SplashScreen({ onDone, fontsReady = true, onFirstFrameReady }: {
   const ring1 = useRef(new Animated.Value(0)).current;     // mint impact ring
   const burst = useRef(new Animated.Value(0)).current;     // spark burst + core flash
   const letters = useRef(SLAM_WORD.split('').map(() => new Animated.Value(0))).current;
-  const antic = useRef(new Animated.Value(0)).current;     // çarpışma öncesi 120ms beklenti (glow yükselir)
-  const ring2 = useRef(new Animated.Value(0)).current;     // temiz shockwave halkası (0.3→1.8)
-  const flashScr = useRef(new Animated.Value(0)).current;  // 60ms ekran flaşı (0→0.45→0)
-  const lock = useRef(new Animated.Value(0)).current;      // 3639ms logo lock (scale settle + glow tepe)
-  const bgGlow = useRef(new Animated.Value(0)).current;    // arka plan ışık tepkisi
-  const byline = useRef(new Animated.Value(0)).current;    // FOOTBALL satırı — lock'tan birkaç kare sonra
   const fired = useRef(false);
   // The exit timer must call the LATEST onDone, not the mount-time closure.
   const onDoneRef = useRef(onDone);
@@ -1625,78 +1599,39 @@ export function SplashScreen({ onDone, fontsReady = true, onFirstFrameReady }: {
   useEffect(() => { sendFirstFrameReady(); }, [sendFirstFrameReady]);
 
   useEffect(() => {
-    // Ses 0'da başlar (player app açılışında prewarm'lı — yükleme beklenmez);
-    // tüm görsel kurgu INTRO_TIMING'e kilitli TEK timeline'dır.
-    if (!splashIntroStartedOnce) {
-      splashIntroStartedOnce = true;
-      triggerFeedback(GameFeedbackEvent.SPLASH_ELECTRIC_IMPACT);
-    }
-    const anim = Animated.parallel([
-      // perde: sessiz/kontrollü açılış
-      Animated.timing(veil, { toValue: 0, duration: 240, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-      // 150ms açılış vuruşu: kısa ateşleme parlaması (bgGlow mikro tepe)
-      Animated.sequence([
-        Animated.delay(INTRO_TIMING.ignition - 60),
-        Animated.timing(bgGlow, { toValue: 0.4, duration: 90, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-        Animated.timing(bgGlow, { toValue: 0.12, duration: 500, easing: Easing.in(Easing.quad), useNativeDriver: true }),
-      ]),
-      // toplar: 430ms'te yola çıkar, hızlanarak 2435ms'te TEMAS eder
-      Animated.sequence([
-        Animated.delay(INTRO_TIMING.ballMotionStart),
-        Animated.timing(fly, { toValue: 1, duration: INTRO_TIMING.collision - INTRO_TIMING.ballMotionStart, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
-      ]),
-      // beklenti: temastan 120ms önce enerji yükselir ("şimdi bir şey olacak")
-      Animated.sequence([
-        Animated.delay(INTRO_TIMING.anticipation),
-        Animated.timing(antic, { toValue: 1, duration: INTRO_TIMING.collision - INTRO_TIMING.anticipation, easing: Easing.in(Easing.quad), useNativeDriver: true }),
-      ]),
-      // ÇARPIŞMA bloğu — 2435ms: sıkışma + sarsıntı + halkalar + kıvılcım + flaş
-      Animated.sequence([
-        Animated.delay(INTRO_TIMING.collision),
-        Animated.parallel([
-          Animated.timing(impact, { toValue: 1, duration: 380, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-          Animated.timing(shake, { toValue: 1, duration: 300, easing: Easing.linear, useNativeDriver: true }),
-          Animated.timing(ring1, { toValue: 1, duration: 430, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-          Animated.timing(ring2, { toValue: 1, duration: 340, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-          Animated.timing(burst, { toValue: 1, duration: 520, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-          Animated.sequence([
-            Animated.timing(flashScr, { toValue: 1, duration: 28, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-            Animated.timing(flashScr, { toValue: 0, duration: 42, easing: Easing.in(Easing.quad), useNativeDriver: true }),
-          ]),
-          // enerji patlamasından harfler doğar (2550ms'ten itibaren)
-          Animated.sequence([
-            Animated.delay(INTRO_TIMING.lettersStart - INTRO_TIMING.collision),
-            Animated.stagger(65, letters.map((v) =>
-              Animated.timing(v, { toValue: 1, duration: 240, easing: Easing.out(Easing.back(2.6)), useNativeDriver: true }),
-            )),
-          ]),
+    const anim = Animated.sequence([
+      // 0–640ms: lights up; the two halves accelerate in from opposite edges
+      Animated.parallel([
+        Animated.timing(veil, { toValue: 0, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.sequence([
+          Animated.delay(120),
+          Animated.timing(fly, { toValue: 1, duration: 520, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
         ]),
       ]),
-      // FOOTBALL satırı: CROSSOVER kilitlendikten birkaç kare sonra, sakin
-      Animated.sequence([
-        Animated.delay(INTRO_TIMING.bylineIn),
-        Animated.timing(byline, { toValue: 1, duration: 260, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-      ]),
-      // 3639ms LOGO LOCK: sesin en güçlü vuruşu — marka imzası (settle + glow tepesi)
-      Animated.sequence([
-        Animated.delay(INTRO_TIMING.logoLock),
-        Animated.parallel([
-          Animated.sequence([
-            Animated.timing(lock, { toValue: 1, duration: 120, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-            Animated.timing(lock, { toValue: 0, duration: 260, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-          ]),
-          Animated.sequence([
-            Animated.timing(bgGlow, { toValue: 0.5, duration: 110, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-            Animated.timing(bgGlow, { toValue: 0, duration: 900, easing: Easing.in(Easing.quad), useNativeDriver: true }),
-          ]),
+      // 640ms: IMPACT — the halves meet, the bolt completes: squeeze, shake,
+      // ring, sparks; letters stamp in from 980ms
+      Animated.parallel([
+        Animated.timing(impact, { toValue: 1, duration: 380, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(shake, { toValue: 1, duration: 300, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(ring1, { toValue: 1, duration: 430, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(burst, { toValue: 1, duration: 520, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.sequence([
+          Animated.delay(340),
+          Animated.stagger(55, letters.map((v) =>
+            Animated.timing(v, { toValue: 1, duration: 260, easing: Easing.out(Easing.back(3)), useNativeDriver: true }),
+          )),
         ]),
       ]),
     ]);
     anim.start();
-    // Haptik SES DOSYASININ çat anına kilitli — tek, net, premium impact.
-    const hapticTm = setTimeout(() => playHaptic(HapticEvent.HEAVY), INTRO_TIMING.collision);
-    // Arka plana düşerse stinger susar; timeline görsel olarak akmaya devam eder
-    // (dönüşte çift ses/üst üste binme olmaz — player başa sarılı bekler).
+    // COF_Premium_Logo_Sting_5s: 5 saniyelik stinger BİLEREK tam çalar — splash
+    // 2.5sn'de biter, sesin kuyruğu yükleme ekranının üstünde doğal olarak sürer.
+    // Görsel kurguya DOKUNULMAZ (143/144'teki intro birebir korunur).
+    if (!splashIntroStartedOnce) {
+      splashIntroStartedOnce = true;
+      triggerFeedback(GameFeedbackEvent.SPLASH_ELECTRIC_IMPACT);
+    }
+    // Arka plana düşerse stinger susar (dönüşte çift ses binmez).
     const appSub = AppState.addEventListener('change', (st) => {
       if (st === 'background') stopSplashStinger();
     });
@@ -1704,7 +1639,7 @@ export function SplashScreen({ onDone, fontsReady = true, onFirstFrameReady }: {
     const tm = setTimeout(() => {
       if (!fired.current) { fired.current = true; onDoneRef.current?.(); }
     }, SLAM_TOTAL_MS);
-    return () => { clearTimeout(hapticTm); clearTimeout(tm); appSub.remove(); anim.stop(); };
+    return () => { clearTimeout(tm); appSub.remove(); anim.stop(); };
   }, []);
 
   // Each half slides on X only (straight left/right, per the matchup metaphor);
@@ -1723,9 +1658,7 @@ export function SplashScreen({ onDone, fontsReady = true, onFirstFrameReady }: {
   return (
     <View style={{ flex: 1, backgroundColor: BG_TOP }} onLayout={handleFirstLayout}>
     <OpeningBackdrop>
-      {/* arka plan tepkisi: merkezden yumuşak radyal ışıma (ateşleme + lock tepesi) */}
-      <Animated.View pointerEvents="none" style={{ position: 'absolute', alignSelf: 'center', top: '26%', width: SLAM_BADGE * 2.6, height: SLAM_BADGE * 2.6, borderRadius: SLAM_BADGE * 1.3, backgroundColor: theme.accent, opacity: bgGlow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.16] }) }} />
-      <Animated.View style={{ alignItems: 'center', transform: [{ translateX: shakeTX }, { translateY: shakeTY }, { scale: lock.interpolate({ inputRange: [0, 1], outputRange: [1, 1.032] }) }] }}>
+      <Animated.View style={{ alignItems: 'center', transform: [{ translateX: shakeTX }, { translateY: shakeTY }] }}>
         {/* badge (two clipped halves that assemble at centre) + impact FX */}
         <View style={{ width: SLAM_BADGE * 1.4, height: SLAM_BADGE_H + 26, alignItems: 'center', justifyContent: 'center' }}>
           <Animated.View style={{ flexDirection: 'row', transform: [{ scaleX: squeezeX }, { scaleY: squeezeY }] }}>
@@ -1740,10 +1673,6 @@ export function SplashScreen({ onDone, fontsReady = true, onFirstFrameReady }: {
           </Animated.View>
           {/* impact anchor (zero-size, centered on the seam — the collision point) */}
           <View pointerEvents="none" style={{ position: 'absolute', left: '50%', top: '50%', width: 0, height: 0 }}>
-            {/* beklenti: temastan 120ms önce dikişte büyüyen enerji */}
-            <Animated.View style={{ position: 'absolute', left: -26, top: -26, width: 52, height: 52, borderRadius: 26, backgroundColor: '#BFE8FF', opacity: antic.interpolate({ inputRange: [0, 1], outputRange: [0, 0.5] }), transform: [{ scale: antic.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1.15] }) }] }} />
-            {/* temiz shockwave: 0.3→1.8, ince halka — premium, kalın değil */}
-            <Animated.View style={{ position: 'absolute', left: -60, top: -60, width: 120, height: 120, borderRadius: 60, borderWidth: 2, borderColor: '#FFFFFF', opacity: ring2.interpolate({ inputRange: [0, 0.1, 1], outputRange: [0, 0.6, 0], extrapolate: 'clamp' }), transform: [{ scale: ring2.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1.8] }) }] }} />
             {/* white-hot core flash right where the bolt completes */}
             <Animated.View style={{ position: 'absolute', left: -34, top: -34, width: 68, height: 68, borderRadius: 34, backgroundColor: '#FFFFFF', opacity: burst.interpolate({ inputRange: [0, 0.08, 0.4, 1], outputRange: [0, 0.6, 0, 0], extrapolate: 'clamp' }), transform: [{ scale: burst.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1.7] }) }] }} />
             <Animated.View style={{ position: 'absolute', left: -70, top: -70, width: 140, height: 140, borderRadius: 70, borderWidth: 3, borderColor: theme.primary, opacity: ring1.interpolate({ inputRange: [0, 0.12, 1], outputRange: [0, 0.85, 0], extrapolate: 'clamp' }), transform: [{ scale: ring1.interpolate({ inputRange: [0, 1], outputRange: [0.35, 2.4] }) }] }} />
@@ -1790,16 +1719,14 @@ export function SplashScreen({ onDone, fontsReady = true, onFirstFrameReady }: {
               </Animated.Text>
             ))}
           </View>
-          <ShineSweep width={SLAM_WM_W} height={SLAM_FONT * 1.4} delay={INTRO_TIMING.shineSweep} duration={620} tint={theme.accent} opacity={0.3} band={0.24} />
+          <ShineSweep width={SLAM_WM_W} height={SLAM_FONT * 1.4} delay={1900} duration={620} tint={theme.accent} opacity={0.3} band={0.24} />
           {/* byline fades in with the last stamped letter — but stays hidden until
               fonts are ready so "BY Games" never appears in a fallback face first */}
-          <Animated.View style={{ opacity: fontsReady ? byline : 0 }}>
+          <Animated.View style={{ opacity: fontsReady ? letters[letters.length - 1]! : 0 }}>
             <BrandByline ready={fontsReady} />
           </Animated.View>
         </View>
       </Animated.View>
-      {/* 60ms impact flaşı: 0→0.45→0 — göz yormaz, tam temas anında */}
-      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF', opacity: flashScr.interpolate({ inputRange: [0, 1], outputRange: [0, 0.45] }) }]} />
       {/* fade-from-navy veil (on top of everything) — mockup zemininde siyah yok */}
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: theme.bg, opacity: veil }]} />
     </OpeningBackdrop>
