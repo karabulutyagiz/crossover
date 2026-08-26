@@ -43,7 +43,9 @@ const { clubs, totals } = data;
 // landing on, and a table of four names is not. The rest of the 525 pairings
 // stay unbuilt rather than becoming thin URLs.
 // ---------------------------------------------------------------------------
-const TR_CLUBS = new Set(['galatasaray', 'fenerbahce', 'besiktas', 'trabzonspor', 'basaksehir']);
+// Every Turkish club in the curated set counts as TR for the page threshold —
+// derived from the data instead of a second hand-kept list.
+const TR_CLUBS = new Set(clubs.filter((c) => c.country === 'Türkiye').map((c) => c.slug));
 const isTR = (p) => TR_CLUBS.has(p.a) || TR_CLUBS.has(p.b);
 const pairs = data.pairs.filter((p) => (isTR(p) && p.count >= 5) || p.count >= 12);
 const pairSlugs = new Set(pairs.map((p) => p.slug));
