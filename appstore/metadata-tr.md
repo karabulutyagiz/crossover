@@ -9,13 +9,17 @@
 **CrossOver Football**  _(18 — kullanıcı kararı: bu ad kalıyor)_
 
 ## Alt Başlık / Subtitle (max 30)
-**Ortak futbolcuyu ilk sen bul**  _(29)_
+**Ortak Futbolcu Bilme Oyunu**  _(26 — ASO: "ortak futbolcu" + "futbolcu bilme oyunu" aramalarını alt başlık ağırlığıyla yakalar; 1.0.3 ile ASC'ye yazıldı)_
+_(önceki: "Ortak futbolcuyu ilk sen bul")_
 
 ## Anahtar Kelimeler / Keywords (max 100, virgülle, boşluksuz)
 ```
-futbol,quiz,bilgi yarışması,transfer,ortak oyuncu,rakip,arena,1v1,taraftar,lig,gol,skor,kart
+tahmin,bulma,oyun,quiz,futbol,bilgi,yarışması,transfer,oyuncu,takım,kulüp,lig,1v1,arena,rakip
 ```
-_(~99 karakter — ad/alt başlıktaki kelimeler tekrar edilmez)_
+_(93 karakter — 1.0.3 ile ASC'ye yazıldı. futbolcu/bilme/oyunu/ortak alt başlıkta
+olduğu için burada tekrar edilmez; "gol, skor, kart" gibi değersiz terimler atıldı.
+en-US: `guess,footballer,trivia,game,transfer,club,duel,1v1,soccer,knowledge,league,two,clubs`;
+en-US alt başlık: "Football Quiz: Shared Player")_
 
 ## Tanıtım Metni / Promotional Text (max 170, incelemesiz güncellenebilir)
 İki takımda da forma giymiş futbolcuyu rakibinden önce bul! Gerçek zamanlı 1v1 futbol düellosu — arkadaşınla kapış, arenalarda yüksel, kupaları topla.
