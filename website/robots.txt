@@ -1,0 +1,5 @@
+# CrossOver Football
+User-agent: *
+Allow: /
+
+Sitemap: https://crossoverfootball.com/sitemap.xml

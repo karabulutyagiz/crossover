@@ -1,107 +1,401 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<link rel="icon" type="image/png" href="/favicon.png" />
-<title>Crossover — İki takımda da oynamış futbolcuyu ilk bilen kazanır</title>
-<meta name="description" content="İki kişilik, gerçek zamanlı futbol bilgi oyunu. İki kulüp seçin, ikisinde de oynamış futbolcuyu ilk yazan kazanır." />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>CrossOver Football — Ortak Futbolcu Bilme Oyunu | Ücretsiz İndir</title>
+<meta name="description" content="İki takım seç, ikisinde de oynamış ortak futbolcuyu rakibinden önce bul. Gerçek transfer verisiyle çalışan, canlı 1v1 futbol bilgi oyunu. iOS’ta ücretsiz." />
+<link rel="canonical" href="https://crossoverfootball.com/" />
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+<link rel="alternate" hreflang="tr" href="https://crossoverfootball.com/" />
+<link rel="alternate" hreflang="en" href="https://crossoverfootball.com/en/" />
+<link rel="alternate" hreflang="x-default" href="https://crossoverfootball.com/" />
+<meta name="theme-color" content="#071229" />
+<link rel="icon" href="/favicon.png" type="image/png" />
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
+<link rel="preload" as="font" type="font/woff2" href="/fonts/poppins-900-latin.woff2" crossorigin />
+<link rel="preload" as="font" type="font/woff2" href="/fonts/poppins-900-latin-ext.woff2" crossorigin />
+<link rel="preload" as="font" type="font/woff2" href="/fonts/poppins-500-latin.woff2" crossorigin />
+<link rel="preload" as="font" type="font/woff2" href="/fonts/poppins-500-latin-ext.woff2" crossorigin />
 <link rel="stylesheet" href="/styles.css" />
-<link rel="icon" type="image/png" href="/favicon.png" />
-<link rel="apple-touch-icon" href="/favicon.png" />
-  <!-- Google AdSense — site doğrulama / hesap etkinleştirme (pub-5118403349234305) -->
-  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5118403349234305" crossorigin="anonymous"></script>
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="CrossOver Football" />
+<meta property="og:locale" content="tr_TR" />
+<meta property="og:title" content="CrossOver Football — Ortak Futbolcu Bilme Oyunu | Ücretsiz İndir" />
+<meta property="og:description" content="İki takım seç, ikisinde de oynamış ortak futbolcuyu rakibinden önce bul. Gerçek transfer verisiyle çalışan, canlı 1v1 futbol bilgi oyunu. iOS’ta ücretsiz." />
+<meta property="og:url" content="https://crossoverfootball.com/" />
+<meta property="og:image" content="https://crossoverfootball.com/img/og-default.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="CrossOver Football" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="CrossOver Football — Ortak Futbolcu Bilme Oyunu | Ücretsiz İndir" />
+<meta name="twitter:description" content="İki takım seç, ikisinde de oynamış ortak futbolcuyu rakibinden önce bul. Gerçek transfer verisiyle çalışan, canlı 1v1 futbol bilgi oyunu. iOS’ta ücretsiz." />
+<meta name="twitter:image" content="https://crossoverfootball.com/img/og-default.png" />
+<meta name="apple-itunes-app" content="app-id=6778542426" />
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","@id":"https://crossoverfootball.com/#organization","name":"CrossOver Football","url":"https://crossoverfootball.com","logo":"https://crossoverfootball.com/img/logo-mark.png","email":"info@crossoverfootball.com","sameAs":["https://apps.apple.com/tr/app/crossover-football/id6778542426"]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","@id":"https://crossoverfootball.com/#website","name":"CrossOver Football","url":"https://crossoverfootball.com","inLanguage":"tr-TR","publisher":{"@id":"https://crossoverfootball.com/#organization"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":["VideoGame","MobileApplication"],"@id":"https://crossoverfootball.com/#app","name":"CrossOver Football","url":"https://crossoverfootball.com","description":"İki kulüpte de forma giymiş ortak futbolcuyu rakibinden önce bulduğun, gerçek zamanlı iki kişilik futbol bilgi oyunu.","image":"https://crossoverfootball.com/img/og-default.png","applicationCategory":"GameApplication","applicationSubCategory":"Trivia","genre":["Trivia","Sports","Multiplayer"],"gamePlatform":"iOS","operatingSystem":"iOS 15.1+","playMode":["MultiPlayer","SinglePlayer"],"inLanguage":["tr","en"],"installUrl":"https://apps.apple.com/tr/app/crossover-football/id6778542426","downloadUrl":"https://apps.apple.com/tr/app/crossover-football/id6778542426","publisher":{"@id":"https://crossoverfootball.com/#organization"},"offers":{"@type":"Offer","price":"0","priceCurrency":"TRY","availability":"https://schema.org/InStock","url":"https://apps.apple.com/tr/app/crossover-football/id6778542426"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Ortak futbolcu oyunu nedir?","acceptedAnswer":{"@type":"Answer","text":"İki kulüp söylenir; ikisinde de forma giymiş bir futbolcuyu ilk bulan kazanır. Sahada ve sohbetlerde yıllardır oynanan bu oyunun kurallı, hakemli ve gerçek transfer verisiyle doğrulanan hâli CrossOver Football’dır."}},{"@type":"Question","name":"Oyun ücretsiz mi?","acceptedAnswer":{"@type":"Answer","text":"Evet. İndirmek ve Takım × Takım modunda sınırsız oynamak ücretsiz. İsteğe bağlı elmas paketleri ve Ülke × Takım ile Harf × Takım modlarını açan Sosyal Paket aboneliği var."}},{"@type":"Question","name":"Android sürümü var mı?","acceptedAnswer":{"@type":"Answer","text":"Şu an yalnızca iOS’ta yayında. Android sürümü hazırlanıyor; çıktığında bu sayfadan duyuracağız."}},{"@type":"Question","name":"Tek başıma oynayabilir miyim?","acceptedAnswer":{"@type":"Answer","text":"Evet. Kolay, Orta ve Zor bot maçlarıyla kupa riski almadan pratik yapabilirsin. Ayrıca arkadaşınla oda kodu üzerinden özel maç kurabilirsin."}},{"@type":"Question","name":"Cevabı yanlış sayarsa ne olur?","acceptedAnswer":{"@type":"Answer","text":"Doğrulama, futbolcunun her iki kulüpteki kayıtlı dönemlerine bakar; altyapı ve kiralık dönemler de ana kulübe sayılır. Yazım hataları otomatik düzeltilir. Yine de hatalı gördüğün bir sonuç olursa destek adresinden bildir, kaydı kontrol edelim."}}]}</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5118403349234305" crossorigin="anonymous"></script>
 </head>
 <body>
-<div class="bg-fx"><span class="blob a"></span><span class="blob b"></span><span class="blob c"></span></div>
-<div class="grid-overlay"></div>
-
-<nav>
-  <div class="wrap">
-    <a class="brand" href="/"><img class="mark" src="/logo.png" alt="Crossover" /> CROSSOVER</a>
-    <div class="nav-links" id="navLinks">
-      <a href="/nasil-oynanir/">Nasıl oynanır</a>
-      <a href="/dogrulama/">Doğrulama</a>
-      <a href="/ozellikler/">Özellikler</a>
-    </div>
-    <div class="nav-right">
-      <a class="nav-cta" href="/indir/">Hemen Oyna</a>
-      <button class="menu-btn" id="menuBtn" aria-label="Menü"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
-    </div>
-  </div>
+<a class="skip" href="#main">İçeriğe geç</a>
+<div class="pitch" aria-hidden="true"></div>
+<header class="nav">
+<div class="wrap bar">
+<a class="brand" href="/" aria-label="CrossOver Football">
+<img src="/img/logo-mark.png" width="34" height="34" alt="" />
+<b>CROSS<i>OVER</i></b>
+</a>
+<nav class="nav-links" id="menu" aria-label="Ana menü">
+<a href="/nasil-oynanir/">Nasıl Oynanır</a><a href="/oyun-modlari/">Oyun Modları</a><a href="/ortak-futbolcu/">Ortak Futbolcular</a><a href="/rehber/">Rehber</a><a href="/sss/">SSS</a>
+<span class="menu-cta"><a class="btn btn-primary" href="/indir/">Ücretsiz İndir</a></span>
 </nav>
-
-<!-- HERO -->
-<header class="wrap hero">
-  <div>
-    <span class="tag"><span class="dot"></span> Gerçek zamanlı • 2 oyuncu • Bot modu</span>
-    <h1 class="title">İki takımda da oynamış futbolcuyu <span class="grad">ilk bilen kazanır.</span></h1>
-    <p class="lede">İki kulüp seçilir, ikiniz de o iki takımda oynamış bir futbolcuyu yazmaya yarışırsınız. İlk doğru cevap turu kilitler. 52.000+ oyuncu, 12.000+ kulüp — gerçek Transfermarkt verisiyle.</p>
-    <div class="cta-row">
-      <a class="btn primary" href="/indir/"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg> Oynamaya Başla</a>
-      <a class="btn ghost" href="/nasil-oynanir/">Nasıl oynanır?</a>
-    </div>
-    <div class="stats">
-      <div class="stat"><div class="n"><span class="grad">52K+</span></div><div class="l">Futbolcu</div></div>
-      <div class="stat"><div class="n"><span class="grad">12K+</span></div><div class="l">Kulüp</div></div>
-      <div class="stat"><div class="n"><span class="grad">350K+</span></div><div class="l">Transfer kaydı</div></div>
-    </div>
-  </div>
-
-  <div class="stage">
-    <div class="float-chip fc1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4.5 13.5H11l-1 8.5L18.5 10.5H12l1-8.5z"/></svg> İlk yazan kazanır</div>
-    <div class="float-chip fc2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="7" width="14" height="12" rx="2"/><path d="M12 7V4M9 12h.01M15 12h.01M9.5 16h5M2.5 12H5M19 12h2.5"/></svg> Bot'a karşı oyna</div>
-    <div class="float-chip fc3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.7 4.9L18.5 9.5 13.7 11 12 16l-1.7-5L5.5 9.5l4.8-1.6z"/></svg> Akıllı isim eşleştirme</div>
-    <div class="phone" id="heroPhone">
-      <div class="screen"><img src="/screens/guess.png" alt="Crossover tahmin ekranı" /></div>
-      <div class="glare"></div>
-    </div>
-    <div class="reflect"></div>
-  </div>
+<div class="nav-right">
+<div class="lang" role="group" aria-label="Dil">
+<a href="/" hreflang="tr" aria-current="true">TR</a>
+<a href="/en/" hreflang="en">EN</a>
+</div>
+<a class="btn btn-primary btn-sm" href="/indir/">Ücretsiz İndir</a>
+<button class="burger" id="burger" aria-label="Menüyü aç/kapat" aria-expanded="false" aria-controls="menu"><span></span><span></span><span></span></button>
+</div>
+</div>
 </header>
+<main id="main">
 
-<!-- LOGO MARQUEE -->
-<section class="block" style="padding:30px 0">
-  <div class="wrap center"><p class="sub reveal" style="margin-inline:auto">Avrupa'nın ve dünyanın en büyük kulüpleri</p></div>
-  <div class="marquee"><div class="track" id="track"></div></div>
+<section class="wrap hero">
+<div class="hero-grid">
+<div>
+<span class="eyebrow reveal">Ortak futbolcu oyunu</span>
+<h1 class="display reveal d1">Futbol bilgine <span class="gold">güveniyor musun?</span></h1>
+<p class="lede reveal d2">İki kulüp açılır. İkisinde de forma giymiş futbolcuyu rakibinden önce yazarsan tur senin. Üç turu ilk alan maçı ve kupaları alır.</p>
+<div class="reveal d3">
+<div class="btn-row">
+<a class="btn btn-primary btn-store btn-lg" href="https://apps.apple.com/tr/app/crossover-football/id6778542426" rel="noopener" data-ev="hero_install_click">
+<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.7 12.6c0-2.6 2.1-3.9 2.2-4-1.2-1.7-3-2-3.7-2-1.6-.16-3.1.93-3.9.93-.8 0-2-.9-3.3-.88-1.7.02-3.2 1-4.1 2.5-1.7 3-.45 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.45 1.2-.05 1.7-.78 3.1-.78 1.4 0 1.9.78 3.1.76 1.3-.02 2.1-1.2 2.9-2.4.9-1.3 1.3-2.6 1.3-2.66-.03-.01-2.5-.96-2.5-3.8ZM14.5 5.7c.66-.8 1.1-1.9 1-3-.95.04-2.1.63-2.8 1.42-.6.7-1.15 1.8-1 2.9 1.06.08 2.14-.54 2.8-1.32Z"/></svg><span><span class="s1">App Store’dan</span><span class="s2">Ücretsiz İndir</span></span>
+</a>
+<span class="btn btn-ghost btn-store btn-lg is-soon" aria-disabled="true">
+<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.6 9.5H6.4a.6.6 0 0 0-.6.6v6.7c0 .9.7 1.6 1.6 1.6h.7v2.3c0 .72.58 1.3 1.3 1.3s1.3-.58 1.3-1.3v-2.3h2.6v2.3c0 .72.58 1.3 1.3 1.3s1.3-.58 1.3-1.3v-2.3h.7c.9 0 1.6-.7 1.6-1.6v-6.7a.6.6 0 0 0-.6-.6ZM3.9 9.4c-.72 0-1.3.58-1.3 1.3v4.7a1.3 1.3 0 1 0 2.6 0v-4.7c0-.72-.58-1.3-1.3-1.3Zm16.2 0c-.72 0-1.3.58-1.3 1.3v4.7a1.3 1.3 0 1 0 2.6 0v-4.7c0-.72-.58-1.3-1.3-1.3ZM15.3 3.5l.9-1.6a.3.3 0 0 0-.52-.3l-.93 1.66A6.2 6.2 0 0 0 12 2.7c-.98 0-1.9.19-2.73.53L8.34 1.6a.3.3 0 0 0-.52.3l.9 1.6A5.3 5.3 0 0 0 5.9 8.1h12.2a5.3 5.3 0 0 0-2.8-4.6ZM9.4 6.2a.6.6 0 1 1 0-1.2.6.6 0 0 1 0 1.2Zm5.2 0a.6.6 0 1 1 0-1.2.6.6 0 0 1 0 1.2Z"/></svg><span><span class="s1">Google Play</span><span class="s2">Çok yakında</span></span>
+</span>
+</div>
+<p class="hero-note" style="margin-top:16px;justify-content:flex-start">
+<span class="chip chip-live"><span class="dot"></span> Canlı 1v1</span>
+<span class="chip">Ücretsiz</span>
+<span class="chip">Bot modu</span>
+</p>
+</div>
+</div>
+<div class="hero-art">
+
+<div class="device reveal">
+<img src="/img/screens/tr-guess.webp" width="1290" height="2520" alt="CrossOver Football tahmin ekranı: iki kulüp, geri sayım ve cevap alanı" fetchpriority="high" />
+</div>
+</div>
+</div>
 </section>
 
-<!-- HUB: keşfet -->
-<section class="block" id="kesfet">
-  <div class="wrap center">
-    <span class="eyebrow reveal">Keşfet</span>
-    <h2 class="reveal d1">Daha fazlası</h2>
-    <p class="sub reveal d2">Oyunu adım adım gör, doğrulama motorunu incele veya hemen indir.</p>
-  </div>
-  <div class="wrap feat">
-    <a class="card reveal" href="/nasil-oynanir/">
-      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4l14 8-14 8z"/></svg></div>
-      <h3>Nasıl oynanır <span class="arrow">→</span></h3>
-      <p>Geri sayımdan sonuca: bir turun dört adımı, gerçek ekranlarla.</p>
-    </a>
-    <a class="card reveal d1" href="/dogrulama/">
-      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg></div>
-      <h3>Doğrulama <span class="arrow">→</span></h3>
-      <p>“Bu futbolcu iki takımda da oynadı mı?” — anında, adil, sıfır maliyetle.</p>
-    </a>
-    <a class="card reveal d2" href="/ozellikler/">
-      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l2.4 7.4H22l-6 4.5 2.3 7.1L12 16.6 5.7 21l2.3-7.1-6-4.5h7.6z"/></svg></div>
-      <h3>Özellikler <span class="arrow">→</span></h3>
-      <p>Gerçek zamanlı mimari, akıllı eşleştirme, bot modu ve kapsam seçimi.</p>
-    </a>
-  </div>
+<section class="section-tight">
+<div class="wrap">
+
+<div class="head center">
+<span class="eyebrow reveal">Beş saniyede</span>
+<h2 class="reveal d1">Oyun tam olarak bu</h2>
+<p class="lede reveal d2">Aşağıdaki üç tur gerçek. Cevapların hepsi kariyer arşivinden doğrulandı — kulüp adına dokunursan tüm listeyi görürsün.</p>
+</div>
+<div class="grid g-3">
+<a href="/ortak-futbolcu/fenerbahce-real-madrid/" class="reveal" style="display:block">
+
+<div class="panel pad duel reveal">
+<div class="duel-row">
+<div class="duel-side">
+<div class="club">Fenerbahçe</div>
+<div class="meta">2007–2010</div>
+</div>
+<div class="duel-bolt" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.6 2 5 13.2h5.1L9.3 22l8.9-11.6h-5.3L13.6 2Z"/></svg></div>
+<div class="duel-side is-red">
+<div class="club">Real Madrid</div>
+<div class="meta">1996–2007</div>
+</div>
+</div>
+<div class="duel-answer">
+<span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6.5 9.5 17 4 11.6"/></svg></span>
+<span class="who">Roberto Carlos</span>
+</div>
+
+</div>
+</a><a href="/ortak-futbolcu/galatasaray-inter/" class="reveal d1" style="display:block">
+
+<div class="panel pad duel reveal">
+<div class="duel-row">
+<div class="duel-side">
+<div class="club">Galatasaray</div>
+<div class="meta">2013–2017</div>
+</div>
+<div class="duel-bolt" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.6 2 5 13.2h5.1L9.3 22l8.9-11.6h-5.3L13.6 2Z"/></svg></div>
+<div class="duel-side is-red">
+<div class="club">Inter</div>
+<div class="meta">2009–2013</div>
+</div>
+</div>
+<div class="duel-answer">
+<span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6.5 9.5 17 4 11.6"/></svg></span>
+<span class="who">Wesley Sneijder</span>
+</div>
+
+</div>
+</a><a href="/ortak-futbolcu/besiktas-barcelona/" class="reveal d2" style="display:block">
+
+<div class="panel pad duel reveal">
+<div class="duel-row">
+<div class="duel-side">
+<div class="club">Beşiktaş</div>
+<div class="meta">2010–2019</div>
+</div>
+<div class="duel-bolt" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.6 2 5 13.2h5.1L9.3 22l8.9-11.6h-5.3L13.6 2Z"/></svg></div>
+<div class="duel-side is-red">
+<div class="club">Barcelona</div>
+<div class="meta">2003–2004</div>
+</div>
+</div>
+<div class="duel-answer">
+<span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6.5 9.5 17 4 11.6"/></svg></span>
+<span class="who">Ricardo Quaresma</span>
+</div>
+
+</div>
+</a>
+</div>
+</div>
 </section>
 
-<footer>
-  <div class="wrap">
-    <a class="brand" href="/"><img class="mark" src="/logo.png" alt="Crossover" /> CROSSOVER</a>
-    <div><a href="/gizlilik/" style="color:#8a93a6">Gizlilik</a> · <a href="/kosullar/" style="color:#8a93a6">Koşullar</a> · <a href="/destek/" style="color:#8a93a6">Destek</a> · © 2026 Crossover</div>
-  </div>
+<section class="section-tight">
+<div class="wrap">
+
+<div class="panel stats reveal">
+<div class="s"><div class="n">29.822</div><div class="l">Futbolcu</div></div><div class="s"><div class="n">14.036</div><div class="l">Kulüp</div></div><div class="s"><div class="n">210.745</div><div class="l">Kariyer dönemi</div></div><div class="s"><div class="n">7</div><div class="l">Arena</div></div>
+</div>
+<p class="small dim center" style="margin-top:14px">Oyunun kariyer arşivindeki gerçek kayıt sayıları.</p>
+</div>
+</section>
+
+<section class="section">
+<div class="wrap">
+
+<div class="head center">
+<span class="eyebrow reveal">Nasıl oynanır</span>
+<h2 class="reveal d1">Bir tur, üç hamle</h2>
+<p class="lede reveal d2">Kural öğrenmek için beş dakika harcamıyorsun. İlk turun ilk saniyesinde ne yapman gerektiğini biliyorsun.</p>
+</div>
+
+<div class="steps">
+<div class="panel pad step reveal">
+<div class="n">01</div>
+<h3>Takımını seç</h3>
+<p>Geri sayım biter bitmez arama kutusuna kendi kulübünü yaz. Rakibin de aynı anda kendi takımını seçiyor.</p>
+</div><div class="panel pad step reveal d1">
+<div class="n">02</div>
+<h3>İki takım açılır</h3>
+<p>Senin seçtiğin kulüp ile rakibinkinin karşısına geçer. Süre işlemeye başlar.</p>
+</div><div class="panel pad step reveal d2">
+<div class="n">03</div>
+<h3>Ortak futbolcuyu yaz</h3>
+<p>İkisinde de oynamış bir isim yaz. İlk doğru cevap turu kilitler, futbolcunun tüm kariyeri ekranda açılır.</p>
+</div>
+</div>
+<div class="center" style="margin-top:32px">
+<a class="btn btn-ghost" href="/nasil-oynanir/">Turun tamamını ekranlarla gör <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.6 12h14M13.2 6.4 18.8 12l-5.6 5.6"/></svg></a>
+</div>
+</div>
+</section>
+
+<section class="section">
+<div class="wrap">
+
+<div class="head center">
+<span class="eyebrow reveal">Oyun modları</span>
+<h2 class="reveal d1">Aynı bilgi, farklı sorular</h2>
+<p class="lede reveal d2">Takım eşleşmesini ezberlediysen ülke ve harf modları seni yeniden zorlar.</p>
+</div>
+
+<div class="grid g-3">
+<a class="panel pad card reveal" href="/oyun-modlari/"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 17.5V19"/><circle cx="10" cy="7.5" r="3.2"/><path d="M20 19v-1.4a3.5 3.5 0 0 0-2.6-3.4M15.6 4.7a3.2 3.2 0 0 1 0 5.9"/></svg></div>
+<h3>Takım × Takım</h3>
+<p>Oyunun kalbi. İki kulüp açılır, ikisinde de oynamış futbolcuyu ilk yazan turu kilitler. Ücretsiz ve varsayılan mod.</p>
+</a><a class="panel pad card reveal d1" href="/oyun-modlari/"><div class="ic is-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3.2 12h17.6M12 3.1c2.4 2.6 2.4 15.2 0 17.8M12 3.1c-2.4 2.6-2.4 15.2 0 17.8"/></svg></div>
+<h3>Ülke × Takım</h3>
+<p>Bir ülke ve bir kulüp eşleşir: o kulüpte forma giymiş, o ülkeden bir futbolcu bulman gerekir.</p>
+<span class="tag-lock">Sosyal Paket</span></a><a class="panel pad card reveal d2" href="/oyun-modlari/"><div class="ic is-purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 19 12 5l6.5 14M8.2 14.4h7.6"/></svg></div>
+<h3>Harf × Takım</h3>
+<p>Bir harf ve bir kulüp. Adı o harfle başlayan, o kulüpte oynamış futbolcuyu bul. En zorlayıcı mod.</p>
+<span class="tag-lock">Sosyal Paket</span></a>
+</div>
+<div class="center" style="margin-top:26px">
+<a class="btn btn-ghost" href="/oyun-modlari/">Altı modun hepsi <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.6 12h14M13.2 6.4 18.8 12l-5.6 5.6"/></svg></a>
+</div>
+</div>
+</section>
+
+<section class="section">
+<div class="wrap">
+
+<div class="head center">
+<span class="eyebrow reveal">Kaputun altında</span>
+<h2 class="reveal d1">Tartışma çıkmaz, kayıt konuşur</h2>
+<p class="lede reveal d2">Ortak futbolcu oyununun sohbette çözülemeyen kısmı hakemlik. Burada hakem sunucu.</p>
+</div>
+
+<div class="grid g-3">
+<div class="panel pad card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.2V12l3.2 1.9"/></svg></div>
+<h3>İlk yazan kilitler</h3>
+<p>Doğrulama sunucuda ve atomik. İki oyuncu aynı anda yazsa bile turu kimin aldığı tartışmaya açık değil.</p>
+</div><div class="panel pad card reveal d1"><div class="ic is-gold"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l3.8 3.8"/></svg></div>
+<h3>Yazım hatası affeder</h3>
+<p>“snayder”, “sneider”, “SNEIJDER” — hepsi Wesley Sneijder’e gider. Türkçe karakter ve aksan duyarsız eşleştirme.</p>
+</div><div class="panel pad card reveal d2"><div class="ic is-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 5.2A2 2 0 0 1 6.5 3.2H19v15.6H6.5a2 2 0 0 0-2 2V5.2Z"/><path d="M4.5 18.8a2 2 0 0 1 2-2H19"/></svg></div>
+<h3>Gerçek kariyer verisi</h3>
+<p>Cevap doğruysa futbolcunun tüm kulüp geçmişi yıllarıyla açılır. Tahmin değil, kayıt.</p>
+</div><div class="panel pad card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.2 5 5.9v5.3c0 4.2 2.9 7.6 7 9 4.1-1.4 7-4.8 7-9V5.9L12 3.2Z"/><path d="M9.3 12.2 11.3 14l3.6-3.7"/></svg></div>
+<h3>Kapsamı sen seç</h3>
+<p>Tüm dünya çok mu geniş? Maçı tek bir lige ya da tek bir ülkeye kilitle, kendi sahanda oyna.</p>
+</div><div class="panel pad card reveal d1"><div class="ic is-gold"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4.5h10v4.2a5 5 0 0 1-10 0V4.5Z"/><path d="M7 6.2H4.6a2.4 2.4 0 0 0 2.4 4.6M17 6.2h2.4a2.4 2.4 0 0 1-2.4 4.6M10 13.7V17h4v-3.3M8 20h8"/></svg></div>
+<h3>Arena basamakları</h3>
+<p>Yedi arena: Mahalle Sahası, Amatör, Profesyonel, Şampiyonlar, Efsaneler, Dünya Klasmanı ve GOAT.</p>
+</div><div class="panel pad card reveal d2"><div class="ic is-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 17.5V19"/><circle cx="10" cy="7.5" r="3.2"/><path d="M20 19v-1.4a3.5 3.5 0 0 0-2.6-3.4M15.6 4.7a3.2 3.2 0 0 1 0 5.9"/></svg></div>
+<h3>Arkadaşlarla</h3>
+<p>Arkadaş ekle, mesajlaş, dostluk maçı kur. Mesajlaşma yalnızca doğrulanmış hesaplara açık.</p>
+</div>
+</div>
+</div>
+</section>
+
+<section class="section">
+<div class="wrap">
+
+<div class="head center">
+<span class="eyebrow reveal">Ortak futbolcu arşivi</span>
+<h2 class="reveal d1">Hangi ikilide kimler oynadı?</h2>
+<p class="lede reveal d2">Oyunu besleyen kariyer arşivini açtık. Kulüp eşleşmesini seç, ikisinde de forma giymiş herkesi yıllarıyla gör.</p>
+</div>
+<div class="pair-list">
+<a class="pair-link" href="/ortak-futbolcu/fenerbahce-besiktas/">
+<span class="vs">Fenerbahçe<i>×</i>Beşiktaş</span>
+<span class="n">37</span>
+</a><a class="pair-link" href="/ortak-futbolcu/galatasaray-fenerbahce/">
+<span class="vs">Galatasaray<i>×</i>Fenerbahçe</span>
+<span class="n">27</span>
+</a><a class="pair-link" href="/ortak-futbolcu/besiktas-trabzonspor/">
+<span class="vs">Beşiktaş<i>×</i>Trabzonspor</span>
+<span class="n">27</span>
+</a><a class="pair-link" href="/ortak-futbolcu/galatasaray-trabzonspor/">
+<span class="vs">Galatasaray<i>×</i>Trabzonspor</span>
+<span class="n">25</span>
+</a><a class="pair-link" href="/ortak-futbolcu/fenerbahce-trabzonspor/">
+<span class="vs">Fenerbahçe<i>×</i>Trabzonspor</span>
+<span class="n">20</span>
+</a><a class="pair-link" href="/ortak-futbolcu/galatasaray-besiktas/">
+<span class="vs">Galatasaray<i>×</i>Beşiktaş</span>
+<span class="n">19</span>
+</a><a class="pair-link" href="/ortak-futbolcu/galatasaray-inter/">
+<span class="vs">Galatasaray<i>×</i>Inter</span>
+<span class="n">13</span>
+</a><a class="pair-link" href="/ortak-futbolcu/galatasaray-manchester-city/">
+<span class="vs">Galatasaray<i>×</i>Man City</span>
+<span class="n">9</span>
+</a><a class="pair-link" href="/ortak-futbolcu/galatasaray-liverpool/">
+<span class="vs">Galatasaray<i>×</i>Liverpool</span>
+<span class="n">9</span>
+</a><a class="pair-link" href="/ortak-futbolcu/fenerbahce-juventus/">
+<span class="vs">Fenerbahçe<i>×</i>Juventus</span>
+<span class="n">9</span>
+</a><a class="pair-link" href="/ortak-futbolcu/galatasaray-real-madrid/">
+<span class="vs">Galatasaray<i>×</i>Real Madrid</span>
+<span class="n">8</span>
+</a><a class="pair-link" href="/ortak-futbolcu/galatasaray-atletico-madrid/">
+<span class="vs">Galatasaray<i>×</i>Atlético</span>
+<span class="n">8</span>
+</a>
+</div>
+<div class="center" style="margin-top:26px">
+<a class="btn btn-ghost" href="/ortak-futbolcu/">Tüm kulüp eşleşmeleri <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.6 12h14M13.2 6.4 18.8 12l-5.6 5.6"/></svg></a>
+</div>
+</div>
+</section>
+
+<section class="section">
+<div class="wrap wrap-narrow">
+
+<div class="head center">
+<span class="eyebrow reveal">SSS</span>
+<h2 class="reveal d1">Sık sorulanlar</h2>
+
+</div>
+
+<div class="faq">
+<details>
+<summary>Ortak futbolcu oyunu nedir?</summary>
+<div class="a"><p>İki kulüp söylenir; ikisinde de forma giymiş bir futbolcuyu ilk bulan kazanır. Sahada ve sohbetlerde yıllardır oynanan bu oyunun kurallı, hakemli ve gerçek transfer verisiyle doğrulanan hâli CrossOver Football’dır.</p></div>
+</details><details>
+<summary>Oyun ücretsiz mi?</summary>
+<div class="a"><p>Evet. İndirmek ve Takım × Takım modunda sınırsız oynamak ücretsiz. İsteğe bağlı elmas paketleri ve Ülke × Takım ile Harf × Takım modlarını açan Sosyal Paket aboneliği var.</p></div>
+</details><details>
+<summary>Android sürümü var mı?</summary>
+<div class="a"><p>Şu an yalnızca iOS’ta yayında. Android sürümü hazırlanıyor; çıktığında bu sayfadan duyuracağız.</p></div>
+</details><details>
+<summary>Tek başıma oynayabilir miyim?</summary>
+<div class="a"><p>Evet. Kolay, Orta ve Zor bot maçlarıyla kupa riski almadan pratik yapabilirsin. Ayrıca arkadaşınla oda kodu üzerinden özel maç kurabilirsin.</p></div>
+</details><details>
+<summary>Cevabı yanlış sayarsa ne olur?</summary>
+<div class="a"><p>Doğrulama, futbolcunun her iki kulüpteki kayıtlı dönemlerine bakar; altyapı ve kiralık dönemler de ana kulübe sayılır. Yazım hataları otomatik düzeltilir. Yine de hatalı gördüğün bir sonuç olursa destek adresinden bildir, kaydı kontrol edelim.</p></div>
+</details>
+</div>
+<p class="center small muted" style="margin-top:22px"><a href="/sss/" style="color:var(--gold)">Tüm soruları gör →</a></p>
+</div>
+</section>
+
+
+<section class="section-tight">
+<div class="wrap">
+<div class="panel panel-accent pad-lg band reveal">
+<h2>Rakibini bul, bilgini kanıtla</h2>
+<p class="lede">Kurulum yok, hesap zorunluluğu yok. Aç, eşleş, ilk turu oyna.</p>
+<div class="btn-row">
+<a class="btn btn-primary btn-store btn-lg" href="https://apps.apple.com/tr/app/crossover-football/id6778542426" rel="noopener" data-ev="band_store_click">
+<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.7 12.6c0-2.6 2.1-3.9 2.2-4-1.2-1.7-3-2-3.7-2-1.6-.16-3.1.93-3.9.93-.8 0-2-.9-3.3-.88-1.7.02-3.2 1-4.1 2.5-1.7 3-.45 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.45 1.2-.05 1.7-.78 3.1-.78 1.4 0 1.9.78 3.1.76 1.3-.02 2.1-1.2 2.9-2.4.9-1.3 1.3-2.6 1.3-2.66-.03-.01-2.5-.96-2.5-3.8ZM14.5 5.7c.66-.8 1.1-1.9 1-3-.95.04-2.1.63-2.8 1.42-.6.7-1.15 1.8-1 2.9 1.06.08 2.14-.54 2.8-1.32Z"/></svg><span><span class="s1">App Store’dan</span><span class="s2">Ücretsiz İndir</span></span>
+</a>
+<span class="btn btn-ghost btn-store btn-lg is-soon" aria-disabled="true">
+<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.6 9.5H6.4a.6.6 0 0 0-.6.6v6.7c0 .9.7 1.6 1.6 1.6h.7v2.3c0 .72.58 1.3 1.3 1.3s1.3-.58 1.3-1.3v-2.3h2.6v2.3c0 .72.58 1.3 1.3 1.3s1.3-.58 1.3-1.3v-2.3h.7c.9 0 1.6-.7 1.6-1.6v-6.7a.6.6 0 0 0-.6-.6ZM3.9 9.4c-.72 0-1.3.58-1.3 1.3v4.7a1.3 1.3 0 1 0 2.6 0v-4.7c0-.72-.58-1.3-1.3-1.3Zm16.2 0c-.72 0-1.3.58-1.3 1.3v4.7a1.3 1.3 0 1 0 2.6 0v-4.7c0-.72-.58-1.3-1.3-1.3ZM15.3 3.5l.9-1.6a.3.3 0 0 0-.52-.3l-.93 1.66A6.2 6.2 0 0 0 12 2.7c-.98 0-1.9.19-2.73.53L8.34 1.6a.3.3 0 0 0-.52.3l.9 1.6A5.3 5.3 0 0 0 5.9 8.1h12.2a5.3 5.3 0 0 0-2.8-4.6ZM9.4 6.2a.6.6 0 1 1 0-1.2.6.6 0 0 1 0 1.2Zm5.2 0a.6.6 0 1 1 0-1.2.6.6 0 0 1 0 1.2Z"/></svg><span><span class="s1">Google Play</span><span class="s2">Çok yakında</span></span>
+</span>
+</div>
+</div>
+</div>
+</section>
+</main>
+<footer class="foot">
+<div class="wrap">
+<div class="foot-grid">
+<div>
+<a class="brand" href="/"><img src="/img/logo-mark.png" width="34" height="34" alt="" /><b>CROSS<i>OVER</i></b></a>
+<p class="about">İki takım seçilir, ikisinde de forma giymiş ortak futbolcuyu ilk bulan turu kazanır. Gerçek transfer verisiyle, gerçek rakiplere karşı.</p>
+</div>
+<div>
+<h4>Oyun</h4>
+<ul><li><a href="/nasil-oynanir/">Nasıl oynanır</a></li><li><a href="/oyun-modlari/">Oyun modları</a></li><li><a href="/indir/">Ücretsiz indir</a></li><li><a href="/sss/">Sıkça sorulan sorular</a></li></ul>
+</div><div>
+<h4>Keşfet</h4>
+<ul><li><a href="/ortak-futbolcu-oyunu/">Ortak futbolcu oyunu</a></li><li><a href="/futbolcu-bilme-oyunu/">Futbolcu bilme oyunu</a></li><li><a href="/futbol-bilgi-oyunu/">Futbol bilgi oyunu</a></li><li><a href="/ortak-futbolcu/">Kulüp eşleşmeleri</a></li><li><a href="/rehber/">Futbol rehberi</a></li></ul>
+</div><div>
+<h4>Yasal</h4>
+<ul><li><a href="/gizlilik/">Gizlilik politikası</a></li><li><a href="/kosullar/">Kullanım koşulları</a></li><li><a href="/ebeveyn/">Ebeveyn rehberi</a></li><li><a href="/destek/">Destek</a></li></ul>
+</div>
+</div>
+<div class="foot-base">
+<span>© 2026 CrossOver Football. Tüm hakları saklıdır.</span>
+<span>Veri: Transfermarkt tabanlı kariyer arşivi</span>
+</div>
+</div>
 </footer>
-
-<script src="/app.js"></script>
+<div class="dock" id="dock"><a class="btn btn-primary" href="https://apps.apple.com/tr/app/crossover-football/id6778542426" rel="noopener" data-ev="dock_store_click"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.7 12.6c0-2.6 2.1-3.9 2.2-4-1.2-1.7-3-2-3.7-2-1.6-.16-3.1.93-3.9.93-.8 0-2-.9-3.3-.88-1.7.02-3.2 1-4.1 2.5-1.7 3-.45 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.45 1.2-.05 1.7-.78 3.1-.78 1.4 0 1.9.78 3.1.76 1.3-.02 2.1-1.2 2.9-2.4.9-1.3 1.3-2.6 1.3-2.66-.03-.01-2.5-.96-2.5-3.8ZM14.5 5.7c.66-.8 1.1-1.9 1-3-.95.04-2.1.63-2.8 1.42-.6.7-1.15 1.8-1 2.9 1.06.08 2.14-.54 2.8-1.32Z"/></svg> Ücretsiz Oyna</a></div>
+<script src="/app.js" defer></script>
 </body>
 </html>
