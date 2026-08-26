@@ -821,12 +821,13 @@ export async function commonPlayersLetterTeam(
 export async function plausibleWrongPlayersLetterTeam(clubId: number, letter: string, limit = 16): Promise<string[]> {
   const prefix = letter.toLowerCase();
   const { rows } = await pool.query<{ name: string }>(
-    `SELECT DISTINCT p.name
+    `SELECT p.name
        FROM players p
        JOIN player_clubs pc ON pc.player_id = p.id
       WHERE pc.club_id = $1
         AND NOT (p.name_norm LIKE $2 || '%' OR p.name_norm LIKE '% ' || $2 || '%')
-      ORDER BY (p.image_url IS NOT NULL) DESC,
+      GROUP BY p.id, p.name
+      ORDER BY (max(p.image_url) IS NOT NULL) DESC,
                (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) DESC,
                random()
       LIMIT $3`,

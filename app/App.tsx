@@ -1017,6 +1017,8 @@ function AppRoot() {
   const [socialPackCampaignVisible, setSocialPackCampaignVisible] = useState(false);
   const [outageGiftVisible, setOutageGiftVisible] = useState(false); // kesinti telafisi özür penceresi
   const [dailyOfferVisible, setDailyOfferVisible] = useState(false);  // kişiye özel fırsat (popup #2)
+  const [updateNudgeVisible, setUpdateNudgeVisible] = useState(false); // mağazaya yeni sürüm düşünce (yumuşak)
+  const updateNudgeShownRef = useRef(false);
   const dailyOfferShownRef = useRef(false);                            // her AÇILIŞTA bir kez
   const [outageGiftClaiming, setOutageGiftClaiming] = useState(false);
   const [outageGiftDone, setOutageGiftDone] = useState(false);
@@ -1530,9 +1532,19 @@ function AppRoot() {
     socialPackCampaignVisible ||
     outageGiftVisible ||
     dailyOfferVisible ||
+    updateNudgeVisible ||
     Boolean(activeEngagement) ||
     promotionTransitionRef.current
   );
+
+  // Mağazaya yeni sürüm DÜŞTÜKTEN sonra (sunucu canlı mağaza sürümünü doğrulayıp
+  // updateAvailable derse) oturum başına bir kez yumuşak pencere — kilitlemez.
+  useEffect(() => {
+    if (updateNudgeShownRef.current || !state.updateAvailableVersion) return;
+    if (!loaded || splash || state.phase !== 'home' || !state.profile?.usernameSet || modalBlocked) return;
+    updateNudgeShownRef.current = true;
+    setUpdateNudgeVisible(true);
+  }, [loaded, splash, state.phase, state.profile?.usernameSet, modalBlocked, state.updateAvailableVersion]);
 
   useEffect(() => {
     if (!isActivePlayEligible(state.phase, modalBlocked)) return;
@@ -2816,6 +2828,21 @@ function AppRoot() {
           ) : (
             <Btn big kind="accent" icon="gift" label={t('outageGift.cta')} loading={outageGiftClaiming} disabled={outageGiftClaiming} onPress={claimOutageGift} />
           )}
+        </View>
+      </GameModal>
+
+      <GameModal
+        visible={updateNudgeVisible}
+        onClose={() => setUpdateNudgeVisible(false)}
+        title={t('update.nudgeTitle')}
+        icon="cloud-download"
+      >
+        <View style={{ gap: 12 }}>
+          <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+            {t('update.nudgeBody', { version: state.updateAvailableVersion ?? '' })}
+          </Text>
+          <Btn big kind="accent" icon="download" label={t('update.nudgeCta')} onPress={() => { void openRequiredUpdateStore(); }} />
+          <Btn big kind="ghost" label={t('update.nudgeLater')} onPress={() => setUpdateNudgeVisible(false)} />
         </View>
       </GameModal>
 

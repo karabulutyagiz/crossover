@@ -114,6 +114,7 @@ export interface GameState {
   outgoingInvite: { toId: string; toName: string; expiresAt: number } | null;
   // Server /config says this binary is below the platform minimum — App.tsx hard-gates on it.
   updateRequired: boolean;
+  updateAvailableVersion: string | null;
   // Kesinti telafisi "AL" sonucu — seq değişince pencere TANIMLANDI durumuna geçer.
   outageGiftClaim: { granted: boolean; seq: number } | null;
   // Kişiye özel 12 saatlik fırsat (sunucu-deterministik; null = bu pencerede alınmış)
@@ -239,6 +240,7 @@ export const initialState: GameState = {
   matchInvite: null,
   outgoingInvite: null,
   updateRequired: false,
+  updateAvailableVersion: null,
   outageGiftClaim: null,
   dailyOffer: null,
   dailyOfferPurchaseSeq: 0,
@@ -311,6 +313,7 @@ type Action =
   | { type: '_close_profile' }
   | { type: '_dismiss_invite' }
   | { type: '_update_required' }
+  | { type: '_update_available'; version: string | null }
   | { type: '_update_check_complete' }
   | { type: '_clear_notice' }
   | { type: '_friend_notice'; text: string; kind: 'error' | 'ok' }
@@ -341,9 +344,9 @@ function reducer(state: GameState, action: Action): GameState {
     case '_reset':
       // xpGain korunur: XP küre yağmuru ana ekrana DÖNÜNCE akar (yeni maç
       // başlarken countdown case'i zaten temizler).
-      return { ...initialState, scopes: state.scopes, profile: state.profile, friends: state.friends, authProvider: state.authProvider, updateRequired: state.updateRequired, updateCheckComplete: state.updateCheckComplete, xpGain: state.xpGain, isQuickMatch: false, opponentForfeit: false, opponentForfeitReason: null };
+      return { ...initialState, scopes: state.scopes, profile: state.profile, friends: state.friends, authProvider: state.authProvider, updateRequired: state.updateRequired, updateAvailableVersion: state.updateAvailableVersion, updateCheckComplete: state.updateCheckComplete, xpGain: state.xpGain, isQuickMatch: false, opponentForfeit: false, opponentForfeitReason: null };
     case '_logout':
-      return { ...initialState, scopes: state.scopes, updateRequired: state.updateRequired, updateCheckComplete: state.updateCheckComplete };
+      return { ...initialState, scopes: state.scopes, updateRequired: state.updateRequired, updateAvailableVersion: state.updateAvailableVersion, updateCheckComplete: state.updateCheckComplete };
     case '_picked':
       return { ...state, picked: true };
     case '_scopes':
@@ -402,6 +405,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, matchHistory: (action as any).matches ?? [] };
     case '_update_required' as any:
       return { ...state, updateRequired: true, updateCheckComplete: true };
+    case '_update_available':
+      return { ...state, updateAvailableVersion: action.version };
     case '_update_check_complete' as any:
       return state.updateCheckComplete ? state : { ...state, updateCheckComplete: true };
     case '_dismiss_invite' as any:
@@ -1233,7 +1238,7 @@ export function useCrossover() {
     const configPath = `/config?platform=${appPlatform}&version=${encodeURIComponent(APP_VERSION)}&build=${appBuild}`;
     fetchApi(configPath, 5000)
       .then((r) => r.json())
-      .then((cfg: { maintenance?: boolean; minIosBuild?: number; minAndroidVersionCode?: number; updateRequired?: boolean }) => {
+      .then((cfg: { maintenance?: boolean; minIosBuild?: number; minAndroidVersionCode?: number; updateRequired?: boolean; updateAvailable?: boolean; latestIosVersion?: string | null; latestAndroidVersion?: string | null }) => {
         if (!alive) return;
         if (cfg.maintenance) dispatch({ type: 'error', message: 'Bakım modundayız, birazdan tekrar dene' });
         const currentBuild = Platform.OS === 'android' ? APP_ANDROID_VERSION_CODE : APP_BUILD_NUMBER;
@@ -1242,6 +1247,11 @@ export function useCrossover() {
           // Hard gate (was a transient toast): App.tsx swaps the whole tree for
           // the update screen — nothing is playable until the store update.
           dispatch({ type: '_update_required' });
+        } else if (cfg.updateAvailable === true) {
+          // Yumusak durtme: magazada CANLI olarak daha yeni surum var (sunucu
+          // Apple/Google'dan dogruladi) — popup ancak o zaman cikar, kilitlemez.
+          const v = Platform.OS === 'android' ? cfg.latestAndroidVersion : cfg.latestIosVersion;
+          dispatch({ type: '_update_available', version: v ?? null });
         }
       })
       .catch(() => {})
