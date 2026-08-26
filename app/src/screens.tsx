@@ -6884,7 +6884,7 @@ function CosmeticArt({ id, type, size, accent, empty = false }: { id: string | n
   return <CosmeticEffectIcon id={id} type={type} size={size} accent={accent} />;
 }
 
-function CosmeticPreview({ item, size = 88 }: { item: StoreCatalogItem; size?: number }) {
+export function CosmeticPreview({ item, size = 88 }: { item: StoreCatalogItem; size?: number }) {
   const visual = cosmeticVisual(item);
   const accent = RARITY_COLOR[item.rarity] ?? visual.accent;
   const pulse = useRef(new Animated.Value(0)).current;

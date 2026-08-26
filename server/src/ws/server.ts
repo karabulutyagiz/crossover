@@ -47,6 +47,7 @@ import type { Room, Transport } from '../rooms/room.ts';
 import type { MessageView, ConversationView } from '../protocol.ts';
 import type { ClientMsg, GameMode, ProfileView, ServerMsg } from '../protocol.ts';
 import { getLiveStoreVersions, storeVersionIsNewer, type StorePlatform } from '../storeVersions.ts';
+import { buyDailyOffer, computeDailyOffer, currentOfferWindow, dailyOfferClaimed } from '../game/dailyOffer.ts';
 
 // Guideline 1.2: no anonymous posting. Any path that creates content another
 // user sees requires a verified Apple/Google/Facebook identity — a guest can
@@ -1455,6 +1456,36 @@ export function startServer(port: number): Server {
           } catch (err) {
             console.error('[buy_power] failed:', err instanceof Error ? err.message : err);
             transport.send({ type: 'error', message: 'Satın alma başarısız' });
+          }
+        })();
+        return;
+      }
+
+      // Kişiye özel Günlük Fırsat — deterministik, 12 saat sabit, pencere
+      // başına tek satın alma. Fiyat/aidiyet her zaman sunucuda doğrulanır.
+      if (msg.type === 'get_daily_offer') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          try {
+            const claimed = await dailyOfferClaimed(userProfile!.id, currentOfferWindow().idx);
+            transport.send({ type: 'daily_offer', offer: claimed ? null : computeDailyOffer(userProfile!) });
+          } catch (err) {
+            console.error('[daily_offer] failed:', err instanceof Error ? err.message : err);
+          }
+        })();
+        return;
+      }
+      if (msg.type === 'buy_daily_offer') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          try {
+            const result = await buyDailyOffer(userProfile!.id, msg.key);
+            if (!result.ok) return transport.send({ type: 'error', message: result.error });
+            userProfile = result.profile;
+            transport.send({ type: 'daily_offer_purchased', profile: toProfileView(result.profile), offer: result.offer });
+          } catch (err) {
+            console.error('[buy_daily_offer] failed:', err instanceof Error ? err.message : err);
+            transport.send({ type: 'error', message: 'Fırsat satın alınamadı' });
           }
         })();
         return;

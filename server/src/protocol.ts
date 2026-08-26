@@ -164,6 +164,8 @@ export type ClientMsg =
   | { type: 'buy_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken' } // mağazadan güç satın al
   | { type: 'use_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken' } // envanterdeki tek kullanımlık gücü etkinleştir
   | { type: 'claim_outage_gift' } // kesinti telafisi: özür penceresindeki "AL"
+  | { type: 'get_daily_offer' } // kişiye özel 12 saatlik fırsatı iste
+  | { type: 'buy_daily_offer'; key: string } // fırsatı satın al (key pencereyle doğrulanır)
   | { type: 'get_my_stats' } // profil istatistikleri: seri rekoru + mod bazlı K/M
   | { type: 'verify_purchase'; receipt: string } // validate an Apple IAP receipt → grant diamonds
   | { type: 'grant_ad_reward' } // watched a rewarded ad → credit a few diamonds (capped server-side)
@@ -268,6 +270,8 @@ export type ServerMsg =
   | { type: 'power_purchased'; powerId: string; profile: ProfileView } // mağazadan güç alındı
   | { type: 'power_used'; powerId: string; profile: ProfileView } // güç etkinleştirildi (jeton düştü / kalkan kuşanıldı)
   | { type: 'outage_gift_claimed'; profile: ProfileView; granted: boolean } // granted=false → zaten alınmıştı
+  | { type: 'daily_offer'; offer: { key: string; kind: 'cosmetic' | 'power_bundle' | 'socialtoken'; itemId: string; qty: number; originalPrice: number; price: number; expiresAt: string } | null } // null → bu pencerede alınmış
+  | { type: 'daily_offer_purchased'; profile: ProfileView; offer: { key: string; kind: 'cosmetic' | 'power_bundle' | 'socialtoken'; itemId: string; qty: number; originalPrice: number; price: number; expiresAt: string } }
   | { type: 'my_stats'; winStreak: number; bestStreak: number; wins: number; losses: number; modes: { mode: string; wins: number; losses: number }[] } // profil istatistikleri
   | { type: 'emote'; fromId: string; emoteId: string } // a player in the room sent an emote
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string } // store purchase succeeded

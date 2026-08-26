@@ -106,6 +106,8 @@ import type { ImageSourcePropType } from 'react-native';
 import { initAudioService, setAudioScene, type AudioScene } from './src/feedback/AudioService';
 import { GameFeedbackEvent } from './src/feedback/events';
 import { FlameField } from './src/cosmeticFx';
+import { cosmeticDisplayName } from './src/cosmetics';
+import { CosmeticPreview } from './src/screens';
 import { isRonaldoAnswer, triggerDiamondCollectTick, triggerFeedback } from './src/feedback/GameFeedback';
 import { loadFeedbackPreferences } from './src/feedback/preferences';
 import {
@@ -760,6 +762,26 @@ const VFX_BOLT = require('./assets/fx/bolt.png');
 const VFX_GLINT = require('./assets/fx/glint4.png');
 const VFX_GLOW = require('./assets/fx/glow_radial.png');
 
+// Fırsat geri sayımı: pencere sonuna kalan süre ("11s 23dk") — saniyede bir işler.
+function OfferCountdown({ expiresAt }: { expiresAt: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const iv = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(iv);
+  }, []);
+  const left = Math.max(0, Date.parse(expiresAt) - now);
+  const h = Math.floor(left / 3600000);
+  const m = Math.floor((left % 3600000) / 60000);
+  const sec = Math.floor((left % 60000) / 1000);
+  const label = h > 0 ? `${h}s ${m}dk` : `${m}:${String(sec).padStart(2, '0')}`;
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: withAlpha(theme.danger, 0.14), borderRadius: 999, borderWidth: 1.5, borderColor: theme.danger, paddingHorizontal: 10, paddingVertical: 4 }}>
+      <Ionicons name="time" size={13} color={theme.danger} />
+      <Text style={{ color: theme.danger, fontFamily: 'Poppins-ExtraBold', fontSize: 12, fontVariant: ['tabular-nums'] }}>{t('offer.timeLeft', { time: label })}</Text>
+    </View>
+  );
+}
+
 function VictoryLoop({ duration, delay = 0, children }: { duration: number; delay?: number; children: (v: Animated.Value) => ReactNode }) {
   const v = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -988,6 +1010,8 @@ function AppRoot() {
   const [contextualOfferVisible, setContextualOfferVisible] = useState(false);
   const [socialPackCampaignVisible, setSocialPackCampaignVisible] = useState(false);
   const [outageGiftVisible, setOutageGiftVisible] = useState(false); // kesinti telafisi özür penceresi
+  const [dailyOfferVisible, setDailyOfferVisible] = useState(false);  // kişiye özel fırsat (popup #2)
+  const dailyOfferShownRef = useRef(false);                            // her AÇILIŞTA bir kez
   const [outageGiftClaiming, setOutageGiftClaiming] = useState(false);
   const [outageGiftDone, setOutageGiftDone] = useState(false);
   const [engagementState, setEngagementState] = useState<EngagementRuntimeState>(() => createEngagementRuntime());
@@ -1499,6 +1523,7 @@ function AppRoot() {
     ratingPromptVisible ||
     socialPackCampaignVisible ||
     outageGiftVisible ||
+    dailyOfferVisible ||
     Boolean(activeEngagement) ||
     promotionTransitionRef.current
   );
@@ -1786,6 +1811,40 @@ function AppRoot() {
     setOutageGiftVisible(false);
     setOutageGiftDone(false);
   }, []);
+
+  // Fırsatı profil oturduğunda sunucudan iste (deterministik — her açılışta aynı).
+  const dailyOfferRequestedRef = useRef(false);
+  useEffect(() => {
+    if (!state.profile || dailyOfferRequestedRef.current) return;
+    dailyOfferRequestedRef.current = true;
+    actions.getDailyOffer();
+    if (!state.storeCatalog) actions.loadStoreCatalog();
+  }, [state.profile, actions]);
+
+  // Popup #2 zinciri: sosyal paket penceresi (ve diğer tüm pencereler) kapalıyken,
+  // ana sekmedeyken, oturumda bir kez. modalBlocked sosyal popup'ı da kapsadığı
+  // için bu efekt onun kapanışında kendiliğinden tekrar değerlendirilir → sıra
+  // doğal olarak "önce sosyal, kapatınca fırsat" akar.
+  useEffect(() => {
+    if (dailyOfferShownRef.current || !state.dailyOffer) return;
+    if (!loaded || !state.profile || !TAB_PHASES.has(state.phase)) return;
+    if (modalBlocked) return;
+    const tm = setTimeout(() => {
+      if (dailyOfferShownRef.current) return;
+      dailyOfferShownRef.current = true;
+      setDailyOfferVisible(true);
+    }, 420);
+    return () => clearTimeout(tm);
+  }, [state.dailyOffer, loaded, state.profile, state.phase, modalBlocked]);
+
+  // Satın alma onayı: sunucu onayladığında pencereyi kapat + kutlama.
+  const offerSeqRef = useRef(0);
+  useEffect(() => {
+    if (state.dailyOfferPurchaseSeq === offerSeqRef.current) return;
+    offerSeqRef.current = state.dailyOfferPurchaseSeq;
+    setDailyOfferVisible(false);
+    triggerFeedback(GameFeedbackEvent.PURCHASE_CONFIRMED);
+  }, [state.dailyOfferPurchaseSeq]);
 
   const dismissSocialPackCampaign = useCallback(() => {
     setSocialPackCampaignVisible(false);
@@ -2664,6 +2723,53 @@ function AppRoot() {
           label={t('common.continue')}
           onPress={() => { setExpiredSocialPack(false); setStoreSection('socialPack'); goToTab(0); }}
         />
+      </GameModal>
+
+      {/* Kişiye özel Günlük Fırsat — 12 saat sabit, pencere başına tek alım. */}
+      <GameModal
+        visible={dailyOfferVisible}
+        onClose={() => setDailyOfferVisible(false)}
+        title={t('offer.title')}
+        icon="flash"
+        coach
+      >
+        {state.dailyOffer ? (() => {
+          const offer = state.dailyOffer!;
+          const catalogItem = offer.kind === 'cosmetic' ? state.storeCatalog?.items.find((i) => i.id === offer.itemId) ?? null : null;
+          const power = offer.kind !== 'cosmetic' ? POWERS[offer.itemId as keyof typeof POWERS] : null;
+          const name = offer.kind === 'cosmetic'
+            ? (catalogItem ? cosmeticDisplayName(catalogItem) : offer.itemId)
+            : `${t(power!.nameKey)}${offer.qty > 1 ? ` ×${offer.qty}` : ''}`;
+          const pct = Math.round((1 - offer.price / offer.originalPrice) * 100);
+          const afford = (state.profile?.diamonds ?? 0) >= offer.price;
+          return (
+            <View style={{ alignItems: 'center', gap: 12 }}>
+              <OfferCountdown expiresAt={offer.expiresAt} />
+              <View style={{ width: 104, height: 104, borderRadius: 20, backgroundColor: theme.surface3, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.accent, overflow: 'hidden' }}>
+                {catalogItem ? <CosmeticPreview item={catalogItem} size={96} /> : <Ionicons name={power?.icon ?? 'flash'} size={46} color={power?.color ?? theme.accent} />}
+              </View>
+              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 16, textAlign: 'center' }}>{name}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Text style={{ color: theme.muted, fontFamily: 'Poppins-ExtraBold', fontSize: 15, textDecorationLine: 'line-through' }}>{offer.originalPrice} 💎</Text>
+                <View style={{ backgroundColor: theme.danger, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                  <Text style={{ color: '#FFF', fontFamily: 'Poppins-Black', fontSize: 11 }}>-%{pct}</Text>
+                </View>
+                <Text style={{ color: theme.gemText, fontFamily: 'Poppins-Black', fontSize: 21 }}>{offer.price} 💎</Text>
+              </View>
+              <Btn
+                big kind="accent" icon="flash"
+                label={afford ? t('offer.cta') : t('offer.needDiamonds')}
+                feedback={GameFeedbackEvent.UI_PURCHASE}
+                onPress={() => {
+                  if (afford) { actions.buyDailyOffer(offer.key); }
+                  else { setDailyOfferVisible(false); setStoreSection('diamonds'); goToTab(0); }
+                }}
+              />
+            </View>
+          );
+        })() : (
+          <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 13, textAlign: 'center' }}>{t('store.loading')}</Text>
+        )}
       </GameModal>
 
       {/* Kesinti telafisi — çarpısız/zorunlu: tek çıkış "AL" düğmesi. */}

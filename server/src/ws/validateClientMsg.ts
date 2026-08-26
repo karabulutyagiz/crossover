@@ -140,6 +140,10 @@ export function validateClientMsg(value: unknown): ValidationResult {
     case 'buy_premium_road':
     case 'get_store_catalog':
     case 'claim_outage_gift':
+    case 'get_daily_offer':
+      break;
+    case 'buy_daily_offer':
+      if (!hasString(value, 'key', 80)) return invalid('buy_daily_offer.key must be a string');
       break;
     case 'leave_match':
       if (value.reason !== undefined && value.reason !== 'leave' && value.reason !== 'cheat') return invalid('leave_match.reason is invalid');

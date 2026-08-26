@@ -116,6 +116,9 @@ export interface GameState {
   updateRequired: boolean;
   // Kesinti telafisi "AL" sonucu — seq değişince pencere TANIMLANDI durumuna geçer.
   outageGiftClaim: { granted: boolean; seq: number } | null;
+  // Kişiye özel 12 saatlik fırsat (sunucu-deterministik; null = bu pencerede alınmış)
+  dailyOffer: import('./protocol').DailyOfferView | null;
+  dailyOfferPurchaseSeq: number;
   // Login/game gates wait for this first server verdict so old binaries cannot race in.
   updateCheckComplete: boolean;
   // A friend's public profile I'm currently viewing.
@@ -237,6 +240,8 @@ export const initialState: GameState = {
   outgoingInvite: null,
   updateRequired: false,
   outageGiftClaim: null,
+  dailyOffer: null,
+  dailyOfferPurchaseSeq: 0,
   updateCheckComplete: false,
   viewProfile: null,
   notice: null,
@@ -557,6 +562,11 @@ function reducer(state: GameState, action: Action): GameState {
     case 'power_used':
       // Jeton düştü / kalkan kuşanıldı — sunucunun döndürdüğü taze profil geçerli
       return { ...state, profile: action.profile };
+    case 'daily_offer':
+      return { ...state, dailyOffer: (action as any).offer ?? null };
+    case 'daily_offer_purchased':
+      // Fırsat tüketildi: popup kapanır, profil tazelenir, onay animasyonu seq ile oynar.
+      return { ...state, profile: action.profile, dailyOffer: null, dailyOfferPurchaseSeq: state.dailyOfferPurchaseSeq + 1 };
     case 'outage_gift_claimed':
       // Kesinti telafisi tanımlandı. Taze profilde outageGiftAvailable=false
       // döner, böylece pencere bir daha açılmaz; seq ile de "TANIMLANDI"
@@ -1503,6 +1513,8 @@ export function useCrossover() {
       buyPower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => send({ type: 'buy_power', powerId }),
       usePower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => send({ type: 'use_power', powerId }),
       claimOutageGift: () => send({ type: 'claim_outage_gift' }),
+      getDailyOffer: () => send({ type: 'get_daily_offer' }),
+      buyDailyOffer: (key: string) => send({ type: 'buy_daily_offer', key }),
       loadMyStats: () => send({ type: 'get_my_stats' }),
       // Friends — via WebSocket for real-time notifications.
       loadFriends: () => send({ type: 'list_friends' }),

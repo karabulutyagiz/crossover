@@ -122,6 +122,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_facebook_sub ON users (facebook_sub)
 -- Social pack subscription (unlocks country-team & letter-team in friend matches).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS social_pack_until TIMESTAMPTZ;
 
+-- Günlük Fırsat: pencere başına tek satın alma kilidi (PK çift almayı engeller).
+CREATE TABLE IF NOT EXISTS daily_offer_claims (
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  window_idx bigint NOT NULL,
+  claimed_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, window_idx)
+);
+
 -- Kesinti telafisi hediyesi: ilk verilisinde damgalanir, boylece ayni hesaba
 -- ikinci kez verilemez (grantOutageGiftIfNeeded bu sutuna bakar).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS outage_gift_at TIMESTAMPTZ;
