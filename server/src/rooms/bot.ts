@@ -489,7 +489,8 @@ export class BotPlayer implements Transport {
   private async submitScheduledGuess(serial = this.actionSerial): Promise<void> {
     if (serial !== this.actionSerial || !this.room?.canBotAct(this.id)) return;
     if (this.botDecision && !this.botDecision.willAnswer) return;
-    const text = this.wrongGuess ?? this.humanizeKnownAnswer(this.answer);
+    // Yanlış tahminler de insan gibi kısaltılır — ham kanonik isim sızmaz.
+    const text = this.wrongGuess ? this.humanizeKnownAnswer(this.wrongGuess) : this.humanizeKnownAnswer(this.answer);
     if (!text) return;
     if (this.mode === 'country-team') {
       const safeText = await this.validatedCountryTeamSubmission(text);
@@ -536,19 +537,14 @@ export class BotPlayer implements Transport {
     const tokens = answer.split(/\s+/).map((t) => t.trim()).filter((t) => normalize(t).length >= 4);
     if (!tokens.length) return answer;
     const p = this.profile;
-    const shortChance = p.behaviorArchetype === 'STRONG' ? 0.88
-      : p.behaviorArchetype === 'CAREFUL' ? 0.70
-        : p.behaviorArchetype === 'CASUAL' ? 0.58
-          : 0.80;
+    // 2026-08-26: bot HER ZAMAN otomatik tamamlama kullanıyormuş gibi yazar —
+    // tam kanonik isim ("Kevin-Prince Boateng") asla; soyad ("Boateng") gider.
     const typoChance = p.behaviorArchetype === 'FAST_RISKY' ? 0.20
       : p.behaviorArchetype === 'STRONG' ? 0.08
         : p.behaviorArchetype === 'CASUAL' ? 0.07
           : 0.10;
-    let text = answer;
     const rng = this.profile ? this.rng : mathRandom;
-    if (rng.next() < shortChance) {
-      text = this.shortHumanAnswer(tokens, rng);
-    }
+    let text = this.shortHumanAnswer(tokens, rng);
     if (rng.next() < 0.42) text = text.toLocaleLowerCase('tr-TR');
     if (rng.next() < typoChance) text = this.safeTypo(text, rng);
     return text;
@@ -563,10 +559,9 @@ export class BotPlayer implements Transport {
     if (tokens.length >= 3 && surnameParticles.has(lower[tokens.length - 3]!)) {
       return `${tokens[tokens.length - 3]} ${tokens[tokens.length - 2]} ${tokens[tokens.length - 1]}`;
     }
-    const last = tokens[tokens.length - 1]!;
-    const first = tokens[0]!;
-    if (tokens.length >= 3 && rng.next() < 0.26) return `${tokens[tokens.length - 2]} ${last}`;
-    return rng.next() < 0.78 ? last : first;
+    // Yalnız soyad: ilk-ad/tam-ad varyantları kaldırıldı (2026-08-26) — insanlar
+    // arama kutusuna soyadı yazar, otomatik tamamlama gerisini halleder.
+    return tokens[tokens.length - 1]!;
   }
 
   private safeTypo(text: string, rng: RandomSource = mathRandom): string {

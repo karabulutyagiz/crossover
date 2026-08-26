@@ -5,7 +5,7 @@ import { PREMIUM_ROAD_PRICE } from './level.ts';
 import { emotePrice, isFreeEmote, isEquippableEmote, MAX_EQUIPPED, ALL_COLLECTIBLE_EMOTES } from './emotes.ts';
 import { avatarPrice, canUseAvatar, DEFAULT_AVATAR_ID, isAvatar, isFreeAvatar } from './avatars.ts';
 import { validateUsername } from './username.ts';
-import { clampFinalTrophyDelta, trophyDeltaExpectedScore } from '../matchmaking/trophyIntegrity.ts';
+import { BOT_GAIN_MAX, BOT_GAIN_MIN, BOT_LOSS_MAX, BOT_LOSS_MIN, clampFinalTrophyDelta, trophyDeltaExpectedScore } from '../matchmaking/trophyIntegrity.ts';
 // moderation.ts only pulls in the pool + logger, so this import cannot cycle back.
 import { isBlockedBetween, isIdentifiedAccount } from './moderation.ts';
 
@@ -529,12 +529,15 @@ export async function applyMatchResult(
           won,
           playerTrophies: user.trophies,
           opponentTrophies: opts.opponentTrophies ?? null,
+          vsBot: (opts.opponentType ?? (opts.opponentId ? 'HUMAN' : 'BOT')) === 'BOT',
         })
       : null;
+    const isBotMatch = (opts?.opponentType ?? (opts?.opponentId ? 'HUMAN' : 'BOT')) === 'BOT';
+    const botBounds = isBotMatch ? { gainMin: BOT_GAIN_MIN, gainMax: BOT_GAIN_MAX, lossMin: BOT_LOSS_MIN, lossMax: BOT_LOSS_MAX } : {};
     const baseRaw = shielded ? 0 : (expectedCalc?.delta ?? trophyDelta(user.trophies, won, opts?.opponentTrophies ?? null));
     const finalMultiplier = Math.max(0, Math.min(1.25, (opts?.antiFarmMultiplier ?? 1) * (opts?.botEconomyMultiplier ?? 1)));
     const raw = won && baseRaw > 0 ? Math.round(baseRaw * finalMultiplier) : baseRaw;
-    const delta = shielded ? 0 : clampFinalTrophyDelta({ rawDelta: raw, won, currentTrophies: user.trophies });
+    const delta = shielded ? 0 : clampFinalTrophyDelta({ rawDelta: raw, won, currentTrophies: user.trophies, ...botBounds });
     const prevRewardedArenaIdx = Math.max(0, Math.min(ARENAS.length - 1, user.highestArenaRewarded));
 
     const { rows } = await client.query<DbUser>(

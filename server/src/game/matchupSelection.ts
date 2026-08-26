@@ -34,6 +34,12 @@ export interface MatchClubSelectionState {
   allowNicheRound: boolean;
   nicheRoundUsed: boolean;
   recentClubIds: number[];
+  /** Botun kaçıncı takım seçiminde olduğumuz (0 tabanlı) — Türk turu planı için. */
+  botPickIndex: number;
+  /** Bu maçta Türk takımının planlandığı bot seçimi (yoksa -1). %75 maçta 0-2 arası. */
+  turkishRoundTarget: number;
+  /** Bot bu maçta Türk takımını söyledi mi (plan tüketildi mi). */
+  turkishUsed: boolean;
 }
 
 export interface BotTeamSelectionInput {
@@ -43,6 +49,11 @@ export interface BotTeamSelectionInput {
   favoriteDomains?: readonly KnowledgeDomain[];
   archetype?: BotArchetype | string | null;
   rng?: RandomSource;
+  /** 0..1 — insan rakibin MMR'ından türetilen soru sertliği. 0 = mevcut davranış;
+   * 1'e yaklaştıkça ünlü kulüp avantajı düzleşir, cevabı bilinen ama daha az
+   * meşhur eşleşmeler öne çıkar. En az 2 geçerli cevap şartı korunur —
+   * "daha zor ama imkânsız değil". */
+  hardness?: number;
 }
 
 export interface BotTeamSelectionResult {
@@ -75,6 +86,11 @@ export function createMatchClubSelectionState(rng: RandomSource = mathRandom): M
   return {
     allowNicheRound: rng.next() < clamp(matchupSelectionConfig.nicheMatchProbability, 0, 1),
     nicheRoundUsed: false,
+    botPickIndex: 0,
+    // %75 maçta bir Türk turu planlanır; hangi bot seçiminde geleceği rastgele
+    // (ilk 3 seçimden biri) — "hep ilk turda Türk takımı" kalıbı kırıldı.
+    turkishRoundTarget: rng.next() < 0.75 ? Math.floor(rng.next() * 3) : -1,
+    turkishUsed: false,
     recentClubIds: [],
   };
 }
@@ -190,15 +206,22 @@ async function rowsForOpenPick(excludeIds: number[]): Promise<ClubCandidateRow[]
 
 function scoreRows(rows: ClubCandidateRow[], input: BotTeamSelectionInput, rng: RandomSource): ScoredCandidate[] {
   const out: ScoredCandidate[] = [];
+  const hardness = clamp(input.hardness ?? 0, 0, 1);
   for (const row of rows) {
     const answerCount = Number(row.answer_count) || 0;
     if (input.playerTeamId != null && answerCount < matchupSelectionConfig.minNormalAnswerCount) continue;
+    // Sert modda taban yükselir: en az 2 bilinen cevabı olmayan eşleşme sorulmaz.
+    if (hardness > 0.3 && input.playerTeamId != null && answerCount < 2) continue;
     const popularity = Number(row.pop) || 0;
     const answerFame = Number(row.answer_fame) || popularity;
     const tier = clubPopularityTier({ name: row.name, nameNorm: row.name_norm, popularity, league: row.league, country: row.country });
     const niche = isNicheTier(tier);
     if (niche && !canUseNiche(input.state)) continue;
-    const score = matchupScore({
+    const turkishPlanActive = input.state.turkishRoundTarget >= 0 && !input.state.turkishUsed;
+    const turkishMode: 'default' | 'neutral' | 'boost' = turkishPlanActive && input.state.botPickIndex >= input.state.turkishRoundTarget
+      ? 'boost'
+      : 'neutral';
+    const baseScore = matchupScore({
       name: row.name,
       tier,
       popularity,
@@ -207,7 +230,15 @@ function scoreRows(rows: ClubCandidateRow[], input: BotTeamSelectionInput, rng: 
       recentPenalty: recentPenalty(input.state.recentClubIds, Number(row.id)),
       favoriteDomains: input.favoriteDomains,
       archetype: input.archetype,
-    }) * (niche && canUseNiche(input.state) ? matchupSelectionConfig.nicheAllowedWeightBoost : 1) * (0.92 + rng.next() * 0.18);
+      turkishMode,
+    });
+    // MMR sertliği: yüksek MMR'lı insana karşı az-meşhur (ama cevaplanabilir)
+    // eşleşmeler ödüllenir — obskürite bonusu cevap tanınırlığı düştükçe artar.
+    const recognition = popularityScore(answerFame);
+    const hardnessBoost = 1 + hardness * 1.7 * (1 - recognition);
+    const score = baseScore * hardnessBoost
+      * (niche && canUseNiche(input.state) ? matchupSelectionConfig.nicheAllowedWeightBoost : 1)
+      * (0.92 + rng.next() * 0.18);
     if (score <= 0) continue;
     out.push({
       value: {
@@ -224,7 +255,7 @@ function scoreRows(rows: ClubCandidateRow[], input: BotTeamSelectionInput, rng: 
   return out;
 }
 
-function matchupScore(args: { name: string; tier: ClubPopularityTier; popularity: number; answerCount: number; answerFame: number; recentPenalty: number; favoriteDomains?: readonly KnowledgeDomain[]; archetype?: BotArchetype | string | null }): number {
+function matchupScore(args: { name: string; tier: ClubPopularityTier; popularity: number; answerCount: number; answerFame: number; recentPenalty: number; favoriteDomains?: readonly KnowledgeDomain[]; archetype?: BotArchetype | string | null; turkishMode?: 'default' | 'neutral' | 'boost' }): number {
   const answerDepth = clamp(Math.log1p(args.answerCount) / Math.log(9), 0, 1);
   const answerRecognition = popularityScore(args.answerFame);
   const clubRecognition = tierBaseWeight(args.tier);
@@ -236,7 +267,7 @@ function matchupScore(args: { name: string; tier: ClubPopularityTier; popularity
     * depthGate
     * obscurityPenalty
     * args.recentPenalty
-    * audienceBiasMultiplier(args.name, args.favoriteDomains, args.archetype);
+    * audienceBiasMultiplier(args.name, args.favoriteDomains, args.archetype, args.turkishMode ?? 'default');
 }
 
 function recentPenalty(recentClubIds: readonly number[], clubId: number): number {

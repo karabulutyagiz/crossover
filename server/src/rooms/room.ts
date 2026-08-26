@@ -30,6 +30,7 @@ import { recordBotRoundOutcome } from '../matchmaking/botTelemetry.ts';
 import type { BotDifficultyDirectorOutput } from '../matchmaking/botDifficultyDirector.ts';
 import { defaultSkillProfile, updateSkillAfterMatch, type SkillRoundSignal } from '../matchmaking/skillRating.ts';
 import { assessFarmRisk, recordOpponentHistory } from '../matchmaking/antiFarm.ts';
+import { isTurkishClub } from '../game/clubPopularity.ts';
 import { getTrophyEconomyState } from '../matchmaking/trophyEconomy.ts';
 import { trophyRiskMultipliers } from '../matchmaking/trophyRisk.ts';
 import { createMatchClubSelectionState, recordMatchupClubs, selectBotTeamForMatchup, type MatchClubSelectionState } from '../game/matchupSelection.ts';
@@ -279,6 +280,10 @@ export class Room {
     archetype?: string | null,
   ): Promise<ClubRef | null> {
     const avoid = [...new Set([...this.usedClubIds, ...this.recentBotPicks, ...extraExcludeIds])];
+    // Soru sertliği insan rakibin MMR'ına bağlanır: 1400'de başlar, 2600'de tam.
+    // Orta-alt seviye oyuncular (MMR<1400) hiçbir fark görmez.
+    const humanSkill = Math.max(0, ...[...this.players.values()].filter((pl) => !pl.transport.isBot).map((pl) => pl.skillMean ?? 0));
+    const matchHardness = Math.min(1, Math.max(0, (humanSkill - 1400) / 1200));
     if (this.scope.type === 'all') {
       const selected = await selectBotTeamForMatchup({
         playerTeamId: humanTeamId,
@@ -286,11 +291,18 @@ export class Room {
         state: this.clubSelection,
         favoriteDomains,
         archetype,
+        hardness: matchHardness,
       }).catch((err) => {
         log.warn('bot_matchup_selection_failed', { room: this.code, playerId, error: err instanceof Error ? err.message : String(err) });
         return null;
       });
-      if (selected?.club) return selected.club;
+      if (selected?.club) {
+        // Türk turu planı muhasebesi: bu seçim Türk'se plan tüketildi; her
+        // durumda bot seçim sayacı ilerler (hedef tur kaydırmalı yakalanır).
+        if (isTurkishClub(selected.club.name)) this.clubSelection.turkishUsed = true;
+        this.clubSelection.botPickIndex += 1;
+        return selected.club;
+      }
       const fallback = await botPickFromPool(difficulty, humanTeamId, avoid);
       if (fallback) return fallback;
     }

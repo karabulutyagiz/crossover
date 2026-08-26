@@ -327,7 +327,9 @@ export function setAudioScene(scene: AudioScene, fadeMs = 260) {
   }
   if (scene === 'RESULT') {
     stopMusic(180);
-    playAmbience(AmbienceTrack.STADIUM, 220);
+    // 2026-08-26: stadyum kalabalık döngüsü telefonda "zzzz" uğultusu gibi
+    // okunuyordu (cevap/süre-doldu ekranında arkadan gelen ses buydu) — kaldırıldı.
+    stopAmbience(120);
   }
 }
 

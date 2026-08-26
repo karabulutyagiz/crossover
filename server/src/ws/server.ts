@@ -155,7 +155,9 @@ interface QueueEntry {
   lastCandidateScore?: number;
 }
 
-const SOCIAL_PACK_REQUIRED = 'Bu mod için iki oyuncuda da Sosyal Paket aktif olmalı';
+const SOCIAL_PACK_REQUIRED = 'Bu mod için Sosyal Paket aktif olmalı';
+// Dostluk daveti GÖNDERMEK paket ister; KABUL etmek istemez (2026-08-26).
+const FRIENDLY_INVITE_NEEDS_PACK = 'Dostluk maçı daveti göndermek için Sosyal Paket gerekir';
 const RATE_WINDOW_MS = 10_000;
 const RATE_MAX_MESSAGES = 90;
 const RATE_MAX_TYPING = 120; // separate lane: exempt-from-main-cap typing still can't flood
@@ -1666,7 +1668,10 @@ export function startServer(port: number): Server {
       if (msg.type === 'invite_friend_match') {
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
         const requestedMode = msg.options?.mode ?? 'team-team';
-        if (!canUseMode(userProfile, requestedMode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
+        // Dostluk daveti göndermek — mod ne olursa olsun — GÖNDERENDE aktif
+        // Sosyal Paket ister. (Paketli gönderici sosyal modların canUseMode
+        // şartını da otomatik sağlar.)
+        if (!hasActiveSocialPack(userProfile)) return transport.send({ type: 'error', message: FRIENDLY_INVITE_NEEDS_PACK });
         const fromId = userProfile.id;
         const inviterProfile = userProfile;
         void (async () => {
@@ -1726,7 +1731,9 @@ export function startServer(port: number): Server {
           return;
         }
         const requestedMode = inv.options?.mode ?? 'team-team';
-        if (!canUseMode(userProfile, requestedMode) || !canUseMode(inv.userProfile, requestedMode)) {
+        // Kabul eden tarafta paket ARANMAZ — yalnız davet SAHİBİNİN paketi hâlâ
+        // aktif olmalı (davet ile kabul arasında süresi bitmiş olabilir).
+        if (!hasActiveSocialPack(inv.userProfile)) {
           sendToUser(inv.fromUserId, { type: 'match_invite_declined', byId: userProfile.id });
           transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
           return;

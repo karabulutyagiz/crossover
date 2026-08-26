@@ -7130,6 +7130,21 @@ function useAdState(onReward?: () => void) {
     } catch {}
   };
 
+  // ÖN-YÜKLEME (2026-08-26): reklam kancası kurulur kurulmaz arka planda bir
+  // reklam yüklenir; düğmeye basıldığında hazırsa SALİSESİNDE açılır. Kapanış /
+  // hata sonrası bir sonraki hemen yüklenir — kullanıcı hiç yükleme görmez.
+  const preloadedRef = useRef<{ ad: any; loaded: boolean } | null>(null);
+  const preloadNext = useCallback(() => {
+    if (!RewardedAd || preloadedRef.current) return;
+    const ad = RewardedAd.createForAdRequest(REWARDED_AD_UNIT);
+    const entry = { ad, loaded: false };
+    preloadedRef.current = entry;
+    ad.addAdEventListener(RewardedAdEventType.LOADED, () => { entry.loaded = true; });
+    ad.addAdEventListener(AdEventType.ERROR, () => { if (preloadedRef.current === entry) preloadedRef.current = null; });
+    ad.load();
+  }, []);
+  useEffect(() => { preloadNext(); }, [preloadNext]);
+
   const watchAd = async () => {
     // No AdMob SDK → grant reward directly (dev/Expo Go fallback)
     if (!RewardedAd) {
@@ -7140,19 +7155,35 @@ function useAdState(onReward?: () => void) {
       return;
     }
 
-    // Load and show a rewarded ad
+    const grantReward = async () => {
+      const n = adsWatched + 1;
+      setAdsWatched(n);
+      await saveState(n);
+      onRewardRef.current?.();
+    };
+
+    const pre = preloadedRef.current;
+    if (pre?.loaded) {
+      // Hazır reklam: anında göster; kapanınca sıradakini yüklemeye başla.
+      preloadedRef.current = null;
+      pre.ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, grantReward);
+      pre.ad.addAdEventListener(AdEventType.CLOSED, () => { preloadNext(); });
+      pre.ad.addAdEventListener(AdEventType.ERROR, (error?: { code?: number; message?: string }) => {
+        setAdError({ code: String(error?.code ?? '?'), message: error?.message ?? '' });
+        preloadNext();
+      });
+      pre.ad.show();
+      return;
+    }
+
+    // Nadir yol: ön-yükleme henüz bitmedi — eski davranış (kısa spinner).
     setAdLoading(true);
     const ad = RewardedAd.createForAdRequest(REWARDED_AD_UNIT);
 
     const unsubs: (() => void)[] = [];
     const cleanup = () => { unsubs.forEach((u) => u()); setAdLoading(false); };
 
-    unsubs.push(ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, async () => {
-      const n = adsWatched + 1;
-      setAdsWatched(n);
-      await saveState(n);
-      onRewardRef.current?.();
-    }));
+    unsubs.push(ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, grantReward));
 
     unsubs.push(ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
       ad.show();
@@ -7161,10 +7192,12 @@ function useAdState(onReward?: () => void) {
     unsubs.push(ad.addAdEventListener(AdEventType.ERROR, (error?: { code?: number; message?: string }) => {
       cleanup();
       setAdError({ code: String(error?.code ?? '?'), message: error?.message ?? '' });
+      preloadNext();
     }));
 
     unsubs.push(ad.addAdEventListener(AdEventType.CLOSED, () => {
       cleanup();
+      preloadNext();
     }));
 
     ad.load();
@@ -9677,7 +9710,12 @@ export function FriendsScreen({ state, actions, onGoToStore, onLockedSocialMode,
   const msgSearchRef = useRef<TextInput>(null);  // empty-state CTA → focus message search
   const profile = state.profile;
   const hasSocialPack = profile?.socialPackUntil ? new Date(profile.socialPackUntil) > new Date() : false;
-  const friends = state.friends;
+  // Sıralama: çevrimiçiler en üstte (kendi içinde kupa azalan), sonra
+  // çevrimdışılar kupa azalan — "kim müsait + kim güçlü" tek bakışta.
+  const friends = useMemo(
+    () => [...state.friends].sort((a, b) => (b.online ? 1 : 0) - (a.online ? 1 : 0) || (b.trophies ?? 0) - (a.trophies ?? 0)),
+    [state.friends],
+  );
 
   // Memo'lu satırların sabit kimlikli handler'ları. En-son-değer ref kalıbı:
   // actions/friends her render'da tazelenebilir, sarmalayıcı basış anında DAİMA
@@ -13857,6 +13895,7 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
     claimBusy.current = false;
     // hap toplanan miktar KADAR eksik gösterir; elmaslar inince tamamlanır
     setShownDiamonds(Math.max(0, (profile?.diamonds ?? 0) - lastClaim.diamonds));
+    triggerFeedback(GameFeedbackEvent.UI_REWARD);
     setClaimFly({ from: claimPos.current ?? { x: SCREEN_W / 2, y: 300 }, amount: lastClaim.diamonds, key: lastClaim.seq });
   }, [visible, lastClaim, profile?.diamonds]);
   const handleClaimPress = useCallback((n: number, pos: { x: number; y: number }, track: 'free' | 'premium' = 'free') => {

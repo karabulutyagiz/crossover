@@ -26,16 +26,33 @@ export function clampFinalTrophyDelta(args: {
   rawDelta: number;
   won: boolean;
   currentTrophies: number;
+  /** Bot maçı bandı (2026-08-26, Riot-vari): insan-insan 28-35 aynen kalır;
+   * bot maçında bant genişler ki kolay rakip taban, zor rakip dolgun ödesin. */
+  gainMin?: number;
+  gainMax?: number;
+  lossMin?: number;
+  lossMax?: number;
 }): number {
+  const gainMin = args.gainMin ?? TROPHY_GAIN_MIN;
+  const gainMax = args.gainMax ?? TROPHY_GAIN_MAX;
+  const lossMin = args.lossMin ?? TROPHY_LOSS_MIN;
+  const lossMax = args.lossMax ?? TROPHY_LOSS_MAX;
   const currentTrophies = Math.max(0, Math.floor(Number.isFinite(args.currentTrophies) ? args.currentTrophies : 0));
   const rawDelta = Number.isFinite(args.rawDelta) ? args.rawDelta : 0;
   if (args.won) {
-    return Math.round(clamp(Math.round(rawDelta), TROPHY_GAIN_MIN, TROPHY_GAIN_MAX));
+    return Math.round(clamp(Math.round(rawDelta), gainMin, gainMax));
   }
-  const loss = Math.round(clamp(Math.round(Math.abs(rawDelta)), TROPHY_LOSS_MIN, TROPHY_LOSS_MAX));
+  const loss = Math.round(clamp(Math.round(Math.abs(rawDelta)), lossMin, lossMax));
   const actualLoss = Math.min(loss, currentTrophies);
   return actualLoss === 0 ? 0 : -actualLoss;
 }
+
+// Bot maçı bandı: kolay bot galibiyeti taban (12), elit bot galibiyeti dolgun ama
+// taşmayan (30). Kayıplar insan maçından hafifçe yumuşak.
+export const BOT_GAIN_MIN = 12;
+export const BOT_GAIN_MAX = 30;
+export const BOT_LOSS_MIN = 12;
+export const BOT_LOSS_MAX = 18;
 
 export function trophyDeltaExpectedScore(args: {
   playerSkillMean: number;
@@ -45,6 +62,7 @@ export function trophyDeltaExpectedScore(args: {
   won: boolean;
   playerTrophies: number;
   opponentTrophies?: number | null;
+  vsBot?: boolean;
 }): TrophyCalculation {
   const expected = expectedScore(
     args.playerSkillMean,
@@ -52,10 +70,20 @@ export function trophyDeltaExpectedScore(args: {
     args.playerSkillUncertainty ?? 120,
     args.opponentSkillUncertainty ?? 120,
   );
-  const raw = args.won
-    ? TROPHY_GAIN_MIN + (TROPHY_GAIN_MAX - TROPHY_GAIN_MIN) * clamp((0.75 - expected) / 0.5, 0, 1)
-    : -(TROPHY_LOSS_MIN + (TROPHY_LOSS_MAX - TROPHY_LOSS_MIN) * clamp((expected - 0.25) / 0.5, 0, 1));
-  const delta = clampFinalTrophyDelta({ rawDelta: raw, won: args.won, currentTrophies: args.playerTrophies });
+  let raw: number;
+  if (args.vsBot) {
+    // Riot-vari ekonomi: kazanç, yenilen botun GERÇEK gücüyle ölçeklenir.
+    // Kolay bot (expected≈0.8) → ~12; denk (0.5) → ~21; elit (0.3) → ~28-30.
+    raw = args.won
+      ? BOT_GAIN_MIN + (BOT_GAIN_MAX - BOT_GAIN_MIN) * clamp((0.78 - expected) / 0.55, 0, 1)
+      : -(BOT_LOSS_MIN + (BOT_LOSS_MAX - BOT_LOSS_MIN) * clamp((expected - 0.25) / 0.5, 0, 1));
+  } else {
+    raw = args.won
+      ? TROPHY_GAIN_MIN + (TROPHY_GAIN_MAX - TROPHY_GAIN_MIN) * clamp((0.75 - expected) / 0.5, 0, 1)
+      : -(TROPHY_LOSS_MIN + (TROPHY_LOSS_MAX - TROPHY_LOSS_MIN) * clamp((expected - 0.25) / 0.5, 0, 1));
+  }
+  const bounds = args.vsBot ? { gainMin: BOT_GAIN_MIN, gainMax: BOT_GAIN_MAX, lossMin: BOT_LOSS_MIN, lossMax: BOT_LOSS_MAX } : {};
+  const delta = clampFinalTrophyDelta({ rawDelta: raw, won: args.won, currentTrophies: args.playerTrophies, ...bounds });
   return { expectedWinProbability: Number(expected.toFixed(4)), delta, k: Number(Math.abs(raw).toFixed(2)) };
 }
 

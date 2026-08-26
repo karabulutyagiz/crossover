@@ -117,6 +117,16 @@ export function decideBotAnswer(profile: BotProfile, context: BotQuestionContext
   const willAnswer = !shouldTimeout && (knows || cognitiveState === 'WRONG_ASSOCIATION' || (cognitiveState === 'UNSURE' && chance(rng, participationP * (0.36 + profile.riskTolerance * 0.26))));
   const plannedAction = plannedActionFor(cognitiveState, willAnswer, shouldMistake, rng);
   const timing = timingForDecision(profile, cognitiveState, plannedAction, context, rng);
+  // ELİT TEMPO (2026-08-26): dışarıdan bakan hileci (ChatGPT/arama) 15-25 sn'de
+  // döner; elit bantta bot BAZI turlarda belirgin hızlı cevaplar ki bekleyerek
+  // kazanılamasın. Her tur değil: ~%35'e varan "baskı turu" olasılığı, 0.5-0.7x
+  // sıkıştırma, 2.6 sn insan-tabanı — hızlı turlar seri değil serpiştirilmiş
+  // (büyük stüdyo ritmi). Sıradan oyuncuların botlarında (skillMean<2100) kapalı.
+  const eliteTempo = clamp((profile.skillMean - 2100) / 700, 0, 1);
+  if (eliteTempo > 0 && knows && willAnswer && chance(rng, 0.35 * eliteTempo)) {
+    const squeeze = 0.5 + rng.next() * 0.2;
+    timing.plannedActionAtMs = Math.max(2600, Math.round(timing.plannedActionAtMs * squeeze));
+  }
   const confidence = clamp(knowsP * 0.58 + profile.confidence * 0.28 + popularity * 0.14 - difficulty * 0.10, 0.02, 0.99);
   const retryPlan = plannedAction === 'WRONG_ATTEMPT_THEN_CONTINUE' && knows && chance(rng, clamp(botAiConfig.action.retryAfterWrongBaseProbability + profile.confidence * 0.18 - difficulty * 0.16, 0.04, 0.62))
     ? {

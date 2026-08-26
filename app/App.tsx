@@ -640,6 +640,42 @@ function TopBanner({
 // modal — the sender keeps using the app ("yukarıda çancık"); at 0 the invite
 // is voided on both ends (the server's own 30s timer + this cancel), a decline
 // surfaces as the named toast from the reducer.
+// KOPYA ÇEKME uyarı şeridi: maç sırasında uygulamadan ayrılma / ekran görüntüsü
+// algılanınca tepeden iner, ~2.6 sn sonra kendiliğinden çekilir. Ceza YOK —
+// caydırıcı, tutarlı, her cihazda aynı. seq her tetikte artar.
+function CheatWarnBanner({ seq }: { seq: number }) {
+  const slide = useRef(new Animated.Value(0)).current;
+  const insets = useSafeAreaInsets();
+  const [shownSeq, setShownSeq] = useState(0);
+  useEffect(() => {
+    if (!seq || seq === shownSeq) return;
+    setShownSeq(seq);
+    triggerFeedback(GameFeedbackEvent.UI_ERROR);
+    slide.setValue(0);
+    Animated.sequence([
+      Animated.timing(slide, { toValue: 1, duration: 240, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.delay(2600),
+      Animated.timing(slide, { toValue: 0, duration: 220, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+    ]).start();
+  }, [seq, shownSeq, slide]);
+  if (!seq) return null;
+  return (
+    <Animated.View pointerEvents="none" style={{
+      position: 'absolute', left: 12, right: 12, top: insets.top + 6, zIndex: 9999,
+      transform: [{ translateY: slide.interpolate({ inputRange: [0, 1], outputRange: [-110, 0] }) }],
+      opacity: slide,
+    }}>
+      <View style={{ backgroundColor: theme.danger, borderRadius: 16, paddingVertical: 11, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.35)', ...shadowModal }}>
+        <Ionicons name="eye-off" size={20} color="#FFFFFF" />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: '#FFFFFF', fontFamily: 'Poppins-ExtraBold', fontSize: 13.5, letterSpacing: 0.4 }}>{t('anticheat.title')}</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.92)', fontFamily: 'Poppins-SemiBold', fontSize: 11.5, lineHeight: 15 }}>{t('anticheat.body')}</Text>
+        </View>
+      </View>
+    </Animated.View>
+  );
+}
+
 function OutgoingInviteBanner({ invite, onCancel, offsetY = 0 }: {
   invite: { toId: string; toName: string; expiresAt: number };
   onCancel: () => void;
@@ -868,7 +904,7 @@ function AppRoot() {
   useEffect(() => {
     if (!state.lastPurchase) return;
     const p = state.lastPurchase;
-    const tm = setTimeout(() => { setPurchaseAck(p); setPurchaseAckVisible(true); }, 60);
+    const tm = setTimeout(() => { setPurchaseAck(p); setPurchaseAckVisible(true); triggerFeedback(GameFeedbackEvent.PURCHASE_CONFIRMED); }, 60);
     setOfferCaps((caps) => {
       if (!caps) return caps;
       const next = markPurchaseSucceeded(caps);
@@ -1870,33 +1906,51 @@ function AppRoot() {
     return () => sub.remove();
   }, [badgeTotal]);
 
-  // ANTI-CHEAT: leaving the app mid-match (PvP) = instant forfeit. iOS often
-  // reports app-switch/home gestures as 'inactive' before 'background', so both
-  // states are punished during the competitive window. Lobby/searching and
-  // finished matches are exempt.
-  const forfeitCtxRef = useRef<{ eligible: boolean; forfeit: () => void; fired: boolean }>({ eligible: false, forfeit: () => {}, fired: false });
-  const opponentIsBot = state.room?.players.some((p) => p.id !== state.room?.youId && p.isBot) ?? false;
-  forfeitCtxRef.current = {
+  // ANTI-CHEAT (2026-08-26 yeniden tasarım): maç sırasında uygulamadan ayrılmak
+  // artık ATMAZ — her cihazda/her maçta (bot dahil, ayrım sızdırmamalı) tutarlı
+  // "KOPYA ÇEKME ALGILANDI" uyarısı gösterilir. iOS bildirim çekmecesi/uygulama
+  // değiştirici 'inactive' olarak gelir; ikisi de yakalanır. UZUN kaçışları
+  // istemci değil sunucu cezalandırır: soket askıya düşer ve 12 sn'lik
+  // reconnect grace insana karşı hükmen sonucu zaten üretir — çifte ceza yok.
+  const cheatWatchRef = useRef<{ eligible: boolean; dipped: boolean }>({ eligible: false, dipped: false });
+  cheatWatchRef.current = {
     eligible:
       !!state.room &&
       !state.matchOver &&
       state.isQuickMatch &&
       state.room.players.length === 2 &&
-      !opponentIsBot &&
       FORFEIT_PHASES.has(state.phase),
-    forfeit: actions.forfeitFromBackground,
-    fired: forfeitCtxRef.current.fired,
+    dipped: cheatWatchRef.current.dipped,
   };
+  const [cheatWarnSeq, setCheatWarnSeq] = useState(0);
   useEffect(() => {
     const sub = AppState.addEventListener('change', (st) => {
       if (st === 'background') dismissActiveInput();
-      if ((st === 'inactive' || st === 'background') && forfeitCtxRef.current.eligible && !forfeitCtxRef.current.fired) {
-        forfeitCtxRef.current.fired = true;
-        forfeitCtxRef.current.forfeit();
+      if ((st === 'inactive' || st === 'background') && cheatWatchRef.current.eligible) {
+        cheatWatchRef.current.dipped = true;
       }
-      if (st === 'active') forfeitCtxRef.current.fired = false;
+      if (st === 'active' && cheatWatchRef.current.dipped) {
+        cheatWatchRef.current.dipped = false;
+        // Maç hâlâ sürüyorsa uyarıyı bas (dönüşte maç bittiyse gürültü yapma).
+        if (cheatWatchRef.current.eligible) setCheatWarnSeq((n) => n + 1);
+      }
     });
     return () => sub.remove();
+  }, []);
+  // Ekran görüntüsü de aynı uyarıyı tetikler (iOS; native modül dev build ister —
+  // Expo Go/eski build'de sessizce atlanır).
+  useEffect(() => {
+    let sub: { remove: () => void } | null = null;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const ScreenCapture = require('expo-screen-capture');
+      if (ScreenCapture?.addScreenshotListener) {
+        sub = ScreenCapture.addScreenshotListener(() => {
+          if (cheatWatchRef.current.eligible) setCheatWarnSeq((n) => n + 1);
+        });
+      }
+    } catch { /* modül yok — build 145 öncesi */ }
+    return () => { try { sub?.remove(); } catch { /* yut */ } }
   }, []);
 
   // Tap routing: every tap (warm or cold-start) stashes its route in the module
@@ -2320,6 +2374,7 @@ function AppRoot() {
           onCancel={() => { if (state.outgoingInvite) actions.cancelMatchInvite(state.outgoingInvite.toId); }}
         />
       ) : null}
+      <CheatWarnBanner seq={cheatWarnSeq} />
       {trophyFlight ? (
         <TrophyFlight
           delta={trophyFlight.delta}

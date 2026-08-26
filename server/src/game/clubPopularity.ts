@@ -140,13 +140,27 @@ export function isGlobalGiantName(name: string): boolean {
   return matchesAny(key, TURKISH_GIANTS) || matchesAny(key, GLOBAL_GIANTS);
 }
 
-export function audienceBiasMultiplier(name: string, favoriteDomains: readonly KnowledgeDomain[] = [], archetype?: BotArchetype | string | null): number {
+/** Kulüp Türk mü (dev + ikincil)? Maç-planı Türk turu kararında kullanılır. */
+export function isTurkishClub(name: string): boolean {
   const key = normalize(name);
+  return matchesAny(key, TURKISH_GIANTS) || isSecondaryTurkish(key);
+}
+
+// turkishMode (2026-08-26): 'default' eski davranış; 'neutral' Türk çarpanlarını
+// kapatır (bot bu turda Türk takımı DAYATMAZ); 'boost' hedef turda güçlü iter.
+// Eskiden 2.25× daimî ağırlık her maçın İLK turunu Türk deviyle açıyordu —
+// artık maç başına plan: %75 maçta, rastgele bir turda, bir kez.
+export function audienceBiasMultiplier(name: string, favoriteDomains: readonly KnowledgeDomain[] = [], archetype?: BotArchetype | string | null, turkishMode: 'default' | 'neutral' | 'boost' = 'default'): number {
+  const key = normalize(name);
+  const isTk = matchesAny(key, TURKISH_GIANTS) || isSecondaryTurkish(key);
   let m = 1;
-  if (matchesAny(key, TURKISH_GIANTS)) m *= 2.25;
-  else if (isSecondaryTurkish(key)) m *= 1.24;
+  if (turkishMode !== 'neutral') {
+    if (matchesAny(key, TURKISH_GIANTS)) m *= turkishMode === 'boost' ? 2.25 : 1.0;
+    else if (isSecondaryTurkish(key)) m *= turkishMode === 'boost' ? 1.24 : 1.0;
+  }
+  if (turkishMode === 'boost' && isTk) m *= 4.5;
   if (matchesAny(key, GLOBAL_GIANTS)) m *= 1.38;
-  if (favoriteDomains.includes('turkey') && (matchesAny(key, TURKISH_GIANTS) || isSecondaryTurkish(key))) m *= 1.35;
+  if (turkishMode !== 'neutral' && favoriteDomains.includes('turkey') && isTk) m *= 1.35;
   if (favoriteDomains.includes('europe_elite') && matchesAny(key, [...GLOBAL_GIANTS, ...VERY_POPULAR])) m *= 1.18;
   if (archetype === 'CASUAL' && !matchesAny(key, [...GLOBAL_GIANTS, ...TURKISH_GIANTS, ...VERY_POPULAR])) m *= 0.82;
   if (archetype === 'SPECIALIST' && isSecondaryTurkish(key)) m *= 1.14;

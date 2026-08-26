@@ -353,7 +353,11 @@ export function selectBotProfileForSkill(input: AdaptiveBotProfileInput): BotPro
   // botlar oyuncuyu TAKIP eder (tavan 2800'e esner) ve asagida orta/zor soru
   // isabeti + tempo elitlesir; 2600'de tam guc.
   const elite = clamp((input.playerSkillMean - 2000) / 600, 0, 1);
-  const skillMean = Math.round(clamp(forcedMean ?? targetMean, 560, 2100 + elite * 700));
+  // Düşük MMR kolaylaştırma (Riot-vari, 2026-08-26): 1050 ortalamanın altındaki
+  // oyunculara botlar bir tık KOLAY gelir (kazansınlar) — ama kupa tarafında bu
+  // dürüstçe fiyatlanır: kolay bot galibiyeti taban kupa öder (BOT_GAIN_MIN).
+  const easeDown = clamp((1050 - input.playerSkillMean) / 1050, 0, 1) * 120;
+  const skillMean = Math.round(clamp((forcedMean ?? targetMean) - easeDown, 560, 2100 + elite * 700));
   const baseSkill = botSkillFractionFromMean(skillMean);
   const forcedArchetype = ['FAST_RISKY', 'BALANCED', 'CAREFUL', 'CASUAL', 'STRONG', 'SPECIALIST'].includes(input.forcedArchetype ?? '')
     ? input.forcedArchetype as BotArchetype
