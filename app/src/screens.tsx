@@ -12466,7 +12466,7 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
   const answered = !!(r.matchedPlayerName || r.matchedClubName);
 
   return (
-    <Screen>
+    <Screen bg={<MatchCosmeticBackdrop backgroundId={matchBackgroundIdForState(state)} />}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
         {/* Kupa kazanma/kaybetme popup'ı artık BURADA ÇİZİLMEZ — maç ekranından
             çıkıp ana menüye dönünce App-seviyesi katmanda gösterilir (kullanıcı
