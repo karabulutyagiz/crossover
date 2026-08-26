@@ -290,6 +290,14 @@ function handleAppState(st: AppStateStatus) {
   }
 }
 
+/** Splash stinger'ını anında sustur (arka plana geçiş / erken çıkış). Çift
+ * çalma ve üst üste binme koruması: player başa sarılır, tekrar hazır kalır. */
+export function stopSplashStinger(): void {
+  const p = prewarmedPlayers.get(AudioEvent.SPLASH_ELECTRIC_IMPACT);
+  if (!p) return;
+  try { p.pause(); p.seekTo(0); } catch { /* player heniz hazir degil */ }
+}
+
 export function setAudioScene(scene: AudioScene, fadeMs = 260) {
   if (scene === currentScene && scene !== 'HOME') return;
   const prev = currentScene;

@@ -2,6 +2,9 @@ const { getDefaultConfig } = require('expo/metro-config');
 
 const config = getDefaultConfig(__dirname);
 
+// Bu makinede watchman bozuk (iCloud) — bundling Node crawler ile yapilir.
+config.resolver.useWatchman = false;
+
 // Native-only packages that crash the web bundle. They resolve to a stub that
 // throws at import time, so the app's existing Expo Go try/catch fallbacks
 // kick in (an empty module would instead overwrite those fallbacks with

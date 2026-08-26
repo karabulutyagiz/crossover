@@ -17,7 +17,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Animated, Easing, PanResponder, Platform, Dimensions, Linking, LayoutAnimation } from 'react-native';
+import { Animated, AppState, Easing, PanResponder, Platform, Dimensions, Linking, LayoutAnimation } from 'react-native';
 import { State } from 'react-native-gesture-handler/lib/commonjs/State';
 import { PanGestureHandler } from 'react-native-gesture-handler/lib/commonjs/handlers/PanGestureHandler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -68,7 +68,9 @@ import { DEFAULT_BALL_ID, DEFAULT_MATCH_BACKGROUND_ID, RARITY_COLOR, cosmeticVis
 import { EffectSceneFX, NameEffectFX } from './cosmeticFx';
 import { NATIONALITIES } from './nationalities';
 import { captureError, track } from './telemetry';
-import { GameFeedbackEvent } from './feedback/events';
+import { GameFeedbackEvent, HapticEvent } from './feedback/events';
+import { playHaptic } from './feedback/HapticsService';
+import { stopSplashStinger } from './feedback/AudioService';
 import { triggerFeedback } from './feedback/GameFeedback';
 import { useFeedbackPreferences } from './feedback/useFeedbackPreferences';
 // react-native-iap v15 (StoreKit2) — native module, absent in Expo Go. Wrap the require
@@ -1532,8 +1534,31 @@ function ShineSweep({ width, height, delay = 0, duration = 650, loop = false, lo
 // CROSSOVER stamps in letter-by-letter and a gold shine sweeps the wordmark.
 // The loading screen then raises its bottom kit under this same composition.
 // Native driver only; a fixed timer fires onDone so the splash never blocks.
-const SLAM_TOTAL_MS = 2500;
+// SONIC-SYNC (2026-08-26): süreler COF_Premium_Logo_Sting_5s.wav'ın GERÇEK
+// dalga analizinden çıkarıldı (tahmin yok — 5ms RMS zarfı + en dik yükseliş):
+//   150ms açılış vuruşu · 1982ms buildup kabarması · 2435ms ÇARPIŞMA (algısal
+//   çat — zarf 2687'de patlar: temas→enerji açılımı) · 3639ms LOGO LOCK (en
+//   güçlü vuruş) · ~4950ms kuyruk sonu.
+// Görsel akış bu haritaya kilitli: temas karesi = 2435ms (hedef ±30ms).
+const INTRO_TIMING = {
+  audioStart: 0,
+  ignition: 150,
+  ballMotionStart: 430,
+  buildupSwell: 1982,
+  anticipation: 2315,
+  collision: 2435,
+  energyBloomPeak: 2687,
+  lettersStart: 2550,
+  logoLock: 3639,
+  bylineIn: 3720,
+  shineSweep: 3900,
+  introComplete: 5000,
+} as const;
+const SLAM_TOTAL_MS = INTRO_TIMING.introComplete;
 const SLAM_WORD = 'CROSSOVER';
+// Dev/StrictMode yeniden mount'unda stinger'ın İKİ KEZ çalmasını engeller;
+// soğuk açılışta modül tazelendiği için her gerçek açılışta bir kez çalar.
+let splashIntroStartedOnce = false;
 
 // Studio byline under the wordmark — rendered on every screen that shows the
 // CROSSOVER lockup (splash / loading / login) so the brand block never changes
@@ -1574,6 +1599,12 @@ export function SplashScreen({ onDone, fontsReady = true, onFirstFrameReady }: {
   const ring1 = useRef(new Animated.Value(0)).current;     // mint impact ring
   const burst = useRef(new Animated.Value(0)).current;     // spark burst + core flash
   const letters = useRef(SLAM_WORD.split('').map(() => new Animated.Value(0))).current;
+  const antic = useRef(new Animated.Value(0)).current;     // çarpışma öncesi 120ms beklenti (glow yükselir)
+  const ring2 = useRef(new Animated.Value(0)).current;     // temiz shockwave halkası (0.3→1.8)
+  const flashScr = useRef(new Animated.Value(0)).current;  // 60ms ekran flaşı (0→0.45→0)
+  const lock = useRef(new Animated.Value(0)).current;      // 3639ms logo lock (scale settle + glow tepe)
+  const bgGlow = useRef(new Animated.Value(0)).current;    // arka plan ışık tepkisi
+  const byline = useRef(new Animated.Value(0)).current;    // FOOTBALL satırı — lock'tan birkaç kare sonra
   const fired = useRef(false);
   // The exit timer must call the LATEST onDone, not the mount-time closure.
   const onDoneRef = useRef(onDone);
@@ -1594,38 +1625,86 @@ export function SplashScreen({ onDone, fontsReady = true, onFirstFrameReady }: {
   useEffect(() => { sendFirstFrameReady(); }, [sendFirstFrameReady]);
 
   useEffect(() => {
-    const anim = Animated.sequence([
-      // 0–640ms: lights up; the two halves accelerate in from opposite edges
-      Animated.parallel([
-        Animated.timing(veil, { toValue: 0, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-        Animated.sequence([
-          Animated.delay(120),
-          Animated.timing(fly, { toValue: 1, duration: 520, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+    // Ses 0'da başlar (player app açılışında prewarm'lı — yükleme beklenmez);
+    // tüm görsel kurgu INTRO_TIMING'e kilitli TEK timeline'dır.
+    if (!splashIntroStartedOnce) {
+      splashIntroStartedOnce = true;
+      triggerFeedback(GameFeedbackEvent.SPLASH_ELECTRIC_IMPACT);
+    }
+    const anim = Animated.parallel([
+      // perde: sessiz/kontrollü açılış
+      Animated.timing(veil, { toValue: 0, duration: 240, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      // 150ms açılış vuruşu: kısa ateşleme parlaması (bgGlow mikro tepe)
+      Animated.sequence([
+        Animated.delay(INTRO_TIMING.ignition - 60),
+        Animated.timing(bgGlow, { toValue: 0.4, duration: 90, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(bgGlow, { toValue: 0.12, duration: 500, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      ]),
+      // toplar: 430ms'te yola çıkar, hızlanarak 2435ms'te TEMAS eder
+      Animated.sequence([
+        Animated.delay(INTRO_TIMING.ballMotionStart),
+        Animated.timing(fly, { toValue: 1, duration: INTRO_TIMING.collision - INTRO_TIMING.ballMotionStart, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+      ]),
+      // beklenti: temastan 120ms önce enerji yükselir ("şimdi bir şey olacak")
+      Animated.sequence([
+        Animated.delay(INTRO_TIMING.anticipation),
+        Animated.timing(antic, { toValue: 1, duration: INTRO_TIMING.collision - INTRO_TIMING.anticipation, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      ]),
+      // ÇARPIŞMA bloğu — 2435ms: sıkışma + sarsıntı + halkalar + kıvılcım + flaş
+      Animated.sequence([
+        Animated.delay(INTRO_TIMING.collision),
+        Animated.parallel([
+          Animated.timing(impact, { toValue: 1, duration: 380, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+          Animated.timing(shake, { toValue: 1, duration: 300, easing: Easing.linear, useNativeDriver: true }),
+          Animated.timing(ring1, { toValue: 1, duration: 430, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+          Animated.timing(ring2, { toValue: 1, duration: 340, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+          Animated.timing(burst, { toValue: 1, duration: 520, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+          Animated.sequence([
+            Animated.timing(flashScr, { toValue: 1, duration: 28, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+            Animated.timing(flashScr, { toValue: 0, duration: 42, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+          ]),
+          // enerji patlamasından harfler doğar (2550ms'ten itibaren)
+          Animated.sequence([
+            Animated.delay(INTRO_TIMING.lettersStart - INTRO_TIMING.collision),
+            Animated.stagger(65, letters.map((v) =>
+              Animated.timing(v, { toValue: 1, duration: 240, easing: Easing.out(Easing.back(2.6)), useNativeDriver: true }),
+            )),
+          ]),
         ]),
       ]),
-      // 640ms: IMPACT — the halves meet, the bolt completes: squeeze, shake,
-      // ring, sparks; letters stamp in from 980ms
-      Animated.parallel([
-        Animated.timing(impact, { toValue: 1, duration: 380, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-        Animated.timing(shake, { toValue: 1, duration: 300, easing: Easing.linear, useNativeDriver: true }),
-        Animated.timing(ring1, { toValue: 1, duration: 430, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-        Animated.timing(burst, { toValue: 1, duration: 520, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-        Animated.sequence([
-          Animated.delay(340),
-          Animated.stagger(55, letters.map((v) =>
-            Animated.timing(v, { toValue: 1, duration: 260, easing: Easing.out(Easing.back(3)), useNativeDriver: true }),
-          )),
+      // FOOTBALL satırı: CROSSOVER kilitlendikten birkaç kare sonra, sakin
+      Animated.sequence([
+        Animated.delay(INTRO_TIMING.bylineIn),
+        Animated.timing(byline, { toValue: 1, duration: 260, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      ]),
+      // 3639ms LOGO LOCK: sesin en güçlü vuruşu — marka imzası (settle + glow tepesi)
+      Animated.sequence([
+        Animated.delay(INTRO_TIMING.logoLock),
+        Animated.parallel([
+          Animated.sequence([
+            Animated.timing(lock, { toValue: 1, duration: 120, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+            Animated.timing(lock, { toValue: 0, duration: 260, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+          ]),
+          Animated.sequence([
+            Animated.timing(bgGlow, { toValue: 0.5, duration: 110, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+            Animated.timing(bgGlow, { toValue: 0, duration: 900, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+          ]),
         ]),
       ]),
     ]);
     anim.start();
-    // Full stinger starts before contact; its impact peak lands on the 640ms logo collision.
-    const impactSfx = setTimeout(() => triggerFeedback(GameFeedbackEvent.SPLASH_ELECTRIC_IMPACT), 90);
+    // Haptik SES DOSYASININ çat anına kilitli — tek, net, premium impact.
+    const hapticTm = setTimeout(() => playHaptic(HapticEvent.HEAVY), INTRO_TIMING.collision);
+    // Arka plana düşerse stinger susar; timeline görsel olarak akmaya devam eder
+    // (dönüşte çift ses/üst üste binme olmaz — player başa sarılı bekler).
+    const appSub = AppState.addEventListener('change', (st) => {
+      if (st === 'background') stopSplashStinger();
+    });
     // Hard, network-independent exit: the animation is scenery, the timer is the contract.
     const tm = setTimeout(() => {
       if (!fired.current) { fired.current = true; onDoneRef.current?.(); }
     }, SLAM_TOTAL_MS);
-    return () => { clearTimeout(impactSfx); clearTimeout(tm); anim.stop(); };
+    return () => { clearTimeout(hapticTm); clearTimeout(tm); appSub.remove(); anim.stop(); };
   }, []);
 
   // Each half slides on X only (straight left/right, per the matchup metaphor);
@@ -1644,7 +1723,9 @@ export function SplashScreen({ onDone, fontsReady = true, onFirstFrameReady }: {
   return (
     <View style={{ flex: 1, backgroundColor: BG_TOP }} onLayout={handleFirstLayout}>
     <OpeningBackdrop>
-      <Animated.View style={{ alignItems: 'center', transform: [{ translateX: shakeTX }, { translateY: shakeTY }] }}>
+      {/* arka plan tepkisi: merkezden yumuşak radyal ışıma (ateşleme + lock tepesi) */}
+      <Animated.View pointerEvents="none" style={{ position: 'absolute', alignSelf: 'center', top: '26%', width: SLAM_BADGE * 2.6, height: SLAM_BADGE * 2.6, borderRadius: SLAM_BADGE * 1.3, backgroundColor: theme.accent, opacity: bgGlow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.16] }) }} />
+      <Animated.View style={{ alignItems: 'center', transform: [{ translateX: shakeTX }, { translateY: shakeTY }, { scale: lock.interpolate({ inputRange: [0, 1], outputRange: [1, 1.032] }) }] }}>
         {/* badge (two clipped halves that assemble at centre) + impact FX */}
         <View style={{ width: SLAM_BADGE * 1.4, height: SLAM_BADGE_H + 26, alignItems: 'center', justifyContent: 'center' }}>
           <Animated.View style={{ flexDirection: 'row', transform: [{ scaleX: squeezeX }, { scaleY: squeezeY }] }}>
@@ -1659,6 +1740,10 @@ export function SplashScreen({ onDone, fontsReady = true, onFirstFrameReady }: {
           </Animated.View>
           {/* impact anchor (zero-size, centered on the seam — the collision point) */}
           <View pointerEvents="none" style={{ position: 'absolute', left: '50%', top: '50%', width: 0, height: 0 }}>
+            {/* beklenti: temastan 120ms önce dikişte büyüyen enerji */}
+            <Animated.View style={{ position: 'absolute', left: -26, top: -26, width: 52, height: 52, borderRadius: 26, backgroundColor: '#BFE8FF', opacity: antic.interpolate({ inputRange: [0, 1], outputRange: [0, 0.5] }), transform: [{ scale: antic.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1.15] }) }] }} />
+            {/* temiz shockwave: 0.3→1.8, ince halka — premium, kalın değil */}
+            <Animated.View style={{ position: 'absolute', left: -60, top: -60, width: 120, height: 120, borderRadius: 60, borderWidth: 2, borderColor: '#FFFFFF', opacity: ring2.interpolate({ inputRange: [0, 0.1, 1], outputRange: [0, 0.6, 0], extrapolate: 'clamp' }), transform: [{ scale: ring2.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1.8] }) }] }} />
             {/* white-hot core flash right where the bolt completes */}
             <Animated.View style={{ position: 'absolute', left: -34, top: -34, width: 68, height: 68, borderRadius: 34, backgroundColor: '#FFFFFF', opacity: burst.interpolate({ inputRange: [0, 0.08, 0.4, 1], outputRange: [0, 0.6, 0, 0], extrapolate: 'clamp' }), transform: [{ scale: burst.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1.7] }) }] }} />
             <Animated.View style={{ position: 'absolute', left: -70, top: -70, width: 140, height: 140, borderRadius: 70, borderWidth: 3, borderColor: theme.primary, opacity: ring1.interpolate({ inputRange: [0, 0.12, 1], outputRange: [0, 0.85, 0], extrapolate: 'clamp' }), transform: [{ scale: ring1.interpolate({ inputRange: [0, 1], outputRange: [0.35, 2.4] }) }] }} />
@@ -1705,14 +1790,16 @@ export function SplashScreen({ onDone, fontsReady = true, onFirstFrameReady }: {
               </Animated.Text>
             ))}
           </View>
-          <ShineSweep width={SLAM_WM_W} height={SLAM_FONT * 1.4} delay={1900} duration={620} tint={theme.accent} opacity={0.3} band={0.24} />
+          <ShineSweep width={SLAM_WM_W} height={SLAM_FONT * 1.4} delay={INTRO_TIMING.shineSweep} duration={620} tint={theme.accent} opacity={0.3} band={0.24} />
           {/* byline fades in with the last stamped letter — but stays hidden until
               fonts are ready so "BY Games" never appears in a fallback face first */}
-          <Animated.View style={{ opacity: fontsReady ? letters[letters.length - 1]! : 0 }}>
+          <Animated.View style={{ opacity: fontsReady ? byline : 0 }}>
             <BrandByline ready={fontsReady} />
           </Animated.View>
         </View>
       </Animated.View>
+      {/* 60ms impact flaşı: 0→0.45→0 — göz yormaz, tam temas anında */}
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF', opacity: flashScr.interpolate({ inputRange: [0, 1], outputRange: [0, 0.45] }) }]} />
       {/* fade-from-navy veil (on top of everything) — mockup zemininde siyah yok */}
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: theme.bg, opacity: veil }]} />
     </OpeningBackdrop>
@@ -6010,7 +6097,7 @@ export function GuessScreen({ state, actions, tutorial, prefill }: Props & { pre
     // content pushed the input + Send/Pass buttons down under the keyboard. Anchored to
     // the top they sit in the upper screen, above the keyboard; automaticallyAdjust-
     // KeyboardInsets still scrolls the focused field into view on short screens.
-    <Screen scroll contentCenter={false} keyboardShouldPersistTaps="always">
+    <Screen scroll contentCenter={false} keyboardShouldPersistTaps="always" bg={<MatchCosmeticBackdrop backgroundId={matchBackgroundIdForState(state)} />}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
         <MatchExitButton onPress={handleLeave} />
         <PlayerBar state={state} onEmotePress={tutorial ? undefined : () => setEmoteOpen(true)} />
@@ -6660,6 +6747,7 @@ const COSMETIC_ART = {
   iceNameplate: require('../assets/cosmetics/ice_nameplate.png'),
   neonPitchBg: require('../assets/cosmetics/neon_pitch_bg.jpg'),
   nightStadiumBg: require('../assets/cosmetics/night_stadium_bg.jpg'),
+  goatArenaBg: require('../assets/cosmetics/goat_arena_bg.jpg'),
   goatBallCrest: require('../assets/cosmetics/goat_ball_crest.png'),
   championsBallCrest: require('../assets/cosmetics/champions_ball_crest.png'),
 } as const;
@@ -6719,6 +6807,10 @@ function localBallIdForState(state: GameState): string {
 function MatchCosmeticBackdrop({ backgroundId }: { backgroundId?: string | null }) {
   const id = backgroundId || DEFAULT_MATCH_BACKGROUND_ID;
   const look = MATCH_BACKGROUND_LOOK[id] ?? MATCH_BACKGROUND_LOOK[DEFAULT_MATCH_BACKGROUND_ID]!;
+  // Uygulama kökü safe-area ile içeri alınmış durumda; arka plan çentik/home-bar
+  // altına da uzansın diye insets kadar negatif taşırılır (yoksa üstte siyah bant).
+  const insets = useSafeAreaInsets();
+  const bleed = { position: 'absolute' as const, left: 0, right: 0, top: -insets.top, bottom: -insets.bottom };
   const pulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const anim = Animated.loop(Animated.sequence([
@@ -6730,10 +6822,10 @@ function MatchCosmeticBackdrop({ backgroundId }: { backgroundId?: string | null 
   }, [pulse, id]);
   const hot = id.includes('fire') || id.includes('goat');
   // Çizilmiş arena fotoğrafı olan kozmetikler: fotoğraf + okunabilirlik örtüsü.
-  const bgImage = id === 'neon_pitch' ? COSMETIC_ART.neonPitchBg : id === 'night_stadium' ? COSMETIC_ART.nightStadiumBg : null;
+  const bgImage = id === 'neon_pitch' ? COSMETIC_ART.neonPitchBg : id === 'night_stadium' ? COSMETIC_ART.nightStadiumBg : id === 'goat_arena' ? COSMETIC_ART.goatArenaBg : null;
   if (bgImage) {
     return (
-      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <View pointerEvents="none" style={bleed}>
         <Image source={bgImage} style={[StyleSheet.absoluteFill, { width: undefined, height: undefined }]} resizeMode="cover" />
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(5,9,24,0.30)' }]} />
         <Animated.View style={{ position: 'absolute', left: -48, right: -48, bottom: SCREEN_H * 0.16, height: 110, borderRadius: 80, backgroundColor: look.glow, opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.18, 0.4] }), transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.05] }) }] }} />
@@ -6741,7 +6833,7 @@ function MatchCosmeticBackdrop({ backgroundId }: { backgroundId?: string | null 
     );
   }
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+    <View pointerEvents="none" style={bleed}>
       <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
         <Defs>
           <SvgGradient id="cosmeticMatchBg" x1="0" y1="0" x2="0" y2="1">
@@ -6770,7 +6862,7 @@ function MatchCosmeticBackdrop({ backgroundId }: { backgroundId?: string | null 
 
 function MiniArenaPreview({ backgroundId, size }: { backgroundId: string; size: number }) {
   const look = MATCH_BACKGROUND_LOOK[backgroundId] ?? MATCH_BACKGROUND_LOOK[DEFAULT_MATCH_BACKGROUND_ID]!;
-  const img = backgroundId === 'neon_pitch' ? COSMETIC_ART.neonPitchBg : backgroundId === 'night_stadium' ? COSMETIC_ART.nightStadiumBg : null;
+  const img = backgroundId === 'neon_pitch' ? COSMETIC_ART.neonPitchBg : backgroundId === 'night_stadium' ? COSMETIC_ART.nightStadiumBg : backgroundId === 'goat_arena' ? COSMETIC_ART.goatArenaBg : null;
   if (img) {
     return (
       <View style={{ width: size, height: size * 0.68, borderRadius: size * 0.16, overflow: 'hidden', borderWidth: 2, borderColor: look.accent }}>
@@ -6969,6 +7061,38 @@ function NameEffectParticles({ effectId }: { effectId?: string | null }) {
   return <NameEffectFX effectId={effectId} />;
 }
 
+const BOLT_ART = require('../assets/fx/bolt.png');
+
+// Clash Royale zap ritmi: çift çakma (çat-ÇAT), mavi-beyaz, panelin içinden.
+// İki taraf da IntroEffectOverlay'i kendi panelinde çizer — iki oyuncuda görünür.
+function LightningEntranceFX() {
+  const p = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(Animated.sequence([
+      Animated.delay(260),
+      Animated.timing(p, { toValue: 1, duration: 36, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.timing(p, { toValue: 0.22, duration: 70, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      Animated.timing(p, { toValue: 0.92, duration: 44, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.timing(p, { toValue: 0, duration: 180, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      Animated.delay(1350),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [p]);
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {/* mavi ışık banyosu: çakma anında panel aydınlanır */}
+      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#7FD7FF', opacity: p.interpolate({ inputRange: [0, 1], outputRange: [0, 0.16] }) }]} />
+      {/* ana şimşek: solda, hafif eğik */}
+      <Animated.Image source={BOLT_ART} resizeMode="contain" style={{ position: 'absolute', left: '16%', top: -4, width: '22%', height: '86%', tintColor: '#BFE8FF', opacity: p, transform: [{ rotate: '-7deg' }] }} />
+      {/* ikincil şimşek: sağda, aynalı, biraz sönük */}
+      <Animated.Image source={BOLT_ART} resizeMode="contain" style={{ position: 'absolute', right: '17%', top: 2, width: '18%', height: '74%', tintColor: '#8FD0FF', opacity: p.interpolate({ inputRange: [0, 1], outputRange: [0, 0.85] }), transform: [{ scaleX: -1 }, { rotate: '9deg' }] }} />
+      {/* beyaz çekirdek flaş */}
+      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF', opacity: p.interpolate({ inputRange: [0, 1], outputRange: [0, 0.10] }) }]} />
+    </View>
+  );
+}
+
 function IntroEffectOverlay({ effectId, accent }: { effectId?: string | null; accent: string }) {
   const a = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -6981,6 +7105,7 @@ function IntroEffectOverlay({ effectId, accent }: { effectId?: string | null; ac
     return () => loop.stop();
   }, [a, effectId]);
   if (!effectId) return null;
+  if (effectId.includes('lightning')) return <LightningEntranceFX />;
   const fire = effectId.includes('fire');
   const lightning = effectId.includes('lightning');
   const color = fire ? '#FF7A3D' : lightning ? '#FFE05C' : effectId.includes('goat') ? '#D9B4FF' : accent;

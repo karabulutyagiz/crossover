@@ -25,7 +25,7 @@ export const SFX_ASSETS: Record<AudioEvent, number> = {
   [AudioEvent.INTRO_WHOOSH]: require('../../assets/audio/ui/introWhoosh.wav'),
   [AudioEvent.INTRO_IMPACT]: require('../../assets/audio/ui/introImpact.wav'),
   [AudioEvent.INTRO_LOGO_STING]: require('../../assets/audio/ui/introLogoSting.wav'),
-  [AudioEvent.SPLASH_ELECTRIC_IMPACT]: require('../../assets/audio/ui/introElectricReal.m4a'),
+  [AudioEvent.SPLASH_ELECTRIC_IMPACT]: require('../../assets/audio/ui/introLogoSting5s.m4a'),
   [AudioEvent.COUNTDOWN_3]: require('../../assets/audio/match/countdown3Tense.wav'),
   [AudioEvent.COUNTDOWN_2]: require('../../assets/audio/match/countdown2Tense.wav'),
   [AudioEvent.COUNTDOWN_1]: require('../../assets/audio/match/countdown1Tense.wav'),

@@ -11,6 +11,9 @@ export const FRAME_ART: Record<string, ImageSourcePropType> = {
   gold: require('../assets/frames/frame-gold.png'),
   diamond: require('../assets/frames/frame-diamond.png'),
   goat: require('../assets/frames/frame-goat.png'),
+  // Çizilmiş mağaza çerçeveleri (2026-08-26 AirDrop) — prosedürel yerine görsel.
+  ice_frame: require('../assets/frames/frame-ice-store.png'),
+  goat_frame: require('../assets/frames/frame-goat-store.png'),
 };
 
 // tuval boyu / delik çapı — çerçeve bu katsayıyla avatarın etrafına tam oturur,
@@ -22,11 +25,11 @@ export const FRAME_SCALE: Record<string, number> = {
   diamond: 500 / 220,
   goat: 680 / 216,
   fire_frame: 1.78,
-  ice_frame: 1.7,
+  ice_frame: 1.501,   // alfa kanalından ölçüldü (512 tuval / 341 delik)
   champions_frame: 1.82,
   golden_frame: 1.72,
   neon_frame: 1.78,
-  goat_frame: 1.95,
+  goat_frame: 1.796,  // alfa kanalından ölçüldü (512 tuval / 285 delik)
 };
 
 const STORE_FRAME_LOOK: Record<string, { ring: string; inner: string; glow: string; accent: string; sparks?: string[] }> = {

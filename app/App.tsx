@@ -105,6 +105,7 @@ import { dismissActiveInput } from './src/keyboardLifecycle';
 import type { ImageSourcePropType } from 'react-native';
 import { initAudioService, setAudioScene, type AudioScene } from './src/feedback/AudioService';
 import { GameFeedbackEvent } from './src/feedback/events';
+import { FlameField } from './src/cosmeticFx';
 import { isRonaldoAnswer, triggerDiamondCollectTick, triggerFeedback } from './src/feedback/GameFeedback';
 import { loadFeedbackPreferences } from './src/feedback/preferences';
 import {
@@ -749,6 +750,121 @@ function ScaledRoot() {
       </View>
     </View>
   );
+}
+
+// ---- Zafer kutlaması ---------------------------------------------------------
+// Maç kazanıldığında kuşanılı victory_effect tam ekran oynar (popup'ın arkasında).
+// Şimdiye dek HİÇ bağlanmamıştı — "Stadium Celebration çalışmıyor"un kökü buydu.
+const VFX_BEAM = require('./assets/fx/beam.png');
+const VFX_BOLT = require('./assets/fx/bolt.png');
+const VFX_GLINT = require('./assets/fx/glint4.png');
+const VFX_GLOW = require('./assets/fx/glow_radial.png');
+
+function VictoryLoop({ duration, delay = 0, children }: { duration: number; delay?: number; children: (v: Animated.Value) => ReactNode }) {
+  const v = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(Animated.sequence([
+      Animated.delay(delay),
+      Animated.timing(v, { toValue: 1, duration, easing: Easing.linear, useNativeDriver: true }),
+      Animated.timing(v, { toValue: 0, duration: 0, useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [v, duration, delay]);
+  return <>{children(v)}</>;
+}
+
+function VictoryCelebrationOverlay({ effectId }: { effectId?: string | null }) {
+  if (!effectId) return null;
+  const W = Dimensions.get('window').width;
+  const H = Dimensions.get('window').height;
+  const confetti = (x: number, delay: number, color: string) => (
+    <VictoryLoop key={`c${x}${delay}`} duration={2200} delay={delay}>
+      {(v) => (
+        <Animated.View style={{ position: 'absolute', left: W * x, top: -14, width: 10, height: 14, borderRadius: 3, backgroundColor: color,
+          opacity: v.interpolate({ inputRange: [0, 0.08, 0.85, 1], outputRange: [0, 1, 0.9, 0] }),
+          transform: [
+            { translateY: v.interpolate({ inputRange: [0, 1], outputRange: [0, H * 0.9] }) },
+            { rotate: v.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '340deg'] }) },
+            { translateX: v.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 18, -12] }) },
+          ] }} />
+      )}
+    </VictoryLoop>
+  );
+  const glint = (x: number, y: number, size: number, delay: number, color: string) => (
+    <VictoryLoop key={`g${x}${y}`} duration={1700} delay={delay}>
+      {(v) => (
+        <Animated.Image source={VFX_GLINT} style={{ position: 'absolute', left: W * x, top: H * y, width: size, height: size, tintColor: color,
+          opacity: v.interpolate({ inputRange: [0, 0.2, 0.5, 0.8, 1], outputRange: [0, 1, 0.7, 1, 0] }),
+          transform: [{ scale: v.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0.2, 1, 0.6] }) }, { rotate: v.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '90deg'] }) }] }} />
+      )}
+    </VictoryLoop>
+  );
+  if (effectId === 'stadium_celebration') {
+    return (
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {/* iki projektör: tepeden salınan hüzmeler + tribün flaşları */}
+        {[0.22, 0.78].map((x, i) => (
+          <VictoryLoop key={`b${i}`} duration={2400} delay={i * 300}>
+            {(v) => (
+              <Animated.View style={{ position: 'absolute', left: W * x - 90, top: -H * 0.32, width: 180, height: H * 0.9, alignItems: 'center',
+                transform: [{ rotate: v.interpolate({ inputRange: [0, 0.5, 1], outputRange: [i ? '26deg' : '-26deg', i ? '-26deg' : '26deg', i ? '26deg' : '-26deg'] }) }] }}>
+                <Image source={VFX_BEAM} resizeMode="stretch" style={{ width: 150, height: H * 0.62, marginTop: H * 0.3, tintColor: '#FFF7D6', opacity: 0.55 }} />
+              </Animated.View>
+            )}
+          </VictoryLoop>
+        ))}
+        {glint(0.16, 0.2, 26, 0, '#FFFFFF')}{glint(0.7, 0.14, 20, 500, '#FFF3C4')}{glint(0.44, 0.3, 16, 1000, '#FFFFFF')}
+        {confetti(0.2, 0, '#FFCE3A')}{confetti(0.42, 380, '#FFFFFF')}{confetti(0.63, 760, '#37A8FF')}{confetti(0.84, 1140, '#FFCE3A')}
+      </View>
+    );
+  }
+  if (effectId === 'fire_victory') {
+    return (
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 120 }}><FlameField height={54} /></View>
+        {glint(0.2, 0.3, 20, 200, '#FFCE3A')}{glint(0.75, 0.24, 24, 800, '#FF7A3D')}
+      </View>
+    );
+  }
+  if (effectId === 'lightning_victory') {
+    return (
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {[0.2, 0.72].map((x, i) => (
+          <VictoryLoop key={`l${i}`} duration={1500} delay={i * 420}>
+            {(v) => (
+              <Animated.Image source={VFX_BOLT} resizeMode="contain" style={{ position: 'absolute', left: W * x, top: 0, width: W * 0.2, height: H * 0.5, tintColor: '#BFE8FF',
+                opacity: v.interpolate({ inputRange: [0, 0.04, 0.08, 0.14, 0.2, 0.3, 1], outputRange: [0, 1, 0.25, 0.9, 0.15, 0, 0] }),
+                transform: [{ scaleX: i ? -1 : 1 }] }} />
+            )}
+          </VictoryLoop>
+        ))}
+      </View>
+    );
+  }
+  if (effectId === 'golden_champion_victory') {
+    return (
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {confetti(0.15, 0, '#FFCE3A')}{confetti(0.35, 300, '#FFF1A6')}{confetti(0.56, 600, '#FFCE3A')}{confetti(0.77, 900, '#FFFFFF')}{confetti(0.9, 1200, '#FFCE3A')}
+        {glint(0.2, 0.22, 26, 100, '#FFE9A3')}{glint(0.68, 0.16, 22, 700, '#FFF3C4')}{glint(0.45, 0.34, 18, 1300, '#FFFFFF')}
+      </View>
+    );
+  }
+  if (effectId === 'goat_celebration') {
+    return (
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        <VictoryLoop duration={1600}>
+          {(v) => (
+            <Animated.Image source={VFX_GLOW} resizeMode="stretch" style={{ position: 'absolute', left: W * 0.1, top: H * 0.18, width: W * 0.8, height: W * 0.8, tintColor: '#9B6BFF',
+              opacity: v.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.2, 0.5, 0.2] }) }} />
+          )}
+        </VictoryLoop>
+        {glint(0.24, 0.2, 24, 0, '#EBD9FF')}{glint(0.62, 0.14, 30, 550, '#F4EAFF')}{glint(0.44, 0.32, 18, 1100, '#FFFFFF')}
+        {confetti(0.3, 200, '#C77DFF')}{confetti(0.6, 700, '#EBD9FF')}
+      </View>
+    );
+  }
+  return null;
 }
 
 function AppRoot() {
@@ -2444,6 +2560,7 @@ function AppRoot() {
       {/* Kupa kazanma/kaybetme popup'ı — maçtan ÇIKINCA burada, ana menünün üstünde */}
       {matchOverPopup ? (
         <View style={[StyleSheet.absoluteFill, { zIndex: 60, backgroundColor: theme.scrim, justifyContent: 'center', paddingHorizontal: 24 }]}>
+          {matchOverPopup.youWon ? <VictoryCelebrationOverlay effectId={state.profile?.equippedVictoryEffectId} /> : null}
           <Pressable style={StyleSheet.absoluteFill} onPress={dismissMatchOverPopup} />
           <MatchOverBanner
             youWon={matchOverPopup.youWon}
