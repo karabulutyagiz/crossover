@@ -1,4 +1,12 @@
 import type { CosmeticLoadoutView, ProfileView, StoreCatalogItem } from './protocol';
+import { t } from './i18n';
+
+/** Kozmetik adı — aktif dilde (anahtar yoksa sunucudan gelen ada düşer). */
+export function cosmeticDisplayName(item: Pick<StoreCatalogItem, 'id' | 'name'>): string {
+  const key = `cosmetic.${item.id}.name`;
+  const v = t(key as never);
+  return v === key ? item.name : v;
+}
 
 export const DEFAULT_BALL_ID = 'classic_ball';
 export const DEFAULT_MATCH_BACKGROUND_ID = 'default';

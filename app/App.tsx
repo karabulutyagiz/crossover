@@ -828,17 +828,30 @@ function VictoryCelebrationOverlay({ effectId }: { effectId?: string | null }) {
     );
   }
   if (effectId === 'lightning_victory') {
+    // TAM EKRAN yıldırım fırtınası: gökten yere inen mavi çakmalar, popup
+    // kapanana kadar sürer (CR yıldırım büyüsü ritmi: çat-ÇAT + mavi flaş).
     return (
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-        {[0.2, 0.72].map((x, i) => (
-          <VictoryLoop key={`l${i}`} duration={1500} delay={i * 420}>
+        {[
+          { x: 0.06, w: 0.3, d: 0 },
+          { x: 0.4, w: 0.34, d: 500 },
+          { x: 0.68, w: 0.3, d: 950 },
+        ].map((b, i) => (
+          <VictoryLoop key={`l${i}`} duration={1600} delay={b.d}>
             {(v) => (
-              <Animated.Image source={VFX_BOLT} resizeMode="contain" style={{ position: 'absolute', left: W * x, top: 0, width: W * 0.2, height: H * 0.5, tintColor: '#BFE8FF',
-                opacity: v.interpolate({ inputRange: [0, 0.04, 0.08, 0.14, 0.2, 0.3, 1], outputRange: [0, 1, 0.25, 0.9, 0.15, 0, 0] }),
-                transform: [{ scaleX: i ? -1 : 1 }] }} />
+              <Animated.Image source={VFX_BOLT} resizeMode="stretch" style={{ position: 'absolute', left: W * b.x, top: -8, width: W * b.w, height: H + 16, tintColor: '#BFE8FF',
+                opacity: v.interpolate({ inputRange: [0, 0.03, 0.07, 0.12, 0.18, 0.28, 1], outputRange: [0, 1, 0.25, 0.95, 0.15, 0, 0] }),
+                transform: [{ scaleX: i % 2 ? -1 : 1 }] }} />
             )}
           </VictoryLoop>
         ))}
+        {/* mavi gök flaşı: her çakmada ekran aydınlanır */}
+        <VictoryLoop duration={1600} delay={80}>
+          {(v) => (
+            <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#7FD7FF',
+              opacity: v.interpolate({ inputRange: [0, 0.03, 0.08, 0.13, 0.2, 1], outputRange: [0, 0.22, 0.05, 0.16, 0, 0] }) }]} />
+          )}
+        </VictoryLoop>
       </View>
     );
   }
@@ -1320,6 +1333,7 @@ function AppRoot() {
   const [matchOverPopup, setMatchOverPopup] = useState<null | {
     youWon: boolean; youScore: number; oppScore: number; youWrong: number; oppWrong: number;
     winnerName: string | null; trophyDelta: NonNullable<GameState['trophyDelta']>; reason?: 'cheat';
+    winnerVictoryEffectId?: string | null; // kazananın kuşandığı zafer efekti — İKİ tarafta da oynar
   }>(null);
   const matchOverCaptured = useRef(false);
   const postMatchOfferCapturedRef = useRef<string | null>(null);
@@ -1333,14 +1347,19 @@ function AppRoot() {
     const youId = state.room?.youId;
     const you = ps.find((p) => p.id === youId);
     const opp = ps.find((p) => p.id !== youId);
+    const youWonNow = state.matchWinnerId != null && state.matchWinnerId === youId;
     setMatchOverPopup({
-      youWon: state.matchWinnerId != null && state.matchWinnerId === youId,
+      youWon: youWonNow,
       youScore: you?.score ?? 0,
       oppScore: opp?.score ?? 0,
       youWrong: you?.wrongCount ?? 0,
       oppWrong: opp?.wrongCount ?? 0,
       winnerName: state.matchWinnerName ?? null,
       trophyDelta: state.trophyDelta,
+      // Kazananın zafer efekti: kaybeden de kazananın şovunu görür (iki taraf).
+      winnerVictoryEffectId: youWonNow
+        ? (you?.cosmetics?.victoryEffectId ?? state.profile?.equippedVictoryEffectId ?? null)
+        : (opp?.cosmetics?.victoryEffectId ?? null),
     });
     const offerKey = `${state.room?.code ?? 'match'}:${state.trophyDelta.trophies}:${state.trophyDelta.delta}:${state.matchWinnerId ?? 'draw'}`;
     if (postMatchOfferCapturedRef.current !== offerKey) {
@@ -2560,7 +2579,7 @@ function AppRoot() {
       {/* Kupa kazanma/kaybetme popup'ı — maçtan ÇIKINCA burada, ana menünün üstünde */}
       {matchOverPopup ? (
         <View style={[StyleSheet.absoluteFill, { zIndex: 60, backgroundColor: theme.scrim, justifyContent: 'center', paddingHorizontal: 24 }]}>
-          {matchOverPopup.youWon ? <VictoryCelebrationOverlay effectId={state.profile?.equippedVictoryEffectId} /> : null}
+          <VictoryCelebrationOverlay effectId={matchOverPopup.winnerVictoryEffectId} />
           <Pressable style={StyleSheet.absoluteFill} onPress={dismissMatchOverPopup} />
           <MatchOverBanner
             youWon={matchOverPopup.youWon}

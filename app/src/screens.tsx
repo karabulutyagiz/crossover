@@ -64,7 +64,7 @@ import {
 import type { EmoteMeta } from './emotes';
 import { AvatarBadge, avatarMeta, avatarPrice, ownsAvatar } from './avatars';
 import { FRAME_ART as FRAME_ART_MAP, FRAME_SCALE, FrameOverlay, goatStageLabel } from './frames';
-import { DEFAULT_BALL_ID, DEFAULT_MATCH_BACKGROUND_ID, RARITY_COLOR, cosmeticVisual, isEquippedCosmetic, nameEffectColors, ownsStoreCosmetic, profileLoadout, resolveMatchBackground } from './cosmetics';
+import { DEFAULT_BALL_ID, DEFAULT_MATCH_BACKGROUND_ID, RARITY_COLOR, cosmeticDisplayName, cosmeticVisual, isEquippedCosmetic, nameEffectColors, ownsStoreCosmetic, profileLoadout, resolveMatchBackground } from './cosmetics';
 import { EffectSceneFX, NameEffectFX } from './cosmeticFx';
 import { NATIONALITIES } from './nationalities';
 import { captureError, track } from './telemetry';
@@ -6915,7 +6915,7 @@ function CosmeticShopTile({ item, owned, equipped, onPress }: { item: StoreCatal
     <Pressable onPress={onPress} style={({ pressed }) => [{ width: 138, minHeight: 184, borderRadius: 20, backgroundColor: theme.card, borderWidth: 1.5, borderColor: equipped ? theme.primary : accent + '88', padding: 10, opacity: pressed ? 0.86 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] }, shadowSoft]}>
       <View style={{ alignItems: 'center', gap: 8 }}>
         <CosmeticPreview item={item} size={84} />
-        <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12.5, textAlign: 'center' }} numberOfLines={2}>{item.name}</Text>
+        <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12.5, textAlign: 'center' }} numberOfLines={2}>{cosmeticDisplayName(item)}</Text>
         <Text style={{ color: accent, fontFamily: 'Poppins-Black', fontSize: 9.5, letterSpacing: 0.8 }}>{String(item.rarity).toUpperCase()}</Text>
         {equipped ? (
           <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 11 }}>KUŞANILI</Text>
@@ -8295,7 +8295,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
       <GameModal
         visible={confirmCosmetic != null}
         onClose={() => setConfirmCosmetic(null)}
-        title={confirmCosmetic?.name.toLocaleUpperCase(currentLang()) ?? ''}
+        title={confirmCosmetic ? cosmeticDisplayName(confirmCosmetic).toLocaleUpperCase(currentLang()) : ''}
         icon={confirmCosmetic ? cosmeticVisual(confirmCosmetic).icon as IoniconName : 'diamond'}
       >
         {confirmCosmetic ? (() => {
@@ -8874,7 +8874,7 @@ function CosmeticsLoadoutPanel({ state, actions }: Props) {
         const tiles: { id: string | null; name: string; kind: 'none' | 'arena' | 'store'; item?: StoreCatalogItem }[] = [
           { id: null, name: meta.empty, kind: 'none' },
           ...arenaFrames.map((f) => ({ id: f, name: cosmeticFallbackName(f), kind: 'arena' as const })),
-          ...storeItems.map((it) => ({ id: it.id, name: it.name, kind: 'store' as const, item: it })),
+          ...storeItems.map((it) => ({ id: it.id, name: cosmeticDisplayName(it), kind: 'store' as const, item: it })),
         ];
         return (
           <View key={meta.type}>

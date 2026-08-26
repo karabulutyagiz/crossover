@@ -263,13 +263,13 @@ function BoltFlash({ size, delay = 0, mirror = false }: { size: number; delay?: 
     <>
       <Animated.Image
         source={GLOW}
-        style={{ position: 'absolute', left: size * 0.08, top: size * 0.04, width: size * 0.84, height: size * 0.84, tintColor: '#FFF6CC', opacity: p.interpolate({ inputRange: [0, 0.06, 0.1, 0.16, 0.22, 0.3, 1], outputRange: [0, 0.55, 0.14, 0.5, 0.08, 0, 0] }) }}
+        style={{ position: 'absolute', left: size * 0.08, top: size * 0.04, width: size * 0.84, height: size * 0.84, tintColor: '#D9F2FF', opacity: p.interpolate({ inputRange: [0, 0.06, 0.1, 0.16, 0.22, 0.3, 1], outputRange: [0, 0.55, 0.14, 0.5, 0.08, 0, 0] }) }}
       />
       <Animated.Image
         source={BOLT}
         style={{
           position: 'absolute', left: size * (mirror ? 0.34 : 0.24), top: size * 0.08,
-          width: size * 0.42, height: size * 0.8, tintColor: '#FFE05C',
+          width: size * 0.42, height: size * 0.8, tintColor: '#BFE8FF',
           opacity: hit,
           transform: mirror ? [{ scaleX: -1 }] : [],
         }}
@@ -328,7 +328,7 @@ export function EffectSceneFX({ id, size }: { id: string; size: number }) {
   if (id.includes('lightning')) {
     return (
       <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: size, height: size }}>
-        {aura('#FFE05C', 0.3)}
+        {aura('#7FD7FF', 0.4)}
         <BoltFlash size={size} />
         <BoltFlash size={size * 0.7} delay={700} mirror />
       </View>
