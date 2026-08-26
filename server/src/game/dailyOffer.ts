@@ -48,13 +48,15 @@ export function computeDailyOffer(profile: UserProfile, now = Date.now()): Daily
   // "büyük indirim" hissi CR'de yüksek raftan gelir)
   const cosmetics = COSMETIC_ITEMS.filter((c) => c.diamondPrice > 0 && !owned.has(c.id));
   const roll = rnd();
-  if (roll < 0.6 && cosmetics.length > 0) {
+  // Sosyal Paket fırsat havuzunda YOK (2026-08-27) — o sabit popup'ın işi;
+  // havuz yalnız kozmetik + güç paketi dağıtır.
+  if (roll < 0.7 && cosmetics.length > 0) {
     const pick = cosmetics[Math.floor(rnd() * cosmetics.length)]!;
     const discount = 0.15 + rnd() * 0.15; // %15-30
     const price = Math.min(pick.diamondPrice - 10, charmPrice(pick.diamondPrice * (1 - discount)));
     return { key: `${idx}:c:${pick.id}`, kind: 'cosmetic', itemId: pick.id, qty: 1, originalPrice: pick.diamondPrice, price: Math.max(30, price), expiresAt: new Date(expiresAt).toISOString() };
   }
-  if (roll < 0.85) {
+  {
     const powers = ['xp2x', 'shield', 'streak', 'training'] as const;
     const p = powers[Math.floor(rnd() * powers.length)]!;
     const qty = 3;
@@ -62,9 +64,7 @@ export function computeDailyOffer(profile: UserProfile, now = Date.now()): Daily
     const price = Math.min(orig - 10, charmPrice(orig * (0.72 + rnd() * 0.08))); // ~%20-28 indirim
     return { key: `${idx}:p:${p}`, kind: 'power_bundle', itemId: p, qty, originalPrice: orig, price, expiresAt: new Date(expiresAt).toISOString() };
   }
-  const orig = POWER_PRICES.socialtoken;
-  const price = Math.min(orig - 10, charmPrice(orig * (0.65 + rnd() * 0.1))); // 350 → ~230-260
-  return { key: `${idx}:s:socialtoken`, kind: 'socialtoken', itemId: 'socialtoken', qty: 1, originalPrice: orig, price, expiresAt: new Date(expiresAt).toISOString() };
+;
 }
 
 /** Bu pencerede zaten alındı mı? */

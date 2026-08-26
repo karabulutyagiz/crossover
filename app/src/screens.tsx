@@ -6569,9 +6569,11 @@ const DIAMOND_PRODUCT_IDS = DIAMOND_PACKS.map((p) => p.productId);
 // Social Pack = auto-renewable subscriptions (unlock Country-Team & Letter-Team in
 // friend matches). productId must match the ASC subscription products + server.
 const SOCIAL_PACK = [
-  { id: 'weekly', label: 'Haftalık', price: '₺24,99', productId: 'com.crossover.socialpack.weekly' },
-  { id: 'monthly', label: 'Aylık', price: '₺89,99', productId: 'com.crossover.socialpack.monthly' },
+  // wasPrice: çapa fiyat (üstü çizili gösterilir) — "₺50 yerine ₺24,99" algısı.
+  { id: 'weekly', label: 'Haftalık', price: '₺24,99', wasPrice: '₺50,00', productId: 'com.crossover.socialpack.weekly' },
+  { id: 'monthly', label: 'Aylık', price: '₺89,99', wasPrice: '₺190,00', productId: 'com.crossover.socialpack.monthly' },
 ];
+export const SOCIAL_PACK_OFFER = SOCIAL_PACK[0]!; // kampanya popup'ının ürünü (haftalık)
 const SOCIAL_PACK_IDS = SOCIAL_PACK.map((s) => s.productId);
 
 /**
@@ -7816,6 +7818,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
                       const busy = buying === sp.productId;
                       return (
                         <View key={sp.id} style={{ flex: 1 }}>
+                          <Text style={{ color: theme.muted, fontFamily: 'Poppins-ExtraBold', fontSize: 11, textAlign: 'center', textDecorationLine: 'line-through', marginBottom: 3 }}>{sp.wasPrice}</Text>
                           <Btn
                             label={`${t(`store.${sp.id}` as MessageKey)} · ${priceFor(sp.productId, sp.price)}`}
                             kind={i === 1 ? 'accent' : 'blue'}
@@ -7825,7 +7828,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
                             feedback={GameFeedbackEvent.UI_PURCHASE}
                             onPress={() => buy(sp.productId)}
                           />
-                          {i === 1 ? <Ribbon label={t('store.bestValue')} style={{ position: 'absolute', top: -5, right: 4, transform: [{ rotate: '-2deg' }], zIndex: 3 }} /> : null}
+                          {i === 1 ? <Ribbon label={t('store.bestValue')} style={{ position: 'absolute', top: 10, right: 4, transform: [{ rotate: '-2deg' }], zIndex: 3 }} /> : null}
                         </View>
                       );
                     })}

@@ -107,7 +107,13 @@ import { initAudioService, setAudioScene, type AudioScene } from './src/feedback
 import { GameFeedbackEvent } from './src/feedback/events';
 import { FlameField } from './src/cosmeticFx';
 import { cosmeticDisplayName } from './src/cosmetics';
-import { CosmeticPreview } from './src/screens';
+import { CosmeticPreview, SOCIAL_PACK_OFFER } from './src/screens';
+// Kampanya popup'ından TEK dokunuşla Apple ödeme sayfası: react-native-iap'ın
+// requestPurchase'ı doğrudan çağrılır (Expo Go'da modül yok — sessiz geri düşüş).
+// Satın alma TAMAMLAMA dinleyicileri StoreScreen'in useIAP'ında yaşıyor ve
+// TabFreeze altında da kayıtlı kalıyor — makbuz doğrulama oradan akar.
+let directRequestPurchase: any = null;
+try { directRequestPurchase = require('react-native-iap').requestPurchase; } catch { /* Expo Go */ }
 import { isRonaldoAnswer, triggerDiamondCollectTick, triggerFeedback } from './src/feedback/GameFeedback';
 import { loadFeedbackPreferences } from './src/feedback/preferences';
 import {
@@ -2844,7 +2850,45 @@ function AppRoot() {
               <Text style={{ flex: 1, color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', lineHeight: 17 }}>{t(key as any)}</Text>
             </View>
           ))}
-          <Btn big kind="accent" icon="people" label={t('socialPack.startupCta')} onPress={acceptSocialPackCampaign} />
+          {/* Çapa fiyat: ₺50,00 üstü çizili + -%50 + gerçek fiyat butonda */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Text style={{ color: theme.muted, fontFamily: 'Poppins-ExtraBold', fontSize: 16, textDecorationLine: 'line-through' }}>{SOCIAL_PACK_OFFER.wasPrice}</Text>
+            <View style={{ backgroundColor: theme.danger, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 }}>
+              <Text style={{ color: '#FFF', fontFamily: 'Poppins-Black', fontSize: 12 }}>-%50</Text>
+            </View>
+          </View>
+          <Btn
+            big kind="accent" icon="people"
+            label={`${SOCIAL_PACK_OFFER.label} · ${SOCIAL_PACK_OFFER.price}`}
+            feedback={GameFeedbackEvent.UI_PURCHASE}
+            onPress={() => {
+              // Direkt Apple ödeme sayfası — mağazaya gitmeden. Modül yoksa
+              // (Expo Go) eski davranış: mağazanın sosyal paket bölümüne git.
+              if (directRequestPurchase && state.profile?.userId) {
+                track('social_pack_purchase_started', { product_id: SOCIAL_PACK_OFFER.productId, source_screen: 'startup_campaign' });
+                Promise.resolve(directRequestPurchase({
+                  request: { apple: { sku: SOCIAL_PACK_OFFER.productId, appAccountToken: state.profile.userId } },
+                  type: 'subs',
+                })).catch(() => { acceptSocialPackCampaign(); });
+                dismissSocialPackCampaign();
+              } else {
+                acceptSocialPackCampaign();
+              }
+            }}
+          />
+          {/* 3.1.2(c): abonelik süresi + oto-yenileme + koşul/gizlilik bağlantıları
+              satın alma akışının İÇİNDE olmalı — popup artık bir satın alma yüzeyi. */}
+          <Text style={{ color: theme.muted, fontSize: 10, lineHeight: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>
+            {t('socialPack.offerDisclosure')}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 14 }}>
+            <Pressable onPress={() => Linking.openURL('https://crossoverfootball.com/kosullar/').catch(() => {})}>
+              <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', textDecorationLine: 'underline' }}>{t('store.termsLink')}</Text>
+            </Pressable>
+            <Pressable onPress={() => Linking.openURL('https://crossoverfootball.com/gizlilik/').catch(() => {})}>
+              <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', textDecorationLine: 'underline' }}>{t('store.privacyLink')}</Text>
+            </Pressable>
+          </View>
         </View>
       </GameModal>
 
