@@ -1,5 +1,6 @@
 # CrossOver Football
 User-agent: *
 Allow: /
+Disallow: /ortak-futbolcu/_data/
 
 Sitemap: https://crossoverfootball.com/sitemap.xml

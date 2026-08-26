@@ -89,7 +89,8 @@ ${head({
   lede: 'Merak ettiğin ikiliyi seç: ikisinde de forma giymiş herkes, ilk ve son sezonlarıyla listelenir.',
 })}
 ${pairList(featured, clubs)}
-<div class="center" style="margin-top:26px">
+<div class="center btn-row" style="margin-top:26px;justify-content:center">
+<a class="btn btn-gold" href="/ortak-futbolcu-bulucu/">${icons.search} Ortak futbolcu bulucu</a>
 <a class="btn btn-ghost" href="/ortak-futbolcu/">Tüm eşleşmeler ${icons.arrow}</a>
 </div>
 </div>

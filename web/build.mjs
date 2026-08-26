@@ -130,6 +130,41 @@ for (const p of pairs) {
   });
 }
 
+// ---- interactive finder data ----------------------------------------------
+// The tool page fetches one small JSON per selected pairing instead of one
+// giant blob: ~1-2 KB per request, and only on demand. ALL extracted pairs are
+// available here (875), not just the ones that earned a static page (565) —
+// the tool can answer more than the archive lists.
+{
+  const dataDir = join(OUT, 'ortak-futbolcu', '_data');
+  mkdirSync(dataDir, { recursive: true });
+  const enc = (list) => (list ?? []).map((sp) => [sp.from, sp.to]);
+  for (const p of data.pairs) {
+    writeFileSync(
+      join(dataDir, `${p.a}__${p.b}.json`),
+      JSON.stringify({
+        a: p.a,
+        b: p.b,
+        page: pairSlugs.has(p.slug),
+        players: p.players.map((pl) => ({ n: pl.name, c: pl.nat, a: enc(pl.a), b: enc(pl.b) })),
+      }),
+    );
+  }
+  writeFileSync(
+    join(dataDir, 'index.json'),
+    JSON.stringify({
+      clubs: clubs.map((c) => ({ s: c.slug, n: c.name, k: c.country })),
+      pairs: data.pairs.map((p) => `${p.a}__${p.b}`),
+    }),
+  );
+  console.log(`  · bulucu verisi: ${data.pairs.length} çift JSON'u`);
+}
+
+emit('/ortak-futbolcu-bulucu/', tr.finderTool({ totals, clubs, pairCount: data.pairs.length }), {
+  priority: 0.9,
+  changefreq: 'weekly',
+});
+
 // ---- English ---------------------------------------------------------------
 emit('/en/', en.enHome({ totals, heroPairs }), { priority: 0.8, changefreq: 'weekly' });
 emit('/en/how-to-play/', en.enHowToPlay(), { priority: 0.6 });
@@ -170,6 +205,7 @@ writeFileSync(
   `# CrossOver Football
 User-agent: *
 Allow: /
+Disallow: /ortak-futbolcu/_data/
 
 Sitemap: ${SITE}/sitemap.xml
 `,

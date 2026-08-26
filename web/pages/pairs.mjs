@@ -224,6 +224,11 @@ ${head({
 
 <section class="section-tight">
 <div class="wrap wrap-narrow">
+<div class="panel panel-accent pad-lg reveal" style="margin-bottom:18px;text-align:center">
+<h2 style="font-size:1.3rem;margin-bottom:8px">Aradığın ikili listede yok mu?</h2>
+<p class="muted" style="margin-bottom:18px">Bulucuyla herhangi iki kulübü seç, ortak futbolcuları anında gör.</p>
+<a class="btn btn-gold" href="/ortak-futbolcu-bulucu/">${icons.search} Ortak futbolcu bulucuyu aç</a>
+</div>
 <div class="panel pad-lg prose reveal">
 <p style="margin-top:0">Bu arşiv, CrossOver Football’ın cevapları doğrularken kullandığı kariyer verisinin okunabilir hâli. “<a href="/ortak-futbolcu-oyunu/">Ortak futbolcu</a>” oyununda bir eşleşmeye takıldıysan, doğru cevapların tamamı burada.</p>
 <p><strong>Nasıl okunur:</strong> yıllar, futbolcunun o kulüpteki ilk ve son kayıtlı sezonunu gösterir. Kiralık ve altyapı dönemleri ana kulübe sayılır — oyundaki doğrulama da aynı kuralı uygular.</p>

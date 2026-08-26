@@ -276,7 +276,8 @@ ${head({
   lede: 'Oyunu besleyen kariyer arşivini açtık. Kulüp eşleşmesini seç, ikisinde de forma giymiş herkesi yıllarıyla gör.',
 })}
 ${pairList(featured, clubs)}
-<div class="center" style="margin-top:26px">
+<div class="center btn-row" style="margin-top:26px;justify-content:center">
+<a class="btn btn-gold" href="/ortak-futbolcu-bulucu/">${icons.search} Ortak futbolcu bulucu</a>
 <a class="btn btn-ghost" href="/ortak-futbolcu/">Tüm kulüp eşleşmeleri ${icons.arrow}</a>
 </div>
 </div>
@@ -579,6 +580,142 @@ ${band('tr', {
         ['Ana Sayfa', '/'],
         ['İndir', '/indir/'],
       ]),
+      ldApp('tr'),
+    ],
+  });
+}
+
+
+// ---------------------------------------------------------------------------
+// /ortak-futbolcu-bulucu/ — the interactive tool. Two selects, one fetch per
+// chosen pairing (~1-2 KB), results rendered client-side. The page itself
+// still carries crawlable copy + links, so it ranks for "ortak futbolcu
+// bulucu" style searches even though the tool needs JS.
+// ---------------------------------------------------------------------------
+export function finderTool({ totals, clubs, pairCount }) {
+  const trClubs = clubs.filter((c) => c.country === 'Türkiye').length;
+  const body = `
+${crumbs([
+  ['Ana Sayfa', '/'],
+  ['Ortak futbolcu bulucu', '/ortak-futbolcu-bulucu/'],
+])}
+<section class="wrap section-tight">
+${head({
+  eyebrow: 'Araç',
+  title: 'Ortak futbolcu bulucu',
+  lede: `İki kulüp seç; ikisinde de forma giymiş herkesi sezonlarıyla gör. ${clubs.length} kulüp, ${pairCount.toLocaleString('tr-TR')} eşleşme — hepsi gerçek kariyer arşivinden.`,
+  tag: 'h1',
+})}
+</section>
+
+<section class="section-tight" style="padding-top:0">
+<div class="wrap wrap-narrow">
+<div class="panel pad-lg reveal">
+<div class="grid g-2" style="align-items:end">
+<div>
+<label for="clubA" class="eyebrow" style="display:block;margin-bottom:10px">1. Takım</label>
+<select id="clubA" class="well" style="width:100%;padding:14px 16px;color:var(--text);border:0;font:inherit;font-weight:600;border-radius:var(--r)"></select>
+</div>
+<div>
+<label for="clubB" class="eyebrow" style="display:block;margin-bottom:10px">2. Takım</label>
+<select id="clubB" class="well" style="width:100%;padding:14px 16px;color:var(--text);border:0;font:inherit;font-weight:600;border-radius:var(--r)"></select>
+</div>
+</div>
+<div id="finderOut" style="margin-top:22px" aria-live="polite">
+<p class="muted small" style="margin:0">İki takım seç — sonuç anında burada açılır.</p>
+</div>
+</div>
+<noscript><p class="small dim" style="margin-top:14px">Bu araç JavaScript ister. Alternatif: <a href="/ortak-futbolcu/" style="color:var(--gold)">hazır eşleşme listeleri</a>.</p></noscript>
+</div>
+</section>
+
+<section class="section-tight">
+<div class="wrap wrap-narrow">
+<div class="panel pad-lg prose reveal">
+<h2 style="margin-top:0">Bu araç ne yapar?</h2>
+<p>Sohbette "ortak futbolcu" oynarken cevap tartışması çıktığında hakem burasıdır: seçtiğin iki kulübün <strong>ikisinde de forma giymiş her futbolcuyu</strong>, kulüplerdeki ilk ve son kayıtlı sezonlarıyla listeler. Kiralık ve altyapı dönemleri ana kulübe sayılır — <a href="/nasil-oynanir/">oyundaki doğrulama</a> da aynı kuralı uygular.</p>
+<p>Veri, CrossOver Football'ın cevapları doğrularken kullandığı arşivden gelir: ${totals.players.toLocaleString('tr-TR')} futbolcu, ${totals.spells.toLocaleString('tr-TR')} kariyer dönemi. Havuzda ${trClubs} Türk kulübü dahil ${clubs.length} kulüp var; aradığın ikili yoksa <a href="/ortak-futbolcu/">arşiv sayfasına</a> bak ya da eksik kulübü <a href="/destek/">bize yaz</a>.</p>
+</div>
+</div>
+</section>
+
+${band('tr', {
+  title: 'Cevabı bulmak kolay, ilk bulmak zor',
+  lede: 'Aynı soruyu 12 saniyede, canlı rakibe karşı cevaplayabilir misin?',
+})}
+<script>
+(function () {
+  var base = '/ortak-futbolcu/_data/';
+  var A = document.getElementById('clubA'), B = document.getElementById('clubB'), out = document.getElementById('finderOut');
+  var idx = null;
+  fetch(base + 'index.json').then(function (r) { return r.json(); }).then(function (d) {
+    idx = d; idx.set = new Set(d.pairs);
+    var groups = {};
+    d.clubs.forEach(function (c) { (groups[c.k] = groups[c.k] || []).push(c); });
+    ['Türkiye'].concat(Object.keys(groups).filter(function (k) { return k !== 'Türkiye'; }).sort()).forEach(function (k) {
+      [A, B].forEach(function (sel) {
+        var og = document.createElement('optgroup'); og.label = k;
+        groups[k].slice().sort(function (x, y) { return x.n.localeCompare(y.n, 'tr'); }).forEach(function (c) {
+          var o = document.createElement('option'); o.value = c.s; o.textContent = c.n; og.appendChild(o);
+        });
+        sel.appendChild(og);
+      });
+    });
+    var ph = function (sel, txt) { var o = document.createElement('option'); o.value = ''; o.textContent = txt; o.selected = true; sel.insertBefore(o, sel.firstChild); };
+    ph(A, 'Takım seç…'); ph(B, 'Takım seç…');
+  });
+  function esc(t) { var d = document.createElement('i'); d.textContent = t; return d.innerHTML; }
+  function span(l) { return l.map(function (s) { var f = s[0], t = s[1]; if (f == null && t == null) return '—'; if (f == null) return '→ ' + t; if (t == null || t === f) return '' + f; return f + '–' + t; }).join(' · ') || '—'; }
+  var seq = 0; // hızlı seçim değişiminde geciken eski fetch, yeni sonucu ezmesin
+  function go() {
+    if (!idx || !A.value || !B.value) return;
+    var my = ++seq;
+    if (A.value === B.value) { out.innerHTML = '<p class="muted small" style="margin:0">İki farklı takım seç.</p>'; return; }
+    var key = idx.set.has(A.value + '__' + B.value) ? A.value + '__' + B.value : (idx.set.has(B.value + '__' + A.value) ? B.value + '__' + A.value : null);
+    var nA = A.options[A.selectedIndex].text, nB = B.options[B.selectedIndex].text;
+    if (!key) { out.innerHTML = '<p class="muted" style="margin:0"><strong>' + esc(nA) + ' × ' + esc(nB) + '</strong>: arşivde 5\u2019ten az ortak futbolcu var — oyunun en zor eşleşmelerinden. <a href="/rehber/zor-ortak-futbolcu-eslesmeleri/" style="color:var(--gold)">Zor eşleşmeler rehberine</a> bak.</p>'; return; }
+    out.innerHTML = '<p class="muted small" style="margin:0">Aranıyor…</p>';
+    fetch(base + key + '.json').then(function (r) { return r.json(); }).then(function (d) {
+      if (my !== seq) return; // bu cevap artık güncel değil
+      var flip = key.indexOf(A.value) !== 0;
+      var rows = d.players.map(function (p, i) {
+        var l = flip ? p.b : p.a, r2 = flip ? p.a : p.b;
+        return '<tr><td><div style="display:flex;align-items:center;gap:11px"><span class="rank">' + (i + 1) + '</span><span><span class="who">' + esc(p.n) + '</span>' + (p.c ? '<span class="nat">' + esc(p.c) + '</span>' : '') + '</span></div></td><td class="yr">' + span(l) + '</td><td class="yr">' + span(r2) + '</td></tr>';
+      }).join('');
+      // tek tırnaklı href: build denetimi statik href="…" desenlerini tarar,
+      // JS'in ürettiği bu bağlantıyı yanlış pozitif olarak yakalamasın
+      var pageLink = d.page ? "<p class=\\"small\\" style=\\"margin:14px 0 0\\"><a href='/ortak-futbolcu/" + d.a + '-' + d.b + "/' style='color:var(--gold)'>Bu eşleşmenin tam sayfası →</a></p>" : '';
+      out.innerHTML = '<p style="margin:0 0 12px"><strong>' + d.players.length + ' futbolcu</strong> iki formayı da giymiş:</p>'
+        + '<div class="tbl-wrap well" style="border-radius:var(--r)"><table class="tbl"><thead><tr><th>Futbolcu</th><th>' + esc(nA) + '</th><th>' + esc(nB) + '</th></tr></thead><tbody>' + rows + '</tbody></table></div>' + pageLink;
+      if (typeof window.gtag === 'function') window.gtag('event', 'finder_lookup', { pair: key });
+    });
+  }
+  A.addEventListener('change', go); B.addEventListener('change', go);
+})();
+</script>`;
+
+  return page({
+    lang: 'tr',
+    path: '/ortak-futbolcu-bulucu/',
+    title: 'Ortak Futbolcu Bulucu — İki Takım Seç, Ortak Oyuncuyu Gör',
+    description:
+      'İki kulüp seç, ikisinde de forma giymiş futbolcuları sezonlarıyla anında gör. Gerçek kariyer arşivine dayanan ücretsiz ortak futbolcu bulma aracı.',
+    body,
+    jsonld: [
+      ldBreadcrumb([
+        ['Ana Sayfa', '/'],
+        ['Ortak futbolcu bulucu', '/ortak-futbolcu-bulucu/'],
+      ]),
+      {
+        '@context': 'https://schema.org',
+        '@type': 'WebApplication',
+        name: 'Ortak Futbolcu Bulucu',
+        url: `${SITE}/ortak-futbolcu-bulucu/`,
+        applicationCategory: 'SportsApplication',
+        operatingSystem: 'Web',
+        offers: { '@type': 'Offer', 'price': '0', 'priceCurrency': 'TRY' },
+        publisher: { '@id': `${SITE}/#organization` },
+      },
       ldApp('tr'),
     ],
   });

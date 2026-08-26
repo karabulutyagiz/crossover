@@ -156,6 +156,7 @@ function footer(lang) {
               ['/futbolcu-bilme-oyunu/', 'Futbolcu bilme oyunu'],
               ['/futbol-bilgi-oyunu/', 'Futbol bilgi oyunu'],
               ['/ortak-futbolcu/', 'Kulüp eşleşmeleri'],
+              ['/ortak-futbolcu-bulucu/', 'Ortak futbolcu bulucu'],
               ['/rehber/', 'Futbol rehberi'],
             ],
           ],
