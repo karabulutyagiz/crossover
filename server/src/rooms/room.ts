@@ -923,23 +923,35 @@ export class Room {
 
   private async autoPickRemaining(): Promise<void> {
     if (this.status !== 'pick' || !this.round) return;
+    // BAYAT DEVAM KORUMASI (2026-08-27, canlı olay): bu fonksiyon await'ler
+    // içerir. Await sırasında oyuncular seçimlerini tamamlayıp tur reveal→
+    // guess→result'a İLERLEYEBİLİR; devam eden bu kopya sonra allPicked()
+    // görüp BİTMİŞ turda beginReveal'i YENİDEN çalıştırıyordu — istemciler
+    // sonuç ekranından reveal'e savruluyordu ("bulundu çıkmıyor / maç içine
+    // atıyor"). Akış hızlandırılınca (reveal 2sn→0.5sn) pencere kronikleşti.
+    // Kural: her await'ten sonra AYNI tur + hâlâ 'pick' fazı doğrulanır.
+    const round = this.round;
+    const stale = () => this.status !== 'pick' || this.round !== round || round.finished;
     // Ülke-takımı veri-güdümlü çöz (asla yanlış tur atlamaz), diğer modlar aşağıdaki genel akış.
     if (this.gameMode === 'country-team') {
       await this.resolveCountryTeamAutoPicks();
+      if (stale()) return;
       if (this.allPicked()) this.beginReveal();
       return;
     }
     const roles = this.pickRoles();
     for (const [id, role] of roles) {
-      if (this.round.picks.has(id) || (role === 'country' && this.round.countryPick) || (role === 'letter' && this.round.letterPick)) continue;
+      if (stale()) return;
+      if (round.picks.has(id) || (role === 'country' && round.countryPick) || (role === 'letter' && round.letterPick)) continue;
       if (role === 'player') {
         // player-player: auto-pick if this player hasn't picked yet
-        const isFirst = !this.round.playerAPick;
-        if (!isFirst && this.round.playerBPick) continue;
+        const isFirst = !round.playerAPick;
+        if (!isFirst && round.playerBPick) continue;
         const p = await randomPlayer('medium');
+        if (stale()) return;
         if (p) {
-          if (isFirst) this.round.playerAPick = p;
-          else this.round.playerBPick = p;
+          if (isFirst) round.playerAPick = p;
+          else round.playerBPick = p;
           this.broadcast({ type: 'team_picked', playerId: id });
         }
         continue;
@@ -948,7 +960,7 @@ export class Room {
         // Bot picks from the fixed MEDIUM pool (online matches have no difficulty),
         // preferring a crossover with the human's team. League-scoped rooms keep the
         // old popularity picker so the pick stays inside the chosen league.
-        const humanPick = [...this.round.picks.values()][0];
+        const humanPick = [...round.picks.values()][0];
         // Bot da bu maçta kullanılmış takımlardan kaçınır
         const avoid = [...this.recentBotPicks, ...this.usedClubIds];
         let club = await this.pickBotTeamFor(id, 'medium', humanPick ? Number(humanPick.id) : null, avoid);
@@ -956,12 +968,13 @@ export class Room {
         for (let tries = 0; club && this.usedClubIds.has(club.id) && tries < 8; tries++) {
           club = await randomClub(this.scope, 'medium');
         }
+        if (stale()) return;
         if (club) {
           if (this.scope.type === 'all') {
             this.recentBotPicks.push(club.id);
             if (this.recentBotPicks.length > 10) this.recentBotPicks.shift();
           }
-          this.round.picks.set(id, club);
+          round.picks.set(id, club);
           this.broadcast({ type: 'team_picked', playerId: id });
         }
       } else if (role === 'country') {
@@ -978,6 +991,7 @@ export class Room {
         this.broadcast({ type: 'team_picked', playerId: id });
       }
     }
+    if (stale()) return;
     if (this.allPicked()) this.beginReveal();
   }
 
@@ -1135,6 +1149,15 @@ export class Room {
 
   private beginReveal(): void {
     if (!this.round) return;
+    // SON SAVUNMA HATTI (2026-08-27, canlı olay): reveal YALNIZ pick fazından
+    // ve bitmemiş bir turdan başlayabilir. Bayat bir devam/zamanlayıcı başka
+    // fazda buraya ulaşırsa (guard'ı atlanmış yeni bir çağıran eklenirse bile)
+    // hiçbir şey yayınlamadan çıkar — bitmiş turda reveal'i yeniden çalıştırmak
+    // iki istemciyi iki farklı faza savuruyordu.
+    if (this.status !== 'pick' || this.round.finished) {
+      log.warn('reveal_stale_call', { room: this.code, mode: this.gameMode, status: this.status, roundFinished: this.round.finished });
+      return;
+    }
     // GÜVENLİK: disconnect/reconnect yarışında bir pick eksik kalırsa aşağıdaki
     // non-null (`!`) erişimler undefined döndürüp süreci çökertirdi (tüm maçlar
     // düşer → "internet yok"). Eksikse sessizce çık — round, disconnect temizliğiyle
@@ -1303,6 +1326,14 @@ export class Room {
 
   private beginGuess(): void {
     if (!this.round) return;
+    // BAYAT ZAMANLAYICI KORUMASI (2026-08-27): guess yalnız reveal'den başlar.
+    // 500ms'lik reveal→guess zamanlayıcısı, aradaki forfeit/bail/skip sonrası
+    // ateşlenirse odayı zorla 'guess'e çekiyordu (lobideki oyuncu "bir anda maç
+    // içine atıyor" görüyordu).
+    if (this.status !== 'reveal' || this.round.finished) {
+      log.warn('guess_stale_call', { room: this.code, status: this.status, roundFinished: this.round.finished });
+      return;
+    }
     this.status = 'guess';
     this.broadcastState();
     const endsAt = Date.now() + GUESS_MS;
