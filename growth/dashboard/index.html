@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta http-equiv="Cache-Control" content="no-store" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Crossover — Growth OS</title>
+<style>
+  :root{
+    --bg:#07101d; --surface:#111a33; --surface2:#16223f;
+    --line:#22335c; --line2:#2f4370; --text:#e8eefc; --muted:#8aa0c6;
+    --mint:#27E58B; --gold:#F5C518; --blue:#3DA5FF; --purple:#9b7bff;
+    --danger:#ff5470; --radius:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    min-height:100vh;color:var(--text);
+    background:
+      radial-gradient(900px 480px at 15% -10%, rgba(39,229,139,.16), transparent 60%),
+      radial-gradient(900px 520px at 85% 0%, rgba(61,165,255,.13), transparent 60%),
+      linear-gradient(180deg,#07101d 0%,#0a1020 100%);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  button,input,textarea,select{font:inherit}
+  .wrap{width:min(1280px,100%);margin:0 auto;padding:22px 16px 64px}
+  .top{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:16px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:10px}
+  .logo{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,var(--mint),#0ea968);display:flex;align-items:center;justify-content:center;color:#052518;font-weight:950}
+  .brand h1{font-size:18px;margin:0}
+  .brand small{display:block;color:var(--muted);font-size:12px}
+  .btn{border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:12px;padding:9px 12px;font-weight:800;font-size:13px;cursor:pointer}
+  .btn:hover{border-color:var(--mint)}
+  .btn.primary{border-color:rgba(39,229,139,.45);background:var(--mint);color:#052518}
+  .btn.danger{border-color:rgba(255,84,112,.45);color:var(--danger)}
+  .btn.small{padding:6px 10px;font-size:12px;border-radius:10px}
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .tab{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:8px 14px;font-weight:800;font-size:13px;cursor:pointer}
+  .tab.active{color:#052518;background:var(--mint);border-color:transparent}
+  .grid{display:grid;gap:12px}
+  .kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+  .kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px}
+  .kpi b{font-size:22px;display:block}
+  .kpi span{color:var(--muted);font-size:12px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:12px}
+  .pill{display:inline-block;border:1px solid var(--line2);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:800;color:var(--muted);margin-right:6px}
+  .pill.ok{color:var(--mint);border-color:rgba(39,229,139,.4)}
+  .pill.warn{color:var(--gold);border-color:rgba(245,197,24,.4)}
+  .pill.bad{color:var(--danger);border-color:rgba(255,84,112,.4)}
+  .pill.blue{color:var(--blue);border-color:rgba(61,165,255,.4)}
+  .body-text{white-space:pre-wrap;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0;font-size:14px;line-height:1.5}
+  .meta-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+  .hint{color:var(--muted);font-size:12px}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+  textarea{width:100%;min-height:110px;background:var(--surface2);border:1px solid var(--line);border-radius:12px;color:var(--text);padding:10px;resize:vertical}
+  input,select{background:var(--surface2);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:8px 10px}
+  .login{max-width:360px;margin:12vh auto;display:flex;flex-direction:column;gap:10px}
+  .login input{padding:12px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:700;font-size:12px}
+  .empty{color:var(--muted);text-align:center;padding:40px 0}
+  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--surface);border:1px solid var(--mint);border-radius:12px;padding:10px 16px;opacity:0;transition:.25s;pointer-events:none;font-weight:700;font-size:13px}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:800px){.two-col{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand">
+      <div class="logo">⚽</div>
+      <div><h1>Growth OS</h1><small>CrossOver Football — büyüme merkezi</small></div>
+    </div>
+    <div id="topActions" style="display:none">
+      <span class="hint" id="whoami"></span>
+      <button class="btn" id="logoutBtn" type="button">Çıkış</button>
+    </div>
+  </div>
+
+  <div id="loginView" class="login">
+    <h2 style="margin:0 0 6px">Giriş</h2>
+    <input id="email" type="email" placeholder="e-posta" autocomplete="username" />
+    <input id="password" type="password" placeholder="şifre" autocomplete="current-password" />
+    <button class="btn primary" id="loginBtn" type="button">Giriş yap</button>
+    <p class="hint" id="loginError"></p>
+  </div>
+
+  <div id="appView" style="display:none">
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-page="dashboard" type="button">Dashboard</button>
+      <button class="tab" data-page="queue" type="button">Onay Kuyruğu</button>
+      <button class="tab" data-page="scheduled" type="button">Zamanlanmış</button>
+      <button class="tab" data-page="published" type="button">Yayınlanan</button>
+      <button class="tab" data-page="comments" type="button">Yorumlar</button>
+      <button class="tab" data-page="tasks" type="button">Görevler</button>
+      <button class="tab" data-page="communities" type="button">Topluluklar</button>
+      <button class="tab" data-page="analytics" type="button">Analitik</button>
+      <button class="tab" data-page="accounts" type="button">Hesaplar</button>
+    </div>
+    <div id="page"></div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+  var API = "/growth/api";
+  var token = null;
+  try { token = localStorage.getItem("growth_token"); } catch(e){}
+  var role = null;
+  try { role = localStorage.getItem("growth_role"); } catch(e){}
+  var currentPage = "dashboard";
+
+  function $(id){ return document.getElementById(id); }
+  function esc(s){
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];
+    });
+  }
+  function toast(msg, bad){
+    var t = $("toast");
+    t.textContent = msg;
+    t.style.borderColor = bad ? "rgba(255,84,112,.6)" : "rgba(39,229,139,.5)";
+    t.classList.add("show");
+    clearTimeout(toast.t);
+    toast.t = setTimeout(function(){ t.classList.remove("show"); }, 2400);
+  }
+  function fmtDate(s){
+    if(!s) return "-";
+    var d = new Date(s);
+    return d.toLocaleString("tr-TR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" });
+  }
+
+  function api(path, method, body){
+    return fetch(API + path, {
+      method: method || "GET",
+      headers: Object.assign({ "content-type": "application/json" },
+        token ? { authorization: "Bearer " + token } : {}),
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function(res){
+      if(res.status === 401){ logout(); throw new Error("oturum süresi doldu"); }
+      return res.json().then(function(j){
+        if(!res.ok) throw new Error(j.error || ("HTTP " + res.status));
+        return j;
+      });
+    });
+  }
+
+  function login(){
+    fetch(API + "/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: $("email").value, password: $("password").value })
+    }).then(function(r){ return r.json(); }).then(function(j){
+      if(!j.ok){ $("loginError").textContent = "Giriş başarısız."; return; }
+      token = j.token; role = j.role;
+      try { localStorage.setItem("growth_token", token); localStorage.setItem("growth_role", role); } catch(e){}
+      showApp();
+    }).catch(function(){ $("loginError").textContent = "Sunucuya ulaşılamadı."; });
+  }
+
+  function logout(){
+    token = null; role = null;
+    try { localStorage.removeItem("growth_token"); localStorage.removeItem("growth_role"); } catch(e){}
+    $("appView").style.display = "none";
+    $("topActions").style.display = "none";
+    $("loginView").style.display = "flex";
+  }
+
+  function showApp(){
+    $("loginView").style.display = "none";
+    $("appView").style.display = "block";
+    $("topActions").style.display = "flex";
+    $("whoami").textContent = role || "";
+    render(currentPage);
+  }
+
+  // ── Sayfalar ──
+  function render(page){
+    currentPage = page;
+    Array.prototype.forEach.call(document.querySelectorAll(".tab"), function(t){
+      t.classList.toggle("active", t.getAttribute("data-page") === page);
+    });
+    var el = $("page");
+    el.innerHTML = "<p class='empty'>Yükleniyor…</p>";
+    if(page === "dashboard") renderDashboard(el);
+    if(page === "queue") renderQueue(el);
+    if(page === "scheduled") renderScheduled(el);
+    if(page === "published") renderPublished(el);
+    if(page === "comments") renderComments(el);
+    if(page === "tasks") renderTasks(el);
+    if(page === "communities") renderCommunities(el);
+    if(page === "analytics") renderAnalytics(el);
+    if(page === "accounts") renderAccounts(el);
+  }
+
+  function renderDashboard(el){
+    api("/overview").then(function(o){
+      var q = {}; (o.contentByStatus || []).forEach(function(r){ q[r.status] = r.n; });
+      var s = {}; (o.scheduledByStatus || []).forEach(function(r){ s[r.status] = r.n; });
+      el.innerHTML =
+        "<div class='grid kpis'>" +
+        kpi(q.REQUIRES_APPROVAL || 0, "Onay bekleyen içerik") +
+        kpi(s.PENDING || 0, "Zamanlanmış yayın") +
+        kpi(o.published7d, "Yayın (7 gün)") +
+        kpi(o.linkClicks7d, "Link tıklaması (7 gün)") +
+        kpi(o.storeVisits7d, "Store ziyareti (7 gün)") +
+        kpi(o.installs7d, "Install (7 gün, girilen)") +
+        kpi(o.firstMatches7d, "İlk maç (7 gün)") +
+        kpi(o.openManualTasks, "Açık görev") +
+        "</div>" +
+        "<div class='card'><div class='meta-row'><b>Bugünün planı</b></div>" +
+        "<p class='hint'>İçerik motoru oyun veritabanındaki gerçek ortak-futbolcu çiftlerinden aday üretir; hepsi bu panelden onay bekler." +
+        (o.autoPublishOwned ? " <span class='pill warn'>autoPublishOwned AÇIK</span>" : " <span class='pill ok'>her şey insan onaylı</span>") + "</p>" +
+        "<div class='actions'><button class='btn primary' id='runPlan' type='button'>Planı şimdi çalıştır</button></div></div>" +
+        "<div class='card'><b>Platform durumu</b><table><tr><th>Platform</th><th>Yayın</th><th>Günlük limit</th></tr>" +
+        (o.providers || []).map(function(p){
+          return "<tr><td>" + esc(p.platform) + "</td><td>" +
+            (p.capabilities.canPublish ? "<span class='pill ok'>API hazır</span>" : "<span class='pill'>manuel</span>") +
+            "</td><td>" + p.limits.maxPostsPerDay + "/gün</td></tr>";
+        }).join("") + "</table></div>";
+      var btn = $("runPlan");
+      if(btn) btn.addEventListener("click", function(){
+        btn.disabled = true;
+        api("/plan/run", "POST", {}).then(function(r){
+          toast(r.created + " aday üretildi, " + r.skipped + " atlandı.");
+          render("queue");
+        }).catch(function(e){ toast(e.message, true); btn.disabled = false; });
+      });
+    }).catch(function(e){ el.innerHTML = "<p class='empty'>" + esc(e.message) + "</p>"; });
+  }
+
+  function kpi(value, label){
+    return "<div class='kpi'><b>" + esc(value) + "</b><span>" + esc(label) + "</span></div>";
+  }
+
+  function renderQueue(el){
+    api("/queue?status=REQUIRES_APPROVAL").then(function(r){
+      var items = r.items || [];
+      if(!items.length){ el.innerHTML = "<p class='empty'>Onay bekleyen içerik yok. Dashboard'dan planı çalıştırabilirsin.</p>"; return; }
+      el.innerHTML = items.map(function(it){
+        return "<div class='card' data-id='" + esc(it.id) + "'>" +
+          "<div class='meta-row'>" +
+          "<span class='pill blue'>" + esc(it.platform) + "</span>" +
+          "<span class='pill'>" + esc(it.pillar) + "</span>" +
+          "<span class='pill'>" + esc(it.hook_type) + "</span>" +
+          (it.risk_score >= 0.3 ? "<span class='pill warn'>risk " + it.risk_score + "</span>" : "") +
+          "<span class='pill'>tahmini etkileşim " + esc(it.predicted_engagement) + "</span>" +
+          "<span class='pill'>öneri: " + fmtDate(it.suggested_time) + "</span>" +
+          "</div>" +
+          "<div class='body-text' data-role='body'>" + esc(it.body) + "</div>" +
+          "<p class='hint'>Cevap: <b>" + esc((it.players || []).join(", ") || "—") + "</b>" +
+          (it.teams && it.teams.length ? " · Takımlar: " + esc(it.teams.join(" + ")) : "") + "</p>" +
+          (it.media_brief ? "<p class='hint'>🎬 Media brief hazır (" + esc((it.media_brief.scenes || []).length) + " sahne, " + esc(it.media_brief.format) + ")</p>" : "") +
+          "<div class='actions'>" +
+          "<button class='btn primary small' data-act='approve' type='button'>Onayla</button>" +
+          "<input type='datetime-local' data-role='when' title='İstersen saati değiştir' />" +
+          "<button class='btn small' data-act='edit' type='button'>Düzenle</button>" +
+          "<button class='btn danger small' data-act='reject' type='button'>Reddet</button>" +
+          "</div></div>";
+      }).join("");
+
+      el.addEventListener("click", function(e){
+        var btn = e.target.closest("[data-act]");
+        if(!btn) return;
+        var card = e.target.closest(".card");
+        var id = card.getAttribute("data-id");
+        var act = btn.getAttribute("data-act");
+        if(act === "approve"){
+          var whenEl = card.querySelector("[data-role='when']");
+          var body = whenEl && whenEl.value ? { scheduledAt: new Date(whenEl.value).toISOString() } : {};
+          api("/content/" + id + "/approve", "POST", body).then(function(r){
+            toast("Onaylandı → " + fmtDate(r.scheduledAt)); card.remove();
+          }).catch(function(err){ toast(err.message, true); });
+        }
+        if(act === "reject"){
+          api("/content/" + id + "/reject", "POST", {}).then(function(){
+            toast("Reddedildi."); card.remove();
+          }).catch(function(err){ toast(err.message, true); });
+        }
+        if(act === "edit"){
+          var bodyEl = card.querySelector("[data-role='body']");
+          if(bodyEl.getAttribute("data-editing")) return;
+          bodyEl.setAttribute("data-editing", "1");
+          var current = bodyEl.textContent;
+          bodyEl.innerHTML = "<textarea>" + esc(current) + "</textarea>" +
+            "<div class='actions'><button class='btn primary small' data-save type='button'>Kaydet</button></div>";
+          bodyEl.querySelector("[data-save]").addEventListener("click", function(){
+            var text = bodyEl.querySelector("textarea").value;
+            api("/content/" + id + "/edit", "POST", { body: text }).then(function(){
+              bodyEl.removeAttribute("data-editing");
+              bodyEl.textContent = text;
+              toast("Güncellendi.");
+            }).catch(function(err){ toast(err.message, true); });
+          });
+        }
+      }, { once: false });
+    }).catch(function(e){ el.innerHTML = "<p class='empty'>" + esc(e.message) + "</p>"; });
+  }
+
+  function renderScheduled(el){
+    api("/scheduled").then(function(r){
+      var items = r.items || [];
+      if(!items.length){ el.innerHTML = "<p class='empty'>Zamanlanmış yayın yok.</p>"; return; }
+      el.innerHTML = "<div class='card'><table><tr><th>Zaman</th><th>Platform</th><th>İçerik</th><th>Durum</th><th></th></tr>" +
+        items.map(function(it){
+          var statusClass = it.status === "PENDING" ? "ok" : (it.status === "FAILED" ? "bad" : "warn");
+          return "<tr data-id='" + esc(it.id) + "'><td>" + fmtDate(it.scheduled_at) + "</td>" +
+            "<td>" + esc(it.platform) + "</td>" +
+            "<td class='hint'>" + esc((it.body || "").slice(0, 70)) + "…</td>" +
+            "<td><span class='pill " + statusClass + "'>" + esc(it.status) + "</span>" +
+            (it.last_error ? "<div class='hint'>" + esc(it.last_error) + "</div>" : "") + "</td>" +
+            "<td><button class='btn danger small' data-cancel type='button'>İptal</button></td></tr>";
+        }).join("") + "</table></div>";
+      el.addEventListener("click", function(e){
+        var btn = e.target.closest("[data-cancel]");
+        if(!btn) return;
+        var id = e.target.closest("tr").getAttribute("data-id");
+        api("/scheduled/" + id + "/cancel", "POST", {}).then(function(){
+          toast("İptal edildi."); render("scheduled");
+        }).catch(function(err){ toast(err.message, true); });
+      });
+    }).catch(function(e){ el.innerHTML = "<p class='empty'>" + esc(e.message) + "</p>"; });
+  }
+
+  function renderPublished(el){
+    api("/published").then(function(r){
+      var items = r.items || [];
+      if(!items.length){ el.innerHTML = "<p class='empty'>Henüz yayın yok.</p>"; return; }
+      el.innerHTML = "<div class='card'><table><tr><th>Zaman</th><th>Platform</th><th>İçerik</th><th>Gösterim</th><th>Beğeni</th><th>Tıklama</th><th></th></tr>" +
+        items.map(function(it){
+          return "<tr><td>" + fmtDate(it.published_at) + "</td>" +
+            "<td>" + esc(it.platform) + "</td>" +
+            "<td class='hint'>" + esc((it.body || "").slice(0, 60)) + "…</td>" +
+            "<td>" + esc(it.impressions == null ? "—" : it.impressions) + "</td>" +
+            "<td>" + esc(it.likes == null ? "—" : it.likes) + "</td>" +
+            "<td><b>" + esc(it.clicks) + "</b></td>" +
+            "<td>" + (it.external_url ? "<a href='" + esc(it.external_url) + "' target='_blank' rel='noreferrer' style='color:var(--mint)'>aç</a>" : "") + "</td></tr>";
+        }).join("") + "</table></div>";
+    }).catch(function(e){ el.innerHTML = "<p class='empty'>" + esc(e.message) + "</p>"; });
+  }
+
+  function renderComments(el){
+    api("/comments").then(function(r){
+      var items = r.items || [];
+      var form =
+        "<div class='card'><b>Yorum fırsatı ekle</b>" +
+        "<p class='hint'>Viral bir futbol videosu/tweet'i yapıştır; motor altına atılacak doğal yorum taslakları üretir. X'te onaylanan yanıt otomatik gider (günlük tavanlı), diğer platformlarda kopyala-yapıştır görevi açılır. Aynı hedefe ikinci yorum asla atılmaz.</p>" +
+        "<div class='two-col' style='margin-top:8px'>" +
+        "<input id='opUrl' placeholder='https://x.com/.../status/... veya instagram/tiktok/youtube linki' style='grid-column:1/-1' />" +
+        "<input id='opTeamA' placeholder='takım A (videoyla ilgiliyse, ops.)' />" +
+        "<input id='opTeamB' placeholder='takım B (ops.)' />" +
+        "<input id='opTopic' placeholder='konu (ör. derbi tahminleri, ops.)' style='grid-column:1/-1' />" +
+        "</div><div class='actions'>" +
+        "<button class='btn primary small' id='addOp' type='button'>Fırsat ekle + taslak üret</button>" +
+        "<button class='btn small' id='discoverOp' type='button'>X'te fırsat ara</button>" +
+        "</div></div>";
+      var list = items.length ? items.map(function(o){
+        var ctx = o.context || {};
+        var statusPill = o.status === "DONE" ? "ok" : (o.status === "QUEUED" ? "warn" : "blue");
+        var drafts = (o.drafts || []).map(function(d){
+          var pill = d.status === "PUBLISHED" ? "<span class='pill ok'>yayınlandı</span>"
+            : d.status === "APPROVED" ? "<span class='pill warn'>kuyrukta</span>"
+            : d.status === "MANUAL" ? "<span class='pill blue'>görevde</span>"
+            : d.status === "FAILED" ? "<span class='pill bad'>hata</span>" : "";
+          var brand = d.mentions_brand ? "<span class='pill'>marka</span>" : "";
+          var buttons = d.status === "DRAFT"
+            ? "<button class='btn primary small' data-dact='approve' type='button'>Onayla</button>" +
+              "<button class='btn small' data-dact='edit' type='button'>Düzenle</button>" +
+              "<button class='btn danger small' data-dact='reject' type='button'>Reddet</button>"
+            : (d.last_error ? "<span class='hint'>" + esc(d.last_error) + "</span>" : "");
+          return "<div class='body-text' data-draft='" + esc(d.id) + "' style='margin:6px 0'>" +
+            "<div class='meta-row'>" + pill + brand + "</div>" +
+            "<span data-role='dtext'>" + esc(d.text) + "</span>" +
+            "<div class='actions'>" + buttons + "</div></div>";
+        }).join("");
+        return "<div class='card' data-op='" + esc(o.id) + "'>" +
+          "<div class='meta-row'><span class='pill blue'>" + esc(o.platform) + "</span>" +
+          "<span class='pill " + statusPill + "'>" + esc(o.status) + "</span>" +
+          (o.source === "search" ? "<span class='pill'>keşif</span>" : "") +
+          (ctx.teams ? "<span class='pill'>" + esc(ctx.teams.join(" + ")) + "</span>" : "") +
+          "</div>" +
+          "<div class='item-url'><a href='" + esc(o.target_url) + "' target='_blank' rel='noreferrer' style='color:var(--mint);font-size:13px'>" + esc(o.target_url) + "</a></div>" +
+          (ctx.topic ? "<p class='hint'>" + esc(ctx.topic) + "</p>" : "") +
+          drafts +
+          "<div class='actions'>" +
+          "<button class='btn small' data-oact='regen' type='button'>Yeni taslaklar</button>" +
+          "<button class='btn danger small' data-oact='dismiss' type='button'>Kapat</button>" +
+          "</div></div>";
+      }).join("") : "<p class='empty'>Henüz yorum fırsatı yok. Bir link yapıştırarak başla.</p>";
+      el.innerHTML = form + list;
+
+      $("addOp").addEventListener("click", function(){
+        api("/comments/opportunities", "POST", {
+          url: $("opUrl").value, teamA: $("opTeamA").value, teamB: $("opTeamB").value, topic: $("opTopic").value
+        }).then(function(res){
+          toast(res.created ? res.drafts + " taslak üretildi." : "Bu hedef zaten kayıtlı.");
+          render("comments");
+        }).catch(function(err){ toast(err.message, true); });
+      });
+      $("discoverOp").addEventListener("click", function(){
+        api("/comments/discover", "POST", {}).then(function(res){
+          toast(res.ok ? res.added + " fırsat eklendi." : ("Arama yok: " + (res.detail || "")), !res.ok);
+          if(res.ok) render("comments");
+        }).catch(function(err){ toast(err.message, true); });
+      });
+      el.addEventListener("click", function(e){
+        var dbtn = e.target.closest("[data-dact]");
+        if(dbtn){
+          var draftEl = e.target.closest("[data-draft]");
+          var id = draftEl.getAttribute("data-draft");
+          var act = dbtn.getAttribute("data-dact");
+          if(act === "approve"){
+            api("/comments/drafts/" + id + "/approve", "POST", {}).then(function(res){
+              toast(res.mode === "auto" ? "Onaylandı — X'e otomatik gidecek." : "Onaylandı — Görevler sekmesine düştü.");
+              render("comments");
+            }).catch(function(err){ toast(err.message, true); });
+          }
+          if(act === "reject"){
+            api("/comments/drafts/" + id + "/reject", "POST", {}).then(function(){ render("comments"); })
+              .catch(function(err){ toast(err.message, true); });
+          }
+          if(act === "edit"){
+            var textEl = draftEl.querySelector("[data-role='dtext']");
+            var current = textEl.textContent;
+            textEl.innerHTML = "<textarea style='min-height:70px'>" + esc(current) + "</textarea>" +
+              "<div class='actions'><button class='btn primary small' data-dsave type='button'>Kaydet</button></div>";
+            textEl.querySelector("[data-dsave]").addEventListener("click", function(){
+              var text = textEl.querySelector("textarea").value;
+              api("/comments/drafts/" + id + "/edit", "POST", { text: text }).then(function(){
+                toast("Güncellendi."); render("comments");
+              }).catch(function(err){ toast(err.message, true); });
+            });
+          }
+          return;
+        }
+        var obtn = e.target.closest("[data-oact]");
+        if(obtn){
+          var opId = e.target.closest("[data-op]").getAttribute("data-op");
+          var oact = obtn.getAttribute("data-oact");
+          var path = oact === "regen" ? "/regen" : "/dismiss";
+          api("/comments/opportunities/" + opId + path, "POST", {}).then(function(){
+            render("comments");
+          }).catch(function(err){ toast(err.message, true); });
+        }
+      });
+    }).catch(function(e){ el.innerHTML = "<p class='empty'>" + esc(e.message) + "</p>"; });
+  }
+
+  function renderTasks(el){
+    api("/manual-tasks").then(function(r){
+      var items = r.items || [];
+      if(!items.length){ el.innerHTML = "<p class='empty'>Açık görev yok.</p>"; return; }
+      el.innerHTML = items.map(function(it){
+        var p = it.payload || {};
+        return "<div class='card' data-id='" + esc(it.id) + "'>" +
+          "<div class='meta-row'><span class='pill blue'>" + esc(it.platform) + "</span><b>" + esc(it.title) + "</b></div>" +
+          "<p class='hint'>" + esc(it.instructions) + "</p>" +
+          (p.text ? "<div class='body-text'>" + esc(p.text) + "</div>" : "") +
+          "<div class='actions'>" +
+          (p.text ? "<button class='btn small' data-copy type='button'>Metni kopyala</button>" : "") +
+          "<button class='btn primary small' data-done type='button'>Yapıldı</button>" +
+          "</div></div>";
+      }).join("");
+      el.addEventListener("click", function(e){
+        var card = e.target.closest(".card");
+        if(!card) return;
+        var id = card.getAttribute("data-id");
+        if(e.target.closest("[data-done]")){
+          api("/manual-tasks/" + id + "/done", "POST", {}).then(function(){
+            toast("Görev kapatıldı."); card.remove();
+          }).catch(function(err){ toast(err.message, true); });
+        }
+        if(e.target.closest("[data-copy]")){
+          var text = card.querySelector(".body-text").textContent;
+          navigator.clipboard.writeText(text).then(function(){ toast("Kopyalandı."); });
+        }
+      });
+    }).catch(function(e){ el.innerHTML = "<p class='empty'>" + esc(e.message) + "</p>"; });
+  }
+
+  function renderCommunities(el){
+    api("/communities").then(function(r){
+      var items = r.items || [];
+      el.innerHTML =
+        "<div class='card'><b>Topluluk ekle</b>" +
+        "<div class='two-col' style='margin-top:10px'>" +
+        "<input id='cName' placeholder='ad (ör. r/superlig)' />" +
+        "<select id='cPlatform'><option>reddit</option><option>telegram</option><option>discord</option><option>facebook</option><option>eksisozluk</option></select>" +
+        "<input id='cUrl' placeholder='url' />" +
+        "<input id='cMembers' placeholder='üye tahmini' type='number' />" +
+        "</div><p class='hint'>Fit girdileri 0-1 arası: futbol ilgisi, etkileşim, yaş uyumu, mobil oyun, Türkiye, tanıtım dostluğu</p>" +
+        "<div class='two-col'>" +
+        "<input id='fFoot' placeholder='futbol (0-1)' /><input id='fEng' placeholder='etkileşim (0-1)' />" +
+        "<input id='fAge' placeholder='yaş (0-1)' /><input id='fGame' placeholder='oyun (0-1)' />" +
+        "<input id='fTr' placeholder='TR (0-1)' /><input id='fPromo' placeholder='tanıtım (0-1)' />" +
+        "</div><div class='actions'><button class='btn primary small' id='addCommunity' type='button'>Kaydet + skorla</button></div></div>" +
+        (items.length ? "<div class='card'><table><tr><th>Topluluk</th><th>Platform</th><th>Fit</th><th>Öncelik</th><th>Politika</th><th>Onay</th><th>İlişki</th></tr>" +
+          items.map(function(c){
+            var pr = c.priority === "HIGH" ? "ok" : (c.priority === "MEDIUM" ? "warn" : "");
+            return "<tr><td>" + esc(c.name) + "</td><td>" + esc(c.platform) + "</td>" +
+              "<td><b>" + esc(c.audience_fit_score == null ? "—" : c.audience_fit_score) + "</b></td>" +
+              "<td><span class='pill " + pr + "'>" + esc(c.priority || "—") + "</span></td>" +
+              "<td class='hint'>" + esc(c.promotion_policy || "MANUAL_APPROVAL_REQUIRED") + "</td>" +
+              "<td class='hint'>" + esc(c.approval_status || "PENDING") + "</td>" +
+              "<td class='hint'>" + esc(c.relationship_status) + "</td></tr>";
+          }).join("") + "</table><p class='hint'>Politika/onay değişikliği ADMIN rolü ister (API: /communities/:id/permission). Varsayılan: MANUAL_APPROVAL_REQUIRED — onaysız hiçbir topluluğa gönderim yapılmaz.</p></div>"
+        : "<p class='empty'>Kayıtlı topluluk yok.</p>");
+      $("addCommunity").addEventListener("click", function(){
+        api("/communities", "POST", {
+          name: $("cName").value, platform: $("cPlatform").value, url: $("cUrl").value,
+          memberEstimate: Number($("cMembers").value) || null,
+          fit: {
+            footballRelevance: Number($("fFoot").value) || 0,
+            engagement: Number($("fEng").value) || 0,
+            audienceAgeFit: Number($("fAge").value) || 0,
+            mobileGamingOverlap: Number($("fGame").value) || 0,
+            turkeyRelevance: Number($("fTr").value) || 0,
+            promotionFriendliness: Number($("fPromo").value) || 0
+          }
+        }).then(function(r){
+          toast("Kaydedildi. AudienceFit: " + r.audienceFitScore);
+          render("communities");
+        }).catch(function(err){ toast(err.message, true); });
+      });
+    }).catch(function(e){ el.innerHTML = "<p class='empty'>" + esc(e.message) + "</p>"; });
+  }
+
+  function renderAnalytics(el){
+    api("/analytics").then(function(r){
+      var pillars = r.byPillar || [];
+      el.innerHTML =
+        "<div class='card'><b>Pillar performansı (30 gün)</b>" +
+        (pillars.length ? "<table><tr><th>Platform</th><th>Pillar</th><th>Yayın</th><th>Tıklama</th></tr>" +
+          pillars.map(function(p){
+            return "<tr><td>" + esc(p.platform) + "</td><td>" + esc(p.pillar) + "</td><td>" + p.posts + "</td><td><b>" + p.clicks + "</b></td></tr>";
+          }).join("") + "</table>" : "<p class='empty'>Veri yok.</p>") + "</div>" +
+        "<div class='card'><b>Öğrenilmiş ağırlıklar</b><p class='hint'>Günlük öğrenme döngüsü; 1.0 = nötr, üstü = sistem bu boyuta ağırlık veriyor.</p>" +
+        "<div class='body-text' style='font-family:monospace;font-size:12px'>" + esc(JSON.stringify(r.weights, null, 2)) + "</div></div>";
+    }).catch(function(e){ el.innerHTML = "<p class='empty'>" + esc(e.message) + "</p>"; });
+  }
+
+  function renderAccounts(el){
+    api("/accounts").then(function(r){
+      el.innerHTML = "<div class='card'><table><tr><th>Platform</th><th>Kimlik</th><th>Yetenek</th><th>Limitler</th></tr>" +
+        (r.accounts || []).map(function(a){
+          return "<tr><td><b>" + esc(a.platform) + "</b></td>" +
+            "<td>" + (a.auth.configured ? "<span class='pill ok'>bağlı</span>" : "<span class='pill'>" + esc(a.auth.detail) + "</span>") + "</td>" +
+            "<td class='hint'>" + esc((a.capabilities.contentTypes || []).join(", ")) + "</td>" +
+            "<td class='hint'>" + a.limits.maxPostsPerDay + "/gün · " + a.limits.maxPostsPerHour + "/saat · min " + a.limits.minIntervalMinutes + " dk</td></tr>";
+        }).join("") + "</table><p class='hint'>Token'lar env/secret manager'da tutulur; bu panel yalnızca durum gösterir.</p></div>";
+    }).catch(function(e){ el.innerHTML = "<p class='empty'>" + esc(e.message) + "</p>"; });
+  }
+
+  // ── Olaylar ──
+  $("loginBtn").addEventListener("click", login);
+  $("password").addEventListener("keydown", function(e){ if(e.key === "Enter") login(); });
+  $("logoutBtn").addEventListener("click", logout);
+  $("tabs").addEventListener("click", function(e){
+    var tab = e.target.closest(".tab");
+    if(tab) render(tab.getAttribute("data-page"));
+  });
+
+  if(token) showApp();
+})();
+</script>
+</body>
+</html>

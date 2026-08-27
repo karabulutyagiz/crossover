@@ -1,0 +1,26 @@
+{
+  "name": "@crossover/growth",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Crossover Growth Operating System — content engine, scheduler, social providers, analytics",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "migrate": "tsx src/db/migrate.ts",
+    "user": "tsx src/cli/create-user.ts",
+    "plan": "tsx src/cli/plan-today.ts",
+    "test:invariants": "tsx src/cli/growth-invariants.ts",
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "pg": "^8.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/pg": "^8.11.6",
+    "tsx": "^4.22.4",
+    "typescript": "^5.5.0"
+  }
+}

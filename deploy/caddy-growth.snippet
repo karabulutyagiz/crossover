@@ -1,0 +1,8 @@
+# ── Crossover Growth OS (additive; panel + tracking redirect) ──
+# Append this block to /root/transyol/Caddyfile, then:
+#   docker exec transyol-caddy-1 caddy reload --config /etc/caddy/Caddyfile
+# DNS: growth.crossoverfootball.com A kaydı -> 168.222.180.190
+growth.crossoverfootball.com {
+	reverse_proxy crossover-growth-1:8090
+	encode gzip
+}

@@ -93,6 +93,36 @@ services:
       - internal      # reach own Postgres
       - shared-net    # be reachable by transyol-caddy for TLS termination
 
+  # Growth OS — sosyal içerik motoru + onay paneli + tracking redirect.
+  # Oyundan AYRI süreç: growth çökse bile oyun etkilenmez. Aynı Postgres'i
+  # kullanır (growth_* tabloları; clubs/players salt-okunur içerik kaynağı).
+  growth:
+    build: ./growth
+    image: crossover-growth:latest
+    container_name: crossover-growth-1
+    restart: unless-stopped
+    environment:
+      GROWTH_PORT: "8090"
+      DATABASE_URL: postgres://${POSTGRES_USER:-crossover}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-crossover}
+      GROWTH_ADMIN_TOKEN: ${GROWTH_ADMIN_TOKEN:-}
+      TRACKING_BASE_URL: ${TRACKING_BASE_URL:-https://growth.crossoverfootball.com}
+      WEBSITE_URL: ${WEBSITE_URL:-https://crossoverfootball.com}
+      X_API_KEY: ${X_API_KEY:-}
+      X_API_SECRET: ${X_API_SECRET:-}
+      X_ACCESS_TOKEN: ${X_ACCESS_TOKEN:-}
+      X_ACCESS_SECRET: ${X_ACCESS_SECRET:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_OWNED_CHANNELS: ${TELEGRAM_OWNED_CHANNELS:-}
+      IG_USER_ID: ${IG_USER_ID:-}
+      IG_ACCESS_TOKEN: ${IG_ACCESS_TOKEN:-}
+      GROWTH_AUTO_PUBLISH_OWNED: ${GROWTH_AUTO_PUBLISH_OWNED:-0}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal      # kendi Postgres'ine erişim
+      - shared-net    # transyol-caddy growth.crossoverfootball.com'u buraya proxy'ler
+
 networks:
   internal:
   # transyol's pre-existing external bridge network (carries the proxy traffic).
