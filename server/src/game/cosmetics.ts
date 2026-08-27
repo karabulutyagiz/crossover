@@ -143,6 +143,9 @@ const SELLABLE_COSMETICS = new Set([
   'fire_name', 'ice_name',
   'neon_pitch', 'night_stadium', 'goat_arena',
   'goat_ball', 'champions_ball',
+  // Efekt üçlüsü (kullanıcı onayı 2026-08-27: 'lightningleri de koy —
+  // yaptığımız o vitrin'): gerçek sahneli animasyon efektleri.
+  'lightning_entrance', 'lightning_victory', 'stadium_celebration',
 ]);
 
 /**
