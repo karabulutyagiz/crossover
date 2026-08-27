@@ -6154,6 +6154,32 @@ export const SPECIAL_POWERS: Record<SpecialPowerIdView, { icon: IoniconName; col
   extratime: { icon: 'time', color: theme.primary, nameKey: 'sp.extratime.name', descKey: 'sp.extratime.desc', rarity: 'common' },
   secondchance: { icon: 'heart-circle', color: theme.flame, nameKey: 'sp.secondchance.name', descKey: 'sp.secondchance.desc', rarity: 'rare' },
 };
+// Kullanıcının ÇİZDİRDİĞİ güç ikonları (2026-08-27 Downloads teslimi).
+// freeze/reveal henüz çizilmedi — çizilince buraya eklenir; eksik olanlar
+// SpecialPowerBadge'de Ionicons medalyonuna düşer (asset kuralıyla uyumlu:
+// bunlar satılan ürünün KENDİSİ değil arayüz rozeti).
+const SP_ART: Partial<Record<SpecialPowerIdView, number>> = {
+  skip: require('../assets/powers/sp-skip.png'),
+  extratime: require('../assets/powers/sp-extratime.png'),
+  secondchance: require('../assets/powers/sp-secondchance.png'),
+};
+
+/** Özel güç rozeti: çizilmiş sanat varsa O (dokunulmamış), yoksa renkli
+ * Ionicons medalyonu. Tüm güç yüzeyleri (HUD çipi, mağaza satırı, onay
+ * penceresi, duyuru bandrolü) BUNU kullanır — tek kimlik. */
+function SpecialPowerBadge({ id, size, dead = false }: { id: SpecialPowerIdView; size: number; dead?: boolean }) {
+  const art = SP_ART[id];
+  const meta = SPECIAL_POWERS[id];
+  if (art != null) {
+    return <Image source={art} style={{ width: size, height: size, opacity: dead ? 0.35 : 1 }} resizeMode="contain" />;
+  }
+  return (
+    <View style={{ width: size, height: size, borderRadius: size * 0.29, backgroundColor: withAlpha(meta.color, dead ? 0.08 : 0.16), borderWidth: Math.max(1.5, size * 0.03), borderColor: withAlpha(meta.color, dead ? 0.3 : 0.55), alignItems: 'center', justifyContent: 'center' }}>
+      <Ionicons name={meta.icon} size={Math.round(size * 0.5)} color={dead ? theme.muted : meta.color} />
+    </View>
+  );
+}
+
 // Fiyatlar normalde store_catalog.specialPowers'tan gelir (sunucu config'i);
 // katalog henüz yüklenmediyse bu ayna kullanılır (sunucu varsayılanlarıyla eş).
 export const SPECIAL_POWER_PRICE_FALLBACK: Record<SpecialPowerIdView, number> = { freeze: 400, reveal: 600, skip: 350, extratime: 200, secondchance: 300 };
@@ -6204,8 +6230,10 @@ function SpecialPowerHud({ state, actions }: Props) {
         const armed = armedId === sl.powerId;
         return (
           <Pressable key={sl.powerId} onPress={() => onPress(sl.powerId, sl.used)} hitSlop={6} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: dead ? theme.well : withAlpha(meta.color, 0.16), borderRadius: 999, paddingHorizontal: 8, paddingVertical: 6, borderWidth: 1.5, borderColor: dead ? theme.border : withAlpha(meta.color, armed ? 1 : 0.6) }}>
-              <Ionicons name={meta.icon} size={15} color={dead ? theme.muted : meta.color} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: dead ? theme.well : withAlpha(meta.color, 0.16), borderRadius: 999, paddingHorizontal: 6, paddingVertical: 4, borderWidth: 1.5, borderColor: dead ? theme.border : withAlpha(meta.color, armed ? 1 : 0.6) }}>
+              {SP_ART[sl.powerId as SpecialPowerIdView] != null
+                ? <Image source={SP_ART[sl.powerId as SpecialPowerIdView]!} style={{ width: 22, height: 22, opacity: dead ? 0.4 : 1 }} resizeMode="contain" />
+                : <Ionicons name={meta.icon} size={15} color={dead ? theme.muted : meta.color} />}
               {armed && !dead ? (
                 <Text style={{ color: theme.text, fontFamily: 'Poppins-Black', fontSize: 9.5 }}>{t('sp.confirmTap')}</Text>
               ) : !dead && sl.qty > 0 ? (
@@ -6256,9 +6284,9 @@ function RevealChip({ name }: { name: string }) {
  * oyunu durdurmayan bir bandroll ile iki tarafta da duyurur — hiçbir güç sessiz
  * gerçekleşmez (spec §41, §78). Oyun durumu bu animasyonu asla beklemez. */
 function SpecialPowerOverlays({ state }: { state: GameState }) {
-  const [visible, setVisible] = useState<null | { title: string; sub?: string; icon: IoniconName; color: string }>(null);
+  const [visible, setVisible] = useState<null | { title: string; sub?: string; icon: IoniconName; color: string; spId?: SpecialPowerIdView }>(null);
   const anim = useRef(new Animated.Value(0)).current;
-  const show = (v: { title: string; sub?: string; icon: IoniconName; color: string }, holdMs = 850) => {
+  const show = (v: { title: string; sub?: string; icon: IoniconName; color: string; spId?: SpecialPowerIdView }, holdMs = 850) => {
     setVisible(v);
     anim.setValue(0);
     Animated.sequence([
@@ -6291,7 +6319,7 @@ function SpecialPowerOverlays({ state }: { state: GameState }) {
     } else {
       triggerFeedback(ev.powerId === 'freeze' ? GameFeedbackEvent.SP_FROZEN_HIT : GameFeedbackEvent.SP_OPPONENT);
     }
-    show({ title, sub: t(meta.nameKey), icon: meta.icon, color: meta.color });
+    show({ title, sub: t(meta.nameKey), icon: meta.icon, color: meta.color, spId: ev.powerId as SpecialPowerIdView });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ev?.seq]);
 
@@ -6319,7 +6347,9 @@ function SpecialPowerOverlays({ state }: { state: GameState }) {
   return (
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', zIndex: 80 }]}>
       <Animated.View style={{ opacity: anim, transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.72, 1] }) }], alignItems: 'center', gap: 7, backgroundColor: withAlpha('#0B1838', 0.9), borderRadius: 22, paddingHorizontal: 26, paddingVertical: 17, borderWidth: 2, borderColor: withAlpha(visible.color, 0.6), maxWidth: 300 }}>
-        <Ionicons name={visible.icon} size={42} color={visible.color} />
+        {visible.spId && SP_ART[visible.spId] != null
+          ? <Image source={SP_ART[visible.spId]!} style={{ width: 64, height: 64 }} resizeMode="contain" />
+          : <Ionicons name={visible.icon} size={42} color={visible.color} />}
         <Text style={{ color: theme.text, fontFamily: 'Poppins-Black', fontSize: 16, textAlign: 'center', letterSpacing: 0.5 }}>{visible.title}</Text>
         {visible.sub ? <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 11.5 }}>{visible.sub}</Text> : null}
       </Animated.View>
@@ -8635,9 +8665,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
             return (
               <View key={spid} style={styles.storeEmoteCard}>
                 <View>
-                  <View style={{ width: 52, height: 52, borderRadius: 15, backgroundColor: withAlpha(meta.color, 0.16), borderWidth: 1.5, borderColor: withAlpha(meta.color, 0.55), alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons name={meta.icon} size={26} color={meta.color} />
-                  </View>
+                  <SpecialPowerBadge id={spid} size={52} />
                   {count > 0 ? (
                     <View style={{ position: 'absolute', right: -6, top: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 4, backgroundColor: meta.color, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
                       <Text style={{ color: theme.ink, fontSize: 10, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>x{count}</Text>
@@ -8908,9 +8936,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
       >
         {confirmSpecial ? (
           <View style={{ alignItems: 'center', gap: 10 }}>
-            <View style={{ width: 84, height: 84, borderRadius: 22, backgroundColor: withAlpha(SPECIAL_POWERS[confirmSpecial].color, 0.16), borderWidth: 2, borderColor: withAlpha(SPECIAL_POWERS[confirmSpecial].color, 0.6), alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name={SPECIAL_POWERS[confirmSpecial].icon} size={42} color={SPECIAL_POWERS[confirmSpecial].color} />
-            </View>
+            <SpecialPowerBadge id={confirmSpecial} size={96} />
             <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 18 }}>{t(SPECIAL_POWERS[confirmSpecial].descKey)}</Text>
             <Text style={{ color: theme.gold, fontSize: 12, fontFamily: 'Poppins-Black', textAlign: 'center' }}>{t('store.spPackNote')}</Text>
             <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('sp.limitNote')}</Text>
