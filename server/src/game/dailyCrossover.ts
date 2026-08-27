@@ -16,6 +16,7 @@ import { createHash } from 'node:crypto';
 import { pool } from '../db/pool.ts';
 import type { ClubRef, DailyCrossoverStateView } from '../protocol.ts';
 import { verifyGuess, commonPlayersDetailed, type VerifyResult } from './verify.ts';
+import { clubPopularityTier, isTurkishClub } from './clubPopularity.ts';
 import { recordDiamondLedger } from './diamondLedger.ts';
 
 export const DAILY_CX_REWARD = 10; // 💎 — reklam ödülünün 2 katı, günde 1 kez
@@ -79,18 +80,33 @@ export async function ensureDailyPair(dayIdx: number): Promise<{ teamA: ClubRef;
   const used = new Set<number>();
   for (const r of recent) { used.add(Number(r.team_a_id)); used.add(Number(r.team_b_id)); }
 
-  // Aday A: tanınır kulüpler (popülerlik sırası deterministik).
-  const { rows: topClubs } = await pool.query<ClubRow>(
-    `SELECT c.id, c.name, c.logo_url FROM clubs c
+  // Tanınırlık kümesi: İKİ taraf da bu listeden gelir — "Sampdoria × Ternana"
+  // gibi yarısı obskür günler olmaz (günlük soru herkese sorulur, niş olamaz).
+  // Ham popularity kolonu tek başına güvenilmez (Stevenage/Alcorcón sızıyordu):
+  // oyunun kendi katman sistemi (clubPopularityTier) süzer — yalnız
+  // GLOBAL_GIANT / VERY_POPULAR / POPULAR katmanları günün sorusu olabilir.
+  const { rows: rawClubs } = await pool.query<ClubRow & { popularity: string | null }>(
+    `SELECT c.id, c.name, c.logo_url, c.popularity::text AS popularity FROM clubs c
       WHERE c.is_national = FALSE AND c.logo_url IS NOT NULL ${A_TEAM_FILTER}
       ORDER BY c.popularity DESC NULLS LAST, c.id
-      LIMIT 80`,
+      LIMIT 220`,
   );
+  const topClubs = rawClubs.filter((c) => {
+    const tier = clubPopularityTier({ name: c.name, popularity: Number(c.popularity ?? 0) });
+    return tier === 'GLOBAL_GIANT' || tier === 'VERY_POPULAR' || tier === 'POPULAR';
+  });
+  const recognizable = new Set(topClubs.map((c) => Number(c.id)));
   const candidatesA = topClubs.filter((c) => !used.has(Number(c.id)));
   const poolA = candidatesA.length >= 10 ? candidatesA : topClubs;
+  if (!poolA.length) return null;
 
+  // TÜRK GÜNÜ: her 3. gün soru bir Türk kulübünden açılır (maç içi "Türk turu"
+  // garantisinin günlük karşılığı — kitlemizin kalbi burada atıyor).
+  const turkishDay = dayIdx % 3 === 0;
+  const turkishPool = poolA.filter((c) => isTurkishClub(c.name));
   for (let attempt = 0; attempt < 12; attempt++) {
-    const teamA = poolA[Math.floor(rnd() * poolA.length)]!;
+    const drawPool = turkishDay && turkishPool.length && attempt < 8 ? turkishPool : poolA;
+    const teamA = drawPool[Math.floor(rnd() * drawPool.length)]!;
     // Aday B: teamA ile ≥MIN_ANSWERS ortak oyuncusu olan tanınır kulüpler.
     const { rows: partners } = await pool.query<ClubRow & { answer_count: number }>(
       `SELECT c.id, c.name, c.logo_url, COUNT(DISTINCT a.player_id)::int AS answer_count
@@ -104,9 +120,10 @@ export async function ensureDailyPair(dayIdx: number): Promise<{ teamA: ClubRef;
         LIMIT 40`,
       [teamA.id, MIN_ANSWERS],
     );
-    const freshPartners = partners.filter((c) => !used.has(Number(c.id)));
-    const poolB = freshPartners.length ? freshPartners : partners;
-    if (!poolB.length) continue;
+    const known = partners.filter((c) => recognizable.has(Number(c.id)));
+    if (!known.length) continue; // bu A ile tanınır eş yok — başka A dene
+    const freshPartners = known.filter((c) => !used.has(Number(c.id)));
+    const poolB = (freshPartners.length ? freshPartners : known).slice(0, 15);
     const teamB = poolB[Math.floor(rnd() * poolB.length)]!;
     await pool.query(
       `INSERT INTO daily_crossover_days (day_idx, team_a_id, team_b_id)

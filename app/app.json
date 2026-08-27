@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.crossover.football",
-      "buildNumber": "149",
+      "buildNumber": "150",
       "usesAppleSignIn": true,
       "infoPlist": {
         "CADisableMinimumFrameDurationOnPhone": true,
@@ -93,7 +93,8 @@
           "vi",
           "zh-Hans",
           "zh-Hant"
-        ]
+        ],
+        "NSSupportsLiveActivities": true
       }
     },
     "android": {
@@ -151,12 +152,30 @@
           "iosAppId": "ca-app-pub-5118403349234305~1206723737",
           "userTrackingUsageDescription": "Reklam deneyimini kişiselleştirmek için izin istiyoruz."
         }
+      ],
+      [
+        "@bacons/apple-targets",
+        {
+          "appleTeamId": "5C2NRK938T"
+        }
       ]
     ],
     "owner": "ygzkrblt1",
     "extra": {
       "eas": {
-        "projectId": "a4d757a9-39bc-4806-a64a-0d671b946bbe"
+        "projectId": "a4d757a9-39bc-4806-a64a-0d671b946bbe",
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "CofOfferActivity",
+                  "bundleIdentifier": "com.crossover.football.OfferActivity"
+                }
+              ]
+            }
+          }
+        }
       }
     },
     "runtimeVersion": {

@@ -139,6 +139,7 @@ import {
   type PowerId,
 } from './src/monetization';
 import { setPendingShortfall } from './src/shortfall';
+import { startOfferActivity, endOfferActivity } from './src/liveActivity';
 import {
   ENGAGEMENT_CONFIG,
   EngagementPriority,
@@ -2131,6 +2132,32 @@ function AppRoot() {
     const sub = AppState.addEventListener('change', (st) => { if (st === 'active') setBadge(badgeTotal); });
     return () => sub.remove();
   }, [badgeTotal]);
+
+  // ── Live Activity (Günlük Fırsat): uygulama ARKAYA atılınca aktif fırsatın
+  // geri sayımı kilit ekranı + Dynamic Island'a taşınır; öne dönünce kapanır.
+  // Maç aktivitesi BİLEREK yok: maçta arka plan = hükmen (anti-hile kuralı).
+  const laOfferRef = useRef<{ key: string; price: number; expiresAt: string; itemName: string } | null>(null);
+  useEffect(() => {
+    const offer = state.dailyOffer;
+    if (!offer) { laOfferRef.current = null; return; }
+    const catalogItem = offer.kind === 'cosmetic' ? state.storeCatalog?.items.find((i) => i.id === offer.itemId) ?? null : null;
+    const powerMeta = offer.kind !== 'cosmetic' ? POWERS[offer.itemId as keyof typeof POWERS] : null;
+    const itemName = offer.kind === 'cosmetic'
+      ? cosmeticDisplayName(catalogItem ?? { id: offer.itemId, name: offer.itemId })
+      : `${powerMeta ? t(powerMeta.nameKey) : offer.itemId}${offer.qty > 1 ? ` ×${offer.qty}` : ''}`;
+    laOfferRef.current = { key: offer.key, price: offer.price, expiresAt: offer.expiresAt, itemName };
+  }, [state.dailyOffer, state.storeCatalog]);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st === 'background') {
+        const offer = laOfferRef.current;
+        if (offer) void startOfferActivity(offer);
+      } else if (st === 'active') {
+        void endOfferActivity();
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   // ANTI-CHEAT (2026-08-26 yeniden tasarım): maç sırasında uygulamadan ayrılmak
   // artık ATMAZ — her cihazda/her maçta (bot dahil, ayrım sızdırmamalı) tutarlı
