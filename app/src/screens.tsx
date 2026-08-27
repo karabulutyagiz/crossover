@@ -12404,6 +12404,10 @@ export function ArenasScreen({ state, actions }: Props) {
           const arenaUnlockIdx = ARENA_DATA.length - 1 - idx;
           const isLocked = highestUnlockedArenaIdx < arenaUnlockIdx;
           const isPassed = trophies > arena.max;
+          // Elmas ödülü TEK SEFER alınır: bu arenaya bir kez ulaşılıp ödül işlendiyse
+          // (arena index'i highestArenaRewarded'a dahilse) düşüp tekrar çıkınca yeniden
+          // verilmez → ödül silik + kilitli gösterilir (kullanıcı isteği 2026-08-28).
+          const rewardClaimed = arenaUnlockIdx <= (state.profile?.highestArenaRewarded ?? 0);
           const maxLabel = arena.max === 99999 ? '∞' : String(arena.max);
 
           const cardInner = (
@@ -12427,10 +12431,12 @@ export function ArenasScreen({ state, actions }: Props) {
                     <Ionicons name="trophy" size={12} color={theme.gold} />
                   </View>
                   <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', marginTop: 3 }}>{arenaDesc(arena.name)}</Text>
-                  {/* Tier reward only — the per-match win/loss trophy stakes are not shown. */}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}>
+                  {/* Tier reward only — the per-match win/loss trophy stakes are not shown.
+                      Alınmışsa (rewardClaimed) elmas + sayı silik + kilitli: tek seferlik. */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6, opacity: rewardClaimed ? 0.4 : 1 }}>
                     <GemIcon size={13} />
-                    <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>+{arena.reward}</Text>
+                    <Text style={{ color: rewardClaimed ? theme.muted : theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>+{arena.reward}</Text>
+                    {rewardClaimed ? <Ionicons name="lock-closed" size={11} color={theme.muted} style={{ marginLeft: 2 }} /> : null}
                   </View>
                 </View>
               </View>
