@@ -80,7 +80,10 @@ export const config = {
   // Kesinti telafisi: pencere açıkken oyuna giren her hesaba bir kereye mahsus
   // Sosyal Paket süresi eklenir. Pencere kapanınca kod kendiliğinden susar.
   outageGift: {
-    enabled: boolEnv('OUTAGE_GIFT_ENABLED', true),
+    // KAPALI (kullanıcı kararı 2026-08-27): kesinti telafisi 1 günlük Sosyal
+    // Paket hediyesi kaldırıldı — yeni girenler artık almaz. Gerekirse env'den
+    // OUTAGE_GIFT_ENABLED=true ile geçici açılabilir.
+    enabled: boolEnv('OUTAGE_GIFT_ENABLED', false),
     until: process.env.OUTAGE_GIFT_UNTIL ?? '2026-09-01T21:00:00Z',
     hours: intEnv('OUTAGE_GIFT_HOURS', 24),
   },
