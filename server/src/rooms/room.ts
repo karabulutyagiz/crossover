@@ -1546,7 +1546,14 @@ export class Room {
     this.round.passedBy.add(playerId);
     const p = this.players.get(playerId);
     this.broadcast({ type: 'pass_locked', byId: playerId, byName: p?.name ?? '' });
-    if (this.round.passedBy.size >= this.players.size) void this.skipPassed();
+    // Tur biter: HER oyuncu ya pas dedi YA DA cevap hakkı bitti (burned). Böylece
+    // rakibi 2 yanlışla burned olmuş (pas tuşu olmayan) bir oyuncunun karşısında,
+    // hâlâ hakkı olan oyuncunun TEK TARAFLI pası turu pas geçirir; timeout beklenmez.
+    const round = this.round;
+    const everyoneDone = [...this.players.keys()].every(
+      (id) => (round.passedBy?.has(id) ?? false) || (round.burned?.has(id) ?? false),
+    );
+    if (everyoneDone) void this.skipPassed();
   }
 
   private async skipPassed(): Promise<void> {
