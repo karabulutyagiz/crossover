@@ -1059,6 +1059,26 @@ export function startServer(port: number): Server {
       return;
     }
 
+    // Admin: oyuncu görüş/öneri/destek mesajları (uygulama Ayarlar → geri
+    // bildirim formu buraya POST ediyor; panel bu uçtan okur).
+    if (path === '/admin/api/feedback') {
+      const fbAuth = req.headers['authorization'] ?? '';
+      const fbToken = fbAuth.startsWith('Bearer ') ? fbAuth.slice(7) : '';
+      if (!verifyToken(fbToken)) { res.writeHead(401, cors); res.end(JSON.stringify({ error: 'unauthorized' })); return; }
+      void (async () => {
+        try {
+          const { rows } = await pool.query(
+            `SELECT f.id, f.category, f.message, f.platform, f.app_version, f.build_number, f.os_version, f.device_model, f.created_at, u.display_name\n               FROM player_feedback f LEFT JOIN users u ON u.id::text = f.player_id\n              ORDER BY f.created_at DESC LIMIT 200`,
+          );
+          res.writeHead(200, cors); res.end(JSON.stringify({ items: rows }));
+        } catch {
+          // player_feedback tablosu İLK geri bildirimde oluşur — henüz yoksa boş liste.
+          res.writeHead(200, cors); res.end(JSON.stringify({ items: [] }));
+        }
+      })();
+      return;
+    }
+
     // Admin: force-close a stuck room (e.g., player waiting in lobby for 2h)
     if (path === '/admin/api/room/close' && req.method === 'POST') {
       const auth = req.headers['authorization'] ?? '';

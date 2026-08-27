@@ -223,6 +223,12 @@
     </div>
   </div>
 
+  <div class="section-title">Görüş / Öneri / Destek</div>
+  <div class="card" id="feedbackCard">
+    <p class="hint" style="margin:0 0 10px">Uygulama içi geri bildirim formundan gelen mesajlar (en yeni üstte). <b id="fb_count">0</b> kayıt</p>
+    <div class="live-list" id="fb_list" style="max-height:340px;overflow-y:auto"></div>
+  </div>
+
   <div class="section-title">Canlı Özet</div>
   <div class="grid g-live">
     <div class="card kpi accent-mint"><span class="pulse"></span><div class="label">Şu an çevrimiçi</div><div class="value" id="l_online">–</div><div class="sub">açık oturum</div></div>
@@ -500,6 +506,7 @@
 
   // ── Polling ──
   function tick(){
+    loadFeedback();
     fetchStats().then(function(stats){
       render(stats);
       setStatus(true, "canlı");
@@ -525,6 +532,48 @@
   }
 
   // ── Render ──
+  // Görüş/öneri listesi — kullanıcı metni textContent ile basılır (XSS'e kapalı).
+  var FB_CATS = { bug: 'HATA', suggestion: 'ÖNERİ', support: 'DESTEK', other: 'DİĞER' };
+  function loadFeedback(){
+    var chain = Promise.reject();
+    API_BASES.forEach(function(base){
+      chain = chain.catch(function(){
+        var ctrl = new AbortController();
+        var t = setTimeout(function(){ ctrl.abort(); }, 9000);
+        return fetch(base + "/admin/api/feedback", { headers: { "Authorization": "Bearer " + token }, signal: ctrl.signal })
+          .then(function(res){ clearTimeout(t); if(!res.ok) throw new Error("HTTP " + res.status); return res.json(); });
+      });
+    });
+    chain.then(function(data){
+      var items = (data && data.items) || [];
+      $("fb_count").textContent = String(items.length);
+      var list = $("fb_list");
+      list.innerHTML = "";
+      if(!items.length){ var e=document.createElement("div"); e.className="hint"; e.textContent="Henüz mesaj yok."; list.appendChild(e); return; }
+      items.forEach(function(f){
+        var row = document.createElement("div");
+        row.style.cssText = "padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.06)";
+        var head = document.createElement("div");
+        head.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:3px";
+        var cat = document.createElement("b");
+        cat.textContent = FB_CATS[f.category] || String(f.category||"").toUpperCase();
+        cat.style.cssText = "font-size:10px;letter-spacing:.06em;color:var(--gold)";
+        var who = document.createElement("span");
+        who.textContent = (f.display_name || "misafir/anonim") + " · " + (f.platform || "?") + " " + (f.app_version || "") + (f.build_number ? " ("+f.build_number+")" : "");
+        who.style.cssText = "font-size:11px;color:var(--muted)";
+        var when = document.createElement("span");
+        try { when.textContent = new Date(f.created_at).toLocaleString("tr-TR"); } catch(e2) { when.textContent = String(f.created_at||""); }
+        when.style.cssText = "font-size:11px;color:var(--muted);margin-left:auto";
+        head.appendChild(cat); head.appendChild(who); head.appendChild(when);
+        var msg = document.createElement("div");
+        msg.textContent = f.message || "";
+        msg.style.cssText = "font-size:13px;white-space:pre-wrap;word-break:break-word";
+        row.appendChild(head); row.appendChild(msg);
+        list.appendChild(row);
+      });
+    }).catch(function(){ /* sessiz — bir sonraki yenilemede tekrar */ });
+  }
+
   function render(s){
     selectedDay = selectedDay || s.selectedDay || todayKey();
     if ($("dayFilter") && $("dayFilter").value !== selectedDay) $("dayFilter").value = selectedDay;

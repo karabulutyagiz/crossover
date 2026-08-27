@@ -25,10 +25,23 @@ export interface HybridMatchmakingConfig {
   expandedSkillRange: number;
 }
 
-// SERT KUPA BANDI (kullanıcı kararı 2026-08-27): rakip (insan VEYA bot) kupa
-// farkı bu bandı asla aşamaz. Alt ligde 150 (250'lik oyuncu 0'lıkla eşleşmez),
-// kademeli büyür, 300'de tavan (3500'lük oyuncu en az 3200'lükle eşleşir).
-// Pencere genişlemesi ve MMR yolu dahil HER eşleşme yolunda uygulanır.
+// AYNI ARENA KURALI (kullanıcı kararı 2026-08-27, önceki sert bandın yerine):
+// İKİ İNSAN aynı arenadaysa kupa farkı NE OLURSA OLSUN eşleşebilir (0 ile 199
+// ikisi de Mahalle Sahası → serbest); farklı arenadaysa ASLA (0 ile 201: 201
+// Amatör Lig'de → yasak). Eşikler rank.ts ARENAS ile birebir aynı tutulur —
+// oraya arena eklenirse burası da güncellenir (matchmaking→rank import'u
+// döngü riski taşıdığı için eşikler burada sabit kopya).
+const ARENA_STEPS = [0, 200, 500, 1000, 2000, 3500, 5000] as const;
+export function arenaIndexFor(trophies: number): number {
+  let idx = 0;
+  for (let i = 0; i < ARENA_STEPS.length; i++) if (trophies >= ARENA_STEPS[i]!) idx = i;
+  return idx;
+}
+export function sameArenaPair(a: number, b: number): boolean {
+  return arenaIndexFor(Math.max(0, a)) === arenaIndexFor(Math.max(0, b));
+}
+
+// (Eski kademeli bant — şimdilik yalnız BOT üretiminde referans olarak duruyor.)
 export function maxTrophyGapFor(trophies: number): number {
   return Math.round(Math.min(300, Math.max(150, trophies * 0.09)));
 }
@@ -46,14 +59,9 @@ export function trophyRangeForElapsed(elapsedMs: number, cfg: HybridMatchmakingC
   return Math.round(cfg.initialTrophyRange + (cfg.expandedTrophyRange - cfg.initialTrophyRange) * t);
 }
 
-export function compatibleTrophies(a: number, b: number, aElapsedMs: number, bElapsedMs: number, cfg: HybridMatchmakingConfig): boolean {
-  // Genişleyen pencere bile sert bandı aşamaz — bekleme süresi kupa farkını
-  // sonsuza esnetmesin (eski expandedTrophyRange=450 bandın üstündeydi).
-  const range = Math.min(
-    Math.max(trophyRangeForElapsed(aElapsedMs, cfg), trophyRangeForElapsed(bElapsedMs, cfg)),
-    maxPairTrophyGap(a, b),
-  );
-  return Math.abs(a - b) <= range;
+export function compatibleTrophies(a: number, b: number, _aElapsedMs: number, _bElapsedMs: number, _cfg: HybridMatchmakingConfig): boolean {
+  // Aynı arena = kupa sınırı yok; farklı arena = asla (2026-08-27).
+  return sameArenaPair(a, b);
 }
 
 export function skillRangeForElapsed(elapsedMs: number, cfg: HybridMatchmakingConfig): number {
@@ -77,10 +85,9 @@ export function compatibleSkill(
   return Math.abs(aMean - bMean) <= range + uncertaintyAllowance;
 }
 
-export function potentialTrophyCompatibility(a: number, b: number, cfg: HybridMatchmakingConfig): boolean {
-  // Potansiyel de bantla sınırlı: bandın dışındaki insan için kuyrukta
-  // beklemek anlamsız — asla eşleşemeyecekler.
-  return Math.abs(a - b) <= Math.min(cfg.expandedTrophyRange, maxPairTrophyGap(a, b));
+export function potentialTrophyCompatibility(a: number, b: number, _cfg: HybridMatchmakingConfig): boolean {
+  // Potansiyel = aynı arena: farklı arenadaki insan için beklemek anlamsız.
+  return sameArenaPair(a, b);
 }
 
 export function potentialSkillCompatibility(aMean: number, bMean: number, aUncertainty: number, bUncertainty: number, cfg: HybridMatchmakingConfig): boolean {
@@ -92,21 +99,15 @@ export class MatchmakingOrchestrator {
   constructor(private readonly cfg: HybridMatchmakingConfig) {}
 
   compatibleHumans(a: { trophies: number; skillMean?: number; skillUncertainty?: number; elapsedMs: number }, b: { trophies: number; skillMean?: number; skillUncertainty?: number; elapsedMs: number }): boolean {
-    // KUPA BANDI HER YOLDA: MMR yolu eskiden kupayı hiç kontrol etmiyordu —
-    // benzer MMR'lı 1000 vs 1900 eşleşebiliyordu. Artık bant ön şart.
-    if (Math.abs(a.trophies - b.trophies) > maxPairTrophyGap(a.trophies, b.trophies)) return false;
-    if (typeof a.skillMean === 'number' && typeof b.skillMean === 'number') {
-      return compatibleSkill(a.skillMean, b.skillMean, a.skillUncertainty ?? 220, b.skillUncertainty ?? 220, a.elapsedMs, b.elapsedMs, this.cfg);
-    }
-    return compatibleTrophies(a.trophies, b.trophies, a.elapsedMs, b.elapsedMs, this.cfg);
+    // AYNI ARENA HER YOLDA ön şart; arena tutuyorsa kupa/MMR farkı eşleşmeyi
+    // ENGELLEMEZ (kullanıcı kararı 2026-08-27: az oyunculu dönemde insan-insan
+    // eşleşmesi öncelik — sınır yalnız arena).
+    if (!sameArenaPair(a.trophies, b.trophies)) return false;
+    return true;
   }
 
   potentialHuman(a: { trophies: number; skillMean?: number; skillUncertainty?: number }, b: { trophies: number; skillMean?: number; skillUncertainty?: number }): boolean {
-    if (Math.abs(a.trophies - b.trophies) > maxPairTrophyGap(a.trophies, b.trophies)) return false;
-    if (typeof a.skillMean === 'number' && typeof b.skillMean === 'number') {
-      return potentialSkillCompatibility(a.skillMean, b.skillMean, a.skillUncertainty ?? 220, b.skillUncertainty ?? 220, this.cfg);
-    }
-    return potentialTrophyCompatibility(a.trophies, b.trophies, this.cfg);
+    return sameArenaPair(a.trophies, b.trophies);
   }
 
   shouldHoldForHuman(elapsedMs: number, hasPotentialHuman: boolean): boolean {
