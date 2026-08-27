@@ -122,8 +122,12 @@ export function isFreeDefaultCosmetic(item: CosmeticItem): boolean {
 // Pazartesi'ye sayar, ikisi aynı anda sıfırlanır.
 export function storeWeek(now = new Date()): { weekIndex: number; resetAt: Date } {
   const epochDay = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) / 86_400_000);
-  const weekIndex = Math.floor((epochDay + 3) / 7);
-  return { weekIndex, resetAt: new Date(((weekIndex + 1) * 7 - 3) * 86_400_000) };
+  // PERŞEMBE çapası (kullanıcı kararı 2026-08-27): beyaz-listeli vitrin o gün
+  // yayına girdi — hafta TAM 7 gün sürer, sayaç ilk günden 7'den geri sayar.
+  // (Epoch günü 0 zaten Perşembe; ofset yok.) Eski Pazartesi çapası (+3),
+  // vitrini yarı haftayla açtırıyordu ("süre 7 gün değil" şikâyeti).
+  const weekIndex = Math.floor(epochDay / 7);
+  return { weekIndex, resetAt: new Date((weekIndex + 1) * 7 * 86_400_000) };
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -165,13 +169,10 @@ export function isVaultCosmetic(item: CosmeticItem): boolean {
  * Slot 0 = haftanın kasa düşüşü (mythic); kalan 7 slot mythic-dışı havuzdan.
  */
 export function featuredCosmetics(now = new Date()): CosmeticItem[] {
-  // Beyaz liste TEK otorite; mythic'ler yalnız slot 0'daki kasa düşüşüyle çıkar
-  // (rest havuzuna girmezler — aynı ürün vitrine iki kez düşmesin).
-  const pool = COSMETIC_ITEMS.filter((item) => item.diamondPrice > 0 && SELLABLE_COSMETICS.has(item.id) && item.rarity !== 'mythic');
-  const { weekIndex } = storeWeek(now);
-  // weekIndex*5: ardışık haftalar tek adım kaymasın, seçki gözle görülür tazelensin.
-  const rest = Array.from({ length: Math.min(7, pool.length) }, (_, i) => pool[(weekIndex * 5 + i * 7) % pool.length]!);
-  return [vaultItemOfWeek(now), ...rest];
+  // KULLANICI EMRİ (2026-08-27, ACİL): vitrin = çizdirilen 9 ürünün TAMAMI,
+  // her hafta, rotasyonsuz ve kasa beklemesiz — GOAT serisi dahil hepsi görünür
+  // ve satın alınabilir. Hafta yalnız SAYAÇ içindir (7 gün, Perşembe çapası).
+  return COSMETIC_ITEMS.filter((item) => item.diamondPrice > 0 && SELLABLE_COSMETICS.has(item.id));
 }
 
 export function storeCatalog(now = new Date()): StoreCatalogView {
@@ -231,11 +232,8 @@ export async function buyCosmetic(
   if (!SELLABLE_COSMETICS.has(item.id)) {
     return { ok: false, error: 'Bu ürün şu an satışta değil' };
   }
-  // KASA KURALI: mythic ürünler yalnız kasadan çıktıkları hafta satılır — kıtlık
-  // ancak sunucu uygularsa gerçekten kıtlıktır (modifiye istemci de delip geçemez).
-  if (isVaultCosmetic(item) && vaultItemOfWeek().id !== item.id) {
-    return { ok: false, error: 'Bu ürün şu an kasada — vitrine düşeceği haftayı bekle' };
-  }
+  // Kasa kuralı KALDIRILDI (kullanıcı emri 2026-08-27): beyaz listedeki her ürün
+  // her zaman satın alınabilir — GOAT serisi kasa haftası beklemez.
   const key = idempotencyKey || `cosmetic:${userId}:${itemId}`;
   const client = await pool.connect();
   try {
