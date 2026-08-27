@@ -13,8 +13,9 @@ Bekleyen sunucu işleri (hepsi `build-113` HEAD'inde, tsc temiz, testler yeşil)
 - **Dürüst eşleşme tahmini** (`79b210e`): `searching.etaSeconds` (2-8 sn bandı).
 - **Kupa bandı** (`a22e9c2` ~): HER maçta kazanç +28..35, kayıp −15..28 — bot/insan ayrımı YOK.
 - **Bot eşleşme hızı**: fallback 1-2 sn, insansız sert tavan 2.6 sn, oda kurulumu 900 ms.
-- **XOX gerçek kural** (`e3ebb6d`): yalnız çizgi kazanır; çizgisiz bitiş BERABERE
-  (çok bilen +8..10, az +4..5, kayıp yok). Altın hücre/çoğunluk kaldırıldı.
+- **XOX gerçek kural** (`e3ebb6d` + `95dc970`): yalnız çizgi kazanır; çizgisiz
+  bitiş BERABERE — iki taraf da DÜZ +5 kupa (Baturalp'ın revizyonu), kayıp yok.
+  Altın hücre/çoğunluk kaldırıldı.
 - **Seçim toleransı** (`2167016`): pick sayacı 0'dan sonra rastgele atama +900 ms bekler.
 - **Kesinti hediyesi KAPALI** (`4efc565`): kod varsayılanı false; prod `.env`e
   `OUTAGE_GIFT_ENABLED=false` YAZILDI (restart'ta etkin — ayrıca bir şey yapma).
