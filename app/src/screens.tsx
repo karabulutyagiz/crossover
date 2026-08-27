@@ -3581,7 +3581,17 @@ type NewsItem = { id: string; tag: string; date: string; title: string; body: st
 // Boş tutulur: buraya yalnız GERÇEK, editör elinden çıkmış duyurular girer
 // (kullanıcı kararı 2026-08-10 — lansman dolgu metinleri kaldırıldı). Akış
 // boşken NewsModal EmptyState gösterir, zil noktası hiç yanmaz.
-const NEWS: NewsItem[] = [];
+const NEWS: NewsItem[] = [
+  {
+    id: 'xox-launch-2026-08-27',
+    tag: 'YENİ MOD',
+    date: '2026-08-27',
+    title: 'Futbol XOX yayında!',
+    body: 'İki takımda da forma giymiş futbolcuları bilerek 3×3 tahtada hücre kap — üçü yan yana getiren maçı alır. Diğer Modlar bölümünden oynayabilirsin; Sosyal Paketle arkadaşlarına da meydan oku.',
+    icon: 'grid',
+    tint: '#7C5CFF',
+  },
+];
 export const LATEST_NEWS_ID = NEWS[0]?.id ?? '';
 export const NEWS_READ_KEY = '@crossover_news_read';
 
@@ -4615,6 +4625,12 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const [menuSub, setMenuSub] = useState<'settings' | null>(null);
   const [botOpen, setBotOpen] = useState(false);
   const [modesOpen, setModesOpen] = useState(false);
+  // Diğer Modlar kartındaki kırmızı '1' (XOX geldi): bölüm İLK açılana dek
+  // durur, açılınca kalıcı söner (kullanıcı isteği 2026-08-27).
+  const [modesXoxBadge, setModesXoxBadge] = useState(false);
+  useEffect(() => {
+    AsyncStorage.getItem('@crossover_modes_xox_seen').then((v) => { if (!v) setModesXoxBadge(true); }).catch(() => {});
+  }, []);
   const [lockedModePreview, setLockedModePreview] = useState<GameMode | null>(null);
   // iOS presents ONE native <SafeModal> at a time; open the upsell only AFTER the
   // modes modal's native dismissal finishes (via GameModal onExited), else the two
@@ -4845,7 +4861,12 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const openRoad = useCallback(() => { dismissActiveInput(); navRef.current.onOpenLevelRoad?.(); }, []);
   // setState setter'ları zaten sabit — [] deps güvenli.
   const openMenu = useCallback(() => { dismissActiveInput(); setMenuOpen(true); }, []);
-  const openModes = useCallback(() => { dismissActiveInput(); setModesOpen(true); }, []);
+  const openModes = useCallback(() => {
+    dismissActiveInput();
+    setModesOpen(true);
+    setModesXoxBadge(false);
+    AsyncStorage.setItem('@crossover_modes_xox_seen', '1').catch(() => {});
+  }, []);
   const openBot = useCallback(() => { dismissActiveInput(); setBotPage({ key: 'bot', dir: 1 }); setBotOpen(true); }, []);
   // Zil ve "Yenilikler" kartı aynı davranışı paylaşır (feed açılır, pip söner).
   const openNews = useCallback(() => { dismissActiveInput(); setNewsOpen(true); setNewsUnread(false); AsyncStorage.setItem(NEWS_READ_KEY, LATEST_NEWS_ID).catch(() => {}); }, []);
@@ -4988,16 +5009,23 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
 
       {/* ── 4. GRID ── */}
       <View style={{ flexDirection: 'row', gap: gapMd, marginTop: gapSm }}>
-        <ArtCard
-          title={t('home.modesTitle')}
-          tint={theme.amber}
-          grade={MODES_CARD_GRADE}
-          strip="#3A2109"
-          arrow
-          height={primaryCardH}
-          onPress={openModes}
-          art={MODES_CARD_ART}
-        />
+        <View style={{ flex: 1 }}>
+          <ArtCard
+            title={t('home.modesTitle')}
+            tint={theme.amber}
+            grade={MODES_CARD_GRADE}
+            strip="#3A2109"
+            arrow
+            height={primaryCardH}
+            onPress={openModes}
+            art={MODES_CARD_ART}
+          />
+          {modesXoxBadge ? (
+            <View pointerEvents="none" style={{ position: 'absolute', top: -6, right: -6, minWidth: 23, height: 23, borderRadius: 12, backgroundColor: theme.danger, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5, zIndex: 10 }}>
+              <Text style={{ color: '#FFFFFF', fontSize: 11.5, fontFamily: 'Poppins-Black' }}>1</Text>
+            </View>
+          ) : null}
+        </View>
         {/* Özel Mod — the private-room flow. createRoom/joinRoom have existed in
             useCrossover (797/826) with a working LobbyScreen, but nothing in the UI
             had called them; this panel is their entry point. */}

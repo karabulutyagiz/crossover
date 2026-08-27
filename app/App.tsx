@@ -1560,10 +1560,10 @@ function AppRoot() {
     setUpdateNudgeVisible(true);
   }, [loaded, splash, state.phase, state.profile?.usernameSet, modalBlocked, state.updateAvailableVersion]);
 
-  // XOX duyurusu: cihaz başına TEK sefer (kullanıcı isteği 2026-08-27). 900ms
-  // gecikme + ateşleme anında modalBlockedRef kontrolü: aynı commit'te açılan
-  // başka bir popup'la (güncelleme dürtmesi vb.) üst üste binmez — iOS tek
-  // native modal kuralı.
+  // XOX duyurusu: HER AÇILIŞTA bir kez (kullanıcı kararı 2026-08-27: 'popup hep
+  // çıkcak, 1 kerelik değil'). 900ms gecikme + ateşleme anında modalBlockedRef
+  // kontrolü: aynı commit'te açılan başka bir popup'la (güncelleme dürtmesi vb.)
+  // üst üste binmez — iOS tek native modal kuralı.
   const modalBlockedRef = useRef(false);
   modalBlockedRef.current = modalBlocked;
   const xoxAnnounceShownRef = useRef(false);
@@ -1571,16 +1571,12 @@ function AppRoot() {
     if (xoxAnnounceShownRef.current) return;
     if (!loaded || splash || state.phase !== 'home' || !state.profile?.usernameSet || modalBlocked) return;
     let alive = true;
-    AsyncStorage.getItem('@crossover_xox_announce_seen').then((v) => {
-      if (!alive || v) return;
-      setTimeout(() => {
-        if (!alive || xoxAnnounceShownRef.current || modalBlockedRef.current) return;
-        xoxAnnounceShownRef.current = true;
-        setXoxAnnounceVisible(true);
-        AsyncStorage.setItem('@crossover_xox_announce_seen', '1').catch(() => {});
-      }, 900);
-    }).catch(() => {});
-    return () => { alive = false; };
+    const tmr = setTimeout(() => {
+      if (!alive || xoxAnnounceShownRef.current || modalBlockedRef.current) return;
+      xoxAnnounceShownRef.current = true;
+      setXoxAnnounceVisible(true);
+    }, 900);
+    return () => { alive = false; clearTimeout(tmr); };
   }, [loaded, splash, state.phase, state.profile?.usernameSet, modalBlocked]);
 
   // PERFORMANS (2026-08-27): aktif-oyun sayacı eskiden 5 sn'de bir App
