@@ -1847,13 +1847,26 @@ function AppRoot() {
     if (dailyOfferShownRef.current || !state.dailyOffer) return;
     if (!loaded || !state.profile || !TAB_PHASES.has(state.phase)) return;
     if (modalBlocked) return;
+    // Kozmetik firsatinda katalogu BEKLE: katalog gelmeden acilinca urunun
+    // gorseli cizilemiyor ve basligi ham id olarak ("goat_frame") dusuyordu.
+    // Katalog hata verirse yine de acilir — firsat penceresi 12 saatte bir.
+    if (state.dailyOffer.kind === 'cosmetic' && !state.storeCatalog && state.storeCatalogStatus !== 'error') return;
     const tm = setTimeout(() => {
       if (dailyOfferShownRef.current) return;
       dailyOfferShownRef.current = true;
       setDailyOfferVisible(true);
     }, 420);
     return () => clearTimeout(tm);
-  }, [state.dailyOffer, loaded, state.profile, state.phase, modalBlocked]);
+  }, [state.dailyOffer, state.storeCatalog, state.storeCatalogStatus, loaded, state.profile, state.phase, modalBlocked]);
+
+  // Pencere başlığı ve satın alma düğmesi teklif edilen ÜRÜNÜN ikonunu taşır —
+  // kalkan fırsatında şimşek çizmek "ikon olmuyor" izlenimi veriyordu.
+  const dailyOfferIcon = useMemo<IoniconName>(() => {
+    const o = state.dailyOffer;
+    if (!o) return 'flash';
+    if (o.kind === 'cosmetic') return 'sparkles';
+    return POWERS[o.itemId as PowerId]?.icon ?? 'flash';
+  }, [state.dailyOffer]);
 
   // Satın alma onayı: sunucu onayladığında pencereyi kapat + kutlama.
   const offerSeqRef = useRef(0);
@@ -2748,7 +2761,7 @@ function AppRoot() {
         visible={dailyOfferVisible}
         onClose={() => setDailyOfferVisible(false)}
         title={t('offer.title')}
-        icon="flash"
+        icon={dailyOfferIcon}
         coach
       >
         {state.dailyOffer ? (() => {
@@ -2756,26 +2769,54 @@ function AppRoot() {
           const catalogItem = offer.kind === 'cosmetic' ? state.storeCatalog?.items.find((i) => i.id === offer.itemId) ?? null : null;
           const power = offer.kind !== 'cosmetic' ? POWERS[offer.itemId as keyof typeof POWERS] : null;
           const name = offer.kind === 'cosmetic'
-            ? (catalogItem ? cosmeticDisplayName(catalogItem) : offer.itemId)
+            ? cosmeticDisplayName(catalogItem ?? { id: offer.itemId, name: offer.itemId })
             : `${t(power!.nameKey)}${offer.qty > 1 ? ` ×${offer.qty}` : ''}`;
-          const pct = Math.round((1 - offer.price / offer.originalPrice) * 100);
+          // Rozet ancak GERCEK bir indirim varsa cizilir — aksi halde "-%0"
+          // yaziyordu (originalPrice <= price ucu, 2026-08-27).
+          const pct = offer.originalPrice > offer.price
+            ? Math.round((1 - offer.price / offer.originalPrice) * 100)
+            : 0;
+          // Coklu paketlerde TANE fiyati acikca yazilir: magaza kartindaki
+          // "x4" envanter rozeti ile paketin "×3" adedi birbirine
+          // karisiyordu — kullanici paketi magazadan pahali sandi.
+          const storeUnit = power ? POWER_PRICES[offer.itemId as PowerId] : 0;
+          const unitPrice = offer.qty > 1 ? Math.round(offer.price / offer.qty) : 0;
           const afford = (state.profile?.diamonds ?? 0) >= offer.price;
           return (
             <View style={{ alignItems: 'center', gap: 12 }}>
               <OfferCountdown expiresAt={offer.expiresAt} />
-              <View style={{ width: 104, height: 104, borderRadius: 20, backgroundColor: theme.surface3, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.accent, overflow: 'hidden' }}>
-                {catalogItem ? <CosmeticPreview item={catalogItem} size={96} /> : <Ionicons name={power?.icon ?? 'flash'} size={46} color={power?.color ?? theme.accent} />}
-              </View>
+              {catalogItem ? (
+                // Kozmetigin kendi cercevesi var — ustune ikinci kutu cizilmez.
+                <CosmeticPreview item={catalogItem} size={104} />
+              ) : (
+                <View style={{ width: 104, height: 104, borderRadius: 20, backgroundColor: theme.surface3, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.accent }}>
+                  {/* Gucun GERCEK sanati (power-shield.png vb.) — magaza ve
+                      baglamsal teklifle ayni gorsel; jenerik Ionicons degil. */}
+                  {power ? <PowerArt powerId={offer.itemId as PowerId} size={96} /> : <Ionicons name="flash" size={48} color={theme.accent} />}
+                  {offer.qty > 1 ? (
+                    <View style={{ position: 'absolute', right: 4, bottom: 4, backgroundColor: theme.accent, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 2, borderColor: theme.surface3 }}>
+                      <Text style={{ color: theme.onAccent, fontFamily: 'Poppins-Black', fontSize: 12 }}>×{offer.qty}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              )}
               <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 16, textAlign: 'center' }}>{name}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Text style={{ color: theme.muted, fontFamily: 'Poppins-ExtraBold', fontSize: 15, textDecorationLine: 'line-through' }}>{offer.originalPrice} 💎</Text>
-                <View style={{ backgroundColor: theme.danger, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
-                  <Text style={{ color: '#FFF', fontFamily: 'Poppins-Black', fontSize: 11 }}>-%{pct}</Text>
-                </View>
+                {pct > 0 ? (
+                  <View style={{ backgroundColor: theme.danger, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                    <Text style={{ color: '#FFF', fontFamily: 'Poppins-Black', fontSize: 11 }}>-%{pct}</Text>
+                  </View>
+                ) : null}
                 <Text style={{ color: theme.gemText, fontFamily: 'Poppins-Black', fontSize: 21 }}>{offer.price} 💎</Text>
               </View>
+              {unitPrice > 0 && storeUnit > 0 ? (
+                <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 12, textAlign: 'center' }}>
+                  {t('offer.perUnit', { unit: String(unitPrice), store: String(storeUnit) })}
+                </Text>
+              ) : null}
               <Btn
-                big kind="accent" icon="flash"
+                big kind="accent" icon={dailyOfferIcon}
                 label={afford ? t('offer.cta') : t('offer.needDiamonds')}
                 feedback={GameFeedbackEvent.UI_PURCHASE}
                 onPress={() => {

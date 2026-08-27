@@ -6,6 +6,7 @@ const MODES = new Set(['team-team', 'country-team', 'letter-team', 'player-playe
 const DIFFICULTIES = new Set(['easy', 'medium', 'hard']);
 const PROVIDERS = new Set(['apple', 'google', 'facebook']);
 const POWER_IDS = new Set(['xp2x', 'shield', 'streak', 'training', 'socialtoken']);
+const SPECIAL_POWER_IDS = new Set(['freeze', 'reveal', 'skip', 'extratime', 'secondchance']);
 const REWARD_TRACKS = new Set(['free', 'premium']);
 const PLATFORMS = new Set(['ios', 'android']);
 const COSMETIC_TYPES = new Set(['frame', 'name_effect', 'match_background', 'ball', 'intro', 'victory_effect', 'answer_effect']);
@@ -144,6 +145,17 @@ export function validateClientMsg(value: unknown): ValidationResult {
       break;
     case 'buy_daily_offer':
       if (!hasString(value, 'key', 80)) return invalid('buy_daily_offer.key must be a string');
+      break;
+    case 'use_special_power':
+      if (typeof value.powerId !== 'string' || !SPECIAL_POWER_IDS.has(value.powerId)) return invalid('use_special_power.powerId is invalid');
+      if (!hasString(value, 'requestId', 64)) return invalid('use_special_power.requestId must be a string');
+      break;
+    case 'equip_special_power':
+      if (value.powerId !== null && (typeof value.powerId !== 'string' || !SPECIAL_POWER_IDS.has(value.powerId))) return invalid('equip_special_power.powerId is invalid');
+      break;
+    case 'buy_special_power':
+      if (typeof value.powerId !== 'string' || !SPECIAL_POWER_IDS.has(value.powerId)) return invalid('buy_special_power.powerId is invalid');
+      if (value.qty !== undefined && !hasInteger(value, 'qty', 1, 10)) return invalid('buy_special_power.qty is invalid');
       break;
     case 'leave_match':
       if (value.reason !== undefined && value.reason !== 'leave' && value.reason !== 'cheat') return invalid('leave_match.reason is invalid');

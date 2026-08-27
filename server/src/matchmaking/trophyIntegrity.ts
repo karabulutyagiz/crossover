@@ -108,12 +108,15 @@ export async function getTrophyVelocity(userId: string): Promise<TrophyVelocity>
     const humanRows = rows.slice(0, 20).filter((r) => r.opponent_id != null);
     const botContributionLast20 = gainSince(nowTrophies, botRows);
     const humanContributionLast20 = gainSince(nowTrophies, humanRows);
+    // Eşikler ~%50 gevşetildi (2026-08-27, tutundurma-öncelik): eski eşikler
+    // saatte 5-6 galibiyeti (~150 kupa) "farm" sayıp baskı üretiyordu — o tempo
+    // bağlı bir oyuncunun NORMAL seansı. Baskı ancak aşırı uçta devreye girer.
     const pressure = clamp(
-      (gainedLast10 >= 260 ? 0.32 : gainedLast10 >= 180 ? 0.22 : gainedLast10 >= 110 ? 0.12 : 0)
-        + (gainedLastHour >= 380 ? 0.34 : gainedLastHour >= 240 ? 0.22 : gainedLastHour >= 150 ? 0.12 : 0)
-        + (botRows.length >= 8 && botContributionLast20 >= 200 ? 0.18 : 0),
+      (gainedLast10 >= 340 ? 0.32 : gainedLast10 >= 260 ? 0.20 : gainedLast10 >= 180 ? 0.10 : 0)
+        + (gainedLastHour >= 520 ? 0.32 : gainedLastHour >= 380 ? 0.20 : gainedLastHour >= 260 ? 0.10 : 0)
+        + (botRows.length >= 10 && botContributionLast20 >= 300 ? 0.16 : 0),
       0,
-      0.72,
+      0.60,
     );
     return { gainedLast10, gainedLast20, gainedLastHour, botContributionLast20, humanContributionLast20, pressure };
   } catch (err) {

@@ -142,6 +142,11 @@ type Actions = {
   claimLevelReward: (level: number, track?: 'free' | 'premium') => void; // Seviye Yolu kartından ödül topla
   buyPremiumRoad: () => void; // Premium Yol'u 1000 elmasla aç
   buyPower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => void; // mağazadan güç satın al
+  // ---- Maç içi Özel Güçler ----
+  useSpecialPower: (powerId: string) => void;       // maçta etkinleştir (requestId'yi aksiyon üretir)
+  equipSpecialPower: (powerId: string | null) => void; // maça hangi güçle çıkılacağını seç
+  buySpecialPower: (powerId: string, qty?: number) => void; // mağazadan elmasla al
+  clearStreakReward: () => void;
   usePower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => void; // envanterdeki tek kullanımlık gücü etkinleştir
   loadMyStats: () => void; // profil istatistiklerini iste (my_stats yanıtı)
   verifyPurchase: (receipt: string) => Promise<void>;
@@ -5964,6 +5969,182 @@ function GuessControls({ placeholder, youAnswered, tutorial, onSubmit, onPass, t
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MAÇ İÇİ ÖZEL GÜÇLER — istemci görünüm katmanı.
+// Kaynak-of-truth SUNUCU: buradaki her durum special_power_state/activated
+// olaylarından türetilir; istemci hiçbir süreyi/etkileri kendisi üretmez.
+// ANA KURAL (değişmez): maç başına 1 manuel özel güç — envanter kaç olursa olsun.
+// ═══════════════════════════════════════════════════════════════════════════
+export type SpecialPowerIdView = 'freeze' | 'reveal' | 'skip' | 'extratime' | 'secondchance';
+export const SPECIAL_POWER_LIST: SpecialPowerIdView[] = ['freeze', 'reveal', 'skip', 'extratime', 'secondchance'];
+export const SPECIAL_POWERS: Record<SpecialPowerIdView, { icon: IoniconName; color: string; nameKey: MessageKey; descKey: MessageKey; rarity: 'common' | 'rare' | 'epic' | 'legendary' }> = {
+  freeze: { icon: 'snow', color: theme.blue, nameKey: 'sp.freeze.name', descKey: 'sp.freeze.desc', rarity: 'epic' },
+  reveal: { icon: 'bulb', color: theme.gold, nameKey: 'sp.reveal.name', descKey: 'sp.reveal.desc', rarity: 'legendary' },
+  skip: { icon: 'play-skip-forward', color: theme.purple, nameKey: 'sp.skip.name', descKey: 'sp.skip.desc', rarity: 'epic' },
+  extratime: { icon: 'time', color: theme.primary, nameKey: 'sp.extratime.name', descKey: 'sp.extratime.desc', rarity: 'common' },
+  secondchance: { icon: 'heart-circle', color: theme.flame, nameKey: 'sp.secondchance.name', descKey: 'sp.secondchance.desc', rarity: 'rare' },
+};
+// Fiyatlar normalde store_catalog.specialPowers'tan gelir (sunucu config'i);
+// katalog henüz yüklenmediyse bu ayna kullanılır (sunucu varsayılanlarıyla eş).
+export const SPECIAL_POWER_PRICE_FALLBACK: Record<SpecialPowerIdView, number> = { freeze: 400, reveal: 600, skip: 350, extratime: 200, secondchance: 300 };
+export function spInventoryCount(profile: ProfileView | null | undefined, id: SpecialPowerIdView): number {
+  if (!profile) return 0;
+  return id === 'freeze' ? (profile.spFreeze ?? 0)
+    : id === 'reveal' ? (profile.spReveal ?? 0)
+    : id === 'skip' ? (profile.spSkip ?? 0)
+    : id === 'extratime' ? (profile.spExtratime ?? 0)
+    : (profile.spSecondchance ?? 0);
+}
+// Sunucudaki STREAK_MILESTONES'un GÖRÜNÜM aynası (ödülü sunucu verir; bu tablo
+// yalnız "sıradaki hedef" metnini çizer).
+export const STREAK_MILESTONES_VIEW: { streak: number; diamonds?: number; powerId?: SpecialPowerIdView }[] = [
+  { streak: 3, diamonds: 30 }, { streak: 5, diamonds: 60 }, { streak: 7, powerId: 'freeze' },
+  { streak: 10, diamonds: 120 }, { streak: 15, powerId: 'reveal' }, { streak: 20, diamonds: 300 },
+];
+
+/** Maç ekranı güç düğmesi: iki-dokunuş onayı (yanlışlıkla harcama olmasın),
+ * KULLANILDI durumunda gri/kilitli — oyuncu bu maçta başka güç olmadığını görür. */
+function SpecialPowerHud({ state, actions }: Props) {
+  const sp = state.specialPower;
+  const [armed, setArmed] = useState(false);
+  const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (armTimer.current) clearTimeout(armTimer.current); }, []);
+  if (!sp?.enabled || !sp.you.powerId) return null;
+  const meta = SPECIAL_POWERS[sp.you.powerId as SpecialPowerIdView];
+  if (!meta) return null;
+  const used = sp.you.used;
+  const onPress = () => {
+    if (used || sp.pending) { triggerFeedback(GameFeedbackEvent.UI_DISABLED); return; }
+    if (!armed) {
+      setArmed(true);
+      triggerFeedback(GameFeedbackEvent.UI_TAP);
+      armTimer.current = setTimeout(() => setArmed(false), 2600);
+      return;
+    }
+    if (armTimer.current) clearTimeout(armTimer.current);
+    setArmed(false);
+    actions.useSpecialPower(sp.you.powerId!);
+  };
+  return (
+    <Pressable onPress={onPress} hitSlop={8} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: used ? theme.well : withAlpha(meta.color, 0.16), borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7, borderWidth: 1.5, borderColor: used ? theme.border : withAlpha(meta.color, armed ? 1 : 0.6) }}>
+      <Ionicons name={meta.icon} size={17} color={used ? theme.muted : meta.color} />
+        <Text style={{ color: used ? theme.muted : theme.text, fontFamily: 'Poppins-Black', fontSize: 11 }}>
+          {used ? t('sp.used') : armed ? t('sp.confirmTap') : `×${sp.you.qty}`}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+/** ❄ SEN dondun: giriş yerine buz paneli + geri sayım. Yalnız gameplay girişi
+ * kilitli — uygulama/soket/sayaç akmaya devam eder (kural sunucuda da var). */
+function FrozenPanel({ until }: { until: number }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((v) => v + 1), 200);
+    return () => clearInterval(id);
+  }, []);
+  const secs = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+  return (
+    <View style={{ alignItems: 'center', gap: 5, backgroundColor: withAlpha(theme.blue, 0.13), borderRadius: 18, borderWidth: 1.5, borderColor: withAlpha(theme.blue, 0.55), paddingVertical: 16, marginTop: 6 }}>
+      <Ionicons name="snow" size={32} color={theme.blue} />
+      <Text style={{ color: theme.blue, fontFamily: 'Poppins-Black', fontSize: 15, letterSpacing: 0.8 }}>{t('sp.frozenTitle')}</Text>
+      <Text style={{ color: theme.text, fontFamily: 'Poppins-Black', fontSize: 28, fontVariant: ['tabular-nums'] }}>{secs}</Text>
+      <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 11.5 }}>{t('sp.frozenHint')}</Text>
+    </View>
+  );
+}
+
+/** 💡 Reveal cevabı — yalnız kullanan görür; yazıp göndermek oyuncuya kalır
+ * (network yarışı ve yazma temposu bozulmaz). */
+function RevealChip({ name }: { name: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, alignSelf: 'center', backgroundColor: withAlpha(theme.gold, 0.15), borderRadius: 14, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1.5, borderColor: withAlpha(theme.gold, 0.6), marginBottom: 8 }}>
+      <Ionicons name="bulb" size={18} color={theme.gold} />
+      <View>
+        <Text style={{ color: theme.text, fontFamily: 'Poppins-Black', fontSize: 14.5 }}>{name}</Text>
+        <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 10.5 }}>{t('sp.revealHint')}</Text>
+      </View>
+    </View>
+  );
+}
+
+/** Güç sunum katmanı: etkinleştirme/ikinci-şans/ret olaylarını KISA (≈1sn),
+ * oyunu durdurmayan bir bandroll ile iki tarafta da duyurur — hiçbir güç sessiz
+ * gerçekleşmez (spec §41, §78). Oyun durumu bu animasyonu asla beklemez. */
+function SpecialPowerOverlays({ state }: { state: GameState }) {
+  const [visible, setVisible] = useState<null | { title: string; sub?: string; icon: IoniconName; color: string }>(null);
+  const anim = useRef(new Animated.Value(0)).current;
+  const show = (v: { title: string; sub?: string; icon: IoniconName; color: string }, holdMs = 850) => {
+    setVisible(v);
+    anim.setValue(0);
+    Animated.sequence([
+      Animated.spring(anim, { toValue: 1, friction: 6, tension: 130, useNativeDriver: true }),
+      Animated.delay(holdMs),
+      Animated.timing(anim, { toValue: 0, duration: 170, useNativeDriver: true }),
+    ]).start(({ finished }) => { if (finished) setVisible(null); });
+  };
+
+  const ev = state.spEvent;
+  const evSeq = useRef(0);
+  useEffect(() => {
+    if (!ev || ev.seq === evSeq.current) return;
+    evSeq.current = ev.seq;
+    const meta = SPECIAL_POWERS[ev.powerId as SpecialPowerIdView];
+    if (!meta) return;
+    const secs = String(Math.round((state.specialPower?.config.extraTimeMs ?? 7000) / 1000));
+    const title = ev.powerId === 'extratime' && ev.mine
+      ? t('sp.you.extratime', { s: secs })
+      : t(`${ev.mine ? 'sp.you.' : 'sp.opp.'}${ev.powerId}` as MessageKey);
+    track(ev.mine ? 'special_power_used_client' : 'opponent_power_received', { power_id: ev.powerId });
+    if (ev.mine) {
+      triggerFeedback(
+        ev.powerId === 'freeze' ? GameFeedbackEvent.SP_FREEZE
+          : ev.powerId === 'reveal' ? GameFeedbackEvent.SP_REVEAL
+          : ev.powerId === 'skip' ? GameFeedbackEvent.SP_SKIP
+          : ev.powerId === 'extratime' ? GameFeedbackEvent.SP_EXTRATIME
+          : GameFeedbackEvent.SP_SECONDCHANCE,
+      );
+    } else {
+      triggerFeedback(ev.powerId === 'freeze' ? GameFeedbackEvent.SP_FROZEN_HIT : GameFeedbackEvent.SP_OPPONENT);
+    }
+    show({ title, sub: t(meta.nameKey), icon: meta.icon, color: meta.color });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ev?.seq]);
+
+  const sc = state.spSecondChance;
+  const scSeq = useRef(0);
+  useEffect(() => {
+    if (!sc || sc.seq === scSeq.current) return;
+    scSeq.current = sc.seq;
+    triggerFeedback(GameFeedbackEvent.SP_SC_TRIGGERED);
+    show({ title: sc.mine ? t('sp.scTriggeredYou') : t('sp.scTriggeredOpp'), icon: 'heart-circle', color: theme.flame }, 1100);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sc?.seq]);
+
+  const den = state.spDenied;
+  const denSeq = useRef(0);
+  useEffect(() => {
+    if (!den || den.seq === denSeq.current) return;
+    denSeq.current = den.seq;
+    triggerFeedback(GameFeedbackEvent.UI_ERROR);
+    show({ title: t(`sp.denied.${den.reason}` as MessageKey), icon: 'close-circle', color: theme.danger }, 900);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [den?.seq]);
+
+  if (!visible) return null;
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', zIndex: 80 }]}>
+      <Animated.View style={{ opacity: anim, transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.72, 1] }) }], alignItems: 'center', gap: 7, backgroundColor: withAlpha('#0B1838', 0.9), borderRadius: 22, paddingHorizontal: 26, paddingVertical: 17, borderWidth: 2, borderColor: withAlpha(visible.color, 0.6), maxWidth: 300 }}>
+        <Ionicons name={visible.icon} size={42} color={visible.color} />
+        <Text style={{ color: theme.text, fontFamily: 'Poppins-Black', fontSize: 16, textAlign: 'center', letterSpacing: 0.5 }}>{visible.title}</Text>
+        {visible.sub ? <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 11.5 }}>{visible.sub}</Text> : null}
+      </Animated.View>
+    </View>
+  );
+}
+
 export function GuessScreen({ state, actions, tutorial, prefill }: Props & { prefill?: string }) {
   // Tutorial: the answer arrives PRE-FILLED and locked — the player only taps
   // Send. `prefill` overrides the tutorial's real name: DevShot marketing
@@ -5992,6 +6173,18 @@ export function GuessScreen({ state, actions, tutorial, prefill }: Props & { pre
     }, 250);
     return () => clearInterval(id);
   }, [retryAt]);
+  // ❄ Freeze: sunucu damgasına kadar kendi girişin kilitli (görsel + yerel).
+  const frozenUntil = state.spFrozenUntil;
+  const [, setFzTick] = useState(0);
+  useEffect(() => {
+    if (!frozenUntil || Date.now() >= frozenUntil) return undefined;
+    const id = setInterval(() => {
+      setFzTick((v) => v + 1);
+      if (Date.now() >= frozenUntil) clearInterval(id);
+    }, 200);
+    return () => clearInterval(id);
+  }, [frozenUntil]);
+  const frozen = !!frozenUntil && Date.now() < frozenUntil;
   const coolingDown = !!retryAt && Date.now() < retryAt && !state.youBurned;
   const retrySecs = coolingDown ? Math.max(1, Math.ceil(((retryAt ?? 0) - Date.now()) / 1000)) : 0;
   const onLastChance = !!retryAt && !coolingDown && !state.youBurned; // ikinci hak açık
@@ -6029,6 +6222,7 @@ export function GuessScreen({ state, actions, tutorial, prefill }: Props & { pre
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
         <MatchExitButton onPress={handleLeave} />
         <PlayerBar state={state} onEmotePress={tutorial ? undefined : () => setEmoteOpen(true)} />
+        {!tutorial ? <SpecialPowerHud state={state} actions={actions} /> : null}
       </View>
       <View style={styles.teamsRow}>
         <Animated.View style={[styles.teamCard, { transform: [{ translateX: leftX }], opacity: reveal }]}>
@@ -6147,20 +6341,26 @@ export function GuessScreen({ state, actions, tutorial, prefill }: Props & { pre
                   <Text style={styles.passHintText}>{t('guess.retryNow')}</Text>
                 </View>
               ) : null}
-              <GuessControls
-                placeholder={state.revealMode === 'player-player' ? t('guess.placeholderClub') : t('guess.placeholder')}
-                youAnswered={youAnswered}
-                tutorial={tutorial}
-                onSubmit={actions.submitGuess}
-                onPass={actions.pass}
-                textRef={guessTextRef}
-              />
+              {state.spReveal ? <RevealChip name={state.spReveal.playerName} /> : null}
+              {frozen && frozenUntil ? (
+                <FrozenPanel until={frozenUntil} />
+              ) : (
+                <GuessControls
+                  placeholder={state.revealMode === 'player-player' ? t('guess.placeholderClub') : t('guess.placeholder')}
+                  youAnswered={youAnswered}
+                  tutorial={tutorial}
+                  onSubmit={actions.submitGuess}
+                  onPass={actions.pass}
+                  textRef={guessTextRef}
+                />
+              )}
             </>
           )}
         </Animated.View>
       )}
       {/* trailing room so the last button can scroll clear of the keyboard on short screens */}
       <View style={{ height: 32 }} />
+      {!tutorial ? <SpecialPowerOverlays state={state} /> : null}
       <LeaveConfirmModal visible={showLeaveConfirm} kind={leaveKind} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
       {!tutorial ? <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} /> : null}
     </Screen>
@@ -7734,6 +7934,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
   const coPassMissing = useRef<number | null>(null);
   // Mağazadan güç satın alma onayı
   const [confirmPower, setConfirmPower] = useState<PowerId | null>(null);
+  const [confirmSpecial, setConfirmSpecial] = useState<SpecialPowerIdView | null>(null);
   const powerShortfall = useRef<number | null>(null); // insufficient at confirm -> hand off on exit
   const powerShortfallReason = useRef<{ required?: number; current?: number; source?: string } | null>(null);
   // CO Pass satın alma onayı (mağazadan doğrudan)
@@ -8014,7 +8215,68 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
                     </View>
                   ) : null}
                 </View>
-                <Text style={{ flex: 1, color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t(POWERS[pid].nameKey)}</Text>
+                {/* Ad + "elinde N adet": rozetteki x4 ENVANTER sayisi, paket
+                    adedi degil. Ikisi yan yana durunca "4 tanesi 250 elmas"
+                    diye okunuyordu (kullanici sikayeti 2026-08-27). */}
+                <View style={{ flex: 1, gap: 1 }}>
+                  <Text style={{ color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t(POWERS[pid].nameKey)}</Text>
+                  {count > 0 ? (
+                    <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold' }}>{t('store.powerOwned', { n: String(count) })}</Text>
+                  ) : null}
+                </View>
+                <View style={{ alignItems: 'center', gap: 2 }}>
+                  <Text style={{ color: theme.muted, fontSize: 9, fontFamily: 'Poppins-Black', letterSpacing: 0.8 }}>{t('store.powerEach')}</Text>
+                  <Btn
+                    compact
+                    kind="primary"
+                    gem
+                    label={String(price)}
+                    feedback={GameFeedbackEvent.UI_PURCHASE}
+                    onPress={() => {
+                      const have = profile?.diamonds ?? 0;
+                      if (have >= price) setConfirmPower(pid);
+                      else openShortfallSheet(price - have, { required: price, current: have, source: 'store_power' });
+                    }}
+                  />
+                </View>
+              </View>
+            );
+          })}
+        </Animated.View>
+
+        {/* MAÇ GÜÇLERİ — maç içi Özel Güçler. Fiyatlar store_catalog.specialPowers'tan
+            (sunucu config'i); "maç başına 1 kullanım" burada AÇIKÇA yazılır (spec §47). */}
+        <Animated.View style={sectionIn(2)}>
+          <SectionHeader label={t('store.specialPowers')} icon="sparkles" />
+          <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', marginLeft: 4, marginBottom: 8, lineHeight: 15 }}>{t('store.spDisclosure')}</Text>
+          {SPECIAL_POWER_LIST.map((spid) => {
+            const meta = SPECIAL_POWERS[spid];
+            const count = spInventoryCount(profile, spid);
+            const price = catalog?.specialPowers?.find((x) => x.id === spid)?.price ?? SPECIAL_POWER_PRICE_FALLBACK[spid];
+            const equipped = (profile?.equippedSpecialPower ?? null) === spid;
+            return (
+              <View key={spid} style={styles.storeEmoteCard}>
+                <View>
+                  <View style={{ width: 52, height: 52, borderRadius: 15, backgroundColor: withAlpha(meta.color, 0.16), borderWidth: 1.5, borderColor: withAlpha(meta.color, 0.55), alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name={meta.icon} size={26} color={meta.color} />
+                  </View>
+                  {count > 0 ? (
+                    <View style={{ position: 'absolute', right: -6, top: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 4, backgroundColor: meta.color, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ color: theme.ink, fontSize: 10, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>x{count}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={{ flex: 1, gap: 1 }}>
+                  <Text style={{ color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t(meta.nameKey)}</Text>
+                  <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', lineHeight: 14 }} numberOfLines={2}>{t(meta.descKey)}</Text>
+                  {count > 0 ? (
+                    <Pressable hitSlop={6} onPress={() => { triggerFeedback(GameFeedbackEvent.UI_TOGGLE_ON); actions.equipSpecialPower(equipped ? null : spid); }}>
+                      <Text style={{ color: equipped ? theme.primary : theme.muted, fontSize: 10.5, fontFamily: 'Poppins-Black', letterSpacing: 0.6, marginTop: 2 }}>
+                        {equipped ? '✓ ' + t('store.spEquipped') : t('store.spEquip')}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
                 <Btn
                   compact
                   kind="primary"
@@ -8023,8 +8285,8 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
                   feedback={GameFeedbackEvent.UI_PURCHASE}
                   onPress={() => {
                     const have = profile?.diamonds ?? 0;
-                    if (have >= price) setConfirmPower(pid);
-                    else openShortfallSheet(price - have, { required: price, current: have, source: 'store_power' });
+                    if (have >= price) setConfirmSpecial(spid);
+                    else openShortfallSheet(price - have, { required: price, current: have, source: 'store_special_power' });
                   }}
                 />
               </View>
@@ -8195,6 +8457,32 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
               else { powerShortfall.current = price - have; powerShortfallReason.current = { required: price, current: have, source: 'store_power_confirm' }; setConfirmPower(null); }
             }} />
               <Btn label={t('store.cancel')} kind="ghost" onPress={() => setConfirmPower(null)} />
+            </View>
+          </View>
+        ) : null}
+      </GameModal>
+
+      {/* Özel Güç satın alma onayı — fiyat + 'maç başına 1 kullanım' açıklaması */}
+      <GameModal
+        visible={confirmSpecial != null}
+        onClose={() => setConfirmSpecial(null)}
+        title={confirmSpecial ? t(SPECIAL_POWERS[confirmSpecial].nameKey).toLocaleUpperCase(currentLang()) : ''}
+        icon={confirmSpecial ? SPECIAL_POWERS[confirmSpecial].icon : 'sparkles'}
+      >
+        {confirmSpecial ? (
+          <View style={{ alignItems: 'center', gap: 10 }}>
+            <View style={{ width: 84, height: 84, borderRadius: 22, backgroundColor: withAlpha(SPECIAL_POWERS[confirmSpecial].color, 0.16), borderWidth: 2, borderColor: withAlpha(SPECIAL_POWERS[confirmSpecial].color, 0.6), alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name={SPECIAL_POWERS[confirmSpecial].icon} size={42} color={SPECIAL_POWERS[confirmSpecial].color} />
+            </View>
+            <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 18 }}>{t(SPECIAL_POWERS[confirmSpecial].descKey)}</Text>
+            <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('sp.limitNote')}</Text>
+            <View style={{ alignSelf: 'stretch', marginTop: 4, gap: 8 }}>
+              <Btn big kind="primary" gem label={String(catalog?.specialPowers?.find((x) => x.id === confirmSpecial)?.price ?? SPECIAL_POWER_PRICE_FALLBACK[confirmSpecial])} feedback={GameFeedbackEvent.UI_PURCHASE} onPress={() => {
+                const spid = confirmSpecial;
+                setConfirmSpecial(null);
+                actions.buySpecialPower(spid);
+              }} />
+              <Btn label={t('store.cancel')} kind="ghost" onPress={() => setConfirmSpecial(null)} />
             </View>
           </View>
         ) : null}
@@ -12423,6 +12711,8 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
       return { icon: 'swap-horizontal' as IoniconName, color: theme.accent, headline: t('result.roundSkipped') };
     if (r.reason === 'no_common')
       return { icon: 'information' as IoniconName, color: theme.accent, headline: t('result.roundSkipped') };
+    if (r.reason === 'power_skip')
+      return { icon: 'flash' as IoniconName, color: theme.purple, headline: t('result.powerSkipped') };
     if (r.reason === 'passed')
       return { icon: 'play-skip-forward' as IoniconName, color: theme.accent, headline: t('result.roundSkipped') };
     if (r.reason === 'all_wrong')
@@ -12513,11 +12803,43 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
                 : state.revealMode === 'letter-team' ? t('result.noCommonLetter')
                 : t('result.noCommon')}
             </Text>
+          ) : r.reason === 'power_skip' ? (
+            <Text style={[styles.muted, { marginTop: 2 }]}>{state.spSkipBy === 'you' ? t('result.youSkippedPower') : t('result.oppSkippedPower')}</Text>
           ) : r.reason === 'passed' ? (
             <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.passed')}</Text>
           ) : r.reason === 'all_wrong' ? (
             <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.allWrong')}</Text>
           ) : null}
+          {/* 🔥 Seri kilometre taşı + sıradaki hedef — kayıpta bile bir sonraki
+              hedef görünür kalmaz (yalnız kazanana): kazanan "bir maç daha"
+              için net hedef görür (spec §36). Ödülün kendisi sunucudan geldi. */}
+          {matchOver ? (() => {
+            const sr = state.streakReward;
+            const streak = state.profile?.winStreak ?? 0;
+            const next = STREAK_MILESTONES_VIEW.find((m) => m.streak > streak);
+            if (!sr && !(youWon && next)) return null;
+            return (
+              <View style={{ alignItems: 'center', gap: 5, marginTop: 10 }}>
+                {sr ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: withAlpha(theme.gold, 0.14), borderRadius: 14, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1.5, borderColor: withAlpha(theme.gold, 0.55) }}>
+                    <Text style={{ fontSize: 18 }}>🔥</Text>
+                    <View>
+                      <Text style={{ color: theme.text, fontFamily: 'Poppins-Black', fontSize: 13 }}>{t('streak.rewardTitle', { n: String(sr.streak) })}</Text>
+                      <Text style={{ color: theme.gemText, fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>
+                        {sr.diamonds > 0 ? t('streak.rewardDiamonds', { n: String(sr.diamonds) }) : ''}
+                        {sr.powerId && SPECIAL_POWERS[sr.powerId as SpecialPowerIdView] ? `${sr.diamonds > 0 ? ' · ' : ''}${t('streak.rewardPower', { name: t(SPECIAL_POWERS[sr.powerId as SpecialPowerIdView].nameKey) })}` : ''}
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
+                {youWon && next ? (
+                  <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 12 }}>
+                    {t('streak.nextAt', { n: String(next.streak), reward: next.diamonds ? `${next.diamonds} 💎` : t(SPECIAL_POWERS[next.powerId!].nameKey) })}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })() : null}
           {/* "Ben de doğru yazmıştım" hissinin ilacı: kaybeden tarafa hızı açıkça söyle */}
           {r.correct && r.answeredById != null && r.answeredById !== room.youId ? (
             <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.faster', { name: r.answeredByName ?? '' })}</Text>

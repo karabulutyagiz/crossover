@@ -86,6 +86,13 @@ export interface ProfileView {
   equippedVictoryEffectId?: string | null;
   equippedAnswerEffectId?: string | null;
   highestArenaRewarded?: number; // ulaşılıp açılmış en yüksek arena index'i (0=Mahalle)
+  // Maç içi Özel Güç envanteri (maç başına 1 kullanım) + kuşanılmış güç
+  spFreeze?: number;
+  spReveal?: number;
+  spSkip?: number;
+  spExtratime?: number;
+  spSecondchance?: number;
+  equippedSpecialPower?: string | null;
 }
 
 export interface CosmeticLoadoutView {
@@ -205,12 +212,20 @@ export type ClientMsg =
   | { type: 'delete_account' }
   // Bilinçli maç terki (X onayı / arka plan hükmeni): reconnect grace atlanır,
   // rakip hükmen sonucu ANINDA görür.
-  | { type: 'leave_match'; reason?: 'leave' | 'cheat' };
+  | { type: 'leave_match'; reason?: 'leave' | 'cheat' }
+  // ---- Maç içi Özel Güçler (server-authoritative; maç başına TEK kullanım) ----
+  // requestId: idempotency anahtarı — aynı istek iki kez tüketmez. powerId,
+  // sunucudaki maç-başı anlık görüntüyle birebir tutmalıdır (uyuşmazlık = reddet).
+  | { type: 'use_special_power'; powerId: string; requestId: string }
+  // Maç dışı: hangi özel güçle maça çıkılacağını seç (null = otomatik).
+  | { type: 'equip_special_power'; powerId: string | null }
+  // Mağaza: elmasla özel güç satın al (fiyat sunucu kataloğundan).
+  | { type: 'buy_special_power'; powerId: string; qty?: number };
 
 // ---- Server -> Client ----
 export interface RoundResult {
   correct: boolean;
-  reason: VerifyReason | 'timeout' | 'no_common' | 'same_team' | 'passed' | 'all_wrong';
+  reason: VerifyReason | 'timeout' | 'no_common' | 'same_team' | 'passed' | 'all_wrong' | 'power_skip';
   autocorrected: boolean;
   answeredById: string | null;
   answeredByName: string | null;
@@ -245,8 +260,26 @@ export type ServerMsg =
   // yazan bu tur için kesin susturulmuştur (bot / süre dibi / ikinci yanlış).
   | { type: 'wrong_guess'; byId: string; byName: string; guess: string; wrongCount: number; retryAt?: number }
   // Kişiye özel ret: 'too_late' = rakip senden önce gönderdi; 'burned' = bu turda hakkın bitti.
-  | { type: 'guess_denied'; reason: 'too_late' | 'burned' | 'cooldown' }
+  | { type: 'guess_denied'; reason: 'too_late' | 'burned' | 'cooldown' | 'frozen' | 'expired' }
   | { type: 'pass_locked'; byId: string; byName: string } // a player chose to pass this round
+  // ---- Maç içi Özel Güçler ----
+  // Maç başında + reconnect'te gönderilir: SENİN kuşanılmış gücün ve kullanım
+  // durumu. Rakibin SEÇTİĞİ güç asla sızmaz (stratejik gizlilik) — yalnız
+  // KULLANDIĞI güç, kullanım ANINDA activated ile açıklanır.
+  | { type: 'special_power_state'; enabled: boolean; you: { powerId: string | null; qty: number; used: boolean; usedPowerId: string | null }; opponentUsedPowerId: string | null; config: { freezeMs: number; extraTimeMs: number }; activeFreezeUntil?: number; yourDeadline?: number }
+  // İKİ istemciye de aynı olay: kim, hangi güç, hangi tur. effect alanı güce özgü
+  // sunucu-zamanı verir (freezeUntil / newDeadline) — istemci saatine güvenilmez.
+  | { type: 'special_power_activated'; byId: string; byName: string; powerId: string; roundNumber: number; serverNow: number; effect?: { targetId?: string; freezeUntil?: number; newDeadline?: number } }
+  // YALNIZ kullanan oyuncuya: Answer Reveal'ın sunucu-verisinden gelen cevabı.
+  | { type: 'special_power_reveal'; playerName: string; imageUrl: string | null }
+  // Güce özgü SONUÇ olayı (ör. İkinci Şans tetiklendi) — iki taraf da anlar.
+  | { type: 'special_power_effect'; kind: 'second_chance_triggered'; byId: string; byName: string }
+  // Reddedilen etkinleştirme — envanter TÜKETİLMEMİŞTİR.
+  | { type: 'special_power_denied'; reason: 'already_used' | 'no_inventory' | 'round_not_active' | 'match_over' | 'too_late' | 'unavailable' | 'invalid'; requestId?: string }
+  | { type: 'special_power_equipped'; powerId: string | null; profile: ProfileView }
+  | { type: 'special_power_purchased'; powerId: string; profile: ProfileView }
+  // Galibiyet serisi kilometre taşı ödülü (maç sonu, trophy_update'ten sonra).
+  | { type: 'streak_reward'; streak: number; diamonds: number; powerId: string | null; profile: ProfileView }
   // matchOver: a player reached `target` wins → the match is over (offer rematch).
   | {
       type: 'result';
@@ -276,7 +309,7 @@ export type ServerMsg =
   | { type: 'emote'; fromId: string; emoteId: string } // a player in the room sent an emote
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string } // store purchase succeeded
   | { type: 'avatar_purchased'; profile: ProfileView; avatarId: string }
-  | { type: 'store_catalog'; catalog: { version: number; serverTime: string; dailyResetAt: string; weeklyResetAt: string; items: { id: string; type: string; name: string; description: string; rarity: string; diamondPrice: number; isLimited?: boolean; availableFrom?: string; availableUntil?: string }[]; featured: string[] } }
+  | { type: 'store_catalog'; catalog: { version: number; serverTime: string; dailyResetAt: string; weeklyResetAt: string; items: { id: string; type: string; name: string; description: string; rarity: string; diamondPrice: number; isLimited?: boolean; availableFrom?: string; availableUntil?: string }[]; featured: string[]; specialPowers?: { id: string; rarity: string; price: number }[] } }
   | { type: 'cosmetic_purchased'; profile: ProfileView; itemId: string; alreadyOwned?: boolean }
   | { type: 'cosmetic_equipped'; profile: ProfileView; itemId: string | null; cosmeticType: string }
   | { type: 'diamonds_granted'; profile: ProfileView; granted: number } // IAP validated → diamonds added

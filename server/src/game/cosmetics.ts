@@ -1,4 +1,5 @@
 import { pool } from '../db/pool.ts';
+import { specialPowerCatalog } from './specialPowers.ts';
 import type { UserProfile } from './rank.ts';
 
 export type CosmeticType = 'frame' | 'name_effect' | 'match_background' | 'ball' | 'intro' | 'victory_effect' | 'answer_effect' | 'avatar' | 'emote';
@@ -35,6 +36,8 @@ export interface StoreCatalogView {
   weeklyResetAt: string;
   items: CosmeticItem[];
   featured: string[];
+  // Maç içi Özel Güç fiyat/rarity kataloğu — istemci fiyat hardcode etmez.
+  specialPowers?: { id: string; rarity: string; price: number }[];
 }
 
 export const STORE_CATALOG_VERSION = 1;
@@ -106,19 +109,35 @@ export function isFreeDefaultCosmetic(item: CosmeticItem): boolean {
   return item.diamondPrice === 0;
 }
 
-export function storeCatalog(now = new Date()): StoreCatalogView {
-  const dailyResetAt = nextUtcBoundary(now, 1);
-  const pool = COSMETIC_ITEMS.filter((item) => item.diamondPrice > 0);
-  // HAFTALIK vitrin (2026-08-26: "daily shop değil weekly shop"): seçki haftada
-  // bir, Pazartesi 00:00 UTC'de döner. Epoch günü 0 Perşembe olduğundan +3
-  // kaydırma hafta sınırlarını Pazartesi'ye oturtur — istemcideki sayaç da
-  // Pazartesi'ye sayar, ikisi aynı anda sıfırlanır.
+// HAFTALIK vitrin (2026-08-26: "daily shop değil weekly shop"): seçki haftada
+// bir, Pazartesi 00:00 UTC'de döner. Epoch günü 0 Perşembe olduğundan +3
+// kaydırma hafta sınırlarını Pazartesi'ye oturtur — istemcideki sayaç da
+// Pazartesi'ye sayar, ikisi aynı anda sıfırlanır.
+export function storeWeek(now = new Date()): { weekIndex: number; resetAt: Date } {
   const epochDay = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) / 86_400_000);
   const weekIndex = Math.floor((epochDay + 3) / 7);
-  const weeklyResetAt = new Date(((weekIndex + 1) * 7 - 3) * 86_400_000);
+  return { weekIndex, resetAt: new Date(((weekIndex + 1) * 7 - 3) * 86_400_000) };
+}
+
+/**
+ * Bu haftanın vitrini — mağazada FİİLEN satılan kozmetikler.
+ * TEK KAYNAK: Günlük Fırsat da buradan seçer. Vitrin dışından bir ürün
+ * "fırsat" diye gösterilirse kullanıcı mağazada bulamıyor (Altın Çerçeve
+ * şikâyeti, 2026-08-27) — bu yüzden havuz burada tanımlıdır, çoğaltılmaz.
+ */
+export function featuredCosmetics(now = new Date()): CosmeticItem[] {
+  const pool = COSMETIC_ITEMS.filter((item) => item.diamondPrice > 0);
+  const { weekIndex } = storeWeek(now);
   // weekIndex*5: ardışık haftalar tek adım kaymasın, seçki gözle görülür tazelensin.
-  const featured = Array.from({ length: Math.min(8, pool.length) }, (_, i) => pool[(weekIndex * 5 + i * 7) % pool.length]!.id);
-  return { version: STORE_CATALOG_VERSION, serverTime: now.toISOString(), dailyResetAt: dailyResetAt.toISOString(), weeklyResetAt: weeklyResetAt.toISOString(), items: [...COSMETIC_ITEMS], featured };
+  return Array.from({ length: Math.min(8, pool.length) }, (_, i) => pool[(weekIndex * 5 + i * 7) % pool.length]!);
+}
+
+export function storeCatalog(now = new Date()): StoreCatalogView {
+  const dailyResetAt = nextUtcBoundary(now, 1);
+  const weeklyResetAt = storeWeek(now).resetAt;
+  const featured = featuredCosmetics(now).map((item) => item.id);
+  // Özel Güç fiyatları da katalogla gider — istemci fiyat hardcode etmez (spec §73).
+  return { version: STORE_CATALOG_VERSION, serverTime: now.toISOString(), dailyResetAt: dailyResetAt.toISOString(), weeklyResetAt: weeklyResetAt.toISOString(), items: [...COSMETIC_ITEMS], featured, specialPowers: specialPowerCatalog().map((d) => ({ id: d.id, rarity: d.rarity, price: d.price })) };
 }
 
 function nextUtcBoundary(now: Date, days: number): Date {

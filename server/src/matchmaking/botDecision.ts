@@ -83,7 +83,13 @@ export function botKnowsProbability(profile: BotProfile, context: BotQuestionCon
   const base = profile.footballKnowledge * (1 - difficulty * 0.70) + depthFit * 0.18 + popularity * (0.12 + (1 - difficulty) * 0.08);
   const accuracyAnchor = difficulty < 0.34 ? profile.easyAccuracy : difficulty < 0.72 ? profile.mediumAccuracy : profile.hardAccuracy;
   const raw = (base * 0.50 + accuracyAnchor * 0.50) * domainFamiliarity;
-  const floor = live.killSwitches.botKnowledgeFloorEnabled ? knowledgeFloor(difficulty, popularity) : 0;
+  // Yeni oyuncu korumasi bilgi TABANINI da eritir (2026-08-27) — ama zorluga
+  // bagli: bariz sorularda (Ronaldo seviyesi) taban DOKUNULMAZ, bot inandirici
+  // kalir; orta/derin sorularda korunan botun tabani %40'a kadar iner ki
+  // direktorun "kolay bot" hedefi sahada gercege donussun. Koruma yoksa eski.
+  const protection = clamp(profile.difficultyDirector?.newPlayerProtection ?? 0, 0, 1);
+  const floorScale = 1 - protection * clamp((difficulty - 0.20) * 0.9, 0, 0.40);
+  const floor = live.killSwitches.botKnowledgeFloorEnabled ? knowledgeFloor(difficulty, popularity) * floorScale : 0;
   const p = Math.max(raw, floor);
   return clamp(p, 0.015, 0.985);
 }

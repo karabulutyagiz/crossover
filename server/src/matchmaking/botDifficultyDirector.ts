@@ -115,7 +115,10 @@ export function runBotDifficultyDirector(input: BotDifficultyDirectorInput): Bot
   const momentumAdjustmentMmr = momentumAdjustment(momentumScore, intentionalLossRisk);
   const recoveryAdjustmentMmr = recoveryAdjustment(frustrationRisk, intentionalLossRisk, recoveryCooldownActive, live.killSwitches.recoveryAdjustmentEnabled);
   const dominanceAdjustmentMmr = dominanceAdjustment(dominanceScore, smurfSuspicion);
-  const pressureAdjustmentMmr = Math.round(clamp((input.pressureProfile?.pressure ?? 0) * 95 - (input.pressureProfile?.relief ?? 0) * 55 + (input.velocityPressure ?? 0) * 75, -54, 115));
+  // Farm baskısı zorluğu ancak HAFİF itebilir (115→70, 2026-08-27): hızlı kupa
+  // kazanan oyuncuya botları sertleştirmek "kazanınca oyun beni cezalandırıyor"
+  // hissi veriyordu — tutundurma önceliği antifarm baskısının önündedir.
+  const pressureAdjustmentMmr = Math.round(clamp((input.pressureProfile?.pressure ?? 0) * 70 - (input.pressureProfile?.relief ?? 0) * 55 + (input.velocityPressure ?? 0) * 45, -54, 70));
   const liveOpsAdjustmentMmr = live.killSwitches.botDifficultyLiveTuningEnabled ? cfg.liveOpsSkillOffsetMmr : 0;
   let targetSkillMean = protectedTarget + formAdjustmentMmr + frustrationAdjustmentMmr + momentumAdjustmentMmr + recoveryAdjustmentMmr + dominanceAdjustmentMmr + pressureAdjustmentMmr + liveOpsAdjustmentMmr;
   const beforeSmoothing = targetSkillMean;
@@ -278,7 +281,9 @@ function competitiveStateFor(
   if (smurf >= 0.58 || dominance >= 0.78 || (form.winStreak >= 4 && form.avgScoreMargin >= 1.8)) return 'DOMINATING';
   if (dominance >= 0.56 || momentum >= 0.68) return 'PERFORMING_WELL';
   if (intentionalLossRisk >= intentionalBlockThreshold) return 'BALANCED';
-  if (frustration >= 0.68 || form.lossStreak >= 4 || (form.blowoutLossRate >= 0.5 && form.lossStreak >= 2)) return 'STRUGGLING';
+  // Merhamet eşiği 4→3 (2026-08-27): 3 üst üste kayıp churn uçurumudur —
+  // kayıptan kaçınma kazanç hazzının ~2 katı; 4. kaybı beklemek geç kalmaktır.
+  if (frustration >= 0.68 || form.lossStreak >= 3 || (form.blowoutLossRate >= 0.5 && form.lossStreak >= 2)) return 'STRUGGLING';
   if (frustration >= 0.42 || form.lossStreak >= 2 || form.lossRate >= 0.62) return 'SLIGHTLY_STRUGGLING';
   return 'BALANCED';
 }

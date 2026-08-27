@@ -30,10 +30,12 @@ import { recordBotRoundOutcome } from '../matchmaking/botTelemetry.ts';
 import type { BotDifficultyDirectorOutput } from '../matchmaking/botDifficultyDirector.ts';
 import { defaultSkillProfile, updateSkillAfterMatch, type SkillRoundSignal } from '../matchmaking/skillRating.ts';
 import { assessFarmRisk, recordOpponentHistory } from '../matchmaking/antiFarm.ts';
-import { isTurkishClub } from '../game/clubPopularity.ts';
 import { getTrophyEconomyState } from '../matchmaking/trophyEconomy.ts';
 import { trophyRiskMultipliers } from '../matchmaking/trophyRisk.ts';
 import { createMatchClubSelectionState, recordMatchupClubs, selectBotTeamForMatchup, type MatchClubSelectionState } from '../game/matchupSelection.ts';
+import { consumeSpecialPower, getSpecialPowerInventory, grantSpecialPower, snapshotEquipped, specialPowersConfig, isSpecialPowerId, type SpecialPowerId } from '../game/specialPowers.ts';
+import { stableRolloutBucket } from '../matchmaking/liveOpsConfig.ts';
+import { toProfileView } from '../game/profileView.ts';
 import type { KnowledgeDomain } from '../matchmaking/botProfiles.ts';
 import type {
   ClientMsg,
@@ -89,7 +91,10 @@ export interface Transport {
   getBotDifficultyDirector?(): BotDifficultyDirectorOutput | null;
   // İstemcinin bildirdiği yetenek bayrakları (ws/server.ts kayıt sırasında yazar).
   // 'wrongopen': yanlış cevapta turun açık kalmasını ve yeni mesajları anlar.
+  // 'specialpowers': maç içi Özel Güç mesajlarını anlar (oda-bazlı etkinleşme şartı).
   caps?: string[];
+  // Botun bu maç için planladığı özel güç (varsa) — startMatch anlık görüntüye alır.
+  botSpecialPowerPlan?: { powerId: SpecialPowerId } | null;
 }
 
 interface Player {
@@ -140,7 +145,32 @@ interface Round {
   question?: QuestionDifficultyEstimate;
   skillSignalRecorded?: Set<string>;
   wrongAttempts?: Map<string, number>;
+  // ---- Özel Güç TUR-KAPSAMLI etkileri (tur bitince obje ile birlikte ölür) ----
+  // Freeze: playerId → girişin kilitli olduğu son an (epoch ms). Sunucu saati
+  // source-of-truth — istemcinin görsel durumuna asla güvenilmez.
+  frozenUntil?: Map<string, number>;
+  // Extra Time: playerId → o oyuncuya ÖZEL son teslim anı (epoch ms).
+  // Kayıtlı değilse oyuncunun son teslim anı guessEndsAt'tir.
+  deadlineOverride?: Map<string, number>;
+  // Skip KABUL edildi, tur kapanışı (async cevap listesi) uçuşta — yeni giriş alma.
+  powerSkipPending?: boolean;
   finished: boolean;
+}
+
+// ---- Özel Güç MAÇ-KAPSAMLI oyuncu durumu ----
+// ANA KURAL: maç başına TOPLAM 1 manuel özel güç. Bu yapı reconnect/restart'ta
+// oda yaşadığı sürece korunur; istemci yeniden bağlanınca aynen geri gönderilir.
+interface PlayerSpecialPowerState {
+  equippedId: SpecialPowerId | null; // maç başında alınan anlık görüntü (değiştirilemez)
+  qty: number;                       // anlık görüntüdeki stok (yalnız gösterim)
+  used: boolean;
+  usedPowerId: SpecialPowerId | null;
+  usedAtRound: number | null;
+  usedAt: number | null;
+  requestId: string | null;          // idempotency: aynı requestId ikinci kez tüketmez
+  pendingConsume: boolean;           // DB tüketimi uçuşta — çift istek kilidi
+  armedSecondChance: boolean;        // İkinci Şans kuşanıldı (maç boyu, bir kez tetiklenir)
+  secondChanceTriggered: boolean;
 }
 
 export class Room {
@@ -181,6 +211,10 @@ export class Room {
   private usedClubIds = new Set<number>();
   private usedCountries = new Set<string>();
   private clubSelection: MatchClubSelectionState = createMatchClubSelectionState();
+  // Özel Güç maç durumu (playerId → durum). Oda yaşadıkça korunur — reconnect
+  // limiti sıfırlayamaz. startMatch her maçta tazeler.
+  private specialPowers = new Map<string, PlayerSpecialPowerState>();
+  private specialPowersEnabled = false;
 
   constructor(code: string, onEmpty: (code: string) => void) {
     this.code = code;
@@ -296,13 +330,9 @@ export class Room {
         log.warn('bot_matchup_selection_failed', { room: this.code, playerId, error: err instanceof Error ? err.message : String(err) });
         return null;
       });
-      if (selected?.club) {
-        // Türk turu planı muhasebesi: bu seçim Türk'se plan tüketildi; her
-        // durumda bot seçim sayacı ilerler (hedef tur kaydırmalı yakalanır).
-        if (isTurkishClub(selected.club.name)) this.clubSelection.turkishUsed = true;
-        this.clubSelection.botPickIndex += 1;
-        return selected.club;
-      }
+      // Türk turu muhasebesi (turkishUsed/botPickIndex) artık seçimin İÇİNDE
+      // (finalizePick) — gecikmiş planda zorunlu Türk adayı da orada seçilir.
+      if (selected?.club) return selected.club;
       const fallback = await botPickFromPool(difficulty, humanTeamId, avoid);
       if (fallback) return fallback;
     }
@@ -408,6 +438,9 @@ export class Room {
       p.transport = transport;
       p.connected = true;
       this.broadcastState();
+      // Reconnect: özel güç durumu SUNUCUDAN geri yüklenir — restart limiti
+      // sıfırlayamaz, aktif freeze/uzatılmış süre kaldığı yerden gösterilir.
+      this.sendSpecialPowerStateTo(p.id);
       return { ok: true, id: p.id };
     }
     return { ok: false, error: 'Maça geri dönülemedi' };
@@ -543,7 +576,7 @@ export class Room {
           if (winner.userId) {
             const winnerSkill = this.playerSkillFor(winner);
             const leaverSkill = this.playerSkillFor(p);
-            const { profile, delta, arenaReward, expectedWinProbability } = await applyMatchResult(winner.userId, true, {
+            const { profile, delta, arenaReward, expectedWinProbability, streakReward } = await applyMatchResult(winner.userId, true, {
               opponentTrophies: p.trophies ?? null,
               playerSkillMean: winnerSkill.skillMean,
               playerSkillUncertainty: winnerSkill.skillUncertainty,
@@ -557,6 +590,7 @@ export class Room {
             });
             await recordOpponentHistory({ matchId: this.matchId, playerId: winner.userId, opponentId: p.userId ?? null, opponentType: 'HUMAN', winnerId: winner.userId, won: true, trophyDelta: delta, durationSecs: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0 });
             winner.transport.send({ type: 'trophy_update', matchId: this.matchId, trophies: profile.trophies, delta, arena: profile.arena, diamonds: profile.diamonds, arenaReward, highestArenaRewarded: profile.highestArenaRewarded, winStreak: profile.winStreak, bestStreak: profile.bestStreak });
+            if (streakReward) winner.transport.send({ type: 'streak_reward', streak: streakReward.streak, diamonds: streakReward.diamonds, powerId: streakReward.powerId, profile: toProfileView(profile) });
             const xpRes = await awardMatchXp(winner.userId, true, false);
             if (xpRes) winner.transport.send({ type: 'xp_update', ...xpRes });
             await updateSkillAfterMatch(winner.userId, winner.trophies ?? profile.trophies, {
@@ -714,6 +748,8 @@ export class Room {
         return void this.handleSearchPlayers(playerId, msg.q);
       case 'search_clubs':
         return void this.handleSearch(playerId, msg.reqId, msg.q);
+      case 'use_special_power':
+        return void this.handleUseSpecialPower(playerId, msg.powerId, msg.requestId);
       default:
         this.sendTo(playerId, { type: 'error', message: 'Unexpected message' });
     }
@@ -745,6 +781,11 @@ export class Room {
     this.usedCountries.clear();
     this.clubSelection = createMatchClubSelectionState();
     this.recentBotPicks = [];
+    // Özel Güçler: her maç taze durum + envanter ANLIK GÖRÜNTÜSÜ (maç sürerken
+    // envanter değişse de seçim kilitli kalır — exploit kapısı yok).
+    this.specialPowers.clear();
+    this.specialPowersEnabled = this.computeSpecialPowersEnabled();
+    if (this.specialPowersEnabled) void this.initSpecialPowerStates();
     this.matchStartedAt = Date.now(); // maç süresi ölçümü (admin istatistikleri)
     for (const p of this.players.values()) { p.score = 0; p.wrongCount = 0; }
     const hasBot = [...this.players.values()].some((p) => p.transport.isBot);
@@ -1311,6 +1352,7 @@ export class Room {
 
   private handleGuess(playerId: string, text: string): void {
     if (this.status !== 'guess' || !this.round || this.round.finished) return;
+    if (this.round.powerSkipPending) return; // Skip kabul edildi — tur kapanıyor
     if (this.round.pendingGuesses?.has(playerId)) return;
     if (this.round.burned?.has(playerId)) {
       this.players.get(playerId)?.transport.send({ type: 'guess_denied', reason: 'burned' });
@@ -1323,9 +1365,27 @@ export class Room {
       this.players.get(playerId)?.transport.send({ type: 'guess_denied', reason: 'cooldown' });
       return;
     }
+    // ❄ Freeze: giriş kilidi SUNUCUDA — istemcinin görsel durumuna güvenilmez.
+    // Bitişe 100ms kala gelen deneme de bu damgayla ölçülür (spec §18).
+    const frozenUntil = this.round.frozenUntil?.get(playerId);
+    if (frozenUntil != null && Date.now() < frozenUntil) {
+      this.players.get(playerId)?.transport.send({ type: 'guess_denied', reason: 'frozen' });
+      return;
+    }
+    // ⏱ Kişisel son teslim: Extra Time yalnız kullananın süresini uzatır.
+    // Diğer oyuncunun süresi kendi sonunda biter — tur uzayan için açık kalır.
+    if (Date.now() > this.playerDeadline(playerId)) {
+      this.players.get(playerId)?.transport.send({ type: 'guess_denied', reason: 'expired' });
+      return;
+    }
     if (this.round.passedBy?.has(playerId)) return; // you already passed this round
     (this.round.pendingGuesses ??= new Set()).add(playerId);
-    void this.evaluate(playerId, text);
+    // Değerlendirme reddi (DB hatası vb.) süreci DÜŞÜRMEZ: pending temizlenir ki
+    // oyuncu kilitli kalmasın; tur zamanlayıcısı normal akışında biter.
+    this.evaluate(playerId, text).catch((err) => {
+      log.error('guess_evaluate_failed', { room: this.code, playerId, error: err instanceof Error ? err.message : String(err) });
+      this.round?.pendingGuesses?.delete(playerId);
+    });
   }
 
   // Yanlış cevap sonrası turu yeniden açar: yazan susturulur, kilit kalkar,
@@ -1408,6 +1468,13 @@ export class Room {
   // and play moves on to a fresh team pick.
   private handlePass(playerId: string): void {
     if (this.status !== 'guess' || !this.round || this.round.finished) return;
+    if (this.round.powerSkipPending) return;
+    // Freeze gameplay GİRİŞİNİ kilitler — pas da bir gameplay girişidir.
+    const fz = this.round.frozenUntil?.get(playerId);
+    if (fz != null && Date.now() < fz) {
+      this.players.get(playerId)?.transport.send({ type: 'guess_denied', reason: 'frozen' });
+      return;
+    }
     if (this.round.pendingGuesses?.has(playerId)) return;
     if (!this.round.passedBy) this.round.passedBy = new Set();
     if (this.round.passedBy.has(playerId)) return;
@@ -1467,6 +1534,7 @@ export class Room {
       if (ppv.correct && p) {
         p.score += 1;
       } else if (!ppv.correct && p) {
+        if (this.forgiveWithSecondChance(playerId, p.name)) return;
         // İkinci-hak (retry) yanlışı toplam yanlış sayacına işlenmez.
         const isRetryWrong = this.round.wrongRetryAt?.has(playerId) ?? false;
         if (!isRetryWrong) p.wrongCount += 1;
@@ -1527,6 +1595,7 @@ export class Room {
     if (v.correct && p) {
       p.score += 1;
     } else if (!v.correct && p) {
+      if (this.forgiveWithSecondChance(playerId, p.name)) return;
       // Retry yanlışı toplam yanlış sayacına işlenmez.
       const isRetryWrong = this.round.wrongRetryAt?.has(playerId) ?? false;
       if (!isRetryWrong) p.wrongCount += 1;
@@ -1565,11 +1634,20 @@ export class Room {
 
   private endRoundTimeout(): void {
     if (!this.round || this.round.finished || !this.round.teamA || !this.round.teamB) return;
+    // Extra Time bir oyuncunun son teslimini uzatmış olabilir: zamanlayıcı en
+    // geç kişisel son teslime kadar kendini yeniden kurar (sunucu-otoriter).
+    const maxDl = this.maxGuessDeadline();
+    if (Date.now() < maxDl - 40) {
+      const t = setTimeout(() => this.endRoundTimeout(), Math.max(50, maxDl - Date.now()));
+      this.timers.push(t);
+      return;
+    }
     void this.endRoundTimeoutAsync();
   }
 
   private async endRoundTimeoutAsync(): Promise<void> {
     if (!this.round || this.round.finished || !this.round.teamA || !this.round.teamB) return;
+    if (this.round.powerSkipPending) return; // Skip kabul edildi — turu o kapatacak
 
     let common: { name: string; imageUrl: string | null }[];
     if (this.gameMode === 'player-player' && this.round.playerAPick && this.round.playerBPick) {
@@ -1599,6 +1677,291 @@ export class Room {
       allClubs: [],
       commonPlayers: common,
     });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // MAÇ İÇİ ÖZEL GÜÇLER — sunucu-otoriter çekirdek.
+  // ANA KURAL: maç başına TOPLAM 1 manuel güç; hiçbir satın alma/paket/VIP bunu
+  // artıramaz. Meta korumalar (Kupa Kalkanı / Seri) bu limitin DIŞINDADIR.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /** Oda için güçler açık mı: kill-switch + yüzdeli rollout + istemci yeteneği.
+   * TÜM insan oyuncular desteklemeli — tek taraflı güç, karşıya "açıklanamayan
+   * state değişikliği" olarak yansırdı (spec §78'in tam ihlali). */
+  private computeSpecialPowersEnabled(): boolean {
+    const cfg = specialPowersConfig();
+    if (!cfg.enabled) return false;
+    const humans = [...this.players.values()].filter((pl) => !pl.transport.isBot);
+    if (!humans.length) return false;
+    for (const h of humans) {
+      if (!h.transport.caps?.includes('specialpowers')) return false;
+      if (cfg.rolloutPct < 100) {
+        const bucket = h.userId ? stableRolloutBucket(h.userId, 'special-powers-v1') : 100;
+        if (bucket >= cfg.rolloutPct) return false;
+      }
+    }
+    return true;
+  }
+
+  private async initSpecialPowerStates(): Promise<void> {
+    const matchId = this.matchId;
+    const empty = (equippedId: SpecialPowerId | null, qty: number): PlayerSpecialPowerState => ({
+      equippedId, qty, used: false, usedPowerId: null, usedAtRound: null, usedAt: null,
+      requestId: null, pendingConsume: false, armedSecondChance: false, secondChanceTriggered: false,
+    });
+    for (const pl of this.players.values()) {
+      if (pl.transport.isBot) {
+        // Bot: gerçek envanter yok — sunucu loadout planı (varsa) sanal 1 adet.
+        const plan = pl.transport.botSpecialPowerPlan ?? null;
+        this.specialPowers.set(pl.id, empty(plan?.powerId ?? null, plan ? 1 : 0));
+        continue;
+      }
+      if (!pl.userId) { this.specialPowers.set(pl.id, empty(null, 0)); continue; }
+      const inv = await getSpecialPowerInventory(pl.userId).catch(() => null);
+      if (this.matchId !== matchId) return; // rematch araya girdi — eski yükleme çöp
+      const snap = inv ? snapshotEquipped(inv) : null;
+      this.specialPowers.set(pl.id, empty(snap?.powerId ?? null, snap?.qty ?? 0));
+      this.sendSpecialPowerStateTo(pl.id);
+    }
+  }
+
+  /** Oyuncunun kendi son teslim anı: Extra Time varsa uzatılmış, yoksa turun sonu. */
+  private playerDeadline(playerId: string): number {
+    return this.round?.deadlineOverride?.get(playerId) ?? this.round?.guessEndsAt ?? Date.now();
+  }
+
+  private maxGuessDeadline(): number {
+    let max = this.round?.guessEndsAt ?? 0;
+    for (const dl of this.round?.deadlineOverride?.values() ?? []) max = Math.max(max, dl);
+    return max;
+  }
+
+  /** SENİN güç durumun + rakibin yalnız KULLANDIĞI güç (seçimi asla sızmaz —
+   * stratejik gizlilik, spec §45-46). Maç başında ve reconnect'te gönderilir. */
+  private sendSpecialPowerStateTo(playerId: string): void {
+    const pl = this.players.get(playerId);
+    if (!pl || pl.transport.isBot) return;
+    const st = this.specialPowers.get(playerId);
+    const opp = [...this.players.values()].find((x) => x.id !== playerId);
+    const oppSt = opp ? this.specialPowers.get(opp.id) : undefined;
+    const cfg = specialPowersConfig();
+    const frozenUntil = this.round?.frozenUntil?.get(playerId);
+    pl.transport.send({
+      type: 'special_power_state',
+      enabled: this.specialPowersEnabled,
+      you: { powerId: st?.equippedId ?? null, qty: st?.qty ?? 0, used: st?.used ?? false, usedPowerId: st?.usedPowerId ?? null },
+      opponentUsedPowerId: oppSt?.usedPowerId ?? null,
+      config: { freezeMs: cfg.freezeMs, extraTimeMs: cfg.extraTimeMs },
+      ...(frozenUntil != null && Date.now() < frozenUntil ? { activeFreezeUntil: frozenUntil } : {}),
+      ...(this.status === 'guess' && this.round?.guessEndsAt ? { yourDeadline: this.playerDeadline(playerId) } : {}),
+    });
+  }
+
+  /** ❤️ İkinci Şans: kuşanılmışsa yanlış cevabın cezasını BİR KEZ iptal eder —
+   * yanlış sayılmaz, susturma/ceza penceresi yok, oyuncu hemen tekrar yazabilir.
+   * İki taraf da nedenini görür (special_power_effect). true = yanlış affedildi. */
+  private forgiveWithSecondChance(playerId: string, name: string): boolean {
+    const sp = this.specialPowers.get(playerId);
+    if (!sp?.armedSecondChance || sp.secondChanceTriggered) return false;
+    sp.secondChanceTriggered = true;
+    this.round?.pendingGuesses?.delete(playerId);
+    this.broadcast({ type: 'special_power_effect', kind: 'second_chance_triggered', byId: playerId, byName: name });
+    recordTelemetry({
+      eventName: 'second_chance_triggered', matchId: this.matchId, roomCode: this.code,
+      playerId: this.players.get(playerId)?.userId ?? null,
+      opponentType: [...this.players.values()].some((x) => x.transport.isBot) ? 'BOT' : 'HUMAN',
+      payload: { roundNumber: this.roundNumber + 1 },
+    });
+    return true;
+  }
+
+  /** Etkinleştirme akışı (spec §8): doğrula → tüket (atomik) → yeniden doğrula →
+   * commit → yayınla → etkiyi uygula. Animasyon istemcinin işi; oyun durumu
+   * hiçbir animasyonu beklemez. */
+  private async handleUseSpecialPower(playerId: string, powerIdRaw: string, requestId: string): Promise<void> {
+    const pl = this.players.get(playerId);
+    if (!pl) return;
+    const deny = (reason: 'already_used' | 'no_inventory' | 'round_not_active' | 'match_over' | 'too_late' | 'unavailable' | 'invalid'): void => {
+      pl.transport.send({ type: 'special_power_denied', reason, requestId });
+      recordTelemetry({
+        eventName: 'special_power_rejected', matchId: this.matchId, roomCode: this.code,
+        playerId: pl.userId ?? null,
+        opponentType: [...this.players.values()].some((x) => x.transport.isBot) ? 'BOT' : 'HUMAN',
+        payload: { powerId: powerIdRaw, reason, roundNumber: this.roundNumber + 1 },
+      });
+    };
+    if (!this.specialPowersEnabled) return deny('unavailable');
+    const st = this.specialPowers.get(playerId);
+    if (!st || !st.equippedId) return deny('unavailable');
+    if (this.matchOver || this.status === 'lobby') return deny('match_over');
+    // İstemcinin gönderdiği powerId maç-başı anlık görüntüyle birebir tutmalı —
+    // sahte/oynanmış istemci farklı güç dayatamaz.
+    if (!isSpecialPowerId(powerIdRaw) || powerIdRaw !== st.equippedId) return deny('invalid');
+    const powerId = powerIdRaw;
+    if (st.used) {
+      // Idempotency: aynı requestId'nin tekrarı (timeout + retry) yeni tüketim
+      // YAPMAZ — önceki kabulün olayı yalnız istekçiye yeniden gönderilir.
+      if (st.requestId === requestId && st.usedPowerId) {
+        pl.transport.send({ type: 'special_power_activated', byId: playerId, byName: pl.name, powerId: st.usedPowerId, roundNumber: st.usedAtRound ?? this.roundNumber + 1, serverNow: Date.now() });
+        return;
+      }
+      return deny('already_used');
+    }
+    if (st.pendingConsume) return; // uçuşta — çift dokunuş sessizce düşer
+
+    const guessActive = this.status === 'guess' && !!this.round && !this.round.finished && !this.round.powerSkipPending;
+    if (powerId === 'skip') {
+      if (!guessActive) return deny('round_not_active');
+      // Cevap doğrulaması uçuştaysa cevap ÖNCE gelmiştir (sunucu sırası) — Skip
+      // artık turu iptal edemez, envanter tüketilmez (spec §10).
+      if ((this.round!.pendingGuesses?.size ?? 0) > 0) return deny('too_late');
+    } else if (powerId === 'freeze') {
+      if (!guessActive) return deny('round_not_active');
+    } else if (powerId === 'reveal' || powerId === 'extratime') {
+      if (!guessActive) return deny('round_not_active');
+      if (this.round!.burned?.has(playerId) || this.round!.passedBy?.has(playerId)) return deny('round_not_active');
+      if (Date.now() > this.playerDeadline(playerId)) return deny('too_late');
+    }
+    // secondchance: maç aktif olduğu sürece her an kuşanılabilir (tur beklemez).
+
+    const roundRef = this.round;
+
+    // 💡 Reveal: cevap TÜKETİMDEN ÖNCE sunucu verisinden bulunur — cevap yoksa
+    // güç hiç tüketilmez. LLM/istemci tahmini YOK (spec §11).
+    let revealAnswer: { name: string; imageUrl: string | null } | null = null;
+    if (powerId === 'reveal') {
+      revealAnswer = await this.findRevealAnswer().catch(() => null);
+      if (this.round !== roundRef || !roundRef || roundRef.finished || this.status !== 'guess') return deny('too_late');
+      if (!revealAnswer) return deny('invalid');
+    }
+
+    // ATOMİK TÜKETİM: insan → koşullu DB UPDATE (+audit); bot → sanal envanter.
+    st.pendingConsume = true;
+    if (!pl.transport.isBot && pl.userId) {
+      const consumed = await consumeSpecialPower({ userId: pl.userId, powerId, matchId: this.matchId, roundNumber: this.roundNumber + 1, requestId })
+        .catch(() => ({ ok: false as const, error: 'no_inventory' as const }));
+      if (!consumed.ok) { st.pendingConsume = false; return deny('no_inventory'); }
+      st.qty = consumed.remaining;
+    } else {
+      if (st.qty <= 0) { st.pendingConsume = false; return deny('no_inventory'); }
+      st.qty -= 1;
+    }
+    st.pendingConsume = false;
+
+    // DB beklerken tur/maç bitmiş olabilir — etki uygulanamayacaksa İADE (spec §26-27).
+    const stillValid = powerId === 'secondchance'
+      ? !this.matchOver
+      : this.round === roundRef && !!roundRef && !roundRef.finished && !roundRef.powerSkipPending && this.status === 'guess'
+        && !(powerId === 'skip' && (roundRef.pendingGuesses?.size ?? 0) > 0);
+    if (!stillValid) {
+      if (!pl.transport.isBot && pl.userId) await grantSpecialPower(pl.userId, powerId, 1, 'refund_round_finished').catch(() => {});
+      st.qty += 1;
+      return deny(this.matchOver ? 'match_over' : 'too_late');
+    }
+
+    // ── COMMIT: maç başına tek kullanım burada kilitlenir. ──
+    const now = Date.now();
+    st.used = true;
+    st.usedPowerId = powerId;
+    st.usedAtRound = this.roundNumber + 1;
+    st.usedAt = now;
+    st.requestId = requestId;
+
+    const cfg = specialPowersConfig();
+    const opp = [...this.players.values()].find((x) => x.id !== playerId);
+    let effect: { targetId?: string; freezeUntil?: number; newDeadline?: number } | undefined;
+    if (powerId === 'freeze' && opp && roundRef) {
+      // Tur sayacı DURMAZ — avantaj tam da bu (spec §17). Etki tur-kapsamlıdır:
+      // tur biterse yeni tura TAŞINMAZ (frozenUntil eski Round objesiyle ölür).
+      const until = now + cfg.freezeMs;
+      (roundRef.frozenUntil ??= new Map()).set(opp.id, until);
+      effect = { targetId: opp.id, freezeUntil: until };
+    } else if (powerId === 'extratime' && roundRef) {
+      const newDeadline = this.playerDeadline(playerId) + cfg.extraTimeMs;
+      (roundRef.deadlineOverride ??= new Map()).set(playerId, newDeadline);
+      effect = { targetId: playerId, newDeadline };
+    } else if (powerId === 'secondchance') {
+      st.armedSecondChance = true;
+    } else if (powerId === 'skip' && roundRef) {
+      // Sunucu sırası kazanır (spec §24): kabul anında tur yeni girişe kapanır —
+      // async cevap-listesi beklenirken gelen tahmin/timeout turu çalamaz.
+      roundRef.powerSkipPending = true;
+    }
+
+    // İKİ istemci de AYNI olayı alır — hiçbir güç sessiz gerçekleşmez (spec §7, §41).
+    this.broadcast({ type: 'special_power_activated', byId: playerId, byName: pl.name, powerId, roundNumber: this.roundNumber + 1, serverNow: now, effect });
+    if (powerId === 'reveal' && revealAnswer) {
+      // Cevap YALNIZ kullanana — rakip yalnız gücün kullanıldığını görür (spec §12).
+      pl.transport.send({ type: 'special_power_reveal', playerName: revealAnswer.name, imageUrl: revealAnswer.imageUrl });
+    }
+    recordTelemetry({
+      eventName: 'special_power_used', matchId: this.matchId, roomCode: this.code,
+      playerId: pl.userId ?? null,
+      opponentType: [...this.players.values()].some((x) => x.transport.isBot) ? 'BOT' : 'HUMAN',
+      payload: {
+        powerId, roundNumber: this.roundNumber + 1,
+        actorType: pl.transport.isBot ? 'BOT' : 'HUMAN',
+        remainingQty: st.qty, requestId,
+        matchScore: this.scorePayload(),
+      },
+    });
+    log.info('special_power_used', { room: this.code, matchId: this.matchId, playerId, userId: pl.userId, powerId, round: this.roundNumber + 1, bot: pl.transport.isBot });
+
+    if (powerId === 'skip') void this.skipByPower();
+  }
+
+  /** ⏭ Skip: tur NÖTR biter — puan yok, hükmen yok; cevap(lar) iki tarafa da
+   * öğretilir ve normal tur-geçiş makinesi çalışır (ayrı hacky geçiş yok, §42). */
+  private async skipByPower(): Promise<void> {
+    if (!this.round || !this.round.teamA || !this.round.teamB) return;
+    let common: { name: string; imageUrl: string | null }[] = [];
+    try {
+      if (this.gameMode === 'player-player' && this.round.playerAPick && this.round.playerBPick) {
+        const clubs = await commonClubs(this.round.playerAPick.id, this.round.playerBPick.id, 5);
+        common = clubs.map((c) => ({ name: c.name, imageUrl: c.logoUrl }));
+      } else if (this.gameMode === 'country-team' && this.round.countryPick) {
+        common = await commonPlayersCountryTeam(this.round.teamB.id, this.round.countryPick, 5);
+      } else if (this.gameMode === 'letter-team' && this.round.letterPick) {
+        common = await commonPlayersLetterTeam(this.round.teamB.id, this.round.letterPick, 5);
+      } else {
+        common = await commonPlayersDetailed(this.round.teamA.id, this.round.teamB.id, 5);
+      }
+    } catch { /* cevap listesi süs — tur yine de kapanmalı */ }
+    if (!this.round || this.round.finished || !this.round.teamA || !this.round.teamB) return;
+    this.finishRound({
+      correct: false,
+      reason: 'power_skip',
+      autocorrected: false,
+      answeredById: null,
+      answeredByName: null,
+      guess: '',
+      teamA: this.round.teamA,
+      teamB: this.round.teamB,
+      matchedPlayerName: null,
+      matchedPlayerImageUrl: null,
+      spellsA: [],
+      spellsB: [],
+      allClubs: [],
+      commonPlayers: common,
+    });
+  }
+
+  /** 💡 Reveal cevabı: iki takımda da OYNAMIŞ geçerli bir futbolcu — modun kendi
+   * doğrulayıcısının kullandığı sunucu verisinden (en tanınmışı önce). */
+  private async findRevealAnswer(): Promise<{ name: string; imageUrl: string | null } | null> {
+    if (!this.round?.teamA || !this.round.teamB) return null;
+    let common: { name: string; imageUrl: string | null }[];
+    if (this.gameMode === 'player-player' && this.round.playerAPick && this.round.playerBPick) {
+      const clubs = await commonClubs(this.round.playerAPick.id, this.round.playerBPick.id, 3);
+      common = clubs.map((c) => ({ name: c.name, imageUrl: c.logoUrl }));
+    } else if (this.gameMode === 'country-team' && this.round.countryPick) {
+      common = await commonPlayersCountryTeam(this.round.teamB.id, this.round.countryPick, 3);
+    } else if (this.gameMode === 'letter-team' && this.round.letterPick) {
+      common = await commonPlayersLetterTeam(this.round.teamB.id, this.round.letterPick, 3);
+    } else {
+      common = await commonPlayersDetailed(this.round.teamA.id, this.round.teamB.id, 3);
+    }
+    return common[0] ?? null;
   }
 
   private finishRound(result: RoundResult): void {
@@ -1807,7 +2170,7 @@ export class Room {
           }),
         ]);
         const multipliers = trophyRiskMultipliers({ opponentType, farm: farmRisk, economy });
-        const { profile, delta, arenaReward, shielded, expectedWinProbability } = await applyMatchResult(p.userId, won, {
+        const { profile, delta, arenaReward, shielded, expectedWinProbability, streakReward } = await applyMatchResult(p.userId, won, {
           opponentTrophies: opp?.trophies ?? null,
           playerSkillMean: playerSkill.skillMean,
           playerSkillUncertainty: playerSkill.skillUncertainty,
@@ -1856,6 +2219,12 @@ export class Room {
           bestStreak: profile.bestStreak,
           lostStreak: profile.lostStreak,
         });
+        // Galibiyet serisi kilometre taşı: ödül applyMatchResult transaction'ında
+        // yazıldı — istemciye trophy_update'ten SONRA duyurulur (maç sonu akışı).
+        if (streakReward) {
+          p.transport.send({ type: 'streak_reward', streak: streakReward.streak, diamonds: streakReward.diamonds, powerId: streakReward.powerId, profile: toProfileView(profile) });
+          recordTelemetry({ eventName: 'streak_milestone_granted', matchId: this.matchId, roomCode: this.code, playerId: p.userId, opponentType, payload: { streak: streakReward.streak, diamonds: streakReward.diamonds, powerId: streakReward.powerId } });
+        }
         // Seviye XP'si — kupadan bağımsız, kaybeden de kazanır. settleMatch
         // YALNIZ dereceli maçta çağrılır (this.ranked kapısı) ve dereceli maç
         // GERÇEK maç XP'si verir: oyuncu rakibinin bot dolgusu olduğunu bilmez;

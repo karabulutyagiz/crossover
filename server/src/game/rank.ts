@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { pool } from '../db/pool.ts';
+import { milestoneFor } from './specialPowers.ts';
 import { config } from '../config.ts';
 import { PREMIUM_ROAD_PRICE } from './level.ts';
 import { emotePrice, isFreeEmote, isEquippableEmote, MAX_EQUIPPED, ALL_COLLECTIBLE_EMOTES } from './emotes.ts';
@@ -115,6 +116,13 @@ export interface UserProfile {
   powerSocialToken: number;    // envanterdeki Sosyal Paket Jetonu adedi
   highestArenaRewarded: number; // ulaşılıp açılmış/ödülü işlenmiş en yüksek arena index'i
   bannedAt: string | null;     // kural ihlali askısı — doluysa bağlantı katmanı girişi reddeder
+  // Maç içi Özel Güç envanteri (maç başına 1 kullanım — room.ts uygular)
+  spFreeze: number;
+  spReveal: number;
+  spSkip: number;
+  spExtratime: number;
+  spSecondchance: number;
+  equippedSpecialPower: string | null;
 }
 
 function isFutureIso(iso: string | null | undefined): iso is string {
@@ -497,7 +505,7 @@ export async function applyMatchResult(
     ledgerReason?: string;
     ledgerMetadata?: Record<string, unknown>;
   },
-): Promise<{ profile: UserProfile; delta: number; arenaReward: number; shielded: boolean; expectedWinProbability?: number }> {
+): Promise<{ profile: UserProfile; delta: number; arenaReward: number; shielded: boolean; expectedWinProbability?: number; streakReward?: { streak: number; diamonds: number; powerId: string | null } }> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -632,6 +640,35 @@ export async function applyMatchResult(
       );
       if (goatRows[0]) profile.ownedFrames = goatRows[0].owned_frames;
     }
+    // GALİBİYET SERİSİ KİLOMETRE TAŞI (2026-08-27): mevcut win_streak sistemi
+    // genişletildi — seri TAM kilometre taşına ulaştığı maçta ödül aynı
+    // transaction'da yazılır. Seri bir koşuda aynı değeri iki kez göremez
+    // (kaybedince 0'a döner) → doğal idempotency, ayrı claim tablosu gerekmez.
+    let streakReward: { streak: number; diamonds: number; powerId: string | null } | undefined;
+    if (won) {
+      const ms = milestoneFor(profile.winStreak);
+      if (ms) {
+        const col = ms.powerId ? { freeze: 'sp_freeze', reveal: 'sp_reveal', skip: 'sp_skip', extratime: 'sp_extratime', secondchance: 'sp_secondchance' }[ms.powerId] : null;
+        const sets = [
+          ms.diamonds ? `diamonds = diamonds + ${Math.max(0, Math.round(ms.diamonds))}` : null,
+          col ? `${col} = ${col} + ${Math.max(1, Math.round(ms.powerQty ?? 1))}` : null,
+        ].filter(Boolean).join(', ');
+        if (sets) {
+          const { rows: msRows } = await client.query<DbUser>(
+            `UPDATE users SET ${sets} WHERE id = $1 RETURNING *`,
+            [userId],
+          );
+          if (msRows[0]) {
+            const fresh = toProfile(msRows[0]);
+            profile.diamonds = fresh.diamonds;
+            profile.spFreeze = fresh.spFreeze; profile.spReveal = fresh.spReveal;
+            profile.spSkip = fresh.spSkip; profile.spExtratime = fresh.spExtratime;
+            profile.spSecondchance = fresh.spSecondchance;
+            streakReward = { streak: ms.streak, diamonds: ms.diamonds ?? 0, powerId: ms.powerId ?? null };
+          }
+        }
+      }
+    }
     if (opts?.matchId) {
       const opponentType = opts.opponentType ?? (opts.opponentId ? 'HUMAN' : 'BOT');
       const source = opponentType === 'BOT'
@@ -656,7 +693,7 @@ export async function applyMatchResult(
       });
     }
     await client.query('COMMIT');
-    return { profile, delta, arenaReward, shielded, expectedWinProbability: expectedCalc?.expectedWinProbability };
+    return { profile, delta, arenaReward, shielded, expectedWinProbability: expectedCalc?.expectedWinProbability, streakReward };
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch { /* ignore */ }
     throw err;
@@ -1292,6 +1329,13 @@ interface DbUser {
   training_boost_until: string | null;
   power_socialtoken: number | null;
   banned_at: string | null;
+  // Maç içi Özel Güçler (specialPowers.ts) — meta güçlerden AYRI envanter.
+  sp_freeze: number | null;
+  sp_reveal: number | null;
+  sp_skip: number | null;
+  sp_extratime: number | null;
+  sp_secondchance: number | null;
+  equipped_special_power: string | null;
 }
 
 // Stamp the user's last-online time (on connect and disconnect) for "last seen".
@@ -1346,6 +1390,12 @@ function toProfile(row: DbUser): UserProfile {
     powerSocialToken: row.power_socialtoken ?? 0,
     highestArenaRewarded: Math.max(0, Math.min(ARENAS.length - 1, row.highest_arena_rewarded ?? 0)),
     bannedAt: row.banned_at ?? null,
+    spFreeze: row.sp_freeze ?? 0,
+    spReveal: row.sp_reveal ?? 0,
+    spSkip: row.sp_skip ?? 0,
+    spExtratime: row.sp_extratime ?? 0,
+    spSecondchance: row.sp_secondchance ?? 0,
+    equippedSpecialPower: row.equipped_special_power ?? null,
   };
 }
 

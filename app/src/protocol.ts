@@ -15,7 +15,7 @@ export interface SpellInfo {
   endYear: number | null;
 }
 
-export type VerifyReason = 'both' | 'not_both' | 'no_match' | 'timeout' | 'no_common' | 'same_team' | 'passed' | 'all_wrong';
+export type VerifyReason = 'both' | 'not_both' | 'no_match' | 'timeout' | 'no_common' | 'same_team' | 'passed' | 'all_wrong' | 'power_skip';
 
 export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
 
@@ -103,6 +103,13 @@ export interface ProfileView {
   equippedVictoryEffectId?: string | null;
   equippedAnswerEffectId?: string | null;
   highestArenaRewarded?: number; // ulaşılıp açılmış en yüksek arena index'i (0=Mahalle)
+  // Maç içi Özel Güç envanteri (maç başına 1 kullanım) + kuşanılmış güç
+  spFreeze?: number;
+  spReveal?: number;
+  spSkip?: number;
+  spExtratime?: number;
+  spSecondchance?: number;
+  equippedSpecialPower?: string | null;
 }
 
 export interface CosmeticLoadoutView {
@@ -147,6 +154,8 @@ export interface StoreCatalogView {
   weeklyResetAt: string;
   items: StoreCatalogItem[];
   featured: string[];
+  // Maç içi Özel Güç fiyat/rarity kataloğu (sunucu config'i — istemci hardcode etmez).
+  specialPowers?: { id: string; rarity: string; price: number }[];
 }
 
 export interface FriendView {
@@ -285,7 +294,11 @@ export type ClientMsg =
   // Permanently delete the signed-in account and all its data (App Store 5.1.1(v)).
   | { type: 'delete_account' }
   // Deliberate match exit: skips reconnect grace and lets the opponent see forfeit immediately.
-  | { type: 'leave_match'; reason?: 'leave' | 'cheat' };
+  | { type: 'leave_match'; reason?: 'leave' | 'cheat' }
+  // ---- Maç içi Özel Güçler (server-authoritative; maç başına TEK kullanım) ----
+  | { type: 'use_special_power'; powerId: string; requestId: string }
+  | { type: 'equip_special_power'; powerId: string | null }
+  | { type: 'buy_special_power'; powerId: string; qty?: number };
 
 export type ServerMsg =
   | { type: 'room_state'; room: RoomView }
@@ -303,8 +316,17 @@ export type ServerMsg =
   // İlk yanlışta her insan oyuncuya dolu gelir (server-authoritative — caps'siz
   // eski istemci de aynı hakkı alır, kullanıcı raporu 2026-08-19).
   | { type: 'wrong_guess'; byId: string; byName: string; guess: string; wrongCount: number; retryAt?: number }
-  | { type: 'guess_denied'; reason: 'too_late' | 'burned' | 'cooldown' }
+  | { type: 'guess_denied'; reason: 'too_late' | 'burned' | 'cooldown' | 'frozen' | 'expired' }
   | { type: 'pass_locked'; byId: string; byName: string }
+  // ---- Maç içi Özel Güçler ----
+  | { type: 'special_power_state'; enabled: boolean; you: { powerId: string | null; qty: number; used: boolean; usedPowerId: string | null }; opponentUsedPowerId: string | null; config: { freezeMs: number; extraTimeMs: number }; activeFreezeUntil?: number; yourDeadline?: number }
+  | { type: 'special_power_activated'; byId: string; byName: string; powerId: string; roundNumber: number; serverNow: number; effect?: { targetId?: string; freezeUntil?: number; newDeadline?: number } }
+  | { type: 'special_power_reveal'; playerName: string; imageUrl: string | null }
+  | { type: 'special_power_effect'; kind: 'second_chance_triggered'; byId: string; byName: string }
+  | { type: 'special_power_denied'; reason: 'already_used' | 'no_inventory' | 'round_not_active' | 'match_over' | 'too_late' | 'unavailable' | 'invalid'; requestId?: string }
+  | { type: 'special_power_equipped'; powerId: string | null; profile: ProfileView }
+  | { type: 'special_power_purchased'; powerId: string; profile: ProfileView }
+  | { type: 'streak_reward'; streak: number; diamonds: number; powerId: string | null; profile: ProfileView }
   | {
       type: 'result';
       result: RoundResult;

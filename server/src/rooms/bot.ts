@@ -18,6 +18,7 @@ import { clamp, mathRandom, pick, triangular, type RandomSource } from '../match
 import { normalize } from '../game/normalize.ts';
 import { log } from '../logger.ts';
 import { validateCountryTeamBotCandidate } from './countryTeamBotValidation.ts';
+import { specialPowersConfig, type SpecialPowerId } from '../game/specialPowers.ts';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BOT DIFFICULTY — SINGLE SOURCE OF TRUTH.
@@ -123,6 +124,13 @@ export class BotPlayer implements Transport {
   private botScore = 0;
   private opponentScore = 0;
   private guessPhaseStartedAt = 0;
+  // ---- Özel Güç planı: maç başına EN FAZLA bir deneme, doğal zamanlama ----
+  // Oda startMatch'te bu planı okur (sanal envanter, adet 1). Bot her maç
+  // perfect-timing güç basmaz: plan olasılığı config'ten, an karar motorundan.
+  botSpecialPowerPlan: { powerId: SpecialPowerId } | null = null;
+  private spFired = false;
+  private spTimer: NodeJS.Timeout | null = null;
+  private spFrozenUntil = 0;
 
   constructor(opts: BotOptions = {}) {
     this.exposeBotToClient = opts.exposeBotToClient ?? true;
@@ -138,6 +146,27 @@ export class BotPlayer implements Transport {
     this.maxDelayMs = max;
     this.scope = opts.scope ?? { type: 'all' };
     this.mode = opts.mode ?? 'team-team';
+    this.rollSpecialPowerPlan();
+  }
+
+  // İnsanı taklit eden güç planı: her bot her maç güç KULLANMAZ; kullananın
+  // hangi gücü seçtiği arketipe göre ağırlıklıdır (agresif → freeze, temkinli
+  // → ek süre/ikinci şans). Plan tutmazsa (doğal an gelmezse) hiç kullanılmaz.
+  private rollSpecialPowerPlan(): void {
+    const cfg = specialPowersConfig();
+    if (!cfg.enabled || !this.profile || Math.random() >= cfg.botUseProbability) { this.botSpecialPowerPlan = null; return; }
+    const arch = this.profile.behaviorArchetype;
+    const weights: [SpecialPowerId, number][] = [
+      ['freeze', arch === 'FAST_RISKY' || arch === 'STRONG' ? 0.42 : 0.24],
+      ['skip', 0.26],
+      ['extratime', arch === 'CAREFUL' ? 0.30 : 0.12],
+      ['secondchance', arch === 'CAREFUL' || arch === 'CASUAL' ? 0.24 : 0.12],
+      ['reveal', arch === 'STRONG' || arch === 'SPECIALIST' ? 0.20 : 0.08],
+    ];
+    const total = weights.reduce((sum, [, w]) => sum + w, 0);
+    let roll = Math.random() * total;
+    for (const [id, w] of weights) { roll -= w; if (roll <= 0) { this.botSpecialPowerPlan = { powerId: id }; return; } }
+    this.botSpecialPowerPlan = { powerId: 'freeze' };
   }
 
   getArchetype(): BotArchetype | null { return this.profile?.behaviorArchetype ?? null; }
@@ -184,6 +213,7 @@ export class BotPlayer implements Transport {
       case 'guess_phase':
         this.guessPhaseStartedAt = Date.now();
         this.scheduleGuess();
+        this.maybeUseSpecialPower();
         break;
       case 'guess_locked':
         // Human answer timing must never feed back into bot speed.
@@ -197,6 +227,28 @@ export class BotPlayer implements Transport {
       case 'waiting_ready' as any:
         setTimeout(() => this.act({ type: 'ready' }), 420 + Math.floor(Math.random() * 1600));
         break;
+      case 'special_power_activated': {
+        const ev = msg as Extract<ServerMsg, { type: 'special_power_activated' }>;
+        // Bot donduruldu: cevabını buz çözüldükten az sonraya erteler — insan
+        // gibi 'donma bitti, toparlanıp yazdı' ritmi (sunucu zaten reddederdi).
+        if (ev.effect?.targetId === this.id && ev.effect.freezeUntil) {
+          this.spFrozenUntil = ev.effect.freezeUntil;
+          const remaining = Math.max(0, ev.effect.freezeUntil - Date.now());
+          this.clearTimer();
+          const serial = ++this.actionSerial;
+          this.timer = setTimeout(() => { void this.executePlannedAction(serial); }, remaining + 700 + Math.floor(Math.random() * 1200));
+        }
+        break;
+      }
+      case 'guess_denied': {
+        const gd = msg as Extract<ServerMsg, { type: 'guess_denied' }>;
+        // Emniyet ağı: donmuşken gönderim reddedildiyse buz sonrası tekrar dene.
+        if (gd.reason === 'frozen' && this.spFrozenUntil > Date.now()) {
+          const serial = ++this.actionSerial;
+          this.timer = setTimeout(() => { void this.submitScheduledGuess(serial); }, Math.max(300, this.spFrozenUntil - Date.now()) + 500 + Math.floor(Math.random() * 900));
+        }
+        break;
+      }
       case 'rematch_requested':
         this.respondToRematch();
         break;
@@ -266,6 +318,8 @@ export class BotPlayer implements Transport {
     else if (msg.result.answeredById && msg.result.answeredById !== this.id && msg.result.correct) this.maybeEmote(me.score + 1 < opp.score ? ['angry', 'cry'] : ['gg', 'congrats'], 0.46 * emoteScale, [700, 1900], me.score + 1 < opp.score ? 'self_deprecating' : 'supportive');
     else if (msg.result.reason === 'passed') this.maybeEmote(['gg', 'luck'], 0.26 * emoteScale, [700, 1800], 'supportive');
     if (msg.matchOver) this.maybeEmote(me.score > opp.score ? ['gg', 'smile', 'ok'] : ['gg', 'cry'], 0.88 * emoteScale, [900, 2400], me.score > opp.score ? 'celebrate' : 'self_deprecating');
+    // Rövanş için taze güç planı — oda startMatch'te planı yeniden okur.
+    if (msg.matchOver) { this.spFired = false; this.rollSpecialPowerPlan(); }
   }
 
   private respondToRematch(): void {
@@ -581,8 +635,55 @@ export class BotPlayer implements Transport {
     return pool.length ? pool[Math.floor(Math.random() * pool.length)]! : null;
   }
 
+  /** Güç ateşleme kararı: tur başında, karar motorunun ürettiği bağlama göre
+   * DOĞAL bir anda. Oda 1-güç limitini ve geçerliliği zaten uygular — bot
+   * reddedilirse ısrar etmez (spFired kalır, o maç bir daha denemez). */
+  private maybeUseSpecialPower(): void {
+    const plan = this.botSpecialPowerPlan;
+    if (!plan || this.spFired || !this.room) return;
+    const d = this.botDecision;
+    const critical = this.botScore >= 2 || this.opponentScore >= 2 || this.botScore + this.opponentScore >= 2;
+    let fire = false;
+    let delay = 2200 + Math.floor(Math.random() * 2600);
+    switch (plan.powerId) {
+      case 'skip':
+        // Cevabı bilmiyorsa pas yerine turu atlar — 'bu soruyu istemiyorum'.
+        fire = !!d && (!d.willAnswer || d.shouldTimeout) && Math.random() < 0.8;
+        delay = 2600 + Math.floor(Math.random() * 3200);
+        break;
+      case 'freeze':
+        // Cevabı biliyor ve maç kritik: kendi cevabından ÖNCE dondurur.
+        fire = !!d && d.knowsAnswer && d.willAnswer && critical && Math.random() < 0.75;
+        delay = Math.max(900, Math.min((d?.plannedActionAtMs ?? 4000) - 1400, 5200));
+        break;
+      case 'extratime':
+        // Uzun düşünme planı varsa süre azalırken ek süre alır.
+        fire = !!d && d.willAnswer && (d.plannedActionAtMs ?? 0) > 14000;
+        delay = 11000 + Math.floor(Math.random() * 4000);
+        break;
+      case 'secondchance':
+        fire = critical && Math.random() < 0.6;
+        delay = 1400 + Math.floor(Math.random() * 2400);
+        break;
+      case 'reveal':
+        // 'İpucu aldı' — cevabını güçten sonra verir (motor zaten biliyor).
+        fire = !!d && d.knowsAnswer && d.willAnswer && critical && Math.random() < 0.55;
+        delay = 1800 + Math.floor(Math.random() * 2200);
+        break;
+    }
+    if (!fire) return;
+    this.spFired = true;
+    this.spTimer = setTimeout(() => {
+      this.spTimer = null;
+      if (!this.room) return;
+      this.act({ type: 'use_special_power', powerId: plan.powerId, requestId: `bot-${this.id}-${Date.now()}-${Math.floor(Math.random() * 1e6)}` });
+    }, delay);
+  }
+
   private reset(): void {
     this.clearTimer();
+    if (this.spTimer) { clearTimeout(this.spTimer); this.spTimer = null; }
+    this.spFrozenUntil = 0;
     this.teams = null;
     this.answer = null;
     this.answerPlayerId = null;

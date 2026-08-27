@@ -3,6 +3,7 @@ import { ARENAS, getArena, type Arena } from '../game/rank.ts';
 import type { Difficulty, GameMode } from '../protocol.ts';
 import { runBotDifficultyDirector, type BotDifficultyDirectorOutput } from './botDifficultyDirector.ts';
 import { opponentConfig } from './opponentConfig.ts';
+import { maxTrophyGapFor } from './policy.ts';
 import { SeededRandom, clamp, intBetween, mathRandom, normal, pick, weightedPick, type RandomSource } from './random.ts';
 import type { SkillRecentMatch } from './skillRating.ts';
 
@@ -178,7 +179,9 @@ function availableGuestStyleIdentity(
 
 function weightedTrophyOffset(playerTrophies: number, pressure: number, rng: RandomSource): number {
   const tension = clamp(pressure, -0.35, 1);
-  const base = Math.max(40, Math.round(playerTrophies * 0.10));
+  // Taban, bandın (~%72'si) icine cekilir: eski t*0.10 tabani 3500'de ±525
+  // uretip son kirpmada bot kupalarini bant kenarina yigiyordu.
+  const base = Math.max(40, Math.min(Math.round(maxTrophyGapFor(playerTrophies) * 0.72), Math.round(playerTrophies * 0.10)));
   const roll = rng.next();
   const direction = rng.next() < 0.52 + tension * 0.24 ? 1 : -1;
   if (roll < 0.72) return direction * Math.round(base * (0.15 + rng.next() * (0.78 + Math.max(0, tension) * 0.42)));
@@ -195,7 +198,11 @@ export function botTrophiesForPlayer(playerTrophies: number, pressure = 0, rng: 
       : 0;
   const pressured = Math.max(raw, antiFarmFloor);
   const adjusted = pressured % 10 === 0 ? pressured + (rng.next() < 0.5 ? 3 : -7) : pressured;
-  return Math.max(0, adjusted);
+  // SERT BANT (2026-08-27): bot kupası oyuncudan asla maxTrophyGapFor kadar
+  // fazla uzaklaşamaz — "3500'lük oyuncuya 2900'lük bot" görüntüsü biter.
+  // (Arena kırpması bunu daraltabilir ama asla genişletemez.)
+  const gap = maxTrophyGapFor(playerTrophies);
+  return Math.max(0, Math.round(clamp(adjusted, playerTrophies - gap, playerTrophies + gap)));
 }
 
 function sameArenaTrophiesForPlayer(playerTrophies: number, botTrophies: number): number {

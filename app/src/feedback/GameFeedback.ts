@@ -49,6 +49,16 @@ const EVENT_MAP: Partial<Record<GameFeedbackEvent, { sfx?: AudioEvent; haptic?: 
   [GameFeedbackEvent.LEVEL_UP]: { sfx: AudioEvent.LEVEL_UP, haptic: HapticEvent.HEAVY, duck: true },
   [GameFeedbackEvent.ARENA_UNLOCK]: { sfx: AudioEvent.ARENA_UNLOCK, haptic: HapticEvent.HEAVY, duck: true, crowd: true },
   [GameFeedbackEvent.REWARD_OPEN]: { sfx: AudioEvent.UI_REWARD, haptic: HapticEvent.SUCCESS, volume: 0.66 },
+  // ---- Maç içi Özel Güçler: mevcut premium ses paletiyle eşlenir (yeni asset yok;
+  // tiz/oyuncak hypercasual tınılar YASAK — spec §59) ----
+  [GameFeedbackEvent.SP_FREEZE]: { sfx: AudioEvent.TIMEOUT_IMPACT, haptic: HapticEvent.MEDIUM, volume: 0.72 },
+  [GameFeedbackEvent.SP_REVEAL]: { sfx: AudioEvent.UI_REWARD, haptic: HapticEvent.SUCCESS, volume: 0.74 },
+  [GameFeedbackEvent.SP_SKIP]: { sfx: AudioEvent.UI_NAVIGATION, haptic: HapticEvent.MEDIUM, volume: 0.78 },
+  [GameFeedbackEvent.SP_EXTRATIME]: { sfx: AudioEvent.TIMER_WARNING, haptic: HapticEvent.LIGHT, volume: 0.62 },
+  [GameFeedbackEvent.SP_SECONDCHANCE]: { sfx: AudioEvent.ACHIEVEMENT, haptic: HapticEvent.SUCCESS, volume: 0.66 },
+  [GameFeedbackEvent.SP_OPPONENT]: { sfx: AudioEvent.NOTIFICATION, haptic: HapticEvent.WARNING, volume: 0.62 },
+  [GameFeedbackEvent.SP_FROZEN_HIT]: { sfx: AudioEvent.TIMEOUT_IMPACT, haptic: HapticEvent.HEAVY, volume: 0.8 },
+  [GameFeedbackEvent.SP_SC_TRIGGERED]: { sfx: AudioEvent.ACHIEVEMENT, haptic: HapticEvent.SUCCESS, volume: 0.7 },
   [GameFeedbackEvent.DIAMOND_GAIN]: { sfx: AudioEvent.UI_REWARD, haptic: HapticEvent.SUCCESS, volume: 0.68 },
   [GameFeedbackEvent.EMOTE_SEND]: { sfx: AudioEvent.EMOTE_SEND, haptic: HapticEvent.LIGHT },
   [GameFeedbackEvent.EMOTE_RECEIVE]: { sfx: AudioEvent.EMOTE_RECEIVE },

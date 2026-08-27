@@ -135,4 +135,13 @@ export enum GameFeedbackEvent {
   EMOTE_RECEIVE = 'EMOTE_RECEIVE',
   NOTIFICATION = 'NOTIFICATION',
   SPECIAL_PLAYER_RONALDO = 'SPECIAL_PLAYER_RONALDO',
+  // ---- Maç içi Özel Güçler ----
+  SP_FREEZE = 'SP_FREEZE',              // ❄ kullandın (soğuk darbe)
+  SP_REVEAL = 'SP_REVEAL',              // 💡 cevap açıldı (premium reveal)
+  SP_SKIP = 'SP_SKIP',                  // ⏭ hızlı geçiş
+  SP_EXTRATIME = 'SP_EXTRATIME',        // ⏱ saat vuruşu
+  SP_SECONDCHANCE = 'SP_SECONDCHANCE',  // ❤️ kuşanma
+  SP_OPPONENT = 'SP_OPPONENT',          // rakip güç kullandı (uyarı tınısı)
+  SP_FROZEN_HIT = 'SP_FROZEN_HIT',      // SEN donduruldun (ağır darbe)
+  SP_SC_TRIGGERED = 'SP_SC_TRIGGERED',  // ikinci şans tetiklendi (kurtarma)
 }

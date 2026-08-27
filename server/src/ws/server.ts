@@ -48,6 +48,8 @@ import type { MessageView, ConversationView } from '../protocol.ts';
 import type { ClientMsg, GameMode, ProfileView, ServerMsg } from '../protocol.ts';
 import { getLiveStoreVersions, storeVersionIsNewer, type StorePlatform } from '../storeVersions.ts';
 import { buyDailyOffer, computeDailyOffer, currentOfferWindow, dailyOfferClaimed } from '../game/dailyOffer.ts';
+import { toProfileView } from '../game/profileView.ts';
+import { buySpecialPower, equipSpecialPower, isSpecialPowerId } from '../game/specialPowers.ts';
 
 // Guideline 1.2: no anonymous posting. Any path that creates content another
 // user sees requires a verified Apple/Google/Facebook identity — a guest can
@@ -80,52 +82,6 @@ interface ConnCtx {
 }
 
 /** Build a ProfileView from a UserProfile (used in all profile-sending paths). */
-function toProfileView(p: UserProfile): ProfileView {
-  return {
-    userId: p.id,
-    displayName: p.displayName,
-    trophies: p.trophies,
-    diamonds: p.diamonds,
-    wins: p.wins,
-    losses: p.losses,
-    selectedAvatar: p.selectedAvatar,
-    ownedAvatars: p.ownedAvatars,
-    ownedEmotes: p.ownedEmotes,
-    equippedEmotes: p.equippedEmotes,
-    usernameSet: p.usernameSet,
-    socialPackUntil: p.socialPackUntil,
-    outageGiftAt: p.outageGiftAt,
-    outageGiftAvailable: p.outageGiftAvailable,
-    arena: p.arena,
-    avatar: p.avatar,
-    xp: p.xp,
-    level: p.level,
-    selectedFrame: p.selectedFrame,
-    claimedLevels: p.claimedLevels,
-    powerXp2x: p.powerXp2x,
-    powerShield: p.powerShield,
-    xpBoostUntil: p.xpBoostUntil,
-    shieldArmed: p.shieldArmed,
-    winStreak: p.winStreak,
-    bestStreak: p.bestStreak,
-    powerStreak: p.powerStreak,
-    lostStreak: p.lostStreak,
-    powerTraining: p.powerTraining,
-    trainingBoostUntil: p.trainingBoostUntil,
-    powerSocialToken: p.powerSocialToken,
-    premiumRoad: p.premiumRoad,
-    claimedPremium: p.claimedPremium,
-    ownedFrames: p.ownedFrames,
-    ownedCosmetics: p.ownedCosmetics,
-    equippedNameEffectId: p.equippedNameEffectId,
-    equippedMatchBackgroundId: p.equippedMatchBackgroundId,
-    equippedBallId: p.equippedBallId,
-    equippedIntroId: p.equippedIntroId,
-    equippedVictoryEffectId: p.equippedVictoryEffectId,
-    equippedAnswerEffectId: p.equippedAnswerEffectId,
-    highestArenaRewarded: p.highestArenaRewarded,
-  };
-}
 
 function wsTransport(ws: WebSocket): Transport {
   return {
@@ -1521,6 +1477,46 @@ export function startServer(port: number): Server {
           } catch (err) {
             console.error('[use_power] failed:', err instanceof Error ? err.message : err);
             transport.send({ type: 'error', message: 'Güç kullanılamadı' });
+          }
+        })();
+        return;
+      }
+
+      // ---- Maç içi Özel Güçler: mağaza + kuşanma (maç dışı; maç içi kullanım
+      // use_special_power ile odaya düşer). Fiyat/katalog sunucu config'inden.
+      if (msg.type === 'buy_special_power') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        const spBuyId = msg.powerId;
+        if (!isSpecialPowerId(spBuyId)) return transport.send({ type: 'error', message: 'Bilinmeyen güç' });
+        void (async () => {
+          try {
+            const res = await buySpecialPower(userProfile!.id, spBuyId, msg.qty ?? 1);
+            if (!res.ok) return transport.send({ type: 'error', message: res.error });
+            const fresh = await getUser(userProfile!.id);
+            if (!fresh) return;
+            userProfile = fresh;
+            transport.send({ type: 'special_power_purchased', powerId: spBuyId, profile: toProfileView(fresh) });
+          } catch (err) {
+            console.error('[buy_special_power] failed:', err instanceof Error ? err.message : err);
+            transport.send({ type: 'error', message: 'Satın alma başarısız, tekrar dene' });
+          }
+        })();
+        return;
+      }
+
+      if (msg.type === 'equip_special_power') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        if (msg.powerId !== null && !isSpecialPowerId(msg.powerId)) return transport.send({ type: 'error', message: 'Bilinmeyen güç' });
+        void (async () => {
+          try {
+            await equipSpecialPower(userProfile!.id, msg.powerId as never);
+            const fresh = await getUser(userProfile!.id);
+            if (!fresh) return;
+            userProfile = fresh;
+            transport.send({ type: 'special_power_equipped', powerId: msg.powerId, profile: toProfileView(fresh) });
+          } catch (err) {
+            console.error('[equip_special_power] failed:', err instanceof Error ? err.message : err);
+            transport.send({ type: 'error', message: 'Kuşanma başarısız' });
           }
         })();
         return;

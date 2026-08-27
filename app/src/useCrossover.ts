@@ -174,6 +174,30 @@ export interface GameState {
   storeCatalog: StoreCatalogView | null;
   storeCatalogStatus: StoreCatalogStatus;
   storeCatalogError: string | null;
+  // ---- Maç içi Özel Güçler (sunucu-otoriter; istemci yalnız çizer) ----
+  // Maç başına 1 kullanım kuralı SUNUCUDA — buradaki used yalnız arayüz durumu.
+  specialPower: {
+    enabled: boolean;
+    you: { powerId: string | null; qty: number; used: boolean; usedPowerId: string | null };
+    opponentUsedPowerId: string | null;
+    config: { freezeMs: number; extraTimeMs: number };
+    pending: boolean; // istek uçuşta (activated/denied bekleniyor)
+  } | null;
+  // Etkinleştirme duyurusu (iki taraf da alır) — seq artışı sunumu tetikler.
+  spEvent: { seq: number; byId: string; byName: string; powerId: string; mine: boolean; effect?: { targetId?: string; freezeUntil?: number; newDeadline?: number } } | null;
+  // ❄ SEN donduruldun: sunucu damgasına kadar giriş kilitli (görsel + yerel kilit;
+  // asıl kural sunucuda). Tur değişince temizlenir.
+  spFrozenUntil: number | null;
+  // 💡 Reveal cevabın (yalnız sana gelir) — tur boyunca görünür.
+  spReveal: { playerName: string; imageUrl: string | null } | null;
+  // ❤️ İkinci Şans tetiklendi duyurusu (seq artar; mine = senin şansın).
+  spSecondChance: { seq: number; mine: boolean; byName: string } | null;
+  // Reddedilen güç isteği — kısa toast.
+  spDenied: { reason: string; seq: number } | null;
+  // ⏭ Bu turda turu atlayan taraf ('you'|'opp') — sonuç ekranı metni için.
+  spSkipBy: 'you' | 'opp' | null;
+  // 🔥 Seri kilometre taşı ödülü (maç sonu akışında gösterilir).
+  streakReward: { streak: number; diamonds: number; powerId: string | null; seq: number } | null;
 }
 
 // --- Messaging helpers: stable ordering + de-dupe, so live pushes and (possibly
@@ -281,6 +305,14 @@ export const initialState: GameState = {
   banner: null,
   storeCatalog: null,
   storeCatalogStatus: 'idle',
+  specialPower: null,
+  spEvent: null,
+  spFrozenUntil: null,
+  spReveal: null,
+  spSecondChance: null,
+  spDenied: null,
+  spSkipBy: null,
+  streakReward: null,
   storeCatalogError: null,
 };
 
@@ -356,6 +388,10 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, leaderboard: action.entries };
     case '_phase':
       return { ...state, phase: action.phase };
+    case '_sp_pending' as never:
+      return { ...state, specialPower: state.specialPower ? { ...state.specialPower, pending: true } : null };
+    case '_clear_streak_reward' as never:
+      return { ...state, streakReward: null };
     case '_load_profile':
       return { ...state, profile: action.profile };
     case '_friends':
@@ -703,6 +739,11 @@ function reducer(state: GameState, action: Action): GameState {
         result: null,
         teams: null,
         locked: null,
+        // Tur/maç-kapsamlı güç kalıntıları yeni turda taşınmaz (spec §25).
+        spReveal: null,
+        spSkipBy: null,
+        spFrozenUntil: null,
+        streakReward: null,
         passedBy: [],
         trophyDelta: null,
   lastClaim: null,
@@ -728,7 +769,8 @@ function reducer(state: GameState, action: Action): GameState {
         revealLetter: (action as any).letter ?? null,
       };
     case 'guess_phase':
-      return { ...state, phase: 'guess', guessEndsAt: action.endsAt, locked: null, oppWrong: null, youBurned: false, youRetryAt: null, tooLateSeq: 0 };
+      // Yeni tur: tur-kapsamlı güç görselleri (freeze/reveal/skip nedeni) temizlenir.
+      return { ...state, phase: 'guess', guessEndsAt: action.endsAt, locked: null, oppWrong: null, youBurned: false, youRetryAt: null, tooLateSeq: 0, spFrozenUntil: null, spReveal: null, spSkipBy: null };
     case 'guess_locked':
       // Rakibin yazması bizim input'u kapatmaz. Eski backend/istemci akışından
       // gelebilen guess_locked yalnız kendi gönderimimizi bekletmek için anlamlı.
@@ -751,11 +793,59 @@ function reducer(state: GameState, action: Action): GameState {
       // 'cooldown': ceza sayacı zaten ekranda — sunucunun reddi sessiz kalır
       // (arayüz kilidi + sunucu kuralı çifte emniyet, kullanıcıya yeni bilgi yok).
       if (action.reason === 'cooldown') return state;
+      // 'frozen': buz paneli zaten ekranda (spFrozenUntil) — ek mesaj gürültü olur.
+      if (action.reason === 'frozen') return state;
       return action.reason === 'too_late'
         ? { ...state, tooLateSeq: state.tooLateSeq + 1 }
         : { ...state, youBurned: true };
     case 'pass_locked':
       return { ...state, passedBy: state.passedBy.includes(action.byId) ? state.passedBy : [...state.passedBy, action.byId] };
+    case 'special_power_state': {
+      const a = action as Extract<ServerMsg, { type: 'special_power_state' }>;
+      return {
+        ...state,
+        specialPower: { enabled: a.enabled, you: a.you, opponentUsedPowerId: a.opponentUsedPowerId, config: a.config, pending: false },
+        // Reconnect: aktif freeze/uzatılmış süre sunucudan aynen geri gelir.
+        spFrozenUntil: a.activeFreezeUntil ?? state.spFrozenUntil,
+        guessEndsAt: a.yourDeadline ?? state.guessEndsAt,
+      };
+    }
+    case 'special_power_activated': {
+      const a = action as Extract<ServerMsg, { type: 'special_power_activated' }>;
+      const mine = a.byId === state.room?.youId;
+      const sp = state.specialPower;
+      return {
+        ...state,
+        specialPower: sp ? {
+          ...sp,
+          pending: mine ? false : sp.pending,
+          you: mine ? { ...sp.you, used: true, usedPowerId: a.powerId, qty: Math.max(0, sp.you.qty - 1) } : sp.you,
+          opponentUsedPowerId: mine ? sp.opponentUsedPowerId : a.powerId,
+        } : sp,
+        spEvent: { seq: (state.spEvent?.seq ?? 0) + 1, byId: a.byId, byName: a.byName, powerId: a.powerId, mine, effect: a.effect },
+        // ❄ Hedef SENSEN yerel giriş kilidi kur (sunucu damgası aynen kullanılır
+        // — guessEndsAt ile aynı saat varsayımı).
+        spFrozenUntil: a.effect?.targetId === state.room?.youId && a.effect?.freezeUntil ? a.effect.freezeUntil : state.spFrozenUntil,
+        // ⏱ Ek süre SANA aitse kendi sayacın yeni son teslimle akar; rakibinki değişmez.
+        guessEndsAt: mine && a.effect?.newDeadline ? a.effect.newDeadline : state.guessEndsAt,
+        spSkipBy: a.powerId === 'skip' ? (mine ? 'you' : 'opp') : state.spSkipBy,
+      };
+    }
+    case 'special_power_reveal':
+      return { ...state, spReveal: { playerName: (action as any).playerName, imageUrl: (action as any).imageUrl ?? null } };
+    case 'special_power_effect': {
+      const a = action as Extract<ServerMsg, { type: 'special_power_effect' }>;
+      if (a.kind !== 'second_chance_triggered') return state;
+      return { ...state, spSecondChance: { seq: (state.spSecondChance?.seq ?? 0) + 1, mine: a.byId === state.room?.youId, byName: a.byName } };
+    }
+    case 'special_power_denied':
+      return { ...state, specialPower: state.specialPower ? { ...state.specialPower, pending: false } : null, spDenied: { reason: (action as any).reason, seq: (state.spDenied?.seq ?? 0) + 1 } };
+    case 'special_power_equipped':
+      return { ...state, profile: action.profile };
+    case 'special_power_purchased':
+      return { ...state, profile: action.profile, lastPurchase: { kind: 'power', id: (action as any).powerId, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
+    case 'streak_reward':
+      return { ...state, profile: action.profile, streakReward: { streak: action.streak, diamonds: action.diamonds, powerId: action.powerId, seq: (state.streakReward?.seq ?? 0) + 1 } };
     case 'result':
       return {
         ...state,
@@ -962,7 +1052,7 @@ export function useCrossover() {
   const withCaps = (msg: ClientMsg): ClientMsg =>
     msg.type === 'register' || msg.type === 'guest' || msg.type === 'auth' || msg.type === 'resume_room'
     || msg.type === 'find_match' || msg.type === 'create_room' || msg.type === 'create_solo' || msg.type === 'join_room'
-      ? ({ ...msg, caps: ['wrongopen', 'wrongretry'] } as ClientMsg)
+      ? ({ ...msg, caps: ['wrongopen', 'wrongretry', 'specialpowers'] } as ClientMsg)
       : msg;
 
   const connectAndSend = useCallback((first: ClientMsg, opts?: { silent?: boolean }) => {
@@ -1495,6 +1585,25 @@ export function useCrossover() {
       acceptRematch: () => send({ type: 'rematch_response', accept: true }),
       declineRematch: () => send({ type: 'rematch_response', accept: false }),
       sendEmote: (emoteId: string) => send({ type: 'send_emote', emoteId }),
+      // Özel Güç etkinleştirme: requestId idempotency anahtarıdır — sunucu aynı
+      // anahtarı iki kez tüketmez. pending bayrağı çift dokunuşu arayüzde de keser.
+      useSpecialPower: (powerId: string) => {
+        const st = stateRef.current.specialPower;
+        if (!st || st.pending || st.you.used || st.you.powerId !== powerId) return;
+        dispatch({ type: '_sp_pending' } as any);
+        const requestId = `sp-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
+        track('special_power_activation_requested', { power_id: powerId });
+        send({ type: 'use_special_power', powerId, requestId });
+      },
+      equipSpecialPower: (powerId: string | null) => {
+        track('special_power_equipped', { power_id: powerId ?? 'none' });
+        send({ type: 'equip_special_power', powerId });
+      },
+      buySpecialPower: (powerId: string, qty = 1) => {
+        track('special_power_purchase_started', { power_id: powerId, qty });
+        send({ type: 'buy_special_power', powerId, qty });
+      },
+      clearStreakReward: () => dispatch({ type: '_clear_streak_reward' } as any),
       clearEmote: (playerId: string) => dispatch({ type: '_clear_emote', playerId }),
       buyEmote: (emoteId: string) => send({ type: 'buy_emote', emoteId }),
       equipEmotes: (emoteIds: string[]) => send({ type: 'equip_emotes', emoteIds }),

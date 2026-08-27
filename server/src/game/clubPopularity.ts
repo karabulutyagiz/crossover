@@ -120,11 +120,14 @@ export function clubPopularityTier(input: ClubPopularityInput): ClubPopularityTi
 }
 
 export function tierBaseWeight(tier: ClubPopularityTier): number {
-  if (tier === 'GLOBAL_GIANT') return 15.5;
-  if (tier === 'VERY_POPULAR') return 10.5;
+  // Bilindik takımlara ağırlık (2026-08-27): botlar "kafa takımları" söylesin —
+  // dev ve çok-popüler katman yükseldi, niş katman düşürüldü. Tekrarı
+  // recentPenalty (son 8 kulüp) engeller, çeşitlilik oradan gelir.
+  if (tier === 'GLOBAL_GIANT') return 18.5;
+  if (tier === 'VERY_POPULAR') return 12.5;
   if (tier === 'POPULAR') return 5.8;
   if (tier === 'RECOGNIZABLE') return 2.2;
-  return 0.34;
+  return 0.22;
 }
 
 export function isNicheTier(tier: ClubPopularityTier): boolean {

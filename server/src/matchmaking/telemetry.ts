@@ -16,7 +16,11 @@ export interface MatchTelemetryEvent {
     | 'match_finished'
     | 'rematch_offered'
     | 'rematch_accepted'
-    | 'session_exit';
+    | 'session_exit'
+    | 'special_power_used'
+    | 'special_power_rejected'
+    | 'second_chance_triggered'
+    | 'streak_milestone_granted';
   matchId?: string;
   roomCode?: string;
   playerId?: string | null;

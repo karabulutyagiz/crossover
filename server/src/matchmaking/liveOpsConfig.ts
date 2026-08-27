@@ -146,28 +146,34 @@ const DEFAULTS: LiveOpsMatchmakingConfig = {
   },
   botDifficulty: {
     algorithmVersion: 'engagement-safe-director-v2',
-    balanceVersion: '2026-08-21-engagement-first',
+    balanceVersion: '2026-08-27-retention-first',
     liveOpsSkillOffsetMmr: 0,
     newPlayerSkillOffsetMmr: 150,
     earlyProgressionSkillOffsetMmr: 78,
-    recoveryMaxAdjustmentMmr: 95,
-    dominanceMaxAdjustmentMmr: 130,
+    recoveryMaxAdjustmentMmr: 115,
+    // 130 → 95: seri yapan oyuncuyu "duvara çarptırmak" hile hissi veriyor —
+    // sıcak seri bir tutundurma motorudur, kırılmaz, sadece hafif zorlaşır.
+    dominanceMaxAdjustmentMmr: 95,
     lossStreakSensitivity: 0.17,
     blowoutLossWeight: 0.20,
     closeLossWeight: 0.05,
     intentionalLossBlockThreshold: 0.62,
     maxBotSkillStepMmr: 90,
     smurfAccelerationMmr: 185,
-    frustrationAdjustmentMmr: 95,
-    momentumAdjustmentMmr: 130,
+    frustrationAdjustmentMmr: 115,
+    momentumAdjustmentMmr: 100,
     blowoutSensitivity: 0.22,
     emoteFrustrationSensitivity: 0.72,
+    // TUTUNDURMA-ÖNCELİK (kullanıcı kararı 2026-08-27): 1 numaralı hedef
+    // oyuncuyu oyunda tutmak. Kayıp, kazancın ~2 katı acı verir (kayıptan
+    // kaçınma) — bot-ağırlıklı bir merdivende oyuncu NET kazanan olmalı.
+    // Bantlar oyuncu-lehine kaydırıldı; DOMINATING bile ≥0.46 (seri sürsün).
     targetCompetitiveProbabilityByState: {
-      STRUGGLING: { min: 0.60, max: 0.70 },
-      SLIGHTLY_STRUGGLING: { min: 0.56, max: 0.64 },
-      BALANCED: { min: 0.49, max: 0.56 },
-      PERFORMING_WELL: { min: 0.47, max: 0.54 },
-      DOMINATING: { min: 0.44, max: 0.51 },
+      STRUGGLING: { min: 0.66, max: 0.76 },
+      SLIGHTLY_STRUGGLING: { min: 0.60, max: 0.68 },
+      BALANCED: { min: 0.54, max: 0.62 },
+      PERFORMING_WELL: { min: 0.50, max: 0.58 },
+      DOMINATING: { min: 0.46, max: 0.53 },
     },
     engagementWeights: {
       closeness: 0.36,
@@ -176,11 +182,11 @@ const DEFAULTS: LiveOpsMatchmakingConfig = {
       nonToxicity: 0.18,
     },
     targetWinProbabilityBySegment: {
-      NEW_PLAYER: { min: 0.60, max: 0.70 },
-      EARLY: { min: 0.56, max: 0.64 },
-      MID: { min: 0.49, max: 0.56 },
-      HIGH: { min: 0.47, max: 0.54 },
-      ELITE: { min: 0.45, max: 0.52 },
+      NEW_PLAYER: { min: 0.68, max: 0.78 },
+      EARLY: { min: 0.62, max: 0.72 },
+      MID: { min: 0.56, max: 0.64 },
+      HIGH: { min: 0.52, max: 0.60 },
+      ELITE: { min: 0.48, max: 0.55 },
     },
     knowledgeFloorByDifficulty: {
       veryEasy: 0.74,
@@ -192,13 +198,17 @@ const DEFAULTS: LiveOpsMatchmakingConfig = {
   },
   antiFarm: {
     repeatedOpponentWindowMs: 24 * 60 * 60_000,
+    // İnsan-insan ikili farm (danışıklı) SIKI kalır — gerçek suistimal orada.
     pairDecayStart: 3,
     pairDecayFloor: 0.08,
     highRiskThreshold: 0.58,
     criticalRiskThreshold: 0.82,
     botExposureWindowMs: 60 * 60_000,
-    botExposureDecayStart: 5,
-    botExposureDecayFloor: 0.18,
+    // 5→10 ve 0.18→0.45 (2026-08-27): saatte 6-10 bot maçı FARM DEĞİL, bağlı
+    // oyuncunun normal seansı. 5. maçtan sonra kupanın 28'den 5'e düşmesi en
+    // hevesli oyuncuyu cezalandırıyordu — antifarm 1 numaralı öncelik değil.
+    botExposureDecayStart: 10,
+    botExposureDecayFloor: 0.45,
   },
   trophyEconomy: {
     targetDailyInflationMin: -0.02,
