@@ -6387,17 +6387,11 @@ export function XoxScreen({ state, actions }: Props) {
   const [emoteOpen, setEmoteOpen] = useState(false);
   const [, setTick] = useState(0);
   const win = useWindow();
-  // Klavye açılınca içeriğin SONUNA kaydır: cevap paneli + Gönder butonu
-  // klavyenin üstünde kalır (kullanıcı raporu 2026-08-27: 'klavye açılınca
-  // butonlar kayboluyor'). automaticallyAdjustKeyboardInsets inset'i verir,
-  // scroll pozisyonunu bu listener verir.
-  const scrollRef = useRef<ScrollView>(null);
-  useEffect(() => {
-    const sub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => {
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), Platform.OS === 'ios' ? 90 : 0);
-    });
-    return () => sub.remove();
-  }, []);
+  // SABİT EKRAN (kullanıcı kararı 2026-08-27): XOX kaydırılmaz. Tahta, orta
+  // bölgenin ÖLÇÜLMÜŞ boyuna göre ölçeklenir — küçük telefonda, cevap paneli
+  // açılınca ve klavye yükselince (KAV padding bölgeyi daraltır) hücreler
+  // otomatik küçülür; Gönder butonu hep klavyenin üstünde, tahta hep tam.
+  const [boardBox, setBoardBox] = useState({ w: 0, h: 0 });
   // Sunucu sayacı: 500ms tikle yeniden çiz (yalnız aktif maçta).
   useEffect(() => {
     if (over) return undefined;
@@ -6441,10 +6435,14 @@ export function XoxScreen({ state, actions }: Props) {
   const canAnswer = myTurn || (!over && xox.suddenDeath && xox.suddenCell != null);
   const secs = Math.max(0, Math.ceil((xox.turnEndsAt - Date.now()) / 1000));
   const headerW = 58;
-  // Sabitler: container padding 6×2 + satır içi 3 gap×6 = 30. Eski hesap
-  // padding'i unutuyordu → 3. sütun sağdan ~6px kırpılıyordu (rapor 2026-08-27).
-  const gridMaxW = Math.min(win.width - 32, 430);
-  const cellSize = Math.floor((gridMaxW - headerW - 30) / 3);
+  // Sabit maliyetler: container padding 6×2 + satır içi 3 gap×6 = 30 (genişlik);
+  // sütun başlığı ~54 + dikey 3 gap + padding = 84 (yükseklik). Hücre iki
+  // kısıttan KÜÇÜĞÜNE göre seçilir; ilk ölçüm gelene dek pencere genişliği
+  // kullanılır (tek karelik yer tutucu).
+  const gridMaxW = Math.min((boardBox.w || win.width - 32), 430);
+  const widthCell = Math.floor((gridMaxW - headerW - 30) / 3);
+  const heightCell = boardBox.h > 0 ? Math.floor((boardBox.h - 84) / 3) : widthCell;
+  const cellSize = Math.max(40, Math.min(widthCell, heightCell, 122));
   const gridW = headerW + cellSize * 3 + 30; // floor artığı tahtaya sızmasın
   const winLine = over?.line ?? null;
   const submit = () => {
@@ -6507,7 +6505,7 @@ export function XoxScreen({ state, actions }: Props) {
   };
 
   return (
-    <Screen scroll contentCenter={false} keyboardShouldPersistTaps="always" scrollRef={scrollRef} bg={<MatchCosmeticBackdrop backgroundId={matchBackgroundIdForState(state)} />}>
+    <Screen contentCenter={false} bg={<MatchCosmeticBackdrop backgroundId={matchBackgroundIdForState(state)} />}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         <MatchExitButton onPress={() => (state.matchOver ? actions.leave() : setShowLeaveConfirm(true))} />
         <PlayerBar state={state} onEmotePress={() => setEmoteOpen(true)} />
@@ -6533,7 +6531,8 @@ export function XoxScreen({ state, actions }: Props) {
         </View>
       ) : null}
 
-      {/* Tahta */}
+      {/* Tahta — esnek orta bölge: kalan alanı ölçer, tahta ona sığar */}
+      <View style={{ flex: 1, minHeight: 0, justifyContent: 'center' }} onLayout={(e) => { const { width: bw, height: bh } = e.nativeEvent.layout; setBoardBox((prev) => (Math.abs(prev.w - bw) > 1 || Math.abs(prev.h - bh) > 1 ? { w: bw, h: bh } : prev)); }}>
       <View style={{ alignSelf: 'center', width: gridW, backgroundColor: withAlpha(theme.surface2, 0.85), borderRadius: 20, padding: 6, gap: 6 }}>
         <View style={{ flexDirection: 'row', gap: 6, alignItems: 'flex-end' }}>
           <View style={{ width: headerW }} />
@@ -6548,6 +6547,7 @@ export function XoxScreen({ state, actions }: Props) {
             {[0, 1, 2].map((c) => cellView(r * 3 + c))}
           </View>
         ))}
+      </View>
       </View>
 
       {/* Son aksiyon satırı */}
@@ -6601,7 +6601,7 @@ export function XoxScreen({ state, actions }: Props) {
         </View>
       ) : null}
 
-      <View style={{ height: 28 }} />
+      <View style={{ height: 8 }} />
       <LeaveConfirmModal visible={showLeaveConfirm} kind={leaveKind} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
       <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} />
     </Screen>
