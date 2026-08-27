@@ -116,7 +116,14 @@ export async function getAdminStats(live: LiveStats, day?: string) {
         COALESCE(sum(diamonds),0)::bigint AS diamonds_circulating,
         count(*) FILTER (WHERE social_pack_until > now())::int AS active_social_pack,
         count(*) FILTER (WHERE premium_road = true)::int AS premium_road_active,
-        count(*) FILTER (WHERE banned_at IS NOT NULL)::int AS banned
+        count(*) FILTER (WHERE banned_at IS NOT NULL)::int AS banned,
+        -- "Uygulamayı silmiş" vekili: hesap duruyor ama en az 7/30 gündür hiç
+        -- bağlanmamış (last_seen bağlan/kopar anında güncellenir). created_at
+        -- filtresi yeni kaydolan ama henüz oynamamışları "kayıp" saymamak için.
+        count(*) FILTER (WHERE created_at < now() - interval '7 days'
+          AND (last_seen IS NULL OR last_seen < now() - interval '7 days'))::int  AS inactive_7d,
+        count(*) FILTER (WHERE created_at < now() - interval '30 days'
+          AND (last_seen IS NULL OR last_seen < now() - interval '30 days'))::int AS inactive_30d
       FROM users
       WHERE created_at >= ${LAUNCH_TS} AND ${notTest()}`),
 
@@ -418,6 +425,44 @@ export async function getAdminStats(live: LiveStats, day?: string) {
     onlineList = onl.rows.map((r: any) => ({ userId: r.id, name: r.display_name, trophies: r.trophies }));
   }
 
+  // ── Hesabını silenler (account_deletions — 0007 migration'dan sonrası) ──
+  // 0007 henüz uygulanmadıysa tablo yoktur; o durumda paneli çökertmeden 0 dön.
+  let del: any = { total: 0, today: 0, d7: 0, d30: 0, guests: 0, identified: 0 };
+  let delRecent: any[] = [];
+  try {
+    const [delAgg, delList] = await Promise.all([
+      pool.query(`
+        SELECT
+          count(*)::int AS total,
+          count(*) FILTER (WHERE deleted_at >= ${selectedDay.startSql} AND deleted_at < ${selectedDay.endSql})::int AS today,
+          count(*) FILTER (WHERE deleted_at >= now() - interval '7 days')::int  AS d7,
+          count(*) FILTER (WHERE deleted_at >= now() - interval '30 days')::int AS d30,
+          count(*) FILTER (WHERE was_guest)::int      AS guests,
+          count(*) FILTER (WHERE NOT was_guest)::int  AS identified
+        FROM account_deletions`),
+      // "Kim sildi" listesi — son 50, en yeni önce. Yalnız kullanıcı adı + anonim özet.
+      pool.query(`
+        SELECT display_name, was_guest, auth_provider, trophies, level,
+               GREATEST(0, EXTRACT(DAY FROM (deleted_at - account_created_at)))::int AS tenure_days,
+               to_char(deleted_at AT TIME ZONE 'Europe/Istanbul', 'YYYY-MM-DD HH24:MI') AS deleted_at
+        FROM account_deletions
+        ORDER BY deleted_at DESC
+        LIMIT 50`),
+    ]);
+    del = delAgg.rows[0] as any;
+    delRecent = delList.rows.map((r: any) => ({
+      name: r.display_name,
+      wasGuest: r.was_guest,
+      authProvider: r.auth_provider,
+      trophies: r.trophies,
+      level: r.level,
+      tenureDays: r.tenure_days,
+      deletedAt: r.deleted_at,
+    }));
+  } catch {
+    /* account_deletions tablosu yok (migrate 0007 çalışmamış) — sayaçlar 0/liste boş kalır */
+  }
+
   return {
     generatedAt: new Date().toISOString(),
     since: '2026-08-04', // istatistiklerin başlangıç (yayın) tarihi — panelde gösterilir
@@ -436,6 +481,18 @@ export async function getAdminStats(live: LiveStats, day?: string) {
       diamondsCirculating: Number(u.diamonds_circulating),
       activeSocialPack: u.active_social_pack,
       premiumRoadActive: u.premium_road_active,
+      inactive7d: u.inactive_7d,   // hesap duruyor, 7+ gündür bağlanmamış (uninstall vekili)
+      inactive30d: u.inactive_30d, // hesap duruyor, 30+ gündür bağlanmamış
+    },
+    // Hesabını silenler. Yalnızca 0007 migration'dan SONRAKİ silmeler (geçmiş yok).
+    deletions: {
+      total: del.total,
+      today: del.today,
+      d7: del.d7,
+      d30: del.d30,
+      guests: del.guests,
+      identified: del.identified,
+      recent: delRecent,
     },
     revenue: {
       totalTry: totalRevenue,

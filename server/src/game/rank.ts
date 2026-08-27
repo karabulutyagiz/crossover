@@ -439,6 +439,27 @@ export async function deleteAccount(userId: string): Promise<boolean> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // Silmeden ÖNCE anonim silme günlüğü (admin panel "Hesabını silenler" için).
+    // Kişisel/tanımlayıcı hiçbir alan yazılmaz — sadece tip + kupa/seviye + tarih.
+    // was_guest, admin.ts'teki isGuestSql ile aynı kuralı taşır. Test hesapları
+    // (istatistiklerin dışında tutulanlar) günlüğe yazılmaz.
+    await client.query(
+      `INSERT INTO account_deletions (user_id, display_name, was_guest, auth_provider, trophies, level, account_created_at)
+       SELECT u.id,
+              u.display_name,
+              (u.apple_sub IS NULL AND u.google_sub IS NULL AND u.facebook_sub IS NULL
+                 AND u.game_center_id IS NULL AND u.display_name ~ '^M[0-9]{9}$'),
+              CASE WHEN u.apple_sub    IS NOT NULL THEN 'apple'
+                   WHEN u.google_sub   IS NOT NULL THEN 'google'
+                   WHEN u.facebook_sub IS NOT NULL THEN 'facebook'
+                   WHEN u.game_center_id IS NOT NULL THEN 'gamecenter'
+                   ELSE NULL END,
+              u.trophies, u.level, u.created_at
+         FROM users u
+        WHERE u.id = $1
+          AND lower(u.display_name) NOT IN ('yagiz', 'bloodsucker')`,
+      [userId],
+    );
     await client.query('DELETE FROM processed_transactions WHERE user_id = $1', [userId]);
     const res = await client.query('DELETE FROM users WHERE id = $1', [userId]);
     await client.query('COMMIT');

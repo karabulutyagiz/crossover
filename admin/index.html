@@ -305,6 +305,20 @@
     <div class="card kpi"><div class="label">Premium Yol açık</div><div class="value" id="u_premium">–</div></div>
     <div class="card kpi"><div class="label">Dolaşımdaki elmas</div><div class="value" id="u_diamonds">–</div></div>
     <div class="card kpi accent-danger"><div class="label">Açık şikâyet</div><div class="value" id="u_reports">–</div><div class="sub">yasaklı: <span id="u_banned">–</span></div></div>
+    <div class="card kpi accent-danger" title="Yalnızca bu özellik yayına alındıktan sonra hesabını silenler sayılır; geçmiş silmeler kalıcı olarak yok."><div class="label">Hesabını silenler</div><div class="value" id="u_deleted">–</div><div class="sub">bugün: <span id="u_deleted_today">–</span> · 7g: <span id="u_deleted_7d">–</span> · 30g: <span id="u_deleted_30d">–</span></div></div>
+    <div class="card kpi accent-danger"><div class="label">Silenler: kimlikli / misafir</div><div class="value" id="u_deleted_idguest">–</div><div class="sub">toplam silme dağılımı</div></div>
+    <div class="card kpi" title="Hesap hâlâ duruyor ama en az 7 gündür hiç bağlanmamış — uygulamayı silmiş olma vekili."><div class="label">Uygulamayı silmiş (7g+ inaktif)</div><div class="value" id="u_inactive7">–</div><div class="sub">30g+ inaktif: <span id="u_inactive30">–</span></div></div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <h3 style="margin:0 0 4px;font-size:15px">Hesabını silen kullanıcılar — son 50</h3>
+    <p class="hint" style="margin:0 0 12px">En yeni önce. Yalnızca bu özellik yayına alındıktan sonraki silmeler; kişisel iz olarak yalnız kullanıcı adı tutulur (e-posta saklanmaz).</p>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Kullanıcı</th><th>Hesap</th><th class="num">🏆</th><th class="num">Sv</th><th class="num">Gün</th><th>Silinme</th></tr></thead>
+        <tbody id="del_rows"></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- Game -->
@@ -641,6 +655,24 @@
     $("u_diamonds").textContent = trNum(U.diamondsCirculating);
     $("u_reports").textContent  = trNum((s.moderation||{}).openReports);
     $("u_banned").textContent   = trNum(U.banned);
+    var DEL = s.deletions || {};
+    $("u_deleted").textContent        = trNum(DEL.total);
+    $("u_deleted_today").textContent  = trNum(DEL.today);
+    $("u_deleted_7d").textContent     = trNum(DEL.d7);
+    $("u_deleted_30d").textContent    = trNum(DEL.d30);
+    $("u_deleted_idguest").textContent= trNum(DEL.identified) + " / " + trNum(DEL.guests);
+    $("u_inactive7").textContent      = trNum(U.inactive7d);
+    $("u_inactive30").textContent     = trNum(U.inactive30d);
+    var DELR = (s.deletions && s.deletions.recent) || [];
+    var provName = function(p){ return p ? p.charAt(0).toUpperCase()+p.slice(1) : "Kimlikli"; };
+    if ($("del_rows")) $("del_rows").innerHTML = DELR.length ? DELR.map(function(r){
+      var type = r.wasGuest ? "Misafir" : provName(r.authProvider);
+      return "<tr><td>" + esc(r.name) + "</td><td>" + type + "</td>"
+           + "<td class='num'>" + trNum(r.trophies) + "</td>"
+           + "<td class='num'>" + trNum(r.level) + "</td>"
+           + "<td class='num'>" + trNum(r.tenureDays) + "</td>"
+           + "<td>" + esc(r.deletedAt) + "</td></tr>";
+    }).join("") : "<tr><td colspan='6' class='muted'>Henüz silinen hesap yok.</td></tr>";
 
     // modes / arenas
     hbars("g_modes", (s.matches&&s.matches.modes||[]).map(function(m){ return { name: modeLabel(m.game_mode), count: m.n }; }));
