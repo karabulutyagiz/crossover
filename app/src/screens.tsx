@@ -6731,6 +6731,14 @@ export function GuessScreen({ state, actions, tutorial, prefill }: Props & { pre
     }, 250);
     return () => clearInterval(id);
   }, [retryAt]);
+  // Yanlış cevap sonrası 5sn ceza penceresi başlayınca cevap çubuğundaki ESKİ
+  // yanlış metni temizle: süre dolup input yeniden açıldığında BOŞ gelir; oyuncu
+  // doğruyu bulduysa eski yanlışı silmeden hemen yazar (kullanıcı isteği 2026-08-28).
+  // Input cooldown boyunca zaten gizli olduğundan aktif yazmayı bozmaz; controlled
+  // GuessControls remount'ta useState(guessTextRef.current='') ile boş başlar.
+  useEffect(() => {
+    if (retryAt) guessTextRef.current = '';
+  }, [retryAt]);
   // ❄ Freeze: sunucu damgasına kadar kendi girişin kilitli (görsel + yerel).
   const frozenUntil = state.spFrozenUntil;
   const [, setFzTick] = useState(0);
