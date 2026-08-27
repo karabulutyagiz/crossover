@@ -85,10 +85,16 @@ export async function ensureDailyPair(dayIdx: number): Promise<{ teamA: ClubRef;
   // Ham popularity kolonu tek başına güvenilmez (Stevenage/Alcorcón sızıyordu):
   // oyunun kendi katman sistemi (clubPopularityTier) süzer — yalnız
   // GLOBAL_GIANT / VERY_POPULAR / POPULAR katmanları günün sorusu olabilir.
+  // Sıralama SQUAD DERİNLİĞİ ile (popularity değil): popularity kolonu ortamlar
+  // arasında tutarsız (yerelde GS=0!) ve dublör satırlar var ("Galatasaray A2").
+  // Kadro sayısı hem gerçek kulüp satırını seçer hem cevaplanabilirliği garanti eder;
+  // tanınırlığı zaten isim-tabanlı tier süzgeci veriyor.
   const { rows: rawClubs } = await pool.query<ClubRow & { popularity: string | null }>(
-    `SELECT c.id, c.name, c.logo_url, c.popularity::text AS popularity FROM clubs c
+    `SELECT c.id, c.name, c.logo_url, c.popularity::text AS popularity, COUNT(pc.player_id)::int AS squad
+       FROM clubs c JOIN player_clubs pc ON pc.club_id = c.id
       WHERE c.is_national = FALSE AND c.logo_url IS NOT NULL ${A_TEAM_FILTER}
-      ORDER BY c.popularity DESC NULLS LAST, c.id
+      GROUP BY c.id, c.name, c.logo_url, c.popularity
+      ORDER BY COUNT(pc.player_id) DESC, c.id
       LIMIT 220`,
   );
   const topClubs = rawClubs.filter((c) => {
@@ -116,7 +122,7 @@ export async function ensureDailyPair(dayIdx: number): Promise<{ teamA: ClubRef;
         WHERE a.club_id = $1 AND c.is_national = FALSE AND c.logo_url IS NOT NULL ${A_TEAM_FILTER}
         GROUP BY c.id, c.name, c.logo_url
        HAVING COUNT(DISTINCT a.player_id) >= $2
-        ORDER BY c.popularity DESC NULLS LAST, c.id
+        ORDER BY COUNT(DISTINCT a.player_id) DESC, c.id
         LIMIT 40`,
       [teamA.id, MIN_ANSWERS],
     );
