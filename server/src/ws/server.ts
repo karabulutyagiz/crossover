@@ -49,6 +49,7 @@ import type { ClientMsg, GameMode, ProfileView, ServerMsg } from '../protocol.ts
 import { getLiveStoreVersions, storeVersionIsNewer, type StorePlatform } from '../storeVersions.ts';
 import { buyDailyOffer, computeDailyOffer, currentOfferWindow, dailyOfferClaimed } from '../game/dailyOffer.ts';
 import { getDailyState, startDaily as startDailyCrossover, submitDailyGuess } from '../game/dailyCrossover.ts';
+import { redeemReferral } from '../game/referrals.ts';
 import { toProfileView } from '../game/profileView.ts';
 import { buySpecialPower, equipSpecialPower, isSpecialPowerId } from '../game/specialPowers.ts';
 
@@ -1462,6 +1463,26 @@ export function startServer(port: number): Server {
           } catch (err) {
             console.error('[buy_daily_offer] failed:', err instanceof Error ? err.message : err);
             transport.send({ type: 'error', message: 'Fırsat satın alınamadı' });
+          }
+        })();
+        return;
+      }
+
+      // ---- Davet ödülü (game/referrals.ts) ----
+      if (msg.type === 'redeem_referral') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          try {
+            const result = await redeemReferral(userProfile!.id, msg.code);
+            if (!result.ok) return transport.send({ type: 'error', message: result.error });
+            userProfile = result.profile;
+            transport.send({ type: 'referral_redeemed', profile: toProfileView(result.profile), referrerName: result.referrerName, reward: result.reward });
+            // İki taraf da arkadaş listesini taze görsün (davet eden çevrimiçiyse anında düşer).
+            const friends = await listFriends(userProfile!.id);
+            for (const f of friends) sendToUser(f.userId, await getFriendsData(f.userId));
+          } catch (err) {
+            log.warn('redeem_referral_failed', { userId: userProfile?.id, error: err instanceof Error ? err.message : String(err) });
+            transport.send({ type: 'error', message: 'Davet kodu kullanılamadı, tekrar dene' });
           }
         })();
         return;

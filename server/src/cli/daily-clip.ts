@@ -35,10 +35,10 @@ const FONTS = ['Poppins-Black.ttf', 'Poppins-ExtraBold.ttf', 'Poppins-SemiBold.t
 const A_TEAM_FILTER = `
   AND c.name_norm !~* '(women|femen|femin|femmin|frauen|kadin|ladies)'
   AND c.name_norm !~* '(^|[^a-z])(u-?1[2-9]|u-?2[0-3]|sub-?[0-9]|youth|jugend|primavera|juvenil|altyapi|akademi|academy|junior|jeugd)([^a-z]|$)'
-  AND c.name_norm !~* '( b| ii| iii| reserves?| castilla)$'
+  AND c.name_norm !~* '( b| c| ii| iii| a[0-9]| reserves?| castilla| atletic)$'
 `;
 
-interface Args { pairs: number; seed: string; tr: boolean; video: boolean; out: string | null; teamA: string | null; teamB: string | null; countdown: number }
+interface Args { pairs: number; seed: string; tr: boolean; video: boolean; out: string | null; teamA: string | null; teamB: string | null; countdown: number; answer: string | null }
 function parseArgs(): Args {
   const a = process.argv.slice(2);
   const get = (flag: string) => { const i = a.indexOf(flag); return i >= 0 ? a[i + 1] : undefined; };
@@ -52,6 +52,10 @@ function parseArgs(): Args {
     // rastgele seçim atlanır, tam bu çift render edilir.
     teamA: get('--teamA') ?? null,
     teamB: get('--teamB') ?? null,
+    // Tek doğruluk kaynağı content item olsun diye reveal cevabı dışarıdan
+    // dayatılabilir (Growth players[0] ile çağırır) — verilmezse en tanınır
+    // ortak oyuncu bizden.
+    answer: get('--answer') ?? null,
     // Growth storyboard'u 5-4-3-2-1 kullanıyor; organik el paylaşımı 3-2-1.
     countdown: Math.max(3, Math.min(5, Number(get('--countdown') ?? 3) || 3)),
   };
@@ -291,7 +295,24 @@ async function producePair(
     teamA.logo_url ? fetchImage(teamA.logo_url) : null,
     teamB.logo_url ? fetchImage(teamB.logo_url) : null,
   ]);
-  const top = answers[0]!;
+  // --answer: reveal cevabını çağıran belirler (Growth content item = tek
+  // doğruluk kaynağı). Listede bulunursa fotoğrafıyla; bulunmazsa isim aynen
+  // kullanılır, fotoğraf DB'den aranır.
+  let top = answers[0]!;
+  if (args.answer) {
+    const norm = (s: string) => s.toLocaleLowerCase('tr-TR').trim();
+    const want = norm(args.answer);
+    const hit = answers.find((p) => norm(p.name).includes(want) || want.includes(norm(p.name)));
+    if (hit) top = hit;
+    else {
+      const { rows: ph } = await pool.query<{ name: string; image_url: string | null }>(
+        `SELECT name, image_url FROM players WHERE name ILIKE '%' || $1 || '%' LIMIT 1`,
+        [args.answer],
+      );
+      top = { name: ph[0]?.name ?? args.answer, imageUrl: ph[0]?.image_url ?? null };
+      console.warn(`  ! --answer "${args.answer}" ortak listede yok — yine de kullanılıyor (yayın öncesi kontrol et)`);
+    }
+  }
   const playerImg = top.imageUrl ? await fetchImage(top.imageUrl) : null;
   const card: CardData = { teamA: { name: teamA.name, img: imgA }, teamB: { name: teamB.name, img: imgB } };
 

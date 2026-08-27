@@ -1138,7 +1138,7 @@ export interface FriendRequestView {
 
 // Resolve a user from what's typed into "Friend Code": either the 8-char code
 // (first 8 chars of the UUID, as shown in the app) or an exact username.
-async function resolveUserByCodeOrName(codeOrName: string): Promise<DbUser | null> {
+export async function resolveUserByCodeOrName(codeOrName: string): Promise<DbUser | null> {
   const c = codeOrName.trim();
   if (!c) return null;
   // Friend code = first 8 hex chars of the uuid.

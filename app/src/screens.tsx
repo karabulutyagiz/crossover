@@ -99,6 +99,8 @@ try { NetInfoModule = require('@react-native-community/netinfo').default; } catc
 type Actions = {
   register: (name: string, gameCenterId?: string) => void;
   guestLogin: () => void;
+  // Davet ödülü
+  redeemReferral: (code: string) => void;
   // Günün Crossover'ı
   getDailyCrossover: () => void;
   startDailyCrossover: () => void;
@@ -10465,6 +10467,9 @@ export function FriendsScreen({ state, actions, onGoToStore, onLockedSocialMode,
   const [friendTab, setFriendTab] = useState<'friends' | 'requests' | 'messages'>('friends');
   const [msgSearch, setMsgSearch] = useState('');
   const [copied, setCopied] = useState(false);
+  // Davet ödülü: kod paylaşımı + yeni hesapların kod giriş alanı
+  const [redeemOpen, setRedeemOpen] = useState(false);
+  const [redeemCode, setRedeemCode] = useState('');
   const [matchModal, setMatchModal] = useState<string | null>(null); // friendId — friendly-match dialog
   // Friendly-match setup pages ALL live inside one mounted GameModal (mode →
   // scope → league/country) and slide between each other — no modal handoffs.
@@ -10611,6 +10616,51 @@ export function FriendsScreen({ state, actions, onGoToStore, onLockedSocialMode,
             <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={20} color={copied ? theme.primary : theme.accent} />
           </Pressable>
           <CopiedPill visible={copied} />
+        </View>
+
+        {/* Davet ödülü — kodunu paylaş, ikiniz de kazanın (sunucu kuralları:
+            kod giren kimlikli + ≤7 günlük hesap; tek kullanım; oto-arkadaşlık). */}
+        <Text style={styles.sectionLabel}>DAVET ÖDÜLÜ</Text>
+        <View style={{ marginVertical: 5 }}>
+          <GamePanel compact tint={theme.gold}>
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13.5 }}>Arkadaşını getir — ikinize de 100 💎</Text>
+              <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 11.5, lineHeight: 16 }}>
+                Kodunu paylaş; arkadaşın ilk 7 gününde girerse ikiniz de kazanır, otomatik arkadaş olursunuz.
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Btn compact kind="primary" icon="share-social" label="KODU PAYLAŞ" feedback={GameFeedbackEvent.UI_CONFIRM} onPress={() => {
+                  const code = profile?.userId?.slice(0, 8).toUpperCase();
+                  if (!code) return;
+                  track('referral_share', {});
+                  void Share.share({ message: `CrossOver Football'da bana karşı oyna! ⚽ Davet kodum: ${code} — uygulamada girersen İKİMİZ de 100💎 kazanırız.\nhttps://crossoverfootball.com/indir` }).catch(() => {});
+                }} />
+                <Btn compact kind="ghost" label="Kodun mu var?" onPress={() => setRedeemOpen((v) => !v)} />
+              </View>
+              {redeemOpen ? (
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                  <GameInput
+                    placeholder="Davet kodu"
+                    value={redeemCode}
+                    onChangeText={setRedeemCode}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    containerStyle={{ flex: 1 }}
+                  />
+                  <Btn compact kind="accent" label="GÖNDER" disabled={!redeemCode.trim()} feedback={GameFeedbackEvent.UI_CONFIRM} onPress={() => {
+                    track('referral_redeem_submit', {});
+                    actions.redeemReferral(redeemCode.trim());
+                    dismissActiveInput();
+                  }} />
+                </View>
+              ) : null}
+              {state.referralRedeem ? (
+                <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 12.5 }}>
+                  🎉 {state.referralRedeem.referrerName} ile arkadaş oldunuz — +{state.referralRedeem.reward} 💎 hesabında!
+                </Text>
+              ) : null}
+            </View>
+          </GamePanel>
         </View>
 
         {/* Add friend — search mode as a segmented control (same trough voice as the tab bar) */}

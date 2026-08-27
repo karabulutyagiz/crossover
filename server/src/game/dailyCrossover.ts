@@ -35,7 +35,7 @@ const NO_REPEAT_DAYS = 10;
 const A_TEAM_FILTER = `
   AND c.name_norm !~* '(women|femen|femin|femmin|frauen|kadin|ladies)'
   AND c.name_norm !~* '(^|[^a-z])(u-?1[2-9]|u-?2[0-3]|sub-?[0-9]|youth|jugend|primavera|juvenil|altyapi|akademi|academy|junior|jeugd)([^a-z]|$)'
-  AND c.name_norm !~* '( b| ii| iii| reserves?| castilla)$'
+  AND c.name_norm !~* '( b| c| ii| iii| a[0-9]| reserves?| castilla| atletic)$'
 `;
 
 export function istanbulDayIdx(now = Date.now()): number {

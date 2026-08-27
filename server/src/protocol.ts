@@ -193,6 +193,7 @@ export type ClientMsg =
   | { type: 'claim_outage_gift' } // kesinti telafisi: özür penceresindeki "AL"
   | { type: 'get_daily_offer' } // kişiye özel 12 saatlik fırsatı iste
   | { type: 'buy_daily_offer'; key: string } // fırsatı satın al (key pencereyle doğrulanır)
+  | { type: 'redeem_referral'; code: string } // davet kodu gir (yeni hesap; ikisi de 💎 kazanır)
   | { type: 'get_daily_crossover' } // Günün Crossover'ı durumunu iste
   | { type: 'start_daily_crossover' } // soruyu açtım — süre sayacı sunucuda başlar (idempotent)
   | { type: 'daily_crossover_guess'; text: string } // günlük tahmin (3 hak, sunucu sayar)
@@ -335,6 +336,7 @@ export type ServerMsg =
   | { type: 'power_purchased'; powerId: string; profile: ProfileView } // mağazadan güç alındı
   | { type: 'power_used'; powerId: string; profile: ProfileView } // güç etkinleştirildi (jeton düştü / kalkan kuşanıldı)
   | { type: 'outage_gift_claimed'; profile: ProfileView; granted: boolean } // granted=false → zaten alınmıştı
+  | { type: 'referral_redeemed'; profile: ProfileView; referrerName: string; reward: number }
   // Günün Crossover'ı — state hem ilk açılışta hem bitişte aynı şekilde gider.
   | { type: 'daily_crossover'; state: DailyCrossoverStateView }
   | { type: 'daily_crossover_wrong'; guess: string; suggestion: string | null; attemptsLeft: number }

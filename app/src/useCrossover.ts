@@ -120,6 +120,8 @@ export interface GameState {
   // Kişiye özel 12 saatlik fırsat (sunucu-deterministik; null = bu pencerede alınmış)
   dailyOffer: import('./protocol').DailyOfferView | null;
   dailyOfferPurchaseSeq: number;
+  // Davet ödülü başarısı — seq ile kutlama tetiklenir, profil tazelenmiş gelir.
+  referralRedeem: { referrerName: string; reward: number; seq: number } | null;
   // Günün Crossover'ı — sunucu-otoriter durum; wrong yalnız oyun penceresinde gösterilir.
   dailyCx: import('./protocol').DailyCrossoverStateView | null;
   dailyCxWrong: { guess: string; suggestion: string | null; attemptsLeft: number; seq: number } | null;
@@ -280,6 +282,7 @@ export const initialState: GameState = {
   outageGiftClaim: null,
   dailyOffer: null,
   dailyOfferPurchaseSeq: 0,
+  referralRedeem: null,
   dailyCx: null,
   dailyCxWrong: null,
   dailyCxReward: 0,
@@ -625,6 +628,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, profile: action.profile };
     case 'daily_offer':
       return { ...state, dailyOffer: (action as any).offer ?? null };
+    case 'referral_redeemed':
+      return { ...state, profile: action.profile, referralRedeem: { referrerName: action.referrerName, reward: action.reward, seq: (state.referralRedeem?.seq ?? 0) + 1 } };
     case 'daily_crossover':
       return { ...state, dailyCx: action.state, dailyCxWrong: null };
     case 'daily_crossover_wrong':
@@ -1691,6 +1696,7 @@ export function useCrossover() {
       claimOutageGift: () => send({ type: 'claim_outage_gift' }),
       getDailyOffer: () => send({ type: 'get_daily_offer' }),
       buyDailyOffer: (key: string) => send({ type: 'buy_daily_offer', key }),
+      redeemReferral: (code: string) => send({ type: 'redeem_referral', code }),
       getDailyCrossover: () => send({ type: 'get_daily_crossover' }),
       startDailyCrossover: () => send({ type: 'start_daily_crossover' }),
       guessDailyCrossover: (text: string) => send({ type: 'daily_crossover_guess', text }),
