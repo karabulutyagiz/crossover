@@ -1122,6 +1122,10 @@ export function startServer(port: number): Server {
   });
 
   wss.on('connection', (ws: WebSocket, req) => {
+    // GECİKME (2026-08-27): Nagle kapatılır — oyun mesajları küçük ve seyrek;
+    // Nagle + delayed-ACK etkileşimi tur olaylarına 40-200 ms görünmez tampon
+    // gecikmesi ekleyebiliyor. Gerçek-zamanlı oyunda anında gönderim esastır.
+    req.socket.setNoDelay(true);
     let ctx: ConnCtx | null = null;
     let userProfile: UserProfile | undefined;
     const transport = wsTransport(ws);

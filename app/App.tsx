@@ -1035,21 +1035,33 @@ function AppRoot() {
   const socialPackQueuedThisSessionRef = useRef(false);
   const promotionTransitionRef = useRef(false);
   const lastPurchaseSeq = state.lastPurchase?.seq ?? 0;
+  // PERFORMANS (2026-08-27): bu kaydedici sık tetiklenir (faz geçişleri, kuyruk
+  // denetimleri) ve eskiden HER çağrıda App-seviyesi setState + production
+  // console.info yapıyordu — gereksiz tam-ağaç re-render + Hermes log köprüsü.
+  // Artık yamalar ref'te birikir, state'e 800 ms'de bir TEK sefer yazılır
+  // (ayarlar panelindeki tanılama görünümü için yeterli tazelik); console yalnız dev'de.
+  const diagPendingRef = useRef<Partial<MonetizationDiagnostics> | null>(null);
+  const diagFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recordMonetizationDiagnostic = useCallback((event: string, patch: Partial<MonetizationDiagnostics> & { reason?: string; data?: Record<string, unknown> } = {}) => {
     const { reason, data, ...diagPatch } = patch;
-    setMonetizationDiagnostics((current) => {
-      const next: MonetizationDiagnostics = {
-        ...current,
-        ...diagPatch,
-        appVersion: APP_VERSION,
-        buildNumber: APP_BUILD_NUMBER,
-        lastMonetizationEvent: event,
-        lastSuppressionReason: reason ?? diagPatch.lastSuppressionReason ?? current.lastSuppressionReason,
-        updatedAt: new Date().toISOString(),
-      };
-      console.info('[MONETIZATION]', event, { ...next, ...(data ?? {}) });
-      return next;
-    });
+    if (__DEV__) console.info('[MONETIZATION]', event, { ...diagPatch, reason, ...(data ?? {}) });
+    diagPendingRef.current = {
+      ...(diagPendingRef.current ?? {}),
+      ...diagPatch,
+      appVersion: APP_VERSION,
+      buildNumber: APP_BUILD_NUMBER,
+      lastMonetizationEvent: event,
+      ...(reason ?? diagPatch.lastSuppressionReason ? { lastSuppressionReason: reason ?? diagPatch.lastSuppressionReason } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    if (!diagFlushTimerRef.current) {
+      diagFlushTimerRef.current = setTimeout(() => {
+        diagFlushTimerRef.current = null;
+        const pending = diagPendingRef.current;
+        diagPendingRef.current = null;
+        if (pending) setMonetizationDiagnostics((current) => ({ ...current, ...pending }));
+      }, 800);
+    }
   }, []);
   const updateEngagement = useCallback((updater: (state: EngagementRuntimeState) => EngagementRuntimeState) => {
     setEngagementState((current) => {
@@ -1546,14 +1558,28 @@ function AppRoot() {
     setUpdateNudgeVisible(true);
   }, [loaded, splash, state.phase, state.profile?.usernameSet, modalBlocked, state.updateAvailableVersion]);
 
+  // PERFORMANS (2026-08-27): aktif-oyun sayacı eskiden 5 sn'de bir App
+  // seviyesinde setState yapıyordu — MAÇ SIRASINDA bile tüm ağaç 5 saniyede
+  // bir yeniden çiziliyordu (periyodik mikro-takılmanın ana kaynağı). Saniyeler
+  // artık REF'te birikir; state'e yalnız 30 sn'de bir ya da faz değişince
+  // (unmount/cleanup) yazılır. Engagement eşikleri dakika ölçeğinde — 30 sn
+  // granülerlik davranışı değiştirmez.
+  const pendingActiveSecsRef = useRef(0);
   useEffect(() => {
     if (!isActivePlayEligible(state.phase, modalBlocked)) return;
+    const flush = () => {
+      const secs = pendingActiveSecsRef.current;
+      if (secs <= 0) return;
+      pendingActiveSecsRef.current = 0;
+      updateEngagement((s) => recordActiveSeconds(s, secs));
+    };
     const id = setInterval(() => {
-      updateEngagement((s) => recordActiveSeconds(s, 5));
-      if (__DEV__) engagementLog('activePlaySeconds', { activeSessionSeconds: engagementState.activeSessionSeconds + 5, totalActivePlaySeconds: engagementState.totalActivePlaySeconds + 5 });
+      pendingActiveSecsRef.current += 5;
+      if (pendingActiveSecsRef.current >= 30) flush();
+      if (__DEV__) engagementLog('activePlaySeconds', { pending: pendingActiveSecsRef.current });
     }, 5000);
-    return () => clearInterval(id);
-  }, [state.phase, modalBlocked, updateEngagement, engagementState.activeSessionSeconds, engagementState.totalActivePlaySeconds]);
+    return () => { clearInterval(id); flush(); };
+  }, [state.phase, modalBlocked, updateEngagement]);
 
   useEffect(() => {
     if (!loaded || splash || state.phase !== 'home' || !state.profile?.usernameSet) {
