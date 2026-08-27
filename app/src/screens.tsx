@@ -8666,6 +8666,11 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
               <View key={spid} style={styles.storeEmoteCard}>
                 <View>
                   <SpecialPowerBadge id={spid} size={52} />
+                  {/* Paket adedi İKONUN ÜSTÜNDE (kullanıcı kararı 2026-08-27:
+                      '×3 PAKET' çipi amatörce — x3 ikona işlenir). */}
+                  <View style={{ position: 'absolute', right: -5, bottom: -5, backgroundColor: theme.gold, borderRadius: 999, paddingHorizontal: 5, height: 17, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: '#231A00', fontSize: 9, fontFamily: 'Poppins-Black' }}>x3</Text>
+                  </View>
                   {count > 0 ? (
                     <View style={{ position: 'absolute', right: -6, top: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 4, backgroundColor: meta.color, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
                       <Text style={{ color: theme.ink, fontSize: 10, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>x{count}</Text>
@@ -8673,12 +8678,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
                   ) : null}
                 </View>
                 <View style={{ flex: 1, gap: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={{ color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t(meta.nameKey)}</Text>
-                    <View style={{ backgroundColor: withAlpha(theme.gold, 0.2), borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1, borderWidth: 1, borderColor: withAlpha(theme.gold, 0.6) }}>
-                      <Text style={{ color: theme.gold, fontSize: 9, fontFamily: 'Poppins-Black' }}>{t('store.spPack')}</Text>
-                    </View>
-                  </View>
+                  <Text style={{ color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t(meta.nameKey)}</Text>
                   <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', lineHeight: 14 }} numberOfLines={2}>{t(meta.descKey)}</Text>
                   {count > 0 ? (
                     <Pressable hitSlop={6} onPress={() => { triggerFeedback(GameFeedbackEvent.UI_TOGGLE_ON); actions.equipSpecialPower(equipped ? null : spid); }}>
@@ -8731,7 +8731,6 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
                   ) : null}
                 </View>
                 <View style={{ alignItems: 'center', gap: 2 }}>
-                  <Text style={{ color: theme.muted, fontSize: 9, fontFamily: 'Poppins-Black', letterSpacing: 0.8 }}>{t('store.powerEach')}</Text>
                   <Btn
                     compact
                     kind="primary"
@@ -8936,9 +8935,13 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
       >
         {confirmSpecial ? (
           <View style={{ alignItems: 'center', gap: 10 }}>
-            <SpecialPowerBadge id={confirmSpecial} size={96} />
+            <View>
+              <SpecialPowerBadge id={confirmSpecial} size={96} />
+              <View style={{ position: 'absolute', right: -7, bottom: -3, backgroundColor: theme.gold, borderRadius: 999, paddingHorizontal: 8, height: 24, borderWidth: 2.5, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: '#231A00', fontSize: 12.5, fontFamily: 'Poppins-Black' }}>x3</Text>
+              </View>
+            </View>
             <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 18 }}>{t(SPECIAL_POWERS[confirmSpecial].descKey)}</Text>
-            <Text style={{ color: theme.gold, fontSize: 12, fontFamily: 'Poppins-Black', textAlign: 'center' }}>{t('store.spPackNote')}</Text>
             <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('sp.limitNote')}</Text>
             <View style={{ alignSelf: 'stretch', marginTop: 4, gap: 8 }}>
               <Btn big kind="primary" gem label={String(catalog?.specialPowers?.find((x) => x.id === confirmSpecial)?.price ?? SPECIAL_POWER_PRICE_FALLBACK[confirmSpecial])} feedback={GameFeedbackEvent.UI_PURCHASE} onPress={() => {
