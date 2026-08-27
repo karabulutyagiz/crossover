@@ -150,13 +150,28 @@ export function isVaultCosmetic(item: CosmeticItem): boolean {
  * şikâyeti, 2026-08-27) — bu yüzden havuz burada tanımlıdır, çoğaltılmaz.
  * Slot 0 = haftanın kasa düşüşü (mythic); kalan 7 slot mythic-dışı havuzdan.
  */
-// Satıştan KALDIRILAN kozmetikler (kullanıcı kararı 2026-08-27: 'altın çerçeve
-// koymadık, kaldır'). Katalogdan SİLİNMEZ — sahipleri kuşanmaya devam eder;
-// yalnız vitrine ve (vitrinden beslenen) Günlük Fırsat'a bir daha giremez.
-const UNSELLABLE_COSMETICS = new Set(['golden_frame']);
+// ══════════════════════════════════════════════════════════════════════════
+// KESİN KURAL (kullanıcı, 2026-08-27): mağazaya YALNIZ kullanıcının ÇİZDİRDİĞİ
+// asset'e sahip ürünler girer. Prosedürel/çizimsiz ürün satışa ASLA çıkmaz.
+// Bu BEYAZ LİSTEDİR — yeni ürün, asset'i app/assets'e girip buraya eklenmeden
+// vitrine/fırsata giremez. Katalogdan silinmezler (eski sahipler kuşanmaya
+// devam eder); yalnız satış yüzeylerinden (vitrin + Günlük Fırsat) dışlanır.
+// Asset karşılıkları (app/assets):
+//   frames/frame-ice-store.png, frame-goat-store.png
+//   cosmetics/fire_nameplate.png, ice_nameplate.png
+//   cosmetics/neon_pitch_bg.jpg, night_stadium_bg.jpg, goat_arena_bg.jpg
+//   cosmetics/goat_ball_crest.png, champions_ball_crest.png
+// ══════════════════════════════════════════════════════════════════════════
+const SELLABLE_COSMETICS = new Set([
+  'ice_frame', 'goat_frame',
+  'fire_name', 'ice_name',
+  'neon_pitch', 'night_stadium', 'goat_arena',
+  'goat_ball', 'champions_ball',
+]);
 
 export function featuredCosmetics(now = new Date()): CosmeticItem[] {
-  const pool = COSMETIC_ITEMS.filter((item) => item.diamondPrice > 0 && item.rarity !== 'mythic' && !UNSELLABLE_COSMETICS.has(item.id));
+  // Beyaz liste TEK otorite (mythic dahil — goat serisi çizimli ve satılabilir).
+  const pool = COSMETIC_ITEMS.filter((item) => item.diamondPrice > 0 && SELLABLE_COSMETICS.has(item.id));
   const { weekIndex } = storeWeek(now);
   // weekIndex*5: ardışık haftalar tek adım kaymasın, seçki gözle görülür tazelensin.
   const rest = Array.from({ length: Math.min(7, pool.length) }, (_, i) => pool[(weekIndex * 5 + i * 7) % pool.length]!);

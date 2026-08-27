@@ -3090,13 +3090,19 @@ export function FeedbackCenterModal({ visible, playerId, context, initialCategor
   const canSend = Boolean(category && message.trim().length >= 4 && message.length <= 1200 && !sending);
   const send = () => {
     if (!category || !canSend) return;
+    // ÖNCE klavye kapanır (kullanıcı raporu 2026-08-27: Gönder'e basınca çökme —
+    // klavye açıkken KeyboardAvoidingView dalından 'sent' görünümüne geçiş iOS'ta
+    // native modal içinde input aksesuar görünümünü sahipsiz bırakıyordu).
+    dismissActiveInput();
     setSending(true);
     setError(null);
     submitPlayerFeedback({ category, message, playerId, context })
       .then(() => {
         track('feedback_submitted', { category, source: typeof context?.source === 'string' ? context.source : 'unknown', message_length: message.trim().length });
         triggerFeedback(GameFeedbackEvent.PURCHASE_CONFIRMED);
-        setSent(true);
+        // Görünüm değişimi bir frame sonraya: klavye kapanış animasyonu tamamlanmadan
+        // input ağacı sökülmesin.
+        requestAnimationFrame(() => setSent(true));
       })
       .catch(() => setError('Gönderilemedi. Bağlantını kontrol edip tekrar deneyebilirsin.'))
       .finally(() => setSending(false));
@@ -12015,8 +12021,11 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
           </GamePanel>
         </Pressable>
 
-        {/* Açılan çerçeveler — kazanılmış statü vitrini (dokun: büyük önizleme) */}
-        {LEVEL_TIERS.some((tr) => ownsFrame(p, tr.key)) ? (
+        {/* Açılan çerçeveler — kazanılmış statü vitrini (dokun: büyük önizleme).
+            MAĞAZA çerçeveleri de burada (kullanıcı raporu 2026-08-27: satın alınan
+            çerçeve profilde görünmüyordu — şerit yalnız seviye kademelerini
+            listeliyordu). Mağaza çerçevesine dokunmak DOĞRUDAN kuşanır/çıkarır. */}
+        {(LEVEL_TIERS.some((tr) => ownsFrame(p, tr.key)) || (p.ownedCosmetics ?? []).some((id) => id.endsWith('_frame'))) ? (
           <View style={{ marginTop: 10 }}>
             <GamePanel compact accentStripe={levelTier(lvl)?.c ?? theme.primary} bodyStyle={{ paddingVertical: 10, paddingHorizontal: 12 }}>
               <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 1.2, marginBottom: 6 }}>{t('profile.frames').toLocaleUpperCase(currentLang())}</Text>
@@ -12027,6 +12036,21 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
                     <Pressable key={tr.key} onPress={() => setFramePrev({ tier: tr, unlocked: true })} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
                       <View style={worn ? { borderRadius: 56 * 0.28 + 2, borderWidth: 2, borderColor: tr.c, margin: -2 } : undefined}>
                         <FrameArt tierKey={tr.key} size={56} well />
+                      </View>
+                      {worn ? (
+                        <View style={{ position: 'absolute', right: -5, top: -5, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
+                          <Ionicons name="checkmark" size={11} color={theme.ink} />
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+                {(p.ownedCosmetics ?? []).filter((id) => id.endsWith('_frame')).map((id) => {
+                  const worn = p.selectedFrame === id;
+                  return (
+                    <Pressable key={id} onPress={() => { triggerFeedback(worn ? GameFeedbackEvent.UI_TOGGLE_OFF : GameFeedbackEvent.UI_TOGGLE_ON); actions.equipCosmetic('frame', worn ? null : id); }} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
+                      <View style={worn ? { borderRadius: 56 * 0.28 + 2, borderWidth: 2, borderColor: theme.primary, margin: -2 } : undefined}>
+                        <FrameArt tierKey={id} size={56} well />
                       </View>
                       {worn ? (
                         <View style={{ position: 'absolute', right: -5, top: -5, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>

@@ -1029,7 +1029,6 @@ function AppRoot() {
   const [feedbackPromptVisible, setFeedbackPromptVisible] = useState(false);
   const [feedbackCenterVisible, setFeedbackCenterVisible] = useState(false);
   const [feedbackInitialCategory, setFeedbackInitialCategory] = useState<'bug' | undefined>(undefined);
-  const [ratingPromptVisible, setRatingPromptVisible] = useState(false);
   const [monetizationDiagnostics, setMonetizationDiagnostics] = useState<MonetizationDiagnostics>(INITIAL_MONETIZATION_DIAGNOSTICS);
   const requiredUpdatePromptOpenRef = useRef(false);
   const pendingOfferCtxRef = useRef<OfferEngineContext | null>(null);
@@ -1530,7 +1529,6 @@ function AppRoot() {
     overlay ||
     feedbackPromptVisible ||
     feedbackCenterVisible ||
-    ratingPromptVisible ||
     socialPackCampaignVisible ||
     outageGiftVisible ||
     dailyOfferVisible ||
@@ -1576,7 +1574,15 @@ function AppRoot() {
     saveEngagementState(nextState).catch(() => {});
     setActiveEngagement(next);
     if (next.kind === 'FEEDBACK_PROMPT') setFeedbackPromptVisible(true);
-    else if (next.kind === 'RATING_PROMPT') setRatingPromptVisible(true);
+    else if (next.kind === 'RATING_PROMPT') {
+      // ÖZEL popup YOK (kullanıcı kararı 2026-08-27): doğrudan Apple'ın yıldızlı
+      // yerel değerlendirme sheet'i (SKStoreReviewController) — yıldıza basınca
+      // gönderilir, araya bizim pencere girmez.
+      track('rating_request_attempted', { source: next.source, appSessionId });
+      requestNativeReview().catch(() => {});
+      updateEngagement((s2) => closeEngagement(s2, next, false));
+      setActiveEngagement(null);
+    }
     else if (next.monetizationOffer) {
       setContextualOffer(next.monetizationOffer);
       setContextualOfferVisible(true);
@@ -1947,31 +1953,18 @@ function AppRoot() {
     setActiveEngagement(null);
   }, [activeEngagement, appSessionId, state.phase, updateEngagement]);
 
+  const feedbackCenterOnExit = useRef<null | { category?: 'bug' }>(null);
   const openFeedbackFromPrompt = useCallback((category?: 'bug') => {
+    // iOS tek native modal sunar: merkez, prompt'un onExited'ında açılır —
+    // ikisi çakışınca donma/çökme sınıfı (modes→upsell deseniyle aynı çözüm).
+    feedbackCenterOnExit.current = { category };
     setFeedbackPromptVisible(false);
-    setFeedbackInitialCategory(category);
-    setFeedbackCenterVisible(true);
     updateEngagement((s) => closeEngagement(s, activeEngagement, false));
     track('engagement_primary_clicked', { kind: activeEngagement?.kind, category: category ?? 'general', appSessionId, screen: state.phase });
     track('feedback_opened', { source: 'proactive_prompt', category: category ?? 'general', appSessionId });
     setActiveEngagement(null);
   }, [activeEngagement, appSessionId, state.phase, updateEngagement]);
 
-  const dismissRatingPrompt = useCallback(() => {
-    setRatingPromptVisible(false);
-    updateEngagement((s) => closeEngagement(s, activeEngagement, true));
-    track('engagement_dismissed', { kind: activeEngagement?.kind, appSessionId, screen: state.phase });
-    setActiveEngagement(null);
-  }, [activeEngagement, appSessionId, state.phase, updateEngagement]);
-
-  const requestRatingFromPrompt = useCallback(() => {
-    setRatingPromptVisible(false);
-    updateEngagement((s) => closeEngagement(s, activeEngagement, false));
-    track('engagement_primary_clicked', { kind: activeEngagement?.kind, appSessionId, screen: state.phase });
-    track('rating_request_attempted', { source: activeEngagement?.source, appSessionId });
-    requestNativeReview().catch(() => {});
-    setActiveEngagement(null);
-  }, [activeEngagement, appSessionId, state.phase, updateEngagement]);
 
   const onScrollBeginDrag = useCallback(() => {
     if (tabGuardTimer.current) clearTimeout(tabGuardTimer.current);
@@ -3040,7 +3033,19 @@ function AppRoot() {
         ) : null}
       </GameModal>
 
-      <GameModal visible={feedbackPromptVisible} onClose={dismissFeedbackPrompt} title="COF’u Birlikte Geliştirelim" icon="chatbubbles">
+      <GameModal
+        visible={feedbackPromptVisible}
+        onClose={dismissFeedbackPrompt}
+        onExited={() => {
+          const pend = feedbackCenterOnExit.current;
+          if (!pend) return;
+          feedbackCenterOnExit.current = null;
+          setFeedbackInitialCategory(pend.category);
+          setFeedbackCenterVisible(true);
+        }}
+        title="COF’u Birlikte Geliştirelim"
+        icon="chatbubbles"
+      >
         <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
           Eklememizi veya değiştirmemizi istediğin bir şey var mı? Fikrini gerçekten merak ediyoruz.
         </Text>
@@ -3056,14 +3061,6 @@ function AppRoot() {
         context={{ source: 'proactive_prompt', phase: state.phase, arenaName: state.profile?.arena?.name, activePlaySeconds: engagementState.totalActivePlaySeconds, totalMatches: engagementState.totalMatches }}
         onClose={() => { setFeedbackCenterVisible(false); setFeedbackInitialCategory(undefined); }}
       />
-
-      <GameModal visible={ratingPromptVisible} onClose={dismissRatingPrompt} title="Maçlar Sarıyor mu?" icon="star">
-        <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
-          App Store’daki değerlendirmen COF’un daha fazla futbolsevere ulaşmasına yardımcı olur.
-        </Text>
-        <Btn big kind="primary" icon="star" label="Değerlendir" onPress={requestRatingFromPrompt} />
-        <Btn kind="ghost" label="Şimdi Değil" onPress={dismissRatingPrompt} />
-      </GameModal>
 
       {/* Push permission prompt — once per install, coach-framed. */}
       <GameModal
