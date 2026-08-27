@@ -150,8 +150,13 @@ export function isVaultCosmetic(item: CosmeticItem): boolean {
  * şikâyeti, 2026-08-27) — bu yüzden havuz burada tanımlıdır, çoğaltılmaz.
  * Slot 0 = haftanın kasa düşüşü (mythic); kalan 7 slot mythic-dışı havuzdan.
  */
+// Satıştan KALDIRILAN kozmetikler (kullanıcı kararı 2026-08-27: 'altın çerçeve
+// koymadık, kaldır'). Katalogdan SİLİNMEZ — sahipleri kuşanmaya devam eder;
+// yalnız vitrine ve (vitrinden beslenen) Günlük Fırsat'a bir daha giremez.
+const UNSELLABLE_COSMETICS = new Set(['golden_frame']);
+
 export function featuredCosmetics(now = new Date()): CosmeticItem[] {
-  const pool = COSMETIC_ITEMS.filter((item) => item.diamondPrice > 0 && item.rarity !== 'mythic');
+  const pool = COSMETIC_ITEMS.filter((item) => item.diamondPrice > 0 && item.rarity !== 'mythic' && !UNSELLABLE_COSMETICS.has(item.id));
   const { weekIndex } = storeWeek(now);
   // weekIndex*5: ardışık haftalar tek adım kaymasın, seçki gözle görülür tazelensin.
   const rest = Array.from({ length: Math.min(7, pool.length) }, (_, i) => pool[(weekIndex * 5 + i * 7) % pool.length]!);

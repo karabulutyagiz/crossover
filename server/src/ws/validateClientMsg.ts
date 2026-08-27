@@ -146,6 +146,12 @@ export function validateClientMsg(value: unknown): ValidationResult {
     case 'buy_daily_offer':
       if (!hasString(value, 'key', 80)) return invalid('buy_daily_offer.key must be a string');
       break;
+    case 'get_daily_crossover':
+    case 'start_daily_crossover':
+      break;
+    case 'daily_crossover_guess':
+      if (!hasString(value, 'text', 200)) return invalid('daily_crossover_guess.text must be a string');
+      break;
     case 'xox_submit':
       if (!hasInteger(value, 'cell', 0, 8)) return invalid('xox_submit.cell must be 0-8');
       if (!hasString(value, 'text', 200)) return invalid('xox_submit.text must be a string');

@@ -9,6 +9,25 @@ export interface ClubRef {
   logoUrl: string | null;
 }
 
+// Günün Crossover'ı — sunucu-otoriter günlük soru durumu (game/dailyCrossover.ts üretir).
+export interface DailyCrossoverStateView {
+  day: number;               // görünen gün numarası (#N, 1'den başlar)
+  teamA: ClubRef;
+  teamB: ClubRef;
+  resetAt: string;           // İstanbul gece yarısı — istemci geri sayımı buna kilitlenir
+  reward: number;            // doğru bilene 💎
+  maxGuesses: number;
+  attemptsUsed: number;
+  started: boolean;
+  played: boolean;           // gün kapandı (doğru ya da haklar bitti)
+  streak: number;            // ardışık doğru gün
+  result: {
+    day: number; correct: boolean; guesses: number; durationMs: number;
+    playerName: string | null; playerImage: string | null;
+    commonPlayers: { name: string; imageUrl: string | null }[];
+  } | null;
+}
+
 export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox';
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
@@ -93,6 +112,7 @@ export interface ProfileView {
   spExtratime?: number;
   spSecondchance?: number;
   equippedSpecialPower?: string | null;
+  equippedSpecialPowers?: string[];
 }
 
 export interface CosmeticLoadoutView {
@@ -173,6 +193,9 @@ export type ClientMsg =
   | { type: 'claim_outage_gift' } // kesinti telafisi: özür penceresindeki "AL"
   | { type: 'get_daily_offer' } // kişiye özel 12 saatlik fırsatı iste
   | { type: 'buy_daily_offer'; key: string } // fırsatı satın al (key pencereyle doğrulanır)
+  | { type: 'get_daily_crossover' } // Günün Crossover'ı durumunu iste
+  | { type: 'start_daily_crossover' } // soruyu açtım — süre sayacı sunucuda başlar (idempotent)
+  | { type: 'daily_crossover_guess'; text: string } // günlük tahmin (3 hak, sunucu sayar)
   | { type: 'get_my_stats' } // profil istatistikleri: seri rekoru + mod bazlı K/M
   | { type: 'verify_purchase'; receipt: string } // validate an Apple IAP receipt → grant diamonds
   | { type: 'grant_ad_reward' } // watched a rewarded ad → credit a few diamonds (capped server-side)
@@ -269,7 +292,7 @@ export type ServerMsg =
   // Maç başında + reconnect'te gönderilir: SENİN kuşanılmış gücün ve kullanım
   // durumu. Rakibin SEÇTİĞİ güç asla sızmaz (stratejik gizlilik) — yalnız
   // KULLANDIĞI güç, kullanım ANINDA activated ile açıklanır.
-  | { type: 'special_power_state'; enabled: boolean; you: { powerId: string | null; qty: number; used: boolean; usedPowerId: string | null }; opponentUsedPowerId: string | null; config: { freezeMs: number; extraTimeMs: number }; activeFreezeUntil?: number; yourDeadline?: number }
+  | { type: 'special_power_state'; enabled: boolean; you: { powerId: string | null; qty: number; used: boolean; usedPowerId: string | null }; opponentUsedPowerId: string | null; config: { freezeMs: number; extraTimeMs: number }; activeFreezeUntil?: number; yourDeadline?: number; slots?: { powerId: string; qty: number; used: boolean }[]; usedTotal?: number; maxPerMatch?: number }
   // İKİ istemciye de aynı olay: kim, hangi güç, hangi tur. effect alanı güce özgü
   // sunucu-zamanı verir (freezeUntil / newDeadline) — istemci saatine güvenilmez.
   | { type: 'special_power_activated'; byId: string; byName: string; powerId: string; roundNumber: number; serverNow: number; effect?: { targetId?: string; freezeUntil?: number; newDeadline?: number } }
@@ -312,6 +335,10 @@ export type ServerMsg =
   | { type: 'power_purchased'; powerId: string; profile: ProfileView } // mağazadan güç alındı
   | { type: 'power_used'; powerId: string; profile: ProfileView } // güç etkinleştirildi (jeton düştü / kalkan kuşanıldı)
   | { type: 'outage_gift_claimed'; profile: ProfileView; granted: boolean } // granted=false → zaten alınmıştı
+  // Günün Crossover'ı — state hem ilk açılışta hem bitişte aynı şekilde gider.
+  | { type: 'daily_crossover'; state: DailyCrossoverStateView }
+  | { type: 'daily_crossover_wrong'; guess: string; suggestion: string | null; attemptsLeft: number }
+  | { type: 'daily_crossover_done'; state: DailyCrossoverStateView; rewardGranted: number; profile?: ProfileView }
   | { type: 'daily_offer'; offer: { key: string; kind: 'cosmetic' | 'power_bundle' | 'socialtoken'; itemId: string; qty: number; originalPrice: number; price: number; expiresAt: string } | null } // null → bu pencerede alınmış
   | { type: 'daily_offer_purchased'; profile: ProfileView; offer: { key: string; kind: 'cosmetic' | 'power_bundle' | 'socialtoken'; itemId: string; qty: number; originalPrice: number; price: number; expiresAt: string } }
   | { type: 'my_stats'; winStreak: number; bestStreak: number; wins: number; losses: number; modes: { mode: string; wins: number; losses: number }[] } // profil istatistikleri

@@ -17,7 +17,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Animated, AppState, Easing, PanResponder, Platform, Dimensions, Linking, LayoutAnimation } from 'react-native';
+import { Animated, AppState, Easing, PanResponder, Platform, Dimensions, Linking, LayoutAnimation, Share } from 'react-native';
 import { State } from 'react-native-gesture-handler/lib/commonjs/State';
 import { PanGestureHandler } from 'react-native-gesture-handler/lib/commonjs/handlers/PanGestureHandler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -45,7 +45,7 @@ import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, Lin
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState, FriendInfo, LeaderboardEntry } from './useCrossover';
 import { initialState } from './useCrossover';
-import type { BlockedUserView, ClubRef, CosmeticLoadoutView, CosmeticType, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, ScopeOption, SpellInfo, StoreCatalogItem } from './protocol';
+import type { BlockedUserView, ClubRef, CosmeticLoadoutView, CosmeticType, DailyCrossoverStateView, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, ScopeOption, SpellInfo, StoreCatalogItem } from './protocol';
 import {
   EmoteCallout,
   EmoteSticker,
@@ -99,6 +99,11 @@ try { NetInfoModule = require('@react-native-community/netinfo').default; } catc
 type Actions = {
   register: (name: string, gameCenterId?: string) => void;
   guestLogin: () => void;
+  // Günün Crossover'ı
+  getDailyCrossover: () => void;
+  startDailyCrossover: () => void;
+  guessDailyCrossover: (text: string) => void;
+  clearDailyCxReward: () => void;
   authWith: (provider: 'apple' | 'google' | 'facebook', token: string, name?: string) => void;
   setUsername: (username: string) => void;
   changeName: (newName: string) => void;
@@ -4470,6 +4475,128 @@ const SOCIAL_CARD_PILL = { fill: '#1E1856' };
 const ROAD_CARD_GRADE = { from: '#1466BE', mid: '#064B92', to: '#01234A' };
 const ROAD_CARD_PILL = { fill: '#051E3C' };
 
+// ---- Günün Crossover'ı — Wordle döngüsü: herkese aynı günlük soru -----------
+// Sunucu-otoriter: hak sayısı, süre ve ödül sunucuda; burada yalnız arayüz.
+function dailyCxShareText(cx: DailyCrossoverStateView): string {
+  const r = cx.result;
+  const squares = r?.correct ? '🟥'.repeat(Math.max(0, r.guesses - 1)) + '🟩' : '🟥🟥🟥';
+  const line = r?.correct
+    ? `${squares} ${(r.durationMs / 1000).toFixed(1)} sn'de bildim! ⚽`
+    : `${squares} bilemedim 😅`;
+  return `Günün Crossover'ı #${cx.day}\n${cx.teamA.name} × ${cx.teamB.name}\n${line}\nSıra sende 👉 https://crossoverfootball.com/indir`;
+}
+
+function DailyCrossoverModal({ visible, cx, wrong, reward, onGuess, onClose }: {
+  visible: boolean;
+  cx: DailyCrossoverStateView | null;
+  wrong: { guess: string; suggestion: string | null; attemptsLeft: number; seq: number } | null;
+  reward: number;
+  onGuess: (text: string) => void;
+  onClose: () => void;
+}) {
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  // Sunucu cevabı (yanlış ya da bitiş) gelince gönderim kilidi açılır.
+  useEffect(() => { setSending(false); }, [wrong?.seq, cx?.played, cx?.attemptsUsed]);
+  const done = !!cx?.played;
+  const res = cx?.result ?? null;
+  useEffect(() => {
+    if (!visible || !done) return;
+    triggerFeedback(res?.correct ? GameFeedbackEvent.ANSWER_CORRECT : GameFeedbackEvent.ANSWER_WRONG);
+  }, [visible, done, res?.correct]);
+  const submit = () => {
+    const trimmed = text.trim();
+    if (!trimmed || sending || done) return;
+    setSending(true);
+    setText('');
+    track('daily_cx_guess', { day: cx?.day, attempt: (cx?.attemptsUsed ?? 0) + 1 });
+    onGuess(trimmed);
+  };
+  const share = async () => {
+    if (!cx) return;
+    track('daily_cx_shared', { day: cx.day, correct: res?.correct ?? null });
+    try { await Share.share({ message: dailyCxShareText(cx) }); } catch { /* kullanıcı vazgeçti */ }
+  };
+  const attemptsLeft = cx ? Math.max(0, cx.maxGuesses - cx.attemptsUsed) : 0;
+  return (
+    <GameModal visible={visible} onClose={onClose} title={`GÜNÜN CROSSOVER'I ${cx ? `#${cx.day}` : ''}`} icon="calendar">
+      {!cx ? (
+        <View style={{ alignItems: 'center', paddingVertical: 24 }}><GameSpinner /></View>
+      ) : (
+        <View style={{ gap: 12 }}>
+          {/* İki kulüp — maçtaki reveal dili */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
+            <View style={{ alignItems: 'center', gap: 6, flex: 1 }}>
+              <ClubBadge name={cx.teamA.name} size={58} logoUrl={cx.teamA.logoUrl} />
+              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12.5, textAlign: 'center' }} numberOfLines={2}>{cx.teamA.name}</Text>
+            </View>
+            <Text style={{ color: theme.muted, fontFamily: 'Poppins-Black', fontSize: 18 }}>×</Text>
+            <View style={{ alignItems: 'center', gap: 6, flex: 1 }}>
+              <ClubBadge name={cx.teamB.name} size={58} logoUrl={cx.teamB.logoUrl} />
+              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12.5, textAlign: 'center' }} numberOfLines={2}>{cx.teamB.name}</Text>
+            </View>
+          </View>
+
+          {done ? (
+            <View style={{ alignItems: 'center', gap: 8 }}>
+              {res?.correct ? (
+                <>
+                  <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 15 }}>Bildin! {res.playerName ?? ''} ✓</Text>
+                  <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 12.5 }}>
+                    {(res.durationMs / 1000).toFixed(1)} sn · {res.guesses}. denemede{reward > 0 ? ` · +${reward} 💎` : ''}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={{ color: theme.danger, fontFamily: 'Poppins-ExtraBold', fontSize: 14.5 }}>Bugünkü kaçtı — yarın yenisi!</Text>
+                  {res?.commonPlayers?.length ? (
+                    <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 12.5, textAlign: 'center' }}>
+                      Cevaplar: {res.commonPlayers.slice(0, 3).map((p) => p.name).join(', ')}
+                    </Text>
+                  ) : null}
+                </>
+              )}
+              {cx.streak > 0 ? (
+                <Text style={{ color: theme.gold, fontFamily: 'Poppins-ExtraBold', fontSize: 12.5 }}>🔥 {cx.streak} günlük seri</Text>
+              ) : null}
+              <Btn big kind="primary" icon="share-social" label="PAYLAŞ" feedback={GameFeedbackEvent.UI_CONFIRM} onPress={() => { void share(); }} />
+              <Btn kind="ghost" label="KAPAT" onPress={onClose} />
+            </View>
+          ) : (
+            <View style={{ gap: 10 }}>
+              <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 12.5, textAlign: 'center' }}>
+                İkisinde de oynamış futbolcuyu yaz — doğru bilene {cx.reward} 💎
+              </Text>
+              {/* Hak noktaları */}
+              <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
+                {Array.from({ length: cx.maxGuesses }, (_, i) => (
+                  <View key={i} style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: i < cx.attemptsUsed ? theme.danger : withAlpha(theme.primary, 0.85) }} />
+                ))}
+              </View>
+              {wrong ? (
+                <Text style={{ color: theme.danger, fontFamily: 'Poppins-SemiBold', fontSize: 12, textAlign: 'center' }}>
+                  "{wrong.guess}" olmadı{wrong.suggestion ? ` — ${wrong.suggestion} mi demek istedin?` : ''} · {wrong.attemptsLeft} hak kaldı
+                </Text>
+              ) : null}
+              <GameInput
+                icon="football"
+                placeholder="Futbolcu adı yaz…"
+                value={text}
+                onChangeText={setText}
+                autoCorrect={false}
+                autoCapitalize="words"
+                returnKeyType="send"
+                onSubmitEditing={submit}
+              />
+              <Btn big kind="primary" icon="paper-plane" label="GÖNDER" loading={sending} disabled={!text.trim() || attemptsLeft <= 0} feedback={GameFeedbackEvent.ANSWER_SUBMIT} onPress={submit} />
+            </View>
+          )}
+        </View>
+      )}
+    </GameModal>
+  );
+}
+
 export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, onOpenLevelRoad, onLockedSocialMode, overlayBusy, gemCountAnimOverride, gemFillAnimOverride, trophyLand, trophyHold, monetizationDiagnostics, heroAnimsActive = true }: Props) {
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [scope, setScope] = useState<Scope>({ type: 'all' });
@@ -4487,12 +4614,32 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const socialUpsellOnExit = useRef(false);
   const [newsOpen, setNewsOpen] = useState(false);
   const [newsUnread, setNewsUnread] = useState(false);
+  // Günün Crossover'ı — kart carousel'de; oynanmadıysa nokta yanar.
+  const [dailyCxOpen, setDailyCxOpen] = useState(false);
   const insets = useSafeAreaInsets();
   const win = useWindow();
   // Show the bell's red pip until the user has opened the feed at the latest item.
   useEffect(() => {
     AsyncStorage.getItem(NEWS_READ_KEY).then((v) => setNewsUnread(NEWS.length > 0 && v !== LATEST_NEWS_ID)).catch(() => {});
   }, []);
+  // Günün Crossover'ı durumu: girişte + gün dönümünde tazelenir (resetAt geçince
+  // kart eski günü göstermesin diye pencere odaklanınca yeniden çekilir).
+  useEffect(() => {
+    if (!state.profile?.userId) return;
+    const stale = !state.dailyCx || new Date(state.dailyCx.resetAt).getTime() <= Date.now();
+    if (stale) actions.getDailyCrossover();
+  }, [actions, state.profile?.userId, state.dailyCx]);
+  const openDailyCx = useCallback(() => {
+    triggerFeedback(GameFeedbackEvent.UI_CARD);
+    // start idempotent: süre sayacı sunucuda İLK açılışta başlar; oynanmışsa no-op.
+    actions.startDailyCrossover();
+    track('daily_cx_open', { day: state.dailyCx?.day, played: state.dailyCx?.played ?? false });
+    setDailyCxOpen(true);
+  }, [actions, state.dailyCx?.day, state.dailyCx?.played]);
+  const closeDailyCx = useCallback(() => {
+    setDailyCxOpen(false);
+    actions.clearDailyCxReward();
+  }, [actions]);
   const [joinCode, setJoinCode] = useState('');
   const roomCodeInputFocus = useInputFocusLifecycle();
   const [hero, setHero] = useState({ w: 0, h: 0 });
@@ -4950,21 +5097,24 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 art={roadArt}
               />
             </View>
-            {/* Yenilikler — geçmiş duyurular. Kart, üst bardaki zil ile aynı
-                NewsModal'ı açar (tüm duyuru listesi); okunmamış varsa nokta. */}
+            {/* Günün Crossover'ı — bu slot eskiden haber kartıydı; duyurular üst
+                bardaki zilden aynı NewsModal'a zaten açılıyor (yedeklilik kalktı). */}
             <View style={{ width: cardW }}>
               <GhostPanel
-                title={t('home.news')}
-                icon="megaphone"
-                ghost="megaphone"
+                title={'GÜNÜN SORUSU'}
+                icon="calendar"
+                ghost="football"
                 height={carouselCardH}
-                onPress={openNews}
+                tone={darken(theme.gold, 0.72)}
+                onPress={openDailyCx}
               >
-                {newsUnread ? (
+                {state.dailyCx && !state.dailyCx.played ? (
                   <View pointerEvents="none" style={{ position: 'absolute', top: 10, right: 10, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.danger }} />
                 ) : null}
                 <Text style={{ color: theme.muted, fontSize: 11.5, lineHeight: 17, fontFamily: 'Poppins-SemiBold', marginTop: 9 }} numberOfLines={3}>
-                  {t('home.newsHint')}
+                  {state.dailyCx?.played
+                    ? (state.dailyCx.result?.correct ? `✓ Bildin!${state.dailyCx.streak > 0 ? ` 🔥 ${state.dailyCx.streak} gün` : ''}` : 'Yarın yenisi!')
+                    : `#${state.dailyCx?.day ?? '…'} · bilene ${state.dailyCx?.reward ?? 10} 💎`}
                 </Text>
               </GhostPanel>
             </View>
@@ -4973,6 +5123,16 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       </View>
 
       <NetworkErrorBeacon visible={isNetworkErrorMessage(state.error)} />
+
+      {/* ── Günün Crossover'ı ── */}
+      <DailyCrossoverModal
+        visible={dailyCxOpen}
+        cx={state.dailyCx}
+        wrong={state.dailyCxWrong}
+        reward={state.dailyCxReward}
+        onGuess={actions.guessDailyCrossover}
+        onClose={closeDailyCx}
+      />
 
       {/* ── Mode picker ── */}
       <GameModal visible={modesOpen} onClose={() => setModesOpen(false)} onExited={() => { if (socialUpsellOnExit.current) { socialUpsellOnExit.current = false; if (lockedModePreview) onLockedSocialMode?.(lockedModePreview); setLockedModePreview(null); } }} title={t('home.modesTitle').toLocaleUpperCase(currentLang())} icon="football">
@@ -6004,38 +6164,50 @@ export const STREAK_MILESTONES_VIEW: { streak: number; diamonds?: number; powerI
   { streak: 10, diamonds: 120 }, { streak: 15, powerId: 'reveal' }, { streak: 20, diamonds: 300 },
 ];
 
-/** Maç ekranı güç düğmesi: iki-dokunuş onayı (yanlışlıkla harcama olmasın),
- * KULLANILDI durumunda gri/kilitli — oyuncu bu maçta başka güç olmadığını görür. */
+/** Maç ekranı güç çipleri (en fazla 3 slot): çip başına iki-dokunuş onayı
+ * (yanlışlıkla harcama olmasın), KULLANILDI çip gri/kilitli. Toplam tavan
+ * sunucuda — burası yalnız arayüz. */
 function SpecialPowerHud({ state, actions }: Props) {
   const sp = state.specialPower;
-  const [armed, setArmed] = useState(false);
+  const [armedId, setArmedId] = useState<string | null>(null);
   const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (armTimer.current) clearTimeout(armTimer.current); }, []);
-  if (!sp?.enabled || !sp.you.powerId) return null;
-  const meta = SPECIAL_POWERS[sp.you.powerId as SpecialPowerIdView];
-  if (!meta) return null;
-  const used = sp.you.used;
-  const onPress = () => {
-    if (used || sp.pending) { triggerFeedback(GameFeedbackEvent.UI_DISABLED); return; }
-    if (!armed) {
-      setArmed(true);
+  if (!sp?.enabled || !sp.slots.length) return null;
+  const totalLeft = sp.maxPerMatch - sp.usedTotal;
+  const onPress = (powerId: string, used: boolean) => {
+    if (used || sp.pending || totalLeft <= 0) { triggerFeedback(GameFeedbackEvent.UI_DISABLED); return; }
+    if (armedId !== powerId) {
+      setArmedId(powerId);
       triggerFeedback(GameFeedbackEvent.UI_TAP);
-      armTimer.current = setTimeout(() => setArmed(false), 2600);
+      if (armTimer.current) clearTimeout(armTimer.current);
+      armTimer.current = setTimeout(() => setArmedId(null), 2600);
       return;
     }
     if (armTimer.current) clearTimeout(armTimer.current);
-    setArmed(false);
-    actions.useSpecialPower(sp.you.powerId!);
+    setArmedId(null);
+    actions.useSpecialPower(powerId);
   };
   return (
-    <Pressable onPress={onPress} hitSlop={8} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: used ? theme.well : withAlpha(meta.color, 0.16), borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7, borderWidth: 1.5, borderColor: used ? theme.border : withAlpha(meta.color, armed ? 1 : 0.6) }}>
-      <Ionicons name={meta.icon} size={17} color={used ? theme.muted : meta.color} />
-        <Text style={{ color: used ? theme.muted : theme.text, fontFamily: 'Poppins-Black', fontSize: 11 }}>
-          {used ? t('sp.used') : armed ? t('sp.confirmTap') : `×${sp.you.qty}`}
-        </Text>
-      </View>
-    </Pressable>
+    <View style={{ flexDirection: 'row', gap: 5 }}>
+      {sp.slots.slice(0, 3).map((sl) => {
+        const meta = SPECIAL_POWERS[sl.powerId as SpecialPowerIdView];
+        if (!meta) return null;
+        const dead = sl.used || totalLeft <= 0;
+        const armed = armedId === sl.powerId;
+        return (
+          <Pressable key={sl.powerId} onPress={() => onPress(sl.powerId, sl.used)} hitSlop={6} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: dead ? theme.well : withAlpha(meta.color, 0.16), borderRadius: 999, paddingHorizontal: 8, paddingVertical: 6, borderWidth: 1.5, borderColor: dead ? theme.border : withAlpha(meta.color, armed ? 1 : 0.6) }}>
+              <Ionicons name={meta.icon} size={15} color={dead ? theme.muted : meta.color} />
+              {armed && !dead ? (
+                <Text style={{ color: theme.text, fontFamily: 'Poppins-Black', fontSize: 9.5 }}>{t('sp.confirmTap')}</Text>
+              ) : !dead && sl.qty > 0 ? (
+                <Text style={{ color: theme.text, fontFamily: 'Poppins-Black', fontSize: 9.5 }}>×{sl.qty}</Text>
+              ) : null}
+            </View>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -8441,6 +8613,62 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
           })}
         </Animated.View>
 
+        {/* MAÇ GÜÇLERİ — maç içi Özel Güçler. Fiyatlar store_catalog.specialPowers'tan
+            (sunucu config'i); "maç başına 1 kullanım" burada AÇIKÇA yazılır (spec §47). */}
+        <Animated.View style={sectionIn(2)}>
+          <SectionHeader label={t('store.specialPowers')} icon="sparkles" />
+          <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', marginLeft: 4, marginBottom: 8, lineHeight: 15 }}>{t('store.spDisclosure')}</Text>
+          {SPECIAL_POWER_LIST.map((spid) => {
+            const meta = SPECIAL_POWERS[spid];
+            const count = spInventoryCount(profile, spid);
+            const price = catalog?.specialPowers?.find((x) => x.id === spid)?.price ?? SPECIAL_POWER_PRICE_FALLBACK[spid];
+            const equippedList = (profile?.equippedSpecialPowers ?? (profile?.equippedSpecialPower ? [profile.equippedSpecialPower] : [])) as string[];
+            const equipped = equippedList.includes(spid);
+            return (
+              <View key={spid} style={styles.storeEmoteCard}>
+                <View>
+                  <View style={{ width: 52, height: 52, borderRadius: 15, backgroundColor: withAlpha(meta.color, 0.16), borderWidth: 1.5, borderColor: withAlpha(meta.color, 0.55), alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name={meta.icon} size={26} color={meta.color} />
+                  </View>
+                  {count > 0 ? (
+                    <View style={{ position: 'absolute', right: -6, top: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 4, backgroundColor: meta.color, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ color: theme.ink, fontSize: 10, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>x{count}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={{ flex: 1, gap: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={{ color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t(meta.nameKey)}</Text>
+                    <View style={{ backgroundColor: withAlpha(theme.gold, 0.2), borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1, borderWidth: 1, borderColor: withAlpha(theme.gold, 0.6) }}>
+                      <Text style={{ color: theme.gold, fontSize: 9, fontFamily: 'Poppins-Black' }}>{t('store.spPack')}</Text>
+                    </View>
+                  </View>
+                  <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', lineHeight: 14 }} numberOfLines={2}>{t(meta.descKey)}</Text>
+                  {count > 0 ? (
+                    <Pressable hitSlop={6} onPress={() => { triggerFeedback(GameFeedbackEvent.UI_TOGGLE_ON); actions.equipSpecialPower(equipped ? null : spid); }}>
+                      <Text style={{ color: equipped ? theme.primary : theme.muted, fontSize: 10.5, fontFamily: 'Poppins-Black', letterSpacing: 0.6, marginTop: 2 }}>
+                        {equipped ? '✓ ' + t('store.spEquipped') : t('store.spEquip')}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+                <Btn
+                  compact
+                  kind="primary"
+                  gem
+                  label={String(price)}
+                  feedback={GameFeedbackEvent.UI_PURCHASE}
+                  onPress={() => {
+                    const have = profile?.diamonds ?? 0;
+                    if (have >= price) setConfirmSpecial(spid);
+                    else openShortfallSheet(price - have, { required: price, current: have, source: 'store_special_power' });
+                  }}
+                />
+              </View>
+            );
+          })}
+        </Animated.View>
+
         {/* Güçler — tek kullanımlık, stoklanabilir; Seviye Yolu dışında buradan da alınır */}
         <Animated.View style={sectionIn(2)}>
           <SectionHeader label={t('store.powers')} icon="flash" />
@@ -8481,56 +8709,6 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
                     }}
                   />
                 </View>
-              </View>
-            );
-          })}
-        </Animated.View>
-
-        {/* MAÇ GÜÇLERİ — maç içi Özel Güçler. Fiyatlar store_catalog.specialPowers'tan
-            (sunucu config'i); "maç başına 1 kullanım" burada AÇIKÇA yazılır (spec §47). */}
-        <Animated.View style={sectionIn(2)}>
-          <SectionHeader label={t('store.specialPowers')} icon="sparkles" />
-          <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', marginLeft: 4, marginBottom: 8, lineHeight: 15 }}>{t('store.spDisclosure')}</Text>
-          {SPECIAL_POWER_LIST.map((spid) => {
-            const meta = SPECIAL_POWERS[spid];
-            const count = spInventoryCount(profile, spid);
-            const price = catalog?.specialPowers?.find((x) => x.id === spid)?.price ?? SPECIAL_POWER_PRICE_FALLBACK[spid];
-            const equipped = (profile?.equippedSpecialPower ?? null) === spid;
-            return (
-              <View key={spid} style={styles.storeEmoteCard}>
-                <View>
-                  <View style={{ width: 52, height: 52, borderRadius: 15, backgroundColor: withAlpha(meta.color, 0.16), borderWidth: 1.5, borderColor: withAlpha(meta.color, 0.55), alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons name={meta.icon} size={26} color={meta.color} />
-                  </View>
-                  {count > 0 ? (
-                    <View style={{ position: 'absolute', right: -6, top: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 4, backgroundColor: meta.color, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
-                      <Text style={{ color: theme.ink, fontSize: 10, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>x{count}</Text>
-                    </View>
-                  ) : null}
-                </View>
-                <View style={{ flex: 1, gap: 1 }}>
-                  <Text style={{ color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t(meta.nameKey)}</Text>
-                  <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', lineHeight: 14 }} numberOfLines={2}>{t(meta.descKey)}</Text>
-                  {count > 0 ? (
-                    <Pressable hitSlop={6} onPress={() => { triggerFeedback(GameFeedbackEvent.UI_TOGGLE_ON); actions.equipSpecialPower(equipped ? null : spid); }}>
-                      <Text style={{ color: equipped ? theme.primary : theme.muted, fontSize: 10.5, fontFamily: 'Poppins-Black', letterSpacing: 0.6, marginTop: 2 }}>
-                        {equipped ? '✓ ' + t('store.spEquipped') : t('store.spEquip')}
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-                <Btn
-                  compact
-                  kind="primary"
-                  gem
-                  label={String(price)}
-                  feedback={GameFeedbackEvent.UI_PURCHASE}
-                  onPress={() => {
-                    const have = profile?.diamonds ?? 0;
-                    if (have >= price) setConfirmSpecial(spid);
-                    else openShortfallSheet(price - have, { required: price, current: have, source: 'store_special_power' });
-                  }}
-                />
               </View>
             );
           })}
@@ -8726,6 +8904,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
               <Ionicons name={SPECIAL_POWERS[confirmSpecial].icon} size={42} color={SPECIAL_POWERS[confirmSpecial].color} />
             </View>
             <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 18 }}>{t(SPECIAL_POWERS[confirmSpecial].descKey)}</Text>
+            <Text style={{ color: theme.gold, fontSize: 12, fontFamily: 'Poppins-Black', textAlign: 'center' }}>{t('store.spPackNote')}</Text>
             <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('sp.limitNote')}</Text>
             <View style={{ alignSelf: 'stretch', marginTop: 4, gap: 8 }}>
               <Btn big kind="primary" gem label={String(catalog?.specialPowers?.find((x) => x.id === confirmSpecial)?.price ?? SPECIAL_POWER_PRICE_FALLBACK[confirmSpecial])} feedback={GameFeedbackEvent.UI_PURCHASE} onPress={() => {

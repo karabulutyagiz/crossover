@@ -48,6 +48,7 @@ import type { MessageView, ConversationView } from '../protocol.ts';
 import type { ClientMsg, GameMode, ProfileView, ServerMsg } from '../protocol.ts';
 import { getLiveStoreVersions, storeVersionIsNewer, type StorePlatform } from '../storeVersions.ts';
 import { buyDailyOffer, computeDailyOffer, currentOfferWindow, dailyOfferClaimed } from '../game/dailyOffer.ts';
+import { getDailyState, startDaily as startDailyCrossover, submitDailyGuess } from '../game/dailyCrossover.ts';
 import { toProfileView } from '../game/profileView.ts';
 import { buySpecialPower, equipSpecialPower, isSpecialPowerId } from '../game/specialPowers.ts';
 
@@ -480,7 +481,7 @@ export function startServer(port: number): Server {
       matchQualityScore: a.lastCandidateScore ?? null,
       selectionReason: 'best_human_candidate',
     });
-    setTimeout(() => safeAutoStart(room, resA.ok ? resA.id : '', 'human_match', a.requestId), 3500);
+    setTimeout(() => safeAutoStart(room, resA.ok ? resA.id : '', 'human_match', a.requestId), 2200);
     return true;
   }
 
@@ -659,7 +660,7 @@ export function startServer(port: number): Server {
       botSkill: Number(botProfile.skillRating.toFixed(3)),
       mode: room.gameMode,
     });
-    setTimeout(() => safeAutoStart(room, human.ok ? human.id : '', 'bot_match', entry.requestId), 3500);
+    setTimeout(() => safeAutoStart(room, human.ok ? human.id : '', 'bot_match', entry.requestId), 2200);
     recordDecisionTrace({
       matchId,
       playerId: entry.userProfile?.id ?? entry.userId ?? null,
@@ -1466,6 +1467,58 @@ export function startServer(port: number): Server {
         return;
       }
 
+      // ---- Günün Crossover'ı (game/dailyCrossover.ts) ----
+      if (msg.type === 'get_daily_crossover') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          try {
+            const state = await getDailyState(userProfile!.id);
+            if (state) transport.send({ type: 'daily_crossover', state });
+          } catch (err) {
+            log.warn('daily_crossover_state_failed', { userId: userProfile?.id, error: err instanceof Error ? err.message : String(err) });
+          }
+        })();
+        return;
+      }
+      if (msg.type === 'start_daily_crossover') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          try {
+            await startDailyCrossover(userProfile!.id);
+            const state = await getDailyState(userProfile!.id);
+            if (state) transport.send({ type: 'daily_crossover', state });
+          } catch (err) {
+            log.warn('daily_crossover_start_failed', { userId: userProfile?.id, error: err instanceof Error ? err.message : String(err) });
+          }
+        })();
+        return;
+      }
+      if (msg.type === 'daily_crossover_guess') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void (async () => {
+          try {
+            const outcome = await submitDailyGuess(userProfile!.id, msg.text);
+            if (outcome.kind === 'wrong') {
+              transport.send({ type: 'daily_crossover_wrong', guess: outcome.guess, suggestion: outcome.suggestion, attemptsLeft: outcome.attemptsLeft });
+              return;
+            }
+            if (outcome.kind === 'finished') {
+              // Ödül düştüyse taze profili de gönder — elmas rozeti anında güncellenir.
+              const fresh = outcome.rewardGranted > 0 ? await getUser(userProfile!.id) : null;
+              if (fresh) userProfile = fresh;
+              transport.send({ type: 'daily_crossover_done', state: outcome.state, rewardGranted: outcome.rewardGranted, profile: fresh ? toProfileView(fresh) : undefined });
+              return;
+            }
+            const state = await getDailyState(userProfile!.id);
+            if (state) transport.send({ type: 'daily_crossover', state });
+          } catch (err) {
+            log.warn('daily_crossover_guess_failed', { userId: userProfile?.id, error: err instanceof Error ? err.message : String(err) });
+            transport.send({ type: 'error', message: 'Tahmin gönderilemedi, tekrar dene' });
+          }
+        })();
+        return;
+      }
+
       // Kesinti telafisi: özür penceresindeki "AL". Hediye SADECE burada,
       // yani oyuncunun kendi isteğiyle tanımlanır; tek seferliktir.
       if (msg.type === 'claim_outage_gift') {
@@ -1812,7 +1865,7 @@ export function startServer(port: number): Server {
         const resB = room.addPlayer(userProfile.displayName, transport, false, userProfile.id, userProfile.trophies, userProfile.arena, userProfile.avatar, userProfile.level, userProfile.selectedFrame, toCosmeticLoadout(userProfile), mySkill?.skillMean, mySkill?.skillUncertainty, mySkill?.matchesPlayed);
         if (resA.ok) inv.setCtx({ room, playerId: resA.id, userProfile: inv.userProfile });
         if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
-        setTimeout(() => safeAutoStart(room, resA.ok ? resA.id : '', 'friend_match'), 3500);
+        setTimeout(() => safeAutoStart(room, resA.ok ? resA.id : '', 'friend_match'), 2200);
         return;
       }
       if (msg.type === 'cancel_match_invite') {

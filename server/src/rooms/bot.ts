@@ -232,7 +232,7 @@ export class BotPlayer implements Transport {
         // Passing is part of the hidden round plan, never a response to a human pass.
         break;
       case 'waiting_ready' as any:
-        setTimeout(() => this.act({ type: 'ready' }), 420 + Math.floor(Math.random() * 1600));
+        setTimeout(() => this.act({ type: 'ready' }), 220 + Math.floor(Math.random() * 680));
         break;
       case 'special_power_activated': {
         const ev = msg as Extract<ServerMsg, { type: 'special_power_activated' }>;

@@ -1,6 +1,25 @@
 // Client mirror of the server's WebSocket protocol (server/src/protocol.ts).
 // Keep these in sync. (Phase 1: duplicated; later we can extract a shared pkg.)
 
+// Günün Crossover'ı — sunucu-otoriter günlük soru durumu.
+export interface DailyCrossoverStateView {
+  day: number;               // görünen gün numarası (#N, 1'den başlar)
+  teamA: ClubRef;
+  teamB: ClubRef;
+  resetAt: string;           // İstanbul gece yarısı — geri sayım buna kilitlenir
+  reward: number;            // doğru bilene 💎
+  maxGuesses: number;
+  attemptsUsed: number;
+  started: boolean;
+  played: boolean;           // gün kapandı (doğru ya da haklar bitti)
+  streak: number;            // ardışık doğru gün
+  result: {
+    day: number; correct: boolean; guesses: number; durationMs: number;
+    playerName: string | null; playerImage: string | null;
+    commonPlayers: { name: string; imageUrl: string | null }[];
+  } | null;
+}
+
 export interface ClubRef {
   id: number;
   name: string;
@@ -110,6 +129,7 @@ export interface ProfileView {
   spExtratime?: number;
   spSecondchance?: number;
   equippedSpecialPower?: string | null;
+  equippedSpecialPowers?: string[];
 }
 
 export interface CosmeticLoadoutView {
@@ -266,6 +286,9 @@ export type ClientMsg =
   | { type: 'claim_outage_gift' } // kesinti telafisi: özür penceresindeki "AL"
   | { type: 'get_daily_offer' } // kişiye özel 12 saatlik fırsat
   | { type: 'buy_daily_offer'; key: string }
+  | { type: 'get_daily_crossover' } // Günün Crossover'ı durumunu iste
+  | { type: 'start_daily_crossover' } // soruyu açtım — süre sayacı sunucuda başlar (idempotent)
+  | { type: 'daily_crossover_guess'; text: string } // günlük tahmin (3 hak, sunucu sayar)
   | { type: 'get_my_stats' } // profil istatistikleri: seri rekoru + mod bazlı K/M
   | { type: 'verify_purchase'; receipt: string }
   | { type: 'grant_ad_reward' }
@@ -328,7 +351,7 @@ export type ServerMsg =
   | { type: 'guess_denied'; reason: 'too_late' | 'burned' | 'cooldown' | 'frozen' | 'expired' }
   | { type: 'pass_locked'; byId: string; byName: string }
   // ---- Maç içi Özel Güçler ----
-  | { type: 'special_power_state'; enabled: boolean; you: { powerId: string | null; qty: number; used: boolean; usedPowerId: string | null }; opponentUsedPowerId: string | null; config: { freezeMs: number; extraTimeMs: number }; activeFreezeUntil?: number; yourDeadline?: number }
+  | { type: 'special_power_state'; enabled: boolean; you: { powerId: string | null; qty: number; used: boolean; usedPowerId: string | null }; opponentUsedPowerId: string | null; config: { freezeMs: number; extraTimeMs: number }; activeFreezeUntil?: number; yourDeadline?: number; slots?: { powerId: string; qty: number; used: boolean }[]; usedTotal?: number; maxPerMatch?: number }
   | { type: 'special_power_activated'; byId: string; byName: string; powerId: string; roundNumber: number; serverNow: number; effect?: { targetId?: string; freezeUntil?: number; newDeadline?: number } }
   | { type: 'special_power_reveal'; playerName: string; imageUrl: string | null }
   | { type: 'special_power_effect'; kind: 'second_chance_triggered'; byId: string; byName: string }
@@ -366,6 +389,10 @@ export type ServerMsg =
   | { type: 'outage_gift_claimed'; profile: ProfileView; granted: boolean } // granted=false → zaten alınmıştı
   | { type: 'daily_offer'; offer: DailyOfferView | null }
   | { type: 'daily_offer_purchased'; profile: ProfileView; offer: DailyOfferView }
+  // Günün Crossover'ı — state hem ilk açılışta hem bitişte aynı şekilde gelir.
+  | { type: 'daily_crossover'; state: DailyCrossoverStateView }
+  | { type: 'daily_crossover_wrong'; guess: string; suggestion: string | null; attemptsLeft: number }
+  | { type: 'daily_crossover_done'; state: DailyCrossoverStateView; rewardGranted: number; profile?: ProfileView }
   | { type: 'my_stats'; winStreak: number; bestStreak: number; wins: number; losses: number; modes: { mode: string; wins: number; losses: number }[] } // profil istatistikleri: sadece ranked hızlı eşleşme
   | { type: 'emote'; fromId: string; emoteId: string }
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string }

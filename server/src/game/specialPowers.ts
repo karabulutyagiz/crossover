@@ -1,9 +1,10 @@
 // ============================================================================
 // MAÇ İÇİ ÖZEL GÜÇLER (Special Powers) — sunucu-otoriter domain modeli.
 //
-// DEĞİŞMEZ ANA KURAL: envanterde kaç adet olursa olsun BİR OYUNCU BİR MAÇTA
-// TOPLAM 1 MANUEL ÖZEL GÜÇ KULLANABİLİR. Bu limit satın alma / premium / VIP /
-// seviye ile ARTIRILAMAZ. Kupa Kalkanı ve Seri Geri Yükleme gibi meta-koruma
+// ANA KURAL (kullanıcı revizyonu 2026-08-27: 1 → 3): oyuncu maça envanterinden
+// EN FAZLA 3 FARKLI güç kuşanır; her biri o maçta 1 kez, toplam 3 kullanım.
+// Bu limit satın alma / premium / VIP ile ARTIRILAMAZ (maxPerMatch config).
+// Kupa Kalkanı ve Seri Geri Yükleme gibi meta-koruma
 // eşyaları (rank.ts'teki xp2x/shield/streak/training/socialtoken) bu limitten
 // AYRIDIR ve bu modüle taşınmaz.
 //
@@ -47,6 +48,8 @@ export function specialPowersConfig(): {
   extraTimeMs: number;
   botUseProbability: number;
   prices: Record<SpecialPowerId, number>;
+  maxPerMatch: number;
+  packSize: number;
 } {
   return {
     // Kill switch + yüzdeli güvenli rollout (stableRolloutBucket ile maç başında uygulanır).
@@ -58,6 +61,11 @@ export function specialPowersConfig(): {
     extraTimeMs: intEnv('SPECIAL_POWER_EXTRATIME_MS', 7000),
     // Botun bir maçta güç kullanmayı PLANLAMA olasılığı (doğal an bulamazsa hiç kullanmaz).
     botUseProbability: Math.min(1, Math.max(0, Number(process.env.SPECIAL_POWER_BOT_USE_PROB ?? '0.38') || 0)),
+    // Maç başına toplam kullanım = kuşanılan slot sayısı (her güç 1 kez).
+    maxPerMatch: Math.max(1, Math.min(5, Number(process.env.SPECIAL_POWER_MAX_PER_MATCH ?? '3') || 3)),
+    // Mağaza fiyatı PAKET fiyatıdır: aynı fiyata ×3 adet ('elmas çok pahalı' —
+    // fiyat kaldı, adet 3 katına çıktı; kullanıcı kararı 2026-08-27).
+    packSize: Math.max(1, Math.min(10, Number(process.env.SPECIAL_POWER_PACK_SIZE ?? '3') || 3)),
     prices: {
       extratime: intEnv('SPECIAL_POWER_PRICE_EXTRATIME', 200),
       secondchance: intEnv('SPECIAL_POWER_PRICE_SECONDCHANCE', 300),
@@ -94,11 +102,14 @@ export interface SpecialPowerInventory {
   skip: number;
   extratime: number;
   secondchance: number;
-  equipped: SpecialPowerId | null;
+  equipped: SpecialPowerId | null;      // eski tekil alan (geriye uyum)
+  equippedList: SpecialPowerId[];       // maç loadout'u (en fazla 3 farklı güç)
 }
 
 export function inventoryFromRow(row: Record<string, unknown>): SpecialPowerInventory {
   const eq = row.equipped_special_power;
+  const rawList = Array.isArray(row.equipped_special_powers) ? row.equipped_special_powers : [];
+  const equippedList = rawList.filter(isSpecialPowerId).slice(0, 5);
   return {
     freeze: Number(row.sp_freeze ?? 0),
     reveal: Number(row.sp_reveal ?? 0),
@@ -106,26 +117,34 @@ export function inventoryFromRow(row: Record<string, unknown>): SpecialPowerInve
     extratime: Number(row.sp_extratime ?? 0),
     secondchance: Number(row.sp_secondchance ?? 0),
     equipped: isSpecialPowerId(eq) ? eq : null,
+    equippedList,
   };
 }
 
 export async function getSpecialPowerInventory(userId: string): Promise<SpecialPowerInventory | null> {
   const { rows } = await pool.query(
-    `SELECT sp_freeze, sp_reveal, sp_skip, sp_extratime, sp_secondchance, equipped_special_power FROM users WHERE id = $1`,
+    `SELECT sp_freeze, sp_reveal, sp_skip, sp_extratime, sp_secondchance, equipped_special_power, equipped_special_powers FROM users WHERE id = $1`,
     [userId],
   );
   return rows[0] ? inventoryFromRow(rows[0]) : null;
 }
 
-/** Maça girerken kuşanılacak güç: kuşanılmış ve stokta varsa o; yoksa en çok
- * sahip olunan güç (sahiplik varsa oyuncu asla butonsuz kalmaz). */
-export function snapshotEquipped(inv: SpecialPowerInventory): { powerId: SpecialPowerId; qty: number } | null {
-  if (inv.equipped && inv[inv.equipped] > 0) return { powerId: inv.equipped, qty: inv[inv.equipped] };
-  let best: SpecialPowerId | null = null;
-  for (const id of SPECIAL_POWER_IDS) {
-    if (inv[id] > 0 && (best == null || inv[id] > inv[best])) best = id;
-  }
-  return best ? { powerId: best, qty: inv[best] } : null;
+/** Maç loadout anlık görüntüsü: önce kuşanılan liste (stokta olanlar), sonra
+ * boş slotlar en çok sahip olunan güçlerle otomatik dolar — güç sahibi oyuncu
+ * asla butonsuz kalmaz. En fazla maxPerMatch FARKLI güç, her biri 1 kullanım. */
+export function snapshotLoadout(inv: SpecialPowerInventory, maxSlots = specialPowersConfig().maxPerMatch): { powerId: SpecialPowerId; qty: number }[] {
+  const slots: { powerId: SpecialPowerId; qty: number }[] = [];
+  const seen = new Set<SpecialPowerId>();
+  const push = (id: SpecialPowerId) => {
+    if (slots.length >= maxSlots || seen.has(id) || inv[id] <= 0) return;
+    seen.add(id);
+    slots.push({ powerId: id, qty: inv[id] });
+  };
+  const preferred = inv.equippedList.length ? inv.equippedList : (inv.equipped ? [inv.equipped] : []);
+  for (const id of preferred) push(id);
+  const rest = SPECIAL_POWER_IDS.filter((id) => !seen.has(id)).sort((a, b) => inv[b] - inv[a]);
+  for (const id of rest) push(id);
+  return slots;
 }
 
 /** ATOMİK tüketim: koşullu UPDATE — stok yoksa hiçbir şey değişmez. Başarıda
@@ -154,15 +173,18 @@ export async function consumeSpecialPower(args: {
   return { ok: true, remaining };
 }
 
-/** Mağaza satın alma: elmas düşümü + envanter artışı TEK atomik UPDATE. */
+/** Mağaza satın alma: elmas düşümü + envanter artışı TEK atomik UPDATE.
+ * qty = PAKET sayısı; her paket packSize (3) adet güç verir, fiyat paket başına. */
 export async function buySpecialPower(
   userId: string,
   powerId: SpecialPowerId,
   qty = 1,
 ): Promise<{ ok: true } | { ok: false; error: string; shortfall?: number }> {
   if (!userId) return { ok: false, error: 'Önce giriş yap' };
-  const n = Math.max(1, Math.min(10, Math.round(qty)));
-  const price = specialPowersConfig().prices[powerId] * n;
+  const cfg = specialPowersConfig();
+  const packs = Math.max(1, Math.min(10, Math.round(qty)));
+  const n = packs * cfg.packSize;
+  const price = cfg.prices[powerId] * packs;
   const col = COLUMN[powerId];
   const { rows } = await pool.query<{ after_qty: number; diamonds: number }>(
     `UPDATE users SET diamonds = diamonds - $2, ${col} = ${col} + $3
@@ -178,7 +200,7 @@ export async function buySpecialPower(
   void auditSpecialPower({
     userId, matchId: null, roundNumber: null, powerId, action: 'purchase',
     beforeQty: Number(rows[0].after_qty) - n, afterQty: Number(rows[0].after_qty),
-    requestId: null, result: 'ok', metadata: { qty: n, price },
+    requestId: null, result: 'ok', metadata: { qty: n, packs, packSize: cfg.packSize, price },
   });
   void recordDiamondLedger({
     userId, amount: -price, balanceAfter: Number(rows[0].diamonds),
@@ -204,12 +226,24 @@ export async function grantSpecialPower(userId: string, powerId: SpecialPowerId,
   }
 }
 
-export async function equipSpecialPower(userId: string, powerId: SpecialPowerId | null): Promise<boolean> {
-  const res = await pool.query(
-    `UPDATE users SET equipped_special_power = $2 WHERE id = $1`,
-    [userId, powerId],
+/** Loadout kuşanma: powerId listedeyse ÇIKARIR, değilse EKLER (en fazla
+ * maxPerMatch). null = listeyi temizle. Eski tekil sütun ilk slotla senkron
+ * tutulur (149 istemcisi 'KUŞANILI' durumunu oradan okur). */
+export async function equipSpecialPower(userId: string, powerId: SpecialPowerId | null): Promise<{ ok: boolean; error?: string }> {
+  const inv = await getSpecialPowerInventory(userId);
+  if (!inv) return { ok: false, error: 'Kullanıcı bulunamadı' };
+  let list = [...inv.equippedList];
+  if (powerId == null) list = [];
+  else if (list.includes(powerId)) list = list.filter((id) => id !== powerId);
+  else {
+    if (list.length >= specialPowersConfig().maxPerMatch) return { ok: false, error: `En fazla ${specialPowersConfig().maxPerMatch} güç kuşanabilirsin — önce birini çıkar` };
+    list.push(powerId);
+  }
+  await pool.query(
+    `UPDATE users SET equipped_special_powers = $2::text[], equipped_special_power = $3 WHERE id = $1`,
+    [userId, list, list[0] ?? null],
   );
-  return (res.rowCount ?? 0) > 0;
+  return { ok: true };
 }
 
 async function auditSpecialPower(args: {

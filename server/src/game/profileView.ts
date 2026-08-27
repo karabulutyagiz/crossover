@@ -54,5 +54,6 @@ export function toProfileView(p: UserProfile): ProfileView {
     spExtratime: p.spExtratime,
     spSecondchance: p.spSecondchance,
     equippedSpecialPower: p.equippedSpecialPower,
+    equippedSpecialPowers: p.equippedSpecialPowers,
   };
 }

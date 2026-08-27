@@ -120,6 +120,11 @@ export interface GameState {
   // Kişiye özel 12 saatlik fırsat (sunucu-deterministik; null = bu pencerede alınmış)
   dailyOffer: import('./protocol').DailyOfferView | null;
   dailyOfferPurchaseSeq: number;
+  // Günün Crossover'ı — sunucu-otoriter durum; wrong yalnız oyun penceresinde gösterilir.
+  dailyCx: import('./protocol').DailyCrossoverStateView | null;
+  dailyCxWrong: { guess: string; suggestion: string | null; attemptsLeft: number; seq: number } | null;
+  // Son bitişte düşen ödül (kutlama için) — done mesajıyla set edilir, modal kapatınca temizlenir.
+  dailyCxReward: number;
   // Login/game gates wait for this first server verdict so old binaries cannot race in.
   updateCheckComplete: boolean;
   // A friend's public profile I'm currently viewing.
@@ -179,6 +184,10 @@ export interface GameState {
   specialPower: {
     enabled: boolean;
     you: { powerId: string | null; qty: number; used: boolean; usedPowerId: string | null };
+    // 3-slot loadout (2026-08-27 revizyonu): her güç 1 kez, toplam maxPerMatch.
+    slots: { powerId: string; qty: number; used: boolean }[];
+    usedTotal: number;
+    maxPerMatch: number;
     opponentUsedPowerId: string | null;
     config: { freezeMs: number; extraTimeMs: number };
     pending: boolean; // istek uçuşta (activated/denied bekleniyor)
@@ -271,6 +280,9 @@ export const initialState: GameState = {
   outageGiftClaim: null,
   dailyOffer: null,
   dailyOfferPurchaseSeq: 0,
+  dailyCx: null,
+  dailyCxWrong: null,
+  dailyCxReward: 0,
   updateCheckComplete: false,
   viewProfile: null,
   notice: null,
@@ -338,6 +350,7 @@ type Action =
   | { type: '_connected'; value: boolean }
   | { type: '_authProvider'; provider: 'apple' | 'google' | 'facebook' | null }
   | { type: '_xp_seen' } // XP küre yağmuru oynatıldı — kazanım tüketildi
+  | { type: '_clear_daily_cx_reward' } // Günün Crossover'ı ödül kutlaması tüketildi
   | { type: '_reset' }
   | { type: '_logout' }
   | { type: '_picked' }
@@ -374,6 +387,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, authProvider: action.provider };
     case '_xp_seen':
       return { ...state, xpGain: null };
+    case '_clear_daily_cx_reward':
+      return { ...state, dailyCxReward: 0 };
     case '_forfeit_loss':
       return { ...state, forfeitLoss: { delta: action.delta, trophies: action.trophies, arena: action.arena, youScore: action.youScore, oppScore: action.oppScore, opponentName: action.opponentName, reason: action.reason } };
     case '_clear_forfeit_loss':
@@ -610,6 +625,19 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, profile: action.profile };
     case 'daily_offer':
       return { ...state, dailyOffer: (action as any).offer ?? null };
+    case 'daily_crossover':
+      return { ...state, dailyCx: action.state, dailyCxWrong: null };
+    case 'daily_crossover_wrong':
+      return { ...state, dailyCxWrong: { guess: action.guess, suggestion: action.suggestion, attemptsLeft: action.attemptsLeft, seq: (state.dailyCxWrong?.seq ?? 0) + 1 } };
+    case 'daily_crossover_done':
+      // Ödül düştüyse sunucu taze profili de yollar — elmas rozeti anında güncellenir.
+      return {
+        ...state,
+        dailyCx: action.state,
+        dailyCxWrong: null,
+        dailyCxReward: action.rewardGranted,
+        profile: action.profile ?? state.profile,
+      };
     case 'daily_offer_purchased':
       // Fırsat tüketildi: popup kapanır, profil tazelenir, onay animasyonu seq ile oynar.
       return { ...state, profile: action.profile, dailyOffer: null, dailyOfferPurchaseSeq: state.dailyOfferPurchaseSeq + 1 };
@@ -816,7 +844,17 @@ function reducer(state: GameState, action: Action): GameState {
       const a = action as Extract<ServerMsg, { type: 'special_power_state' }>;
       return {
         ...state,
-        specialPower: { enabled: a.enabled, you: a.you, opponentUsedPowerId: a.opponentUsedPowerId, config: a.config, pending: false },
+        specialPower: {
+          enabled: a.enabled,
+          you: a.you,
+          // Eski sunucu slots göndermezse tekil `you` slotundan türet (uyum).
+          slots: a.slots ?? (a.you.powerId ? [{ powerId: a.you.powerId, qty: a.you.qty, used: a.you.used }] : []),
+          usedTotal: a.usedTotal ?? (a.you.used ? 1 : 0),
+          maxPerMatch: a.maxPerMatch ?? 1,
+          opponentUsedPowerId: a.opponentUsedPowerId,
+          config: a.config,
+          pending: false,
+        },
         // Reconnect: aktif freeze/uzatılmış süre sunucudan aynen geri gelir.
         spFrozenUntil: a.activeFreezeUntil ?? state.spFrozenUntil,
         guessEndsAt: a.yourDeadline ?? state.guessEndsAt,
@@ -831,7 +869,9 @@ function reducer(state: GameState, action: Action): GameState {
         specialPower: sp ? {
           ...sp,
           pending: mine ? false : sp.pending,
-          you: mine ? { ...sp.you, used: true, usedPowerId: a.powerId, qty: Math.max(0, sp.you.qty - 1) } : sp.you,
+          you: mine && sp.you.powerId === a.powerId ? { ...sp.you, used: true, usedPowerId: a.powerId, qty: Math.max(0, sp.you.qty - 1) } : sp.you,
+          slots: mine ? sp.slots.map((sl) => (sl.powerId === a.powerId ? { ...sl, used: true, qty: Math.max(0, sl.qty - 1) } : sl)) : sp.slots,
+          usedTotal: mine ? sp.usedTotal + 1 : sp.usedTotal,
           opponentUsedPowerId: mine ? sp.opponentUsedPowerId : a.powerId,
         } : sp,
         spEvent: { seq: (state.spEvent?.seq ?? 0) + 1, byId: a.byId, byName: a.byName, powerId: a.powerId, mine, effect: a.effect },
@@ -1601,7 +1641,8 @@ export function useCrossover() {
       // anahtarı iki kez tüketmez. pending bayrağı çift dokunuşu arayüzde de keser.
       useSpecialPower: (powerId: string) => {
         const st = stateRef.current.specialPower;
-        if (!st || st.pending || st.you.used || st.you.powerId !== powerId) return;
+        const slot = st?.slots.find((sl) => sl.powerId === powerId);
+        if (!st || st.pending || !slot || slot.used || st.usedTotal >= st.maxPerMatch) return;
         dispatch({ type: '_sp_pending' } as any);
         const requestId = `sp-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
         track('special_power_activation_requested', { power_id: powerId });
@@ -1650,6 +1691,10 @@ export function useCrossover() {
       claimOutageGift: () => send({ type: 'claim_outage_gift' }),
       getDailyOffer: () => send({ type: 'get_daily_offer' }),
       buyDailyOffer: (key: string) => send({ type: 'buy_daily_offer', key }),
+      getDailyCrossover: () => send({ type: 'get_daily_crossover' }),
+      startDailyCrossover: () => send({ type: 'start_daily_crossover' }),
+      guessDailyCrossover: (text: string) => send({ type: 'daily_crossover_guess', text }),
+      clearDailyCxReward: () => dispatch({ type: '_clear_daily_cx_reward' }),
       loadMyStats: () => send({ type: 'get_my_stats' }),
       // Friends — via WebSocket for real-time notifications.
       loadFriends: () => send({ type: 'list_friends' }),

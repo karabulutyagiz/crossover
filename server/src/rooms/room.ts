@@ -33,7 +33,7 @@ import { assessFarmRisk, recordOpponentHistory } from '../matchmaking/antiFarm.t
 import { getTrophyEconomyState } from '../matchmaking/trophyEconomy.ts';
 import { trophyRiskMultipliers } from '../matchmaking/trophyRisk.ts';
 import { createMatchClubSelectionState, recordMatchupClubs, selectBotTeamForMatchup, type MatchClubSelectionState } from '../game/matchupSelection.ts';
-import { consumeSpecialPower, getSpecialPowerInventory, grantSpecialPower, snapshotEquipped, specialPowersConfig, isSpecialPowerId, type SpecialPowerId } from '../game/specialPowers.ts';
+import { consumeSpecialPower, getSpecialPowerInventory, grantSpecialPower, snapshotLoadout, specialPowersConfig, isSpecialPowerId, type SpecialPowerId } from '../game/specialPowers.ts';
 import { stableRolloutBucket } from '../matchmaking/liveOpsConfig.ts';
 import { toProfileView } from '../game/profileView.ts';
 import { generateXoxGrid, xoxWinningLine, XOX_MIN_CELL_ANSWERS, XOX_SUDDEN_MS, XOX_TURN_CAP, XOX_TURN_MS } from '../game/xoxGrid.ts';
@@ -161,14 +161,20 @@ interface Round {
 // ---- Özel Güç MAÇ-KAPSAMLI oyuncu durumu ----
 // ANA KURAL: maç başına TOPLAM 1 manuel özel güç. Bu yapı reconnect/restart'ta
 // oda yaşadığı sürece korunur; istemci yeniden bağlanınca aynen geri gönderilir.
-interface PlayerSpecialPowerState {
-  equippedId: SpecialPowerId | null; // maç başında alınan anlık görüntü (değiştirilemez)
+// KURAL (2026-08-27 revizyonu): maça EN FAZLA 3 FARKLI güç kuşanılır (slot),
+// her slot o maçta 1 kez kullanılır — toplam 3 kullanım. Slot listesi maç
+// başında envanterden anlık görüntüye alınır, maç boyunca değişmez.
+interface SpecialPowerSlot {
+  powerId: SpecialPowerId;
   qty: number;                       // anlık görüntüdeki stok (yalnız gösterim)
   used: boolean;
-  usedPowerId: SpecialPowerId | null;
   usedAtRound: number | null;
   usedAt: number | null;
   requestId: string | null;          // idempotency: aynı requestId ikinci kez tüketmez
+}
+interface PlayerSpecialPowerState {
+  slots: SpecialPowerSlot[];
+  usedTotal: number;
   pendingConsume: boolean;           // DB tüketimi uçuşta — çift istek kilidi
   armedSecondChance: boolean;        // İkinci Şans kuşanıldı (maç boyu, bir kez tetiklenir)
   secondChanceTriggered: boolean;
@@ -1198,17 +1204,17 @@ export class Room {
     if (!this.round || this.round.finished || this.status !== 'reveal') return;
     if (!a || !b) return; // güvenlik: eksik pick ile çağrılırsa çökme yerine sessizce çık
     if (a.id === b.id) {
-      const t = setTimeout(() => this.skipSameTeam(), 2200);
+      const t = setTimeout(() => this.skipSameTeam(), 800);
       this.timers.push(t);
       return;
     }
     const common = await commonPlayersDetailed(a.id, b.id, 5);
     if (!this.round || this.round.finished || this.status !== 'reveal') return;
     if (common.length === 0) {
-      const t = setTimeout(() => this.skipNoCommon(), 2200);
+      const t = setTimeout(() => this.skipNoCommon(), 800);
       this.timers.push(t);
     } else {
-      const t = setTimeout(() => this.beginGuess(), 2000);
+      const t = setTimeout(() => this.beginGuess(), 500);
       this.timers.push(t);
     }
   }
@@ -1218,10 +1224,10 @@ export class Room {
     const has = await hasPlayersCountryTeam(club.id, country);
     if (!this.round || this.round.finished || this.status !== 'reveal') return;
     if (!has) {
-      const t = setTimeout(() => this.skipNoCommon(), 2200);
+      const t = setTimeout(() => this.skipNoCommon(), 800);
       this.timers.push(t);
     } else {
-      const t = setTimeout(() => this.beginGuess(), 2000);
+      const t = setTimeout(() => this.beginGuess(), 500);
       this.timers.push(t);
     }
   }
@@ -1231,10 +1237,10 @@ export class Room {
     const has = await hasPlayersLetterTeam(club.id, letter);
     if (!this.round || this.round.finished || this.status !== 'reveal') return;
     if (!has) {
-      const t = setTimeout(() => this.skipNoCommon(), 2200);
+      const t = setTimeout(() => this.skipNoCommon(), 800);
       this.timers.push(t);
     } else {
-      const t = setTimeout(() => this.beginGuess(), 2000);
+      const t = setTimeout(() => this.beginGuess(), 500);
       this.timers.push(t);
     }
   }
@@ -1247,10 +1253,10 @@ export class Room {
     const has = await hasCommonClubs(playerA.id, playerB.id);
     if (!this.round || this.round.finished || this.status !== 'reveal') return;
     if (!has) {
-      const t = setTimeout(() => this.skipNoCommon(), 2200);
+      const t = setTimeout(() => this.skipNoCommon(), 800);
       this.timers.push(t);
     } else {
-      const t = setTimeout(() => this.beginGuess(), 2000);
+      const t = setTimeout(() => this.beginGuess(), 500);
       this.timers.push(t);
     }
   }
@@ -2007,22 +2013,21 @@ export class Room {
 
   private async initSpecialPowerStates(): Promise<void> {
     const matchId = this.matchId;
-    const empty = (equippedId: SpecialPowerId | null, qty: number): PlayerSpecialPowerState => ({
-      equippedId, qty, used: false, usedPowerId: null, usedAtRound: null, usedAt: null,
-      requestId: null, pendingConsume: false, armedSecondChance: false, secondChanceTriggered: false,
+    const mk = (slots: { powerId: SpecialPowerId; qty: number }[]): PlayerSpecialPowerState => ({
+      slots: slots.map((sl) => ({ powerId: sl.powerId, qty: sl.qty, used: false, usedAtRound: null, usedAt: null, requestId: null })),
+      usedTotal: 0, pendingConsume: false, armedSecondChance: false, secondChanceTriggered: false,
     });
     for (const pl of this.players.values()) {
       if (pl.transport.isBot) {
-        // Bot: gerçek envanter yok — sunucu loadout planı (varsa) sanal 1 adet.
+        // Bot: gerçek envanter yok — sunucu loadout planı (varsa) sanal 1 slot.
         const plan = pl.transport.botSpecialPowerPlan ?? null;
-        this.specialPowers.set(pl.id, empty(plan?.powerId ?? null, plan ? 1 : 0));
+        this.specialPowers.set(pl.id, mk(plan ? [{ powerId: plan.powerId, qty: 1 }] : []));
         continue;
       }
-      if (!pl.userId) { this.specialPowers.set(pl.id, empty(null, 0)); continue; }
+      if (!pl.userId) { this.specialPowers.set(pl.id, mk([])); continue; }
       const inv = await getSpecialPowerInventory(pl.userId).catch(() => null);
       if (this.matchId !== matchId) return; // rematch araya girdi — eski yükleme çöp
-      const snap = inv ? snapshotEquipped(inv) : null;
-      this.specialPowers.set(pl.id, empty(snap?.powerId ?? null, snap?.qty ?? 0));
+      this.specialPowers.set(pl.id, mk(inv ? snapshotLoadout(inv) : []));
       this.sendSpecialPowerStateTo(pl.id);
     }
   }
@@ -2048,11 +2053,18 @@ export class Room {
     const oppSt = opp ? this.specialPowers.get(opp.id) : undefined;
     const cfg = specialPowersConfig();
     const frozenUntil = this.round?.frozenUntil?.get(playerId);
+    // `you` = ilk slot (149 istemcisi tek düğme çizer — geriye uyum);
+    // güncel istemciler slots/usedTotal/maxPerMatch ile 3 çip çizer.
+    const first = st?.slots[0];
+    const oppLastUsed = [...(oppSt?.slots ?? [])].filter((sl) => sl.used).sort((a, b) => (b.usedAt ?? 0) - (a.usedAt ?? 0))[0];
     pl.transport.send({
       type: 'special_power_state',
       enabled: this.specialPowersEnabled,
-      you: { powerId: st?.equippedId ?? null, qty: st?.qty ?? 0, used: st?.used ?? false, usedPowerId: st?.usedPowerId ?? null },
-      opponentUsedPowerId: oppSt?.usedPowerId ?? null,
+      you: { powerId: first?.powerId ?? null, qty: first?.qty ?? 0, used: first?.used ?? false, usedPowerId: first?.used ? first.powerId : null },
+      opponentUsedPowerId: oppLastUsed?.powerId ?? null,
+      slots: (st?.slots ?? []).map((sl) => ({ powerId: sl.powerId, qty: sl.qty, used: sl.used })),
+      usedTotal: st?.usedTotal ?? 0,
+      maxPerMatch: cfg.maxPerMatch,
       config: { freezeMs: cfg.freezeMs, extraTimeMs: cfg.extraTimeMs },
       ...(frozenUntil != null && Date.now() < frozenUntil ? { activeFreezeUntil: frozenUntil } : {}),
       ...(this.status === 'guess' && this.round?.guessEndsAt ? { yourDeadline: this.playerDeadline(playerId) } : {}),
@@ -2094,21 +2106,25 @@ export class Room {
     };
     if (!this.specialPowersEnabled) return deny('unavailable');
     const st = this.specialPowers.get(playerId);
-    if (!st || !st.equippedId) return deny('unavailable');
+    if (!st || !st.slots.length) return deny('unavailable');
     if (this.matchOver || this.status === 'lobby') return deny('match_over');
-    // İstemcinin gönderdiği powerId maç-başı anlık görüntüyle birebir tutmalı —
-    // sahte/oynanmış istemci farklı güç dayatamaz.
-    if (!isSpecialPowerId(powerIdRaw) || powerIdRaw !== st.equippedId) return deny('invalid');
+    // İstemcinin gönderdiği powerId maç-başı LOADOUT anlık görüntüsünde olmalı —
+    // sahte/oynanmış istemci slot dışı güç dayatamaz.
+    if (!isSpecialPowerId(powerIdRaw)) return deny('invalid');
     const powerId = powerIdRaw;
-    if (st.used) {
+    const slot = st.slots.find((sl) => sl.powerId === powerId);
+    if (!slot) return deny('invalid');
+    const cfgMax = specialPowersConfig().maxPerMatch;
+    if (slot.used) {
       // Idempotency: aynı requestId'nin tekrarı (timeout + retry) yeni tüketim
       // YAPMAZ — önceki kabulün olayı yalnız istekçiye yeniden gönderilir.
-      if (st.requestId === requestId && st.usedPowerId) {
-        pl.transport.send({ type: 'special_power_activated', byId: playerId, byName: pl.name, powerId: st.usedPowerId, roundNumber: st.usedAtRound ?? this.roundNumber + 1, serverNow: Date.now() });
+      if (slot.requestId === requestId) {
+        pl.transport.send({ type: 'special_power_activated', byId: playerId, byName: pl.name, powerId: slot.powerId, roundNumber: slot.usedAtRound ?? this.roundNumber + 1, serverNow: Date.now() });
         return;
       }
-      return deny('already_used');
+      return deny('already_used'); // bu güç bu maçta kullanıldı (her slot 1 kez)
     }
+    if (st.usedTotal >= cfgMax) return deny('already_used'); // toplam tavan (emniyet)
     if (st.pendingConsume) return; // uçuşta — çift dokunuş sessizce düşer
 
     const guessActive = this.status === 'guess' && !!this.round && !this.round.finished && !this.round.powerSkipPending;
@@ -2143,10 +2159,10 @@ export class Room {
       const consumed = await consumeSpecialPower({ userId: pl.userId, powerId, matchId: this.matchId, roundNumber: this.roundNumber + 1, requestId })
         .catch(() => ({ ok: false as const, error: 'no_inventory' as const }));
       if (!consumed.ok) { st.pendingConsume = false; return deny('no_inventory'); }
-      st.qty = consumed.remaining;
+      slot.qty = consumed.remaining;
     } else {
-      if (st.qty <= 0) { st.pendingConsume = false; return deny('no_inventory'); }
-      st.qty -= 1;
+      if (slot.qty <= 0) { st.pendingConsume = false; return deny('no_inventory'); }
+      slot.qty -= 1;
     }
     st.pendingConsume = false;
 
@@ -2157,17 +2173,17 @@ export class Room {
         && !(powerId === 'skip' && (roundRef.pendingGuesses?.size ?? 0) > 0);
     if (!stillValid) {
       if (!pl.transport.isBot && pl.userId) await grantSpecialPower(pl.userId, powerId, 1, 'refund_round_finished').catch(() => {});
-      st.qty += 1;
+      slot.qty += 1;
       return deny(this.matchOver ? 'match_over' : 'too_late');
     }
 
-    // ── COMMIT: maç başına tek kullanım burada kilitlenir. ──
+    // ── COMMIT: bu slot bu maçta kilitlenir (her güç 1 kez, toplam 3). ──
     const now = Date.now();
-    st.used = true;
-    st.usedPowerId = powerId;
-    st.usedAtRound = this.roundNumber + 1;
-    st.usedAt = now;
-    st.requestId = requestId;
+    slot.used = true;
+    slot.usedAtRound = this.roundNumber + 1;
+    slot.usedAt = now;
+    slot.requestId = requestId;
+    st.usedTotal += 1;
 
     const cfg = specialPowersConfig();
     const opp = [...this.players.values()].find((x) => x.id !== playerId);
@@ -2203,7 +2219,7 @@ export class Room {
       payload: {
         powerId, roundNumber: this.roundNumber + 1,
         actorType: pl.transport.isBot ? 'BOT' : 'HUMAN',
-        remainingQty: st.qty, requestId,
+        remainingQty: slot.qty, usedTotal: st.usedTotal, requestId,
         matchScore: this.scorePayload(),
       },
     });

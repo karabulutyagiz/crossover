@@ -124,6 +124,7 @@ export interface UserProfile {
   spExtratime: number;
   spSecondchance: number;
   equippedSpecialPower: string | null;
+  equippedSpecialPowers: string[];
 }
 
 function isFutureIso(iso: string | null | undefined): iso is string {
@@ -1368,6 +1369,7 @@ interface DbUser {
   sp_extratime: number | null;
   sp_secondchance: number | null;
   equipped_special_power: string | null;
+  equipped_special_powers: string[] | null;
 }
 
 // Stamp the user's last-online time (on connect and disconnect) for "last seen".
@@ -1428,6 +1430,7 @@ function toProfile(row: DbUser): UserProfile {
     spExtratime: row.sp_extratime ?? 0,
     spSecondchance: row.sp_secondchance ?? 0,
     equippedSpecialPower: row.equipped_special_power ?? null,
+    equippedSpecialPowers: row.equipped_special_powers ?? [],
   };
 }
 

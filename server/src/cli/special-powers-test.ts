@@ -61,13 +61,12 @@ function makeMatch(powerA: string | null, powerB: string | null = null, qtyA = 1
   r.matchStartedAt = Date.now();
   r.round = { picks: new Map(), teamA: TEAM_A, teamB: TEAM_B, finished: false, guessEndsAt: Date.now() + 30_000, guessStartedAt: Date.now() };
   r.specialPowersEnabled = true;
-  const st = (powerId: string | null, qty: number) => ({
-    equippedId: powerId, qty: powerId ? qty : 0, used: false, usedPowerId: null,
-    usedAtRound: null, usedAt: null, requestId: null, pendingConsume: false,
-    armedSecondChance: false, secondChanceTriggered: false,
+  const st = (powerIds: (string | null)[], qty: number) => ({
+    slots: powerIds.filter(Boolean).map((id) => ({ powerId: id, qty, used: false, usedAtRound: null, usedAt: null, requestId: null })),
+    usedTotal: 0, pendingConsume: false, armedSecondChance: false, secondChanceTriggered: false,
   });
-  r.specialPowers.set(resA.id, st(powerA, qtyA));
-  r.specialPowers.set(resB.id, st(powerB, powerB ? 1 : 0));
+  r.specialPowers.set(resA.id, st([powerA], qtyA));
+  r.specialPowers.set(resB.id, st([powerB], powerB ? 1 : 0));
   return { room, a, b, aId: resA.id, bId: resB.id, r };
 }
 
@@ -116,7 +115,7 @@ async function main(): Promise<void> {
     await sleep(150);
     const st = r.specialPowers.get(aId);
     // DB'siz ortamda cevap bulunamaz → invalid + envanter DOKUNULMAMIŞ (spec §26 iade ilkesi)
-    check(a.last('special_power_denied')?.reason === 'invalid' && st.used === false && st.qty === 1, 'S3: reveal without server answer denies WITHOUT consuming');
+    check(a.last('special_power_denied')?.reason === 'invalid' && st.slots[0].used === false && st.slots[0].qty === 1, 'S3: reveal without server answer denies WITHOUT consuming');
     (room as any).clearTimers?.();
   }
 
@@ -127,8 +126,8 @@ async function main(): Promise<void> {
     await sleep(50);
     room.handle(aId, { type: 'use_special_power', powerId: 'freeze', requestId: 'rq-4b' });
     await sleep(50);
-    check(a.last('special_power_denied')?.reason === 'already_used', 'S4: second activation rejected — 1 per match, inventory 5 irrelevant');
-    check(r.specialPowers.get(aId).qty === 4, 'S4: only one item consumed');
+    check(a.last('special_power_denied')?.reason === 'already_used', 'S4: SAME power twice rejected (her slot 1 kez)');
+    check(r.specialPowers.get(aId).slots[0].qty === 4, 'S4: only one item consumed');
     (room as any).clearTimers?.();
   }
 
@@ -155,7 +154,7 @@ async function main(): Promise<void> {
     const activations = a.count('special_power_activated');
     room.handle(aId, { type: 'use_special_power', powerId: 'freeze', requestId: 'dup-1' });
     await sleep(50);
-    check(r.specialPowers.get(aId).qty === 2, 'S6: duplicate requestId consumes exactly one item');
+    check(r.specialPowers.get(aId).slots[0].qty === 2, 'S6: duplicate requestId consumes exactly one item');
     check(a.count('special_power_denied') === 0 && a.count('special_power_activated') === activations + 1, 'S6: duplicate re-acked to requester, not denied');
     (room as any).clearTimers?.();
   }
@@ -166,7 +165,7 @@ async function main(): Promise<void> {
     r.round.finished = true;
     room.handle(aId, { type: 'use_special_power', powerId: 'freeze', requestId: 'rq-7' });
     await sleep(50);
-    check(a.last('special_power_denied')?.reason === 'round_not_active' && r.specialPowers.get(aId).qty === 1 && !r.specialPowers.get(aId).used, 'S7: round-finished activation rejected without consume');
+    check(a.last('special_power_denied')?.reason === 'round_not_active' && r.specialPowers.get(aId).slots[0].qty === 1 && !r.specialPowers.get(aId).slots[0].used, 'S7: round-finished activation rejected without consume');
     (room as any).clearTimers?.();
   }
 
@@ -176,7 +175,7 @@ async function main(): Promise<void> {
     (r.round.pendingGuesses ??= new Set()).add(bId);
     room.handle(aId, { type: 'use_special_power', powerId: 'skip', requestId: 'rq-8' });
     await sleep(50);
-    check(a.last('special_power_denied')?.reason === 'too_late' && r.specialPowers.get(aId).qty === 1, 'S8: in-flight answer beats skip; power not consumed');
+    check(a.last('special_power_denied')?.reason === 'too_late' && r.specialPowers.get(aId).slots[0].qty === 1, 'S8: in-flight answer beats skip; power not consumed');
     (room as any).clearTimers?.();
   }
 
@@ -187,7 +186,7 @@ async function main(): Promise<void> {
     room.handle(bId, { type: 'use_special_power', powerId: 'secondchance', requestId: 'rq-9b' });
     await sleep(80);
     check(a.count('special_power_activated') === 2 && b.count('special_power_activated') === 2, 'S9: both simultaneous powers accepted and announced to both');
-    check(r.specialPowers.get(aId).used && r.specialPowers.get(bId).used, 'S9: both marked used — no crash, no desync');
+    check(r.specialPowers.get(aId).slots[0].used && r.specialPowers.get(bId).slots[0].used, 'S9: both marked used — no crash, no desync');
     (room as any).clearTimers?.();
   }
 
@@ -206,10 +205,10 @@ async function main(): Promise<void> {
   // ── Senaryo 11: Envanter 0 → sahte istek sunucuda reddedilir
   {
     const { room, a, aId, r } = makeMatch('freeze', null, 1);
-    r.specialPowers.get(aId).qty = 0; // istemci 5 gösterse bile sunucu 0 der (S12: server wins)
+    r.specialPowers.get(aId).slots[0].qty = 0; // istemci 5 gösterse bile sunucu 0 der (S12: server wins)
     room.handle(aId, { type: 'use_special_power', powerId: 'freeze', requestId: 'rq-11' });
     await sleep(50);
-    check(a.last('special_power_denied')?.reason === 'no_inventory' && !r.specialPowers.get(aId).used, 'S11/S12: zero inventory forged request rejected — server wins');
+    check(a.last('special_power_denied')?.reason === 'no_inventory' && !r.specialPowers.get(aId).slots[0].used, 'S11/S12: zero inventory forged request rejected — server wins');
     (room as any).clearTimers?.();
   }
 
@@ -218,7 +217,7 @@ async function main(): Promise<void> {
     const { room, a, aId, r } = makeMatch('extratime');
     room.handle(aId, { type: 'use_special_power', powerId: 'reveal', requestId: 'rq-forge' });
     await sleep(50);
-    check(a.last('special_power_denied')?.reason === 'invalid' && !r.specialPowers.get(aId).used, 'Anti-cheat: powerId must match match-start snapshot');
+    check(a.last('special_power_denied')?.reason === 'invalid' && !r.specialPowers.get(aId).slots[0].used, 'Anti-cheat: powerId must be in the match-start loadout');
     (room as any).clearTimers?.();
   }
 
@@ -259,7 +258,30 @@ async function main(): Promise<void> {
     r.matchOver = true;
     room.handle(aId, { type: 'use_special_power', powerId: 'freeze', requestId: 'rq-mo' });
     await sleep(50);
-    check(a.last('special_power_denied')?.reason === 'match_over' && r.specialPowers.get(aId).qty === 1, 'MatchOver: no activation, no consume');
+    check(a.last('special_power_denied')?.reason === 'match_over' && r.specialPowers.get(aId).slots[0].qty === 1, 'MatchOver: no activation, no consume');
+    (room as any).clearTimers?.();
+  }
+
+  // ── 3'LÜ LOADOUT (2026-08-27 revizyonu): 3 farklı güç, her biri 1 kez — toplam 3
+  {
+    const { room, a, aId, r } = makeMatch('freeze');
+    r.specialPowers.get(aId).slots = [
+      { powerId: 'freeze', qty: 2, used: false, usedAtRound: null, usedAt: null, requestId: null },
+      { powerId: 'extratime', qty: 1, used: false, usedAtRound: null, usedAt: null, requestId: null },
+      { powerId: 'secondchance', qty: 3, used: false, usedAtRound: null, usedAt: null, requestId: null },
+    ];
+    room.handle(aId, { type: 'use_special_power', powerId: 'freeze', requestId: 'ld-1' });
+    await sleep(50);
+    room.handle(aId, { type: 'use_special_power', powerId: 'extratime', requestId: 'ld-2' });
+    await sleep(50);
+    room.handle(aId, { type: 'use_special_power', powerId: 'secondchance', requestId: 'ld-3' });
+    await sleep(50);
+    const st = r.specialPowers.get(aId);
+    check(st.usedTotal === 3 && st.slots.every((sl: { used: boolean }) => sl.used), 'Loadout: three DIFFERENT powers all usable in one match (total 3)');
+    check(a.count('special_power_activated') === 3 && a.count('special_power_denied') === 0, 'Loadout: all three announced, none denied');
+    room.handle(aId, { type: 'use_special_power', powerId: 'freeze', requestId: 'ld-4' });
+    await sleep(50);
+    check(a.last('special_power_denied')?.reason === 'already_used' && st.slots[0].qty === 1, 'Loadout: reusing a spent power still rejected');
     (room as any).clearTimers?.();
   }
 
