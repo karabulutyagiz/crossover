@@ -6484,11 +6484,17 @@ export function XoxScreen({ state, actions }: Props) {
   // sütun başlığı ~54 + dikey 3 gap + padding = 84 (yükseklik). Hücre iki
   // kısıttan KÜÇÜĞÜNE göre seçilir; ilk ölçüm gelene dek pencere genişliği
   // kullanılır (tek karelik yer tutucu).
+  // Tahtanın dış çerçevesi (RN border-box: içe doğru yer kaplar) + çerçevenin
+  // ekran kenarına yapışmaması için sol/sağ nefes payı. İkisi de genişlik
+  // hesabına katılır ki sağ/sol kenar KIRPILMASIN, çizgi tam kapansın.
+  const boardBorder = 2;
+  const boardMargin = 4;
   const gridMaxW = Math.min((boardBox.w || win.width - 32), 430);
-  const widthCell = Math.floor((gridMaxW - headerW - 30) / 3);
-  const heightCell = boardBox.h > 0 ? Math.floor((boardBox.h - 84) / 3) : widthCell;
+  // Yatay sabit maliyet: padding 6×2=12 + satır-içi 3 gap×6=18 + çerçeve 2×boardBorder + kenar 2×boardMargin.
+  const widthCell = Math.floor((gridMaxW - headerW - 30 - boardBorder * 2 - boardMargin * 2) / 3);
+  const heightCell = boardBox.h > 0 ? Math.floor((boardBox.h - 84 - boardBorder * 2) / 3) : widthCell;
   const cellSize = Math.max(40, Math.min(widthCell, heightCell, 122));
-  const gridW = headerW + cellSize * 3 + 30; // floor artığı tahtaya sızmasın
+  const gridW = headerW + cellSize * 3 + 30 + boardBorder * 2; // padding+gap+çerçeve; floor artığı sızmasın
   const winLine = over?.line ?? null;
   const submit = () => {
     const text = guessRef.current.trim();
@@ -6578,7 +6584,7 @@ export function XoxScreen({ state, actions }: Props) {
 
       {/* Tahta — esnek orta bölge: kalan alanı ölçer, tahta ona sığar */}
       <View style={{ flex: 1, minHeight: 0, justifyContent: 'center' }} onLayout={(e) => { const { width: bw, height: bh } = e.nativeEvent.layout; setBoardBox((prev) => (Math.abs(prev.w - bw) > 1 || Math.abs(prev.h - bh) > 1 ? { w: bw, h: bh } : prev)); }}>
-      <View style={{ alignSelf: 'center', width: gridW, backgroundColor: withAlpha(theme.surface2, 0.85), borderRadius: 20, padding: 6, gap: 6 }}>
+      <View style={{ alignSelf: 'center', width: gridW, marginHorizontal: boardMargin, backgroundColor: withAlpha(theme.surface2, 0.85), borderRadius: 20, borderWidth: boardBorder, borderColor: withAlpha(theme.primary, 0.45), padding: 6, gap: 6, shadowColor: theme.primary, shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 4 }}>
         <View style={{ flexDirection: 'row', gap: 6, alignItems: 'flex-end' }}>
           <View style={{ width: headerW }} />
           {xox.cols.map((c) => <XoxHeaderChip key={c.id} club={c} size={cellSize} />)}

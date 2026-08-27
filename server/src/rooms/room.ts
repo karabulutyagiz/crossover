@@ -1910,21 +1910,19 @@ export class Room {
     this.advanceXoxTurn({ kind: 'wrong', byId: playerId, byName: pl.name, cell, guess: text.trim() });
   }
 
-  /** Tur tavanı / dolu tahta: çok hücre kazanan alır; eşitlikte ALTIN HÜCRE. */
-  /** GERÇEK XOX kuralı (kullanıcı kararı 2026-08-27): yalnız ÇİZGİ kazandırır.
-   * Tur tavanı dolar ya da 9 hücre biterse — kimin kaç hücresi olursa olsun —
-   * maç BERABERE biter: çok hücre kapan 8-10, az kapan 4-5 kupa alır (eşitse
-   * ikisi de 8-10). Kimse kupa kaybetmez. Çoğunluk galibiyeti + altın hücre
-   * yarışı tamamen kaldırıldı. */
+  /** GERÇEK XOX kuralı (kullanıcı kararı 2026-08-27, güncellendi 2026-08-28):
+   * yalnız ÇİZGİ kazandırır. Tur tavanı dolar ya da 9 hücre biterse — kimin kaç
+   * hücresi olursa olsun — maç BERABERE biter ve İKİ TARAF DA DÜZ +5 kupa alır.
+   * Kimse kupa kaybetmez. Çoğunluk galibiyeti + altın hücre yarışı kaldırıldı. */
   private resolveXoxStall(_lastAction?: { kind: 'claim' | 'wrong' | 'timeout'; byId: string; byName: string }): void {
     if (!this.xox || this.matchOver) return;
     void this.finishXoxDraw();
   }
 
 
-  /** BERABERE bitişi: kupa BANDI DIŞI küçük teselli ödülü (çok bilen 8-10, az
-   * bilen 4-5, eşitse ikisi de 8-10); kimse kaybetmez, XP normal işler. Çifte
-   * ödemeye karşı settleMatch ile aynı kilidi (claimSettlement) kullanır. */
+  /** BERABERE bitişi: kupa BANDI DIŞI düz teselli ödülü — İKİ TARAF DA +5 kupa
+   * (kim daha çok hücre bilirse bilsin fark etmez); kimse kaybetmez, XP normal
+   * işler. Çifte ödemeye karşı settleMatch ile aynı kilidi (claimSettlement) kullanır. */
   private async finishXoxDraw(): Promise<void> {
     if (!this.xox || this.matchOver) return;
     this.matchOver = true;
@@ -1943,10 +1941,8 @@ export class Room {
     if (this.ranked && (await this.claimSettlement('xox_draw'))) {
       for (const pl of this.players.values()) {
         if (pl.transport.isBot || !pl.userId) continue;
-        const opp = [...this.players.values()].find((o) => o.id !== pl.id);
-        const mine = this.xoxCellCount(pl.id);
-        const theirs = opp ? this.xoxCellCount(opp.id) : 0;
-        const delta = mine < theirs ? 4 + Math.floor(Math.random() * 2) : 8 + Math.floor(Math.random() * 3);
+        // Beraberede iki taraf da DÜZ +5 kupa (kim daha çok hücre bilirse bilsin).
+        const delta = 5;
         try {
           const { rows } = await pool.query<{ trophies: number }>(
             'UPDATE users SET trophies = trophies + $2 WHERE id = $1 RETURNING trophies', [pl.userId, delta],
