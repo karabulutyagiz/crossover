@@ -992,7 +992,7 @@ function AppRoot() {
   const [tutorialSeen, setTutorialSeen] = useState<boolean | null>(null);
   const [tutorialAccepted, setTutorialAccepted] = useState(false);
   const [loaded, setLoaded] = useState(false); // Clash-Royale-style entry loading (warms logo cache)
-  const [storeSection, setStoreSection] = useState<'socialPack' | 'diamonds' | 'top' | null>(null);
+  const [storeSection, setStoreSection] = useState<'socialPack' | 'diamonds' | 'top' | 'powers' | null>(null);
   const storeAtDiamondsRef = useRef(false); // re-tap toggle: diamonds ↔ back to top
   const csRef = useRef<ComingSoonBadgeHandle | null>(null); // Turnuvalar — "yakında" rozeti (kalıcı monte, bkz. ComingSoonBadge)
   const [expiredSocialPack, setExpiredSocialPack] = useState(false); // Social Pack expired popup
@@ -1019,6 +1019,8 @@ function AppRoot() {
   const [socialPackCampaignVisible, setSocialPackCampaignVisible] = useState(false);
   const [outageGiftVisible, setOutageGiftVisible] = useState(false); // kesinti telafisi özür penceresi
   const [dailyOfferVisible, setDailyOfferVisible] = useState(false);  // kişiye özel fırsat (popup #2)
+  const [dailyConfirm, setDailyConfirm] = useState(false);           // "SATIN AL" öncesi Evet/Hayır onay adımı
+  const reopenDailyOfferRef = useRef(false);                         // elmas almaya gidildi → dönüp yeterli olunca teklifi GERİ aç
   const [updateNudgeVisible, setUpdateNudgeVisible] = useState(false); // mağazaya yeni sürüm düşünce (yumuşak)
   const [xoxAnnounceVisible, setXoxAnnounceVisible] = useState(false); // XOX modu tek seferlik duyuru
   const updateNudgeShownRef = useRef(false);
@@ -1931,6 +1933,19 @@ function AppRoot() {
     setDailyOfferVisible(false);
     triggerFeedback(GameFeedbackEvent.PURCHASE_CONFIRMED);
   }, [state.dailyOfferPurchaseSeq]);
+  // Teklif penceresi her kapandığında onay adımını sıfırla (bayat "Evet/Hayır" kalmasın).
+  useEffect(() => { if (!dailyOfferVisible) setDailyConfirm(false); }, [dailyOfferVisible]);
+  // Elmas yetersizken "ELMAS AL" ile mağazaya gidilip elmas ALINDIYSA: artık yeterli
+  // elmas varken teklifi GERİ aç ki indirimden yararlanabilsin (kullanıcı isteği 2026-08-28).
+  useEffect(() => {
+    if (!reopenDailyOfferRef.current) return;
+    const o = state.dailyOffer;
+    if (o && state.phase === 'home' && (state.profile?.diamonds ?? 0) >= o.price) {
+      reopenDailyOfferRef.current = false;
+      setDailyConfirm(false);
+      setDailyOfferVisible(true);
+    }
+  }, [state.profile?.diamonds, state.phase, state.dailyOffer]);
 
   const dismissSocialPackCampaign = useCallback(() => {
     setSocialPackCampaignVisible(false);
@@ -1962,25 +1977,14 @@ function AppRoot() {
     if (offer.offerType !== 'power' || !offer.product) return;
     const powerId = offer.product;
     setContextualOfferVisible(false);
-    track('engagement_primary_clicked', { kind: activeEngagement?.kind, offer_id: offer.offerId, trigger: offer.trigger, product: powerId, offerType: offer.offerType, screen: state.phase, appSessionId, currentDiamonds: profile.diamonds, trophyDelta: offer.analyticsMetadata?.trophyDelta ?? offer.analyticsMetadata?.trophy_delta });
-    if (powerCount(profile, powerId) > 0) {
-      actions.usePower(powerId);
-      return;
-    }
-    const required = POWER_PRICES[powerId];
-    const current = profile.diamonds ?? 0;
-    if (current >= required) {
-      if (offer.autoUseAfterPurchase) setPendingAutoUsePower(powerId);
-      actions.buyPower(powerId);
-      return;
-    }
-    const missing = required - current;
-    track('diamond_insufficient_balance', { source: offer.trigger, offerType: offer.offerType, product: powerId, requiredDiamonds: required, currentDiamonds: current, missingDiamonds: missing, screen: state.phase, appSessionId });
-    setPendingDiamondIntent({ source: offer.trigger, product: 'power', powerId, requiredDiamonds: required, currentBalance: current, missingDiamonds: missing, autoUseAfterPurchase: offer.autoUseAfterPurchase });
-    setPendingShortfall(missing, { required, current, source: offer.trigger });
-    setStoreSection('diamonds');
+    // KRİTİK (2026-08-28): teklif popup'ından ASLA doğrudan satın alma/kullanma YOK.
+    // "GÜCÜ İNCELE" yalnızca mağazadaki GÜÇLER bölümüne (ilgili güç orada) yönlendirir;
+    // satın alma yalnız mağazada, çift-onaylı diyalogla yapılır. (Kullanıcı yanlışlıkla
+    // Kupa Kalkanı satın aldı — bir daha popup'tan tek dokunuşla elmas harcanmayacak.)
+    track('engagement_primary_clicked', { kind: activeEngagement?.kind, offer_id: offer.offerId, trigger: offer.trigger, product: powerId, offerType: offer.offerType, screen: state.phase, appSessionId, currentDiamonds: profile.diamonds, trophyDelta: offer.analyticsMetadata?.trophyDelta ?? offer.analyticsMetadata?.trophy_delta, action: 'navigate_to_store_powers' });
+    setStoreSection('powers');
     goToTab(0);
-  }, [contextualOffer, state.profile, actions, goToTab, state.phase, updateEngagement, activeEngagement, appSessionId]);
+  }, [contextualOffer, state.profile, goToTab, state.phase, updateEngagement, activeEngagement, appSessionId]);
 
   const useSocialTokenFromLockedMode = useCallback(() => {
     const rawMode = activeEngagement?.metadata?.mode;
@@ -2893,15 +2897,33 @@ function AppRoot() {
                   {t('offer.perUnit', { unit: String(unitPrice), store: String(storeUnit) })}
                 </Text>
               ) : null}
-              <Btn
-                big kind="accent" icon={dailyOfferIcon}
-                label={afford ? t('offer.cta') : t('offer.needDiamonds')}
-                feedback={GameFeedbackEvent.UI_PURCHASE}
-                onPress={() => {
-                  if (afford) { actions.buyDailyOffer(offer.key); }
-                  else { setDailyOfferVisible(false); setStoreSection('diamonds'); goToTab(0); }
-                }}
-              />
+              {dailyConfirm ? (
+                // Elmas yeterli + SATIN AL basıldı → ÖNCE onay. Doğrudan alım YOK.
+                <View style={{ alignSelf: 'stretch', gap: 8 }}>
+                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13.5, textAlign: 'center' }}>{t('offer.confirmTitle')}</Text>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <Btn big kind="accent" gem label={`${t('common.yes')} · ${offer.price}`} feedback={GameFeedbackEvent.UI_PURCHASE} onPress={() => { setDailyConfirm(false); actions.buyDailyOffer(offer.key); }} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Btn big kind="ghost" label={t('common.no')} onPress={() => setDailyConfirm(false)} />
+                    </View>
+                  </View>
+                </View>
+              ) : (
+                <Btn
+                  big kind="accent" icon={dailyOfferIcon}
+                  label={afford ? t('offer.cta') : t('offer.needDiamonds')}
+                  feedback={GameFeedbackEvent.UI_PURCHASE}
+                  onPress={() => {
+                    // Yeterli elmas: hemen ALMA — önce Evet/Hayır onayı göster.
+                    if (afford) { setDailyConfirm(true); }
+                    // Yetersiz: mağazaya elmas almaya gönder AMA teklifi öldürme;
+                    // dönüp yeterli olunca geri açılır (indirim korunur).
+                    else { reopenDailyOfferRef.current = true; setDailyOfferVisible(false); setStoreSection('diamonds'); goToTab(0); }
+                  }}
+                />
+              )}
             </View>
           );
         })() : (

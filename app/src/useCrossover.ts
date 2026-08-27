@@ -212,7 +212,7 @@ export interface GameState {
   streakReward: { streak: number; diamonds: number; powerId: string | null; seq: number } | null;
   // ---- Futbol XOX (sunucu-otoriter tahta; istemci yalnız çizer) ----
   xox: Extract<ServerMsg, { type: 'xox_state' }> | null;
-  xoxOver: { winnerId: string | null; winnerName: string | null; line: number[] | null; reason: string } | null;
+  xoxOver: { winnerId: string | null; winnerName: string | null; line: number[] | null; reason: string; emptyReveal?: { cell: number; playerName: string; playerImageUrl: string | null }[] } | null;
 }
 
 // --- Messaging helpers: stable ordering + de-dupe, so live pushes and (possibly
@@ -848,7 +848,7 @@ function reducer(state: GameState, action: Action): GameState {
     }
     case 'xox_over': {
       const a = action as Extract<ServerMsg, { type: 'xox_over' }>;
-      return { ...state, xoxOver: { winnerId: a.winnerId, winnerName: a.winnerName, line: a.line, reason: a.reason }, matchOver: true, matchWinnerId: a.winnerId, matchWinnerName: a.winnerName, rematchState: 'idle', rematchByName: null };
+      return { ...state, xoxOver: { winnerId: a.winnerId, winnerName: a.winnerName, line: a.line, reason: a.reason, emptyReveal: a.emptyReveal }, matchOver: true, matchWinnerId: a.winnerId, matchWinnerName: a.winnerName, rematchState: 'idle', rematchByName: null };
     }
     case 'special_power_state': {
       const a = action as Extract<ServerMsg, { type: 'special_power_state' }>;

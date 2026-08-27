@@ -606,6 +606,32 @@ export async function commonPlayersDetailed(
   return rows.map((r) => ({ name: r.name, imageUrl: r.image_url }));
 }
 
+/** İki takımda da oynamış EN POPÜLER tek oyuncu (foto ile). XOX'ta maç bitince
+ * boş kutucuklara "buraya kim gelirdi" göstermek için kullanılır. Popülerlik =
+ * oyuncunun oynadığı kulüplerin en yükseğinin popülerliği (clubs.popularity) ya
+ * da o kulübün oyuncu-sayısı fame'i — plausibleWrong ile aynı fame ölçüsü. */
+export async function topCommonPlayerByPopularity(
+  teamAId: number,
+  teamBId: number,
+): Promise<CommonPlayerInfo | null> {
+  const { rows } = await pool.query<{ name: string; image_url: string | null }>(
+    `SELECT p.name, p.image_url,
+            MAX(GREATEST(COALESCE(c.popularity, 0),
+                (SELECT count(*) FROM player_clubs x WHERE x.club_id = pc.club_id))) AS fame
+       FROM players p
+       JOIN player_clubs a ON a.player_id = p.id AND a.club_id = $1
+       JOIN player_clubs b ON b.player_id = p.id AND b.club_id = $2
+       JOIN player_clubs pc ON pc.player_id = p.id
+       JOIN clubs c ON c.id = pc.club_id
+      GROUP BY p.id, p.name, p.image_url
+      ORDER BY fame DESC, (p.image_url IS NOT NULL) DESC
+      LIMIT 1`,
+    [teamAId, teamBId],
+  );
+  const r = rows[0];
+  return r ? { name: r.name, imageUrl: r.image_url } : null;
+}
+
 export async function plausibleWrongPlayersTeamTeam(teamAId: number, teamBId: number, limit = 16): Promise<string[]> {
   const { rows } = await pool.query<{ name: string }>(
     `WITH side_players AS (

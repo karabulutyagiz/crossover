@@ -312,7 +312,7 @@ export type ServerMsg =
   // kaynaktan çizer (desync imkânsız). lastAction sunum katmanı içindir.
   | { type: 'xox_state'; rows: ClubRef[]; cols: ClubRef[]; cells: { owner: string | null; playerName: string | null; playerImageUrl: string | null }[]; turnId: string | null; turnEndsAt: number; turnNumber: number; turnCap: number; suddenDeath: boolean; suddenCell: number | null; lastAction?: { kind: 'claim' | 'wrong' | 'timeout'; byId: string; byName: string; cell?: number; guess?: string; playerName?: string } }
   // Maç bitti: line = kazanan 3'lü (hücre indeksleri) ya da null (çoğunluk/tie-break).
-  | { type: 'xox_over'; winnerId: string | null; winnerName: string | null; line: number[] | null; reason: 'line' | 'majority' | 'sudden_death' | 'tiebreak' | 'draw' }
+  | { type: 'xox_over'; winnerId: string | null; winnerName: string | null; line: number[] | null; reason: 'line' | 'majority' | 'sudden_death' | 'tiebreak' | 'draw'; emptyReveal?: { cell: number; playerName: string; playerImageUrl: string | null }[] }
   // matchOver: a player reached `target` wins → the match is over (offer rematch).
   | {
       type: 'result';

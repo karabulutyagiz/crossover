@@ -6,6 +6,7 @@ import {
   verifyLetterTeamGuess,
   searchClubs,
   commonPlayersDetailed,
+  topCommonPlayerByPopularity,
   commonPlayersCountryTeam,
   commonPlayersLetterTeam,
   hasPlayersCountryTeam,
@@ -1850,6 +1851,27 @@ export class Room {
     return this.xox?.cells.filter((c) => c.owner === playerId).length ?? 0;
   }
 
+  /** Maç bitince "Kalan boş kutucukları gör" için: her BOŞ hücreye o satır×sütun
+   * takımlarında oynamış EN POPÜLER ortak oyuncuyu (foto ile) hesaplar. Dolu
+   * hücreler atlanır. Kutucuk yoksa/boş cevap yoksa o hücre listeye girmez. */
+  private async computeXoxEmptyReveal(): Promise<{ cell: number; playerName: string; playerImageUrl: string | null }[]> {
+    const x = this.xox;
+    if (!x) return [];
+    const out: { cell: number; playerName: string; playerImageUrl: string | null }[] = [];
+    for (let i = 0; i < 9; i++) {
+      if (x.cells[i]!.owner != null) continue; // dolu — atla
+      const row = x.rows[Math.floor(i / 3)]!;
+      const col = x.cols[i % 3]!;
+      try {
+        const top = await topCommonPlayerByPopularity(row.id, col.id);
+        if (top) out.push({ cell: i, playerName: top.name, playerImageUrl: top.imageUrl });
+      } catch (err) {
+        log.warn('xox_empty_reveal_failed', { room: this.code, cell: i, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    return out;
+  }
+
   private async handleXoxSubmit(playerId: string, cell: number, text: string): Promise<void> {
     const x = this.xox;
     const pl = this.players.get(playerId);
@@ -1929,7 +1951,9 @@ export class Room {
     this.clearTimers();
     this.status = 'result';
     for (const pl of this.players.values()) pl.score = this.xoxCellCount(pl.id);
-    this.broadcast({ type: 'xox_over', winnerId: null, winnerName: null, line: null, reason: 'draw' });
+    // Berabere tur-tavanıyla geldiyse boş hücreler kalmış olabilir → "kim gelirdi".
+    const emptyReveal = await this.computeXoxEmptyReveal();
+    this.broadcast({ type: 'xox_over', winnerId: null, winnerName: null, line: null, reason: 'draw', emptyReveal });
     this.broadcastState();
     const hasBot = [...this.players.values()].some((pl) => pl.transport.isBot);
     recordTelemetry({
@@ -1961,13 +1985,17 @@ export class Room {
   }
 
   /** Maç sonu: normal maçlarla AYNI ödeme hattı (settleMatch → kupa/XP/seri). */
-  private finishXox(winner: Player, reason: 'line', line?: number[]): void {
+  private async finishXox(winner: Player, reason: 'line', line?: number[]): Promise<void> {
     if (!this.xox || this.matchOver) return;
     this.matchOver = true;
     this.clearTimers();
     this.status = 'result';
     for (const pl of this.players.values()) pl.score = this.xoxCellCount(pl.id);
-    this.broadcast({ type: 'xox_over', winnerId: winner.id, winnerName: winner.name, line: line ?? null, reason });
+    // Boş kutucuklara "kim gelirdi" (en popüler ortak oyuncu) — istemci "Kalan
+    // boş kutucukları gör" tuşuyla gösterir. Kısa DB gecikmesi olur; kazanan
+    // hamle zaten tahtada görünür (broadcastXoxState bundan önce çağrılmıştı).
+    const emptyReveal = await this.computeXoxEmptyReveal();
+    this.broadcast({ type: 'xox_over', winnerId: winner.id, winnerName: winner.name, line: line ?? null, reason, emptyReveal });
     this.broadcastState();
     recordTelemetry({
       eventName: 'match_finished', matchId: this.matchId, roomCode: this.code,

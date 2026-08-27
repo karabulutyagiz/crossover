@@ -6421,6 +6421,7 @@ export function XoxScreen({ state, actions }: Props) {
   const [guessText, setGuessText] = useState('');
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [emoteOpen, setEmoteOpen] = useState(false);
+  const [showEmpties, setShowEmpties] = useState(false); // "Kalan boş kutucukları gör" basıldı mı
   const [, setTick] = useState(0);
   const win = useWindow();
   // SABİT EKRAN (kullanıcı kararı 2026-08-27): XOX kaydırılmaz. Tahta, orta
@@ -6472,7 +6473,7 @@ export function XoxScreen({ state, actions }: Props) {
     overPlayed.current = true;
     triggerFeedback(over.winnerId === youId ? GameFeedbackEvent.MATCH_WIN : over.winnerId == null ? GameFeedbackEvent.MATCH_DRAW : GameFeedbackEvent.MATCH_LOSE);
   }, [over, youId]);
-  useEffect(() => { if (!over) overPlayed.current = false; }, [over]);
+  useEffect(() => { if (!over) { overPlayed.current = false; setShowEmpties(false); } }, [over]);
 
   if (!xox || !room) return <Screen><Text style={styles.muted}>{t('store.loading')}</Text></Screen>;
 
@@ -6512,6 +6513,11 @@ export function XoxScreen({ state, actions }: Props) {
     : null;
   const leaveKind = state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
 
+  // "Kalan boş kutucukları gör": maç bitince BOŞ hücrelere gelecek en popüler
+  // ortak oyuncular (sunucudan). Yalnız tuşa basılınca (showEmpties) doldurulur.
+  const revealByCell = new Map<number, { playerName: string; playerImageUrl: string | null }>();
+  if (over && showEmpties) for (const r of over.emptyReveal ?? []) revealByCell.set(r.cell, r);
+
   const cellView = (i: number) => {
     const c = xox.cells[i]!;
     const mine = c.owner === youId;
@@ -6520,6 +6526,7 @@ export function XoxScreen({ state, actions }: Props) {
     const inLine = winLine?.includes(i) ?? false;
     const open = c.owner == null;
     const tappable = !over && open && (myTurn || golden);
+    const rv = open ? revealByCell.get(i) : undefined; // boş hücreye açılacak "kim gelirdi"
     const face = c.owner == null
       ? (golden ? withAlpha(theme.gold, 0.22) : theme.well)
       : mine ? withAlpha(theme.primary, 0.26) : withAlpha(theme.danger, 0.24);
@@ -6533,12 +6540,19 @@ export function XoxScreen({ state, actions }: Props) {
           width: cellSize, height: cellSize, borderRadius: 14,
           backgroundColor: face, borderWidth: isSel || inLine || golden ? 2.5 : 1.5, borderColor: border,
           alignItems: 'center', justifyContent: 'center', padding: 4,
-          opacity: pressed ? 0.85 : 1,
+          opacity: pressed ? 0.85 : rv ? 0.72 : 1, // açılan "kim gelirdi" hücreleri sönük
           transform: [{ scale: pressed ? 0.97 : 1 }],
         })}
       >
         {c.owner == null ? (
-          golden ? <Ionicons name="flash" size={26} color={theme.gold} />
+          rv ? (
+            <>
+              {/* Boş kaldı — buraya gelecek EN POPÜLER ortak oyuncu (sönük). */}
+              <PlayerPhoto uri={rv.playerImageUrl} size={Math.round(cellSize * 0.42)} />
+              <Text numberOfLines={2} style={{ color: theme.muted, fontSize: 8, fontFamily: 'Poppins-Bold', textAlign: 'center', lineHeight: 10, marginTop: 2 }}>{rv.playerName}</Text>
+            </>
+          )
+          : golden ? <Ionicons name="flash" size={26} color={theme.gold} />
           : tappable ? <Ionicons name="add" size={22} color={withAlpha(theme.text, 0.35)} /> : null
         ) : (
           <>
@@ -6583,7 +6597,7 @@ export function XoxScreen({ state, actions }: Props) {
       ) : null}
 
       {/* Tahta — esnek orta bölge: kalan alanı ölçer, tahta ona sığar */}
-      <View style={{ flex: 1, minHeight: 0, justifyContent: 'center' }} onLayout={(e) => { const { width: bw, height: bh } = e.nativeEvent.layout; setBoardBox((prev) => (Math.abs(prev.w - bw) > 1 || Math.abs(prev.h - bh) > 1 ? { w: bw, h: bh } : prev)); }}>
+      <View style={{ flex: 1, minHeight: 0, justifyContent: 'flex-start' }} onLayout={(e) => { const { width: bw, height: bh } = e.nativeEvent.layout; setBoardBox((prev) => (Math.abs(prev.w - bw) > 1 || Math.abs(prev.h - bh) > 1 ? { w: bw, h: bh } : prev)); }}>
       <View style={{ alignSelf: 'center', width: gridW, marginHorizontal: boardMargin, backgroundColor: withAlpha(theme.surface2, 0.85), borderRadius: 20, borderWidth: boardBorder, borderColor: withAlpha(theme.primary, 0.45), padding: 6, gap: 6, shadowColor: theme.primary, shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 4 }}>
         <View style={{ flexDirection: 'row', gap: 6, alignItems: 'flex-end' }}>
           <View style={{ width: headerW }} />
@@ -6657,6 +6671,14 @@ export function XoxScreen({ state, actions }: Props) {
           <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold' }}>
             {t(`xox.reason.${over.reason}` as MessageKey)}
           </Text>
+          {/* Kalan boş kutucukları gör — basınca boş hücrelere en popüler ortak oyuncu açılır */}
+          {over.emptyReveal && over.emptyReveal.length > 0 ? (
+            showEmpties ? (
+              <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{t('xox.revealEmptyHint')}</Text>
+            ) : (
+              <Btn label={t('xox.revealEmpty')} kind="ghost" icon="eye" feedback={GameFeedbackEvent.UI_CARD} onPress={() => setShowEmpties(true)} />
+            )
+          ) : null}
           {state.rematchState === 'incoming' ? (
             <>
               <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>{t('result.rematchIncoming', { name: state.rematchByName ?? '' })}</Text>
@@ -7521,7 +7543,9 @@ function MatchCosmeticBackdrop({ backgroundId }: { backgroundId?: string | null 
           <Circle key={i} cx={`${10 + i * 14}%`} cy={`${82 - (i % 2) * 9}%`} r={10 + (i % 3) * 3} fill={i % 2 ? '#FFCE3A' : '#FF7A3D'} opacity="0.18" />
         )) : null}
       </Svg>
-      <Animated.View style={{ position: 'absolute', left: -48, right: -48, bottom: hot ? 22 : SCREEN_H * 0.18, height: hot ? 130 : 96, borderRadius: 80, backgroundColor: look.glow, opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.32, 0.72] }), transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.05] }) }] }} />
+      {/* Alt-orta yanıp sönen glow şeridi kaldırıldı (kullanıcı isteği 2026-08-28:
+          sonuç yazısının arkasındaki şerit gereksiz). Premium foto arka planlardaki
+          bant (yukarıdaki bgImage dalı) korunur. */}
     </View>
   );
 }
@@ -8190,7 +8214,7 @@ function recordShortfall(missing: number): void {
 // karşılaştırıcıya da eklemek ZORUNDASIN; yoksa ekran o alana karşı körleşir.
 // `actions` kimliğinin sabit olması useCrossover'daki actions-useMemo'suna
 // dayanır (sabit değilse memo zararsız bir no-op'a düşer — eski davranış).
-export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToSection, onDiamondCelebration, storeActive = true }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | 'top' | null; storeActive?: boolean }) {
+export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToSection, onDiamondCelebration, storeActive = true }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | 'top' | 'powers' | null; storeActive?: boolean }) {
   const profile = state.profile;
   const catalog = state.storeCatalog;
   const catalogStatus = state.storeCatalogStatus;
@@ -8800,7 +8824,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
         </Animated.View>
 
         {/* Güçler — tek kullanımlık, stoklanabilir; Seviye Yolu dışında buradan da alınır */}
-        <Animated.View style={sectionIn(2)}>
+        <Animated.View style={sectionIn(2)} onLayout={(e) => { sectionYRef.current['powers'] = e.nativeEvent.layout.y; }}>
           <SectionHeader label={t('store.powers')} icon="flash" />
           {POWER_ID_LIST.map((pid) => {
             const price = POWER_PRICES[pid];
