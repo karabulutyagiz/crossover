@@ -406,7 +406,7 @@ export type ServerMsg =
   | { type: 'ad_reward_result'; ok: boolean; granted?: number; profile?: ProfileView; error?: string }
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
   | { type: 'player_results'; players: PlayerRef[] }
-  | { type: 'searching' }
+  | { type: 'searching'; etaSeconds?: number } // tahmini eşleşme süresi (dürüst: fallback zamanından türetilir)
   | { type: 'opponent_left'; forfeit?: boolean; forfeitReason?: 'cheat' }
   | { type: 'friend_request_received'; requestId: string; fromId: string; fromName: string }
   | { type: 'friend_request_sent' }

@@ -161,6 +161,7 @@ export interface GameState {
   isQuickMatch: boolean;
   opponentForfeit: boolean;
   opponentForfeitReason: 'cheat' | null;
+  searchEta: { seconds: number; at: number } | null; // sunucunun dürüst eşleşme tahmini
   // Maç ortasında ÇIKIŞ (forfeit) = kaybetme. Kupa cezası (trophy_update) reset
   // SONRASI gelir; onunla kaybetme popup'ı gösterilir. null = gösterilecek bir şey yok.
   forfeitLoss: { delta: number; trophies: number; arena: ArenaView; youScore: number; oppScore: number; opponentName: string; reason?: 'cheat' } | null;
@@ -332,6 +333,7 @@ export const initialState: GameState = {
   spSkipBy: null,
   streakReward: null,
   xox: null,
+  searchEta: null,
   xoxOver: null,
   storeCatalogError: null,
 };
@@ -607,8 +609,10 @@ function reducer(state: GameState, action: Action): GameState {
       };
     }
 
-    case 'searching':
-      return { ...state, phase: 'searching', isQuickMatch: true, opponentForfeit: false, opponentForfeitReason: null };
+    case 'searching': {
+      const eta = (action as Extract<ServerMsg, { type: 'searching' }>).etaSeconds ?? null;
+      return { ...state, phase: 'searching', isQuickMatch: true, opponentForfeit: false, opponentForfeitReason: null, searchEta: eta != null ? { seconds: eta, at: Date.now() } : null };
+    }
     case 'profile':
       return { ...state, profile: action.profile };
     case 'level_reward_claimed':
@@ -779,6 +783,7 @@ function reducer(state: GameState, action: Action): GameState {
         locked: null,
         // Tur/maç-kapsamlı güç kalıntıları yeni turda taşınmaz (spec §25).
         xox: null,
+  searchEta: null,
         xoxOver: null,
         spReveal: null,
         spSkipBy: null,

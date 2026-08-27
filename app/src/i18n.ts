@@ -205,6 +205,8 @@ const tr = {
 
   // searching
   'searching.title': 'Çevrimiçi rakip aranıyor…',
+  'searching.eta': 'Tahmini eşleşme: ~{s} sn',
+  'searching.etaNow': 'Rakip bulunuyor…',
   'searching.header': 'Rakip Aranıyor',
   'searching.cancel': 'Vazgeç',
   'searching.didYouKnow': 'BİLİYOR MUYDUN?',
@@ -1063,6 +1065,8 @@ const en: typeof tr = {
   'result.leave': 'Leave',
 
   'searching.title': 'Looking for an online opponent…',
+  'searching.eta': 'Estimated match: ~{s}s',
+  'searching.etaNow': 'Finding opponent…',
   'searching.header': 'Finding Opponent',
   'searching.cancel': 'Cancel',
   'searching.didYouKnow': 'DID YOU KNOW?',

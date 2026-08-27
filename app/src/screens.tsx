@@ -12560,9 +12560,18 @@ function OrbitLoader({ size = 190 }: { size?: number }) {
   );
 }
 
-export function SearchingScreen({ actions }: Props) {
+export function SearchingScreen({ state, actions }: Props) {
   const [factIdx, setFactIdx] = useState(Math.floor(Math.random() * LOADING_TIPS.length));
   const factFade = useRef(new Animated.Value(1)).current;
+  // Tahmini eşleşme sayacı: sunucunun verdiği DÜRÜST saniyeden geriye sayar
+  // (kullanıcı isteği 2026-08-27; söylenen = olacak). 0'a inince 'Rakip
+  // bulunuyor…' — sunucu o anda maçı kuruyordur.
+  const [, setEtaTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setEtaTick((v) => v + 1), 500);
+    return () => clearInterval(id);
+  }, []);
+  const etaLeft = state.searchEta ? Math.ceil(state.searchEta.seconds - (Date.now() - state.searchEta.at) / 1000) : null;
 
   // Rotate tips every 6s with a 200ms crossfade (fade out → swap → fade in).
   useEffect(() => {
@@ -12586,6 +12595,13 @@ export function SearchingScreen({ actions }: Props) {
         <View style={{ alignItems: 'center', gap: 2 }}>
           <Text style={styles.h1}>{t('searching.header')}</Text>
           <Text style={styles.muted}>{t('searching.title')}</Text>
+          {etaLeft != null ? (
+            <View style={{ marginTop: 10, backgroundColor: withAlpha(theme.accent, 0.14), borderRadius: 999, paddingHorizontal: 16, paddingVertical: 7, borderWidth: 1.5, borderColor: withAlpha(theme.accent, 0.5) }}>
+              <Text style={{ color: theme.accent, fontSize: 14, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>
+                {etaLeft > 0 ? t('searching.eta', { s: String(etaLeft) }) : t('searching.etaNow')}
+              </Text>
+            </View>
+          ) : null}
         </View>
       </View>
 

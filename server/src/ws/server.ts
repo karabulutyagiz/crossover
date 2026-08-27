@@ -713,8 +713,12 @@ export function startServer(port: number): Server {
       },
     });
 
+    const fallbackDelayPlanned = randomBotFallbackDelayMs(cfg, matchQueue.length + 1);
     matchQueue.push(entry);
-    entry.transport.send({ type: 'searching' });
+    // TAHMİNİ SÜRE (kullanıcı isteği 2026-08-27): söylenen saniye = gerçekte
+    // olacak saniye. Bot düşüş anı + oda kurulumu (~0.9sn) + küçük pay; insan
+    // daha erken gelirse tahminden ERKEN biter (asla geç değil). Ekran tavanı 8.
+    entry.transport.send({ type: 'searching', etaSeconds: Math.min(8, Math.max(2, Math.ceil((fallbackDelayPlanned + 1200) / 1000))) });
 
     void findHumanPartner(entry).then((immediate) => {
       if (immediate && startHumanMatch(immediate, entry)) return;
@@ -727,7 +731,7 @@ export function startServer(port: number): Server {
     }, cfg.realPlayerSearchWindowMs);
     entry.timers.add(expandedTimer);
 
-    const fallbackDelay = randomBotFallbackDelayMs(cfg, matchQueue.length);
+    const fallbackDelay = fallbackDelayPlanned;
     entry.fallbackAt = entry.since + fallbackDelay;
     const scheduleFallbackAttempt = (delayMs: number) => {
       const t = setTimeout(() => {
