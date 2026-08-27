@@ -23,7 +23,7 @@ import {
   blockUser, unblockUser, listBlocked, isBlockedBetween, reportContent, deleteOwnMessage, acceptTerms,
   isIdentifiedAccount,
 } from '../game/moderation.ts';
-import { verifyApplePurchase } from '../game/iap.ts';
+import { firstDiamondDoubleAvailable, verifyApplePurchase } from '../game/iap.ts';
 import { buyCosmetic, equipCosmetic, storeCatalog, toCosmeticLoadout } from '../game/cosmetics.ts';
 import { getAdminStats } from '../game/admin.ts';
 import { checkLogin, issueToken, verifyToken } from '../game/adminAuth.ts';
@@ -510,11 +510,24 @@ export function startServer(port: number): Server {
       : undefined);
     const economyAtStart = await getTrophyEconomyState().catch(() => ({ state: 'HEALTHY' as const, botInjectionToday: 0, trophiesCreatedToday: 0, trophiesDestroyedToday: 0, dailyInflation: 0, botBudgetRemaining: 0, botRewardMultiplier: 0.5 }));
     const segmentAtStart = progressionSegment(playerTrophies, skillProfile?.matchesPlayed ?? 0);
-    if (!config.matchmaking.debug.forceBot && botAvailabilityMultiplier(segmentAtStart, economyAtStart) <= 0) {
-      failQueuedSearch(entry, 'bot_unavailable_for_progression_segment', 'Rakip bulunamadı, tekrar dene', { segment: segmentAtStart, economyState: economyAtStart.state });
-      return false;
+    // KİMSE RAKİPSİZ KALMAZ (2026-08-27): segment/enflasyon oranı yalnız ERKEN
+    // bot düşüşünü seyreltir (scheduleFallbackAttempt içinde); buraya gelen
+    // istek — özellikle 15 sn güvenlik ağı — her koşulda bot alır. Eski sert
+    // ret, insan likiditesi olmayan saatlerde 3500+ oyuncuyu tamamen rakipsiz
+    // bırakıyordu.
+    if (botAvailabilityMultiplier(segmentAtStart, economyAtStart) <= 0) {
+      log.info('bot_availability_gate_bypassed', { requestId: entry.requestId, segment: segmentAtStart, economyState: economyAtStart.state });
     }
     const velocity = entry.userProfile?.id ? await getTrophyVelocity(entry.userProfile.id).catch(() => ({ pressure: 0 })) : { pressure: 0 };
+    // Kimlik tekrar hafızasının kalıcı kaynağı bot_opponent_history: süreç içi
+    // harita restart'ta boşalır ve instance'lar arası paylaşılmaz — aynı "Kaan"
+    // restart sonrası aynı oyuncuya hemen tekrar çıkmasın.
+    const recentBotIds = entry.userProfile?.id
+      ? await pool.query<{ bot_id: string }>(
+          `SELECT bot_id FROM bot_opponent_history WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`,
+          [entry.userProfile.id, config.matchmaking.recentBotCooldown],
+        ).then((r) => r.rows.map((x) => x.bot_id)).catch(() => [] as string[])
+      : [];
     const mode = entryMode(entry);
     let botProfile: BotProfile | undefined;
     const botSeed = `${entry.requestId ?? entry.userId ?? entry.name}:${Date.now()}`;
@@ -542,6 +555,7 @@ export function startServer(port: number): Server {
         recentBotExposure: pressureProfile?.botGames,
         blockedBotIds: activeBotIds,
         blockedBotDisplayNames: activeBotDisplayNames,
+        recentBotIds,
         seed: attempt === 0 ? botSeed : `${botSeed}:${attempt}`,
       });
       if (reserveActiveBot(candidate)) {
@@ -730,8 +744,13 @@ export function startServer(port: number): Server {
           const segment = progressionSegment(entryTrophies(entry), entry.skillProfile?.matchesPlayed ?? 0);
           const botAvailability = botAvailabilityMultiplier(segment, economy as any);
           const health = entry.lastQueueHealth ?? estimateQueueHealth({ trophies: entryTrophies(entry), skillMean: entrySkillMean(entry), skillUncertainty: entrySkillUncertainty(entry), elapsedMs }, matchQueue.map((e) => ({ trophies: entryTrophies(e), skillMean: entrySkillMean(e), skillUncertainty: entrySkillUncertainty(e), elapsedMs: Date.now() - e.since })));
-          if (!config.matchmaking.debug.forceBot && (botAvailability <= 0 || (health.queueHealthScore > live.matchmaking.queueHealthBotThreshold && elapsedMs < live.matchmaking.maxSearchMs))) {
-            log.info('bot_fallback_deferred_by_queue_health', { requestId: entry.requestId, segment, queueHealth: health.queueHealthScore, botAvailability, retryMs: cfg.botFallbackRetryMs });
+          // botAvailability artık GERÇEK bir oran (2026-08-27): erken bot düşüşü
+          // bu olasılıkla seyreltilir — yüksek segment + enflasyon baskısında bot
+          // daha geç gelir, insan likiditesine şans tanınır. 0 bile olsa yalnız
+          // erken düşüş ertelenir; 15 sn güvenlik ağı koşulsuz bot başlatır.
+          const throttledByRatio = botAvailability < 1 && Math.random() >= Math.max(0, botAvailability);
+          if (!config.matchmaking.debug.forceBot && (throttledByRatio || (health.queueHealthScore > live.matchmaking.queueHealthBotThreshold && elapsedMs < live.matchmaking.maxSearchMs))) {
+            log.info('bot_fallback_deferred_by_queue_health', { requestId: entry.requestId, segment, queueHealth: health.queueHealthScore, botAvailability, throttledByRatio, retryMs: cfg.botFallbackRetryMs });
             scheduleFallbackAttempt(cfg.botFallbackRetryMs);
             return;
           }
@@ -1537,7 +1556,15 @@ export function startServer(port: number): Server {
       }
 
       if (msg.type === 'get_store_catalog') {
-        transport.send({ type: 'store_catalog', catalog: storeCatalog() });
+        const catalog = storeCatalog();
+        if (userProfile?.id) {
+          // İlk-alım 2x rozeti kullanıcıya özel — katalog geri kalanı saf/statik.
+          void firstDiamondDoubleAvailable(userProfile.id)
+            .then((avail) => transport.send({ type: 'store_catalog', catalog: { ...catalog, firstDiamondDoubleAvailable: avail } }))
+            .catch(() => transport.send({ type: 'store_catalog', catalog }));
+        } else {
+          transport.send({ type: 'store_catalog', catalog });
+        }
         return;
       }
 
@@ -1693,6 +1720,15 @@ export function startServer(port: number): Server {
         return;
       }
       if (msg.type === 'invite_friend_match') {
+        // Futbol XOX daveti: davet edilen istemci modu tanımalı — eski sürüme
+        // XOX odası acmak onu bos ekranda bırakır (caps kaydından denetlenir).
+        if (msg.options?.mode === 'xox') {
+          const inviteeCaps = userCaps.get(msg.friendId) ?? [];
+          if (!inviteeCaps.includes('xox')) {
+            transport.send({ type: 'error', message: 'Arkadaşının uygulama sürümü Futbol XOX desteklemiyor', public: true } as never);
+            return;
+          }
+        }
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
         const requestedMode = msg.options?.mode ?? 'team-team';
         // Dostluk daveti göndermek — mod ne olursa olsun — GÖNDERENDE aktif

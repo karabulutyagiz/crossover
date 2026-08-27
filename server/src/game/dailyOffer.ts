@@ -5,14 +5,17 @@
 import { createHash } from 'node:crypto';
 import { pool } from '../db/pool.ts';
 import { cosmeticItem, featuredCosmetics } from './cosmetics.ts';
+import { recordDiamondLedger } from './diamondLedger.ts';
 import { POWER_PRICES, getUser, type UserProfile } from './rank.ts';
 
 export const OFFER_WINDOW_MS = 12 * 60 * 60 * 1000;
 
 export interface DailyOfferView {
   key: string;                 // `${windowIdx}:${slug}` — satın almada doğrulanır
-  kind: 'cosmetic' | 'power_bundle' | 'socialtoken';
-  itemId: string;              // kozmetik id / güç id / 'socialtoken'
+  // 'socialtoken' türü havuzdan çıkarıldığından (2026-08-27) union'dan da
+  // kaldırıldı — protokoldeki geniş union eski istemciler için aynen durur.
+  kind: 'cosmetic' | 'power_bundle';
+  itemId: string;              // kozmetik id / güç id
   qty: number;
   originalPrice: number;       // 💎
   price: number;               // 💎 (indirimli)
@@ -98,6 +101,7 @@ export async function buyDailyOffer(
   if (await dailyOfferClaimed(userId, idx)) return { ok: false, error: 'Bu fırsatı zaten aldın' };
 
   const client = await pool.connect();
+  let balanceAfter: number | null = null;
   try {
     await client.query('BEGIN');
     // pencere kilidi: aynı anda çift satın almayı PK engeller
@@ -106,24 +110,20 @@ export async function buyDailyOffer(
     if (offer.kind === 'cosmetic') {
       const item = cosmeticItem(offer.itemId);
       if (!item) throw new Error('Ürün bulunamadı');
-      updated = await client.query(
+      updated = await client.query<{ id: string; diamonds: number }>(
         `UPDATE users SET diamonds = diamonds - $2, owned_cosmetics = array_append(owned_cosmetics, $3)
-         WHERE id = $1 AND diamonds >= $2 AND NOT ($3 = ANY(owned_cosmetics)) RETURNING id`,
+         WHERE id = $1 AND diamonds >= $2 AND NOT ($3 = ANY(owned_cosmetics)) RETURNING id, diamonds`,
         [userId, offer.price, offer.itemId],
       );
-    } else if (offer.kind === 'power_bundle') {
-      const col = offer.itemId === 'xp2x' ? 'power_xp2x' : offer.itemId === 'shield' ? 'power_shield' : offer.itemId === 'streak' ? 'power_streak' : 'power_training';
-      updated = await client.query(
-        `UPDATE users SET diamonds = diamonds - $2, ${col} = ${col} + $3 WHERE id = $1 AND diamonds >= $2 RETURNING id`,
-        [userId, offer.price, offer.qty],
-      );
     } else {
-      updated = await client.query(
-        `UPDATE users SET diamonds = diamonds - $2, power_socialtoken = power_socialtoken + $3 WHERE id = $1 AND diamonds >= $2 RETURNING id`,
+      const col = offer.itemId === 'xp2x' ? 'power_xp2x' : offer.itemId === 'shield' ? 'power_shield' : offer.itemId === 'streak' ? 'power_streak' : 'power_training';
+      updated = await client.query<{ id: string; diamonds: number }>(
+        `UPDATE users SET diamonds = diamonds - $2, ${col} = ${col} + $3 WHERE id = $1 AND diamonds >= $2 RETURNING id, diamonds`,
         [userId, offer.price, offer.qty],
       );
     }
     if (!updated.rows[0]) { await client.query('ROLLBACK'); return { ok: false, error: 'Yeterli elmasın yok' }; }
+    balanceAfter = Number(updated.rows[0].diamonds);
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -131,6 +131,16 @@ export async function buyDailyOffer(
     throw err;
   } finally {
     client.release();
+  }
+  if (balanceAfter != null) {
+    // Pencere indeksi doğal idempotency anahtarı: claim PK'sıyla birebir aynı
+    // teklik — defter satırı da pencere başına en fazla bir kez düşer.
+    void recordDiamondLedger({
+      userId, amount: -offer.price, balanceAfter,
+      reason: 'DAILY_OFFER_PURCHASE', referenceId: offer.key,
+      idempotencyKey: `dailyoffer:${userId}:${idx}`,
+      metadata: { kind: offer.kind, itemId: offer.itemId, qty: offer.qty },
+    });
   }
   const fresh = await getUser(userId);
   if (!fresh) return { ok: false, error: 'Kullanıcı bulunamadı' };

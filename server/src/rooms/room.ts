@@ -36,6 +36,7 @@ import { createMatchClubSelectionState, recordMatchupClubs, selectBotTeamForMatc
 import { consumeSpecialPower, getSpecialPowerInventory, grantSpecialPower, snapshotEquipped, specialPowersConfig, isSpecialPowerId, type SpecialPowerId } from '../game/specialPowers.ts';
 import { stableRolloutBucket } from '../matchmaking/liveOpsConfig.ts';
 import { toProfileView } from '../game/profileView.ts';
+import { generateXoxGrid, xoxWinningLine, XOX_MIN_CELL_ANSWERS, XOX_SUDDEN_MS, XOX_TURN_CAP, XOX_TURN_MS } from '../game/xoxGrid.ts';
 import type { KnowledgeDomain } from '../matchmaking/botProfiles.ts';
 import type {
   ClientMsg,
@@ -215,6 +216,21 @@ export class Room {
   // limiti sıfırlayamaz. startMatch her maçta tazeler.
   private specialPowers = new Map<string, PlayerSpecialPowerState>();
   private specialPowersEnabled = false;
+  // ---- Futbol XOX maç durumu (yalnız gameMode==='xox') ----
+  private xox: {
+    rows: ClubRef[];
+    cols: ClubRef[];
+    cells: { owner: string | null; playerName: string | null; playerImageUrl: string | null }[];
+    counts: number[];              // hücre başına geçerli cevap sayısı
+    turnId: string | null;         // null = ani ölüm (iki taraf da yarışır)
+    turnEndsAt: number;
+    turnNumber: number;            // 1 tabanlı
+    pending: boolean;              // doğrulama uçuşta — çift gönderim/timeout kilidi
+    suddenDeath: boolean;
+    suddenCell: number | null;
+    suddenFailed: Set<string>;     // ani ölümde yanlış bilen kilitlenir
+    wrongs: Map<string, number>;
+  } | null = null;
 
   constructor(code: string, onEmpty: (code: string) => void) {
     this.code = code;
@@ -441,6 +457,8 @@ export class Room {
       // Reconnect: özel güç durumu SUNUCUDAN geri yüklenir — restart limiti
       // sıfırlayamaz, aktif freeze/uzatılmış süre kaldığı yerden gösterilir.
       this.sendSpecialPowerStateTo(p.id);
+      // XOX: grid + sıra + sayaç sunucudan aynen geri gelir.
+      if (this.gameMode === 'xox' && this.xox) this.sendXoxStateTo(p.id);
       return { ok: true, id: p.id };
     }
     return { ok: false, error: 'Maça geri dönülemedi' };
@@ -750,6 +768,8 @@ export class Room {
         return void this.handleSearch(playerId, msg.reqId, msg.q);
       case 'use_special_power':
         return void this.handleUseSpecialPower(playerId, msg.powerId, msg.requestId);
+      case 'xox_submit':
+        return void this.handleXoxSubmit(playerId, msg.cell, msg.text);
       default:
         this.sendTo(playerId, { type: 'error', message: 'Unexpected message' });
     }
@@ -784,6 +804,7 @@ export class Room {
     // Özel Güçler: her maç taze durum + envanter ANLIK GÖRÜNTÜSÜ (maç sürerken
     // envanter değişse de seçim kilitli kalır — exploit kapısı yok).
     this.specialPowers.clear();
+    this.xox = null;
     this.specialPowersEnabled = this.computeSpecialPowersEnabled();
     if (this.specialPowersEnabled) void this.initSpecialPowerStates();
     this.matchStartedAt = Date.now(); // maç süresi ölçümü (admin istatistikleri)
@@ -832,7 +853,8 @@ export class Room {
         this.broadcast({ type: 'countdown', n });
       } else {
         clearInterval(tick);
-        this.beginPick();
+        if (this.gameMode === 'xox') void this.beginXox();
+        else this.beginPick();
       }
     }, 1000);
     this.timers.push(tick);
@@ -907,7 +929,6 @@ export class Room {
       if (role === 'player') {
         // player-player: auto-pick if this player hasn't picked yet
         const isFirst = !this.round.playerAPick;
-        if (isFirst && this.round.playerAPick) continue;
         if (!isFirst && this.round.playerBPick) continue;
         const p = await randomPlayer('medium');
         if (p) {
@@ -1308,7 +1329,8 @@ export class Room {
     if (this.round.question) return this.round.question;
     const extra = this.gameMode === 'country-team' ? this.round.countryPick : this.gameMode === 'letter-team' ? this.round.letterPick : null;
     const q = await getQuestionDifficulty(this.gameMode, this.round.teamA.id, this.round.teamB.id, extra ?? null);
-    if (this.round?.teamA?.id === q.teamAId || this.round?.teamA) this.round.question = q;
+    // await sırasında tur değişmiş olabilir — yalnız hâlâ aynı takım çiftindeyse yaz.
+    if (this.round?.teamA?.id === q.teamAId) this.round.question = q;
     return q;
   }
 
@@ -1680,6 +1702,283 @@ export class Room {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // FUTBOL XOX (Tiki-Taka-Toe) — sunucu-otoriter 3×3 makinesi.
+  // Kanonik kurallar: sıra tabanlı; doğru cevap hücreyi alır, yanlış/zaman aşımı
+  // sırayı devreder (hücre AÇIK kalır); 3'lü çizgi maçı bitirir. Kilitlenme
+  // emniyeti: tur tavanında çok hücre kazanan; eşitlikte ALTIN HÜCRE (iki taraf
+  // aynı anda yarışır — mevcut yarış mekaniğimiz XOX'a bağlanır).
+  // ══════════════════════════════════════════════════════════════════════════
+
+  private async beginXox(): Promise<void> {
+    const matchId = this.matchId;
+    let grid = await generateXoxGrid().catch(() => null);
+    if (!grid) grid = await generateXoxGrid().catch(() => null); // tek tekrar — havuz önbellekli
+    if (this.matchId !== matchId || this.players.size < MAX_PLAYERS) return;
+    if (!grid) {
+      // Üretim iki kez de başarısızsa (DB arızası) maçı dürüstçe kapat —
+      // yanlış/imkânsız grid dağıtmak yok.
+      log.error('xox_grid_generation_failed', { room: this.code, matchId });
+      this.broadcast({ type: 'error', message: 'XOX tahtası kurulamadı, tekrar dene' });
+      this.status = 'lobby';
+      this.broadcastState();
+      return;
+    }
+    this.round = null;
+    this.status = 'xox';
+    const ids = [...this.players.keys()];
+    this.xox = {
+      rows: grid.rows,
+      cols: grid.cols,
+      cells: Array.from({ length: 9 }, () => ({ owner: null, playerName: null, playerImageUrl: null })),
+      counts: grid.cellAnswerCounts,
+      // İlk hamle avantajlıdır — rastgele taraf başlar (rövanşta yeniden atılır).
+      turnId: ids[Math.floor(Math.random() * ids.length)] ?? ids[0]!,
+      turnEndsAt: Date.now() + XOX_TURN_MS,
+      turnNumber: 1,
+      pending: false,
+      suddenDeath: false,
+      suddenCell: null,
+      suddenFailed: new Set(),
+      wrongs: new Map(),
+    };
+    for (const pl of this.players.values()) pl.score = 0;
+    this.broadcastState();
+    this.broadcastXoxState();
+    this.armXoxTimer(XOX_TURN_MS);
+    log.info('xox_started', { room: this.code, matchId, rows: grid.rows.map((r) => r.name), cols: grid.cols.map((c) => c.name), counts: grid.cellAnswerCounts });
+  }
+
+  private xoxStateMsg(lastAction?: { kind: 'claim' | 'wrong' | 'timeout'; byId: string; byName: string; cell?: number; guess?: string; playerName?: string }): Extract<ServerMsg, { type: 'xox_state' }> | null {
+    if (!this.xox) return null;
+    return {
+      type: 'xox_state',
+      rows: this.xox.rows,
+      cols: this.xox.cols,
+      cells: this.xox.cells.map((c) => ({ ...c })),
+      turnId: this.xox.turnId,
+      turnEndsAt: this.xox.turnEndsAt,
+      turnNumber: this.xox.turnNumber,
+      turnCap: XOX_TURN_CAP,
+      suddenDeath: this.xox.suddenDeath,
+      suddenCell: this.xox.suddenCell,
+      ...(lastAction ? { lastAction } : {}),
+    };
+  }
+
+  private broadcastXoxState(lastAction?: { kind: 'claim' | 'wrong' | 'timeout'; byId: string; byName: string; cell?: number; guess?: string; playerName?: string }): void {
+    const msg = this.xoxStateMsg(lastAction);
+    if (msg) this.broadcast(msg);
+  }
+
+  private sendXoxStateTo(playerId: string): void {
+    const msg = this.xoxStateMsg();
+    if (msg) this.sendTo(playerId, msg);
+  }
+
+  private armXoxTimer(ms: number): void {
+    this.clearTimers();
+    const t = setTimeout(() => this.xoxTimerFired(), ms);
+    this.timers.push(t);
+  }
+
+  private xoxTimerFired(): void {
+    if (!this.xox || this.matchOver || this.status !== 'xox') return;
+    // Doğrulama uçuştayken süre dolarsa cevaba fırsat tanı — sunucu sırası
+    // deterministik kalır (cevap kabul/ret sonucu turu zaten devredecek).
+    if (this.xox.pending) { this.armXoxTimer(1_200); return; }
+    if (this.xox.suddenDeath) return this.resolveSuddenDeathTimeout();
+    const cur = this.players.get(this.xox.turnId ?? '');
+    this.advanceXoxTurn({ kind: 'timeout', byId: this.xox.turnId ?? '', byName: cur?.name ?? '' });
+  }
+
+  /** Sırayı devret; tur tavanına gelindiyse maçı çoğunlukla/altın hücreyle çöz. */
+  private advanceXoxTurn(lastAction: { kind: 'claim' | 'wrong' | 'timeout'; byId: string; byName: string; cell?: number; guess?: string; playerName?: string }): void {
+    if (!this.xox) return;
+    if (this.xox.turnNumber >= XOX_TURN_CAP) return this.resolveXoxStall(lastAction);
+    const ids = [...this.players.keys()];
+    const next = ids.find((id) => id !== this.xox!.turnId) ?? ids[0]!;
+    this.xox.turnId = next;
+    this.xox.turnNumber += 1;
+    this.xox.turnEndsAt = Date.now() + XOX_TURN_MS;
+    this.broadcastXoxState(lastAction);
+    this.armXoxTimer(XOX_TURN_MS);
+  }
+
+  private xoxCellCount(playerId: string): number {
+    return this.xox?.cells.filter((c) => c.owner === playerId).length ?? 0;
+  }
+
+  private async handleXoxSubmit(playerId: string, cell: number, text: string): Promise<void> {
+    const x = this.xox;
+    const pl = this.players.get(playerId);
+    if (!x || !pl || this.status !== 'xox' || this.matchOver) return;
+    if (!Number.isInteger(cell) || cell < 0 || cell > 8) return;
+    if (!text.trim()) return;
+    if (x.pending) return; // uçuşta doğrulama var — çift gönderim düşer
+    if (x.suddenDeath) return void this.handleSuddenDeathSubmit(playerId, cell, text);
+    if (x.turnId !== playerId) return;        // sıra sende değil — sunucu yok sayar
+    if (x.cells[cell]!.owner != null) return; // dolu hücre
+
+    const row = x.rows[Math.floor(cell / 3)]!;
+    const col = x.cols[cell % 3]!;
+    x.pending = true;
+    const turnBefore = x.turnNumber;
+    let v: Awaited<ReturnType<typeof verifyGuess>> | null = null;
+    try {
+      v = await verifyGuess(row.id, col.id, text);
+    } catch (err) {
+      log.warn('xox_verify_failed', { room: this.code, cell, error: err instanceof Error ? err.message : String(err) });
+    }
+    if (this.xox !== x || this.matchOver || x.turnNumber !== turnBefore) { x.pending = false; return; }
+    x.pending = false;
+
+    if (v?.correct) {
+      x.cells[cell] = {
+        owner: playerId,
+        playerName: v.matchedPlayer?.name ?? text.trim(),
+        playerImageUrl: v.matchedPlayer?.imageUrl ?? null,
+      };
+      pl.score = this.xoxCellCount(playerId);
+      // Maç geçmişi: her alınan hücre bir "tur" satırı (takım × takım + cevap).
+      this.matchRounds.push({
+        teamA: row.name, teamALogo: row.logoUrl,
+        teamB: col.name, teamBLogo: col.logoUrl,
+        player: v.matchedPlayer?.name ?? text.trim(),
+        playerImageUrl: v.matchedPlayer?.imageUrl ?? null,
+        answeredBy: pl.name,
+        mode: this.gameMode,
+      });
+      this.broadcastState();
+      const line = xoxWinningLine(x.cells.map((c) => c.owner), playerId);
+      const action = { kind: 'claim' as const, byId: playerId, byName: pl.name, cell, playerName: x.cells[cell]!.playerName ?? undefined };
+      if (line) {
+        this.broadcastXoxState(action);
+        return this.finishXox(pl, 'line', line);
+      }
+      if (x.cells.every((c) => c.owner != null)) {
+        this.broadcastXoxState(action);
+        return this.resolveXoxStall(action); // 9 hücre dolu — çoğunluk kesin sonuç verir
+      }
+      return this.advanceXoxTurn(action);
+    }
+
+    // Yanlış: sıra devrolur, hücre AÇIK kalır (kanonik kural — stratejinin kalbi).
+    x.wrongs.set(playerId, (x.wrongs.get(playerId) ?? 0) + 1);
+    pl.wrongCount += 1;
+    this.advanceXoxTurn({ kind: 'wrong', byId: playerId, byName: pl.name, cell, guess: text.trim() });
+  }
+
+  /** Tur tavanı / dolu tahta: çok hücre kazanan alır; eşitlikte ALTIN HÜCRE. */
+  private resolveXoxStall(lastAction?: { kind: 'claim' | 'wrong' | 'timeout'; byId: string; byName: string }): void {
+    const x = this.xox;
+    if (!x) return;
+    const ids = [...this.players.keys()];
+    const a = this.players.get(ids[0]!)!;
+    const b = this.players.get(ids[1]!)!;
+    const ca = this.xoxCellCount(a.id);
+    const cb = this.xoxCellCount(b.id);
+    if (ca !== cb) return this.finishXox(ca > cb ? a : b, 'majority');
+    // Eşitlik: açık hücrelerden EN ÇOK cevaplısı altın hücre olur (en adil yarış).
+    const open = x.cells.map((c, i) => ({ i, owner: c.owner })).filter((c) => c.owner == null);
+    if (!open.length) return this.finishXox(a, 'majority'); // imkânsız (9 tek sayı) — emniyet
+    const golden = open.reduce((best, c) => (x.counts[c.i]! > x.counts[best.i]! ? c : best), open[0]!);
+    x.suddenDeath = true;
+    x.suddenCell = golden.i;
+    x.turnId = null;
+    x.turnEndsAt = Date.now() + XOX_SUDDEN_MS;
+    x.suddenFailed.clear();
+    this.broadcastXoxState(lastAction);
+    this.armXoxTimer(XOX_SUDDEN_MS);
+    log.info('xox_sudden_death', { room: this.code, matchId: this.matchId, cell: golden.i });
+  }
+
+  private async handleSuddenDeathSubmit(playerId: string, cell: number, text: string): Promise<void> {
+    const x = this.xox;
+    const pl = this.players.get(playerId);
+    if (!x || !pl || !x.suddenDeath || x.suddenCell == null) return;
+    if (cell !== x.suddenCell) return;
+    if (x.suddenFailed.has(playerId)) return; // yanlış bilen altın hücrede kilitli
+    const row = x.rows[Math.floor(cell / 3)]!;
+    const col = x.cols[cell % 3]!;
+    x.pending = true;
+    let correct = false;
+    let matched: { name: string; imageUrl: string | null } | null = null;
+    try {
+      const v = await verifyGuess(row.id, col.id, text);
+      correct = v.correct;
+      matched = v.matchedPlayer ?? null;
+    } catch { /* DB hatası = yanlış say */ }
+    x.pending = false;
+    if (this.xox !== x || this.matchOver || !x.suddenDeath) return;
+    if (correct) {
+      x.cells[cell] = { owner: playerId, playerName: matched?.name ?? text.trim(), playerImageUrl: matched?.imageUrl ?? null };
+      pl.score = this.xoxCellCount(playerId);
+      this.broadcastState();
+      this.broadcastXoxState({ kind: 'claim', byId: playerId, byName: pl.name, cell, playerName: matched?.name ?? text.trim() });
+      return this.finishXox(pl, 'sudden_death');
+    }
+    x.suddenFailed.add(playerId);
+    x.wrongs.set(playerId, (x.wrongs.get(playerId) ?? 0) + 1);
+    pl.wrongCount += 1;
+    this.broadcastXoxState({ kind: 'wrong', byId: playerId, byName: pl.name, cell, guess: text.trim() });
+    if (x.suddenFailed.size >= this.players.size) this.resolveSuddenDeathTimeout();
+  }
+
+  /** Altın hücre süresi doldu / iki taraf da bilemedi: deterministik tie-break —
+   * az yanlış yapan; o da eşitse ev sahibi olmayan (ikinci oyuncu ilk hamle
+   * avantajını hiç yaşamadıysa da burada dengelenir). */
+  private resolveSuddenDeathTimeout(): void {
+    const x = this.xox;
+    if (!x || this.matchOver) return;
+    const ids = [...this.players.keys()];
+    const a = this.players.get(ids[0]!)!;
+    const b = this.players.get(ids[1]!)!;
+    const wa = x.wrongs.get(a.id) ?? 0;
+    const wb = x.wrongs.get(b.id) ?? 0;
+    const winner = wa !== wb ? (wa < wb ? a : b) : (a.isHost ? b : a);
+    this.finishXox(winner, 'tiebreak');
+  }
+
+  /** Maç sonu: normal maçlarla AYNI ödeme hattı (settleMatch → kupa/XP/seri). */
+  private finishXox(winner: Player, reason: 'line' | 'majority' | 'sudden_death' | 'tiebreak', line?: number[]): void {
+    if (!this.xox || this.matchOver) return;
+    this.matchOver = true;
+    this.clearTimers();
+    this.status = 'result';
+    for (const pl of this.players.values()) pl.score = this.xoxCellCount(pl.id);
+    this.broadcast({ type: 'xox_over', winnerId: winner.id, winnerName: winner.name, line: line ?? null, reason });
+    this.broadcastState();
+    recordTelemetry({
+      eventName: 'match_finished', matchId: this.matchId, roomCode: this.code,
+      playerId: winner.userId ?? null,
+      opponentType: [...this.players.values()].some((pl) => pl.transport.isBot) ? 'BOT' : 'HUMAN',
+      payload: { gameMode: 'xox', xoxReason: reason, turnNumber: this.xox.turnNumber, cells: this.xox.cells.filter((c) => c.owner != null).length },
+    });
+    log.info('xox_finished', { room: this.code, matchId: this.matchId, winner: winner.name, reason, turns: this.xox.turnNumber });
+    const hasBot = [...this.players.values()].some((pl) => pl.transport.isBot);
+    if (!hasBot || this.rankedBotRewards) {
+      if (this.ranked) void this.settleMatch(winner, hasBot ? 'bot_match_complete' : 'match_complete');
+    } else {
+      void (async () => {
+        for (const pl of this.players.values()) {
+          if (pl.transport.isBot || !pl.userId) continue;
+          try {
+            const xpRes = await awardMatchXp(pl.userId, pl.id === winner.id, true);
+            if (xpRes) pl.transport.send({ type: 'xp_update', ...xpRes });
+          } catch { /* DB hatası — sessiz geç */ }
+        }
+      })();
+    }
+    void this.saveHistory();
+  }
+
+  /** Bot XOX zekâsı için oda erişimcileri: grid + açık hücreler (bot.ts okur). */
+  xoxSnapshotForBot(): { rows: ClubRef[]; cols: ClubRef[]; owners: (string | null)[]; counts: number[] } | null {
+    if (!this.xox) return null;
+    return { rows: this.xox.rows, cols: this.xox.cols, owners: this.xox.cells.map((c) => c.owner), counts: [...this.xox.counts] };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // MAÇ İÇİ ÖZEL GÜÇLER — sunucu-otoriter çekirdek.
   // ANA KURAL: maç başına TOPLAM 1 manuel güç; hiçbir satın alma/paket/VIP bunu
   // artıramaz. Meta korumalar (Kupa Kalkanı / Seri) bu limitin DIŞINDADIR.
@@ -1689,6 +1988,9 @@ export class Room {
    * TÜM insan oyuncular desteklemeli — tek taraflı güç, karşıya "açıklanamayan
    * state değişikliği" olarak yansırdı (spec §78'in tam ihlali). */
   private computeSpecialPowersEnabled(): boolean {
+    // XOX v1: özel güçler kapalı — freeze/skip yarış mekaniğine özgü;
+    // reveal/extratime/secondchance Faz 2'de XOX'a uyarlanacak.
+    if (this.gameMode === 'xox') return false;
     const cfg = specialPowersConfig();
     if (!cfg.enabled) return false;
     const humans = [...this.players.values()].filter((pl) => !pl.transport.isBot);
@@ -2132,7 +2434,7 @@ export class Room {
   private handleReady(playerId: string): void {
     if (this.status !== 'result' || this.matchOver) return;
     this.readyPlayers.add(playerId);
-    this.broadcast({ type: 'player_ready' as any, playerId });
+    this.broadcast({ type: 'player_ready', playerId });
     if (this.readyPlayers.size >= this.players.size) {
       this.clearTimers();
       this.beginCountdown();

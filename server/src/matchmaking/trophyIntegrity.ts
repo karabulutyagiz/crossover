@@ -1,11 +1,23 @@
 import { pool } from '../db/pool.ts';
+import { config } from '../config.ts';
 import { clamp } from './random.ts';
 import { expectedScore } from './skillRating.ts';
 
-export const TROPHY_GAIN_MIN = 28;
-export const TROPHY_GAIN_MAX = 35;
-export const TROPHY_LOSS_MIN = 15;
-export const TROPHY_LOSS_MAX = 20;
+// İnsan-insan bandı env'den ayarlanabilir (TROPHY_MIN_GAIN vb., config.ts) —
+// önceden bu sabitler hardcode'du ve env değişkenleri hiç okunmuyordu, "tune
+// ettim ama değişmedi" tuzağı vardı. Bozuk sıralamalar (min>max) burada
+// düzeltilir ki settlement asla ters banda düşmesin.
+function sanitizeBand(min: number, max: number, fallbackMin: number, fallbackMax: number): [number, number] {
+  const lo = Math.max(1, Math.round(Number.isFinite(min) ? min : fallbackMin));
+  const hi = Math.max(lo, Math.round(Number.isFinite(max) ? max : fallbackMax));
+  return [lo, hi];
+}
+const [GAIN_MIN, GAIN_MAX] = sanitizeBand(config.opponentSystem.trophyMinGain, config.opponentSystem.trophyMaxGain, 28, 35);
+const [LOSS_MIN, LOSS_MAX] = sanitizeBand(config.opponentSystem.trophyMinLoss, config.opponentSystem.trophyMaxLoss, 15, 20);
+export const TROPHY_GAIN_MIN = GAIN_MIN;
+export const TROPHY_GAIN_MAX = GAIN_MAX;
+export const TROPHY_LOSS_MIN = LOSS_MIN;
+export const TROPHY_LOSS_MAX = LOSS_MAX;
 
 export interface TrophyCalculation {
   expectedWinProbability: number;

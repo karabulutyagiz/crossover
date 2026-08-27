@@ -13,6 +13,7 @@
 //   * 10/20/30/40/50: kademe çerçevesi + 100 elmas (takmak için toplanmış olmalı)
 // İfadeler Yol'dan KAZANILMAZ — yalnız mağazadan satın alınır (emotes.ts).
 import { pool } from '../db/pool.ts';
+import { recordDiamondLedger } from './diamondLedger.ts';
 
 export const LEVEL_CAP = 50;
 
@@ -51,7 +52,8 @@ export const LEVEL_POWERS: Record<number, PowerId> = {
 };
 
 // ---- PREMIUM Seviye Yolu ----
-// 1000 elmasla bir kez açılır (users.premium_road). Ücretsiz yolun YANINDA
+// PREMIUM_ROAD_PRICE (2000) elmasla sezonda bir kez açılır (users.premium_road).
+// Ücretsiz yolun YANINDA
 // akan ikinci şerit: HER ×5 seviyesinde bir güç + daha dolgun elmas (×5: 200,
 // ×10: 300, zirve 50: 400 → toplam 2600💎 + 10 güç). Dağıtım İKİ kurala göre
 // tasarlandı: (1) her güç premium şeritte TAM 2 kez çıkar — hiçbiri diğerinden
@@ -209,7 +211,7 @@ export async function claimLevelReward(
   // Çerçeve sahipliği KALICI kayda da işlenir (owned_frames) — sezon sıfırlansa
   // bile kazanılmış çerçeve takılabilir kalır.
   const frameTier = premium ? null : FRAME_TIER_BY_LEVEL[level] ?? null;
-  const { rows } = await pool.query<{ id: string }>(
+  const { rows } = await pool.query<{ id: string; diamonds: number; season_id: string | null }>(
     `UPDATE users SET
        diamonds = diamonds + $3,
        ${claimedCol} = array_append(${claimedCol}, $2)${powerCol ? `,
@@ -217,12 +219,21 @@ export async function claimLevelReward(
        owned_frames = (SELECT ARRAY(SELECT DISTINCT f FROM unnest(owned_frames || $4::text[]) AS f))` : ''}
      WHERE id = $1 AND level >= $2 AND NOT (${claimedCol} @> ARRAY[$2::int])${premium ? `
        AND premium_road = TRUE` : ''}
-     RETURNING id`,
+     RETURNING id, diamonds, season_id`,
     frameTier ? [userId, level, diamonds, [frameTier]] : [userId, level, diamonds],
   );
   if (!rows[0]) {
     if (premium) return { ok: false, error: "CO Pass açık değil ya da bu ödül zaten toplandı" };
     return { ok: false, error: 'Bu ödül henüz açılmadı ya da zaten toplandı' };
+  }
+  if (diamonds > 0) {
+    // Sezon kimliği anahtarda: claimed_levels her sezon sıfırlanır, aynı seviye
+    // gelecek sezon yeniden toplanabilir — defterde çakışmasın.
+    void recordDiamondLedger({
+      userId, amount: diamonds, balanceAfter: Number(rows[0].diamonds),
+      reason: 'LEVEL_CLAIM', referenceId: `${track}:${level}`,
+      idempotencyKey: `levelclaim:${userId}:${rows[0].season_id ?? 'legacy'}:${track}:${level}`,
+    });
   }
   return { ok: true, claim: { level, diamonds, emoteId: null, frameTier, powerId, track } };
 }

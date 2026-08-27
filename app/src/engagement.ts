@@ -95,8 +95,12 @@ export const ENGAGEMENT_CONFIG: EngagementConfig = {
   feedbackMinActiveSeconds: 8 * 60,
   feedbackMinCompletedMatches: 2,
   feedbackCooldownMs: 7 * 24 * 60 * 60 * 1000,
-  ratingMinActiveSeconds: 20 * 60,
-  ratingMinCompletedMatches: 5,
+  // 20dk/5maç → 5dk/2maç (2026-08-27, kullanıcı kararı): yıldız istemi erken
+  // gelsin — ASA/ASO döneminde puan SAYISI dönüşümün ana kaldıracı. Eşikler
+  // VEYA'dır (evaluateRatingEngagement): 5 dk oyun YA DA 2 biten maç yeter.
+  // iOS zaten requestReview'u yılda 3 gösterimle sınırlar; asıl fren odur.
+  ratingMinActiveSeconds: 5 * 60,
+  ratingMinCompletedMatches: 2,
   ratingCooldownMs: 21 * 24 * 60 * 60 * 1000,
   postPurchaseSuppressionMs: 30 * 60 * 1000,
 };
@@ -287,5 +291,8 @@ export function evaluateRatingEngagement(profile: ProfileView | null, state: Eng
   if (!profile?.usernameSet) return null;
   if (!milestone && state.totalMatches < cfg.ratingMinCompletedMatches && state.totalActivePlaySeconds < cfg.ratingMinActiveSeconds) return null;
   if (Date.now() - state.lastRatingRequestAt < cfg.ratingCooldownMs) return null;
-  return { id: 'rating_prompt', kind: 'RATING_PROMPT', priority: EngagementPriority.STORE_RATING, source: milestone ? 'milestone' : 'experienced_player', createdAt: Date.now() };
+  // ignoreGlobalCooldown (2026-08-27): günde-1-proaktif-popup bütçesini Sosyal
+  // Paket keşfi tüketince yıldız istemi o gün hiç çıkamıyordu. Yıldız istemi
+  // bütçeden muaf — kendi 21 günlük cooldown'u + iOS'un yılda-3 sınırı yeterli fren.
+  return { id: 'rating_prompt', kind: 'RATING_PROMPT', priority: EngagementPriority.STORE_RATING, source: milestone ? 'milestone' : 'experienced_player', createdAt: Date.now(), ignoreGlobalCooldown: true };
 }

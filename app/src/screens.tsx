@@ -147,6 +147,7 @@ type Actions = {
   equipSpecialPower: (powerId: string | null) => void; // maça hangi güçle çıkılacağını seç
   buySpecialPower: (powerId: string, qty?: number) => void; // mağazadan elmasla al
   clearStreakReward: () => void;
+  xoxSubmit: (cell: number, text: string) => void;
   usePower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => void; // envanterdeki tek kullanımlık gücü etkinleştir
   loadMyStats: () => void; // profil istatistiklerini iste (my_stats yanıtı)
   verifyPurchase: (receipt: string) => Promise<void>;
@@ -2614,7 +2615,7 @@ function NetworkErrorBeacon({ visible }: { visible: boolean }) {
 }
 
 export function MODE_LABEL(m: GameMode): string {
-  return { 'team-team': t('mode.teamTeam'), 'country-team': t('mode.countryTeam'), 'letter-team': t('mode.letterTeam'), 'player-player': t('mode.playerPlayer') }[m];
+  return { 'team-team': t('mode.teamTeam'), 'country-team': t('mode.countryTeam'), 'letter-team': t('mode.letterTeam'), 'player-player': t('mode.playerPlayer'), xox: t('mode.xox') }[m];
 }
 
 function normalizeCountryKey(value: string): string {
@@ -2663,6 +2664,7 @@ const MODE_ICON: Record<GameMode, IoniconName> = {
   'country-team': 'flag',
   'letter-team': 'text',
   'player-player': 'people',
+  xox: 'grid',
 };
 
 // Transfermarkt competition code → league display name. The server's /scopes
@@ -4428,7 +4430,7 @@ const HOME_DESIGN_BODY_MIN_H = 407;
 const HOME_DESIGN_BODY_RANGE_H = 204;
 // Room codes are always exactly this long — server/src/rooms/manager.ts:5 (CODE_LEN).
 const ROOM_CODE_LEN = 6;
-const HOME_MODES: GameMode[] = ['country-team', 'letter-team'];
+const HOME_MODES: GameMode[] = ['xox', 'country-team', 'letter-team'];
 const PACK_MODES: GameMode[] = ['country-team', 'letter-team'];
 
 // "Mücadele Modu" kartının yüzü hiçbir props/state okumaz (tema + modül-scope
@@ -4977,7 +4979,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         <Text style={[styles.muted, { textAlign: 'center', marginBottom: 6 }]}>{t('home.specialModeBody')}</Text>
         {HOME_MODES.map((m) => {
           const locked = PACK_MODES.includes(m) && !hasPack;
-          const c = m === 'team-team' ? theme.primary : m === 'player-player' ? theme.accent : m === 'country-team' ? theme.blue : theme.purple;
+          const c = m === 'team-team' ? theme.primary : m === 'xox' ? theme.gold : m === 'player-player' ? theme.accent : m === 'country-team' ? theme.blue : theme.purple;
           return (
             <GameRow
               key={m}
@@ -5062,7 +5064,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
                 <ModalBackBtn onPress={() => setBotPage({ key: 'bot', dir: -1 })} />
               </View>
-              {(['team-team', 'country-team', 'letter-team'] as GameMode[]).map((m) => (
+              {(['team-team', 'xox', 'country-team', 'letter-team'] as GameMode[]).map((m) => (
                 <GameRow key={m} icon={MODE_ICON[m]} label={MODE_LABEL(m)} selected={mode === m} onPress={() => { setMode(m); setBotPage({ key: 'bot', dir: -1 }); }} />
               ))}
             </>
@@ -6145,6 +6147,236 @@ function SpecialPowerOverlays({ state }: { state: GameState }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// FUTBOL XOX EKRANI — sunucu-otoriter tahtanın görünümü. İstemci hiçbir kural
+// yürütmez: hücre sahipliği, sıra, süre ve sonuç xox_state/xox_over'dan gelir.
+// ═══════════════════════════════════════════════════════════════════════════
+const XOX_LINES_VIEW = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
+
+function XoxHeaderChip({ club, size }: { club: ClubRef; size: number }) {
+  return (
+    <View style={{ width: size, alignItems: 'center', gap: 2 }}>
+      <ClubBadge name={club.name} size={Math.min(40, size * 0.52)} logoUrl={club.logoUrl} />
+      <Text numberOfLines={1} style={{ color: theme.text, fontSize: 9, fontFamily: 'Poppins-ExtraBold', maxWidth: size }}>{club.name}</Text>
+    </View>
+  );
+}
+
+export function XoxScreen({ state, actions }: Props) {
+  const xox = state.xox;
+  const room = state.room;
+  const youId = room?.youId ?? '';
+  const opp = room?.players.find((p) => p.id !== youId);
+  const over = state.xoxOver;
+  const [selCell, setSelCell] = useState<number | null>(null);
+  const guessRef = useRef('');
+  const [guessText, setGuessText] = useState('');
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [emoteOpen, setEmoteOpen] = useState(false);
+  const [, setTick] = useState(0);
+  const win = useWindow();
+  // Sunucu sayacı: 500ms tikle yeniden çiz (yalnız aktif maçta).
+  useEffect(() => {
+    if (over) return undefined;
+    const id = setInterval(() => setTick((v) => v + 1), 500);
+    return () => clearInterval(id);
+  }, [over]);
+  // Sıra/ani-ölüm değişince seçim sıfırlanır; sunum sesleri lastAction'dan.
+  const lastSeq = useRef<string>('');
+  useEffect(() => {
+    if (!xox) return;
+    const key = `${xox.turnNumber}:${xox.suddenDeath}`;
+    if (key !== lastSeq.current) {
+      lastSeq.current = key;
+      setSelCell(xox.suddenDeath && xox.suddenCell != null ? xox.suddenCell : null);
+      guessRef.current = '';
+      setGuessText('');
+    }
+  }, [xox?.turnNumber, xox?.suddenDeath]);
+  const laSeq = useRef<string>('');
+  useEffect(() => {
+    const la = xox?.lastAction;
+    if (!la) return;
+    const key = `${xox!.turnNumber}:${la.kind}:${la.byId}:${la.cell ?? -1}`;
+    if (key === laSeq.current) return;
+    laSeq.current = key;
+    if (la.kind === 'claim') triggerFeedback(la.byId === youId ? GameFeedbackEvent.ANSWER_CORRECT : GameFeedbackEvent.OPPONENT_CORRECT);
+    else if (la.kind === 'wrong') triggerFeedback(la.byId === youId ? GameFeedbackEvent.ANSWER_WRONG : GameFeedbackEvent.NOTIFICATION);
+  }, [xox?.lastAction, xox?.turnNumber, youId]);
+  // Maç sonu sesi
+  const overPlayed = useRef(false);
+  useEffect(() => {
+    if (!over || overPlayed.current) return;
+    overPlayed.current = true;
+    triggerFeedback(over.winnerId === youId ? GameFeedbackEvent.MATCH_WIN : GameFeedbackEvent.MATCH_LOSE);
+  }, [over, youId]);
+  useEffect(() => { if (!over) overPlayed.current = false; }, [over]);
+
+  if (!xox || !room) return <Screen><Text style={styles.muted}>{t('store.loading')}</Text></Screen>;
+
+  const myTurn = !over && !xox.suddenDeath && xox.turnId === youId;
+  const canAnswer = myTurn || (!over && xox.suddenDeath && xox.suddenCell != null);
+  const secs = Math.max(0, Math.ceil((xox.turnEndsAt - Date.now()) / 1000));
+  const headerW = 58;
+  const gridW = Math.min(win.width - 32, 430);
+  const cellSize = Math.floor((gridW - headerW - 4 * 6) / 3);
+  const winLine = over?.line ?? null;
+  const submit = () => {
+    const text = guessRef.current.trim();
+    if (!text || selCell == null) return;
+    dismissActiveInput();
+    actions.xoxSubmit(selCell, text);
+    guessRef.current = '';
+    setGuessText('');
+  };
+  const la = xox.lastAction;
+  const laText = la
+    ? la.kind === 'claim' ? t('xox.claim', { name: la.byName, player: la.playerName ?? '' })
+      : la.kind === 'wrong' ? t('xox.wrong', { name: la.byName })
+      : t('xox.timeout')
+    : null;
+  const leaveKind = state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
+
+  const cellView = (i: number) => {
+    const c = xox.cells[i]!;
+    const mine = c.owner === youId;
+    const isSel = selCell === i;
+    const golden = xox.suddenDeath && xox.suddenCell === i;
+    const inLine = winLine?.includes(i) ?? false;
+    const open = c.owner == null;
+    const tappable = !over && open && (myTurn || golden);
+    const face = c.owner == null
+      ? (golden ? withAlpha(theme.gold, 0.22) : theme.well)
+      : mine ? withAlpha(theme.primary, 0.26) : withAlpha(theme.danger, 0.24);
+    const border = inLine ? theme.gold : isSel ? theme.accent : golden ? theme.gold : c.owner == null ? theme.border : mine ? withAlpha(theme.primary, 0.8) : withAlpha(theme.danger, 0.8);
+    return (
+      <Pressable
+        key={i}
+        disabled={!tappable}
+        onPress={() => { triggerFeedback(GameFeedbackEvent.UI_CARD); setSelCell(i); }}
+        style={({ pressed }) => ({
+          width: cellSize, height: cellSize, borderRadius: 14,
+          backgroundColor: face, borderWidth: isSel || inLine || golden ? 2.5 : 1.5, borderColor: border,
+          alignItems: 'center', justifyContent: 'center', padding: 4,
+          opacity: pressed ? 0.85 : 1,
+          transform: [{ scale: pressed ? 0.97 : 1 }],
+        })}
+      >
+        {c.owner == null ? (
+          golden ? <Ionicons name="flash" size={26} color={theme.gold} />
+          : tappable ? <Ionicons name="add" size={22} color={withAlpha(theme.text, 0.35)} /> : null
+        ) : (
+          <>
+            <Ionicons name={mine ? 'close' : 'ellipse-outline'} size={18} color={mine ? theme.primary : theme.danger} />
+            <Text numberOfLines={2} style={{ color: theme.text, fontSize: 8.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', lineHeight: 11 }}>{c.playerName}</Text>
+          </>
+        )}
+      </Pressable>
+    );
+  };
+
+  return (
+    <Screen scroll contentCenter={false} keyboardShouldPersistTaps="always" bg={<MatchCosmeticBackdrop backgroundId={matchBackgroundIdForState(state)} />}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <MatchExitButton onPress={() => (state.matchOver ? actions.leave() : setShowLeaveConfirm(true))} />
+        <PlayerBar state={state} onEmotePress={() => setEmoteOpen(true)} />
+      </View>
+
+      {/* Sıra bandı + sayaç */}
+      {!over ? (
+        <View style={{ alignItems: 'center', gap: 3, marginBottom: 8 }}>
+          {xox.suddenDeath ? (
+            <>
+              <Text style={{ color: theme.gold, fontSize: 17, fontFamily: 'Poppins-Black', letterSpacing: 1, ...engrave('sm') }}>⚡ {t('xox.suddenTitle')}</Text>
+              <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold' }}>{t('xox.suddenBody')}</Text>
+            </>
+          ) : (
+            <Text style={{ color: myTurn ? theme.primary : theme.muted, fontSize: 16, fontFamily: 'Poppins-Black', letterSpacing: 0.8, ...engrave('sm') }}>
+              {myTurn ? t('xox.yourTurn') : t('xox.oppTurn', { name: opp?.name ?? '' })}
+            </Text>
+          )}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={{ color: secs <= 5 ? theme.danger : theme.text, fontSize: 19, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{secs}</Text>
+            <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold' }}>{t('xox.turnOf', { n: String(Math.min(xox.turnNumber, xox.turnCap)), cap: String(xox.turnCap) })}</Text>
+          </View>
+        </View>
+      ) : null}
+
+      {/* Tahta */}
+      <View style={{ alignSelf: 'center', width: gridW, backgroundColor: withAlpha(theme.surface2, 0.85), borderRadius: 20, padding: 6, gap: 6 }}>
+        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'flex-end' }}>
+          <View style={{ width: headerW }} />
+          {xox.cols.map((c) => <XoxHeaderChip key={c.id} club={c} size={cellSize} />)}
+        </View>
+        {[0, 1, 2].map((r) => (
+          <View key={r} style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+            <View style={{ width: headerW, alignItems: 'center', gap: 2 }}>
+              <ClubBadge name={xox.rows[r]!.name} size={34} logoUrl={xox.rows[r]!.logoUrl} />
+              <Text numberOfLines={2} style={{ color: theme.text, fontSize: 8, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{xox.rows[r]!.name}</Text>
+            </View>
+            {[0, 1, 2].map((c) => cellView(r * 3 + c))}
+          </View>
+        ))}
+      </View>
+
+      {/* Son aksiyon satırı */}
+      {laText && !over ? (
+        <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginTop: 8 }}>{laText}</Text>
+      ) : null}
+
+      {/* Cevap paneli */}
+      {!over && canAnswer && selCell != null && xox.cells[selCell]!.owner == null ? (
+        <View style={{ marginTop: 10, gap: 8 }}>
+          <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>
+            {xox.rows[Math.floor(selCell / 3)]!.name}  ×  {xox.cols[selCell % 3]!.name}
+          </Text>
+          <GameInput
+            placeholder={t('guess.placeholder')}
+            value={guessText}
+            onChangeText={(v: string) => { guessRef.current = v; setGuessText(v); }}
+            autoFocus
+            returnKeyType="send"
+            onSubmitEditing={submit}
+          />
+          <Btn label={t('guess.send')} icon="send" feedback={GameFeedbackEvent.ANSWER_SUBMIT} onPress={submit} disabled={!guessText.trim()} />
+        </View>
+      ) : !over && myTurn ? (
+        <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginTop: 10 }}>{t('xox.pickCellHint')}</Text>
+      ) : null}
+
+      {/* Maç sonu paneli */}
+      {over ? (
+        <View style={{ alignItems: 'center', gap: 10, marginTop: 14 }}>
+          <Text style={{ color: over.winnerId === youId ? theme.primary : theme.danger, fontSize: 26, fontFamily: 'Poppins-Black', letterSpacing: 1, ...engrave('lg') }}>
+            {over.winnerId === youId ? t('xox.youWon') : t('xox.youLost')}
+          </Text>
+          <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold' }}>
+            {t(`xox.reason.${over.reason}` as MessageKey)}
+          </Text>
+          {state.rematchState === 'incoming' ? (
+            <>
+              <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>{t('result.rematchIncoming', { name: state.rematchByName ?? '' })}</Text>
+              <View style={{ flexDirection: 'row', gap: 10, alignSelf: 'stretch' }}>
+                <View style={{ flex: 1 }}><Btn label={t('result.accept')} kind="accent" icon="checkmark-circle" onPress={actions.acceptRematch} /></View>
+                <View style={{ flex: 1 }}><Btn label={t('result.decline')} kind="ghost" icon="close" onPress={actions.declineRematch} /></View>
+              </View>
+            </>
+          ) : state.rematchState === 'waiting' ? (
+            <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold' }}>{t('result.rematchWaiting')}</Text>
+          ) : (
+            <Btn big label={t('result.playAgain')} kind="accent" icon="refresh" feedback={GameFeedbackEvent.UI_PLAY} onPress={actions.playAgain} />
+          )}
+          <Btn label={t('result.leave')} kind="ghost" icon="home" onPress={actions.leave} />
+        </View>
+      ) : null}
+
+      <View style={{ height: 28 }} />
+      <LeaveConfirmModal visible={showLeaveConfirm} kind={leaveKind} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
+      <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} />
+    </Screen>
+  );
+}
+
 export function GuessScreen({ state, actions, tutorial, prefill }: Props & { prefill?: string }) {
   // Tutorial: the answer arrives PRE-FILLED and locked — the player only taps
   // Send. `prefill` overrides the tutorial's real name: DevShot marketing
@@ -7112,10 +7344,10 @@ export function CosmeticPreview({ item, size = 88 }: { item: StoreCatalogItem; s
   );
 }
 
-function CosmeticShopTile({ item, owned, equipped, onPress }: { item: StoreCatalogItem; owned: boolean; equipped: boolean; onPress: () => void }) {
+function CosmeticShopTile({ item, owned, equipped, vault, onPress }: { item: StoreCatalogItem; owned: boolean; equipped: boolean; vault?: boolean; onPress: () => void }) {
   const accent = RARITY_COLOR[item.rarity] ?? theme.primary;
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [{ width: 138, minHeight: 184, borderRadius: 20, backgroundColor: theme.card, borderWidth: 1.5, borderColor: equipped ? theme.primary : accent + '88', padding: 10, opacity: pressed ? 0.86 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] }, shadowSoft]}>
+    <Pressable onPress={onPress} style={({ pressed }) => [{ width: 138, minHeight: 184, borderRadius: 20, backgroundColor: theme.card, borderWidth: 1.5, borderColor: equipped ? theme.primary : vault ? theme.gold : accent + '88', padding: 10, opacity: pressed ? 0.86 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] }, shadowSoft]}>
       <View style={{ alignItems: 'center', gap: 8 }}>
         <CosmeticPreview item={item} size={84} />
         <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12.5, textAlign: 'center' }} numberOfLines={2}>{cosmeticDisplayName(item)}</Text>
@@ -7128,6 +7360,10 @@ function CosmeticShopTile({ item, owned, equipped, onPress }: { item: StoreCatal
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><GemIcon size={12} /><Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12 }}>{item.diamondPrice}</Text></View>
         )}
       </View>
+      {/* KASA: bu haftanın limitli mythic düşüşü — Pazartesi vitrinden kalkar */}
+      {vault ? (
+        <Ribbon label="KASADAN ÇIKTI" style={{ position: 'absolute', top: -7, left: 6, transform: [{ rotate: '-2deg' }], zIndex: 3 }} />
+      ) : null}
     </Pressable>
   );
 }
@@ -7565,8 +7801,8 @@ function AdRewardCard({ adLoading, adsWatched, onWatch }: { adLoading: boolean; 
 // One diamond pack row: GamePanel compact tinted by the pack's escalation-ramp
 // color; the whole card gets the 2px press-lip and the price is a real Btn
 // (its `loading` prop covers the mid-purchase state — no bare spinners).
-function DiamondPackRow({ pack, busy, inert, price, onBuy }: {
-  pack: (typeof DIAMOND_PACKS)[number]; busy: boolean; inert: boolean; price: string; onBuy: () => void;
+function DiamondPackRow({ pack, busy, inert, price, firstDouble, onBuy }: {
+  pack: (typeof DIAMOND_PACKS)[number]; busy: boolean; inert: boolean; price: string; firstDouble?: boolean; onBuy: () => void;
 }) {
   const { ty, onIn, onOut } = usePressLip(2, GameFeedbackEvent.UI_PURCHASE);
   return (
@@ -7580,6 +7816,11 @@ function DiamondPackRow({ pack, busy, inert, price, onBuy }: {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
                 <GemIcon size={14} />
                 <Text style={{ color: theme.gemText, fontFamily: 'Poppins-ExtraBold', fontSize: 13 }}>{pack.amount.toLocaleString(currentLang())}</Text>
+                {firstDouble ? (
+                  <View style={{ backgroundColor: withAlpha(theme.gold, 0.16), borderRadius: 7, paddingHorizontal: 6, paddingVertical: 1 }}>
+                    <Text style={{ color: theme.gold, fontFamily: 'Poppins-Black', fontSize: 11 }}>×2 = {(pack.amount * 2).toLocaleString(currentLang())}</Text>
+                  </View>
+                ) : null}
               </View>
             </View>
             <Btn compact kind="primary" label={price} loading={busy} disabled={inert} feedback={GameFeedbackEvent.UI_PURCHASE} onPress={onBuy} />
@@ -8106,7 +8347,8 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
                   item={item}
                   owned={ownsStoreCosmetic(profile, item)}
                   equipped={isEquippedCosmetic(profile, item)}
-                  onPress={() => { track('cosmetic_viewed', { item_id: item.id, type: item.type, rarity: item.rarity }); setConfirmCosmetic(item); }}
+                  vault={item.id === catalog?.vaultItemId}
+                  onPress={() => { track('cosmetic_viewed', { item_id: item.id, type: item.type, rarity: item.rarity, vault: item.id === catalog?.vaultItemId }); setConfirmCosmetic(item); }}
                 />
               ))}
             </ScrollView>
@@ -8303,6 +8545,14 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
         {/* Diamond packs */}
         <Animated.View style={sectionIn(3)} onLayout={(e) => { sectionYRef.current['diamonds'] = e.nativeEvent.layout.y; }}>
           <SectionHeader label={t('store.packs')} icon="diamond" />
+          {/* İLK ALIMA 2x: sunucu hakkı tükenene kadar gösterir; katlamayı da
+              satın alma anında sunucu uygular (rozet süs değil, gerçek). */}
+          {catalog?.firstDiamondDoubleAvailable ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: withAlpha(theme.gold, 0.13), borderRadius: 12, paddingVertical: 8, paddingHorizontal: 11, marginBottom: 3 }}>
+              <Ionicons name="gift" size={15} color={theme.gold} />
+              <Text style={{ color: theme.gold, fontFamily: 'Poppins-ExtraBold', fontSize: 12.5, flex: 1 }}>İlk elmas paketin 2 KAT yatar — hangi paketi seçersen seç!</Text>
+            </View>
+          ) : null}
           {DIAMOND_PACKS.map((pack) => (
             <DiamondPackRow
               key={pack.id}
@@ -8310,6 +8560,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
               busy={buying === pack.productId}
               inert={!!buying && buying !== pack.productId}
               price={priceFor(pack.productId, pack.price)}
+              firstDouble={!!catalog?.firstDiamondDoubleAvailable}
               onBuy={() => buy(pack.productId)}
             />
           ))}
@@ -8601,6 +8852,12 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
               <CosmeticPreview item={item} size={128} />
               <Text style={{ color: RARITY_COLOR[item.rarity] ?? theme.primary, fontFamily: 'Poppins-Black', fontSize: 11, letterSpacing: 1 }}>{String(item.rarity).toUpperCase()}</Text>
               <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 13, lineHeight: 19, textAlign: 'center' }}>{item.description}</Text>
+              {item.id === catalog?.vaultItemId ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: withAlpha(theme.gold, 0.14), borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10 }}>
+                  <Ionicons name="time" size={13} color={theme.gold} />
+                  <Text style={{ color: theme.gold, fontFamily: 'Poppins-ExtraBold', fontSize: 11.5 }}>Bu hafta kasadan çıktı — Pazartesi vitrinden kalkar</Text>
+                </View>
+              ) : null}
               <View style={{ alignSelf: 'stretch', backgroundColor: theme.well, borderRadius: 14, padding: 10, gap: 6 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                   <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 12 }}>Elmasın</Text>
@@ -10432,7 +10689,7 @@ export function FriendsScreen({ state, actions, onGoToStore, onLockedSocialMode,
       >
         <ModalPager pageKey={matchPage.key} dir={matchPage.dir}>
           {matchPage.key === 'mode' ? (
-            (['team-team', 'country-team', 'letter-team'] as GameMode[]).map((m) => {
+            (['team-team', 'xox', 'country-team', 'letter-team'] as GameMode[]).map((m) => {
               const locked = m !== 'team-team' && !hasSocialPack;
               return (
                 <GameRow

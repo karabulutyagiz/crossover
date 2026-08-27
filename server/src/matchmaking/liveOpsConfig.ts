@@ -132,9 +132,13 @@ const DEFAULTS: LiveOpsMatchmakingConfig = {
   },
   bots: {
     repeatIdentityCooldown: config.matchmaking.recentBotCooldown,
+    // Oran, erken bot düşüşünü seyreltir (yüksek segment insan rakibi daha uzun
+    // bekler); 15 sn güvenlik ağını ASLA kapatmaz — rakipsiz kalan oyuncu olamaz.
     maxBotRatioBySegment: { NEW_PLAYER: 0.95, EARLY: 0.85, MID: 0.62, HIGH: 0.28, ELITE: 0.08 },
     highProgressionMinQueueHealth: 0.28,
-    eliteBotsEnabled: false,
+    // true (2026-08-27): false iken 3500+ oyuncu insan yoksa "Rakip bulunamadı"
+    // görüyordu — kimse rakipsiz kalmaz kararıyla elit botlar da açıldı.
+    eliteBotsEnabled: true,
     maxDifficultyAdjustment: 0.16,
   },
   recovery: {
@@ -254,8 +258,28 @@ export function liveOpsConfig(): LiveOpsMatchmakingConfig {
       queueHealthBotThreshold: num('MM_QUEUE_HEALTH_BOT_THRESHOLD', DEFAULTS.matchmaking.queueHealthBotThreshold),
       recentOpponentRelaxMs: int('MM_RECENT_OPPONENT_RELAX_MS', DEFAULTS.matchmaking.recentOpponentRelaxMs),
     },
-    bots: DEFAULTS.bots,
-    recovery: DEFAULTS.recovery,
+    // bots/recovery/antiFarm/trophyEconomy önceden DEFAULTS'a sabitlenmişti
+    // ("uzaktan ayarlanır" sanılıp deploy gerektiriyordu) — artık gerçekten env'den okunur.
+    bots: {
+      repeatIdentityCooldown: intAny(['BOT_REPEAT_IDENTITY_COOLDOWN'], DEFAULTS.bots.repeatIdentityCooldown),
+      maxBotRatioBySegment: {
+        NEW_PLAYER: numAny(['MAX_BOT_RATIO_NEW_PLAYER'], DEFAULTS.bots.maxBotRatioBySegment.NEW_PLAYER),
+        EARLY: numAny(['MAX_BOT_RATIO_EARLY'], DEFAULTS.bots.maxBotRatioBySegment.EARLY),
+        MID: numAny(['MAX_BOT_RATIO_MID'], DEFAULTS.bots.maxBotRatioBySegment.MID),
+        HIGH: numAny(['MAX_BOT_RATIO_HIGH'], DEFAULTS.bots.maxBotRatioBySegment.HIGH),
+        ELITE: numAny(['MAX_BOT_RATIO_ELITE'], DEFAULTS.bots.maxBotRatioBySegment.ELITE),
+      },
+      highProgressionMinQueueHealth: numAny(['HIGH_PROGRESSION_MIN_QUEUE_HEALTH'], DEFAULTS.bots.highProgressionMinQueueHealth),
+      eliteBotsEnabled: boolAny(['ELITE_BOTS_ENABLED'], DEFAULTS.bots.eliteBotsEnabled),
+      maxDifficultyAdjustment: numAny(['BOT_MAX_DIFFICULTY_ADJUSTMENT'], DEFAULTS.bots.maxDifficultyAdjustment),
+    },
+    recovery: {
+      frustrationThreshold: numAny(['RECOVERY_FRUSTRATION_THRESHOLD'], DEFAULTS.recovery.frustrationThreshold),
+      dominanceThreshold: numAny(['RECOVERY_DOMINANCE_THRESHOLD'], DEFAULTS.recovery.dominanceThreshold),
+      maxAdjustmentMmr: intAny(['RECOVERY_MAX_ADJUSTMENT_MMR', 'RECOVERY_MAX_ADJUSTMENT'], DEFAULTS.recovery.maxAdjustmentMmr),
+      cooldownMs: intAny(['RECOVERY_COOLDOWN_MS'], DEFAULTS.recovery.cooldownMs),
+      intentionalLossBlockThreshold: numAny(['INTENTIONAL_LOSS_BLOCK_THRESHOLD'], DEFAULTS.recovery.intentionalLossBlockThreshold),
+    },
     botDifficulty: {
       algorithmVersion: str('BOT_DIFFICULTY_ALGORITHM_VERSION', DEFAULTS.botDifficulty.algorithmVersion),
       balanceVersion: str('BOT_DIFFICULTY_BALANCE_VERSION', DEFAULTS.botDifficulty.balanceVersion),
@@ -302,8 +326,24 @@ export function liveOpsConfig(): LiveOpsMatchmakingConfig {
         obscure: numAny(['KNOWLEDGE_FLOOR_OBSCURE'], DEFAULTS.botDifficulty.knowledgeFloorByDifficulty.obscure),
       },
     },
-    antiFarm: DEFAULTS.antiFarm,
-    trophyEconomy: DEFAULTS.trophyEconomy,
+    antiFarm: {
+      repeatedOpponentWindowMs: intAny(['ANTI_FARM_PAIR_WINDOW_MS'], DEFAULTS.antiFarm.repeatedOpponentWindowMs),
+      pairDecayStart: intAny(['ANTI_FARM_PAIR_DECAY_START'], DEFAULTS.antiFarm.pairDecayStart),
+      pairDecayFloor: numAny(['ANTI_FARM_PAIR_DECAY_FLOOR'], DEFAULTS.antiFarm.pairDecayFloor),
+      highRiskThreshold: numAny(['ANTI_FARM_HIGH_RISK_THRESHOLD'], DEFAULTS.antiFarm.highRiskThreshold),
+      criticalRiskThreshold: numAny(['ANTI_FARM_CRITICAL_RISK_THRESHOLD'], DEFAULTS.antiFarm.criticalRiskThreshold),
+      botExposureWindowMs: intAny(['ANTI_FARM_BOT_EXPOSURE_WINDOW_MS'], DEFAULTS.antiFarm.botExposureWindowMs),
+      botExposureDecayStart: intAny(['ANTI_FARM_BOT_EXPOSURE_DECAY_START'], DEFAULTS.antiFarm.botExposureDecayStart),
+      botExposureDecayFloor: numAny(['ANTI_FARM_BOT_EXPOSURE_DECAY_FLOOR'], DEFAULTS.antiFarm.botExposureDecayFloor),
+    },
+    trophyEconomy: {
+      targetDailyInflationMin: numAny(['TROPHY_TARGET_DAILY_INFLATION_MIN'], DEFAULTS.trophyEconomy.targetDailyInflationMin),
+      targetDailyInflationMax: numAny(['TROPHY_TARGET_DAILY_INFLATION_MAX'], DEFAULTS.trophyEconomy.targetDailyInflationMax),
+      botInjectionBudgetDaily: intAny(['TROPHY_BOT_INJECTION_BUDGET_DAILY'], DEFAULTS.trophyEconomy.botInjectionBudgetDaily),
+      adjustmentSpeed: numAny(['TROPHY_ECONOMY_ADJUSTMENT_SPEED'], DEFAULTS.trophyEconomy.adjustmentSpeed),
+      minMultiplier: numAny(['TROPHY_ECONOMY_MIN_MULTIPLIER'], DEFAULTS.trophyEconomy.minMultiplier),
+      maxMultiplier: numAny(['TROPHY_ECONOMY_MAX_MULTIPLIER'], DEFAULTS.trophyEconomy.maxMultiplier),
+    },
   };
   if (!validate(candidate)) return lastGood;
   lastGood = candidate;
@@ -334,7 +374,21 @@ function validate(cfg: LiveOpsMatchmakingConfig): boolean {
   if (m.initialTrophyWindow < 0 || m.maxTrophyWindow < m.initialTrophyWindow || m.maxTrophyGap < m.maxTrophyWindow) return false;
   if (m.preferredRealWaitMs < 0 || m.botEligibilityWaitMs < 0 || m.maxSearchMs < m.botEligibilityWaitMs) return false;
   if (cfg.trophyEconomy.minMultiplier < 0 || cfg.trophyEconomy.maxMultiplier > 2 || cfg.trophyEconomy.minMultiplier > cfg.trophyEconomy.maxMultiplier) return false;
+  if (cfg.trophyEconomy.targetDailyInflationMin > cfg.trophyEconomy.targetDailyInflationMax) return false;
+  if (cfg.trophyEconomy.botInjectionBudgetDaily < 0 || cfg.trophyEconomy.adjustmentSpeed < 0 || cfg.trophyEconomy.adjustmentSpeed > 1) return false;
   if (cfg.antiFarm.pairDecayFloor < 0 || cfg.antiFarm.pairDecayFloor > 1) return false;
+  if (cfg.antiFarm.botExposureDecayFloor < 0 || cfg.antiFarm.botExposureDecayFloor > 1) return false;
+  if (cfg.antiFarm.pairDecayStart < 1 || cfg.antiFarm.botExposureDecayStart < 1) return false;
+  if (cfg.antiFarm.highRiskThreshold < 0 || cfg.antiFarm.criticalRiskThreshold > 1 || cfg.antiFarm.highRiskThreshold > cfg.antiFarm.criticalRiskThreshold) return false;
+  if (cfg.antiFarm.repeatedOpponentWindowMs < 60_000 || cfg.antiFarm.botExposureWindowMs < 60_000) return false;
+  for (const ratio of Object.values(cfg.bots.maxBotRatioBySegment)) {
+    if (ratio < 0 || ratio > 1) return false;
+  }
+  if (cfg.bots.repeatIdentityCooldown < 1 || cfg.bots.highProgressionMinQueueHealth < 0 || cfg.bots.highProgressionMinQueueHealth > 1) return false;
+  if (cfg.recovery.frustrationThreshold < 0 || cfg.recovery.frustrationThreshold > 1) return false;
+  if (cfg.recovery.dominanceThreshold < 0 || cfg.recovery.dominanceThreshold > 1) return false;
+  if (cfg.recovery.maxAdjustmentMmr < 0 || cfg.recovery.maxAdjustmentMmr > 400 || cfg.recovery.cooldownMs < 0) return false;
+  if (cfg.recovery.intentionalLossBlockThreshold < 0 || cfg.recovery.intentionalLossBlockThreshold > 1) return false;
   for (const band of Object.values(cfg.botDifficulty.targetWinProbabilityBySegment)) {
     if (band.min < 0.25 || band.max > 0.80 || band.min > band.max) return false;
   }

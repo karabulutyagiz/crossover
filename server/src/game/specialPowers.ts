@@ -12,6 +12,7 @@
 // ikinci kez tüketmez (idempotency maç-durumunda tutulur — bkz. room.ts).
 // ============================================================================
 import { pool } from '../db/pool.ts';
+import { recordDiamondLedger } from './diamondLedger.ts';
 
 export type SpecialPowerId = 'freeze' | 'reveal' | 'skip' | 'extratime' | 'secondchance';
 
@@ -163,10 +164,10 @@ export async function buySpecialPower(
   const n = Math.max(1, Math.min(10, Math.round(qty)));
   const price = specialPowersConfig().prices[powerId] * n;
   const col = COLUMN[powerId];
-  const { rows } = await pool.query<{ after_qty: number }>(
+  const { rows } = await pool.query<{ after_qty: number; diamonds: number }>(
     `UPDATE users SET diamonds = diamonds - $2, ${col} = ${col} + $3
       WHERE id = $1 AND diamonds >= $2
-      RETURNING ${col} AS after_qty`,
+      RETURNING ${col} AS after_qty, diamonds`,
     [userId, price, n],
   );
   if (!rows[0]) {
@@ -178,6 +179,10 @@ export async function buySpecialPower(
     userId, matchId: null, roundNumber: null, powerId, action: 'purchase',
     beforeQty: Number(rows[0].after_qty) - n, afterQty: Number(rows[0].after_qty),
     requestId: null, result: 'ok', metadata: { qty: n, price },
+  });
+  void recordDiamondLedger({
+    userId, amount: -price, balanceAfter: Number(rows[0].diamonds),
+    reason: 'SPECIAL_POWER_PURCHASE', referenceId: powerId, metadata: { qty: n },
   });
   return { ok: true };
 }

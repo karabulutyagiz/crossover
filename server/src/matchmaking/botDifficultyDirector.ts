@@ -60,6 +60,8 @@ export interface BotDifficultyDirectorOutput {
   pressureAdjustmentMmr: number;
   smoothingAdjustmentMmr: number;
   liveOpsAdjustmentMmr: number;
+  /** 6+ saat aradan sonraki ilk maçın hafif kolaylaştırması (oturum ısınması). */
+  sessionWarmupAdjustmentMmr: number;
   frustrationRisk: number;
   dominanceScore: number;
   intentionalLossRisk: number;
@@ -69,6 +71,9 @@ export interface BotDifficultyDirectorOutput {
   blowoutLossRate: number;
   closeLossRate: number;
   smurfSuspicion: number;
+  /** Hesabın İLK maçı (matchesPlayed=0, smurf değil): bot bir kez kolay soruda
+   * görünür yanlış yapar — "bu yenilebilir ve insan" hissi (rooms/bot.ts okur). */
+  firstMatchShowcase: boolean;
   knowledgeDepth: number;
   recallConsistency: number;
   reactionQuality: number;
@@ -103,7 +108,13 @@ export function runBotDifficultyDirector(input: BotDifficultyDirectorInput): Bot
   const stateWinBand = cfg.targetCompetitiveProbabilityByState[competitiveState];
   const winBand = blendedWinBand(segmentWinBand, stateWinBand, 0.62);
   const targetCompetitiveProbability = targetWinProbabilityFor(winBand, effectiveFrustrationRisk, dominanceScore, smurfSuspicion, rng);
-  const targetWinProbability = targetCompetitiveProbability;
+  // İLK MAÇ KOREOGRAFİSİ (2026-08-27): hesabın ilk 3 maçı retention'ın ilk
+  // tuğlası — hedef kazanma NEW_PLAYER bandının da üstünde tabanlanır:
+  // 1. maç ≥0.85, 2. maç ≥0.82, 3. maç ≥0.79. Smurf şüphesi varsa uygulanmaz.
+  const firstMatchesFloor = input.matchesPlayed < 3 && smurfSuspicion < 0.42
+    ? 0.85 - input.matchesPlayed * 0.03
+    : 0;
+  const targetWinProbability = Math.max(targetCompetitiveProbability, firstMatchesFloor);
   const targetFromWinProbability = opponentMeanForTargetWinProbability(input.playerHiddenMmr, uncertainty, targetWinProbability);
   const protectionFloor = input.playerHiddenMmr - protectionOffsetMmr(segment, protection, cfg.newPlayerSkillOffsetMmr, cfg.earlyProgressionSkillOffsetMmr);
   const protectedTarget = protection > 0 && smurfSuspicion < 0.42
@@ -120,7 +131,15 @@ export function runBotDifficultyDirector(input: BotDifficultyDirectorInput): Bot
   // hissi veriyordu — tutundurma önceliği antifarm baskısının önündedir.
   const pressureAdjustmentMmr = Math.round(clamp((input.pressureProfile?.pressure ?? 0) * 70 - (input.pressureProfile?.relief ?? 0) * 55 + (input.velocityPressure ?? 0) * 45, -54, 70));
   const liveOpsAdjustmentMmr = live.killSwitches.botDifficultyLiveTuningEnabled ? cfg.liveOpsSkillOffsetMmr : 0;
-  let targetSkillMean = protectedTarget + formAdjustmentMmr + frustrationAdjustmentMmr + momentumAdjustmentMmr + recoveryAdjustmentMmr + dominanceAdjustmentMmr + pressureAdjustmentMmr + liveOpsAdjustmentMmr;
+  // OTURUM ISINMASI (2026-08-27): 6+ saat aradan sonraki İLK maç hafif kolay
+  // (−45 MMR) — "bugün formundayım" hissiyle oturumu açtırır. İlk-3-maç
+  // koreografisiyle çakışmasın (matchesPlayed ≥ 3) ve smurf'e uygulanmaz.
+  const lastMatchAtMs = recent.length ? Date.parse(recent[0]?.at ?? '') : NaN;
+  const sessionWarmupAdjustmentMmr = input.matchesPlayed >= 3 && smurfSuspicion < 0.42
+    && Number.isFinite(lastMatchAtMs) && Date.now() - lastMatchAtMs > 6 * 3600_000
+    ? -45
+    : 0;
+  let targetSkillMean = protectedTarget + formAdjustmentMmr + frustrationAdjustmentMmr + momentumAdjustmentMmr + recoveryAdjustmentMmr + dominanceAdjustmentMmr + pressureAdjustmentMmr + liveOpsAdjustmentMmr + sessionWarmupAdjustmentMmr;
   const beforeSmoothing = targetSkillMean;
   targetSkillMean = smoothAgainstRecentBot(recent, targetSkillMean, cfg.maxBotSkillStepMmr + Math.round(smurfSuspicion * cfg.smurfAccelerationMmr * 0.75) + Math.round(effectiveFrustrationRisk * 45));
   const smoothingAdjustmentMmr = Math.round(targetSkillMean - beforeSmoothing);
@@ -169,6 +188,7 @@ export function runBotDifficultyDirector(input: BotDifficultyDirectorInput): Bot
     pressureAdjustmentMmr,
     smoothingAdjustmentMmr,
     liveOpsAdjustmentMmr,
+    sessionWarmupAdjustmentMmr,
     frustrationRisk: Number(frustrationRisk.toFixed(4)),
     dominanceScore: Number(dominanceScore.toFixed(4)),
     intentionalLossRisk: Number(intentionalLossRisk.toFixed(4)),
@@ -178,6 +198,7 @@ export function runBotDifficultyDirector(input: BotDifficultyDirectorInput): Bot
     blowoutLossRate: Number(form.blowoutLossRate.toFixed(4)),
     closeLossRate: Number(form.closeLossRate.toFixed(4)),
     smurfSuspicion: Number(smurfSuspicion.toFixed(4)),
+    firstMatchShowcase: input.matchesPlayed === 0 && smurfSuspicion < 0.42,
     ...dimensions,
   };
 

@@ -103,7 +103,7 @@ export function decideBotAnswer(profile: BotProfile, context: BotQuestionContext
   const knowsP = clamp(botKnowsProbability(profile, context) + pressure.knowledgeBias, 0.01, 0.985);
   const knows = chance(rng, knowsP);
   const wrongAssociationP = clamp(profile.mistakeProbability + difficulty * 0.10 + pressure.mistakeBias, cfg.botErrorMin, cfg.botErrorMax);
-  const timeoutP = clamp(profile.timeoutProbability + difficulty * 0.12 - profile.confidence * 0.035, cfg.botTimeoutMin, cfg.botTimeoutMax);
+  const timeoutP = clamp(profile.timeoutProbability + difficulty * 0.12 - profile.confidence * 0.035 + pressure.timeoutBias, cfg.botTimeoutMin, cfg.botTimeoutMax);
   const participationP = clamp(profile.participationRate - difficulty * 0.16 + popularity * 0.06 + pressure.speedBias * 0.6, 0.18, 0.995);
   let cognitiveState: BotCognitiveState;
   if (knows) {
@@ -241,16 +241,23 @@ function timingForDecision(profile: BotProfile, state: BotCognitiveState, action
   };
 }
 
-function matchPressure(profile: BotProfile, context: BotQuestionContext): { speedBias: number; mistakeBias: number; knowledgeBias: number } {
+function matchPressure(profile: BotProfile, context: BotQuestionContext): { speedBias: number; mistakeBias: number; knowledgeBias: number; timeoutBias: number } {
   const botScore = context.botScore ?? 0;
   const oppScore = context.opponentScore ?? 0;
   const behind = Math.max(0, oppScore - botScore);
   const ahead = Math.max(0, botScore - oppScore);
   const aggression = profile.aggression;
+  // GERİ DÖNÜŞ MÜHENDİSLİĞİ (2026-08-27): önde olan bot YAVAŞ ve ÖZENSİZ oynar.
+  // Eskiden önde "yavaş ve temkinli"ydi (mistakeBias negatif) — önde daha az
+  // hata = daha çok 3-0, oysa duygusal hedef 3-2. 2-0'da hata+timeout tavan
+  // yapar, fark kapanınca kendiliğinden söner. Bant hafif (+%3-9) — hissedilir
+  // rubber-band değil, "rakip rehavete kapıldı" dozu.
+  const comeback = clamp(ahead * (0.030 + (1 - profile.pressureHandling) * 0.014), 0, 0.09);
   return {
     speedBias: clamp(behind * 0.035 * aggression - ahead * 0.018 * (1 - aggression) - (1 - profile.pressureHandling) * ahead * 0.012, -0.06, 0.08),
-    mistakeBias: clamp(behind * 0.018 * aggression - ahead * 0.010 + (1 - profile.pressureHandling) * (behind + ahead) * 0.010, -0.025, 0.052),
-    knowledgeBias: clamp((profile.answerConfidence - 0.5) * 0.035 - (1 - profile.pressureHandling) * ahead * 0.006, -0.035, 0.035),
+    mistakeBias: clamp(behind * 0.018 * aggression + comeback + (1 - profile.pressureHandling) * behind * 0.010, -0.025, 0.11),
+    knowledgeBias: clamp((profile.answerConfidence - 0.5) * 0.035 - ahead * 0.010 - (1 - profile.pressureHandling) * ahead * 0.006, -0.045, 0.035),
+    timeoutBias: clamp(comeback * 0.5, 0, 0.045),
   };
 }
 

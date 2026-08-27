@@ -81,6 +81,7 @@ import {
   CountdownScreen,
   PickTeamScreen,
   GuessScreen,
+  XoxScreen,
   ResultScreen,
   OpponentForfeitModal,
   LeaderboardModal,
@@ -1266,7 +1267,7 @@ function AppRoot() {
       scene = 'MATCH_FOUND';
     } else if (state.phase === 'countdown') {
       scene = 'COUNTDOWN';
-    } else if (state.phase === 'pick' || state.phase === 'reveal' || state.phase === 'guess') {
+    } else if (state.phase === 'pick' || state.phase === 'reveal' || state.phase === 'guess' || state.phase === 'xox') {
       scene = 'MATCH_ACTIVE';
     } else if (state.phase === 'result') {
       scene = 'RESULT';
@@ -2350,6 +2351,9 @@ function AppRoot() {
       case 'reveal':
       case 'guess':
         screen = <GuessScreen {...props} />;
+        break;
+      case 'xox':
+        screen = <XoxScreen {...props} />;
         break;
       case 'result':
         screen = <ResultScreen {...props} />;

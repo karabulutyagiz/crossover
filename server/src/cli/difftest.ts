@@ -87,12 +87,18 @@ async function measureDifficulty(diff: Difficulty): Promise<Sample[]> {
           continue;
         }
         // guess_phase: stay silent, time how long until the BOT buzzes.
-        c.drain('guess_locked'); // drop any stale lock buffered from a prior round
+        // (guess_locked protokolden kaldırıldı: botun doğru cevabı doğrudan
+        // `result`, yanlış cevabı `wrong_guess` olarak gelir — ikisi de "buzz".)
         const t0 = Date.now();
-        const locked = await c.wait((m) => m.type === 'guess_locked', 18_000);
-        if (locked && locked.type === 'guess_locked') {
+        const buzz = await c.wait((m) => m.type === 'result' || m.type === 'wrong_guess', 18_000);
+        if (buzz && buzz.type === 'result') {
+          samples.push({ delayMs: Date.now() - t0, correct: buzz.result.correct, reason: 'bot_answered' });
+          if (buzz.matchOver) break;
+          c.send({ type: 'ready' });
+        } else if (buzz && buzz.type === 'wrong_guess') {
           const delay = Date.now() - t0;
-          const res = await c.wait((m) => m.type === 'result', 8_000);
+          // Bot yanlış yazdı; biz sessiz kaldığımız için tur zaman aşımıyla biter.
+          const res = await c.wait((m) => m.type === 'result', 35_000);
           const correct = res && res.type === 'result' ? res.result.correct : null;
           samples.push({ delayMs: delay, correct, reason: 'bot_answered' });
           if (res && res.type === 'result' && res.matchOver) break;

@@ -6,6 +6,7 @@ import { PREMIUM_ROAD_PRICE } from './level.ts';
 import { emotePrice, isFreeEmote, isEquippableEmote, MAX_EQUIPPED, ALL_COLLECTIBLE_EMOTES } from './emotes.ts';
 import { avatarPrice, canUseAvatar, DEFAULT_AVATAR_ID, isAvatar, isFreeAvatar } from './avatars.ts';
 import { validateUsername } from './username.ts';
+import { recordDiamondLedger } from './diamondLedger.ts';
 import { BOT_GAIN_MAX, BOT_GAIN_MIN, BOT_LOSS_MAX, BOT_LOSS_MIN, clampFinalTrophyDelta, trophyDeltaExpectedScore } from '../matchmaking/trophyIntegrity.ts';
 // moderation.ts only pulls in the pool + logger, so this import cannot cycle back.
 import { isBlockedBetween, isIdentifiedAccount } from './moderation.ts';
@@ -82,7 +83,7 @@ export interface UserProfile {
   selectedAvatar: string;
   ownedAvatars: string[];
   ownedEmotes: string[];
-  equippedEmotes: string[]; // visual emotes in the match loadout (max 3)
+  equippedEmotes: string[]; // visual emotes in the match loadout (max MAX_EQUIPPED = 8, emotes.ts)
   usernameSet: boolean;
   socialPackUntil: string | null; // ISO date or null
   outageGiftAt: string | null;        // kesinti telafisi alındı damgası (ISO) ya da null
@@ -628,6 +629,17 @@ export async function applyMatchResult(
     const arenaReward = nextRewardedArenaIdx > prevRewardedArenaIdx
       ? ARENA_DIAMOND_REWARDS.slice(prevRewardedArenaIdx + 1, nextRewardedArenaIdx + 1).reduce((sum, n) => sum + n, 0)
       : 0;
+    if (arenaReward > 0) {
+      // highest_arena_rewarded tek yönlü yükseldiği için arena indeksi doğal
+      // idempotency anahtarıdır — aynı arena ödülü deftere iki kez düşemez.
+      // Bilinçli olarak pool'dan (tx DIŞI) yazılır: defter best-effort'tur ve
+      // başarısız bir INSERT settlement transaction'ını zehirlememelidir.
+      void recordDiamondLedger({
+        userId, amount: arenaReward, balanceAfter: profile.diamonds,
+        reason: 'ARENA_REWARD', referenceId: ARENAS[nextRewardedArenaIdx]?.name ?? String(nextRewardedArenaIdx),
+        idempotencyKey: `arena:${userId}:${nextRewardedArenaIdx}`,
+      });
+    }
     // GOAT arenasına İLK varış: goat çerçevesi kalıcı olarak hesaba yazılır
     // ("goat olunca goat çerçevesi vercez"). Sahiplik owned_frames'te sezondan
     // bağımsız yaşar; çerçevenin GÖRÜNÜMÜ istemcide kupayla evrilir (GOAT II-V).
@@ -665,6 +677,14 @@ export async function applyMatchResult(
             profile.spSkip = fresh.spSkip; profile.spExtratime = fresh.spExtratime;
             profile.spSecondchance = fresh.spSecondchance;
             streakReward = { streak: ms.streak, diamonds: ms.diamonds ?? 0, powerId: ms.powerId ?? null };
+            if (ms.diamonds) {
+              // Pool'dan (tx dışı) — bkz. arena ödülü notu.
+              void recordDiamondLedger({
+                userId, amount: ms.diamonds, balanceAfter: fresh.diamonds,
+                reason: 'STREAK_MILESTONE', referenceId: String(ms.streak),
+                idempotencyKey: opts?.matchId ? `streak:${opts.matchId}:${userId}:${ms.streak}` : undefined,
+              });
+            }
           }
         }
       }
@@ -807,7 +827,10 @@ export async function buyPower(
      RETURNING *`,
     [userId, price],
   );
-  if (rows[0]) return { ok: true, profile: toProfile(rows[0]) };
+  if (rows[0]) {
+    void recordDiamondLedger({ userId, amount: -price, balanceAfter: Number(rows[0].diamonds), reason: 'POWER_PURCHASE', referenceId: powerId });
+    return { ok: true, profile: toProfile(rows[0]) };
+  }
   const u = await getUser(userId);
   return { ok: false, error: `Yetersiz elmas (${u?.diamonds ?? 0}/${price})` };
 }
@@ -825,7 +848,10 @@ export async function buyPremiumRoad(
      RETURNING *`,
     [userId, PREMIUM_ROAD_PRICE],
   );
-  if (rows[0]) return { ok: true, profile: toProfile(rows[0]) };
+  if (rows[0]) {
+    void recordDiamondLedger({ userId, amount: -PREMIUM_ROAD_PRICE, balanceAfter: Number(rows[0].diamonds), reason: 'PREMIUM_ROAD_PURCHASE', referenceId: 'copass' });
+    return { ok: true, profile: toProfile(rows[0]) };
+  }
   const u = await getUser(userId);
   if (u?.premiumRoad) return { ok: false, error: 'CO Pass zaten açık' };
   return { ok: false, error: `Yetersiz elmas (${u?.diamonds ?? 0}/${PREMIUM_ROAD_PRICE})` };
@@ -866,6 +892,7 @@ export async function changeDisplayName(
       [userId, trimmed, COST],
     );
     if (!rows[0]) return { ok: false, error: 'Yetersiz elmas' };
+    void recordDiamondLedger({ userId, amount: -COST, balanceAfter: Number(rows[0].diamonds), reason: 'USERNAME_CHANGE' });
     return { ok: true, profile: toProfile(rows[0]) };
   } catch (err) {
     // Yarış durumu: aynı ada eşzamanlı iki istek — unique index ihlali (23505).
@@ -952,6 +979,7 @@ export async function grantAdReward(
   // Admin paneli sayaçları: kalıcı izleme günlüğü. Günlük kayıt hatası ödülü
   // asla engellememeli — bilinçli fire-and-forget.
   pool.query(`INSERT INTO ad_rewards (user_id) VALUES ($1)`, [userId]).catch(() => {});
+  void recordDiamondLedger({ userId, amount: AD_REWARD, balanceAfter: Number(rows[0].diamonds), reason: 'AD_REWARD' });
   return { ok: true, profile: toProfile(rows[0]), granted: AD_REWARD };
 }
 
@@ -980,6 +1008,7 @@ export async function buyEmote(
     [userId, price, emoteId],
   );
   if (!rows[0]) return { ok: false, error: 'Satın alma başarısız' };
+  void recordDiamondLedger({ userId, amount: -price, balanceAfter: Number(rows[0].diamonds), reason: 'EMOTE_PURCHASE', referenceId: emoteId, idempotencyKey: `emote:${userId}:${emoteId}` });
   return { ok: true, profile: toProfile(rows[0]) };
 }
 
@@ -1029,6 +1058,7 @@ export async function buyAvatar(
     [userId, price, avatarId],
   );
   if (!rows[0]) return { ok: false, error: 'Satın alma başarısız' };
+  void recordDiamondLedger({ userId, amount: -price, balanceAfter: Number(rows[0].diamonds), reason: 'AVATAR_PURCHASE', referenceId: avatarId, idempotencyKey: `avatar:${userId}:${avatarId}` });
   return { ok: true, profile: toProfile(rows[0]) };
 }
 
@@ -1068,7 +1098,9 @@ export async function getLeaderboard(limit = 50, viewerUserId?: string): Promise
     losses: Number(r.losses),
     arena: getArena(r.trophies),
     avatar: r.avatar ?? null,
-    frame: r.selected_frame ?? null,
+    // toProfile ile aynı öncelik: mağaza çerçevesi (equipped_frame_id) varsa o,
+    // yoksa seviye çerçevesi — eski kayıtlarda selected_frame güncel olmayabilir.
+    frame: r.equipped_frame_id ?? r.selected_frame ?? null,
   }));
   const rankedUsers = entries
     .sort((a, b) => b.trophies - a.trophies || b.wins - a.wins || a.displayName.localeCompare(b.displayName))
@@ -1139,7 +1171,7 @@ export async function listFriends(userId: string): Promise<Omit<FriendView, 'onl
     displayName: r.display_name,
     selectedAvatar: r.selected_avatar ?? DEFAULT_AVATAR_ID,
     avatar: r.avatar ?? r.selected_avatar ?? null,
-    frame: r.selected_frame ?? null,
+    frame: r.equipped_frame_id ?? r.selected_frame ?? null,
     trophies: r.trophies,
     arena: getArena(r.trophies),
     lastSeen: r.last_seen ?? null,

@@ -9,12 +9,12 @@ export interface ClubRef {
   logoUrl: string | null;
 }
 
-export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
+export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox';
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
 // Game mode: determines what each player picks and how the guess is verified.
-export type GameMode = 'team-team' | 'country-team' | 'letter-team' | 'player-player';
+export type GameMode = 'team-team' | 'country-team' | 'letter-team' | 'player-player' | 'xox';
 
 // What a player should pick during the pick phase.
 export type PickRole = 'team' | 'country' | 'letter' | 'player';
@@ -220,7 +220,11 @@ export type ClientMsg =
   // Maç dışı: hangi özel güçle maça çıkılacağını seç (null = otomatik).
   | { type: 'equip_special_power'; powerId: string | null }
   // Mağaza: elmasla özel güç satın al (fiyat sunucu kataloğundan).
-  | { type: 'buy_special_power'; powerId: string; qty?: number };
+  | { type: 'buy_special_power'; powerId: string; qty?: number }
+  // ---- Futbol XOX (Tiki-Taka-Toe) ----
+  // Sıra sende + hücre açıkken: hücre (0-8, satır-major) + futbolcu adı.
+  // Ani ölümde (suddenDeath) cell = suddenCell olmalı; iki taraf da yarışır.
+  | { type: 'xox_submit'; cell: number; text: string };
 
 // ---- Server -> Client ----
 export interface RoundResult {
@@ -251,7 +255,6 @@ export type ServerMsg =
   | { type: 'team_picked'; playerId: string }
   | { type: 'reveal_teams'; teamA: ClubRef; teamB: ClubRef; mode?: GameMode; country?: string; letter?: string }
   | { type: 'guess_phase'; endsAt: number }
-  | { type: 'guess_locked'; byId: string; byName: string }
   // Yeni kural (wrongopen odaları): yanlış cevap turu YAKMAZ — yazan susturulur,
   // rakibin kilidi açılır. wrongCount o oyuncunun maçtaki toplam yanlış sayısıdır.
   // retryAt: yanlış yazana tanınan İKİNCİ HAK penceresinin açıldığı an (epoch ms).
@@ -280,6 +283,12 @@ export type ServerMsg =
   | { type: 'special_power_purchased'; powerId: string; profile: ProfileView }
   // Galibiyet serisi kilometre taşı ödülü (maç sonu, trophy_update'ten sonra).
   | { type: 'streak_reward'; streak: number; diamonds: number; powerId: string | null; profile: ProfileView }
+  // ---- Futbol XOX (Tiki-Taka-Toe) — sunucu-otoriter 3×3 durum ----
+  // Her hamle/zaman aşımı sonrası TAM durum yayınlanır: iki istemci aynı
+  // kaynaktan çizer (desync imkânsız). lastAction sunum katmanı içindir.
+  | { type: 'xox_state'; rows: ClubRef[]; cols: ClubRef[]; cells: { owner: string | null; playerName: string | null; playerImageUrl: string | null }[]; turnId: string | null; turnEndsAt: number; turnNumber: number; turnCap: number; suddenDeath: boolean; suddenCell: number | null; lastAction?: { kind: 'claim' | 'wrong' | 'timeout'; byId: string; byName: string; cell?: number; guess?: string; playerName?: string } }
+  // Maç bitti: line = kazanan 3'lü (hücre indeksleri) ya da null (çoğunluk/tie-break).
+  | { type: 'xox_over'; winnerId: string | null; winnerName: string | null; line: number[] | null; reason: 'line' | 'majority' | 'sudden_death' | 'tiebreak' }
   // matchOver: a player reached `target` wins → the match is over (offer rematch).
   | {
       type: 'result';
@@ -309,7 +318,7 @@ export type ServerMsg =
   | { type: 'emote'; fromId: string; emoteId: string } // a player in the room sent an emote
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string } // store purchase succeeded
   | { type: 'avatar_purchased'; profile: ProfileView; avatarId: string }
-  | { type: 'store_catalog'; catalog: { version: number; serverTime: string; dailyResetAt: string; weeklyResetAt: string; items: { id: string; type: string; name: string; description: string; rarity: string; diamondPrice: number; isLimited?: boolean; availableFrom?: string; availableUntil?: string }[]; featured: string[]; specialPowers?: { id: string; rarity: string; price: number }[] } }
+  | { type: 'store_catalog'; catalog: { version: number; serverTime: string; dailyResetAt: string; weeklyResetAt: string; items: { id: string; type: string; name: string; description: string; rarity: string; diamondPrice: number; isLimited?: boolean; availableFrom?: string; availableUntil?: string }[]; featured: string[]; specialPowers?: { id: string; rarity: string; price: number }[]; vaultItemId?: string; vaultUntil?: string; firstDiamondDoubleAvailable?: boolean } }
   | { type: 'cosmetic_purchased'; profile: ProfileView; itemId: string; alreadyOwned?: boolean }
   | { type: 'cosmetic_equipped'; profile: ProfileView; itemId: string | null; cosmeticType: string }
   | { type: 'diamonds_granted'; profile: ProfileView; granted: number } // IAP validated → diamonds added

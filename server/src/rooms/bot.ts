@@ -131,6 +131,14 @@ export class BotPlayer implements Transport {
   private spFired = false;
   private spTimer: NodeJS.Timeout | null = null;
   private spFrozenUntil = 0;
+  // ---- Futbol XOX: hamle zamanlayıcısı + tur kilidi ----
+  private xoxTimer: NodeJS.Timeout | null = null;
+  private xoxActedTurn = 0;      // ayni tura iki hamle planlama
+  private xoxSuddenTried = false;
+  // İlk maç tiyatrosu: bot bir kez kolay soruda görünür yanlış yapar (bir kez, asla tekrar).
+  private theaterMistakeDone = false;
+  // Son biten maçı bot mu kazandı? (rövanş kabul olasılığı için)
+  private lastMatchWonByBot: boolean | null = null;
 
   constructor(opts: BotOptions = {}) {
     this.exposeBotToClient = opts.exposeBotToClient ?? true;
@@ -215,9 +223,8 @@ export class BotPlayer implements Transport {
         this.scheduleGuess();
         this.maybeUseSpecialPower();
         break;
-      case 'guess_locked':
-        // Human answer timing must never feed back into bot speed.
-        break;
+      // (guess_locked protokolden kaldırıldı — sunucu wrongopen'dan beri hiç
+      // göndermiyordu. İlke baki: insan cevap zamanlaması bot hızını beslemez.)
       case 'wrong_guess':
         if (msg.byId === this.id) this.scheduleRetryAfterOwnWrong(msg.retryAt);
         break;
@@ -247,6 +254,16 @@ export class BotPlayer implements Transport {
           const serial = ++this.actionSerial;
           this.timer = setTimeout(() => { void this.submitScheduledGuess(serial); }, Math.max(300, this.spFrozenUntil - Date.now()) + 500 + Math.floor(Math.random() * 900));
         }
+        break;
+      }
+      case 'xox_state': {
+        this.handleXoxState(msg as Extract<ServerMsg, { type: 'xox_state' }>);
+        break;
+      }
+      case 'xox_over': {
+        if (this.xoxTimer) { clearTimeout(this.xoxTimer); this.xoxTimer = null; }
+        this.xoxActedTurn = 0;
+        this.xoxSuddenTried = false;
         break;
       }
       case 'rematch_requested':
@@ -317,13 +334,30 @@ export class BotPlayer implements Transport {
     if (msg.result.answeredById === this.id && msg.result.correct) this.maybeEmote(['smile', 'ok', 'gg'], 0.72 * emoteScale, [500, 1600], 'celebrate');
     else if (msg.result.answeredById && msg.result.answeredById !== this.id && msg.result.correct) this.maybeEmote(me.score + 1 < opp.score ? ['angry', 'cry'] : ['gg', 'congrats'], 0.46 * emoteScale, [700, 1900], me.score + 1 < opp.score ? 'self_deprecating' : 'supportive');
     else if (msg.result.reason === 'passed') this.maybeEmote(['gg', 'luck'], 0.26 * emoteScale, [700, 1800], 'supportive');
-    if (msg.matchOver) this.maybeEmote(me.score > opp.score ? ['gg', 'smile', 'ok'] : ['gg', 'cry'], 0.88 * emoteScale, [900, 2400], me.score > opp.score ? 'celebrate' : 'self_deprecating');
-    // Rövanş için taze güç planı — oda startMatch'te planı yeniden okur.
-    if (msg.matchOver) { this.spFired = false; this.rollSpecialPowerPlan(); }
+    if (msg.matchOver) {
+      this.lastMatchWonByBot = me.score > opp.score;
+      if (me.score > opp.score) {
+        // Kazanan bot alçakgönüllü: çoğunlukla sessiz, en fazla kısa bir 'gg' —
+        // kaybetmiş oyuncuya kutlama şovu yapılmaz.
+        this.maybeEmote(['gg'], 0.30 * emoteScale, [1100, 2400], 'supportive');
+      } else {
+        // POZİTİF KAPANIŞ (2026-08-27): oyuncu kazandıysa bot yüksek olasılıkla
+        // tebrik eder — kazanma anını sosyal olarak da ödüllendirir. Sabit 0.85:
+        // kişilik gürültüsü değil, tasarlanmış an.
+        this.maybeEmote(['gg', 'congrats'], 0.85, [900, 2400], 'supportive');
+      }
+      // Rövanş için taze güç planı — oda startMatch'te planı yeniden okur.
+      this.spFired = false;
+      this.rollSpecialPowerPlan();
+    }
   }
 
   private respondToRematch(): void {
-    const acceptP = this.profile?.rematchAcceptance ?? 0.58;
+    const base = this.profile?.rematchAcceptance ?? 0.58;
+    // KAYBEDEN REDDEDİLMEZ (2026-08-27): insan maçı kaybettiyse rövanş isteği
+    // neredeyse hep kabul edilir — reddedilmek terk edilmişlik hissi verir;
+    // rövanş, kaybedeni oturumda tutan en ucuz mekanizmadır.
+    const acceptP = this.lastMatchWonByBot === true ? Math.max(base, 0.92) : base;
     const accept = Math.random() < acceptP;
     const delay = accept
       ? 850 + Math.floor(Math.random() * 3600)
@@ -481,6 +515,20 @@ export class BotPlayer implements Transport {
         }
         return;
       }
+      // İLK MAÇ TİYATROSU (2026-08-27): hesabın ilk maçında bot BİR KEZ, kolay
+      // bir soruda görünür bir yanlış yapar ve o tur düzeltmez — "bu rakip
+      // yenilebilir ve insan" hissi ilk maç retention'ının tuğlasıdır.
+      // Ülke-takım modunda uygulanmaz (yanlış aday doğrulaması reddeder).
+      if (
+        this.profile.difficultyDirector?.firstMatchShowcase &&
+        !this.theaterMistakeDone &&
+        this.questionEstimate.difficultyScore < 0.45 &&
+        this.botDecision.knowsAnswer && this.botDecision.willAnswer && !this.botDecision.shouldMistake &&
+        wrongCandidates.length > 0
+      ) {
+        this.theaterMistakeDone = true;
+        this.botDecision = { ...this.botDecision, shouldMistake: true, plannedAction: 'WRONG_ATTEMPT_THEN_CONTINUE', retryPlan: undefined };
+      }
       this.answer = this.botDecision.willAnswer && !this.botDecision.shouldMistake ? (pick(this.rng, validNames) ?? null) : null;
       this.wrongGuess = this.botDecision.willAnswer && this.botDecision.shouldMistake ? pickWrongName(this.rng, wrongCandidates, validNames) : null;
       return;
@@ -635,6 +683,94 @@ export class BotPlayer implements Transport {
     return pool.length ? pool[Math.floor(Math.random() * pool.length)]! : null;
   }
 
+  // ── FUTBOL XOX botu ──────────────────────────────────────────────────────
+  // Klasik XOX taktiği (kazan > blokla > merkez > köşe) + bilgi motoru:
+  // seçtiği hücrenin cevabını zorluk/şöhrete göre BİLEBİLİR ya da bilemez —
+  // bilemezse ya makul bir yanlış söyler ya da süreyi düşünerek harcar.
+  private handleXoxState(msg: Extract<ServerMsg, { type: 'xox_state' }>): void {
+    if (this.xoxTimer) { clearTimeout(this.xoxTimer); this.xoxTimer = null; }
+    if (msg.suddenDeath && msg.suddenCell != null) {
+      if (this.xoxSuddenTried) return;
+      this.xoxSuddenTried = true;
+      const delay = 2600 + Math.floor(Math.random() * 5200);
+      this.xoxTimer = setTimeout(() => { void this.playXoxCell(msg, msg.suddenCell!, true); }, delay);
+      return;
+    }
+    if (msg.turnId !== this.id) return;
+    if (msg.turnNumber === this.xoxActedTurn) return;
+    this.xoxActedTurn = msg.turnNumber;
+    const cell = this.chooseXoxCell(msg);
+    if (cell == null) return;
+    const [minD, maxD] = DIFFICULTY[this.difficulty].delayMs;
+    // Tur 20 sn — düşünme süresi bandın içinde ama tavana çarpmadan (yazma payı).
+    const delay = clamp(minD * 0.45 + Math.random() * (maxD * 0.45), 2200, 14_500);
+    this.xoxTimer = setTimeout(() => { void this.playXoxCell(msg, cell, false); }, delay);
+  }
+
+  /** Kazanan hücre > rakibi bloklayan hücre > merkez > köşe > kalan. Eşit
+   * adaylar arasında cevabı BOL hücre tercih edilir (bot doğal oynar). */
+  private chooseXoxCell(msg: Extract<ServerMsg, { type: 'xox_state' }>): number | null {
+    const owners = msg.cells.map((c) => c.owner);
+    const open = owners.map((o, i) => (o == null ? i : -1)).filter((i) => i >= 0);
+    if (!open.length) return null;
+    const oppId = owners.find((o) => o != null && o !== this.id) ?? null;
+    const LINES = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
+    const completing = (who: string | null): number | null => {
+      if (!who) return null;
+      for (const line of LINES) {
+        const mine = line.filter((i) => owners[i] === who);
+        const empty = line.filter((i) => owners[i] == null);
+        if (mine.length === 2 && empty.length === 1) return empty[0]!;
+      }
+      return null;
+    };
+    const win = completing(this.id);
+    if (win != null) return win;
+    const block = completing(oppId);
+    // Blok her zaman değil (%85) — insan da bazen kaçırır.
+    if (block != null && Math.random() < 0.85) return block;
+    const prefer = [4, 0, 2, 6, 8, 1, 3, 5, 7].filter((i) => open.includes(i));
+    // İlk iki tercih arasında cevabı bol olana meylet.
+    if (prefer.length >= 2 && (msg as { lastAction?: unknown })) {
+      const a = prefer[0]!, b = prefer[1]!;
+      const ca = (msg as unknown as { counts?: number[] }).counts?.[a];
+      const cb = (msg as unknown as { counts?: number[] }).counts?.[b];
+      if (typeof ca === 'number' && typeof cb === 'number' && cb > ca * 1.5) return b;
+    }
+    return prefer[0] ?? open[0]!;
+  }
+
+  private async playXoxCell(msg: Extract<ServerMsg, { type: 'xox_state' }>, cell: number, sudden: boolean): Promise<void> {
+    if (!this.room) return;
+    const row = msg.rows[Math.floor(cell / 3)];
+    const col = msg.cols[cell % 3];
+    if (!row || !col) return;
+    const ranked = await botCommonPlayersRanked(row.id, col.id, 8).catch(() => [] as { name: string; fame: number }[]);
+    const D = DIFFICULTY[this.difficulty];
+    // Bilme olasılığı: zorluk tabanı + hücre ne kadar "ünlü"yse o kadar bilinir.
+    const famous = ranked.length ? clamp((ranked[0]!.fame - 30) / 200, 0, 1) : 0;
+    const abundance = clamp(ranked.length / 6, 0, 1);
+    let knowP = clamp(D.fameBaseTeam + famous * 0.34 + abundance * 0.18, 0.06, 0.94);
+    if (sudden) knowP = clamp(knowP + 0.10, 0.06, 0.96); // altın hücrede herkes asılır
+    const knows = ranked.length > 0 && Math.random() < knowP;
+    if (knows) {
+      // Ünlüler önde ama tekdüze değil: ilk 3'ten şöhret-ağırlıklı seç.
+      const top = ranked.slice(0, 3);
+      const pickIdx = Math.random() < 0.62 ? 0 : Math.floor(Math.random() * top.length);
+      const text = this.humanizeKnownAnswer(top[pickIdx]!.name);
+      if (text) this.act({ type: 'xox_submit', cell, text });
+      return;
+    }
+    // Bilmiyor: %55 makul yanlış (sıra devri göze alınır — insan davranışı),
+    // %45 süreyi düşünerek harcar (timeout sırayı zaten devreder).
+    if (Math.random() < 0.55) {
+      const wrongs = await plausibleWrongPlayersTeamTeam(row.id, col.id, 10).catch(() => [] as string[]);
+      const w = wrongs.length ? wrongs[Math.floor(Math.random() * wrongs.length)]! : null;
+      const text = w ? this.humanizeKnownAnswer(w) : null;
+      if (text) this.act({ type: 'xox_submit', cell, text });
+    }
+  }
+
   /** Güç ateşleme kararı: tur başında, karar motorunun ürettiği bağlama göre
    * DOĞAL bir anda. Oda 1-güç limitini ve geçerliliği zaten uygular — bot
    * reddedilirse ısrar etmez (spFired kalır, o maç bir daha denemez). */
@@ -683,6 +819,7 @@ export class BotPlayer implements Transport {
   private reset(): void {
     this.clearTimer();
     if (this.spTimer) { clearTimeout(this.spTimer); this.spTimer = null; }
+    if (this.xoxTimer) { clearTimeout(this.xoxTimer); this.xoxTimer = null; }
     this.spFrozenUntil = 0;
     this.teams = null;
     this.answer = null;

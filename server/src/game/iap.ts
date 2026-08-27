@@ -26,6 +26,17 @@ const DIAMOND_PRODUCTS: Record<string, number> = {
   'com.crossover.diamonds.50000': 50000,
 };
 
+/** İLK ALIMA 2x rozeti: hesap daha önce hiç elmas paketi almadıysa true.
+ * Mağaza kataloğuyla istemciye gider; gerçek katlama satın alma anında
+ * verifyApplePurchase içinde (aynı koşulla) uygulanır. */
+export async function firstDiamondDoubleAvailable(userId: string): Promise<boolean> {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM processed_transactions WHERE user_id = $1 AND product_id LIKE 'com.crossover.diamonds.%' LIMIT 1`,
+    [userId],
+  );
+  return rows.length === 0;
+}
+
 // Social Pack entitlements are product-based: weekly = exact 7 x 24 hours,
 // monthly = exact 1 calendar month from the purchase timestamp.
 const SOCIAL_PACK_PRODUCTS = new Set<string>([
@@ -190,15 +201,31 @@ export async function verifyApplePurchase(
       if (ins.rows[0]?.inserted) {
         const before = await client.query<{ diamonds: number }>(`SELECT diamonds FROM users WHERE id = $1 FOR UPDATE`, [userId]);
         const balanceBefore = Number(before.rows[0]?.diamonds ?? 0);
-        const balanceAfter = balanceBefore + amount;
+        // İLK ALIMA 2x (2026-08-27): hesabın İLK elmas paketi çift yatar —
+        // klasik ilk-ödeme dönüştürücüsü. Kendi satırımız az önce girildiği
+        // için transaction_id hariç tutulur; kullanıcı satırı FOR UPDATE ile
+        // kilitli olduğundan eşzamanlı iki "ilk alım" yarışamaz.
+        const prior = await client.query(
+          `SELECT 1 FROM processed_transactions
+            WHERE user_id = $1 AND transaction_id <> $2 AND product_id LIKE 'com.crossover.diamonds.%'
+            LIMIT 1`,
+          [userId, tx.transactionId],
+        );
+        const doubled = prior.rows.length === 0;
+        const credit = doubled ? amount * 2 : amount;
+        const balanceAfter = balanceBefore + credit;
         await client.query(`UPDATE users SET diamonds = $2 WHERE id = $1`, [userId, balanceAfter]);
+        if (doubled) {
+          // Kayıt gerçeği yansıtsın: bu işlemle fiilen yatan elmas.
+          await client.query(`UPDATE processed_transactions SET diamonds = $2 WHERE transaction_id = $1`, [tx.transactionId, credit]);
+        }
         await client.query(
           `INSERT INTO diamond_ledger (idempotency_key, user_id, amount, balance_before, balance_after, reason, reference_id, metadata)
            VALUES ($1, $2, $3, $4, $5, 'IAP_PURCHASE', $6, $7::jsonb)
            ON CONFLICT (idempotency_key) DO NOTHING`,
-          [`iap:${tx.transactionId}`, userId, amount, balanceBefore, balanceAfter, pid, JSON.stringify({ environment, transactionId: tx.transactionId })],
+          [`iap:${tx.transactionId}`, userId, credit, balanceBefore, balanceAfter, pid, JSON.stringify({ environment, transactionId: tx.transactionId, firstPurchaseDouble: doubled })],
         ).catch((err) => { if ((err as { code?: string }).code !== '42P01') throw err; });
-        granted += amount;
+        granted += credit;
       } else {
         await client.query(
           `UPDATE processed_transactions SET

@@ -100,10 +100,6 @@ ws.on('message', (data) => {
       }
       break;
 
-    case 'guess_locked':
-      console.log(`🔒 ${msg.byName} answered first.`);
-      break;
-
     case 'result': {
       const r = msg.result;
       console.log(`📣 Result: ${r.correct ? '✅' : '❌'} by ${r.answeredByName ?? '(timeout)'} — "${r.guess}"`);

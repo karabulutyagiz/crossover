@@ -17,11 +17,11 @@ export interface SpellInfo {
 
 export type VerifyReason = 'both' | 'not_both' | 'no_match' | 'timeout' | 'no_common' | 'same_team' | 'passed' | 'all_wrong' | 'power_skip';
 
-export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
+export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox';
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
-export type GameMode = 'team-team' | 'country-team' | 'letter-team' | 'player-player';
+export type GameMode = 'team-team' | 'country-team' | 'letter-team' | 'player-player' | 'xox';
 
 export type PickRole = 'team' | 'country' | 'letter' | 'player';
 
@@ -156,6 +156,12 @@ export interface StoreCatalogView {
   featured: string[];
   // Maç içi Özel Güç fiyat/rarity kataloğu (sunucu config'i — istemci hardcode etmez).
   specialPowers?: { id: string; rarity: string; price: number }[];
+  // KASA: bu haftanın limitli mythic düşüşü + vitrinden kalkacağı an (geri sayım).
+  // Mythic'ler yalnız kasadan çıktıkları hafta satın alınabilir (sunucu uygular).
+  vaultItemId?: string;
+  vaultUntil?: string;
+  // Bu kullanıcı ilk elmas paketinde 2x hakkını henüz kullanmadı (rozet gösterilir).
+  firstDiamondDoubleAvailable?: boolean;
 }
 
 export interface FriendView {
@@ -298,7 +304,11 @@ export type ClientMsg =
   // ---- Maç içi Özel Güçler (server-authoritative; maç başına TEK kullanım) ----
   | { type: 'use_special_power'; powerId: string; requestId: string }
   | { type: 'equip_special_power'; powerId: string | null }
-  | { type: 'buy_special_power'; powerId: string; qty?: number };
+  | { type: 'buy_special_power'; powerId: string; qty?: number }
+  // ---- Futbol XOX (Tiki-Taka-Toe) ----
+  // Sıra sende + hücre açıkken: hücre (0-8, satır-major) + futbolcu adı.
+  // Ani ölümde (suddenDeath) cell = suddenCell olmalı; iki taraf da yarışır.
+  | { type: 'xox_submit'; cell: number; text: string };
 
 export type ServerMsg =
   | { type: 'room_state'; room: RoomView }
@@ -309,7 +319,6 @@ export type ServerMsg =
   | { type: 'team_picked'; playerId: string }
   | { type: 'reveal_teams'; teamA: ClubRef; teamB: ClubRef; mode?: GameMode; country?: string; letter?: string }
   | { type: 'guess_phase'; endsAt: number }
-  | { type: 'guess_locked'; byId: string; byName: string }
   // wrongopen kuralı: yanlış cevap turu yakmaz — yazan susturulur, rakip devam eder.
   // wrongCount oyuncunun maçtaki toplam yanlış sayısıdır; maç sonucunu tek başına belirlemez.
   // retryAt: yanlış yazana tanınan İKİNCİ HAK penceresinin açıldığı an (epoch ms).
@@ -327,6 +336,12 @@ export type ServerMsg =
   | { type: 'special_power_equipped'; powerId: string | null; profile: ProfileView }
   | { type: 'special_power_purchased'; powerId: string; profile: ProfileView }
   | { type: 'streak_reward'; streak: number; diamonds: number; powerId: string | null; profile: ProfileView }
+  // ---- Futbol XOX (Tiki-Taka-Toe) — sunucu-otoriter 3×3 durum ----
+  // Her hamle/zaman aşımı sonrası TAM durum yayınlanır: iki istemci aynı
+  // kaynaktan çizer (desync imkânsız). lastAction sunum katmanı içindir.
+  | { type: 'xox_state'; rows: ClubRef[]; cols: ClubRef[]; cells: { owner: string | null; playerName: string | null; playerImageUrl: string | null }[]; turnId: string | null; turnEndsAt: number; turnNumber: number; turnCap: number; suddenDeath: boolean; suddenCell: number | null; lastAction?: { kind: 'claim' | 'wrong' | 'timeout'; byId: string; byName: string; cell?: number; guess?: string; playerName?: string } }
+  // Maç bitti: line = kazanan 3'lü (hücre indeksleri) ya da null (çoğunluk/tie-break).
+  | { type: 'xox_over'; winnerId: string | null; winnerName: string | null; line: number[] | null; reason: 'line' | 'majority' | 'sudden_death' | 'tiebreak' }
   | {
       type: 'result';
       result: RoundResult;

@@ -33,7 +33,7 @@ import type {
   StoreCatalogView,
 } from './protocol';
 
-export type Phase = 'home' | 'arenas' | 'leaderboard' | 'matchHistory' | 'profile' | 'searching' | 'matchup' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result';
+export type Phase = 'home' | 'arenas' | 'leaderboard' | 'matchHistory' | 'profile' | 'searching' | 'matchup' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox';
 export type StoreCatalogStatus = 'idle' | 'loading' | 'success' | 'empty' | 'error';
 
 const STORE_CATALOG_TIMEOUT_MS = 10000;
@@ -198,6 +198,9 @@ export interface GameState {
   spSkipBy: 'you' | 'opp' | null;
   // 🔥 Seri kilometre taşı ödülü (maç sonu akışında gösterilir).
   streakReward: { streak: number; diamonds: number; powerId: string | null; seq: number } | null;
+  // ---- Futbol XOX (sunucu-otoriter tahta; istemci yalnız çizer) ----
+  xox: Extract<ServerMsg, { type: 'xox_state' }> | null;
+  xoxOver: { winnerId: string | null; winnerName: string | null; line: number[] | null; reason: string } | null;
 }
 
 // --- Messaging helpers: stable ordering + de-dupe, so live pushes and (possibly
@@ -313,6 +316,8 @@ export const initialState: GameState = {
   spDenied: null,
   spSkipBy: null,
   streakReward: null,
+  xox: null,
+  xoxOver: null,
   storeCatalogError: null,
 };
 
@@ -740,6 +745,8 @@ function reducer(state: GameState, action: Action): GameState {
         teams: null,
         locked: null,
         // Tur/maç-kapsamlı güç kalıntıları yeni turda taşınmaz (spec §25).
+        xox: null,
+        xoxOver: null,
         spReveal: null,
         spSkipBy: null,
         spFrozenUntil: null,
@@ -771,12 +778,8 @@ function reducer(state: GameState, action: Action): GameState {
     case 'guess_phase':
       // Yeni tur: tur-kapsamlı güç görselleri (freeze/reveal/skip nedeni) temizlenir.
       return { ...state, phase: 'guess', guessEndsAt: action.endsAt, locked: null, oppWrong: null, youBurned: false, youRetryAt: null, tooLateSeq: 0, spFrozenUntil: null, spReveal: null, spSkipBy: null };
-    case 'guess_locked':
-      // Rakibin yazması bizim input'u kapatmaz. Eski backend/istemci akışından
-      // gelebilen guess_locked yalnız kendi gönderimimizi bekletmek için anlamlı.
-      return action.byId === state.room?.youId
-        ? { ...state, locked: { byId: action.byId, byName: action.byName } }
-        : state;
+    // (guess_locked protokolden kaldırıldı — wrongopen'dan beri sunucu hiç
+    // göndermiyordu; `locked` alanı yalnız temizlenen ölü durumdu.)
     case 'wrong_guess': {
       // Yanlış yazan turu yakmadı: kilit kalkar. retryAt doluysa yazanın 5 sn
       // ceza sonrası BİR hakkı daha var (yanmadı); yoksa bu tur susturuldu.
@@ -800,6 +803,15 @@ function reducer(state: GameState, action: Action): GameState {
         : { ...state, youBurned: true };
     case 'pass_locked':
       return { ...state, passedBy: state.passedBy.includes(action.byId) ? state.passedBy : [...state.passedBy, action.byId] };
+    case 'xox_state': {
+      const a = action as Extract<ServerMsg, { type: 'xox_state' }>;
+      // Tam durum her olayda gelir — desync imkânsız; faz 'xox'a oturur.
+      return { ...state, phase: 'xox', xox: a, xoxOver: state.matchOver ? state.xoxOver : null, result: null };
+    }
+    case 'xox_over': {
+      const a = action as Extract<ServerMsg, { type: 'xox_over' }>;
+      return { ...state, xoxOver: { winnerId: a.winnerId, winnerName: a.winnerName, line: a.line, reason: a.reason }, matchOver: true, matchWinnerId: a.winnerId, matchWinnerName: a.winnerName, rematchState: 'idle', rematchByName: null };
+    }
     case 'special_power_state': {
       const a = action as Extract<ServerMsg, { type: 'special_power_state' }>;
       return {
@@ -1052,7 +1064,7 @@ export function useCrossover() {
   const withCaps = (msg: ClientMsg): ClientMsg =>
     msg.type === 'register' || msg.type === 'guest' || msg.type === 'auth' || msg.type === 'resume_room'
     || msg.type === 'find_match' || msg.type === 'create_room' || msg.type === 'create_solo' || msg.type === 'join_room'
-      ? ({ ...msg, caps: ['wrongopen', 'wrongretry', 'specialpowers'] } as ClientMsg)
+      ? ({ ...msg, caps: ['wrongopen', 'wrongretry', 'specialpowers', 'xox'] } as ClientMsg)
       : msg;
 
   const connectAndSend = useCallback((first: ClientMsg, opts?: { silent?: boolean }) => {
@@ -1604,6 +1616,10 @@ export function useCrossover() {
         send({ type: 'buy_special_power', powerId, qty });
       },
       clearStreakReward: () => dispatch({ type: '_clear_streak_reward' } as any),
+      xoxSubmit: (cell: number, text: string) => {
+        track('xox_submit', { cell });
+        send({ type: 'xox_submit', cell, text });
+      },
       clearEmote: (playerId: string) => dispatch({ type: '_clear_emote', playerId }),
       buyEmote: (emoteId: string) => send({ type: 'buy_emote', emoteId }),
       equipEmotes: (emoteIds: string[]) => send({ type: 'equip_emotes', emoteIds }),

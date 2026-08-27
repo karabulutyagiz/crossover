@@ -38,6 +38,13 @@ export interface StoreCatalogView {
   featured: string[];
   // Maç içi Özel Güç fiyat/rarity kataloğu — istemci fiyat hardcode etmez.
   specialPowers?: { id: string; rarity: string; price: number }[];
+  /** KASA (2026-08-27): bu haftanın limitli mythic düşüşü. Mythic'ler YALNIZ
+   * kasadan çıktıkları hafta satın alınabilir (buyCosmetic sunucuda uygular). */
+  vaultItemId?: string;
+  /** Kasa ürününün vitrinden kalkacağı an (haftalık reset) — istemci geri sayımı. */
+  vaultUntil?: string;
+  /** Bu kullanıcı ilk elmas paketinde 2x hakkını henüz kullanmadı (ws katmanı doldurur). */
+  firstDiamondDoubleAvailable?: boolean;
 }
 
 export const STORE_CATALOG_VERSION = 1;
@@ -120,16 +127,35 @@ export function storeWeek(now = new Date()): { weekIndex: number; resetAt: Date 
 }
 
 /**
+ * KASA (2026-08-27): mythic ürünler kalıcı kataloğun parçası DEĞİL — yalnız
+ * kasadan çıktıkları hafta satın alınabilirler. Her hafta deterministik olarak
+ * TEK mythic vitrine düşer ("bu hafta kasadan çıktı, Pazar gece dönüyor").
+ * Elmas talebinin kıtlık ayağı budur: gidince sözünü tutar, ~6 hafta dönmez.
+ */
+const VAULT_POOL = COSMETIC_ITEMS.filter((item) => item.rarity === 'mythic');
+
+export function vaultItemOfWeek(now = new Date()): CosmeticItem {
+  const { weekIndex } = storeWeek(now);
+  return VAULT_POOL[weekIndex % VAULT_POOL.length]!;
+}
+
+export function isVaultCosmetic(item: CosmeticItem): boolean {
+  return item.rarity === 'mythic';
+}
+
+/**
  * Bu haftanın vitrini — mağazada FİİLEN satılan kozmetikler.
  * TEK KAYNAK: Günlük Fırsat da buradan seçer. Vitrin dışından bir ürün
  * "fırsat" diye gösterilirse kullanıcı mağazada bulamıyor (Altın Çerçeve
  * şikâyeti, 2026-08-27) — bu yüzden havuz burada tanımlıdır, çoğaltılmaz.
+ * Slot 0 = haftanın kasa düşüşü (mythic); kalan 7 slot mythic-dışı havuzdan.
  */
 export function featuredCosmetics(now = new Date()): CosmeticItem[] {
-  const pool = COSMETIC_ITEMS.filter((item) => item.diamondPrice > 0);
+  const pool = COSMETIC_ITEMS.filter((item) => item.diamondPrice > 0 && item.rarity !== 'mythic');
   const { weekIndex } = storeWeek(now);
   // weekIndex*5: ardışık haftalar tek adım kaymasın, seçki gözle görülür tazelensin.
-  return Array.from({ length: Math.min(8, pool.length) }, (_, i) => pool[(weekIndex * 5 + i * 7) % pool.length]!);
+  const rest = Array.from({ length: Math.min(7, pool.length) }, (_, i) => pool[(weekIndex * 5 + i * 7) % pool.length]!);
+  return [vaultItemOfWeek(now), ...rest];
 }
 
 export function storeCatalog(now = new Date()): StoreCatalogView {
@@ -137,7 +163,17 @@ export function storeCatalog(now = new Date()): StoreCatalogView {
   const weeklyResetAt = storeWeek(now).resetAt;
   const featured = featuredCosmetics(now).map((item) => item.id);
   // Özel Güç fiyatları da katalogla gider — istemci fiyat hardcode etmez (spec §73).
-  return { version: STORE_CATALOG_VERSION, serverTime: now.toISOString(), dailyResetAt: dailyResetAt.toISOString(), weeklyResetAt: weeklyResetAt.toISOString(), items: [...COSMETIC_ITEMS], featured, specialPowers: specialPowerCatalog().map((d) => ({ id: d.id, rarity: d.rarity, price: d.price })) };
+  return {
+    version: STORE_CATALOG_VERSION,
+    serverTime: now.toISOString(),
+    dailyResetAt: dailyResetAt.toISOString(),
+    weeklyResetAt: weeklyResetAt.toISOString(),
+    items: [...COSMETIC_ITEMS],
+    featured,
+    specialPowers: specialPowerCatalog().map((d) => ({ id: d.id, rarity: d.rarity, price: d.price })),
+    vaultItemId: vaultItemOfWeek(now).id,
+    vaultUntil: weeklyResetAt.toISOString(),
+  };
 }
 
 function nextUtcBoundary(now: Date, days: number): Date {
@@ -174,6 +210,11 @@ export async function buyCosmetic(
   if (!item || item.type === 'avatar' || item.type === 'emote') return { ok: false, error: 'Geçersiz ürün' };
   if (item.diamondPrice < 0) return { ok: false, error: 'Geçersiz fiyat' };
   if (item.diamondPrice === 0) return { ok: false, error: 'Bu ürün ücretsiz' };
+  // KASA KURALI: mythic ürünler yalnız kasadan çıktıkları hafta satılır — kıtlık
+  // ancak sunucu uygularsa gerçektir (modifiye istemci de delip geçemez).
+  if (isVaultCosmetic(item) && vaultItemOfWeek().id !== item.id) {
+    return { ok: false, error: 'Bu ürün şu an kasada — vitrine düşeceği haftayı bekle' };
+  }
   const key = idempotencyKey || `cosmetic:${userId}:${itemId}`;
   const client = await pool.connect();
   try {
@@ -235,7 +276,12 @@ export async function equipCosmetic(
     if (!item || item.type !== type) return { ok: false, error: 'Geçersiz ürün' };
     if (!canOwnCosmetic(user, item)) return { ok: false, error: 'Önce bu ürünü satın al' };
   }
-  const { rows } = await pool.query<any>(`UPDATE users SET ${col} = $2 WHERE id = $1 RETURNING *`, [userId, itemId]);
+  // Çerçevede İKİ sütun birden yazılır: profil görünümü equipped_frame_id'yi,
+  // liderlik tablosu selected_frame'i okur — tek sütun yazmak ikisini
+  // birbirinden koparıyordu (mağaza çerçevesi profilde var, tabloda yok).
+  // setSelectedFrame (seviye çerçeveleri) zaten ikisini birden yazıyor.
+  const setClause = type === 'frame' ? `${col} = $2, selected_frame = $2` : `${col} = $2`;
+  const { rows } = await pool.query<any>(`UPDATE users SET ${setClause} WHERE id = $1 RETURNING *`, [userId, itemId]);
   if (!rows[0]) return { ok: false, error: 'Kullanıcı bulunamadı' };
   const fresh = await import('./rank.ts').then((m) => m.getUser(userId));
   if (!fresh) return { ok: false, error: 'Kullanıcı bulunamadı' };

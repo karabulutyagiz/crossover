@@ -52,10 +52,6 @@ export const config = {
   // from being auto-corrected into "Ronaldo". Below it, a guess is treated as an
   // approximate spelling and auto-corrected to the closest both-teams player.
   verifyExactThreshold: Number(process.env.VERIFY_EXACT_THRESHOLD ?? '0.85'),
-  // Apple In-App Purchase: app-specific shared secret (App Store Connect → App
-  // Information → App-Specific Shared Secret). Used to validate consumable receipts
-  // with Apple before granting diamonds. Empty = IAP grants are refused.
-  iapSharedSecret: process.env.IAP_SHARED_SECRET ?? '',
   maintenanceMode: process.env.MAINTENANCE_MODE === '1',
   // Expo push notifications. '0' turns off all sending + the push crons
   // (token registration is skipped too); defaults to on.
@@ -139,6 +135,8 @@ export const config = {
     botErrorMax: boundedNumberEnv('BOT_ERROR_MAX', 0.42, 0.05, 0.70),
     botTimeoutMin: boundedNumberEnv('BOT_TIMEOUT_MIN', 0.015, 0, 0.25),
     botTimeoutMax: boundedNumberEnv('BOT_TIMEOUT_MAX', 0.30, 0.03, 0.65),
+    // İnsan-insan kupa bandı — settlement bunu trophyIntegrity.ts üzerinden okur
+    // (bot bandı BOT_GAIN_* sabitleriyle orada ayrı tanımlıdır).
     trophyMinGain: intEnv('TROPHY_MIN_GAIN', 28),
     trophyMaxGain: intEnv('TROPHY_MAX_GAIN', 35),
     trophyMinLoss: intEnv('TROPHY_MIN_LOSS', 15),

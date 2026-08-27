@@ -94,6 +94,8 @@ export interface AdaptiveBotProfileInput {
   seed?: string;
   blockedBotIds?: ReadonlySet<string>;
   blockedBotDisplayNames?: ReadonlySet<string>;
+  /** Kalıcı kaynak (bot_opponent_history) — süreç içi hafızayla birleşir. */
+  recentBotIds?: readonly string[];
 }
 
 interface BotIdentity {
@@ -289,8 +291,11 @@ function profileDomains(archetype: BotArchetype, rng: RandomSource): { favorite:
   return { favorite: [...favorite], weak: [...weak].slice(0, 2) };
 }
 
-function chooseIdentity(userKey: string, recentCooldown: number, rng: RandomSource, input: Pick<AdaptiveBotProfileInput, 'blockedBotIds' | 'blockedBotDisplayNames'>): BotIdentity {
-  const recent = recentByUser.get(userKey) ?? [];
+function chooseIdentity(userKey: string, recentCooldown: number, rng: RandomSource, input: Pick<AdaptiveBotProfileInput, 'blockedBotIds' | 'blockedBotDisplayNames' | 'recentBotIds'>): BotIdentity {
+  // Süreç içi hafıza restart'ta boşalır ve instance'lar arası paylaşılmaz —
+  // DB'den gelen son rakip kimlikleri (bot_opponent_history) burada birleşir.
+  const recent = [...new Set([...(recentByUser.get(userKey) ?? []), ...(input.recentBotIds ?? [])])]
+    .slice(0, Math.max(1, recentCooldown));
   if (rng.next() < GUEST_STYLE_HANDLE_WEIGHT) {
     const guestIdentity = availableGuestStyleIdentity(rng, recent, input, 4);
     if (guestIdentity) return rememberIdentity(userKey, recentCooldown, recent, guestIdentity);

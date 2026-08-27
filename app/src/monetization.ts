@@ -380,7 +380,19 @@ export function evaluateMonetizationOffer(ctx: OfferEngineContext, caps: OfferCa
   }
 
   const eligible = candidates
-    .filter((offer) => !postMatchCapped(caps, offer.offerId, cfg))
+    .filter((offer) => {
+      // SERİ KURTARMA MUAFİYETİ (2026-08-27): 5+ maçlık seri kırıldığı AN,
+      // oturum/gün/cooldown cap'lerinden muaftır — bu, elmas talebinin en
+      // yüksek-niyet anıdır ve "oturumda 1 teklif" kotasına kurban gitmez.
+      // İki fren kalır: aynı teklifin reddedilme sınırı + satın alma sonrası
+      // sükunet (yeni ödeme yapan oyuncuya üst üste teklif atılmaz).
+      if (offer.offerId === 'streak_restore_post_loss' && lostStreak >= 5) {
+        if ((caps.dismissedByOffer[offer.offerId] ?? 0) >= cfg.maxSameOfferDismissals) return false;
+        if (Date.now() - caps.lastPurchaseAt < cfg.purchaseSuccessCooldownMs) return false;
+        return true;
+      }
+      return !postMatchCapped(caps, offer.offerId, cfg);
+    })
     .sort((a, b) => b.priority - a.priority);
   return eligible[0] ?? null;
 }
