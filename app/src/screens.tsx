@@ -827,6 +827,10 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
           kartın uzun kuyruğunu izliyordu — "arkasında bir şey açılıyor gibi
           kararıyor" hissinin kaynağı buydu. */}
       <Animated.View style={{ flex: 1, backgroundColor: theme.scrim, opacity: scrim }}>
+        {/* Klavye açılınca ortalanmış kart kalan alana göre YUKARI kalkar —
+            içindeki input'lu pencerelerde (Günün Crossover'ı, geri bildirim)
+            GÖNDER butonu klavyenin altında kalmasın (rapor 2026-08-27). */}
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} pointerEvents="box-none">
         {/* Inert the instant `visible` flips false — the 160ms exit must not be
             hit-testable (double-tapped confirms re-fired actions, e.g. double gem charges) */}
         <Pressable pointerEvents={visible ? 'auto' : 'none'} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }} onPress={dismissible ? () => { triggerFeedback(GameFeedbackEvent.UI_CLOSE); handleClose(); } : undefined}>
@@ -881,6 +885,7 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
             </View>
           </Animated.View>
         </Pressable>
+        </KeyboardAvoidingView>
       </Animated.View>
     </SafeModal>
   );

@@ -878,7 +878,12 @@ export class Room {
     for (const [id, role] of roles) {
       this.sendTo(id, { type: 'pick_phase', endsAt, pickRole: role, usedClubIds, usedCountries });
     }
-    const t = setTimeout(() => this.autoPickRemaining(), PICK_MS);
+    // SEÇİM TOLERANSI (2026-08-27, kullanıcı raporu: '0 saniye kala basınca
+    // takım aniden değişiyor'): ekranda sayaç PICK_MS'te 0'ı gösterir ama
+    // rastgele atama 900ms SONRA çalışır — son saniyede basan oyuncunun
+    // seçimi ağ gecikmesiyle bile sunucuya yetişir, otomatik atama yalnız
+    // gerçekten seçmeyeni doldurur.
+    const t = setTimeout(() => this.autoPickRemaining(), PICK_MS + 900);
     this.timers.push(t);
   }
 
