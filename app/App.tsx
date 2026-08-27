@@ -1020,6 +1020,7 @@ function AppRoot() {
   const [outageGiftVisible, setOutageGiftVisible] = useState(false); // kesinti telafisi özür penceresi
   const [dailyOfferVisible, setDailyOfferVisible] = useState(false);  // kişiye özel fırsat (popup #2)
   const [updateNudgeVisible, setUpdateNudgeVisible] = useState(false); // mağazaya yeni sürüm düşünce (yumuşak)
+  const [xoxAnnounceVisible, setXoxAnnounceVisible] = useState(false); // XOX modu tek seferlik duyuru
   const updateNudgeShownRef = useRef(false);
   const dailyOfferShownRef = useRef(false);                            // her AÇILIŞTA bir kez
   const [outageGiftClaiming, setOutageGiftClaiming] = useState(false);
@@ -1545,6 +1546,7 @@ function AppRoot() {
     outageGiftVisible ||
     dailyOfferVisible ||
     updateNudgeVisible ||
+    xoxAnnounceVisible ||
     Boolean(activeEngagement) ||
     promotionTransitionRef.current
   );
@@ -1557,6 +1559,29 @@ function AppRoot() {
     updateNudgeShownRef.current = true;
     setUpdateNudgeVisible(true);
   }, [loaded, splash, state.phase, state.profile?.usernameSet, modalBlocked, state.updateAvailableVersion]);
+
+  // XOX duyurusu: cihaz başına TEK sefer (kullanıcı isteği 2026-08-27). 900ms
+  // gecikme + ateşleme anında modalBlockedRef kontrolü: aynı commit'te açılan
+  // başka bir popup'la (güncelleme dürtmesi vb.) üst üste binmez — iOS tek
+  // native modal kuralı.
+  const modalBlockedRef = useRef(false);
+  modalBlockedRef.current = modalBlocked;
+  const xoxAnnounceShownRef = useRef(false);
+  useEffect(() => {
+    if (xoxAnnounceShownRef.current) return;
+    if (!loaded || splash || state.phase !== 'home' || !state.profile?.usernameSet || modalBlocked) return;
+    let alive = true;
+    AsyncStorage.getItem('@crossover_xox_announce_seen').then((v) => {
+      if (!alive || v) return;
+      setTimeout(() => {
+        if (!alive || xoxAnnounceShownRef.current || modalBlockedRef.current) return;
+        xoxAnnounceShownRef.current = true;
+        setXoxAnnounceVisible(true);
+        AsyncStorage.setItem('@crossover_xox_announce_seen', '1').catch(() => {});
+      }, 900);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [loaded, splash, state.phase, state.profile?.usernameSet, modalBlocked]);
 
   // PERFORMANS (2026-08-27): aktif-oyun sayacı eskiden 5 sn'de bir App
   // seviyesinde setState yapıyordu — MAÇ SIRASINDA bile tüm ağaç 5 saniyede
@@ -2941,6 +2966,14 @@ function AppRoot() {
           </Text>
           <Btn big kind="accent" icon="download" label={t('update.nudgeCta')} onPress={() => { void openRequiredUpdateStore(); }} />
           <Btn big kind="ghost" label={t('update.nudgeLater')} onPress={() => setUpdateNudgeVisible(false)} />
+        </View>
+      </GameModal>
+
+      <GameModal visible={xoxAnnounceVisible} onClose={() => setXoxAnnounceVisible(false)} title={t('xoxAnnounce.title')} icon="grid" coach>
+        <View style={{ alignItems: 'center', gap: 12 }}>
+          <Text style={{ fontSize: 40, letterSpacing: 4 }}>❌⭕❌</Text>
+          <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>{t('xoxAnnounce.body')}</Text>
+          <Btn big kind="accent" icon="game-controller" label={t('xoxAnnounce.cta')} onPress={() => setXoxAnnounceVisible(false)} />
         </View>
       </GameModal>
 
