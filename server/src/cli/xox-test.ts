@@ -169,47 +169,21 @@ async function main(): Promise<void> {
     (room as any).clearTimers?.();
   }
 
-  // ── Tur tavanı: çok hücresi olan kazanır
+  // ── GERÇEK XOX kuralı (2026-08-27): çizgi yoksa tavanda BERABERE — çoğunluk
+  //    kazandırmaz, altın hücre yok; iki taraf da xox_over(draw) görür.
   {
-    const { room, a, aId, bId, r } = makeXoxMatch(ROWS, COLS, 'a');
+    const { room, a, b, aId, bId, r } = makeXoxMatch(ROWS, COLS, 'a');
     r.xox.cells[3] = { owner: aId, playerName: 'X', playerImageUrl: null };
     r.xox.cells[5] = { owner: aId, playerName: 'Y', playerImageUrl: null };
     r.xox.cells[7] = { owner: bId, playerName: 'Z', playerImageUrl: null };
     r.xox.turnNumber = XOX_TURN_CAP;
     (room as any).xoxTimerFired(); // tavandaki son tur zaman aşımı → çözüm
-    await sleep(120);
-    check(a.last('xox_over')?.winnerId === aId && a.last('xox_over')?.reason === 'majority', 'turn cap resolves by cell majority');
-    (room as any).clearTimers?.();
-  }
-
-  // ── Eşitlik → ALTIN HÜCRE; ilk doğru cevap kazanır (iki taraf da yarışır)
-  {
-    const { room, a, b, aId, bId, r } = makeXoxMatch(ROWS, COLS, 'a');
-    r.xox.cells[3] = { owner: aId, playerName: 'X', playerImageUrl: null };
-    r.xox.cells[7] = { owner: bId, playerName: 'Z', playerImageUrl: null };
-    r.xox.counts = [9, 1, 1, 1, 1, 1, 1, 1, 1]; // altın hücre = 0 (gerçek çift!)
-    r.xox.turnNumber = XOX_TURN_CAP;
-    (room as any).xoxTimerFired();
-    await sleep(120);
-    check(r.xox.suddenDeath === true && r.xox.suddenCell === 0, 'tie at cap starts sudden death on the richest cell');
-    check(a.last('xox_state')?.suddenDeath === true && b.last('xox_state')?.suddenDeath === true, 'both told about golden cell');
-    // Sıra kavramı yok: B (sırada olmayan) altın hücreyi kapabilir
-    room.handle(bId, { type: 'xox_submit', cell: 0, text: pair.player });
     await waitFor(() => !!a.last('xox_over'));
-    check(a.last('xox_over')?.winnerId === bId && a.last('xox_over')?.reason === 'sudden_death', 'first correct answer in sudden death wins the match');
-    (room as any).clearTimers?.();
-  }
-
-  // ── Altın hücre süresi dolarsa: az yanlış yapan kazanır (tie-break)
-  {
-    const { room, a, aId, bId, r } = makeXoxMatch(ROWS, COLS, 'a');
-    r.xox.suddenDeath = true;
-    r.xox.suddenCell = 4;
-    r.xox.turnId = null;
-    r.xox.wrongs.set(aId, 2);
-    r.xox.wrongs.set(bId, 0);
-    (room as any).resolveSuddenDeathTimeout();
-    check(a.last('xox_over')?.winnerId === bId && a.last('xox_over')?.reason === 'tiebreak', 'sudden-death timeout resolves by fewer wrongs');
+    const dov = a.last('xox_over');
+    check(!!dov && dov!.winnerId === null && dov!.reason === 'draw', 'turn cap without a line ends in a draw');
+    check(b.last('xox_over')?.reason === 'draw', 'both sides see the draw');
+    check(r.xox.suddenDeath === false, 'no golden-cell sudden death is started');
+    check(r.matchOver === true, 'draw closes the match server-side');
     (room as any).clearTimers?.();
   }
 

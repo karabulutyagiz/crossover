@@ -20,7 +20,7 @@ import {
   commonClubs,
   hasCommonClubs,
 } from '../game/verify.ts';
-import { applyMatchResult, getUser, saveMatchHistory, type MatchRound } from '../game/rank.ts';
+import { getArena, applyMatchResult, getUser, saveMatchHistory, type MatchRound } from '../game/rank.ts';
 import { awardMatchXp } from '../game/level.ts';
 import { isEmote } from '../game/emotes.ts';
 import { log } from '../logger.ts';
@@ -1823,7 +1823,7 @@ export class Room {
     // Doğrulama uçuştayken süre dolarsa cevaba fırsat tanı — sunucu sırası
     // deterministik kalır (cevap kabul/ret sonucu turu zaten devredecek).
     if (this.xox.pending) { this.armXoxTimer(1_200); return; }
-    if (this.xox.suddenDeath) return this.resolveSuddenDeathTimeout();
+    // Altın hücre kaldırıldı (kullanıcı kararı 2026-08-27): çizgi yoksa berabere.
     const cur = this.players.get(this.xox.turnId ?? '');
     this.advanceXoxTurn({ kind: 'timeout', byId: this.xox.turnId ?? '', byName: cur?.name ?? '' });
   }
@@ -1852,7 +1852,7 @@ export class Room {
     if (!Number.isInteger(cell) || cell < 0 || cell > 8) return;
     if (!text.trim()) return;
     if (x.pending) return; // uçuşta doğrulama var — çift gönderim düşer
-    if (x.suddenDeath) return void this.handleSuddenDeathSubmit(playerId, cell, text);
+
     if (x.turnId !== playerId) return;        // sıra sende değil — sunucu yok sayar
     if (x.cells[cell]!.owner != null) return; // dolu hücre
 
@@ -1894,7 +1894,7 @@ export class Room {
       }
       if (x.cells.every((c) => c.owner != null)) {
         this.broadcastXoxState(action);
-        return this.resolveXoxStall(action); // 9 hücre dolu — çoğunluk kesin sonuç verir
+        return this.resolveXoxStall(action); // 9 hücre dolu, çizgi yok — BERABERE
       }
       return this.advanceXoxTurn(action);
     }
@@ -1906,78 +1906,61 @@ export class Room {
   }
 
   /** Tur tavanı / dolu tahta: çok hücre kazanan alır; eşitlikte ALTIN HÜCRE. */
-  private resolveXoxStall(lastAction?: { kind: 'claim' | 'wrong' | 'timeout'; byId: string; byName: string }): void {
-    const x = this.xox;
-    if (!x) return;
-    const ids = [...this.players.keys()];
-    const a = this.players.get(ids[0]!)!;
-    const b = this.players.get(ids[1]!)!;
-    const ca = this.xoxCellCount(a.id);
-    const cb = this.xoxCellCount(b.id);
-    if (ca !== cb) return this.finishXox(ca > cb ? a : b, 'majority');
-    // Eşitlik: açık hücrelerden EN ÇOK cevaplısı altın hücre olur (en adil yarış).
-    const open = x.cells.map((c, i) => ({ i, owner: c.owner })).filter((c) => c.owner == null);
-    if (!open.length) return this.finishXox(a, 'majority'); // imkânsız (9 tek sayı) — emniyet
-    const golden = open.reduce((best, c) => (x.counts[c.i]! > x.counts[best.i]! ? c : best), open[0]!);
-    x.suddenDeath = true;
-    x.suddenCell = golden.i;
-    x.turnId = null;
-    x.turnEndsAt = Date.now() + XOX_SUDDEN_MS;
-    x.suddenFailed.clear();
-    this.broadcastXoxState(lastAction);
-    this.armXoxTimer(XOX_SUDDEN_MS);
-    log.info('xox_sudden_death', { room: this.code, matchId: this.matchId, cell: golden.i });
+  /** GERÇEK XOX kuralı (kullanıcı kararı 2026-08-27): yalnız ÇİZGİ kazandırır.
+   * Tur tavanı dolar ya da 9 hücre biterse — kimin kaç hücresi olursa olsun —
+   * maç BERABERE biter: çok hücre kapan 8-10, az kapan 4-5 kupa alır (eşitse
+   * ikisi de 8-10). Kimse kupa kaybetmez. Çoğunluk galibiyeti + altın hücre
+   * yarışı tamamen kaldırıldı. */
+  private resolveXoxStall(_lastAction?: { kind: 'claim' | 'wrong' | 'timeout'; byId: string; byName: string }): void {
+    if (!this.xox || this.matchOver) return;
+    void this.finishXoxDraw();
   }
 
-  private async handleSuddenDeathSubmit(playerId: string, cell: number, text: string): Promise<void> {
-    const x = this.xox;
-    const pl = this.players.get(playerId);
-    if (!x || !pl || !x.suddenDeath || x.suddenCell == null) return;
-    if (cell !== x.suddenCell) return;
-    if (x.suddenFailed.has(playerId)) return; // yanlış bilen altın hücrede kilitli
-    const row = x.rows[Math.floor(cell / 3)]!;
-    const col = x.cols[cell % 3]!;
-    x.pending = true;
-    let correct = false;
-    let matched: { name: string; imageUrl: string | null } | null = null;
-    try {
-      const v = await verifyGuess(row.id, col.id, text);
-      correct = v.correct;
-      matched = v.matchedPlayer ?? null;
-    } catch { /* DB hatası = yanlış say */ }
-    x.pending = false;
-    if (this.xox !== x || this.matchOver || !x.suddenDeath) return;
-    if (correct) {
-      x.cells[cell] = { owner: playerId, playerName: matched?.name ?? text.trim(), playerImageUrl: matched?.imageUrl ?? null };
-      pl.score = this.xoxCellCount(playerId);
-      this.broadcastState();
-      this.broadcastXoxState({ kind: 'claim', byId: playerId, byName: pl.name, cell, playerName: matched?.name ?? text.trim() });
-      return this.finishXox(pl, 'sudden_death');
+
+  /** BERABERE bitişi: kupa BANDI DIŞI küçük teselli ödülü (çok bilen 8-10, az
+   * bilen 4-5, eşitse ikisi de 8-10); kimse kaybetmez, XP normal işler. Çifte
+   * ödemeye karşı settleMatch ile aynı kilidi (claimSettlement) kullanır. */
+  private async finishXoxDraw(): Promise<void> {
+    if (!this.xox || this.matchOver) return;
+    this.matchOver = true;
+    this.clearTimers();
+    this.status = 'result';
+    for (const pl of this.players.values()) pl.score = this.xoxCellCount(pl.id);
+    this.broadcast({ type: 'xox_over', winnerId: null, winnerName: null, line: null, reason: 'draw' });
+    this.broadcastState();
+    const hasBot = [...this.players.values()].some((pl) => pl.transport.isBot);
+    recordTelemetry({
+      eventName: 'match_finished', matchId: this.matchId, roomCode: this.code, playerId: null,
+      opponentType: hasBot ? 'BOT' : 'HUMAN',
+      payload: { gameMode: 'xox', xoxReason: 'draw', turnNumber: this.xox.turnNumber, cells: this.xox.cells.filter((c) => c.owner != null).length },
+    });
+    log.info('xox_finished', { room: this.code, matchId: this.matchId, winner: null, reason: 'draw', turns: this.xox.turnNumber });
+    if (this.ranked && (await this.claimSettlement('xox_draw'))) {
+      for (const pl of this.players.values()) {
+        if (pl.transport.isBot || !pl.userId) continue;
+        const opp = [...this.players.values()].find((o) => o.id !== pl.id);
+        const mine = this.xoxCellCount(pl.id);
+        const theirs = opp ? this.xoxCellCount(opp.id) : 0;
+        const delta = mine < theirs ? 4 + Math.floor(Math.random() * 2) : 8 + Math.floor(Math.random() * 3);
+        try {
+          const { rows } = await pool.query<{ trophies: number }>(
+            'UPDATE users SET trophies = trophies + $2 WHERE id = $1 RETURNING trophies', [pl.userId, delta],
+          );
+          const trophies = rows[0]?.trophies ?? 0;
+          this.lastTrophyDeltaByUser.set(pl.userId, delta);
+          pl.transport.send({ type: 'trophy_update', matchId: this.matchId, trophies, delta, arena: getArena(trophies), shielded: false });
+          const xpRes = await awardMatchXp(pl.userId, false, false);
+          if (xpRes) pl.transport.send({ type: 'xp_update', ...xpRes });
+        } catch (err) {
+          log.warn('xox_draw_settle_failed', { matchId: this.matchId, userId: pl.userId, error: err instanceof Error ? err.message : String(err) });
+        }
+      }
     }
-    x.suddenFailed.add(playerId);
-    x.wrongs.set(playerId, (x.wrongs.get(playerId) ?? 0) + 1);
-    pl.wrongCount += 1;
-    this.broadcastXoxState({ kind: 'wrong', byId: playerId, byName: pl.name, cell, guess: text.trim() });
-    if (x.suddenFailed.size >= this.players.size) this.resolveSuddenDeathTimeout();
-  }
-
-  /** Altın hücre süresi doldu / iki taraf da bilemedi: deterministik tie-break —
-   * az yanlış yapan; o da eşitse ev sahibi olmayan (ikinci oyuncu ilk hamle
-   * avantajını hiç yaşamadıysa da burada dengelenir). */
-  private resolveSuddenDeathTimeout(): void {
-    const x = this.xox;
-    if (!x || this.matchOver) return;
-    const ids = [...this.players.keys()];
-    const a = this.players.get(ids[0]!)!;
-    const b = this.players.get(ids[1]!)!;
-    const wa = x.wrongs.get(a.id) ?? 0;
-    const wb = x.wrongs.get(b.id) ?? 0;
-    const winner = wa !== wb ? (wa < wb ? a : b) : (a.isHost ? b : a);
-    this.finishXox(winner, 'tiebreak');
+    void this.saveHistory();
   }
 
   /** Maç sonu: normal maçlarla AYNI ödeme hattı (settleMatch → kupa/XP/seri). */
-  private finishXox(winner: Player, reason: 'line' | 'majority' | 'sudden_death' | 'tiebreak', line?: number[]): void {
+  private finishXox(winner: Player, reason: 'line', line?: number[]): void {
     if (!this.xox || this.matchOver) return;
     this.matchOver = true;
     this.clearTimers();

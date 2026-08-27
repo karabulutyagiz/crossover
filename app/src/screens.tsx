@@ -6423,6 +6423,15 @@ export function XoxScreen({ state, actions }: Props) {
   // açılınca ve klavye yükselince (KAV padding bölgeyi daraltır) hücreler
   // otomatik küçülür; Gönder butonu hep klavyenin üstünde, tahta hep tam.
   const [boardBox, setBoardBox] = useState({ w: 0, h: 0 });
+  // Kazanan çizginin ÜSTÜNÜ ÇİZME efekti: altın bar soldan sağa büyüyerek
+  // 3 hücrenin üzerinden geçer (kullanıcı isteği 2026-08-27).
+  const strikeAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (over?.line) {
+      strikeAnim.setValue(0);
+      Animated.timing(strikeAnim, { toValue: 1, duration: 480, delay: 180, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    }
+  }, [over?.line, strikeAnim]);
   // Sunucu sayacı: 500ms tikle yeniden çiz (yalnız aktif maçta).
   useEffect(() => {
     if (over) return undefined;
@@ -6456,7 +6465,7 @@ export function XoxScreen({ state, actions }: Props) {
   useEffect(() => {
     if (!over || overPlayed.current) return;
     overPlayed.current = true;
-    triggerFeedback(over.winnerId === youId ? GameFeedbackEvent.MATCH_WIN : GameFeedbackEvent.MATCH_LOSE);
+    triggerFeedback(over.winnerId === youId ? GameFeedbackEvent.MATCH_WIN : over.winnerId == null ? GameFeedbackEvent.MATCH_DRAW : GameFeedbackEvent.MATCH_LOSE);
   }, [over, youId]);
   useEffect(() => { if (!over) overPlayed.current = false; }, [over]);
 
@@ -6569,15 +6578,37 @@ export function XoxScreen({ state, actions }: Props) {
           <View style={{ width: headerW }} />
           {xox.cols.map((c) => <XoxHeaderChip key={c.id} club={c} size={cellSize} />)}
         </View>
-        {[0, 1, 2].map((r) => (
-          <View key={r} style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-            <View style={{ width: headerW, alignItems: 'center', gap: 2 }}>
-              <ClubBadge name={xox.rows[r]!.name} size={34} logoUrl={xox.rows[r]!.logoUrl} />
-              <Text numberOfLines={2} style={{ color: theme.text, fontSize: 8, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{xox.rows[r]!.name}</Text>
+        <View style={{ gap: 6 }}>
+          {[0, 1, 2].map((r) => (
+            <View key={r} style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+              <View style={{ width: headerW, alignItems: 'center', gap: 2 }}>
+                <ClubBadge name={xox.rows[r]!.name} size={34} logoUrl={xox.rows[r]!.logoUrl} />
+                <Text numberOfLines={2} style={{ color: theme.text, fontSize: 8, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{xox.rows[r]!.name}</Text>
+              </View>
+              {[0, 1, 2].map((c) => cellView(r * 3 + c))}
             </View>
-            {[0, 1, 2].map((c) => cellView(r * 3 + c))}
-          </View>
-        ))}
+          ))}
+          {winLine ? (() => {
+            // Hücre merkezi (satır bölgesi koordinatında): x = başlık + boşluk +
+            // sütun*(hücre+6) + hücre/2; y = satır*(hücre+6) + hücre/2.
+            const cx = (i: number) => headerW + 6 + (i % 3) * (cellSize + 6) + cellSize / 2;
+            const cy = (i: number) => Math.floor(i / 3) * (cellSize + 6) + cellSize / 2;
+            const x1 = cx(winLine[0]!), y1 = cy(winLine[0]!), x2 = cx(winLine[2]!), y2 = cy(winLine[2]!);
+            const len = Math.hypot(x2 - x1, y2 - y1) + cellSize * 0.55;
+            const ang = Math.atan2(y2 - y1, x2 - x1);
+            return (
+              <Animated.View
+                pointerEvents="none"
+                style={{
+                  position: 'absolute', left: (x1 + x2) / 2 - len / 2, top: (y1 + y2) / 2 - 4,
+                  width: len, height: 8, borderRadius: 4, backgroundColor: theme.gold,
+                  shadowColor: theme.gold, shadowOpacity: 0.85, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 8,
+                  transform: [{ rotate: `${ang}rad` }, { scaleX: strikeAnim }],
+                }}
+              />
+            );
+          })() : null}
+        </View>
       </View>
       </View>
 
@@ -6609,8 +6640,8 @@ export function XoxScreen({ state, actions }: Props) {
       {/* Maç sonu paneli */}
       {over ? (
         <View style={{ alignItems: 'center', gap: 10, marginTop: 14 }}>
-          <Text style={{ color: over.winnerId === youId ? theme.primary : theme.danger, fontSize: 26, fontFamily: 'Poppins-Black', letterSpacing: 1, ...engrave('lg') }}>
-            {over.winnerId === youId ? t('xox.youWon') : t('xox.youLost')}
+          <Text style={{ color: over.winnerId === youId ? theme.primary : over.winnerId == null ? theme.gold : theme.danger, fontSize: 26, fontFamily: 'Poppins-Black', letterSpacing: 1, ...engrave('lg') }}>
+            {over.winnerId === youId ? t('xox.youWon') : over.winnerId == null ? t('xox.draw') : t('xox.youLost')}
           </Text>
           <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold' }}>
             {t(`xox.reason.${over.reason}` as MessageKey)}
