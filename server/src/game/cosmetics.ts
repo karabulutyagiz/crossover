@@ -126,13 +126,27 @@ export function storeWeek(now = new Date()): { weekIndex: number; resetAt: Date 
   return { weekIndex, resetAt: new Date(((weekIndex + 1) * 7 - 3) * 86_400_000) };
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// KESİN KURAL (kullanıcı, 2026-08-27): mağazaya YALNIZ kullanıcının ÇİZDİRDİĞİ
+// asset'e sahip ürünler girer. Prosedürel/çizimsiz ürün satışa ASLA çıkmaz.
+// Bu BEYAZ LİSTEDİR — yeni ürün, asset'i app/assets'e girip buraya eklenmeden
+// vitrine/fırsata/satışa giremez. Katalogdan silinmezler (eski sahipler kuşanır);
+// satış yüzeylerinin ÜÇÜ de buna bağlı: vitrin + Günlük Fırsat + buyCosmetic.
+// (VAULT_POOL bu listeyi kullandığı için liste ondan ÖNCE tanımlı kalmalı.)
+// ══════════════════════════════════════════════════════════════════════════
+const SELLABLE_COSMETICS = new Set([
+  'ice_frame', 'goat_frame',
+  'fire_name', 'ice_name',
+  'neon_pitch', 'night_stadium', 'goat_arena',
+  'goat_ball', 'champions_ball',
+]);
+
 /**
- * KASA (2026-08-27): mythic ürünler kalıcı kataloğun parçası DEĞİL — yalnız
- * kasadan çıktıkları hafta satın alınabilirler. Her hafta deterministik olarak
- * TEK mythic vitrine düşer ("bu hafta kasadan çıktı, Pazar gece dönüyor").
- * Elmas talebinin kıtlık ayağı budur: gidince sözünü tutar, ~6 hafta dönmez.
+ * KASA (2026-08-27): mythic ürünler kalıcı vitrinin parçası DEĞİL — yalnız
+ * kasadan çıktıkları hafta satın alınabilirler. Rotasyon YALNIZ beyaz listedeki
+ * (çizimli) mythic'leri döner — çizimsiz goat serisi satış yüzeyine hiç çıkmaz.
  */
-const VAULT_POOL = COSMETIC_ITEMS.filter((item) => item.rarity === 'mythic');
+const VAULT_POOL = COSMETIC_ITEMS.filter((item) => item.rarity === 'mythic' && SELLABLE_COSMETICS.has(item.id));
 
 export function vaultItemOfWeek(now = new Date()): CosmeticItem {
   const { weekIndex } = storeWeek(now);
@@ -150,28 +164,10 @@ export function isVaultCosmetic(item: CosmeticItem): boolean {
  * şikâyeti, 2026-08-27) — bu yüzden havuz burada tanımlıdır, çoğaltılmaz.
  * Slot 0 = haftanın kasa düşüşü (mythic); kalan 7 slot mythic-dışı havuzdan.
  */
-// ══════════════════════════════════════════════════════════════════════════
-// KESİN KURAL (kullanıcı, 2026-08-27): mağazaya YALNIZ kullanıcının ÇİZDİRDİĞİ
-// asset'e sahip ürünler girer. Prosedürel/çizimsiz ürün satışa ASLA çıkmaz.
-// Bu BEYAZ LİSTEDİR — yeni ürün, asset'i app/assets'e girip buraya eklenmeden
-// vitrine/fırsata giremez. Katalogdan silinmezler (eski sahipler kuşanmaya
-// devam eder); yalnız satış yüzeylerinden (vitrin + Günlük Fırsat) dışlanır.
-// Asset karşılıkları (app/assets):
-//   frames/frame-ice-store.png, frame-goat-store.png
-//   cosmetics/fire_nameplate.png, ice_nameplate.png
-//   cosmetics/neon_pitch_bg.jpg, night_stadium_bg.jpg, goat_arena_bg.jpg
-//   cosmetics/goat_ball_crest.png, champions_ball_crest.png
-// ══════════════════════════════════════════════════════════════════════════
-const SELLABLE_COSMETICS = new Set([
-  'ice_frame', 'goat_frame',
-  'fire_name', 'ice_name',
-  'neon_pitch', 'night_stadium', 'goat_arena',
-  'goat_ball', 'champions_ball',
-]);
-
 export function featuredCosmetics(now = new Date()): CosmeticItem[] {
-  // Beyaz liste TEK otorite (mythic dahil — goat serisi çizimli ve satılabilir).
-  const pool = COSMETIC_ITEMS.filter((item) => item.diamondPrice > 0 && SELLABLE_COSMETICS.has(item.id));
+  // Beyaz liste TEK otorite; mythic'ler yalnız slot 0'daki kasa düşüşüyle çıkar
+  // (rest havuzuna girmezler — aynı ürün vitrine iki kez düşmesin).
+  const pool = COSMETIC_ITEMS.filter((item) => item.diamondPrice > 0 && SELLABLE_COSMETICS.has(item.id) && item.rarity !== 'mythic');
   const { weekIndex } = storeWeek(now);
   // weekIndex*5: ardışık haftalar tek adım kaymasın, seçki gözle görülür tazelensin.
   const rest = Array.from({ length: Math.min(7, pool.length) }, (_, i) => pool[(weekIndex * 5 + i * 7) % pool.length]!);
@@ -230,8 +226,13 @@ export async function buyCosmetic(
   if (!item || item.type === 'avatar' || item.type === 'emote') return { ok: false, error: 'Geçersiz ürün' };
   if (item.diamondPrice < 0) return { ok: false, error: 'Geçersiz fiyat' };
   if (item.diamondPrice === 0) return { ok: false, error: 'Bu ürün ücretsiz' };
+  // BEYAZ LİSTE SATIN ALMADA DA uygulanır — kural yalnız vitrinde kalırsa
+  // modifiye istemci çizimsiz ürünü yine satın alabilirdi.
+  if (!SELLABLE_COSMETICS.has(item.id)) {
+    return { ok: false, error: 'Bu ürün şu an satışta değil' };
+  }
   // KASA KURALI: mythic ürünler yalnız kasadan çıktıkları hafta satılır — kıtlık
-  // ancak sunucu uygularsa gerçektir (modifiye istemci de delip geçemez).
+  // ancak sunucu uygularsa gerçekten kıtlıktır (modifiye istemci de delip geçemez).
   if (isVaultCosmetic(item) && vaultItemOfWeek().id !== item.id) {
     return { ok: false, error: 'Bu ürün şu an kasada — vitrine düşeceği haftayı bekle' };
   }
