@@ -1237,7 +1237,7 @@ export function ScreenBg({ variant = 'menu' }: { variant?: BgVariant }) {
   );
 }
 
-function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = false, lockWhenFits = false, lockScroll = false, header, keyboardShouldPersistTaps = 'handled' }: { children: ReactNode; scroll?: boolean; noPitch?: boolean; bg?: ReactNode; pad?: number; contentCenter?: boolean; fillTablet?: boolean; lockWhenFits?: boolean; lockScroll?: boolean; header?: ReactNode; keyboardShouldPersistTaps?: ComponentProps<typeof ScrollView>['keyboardShouldPersistTaps'] }) {
+function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = false, lockWhenFits = false, lockScroll = false, header, keyboardShouldPersistTaps = 'handled', scrollRef }: { children: ReactNode; scroll?: boolean; noPitch?: boolean; bg?: ReactNode; pad?: number; contentCenter?: boolean; fillTablet?: boolean; lockWhenFits?: boolean; lockScroll?: boolean; header?: ReactNode; keyboardShouldPersistTaps?: ComponentProps<typeof ScrollView>['keyboardShouldPersistTaps']; scrollRef?: Ref<ScrollView> }) {
   // iPad = telefon düzeninin ORTALANMIŞ hâli (kullanıcı kuralı, layout.ts).
   // `fillTablet` (dikey yayma) BİLEREK devre dışı: kartların arasını açıp
   // telefondan farklı bir ekran üretiyordu. Prop imzada kalıyor — çağrı yerleri
@@ -1281,6 +1281,7 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
       {header ? (maxW ? <View style={{ width: '100%', maxWidth: maxW, alignSelf: 'center' }}>{header}</View> : header) : null}
       {scroll ? (
         <ScrollView
+          ref={scrollRef}
           style={{ flex: 1 }}
           onLayout={(e) => setVpH(e.nativeEvent.layout.height)}
           onContentSizeChange={(_w, h) => setContentH(h)}
@@ -6386,6 +6387,17 @@ export function XoxScreen({ state, actions }: Props) {
   const [emoteOpen, setEmoteOpen] = useState(false);
   const [, setTick] = useState(0);
   const win = useWindow();
+  // Klavye açılınca içeriğin SONUNA kaydır: cevap paneli + Gönder butonu
+  // klavyenin üstünde kalır (kullanıcı raporu 2026-08-27: 'klavye açılınca
+  // butonlar kayboluyor'). automaticallyAdjustKeyboardInsets inset'i verir,
+  // scroll pozisyonunu bu listener verir.
+  const scrollRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    const sub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => {
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), Platform.OS === 'ios' ? 90 : 0);
+    });
+    return () => sub.remove();
+  }, []);
   // Sunucu sayacı: 500ms tikle yeniden çiz (yalnız aktif maçta).
   useEffect(() => {
     if (over) return undefined;
@@ -6429,8 +6441,11 @@ export function XoxScreen({ state, actions }: Props) {
   const canAnswer = myTurn || (!over && xox.suddenDeath && xox.suddenCell != null);
   const secs = Math.max(0, Math.ceil((xox.turnEndsAt - Date.now()) / 1000));
   const headerW = 58;
-  const gridW = Math.min(win.width - 32, 430);
-  const cellSize = Math.floor((gridW - headerW - 4 * 6) / 3);
+  // Sabitler: container padding 6×2 + satır içi 3 gap×6 = 30. Eski hesap
+  // padding'i unutuyordu → 3. sütun sağdan ~6px kırpılıyordu (rapor 2026-08-27).
+  const gridMaxW = Math.min(win.width - 32, 430);
+  const cellSize = Math.floor((gridMaxW - headerW - 30) / 3);
+  const gridW = headerW + cellSize * 3 + 30; // floor artığı tahtaya sızmasın
   const winLine = over?.line ?? null;
   const submit = () => {
     const text = guessRef.current.trim();
@@ -6478,8 +6493,13 @@ export function XoxScreen({ state, actions }: Props) {
           : tappable ? <Ionicons name="add" size={22} color={withAlpha(theme.text, 0.35)} /> : null
         ) : (
           <>
-            <Ionicons name={mine ? 'close' : 'ellipse-outline'} size={18} color={mine ? theme.primary : theme.danger} />
-            <Text numberOfLines={2} style={{ color: theme.text, fontSize: 8.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', lineHeight: 11 }}>{c.playerName}</Text>
+            {/* Doğru bilinen futbolcunun FOTOSU + altında adı (istek 2026-08-27);
+                X/O aidiyeti köşe mini-rozetine taşındı. */}
+            <PlayerPhoto uri={c.playerImageUrl} size={Math.round(cellSize * 0.46)} />
+            <Text numberOfLines={2} style={{ color: theme.text, fontSize: 8.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', lineHeight: 11, marginTop: 2 }}>{c.playerName}</Text>
+            <View style={{ position: 'absolute', left: 4, top: 4, width: 16, height: 16, borderRadius: 8, backgroundColor: mine ? withAlpha(theme.primary, 0.24) : withAlpha(theme.danger, 0.24), alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name={mine ? 'close' : 'ellipse-outline'} size={11} color={mine ? theme.primary : theme.danger} />
+            </View>
           </>
         )}
       </Pressable>
@@ -6487,7 +6507,7 @@ export function XoxScreen({ state, actions }: Props) {
   };
 
   return (
-    <Screen scroll contentCenter={false} keyboardShouldPersistTaps="always" bg={<MatchCosmeticBackdrop backgroundId={matchBackgroundIdForState(state)} />}>
+    <Screen scroll contentCenter={false} keyboardShouldPersistTaps="always" scrollRef={scrollRef} bg={<MatchCosmeticBackdrop backgroundId={matchBackgroundIdForState(state)} />}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         <MatchExitButton onPress={() => (state.matchOver ? actions.leave() : setShowLeaveConfirm(true))} />
         <PlayerBar state={state} onEmotePress={() => setEmoteOpen(true)} />
