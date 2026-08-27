@@ -482,7 +482,7 @@ export function startServer(port: number): Server {
       matchQualityScore: a.lastCandidateScore ?? null,
       selectionReason: 'best_human_candidate',
     });
-    setTimeout(() => safeAutoStart(room, resA.ok ? resA.id : '', 'human_match', a.requestId), 2200);
+    setTimeout(() => safeAutoStart(room, resA.ok ? resA.id : '', 'human_match', a.requestId), 900);
     return true;
   }
 
@@ -661,7 +661,7 @@ export function startServer(port: number): Server {
       botSkill: Number(botProfile.skillRating.toFixed(3)),
       mode: room.gameMode,
     });
-    setTimeout(() => safeAutoStart(room, human.ok ? human.id : '', 'bot_match', entry.requestId), 2200);
+    setTimeout(() => safeAutoStart(room, human.ok ? human.id : '', 'bot_match', entry.requestId), 900);
     recordDecisionTrace({
       matchId,
       playerId: entry.userProfile?.id ?? entry.userId ?? null,
@@ -750,8 +750,12 @@ export function startServer(port: number): Server {
           // bu olasılıkla seyreltilir — yüksek segment + enflasyon baskısında bot
           // daha geç gelir, insan likiditesine şans tanınır. 0 bile olsa yalnız
           // erken düşüş ertelenir; 15 sn güvenlik ağı koşulsuz bot başlatır.
-          const throttledByRatio = botAvailability < 1 && Math.random() >= Math.max(0, botAvailability);
-          if (!config.matchmaking.debug.forceBot && (throttledByRatio || (health.queueHealthScore > live.matchmaking.queueHealthBotThreshold && elapsedMs < live.matchmaking.maxSearchMs))) {
+          // SERT TAVAN (2026-08-27, kullanıcı: 'insan şansım yoksa 3 saniyede
+          // eşleştir'): ufukta insan YOKKEN erteleme zinciri (oran seyreltme +
+          // kuyruk sağlığı) 2600ms'i aşamaz — bot hemen başlar.
+          const forceBotNow = elapsedMs >= 2600 && !potentialHuman;
+          const throttledByRatio = !forceBotNow && botAvailability < 1 && Math.random() >= Math.max(0, botAvailability);
+          if (!forceBotNow && !config.matchmaking.debug.forceBot && (throttledByRatio || (health.queueHealthScore > live.matchmaking.queueHealthBotThreshold && elapsedMs < live.matchmaking.maxSearchMs))) {
             log.info('bot_fallback_deferred_by_queue_health', { requestId: entry.requestId, segment, queueHealth: health.queueHealthScore, botAvailability, throttledByRatio, retryMs: cfg.botFallbackRetryMs });
             scheduleFallbackAttempt(cfg.botFallbackRetryMs);
             return;
@@ -1890,7 +1894,7 @@ export function startServer(port: number): Server {
         const resB = room.addPlayer(userProfile.displayName, transport, false, userProfile.id, userProfile.trophies, userProfile.arena, userProfile.avatar, userProfile.level, userProfile.selectedFrame, toCosmeticLoadout(userProfile), mySkill?.skillMean, mySkill?.skillUncertainty, mySkill?.matchesPlayed);
         if (resA.ok) inv.setCtx({ room, playerId: resA.id, userProfile: inv.userProfile });
         if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
-        setTimeout(() => safeAutoStart(room, resA.ok ? resA.id : '', 'friend_match'), 2200);
+        setTimeout(() => safeAutoStart(room, resA.ok ? resA.id : '', 'friend_match'), 900);
         return;
       }
       if (msg.type === 'cancel_match_invite') {

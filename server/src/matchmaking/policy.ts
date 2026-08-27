@@ -127,7 +127,7 @@ export function randomBotFallbackDelayMs(cfg: HybridMatchmakingConfig, queueDept
   const max = Math.max(min, cfg.botFallbackMaxDelayMs);
   // Higher queue depth means another human may arrive any moment; wait slightly
   // longer before fallback so real liquidity wins naturally.
-  const depthBias = Math.min(600, Math.max(0, queueDepth - 1) * 180);
+  const depthBias = Math.min(300, Math.max(0, queueDepth - 1) * 150);
   const span = Math.max(0, max - min);
   const triangular = (Math.random() + Math.random()) / 2;
   return Math.round(Math.min(max + depthBias, min + Math.round(span * triangular) + depthBias));

@@ -6154,14 +6154,15 @@ export const SPECIAL_POWERS: Record<SpecialPowerIdView, { icon: IoniconName; col
   extratime: { icon: 'time', color: theme.primary, nameKey: 'sp.extratime.name', descKey: 'sp.extratime.desc', rarity: 'common' },
   secondchance: { icon: 'heart-circle', color: theme.flame, nameKey: 'sp.secondchance.name', descKey: 'sp.secondchance.desc', rarity: 'rare' },
 };
-// Kullanıcının ÇİZDİRDİĞİ güç ikonları (2026-08-27 Downloads teslimi).
-// freeze/reveal henüz çizilmedi — çizilince buraya eklenir; eksik olanlar
-// SpecialPowerBadge'de Ionicons medalyonuna düşer (asset kuralıyla uyumlu:
-// bunlar satılan ürünün KENDİSİ değil arayüz rozeti).
+// Kullanıcının ÇİZDİRDİĞİ güç ikonları (2026-08-27 Downloads teslimi) — 5/5 TAM.
+// Yeni güç eklenirse çizimi gelene dek SpecialPowerBadge Ionicons medalyonuna
+// düşer (asset kuralıyla uyumlu: bunlar satılan ürünün KENDİSİ değil rozeti).
 const SP_ART: Partial<Record<SpecialPowerIdView, number>> = {
   skip: require('../assets/powers/sp-skip.png'),
   extratime: require('../assets/powers/sp-extratime.png'),
   secondchance: require('../assets/powers/sp-secondchance.png'),
+  freeze: require('../assets/powers/sp-freeze.png'),
+  reveal: require('../assets/powers/sp-reveal.png'),
 };
 
 /** Özel güç rozeti: çizilmiş sanat varsa O (dokunulmamış), yoksa renkli

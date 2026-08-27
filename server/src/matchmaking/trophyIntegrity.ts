@@ -13,7 +13,7 @@ function sanitizeBand(min: number, max: number, fallbackMin: number, fallbackMax
   return [lo, hi];
 }
 const [GAIN_MIN, GAIN_MAX] = sanitizeBand(config.opponentSystem.trophyMinGain, config.opponentSystem.trophyMaxGain, 28, 35);
-const [LOSS_MIN, LOSS_MAX] = sanitizeBand(config.opponentSystem.trophyMinLoss, config.opponentSystem.trophyMaxLoss, 15, 20);
+const [LOSS_MIN, LOSS_MAX] = sanitizeBand(config.opponentSystem.trophyMinLoss, config.opponentSystem.trophyMaxLoss, 15, 28);
 export const TROPHY_GAIN_MIN = GAIN_MIN;
 export const TROPHY_GAIN_MAX = GAIN_MAX;
 export const TROPHY_LOSS_MIN = LOSS_MIN;
@@ -59,12 +59,13 @@ export function clampFinalTrophyDelta(args: {
   return actualLoss === 0 ? 0 : -actualLoss;
 }
 
-// Bot maçı bandı: kolay bot galibiyeti taban (12), elit bot galibiyeti dolgun ama
-// taşmayan (30). Kayıplar insan maçından hafifçe yumuşak.
-export const BOT_GAIN_MIN = 12;
-export const BOT_GAIN_MAX = 30;
-export const BOT_LOSS_MIN = 12;
-export const BOT_LOSS_MAX = 18;
+// KULLANICI KARARI (2026-08-27, kesin): bot/insan AYRIMI YOK — her dereceli
+// maçta kazanç 28-35, kayıp 15-28. (Eski 'kolay bot taban 12' bandı '+12
+// veriyor' şikayetiyle kaldırıldı; oyuncu bot maçını ayırt edememeli.)
+export const BOT_GAIN_MIN = 28;
+export const BOT_GAIN_MAX = 35;
+export const BOT_LOSS_MIN = 15;
+export const BOT_LOSS_MAX = 28;
 
 export function trophyDeltaExpectedScore(args: {
   playerSkillMean: number;

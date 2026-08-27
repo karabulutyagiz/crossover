@@ -2178,12 +2178,12 @@ function AppRoot() {
     return () => sub.remove();
   }, []);
 
-  // ANTI-CHEAT (2026-08-26 yeniden tasarım): maç sırasında uygulamadan ayrılmak
-  // artık ATMAZ — her cihazda/her maçta (bot dahil, ayrım sızdırmamalı) tutarlı
-  // "KOPYA ÇEKME ALGILANDI" uyarısı gösterilir. iOS bildirim çekmecesi/uygulama
-  // değiştirici 'inactive' olarak gelir; ikisi de yakalanır. UZUN kaçışları
-  // istemci değil sunucu cezalandırır: soket askıya düşer ve 12 sn'lik
-  // reconnect grace insana karşı hükmen sonucu zaten üretir — çifte ceza yok.
+  // ANTI-CHEAT (2026-08-27 kullanıcı kararı): maç sırasında BAŞKA UYGULAMAYA
+  // GEÇMEK ('background') = ANINDA hükmen mağlubiyet — kupa kesilir, galibiyet
+  // ve kupa rakibe yazılır (sunucu explicitLeave('cheat') hattı; sonuç popup'ı
+  // KOPYA ÇEKME ALGILANDI bandıyla gelir). 'inactive' (bildirim çekmecesi,
+  // kontrol merkezi, gelen arama, ekran görüntüsü) MAÇTAN ATMAZ — dönüşte
+  // yalnız uyarı basılır; telefonun normal kullanımı cezalandırılmaz.
   const cheatWatchRef = useRef<{ eligible: boolean; dipped: boolean }>({ eligible: false, dipped: false });
   cheatWatchRef.current = {
     eligible:
@@ -2195,10 +2195,17 @@ function AppRoot() {
     dipped: cheatWatchRef.current.dipped,
   };
   const [cheatWarnSeq, setCheatWarnSeq] = useState(0);
+  const cheatForfeitRef = useRef(actions.forfeitFromBackground);
+  cheatForfeitRef.current = actions.forfeitFromBackground;
   useEffect(() => {
     const sub = AppState.addEventListener('change', (st) => {
       if (st === 'background') dismissActiveInput();
-      if ((st === 'inactive' || st === 'background') && cheatWatchRef.current.eligible) {
+      if (st === 'background' && cheatWatchRef.current.eligible) {
+        cheatWatchRef.current.dipped = false;
+        cheatForfeitRef.current();
+        return;
+      }
+      if (st === 'inactive' && cheatWatchRef.current.eligible) {
         cheatWatchRef.current.dipped = true;
       }
       if (st === 'active' && cheatWatchRef.current.dipped) {
