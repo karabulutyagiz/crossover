@@ -2962,8 +2962,8 @@ function AppRoot() {
               <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.letterTeamLabel')}</Text>
             </View>
             <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.primary, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.primary, 0.45) }}>
-              <Text style={{ fontSize: 24 }}>⚽</Text>
-              <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.specialModesLabel')}</Text>
+              <Text style={{ fontSize: 23 }}>❌⭕</Text>
+              <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.xoxLabel')}</Text>
             </View>
           </View>
           <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
@@ -3049,8 +3049,8 @@ function AppRoot() {
                 <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.letterTeamLabel')}</Text>
               </View>
               <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.primary, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.primary, 0.45) }}>
-                <Text style={{ fontSize: 24 }}>⚽</Text>
-                <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.specialModesLabel')}</Text>
+                <Text style={{ fontSize: 23 }}>❌⭕</Text>
+                <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.xoxLabel')}</Text>
               </View>
             </View>
             <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
