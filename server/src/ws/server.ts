@@ -2309,8 +2309,10 @@ export function startServer(port: number): Server {
           userProfile = await ensureProfileLoaded(userProfile, msg.userId, ws);
           if (rejectIfBanned(userProfile, transport)) { userProfile = undefined; return; }
           bridgeCaps(transport, userProfile);
-          // Bot antrenman maçında TÜM modlar serbest — Sosyal Paket kilidi yalnız
-          // insanlarla oynanan (find_match / oda / davet) maçlara uygulanır.
+          // Bota karşı da (kullanıcı kararı 2026-08-28): team-team HARİCİNDEKİ modlar
+          // (country-team / letter-team / xox) Sosyal Paket ister — paketi olmayan
+          // bota karşı da bu modları oynayamaz. Yalnız team-team her zaman serbest.
+          if (!canUseMode(userProfile, msg.options?.mode)) return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
           const room = manager.createRoom();
           if (msg.options?.scope) room.scope = msg.options.scope;
           if (msg.options?.mode) room.gameMode = msg.options.mode;

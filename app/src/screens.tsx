@@ -5237,6 +5237,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       <GameModal
         visible={botOpen}
         onClose={() => setBotOpen(false)}
+        onExited={() => { if (socialUpsellOnExit.current) { socialUpsellOnExit.current = false; if (lockedModePreview) onLockedSocialMode?.(lockedModePreview); setLockedModePreview(null); } }}
         title={BOT_BANNER[botPage.key].title().toLocaleUpperCase(currentLang())}
         icon={BOT_BANNER[botPage.key].icon}
       >
@@ -5256,7 +5257,12 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                     iconColor={c}
                     label={DIFF_LABEL(d)}
                     selected={difficulty === d}
-                    onPress={() => { setDifficulty(d); setBotOpen(false); actions.createSolo(playerName, { ...opts, difficulty: d }); }}
+                    onPress={() => {
+                      // Güvenlik ağı: seçili mod kilitliyse (paket yok) createSolo yapma,
+                      // server hatası yerine upsell'e devret.
+                      if (PACK_MODES.includes(mode) && !hasPack) { setLockedModePreview(mode); socialUpsellOnExit.current = true; setBotOpen(false); return; }
+                      setDifficulty(d); setBotOpen(false); actions.createSolo(playerName, { ...opts, difficulty: d });
+                    }}
                   />
                 );
               })}
@@ -5270,9 +5276,26 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
                 <ModalBackBtn onPress={() => setBotPage({ key: 'bot', dir: -1 })} />
               </View>
-              {(['team-team', 'xox', 'country-team', 'letter-team'] as GameMode[]).map((m) => (
-                <GameRow key={m} icon={MODE_ICON[m]} label={MODE_LABEL(m)} selected={mode === m} onPress={() => { setMode(m); setBotPage({ key: 'bot', dir: -1 }); }} />
-              ))}
+              {(['team-team', 'xox', 'country-team', 'letter-team'] as GameMode[]).map((m) => {
+                // Bota karşı da paket kilidi (2026-08-28): team-team hariç modlar Sosyal
+                // Paket ister. Kilitliyse seçtirmeyip modalı kapatıp upsell'e devret.
+                const locked = PACK_MODES.includes(m) && !hasPack;
+                return (
+                  <GameRow
+                    key={m}
+                    icon={MODE_ICON[m]}
+                    label={MODE_LABEL(m)}
+                    selected={mode === m}
+                    locked={locked}
+                    sublabel={locked ? t('socialPack.lockedBadge') : undefined}
+                    chevron={!locked}
+                    onPress={() => {
+                      if (locked) { setLockedModePreview(m); socialUpsellOnExit.current = true; setBotOpen(false); return; }
+                      setMode(m); setBotPage({ key: 'bot', dir: -1 });
+                    }}
+                  />
+                );
+              })}
             </>
           ) : botPage.key === 'scopeType' ? (
             <>
