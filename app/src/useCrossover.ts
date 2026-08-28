@@ -980,6 +980,11 @@ function reducer(state: GameState, action: Action): GameState {
       if (/receipt|makbuz|21002|21007|21008/i.test(action.message ?? '')) return state;
       // Silent rate-limit feedback; just ignore the burst instead of flashing red UI.
       if (/çok hızlı|cok hizli|rate limit/i.test(action.message ?? '')) return state;
+      // Oturum-zamanlaması gürültüsü (2026-08-28): ana ekran açılışında arka plan
+      // aksiyonları (loadFriends/loadConversations) soket doğrulanmadan atılabilir;
+      // sunucu 'Önce giriş yap' döner. Bu geçici bir yarış — 'hemen oyna'nın üstünde
+      // kalıcı kırmızı banner olarak GÖSTERİLMEZ (giriş akışı kendi ekranında zaten var).
+      if (/önce giriş yap|önce giriş yapmalısın|register first|login first|tekrar giriş yap|önce giriş/i.test(action.message ?? '')) return state;
       return { ...state, error: action.message };
     default:
       return state;
