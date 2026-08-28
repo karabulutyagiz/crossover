@@ -1170,6 +1170,19 @@ export function startServer(port: number): Server {
     // Nagle + delayed-ACK etkileşimi tur olaylarına 40-200 ms görünmez tampon
     // gecikmesi ekleyebiliyor. Gerçek-zamanlı oyunda anında gönderim esastır.
     req.socket.setNoDelay(true);
+    // WiFi DONMA FIX (kullanıcı raporu 2026-08-28): hücreselde akıcı, ev WiFi'sinde
+    // mesajlar birikip 'bir anda' geliyordu — WiFi güç-tasarrufu boşta bağlantıyı
+    // uykuya alıp paketleri tamponluyor. Sunucu her 4sn WS PING gönderir; RN/tarayıcı
+    // protokol düzeyinde otomatik PONG'lar → İKİ yön de sıcak kalır, tampon çözülür.
+    // Ayrıca ölü bağlantı (2 PING boyunca PONG yok) sonlandırılır.
+    let wsAlive = true;
+    ws.on('pong', () => { wsAlive = true; });
+    const heartbeat = setInterval(() => {
+      if (ws.readyState !== ws.OPEN) return;
+      if (!wsAlive) { try { ws.terminate(); } catch { /* yut */ } return; }
+      wsAlive = false;
+      try { ws.ping(); } catch { /* yut */ }
+    }, 4000);
     let ctx: ConnCtx | null = null;
     let userProfile: UserProfile | undefined;
     const transport = wsTransport(ws);
@@ -2397,6 +2410,7 @@ export function startServer(port: number): Server {
     });
 
     ws.on('close', () => {
+      clearInterval(heartbeat);
       log.info('ws_close', { ip, userId: userProfile?.id, room: ctx?.room.code });
       recordTelemetry({
         eventName: 'session_exit',
