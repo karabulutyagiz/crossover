@@ -2924,6 +2924,16 @@ export class Room {
     }
   }
 
+  // Sunucu, sosyal-mod paketi geçersiz bir oyuncunun rövanşını reddederken çağırır.
+  // Karşı taraf zaten "tekrar oyna" deyip beklemedeyse (rematchBy) askıda kalmasın diye
+  // ona reddedildi bilgisi gönderilir; ardından bekleyen istek temizlenir.
+  declineRematch(playerId: string): void {
+    if (this.rematchBy && this.rematchBy !== playerId) {
+      this.sendTo(this.rematchBy, { type: 'rematch_declined' });
+    }
+    this.rematchBy = null;
+  }
+
   private relayEmote(playerId: string, emoteId: string): void {
     if (!isEmote(emoteId)) return;
     this.broadcast({ type: 'emote', fromId: playerId, emoteId });

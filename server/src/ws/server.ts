@@ -2076,9 +2076,12 @@ export function startServer(port: number): Server {
           return;
         }
         const requestedMode = inv.options?.mode ?? 'team-team';
-        // Kabul eden tarafta paket ARANMAZ — yalnız davet SAHİBİNİN paketi hâlâ
-        // aktif olmalı. TAKIM-TAKIM modu ise paket HİÇ aranmaz (2026-08-28).
-        if (requestedMode !== 'team-team' && !hasActiveSocialPack(inv.userProfile)) {
+        // İKİ TARAF DA paketli olmalı (kullanıcı kararı 2026-08-28): sosyal mod
+        // (letter/country/xox) davetinde davet SAHİBİNİN paketi hâlâ aktif olmalı VE
+        // KABUL EDEN de aktif pakete sahip olmalı. TAKIM-TAKIM modunda paket HİÇ aranmaz
+        // (canUseMode team-team'de daima true). Önceden kabul eden paketsizken sosyal
+        // moda girebiliyordu; açık kapatıldı.
+        if (requestedMode !== 'team-team' && (!hasActiveSocialPack(inv.userProfile) || !canUseMode(userProfile, requestedMode))) {
           sendToUser(inv.fromUserId, { type: 'match_invite_declined', byId: userProfile.id });
           transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
           return;
@@ -2406,6 +2409,14 @@ export function startServer(port: number): Server {
           // reddedilecek bir bağlantıya oda devretmek yarım kalmış durum bırakırdı.
           const u = await getUser(msg.userId).catch(() => null);
           if (rejectIfBanned(u ?? undefined, transport)) return;
+          // Resume paket yeniden doğrulaması (kullanıcı kararı 2026-08-28): sosyal-mod
+          // odasına paketi geçersizken (süresi bitmiş) yeniden bağlanıp rövanşla devam
+          // engellenir. YALNIZ maç-arasında (lobby/result) uygulanır — aktif maça
+          // (countdown/pick/reveal/guess/xox) reconnect'i bloklamak meşru maçı hükmen
+          // kaybettirirdi; oradaki oyuncu zaten sonraki rövanşta kapıya takılır.
+          if (u && !canUseMode(u, room.gameMode) && (room.status === 'lobby' || room.status === 'result')) {
+            return transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
+          }
           const resumed = room.resumePlayer(msg.userId, transport);
           if (!resumed.ok) return transport.send({ type: 'error', message: resumed.error });
           if (u) { userProfile = u; addOnline(u.id, ws); recordCaps(transport, u.id); }
@@ -2524,6 +2535,17 @@ export function startServer(port: number): Server {
       if (msg.type === 'send_emote'
           && !isFreeEmote(msg.emoteId)
           && !userProfile?.ownedEmotes.includes(msg.emoteId)) {
+        return;
+      }
+
+      // Rövanş paket yeniden doğrulaması (kullanıcı kararı 2026-08-28): sosyal modda
+      // (letter/country/xox) paketi süresi biten oyuncu "tekrar oyna" ile devam edemez —
+      // giriş kapısı gibi tekrar denetle. userProfile.socialPackUntil sabit bir zaman
+      // damgası; gerçek zaman ilerledikçe hasActiveSocialPack doğal olarak false döner,
+      // bu yüzden bellekteki profille süre bitişini yakalar, DB'ye gerek yoktur.
+      if ((msg.type === 'play_again' || msg.type === 'rematch_response') && !canUseMode(userProfile, ctx.room.gameMode)) {
+        ctx.room.declineRematch(ctx.playerId); // bekleyen rakip askıda kalmasın diye reddedildi bilgisi gönder
+        transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
         return;
       }
 
