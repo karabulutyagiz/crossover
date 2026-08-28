@@ -79,6 +79,7 @@ import {
   LobbyScreen,
   MatchupScreen,
   CountdownScreen,
+  TournamentsScreen,
   PickTeamScreen,
   GuessScreen,
   XoxScreen,
@@ -1572,6 +1573,8 @@ function AppRoot() {
     updateNudgeVisible ||
     xoxAnnounceVisible ||
     Boolean(state.supportMessage) ||
+    Boolean(state.tournamentReady) ||
+    Boolean(state.tournamentOver) ||
     Boolean(activeEngagement) ||
     promotionTransitionRef.current
   );
@@ -2495,6 +2498,8 @@ function AppRoot() {
   // Main menu with tab bar + swipe
   const homeContent = state.phase === 'arenas'
     ? <ArenasScreen {...props} />
+    : state.phase === 'tournaments'
+    ? <TournamentsScreen {...props} />
     : state.phase === 'profile'
     ? <ProfileScreen {...props} onOpenMatchHistory={openMatchHistory} onOpenLevelRoad={() => setLevelRoadOpen(true)} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} />
     : <HomeScreen {...props} heroAnimsActive={activeTab === 2} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} trophyLand={trophyLand} trophyHold={trophyFlight?.delta ?? null} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLockedSocialMode={enqueueLockedSocialMode} monetizationDiagnostics={monetizationDiagnostics} onLanguageChange={() => {
@@ -3022,6 +3027,52 @@ function AppRoot() {
           <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold', lineHeight: 21 }}>{state.supportMessage?.body ?? ''}</Text>
           <Btn big kind="accent" icon="checkmark-circle" label={t('common.continue')} onPress={() => { if (state.supportMessage) actions.ackSupportMessage(state.supportMessage.id); }} />
         </View>
+      </GameModal>
+
+      {/* Turnuva: maçın hazır — OYNA (iki taraf da basınca oda kurulur) */}
+      <GameModal
+        visible={Boolean(state.tournamentReady)}
+        onClose={actions.clearTournamentReady}
+        title={t('tour.readyTitle')}
+        icon="trophy"
+        coach
+      >
+        {state.tournamentReady ? (
+          <View style={{ alignItems: 'center', gap: 12 }}>
+            <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+              {t('tour.readyBody', { t: state.tournamentReady.tournamentName, opp: state.tournamentReady.opponentName })}
+            </Text>
+            {state.tournamentReady.youReady ? (
+              <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>{t('tour.readyWaiting')}</Text>
+            ) : (
+              <>
+                {state.tournamentReady.oppReady ? (
+                  <Text style={{ color: theme.primary, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>{t('tour.oppReady')}</Text>
+                ) : null}
+                <Btn big kind="accent" icon="play" label={t('tour.readyBtn')} feedback={GameFeedbackEvent.UI_PLAY} onPress={() => { if (state.tournamentReady) actions.tournamentReady(state.tournamentReady.matchId); }} />
+              </>
+            )}
+          </View>
+        ) : null}
+      </GameModal>
+
+      {/* Turnuva bitti: şampiyon / finalist ödül popup'ı */}
+      <GameModal
+        visible={Boolean(state.tournamentOver)}
+        onClose={actions.clearTournamentOver}
+        title={state.tournamentOver?.youWon ? t('tour.wonTitle') : t('tour.secondTitle')}
+        icon="trophy"
+        coach
+      >
+        {state.tournamentOver ? (
+          <View style={{ alignItems: 'center', gap: 12 }}>
+            <Text style={{ fontSize: 52 }}>{state.tournamentOver.youWon ? '🏆' : '🥈'}</Text>
+            <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+              {t(state.tournamentOver.youWon ? 'tour.wonBody' : 'tour.secondBody', { t: state.tournamentOver.tournamentName, p: String(state.tournamentOver.prize) })}
+            </Text>
+            <Btn big kind="accent" icon="checkmark-circle" label={t('common.continue')} onPress={actions.clearTournamentOver} />
+          </View>
+        ) : null}
       </GameModal>
 
       <GameModal visible={xoxAnnounceVisible} onClose={() => setXoxAnnounceVisible(false)} title={t('xoxAnnounce.title')} icon="grid" coach>

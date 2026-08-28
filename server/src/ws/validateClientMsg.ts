@@ -176,6 +176,16 @@ export function validateClientMsg(value: unknown): ValidationResult {
     case 'ack_support_message':
       if (!isString(value.id, 64)) return invalid('ack_support_message.id is invalid');
       break;
+    case 'list_tournaments':
+      break;
+    case 'join_tournament':
+    case 'leave_tournament':
+    case 'get_tournament':
+      if (!isString(value.id, 64)) return invalid('tournament.id is invalid');
+      break;
+    case 'tournament_ready':
+      if (!isString(value.matchId, 64)) return invalid('tournament_ready.matchId is invalid');
+      break;
     case 'pick_team':
       if (!hasInteger(value, 'clubId', 1)) return invalid('pick_team.clubId must be a positive integer');
       break;

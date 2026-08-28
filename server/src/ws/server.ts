@@ -52,6 +52,7 @@ import { getDailyState, startDaily as startDailyCrossover, submitDailyGuess } fr
 import { redeemReferral } from '../game/referrals.ts';
 import { toProfileView } from '../game/profileView.ts';
 import { buySpecialPower, equipSpecialPower, isSpecialPowerId } from '../game/specialPowers.ts';
+import { listTournaments, getTournamentState, joinTournament, leaveTournament, pendingTournamentMatchesFor, markMatchPlaying, reportTournamentResult, tournamentMemberIds } from '../game/tournaments.ts';
 
 // Guideline 1.2: no anonymous posting. Any path that creates content another
 // user sees requires a verified Apple/Google/Facebook identity — a guest can
@@ -292,6 +293,36 @@ export function startServer(port: number): Server {
   const matchQueue: QueueEntry[] = [];
   const orchestrator = new MatchmakingOrchestrator(hybridCfg());
   const pendingInvites = new Map<string, PendingInvite>(); // `${fromUserId}:${toUserId}`
+  // Turnuva maçı 'hazırım' bekleme odası: matchId → hazır diyen oyuncular.
+  // İKİSİ de hazır deyince oda kurulur (dostluk-daveti kalıbının aynısı).
+  const tournamentReadyWaits = new Map<string, Map<string, { name: string; transport: Transport; profile: UserProfile; setCtx: (c: ConnCtx) => void }>>();
+
+  async function broadcastTournamentState(tid: string): Promise<void> {
+    const st = await getTournamentState(tid, null);
+    if (!st) return;
+    for (const uid of await tournamentMemberIds(tid)) {
+      sendToUser(uid, { type: 'tournament_state', tournament: { ...st, youJoined: st.players.some((pl) => pl.userId === uid) } });
+    }
+  }
+
+  /** Oynanabilir (iki taraf da çevrimiçi) turnuva maçlarına 'maçın hazır' teklifi. */
+  async function offerTournamentMatches(tid: string): Promise<void> {
+    const st = await getTournamentState(tid, null);
+    if (!st || st.status !== 'live') return;
+    const nameOf = new Map(st.players.map((pl) => [pl.userId, pl.name]));
+    for (const m of st.matches) {
+      if (m.winnerId || !m.aId || !m.bId || m.status === 'playing') continue;
+      if (!onlineUsers.has(m.aId) || !onlineUsers.has(m.bId)) continue;
+      const wait = tournamentReadyWaits.get(m.id);
+      sendToUser(m.aId, { type: 'tournament_match_ready', tournamentId: tid, matchId: m.id, opponentName: nameOf.get(m.bId) ?? 'Rakip', tournamentName: st.name, youReady: Boolean(wait?.has(m.aId)), oppReady: Boolean(wait?.has(m.bId)) });
+      sendToUser(m.bId, { type: 'tournament_match_ready', tournamentId: tid, matchId: m.id, opponentName: nameOf.get(m.aId) ?? 'Rakip', tournamentName: st.name, youReady: Boolean(wait?.has(m.bId)), oppReady: Boolean(wait?.has(m.aId)) });
+    }
+  }
+
+  async function offerTournamentMatchesForUser(userId: string): Promise<void> {
+    const pend = await pendingTournamentMatchesFor(userId).catch(() => []);
+    for (const tid of new Set(pend.map((pm) => pm.tournamentId))) await offerTournamentMatches(tid);
+  }
   const activeSearchByWs = new WeakMap<WebSocket, string>();
   const activeBotIds = new Set<string>();
   const activeBotDisplayNames = new Set<string>();
@@ -1275,6 +1306,7 @@ export function startServer(port: number): Server {
           userProfile = profile;
           addOnline(profile.id, ws);
           void sendPendingSupportMessages(profile.id, transport);
+          void offerTournamentMatchesForUser(profile.id);
           recordCaps(transport, profile.id);
           transport.send({
             type: 'profile',
@@ -1309,6 +1341,7 @@ export function startServer(port: number): Server {
             userProfile = profile;
             addOnline(profile.id, ws);
             void sendPendingSupportMessages(profile.id, transport);
+          void offerTournamentMatchesForUser(profile.id);
             recordCaps(transport, profile.id);
             transport.send({ type: 'profile', profile: toProfileView(profile) });
           } catch (err) {
@@ -1330,6 +1363,7 @@ export function startServer(port: number): Server {
             userProfile = profile;
             addOnline(profile.id, ws);
             void sendPendingSupportMessages(profile.id, transport);
+          void offerTournamentMatchesForUser(profile.id);
             recordCaps(transport, profile.id);
             transport.send({ type: 'profile', profile: toProfileView(profile) });
           } catch (err) {
@@ -1778,6 +1812,105 @@ export function startServer(port: number): Server {
         if (userProfile && typeof msg.id === 'string') {
           void pool.query('UPDATE support_messages SET seen = true WHERE id = $1 AND user_id = $2', [msg.id, userProfile.id]).catch(() => {});
         }
+        return;
+      }
+
+      // ═══ TURNUVALAR (2026-08-28) ═══
+      if (msg.type === 'list_tournaments') {
+        void listTournaments(userProfile?.id ?? null)
+          .then((items) => transport.send({ type: 'tournaments_list', items }))
+          .catch((err) => reportSocketTaskFailure('list_tournaments', err));
+        return;
+      }
+      if (msg.type === 'get_tournament') {
+        void getTournamentState(msg.id, userProfile?.id ?? null)
+          .then((t) => { if (t) transport.send({ type: 'tournament_state', tournament: t }); })
+          .catch((err) => reportSocketTaskFailure('get_tournament', err));
+        return;
+      }
+      if (msg.type === 'join_tournament') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        const uid = userProfile.id;
+        void (async () => {
+          const res = await joinTournament(msg.id, uid);
+          if (!res.ok) return transport.send({ type: 'error', message: res.error ?? 'Kayıt başarısız' });
+          transport.send({ type: 'tournaments_list', items: await listTournaments(uid) });
+          await broadcastTournamentState(msg.id);
+          if (res.started) await offerTournamentMatches(msg.id);
+        })().catch((err) => reportSocketTaskFailure('join_tournament', err));
+        return;
+      }
+      if (msg.type === 'leave_tournament') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        const uid = userProfile.id;
+        void (async () => {
+          const res = await leaveTournament(msg.id, uid);
+          if (!res.ok) return transport.send({ type: 'error', message: res.error ?? 'Çıkılamadı' });
+          transport.send({ type: 'tournaments_list', items: await listTournaments(uid) });
+          await broadcastTournamentState(msg.id);
+        })().catch((err) => reportSocketTaskFailure('leave_tournament', err));
+        return;
+      }
+      if (msg.type === 'tournament_ready') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        const readyProfile = userProfile;
+        void (async () => {
+          const { rows } = await pool.query<{ id: string; tournament_id: string; player_a: string | null; player_b: string | null; winner: string | null; status: string }>(
+            `SELECT m.id, m.tournament_id, m.player_a, m.player_b, m.winner, m.status
+               FROM tournament_matches m JOIN tournaments t ON t.id = m.tournament_id AND t.status = 'live'
+              WHERE m.id = $1`, [msg.matchId],
+          );
+          const m = rows[0];
+          if (!m || m.winner || m.status === 'playing') return transport.send({ type: 'error', message: 'Bu maç artık oynanamaz' });
+          if (m.player_a !== readyProfile.id && m.player_b !== readyProfile.id) return transport.send({ type: 'error', message: 'Bu maçta değilsin' });
+          const oppId = (m.player_a === readyProfile.id ? m.player_b : m.player_a)!;
+          let wait = tournamentReadyWaits.get(m.id);
+          if (!wait) { wait = new Map(); tournamentReadyWaits.set(m.id, wait); }
+          wait.set(readyProfile.id, { name: readyProfile.displayName, transport, profile: readyProfile, setCtx: (c) => { ctx = c; } });
+          const other = wait.get(oppId);
+          if (!other) {
+            // Rakip henüz hazır değil — iki tarafa da güncel hazır durumunu bildir.
+            const st = await getTournamentState(m.tournament_id, null);
+            const nameOf = new Map((st?.players ?? []).map((pl) => [pl.userId, pl.name]));
+            transport.send({ type: 'tournament_match_ready', tournamentId: m.tournament_id, matchId: m.id, opponentName: nameOf.get(oppId) ?? 'Rakip', tournamentName: st?.name ?? '', youReady: true, oppReady: false });
+            sendToUser(oppId, { type: 'tournament_match_ready', tournamentId: m.tournament_id, matchId: m.id, opponentName: readyProfile.displayName, tournamentName: st?.name ?? '', youReady: false, oppReady: true });
+            return;
+          }
+          // ── İKİSİ DE HAZIR: oda kurulur (dostluk kalıbı; ranked=false, team-team) ──
+          tournamentReadyWaits.delete(m.id);
+          await markMatchPlaying(m.id);
+          const room = manager.createRoom();
+          room.gameMode = 'team-team';
+          const matchId = m.id;
+          const tid = m.tournament_id;
+          let reported = false;
+          const settle = (winnerUid: string | null) => {
+            if (reported) return;
+            reported = true;
+            void (async () => {
+              const res = await reportTournamentResult(matchId, winnerUid);
+              if (!res) return;
+              await broadcastTournamentState(res.tournamentId);
+              if (res.finished && res.winnerUserId) {
+                const st = await getTournamentState(res.tournamentId, null);
+                sendToUser(res.winnerUserId, { type: 'tournament_over', tournamentId: res.tournamentId, youWon: true, placement: 1, prize: res.prizeFirst ?? 0, tournamentName: st?.name ?? '' });
+                if (res.secondUserId) sendToUser(res.secondUserId, { type: 'tournament_over', tournamentId: res.tournamentId, youWon: false, placement: 2, prize: res.prizeSecond ?? 0, tournamentName: st?.name ?? '' });
+              } else {
+                await offerTournamentMatches(res.tournamentId);
+              }
+            })().catch((err) => log.error('tournament_settle_failed', { matchId, error: err instanceof Error ? err.message : String(err) }));
+          };
+          room.tournamentHook = settle;
+          room.onDispose(() => { if (!reported) settle(null); }); // maç sonuçsuz dağıldı → pending'e dön
+          const aSkill = await getOrCreateSkillProfile(other.profile.id, other.profile.trophies).catch(() => undefined);
+          const bSkill = await getOrCreateSkillProfile(readyProfile.id, readyProfile.trophies).catch(() => undefined);
+          const resA = room.addPlayer(other.name, other.transport, true, other.profile.id, other.profile.trophies, other.profile.arena, other.profile.avatar, other.profile.level, other.profile.selectedFrame, toCosmeticLoadout(other.profile), aSkill?.skillMean, aSkill?.skillUncertainty, aSkill?.matchesPlayed);
+          const resB = room.addPlayer(readyProfile.displayName, transport, false, readyProfile.id, readyProfile.trophies, readyProfile.arena, readyProfile.avatar, readyProfile.level, readyProfile.selectedFrame, toCosmeticLoadout(readyProfile), bSkill?.skillMean, bSkill?.skillUncertainty, bSkill?.matchesPlayed);
+          if (resA.ok) other.setCtx({ room, playerId: resA.id, userProfile: other.profile });
+          if (resB.ok) ctx = { room, playerId: resB.id, userProfile: readyProfile };
+          log.info('tournament_match_started', { tournamentId: tid, matchId, room: room.code });
+          setTimeout(() => safeAutoStart(room, resA.ok ? resA.id : '', 'tournament_match'), 2000);
+        })().catch((err) => reportSocketTaskFailure('tournament_ready', err));
         return;
       }
       if (msg.type === 'leave_match') {

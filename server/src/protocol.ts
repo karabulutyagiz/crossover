@@ -238,6 +238,11 @@ export type ClientMsg =
   // rakip hükmen sonucu ANINDA görür.
   | { type: 'leave_match'; reason?: 'leave' | 'cheat' }
   | { type: 'ack_support_message'; id: string }
+  | { type: 'list_tournaments' }
+  | { type: 'join_tournament'; id: string }
+  | { type: 'leave_tournament'; id: string }
+  | { type: 'get_tournament'; id: string }
+  | { type: 'tournament_ready'; matchId: string } // turnuva maçına 'hazırım' — iki taraf da deyince oda kurulur
   // ---- Maç içi Özel Güçler (server-authoritative; maç başına TEK kullanım) ----
   // requestId: idempotency anahtarı — aynı istek iki kez tüketmez. powerId,
   // sunucudaki maç-başı anlık görüntüyle birebir tutmalıdır (uyuşmazlık = reddet).
@@ -357,6 +362,10 @@ export type ServerMsg =
   | { type: 'player_results'; players: PlayerRef[] }
   | { type: 'searching'; etaSeconds?: number } // tahmini eşleşme süresi (dürüst: fallback zamanından türetilir)
   | { type: 'support_message'; id: string; title?: string | null; body: string } // hedefli destek/duyuru popup'ı
+  | { type: 'tournaments_list'; items: { id: string; name: string; size: number; joined: number; youJoined: boolean; status: 'registration' | 'live' | 'finished'; prizeFirst: number; prizeSecond: number; winnerName?: string | null }[] }
+  | { type: 'tournament_state'; tournament: { id: string; name: string; size: number; status: 'registration' | 'live' | 'finished'; prizeFirst: number; prizeSecond: number; joined: number; youJoined: boolean; players: { userId: string; name: string }[]; matches: { id: string; round: number; slot: number; aId: string | null; aName: string | null; bId: string | null; bName: string | null; winnerId: string | null; status: string }[]; winnerName: string | null } }
+  | { type: 'tournament_match_ready'; tournamentId: string; matchId: string; opponentName: string; tournamentName: string; youReady?: boolean; oppReady?: boolean } // maç oynanabilir — iki taraf da hazır deyince başlar
+  | { type: 'tournament_over'; tournamentId: string; youWon: boolean; placement: number; prize: number; tournamentName: string }
   | { type: 'opponent_left'; forfeit?: boolean; forfeitReason?: 'cheat' }
   // ---- Friends ----
   | { type: 'friend_request_received'; requestId: string; fromId: string; fromName: string }

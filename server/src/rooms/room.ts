@@ -189,6 +189,15 @@ export class Room {
   // ve oda-kodu maçları dostluk maçıdır: iki hesap anlaşıp hükmen galibiyetle
   // XP/elmas kasamasın diye bu odalarda hiçbir ödül yazılmaz.
   ranked = false;
+  /** Turnuva maçıysa: kazanan userId ile TEK KEZ çağrılır (null = sonuçsuz —
+   * maç turnuvada 'pending'e döner, yeniden oynanır). ws/server.ts bağlar. */
+  tournamentHook: ((winnerUserId: string | null) => void) | null = null;
+  private tournamentReported = false;
+  private reportTournament(winnerUserId: string | null): void {
+    if (!this.tournamentHook || this.tournamentReported) return;
+    this.tournamentReported = true;
+    try { this.tournamentHook(winnerUserId); } catch { /* yut */ }
+  }
   // Hybrid matchmaking fallback botları dereceli maç hissini korur; klasik
   // create_solo pratik botları bu bayrağı açmaz ve eski XP-only davranışta kalır.
   rankedBotRewards = false;
@@ -590,6 +599,7 @@ export class Room {
       const winner = [...this.players.values()][0]!;
       winner.score = WIN_TARGET;
       this.matchOver = true;
+      this.reportTournament(winner.userId ?? null);
       this.status = 'result';
       this.broadcast({ type: 'opponent_left', forfeit: true, forfeitReason: reason === 'cheat' ? 'cheat' : undefined });
       // Award trophies: winner wins, leaver loses. Yalnız dereceli maçta —
@@ -2375,6 +2385,7 @@ export class Room {
 
     const winner = [...this.players.values()].find((p) => p.score >= WIN_TARGET) ?? null;
     this.matchOver = Boolean(winner);
+    if (this.matchOver) this.reportTournament(winner?.userId ?? null);
 
     this.broadcast({
       type: 'result',

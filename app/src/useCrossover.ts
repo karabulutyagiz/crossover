@@ -33,7 +33,7 @@ import type {
   StoreCatalogView,
 } from './protocol';
 
-export type Phase = 'home' | 'arenas' | 'leaderboard' | 'matchHistory' | 'profile' | 'searching' | 'matchup' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox';
+export type Phase = 'home' | 'tournaments' | 'arenas' | 'leaderboard' | 'matchHistory' | 'profile' | 'searching' | 'matchup' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox';
 export type StoreCatalogStatus = 'idle' | 'loading' | 'success' | 'empty' | 'error';
 
 const STORE_CATALOG_TIMEOUT_MS = 10000;
@@ -166,6 +166,10 @@ export interface GameState {
   opponentForfeitReason: 'cheat' | null;
   searchEta: { seconds: number; at: number } | null; // sunucunun dürüst eşleşme tahmini
   supportMessage: { id: string; title: string | null; body: string } | null; // hedefli destek popup'ı
+  tournaments: Extract<ServerMsg, { type: 'tournaments_list' }>['items'] | null;
+  tournament: Extract<ServerMsg, { type: 'tournament_state' }>['tournament'] | null;
+  tournamentReady: Extract<ServerMsg, { type: 'tournament_match_ready' }> | null;
+  tournamentOver: Extract<ServerMsg, { type: 'tournament_over' }> | null;
   unseenCollection: { emotes: number; cosmetics: number; powers: number }; // satın alınıp henüz görülmemişler (kırmızı 1)
   // Maç ortasında ÇIKIŞ (forfeit) = kaybetme. Kupa cezası (trophy_update) reset
   // SONRASI gelir; onunla kaybetme popup'ı gösterilir. null = gösterilecek bir şey yok.
@@ -341,6 +345,10 @@ export const initialState: GameState = {
   xox: null,
   searchEta: null,
   supportMessage: null,
+  tournaments: null,
+  tournament: null,
+  tournamentReady: null,
+  tournamentOver: null,
   unseenCollection: { emotes: 0, cosmetics: 0, powers: 0 },
   xoxOver: null,
   storeCatalogError: null,
@@ -391,6 +399,8 @@ type Action =
   | { type: '_clear_emote'; playerId: string }
   | { type: '_unseen_load'; value: { emotes?: number; cosmetics?: number; powers?: number } }
   | { type: '_clear_support' }
+  | { type: '_clear_tournament_over' }
+  | { type: '_clear_tournament_ready' }
   | { type: '_col_seen'; tab: 'emotes' | 'cosmetics' | 'powers' }
   | { type: '_forfeit_loss'; delta: number; trophies: number; arena: ArenaView; youScore: number; oppScore: number; opponentName: string; reason?: 'cheat' }
   | { type: '_clear_forfeit_loss' };
@@ -638,6 +648,19 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, supportMessage: { id: a.id, title: a.title ?? null, body: a.body } };
     }
     case '_clear_support': return { ...state, supportMessage: null };
+    case 'tournaments_list':
+      return { ...state, tournaments: (action as Extract<ServerMsg, { type: 'tournaments_list' }>).items };
+    case 'tournament_state': {
+      const t = (action as Extract<ServerMsg, { type: 'tournament_state' }>).tournament;
+      // Yalnız açık olan ya da üyesi olunan turnuvanın durumunu tut.
+      return { ...state, tournament: state.tournament == null || state.tournament.id === t.id || t.youJoined ? t : state.tournament };
+    }
+    case 'tournament_match_ready':
+      return { ...state, tournamentReady: action as Extract<ServerMsg, { type: 'tournament_match_ready' }> };
+    case 'tournament_over':
+      return { ...state, tournamentOver: action as Extract<ServerMsg, { type: 'tournament_over' }>, tournamentReady: null };
+    case '_clear_tournament_over': return { ...state, tournamentOver: null };
+    case '_clear_tournament_ready': return { ...state, tournamentReady: null };
     case 'searching': {
       const eta = (action as Extract<ServerMsg, { type: 'searching' }>).etaSeconds ?? null;
       // Yeni maç arayışı = YENİ seri: önceki serinin (eve dönüşte uçmamış/kesilmiş)
@@ -1336,7 +1359,7 @@ export function useCrossover() {
   // değişmediği için actions useMemo'su ve alttaki memo sınırları bozulmaz.
   const send = useCallback((msg: ClientMsg) => {
     const ws = wsRef.current;
-    const canReconnectWithoutRoom = ['home', 'arenas', 'leaderboard', 'matchHistory', 'profile'].includes(stateRef.current.phase);
+    const canReconnectWithoutRoom = ['home', 'tournaments', 'arenas', 'leaderboard', 'matchHistory', 'profile'].includes(stateRef.current.phase);
     const canResumeRoom = Boolean(stateRef.current.room?.code && stateRef.current.profile?.userId && !canReconnectWithoutRoom);
     const staleOpen = ws?.readyState === WebSocket.OPEN && lastSocketActivity.current > 0 && Date.now() - lastSocketActivity.current > STALE_SOCKET_MS;
     const reconnectAndSendAuthed = () => {
@@ -1409,7 +1432,7 @@ export function useCrossover() {
     const ensure = () => {
       const ws = wsRef.current;
       const staleOpen = ws?.readyState === WebSocket.OPEN && lastSocketActivity.current > 0 && Date.now() - lastSocketActivity.current > STALE_SOCKET_MS;
-      if (staleOpen && ['home', 'arenas', 'leaderboard', 'matchHistory', 'profile'].includes(state.phase)) {
+      if (staleOpen && ['home', 'tournaments', 'arenas', 'leaderboard', 'matchHistory', 'profile'].includes(state.phase)) {
         connectAndSend({ type: 'register', name, userId: uid }, { silent: true });
         return;
       }
@@ -1728,6 +1751,15 @@ export function useCrossover() {
       },
       markCollectionSeen: (tab: 'emotes' | 'cosmetics' | 'powers') => dispatch({ type: '_col_seen', tab }),
       ackSupportMessage: (id: string) => { send({ type: 'ack_support_message', id }); dispatch({ type: '_clear_support' }); },
+      openTournaments: () => { dispatch({ type: '_phase', phase: 'tournaments' }); send({ type: 'list_tournaments' }); },
+      closeTournaments: () => dispatch({ type: '_phase', phase: 'home' }),
+      listTournaments: () => send({ type: 'list_tournaments' }),
+      joinTournament: (id: string) => send({ type: 'join_tournament', id }),
+      leaveTournament: (id: string) => send({ type: 'leave_tournament', id }),
+      getTournament: (id: string) => send({ type: 'get_tournament', id }),
+      tournamentReady: (matchId: string) => send({ type: 'tournament_ready', matchId }),
+      clearTournamentOver: () => dispatch({ type: '_clear_tournament_over' }),
+      clearTournamentReady: () => dispatch({ type: '_clear_tournament_ready' }),
       buySpecialPower: (powerId: string, qty = 1) => {
         track('special_power_purchase_started', { power_id: powerId, qty });
         send({ type: 'buy_special_power', powerId, qty });

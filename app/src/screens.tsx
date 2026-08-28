@@ -155,6 +155,15 @@ type Actions = {
   equipSpecialPower: (powerId: string | null) => void; // maça hangi güçle çıkılacağını seç
   markCollectionSeen: (tab: 'emotes' | 'cosmetics' | 'powers') => void; // kırmızı 1 rozetini söndür
   ackSupportMessage: (id: string) => void; // destek popup'ı okundu
+  openTournaments: () => void;
+  closeTournaments: () => void;
+  listTournaments: () => void;
+  joinTournament: (id: string) => void;
+  leaveTournament: (id: string) => void;
+  getTournament: (id: string) => void;
+  tournamentReady: (matchId: string) => void;
+  clearTournamentOver: () => void;
+  clearTournamentReady: () => void;
   buySpecialPower: (powerId: string, qty?: number) => void; // mağazadan elmasla al
   clearStreakReward: () => void;
   xoxSubmit: (cell: number, text: string) => void;
@@ -5172,6 +5181,16 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       {/* ── Mode picker ── */}
       <GameModal visible={modesOpen} onClose={() => setModesOpen(false)} onExited={() => { if (socialUpsellOnExit.current) { socialUpsellOnExit.current = false; if (lockedModePreview) onLockedSocialMode?.(lockedModePreview); setLockedModePreview(null); } }} title={t('home.modesTitle').toLocaleUpperCase(currentLang())} icon="football">
         <Text style={[styles.muted, { textAlign: 'center', marginBottom: 6 }]}>{t('home.specialModeBody')}</Text>
+        {/* Turnuvalar — ödüllü eleme ağacı (2026-08-28) */}
+        <GameRow
+          icon="trophy"
+          iconColor={theme.gold}
+          tint={theme.gold}
+          label={t('tour.title')}
+          right={<Ribbon label={t('store.badgeNew')} color={theme.danger} />}
+          chevron
+          onPress={() => { setModesOpen(false); actions.openTournaments(); }}
+        />
         {HOME_MODES.map((m) => {
           const locked = PACK_MODES.includes(m) && !hasPack;
           const c = m === 'team-team' ? theme.primary : m === 'xox' ? theme.gold : m === 'player-player' ? theme.accent : m === 'country-team' ? theme.blue : theme.purple;
@@ -6434,6 +6453,140 @@ function XoxHeaderChip({ club, size }: { club: ClubRef; size: number }) {
       <ClubBadge name={club.name} size={Math.min(40, size * 0.52)} logoUrl={club.logoUrl} />
       <Text numberOfLines={1} style={{ color: theme.text, fontSize: 9, fontFamily: 'Poppins-ExtraBold', maxWidth: size }}>{club.name}</Text>
     </View>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TURNUVALAR (2026-08-28) — lobi listesi + Kafa Topu/CR tarzı eleme ağacı.
+// Sunucu otoritesi: liste ve ağaç tournaments_list/tournament_state'ten gelir;
+// kutucuklar + dirsek çizgileri kit dilinde (chunky, cam/parlama yok).
+// ═══════════════════════════════════════════════════════════════════════════
+const TOUR_BOX_W = 128;
+const TOUR_BOX_H = 58;
+
+function TourPlayerRow({ name, isWinner, isYou, decided }: { name: string | null; isWinner: boolean; isYou: boolean; decided: boolean }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, height: TOUR_BOX_H / 2 - 1, backgroundColor: isWinner ? withAlpha(theme.primary, 0.2) : 'transparent' }}>
+      {isWinner ? <Ionicons name="checkmark-circle" size={11} color={theme.primary} /> : <View style={{ width: 11 }} />}
+      <Text numberOfLines={1} style={{ flex: 1, color: name == null ? theme.muted : decided && !isWinner ? withAlpha(theme.text, 0.45) : isYou ? theme.accent : theme.text, fontSize: 10.5, fontFamily: isYou ? 'Poppins-Black' : 'Poppins-ExtraBold' }}>
+        {name ?? '—'}
+      </Text>
+    </View>
+  );
+}
+
+function TourMatchBox({ m, youId }: { m: { aId: string | null; aName: string | null; bId: string | null; bName: string | null; winnerId: string | null; status: string }; youId: string | null }) {
+  const decided = m.winnerId != null;
+  return (
+    <View style={{ width: TOUR_BOX_W, height: TOUR_BOX_H, backgroundColor: theme.surface2, borderRadius: 12, borderWidth: 1.5, borderColor: m.status === 'playing' ? theme.gold : decided ? withAlpha(theme.primary, 0.5) : theme.border, overflow: 'hidden' }}>
+      <TourPlayerRow name={m.aName} isWinner={decided && m.winnerId === m.aId} isYou={youId != null && m.aId === youId} decided={decided} />
+      <View style={{ height: 1.5, backgroundColor: theme.border }} />
+      <TourPlayerRow name={m.bName} isWinner={decided && m.winnerId === m.bId} isYou={youId != null && m.bId === youId} decided={decided} />
+      {m.status === 'playing' ? (
+        <View pointerEvents="none" style={{ position: 'absolute', right: 4, top: 4, width: 7, height: 7, borderRadius: 4, backgroundColor: theme.gold }} />
+      ) : null}
+    </View>
+  );
+}
+
+export function TournamentsScreen({ state, actions }: Props) {
+  const youId = state.profile?.userId ?? null;
+  const list = state.tournaments;
+  const tour = state.tournament;
+  useEffect(() => { actions.listTournaments(); }, []);
+  // Üyesi olduğum turnuvanın ağacını otomatik aç/yenile.
+  useEffect(() => {
+    const mine = list?.find((it) => it.youJoined && it.status !== 'finished') ?? list?.find((it) => it.youJoined);
+    if (mine && (!tour || tour.id !== mine.id)) actions.getTournament(mine.id);
+  }, [list]);
+  const rounds = tour && tour.matches.length ? Math.max(...tour.matches.map((m) => m.round)) : 0;
+  const roundLabel = (r: number): string => {
+    const fromEnd = rounds - r; // 0 = final, 1 = yarı, 2+ = çeyrek
+    return fromEnd === 0 ? t('tour.round.3') : fromEnd === 1 ? t('tour.round.2') : t('tour.round.1');
+  };
+  return (
+    <Screen scroll contentCenter={false}>
+      <ScreenHeader title={tour && tour.status !== 'finished' ? tour.name : t('tour.title')} onBack={actions.closeTournaments} icon="trophy" />
+
+      {/* ── Lobi listesi (ağaç açık değilken ya da turnuva bitmişken) ── */}
+      {(!tour || tour.status === 'finished') ? (
+        <View style={{ gap: 10, marginTop: 8 }}>
+          {!list ? (
+            <EmptyState icon="trophy" title={t('store.loading')} />
+          ) : list.length === 0 ? (
+            <EmptyState icon="trophy" title={t('tour.empty')} />
+          ) : list.map((it) => (
+            <GamePanel key={it.id} compact accentStripe={it.status === 'live' ? theme.gold : it.status === 'registration' ? theme.primary : theme.muted} bodyStyle={{ padding: 12, gap: 6 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ flex: 1, color: theme.text, fontSize: 15, fontFamily: 'Poppins-Black', ...engrave('sm') }}>{it.name}</Text>
+                <Ribbon label={t(('tour.' + it.status) as MessageKey)} color={it.status === 'live' ? theme.gold : it.status === 'registration' ? theme.primary : theme.muted} />
+              </View>
+              <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold' }}>{t('tour.joined', { n: String(it.joined), size: String(it.size) })} · {t('tour.prize', { p1: String(it.prizeFirst), p2: String(it.prizeSecond) })}</Text>
+              {it.status === 'finished' && it.winnerName ? (
+                <Text style={{ color: theme.gold, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>{t('tour.champion', { name: it.winnerName })}</Text>
+              ) : null}
+              {it.status === 'registration' ? (
+                it.youJoined ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Text style={{ flex: 1, color: theme.primary, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>✓ {t('tour.waiting')}</Text>
+                    <Btn compact kind="ghost" label={t('tour.leave')} onPress={() => actions.leaveTournament(it.id)} />
+                  </View>
+                ) : (
+                  <Btn big kind="accent" icon="trophy" label={t('tour.join')} feedback={GameFeedbackEvent.UI_PLAY} onPress={() => actions.joinTournament(it.id)} />
+                )
+              ) : it.status === 'live' && it.youJoined ? (
+                <Btn compact kind="blue" icon="git-network" label={t('tour.bracket')} onPress={() => actions.getTournament(it.id)} />
+              ) : null}
+            </GamePanel>
+          ))}
+        </View>
+      ) : null}
+
+      {/* ── Eleme ağacı ── */}
+      {tour && tour.matches.length > 0 ? (
+        <View style={{ marginTop: 14 }}>
+          <SectionHeader label={t('tour.bracket')} icon="git-network" />
+          {tour.winnerName ? (
+            <View style={{ alignSelf: 'center', backgroundColor: withAlpha(theme.gold, 0.16), borderRadius: 999, borderWidth: 1.5, borderColor: withAlpha(theme.gold, 0.6), paddingHorizontal: 14, paddingVertical: 6, marginBottom: 10 }}>
+              <Text style={{ color: theme.gold, fontSize: 13, fontFamily: 'Poppins-Black' }}>🏆 {t('tour.champion', { name: tour.winnerName })}</Text>
+            </View>
+          ) : null}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6, paddingRight: 16 }}>
+            {Array.from({ length: rounds }, (_, ri) => ri + 1).map((r) => {
+              const ms = tour.matches.filter((m) => m.round === r).sort((a, b) => a.slot - b.slot);
+              // Kutu aralığı üstel büyür: her tur, önceki turun iki kutusunun
+              // ORTASINA hizalanır (klasik bracket geometrisi).
+              const gapBase = 14;
+              const stride = (TOUR_BOX_H + gapBase) * Math.pow(2, r - 1);
+              const offset = (stride - TOUR_BOX_H) / 2;
+              return (
+                <View key={r} style={{ marginRight: 26 }}>
+                  <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-Black', letterSpacing: 1, textAlign: 'center', marginBottom: 8 }}>{roundLabel(r)}</Text>
+                  <View>
+                    {ms.map((m, i) => (
+                      <View key={m.id} style={{ marginTop: i === 0 ? offset : stride - TOUR_BOX_H }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <TourMatchBox m={m} youId={youId} />
+                          {r < rounds ? (
+                            <>
+                              {/* yatay kol + dikey dirsek: kazanan üst tura akar */}
+                              <View pointerEvents="none" style={{ width: 13, height: 2, backgroundColor: withAlpha(theme.border, 0.9) }} />
+                              <View pointerEvents="none" style={{ position: 'absolute', left: TOUR_BOX_W + 11, width: 2, height: stride / 2 + 2, backgroundColor: withAlpha(theme.border, 0.9), top: i % 2 === 0 ? TOUR_BOX_H / 2 - 1 : undefined, bottom: i % 2 === 1 ? TOUR_BOX_H / 2 - 1 : undefined }} />
+                            </>
+                          ) : null}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
+          <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginTop: 8 }}>{t('tour.prize', { p1: String(tour.prizeFirst), p2: String(tour.prizeSecond) })}</Text>
+        </View>
+      ) : null}
+      <View style={{ height: 24 }} />
+    </Screen>
   );
 }
 
