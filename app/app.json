@@ -99,7 +99,7 @@
     },
     "android": {
       "package": "com.crossover.football",
-      "versionCode": 130,
+      "versionCode": 131,
       "adaptiveIcon": {
         "backgroundColor": "#0B1838",
         "foregroundImage": "./assets/android-icon-foreground.png",
