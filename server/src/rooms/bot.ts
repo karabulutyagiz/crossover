@@ -162,6 +162,12 @@ export class BotPlayer implements Transport {
   // → ek süre/ikinci şans). Plan tutmazsa (doğal an gelmezse) hiç kullanılmaz.
   private rollSpecialPowerPlan(): void {
     const cfg = specialPowersConfig();
+    // BOTLAR ÖZEL GÜÇ KULLANMAZ (kullanıcı kararı 2026-08-28: 'botlar özel güç
+    // kullanıyorsa kullanmıcak — dondurucu vs'). Güçler yalnız gerçek oyuncuların
+    // avantajı; bot dondurucu atınca haksızlık hissi veriyordu. Plan hep boş.
+    this.botSpecialPowerPlan = null;
+    return;
+    // eslint-disable-next-line no-unreachable — eski seçim mantığı bilinçli devre dışı
     if (!cfg.enabled || !this.profile || Math.random() >= cfg.botUseProbability) { this.botSpecialPowerPlan = null; return; }
     const arch = this.profile.behaviorArchetype;
     const weights: [SpecialPowerId, number][] = [
