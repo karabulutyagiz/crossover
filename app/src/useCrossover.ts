@@ -98,7 +98,9 @@ export interface GameState {
   playerResults: PlayerRef[];
   scopes: ScopesList | null;
   profile: ProfileView | null;
-  trophyDelta: { matchId?: string; trophies: number; delta: number; arena: ArenaView; arenaReward?: number; shielded?: boolean } | null;
+  // delta = art arda rematch serisinin BİRİKMİŞ NET kupası (gösterim + eve-dönüş uçuşu);
+  // lastDelta = YALNIZ son maçın deltası (post-maç teklif hedeflemesi bunu kullanır).
+  trophyDelta: { matchId?: string; trophies: number; delta: number; lastDelta: number; arena: ArenaView; arenaReward?: number; shielded?: boolean } | null;
   // Maç sonu seviye ilerlemesi (xp_update) — popup App katmanında maç ÇIKIŞINDA gösterilir
   xpGain: { xp: number; level: number; xpForNext: number; gained: number; leveledUp: { level: number; diamonds: number; emoteId?: string; powerId?: string }[]; boosted?: boolean } | null;
   // Seviye Yolu'nda son toplanan ödül — modal içi animasyonlar bunu izler
@@ -355,6 +357,7 @@ type Action =
   | { type: '_connected'; value: boolean }
   | { type: '_authProvider'; provider: 'apple' | 'google' | 'facebook' | null }
   | { type: '_xp_seen' } // XP küre yağmuru oynatıldı — kazanım tüketildi
+  | { type: '_trophy_seen' } // net kupa uçuşu oynatıldı — birikim tüketildi
   | { type: '_clear_daily_cx_reward' } // Günün Crossover'ı ödül kutlaması tüketildi
   | { type: '_reset' }
   | { type: '_logout' }
@@ -392,6 +395,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, authProvider: action.provider };
     case '_xp_seen':
       return { ...state, xpGain: null };
+    case '_trophy_seen': // net kupa uçuşu ana ekranda oynatıldı — birikim tüketildi
+      return { ...state, trophyDelta: null };
     case '_clear_daily_cx_reward':
       return { ...state, dailyCxReward: 0 };
     case '_forfeit_loss':
@@ -399,9 +404,10 @@ function reducer(state: GameState, action: Action): GameState {
     case '_clear_forfeit_loss':
       return state.forfeitLoss ? { ...state, forfeitLoss: null } : state;
     case '_reset':
-      // xpGain korunur: XP küre yağmuru ana ekrana DÖNÜNCE akar (yeni maç
-      // başlarken countdown case'i zaten temizler).
-      return { ...initialState, scopes: state.scopes, profile: state.profile, friends: state.friends, authProvider: state.authProvider, updateRequired: state.updateRequired, updateAvailableVersion: state.updateAvailableVersion, updateCheckComplete: state.updateCheckComplete, xpGain: state.xpGain, isQuickMatch: false, opponentForfeit: false, opponentForfeitReason: null };
+      // xpGain VE trophyDelta korunur: art arda rematch serisinin TOPLAM XP'si ve
+      // NET kupası ana ekrana DÖNÜNCE akar (XP küre yağmuru + kupa uçuşu). Sonra
+      // sırasıyla markXpSeen / markTrophySeen ile tüketilir.
+      return { ...initialState, scopes: state.scopes, profile: state.profile, friends: state.friends, authProvider: state.authProvider, updateRequired: state.updateRequired, updateAvailableVersion: state.updateAvailableVersion, updateCheckComplete: state.updateCheckComplete, xpGain: state.xpGain, trophyDelta: state.trophyDelta, isQuickMatch: false, opponentForfeit: false, opponentForfeitReason: null };
     case '_logout':
       return { ...initialState, scopes: state.scopes, updateRequired: state.updateRequired, updateAvailableVersion: state.updateAvailableVersion, updateCheckComplete: state.updateCheckComplete };
     case '_picked':
@@ -611,7 +617,9 @@ function reducer(state: GameState, action: Action): GameState {
 
     case 'searching': {
       const eta = (action as Extract<ServerMsg, { type: 'searching' }>).etaSeconds ?? null;
-      return { ...state, phase: 'searching', isQuickMatch: true, opponentForfeit: false, opponentForfeitReason: null, searchEta: eta != null ? { seconds: eta, at: Date.now() } : null };
+      // Yeni maç arayışı = YENİ seri: önceki serinin (eve dönüşte uçmamış/kesilmiş)
+      // birikmiş net kupasını temizle ki taze seriye taşınmasın (güvenlik).
+      return { ...state, phase: 'searching', isQuickMatch: true, opponentForfeit: false, opponentForfeitReason: null, searchEta: eta != null ? { seconds: eta, at: Date.now() } : null, trophyDelta: null };
     }
     case 'profile':
       return { ...state, profile: action.profile };
@@ -700,7 +708,11 @@ function reducer(state: GameState, action: Action): GameState {
     case 'trophy_update':
       return {
         ...state,
-        trophyDelta: { matchId: action.matchId, trophies: action.trophies, delta: action.delta, arena: action.arena, arenaReward: (action as any).arenaReward, shielded: action.shielded },
+        // Lobiye dönmeden art arda tekrar-oyna maçları: kupa NET olarak BİRİKİR
+        // (XP gibi). delta = kazanılan − kaybedilen toplam; trophies/arena/shielded
+        // sunucunun SON mutlak durumu. Eve dönünce net toplam popup+uçuşla gösterilir
+        // (countdown artık temizlemez, _reset korur, markTrophySeen tüketir).
+        trophyDelta: { matchId: action.matchId, trophies: action.trophies, delta: (state.trophyDelta?.delta ?? 0) + action.delta, lastDelta: action.delta, arena: action.arena, arenaReward: (state.trophyDelta?.arenaReward ?? 0) + ((action as any).arenaReward ?? 0), shielded: action.shielded },
         profile: state.profile
           ? {
               ...state.profile,
@@ -771,6 +783,10 @@ function reducer(state: GameState, action: Action): GameState {
         // A friend match just began — clear any lingering invite UI on both sides.
         outgoingInvite: null,
         matchInvite: null,
+        // Pre-game'den (home/lobby/searching) yeni odaya giriş = YENİ seri → önceki
+        // serinin birikmiş net kupasını temizle. Rematch odası pre-game'den GELMEZ
+        // (phase 'result'/'countdown'), dolayısıyla birikim korunur.
+        trophyDelta: preGame ? null : state.trophyDelta,
       };
     }
     case 'countdown':
@@ -790,7 +806,8 @@ function reducer(state: GameState, action: Action): GameState {
         spFrozenUntil: null,
         streakReward: null,
         passedBy: [],
-        trophyDelta: null,
+        // trophyDelta BİLEREK temizlenmez: art arda rematch'lerde net kupa birikir
+        // (xpGain gibi). Yalnız eve dönüş uçuşu sonrası markTrophySeen ile tüketilir.
   lastClaim: null,
         matchupAutoStart: false,
         matchOver: false,
@@ -1565,6 +1582,8 @@ export function useCrossover() {
       changeName: (newName: string) => send({ type: 'change_name', newName }),
       // XP yağmuru tamamlandı — bir daha (profil gezintisi dahil) asla tekrarlamaz
       markXpSeen: () => dispatch({ type: '_xp_seen' }),
+      // Net kupa uçuşu tamamlandı — birikim tüketildi (yeni seri sıfırdan başlar)
+      markTrophySeen: () => dispatch({ type: '_trophy_seen' }),
       setUsername: (username: string) => {
         const userId = stateRef.current.profile?.userId;
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {

@@ -1415,7 +1415,8 @@ function AppRoot() {
       const youWon = state.matchWinnerId != null && state.matchWinnerId === youId;
       pendingOfferCtxRef.current = {
         profile: state.profile,
-        trophyDelta: state.trophyDelta.delta,
+        // Teklif hedeflemesi SON MAÇIN deltasına bakar (birikmiş net'e değil) — davranış korunur.
+        trophyDelta: state.trophyDelta.lastDelta,
         shielded: state.trophyDelta.shielded,
         youWon,
         xpGained: state.xpGain?.gained ?? null,
@@ -1452,7 +1453,7 @@ function AppRoot() {
       youWrong: 0,
       oppWrong: 0,
       winnerName: fl.opponentName,
-      trophyDelta: { trophies: fl.trophies, delta: fl.delta, arena: fl.arena, arenaReward: 0, shielded: false },
+      trophyDelta: { trophies: fl.trophies, delta: fl.delta, lastDelta: fl.delta, arena: fl.arena, arenaReward: 0, shielded: false },
       reason: fl.reason,
     });
   }, [state.forfeitLoss]);
@@ -1526,8 +1527,14 @@ function AppRoot() {
         }
       };
       const delta = cur?.trophyDelta.delta ?? 0;
-      if (delta !== 0) setTrophyFlight((f) => f ?? { delta, after: chain });
-      else chain();
+      // KUPA BİRİKİMİ (2026-08-28): seri içindeyken (result ekranı, tekrar-oyna) popup
+      // dismiss'inde UÇURMA — net kupa yalnız EVE DÖNÜNCE (home-flight kancası) uçar,
+      // böylece art arda rematch'lerde birikir. Ana ekranda gösterilen popup'larda
+      // (forfeit/hükmen kaybı) ise anında uçur + arena zinciri.
+      if (phaseRef.current === 'home') {
+        if (delta !== 0) setTrophyFlight((f) => f ?? { delta, after: chain });
+        else chain();
+      }
       return null;
     });
   }, [actions]);
@@ -2690,6 +2697,7 @@ function AppRoot() {
             setTrophyFlight(null);
             setTrophyLand((s) => ({ delta: f.delta, seq: (s?.seq ?? 0) + 1 }));
             f.after?.();
+            actions.markTrophySeen(); // net kupa uçuşu bitti → birikimi tüket (yeni seri sıfırdan)
           }}
         />
       ) : null}

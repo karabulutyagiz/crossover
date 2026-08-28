@@ -110,6 +110,7 @@ type Actions = {
   setUsername: (username: string) => void;
   changeName: (newName: string) => void;
   markXpSeen: () => void;
+  markTrophySeen: () => void;
   openArenas: () => void;
   closeArenas: () => void;
   openProfile: () => void;
