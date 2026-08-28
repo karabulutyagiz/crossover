@@ -6816,11 +6816,17 @@ export function GuessScreen({ state, actions, tutorial, prefill }: Props & { pre
     // the top they sit in the upper screen, above the keyboard; automaticallyAdjust-
     // KeyboardInsets still scrolls the focused field into view on short screens.
     <Screen scroll contentCenter={false} keyboardShouldPersistTaps="always" bg={<MatchCosmeticBackdrop backgroundId={matchBackgroundIdForState(state)} />}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         <MatchExitButton onPress={handleLeave} />
         <PlayerBar state={state} onEmotePress={tutorial ? undefined : () => setEmoteOpen(true)} />
-        {!tutorial ? <SpecialPowerHud state={state} actions={actions} /> : null}
       </View>
+      {/* Özel güç çipleri KENDİ satırında (kullanıcı raporu 2026-08-28: aynı satırda
+          PlayerBar'ı sıkıştırıp skoru gizliyordu). SpecialPowerHud güç yoksa null döner. */}
+      {!tutorial ? (
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10 }}>
+          <SpecialPowerHud state={state} actions={actions} />
+        </View>
+      ) : null}
       <View style={styles.teamsRow}>
         <Animated.View style={[styles.teamCard, { transform: [{ translateX: leftX }], opacity: reveal }]}>
           {state.revealMode === 'player-player' ? (
