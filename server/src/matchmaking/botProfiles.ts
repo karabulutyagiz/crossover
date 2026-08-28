@@ -154,6 +154,18 @@ const NICK_HANDLES = [
   'krl_emre', 'ByArda_', 'xSarpx', 'the_baran', 'mrt_official', 'kaan__07',
   'z0mbi', 'k4rakartal', 'y1ldiz', 'g0lcu', 'r3is', 'c4navar', 'p4tron',
   'legend34', 'efsane1907', 'kartal58', 'aslan1905', 'kanarya', 'timsah61',
+  // Birleşik-cümle / yaratıcı rumuzlar (kullanıcı 2026-08-28: 'dltnlarsehirde
+  // gibi daha fazla olsun'). Türkçe futbol kültürü + mahalle/sokak dili.
+  'sokaktanyetisme', 'toplabuyudum', 'ayaklarakonusur', 'gecesahaci', 'formacisi',
+  'tribunlerinsesi', 'onikinciadam', 'derbicanavari', 'golcrali', 'pasmakinesi',
+  'sahakartali', 'kramponunefendisi', 'kalecininkabusu', 'ortasahaninbeyni',
+  'sondakikaci', 'nizamiçalim', 'topbenim', 'gecmedengecemezsin', 'rabonaci',
+  'catladikoptu', 'yikilmayanadam', 'mahalleninyildizi', 'asfaltinkralı',
+  'benoynarımsenbakarsın', 'gollegelirim', 'driplinustasi', 'sahayahukmeder',
+  'kaptanadam', 'efsanevari', 'tekgeçerim', 'bitmeyenenerji', 'golkralı61',
+  'dltnlarsehirde', 'geceyarısıgolcüsü', 'topucuoglu', 'sahaninsahibi',
+  'kaleyisallar', 'çalimatarım', 'panenkaci', 'volecikralı', 'aşiretgolcüsü',
+  'kramponcuemmi', 'topsevdalısı', 'yeşilsahaci', 'gollüsaniye', 'rövaşatacı',
 ];
 const NAME_JERSEY_YEARS = ['1907', '1905', '1903', '1453', '58', '61', '34', '06', '10', '7', '9', '99'];
 
@@ -193,9 +205,9 @@ const HUMAN_HANDLES = [
 
 // Persona payları (2026-08-28): organik isim + misafir + rumuz karışımı; temalı
 // 'GolcuKafa' tarzı adlar minimumda (bot gibi kokuyorlardı).
-const GUEST_STYLE_HANDLE_WEIGHT = 0.14; // M+9 haneli misafir görünümü
-const ORGANIC_HANDLE_WEIGHT = 0.62;     // gerçekçi üretilmiş kullanıcı adı
-const NICK_HANDLE_WEIGHT = 0.18;        // lakap/rumuz havuzu
+const GUEST_STYLE_HANDLE_WEIGHT = 0.12; // M+9 haneli misafir görünümü
+const ORGANIC_HANDLE_WEIGHT = 0.40;     // düz ad tabanlı (turgay15) — AZALTILDI
+const NICK_HANDLE_WEIGHT = 0.48;        // yaratıcı/birleşik rumuz — ARTIRILDI (kullanıcı isteği)
 const HUMAN_HANDLE_WEIGHT = 0.86;       // (eski yol — organik başarısızsa yedek)
 
 const AVATARS = Array.from({ length: 34 }, (_, i) => `pp${i + 1}`);
