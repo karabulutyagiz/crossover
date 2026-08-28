@@ -550,8 +550,12 @@ export async function commonPlayers(
        FROM players p
       WHERE EXISTS (SELECT 1 FROM player_clubs a WHERE a.player_id = p.id AND a.club_id = $1)
         AND EXISTS (SELECT 1 FROM player_clubs b WHERE b.player_id = p.id AND b.club_id = $2)
+      -- EN BİLİNDİK önce (kullanıcı kararı 2026-08-28): şöhret = oynadığı en
+      -- popüler kulübün popülerliği (topCommonPlayerByPopularity ile aynı ölçü).
       ORDER BY (p.image_url IS NOT NULL) DESC,
-               (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC
+               (SELECT MAX(GREATEST(COALESCE(fc.popularity, 0), (SELECT count(*) FROM player_clubs x WHERE x.club_id = fpc.club_id)))
+                  FROM player_clubs fpc JOIN clubs fc ON fc.id = fpc.club_id
+                 WHERE fpc.player_id = p.id) DESC NULLS LAST
       LIMIT $3`,
     [teamAId, teamBId, limit],
   );
@@ -598,8 +602,11 @@ export async function commonPlayersDetailed(
        FROM players p
       WHERE EXISTS (SELECT 1 FROM player_clubs a WHERE a.player_id = p.id AND a.club_id = $1)
         AND EXISTS (SELECT 1 FROM player_clubs b WHERE b.player_id = p.id AND b.club_id = $2)
+      -- EN BİLİNDİK önce (2026-08-28) — sonuç ekranındaki 'diğer oyuncular'.
       ORDER BY (p.image_url IS NOT NULL) DESC,
-               (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC
+               (SELECT MAX(GREATEST(COALESCE(fc.popularity, 0), (SELECT count(*) FROM player_clubs x WHERE x.club_id = fpc.club_id)))
+                  FROM player_clubs fpc JOIN clubs fc ON fc.id = fpc.club_id
+                 WHERE fpc.player_id = p.id) DESC NULLS LAST
       LIMIT $3`,
     [teamAId, teamBId, limit],
   );
@@ -836,8 +843,11 @@ export async function commonPlayersLetterTeam(
        FROM players p
        JOIN player_clubs pc ON pc.player_id = p.id
       WHERE pc.club_id = $1 AND (p.name_norm LIKE $2 || '%' OR p.name_norm LIKE '% ' || $2 || '%')
+      -- EN BİLİNDİK önce (2026-08-28) — harf-takım 'diğer oyuncular'.
       ORDER BY (p.image_url IS NOT NULL) DESC,
-               (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) DESC
+               (SELECT MAX(GREATEST(COALESCE(fc.popularity, 0), (SELECT count(*) FROM player_clubs x WHERE x.club_id = fpc.club_id)))
+                  FROM player_clubs fpc JOIN clubs fc ON fc.id = fpc.club_id
+                 WHERE fpc.player_id = p.id) DESC NULLS LAST
       LIMIT $3`,
     [clubId, prefix, limit],
   );
