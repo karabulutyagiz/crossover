@@ -125,6 +125,17 @@ const FIRST_NAMES = [
   'taha', 'kadir', 'fatih', 'yigit', 'ege', 'tuna', 'doruk', 'alp', 'berat',
   'samet', 'oguzhan', 'volkan', 'yasin', 'tarik', 'gokhan', 'koray', 'berk',
   'sinan', 'cenk', 'serkan', 'cem', 'salih', 'veli', 'poyraz', 'ruzgar', 'toprak',
+  // Genişletme (2026-08-28): taban isim havuzu 2.5×'e çıktı — sade isim tekrarı azalsın.
+  'yunus', 'okan', 'kaya', 'levent', 'metin', 'kemal', 'suat', 'nihat', 'tanju',
+  'rahim', 'sefa', 'akin', 'caner', 'gurkan', 'ilhan', 'kagan', 'melih', 'nazim',
+  'orkun', 'polat', 'recep', 'sacit', 'tayfun', 'ufuk', 'yalcin', 'zeki', 'bulent',
+  'devran', 'ercan', 'ferhat', 'goktug', 'harun', 'ismail', 'kurtulus', 'nuri',
+  'oktay', 'ramazan', 'soner', 'tuncay', 'vedat', 'yavuz', 'aykut', 'bilal',
+  'coskun', 'dogan', 'erdem', 'fikret', 'gungor', 'huseyn', 'kayahan', 'mesut',
+  'necip', 'ozgur', 'resul', 'savas', 'turgay', 'ulas', 'yakup', 'ziya', 'abdullah',
+  'adem', 'bekir', 'cengiz', 'davut', 'eyup', 'gaffar', 'halil', 'kasim', 'lokman',
+  'mahir', 'nedim', 'orhan', 'pamir', 'riza', 'seyfi', 'tolunay', 'vural', 'yasar',
+  'batur', 'bora', 'deniz', 'efe', 'kuzey', 'mete', 'tolga', 'tugra', 'utku', 'sencer',
 ];
 // Rumuz/lakap stilleri (harf-oyunu, futbol göndermesi, agresif) — düz isim değil.
 const NICK_HANDLES = [
@@ -138,6 +149,11 @@ const NICK_HANDLES = [
   'y4gzz', 'm3rt', 'br4k', 's4rp', 'k4an1907', 'x_emre_x', 'l3vent',
   'dltnlarsehirde', 'geceninkrali', 'sahaninpatronu', 'topustasi06', 'formaninhakki',
   'kramponcu53', 'onbirdeoyna', 'derbininadami', 'sonvurus', 'kaleyekilit',
+  'DARKKNIGHT', 'SHADOW61', 'THUNDER', 'BEASTMODE', 'SNIPER10', 'WOLF1905', 'TITAN',
+  'gecceninefendisi', 'toplakonusan', 'ayaktateknik', 'penaltinokta', 'ofsayttuzagi',
+  'krl_emre', 'ByArda_', 'xSarpx', 'the_baran', 'mrt_official', 'kaan__07',
+  'z0mbi', 'k4rakartal', 'y1ldiz', 'g0lcu', 'r3is', 'c4navar', 'p4tron',
+  'legend34', 'efsane1907', 'kartal58', 'aslan1905', 'kanarya', 'timsah61',
 ];
 const NAME_JERSEY_YEARS = ['1907', '1905', '1903', '1453', '58', '61', '34', '06', '10', '7', '9', '99'];
 
@@ -150,10 +166,11 @@ function leetify(base: string): string {
 function organicHandle(rng: RandomSource): string {
   const base = FIRST_NAMES[Math.floor(rng.next() * FIRST_NAMES.length)] ?? 'emre';
   const roll = rng.next();
-  if (roll < 0.30) return base;                                                 // sade: emre
-  if (roll < 0.50) return base + NAME_JERSEY_YEARS[Math.floor(rng.next() * NAME_JERSEY_YEARS.length)]!; // burak1907
-  if (roll < 0.66) return base + String(10 + Math.floor(rng.next() * 90));      // kadir21
-  if (roll < 0.76) return base.charAt(0).toUpperCase() + base.slice(1);         // Emre
+  if (roll < 0.14) return base;                                                 // sade: emre (nadir)
+  if (roll < 0.36) return base + NAME_JERSEY_YEARS[Math.floor(rng.next() * NAME_JERSEY_YEARS.length)]!; // burak1907
+  if (roll < 0.56) return base + String(10 + Math.floor(rng.next() * 90));      // kadir21
+  if (roll < 0.70) return base.charAt(0).toUpperCase() + base.slice(1)
+                        + (rng.next() < 0.4 ? String(1 + Math.floor(rng.next() * 99)) : ''); // Emre / Emre34
   if (roll < 0.84) return base + '_' + (FIRST_NAMES[Math.floor(rng.next() * FIRST_NAMES.length)] ?? 'jr'); // mert_arda
   if (roll < 0.86) return base + 'FC';                                          // guneslifc
   if (roll < 0.91) return base + base.slice(-1).repeat(1 + Math.floor(rng.next() * 4)); // icardiiiii
