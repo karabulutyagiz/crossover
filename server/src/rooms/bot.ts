@@ -161,26 +161,11 @@ export class BotPlayer implements Transport {
   // hangi gücü seçtiği arketipe göre ağırlıklıdır (agresif → freeze, temkinli
   // → ek süre/ikinci şans). Plan tutmazsa (doğal an gelmezse) hiç kullanılmaz.
   private rollSpecialPowerPlan(): void {
-    const cfg = specialPowersConfig();
     // BOTLAR ÖZEL GÜÇ KULLANMAZ (kullanıcı kararı 2026-08-28: 'botlar özel güç
     // kullanıyorsa kullanmıcak — dondurucu vs'). Güçler yalnız gerçek oyuncuların
-    // avantajı; bot dondurucu atınca haksızlık hissi veriyordu. Plan hep boş.
+    // avantajı; bot dondurucu atınca haksızlık hissi veriyordu. Plan hep boş —
+    // eski arketip-ağırlıklı seçim mantığı git geçmişinde (ff5007d öncesi).
     this.botSpecialPowerPlan = null;
-    return;
-    // eslint-disable-next-line no-unreachable — eski seçim mantığı bilinçli devre dışı
-    if (!cfg.enabled || !this.profile || Math.random() >= cfg.botUseProbability) { this.botSpecialPowerPlan = null; return; }
-    const arch = this.profile.behaviorArchetype;
-    const weights: [SpecialPowerId, number][] = [
-      ['freeze', arch === 'FAST_RISKY' || arch === 'STRONG' ? 0.42 : 0.24],
-      ['skip', 0.26],
-      ['extratime', arch === 'CAREFUL' ? 0.30 : 0.12],
-      ['secondchance', arch === 'CAREFUL' || arch === 'CASUAL' ? 0.24 : 0.12],
-      ['reveal', arch === 'STRONG' || arch === 'SPECIALIST' ? 0.20 : 0.08],
-    ];
-    const total = weights.reduce((sum, [, w]) => sum + w, 0);
-    let roll = Math.random() * total;
-    for (const [id, w] of weights) { roll -= w; if (roll <= 0) { this.botSpecialPowerPlan = { powerId: id }; return; } }
-    this.botSpecialPowerPlan = { powerId: 'freeze' };
   }
 
   getArchetype(): BotArchetype | null { return this.profile?.behaviorArchetype ?? null; }
