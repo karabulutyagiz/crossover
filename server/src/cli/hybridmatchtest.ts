@@ -26,12 +26,14 @@ for (const trophies of [0, 80, 240, 520, 1240, 2300, 3900, 5200]) {
   for (let i = 0; i < 80; i++) {
     const bot = selectBotProfile(`test-${trophies}`, trophies, 6);
     assert(bot.displayName && !/bot|cpu|ai|computer|ivan|hugo|luca|marco|bruno|diego|dante/i.test(bot.displayName), `bad bot name: ${bot.displayName}`);
-    assert(/^[A-Za-zÇĞİÖŞÜçğıöşü]+$/.test(bot.displayName), `bot name should not contain numbers or symbols: ${bot.displayName}`);
+    // İsimler artık organik (2026-08-28): rakam/alt çizgi/M-misafir deseni SERBEST
+    // ('burak1907', 'x_emre_x', 'M158148792'). Yalnız görünür/makul olmalı.
+    assert(/^[A-Za-z0-9ÇĞİÖŞÜçğıöşü_]{2,20}$/.test(bot.displayName), `bot name malformed: ${bot.displayName}`);
     assert(bot.trophyRating >= 0, 'negative bot trophies');
     assert(ARENAS.includes(bot.arena), 'unknown bot arena');
     assert(bot.arena.minTrophies <= bot.trophyRating, 'impossible bot arena/trophy combo');
     assert(bot.arena === getArena(trophies), `bot arena mismatch for ${trophies}: ${bot.trophyRating}`);
-    assert(bot.avatarId.startsWith('pp'), 'missing avatar');
+    assert(bot.avatarId === null || bot.avatarId.startsWith('pp'), 'invalid avatar'); // null = misafir/yeni persona (2026-08-28)
     assert(bot.skillRating >= 0.1 && bot.skillRating <= 0.98, 'skill out of range');
     difficulties.set(bot.difficulty, (difficulties.get(bot.difficulty) ?? 0) + 1);
   }
@@ -57,11 +59,14 @@ assert(alternateBot.displayName.toLowerCase() !== reservedBot.displayName.toLowe
 
 assert(trophyRangeForElapsed(0, cfg) === 100, 'initial range mismatch');
 assert(trophyRangeForElapsed(2500, cfg) === 450, 'expanded range mismatch');
-assert(compatibleTrophies(1000, 1080, 100, 100, cfg), 'close trophies should match');
-assert(!compatibleTrophies(1000, 1400, 100, 100, cfg), 'far trophies should not match early');
-assert(compatibleTrophies(1000, 1400, 3000, 3000, cfg), 'far trophies should match after expansion');
-assert(potentialTrophyCompatibility(1000, 1400, cfg), 'expanded-range human should be potential liquidity');
-assert(!potentialTrophyCompatibility(1000, 1800, cfg), 'outside expanded range should not hold fallback');
+// AYNI-ARENA kuralı (2026-08-28): arena içinde kupa farkı SINIRSIZ, arena dışı ASLA.
+assert(compatibleTrophies(1000, 1080, 100, 100, cfg), 'same arena close should match');
+assert(compatibleTrophies(1000, 1999, 100, 100, cfg), 'same arena (Şampiyonlar 1000-1999) any gap should match');
+assert(!compatibleTrophies(1000, 2000, 3000, 3000, cfg), 'different arena (2000=Efsaneler) must NOT match');
+assert(!compatibleTrophies(199, 201, 100, 100, cfg), '199 vs 201 crosses arena boundary — no match');
+assert(compatibleTrophies(0, 199, 100, 100, cfg), '0 and 199 both Mahalle Sahası — match');
+assert(potentialTrophyCompatibility(1000, 1800, cfg), 'same arena human is potential liquidity (any gap)');
+assert(!potentialTrophyCompatibility(1000, 2100, cfg), 'different arena human is not potential liquidity');
 assert(shouldHoldForHumanLiquidity(3200, true, cfg), 'should hold bot while human liquidity exists');
 assert(!shouldHoldForHumanLiquidity(7000, true, cfg), 'should stop holding after liquidity window');
 assert(!shouldHoldForHumanLiquidity(3200, false, cfg), 'should not hold without human liquidity');

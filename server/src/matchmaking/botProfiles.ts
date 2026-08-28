@@ -14,7 +14,7 @@ export type KnowledgeDomain = 'europe_elite' | 'turkey' | 'national_teams' | 'jo
 export interface BotProfile {
   id: string;
   displayName: string;
-  avatarId: string;
+  avatarId: string | null;
   trophyRating: number;
   /** 0..1 gameplay ability used by the bot cognition layer. */
   skillRating: number;
@@ -113,6 +113,54 @@ const THEMED_HANDLES = [
   'DerbiAdam', 'SahaAdam', 'GolcuKafa', 'ScoutAbi', 'RondoAbi', 'KanatAdam',
 ];
 
+// Organik kullanıcı-adı üretimi (2026-08-28): gerçek oyuncu isimleri incelendi
+// (Mert_jr, burak3957, emreatt61, yağız58, AYIBOĞAN, GüneşliFC, crk123, njj,
+// Totti, Mauroicardiiiiii, bambi...). Bot adları artık düz 'Ali' değil — küçük
+// harf tabanı + gerçekçi ek (forma no, yıl, tekrar harf, FC, alt çizgi, kısaltma).
+const FIRST_NAMES = [
+  'ali', 'mehmet', 'mustafa', 'emre', 'burak', 'yusuf', 'kaan', 'arda', 'mert',
+  'kerem', 'baran', 'eren', 'umut', 'furkan', 'sarp', 'ozan', 'cihan', 'anil',
+  'hakan', 'murat', 'selim', 'ahmet', 'hasan', 'huseyin', 'ibrahim', 'onur',
+  'berkay', 'emirhan', 'semih', 'enes', 'talha', 'hamza', 'omer', 'batuhan',
+  'taha', 'kadir', 'fatih', 'yigit', 'ege', 'tuna', 'doruk', 'alp', 'berat',
+  'samet', 'oguzhan', 'volkan', 'yasin', 'tarik', 'gokhan', 'koray', 'berk',
+  'sinan', 'cenk', 'serkan', 'cem', 'salih', 'veli', 'poyraz', 'ruzgar', 'toprak',
+];
+// Rumuz/lakap stilleri (harf-oyunu, futbol göndermesi, agresif) — düz isim değil.
+const NICK_HANDLES = [
+  'eclipse', 'bambi', 'case', 'kaosiso', 'memoLY', 'njj', 'crk', 'ymn', 'biloo',
+  'Skarpio', 'Dustin', 'ByKitaro', 'Quaresma', 'Totti', 'carrusca', 'laamfaresi',
+  'nasilimbabus', 'ciobaba', 'mamifesto', 'AYIBOGAN', 'ACIMAYAN', 'ARVAS', 'saLi',
+  'Yalin', 'Casim', 'qadir', 'anar', 'islam', 'ekinci', 'bora34', 'RetroTop',
+  // Agresif İngilizce caps + leet + birleşik-cümle stilleri (kullanıcı 2026-08-28:
+  // 'BLOODSUCKER y4gzz dltnlarsehirde gibi').
+  'BLOODSUCKER', 'NIGHTMARE', 'PHANTOM', 'REAPER67', 'VENOM', 'GHOSTx', 'KINGKONG',
+  'y4gzz', 'm3rt', 'br4k', 's4rp', 'k4an1907', 'x_emre_x', 'l3vent',
+  'dltnlarsehirde', 'geceninkrali', 'sahaninpatronu', 'topustasi06', 'formaninhakki',
+  'kramponcu53', 'onbirdeoyna', 'derbininadami', 'sonvurus', 'kaleyekilit',
+];
+const NAME_JERSEY_YEARS = ['1907', '1905', '1903', '1453', '58', '61', '34', '06', '10', '7', '9', '99'];
+
+/** Sesli harfleri leet rakamlarına çevir (a→4, e→3, i→1, o→0) — 'y4gzz' hissi. */
+function leetify(base: string): string {
+  return base.replace(/[aeio]/g, (c) => ({ a: '4', e: '3', i: '1', o: '0' }[c] ?? c));
+}
+
+/** Organik bir kullanıcı adı kur: taban + gerçekçi bir ek deseni. */
+function organicHandle(rng: RandomSource): string {
+  const base = FIRST_NAMES[Math.floor(rng.next() * FIRST_NAMES.length)] ?? 'emre';
+  const roll = rng.next();
+  if (roll < 0.30) return base;                                                 // sade: emre
+  if (roll < 0.50) return base + NAME_JERSEY_YEARS[Math.floor(rng.next() * NAME_JERSEY_YEARS.length)]!; // burak1907
+  if (roll < 0.66) return base + String(10 + Math.floor(rng.next() * 90));      // kadir21
+  if (roll < 0.76) return base.charAt(0).toUpperCase() + base.slice(1);         // Emre
+  if (roll < 0.84) return base + '_' + (FIRST_NAMES[Math.floor(rng.next() * FIRST_NAMES.length)] ?? 'jr'); // mert_arda
+  if (roll < 0.86) return base + 'FC';                                          // guneslifc
+  if (roll < 0.91) return base + base.slice(-1).repeat(1 + Math.floor(rng.next() * 4)); // icardiiiii
+  if (roll < 0.95) return leetify(base) + (rng.next() < 0.5 ? String(10 + Math.floor(rng.next() * 90)) : ''); // y4gzz / m3rt34
+  return base.toUpperCase();                                                    // ACIMAYAN hissi
+}
+
 const HUMAN_HANDLES = [
   'Emir', 'Kaan', 'Arda', 'Mert', 'Kerem', 'Berke', 'Efe', 'Deniz',
   'Atlas', 'Batu', 'Ozan', 'Tuna', 'Doruk', 'Can', 'Alp', 'Yigit',
@@ -126,8 +174,12 @@ const HUMAN_HANDLES = [
   'Tolgahan', 'Alparslan', 'Ege', 'Toprak', 'Ruzgar', 'Poyraz', 'Aras',
 ];
 
-const GUEST_STYLE_HANDLE_WEIGHT = 0;
-const HUMAN_HANDLE_WEIGHT = 0.86;
+// Persona payları (2026-08-28): organik isim + misafir + rumuz karışımı; temalı
+// 'GolcuKafa' tarzı adlar minimumda (bot gibi kokuyorlardı).
+const GUEST_STYLE_HANDLE_WEIGHT = 0.14; // M+9 haneli misafir görünümü
+const ORGANIC_HANDLE_WEIGHT = 0.62;     // gerçekçi üretilmiş kullanıcı adı
+const NICK_HANDLE_WEIGHT = 0.18;        // lakap/rumuz havuzu
+const HUMAN_HANDLE_WEIGHT = 0.86;       // (eski yol — organik başarısızsa yedek)
 
 const AVATARS = Array.from({ length: 34 }, (_, i) => `pp${i + 1}`);
 const DOMAINS: KnowledgeDomain[] = ['europe_elite', 'turkey', 'national_teams', 'journeymen', 'obscure_leagues', 'player_history'];
@@ -300,8 +352,16 @@ function chooseIdentity(userKey: string, recentCooldown: number, rng: RandomSour
     const guestIdentity = availableGuestStyleIdentity(rng, recent, input, 4);
     if (guestIdentity) return rememberIdentity(userKey, recentCooldown, recent, guestIdentity);
   }
-  const preferred = rng.next() < HUMAN_HANDLE_WEIGHT ? HUMAN_HANDLES : THEMED_HANDLES;
-  const fallback = preferred === HUMAN_HANDLES ? THEMED_HANDLES : HUMAN_HANDLES;
+  // Organik üretilmiş ad — her seferinde yeni, blok/tekrar denetimiyle.
+  const wantNick = rng.next() < NICK_HANDLE_WEIGHT;
+  if (!wantNick && rng.next() < ORGANIC_HANDLE_WEIGHT / (1 - GUEST_STYLE_HANDLE_WEIGHT)) {
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const cand = identityForName(organicHandle(rng));
+      if (!recent.includes(cand.id) && !identityBlocked(cand, input)) return rememberIdentity(userKey, recentCooldown, recent, cand);
+    }
+  }
+  const preferred = wantNick ? NICK_HANDLES : (rng.next() < HUMAN_HANDLE_WEIGHT ? HUMAN_HANDLES : THEMED_HANDLES);
+  const fallback = preferred === NICK_HANDLES ? HUMAN_HANDLES : (preferred === HUMAN_HANDLES ? THEMED_HANDLES : HUMAN_HANDLES);
   const candidates = [...preferred, ...fallback]
     .map(identityForName)
     .filter((candidate) => !identityBlocked(candidate, input));
@@ -432,9 +492,33 @@ export function selectBotProfileForSkill(input: AdaptiveBotProfileInput): BotPro
     Math.round(clamp(responseMedianMs - responseVarianceMs * 0.75, cfg.botReactionMinMs, cfg.botReactionMaxMs - 1000)),
     Math.round(clamp(responseMedianMs + responseVarianceMs * 1.15, cfg.botReactionMinMs + 900, cfg.botReactionMaxMs)),
   ];
-  const trophyRating = sameArenaTrophiesForPlayer(input.playerTrophies, botTrophiesForPlayer(input.playerTrophies, pressure, rng));
+  let trophyRating = sameArenaTrophiesForPlayer(input.playerTrophies, botTrophiesForPlayer(input.playerTrophies, pressure, rng));
+  // ── GERÇEKÇİ PERSONA (2026-08-28) ──────────────────────────────────────
+  // Gerçek oyuncu tabanı türdeş değil: kimi köklü (ikon+çerçeve+seviye), kimi
+  // sade (ikonsuz), kimi misafir (M+ad, ikonsuz, çerçevesiz), kimi de yeni
+  // girmiş (0'a yakın kupa, seviye 1-3, ikon/çerçeve yok). isGuestName: adın
+  // M+9 hane deseni. 'newbie' YALNIZ en alt arenada üretilir (üst arenada 0
+  // kupalı biriyle eşleşme zaten arena kuralıyla imkânsız).
+  const isGuestName = /^M[0-9]{9}$/.test(identity.name);
+  const personaRoll = hashUnit(`${identity.id}:persona:${seed}`);
+  const lowestArena = getArena(input.playerTrophies).minTrophies === 0;
+  let persona: 'veteran' | 'casual' | 'guest' | 'newbie' =
+    isGuestName ? 'guest'
+    : lowestArena && personaRoll < 0.16 ? 'newbie'
+    : personaRoll < 0.50 ? 'casual'
+    : 'veteran';
+  if (persona === 'newbie') {
+    // Taze hesap hissi: kupayı arena tabanına yakına çek (0-70).
+    trophyRating = Math.round(clamp(rng.next() * 70, 0, Math.max(0, input.playerTrophies)));
+  }
   const arena = getArena(trophyRating);
-  const avatarId = AVATARS[Math.floor(hashUnit(`${identity.id}:${trophyRating}:${seed}`) * AVATARS.length)] ?? 'pp7';
+  // Avatar: veteran hep var; casual bazen yok; guest/newbie çoğunlukla yok
+  // (null → istemcide kişi silüeti = misafir/yeni görünümü).
+  const avatarRoll = hashUnit(`${identity.id}:av:${seed}`);
+  const avatarChance = persona === 'veteran' ? 1 : persona === 'casual' ? 0.6 : 0.12;
+  const avatarId = avatarRoll < avatarChance
+    ? (AVATARS[Math.floor(hashUnit(`${identity.id}:${trophyRating}:${seed}`) * AVATARS.length)] ?? 'pp7')
+    : null;
   const domains = profileDomains(archetype, rng);
   const emoteSuppression = director.enabled ? director.emoteSuppression : 0;
 
@@ -479,8 +563,13 @@ export function selectBotProfileForSkill(input: AdaptiveBotProfileInput): BotPro
     arena,
     behaviorArchetype: archetype,
     difficulty: difficultyFromSkill(baseSkill),
-    level: levelForTrophies(trophyRating, baseSkill, rng),
-    frame: frameForArena(arena),
+    level: persona === 'newbie' ? 1 + Math.floor(rng.next() * 3)
+         : persona === 'guest' ? 1 + Math.floor(rng.next() * 6)
+         : levelForTrophies(trophyRating, baseSkill, rng),
+    // Çerçeve: yeni/misafir takmaz; casual çoğu zaman takmaz; veteran arenaya göre.
+    frame: persona === 'newbie' || persona === 'guest' ? null
+         : persona === 'casual' && hashUnit(`${identity.id}:fr:${seed}`) < 0.55 ? null
+         : frameForArena(arena),
   };
 }
 
