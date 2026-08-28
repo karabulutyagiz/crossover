@@ -761,6 +761,9 @@ const tr = {
 
   // collection (loadout)
   'collection.loadout': 'KUŞANILANLAR',
+  'collection.spLoadout': 'MAÇ GÜÇLERİ',
+  'collection.spLoadoutHint': '{n}/3 slot — maça götüreceğin güçleri seç',
+  'collection.spNone': 'MAĞAZADAN AL',
   'collection.loadoutHint': '{n}/{max} slot — istediğin ifadeleri ekle',
   'collection.yourEmotes': 'İFADELERİN',
   'collection.equip': 'Kuşan',
@@ -1593,6 +1596,9 @@ const en: typeof tr = {
   'fact.20': 'Japan became the first Asian nation to co-host a World Cup in 2002 with South Korea.',
 
   'collection.loadout': 'LOADOUT',
+  'collection.spLoadout': 'MATCH POWERS',
+  'collection.spLoadoutHint': '{n}/3 slots — pick the powers you take into matches',
+  'collection.spNone': 'GET IN STORE',
   'collection.loadoutHint': '{n}/{max} slots — add any emotes you like',
   'collection.yourEmotes': 'YOUR EMOTES',
   'collection.equip': 'Equip',

@@ -2593,7 +2593,7 @@ function AppRoot() {
         <View style={{ width: SCREEN_W, flex: 1 }}>
           {state.profile ? renderResourceBar(activeTab === 1) : null}
           <TabFreeze active={activeTab === 1} warmDelay={700}>
-            <CollectionScreen {...props} />
+            <CollectionScreen {...props} isActive={activeTab === 1} />
           </TabFreeze>
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
@@ -2652,7 +2652,7 @@ function AppRoot() {
               // pending requests, and it clears itself. (The mockup also badges
               // Collection, but every un-owned emote there is grant-only — that badge
               // could never be cleared, so it is deliberately not rendered.)
-              badge={tab.key === 'friends' ? (badgeTotal || null) : null}
+              badge={tab.key === 'friends' ? (badgeTotal || null) : tab.key === 'collection' ? ((state.unseenCollection.emotes + state.unseenCollection.cosmetics + state.unseenCollection.powers) || null) : null}
               onPress={onPress}
             />
           );

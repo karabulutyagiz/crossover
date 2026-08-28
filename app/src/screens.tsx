@@ -153,6 +153,7 @@ type Actions = {
   // ---- Maç içi Özel Güçler ----
   useSpecialPower: (powerId: string) => void;       // maçta etkinleştir (requestId'yi aksiyon üretir)
   equipSpecialPower: (powerId: string | null) => void; // maça hangi güçle çıkılacağını seç
+  markCollectionSeen: (tab: 'emotes' | 'cosmetics' | 'powers') => void; // kırmızı 1 rozetini söndür
   buySpecialPower: (powerId: string, qty?: number) => void; // mağazadan elmasla al
   clearStreakReward: () => void;
   xoxSubmit: (cell: number, text: string) => void;
@@ -9597,7 +9598,7 @@ function fmtTimeLeft(ms: number): string {
   return h > 0 ? t('power.hoursMin', { h: String(h), m: String(m) }) : t('power.min', { m: String(m) });
 }
 
-function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (id: PowerId) => void }) {
+function PowersPanel({ profile, onUse, onToggleSpecial }: { profile: ProfileView | null; onUse: (id: PowerId) => void; onToggleSpecial: (id: SpecialPowerIdView) => void }) {
   const [confirmId, setConfirmId] = useState<PowerId | null>(null);
   const [noStreakOpen, setNoStreakOpen] = useState(false); // "geri yüklenecek kırık seri yok" bilgi popup'ı (güç TÜKETİLMEZ)
   // 2x XP geri sayımı canlı kalsın — yarım dakikada bir tazele
@@ -9688,8 +9689,57 @@ function PowersPanel({ profile, onUse }: { profile: ProfileView | null; onUse: (
   };
 
   const confirmMeta = confirmId ? POWERS[confirmId] : null;
+  // MAÇ GÜÇLERİ kuşanma durumu — İfadeler slot kalıbının güç uyarlaması.
+  const spEquipped = ((profile?.equippedSpecialPowers ?? (profile?.equippedSpecialPower ? [profile.equippedSpecialPower] : [])) as SpecialPowerIdView[]).filter((id) => SPECIAL_POWERS[id]);
   return (
     <>
+      {/* ── MAÇ GÜÇLERİ: 3 slot + tüm güçler (kullanıcı isteği 2026-08-28 —
+          İfadeler'deki kuşanma düzeninin aynısı; dondurucu dahil HEPSİ listede,
+          elde olmayan silik). Dokun: kuşan/çıkar — sunucu toggle. */}
+      <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 13, letterSpacing: 0.5, marginBottom: 4, marginLeft: 4 }}>{t('collection.spLoadout')}</Text>
+      <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', marginBottom: 10, marginLeft: 4 }}>{t('collection.spLoadoutHint', { n: String(spEquipped.length) })}</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 14 }}>
+        {Array.from({ length: 3 }).map((_, i) => {
+          const id = spEquipped[i];
+          return (
+            <Pressable
+              key={`sps${i}`}
+              disabled={!id}
+              onPress={() => { if (id) { triggerFeedback(GameFeedbackEvent.UI_TOGGLE_OFF); onToggleSpecial(id); } }}
+              style={({ pressed }) => ({ width: 72, height: 72, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: id ? theme.surface2 : theme.well, ...(id ? { borderWidth: 2, borderColor: theme.primary } : {}), transform: [{ translateY: pressed ? 2 : 0 }] })}
+            >
+              {!id ? <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} /> : null}
+              {id ? <SpecialPowerBadge id={id} size={52} /> : <Ionicons name="add" size={26} color={theme.muted} />}
+            </Pressable>
+          );
+        })}
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 20 }}>
+        {SPECIAL_POWER_LIST.map((spid) => {
+          const cnt = spInventoryCount(profile, spid);
+          const eq = spEquipped.includes(spid);
+          const meta = SPECIAL_POWERS[spid];
+          return (
+            <Pressable
+              key={spid}
+              disabled={cnt <= 0 && !eq}
+              onPress={() => { triggerFeedback(eq ? GameFeedbackEvent.UI_TOGGLE_OFF : GameFeedbackEvent.UI_TOGGLE_ON); onToggleSpecial(spid); }}
+              style={({ pressed }) => ({ width: 96, borderRadius: 16, padding: 8, alignItems: 'center', gap: 5, backgroundColor: theme.card, borderWidth: 2, borderColor: eq ? theme.primary : withAlpha(theme.border, 0.9), opacity: cnt <= 0 && !eq ? 0.45 : pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}
+            >
+              <View>
+                <SpecialPowerBadge id={spid} size={50} dead={cnt <= 0 && !eq} />
+                {cnt > 0 ? (
+                  <View style={{ position: 'absolute', right: -7, top: -6, minWidth: 19, height: 19, borderRadius: 10, paddingHorizontal: 4, backgroundColor: meta.color, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: theme.ink, fontSize: 9.5, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>x{cnt}</Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text numberOfLines={1} style={{ color: eq ? theme.primary : theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 10 }}>{t(meta.nameKey)}</Text>
+              <Text style={{ color: theme.muted, fontSize: 8.5, fontFamily: 'Poppins-Black', letterSpacing: 0.5 }}>{eq ? '✓ ' + t('store.spEquipped') : cnt > 0 ? t('collection.use').toLocaleUpperCase(currentLang()) : t('collection.spNone')}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
       <SectionHeader label={t('collection.tabPowers').toLocaleUpperCase(currentLang())} icon="flash" style={{ marginBottom: 8 }} />
       {visiblePowers.length > 0 ? (
         <>
@@ -9850,12 +9900,15 @@ function CosmeticsLoadoutPanel({ state, actions }: Props) {
 // state'ten YALNIZ `state.profile` okur. Ekrana yeni bir `state.X` okuması
 // eklersen aşağıdaki karşılaştırıcıya da eklemek ZORUNDASIN. `actions` sabitliği
 // useCrossover'daki actions-useMemo'suna dayanır (değilse memo no-op'a düşer).
-export const CollectionScreen = memo(function CollectionScreen({ state, actions }: Props) {
+export const CollectionScreen = memo(function CollectionScreen({ state, actions, isActive = true }: Props & { isActive?: boolean }) {
   const { width: winW } = useWindow();
   const profile = state.profile;
   const equipped = profile?.equippedEmotes ?? [];
   // Sekmeler: İfadeler (yuvalar + koleksiyon) | Güçler (tek kullanımlık envanter)
   const [colTab, setColTab] = useState<'emotes' | 'powers' | 'cosmetics'>('emotes');
+  // Kırmızı 1: açık sekme 'görüldü' sayılır — rozet söner (satın alınan şeyin
+  // nereye gittiğini gösterme sistemi, kullanıcı isteği 2026-08-28).
+  useEffect(() => { if (isActive) actions.markCollectionSeen(colTab); }, [isActive, colTab, state.unseenCollection]);
   // The single discoverable-emote preview slot: tapping a card claims it (which
   // interrupts whichever card held it), a finished animation releases it.
   // Both handlers are stable so the memo'd cards only re-render on `active` flips.
@@ -10030,13 +10083,18 @@ export const CollectionScreen = memo(function CollectionScreen({ state, actions 
               >
                 <Ionicons name={icon} size={14} color={sel ? theme.primary : theme.muted} />
                 <Text style={{ color: sel ? theme.primary : theme.muted, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.4 }}>{label}</Text>
+                {state.unseenCollection[key] > 0 ? (
+                  <View style={{ position: 'absolute', top: -6, right: -4, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: theme.danger, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: '#FFF', fontSize: 10, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{state.unseenCollection[key]}</Text>
+                  </View>
+                ) : null}
               </Pressable>
             );
           })}
         </View>
 
         {colTab === 'powers' ? (
-          <PowersPanel profile={profile} onUse={(id) => actions.usePower(id)} />
+          <PowersPanel profile={profile} onUse={(id) => actions.usePower(id)} onToggleSpecial={(id) => actions.equipSpecialPower(id)} />
         ) : colTab === 'cosmetics' ? (
           <CosmeticsLoadoutPanel state={state} actions={actions} />
         ) : (<>
@@ -12218,10 +12276,27 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
                     </Pressable>
                   );
                 })}
+                {/* Arena çerçeveleri — envanterde görünüp burada görünmüyordu
+                    (kullanıcı raporu 2026-08-28: 'profilde sadece pass'tekiler') */}
+                {(p.ownedFrames ?? []).filter((id) => !LEVEL_TIERS.some((tr) => tr.key === id)).map((id) => {
+                  const worn = p.selectedFrame === id;
+                  return (
+                    <Pressable key={`af-${id}`} onPress={() => { triggerFeedback(worn ? GameFeedbackEvent.UI_TOGGLE_OFF : GameFeedbackEvent.UI_TOGGLE_ON); actions.equipCosmetic('frame', null); actions.setFrame(worn ? null : id); }} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
+                      <View style={worn ? { borderRadius: 56 * 0.28 + 2, borderWidth: 2, borderColor: theme.primary, margin: -2 } : undefined}>
+                        <FrameArt tierKey={id} size={56} well />
+                      </View>
+                      {worn ? (
+                        <View style={{ position: 'absolute', right: -5, top: -5, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
+                          <Ionicons name="checkmark" size={11} color={theme.ink} />
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
                 {(p.ownedCosmetics ?? []).filter((id) => id.endsWith('_frame')).map((id) => {
                   const worn = p.selectedFrame === id;
                   return (
-                    <Pressable key={id} onPress={() => { triggerFeedback(worn ? GameFeedbackEvent.UI_TOGGLE_OFF : GameFeedbackEvent.UI_TOGGLE_ON); actions.equipCosmetic('frame', worn ? null : id); }} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
+                    <Pressable key={id} onPress={() => { triggerFeedback(worn ? GameFeedbackEvent.UI_TOGGLE_OFF : GameFeedbackEvent.UI_TOGGLE_ON); actions.setFrame(null); actions.equipCosmetic('frame', worn ? null : id); }} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
                       <View style={worn ? { borderRadius: 56 * 0.28 + 2, borderWidth: 2, borderColor: theme.primary, margin: -2 } : undefined}>
                         <FrameArt tierKey={id} size={56} well />
                       </View>

@@ -164,6 +164,7 @@ export interface GameState {
   opponentForfeit: boolean;
   opponentForfeitReason: 'cheat' | null;
   searchEta: { seconds: number; at: number } | null; // sunucunun dürüst eşleşme tahmini
+  unseenCollection: { emotes: number; cosmetics: number; powers: number }; // satın alınıp henüz görülmemişler (kırmızı 1)
   // Maç ortasında ÇIKIŞ (forfeit) = kaybetme. Kupa cezası (trophy_update) reset
   // SONRASI gelir; onunla kaybetme popup'ı gösterilir. null = gösterilecek bir şey yok.
   forfeitLoss: { delta: number; trophies: number; arena: ArenaView; youScore: number; oppScore: number; opponentName: string; reason?: 'cheat' } | null;
@@ -336,6 +337,7 @@ export const initialState: GameState = {
   streakReward: null,
   xox: null,
   searchEta: null,
+  unseenCollection: { emotes: 0, cosmetics: 0, powers: 0 },
   xoxOver: null,
   storeCatalogError: null,
 };
@@ -383,6 +385,8 @@ type Action =
   | { type: '_quick_match_started' }
   | { type: '_set_game_options'; options: GameOptions | null }
   | { type: '_clear_emote'; playerId: string }
+  | { type: '_unseen_load'; value: { emotes?: number; cosmetics?: number; powers?: number } }
+  | { type: '_col_seen'; tab: 'emotes' | 'cosmetics' | 'powers' }
   | { type: '_forfeit_loss'; delta: number; trophies: number; arena: ArenaView; youScore: number; oppScore: number; opponentName: string; reason?: 'cheat' }
   | { type: '_clear_forfeit_loss' };
 
@@ -615,6 +619,15 @@ function reducer(state: GameState, action: Action): GameState {
       };
     }
 
+    case '_unseen_load': {
+      const v = (action as { value?: { emotes?: number; cosmetics?: number; powers?: number } }).value ?? {};
+      return { ...state, unseenCollection: { emotes: Number(v.emotes) || 0, cosmetics: Number(v.cosmetics) || 0, powers: Number(v.powers) || 0 } };
+    }
+    case '_col_seen': {
+      const tab = (action as { tab: 'emotes' | 'cosmetics' | 'powers' }).tab;
+      if (!state.unseenCollection[tab]) return state;
+      return { ...state, unseenCollection: { ...state.unseenCollection, [tab]: 0 } };
+    }
     case 'searching': {
       const eta = (action as Extract<ServerMsg, { type: 'searching' }>).etaSeconds ?? null;
       // Yeni maç arayışı = YENİ seri: önceki serinin (eve dönüşte uçmamış/kesilmiş)
@@ -668,8 +681,8 @@ function reducer(state: GameState, action: Action): GameState {
         outageGiftClaim: { granted: (action as any).granted === true, seq: (state.outageGiftClaim?.seq ?? 0) + 1 },
       };
     case 'power_purchased':
-      // Mağazadan güç alındı — elmas düştü, envanter arttı
-      return { ...state, profile: action.profile, lastPurchase: { kind: 'power', id: (action as any).powerId, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
+      // Mağazadan güç alındı — elmas düştü, envanter arttı; koleksiyonda kırmızı 1
+      return { ...state, profile: action.profile, lastPurchase: { kind: 'power', id: (action as any).powerId, seq: (state.lastPurchase?.seq ?? 0) + 1 }, unseenCollection: { ...state.unseenCollection, powers: state.unseenCollection.powers + 1 } };
     case 'premium_road_purchased':
       // Elmasla ya da ₺ IAP ile — iki yol da bu mesajı düşürür, tek onay yeter
       return { ...state, profile: action.profile, lastPurchase: { kind: 'premiumRoad', id: undefined, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
@@ -741,13 +754,13 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, emoteSeq: n, emotes: { ...state.emotes, [action.fromId]: { emoteId: action.emoteId, n } } };
     }
     case 'emote_purchased':
-      return { ...state, profile: action.profile, lastPurchase: { kind: 'emote', id: (action as any).emoteId, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
+      return { ...state, profile: action.profile, lastPurchase: { kind: 'emote', id: (action as any).emoteId, seq: (state.lastPurchase?.seq ?? 0) + 1 }, unseenCollection: { ...state.unseenCollection, emotes: state.unseenCollection.emotes + 1 } };
     case 'avatar_purchased':
       return { ...state, profile: action.profile, lastPurchase: { kind: 'avatar', id: (action as any).avatarId, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
     case 'store_catalog':
       return { ...state, storeCatalog: action.catalog, storeCatalogStatus: storeCatalogStatusFor(action.catalog), storeCatalogError: null };
     case 'cosmetic_purchased':
-      return { ...state, profile: action.profile, lastPurchase: { kind: 'cosmetic', id: (action as any).itemId, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
+      return { ...state, profile: action.profile, lastPurchase: { kind: 'cosmetic', id: (action as any).itemId, seq: (state.lastPurchase?.seq ?? 0) + 1 }, unseenCollection: (action as any).alreadyOwned ? state.unseenCollection : { ...state.unseenCollection, cosmetics: state.unseenCollection.cosmetics + 1 } };
     case 'cosmetic_equipped':
       return { ...state, profile: action.profile };
     case 'diamonds_granted': {
@@ -922,7 +935,7 @@ function reducer(state: GameState, action: Action): GameState {
     case 'special_power_equipped':
       return { ...state, profile: action.profile };
     case 'special_power_purchased':
-      return { ...state, profile: action.profile, lastPurchase: { kind: 'power', id: (action as any).powerId, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
+      return { ...state, profile: action.profile, lastPurchase: { kind: 'power', id: (action as any).powerId, seq: (state.lastPurchase?.seq ?? 0) + 1 }, unseenCollection: { ...state.unseenCollection, powers: state.unseenCollection.powers + 1 } };
     case 'streak_reward':
       return { ...state, profile: action.profile, streakReward: { streak: action.streak, diamonds: action.diamonds, powerId: action.powerId, seq: (state.streakReward?.seq ?? 0) + 1 } };
     case 'result':
@@ -973,6 +986,9 @@ function reducer(state: GameState, action: Action): GameState {
   }
 }
 
+// Görülmemiş satın alma sayaçları — cihazda kalıcı (kırmızı 1 rozetleri
+// uygulama yeniden açılınca da durur; bölüm açılınca sıfırlanır).
+// Not: modül içi hook gövdesinde tanımlanır — aşağıdaki useCrossover içinde.
 // Persist profile to AsyncStorage whenever it changes.
 function saveProfile(profile: ProfileView): void {
   AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(profile)).catch(() => {});
@@ -980,6 +996,16 @@ function saveProfile(profile: ProfileView): void {
 
 export function useCrossover() {
   const [state, dispatch] = useReducer(reducer, initialState);
+  // Kırmızı 1 sayaçları: açılışta yükle, her değişimde yaz (cihazda kalıcı).
+  useEffect(() => {
+    AsyncStorage.getItem('@cof_unseen_col').then((v) => { if (v) dispatch({ type: '_unseen_load', value: JSON.parse(v) }); }).catch(() => {});
+  }, []);
+  const unseenPersistRef = useRef(initialState.unseenCollection);
+  useEffect(() => {
+    if (unseenPersistRef.current === state.unseenCollection) return;
+    unseenPersistRef.current = state.unseenCollection;
+    AsyncStorage.setItem('@cof_unseen_col', JSON.stringify(state.unseenCollection)).catch(() => {});
+  }, [state.unseenCollection]);
   // En güncel state'e ref üzerinden erişim ("latest ref" deseni): send/actions
   // kimlikleri SABİT kalırken her çağrı o anki state'i okur. Bu olmadan actions
   // her render'da baştan kuruluyor ve alttaki hiçbir memo sınırı tutmuyordu.
@@ -1681,6 +1707,7 @@ export function useCrossover() {
         track('special_power_equipped', { power_id: powerId ?? 'none' });
         send({ type: 'equip_special_power', powerId });
       },
+      markCollectionSeen: (tab: 'emotes' | 'cosmetics' | 'powers') => dispatch({ type: '_col_seen', tab }),
       buySpecialPower: (powerId: string, qty = 1) => {
         track('special_power_purchase_started', { power_id: powerId, qty });
         send({ type: 'buy_special_power', powerId, qty });
