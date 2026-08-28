@@ -3021,32 +3021,16 @@ function AppRoot() {
           </View>
           <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>{t('xoxAnnounce.body')}</Text>
           <PulseView>
+            {/* Kullanıcı kararı (2026-08-28): sadece 'Anladım' — eşleşme/ödeme
+                başlatmaz, popup'ı kapatır. Abonelik açıklama metni de kaldırıldı
+                (satış yüzeyi değil, duyuru). */}
             <Btn
-              big kind="accent" icon="game-controller"
-              label={t('xoxAnnounce.playNow')}
-              feedback={GameFeedbackEvent.UI_PLAY}
-              onPress={() => {
-                const hasPack = !!(state.profile?.socialPackUntil && new Date(state.profile.socialPackUntil) > new Date());
-                setXoxAnnounceVisible(false);
-                if (hasPack) {
-                  // Paketi olan direkt maça — duyurudan tek dokunuş XOX kuyruğu.
-                  track('xox_announce_play', { has_pack: true, appSessionId });
-                  actions.findMatch({ mode: 'xox' });
-                } else if (directRequestPurchase && state.profile?.userId) {
-                  // Paketsiz: doğrudan Apple ödeme sayfası — haftalık ₺24,99.
-                  track('social_pack_purchase_started', { product_id: SOCIAL_PACK_OFFER.productId, source_screen: 'xox_announce' });
-                  Promise.resolve(directRequestPurchase({
-                    request: { apple: { sku: SOCIAL_PACK_OFFER.productId, appAccountToken: state.profile.userId } },
-                    type: 'subs',
-                  })).catch(() => {});
-                } else {
-                  // Expo Go / modül yok: mağazanın sosyal paket bölümü.
-                  acceptSocialPackCampaign();
-                }
-              }}
+              big kind="accent" icon="checkmark-circle"
+              label={t('xoxAnnounce.cta')}
+              feedback={GameFeedbackEvent.UI_CONFIRM}
+              onPress={() => setXoxAnnounceVisible(false)}
             />
           </PulseView>
-          <Text style={{ color: theme.muted, fontSize: 10, lineHeight: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{t('socialPack.offerDisclosure')}</Text>
         </View>
       </GameModal>
 
