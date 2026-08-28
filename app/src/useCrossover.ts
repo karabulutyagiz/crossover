@@ -635,7 +635,10 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, phase: 'searching', isQuickMatch: true, opponentForfeit: false, opponentForfeitReason: null, searchEta: eta != null ? { seconds: eta, at: Date.now() } : null, trophyDelta: null };
     }
     case 'profile':
-      return { ...state, profile: action.profile };
+      // Profil geldi = oturum DOĞRULANDI. Açılışta oturum daha kurulmadan atılan
+      // arka plan aksiyonlarının 'Önce giriş/kayıt' hatası varsa artık bayat —
+      // temizle ki 'hemen oyna' üstünde kalıcı banner takılı kalmasın (2026-08-28).
+      return { ...state, profile: action.profile, error: null };
     case 'level_reward_claimed':
       return {
         ...state,
@@ -984,7 +987,7 @@ function reducer(state: GameState, action: Action): GameState {
       // aksiyonları (loadFriends/loadConversations) soket doğrulanmadan atılabilir;
       // sunucu 'Önce giriş yap' döner. Bu geçici bir yarış — 'hemen oyna'nın üstünde
       // kalıcı kırmızı banner olarak GÖSTERİLMEZ (giriş akışı kendi ekranında zaten var).
-      if (/önce giriş yap|önce giriş yapmalısın|register first|login first|tekrar giriş yap|önce giriş/i.test(action.message ?? '')) return state;
+      if (/önce giriş|önce kayıt|register first|login first|sign up|tekrar giriş yap|apple veya google ile giriş|hesapla kayıt/i.test(action.message ?? '')) return state;
       return { ...state, error: action.message };
     default:
       return state;
