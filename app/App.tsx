@@ -1012,7 +1012,6 @@ function AppRoot() {
   const [loaded, setLoaded] = useState(false); // Clash-Royale-style entry loading (warms logo cache)
   const [storeSection, setStoreSection] = useState<'socialPack' | 'diamonds' | 'top' | 'powers' | null>(null);
   const storeAtDiamondsRef = useRef(false); // re-tap toggle: diamonds ↔ back to top
-  const csRef = useRef<ComingSoonBadgeHandle | null>(null); // Turnuvalar — "yakında" rozeti (kalıcı monte, bkz. ComingSoonBadge)
   const [expiredSocialPack, setExpiredSocialPack] = useState(false); // Social Pack expired popup
   const [pushPrompt, setPushPrompt] = useState(false);
   const [overlay, setOverlay] = useState<'leaderboard' | 'matchHistory' | null>(null); // centered popups
@@ -2672,12 +2671,10 @@ function AppRoot() {
             />
           );
         })}
-        {/* Tournaments — locked, coming soon */}
-        <TabButton locked icon="trophy-outline" label={t('tab.tournaments')} onPress={() => { dismissActiveInput(); csRef.current?.show(); }} />
+        {/* Eski kilitli 'Turnuvalar (yakında)' placeholder'ı KALDIRILDI (2026-08-28):
+            gerçek Turnuvalar sekmesi artık TAB_DEFS'te — ikisi birden 6 buton
+            yapıyordu. ComingSoonBadge de onunla gitti. */}
       </View>
-
-      {/* Tournaments → standalone 3D coming-soon lettering, no bubble/background. */}
-      <ComingSoonBadge handleRef={csRef} />
 
       {__DEV__ && state.phase === 'home' ? (
         <View style={{ position: 'absolute', left: 12, right: 12, bottom: Math.max(insets.bottom, 12) + 78, gap: 6, alignItems: 'center', zIndex: 30 }} pointerEvents="box-none">
