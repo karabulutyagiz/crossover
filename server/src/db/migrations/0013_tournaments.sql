@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS tournaments (
   size           int  NOT NULL DEFAULT 8,      -- 4 / 8 / 16 (2^n)
   prize_first    int  NOT NULL DEFAULT 500,    -- elmas
   prize_second   int  NOT NULL DEFAULT 200,
+  entry_fee      int  NOT NULL DEFAULT 0,      -- elmas giriş ücreti (kayıtta kesilir, ayrılınca iade)
   status         text NOT NULL DEFAULT 'registration', -- registration|live|finished
   created_at     timestamptz NOT NULL DEFAULT now(),
   started_at     timestamptz,

@@ -5181,16 +5181,6 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       {/* ── Mode picker ── */}
       <GameModal visible={modesOpen} onClose={() => setModesOpen(false)} onExited={() => { if (socialUpsellOnExit.current) { socialUpsellOnExit.current = false; if (lockedModePreview) onLockedSocialMode?.(lockedModePreview); setLockedModePreview(null); } }} title={t('home.modesTitle').toLocaleUpperCase(currentLang())} icon="football">
         <Text style={[styles.muted, { textAlign: 'center', marginBottom: 6 }]}>{t('home.specialModeBody')}</Text>
-        {/* Turnuvalar — ödüllü eleme ağacı (2026-08-28) */}
-        <GameRow
-          icon="trophy"
-          iconColor={theme.gold}
-          tint={theme.gold}
-          label={t('tour.title')}
-          right={<Ribbon label={t('store.badgeNew')} color={theme.danger} />}
-          chevron
-          onPress={() => { setModesOpen(false); actions.openTournaments(); }}
-        />
         {HOME_MODES.map((m) => {
           const locked = PACK_MODES.includes(m) && !hasPack;
           const c = m === 'team-team' ? theme.primary : m === 'xox' ? theme.gold : m === 'player-player' ? theme.accent : m === 'country-team' ? theme.blue : theme.purple;
@@ -6506,7 +6496,11 @@ export function TournamentsScreen({ state, actions }: Props) {
   };
   return (
     <Screen scroll contentCenter={false}>
-      <ScreenHeader title={tour && tour.status !== 'finished' ? tour.name : t('tour.title')} onBack={actions.closeTournaments} icon="trophy" />
+      {/* Sekme sayfası: geri oku YOK (nav bar zaten altta). Başlık turnuva adı ya da genel. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 6 }}>
+        <Ionicons name="trophy" size={20} color={theme.gold} />
+        <Text style={{ color: theme.text, fontSize: 19, fontFamily: 'Poppins-Black', letterSpacing: 0.5, ...engrave('lg') }}>{tour && tour.status !== 'finished' ? tour.name : t('tour.title')}</Text>
+      </View>
 
       {/* ── Lobi listesi (ağaç açık değilken ya da turnuva bitmişken) ── */}
       {(!tour || tour.status === 'finished') ? (
@@ -6522,6 +6516,7 @@ export function TournamentsScreen({ state, actions }: Props) {
                 <Ribbon label={t(('tour.' + it.status) as MessageKey)} color={it.status === 'live' ? theme.gold : it.status === 'registration' ? theme.primary : theme.muted} />
               </View>
               <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold' }}>{t('tour.joined', { n: String(it.joined), size: String(it.size) })} · {t('tour.prize', { p1: String(it.prizeFirst), p2: String(it.prizeSecond) })}</Text>
+              <Text style={{ color: it.entryFee > 0 ? theme.accent : theme.primary, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold' }}>{it.entryFee > 0 ? t('tour.entryFee', { fee: String(it.entryFee) }) : t('tour.freeEntry')}</Text>
               {it.status === 'finished' && it.winnerName ? (
                 <Text style={{ color: theme.gold, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>{t('tour.champion', { name: it.winnerName })}</Text>
               ) : null}
@@ -6532,7 +6527,7 @@ export function TournamentsScreen({ state, actions }: Props) {
                     <Btn compact kind="ghost" label={t('tour.leave')} onPress={() => actions.leaveTournament(it.id)} />
                   </View>
                 ) : (
-                  <Btn big kind="accent" icon="trophy" label={t('tour.join')} feedback={GameFeedbackEvent.UI_PLAY} onPress={() => actions.joinTournament(it.id)} />
+                  <Btn big kind="accent" icon="trophy" gem={it.entryFee > 0} label={it.entryFee > 0 ? t('tour.joinFee', { fee: String(it.entryFee) }) : t('tour.join')} feedback={GameFeedbackEvent.UI_PLAY} onPress={() => actions.joinTournament(it.id)} />
                 )
               ) : it.status === 'live' && it.youJoined ? (
                 <Btn compact kind="blue" icon="git-network" label={t('tour.bracket')} onPress={() => actions.getTournament(it.id)} />

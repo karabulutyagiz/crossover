@@ -19,6 +19,7 @@ export interface TournamentListItem {
   status: 'registration' | 'live' | 'finished';
   prizeFirst: number;
   prizeSecond: number;
+  entryFee: number;
   winnerName?: string | null;
 }
 
@@ -41,6 +42,7 @@ export interface TournamentStateView {
   status: 'registration' | 'live' | 'finished';
   prizeFirst: number;
   prizeSecond: number;
+  entryFee: number;
   joined: number;
   youJoined: boolean;
   players: { userId: string; name: string }[];
@@ -51,10 +53,10 @@ export interface TournamentStateView {
 /** Kayıt açık + canlı + son bitenler (24s) — lobi listesi. */
 export async function listTournaments(viewerUserId: string | null): Promise<TournamentListItem[]> {
   const { rows } = await pool.query<{
-    id: string; name: string; size: number; status: string; prize_first: number; prize_second: number;
+    id: string; name: string; size: number; status: string; prize_first: number; prize_second: number; entry_fee: number;
     joined: string; you_joined: boolean; winner_name: string | null;
   }>(
-    `SELECT t.id, t.name, t.size, t.status, t.prize_first, t.prize_second,
+    `SELECT t.id, t.name, t.size, t.status, t.prize_first, t.prize_second, t.entry_fee,
             (SELECT count(*) FROM tournament_players tp WHERE tp.tournament_id = t.id) AS joined,
             EXISTS (SELECT 1 FROM tournament_players tp2 WHERE tp2.tournament_id = t.id AND tp2.user_id = $1) AS you_joined,
             w.display_name AS winner_name
@@ -70,16 +72,16 @@ export async function listTournaments(viewerUserId: string | null): Promise<Tour
     id: r.id, name: r.name, size: r.size,
     joined: Number(r.joined), youJoined: r.you_joined,
     status: r.status as TournamentListItem['status'],
-    prizeFirst: r.prize_first, prizeSecond: r.prize_second,
+    prizeFirst: r.prize_first, prizeSecond: r.prize_second, entryFee: r.entry_fee,
     winnerName: r.winner_name,
   }));
 }
 
 export async function getTournamentState(tid: string, viewerUserId: string | null): Promise<TournamentStateView | null> {
   const { rows: trows } = await pool.query<{
-    id: string; name: string; size: number; status: string; prize_first: number; prize_second: number; winner_name: string | null;
+    id: string; name: string; size: number; status: string; prize_first: number; prize_second: number; entry_fee: number; winner_name: string | null;
   }>(
-    `SELECT t.id, t.name, t.size, t.status, t.prize_first, t.prize_second, w.display_name AS winner_name
+    `SELECT t.id, t.name, t.size, t.status, t.prize_first, t.prize_second, t.entry_fee, w.display_name AS winner_name
        FROM tournaments t LEFT JOIN users w ON w.id = t.winner_user_id WHERE t.id = $1`,
     [tid],
   );
@@ -106,7 +108,7 @@ export async function getTournamentState(tid: string, viewerUserId: string | nul
   return {
     id: t.id, name: t.name, size: t.size,
     status: t.status as TournamentStateView['status'],
-    prizeFirst: t.prize_first, prizeSecond: t.prize_second,
+    prizeFirst: t.prize_first, prizeSecond: t.prize_second, entryFee: t.entry_fee,
     joined: prows.length,
     youJoined: viewerUserId != null && prows.some((p) => p.user_id === viewerUserId),
     players: prows.map((p) => ({ userId: p.user_id, name: p.name })),
@@ -124,8 +126,8 @@ export async function joinTournament(tid: string, userId: string): Promise<{ ok:
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const { rows } = await client.query<{ size: number; status: string }>(
-      `SELECT size, status FROM tournaments WHERE id = $1 FOR UPDATE`, [tid],
+    const { rows } = await client.query<{ size: number; status: string; entry_fee: number }>(
+      `SELECT size, status, entry_fee FROM tournaments WHERE id = $1 FOR UPDATE`, [tid],
     );
     const t = rows[0];
     if (!t) { await client.query('ROLLBACK'); return { ok: false, error: 'Turnuva bulunamadı' }; }
@@ -135,6 +137,15 @@ export async function joinTournament(tid: string, userId: string): Promise<{ ok:
     );
     const joined = Number(cnt[0]!.n);
     if (joined >= t.size) { await client.query('ROLLBACK'); return { ok: false, error: 'Turnuva dolu' }; }
+    // GİRİŞ ÜCRETİ (2026-08-28): elmas AYNI transaction'da kesilir — yetmezse
+    // kayıt hiç oluşmaz; kayıt aşamasında ayrılana iade edilir.
+    if (t.entry_fee > 0) {
+      const { rowCount } = await client.query(
+        `UPDATE users SET diamonds = diamonds - $2 WHERE id = $1 AND diamonds >= $2`,
+        [userId, t.entry_fee],
+      );
+      if (!rowCount) { await client.query('ROLLBACK'); return { ok: false, error: `Giriş ücreti ${t.entry_fee} 💎 — elmasın yetersiz` }; }
+    }
     await client.query(
       `INSERT INTO tournament_players (tournament_id, user_id, seed) VALUES ($1, $2, $3)
        ON CONFLICT (tournament_id, user_id) DO NOTHING`,
@@ -182,11 +193,26 @@ export async function joinTournament(tid: string, userId: string): Promise<{ ok:
 }
 
 export async function leaveTournament(tid: string, userId: string): Promise<{ ok: boolean; error?: string }> {
-  const { rows } = await pool.query<{ status: string }>(`SELECT status FROM tournaments WHERE id = $1`, [tid]);
-  if (!rows[0]) return { ok: false, error: 'Turnuva bulunamadı' };
-  if (rows[0].status !== 'registration') return { ok: false, error: 'Turnuva başladı — çıkılamaz' };
-  await pool.query(`DELETE FROM tournament_players WHERE tournament_id = $1 AND user_id = $2`, [tid, userId]);
-  return { ok: true };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query<{ status: string; entry_fee: number }>(`SELECT status, entry_fee FROM tournaments WHERE id = $1 FOR UPDATE`, [tid]);
+    if (!rows[0]) { await client.query('ROLLBACK'); return { ok: false, error: 'Turnuva bulunamadı' }; }
+    if (rows[0].status !== 'registration') { await client.query('ROLLBACK'); return { ok: false, error: 'Turnuva başladı — çıkılamaz' }; }
+    const { rowCount } = await client.query(`DELETE FROM tournament_players WHERE tournament_id = $1 AND user_id = $2`, [tid, userId]);
+    // Giriş ücreti iadesi — yalnız gerçekten kayıtlıysa (çifte iade imkânsız).
+    if (rowCount && rows[0].entry_fee > 0) {
+      await client.query(`UPDATE users SET diamonds = diamonds + $2 WHERE id = $1`, [userId, rows[0].entry_fee]);
+    }
+    await client.query('COMMIT');
+    return { ok: true };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    log.error('tournament_leave_failed', { tournamentId: tid, userId, error: err instanceof Error ? err.message : String(err) });
+    return { ok: false, error: 'Çıkış başarısız' };
+  } finally {
+    client.release();
+  }
 }
 
 /** Kullanıcının OYNANMAYI bekleyen turnuva maçları (iki taraf da belli, kazanan yok). */

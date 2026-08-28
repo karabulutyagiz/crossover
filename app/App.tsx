@@ -252,11 +252,13 @@ function parsePushRoute(data: any): PushRoute | null {
   return null;
 }
 
-const TAB_DEFS: { key: string; labelKey: 'tab.store' | 'tab.collection' | 'tab.game' | 'tab.friends'; icon: IoniconName; activeIcon: IoniconName }[] = [
+const TAB_DEFS: { key: string; labelKey: 'tab.store' | 'tab.collection' | 'tab.game' | 'tab.friends' | 'tab.tournaments'; icon: IoniconName; activeIcon: IoniconName }[] = [
   { key: 'store', labelKey: 'tab.store', icon: 'storefront-outline', activeIcon: 'storefront' },
   { key: 'collection', labelKey: 'tab.collection', icon: 'albums-outline', activeIcon: 'albums' },
   { key: 'home', labelKey: 'tab.game', icon: 'football-outline', activeIcon: 'football' },
   { key: 'friends', labelKey: 'tab.friends', icon: 'people-outline', activeIcon: 'people' },
+  // Turnuvalar — sağ alt (kullanıcı kararı 2026-08-28: nav bar'da, Diğer Modlar'da değil)
+  { key: 'tournaments', labelKey: 'tab.tournaments', icon: 'trophy-outline', activeIcon: 'trophy' },
 ];
 
 const MATCH_BG_ACCENT: Record<string, string> = {
@@ -2054,7 +2056,7 @@ function AppRoot() {
     tabGuardTimer.current = null;
     programmaticScroll.current = false; // drag settled — resume live updates
     const x = e.nativeEvent.contentOffset.x;
-    const idx = Math.max(0, Math.min(3, Math.round(x / SCREEN_W)));
+    const idx = Math.max(0, Math.min(TAB_DEFS.length - 1, Math.round(x / SCREEN_W)));
     if (idx !== settledTabRef.current) {
       dismissActiveInput();
       settledTabRef.current = idx;
@@ -2617,6 +2619,12 @@ function AppRoot() {
             <FriendsScreen {...props} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} onLockedSocialMode={enqueueLockedSocialMode} focusAddFriendSeq={friendsAddSeq} />
           </TabFreeze>
         </View>
+        <View style={{ width: SCREEN_W, flex: 1 }}>
+          {state.profile ? renderResourceBar(activeTab === 4) : null}
+          <TabFreeze active={activeTab === 4} warmDelay={1200}>
+            <TournamentsScreen {...props} />
+          </TabFreeze>
+        </View>
       </Animated.ScrollView>
 
       {/* Bottom Tab Bar */}
@@ -2624,6 +2632,7 @@ function AppRoot() {
         {TABS.map((tab, idx) => {
           const onPress = () => {
             dismissActiveInput();
+            if (idx === 4) actions.listTournaments(); // sekmeye her girişte taze liste
             if (idx === 2 && activeTab === 2) {
               // Re-tapping the active Oyna tab opens Arenas (Clash Royale style);
               // from any other home-slot sub-screen (Profile, Arenas) it returns

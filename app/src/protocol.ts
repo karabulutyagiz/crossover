@@ -414,8 +414,8 @@ export type ServerMsg =
   | { type: 'player_results'; players: PlayerRef[] }
   | { type: 'searching'; etaSeconds?: number } // tahmini eşleşme süresi (dürüst: fallback zamanından türetilir)
   | { type: 'support_message'; id: string; title?: string | null; body: string } // hedefli destek/duyuru popup'ı
-  | { type: 'tournaments_list'; items: { id: string; name: string; size: number; joined: number; youJoined: boolean; status: 'registration' | 'live' | 'finished'; prizeFirst: number; prizeSecond: number; winnerName?: string | null }[] }
-  | { type: 'tournament_state'; tournament: { id: string; name: string; size: number; status: 'registration' | 'live' | 'finished'; prizeFirst: number; prizeSecond: number; joined: number; youJoined: boolean; players: { userId: string; name: string }[]; matches: { id: string; round: number; slot: number; aId: string | null; aName: string | null; bId: string | null; bName: string | null; winnerId: string | null; status: string }[]; winnerName: string | null } }
+  | { type: 'tournaments_list'; items: { id: string; name: string; size: number; joined: number; youJoined: boolean; status: 'registration' | 'live' | 'finished'; prizeFirst: number; prizeSecond: number; entryFee: number; winnerName?: string | null }[] }
+  | { type: 'tournament_state'; tournament: { id: string; name: string; size: number; status: 'registration' | 'live' | 'finished'; prizeFirst: number; prizeSecond: number; entryFee: number; joined: number; youJoined: boolean; players: { userId: string; name: string }[]; matches: { id: string; round: number; slot: number; aId: string | null; aName: string | null; bId: string | null; bName: string | null; winnerId: string | null; status: string }[]; winnerName: string | null } }
   | { type: 'tournament_match_ready'; tournamentId: string; matchId: string; opponentName: string; tournamentName: string; youReady?: boolean; oppReady?: boolean } // maç oynanabilir — iki taraf da hazır deyince başlar
   | { type: 'tournament_over'; tournamentId: string; youWon: boolean; placement: number; prize: number; tournamentName: string }
   | { type: 'opponent_left'; forfeit?: boolean; forfeitReason?: 'cheat' }

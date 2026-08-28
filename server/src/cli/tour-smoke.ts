@@ -14,8 +14,11 @@ for (let i = 0; i < 4; i++) {
   uids.push(rows[0]!.id);
 }
 const { rows: trows } = await pool.query<{ id: string }>(
-  `INSERT INTO tournaments (name, size, prize_first, prize_second) VALUES ('Smoke Kupası', 4, 100, 40) RETURNING id`,
+  `INSERT INTO tournaments (name, size, prize_first, prize_second, entry_fee) VALUES ('Smoke Kupası', 4, 100, 40, 25) RETURNING id`,
 );
+// Ücret testleri için herkese 30 elmas ver (biri hariç)
+await pool.query(`UPDATE users SET diamonds = 30 WHERE id = ANY($1)`, [uids.slice(0, 3)]);
+await pool.query(`UPDATE users SET diamonds = 5 WHERE id = $1`, [uids[3]]);
 const tid = trows[0]!.id;
 
 const lst = await listTournaments(uids[0]!);
@@ -25,6 +28,20 @@ for (let i = 0; i < 3; i++) {
   const r = await joinTournament(tid, uids[i]!);
   check(r.ok && !r.started, `katılım ${i + 1}/4 (başlamadı)`);
 }
+// Ücret kesintisi kontrolü
+const { rows: d0 } = await pool.query<{ diamonds: number }>(`SELECT diamonds FROM users WHERE id = $1`, [uids[0]]);
+check(d0[0]!.diamonds === 5, 'giriş ücreti 25 kesildi (30→5)');
+// Ayrıl → iade
+const { leaveTournament } = await import('../game/tournaments.ts');
+const lv = await leaveTournament(tid, uids[0]!);
+const { rows: d1 } = await pool.query<{ diamonds: number }>(`SELECT diamonds FROM users WHERE id = $1`, [uids[0]]);
+check(lv.ok && d1[0]!.diamonds === 30, 'ayrılınca ücret iade (5→30)');
+const rj = await joinTournament(tid, uids[0]!);
+check(rj.ok, 'yeniden katıldı');
+// Elması yetmeyen reddedilir
+const poor = await joinTournament(tid, uids[3]!);
+check(!poor.ok && (poor.error ?? '').includes('yetersiz'), 'yetersiz elmas reddedildi');
+await pool.query(`UPDATE users SET diamonds = 100 WHERE id = $1`, [uids[3]]);
 const last = await joinTournament(tid, uids[3]!);
 check(last.ok && last.started === true, '4/4 → turnuva BAŞLADI');
 
