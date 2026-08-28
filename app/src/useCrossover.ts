@@ -78,6 +78,7 @@ export interface GameState {
   room: RoomView | null;
   error: string | null;
   countdown: number | null;
+  countdownEndsAt: number | null; // paylaşılan mutlak bitiş (senkron geri sayım)
   teams: { teamA: ClubRef; teamB: ClubRef } | null;
   picked: boolean;
   pickEndsAt: number | null;
@@ -257,6 +258,7 @@ export const initialState: GameState = {
   room: null,
   error: null,
   countdown: null,
+  countdownEndsAt: null,
   teams: null,
   picked: false,
   pickEndsAt: null,
@@ -810,6 +812,7 @@ function reducer(state: GameState, action: Action): GameState {
         ...state,
         phase: 'countdown',
         countdown: action.n,
+        countdownEndsAt: (action as { endsAt?: number }).endsAt ?? null,
         result: null,
         teams: null,
         locked: null,

@@ -852,12 +852,17 @@ export class Room {
     this.status = 'countdown';
     this.broadcastState();
 
+    // PAYLAŞILAN BİTİŞ ZAMANI (2026-08-28): geri sayım artık mutlak zaman
+    // damgasıyla yayınlanır. İstemci sayıyı endsAt'ten hesaplar — 'karşılaşma
+    // bulundu'dan geç geçen taraf da doğru sayıyı görür, ilk tik'leri kaçırıp
+    // aniden 1'e düşmez. n hâlâ gönderilir (eski istemci uyumu).
     let n = COUNTDOWN_FROM;
-    this.broadcast({ type: 'countdown', n });
+    const endsAt = Date.now() + COUNTDOWN_FROM * 1000;
+    this.broadcast({ type: 'countdown', n, endsAt });
     const tick = setInterval(() => {
       n -= 1;
       if (n > 0) {
-        this.broadcast({ type: 'countdown', n });
+        this.broadcast({ type: 'countdown', n, endsAt });
       } else {
         clearInterval(tick);
         if (this.gameMode === 'xox') void this.beginXox();

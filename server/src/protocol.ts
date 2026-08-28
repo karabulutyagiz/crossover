@@ -274,7 +274,7 @@ export type ServerMsg =
   | { type: 'room_state'; room: RoomView }
   | { type: 'profile'; profile: ProfileView }
   | { type: 'name_changed'; profile: ProfileView }
-  | { type: 'countdown'; n: number }
+  | { type: 'countdown'; n: number; endsAt?: number } // endsAt: paylaşılan mutlak bitiş — istemci sayıyı ondan hesaplar
   | { type: 'pick_phase'; endsAt: number; pickRole?: PickRole; usedClubIds?: number[]; usedCountries?: string[] } // maç boyu seçilmiş takım/ülkeler (karart+kilitle)
   | { type: 'team_picked'; playerId: string }
   | { type: 'reveal_teams'; teamA: ClubRef; teamB: ClubRef; mode?: GameMode; country?: string; letter?: string }

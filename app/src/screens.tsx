@@ -5693,7 +5693,18 @@ function PlayerBar({ state, onEmotePress }: { state: GameState; onEmotePress?: (
 
 // ---- Countdown ----
 export function CountdownScreen({ state }: Props) {
-  const n = state.countdown ?? 0;
+  // Sayı PAYLAŞILAN endsAt'ten hesaplanır (2026-08-28): iki istemci de aynı
+  // mutlak ana sayar — geç geçen taraf da doğru rakamı görür. endsAt yoksa
+  // (eski sunucu) sunucunun gönderdiği n'e düşülür.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (state.countdownEndsAt == null) return;
+    const id = setInterval(() => setTick((v) => v + 1), 200);
+    return () => clearInterval(id);
+  }, [state.countdownEndsAt]);
+  const n = state.countdownEndsAt != null
+    ? Math.max(0, Math.ceil((state.countdownEndsAt - Date.now()) / 1000))
+    : (state.countdown ?? 0);
   const a = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     a.setValue(0);
