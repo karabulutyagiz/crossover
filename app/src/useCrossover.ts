@@ -882,7 +882,9 @@ function reducer(state: GameState, action: Action): GameState {
       };
     case 'guess_phase':
       // Yeni tur: tur-kapsamlı güç görselleri (freeze/reveal/skip nedeni) temizlenir.
-      return { ...state, phase: 'guess', guessEndsAt: action.endsAt, locked: null, oppWrong: null, youBurned: false, youRetryAt: null, tooLateSeq: 0, spFrozenUntil: null, spReveal: null, spSkipBy: null };
+      // spEvent de tur-kapsamlı: temizlenmezse yeni turda ekran yeniden kurulunca
+      // aynı 'cevap gösterildi' duyurusu tekrar oynuyordu (rapor 2026-08-28).
+      return { ...state, phase: 'guess', guessEndsAt: action.endsAt, locked: null, oppWrong: null, youBurned: false, youRetryAt: null, tooLateSeq: 0, spFrozenUntil: null, spReveal: null, spSkipBy: null, spEvent: null };
     // (guess_locked protokolden kaldırıldı — wrongopen'dan beri sunucu hiç
     // göndermiyordu; `locked` alanı yalnız temizlenen ölü durumdu.)
     case 'wrong_guess': {
