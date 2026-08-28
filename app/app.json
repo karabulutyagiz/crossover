@@ -15,7 +15,7 @@
       "infoPlist": {
         "CADisableMinimumFrameDurationOnPhone": true,
         "ITSAppUsesNonExemptEncryption": false,
-        "NSUserTrackingUsageDescription": "Reklam deneyimini kişiselleştirmek için izin istiyoruz.",
+        "NSUserTrackingUsageDescription": "Reklam deneyimini ki\u015fiselle\u015ftirmek i\u00e7in izin istiyoruz.",
         "SKAdNetworkItems": [
           {
             "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork"
@@ -119,6 +119,11 @@
           "resizeMode": "contain",
           "dark": {
             "backgroundColor": "#0B1838"
+          },
+          "android": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#0B1838",
+            "resizeMode": "contain"
           }
         }
       ],
@@ -150,7 +155,7 @@
         {
           "androidAppId": "ca-app-pub-5118403349234305~5744734548",
           "iosAppId": "ca-app-pub-5118403349234305~1206723737",
-          "userTrackingUsageDescription": "Reklam deneyimini kişiselleştirmek için izin istiyoruz."
+          "userTrackingUsageDescription": "Reklam deneyimini ki\u015fiselle\u015ftirmek i\u00e7in izin istiyoruz."
         }
       ],
       [
