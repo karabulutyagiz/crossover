@@ -485,7 +485,10 @@ export function startServer(port: number): Server {
       matchQualityScore: a.lastCandidateScore ?? null,
       selectionReason: 'best_human_candidate',
     });
-    setTimeout(() => safeAutoStart(room, resA.ok ? resA.id : '', 'human_match', a.requestId), 900);
+    // 900ms canlıda maç açılışını bozdu (2026-08-28 kullanıcı raporu: 'müsabaka
+    // bulundu' tek tarafta, geri sayım buglu, 3'te donma, takım listesi boş) —
+    // istemci geçiş hattı ~2sn'lik kuruluma göre yazılmış. 2000ms'e dönüldü.
+    setTimeout(() => safeAutoStart(room, resA.ok ? resA.id : '', 'human_match', a.requestId), 2000);
     return true;
   }
 
@@ -664,7 +667,7 @@ export function startServer(port: number): Server {
       botSkill: Number(botProfile.skillRating.toFixed(3)),
       mode: room.gameMode,
     });
-    setTimeout(() => safeAutoStart(room, human.ok ? human.id : '', 'bot_match', entry.requestId), 900);
+    setTimeout(() => safeAutoStart(room, human.ok ? human.id : '', 'bot_match', entry.requestId), 2000);
     recordDecisionTrace({
       matchId,
       playerId: entry.userProfile?.id ?? entry.userId ?? null,
@@ -1921,7 +1924,7 @@ export function startServer(port: number): Server {
         const resB = room.addPlayer(userProfile.displayName, transport, false, userProfile.id, userProfile.trophies, userProfile.arena, userProfile.avatar, userProfile.level, userProfile.selectedFrame, toCosmeticLoadout(userProfile), mySkill?.skillMean, mySkill?.skillUncertainty, mySkill?.matchesPlayed);
         if (resA.ok) inv.setCtx({ room, playerId: resA.id, userProfile: inv.userProfile });
         if (resB.ok) ctx = { room, playerId: resB.id, userProfile };
-        setTimeout(() => safeAutoStart(room, resA.ok ? resA.id : '', 'friend_match'), 900);
+        setTimeout(() => safeAutoStart(room, resA.ok ? resA.id : '', 'friend_match'), 2000);
         return;
       }
       if (msg.type === 'cancel_match_invite') {
