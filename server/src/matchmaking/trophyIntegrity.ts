@@ -13,7 +13,7 @@ function sanitizeBand(min: number, max: number, fallbackMin: number, fallbackMax
   return [lo, hi];
 }
 const [GAIN_MIN, GAIN_MAX] = sanitizeBand(config.opponentSystem.trophyMinGain, config.opponentSystem.trophyMaxGain, 28, 35);
-const [LOSS_MIN, LOSS_MAX] = sanitizeBand(config.opponentSystem.trophyMinLoss, config.opponentSystem.trophyMaxLoss, 15, 28);
+const [LOSS_MIN, LOSS_MAX] = sanitizeBand(config.opponentSystem.trophyMinLoss, config.opponentSystem.trophyMaxLoss, 15, 25);
 export const TROPHY_GAIN_MIN = GAIN_MIN;
 export const TROPHY_GAIN_MAX = GAIN_MAX;
 export const TROPHY_LOSS_MIN = LOSS_MIN;
@@ -65,7 +65,7 @@ export function clampFinalTrophyDelta(args: {
 export const BOT_GAIN_MIN = 28;
 export const BOT_GAIN_MAX = 35;
 export const BOT_LOSS_MIN = 15;
-export const BOT_LOSS_MAX = 28;
+export const BOT_LOSS_MAX = 25;
 
 export function trophyDeltaExpectedScore(args: {
   playerSkillMean: number;

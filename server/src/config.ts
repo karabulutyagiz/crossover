@@ -143,7 +143,7 @@ export const config = {
     trophyMinGain: intEnv('TROPHY_MIN_GAIN', 28),
     trophyMaxGain: intEnv('TROPHY_MAX_GAIN', 35),
     trophyMinLoss: intEnv('TROPHY_MIN_LOSS', 15),
-    trophyMaxLoss: intEnv('TROPHY_MAX_LOSS', 28),
+    trophyMaxLoss: intEnv('TROPHY_MAX_LOSS', 25),
     rematchProbability: boundedNumberEnv('REMATCH_PROBABILITY', 0.58, 0, 1),
     emoteProbability: boundedNumberEnv('EMOTE_PROBABILITY', 0.34, 0, 1),
     humanTelemetryWeightMinPlays: intEnv('HUMAN_TELEMETRY_WEIGHT_MIN_PLAYS', 12),
