@@ -6814,12 +6814,14 @@ export function XoxScreen({ state, actions }: Props) {
           })() : null}
         </View>
       </View>
-      </View>
-
-      {/* Son aksiyon satırı */}
+      {/* Son aksiyon satırı ("... yanlış bildi" vb.) — tablonun HEMEN altında
+          (istek 2026-08-28): esnek tahta bölgesinin İÇİNDE, board'dan hemen sonra
+          render edilir. Böylece flex:1 bölgesi onu ekranın en dibine itmez; mesaj
+          tahtanın hemen altında görünür, board yerinden oynamaz (flex-start). */}
       {laText && !over ? (
         <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginTop: 8 }}>{laText}</Text>
       ) : null}
+      </View>
 
       {/* Cevap paneli */}
       {!over && canAnswer && selCell != null && xox.cells[selCell]!.owner == null ? (
