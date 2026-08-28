@@ -654,6 +654,21 @@ function TopBanner({
 // KOPYA ÇEKME uyarı şeridi: maç sırasında uygulamadan ayrılma / ekran görüntüsü
 // algılanınca tepeden iner, ~2.6 sn sonra kendiliğinden çekilir. Ceza YOK —
 // caydırıcı, tutarlı, her cihazda aynı. seq her tetikte artar.
+/** Dikkat nabzı: birincil CTA hafifçe büyüyüp küçülür (popup'lar dikkat
+ * çekmiyor şikayeti, 2026-08-28). Yavaş ve küçük — kaba yanıp sönme yok. */
+function PulseView({ children }: { children: React.ReactNode }) {
+  const v = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(v, { toValue: 1, duration: 620, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(v, { toValue: 0, duration: 620, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [v]);
+  return <Animated.View style={{ alignSelf: 'stretch', transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.045] }) }] }}>{children}</Animated.View>;
+}
+
 function CheatWarnBanner({ seq }: { seq: number }) {
   const slide = useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
@@ -1022,7 +1037,7 @@ function AppRoot() {
   const [dailyConfirm, setDailyConfirm] = useState(false);           // "SATIN AL" öncesi Evet/Hayır onay adımı
   const reopenDailyOfferRef = useRef(false);                         // elmas almaya gidildi → dönüp yeterli olunca teklifi GERİ aç
   const [updateNudgeVisible, setUpdateNudgeVisible] = useState(false); // mağazaya yeni sürüm düşünce (yumuşak)
-  const [xoxAnnounceVisible, setXoxAnnounceVisible] = useState(false); // XOX modu tek seferlik duyuru
+  const [xoxAnnounceVisible, setXoxAnnounceVisible] = useState(false); // XOX duyurusu (her açılışta)
   const updateNudgeShownRef = useRef(false);
   const dailyOfferShownRef = useRef(false);                            // her AÇILIŞTA bir kez
   const [outageGiftClaiming, setOutageGiftClaiming] = useState(false);
@@ -2997,9 +3012,41 @@ function AppRoot() {
 
       <GameModal visible={xoxAnnounceVisible} onClose={() => setXoxAnnounceVisible(false)} title={t('xoxAnnounce.title')} icon="grid" coach>
         <View style={{ alignItems: 'center', gap: 12 }}>
-          <Text style={{ fontSize: 40, letterSpacing: 4 }}>❌⭕❌</Text>
+          {/* Dikkat çekici sahne: altın YENİ MOD şeridi + büyük tahta görseli */}
+          <View style={{ backgroundColor: theme.gold, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4 }}>
+            <Text style={{ color: '#231A00', fontSize: 11, fontFamily: 'Poppins-Black', letterSpacing: 1.2 }}>{t('xoxAnnounce.ribbon')}</Text>
+          </View>
+          <View style={{ backgroundColor: withAlpha('#7C5CFF', 0.16), borderRadius: 20, paddingHorizontal: 22, paddingVertical: 12, borderWidth: 2, borderColor: withAlpha('#7C5CFF', 0.5) }}>
+            <Text style={{ fontSize: 44, letterSpacing: 6 }}>❌⭕❌</Text>
+          </View>
           <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>{t('xoxAnnounce.body')}</Text>
-          <Btn big kind="accent" icon="game-controller" label={t('xoxAnnounce.cta')} onPress={() => setXoxAnnounceVisible(false)} />
+          <PulseView>
+            <Btn
+              big kind="accent" icon="game-controller"
+              label={t('xoxAnnounce.playNow')}
+              feedback={GameFeedbackEvent.UI_PLAY}
+              onPress={() => {
+                const hasPack = !!(state.profile?.socialPackUntil && new Date(state.profile.socialPackUntil) > new Date());
+                setXoxAnnounceVisible(false);
+                if (hasPack) {
+                  // Paketi olan direkt maça — duyurudan tek dokunuş XOX kuyruğu.
+                  track('xox_announce_play', { has_pack: true, appSessionId });
+                  actions.findMatch({ mode: 'xox' });
+                } else if (directRequestPurchase && state.profile?.userId) {
+                  // Paketsiz: doğrudan Apple ödeme sayfası — haftalık ₺24,99.
+                  track('social_pack_purchase_started', { product_id: SOCIAL_PACK_OFFER.productId, source_screen: 'xox_announce' });
+                  Promise.resolve(directRequestPurchase({
+                    request: { apple: { sku: SOCIAL_PACK_OFFER.productId, appAccountToken: state.profile.userId } },
+                    type: 'subs',
+                  })).catch(() => {});
+                } else {
+                  // Expo Go / modül yok: mağazanın sosyal paket bölümü.
+                  acceptSocialPackCampaign();
+                }
+              }}
+            />
+          </PulseView>
+          <Text style={{ color: theme.muted, fontSize: 10, lineHeight: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{t('socialPack.offerDisclosure')}</Text>
         </View>
       </GameModal>
 
@@ -3041,6 +3088,7 @@ function AppRoot() {
               <Text style={{ color: '#FFF', fontFamily: 'Poppins-Black', fontSize: 12 }}>-%50</Text>
             </View>
           </View>
+          <PulseView>
           <Btn
             big kind="accent" icon="people"
             label={`${SOCIAL_PACK_OFFER.label} · ${SOCIAL_PACK_OFFER.price}`}
@@ -3060,6 +3108,7 @@ function AppRoot() {
               }
             }}
           />
+          </PulseView>
           {/* 3.1.2(c): abonelik süresi + oto-yenileme + koşul/gizlilik bağlantıları
               satın alma akışının İÇİNDE olmalı — popup artık bir satın alma yüzeyi. */}
           <Text style={{ color: theme.muted, fontSize: 10, lineHeight: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>
