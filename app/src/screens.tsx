@@ -6494,7 +6494,11 @@ export function XoxScreen({ state, actions }: Props) {
   const gridMaxW = Math.min((boardBox.w || win.width - 32), 430);
   // Yatay sabit maliyet: padding 6×2=12 + satır-içi 3 gap×6=18 + çerçeve 2×boardBorder + kenar 2×boardMargin.
   const widthCell = Math.floor((gridMaxW - headerW - 30 - boardBorder * 2 - boardMargin * 2) / 3);
-  const heightCell = boardBox.h > 0 ? Math.floor((boardBox.h - 84 - boardBorder * 2) / 3) : widthCell;
+  // SABİT TAHTA (kullanıcı isteği 2026-08-28): yükseklik bütçesi, cevap paneli/klavye
+  // açılınca DARALAN ölçülen alandan (boardBox.h) DEĞİL, SABİT ekran yüksekliğinden
+  // türetilir → hücre seçip cevap yazarken tahta KÜÇÜLMEZ/BÜYÜMEZ, her zaman aynı.
+  // Bütçe, klavye + cevap paneli açıkken de sığacak şekilde ekranın ~%40'ı ayrılır.
+  const heightCell = Math.floor((win.height * 0.34 - 84 - boardBorder * 2) / 3);
   const cellSize = Math.max(40, Math.min(widthCell, heightCell, 122));
   const gridW = headerW + cellSize * 3 + 30 + boardBorder * 2; // padding+gap+çerçeve; floor artığı sızmasın
   const winLine = over?.line ?? null;
