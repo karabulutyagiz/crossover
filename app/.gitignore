@@ -41,3 +41,4 @@ yarn-error.*
 /android
 
 node_modules.nosync/
+play-service-account.json

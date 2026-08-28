@@ -31,6 +31,11 @@
         "appName": "Crossover",
         "language": "tr",
         "sku": "crossover"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./play-service-account.json",
+        "track": "alpha",
+        "releaseStatus": "completed"
       }
     }
   }
