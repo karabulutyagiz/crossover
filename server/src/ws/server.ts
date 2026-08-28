@@ -1848,10 +1848,10 @@ export function startServer(port: number): Server {
         }
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
         const requestedMode = msg.options?.mode ?? 'team-team';
-        // Dostluk daveti göndermek — mod ne olursa olsun — GÖNDERENDE aktif
-        // Sosyal Paket ister. (Paketli gönderici sosyal modların canUseMode
-        // şartını da otomatik sağlar.)
-        if (!hasActiveSocialPack(userProfile)) return transport.send({ type: 'error', message: FRIENDLY_INVITE_NEEDS_PACK });
+        // Dostluk daveti: TAKIM-TAKIM modu paket İSTEMEZ (kullanıcı kararı
+        // 2026-08-28) — herkes arkadaşıyla takım-takım oynayabilir. Ülke-Takım /
+        // Harf-Takım / XOX hâlâ Sosyal Paket ister.
+        if (requestedMode !== 'team-team' && !hasActiveSocialPack(userProfile)) return transport.send({ type: 'error', message: FRIENDLY_INVITE_NEEDS_PACK });
         const fromId = userProfile.id;
         const inviterProfile = userProfile;
         void (async () => {
@@ -1912,8 +1912,8 @@ export function startServer(port: number): Server {
         }
         const requestedMode = inv.options?.mode ?? 'team-team';
         // Kabul eden tarafta paket ARANMAZ — yalnız davet SAHİBİNİN paketi hâlâ
-        // aktif olmalı (davet ile kabul arasında süresi bitmiş olabilir).
-        if (!hasActiveSocialPack(inv.userProfile)) {
+        // aktif olmalı. TAKIM-TAKIM modu ise paket HİÇ aranmaz (2026-08-28).
+        if (requestedMode !== 'team-team' && !hasActiveSocialPack(inv.userProfile)) {
           sendToUser(inv.fromUserId, { type: 'match_invite_declined', byId: userProfile.id });
           transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
           return;
