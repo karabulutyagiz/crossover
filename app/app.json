@@ -165,10 +165,10 @@
         }
       ]
     ],
-    "owner": "ygzkrblt1",
+    "owner": "ygzkrblt",
     "extra": {
       "eas": {
-        "projectId": "a4d757a9-39bc-4806-a64a-0d671b946bbe",
+        "projectId": "fff58543-c2d6-4a7d-85af-5bd2da3a6a3f",
         "build": {
           "experimental": {
             "ios": {
@@ -187,7 +187,7 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/a4d757a9-39bc-4806-a64a-0d671b946bbe"
+      "url": "https://u.expo.dev/fff58543-c2d6-4a7d-85af-5bd2da3a6a3f"
     }
   }
 }
