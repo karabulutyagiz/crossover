@@ -278,12 +278,10 @@ export interface StreakMilestone {
 }
 
 export const STREAK_MILESTONES: readonly StreakMilestone[] = [
-  { streak: 3, diamonds: 30 },
-  { streak: 5, diamonds: 60 },
+  // ELMAS YOK (kullanıcı kararı 2026-08-28 ACİL: 'galibiyet serisinde elmas
+  // vermicek') — seri ödülleri yalnız GÜÇ; elmas kalemleri kaldırıldı.
   { streak: 7, powerId: 'freeze', powerQty: 1 },
-  { streak: 10, diamonds: 120 },
   { streak: 15, powerId: 'reveal', powerQty: 1 },
-  { streak: 20, diamonds: 300 },
 ];
 
 export function milestoneFor(streak: number): StreakMilestone | null {
