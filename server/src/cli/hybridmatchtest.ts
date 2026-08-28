@@ -25,7 +25,7 @@ for (const trophies of [0, 80, 240, 520, 1240, 2300, 3900, 5200]) {
   const difficulties = new Map<string, number>();
   for (let i = 0; i < 80; i++) {
     const bot = selectBotProfile(`test-${trophies}`, trophies, 6);
-    assert(bot.displayName && !/bot|cpu|ai|computer|ivan|hugo|luca|marco|bruno|diego|dante/i.test(bot.displayName), `bad bot name: ${bot.displayName}`);
+    assert(bot.displayName && !/\b(bot|cpu|ai|computer|ivan|hugo|luca|marco|bruno|diego|dante)\b/i.test(bot.displayName), `bad bot name: ${bot.displayName}`); // \b: 'ismail' içindeki 'ai' yanlış-pozitif vermesin (2026-08-28)
     // İsimler artık organik (2026-08-28): rakam/alt çizgi/M-misafir deseni SERBEST
     // ('burak1907', 'x_emre_x', 'M158148792'). Yalnız görünür/makul olmalı.
     assert(/^[A-Za-z0-9ÇĞİÖŞÜçğıöşü_]{2,20}$/.test(bot.displayName), `bot name malformed: ${bot.displayName}`);
