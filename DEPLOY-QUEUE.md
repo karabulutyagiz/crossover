@@ -20,6 +20,10 @@ Bekleyen sunucu işleri (hepsi `build-113` HEAD'inde, tsc temiz, testler yeşil)
 - **Kesinti hediyesi KAPALI** (`4efc565`): kod varsayılanı false; prod `.env`e
   `OUTAGE_GIFT_ENABLED=false` YAZILDI (restart'ta etkin — ayrıca bir şey yapma).
 - **Admin geri bildirim ucu**: `GET /admin/api/feedback` (bearer token'lı).
+- **Bot cevapları insan gibi** (`a549a14`): şapkalı/aksanlı harf katlanır
+  (Kâzım→Kazım, Modrić→Modric; ç/ğ/ı/İ/ö/ş/ü korunur) + iki takımda da
+  oynamışlardan EN BİLİNDİK öncelikli seçim (0.62 en ünlü, kalan ilk 3) —
+  tüm modlar + XOX.
 
 ### Sunucu deploy komutu (kalıp)
 ```bash
