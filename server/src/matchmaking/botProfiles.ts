@@ -158,12 +158,12 @@ const NICK_HANDLES = [
   // gibi daha fazla olsun'). Türkçe futbol kültürü + mahalle/sokak dili.
   'sokaktanyetisme', 'toplabuyudum', 'ayaklarakonusur', 'gecesahaci', 'formacisi',
   'tribunlerinsesi', 'onikinciadam', 'derbicanavari', 'golcrali', 'pasmakinesi',
-  'sahakartali', 'kramponunefendisi', 'kalecininkabusu', 'ortasahaninbeyni',
-  'sondakikaci', 'nizamiçalim', 'topbenim', 'gecmedengecemezsin', 'rabonaci',
-  'catladikoptu', 'yikilmayanadam', 'mahalleninyildizi', 'asfaltinkralı',
-  'benoynarımsenbakarsın', 'gollegelirim', 'driplinustasi', 'sahayahukmeder',
+  'sahakartali', 'kramponefendi', 'kalecikabusu', 'ortasahabeyni',
+  'sondakikaci', 'nizamiçalim', 'topbenim', 'gecemezsin', 'rabonaci',
+  'catladikoptu', 'yikilmayanadam', 'mahalleyildizi', 'asfaltinkralı',
+  'benoynarsın', 'gollegelirim', 'driplinustasi', 'sahayahukmeder',
   'kaptanadam', 'efsanevari', 'tekgeçerim', 'bitmeyenenerji', 'golkralı61',
-  'dltnlarsehirde', 'geceyarısıgolcüsü', 'topucuoglu', 'sahaninsahibi',
+  'dltnlarsehirde', 'geceyarisigol', 'topucuoglu', 'sahaninsahibi',
   'kaleyisallar', 'çalimatarım', 'panenkaci', 'volecikralı', 'aşiretgolcüsü',
   'kramponcuemmi', 'topsevdalısı', 'yeşilsahaci', 'gollüsaniye', 'rövaşatacı',
 ];
