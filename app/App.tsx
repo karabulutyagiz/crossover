@@ -1571,6 +1571,7 @@ function AppRoot() {
     dailyOfferVisible ||
     updateNudgeVisible ||
     xoxAnnounceVisible ||
+    Boolean(state.supportMessage) ||
     Boolean(activeEngagement) ||
     promotionTransitionRef.current
   );
@@ -3007,6 +3008,19 @@ function AppRoot() {
           </Text>
           <Btn big kind="accent" icon="download" label={t('update.nudgeCta')} onPress={() => { void openRequiredUpdateStore(); }} />
           <Btn big kind="ghost" label={t('update.nudgeLater')} onPress={() => setUpdateNudgeVisible(false)} />
+        </View>
+      </GameModal>
+
+      <GameModal
+        visible={Boolean(state.supportMessage)}
+        onClose={() => { if (state.supportMessage) actions.ackSupportMessage(state.supportMessage.id); }}
+        title={state.supportMessage?.title || 'CrossOver Football'}
+        icon="heart"
+        coach
+      >
+        <View style={{ gap: 14 }}>
+          <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold', lineHeight: 21 }}>{state.supportMessage?.body ?? ''}</Text>
+          <Btn big kind="accent" icon="checkmark-circle" label={t('common.continue')} onPress={() => { if (state.supportMessage) actions.ackSupportMessage(state.supportMessage.id); }} />
         </View>
       </GameModal>
 

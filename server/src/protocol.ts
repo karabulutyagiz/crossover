@@ -237,6 +237,7 @@ export type ClientMsg =
   // Bilinçli maç terki (X onayı / arka plan hükmeni): reconnect grace atlanır,
   // rakip hükmen sonucu ANINDA görür.
   | { type: 'leave_match'; reason?: 'leave' | 'cheat' }
+  | { type: 'ack_support_message'; id: string }
   // ---- Maç içi Özel Güçler (server-authoritative; maç başına TEK kullanım) ----
   // requestId: idempotency anahtarı — aynı istek iki kez tüketmez. powerId,
   // sunucudaki maç-başı anlık görüntüyle birebir tutmalıdır (uyuşmazlık = reddet).
@@ -355,6 +356,7 @@ export type ServerMsg =
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
   | { type: 'player_results'; players: PlayerRef[] }
   | { type: 'searching'; etaSeconds?: number } // tahmini eşleşme süresi (dürüst: fallback zamanından türetilir)
+  | { type: 'support_message'; id: string; title?: string | null; body: string } // hedefli destek/duyuru popup'ı
   | { type: 'opponent_left'; forfeit?: boolean; forfeitReason?: 'cheat' }
   // ---- Friends ----
   | { type: 'friend_request_received'; requestId: string; fromId: string; fromName: string }

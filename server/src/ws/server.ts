@@ -219,6 +219,16 @@ function bridgeCaps(transport: Transport, profile: UserProfile | undefined): voi
   if (cached && cached.length > 0) transport.caps = cached;
 }
 
+async function sendPendingSupportMessages(userId: string, transport: { send: (m: ServerMsg) => void }): Promise<void> {
+  try {
+    const { rows } = await pool.query<{ id: string; title: string | null; body: string }>(
+      'SELECT id, title, body FROM support_messages WHERE user_id = $1 AND seen = false ORDER BY created_at ASC LIMIT 5',
+      [userId],
+    );
+    for (const r of rows) transport.send({ type: 'support_message', id: r.id, title: r.title, body: r.body });
+  } catch { /* tablo yoksa / DB hatası — sessiz */ }
+}
+
 function addOnline(userId: string, ws: WebSocket): void {
   let set = onlineUsers.get(userId);
   if (!set) { set = new Set(); onlineUsers.set(userId, set); }
@@ -1251,6 +1261,7 @@ export function startServer(port: number): Server {
           const profile = await grantDevEmotesIfNeeded(loaded);
           userProfile = profile;
           addOnline(profile.id, ws);
+          void sendPendingSupportMessages(profile.id, transport);
           recordCaps(transport, profile.id);
           transport.send({
             type: 'profile',
@@ -1284,6 +1295,7 @@ export function startServer(port: number): Server {
             const profile = await grantDevEmotesIfNeeded(linked);
             userProfile = profile;
             addOnline(profile.id, ws);
+            void sendPendingSupportMessages(profile.id, transport);
             recordCaps(transport, profile.id);
             transport.send({ type: 'profile', profile: toProfileView(profile) });
           } catch (err) {
@@ -1304,6 +1316,7 @@ export function startServer(port: number): Server {
             const profile = await createGuestUser();
             userProfile = profile;
             addOnline(profile.id, ws);
+            void sendPendingSupportMessages(profile.id, transport);
             recordCaps(transport, profile.id);
             transport.send({ type: 'profile', profile: toProfileView(profile) });
           } catch (err) {
@@ -1748,6 +1761,12 @@ export function startServer(port: number): Server {
 
       // Permanently delete the signed-in account and all its data (App Store 5.1.1(v)),
       // then tear down the session so the client returns to the login screen.
+      if (msg.type === 'ack_support_message') {
+        if (userProfile && typeof msg.id === 'string') {
+          void pool.query('UPDATE support_messages SET seen = true WHERE id = $1 AND user_id = $2', [msg.id, userProfile.id]).catch(() => {});
+        }
+        return;
+      }
       if (msg.type === 'leave_match') {
         // Deliberate exit (X onayı / arka plan hükmeni): reconnect grace YOK —
         // rakip hükmen sonucu ANINDA görür. Ardından gelen soket kapanışı

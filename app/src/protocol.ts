@@ -325,6 +325,7 @@ export type ClientMsg =
   | { type: 'delete_account' }
   // Deliberate match exit: skips reconnect grace and lets the opponent see forfeit immediately.
   | { type: 'leave_match'; reason?: 'leave' | 'cheat' }
+  | { type: 'ack_support_message'; id: string }
   // ---- Maç içi Özel Güçler (server-authoritative; maç başına TEK kullanım) ----
   | { type: 'use_special_power'; powerId: string; requestId: string }
   | { type: 'equip_special_power'; powerId: string | null }
@@ -407,6 +408,7 @@ export type ServerMsg =
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
   | { type: 'player_results'; players: PlayerRef[] }
   | { type: 'searching'; etaSeconds?: number } // tahmini eşleşme süresi (dürüst: fallback zamanından türetilir)
+  | { type: 'support_message'; id: string; title?: string | null; body: string } // hedefli destek/duyuru popup'ı
   | { type: 'opponent_left'; forfeit?: boolean; forfeitReason?: 'cheat' }
   | { type: 'friend_request_received'; requestId: string; fromId: string; fromName: string }
   | { type: 'friend_request_sent' }

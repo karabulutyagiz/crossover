@@ -154,6 +154,7 @@ type Actions = {
   useSpecialPower: (powerId: string) => void;       // maçta etkinleştir (requestId'yi aksiyon üretir)
   equipSpecialPower: (powerId: string | null) => void; // maça hangi güçle çıkılacağını seç
   markCollectionSeen: (tab: 'emotes' | 'cosmetics' | 'powers') => void; // kırmızı 1 rozetini söndür
+  ackSupportMessage: (id: string) => void; // destek popup'ı okundu
   buySpecialPower: (powerId: string, qty?: number) => void; // mağazadan elmasla al
   clearStreakReward: () => void;
   xoxSubmit: (cell: number, text: string) => void;

@@ -173,6 +173,9 @@ export function validateClientMsg(value: unknown): ValidationResult {
     case 'leave_match':
       if (value.reason !== undefined && value.reason !== 'leave' && value.reason !== 'cheat') return invalid('leave_match.reason is invalid');
       break;
+    case 'ack_support_message':
+      if (!isString(value.id, 64)) return invalid('ack_support_message.id is invalid');
+      break;
     case 'pick_team':
       if (!hasInteger(value, 'clubId', 1)) return invalid('pick_team.clubId must be a positive integer');
       break;

@@ -165,6 +165,7 @@ export interface GameState {
   opponentForfeit: boolean;
   opponentForfeitReason: 'cheat' | null;
   searchEta: { seconds: number; at: number } | null; // sunucunun dürüst eşleşme tahmini
+  supportMessage: { id: string; title: string | null; body: string } | null; // hedefli destek popup'ı
   unseenCollection: { emotes: number; cosmetics: number; powers: number }; // satın alınıp henüz görülmemişler (kırmızı 1)
   // Maç ortasında ÇIKIŞ (forfeit) = kaybetme. Kupa cezası (trophy_update) reset
   // SONRASI gelir; onunla kaybetme popup'ı gösterilir. null = gösterilecek bir şey yok.
@@ -339,6 +340,7 @@ export const initialState: GameState = {
   streakReward: null,
   xox: null,
   searchEta: null,
+  supportMessage: null,
   unseenCollection: { emotes: 0, cosmetics: 0, powers: 0 },
   xoxOver: null,
   storeCatalogError: null,
@@ -388,6 +390,7 @@ type Action =
   | { type: '_set_game_options'; options: GameOptions | null }
   | { type: '_clear_emote'; playerId: string }
   | { type: '_unseen_load'; value: { emotes?: number; cosmetics?: number; powers?: number } }
+  | { type: '_clear_support' }
   | { type: '_col_seen'; tab: 'emotes' | 'cosmetics' | 'powers' }
   | { type: '_forfeit_loss'; delta: number; trophies: number; arena: ArenaView; youScore: number; oppScore: number; opponentName: string; reason?: 'cheat' }
   | { type: '_clear_forfeit_loss' };
@@ -630,6 +633,11 @@ function reducer(state: GameState, action: Action): GameState {
       if (!state.unseenCollection[tab]) return state;
       return { ...state, unseenCollection: { ...state.unseenCollection, [tab]: 0 } };
     }
+    case 'support_message': {
+      const a = action as Extract<ServerMsg, { type: 'support_message' }>;
+      return { ...state, supportMessage: { id: a.id, title: a.title ?? null, body: a.body } };
+    }
+    case '_clear_support': return { ...state, supportMessage: null };
     case 'searching': {
       const eta = (action as Extract<ServerMsg, { type: 'searching' }>).etaSeconds ?? null;
       // Yeni maç arayışı = YENİ seri: önceki serinin (eve dönüşte uçmamış/kesilmiş)
@@ -1719,6 +1727,7 @@ export function useCrossover() {
         send({ type: 'equip_special_power', powerId });
       },
       markCollectionSeen: (tab: 'emotes' | 'cosmetics' | 'powers') => dispatch({ type: '_col_seen', tab }),
+      ackSupportMessage: (id: string) => { send({ type: 'ack_support_message', id }); dispatch({ type: '_clear_support' }); },
       buySpecialPower: (powerId: string, qty = 1) => {
         track('special_power_purchase_started', { power_id: powerId, qty });
         send({ type: 'buy_special_power', powerId, qty });
