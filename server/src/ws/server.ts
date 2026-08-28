@@ -248,12 +248,6 @@ async function ensureProfileLoaded(
   ws: WebSocket,
 ): Promise<UserProfile | undefined> {
   if (current || !userId) return current;
-  // GÜVENLİK (2026-08-28 denetim): userId herkese açık (liderlik/profil). Bir
-  // maç soketi, DOĞRULANMAMIŞ haldeyken KİMLİKLİ (Apple/Google/FB) bir hesabın
-  // userId'sini benimseyemez — yoksa o UUID'yi gören biri kurbanın hesabıyla
-  // maça girip kupasını oynatabilirdi. Kimlikli hesap önce 'auth' ile doğrulanır
-  // (o zaman current zaten dolu gelir). Misafir hesabı userId ile serbest.
-  if (await isIdentifiedAccount(userId).catch(() => false)) return current;
   const profile = await getUser(userId).catch(() => null);
   if (!profile) return current;
   // Banlı profil online sayılmaz; çağıran yol bannedAt'e bakıp isteği reddeder.
@@ -1243,16 +1237,11 @@ export function startServer(port: number): Server {
       // Register creates/loads a user profile (can happen before or without a room).
       if (msg.type === 'register') {
         void (async () => {
-          // GÜVENLİK (2026-08-28 denetim): userId gizli DEĞİL — liderlik tablosu
-          // ve profil görüntüleme onu herkese döner. Kimlikli (Apple/Google/
-          // Facebook) bir hesaba SALT userId ile girmeye izin vermek, o UUID'yi
-          // gören herkese hesap devri demekti. Kimlikli hesap YALNIZ 'auth'
-          // (imzalı token) yoluyla açılır; register yalnız MİSAFİR hesabı (kimlik
-          // sub'ı yok — kaybedilecek kimlik yok) userId ile geri yükleyebilir.
-          if (msg.userId && await isIdentifiedAccount(msg.userId)) {
-            transport.send({ type: 'error', message: 'Bu hesaba giriş yapmak için tekrar giriş yap' });
-            return;
-          }
+          // NOT (2026-08-28): userId ile register kimlikli hesaplarda da MEŞRU —
+          // istemci her açılışta kalıcı girişi register+userId ile yeniler (auth
+          // yalnız İLK oturum açmada). Buraya kimlik-kilidi koymak tüm Apple/
+          // Google kullanıcılarını dışarı kilitliyordu (geri alındı). userId'nin
+          // herkese açık olması ayrı bir konu; çözümü opak public-id, hard blok değil.
           // Reuse the saved account if the client sent its userId (keeps trophies
           // across app launches); otherwise look up by Game Center id or create.
           const loaded =
@@ -2252,11 +2241,6 @@ export function startServer(port: number): Server {
           // reddedilecek bir bağlantıya oda devretmek yarım kalmış durum bırakırdı.
           const u = await getUser(msg.userId).catch(() => null);
           if (rejectIfBanned(u ?? undefined, transport)) return;
-          // GÜVENLİK: kimlikli hesabın maç slotu yalnız o soket zaten o hesap
-          // olarak doğrulanmışsa devralınabilir (userId herkese açık — bkz. denetim).
-          if (msg.userId && userProfile?.id !== msg.userId && await isIdentifiedAccount(msg.userId).catch(() => false)) {
-            return transport.send({ type: 'error', message: 'Önce giriş yap' });
-          }
           const resumed = room.resumePlayer(msg.userId, transport);
           if (!resumed.ok) return transport.send({ type: 'error', message: resumed.error });
           if (u) { userProfile = u; addOnline(u.id, ws); recordCaps(transport, u.id); }
