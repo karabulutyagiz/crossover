@@ -4461,7 +4461,7 @@ const HOME_DESIGN_BODY_RANGE_H = 204;
 // Room codes are always exactly this long — server/src/rooms/manager.ts:5 (CODE_LEN).
 const ROOM_CODE_LEN = 6;
 const HOME_MODES: GameMode[] = ['xox', 'country-team', 'letter-team'];
-const PACK_MODES: GameMode[] = ['country-team', 'letter-team'];
+const PACK_MODES: GameMode[] = ['country-team', 'letter-team', 'xox'];
 
 // "Mücadele Modu" kartının yüzü hiçbir props/state okumaz (tema + modül-scope
 // RivalryArt + sabit renkler) — her HomeScreen render'ında (tuş vuruşu, popup
