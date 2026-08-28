@@ -14,7 +14,7 @@ import {
   type QuestionDifficulty,
 } from '../matchmaking/botDecision.ts';
 import { getQuestionDifficulty, type QuestionDifficultyEstimate } from '../matchmaking/questionDifficulty.ts';
-import { clamp, mathRandom, pick, triangular, type RandomSource } from '../matchmaking/random.ts';
+import { clamp, mathRandom, triangular, type RandomSource } from '../matchmaking/random.ts';
 import { normalize } from '../game/normalize.ts';
 import { log } from '../logger.ts';
 import { validateCountryTeamBotCandidate } from './countryTeamBotValidation.ts';
@@ -79,6 +79,36 @@ export interface BotOptions {
   mode?: GameMode;
   profile?: BotProfile;
   exposeBotToClient?: boolean;
+}
+
+// İnsanların klavyede YAZMADIĞI harfleri düz karşılığına indirger (kullanıcı
+// kararı 2026-08-29): şapkalı (â/î/û) ve yabancı aksanlı (é, ć, ã, ş dışı
+// çengelli…) harfleri hiçbir insan yazmaz. Türkçe'nin kendi harfleri
+// (ç ğ ı İ ö ş ü) korunur — onları herkes yazar.
+// "Kâzım"→"Kazım", "Modrić"→"Modric", "São"→"Sao", "Sørloth"→"Sorloth".
+const TR_KEYBOARD_KEEP = new Set('çÇğĞıİöÖşŞüÜ');
+// NFD ayrışması olmayan harfler için elle katlama.
+const NO_DECOMP_FOLD: Record<string, string> = {
+  ø: 'o', Ø: 'O', đ: 'd', Đ: 'D', ł: 'l', Ł: 'L', ß: 'ss',
+  æ: 'ae', Æ: 'Ae', œ: 'oe', Œ: 'Oe', ð: 'd', Ð: 'D', þ: 'th', Þ: 'Th',
+};
+function typableName(s: string): string {
+  return Array.from(s).map((ch) => {
+    if (TR_KEYBOARD_KEEP.has(ch)) return ch;
+    const folded = NO_DECOMP_FOLD[ch];
+    if (folded) return folded;
+    return ch.normalize('NFD').replace(/\p{M}/gu, '');
+  }).join('');
+}
+
+// EN BİLİNDİK önce (kullanıcı kararı 2026-08-29): aday listeleri fame DESC
+// sıralı gelir; bot çoğunlukla en ünlüyü söyler, bazen ilk 3'ten birini —
+// tekdüze olmasın ama obskür isim ancak bilindik aday YOKSA çıksın.
+function pickFamous<T>(rng: RandomSource, ranked: readonly T[]): T | null {
+  if (!ranked.length) return null;
+  if (ranked.length === 1 || rng.next() < 0.62) return ranked[0]!;
+  const top = ranked.slice(0, Math.min(3, ranked.length));
+  return top[Math.floor(rng.next() * top.length)]!;
 }
 
 type BotEmoteTone = 'neutral' | 'taunt' | 'celebrate' | 'supportive' | 'self_deprecating';
@@ -476,7 +506,7 @@ export class BotPlayer implements Transport {
     const countryTeamPlayers = opts.countryTeamPlayers;
     const pickCountryTeamAnswer = (rng: RandomSource): CountryTeamAnswerCandidate | null => {
       if (!countryTeamPlayers?.length) return null;
-      return pick(rng, countryTeamPlayers) ?? null;
+      return pickFamous(rng, countryTeamPlayers);
     };
     if (this.profile) {
       this.rng = rngForBotRound(this.profile, ++this.decisionSerial, this.questionEstimate.questionKey);
@@ -520,7 +550,7 @@ export class BotPlayer implements Transport {
         this.theaterMistakeDone = true;
         this.botDecision = { ...this.botDecision, shouldMistake: true, plannedAction: 'WRONG_ATTEMPT_THEN_CONTINUE', retryPlan: undefined };
       }
-      this.answer = this.botDecision.willAnswer && !this.botDecision.shouldMistake ? (pick(this.rng, validNames) ?? null) : null;
+      this.answer = this.botDecision.willAnswer && !this.botDecision.shouldMistake ? pickFamous(this.rng, validNames) : null;
       this.wrongGuess = this.botDecision.willAnswer && this.botDecision.shouldMistake ? pickWrongName(this.rng, wrongCandidates, validNames) : null;
       return;
     }
@@ -532,7 +562,7 @@ export class BotPlayer implements Transport {
       this.wrongGuess = null;
       return;
     }
-    this.answer = this.answerKnown ? this.pickName(validNames) : null;
+    this.answer = this.answerKnown ? pickFamous(mathRandom, validNames) : null;
     this.wrongGuess = !this.answerKnown && Math.random() < 0.08 + difficultyScore(this.questionDifficulty) * 0.12 ? this.pickWrongGuess(validNames, wrongCandidates) : null;
   }
 
@@ -542,9 +572,6 @@ export class BotPlayer implements Transport {
     const abundance = Math.max(0, Math.min(0.18, answerCount * 0.025));
     const p = Math.max(0.02, Math.min(0.92, base + abundance + popularity * 0.10 - difficultyScore(this.questionDifficulty) * 0.18));
     return Math.random() < p;
-  }
-  private pickName(names: string[]): string | null {
-    return names.length ? names[Math.floor(Math.random() * names.length)]! : null;
   }
 
   private domainForTeams(): import('../matchmaking/botProfiles.ts').KnowledgeDomain {
@@ -624,7 +651,9 @@ export class BotPlayer implements Transport {
   }
 
   private humanizeKnownAnswer(answer: string | null): string | null {
-    if (!answer || !this.profile) return answer;
+    if (!answer) return answer;
+    // Profilsiz (legacy) botta kısaltma yok ama şapkalı/aksanlı harf yine sızmaz.
+    if (!this.profile) return typableName(answer);
     // Real players often rely on the verifier's autocorrect: surname/first-name or
     // one dropped letter feels human, while the canonical full name every time does not.
     const tokens = answer.split(/\s+/).map((t) => t.trim()).filter((t) => normalize(t).length >= 4);
@@ -637,7 +666,7 @@ export class BotPlayer implements Transport {
         : p.behaviorArchetype === 'CASUAL' ? 0.07
           : 0.10;
     const rng = this.profile ? this.rng : mathRandom;
-    let text = this.shortHumanAnswer(tokens, rng);
+    let text = typableName(this.shortHumanAnswer(tokens, rng));
     if (rng.next() < 0.42) text = text.toLocaleLowerCase('tr-TR');
     if (rng.next() < typoChance) text = this.safeTypo(text, rng);
     return text;
@@ -745,10 +774,9 @@ export class BotPlayer implements Transport {
     if (sudden) knowP = clamp(knowP + 0.10, 0.06, 0.96); // altın hücrede herkes asılır
     const knows = ranked.length > 0 && Math.random() < knowP;
     if (knows) {
-      // Ünlüler önde ama tekdüze değil: ilk 3'ten şöhret-ağırlıklı seç.
-      const top = ranked.slice(0, 3);
-      const pickIdx = Math.random() < 0.62 ? 0 : Math.floor(Math.random() * top.length);
-      const text = this.humanizeKnownAnswer(top[pickIdx]!.name);
+      // Ünlüler önde ama tekdüze değil: ortak pickFamous ile (0.62 en ünlü, kalan ilk 3).
+      const chosen = pickFamous(mathRandom, ranked);
+      const text = chosen ? this.humanizeKnownAnswer(chosen.name) : null;
       if (text) this.act({ type: 'xox_submit', cell, text });
       return;
     }
