@@ -2051,6 +2051,23 @@ function AppRoot() {
       track('engagement_primary_clicked', { kind: activeEngagement?.kind, offer_id: offer.offerId, trigger: offer.trigger, screen: state.phase, appSessionId, currentDiamonds: profile.diamonds, social_token_count: profile.powerSocialToken ?? 0 });
       track('social_pack_paywall_open', { source: offer.trigger, offer_id: offer.offerId, appSessionId });
       track('social_pack_purchase_started', { offer_id: offer.offerId, screen: state.phase, appSessionId });
+      // DOĞRUDAN ÖDEME (kullanıcı kararı 2026-08-29): mağazaya yönlendirmek
+      // yerine Apple/Google ödeme sayfası ANINDA açılır — oyuncu daveti kabul
+      // etmeye çalışırken arkadaşını bekletiyor, araya mağaza gezintisi girmez.
+      // Güçlerdeki "popup'tan doğrudan satın alma YOK" kuralı ELMAS harcaması
+      // içindi (yanlışlıkla Kupa Kalkanı alınmıştı); burada gerçek para söz
+      // konusu ve Apple'ın kendi onay ekranı (Face ID/şifre) araya girdiği için
+      // kazara satın alma riski yok. Ödeme açılamazsa mağazaya düşülür.
+      if (directRequestPurchase && profile.userId) {
+        Promise.resolve(directRequestPurchase({
+          request: {
+            apple: { sku: SOCIAL_PACK_OFFER.productId, appAccountToken: profile.userId },
+            google: { skus: [SOCIAL_PACK_OFFER.productId] },
+          },
+          type: 'subs',
+        })).catch(() => { setStoreSection('socialPack'); goToTab(0); });
+        return;
+      }
       setStoreSection('socialPack');
       goToTab(0);
       return;

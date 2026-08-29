@@ -489,18 +489,22 @@ function reducer(state: GameState, action: Action): GameState {
     case 'match_invite_received':
       if (state.room) return state;
       return { ...state, matchInvite: { fromId: (action as any).fromId, fromName: (action as any).fromName, options: (action as any).options } };
-    case 'match_invite_declined':
+    case 'match_invite_declined': {
       // Reddedilme YALNIZ Arkadaşlar ekranında görünür — ana oyun ekranında değil.
-      return {
-        ...state,
-        outgoingInvite: null,
-        friendNotice: {
-          text: state.outgoingInvite?.toName
-            ? t('friends.inviteDeclinedBy', { name: state.outgoingInvite.toName })
-            : t('friends.inviteDeclined'),
-          kind: 'error',
-        },
-      };
+      const dec = action as Extract<ServerMsg, { type: 'match_invite_declined' }>;
+      const declinedName = state.outgoingInvite?.toName;
+      // SEBEP AYRIMI (2026-08-29): karşı tarafın Sosyal Paketi yoksa bunu AÇIKÇA
+      // söyleriz. Davet eden kendi paketi olduğu için modun İKİ TARAFLI paket
+      // istediğini fark etmiyordu; kuru "reddetti" mesajı yanlış yönlendiriyordu.
+      const text = dec.reason === 'social_pack_required'
+        ? (declinedName
+            ? t('friends.inviteNeedsPackBy', { name: declinedName })
+            : t('friends.inviteNeedsPack'))
+        : (declinedName
+            ? t('friends.inviteDeclinedBy', { name: declinedName })
+            : t('friends.inviteDeclined'));
+      return { ...state, outgoingInvite: null, friendNotice: { text, kind: 'error' } };
+    }
     case 'match_invite_cancelled':
       return { ...state, matchInvite: null };
     case 'user_profile':

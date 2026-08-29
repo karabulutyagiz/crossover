@@ -488,7 +488,7 @@ export type ServerMsg =
   | { type: 'user_search_results'; users: { userId: string; displayName: string }[] }
   | { type: 'friend_removed'; friendId: string }
   | { type: 'match_invite_received'; fromId: string; fromName: string; options?: GameOptions }
-  | { type: 'match_invite_declined'; byId: string }
+  | { type: 'match_invite_declined'; byId: string; reason?: 'social_pack_required' }
   | { type: 'match_invite_cancelled' }
   | { type: 'user_profile'; profile: PublicProfile }
   | { type: 'match_history_list'; matches: MatchHistoryView[] }

@@ -2235,7 +2235,12 @@ export function startServer(port: number): Server {
         // (canUseMode team-team'de daima true). Önceden kabul eden paketsizken sosyal
         // moda girebiliyordu; açık kapatıldı.
         if (requestedMode !== 'team-team' && (!hasActiveSocialPack(inv.userProfile) || !canUseMode(userProfile, requestedMode))) {
-          sendToUser(inv.fromUserId, { type: 'match_invite_declined', byId: userProfile.id });
+          // DAVET EDENE SEBEP BİLDİRİLİR (kullanıcı kararı 2026-08-29): eskiden
+          // yalnız kuru bir "reddedildi" gidiyordu ve davet eden, karşı tarafın
+          // paketi olmadığını ANLAMIYORDU — kendi paketi olduğu için modun iki
+          // taraflı olduğunu fark etmiyordu. Sebep gidince istemci "karşı tarafın
+          // paketi yok, bu mod iki tarafta da paket ister" diyebiliyor.
+          sendToUser(inv.fromUserId, { type: 'match_invite_declined', byId: userProfile.id, reason: 'social_pack_required' });
           transport.send({ type: 'error', message: SOCIAL_PACK_REQUIRED });
           return;
         }
