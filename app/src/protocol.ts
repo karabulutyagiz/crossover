@@ -457,6 +457,7 @@ export type ServerMsg =
   | { type: 'daily_career'; state: DailyCareerStateView }
   | { type: 'daily_quests'; quests: DailyQuestsView }
   | { type: 'season_state'; season: SeasonStateView }
+  | { type: 'heartbeat' } // soketi taze tutar; istemci içerik olarak yok sayar
   | { type: 'quest_claimed'; questId: string; xp: number; quests: DailyQuestsView; profile?: ProfileView }
   | { type: 'daily_career_result'; state: DailyCareerStateView; correct: boolean; rewardGranted: number; profile?: ProfileView }
   | { type: 'daily_crossover_wrong'; guess: string; suggestion: string | null; attemptsLeft: number }

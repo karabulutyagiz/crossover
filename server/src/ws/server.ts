@@ -1251,13 +1251,36 @@ export function startServer(port: number): Server {
     // uykuya alıp paketleri tamponluyor. Sunucu her 4sn WS PING gönderir; RN/tarayıcı
     // protokol düzeyinde otomatik PONG'lar → İKİ yön de sıcak kalır, tampon çözülür.
     // Ayrıca ölü bağlantı (2 PING boyunca PONG yok) sonlandırılır.
-    let wsAlive = true;
-    ws.on('pong', () => { wsAlive = true; });
+    // ÖLÜ BAĞLANTI TOLERANSI (oyuncu raporu 2026-08-29): eskiden TEK kaçan
+    // PONG bağlantıyı sonlandırıyordu (4 sn ping + 1 kaçırma ≈ 8 sn). Mobil
+    // ağda bu aşırı sıkı: tünel, asansör, hücre değişimi ya da anlık paket
+    // kaybı sağlıklı oyuncuyu maçtan atıyordu. Bot maçında rakip sunucunun
+    // içinde olduğu için hiç kopmuyor, PvP'de ise KARŞI TARAFIN telefonu bu
+    // eşiğe takılıyordu — 'botla sorun yok ama rastgele eşleşmede var'
+    // gözleminin sebebi buydu.
+    // Ping sıklığı korunur (4 sn — WiFi güç tasarrufu tamponunu çözen şey odur),
+    // yalnız SONLANDIRMA eşiği 6 kaçırmaya (~24 sn) çıkarılır. Gerçekten ölmüş
+    // bağlantı yine temizlenir, geçici sarsıntı artık maç bitirmez.
+    const MAX_MISSED_PONGS = 6;
+    let missedPongs = 0;
+    ws.on('pong', () => { missedPongs = 0; });
     const heartbeat = setInterval(() => {
       if (ws.readyState !== ws.OPEN) return;
-      if (!wsAlive) { try { ws.terminate(); } catch { /* yut */ } return; }
-      wsAlive = false;
+      if (missedPongs >= MAX_MISSED_PONGS) {
+        log.warn('ws_dead_connection', { ip, userId: userProfile?.id, missedPongs });
+        try { ws.terminate(); } catch { /* yut */ }
+        return;
+      }
+      missedPongs += 1;
       try { ws.ping(); } catch { /* yut */ }
+      // UYGULAMA SEVİYESİ HEARTBEAT: protokol PING'i React Native'de JS'e
+      // GÖRÜNMEZ (onmessage tetiklemez), bu yüzden istemci sağlıklı bir soketi
+      // 'bayat' sayıp 2 dakikada bir gereksiz yere yeniden bağlanıyordu (canlı
+      // logda tek oyuncudan 30 dakikada 26 bağlantı). 20 saniyede bir görünür
+      // bir çerçeve göndeririz; istemci bunu alınca soketi taze sayar.
+      if (missedPongs % 5 === 0) {
+        try { ws.send(JSON.stringify({ type: 'heartbeat' })); } catch { /* yut */ }
+      }
     }, 4000);
     let ctx: ConnCtx | null = null;
     let userProfile: UserProfile | undefined;
