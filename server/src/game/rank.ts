@@ -150,9 +150,22 @@ async function ensureSeason(row: DbUser): Promise<DbUser> {
       `UPDATE users SET season_id = $2 WHERE id = $1 RETURNING *`, [row.id, cur]);
     return rows[0] ?? { ...row, season_id: cur };
   }
+  // SEZON KAPANIŞI (2026-08-29): sıfırlamadan ÖNCE o ayın zirvesini dondur —
+  // yeni sezonda "geçen sezon şuraya ulaşmıştın" kartı bundan üretilir.
+  // Ödül verilmez (elmas/güç musluğu açılmaz); değer prestijdir.
+  await pool.query(
+    `INSERT INTO season_summaries (user_id, season_id, peak_trophies, peak_arena, wins, losses, best_level)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (user_id, season_id) DO NOTHING`,
+    [row.id, row.season_id, row.season_peak_trophies ?? row.trophies ?? 0,
+     ARENAS.findIndex((a) => a.name === getArena(row.season_peak_trophies ?? row.trophies ?? 0).name),
+     row.season_wins ?? 0, row.season_losses ?? 0, row.level ?? 1],
+  ).catch(() => { /* özet yazılamazsa sezon dönüşü yine de olmalı */ });
+
   const { rows } = await pool.query<DbUser>(
     `UPDATE users SET season_id = $2, level = 1, xp = 0,
-       claimed_levels = '{}', claimed_premium = '{}', premium_road = FALSE
+       claimed_levels = '{}', claimed_premium = '{}', premium_road = FALSE,
+       season_peak_trophies = trophies, season_wins = 0, season_losses = 0
      WHERE id = $1 RETURNING *`, [row.id, cur]);
   return rows[0] ?? row;
 }
@@ -604,6 +617,11 @@ export async function applyMatchResult(
         SET trophies = r.next_trophies,
             wins = r.wins + (CASE WHEN $3 THEN 1 ELSE 0 END),
             losses = r.losses + (CASE WHEN $3 THEN 0 ELSE 1 END),
+            -- SEZON SAYAÇLARI (2026-08-29): ay kapanışında özet buradan yazılır.
+            -- Zirve düşmez: kupa kaybedilse bile o ayın en yükseği korunur.
+            season_peak_trophies = GREATEST(COALESCE(u.season_peak_trophies, 0), r.next_trophies),
+            season_wins = COALESCE(u.season_wins, 0) + (CASE WHEN $3 THEN 1 ELSE 0 END),
+            season_losses = COALESCE(u.season_losses, 0) + (CASE WHEN $3 THEN 0 ELSE 1 END),
             -- Seri: galibiyette +1, mağlubiyette sıfır; rekor hiç düşmez.
             -- Kırılan seri lost_streak'e yazılır — Seri Geri Yükleme gücü onu geri getirir.
             win_streak = CASE WHEN $3 THEN COALESCE(u.win_streak, 0) + 1 ELSE 0 END,
@@ -1355,6 +1373,9 @@ interface DbUser {
   premium_road: boolean | null;
   claimed_premium: number[] | null;
   season_id: string | null;
+  season_peak_trophies?: number | null;
+  season_wins?: number | null;
+  season_losses?: number | null;
   owned_frames: string[] | null;
   owned_cosmetics: string[] | null;
   equipped_frame_id: string | null;

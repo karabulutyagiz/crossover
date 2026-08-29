@@ -56,6 +56,7 @@ import { listTournaments, getTournamentState, joinTournament, leaveTournament, p
 import { getLeagueState } from '../game/weeklyLeague.ts';
 import { getDailyCareer, guessDailyCareer } from '../game/dailyCareer.ts';
 import { claimQuest, getDailyQuests } from '../game/dailyQuests.ts';
+import { getSeasonState } from '../game/season.ts';
 
 // Guideline 1.2: no anonymous posting. Any path that creates content another
 // user sees requires a verified Apple/Google/Facebook identity — a guest can
@@ -1636,6 +1637,14 @@ export function startServer(port: number): Server {
       }
 
       // ---- Günün Crossover'ı (game/dailyCrossover.ts) ----
+      // SEZON DURUMU (2026-08-29): salt-okunur özet.
+      if (msg.type === 'get_season') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void getSeasonState(userProfile.id)
+          .then((season) => { if (season) transport.send({ type: 'season_state', season }); })
+          .catch((err) => reportSocketTaskFailure('get_season', err));
+        return;
+      }
       // DONMA RAPORU (2026-08-29): istemci JS thread'inin bloklandığını ya da
       // önceki oturumun kirli kapandığını bildirir. Yalnız LOGLANIR — oyun
       // durumuna etkisi yoktur; amaç donmanın hangi ekranda olduğunu ölçmek.

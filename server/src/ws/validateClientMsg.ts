@@ -150,6 +150,7 @@ export function validateClientMsg(value: unknown): ValidationResult {
     case 'start_daily_crossover':
     case 'get_daily_career':
     case 'get_daily_quests':
+    case 'get_season':
       break;
     case 'freeze_report':
       if (value.kind !== 'jank' && value.kind !== 'dirty_exit') return invalid('freeze_report.kind is invalid');

@@ -66,6 +66,16 @@ export interface DailyQuestsView {
   quests: DailyQuestView[];
 }
 
+export interface SeasonStateView {
+  seasonId: string;
+  endsAt: string;
+  peakTrophies: number;
+  peakArenaName: string;
+  wins: number;
+  losses: number;
+  last: { seasonId: string; peakTrophies: number; peakArenaName: string; wins: number; losses: number } | null;
+}
+
 export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox';
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
@@ -235,6 +245,7 @@ export type ClientMsg =
   | { type: 'get_daily_crossover' } // Günün Crossover'ı durumunu iste
   | { type: 'get_daily_career' }
   | { type: 'get_daily_quests' }
+  | { type: 'get_season' }
   | { type: 'freeze_report'; kind: 'jank' | 'dirty_exit'; screen: string; stalledMs: number }
   | { type: 'claim_quest'; questId: string }
   | { type: 'daily_career_guess'; text: string }
@@ -391,6 +402,7 @@ export type ServerMsg =
   | { type: 'daily_crossover'; state: DailyCrossoverStateView }
   | { type: 'daily_career'; state: DailyCareerStateView }
   | { type: 'daily_quests'; quests: DailyQuestsView }
+  | { type: 'season_state'; season: SeasonStateView }
   | { type: 'quest_claimed'; questId: string; xp: number; quests: DailyQuestsView; profile?: ProfileView }
   | { type: 'daily_career_result'; state: DailyCareerStateView; correct: boolean; rewardGranted: number; profile?: ProfileView }
   | { type: 'daily_crossover_wrong'; guess: string; suggestion: string | null; attemptsLeft: number }
