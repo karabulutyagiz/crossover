@@ -1850,6 +1850,9 @@ export function useCrossover() {
       getDailyCrossover: () => send({ type: 'get_daily_crossover' }),
       getDailyCareer: () => send({ type: 'get_daily_career' }),
       getDailyQuests: () => send({ type: 'get_daily_quests' }),
+      // Donma raporu: yalnız loglanır, oyun durumuna etkisi yoktur.
+      reportFreeze: (kind: 'jank' | 'dirty_exit', screen: string, stalledMs: number) =>
+        send({ type: 'freeze_report', kind, screen, stalledMs }),
       claimQuest: (questId: string) => send({ type: 'claim_quest', questId }),
       clearQuestClaimed: () => dispatch({ type: '_clear_quest_claimed' } as never),
       guessDailyCareer: (text: string) => send({ type: 'daily_career_guess', text }),

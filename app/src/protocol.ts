@@ -328,6 +328,7 @@ export type ClientMsg =
   | { type: 'get_daily_crossover' } // Günün Crossover'ı durumunu iste
   | { type: 'get_daily_career' }
   | { type: 'get_daily_quests' }
+  | { type: 'freeze_report'; kind: 'jank' | 'dirty_exit'; screen: string; stalledMs: number }
   | { type: 'claim_quest'; questId: string }
   | { type: 'daily_career_guess'; text: string }
   | { type: 'start_daily_crossover' } // soruyu açtım — süre sayacı sunucuda başlar (idempotent)

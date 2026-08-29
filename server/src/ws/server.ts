@@ -1636,6 +1636,18 @@ export function startServer(port: number): Server {
       }
 
       // ---- Günün Crossover'ı (game/dailyCrossover.ts) ----
+      // DONMA RAPORU (2026-08-29): istemci JS thread'inin bloklandığını ya da
+      // önceki oturumun kirli kapandığını bildirir. Yalnız LOGLANIR — oyun
+      // durumuna etkisi yoktur; amaç donmanın hangi ekranda olduğunu ölçmek.
+      if (msg.type === 'freeze_report') {
+        log.warn('client_freeze', {
+          kind: msg.kind,
+          screen: msg.screen,
+          stalledMs: msg.stalledMs,
+          userId: userProfile?.id ?? null,
+        });
+        return;
+      }
       // GÜNLÜK GÖREVLER (2026-08-29): ilerleme maç kapanışında yazılır (room.ts);
       // burada yalnız okuma ve ödül toplama var.
       if (msg.type === 'get_daily_quests') {

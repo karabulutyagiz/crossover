@@ -105,6 +105,7 @@ type Actions = {
   getDailyCrossover: () => void;
   getDailyCareer: () => void;
   getDailyQuests: () => void;
+  reportFreeze: (kind: 'jank' | 'dirty_exit', screen: string, stalledMs: number) => void;
   claimQuest: (questId: string) => void;
   clearQuestClaimed: () => void;
   guessDailyCareer: (text: string) => void;

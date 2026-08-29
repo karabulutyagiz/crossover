@@ -119,6 +119,7 @@ try { directRequestPurchase = require('react-native-iap').requestPurchase; } cat
 import { isRonaldoAnswer, triggerDiamondCollectTick, triggerFeedback } from './src/feedback/GameFeedback';
 import { loadFeedbackPreferences } from './src/feedback/preferences';
 import { configureInterstitial, maybeShowInterstitial, recordMatchEnd } from './src/interstitial';
+import { markCleanExit, setFreezeScreen, startFreezeWatch } from './src/freezeWatch';
 import {
   evaluateMonetizationOffer,
   hasActiveSocialPack,
@@ -1144,6 +1145,19 @@ function AppRoot() {
   // girişi + XOX'ta xoxOver'ın dolması) ve YALNIZ sonuçtan menüye dönüşte
   // göster — rövanşa/yeni maça girerken asla (rakip bekletilmez). Paketliye
   // gösterim maybeShowInterstitial içinde zaten engelli.
+  // DONMA ÖLÇÜMÜ (2026-08-29): hangi ekranda donduğunu tahmin etmek yerine
+  // ölçüyoruz — JS thread'i bloklanırsa ya da oyuncu donan uygulamayı kill
+  // ederse rapor sunucuya düşer. Oyun akışına hiç dokunmaz.
+  useEffect(() => { setFreezeScreen(state.phase); }, [state.phase]);
+  const freezeReportRef = useRef(actions.reportFreeze);
+  freezeReportRef.current = actions.reportFreeze;
+  useEffect(() => {
+    const stop = startFreezeWatch((r) => {
+      try { freezeReportRef.current(r.kind, r.screen, Math.round(r.stalledMs)); } catch { /* bağlantı yoksa sessiz */ }
+    });
+    const sub = AppState.addEventListener('change', (st) => { if (st === 'background') markCleanExit(); });
+    return () => { stop(); sub.remove(); };
+  }, []);
   const adPrevPhaseRef = useRef(state.phase);
   const adPrevXoxOverRef = useRef(state.xoxOver);
   useEffect(() => {

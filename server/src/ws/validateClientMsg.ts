@@ -151,6 +151,11 @@ export function validateClientMsg(value: unknown): ValidationResult {
     case 'get_daily_career':
     case 'get_daily_quests':
       break;
+    case 'freeze_report':
+      if (value.kind !== 'jank' && value.kind !== 'dirty_exit') return invalid('freeze_report.kind is invalid');
+      if (!hasString(value, 'screen', 40)) return invalid('freeze_report.screen is invalid');
+      if (!hasInteger(value, 'stalledMs', 0, 3_600_000)) return invalid('freeze_report.stalledMs is invalid');
+      break;
     case 'claim_quest':
       if (!hasString(value, 'questId', 64)) return invalid('claim_quest.questId must be a string');
       break;
