@@ -22,6 +22,7 @@ import {
   hasCommonClubs,
 } from '../game/verify.ts';
 import { getArena, applyMatchResult, getUser, saveMatchHistory, type MatchRound } from '../game/rank.ts';
+import { recordQuestProgress } from '../game/dailyQuests.ts';
 import { awardMatchXp } from '../game/level.ts';
 import { isEmote } from '../game/emotes.ts';
 import { log } from '../logger.ts';
@@ -2554,6 +2555,9 @@ export class Room {
           }),
         ]);
         const multipliers = trophyRiskMultipliers({ opponentType, farm: farmRisk, economy });
+        // GÜNLÜK GÖREVLER (2026-08-29): maç bitti → ilerlet. Fire-and-forget ve
+        // kendi hatasını yutar: görev yazımı maç kapanışını asla geciktirmemeli.
+        void recordQuestProgress(p.userId, { kind: 'match_played', mode: this.gameMode, won });
         const { profile, delta, arenaReward, shielded, expectedWinProbability, streakReward } = await applyMatchResult(p.userId, won, {
           opponentTrophies: opp?.trophies ?? null,
           playerSkillMean: playerSkill.skillMean,

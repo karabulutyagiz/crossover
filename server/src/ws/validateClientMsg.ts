@@ -149,6 +149,10 @@ export function validateClientMsg(value: unknown): ValidationResult {
     case 'get_daily_crossover':
     case 'start_daily_crossover':
     case 'get_daily_career':
+    case 'get_daily_quests':
+      break;
+    case 'claim_quest':
+      if (!hasString(value, 'questId', 64)) return invalid('claim_quest.questId must be a string');
       break;
     case 'daily_career_guess':
       if (!hasString(value, 'text', 200)) return invalid('daily_career_guess.text must be a string');

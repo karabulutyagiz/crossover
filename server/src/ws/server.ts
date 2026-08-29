@@ -55,6 +55,7 @@ import { buySpecialPower, equipSpecialPower, isSpecialPowerId } from '../game/sp
 import { listTournaments, getTournamentState, joinTournament, leaveTournament, pendingTournamentMatchesFor, markMatchPlaying, reportTournamentResult, tournamentMemberIds } from '../game/tournaments.ts';
 import { getLeagueState } from '../game/weeklyLeague.ts';
 import { getDailyCareer, guessDailyCareer } from '../game/dailyCareer.ts';
+import { claimQuest, getDailyQuests } from '../game/dailyQuests.ts';
 
 // Guideline 1.2: no anonymous posting. Any path that creates content another
 // user sees requires a verified Apple/Google/Facebook identity — a guest can
@@ -1635,6 +1636,31 @@ export function startServer(port: number): Server {
       }
 
       // ---- Günün Crossover'ı (game/dailyCrossover.ts) ----
+      // GÜNLÜK GÖREVLER (2026-08-29): ilerleme maç kapanışında yazılır (room.ts);
+      // burada yalnız okuma ve ödül toplama var.
+      if (msg.type === 'get_daily_quests') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void getDailyQuests(userProfile.id)
+          .then((quests) => transport.send({ type: 'daily_quests', quests }))
+          .catch((err) => reportSocketTaskFailure('get_daily_quests', err));
+        return;
+      }
+      if (msg.type === 'claim_quest') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        const uid = userProfile.id;
+        const qid = msg.questId;
+        void (async () => {
+          const res = await claimQuest(uid, qid);
+          if (!res.ok) return transport.send({ type: 'error', message: res.error });
+          const fresh = await getUser(uid);
+          if (fresh) userProfile = fresh;
+          transport.send({
+            type: 'quest_claimed', questId: qid, xp: res.xp, quests: res.quests,
+            profile: fresh ? toProfileView(fresh) : undefined,
+          });
+        })().catch((err) => reportSocketTaskFailure('claim_quest', err));
+        return;
+      }
       // GÜNÜN KARİYERİ (2026-08-29): kulüp geçmişi tek tek açılır, futbolcu bilinir.
       if (msg.type === 'get_daily_career') {
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });

@@ -101,6 +101,33 @@ interface LevelRow {
   training_boost_until: string | null;
 }
 
+/**
+ * Ham XP'yi hesaba işler: seviye atlama döngüsü + tavan kuralı tek yerde.
+ * Maç XP'si (awardMatchXp) ve Günlük Görev ödülü aynı yoldan geçsin diye
+ * ayrıldı — iki kopya, iki farklı seviye mantığı demek olurdu.
+ * Maça özgü sayaçlar (bot tavanı, günün ilk galibiyeti) çağırana aittir.
+ */
+export async function applyRawXp(userId: string, rawXp: number): Promise<XpAward | null> {
+  if (!userId || rawXp <= 0) return null;
+  const { rows } = await pool.query<{ xp: number; level: number }>(
+    `SELECT xp, level FROM users WHERE id = $1`, [userId],
+  );
+  const u = rows[0];
+  if (!u) return null;
+  if ((u.level ?? 1) >= LEVEL_CAP) return null; // zirvede XP yazılmaz
+  let level = u.level ?? 1;
+  let xp = (u.xp ?? 0) + rawXp;
+  const leveledUp: LevelUpReward[] = [];
+  while (level < LEVEL_CAP && xp >= xpForNext(level)) {
+    xp -= xpForNext(level);
+    level += 1;
+    leveledUp.push({ level, diamonds: levelRewardDiamonds(level), powerId: LEVEL_POWERS[level] });
+  }
+  if (level >= LEVEL_CAP) xp = Math.min(xp, xpForNext(LEVEL_CAP));
+  await pool.query(`UPDATE users SET xp = $2, level = $3 WHERE id = $1`, [userId, xp, level]);
+  return { xp, level, xpForNext: xpForNext(level), gained: rawXp, leveledUp };
+}
+
 export async function awardMatchXp(userId: string, won: boolean, vsBot: boolean): Promise<XpAward | null> {
   if (!userId) return null;
   const { rows } = await pool.query<LevelRow>(

@@ -58,6 +58,22 @@ export interface DailyCareerStateView {
   answer: { name: string; imageUrl: string | null; nationality: string | null } | null;
 }
 
+export interface DailyQuestView {
+  id: string;
+  titleKey: string;
+  target: number;
+  progress: number;
+  xp: number;
+  done: boolean;
+  claimed: boolean;
+}
+
+export interface DailyQuestsView {
+  day: number;
+  resetAt: string;
+  quests: DailyQuestView[];
+}
+
 export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox';
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
@@ -311,6 +327,8 @@ export type ClientMsg =
   | { type: 'redeem_referral'; code: string } // davet kodu gir (yeni hesap; ikisi de 💎 kazanır)
   | { type: 'get_daily_crossover' } // Günün Crossover'ı durumunu iste
   | { type: 'get_daily_career' }
+  | { type: 'get_daily_quests' }
+  | { type: 'claim_quest'; questId: string }
   | { type: 'daily_career_guess'; text: string }
   | { type: 'start_daily_crossover' } // soruyu açtım — süre sayacı sunucuda başlar (idempotent)
   | { type: 'daily_crossover_guess'; text: string } // günlük tahmin (3 hak, sunucu sayar)
@@ -425,6 +443,8 @@ export type ServerMsg =
   // Günün Crossover'ı — state hem ilk açılışta hem bitişte aynı şekilde gelir.
   | { type: 'daily_crossover'; state: DailyCrossoverStateView }
   | { type: 'daily_career'; state: DailyCareerStateView }
+  | { type: 'daily_quests'; quests: DailyQuestsView }
+  | { type: 'quest_claimed'; questId: string; xp: number; quests: DailyQuestsView; profile?: ProfileView }
   | { type: 'daily_career_result'; state: DailyCareerStateView; correct: boolean; rewardGranted: number; profile?: ProfileView }
   | { type: 'daily_crossover_wrong'; guess: string; suggestion: string | null; attemptsLeft: number }
   | { type: 'daily_crossover_done'; state: DailyCrossoverStateView; rewardGranted: number; profile?: ProfileView }
