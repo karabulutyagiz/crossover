@@ -2160,6 +2160,25 @@ function AppRoot() {
     track('engagement_eligible', { kind: 'SOCIAL_PACK_LOCKED_MODE', screen: state.phase, appSessionId, ...metadata });
     enqueuePromotion({ id: `locked_mode_${mode}_${Date.now()}`, kind: 'SOCIAL_PACK_LOCKED_MODE', priority: EngagementPriority.PLAYER_REQUESTED, source: 'premium_mode_locked', createdAt: Date.now(), playerRequested: true, monetizationOffer: offer, metadata });
   }, [appSessionId, enqueuePromotion, state.phase, state.profile]);
+  // DAVET KABULÜ + SOSYAL PAKET KAPISI (kullanıcı kararı 2026-08-29):
+  // Sosyal paket İSTEYEN modlarda (ülke-takım, harf-takım, XOX) daveti KABUL
+  // EDEN tarafın da paketi olmalı. Paketi yoksa kuru bir hata mesajı yerine
+  // doğrudan satın alma penceresi açılır (Apple ödeme sayfasına giden akış) —
+  // davet AÇIK kalır, paket alınınca aynı davet kabul edilebilir.
+  // TAKIM-TAKIM muaftır: o mod paket istemez.
+  const SOCIAL_PACK_INVITE_MODES = new Set<GameMode>(['country-team', 'letter-team', 'xox']);
+  const acceptMatchInvite = useCallback(() => {
+    const inv = state.matchInvite;
+    if (!inv) return;
+    const mode = (inv.options?.mode ?? 'team-team') as GameMode;
+    if (SOCIAL_PACK_INVITE_MODES.has(mode) && !hasActiveSocialPack(state.profile)) {
+      track('invite_blocked_no_pack', { mode, fromId: inv.fromId });
+      enqueueLockedSocialMode(mode);
+      return;
+    }
+    actions.respondMatchInvite(inv.fromId, true);
+  }, [actions, enqueueLockedSocialMode, state.matchInvite, state.profile]);
+
   const enqueueDevOffer = useCallback((kind: 'social' | 'loss' | 'win' | 'shield' | 'power') => {
     const profile = state.profile;
     if (!profile) return;
@@ -2546,7 +2565,7 @@ function AppRoot() {
         {state.matchInvite ? (
           <InviteBanner
             invite={state.matchInvite}
-            onAccept={() => actions.respondMatchInvite(state.matchInvite!.fromId, true)}
+            onAccept={acceptMatchInvite}
             onReject={() => actions.respondMatchInvite(state.matchInvite!.fromId, false)}
           />
         ) : null}
@@ -2773,7 +2792,7 @@ function AppRoot() {
       {state.matchInvite ? (
         <InviteBanner
           invite={state.matchInvite}
-          onAccept={() => actions.respondMatchInvite(state.matchInvite!.fromId, true)}
+          onAccept={acceptMatchInvite}
           onReject={() => actions.respondMatchInvite(state.matchInvite!.fromId, false)}
         />
       ) : null}
