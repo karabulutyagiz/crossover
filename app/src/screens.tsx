@@ -1315,6 +1315,12 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
           bounces={!lockScroll}
           alwaysBounceVertical={!lockScroll}
           overScrollMode={lockScroll ? 'never' : 'auto'}
+          // ANDROID İÇ KAYDIRMA (oyuncu raporu 2026-08-29: "Android'de mağaza
+          // HİÇ kaymıyor, koleksiyona atıyor"): sekmeler yatay bir pager'ın
+          // içinde yaşıyor ve o pager'ın eksen kilidi (directionalLockEnabled)
+          // YALNIZ iOS'ta çalışıyor. Android'de dikey sürükleme yatay pager'a
+          // kaçıyordu; nestedScrollEnabled iç dikey kaydırıcıya öncelik verir.
+          nestedScrollEnabled
           contentContainerStyle={{ flexGrow: 1, justifyContent: contentCenter ? 'center' : 'flex-start' }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps={keyboardShouldPersistTaps}
@@ -9219,7 +9225,11 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
 
   return (
     <Screen>
-      <ScrollView ref={storeScrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
+      {/* nestedScrollEnabled: Android'de sekmeler yatay pager içinde yaşıyor ve
+          pager'ın eksen kilidi yalnız iOS'ta çalışıyor — bu olmadan dikey
+          sürükleme pager'a kaçıyor, mağaza kaymak yerine Koleksiyon'a atıyordu
+          (oyuncu raporu 2026-08-29). */}
+      <ScrollView ref={storeScrollRef} style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
         <ScreenHeader title={t('store.title')} icon="storefront" />
 
         {/* Sosyal Paket — hero panel (gold frame + gloss), corner ribbon status */}
@@ -12724,7 +12734,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
     return (
       <Screen>
           <ScreenHeader title={t('profile.pictures')} icon="images" onBack={() => setShowAvatarPage(false)} />
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+          <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
             {([
               'pp7', 'pp11', 'pp12', 'pp13', 'pp14', 'pp15', 'pp16', 'pp17',
