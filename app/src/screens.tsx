@@ -8979,16 +8979,13 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
               <View key={spid} style={styles.storeEmoteCard}>
                 <View>
                   <SpecialPowerBadge id={spid} size={52} />
-                  {/* Paket adedi İKONUN ÜSTÜNDE (kullanıcı kararı 2026-08-27:
-                      '×3 PAKET' çipi amatörce — x3 ikona işlenir). */}
-                  <View style={{ position: 'absolute', right: -5, bottom: -5, backgroundColor: theme.gold, borderRadius: 999, paddingHorizontal: 5, height: 17, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
+                  {/* Tek rozet kuralı (kullanıcı kararı 2026-08-29): aynı ikonda
+                      x3 paket + x2 envanter çifte sayı karmaşasıydı — envanter rozeti
+                      KALDIRILDI (adet Koleksiyon > Güçler'de görünüyor); bizim altın
+                      x3 paket rozeti kalır ve SAĞ-ÜSTTE durur. */}
+                  <View style={{ position: 'absolute', right: -5, top: -5, backgroundColor: theme.gold, borderRadius: 999, paddingHorizontal: 5, height: 17, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
                     <Text style={{ color: '#231A00', fontSize: 9, fontFamily: 'Poppins-Black' }}>x3</Text>
                   </View>
-                  {count > 0 ? (
-                    <View style={{ position: 'absolute', right: -6, top: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 4, backgroundColor: meta.color, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
-                      <Text style={{ color: theme.ink, fontSize: 10, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>x{count}</Text>
-                    </View>
-                  ) : null}
                 </View>
                 <View style={{ flex: 1, gap: 1 }}>
                   <Text style={{ color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t(meta.nameKey)}</Text>
