@@ -2160,7 +2160,7 @@ function AppRoot() {
   const openLeaderboard = useCallback(() => { dismissActiveInput(); actions.openLeaderboard(); setOverlay('leaderboard'); }, [actions]);
   const openMatchHistory = useCallback(() => { dismissActiveInput(); actions.openMatchHistory(); setOverlay('matchHistory'); }, [actions]);
   const openDiamondStore = useCallback(() => { setStoreSection('diamonds'); goToTab(0); }, [goToTab]);
-  const enqueueLockedSocialMode = useCallback((mode: GameMode) => {
+  const enqueueLockedSocialMode = useCallback((mode: GameMode, copy?: { titleKey?: string; bodyKey?: string; ctaKey?: string }) => {
     const profile = state.profile;
     const metadata = { mode, currentDiamonds: profile?.diamonds ?? 0, social_token_count: profile?.powerSocialToken ?? 0 };
     const offer: MonetizationOffer = {
@@ -2168,9 +2168,9 @@ function AppRoot() {
       offerType: 'social_pack',
       trigger: 'premium_mode_locked',
       priority: EngagementPriority.PLAYER_REQUESTED,
-      titleKey: 'friends.socialPackRequired',
-      bodyKey: 'socialPack.previewBody',
-      ctaKey: 'socialPack.unlockCta',
+      titleKey: copy?.titleKey ?? 'friends.socialPackRequired',
+      bodyKey: copy?.bodyKey ?? 'socialPack.previewBody',
+      ctaKey: copy?.ctaKey ?? 'socialPack.unlockCta',
       secondaryKey: 'common.continue',
       analyticsMetadata: metadata,
     };
@@ -2190,7 +2190,14 @@ function AppRoot() {
     const mode = (inv.options?.mode ?? 'team-team') as GameMode;
     if (SOCIAL_PACK_INVITE_MODES.has(mode) && !hasActiveSocialPack(state.profile)) {
       track('invite_blocked_no_pack', { mode, fromId: inv.fromId });
-      enqueueLockedSocialMode(mode);
+      // Popup metni bağlama özel: oyuncu neden engellendiğini ("bu mod İKİ
+      // tarafta da paket ister") anında görmeli; butona basınca ödeme sayfası
+      // doğrudan açılır (acceptContextualOffer → directRequestPurchase).
+      enqueueLockedSocialMode(mode, {
+        titleKey: 'friends.inviteNeedsPackTitle',
+        bodyKey: 'friends.inviteNeedsPackBody',
+        ctaKey: 'socialPack.unlockCta',
+      });
       return;
     }
     actions.respondMatchInvite(inv.fromId, true);
