@@ -34,15 +34,29 @@ check(ok('kaan61'), 'rakamlı normal ad kabul edilir');
 check(!ok('123456'), 'yalnız rakamdan oluşan ad reddedilir');
 
 // ── Küfür filtresi ──────────────────────────────────────────────────────────
-check(!ok('sik'), 'birebir küfür reddedilir');
-check(!ok('sikko'), 'EK ALMIŞ küfür türevi de reddedilir (eskiden sızıyordu)');
-check(!ok('amcik1'), 'rakam eklenmiş küfür reddedilir');
-check(!ok('s1kt1r'), 'leetspeak küfür reddedilir');
-check(!ok('orospu_cocugu'), 'çok kelimeli küfür reddedilir');
-check(!ok('fuckboy'), 'İngilizce küfür reddedilir');
+for (const bad of [
+  'sik', 'sikko', 'siktir_git', 'amcik1', 's1kt1r', 'orospu_cocugu', 'fuckboy',
+  'yarrak', 'yarrag1', 'gotveren', 'kaltak', 'pezevenk', 'amk', 'aq_lan',
+  'oruspu', 'kasar_kadin', 'ibnelik', 'gotos', 'ananisikeyim', 'sokarim',
+  'bitch', 'niggaboy', 'pornstar', 'penis', 'hitler_1', 'nazi_tr',
+]) {
+  check(!ok(bad), `küfür/argo reddedilir: ${bad}`);
+}
+
+// RAKAMLA MASKELEME: "s2k" gibi araya rakam sıkıştırılan türevler.
+for (const masked of ['s2k', 's3k', 'am2k', 'y4rr4k', 'g0tveren']) {
+  check(!ok(masked), `rakamla maskelenmiş küfür reddedilir: ${masked}`);
+}
 
 // ── Masum adlar engellenmemeli (yanlış pozitif kontrolü) ────────────────────
-for (const name of ['ali_veli', 'mert34', 'ayse_nur', 'burak_yilmaz', 'galatasaray', 'fenerbahce', 'emre_can', 'sinan_07']) {
+// 'am', 'got', 'pic', 'top' gibi kısa kökler YALNIZ birebir yasak: aksi halde
+// Amine/Amca/Amir/Gothic/Picasso/Toprak gibi gerçek adlar elenirdi.
+for (const name of [
+  'ali_veli', 'mert34', 'ayse_nur', 'burak_yilmaz', 'galatasaray', 'fenerbahce',
+  'emre_can', 'sinan_07', 'amine', 'amca_kaan', 'amir_han', 'america_efe',
+  'picasso', 'toprak', 'topal_osman', 'gokhan', 'malatyaspor', 'salih_efe',
+  'bokan_ali',
+]) {
   check(ok(name), `masum ad kabul edilir: ${name}`);
 }
 
