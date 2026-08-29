@@ -278,10 +278,10 @@ export interface StreakMilestone {
 }
 
 export const STREAK_MILESTONES: readonly StreakMilestone[] = [
-  // ELMAS YOK (kullanıcı kararı 2026-08-28 ACİL: 'galibiyet serisinde elmas
-  // vermicek') — seri ödülleri yalnız GÜÇ; elmas kalemleri kaldırıldı.
-  { streak: 7, powerId: 'freeze', powerQty: 1 },
-  { streak: 15, powerId: 'reveal', powerQty: 1 },
+  // SERİ ÖDÜLÜ TAMAMEN KAPALI (kullanıcı kararı 2026-08-29: 'güç ödülleri de
+  // vermicek'). Önce elmas kalemleri kaldırılmıştı (2026-08-28), şimdi güç
+  // kalemleri (7:freeze, 15:reveal) de kalktı. Tablo boş → milestoneFor hep
+  // null döner, rank.ts'teki ödül bloğu ve istemci teaser'ı doğal olarak susar.
 ];
 
 export function milestoneFor(streak: number): StreakMilestone | null {

@@ -6268,8 +6268,8 @@ export function spInventoryCount(profile: ProfileView | null | undefined, id: Sp
 // Sunucudaki STREAK_MILESTONES'un GÖRÜNÜM aynası (ödülü sunucu verir; bu tablo
 // yalnız "sıradaki hedef" metnini çizer).
 export const STREAK_MILESTONES_VIEW: { streak: number; diamonds?: number; powerId?: SpecialPowerIdView }[] = [
-  { streak: 3, diamonds: 30 }, { streak: 5, diamonds: 60 }, { streak: 7, powerId: 'freeze' },
-  { streak: 10, diamonds: 120 }, { streak: 15, powerId: 'reveal' }, { streak: 20, diamonds: 300 },
+  // SERİ ÖDÜLÜ TAMAMEN KAPALI (kullanıcı kararı 2026-08-29): sunucu tablosuyla
+  // birlikte boşaltıldı — maç sonunda ne ödül rozeti ne "sıradaki hedef" çıkar.
 ];
 
 /** Maç ekranı güç çipleri (en fazla 3 slot): çip başına iki-dokunuş onayı
