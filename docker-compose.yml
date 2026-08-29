@@ -86,6 +86,18 @@ services:
       BOT_FALLBACK_RETRY_MS: ${BOT_FALLBACK_RETRY_MS:-700}
       # Admin panel (admin.crossoverfootball.com) bearer token. Empty = admin API off.
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      # Reklam kurgusu (2026-08-29). Geçiş reklamı KAPALI başlar; AdMob birimleri
+      # hazır olunca ADS_INTERSTITIAL_ENABLED=1 + unit ID'ler .env'e yazılır.
+      # Paketli oyuncuya istemci tarafında zaten hiç gösterilmez.
+      ADS_INTERSTITIAL_ENABLED: ${ADS_INTERSTITIAL_ENABLED:-0}
+      ADS_INTERSTITIAL_EVERY: ${ADS_INTERSTITIAL_EVERY:-3}
+      ADS_INTERSTITIAL_GRACE: ${ADS_INTERSTITIAL_GRACE:-5}
+      ADS_INTERSTITIAL_UNIT_IOS: ${ADS_INTERSTITIAL_UNIT_IOS:-}
+      ADS_INTERSTITIAL_UNIT_ANDROID: ${ADS_INTERSTITIAL_UNIT_ANDROID:-}
+      ADS_REWARDED_POST_LOSS: ${ADS_REWARDED_POST_LOSS:-1}
+      ADS_REWARDED_SHORTFALL: ${ADS_REWARDED_SHORTFALL:-1}
+      ADS_DAILY_CHEST: ${ADS_DAILY_CHEST:-1}
+      AD_REWARD_DAILY_CAP: ${AD_REWARD_DAILY_CAP:-24}
     depends_on:
       db:
         condition: service_healthy

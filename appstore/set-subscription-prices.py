@@ -12,6 +12,7 @@ Yalnız TÜRKİYE (TUR) bölgesi değişir; diğer 174 bölge dokunulmaz.
 """
 import json
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -33,9 +34,12 @@ PLANS = [
 def main() -> int:
     failed = 0
     for label, sub_id, point_id, preserve in PLANS:
+        # ASC, startDate'siz isteği "ilk fiyat" sayıp onaylı abonelikte 409 döner.
+        # Planlanmış değişiklik için tarih ŞART — yarın yürürlüğe girer.
+        start = (date.today() + timedelta(days=1)).isoformat()
         body = {"data": {
             "type": "subscriptionPrices",
-            "attributes": {"preserveCurrentPrice": preserve},
+            "attributes": {"preserveCurrentPrice": preserve, "startDate": start},
             "relationships": {
                 "subscription": {"data": {"type": "subscriptions", "id": sub_id}},
                 "subscriptionPricePoint": {"data": {"type": "subscriptionPricePoints", "id": point_id}},

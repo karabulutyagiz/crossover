@@ -1,14 +1,42 @@
 # CANLIYA ALINACAKLAR — Deploy Sırası (güncel: 2026-08-29)
 
-## ✅ 2026-08-29 15:5x — SUNUCU BASILDI (build-113 @ e13dc3e sunucu içeriği)
-SIRA 1'in TAMAMI + sonrası canlıda ve kanıtlı: aynı-arena eşleşme, ETA, kupa
-bandı, XOX gerçek kural, seçim toleransı, kesinti hediyesi kapalı, admin
-feedback ucu, bot insan-gibi-yazım + bilindik-öncelik (a549a14), seri ödülü
-TAMAMEN kapalı (193dff4+39e23d4), sosyal paket açıkları (3d66658), WS ping,
-destek mesajı (0012) + turnuva (0013) migration'ları. Admin paneli (bot kupası
-dahil) ayrıca senkronlandı. Kapı notu: rooms 0'a inmedi (botlar sürekli maç
-kuruyor) — kullanıcı onayıyla ~5-6 oda düşürülerek basıldı.
+## ✅ 2026-08-29 — HER ŞEY CANLIDA (build-113 @ fece4ba)
 
+Bu turda canlıya alınanlar (kullanıcı onayıyla, 3-5 oda açıkken):
+
+**SUNUCU** (rsync + `docker compose up -d --build app`, migration 0014 uygulandı):
+- SIRA 1'in tamamı: aynı-arena eşleşme, ETA, kupa bandı, XOX gerçek kural,
+  seçim toleransı, kesinti hediyesi kapalı, admin feedback ucu
+- Bot insan-gibi-yazım + bilindik-öncelik (a549a14)
+- Seri ödülü TAMAMEN kapalı (193dff4 + 39e23d4) — elmas sızıntısı durdu
+- Sosyal paket açıkları (3d66658), WS ping
+- HAFTALIK LİG (40eae6a): 0014 migration + league_groups/members/settlements
+- Reklam config'i: docker-compose.yml'e ADS_* değişkenleri eklendi
+
+**REKLAM** — geçiş reklamı AÇIK ve doğrulandı:
+- iOS birim `ca-app-pub-5118403349234305/8928918587`
+- Android birim `ca-app-pub-5118403349234305/1022508408`
+- 3 maçta 1, ilk 5 maç muaf, Sosyal Paketliye ASLA
+- Ödüllü: kayıp sonrası + elmas yetersiz; günlük tavan 24 izlenme
+
+**FİYAT** (ASC, `appstore/set-subscription-prices.py`) — 2026-08-30'da yürürlükte:
+- Haftalık ₺24,99 → ₺39,99, mevcut aboneler KORUNDU (`preserved: true`)
+- Aylık ₺89,99 → ₺79,99 (indirim herkese)
+
+**OTA** — update group `04c8d39c-538b-493e-bb2e-c95b6af40649` (runtime 1.0.3):
+lig ekranı, reklam kurgusu, yıldız istemi (4 günde bir yeniden dener),
+fiyat metinleri, XOX UI, mağaza tek-rozet, eşleşme sayacı, duyurular.
+
+**ADMIN** — panel senkron (canlı maçta botun kupası görünüyor).
+
+### KALAN TEK İŞ
+- **Play Store**: `~/Downloads/crossover-1.0.3-vc131-dogru-imza.aab` (imza
+  83:D7…BB:4B doğrulandı) Play Console kapalı test taslağına SÜRÜKLENECEK.
+- **Android IAP YOK**: istemci yalnız Apple isteği kuruyor, sunucuda Google
+  doğrulaması yazılmadı, Play'de ürün tanımı yok → Android'de satın alma
+  imkânsız ("yakında" penceresi çıkar). Sıradaki büyük iş.
+
+---
 > Bu dosya deploy edilecek işlerin SIRASIDIR. Deploy'u yapan: diğer yazılımcı.
 > Kural: prod'da `docker compose`u aynı anda TEK kişi çalıştırır; basmadan önce
 > diğer oturuma haber ver. Bir kalem canlıya alınıp doğrulanınca listeden düş.
