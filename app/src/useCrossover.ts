@@ -373,6 +373,8 @@ export const initialState: GameState = {
 const PROFILE_KEY = '@crossover_profile';
 const LAST_USER_ID_KEY = '@crossover_last_user_id';
 const LAST_AUTH_PROVIDER_KEY = '@crossover_last_auth_provider';
+// Maç sürerken bağlantı koparsa odaya DÖNÜLMELİ (register değil resume_room).
+const MATCH_PHASES = new Set(['lobby', 'matchup', 'countdown', 'pick', 'reveal', 'guess', 'result', 'xox']);
 const SCOPES_KEY = '@crossover_scopes'; // cached leagues/countries/nationalities (load once, refresh in bg)
 const ENDPOINT_KEY = '@crossover_endpoint'; // last server URL that connected on THIS network
 // Per-host connect budget. A host that is DNS/proxy-blocked never errors — the
@@ -1485,7 +1487,17 @@ export function useCrossover() {
       // reconnected, leaving the app frozen until a restart. Treat a CONNECTING
       // socket older than 12s as dead and force a fresh connection.
       if (ws && ws.readyState === WebSocket.CONNECTING && Date.now() - connectingSince.current < 12000) return;
-      connectAndSend({ type: 'register', name, userId: uid }, { silent: true });
+      // MAÇTAYKEN 'register' DEĞİL 'resume_room' (2026-08-29): kopan bağlantı
+      // burada her zaman register ile tazeleniyordu — yani yeni oturum açılıyor
+      // ama ODAYA DÖNÜLMÜYORDU. Sunucu tarafında yeniden bağlanma penceresi
+      // (40 sn) bu yüzden hiç kullanılamıyordu: log'da resume sayısı 0'dı,
+      // rakip boşuna "bağlantı kesik" bekliyor, düşen oyuncu maçı kaybediyordu.
+      const cur = stateRef.current;
+      const inMatch = !!cur.room?.code && MATCH_PHASES.has(cur.phase);
+      const first: ClientMsg = inMatch && cur.profile
+        ? { type: 'resume_room', code: cur.room!.code, userId: uid }
+        : { type: 'register', name, userId: uid };
+      connectAndSend(first, { silent: true });
     };
     ensure();
     const iv = setInterval(ensure, 7000);
