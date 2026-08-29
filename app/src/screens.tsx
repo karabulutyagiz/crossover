@@ -2779,7 +2779,12 @@ function GoogleSignInBtn({ onPress, disabled, label }: { onPress: () => void; di
 function GuestGateModal({ visible, onClose, actions }: { visible: boolean; onClose: () => void; actions: Actions }) {
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     iosClientId: GOOGLE_IOS_CLIENT_ID,
-    androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
+    // ASLA undefined BIRAKMA (2026-08-30 çökme): expo-auth-session, Android'de
+    // androidClientId yoksa webClientId'ye DÜŞMEZ — invariantClientId doğrudan
+    // throw eder ve hata giriş ekranı çizilirken patladığı için uygulama
+    // AÇILIŞTA çöküyordu (Redmi Note 13 Pro raporu). Kimlik boş kalırsa web
+    // istemcisine düşülür: giriş yine başarısız olur ama uygulama ayakta kalır.
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID || GOOGLE_WEB_CLIENT_ID,
     webClientId: GOOGLE_WEB_CLIENT_ID,
   });
   useEffect(() => {
@@ -2850,7 +2855,12 @@ export function LoginScreen({ state, actions }: Props) {
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     iosClientId: GOOGLE_IOS_CLIENT_ID,
-    androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
+    // ASLA undefined BIRAKMA (2026-08-30 çökme): expo-auth-session, Android'de
+    // androidClientId yoksa webClientId'ye DÜŞMEZ — invariantClientId doğrudan
+    // throw eder ve hata giriş ekranı çizilirken patladığı için uygulama
+    // AÇILIŞTA çöküyordu (Redmi Note 13 Pro raporu). Kimlik boş kalırsa web
+    // istemcisine düşülür: giriş yine başarısız olur ama uygulama ayakta kalır.
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID || GOOGLE_WEB_CLIENT_ID,
     webClientId: GOOGLE_WEB_CLIENT_ID,
   });
   useEffect(() => {
