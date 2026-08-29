@@ -1575,7 +1575,9 @@ export function useCrossover() {
     return {
       // Send an Apple IAP receipt to the server for validation; resolves when the
       // server confirms diamonds were granted (diamonds_granted), rejects otherwise.
-      verifyPurchase: (receipt: string) => new Promise<void>((resolve, reject) => {
+      // Android'de `receipt` = Google purchaseToken; sunucu ürün kimliğiyle
+      // birlikte Google Play API'sine sorar (2026-08-29). iOS'ta Apple JWS'i.
+      verifyPurchase: (receipt: string, opts?: { productId?: string; isSubscription?: boolean }) => new Promise<void>((resolve, reject) => {
         const ws = wsRef.current;
         if (!ws || ws.readyState !== WebSocket.OPEN) { reject(new Error('disconnected')); return; }
         // Settle via THIS entry, never a shared slot: the timeout always rejects
@@ -1583,7 +1585,13 @@ export function useCrossover() {
         // used to leave the purchase overlay stuck on "processing securely").
         const entry = { resolve, reject };
         pendingVerify.current.push(entry);
-        ws.send(JSON.stringify({ type: 'verify_purchase', receipt }));
+        ws.send(JSON.stringify({
+          type: 'verify_purchase',
+          receipt,
+          platform: Platform.OS === 'android' ? 'android' : 'ios',
+          productId: opts?.productId,
+          isSubscription: opts?.isSubscription,
+        }));
         setTimeout(() => {
           const idx = pendingVerify.current.indexOf(entry);
           if (idx >= 0) { pendingVerify.current.splice(idx, 1); reject(new Error('timeout')); }

@@ -11,6 +11,9 @@ import { fileURLToPath } from 'node:url';
 import { SignedDataVerifier, Environment } from '@apple/app-store-server-library';
 import { pool } from '../db/pool.ts';
 import { getUser, type UserProfile } from './rank.ts';
+import { googlePlayAccessToken } from '../storeVersions.ts';
+import { config } from '../config.ts';
+import { log } from '../logger.ts';
 
 const BUNDLE_ID = 'com.crossover.football';
 const APP_APPLE_ID = 6778542426;
@@ -140,47 +143,43 @@ async function decodeTransaction(jws: string): Promise<{ tx: any; verifierEnv: s
   throw new Error('no verifier');
 }
 
-export async function verifyApplePurchase(
-  userId: string,
-  jws: string,
-): Promise<{ ok: true; profile: UserProfile; granted: number } | { ok: false; error: string }> {
-  if (!userId) return { ok: false, error: 'Önce giriş yap' };
-  if (!jws) return { ok: false, error: 'Makbuz bulunamadı' };
-  if (!appleRootCAs.length) return { ok: false, error: 'Satın alma şu an kapalı' };
+/**
+ * Mağazadan bağımsız, DOĞRULANMIŞ satın alma. Apple'ın JWS'i ve Google Play
+ * API yanıtı bu şekle indirgenir; ödül mantığı (elmas, Sosyal Paket, CO Pass)
+ * tek yerde yaşasın diye — iki mağaza için ayrı kopya bakım kabusu olurdu.
+ */
+export interface VerifiedPurchase {
+  transactionId: string;      // idempotency anahtarı (processed_transactions PK)
+  productId: string;
+  environment: string;        // 'Production' | 'Sandbox'
+  purchaseMs: number | null;
+  expiresMs?: number | null;  // abonelikte mağazanın bildirdiği bitiş
+  priceMilliunits: number | null;
+  currency: string | null;
+  storefront: string | null;
+  transactionReason: string | null;
+  transactionType: string | null;
+  revocationMs?: number | null;
+}
 
-  let tx;
-  let verifierEnv = 'Production';
-  try {
-    const decoded = await decodeTransaction(jws);
-    tx = decoded.tx;
-    verifierEnv = decoded.verifierEnv;
-  } catch {
-    return { ok: false, error: 'Makbuz doğrulanamadı, tekrar dene' };
-  }
-  if (!tx || tx.bundleId !== BUNDLE_ID || !tx.productId || !tx.transactionId) {
-    return { ok: false, error: 'Makbuz geçersiz' };
-  }
-
+/** Doğrulanmış satın almayı hesaba işler; yatan elması döndürür. */
+async function applyPurchaseGrant(userId: string, p: VerifiedPurchase): Promise<number> {
   let granted = 0; // diamonds credited this call
-  const pid = tx.productId;
+  const pid = p.productId;
 
-  // Ortam (Production/Sandbox) + Apple'ın gerçek satın alma zamanı. Admin paneli
-  // YALNIZ Production (gerçek para) alımları saysın diye kaydedilir: sandbox
-  // (TestFlight/test) alımları da doğrulanıp buraya düşer, `environment` onları ayırır.
-  const environment: string =
-    typeof (tx as { environment?: unknown }).environment === 'string' && (tx as { environment: string }).environment
-      ? (tx as { environment: string }).environment
-      : verifierEnv;
-  const purchaseIso = txIso(tx.purchaseDate);
+  // Ortam (Production/Sandbox): admin paneli YALNIZ Production (gerçek para)
+  // alımlarını gelire sayar; sandbox/test alımları da doğrulanıp buraya düşer
+  // ama `environment` onları ayırır.
+  const environment = p.environment;
   const txMeta = [
     environment,
-    purchaseIso,
-    txPriceMilliunits(tx),
-    txText(tx.currency),
-    txText(tx.storefront),
-    txText(tx.transactionReason),
-    txText(tx.type),
-    txIso(tx.revocationDate),
+    txIso(p.purchaseMs),
+    p.priceMilliunits,
+    p.currency,
+    p.storefront,
+    p.transactionReason,
+    p.transactionType,
+    p.revocationMs == null ? null : txIso(p.revocationMs),
   ] as const;
 
   // Diamonds (consumable) — credit once per transaction (idempotent via PK).
@@ -196,7 +195,7 @@ export async function verifyApplePurchase(
          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          ON CONFLICT (transaction_id) DO NOTHING
          RETURNING TRUE AS inserted`,
-        [tx.transactionId, userId, pid, amount, ...txMeta],
+        [p.transactionId, userId, pid, amount, ...txMeta],
       );
       if (ins.rows[0]?.inserted) {
         const before = await client.query<{ diamonds: number }>(`SELECT diamonds FROM users WHERE id = $1 FOR UPDATE`, [userId]);
@@ -209,7 +208,7 @@ export async function verifyApplePurchase(
           `SELECT 1 FROM processed_transactions
             WHERE user_id = $1 AND transaction_id <> $2 AND product_id LIKE 'com.crossover.diamonds.%'
             LIMIT 1`,
-          [userId, tx.transactionId],
+          [userId, p.transactionId],
         );
         const doubled = prior.rows.length === 0;
         const credit = doubled ? amount * 2 : amount;
@@ -217,13 +216,13 @@ export async function verifyApplePurchase(
         await client.query(`UPDATE users SET diamonds = $2 WHERE id = $1`, [userId, balanceAfter]);
         if (doubled) {
           // Kayıt gerçeği yansıtsın: bu işlemle fiilen yatan elmas.
-          await client.query(`UPDATE processed_transactions SET diamonds = $2 WHERE transaction_id = $1`, [tx.transactionId, credit]);
+          await client.query(`UPDATE processed_transactions SET diamonds = $2 WHERE transaction_id = $1`, [p.transactionId, credit]);
         }
         await client.query(
           `INSERT INTO diamond_ledger (idempotency_key, user_id, amount, balance_before, balance_after, reason, reference_id, metadata)
            VALUES ($1, $2, $3, $4, $5, 'IAP_PURCHASE', $6, $7::jsonb)
            ON CONFLICT (idempotency_key) DO NOTHING`,
-          [`iap:${tx.transactionId}`, userId, credit, balanceBefore, balanceAfter, pid, JSON.stringify({ environment, transactionId: tx.transactionId, firstPurchaseDouble: doubled })],
+          [`iap:${p.transactionId}`, userId, credit, balanceBefore, balanceAfter, pid, JSON.stringify({ environment, transactionId: p.transactionId, firstPurchaseDouble: doubled })],
         ).catch((err) => { if ((err as { code?: string }).code !== '42P01') throw err; });
         granted += credit;
       } else {
@@ -238,7 +237,7 @@ export async function verifyApplePurchase(
              transaction_type = COALESCE(transaction_type, $8),
              revocation_date = COALESCE(revocation_date, $9)
            WHERE transaction_id = $1`,
-          [tx.transactionId, ...txMeta],
+          [p.transactionId, ...txMeta],
         );
       }
       await client.query('COMMIT');
@@ -270,12 +269,13 @@ export async function verifyApplePurchase(
          transaction_reason = COALESCE(processed_transactions.transaction_reason, EXCLUDED.transaction_reason),
          transaction_type = COALESCE(processed_transactions.transaction_type, EXCLUDED.transaction_type),
          revocation_date = COALESCE(processed_transactions.revocation_date, EXCLUDED.revocation_date)`,
-      [tx.transactionId, userId, pid, ...txMeta],
+      [p.transactionId, userId, pid, ...txMeta],
     );
-    const purchasedAt = Number(tx.purchaseDate ?? 0);
-    const fallbackExpiry = Number(tx.expiresDate ?? 0);
-    const base = purchasedAt > 0 ? purchasedAt : fallbackExpiry;
-    const until = socialPackExpiryMs(pid, base);
+    // Bitiş: mağaza gerçek bitişi bildirdiyse ONU kullan (Google subscriptionsv2
+    // expiryTime verir), yoksa satın alma anından plan süresiyle hesapla.
+    const until = p.expiresMs && p.expiresMs > 0
+      ? p.expiresMs
+      : socialPackExpiryMs(pid, Number(p.purchaseMs ?? 0));
     if (until && until > Date.now()) {
       await pool.query(`UPDATE users SET social_pack_until = $2 WHERE id = $1`, [userId, new Date(until).toISOString()]);
     }
@@ -290,16 +290,187 @@ export async function verifyApplePurchase(
        ) VALUES ($1, $2, $3, 0, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (transaction_id) DO NOTHING
        RETURNING TRUE AS inserted`,
-      [tx.transactionId, userId, pid, ...txMeta],
+      [p.transactionId, userId, pid, ...txMeta],
     );
     if (ins.rows[0]?.inserted) {
       await pool.query(`UPDATE users SET premium_road = TRUE WHERE id = $1`, [userId]);
     } else {
-      await updateTransactionMetadata(tx.transactionId, txMeta);
+      await updateTransactionMetadata(p.transactionId, txMeta);
     }
   }
 
+  return granted;
+}
+
+export async function verifyApplePurchase(
+  userId: string,
+  jws: string,
+): Promise<{ ok: true; profile: UserProfile; granted: number } | { ok: false; error: string }> {
+  if (!userId) return { ok: false, error: 'Önce giriş yap' };
+  if (!jws) return { ok: false, error: 'Makbuz bulunamadı' };
+  if (!appleRootCAs.length) return { ok: false, error: 'Satın alma şu an kapalı' };
+
+  let tx;
+  let verifierEnv = 'Production';
+  try {
+    const decoded = await decodeTransaction(jws);
+    tx = decoded.tx;
+    verifierEnv = decoded.verifierEnv;
+  } catch {
+    return { ok: false, error: 'Makbuz doğrulanamadı, tekrar dene' };
+  }
+  if (!tx || tx.bundleId !== BUNDLE_ID || !tx.productId || !tx.transactionId) {
+    return { ok: false, error: 'Makbuz geçersiz' };
+  }
+
+  const environment: string =
+    typeof (tx as { environment?: unknown }).environment === 'string' && (tx as { environment: string }).environment
+      ? (tx as { environment: string }).environment
+      : verifierEnv;
+  const granted = await applyPurchaseGrant(userId, {
+    transactionId: String(tx.transactionId),
+    productId: String(tx.productId),
+    environment,
+    purchaseMs: tx.purchaseDate == null ? null : Number(tx.purchaseDate),
+    expiresMs: tx.expiresDate == null ? null : Number(tx.expiresDate),
+    priceMilliunits: txPriceMilliunits(tx),
+    currency: txText(tx.currency),
+    storefront: txText(tx.storefront),
+    transactionReason: txText(tx.transactionReason),
+    transactionType: txText(tx.type),
+    revocationMs: tx.revocationDate == null ? null : Number(tx.revocationDate),
+  });
+
   const profile = await getUser(userId);
   if (!profile) return { ok: false, error: 'Kullanıcı bulunamadı' };
+  return { ok: true, profile, granted };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GOOGLE PLAY DOĞRULAMASI (2026-08-29)
+//
+// Android'de satın alma İMKÂNSIZDI: istemci yalnız Apple isteği kuruyor,
+// sunucuda Google doğrulaması yoktu. Bu blok o boşluğu kapatır.
+//
+// İstemci purchaseToken'ı gönderir; token'ın gerçekten ödenmiş bir satın alma
+// olduğunu Google Play Developer API'sine SORARAK doğrularız (istemciye asla
+// güvenilmez). Doğrulanan satın alma Apple ile AYNI applyPurchaseGrant'tan
+// geçer — elmas/paket/CO Pass mantığı tek yerde.
+//
+// Kimlik: storeVersions.ts'teki service account (androidpublisher scope'u).
+// Kimlik yoksa satın alma reddedilir — sessizce elmas yatırmak yasak.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Android ürünlerinin TR fiyatları (milibirim: ₺29,99 → 29990).
+ *  Google satın alma yanıtında fiyat vermez; admin panelindeki gelir tablosu
+ *  için mağaza fiyatını buradan yazarız. İstemci fiyatlarıyla AYNI kalmalı. */
+const ANDROID_PRICE_MILLIUNITS_TRY: Record<string, number> = {
+  'com.crossover.diamonds.100': 29_990,
+  'com.crossover.diamonds.500': 79_990,
+  'com.crossover.diamonds.1200': 149_990,
+  'com.crossover.diamonds.5000': 449_990,
+  'com.crossover.diamonds.15000': 999_990,
+  'com.crossover.diamonds.50000': 2_499_990,
+  'com.crossover.socialpack.weekly': 39_990,
+  'com.crossover.socialpack.monthly': 79_990,
+  'com.crossover.copass': 349_990,
+};
+
+/** Google doğrulaması yapılabilir mi (service account tanımlı mı)?
+ *  İstemci bunu /monetization-config'ten okur: hazır DEĞİLSE Android'de satın
+ *  alma hiç başlatılmaz — aksi halde para çekilir ama hak verilemezdi. */
+export async function androidIapReady(): Promise<boolean> {
+  const token = await googlePlayAccessToken().catch(() => null);
+  return !!token;
+}
+
+async function googlePlayGet(path: string): Promise<Record<string, unknown> | null> {
+  const token = await googlePlayAccessToken().catch(() => null);
+  if (!token) return null;
+  const url = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(config.storeVersionCheck.androidPackageName)}/${path}`;
+  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(12_000) });
+  if (!res.ok) {
+    log.warn('google_play_verify_http_error', { status: res.status, path });
+    return null;
+  }
+  return await res.json() as Record<string, unknown>;
+}
+
+/**
+ * Google Play satın almasını doğrular ve hesaba işler.
+ * `productId` istemciden gelir ama YETKİ KAYNAĞI DEĞİLDİR: aboneliklerde
+ * Google'ın döndürdüğü lineItem ürünü esas alınır, tek seferliklerde token
+ * zaten yalnız o ürün için geçerlidir (yanlış ürün → 404 → reddedilir).
+ */
+export async function verifyGooglePurchase(
+  userId: string,
+  purchaseToken: string,
+  productId: string,
+  isSubscription: boolean,
+): Promise<{ ok: true; profile: UserProfile; granted: number } | { ok: false; error: string }> {
+  if (!userId) return { ok: false, error: 'Önce giriş yap' };
+  if (!purchaseToken || !productId) return { ok: false, error: 'Makbuz bulunamadı' };
+
+  let verified: VerifiedPurchase | null = null;
+
+  if (isSubscription) {
+    const data = await googlePlayGet(`purchases/subscriptionsv2/tokens/${encodeURIComponent(purchaseToken)}`);
+    if (!data) return { ok: false, error: 'Satın alma doğrulanamadı, tekrar dene' };
+    // subscriptionState: ACTIVE / IN_GRACE_PERIOD dışındakiler hak vermez.
+    const state = String(data.subscriptionState ?? '');
+    if (state !== 'SUBSCRIPTION_STATE_ACTIVE' && state !== 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD') {
+      return { ok: false, error: 'Abonelik aktif değil' };
+    }
+    const lineItems = Array.isArray(data.lineItems) ? data.lineItems as Record<string, unknown>[] : [];
+    const item = lineItems[0] ?? {};
+    // Ürün kimliği GOOGLE'DAN alınır — istemcinin gönderdiği değere güvenilmez.
+    const storeProductId = typeof item.productId === 'string' ? item.productId : productId;
+    const expiryIso = typeof item.expiryTime === 'string' ? item.expiryTime : null;
+    const startIso = typeof data.startTime === 'string' ? data.startTime : null;
+    // Yenilemede latestOrderId değişir → her dönem AYRI satır (satış sayımı doğru).
+    const orderId = typeof data.latestOrderId === 'string' && data.latestOrderId
+      ? data.latestOrderId
+      : `gp-sub-${purchaseToken.slice(0, 40)}`;
+    verified = {
+      transactionId: orderId,
+      productId: storeProductId,
+      environment: data.testPurchase ? 'Sandbox' : 'Production',
+      purchaseMs: startIso ? Date.parse(startIso) : Date.now(),
+      expiresMs: expiryIso ? Date.parse(expiryIso) : null,
+      priceMilliunits: ANDROID_PRICE_MILLIUNITS_TRY[storeProductId] ?? null,
+      currency: 'TRY',
+      storefront: typeof data.regionCode === 'string' ? data.regionCode : null,
+      transactionReason: 'PURCHASE',
+      transactionType: 'Auto-Renewable Subscription',
+      revocationMs: null,
+    };
+  } else {
+    const data = await googlePlayGet(`purchases/products/${encodeURIComponent(productId)}/tokens/${encodeURIComponent(purchaseToken)}`);
+    if (!data) return { ok: false, error: 'Satın alma doğrulanamadı, tekrar dene' };
+    // purchaseState: 0 = satın alındı (1 = iptal, 2 = beklemede).
+    if (Number(data.purchaseState ?? -1) !== 0) return { ok: false, error: 'Satın alma tamamlanmadı' };
+    const orderId = typeof data.orderId === 'string' && data.orderId
+      ? data.orderId
+      : `gp-${purchaseToken.slice(0, 40)}`;
+    verified = {
+      transactionId: orderId,
+      productId,
+      // purchaseType 0 = test alımı (lisans testçisi) — gelire sayılmaz.
+      environment: Number(data.purchaseType ?? -1) === 0 ? 'Sandbox' : 'Production',
+      purchaseMs: data.purchaseTimeMillis ? Number(data.purchaseTimeMillis) : Date.now(),
+      expiresMs: null,
+      priceMilliunits: ANDROID_PRICE_MILLIUNITS_TRY[productId] ?? null,
+      currency: 'TRY',
+      storefront: typeof data.regionCode === 'string' ? data.regionCode : null,
+      transactionReason: 'PURCHASE',
+      transactionType: 'Consumable',
+      revocationMs: null,
+    };
+  }
+
+  const granted = await applyPurchaseGrant(userId, verified);
+  const profile = await getUser(userId);
+  if (!profile) return { ok: false, error: 'Kullanıcı bulunamadı' };
+  log.info('google_purchase_verified', { userId, productId: verified.productId, granted, environment: verified.environment });
   return { ok: true, profile, granted };
 }

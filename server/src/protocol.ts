@@ -198,7 +198,7 @@ export type ClientMsg =
   | { type: 'start_daily_crossover' } // soruyu açtım — süre sayacı sunucuda başlar (idempotent)
   | { type: 'daily_crossover_guess'; text: string } // günlük tahmin (3 hak, sunucu sayar)
   | { type: 'get_my_stats' } // profil istatistikleri: seri rekoru + mod bazlı K/M
-  | { type: 'verify_purchase'; receipt: string } // validate an Apple IAP receipt → grant diamonds
+  | { type: 'verify_purchase'; receipt: string; platform?: 'ios' | 'android'; productId?: string; isSubscription?: boolean } // Apple JWS ya da Google purchaseToken → hak/elmas ver
   | { type: 'grant_ad_reward' } // watched a rewarded ad → credit a few diamonds (capped server-side)
   | { type: 'search_clubs'; reqId: string; q: string }
   | { type: 'pick_player'; playerId: number }

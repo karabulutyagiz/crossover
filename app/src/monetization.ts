@@ -100,6 +100,10 @@ export type MonetizationRemoteConfig = {
   };
   // Reklam kurgusu (2026-08-29) — sunucu /monetization-config'ten gelir; eski
   // sunucuda alan yoksa güvenli varsayılanlar (geçiş reklamı KAPALI) kullanılır.
+  // Android'de Google doğrulaması kurulu mu (sunucudaki service account).
+  // false → Android'de satın alma HİÇ başlatılmaz: para çekilip hak
+  // verilememesi riskine karşı sert kapı (2026-08-29).
+  androidIapReady: boolean;
   ads: {
     interstitialEnabled: boolean;
     interstitialEveryMatches: number;
@@ -135,6 +139,7 @@ export const MONETIZATION_CONFIG: MonetizationRemoteConfig = {
     xpBoost: true,
     socialPackDiscovery: true,
   },
+  androidIapReady: false,
   ads: {
     interstitialEnabled: false,
     interstitialEveryMatches: 3,

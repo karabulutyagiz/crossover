@@ -23,7 +23,7 @@ import {
   blockUser, unblockUser, listBlocked, isBlockedBetween, reportContent, deleteOwnMessage, acceptTerms,
   isIdentifiedAccount,
 } from '../game/moderation.ts';
-import { firstDiamondDoubleAvailable, verifyApplePurchase } from '../game/iap.ts';
+import { androidIapReady, firstDiamondDoubleAvailable, verifyApplePurchase, verifyGooglePurchase } from '../game/iap.ts';
 import { buyCosmetic, equipCosmetic, storeCatalog, toCosmeticLoadout } from '../game/cosmetics.ts';
 import { getAdminStats } from '../game/admin.ts';
 import { checkLogin, issueToken, verifyToken } from '../game/adminAuth.ts';
@@ -922,8 +922,13 @@ export function startServer(port: number): Server {
       return;
     }
     if (req.url === '/monetization-config') {
+      // androidIapReady: Google doğrulaması kurulu mu (service account). false
+      // ise istemci Android'de satın almayı BAŞLATMAZ — para çekilip hak
+      // verilememesi riskine karşı sert kapı (2026-08-29).
+      void androidIapReady().then((ready) => {
       res.writeHead(200, cors);
       res.end(JSON.stringify({
+        androidIapReady: ready,
         enabled: process.env.MONETIZATION_ENABLED !== '0',
         holdoutPercent: Number(process.env.MONETIZATION_HOLDOUT_PERCENT ?? '0'),
         maxSessionOffers: Number(process.env.MONETIZATION_MAX_SESSION_OFFERS ?? '1'),
@@ -958,6 +963,11 @@ export function startServer(port: number): Server {
           dailyChest: process.env.ADS_DAILY_CHEST !== '0',
         },
       }));
+      }).catch(() => {
+        // Hazırlık sorgusu düşerse Android satın alma KAPALI varsayılır (güvenli taraf).
+        res.writeHead(200, cors);
+        res.end(JSON.stringify({ androidIapReady: false, enabled: process.env.MONETIZATION_ENABLED !== '0' }));
+      });
       return;
     }
     if (path === '/feedback' && req.method === 'OPTIONS') {
@@ -1791,7 +1801,12 @@ export function startServer(port: number): Server {
       if (msg.type === 'verify_purchase') {
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce kayıt ol' });
         void (async () => {
-          const result = await verifyApplePurchase(userProfile!.id, msg.receipt);
+          // Platform-aware (2026-08-29): Android istemci purchaseToken + ürün
+          // kimliği gönderir → Google Play API'sine sorulur. Alan yoksa eski
+          // istemcidir; varsayılan iOS (Apple JWS) yolu korunur.
+          const result = msg.platform === 'android'
+            ? await verifyGooglePurchase(userProfile!.id, msg.receipt, msg.productId ?? '', msg.isSubscription === true)
+            : await verifyApplePurchase(userProfile!.id, msg.receipt);
           if (!result.ok) return transport.send({ type: 'error', message: result.error });
           userProfile = result.profile;
           transport.send({ type: 'diamonds_granted', granted: result.granted, profile: toProfileView(result.profile) });

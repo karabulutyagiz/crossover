@@ -236,6 +236,10 @@ export function validateClientMsg(value: unknown): ValidationResult {
       break;
     case 'verify_purchase':
       if (!hasString(value, 'receipt', 256_000)) return invalid('verify_purchase.receipt must be a string');
+      // Android alanları (2026-08-29): eski istemciler göndermez → opsiyonel.
+      if (value.platform !== undefined && value.platform !== 'ios' && value.platform !== 'android') return invalid('verify_purchase.platform is invalid');
+      if (value.productId !== undefined && !isString(value.productId, 200)) return invalid('verify_purchase.productId is invalid');
+      if (value.isSubscription !== undefined && typeof value.isSubscription !== 'boolean') return invalid('verify_purchase.isSubscription is invalid');
       break;
     case 'search_clubs':
       if (!hasString(value, 'reqId', 80)) return invalid('search_clubs.reqId must be a string');

@@ -170,7 +170,7 @@ type Actions = {
   xoxSubmit: (cell: number, text: string) => void;
   usePower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => void; // envanterdeki tek kullanımlık gücü etkinleştir
   loadMyStats: () => void; // profil istatistiklerini iste (my_stats yanıtı)
-  verifyPurchase: (receipt: string) => Promise<void>;
+  verifyPurchase: (receipt: string, opts?: { productId?: string; isSubscription?: boolean }) => Promise<void>;
   grantAdReward: () => Promise<number>;
   loadFriends: () => void;
   sendFriendRequest: (targetCode?: string, targetUsername?: string) => void;
@@ -8604,9 +8604,12 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
   const onPurchaseSuccess = useCallback(async (purchase: Purchase) => {
     const isSub = SOCIAL_PACK_IDS.includes(purchase.productId);
     try {
-      const jws = purchase.purchaseToken ?? (await getTransactionJwsIOS(purchase.productId));
-      if (!jws) throw new Error('no-jws');
-      await actions.verifyPurchase(jws);
+      // Android: purchaseToken'ın kendisi doğrulama anahtarıdır (JWS Apple'a özgü).
+      const receipt = Platform.OS === 'android'
+        ? purchase.purchaseToken
+        : (purchase.purchaseToken ?? (await getTransactionJwsIOS(purchase.productId)));
+      if (!receipt) throw new Error('no-receipt');
+      await actions.verifyPurchase(receipt, { productId: purchase.productId, isSubscription: isSub });
       await iapFinishTransaction({ purchase, isConsumable: !isSub });
       triggerFeedback(GameFeedbackEvent.PURCHASE_CONFIRMED);
       track(isSub ? 'social_pack_purchase_success' : 'diamond_purchase_success', { product_id: purchase.productId, kind: isSub ? 'subscription' : 'diamonds', purchase_intent: pendingDiamondIntentRef.current?.source, currentDiamonds: profile?.diamonds ?? 0 });
@@ -8668,11 +8671,15 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
       const sub = (ps ?? []).find((p) => SOCIAL_PACK_IDS.includes(p.productId));
       setActiveSubId(sub ? sub.productId : null);
       for (const p of ps ?? []) {
-        const jws = p.purchaseToken ?? (await getTransactionJwsIOS(p.productId));
-        if (!jws) continue;
+        const isSubItem = SOCIAL_PACK_IDS.includes(p.productId);
+        // Android'de purchaseToken doğrulama anahtarıdır; JWS yalnız iOS'ta.
+        const receipt = Platform.OS === 'android'
+          ? p.purchaseToken
+          : (p.purchaseToken ?? (await getTransactionJwsIOS(p.productId)));
+        if (!receipt) continue;
         try {
-          await actionsRef.current.verifyPurchase(jws);
-          await iapFinishTransaction({ purchase: p, isConsumable: !SOCIAL_PACK_IDS.includes(p.productId) });
+          await actionsRef.current.verifyPurchase(receipt, { productId: p.productId, isSubscription: isSubItem });
+          await iapFinishTransaction({ purchase: p, isConsumable: !isSubItem });
         } catch { /* leave unfinished; retried next launch */ }
       }
     }).catch(() => {});
@@ -8695,11 +8702,22 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
     // "coming soon" instead of a payment error (e.g. in builds before IAP is set up).
     const loaded = [...products, ...subscriptions].some((p) => (p as { id?: string }).id === productId);
     if (!loaded) { openStoreDialog({ title: t('store.comingSoonTitle'), body: t('store.comingSoonBody'), icon: 'time', coach: true }); return; }
+    // ANDROID KAPISI (2026-08-29): sunucuda Google doğrulaması (service account)
+    // kurulu değilse satın almayı BAŞLATMA — ödeme alınıp hak verilememesi
+    // riskini kapatır. iOS bu kapıdan etkilenmez.
+    if (Platform.OS === 'android' && !getMonetizationConfig().androidIapReady) {
+      openStoreDialog({ title: t('store.comingSoonTitle'), body: t('store.comingSoonBody'), icon: 'time', coach: true });
+      return;
+    }
     const isSub = SOCIAL_PACK_IDS.includes(productId);
     setBuying(productId);
     track(isSub ? 'social_pack_purchase_started' : 'diamond_package_selected', { product_id: productId, kind: isSub ? 'subscription' : 'diamonds', source_screen: pendingDiamondIntentRef.current?.source ?? 'store', currentDiamonds: profile?.diamonds ?? 0 });
+    // ANDROID DESTEĞİ (2026-08-29): önceden yalnız `apple` isteği kuruluyordu,
+    // bu yüzden Android'de satın alma hiç başlamıyordu. Her iki mağaza da tek
+    // çağrıda tanımlanır; react-native-iap çalıştığı platformunkini kullanır.
     const apple = { sku: productId, appAccountToken: profile?.userId ?? undefined };
-    Promise.resolve(requestPurchase({ request: { apple }, type: isSub ? 'subs' : 'in-app' })).catch(() => setBuying(null));
+    const google = { skus: [productId] };
+    Promise.resolve(requestPurchase({ request: { apple, google }, type: isSub ? 'subs' : 'in-app' })).catch(() => setBuying(null));
   }, [buying, requestPurchase, products, subscriptions, profile?.userId]);
   // Effects and modal-exit handlers below need the CURRENT buy without being in
   // its dependency chain.
@@ -8779,11 +8797,14 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
       setActiveSubId(sub ? sub.productId : null);
       let restored = 0;
       for (const p of ps) {
-        const jws = p.purchaseToken ?? (await getTransactionJwsIOS(p.productId));
-        if (!jws) continue;
+        const isSubItem = SOCIAL_PACK_IDS.includes(p.productId);
+        const receipt = Platform.OS === 'android'
+          ? p.purchaseToken
+          : (p.purchaseToken ?? (await getTransactionJwsIOS(p.productId)));
+        if (!receipt) continue;
         try {
-          await actionsRef.current.verifyPurchase(jws);
-          await iapFinishTransaction({ purchase: p, isConsumable: !SOCIAL_PACK_IDS.includes(p.productId) });
+          await actionsRef.current.verifyPurchase(receipt, { productId: p.productId, isSubscription: isSubItem });
+          await iapFinishTransaction({ purchase: p, isConsumable: !isSubItem });
           restored += 1;
         } catch { /* one bad entitlement must not abort the rest of the restore */ }
       }

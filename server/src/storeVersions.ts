@@ -250,7 +250,9 @@ async function fetchGooglePlayProductionVersionCode(): Promise<number | null> {
   return Math.max(...codes);
 }
 
-async function googlePlayAccessToken(): Promise<string | null> {
+/** Google Play Developer API erişim jetonu (service account JWT → OAuth).
+ *  IAP doğrulaması da (game/iap.ts) aynı kimlikle bu ucu kullanır. */
+export async function googlePlayAccessToken(): Promise<string | null> {
   const credentials = googlePlayCredentials();
   if (!credentials) return null;
   const now = Date.now();
