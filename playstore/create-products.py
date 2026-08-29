@@ -144,10 +144,21 @@ def create_subscriptions(token: str) -> int:
         if status in (200, 201):
             print(f"OK   {pid:38} ₺{lira},{kurus // 10:02d} / {period}")
         elif status == 409:
-            print(f"VAR  {pid:38} (zaten tanımlı, atlandı)")
+            print(f"VAR  {pid:38} (zaten tanımlı)")
         else:
             failed += 1
             print(f"HATA {pid:38} {status} → {body[:220]}")
+            continue
+        # Yeni oluşan taban plan DRAFT gelir — AKTİVE edilmeden satılamaz.
+        act, abody = call(
+            "POST", f"{BASE}/subscriptions/{pid}/basePlans/base:activate", token,
+            {"packageName": PKG, "productId": pid, "basePlanId": "base",
+             "regionsVersion": {"version": REGIONS_VERSION}})
+        if act in (200, 201):
+            print(f"     └─ taban plan AKTİF ✅")
+        else:
+            failed += 1
+            print(f"     └─ aktivasyon HATASI {act} → {abody[:200]}")
     return failed
 
 
