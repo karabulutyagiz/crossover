@@ -172,8 +172,14 @@ if (independence.passMismatches !== 0) failures.push('pass scenario changed bot 
 if (independence.wrongMismatches !== 0) failures.push('wrong scenario changed bot decisions');
 if (independence.typingAccelerations !== 0) failures.push('typing scenario accelerated bot');
 if ((teams.gtOneNicheMatches as number) !== 0) failures.push('more than one niche round appeared in a match');
-if ((teams.zeroNichePct as number) < 68 || (teams.zeroNichePct as number) > 82) failures.push(`zero niche percentage out of target: ${teams.zeroNichePct}`);
-if ((teams.oneNichePct as number) < 18 || (teams.oneNichePct as number) > 32) failures.push(`one niche percentage out of target: ${teams.oneNichePct}`);
+// NADİR CEVAP HEDEFİ (2026-08-30 güncellendi): bot artık uygun adaylar
+// arasından ÖNCE EN BİLİNENİ seçiyor (kullanıcı isteği: "öncelik en çok
+// bilindiklerden, bilindik yoksa bilinmeyenlerden"). Nadir cevap bu yüzden
+// tasarım gereği seyrekleşti; eski 68-82 / 18-32 aralığı o karardan ÖNCEKİ
+// dengeyi ölçüyordu ve değişiklikten beri sürekli kırmızı yanıyordu —
+// gerçek bir bozulmayı maskelememesi için hedef yeni davranışa taşındı.
+if ((teams.zeroNichePct as number) < 84 || (teams.zeroNichePct as number) > 96) failures.push(`zero niche percentage out of target: ${teams.zeroNichePct}`);
+if ((teams.oneNichePct as number) < 4 || (teams.oneNichePct as number) > 16) failures.push(`one niche percentage out of target: ${teams.oneNichePct}`);
 const timingOverall = (timing.overall as TimingSummary);
 if (timingOverall.min < 1450) failures.push(`superhuman bot timing found: ${timingOverall.min}`);
 

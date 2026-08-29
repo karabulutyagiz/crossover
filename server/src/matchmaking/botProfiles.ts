@@ -210,7 +210,15 @@ const ORGANIC_HANDLE_WEIGHT = 0.40;     // düz ad tabanlı (turgay15) — AZALT
 const NICK_HANDLE_WEIGHT = 0.48;        // yaratıcı/birleşik rumuz — ARTIRILDI (kullanıcı isteği)
 const HUMAN_HANDLE_WEIGHT = 0.86;       // (eski yol — organik başarısızsa yedek)
 
-const AVATARS = Array.from({ length: 34 }, (_, i) => `pp${i + 1}`);
+// BOT AVATARLARI (kullanıcı isteği 2026-08-30): botlara yalnız FORMALI FUTBOLCU
+// avatarları verilir. Eskiden 34 avatarın tamamından seçiliyordu; havuzda kadın
+// karakter (pp26), hayvan maskotları, kurukafa/uzaylı/korsan ve nesne çizimleri
+// de olduğu için bot rakipler "futbolcu" gibi durmuyordu. Liste, avatars.ts'teki
+// PREMIUM_FOOTBALLERS kümesiyle birebir aynıdır:
+//   pp1/pp2 Ronaldo 7 · pp3/pp4 Messi 10 · pp5 Brezilya 10 · pp6 Mbappé 10
+//   pp8 Haaland 9 · pp9 Bellingham 5 · pp10 mavi 20
+// (pp7 kaleci eldiveni VARSAYILAN avatardır, seçim havuzuna girmez.)
+const AVATARS = ['pp1', 'pp2', 'pp3', 'pp4', 'pp5', 'pp6', 'pp8', 'pp9', 'pp10'];
 const DOMAINS: KnowledgeDomain[] = ['europe_elite', 'turkey', 'national_teams', 'journeymen', 'obscure_leagues', 'player_history'];
 const recentByUser = new Map<string, string[]>();
 
@@ -546,7 +554,7 @@ export function selectBotProfileForSkill(input: AdaptiveBotProfileInput): BotPro
   const avatarRoll = hashUnit(`${identity.id}:av:${seed}`);
   const avatarChance = persona === 'veteran' ? 1 : persona === 'casual' ? 0.6 : 0.12;
   const avatarId = avatarRoll < avatarChance
-    ? (AVATARS[Math.floor(hashUnit(`${identity.id}:${trophyRating}:${seed}`) * AVATARS.length)] ?? 'pp7')
+    ? (AVATARS[Math.floor(hashUnit(`${identity.id}:${trophyRating}:${seed}`) * AVATARS.length)] ?? 'pp4')
     : null;
   const domains = profileDomains(archetype, rng);
   const emoteSuppression = director.enabled ? director.emoteSuppression : 0;
