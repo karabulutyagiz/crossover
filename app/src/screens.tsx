@@ -45,7 +45,7 @@ import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, Lin
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState, FriendInfo, LeaderboardEntry } from './useCrossover';
 import { initialState } from './useCrossover';
-import type { BlockedUserView, ClubRef, CosmeticLoadoutView, CosmeticType, DailyCrossoverStateView, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, ScopeOption, SpellInfo, StoreCatalogItem } from './protocol';
+import type { BlockedUserView, ClubRef, CosmeticLoadoutView, CosmeticType, DailyCareerStateView, DailyCrossoverStateView, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, ScopeOption, SpellInfo, StoreCatalogItem } from './protocol';
 import {
   EmoteCallout,
   EmoteSticker,
@@ -103,6 +103,9 @@ type Actions = {
   redeemReferral: (code: string) => void;
   // Günün Crossover'ı
   getDailyCrossover: () => void;
+  getDailyCareer: () => void;
+  guessDailyCareer: (text: string) => void;
+  clearDailyCareerReward: () => void;
   startDailyCrossover: () => void;
   guessDailyCrossover: (text: string) => void;
   clearDailyCxReward: () => void;
@@ -4523,6 +4526,115 @@ function dailyCxShareText(cx: DailyCrossoverStateView): string {
   return `Günün Crossover'ı #${cx.day}\n${cx.teamA.name} × ${cx.teamB.name}\n${line}\nSıra sende 👉 https://crossoverfootball.com/indir`;
 }
 
+function dailyCareerShareText(c: DailyCareerStateView): string {
+  // Wordle kartı: kaç ipucuyla bildiğini gösterir — az kare = iyi skor.
+  const used = Math.max(1, c.revealed);
+  const squares = c.correct ? '🟨'.repeat(Math.max(0, used - 1)) + '🟩' : '🟥'.repeat(c.maxGuesses);
+  return `Günün Kariyeri #${c.day}\n${squares}\n${c.correct ? `${used} kulüpte bildim! ⚽` : 'bilemedim 😅'}\nSıra sende 👉 https://crossoverfootball.com/indir`;
+}
+
+function DailyCareerModal({ visible, career, reward, onGuess, onClose }: {
+  visible: boolean;
+  career: DailyCareerStateView | null;
+  reward: number;
+  onGuess: (text: string) => void;
+  onClose: () => void;
+}) {
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  useEffect(() => { setSending(false); }, [career?.attemptsUsed, career?.played]);
+  const done = !!career?.played;
+  useEffect(() => {
+    if (!visible || !done) return;
+    triggerFeedback(career?.correct ? GameFeedbackEvent.ANSWER_CORRECT : GameFeedbackEvent.ANSWER_WRONG);
+  }, [visible, done, career?.correct]);
+  const submit = () => {
+    const trimmed = text.trim();
+    if (!trimmed || sending || done) return;
+    setSending(true);
+    setText('');
+    track('daily_career_guess', { day: career?.day, attempt: (career?.attemptsUsed ?? 0) + 1 });
+    onGuess(trimmed);
+  };
+  const share = async () => {
+    if (!career) return;
+    track('daily_career_shared', { day: career.day, correct: career.correct });
+    try { await Share.share({ message: dailyCareerShareText(career) }); } catch { /* vazgeçti */ }
+  };
+  const attemptsLeft = career ? Math.max(0, career.maxGuesses - career.attemptsUsed) : 0;
+  return (
+    <GameModal visible={visible} onClose={onClose} title={`GÜNÜN KARİYERİ ${career ? `#${career.day}` : ''}`} icon="footsteps">
+      {!career ? (
+        <Text style={[styles.muted, { textAlign: 'center' }]}>{t('store.loading')}</Text>
+      ) : (
+        <View style={{ gap: 10 }}>
+          <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 17 }}>
+            {done ? (career.correct ? t('career.doneWin', { n: String(reward || career.reward) }) : t('career.doneLose'))
+              : t('career.hint', { n: String(attemptsLeft) })}
+          </Text>
+
+          {/* Kariyer basamakları — açılmayanlar kilitli kutu */}
+          <View style={{ gap: 6 }}>
+            {career.steps.map((st) => (
+              <View
+                key={st.order}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 10,
+                  backgroundColor: st.revealed ? theme.surface2 : theme.well,
+                  borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8,
+                  borderWidth: 1.5, borderColor: st.revealed ? withAlpha(theme.gold, 0.5) : theme.border,
+                }}
+              >
+                <Text style={{ width: 18, color: theme.muted, fontSize: 11, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{st.order}</Text>
+                {st.revealed ? (
+                  <>
+                    <ClubBadge name={st.clubName} size={26} logoUrl={st.clubLogo ?? undefined} />
+                    <View style={{ flex: 1 }}>
+                      <Text numberOfLines={1} style={{ color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold' }}>{st.clubName}</Text>
+                      <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', fontVariant: ['tabular-nums'] }}>{st.years}</Text>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="lock-closed" size={18} color={theme.muted} />
+                    <Text style={{ flex: 1, color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold' }}>{t('career.locked')}</Text>
+                  </>
+                )}
+              </View>
+            ))}
+          </View>
+
+          {/* Cevap alanı ya da sonuç */}
+          {!done ? (
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+              <TextInput
+                value={text}
+                onChangeText={setText}
+                onSubmitEditing={submit}
+                placeholder={t('career.placeholder')}
+                placeholderTextColor={theme.muted}
+                autoCorrect={false}
+                autoCapitalize="words"
+                returnKeyType="send"
+                style={[styles.input, { flex: 1, marginBottom: 0 }]}
+              />
+              <Btn compact kind="accent" icon="send" label="" loading={sending} onPress={submit} />
+            </View>
+          ) : (
+            <View style={{ alignItems: 'center', gap: 8 }}>
+              {career.answer?.imageUrl ? (
+                <CachedImage uri={career.answer.imageUrl} style={styles.playerPhoto} contentFit="cover" />
+              ) : null}
+              <Text style={{ color: theme.text, fontSize: 15, fontFamily: 'Poppins-Black', textAlign: 'center' }}>{career.answer?.name ?? ''}</Text>
+              <Btn big kind="accent" icon="share-social" label={t('career.share')} onPress={share} />
+            </View>
+          )}
+        </View>
+      )}
+    </GameModal>
+  );
+}
+
 function DailyCrossoverModal({ visible, cx, wrong, reward, onGuess, onClose }: {
   visible: boolean;
   cx: DailyCrossoverStateView | null;
@@ -4677,6 +4789,22 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const closeDailyCx = useCallback(() => {
     setDailyCxOpen(false);
     actions.clearDailyCxReward();
+  }, [actions]);
+  // Günün Kariyeri (2026-08-29) — Crossover'la aynı tazeleme kuralı.
+  const [dailyCareerOpen, setDailyCareerOpen] = useState(false);
+  useEffect(() => {
+    if (!state.profile?.userId) return;
+    const stale = !state.dailyCareer || new Date(state.dailyCareer.resetAt).getTime() <= Date.now();
+    if (stale) actions.getDailyCareer();
+  }, [actions, state.profile?.userId, state.dailyCareer]);
+  const openDailyCareer = useCallback(() => {
+    triggerFeedback(GameFeedbackEvent.UI_CARD);
+    track('daily_career_open', { day: state.dailyCareer?.day, played: state.dailyCareer?.played ?? false });
+    setDailyCareerOpen(true);
+  }, [state.dailyCareer?.day, state.dailyCareer?.played]);
+  const closeDailyCareer = useCallback(() => {
+    setDailyCareerOpen(false);
+    actions.clearDailyCareerReward();
   }, [actions]);
   const [joinCode, setJoinCode] = useState('');
   const roomCodeInputFocus = useInputFocusLifecycle();
@@ -5163,6 +5291,26 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 </Text>
               </GhostPanel>
             </View>
+            {/* Günün Kariyeri — ikinci günlük içerik (paylaşım döngüsü) */}
+            <View style={{ width: cardW }}>
+              <GhostPanel
+                title={'GÜNÜN KARİYERİ'}
+                icon="footsteps"
+                ghost="football"
+                height={carouselCardH}
+                tone={darken(theme.purple, 0.72)}
+                onPress={openDailyCareer}
+              >
+                {state.dailyCareer && !state.dailyCareer.played ? (
+                  <View pointerEvents="none" style={{ position: 'absolute', top: 10, right: 10, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.danger }} />
+                ) : null}
+                <Text style={{ color: theme.muted, fontSize: 11.5, lineHeight: 17, fontFamily: 'Poppins-SemiBold', marginTop: 9 }} numberOfLines={3}>
+                  {state.dailyCareer?.played
+                    ? (state.dailyCareer.correct ? t('career.cardWin') : t('career.cardDone'))
+                    : t('career.cardIdle', { n: String(state.dailyCareer?.day ?? '…'), r: String(state.dailyCareer?.reward ?? 10) })}
+                </Text>
+              </GhostPanel>
+            </View>
           </View>
         ) : null}
       </View>
@@ -5177,6 +5325,15 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         reward={state.dailyCxReward}
         onGuess={actions.guessDailyCrossover}
         onClose={closeDailyCx}
+      />
+
+      {/* ── Günün Kariyeri ── */}
+      <DailyCareerModal
+        visible={dailyCareerOpen}
+        career={state.dailyCareer}
+        reward={state.dailyCareerReward}
+        onGuess={actions.guessDailyCareer}
+        onClose={closeDailyCareer}
       />
 
       {/* ── Mode picker ── */}

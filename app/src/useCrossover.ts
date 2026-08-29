@@ -127,6 +127,9 @@ export interface GameState {
   referralRedeem: { referrerName: string; reward: number; seq: number } | null;
   // Günün Crossover'ı — sunucu-otoriter durum; wrong yalnız oyun penceresinde gösterilir.
   dailyCx: import('./protocol').DailyCrossoverStateView | null;
+  // Günün Kariyeri (2026-08-29): kulüp geçmişi tek tek açılan ikinci günlük mod.
+  dailyCareer: import('./protocol').DailyCareerStateView | null;
+  dailyCareerReward: number;
   dailyCxWrong: { guess: string; suggestion: string | null; attemptsLeft: number; seq: number } | null;
   // Son bitişte düşen ödül (kutlama için) — done mesajıyla set edilir, modal kapatınca temizlenir.
   dailyCxReward: number;
@@ -297,6 +300,8 @@ export const initialState: GameState = {
   dailyOfferPurchaseSeq: 0,
   referralRedeem: null,
   dailyCx: null,
+  dailyCareer: null,
+  dailyCareerReward: 0,
   dailyCxWrong: null,
   dailyCxReward: 0,
   updateCheckComplete: false,
@@ -492,6 +497,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, viewProfile: (action as any).profile };
     case 'match_history_list':
       return { ...state, matchHistory: (action as any).matches ?? [] };
+    case '_clear_daily_career_reward' as any:
+      return { ...state, dailyCareerReward: 0 };
     case '_update_required' as any:
       return { ...state, updateRequired: true, updateCheckComplete: true };
     case '_update_available':
@@ -696,6 +703,17 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, dailyOffer: (action as any).offer ?? null };
     case 'referral_redeemed':
       return { ...state, profile: action.profile, referralRedeem: { referrerName: action.referrerName, reward: action.reward, seq: (state.referralRedeem?.seq ?? 0) + 1 } };
+    case 'daily_career':
+      return { ...state, dailyCareer: (action as Extract<ServerMsg, { type: 'daily_career' }>).state };
+    case 'daily_career_result': {
+      const a = action as Extract<ServerMsg, { type: 'daily_career_result' }>;
+      return {
+        ...state,
+        dailyCareer: a.state,
+        dailyCareerReward: a.rewardGranted > 0 ? a.rewardGranted : state.dailyCareerReward,
+        profile: a.profile ?? state.profile,
+      };
+    }
     case 'daily_crossover':
       return { ...state, dailyCx: action.state, dailyCxWrong: null };
     case 'daily_crossover_wrong':
@@ -1817,6 +1835,9 @@ export function useCrossover() {
       buyDailyOffer: (key: string) => send({ type: 'buy_daily_offer', key }),
       redeemReferral: (code: string) => send({ type: 'redeem_referral', code }),
       getDailyCrossover: () => send({ type: 'get_daily_crossover' }),
+      getDailyCareer: () => send({ type: 'get_daily_career' }),
+      guessDailyCareer: (text: string) => send({ type: 'daily_career_guess', text }),
+      clearDailyCareerReward: () => dispatch({ type: '_clear_daily_career_reward' } as never),
       startDailyCrossover: () => send({ type: 'start_daily_crossover' }),
       guessDailyCrossover: (text: string) => send({ type: 'daily_crossover_guess', text }),
       clearDailyCxReward: () => dispatch({ type: '_clear_daily_cx_reward' }),
