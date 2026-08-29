@@ -122,6 +122,7 @@ import { configureInterstitial, maybeShowInterstitial, recordMatchEnd } from './
 import {
   evaluateMonetizationOffer,
   hasActiveSocialPack,
+  MONETIZATION_CONFIG,
   loadMonetizationConfig,
   loadOfferCaps,
   markMatchCompleted,
@@ -1130,7 +1131,12 @@ function AppRoot() {
       loadMonetizationConfig(() => fetchApi('/monetization-config', 3500).then((r) => r.json())),
     ])
       .then(([caps, cfg]) => { if (alive) { setOfferCaps(caps); setMonetizationConfig(cfg); configureInterstitial(cfg.ads); } })
-      .catch(() => { if (alive) { setOfferCaps({ sessionOffers: 0, lastOfferAt: 0, lastSocialPackOfferAt: 0, offersSeenToday: 0, dayKey: new Date().toISOString().slice(0, 10), seenByOffer: {}, dismissedByOffer: {}, postMatchSeenCount: 0, matchesSincePostMatchOffer: 3, lastPostMatchOfferAt: 0, lastDeclineAt: 0, lastPurchaseAt: 0 }); setMonetizationConfig(null); } });
+      .catch(() => { if (alive) { setOfferCaps({ sessionOffers: 0, lastOfferAt: 0, lastSocialPackOfferAt: 0, offersSeenToday: 0, dayKey: new Date().toISOString().slice(0, 10), seenByOffer: {}, dismissedByOffer: {}, postMatchSeenCount: 0, matchesSincePostMatchOffer: 3, lastPostMatchOfferAt: 0, lastDeclineAt: 0, lastPurchaseAt: 0 }); setMonetizationConfig(null);
+        // Config çekilemedi (ör. 3.5 sn zaman aşımı): reklam motoru YİNE de
+        // güvenli varsayılanlarla kurulur — aksi halde configureInterstitial hiç
+        // çağrılmadığı için ödüllü/geçiş hiç yüklenmiyordu (2026-08-29).
+        configureInterstitial(MONETIZATION_CONFIG.ads);
+      } });
     return () => { alive = false; };
   }, []);
 

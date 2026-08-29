@@ -58,13 +58,28 @@ async function persist(): Promise<void> {
   try { await AsyncStorage.setItem(STATE_KEY, JSON.stringify({ totalMatches, sinceAd })); } catch { /* yerel sayaç — kayıp tolere edilir */ }
 }
 
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let retryDelayMs = 30_000;
+
 function preloadNext(): void {
   if (!active() || preloaded) return;
   const ad = InterstitialAd.createForAdRequest(unitId());
   const entry = { ad, loaded: false };
   preloaded = entry;
-  ad.addAdEventListener(AdEventType.LOADED, () => { entry.loaded = true; });
-  ad.addAdEventListener(AdEventType.ERROR, () => { if (preloaded === entry) preloaded = null; });
+  ad.addAdEventListener(AdEventType.LOADED, () => {
+    entry.loaded = true;
+    retryDelayMs = 30_000; // başarı: geri çekilme sıfırlanır
+  });
+  ad.addAdEventListener(AdEventType.ERROR, () => {
+    // Yükleme hatası KALICI OLMAMALI (2026-08-29): eskiden yalnız preloaded
+    // null'lanıyordu ve yeniden denenmediği için ilk hata (ör. doluluk yokken
+    // açılış) reklamı o oturum boyunca öldürüyordu. Artık artan gecikmeyle
+    // yeniden denenir.
+    if (preloaded === entry) preloaded = null;
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => { retryTimer = null; preloadNext(); }, retryDelayMs);
+    retryDelayMs = Math.min(retryDelayMs * 2, 10 * 60_000);
+  });
   ad.load();
 }
 
