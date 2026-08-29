@@ -7523,9 +7523,12 @@ const DIAMOND_PRODUCT_IDS = DIAMOND_PACKS.map((p) => p.productId);
 // Social Pack = auto-renewable subscriptions (unlock Country-Team & Letter-Team in
 // friend matches). productId must match the ASC subscription products + server.
 const SOCIAL_PACK = [
-  // wasPrice: çapa fiyat (üstü çizili gösterilir) — "₺50 yerine ₺24,99" algısı.
-  { id: 'weekly', label: 'Haftalık', price: '₺24,99', wasPrice: '₺50,00', productId: 'com.crossover.socialpack.weekly' },
-  { id: 'monthly', label: 'Aylık', price: '₺89,99', wasPrice: '₺190,00', productId: 'com.crossover.socialpack.monthly' },
+  // wasPrice: çapa fiyat (üstü çizili gösterilir) — "₺79,99 yerine ₺39,99" algısı.
+  // Fiyatlar 2026-08-29'da güncellendi (haftalık ₺24,99→₺39,99 zam, mevcut aboneler
+  // ASC'de korunur; aylık ₺89,99→₺79,99 indirim). Bunlar YALNIZ yedek değerdir —
+  // ekranda App Store'dan gelen displayPrice gösterilir (priceFor).
+  { id: 'weekly', label: 'Haftalık', price: '₺39,99', wasPrice: '₺79,99', productId: 'com.crossover.socialpack.weekly' },
+  { id: 'monthly', label: 'Aylık', price: '₺79,99', wasPrice: '₺170,00', productId: 'com.crossover.socialpack.monthly' },
 ];
 export const SOCIAL_PACK_OFFER = SOCIAL_PACK[0]!; // kampanya popup'ının ürünü (haftalık)
 const SOCIAL_PACK_IDS = SOCIAL_PACK.map((s) => s.productId);
