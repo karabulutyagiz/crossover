@@ -1155,7 +1155,17 @@ function AppRoot() {
     if (state.xoxOver && !prevXoxOver) recordMatchEnd();
     const MENU_PHASES = ['home', 'tournaments', 'arenas', 'leaderboard', 'matchHistory', 'profile'];
     const leavingFinishedMatch = (prevPhase === 'result' || (prevPhase === 'xox' && !!prevXoxOver)) && MENU_PHASES.includes(state.phase);
-    if (leavingFinishedMatch) maybeShowInterstitial(hasActiveSocialPack(state.profile));
+    if (!leavingFinishedMatch) return;
+    // DONMA KORUMASI (2026-08-29): iOS aynı anda TEK native sunum kaldırır —
+    // reklam, açık/açılmakta olan bir popup'ın (post-maç teklifi, kupa/seviye
+    // penceresi, güncelleme dürtmesi) üstüne binerse donma sınıfı hata doğar.
+    // Bu yüzden kısa bir gecikmeyle bakılır ve O ANDA popup varsa reklam
+    // ATLANIR (sayaç korunur; bir sonraki maç sonunda yeniden denenir).
+    const timer = setTimeout(() => {
+      if (modalBlockedRef.current) return;
+      maybeShowInterstitial(hasActiveSocialPack(state.profile));
+    }, 700);
+    return () => clearTimeout(timer);
   }, [state.phase, state.xoxOver, state.profile]);
 
   useEffect(() => {
