@@ -118,6 +118,7 @@ let directRequestPurchase: any = null;
 try { directRequestPurchase = require('react-native-iap').requestPurchase; } catch { /* Expo Go */ }
 import { isRonaldoAnswer, triggerDiamondCollectTick, triggerFeedback } from './src/feedback/GameFeedback';
 import { loadFeedbackPreferences } from './src/feedback/preferences';
+import { configureInterstitial, maybeShowInterstitial, recordMatchEnd } from './src/interstitial';
 import {
   evaluateMonetizationOffer,
   hasActiveSocialPack,
@@ -1128,10 +1129,28 @@ function AppRoot() {
       loadOfferCaps(),
       loadMonetizationConfig(() => fetchApi('/monetization-config', 3500).then((r) => r.json())),
     ])
-      .then(([caps, cfg]) => { if (alive) { setOfferCaps(caps); setMonetizationConfig(cfg); } })
+      .then(([caps, cfg]) => { if (alive) { setOfferCaps(caps); setMonetizationConfig(cfg); configureInterstitial(cfg.ads); } })
       .catch(() => { if (alive) { setOfferCaps({ sessionOffers: 0, lastOfferAt: 0, lastSocialPackOfferAt: 0, offersSeenToday: 0, dayKey: new Date().toISOString().slice(0, 10), seenByOffer: {}, dismissedByOffer: {}, postMatchSeenCount: 0, matchesSincePostMatchOffer: 3, lastPostMatchOfferAt: 0, lastDeclineAt: 0, lastPurchaseAt: 0 }); setMonetizationConfig(null); } });
     return () => { alive = false; };
   }, []);
+
+  // GEÇİŞ REKLAMI KANCASI (2026-08-29): maç bitişlerini say (klasik 'result'
+  // girişi + XOX'ta xoxOver'ın dolması) ve YALNIZ sonuçtan menüye dönüşte
+  // göster — rövanşa/yeni maça girerken asla (rakip bekletilmez). Paketliye
+  // gösterim maybeShowInterstitial içinde zaten engelli.
+  const adPrevPhaseRef = useRef(state.phase);
+  const adPrevXoxOverRef = useRef(state.xoxOver);
+  useEffect(() => {
+    const prevPhase = adPrevPhaseRef.current;
+    const prevXoxOver = adPrevXoxOverRef.current;
+    adPrevPhaseRef.current = state.phase;
+    adPrevXoxOverRef.current = state.xoxOver;
+    if (state.phase === 'result' && prevPhase !== 'result') recordMatchEnd();
+    if (state.xoxOver && !prevXoxOver) recordMatchEnd();
+    const MENU_PHASES = ['home', 'tournaments', 'arenas', 'leaderboard', 'matchHistory', 'profile'];
+    const leavingFinishedMatch = (prevPhase === 'result' || (prevPhase === 'xox' && !!prevXoxOver)) && MENU_PHASES.includes(state.phase);
+    if (leavingFinishedMatch) maybeShowInterstitial(hasActiveSocialPack(state.profile));
+  }, [state.phase, state.xoxOver, state.profile]);
 
   useEffect(() => {
     setMonetizationDiagnostics((current) => ({

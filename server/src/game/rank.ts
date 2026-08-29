@@ -951,7 +951,9 @@ export async function setSelectedFrame(
 // between grants (a real rewarded ad can't finish faster than this). One atomic
 // UPDATE guarded on both, so concurrent taps can never exceed the cap.
 const AD_REWARD = 5;
-const AD_REWARD_DAILY_CAP = 100;   // max rewarded-ad grants per day
+// Günlük tavan 100→24 (2026-08-29): ödüllü yerleşimler çoğaldı (kayıp sonrası +
+// elmas yetersiz + günlük sandık); 24×5=120 elmas/gün üst sınır — musluk kontrollü.
+const AD_REWARD_DAILY_CAP = Number(process.env.AD_REWARD_DAILY_CAP ?? '24');
 const AD_REWARD_MIN_GAP_SEC = 12;  // min seconds between grants
 export async function grantAdReward(
   userId: string,

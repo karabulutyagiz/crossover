@@ -941,6 +941,21 @@ export function startServer(port: number): Server {
           xpBoost: process.env.OFFER_XP_BOOST !== '0',
           socialPackDiscovery: process.env.OFFER_SOCIAL_PACK_DISCOVERY !== '0',
         },
+        // Reklam kurgusu (kullanıcı onayı 2026-08-29): geçiş reklamı yalnız
+        // Sosyal Paketi OLMAYANA, N maçta bir, ilk maçlar muaf; ödüllü anlar
+        // (kayıp sonrası / elmas yetersiz / günlük sandık) herkese açık.
+        // interstitialEnabled=false başlar — AdMob'da geçiş birimleri açılıp
+        // unit ID'ler env'e girilince '1' yapılır (OTA gerekmez).
+        ads: {
+          interstitialEnabled: process.env.ADS_INTERSTITIAL_ENABLED === '1',
+          interstitialEveryMatches: Number(process.env.ADS_INTERSTITIAL_EVERY ?? '3'),
+          interstitialGraceMatches: Number(process.env.ADS_INTERSTITIAL_GRACE ?? '5'),
+          interstitialUnitIos: process.env.ADS_INTERSTITIAL_UNIT_IOS ?? null,
+          interstitialUnitAndroid: process.env.ADS_INTERSTITIAL_UNIT_ANDROID ?? null,
+          rewardedPostLoss: process.env.ADS_REWARDED_POST_LOSS !== '0',
+          rewardedShortfall: process.env.ADS_REWARDED_SHORTFALL !== '0',
+          dailyChest: process.env.ADS_DAILY_CHEST !== '0',
+        },
       }));
       return;
     }

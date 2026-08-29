@@ -39,7 +39,7 @@ import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasu
 import { Avatar } from './Avatar';
 import { useIsTablet, useWindow, useContentMaxWidth, canvasSizeFor } from './layout';
 import { setPendingShortfall, takePendingShortfall, takePendingShortfallReason } from './shortfall';
-import { setPendingAutoUsePower, takePendingDiamondIntent, type DiamondIntent } from './monetization';
+import { getMonetizationConfig, setPendingAutoUsePower, takePendingDiamondIntent, type DiamondIntent } from './monetization';
 import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -8117,7 +8117,9 @@ try {
   // native module unavailable (Expo Go) — ads disabled gracefully
 }
 
-function useAdState(onReward?: () => void) {
+// enabled=false: ön-yükleme yapılmaz (boş AdMob isteği atılmaz) — ResultScreen
+// yalnız "kayıp + maç sonu" durumunda true geçer (istek şişmesi düzeltmesi 2026-08-29).
+function useAdState(onReward?: () => void, enabled = true) {
   const [adsWatched, setAdsWatched] = useState(0);
   const [adLoading, setAdLoading] = useState(false);
   // Ad failures surface as state so the caller renders a skinned GameModal (no native Alert).
@@ -8157,7 +8159,7 @@ function useAdState(onReward?: () => void) {
     ad.addAdEventListener(AdEventType.ERROR, () => { if (preloadedRef.current === entry) preloadedRef.current = null; });
     ad.load();
   }, []);
-  useEffect(() => { preloadNext(); }, [preloadNext]);
+  useEffect(() => { if (enabled) preloadNext(); }, [preloadNext, enabled]);
 
   const watchAd = async () => {
     // No AdMob SDK → grant reward directly (dev/Expo Go fallback)
@@ -9178,6 +9180,21 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
                 label={`${t('store.buyNow')} · ${priceFor(pack.productId, pack.price)}`}
                 onPress={() => buy(pack.productId)}
               />
+              {/* 🎬 Küçük açıklar reklamla kapanabilir (kullanıcı onayı 2026-08-29):
+                  eksik ≤15 💎 ise "reklam izle → +5" ikinci yol olarak sunulur —
+                  satın almanın alternatifi değil, küçük farkın dostu. */}
+              {getMonetizationConfig().ads.rewardedShortfall && shortfall.missing <= 15 ? (
+                <Btn
+                  compact kind="primary" icon="videocam"
+                  label={t('ads.shortfallCta')}
+                  feedback={GameFeedbackEvent.UI_TAP}
+                  onPress={() => {
+                    track('ad_reward_shortfall_tap', { missing: shortfall.missing, source: shortfall.source });
+                    setShowNotEnough(false); setShortfall(null);
+                    void watchAd();
+                  }}
+                />
+              ) : null}
               <Btn label={t('store.cancel')} kind="ghost" onPress={() => { setShowNotEnough(false); setShortfall(null); }} />
             </>
           );
@@ -13651,6 +13668,22 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
   const leaveKind = state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
   const handleLeave = () => (matchOver || tutorial) ? actions.leave() : setShowLeaveConfirm(true);
 
+  // KAYIP SONRASI ÖDÜLLÜ REKLAM (kullanıcı onayı 2026-08-29): maç bitti ve
+  // kaybettiysen "reklam izle → elmas" teselli teklifi. Ödül sunucu-onaylı
+  // (grant_ad_reward: günlük tavan + hız sınırı sunucuda) — istemci yalnız
+  // izletir; miktar sunucudan döner, başarıda buton "+N elmas" onayına dönüşür.
+  const [adClaimState, setAdClaimState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle');
+  const [adClaimGranted, setAdClaimGranted] = useState(0);
+  const lostFinal = matchOver && state.matchWinnerId != null && state.matchWinnerId !== room.youId
+    && getMonetizationConfig().ads.rewardedPostLoss;
+  const postLossAd = useAdState(() => {
+    setAdClaimState('busy');
+    actions.grantAdReward()
+      .then((granted) => { track('ad_reward_granted', { granted, source: 'post_loss' }); setAdClaimGranted(granted); setAdClaimState(granted > 0 ? 'done' : 'error'); if (granted > 0) triggerFeedback(GameFeedbackEvent.UI_PURCHASE); })
+      .catch(() => setAdClaimState('error'));
+  }, lostFinal);
+  const showPostLossAd = lostFinal && adClaimState !== 'done' && adClaimState !== 'error';
+
   const { icon, color, headline } = useMemo(() => {
     if (r.reason === 'same_team')
       return { icon: 'swap-horizontal' as IoniconName, color: theme.accent, headline: t('result.roundSkipped') };
@@ -13785,6 +13818,20 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
               </View>
             );
           })() : null}
+          {/* 🎬 Kayıp tesellisi: reklam izle → elmas (yalnız maç sonu + kaybeden) */}
+          {showPostLossAd ? (
+            <View style={{ alignItems: 'center', marginTop: 10 }}>
+              <Btn
+                compact kind="accent" icon="videocam"
+                label={postLossAd.adLoading || adClaimState === 'busy' ? t('ads.loading') : t('ads.postLossCta')}
+                feedback={GameFeedbackEvent.UI_TAP}
+                onPress={() => { if (!postLossAd.adLoading && adClaimState === 'idle') void postLossAd.watchAd(); }}
+              />
+            </View>
+          ) : null}
+          {adClaimState === 'done' ? (
+            <Text style={{ color: theme.gemText, fontFamily: 'Poppins-Black', fontSize: 13, textAlign: 'center', marginTop: 10 }}>{t('ads.rewardGranted', { n: String(adClaimGranted) })}</Text>
+          ) : null}
           {/* "Ben de doğru yazmıştım" hissinin ilacı: kaybeden tarafa hızı açıkça söyle */}
           {r.correct && r.answeredById != null && r.answeredById !== room.youId ? (
             <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.faster', { name: r.answeredByName ?? '' })}</Text>

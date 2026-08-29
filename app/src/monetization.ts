@@ -98,6 +98,18 @@ export type MonetizationRemoteConfig = {
     xpBoost: boolean;
     socialPackDiscovery: boolean;
   };
+  // Reklam kurgusu (2026-08-29) — sunucu /monetization-config'ten gelir; eski
+  // sunucuda alan yoksa güvenli varsayılanlar (geçiş reklamı KAPALI) kullanılır.
+  ads: {
+    interstitialEnabled: boolean;
+    interstitialEveryMatches: number;
+    interstitialGraceMatches: number;
+    interstitialUnitIos: string | null;
+    interstitialUnitAndroid: string | null;
+    rewardedPostLoss: boolean;
+    rewardedShortfall: boolean;
+    dailyChest: boolean;
+  };
 };
 
 export const MONETIZATION_CONFIG: MonetizationRemoteConfig = {
@@ -123,6 +135,16 @@ export const MONETIZATION_CONFIG: MonetizationRemoteConfig = {
     xpBoost: true,
     socialPackDiscovery: true,
   },
+  ads: {
+    interstitialEnabled: false,
+    interstitialEveryMatches: 3,
+    interstitialGraceMatches: 5,
+    interstitialUnitIos: null,
+    interstitialUnitAndroid: null,
+    rewardedPostLoss: true,
+    rewardedShortfall: true,
+    dailyChest: true,
+  },
 };
 
 const CAPS_KEY = '@crossover_monetization_caps_v2';
@@ -137,17 +159,27 @@ function sanitizeConfig(value: unknown): MonetizationRemoteConfig {
   if (!value || typeof value !== 'object') return MONETIZATION_CONFIG;
   const v = value as Partial<MonetizationRemoteConfig>;
   const offers = typeof v.offers === 'object' && v.offers ? v.offers : {};
+  const ads = typeof v.ads === 'object' && v.ads ? v.ads : {};
   return {
     ...MONETIZATION_CONFIG,
     ...v,
     offers: { ...MONETIZATION_CONFIG.offers, ...offers },
+    ads: { ...MONETIZATION_CONFIG.ads, ...ads },
   };
+}
+
+// Son yüklenen config'in modül-seviyesi kopyası: ekranlar (ResultScreen/Store)
+// prop zinciri kurmadan reklam bayraklarına buradan bakar (2026-08-29).
+let lastLoadedConfig: MonetizationRemoteConfig = MONETIZATION_CONFIG;
+export function getMonetizationConfig(): MonetizationRemoteConfig {
+  return lastLoadedConfig;
 }
 
 export async function loadMonetizationConfig(fetcher?: () => Promise<unknown>): Promise<MonetizationRemoteConfig> {
   if (!fetcher) return MONETIZATION_CONFIG;
   try {
-    return sanitizeConfig(await fetcher());
+    lastLoadedConfig = sanitizeConfig(await fetcher());
+    return lastLoadedConfig;
   } catch {
     return MONETIZATION_CONFIG;
   }
