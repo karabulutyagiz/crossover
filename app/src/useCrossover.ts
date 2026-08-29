@@ -383,6 +383,14 @@ const ENDPOINT_KEY = '@crossover_endpoint'; // last server URL that connected on
 // still beats the old single 15s wait.
 const CONNECT_TIMEOUT_MS = 6000;
 const STALE_SOCKET_MS = 120_000;
+// MAÇTA ZOMBİ BAĞLANTI (oyuncu raporu 2026-08-29): "yazıyorum, GÖNDER'e
+// basıyorum, buton çalışıyor ama hiçbir şey gitmiyor; süre 0'da kalıyor ve
+// maçı kaybediyorum". Soket OPEN görünürken TCP ölmüş oluyor (mobilde ağ
+// değişimi/NAT zaman aşımı) — send() hata bile vermiyor. Bayatlık kontrolü
+// eskiden YALNIZ menü ekranlarında çalışıyordu, yani maçta bu durum hiç
+// yakalanmıyordu. Maçta sunucu düzenli çerçeve gönderdiği için (heartbeat +
+// oyun olayları) 30 sn sessizlik ölü bağlantı demektir.
+const MATCH_STALE_MS = 30_000;
 
 type Action =
   | ServerMsg
@@ -1480,9 +1488,17 @@ export function useCrossover() {
     if (!uid || !name) return;
     const ensure = () => {
       const ws = wsRef.current;
-      const staleOpen = ws?.readyState === WebSocket.OPEN && lastSocketActivity.current > 0 && Date.now() - lastSocketActivity.current > STALE_SOCKET_MS;
-      if (staleOpen && ['home', 'tournaments', 'arenas', 'leaderboard', 'matchHistory', 'profile'].includes(state.phase)) {
-        connectAndSend({ type: 'register', name, userId: uid }, { silent: true });
+      const st = stateRef.current;
+      const inMatchNow = !!st.room?.code && MATCH_PHASES.has(st.phase);
+      const staleLimit = inMatchNow ? MATCH_STALE_MS : STALE_SOCKET_MS;
+      const staleOpen = ws?.readyState === WebSocket.OPEN && lastSocketActivity.current > 0 && Date.now() - lastSocketActivity.current > staleLimit;
+      if (staleOpen) {
+        // Maçtaysa odaya DÖNEREK bağlan (register maçtan düşürürdü).
+        const first: ClientMsg = inMatchNow && st.profile
+          ? { type: 'resume_room', code: st.room!.code, userId: uid }
+          : { type: 'register', name, userId: uid };
+        track('socket_stale_reconnect', { inMatch: inMatchNow, phase: st.phase });
+        connectAndSend(first, { silent: true });
         return;
       }
       if (ws && ws.readyState === WebSocket.OPEN) return;
