@@ -2995,6 +2995,11 @@ export function UsernameScreen({ state, actions }: Props) {
         </GamePanel>
       </Animated.View>
       <NetworkErrorBeacon visible={isNetworkErrorMessage(state.error)} />
+
+      {/* Emote ön ısıtması — maç DIŞINDA ve SIRALI (2026-08-29). Geri sayımdan
+          buraya taşındı: orada altı animasyon birden çözülüyor ve donma
+          bildiriliyordu. Ana ekran sakin; ısınma bitince katman kaybolur. */}
+      <EmoteWarmup />
     </Screen>
   );
 }
@@ -5993,10 +5998,10 @@ export function CountdownScreen({ state }: Props) {
   const scale = a.interpolate({ inputRange: [0, 1], outputRange: [2.4, 1] });
   return (
     <Screen bg={<MatchCosmeticBackdrop backgroundId={matchBackgroundIdForState(state)} />}>
-      {/* Animasyonlu WebP emote'larının oturum başına bir kez görünmez ısınması
-          (#28): ilk emote patlaması ve emote sayfası açılışı decode'a takılmasın.
-          Geri sayım doğal pencere — tur başlayınca ekran zaten unmount olur. */}
-      <EmoteWarmup />
+      {/* EMOTE ISITMASI BURADAN KALDIRILDI (2026-08-29): 6 animasyonlu WebP'yi
+          (~1,8 MB) aynı anda çözüyordu ve oyuncular "maç içinde, genelde 3-2-1'de
+          donuyor" diye bildirdi. Isıtma artık SIRALI ve maç DIŞINDA (ana ekran)
+          çalışıyor — geri sayım maçın en kritik anı, burada ağır iş yapılmaz. */}
       <View style={styles.center}>
         {/* Halka TAMAMEN yeşil kaplar: alt kenar da theme.primary (eskiden primaryDark
             koyu arka planda "kesik" görünüyordu). Üstte yalnız ince bir parlaklık kalır. */}

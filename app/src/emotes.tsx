@@ -4,7 +4,7 @@
 // emotes are sold in the store and rendered as looping RN-`Animated` stickers —
 // no GIF/sprite assets and no extra native deps, so they run fine in Expo Go.
 // Keep these ids in sync with server/src/game/emotes.ts.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Image as RNImage, StyleSheet, Text, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -259,24 +259,37 @@ function WebpSticker({ source, still, size, play }: { source: number; still?: nu
 // dönüşmesin diye kendini birkaç saniyede söndürür (arka plan animasyon yasağı).
 let emotesWarmed = false;
 const WARM_SIZE = 88; // EmoteCallout'un varsayılan sticker boyutuyla AYNI kalmalı
+
+/**
+ * Emote ön ısıtması — SIRALI (2026-08-29).
+ *
+ * ÖNCEDEN: 6 animasyonlu WebP (toplam ~1,8 MB) AYNI ANDA autoplay ile
+ * çözülüyordu ve bu, geri sayım ekranına (CountdownScreen) monteliydi. Oyuncu
+ * raporu "maç içinde, genelde 3-2-1'de donuyor" tam bu yükü işaret etti:
+ * maçın en kritik anında altı animasyon birden decode ediliyordu.
+ *
+ * ŞİMDİ: aynı anda YALNIZ BİR emote ısıtılır, aralarında nefes payı vardır ve
+ * katman maç dışında (ana ekran) çalışır. Decode maliyeti zamana yayıldığı için
+ * kare düşmez; ısınma bitince katman kendini kaldırır.
+ */
+const WARM_STEP_MS = 500;
 export function EmoteWarmup() {
-  const [active, setActive] = useState(() => !emotesWarmed);
+  const list = useMemo(
+    () => [...PREMIUM_EMOTES, ...ANIM_EMOTES].filter((e) => e.kind === 'lottie' && e.anim != null),
+    [],
+  );
+  const [idx, setIdx] = useState(() => (emotesWarmed ? -1 : 0));
   useEffect(() => {
-    if (!active) return;
-    emotesWarmed = true;
-    // Decode toplamda birkaç yüz ms sürer; 6sn her cihaza yeter. Sonra katman
-    // kendini kaldırır — çözülmüş kareler expo-image bellek önbelleğinde kalır.
-    const id = setTimeout(() => setActive(false), 6000);
+    if (idx < 0) return;
+    if (idx >= list.length) { emotesWarmed = true; setIdx(-1); return; }
+    const id = setTimeout(() => setIdx((i) => i + 1), WARM_STEP_MS);
     return () => clearTimeout(id);
-  }, [active]);
-  if (!active) return null;
+  }, [idx, list.length]);
+  const current = idx >= 0 && idx < list.length ? list[idx] : null;
+  if (!current) return null;
   return (
     <View pointerEvents="none" style={{ position: 'absolute', width: WARM_SIZE, height: WARM_SIZE, opacity: 0, overflow: 'hidden' }}>
-      {[...PREMIUM_EMOTES, ...ANIM_EMOTES]
-        .filter((e) => e.kind === 'lottie' && e.anim != null)
-        .map((e) => (
-          <ExpoImage key={e.id} source={e.anim} style={{ width: WARM_SIZE, height: WARM_SIZE }} contentFit="contain" autoplay />
-        ))}
+      <ExpoImage key={current.id} source={current.anim} style={{ width: WARM_SIZE, height: WARM_SIZE }} contentFit="contain" autoplay />
     </View>
   );
 }
