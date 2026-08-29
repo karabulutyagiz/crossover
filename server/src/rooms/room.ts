@@ -66,7 +66,13 @@ const WIN_TARGET = 3; // first to this many round wins takes the match
 // Result screen pause: one visible 10→0 countdown, then the next round
 // auto-starts (both players pressing "Hazır" skips the wait).
 const INTER_ROUND_MS = 10_000;
-const RECONNECT_GRACE_MS = 12_000;
+// 12 sn → 40 sn (oyuncu raporu 2026-08-29): oyun donunca oyuncu uygulamayı
+// KILL edip yeniden açıyor; splash + bağlantı + giriş + odaya dönüş 12 saniyeye
+// sığmıyordu ve dönmeye çalışan oyuncu maçı hükmen kaybediyordu. Rakip bu süre
+// boyunca "bağlantı kesik" göstergesini görür (broadcastState), yani ekran boş
+// kalmaz. 'Tutundurma > antifarm': kasten kaçanı 28 saniye daha beklemek,
+// gerçekten dönmeye çalışanı cezalandırmaktan iyidir.
+const RECONNECT_GRACE_MS = 40_000;
 type ForfeitReason = 'leave' | 'cheat' | 'disconnect';
 
 function finiteNumber(value: unknown): number | null {
