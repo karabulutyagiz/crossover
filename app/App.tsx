@@ -118,7 +118,7 @@ let directRequestPurchase: any = null;
 try { directRequestPurchase = require('react-native-iap').requestPurchase; } catch { /* Expo Go */ }
 import { isRonaldoAnswer, triggerDiamondCollectTick, triggerFeedback } from './src/feedback/GameFeedback';
 import { loadFeedbackPreferences } from './src/feedback/preferences';
-import { configureInterstitial, maybeShowInterstitial, recordMatchEnd } from './src/interstitial';
+import { configureInterstitial, interstitialDiagnostics, maybeShowInterstitial, recordMatchEnd } from './src/interstitial';
 import { markCleanExit, setFreezeScreen, startFreezeWatch } from './src/freezeWatch';
 import {
   evaluateMonetizationOffer,
@@ -1176,11 +1176,20 @@ function AppRoot() {
     // penceresi, güncelleme dürtmesi) üstüne binerse donma sınıfı hata doğar.
     // Bu yüzden kısa bir gecikmeyle bakılır ve O ANDA popup varsa reklam
     // ATLANIR (sayaç korunur; bir sonraki maç sonunda yeniden denenir).
-    const timer = setTimeout(() => {
-      if (modalBlockedRef.current) return;
-      maybeShowInterstitial(hasActiveSocialPack(state.profile));
+    // TEK ATIŞ YETMİYORDU (2026-08-30): eskiden 700ms sonra BİR kez bakılıyor,
+    // o an bir pencere açıksa reklam tamamen atlanıyordu. Maç sonunda kupa
+    // uçuşu / seviye atlama / elmas kutlaması / teklif penceresi neredeyse HER
+    // ZAMAN açık olduğu için reklam pratikte hiç gösterilemiyordu (oyuncu
+    // raporu: "ödüllü çıkıyor ama geçiş çıkmıyor" — ödüllüyü oyuncu kendisi,
+    // pencere yokken açıyor). Artık pencereler kapanana kadar beklenir; ana
+    // ekrandan çıkılırsa ya da süre dolarsa sessizce vazgeçilir.
+    const deadline = Date.now() + 20_000;
+    const timer = setInterval(() => {
+      if (Date.now() > deadline) { clearInterval(timer); return; }
+      if (modalBlockedRef.current) return;          // pencere kapanınca tekrar denenir
+      if (maybeShowInterstitial(hasActiveSocialPack(state.profile))) clearInterval(timer);
     }, 700);
-    return () => clearTimeout(timer);
+    return () => clearInterval(timer);
   }, [state.phase, state.xoxOver, state.profile]);
 
   useEffect(() => {
@@ -1189,6 +1198,7 @@ function AppRoot() {
       appVersion: APP_VERSION,
       buildNumber: APP_BUILD_NUMBER,
       socialPackEntitlement: hasActiveSocialPack(state.profile),
+      ...interstitialDiagnostics(),
       sessionSocialPackShown: socialPackQueuedThisSessionRef.current,
       modalQueueLength: engagementState.queuedEngagements.length,
       updatedAt: new Date().toISOString(),
