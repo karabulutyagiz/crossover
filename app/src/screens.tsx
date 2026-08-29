@@ -158,6 +158,7 @@ type Actions = {
   openTournaments: () => void;
   closeTournaments: () => void;
   listTournaments: () => void;
+  getLeague: () => void;
   joinTournament: (id: string) => void;
   leaveTournament: (id: string) => void;
   getTournament: (id: string) => void;
@@ -6479,10 +6480,145 @@ function TourMatchBox({ m, youId }: { m: { aId: string | null; aName: string | n
   );
 }
 
+// ── HAFTALIK LİG (2026-08-29) ──────────────────────────────────────────────
+// Turnuvalar sekmesinin ikinci görünümü. Lig AYRI EŞLEŞME İSTEMEZ: oyuncu
+// normal maçlarını oynar, kazandığı kupalar burada puan olur. Ödül yalnız
+// prestij (küme + rozet) — bu yüzden ekranda elmas/güç vaadi YOKTUR.
+const LEAGUE_TIER_META: { key: MessageKey; color: string; icon: IoniconName }[] = [
+  { key: 'league.tier.bronze', color: theme.bronze, icon: 'shield' },
+  { key: 'league.tier.silver', color: theme.silver, icon: 'shield' },
+  { key: 'league.tier.gold', color: theme.gold, icon: 'shield-half' },
+  { key: 'league.tier.diamond', color: theme.blue, icon: 'diamond' },
+  { key: 'league.tier.champion', color: theme.purple, icon: 'trophy' },
+];
+
+function leagueCountdown(endsAt: string): string {
+  const ms = new Date(endsAt).getTime() - Date.now();
+  if (ms <= 0) return t('league.endingNow');
+  const days = Math.floor(ms / 86_400_000);
+  const hours = Math.floor((ms % 86_400_000) / 3_600_000);
+  if (days > 0) return t('league.endsInDays', { d: String(days), h: String(hours) });
+  const minutes = Math.floor((ms % 3_600_000) / 60_000);
+  return t('league.endsInHours', { h: String(hours), m: String(minutes) });
+}
+
+function LeagueView({ state, actions }: Props) {
+  const league = state.league;
+  useEffect(() => { actions.getLeague(); }, []);
+  // Saatlik geri sayım metni canlı kalsın (tablo yeniden çekilmez — ucuz tick).
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((v) => v + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  if (!league) return <EmptyState icon="podium" title={t('store.loading')} />;
+  const meta = LEAGUE_TIER_META[league.tier] ?? LEAGUE_TIER_META[0]!;
+  const last = league.lastResult;
+  const lastMoved = last ? last.tierAfter - last.tierBefore : 0;
+
+  return (
+    <View style={{ gap: 10 }}>
+      {/* Küme başlığı + haftanın kalan süresi */}
+      <GamePanel compact accentStripe={meta.color} bodyStyle={{ padding: 12, gap: 6 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: theme.well, borderWidth: 2.5, borderColor: meta.color, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name={meta.icon} size={24} color={meta.color} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: theme.text, fontSize: 16, fontFamily: 'Poppins-Black', ...engrave('sm') }}>{t(meta.key)}</Text>
+            <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold' }}>{leagueCountdown(league.endsAt)}</Text>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={{ color: meta.color, fontSize: 20, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{league.yourRank}.</Text>
+            <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>{t('league.points', { n: String(league.yourPoints) })}</Text>
+          </View>
+        </View>
+        <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', lineHeight: 15 }}>{t('league.howItWorks', { n: String(league.promoteCount), d: String(league.demoteCount) })}</Text>
+      </GamePanel>
+
+      {/* Geçen haftanın sonucu — yalnız yükselme/düşme olduysa göster */}
+      {last && lastMoved !== 0 ? (
+        <GamePanel compact accentStripe={lastMoved > 0 ? theme.primary : theme.danger} bodyStyle={{ padding: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Ionicons name={lastMoved > 0 ? 'arrow-up-circle' : 'arrow-down-circle'} size={20} color={lastMoved > 0 ? theme.primary : theme.danger} />
+          <Text style={{ flex: 1, color: theme.text, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>
+            {lastMoved > 0
+              ? t('league.promoted', { rank: String(last.rank), tier: t(LEAGUE_TIER_META[last.tierAfter]?.key ?? 'league.tier.bronze') })
+              : t('league.demoted', { rank: String(last.rank), tier: t(LEAGUE_TIER_META[last.tierAfter]?.key ?? 'league.tier.bronze') })}
+          </Text>
+        </GamePanel>
+      ) : null}
+
+      {/* Sıralama tablosu — terfi/düşme bölgeleri renkli şeritle ayrılır */}
+      <GamePanel compact bodyStyle={{ padding: 0, overflow: 'hidden' }}>
+        {league.rows.map((row, i) => {
+          const zoneColor = row.zone === 'promote' ? theme.primary : row.zone === 'demote' ? theme.danger : 'transparent';
+          const firstOfDemote = row.zone === 'demote' && league.rows[i - 1]?.zone !== 'demote';
+          return (
+            <View key={`${row.rank}-${row.name}`}>
+              {/* Düşme hattı: "bu çizginin altı küme düşer" */}
+              {firstOfDemote ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 3, backgroundColor: withAlpha(theme.danger, 0.14) }}>
+                  <Ionicons name="arrow-down" size={11} color={theme.danger} />
+                  <Text style={{ color: theme.danger, fontSize: 9.5, fontFamily: 'Poppins-Black', letterSpacing: 0.5 }}>{t('league.demoteLine')}</Text>
+                </View>
+              ) : null}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 7, paddingHorizontal: 10, backgroundColor: row.isYou ? withAlpha(theme.accent, 0.16) : 'transparent', borderTopWidth: i === 0 ? 0 : 1, borderTopColor: theme.border }}>
+                <View style={{ width: 3, height: 26, borderRadius: 2, backgroundColor: zoneColor }} />
+                <Text style={{ width: 22, color: row.isYou ? theme.text : theme.muted, fontSize: 12, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], textAlign: 'right' }}>{row.rank}</Text>
+                <Avatar avatar={row.avatar} name={row.name} size={26} ring={row.isYou ? theme.accent : theme.border} iconColor={theme.muted} iconSize={14} />
+                <Text numberOfLines={1} style={{ flex: 1, color: row.isYou ? theme.text : theme.muted, fontSize: 12.5, fontFamily: row.isYou ? 'Poppins-Black' : 'Poppins-SemiBold' }}>{row.name}</Text>
+                <Text style={{ color: row.isYou ? theme.accent : theme.muted, fontSize: 12, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>{row.points}</Text>
+              </View>
+              {/* Terfi hattı: "bu çizginin üstü yükselir" */}
+              {row.zone === 'promote' && league.rows[i + 1]?.zone !== 'promote' ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 3, backgroundColor: withAlpha(theme.primary, 0.14) }}>
+                  <Ionicons name="arrow-up" size={11} color={theme.primary} />
+                  <Text style={{ color: theme.primary, fontSize: 9.5, fontFamily: 'Poppins-Black', letterSpacing: 0.5 }}>{t('league.promoteLine')}</Text>
+                </View>
+              ) : null}
+            </View>
+          );
+        })}
+      </GamePanel>
+      <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 14, marginBottom: 6 }}>{t('league.footer')}</Text>
+    </View>
+  );
+}
+
+/** Turnuvalar/Lig geçişi — iki görünüm tek sekmede yaşar (nav bar 5 buton kalır). */
+function LeagueTabBar({ tab, onChange }: { tab: 'tour' | 'league'; onChange: (t: 'tour' | 'league') => void }) {
+  const item = (key: 'tour' | 'league', label: string, icon: IoniconName) => {
+    const active = tab === key;
+    return (
+      <Pressable
+        key={key}
+        onPress={() => { triggerFeedback(GameFeedbackEvent.UI_TAP); onChange(key); }}
+        style={({ pressed }) => ({
+          flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+          paddingVertical: 9, borderRadius: 12,
+          backgroundColor: active ? theme.surface2 : theme.well,
+          borderWidth: 2, borderColor: active ? theme.gold : theme.border,
+          transform: [{ translateY: pressed ? 1 : 0 }],
+        })}
+      >
+        <Ionicons name={icon} size={15} color={active ? theme.gold : theme.muted} />
+        <Text style={{ color: active ? theme.text : theme.muted, fontSize: 12, fontFamily: 'Poppins-Black', letterSpacing: 0.3 }}>{label}</Text>
+      </Pressable>
+    );
+  };
+  return (
+    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+      {item('tour', t('tour.tabTournaments'), 'trophy')}
+      {item('league', t('league.tab'), 'podium')}
+    </View>
+  );
+}
+
 export function TournamentsScreen({ state, actions }: Props) {
   const youId = state.profile?.userId ?? null;
   const list = state.tournaments;
   const tour = state.tournament;
+  const [tab, setTab] = useState<'tour' | 'league'>('tour');
   useEffect(() => { actions.listTournaments(); }, []);
   // Üyesi olduğum turnuvanın ağacını otomatik aç/yenile.
   useEffect(() => {
@@ -6498,12 +6634,16 @@ export function TournamentsScreen({ state, actions }: Props) {
     <Screen scroll contentCenter={false}>
       {/* Sekme sayfası: geri oku YOK (nav bar zaten altta). Başlık turnuva adı ya da genel. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 6 }}>
-        <Ionicons name="trophy" size={20} color={theme.gold} />
-        <Text style={{ color: theme.text, fontSize: 19, fontFamily: 'Poppins-Black', letterSpacing: 0.5, ...engrave('lg') }}>{tour && tour.status !== 'finished' ? tour.name : t('tour.title')}</Text>
+        <Ionicons name={tab === 'league' ? 'podium' : 'trophy'} size={20} color={theme.gold} />
+        <Text style={{ color: theme.text, fontSize: 19, fontFamily: 'Poppins-Black', letterSpacing: 0.5, ...engrave('lg') }}>{tab === 'league' ? t('league.title') : tour && tour.status !== 'finished' ? tour.name : t('tour.title')}</Text>
       </View>
 
+      <LeagueTabBar tab={tab} onChange={setTab} />
+
+      {tab === 'league' ? <LeagueView state={state} actions={actions} /> : null}
+
       {/* ── Lobi listesi (ağaç açık değilken ya da turnuva bitmişken) ── */}
-      {(!tour || tour.status === 'finished') ? (
+      {tab !== 'tour' ? null : (!tour || tour.status === 'finished') ? (
         <View style={{ gap: 10, marginTop: 8 }}>
           {!list ? (
             <EmptyState icon="trophy" title={t('store.loading')} />

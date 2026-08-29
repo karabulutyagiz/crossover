@@ -177,6 +177,7 @@ export function validateClientMsg(value: unknown): ValidationResult {
       if (!isString(value.id, 64)) return invalid('ack_support_message.id is invalid');
       break;
     case 'list_tournaments':
+    case 'get_league':
       break;
     case 'join_tournament':
     case 'leave_tournament':

@@ -168,6 +168,8 @@ export interface GameState {
   supportMessage: { id: string; title: string | null; body: string } | null; // hedefli destek popup'ı
   tournaments: Extract<ServerMsg, { type: 'tournaments_list' }>['items'] | null;
   tournament: Extract<ServerMsg, { type: 'tournament_state' }>['tournament'] | null;
+  // Haftalık Lig tablosu (2026-08-29) — Turnuvalar sekmesinin 'LİG' görünümü.
+  league: Extract<ServerMsg, { type: 'league_state' }>['league'] | null;
   tournamentReady: Extract<ServerMsg, { type: 'tournament_match_ready' }> | null;
   tournamentOver: Extract<ServerMsg, { type: 'tournament_over' }> | null;
   unseenCollection: { emotes: number; cosmetics: number; powers: number }; // satın alınıp henüz görülmemişler (kırmızı 1)
@@ -347,6 +349,7 @@ export const initialState: GameState = {
   supportMessage: null,
   tournaments: null,
   tournament: null,
+  league: null,
   tournamentReady: null,
   tournamentOver: null,
   unseenCollection: { emotes: 0, cosmetics: 0, powers: 0 },
@@ -648,6 +651,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, supportMessage: { id: a.id, title: a.title ?? null, body: a.body } };
     }
     case '_clear_support': return { ...state, supportMessage: null };
+    case 'league_state':
+      return { ...state, league: (action as Extract<ServerMsg, { type: 'league_state' }>).league };
     case 'tournaments_list':
       return { ...state, tournaments: (action as Extract<ServerMsg, { type: 'tournaments_list' }>).items };
     case 'tournament_state': {
@@ -1756,6 +1761,7 @@ export function useCrossover() {
       openTournaments: () => { dispatch({ type: '_phase', phase: 'tournaments' }); send({ type: 'list_tournaments' }); },
       closeTournaments: () => dispatch({ type: '_phase', phase: 'home' }),
       listTournaments: () => send({ type: 'list_tournaments' }),
+      getLeague: () => send({ type: 'get_league' }),
       joinTournament: (id: string) => send({ type: 'join_tournament', id }),
       leaveTournament: (id: string) => send({ type: 'leave_tournament', id }),
       getTournament: (id: string) => send({ type: 'get_tournament', id }),

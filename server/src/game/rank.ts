@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { pool } from '../db/pool.ts';
 import { milestoneFor } from './specialPowers.ts';
+import { addLeaguePoints } from './weeklyLeague.ts';
 import { config } from '../config.ts';
 import { PREMIUM_ROAD_PRICE } from './level.ts';
 import { emotePrice, isFreeEmote, isEquippableEmote, MAX_EQUIPPED, ALL_COLLECTIBLE_EMOTES } from './emotes.ts';
@@ -714,6 +715,10 @@ export async function applyMatchResult(
       });
     }
     await client.query('COMMIT');
+    // HAFTALIK LİG (2026-08-29): kazanılan kupa = lig puanı. Maç transaction'ının
+    // DIŞINDA ve fire-and-forget: lig yazımı hiçbir koşulda maç sonucunu
+    // geciktirmemeli ya da geri almamalı (kendi hatasını içeride yutar).
+    if (won && delta > 0) void addLeaguePoints(userId, delta);
     return { profile, delta, arenaReward, shielded, expectedWinProbability: expectedCalc?.expectedWinProbability, streakReward };
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch { /* ignore */ }

@@ -327,6 +327,7 @@ export type ClientMsg =
   | { type: 'leave_match'; reason?: 'leave' | 'cheat' }
   | { type: 'ack_support_message'; id: string }
   | { type: 'list_tournaments' }
+  | { type: 'get_league' }
   | { type: 'join_tournament'; id: string }
   | { type: 'leave_tournament'; id: string }
   | { type: 'get_tournament'; id: string }
@@ -415,6 +416,7 @@ export type ServerMsg =
   | { type: 'searching'; etaSeconds?: number } // tahmini eşleşme süresi (dürüst: fallback zamanından türetilir)
   | { type: 'support_message'; id: string; title?: string | null; body: string } // hedefli destek/duyuru popup'ı
   | { type: 'tournaments_list'; items: { id: string; name: string; size: number; joined: number; youJoined: boolean; status: 'registration' | 'live' | 'finished'; prizeFirst: number; prizeSecond: number; entryFee: number; winnerName?: string | null }[] }
+  | { type: 'league_state'; league: { tier: number; tierName: string; weekKey: string; endsAt: string; yourRank: number; yourPoints: number; groupSize: number; promoteCount: number; demoteCount: number; rows: { rank: number; name: string; points: number; isYou: boolean; isBot: boolean; avatar: string | null; zone: 'promote' | 'demote' | 'stay' }[]; lastResult: { weekKey: string; rank: number; points: number; tierBefore: number; tierAfter: number } | null } }
   | { type: 'tournament_state'; tournament: { id: string; name: string; size: number; status: 'registration' | 'live' | 'finished'; prizeFirst: number; prizeSecond: number; entryFee: number; joined: number; youJoined: boolean; players: { userId: string; name: string }[]; matches: { id: string; round: number; slot: number; aId: string | null; aName: string | null; bId: string | null; bName: string | null; winnerId: string | null; status: string }[]; winnerName: string | null } }
   | { type: 'tournament_match_ready'; tournamentId: string; matchId: string; opponentName: string; tournamentName: string; youReady?: boolean; oppReady?: boolean } // maç oynanabilir — iki taraf da hazır deyince başlar
   | { type: 'tournament_over'; tournamentId: string; youWon: boolean; placement: number; prize: number; tournamentName: string }

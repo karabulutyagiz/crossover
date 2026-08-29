@@ -53,6 +53,7 @@ import { redeemReferral } from '../game/referrals.ts';
 import { toProfileView } from '../game/profileView.ts';
 import { buySpecialPower, equipSpecialPower, isSpecialPowerId } from '../game/specialPowers.ts';
 import { listTournaments, getTournamentState, joinTournament, leaveTournament, pendingTournamentMatchesFor, markMatchPlaying, reportTournamentResult, tournamentMemberIds } from '../game/tournaments.ts';
+import { getLeagueState } from '../game/weeklyLeague.ts';
 
 // Guideline 1.2: no anonymous posting. Any path that creates content another
 // user sees requires a verified Apple/Google/Facebook identity — a guest can
@@ -1831,6 +1832,16 @@ export function startServer(port: number): Server {
       }
 
       // ═══ TURNUVALAR (2026-08-28) ═══
+      // HAFTALIK LİG (2026-08-29): salt-okunur durum. Puan kazanımı maç
+      // kapanışında (rank.ts) olur; burada yalnız tablo döner. Misafir hesap da
+      // görebilsin diye giriş şartı yok — profilsizde boş tablo yerine hata.
+      if (msg.type === 'get_league') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void getLeagueState(userProfile.id)
+          .then((league) => transport.send({ type: 'league_state', league }))
+          .catch((err) => reportSocketTaskFailure('get_league', err));
+        return;
+      }
       if (msg.type === 'list_tournaments') {
         void listTournaments(userProfile?.id ?? null)
           .then((items) => transport.send({ type: 'tournaments_list', items }))
