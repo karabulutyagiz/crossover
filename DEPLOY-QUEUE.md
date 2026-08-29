@@ -24,6 +24,9 @@ Bekleyen sunucu işleri (hepsi `build-113` HEAD'inde, tsc temiz, testler yeşil)
   (Kâzım→Kazım, Modrić→Modric; ç/ğ/ı/İ/ö/ş/ü korunur) + iki takımda da
   oynamışlardan EN BİLİNDİK öncelikli seçim (0.62 en ünlü, kalan ilk 3) —
   tüm modlar + XOX.
+- **Seri ödülü TAMAMEN kapalı** (`39e23d4` + `193dff4`): galibiyet serisi ne
+  elmas ne güç verir — STREAK_MILESTONES boş. ACİL: eski kod canlıda hâlâ
+  3/5/10/20'de elmas dağıtıyor olabilir; bu paket basılana dek sızıntı sürer.
 
 ### Sunucu deploy komutu (kalıp)
 ```bash
