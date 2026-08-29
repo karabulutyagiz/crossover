@@ -10,6 +10,8 @@ ve server/src/game/iap.ts ANDROID_PRICE_MILLIUNITS_TRY ile birebir).
 
 ÖN KOŞUL:
   * app/play-service-account.json (Google service account anahtarı)
+  NOT: Tek seferlik ürünlerin ucu monetization/onetimeproducts'tır (eski
+  inappproducts kullanımdan kalktı, oneTimeProducts diye bir yol YOK — 404).
   * Service account'a Play Console'da yönetici/finans izni verilmiş olmalı
   * Projede Google Play Android Developer API etkin olmalı
 
@@ -104,9 +106,9 @@ def create_one_time(token: str) -> int:
                 }],
             }],
         }
-        status, body = call("PATCH", f"{BASE}/oneTimeProducts/{pid}?{params}", token, payload)
+        status, body = call("PATCH", f"{BASE}/monetization/onetimeproducts/{pid}?{params}", token, payload)
         if status in (200, 201):
-            print(f"OK   {pid:38} ₺{lira},{kurus:02d}")
+            print(f"OK   {pid:38} ₺{lira},{kurus // 10:02d}")
         else:
             failed += 1
             print(f"HATA {pid:38} {status} → {body[:220]}")
@@ -140,7 +142,7 @@ def create_subscriptions(token: str) -> int:
         }
         status, body = call("POST", f"{BASE}/subscriptions?{params}", token, payload)
         if status in (200, 201):
-            print(f"OK   {pid:38} ₺{lira},{kurus:02d} / {period}")
+            print(f"OK   {pid:38} ₺{lira},{kurus // 10:02d} / {period}")
         elif status == 409:
             print(f"VAR  {pid:38} (zaten tanımlı, atlandı)")
         else:
