@@ -1,40 +1,36 @@
-# CANLIYA ALINACAKLAR — Deploy Sırası (güncel: 2026-08-29)
+# CANLIYA ALINACAKLAR — Deploy Sırası (güncel: 2026-08-29 gece)
 
-## ✅ 2026-08-29 — HER ŞEY CANLIDA (build-113 @ fece4ba)
+## ✅ 2026-08-29 — TAM YAYIN (sunucu + OTA, iOS & Android)
+OTA grubu `c25cb779-05e4-4be9-a781-f9460186f00b` (runtime 1.0.3, android+ios).
+Sunucu basıldı (rooms=0 anına denk geldi, kimse düşmedi); migration 0015/0016/0017 uygulandı.
 
-Bu turda canlıya alınanlar (kullanıcı onayıyla, 3-5 oda açıkken):
+BAĞLANTI ZİNCİRİ (dört düzeltme birlikte):
+- Ölü bağlantı toleransı 8sn → ~24sn (tek kaçan PONG maç bitiriyordu)
+- Görünür heartbeat 12sn (protokol PING'i RN'de JS'e görünmüyor)
+- MAÇTA zombi bağlantı tespiti (eskiden yalnız menüde vardı) → 30sn
+- Kopan bağlantı register değil resume_room ile ODAYA DÖNER
+- Yeniden bağlanma penceresi 12sn → 40sn
 
-**SUNUCU** (rsync + `docker compose up -d --build app`, migration 0014 uygulandı):
-- SIRA 1'in tamamı: aynı-arena eşleşme, ETA, kupa bandı, XOX gerçek kural,
-  seçim toleransı, kesinti hediyesi kapalı, admin feedback ucu
-- Bot insan-gibi-yazım + bilindik-öncelik (a549a14)
-- Seri ödülü TAMAMEN kapalı (193dff4 + 39e23d4) — elmas sızıntısı durdu
-- Sosyal paket açıkları (3d66658), WS ping
-- HAFTALIK LİG (40eae6a): 0014 migration + league_groups/members/settlements
-- Reklam config'i: docker-compose.yml'e ADS_* değişkenleri eklendi
+DİĞER DÜZELTMELER:
+- Donma: emote ısıtması geri sayımdan alındı, SIRALI yapıldı
+- Donma dedektörü (takılma ölçümü + kirli çıkış raporu) — veri toplamaya başladı
+- Reklam: kalıcı yükleme hatası + config zaman aşımı delikleri; modal çakışma koruması
+- Android: mağaza kaydırma (nestedScrollEnabled), Google giriş kapısı
+- Kullanıcı adı: boşluk→_, min 4, sesli harf şartı, küfür filtresi + rakam maskeleri
+- Davet: sosyal paket kapısı + doğrudan ödeme + davet edene sebep bildirimi
+- Kopya cezası: kısa kesintiler affediliyor
 
-**REKLAM** — geçiş reklamı AÇIK ve doğrulandı:
-- iOS birim `ca-app-pub-5118403349234305/8928918587`
-- Android birim `ca-app-pub-5118403349234305/1022508408`
-- 3 maçta 1, ilk 5 maç muaf, Sosyal Paketliye ASLA
-- Ödüllü: kayıp sonrası + elmas yetersiz; günlük tavan 24 izlenme
+YENİ ÖZELLİKLER: Haftalık Lig, Günün Kariyeri, Günlük Görevler, Sezonlar.
 
-**FİYAT** (ASC, `appstore/set-subscription-prices.py`) — 2026-08-30'da yürürlükte:
-- Haftalık ₺24,99 → ₺39,99, mevcut aboneler KORUNDU (`preserved: true`)
-- Aylık ₺89,99 → ₺79,99 (indirim herkese)
+### İZLENECEK
+- Donma dedektörü verisi (client_freeze logları) — 1 gün sonra oku
+- Reklam gösterimi AdMob'da artıyor mu
+- Bağlantı kopma sıklığı düştü mü (player_disconnect_grace / resume oranı)
 
-**OTA** — update group `04c8d39c-538b-493e-bb2e-c95b6af40649` (runtime 1.0.3):
-lig ekranı, reklam kurgusu, yıldız istemi (4 günde bir yeniden dener),
-fiyat metinleri, XOX UI, mağaza tek-rozet, eşleşme sayacı, duyurular.
-
-**ADMIN** — panel senkron (canlı maçta botun kupası görünüyor).
-
-### KALAN TEK İŞ
-- **Play Store**: `~/Downloads/crossover-1.0.3-vc131-dogru-imza.aab` (imza
-  83:D7…BB:4B doğrulandı) Play Console kapalı test taslağına SÜRÜKLENECEK.
-- **Android IAP YOK**: istemci yalnız Apple isteği kuruyor, sunucuda Google
-  doğrulaması yazılmadı, Play'de ürün tanımı yok → Android'de satın alma
-  imkânsız ("yakında" penceresi çıkar). Sıradaki büyük iş.
+### KALAN
+- Android Google giriş: GOOGLE_ANDROID_CLIENT_ID oluşturulacak (config.ts boş)
+- Mevcut uygunsuz kullanıcı adlarının temizliği
+- Play ekran görüntüleri, Klan sistemi
 
 ---
 > Bu dosya deploy edilecek işlerin SIRASIDIR. Deploy'u yapan: diğer yazılımcı.
