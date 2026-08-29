@@ -57,6 +57,14 @@ const CONTAINS = [
   'orospu', 'pezevenk', 'siktir', 'sikeyim', 'sikerim', 'gotveren',
   'amcik', 'amina', 'yarrak', 'kaltak', 'ananisik', 'anasini',
   'motherfuck', 'sonofabitch',
+  // ORTADA GEÇEN TÜREVLER (2026-08-30): 'adnansikişenses' filtreden geçmişti.
+  // Kök 'sik' yalnız ÖNEK olarak yasaklıydı; ada gömülünce yakalanmıyordu.
+  // Ham 'sik' buraya EKLENEMEZ — eksik/kesik/klasik/asik gibi masum kelimeleri
+  // elerdi. O yüzden yalnız masum kelimelerde geçemeyecek türevler listelenir.
+  'sikis', 'sikik', 'sikici', 'sikiyor', 'sikecek', 'sikmek', 'sikise',
+  'ibne', 'ipne', 'kahpe', 'oruspu', 'orspu', 'gotver', 'gavat', 'kavat',
+  'amcuk', 'yarrag', 'tassak', 'godos', 'surtuk', 'fahise',
+  'fuck', 'bitch', 'nigg', 'faggot', 'whore', 'cunt',
   // Nefret / aşırılık
   'nazi', 'hitler', 'isis',
 ];

@@ -43,6 +43,14 @@ for (const bad of [
   check(!ok(bad), `küfür/argo reddedilir: ${bad}`);
 }
 
+// ORTADA GEÇEN KÜFÜR (2026-08-30 gerçek olay: 'adnansikişenses' geçmişti).
+for (const embedded of [
+  'adnansikişenses', 'adnan_sikis_enses', 'mehmetibne', 'aliqkahpe',
+  'canoruspu', 'eminegotveren', 'kerem_fuckboy', 'onursikici',
+]) {
+  check(!ok(embedded), `ada gömülü küfür reddedilir: ${embedded}`);
+}
+
 // RAKAMLA MASKELEME: "s2k" gibi araya rakam sıkıştırılan türevler.
 for (const masked of ['s2k', 's3k', 'am2k', 'y4rr4k', 'g0tveren']) {
   check(!ok(masked), `rakamla maskelenmiş küfür reddedilir: ${masked}`);
@@ -56,6 +64,9 @@ for (const name of [
   'emre_can', 'sinan_07', 'amine', 'amca_kaan', 'amir_han', 'america_efe',
   'picasso', 'toprak', 'topal_osman', 'gokhan', 'malatyaspor', 'salih_efe',
   'bokan_ali',
+  // 'sik' harf dizisi bu masum kelimelerin İÇİNDE geçer — ham kök yasaklanamaz.
+  'eksik_kaan', 'klasik47', 'kesik_bilet', 'asik_efe', 'eksikli',
+  'aysikran', 'muzik_sever',
 ]) {
   check(ok(name), `masum ad kabul edilir: ${name}`);
 }
