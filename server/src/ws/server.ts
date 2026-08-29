@@ -872,7 +872,15 @@ export function startServer(port: number): Server {
     }
     if (path === '/config') {
       void (async () => {
-        const platform = clientPlatform(query.get('platform'));
+        // ESKİ İSTEMCİ TESPİTİ (2026-08-29 ACİL): vc130 Android build'i /config'i
+        // PARAMETRESİZ çağırıyor (platform alanı vc131'de eklendi), bu yüzden
+        // sorgu parametresine bakan platform ayrımı onda çalışmaz. Bu istemciler
+        // minIosBuild'i kendi versionCode'uyla kıyaslayıp kilitlendiği için
+        // platformu User-Agent'tan da tespit ederiz: RN Android fetch okhttp
+        // (Dalvik) UA'sı gönderir, iOS ise CFNetwork/Darwin.
+        const ua = String(req.headers['user-agent'] ?? '');
+        const uaLooksAndroid = /android|okhttp|dalvik/i.test(ua);
+        const platform = clientPlatform(query.get('platform')) ?? (uaLooksAndroid ? 'android' as const : null);
         const version = query.get('version');
         const build = clientBuild(query.get('build'));
         const storeVersions = await getLiveStoreVersions();
