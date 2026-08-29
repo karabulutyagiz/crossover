@@ -1,4 +1,13 @@
-# CANLIYA ALINACAKLAR — Deploy Sırası (2026-08-27)
+# CANLIYA ALINACAKLAR — Deploy Sırası (güncel: 2026-08-29)
+
+## ✅ 2026-08-29 15:5x — SUNUCU BASILDI (build-113 @ e13dc3e sunucu içeriği)
+SIRA 1'in TAMAMI + sonrası canlıda ve kanıtlı: aynı-arena eşleşme, ETA, kupa
+bandı, XOX gerçek kural, seçim toleransı, kesinti hediyesi kapalı, admin
+feedback ucu, bot insan-gibi-yazım + bilindik-öncelik (a549a14), seri ödülü
+TAMAMEN kapalı (193dff4+39e23d4), sosyal paket açıkları (3d66658), WS ping,
+destek mesajı (0012) + turnuva (0013) migration'ları. Admin paneli (bot kupası
+dahil) ayrıca senkronlandı. Kapı notu: rooms 0'a inmedi (botlar sürekli maç
+kuruyor) — kullanıcı onayıyla ~5-6 oda düşürülerek basıldı.
 
 > Bu dosya deploy edilecek işlerin SIRASIDIR. Deploy'u yapan: diğer yazılımcı.
 > Kural: prod'da `docker compose`u aynı anda TEK kişi çalıştırır; basmadan önce
@@ -43,7 +52,7 @@ ssh root@168.222.180.190 'cd /opt/crossover && while [ "$(curl -s localhost:8080
 ssh root@168.222.180.190 'curl -s localhost:8080/health; docker exec crossover-app-1 grep -c sameArenaPair src/matchmaking/policy.ts; docker exec crossover-app-1 grep -c etaSeconds src/ws/server.ts; docker exec crossover-app-1 grep -c "finishXoxDraw" src/rooms/room.ts'
 ```
 
-## SIRA 2 — OTA (sunucudan SONRA)
+## SIRA 2 — OTA (sunucu basıldı; ŞİMDİ basılabilir — token komutu kullanıcıda)
 
 Bekleyen istemci işleri (runtime 1.0.3, native değişiklik yok → OTA uygun):
 
