@@ -901,10 +901,18 @@ export function startServer(port: number): Server {
             ? storeVersionIsNewer(version, platformStoreVersion)
             : false;
 
+        // ACİL DÜZELTME (2026-08-29): Android kapalı testindeki ESKİ istemci
+        // (vc130) platform ayırmıyor ve `minIosBuild`'i KENDİ versionCode'uyla
+        // karşılaştırıyordu → 130 < 148 → oyuna hiç giremiyor, üstelik "güncelle"
+        // butonu iOS App Store'a atıyordu (platform-aware düzeltme vc131'de
+        // geldi, o da yayınlanmadığı için ulaşamıyor: kısır döngü).
+        // Android isteğine minIosBuild'i ZARARSIZ (1) göndeririz — iOS kapısı
+        // (148) aynen korunur, Android kilidi anında açılır. OTA gerekmez.
+        const reportedMinIosBuild = platform === 'android' ? 1 : effectiveMinIosBuild;
         res.writeHead(200, cors);
         res.end(JSON.stringify({
           maintenance: config.maintenanceMode,
-          minIosBuild: effectiveMinIosBuild,
+          minIosBuild: reportedMinIosBuild,
           minAndroidVersionCode: effectiveMinAndroidVersionCode,
           latestIosVersion: storeVersions.iosVersion,
           latestIosBuild: storeVersions.iosBuildNumber,
