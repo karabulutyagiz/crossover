@@ -85,34 +85,45 @@ def money(lira: int, kurus: int) -> dict:
 
 
 def create_one_time(token: str) -> int:
-    failed = 0
+    """Tek seferlik ürünleri TEK batch isteğiyle kurar.
+
+    UÇ NOTU (deneyerek doğrulandı 2026-08-29): tekil PATCH yolu YOK
+    (/oneTimeProducts/{id} yalnız GET'i destekler, PATCH'te HTML 404 döner) ve
+    dokümandaki /monetization/onetimeproducts bu sürümde hiç yok. Çalışan tek
+    yazma yolu:  POST /oneTimeProducts:batchUpdate
+    İstek gövdesi sarmalayıcıdır: her öğe {oneTimeProduct, updateMask,
+    allowMissing, regionsVersion} taşır; packageName/productId sarmalın DIŞINDA
+    değil, oneTimeProduct'ın İÇİNDE olur.
+    """
+    requests_payload = []
     for pid, title, desc, lira, kurus in ONE_TIME:
-        params = urllib.parse.urlencode({
-            "updateMask": "listings,purchaseOptions",
-            "regionsVersion.version": REGIONS_VERSION,
-            "allowMissing": "true",
-        })
-        payload = {
-            "packageName": PKG,
-            "productId": pid,
-            "listings": [{"languageCode": "tr-TR", "title": title, "description": desc}],
-            "purchaseOptions": [{
-                "purchaseOptionId": "base",
-                "buyOption": {"legacyCompatible": True, "multiQuantityEnabled": False},
-                "regionalPricingAndAvailabilityConfigs": [{
-                    "regionCode": "TR",
-                    "price": money(lira, kurus),
-                    "availability": "AVAILABLE",
+        requests_payload.append({
+            "oneTimeProduct": {
+                "packageName": PKG,
+                "productId": pid,
+                "listings": [{"languageCode": "tr-TR", "title": title, "description": desc}],
+                "purchaseOptions": [{
+                    "purchaseOptionId": "base",
+                    "buyOption": {"legacyCompatible": True, "multiQuantityEnabled": False},
+                    "regionalPricingAndAvailabilityConfigs": [{
+                        "regionCode": "TR",
+                        "price": money(lira, kurus),
+                        "availability": "AVAILABLE",
+                    }],
                 }],
-            }],
-        }
-        status, body = call("PATCH", f"{BASE}/monetization/onetimeproducts/{pid}?{params}", token, payload)
-        if status in (200, 201):
+            },
+            "updateMask": "listings,purchaseOptions",
+            "allowMissing": True,
+            "regionsVersion": {"version": REGIONS_VERSION},
+        })
+    status, body = call("POST", f"{BASE}/oneTimeProducts:batchUpdate", token,
+                        {"requests": requests_payload})
+    if status in (200, 201):
+        for pid, _t, _d, lira, kurus in ONE_TIME:
             print(f"OK   {pid:38} ₺{lira},{kurus // 10:02d}")
-        else:
-            failed += 1
-            print(f"HATA {pid:38} {status} → {body[:220]}")
-    return failed
+        return 0
+    print(f"HATA (batch) {status} → {body[:400]}")
+    return 1
 
 
 def create_subscriptions(token: str) -> int:
@@ -150,10 +161,10 @@ def create_subscriptions(token: str) -> int:
             print(f"HATA {pid:38} {status} → {body[:220]}")
             continue
         # Yeni oluşan taban plan DRAFT gelir — AKTİVE edilmeden satılamaz.
+        # activate gövdesi regionsVersion KABUL ETMEZ (400 "Unknown name").
         act, abody = call(
             "POST", f"{BASE}/subscriptions/{pid}/basePlans/base:activate", token,
-            {"packageName": PKG, "productId": pid, "basePlanId": "base",
-             "regionsVersion": {"version": REGIONS_VERSION}})
+            {"packageName": PKG, "productId": pid, "basePlanId": "base"})
         if act in (200, 201):
             print(f"     └─ taban plan AKTİF ✅")
         else:
