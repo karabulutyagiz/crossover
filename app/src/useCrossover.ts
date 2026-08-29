@@ -132,6 +132,8 @@ export interface GameState {
   dailyCareerReward: number;
   // Günlük Görevler (2026-08-29) — ödül XP; ekranda son toplanan XP gösterilir.
   dailyQuests: import('./protocol').DailyQuestsView | null;
+  // Sezon özeti (2026-08-29) — profil ekranındaki kart.
+  season: import('./protocol').SeasonStateView | null;
   questClaimedXp: number;
   dailyCxWrong: { guess: string; suggestion: string | null; attemptsLeft: number; seq: number } | null;
   // Son bitişte düşen ödül (kutlama için) — done mesajıyla set edilir, modal kapatınca temizlenir.
@@ -306,6 +308,7 @@ export const initialState: GameState = {
   dailyCareer: null,
   dailyCareerReward: 0,
   dailyQuests: null,
+  season: null,
   questClaimedXp: 0,
   dailyCxWrong: null,
   dailyCxReward: 0,
@@ -710,6 +713,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, dailyOffer: (action as any).offer ?? null };
     case 'referral_redeemed':
       return { ...state, profile: action.profile, referralRedeem: { referrerName: action.referrerName, reward: action.reward, seq: (state.referralRedeem?.seq ?? 0) + 1 } };
+    case 'season_state':
+      return { ...state, season: (action as Extract<ServerMsg, { type: 'season_state' }>).season };
     case 'daily_quests':
       return { ...state, dailyQuests: (action as Extract<ServerMsg, { type: 'daily_quests' }>).quests };
     case 'quest_claimed': {
@@ -1850,6 +1855,7 @@ export function useCrossover() {
       getDailyCrossover: () => send({ type: 'get_daily_crossover' }),
       getDailyCareer: () => send({ type: 'get_daily_career' }),
       getDailyQuests: () => send({ type: 'get_daily_quests' }),
+      getSeason: () => send({ type: 'get_season' }),
       // Donma raporu: yalnız loglanır, oyun durumuna etkisi yoktur.
       reportFreeze: (kind: 'jank' | 'dirty_exit', screen: string, stalledMs: number) =>
         send({ type: 'freeze_report', kind, screen, stalledMs }),

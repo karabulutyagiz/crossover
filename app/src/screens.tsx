@@ -45,7 +45,7 @@ import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, Lin
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState, FriendInfo, LeaderboardEntry } from './useCrossover';
 import { initialState } from './useCrossover';
-import type { BlockedUserView, ClubRef, CosmeticLoadoutView, CosmeticType, DailyCareerStateView, DailyCrossoverStateView, DailyQuestsView, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, ScopeOption, SpellInfo, StoreCatalogItem } from './protocol';
+import type { BlockedUserView, ClubRef, CosmeticLoadoutView, CosmeticType, DailyCareerStateView, DailyCrossoverStateView, DailyQuestsView, SeasonStateView, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, ScopeOption, SpellInfo, StoreCatalogItem } from './protocol';
 import {
   EmoteCallout,
   EmoteSticker,
@@ -105,6 +105,7 @@ type Actions = {
   getDailyCrossover: () => void;
   getDailyCareer: () => void;
   getDailyQuests: () => void;
+  getSeason: () => void;
   reportFreeze: (kind: 'jank' | 'dirty_exit', screen: string, stalledMs: number) => void;
   claimQuest: (questId: string) => void;
   clearQuestClaimed: () => void;
@@ -12588,6 +12589,51 @@ function StatCard({ icon, color, label, value, gem }: { icon?: IoniconName; colo
   );
 }
 
+function seasonCountdown(endsAt: string): string {
+  const ms = new Date(endsAt).getTime() - Date.now();
+  if (ms <= 0) return t('season.endingNow');
+  const days = Math.floor(ms / 86_400_000);
+  if (days >= 1) return t('season.endsInDays', { d: String(days) });
+  const hours = Math.max(1, Math.floor(ms / 3_600_000));
+  return t('season.endsInHours', { h: String(hours) });
+}
+
+/** Sezon kartı — bu ayın zirvesi + kalan süre + geçen sezonun sonucu.
+ *  Ödül YOKTUR (elmas/güç musluğu açılmaz); değer prestijdir. */
+function SeasonCard({ season }: { season: SeasonStateView }) {
+  const total = season.wins + season.losses;
+  return (
+    <GamePanel compact accentStripe={theme.gold} bodyStyle={{ padding: 12, gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Ionicons name="calendar" size={17} color={theme.gold} />
+        <Text style={{ flex: 1, color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-Black', ...engrave('sm') }}>
+          {t('season.title', { id: season.seasonId })}
+        </Text>
+        <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold' }}>{seasonCountdown(season.endsAt)}</Text>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flex: 1, backgroundColor: theme.well, borderRadius: 10, paddingVertical: 8, alignItems: 'center' }}>
+          <Text style={{ color: theme.gold, fontSize: 16, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{season.peakTrophies}</Text>
+          <Text style={{ color: theme.muted, fontSize: 9.5, fontFamily: 'Poppins-ExtraBold' }}>{t('season.peak')}</Text>
+        </View>
+        <View style={{ flex: 1, backgroundColor: theme.well, borderRadius: 10, paddingVertical: 8, alignItems: 'center' }}>
+          <Text numberOfLines={1} style={{ color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-Black' }}>{arenaLabel(season.peakArenaName)}</Text>
+          <Text style={{ color: theme.muted, fontSize: 9.5, fontFamily: 'Poppins-ExtraBold' }}>{t('season.bestArena')}</Text>
+        </View>
+        <View style={{ flex: 1, backgroundColor: theme.well, borderRadius: 10, paddingVertical: 8, alignItems: 'center' }}>
+          <Text style={{ color: theme.text, fontSize: 16, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{season.wins}</Text>
+          <Text style={{ color: theme.muted, fontSize: 9.5, fontFamily: 'Poppins-ExtraBold' }}>{t('season.wins', { n: String(total) })}</Text>
+        </View>
+      </View>
+      {season.last ? (
+        <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 14 }}>
+          {t('season.lastLine', { id: season.last.seasonId, arena: arenaLabel(season.last.peakArenaName), n: String(season.last.peakTrophies) })}
+        </Text>
+      ) : null}
+    </GamePanel>
+  );
+}
+
 export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore, onOpenLevelRoad }: Props) {
   const p = state.profile;
   // Eski sunucu ProfileView'da xp/level göndermeyebilir — "Seviye undefined"
@@ -12595,8 +12641,9 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
   const lvl = p?.level ?? 1;
   const lvlXp = p?.xp ?? 0;
   const lvlUnclaimed = unclaimedLevelCount(p);
-  // Detaylı istatistikler ekran açılışında bir kez istenir (my_stats yanıtı state'e düşer)
+  // Detaylı istatistikler + sezon özeti ekran açılışında bir kez istenir.
   useEffect(() => {
+    actions.getSeason();
     actions.loadMyStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -12847,6 +12894,14 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
             <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13, ...engrave('sm') }}>{arenaLabel(p.arena.name)}</Text>
           </View>
         </View>
+
+        {/* Sezon kartı (2026-08-29): aylık döngü artık görünür — bu ayın zirvesi,
+            kalan süre ve geçen sezonun sonucu. */}
+        {state.season ? (
+          <View style={{ marginBottom: 12 }}>
+            <SeasonCard season={state.season} />
+          </View>
+        ) : null}
 
         {/* Seviye Yolu girişi — rozet + XP çubuğu, dokununca tam ekran yol */}
         <Pressable onPress={() => onOpenLevelRoad?.()} style={({ pressed }) => ({ marginTop: 12, transform: [{ translateY: pressed ? 2 : 0 }] })}>
