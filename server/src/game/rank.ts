@@ -6,7 +6,7 @@ import { config } from '../config.ts';
 import { PREMIUM_ROAD_PRICE } from './level.ts';
 import { emotePrice, isFreeEmote, isEquippableEmote, MAX_EQUIPPED, ALL_COLLECTIBLE_EMOTES } from './emotes.ts';
 import { avatarPrice, canUseAvatar, DEFAULT_AVATAR_ID, isAvatar, isFreeAvatar } from './avatars.ts';
-import { validateUsername } from './username.ts';
+import { normalizeUsername, validateUsername } from './username.ts';
 import { recordDiamondLedger } from './diamondLedger.ts';
 import { BOT_GAIN_MAX, BOT_GAIN_MIN, BOT_LOSS_MAX, BOT_LOSS_MIN, clampFinalTrophyDelta, trophyDeltaExpectedScore } from '../matchmaking/trophyIntegrity.ts';
 // moderation.ts only pulls in the pool + logger, so this import cannot cycle back.
@@ -427,7 +427,9 @@ export async function setUsername(
 ): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
   const v = validateUsername(username);
   if (!v.ok) return { ok: false, error: v.error ?? 'Geçersiz kullanıcı adı' };
-  const name = username.trim();
+  // Kaydedilen ad DÜZELTİLMİŞ olandır (2026-08-29): oyuncu "Muhammed Taha Aksoy"
+  // yazsa da hesaba "muhammed_taha_aksoy" yazılır — doğrulama neyi geçirdiyse o.
+  const name = normalizeUsername(username);
   if (await displayNameTaken(name, userId)) return { ok: false, error: 'Bu kullanıcı adı alınmış' };
   try {
     const { rows } = await pool.query<DbUser>(

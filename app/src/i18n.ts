@@ -25,7 +25,7 @@ const tr = {
   'username.subtitle': 'Bu ad herkese görünür ve yalnızca bir kez seçilir.',
   'username.placeholder': 'Kullanıcı adın',
   'username.create': 'Oluştur',
-  'username.rules': '3-16 karakter • harf, rakam ve _',
+  'username.rules': '4-20 karakter · harf, rakam ve _ · boşluklar otomatik _ olur',
 
   // login
   'login.google': 'Google ile devam et',
@@ -980,7 +980,7 @@ const en: typeof tr = {
   'username.subtitle': 'This name is public and chosen only once.',
   'username.placeholder': 'Your username',
   'username.create': 'Create',
-  'username.rules': '3-16 chars • letters, digits and _',
+  'username.rules': '4-20 characters · letters, digits and _ · spaces become _',
 
   'login.google': 'Continue with Google',
   'login.facebook': 'Continue with Facebook',

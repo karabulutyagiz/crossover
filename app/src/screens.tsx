@@ -2931,16 +2931,37 @@ export function LoginScreen({ state, actions }: Props) {
 }
 
 // One-time unique username pick, shown after sign-in before anything else.
+// Kullanıcı adı düzeltmesi — sunucudaki normalizeUsername ile AYNI kurallar
+// (2026-08-29). Oyuncu "Muhammed Taha Aksoy" yazarken kutuda anında
+// "Muhammed_Taha_Aksoy" görür; boşluk yüzünden hata almaz.
+const USERNAME_MIN_LEN = 4;
+const USERNAME_MAX_LEN = 20;
+function normalizeUsernameInput(raw: string): string {
+  return raw
+    .replace(/[\s.\-]+/g, '_')
+    .replace(/[^A-Za-z0-9_çğıöşüÇĞİÖŞÜ]/g, '')
+    .replace(/_{2,}/g, '_')
+    .slice(0, USERNAME_MAX_LEN);
+}
+function usernameLooksValid(name: string): boolean {
+  const n = name.replace(/^_+|_+$/g, '');
+  if (n.length < USERNAME_MIN_LEN || n.length > USERNAME_MAX_LEN) return false;
+  if (!/^[A-Za-z0-9_çğıöşüÇĞİÖŞÜ]+$/.test(n)) return false;
+  if (/^\d+$/.test(n)) return false;
+  if (!/[aeıioöuüAEIİOÖUÜ]/.test(n)) return false;   // sesli harf şartı
+  if (/(.)\1{2,}/.test(n)) return false;             // "aaaa" gibi tekrarlar
+  return true;
+}
+
 export function UsernameScreen({ state, actions }: Props) {
   const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const intro = useRef(new Animated.Value(0)).current;
-  const trimmed = name.trim();
-  const valid =
-    trimmed.length >= 3 &&
-    trimmed.length <= 16 &&
-    /^[A-Za-z0-9_çğıöşüÇĞİÖŞÜ]+$/.test(trimmed);
+  // Kenar alt çizgileri yalnız GÖNDERİRKEN kırpılır: kullanıcı "ali_" yazarken
+  // araya harf ekleyebilsin diye yazım sırasında silinmez.
+  const trimmed = name.replace(/^_+|_+$/g, '');
+  const valid = usernameLooksValid(name);
   useEffect(() => {
     Animated.spring(intro, { toValue: 1, friction: 7, tension: 72, useNativeDriver: true }).start();
   }, [intro]);
@@ -2971,10 +2992,10 @@ export function UsernameScreen({ state, actions }: Props) {
           <GameInput
             placeholder={t('username.placeholder')}
             value={name}
-            onChangeText={setName}
+            onChangeText={(v) => setName(normalizeUsernameInput(v))}
             autoCapitalize="none"
             autoCorrect={false}
-            maxLength={16}
+            maxLength={USERNAME_MAX_LEN}
             error={!valid && trimmed.length > 0}
             autoFocus
             returnKeyType="done"

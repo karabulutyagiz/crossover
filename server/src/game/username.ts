@@ -37,6 +37,26 @@ const BANNED = [
 const SHORT_EXACT = new Set(['mal', 'oc', 'pic', 'am', 'got', 'sik', 'pust']);
 const BANNED_SUBSTR = BANNED.filter((w) => !SHORT_EXACT.has(w));
 
+
+// ── Otomatik düzeltme + biçim kuralları (kullanıcı kararı 2026-08-29) ────────
+// Oyuncular Instagram alışkanlığıyla "Muhammed Taha Aksoy" gibi BOŞLUKLU ad
+// yazıp hata alıyordu. Artık reddetmek yerine DÜZELTİYORUZ: boşluk ve nokta
+// alt çizgiye döner, tekrarlar teke iner, baş/son alt çizgi kırpılır.
+export const USERNAME_MIN = 4;   // 3 harf "njj" gibi anlamsız adlara kapı açıyordu
+export const USERNAME_MAX = 20;  // "muhammed_taha_aksoy" (19) sığsın diye 16 → 20
+
+const VOWELS = /[aeıioöuüAEIİOÖUÜ]/;
+
+export function normalizeUsername(raw: string): string {
+  return raw
+    .trim()
+    .replace(/[\s.\-]+/g, '_')      // boşluk / nokta / tire → alt çizgi
+    .replace(/[^A-Za-z0-9_çğıöşüÇĞİÖŞÜ]/g, '') // kalan geçersiz karakterler atılır
+    .replace(/_{2,}/g, '_')          // arka arkaya alt çizgi teke iner
+    .replace(/^_+|_+$/g, '')         // baştaki/sondaki alt çizgi kırpılır
+    .slice(0, USERNAME_MAX);
+}
+
 export interface UsernameCheck {
   ok: boolean;
   error?: string;
@@ -66,18 +86,28 @@ export function censorMessage(text: string): string {
 }
 
 export function validateUsername(raw: string): UsernameCheck {
-  const name = raw.trim();
-  if (name.length < 3) return { ok: false, error: 'Kullanıcı adı en az 3 karakter olmalı' };
-  if (name.length > 16) return { ok: false, error: 'Kullanıcı adı en fazla 16 karakter olabilir' };
-  // Allowed: Turkish/Latin letters, digits, underscore. No spaces.
+  // Girdi ÖNCE düzeltilir (boşluklu ad reddedilmez, alt çizgiye çevrilir);
+  // kurallar düzeltilmiş ad üzerinde işletilir.
+  const name = normalizeUsername(raw);
+  if (name.length < USERNAME_MIN) return { ok: false, error: `Kullanıcı adı en az ${USERNAME_MIN} karakter olmalı` };
+  if (name.length > USERNAME_MAX) return { ok: false, error: `Kullanıcı adı en fazla ${USERNAME_MAX} karakter olabilir` };
   if (!/^[A-Za-z0-9_çğıöşüÇĞİÖŞÜ]+$/.test(name)) {
-    return { ok: false, error: 'Sadece harf, rakam ve _ kullanılabilir (boşluk yok)' };
+    return { ok: false, error: 'Sadece harf, rakam ve _ kullanılabilir' };
   }
   if (/^\d+$/.test(name)) return { ok: false, error: 'Sadece rakamlardan oluşamaz' };
+  // ANLAMSIZ AD ELEMESİ (2026-08-29): "njj", "xzk" gibi sessiz yığınları ile
+  // "aaaa" gibi tek harf tekrarları oyun ciddiyetini bozuyordu.
+  if (!VOWELS.test(name)) return { ok: false, error: 'Kullanıcı adı en az bir sesli harf içermeli' };
+  if (/(.)\1{2,}/.test(name)) return { ok: false, error: 'Aynı karakter üst üste 3 kez kullanılamaz' };
 
   const norm = normalizeForFilter(name);
   if (norm.length === 0) return { ok: false, error: 'Geçersiz kullanıcı adı' };
   if (SHORT_EXACT.has(norm)) return { ok: false, error: 'Bu kullanıcı adı uygun değil' };
+  // Kısa küfür kökleri ad BAŞINDA da yakalanır ("sikko", "amcik1" gibi ekli
+  // türevler eskiden sızıyordu — yalnız birebir eşitlik aranıyordu).
+  for (const w of SHORT_EXACT) {
+    if (norm.startsWith(w)) return { ok: false, error: 'Bu kullanıcı adı uygun değil' };
+  }
   for (const w of BANNED_SUBSTR) {
     if (norm.includes(w)) return { ok: false, error: 'Bu kullanıcı adı uygun değil' };
   }
