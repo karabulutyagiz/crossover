@@ -2276,7 +2276,14 @@ function AppRoot() {
   // KOPYA ÇEKME ALGILANDI bandıyla gelir). 'inactive' (bildirim çekmecesi,
   // kontrol merkezi, gelen arama, ekran görüntüsü) MAÇTAN ATMAZ — dönüşte
   // yalnız uyarı basılır; telefonun normal kullanımı cezalandırılmaz.
-  const cheatWatchRef = useRef<{ eligible: boolean; dipped: boolean }>({ eligible: false, dipped: false });
+  // ANINDA CEZA KALDIRILDI (oyuncu raporu 2026-08-29): oyun donunca oyuncu
+  // uygulamayı kapatmaya çalışıyor, arka plana geçer geçmez hükmen yenilgi
+  // gönderiliyor ve MASUM oyuncu kupa kaybediyordu — geri dönme şansı bile
+  // yoktu. Artık arka plana geçişte yalnız ZAMAN DAMGASI alınır; ceza kararı
+  // GERİ DÖNÜŞTE verilir: kısa kesinti (donma/kaza/bildirim) affedilir, uzun
+  // süre uzak kalan kopya sayılır. 'tutundurma > antifarm' kararının gereği.
+  const CHEAT_GRACE_MS = 30_000;
+  const cheatWatchRef = useRef<{ eligible: boolean; dipped: boolean; bgAt: number }>({ eligible: false, dipped: false, bgAt: 0 });
   cheatWatchRef.current = {
     eligible:
       !!state.room &&
@@ -2285,6 +2292,7 @@ function AppRoot() {
       state.room.players.length === 2 &&
       FORFEIT_PHASES.has(state.phase),
     dipped: cheatWatchRef.current.dipped,
+    bgAt: cheatWatchRef.current.bgAt,
   };
   const [cheatWarnSeq, setCheatWarnSeq] = useState(0);
   const cheatForfeitRef = useRef(actions.forfeitFromBackground);
@@ -2293,17 +2301,26 @@ function AppRoot() {
     const sub = AppState.addEventListener('change', (st) => {
       if (st === 'background') dismissActiveInput();
       if (st === 'background' && cheatWatchRef.current.eligible) {
-        cheatWatchRef.current.dipped = false;
-        cheatForfeitRef.current();
+        // Ceza YOK — yalnız ne zaman ayrıldığını not al.
+        cheatWatchRef.current.bgAt = Date.now();
+        cheatWatchRef.current.dipped = true;
         return;
       }
       if (st === 'inactive' && cheatWatchRef.current.eligible) {
         cheatWatchRef.current.dipped = true;
       }
       if (st === 'active' && cheatWatchRef.current.dipped) {
+        const awayMs = cheatWatchRef.current.bgAt ? Date.now() - cheatWatchRef.current.bgAt : 0;
         cheatWatchRef.current.dipped = false;
-        // Maç hâlâ sürüyorsa uyarıyı bas (dönüşte maç bittiyse gürültü yapma).
-        if (cheatWatchRef.current.eligible) setCheatWarnSeq((n) => n + 1);
+        cheatWatchRef.current.bgAt = 0;
+        if (!cheatWatchRef.current.eligible) return; // dönüşte maç bittiyse gürültü yapma
+        if (awayMs >= CHEAT_GRACE_MS) {
+          // Uzun süre uzakta: kopya sayılır (eski davranış, artık yalnız burada).
+          cheatForfeitRef.current();
+          return;
+        }
+        // Kısa kesinti: donma, bildirim, gelen arama… ceza yok, yalnız uyarı.
+        setCheatWarnSeq((n) => n + 1);
       }
     });
     return () => sub.remove();
