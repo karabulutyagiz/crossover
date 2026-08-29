@@ -30,7 +30,7 @@ import { t, currentLang, setLanguage, LANGUAGES } from './i18n';
 import type { MessageKey } from './i18n';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image as ExpoImage } from 'expo-image';
-import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
+import { GOOGLE_ANDROID_CLIENT_ID, GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { submitPlayerFeedback, type PlayerFeedbackCategory } from './feedbackSubmit';
 import { GemIcon, GEM_COLOR } from './GemIcon';
 import { whenModalSlotFree } from './modalTraffic';
@@ -2756,6 +2756,11 @@ function AppleSignInBtn({ onPress, label }: { onPress: () => void; label?: strin
   return <AuthBtn onPress={onPress} bg="#000000" fg="#FFFFFF" icon="logo-apple" iconColor="#FFFFFF" label={label ?? t('login.apple')} />;
 }
 function GoogleSignInBtn({ onPress, disabled, label }: { onPress: () => void; disabled?: boolean; label?: string }) {
+  // ANDROID KAPISI (2026-08-29): Android OAuth istemcisi tanımlı değilken buton
+  // GÖSTERİLMEZ. Aksi halde oyuncu "erişim engellendi / 400 invalid_request"
+  // hatasına çarpıyordu (web istemcisi custom scheme kabul etmiyor). Kimlik
+  // config'e yazılınca buton kendiliğinden geri gelir.
+  if (Platform.OS === 'android' && !GOOGLE_ANDROID_CLIENT_ID) return null;
   return <AuthBtn onPress={onPress} disabled={disabled} bg="#FFFFFF" border="#DADCE0" fg="#3C4043" icon="logo-google" iconColor="#4285F4" label={label ?? t('login.google')} />;
 }
 
@@ -2767,7 +2772,7 @@ function GoogleSignInBtn({ onPress, disabled, label }: { onPress: () => void; di
 function GuestGateModal({ visible, onClose, actions }: { visible: boolean; onClose: () => void; actions: Actions }) {
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     iosClientId: GOOGLE_IOS_CLIENT_ID,
-    androidClientId: GOOGLE_WEB_CLIENT_ID,
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
     webClientId: GOOGLE_WEB_CLIENT_ID,
   });
   useEffect(() => {
@@ -2838,7 +2843,7 @@ export function LoginScreen({ state, actions }: Props) {
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     iosClientId: GOOGLE_IOS_CLIENT_ID,
-    androidClientId: GOOGLE_WEB_CLIENT_ID,
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
     webClientId: GOOGLE_WEB_CLIENT_ID,
   });
   useEffect(() => {

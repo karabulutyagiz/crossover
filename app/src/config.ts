@@ -86,5 +86,13 @@ export const APP_VERSION = appManifest.expo?.version ?? '0.0.0';
 // Google OAuth client IDs (from Google Cloud → Credentials).
 export const GOOGLE_IOS_CLIENT_ID =
   '85689499254-iu4ap4sl6rqhpeonj00avg390pnhnlsn.apps.googleusercontent.com';
+// ANDROID OAUTH İSTEMCİSİ (2026-08-29): Android'de WEB istemci kimliği
+// kullanılıyordu ve Google bunu reddediyordu — "custom scheme URIs are not
+// allowed for 'Web' client type / 400 invalid_request". Android'in KENDİ OAuth
+// istemcisi gerekir (paket adı + imza SHA-1 ile Google Cloud'da kayıtlı).
+// Kimlik oluşturulup buraya yazılana kadar BOŞ kalır; boşken Android'de Google
+// girişi gösterilmez (hatalı akış yerine hiç görünmemesi yeğdir).
+export const GOOGLE_ANDROID_CLIENT_ID = '';
+
 export const GOOGLE_WEB_CLIENT_ID =
   '85689499254-7eshn0faudar48icce3q5bdv69k5ithr.apps.googleusercontent.com';
