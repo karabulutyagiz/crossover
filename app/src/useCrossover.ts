@@ -130,6 +130,9 @@ export interface GameState {
   // Günün Kariyeri (2026-08-29): kulüp geçmişi tek tek açılan ikinci günlük mod.
   dailyCareer: import('./protocol').DailyCareerStateView | null;
   dailyCareerReward: number;
+  // Günlük Görevler (2026-08-29) — ödül XP; ekranda son toplanan XP gösterilir.
+  dailyQuests: import('./protocol').DailyQuestsView | null;
+  questClaimedXp: number;
   dailyCxWrong: { guess: string; suggestion: string | null; attemptsLeft: number; seq: number } | null;
   // Son bitişte düşen ödül (kutlama için) — done mesajıyla set edilir, modal kapatınca temizlenir.
   dailyCxReward: number;
@@ -302,6 +305,8 @@ export const initialState: GameState = {
   dailyCx: null,
   dailyCareer: null,
   dailyCareerReward: 0,
+  dailyQuests: null,
+  questClaimedXp: 0,
   dailyCxWrong: null,
   dailyCxReward: 0,
   updateCheckComplete: false,
@@ -497,6 +502,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, viewProfile: (action as any).profile };
     case 'match_history_list':
       return { ...state, matchHistory: (action as any).matches ?? [] };
+    case '_clear_quest_claimed' as any:
+      return { ...state, questClaimedXp: 0 };
     case '_clear_daily_career_reward' as any:
       return { ...state, dailyCareerReward: 0 };
     case '_update_required' as any:
@@ -703,6 +710,12 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, dailyOffer: (action as any).offer ?? null };
     case 'referral_redeemed':
       return { ...state, profile: action.profile, referralRedeem: { referrerName: action.referrerName, reward: action.reward, seq: (state.referralRedeem?.seq ?? 0) + 1 } };
+    case 'daily_quests':
+      return { ...state, dailyQuests: (action as Extract<ServerMsg, { type: 'daily_quests' }>).quests };
+    case 'quest_claimed': {
+      const a = action as Extract<ServerMsg, { type: 'quest_claimed' }>;
+      return { ...state, dailyQuests: a.quests, questClaimedXp: a.xp, profile: a.profile ?? state.profile };
+    }
     case 'daily_career':
       return { ...state, dailyCareer: (action as Extract<ServerMsg, { type: 'daily_career' }>).state };
     case 'daily_career_result': {
@@ -1836,6 +1849,9 @@ export function useCrossover() {
       redeemReferral: (code: string) => send({ type: 'redeem_referral', code }),
       getDailyCrossover: () => send({ type: 'get_daily_crossover' }),
       getDailyCareer: () => send({ type: 'get_daily_career' }),
+      getDailyQuests: () => send({ type: 'get_daily_quests' }),
+      claimQuest: (questId: string) => send({ type: 'claim_quest', questId }),
+      clearQuestClaimed: () => dispatch({ type: '_clear_quest_claimed' } as never),
       guessDailyCareer: (text: string) => send({ type: 'daily_career_guess', text }),
       clearDailyCareerReward: () => dispatch({ type: '_clear_daily_career_reward' } as never),
       startDailyCrossover: () => send({ type: 'start_daily_crossover' }),

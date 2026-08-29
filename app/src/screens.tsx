@@ -45,7 +45,7 @@ import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, Lin
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState, FriendInfo, LeaderboardEntry } from './useCrossover';
 import { initialState } from './useCrossover';
-import type { BlockedUserView, ClubRef, CosmeticLoadoutView, CosmeticType, DailyCareerStateView, DailyCrossoverStateView, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, ScopeOption, SpellInfo, StoreCatalogItem } from './protocol';
+import type { BlockedUserView, ClubRef, CosmeticLoadoutView, CosmeticType, DailyCareerStateView, DailyCrossoverStateView, DailyQuestsView, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, ScopeOption, SpellInfo, StoreCatalogItem } from './protocol';
 import {
   EmoteCallout,
   EmoteSticker,
@@ -104,6 +104,9 @@ type Actions = {
   // Günün Crossover'ı
   getDailyCrossover: () => void;
   getDailyCareer: () => void;
+  getDailyQuests: () => void;
+  claimQuest: (questId: string) => void;
+  clearQuestClaimed: () => void;
   guessDailyCareer: (text: string) => void;
   clearDailyCareerReward: () => void;
   startDailyCrossover: () => void;
@@ -4533,6 +4536,64 @@ function dailyCareerShareText(c: DailyCareerStateView): string {
   return `Günün Kariyeri #${c.day}\n${squares}\n${c.correct ? `${used} kulüpte bildim! ⚽` : 'bilemedim 😅'}\nSıra sende 👉 https://crossoverfootball.com/indir`;
 }
 
+function DailyQuestsModal({ visible, quests, claimedXp, onClaim, onClose }: {
+  visible: boolean;
+  quests: DailyQuestsView | null;
+  claimedXp: number;
+  onClaim: (questId: string) => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (claimedXp > 0) triggerFeedback(GameFeedbackEvent.UI_PURCHASE);
+  }, [claimedXp]);
+  const list = quests?.quests ?? [];
+  const doneCount = list.filter((q) => q.claimed).length;
+  return (
+    <GameModal visible={visible} onClose={onClose} title={t('quest.title')} icon="checkbox">
+      {!quests ? (
+        <Text style={[styles.muted, { textAlign: 'center' }]}>{t('store.loading')}</Text>
+      ) : (
+        <View style={{ gap: 10 }}>
+          <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 16 }}>
+            {t('quest.subtitle', { n: String(doneCount), total: String(list.length) })}
+          </Text>
+          {list.map((q) => {
+            const pct = q.target > 0 ? Math.min(1, q.progress / q.target) : 0;
+            return (
+              <GamePanel key={q.id} compact accentStripe={q.claimed ? theme.muted : q.done ? theme.primary : theme.gold} bodyStyle={{ padding: 11, gap: 7 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons
+                    name={q.claimed ? 'checkmark-circle' : q.done ? 'gift' : 'ellipse-outline'}
+                    size={18}
+                    color={q.claimed ? theme.muted : q.done ? theme.primary : theme.gold}
+                  />
+                  <Text style={{ flex: 1, color: q.claimed ? theme.muted : theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>
+                    {t(q.titleKey as MessageKey, { n: String(q.target) })}
+                  </Text>
+                  <Text style={{ color: theme.gold, fontSize: 11.5, fontFamily: 'Poppins-Black' }}>+{q.xp} XP</Text>
+                </View>
+                {/* İlerleme çubuğu — sayıyı da yazar ki "ne kadar kaldı" net olsun */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ flex: 1, height: 7, borderRadius: 4, backgroundColor: theme.well, overflow: 'hidden' }}>
+                    <View style={{ width: `${pct * 100}%`, height: '100%', backgroundColor: q.claimed ? theme.muted : q.done ? theme.primary : theme.gold }} />
+                  </View>
+                  <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{q.progress}/{q.target}</Text>
+                </View>
+                {q.done && !q.claimed ? (
+                  <Btn compact kind="accent" icon="gift" label={t('quest.claim')} feedback={GameFeedbackEvent.UI_PURCHASE} onPress={() => onClaim(q.id)} />
+                ) : null}
+              </GamePanel>
+            );
+          })}
+          <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 14 }}>
+            {t('quest.footer')}
+          </Text>
+        </View>
+      )}
+    </GameModal>
+  );
+}
+
 function DailyCareerModal({ visible, career, reward, onGuess, onClose }: {
   visible: boolean;
   career: DailyCareerStateView | null;
@@ -4806,6 +4867,25 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
     setDailyCareerOpen(false);
     actions.clearDailyCareerReward();
   }, [actions]);
+  // Günlük Görevler (2026-08-29): girişte ve gün dönümünde tazelenir.
+  const [questsOpen, setQuestsOpen] = useState(false);
+  useEffect(() => {
+    if (!state.profile?.userId) return;
+    const stale = !state.dailyQuests || new Date(state.dailyQuests.resetAt).getTime() <= Date.now();
+    if (stale) actions.getDailyQuests();
+  }, [actions, state.profile?.userId, state.dailyQuests]);
+  const openQuests = useCallback(() => {
+    triggerFeedback(GameFeedbackEvent.UI_CARD);
+    actions.getDailyQuests(); // maçlardan gelen ilerlemeyi tazele
+    track('quests_open');
+    setQuestsOpen(true);
+  }, [actions]);
+  const closeQuests = useCallback(() => {
+    setQuestsOpen(false);
+    actions.clearQuestClaimed();
+  }, [actions]);
+  // Toplanmayı bekleyen ödül var mı — ana ekran kartındaki uyarı noktası.
+  const questsReady = (state.dailyQuests?.quests ?? []).some((q) => q.done && !q.claimed);
   const [joinCode, setJoinCode] = useState('');
   const roomCodeInputFocus = useInputFocusLifecycle();
   const [hero, setHero] = useState({ w: 0, h: 0 });
@@ -5311,6 +5391,29 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 </Text>
               </GhostPanel>
             </View>
+            {/* Günlük Görevler — günlük döngünün tutkalı */}
+            <View style={{ width: cardW }}>
+              <GhostPanel
+                title={'GÜNLÜK GÖREVLER'}
+                icon="checkbox"
+                ghost="football"
+                height={carouselCardH}
+                tone={darken(theme.primary, 0.72)}
+                onPress={openQuests}
+              >
+                {questsReady ? (
+                  <View pointerEvents="none" style={{ position: 'absolute', top: 10, right: 10, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.danger }} />
+                ) : null}
+                <Text style={{ color: theme.muted, fontSize: 11.5, lineHeight: 17, fontFamily: 'Poppins-SemiBold', marginTop: 9 }} numberOfLines={3}>
+                  {state.dailyQuests
+                    ? t('quest.card', {
+                        n: String((state.dailyQuests.quests ?? []).filter((q) => q.claimed).length),
+                        total: String((state.dailyQuests.quests ?? []).length),
+                      })
+                    : t('store.loading')}
+                </Text>
+              </GhostPanel>
+            </View>
           </View>
         ) : null}
       </View>
@@ -5325,6 +5428,15 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         reward={state.dailyCxReward}
         onGuess={actions.guessDailyCrossover}
         onClose={closeDailyCx}
+      />
+
+      {/* ── Günlük Görevler ── */}
+      <DailyQuestsModal
+        visible={questsOpen}
+        quests={state.dailyQuests}
+        claimedXp={state.questClaimedXp}
+        onClaim={actions.claimQuest}
+        onClose={closeQuests}
       />
 
       {/* ── Günün Kariyeri ── */}

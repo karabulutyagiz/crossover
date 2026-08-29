@@ -2359,6 +2359,13 @@ export class Room {
     if (this.shouldLockUsedForRound(result)) this.markUsedForRound();
     this.roundNumber += 1;
 
+    // GÜNLÜK GÖREV (2026-08-29): doğru cevap sayacı. Tur bitişinin TEK merkezi
+    // burası olduğu için tüm modlar (team-team, harf, ülke) otomatik kapsanır.
+    // Bot cevapları sayılmaz: yalnız gerçek hesabı olan oyuncu ilerler.
+    if (result.correct && answeredBy?.userId && !answeredBy.transport.isBot) {
+      void recordQuestProgress(answeredBy.userId, { kind: 'correct_answer', count: 1 });
+    }
+
     // Collect winning round info (only rounds where someone scored)
     if (result.correct && result.answeredById) {
       // player-player: the "answer" is a club, not a player
