@@ -90,9 +90,12 @@ export const GOOGLE_IOS_CLIENT_ID =
 // kullanılıyordu ve Google bunu reddediyordu — "custom scheme URIs are not
 // allowed for 'Web' client type / 400 invalid_request". Android'in KENDİ OAuth
 // istemcisi gerekir (paket adı + imza SHA-1 ile Google Cloud'da kayıtlı).
-// Kimlik oluşturulup buraya yazılana kadar BOŞ kalır; boşken Android'de Google
-// girişi gösterilmez (hatalı akış yerine hiç görünmemesi yeğdir).
-export const GOOGLE_ANDROID_CLIENT_ID = '';
+// İstemci 2026-08-29'da oluşturuldu: paket com.crossover.football, imza SHA-1
+// F4:01:56:EB:B8:F7:0C:84:71:C4:BA:B9:C5:E0:08:00:AA:A2:FB:18 (Play'in UYGULAMA
+// İMZALAMA anahtarı — yükleme anahtarı DEĞİL; Play yeniden imzaladığı için
+// cihazdaki imza budur).
+export const GOOGLE_ANDROID_CLIENT_ID =
+  '85689499254-0onfodu4datmudkgnf4t23t5tgcnp36v.apps.googleusercontent.com';
 
 export const GOOGLE_WEB_CLIENT_ID =
   '85689499254-7eshn0faudar48icce3q5bdv69k5ithr.apps.googleusercontent.com';
