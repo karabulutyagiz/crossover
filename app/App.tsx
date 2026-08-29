@@ -167,6 +167,7 @@ import {
 } from './src/engagement';
 import { requestNativeReview } from './src/ReviewService';
 import { resolveMatchBackground } from './src/cosmetics';
+import type { PlayerFeedbackCategory } from './src/feedbackSubmit';
 
 type GemCelebration =
   | { kind: 'purchase'; amount: number; img?: ImageSourcePropType }
@@ -1051,7 +1052,7 @@ function AppRoot() {
   const [activeEngagement, setActiveEngagement] = useState<EngagementQueueItem | null>(null);
   const [feedbackPromptVisible, setFeedbackPromptVisible] = useState(false);
   const [feedbackCenterVisible, setFeedbackCenterVisible] = useState(false);
-  const [feedbackInitialCategory, setFeedbackInitialCategory] = useState<'bug' | undefined>(undefined);
+  const [feedbackInitialCategory, setFeedbackInitialCategory] = useState<PlayerFeedbackCategory | undefined>(undefined);
   const [monetizationDiagnostics, setMonetizationDiagnostics] = useState<MonetizationDiagnostics>(INITIAL_MONETIZATION_DIAGNOSTICS);
   const requiredUpdatePromptOpenRef = useRef(false);
   const pendingOfferCtxRef = useRef<OfferEngineContext | null>(null);
@@ -2102,8 +2103,8 @@ function AppRoot() {
     setActiveEngagement(null);
   }, [activeEngagement, appSessionId, state.phase, updateEngagement]);
 
-  const feedbackCenterOnExit = useRef<null | { category?: 'bug' }>(null);
-  const openFeedbackFromPrompt = useCallback((category?: 'bug') => {
+  const feedbackCenterOnExit = useRef<null | { category?: PlayerFeedbackCategory }>(null);
+  const openFeedbackFromPrompt = useCallback((category?: PlayerFeedbackCategory) => {
     // iOS tek native modal sunar: merkez, prompt'un onExited'ında açılır —
     // ikisi çakışınca donma/çökme sınıfı (modes→upsell deseniyle aynı çözüm).
     feedbackCenterOnExit.current = { category };
@@ -2780,7 +2781,7 @@ function AppRoot() {
               // pending requests, and it clears itself. (The mockup also badges
               // Collection, but every un-owned emote there is grant-only — that badge
               // could never be cleared, so it is deliberately not rendered.)
-              badge={tab.key === 'friends' ? (badgeTotal || null) : tab.key === 'collection' ? ((state.unseenCollection.emotes + state.unseenCollection.cosmetics + state.unseenCollection.powers) || null) : null}
+              badge={tab.key === 'friends' ? (badgeTotal || null) : tab.key === 'collection' ? ((state.unseenCollection.emotes.length + state.unseenCollection.cosmetics.length + state.unseenCollection.powers.length) || null) : null}
               onPress={onPress}
             />
           );
@@ -3360,7 +3361,7 @@ function AppRoot() {
           Eklememizi veya değiştirmemizi istediğin bir şey var mı? Fikrini gerçekten merak ediyoruz.
         </Text>
         <Btn big kind="primary" icon="create" label="Görüşümü Yaz" onPress={() => openFeedbackFromPrompt()} />
-        <Btn kind="ghost" icon="warning" label="Bir Sorun Bildir" onPress={() => openFeedbackFromPrompt('bug')} />
+        <Btn kind="ghost" icon="briefcase" label="Sponsorluk & İş Birlikleri" onPress={() => openFeedbackFromPrompt('sponsorship')} />
         <Btn kind="ghost" label="Daha Sonra" onPress={dismissFeedbackPrompt} />
       </GameModal>
 

@@ -1005,7 +1005,7 @@ export function startServer(port: number): Server {
           const body = JSON.parse(raw || '{}') as Record<string, unknown>;
           const category = typeof body.category === 'string' ? body.category : '';
           const message = typeof body.message === 'string' ? body.message.trim() : '';
-          if (!['suggestion', 'bug', 'gameplay', 'purchase', 'general'].includes(category) || message.length < 4 || message.length > 1200) {
+          if (!['suggestion', 'bug', 'gameplay', 'purchase', 'general', 'sponsorship'].includes(category) || message.length < 4 || message.length > 1200) {
             res.writeHead(400, cors);
             res.end(JSON.stringify({ error: 'invalid_feedback' }));
             return;

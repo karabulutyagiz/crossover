@@ -3,7 +3,7 @@ import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { APP_BUILD_NUMBER, fetchApi } from './config';
 
-export type PlayerFeedbackCategory = 'suggestion' | 'bug' | 'gameplay' | 'purchase' | 'general';
+export type PlayerFeedbackCategory = 'suggestion' | 'bug' | 'gameplay' | 'purchase' | 'general' | 'sponsorship';
 
 export async function submitPlayerFeedback(input: {
   category: PlayerFeedbackCategory;

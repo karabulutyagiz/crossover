@@ -180,7 +180,12 @@ export interface GameState {
   league: Extract<ServerMsg, { type: 'league_state' }>['league'] | null;
   tournamentReady: Extract<ServerMsg, { type: 'tournament_match_ready' }> | null;
   tournamentOver: Extract<ServerMsg, { type: 'tournament_over' }> | null;
-  unseenCollection: { emotes: number; cosmetics: number; powers: number }; // satın alınıp henüz görülmemişler (kırmızı 1)
+  // Satın alınıp henüz GÖRÜLMEMİŞ eşyalar. Eskiden yalnız SAYI tutuluyordu, o
+  // yüzden rozet "bir şey aldın" diyebiliyor ama NE aldığını gösteremiyordu ve
+  // sekmeye girer girmez sönüyordu. Artık kimlikler tutulur: rozet hem alt
+  // bölümde (TOPLAR/FORMALAR…) hem eşyanın kendi kartında görünür ve ancak o
+  // eşyaya BASILINCA söner (kullanıcı isteği 2026-08-29).
+  unseenCollection: { emotes: string[]; cosmetics: string[]; powers: string[] };
   // Maç ortasında ÇIKIŞ (forfeit) = kaybetme. Kupa cezası (trophy_update) reset
   // SONRASI gelir; onunla kaybetme popup'ı gösterilir. null = gösterilecek bir şey yok.
   forfeitLoss: { delta: number; trophies: number; arena: ArenaView; youScore: number; oppScore: number; opponentName: string; reason?: 'cheat' } | null;
@@ -263,6 +268,11 @@ function mergeMessages(existing: MessageView[], incoming: MessageView[]): Messag
 }
 function sortConversations(convos: ConversationView[]): ConversationView[] {
   return [...convos].sort((a, b) => compareIsoAsc(b.lastMessageAt, a.lastMessageAt) || a.userId.localeCompare(b.userId));
+}
+
+/** Görülmemiş listesine tekrarsız ekleme — aynı eşya iki kez rozet üretmez. */
+function addUnseen(cur: readonly string[], id: unknown): string[] {
+  return typeof id === 'string' && id && !cur.includes(id) ? [...cur, id] : [...cur];
 }
 
 export const initialState: GameState = {
@@ -365,7 +375,7 @@ export const initialState: GameState = {
   league: null,
   tournamentReady: null,
   tournamentOver: null,
-  unseenCollection: { emotes: 0, cosmetics: 0, powers: 0 },
+  unseenCollection: { emotes: [], cosmetics: [], powers: [] },
   xoxOver: null,
   storeCatalogError: null,
 };
@@ -423,7 +433,8 @@ type Action =
   | { type: '_quick_match_started' }
   | { type: '_set_game_options'; options: GameOptions | null }
   | { type: '_clear_emote'; playerId: string }
-  | { type: '_unseen_load'; value: { emotes?: number; cosmetics?: number; powers?: number } }
+  | { type: '_unseen_load'; value: { emotes?: unknown; cosmetics?: unknown; powers?: unknown } }
+  | { type: '_item_seen'; tab: 'emotes' | 'cosmetics' | 'powers'; id: string }
   | { type: '_clear_support' }
   | { type: '_clear_tournament_over' }
   | { type: '_clear_tournament_ready' }
@@ -669,13 +680,21 @@ function reducer(state: GameState, action: Action): GameState {
     }
 
     case '_unseen_load': {
-      const v = (action as { value?: { emotes?: number; cosmetics?: number; powers?: number } }).value ?? {};
-      return { ...state, unseenCollection: { emotes: Number(v.emotes) || 0, cosmetics: Number(v.cosmetics) || 0, powers: Number(v.powers) || 0 } };
+      // Diskte ESKİ biçim (sayı) kalmış olabilir; sayıdan kimlik üretilemez, o
+      // kayıt sessizce boşa düşer — tek maliyeti eski rozetin sönmesidir.
+      const v = (action as { value?: Record<string, unknown> }).value ?? {};
+      const ids = (x: unknown): string[] => (Array.isArray(x) ? x.filter((s): s is string => typeof s === 'string') : []);
+      return { ...state, unseenCollection: { emotes: ids(v.emotes), cosmetics: ids(v.cosmetics), powers: ids(v.powers) } };
     }
     case '_col_seen': {
       const tab = (action as { tab: 'emotes' | 'cosmetics' | 'powers' }).tab;
-      if (!state.unseenCollection[tab]) return state;
-      return { ...state, unseenCollection: { ...state.unseenCollection, [tab]: 0 } };
+      if (!state.unseenCollection[tab].length) return state;
+      return { ...state, unseenCollection: { ...state.unseenCollection, [tab]: [] } };
+    }
+    case '_item_seen': {
+      const { tab, id } = action as { tab: 'emotes' | 'cosmetics' | 'powers'; id: string };
+      if (!state.unseenCollection[tab].includes(id)) return state;
+      return { ...state, unseenCollection: { ...state.unseenCollection, [tab]: state.unseenCollection[tab].filter((x) => x !== id) } };
     }
     case 'support_message': {
       const a = action as Extract<ServerMsg, { type: 'support_message' }>;
@@ -773,7 +792,7 @@ function reducer(state: GameState, action: Action): GameState {
       };
     case 'power_purchased':
       // Mağazadan güç alındı — elmas düştü, envanter arttı; koleksiyonda kırmızı 1
-      return { ...state, profile: action.profile, lastPurchase: { kind: 'power', id: (action as any).powerId, seq: (state.lastPurchase?.seq ?? 0) + 1 }, unseenCollection: { ...state.unseenCollection, powers: state.unseenCollection.powers + 1 } };
+      return { ...state, profile: action.profile, lastPurchase: { kind: 'power', id: (action as any).powerId, seq: (state.lastPurchase?.seq ?? 0) + 1 }, unseenCollection: { ...state.unseenCollection, powers: addUnseen(state.unseenCollection.powers, (action as any).powerId) } };
     case 'premium_road_purchased':
       // Elmasla ya da ₺ IAP ile — iki yol da bu mesajı düşürür, tek onay yeter
       return { ...state, profile: action.profile, lastPurchase: { kind: 'premiumRoad', id: undefined, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
@@ -845,13 +864,13 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, emoteSeq: n, emotes: { ...state.emotes, [action.fromId]: { emoteId: action.emoteId, n } } };
     }
     case 'emote_purchased':
-      return { ...state, profile: action.profile, lastPurchase: { kind: 'emote', id: (action as any).emoteId, seq: (state.lastPurchase?.seq ?? 0) + 1 }, unseenCollection: { ...state.unseenCollection, emotes: state.unseenCollection.emotes + 1 } };
+      return { ...state, profile: action.profile, lastPurchase: { kind: 'emote', id: (action as any).emoteId, seq: (state.lastPurchase?.seq ?? 0) + 1 }, unseenCollection: { ...state.unseenCollection, emotes: addUnseen(state.unseenCollection.emotes, (action as any).emoteId) } };
     case 'avatar_purchased':
       return { ...state, profile: action.profile, lastPurchase: { kind: 'avatar', id: (action as any).avatarId, seq: (state.lastPurchase?.seq ?? 0) + 1 } };
     case 'store_catalog':
       return { ...state, storeCatalog: action.catalog, storeCatalogStatus: storeCatalogStatusFor(action.catalog), storeCatalogError: null };
     case 'cosmetic_purchased':
-      return { ...state, profile: action.profile, lastPurchase: { kind: 'cosmetic', id: (action as any).itemId, seq: (state.lastPurchase?.seq ?? 0) + 1 }, unseenCollection: (action as any).alreadyOwned ? state.unseenCollection : { ...state.unseenCollection, cosmetics: state.unseenCollection.cosmetics + 1 } };
+      return { ...state, profile: action.profile, lastPurchase: { kind: 'cosmetic', id: (action as any).itemId, seq: (state.lastPurchase?.seq ?? 0) + 1 }, unseenCollection: (action as any).alreadyOwned ? state.unseenCollection : { ...state.unseenCollection, cosmetics: addUnseen(state.unseenCollection.cosmetics, (action as any).itemId) } };
     case 'cosmetic_equipped':
       return { ...state, profile: action.profile };
     case 'diamonds_granted': {
@@ -1029,7 +1048,7 @@ function reducer(state: GameState, action: Action): GameState {
     case 'special_power_equipped':
       return { ...state, profile: action.profile };
     case 'special_power_purchased':
-      return { ...state, profile: action.profile, lastPurchase: { kind: 'power', id: (action as any).powerId, seq: (state.lastPurchase?.seq ?? 0) + 1 }, unseenCollection: { ...state.unseenCollection, powers: state.unseenCollection.powers + 1 } };
+      return { ...state, profile: action.profile, lastPurchase: { kind: 'power', id: (action as any).powerId, seq: (state.lastPurchase?.seq ?? 0) + 1 }, unseenCollection: { ...state.unseenCollection, powers: addUnseen(state.unseenCollection.powers, (action as any).powerId) } };
     case 'streak_reward':
       return { ...state, profile: action.profile, streakReward: { streak: action.streak, diamonds: action.diamonds, powerId: action.powerId, seq: (state.streakReward?.seq ?? 0) + 1 } };
     case 'result':
@@ -1833,6 +1852,7 @@ export function useCrossover() {
         send({ type: 'equip_special_power', powerId });
       },
       markCollectionSeen: (tab: 'emotes' | 'cosmetics' | 'powers') => dispatch({ type: '_col_seen', tab }),
+      markItemSeen: (tab: 'emotes' | 'cosmetics' | 'powers', id: string) => dispatch({ type: '_item_seen', tab, id }),
       ackSupportMessage: (id: string) => { send({ type: 'ack_support_message', id }); dispatch({ type: '_clear_support' }); },
       openTournaments: () => { dispatch({ type: '_phase', phase: 'tournaments' }); send({ type: 'list_tournaments' }); },
       closeTournaments: () => dispatch({ type: '_phase', phase: 'home' }),

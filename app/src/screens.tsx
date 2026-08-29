@@ -161,7 +161,8 @@ type Actions = {
   // ---- Maç içi Özel Güçler ----
   useSpecialPower: (powerId: string) => void;       // maçta etkinleştir (requestId'yi aksiyon üretir)
   equipSpecialPower: (powerId: string | null) => void; // maça hangi güçle çıkılacağını seç
-  markCollectionSeen: (tab: 'emotes' | 'cosmetics' | 'powers') => void; // kırmızı 1 rozetini söndür
+  markCollectionSeen: (tab: 'emotes' | 'cosmetics' | 'powers') => void; // sekmenin tüm rozetlerini söndür
+  markItemSeen: (tab: 'emotes' | 'cosmetics' | 'powers', id: string) => void; // tek eşyanın rozetini söndür
   ackSupportMessage: (id: string) => void; // destek popup'ı okundu
   openTournaments: () => void;
   closeTournaments: () => void;
@@ -3128,6 +3129,7 @@ const FEEDBACK_CATEGORIES: { id: PlayerFeedbackCategory; icon: IoniconName; titl
   { id: 'gameplay', icon: 'game-controller', title: 'Oyun Deneyimi', body: 'Modlar, denge, botlar veya maç hissi.' },
   { id: 'purchase', icon: 'diamond', title: 'Satın Alma', body: 'Elmas veya Social Pack ile ilgili destek.' },
   { id: 'general', icon: 'heart', title: 'Genel Görüş', body: 'Aklındaki başka her şey.' },
+  { id: 'sponsorship', icon: 'briefcase', title: 'Sponsorluk & İş Birlikleri', body: 'Reklam, sponsorluk veya iş birliği teklifleri.' },
 ];
 
 export function FeedbackCenterModal({ visible, playerId, context, initialCategory, onClose }: {
@@ -3240,6 +3242,7 @@ function SettingsPanel({ onLanguageChange, diamonds, playerId, arenaName, moneti
   const [blockedOpen, setBlockedOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackCategory, setFeedbackCategory] = useState<PlayerFeedbackCategory | undefined>(undefined);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const activeLang = currentLang();
   const activeName = LANGUAGES.find((l) => l.code === activeLang)?.name ?? activeLang;
@@ -3300,7 +3303,15 @@ function SettingsPanel({ onLanguageChange, diamonds, playerId, arenaName, moneti
         label="Görüş & Destek"
         right={<Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>Yaz</Text>}
         chevron
-        onPress={() => setFeedbackOpen(true)}
+        onPress={() => { setFeedbackCategory(undefined); setFeedbackOpen(true); }}
+      />
+      <GameRow
+        icon="briefcase"
+        iconColor={theme.accent}
+        label="Sponsorluk & İş Birlikleri"
+        right={<Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>Yaz</Text>}
+        chevron
+        onPress={() => { setFeedbackCategory('sponsorship'); setFeedbackOpen(true); }}
       />
       <GameRow
         icon="pulse"
@@ -3458,7 +3469,8 @@ function SettingsPanel({ onLanguageChange, diamonds, playerId, arenaName, moneti
         visible={feedbackOpen}
         playerId={playerId}
         context={{ source: 'settings', arenaName, diamonds }}
-        onClose={() => setFeedbackOpen(false)}
+        initialCategory={feedbackCategory}
+        onClose={() => { setFeedbackOpen(false); setFeedbackCategory(undefined); }}
       />
 
       <GameModal visible={diagnosticsOpen} onClose={() => setDiagnosticsOpen(false)} title="Monetization Diagnostics" icon="pulse">
@@ -10464,6 +10476,17 @@ function CosmeticsLoadoutPanel({ state, actions }: Props) {
   const profile = state.profile;
   const catalog = state.storeCatalog;
   useEffect(() => { if (!catalog) actions.loadStoreCatalog(); }, [catalog]);
+  // Bu bolumde (TOPLAR/FORMALAR/...) kac YENI esya var — rozet bunu gosterir.
+  const unseenCos = state.unseenCollection.cosmetics;
+  const unseenByType = useMemo(() => {
+    const map: Partial<Record<EquippableCosmeticType, number>> = {};
+    for (const item of catalog?.items ?? []) {
+      if (!isEquippableCosmeticType(item.type)) continue;
+      if (!unseenCos.includes(item.id)) continue;
+      map[item.type] = (map[item.type] ?? 0) + 1;
+    }
+    return map;
+  }, [catalog, unseenCos]);
   const ownedByType = useMemo(() => {
     const map: Partial<Record<EquippableCosmeticType, StoreCatalogItem[]>> = {};
     for (const item of catalog?.items ?? []) {
@@ -10495,14 +10518,25 @@ function CosmeticsLoadoutPanel({ state, actions }: Props) {
         ];
         return (
           <View key={meta.type}>
-            <SectionHeader label={meta.label.toLocaleUpperCase(currentLang())} icon={meta.icon} style={{ marginBottom: 8 }} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+              <SectionHeader label={meta.label.toLocaleUpperCase(currentLang())} icon={meta.icon} style={{ marginBottom: 0 }} />
+              {(unseenByType[meta.type] ?? 0) > 0 ? (
+                <View style={{ marginLeft: 8, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: theme.danger, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ color: '#FFF', fontSize: 10, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{unseenByType[meta.type]}</Text>
+                </View>
+              ) : null}
+            </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 6 }}>
               {tiles.map((tile) => {
                 const sel = tile.id === null ? isDefaultEquipped : equippedId === tile.id;
+                const isNew = tile.id != null && unseenCos.includes(tile.id);
                 return (
                   <Pressable
                     key={tile.id ?? 'none'}
                     onPress={() => {
+                      // Rozet, kuşanma başarısız olsa bile (zaten kuşanılıysa)
+                      // söner: BASMAK "gördüm" demektir.
+                      if (tile.id != null) actions.markItemSeen('cosmetics', tile.id);
                       if (sel) return; // zaten kuşanılı
                       triggerFeedback(GameFeedbackEvent.UI_CONFIRM);
                       if (meta.type === 'frame') {
@@ -10520,11 +10554,16 @@ function CosmeticsLoadoutPanel({ state, actions }: Props) {
                     style={({ pressed }) => ({
                       width: 108, borderRadius: 16, padding: 8, alignItems: 'center', gap: 6,
                       backgroundColor: theme.card,
-                      borderWidth: 2, borderColor: sel ? theme.primary : withAlpha(theme.border, 0.9),
+                      borderWidth: 2, borderColor: sel ? theme.primary : isNew ? theme.danger : withAlpha(theme.border, 0.9),
                       opacity: pressed ? 0.85 : 1,
                       transform: [{ scale: pressed ? 0.97 : 1 }],
                     })}
                   >
+                    {isNew ? (
+                      <View pointerEvents="none" style={{ position: 'absolute', top: -6, right: -6, zIndex: 5, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: theme.danger, borderWidth: 2, borderColor: theme.card }}>
+                        <Text style={{ color: '#FFF', fontSize: 9, fontFamily: 'Poppins-Black', letterSpacing: 0.4 }}>YENİ</Text>
+                      </View>
+                    ) : null}
                     <View style={{ width: 84, height: 84, borderRadius: 14, backgroundColor: theme.surface3, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                       <CosmeticArt
                         id={tile.id ?? (meta.type === 'ball' ? DEFAULT_BALL_ID : null)}
@@ -10566,7 +10605,14 @@ export const CollectionScreen = memo(function CollectionScreen({ state, actions,
   const [colTab, setColTab] = useState<'emotes' | 'powers' | 'cosmetics'>('emotes');
   // Kırmızı 1: açık sekme 'görüldü' sayılır — rozet söner (satın alınan şeyin
   // nereye gittiğini gösterme sistemi, kullanıcı isteği 2026-08-28).
-  useEffect(() => { if (isActive) actions.markCollectionSeen(colTab); }, [isActive, colTab, state.unseenCollection]);
+  // KOZMETİK rozeti sekmeye girince SÖNMEZ: oyuncu neyi aldığını göremeden
+  // kayboluyordu. Kozmetikte rozet hem alt bölüm başlığında (TOPLAR/FORMALAR…)
+  // hem eşyanın kartında durur ve ancak o eşyaya BASILINCA söner.
+  // İfadeler ve Güçler tek listedir — orada "hangi bölüm" sorusu yok, sekmeyi
+  // açmak görmek demektir, eski davranış korunur.
+  useEffect(() => {
+    if (isActive && colTab !== 'cosmetics') actions.markCollectionSeen(colTab);
+  }, [isActive, colTab, state.unseenCollection]);
   // The single discoverable-emote preview slot: tapping a card claims it (which
   // interrupts whichever card held it), a finished animation releases it.
   // Both handlers are stable so the memo'd cards only re-render on `active` flips.
@@ -10741,9 +10787,9 @@ export const CollectionScreen = memo(function CollectionScreen({ state, actions,
               >
                 <Ionicons name={icon} size={14} color={sel ? theme.primary : theme.muted} />
                 <Text style={{ color: sel ? theme.primary : theme.muted, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.4 }}>{label}</Text>
-                {state.unseenCollection[key] > 0 ? (
+                {state.unseenCollection[key].length > 0 ? (
                   <View style={{ position: 'absolute', top: -6, right: -4, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: theme.danger, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ color: '#FFF', fontSize: 10, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{state.unseenCollection[key]}</Text>
+                    <Text style={{ color: '#FFF', fontSize: 10, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{state.unseenCollection[key].length}</Text>
                   </View>
                 ) : null}
               </Pressable>
@@ -10850,7 +10896,7 @@ export const CollectionScreen = memo(function CollectionScreen({ state, actions,
       </View>
     </Screen>
   );
-}, (p, n) => p.state.profile === n.state.profile && p.state.storeCatalog === n.state.storeCatalog && p.actions === n.actions);
+}, (p, n) => p.state.profile === n.state.profile && p.state.storeCatalog === n.state.storeCatalog && p.state.unseenCollection === n.state.unseenCollection && p.actions === n.actions);
 
 // (Sender-side waiting UI is now the OutgoingInviteBanner top strip in App.tsx —
 // the old InviteWaitingModal blocked the whole Friends screen for 30s.)
