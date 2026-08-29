@@ -99,7 +99,12 @@
     },
     "android": {
       "package": "com.crossover.football",
-      "versionCode": 131,
+      "versionCode": 132,
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#0B1838",
         "foregroundImage": "./assets/android-icon-foreground.png",
