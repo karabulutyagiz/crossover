@@ -58,11 +58,6 @@ export type EngagementPersistedState = {
   feedbackPromptCount: number;
   lastRatingRequestAt: number;
   ratingRequestCount: number;
-  // Yıldız istemi (2026-08-29): 'Şimdi değil' ERTELER (kısa cooldown), yıldız
-  // verilince bir daha sorulmaz. Native sheet'in sonucu okunamadığı için karar
-  // bizim ön penceremizde alınır ve burada saklanır.
-  ratingSnoozedUntil: number;
-  ratingCompleted: boolean;
   lastSocialPackImpressionAt: number;
   socialPackImpressions: number;
   socialPackDismissals: number;
@@ -90,7 +85,6 @@ export type EngagementConfig = {
   ratingMinActiveSeconds: number;
   ratingMinCompletedMatches: number;
   ratingCooldownMs: number;
-  ratingSnoozeMs: number;
   ratingMaxAsks: number;
   postPurchaseSuppressionMs: number;
 };
@@ -108,10 +102,10 @@ export const ENGAGEMENT_CONFIG: EngagementConfig = {
   // iOS zaten requestReview'u yılda 3 gösterimle sınırlar; asıl fren odur.
   ratingMinActiveSeconds: 5 * 60,
   ratingMinCompletedMatches: 2,
-  ratingCooldownMs: 21 * 24 * 60 * 60 * 1000,
-  // 'Şimdi değil' sonrası tekrar sorma aralığı: 21 gün beklemek isteği öldürüyordu
-  // (kullanıcı kararı 2026-08-29 'bir süre sonra tekrar sorsun').
-  ratingSnoozeMs: 3 * 24 * 60 * 60 * 1000,
+  // 21 gün → 4 gün (kullanıcı kararı 2026-08-29 'şimdi değil dediğinde bir süre
+  // sonra tekrar sorsun'): native sheet'in sonucu okunamadığı için istem birkaç
+  // gün sonra yeniden denenir. Zararsızdır — Apple değmezse hiç göstermez.
+  ratingCooldownMs: 4 * 24 * 60 * 60 * 1000,
   ratingMaxAsks: 5,
   postPurchaseSuppressionMs: 30 * 60 * 1000,
 };
@@ -134,8 +128,6 @@ function initialPersisted(): EngagementPersistedState {
     feedbackPromptCount: 0,
     lastRatingRequestAt: 0,
     ratingRequestCount: 0,
-    ratingSnoozedUntil: 0,
-    ratingCompleted: false,
     lastSocialPackImpressionAt: 0,
     socialPackImpressions: 0,
     socialPackDismissals: 0,
@@ -184,8 +176,6 @@ export async function saveEngagementState(state: EngagementRuntimeState): Promis
     feedbackPromptCount: state.feedbackPromptCount,
     lastRatingRequestAt: state.lastRatingRequestAt,
     ratingRequestCount: state.ratingRequestCount,
-    ratingSnoozedUntil: state.ratingSnoozedUntil,
-    ratingCompleted: state.ratingCompleted,
     lastSocialPackImpressionAt: state.lastSocialPackImpressionAt,
     socialPackImpressions: state.socialPackImpressions,
     socialPackDismissals: state.socialPackDismissals,
@@ -305,13 +295,9 @@ export function evaluateFeedbackEngagement(profile: ProfileView | null, state: E
 export function evaluateRatingEngagement(profile: ProfileView | null, state: EngagementRuntimeState, milestone = false, cfg = ENGAGEMENT_CONFIG): EngagementQueueItem | null {
   if (!profile?.usernameSet) return null;
   if (!milestone && state.totalMatches < cfg.ratingMinCompletedMatches && state.totalActivePlaySeconds < cfg.ratingMinActiveSeconds) return null;
-  if (state.ratingCompleted) return null;                       // yıldızını verdi — bir daha rahatsız etme
-  if (Date.now() < state.ratingSnoozedUntil) return null;        // 'şimdi değil' — erteleme sürüyor
-  // Israr sınırı: 'şimdi değil' diyen oyuncuya en fazla 5 kez sorulur, sonra susulur.
+  // Israr sınırı: en fazla ratingMaxAsks kez denenir, sonra tamamen susulur.
   if (state.ratingRequestCount >= cfg.ratingMaxAsks) return null;
-  // Erteleme yaşanmışsa 21 günlük cooldown ATLANIR — 'şimdi değil' diyene erteleme
-  // süresi (3 gün) sonunda tekrar sorulur; hiç ertelenmediyse normal cooldown geçerli.
-  if (state.ratingSnoozedUntil === 0 && Date.now() - state.lastRatingRequestAt < cfg.ratingCooldownMs) return null;
+  if (Date.now() - state.lastRatingRequestAt < cfg.ratingCooldownMs) return null;
   // ignoreGlobalCooldown (2026-08-27): günde-1-proaktif-popup bütçesini Sosyal
   // Paket keşfi tüketince yıldız istemi o gün hiç çıkamıyordu. Yıldız istemi
   // bütçeden muaf — kendi 21 günlük cooldown'u + iOS'un yılda-3 sınırı yeterli fren.

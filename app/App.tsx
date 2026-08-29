@@ -1048,9 +1048,6 @@ function AppRoot() {
   const [engagementState, setEngagementState] = useState<EngagementRuntimeState>(() => createEngagementRuntime());
   const [activeEngagement, setActiveEngagement] = useState<EngagementQueueItem | null>(null);
   const [feedbackPromptVisible, setFeedbackPromptVisible] = useState(false);
-  // Yıldız istemi ön penceresi (2026-08-29) + üzerine gelinen yıldız (dolum efekti).
-  const [ratingPromptVisible, setRatingPromptVisible] = useState(false);
-  const [ratingStars, setRatingStars] = useState(0);
   const [feedbackCenterVisible, setFeedbackCenterVisible] = useState(false);
   const [feedbackInitialCategory, setFeedbackInitialCategory] = useState<'bug' | undefined>(undefined);
   const [monetizationDiagnostics, setMonetizationDiagnostics] = useState<MonetizationDiagnostics>(INITIAL_MONETIZATION_DIAGNOSTICS);
@@ -1589,7 +1586,6 @@ function AppRoot() {
     levelRoadOpen ||
     overlay ||
     feedbackPromptVisible ||
-    ratingPromptVisible ||
     feedbackCenterVisible ||
     socialPackCampaignVisible ||
     outageGiftVisible ||
@@ -1674,14 +1670,18 @@ function AppRoot() {
     setActiveEngagement(next);
     if (next.kind === 'FEEDBACK_PROMPT') setFeedbackPromptVisible(true);
     else if (next.kind === 'RATING_PROMPT') {
-      // YILDIZLI ÖN PENCERE (kullanıcı kararı 2026-08-29): logo + 5 yıldız +
-      // "Şimdi değil". 4-5 yıldıza basan Apple'ın yerel sheet'ine gider (asıl
-      // puan orada verilir), düşük puan veren geri bildirim formuna yönlenir,
-      // "Şimdi değil" diyene 3 gün sonra tekrar sorulur.
-      // (2026-08-27'deki "doğrudan native" kararı bunun yerine geçti: native
-      // sheet'in sonucu okunamadığı için erteleme/tekrar sorma kurulamıyordu.)
+      // ÖZEL popup YOK (kullanıcı kararı 2026-08-29): doğrudan Apple'ın yıldızlı
+      // yerel sheet'i (SKStoreReviewController) — logo + 5 yıldız + "Şimdi
+      // değil" zaten onun içinde ve tek dokunuşta App Store'a işlenir.
+      // TEKRAR SORMA: sheet'in sonucu iOS tarafından uygulamaya bildirilmez,
+      // bu yüzden "şimdi değil" tespit edilemez; onun yerine istem birkaç gün
+      // sonra YENİDEN denenir (engagement.ts ratingCooldownMs + ratingMaxAsks).
+      // Yeniden çağırmak zararsızdır: Apple değerse gösterir, değmezse hiçbir
+      // şey olmaz — oyuncu rahatsız edilmez.
       track('rating_request_attempted', { source: next.source, appSessionId });
-      setRatingPromptVisible(true);
+      requestNativeReview().catch(() => {});
+      updateEngagement((s2) => closeEngagement(s2, next, false));
+      setActiveEngagement(null);
     }
     else if (next.monetizationOffer) {
       setContextualOffer(next.monetizationOffer);
@@ -2053,36 +2053,6 @@ function AppRoot() {
     updateEngagement((s) => closeEngagement(s, activeEngagement, true));
     track('engagement_dismissed', { kind: activeEngagement?.kind, appSessionId, screen: state.phase });
     setActiveEngagement(null);
-  }, [activeEngagement, appSessionId, state.phase, updateEngagement]);
-
-  // ── Yıldız istemi (2026-08-29) ────────────────────────────────────────────
-  // "Şimdi değil": erteleme damgası kurulur — 3 gün sonra tekrar sorulur
-  // (ısrar sınırı engagement.ts'te: en fazla 5 kez).
-  const snoozeRatingPrompt = useCallback(() => {
-    setRatingPromptVisible(false);
-    setRatingStars(0);
-    updateEngagement((s) => ({ ...closeEngagement(s, activeEngagement, true), ratingSnoozedUntil: Date.now() + ENGAGEMENT_CONFIG.ratingSnoozeMs }));
-    track('rating_snoozed', { appSessionId, screen: state.phase });
-    setActiveEngagement(null);
-  }, [activeEngagement, appSessionId, state.phase, updateEngagement]);
-
-  // Yıldıza basıldı: 4-5 → Apple'ın yerel sheet'i (asıl puan orada verilir),
-  // 1-3 → geri bildirim formu (sorunu duyalım). Her iki durumda da bir daha
-  // sorulmaz: oyuncu kararını verdi.
-  const ratingCenterOnExit = useRef(false);
-  const submitRatingStars = useCallback((stars: number) => {
-    setRatingStars(stars);
-    const positive = stars >= 4;
-    ratingCenterOnExit.current = !positive;
-    track('rating_stars_tapped', { stars, positive, appSessionId, screen: state.phase });
-    // Yıldızın dolduğu görülsün diye kısa gecikme — sonra pencere kapanır.
-    setTimeout(() => {
-      setRatingPromptVisible(false);
-      setRatingStars(0);
-      updateEngagement((s) => ({ ...closeEngagement(s, activeEngagement, false), ratingCompleted: true }));
-      setActiveEngagement(null);
-      if (positive) requestNativeReview().catch(() => {});
-    }, 420);
   }, [activeEngagement, appSessionId, state.phase, updateEngagement]);
 
   const feedbackCenterOnExit = useRef<null | { category?: 'bug' }>(null);
@@ -3281,40 +3251,6 @@ function AppRoot() {
             <Btn kind="ghost" label={t(contextualOffer.secondaryKey as any)} onPress={dismissContextualOffer} />
           </View>
         ) : null}
-      </GameModal>
-
-      {/* ⭐ YILDIZ İSTEMİ — logo + 5 yıldız + "Şimdi değil" (kullanıcı kararı 2026-08-29).
-          4-5 yıldız Apple'ın yerel değerlendirme sheet'ini açar; düşük puan geri
-          bildirim formuna gider; "Şimdi değil" 3 gün sonra tekrar sorar. */}
-      <GameModal
-        visible={ratingPromptVisible}
-        onClose={snoozeRatingPrompt}
-        onExited={() => {
-          if (!ratingCenterOnExit.current) return;
-          ratingCenterOnExit.current = false;
-          setFeedbackInitialCategory(undefined);
-          setFeedbackCenterVisible(true);
-        }}
-        title={t('rating.title')}
-        icon="star"
-      >
-        <Image source={require('./assets/icon.png')} style={{ width: 72, height: 72, borderRadius: 16, alignSelf: 'center' }} resizeMode="contain" />
-        <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
-          {t('rating.body')}
-        </Text>
-        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
-          {[1, 2, 3, 4, 5].map((star) => (
-            <Pressable
-              key={star}
-              hitSlop={4}
-              onPress={() => { triggerFeedback(GameFeedbackEvent.UI_TAP); submitRatingStars(star); }}
-              style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.9 : 1 }] })}
-            >
-              <Ionicons name={ratingStars >= star ? 'star' : 'star-outline'} size={38} color={theme.gold} />
-            </Pressable>
-          ))}
-        </View>
-        <Btn kind="ghost" label={t('rating.notNow')} onPress={snoozeRatingPrompt} />
       </GameModal>
 
       <GameModal
