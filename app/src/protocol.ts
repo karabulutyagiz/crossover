@@ -36,6 +36,28 @@ export interface SpellInfo {
 
 export type VerifyReason = 'both' | 'not_both' | 'no_match' | 'timeout' | 'no_common' | 'same_team' | 'passed' | 'all_wrong' | 'power_skip';
 
+export interface DailyCareerStepView {
+  order: number;
+  clubName: string;          // açılmamış adımda BOŞ (sızıntı yok)
+  clubLogo: string | null;
+  years: string;
+  revealed: boolean;
+}
+
+export interface DailyCareerStateView {
+  day: number;
+  resetAt: string;
+  reward: number;
+  maxGuesses: number;
+  attemptsUsed: number;
+  revealed: number;
+  totalSteps: number;
+  steps: DailyCareerStepView[];
+  played: boolean;
+  correct: boolean;
+  answer: { name: string; imageUrl: string | null; nationality: string | null } | null;
+}
+
 export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox';
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
@@ -288,6 +310,8 @@ export type ClientMsg =
   | { type: 'buy_daily_offer'; key: string }
   | { type: 'redeem_referral'; code: string } // davet kodu gir (yeni hesap; ikisi de 💎 kazanır)
   | { type: 'get_daily_crossover' } // Günün Crossover'ı durumunu iste
+  | { type: 'get_daily_career' }
+  | { type: 'daily_career_guess'; text: string }
   | { type: 'start_daily_crossover' } // soruyu açtım — süre sayacı sunucuda başlar (idempotent)
   | { type: 'daily_crossover_guess'; text: string } // günlük tahmin (3 hak, sunucu sayar)
   | { type: 'get_my_stats' } // profil istatistikleri: seri rekoru + mod bazlı K/M
@@ -400,6 +424,8 @@ export type ServerMsg =
   | { type: 'referral_redeemed'; profile: ProfileView; referrerName: string; reward: number }
   // Günün Crossover'ı — state hem ilk açılışta hem bitişte aynı şekilde gelir.
   | { type: 'daily_crossover'; state: DailyCrossoverStateView }
+  | { type: 'daily_career'; state: DailyCareerStateView }
+  | { type: 'daily_career_result'; state: DailyCareerStateView; correct: boolean; rewardGranted: number; profile?: ProfileView }
   | { type: 'daily_crossover_wrong'; guess: string; suggestion: string | null; attemptsLeft: number }
   | { type: 'daily_crossover_done'; state: DailyCrossoverStateView; rewardGranted: number; profile?: ProfileView }
   | { type: 'my_stats'; winStreak: number; bestStreak: number; wins: number; losses: number; modes: { mode: string; wins: number; losses: number }[] } // profil istatistikleri: sadece ranked hızlı eşleşme

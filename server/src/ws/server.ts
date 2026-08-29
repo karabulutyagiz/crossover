@@ -54,6 +54,7 @@ import { toProfileView } from '../game/profileView.ts';
 import { buySpecialPower, equipSpecialPower, isSpecialPowerId } from '../game/specialPowers.ts';
 import { listTournaments, getTournamentState, joinTournament, leaveTournament, pendingTournamentMatchesFor, markMatchPlaying, reportTournamentResult, tournamentMemberIds } from '../game/tournaments.ts';
 import { getLeagueState } from '../game/weeklyLeague.ts';
+import { getDailyCareer, guessDailyCareer } from '../game/dailyCareer.ts';
 
 // Guideline 1.2: no anonymous posting. Any path that creates content another
 // user sees requires a verified Apple/Google/Facebook identity — a guest can
@@ -1618,6 +1619,31 @@ export function startServer(port: number): Server {
       }
 
       // ---- Günün Crossover'ı (game/dailyCrossover.ts) ----
+      // GÜNÜN KARİYERİ (2026-08-29): kulüp geçmişi tek tek açılır, futbolcu bilinir.
+      if (msg.type === 'get_daily_career') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        void getDailyCareer(userProfile.id)
+          .then((state) => { if (state) transport.send({ type: 'daily_career', state }); })
+          .catch((err) => reportSocketTaskFailure('get_daily_career', err));
+        return;
+      }
+      if (msg.type === 'daily_career_guess') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        const uid = userProfile.id;
+        void (async () => {
+          const res = await guessDailyCareer(uid, msg.text);
+          if (!res.ok) return transport.send({ type: 'error', message: res.error });
+          if (res.profile) userProfile = res.profile;
+          transport.send({
+            type: 'daily_career_result',
+            state: res.state,
+            correct: res.correct,
+            rewardGranted: res.rewardGranted,
+            profile: res.profile ? toProfileView(res.profile) : undefined,
+          });
+        })().catch((err) => reportSocketTaskFailure('daily_career_guess', err));
+        return;
+      }
       if (msg.type === 'get_daily_crossover') {
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
         void (async () => {

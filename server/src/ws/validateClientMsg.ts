@@ -148,6 +148,10 @@ export function validateClientMsg(value: unknown): ValidationResult {
       break;
     case 'get_daily_crossover':
     case 'start_daily_crossover':
+    case 'get_daily_career':
+      break;
+    case 'daily_career_guess':
+      if (!hasString(value, 'text', 200)) return invalid('daily_career_guess.text must be a string');
       break;
     case 'redeem_referral':
       if (!hasString(value, 'code', 40)) return invalid('redeem_referral.code must be a string');
