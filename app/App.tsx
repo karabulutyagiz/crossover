@@ -1184,10 +1184,29 @@ function AppRoot() {
     // pencere yokken açıyor). Artık pencereler kapanana kadar beklenir; ana
     // ekrandan çıkılırsa ya da süre dolarsa sessizce vazgeçilir.
     const deadline = Date.now() + 20_000;
+    let reported = false;
     const timer = setInterval(() => {
-      if (Date.now() > deadline) { clearInterval(timer); return; }
+      if (Date.now() > deadline) {
+        clearInterval(timer);
+        // GEÇİCİ TANI KANALI (2026-08-30): reklam neden çıkmadığını cihazdan
+        // öğrenemiyoruz — istemcide telemetri sunucuya akmıyor. Kalıcı çözüm
+        // ayrı bir olay tipi, ama o SUNUCU DAĞITIMI ister ve şu an canlı maç
+        // var. Mevcut freeze_report kanalı serbest metin taşıdığı için sebep
+        // oraya 'AD|...' önekiyle yazılıyor; sunucuda client_freeze olarak
+        // loglanır. Sebep bulunup düzeltilince bu blok KALDIRILACAK.
+        if (!reported) {
+          const d = interstitialDiagnostics();
+          const özet = `AD|${d.adsLastReason}|yuklu=${d.adsPreloaded}|acik=${d.adsEnabled}|mac=${d.adsTotalMatches}|sira=${d.adsSinceAd}|modul=${d.adsNativeModule}|birim=${String(d.adsUnitId).slice(-8)}`;
+          try { freezeReportRef.current('jank', özet, 0); } catch { /* tanı gönderilemedi — oyun etkilenmez */ }
+        }
+        return;
+      }
       if (modalBlockedRef.current) return;          // pencere kapanınca tekrar denenir
-      if (maybeShowInterstitial(hasActiveSocialPack(state.profile))) clearInterval(timer);
+      if (maybeShowInterstitial(hasActiveSocialPack(state.profile))) {
+        reported = true;
+        try { freezeReportRef.current('jank', 'AD|GOSTERILDI', 0); } catch { /* önemsiz */ }
+        clearInterval(timer);
+      }
     }, 700);
     return () => clearInterval(timer);
   }, [state.phase, state.xoxOver, state.profile]);
