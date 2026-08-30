@@ -114,6 +114,39 @@ export function recordMatchEnd(): void {
  * reklamını gösterir ve true döner; her durumda sayaç mantığını kendi yönetir.
  * hasSocialPack=true olan oyuncuya hiçbir koşulda gösterilmez.
  */
+/**
+ * TEST KANCASI (2026-08-30): kuralları ATLAYARAK reklamı yükleyip gösterir.
+ * Gerekçesi: canlı test için "Sosyal Paketi olmayan hesap" bulunamıyor — Apple
+ * aboneliği geri yüklediği an paket geri geliyor, dolayısıyla normal akışla
+ * geçiş reklamı hiçbir hesapta denenemiyor. Bu kanca paket/sayaç kontrolünü
+ * atlar, YALNIZ AdMob'un reklam verip vermediğini ölçer. Ayarlar > Monetization
+ * Diagnostics içinden elle çağrılır; normal oyun akışında ASLA çalışmaz.
+ */
+export function testInterstitialNow(onSonuc: (mesaj: string) => void): void {
+  if (!InterstitialAd) { onSonuc('native reklam modülü yok (Expo Go?)'); return; }
+  const id = unitId();
+  if (!id) { onSonuc('birim kimliği yok — sunucu ayarı gelmemiş'); return; }
+  onSonuc(`yükleniyor… (birim …${id.slice(-8)})`);
+  const ad = InterstitialAd.createForAdRequest(id);
+  let bitti = false;
+  const zamanlayici = setTimeout(() => {
+    if (!bitti) { bitti = true; onSonuc('ZAMAN AŞIMI: 15 sn içinde reklam gelmedi'); }
+  }, 15_000);
+  ad.addAdEventListener(AdEventType.LOADED, () => {
+    if (bitti) return;
+    bitti = true; clearTimeout(zamanlayici);
+    onSonuc('YÜKLENDİ — gösteriliyor');
+    try { ad.show(); } catch (e) { onSonuc('gösterim hatası: ' + String(e)); }
+  });
+  ad.addAdEventListener(AdEventType.ERROR, (err: unknown) => {
+    if (bitti) return;
+    bitti = true; clearTimeout(zamanlayici);
+    const e = err as { code?: string; message?: string };
+    onSonuc(`ADMOB HATASI: ${e?.code ?? ''} ${e?.message ?? String(err)}`.trim());
+  });
+  try { ad.load(); } catch (e) { bitti = true; clearTimeout(zamanlayici); onSonuc('load() hatası: ' + String(e)); }
+}
+
 /** Son denemenin sonucu — Ayarlar > Monetization Diagnostics'te görünür. */
 let lastReason = 'henüz denenmedi';
 export function interstitialDiagnostics(): Record<string, string | number | boolean> {

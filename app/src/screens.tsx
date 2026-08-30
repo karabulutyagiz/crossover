@@ -32,6 +32,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image as ExpoImage } from 'expo-image';
 import { GOOGLE_ANDROID_CLIENT_ID, GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { submitPlayerFeedback, type PlayerFeedbackCategory } from './feedbackSubmit';
+import { testInterstitialNow } from './interstitial';
 import { GemIcon, GEM_COLOR } from './GemIcon';
 import { whenModalSlotFree } from './modalTraffic';
 import { dismissActiveInput } from './keyboardLifecycle';
@@ -3254,6 +3255,7 @@ function SettingsPanel({ onLanguageChange, diamonds, playerId, arenaName, moneti
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackCategory, setFeedbackCategory] = useState<PlayerFeedbackCategory | undefined>(undefined);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [adTestMsg, setAdTestMsg] = useState('');
   const activeLang = currentLang();
   const activeName = LANGUAGES.find((l) => l.code === activeLang)?.name ?? activeLang;
   const { prefs: feedbackPrefs, setPreference: setFeedbackPreference } = useFeedbackPreferences();
@@ -3491,6 +3493,17 @@ function SettingsPanel({ onLanguageChange, diamonds, playerId, arenaName, moneti
               <Text selectable style={{ flex: 1, color: theme.text, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'right' }} numberOfLines={3}>{String(value)}</Text>
             </View>
           ))}
+          {/* REKLAM TESTİ (2026-08-30): normal akışta geçiş reklamı yalnız
+              paketi OLMAYAN oyuncuya çıkar; canlıda böyle bir hesap
+              oluşturulamıyor (Apple aboneliği geri yüklüyor). Bu buton paket ve
+              sayaç kurallarını atlayıp doğrudan AdMob'a sorar — reklam mı yok,
+              kod mu engelliyor, tek dokunuşta ayrışır. */}
+          <View style={{ marginTop: 6, gap: 8 }}>
+            <Btn kind="primary" icon="play-circle" label="GEÇİŞ REKLAMINI ŞİMDİ DENE" onPress={() => { setAdTestMsg('başlatılıyor…'); testInterstitialNow(setAdTestMsg); }} />
+            {adTestMsg ? (
+              <Text selectable style={{ color: theme.text, fontSize: 12, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', backgroundColor: theme.well, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 }}>{adTestMsg}</Text>
+            ) : null}
+          </View>
         </View>
       </GameModal>
 
