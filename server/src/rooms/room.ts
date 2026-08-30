@@ -58,9 +58,36 @@ import type {
 
 const COUNTDOWN_FROM = 3;
 const PICK_MS = 10_000;
-const GUESS_MS = 30_000;
+/** Denge değerleri ENV'den ezilebilir: ayar değişikliği için sürüm beklenmez. */
+function intEnv(name: string, fallback: number): number {
+  const v = Number(process.env[name]);
+  return Number.isFinite(v) && v > 0 ? Math.round(v) : fallback;
+}
+
+// ---- TUR SÜRESİ (2026-08-30) ---------------------------------------------
+// 30 sn'den 15 sn'ye indirildi: oyuncu şikâyeti ve App Store yorumu ("geri
+// sayım uzun olduğu için insanlar cevabı aratabiliyor"). Süre artık ENV'den
+// ayarlanabilir — denge değişikliği için yeni sürüm beklemeye gerek yok.
+//
+// ÖLÇÜM (770 gerçek insan cevabı, 8 saat): medyan 4.5sn · p75 8.7sn ·
+// p90 16.5sn · p95 21.0sn. 15 sn'yi aşan cevap oranı %12.9. Bu oranın tamamı
+// kaybolmaz (süre kısalınca oyuncu hızlanır) ama gerçek bir risktir; bu yüzden
+// ROUND_GUESS_MS ile 18-20 sn'ye çıkarmak tek ayar değişikliğidir.
+const GUESS_MS = intEnv('ROUND_GUESS_MS', 15_000);
+
+// AĞ GECİKMESİ TOLERANSI — 30 sn'de görünmeyen, 15 sn'de KRİTİK olan sorun:
+// oyuncu son saniyede gönderdiğinde paket sunucuya birkaç yüz ms sonra ulaşır
+// ve eski kod bunu 1 ms gecikmeyle bile 'expired' sayıp çöpe atıyordu. Mobil
+// veride RTT 200-1500 ms; yani hızlı yazan oyuncu SİSTEMATİK olarak cezalanır.
+// Artık istemciye gösterilen son teslim GUESS_MS'tir, sunucu turu GRACE kadar
+// GEÇ kapatır ve arada ulaşan cevabı kabul eder. Oyuncu için görünmez.
+// Hile açısından zararsız: 1.2 sn kimseye arama fırsatı vermez.
+const GUESS_GRACE_MS = intEnv('ROUND_GUESS_GRACE_MS', 1_200);
 // İlk yanlış cevabın cezası: bu kadar bekleyip BİR hak daha (wrongretry kuralı).
-const WRONG_RETRY_MS = 5_000;
+// Yanlış cevap sonrası ikinci hak cezası. 30 sn'de 5 sn makuldü (%17); 15 sn'de
+// aynı ceza sürenin ÜÇTE BİRİ olurdu — ikinci hak fiilen kullanılamaz hale
+// gelirdi. Tur süresiyle orantılı tutuldu.
+const WRONG_RETRY_MS = intEnv('WRONG_RETRY_MS', 3_000);
 const MAX_PLAYERS = 2;
 const WIN_TARGET = 3; // first to this many round wins takes the match
 // Result screen pause: one visible 10→0 countdown, then the next round
@@ -1385,7 +1412,10 @@ export class Room {
         },
       });
     }).catch((err) => log.warn('question_difficulty_failed', { room: this.code, matchId: this.matchId, error: err instanceof Error ? err.message : String(err) }));
-    const t = setTimeout(() => this.endRoundTimeout(), GUESS_MS);
+    // Sunucu turu GRACE kadar GEÇ kapatır: son anda gönderilip yolda olan cevap
+    // kaybolmasın. İstemciye bildirilen endsAt (yukarıda) grace İÇERMEZ — sayaç
+    // 0'ı gösterdiğinde oyuncu için tur bitmiştir.
+    const t = setTimeout(() => this.endRoundTimeout(), GUESS_MS + GUESS_GRACE_MS);
     this.timers.push(t);
   }
 
@@ -1461,7 +1491,9 @@ export class Room {
     }
     // ⏱ Kişisel son teslim: Extra Time yalnız kullananın süresini uzatır.
     // Diğer oyuncunun süresi kendi sonunda biter — tur uzayan için açık kalır.
-    if (Date.now() > this.playerDeadline(playerId)) {
+    // GRACE: yolda geçen süre oyuncunun suçu değil. Sayaç bitmiş görünse de
+    // GUESS_GRACE_MS içinde ulaşan cevap kabul edilir (bkz. GUESS_GRACE_MS).
+    if (Date.now() > this.playerDeadline(playerId) + GUESS_GRACE_MS) {
       this.players.get(playerId)?.transport.send({ type: 'guess_denied', reason: 'expired' });
       return;
     }
@@ -1487,7 +1519,9 @@ export class Room {
     // Süre dibindeyse (rakibe gerçekçi bir şans kalmadıysa) eski davranış kalsın.
     // Not: artık istemci sürümüne BAKILMAZ — eski istemciler aşağıda taze bir
     // guess_phase ile senkronlanır (bkz. resyncLegacyClientsAfterWrong).
-    if (remaining < 2_000) return 'closed';
+    // Eşik tur süresiyle ORANTILI (30 sn'de 2 sn idi = %6.7). Sabit kalsaydı
+    // 15 sn'lik turda rakibe gerçekçi şans kalmadan tur açık tutulurdu.
+    if (remaining < Math.max(1_000, Math.round(GUESS_MS * 0.067))) return 'closed';
     // İKİNCİ HAK (kullanıcı kuralı 2026-08-11): İLK yanlışta oyuncu yanmaz —
     // WRONG_RETRY_MS ceza penceresi sonrası bir hakkı daha olur. Şartlar:
     // bot değildir (bot ikinci kez denemez) ve sürede cezadan sonra gerçekçi
