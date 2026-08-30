@@ -71,6 +71,11 @@ export const COSMETIC_ITEMS: readonly CosmeticItem[] = [
   { id: 'neon_pitch', type: 'match_background', name: 'Neon Pitch', description: 'Neon çizgili modern saha.', rarity: 'epic', diamondPrice: 650 },
   { id: 'golden_stadium', type: 'match_background', name: 'Golden Stadium', description: 'Altın tribün sunumu.', rarity: 'legendary', diamondPrice: 1000 },
   { id: 'goat_arena', type: 'match_background', name: 'GOAT Arena', description: 'GOAT seviyesi özel maç arka planı.', rarity: 'mythic', diamondPrice: 1800 },
+  // SEZON 1 ÖDÜLÜ (2026-08-30): satın ALINAMAZ — SELLABLE_COSMETICS'e bilerek
+  // eklenmedi, bu yüzden vitrinde, Günlük Fırsat'ta ve buyCosmetic'te çıkmaz.
+  // Yalnız sezon kapanışında 1000+ kupaya ulaşanlara dağıtılır; sezon bitince
+  // bir daha kazanılamaz.
+  { id: 'season1_arena', type: 'match_background', name: 'Sezon 1 Arena', description: 'Sezon 1 şampiyonluk sahnesi — yalnız sezon ödülü.', rarity: 'legendary', diamondPrice: 0 },
 
   { id: DEFAULT_BALL, type: 'ball', name: 'Classic', description: 'Varsayılan COF topu.', rarity: 'common', diamondPrice: 0 },
   { id: 'golden_ball', type: 'ball', name: 'Golden Ball', description: 'Altın top kaplaması.', rarity: 'rare', diamondPrice: 300 },

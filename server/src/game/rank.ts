@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { pool } from '../db/pool.ts';
+import { seasonRewardFor, seasonRewardsEnabled, seasonTrophyReset } from './season.ts';
 import { milestoneFor } from './specialPowers.ts';
 import { addLeaguePoints } from './weeklyLeague.ts';
 import { config } from '../config.ts';
@@ -162,11 +163,44 @@ async function ensureSeason(row: DbUser): Promise<DbUser> {
      row.season_wins ?? 0, row.season_losses ?? 0, row.level ?? 1],
   ).catch(() => { /* özet yazılamazsa sezon dönüşü yine de olmalı */ });
 
+  // SEZON KAPANIŞ ÖDÜLLERİ + KUPA YUMUŞAK SIFIRLAMA (2026-08-30, bayrak arkasında).
+  // Bayrak kapalıyken davranış eskisiyle birebir aynı: kupaya dokunulmaz, ödül
+  // verilmez. Açıkken tek UPDATE'te hem ödüller yazılır hem kupa sıfırlanır.
+  //
+  // ÇİFT ÖDÜL KORUMASI: `season_id IS DISTINCT FROM $2` koşulu UPDATE'in KENDİ
+  // içinde. Aynı anda iki istek gelse (iki cihaz, istek tekrarı) ikincisi 0
+  // satır günceller — ödül bir kez verilir. Eski kodda bu koşul YOKTU; ödül
+  // dağıtımı eklenince yarış gerçek elmas sızıntısına dönüşürdü.
+  const ekAlanlar: string[] = [];
+  const ekParams: unknown[] = [];
+  if (seasonRewardsEnabled()) {
+    const zirve = Math.max(row.season_peak_trophies ?? 0, row.trophies ?? 0);
+    const odul = seasonRewardFor(zirve);
+    ekAlanlar.push(`trophies = $${2 + ekParams.length + 1}`);
+    ekParams.push(seasonTrophyReset(row.trophies ?? 0));
+    if (odul.diamonds > 0) {
+      ekAlanlar.push(`diamonds = diamonds + $${2 + ekParams.length + 1}`);
+      ekParams.push(odul.diamonds);
+    }
+    if (odul.specialPower) ekAlanlar.push(`sp_${odul.specialPower} = sp_${odul.specialPower} + 1`);
+    if (odul.frameTier) {
+      ekAlanlar.push(`owned_frames = (SELECT ARRAY(SELECT DISTINCT f FROM unnest(owned_frames || $${2 + ekParams.length + 1}::text[]) AS f))`);
+      ekParams.push([odul.frameTier]);
+    }
+    if (odul.cosmeticId) {
+      ekAlanlar.push(`owned_cosmetics = (SELECT ARRAY(SELECT DISTINCT c FROM unnest(owned_cosmetics || $${2 + ekParams.length + 1}::text[]) AS c))`);
+      ekParams.push([odul.cosmeticId]);
+    }
+    ekAlanlar.push(`owned_avatars = (SELECT ARRAY(SELECT DISTINCT a FROM unnest(owned_avatars || $${2 + ekParams.length + 1}::text[]) AS a))`);
+    ekParams.push([odul.avatarId]);
+  }
   const { rows } = await pool.query<DbUser>(
     `UPDATE users SET season_id = $2, level = 1, xp = 0,
        claimed_levels = '{}', claimed_premium = '{}', premium_road = FALSE,
-       season_peak_trophies = trophies, season_wins = 0, season_losses = 0
-     WHERE id = $1 RETURNING *`, [row.id, cur]);
+       season_peak_trophies = ${seasonRewardsEnabled() ? 'GREATEST(season_peak_trophies, trophies)' : 'trophies'},
+       season_wins = 0, season_losses = 0${ekAlanlar.length ? ', ' + ekAlanlar.join(', ') : ''}
+     WHERE id = $1 AND season_id IS DISTINCT FROM $2 RETURNING *`,
+    [row.id, cur, ...ekParams]);
   return rows[0] ?? row;
 }
 

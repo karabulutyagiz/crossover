@@ -14,6 +14,12 @@ export const FRAME_ART: Record<string, ImageSourcePropType> = {
   // Çizilmiş mağaza çerçeveleri (2026-08-26 AirDrop) — prosedürel yerine görsel.
   ice_frame: require('../assets/frames/frame-ice-store.png'),
   goat_frame: require('../assets/frames/frame-goat-store.png'),
+  // SEZON 1 ÖDÜL ÇERÇEVESİ (2026-08-30): sezonda 1000+ kupaya ulaşanlara verilir,
+  // sezon kapanınca bir daha KAZANILAMAZ. Ham dosyada alfa yoktu (iç boşluk ve
+  // dış zemin koyu renkle doluydu, avatarı tamamen kapatırdı); flood-fill ile
+  // saydamlaştırıldı ve delik merkezi tuval merkezine taşındı (ham dosyada 24px
+  // aşağıdaydı — avatar yukarı kayardı).
+  season1: require('../assets/frames/frame-season1.png'),
 };
 
 // tuval boyu / delik çapı — çerçeve bu katsayıyla avatarın etrafına tam oturur,
@@ -30,6 +36,7 @@ export const FRAME_SCALE: Record<string, number> = {
   golden_frame: 1.72,
   neon_frame: 1.78,
   goat_frame: 1.796,  // alfa kanalından ölçüldü (512 tuval / 285 delik)
+  season1: 2.586,     // alfa kanalından ölçüldü (512 tuval / 198 delik kısa kenar)
 };
 
 const STORE_FRAME_LOOK: Record<string, { ring: string; inner: string; glow: string; accent: string; sparks?: string[] }> = {

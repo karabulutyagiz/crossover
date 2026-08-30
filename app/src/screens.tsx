@@ -8119,6 +8119,7 @@ const COSMETIC_ART = {
   goatArenaBg: require('../assets/cosmetics/goat_arena_bg.jpg'),
   goatBallCrest: require('../assets/cosmetics/goat_ball_crest.png'),
   championsBallCrest: require('../assets/cosmetics/champions_ball_crest.png'),
+  season1Bg: require('../assets/cosmetics/season1_bg.jpg'),
 } as const;
 
 const MATCH_BACKGROUND_LOOK: Record<string, { top: string; bottom: string; accent: string; glow: string; line: string }> = {
@@ -8191,7 +8192,7 @@ function MatchCosmeticBackdrop({ backgroundId }: { backgroundId?: string | null 
   }, [pulse, id]);
   const hot = id.includes('fire') || id.includes('goat');
   // Çizilmiş arena fotoğrafı olan kozmetikler: fotoğraf + okunabilirlik örtüsü.
-  const bgImage = id === 'neon_pitch' ? COSMETIC_ART.neonPitchBg : id === 'night_stadium' ? COSMETIC_ART.nightStadiumBg : id === 'goat_arena' ? COSMETIC_ART.goatArenaBg : null;
+  const bgImage = id === 'neon_pitch' ? COSMETIC_ART.neonPitchBg : id === 'night_stadium' ? COSMETIC_ART.nightStadiumBg : id === 'goat_arena' ? COSMETIC_ART.goatArenaBg : id === 'season1_arena' ? COSMETIC_ART.season1Bg : null;
   if (bgImage) {
     return (
       <View pointerEvents="none" style={bleed}>
@@ -8233,7 +8234,7 @@ function MatchCosmeticBackdrop({ backgroundId }: { backgroundId?: string | null 
 
 function MiniArenaPreview({ backgroundId, size }: { backgroundId: string; size: number }) {
   const look = MATCH_BACKGROUND_LOOK[backgroundId] ?? MATCH_BACKGROUND_LOOK[DEFAULT_MATCH_BACKGROUND_ID]!;
-  const img = backgroundId === 'neon_pitch' ? COSMETIC_ART.neonPitchBg : backgroundId === 'night_stadium' ? COSMETIC_ART.nightStadiumBg : backgroundId === 'goat_arena' ? COSMETIC_ART.goatArenaBg : null;
+  const img = backgroundId === 'neon_pitch' ? COSMETIC_ART.neonPitchBg : backgroundId === 'night_stadium' ? COSMETIC_ART.nightStadiumBg : backgroundId === 'goat_arena' ? COSMETIC_ART.goatArenaBg : backgroundId === 'season1_arena' ? COSMETIC_ART.season1Bg : null;
   if (img) {
     return (
       <View style={{ width: size, height: size * 0.68, borderRadius: size * 0.16, overflow: 'hidden', borderWidth: 2, borderColor: look.accent }}>

@@ -45,6 +45,7 @@ export const AVATARS: Record<string, number> = {
   pp32: require('../assets/avatars/pp32.png'),
   pp33: require('../assets/avatars/pp33.png'),
   pp34: require('../assets/avatars/pp34.png'),
+  pp35: require('../assets/avatars/pp35.png'), // SEZON 1 rozeti — sezon ödülü
 };
 
 // Ordered list for the picker grid.
