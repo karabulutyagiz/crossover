@@ -1196,8 +1196,13 @@ function AppRoot() {
         // oraya 'AD|...' önekiyle yazılıyor; sunucuda client_freeze olarak
         // loglanır. Sebep bulunup düzeltilince bu blok KALDIRILACAK.
         if (!reported) {
+          // 40 KARAKTER SINIRI (2026-08-30): sunucu freeze_report.screen alanını
+          // hasString(...,40) ile doğruluyor; ilk sürümde ~85 karakter metin
+          // gönderiliyordu ve HER rapor sessizce reddediliyordu (6 saat boyunca
+          // tek veri gelmemesinin sebebi buydu). Artık kısa kodlar + tek harfli
+          // bayraklar kullanılıyor ve gönderim öncesi kırpılıyor.
           const d = interstitialDiagnostics();
-          const özet = `AD|${d.adsLastReason}|yuklu=${d.adsPreloaded}|acik=${d.adsEnabled}|mac=${d.adsTotalMatches}|sira=${d.adsSinceAd}|modul=${d.adsNativeModule}|birim=${String(d.adsUnitId).slice(-8)}`;
+          const özet = `AD|${d.adsLastReason}|y${d.adsPreloaded ? 1 : 0}a${d.adsEnabled ? 1 : 0}m${d.adsTotalMatches}s${d.adsSinceAd}`.slice(0, 40);
           try { freezeReportRef.current('jank', özet, 0); } catch { /* tanı gönderilemedi — oyun etkilenmez */ }
         }
         return;

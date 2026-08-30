@@ -71,7 +71,7 @@ function preloadNext(): void {
     retryDelayMs = 30_000; // başarı: geri çekilme sıfırlanır
   });
   ad.addAdEventListener(AdEventType.ERROR, (err: unknown) => {
-    lastReason = `yükleme hatası: ${(err as { code?: string; message?: string })?.code ?? (err as Error)?.message ?? 'bilinmiyor'}`;
+    lastReason = `hata:${String((err as { code?: string })?.code ?? 'bilinmiyor').replace('admob/error-code-', '').slice(0, 22)}`;
     // Yükleme hatası KALICI OLMAMALI (2026-08-29): eskiden yalnız preloaded
     // null'lanıyordu ve yeniden denenmediği için ilk hata (ör. doluluk yokken
     // açılış) reklamı o oturum boyunca öldürüyordu. Artık artan gecikmeyle
@@ -163,25 +163,25 @@ export function interstitialDiagnostics(): Record<string, string | number | bool
 }
 
 export function maybeShowInterstitial(hasSocialPack: boolean): boolean {
-  if (hasSocialPack) { lastReason = 'sosyal paket var — gösterilmez'; return false; }
-  if (!InterstitialAd) { lastReason = 'native reklam modülü yok'; return false; }
-  if (!cfg) { lastReason = 'sunucu reklam ayarı gelmedi'; return false; }
-  if (!cfg.interstitialEnabled) { lastReason = 'sunucuda kapalı'; return false; }
-  if (!unitId()) { lastReason = 'birim kimliği yok'; return false; }
+  if (hasSocialPack) { lastReason = 'paket'; return false; }
+  if (!InterstitialAd) { lastReason = 'modulyok'; return false; }
+  if (!cfg) { lastReason = 'cfgyok'; return false; }
+  if (!cfg.interstitialEnabled) { lastReason = 'kapali'; return false; }
+  if (!unitId()) { lastReason = 'birimyok'; return false; }
   if (totalMatches < Math.max(0, cfg.interstitialGraceMatches)) {
-    lastReason = `yeni oyuncu muafiyeti (${totalMatches}/${cfg.interstitialGraceMatches} maç)`; return false;
+    lastReason = `muaf ${totalMatches}/${cfg.interstitialGraceMatches}`; return false;
   }
   if (sinceAd < Math.max(1, cfg.interstitialEveryMatches)) {
-    lastReason = `sıra gelmedi (${sinceAd}/${cfg.interstitialEveryMatches} maç)`; return false;
+    lastReason = `sira ${sinceAd}/${cfg.interstitialEveryMatches}`; return false;
   }
   const pre = preloaded;
-  if (!pre?.loaded) { lastReason = 'reklam henüz yüklenmedi'; preloadNext(); return false; }
+  if (!pre?.loaded) { lastReason = 'yuklenmedi'; preloadNext(); return false; }
   preloaded = null;
   sinceAd = 0;
   void persist();
   pre.ad.addAdEventListener(AdEventType.CLOSED, () => { preloadNext(); });
   pre.ad.addAdEventListener(AdEventType.ERROR, () => { preloadNext(); });
   pre.ad.show();
-  lastReason = 'gösterildi';
+  lastReason = 'GOSTERILDI';
   return true;
 }
