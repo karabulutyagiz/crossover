@@ -1679,11 +1679,17 @@ function AppRoot() {
     if (xoxAnnounceShownRef.current) return;
     if (!loaded || splash || state.phase !== 'home' || !state.profile?.usernameSet || modalBlocked) return;
     let alive = true;
+    // GECİKME 900 → 350ms (kullanıcı isteği 2026-08-30: "önceki popup
+    // kapandıktan sonra HEMEN gelmeli"). Sıfır yapılamaz: iOS aynı anda tek
+    // native modal sunar, kapanan pencerenin animasyonu bitmeden yenisini
+    // açmak donma/çökme sınıfı hata doğuruyor. 350ms kapanış animasyonunu
+    // (~300ms) geçen en kısa güvenli aralık; modalBlockedRef kontrolü de
+    // ateşleme anında tekrar bakıyor, yani çakışma koruması iki katmanlı.
     const tmr = setTimeout(() => {
       if (!alive || xoxAnnounceShownRef.current || modalBlockedRef.current) return;
       xoxAnnounceShownRef.current = true;
       setXoxAnnounceVisible(true);
-    }, 900);
+    }, 350);
     return () => { alive = false; clearTimeout(tmr); };
   }, [loaded, splash, state.phase, state.profile?.usernameSet, modalBlocked]);
 
