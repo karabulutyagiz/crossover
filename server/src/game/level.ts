@@ -14,6 +14,7 @@
 // İfadeler Yol'dan KAZANILMAZ — yalnız mağazadan satın alınır (emotes.ts).
 import { pool } from '../db/pool.ts';
 import { recordDiamondLedger } from './diamondLedger.ts';
+import type { SpecialPowerId } from './specialPowers.ts';
 
 export const LEVEL_CAP = 50;
 
@@ -70,6 +71,97 @@ export function premiumRewardDiamonds(level: number): number {
   if (level % 5 !== 0) return 0;
   if (level === LEVEL_CAP) return 400;
   return level % 10 === 0 ? 300 : 200;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// CO-PASS SEZON 2 (2026-08-30) — 50 seviyenin HER BİRİNDE ödül
+// ══════════════════════════════════════════════════════════════════════════
+// Eski yol yalnız 5'in katlarında ödül taşıyordu (10 nokta); aradaki 40 seviye
+// boş ilerleme adımıydı. Yeni sezonda 50 ücretsiz + 50 premium = 100 ödül
+// slotu var, yani her seviye atlayışı bir şey veriyor.
+//
+// DEĞİŞMEZ KURAL — YENİ ASSET ÜRETİLMEDİ: ödüller yalnız oyunda HALİHAZIRDA
+// çizili olan içeriklerden seçildi. Kozmetikler cosmetics.ts'teki
+// SELLABLE_COSMETICS beyaz listesinden gelir (katalogdaki diğer ürünlerin
+// görseli yok, satış yüzeyine de çıkmıyorlar). Mythic'ler (goat_*) bilerek
+// DIŞARIDA: kalıcı kural gereği yalnız KASA'da satılırlar.
+//
+// EKONOMİ: ücretsiz 1.050💎, premium 3.075💎 (fiyatı 2.000💎). Premium net
+// +1.075💎 + 17 maç gücü + 4 kozmetik ile belirgin değerli, ama verilen her güç
+// TÜKETİLEBİLİR — kalıcı rekabet avantajı satılmıyor.
+//
+// Bayrak arkasında: COPASS_V2_ENABLED=1 olmadan eski (5'in katları) yol
+// yürürlükte kalır. Sezon dönene kadar canlıda hiçbir şey değişmez.
+export function copassV2Enabled(): boolean {
+  return process.env.COPASS_V2_ENABLED === '1';
+}
+
+export interface PassReward {
+  diamonds?: number;
+  roadPower?: PowerId;              // stoklanabilir meta güç (power_* sütunları)
+  specialPower?: SpecialPowerId;    // maç içi güç (sp_* sütunları)
+  frameTier?: string;               // kalıcı çerçeve (owned_frames)
+  cosmeticId?: string;              // SELLABLE_COSMETICS üyesi (owned_cosmetics)
+}
+
+/** Sahip olunan kozmetik tekrar düşerse bunun yerine elmas verilir. */
+export const COSMETIC_DUPLICATE_DIAMONDS = 150;
+
+const D = (diamonds: number): PassReward => ({ diamonds });
+const RP = (roadPower: PowerId): PassReward => ({ roadPower });
+const SP = (specialPower: SpecialPowerId): PassReward => ({ specialPower });
+
+export const PASS_V2_FREE: Record<number, PassReward> = {
+  1: D(15),  2: SP('extratime'),     3: D(15),  4: SP('secondchance'),
+  5: { roadPower: 'xp2x', diamonds: 50 },
+  6: D(15),  7: SP('extratime'),     8: D(15),  9: RP('xp2x'),
+  10: { frameTier: 'bronze', diamonds: 100 },
+  11: D(15), 12: SP('secondchance'), 13: D(15), 14: SP('extratime'),
+  15: { roadPower: 'shield', diamonds: 50 },
+  16: D(15), 17: SP('skip'),         18: D(15), 19: RP('shield'),
+  20: { frameTier: 'silver', diamonds: 100 },
+  21: D(15), 22: SP('secondchance'), 23: D(15), 24: SP('extratime'),
+  25: { roadPower: 'streak', diamonds: 50 },
+  26: D(15), 27: RP('streak'),       28: D(15), 29: SP('secondchance'),
+  30: { frameTier: 'gold', diamonds: 100 },
+  31: D(15), 32: SP('extratime'),    33: D(15), 34: RP('training'),
+  35: { roadPower: 'training', diamonds: 50 },
+  36: D(15), 37: SP('skip'),         38: D(15), 39: RP('socialtoken'),
+  40: { frameTier: 'diamond', diamonds: 100 },
+  41: D(15), 42: SP('freeze'),       43: D(15), 44: { cosmeticId: 'ice_name' },
+  45: { roadPower: 'socialtoken', diamonds: 50 },
+  46: D(15), 47: SP('extratime'),    48: D(15), 49: RP('xp2x'),
+  50: { frameTier: 'goat', diamonds: 100 },
+};
+
+export const PASS_V2_PREMIUM: Record<number, PassReward> = {
+  1: D(25),  2: SP('freeze'),        3: D(25),  4: SP('skip'),
+  5: { roadPower: 'shield', diamonds: 200 },
+  6: D(25),  7: SP('reveal'),        8: D(25),  9: SP('freeze'),
+  10: { roadPower: 'streak', diamonds: 300 },
+  11: D(25), 12: SP('skip'),         13: D(25), 14: { cosmeticId: 'ice_name' },
+  15: { roadPower: 'xp2x', diamonds: 200 },
+  16: D(25), 17: SP('freeze'),       18: D(25), 19: SP('reveal'),
+  20: { roadPower: 'socialtoken', diamonds: 300 },
+  21: D(25), 22: SP('skip'),         23: D(25), 24: SP('secondchance'),
+  25: { roadPower: 'training', diamonds: 200 },
+  26: D(25), 27: { cosmeticId: 'night_stadium' }, 28: D(25), 29: SP('freeze'),
+  30: { roadPower: 'shield', diamonds: 300 },
+  31: D(25), 32: SP('reveal'),       33: D(25), 34: SP('skip'),
+  35: { roadPower: 'socialtoken', diamonds: 200 },
+  36: D(25), 37: SP('freeze'),       38: { cosmeticId: 'lightning_victory' }, 39: SP('extratime'),
+  40: { roadPower: 'xp2x', diamonds: 300 },
+  41: D(25), 42: SP('reveal'),       43: D(25), 44: SP('secondchance'),
+  45: { roadPower: 'streak', diamonds: 200 },
+  46: D(25), 47: SP('freeze'),       48: RP('xp2x'),  49: D(25),
+  50: { cosmeticId: 'champions_ball', roadPower: 'training', diamonds: 400 },
+};
+
+/** Bir seviyenin ödülü (v2 açıkken). Tanımsızsa o seviyede ödül yoktur. */
+export function passReward(level: number, track: 'free' | 'premium'): PassReward | null {
+  const table = track === 'premium' ? PASS_V2_PREMIUM : PASS_V2_FREE;
+  return table[level] ?? null;
 }
 
 export interface LevelUpReward {
@@ -204,6 +296,101 @@ export function levelRewardDiamonds(level: number): number {
   return level % 10 === 0 ? 100 : 50;
 }
 
+
+// ---- CO-PASS v2 toplama ----------------------------------------------------
+// Güvenlik sözleşmesi v1 ile aynı: tek claim garantisi UPDATE'in KENDİ
+// koşulunda (claimed_* dizisi @> kontrolü) — eşzamanlı iki dokunuş, iki cihaz
+// ya da istek tekrarı ikinci kez 0 satır günceller. Seviye yetmiyorsa
+// (level >= $2) ve premium şerit için pass açık değilse (premium_road = TRUE)
+// yine 0 satır döner. Ödül kimlikleri kullanıcı girdisinden DEĞİL, yukarıdaki
+// sabit tablodan gelir; istemci yalnız 'hangi seviye, hangi şerit' der.
+//
+// KOZMETİK TEKRARI: oyuncu o kozmetiğe zaten sahipse yeni bir para birimi ya
+// da 'duplicate token' sistemi UYDURULMAZ — ödül elmasla telafi edilir
+// (COSMETIC_DUPLICATE_DIAMONDS). Sahiplik okuması claim'den önce yapılır;
+// yarış olsa bile owned_cosmetics'e DISTINCT ile yazıldığı için çift kayıt
+// oluşmaz, en kötü ihtimalle telafi verilmez — elmas sızıntısı olmaz.
+async function claimPassV2(
+  userId: string,
+  level: number,
+  track: 'free' | 'premium',
+): Promise<{ ok: true; claim: ClaimResult } | { ok: false; error: string }> {
+  const premium = track === 'premium';
+  const reward = passReward(level, track);
+  if (!reward) return { ok: false, error: 'Bu seviyede ödül yok' };
+
+  const claimedCol = premium ? 'claimed_premium' : 'claimed_levels';
+  const sets: string[] = [`${claimedCol} = array_append(${claimedCol}, $2)`];
+  const params: unknown[] = [userId, level];
+
+  let diamonds = reward.diamonds ?? 0;
+  let cosmeticId = reward.cosmeticId ?? null;
+  let duplicateCompensated = false;
+
+  if (cosmeticId) {
+    const { rows: own } = await pool.query<{ has: boolean }>(
+      `SELECT $2 = ANY(owned_cosmetics) AS has FROM users WHERE id = $1`, [userId, cosmeticId],
+    );
+    if (own[0]?.has) { duplicateCompensated = true; diamonds += COSMETIC_DUPLICATE_DIAMONDS; cosmeticId = null; }
+  }
+
+  if (diamonds > 0) { params.push(diamonds); sets.push(`diamonds = diamonds + $${params.length}`); }
+  if (reward.roadPower) {
+    const col = ROAD_POWER_COLUMN[reward.roadPower];
+    sets.push(`${col} = ${col} + 1`);
+  }
+  if (reward.specialPower) {
+    const col = SPECIAL_POWER_COLUMN[reward.specialPower];
+    sets.push(`${col} = ${col} + 1`);
+  }
+  if (reward.frameTier) {
+    params.push([reward.frameTier]);
+    sets.push(`owned_frames = (SELECT ARRAY(SELECT DISTINCT f FROM unnest(owned_frames || $${params.length}::text[]) AS f))`);
+  }
+  if (cosmeticId) {
+    params.push([cosmeticId]);
+    sets.push(`owned_cosmetics = (SELECT ARRAY(SELECT DISTINCT c FROM unnest(owned_cosmetics || $${params.length}::text[]) AS c))`);
+  }
+
+  const { rows } = await pool.query<{ id: string; diamonds: number; season_id: string | null }>(
+    `UPDATE users SET ${sets.join(', ')}
+     WHERE id = $1 AND level >= $2 AND NOT (${claimedCol} @> ARRAY[$2::int])${premium ? `
+       AND premium_road = TRUE` : ''}
+     RETURNING id, diamonds, season_id`,
+    params,
+  );
+  if (!rows[0]) {
+    if (premium) return { ok: false, error: 'CO Pass açık değil ya da bu ödül zaten toplandı' };
+    return { ok: false, error: 'Bu ödül henüz açılmadı ya da zaten toplandı' };
+  }
+  if (diamonds > 0) {
+    void recordDiamondLedger({
+      userId, amount: diamonds, balanceAfter: Number(rows[0].diamonds),
+      reason: 'LEVEL_CLAIM', referenceId: `${track}:${level}`,
+      idempotencyKey: `levelclaim:${userId}:${rows[0].season_id ?? 'legacy'}:${track}:${level}`,
+    });
+  }
+  return {
+    ok: true,
+    claim: {
+      level, diamonds, emoteId: null,
+      frameTier: reward.frameTier ?? null,
+      powerId: reward.roadPower ?? null,
+      specialPowerId: reward.specialPower ?? null,
+      cosmeticId, duplicateCompensated, track,
+    },
+  };
+}
+
+const ROAD_POWER_COLUMN: Record<PowerId, string> = {
+  xp2x: 'power_xp2x', shield: 'power_shield', streak: 'power_streak',
+  training: 'power_training', socialtoken: 'power_socialtoken',
+};
+const SPECIAL_POWER_COLUMN: Record<SpecialPowerId, string> = {
+  freeze: 'sp_freeze', reveal: 'sp_reveal', skip: 'sp_skip',
+  extratime: 'sp_extratime', secondchance: 'sp_secondchance',
+};
+
 export interface ClaimResult {
   level: number;
   diamonds: number;        // bu toplamayla verilen elmas
@@ -211,6 +398,9 @@ export interface ClaimResult {
   frameTier: string | null; // bu toplamayla açılan çerçeve kademesi
   powerId: PowerId | null; // bu toplamayla envantere eklenen güç
   track: 'free' | 'premium'; // hangi şeritten toplandı
+  specialPowerId?: SpecialPowerId | null; // v2: maç içi güç
+  cosmeticId?: string | null;             // v2: kozmetik
+  duplicateCompensated?: boolean;         // kozmetik zaten vardı → elmasla telafi
 }
 
 const FRAME_TIER_BY_LEVEL: Record<number, string> = { 10: 'bronze', 20: 'silver', 30: 'gold', 40: 'diamond', 50: 'goat' };
@@ -223,11 +413,13 @@ export async function claimLevelReward(
   track: 'free' | 'premium' = 'free',
 ): Promise<{ ok: true; claim: ClaimResult } | { ok: false; error: string }> {
   if (!userId) return { ok: false, error: 'Önce giriş yap' };
-  // Yalnız 5'in katları ödül taşır — ara seviyelerde toplanacak bir şey yok.
-  if (!Number.isInteger(level) || level < 5 || level > LEVEL_CAP || level % 5 !== 0) {
+  // v1: yalnız 5'in katları ödül taşır. v2: her seviyede ödül var (1..50).
+  const v2 = copassV2Enabled();
+  if (!Number.isInteger(level) || level < (v2 ? 1 : 5) || level > LEVEL_CAP || (!v2 && level % 5 !== 0)) {
     return { ok: false, error: 'Geçersiz seviye' };
   }
   const premium = track === 'premium';
+  if (copassV2Enabled()) return claimPassV2(userId, level, track);
   const diamonds = premium ? premiumRewardDiamonds(level) : levelRewardDiamonds(level);
   const powerId = (premium ? PREMIUM_LEVEL_POWERS : LEVEL_POWERS)[level] ?? null;
   // Güç/claim sütunları kendi sabit haritalarımızdan gelir (kullanıcı girdisi

@@ -1043,7 +1043,8 @@ function AppRoot() {
   const [dailyConfirm, setDailyConfirm] = useState(false);           // "SATIN AL" öncesi Evet/Hayır onay adımı
   const reopenDailyOfferRef = useRef(false);                         // elmas almaya gidildi → dönüp yeterli olunca teklifi GERİ aç
   const [updateNudgeVisible, setUpdateNudgeVisible] = useState(false); // mağazaya yeni sürüm düşünce (yumuşak)
-  const [xoxAnnounceVisible, setXoxAnnounceVisible] = useState(false); // XOX duyurusu (her açılışta)
+  const [xoxAnnounceVisible, setXoxAnnounceVisible] = useState(false);
+  const [copassAnnounceVisible, setCopassAnnounceVisible] = useState(false); // yeni CO-PASS sezonu duyurusu // XOX duyurusu (her açılışta)
   const updateNudgeShownRef = useRef(false);
   const dailyOfferShownRef = useRef(false);                            // her AÇILIŞTA bir kez
   const [outageGiftClaiming, setOutageGiftClaiming] = useState(false);
@@ -1652,6 +1653,7 @@ function AppRoot() {
     dailyOfferVisible ||
     updateNudgeVisible ||
     xoxAnnounceVisible ||
+    copassAnnounceVisible ||
     Boolean(state.supportMessage) ||
     Boolean(state.tournamentReady) ||
     Boolean(state.tournamentOver) ||
@@ -1674,6 +1676,37 @@ function AppRoot() {
   // üst üste binmez — iOS tek native modal kuralı.
   const modalBlockedRef = useRef(false);
   modalBlockedRef.current = modalBlocked;
+  // ── YENİ CO-PASS SEZONU DUYURUSU (2026-08-30) ────────────────────────────
+  // Sezon her ay 1'inde döner (rank.ts ensureSeason). Yeni sezonun İLK 3 GÜNÜ
+  // boyunca, sezon başına BİR kez duyuru penceresi açılır: "yeni CO-PASS
+  // başladı, 50 seviye, ödüller yenilendi".
+  //
+  // Tamamen İSTEMCİ tarafında: sunucuya yeni alan/mesaj eklenmedi, çünkü
+  // gereken her şey zaten elimizde — season.seasonId ay dönünce kendiliğinden
+  // değişiyor. Görüldü işareti sezon kimliğiyle saklanır, böylece pencere
+  // gelecek sezon KENDİLİĞİNDEN yeniden çıkar; her sezon için elle iş yok.
+  const COPASS_ANNOUNCE_DAYS = 3;
+  const copassAnnounceKey = '@cof_copass_announce_season';
+  const copassAnnounceCheckedRef = useRef('');
+  const seasonId = state.season?.seasonId ?? '';
+  useEffect(() => {
+    if (!seasonId || !loaded || splash) return;
+    if (state.phase !== 'home' || !state.profile?.usernameSet || modalBlocked) return;
+    if (copassAnnounceCheckedRef.current === seasonId) return;
+    // Sezon başlangıcı: 'YYYY-MM' → o ayın 1'i 00:00 (İstanbul = UTC+3).
+    const [y, m] = seasonId.split('-').map(Number);
+    if (!y || !m) return;
+    const basladi = Date.UTC(y, m - 1, 1) - 3 * 3600_000;
+    const gecen = Date.now() - basladi;
+    if (gecen < 0 || gecen > COPASS_ANNOUNCE_DAYS * 24 * 3600_000) return; // pencere kapalı
+    copassAnnounceCheckedRef.current = seasonId;
+    AsyncStorage.getItem(copassAnnounceKey).then((gorulen) => {
+      if (gorulen === seasonId) return;                 // bu sezon zaten gösterildi
+      AsyncStorage.setItem(copassAnnounceKey, seasonId).catch(() => {});
+      setTimeout(() => { if (!modalBlockedRef.current) setCopassAnnounceVisible(true); }, 350);
+    }).catch(() => {});
+  }, [seasonId, loaded, splash, state.phase, state.profile?.usernameSet, modalBlocked]);
+
   const xoxAnnounceShownRef = useRef(false);
   useEffect(() => {
     if (xoxAnnounceShownRef.current) return;
@@ -3114,6 +3147,40 @@ function AppRoot() {
         })() : (
           <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 13, textAlign: 'center' }}>{t('store.loading')}</Text>
         )}
+      </GameModal>
+
+      {/* YENİ CO-PASS SEZONU — sezon başında 3 gün, sezon başına bir kez. */}
+      <GameModal
+        visible={copassAnnounceVisible}
+        onClose={() => setCopassAnnounceVisible(false)}
+        title="YENİ CO-PASS SEZONU"
+        icon="trophy"
+        coach
+      >
+        <View style={{ alignItems: 'center', gap: 12 }}>
+          <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+            Yeni sezon başladı! Seviye Yolu sıfırlandı ve ödüller yenilendi.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, alignSelf: 'stretch' }}>
+            <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.primary, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.primary, 0.45) }}>
+              <Text style={{ fontSize: 22 }}>🏆</Text>
+              <Text style={{ color: theme.text, fontSize: 10, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>50 SEVİYE</Text>
+            </View>
+            <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.blue, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.blue, 0.45) }}>
+              <Text style={{ fontSize: 22 }}>🎁</Text>
+              <Text style={{ color: theme.text, fontSize: 10, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>HER SEVİYEDE ÖDÜL</Text>
+            </View>
+            <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.purple, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.purple, 0.45) }}>
+              <Text style={{ fontSize: 22 }}>💎</Text>
+              <Text style={{ color: theme.text, fontSize: 10, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>CO PASS</Text>
+            </View>
+          </View>
+          <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 17 }}>
+            Ücretsiz şeritte ilerlemeye devam et; CO PASS ile her seviyede ikinci bir ödül daha açılır.
+          </Text>
+          <Btn big kind="primary" icon="trophy" label="SEVİYE YOLUNU AÇ" onPress={() => { setCopassAnnounceVisible(false); setLevelRoadOpen(true); }} />
+          <Btn kind="ghost" label="Kapat" onPress={() => setCopassAnnounceVisible(false)} />
+        </View>
       </GameModal>
 
       {/* Kesinti telafisi — çarpısız/zorunlu: tek çıkış "AL" düğmesi. */}
