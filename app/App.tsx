@@ -1708,7 +1708,8 @@ function AppRoot() {
     AsyncStorage.getItem(copassAnnounceKey).then((gorulen) => {
       if (gorulen === seasonId) return;                 // bu sezon zaten gösterildi
       AsyncStorage.setItem(copassAnnounceKey, seasonId).catch(() => {});
-      setTimeout(() => { if (!modalBlockedRef.current) setCopassAnnounceVisible(true); }, 350);
+      if (!modalBlockedRef.current) setCopassAnnounceVisible(true); // gecikme yok
+      else copassAnnounceCheckedRef.current = '';                   // pencere doluysa yeniden dene
     }).catch(() => {});
   }, [seasonId, loaded, splash, state.phase, state.profile?.usernameSet, modalBlocked]);
 
@@ -1717,18 +1718,21 @@ function AppRoot() {
     if (xoxAnnounceShownRef.current) return;
     if (!loaded || splash || state.phase !== 'home' || !state.profile?.usernameSet || modalBlocked) return;
     let alive = true;
-    // GECİKME 900 → 350ms (kullanıcı isteği 2026-08-30: "önceki popup
-    // kapandıktan sonra HEMEN gelmeli"). Sıfır yapılamaz: iOS aynı anda tek
-    // native modal sunar, kapanan pencerenin animasyonu bitmeden yenisini
-    // açmak donma/çökme sınıfı hata doğuruyor. 350ms kapanış animasyonunu
-    // (~300ms) geçen en kısa güvenli aralık; modalBlockedRef kontrolü de
-    // ateşleme anında tekrar bakıyor, yani çakışma koruması iki katmanlı.
-    const tmr = setTimeout(() => {
-      if (!alive || xoxAnnounceShownRef.current || modalBlockedRef.current) return;
+    // GECİKME KALDIRILDI (kullanıcı isteği 2026-08-30: "kapat'a bastıktan sonra
+    // 0.3 salise bile gecikme olmayacak, anlık gelecek"). Zamanlayıcı zaten
+    // yanlış araçtı: bekleme süresince ekran boşta kalıyor, oyuncu sekmelere
+    // basıp gidebiliyor ve pencere hiç görünmüyordu.
+    //
+    // Doğrusu OLAY tabanlı: modalBlocked, açık pencerelerin listesinden türüyor
+    // ve GameModal onExited'i (çıkış animasyonu BİTTİĞİNDE) tetikliyor. Yani
+    // modalBlocked false olduğu an, önceki pencere gerçekten kapanmış demektir —
+    // bu effect o anda yeniden çalışır ve pencereyi ANINDA açar. iOS'un tek
+    // native modal kuralı da böylece beklemeye gerek kalmadan korunur.
+    if (alive && !xoxAnnounceShownRef.current && !modalBlockedRef.current) {
       xoxAnnounceShownRef.current = true;
       setXoxAnnounceVisible(true);
-    }, 350);
-    return () => { alive = false; clearTimeout(tmr); };
+    }
+    return () => { alive = false; };
   }, [loaded, splash, state.phase, state.profile?.usernameSet, modalBlocked]);
 
   // PERFORMANS (2026-08-27): aktif-oyun sayacı eskiden 5 sn'de bir App
