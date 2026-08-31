@@ -3136,7 +3136,6 @@ const SUPPORT_EMAIL = 'info@crossoverfootball.com';
 
 const FEEDBACK_CATEGORIES: { id: PlayerFeedbackCategory; icon: IoniconName; title: string; body: string }[] = [
   { id: 'suggestion', icon: 'bulb', title: 'Öneri', body: 'Oyuna ekleyelim dediğin fikirler.' },
-  { id: 'bug', icon: 'warning', title: 'Sorun Bildir', body: 'Çalışmayan veya garip görünen bir şey.' },
   { id: 'gameplay', icon: 'game-controller', title: 'Oyun Deneyimi', body: 'Modlar, denge, botlar veya maç hissi.' },
   { id: 'purchase', icon: 'diamond', title: 'Satın Alma', body: 'Elmas veya Social Pack ile ilgili destek.' },
   { id: 'general', icon: 'heart', title: 'Genel Görüş', body: 'Aklındaki başka her şey.' },
@@ -3256,6 +3255,7 @@ function SettingsPanel({ onLanguageChange, diamonds, playerId, arenaName, moneti
   const [feedbackCategory, setFeedbackCategory] = useState<PlayerFeedbackCategory | undefined>(undefined);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [adTestMsg, setAdTestMsg] = useState('');
+  const [adTestPending, setAdTestPending] = useState(false);
   const activeLang = currentLang();
   const activeName = LANGUAGES.find((l) => l.code === activeLang)?.name ?? activeLang;
   const { prefs: feedbackPrefs, setPreference: setFeedbackPreference } = useFeedbackPreferences();
@@ -3485,7 +3485,23 @@ function SettingsPanel({ onLanguageChange, diamonds, playerId, arenaName, moneti
         onClose={() => { setFeedbackOpen(false); setFeedbackCategory(undefined); }}
       />
 
-      <GameModal visible={diagnosticsOpen} onClose={() => setDiagnosticsOpen(false)} title="Monetization Diagnostics" icon="pulse">
+      {/* REKLAM TESTİ DONMASI (2026-08-31): reklam bu pencere AÇIKKEN
+          gösteriliyordu. iOS aynı anda tek native modal sunar; reklam açık
+          pencerenin üstüne binince ikisi de kilitleniyordu — çarpı çıkmıyor,
+          sayaç ilerlemiyor, oyun tepki vermiyordu. Artık önce pencere kapanır,
+          çıkış animasyonu BİTTİĞİNDE (onExited) reklam açılır. Sonuç metni
+          saklanır; pencere yeniden açıldığında görünür. */}
+      <GameModal
+        visible={diagnosticsOpen}
+        onClose={() => setDiagnosticsOpen(false)}
+        onExited={() => {
+          if (!adTestPending) return;
+          setAdTestPending(false);
+          testInterstitialNow(setAdTestMsg);
+        }}
+        title="Monetization Diagnostics"
+        icon="pulse"
+      >
         <View style={{ gap: 8 }}>
           {Object.entries(monetizationDiagnostics ?? {}).map(([key, value]) => (
             <View key={key} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, backgroundColor: theme.well, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 }}>
@@ -3499,7 +3515,7 @@ function SettingsPanel({ onLanguageChange, diamonds, playerId, arenaName, moneti
               sayaç kurallarını atlayıp doğrudan AdMob'a sorar — reklam mı yok,
               kod mu engelliyor, tek dokunuşta ayrışır. */}
           <View style={{ marginTop: 6, gap: 8 }}>
-            <Btn kind="primary" icon="play-circle" label="GEÇİŞ REKLAMINI ŞİMDİ DENE" onPress={() => { setAdTestMsg('başlatılıyor…'); testInterstitialNow(setAdTestMsg); }} />
+            <Btn kind="primary" icon="play-circle" label="GEÇİŞ REKLAMINI ŞİMDİ DENE" onPress={() => { setAdTestMsg('pencere kapanıyor…'); setAdTestPending(true); setDiagnosticsOpen(false); }} />
             {adTestMsg ? (
               <Text selectable style={{ color: theme.text, fontSize: 12, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', backgroundColor: theme.well, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 }}>{adTestMsg}</Text>
             ) : null}

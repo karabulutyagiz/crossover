@@ -126,7 +126,19 @@ export function testInterstitialNow(onSonuc: (mesaj: string) => void): void {
   if (!InterstitialAd) { onSonuc('native reklam modülü yok (Expo Go?)'); return; }
   const id = unitId();
   if (!id) { onSonuc('birim kimliği yok — sunucu ayarı gelmemiş'); return; }
-  onSonuc(`yükleniyor… (birim …${id.slice(-8)})`);
+  // ÖNCE HAZIR REKLAMI KULLAN (2026-08-31): test butonu her basışta sıfırdan
+  // indiriyordu ve reklam 1-3 sn sonra açılıyordu ("anlık gelmiyor" raporu).
+  // Normal akışta reklam zaten önceden yüklenip bekletiliyor; test de aynı
+  // hazır kopyayı kullanırsa gecikme SIFIR olur ve gerçek deneyimi ölçer.
+  const hazir = preloaded;
+  if (hazir?.loaded) {
+    preloaded = null;
+    hazir.ad.addAdEventListener(AdEventType.CLOSED, () => { preloadNext(); });
+    onSonuc('HAZIR reklam gösteriliyor (gecikmesiz)');
+    try { hazir.ad.show(); } catch (e) { onSonuc('gösterim hatası: ' + String(e)); }
+    return;
+  }
+  onSonuc(`yükleniyor… (hazır kopya yoktu, birim …${id.slice(-8)})`);
   const ad = InterstitialAd.createForAdRequest(id);
   let bitti = false;
   const zamanlayici = setTimeout(() => {
