@@ -5546,9 +5546,8 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               label={MODE_LABEL(m)}
               locked={locked}
               sublabel={locked ? t('socialPack.lockedBadge') : undefined}
-              // XOX yeni geldi (2026-08-27): kart rozetindeki '1' girişte söner,
-              // satırdaki YENİ kurdelesi bir süre kalır — sonraki modda taşınır.
-              right={m === 'xox' ? <Ribbon label={t('store.badgeNew')} color={theme.danger} /> : undefined}
+              // YENİ kurdelesi: en yeni modlar (Çöz Kazan 2026-09-01, XOX 2026-08-27).
+              right={m === 'cozkazan' || m === 'xox' ? <Ribbon label={t('store.badgeNew')} color={theme.danger} /> : undefined}
               chevron={!locked}
               onPress={() => startMode(m)}
             />
