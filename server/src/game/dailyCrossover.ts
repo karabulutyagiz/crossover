@@ -18,6 +18,26 @@ import type { ClubRef, DailyCrossoverStateView } from '../protocol.ts';
 import { verifyGuess, commonPlayersDetailed, type VerifyResult } from './verify.ts';
 import { clubPopularityTier, isTurkishClub } from './clubPopularity.ts';
 import { recordDiamondLedger } from './diamondLedger.ts';
+import { buildDailyScramble, isCorrectAnswer } from './cozKazan.ts';
+
+// Gün-paritesi (kullanıcı kararı 2026-08-31): çift gün = iki-takım crossover'ı,
+// tek gün = Çöz Kazan (karışık harf). Sistem/ödül AYNI, yalnız soru tipi değişir.
+function isScrambleDay(dayIdx: number): boolean { return dayIdx % 2 === 1; }
+
+type DailyQuestion =
+  | { kind: 'crossover'; pair: { teamA: ClubRef; teamB: ClubRef } }
+  | { kind: 'scramble'; player: { id: number; name: string; imageUrl: string | null }; shownForm: string; letters: string[] };
+
+/** Günün sorusunu türüne göre çözer. scramble günü DETERMİNİSTİK (yazma gerekmez). */
+async function resolveDailyQuestion(dayIdx: number): Promise<DailyQuestion | null> {
+  if (isScrambleDay(dayIdx)) {
+    const r = await buildDailyScramble(rngFrom(`cof-daily-scramble:${dayIdx}`));
+    if (!r) return null;
+    return { kind: 'scramble', player: { id: r.playerId, name: r.playerName, imageUrl: r.playerImageUrl }, shownForm: r.shownForm, letters: r.scrambled };
+  }
+  const pair = await ensureDailyPair(dayIdx);
+  return pair ? { kind: 'crossover', pair } : null;
+}
 
 export const DAILY_CX_REWARD = 10; // 💎 — reklam ödülünün 2 katı, günde 1 kez
 const MAX_GUESSES = 3;
@@ -207,14 +227,16 @@ export async function dailyStreak(userId: string, dayIdx: number): Promise<numbe
 
 export async function getDailyState(userId: string, now = Date.now()): Promise<DailyCxStateView | null> {
   const dayIdx = istanbulDayIdx(now);
-  const pair = await ensureDailyPair(dayIdx);
-  if (!pair) return null;
+  const q = await resolveDailyQuestion(dayIdx);
+  if (!q) return null;
   const row = userId ? await loadResultRow(userId, dayIdx) : null;
   const finished = !!row?.finished_at;
   return {
     day: displayDayNumber(dayIdx),
-    teamA: pair.teamA,
-    teamB: pair.teamB,
+    kind: q.kind,
+    teamA: q.kind === 'crossover' ? q.pair.teamA : undefined,
+    teamB: q.kind === 'crossover' ? q.pair.teamB : undefined,
+    scramble: q.kind === 'scramble' ? { letters: q.letters } : undefined,
     resetAt: dayResetAt(dayIdx).toISOString(),
     reward: DAILY_CX_REWARD,
     maxGuesses: MAX_GUESSES,
@@ -230,9 +252,11 @@ export async function getDailyState(userId: string, now = Date.now()): Promise<D
           durationMs: row.duration_ms ?? 0,
           playerName: row.answer_player_name,
           playerImage: row.answer_player_image,
-          commonPlayers: await commonPlayersDetailed(pair.teamA.id, pair.teamB.id, 5).then(
-            (list) => list.map((p) => ({ name: p.name, imageUrl: p.imageUrl ?? null })),
-          ).catch(() => []),
+          commonPlayers: q.kind === 'crossover'
+            ? await commonPlayersDetailed(q.pair.teamA.id, q.pair.teamB.id, 5).then(
+                (list) => list.map((p) => ({ name: p.name, imageUrl: p.imageUrl ?? null })),
+              ).catch(() => [])
+            : [{ name: q.player.name, imageUrl: q.player.imageUrl }],
         }
       : null,
   };
@@ -255,17 +279,30 @@ export type DailyGuessOutcome =
 
 export async function submitDailyGuess(userId: string, text: string, now = Date.now()): Promise<DailyGuessOutcome> {
   const dayIdx = istanbulDayIdx(now);
-  const pair = await ensureDailyPair(dayIdx);
-  if (!pair || !userId) return { kind: 'not_active' };
+  const q = await resolveDailyQuestion(dayIdx);
+  if (!q || !userId) return { kind: 'not_active' };
   await startDaily(userId, now); // satır yoksa aç (start atlanmış eski istemci)
   const row = await loadResultRow(userId, dayIdx);
   if (!row || row.finished_at) return { kind: 'not_active' };
 
-  let verdict: VerifyResult;
-  try {
-    verdict = await verifyGuess(pair.teamA.id, pair.teamB.id, text);
-  } catch {
-    return { kind: 'not_active' };
+  // Verdict soru türüne göre; ödül/hak mantığı AYNI (aşağısı tip-agnostik).
+  let correct: boolean; let matchedName: string | null; let matchedImage: string | null; let suggestion: string | null;
+  if (q.kind === 'scramble') {
+    correct = isCorrectAnswer(text, q.shownForm); // TAM yazım, bulanık YOK
+    matchedName = correct ? q.player.name : null;
+    matchedImage = correct ? q.player.imageUrl : null;
+    suggestion = null; // scramble: "şunu mu demek istedin" yok
+  } else {
+    let verdict: VerifyResult;
+    try {
+      verdict = await verifyGuess(q.pair.teamA.id, q.pair.teamB.id, text);
+    } catch {
+      return { kind: 'not_active' };
+    }
+    correct = !!(verdict.correct && verdict.matchedPlayer);
+    matchedName = verdict.matchedPlayer?.name ?? null;
+    matchedImage = verdict.matchedPlayer?.imageUrl ?? null;
+    suggestion = verdict.matchedPlayer?.name ?? null;
   }
 
   // Deneme sayacı atomik artar ve 3'ü aşamaz — çifte gönderim hak yakamaz.
@@ -280,13 +317,13 @@ export async function submitDailyGuess(userId: string, text: string, now = Date.
   const guesses = Number(bump.guesses);
   const durationMs = Math.max(0, now - new Date(bump.started_at).getTime());
 
-  if (verdict.correct && verdict.matchedPlayer) {
+  if (correct) {
     await pool.query(
       `UPDATE daily_crossover_results
           SET finished_at = now(), correct = TRUE, duration_ms = $3,
               answer_player_name = $4, answer_player_image = $5
         WHERE user_id = $1 AND day_idx = $2 AND finished_at IS NULL`,
-      [userId, dayIdx, durationMs, verdict.matchedPlayer.name, verdict.matchedPlayer.imageUrl],
+      [userId, dayIdx, durationMs, matchedName, matchedImage],
     );
     // Ödül: atomik + deftere idempotent — aynı gün ikinci kez yazılamaz
     // (finished_at guard'ı zaten ikinci finish'i engeller).
@@ -322,6 +359,6 @@ export async function submitDailyGuess(userId: string, text: string, now = Date.
     kind: 'wrong',
     attemptsLeft: MAX_GUESSES - guesses,
     guess: text,
-    suggestion: verdict.matchedPlayer?.name ?? null,
+    suggestion,
   };
 }

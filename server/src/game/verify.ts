@@ -435,8 +435,11 @@ export interface ScopeOption {
   logoUrl?: string | null;
 }
 
-// API-Football league IDs for logo URLs.
+// API-Football league IDs for logo URLs. Hem İSİM hem TM KODU anahtarlanır:
+// dev DB clubs.league=TM kodu (ES1…), prod isim ('La Liga') olabilir — ikisi de
+// çalışsın diye kod anahtarları da eklendi (2026-08-29, lig ekseni + scope logosu).
 const LEAGUE_LOGOS: Record<string, number> = {
+  ES1: 140, GB1: 39, L1: 78, IT1: 135, TR1: 203, FR1: 61, // TM kodları (büyük ligler)
   'Premier League': 39, Championship: 40, 'La Liga': 140, LaLiga: 140, 'La Liga 2': 141,
   'Serie A': 135, 'Serie B': 136, Bundesliga: 78, 'Bundesliga 2': 79,
   'Ligue 1': 61, 'Ligue 2': 62, Eredivisie: 88, 'Primeira Liga': 94, 'Liga Portugal': 94,
@@ -749,6 +752,806 @@ export async function getValidPlayersForCountryAndClub(
       fame,
     };
   });
+}
+
+// ── XOX ülke/bayrak ekseni (2026-08-29) ──────────────────────────────────────
+// Milli takım kulübü YERİNE players.nationality kullanılır (yerel + prod'da dolu).
+// Doğrulama commonPlayersCountryTeam ile AYNI motor → sıfır yeni hata yüzeyi.
+
+/** Milliyet string'i için bayrak emojisi — DB "Türkiye" (TR) saklarken FLAGS
+ * anahtarı "Turkey" olabilir; variant'lar üzerinden güvenle çözer. Yoksa null. */
+export function flagForNationality(country: string): string | null {
+  for (const v of [country, ...nationalityVariants(country)]) {
+    const f = countryFlag(v);
+    if (f) return f;
+  }
+  return null;
+}
+
+/** Milliyetin TR görünen adı (ör. "Italy" → "İtalya"); yoksa ham değer. */
+export function nationalityDisplay(country: string): string {
+  return COUNTRY_NAME_TR[country] ?? country;
+}
+
+/** XOX ülke ekseni: verilen 3 kulübün HER BİRİYLE ≥min oyuncusu olan, BAYRAĞI
+ * bulunan bir milliyet seçer (tanıdık ülkeler + bol oyunculu önce). Yoksa null —
+ * çağıran o zaman ülke KOYMAZ, grid tüm-kulüp kalır (grid asla bozulmaz). Sayım
+ * ham nationality iledir; verify variant'ları da kabul ettiğinden verify ≥ sayım
+ * (güvenli yön — asla fazla saymaz). */
+export async function pickXoxCountryForClubs(
+  clubIds: number[],
+  min: number,
+): Promise<{ country: string; name: string; flag: string; counts: [number, number, number] } | null> {
+  if (clubIds.length !== 3) return null;
+  const { rows } = await pool.query<{ nationality: string; n1: string; n2: string; n3: string }>(
+    `SELECT p.nationality,
+            count(DISTINCT p.id) FILTER (WHERE pc.club_id = $1) AS n1,
+            count(DISTINCT p.id) FILTER (WHERE pc.club_id = $2) AS n2,
+            count(DISTINCT p.id) FILTER (WHERE pc.club_id = $3) AS n3
+       FROM player_clubs pc
+       JOIN players p ON p.id = pc.player_id
+      WHERE pc.club_id = ANY($4::bigint[])
+        AND ${ACTIVE_SPELL_SQL}
+        AND p.nationality IS NOT NULL AND p.nationality <> ''
+      GROUP BY p.nationality`,
+    [clubIds[0], clubIds[1], clubIds[2], clubIds],
+  );
+  const viable = rows
+    .map((r) => {
+      const counts: [number, number, number] = [Number(r.n1), Number(r.n2), Number(r.n3)];
+      return { country: r.nationality, counts, n: Math.min(...counts), flag: flagForNationality(r.nationality) };
+    })
+    .filter((r): r is { country: string; counts: [number, number, number]; n: number; flag: string } => r.n >= min && r.flag != null);
+  if (!viable.length) return null;
+  viable.sort((a, b) => {
+    const fa = HUMANLIKE_COUNTRIES.includes(a.country) ? 1 : 0;
+    const fb = HUMANLIKE_COUNTRIES.includes(b.country) ? 1 : 0;
+    if (fa !== fb) return fb - fa;        // tanıdık ülkeler önce
+    return b.n - a.n;                     // sonra en kolay (bol oyunculu)
+  });
+  const top = viable.slice(0, Math.min(4, viable.length));
+  const pick = top[Math.floor(Math.random() * top.length)]!;
+  return { country: pick.country, name: nationalityDisplay(pick.country), flag: pick.flag, counts: pick.counts };
+}
+
+/** XOX boş-hücre reveal + botun "bildiği" cevap: kulüp+milliyet EN ÜNLÜ oyuncu. */
+export async function topPlayerForCountryAndClub(
+  clubId: number,
+  country: string,
+): Promise<{ name: string; imageUrl: string | null } | null> {
+  const cands = await getValidPlayersForCountryAndClub(clubId, country, 1).catch(() => [] as CountryTeamAnswerCandidate[]);
+  const t = cands[0];
+  return t ? { name: t.canonicalName, imageUrl: t.imageUrl } : null;
+}
+
+// ── XOX lig ekseni (büyük ligler, 2026-08-29) ────────────────────────────────
+// Yalnız 6 büyük lig. Hücre = kesişen kulüpte oynamış VE bu ligde oynamış oyuncu.
+// clubs.league dev'de TM KODU (ES1…), prod'da İSİM ('La Liga') olabilir → her iki
+// biçim de dbValues ile eşlenir. Üretim (pickXoxLeagueForClubs) kesişen kulübün
+// O LİGDE OLMADIĞINI garanti eder → trivial "o ligin kendi kulübü" hücresi oluşmaz,
+// böylece SIMPLE kural (bu ligde herhangi bir kulüpte oynamış) hem doğru hem sezgisel
+// (Messi gibi tek-kulüp oyuncular yanlışlıkla elenmez; kesişen kulüp zaten o ligde değil).
+interface XoxBigLeague { code: string; name: string; apiId: number; dbValues: string[] }
+const XOX_BIG_LEAGUES: XoxBigLeague[] = [
+  { code: 'ES1', name: 'LaLiga',      apiId: 140, dbValues: ['ES1', 'La Liga', 'LaLiga', 'Primera Division'] },
+  { code: 'GB1', name: 'Premier Lig', apiId: 39,  dbValues: ['GB1', 'Premier League'] },
+  { code: 'L1',  name: 'Bundesliga',  apiId: 78,  dbValues: ['L1', 'Bundesliga'] },
+  { code: 'IT1', name: 'Serie A',     apiId: 135, dbValues: ['IT1', 'Serie A'] },
+  { code: 'TR1', name: 'Süper Lig',   apiId: 203, dbValues: ['TR1', 'Süper Lig', 'Super Lig'] },
+  { code: 'FR1', name: 'Ligue 1',     apiId: 61,  dbValues: ['FR1', 'Ligue 1'] },
+];
+const XOX_LEAGUE_BY_CODE = new Map(XOX_BIG_LEAGUES.map((l) => [l.code, l] as const));
+const XOX_LEAGUE_CODE_BY_DBVALUE = new Map<string, string>();
+for (const l of XOX_BIG_LEAGUES) for (const v of l.dbValues) XOX_LEAGUE_CODE_BY_DBVALUE.set(v, l.code);
+
+export function xoxLeagueDisplay(code: string): string { return XOX_LEAGUE_BY_CODE.get(code)?.name ?? code; }
+export function xoxLeagueLogo(code: string): string | null {
+  const l = XOX_LEAGUE_BY_CODE.get(code);
+  return l ? `https://media.api-sports.io/football/leagues/${l.apiId}.png` : null;
+}
+function leagueDbValues(code: string): string[] { return XOX_LEAGUE_BY_CODE.get(code)?.dbValues ?? [code]; }
+const LEAGUE_SPELL_ACTIVE = (a: string) => `COALESCE(${a}.end_year, ${a}.start_year, 9999) >= ${MIN_SPELL_YEAR}`;
+
+/** Kesişen kulüpte oynamış VE bu ligde (herhangi bir kulüpte) oynamış oyuncular — fame sıralı. */
+export async function getValidPlayersForLeagueAndClub(
+  clubId: number, leagueCode: string, limit = 12,
+): Promise<CountryTeamAnswerCandidate[]> {
+  const vals = leagueDbValues(leagueCode);
+  const { rows } = await pool.query<{ id: string; name: string; image_url: string | null; fame: string; career_count: string }>(
+    `SELECT p.id, p.name, p.image_url,
+            count(DISTINCT pc2.club_id) AS career_count,
+            COALESCE(MAX(GREATEST(COALESCE(c2.popularity, 0), (SELECT count(*) FROM player_clubs x WHERE x.club_id = pc2.club_id))), 0) AS fame
+       FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id AND pc.club_id = $1
+       LEFT JOIN player_clubs pc2 ON pc2.player_id = p.id
+       LEFT JOIN clubs c2 ON c2.id = pc2.club_id
+      WHERE ${ACTIVE_SPELL_SQL}
+        AND EXISTS (SELECT 1 FROM player_clubs pl JOIN clubs cl ON cl.id = pl.club_id
+                     WHERE pl.player_id = p.id AND cl.league = ANY($2) AND ${LEAGUE_SPELL_ACTIVE('pl')})
+      GROUP BY p.id, p.name, p.image_url
+      ORDER BY (p.image_url IS NOT NULL) DESC, fame DESC, career_count DESC, p.name ASC
+      LIMIT $3`,
+    [clubId, vals, limit],
+  );
+  return rows.map((r) => {
+    const fame = Number(r.fame);
+    return { playerId: Number(r.id), canonicalName: r.name, imageUrl: r.image_url, confidence: 1, popularityScore: popularityScoreFromFame(fame), fame };
+  });
+}
+
+export async function topPlayerForLeagueAndClub(clubId: number, leagueCode: string): Promise<{ name: string; imageUrl: string | null } | null> {
+  const cands = await getValidPlayersForLeagueAndClub(clubId, leagueCode, 1).catch(() => [] as CountryTeamAnswerCandidate[]);
+  const t = cands[0];
+  return t ? { name: t.canonicalName, imageUrl: t.imageUrl } : null;
+}
+
+/** Sunucu-otoriter re-check: eşleşen oyuncu gerçekten kulüpte+ligde mi. */
+export async function validateLeagueTeamPlayerId(clubId: number, leagueCode: string, playerId: number): Promise<boolean> {
+  if (!Number.isFinite(clubId) || !Number.isFinite(playerId)) return false;
+  const vals = leagueDbValues(leagueCode);
+  const { rows } = await pool.query<{ id: string }>(
+    `SELECT p.id FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id AND pc.club_id = $1
+      WHERE p.id = $3 AND ${ACTIVE_SPELL_SQL}
+        AND EXISTS (SELECT 1 FROM player_clubs pl JOIN clubs cl ON cl.id = pl.club_id
+                     WHERE pl.player_id = p.id AND cl.league = ANY($2) AND ${LEAGUE_SPELL_ACTIVE('pl')})
+      LIMIT 1`,
+    [clubId, vals, playerId],
+  );
+  return rows.length > 0;
+}
+
+export async function verifyLeagueTeamGuess(clubId: number, leagueCode: string, guess: string): Promise<VerifyResult> {
+  const club = await getClub(clubId);
+  if (!club) throw new Error('Unknown club id');
+  const pseudoLeague: ClubHit = { id: 0, name: xoxLeagueDisplay(leagueCode), logoUrl: xoxLeagueLogo(leagueCode) };
+  const norm = normalize(guess);
+  const empty: Omit<VerifyResult, 'correct' | 'reason' | 'matchedPlayer'> = {
+    autocorrected: false, teamA: pseudoLeague, teamB: club, spellsA: [], spellsB: [], allClubs: [],
+  };
+  if (!norm) return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
+  const vals = leagueDbValues(leagueCode);
+  const { rows: cands } = await pool.query<{ id: string; name: string; sim: number; image_url: string | null }>(
+    `SELECT picked.id, picked.name, picked.image_url, picked.sim
+       FROM (
+         SELECT DISTINCT ON (p.id) p.id, p.name, p.image_url,
+                word_similarity($1, p.name_norm) AS sim,
+                (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) AS career_count
+           FROM players p
+           JOIN player_clubs pc ON pc.player_id = p.id
+          WHERE pc.club_id = $2
+            AND ${ACTIVE_SPELL_SQL}
+            AND EXISTS (SELECT 1 FROM player_clubs pl JOIN clubs cl ON cl.id = pl.club_id
+                         WHERE pl.player_id = p.id AND cl.league = ANY($3) AND ${LEAGUE_SPELL_ACTIVE('pl')})
+            AND word_similarity($1, p.name_norm) >= $4
+          ORDER BY p.id, sim DESC, (p.image_url IS NOT NULL) DESC, career_count DESC
+       ) AS picked
+      ORDER BY picked.sim DESC, (picked.image_url IS NOT NULL) DESC, picked.career_count DESC
+      LIMIT 15`,
+    [norm, clubId, vals, config.verifyMatchThreshold],
+  );
+  const eligible = cands.map((c) => ({ id: Number(c.id), name: c.name, sim: Number(c.sim), imageUrl: c.image_url }));
+  if (eligible.length === 0) return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
+  let matched = eligible[0]!; let correct: boolean; let autocorrected = false;
+  const exactCluster = eligible.filter((c) => c.sim >= config.verifyExactThreshold);
+  if (exactCluster.length > 0) { matched = exactCluster[0]!; correct = true; }
+  else if ((eligible[0]!.sim >= AUTOCORRECT_MIN && notAStub(norm, normalize(eligible[0]!.name)))
+    || editAccepts(norm, normalize(eligible[0]!.name)) || vowelDropAccepts(norm, normalize(eligible[0]!.name))) {
+    matched = eligible[0]!; correct = true; autocorrected = true;
+  } else { matched = eligible[0]!; correct = false; }
+  if (correct) correct = await validateLeagueTeamPlayerId(clubId, leagueCode, matched.id);
+  const allClubs = await getPlayerSpells(matched.id);
+  const spellsB = allClubs.filter((s) => s.clubId === clubId);
+  return { correct, reason: correct ? 'both' : 'not_both', autocorrected, teamA: pseudoLeague, teamB: club, matchedPlayer: { id: matched.id, name: matched.name, sim: matched.sim, imageUrl: matched.imageUrl }, spellsA: [], spellsB, allClubs };
+}
+
+/** XOX lig ekseni üretimi: kesişen 3 kulübün HER BİRİYLE ≥min oyuncusu olan bir
+ * büyük lig seçer. ÖNCE o 3 kulübün KENDİ ligleri hariç tutulur (trivial hücre yok).
+ * Sayım = "kulüpte oynadı + ligde oynadı" (verify ile birebir aynı). Yoksa null. */
+export async function pickXoxLeagueForClubs(
+  clubIds: number[], min: number,
+): Promise<{ code: string; name: string; logoUrl: string; counts: [number, number, number] } | null> {
+  if (clubIds.length !== 3) return null;
+  const { rows: own } = await pool.query<{ league: string | null }>(`SELECT league FROM clubs WHERE id = ANY($1::bigint[])`, [clubIds]);
+  const excludeCodes = new Set<string>();
+  for (const r of own) { const code = r.league ? XOX_LEAGUE_CODE_BY_DBVALUE.get(r.league) : undefined; if (code) excludeCodes.add(code); }
+  const candLeagues = XOX_BIG_LEAGUES.filter((l) => !excludeCodes.has(l.code));
+  if (!candLeagues.length) return null;
+  const dbvals: string[] = []; const codes: string[] = [];
+  for (const l of candLeagues) for (const v of l.dbValues) { dbvals.push(v); codes.push(l.code); }
+  const { rows } = await pool.query<{ code: string; n1: string; n2: string; n3: string }>(
+    `SELECT lg.code,
+            count(DISTINCT p.id) FILTER (WHERE pc.club_id = $1) AS n1,
+            count(DISTINCT p.id) FILTER (WHERE pc.club_id = $2) AS n2,
+            count(DISTINCT p.id) FILTER (WHERE pc.club_id = $3) AS n3
+       FROM player_clubs pc
+       JOIN players p ON p.id = pc.player_id
+       JOIN player_clubs pl ON pl.player_id = p.id
+       JOIN clubs cl ON cl.id = pl.club_id
+       JOIN (SELECT unnest($5::text[]) AS dbval, unnest($6::text[]) AS code) AS lg ON cl.league = lg.dbval
+      WHERE pc.club_id = ANY($4::bigint[])
+        AND COALESCE(pc.end_year, pc.start_year, 9999) >= ${MIN_SPELL_YEAR}
+        AND ${LEAGUE_SPELL_ACTIVE('pl')}
+      GROUP BY lg.code`,
+    [clubIds[0], clubIds[1], clubIds[2], clubIds, dbvals, codes],
+  );
+  const viable = rows
+    .map((r) => { const counts: [number, number, number] = [Number(r.n1), Number(r.n2), Number(r.n3)]; return { code: r.code, counts, n: Math.min(...counts) }; })
+    .filter((r) => r.n >= min);
+  if (!viable.length) return null;
+  viable.sort((a, b) => b.n - a.n);
+  const top = viable.slice(0, Math.min(3, viable.length));
+  const pick = top[Math.floor(Math.random() * top.length)]!;
+  return { code: pick.code, name: xoxLeagueDisplay(pick.code), logoUrl: xoxLeagueLogo(pick.code)!, counts: pick.counts };
+}
+
+// ── XOX teknik direktör ekseni (2026-08-29) ──────────────────────────────────
+// Hücre = kesişen kulüpte oynamış VE bu TD'nin yönettiği bir kulüpte O DÖNEM
+// (yıl-örtüşme) oynamış oyuncu. Veri: managers + manager_tenures (TM'den, YALNIZ
+// baş antrenör dönemleri). tmClubId = clubs.id doğrudan. "TD altında oynadı"
+// yordamı = oyuncunun bir spell'i, TD'nin O kulüpteki döneminin yıl aralığıyla
+// örtüşüyor. Açık uçlu (null) end = devam ediyor → şu anki yıla coalesce.
+const UNDER_MANAGER_SQL = (mgr: string) => `EXISTS (
+  SELECT 1 FROM player_clubs pm
+    JOIN manager_tenures mt ON mt.club_id = pm.club_id AND mt.manager_id = ${mgr}
+   WHERE pm.player_id = p.id
+     AND GREATEST(pm.start_year, mt.start_year) <= LEAST(COALESCE(pm.end_year, EXTRACT(YEAR FROM now())::int), COALESCE(mt.end_year, EXTRACT(YEAR FROM now())::int)))`;
+
+/** Kesişen kulüpte oynamış VE bu TD altında (yıl-örtüşme) oynamış oyuncular. */
+export async function getValidPlayersForManagerAndClub(clubId: number, managerId: number, limit = 12): Promise<CountryTeamAnswerCandidate[]> {
+  const { rows } = await pool.query<{ id: string; name: string; image_url: string | null; fame: string; career_count: string }>(
+    `SELECT p.id, p.name, p.image_url,
+            count(DISTINCT pc2.club_id) AS career_count,
+            COALESCE(MAX(GREATEST(COALESCE(c2.popularity, 0), (SELECT count(*) FROM player_clubs x WHERE x.club_id = pc2.club_id))), 0) AS fame
+       FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id AND pc.club_id = $1
+       LEFT JOIN player_clubs pc2 ON pc2.player_id = p.id
+       LEFT JOIN clubs c2 ON c2.id = pc2.club_id
+      WHERE ${ACTIVE_SPELL_SQL}
+        AND ${UNDER_MANAGER_SQL('$2')}
+      GROUP BY p.id, p.name, p.image_url
+      ORDER BY (p.image_url IS NOT NULL) DESC, fame DESC, career_count DESC, p.name ASC
+      LIMIT $3`,
+    [clubId, managerId, limit],
+  );
+  return rows.map((r) => { const fame = Number(r.fame); return { playerId: Number(r.id), canonicalName: r.name, imageUrl: r.image_url, confidence: 1, popularityScore: popularityScoreFromFame(fame), fame }; });
+}
+
+export async function topPlayerForManagerAndClub(clubId: number, managerId: number): Promise<{ name: string; imageUrl: string | null } | null> {
+  const cands = await getValidPlayersForManagerAndClub(clubId, managerId, 1).catch(() => [] as CountryTeamAnswerCandidate[]);
+  const t = cands[0]; return t ? { name: t.canonicalName, imageUrl: t.imageUrl } : null;
+}
+
+export async function validateManagerTeamPlayerId(clubId: number, managerId: number, playerId: number): Promise<boolean> {
+  if (!Number.isFinite(clubId) || !Number.isFinite(managerId) || !Number.isFinite(playerId)) return false;
+  const { rows } = await pool.query<{ id: string }>(
+    `SELECT p.id FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id AND pc.club_id = $1
+      WHERE p.id = $3 AND ${ACTIVE_SPELL_SQL} AND ${UNDER_MANAGER_SQL('$2')}
+      LIMIT 1`,
+    [clubId, managerId, playerId],
+  );
+  return rows.length > 0;
+}
+
+export async function verifyManagerTeamGuess(clubId: number, managerId: number, guess: string): Promise<VerifyResult> {
+  const club = await getClub(clubId);
+  if (!club) throw new Error('Unknown club id');
+  const mgr = await pool.query<{ name: string; image_url: string | null }>('SELECT name, image_url FROM managers WHERE id=$1', [managerId]);
+  const pseudoMgr: ClubHit = { id: 0, name: mgr.rows[0]?.name ?? 'Teknik Direktör', logoUrl: mgr.rows[0]?.image_url ?? null };
+  const norm = normalize(guess);
+  const empty: Omit<VerifyResult, 'correct' | 'reason' | 'matchedPlayer'> = { autocorrected: false, teamA: pseudoMgr, teamB: club, spellsA: [], spellsB: [], allClubs: [] };
+  if (!norm) return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
+  const { rows: cands } = await pool.query<{ id: string; name: string; sim: number; image_url: string | null }>(
+    `SELECT picked.id, picked.name, picked.image_url, picked.sim FROM (
+       SELECT DISTINCT ON (p.id) p.id, p.name, p.image_url,
+              word_similarity($1, p.name_norm) AS sim,
+              (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) AS career_count
+         FROM players p
+         JOIN player_clubs pc ON pc.player_id = p.id
+        WHERE pc.club_id = $2 AND ${ACTIVE_SPELL_SQL} AND ${UNDER_MANAGER_SQL('$3')}
+          AND word_similarity($1, p.name_norm) >= $4
+        ORDER BY p.id, sim DESC, (p.image_url IS NOT NULL) DESC, career_count DESC
+     ) AS picked
+     ORDER BY picked.sim DESC, (picked.image_url IS NOT NULL) DESC, picked.career_count DESC LIMIT 15`,
+    [norm, clubId, managerId, config.verifyMatchThreshold],
+  );
+  const eligible = cands.map((c) => ({ id: Number(c.id), name: c.name, sim: Number(c.sim), imageUrl: c.image_url }));
+  if (eligible.length === 0) return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
+  let matched = eligible[0]!; let correct: boolean; let autocorrected = false;
+  const exactCluster = eligible.filter((c) => c.sim >= config.verifyExactThreshold);
+  if (exactCluster.length > 0) { matched = exactCluster[0]!; correct = true; }
+  else if ((eligible[0]!.sim >= AUTOCORRECT_MIN && notAStub(norm, normalize(eligible[0]!.name))) || editAccepts(norm, normalize(eligible[0]!.name)) || vowelDropAccepts(norm, normalize(eligible[0]!.name))) { matched = eligible[0]!; correct = true; autocorrected = true; }
+  else { matched = eligible[0]!; correct = false; }
+  if (correct) correct = await validateManagerTeamPlayerId(clubId, managerId, matched.id);
+  const allClubs = await getPlayerSpells(matched.id);
+  const spellsB = allClubs.filter((s) => s.clubId === clubId);
+  return { correct, reason: correct ? 'both' : 'not_both', autocorrected, teamA: pseudoMgr, teamB: club, matchedPlayer: { id: matched.id, name: matched.name, sim: matched.sim, imageUrl: matched.imageUrl }, spellsA: [], spellsB, allClubs };
+}
+
+/** XOX TD ekseni üretimi: kesişen 3 kulübün HER BİRİYLE ≥min oyuncusu olan bir TD
+ * seçer (ad + foto managers'tan). Yoksa null. */
+export async function pickXoxManagerForClubs(clubIds: number[], min: number): Promise<{ managerId: number; name: string; photoUrl: string | null; counts: [number, number, number] } | null> {
+  if (clubIds.length !== 3) return null;
+  const { rows } = await pool.query<{ manager_id: string; name: string; image_url: string | null; n1: string; n2: string; n3: string }>(
+    `SELECT mt.manager_id, mgr.name, mgr.image_url,
+            count(DISTINCT p.id) FILTER (WHERE pc.club_id = $1) AS n1,
+            count(DISTINCT p.id) FILTER (WHERE pc.club_id = $2) AS n2,
+            count(DISTINCT p.id) FILTER (WHERE pc.club_id = $3) AS n3
+       FROM player_clubs pc
+       JOIN players p ON p.id = pc.player_id
+       JOIN player_clubs pm ON pm.player_id = p.id
+       JOIN manager_tenures mt ON mt.club_id = pm.club_id
+         AND GREATEST(pm.start_year, mt.start_year) <= LEAST(COALESCE(pm.end_year, EXTRACT(YEAR FROM now())::int), COALESCE(mt.end_year, EXTRACT(YEAR FROM now())::int))
+       JOIN managers mgr ON mgr.id = mt.manager_id
+      WHERE pc.club_id = ANY($4::bigint[]) AND ${ACTIVE_SPELL_SQL}
+      GROUP BY mt.manager_id, mgr.name, mgr.image_url`,
+    [clubIds[0], clubIds[1], clubIds[2], clubIds],
+  );
+  const viable = rows.map((r) => { const counts: [number, number, number] = [Number(r.n1), Number(r.n2), Number(r.n3)]; return { managerId: Number(r.manager_id), name: r.name, photoUrl: r.image_url, counts, n: Math.min(...counts) }; }).filter((r) => r.n >= min);
+  if (!viable.length) return null;
+  viable.sort((a, b) => b.n - a.n);
+  const top = viable.slice(0, Math.min(4, viable.length));
+  const pick = top[Math.floor(Math.random() * top.length)]!;
+  return { managerId: pick.managerId, name: pick.name, photoUrl: pick.photoUrl, counts: pick.counts };
+}
+
+// ── XOX kupa ekseni (2026-08-29) ─────────────────────────────────────────────
+// Hücre = bu kupayı KAZANMIŞ (herhangi bir kulüple) VE kesişen kulüpte oynamış
+// oyuncu. Veri: player_honours (TM Erfolge'den; CL/WC/EL). Kullanıcı örneği:
+// "hem Şampiyonlar Ligi kazanmış hem bu takımda oynamış".
+interface XoxTrophy { code: string; name: string; apiId: number }
+const XOX_TROPHIES: XoxTrophy[] = [
+  { code: 'CL', name: 'Şampiyonlar Ligi', apiId: 2 }, // UEFA Champions League
+  { code: 'WC', name: 'Dünya Kupası',     apiId: 1 }, // FIFA World Cup
+  { code: 'EL', name: 'Avrupa Ligi',      apiId: 3 }, // UEFA Europa League
+];
+const XOX_TROPHY_BY_CODE = new Map(XOX_TROPHIES.map((t) => [t.code, t] as const));
+// Görünen ad (BDOR dahil — BDOR trophy PICK havuzunda DEĞİL, ayrı 'bdor' ekseni,
+// ama verify/reveal aynı player_honours motorunu comp='BDOR' ile kullanır).
+const COMP_DISPLAY: Record<string, string> = { CL: 'Şampiyonlar Ligi', WC: 'Dünya Kupası', EL: 'Avrupa Ligi', BDOR: "Ballon d'Or" };
+export function xoxTrophyDisplay(code: string): string { return COMP_DISPLAY[code] ?? XOX_TROPHY_BY_CODE.get(code)?.name ?? code; }
+export function xoxTrophyLogo(code: string): string | null {
+  const t = XOX_TROPHY_BY_CODE.get(code);
+  return t ? `https://media.api-sports.io/football/leagues/${t.apiId}.png` : null;
+}
+const WON_TROPHY_SQL = (comp: string) => `EXISTS (SELECT 1 FROM player_honours ph WHERE ph.player_id = p.id AND ph.competition = ${comp})`;
+
+/** Bu kupayı kazanmış VE kesişen kulüpte oynamış oyuncular — fame sıralı. */
+export async function getValidPlayersForTrophyAndClub(clubId: number, comp: string, limit = 12): Promise<CountryTeamAnswerCandidate[]> {
+  const { rows } = await pool.query<{ id: string; name: string; image_url: string | null; fame: string; career_count: string }>(
+    `SELECT p.id, p.name, p.image_url,
+            count(DISTINCT pc2.club_id) AS career_count,
+            COALESCE(MAX(GREATEST(COALESCE(c2.popularity, 0), (SELECT count(*) FROM player_clubs x WHERE x.club_id = pc2.club_id))), 0) AS fame
+       FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id AND pc.club_id = $1
+       LEFT JOIN player_clubs pc2 ON pc2.player_id = p.id
+       LEFT JOIN clubs c2 ON c2.id = pc2.club_id
+      WHERE ${ACTIVE_SPELL_SQL} AND ${WON_TROPHY_SQL('$2')}
+      GROUP BY p.id, p.name, p.image_url
+      ORDER BY (p.image_url IS NOT NULL) DESC, fame DESC, career_count DESC, p.name ASC
+      LIMIT $3`,
+    [clubId, comp, limit],
+  );
+  return rows.map((r) => { const fame = Number(r.fame); return { playerId: Number(r.id), canonicalName: r.name, imageUrl: r.image_url, confidence: 1, popularityScore: popularityScoreFromFame(fame), fame }; });
+}
+
+export async function topPlayerForTrophyAndClub(clubId: number, comp: string): Promise<{ name: string; imageUrl: string | null } | null> {
+  const cands = await getValidPlayersForTrophyAndClub(clubId, comp, 1).catch(() => [] as CountryTeamAnswerCandidate[]);
+  const t = cands[0]; return t ? { name: t.canonicalName, imageUrl: t.imageUrl } : null;
+}
+
+export async function validateTrophyTeamPlayerId(clubId: number, comp: string, playerId: number): Promise<boolean> {
+  if (!Number.isFinite(clubId) || !Number.isFinite(playerId)) return false;
+  const { rows } = await pool.query<{ id: string }>(
+    `SELECT p.id FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id AND pc.club_id = $1
+      WHERE p.id = $3 AND ${ACTIVE_SPELL_SQL} AND ${WON_TROPHY_SQL('$2')}
+      LIMIT 1`,
+    [clubId, comp, playerId],
+  );
+  return rows.length > 0;
+}
+
+export async function verifyTrophyTeamGuess(clubId: number, comp: string, guess: string): Promise<VerifyResult> {
+  const club = await getClub(clubId);
+  if (!club) throw new Error('Unknown club id');
+  const pseudoTrophy: ClubHit = { id: 0, name: xoxTrophyDisplay(comp), logoUrl: xoxTrophyLogo(comp) };
+  const norm = normalize(guess);
+  const empty: Omit<VerifyResult, 'correct' | 'reason' | 'matchedPlayer'> = { autocorrected: false, teamA: pseudoTrophy, teamB: club, spellsA: [], spellsB: [], allClubs: [] };
+  if (!norm) return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
+  const { rows: cands } = await pool.query<{ id: string; name: string; sim: number; image_url: string | null }>(
+    `SELECT picked.id, picked.name, picked.image_url, picked.sim FROM (
+       SELECT DISTINCT ON (p.id) p.id, p.name, p.image_url,
+              word_similarity($1, p.name_norm) AS sim,
+              (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) AS career_count
+         FROM players p
+         JOIN player_clubs pc ON pc.player_id = p.id
+        WHERE pc.club_id = $2 AND ${ACTIVE_SPELL_SQL} AND ${WON_TROPHY_SQL('$3')}
+          AND word_similarity($1, p.name_norm) >= $4
+        ORDER BY p.id, sim DESC, (p.image_url IS NOT NULL) DESC, career_count DESC
+     ) AS picked
+     ORDER BY picked.sim DESC, (picked.image_url IS NOT NULL) DESC, picked.career_count DESC LIMIT 15`,
+    [norm, clubId, comp, config.verifyMatchThreshold],
+  );
+  const eligible = cands.map((c) => ({ id: Number(c.id), name: c.name, sim: Number(c.sim), imageUrl: c.image_url }));
+  if (eligible.length === 0) return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
+  let matched = eligible[0]!; let correct: boolean; let autocorrected = false;
+  const exactCluster = eligible.filter((c) => c.sim >= config.verifyExactThreshold);
+  if (exactCluster.length > 0) { matched = exactCluster[0]!; correct = true; }
+  else if ((eligible[0]!.sim >= AUTOCORRECT_MIN && notAStub(norm, normalize(eligible[0]!.name))) || editAccepts(norm, normalize(eligible[0]!.name)) || vowelDropAccepts(norm, normalize(eligible[0]!.name))) { matched = eligible[0]!; correct = true; autocorrected = true; }
+  else { matched = eligible[0]!; correct = false; }
+  if (correct) correct = await validateTrophyTeamPlayerId(clubId, comp, matched.id);
+  const allClubs = await getPlayerSpells(matched.id);
+  const spellsB = allClubs.filter((s) => s.clubId === clubId);
+  return { correct, reason: correct ? 'both' : 'not_both', autocorrected, teamA: pseudoTrophy, teamB: club, matchedPlayer: { id: matched.id, name: matched.name, sim: matched.sim, imageUrl: matched.imageUrl }, spellsA: [], spellsB, allClubs };
+}
+
+/** XOX kupa ekseni üretimi: kesişen 3 kulübün HER BİRİYLE ≥min oyuncusu olan bir
+ * kupa seçer (CL/WC/EL). Yoksa null. */
+export async function pickXoxTrophyForClubs(clubIds: number[], min: number): Promise<{ code: string; name: string; logoUrl: string; counts: [number, number, number] } | null> {
+  if (clubIds.length !== 3) return null;
+  const { rows } = await pool.query<{ competition: string; n1: string; n2: string; n3: string }>(
+    `SELECT ph.competition,
+            count(DISTINCT p.id) FILTER (WHERE pc.club_id = $1) AS n1,
+            count(DISTINCT p.id) FILTER (WHERE pc.club_id = $2) AS n2,
+            count(DISTINCT p.id) FILTER (WHERE pc.club_id = $3) AS n3
+       FROM player_clubs pc
+       JOIN players p ON p.id = pc.player_id
+       JOIN player_honours ph ON ph.player_id = p.id
+      WHERE pc.club_id = ANY($4::bigint[]) AND ${ACTIVE_SPELL_SQL}
+      GROUP BY ph.competition`,
+    [clubIds[0], clubIds[1], clubIds[2], clubIds],
+  );
+  const viable = rows.map((r) => { const counts: [number, number, number] = [Number(r.n1), Number(r.n2), Number(r.n3)]; return { code: r.competition, counts, n: Math.min(...counts) }; }).filter((r) => r.n >= min && XOX_TROPHY_BY_CODE.has(r.code));
+  if (!viable.length) return null;
+  viable.sort((a, b) => b.n - a.n);
+  const top = viable.slice(0, Math.min(3, viable.length));
+  const pick = top[Math.floor(Math.random() * top.length)]!;
+  return { code: pick.code, name: xoxTrophyDisplay(pick.code), logoUrl: xoxTrophyLogo(pick.code)!, counts: pick.counts };
+}
+
+// ── XOX Ballon d'Or ekseni (2026-08-30) ──────────────────────────────────────
+// player_honours competition='BDOR'. Verify/reveal, kupa motorunu comp='BDOR' ile
+// yeniden kullanır (verifyTrophyTeamGuess / getValidPlayersForTrophyAndClub).
+// BDOR nadir (az kazanan) → yalnız çok büyük kulüplerde uygun olur.
+export async function pickXoxBdorForClubs(clubIds: number[], min: number): Promise<{ counts: [number, number, number] } | null> {
+  if (clubIds.length !== 3) return null;
+  const { rows } = await pool.query<{ n1: string; n2: string; n3: string }>(
+    `SELECT count(DISTINCT p.id) FILTER (WHERE pc.club_id = $1) AS n1,
+            count(DISTINCT p.id) FILTER (WHERE pc.club_id = $2) AS n2,
+            count(DISTINCT p.id) FILTER (WHERE pc.club_id = $3) AS n3
+       FROM player_clubs pc
+       JOIN players p ON p.id = pc.player_id
+       JOIN player_honours ph ON ph.player_id = p.id AND ph.competition = 'BDOR'
+      WHERE pc.club_id = ANY($4::bigint[]) AND ${ACTIVE_SPELL_SQL}`,
+    [clubIds[0], clubIds[1], clubIds[2], clubIds],
+  );
+  const r = rows[0]; if (!r) return null;
+  const counts: [number, number, number] = [Number(r.n1), Number(r.n2), Number(r.n3)];
+  return Math.min(...counts) >= min ? { counts } : null;
+}
+
+// ── XOX mevki ekseni (2026-08-30) ────────────────────────────────────────────
+// KATI: oyuncunun ANA mevkisi (player_positions, tek satır) = eksen kodu. Hücre =
+// ana mevkisi O olan VE kesişen kulüpte oynamış oyuncu — asıl yeri orası olmayan
+// oyuncu ASLA kabul edilmez.
+const XOX_POS_LABEL: Record<string, string> = {
+  GK: 'KALECİ', CB: 'STOPER', RB: 'SAĞ BEK', LB: 'SOL BEK',
+  MF: 'ORTA SAHA', LW: 'SOL KANAT', RW: 'SAĞ KANAT', ST: 'SANTRAFOR',
+};
+export function xoxPositionLabel(code: string): string { return XOX_POS_LABEL[code] ?? code; }
+const HAS_POSITION_SQL = (pos: string) => `EXISTS (SELECT 1 FROM player_positions pp WHERE pp.player_id = p.id AND pp.position = ${pos})`;
+
+/** Kesişen kulüpte oynamış VE ANA mevkisi = code olan oyuncular — fame sıralı. */
+export async function getValidPlayersForPositionAndClub(clubId: number, code: string, limit = 12): Promise<CountryTeamAnswerCandidate[]> {
+  const { rows } = await pool.query<{ id: string; name: string; image_url: string | null; fame: string; career_count: string }>(
+    `SELECT p.id, p.name, p.image_url,
+            count(DISTINCT pc2.club_id) AS career_count,
+            COALESCE(MAX(GREATEST(COALESCE(c2.popularity, 0), (SELECT count(*) FROM player_clubs x WHERE x.club_id = pc2.club_id))), 0) AS fame
+       FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id AND pc.club_id = $1
+       JOIN player_positions pp ON pp.player_id = p.id AND pp.position = $2
+       LEFT JOIN player_clubs pc2 ON pc2.player_id = p.id
+       LEFT JOIN clubs c2 ON c2.id = pc2.club_id
+      WHERE ${ACTIVE_SPELL_SQL}
+      GROUP BY p.id, p.name, p.image_url
+      ORDER BY (p.image_url IS NOT NULL) DESC, fame DESC, career_count DESC, p.name ASC
+      LIMIT $3`,
+    [clubId, code, limit],
+  );
+  return rows.map((r) => { const fame = Number(r.fame); return { playerId: Number(r.id), canonicalName: r.name, imageUrl: r.image_url, confidence: 1, popularityScore: popularityScoreFromFame(fame), fame }; });
+}
+
+export async function topPlayerForPositionAndClub(clubId: number, code: string): Promise<{ name: string; imageUrl: string | null } | null> {
+  const cands = await getValidPlayersForPositionAndClub(clubId, code, 1).catch(() => [] as CountryTeamAnswerCandidate[]);
+  const t = cands[0]; return t ? { name: t.canonicalName, imageUrl: t.imageUrl } : null;
+}
+
+export async function validatePositionTeamPlayerId(clubId: number, code: string, playerId: number): Promise<boolean> {
+  if (!Number.isFinite(clubId) || !Number.isFinite(playerId)) return false;
+  const { rows } = await pool.query<{ id: string }>(
+    `SELECT p.id FROM players p
+       JOIN player_clubs pc ON pc.player_id = p.id AND pc.club_id = $1
+       JOIN player_positions pp ON pp.player_id = p.id AND pp.position = $2
+      WHERE p.id = $3 AND ${ACTIVE_SPELL_SQL}
+      LIMIT 1`,
+    [clubId, code, playerId],
+  );
+  return rows.length > 0;
+}
+
+export async function verifyPositionTeamGuess(clubId: number, code: string, guess: string): Promise<VerifyResult> {
+  const club = await getClub(clubId);
+  if (!club) throw new Error('Unknown club id');
+  const pseudoPos: ClubHit = { id: 0, name: xoxPositionLabel(code), logoUrl: null };
+  const norm = normalize(guess);
+  const empty: Omit<VerifyResult, 'correct' | 'reason' | 'matchedPlayer'> = { autocorrected: false, teamA: pseudoPos, teamB: club, spellsA: [], spellsB: [], allClubs: [] };
+  if (!norm) return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
+  const { rows: cands } = await pool.query<{ id: string; name: string; sim: number; image_url: string | null }>(
+    `SELECT picked.id, picked.name, picked.image_url, picked.sim FROM (
+       SELECT DISTINCT ON (p.id) p.id, p.name, p.image_url,
+              word_similarity($1, p.name_norm) AS sim,
+              (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) AS career_count
+         FROM players p
+         JOIN player_clubs pc ON pc.player_id = p.id
+         JOIN player_positions pp ON pp.player_id = p.id AND pp.position = $3
+        WHERE pc.club_id = $2 AND ${ACTIVE_SPELL_SQL}
+          AND word_similarity($1, p.name_norm) >= $4
+        ORDER BY p.id, sim DESC, (p.image_url IS NOT NULL) DESC, career_count DESC
+     ) AS picked
+     ORDER BY picked.sim DESC, (picked.image_url IS NOT NULL) DESC, picked.career_count DESC LIMIT 15`,
+    [norm, clubId, code, config.verifyMatchThreshold],
+  );
+  const eligible = cands.map((c) => ({ id: Number(c.id), name: c.name, sim: Number(c.sim), imageUrl: c.image_url }));
+  if (eligible.length === 0) return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
+  let matched = eligible[0]!; let correct: boolean; let autocorrected = false;
+  const exactCluster = eligible.filter((c) => c.sim >= config.verifyExactThreshold);
+  if (exactCluster.length > 0) { matched = exactCluster[0]!; correct = true; }
+  else if ((eligible[0]!.sim >= AUTOCORRECT_MIN && notAStub(norm, normalize(eligible[0]!.name))) || editAccepts(norm, normalize(eligible[0]!.name)) || vowelDropAccepts(norm, normalize(eligible[0]!.name))) { matched = eligible[0]!; correct = true; autocorrected = true; }
+  else { matched = eligible[0]!; correct = false; }
+  if (correct) correct = await validatePositionTeamPlayerId(clubId, code, matched.id);
+  const allClubs = await getPlayerSpells(matched.id);
+  const spellsB = allClubs.filter((s) => s.clubId === clubId);
+  return { correct, reason: correct ? 'both' : 'not_both', autocorrected, teamA: pseudoPos, teamB: club, matchedPlayer: { id: matched.id, name: matched.name, sim: matched.sim, imageUrl: matched.imageUrl }, spellsA: [], spellsB, allClubs };
+}
+
+/** XOX mevki ekseni üretimi: 3 kulübün HER BİRİYLE ≥min oyuncusu (o ana mevkide)
+ * olan bir mevki seçer. Yoksa null. */
+export async function pickXoxPositionForClubs(clubIds: number[], min: number): Promise<{ code: string; label: string; counts: [number, number, number] } | null> {
+  if (clubIds.length !== 3) return null;
+  const { rows } = await pool.query<{ position: string; n1: string; n2: string; n3: string }>(
+    `SELECT pp.position,
+            count(DISTINCT p.id) FILTER (WHERE pc.club_id = $1) AS n1,
+            count(DISTINCT p.id) FILTER (WHERE pc.club_id = $2) AS n2,
+            count(DISTINCT p.id) FILTER (WHERE pc.club_id = $3) AS n3
+       FROM player_clubs pc
+       JOIN players p ON p.id = pc.player_id
+       JOIN player_positions pp ON pp.player_id = p.id
+      WHERE pc.club_id = ANY($4::bigint[]) AND ${ACTIVE_SPELL_SQL}
+      GROUP BY pp.position`,
+    [clubIds[0], clubIds[1], clubIds[2], clubIds],
+  );
+  const viable = rows.map((r) => { const counts: [number, number, number] = [Number(r.n1), Number(r.n2), Number(r.n3)]; return { code: r.position, counts, n: Math.min(...counts) }; }).filter((r) => r.n >= min && XOX_POS_LABEL[r.code]);
+  if (!viable.length) return null;
+  viable.sort((a, b) => b.n - a.n);
+  const top = viable.slice(0, Math.min(4, viable.length));
+  const pick = top[Math.floor(Math.random() * top.length)]!;
+  return { code: pick.code, label: xoxPositionLabel(pick.code), counts: pick.counts };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// XOX BİRLEŞİK LOGO (COMBO) EKSENİ + BİRLEŞİK HÜCRE MOTORU (2026-08-30)
+// ───────────────────────────────────────────────────────────────────────────
+// Combo: iki takımın birleşik logosu. Hücre = O İKİ takımda DA oynamış (+ diğer
+// eksen şartını sağlayan) oyuncu. Ör. Barça+Real × Galatasaray → Hagi.
+//
+// KARIŞIK DİZİLİM: artık özeller İKİ eksene de gelebilir → özel×özel hücreler
+// mümkün. Bunu HATASIZ yapmak için TÜM eksen türlerini tek bir "player predикату"
+// modeline indirgeyen birleşik motor: countXoxCell / xoxCellValidPlayers /
+// topPlayerForXoxCell / verifyXoxCellGuess. Her eksen p.id üzerinde bir EXISTS/
+// koşula çevrilir; hücre = predA AND predB. Kulüp koşulu mevcut club×special
+// motorlarıyla BİREBİR aynı SQL parçalarını kullanır → yeni hata yüzeyi yok.
+// ═══════════════════════════════════════════════════════════════════════════
+export interface XoxCombo { key: string; name: string; a: number; b: number }
+export const XOX_COMBOS: XoxCombo[] = [
+  { key: 'BARCA_REAL',      name: 'Barça + Real',      a: 131, b: 418 },
+  { key: 'BAYERN_DORTMUND', name: 'Bayern + Dortmund', a: 27,  b: 16  },
+  { key: 'CITY_UNITED',     name: 'City + United',     a: 281, b: 985 },
+];
+const XOX_COMBO_BY_KEY = new Map(XOX_COMBOS.map((c) => [c.key, c] as const));
+export function xoxComboName(key: string): string { return XOX_COMBO_BY_KEY.get(key)?.name ?? key; }
+export function xoxComboClubs(key: string): [number, number] | null {
+  const c = XOX_COMBO_BY_KEY.get(key); return c ? [c.a, c.b] : null;
+}
+
+/** XOX combo ekseni üretimi: verilen 3 kulübün HER BİRİYLE, o combo'nun İKİ
+ * takımında DA oynamış ≥min oyuncusu olan bir combo seçer. Combo'nun kendi
+ * takımları opposing kulüpler arasındaysa o combo elenir (trivial hücre olmasın).
+ * counts = opposing kulüp sırasına göre. Yoksa null. */
+export async function pickXoxComboForClubs(
+  clubIds: number[], min: number, rnd: () => number = Math.random,
+): Promise<{ key: string; name: string; a: number; b: number; counts: [number, number, number] } | null> {
+  if (clubIds.length !== 3) return null;
+  const shuffled = [...XOX_COMBOS].sort(() => rnd() - 0.5);
+  for (const combo of shuffled) {
+    if (clubIds.includes(combo.a) || clubIds.includes(combo.b)) continue; // trivial/degenerate
+    const { rows } = await pool.query<{ n1: string; n2: string; n3: string }>(
+      `SELECT count(DISTINCT p.id) FILTER (WHERE pc.club_id = $1) AS n1,
+              count(DISTINCT p.id) FILTER (WHERE pc.club_id = $2) AS n2,
+              count(DISTINCT p.id) FILTER (WHERE pc.club_id = $3) AS n3
+         FROM player_clubs pc
+         JOIN players p ON p.id = pc.player_id
+        WHERE pc.club_id = ANY($4::bigint[]) AND ${ACTIVE_SPELL_SQL}
+          AND EXISTS (SELECT 1 FROM player_clubs a WHERE a.player_id = p.id AND a.club_id = $5)
+          AND EXISTS (SELECT 1 FROM player_clubs b WHERE b.player_id = p.id AND b.club_id = $6)`,
+      [clubIds[0], clubIds[1], clubIds[2], clubIds, combo.a, combo.b],
+    );
+    const r = rows[0]; if (!r) continue;
+    const counts: [number, number, number] = [Number(r.n1), Number(r.n2), Number(r.n3)];
+    if (Math.min(...counts) >= min) return { key: combo.key, name: combo.name, a: combo.a, b: combo.b, counts };
+  }
+  return null;
+}
+
+/** Bir XOX hücre ekseni — birleşik motorun anladığı normalize biçim. */
+export type XoxCellAxis =
+  | { kind: 'club'; id: number }
+  | { kind: 'combo'; comboA: number; comboB: number }
+  | { kind: 'country'; country: string }
+  | { kind: 'league'; league: string }
+  | { kind: 'manager'; manager: number }
+  | { kind: 'trophy'; trophy: string }
+  | { kind: 'bdor' }
+  | { kind: 'position'; position: string };
+
+/** ClubRef/XoxAxis benzeri bir eksen nesnesini birleşik motor eksenine çevirir
+ * (room/bot/grid ortak kullanır). kind yoksa/kulüpse → club. */
+export function toXoxCellAxis(ref: {
+  kind?: string; id: number; country?: string; league?: string; manager?: number;
+  trophy?: string; position?: string; comboA?: number; comboB?: number;
+}): XoxCellAxis {
+  switch (ref.kind) {
+    case 'combo': return { kind: 'combo', comboA: ref.comboA!, comboB: ref.comboB! };
+    case 'country': return { kind: 'country', country: ref.country! };
+    case 'league': return { kind: 'league', league: ref.league! };
+    case 'manager': return { kind: 'manager', manager: ref.manager! };
+    case 'trophy': return { kind: 'trophy', trophy: ref.trophy! };
+    case 'bdor': return { kind: 'bdor' };
+    case 'position': return { kind: 'position', position: ref.position! };
+    default: return { kind: 'club', id: ref.id };
+  }
+}
+
+/** Aktif kulüp spell koşulu (ACTIVE_SPELL_SQL ile aynı, ama verilen alias için). */
+const CLUB_SPELL_SQL = (alias: string, param: number) =>
+  `EXISTS (SELECT 1 FROM player_clubs ${alias} WHERE ${alias}.player_id = p.id AND ${alias}.club_id = $${param}`
+  + ` AND COALESCE(${alias}.end_year, ${alias}.start_year, 9999) >= ${MIN_SPELL_YEAR})`;
+
+/** Bir ekseni p.id üzerinde bir boolean SQL koşuluna çevirir; parametreleri
+ * paylaşılan `params` dizisine ekler. Kulüp/lig/TD/kupa/mevki koşulları mevcut
+ * motorlarla AYNI (tek fark: alias'lar çakışmasın diye türe özgü). */
+function xoxAxisSql(axis: XoxCellAxis, params: unknown[]): string {
+  switch (axis.kind) {
+    case 'club':
+      params.push(axis.id);
+      return CLUB_SPELL_SQL('pcx', params.length);
+    case 'combo': {
+      params.push(axis.comboA); const a = params.length;
+      params.push(axis.comboB); const b = params.length;
+      return `(${CLUB_SPELL_SQL('pca', a)} AND ${CLUB_SPELL_SQL('pcb', b)})`;
+    }
+    case 'country':
+      params.push(nationalityVariants(axis.country));
+      return `p.nationality = ANY($${params.length})`;
+    case 'league':
+      params.push(leagueDbValues(axis.league));
+      return `EXISTS (SELECT 1 FROM player_clubs pl JOIN clubs cl ON cl.id = pl.club_id`
+        + ` WHERE pl.player_id = p.id AND cl.league = ANY($${params.length}) AND ${LEAGUE_SPELL_ACTIVE('pl')})`;
+    case 'manager':
+      params.push(axis.manager);
+      return UNDER_MANAGER_SQL(`$${params.length}`);
+    case 'trophy':
+      params.push(axis.trophy);
+      return WON_TROPHY_SQL(`$${params.length}`);
+    case 'bdor':
+      return WON_TROPHY_SQL(`'BDOR'`);
+    case 'position':
+      params.push(axis.position);
+      return HAS_POSITION_SQL(`$${params.length}`);
+  }
+}
+
+/** Hücrede kaç geçerli cevap var (cap ile sınırlı — ≥min testi için ucuz). */
+export async function countXoxCell(a: XoxCellAxis, b: XoxCellAxis, cap = 12): Promise<number> {
+  const params: unknown[] = [];
+  const sa = xoxAxisSql(a, params);
+  const sb = xoxAxisSql(b, params);
+  const { rows } = await pool.query<{ n: string }>(
+    `SELECT count(*)::int AS n FROM (SELECT 1 FROM players p WHERE ${sa} AND ${sb} LIMIT ${Math.max(1, Math.floor(cap))}) t`,
+    params,
+  );
+  return Number(rows[0]?.n ?? 0);
+}
+
+/** Hücrenin geçerli cevapları (fame sıralı) — reveal + bot + adversarial için. */
+export async function xoxCellValidPlayers(a: XoxCellAxis, b: XoxCellAxis, limit = 12): Promise<CountryTeamAnswerCandidate[]> {
+  const params: unknown[] = [];
+  const sa = xoxAxisSql(a, params);
+  const sb = xoxAxisSql(b, params);
+  params.push(limit); const lim = params.length;
+  // Sıralama PRESTİJE göre (kariyer boyu oynanan kulüplerin ÜN toplamı) → reveal +
+  // bot "EN BİLİNDİK oyuncu"yu seçer. fame (kadro ölçeği) bot zorluğu için korunur.
+  const { rows } = await pool.query<{ id: string; name: string; image_url: string | null; fame: string; career_count: string; prestige: string }>(
+    `SELECT p.id, p.name, p.image_url,
+            count(DISTINCT pc2.club_id) AS career_count,
+            COALESCE(MAX(GREATEST(COALESCE(c2.popularity, 0), (SELECT count(*) FROM player_clubs x WHERE x.club_id = pc2.club_id))), 0) AS fame,
+            COALESCE((SELECT SUM(cl.prestige) FROM (SELECT DISTINCT club_id FROM player_clubs WHERE player_id = p.id) d
+                        JOIN clubs cl ON cl.id = d.club_id), 0) AS prestige
+       FROM players p
+       LEFT JOIN player_clubs pc2 ON pc2.player_id = p.id
+       LEFT JOIN clubs c2 ON c2.id = pc2.club_id
+      WHERE ${sa} AND ${sb}
+      GROUP BY p.id, p.name, p.image_url
+      ORDER BY (p.image_url IS NOT NULL) DESC, prestige DESC, fame DESC, career_count DESC, p.name ASC
+      LIMIT $${lim}`,
+    params,
+  );
+  return rows.map((r) => {
+    const fame = Number(r.fame);
+    return { playerId: Number(r.id), canonicalName: r.name, imageUrl: r.image_url, confidence: 1, popularityScore: popularityScoreFromFame(fame), fame };
+  });
+}
+
+/** Boş-hücre reveal + botun "bildiği" cevap: hücrenin EN ÜNLÜ geçerli oyuncusu. */
+export async function topPlayerForXoxCell(a: XoxCellAxis, b: XoxCellAxis): Promise<{ name: string; imageUrl: string | null } | null> {
+  const cands = await xoxCellValidPlayers(a, b, 1).catch(() => [] as CountryTeamAnswerCandidate[]);
+  const t = cands[0];
+  return t ? { name: t.canonicalName, imageUrl: t.imageUrl } : null;
+}
+
+/** Birleşik XOX hücre doğrulaması — HER eksen kombinasyonu (kulüp×özel, özel×özel,
+ * combo×…) için tek motor. Ad araması predA∧predB ile SINIRLI → yanlış cevap
+ * (bir şartı sağlamayan oyuncu) zaten sonuç kümesinde yok = reddedilir. */
+export async function verifyXoxCellGuess(a: XoxCellAxis, b: XoxCellAxis, refA: ClubHit, refB: ClubHit, guess: string): Promise<VerifyResult> {
+  const norm = normalize(guess);
+  const empty: Omit<VerifyResult, 'correct' | 'reason' | 'matchedPlayer'> = {
+    autocorrected: false, teamA: refA, teamB: refB, spellsA: [], spellsB: [], allClubs: [],
+  };
+  if (!norm) return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
+  const params: unknown[] = [norm];
+  const sa = xoxAxisSql(a, params);
+  const sb = xoxAxisSql(b, params);
+  params.push(config.verifyMatchThreshold); const thr = params.length;
+  const { rows: cands } = await pool.query<{ id: string; name: string; sim: number; image_url: string | null }>(
+    `SELECT picked.id, picked.name, picked.image_url, picked.sim FROM (
+       SELECT DISTINCT ON (p.id) p.id, p.name, p.image_url,
+              word_similarity($1, p.name_norm) AS sim,
+              (SELECT count(*) FROM player_clubs c WHERE c.player_id = p.id) AS career_count
+         FROM players p
+        WHERE ${sa} AND ${sb}
+          AND word_similarity($1, p.name_norm) >= $${thr}
+        ORDER BY p.id, sim DESC, (p.image_url IS NOT NULL) DESC, career_count DESC
+     ) AS picked
+     ORDER BY picked.sim DESC, (picked.image_url IS NOT NULL) DESC, picked.career_count DESC LIMIT 15`,
+    params,
+  );
+  const eligible = cands.map((c) => ({ id: Number(c.id), name: c.name, sim: Number(c.sim), imageUrl: c.image_url }));
+  if (eligible.length === 0) return { correct: false, reason: 'no_match', matchedPlayer: null, ...empty };
+  let matched = eligible[0]!; let correct: boolean; let autocorrected = false;
+  const exactCluster = eligible.filter((c) => c.sim >= config.verifyExactThreshold);
+  if (exactCluster.length > 0) { matched = exactCluster[0]!; correct = true; }
+  else if ((eligible[0]!.sim >= AUTOCORRECT_MIN && notAStub(norm, normalize(eligible[0]!.name)))
+    || editAccepts(norm, normalize(eligible[0]!.name)) || vowelDropAccepts(norm, normalize(eligible[0]!.name))) {
+    matched = eligible[0]!; correct = true; autocorrected = true;
+  } else { matched = eligible[0]!; correct = false; }
+  // Ad araması zaten predA∧predB ile sınırlı; eşleşen kişi iki şartı da sağlar.
+  const allClubs = await getPlayerSpells(matched.id).catch(() => [] as SpellInfo[]);
+  return {
+    correct, reason: correct ? 'both' : 'not_both', autocorrected, teamA: refA, teamB: refB,
+    matchedPlayer: { id: matched.id, name: matched.name, sim: matched.sim, imageUrl: matched.imageUrl },
+    spellsA: [], spellsB: [], allClubs,
+  };
 }
 
 export async function validateCountryTeamPlayerId(

@@ -83,6 +83,7 @@ import {
   PickTeamScreen,
   GuessScreen,
   XoxScreen,
+  CozKazanScreen,
   ResultScreen,
   OpponentForfeitModal,
   LeaderboardModal,
@@ -1348,7 +1349,7 @@ function AppRoot() {
       scene = 'MATCH_FOUND';
     } else if (state.phase === 'countdown') {
       scene = 'COUNTDOWN';
-    } else if (state.phase === 'pick' || state.phase === 'reveal' || state.phase === 'guess' || state.phase === 'xox') {
+    } else if (state.phase === 'pick' || state.phase === 'reveal' || state.phase === 'guess' || state.phase === 'xox' || state.phase === 'cozkazan') {
       scene = 'MATCH_ACTIVE';
     } else if (state.phase === 'result') {
       scene = 'RESULT';
@@ -2573,6 +2574,9 @@ function AppRoot() {
         break;
       case 'xox':
         screen = <XoxScreen {...props} />;
+        break;
+      case 'cozkazan':
+        screen = <CozKazanScreen {...props} />;
         break;
       case 'result':
         screen = <ResultScreen {...props} />;

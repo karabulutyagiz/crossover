@@ -33,7 +33,7 @@ import type {
   StoreCatalogView,
 } from './protocol';
 
-export type Phase = 'home' | 'tournaments' | 'arenas' | 'leaderboard' | 'matchHistory' | 'profile' | 'searching' | 'matchup' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox';
+export type Phase = 'home' | 'tournaments' | 'arenas' | 'leaderboard' | 'matchHistory' | 'profile' | 'searching' | 'matchup' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox' | 'cozkazan';
 export type StoreCatalogStatus = 'idle' | 'loading' | 'success' | 'empty' | 'error';
 
 const STORE_CATALOG_TIMEOUT_MS = 10000;
@@ -232,6 +232,11 @@ export interface GameState {
   // ---- Futbol XOX (sunucu-otoriter tahta; istemci yalnız çizer) ----
   xox: Extract<ServerMsg, { type: 'xox_state' }> | null;
   xoxOver: { winnerId: string | null; winnerName: string | null; line: number[] | null; reason: string; emptyReveal?: { cell: number; playerName: string; playerImageUrl: string | null }[] } | null;
+  // ---- Çöz Kazan (sunucu-otoriter yarış durumu) ----
+  cozkazan: Extract<ServerMsg, { type: 'cozkazan_state' }> | null;
+  cozkazanOver: { winnerId: string | null; winnerName: string | null; reason: string; scores: { id: string; name: string; score: number }[] } | null;
+  cozHint: { round: number; position: number; letter: string; seq: number } | null; // harf-alma sonucu
+  cozHintError: { reason: string; seq: number } | null;
 }
 
 // --- Messaging helpers: stable ordering + de-dupe, so live pushes and (possibly
@@ -367,6 +372,10 @@ export const initialState: GameState = {
   tournamentOver: null,
   unseenCollection: { emotes: 0, cosmetics: 0, powers: 0 },
   xoxOver: null,
+  cozkazan: null,
+  cozkazanOver: null,
+  cozHint: null,
+  cozHintError: null,
   storeCatalogError: null,
 };
 
@@ -906,6 +915,10 @@ function reducer(state: GameState, action: Action): GameState {
         xox: null,
   searchEta: null,
         xoxOver: null,
+        cozkazan: null,
+        cozkazanOver: null,
+        cozHint: null,
+        cozHintError: null,
         spReveal: null,
         spSkipBy: null,
         spFrozenUntil: null,
@@ -973,6 +986,26 @@ function reducer(state: GameState, action: Action): GameState {
     case 'xox_over': {
       const a = action as Extract<ServerMsg, { type: 'xox_over' }>;
       return { ...state, xoxOver: { winnerId: a.winnerId, winnerName: a.winnerName, line: a.line, reason: a.reason, emptyReveal: a.emptyReveal }, matchOver: true, matchWinnerId: a.winnerId, matchWinnerName: a.winnerName, rematchState: 'idle', rematchByName: null };
+    }
+    case 'cozkazan_state': {
+      const a = action as Extract<ServerMsg, { type: 'cozkazan_state' }>;
+      return { ...state, phase: 'cozkazan', cozkazan: a, cozkazanOver: state.matchOver ? state.cozkazanOver : null, result: null };
+    }
+    case 'cozkazan_over': {
+      const a = action as Extract<ServerMsg, { type: 'cozkazan_over' }>;
+      return { ...state, cozkazanOver: { winnerId: a.winnerId, winnerName: a.winnerName, reason: a.reason, scores: a.scores }, matchOver: true, matchWinnerId: a.winnerId, matchWinnerName: a.winnerName, rematchState: 'idle', rematchByName: null };
+    }
+    case 'cozkazan_hint_result': {
+      const a = action as Extract<ServerMsg, { type: 'cozkazan_hint_result' }>;
+      return {
+        ...state,
+        cozHint: { round: a.round, position: a.position, letter: a.letter, seq: (state.cozHint?.seq ?? 0) + 1 },
+        profile: state.profile ? { ...state.profile, diamonds: a.diamonds } : state.profile, // sunucu bakiyesi
+      };
+    }
+    case 'cozkazan_hint_error': {
+      const a = action as Extract<ServerMsg, { type: 'cozkazan_hint_error' }>;
+      return { ...state, cozHintError: { reason: a.reason, seq: (state.cozHintError?.seq ?? 0) + 1 } };
     }
     case 'special_power_state': {
       const a = action as Extract<ServerMsg, { type: 'special_power_state' }>;
@@ -1852,6 +1885,13 @@ export function useCrossover() {
       xoxSubmit: (cell: number, text: string) => {
         track('xox_submit', { cell });
         send({ type: 'xox_submit', cell, text });
+      },
+      cozkazanSubmit: (text: string) => {
+        send({ type: 'cozkazan_submit', text });
+      },
+      cozkazanHint: () => {
+        track('cozkazan_hint');
+        send({ type: 'cozkazan_hint' });
       },
       clearEmote: (playerId: string) => dispatch({ type: '_clear_emote', playerId }),
       buyEmote: (emoteId: string) => send({ type: 'buy_emote', emoteId }),
