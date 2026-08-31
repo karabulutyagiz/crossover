@@ -289,6 +289,10 @@ function CosmeticMatchBackground({ id }: { id: string }) {
 // Kozmetik maç arka planının çizileceği fazlar: yalnız MAÇ sunumu. Menü
 // ekranları (home/arenas/leaderboard/matchHistory/profile/tournaments) ve
 // eşleşme aramasi HARİÇ — satın alınan arka plan maça aittir.
+// Bakım penceresinin gösterilebileceği fazlar: yalnız MENÜ. Maç fazlarında
+// gösterilmez — oyuncunun maçı bakım yüzünden bölünmez.
+const MAINTENANCE_MENU_PHASES = new Set(['home', 'arenas', 'leaderboard', 'matchHistory', 'profile', 'tournaments']);
+
 const MATCH_BG_PHASES = new Set(['lobby', 'matchup', 'countdown', 'pick', 'reveal', 'guess', 'result', 'xox']);
 
 // Phases that show the main tab bar (non-game screens)
@@ -1049,7 +1053,8 @@ function AppRoot() {
   const reopenDailyOfferRef = useRef(false);                         // elmas almaya gidildi → dönüp yeterli olunca teklifi GERİ aç
   const [updateNudgeVisible, setUpdateNudgeVisible] = useState(false); // mağazaya yeni sürüm düşünce (yumuşak)
   const [xoxAnnounceVisible, setXoxAnnounceVisible] = useState(false);
-  const [copassAnnounceVisible, setCopassAnnounceVisible] = useState(false); // yeni CO-PASS sezonu duyurusu // XOX duyurusu (her açılışta)
+  const [copassAnnounceVisible, setCopassAnnounceVisible] = useState(false); // yeni CO-PASS sezonu duyurusu
+  const [maintenanceVisible, setMaintenanceVisible] = useState(false); // bakım penceresi // XOX duyurusu (her açılışta)
   const updateNudgeShownRef = useRef(false);
   const dailyOfferShownRef = useRef(false);                            // her AÇILIŞTA bir kez
   const [outageGiftClaiming, setOutageGiftClaiming] = useState(false);
@@ -1665,6 +1670,7 @@ function AppRoot() {
     updateNudgeVisible ||
     xoxAnnounceVisible ||
     copassAnnounceVisible ||
+    maintenanceVisible ||
     Boolean(state.supportMessage) ||
     Boolean(state.tournamentReady) ||
     Boolean(state.tournamentOver) ||
@@ -1725,6 +1731,27 @@ function AppRoot() {
       else copassAnnounceCheckedRef.current = '';                   // pencere doluysa yeniden dene
     }).catch(() => {});
   }, [seasonId, loaded, splash, state.phase, state.profile?.usernameSet, modalBlocked]);
+
+  // ── BAKIM PENCERESİ (2026-09-01) ─────────────────────────────────────────
+  // Kullanıcı tarifi: "aktif ettiğimizde insanlar maçı BİTTİĞİ GİBİ bakım
+  // penceresi görecek, bir sonraki girdiklerinde de bakımda yazacak".
+  //
+  // Yani pencere maçın ORTASINDA açılmaz — oyuncunun maçı yarıda bölünmez.
+  // Bakım açıkken oyuncu menüye döndüğü (ya da menüdeyken bakım başladığı) anda
+  // gösterilir. Kapatılabilir; ama bakım sürdükçe her menüye dönüşte yeniden
+  // çıkar ve maç düğmeleri kilitli kalır — "bir sonraki girişte de bakımda
+  // yazacak" şartı böyle karşılanır.
+  const maintenanceActive = state.maintenance?.active === true;
+  const maintenanceShownForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!maintenanceActive) { maintenanceShownForRef.current = null; setMaintenanceVisible(false); return; }
+    if (!loaded || splash || modalBlocked) return;
+    if (!MAINTENANCE_MENU_PHASES.has(state.phase)) return; // maç sürüyor — bölme
+    const damga = `${state.maintenance?.startedAt ?? 'x'}:${state.phase}`;
+    if (maintenanceShownForRef.current === damga) return;
+    maintenanceShownForRef.current = damga;
+    setMaintenanceVisible(true);
+  }, [maintenanceActive, state.maintenance?.startedAt, state.phase, loaded, splash, modalBlocked]);
 
   const xoxAnnounceShownRef = useRef(false);
   useEffect(() => {
@@ -3177,6 +3204,29 @@ function AppRoot() {
         })() : (
           <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 13, textAlign: 'center' }}>{t('store.loading')}</Text>
         )}
+      </GameModal>
+
+      {/* BAKIM PENCERESİ — maç bitip menüye dönüldüğünde ya da menüdeyken bakım
+          başladığında. Kapatılabilir (oyuncu profiline/koleksiyonuna bakabilsin)
+          ama bakım sürdükçe her dönüşte yeniden çıkar ve maç düğmeleri kilitli
+          kalır. */}
+      <GameModal
+        visible={maintenanceVisible}
+        onClose={() => setMaintenanceVisible(false)}
+        title="BAKIM ÇALIŞMASI"
+        icon="construct"
+        danger
+      >
+        <View style={{ alignItems: 'center', gap: 12 }}>
+          <Text style={{ fontSize: 40 }}>🛠️</Text>
+          <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+            {state.maintenance?.message || 'Kısa bir bakım yapıyoruz. En kısa sürede geri döneceğiz!'}
+          </Text>
+          <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 17 }}>
+            Bakım bitene kadar yeni maç başlatılamıyor. Profilini, koleksiyonunu ve mağazayı gezmeye devam edebilirsin.
+          </Text>
+          <Btn kind="primary" label="ANLADIM" onPress={() => setMaintenanceVisible(false)} />
+        </View>
       </GameModal>
 
       {/* YENİ CO-PASS SEZONU — sezon başında 3 gün, sezon başına bir kez. */}

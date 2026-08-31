@@ -394,6 +394,9 @@ export type ServerMsg =
   | { type: 'xp_update'; xp: number; level: number; xpForNext: number; gained: number; leveledUp: { level: number; diamonds: number; emoteId?: string; powerId?: string }[]; diamonds?: number; boosted?: boolean }
   | { type: 'level_reward_claimed'; level: number; diamonds: number; emoteId: string | null; frameTier: string | null; powerId?: string | null; track?: 'free' | 'premium'; profile: ProfileView } // yol kartından ödül toplandı // maç sonu seviye ilerlemesi
   | { type: 'premium_road_purchased'; profile: ProfileView } // Premium Yol açıldı
+  // BAKIM MODU (2026-09-01): açılış/kapanışta TÜM bağlı istemcilere yayınlanır;
+  // ayrıca register yanıtında da gider (uygulamayı yeni açan da anında görür).
+  | { type: 'maintenance_state'; active: boolean; message: string; startedAt: string | null }
   | { type: 'power_purchased'; powerId: string; profile: ProfileView } // mağazadan güç alındı
   | { type: 'power_used'; powerId: string; profile: ProfileView } // güç etkinleştirildi (jeton düştü / kalkan kuşanıldı)
   | { type: 'outage_gift_claimed'; profile: ProfileView; granted: boolean } // granted=false → zaten alınmıştı

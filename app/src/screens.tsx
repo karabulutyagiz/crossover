@@ -5160,6 +5160,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       return;
     }
     setModesOpen(false);
+    if (state.maintenance?.active) return; // bakım: sunucu da reddeder, boşuna istek atma
     actions.findMatch({ mode: m });
   }, [actions, hasPack, onLockedSocialMode]);
 
@@ -5173,7 +5174,17 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   navRef.current = { actions, onGoToStore, onOpenMatchHistory, onOpenLeaderboard, onOpenLevelRoad };
   const openProfile = useCallback(() => { dismissActiveInput(); navRef.current.actions.openProfile(); }, []);
   const openArenas = useCallback(() => { dismissActiveInput(); navRef.current.actions.openArenas(); }, []);
-  const startQuickMatch = useCallback(() => { dismissActiveInput(); navRef.current.actions.findMatch({ mode: 'team-team' }); }, []);
+  // BAKIM KAPISI: bakımdayken maç kurulamaz (sunucu da reddeder). Burada erken
+  // dönmek, oyuncunun "arıyor…" ekranında boşuna beklemesini önler; bakım
+  // penceresi App katmanında zaten açılıyor.
+  const maintenanceOn = state.maintenance?.active === true;
+  const maintenanceRef = useRef(maintenanceOn);
+  maintenanceRef.current = maintenanceOn;
+  const startQuickMatch = useCallback(() => {
+    dismissActiveInput();
+    if (maintenanceRef.current) return;
+    navRef.current.actions.findMatch({ mode: 'team-team' });
+  }, []);
   const openStoreDiamonds = useCallback(() => { dismissActiveInput(); navRef.current.onGoToStore?.('diamonds'); }, []);
   const openStoreSocial = useCallback(() => { dismissActiveInput(); navRef.current.onGoToStore?.('socialPack'); }, []);
   const openHistory = useCallback(() => { dismissActiveInput(); navRef.current.onOpenMatchHistory?.(); }, []);

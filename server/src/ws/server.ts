@@ -24,6 +24,7 @@ import {
   isIdentifiedAccount,
 } from '../game/moderation.ts';
 import { androidIapReady, firstDiamondDoubleAvailable, verifyApplePurchase, verifyGooglePurchase } from '../game/iap.ts';
+import { isMaintenanceActive, loadMaintenance, maintenanceState, setMaintenance } from '../game/maintenance.ts';
 import { buyCosmetic, equipCosmetic, storeCatalog, toCosmeticLoadout } from '../game/cosmetics.ts';
 import { getAdminStats } from '../game/admin.ts';
 import { checkLogin, issueToken, verifyToken } from '../game/adminAuth.ts';
@@ -198,6 +199,25 @@ interface PendingInvite {
 
 // Track online users for real-time friend notifications.
 const onlineUsers = new Map<string, Set<WebSocket>>(); // userId → all open sockets
+
+// BAKIM MODU: durum değiştiğinde TÜM açık soketlere anında yayınlanır — kimsenin
+// uygulamayı yeniden açması gerekmez. Bağlantı KOPARILMAZ; oyuncu profilini ve
+// mağazayı görmeye devam eder, yalnız yeni maç kuramaz.
+function broadcastMaintenance(): void {
+  const st = maintenanceState();
+  const payload = JSON.stringify({ type: 'maintenance_state', active: st.active, message: st.message, startedAt: st.startedAt });
+  for (const sockets of onlineUsers.values()) {
+    for (const ws of sockets) {
+      if (ws.readyState === ws.OPEN) { try { ws.send(payload); } catch { /* kapanan sokete yazılamaz — sorun değil */ } }
+    }
+  }
+}
+
+// Açılışta bakım durumu DB'den geri yüklenir: bakım sırasında yapılan bir
+// yeniden başlatma bakımı sessizce KAPATMAMALI.
+void loadMaintenance().then((st) => {
+  if (st.active) log.warn('maintenance_active_on_boot', { since: st.startedAt });
+});
 
 // ---- wrongopen caps KÖPRÜSÜ ----
 // Maç soketleri taze açılır ve ilk mesajları find_match/create_room/create_solo/
@@ -1176,6 +1196,49 @@ export function startServer(port: number): Server {
     }
 
     // Admin: force-close a stuck room (e.g., player waiting in lobby for 2h)
+    // BAKIM MODU ucu: GET durum okur, POST açıp kapatır. Değişiklik anında tüm
+    // bağlı istemcilere yayınlanır ve DB'ye yazılır (yeniden başlatmaya dayanıklı).
+    if (path === '/admin/api/maintenance') {
+      const auth = req.headers['authorization'] ?? '';
+      const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+      if (!verifyToken(token)) {
+        res.writeHead(401, cors);
+        res.end(JSON.stringify({ error: 'unauthorized' }));
+        return;
+      }
+      if (req.method === 'GET') {
+        res.writeHead(200, { ...cors, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ...maintenanceState(), rooms: manager.count }));
+        return;
+      }
+      if (req.method === 'POST') {
+        let body = '';
+        req.on('data', (chunk) => { body += chunk; });
+        req.on('end', () => {
+          void (async () => {
+            let active = false; let message = '';
+            try {
+              const j = JSON.parse(body || '{}');
+              active = j.active === true || j.active === 'true';
+              message = typeof j.message === 'string' ? j.message.slice(0, 300) : '';
+            } catch { /* gövde bozuksa varsayılanlar */ }
+            try {
+              const st = await setMaintenance(active, message);
+              broadcastMaintenance();
+              log.warn('maintenance_changed', { active: st.active, message: st.message });
+              res.writeHead(200, { ...cors, 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(st));
+            } catch (err) {
+              log.error('maintenance_set_failed', { error: err instanceof Error ? err.message : String(err) });
+              res.writeHead(500, cors);
+              res.end(JSON.stringify({ error: 'failed' }));
+            }
+          })();
+        });
+        return;
+      }
+    }
+
     if (path === '/admin/api/room/close' && req.method === 'POST') {
       const auth = req.headers['authorization'] ?? '';
       const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
@@ -1370,6 +1433,10 @@ export function startServer(port: number): Server {
             (msg.userId ? await getUser(msg.userId) : null) ??
             (await findOrCreateUser(msg.gameCenterId ?? null, msg.name));
           if (rejectIfBanned(loaded, transport)) return;
+          if (isMaintenanceActive()) {
+            const mst = maintenanceState();
+            transport.send({ type: 'maintenance_state', active: true, message: mst.message, startedAt: mst.startedAt });
+          }
           const profile = await grantDevEmotesIfNeeded(loaded);
           userProfile = profile;
           addOnline(profile.id, ws);
@@ -2580,6 +2647,16 @@ export function startServer(port: number): Server {
           if (u) { userProfile = u; addOnline(u.id, ws); recordCaps(transport, u.id); }
           ctx = { room, playerId: resumed.id, userProfile: u ?? undefined };
           log.info('room_resumed', { room: msg.code, userId: msg.userId });
+          return;
+        }
+        // BAKIM KAPISI (2026-09-01): bakımdayken YENİ maç kurulmaz; havuz
+        // kendiliğinden boşalır ve son maç bitince sistem sessizleşir. Devam
+        // eden maçlar ETKİLENMEZ (resume_room ve maç içi mesajlar bu kapının
+        // dışındadır) — yarıda kesmek oyuncunun hak ettiği kupayı çalmak olurdu.
+        if (isMaintenanceActive()
+          && (msg.type === 'find_match' || msg.type === 'create_room' || msg.type === 'create_solo' || msg.type === 'join_room')) {
+          const st = maintenanceState();
+          transport.send({ type: 'maintenance_state', active: true, message: st.message, startedAt: st.startedAt });
           return;
         }
         if (msg.type === 'find_match') {

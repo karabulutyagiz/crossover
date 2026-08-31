@@ -185,6 +185,10 @@ export interface GameState {
   // sekmeye girer girmez sönüyordu. Artık kimlikler tutulur: rozet hem alt
   // bölümde (TOPLAR/FORMALAR…) hem eşyanın kendi kartında görünür ve ancak o
   // eşyaya BASILINCA söner (kullanıcı isteği 2026-08-29).
+  // BAKIM MODU (2026-09-01): sunucudan anlık gelir. active=true iken yeni maç
+  // kurulamaz; devam eden maç ETKİLENMEZ (sunucu kapısı maç içi mesajları
+  // geçirir). seenAt: pencerenin bu oturumda gösterilip gösterilmediği.
+  maintenance: { active: boolean; message: string; startedAt: string | null } | null;
   unseenCollection: { emotes: string[]; cosmetics: string[]; powers: string[] };
   // Maç ortasında ÇIKIŞ (forfeit) = kaybetme. Kupa cezası (trophy_update) reset
   // SONRASI gelir; onunla kaybetme popup'ı gösterilir. null = gösterilecek bir şey yok.
@@ -375,6 +379,7 @@ export const initialState: GameState = {
   league: null,
   tournamentReady: null,
   tournamentOver: null,
+  maintenance: null,
   unseenCollection: { emotes: [], cosmetics: [], powers: [] },
   xoxOver: null,
   storeCatalogError: null,
@@ -746,6 +751,10 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, dailyOffer: (action as any).offer ?? null };
     case 'referral_redeemed':
       return { ...state, profile: action.profile, referralRedeem: { referrerName: action.referrerName, reward: action.reward, seq: (state.referralRedeem?.seq ?? 0) + 1 } };
+    case 'maintenance_state': {
+      const m = action as Extract<ServerMsg, { type: 'maintenance_state' }>;
+      return { ...state, maintenance: { active: m.active, message: m.message, startedAt: m.startedAt ?? null } };
+    }
     case 'season_state':
       return { ...state, season: (action as Extract<ServerMsg, { type: 'season_state' }>).season };
     case 'daily_quests':
