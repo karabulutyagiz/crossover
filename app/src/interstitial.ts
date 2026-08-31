@@ -61,6 +61,16 @@ async function persist(): Promise<void> {
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryDelayMs = 30_000;
 
+// REKLAM SONRASI TAKILMA (2026-08-31): reklam kapanır kapanmaz yeni reklamın
+// indirilmesi başlıyordu. Oyuncu tam o anda oyuna dönüyor; indirme + kod çözme
+// ana iş parçacığını meşgul ettiği için dönüş "kasıyor" (oyuncu raporu).
+// Yeni reklam artık oyuncu oyuna yerleştikten SONRA hazırlanır — gösterim
+// zamanı gelene kadar (en erken 3 maç sonra) fazlasıyla vakit var.
+const PRELOAD_IDLE_MS = 4_000;
+function preloadAfterIdle(): void {
+  setTimeout(() => preloadNext(), PRELOAD_IDLE_MS);
+}
+
 function preloadNext(): void {
   if (!active() || preloaded) return;
   const ad = InterstitialAd.createForAdRequest(unitId());
@@ -133,7 +143,7 @@ export function testInterstitialNow(onSonuc: (mesaj: string) => void): void {
   const hazir = preloaded;
   if (hazir?.loaded) {
     preloaded = null;
-    hazir.ad.addAdEventListener(AdEventType.CLOSED, () => { preloadNext(); });
+    hazir.ad.addAdEventListener(AdEventType.CLOSED, () => { preloadAfterIdle(); });
     onSonuc('HAZIR reklam gösteriliyor (gecikmesiz)');
     try { hazir.ad.show(); } catch (e) { onSonuc('gösterim hatası: ' + String(e)); }
     return;
@@ -191,7 +201,7 @@ export function maybeShowInterstitial(hasSocialPack: boolean): boolean {
   preloaded = null;
   sinceAd = 0;
   void persist();
-  pre.ad.addAdEventListener(AdEventType.CLOSED, () => { preloadNext(); });
+  pre.ad.addAdEventListener(AdEventType.CLOSED, () => { preloadAfterIdle(); });
   pre.ad.addAdEventListener(AdEventType.ERROR, () => { preloadNext(); });
   pre.ad.show();
   lastReason = 'GOSTERILDI';

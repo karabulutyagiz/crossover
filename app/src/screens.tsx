@@ -5470,49 +5470,6 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 </Text>
               </GhostPanel>
             </View>
-            {/* Günün Kariyeri — ikinci günlük içerik (paylaşım döngüsü) */}
-            <View style={{ width: cardW }}>
-              <GhostPanel
-                title={'GÜNÜN KARİYERİ'}
-                icon="footsteps"
-                ghost="football"
-                height={carouselCardH}
-                tone={darken(theme.purple, 0.72)}
-                onPress={openDailyCareer}
-              >
-                {state.dailyCareer && !state.dailyCareer.played ? (
-                  <View pointerEvents="none" style={{ position: 'absolute', top: 10, right: 10, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.danger }} />
-                ) : null}
-                <Text style={{ color: theme.muted, fontSize: 11.5, lineHeight: 17, fontFamily: 'Poppins-SemiBold', marginTop: 9 }} numberOfLines={3}>
-                  {state.dailyCareer?.played
-                    ? (state.dailyCareer.correct ? t('career.cardWin') : t('career.cardDone'))
-                    : t('career.cardIdle', { n: String(state.dailyCareer?.day ?? '…'), r: String(state.dailyCareer?.reward ?? 10) })}
-                </Text>
-              </GhostPanel>
-            </View>
-            {/* Günlük Görevler — günlük döngünün tutkalı */}
-            <View style={{ width: cardW }}>
-              <GhostPanel
-                title={'GÜNLÜK GÖREVLER'}
-                icon="checkbox"
-                ghost="football"
-                height={carouselCardH}
-                tone={darken(theme.primary, 0.72)}
-                onPress={openQuests}
-              >
-                {questsReady ? (
-                  <View pointerEvents="none" style={{ position: 'absolute', top: 10, right: 10, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.danger }} />
-                ) : null}
-                <Text style={{ color: theme.muted, fontSize: 11.5, lineHeight: 17, fontFamily: 'Poppins-SemiBold', marginTop: 9 }} numberOfLines={3}>
-                  {state.dailyQuests
-                    ? t('quest.card', {
-                        n: String((state.dailyQuests.quests ?? []).filter((q) => q.claimed).length),
-                        total: String((state.dailyQuests.quests ?? []).length),
-                      })
-                    : t('store.loading')}
-                </Text>
-              </GhostPanel>
-            </View>
           </View>
         ) : null}
       </View>
