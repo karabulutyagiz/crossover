@@ -159,7 +159,8 @@ export interface ProfileView {
   powerTraining?: number;       // envanterdeki Antrenman Bileti adedi
   trainingBoostUntil?: string | null; // aktif Antrenman Bileti penceresinin bitişi (ISO)
   powerSocialToken?: number;    // envanterdeki Sosyal Paket Jetonu adedi
-  premiumRoad?: boolean;    // Premium Seviye Yolu açık mı (sezonluk)
+  premiumRoad?: boolean;
+  copassV2?: boolean;       // CO-PASS v2: 50 seviyenin HER BİRİNDE ödül    // Premium Seviye Yolu açık mı (sezonluk)
   claimedPremium?: number[]; // Premium şeritte toplanmış ödül seviyeleri
   ownedFrames?: string[];   // KALICI çerçeve sahipliği (sezonlar arası korunur)
   ownedCosmetics?: string[];

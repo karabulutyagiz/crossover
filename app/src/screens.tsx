@@ -14952,7 +14952,11 @@ export function unclaimedLevelCount(p: ProfileView | null): number {
   const claimed = new Set(p.claimedLevels ?? []);
   const claimedPremium = new Set(p.claimedPremium ?? []);
   let n = 0;
-  for (let i = 5; i <= (p.level ?? 1); i += 5) {
+  // v2'de ödül HER seviyede: rozet sayacı da her seviyeyi gezmeli, yoksa
+  // toplanmamış 40 ödül görünmez ve oyuncu ödülü olduğunu fark etmez.
+  const adim = p.copassV2 ? 1 : 5;
+  const bas = p.copassV2 ? 1 : 5;
+  for (let i = bas; i <= (p.level ?? 1); i += adim) {
     if (!claimed.has(i)) n++;
     if (p.premiumRoad && !claimedPremium.has(i)) n++; // premium şerit yalnız sahiplere sayılır
   }
@@ -14995,6 +14999,72 @@ export const PREMIUM_LEVEL_POWERS: Record<number, PowerId> = {
   5: 'shield', 10: 'streak', 15: 'xp2x', 20: 'socialtoken', 25: 'training',
   30: 'shield', 35: 'socialtoken', 40: 'xp2x', 45: 'streak', 50: 'training',
 };
+// ── CO-PASS v2 ÖDÜL TABLOSU (2026-09-01) ─────────────────────────────────────
+// SUNUCUDAKİ level.ts PASS_V2_FREE / PASS_V2_PREMIUM ile BİREBİR aynı olmalıdır.
+// Kopyalanmasının sebebi mevcut desen: PREMIUM_LEVEL_POWERS ve premiumRewardGems
+// de aynı şekilde kopya. Ödülü SUNUCU verir; buradaki tablo yalnız GÖSTERİM
+// içindir — yanlış olsa bile oyuncuya fazla/eksik ödül gitmez, sadece kartta
+// yanlış şey yazar. Tabloyu değiştirirken İKİ dosya da güncellenmelidir.
+export type PassRewardView = {
+  diamonds?: number;
+  roadPower?: PowerId;
+  specialPower?: 'freeze' | 'reveal' | 'skip' | 'extratime' | 'secondchance';
+  cosmeticId?: string;
+};
+const D = (d: number): PassRewardView => ({ diamonds: d });
+const RP = (p: PowerId): PassRewardView => ({ roadPower: p });
+const SP = (p: NonNullable<PassRewardView['specialPower']>): PassRewardView => ({ specialPower: p });
+
+export const PASS_V2_FREE: Record<number, PassRewardView> = {
+  1: D(15), 2: SP('extratime'), 3: D(15), 4: SP('secondchance'),
+  5: { roadPower: 'xp2x', diamonds: 50 },
+  6: D(15), 7: SP('extratime'), 8: D(15), 9: RP('xp2x'),
+  10: { specialPower: 'freeze', diamonds: 100 },
+  11: D(15), 12: SP('secondchance'), 13: D(15), 14: SP('extratime'),
+  15: { roadPower: 'shield', diamonds: 50 },
+  16: D(15), 17: SP('skip'), 18: D(15), 19: RP('shield'),
+  20: { specialPower: 'skip', diamonds: 100 },
+  21: D(15), 22: SP('secondchance'), 23: D(15), 24: SP('extratime'),
+  25: { roadPower: 'streak', diamonds: 50 },
+  26: D(15), 27: RP('streak'), 28: D(15), 29: SP('secondchance'),
+  30: { specialPower: 'reveal', diamonds: 100 },
+  31: D(15), 32: SP('extratime'), 33: D(15), 34: RP('training'),
+  35: { roadPower: 'training', diamonds: 50 },
+  36: D(15), 37: SP('skip'), 38: D(15), 39: RP('socialtoken'),
+  40: { specialPower: 'freeze', diamonds: 100 },
+  41: D(15), 42: SP('freeze'), 43: D(15), 44: { cosmeticId: 'ice_name' },
+  45: { roadPower: 'socialtoken', diamonds: 50 },
+  46: D(15), 47: SP('extratime'), 48: D(15), 49: RP('xp2x'),
+  50: { specialPower: 'reveal', diamonds: 150 },
+};
+
+export const PASS_V2_PREMIUM: Record<number, PassRewardView> = {
+  1: D(25), 2: SP('freeze'), 3: D(25), 4: SP('skip'),
+  5: { roadPower: 'shield', diamonds: 200 },
+  6: D(25), 7: SP('reveal'), 8: D(25), 9: SP('freeze'),
+  10: { roadPower: 'streak', diamonds: 300 },
+  11: D(25), 12: SP('skip'), 13: D(25), 14: { cosmeticId: 'ice_name' },
+  15: { roadPower: 'xp2x', diamonds: 200 },
+  16: D(25), 17: SP('freeze'), 18: D(25), 19: SP('reveal'),
+  20: { roadPower: 'socialtoken', diamonds: 300 },
+  21: D(25), 22: SP('skip'), 23: D(25), 24: SP('secondchance'),
+  25: { roadPower: 'training', diamonds: 200 },
+  26: D(25), 27: { cosmeticId: 'night_stadium' }, 28: D(25), 29: SP('freeze'),
+  30: { roadPower: 'shield', diamonds: 300 },
+  31: D(25), 32: SP('reveal'), 33: D(25), 34: SP('skip'),
+  35: { roadPower: 'socialtoken', diamonds: 200 },
+  36: D(25), 37: SP('freeze'), 38: { cosmeticId: 'lightning_victory' }, 39: SP('extratime'),
+  40: { roadPower: 'xp2x', diamonds: 300 },
+  41: D(25), 42: SP('reveal'), 43: D(25), 44: SP('secondchance'),
+  45: { roadPower: 'streak', diamonds: 200 },
+  46: D(25), 47: SP('freeze'), 48: RP('xp2x'), 49: D(25),
+  50: { cosmeticId: 'champions_ball', roadPower: 'training', diamonds: 400 },
+};
+
+export function passRewardView(level: number, track: 'free' | 'premium'): PassRewardView | null {
+  return (track === 'premium' ? PASS_V2_PREMIUM : PASS_V2_FREE)[level] ?? null;
+}
+
 // Mağaza güç fiyatları (sunucudaki POWER_PRICES ile birebir)
 export const POWER_PRICES: Record<PowerId, number> = { xp2x: 150, shield: 250, streak: 300, training: 250, socialtoken: 350 };
 
@@ -15573,11 +15643,12 @@ function segmentColor(n: number): string {
 // state değişimleri 50 satırı BİRDEN çiziyordu — tam da RoadClaimFly
 // parçacıkları uçarken. Prop'lar ilkel + 3 SABİT callback (LevelRoadModal
 // useCallback'leri); sığ karşılaştırma yalnız gerçekten değişen satırı çizer.
-const RoadRow = memo(function RoadRow({ n, level, xp, claimed, premiumOwned, premiumClaimed, onFramePress, onClaim, onBuyPremium }: {
+const RoadRow = memo(function RoadRow({ n, level, xp, claimed, premiumOwned, premiumClaimed, onFramePress, onClaim, onBuyPremium, copassV2}: {
   n: number; level: number; xp: number;
   claimed: boolean; // bu seviyenin ödülü toplandı mı
   premiumOwned: boolean;   // Premium Yol açık mı
   premiumClaimed: boolean; // premium şeridin bu seviyesi toplandı mı
+  copassV2?: boolean;      // CO-PASS v2: 50 seviyenin HER BİRİNDE ödül
   onFramePress?: (tier: LevelTier, unlocked: boolean) => void;
   onClaim?: (n: number, pos: { x: number; y: number }, track?: 'free' | 'premium') => void;
   onBuyPremium?: () => void; // kilitli premium karta dokunuldu → satın alma
@@ -15585,11 +15656,20 @@ const RoadRow = memo(function RoadRow({ n, level, xp, claimed, premiumOwned, pre
   const done = n < level;
   const current = n === level;
   const reached = n <= level;
-  const claimable = reached && n % 5 === 0 && !claimed; // ödül YALNIZ 5'in katlarında
+  // CO-PASS v2 (2026-09-01): 50 seviyenin HER BİRİNDE ödül var. Eskiden ödül
+  // yalnız ×5'te olduğu için toplanabilirlik de ona bağlıydı; v2'de her seviye
+  // toplanabilir. Bayrak kapalıyken eski davranış aynen sürer — sunucu da
+  // kapalıyken ara seviyeleri reddeder, yani iki taraf tutarlı kalır.
+  const v2 = copassV2 === true;
+  const v2Reward = v2 ? passRewardView(n, 'free') : null;
+  const claimable = reached && !claimed && (v2 ? !!v2Reward : n % 5 === 0);
   const tier = levelTier(n);
-  const isFrame = n % 10 === 0;
-  const powerId = LEVEL_POWER_UNLOCKS[n];
-  const milestone = n % 5 === 0; // tüm ödül seviyeleri büyük karttır (güç ya da çerçeve)
+  // v2'de çerçeve ödülü YOK (çerçeve prestiji sezon ödülüne ait).
+  const isFrame = !v2 && n % 10 === 0;
+  const powerId = v2 ? (v2Reward?.roadPower ?? undefined) : LEVEL_POWER_UNLOCKS[n];
+  // Büyük kart: v1'de her ×5; v2'de yalnız ×5 kilometre taşları (ara seviyeler
+  // küçük kart) — 50 satırın hepsi büyük olsaydı ekran okunamaz hâle gelirdi.
+  const milestone = n % 5 === 0;
   const segAbove = segmentColor(n - 1);
   const segBelow = segmentColor(n);
   const nodeColor = done || current ? (tier?.c ?? segmentColor(n)) : theme.border;
@@ -15598,7 +15678,21 @@ const RoadRow = memo(function RoadRow({ n, level, xp, claimed, premiumOwned, pre
 
   // kilometre taşı vurgu rengi: çerçevede kademe rengi, güçte gücün rengi, ifadede amber
   const mColor = isFrame ? (tier?.c ?? theme.accent) : powerId ? POWERS[powerId].color : theme.accent;
-  const gems = levelRewardGems(n);
+  const gems = v2 ? (v2Reward?.diamonds ?? 0) : levelRewardGems(n);
+  // v2 ödül etiketi: maç içi güçler ve kozmetikler eski düzende YOKTU, bu yüzden
+  // kartta gösterilecek bir alanları da yoktu. Kısa etiketle gösterilirler —
+  // oyuncu neyi topladığını görmeden ödül anlamsızdır.
+  const SP_ETIKET: Record<string, string> = {
+    freeze: 'Dondurucu', reveal: 'Cevap', skip: 'Tur Atla',
+    extratime: 'Ek Süre', secondchance: 'İkinci Şans',
+  };
+  const KOZMETIK_ETIKET: Record<string, string> = {
+    ice_name: 'Buz İsim', night_stadium: 'Gece Stadı',
+    lightning_victory: 'Şimşek Zafer', champions_ball: 'Şampiyonlar Topu',
+  };
+  const v2Etiket = v2Reward?.specialPower ? `1× ${SP_ETIKET[v2Reward.specialPower] ?? v2Reward.specialPower}`
+    : v2Reward?.cosmeticId ? (KOZMETIK_ETIKET[v2Reward.cosmeticId] ?? 'Kozmetik')
+    : null;
   const gemChip = (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: theme.panelInnerFill, borderRadius: 999, borderWidth: 1, borderColor: withAlpha(theme.gem, 0.5), paddingHorizontal: 7, paddingVertical: 3 }}>
       <GemIcon size={11} />
@@ -15680,7 +15774,8 @@ const RoadRow = memo(function RoadRow({ n, level, xp, claimed, premiumOwned, pre
   // ---- PREMIUM şerit kartı — ücretsiz kartın KARŞI yakasında, görkemli:
   // altın çift çerçeve + koyu mor kadife zemin + PREMIUM bandrolü. Kilitliyken
   // loş + kilit (dokun → satın alma), açıkken TOPLA parlaması / AÇILDI.
-  const pPower = PREMIUM_LEVEL_POWERS[n];
+  const v2Premium = v2 ? passRewardView(n, 'premium') : null;
+  const pPower = v2 ? (v2Premium?.roadPower ?? undefined) : PREMIUM_LEVEL_POWERS[n];
   const pGems = premiumRewardGems(n);
   const pClaimable = premiumOwned && reached && milestone && !premiumClaimed;
   const premiumCard = milestone ? (
@@ -16103,6 +16198,7 @@ export function LevelRoadModal({ visible, profile, onClose, onClaim, onBuyPremiu
               onFramePress={handleFramePress}
               onClaim={handleClaimPress}
               onBuyPremium={handleBuyPremium}
+              copassV2={profile?.copassV2 === true}
             />
           )}
         />

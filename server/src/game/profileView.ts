@@ -1,3 +1,4 @@
+import { copassV2Enabled } from './level.ts';
 // UserProfile (DB modeli) → ProfileView (tel protokolü) dönüşümü — TEK kaynak.
 // Eskiden ws/server.ts içinde özeldi; room.ts'in de (streak_reward) ihtiyacı
 // olunca paylaşılan modüle çıkarıldı. Alan eklerken İKİ tipe birden bak.
@@ -38,6 +39,7 @@ export function toProfileView(p: UserProfile): ProfileView {
     trainingBoostUntil: p.trainingBoostUntil,
     powerSocialToken: p.powerSocialToken,
     premiumRoad: p.premiumRoad,
+    copassV2: copassV2Enabled(),
     claimedPremium: p.claimedPremium,
     ownedFrames: p.ownedFrames,
     ownedCosmetics: p.ownedCosmetics,
