@@ -1213,6 +1213,7 @@ function AppRoot() {
         return;
       }
       if (modalBlockedRef.current) return;          // pencere kapanınca tekrar denenir
+      if (Date.now() - modalClearedAtRef.current < 500) return; // native kapanış bitsin
       if (maybeShowInterstitial(hasActiveSocialPack(state.profile))) {
         reported = true;
         try { freezeReportRef.current('jank', 'AD|GOSTERILDI', 0); } catch { /* önemsiz */ }
@@ -1686,6 +1687,13 @@ function AppRoot() {
   // üst üste binmez — iOS tek native modal kuralı.
   const modalBlockedRef = useRef(false);
   modalBlockedRef.current = modalBlocked;
+  // NATIVE KAPANIŞ PAYI (2026-08-31): modalBlocked, pencere kapatıldığı ANDA
+  // false olur; ama iOS'un native pencere kapanma animasyonu birkaç yüz ms
+  // daha sürer. AdMob reklamı da native penceredir — o aralıkta açılırsa iOS
+  // ikisini birden kilitler (reklam açılır açılmaz kapanır, ekran donar).
+  // Bayrağın ne zaman temizlendiğini damgalayıp reklamı ondan sonra açıyoruz.
+  const modalClearedAtRef = useRef(0);
+  useEffect(() => { if (!modalBlocked) modalClearedAtRef.current = Date.now(); }, [modalBlocked]);
   // ── YENİ CO-PASS SEZONU DUYURUSU (2026-08-30) ────────────────────────────
   // Sezon her ay 1'inde döner (rank.ts ensureSeason). Yeni sezonun İLK 3 GÜNÜ
   // boyunca, sezon başına BİR kez duyuru penceresi açılır: "yeni CO-PASS

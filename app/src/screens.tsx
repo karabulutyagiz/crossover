@@ -3497,7 +3497,16 @@ function SettingsPanel({ onLanguageChange, diamonds, playerId, arenaName, moneti
         onExited={() => {
           if (!adTestPending) return;
           setAdTestPending(false);
-          testInterstitialNow(setAdTestMsg);
+          // onExited, React tarafında "kapandı" demektir; iOS'un NATIVE pencere
+          // kapanma animasyonu o an henüz bitmemiş olur. AdMob reklamı da native
+          // bir penceredir — yarı kapanmış pencerenin üstüne binince iOS ikisini
+          // birden kilitler: reklam açılır açılmaz kapanır ve ekran tepkisiz
+          // kalır (oyuncu raporu 2026-08-31). Bu yüzden native kapanışın
+          // tamamlanması beklenir. Buradaki bekleme "pencere zinciri"
+          // gecikmesiyle KARIŞTIRILMAMALI: orada React penceresinden React
+          // penceresine geçiliyordu ve gecikme gereksizdi; burada React'ten
+          // NATIVE reklama geçiş var ve bekleme zorunlu.
+          setTimeout(() => testInterstitialNow(setAdTestMsg), 500);
         }}
         title="Monetization Diagnostics"
         icon="pulse"
