@@ -234,6 +234,7 @@ export type ClientMsg =
   | { type: 'get_store_catalog' }
   | { type: 'set_avatar'; avatar: string | null } // choose/select profile picture ('pp7' or null)
   | { type: 'set_frame'; frameId: string | null }
+  | { type: 'claim_season_reward' } // sezon ödülünü topla
   | { type: 'claim_level_reward'; level: number; track?: 'free' | 'premium' } // Seviye Yolu kartına dokunarak ödül topla (şerit seçimiyle)
   | { type: 'buy_premium_road' } // Premium Seviye Yolu'nu 1000 elmasla aç
   | { type: 'buy_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken' } // mağazadan güç satın al
@@ -397,6 +398,8 @@ export type ServerMsg =
   // BAKIM MODU (2026-09-01): açılış/kapanışta TÜM bağlı istemcilere yayınlanır;
   // ayrıca register yanıtında da gider (uygulamayı yeni açan da anında görür).
   | { type: 'maintenance_state'; active: boolean; message: string; startedAt: string | null }
+  | { type: 'season_reward_pending'; seasonId: string; peakTrophies: number; peakArenaName: string; diamonds: number; specialPower: string | null; frameTier: string | null; cosmeticId: string | null; avatarId: string }
+  | { type: 'season_reward_claimed'; seasonId: string; profile: ProfileView }
   | { type: 'power_purchased'; powerId: string; profile: ProfileView } // mağazadan güç alındı
   | { type: 'power_used'; powerId: string; profile: ProfileView } // güç etkinleştirildi (jeton düştü / kalkan kuşanıldı)
   | { type: 'outage_gift_claimed'; profile: ProfileView; granted: boolean } // granted=false → zaten alınmıştı

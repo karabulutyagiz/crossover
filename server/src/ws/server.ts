@@ -25,6 +25,7 @@ import {
 } from '../game/moderation.ts';
 import { androidIapReady, firstDiamondDoubleAvailable, verifyApplePurchase, verifyGooglePurchase } from '../game/iap.ts';
 import { isMaintenanceActive, loadMaintenance, maintenanceState, setMaintenance } from '../game/maintenance.ts';
+import { claimSeasonReward, pendingSeasonReward } from '../game/season.ts';
 import { buyCosmetic, equipCosmetic, storeCatalog, toCosmeticLoadout } from '../game/cosmetics.ts';
 import { getAdminStats } from '../game/admin.ts';
 import { checkLogin, issueToken, verifyToken } from '../game/adminAuth.ts';
@@ -1730,14 +1731,49 @@ export function startServer(port: number): Server {
       // SEZON DURUMU (2026-08-29): salt-okunur özet.
       if (msg.type === 'get_season') {
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
-        void getSeasonState(userProfile.id)
+        const suid = userProfile.id;
+        void getSeasonState(suid)
           .then((season) => { if (season) transport.send({ type: 'season_state', season }); })
           .catch((err) => reportSocketTaskFailure('get_season', err));
+        // Bekleyen sezon ödülü varsa aynı istekte bildirilir — istemci
+        // "ÖDÜLLERİ TOPLA" penceresini bununla açar.
+        void pendingSeasonReward(suid)
+          .then((bek) => {
+            if (!bek) return;
+            transport.send({
+              type: 'season_reward_pending',
+              seasonId: bek.seasonId,
+              peakTrophies: bek.peakTrophies,
+              peakArenaName: bek.peakArenaName,
+              diamonds: bek.reward.diamonds,
+              specialPower: bek.reward.specialPower,
+              frameTier: bek.reward.frameTier,
+              cosmeticId: bek.reward.cosmeticId,
+              avatarId: bek.reward.avatarId,
+            });
+          })
+          .catch((err) => reportSocketTaskFailure('pending_season_reward', err));
         return;
       }
       // DONMA RAPORU (2026-08-29): istemci JS thread'inin bloklandığını ya da
       // önceki oturumun kirli kapandığını bildirir. Yalnız LOGLANIR — oyun
       // durumuna etkisi yoktur; amaç donmanın hangi ekranda olduğunu ölçmek.
+      // SEZON ÖDÜLÜ TOPLAMA (2026-09-01): ödül artık sezon dönüşünde otomatik
+      // verilmiyor; oyuncu düğmeye bastığında tanımlanıyor. Tek seferlik
+      // garantisi claimSeasonReward'ın UPDATE koşulunda.
+      if (msg.type === 'claim_season_reward') {
+        if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
+        const uid = userProfile.id;
+        void claimSeasonReward(uid)
+          .then(async (r) => {
+            if (!r.ok) return transport.send({ type: 'error', message: r.error });
+            const fresh = await getUser(uid);
+            if (fresh) { userProfile = fresh; transport.send({ type: 'season_reward_claimed', seasonId: r.seasonId, profile: toProfileView(fresh) }); }
+          })
+          .catch((err) => reportSocketTaskFailure('claim_season_reward', err));
+        return;
+      }
+
       if (msg.type === 'freeze_report') {
         log.warn('client_freeze', {
           kind: msg.kind,

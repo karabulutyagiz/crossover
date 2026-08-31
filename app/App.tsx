@@ -1054,7 +1054,8 @@ function AppRoot() {
   const [updateNudgeVisible, setUpdateNudgeVisible] = useState(false); // mağazaya yeni sürüm düşünce (yumuşak)
   const [xoxAnnounceVisible, setXoxAnnounceVisible] = useState(false);
   const [copassAnnounceVisible, setCopassAnnounceVisible] = useState(false); // yeni CO-PASS sezonu duyurusu
-  const [maintenanceVisible, setMaintenanceVisible] = useState(false); // bakım penceresi // XOX duyurusu (her açılışta)
+  const [maintenanceVisible, setMaintenanceVisible] = useState(false); // bakım penceresi
+  const [seasonRewardVisible, setSeasonRewardVisible] = useState(false); // sezon ödülü toplama // XOX duyurusu (her açılışta)
   const updateNudgeShownRef = useRef(false);
   const dailyOfferShownRef = useRef(false);                            // her AÇILIŞTA bir kez
   const [outageGiftClaiming, setOutageGiftClaiming] = useState(false);
@@ -1671,6 +1672,7 @@ function AppRoot() {
     xoxAnnounceVisible ||
     copassAnnounceVisible ||
     maintenanceVisible ||
+    seasonRewardVisible ||
     Boolean(state.supportMessage) ||
     Boolean(state.tournamentReady) ||
     Boolean(state.tournamentOver) ||
@@ -1752,6 +1754,16 @@ function AppRoot() {
     maintenanceShownForRef.current = damga;
     setMaintenanceVisible(true);
   }, [maintenanceActive, state.maintenance?.startedAt, state.phase, loaded, splash, modalBlocked]);
+
+  // SEZON ÖDÜLÜ PENCERESİ (2026-09-01): ödül otomatik verilmez; oyuncu burada
+  // toplar. Maç sürerken açılmaz — menüye dönünce çıkar.
+  const seasonPending = state.seasonRewardPending;
+  useEffect(() => {
+    if (!seasonPending) { setSeasonRewardVisible(false); return; }
+    if (!loaded || splash || modalBlocked) return;
+    if (!MAINTENANCE_MENU_PHASES.has(state.phase)) return;
+    setSeasonRewardVisible(true);
+  }, [seasonPending, loaded, splash, modalBlocked, state.phase]);
 
   const xoxAnnounceShownRef = useRef(false);
   useEffect(() => {
@@ -3204,6 +3216,40 @@ function AppRoot() {
         })() : (
           <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 13, textAlign: 'center' }}>{t('store.loading')}</Text>
         )}
+      </GameModal>
+
+      {/* SEZON ÖDÜLÜ — "ÖDÜLLERİ TOPLA". Ödül sunucuda BEKLER; düğmeye
+          basılınca tanımlanır (çift toplama sunucu koşuluyla engelli). */}
+      <GameModal
+        visible={seasonRewardVisible}
+        onClose={() => setSeasonRewardVisible(false)}
+        title="SEZON ÖDÜLLERİN HAZIR"
+        icon="trophy"
+        coach
+      >
+        <View style={{ alignItems: 'center', gap: 12 }}>
+          <Text style={{ fontSize: 42 }}>🏆</Text>
+          <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>
+            {seasonPending?.peakArenaName ?? ''} · {seasonPending?.peakTrophies ?? 0} kupa
+          </Text>
+          <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 18 }}>
+            Geçen sezonun zirvesine göre ödüllerin hesaplandı.
+          </Text>
+          <View style={{ alignSelf: 'stretch', gap: 7 }}>
+            {[
+              seasonPending?.diamonds ? `💎  ${seasonPending.diamonds} elmas` : null,
+              seasonPending?.specialPower ? `⚡  1× ${seasonPending.specialPower}` : null,
+              seasonPending?.frameTier ? '🖼️  Sezon çerçevesi' : null,
+              seasonPending?.cosmeticId ? '🏟️  Sezon arenası' : null,
+              seasonPending?.avatarId ? '🎖️  Sezon rozeti' : null,
+            ].filter(Boolean).map((satir) => (
+              <View key={String(satir)} style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: withAlpha(theme.text, 0.055), borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }}>
+                <Text style={{ color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold' }}>{satir}</Text>
+              </View>
+            ))}
+          </View>
+          <Btn big kind="primary" icon="gift" label="ÖDÜLLERİ TOPLA" onPress={() => { actions.claimSeasonReward(); setSeasonRewardVisible(false); }} />
+        </View>
       </GameModal>
 
       {/* BAKIM PENCERESİ — maç bitip menüye dönüldüğünde ya da menüdeyken bakım

@@ -171,28 +171,16 @@ async function ensureSeason(row: DbUser): Promise<DbUser> {
   // içinde. Aynı anda iki istek gelse (iki cihaz, istek tekrarı) ikincisi 0
   // satır günceller — ödül bir kez verilir. Eski kodda bu koşul YOKTU; ödül
   // dağıtımı eklenince yarış gerçek elmas sızıntısına dönüşürdü.
+  // ÖDÜL BURADA VERİLMEZ (2026-09-01 kullanıcı kararı): sezon dönüşünde yalnız
+  // kupa yumuşak sıfırlaması uygulanır. Ödüller season_summaries'te BEKLER ve
+  // oyuncu "ÖDÜLLERİ TOPLA" düğmesine bastığında tanımlanır (claimSeasonReward).
+  // Sessizce hesaba düşen ödül fark edilmiyordu; toplama adımı hem kazanılanı
+  // görünür kılar hem sezon kapanışını bir olay hâline getirir.
   const ekAlanlar: string[] = [];
   const ekParams: unknown[] = [];
   if (seasonRewardsEnabled()) {
-    const zirve = Math.max(row.season_peak_trophies ?? 0, row.trophies ?? 0);
-    const odul = seasonRewardFor(zirve);
     ekAlanlar.push(`trophies = $${2 + ekParams.length + 1}`);
     ekParams.push(seasonTrophyReset(row.trophies ?? 0));
-    if (odul.diamonds > 0) {
-      ekAlanlar.push(`diamonds = diamonds + $${2 + ekParams.length + 1}`);
-      ekParams.push(odul.diamonds);
-    }
-    if (odul.specialPower) ekAlanlar.push(`sp_${odul.specialPower} = sp_${odul.specialPower} + 1`);
-    if (odul.frameTier) {
-      ekAlanlar.push(`owned_frames = (SELECT ARRAY(SELECT DISTINCT f FROM unnest(owned_frames || $${2 + ekParams.length + 1}::text[]) AS f))`);
-      ekParams.push([odul.frameTier]);
-    }
-    if (odul.cosmeticId) {
-      ekAlanlar.push(`owned_cosmetics = (SELECT ARRAY(SELECT DISTINCT c FROM unnest(owned_cosmetics || $${2 + ekParams.length + 1}::text[]) AS c))`);
-      ekParams.push([odul.cosmeticId]);
-    }
-    ekAlanlar.push(`owned_avatars = (SELECT ARRAY(SELECT DISTINCT a FROM unnest(owned_avatars || $${2 + ekParams.length + 1}::text[]) AS a))`);
-    ekParams.push([odul.avatarId]);
   }
   const { rows } = await pool.query<DbUser>(
     `UPDATE users SET season_id = $2, level = 1, xp = 0,

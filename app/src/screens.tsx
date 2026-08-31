@@ -164,6 +164,7 @@ type Actions = {
   equipSpecialPower: (powerId: string | null) => void; // maça hangi güçle çıkılacağını seç
   markCollectionSeen: (tab: 'emotes' | 'cosmetics' | 'powers') => void; // sekmenin tüm rozetlerini söndür
   markItemSeen: (tab: 'emotes' | 'cosmetics' | 'powers', id: string) => void; // tek eşyanın rozetini söndür
+  claimSeasonReward: () => void; // sezon ödülünü topla
   ackSupportMessage: (id: string) => void; // destek popup'ı okundu
   openTournaments: () => void;
   closeTournaments: () => void;
@@ -1323,6 +1324,12 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
           // YALNIZ iOS'ta çalışıyor. Android'de dikey sürükleme yatay pager'a
           // kaçıyordu; nestedScrollEnabled iç dikey kaydırıcıya öncelik verir.
           nestedScrollEnabled
+          // iOS EKSEN KİLİDİ (oyuncu raporu 2026-09-01: "profilde kaydırırken
+          // ekran kayıyor, yan sekmeye geçiyor"): nestedScrollEnabled yalnız
+          // Android'de iş görür. iOS'ta dikey sürüklemenin yataya sızmasını
+          // ancak directionalLockEnabled engeller — parmak hafif yana kaysa bile
+          // hareket TEK eksende kilitlenir ve sekme değişmez.
+          directionalLockEnabled
           contentContainerStyle={{ flexGrow: 1, justifyContent: contentCenter ? 'center' : 'flex-start' }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps={keyboardShouldPersistTaps}
@@ -9258,7 +9265,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
           pager'ın eksen kilidi yalnız iOS'ta çalışıyor — bu olmadan dikey
           sürükleme pager'a kaçıyor, mağaza kaymak yerine Koleksiyon'a atıyordu
           (oyuncu raporu 2026-08-29). */}
-      <ScrollView ref={storeScrollRef} style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={storeScrollRef} style={{ flex: 1 }} nestedScrollEnabled directionalLockEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
         <ScreenHeader title={t('store.title')} icon="storefront" />
 
         {/* Sosyal Paket — hero panel (gold frame + gloss), corner ribbon status */}
@@ -12820,7 +12827,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
     return (
       <Screen>
           <ScreenHeader title={t('profile.pictures')} icon="images" onBack={() => setShowAvatarPage(false)} />
-          <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+          <ScrollView nestedScrollEnabled directionalLockEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
             {([
               'pp7', 'pp11', 'pp12', 'pp13', 'pp14', 'pp15', 'pp16', 'pp17',

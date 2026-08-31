@@ -133,3 +133,73 @@ export function seasonRewardFor(peakTrophies: number): SeasonReward {
 export function seasonRewardsEnabled(): boolean {
   return process.env.SEASON_REWARDS_ENABLED === '1';
 }
+
+// ---- BEKLEYEN SEZON ÖDÜLÜ (2026-09-01) -------------------------------------
+// Ödül artık sezon dönüşünde OTOMATİK verilmiyor; oyuncu "ÖDÜLLERİ TOPLA"
+// düğmesine bastığında veriliyor. Sessizce hesaba düşen ödül fark edilmiyordu;
+// toplama adımı hem kazanılanı görünür kılar hem sezon kapanışını bir olay
+// hâline getirir.
+
+export interface PendingSeasonReward {
+  seasonId: string;
+  peakTrophies: number;
+  peakArenaName: string;
+  reward: SeasonReward;
+}
+
+/** Toplanmamış sezon ödülü (yoksa null). */
+export async function pendingSeasonReward(userId: string): Promise<PendingSeasonReward | null> {
+  const { rows } = await pool.query<{ season_id: string; peak_trophies: number }>(
+    `SELECT season_id, peak_trophies FROM season_summaries
+      WHERE user_id = $1 AND reward_claimed = FALSE
+      ORDER BY season_id DESC LIMIT 1`,
+    [userId],
+  );
+  const r = rows[0];
+  if (!r) return null;
+  const peak = r.peak_trophies ?? 0;
+  return {
+    seasonId: r.season_id,
+    peakTrophies: peak,
+    peakArenaName: arenaName(peak),
+    reward: seasonRewardFor(peak),
+  };
+}
+
+/**
+ * Ödülü tanımlar. Tek seferlik garantisi UPDATE'in KENDİ koşulunda
+ * (reward_claimed = FALSE): eşzamanlı iki dokunuş, iki cihaz ya da istek
+ * tekrarı ikinci kez 0 satır günceller — çift ödül imkânsız.
+ */
+export async function claimSeasonReward(
+  userId: string,
+): Promise<{ ok: true; seasonId: string; reward: SeasonReward } | { ok: false; error: string }> {
+  if (!userId) return { ok: false, error: 'Önce giriş yap' };
+  const bekleyen = await pendingSeasonReward(userId);
+  if (!bekleyen) return { ok: false, error: 'Toplanacak sezon ödülü yok' };
+
+  const { rowCount } = await pool.query(
+    `UPDATE season_summaries SET reward_claimed = TRUE, reward_claimed_at = now()
+      WHERE user_id = $1 AND season_id = $2 AND reward_claimed = FALSE`,
+    [userId, bekleyen.seasonId],
+  );
+  if (!rowCount) return { ok: false, error: 'Bu ödül zaten toplandı' };
+
+  const o = bekleyen.reward;
+  const sets: string[] = [
+    `diamonds = diamonds + $2`,
+    `owned_avatars = (SELECT ARRAY(SELECT DISTINCT a FROM unnest(owned_avatars || $3::text[]) AS a))`,
+  ];
+  const params: unknown[] = [userId, o.diamonds, [o.avatarId]];
+  if (o.specialPower) sets.push(`sp_${o.specialPower} = sp_${o.specialPower} + 1`);
+  if (o.frameTier) {
+    params.push([o.frameTier]);
+    sets.push(`owned_frames = (SELECT ARRAY(SELECT DISTINCT f FROM unnest(owned_frames || $${params.length}::text[]) AS f))`);
+  }
+  if (o.cosmeticId) {
+    params.push([o.cosmeticId]);
+    sets.push(`owned_cosmetics = (SELECT ARRAY(SELECT DISTINCT c FROM unnest(owned_cosmetics || $${params.length}::text[]) AS c))`);
+  }
+  await pool.query(`UPDATE users SET ${sets.join(', ')} WHERE id = $1`, params);
+  return { ok: true, seasonId: bekleyen.seasonId, reward: o };
+}

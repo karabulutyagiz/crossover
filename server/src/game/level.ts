@@ -112,27 +112,32 @@ const D = (diamonds: number): PassReward => ({ diamonds });
 const RP = (roadPower: PowerId): PassReward => ({ roadPower });
 const SP = (specialPower: SpecialPowerId): PassReward => ({ specialPower });
 
+// ÇERÇEVE YOK (kullanıcı kararı 2026-09-01: "çerçeve vermicez demiştik"):
+// eski yolun ×10 seviyelerinde bronze/silver/gold/diamond/goat çerçeveleri
+// vardı. Yeni sezonda çerçeve prestiji SEZON ÖDÜLÜNE ait (S1 çerçevesi, 1000+
+// kupa) — pass'ten de dağıtmak o ödülün değerini düşürürdü. Kilometre taşları
+// boş kalmasın diye yerlerine maç içi güçlerin pahalı olanları kondu.
 export const PASS_V2_FREE: Record<number, PassReward> = {
   1: D(15),  2: SP('extratime'),     3: D(15),  4: SP('secondchance'),
   5: { roadPower: 'xp2x', diamonds: 50 },
   6: D(15),  7: SP('extratime'),     8: D(15),  9: RP('xp2x'),
-  10: { frameTier: 'bronze', diamonds: 100 },
+  10: { specialPower: 'freeze', diamonds: 100 },
   11: D(15), 12: SP('secondchance'), 13: D(15), 14: SP('extratime'),
   15: { roadPower: 'shield', diamonds: 50 },
   16: D(15), 17: SP('skip'),         18: D(15), 19: RP('shield'),
-  20: { frameTier: 'silver', diamonds: 100 },
+  20: { specialPower: 'skip', diamonds: 100 },
   21: D(15), 22: SP('secondchance'), 23: D(15), 24: SP('extratime'),
   25: { roadPower: 'streak', diamonds: 50 },
   26: D(15), 27: RP('streak'),       28: D(15), 29: SP('secondchance'),
-  30: { frameTier: 'gold', diamonds: 100 },
+  30: { specialPower: 'reveal', diamonds: 100 },
   31: D(15), 32: SP('extratime'),    33: D(15), 34: RP('training'),
   35: { roadPower: 'training', diamonds: 50 },
   36: D(15), 37: SP('skip'),         38: D(15), 39: RP('socialtoken'),
-  40: { frameTier: 'diamond', diamonds: 100 },
+  40: { specialPower: 'freeze', diamonds: 100 },
   41: D(15), 42: SP('freeze'),       43: D(15), 44: { cosmeticId: 'ice_name' },
   45: { roadPower: 'socialtoken', diamonds: 50 },
   46: D(15), 47: SP('extratime'),    48: D(15), 49: RP('xp2x'),
-  50: { frameTier: 'goat', diamonds: 100 },
+  50: { specialPower: 'reveal', diamonds: 150 },
 };
 
 export const PASS_V2_PREMIUM: Record<number, PassReward> = {

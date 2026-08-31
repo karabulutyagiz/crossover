@@ -327,6 +327,7 @@ export type ClientMsg =
   | { type: 'get_store_catalog' }
   | { type: 'set_avatar'; avatar: string | null }
   | { type: 'set_frame'; frameId: string | null }
+  | { type: 'claim_season_reward' }
   | { type: 'claim_level_reward'; level: number; track?: 'free' | 'premium' } // Seviye Yolu kartına dokunarak ödül topla (şerit seçimiyle)
   | { type: 'buy_premium_road' } // Premium Seviye Yolu'nu 1000 elmasla aç
   | { type: 'buy_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken' } // mağazadan güç satın al
@@ -450,6 +451,8 @@ export type ServerMsg =
   // yanıtında da gelir. active=true iken sunucu yeni maç kurmayı reddeder,
   // devam eden maça DOKUNMAZ.
   | { type: 'maintenance_state'; active: boolean; message: string; startedAt: string | null }
+  | { type: 'season_reward_pending'; seasonId: string; peakTrophies: number; peakArenaName: string; diamonds: number; specialPower: string | null; frameTier: string | null; cosmeticId: string | null; avatarId: string }
+  | { type: 'season_reward_claimed'; seasonId: string; profile: ProfileView }
   | { type: 'power_purchased'; powerId: string; profile: ProfileView } // mağazadan güç alındı
   | { type: 'power_used'; powerId: string; profile: ProfileView } // güç etkinleştirildi
   | { type: 'outage_gift_claimed'; profile: ProfileView; granted: boolean } // granted=false → zaten alınmıştı

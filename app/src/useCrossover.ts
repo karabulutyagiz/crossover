@@ -189,6 +189,9 @@ export interface GameState {
   // kurulamaz; devam eden maç ETKİLENMEZ (sunucu kapısı maç içi mesajları
   // geçirir). seenAt: pencerenin bu oturumda gösterilip gösterilmediği.
   maintenance: { active: boolean; message: string; startedAt: string | null } | null;
+  // Bekleyen sezon ödülü: sezon dönüşünde OTOMATİK verilmez; oyuncu
+  // "ÖDÜLLERİ TOPLA" düğmesine bastığında tanımlanır.
+  seasonRewardPending: Extract<ServerMsg, { type: 'season_reward_pending' }> | null;
   unseenCollection: { emotes: string[]; cosmetics: string[]; powers: string[] };
   // Maç ortasında ÇIKIŞ (forfeit) = kaybetme. Kupa cezası (trophy_update) reset
   // SONRASI gelir; onunla kaybetme popup'ı gösterilir. null = gösterilecek bir şey yok.
@@ -380,6 +383,7 @@ export const initialState: GameState = {
   tournamentReady: null,
   tournamentOver: null,
   maintenance: null,
+  seasonRewardPending: null,
   unseenCollection: { emotes: [], cosmetics: [], powers: [] },
   xoxOver: null,
   storeCatalogError: null,
@@ -751,6 +755,12 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, dailyOffer: (action as any).offer ?? null };
     case 'referral_redeemed':
       return { ...state, profile: action.profile, referralRedeem: { referrerName: action.referrerName, reward: action.reward, seq: (state.referralRedeem?.seq ?? 0) + 1 } };
+    case 'season_reward_pending':
+      return { ...state, seasonRewardPending: action as Extract<ServerMsg, { type: 'season_reward_pending' }> };
+    case 'season_reward_claimed': {
+      const a = action as Extract<ServerMsg, { type: 'season_reward_claimed' }>;
+      return { ...state, profile: a.profile, seasonRewardPending: null };
+    }
     case 'maintenance_state': {
       const m = action as Extract<ServerMsg, { type: 'maintenance_state' }>;
       return { ...state, maintenance: { active: m.active, message: m.message, startedAt: m.startedAt ?? null } };
@@ -1862,6 +1872,7 @@ export function useCrossover() {
       },
       markCollectionSeen: (tab: 'emotes' | 'cosmetics' | 'powers') => dispatch({ type: '_col_seen', tab }),
       markItemSeen: (tab: 'emotes' | 'cosmetics' | 'powers', id: string) => dispatch({ type: '_item_seen', tab, id }),
+      claimSeasonReward: () => send({ type: 'claim_season_reward' }),
       ackSupportMessage: (id: string) => { send({ type: 'ack_support_message', id }); dispatch({ type: '_clear_support' }); },
       openTournaments: () => { dispatch({ type: '_phase', phase: 'tournaments' }); send({ type: 'list_tournaments' }); },
       closeTournaments: () => dispatch({ type: '_phase', phase: 'home' }),
