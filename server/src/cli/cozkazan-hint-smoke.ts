@@ -12,7 +12,7 @@ const START_DIAMONDS = 500;
 function log(m: string) { console.log(m); }
 
 async function main() {
-  await pool.query(`INSERT INTO users (id, display_name, diamonds) VALUES ($1, 'HintSmoke', $2)`, [userId, START_DIAMONDS]);
+  await pool.query(`INSERT INTO users (id, display_name, diamonds, social_pack_until) VALUES ($1, 'HintSmoke', $2, now() + interval '1 day')`, [userId, START_DIAMONDS]); // cozkazan paket ister
   const ws = new WebSocket(URL);
   let wordLens: number[] = [];
   const revealed: Record<number, string> = {};

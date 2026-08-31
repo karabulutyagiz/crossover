@@ -3664,6 +3664,15 @@ type NewsItem = { id: string; tag: string; date: string; title: string; body: st
 // boşken NewsModal EmptyState gösterir, zil noktası hiç yanmaz.
 const NEWS: NewsItem[] = [
   {
+    id: 'cozkazan-launch-2026-09-01',
+    tag: 'YENİ MOD',
+    date: '2026-09-01',
+    title: 'Çöz Kazan yayında!',
+    body: 'Karışık harflerle verilen futbolcuyu ilk çözen kazanır! 7 tur, canlı yarış — takıldığın harfi elmasla açabilirsin. Diğer Modlar ve Bot Maçı bölümlerinden oynanır; Sosyal Paket gerektirir.',
+    icon: 'shuffle',
+    tint: '#16B27A',
+  },
+  {
     id: 'xox-launch-2026-08-27',
     tag: 'YENİ MOD',
     date: '2026-08-27',
@@ -4536,7 +4545,7 @@ const HOME_DESIGN_BODY_RANGE_H = 204;
 // Room codes are always exactly this long — server/src/rooms/manager.ts:5 (CODE_LEN).
 const ROOM_CODE_LEN = 6;
 const HOME_MODES: GameMode[] = ['cozkazan', 'xox', 'country-team', 'letter-team'];
-const PACK_MODES: GameMode[] = ['country-team', 'letter-team', 'xox'];
+const PACK_MODES: GameMode[] = ['country-team', 'letter-team', 'xox', 'cozkazan'];
 
 // "Mücadele Modu" kartının yüzü hiçbir props/state okumaz (tema + modül-scope
 // RivalryArt + sabit renkler) — her HomeScreen render'ında (tuş vuruşu, popup
@@ -5622,8 +5631,9 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
                 <ModalBackBtn onPress={() => setBotPage({ key: 'bot', dir: -1 })} />
               </View>
               {(['team-team', 'cozkazan', 'xox', 'country-team', 'letter-team'] as GameMode[]).map((m) => {
-                // Bota karşı da paket kilidi (2026-08-28): team-team + cozkazan HARİÇ
-                // modlar Sosyal Paket ister. Kilitliyse seçtirmeyip modalı kapatıp upsell'e devret.
+                // Bota karşı da paket kilidi: yalnız team-team serbest; diğer modlar
+                // (cozkazan dahil, 2026-09-01) Sosyal Paket ister. Kilitliyse seçtirmeyip
+                // modalı kapatıp upsell'e devret.
                 const locked = PACK_MODES.includes(m) && !hasPack;
                 return (
                   <GameRow

@@ -11,7 +11,7 @@ const userId = randomUUID();
 function log(m: string) { console.log(m); }
 
 async function main() {
-  await pool.query(`INSERT INTO users (id, display_name) VALUES ($1, 'CozLiveSmoke')`, [userId]);
+  await pool.query(`INSERT INTO users (id, display_name, social_pack_until) VALUES ($1, 'CozLiveSmoke', now() + interval '1 day')`, [userId]); // cozkazan paket ister
   const ws = new WebSocket(URL);
   let rounds = 0, reveals = 0, over = false, gotState = false;
   const seenRounds = new Set<number>();

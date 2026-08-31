@@ -3199,23 +3199,23 @@ function AppRoot() {
         ) : null}
       </GameModal>
 
-      <GameModal visible={xoxAnnounceVisible} onClose={() => setXoxAnnounceVisible(false)} title={t('xoxAnnounce.title')} icon="grid" coach>
+      {/* Her açılışta YENİ MOD duyurusu — artık Çöz Kazan (kullanıcı 2026-09-01) */}
+      <GameModal visible={xoxAnnounceVisible} onClose={() => setXoxAnnounceVisible(false)} title={t('cozAnnounce.title')} icon="shuffle" coach>
         <View style={{ alignItems: 'center', gap: 12 }}>
-          {/* Dikkat çekici sahne: altın YENİ MOD şeridi + büyük tahta görseli */}
+          {/* Dikkat çekici sahne: altın YENİ MOD şeridi + karışık-harf teaser'ı */}
           <View style={{ backgroundColor: theme.gold, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4 }}>
-            <Text style={{ color: '#231A00', fontSize: 11, fontFamily: 'Poppins-Black', letterSpacing: 1.2 }}>{t('xoxAnnounce.ribbon')}</Text>
+            <Text style={{ color: '#231A00', fontSize: 11, fontFamily: 'Poppins-Black', letterSpacing: 1.2 }}>{t('cozAnnounce.ribbon')}</Text>
           </View>
-          <View style={{ backgroundColor: withAlpha('#7C5CFF', 0.16), borderRadius: 20, paddingHorizontal: 22, paddingVertical: 12, borderWidth: 2, borderColor: withAlpha('#7C5CFF', 0.5) }}>
-            <Text style={{ fontSize: 44, letterSpacing: 6 }}>❌⭕❌</Text>
+          <View style={{ backgroundColor: withAlpha('#16B27A', 0.16), borderRadius: 20, paddingHorizontal: 24, paddingVertical: 14, borderWidth: 2, borderColor: withAlpha('#16B27A', 0.5), alignItems: 'center', gap: 6 }}>
+            <Text style={{ fontSize: 30, letterSpacing: 5, fontFamily: 'Poppins-Black', color: theme.text }}>R A M Y E N</Text>
+            <Text style={{ fontSize: 13, fontFamily: 'Poppins-ExtraBold', color: theme.gold, letterSpacing: 1 }}>= NEYMAR ✓</Text>
           </View>
-          <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>{t('xoxAnnounce.body')}</Text>
+          <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>{t('cozAnnounce.body')}</Text>
           <PulseView>
-            {/* Kullanıcı kararı (2026-08-28): sadece 'Anladım' — eşleşme/ödeme
-                başlatmaz, popup'ı kapatır. Abonelik açıklama metni de kaldırıldı
-                (satış yüzeyi değil, duyuru). */}
+            {/* Sadece 'Anladım' — eşleşme/ödeme başlatmaz, popup'ı kapatır (duyuru yüzeyi). */}
             <Btn
               big kind="accent" icon="checkmark-circle"
-              label={t('xoxAnnounce.cta')}
+              label={t('cozAnnounce.cta')}
               feedback={GameFeedbackEvent.UI_CONFIRM}
               onPress={() => setXoxAnnounceVisible(false)}
             />

@@ -162,12 +162,16 @@ export function cozAnswerLetters(shownForm: string): string[] {
 //   obscure = onursuz, fame [30,90)  → az bilinen
 export type CozTier = 'famous' | 'mid' | 'obscure';
 const HAS_HONOURS = `EXISTS(SELECT 1 FROM player_honours ph WHERE ph.player_id = p.id)`;
+// SADECE Dünya Kupası / Ballon d'Or — millî-takım seviyesi ELİT (kullanıcı defalarca
+// "saçma sapan isimler geliyor"). Kulüp CL/EL onurları KADRO oyuncusunu (Ben Woodburn,
+// yedek kaleci) da içerdiği için famous havuzuna SOKMAZ; WC/BDOR çok daha seçkin.
+const HAS_TOP_HONOURS = `EXISTS(SELECT 1 FROM player_honours ph WHERE ph.player_id = p.id AND ph.competition IN ('WC','BDOR'))`;
 /** Tier'a göre SQL koşulu + sıralama (hepsi düz random → çeşitlilik). */
 function tierWhereOrder(tier: CozTier): { cond: string; order: string } {
-  // famous havuzu: fame≥230 VEYA (onurlu AND fame≥45). Alt-taban 45, onurlu ama çok
-  // düşük fame'li KADRO oyuncularını (Sávio 31, Munitis 35) eler; genç yıldızları
-  // (Haaland 83, Bellingham 72, Mbappé 129) TUTAR. ~563 kişi.
-  const FAMOUS_POOL = `(p.fame >= 230 OR (${HAS_HONOURS} AND p.fame >= 45))`;
+  // famous havuzu: fame≥170 VEYA WC/BDOR sahibi. ~373 kişi, HEPSİ çok ünlü — kulüp
+  // CL/EL kadro oyuncuları (Woodburn/Sóbis tipi) GİRMEZ. Kane(188)/Pogba/Griezmann
+  // fame'den, Mbappé WC'den gelir. (kullanıcı 2026-09-01 "çok bilindik, çok ünlü olsun".)
+  const FAMOUS_POOL = `(p.fame >= 170 OR ${HAS_TOP_HONOURS})`;
   // Sıralama DÜZ random() — TAM ÇEŞİTLİLİK (kullanıcı 2026-08-31 "hep aynı oyuncular
   // çıkıyor"). Havuz zaten tanınır olduğundan ün-ağırlığı gerekmez; ağırlık en
   // tepedeki 10-13 kişiye kilitliyordu.
@@ -226,7 +230,7 @@ function tierToDifficulty(tier: CozTier): CozDifficulty {
  * ünlü oyuncu + aynı karıştırma. Instance'lar arası tutarlı (yazma gerekmez). */
 export async function buildDailyScramble(rnd: () => number): Promise<CozRound | null> {
   // Günün sorusu HERKESİN bileceği biri olsun → famous havuzu (onurlu VEYA fame≥230).
-  const DAILY_POOL = `FROM players p WHERE p.image_url IS NOT NULL AND char_length(p.name) BETWEEN 4 AND 30 AND (p.fame >= 230 OR (${HAS_HONOURS} AND p.fame >= 45))`;
+  const DAILY_POOL = `FROM players p WHERE p.image_url IS NOT NULL AND char_length(p.name) BETWEEN 4 AND 30 AND (p.fame >= 170 OR ${HAS_TOP_HONOURS})`;
   const { rows: cnt } = await pool.query<{ n: string }>(`SELECT count(*) n ${DAILY_POOL}`);
   const n = Number(cnt[0]?.n ?? 0);
   if (!n) return null;
