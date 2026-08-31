@@ -286,6 +286,11 @@ function CosmeticMatchBackground({ id }: { id: string }) {
   );
 }
 
+// Kozmetik maç arka planının çizileceği fazlar: yalnız MAÇ sunumu. Menü
+// ekranları (home/arenas/leaderboard/matchHistory/profile/tournaments) ve
+// eşleşme aramasi HARİÇ — satın alınan arka plan maça aittir.
+const MATCH_BG_PHASES = new Set(['lobby', 'matchup', 'countdown', 'pick', 'reveal', 'guess', 'result', 'xox']);
+
 // Phases that show the main tab bar (non-game screens)
 const TAB_PHASES = new Set(['home', 'arenas', 'leaderboard', 'matchHistory', 'profile']);
 // Phases where backgrounding the app forfeits the (PvP) match — the whole
@@ -2662,7 +2667,15 @@ function AppRoot() {
       <View style={[s.root, { paddingTop: insets.top }]}>
         <StatusBar style="light" />
         <ScreenBg variant="match" />
-        <CosmeticMatchBackground id={matchBgId} />
+        {/* KOZMETİK MAÇ ARKA PLANI YALNIZ MAÇTA (2026-08-31): bu katman
+            switch'in default dalında olduğu için ANA EKRAN, Arkadaşlar,
+            Turnuvalar — kısacası TÜM ekranlarda çiziliyordu. Oyuncu raporu:
+            "sağ altta mor/yeşil iki daire duruyor, arkadaşlar sekmesinde bile
+            görünüyor". Renkler kozmetiğin vurgusu (neon_pitch #27E58B yeşil,
+            goat_arena #C77DFF mor) ve sağ alttaki büyük daire (right:-110,
+            bottom:120) buton sanılıyordu. Satın alınan arka plan MAÇ sunumuna
+            aittir; menülerde görünmesi kusurdu. */}
+        {MATCH_BG_PHASES.has(state.phase) ? <CosmeticMatchBackground id={matchBgId} /> : null}
         {screen}
         {state.matchInvite ? (
           <InviteBanner
