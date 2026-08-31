@@ -12735,6 +12735,29 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
     actions.loadMyStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // GÜNLÜK İÇERİK ERİŞİMİ (2026-08-31): Günün Kariyeri ve Günlük Görevler
+  // kartları ANA EKRANDAN kaldırıldı (orada hata yapıyor, Arkadaşlar sekmesinin
+  // arka planına taşıyorlardı). Özellikler çalışır durumdaydı ama erişimsiz
+  // kalmıştı; giriş noktaları buraya taşındı.
+  const [careerOpen, setCareerOpen] = useState(false);
+  const [questsOpen, setQuestsOpen] = useState(false);
+  useEffect(() => {
+    if (!state.profile?.userId) return;
+    if (!state.dailyCareer || new Date(state.dailyCareer.resetAt).getTime() <= Date.now()) actions.getDailyCareer();
+    if (!state.dailyQuests || new Date(state.dailyQuests.resetAt).getTime() <= Date.now()) actions.getDailyQuests();
+  }, [actions, state.profile?.userId, state.dailyCareer, state.dailyQuests]);
+  const openCareer = useCallback(() => {
+    triggerFeedback(GameFeedbackEvent.UI_CARD);
+    track('daily_career_open', { day: state.dailyCareer?.day, played: state.dailyCareer?.played ?? false, source: 'profile' });
+    setCareerOpen(true);
+  }, [state.dailyCareer?.day, state.dailyCareer?.played]);
+  const openQuests = useCallback(() => {
+    triggerFeedback(GameFeedbackEvent.UI_CARD);
+    actions.getDailyQuests();
+    track('quests_open', { source: 'profile' });
+    setQuestsOpen(true);
+  }, [actions]);
+
   const [framePrev, setFramePrev] = useState<{ tier: LevelTier; unlocked: boolean } | null>(null);
   const [pendingAvatarId, setPendingAvatarId] = useState<string | null>(null);
   const [confirmAvatarId, setConfirmAvatarId] = useState<string | null>(null);
@@ -12990,6 +13013,45 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
             <SeasonCard season={state.season} />
           </View>
         ) : null}
+
+        {/* Günlük içerik girişleri (ana ekrandan taşındı) */}
+        <View style={{ gap: 8, marginBottom: 4 }}>
+          <GameRow
+            icon="footsteps"
+            iconColor={theme.purple}
+            label="Günün Kariyeri"
+            right={state.dailyCareer && !state.dailyCareer.played
+              ? <Text style={{ color: theme.gold, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold' }}>{state.dailyCareer.reward ?? 10} 💎</Text>
+              : <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold' }}>Bugün oynandı</Text>}
+            chevron
+            onPress={openCareer}
+          />
+          <GameRow
+            icon="checkmark-done"
+            iconColor={theme.primary}
+            label="Günlük Görevler"
+            right={<Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold' }}>
+              {state.dailyQuests ? `${state.dailyQuests.quests.filter((q) => q.claimed).length}/${state.dailyQuests.quests.length}` : '—'}
+            </Text>}
+            chevron
+            onPress={openQuests}
+          />
+        </View>
+
+        <DailyCareerModal
+          visible={careerOpen}
+          career={state.dailyCareer}
+          reward={state.dailyCareerReward}
+          onGuess={actions.guessDailyCareer}
+          onClose={() => { setCareerOpen(false); actions.clearDailyCareerReward(); }}
+        />
+        <DailyQuestsModal
+          visible={questsOpen}
+          quests={state.dailyQuests}
+          claimedXp={state.questClaimedXp}
+          onClaim={(id) => actions.claimQuest(id)}
+          onClose={() => { setQuestsOpen(false); actions.clearQuestClaimed(); }}
+        />
 
         {/* Seviye Yolu girişi — rozet + XP çubuğu, dokununca tam ekran yol */}
         <Pressable onPress={() => onOpenLevelRoad?.()} style={({ pressed }) => ({ marginTop: 12, transform: [{ translateY: pressed ? 2 : 0 }] })}>
