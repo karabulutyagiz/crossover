@@ -2769,7 +2769,7 @@ function AuthBtn({ onPress, disabled, bg, border, fg, icon, iconColor, label }: 
 }) {
   return (
     <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => ({ marginVertical: 6, opacity: disabled ? 0.5 : pressed ? 0.88 : 1 })}>
-      <View style={{ backgroundColor: bg, borderRadius: 12, height: 52, borderWidth: border ? 1 : 0, borderColor: border, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }}>
+      <View style={{ backgroundColor: bg, borderRadius: 12, height: 52, borderWidth: border ? 1 : 0, borderColor: border, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
         <Ionicons name={icon} size={20} color={iconColor} style={{ marginRight: 9, marginTop: icon === 'logo-apple' ? -2 : 0 }} />
         <Text numberOfLines={1} style={{ color: fg, fontSize: 16, fontFamily: 'Poppins-SemiBold' }}>{label}</Text>
       </View>

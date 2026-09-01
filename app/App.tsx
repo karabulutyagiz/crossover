@@ -1,4 +1,5 @@
 import { memo, startTransition, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from 'react';
+import './src/nativeTextDefaults'; // iOS↔Android metin parİtesİ (includeFontPadding/scale) — İLK yüklenmeli
 import { StatusBar } from 'expo-status-bar';
 import * as NativeSplash from 'expo-splash-screen';
 import {
