@@ -782,14 +782,42 @@ function SafeModal({ visible = true, children, onRequestClose, ...rest }: ModalP
   );
 }
 
-export function GameModal({ visible, onClose, onExited, onShown, title, icon, danger = false, coach = false, dismissible = true, children }: {
+// COFA MÜHRÜ (2026-09-01): her pencerenin tam üst-ortasında, kartın üst
+// kenarına yarı yarıya binen top madalyonu. Clash Royale'in taç amblemi gibi
+// tek bir imza — pencereler artık "bir kutu" değil, oyunun kendi penceresi.
+// Kart bir sarmalayıcının içinde: mühür SARMALAYICININ sınırları içinde durur,
+// yoksa Android taşan çocuğu kırpardı. Kart 18px aşağı iner (mührün 46'sının
+// 28'i başlık şeridine biner) — tam yarı taşma uzun pencereleri ekrandan
+// taşırıyordu, bu oran hem imzayı verir hem yüksekliği zorlamaz.
+const MODAL_CREST = 46;
+function ModalCrest({ ring }: { ring: string }) {
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        width: MODAL_CREST, height: MODAL_CREST, borderRadius: MODAL_CREST / 2,
+        backgroundColor: '#0B1428', padding: 3.5,
+        borderTopWidth: 1.5, borderTopColor: withAlpha('#FFFFFF', 0.24),
+        alignItems: 'center', justifyContent: 'center',
+        shadowColor: '#050B18', shadowOpacity: 0.55, shadowRadius: 7, shadowOffset: { width: 0, height: 3 }, elevation: 7,
+      }}
+    >
+      <View style={{ width: MODAL_CREST - 7, height: MODAL_CREST - 7, borderRadius: (MODAL_CREST - 7) / 2, backgroundColor: darken(ring, 0.45), alignItems: 'center', justifyContent: 'center' }}>
+        <Ball size={MODAL_CREST - 15} face="#F4F7FF" faceDark="#94A3C4" ink="#0B1428" />
+      </View>
+    </View>
+  );
+}
+
+export function GameModal({ visible, onClose, onExited, onShown, title, icon, danger = false, coach = false, dismissible = true, crest = true, children }: {
   // onShown: native sunum GERÇEKTEN tamamlandığında (RN Modal onShow) çağrılır.
   // "Bu pencere sunulduktan SONRA sunulmalı" el sıkışmaları (ör. StoreKit
   // sayfası) kör zamanlayıcı yerine bu olaya bağlanır — modalTraffic pencereyi
   // sıraya alsa bile olay sunumdan önce asla gelmez.
   // dismissible=false: zorunlu pencere — çarpı yok, karartmaya dokunmak ve
   // Android geri tuşu kapatmaz. Tek çıkış içerideki eylem düğmesidir (ör. "Al").
-  visible: boolean; onClose: () => void; onExited?: () => void; onShown?: () => void; title?: string; icon?: IoniconName; danger?: boolean; coach?: boolean; dismissible?: boolean; children: ReactNode;
+  // crest=false: mühürsüz pencere (tam ekran içerik taşıyan seyrek durumlar).
+  visible: boolean; onClose: () => void; onExited?: () => void; onShown?: () => void; title?: string; icon?: IoniconName; danger?: boolean; coach?: boolean; dismissible?: boolean; crest?: boolean; children: ReactNode;
 }) {
   const a = useRef(new Animated.Value(0)).current;
   // Karartma KARTTAN AYRI koşar (büyük-stüdyo kalıbı, araştırma 2026-08-11):
@@ -874,6 +902,9 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
               // DÜĞME ANATOMİSİ (üç katman): koyu dış kontur → sıcak pah → yüz.
               // Düğmelerde kontur her yanı sarar ve altta kalınlaşır; pencereler
               // eskiden ince hairline'dı, bu yüzden yan yana yamalı duruyordu.
+              // Mühür kartın üst kenarına biner: kart yarısı kadar aşağı iner,
+              // mühür sarmalayıcının tepesinde durur (Android kırpma korumalı).
+              marginTop: crest ? 18 : 0,
               backgroundColor: FRAME, borderRadius: 28, padding: 3.5, paddingBottom: 6,
               ...shadowModal,
             }}
@@ -911,6 +942,11 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
               ) : null}
             </Pressable>
             </View>
+            {crest ? (
+              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'center', zIndex: 30 }}>
+                <ModalCrest ring={strip} />
+              </View>
+            ) : null}
           </Animated.View>
         </Pressable>
         </KeyboardAvoidingView>
