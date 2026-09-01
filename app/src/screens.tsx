@@ -32,7 +32,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image as ExpoImage } from 'expo-image';
 import { GOOGLE_ANDROID_CLIENT_ID, GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './config';
 import { submitPlayerFeedback, type PlayerFeedbackCategory } from './feedbackSubmit';
-import { testInterstitialNow } from './interstitial';
+import { isInterstitialDue, testInterstitialNow } from './interstitial';
 import { GemIcon, GEM_COLOR } from './GemIcon';
 import { holdModalSlotForNativeAd, releaseModalSlotForNativeAd, whenModalSlotFree } from './modalTraffic';
 import { dismissActiveInput } from './keyboardLifecycle';
@@ -40,7 +40,7 @@ import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasu
 import { Avatar } from './Avatar';
 import { useIsTablet, useWindow, useContentMaxWidth, canvasSizeFor } from './layout';
 import { setPendingShortfall, takePendingShortfall, takePendingShortfallReason } from './shortfall';
-import { getMonetizationConfig, setPendingAutoUsePower, takePendingDiamondIntent, type DiamondIntent } from './monetization';
+import { getMonetizationConfig, hasActiveSocialPack, setPendingAutoUsePower, takePendingDiamondIntent, type DiamondIntent } from './monetization';
 import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, LinearGradient as SvgGradient, RadialGradient, Stop } from 'react-native-svg';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -7513,6 +7513,11 @@ export function XoxScreen({ state, actions }: Props) {
             </>
           ) : state.rematchState === 'waiting' ? (
             <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold' }}>{t('result.rematchWaiting')}</Text>
+          ) : isInterstitialDue(hasActiveSocialPack(state.profile)) ? (
+            // REKLAM KAPIDA (2026-09-02): Tekrar Oyna gizlenir — sınırsız rövanş
+            // döngüsü menüye hiç dönmediği için reklamı süresiz atlatıyordu.
+            // Paketliler bu kapıya hiç takılmaz (isInterstitialDue false döner).
+            null
           ) : (
             <Btn big label={t('result.playAgain')} kind="accent" icon="refresh" feedback={GameFeedbackEvent.UI_PLAY} onPress={actions.playAgain} />
           )}
@@ -7983,6 +7988,11 @@ export function CozKazanScreen({ state, actions }: Props) {
             </>
           ) : state.rematchState === 'waiting' ? (
             <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold' }}>{t('result.rematchWaiting')}</Text>
+          ) : isInterstitialDue(hasActiveSocialPack(state.profile)) ? (
+            // REKLAM KAPIDA (2026-09-02): Tekrar Oyna gizlenir — sınırsız rövanş
+            // döngüsü menüye hiç dönmediği için reklamı süresiz atlatıyordu.
+            // Paketliler bu kapıya hiç takılmaz (isInterstitialDue false döner).
+            null
           ) : (
             <Btn big label={t('result.playAgain')} kind="accent" icon="refresh" feedback={GameFeedbackEvent.UI_PLAY} onPress={actions.playAgain} />
           )}
@@ -15380,7 +15390,10 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
                 <Text style={[styles.muted, { marginBottom: 4 }]}>
                   {t('result.rematchIncoming', { name: state.rematchByName ?? '' })}
                 </Text>
-                <Btn label={t('result.accept')} kind="accent" icon="checkmark-circle" onPress={actions.acceptRematch} />
+                {/* Reklam borcu olan taraf rakibin isteğini KABUL edemez — kabul
+                    da döngüyü uzatıp reklamı atlatırdı; reddet + çık kalır. */}
+                {isInterstitialDue(hasActiveSocialPack(state.profile)) ? null
+                  : <Btn label={t('result.accept')} kind="accent" icon="checkmark-circle" onPress={actions.acceptRematch} />}
                 <Btn label={t('result.decline')} kind="ghost" icon="close" onPress={actions.declineRematch} />
               </>
             ) : state.rematchState === 'waiting' ? (
@@ -15391,8 +15404,13 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
             ) : state.rematchState === 'declined' ? (
               <>
                 <Text style={[styles.muted, { color: theme.danger }]}>{t('result.rematchDeclined')}</Text>
-                <Btn label={t('result.tryAgain')} kind="accent" icon="refresh" onPress={actions.playAgain} />
+                {isInterstitialDue(hasActiveSocialPack(state.profile)) ? null
+                  : <Btn label={t('result.tryAgain')} kind="accent" icon="refresh" onPress={actions.playAgain} />}
               </>
+            ) : isInterstitialDue(hasActiveSocialPack(state.profile)) ? (
+              // REKLAM KAPIDA (2026-09-02): Tekrar Oyna gizlenir — dostluk/bot
+              // rövanş döngüsü menüye dönmediği için reklamı süresiz atlatıyordu.
+              null
             ) : (
               <Btn label={t('result.playAgain')} kind="accent" icon="refresh" onPress={actions.playAgain} />
             )}

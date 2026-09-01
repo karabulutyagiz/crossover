@@ -228,6 +228,21 @@ export function interstitialDiagnostics(): Record<string, string | number | bool
  * açmak iOS'ta sunum zincirini kilitler — çağıran taraf kör zamanlayıcı yerine
  * bunu kullanmalıdır.
  */
+/**
+ * Reklam KAPIDA mı? (2026-09-02, kullanıcı isteği: 'tekrar oyna reklamı
+ * atlatamasın') — gösterim YAPMAZ, yalnız borcu söyler. Tekrar Oyna düğmeleri
+ * bununla gizlenir: sırası gelen oyuncu ana menüye dönmek zorunda kalır ve
+ * reklam oradaki mevcut akışla çıkar. Ön-yükleme koşulu bilerek YOK — reklam
+ * henüz inmemişse bile huni menüye akmalı, menüdeki zamanlayıcı bekler.
+ */
+export function isInterstitialDue(hasSocialPack: boolean): boolean {
+  if (hasSocialPack) return false;
+  if (!InterstitialAd || !cfg || !cfg.interstitialEnabled || !unitId()) return false;
+  if (totalMatches < Math.max(0, cfg.interstitialGraceMatches)) return false;
+  if (sessionMatches < SESSION_MIN_MATCHES) return false;
+  return sinceAd >= Math.max(1, cfg.interstitialEveryMatches);
+}
+
 export function maybeShowInterstitial(hasSocialPack: boolean, onClosed?: () => void): boolean {
   if (hasSocialPack) { lastReason = 'paket'; return false; }
   if (!InterstitialAd) { lastReason = 'modulyok'; return false; }
