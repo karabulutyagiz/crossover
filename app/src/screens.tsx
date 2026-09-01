@@ -5317,7 +5317,11 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
             fillAnim={xpBarAnim}
             frameId={profile?.selectedFrame}
             onPress={openProfile}
-            claimBadge={unclaimedLevelCount(profile)}
+            // Rozet yalnız Seviye Yolu ödüllerini sayıyordu; sezonla gelen yeni
+            // profil fotoğrafı / çerçeve de buradan haber verilmeli — yoksa
+            // oyuncu kazandığını ancak tesadüfen fark ediyor (kullanıcı raporu
+            // 2026-09-01: "pp geldi ama yagiz yazan yerde 1 yazmıyor").
+            claimBadge={unclaimedLevelCount(profile) + state.unseenCollection.avatars.length + state.unseenCollection.frames.length}
             boosted={Boolean(profile?.xpBoostUntil && new Date(profile.xpBoostUntil).getTime() > Date.now())}
           />
           <GemPill count={profile?.diamonds ?? 0} onPress={openStoreDiamonds} countAnim={gemCountAnim} fillAnim={gemFillAnim} innerRef={gemPillRef} />
@@ -8661,6 +8665,11 @@ function ChangeNameModal({ visible, diamonds, onClose, onConfirm }: {
 }
 
 type EquippableCosmeticType = Exclude<CosmeticType, 'avatar' | 'emote'>;
+// Koleksiyon sekmesi rozeti: çerçeveler KOZMETİK sekmesinin altında yaşar ama
+// ayrı listede tutulur — sekme sayacı ikisini birleştirir.
+function unseenTabCount(u: { emotes: string[]; cosmetics: string[]; powers: string[]; frames: string[] }, key: 'emotes' | 'powers' | 'cosmetics'): number {
+  return u[key].length + (key === 'cosmetics' ? u.frames.length : 0);
+}
 const EQUIPPABLE_COSMETIC_TYPES: readonly EquippableCosmeticType[] = ['frame', 'name_effect', 'match_background', 'ball', 'intro', 'victory_effect', 'answer_effect'];
 const COSMETIC_SLOT_META: readonly { type: EquippableCosmeticType; label: string; empty: string; icon: IoniconName }[] = [
   { type: 'frame', label: 'Çerçeve', empty: 'Boş', icon: 'radio-button-on' },
@@ -11116,6 +11125,9 @@ function CosmeticsLoadoutPanel({ state, actions }: Props) {
   useEffect(() => { if (!catalog) actions.loadStoreCatalog(); }, [catalog]);
   // Bu bolumde (TOPLAR/FORMALAR/...) kac YENI esya var — rozet bunu gosterir.
   const unseenCos = state.unseenCollection.cosmetics;
+  // Sezon/CO-PASS çerçeveleri mağaza kataloğunda DEĞİL (ownedFrames sütunu) —
+  // rozetleri ayrı listede tutulur, yoksa kazanılan çerçeve hiç işaretlenmez.
+  const unseenFrames = state.unseenCollection.frames;
   const unseenByType = useMemo(() => {
     const map: Partial<Record<EquippableCosmeticType, number>> = {};
     for (const item of catalog?.items ?? []) {
@@ -11123,8 +11135,10 @@ function CosmeticsLoadoutPanel({ state, actions }: Props) {
       if (!unseenCos.includes(item.id)) continue;
       map[item.type] = (map[item.type] ?? 0) + 1;
     }
+    const arenaYeni = (profile?.ownedFrames ?? []).filter((f) => unseenFrames.includes(f)).length;
+    if (arenaYeni) map.frame = (map.frame ?? 0) + arenaYeni;
     return map;
-  }, [catalog, unseenCos]);
+  }, [catalog, unseenCos, unseenFrames, profile?.ownedFrames]);
   const ownedByType = useMemo(() => {
     const map: Partial<Record<EquippableCosmeticType, StoreCatalogItem[]>> = {};
     for (const item of catalog?.items ?? []) {
@@ -11167,14 +11181,14 @@ function CosmeticsLoadoutPanel({ state, actions }: Props) {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 6 }}>
               {tiles.map((tile) => {
                 const sel = tile.id === null ? isDefaultEquipped : equippedId === tile.id;
-                const isNew = tile.id != null && unseenCos.includes(tile.id);
+                const isNew = tile.id != null && (tile.kind === 'arena' ? unseenFrames.includes(tile.id) : unseenCos.includes(tile.id));
                 return (
                   <Pressable
                     key={tile.id ?? 'none'}
                     onPress={() => {
                       // Rozet, kuşanma başarısız olsa bile (zaten kuşanılıysa)
                       // söner: BASMAK "gördüm" demektir.
-                      if (tile.id != null) actions.markItemSeen('cosmetics', tile.id);
+                      if (tile.id != null) actions.markItemSeen(tile.kind === 'arena' ? 'frames' : 'cosmetics', tile.id);
                       if (sel) return; // zaten kuşanılı
                       triggerFeedback(GameFeedbackEvent.UI_CONFIRM);
                       if (meta.type === 'frame') {
@@ -11425,9 +11439,9 @@ export const CollectionScreen = memo(function CollectionScreen({ state, actions,
               >
                 <Ionicons name={icon} size={14} color={sel ? theme.primary : theme.muted} />
                 <Text style={{ color: sel ? theme.primary : theme.muted, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.4 }}>{label}</Text>
-                {state.unseenCollection[key].length > 0 ? (
+                {unseenTabCount(state.unseenCollection, key) > 0 ? (
                   <View style={{ position: 'absolute', top: -6, right: -4, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: theme.danger, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ color: '#FFF', fontSize: 10, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{state.unseenCollection[key].length}</Text>
+                    <Text style={{ color: '#FFF', fontSize: 10, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{unseenTabCount(state.unseenCollection, key)}</Text>
                   </View>
                 ) : null}
               </Pressable>
@@ -13632,6 +13646,13 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
               <View style={{ position: 'absolute', bottom: 0, right: 0, width: 30, height: 30, borderRadius: 15, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.card }}>
                 <Ionicons name="pencil" size={15} color={theme.ink} />
               </View>
+              {/* Rozet çerçevenin ALTINDA kalmasın diye avatar kutusunun içinde,
+                  kalemle aynı katmanda duruyor (kullanıcı raporu 2026-09-01). */}
+              {state.unseenCollection.avatars.length > 0 ? (
+                <View pointerEvents="none" style={{ position: 'absolute', top: -2, right: -2, zIndex: 9, minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 5, backgroundColor: theme.danger, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ color: '#FFF', fontSize: 10.5, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{state.unseenCollection.avatars.length}</Text>
+                </View>
+              ) : null}
             </View>
           </Pressable>
           <Text style={{ color: theme.text, fontSize: 24, fontFamily: 'Poppins-ExtraBold', ...engrave('lg'), marginTop: p.selectedFrame ? Math.min(44, Math.round((104 * ((FRAME_SCALE[p.selectedFrame] ?? 2.1) - 1)) / 2 * 0.5)) : 0 }}>{p.displayName}</Text>

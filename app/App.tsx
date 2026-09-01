@@ -2962,7 +2962,7 @@ function AppRoot() {
               // pending requests, and it clears itself. (The mockup also badges
               // Collection, but every un-owned emote there is grant-only — that badge
               // could never be cleared, so it is deliberately not rendered.)
-              badge={tab.key === 'friends' ? (badgeTotal || null) : tab.key === 'collection' ? ((state.unseenCollection.emotes.length + state.unseenCollection.cosmetics.length + state.unseenCollection.powers.length) || null) : null}
+              badge={tab.key === 'friends' ? (badgeTotal || null) : tab.key === 'collection' ? ((state.unseenCollection.emotes.length + state.unseenCollection.cosmetics.length + state.unseenCollection.powers.length + state.unseenCollection.frames.length) || null) : null}
               onPress={onPress}
             />
           );
