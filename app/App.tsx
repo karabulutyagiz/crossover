@@ -3263,7 +3263,7 @@ function AppRoot() {
             Sosyal Paket ile reklam görmezsin ve tüm özel modlar açılır.
           </Text>
           <View style={{ alignSelf: 'stretch', gap: 7 }}>
-            {['🚫  Reklam yok', '🇹🇷  Ülke-Takım', '🔤  Harf-Takım', '⭕  Futbol XOX'].map((satir) => (
+            {['🚫  Reklam yok', '🇹🇷  Ülke-Takım', '🔤  Harf-Takım', '⭕  Futbol XOX', '🔀  Çöz Kazan'].map((satir) => (
               <View key={satir} style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: withAlpha(theme.text, 0.055), borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }}>
                 <Text style={{ color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold' }}>{satir}</Text>
               </View>
@@ -3525,6 +3525,10 @@ function AppRoot() {
               <Text style={{ fontSize: 23 }}>❌⭕</Text>
               <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.xoxLabel')}</Text>
             </View>
+            <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.accent, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.accent, 0.45) }}>
+              <Text style={{ fontSize: 23 }}>🔀</Text>
+              <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('mode.cozkazan')}</Text>
+            </View>
           </View>
           <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
             {t('socialPack.startupBody')}
@@ -3613,6 +3617,10 @@ function AppRoot() {
               <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.primary, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.primary, 0.45) }}>
                 <Text style={{ fontSize: 23 }}>❌⭕</Text>
                 <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.xoxLabel')}</Text>
+              </View>
+              <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.accent, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.accent, 0.45) }}>
+                <Text style={{ fontSize: 23 }}>🔀</Text>
+                <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('mode.cozkazan')}</Text>
               </View>
             </View>
             <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
