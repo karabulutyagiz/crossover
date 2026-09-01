@@ -6,7 +6,6 @@ import {
   verifyLetterTeamGuess,
   searchClubs,
   commonPlayersDetailed,
-  topCommonPlayerByPopularity,
   commonPlayersCountryTeam,
   commonPlayersLetterTeam,
   hasPlayersCountryTeam,
@@ -20,6 +19,10 @@ import {
   verifyPlayerPlayerGuess,
   commonClubs,
   hasCommonClubs,
+  verifyXoxCellGuess,
+  topPlayerForXoxCell,
+  toXoxCellAxis,
+  type XoxCellAxis,
 } from '../game/verify.ts';
 import { getArena, applyMatchResult, getUser, saveMatchHistory, type MatchRound } from '../game/rank.ts';
 import { recordQuestProgress } from '../game/dailyQuests.ts';
@@ -39,6 +42,8 @@ import { consumeSpecialPower, getSpecialPowerInventory, grantSpecialPower, snaps
 import { stableRolloutBucket } from '../matchmaking/liveOpsConfig.ts';
 import { toProfileView } from '../game/profileView.ts';
 import { generateXoxGrid, xoxWinningLine, XOX_MIN_CELL_ANSWERS, XOX_SUDDEN_MS, XOX_TURN_CAP, XOX_TURN_MS } from '../game/xoxGrid.ts';
+import { buildCozKazanRound, isCorrectAnswer, cozAnswerLetters, RANKED_COZ_CONTEXT, cozContextForBot, type CozRound, type CozContext } from '../game/cozKazan.ts';
+import { recordDiamondLedger } from '../game/diamondLedger.ts';
 import type { KnowledgeDomain } from '../matchmaking/botProfiles.ts';
 import type {
   ClientMsg,
@@ -90,6 +95,13 @@ const GUESS_GRACE_MS = intEnv('ROUND_GUESS_GRACE_MS', 1_200);
 const WRONG_RETRY_MS = intEnv('WRONG_RETRY_MS', 3_000);
 const MAX_PLAYERS = 2;
 const WIN_TARGET = 3; // first to this many round wins takes the match
+// Çöz Kazan sabitleri
+const COZ_TOTAL_ROUNDS = 7;      // sabit 7 tur
+const COZ_ROUND_MS = 20_000;     // tur süresi
+const COZ_REVEAL_MS = 3_200;     // cevap gösterimi (turlar arası)
+const COZ_WRONG_LOCK_MS = 5_000; // yanlış cevap → 5sn yazamama
+const COZ_HINT_COST = 5;         // "harf alma" — her doğru harf 5 elmas
+const COZ_SD_CAP = 5;            // ani ölüm üst sınırı (hepsinde çözülmezse berabere)
 // Result screen pause: one visible 10→0 countdown, then the next round
 // auto-starts (both players pressing "Hazır" skips the wait).
 const INTER_ROUND_MS = 10_000;
@@ -125,6 +137,7 @@ export interface Transport {
   getLastQuestionDifficultyScore?(): number | null;
   getLastDecision?(): { cognitiveState: string; reactionDelayMs: number; willAnswer: boolean; shouldMistake: boolean; shouldTimeout: boolean; plannedAction?: string; retryPlan?: { enabled: boolean; delayMs: number; nextAction: string } } | null;
   getBotDifficultyDirector?(): BotDifficultyDirectorOutput | null;
+  getBotDifficulty?(): Difficulty; // Çöz Kazan: bot maçında oyuncu havuzu + harf zorluğu için
   // İstemcinin bildirdiği yetenek bayrakları (ws/server.ts kayıt sırasında yazar).
   // 'wrongopen': yanlış cevapta turun açık kalmasını ve yeni mesajları anlar.
   // 'specialpowers': maç içi Özel Güç mesajlarını anlar (oda-bazlı etkinleşme şartı).
@@ -215,6 +228,10 @@ interface PlayerSpecialPowerState {
   secondChanceTriggered: boolean;
 }
 
+/** XOX ekseni (ClubRef) → birleşik doğrulama/sayım motoru ekseni (verify.ts
+ * ortak eşleyicisi; karışık dizilim + combo dahil). */
+const xoxCellAxis = (ref: ClubRef): XoxCellAxis => toXoxCellAxis(ref);
+
 export class Room {
   readonly code: string;
   scope: Scope = { type: 'all' }; // which clubs are allowed (set at creation)
@@ -280,6 +297,21 @@ export class Room {
     suddenCell: number | null;
     suddenFailed: Set<string>;     // ani ölümde yanlış bilen kilitlenir
     wrongs: Map<string, number>;
+  } | null = null;
+
+  // ── Çöz Kazan (anagram yarışı) — sunucu-otoriter yarış durumu ───────────────
+  private cozkazan: {
+    round: number;                 // 1 tabanlı (SD'de artmaya devam eder)
+    cur: CozRound | null;          // bu turun oyuncusu + karışık + cevap (shownForm)
+    roundEndsAt: number;
+    scores: Map<string, number>;
+    locks: Map<string, number>;    // playerId → 5sn yanlış-kilidi bitişi (ms epoch)
+    reveal: { answer: string; playerName: string; playerImageUrl: string | null; solvedById: string | null; solvedByName: string | null } | null;
+    used: number[];                // maç boyu kullanılan oyuncu id'leri (tekrar yok)
+    phase: 'race' | 'reveal';
+    suddenDeath: boolean;
+    sdCount: number;               // ani ölüm tur sayacı (üst sınır için)
+    hints: Map<string, Set<number>>; // playerId → bu turda açılan harf POZİSYONLARI (rastgele)
   } | null = null;
 
   constructor(code: string, onEmpty: (code: string) => void) {
@@ -509,6 +541,7 @@ export class Room {
       this.sendSpecialPowerStateTo(p.id);
       // XOX: grid + sıra + sayaç sunucudan aynen geri gelir.
       if (this.gameMode === 'xox' && this.xox) this.sendXoxStateTo(p.id);
+      else if (this.gameMode === 'cozkazan' && this.cozkazan) this.sendCozKazanStateTo(p.id);
       return { ok: true, id: p.id };
     }
     return { ok: false, error: 'Maça geri dönülemedi' };
@@ -821,6 +854,10 @@ export class Room {
         return void this.handleUseSpecialPower(playerId, msg.powerId, msg.requestId);
       case 'xox_submit':
         return void this.handleXoxSubmit(playerId, msg.cell, msg.text);
+      case 'cozkazan_submit':
+        return void this.handleCozKazanSubmit(playerId, msg.text);
+      case 'cozkazan_hint':
+        return void this.handleCozKazanHint(playerId);
       default:
         this.sendTo(playerId, { type: 'error', message: 'Unexpected message' });
     }
@@ -856,6 +893,7 @@ export class Room {
     // envanter değişse de seçim kilitli kalır — exploit kapısı yok).
     this.specialPowers.clear();
     this.xox = null;
+    this.cozkazan = null;
     this.specialPowersEnabled = this.computeSpecialPowersEnabled();
     if (this.specialPowersEnabled) void this.initSpecialPowerStates();
     this.matchStartedAt = Date.now(); // maç süresi ölçümü (admin istatistikleri)
@@ -910,6 +948,7 @@ export class Room {
       } else {
         clearInterval(tick);
         if (this.gameMode === 'xox') void this.beginXox();
+        else if (this.gameMode === 'cozkazan') void this.beginCozKazan();
         else this.beginPick();
       }
     }, 1000);
@@ -1926,13 +1965,19 @@ export class Room {
       const row = x.rows[Math.floor(i / 3)]!;
       const col = x.cols[i % 3]!;
       try {
-        const top = await topCommonPlayerByPopularity(row.id, col.id);
+        const top = await topPlayerForXoxCell(xoxCellAxis(row), xoxCellAxis(col));
         if (top) out.push({ cell: i, playerName: top.name, playerImageUrl: top.imageUrl });
       } catch (err) {
         log.warn('xox_empty_reveal_failed', { room: this.code, cell: i, error: err instanceof Error ? err.message : String(err) });
       }
     }
     return out;
+  }
+
+  /** XOX hücre doğrulaması — BİRLEŞİK motor: kulüp×özel, özel×özel ve combo dahil
+   * her eksen kombinasyonunu tek yolla doğrular (karışık dizilim, 2026-08-30). */
+  private async verifyXoxCell(row: ClubRef, col: ClubRef, text: string): Promise<Awaited<ReturnType<typeof verifyGuess>>> {
+    return verifyXoxCellGuess(xoxCellAxis(row), xoxCellAxis(col), row, col, text);
   }
 
   private async handleXoxSubmit(playerId: string, cell: number, text: string): Promise<void> {
@@ -1952,7 +1997,7 @@ export class Room {
     const turnBefore = x.turnNumber;
     let v: Awaited<ReturnType<typeof verifyGuess>> | null = null;
     try {
-      v = await verifyGuess(row.id, col.id, text);
+      v = await this.verifyXoxCell(row, col, text);
     } catch (err) {
       log.warn('xox_verify_failed', { room: this.code, cell, error: err instanceof Error ? err.message : String(err) });
     }
@@ -2088,6 +2133,231 @@ export class Room {
   xoxSnapshotForBot(): { rows: ClubRef[]; cols: ClubRef[]; owners: (string | null)[]; counts: number[] } | null {
     if (!this.xox) return null;
     return { rows: this.xox.rows, cols: this.xox.cols, owners: this.xox.cells.map((c) => c.owner), counts: [...this.xox.counts] };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ÇÖZ KAZAN (anagram yarışı) — sunucu-otoriter. Her tur bir oyuncunun karışık
+  // harfleri gösterilir, iki taraf AYNI ANDA yarışır; İLK doğru bilen turu alır.
+  // isCorrectAnswer senkron (DB yok) → ilk-doğru kontrolü ATOMİK, yarış güvenli.
+  // 7 tur; beraberlikte ani ölüm. Yanlış cevap → 5sn kilit. Her olayda TAM durum.
+  // ══════════════════════════════════════════════════════════════════════════
+  private async beginCozKazan(): Promise<void> {
+    const matchId = this.matchId;
+    if (this.players.size < MAX_PLAYERS) return;
+    this.round = null;
+    this.status = 'cozkazan';
+    this.cozkazan = { round: 1, cur: null, roundEndsAt: 0, scores: new Map(), locks: new Map(), reveal: null, used: [], phase: 'race', suddenDeath: false, sdCount: 0, hints: new Map() };
+    for (const pl of this.players.values()) { pl.score = 0; this.cozkazan.scores.set(pl.id, 0); }
+    this.broadcastState();
+    await this.startCozRound();
+    if (this.matchId === matchId) log.info('cozkazan_started', { room: this.code, matchId });
+  }
+
+  /** Yeni tur kur: oyuncu seç + karıştır, YARIŞ fazına al, süreyi başlat. */
+  /** Tur bağlamı: DERECELİ → ünlü oyuncu + zor harf. SOLO BOT → bot zorluğuna göre
+   * (kolay: ünlü+kısa+kolay harf, orta: mid, zor: az bilinen+zor harf). */
+  private cozKazanContext(): CozContext {
+    if (this.ranked) return RANKED_COZ_CONTEXT;
+    const bot = [...this.players.values()].find((p) => p.transport.isBot);
+    const botDiff = bot?.transport.getBotDifficulty?.();
+    return botDiff ? cozContextForBot(botDiff) : RANKED_COZ_CONTEXT;
+  }
+
+  private async startCozRound(): Promise<void> {
+    const c = this.cozkazan;
+    if (!c) return;
+    const matchId = this.matchId;
+    const ctx = this.cozKazanContext();
+    let round = await buildCozKazanRound(c.used, ctx).catch(() => null);
+    if (!round) round = await buildCozKazanRound(c.used, ctx).catch(() => null); // tek tekrar
+    if (this.matchId !== matchId || this.status !== 'cozkazan' || this.matchOver || this.cozkazan !== c) return;
+    if (!round) { log.error('cozkazan_round_build_failed', { room: this.code, matchId }); return void this.finishCozKazan(null, 'draw'); }
+    c.cur = round;
+    c.used.push(round.playerId);
+    c.phase = 'race';
+    c.reveal = null;
+    c.locks.clear();
+    c.hints.clear();                 // her tur harf-alma sayacı sıfırlanır
+    c.roundEndsAt = Date.now() + COZ_ROUND_MS;
+    this.broadcastCozKazanState();
+    this.armCozRoundTimer(COZ_ROUND_MS);
+  }
+
+  private cozKazanStateMsg(): Extract<ServerMsg, { type: 'cozkazan_state' }> | null {
+    const c = this.cozkazan;
+    if (!c) return null;
+    const now = Date.now();
+    return {
+      type: 'cozkazan_state',
+      round: c.round,
+      totalRounds: COZ_TOTAL_ROUNDS,
+      scrambled: c.cur?.scrambled ?? [],
+      roundEndsAt: c.roundEndsAt,
+      scores: [...this.players.values()].map((pl) => ({ id: pl.id, name: pl.name, score: c.scores.get(pl.id) ?? 0 })),
+      locks: [...c.locks.entries()].filter(([, until]) => until > now).map(([id, until]) => ({ id, until })),
+      reveal: c.reveal,
+    };
+  }
+
+  private broadcastCozKazanState(): void { const m = this.cozKazanStateMsg(); if (m) this.broadcast(m); }
+  private sendCozKazanStateTo(playerId: string): void { const m = this.cozKazanStateMsg(); if (m) this.sendTo(playerId, m); }
+
+  private armCozRoundTimer(ms: number): void { this.clearTimers(); this.timers.push(setTimeout(() => this.cozRoundTimerFired(), ms)); }
+  private armCozRevealTimer(ms: number): void { this.clearTimers(); this.timers.push(setTimeout(() => void this.advanceCozRound(), ms)); }
+
+  private cozRoundTimerFired(): void {
+    const c = this.cozkazan;
+    if (!c || this.matchOver || this.status !== 'cozkazan' || c.phase !== 'race') return;
+    this.enterCozReveal(null); // süre bitti, çözen yok
+  }
+
+  /** Tur açılışı (çözüldü ya da süre bitti): cevabı + oyuncuyu göster, sonra ilerle. */
+  private enterCozReveal(solvedBy: Player | null): void {
+    const c = this.cozkazan;
+    if (!c || !c.cur || c.phase !== 'race') return;
+    c.phase = 'reveal';
+    c.reveal = { answer: c.cur.shownForm, playerName: c.cur.playerName, playerImageUrl: c.cur.playerImageUrl, solvedById: solvedBy?.id ?? null, solvedByName: solvedBy?.name ?? null };
+    this.broadcastCozKazanState();
+    this.broadcastState();
+    this.armCozRevealTimer(COZ_REVEAL_MS);
+  }
+
+  private async handleCozKazanSubmit(playerId: string, text: string): Promise<void> {
+    const c = this.cozkazan;
+    const pl = this.players.get(playerId);
+    if (!c || !pl || this.status !== 'cozkazan' || this.matchOver || !c.cur) return;
+    if (c.phase !== 'race') return;                 // tur çözülmüş / süre bitmiş
+    if (!text.trim()) return;
+    const now = Date.now();
+    if ((c.locks.get(playerId) ?? 0) > now) return; // 5sn yanlış kilidi
+    if (isCorrectAnswer(text, c.cur.shownForm)) {
+      c.scores.set(playerId, (c.scores.get(playerId) ?? 0) + 1);
+      pl.score = c.scores.get(playerId)!;
+      this.matchRounds.push({
+        teamA: `🔤 ${c.cur.scrambled.join(' ')}`, teamALogo: null,
+        teamB: c.cur.playerName, teamBLogo: c.cur.playerImageUrl,
+        player: c.cur.shownForm, playerImageUrl: c.cur.playerImageUrl,
+        answeredBy: pl.name, mode: this.gameMode,
+      });
+      this.enterCozReveal(pl);
+    } else {
+      c.locks.set(playerId, now + COZ_WRONG_LOCK_MS);
+      pl.wrongCount += 1;
+      this.broadcastCozKazanState();               // client kendi kilidini görür
+    }
+  }
+
+  /** "Harf alma": elmas karşılığı bir SONRAKI doğru harfi (soldan sağa) yalnız
+   * isteyene açar. Sunucu-otoriter elmas düşümü + ledger. Botlar kullanamaz. */
+  private async handleCozKazanHint(playerId: string): Promise<void> {
+    const c = this.cozkazan;
+    const pl = this.players.get(playerId);
+    if (!c || !pl || this.status !== 'cozkazan' || this.matchOver || !c.cur) return;
+    if (c.phase !== 'race') return void this.sendTo(playerId, { type: 'cozkazan_hint_error', reason: 'unavailable' });
+    if (pl.transport.isBot || !pl.userId) return;  // botlar / kimliksiz kullanamaz
+    const round = c.round;
+    const letters = cozAnswerLetters(c.cur.shownForm);
+    const done = c.hints.get(playerId) ?? new Set<number>();
+    // Açılmamış pozisyonlar → RASTGELE birini seç (kullanıcı isteği 2026-08-31: sıralı değil).
+    const remaining: number[] = [];
+    for (let i = 0; i < letters.length; i++) if (!done.has(i)) remaining.push(i);
+    if (remaining.length === 0) return void this.sendTo(playerId, { type: 'cozkazan_hint_error', reason: 'unavailable' });
+    const pos = remaining[Math.floor(Math.random() * remaining.length)]!;
+    // Elmas düşümü ATOMİK: yetmezse satır dönmez → insufficient.
+    const { rows } = await pool.query<{ diamonds: number }>(
+      `UPDATE users SET diamonds = diamonds - $2 WHERE id = $1 AND diamonds >= $2 RETURNING diamonds`,
+      [pl.userId, COZ_HINT_COST],
+    ).catch(() => ({ rows: [] as { diamonds: number }[] }));
+    const bal = rows[0]?.diamonds;
+    if (bal === undefined) return void this.sendTo(playerId, { type: 'cozkazan_hint_error', reason: 'insufficient' });
+    void recordDiamondLedger({ userId: pl.userId, amount: -COZ_HINT_COST, balanceAfter: bal, reason: 'COZ_HINT', referenceId: `${this.matchId ?? ''}:${round}` });
+    // await sırasında tur değişmiş olabilir: client `round` uyuşmazsa yok sayar.
+    if (this.cozkazan === c) { done.add(pos); c.hints.set(playerId, done); }
+    this.sendTo(playerId, { type: 'cozkazan_hint_result', round, position: pos, letter: letters[pos]!, diamonds: bal });
+  }
+
+  private cozTopScorer(): { id: string | null; tie: boolean } {
+    const c = this.cozkazan;
+    if (!c) return { id: null, tie: false };
+    let maxId: string | null = null, maxScore = -1, tie = false;
+    for (const id of this.players.keys()) {
+      const s = c.scores.get(id) ?? 0;
+      if (s > maxScore) { maxScore = s; maxId = id; tie = false; }
+      else if (s === maxScore) tie = true;
+    }
+    return { id: maxId, tie };
+  }
+
+  /** Reveal bitince: sonraki tur / maç sonu / ani ölüm kararı. */
+  private async advanceCozRound(): Promise<void> {
+    const c = this.cozkazan;
+    if (!c || this.matchOver || this.status !== 'cozkazan') return;
+    const solvedById = c.reveal?.solvedById ?? null;
+    if (c.suddenDeath) {
+      if (solvedById) { const w = this.players.get(solvedById); if (w) return void this.finishCozKazan(w, 'sudden_death'); }
+      c.sdCount += 1;
+      if (c.sdCount >= COZ_SD_CAP) return void this.finishCozKazan(null, 'draw');
+      c.round += 1;
+      return void this.startCozRound();
+    }
+    if (c.round < COZ_TOTAL_ROUNDS) { c.round += 1; return void this.startCozRound(); }
+    // 7 tur bitti → skorları değerlendir
+    const top = this.cozTopScorer();
+    if (top.tie || !top.id) { c.suddenDeath = true; c.sdCount = 0; c.round += 1; return void this.startCozRound(); }
+    const w = this.players.get(top.id);
+    return void this.finishCozKazan(w ?? null, w ? 'points' : 'draw');
+  }
+
+  /** Maç sonu: normal maçlarla AYNI ödeme hattı (settleMatch/claimSettlement). */
+  private async finishCozKazan(winner: Player | null, reason: 'points' | 'sudden_death' | 'draw'): Promise<void> {
+    const c = this.cozkazan;
+    if (!c || this.matchOver) return;
+    this.matchOver = true;
+    this.clearTimers();
+    this.status = 'result';
+    for (const pl of this.players.values()) pl.score = c.scores.get(pl.id) ?? 0;
+    const scores = [...this.players.values()].map((pl) => ({ id: pl.id, name: pl.name, score: c.scores.get(pl.id) ?? 0 }));
+    this.broadcast({ type: 'cozkazan_over', winnerId: winner?.id ?? null, winnerName: winner?.name ?? null, reason, scores });
+    this.broadcastState();
+    const hasBot = [...this.players.values()].some((pl) => pl.transport.isBot);
+    recordTelemetry({
+      eventName: 'match_finished', matchId: this.matchId, roomCode: this.code, playerId: winner?.userId ?? null,
+      opponentType: hasBot ? 'BOT' : 'HUMAN', payload: { gameMode: 'cozkazan', reason, rounds: c.round },
+    });
+    log.info('cozkazan_finished', { room: this.code, matchId: this.matchId, winner: winner?.name ?? null, reason, rounds: c.round });
+    if (winner) {
+      if (!hasBot || this.rankedBotRewards) {
+        if (this.ranked) void this.settleMatch(winner, hasBot ? 'bot_match_complete' : 'match_complete');
+      } else {
+        void (async () => {
+          for (const pl of this.players.values()) {
+            if (pl.transport.isBot || !pl.userId) continue;
+            try { const xpRes = await awardMatchXp(pl.userId, pl.id === winner.id, true); if (xpRes) pl.transport.send({ type: 'xp_update', ...xpRes }); } catch { /* sessiz */ }
+          }
+        })();
+      }
+    } else if (this.ranked && (await this.claimSettlement('cozkazan_draw'))) {
+      // Berabere → iki taraf da DÜZ +5 kupa (XOX beraberesiyle aynı).
+      for (const pl of this.players.values()) {
+        if (pl.transport.isBot || !pl.userId) continue;
+        try {
+          const { rows } = await pool.query<{ trophies: number }>('UPDATE users SET trophies = trophies + 5 WHERE id = $1 RETURNING trophies', [pl.userId]);
+          const trophies = rows[0]?.trophies ?? 0;
+          this.lastTrophyDeltaByUser.set(pl.userId, 5);
+          pl.transport.send({ type: 'trophy_update', matchId: this.matchId, trophies, delta: 5, arena: getArena(trophies), shielded: false });
+          const xpRes = await awardMatchXp(pl.userId, false, false);
+          if (xpRes) pl.transport.send({ type: 'xp_update', ...xpRes });
+        } catch (err) { log.warn('cozkazan_draw_settle_failed', { matchId: this.matchId, userId: pl.userId, error: err instanceof Error ? err.message : String(err) }); }
+      }
+    }
+    void this.saveHistory();
+  }
+
+  /** Bot için anlık durum: cevabı (shownForm) + zorluk + faz — bot "bilme"yi buna göre simüle eder. */
+  cozKazanSnapshotForBot(): { round: number; phase: 'race' | 'reveal'; shownForm: string; playerName: string; difficulty: CozRound['difficulty']; endsAt: number } | null {
+    const c = this.cozkazan;
+    if (!c || !c.cur) return null;
+    return { round: c.round, phase: c.phase, shownForm: c.cur.shownForm, playerName: c.cur.playerName, difficulty: c.cur.difficulty, endsAt: c.roundEndsAt };
   }
 
   // ══════════════════════════════════════════════════════════════════════════

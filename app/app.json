@@ -5,6 +5,7 @@
     "scheme": "crossover",
     "version": "1.0.3",
     "orientation": "portrait",
+    "userInterfaceStyle": "dark",
     "icon": "./assets/icon.png",
     "backgroundColor": "#0B1838",
     "ios": {
@@ -130,9 +131,7 @@
             "backgroundColor": "#0B1838"
           },
           "android": {
-            "image": "./assets/splash-icon.png",
-            "backgroundColor": "#0B1838",
-            "resizeMode": "contain"
+            "backgroundColor": "#0B1838"
           }
         }
       ],

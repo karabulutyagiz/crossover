@@ -173,7 +173,8 @@ function isSocialPackMode(mode: GameMode | undefined): boolean {
   // XOX (Futbol XOX) da Sosyal Paket'e bağlı: dereceli (find_match), oda (create_room)
   // ve katılım (join_room) canUseMode üzerinden bunu kontrol eder — paketi olmayan
   // dereceli XOX oynayamaz (kullanıcı kararı 2026-08-28). Arkadaş daveti zaten ayrıca gated.
-  return mode === 'country-team' || mode === 'letter-team' || mode === 'xox';
+  // Çöz Kazan da Sosyal Paket ister (kullanıcı kararı 2026-09-01).
+  return mode === 'country-team' || mode === 'letter-team' || mode === 'xox' || mode === 'cozkazan';
 }
 
 function hasActiveSocialPack(profile: UserProfile | undefined): boolean {

@@ -2,6 +2,7 @@ import type { Room, Transport } from './room.ts';
 import type { ClientMsg, ClubRef, Difficulty, GameMode, ServerMsg, Scope } from '../protocol.ts';
 import {
   randomClub, botPickFromPool, randomPlayer, botCommonPlayersRanked, getValidPlayersForCountryAndClub,
+  xoxCellValidPlayers, toXoxCellAxis,
   commonPlayersLetterTeam, commonClubs, pickCountryForClub, pickClubForCountry,
   plausibleWrongPlayersTeamTeam, plausibleWrongPlayersLetterTeam,
   plausibleWrongClubsPlayerPlayer,
@@ -165,10 +166,17 @@ export class BotPlayer implements Transport {
   private xoxTimer: NodeJS.Timeout | null = null;
   private xoxActedTurn = 0;      // ayni tura iki hamle planlama
   private xoxSuddenTried = false;
+  // ---- Çöz Kazan: çözme zamanlayıcısı + tur kilidi ----
+  private cozTimer: NodeJS.Timeout | null = null;
+  private cozActedRound = 0;
   // İlk maç tiyatrosu: bot bir kez kolay soruda görünür yanlış yapar (bir kez, asla tekrar).
   private theaterMistakeDone = false;
   // Son biten maçı bot mu kazandı? (rövanş kabul olasılığı için)
   private lastMatchWonByBot: boolean | null = null;
+  // Rövanş kararı bir kez verilir ve o maçın rövanş döngüsü boyunca SABİT kalır
+  // (kullanıcı kararı 2026-08-30): red sonrası tekrar isteyince fikir değişmesin.
+  // reset() (maç bitince) null'a döner → sonraki maçta taze karar.
+  private rematchDecision: boolean | null = null;
 
   constructor(opts: BotOptions = {}) {
     this.exposeBotToClient = opts.exposeBotToClient ?? true;
@@ -206,6 +214,7 @@ export class BotPlayer implements Transport {
   getLastCognitiveState(): BotCognitiveState | null { return this.cognitiveState; }
   getLastQuestionDifficultyScore(): number | null { return this.questionEstimate?.difficultyScore ?? null; }
   getLastDecision(): BotDecision | null { return this.botDecision; }
+  getBotDifficulty(): Difficulty { return this.difficulty; }
   getBotDifficultyDirector(): NonNullable<BotProfile['difficultyDirector']> | null { return this.profile?.difficultyDirector ?? null; }
 
   bind(room: Room, id: string): void {
@@ -285,6 +294,15 @@ export class BotPlayer implements Transport {
         if (this.xoxTimer) { clearTimeout(this.xoxTimer); this.xoxTimer = null; }
         this.xoxActedTurn = 0;
         this.xoxSuddenTried = false;
+        break;
+      }
+      case 'cozkazan_state': {
+        this.handleCozKazanState(msg as Extract<ServerMsg, { type: 'cozkazan_state' }>);
+        break;
+      }
+      case 'cozkazan_over': {
+        if (this.cozTimer) { clearTimeout(this.cozTimer); this.cozTimer = null; }
+        this.cozActedRound = 0;
         break;
       }
       case 'rematch_requested':
@@ -374,12 +392,18 @@ export class BotPlayer implements Transport {
   }
 
   private respondToRematch(): void {
-    const base = this.profile?.rematchAcceptance ?? 0.58;
-    // KAYBEDEN REDDEDİLMEZ (2026-08-27): insan maçı kaybettiyse rövanş isteği
-    // neredeyse hep kabul edilir — reddedilmek terk edilmişlik hissi verir;
-    // rövanş, kaybedeni oturumda tutan en ucuz mekanizmadır.
-    const acceptP = this.lastMatchWonByBot === true ? Math.max(base, 0.92) : base;
-    const accept = Math.random() < acceptP;
+    // Karar BİR KEZ verilir; aynı maçın rövanş döngüsünde tekrar istek gelirse
+    // AYNI cevap döner (kullanıcı kararı 2026-08-30 — red sonrası tekrar isteyip
+    // kabul aldırmak yok). reset() maç bitince rematchDecision'ı null'lar.
+    if (this.rematchDecision === null) {
+      const base = this.profile?.rematchAcceptance ?? 0.58;
+      // KAYBEDEN REDDEDİLMEZ (2026-08-27): insan maçı kaybettiyse rövanş isteği
+      // neredeyse hep kabul edilir — reddedilmek terk edilmişlik hissi verir;
+      // rövanş, kaybedeni oturumda tutan en ucuz mekanizmadır.
+      const acceptP = this.lastMatchWonByBot === true ? Math.max(base, 0.92) : base;
+      this.rematchDecision = Math.random() < acceptP;
+    }
+    const accept = this.rematchDecision;
     const delay = accept
       ? 850 + Math.floor(Math.random() * 3600)
       : 1200 + Math.floor(Math.random() * 4200);
@@ -765,7 +789,13 @@ export class BotPlayer implements Transport {
     const row = msg.rows[Math.floor(cell / 3)];
     const col = msg.cols[cell % 3];
     if (!row || !col) return;
-    const ranked = await botCommonPlayersRanked(row.id, col.id, 8).catch(() => [] as { name: string; fame: number }[]);
+    // BİRLEŞİK motor (2026-08-30): kulüp×özel, özel×özel ve combo dahil her eksen
+    // kombinasyonu için hücrenin geçerli oyuncuları — karışık dizilime uyumlu.
+    const isPlainClub = (r: typeof row) => r.kind == null || r.kind === 'club';
+    const nameFame = (p: CountryTeamAnswerCandidate) => ({ name: p.canonicalName, fame: p.fame });
+    const ranked: { name: string; fame: number }[] = (isPlainClub(row) && isPlainClub(col))
+      ? await botCommonPlayersRanked(row.id, col.id, 8).catch(() => [] as { name: string; fame: number }[])
+      : (await xoxCellValidPlayers(toXoxCellAxis(row), toXoxCellAxis(col), 8).catch(() => [])).map(nameFame);
     const D = DIFFICULTY[this.difficulty];
     // Bilme olasılığı: zorluk tabanı + hücre ne kadar "ünlü"yse o kadar bilinir.
     const famous = ranked.length ? clamp((ranked[0]!.fame - 30) / 200, 0, 1) : 0;
@@ -788,6 +818,30 @@ export class BotPlayer implements Transport {
       const text = w ? this.humanizeKnownAnswer(w) : null;
       if (text) this.act({ type: 'xox_submit', cell, text });
     }
+  }
+
+  // ── ÇÖZ KAZAN botu ───────────────────────────────────────────────────────
+  // Karışık ismi zorluğa + oyuncunun ününe göre BİLEBİLİR ya da bilemez. Bilirse
+  // insan gibi "çözme + yazma" gecikmesinden sonra doğru cevabı yollar (odadan
+  // okur — XOX botunun DB'den cevap alması gibi). Bilemezse süreyi harcar (sessiz).
+  private handleCozKazanState(msg: Extract<ServerMsg, { type: 'cozkazan_state' }>): void {
+    if (this.cozTimer) { clearTimeout(this.cozTimer); this.cozTimer = null; }
+    if (msg.reveal) return;                       // tur açıldı — bekle
+    if (msg.round === this.cozActedRound) return; // bu turda karar verildi
+    this.cozActedRound = msg.round;
+    const snap = this.room?.cozKazanSnapshotForBot();
+    if (!snap || snap.phase !== 'race') return;
+    const d = DIFFICULTY[this.difficulty];
+    // knowP YALNIZ botun kendi zorluğundan gelir. Tur tier'ı (oyuncu ünü) artık bot
+    // zorluğuyla KORELE (kolay bot→ünlü oyuncu, zor bot→az bilinen); eski tier-bazlı
+    // diffAdj çift-sayım yapıp sıralamayı TERS çevirirdi. Böylece istenen sıra korunur:
+    // kolay bot yavaş+isabetsiz (yenmesi KOLAY) … zor bot hızlı+isabetli (yenmesi ZOR).
+    const knowP = clamp(d.knowBase, 0.05, 0.97);
+    if (Math.random() >= knowP) return;           // bilemedi → süreyi harca
+    const [minD, maxD] = d.delayMs;
+    const delay = clamp(minD * 0.5 + Math.random() * (maxD * 0.6), 2500, 15_500);
+    const answer = snap.shownForm;
+    this.cozTimer = setTimeout(() => { this.act({ type: 'cozkazan_submit', text: answer }); }, delay);
   }
 
   /** Güç ateşleme kararı: tur başında, karar motorunun ürettiği bağlama göre
@@ -839,7 +893,10 @@ export class BotPlayer implements Transport {
     this.clearTimer();
     if (this.spTimer) { clearTimeout(this.spTimer); this.spTimer = null; }
     if (this.xoxTimer) { clearTimeout(this.xoxTimer); this.xoxTimer = null; }
+    if (this.cozTimer) { clearTimeout(this.cozTimer); this.cozTimer = null; }
+    this.xoxActedTurn = 0; this.xoxSuddenTried = false; this.cozActedRound = 0;
     this.spFrozenUntil = 0;
+    this.rematchDecision = null; // maç bitti → sonraki rövanş döngüsü taze karar versin
     this.teams = null;
     this.answer = null;
     this.answerPlayerId = null;

@@ -179,6 +179,8 @@ type Actions = {
   buySpecialPower: (powerId: string, qty?: number) => void; // mağazadan elmasla al
   clearStreakReward: () => void;
   xoxSubmit: (cell: number, text: string) => void;
+  cozkazanSubmit: (text: string) => void;
+  cozkazanHint: () => void;
   usePower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => void; // envanterdeki tek kullanımlık gücü etkinleştir
   loadMyStats: () => void; // profil istatistiklerini iste (my_stats yanıtı)
   verifyPurchase: (receipt: string, opts?: { productId?: string; isSubscription?: boolean }) => Promise<void>;
@@ -1195,6 +1197,21 @@ export type BgVariant = 'home' | 'stadium' | 'store' | 'menu' | 'match';
 const BG_HOME = require('../assets/bg-home.png');   // royal-blue arena backdrop (legacy home)
 // Faint ball watermark for the hero Play button (mockup's green face).
 const BALL_WATERMARK = require('../assets/ball-card-white.png');
+// XOX kupa ekseni görselleri — gerçek kupa fotoğrafları (kullanıcının Kupa.jpeg'i,
+// 2026-08-30): CL=Şampiyonlar Ligi, WC=Dünya Kupası, EL=Avrupa/UEFA Kupası. Şeffaf zemin.
+const TROPHY_IMG: Record<string, number> = {
+  CL: require('../assets/trophies/cl.png'),
+  WC: require('../assets/trophies/wc.png'),
+  EL: require('../assets/trophies/el.png'),
+  BDOR: require('../assets/trophies/bdor.png'), // Ballon d'Or (2026-08-30)
+};
+// XOX birleşik logo (combo) görselleri — iki takımın birleşik arması (2026-08-30).
+// Hücre = İKİ takımda DA oynamış oyuncu. Şeffaf zemin.
+const COMBO_IMG: Record<string, number> = {
+  BARCA_REAL: require('../assets/combos/barca_real.png'),
+  BAYERN_DORTMUND: require('../assets/combos/bayern_dortmund.png'),
+  CITY_UNITED: require('../assets/combos/city_united.png'),
+};
 // Hero Play button face, sampled from the mockup.
 const HERO_PLAY_MID = '#198C65';
 const HERO_PLAY_LIP = '#073E2D';   // deeper than the face's #0B5B42 foot
@@ -2664,7 +2681,7 @@ function NetworkErrorBeacon({ visible }: { visible: boolean }) {
 }
 
 export function MODE_LABEL(m: GameMode): string {
-  return { 'team-team': t('mode.teamTeam'), 'country-team': t('mode.countryTeam'), 'letter-team': t('mode.letterTeam'), 'player-player': t('mode.playerPlayer'), xox: t('mode.xox') }[m];
+  return { 'team-team': t('mode.teamTeam'), 'country-team': t('mode.countryTeam'), 'letter-team': t('mode.letterTeam'), 'player-player': t('mode.playerPlayer'), xox: t('mode.xox'), cozkazan: t('mode.cozkazan') }[m];
 }
 
 function normalizeCountryKey(value: string): string {
@@ -2714,6 +2731,7 @@ const MODE_ICON: Record<GameMode, IoniconName> = {
   'letter-team': 'text',
   'player-player': 'people',
   xox: 'grid',
+  cozkazan: 'shuffle',
 };
 
 // Transfermarkt competition code → league display name. The server's /scopes
@@ -2760,7 +2778,7 @@ function AuthBtn({ onPress, disabled, bg, border, fg, icon, iconColor, label }: 
 }) {
   return (
     <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => ({ marginVertical: 6, opacity: disabled ? 0.5 : pressed ? 0.88 : 1 })}>
-      <View style={{ backgroundColor: bg, borderRadius: 12, height: 52, borderWidth: border ? 1 : 0, borderColor: border, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }}>
+      <View style={{ backgroundColor: bg, borderRadius: 12, height: 52, borderWidth: border ? 1 : 0, borderColor: border, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
         <Ionicons name={icon} size={20} color={iconColor} style={{ marginRight: 9, marginTop: icon === 'logo-apple' ? -2 : 0 }} />
         <Text numberOfLines={1} style={{ color: fg, fontSize: 16, fontFamily: 'Poppins-SemiBold' }}>{label}</Text>
       </View>
@@ -3713,6 +3731,15 @@ type NewsItem = { id: string; tag: string; date: string; title: string; body: st
 // boşken NewsModal EmptyState gösterir, zil noktası hiç yanmaz.
 const NEWS: NewsItem[] = [
   {
+    id: 'cozkazan-launch-2026-09-01',
+    tag: 'YENİ MOD',
+    date: '2026-09-01',
+    title: 'Çöz Kazan yayında!',
+    body: 'Karışık harflerle verilen futbolcuyu ilk çözen kazanır! 7 tur, canlı yarış — takıldığın harfi elmasla açabilirsin. Diğer Modlar ve Bot Maçı bölümlerinden oynanır; Sosyal Paket gerektirir.',
+    icon: 'shuffle',
+    tint: '#16B27A',
+  },
+  {
     id: 'xox-launch-2026-08-27',
     tag: 'YENİ MOD',
     date: '2026-08-27',
@@ -4584,8 +4611,8 @@ const HOME_DESIGN_BODY_MIN_H = 407;
 const HOME_DESIGN_BODY_RANGE_H = 204;
 // Room codes are always exactly this long — server/src/rooms/manager.ts:5 (CODE_LEN).
 const ROOM_CODE_LEN = 6;
-const HOME_MODES: GameMode[] = ['xox', 'country-team', 'letter-team'];
-const PACK_MODES: GameMode[] = ['country-team', 'letter-team', 'xox'];
+const HOME_MODES: GameMode[] = ['cozkazan', 'xox', 'country-team', 'letter-team'];
+const PACK_MODES: GameMode[] = ['country-team', 'letter-team', 'xox', 'cozkazan'];
 
 // "Mücadele Modu" kartının yüzü hiçbir props/state okumaz (tema + modül-scope
 // RivalryArt + sabit renkler) — her HomeScreen render'ında (tuş vuruşu, popup
@@ -4632,7 +4659,12 @@ function dailyCxShareText(cx: DailyCrossoverStateView): string {
   const line = r?.correct
     ? `${squares} ${(r.durationMs / 1000).toFixed(1)} sn'de bildim! ⚽`
     : `${squares} bilemedim 😅`;
-  return `Günün Crossover'ı #${cx.day}\n${cx.teamA.name} × ${cx.teamB.name}\n${line}\nSıra sende 👉 https://crossoverfootball.com/indir`;
+  const isScramble = cx.kind === 'scramble';
+  const title = isScramble ? `Günün Bulmacası #${cx.day}` : `Günün Crossover'ı #${cx.day}`;
+  const subtitle = isScramble
+    ? '🔀 Karışık harfler'
+    : `${cx.teamA?.name ?? ''} × ${cx.teamB?.name ?? ''}`;
+  return `${title}\n${subtitle}\n${line}\nSıra sende 👉 https://crossoverfootball.com/indir`;
 }
 
 function dailyCareerShareText(c: DailyCareerStateView): string {
@@ -4834,24 +4866,34 @@ function DailyCrossoverModal({ visible, cx, wrong, reward, onGuess, onClose }: {
     try { await Share.share({ message: dailyCxShareText(cx) }); } catch { /* kullanıcı vazgeçti */ }
   };
   const attemptsLeft = cx ? Math.max(0, cx.maxGuesses - cx.attemptsUsed) : 0;
+  const isScramble = cx?.kind === 'scramble';
+  const scrambleWords = cx?.scramble?.letters ?? [];
+  const scrTile = scrambleTileSize(scrambleWords, 320, 44);
   return (
-    <GameModal visible={visible} onClose={onClose} title={`GÜNÜN CROSSOVER'I ${cx ? `#${cx.day}` : ''}`} icon="calendar">
+    <GameModal visible={visible} onClose={onClose} title={`${isScramble ? "GÜNÜN BULMACASI" : "GÜNÜN CROSSOVER'I"} ${cx ? `#${cx.day}` : ''}`} icon="calendar">
       {!cx ? (
         <View style={{ alignItems: 'center', paddingVertical: 24 }}><GameSpinner /></View>
       ) : (
         <View style={{ gap: 12 }}>
-          {/* İki kulüp — maçtaki reveal dili */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
-            <View style={{ alignItems: 'center', gap: 6, flex: 1 }}>
-              <ClubBadge name={cx.teamA.name} size={58} logoUrl={cx.teamA.logoUrl} />
-              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12.5, textAlign: 'center' }} numberOfLines={2}>{cx.teamA.name}</Text>
+          {isScramble ? (
+            /* Karışık harfler — Çöz Kazan dili (premium kutucuklar, saydam değil) */
+            <View style={{ alignItems: 'center', paddingVertical: 6 }}>
+              <ScrambleTiles words={scrambleWords} tileSize={scrTile} />
             </View>
-            <Text style={{ color: theme.muted, fontFamily: 'Poppins-Black', fontSize: 18 }}>×</Text>
-            <View style={{ alignItems: 'center', gap: 6, flex: 1 }}>
-              <ClubBadge name={cx.teamB.name} size={58} logoUrl={cx.teamB.logoUrl} />
-              <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12.5, textAlign: 'center' }} numberOfLines={2}>{cx.teamB.name}</Text>
+          ) : (
+            /* İki kulüp — maçtaki reveal dili */
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
+              <View style={{ alignItems: 'center', gap: 6, flex: 1 }}>
+                <ClubBadge name={cx.teamA?.name ?? '?'} size={58} logoUrl={cx.teamA?.logoUrl ?? null} />
+                <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12.5, textAlign: 'center' }} numberOfLines={2}>{cx.teamA?.name ?? ''}</Text>
+              </View>
+              <Text style={{ color: theme.muted, fontFamily: 'Poppins-Black', fontSize: 18 }}>×</Text>
+              <View style={{ alignItems: 'center', gap: 6, flex: 1 }}>
+                <ClubBadge name={cx.teamB?.name ?? '?'} size={58} logoUrl={cx.teamB?.logoUrl ?? null} />
+                <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12.5, textAlign: 'center' }} numberOfLines={2}>{cx.teamB?.name ?? ''}</Text>
+              </View>
             </View>
-          </View>
+          )}
 
           {done ? (
             <View style={{ alignItems: 'center', gap: 8 }}>
@@ -4867,7 +4909,7 @@ function DailyCrossoverModal({ visible, cx, wrong, reward, onGuess, onClose }: {
                   <Text style={{ color: theme.danger, fontFamily: 'Poppins-ExtraBold', fontSize: 14.5 }}>Bugünkü kaçtı — yarın yenisi!</Text>
                   {res?.commonPlayers?.length ? (
                     <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 12.5, textAlign: 'center' }}>
-                      Cevaplar: {res.commonPlayers.slice(0, 3).map((p) => p.name).join(', ')}
+                      {isScramble ? 'Cevap' : 'Cevaplar'}: {res.commonPlayers.slice(0, isScramble ? 1 : 3).map((p) => p.name).join(', ')}
                     </Text>
                   ) : null}
                 </>
@@ -4881,7 +4923,9 @@ function DailyCrossoverModal({ visible, cx, wrong, reward, onGuess, onClose }: {
           ) : (
             <View style={{ gap: 10 }}>
               <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 12.5, textAlign: 'center' }}>
-                İkisinde de oynamış futbolcuyu yaz — doğru bilene {cx.reward} 💎
+                {isScramble
+                  ? `Karışık harfleri çöz — futbolcuyu bul, ${cx.reward} 💎`
+                  : `İkisinde de oynamış futbolcuyu yaz — doğru bilene ${cx.reward} 💎`}
               </Text>
               {/* Hak noktaları */}
               <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
@@ -5537,9 +5581,8 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               label={MODE_LABEL(m)}
               locked={locked}
               sublabel={locked ? t('socialPack.lockedBadge') : undefined}
-              // XOX yeni geldi (2026-08-27): kart rozetindeki '1' girişte söner,
-              // satırdaki YENİ kurdelesi bir süre kalır — sonraki modda taşınır.
-              right={m === 'xox' ? <Ribbon label={t('store.badgeNew')} color={theme.danger} /> : undefined}
+              // YENİ kurdelesi: en yeni modlar (Çöz Kazan 2026-09-01, XOX 2026-08-27).
+              right={m === 'cozkazan' || m === 'xox' ? <Ribbon label={t('store.badgeNew')} color={theme.danger} /> : undefined}
               chevron={!locked}
               onPress={() => startMode(m)}
             />
@@ -5621,9 +5664,10 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
                 <ModalBackBtn onPress={() => setBotPage({ key: 'bot', dir: -1 })} />
               </View>
-              {(['team-team', 'xox', 'country-team', 'letter-team'] as GameMode[]).map((m) => {
-                // Bota karşı da paket kilidi (2026-08-28): team-team hariç modlar Sosyal
-                // Paket ister. Kilitliyse seçtirmeyip modalı kapatıp upsell'e devret.
+              {(['team-team', 'cozkazan', 'xox', 'country-team', 'letter-team'] as GameMode[]).map((m) => {
+                // Bota karşı da paket kilidi: yalnız team-team serbest; diğer modlar
+                // (cozkazan dahil, 2026-09-01) Sosyal Paket ister. Kilitliyse seçtirmeyip
+                // modalı kapatıp upsell'e devret.
                 const locked = PACK_MODES.includes(m) && !hasPack;
                 return (
                   <GameRow
@@ -6782,9 +6826,41 @@ function SpecialPowerOverlays({ state }: { state: GameState }) {
 const XOX_LINES_VIEW = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
 
 function XoxHeaderChip({ club, size }: { club: ClubRef; size: number }) {
+  const badge = Math.min(40, size * 0.52);
+  // Kupa / Ballon d'Or: gerçek GÖRSEL, YAZISIZ (kullanıcı isteği 2026-08-30).
+  if (club.kind === 'trophy' || club.kind === 'bdor') {
+    const img = club.kind === 'bdor' ? TROPHY_IMG.BDOR! : (TROPHY_IMG[club.trophy ?? 'CL'] ?? TROPHY_IMG.CL!);
+    return (
+      <View style={{ width: size, alignItems: 'center', justifyContent: 'flex-end', height: badge + 13 }}>
+        <Image source={img} style={{ width: size * 0.66, height: badge + 12 }} resizeMode="contain" />
+      </View>
+    );
+  }
+  // Birleşik logo (combo): iki takımın birleşik arması, YAZISIZ (2026-08-30).
+  if (club.kind === 'combo') {
+    const img = COMBO_IMG[club.combo ?? ''];
+    if (img) return (
+      <View style={{ width: size, alignItems: 'center', justifyContent: 'flex-end', height: badge + 13 }}>
+        <Image source={img} style={{ width: badge + 10, height: badge + 10 }} resizeMode="contain" />
+      </View>
+    );
+  }
+  // Mevki: BÜYÜK harf, net okunur, taşmaz (isteğe göre sığdırılır).
+  if (club.kind === 'position') {
+    return (
+      <View style={{ width: size, alignItems: 'center', justifyContent: 'center', height: badge + 13, paddingHorizontal: 1 }}>
+        <Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.6} style={{ fontSize: 12, lineHeight: 13, fontFamily: 'Poppins-Black', color: theme.gold, textAlign: 'center', maxWidth: size }}>{club.name}</Text>
+      </View>
+    );
+  }
   return (
     <View style={{ width: size, alignItems: 'center', gap: 2 }}>
-      <ClubBadge name={club.name} size={Math.min(40, size * 0.52)} logoUrl={club.logoUrl} />
+      {/* Özel eksen: ülke→bayrak, TD→yuvarlak foto, lig→logo (2026-08-30). */}
+      {club.kind === 'country'
+        ? <Text style={{ fontSize: Math.round(badge * 0.86), lineHeight: Math.round(badge * 1.02), textAlign: 'center' }}>{club.flag ?? '🏳️'}</Text>
+        : club.kind === 'manager'
+          ? <PlayerPhoto uri={club.logoUrl} size={badge} />
+          : <ClubBadge name={club.name} size={badge} logoUrl={club.logoUrl} />}
       <Text numberOfLines={1} style={{ color: theme.text, fontSize: 9, fontFamily: 'Poppins-ExtraBold', maxWidth: size }}>{club.name}</Text>
     </View>
   );
@@ -7263,14 +7339,30 @@ export function XoxScreen({ state, actions }: Props) {
       <View style={{ alignSelf: 'center', width: gridW, marginHorizontal: boardMargin, backgroundColor: withAlpha(theme.surface2, 0.85), borderRadius: 20, borderWidth: boardBorder, borderColor: withAlpha(theme.primary, 0.45), padding: 6, gap: 6, shadowColor: theme.primary, shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 4 }}>
         <View style={{ flexDirection: 'row', gap: 6, alignItems: 'flex-end' }}>
           <View style={{ width: headerW }} />
-          {xox.cols.map((c) => <XoxHeaderChip key={c.id} club={c} size={cellSize} />)}
+          {/* key=index: özel eksenlerin id'si 0 (sentinel) → id ile çakışır. */}
+          {xox.cols.map((c, ci) => <XoxHeaderChip key={ci} club={c} size={cellSize} />)}
         </View>
         <View style={{ gap: 6 }}>
           {[0, 1, 2].map((r) => (
             <View key={r} style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-              <View style={{ width: headerW, alignItems: 'center', gap: 2 }}>
-                <ClubBadge name={xox.rows[r]!.name} size={34} logoUrl={xox.rows[r]!.logoUrl} />
-                <Text numberOfLines={2} style={{ color: theme.text, fontSize: 8, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{xox.rows[r]!.name}</Text>
+              <View style={{ width: headerW, alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+                {/* Özel: ülke→bayrak, TD→foto, kupa/BDOR→görsel, combo→birleşik logo, mevki→BÜYÜK harf, lig→logo. */}
+                {xox.rows[r]!.kind === 'trophy' || xox.rows[r]!.kind === 'bdor' ? (
+                  <Image source={xox.rows[r]!.kind === 'bdor' ? TROPHY_IMG.BDOR! : (TROPHY_IMG[xox.rows[r]!.trophy ?? 'CL'] ?? TROPHY_IMG.CL!)} style={{ width: headerW * 0.9, height: 48 }} resizeMode="contain" />
+                ) : xox.rows[r]!.kind === 'combo' ? (
+                  <Image source={COMBO_IMG[xox.rows[r]!.combo ?? 'BARCA_REAL'] ?? COMBO_IMG.BARCA_REAL!} style={{ width: 46, height: 46 }} resizeMode="contain" />
+                ) : xox.rows[r]!.kind === 'position' ? (
+                  <Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.6} style={{ fontSize: 12, lineHeight: 13, fontFamily: 'Poppins-Black', color: theme.gold, textAlign: 'center', maxWidth: headerW }}>{xox.rows[r]!.name}</Text>
+                ) : (
+                  <>
+                    {xox.rows[r]!.kind === 'country'
+                      ? <Text style={{ fontSize: 30, lineHeight: 34, textAlign: 'center' }}>{xox.rows[r]!.flag ?? '🏳️'}</Text>
+                      : xox.rows[r]!.kind === 'manager'
+                        ? <PlayerPhoto uri={xox.rows[r]!.logoUrl} size={34} />
+                        : <ClubBadge name={xox.rows[r]!.name} size={34} logoUrl={xox.rows[r]!.logoUrl} />}
+                    <Text numberOfLines={2} style={{ color: theme.text, fontSize: 8, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{xox.rows[r]!.name}</Text>
+                  </>
+                )}
               </View>
               {[0, 1, 2].map((c) => cellView(r * 3 + c))}
             </View>
@@ -7343,6 +7435,485 @@ export function XoxScreen({ state, actions }: Props) {
               <Btn label={t('xox.revealEmpty')} kind="ghost" icon="eye" feedback={GameFeedbackEvent.UI_CARD} onPress={() => setShowEmpties(true)} />
             )
           ) : null}
+          {state.rematchState === 'incoming' ? (
+            <>
+              <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>{t('result.rematchIncoming', { name: state.rematchByName ?? '' })}</Text>
+              <View style={{ flexDirection: 'row', gap: 10, alignSelf: 'stretch' }}>
+                <View style={{ flex: 1 }}><Btn label={t('result.accept')} kind="accent" icon="checkmark-circle" onPress={actions.acceptRematch} /></View>
+                <View style={{ flex: 1 }}><Btn label={t('result.decline')} kind="ghost" icon="close" onPress={actions.declineRematch} /></View>
+              </View>
+            </>
+          ) : state.rematchState === 'waiting' ? (
+            <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold' }}>{t('result.rematchWaiting')}</Text>
+          ) : (
+            <Btn big label={t('result.playAgain')} kind="accent" icon="refresh" feedback={GameFeedbackEvent.UI_PLAY} onPress={actions.playAgain} />
+          )}
+          <Btn label={t('result.leave')} kind="ghost" icon="home" onPress={actions.leave} />
+        </View>
+      ) : null}
+
+      <View style={{ height: 8 }} />
+      <LeaveConfirmModal visible={showLeaveConfirm} kind={leaveKind} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
+      <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} />
+    </Screen>
+  );
+}
+
+// ── GERÇEK futbol sahası çizgileri (TÜM maç ekranlarının ortak arka planı) ────
+// Kullanıcı isteği (2026-08-31): tüm modlarda + geri sayımda arka plandaki "kötü
+// çizgiler" gerçek saha çizgileri olsun — SADECE çizgiler; renk/gradient/hiçbir şey
+// değişmez. Dikey (portre) saha; viewBox 0 0 100 190. Renk çağırandan gelir
+// (`look.line` korunur), böylece her kozmetik arka planın kendi çizgi rengi kalır.
+function PitchMarkings({ color, strokeWidth = 0.6 }: { color: string; strokeWidth?: number }) {
+  return (
+    <>
+      <G stroke={color} strokeWidth={strokeWidth} fill="none">
+        <Rect x="10" y="9" width="80" height="172" rx="1.2" />
+        <Line x1="10" y1="95" x2="90" y2="95" />
+        <Circle cx="50" cy="95" r="13" />
+        {/* üst ceza + kale sahası, penaltı yayı */}
+        <Rect x="28" y="9" width="44" height="24" />
+        <Rect x="39" y="9" width="22" height="9" />
+        <Path d="M 39.75 33 A 13 13 0 0 0 60.25 33" />
+        {/* alt ceza + kale sahası, penaltı yayı */}
+        <Rect x="28" y="157" width="44" height="24" />
+        <Rect x="39" y="172" width="22" height="9" />
+        <Path d="M 39.75 157 A 13 13 0 0 1 60.25 157" />
+        {/* köşe yayları */}
+        <Path d="M 12.2 9 A 2.2 2.2 0 0 1 10 11.2" />
+        <Path d="M 90 11.2 A 2.2 2.2 0 0 1 87.8 9" />
+        <Path d="M 10 178.8 A 2.2 2.2 0 0 1 12.2 181" />
+        <Path d="M 87.8 181 A 2.2 2.2 0 0 1 90 178.8" />
+      </G>
+      <Circle cx="50" cy="95" r="1" fill={color} />
+      <Circle cx="50" cy="25" r="1" fill={color} />
+      <Circle cx="50" cy="165" r="1" fill={color} />
+    </>
+  );
+}
+
+/** Şeffaf arka plan üstüne saha çizgileri — mevcut gradient Svg'sinin ÜSTÜNE binen ayrı katman. */
+function PitchLines({ color, strokeWidth = 0.6 }: { color: string; strokeWidth?: number }) {
+  return (
+    <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} viewBox="0 0 100 190" preserveAspectRatio="xMidYMid slice" pointerEvents="none">
+      <PitchMarkings color={color} strokeWidth={strokeWidth} />
+    </Svg>
+  );
+}
+
+// ── ÇÖZ KAZAN — gerçek futbol sahası arka planı (gece maçı, premium) ──────────
+// Kullanıcı isteği (2026-08-31): "gerçekten bir futbol sahası çizgileri olsun".
+// Dikey (portre) saha: kale çizgileri üst/alt, orta saha ortada. Koyu çim +
+// biçme şeritleri + projektör parıltısı + vinyet; beyaz çizgiler doğru geometride.
+function CozKazanPitch() {
+  const insets = useSafeAreaInsets();
+  const bleed = { position: 'absolute' as const, left: 0, right: 0, top: -insets.top, bottom: -insets.bottom };
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const anim = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 2600, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 2600, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    anim.start();
+    return () => anim.stop();
+  }, [pulse]);
+  const L = 'rgba(233,240,255,0.52)';   // saha çizgisi
+  const stripes = Array.from({ length: 10 }, (_, i) => 9 + i * 17.4); // biçme şeritleri y başları
+  return (
+    <View pointerEvents="none" style={bleed}>
+      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} viewBox="0 0 100 190" preserveAspectRatio="xMidYMid slice">
+        <Defs>
+          <SvgGradient id="cozGrass" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#123B26" />
+            <Stop offset="0.5" stopColor="#0E3320" />
+            <Stop offset="1" stopColor="#081E13" />
+          </SvgGradient>
+          <RadialGradient id="cozFlood" cx="50%" cy="4%" rx="70%" ry="46%">
+            <Stop offset="0" stopColor="#EAF7EE" stopOpacity="0.20" />
+            <Stop offset="1" stopColor="#EAF7EE" stopOpacity="0" />
+          </RadialGradient>
+          <RadialGradient id="cozVignette" cx="50%" cy="46%" rx="75%" ry="62%">
+            <Stop offset="0.52" stopColor="#03100A" stopOpacity="0" />
+            <Stop offset="1" stopColor="#020B07" stopOpacity="0.82" />
+          </RadialGradient>
+        </Defs>
+        {/* çim + biçme şeritleri */}
+        <Rect x="0" y="0" width="100" height="190" fill="url(#cozGrass)" />
+        {stripes.map((y, i) => (
+          <Rect key={i} x="0" y={y} width="100" height="8.7" fill={i % 2 === 0 ? '#FFFFFF' : '#02110A'} opacity={i % 2 === 0 ? 0.028 : 0.10} />
+        ))}
+        {/* ── saha işaretleri (ortak geometri) ── */}
+        <PitchMarkings color={L} strokeWidth={0.6} />
+        {/* projektör + vinyet */}
+        <Rect x="0" y="0" width="100" height="190" fill="url(#cozFlood)" />
+        <Rect x="0" y="0" width="100" height="190" fill="url(#cozVignette)" />
+      </Svg>
+      {/* çok yavaş projektör nefesi — sahne canlı hissi */}
+      <Animated.View style={{ position: 'absolute', left: -40, right: -40, top: -insets.top, height: SCREEN_H * 0.42, backgroundColor: 'rgba(150,220,180,0.10)', opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.05, 0.16] }) }} />
+    </View>
+  );
+}
+
+// Premium fiziksel harf kutucuğu — SAYDAM DEĞİL (kullanıcı isteği 2026-08-31):
+// fildişi cam yüz + koyu lacivert harf + 3B alt dudak + parıltı + gölge.
+function LetterTile({ ch, size }: { ch: string; size: number }) {
+  const r = Math.max(6, Math.round(size * 0.2));
+  const lip = Math.max(2, Math.round(size * 0.09));
+  return (
+    <View style={{ width: size, height: size + lip, borderRadius: r + 1.5, backgroundColor: '#9AA6C0', shadowColor: '#040A18', shadowOpacity: 0.5, shadowRadius: 7, shadowOffset: { width: 0, height: 5 }, elevation: 6 }}>
+      <View style={{ width: size, height: size, borderRadius: r, backgroundColor: '#EEF2FB', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        {/* üst cam parıltısı */}
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: size * 0.5, backgroundColor: 'rgba(255,255,255,0.85)' }} />
+        {/* alt hafif gölge (hacim) */}
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: size * 0.34, backgroundColor: 'rgba(120,135,175,0.18)' }} />
+        <Text style={{ color: '#0C1E44', fontSize: Math.round(size * 0.54), fontFamily: 'Poppins-Black', includeFontPadding: false, textAlign: 'center', marginTop: -size * 0.015 }}>{ch}</Text>
+      </View>
+    </View>
+  );
+}
+
+// Karışık harfler — her kelime kendi satırında, ipucu vermeden (premium kutucuklar).
+function ScrambleTiles({ words, tileSize }: { words: string[]; tileSize: number }) {
+  const gap = Math.max(4, Math.round(tileSize * 0.16));
+  return (
+    <View style={{ alignItems: 'center', gap: Math.max(8, Math.round(tileSize * 0.3)) }}>
+      {words.map((word, wi) => (
+        <View key={wi} style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap }}>
+          {[...word].map((ch, ci) => <LetterTile key={ci} ch={ch} size={tileSize} />)}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Kelime dizisine göre kutucuk boyutu — en uzun kelime ekrana sığsın (gap dahil). */
+function scrambleTileSize(words: string[], winWidth: number, cap = 52): number {
+  const maxLen = Math.max(1, ...words.map((w) => [...w].length));
+  return Math.max(24, Math.min(cap, Math.floor((winWidth - 44) / (Math.min(maxLen, 9) * 1.17))));
+}
+
+const COZ_HINT_COST = 5; // "harf alma" — sunucudaki COZ_HINT_COST ile aynı
+
+/** Cevap kutucuğu: boş (çerçeve), yazılmış (fildişi) ya da ipucu-açık (altın, kilitli). */
+function AnswerBox({ ch, hint, size }: { ch: string; hint: boolean; size: number }) {
+  const r = Math.max(5, Math.round(size * 0.2));
+  if (!ch) {
+    return <View style={{ width: size, height: size, borderRadius: r, borderWidth: 2, borderColor: 'rgba(255,255,255,0.26)', backgroundColor: 'rgba(6,14,30,0.4)' }} />;
+  }
+  const face = hint ? '#FFE7A0' : '#EEF2FB';
+  const ink = hint ? '#5A3D00' : '#0C1E44';
+  const lip = hint ? '#C79A2E' : '#9AA6C0';
+  const drop = Math.max(2, Math.round(size * 0.08));
+  return (
+    <View style={{ width: size, height: size + drop, borderRadius: r + 1.5, backgroundColor: lip, shadowColor: '#040A18', shadowOpacity: 0.45, shadowRadius: 6, shadowOffset: { width: 0, height: 4 }, elevation: 5 }}>
+      <View style={{ width: size, height: size, borderRadius: r, backgroundColor: face, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: size * 0.5, backgroundColor: 'rgba(255,255,255,0.7)' }} />
+        <Text style={{ color: ink, fontSize: Math.round(size * 0.54), fontFamily: 'Poppins-Black', includeFontPadding: false }}>{ch}</Text>
+      </View>
+    </View>
+  );
+}
+
+/** "Harf Al" baloncuğu — yuvarlak, parlayan, dikkat çeken premium güç orbu.
+ * Kullanıcı isteği (2026-08-31): "insanların ona ihtiyacı olduğunu düşündürsün".
+ * Sürekli nabız + altın hale + kıvılcım → gözden kaçmaz, cazip. */
+function CozHintBubble({ cost, disabled, onPress }: { cost: number; disabled: boolean; onPress: () => void }) {
+  const pulse = useRef(new Animated.Value(0)).current;
+  const spark = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (disabled) { pulse.stopAnimation(); spark.stopAnimation(); return undefined; }
+    const a = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 850, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 850, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    const s = Animated.loop(Animated.sequence([
+      Animated.timing(spark, { toValue: 1, duration: 1500, easing: Easing.linear, useNativeDriver: true }),
+      Animated.delay(400),
+    ]));
+    a.start(); s.start();
+    return () => { a.stop(); s.stop(); };
+  }, [disabled, pulse, spark]);
+  const D = 50;
+  return (
+    <Pressable onPress={() => { if (!disabled) { triggerFeedback(GameFeedbackEvent.UI_CARD); onPress(); } }} disabled={disabled} style={{ alignItems: 'center' }}>
+      {/* parlayan hale */}
+      {!disabled ? (
+        <Animated.View pointerEvents="none" style={{ position: 'absolute', width: D + 30, height: D + 30, borderRadius: (D + 30) / 2, top: -15, backgroundColor: withAlpha(theme.gold, 0.4), opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.22, 0.6] }), transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1.18] }) }] }} />
+      ) : null}
+      {/* orb */}
+      <Animated.View style={{ width: D, height: D, borderRadius: D / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: disabled ? 'rgba(120,110,60,0.32)' : theme.gold, borderWidth: 2.5, borderColor: disabled ? 'rgba(255,255,255,0.14)' : '#FFF3C0', transform: [{ scale: disabled ? 1 : pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.07] }) }], shadowColor: theme.gold, shadowOpacity: disabled ? 0 : 0.75, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 9 }}>
+        <Ionicons name="bulb" size={22} color={disabled ? theme.muted : theme.onAccent} />
+        {/* kıvılcım */}
+        {!disabled ? (
+          <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 6, right: 8, opacity: spark.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 1, 0] }), transform: [{ scale: spark.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.4, 1, 0.4] }) }] }}>
+            <Ionicons name="sparkles" size={13} color="#FFFFFF" />
+          </Animated.View>
+        ) : null}
+      </Animated.View>
+      {/* maliyet rozeti */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: -9, backgroundColor: '#0B1838', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1.5, borderColor: disabled ? 'rgba(255,255,255,0.14)' : '#FFF3C0' }}>
+        <Text style={{ color: disabled ? theme.muted : theme.gold, fontFamily: 'Poppins-Black', fontSize: 12 }}>{cost}</Text>
+        <GemIcon size={11} />
+      </View>
+      <Text style={{ color: disabled ? theme.muted : theme.gold, fontFamily: 'Poppins-ExtraBold', fontSize: 10.5, marginTop: 3, letterSpacing: 0.3, ...engrave('sm') }}>{t('coz.hintBtn')}</Text>
+    </Pressable>
+  );
+}
+
+const COZ_ROUND_SECS = 20; // sunucu COZ_ROUND_MS ile aynı (halka görsel dolgusu için)
+
+/** Dairesel geri sayım halkası — premium, 5sn altında kırmızı. */
+function CozTimer({ secs }: { secs: number }) {
+  const size = 56, sw = 4.5, r = (size - sw) / 2, C = 2 * Math.PI * r;
+  const frac = Math.max(0, Math.min(1, secs / COZ_ROUND_SECS));
+  const danger = secs <= 5;
+  const col = danger ? theme.danger : theme.primary;
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ position: 'absolute', width: size, height: size, transform: [{ rotate: '-90deg' }] }}>
+        <Svg width={size} height={size}>
+          <Circle cx={size / 2} cy={size / 2} r={r} stroke="rgba(255,255,255,0.16)" strokeWidth={sw} fill="none" />
+          <Circle cx={size / 2} cy={size / 2} r={r} stroke={col} strokeWidth={sw} fill="none" strokeLinecap="round" strokeDasharray={`${C} ${C}`} strokeDashoffset={C * (1 - frac)} />
+        </Svg>
+      </View>
+      <Text style={{ color: danger ? theme.danger : theme.text, fontSize: 21, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{secs}</Text>
+    </View>
+  );
+}
+
+/** Skor rozeti — kendi (emerald) / rakip (nötr), koyu cam panel. */
+function CozScoreChip({ name, score, mine }: { name: string; score: number; mine?: boolean }) {
+  const tint = mine ? theme.primary : theme.textSub;
+  return (
+    <View style={{ flex: 1, maxWidth: 150, alignItems: 'center', backgroundColor: 'rgba(6,14,30,0.55)', borderRadius: 16, paddingVertical: 8, paddingHorizontal: 10, borderWidth: 1, borderColor: mine ? withAlpha(theme.primary, 0.5) : 'rgba(255,255,255,0.10)', ...shadowSoft }}>
+      <Text numberOfLines={1} style={{ color: tint, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold', maxWidth: 130 }}>{name}</Text>
+      <Text style={{ color: mine ? theme.primary : theme.text, fontSize: 26, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{score}</Text>
+    </View>
+  );
+}
+
+// ── ÇÖZ KAZAN ekranı — karışık harfli oyuncuyu ilk bilen kazanır (yarış) ──────
+export function CozKazanScreen({ state, actions }: Props) {
+  const c = state.cozkazan;
+  const room = state.room;
+  const youId = room?.youId ?? '';
+  const opp = room?.players.find((p) => p.id !== youId);
+  const over = state.cozkazanOver;
+  const guessRef = useRef('');
+  const [guessText, setGuessText] = useState('');           // kutulara YAZILAN harfler (ipucu hariç)
+  const [hintMap, setHintMap] = useState<Record<number, string>>({}); // flat poz → açılan doğru harf
+  const [hintErr, setHintErr] = useState<string | null>(null);
+  const answerInputRef = useRef<TextInput>(null);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [emoteOpen, setEmoteOpen] = useState(false);
+  const [, setTick] = useState(0);
+  const win = useWindow();
+
+  useEffect(() => { if (over) return undefined; const id = setInterval(() => setTick((v) => v + 1), 300); return () => clearInterval(id); }, [over]);
+  // Yeni turda giriş + ipuçları temizlenir
+  const lastRound = useRef(-1);
+  useEffect(() => {
+    if (!c) return;
+    if (c.round !== lastRound.current) { lastRound.current = c.round; guessRef.current = ''; setGuessText(''); setHintMap({}); setHintErr(null); }
+  }, [c?.round]);
+  // "Harf alma" sonucu geldiğinde doğru harfi doğru kutuya yerleştir (tur uyuşuyorsa)
+  const hintSeq = useRef(0);
+  useEffect(() => {
+    const h = state.cozHint;
+    if (!h || h.seq === hintSeq.current) return;
+    hintSeq.current = h.seq;
+    if (c && h.round === c.round) { setHintMap((m) => ({ ...m, [h.position]: h.letter })); triggerFeedback(GameFeedbackEvent.UI_CONFIRM); }
+  }, [state.cozHint, c?.round]);
+  // Harf alma hatası (yetersiz elmas / şu an olmaz) — kısa uyarı
+  const hintErrSeq = useRef(0);
+  useEffect(() => {
+    const e = state.cozHintError;
+    if (!e || e.seq === hintErrSeq.current) return;
+    hintErrSeq.current = e.seq;
+    setHintErr(e.reason === 'insufficient' ? t('coz.hintInsufficient') : t('coz.hintUnavailable'));
+    const id = setTimeout(() => setHintErr(null), 2600);
+    return () => clearTimeout(id);
+  }, [state.cozHintError]);
+  // Tur açılışında (reveal) ses/haptik
+  const revealSeq = useRef('');
+  useEffect(() => {
+    const rv = c?.reveal; if (!rv || !c) return;
+    const key = String(c.round);
+    if (key === revealSeq.current) return;
+    revealSeq.current = key;
+    if (rv.solvedById) triggerFeedback(rv.solvedById === youId ? GameFeedbackEvent.ANSWER_CORRECT : GameFeedbackEvent.OPPONENT_CORRECT);
+    else triggerFeedback(GameFeedbackEvent.NOTIFICATION);
+  }, [c?.reveal, c?.round, youId]);
+  const overPlayed = useRef(false);
+  useEffect(() => {
+    if (!over || overPlayed.current) return;
+    overPlayed.current = true;
+    triggerFeedback(over.winnerId === youId ? GameFeedbackEvent.MATCH_WIN : over.winnerId == null ? GameFeedbackEvent.MATCH_DRAW : GameFeedbackEvent.MATCH_LOSE);
+  }, [over, youId]);
+  useEffect(() => { if (!over) overPlayed.current = false; }, [over]);
+
+  if (!c || !room) return <Screen><Text style={styles.muted}>{t('store.loading')}</Text></Screen>;
+
+  const now = Date.now();
+  const myLock = c.locks.find((l) => l.id === youId);
+  const lockedSecs = myLock ? Math.max(0, Math.ceil((myLock.until - now) / 1000)) : 0;
+  const locked = lockedSecs > 0;
+  const secs = Math.max(0, Math.ceil((c.roundEndsAt - now) / 1000));
+  const reveal = c.reveal;
+  const inReveal = !!reveal;
+  const isSudden = c.round > c.totalRounds;
+  const myScore = c.scores.find((s) => s.id === youId)?.score ?? 0;
+  const oppScore = c.scores.find((s) => s.id === opp?.id)?.score ?? 0;
+  const leaveKind = state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
+  const tileSize = scrambleTileSize(c.scrambled, win.width, 54);
+  const boxSize = Math.min(tileSize, 46);
+
+  // ── Cevap kutucukları: kelime uzunlukları scrambled ile aynı; yazılan harfler
+  // ipucu-OLMAYAN kutuları soldan sağa doldurur, ipuçları kendi pozisyonunda sabit.
+  const wordLens = c.scrambled.map((w) => [...w].length);
+  const totalSlots = wordLens.reduce((a, b) => a + b, 0);
+  const hintCount = Object.keys(hintMap).length;
+  const typedCap = Math.max(0, totalSlots - hintCount);
+  const boxContents: { letter: string; hint: boolean }[] = (() => {
+    const typedChars = [...guessText];
+    let cursor = 0;
+    const out: { letter: string; hint: boolean }[] = [];
+    for (let pos = 0; pos < totalSlots; pos++) {
+      if (hintMap[pos] !== undefined) out.push({ letter: hintMap[pos]!, hint: true });
+      else { out.push({ letter: typedChars[cursor] ?? '', hint: false }); cursor++; }
+    }
+    return out;
+  })();
+  const allFilled = totalSlots > 0 && boxContents.every((b) => b.letter !== '');
+  const diamonds = state.profile?.diamonds ?? 0;
+  const allHinted = hintCount >= totalSlots;
+  const hintDisabled = !!over || inReveal || allHinted || diamonds < COZ_HINT_COST;
+
+  const onType = (v: string) => {
+    const cleaned = v.replace(/\s+/g, '').slice(0, typedCap);
+    guessRef.current = cleaned; setGuessText(cleaned);
+  };
+  const assembleAnswer = (): string => {
+    let idx = 0; const words: string[] = [];
+    for (const wlen of wordLens) { let w = ''; for (let j = 0; j < wlen; j++) { w += boxContents[idx]?.letter ?? ''; idx++; } words.push(w); }
+    return words.join(' ');
+  };
+  const submit = () => {
+    const text = assembleAnswer().trim();
+    if (!text || inReveal || locked || over) return;
+    actions.cozkazanSubmit(text);
+    guessRef.current = ''; setGuessText(''); // ipuçları kalır; yanlışsa 5sn kilit sunucudan gelir
+  };
+
+  return (
+    <Screen contentCenter={false} bg={<CozKazanPitch />}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <MatchExitButton onPress={() => (state.matchOver ? actions.leave() : setShowLeaveConfirm(true))} />
+        <PlayerBar state={state} onEmotePress={() => setEmoteOpen(true)} />
+      </View>
+
+      {!over ? (
+        <View style={{ alignItems: 'center', gap: 10, marginBottom: 4 }}>
+          {/* Tur rozeti (ani-ölümde altın) */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: isSudden ? withAlpha(theme.gold, 0.18) : 'rgba(6,14,30,0.6)', borderColor: isSudden ? withAlpha(theme.gold, 0.6) : 'rgba(255,255,255,0.12)', borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 4.5, ...shadowRow }}>
+            <Text style={{ color: isSudden ? theme.gold : theme.textSub, fontSize: 12.5, fontFamily: 'Poppins-Black', letterSpacing: 1.1 }}>
+              {isSudden ? `⚡ ${t('coz.sudden').toLocaleUpperCase('tr')}` : t('coz.round', { n: String(c.round), cap: String(c.totalRounds) }).toLocaleUpperCase('tr')}
+            </Text>
+          </View>
+          {/* Skor: sen — geri sayım halkası — rakip */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, alignSelf: 'stretch' }}>
+            <CozScoreChip name={t('coz.you')} score={myScore} mine />
+            <View style={{ width: 56, alignItems: 'center' }}>
+              {!inReveal ? <CozTimer secs={secs} /> : <Text style={{ color: theme.muted, fontSize: 24, fontFamily: 'Poppins-Black' }}>–</Text>}
+            </View>
+            <CozScoreChip name={opp?.name ?? '—'} score={oppScore} />
+          </View>
+        </View>
+      ) : null}
+
+      {/* Orta bölge: karışık harfler ya da tur açılışı */}
+      <View style={{ flex: 1, minHeight: 0, justifyContent: 'center', alignItems: 'center', gap: 14 }}>
+        {reveal ? (() => {
+          const solveCol = reveal.solvedById === youId ? theme.primary : reveal.solvedById ? theme.danger : theme.gold;
+          return (
+            <View style={{ alignItems: 'center', gap: 12, backgroundColor: 'rgba(6,14,30,0.7)', borderRadius: 24, paddingVertical: 20, paddingHorizontal: 22, borderWidth: 1, borderColor: withAlpha(solveCol, 0.4), alignSelf: 'stretch', marginHorizontal: 6, ...shadowRaised }}>
+              <View style={{ padding: 4, borderRadius: 999, borderWidth: 3, borderColor: solveCol, backgroundColor: withAlpha(solveCol, 0.12) }}>
+                <PlayerPhoto uri={reveal.playerImageUrl} size={104} />
+              </View>
+              <Text style={{ color: theme.text, fontSize: 23, fontFamily: 'Poppins-Black', textAlign: 'center', ...engrave('sm') }}>{reveal.playerName}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: withAlpha(theme.gold, 0.16), borderRadius: 12, paddingHorizontal: 14, paddingVertical: 5, borderWidth: 1, borderColor: withAlpha(theme.gold, 0.4) }}>
+                <Ionicons name="checkmark-circle" size={16} color={theme.gold} />
+                <Text style={{ color: theme.gold, fontSize: 16, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.3 }}>{reveal.answer}</Text>
+              </View>
+              <Text style={{ color: solveCol, fontSize: 13, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>
+                {reveal.solvedById ? (reveal.solvedById === youId ? t('coz.youSolved') : t('coz.oppSolved', { name: reveal.solvedByName ?? '' })) : t('coz.nobody')}
+              </Text>
+            </View>
+          );
+        })() : (
+          <View style={{ alignItems: 'center', gap: 18 }}>
+            <ScrambleTiles words={c.scrambled} tileSize={tileSize} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(6,14,30,0.5)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 }}>
+              <Ionicons name="shuffle" size={13} color={theme.textSub} />
+              <Text style={{ color: theme.textSub, fontSize: 12, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{t('coz.prompt')}</Text>
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* Cevap kutucukları + yazım + harf alma (yarış) */}
+      {!over && !inReveal ? (
+        <View style={{ marginTop: 8, gap: 8 }}>
+          {locked ? <Text style={{ color: theme.danger, fontSize: 13, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>⏳ {t('coz.locked', { s: String(lockedSecs) })}</Text> : null}
+          {hintErr ? <Text style={{ color: theme.gold, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{hintErr}</Text> : null}
+          {/* Kutucuklar — dokun, klavye açılır */}
+          <Pressable onPress={() => answerInputRef.current?.focus()}>
+            <View style={{ alignItems: 'center', gap: Math.max(6, Math.round(boxSize * 0.22)) }}>
+              {wordLens.map((wlen, wi) => {
+                const off = wordLens.slice(0, wi).reduce((a, b) => a + b, 0);
+                return (
+                  <View key={wi} style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: Math.max(4, Math.round(boxSize * 0.14)) }}>
+                    {Array.from({ length: wlen }).map((_, j) => { const b = boxContents[off + j]!; return <AnswerBox key={j} ch={b.letter} hint={b.hint} size={boxSize} />; })}
+                  </View>
+                );
+              })}
+            </View>
+          </Pressable>
+          {/* Gizli metin girişi — kutuları besler (Türkçe harfler cihaz klavyesinden) */}
+          <TextInput
+            ref={answerInputRef}
+            value={guessText}
+            onChangeText={onType}
+            autoFocus
+            autoCapitalize="characters"
+            autoCorrect={false}
+            spellCheck={false}
+            returnKeyType="send"
+            onSubmitEditing={submit}
+            editable={!locked}
+            style={{ position: 'absolute', opacity: 0, height: 1, width: 1 }}
+          />
+          {/* Sadece GÖNDER — ortalanmış (kullanıcı isteği 2026-08-31) */}
+          <View style={{ alignItems: 'center' }}>
+            <View style={{ width: '64%', minWidth: 200 }}>
+              <Btn label={t('guess.send')} icon="send" feedback={GameFeedbackEvent.ANSWER_SUBMIT} onPress={submit} disabled={locked || !allFilled} />
+            </View>
+          </View>
+          {/* Harf Al — sağda yüzer; kutuların TAMAMEN ÜSTÜNDE (satır sayısından
+              bağımsız, üste sabit → kutucukların üstüne binmez) */}
+          <View pointerEvents="box-none" style={{ position: 'absolute', right: 6, top: -104, zIndex: 30 }}>
+            <CozHintBubble cost={COZ_HINT_COST} disabled={hintDisabled} onPress={actions.cozkazanHint} />
+          </View>
+        </View>
+      ) : null}
+
+      {/* Maç sonu */}
+      {over ? (
+        <View style={{ alignItems: 'center', gap: 10, marginTop: 14 }}>
+          <Text style={{ color: over.winnerId === youId ? theme.primary : over.winnerId == null ? theme.gold : theme.danger, fontSize: 26, fontFamily: 'Poppins-Black', letterSpacing: 1, ...engrave('lg') }}>
+            {over.winnerId === youId ? t('xox.youWon') : over.winnerId == null ? t('xox.draw') : t('xox.youLost')}
+          </Text>
+          <Text style={{ color: theme.muted, fontSize: 15, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{myScore} – {oppScore}</Text>
           {state.rematchState === 'incoming' ? (
             <>
               <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>{t('result.rematchIncoming', { name: state.rematchByName ?? '' })}</Text>
@@ -8217,14 +8788,14 @@ function MatchCosmeticBackdrop({ backgroundId }: { backgroundId?: string | null 
         </Defs>
         <Rect width="100%" height="100%" fill="url(#cosmeticMatchBg)" />
         <Rect width="100%" height="100%" fill="url(#cosmeticMatchGlow)" />
-        <Line x1="8%" y1="58%" x2="92%" y2="58%" stroke={look.line} strokeWidth="2" />
-        <Line x1="18%" y1="72%" x2="82%" y2="72%" stroke={look.line} strokeWidth="1.4" />
-        <Circle cx="50%" cy="58%" r="54" stroke={look.line} strokeWidth="1.5" fill="none" />
-        <Rect x="14%" y="48%" width="72%" height="34%" rx="22" stroke={look.line} strokeWidth="1.5" fill="none" />
         {hot ? Array.from({ length: 7 }).map((_, i) => (
           <Circle key={i} cx={`${10 + i * 14}%`} cy={`${82 - (i % 2) * 9}%`} r={10 + (i % 3) * 3} fill={i % 2 ? '#FFCE3A' : '#FF7A3D'} opacity="0.18" />
         )) : null}
       </Svg>
+      {/* Gerçek futbol sahası çizgileri (kullanıcı isteği 2026-08-31): eski "kötü
+          çizgiler" yerine tam saha geometrisi. SADECE çizgiler değişti; gradient/
+          glow/renkler aynı. Renk yine `look.line` (her kozmetiğin kendi çizgi rengi). */}
+      <PitchLines color={look.line} strokeWidth={0.6} />
       {/* Alt-orta yanıp sönen glow şeridi kaldırıldı (kullanıcı isteği 2026-08-28:
           sonuç yazısının arkasındaki şerit gereksiz). Premium foto arka planlardaki
           bant (yukarıdaki bgImage dalı) korunur. */}

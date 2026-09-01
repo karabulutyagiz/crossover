@@ -2,7 +2,7 @@ import type { ClientMsg } from '../protocol.ts';
 
 type ValidationResult = { ok: true; msg: ClientMsg } | { ok: false; error: string };
 
-const MODES = new Set(['team-team', 'country-team', 'letter-team', 'player-player', 'xox']);
+const MODES = new Set(['team-team', 'country-team', 'letter-team', 'player-player', 'xox', 'cozkazan']);
 const DIFFICULTIES = new Set(['easy', 'medium', 'hard']);
 const PROVIDERS = new Set(['apple', 'google', 'facebook']);
 const POWER_IDS = new Set(['xp2x', 'shield', 'streak', 'training', 'socialtoken']);
@@ -129,6 +129,7 @@ export function validateClientMsg(value: unknown): ValidationResult {
     case 'start':
     case 'pass':
     case 'ready':
+    case 'cozkazan_hint':
     case 'play_again':
     case 'get_my_stats':
     case 'grant_ad_reward':
@@ -172,6 +173,9 @@ export function validateClientMsg(value: unknown): ValidationResult {
     case 'xox_submit':
       if (!hasInteger(value, 'cell', 0, 8)) return invalid('xox_submit.cell must be 0-8');
       if (!hasString(value, 'text', 200)) return invalid('xox_submit.text must be a string');
+      break;
+    case 'cozkazan_submit':
+      if (!hasString(value, 'text', 200)) return invalid('cozkazan_submit.text must be a string');
       break;
     case 'use_special_power':
       if (typeof value.powerId !== 'string' || !SPECIAL_POWER_IDS.has(value.powerId)) return invalid('use_special_power.powerId is invalid');

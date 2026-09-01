@@ -4,8 +4,10 @@
 // Günün Crossover'ı — sunucu-otoriter günlük soru durumu.
 export interface DailyCrossoverStateView {
   day: number;               // görünen gün numarası (#N, 1'den başlar)
-  teamA: ClubRef;
-  teamB: ClubRef;
+  kind: 'crossover' | 'scramble'; // gün-paritesiyle değişir; sistem/ödül aynı
+  teamA?: ClubRef;
+  teamB?: ClubRef;
+  scramble?: { letters: string[] }; // karışık kelimeler — yalnız scramble günü
   resetAt: string;           // İstanbul gece yarısı — geri sayım buna kilitlenir
   reward: number;            // doğru bilene 💎
   maxGuesses: number;
@@ -24,6 +26,25 @@ export interface ClubRef {
   id: number;
   name: string;
   logoUrl: string | null;
+  // XOX ekseni KULÜP yerine ÜLKE / (büyük) LİG / TEKNİK DİREKTÖR olabilir (2026-08-29).
+  // kind==='country': logoUrl null, bayrak `flag` emojisinde, `country` ham milliyet.
+  // kind==='league': logoUrl lig logosu (resim), `league` büyük lig kodu ('ES1'…).
+  // kind==='manager': logoUrl TD fotosu (resim), `manager` TM trainer id.
+  // kind==='trophy': `trophy` kupa kodu ('CL'|'WC'|'EL') — yerel görsel.
+  // kind==='position': `position` mevki kodu ('GK'|'CB'|…) — BÜYÜK harf metin.
+  // kind==='bdor': Ballon d'Or — yerel görsel.
+  // kind==='combo': birleşik logo (iki takım) — yerel görsel; `combo` KEY'i.
+  // Diğer tüm kullanımlarda undefined (yalnız xox_state doldurur).
+  kind?: 'club' | 'country' | 'league' | 'manager' | 'trophy' | 'position' | 'bdor' | 'combo';
+  country?: string;
+  flag?: string;
+  league?: string;
+  manager?: number;
+  trophy?: string;
+  position?: string;
+  combo?: string;
+  comboA?: number;
+  comboB?: number;
 }
 
 export interface SpellInfo {
@@ -84,11 +105,11 @@ export interface SeasonStateView {
   last: { seasonId: string; peakTrophies: number; peakArenaName: string; wins: number; losses: number } | null;
 }
 
-export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox';
+export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox' | 'cozkazan';
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
-export type GameMode = 'team-team' | 'country-team' | 'letter-team' | 'player-player' | 'xox';
+export type GameMode = 'team-team' | 'country-team' | 'letter-team' | 'player-player' | 'xox' | 'cozkazan';
 
 export type PickRole = 'team' | 'country' | 'letter' | 'player';
 
@@ -395,7 +416,9 @@ export type ClientMsg =
   // ---- Futbol XOX (Tiki-Taka-Toe) ----
   // Sıra sende + hücre açıkken: hücre (0-8, satır-major) + futbolcu adı.
   // Ani ölümde (suddenDeath) cell = suddenCell olmalı; iki taraf da yarışır.
-  | { type: 'xox_submit'; cell: number; text: string };
+  | { type: 'xox_submit'; cell: number; text: string }
+  | { type: 'cozkazan_submit'; text: string }
+  | { type: 'cozkazan_hint' }; // elmas karşılığı bir sonraki doğru harfi aç
 
 export type ServerMsg =
   | { type: 'room_state'; room: RoomView }
@@ -429,6 +452,10 @@ export type ServerMsg =
   | { type: 'xox_state'; rows: ClubRef[]; cols: ClubRef[]; cells: { owner: string | null; playerName: string | null; playerImageUrl: string | null }[]; turnId: string | null; turnEndsAt: number; turnNumber: number; turnCap: number; suddenDeath: boolean; suddenCell: number | null; lastAction?: { kind: 'claim' | 'wrong' | 'timeout'; byId: string; byName: string; cell?: number; guess?: string; playerName?: string } }
   // Maç bitti: line = kazanan 3'lü (hücre indeksleri) ya da null (çoğunluk/tie-break).
   | { type: 'xox_over'; winnerId: string | null; winnerName: string | null; line: number[] | null; reason: 'line' | 'majority' | 'sudden_death' | 'tiebreak' | 'draw'; emptyReveal?: { cell: number; playerName: string; playerImageUrl: string | null }[] }
+  | { type: 'cozkazan_state'; round: number; totalRounds: number; scrambled: string[]; roundEndsAt: number; scores: { id: string; name: string; score: number }[]; locks: { id: string; until: number }[]; reveal: { answer: string; playerName: string; playerImageUrl: string | null; solvedById: string | null; solvedByName: string | null } | null }
+  | { type: 'cozkazan_over'; winnerId: string | null; winnerName: string | null; reason: 'points' | 'sudden_death' | 'draw'; scores: { id: string; name: string; score: number }[] }
+  | { type: 'cozkazan_hint_result'; round: number; position: number; letter: string; diamonds: number } // özel: sadece isteyene
+  | { type: 'cozkazan_hint_error'; reason: 'insufficient' | 'unavailable' }
   | {
       type: 'result';
       result: RoundResult;
