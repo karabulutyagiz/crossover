@@ -153,8 +153,12 @@ export interface ProfileView {
   outageGiftAvailable?: boolean;     // true → istemci kesinti özür penceresini gösterir ("AL" ile tanımlanır)
   arena: ArenaView;
   avatar: string | null; // chosen profile-picture id (e.g. 'pp7') or null
-  xp: number;    // mevcut seviye içindeki ilerleme
-  level: number; // 1..50
+  xp: number;    // mevcut seviye içindeki ilerleme (SEZONLUK)
+  level: number; // 1..50 sezon seviyesi (CO-PASS yolu)
+  // Hesap seviyesi — ömürlük, sezon devrinde SIFIRLANMAZ (LoL usulü, 2026-09-02).
+  accountLevel?: number;
+  accountXpInto?: number;
+  accountXpNext?: number;
   selectedFrame: string | null; // takılı profil çerçevesi (bronze..goat) ya da null
   claimedLevels: number[]; // Seviye Yolu'nda toplanmış ödül seviyeleri
   powerXp2x?: number;       // envanterdeki 2x XP jetonu adedi

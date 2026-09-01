@@ -18,6 +18,30 @@ import type { SpecialPowerId } from './specialPowers.ts';
 
 export const LEVEL_CAP = 50;
 
+// ---- Hesap seviyesi (2026-09-02) -------------------------------------------
+// Sezonluk xp/level her devirde sıfırlanır; oyuncular "43'tüm, 1 oldum" diye
+// haklı şikâyet etti. total_xp ASLA sıfırlanmaz ve LoL usulü ömürlük hesap
+// seviyesini üretir. Aynı XP eğrisi kullanılır ama TAVAN YOK — 50'den sonra
+// her seviye 280 XP ister ve sonsuza kadar tırmanır.
+/** Bir seviyeye ULAŞMAK için gereken kümülatif XP (xpForNext(1..L-1) toplamı). */
+export function cumXpToLevel(level: number): number {
+  let toplam = 0;
+  for (let i = 1; i < level; i++) toplam += xpForNext(i);
+  return toplam;
+}
+
+/** total_xp → { level, into (seviye içi ilerleme), next (seviye eşiği) }. Tavansız. */
+export function accountLevelFromTotal(totalXp: number): { level: number; into: number; next: number } {
+  let level = 1;
+  let kalan = Math.max(0, totalXp);
+  while (kalan >= xpForNext(level)) {
+    kalan -= xpForNext(level);
+    level += 1;
+    if (level > 5000) break; // teorik emniyet — eğri gereği ulaşılamaz
+  }
+  return { level, into: kalan, next: xpForNext(level) };
+}
+
 // Kademeli bantlar (Brawl Stars pass modeli) — AYLIK sezona ayarlı:
 // toplam 9.460 XP (eski 34.300'dü). İlk seviye tek galibiyetle patlar (40;
 // günün ilk galibiyeti 90 XP = L1 + L2'nin çoğu), düzenli oyuncu (~11 gerçek
@@ -221,7 +245,7 @@ export async function applyRawXp(userId: string, rawXp: number): Promise<XpAward
     leveledUp.push({ level, diamonds: levelRewardDiamonds(level), powerId: LEVEL_POWERS[level] });
   }
   if (level >= LEVEL_CAP) xp = Math.min(xp, xpForNext(LEVEL_CAP));
-  await pool.query(`UPDATE users SET xp = $2, level = $3 WHERE id = $1`, [userId, xp, level]);
+  await pool.query(`UPDATE users SET xp = $2, level = $3, total_xp = total_xp + $4 WHERE id = $1`, [userId, xp, level, rawXp]);
   return { xp, level, xpForNext: xpForNext(level), gained: rawXp, leveledUp };
 }
 
@@ -277,10 +301,10 @@ export async function awardMatchXp(userId: string, won: boolean, vsBot: boolean)
 
   await pool.query(
     `UPDATE users SET
-       xp = $2, level = $3,
+       xp = $2, level = $3, total_xp = total_xp + $7,
        last_win_day = $4, bot_xp_day = $5, bot_xp_today = $6
      WHERE id = $1`,
-    [userId, xp, level, lastWinDay, vsBot ? today : u.bot_xp_day, vsBot ? botToday : (u.bot_xp_today ?? 0)],
+    [userId, xp, level, lastWinDay, vsBot ? today : u.bot_xp_day, vsBot ? botToday : (u.bot_xp_today ?? 0), gained],
   );
 
   return {

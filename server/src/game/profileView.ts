@@ -1,4 +1,4 @@
-import { copassV2Enabled } from './level.ts';
+import { accountLevelFromTotal, copassV2Enabled } from './level.ts';
 // UserProfile (DB modeli) → ProfileView (tel protokolü) dönüşümü — TEK kaynak.
 // Eskiden ws/server.ts içinde özeldi; room.ts'in de (streak_reward) ihtiyacı
 // olunca paylaşılan modüle çıkarıldı. Alan eklerken İKİ tipe birden bak.
@@ -25,6 +25,8 @@ export function toProfileView(p: UserProfile): ProfileView {
     avatar: p.avatar,
     xp: p.xp,
     level: p.level,
+    // Hesap seviyesi (2026-09-02): sezonluk level'dan bağımsız, ömürlük.
+    ...(() => { const h = accountLevelFromTotal(p.totalXp ?? 0); return { accountLevel: h.level, accountXpInto: h.into, accountXpNext: h.next }; })(),
     selectedFrame: p.selectedFrame,
     claimedLevels: p.claimedLevels,
     powerXp2x: p.powerXp2x,

@@ -4,7 +4,7 @@ import { seasonRewardFor, seasonRewardsEnabled, seasonTrophyReset } from './seas
 import { milestoneFor } from './specialPowers.ts';
 import { addLeaguePoints } from './weeklyLeague.ts';
 import { config } from '../config.ts';
-import { PREMIUM_ROAD_PRICE, roadLeftovers } from './level.ts';
+import { PREMIUM_ROAD_PRICE, accountLevelFromTotal, roadLeftovers } from './level.ts';
 import { emotePrice, isFreeEmote, isEquippableEmote, MAX_EQUIPPED, ALL_COLLECTIBLE_EMOTES } from './emotes.ts';
 import { avatarPrice, canUseAvatar, DEFAULT_AVATAR_ID, isAvatar, isFreeAvatar } from './avatars.ts';
 import { normalizeUsername, validateUsername } from './username.ts';
@@ -92,8 +92,10 @@ export interface UserProfile {
   outageGiftAvailable: boolean;       // kampanya açık VE bu hesap henüz almadı → özür penceresi gösterilir
   arena: Arena;
   avatar: string | null; // chosen profile-picture id (e.g. 'pp7') or null
-  xp: number;    // mevcut seviye içindeki ilerleme
-  level: number; // 1..50 — asla düşmez
+  xp: number;    // mevcut seviye içindeki ilerleme (SEZONLUK — devirde sıfırlanır)
+  level: number; // 1..50 sezon seviyesi (CO-PASS yolu; devirde 1'e döner)
+  totalXp: number; // ömürlük XP — ASLA sıfırlanmaz; hesap seviyesinin kaynağı
+  accountLevel: number; // totalXp'ten türetilmiş ömürlük seviye (maç kartlarında bu görünür)
   selectedFrame: string | null; // takılı profil çerçevesi (bronze..goat) ya da null
   claimedLevels: number[]; // Seviye Yolu'nda toplanmış ödül seviyeleri
   powerXp2x: number;       // envanterdeki 2x XP jetonu adedi
@@ -1419,6 +1421,7 @@ interface DbUser {
   created_at: string;
   xp: number | null;
   level: number | null;
+  total_xp: number | string | null; // BIGINT — pg string döndürebilir
   selected_frame: string | null;
   claimed_levels: number[] | null;
   power_xp2x: number | null;
@@ -1486,6 +1489,8 @@ function toProfile(row: DbUser): UserProfile {
     avatar: row.avatar ?? row.selected_avatar ?? null,
     xp: row.xp ?? 0,
     level: row.level ?? 1,
+    totalXp: Number(row.total_xp ?? 0),
+    accountLevel: accountLevelFromTotal(Number(row.total_xp ?? 0)).level,
     selectedFrame: row.equipped_frame_id ?? row.selected_frame ?? null,
     claimedLevels: row.claimed_levels ?? [],
     powerXp2x: row.power_xp2x ?? 0,

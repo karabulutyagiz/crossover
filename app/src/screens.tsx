@@ -5188,10 +5188,14 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const tierNo = ARENA_DATA.length - curIdx;
   const arenaPct = nextTier ? Math.min(1, Math.max(0, (trophies - curTier.min) / (nextTier.min - curTier.min))) : 1;
   const arenaC = arenaColor(profile?.arena.name ?? '');
-  // Profil hapı: köşe rozeti = SEVİYE, ince çubuk = XP ilerlemesi (kademe renkli)
-  const lvl = profile?.level ?? 1;
+  // Profil hapı: köşe rozeti = HESAP seviyesi (ömürlük, sezonla sıfırlanmaz —
+  // kullanıcı kararı 2026-09-02: 'copassin seviyesi ayrı, oyun leveli ayrı').
+  // Eski sunucu accountLevel göndermiyorsa sezonluğa düşülür.
+  const lvl = profile?.accountLevel ?? profile?.level ?? 1;
   const lvlColor = levelTier(lvl)?.c ?? theme.primary;
-  const xpPct = lvl >= LEVEL_CAP ? 1 : Math.max(0, Math.min(1, (profile?.xp ?? 0) / xpForNextLevel(lvl)));
+  const xpPct = profile?.accountLevel != null
+    ? Math.max(0, Math.min(1, (profile.accountXpInto ?? 0) / Math.max(1, profile.accountXpNext ?? 1)))
+    : (lvl >= LEVEL_CAP ? 1 : Math.max(0, Math.min(1, (profile?.xp ?? 0) / xpForNextLevel(lvl))));
   // ---- XP küre yağmuru: maç sonrası kazanılan XP çubuğa akar, çubuk eş zamanlı dolar ----
   const xpBarAnim = useRef(new Animated.Value(xpPct)).current;
   const xpFlownRef = useRef<GameState['xpGain']>(null);
@@ -13436,8 +13440,9 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
   const p = state.profile;
   // Eski sunucu ProfileView'da xp/level göndermeyebilir — "Seviye undefined"
   // basmamak için ProfilePill/LevelRoadModal ile aynı varsayılanlar kullanılır.
-  const lvl = p?.level ?? 1;
+  const lvl = p?.level ?? 1;          // SEZON seviyesi — Seviye Yolu satırı bunu gösterir
   const lvlXp = p?.xp ?? 0;
+  const hesapLvl = p?.accountLevel ?? p?.level ?? 1; // ömürlük hesap seviyesi (başlıkta)
   const lvlUnclaimed = unclaimedLevelCount(p);
   // Detaylı istatistikler + sezon özeti ekran açılışında bir kez istenir.
   useEffect(() => {
@@ -13736,6 +13741,12 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
             )}
             <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13, ...engrave('sm') }}>{arenaLabel(p.arena.name)}</Text>
           </View>
+          {/* Hesap seviyesi (2026-09-02): ömürlük, LoL usulü — sezon devrinde
+              sıfırlanmaz. CO-PASS'ın sezonluk seviyesi aşağıdaki yol satırında. */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.bg2, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1.5, borderColor: withAlpha(levelTier(hesapLvl)?.c ?? theme.primary, 0.5) }}>
+            <LevelBadge level={hesapLvl} size={20} />
+            <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13, ...engrave('sm') }}>{t('level.levelN', { n: String(hesapLvl) })}</Text>
+          </View>
         </View>
 
         {/* Sezon kartı (2026-08-29): aylık döngü artık görünür — bu ayın zirvesi,
@@ -13790,7 +13801,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
           <GamePanel compact accentStripe={levelTier(lvl)?.c ?? theme.primary} bodyStyle={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingLeft: 14 }}>
             <LevelBadge level={lvl} size={44} />
             <View style={{ flex: 1, gap: 5 }}>
-              <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t('level.levelN', { n: String(lvl) })}</Text>
+              <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{t('level.seasonLevelN', { n: String(lvl) })}</Text>
               {lvl < LEVEL_CAP ? (
                 <>
                   <XpBar xp={lvlXp} level={lvl} height={9} />

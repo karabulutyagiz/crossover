@@ -500,8 +500,8 @@ export function startServer(port: number): Server {
     if (a.options?.scope) room.scope = a.options.scope;
     room.gameMode = entryMode(a);
     a.state = 'MATCH_FOUND'; b.state = 'MATCH_FOUND';
-    const resA = room.addPlayer(a.name, a.transport, true, a.userProfile?.id ?? a.userId, a.userProfile?.trophies, a.userProfile?.arena, a.userProfile?.avatar, a.userProfile?.level, a.userProfile?.selectedFrame, a.userProfile ? toCosmeticLoadout(a.userProfile) : undefined, a.skillProfile?.skillMean, a.skillProfile?.skillUncertainty, a.skillProfile?.matchesPlayed);
-    const resB = room.addPlayer(b.name, b.transport, false, b.userProfile?.id ?? b.userId, b.userProfile?.trophies, b.userProfile?.arena, b.userProfile?.avatar, b.userProfile?.level, b.userProfile?.selectedFrame, b.userProfile ? toCosmeticLoadout(b.userProfile) : undefined, b.skillProfile?.skillMean, b.skillProfile?.skillUncertainty, b.skillProfile?.matchesPlayed);
+    const resA = room.addPlayer(a.name, a.transport, true, a.userProfile?.id ?? a.userId, a.userProfile?.trophies, a.userProfile?.arena, a.userProfile?.avatar, a.userProfile?.accountLevel ?? a.userProfile?.level, a.userProfile?.selectedFrame, a.userProfile ? toCosmeticLoadout(a.userProfile) : undefined, a.skillProfile?.skillMean, a.skillProfile?.skillUncertainty, a.skillProfile?.matchesPlayed);
+    const resB = room.addPlayer(b.name, b.transport, false, b.userProfile?.id ?? b.userId, b.userProfile?.trophies, b.userProfile?.arena, b.userProfile?.avatar, b.userProfile?.accountLevel ?? b.userProfile?.level, b.userProfile?.selectedFrame, b.userProfile ? toCosmeticLoadout(b.userProfile) : undefined, b.skillProfile?.skillMean, b.skillProfile?.skillUncertainty, b.skillProfile?.matchesPlayed);
     if (resA.ok) a.setCtx({ room, playerId: resA.id, userProfile: a.userProfile });
     if (resB.ok) b.setCtx({ room, playerId: resB.id, userProfile: b.userProfile });
     a.state = 'STARTING_MATCH'; b.state = 'STARTING_MATCH';
@@ -716,7 +716,7 @@ export function startServer(port: number): Server {
         [entry.userProfile.id, botProfile.id, botProfile.displayName, botProfile.behaviorArchetype, botProfile.skillMean],
       ).catch(() => {});
     }
-    const human = room.addPlayer(entry.name, entry.transport, true, entry.userProfile?.id ?? entry.userId, entry.userProfile?.trophies, entry.userProfile?.arena, entry.userProfile?.avatar, entry.userProfile?.level, entry.userProfile?.selectedFrame, entry.userProfile ? toCosmeticLoadout(entry.userProfile) : undefined, skillProfile?.skillMean, skillProfile?.skillUncertainty, skillProfile?.matchesPlayed);
+    const human = room.addPlayer(entry.name, entry.transport, true, entry.userProfile?.id ?? entry.userId, entry.userProfile?.trophies, entry.userProfile?.arena, entry.userProfile?.avatar, entry.userProfile?.accountLevel ?? entry.userProfile?.level, entry.userProfile?.selectedFrame, entry.userProfile ? toCosmeticLoadout(entry.userProfile) : undefined, skillProfile?.skillMean, skillProfile?.skillUncertainty, skillProfile?.matchesPlayed);
     const bot = new BotPlayer({ difficulty: botProfile.difficulty, scope: room.scope, mode: room.gameMode, profile: botProfile, exposeBotToClient: false });
     const botRes = room.addPlayer(botProfile.displayName, bot, false, undefined, botProfile.trophyRating, botProfile.arena, botProfile.avatarId, botProfile.level, botProfile.frame, undefined, botProfile.skillMean, botProfile.skillUncertainty, 100);
     if (human.ok) entry.setCtx({ room, playerId: human.id, userProfile: entry.userProfile });
@@ -2161,8 +2161,8 @@ export function startServer(port: number): Server {
           room.onDispose(() => { if (!reported) settle(null); }); // maç sonuçsuz dağıldı → pending'e dön
           const aSkill = await getOrCreateSkillProfile(other.profile.id, other.profile.trophies).catch(() => undefined);
           const bSkill = await getOrCreateSkillProfile(readyProfile.id, readyProfile.trophies).catch(() => undefined);
-          const resA = room.addPlayer(other.name, other.transport, true, other.profile.id, other.profile.trophies, other.profile.arena, other.profile.avatar, other.profile.level, other.profile.selectedFrame, toCosmeticLoadout(other.profile), aSkill?.skillMean, aSkill?.skillUncertainty, aSkill?.matchesPlayed);
-          const resB = room.addPlayer(readyProfile.displayName, transport, false, readyProfile.id, readyProfile.trophies, readyProfile.arena, readyProfile.avatar, readyProfile.level, readyProfile.selectedFrame, toCosmeticLoadout(readyProfile), bSkill?.skillMean, bSkill?.skillUncertainty, bSkill?.matchesPlayed);
+          const resA = room.addPlayer(other.name, other.transport, true, other.profile.id, other.profile.trophies, other.profile.arena, other.profile.avatar, other.profile.accountLevel ?? other.profile.level, other.profile.selectedFrame, toCosmeticLoadout(other.profile), aSkill?.skillMean, aSkill?.skillUncertainty, aSkill?.matchesPlayed);
+          const resB = room.addPlayer(readyProfile.displayName, transport, false, readyProfile.id, readyProfile.trophies, readyProfile.arena, readyProfile.avatar, readyProfile.accountLevel ?? readyProfile.level, readyProfile.selectedFrame, toCosmeticLoadout(readyProfile), bSkill?.skillMean, bSkill?.skillUncertainty, bSkill?.matchesPlayed);
           if (resA.ok) other.setCtx({ room, playerId: resA.id, userProfile: other.profile });
           if (resB.ok) ctx = { room, playerId: resB.id, userProfile: readyProfile };
           log.info('tournament_match_started', { tournamentId: tid, matchId, room: room.code });
