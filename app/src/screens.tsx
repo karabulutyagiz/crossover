@@ -9478,6 +9478,7 @@ function recordShortfall(missing: number): void {
 // `actions` kimliğinin sabit olması useCrossover'daki actions-useMemo'suna
 // dayanır (sabit değilse memo zararsız bir no-op'a düşer — eski davranış).
 export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToSection, onDiamondCelebration, storeActive = true }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | 'top' | 'powers' | null; storeActive?: boolean }) {
+  const [storeAvatarId, setStoreAvatarId] = useState<string | null>(null); // mağazadan alınacak profil fotoğrafı
   const profile = state.profile;
   const catalog = state.storeCatalog;
   const catalogStatus = state.storeCatalogStatus;
@@ -9849,6 +9850,39 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
 
         {/* Sosyal Paket — hero panel (gold frame + gloss), corner ribbon status */}
         <Animated.View style={sectionIn(0)} onLayout={(e) => { sectionYRef.current['socialPack'] = e.nativeEvent.layout.y; }}>
+          {/* PROFİL FOTOĞRAFLARI (2026-09-01): avatarlar yalnız Profil > fotoğraf
+              sayfasından alınabiliyordu; mağazada hiç görünmüyorlardı. Sahip
+              OLUNMAYANLAR burada da satılıyor. Sezon ödülü avatarları (pp35)
+              listeye GİRMEZ — onlar elmasla satılmaz, sezon kapanışında verilir. */}
+          {(() => {
+            const satilik = ['pp1','pp2','pp3','pp4','pp5','pp6','pp8','pp9','pp10','pp18','pp19','pp20','pp21','pp22','pp23','pp24','pp25','pp26','pp27','pp28','pp29','pp30','pp31','pp32','pp33','pp34']
+              .filter((id) => !SEASON_ONLY_AVATARS.has(id) && !ownsAvatar(state.profile, id));
+            if (!satilik.length) return null;
+            return (
+              <>
+                <SectionHeader label="PROFİL FOTOĞRAFLARI" icon="person-circle" />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 6, paddingRight: 6 }}>
+                  {satilik.map((id) => {
+                    const fiyat = avatarMeta(id).price;
+                    return (
+                      <Pressable
+                        key={id}
+                        onPress={() => setStoreAvatarId(id)}
+                        style={({ pressed }) => ({ width: 92, alignItems: 'center', gap: 6, backgroundColor: theme.card, borderRadius: 16, paddingVertical: 10, paddingHorizontal: 6, borderWidth: 2, borderColor: withAlpha(theme.border, 0.9), transform: [{ translateY: pressed ? 2 : 0 }] })}
+                      >
+                        <AvatarBadge avatarId={id} size={54} />
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.panelInnerFill, borderRadius: 999, borderWidth: 1, borderColor: theme.accentDark, paddingHorizontal: 8, paddingVertical: 2 }}>
+                          <GemIcon size={10} />
+                          <Text style={{ color: theme.gold, fontSize: 10, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>{fiyat}</Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            );
+          })()}
+
           <SectionHeader label={t('store.socialPackSection')} icon="people" />
           <View style={{ marginVertical: 5 }}>
             <GamePanel hero>
@@ -10521,7 +10555,17 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
       </GameModal>
 
       {buying ? <PurchaseOverlay /> : null}
-    </Screen>
+          <GameModal visible={!!storeAvatarId} onClose={() => setStoreAvatarId(null)} title="PROFİL FOTOĞRAFI" icon="person-circle">
+        <View style={{ alignItems: 'center', gap: 12 }}>
+          {storeAvatarId ? <AvatarBadge avatarId={storeAvatarId} size={92} /> : null}
+          <Text style={{ color: theme.muted, fontSize: 13, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>
+            Bu profil fotoğrafını {storeAvatarId ? avatarMeta(storeAvatarId).price : 0} elmasa alabilirsin.
+          </Text>
+          <Btn big kind="primary" icon="cart" label="SATIN AL" onPress={() => { if (storeAvatarId) actions.buyAvatar(storeAvatarId); setStoreAvatarId(null); }} />
+          <Btn kind="ghost" label="Vazgeç" onPress={() => setStoreAvatarId(null)} />
+        </View>
+      </GameModal>
+</Screen>
   );
 }, (p, n) =>
   // Sözleşme yukarıdaki blok yorumunda. Bekleyen kıtlık varken bilerek render'a
@@ -13431,6 +13475,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
                   selected={selected}
                   price={meta.price}
                   isNew={state.unseenCollection.avatars.includes(avatarId)}
+                  seasonOnly={SEASON_ONLY_AVATARS.has(avatarId)}
                   onPress={() => {
                     // Dokunmak "gördüm" demektir: kuşanılamasa bile rozet söner.
                     actions.markItemSeen('avatars', avatarId);
@@ -13783,8 +13828,12 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
 // Avatar grid tile — chunky kit card with press-lip physics, a spring-pop
 // selected check (ported from the retired bottom-sheet picker) and a gold
 // gem-price pill when locked. The frame stays crisp; only the badge dims.
-function AvatarTile({ avatarId, owned, selected, price, isNew = false, onPress }: {
-  avatarId: string; owned: boolean; selected: boolean; price: number; isNew?: boolean; onPress: () => void;
+// Sezon ödülü avatarları: elmasla SATILMAZ, yalnız sezon kapanışında verilir
+// (sunucudaki avatars.ts SEASON_REWARD_AVATARS ile aynı liste).
+const SEASON_ONLY_AVATARS = new Set(['pp35']);
+
+function AvatarTile({ avatarId, owned, selected, price, isNew = false, seasonOnly = false, onPress }: {
+  avatarId: string; owned: boolean; selected: boolean; price: number; isNew?: boolean; seasonOnly?: boolean; onPress: () => void;
 }) {
   const { ty, onIn, onOut } = usePressLip(2);
   const check = useRef(new Animated.Value(selected ? 1 : 0)).current;
@@ -13801,6 +13850,14 @@ function AvatarTile({ avatarId, owned, selected, price, isNew = false, onPress }
           <AvatarBadge avatarId={avatarId} size={58} locked={!owned} dimmed={!owned} ringColor={selected ? theme.primary : undefined} />
           {owned ? (
             <Text style={{ color: selected ? theme.primary : theme.muted, fontSize: 10, marginTop: 4, fontFamily: 'Poppins-ExtraBold' }}>{selected ? t('profile.inUse') : t('profile.ready')}</Text>
+          ) : seasonOnly ? (
+            /* SEZON ÖDÜLÜ: elmasla SATILMAZ (avatarPrice null döner). Fiyat
+               rozeti yerine kazanım etiketi gösterilir — yoksa kart fiyatsız
+               ve sebepsiz kilitli görünüyordu. */
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4, backgroundColor: withAlpha(theme.gold, 0.16), borderRadius: 999, borderWidth: 1, borderColor: withAlpha(theme.gold, 0.5), paddingHorizontal: 7, paddingVertical: 2 }}>
+              <Ionicons name="trophy" size={9} color={theme.gold} />
+              <Text style={{ color: theme.gold, fontSize: 8.5, fontFamily: 'Poppins-ExtraBold' }}>SEZON ÖDÜLÜ</Text>
+            </View>
           ) : (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4, backgroundColor: theme.panelInnerFill, borderRadius: 999, borderWidth: 1, borderColor: theme.accentDark, paddingHorizontal: 8, paddingVertical: 2 }}>
               <GemIcon size={11} />
