@@ -50,6 +50,33 @@ export function acquireModalSlot(animatedDismiss = true): () => void {
   };
 }
 
+// REKLAM DA BİR NATIVE SUNUMDUR (2026-09-01): AdMob kendi ekranını UIKit
+// sunum zincirine ekler, ama modalTraffic bunu bilmiyordu. Reklam ekrandayken
+// açılan her pencere (paket önerisi, sezon ödülü, seviye atlama…) tam da bu
+// dosyanın başında anlatılan donmayı yaratıyordu: görünmez modal, ölü dokunuşlar,
+// çökme kaydı yok. Oyuncu raporu: "Reklam çıkıyor ekran donuyor" (16 Pro Max).
+// Reklam artık slotu TUTAR; kapanana kadar sıradaki pencere sunulmaz.
+let adRelease: (() => void) | null = null;
+let adWatchdog: ReturnType<typeof setTimeout> | null = null;
+const AD_SLOT_WATCHDOG_MS = 180_000;
+
+export function holdModalSlotForNativeAd(): void {
+  if (adRelease) return;              // zaten tutuluyor (çift show koruması)
+  adRelease = acquireModalSlot(true);
+  // BEKÇİ: CLOSED hiç gelmezse (SDK hatası, uygulama arka plana atılıp
+  // öldürülürse) slot sonsuza dek tutulur ve TÜM pencereler ölür — donmayı
+  // düzeltirken daha kötüsünü yaratmamak için üst sınır şart.
+  if (adWatchdog) clearTimeout(adWatchdog);
+  adWatchdog = setTimeout(() => releaseModalSlotForNativeAd(), AD_SLOT_WATCHDOG_MS);
+}
+
+export function releaseModalSlotForNativeAd(): void {
+  if (adWatchdog) { clearTimeout(adWatchdog); adWatchdog = null; }
+  const r = adRelease;
+  adRelease = null;
+  if (r) { try { r(); } catch { /* slot zaten serbest */ } }
+}
+
 /**
  * Slot boşsa slotu AYIRIP geri çağırmayı hemen çalıştırır, doluysa sıraya alır.
  * Dönen fonksiyon beklemeyi iptal eder ya da ayrılmış slotu serbest bırakır.

@@ -13,6 +13,7 @@
 // reklam gösterme kararı tamamen istemci deneyimi meselesidir.
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { holdModalSlotForNativeAd, releaseModalSlotForNativeAd } from './modalTraffic';
 
 type AdsRemoteConfig = {
   interstitialEnabled: boolean;
@@ -204,7 +205,12 @@ export function interstitialDiagnostics(): Record<string, string | number | bool
   };
 }
 
-export function maybeShowInterstitial(hasSocialPack: boolean): boolean {
+/**
+ * `onClosed`: reklam KAPANDIKTAN sonra çalışır. Reklam ekrandayken pencere
+ * açmak iOS'ta sunum zincirini kilitler — çağıran taraf kör zamanlayıcı yerine
+ * bunu kullanmalıdır.
+ */
+export function maybeShowInterstitial(hasSocialPack: boolean, onClosed?: () => void): boolean {
   if (hasSocialPack) { lastReason = 'paket'; return false; }
   if (!InterstitialAd) { lastReason = 'modulyok'; return false; }
   if (!cfg) { lastReason = 'cfgyok'; return false; }
@@ -221,13 +227,20 @@ export function maybeShowInterstitial(hasSocialPack: boolean): boolean {
   preloaded = null;
   sinceAd = 0;
   void persist();
-  pre.ad.addAdEventListener(AdEventType.CLOSED, () => { preloadAfterIdle(); });
-  pre.ad.addAdEventListener(AdEventType.ERROR, () => { preloadNext(); });
+  pre.ad.addAdEventListener(AdEventType.CLOSED, () => {
+    releaseModalSlotForNativeAd();
+    preloadAfterIdle();
+    try { onClosed?.(); } catch { /* çağıranın hatası reklamı bozmasın */ }
+  });
+  pre.ad.addAdEventListener(AdEventType.ERROR, () => { releaseModalSlotForNativeAd(); preloadNext(); });
   pre.ad.addAdEventListener(AdEventType.OPENED, () => { openedAt = Date.now(); });
   pre.ad.addAdEventListener(AdEventType.PAID, () => { paidAt = Date.now(); });
   showAt = Date.now();
   openedAt = 0;
   paidAt = 0;
+  // Slot reklam SUNULMADAN önce tutulur: aradaki karede açılacak bir pencere
+  // bile kilitlenmeye yeter.
+  holdModalSlotForNativeAd();
   pre.ad.show();
   // Hangi birimle gösterildiği de kaydedilir: "AdMob'da görünmüyor" sorusunun
   // iki cevabı var — ya raporlama gecikmesi ya TEST birimi (test reklamları

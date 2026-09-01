@@ -34,7 +34,7 @@ import { GOOGLE_ANDROID_CLIENT_ID, GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } 
 import { submitPlayerFeedback, type PlayerFeedbackCategory } from './feedbackSubmit';
 import { testInterstitialNow } from './interstitial';
 import { GemIcon, GEM_COLOR } from './GemIcon';
-import { whenModalSlotFree } from './modalTraffic';
+import { holdModalSlotForNativeAd, releaseModalSlotForNativeAd, whenModalSlotFree } from './modalTraffic';
 import { dismissActiveInput } from './keyboardLifecycle';
 import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget, trophyTarget, setTrophyTarget, setTrophyRemeasure, remeasureTrophyTarget } from './gemTarget';
 import { Avatar } from './Avatar';
@@ -9301,11 +9301,15 @@ function useAdState(onReward?: () => void, enabled = true) {
       // Hazır reklam: anında göster; kapanınca sıradakini yüklemeye başla.
       preloadedRef.current = null;
       pre.ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, grantReward);
-      pre.ad.addAdEventListener(AdEventType.CLOSED, () => { preloadNext(); });
+      pre.ad.addAdEventListener(AdEventType.CLOSED, () => { releaseModalSlotForNativeAd(); preloadNext(); });
       pre.ad.addAdEventListener(AdEventType.ERROR, (error?: { code?: number; message?: string }) => {
+        releaseModalSlotForNativeAd();
         setAdError({ code: String(error?.code ?? '?'), message: error?.message ?? '' });
         preloadNext();
       });
+      // Ödüllü reklam çoğu zaman AÇIK bir pencereden başlatılır: reklam
+      // ekrandayken ikinci bir pencere açılırsa iOS sunum zinciri kilitlenir.
+      holdModalSlotForNativeAd();
       pre.ad.show();
       return;
     }
@@ -9320,16 +9324,19 @@ function useAdState(onReward?: () => void, enabled = true) {
     unsubs.push(ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, grantReward));
 
     unsubs.push(ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
+      holdModalSlotForNativeAd();
       ad.show();
     }));
 
     unsubs.push(ad.addAdEventListener(AdEventType.ERROR, (error?: { code?: number; message?: string }) => {
+      releaseModalSlotForNativeAd();
       cleanup();
       setAdError({ code: String(error?.code ?? '?'), message: error?.message ?? '' });
       preloadNext();
     }));
 
     unsubs.push(ad.addAdEventListener(AdEventType.CLOSED, () => {
+      releaseModalSlotForNativeAd();
       cleanup();
       preloadNext();
     }));

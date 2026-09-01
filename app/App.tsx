@@ -1240,7 +1240,13 @@ function AppRoot() {
       }
       if (modalBlockedRef.current) return;          // pencere kapanınca tekrar denenir
       if (Date.now() - modalClearedAtRef.current < 500) return; // native kapanış bitsin
-      if (maybeShowInterstitial(hasActiveSocialPack(state.profile))) {
+      if (maybeShowInterstitial(hasActiveSocialPack(state.profile), () => {
+        // REKLAM KAPANINCA (2026-09-01): eskiden kör 1200ms zamanlayıcıydı ve
+        // pencere reklam HÂLÂ EKRANDAYKEN açılıyordu — iOS'ta iki native sunum
+        // üst üste binince uygulama donuyor (oyuncu raporu, 16 Pro Max).
+        // Artık SDK'nın CLOSED olayına bağlı; 400ms native kapanışın bitmesi için.
+        setTimeout(() => setAdUpsellVisible(true), 400);
+      })) {
         reported = true;
         try { freezeReportRef.current('jank', `AD|${interstitialDiagnostics().adsLastReason}`.slice(0, 40), 0); } catch { /* önemsiz */ }
         // İKİNCİ RAPOR (2026-09-01): yukarıdaki satır yalnız show()'u ÇAĞIRDIĞIMIZI
@@ -1254,7 +1260,6 @@ function AppRoot() {
         // yeni izlemiş oyuncu, reklamsızlığın değerini TAM O ANDA hissediyor —
         // teklifin en anlamlı olduğu an burası. Reklam native pencere olduğu
         // için kapanışını beklemek şart (yoksa iOS iki pencereyi kilitler).
-        setTimeout(() => setAdUpsellVisible(true), 1200);
         adPendingRef.current = false;
         clearInterval(timer);
       }
