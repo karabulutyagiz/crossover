@@ -46,7 +46,7 @@ ${crumbs([
 <section class="wrap section-tight">
 <div class="hero-grid" style="align-items:center">
 <div>
-<span class="eyebrow reveal">Cluster: ortak futbolcu</span>
+<span class="eyebrow reveal">Ücretsiz · iOS</span>
 <h1 class="reveal d1" style="margin:14px 0 18px">Ortak futbolcu oyunu</h1>
 <p class="lede reveal d2">İki kulüp söylenir, ikisinde de oynamış futbolcuyu ilk bulan kazanır. Otobüste, kahvede ve grup sohbetlerinde yıllardır oynanan oyunun kurallı hâli — cevapları tartışmaya bırakmayan bir hakemle.</p>
 <div class="reveal d3" style="margin-top:24px">${storeButtons('tr', { ev: 'clusterA_install' })}</div>
@@ -111,9 +111,9 @@ ${band('tr', {
   return page({
     lang: 'tr',
     path: '/ortak-futbolcu-oyunu/',
-    title: 'Ortak Futbolcu Oyunu — Kuralları, Taktikleri ve Ücretsiz Oyna',
+    title: 'Ortak Futbolcu Bilme Oyunu — Ücretsiz Oyna, Canlı 1v1',
     description:
-      'Ortak futbolcu oyunu nasıl oynanır? Kuralları, cevabı hızlı bulma taktikleri ve gerçek transfer verisiyle çalışan ücretsiz mobil sürümü.',
+      'İki takımda da oynamış futbolcuyu rakibinden önce bul. Canlı 1v1 ortak futbolcu bilme oyunu, gerçek transfer verisiyle. iOS’ta ücretsiz, kurallar da burada.',
     body,
     jsonld: [
       ldBreadcrumb([
@@ -152,7 +152,7 @@ ${crumbs([
 ])}
 <section class="wrap section-tight">
 ${head({
-  eyebrow: 'Cluster: futbolcu bilme',
+  eyebrow: 'Ücretsiz · iOS',
   title: 'Futbolcu bilme oyunu',
   lede: 'Fotoğraftan tahmin, kariyerden tahmin, harften tahmin, ortak kulüpten tahmin… Formatlar farklı, ölçtükleri şey aynı değil. Hangisi sana göre?',
   tag: 'h1',
@@ -223,9 +223,9 @@ ${band('tr', {
   return page({
     lang: 'tr',
     path: '/futbolcu-bilme-oyunu/',
-    title: 'Futbolcu Bilme Oyunu — Formatlar, Zorluk ve Karşılıklı Oyna',
+    title: 'Futbolcu Bilme Oyunu — Ücretsiz Oyna, Gerçek Rakiple 1v1',
     description:
-      'Futbolcu bilme oyunu formatları karşılaştırıldı: fotoğraftan tahmin, kariyerden tahmin, harf oyunu ve ortak futbolcu. Hangisi neyi ölçüyor, hangisi daha zor?',
+      'Futbolcu bilme oyununu gerçek rakiplere karşı ücretsiz oyna: ortak futbolcu, harf-takım, ülke-takım ve kariyer modları. iOS’ta indir, hemen başla.',
     body,
     jsonld: [
       ldBreadcrumb([
@@ -264,7 +264,7 @@ ${crumbs([
 ])}
 <section class="wrap section-tight">
 ${head({
-  eyebrow: 'Cluster: futbol bilgisi',
+  eyebrow: 'Ücretsiz · iOS',
   title: 'Futbol bilgi oyunu',
   lede: 'Herkes futboldan anladığını söyler. Ölçmenin yolu, bilgiyi süre baskısı altında ve bir rakibe karşı kullanmaktır.',
   tag: 'h1',
@@ -314,9 +314,9 @@ ${band('tr', {
   return page({
     lang: 'tr',
     path: '/futbol-bilgi-oyunu/',
-    title: 'Futbol Bilgi Oyunu — Bilgini Gerçek Rakiplere Karşı Test Et',
+    title: 'Futbol Bilgi Oyunu — Ücretsiz Oyna, Canlı Rakiple Yarış',
     description:
-      'Futbol bilgini süre baskısı altında, canlı rakiplere karşı ölç. Arena basamaklarıyla seviyeni gör, kaçırdığın transferleri anında öğren.',
+      'Futbol bilgi oyununu ücretsiz oyna: canlı 1v1 düellolar, arena basamakları, kupalar. Bilgini süre baskısı altında gerçek rakiplere karşı ölç. iOS’ta ücretsiz.',
     body,
     jsonld: [
       ldBreadcrumb([

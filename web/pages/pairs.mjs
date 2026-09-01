@@ -128,7 +128,7 @@ ${playerTable(pair.players, A.name, B.name, 'tr')}
 <div class="panel pad-lg prose reveal">
 <h2 style="margin-top:0">${A.short} – ${B.short} bağlantısı</h2>
 <p>${context(pair, A, B)}</p>
-<p>Bu eşleşme oyunda çıktığında yukarıdaki isimlerden <strong>herhangi biri</strong> turu kazandırır — hepsini bilmek gerekmez, birini rakibinden önce yazmak yeterlidir. ${
+<p>Diğer ikililer için <a href="/ortak-futbolcu/">iki takımda da oynayan futbolcular</a> arşivine bakabilirsin. Bu eşleşme oyunda çıktığında yukarıdaki isimlerden <strong>herhangi biri</strong> turu kazandırır — hepsini bilmek gerekmez, birini rakibinden önce yazmak yeterlidir. ${
     pair.count <= 8
       ? 'Ortak isim sayısı düşük olduğu için bu, zor eşleşmelerden biri.'
       : 'Ortak isim sayısı yüksek olduğundan bu eşleşmede asıl belirleyici olan hız.'
@@ -256,8 +256,8 @@ ${band('tr', {
   return page({
     lang: 'tr',
     path,
-    title: 'İki Takımda da Oynamış Futbolcular — Kulüp Eşleşmeleri Arşivi',
-    description: `${pairs.length} kulüp eşleşmesi için ortak futbolcu listesi. Galatasaray, Fenerbahçe, Beşiktaş, Trabzonspor ve Avrupa devlerinde forma giymiş isimler, sezonlarıyla.`,
+    title: 'İki Takımda da Oynayan Futbolcular — Ortak Futbolcu Arşivi',
+    description: `İki takımda da oynayan futbolcular: ${pairs.length} kulüp eşleşmesinin tam ortak futbolcu listesi. Galatasaray, Fenerbahçe, Beşiktaş ve Avrupa devlerinden isimler, sezonlarıyla.`,
     body,
     jsonld: [
       ldBreadcrumb([

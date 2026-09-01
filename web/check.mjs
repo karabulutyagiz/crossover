@@ -26,7 +26,9 @@ function walk(dir, out = []) {
 }
 
 const files = walk(OUT);
-const htmls = files.filter((f) => f.endsWith('.html'));
+// Google Search Console sahiplik dosyası bir SAYFA değildir: tek satır düz
+// metin, .html uzantısıyla servis edilmesi Google'ın şartı. Denetimden muaf.
+const htmls = files.filter((f) => f.endsWith('.html') && !/\/google[0-9a-f]+\.html$/.test(f));
 
 // Which URL paths actually exist on disk.
 const exists = (urlPath) => {
