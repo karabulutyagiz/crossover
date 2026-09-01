@@ -157,6 +157,7 @@ function footer(lang) {
           [
             t.learn,
             [
+              ['/3-2-1-oyunu/', '3-2-1 oyunu'],
               ['/ortak-futbolcu-oyunu/', 'Ortak futbolcu oyunu'],
               ['/futbolcu-bilme-oyunu/', 'Futbolcu bilme oyunu'],
               ['/futbol-bilgi-oyunu/', 'Futbol bilgi oyunu'],
@@ -327,6 +328,7 @@ export const ldOrganization = () => ({
   '@type': 'Organization',
   '@id': `${SITE}/#organization`,
   name: BRAND,
+  alternateName: ['Crossover', 'Crossover Futbol', 'Crossover Football', 'COF'],
   url: SITE,
   logo: `${SITE}/img/logo-mark.png`,
   email: SUPPORT_MAIL,
@@ -338,6 +340,7 @@ export const ldWebSite = (lang) => ({
   '@type': 'WebSite',
   '@id': `${SITE}/#website`,
   name: BRAND,
+  alternateName: ['Crossover', 'Crossover Futbol'],
   url: SITE,
   inLanguage: lang === 'tr' ? 'tr-TR' : 'en-US',
   publisher: { '@id': `${SITE}/#organization` },

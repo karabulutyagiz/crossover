@@ -48,6 +48,7 @@ ${crumbs([
 <div>
 <span class="eyebrow reveal">Ücretsiz · iOS</span>
 <h1 class="reveal d1" style="margin:14px 0 18px">Ortak futbolcu oyunu</h1>
+<p class="reveal d1" style="margin:-8px 0 12px;color:var(--muted,#8FA5C8);font-weight:600">İki takımda oynayan futbolcular oyunu — <a href="/3-2-1-oyunu/">3-2-1 oyunu</a> diye de bilinir.</p>
 <p class="lede reveal d2">İki kulüp söylenir, ikisinde de oynamış futbolcuyu ilk bulan kazanır. Otobüste, kahvede ve grup sohbetlerinde yıllardır oynanan oyunun kurallı hâli — cevapları tartışmaya bırakmayan bir hakemle.</p>
 <div class="reveal d3" style="margin-top:24px">${storeButtons('tr', { ev: 'clusterA_install' })}</div>
 </div>
@@ -332,6 +333,94 @@ ${band('tr', {
 // ---------------------------------------------------------------------------
 // Full FAQ page
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// CLUSTER D — 3-2-1 oyunu (2026-09-01)
+// "321 oyunu / 321 futbol oyunu" araması Ağustos'ta patladı (YouTube'daki
+// Htalks–Erman Yaşar segmenti) ve etrafında bir klon dalgası oluştu:
+// 321football.com, 321guess.com, Play'de "321 Football!", App Store'da iki
+// ayrı "321" uygulaması — hepsi Ağustos 2026 çıkışlı. Aranan şey TAM OLARAK
+// bizim oyunumuz; adında "321" geçmeyen tek ciddi oyuncu biziz. Bu sayfa o
+// aramayı formatın adıyla karşılar; kişi adı (Htalks/Erman Yaşar) bilerek
+// kullanılmaz — format adı jeneriktir, kişi markası değildir.
+export function ucIkiBirOyunu({ heroPairs }) {
+  const FAQ = [
+    [
+      '3-2-1 oyunu nedir?',
+      '<p>İki takım söylenir, geri sayım başlar: <strong>3… 2… 1…</strong> Süre dolmadan iki takımda da forma giymiş bir futbolcunun adını söylemen gerekir. YouTube ve TikTok’ta futbol programlarının yarışma segmenti olarak milyonlarca kez izlendi; aslı, yıllardır sohbetlerde oynanan ortak futbolcu oyunudur.</p>',
+    ],
+    [
+      '3-2-1 oyunu nasıl oynanır?',
+      '<p>Klasik hâlinde bir kişi iki kulüp söyler, rakip 3 saniye içinde ortak futbolcuyu bulur; bilemezse sıra el değiştirir. CrossOver Football’da aynı format kurallıdır: canlı rakiple eşleşirsin, süre herkese eşit işler ve cevabı gerçek kariyer kayıtları doğrular — “o orada oynamadı ki” tartışması yoktur.</p>',
+    ],
+    [
+      '321 futbol oyunu telefonda oynanır mı?',
+      '<p>Oynanır. CrossOver Football iOS’ta ücretsizdir: gerçek zamanlı 1v1 maçlar, arkadaşınla oda kodu üzerinden özel maç ve pratik için bot maçı vardır. Cevaplar gerçek transfer arşivinden doğrulanır.</p>',
+    ],
+    [
+      'Cevabı bilemezsem ne olur?',
+      '<p>Sohbette oynarken el değiştirir. CrossOver Football’da tur rakibe gider ama maç bitmez: 3 turu ilk alan kazanır, her turda yeni bir eşleşme açılır ve maç sonunda bilemediğin eşleşmenin tüm doğru cevaplarını görürsün.</p>',
+    ],
+  ];
+
+  const body = `
+${crumbs([
+  ['Ana Sayfa', '/'],
+  ['3-2-1 oyunu', '/3-2-1-oyunu/'],
+])}
+<section class="wrap section-tight">
+<div class="hero-grid" style="align-items:center">
+<div>
+<span class="eyebrow reveal">Ücretsiz · iOS</span>
+<h1 class="reveal d1" style="margin:14px 0 18px">3-2-1 oyunu</h1>
+<p class="lede reveal d2">3… 2… 1… İki takımda da oynamış futbolcuyu süre dolmadan söyle. Videolarda izlediğin o yarışmanın kurallı, canlı rakipli hâli — cevabı gerçek kariyer arşivi doğrular, tartışma biter.</p>
+<div class="reveal d3" style="margin-top:24px">${storeButtons('tr', { ev: 'cluster321_install' })}</div>
+</div>
+<div class="hero-art">
+${duel({ ...heroPairs[0], hint: 'Gerçek bir tur: cevap kariyer arşivinden doğrulandı.' })}
+</div>
+</div>
+</section>
+
+<section class="section-tight">
+<div class="wrap wrap-narrow">
+<div class="panel pad-lg prose reveal">
+<h2 style="margin-top:0">Videodaki oyun, elinde</h2>
+<p>3-2-1 formatını yarışma programlarından ve kısa videolardan biliyorsun: iki takım, üç saniye, bir isim. Sohbette oynarken iki sorun çıkar — süreyi kimse dürüst tutmaz ve cevabın doğruluğu tartışmaya kalır. CrossOver Football ikisini de çözer: süre sunucuda işler, cevap <a href="/ortak-futbolcu/">iki takımda da oynayan futbolcular arşivinden</a> doğrulanır.</p>
+<p>Isınmak istersen <a href="/ortak-futbolcu-bulucu/">ortak futbolcu bulucu</a> ile herhangi iki takımın kesişimini görebilir, <a href="/ortak-futbolcu-oyunu/">ortak futbolcu oyununun kurallarına</a> bakabilirsin.</p>
+</div>
+</div>
+</section>
+
+<section class="section-tight">
+<div class="wrap wrap-narrow">
+${head({ eyebrow: 'SSS', title: '3-2-1 oyunu hakkında' })}
+${faq(FAQ)}
+</div>
+</section>
+
+${band('tr', {
+  title: '3… 2… 1… Başla',
+  lede: 'Geri sayımı videoda izleme, kendin oyna. iOS’ta ücretsiz.',
+})}`;
+
+  return page({
+    lang: 'tr',
+    path: '/3-2-1-oyunu/',
+    title: '3-2-1 Oyunu — İki Takımda Oynayan Futbolcuyu Bul | Ücretsiz',
+    description:
+      '321 futbol oyunu: iki takım, 3 saniye, bir isim. Videolarda izlediğin 3-2-1 oyununu canlı rakiplere karşı ücretsiz oyna — cevapları gerçek kariyer arşivi doğrular.',
+    body,
+    jsonld: [
+      ldBreadcrumb([
+        ['Ana Sayfa', '/'],
+        ['3-2-1 oyunu', '/3-2-1-oyunu/'],
+      ]),
+      ldFaq(FAQ),
+      ldApp('tr'),
+    ],
+  });
+}
+
 export function sss() {
   const GROUPS = [
     [

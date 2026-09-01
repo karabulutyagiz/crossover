@@ -107,6 +107,7 @@ emit('/ortak-futbolcu-oyunu/', seo.ortakFutbolcuOyunu({ featured, clubs, heroPai
 });
 emit('/futbolcu-bilme-oyunu/', seo.futbolcuBilmeOyunu(), { priority: 0.9 });
 emit('/futbol-bilgi-oyunu/', seo.futbolBilgiOyunu({ totals }), { priority: 0.9 });
+emit('/3-2-1-oyunu/', seo.ucIkiBirOyunu({ heroPairs }), { priority: 0.9 });
 emit('/sss/', seo.sss(), { priority: 0.7 });
 
 // ---- guides ----------------------------------------------------------------
