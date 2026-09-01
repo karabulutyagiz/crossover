@@ -42,6 +42,13 @@ const STATE_KEY = '@crossover_interstitial_v1';
 let cfg: AdsRemoteConfig | null = null;
 let totalMatches = 0;
 let sinceAd = 0;
+// OTURUM-YEREL sayaç (2026-09-01, bilerek KALICI DEĞİL): totalMatches/sinceAd
+// AsyncStorage'da yaşar; önceki oturumdan sinceAd=2 ile çıkan oyuncu bugün İLK
+// maçını bitirince 3'e tamamlanıyor ve "uygulamayı açtım, bir maç oynadım,
+// reklam yedim" deneyimi doğuyordu (oyuncu raporu: ilk maçtan çıkıp direkt
+// gidiyorlar). Oturumun ilk maçından sonra reklam ASLA çıkmaz.
+let sessionMatches = 0;
+const SESSION_MIN_MATCHES = 2;
 let hydrated = false;
 let preloaded: { ad: any; loaded: boolean } | null = null;
 
@@ -117,6 +124,7 @@ export function configureInterstitial(remote: AdsRemoteConfig | null | undefined
 export function recordMatchEnd(): void {
   totalMatches += 1;
   sinceAd += 1;
+  sessionMatches += 1;
   void persist();
 }
 
@@ -184,12 +192,21 @@ let lastReason = 'henüz denenmedi';
 let showAt = 0;
 let openedAt = 0;
 let paidAt = 0;
-/** show() sonrası kısa kod: sunum ve ücretlendirme gerçekten oldu mu. */
+let closedAt = 0;
+/**
+ * show() sonrası kısa kod: sunum, ücretlendirme ve EKRANDA KALMA SÜRESİ.
+ *
+ * Süre şart (oyuncu raporu 2026-09-01: "reklam çıkıyor ama izlenmiyor, direkt
+ * gidiyor"): 1 saniyede kapanan reklam BİZİM hatamızdır (sunum çakışması,
+ * süresi geçmiş reklam), 10 saniyede kapanan ise oyuncunun tercihidir. İkisinin
+ * çaresi bambaşka ve şimdiye kadar ölçmüyorduk.
+ */
 export function interstitialPresentation(): string {
   if (!showAt) return 'denenmedi';
-  if (paidAt >= showAt) return 'ACILDI+ODENDI';
-  if (openedAt >= showAt) return 'ACILDI+ODENMEDI';
-  return 'ACILMADI';
+  const acildi = openedAt >= showAt;
+  if (!acildi) return 'ACILMADI';
+  const sure = closedAt >= openedAt ? `${Math.round((closedAt - openedAt) / 1000)}s` : 'acik';
+  return `${paidAt >= showAt ? 'ACILDI+ODENDI' : 'ACILDI+ODENMEDI'}|${sure}`;
 }
 export function interstitialDiagnostics(): Record<string, string | number | boolean> {
   return {
@@ -200,6 +217,7 @@ export function interstitialDiagnostics(): Record<string, string | number | bool
     adsPreloaded: !!preloaded?.loaded,
     adsTotalMatches: totalMatches,
     adsSinceAd: sinceAd,
+    adsSessionMatches: sessionMatches,
     adsLastReason: lastReason,
     adsPresentation: interstitialPresentation(),
   };
@@ -222,12 +240,16 @@ export function maybeShowInterstitial(hasSocialPack: boolean, onClosed?: () => v
   if (sinceAd < Math.max(1, cfg.interstitialEveryMatches)) {
     lastReason = `sira ${sinceAd}/${cfg.interstitialEveryMatches}`; return false;
   }
+  if (sessionMatches < SESSION_MIN_MATCHES) {
+    lastReason = `oturum ${sessionMatches}/${SESSION_MIN_MATCHES}`; return false;
+  }
   const pre = preloaded;
   if (!pre?.loaded) { lastReason = 'yuklenmedi'; preloadNext(); return false; }
   preloaded = null;
   sinceAd = 0;
   void persist();
   pre.ad.addAdEventListener(AdEventType.CLOSED, () => {
+    closedAt = Date.now();
     releaseModalSlotForNativeAd();
     preloadAfterIdle();
     try { onClosed?.(); } catch { /* çağıranın hatası reklamı bozmasın */ }
@@ -238,10 +260,20 @@ export function maybeShowInterstitial(hasSocialPack: boolean, onClosed?: () => v
   showAt = Date.now();
   openedAt = 0;
   paidAt = 0;
+  closedAt = 0;
   // Slot reklam SUNULMADAN önce tutulur: aradaki karede açılacak bir pencere
   // bile kilitlenmeye yeter.
   holdModalSlotForNativeAd();
   pre.ad.show();
+  // SUNUM BEKÇİSİ (2026-09-01): show() çağrılıp OPENED hiç gelmezse sunum
+  // native tarafta başarısız olmuştur (oyuncu raporu: "reklam çıkmadı ama sesi
+  // ana ekranda geldi"). CLOSED da gelmeyeceği için slot 180sn bekçisine kadar
+  // tutulur ve TÜM pencereler o süre ölürdü — başarısız sunumda slot 8sn'de
+  // bırakılır ki oyun akışı reklamsız devam etsin.
+  const showStamp = showAt;
+  setTimeout(() => {
+    if (openedAt < showStamp) { lastReason = 'ACILAMADI-slot-birakildi'; releaseModalSlotForNativeAd(); preloadAfterIdle(); }
+  }, 8_000);
   // Hangi birimle gösterildiği de kaydedilir: "AdMob'da görünmüyor" sorusunun
   // iki cevabı var — ya raporlama gecikmesi ya TEST birimi (test reklamları
   // istatistiklere HİÇ yansımaz). Birim son 4 hanesi bunu tahmin etmeden ayırır.

@@ -1177,6 +1177,15 @@ function AppRoot() {
     return () => { stop(); sub.remove(); };
   }, []);
   const adPendingRef = useRef(false); // reklam bekleyişi sürüyor mu (effect yeniden çalışsa da korunur)
+  // CANLI PROFİL (2026-09-01 — paketliye reklam hatası): aşağıdaki zamanlayıcı
+  // 20 sn yaşar ve kapanışı state.profile'ı KURULDUĞU andaki haliyle hapseder;
+  // adPendingRef koruması yüzünden sonraki effect çalışmaları erken döner, eski
+  // zamanlayıcı eski (hatta null — yeniden bağlanma anı) profille karar verirdi.
+  // hasActiveSocialPack(null)=false olduğu için Sosyal Paketli oyuncuya show()
+  // çağrıldı (oyuncu raporu: "reklam çıkmadı ama sesi geldi"). Karar artık her
+  // tikte ref üzerinden GÜNCEL profille verilir; profil o an yoksa gösterilmez.
+  const adProfileRef = useRef(state.profile);
+  adProfileRef.current = state.profile;
   const adPrevPhaseRef = useRef(state.phase);
   const adPrevXoxOverRef = useRef(state.xoxOver);
   useEffect(() => {
@@ -1240,7 +1249,9 @@ function AppRoot() {
       }
       if (modalBlockedRef.current) return;          // pencere kapanınca tekrar denenir
       if (Date.now() - modalClearedAtRef.current < 500) return; // native kapanış bitsin
-      if (maybeShowInterstitial(hasActiveSocialPack(state.profile), () => {
+      const guncelProfil = adProfileRef.current;
+      if (!guncelProfil) return;                    // profil belirsizken reklam riske girmez
+      if (maybeShowInterstitial(hasActiveSocialPack(guncelProfil), () => {
         // REKLAM KAPANINCA (2026-09-01): eskiden kör 1200ms zamanlayıcıydı ve
         // pencere reklam HÂLÂ EKRANDAYKEN açılıyordu — iOS'ta iki native sunum
         // üst üste binince uygulama donuyor (oyuncu raporu, 16 Pro Max).
