@@ -28,6 +28,8 @@ import { clubPopularityTier, isTurkishClub } from '../game/clubPopularity.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '../../..');
+// Açıklamalardaki mağaza bağlantısı — tek yerde dursun.
+const APP_STORE_URL = 'https://apps.apple.com/tr/app/crossover-football/id6778542426';
 const FONT_DIR = join(REPO_ROOT, 'app/assets/fonts');
 const FONTS = ['Poppins-Black.ttf', 'Poppins-ExtraBold.ttf', 'Poppins-SemiBold.ttf'].map((f) => join(FONT_DIR, f));
 
@@ -91,7 +93,17 @@ function shortClubName(name: string): string {
     .replace(/\s{2,}/g, ' ').trim() || name;
 }
 
+// TEK DENEME YETMİYOR (2026-09-01): 5 klipli toplu üretimde kaynak sunucu hız
+// sınırına takılıyor ve cevap kartı sessizce "?" ile çıkıyordu — aynı çift tek
+// başına çalıştırılınca sorunsuz geliyor. Bir kez daha, kısa beklemeyle denenir.
 async function fetchImage(url: string): Promise<{ mime: string; b64: string } | null> {
+  const ilk = await fetchImageOnce(url);
+  if (ilk) return ilk;
+  await new Promise((r) => setTimeout(r, 900));
+  return fetchImageOnce(url);
+}
+
+async function fetchImageOnce(url: string): Promise<{ mime: string; b64: string } | null> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { 'user-agent': 'CrossoverClipMaker/1.0' } });
     if (!res.ok) return null;
@@ -314,14 +326,35 @@ async function producePair(
     }
   }
   const playerImg = top.imageUrl ? await fetchImage(top.imageUrl) : null;
+  // Fotoğrafsız cevap kartı "?" ile çıkar — yayına gitmeden ÖNCE bilinmeli.
+  if (!playerImg) console.warn(`  ! ${top.name}: cevap kartı fotoğrafsız (${top.imageUrl ? 'indirilemedi: ' + top.imageUrl.slice(0, 70) : 'DB\'de foto yok'})`);
   const card: CardData = { teamA: { name: teamA.name, img: imgA }, teamB: { name: teamB.name, img: imgB } };
 
   for (let n = args.countdown; n >= 1; n--) renderPng(questionSvg(card, n), join(dir, `q${n}.png`));
   renderPng(answerSvg(card, top.name, playerImg, answers.length - 1), join(dir, 'answer.png'));
 
+  // METİNLER PLATFORMA GÖRE AYRI (2026-09-01): tek bir TikTok caption'ı vardı ve
+  // aranan terimi HİÇ içermiyordu. "3-2-1 oyunu" araması Google'da tamamen
+  // videoyla dolu (ilk 20'de tek web sitesi yok) — o listeye girmenin tek yolu
+  // videoyu o adla yayınlamak. Sıralamayı YouTube tuttuğu için başlık ve
+  // açıklama ayrıca üretilir; YouTube başlığı sıralamada caption'dan ağır basar.
+  const kisaA = shortClubName(teamA.name);
+  const kisaB = shortClubName(teamB.name);
+  const digerSayi = answers.length - 1;
   writeFileSync(join(dir, 'caption.txt'),
-    `Bu iki takımda da oynayan futbolcuyu ${args.countdown} saniyede bil! ⚽ ${shortClubName(teamA.name)} × ${shortClubName(teamB.name)} — cevabı ve bulduğun DİĞER isimleri yorumlara yaz 👇\n\n`
-    + `#futbol #futbolbilgisi #quiz #futbolcu #tahmin #kesfet #crossoverfootball\n`);
+    `── YOUTUBE SHORTS BAŞLIĞI ──\n`
+    + `3-2-1 Oyunu | ${kisaA} × ${kisaB} — Ortak Futbolcu Kim? #shorts\n\n`
+    + `── YOUTUBE AÇIKLAMASI ──\n`
+    + `${kisaA} ve ${kisaB} formalarının ikisini de giymiş futbolcuyu ${args.countdown} saniyede bulabilir misin?\n`
+    + (digerSayi > 0 ? `Bu eşleşmede toplam ${answers.length} doğru cevap var — kaçını biliyorsun?\n` : '')
+    + `\n3-2-1 oyununun (iki takımda da oynayan futbolcuyu bulma oyunu) kurallı hâli: CrossOver Football.\n`
+    + `Canlı 1v1, gerçek transfer verisiyle doğrulanan cevaplar. iOS'ta ücretsiz:\n`
+    + `${APP_STORE_URL}\n\n`
+    + `#shorts #321oyunu #ortakfutbolcu #futbol #futbolbilgisi\n\n`
+    + `── TIKTOK / REELS ──\n`
+    + `3-2-1 oyunu! Bu iki takımda da oynayan futbolcuyu ${args.countdown} saniyede bil ⚽ ${kisaA} × ${kisaB}`
+    + `${digerSayi > 0 ? ` — ${answers.length} doğru cevabı var` : ''}, bulduğun isimleri yorumlara yaz 👇\n\n`
+    + `#321oyunu #ortakfutbolcu #futbol #futbolbilgisi #quiz #futbolcu #tahmin #kesfet #crossoverfootball\n`);
 
   if (args.video) {
     try { buildVideo(dir, args.countdown); } catch (err) {
