@@ -73,6 +73,7 @@ import {
   MatchHistoryScreen,
   SearchingScreen,
   StoreScreen,
+  AdBlockMark,
   CollectionScreen,
   FriendsScreen,
   DiamondCelebration,
@@ -3277,14 +3278,25 @@ function AppRoot() {
         coach
       >
         <View style={{ alignItems: 'center', gap: 12 }}>
-          <Text style={{ fontSize: 40 }}>✨</Text>
+          {/* Başlıkta da mühür: pencerenin vaadi "reklam yok" — emoji yerine
+              işaretin kendisi duruyor (kullanıcı isteği 2026-09-01). */}
+          <AdBlockMark size={54} />
           <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
             Sosyal Paket ile reklam görmezsin ve tüm özel modlar açılır.
           </Text>
           <View style={{ alignSelf: 'stretch', gap: 7 }}>
-            {['🚫  Reklam yok', '🇹🇷  Ülke-Takım', '🔤  Harf-Takım', '⭕  Futbol XOX', '🔀  Çöz Kazan'].map((satir) => (
-              <View key={satir} style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: withAlpha(theme.text, 0.055), borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }}>
-                <Text style={{ color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold' }}>{satir}</Text>
+            {([
+              { key: 'ads', label: 'Reklam yok', color: theme.danger },
+              { key: 'country-team', label: 'Ülke-Takım', icon: 'flag' as IoniconName, color: theme.blue },
+              { key: 'letter-team', label: 'Harf-Takım', icon: 'text' as IoniconName, color: theme.purple },
+              { key: 'xox', label: 'Futbol XOX', icon: 'grid' as IoniconName, color: theme.gold },
+              { key: 'cozkazan', label: 'Çöz Kazan', icon: 'shuffle' as IoniconName, color: theme.purple },
+            ]).map((satir) => (
+              <View key={satir.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: withAlpha(theme.text, 0.055), borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }}>
+                <View style={{ width: 22, alignItems: 'center' }}>
+                  {satir.icon ? <Ionicons name={satir.icon} size={17} color={satir.color} /> : <AdBlockMark size={20} />}
+                </View>
+                <Text style={{ color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold' }}>{satir.label}</Text>
               </View>
             ))}
           </View>

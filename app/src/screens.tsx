@@ -809,6 +809,20 @@ function ModalCrest({ ring }: { ring: string }) {
   );
 }
 
+// REKLAM ENGEL MÜHRÜ (2026-09-01): "reklamsız" satırında ✨/🚫 emojisi
+// duruyordu — tasarım kuralı ham emojiyi yasaklıyor ve emoji cihazdan cihaza
+// değişiyor. Evrensel işaret: ADS yazısının üstünden geçen çapraz çubuk.
+export function AdBlockMark({ size = 22, color }: { size?: number; color?: string }) {
+  const c = color ?? theme.danger;
+  const kalinlik = Math.max(2, size * 0.1);
+  return (
+    <View style={{ width: size, height: size, borderRadius: size / 2, borderWidth: kalinlik, borderColor: c, alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ color: c, fontFamily: 'Poppins-Black', fontSize: size * 0.34, letterSpacing: -0.3 }}>ADS</Text>
+      <View pointerEvents="none" style={{ position: 'absolute', width: size - kalinlik, height: kalinlik, backgroundColor: c, borderRadius: kalinlik, transform: [{ rotate: '-45deg' }] }} />
+    </View>
+  );
+}
+
 export function GameModal({ visible, onClose, onExited, onShown, title, icon, danger = false, coach = false, dismissible = true, crest = true, children }: {
   // onShown: native sunum GERÇEKTEN tamamlandığında (RN Modal onShow) çağrılır.
   // "Bu pencere sunulduktan SONRA sunulmalı" el sıkışmaları (ör. StoreKit
