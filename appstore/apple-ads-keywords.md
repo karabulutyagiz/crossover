@@ -23,6 +23,10 @@ Amaç: tam bizim oyunu arayan kişi. Hacim düşük ama niyet mükemmel.
 | ortak futbolcu | Exact | $0.20 |
 | iki takımda oynayan | Exact | $0.20 |
 | iki takımda da oynadı | Exact | $0.20 |
+| 321 oyunu | Exact | $0.20 |
+| 321 futbol oyunu | Exact | $0.20 |
+| 3 2 1 oyunu | Exact | $0.20 |
+| 321 ortak futbolcu | Exact | $0.25 — rakip marka adı DEĞİL, jenerik format+tür; adında 321 geçen 3 rakip bu sorguda organikte önde, reklam tek geçiş yolu |
 | futbolcu tahmin oyunu | Exact | $0.25 |
 | futbolcu tahmin | Exact | $0.25 |
 | futbolcu bilme oyunu | Exact | $0.20 |
