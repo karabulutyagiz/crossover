@@ -170,10 +170,31 @@ export function audienceBiasMultiplier(name: string, favoriteDomains: readonly K
   return m;
 }
 
+// KULÜP EŞLEŞTİRME (2026-09-01 düzeltildi): eski hâli `key.includes(n)` ile
+// SERBEST alt-dizgi araması yapıyordu ve amatör kulüpleri Avrupa devleriyle
+// karıştırıyordu:
+//   'Barcelona EC' (Brezilya amatör) → 'barcelona' içeriyor → GLOBAL_GIANT
+//   'Berekum Chelsea FC' (Gana)      → 'chelsea'   içeriyor → GLOBAL_GIANT
+//   'Inter Detroit', 'Manchester United U21', 'Internacional de Lages' …
+// Sonuç: prestij tablosunun tepesi sahte devlerle doluyor, players.fame bundan
+// hesaplandığı için Çöz Kazan'ın "çok ünlü" havuzuna bilinmedik isimler
+// giriyordu (Mehmet Yılmaz'ın Messi'nin önünde çıkması bu yüzdendi).
+//
+// Yeni kural: TAM eşleşme, ya da yalnız yaygın kulüp EKLERİ kadar fark
+// ('fc barcelona' ✓). Ek listesinde olmayan tek bir kelime bile (ec, u21,
+// detroit, berekum, lages…) eşleşmeyi düşürür.
+const CLUB_SUFFIXES = new Set(['fc', 'cf', 'sc', 'ac', 'as', 'ss', 'sk', 'club', 'cd', 'ca', 'afc', 'cfc']);
+
 function matchesAny(key: string, names: readonly string[]): boolean {
   return names.some((name) => {
     const n = normalize(name);
-    return key === n || key.includes(n) || n.includes(key);
+    if (key === n) return true;
+    const uzun = key.length >= n.length ? key : n;
+    const kisa = key.length >= n.length ? n : key;
+    if (!uzun.startsWith(kisa) && !uzun.endsWith(kisa)) return false;
+    const fark = (uzun.startsWith(kisa) ? uzun.slice(kisa.length) : uzun.slice(0, uzun.length - kisa.length)).trim();
+    if (!fark) return true;
+    return fark.split(/\s+/).every((w) => CLUB_SUFFIXES.has(w));
   });
 }
 

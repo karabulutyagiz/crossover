@@ -10,8 +10,14 @@
 // (server) npx tsx src/cli/populate-fame.ts
 import { pool } from '../db/pool.ts';
 
+// BİRLEŞMİŞ KAYIT FİLTRESİ (2026-09-01): aynı isimli onlarca farklı oyuncu tek
+// kayıtta birleşmiş olabiliyor — 'Mehmet Yılmaz' 163 kulüp kaydıyla fame 1375
+// alıp Messi'yi (271) beşe katlıyor ve Çöz Kazan'ın "çok ünlü" havuzunu
+// zehirliyordu. Gerçek bir kariyerde ~15 kulüp olur; üstü veri hatasıdır ve
+// fame'i 0 sayılır (havuzlara hiç girmez).
 const { rowCount } = await pool.query(`
   UPDATE players p SET fame =
+    CASE WHEN (SELECT count(*) FROM player_clubs pc2 WHERE pc2.player_id = p.id) > 15 THEN 0 ELSE
     COALESCE((
       SELECT SUM(
         c.prestige
@@ -23,6 +29,7 @@ const { rowCount } = await pool.query(`
       WHERE pc.player_id = p.id
     ), 0)
     + COALESCE(p.market_value, 0) / 5000000.0
+    END
 `);
 console.log(`fame (yeni tanınırlık metriği) güncellendi: ${rowCount} oyuncu`);
 

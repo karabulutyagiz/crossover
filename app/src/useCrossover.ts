@@ -192,7 +192,7 @@ export interface GameState {
   // Bekleyen sezon ödülü: sezon dönüşünde OTOMATİK verilmez; oyuncu
   // "ÖDÜLLERİ TOPLA" düğmesine bastığında tanımlanır.
   seasonRewardPending: Extract<ServerMsg, { type: 'season_reward_pending' }> | null;
-  unseenCollection: { emotes: string[]; cosmetics: string[]; powers: string[] };
+  unseenCollection: { emotes: string[]; cosmetics: string[]; powers: string[]; avatars: string[]; frames: string[] };
   // Maç ortasında ÇIKIŞ (forfeit) = kaybetme. Kupa cezası (trophy_update) reset
   // SONRASI gelir; onunla kaybetme popup'ı gösterilir. null = gösterilecek bir şey yok.
   forfeitLoss: { delta: number; trophies: number; arena: ArenaView; youScore: number; oppScore: number; opponentName: string; reason?: 'cheat' } | null;
@@ -389,7 +389,7 @@ export const initialState: GameState = {
   tournamentOver: null,
   maintenance: null,
   seasonRewardPending: null,
-  unseenCollection: { emotes: [], cosmetics: [], powers: [] },
+  unseenCollection: { emotes: [], cosmetics: [], powers: [], avatars: [], frames: [] },
   xoxOver: null,
   cozkazan: null,
   cozkazanOver: null,
@@ -452,11 +452,11 @@ type Action =
   | { type: '_set_game_options'; options: GameOptions | null }
   | { type: '_clear_emote'; playerId: string }
   | { type: '_unseen_load'; value: { emotes?: unknown; cosmetics?: unknown; powers?: unknown } }
-  | { type: '_item_seen'; tab: 'emotes' | 'cosmetics' | 'powers'; id: string }
+  | { type: '_item_seen'; tab: 'emotes' | 'cosmetics' | 'powers' | 'avatars' | 'frames'; id: string }
   | { type: '_clear_support' }
   | { type: '_clear_tournament_over' }
   | { type: '_clear_tournament_ready' }
-  | { type: '_col_seen'; tab: 'emotes' | 'cosmetics' | 'powers' }
+  | { type: '_col_seen'; tab: 'emotes' | 'cosmetics' | 'powers' | 'avatars' | 'frames' }
   | { type: '_forfeit_loss'; delta: number; trophies: number; arena: ArenaView; youScore: number; oppScore: number; opponentName: string; reason?: 'cheat' }
   | { type: '_clear_forfeit_loss' };
 
@@ -702,15 +702,15 @@ function reducer(state: GameState, action: Action): GameState {
       // kayıt sessizce boşa düşer — tek maliyeti eski rozetin sönmesidir.
       const v = (action as { value?: Record<string, unknown> }).value ?? {};
       const ids = (x: unknown): string[] => (Array.isArray(x) ? x.filter((s): s is string => typeof s === 'string') : []);
-      return { ...state, unseenCollection: { emotes: ids(v.emotes), cosmetics: ids(v.cosmetics), powers: ids(v.powers) } };
+      return { ...state, unseenCollection: { emotes: ids(v.emotes), cosmetics: ids(v.cosmetics), powers: ids(v.powers), avatars: ids(v.avatars), frames: ids(v.frames) } };
     }
     case '_col_seen': {
-      const tab = (action as { tab: 'emotes' | 'cosmetics' | 'powers' }).tab;
+      const tab = (action as { tab: 'emotes' | 'cosmetics' | 'powers' | 'avatars' | 'frames' }).tab;
       if (!state.unseenCollection[tab].length) return state;
       return { ...state, unseenCollection: { ...state.unseenCollection, [tab]: [] } };
     }
     case '_item_seen': {
-      const { tab, id } = action as { tab: 'emotes' | 'cosmetics' | 'powers'; id: string };
+      const { tab, id } = action as { tab: 'emotes' | 'cosmetics' | 'powers' | 'avatars' | 'frames'; id: string };
       if (!state.unseenCollection[tab].includes(id)) return state;
       return { ...state, unseenCollection: { ...state.unseenCollection, [tab]: state.unseenCollection[tab].filter((x) => x !== id) } };
     }
@@ -768,7 +768,19 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, seasonRewardPending: action as Extract<ServerMsg, { type: 'season_reward_pending' }> };
     case 'season_reward_claimed': {
       const a = action as Extract<ServerMsg, { type: 'season_reward_claimed' }>;
-      return { ...state, profile: a.profile, seasonRewardPending: null };
+      const bek = state.seasonRewardPending;
+      const u = state.unseenCollection;
+      return {
+        ...state,
+        profile: a.profile,
+        seasonRewardPending: null,
+        unseenCollection: {
+          ...u,
+          avatars: addUnseen(u.avatars, bek?.avatarId),
+          frames: addUnseen(u.frames, bek?.frameTier),
+          cosmetics: addUnseen(u.cosmetics, bek?.cosmeticId),
+        },
+      };
     }
     case 'maintenance_state': {
       const m = action as Extract<ServerMsg, { type: 'maintenance_state' }>;
@@ -1903,8 +1915,8 @@ export function useCrossover() {
         track('special_power_equipped', { power_id: powerId ?? 'none' });
         send({ type: 'equip_special_power', powerId });
       },
-      markCollectionSeen: (tab: 'emotes' | 'cosmetics' | 'powers') => dispatch({ type: '_col_seen', tab }),
-      markItemSeen: (tab: 'emotes' | 'cosmetics' | 'powers', id: string) => dispatch({ type: '_item_seen', tab, id }),
+      markCollectionSeen: (tab: 'emotes' | 'cosmetics' | 'powers' | 'avatars' | 'frames') => dispatch({ type: '_col_seen', tab }),
+      markItemSeen: (tab: 'emotes' | 'cosmetics' | 'powers' | 'avatars' | 'frames', id: string) => dispatch({ type: '_item_seen', tab, id }),
       claimSeasonReward: () => send({ type: 'claim_season_reward' }),
       ackSupportMessage: (id: string) => { send({ type: 'ack_support_message', id }); dispatch({ type: '_clear_support' }); },
       openTournaments: () => { dispatch({ type: '_phase', phase: 'tournaments' }); send({ type: 'list_tournaments' }); },

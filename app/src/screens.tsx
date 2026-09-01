@@ -162,8 +162,8 @@ type Actions = {
   // ---- Maç içi Özel Güçler ----
   useSpecialPower: (powerId: string) => void;       // maçta etkinleştir (requestId'yi aksiyon üretir)
   equipSpecialPower: (powerId: string | null) => void; // maça hangi güçle çıkılacağını seç
-  markCollectionSeen: (tab: 'emotes' | 'cosmetics' | 'powers') => void; // sekmenin tüm rozetlerini söndür
-  markItemSeen: (tab: 'emotes' | 'cosmetics' | 'powers', id: string) => void; // tek eşyanın rozetini söndür
+  markCollectionSeen: (tab: 'emotes' | 'cosmetics' | 'powers' | 'avatars' | 'frames') => void; // sekmenin tüm rozetlerini söndür
+  markItemSeen: (tab: 'emotes' | 'cosmetics' | 'powers' | 'avatars' | 'frames', id: string) => void; // tek eşyanın rozetini söndür
   claimSeasonReward: () => void; // sezon ödülünü topla
   ackSupportMessage: (id: string) => void; // destek popup'ı okundu
   openTournaments: () => void;
@@ -13409,6 +13409,10 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
           <ScrollView nestedScrollEnabled directionalLockEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
             {([
+              // SEZON ÖDÜL AVATARLARI en başta: kazanılan şey listenin dibinde
+              // kaybolmasın (2026-09-01: "ödülleri topla dedim hiçbir şey
+              // vermedi" — aslında verilmişti ama LİSTEDE YOKTU).
+              'pp35',
               'pp7', 'pp11', 'pp12', 'pp13', 'pp14', 'pp15', 'pp16', 'pp17',
               // pp.jpeg'ten eklenen yeni karakterler (pp21-31: 150, pp32-34: 250)
               'pp21', 'pp22', 'pp23', 'pp24', 'pp25', 'pp26', 'pp27', 'pp28', 'pp29', 'pp30', 'pp31',
@@ -13426,7 +13430,10 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
                   owned={owned}
                   selected={selected}
                   price={meta.price}
+                  isNew={state.unseenCollection.avatars.includes(avatarId)}
                   onPress={() => {
+                    // Dokunmak "gördüm" demektir: kuşanılamasa bile rozet söner.
+                    actions.markItemSeen('avatars', avatarId);
                     if (!owned) {
                       setPendingAvatarId(avatarId);
                       return;
@@ -13776,8 +13783,8 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
 // Avatar grid tile — chunky kit card with press-lip physics, a spring-pop
 // selected check (ported from the retired bottom-sheet picker) and a gold
 // gem-price pill when locked. The frame stays crisp; only the badge dims.
-function AvatarTile({ avatarId, owned, selected, price, onPress }: {
-  avatarId: string; owned: boolean; selected: boolean; price: number; onPress: () => void;
+function AvatarTile({ avatarId, owned, selected, price, isNew = false, onPress }: {
+  avatarId: string; owned: boolean; selected: boolean; price: number; isNew?: boolean; onPress: () => void;
 }) {
   const { ty, onIn, onOut } = usePressLip(2);
   const check = useRef(new Animated.Value(selected ? 1 : 0)).current;
@@ -13800,6 +13807,11 @@ function AvatarTile({ avatarId, owned, selected, price, onPress }: {
               <Text style={{ color: theme.gold, fontSize: 10, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>{price}</Text>
             </View>
           )}
+          {isNew ? (
+            <View pointerEvents="none" style={{ position: 'absolute', top: -6, left: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: theme.danger, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center', zIndex: 5 }}>
+              <Text style={{ color: '#FFF', fontSize: 10, fontFamily: 'Poppins-Black' }}>1</Text>
+            </View>
+          ) : null}
           <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 5, right: 5, transform: [{ scale: check }] }}>
             <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.card }}>
               <Ionicons name="checkmark" size={12} color={theme.ink} />
