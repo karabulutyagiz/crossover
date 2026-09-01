@@ -428,17 +428,36 @@ export async function getAdminStats(live: LiveStats, day?: string) {
   const packIds = new Set<string>();
   for (const id of onlineUserIds ?? []) packIds.add(id);
   for (const m of liveMatches ?? []) for (const p of m.players) { if (p.userId && !p.isBot) packIds.add(p.userId); }
-  const packMap = new Map<string, { socialPackUntil: string | null; premiumRoad: boolean }>();
+  const packMap = new Map<string, { socialPackUntil: string | null; premiumRoad: boolean; packSource: string | null; packRevoked: boolean }>();
   if (packIds.size) {
+    // Paket damgasının YANINDA KAYNAĞI da çekilir: en son sosyal-paket işleminin
+    // ortamı (Production=gerçek para / Sandbox=test alımı) + iade damgası. Böylece
+    // "aldığı görünmüyor ama paket-modda oynuyor" bilmecesi çözülür — genelde
+    // Sandbox/TestFlight test alımı (pakedi verir ama gelire SAYILMAZ) ya da iade
+    // edilmiş bir alım (paket doğal bitişine kadar geri alınmıyor). LEFT JOIN LATERAL
+    // ile kullanıcı başına yalnız EN SON sosyal-paket işlemi alınır.
+    const SOCIAL_PACK_PRODUCT_IDS = ['com.crossover.socialpack.weekly', 'com.crossover.socialpack.monthly'];
     const pr = await pool.query(
-      `SELECT id::text AS id, social_pack_until, premium_road FROM users WHERE id::text = ANY($1)`,
-      [[...packIds]],
+      `SELECT u.id::text AS id, u.social_pack_until, u.premium_road,
+              t.environment AS pack_env, t.revocation_date AS pack_revoked
+         FROM users u
+         LEFT JOIN LATERAL (
+           SELECT environment, revocation_date
+             FROM processed_transactions
+            WHERE user_id = u.id AND product_id = ANY($2)
+            ORDER BY purchase_date DESC NULLS LAST
+            LIMIT 1
+         ) t ON true
+        WHERE u.id::text = ANY($1)`,
+      [[...packIds], SOCIAL_PACK_PRODUCT_IDS],
     );
     for (const r of pr.rows as any[]) {
       packMap.set(r.id, {
         // Ham damga (gelecek VEYA geçmiş) — panel now() ile karşılaştırıp aktif/bitmiş ayırır.
         socialPackUntil: r.social_pack_until ? new Date(r.social_pack_until).toISOString() : null,
         premiumRoad: !!r.premium_road,
+        packSource: r.pack_env ? String(r.pack_env) : null, // 'Production' | 'Sandbox' | null (hiç işlem yok = grant/eski)
+        packRevoked: !!r.pack_revoked,
       });
     }
   }
@@ -448,21 +467,32 @@ export async function getAdminStats(live: LiveStats, day?: string) {
     ...m,
     players: m.players.map((p) => {
       const info = p.userId ? packMap.get(p.userId) : undefined;
-      return { ...p, socialPackUntil: info?.socialPackUntil ?? null, premiumRoad: info?.premiumRoad ?? false };
+      return {
+        ...p,
+        socialPackUntil: info?.socialPackUntil ?? null,
+        premiumRoad: info?.premiumRoad ?? false,
+        packSource: info?.packSource ?? null,
+        packRevoked: info?.packRevoked ?? false,
+      };
     }),
   }));
 
-  let onlineList: { userId: string; name: string; trophies: number; socialPackUntil: string | null }[] = [];
+  let onlineList: { userId: string; name: string; trophies: number; socialPackUntil: string | null; packSource: string | null; packRevoked: boolean }[] = [];
   if (onlineUserIds && onlineUserIds.length) {
     const onl = await pool.query(
       `SELECT id::text AS id, display_name, trophies FROM users
         WHERE id::text = ANY($1) ORDER BY trophies DESC, display_name`,
       [onlineUserIds],
     );
-    onlineList = onl.rows.map((r: any) => ({
-      userId: r.id, name: r.display_name, trophies: r.trophies,
-      socialPackUntil: packMap.get(r.id)?.socialPackUntil ?? null,
-    }));
+    onlineList = onl.rows.map((r: any) => {
+      const info = packMap.get(r.id);
+      return {
+        userId: r.id, name: r.display_name, trophies: r.trophies,
+        socialPackUntil: info?.socialPackUntil ?? null,
+        packSource: info?.packSource ?? null,
+        packRevoked: info?.packRevoked ?? false,
+      };
+    });
   }
 
   // ── Hesabını silenler (account_deletions — 0007 migration'dan sonrası) ──

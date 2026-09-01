@@ -98,6 +98,9 @@
   .pack-on{color:#06231a;background:var(--mint)}
   .pack-exp{color:var(--gold);border:1px solid rgba(245,197,24,.6)}
   .pack-miss{color:var(--danger);border:1px solid rgba(255,84,112,.6)}
+  .pack-test{color:#06231a;background:var(--blue)}
+  .pack-refund{color:#fff;background:var(--danger)}
+  .pack-grant{color:var(--purple);border:1px solid rgba(155,123,255,.6)}
 
   .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
   .kpi{position:relative;overflow:hidden}
@@ -554,10 +557,19 @@
     // Bir oyuncunun/online kullanıcının paket durumunu rozetler:
     //  aktif (yeşil, bitiş tarihi) · bitmiş (sarı, oyun ortasında dolmuş olabilir) ·
     //  yok (paket-gerektiren modda kırmızı bayrak; serbest modda gizli).
-    function packBadge(untilIso, gated){
+    function packBadge(untilIso, source, revoked, gated){
       var until = untilIso ? new Date(untilIso) : null;
-      if(until && until.getTime() > Date.now())
-        return " <span class='pack-badge pack-on' title='Sosyal Paket aktif — "+esc(fmtDateTime(untilIso))+"''e kadar'>📦 "+esc(fmtDateTime(untilIso))+"</span>";
+      if(until && until.getTime() > Date.now()){
+        // Aktif — KAYNAĞI göster: iade / test(sandbox) / kayıtsız(grant) / gerçek.
+        // "Aldığı görünmüyor ama oynuyor" çoğu zaman TEST alımıdır (gelire sayılmaz).
+        if(revoked)
+          return " <span class='pack-badge pack-refund' title='Paket AKTİF ama işlem İADE edilmiş — iade paketi geri almıyor; doğal bitişine kadar oynar'>📦 aktif · İADE ⚠️</span>";
+        if(source==='Sandbox')
+          return " <span class='pack-badge pack-test' title='TEST (sandbox/TestFlight) alımı — pakedi verir ama gelire SAYILMAZ, satın-alma listesinde görünmez. \"Ödemeden oynuyor\" görüntüsünün en olası nedeni.'>📦 aktif · TEST</span>";
+        if(!source)
+          return " <span class='pack-badge pack-grant' title='Aktif paket ama sosyal-paket satın-alma kaydı YOK — elle/promo grant veya eski kayıt'>📦 aktif · kayıtsız</span>";
+        return " <span class='pack-badge pack-on' title='Sosyal Paket aktif (gerçek alım) — "+esc(fmtDateTime(untilIso))+"''e kadar'>📦 "+esc(fmtDateTime(untilIso))+"</span>";
+      }
       if(until)
         return " <span class='pack-badge pack-exp' title='Paket "+esc(fmtDateTime(untilIso))+" sona erdi (maç başlarken geçerliydi)'>📦 bitti</span>";
       return gated ? " <span class='pack-badge pack-miss' title='Paketi yok — bu mod paket ister'>⚠️ paket yok</span>" : "";
@@ -576,7 +588,7 @@
       }
       var t = (p.trophies!=null ? " <span class='muted'>"+trNum(p.trophies)+"🏆</span>" : "");
       var off = p.connected===false ? " <span class='muted'>(bağlantı kesik)</span>" : "";
-      return "<b>"+esc(p.name)+"</b>"+t+off+packBadge(p.socialPackUntil, gated);
+      return "<b>"+esc(p.name)+"</b>"+t+off+packBadge(p.socialPackUntil, p.packSource, p.packRevoked, gated);
     }
     var matchItems = matchItemsRaw.slice().sort(function(a,b){
       // Önce insan-insan süren maçlar, sonra bot, en son lobiler
@@ -608,7 +620,7 @@
       // Online listede paket rozeti: yalnız paketi olanlarda (aktif yeşil / bitmiş sarı).
       // gated=false → paketsizlerde bayrak yok (liste sade kalsın).
       return "<div class='online-row'><span class='dot'></span><b>"+esc(u.name)+"</b>"
-        + packBadge(u.socialPackUntil, false)
+        + packBadge(u.socialPackUntil, u.packSource, u.packRevoked, false)
         + "<span class='muted' style='margin-left:auto'>"+trNum(u.trophies)+" 🏆</span></div>";
     }).join("");
     $("l_onlineList").innerHTML = olist || "<div class='muted'>Kimse çevrimiçi değil.</div>";

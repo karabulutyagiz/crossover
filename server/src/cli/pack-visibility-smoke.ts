@@ -1,51 +1,64 @@
-// Admin paneli kişi-bazlı paket görünürlüğü duman testi:
+// Admin paneli kişi-bazlı Sosyal Paket görünürlüğü duman testi.
 // getAdminStats'a SENTETİK bir canlı XOX maçı (paket-gerektiren mod) + online liste
-// veriyoruz; çıktıda her oyuncuya/online kullanıcıya GERÇEK social_pack_until
-// iliştirilmiş mi doğruluyoruz. (Gerçek DB'den okur — sunucuyu ayağa kaldırmaz.)
+// veriyoruz; çıktıda her oyuncuya GERÇEK social_pack_until VE paket KAYNAĞI
+// (Production/Sandbox/iade) iliştirilmiş mi doğruluyoruz. Kendi test kullanıcılarını
+// kurar ve sonda TEMİZLER — gerçek veriyi kirletmez. (Sunucuyu ayağa kaldırmaz.)
 import { getAdminStats } from '../game/admin.ts';
 import { pool } from '../db/pool.ts';
+import { randomUUID } from 'node:crypto';
+
+const sandboxUser = randomUUID();   // aktif paket + SANDBOX (test) alımı → "aldığı görünmüyor ama oynuyor"
+const noPackUser = randomUUID();    // paketi yok → paket-gerektiren modda ⚠️ kırmızı bayrak
+const txId = 'smoke-sandbox-' + sandboxUser;
+
+async function setup() {
+  await pool.query(`INSERT INTO users (id, display_name, social_pack_until) VALUES ($1,'PackSmokeSandbox', now() + interval '3 days')`, [sandboxUser]);
+  await pool.query(`INSERT INTO users (id, display_name, social_pack_until) VALUES ($1,'PackSmokeNone', NULL)`, [noPackUser]);
+  await pool.query(
+    `INSERT INTO processed_transactions (transaction_id, user_id, product_id, diamonds, environment, purchase_date)
+     VALUES ($1,$2,'com.crossover.socialpack.weekly',0,'Sandbox', now())`,
+    [txId, sandboxUser],
+  );
+}
+async function cleanup() {
+  await pool.query(`DELETE FROM processed_transactions WHERE transaction_id = $1`, [txId]);
+  await pool.query(`DELETE FROM users WHERE id = ANY($1)`, [[sandboxUser, noPackUser]]);
+}
 
 async function main() {
-  // Biri paketli, biri paketsiz iki gerçek kullanıcı seç.
-  const withPack = (await pool.query(`SELECT id::text AS id, display_name FROM users WHERE social_pack_until > now() LIMIT 1`)).rows[0];
-  const noPack = (await pool.query(`SELECT id::text AS id, display_name FROM users WHERE social_pack_until IS NULL LIMIT 1`)).rows[0];
-  if (!withPack || !noPack) throw new Error('Test için paketli+paketsiz kullanıcı bulunamadı');
-
-  // Sentetik canlı maç: XOX (gated), iki insan + hiç bot yok.
+  await setup();
   const fakeMatch = {
     code: 'TEST01', status: 'guess', gameMode: 'xox' as const, bot: false, ranked: true, humans: 2,
     players: [
-      { name: withPack.display_name, userId: withPack.id, trophies: 1200, score: 1, connected: true, isBot: false },
-      { name: noPack.display_name,   userId: noPack.id,   trophies: 900,  score: 0, connected: true, isBot: false },
+      { name: 'PackSmokeSandbox', userId: sandboxUser, trophies: 1200, score: 1, connected: true, isBot: false },
+      { name: 'PackSmokeNone',    userId: noPackUser,   trophies: 900,  score: 0, connected: true, isBot: false },
     ],
   };
-
   const stats: any = await getAdminStats({
     online: 2, queue: 0, rooms: 1, playersInMatch: 2, inLobby: 0, botMatches: 0, byStatus: {},
     matches: [fakeMatch as any],
-    onlineUserIds: [withPack.id, noPack.id],
+    onlineUserIds: [sandboxUser, noPackUser],
   });
 
   const m = stats.live.matches[0];
-  const p0 = m.players[0], p1 = m.players[1];
+  const A = m.players.find((p: any) => p.userId === sandboxUser);
+  const B = m.players.find((p: any) => p.userId === noPackUser);
   console.log('── MAÇ OYUNCULARI (XOX = gated) ──');
-  console.log(`  ${p0.name.padEnd(16)} socialPackUntil=${p0.socialPackUntil ?? 'YOK'}`);
-  console.log(`  ${p1.name.padEnd(16)} socialPackUntil=${p1.socialPackUntil ?? 'YOK'}`);
-  console.log('── ONLINE LİSTE ──');
-  for (const o of stats.live.onlineUsers) console.log(`  ${o.name.padEnd(16)} socialPackUntil=${o.socialPackUntil ?? 'YOK'}`);
+  console.log(`  ${A.name.padEnd(18)} until=${A.socialPackUntil ?? 'YOK'}  kaynak=${A.packSource ?? '—'}  iade=${A.packRevoked}`);
+  console.log(`  ${B.name.padEnd(18)} until=${B.socialPackUntil ?? 'YOK'}  kaynak=${B.packSource ?? '—'}  iade=${B.packRevoked}`);
 
-  // Doğrulamalar
-  const okHas = typeof p0.socialPackUntil === 'string' && new Date(p0.socialPackUntil).getTime() > Date.now();
-  const okNo = p1.socialPackUntil === null;
-  const onlineHas = stats.live.onlineUsers.find((o: any) => o.userId === withPack.id)?.socialPackUntil;
-  const okOnline = typeof onlineHas === 'string';
+  const okActive = typeof A.socialPackUntil === 'string' && new Date(A.socialPackUntil).getTime() > Date.now();
+  const okSource = A.packSource === 'Sandbox';                 // ← "aldığı görünmüyor" = test alımı, gelire sayılmaz
+  const okNone = B.socialPackUntil === null && B.packSource === null;
   console.log('\n── SONUÇ ──');
-  console.log(`  paketli oyuncu aktif damga taşıyor: ${okHas ? '✅' : '❌'}`);
-  console.log(`  paketsiz oyuncu null (panelde ⚠️ kırmızı bayrak): ${okNo ? '✅' : '❌'}`);
-  console.log(`  online listede paket damgası taşınıyor: ${okOnline ? '✅' : '❌'}`);
-  if (!(okHas && okNo && okOnline)) throw new Error('Doğrulama BAŞARISIZ');
-  console.log('\n✅ TÜM DOĞRULAMALAR GEÇTİ — panel gerçek paket durumunu görüyor.');
-  await pool.end();
+  console.log(`  paketli oyuncu aktif damga taşıyor: ${okActive ? '✅' : '❌'}`);
+  console.log(`  kaynak SANDBOX olarak görünüyor (panelde "📦 aktif · TEST"): ${okSource ? '✅' : '❌'}`);
+  console.log(`  paketsiz oyuncu null (panelde ⚠️ "paket yok"): ${okNone ? '✅' : '❌'}`);
+  if (!(okActive && okSource && okNone)) throw new Error('Doğrulama BAŞARISIZ');
+  console.log('\n✅ TÜM DOĞRULAMALAR GEÇTİ — panel gerçek paket durumunu + kaynağını görüyor.');
 }
 
-main().catch((e) => { console.error('❌', e); process.exit(1); });
+main()
+  .then(cleanup)
+  .then(() => pool.end())
+  .catch(async (e) => { console.error('❌', e); try { await cleanup(); } catch { /* ignore */ } await pool.end(); process.exit(1); });
