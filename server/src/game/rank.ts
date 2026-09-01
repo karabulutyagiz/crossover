@@ -4,7 +4,7 @@ import { seasonRewardFor, seasonRewardsEnabled, seasonTrophyReset } from './seas
 import { milestoneFor } from './specialPowers.ts';
 import { addLeaguePoints } from './weeklyLeague.ts';
 import { config } from '../config.ts';
-import { PREMIUM_ROAD_PRICE } from './level.ts';
+import { PREMIUM_ROAD_PRICE, roadLeftovers } from './level.ts';
 import { emotePrice, isFreeEmote, isEquippableEmote, MAX_EQUIPPED, ALL_COLLECTIBLE_EMOTES } from './emotes.ts';
 import { avatarPrice, canUseAvatar, DEFAULT_AVATAR_ID, isAvatar, isFreeAvatar } from './avatars.ts';
 import { normalizeUsername, validateUsername } from './username.ts';
@@ -182,6 +182,34 @@ async function ensureSeason(row: DbUser): Promise<DbUser> {
     ekAlanlar.push(`trophies = $${2 + ekParams.length + 1}`);
     ekParams.push(seasonTrophyReset(row.trophies ?? 0));
   }
+  // YOL DEVİR TOPLAMASI (2026-09-01, oyuncu raporu): sıfırlama, ulaşılmış ama
+  // toplanmamış yol ödüllerini hiç vermeden siliyordu. Silinecek her şey aynı
+  // UPDATE içinde hesaba yazılır — yarış koruması (season_id IS DISTINCT)
+  // sayesinde iki eşzamanlı istek gelse de bir kez verilir. Kozmetik/çerçeve
+  // DISTINCT merge ile eklenir; sahip olunana telafi elması YAZILMAZ (musluk
+  // açmamak bilinçli: otomatik toplama, elle toplamadan zengin olamaz).
+  const kalan = roadLeftovers(row.level ?? 1, row.claimed_levels ?? [], row.claimed_premium ?? [], row.premium_road === true);
+  // 2026-08→09 geçişine ÖZEL elmassız kural (kullanıcı kararı 2026-09-01):
+  // bugünkü devirde kaybedenlere geri ödeme elmassız yapıldı; geç girenler de
+  // aynı muameleyi görsün ki iki oyuncu sınıfı oluşmasın. Sonraki sezonlarda
+  // otomatik toplama TAM verir — oyuncu elle toplasa zaten aynısını alırdı.
+  if (row.season_id === '2026-08') kalan.diamonds = 0;
+  if (kalan.diamonds > 0) {
+    ekParams.push(kalan.diamonds);
+    ekAlanlar.push(`diamonds = diamonds + $${2 + ekParams.length}`);
+  }
+  for (const [col, adet] of Object.entries(kalan.columnBumps)) {
+    if (!/^(power|sp)_[a-z0-9_]+$/.test(col)) continue; // sütun adları bizim sabitlerimizden gelir — yine de kilit
+    ekAlanlar.push(`${col} = ${col} + ${Number(adet)}`);
+  }
+  if (kalan.frames.length) {
+    ekParams.push(kalan.frames);
+    ekAlanlar.push(`owned_frames = (SELECT ARRAY(SELECT DISTINCT f FROM unnest(owned_frames || $${2 + ekParams.length}::text[]) AS f))`);
+  }
+  if (kalan.cosmetics.length) {
+    ekParams.push(kalan.cosmetics);
+    ekAlanlar.push(`owned_cosmetics = (SELECT ARRAY(SELECT DISTINCT c FROM unnest(owned_cosmetics || $${2 + ekParams.length}::text[]) AS c))`);
+  }
   const { rows } = await pool.query<DbUser>(
     `UPDATE users SET season_id = $2, level = 1, xp = 0,
        claimed_levels = '{}', claimed_premium = '{}', premium_road = FALSE,
@@ -189,6 +217,13 @@ async function ensureSeason(row: DbUser): Promise<DbUser> {
        season_wins = 0, season_losses = 0${ekAlanlar.length ? ', ' + ekAlanlar.join(', ') : ''}
      WHERE id = $1 AND season_id IS DISTINCT FROM $2 RETURNING *`,
     [row.id, cur, ...ekParams]);
+  if (rows[0] && kalan.diamonds > 0) {
+    void recordDiamondLedger({
+      userId: row.id, amount: kalan.diamonds, balanceAfter: Number(rows[0].diamonds),
+      reason: 'LEVEL_CLAIM', referenceId: `seasonrollover:${row.season_id}`,
+      idempotencyKey: `seasonroadgrant:${row.id}:${row.season_id}`,
+    });
+  }
   return rows[0] ?? row;
 }
 

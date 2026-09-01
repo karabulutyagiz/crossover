@@ -387,6 +387,48 @@ async function claimPassV2(
   };
 }
 
+// ---- Sezon devrinde yolda kalan ödüller -----------------------------------
+// (2026-09-01, oyuncu raporu: "geçen sezondan kalan ödüller kalıyor... almamız
+// lazım"): sezon devri level=1 + claimed_levels='{}' yaparken ulaşılmış ama
+// TOPLANMAMIŞ ödülleri hiç vermeden siliyordu. Oyuncu o seviyelere gerçekten
+// ulaştı; toplasa alacağı şeyin devirde buharlaşması kayıp hissettirir (v2 yol
+// sezon bitiminden 1 gün önce açıldı — 40 yeni ödülü toplamaya kimsenin vakti
+// olmadı). Bu yardımcı, silinecek ödüllerin TOPLAMINI çıkarır; ensureSeason
+// aynı UPDATE içinde hesaba yazar.
+export interface RoadLeftovers {
+  diamonds: number;
+  columnBumps: Record<string, number>; // power_*/sp_* sütunu → eklenecek adet
+  frames: string[];
+  cosmetics: string[];                 // sahiplik DISTINCT merge ile korunur; telafi elması YOK
+  claimedCount: number;                // kaç seviye ödülü derlendi (log için)
+}
+
+export function roadLeftovers(
+  level: number,
+  claimedFree: readonly number[],
+  claimedPremium: readonly number[],
+  premiumOwned: boolean,
+): RoadLeftovers {
+  const out: RoadLeftovers = { diamonds: 0, columnBumps: {}, frames: [], cosmetics: [], claimedCount: 0 };
+  if (!copassV2Enabled()) return out; // eski yol: her ×5 zaten toplanmadan geçilmiyordu
+  const doneFree = new Set(claimedFree);
+  const donePrem = new Set(claimedPremium);
+  const ekle = (r: PassReward | null): void => {
+    if (!r) return;
+    out.claimedCount += 1;
+    if (r.diamonds) out.diamonds += r.diamonds;
+    if (r.roadPower) { const c = ROAD_POWER_COLUMN[r.roadPower]; out.columnBumps[c] = (out.columnBumps[c] ?? 0) + 1; }
+    if (r.specialPower) { const c = SPECIAL_POWER_COLUMN[r.specialPower]; out.columnBumps[c] = (out.columnBumps[c] ?? 0) + 1; }
+    if (r.frameTier && !out.frames.includes(r.frameTier)) out.frames.push(r.frameTier);
+    if (r.cosmeticId && !out.cosmetics.includes(r.cosmeticId)) out.cosmetics.push(r.cosmeticId);
+  };
+  for (let n = 1; n <= Math.min(level, 50); n++) {
+    if (!doneFree.has(n)) ekle(passReward(n, 'free'));
+    if (premiumOwned && !donePrem.has(n)) ekle(passReward(n, 'premium'));
+  }
+  return out;
+}
+
 const ROAD_POWER_COLUMN: Record<PowerId, string> = {
   xp2x: 'power_xp2x', shield: 'power_shield', streak: 'power_streak',
   training: 'power_training', socialtoken: 'power_socialtoken',
