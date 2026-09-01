@@ -13761,7 +13761,17 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
           <View style={{ marginTop: 10 }}>
             <GamePanel compact accentStripe={levelTier(lvl)?.c ?? theme.primary} bodyStyle={{ paddingVertical: 10, paddingHorizontal: 12 }}>
               <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 1.2, marginBottom: 6 }}>{t('profile.frames').toLocaleUpperCase(currentLang())}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 12 }}>
+              {/* Yatay KAYDIRILIR liste: düz bir satırdı, 5'ten fazla çerçevesi
+                  olan oyuncuda gerisi ekran dışında kalıyordu ve yatay sürükleme
+                  pager'a kaçıp sekme değiştiriyordu (kullanıcı raporu 2026-09-01).
+                  directionalLockEnabled + nestedScrollEnabled: hareket burada kalır. */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                directionalLockEnabled
+                nestedScrollEnabled
+                contentContainerStyle={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6, paddingHorizontal: 3, paddingRight: 8 }}
+              >
                 {LEVEL_TIERS.filter((tr) => ownsFrame(p, tr.key)).map((tr) => {
                   const worn = p.selectedFrame === tr.key;
                   return (
@@ -13809,7 +13819,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
                     </Pressable>
                   );
                 })}
-              </View>
+              </ScrollView>
             </GamePanel>
           </View>
         ) : null}
@@ -15683,6 +15693,7 @@ export type PassRewardView = {
   diamonds?: number;
   roadPower?: PowerId;
   specialPower?: 'freeze' | 'reveal' | 'skip' | 'extratime' | 'secondchance';
+  frameTier?: string;      // yalnız 50. seviye: GOAT çerçevesi
   cosmeticId?: string;
 };
 const D = (d: number): PassRewardView => ({ diamonds: d });
@@ -15692,36 +15703,36 @@ const SP = (p: NonNullable<PassRewardView['specialPower']>): PassRewardView => (
 export const PASS_V2_FREE: Record<number, PassRewardView> = {
   1: D(15), 2: SP('extratime'), 3: D(15), 4: SP('secondchance'),
   5: { roadPower: 'xp2x', diamonds: 50 },
-  6: D(15), 7: SP('extratime'), 8: D(15), 9: RP('xp2x'),
+  6: { diamonds: 15, specialPower: 'freeze' }, 7: SP('extratime'), 8: D(15), 9: RP('xp2x'),
   10: { specialPower: 'freeze', diamonds: 100 },
   11: D(15), 12: SP('secondchance'), 13: D(15), 14: SP('extratime'),
   15: { roadPower: 'shield', diamonds: 50 },
-  16: D(15), 17: SP('skip'), 18: D(15), 19: RP('shield'),
+  16: { diamonds: 15, specialPower: 'secondchance' }, 17: SP('skip'), 18: D(15), 19: RP('shield'),
   20: { specialPower: 'skip', diamonds: 100 },
   21: D(15), 22: SP('secondchance'), 23: D(15), 24: SP('extratime'),
   25: { roadPower: 'streak', diamonds: 50 },
-  26: D(15), 27: RP('streak'), 28: D(15), 29: SP('secondchance'),
+  26: { diamonds: 15, specialPower: 'freeze' }, 27: RP('streak'), 28: D(15), 29: SP('secondchance'),
   30: { specialPower: 'reveal', diamonds: 100 },
   31: D(15), 32: SP('extratime'), 33: D(15), 34: RP('training'),
   35: { roadPower: 'training', diamonds: 50 },
-  36: D(15), 37: SP('skip'), 38: D(15), 39: RP('socialtoken'),
+  36: { diamonds: 15, specialPower: 'extratime' }, 37: SP('skip'), 38: D(15), 39: RP('socialtoken'),
   40: { specialPower: 'freeze', diamonds: 100 },
   41: D(15), 42: SP('freeze'), 43: D(15), 44: { cosmeticId: 'ice_name' },
   45: { roadPower: 'socialtoken', diamonds: 50 },
-  46: D(15), 47: SP('extratime'), 48: D(15), 49: RP('xp2x'),
-  50: { specialPower: 'reveal', diamonds: 150 },
+  46: { diamonds: 15, specialPower: 'skip' }, 47: SP('extratime'), 48: D(15), 49: RP('xp2x'),
+  50: { frameTier: 'goat', specialPower: 'reveal', diamonds: 150 }, // zirve: GOAT çerçevesi
 };
 
 export const PASS_V2_PREMIUM: Record<number, PassRewardView> = {
   1: D(25), 2: SP('freeze'), 3: D(25), 4: SP('skip'),
   5: { roadPower: 'shield', diamonds: 200 },
-  6: D(25), 7: SP('reveal'), 8: D(25), 9: SP('freeze'),
+  6: { diamonds: 25, specialPower: 'skip' }, 7: SP('reveal'), 8: D(25), 9: SP('freeze'),
   10: { roadPower: 'streak', diamonds: 300 },
   11: D(25), 12: SP('skip'), 13: D(25), 14: { cosmeticId: 'ice_name' },
   15: { roadPower: 'xp2x', diamonds: 200 },
   16: D(25), 17: SP('freeze'), 18: D(25), 19: SP('reveal'),
   20: { roadPower: 'socialtoken', diamonds: 300 },
-  21: D(25), 22: SP('skip'), 23: D(25), 24: SP('secondchance'),
+  21: { diamonds: 25, specialPower: 'freeze' }, 22: SP('skip'), 23: D(25), 24: SP('secondchance'),
   25: { roadPower: 'training', diamonds: 200 },
   26: D(25), 27: { cosmeticId: 'night_stadium' }, 28: D(25), 29: SP('freeze'),
   30: { roadPower: 'shield', diamonds: 300 },
@@ -15729,7 +15740,7 @@ export const PASS_V2_PREMIUM: Record<number, PassRewardView> = {
   35: { roadPower: 'socialtoken', diamonds: 200 },
   36: D(25), 37: SP('freeze'), 38: { cosmeticId: 'lightning_victory' }, 39: SP('extratime'),
   40: { roadPower: 'xp2x', diamonds: 300 },
-  41: D(25), 42: SP('reveal'), 43: D(25), 44: SP('secondchance'),
+  41: { diamonds: 25, specialPower: 'reveal' }, 42: SP('reveal'), 43: D(25), 44: SP('secondchance'),
   45: { roadPower: 'streak', diamonds: 200 },
   46: D(25), 47: SP('freeze'), 48: RP('xp2x'), 49: D(25),
   50: { cosmeticId: 'champions_ball', roadPower: 'training', diamonds: 400 },
@@ -16338,8 +16349,9 @@ const RoadRow = memo(function RoadRow({ n, level, xp, claimed, premiumOwned, pre
   const v2Reward = v2 ? passRewardView(n, 'free') : null;
   const claimable = reached && !claimed && (v2 ? !!v2Reward : n % 5 === 0);
   const tier = levelTier(n);
-  // v2'de çerçeve ödülü YOK (çerçeve prestiji sezon ödülüne ait).
-  const isFrame = !v2 && n % 10 === 0;
+  // v2'de çerçeve ödülü TEK yerdedir: 50. seviye (GOAT). Ara kilometre taşlarının
+  // çerçeveleri kaldırıldı — çerçeve prestiji sezon ödülüne ait.
+  const isFrame = v2 ? !!v2Reward?.frameTier : n % 10 === 0;
   const powerId = v2 ? (v2Reward?.roadPower ?? undefined) : LEVEL_POWER_UNLOCKS[n];
   // Büyük kart: v1'de her ×5; v2'de yalnız ×5 kilometre taşları (ara seviyeler
   // küçük kart) — 50 satırın hepsi büyük olsaydı ekran okunamaz hâle gelirdi.
@@ -16424,7 +16436,8 @@ const RoadRow = memo(function RoadRow({ n, level, xp, claimed, premiumOwned, pre
         <View style={{ flex: 1, gap: 4 }}>
           <Text numberOfLines={2} style={{ color: claimed ? theme.muted : claimable ? lighten(mColor, 0.15) : mColor, fontSize: 10.5, lineHeight: 14, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.3, ...engrave('sm') }}>
             {(isFrame && tier
-              ? t('level.tierFrameName', { name: t(tier.nameKey) })
+              // 50. seviye hem GOAT çerçevesi hem 1× Cevap veriyor — ikisi de yazar
+              ? t('level.tierFrameName', { name: t(tier.nameKey) }) + (v2Etiket ? ` + ${v2Etiket}` : '')
               : powerId
                 ? t(POWERS[powerId].nameKey)
                 : '').toLocaleUpperCase(currentLang())}
