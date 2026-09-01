@@ -7689,17 +7689,6 @@ function CozTimer({ secs }: { secs: number }) {
   );
 }
 
-/** Skor rozeti — kendi (emerald) / rakip (nötr), koyu cam panel. */
-function CozScoreChip({ name, score, mine }: { name: string; score: number; mine?: boolean }) {
-  const tint = mine ? theme.primary : theme.textSub;
-  return (
-    <View style={{ flex: 1, maxWidth: 150, alignItems: 'center', backgroundColor: 'rgba(6,14,30,0.55)', borderRadius: 16, paddingVertical: 8, paddingHorizontal: 10, borderWidth: 1, borderColor: mine ? withAlpha(theme.primary, 0.5) : 'rgba(255,255,255,0.10)', ...shadowSoft }}>
-      <Text numberOfLines={1} style={{ color: tint, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold', maxWidth: 130 }}>{name}</Text>
-      <Text style={{ color: mine ? theme.primary : theme.text, fontSize: 26, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{score}</Text>
-    </View>
-  );
-}
-
 // ── ÇÖZ KAZAN ekranı — karışık harfli oyuncuyu ilk bilen kazanır (yarış) ──────
 export function CozKazanScreen({ state, actions }: Props) {
   const c = state.cozkazan;
@@ -7714,10 +7703,18 @@ export function CozKazanScreen({ state, actions }: Props) {
   const answerInputRef = useRef<TextInput>(null);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [emoteOpen, setEmoteOpen] = useState(false);
+  const [kbOpen, setKbOpen] = useState(false);              // klavye açık mı → düzen kompaktlaşır
   const [, setTick] = useState(0);
   const win = useWindow();
 
   useEffect(() => { if (over) return undefined; const id = setInterval(() => setTick((v) => v + 1), 300); return () => clearInterval(id); }, [over]);
+  // Klavye açılınca kutucuklar/tile'lar küçülür + boşluklar daralır → hiçbir şey
+  // üst üste binmez (kullanıcı isteği 2026-09-01). Kapanınca eski büyük düzen döner.
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setKbOpen(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKbOpen(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
   // Yeni turda giriş + ipuçları temizlenir
   const lastRound = useRef(-1);
   useEffect(() => {
@@ -7773,8 +7770,8 @@ export function CozKazanScreen({ state, actions }: Props) {
   const myScore = c.scores.find((s) => s.id === youId)?.score ?? 0;
   const oppScore = c.scores.find((s) => s.id === opp?.id)?.score ?? 0;
   const leaveKind = state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
-  const tileSize = scrambleTileSize(c.scrambled, win.width, 54);
-  const boxSize = Math.min(tileSize, 46);
+  const tileSize = scrambleTileSize(c.scrambled, win.width, kbOpen ? 40 : 54);
+  const boxSize = Math.min(tileSize, kbOpen ? 38 : 46);
 
   // ── Cevap kutucukları: kelime uzunlukları scrambled ile aynı; yazılan harfler
   // ipucu-OLMAYAN kutuları soldan sağa doldurur, ipuçları kendi pozisyonunda sabit.
@@ -7821,26 +7818,20 @@ export function CozKazanScreen({ state, actions }: Props) {
       </View>
 
       {!over ? (
-        <View style={{ alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          {/* Tur rozeti (ani-ölümde altın) */}
+        // Tur rozeti + geri sayım halkası — TEK sıra. Skor (Sen/rakip) KALDIRILDI:
+        // en üstteki PlayerBar zaten "0 - 0" gösteriyor (kullanıcı isteği 2026-09-01).
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 6 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: isSudden ? withAlpha(theme.gold, 0.18) : 'rgba(6,14,30,0.6)', borderColor: isSudden ? withAlpha(theme.gold, 0.6) : 'rgba(255,255,255,0.12)', borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 4.5, ...shadowRow }}>
             <Text style={{ color: isSudden ? theme.gold : theme.textSub, fontSize: 12.5, fontFamily: 'Poppins-Black', letterSpacing: 1.1 }}>
               {isSudden ? `⚡ ${t('coz.sudden').toLocaleUpperCase('tr')}` : t('coz.round', { n: String(c.round), cap: String(c.totalRounds) }).toLocaleUpperCase('tr')}
             </Text>
           </View>
-          {/* Skor: sen — geri sayım halkası — rakip */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, alignSelf: 'stretch' }}>
-            <CozScoreChip name={t('coz.you')} score={myScore} mine />
-            <View style={{ width: 56, alignItems: 'center' }}>
-              {!inReveal ? <CozTimer secs={secs} /> : <Text style={{ color: theme.muted, fontSize: 24, fontFamily: 'Poppins-Black' }}>–</Text>}
-            </View>
-            <CozScoreChip name={opp?.name ?? '—'} score={oppScore} />
-          </View>
+          {!inReveal ? <CozTimer secs={secs} /> : null}
         </View>
       ) : null}
 
       {/* Orta bölge: karışık harfler ya da tur açılışı */}
-      <View style={{ flex: 1, minHeight: 0, justifyContent: 'center', alignItems: 'center', gap: 14 }}>
+      <View style={{ flex: 1, minHeight: 0, justifyContent: 'center', alignItems: 'center', gap: kbOpen ? 8 : 14 }}>
         {reveal ? (() => {
           const solveCol = reveal.solvedById === youId ? theme.primary : reveal.solvedById ? theme.danger : theme.gold;
           return (
@@ -7859,19 +7850,22 @@ export function CozKazanScreen({ state, actions }: Props) {
             </View>
           );
         })() : (
-          <View style={{ alignItems: 'center', gap: 18 }}>
+          <View style={{ alignItems: 'center', gap: kbOpen ? 10 : 18 }}>
             <ScrambleTiles words={c.scrambled} tileSize={tileSize} />
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(6,14,30,0.5)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 }}>
-              <Ionicons name="shuffle" size={13} color={theme.textSub} />
-              <Text style={{ color: theme.textSub, fontSize: 12, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{t('coz.prompt')}</Text>
-            </View>
+            {/* İpucu metni yalnız klavye KAPALIYKEN — açıkken yer kazanmak için gizli */}
+            {!kbOpen ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(6,14,30,0.5)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 }}>
+                <Ionicons name="shuffle" size={13} color={theme.textSub} />
+                <Text style={{ color: theme.textSub, fontSize: 12, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>{t('coz.prompt')}</Text>
+              </View>
+            ) : null}
           </View>
         )}
       </View>
 
       {/* Cevap kutucukları + yazım + harf alma (yarış) */}
       {!over && !inReveal ? (
-        <View style={{ marginTop: 8, gap: 8 }}>
+        <View style={{ marginTop: kbOpen ? 4 : 8, gap: kbOpen ? 6 : 8 }}>
           {locked ? <Text style={{ color: theme.danger, fontSize: 13, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>⏳ {t('coz.locked', { s: String(lockedSecs) })}</Text> : null}
           {hintErr ? <Text style={{ color: theme.gold, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{hintErr}</Text> : null}
           {/* Kutucuklar — dokun, klavye açılır */}
@@ -7901,15 +7895,12 @@ export function CozKazanScreen({ state, actions }: Props) {
             editable={!locked}
             style={{ position: 'absolute', opacity: 0, height: 1, width: 1 }}
           />
-          {/* Sadece GÖNDER — ortalanmış (kullanıcı isteği 2026-08-31) */}
-          <View style={{ alignItems: 'center' }}>
-            <View style={{ width: '64%', minWidth: 200 }}>
+          {/* Gönder (esner) + Harf Al (sağda) — AKIŞ İÇİNDE, absolute DEĞİL → klavye
+              açılınca hiçbir şeyin üstüne binmez (kullanıcı isteği 2026-09-01). */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ flex: 1 }}>
               <Btn label={t('guess.send')} icon="send" feedback={GameFeedbackEvent.ANSWER_SUBMIT} onPress={submit} disabled={locked || !allFilled} />
             </View>
-          </View>
-          {/* Harf Al — sağda yüzer; kutuların TAMAMEN ÜSTÜNDE (satır sayısından
-              bağımsız, üste sabit → kutucukların üstüne binmez) */}
-          <View pointerEvents="box-none" style={{ position: 'absolute', right: 6, top: -104, zIndex: 30 }}>
             <CozHintBubble cost={COZ_HINT_COST} disabled={hintDisabled} onPress={actions.cozkazanHint} />
           </View>
         </View>
