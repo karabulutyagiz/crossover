@@ -1240,7 +1240,7 @@ function AppRoot() {
       if (Date.now() - modalClearedAtRef.current < 500) return; // native kapanış bitsin
       if (maybeShowInterstitial(hasActiveSocialPack(state.profile))) {
         reported = true;
-        try { freezeReportRef.current('jank', 'AD|GOSTERILDI', 0); } catch { /* önemsiz */ }
+        try { freezeReportRef.current('jank', `AD|${interstitialDiagnostics().adsLastReason}`.slice(0, 40), 0); } catch { /* önemsiz */ }
         // REKLAM SONRASI PAKET ÖNERİSİ (kullanıcı isteği 2026-09-01): reklamı
         // yeni izlemiş oyuncu, reklamsızlığın değerini TAM O ANDA hissediyor —
         // teklifin en anlamlı olduğu an burası. Reklam native pencere olduğu

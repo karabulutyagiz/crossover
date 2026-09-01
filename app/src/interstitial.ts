@@ -204,6 +204,9 @@ export function maybeShowInterstitial(hasSocialPack: boolean): boolean {
   pre.ad.addAdEventListener(AdEventType.CLOSED, () => { preloadAfterIdle(); });
   pre.ad.addAdEventListener(AdEventType.ERROR, () => { preloadNext(); });
   pre.ad.show();
-  lastReason = 'GOSTERILDI';
+  // Hangi birimle gösterildiği de kaydedilir: "AdMob'da görünmüyor" sorusunun
+  // iki cevabı var — ya raporlama gecikmesi ya TEST birimi (test reklamları
+  // istatistiklere HİÇ yansımaz). Birim son 4 hanesi bunu tahmin etmeden ayırır.
+  lastReason = `GOSTERILDI:${(unitId() ?? '').slice(-4)}${__DEV__ ? '-TEST' : ''}`;
   return true;
 }
