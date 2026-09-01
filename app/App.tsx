@@ -3147,6 +3147,12 @@ function AppRoot() {
               : purchaseAck?.kind === 'premiumRoad' ? t('purchase.premiumRoadBody')
               : null}
           </Text>
+          {/* Fotoğraf mağazadan alınınca hemen kuşanılıyor; oyuncu sonradan
+              nereden değiştireceğini bulamıyordu — pencere doğrudan fotoğraf
+              listesine götürüyor (kullanıcı raporu 2026-09-01). */}
+          {purchaseAck?.kind === 'avatar' ? (
+            <Btn big kind="primary" icon="person-circle" label={t('purchase.avatarGoTo')} onPress={() => { setPurchaseAckVisible(false); actions.openAvatarPage(); }} />
+          ) : null}
           <Btn big label={t('settings.confirm')} onPress={() => setPurchaseAckVisible(false)} />
         </GameModal>
 

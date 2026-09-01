@@ -123,6 +123,8 @@ type Actions = {
   openArenas: () => void;
   closeArenas: () => void;
   openProfile: () => void;
+  openAvatarPage: () => void;
+  clearAvatarPageRequest: () => void;
   closeProfile: () => void;
   openLeaderboard: () => void;
   closeLeaderboard: () => void;
@@ -9861,6 +9863,11 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
             return (
               <>
                 <SectionHeader label="PROFİL FOTOĞRAFLARI" icon="person-circle" />
+                {/* Alınan fotoğraf listeden düşüyor — nereye gittiğini söylemezsek
+                    oyuncu bir daha bulamıyor (kullanıcı raporu 2026-09-01). */}
+                <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', marginLeft: 4, marginBottom: 2, lineHeight: 16 }}>
+                  Aldığın fotoğraflar Profil ekranında toplanır — fotoğrafına dokunup istediğin zaman değiştirebilirsin.
+                </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 6, paddingRight: 6 }}>
                   {satilik.map((id) => {
                     const fiyat = avatarMeta(id).price;
@@ -13407,7 +13414,14 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
   const [framePrev, setFramePrev] = useState<{ tier: LevelTier; unlocked: boolean } | null>(null);
   const [pendingAvatarId, setPendingAvatarId] = useState<string | null>(null);
   const [confirmAvatarId, setConfirmAvatarId] = useState<string | null>(null);
-  const [showAvatarPage, setShowAvatarPage] = useState(false);
+  const [showAvatarPage, setShowAvatarPage] = useState(() => state.avatarPagePending);
+  // Mağazadaki "FOTOĞRAFLARIM" düğmesi profil ekranını doğrudan fotoğraf
+  // listesiyle açar; istek tek kullanımlık, açılınca tüketilir.
+  useEffect(() => {
+    if (!state.avatarPagePending) return;
+    setShowAvatarPage(true);
+    actions.clearAvatarPageRequest();
+  }, [state.avatarPagePending]);
   const [showInsufficientPopup, setShowInsufficientPopup] = useState(false);
   const insufficientMissing = useRef<number | null>(null);
   // Set on confirm: close the picker page once the confirm dialog's exit

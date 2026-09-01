@@ -192,6 +192,10 @@ export interface GameState {
   // Bekleyen sezon ödülü: sezon dönüşünde OTOMATİK verilmez; oyuncu
   // "ÖDÜLLERİ TOPLA" düğmesine bastığında tanımlanır.
   seasonRewardPending: Extract<ServerMsg, { type: 'season_reward_pending' }> | null;
+  // Mağazadan profil fotoğrafı alındıktan sonra "FOTOĞRAFLARIM" düğmesi:
+  // profil ekranını AÇIK avatar sayfasıyla açar (oyuncu daha sonra nereden
+  // değiştireceğini bulamıyordu — kullanıcı raporu 2026-09-01).
+  avatarPagePending: boolean;
   unseenCollection: { emotes: string[]; cosmetics: string[]; powers: string[]; avatars: string[]; frames: string[] };
   // Maç ortasında ÇIKIŞ (forfeit) = kaybetme. Kupa cezası (trophy_update) reset
   // SONRASI gelir; onunla kaybetme popup'ı gösterilir. null = gösterilecek bir şey yok.
@@ -389,6 +393,7 @@ export const initialState: GameState = {
   tournamentOver: null,
   maintenance: null,
   seasonRewardPending: null,
+  avatarPagePending: false,
   unseenCollection: { emotes: [], cosmetics: [], powers: [], avatars: [], frames: [] },
   xoxOver: null,
   cozkazan: null,
@@ -453,6 +458,8 @@ type Action =
   | { type: '_clear_emote'; playerId: string }
   | { type: '_unseen_load'; value: { emotes?: unknown; cosmetics?: unknown; powers?: unknown } }
   | { type: '_item_seen'; tab: 'emotes' | 'cosmetics' | 'powers' | 'avatars' | 'frames'; id: string }
+  | { type: '_open_avatar_page' }
+  | { type: '_avatar_page_seen' }
   | { type: '_clear_support' }
   | { type: '_clear_tournament_over' }
   | { type: '_clear_tournament_ready' }
@@ -491,6 +498,10 @@ function reducer(state: GameState, action: Action): GameState {
     case '_leaderboard':
       // Data only — the leaderboard now shows as a centered popup, not a fullscreen phase.
       return { ...state, leaderboard: action.entries };
+    case '_open_avatar_page':
+      return { ...state, phase: 'profile', avatarPagePending: true };
+    case '_avatar_page_seen':
+      return state.avatarPagePending ? { ...state, avatarPagePending: false } : state;
     case '_phase':
       return { ...state, phase: action.phase };
     case '_sp_pending' as never:
@@ -1772,6 +1783,8 @@ export function useCrossover() {
       openArenas: () => dispatch({ type: '_phase', phase: 'arenas' }),
       closeArenas: () => dispatch({ type: '_phase', phase: 'home' }),
       openProfile: () => dispatch({ type: '_phase', phase: 'profile' }),
+      openAvatarPage: () => dispatch({ type: '_open_avatar_page' }),
+      clearAvatarPageRequest: () => dispatch({ type: '_avatar_page_seen' }),
       closeProfile: () => dispatch({ type: '_phase', phase: 'home' }),
       openMatchHistory: () => {
         // Data only — match history now shows as a centered popup, not a fullscreen phase.
