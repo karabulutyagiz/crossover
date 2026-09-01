@@ -7307,8 +7307,16 @@ export function XoxScreen({ state, actions }: Props) {
     );
   };
 
+  // KLAVYE VE XOX TABLOSU (oyuncu raporu 2026-09-01: "bir yere basıp klavye
+  // açılınca tablonun ÜSTÜNDE açılıyor"). Ekran kaydırmasız moddaydı, bu yüzden
+  // KeyboardAvoidingView tüm içeriği yukarı itiyor ve tablo klavyenin altında
+  // kalıyordu. Kaydırma moduna alındı: ScrollView klavye yüksekliğini kendi iç
+  // boşluğuna ekleyip ODAKLI alanı yukarı taşıyor — tablo KÜÇÜLMÜYOR, yalnız
+  // gerektiği kadar kayıyor ve klavye kapanınca yerine dönüyor.
+  // keyboardShouldPersistTaps: klavye açıkken hücreye dokunuş yutulmasın (ilk
+  // dokunuş yalnız klavyeyi kapatsaydı oyuncu iki kez basmak zorunda kalırdı).
   return (
-    <Screen contentCenter={false} bg={<MatchCosmeticBackdrop backgroundId={matchBackgroundIdForState(state)} />}>
+    <Screen scroll keyboardShouldPersistTaps="always" contentCenter={false} bg={<MatchCosmeticBackdrop backgroundId={matchBackgroundIdForState(state)} />}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         <MatchExitButton onPress={() => (state.matchOver ? actions.leave() : setShowLeaveConfirm(true))} />
         <PlayerBar state={state} onEmotePress={() => setEmoteOpen(true)} />
