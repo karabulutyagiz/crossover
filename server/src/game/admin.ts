@@ -414,15 +414,55 @@ export async function getAdminStats(live: LiveStats, day?: string) {
 
   // Çevrimiçi kullanıcıların isim/kupası (canlı liste). id'ler bellekten geldi,
   // isim DB'den çözülür — kupaya göre azalan sırada.
-  const { onlineUserIds, ...liveRest } = live;
-  let onlineList: { userId: string; name: string; trophies: number }[] = [];
+  //
+  // ── Kişi-bazlı Sosyal Paket görünürlüğü (kullanıcı isteği 2026-09-01) ──
+  // Panel eskiden yalnız GLOBAL "aktif paket" sayısını gösteriyordu; bir oyuncunun
+  // (ör. dereceli XOX maçındaki) paketi VAR MI, ne zamana kadar geçerli görünmüyordu.
+  // Sunucu gating'i sızdırmaz (XOX/country/letter/cozkazan maça girişte paket ister),
+  // yani maçtaki oyuncunun paketi maç BAŞLARKEN geçerliydi — ama süresi oyun ortasında
+  // dolmuş olabilir. Artık her maç oyuncusuna + her online kullanıcıya GERÇEK
+  // social_pack_until damgasını iliştiriyoruz; panel "aktif/bitmiş/yok" olarak gösterir.
+  const { onlineUserIds, matches: liveMatches, ...liveRest } = live;
+
+  // Paket sorgusu için gereken TÜM hesap id'leri: online liste + maçtaki insan oyuncular.
+  const packIds = new Set<string>();
+  for (const id of onlineUserIds ?? []) packIds.add(id);
+  for (const m of liveMatches ?? []) for (const p of m.players) { if (p.userId && !p.isBot) packIds.add(p.userId); }
+  const packMap = new Map<string, { socialPackUntil: string | null; premiumRoad: boolean }>();
+  if (packIds.size) {
+    const pr = await pool.query(
+      `SELECT id::text AS id, social_pack_until, premium_road FROM users WHERE id::text = ANY($1)`,
+      [[...packIds]],
+    );
+    for (const r of pr.rows as any[]) {
+      packMap.set(r.id, {
+        // Ham damga (gelecek VEYA geçmiş) — panel now() ile karşılaştırıp aktif/bitmiş ayırır.
+        socialPackUntil: r.social_pack_until ? new Date(r.social_pack_until).toISOString() : null,
+        premiumRoad: !!r.premium_road,
+      });
+    }
+  }
+
+  // Her maça oyuncularının paket durumunu ekle (bot oyuncular es geçilir).
+  const enrichedMatches = (liveMatches ?? []).map((m) => ({
+    ...m,
+    players: m.players.map((p) => {
+      const info = p.userId ? packMap.get(p.userId) : undefined;
+      return { ...p, socialPackUntil: info?.socialPackUntil ?? null, premiumRoad: info?.premiumRoad ?? false };
+    }),
+  }));
+
+  let onlineList: { userId: string; name: string; trophies: number; socialPackUntil: string | null }[] = [];
   if (onlineUserIds && onlineUserIds.length) {
     const onl = await pool.query(
       `SELECT id::text AS id, display_name, trophies FROM users
         WHERE id::text = ANY($1) ORDER BY trophies DESC, display_name`,
       [onlineUserIds],
     );
-    onlineList = onl.rows.map((r: any) => ({ userId: r.id, name: r.display_name, trophies: r.trophies }));
+    onlineList = onl.rows.map((r: any) => ({
+      userId: r.id, name: r.display_name, trophies: r.trophies,
+      socialPackUntil: packMap.get(r.id)?.socialPackUntil ?? null,
+    }));
   }
 
   // ── Hesabını silenler (account_deletions — 0007 migration'dan sonrası) ──
@@ -467,7 +507,7 @@ export async function getAdminStats(live: LiveStats, day?: string) {
     generatedAt: new Date().toISOString(),
     since: '2026-08-04', // istatistiklerin başlangıç (yayın) tarihi — panelde gösterilir
     selectedDay: selectedDay.label,
-    live: { ...liveRest, onlineUsers: onlineList },
+    live: { ...liveRest, matches: enrichedMatches, onlineUsers: onlineList },
     users: {
       total: u.total,
       newToday: u.new_today,

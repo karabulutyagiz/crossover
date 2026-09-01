@@ -93,6 +93,11 @@
   .badge-pvp{font-size:10px;font-weight:700;color:var(--mint);border:1px solid var(--mint);border-radius:5px;padding:0 5px;margin-left:6px}
   .badge-bot{font-size:10px;font-weight:800;color:#06231a;background:var(--gold);border-radius:5px;padding:1px 6px;margin-left:6px;letter-spacing:.04em}
   .badge-mode{display:inline-block;font-size:10px;font-weight:800;color:var(--blue);border:1px solid rgba(61,165,255,.65);border-radius:5px;padding:1px 6px;margin-right:6px;letter-spacing:.02em;white-space:nowrap}
+  /* Sosyal Paket durumu — oyuncu/online satırlarında kişi-bazlı görünürlük */
+  .pack-badge{font-size:10px;font-weight:800;border-radius:5px;padding:1px 6px;margin-left:6px;letter-spacing:.02em;white-space:nowrap}
+  .pack-on{color:#06231a;background:var(--mint)}
+  .pack-exp{color:var(--gold);border:1px solid rgba(245,197,24,.6)}
+  .pack-miss{color:var(--danger);border:1px solid rgba(255,84,112,.6)}
 
   .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
   .kpi{position:relative;overflow:hidden}
@@ -542,18 +547,36 @@
 
     // ── Aktif maçlar (kim kime karşı) ──
     var statusTr = { lobby:"lobide bekliyor", countdown:"geri sayım", pick:"takım seçme", reveal:"açıklama", guess:"tahmin", result:"sonuç" };
-    var modeTr = { "team-team":"Takım-Takım", "country-team":"Ülke-Takım", "letter-team":"Harf-Takım", "player-player":"Oyuncu-Oyuncu" };
-    function pPill(p, ranked){
+    var modeTr = { "team-team":"Takım-Takım", "country-team":"Ülke-Takım", "letter-team":"Harf-Takım", "player-player":"Oyuncu-Oyuncu", "xox":"Futbol XOX", "cozkazan":"Çöz Kazan" };
+    // Sosyal Paket gerektiren modlar (sunucu gating'iyle birebir). Bu modlardaki
+    // oyuncunun paketi YOKSA kırmızı bayrak gösterilir — anomali anında görülür.
+    var PACK_GATED = { "country-team":1, "letter-team":1, "xox":1, "cozkazan":1 };
+    // Bir oyuncunun/online kullanıcının paket durumunu rozetler:
+    //  aktif (yeşil, bitiş tarihi) · bitmiş (sarı, oyun ortasında dolmuş olabilir) ·
+    //  yok (paket-gerektiren modda kırmızı bayrak; serbest modda gizli).
+    function packBadge(untilIso, gated){
+      var until = untilIso ? new Date(untilIso) : null;
+      if(until && until.getTime() > Date.now())
+        return " <span class='pack-badge pack-on' title='Sosyal Paket aktif — "+esc(fmtDateTime(untilIso))+"''e kadar'>📦 "+esc(fmtDateTime(untilIso))+"</span>";
+      if(until)
+        return " <span class='pack-badge pack-exp' title='Paket "+esc(fmtDateTime(untilIso))+" sona erdi (maç başlarken geçerliydi)'>📦 bitti</span>";
+      return gated ? " <span class='pack-badge pack-miss' title='Paketi yok — bu mod paket ister'>⚠️ paket yok</span>" : "";
+    }
+    function pPill(p, ranked, gated){
       if(!p) return "<span class='muted'>bekleniyor…</span>";
       if(p.isBot){
-        // Dereceli (hemen oyna / mücadele) maçta rakip bot: adı + "(bot)".
+        // Dereceli (hemen oyna / mücadele) maçta rakip bot: adı + kupası + "(bot)"
+        // — böylece oyuncunun karşısına KAÇ KUPALI bot atıldığı panelden okunur.
         // Direkt bot antrenmanı (create_solo): olduğu gibi BOT rozeti.
-        if(ranked) return "<b>"+esc(p.name)+"</b> <span class='muted'>(bot)</span>";
+        if(ranked){
+          var bt = (p.trophies!=null ? " <span class='muted'>"+trNum(p.trophies)+"🏆</span>" : "");
+          return "<b>"+esc(p.name)+"</b>"+bt+" <span class='muted'>(bot)</span>";
+        }
         return "<span class='badge-bot'>BOT</span>";
       }
       var t = (p.trophies!=null ? " <span class='muted'>"+trNum(p.trophies)+"🏆</span>" : "");
       var off = p.connected===false ? " <span class='muted'>(bağlantı kesik)</span>" : "";
-      return "<b>"+esc(p.name)+"</b>"+t+off;
+      return "<b>"+esc(p.name)+"</b>"+t+off+packBadge(p.socialPackUntil, gated);
     }
     var matchItems = matchItemsRaw.slice().sort(function(a,b){
       // Önce insan-insan süren maçlar, sonra bot, en son lobiler
@@ -564,7 +587,8 @@
     var mlist = matchItems.map(function(m){
       var ps = m.players || [];
       var pvp = !m.bot && ps.filter(function(x){return !x.isBot;}).length>=2;
-      var vs = pPill(ps[0], m.ranked) + " <span class='muted'>vs</span> " + pPill(ps[1], m.ranked);
+      var gated = !!PACK_GATED[m.gameMode || m.mode];
+      var vs = pPill(ps[0], m.ranked, gated) + " <span class='muted'>vs</span> " + pPill(ps[1], m.ranked, gated);
       var score = ps.length===2 ? ps.map(function(x){return x.score;}).join(" – ") : "";
       var mode = modeTr[m.gameMode] || modeTr[m.mode] || m.gameMode || m.mode || "Mod bilinmiyor";
       var statusLabel = statusTr[m.status]||esc(m.status);
@@ -581,7 +605,10 @@
     // ── Çevrimiçi kullanıcılar ──
     if ($("l_onlineCount")) $("l_onlineCount").textContent = trNum(onlineItems.length);
     var olist = onlineItems.map(function(u){
+      // Online listede paket rozeti: yalnız paketi olanlarda (aktif yeşil / bitmiş sarı).
+      // gated=false → paketsizlerde bayrak yok (liste sade kalsın).
       return "<div class='online-row'><span class='dot'></span><b>"+esc(u.name)+"</b>"
+        + packBadge(u.socialPackUntil, false)
         + "<span class='muted' style='margin-left:auto'>"+trNum(u.trophies)+" 🏆</span></div>";
     }).join("");
     $("l_onlineList").innerHTML = olist || "<div class='muted'>Kimse çevrimiçi değil.</div>";
