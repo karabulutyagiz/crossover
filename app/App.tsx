@@ -1174,6 +1174,7 @@ function AppRoot() {
     const sub = AppState.addEventListener('change', (st) => { if (st === 'background') markCleanExit(); });
     return () => { stop(); sub.remove(); };
   }, []);
+  const adPendingRef = useRef(false); // reklam bekleyişi sürüyor mu (effect yeniden çalışsa da korunur)
   const adPrevPhaseRef = useRef(state.phase);
   const adPrevXoxOverRef = useRef(state.xoxOver);
   useEffect(() => {
@@ -1198,10 +1199,24 @@ function AppRoot() {
     // raporu: "ödüllü çıkıyor ama geçiş çıkmıyor" — ödüllüyü oyuncu kendisi,
     // pencere yokken açıyor). Artık pencereler kapanana kadar beklenir; ana
     // ekrandan çıkılırsa ya da süre dolarsa sessizce vazgeçilir.
+    // ZAMANLAYICI EFFECT'TEN BAĞIMSIZ (2026-09-01 — kritik hata):
+    // Bu effect [state.profile] dinliyor ve maç sonunda profil ARKA ARKAYA
+    // güncelleniyor (kupa, XP, seviye). Her güncellemede effect yeniden
+    // çalışıp cleanup ile zamanlayıcıyı öldürüyordu; yeni çalışmada ise
+    // prevPhase artık 'home' olduğu için "maçtan yeni çıktı" koşulu tutmuyor
+    // ve zamanlayıcı BİR DAHA kurulmuyordu. Sonuç: reklam penceresi daha
+    // açılmadan kapanıyor, 3 maçta 1 kuralı fiilen işlemiyordu (AdMob'da
+    // gösterim düşük kalıyor, tanı raporu hiç gelmiyordu).
+    //
+    // Çözüm: bekleyen istek REF'te tutulur; zaten çalışan bir bekleyiş varsa
+    // yenisi kurulmaz, cleanup da onu öldürmez.
+    if (adPendingRef.current) return;
+    adPendingRef.current = true;
     const deadline = Date.now() + 20_000;
     let reported = false;
     const timer = setInterval(() => {
       if (Date.now() > deadline) {
+        adPendingRef.current = false;
         clearInterval(timer);
         // GEÇİCİ TANI KANALI (2026-08-30): reklam neden çıkmadığını cihazdan
         // öğrenemiyoruz — istemcide telemetri sunucuya akmıyor. Kalıcı çözüm
@@ -1231,10 +1246,14 @@ function AppRoot() {
         // teklifin en anlamlı olduğu an burası. Reklam native pencere olduğu
         // için kapanışını beklemek şart (yoksa iOS iki pencereyi kilitler).
         setTimeout(() => setAdUpsellVisible(true), 1200);
+        adPendingRef.current = false;
         clearInterval(timer);
       }
     }, 700);
-    return () => clearInterval(timer);
+    // NOT: cleanup zamanlayıcıyı TEMİZLEMEZ — effect maç sonunda defalarca
+    // yeniden çalıştığı için temizlemek bekleyişi öldürürdü. Zamanlayıcı kendi
+    // içinde (gösterim ya da 20 sn sınırı) sonlanır.
+    return undefined;
   }, [state.phase, state.xoxOver, state.profile]);
 
   useEffect(() => {
