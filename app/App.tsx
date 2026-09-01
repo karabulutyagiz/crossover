@@ -121,7 +121,7 @@ let directRequestPurchase: any = null;
 try { directRequestPurchase = require('react-native-iap').requestPurchase; } catch { /* Expo Go */ }
 import { isRonaldoAnswer, triggerDiamondCollectTick, triggerFeedback } from './src/feedback/GameFeedback';
 import { loadFeedbackPreferences } from './src/feedback/preferences';
-import { configureInterstitial, interstitialDiagnostics, maybeShowInterstitial, recordMatchEnd } from './src/interstitial';
+import { configureInterstitial, interstitialDiagnostics, interstitialPresentation, maybeShowInterstitial, recordMatchEnd } from './src/interstitial';
 import { markCleanExit, setFreezeScreen, startFreezeWatch } from './src/freezeWatch';
 import {
   evaluateMonetizationOffer,
@@ -1243,6 +1243,13 @@ function AppRoot() {
       if (maybeShowInterstitial(hasActiveSocialPack(state.profile))) {
         reported = true;
         try { freezeReportRef.current('jank', `AD|${interstitialDiagnostics().adsLastReason}`.slice(0, 40), 0); } catch { /* önemsiz */ }
+        // İKİNCİ RAPOR (2026-09-01): yukarıdaki satır yalnız show()'u ÇAĞIRDIĞIMIZI
+        // söyler. Bu rapor SDK'nın kendi olaylarını söyler — reklam gerçekten
+        // belirdi mi (OPENED) ve AdMob ücretlendirdi mi (PAID). "AdMob'da veri
+        // yok" sorusunun cevabı bu iki bayrağın arasında.
+        setTimeout(() => {
+          try { freezeReportRef.current('jank', `ADX|${interstitialPresentation()}`.slice(0, 40), 0); } catch { /* önemsiz */ }
+        }, 6000);
         // REKLAM SONRASI PAKET ÖNERİSİ (kullanıcı isteği 2026-09-01): reklamı
         // yeni izlemiş oyuncu, reklamsızlığın değerini TAM O ANDA hissediyor —
         // teklifin en anlamlı olduğu an burası. Reklam native pencere olduğu

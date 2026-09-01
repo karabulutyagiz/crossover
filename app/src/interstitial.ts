@@ -171,6 +171,25 @@ export function testInterstitialNow(onSonuc: (mesaj: string) => void): void {
 
 /** Son denemenin sonucu — Ayarlar > Monetization Diagnostics'te görünür. */
 let lastReason = 'henüz denenmedi';
+
+// GÖSTERİM DOĞRULAMASI (2026-09-01): "AdMob'da veri yok" sorusunu şimdiye kadar
+// yanıtlayamadık çünkü GOSTERILDI'yi show() ÇAĞRILDIĞI an yazıyorduk — SDK'nın
+// pencereyi gerçekten sunup sunmadığını değil, bizim niyetimizi ölçüyordu.
+// Artık SDK'nın kendi olayları ölçülüyor:
+//   OPENED → reklam ekranda BELİRDİ
+//   PAID   → AdMob bu gösterimi ÜCRETLENDİRDİ (raporda görünmesi gereken olay)
+// PAID gelmiyorsa gösterim AdMob tarafında sayılmıyor demektir; bu ikisinin
+// farkı sorunun hangi tarafta olduğunu tek başına söyler.
+let showAt = 0;
+let openedAt = 0;
+let paidAt = 0;
+/** show() sonrası kısa kod: sunum ve ücretlendirme gerçekten oldu mu. */
+export function interstitialPresentation(): string {
+  if (!showAt) return 'denenmedi';
+  if (paidAt >= showAt) return 'ACILDI+ODENDI';
+  if (openedAt >= showAt) return 'ACILDI+ODENMEDI';
+  return 'ACILMADI';
+}
 export function interstitialDiagnostics(): Record<string, string | number | boolean> {
   return {
     adsNativeModule: !!InterstitialAd,
@@ -181,6 +200,7 @@ export function interstitialDiagnostics(): Record<string, string | number | bool
     adsTotalMatches: totalMatches,
     adsSinceAd: sinceAd,
     adsLastReason: lastReason,
+    adsPresentation: interstitialPresentation(),
   };
 }
 
@@ -203,6 +223,11 @@ export function maybeShowInterstitial(hasSocialPack: boolean): boolean {
   void persist();
   pre.ad.addAdEventListener(AdEventType.CLOSED, () => { preloadAfterIdle(); });
   pre.ad.addAdEventListener(AdEventType.ERROR, () => { preloadNext(); });
+  pre.ad.addAdEventListener(AdEventType.OPENED, () => { openedAt = Date.now(); });
+  pre.ad.addAdEventListener(AdEventType.PAID, () => { paidAt = Date.now(); });
+  showAt = Date.now();
+  openedAt = 0;
+  paidAt = 0;
   pre.ad.show();
   // Hangi birimle gösterildiği de kaydedilir: "AdMob'da görünmüyor" sorusunun
   // iki cevabı var — ya raporlama gecikmesi ya TEST birimi (test reklamları
