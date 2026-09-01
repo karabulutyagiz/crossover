@@ -14,9 +14,9 @@ _(önceki: "Ortak futbolcuyu ilk sen bul")_
 
 ## Anahtar Kelimeler / Keywords (max 100, virgülle, boşluksuz)
 ```
-tahmin,bulma,oyun,quiz,futbol,bilgi,yarışması,transfer,oyuncu,takım,kulüp,lig,1v1,arena,rakip
+tahmin,bulma,oyun,quiz,futbol,bilgi,yarışması,transfer,oyuncu,takım,kulüp,lig,1v1,arena,rakip,321
 ```
-_(93 karakter — 1.0.3 ile ASC'ye yazıldı. futbolcu/bilme/oyunu/ortak alt başlıkta
+_(97 karakter — '321' 1.0.4 taslağına eklendi (2026-09-01): '321 oyunu / 321 futbol oyunu' araması Ağustos'ta patladı, App Store'da üç '321' adlı rakip çıktı; oyun/futbol kelimeleriyle birleşerek o sorguları yakalar. futbolcu/bilme/oyunu/ortak alt başlıkta
 olduğu için burada tekrar edilmez; "gol, skor, kart" gibi değersiz terimler atıldı.
 en-US: `guess,footballer,trivia,game,transfer,club,duel,1v1,soccer,knowledge,league,two,clubs`;
 en-US alt başlık: "Football Quiz: Shared Player")_
