@@ -1255,7 +1255,10 @@ function AppRoot() {
         // yok" sorusunun cevabı bu iki bayrağın arasında.
         setTimeout(() => {
           try { freezeReportRef.current('jank', `ADX|${interstitialPresentation()}`.slice(0, 40), 0); } catch { /* önemsiz */ }
-        }, 6000);
+          // 20sn: PAID olayı gösterimle birlikte gelir ama SDK bazen kapanış
+          // sonrasına bırakır — 6sn'lik ilk ölçüm "ödenmedi"yi erken damgalama
+          // riski taşıyordu. Geçiş reklamı zaten en fazla ~15sn ekranda durur.
+        }, 20_000);
         // REKLAM SONRASI PAKET ÖNERİSİ (kullanıcı isteği 2026-09-01): reklamı
         // yeni izlemiş oyuncu, reklamsızlığın değerini TAM O ANDA hissediyor —
         // teklifin en anlamlı olduğu an burası. Reklam native pencere olduğu
