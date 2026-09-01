@@ -1058,6 +1058,7 @@ function AppRoot() {
   const [copassAnnounceVisible, setCopassAnnounceVisible] = useState(false); // yeni CO-PASS sezonu duyurusu
   const [maintenanceVisible, setMaintenanceVisible] = useState(false); // bakım penceresi
   const [seasonRewardVisible, setSeasonRewardVisible] = useState(false); // sezon ödülü toplama
+  const [seasonClaiming, setSeasonClaiming] = useState(false); // toplama isteği uçuşta
   const [adUpsellVisible, setAdUpsellVisible] = useState(false); // reklam sonrası paket önerisi // XOX duyurusu (her açılışta)
   const updateNudgeShownRef = useRef(false);
   const dailyOfferShownRef = useRef(false);                            // her AÇILIŞTA bir kez
@@ -1785,9 +1786,21 @@ function AppRoot() {
 
   // SEZON ÖDÜLÜ PENCERESİ (2026-09-01): ödül otomatik verilmez; oyuncu burada
   // toplar. Maç sürerken açılmaz — menüye dönünce çıkar.
+  // SEZON DURUMU AÇILIŞTA İSTENİR (2026-09-01: "profile girince değil, oyuna
+  // girer girmez çıksın"). Eskiden getSeason yalnız Profil ekranında
+  // çağrılıyordu; bekleyen ödül bilgisi de onunla geldiği için pencere ancak
+  // profile girilince açılıyordu. Artık giriş tamamlanır tamamlanmaz sorulur.
+  const seasonAskedRef = useRef(false);
+  useEffect(() => {
+    if (seasonAskedRef.current) return;
+    if (!loaded || splash || !state.profile?.userId) return;
+    seasonAskedRef.current = true;
+    actions.getSeason();
+  }, [loaded, splash, state.profile?.userId, actions]);
+
   const seasonPending = state.seasonRewardPending;
   useEffect(() => {
-    if (!seasonPending) { setSeasonRewardVisible(false); return; }
+    if (!seasonPending) { setSeasonRewardVisible(false); setSeasonClaiming(false); return; }
     if (!loaded || splash || modalBlocked) return;
     if (!MAINTENANCE_MENU_PHASES.has(state.phase)) return;
     setSeasonRewardVisible(true);
@@ -3278,7 +3291,8 @@ function AppRoot() {
           basılınca tanımlanır (çift toplama sunucu koşuluyla engelli). */}
       <GameModal
         visible={seasonRewardVisible}
-        onClose={() => setSeasonRewardVisible(false)}
+        onClose={() => { /* zorunlu: tek çıkış TOPLA düğmesi */ }}
+        dismissible={false}
         title="SEZON ÖDÜLLERİN HAZIR"
         icon="trophy"
         coach
@@ -3304,7 +3318,11 @@ function AppRoot() {
               </View>
             ))}
           </View>
-          <Btn big kind="primary" icon="gift" label="ÖDÜLLERİ TOPLA" onPress={() => { actions.claimSeasonReward(); setSeasonRewardVisible(false); }} />
+          {/* Pencere BURADA kapatılmaz: kapatsak effect seasonRewardPending hâlâ
+              dolu olduğu için anında yeniden açardı. Sunucu ödülü tanımlayıp
+              season_reward_claimed gönderince pending null olur ve pencere
+              kendiliğinden kapanır — tek doğru kapanış yolu budur. */}
+          <Btn big kind="primary" icon="gift" label={seasonClaiming ? 'TOPLANIYOR…' : 'ÖDÜLLERİ TOPLA'} disabled={seasonClaiming} onPress={() => { setSeasonClaiming(true); actions.claimSeasonReward(); }} />
         </View>
       </GameModal>
 

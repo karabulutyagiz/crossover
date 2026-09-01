@@ -158,6 +158,12 @@ export function validateClientMsg(value: unknown): ValidationResult {
       if (!hasString(value, 'screen', 40)) return invalid('freeze_report.screen is invalid');
       if (!hasInteger(value, 'stalledMs', 0, 3_600_000)) return invalid('freeze_report.stalledMs is invalid');
       break;
+    // Gövdesiz istek: alan doğrulaması yok, ama BURADA TANIMLI OLMASI ŞART —
+    // aksi halde default dalı 'unknown message type' deyip mesajı kapıda
+    // düşürür (2026-09-01: "ödülleri topla'ya basınca hiçbir şey olmuyor"
+    // hatasının sebebi buydu).
+    case 'claim_season_reward':
+      break;
     case 'claim_quest':
       if (!hasString(value, 'questId', 64)) return invalid('claim_quest.questId must be a string');
       break;
