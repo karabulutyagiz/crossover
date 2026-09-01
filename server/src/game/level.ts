@@ -56,7 +56,14 @@ export function xpForNext(level: number): number {
   if (level <= 20) return 160;
   if (level <= 30) return 200;
   if (level <= 40) return 240;
-  return 280; // 41+ (tavan dahil — UI'da 0'a bölme olmasın)
+  if (level <= 50) return 280; // sezon tavanına kadar (yol eğrisi DEĞİŞMEDİ)
+  // 51+ YALNIZ HESAP SEVİYESİ (sezonluk 50'de biter): düz 280 kalsaydı aktif
+  // oyuncu (~360 XP/gün) her gün seviye atlar, sayı bir ayda 80'i bulup
+  // anlamsızlaşırdı (kullanıcı: 'seviye kasmak çok basic olmucak 50den sonra').
+  // Her seviye bir öncekinden 60 XP pahalı: L51=340, L60=880, L70=1480,
+  // L100=3280. Günlük oyuncu 50→60'ı ~2-3 haftada, 100'ü ~8-9 ayda görür —
+  // hesap seviyesi yükseldikçe gerçek prestij olur.
+  return 280 + 60 * (level - 50);
 }
 
 // Özel güçler — Seviye Yolu'ndan kazanılan TEK KULLANIMLIK, stoklanabilir

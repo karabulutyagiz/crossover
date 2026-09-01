@@ -15683,7 +15683,10 @@ export const xpForNextLevel = (level: number): number => {
   if (level <= 20) return 160;
   if (level <= 30) return 200;
   if (level <= 40) return 240;
-  return 280;
+  if (level <= 50) return 280; // sezon yolu eğrisi burada biter
+  // 51+ yalnız HESAP seviyesi (sunucudaki xpForNext ile birebir): her seviye
+  // 60 XP pahalılaşır — L51=340, L100=3280. Düz 280 kalsa sayı anlamsızlaşırdı.
+  return 280 + 60 * (level - 50);
 };
 
 // Çerçeve kademeleri — 10'un katlarında açılır; renkler tema paletinden.
