@@ -1057,7 +1057,8 @@ function AppRoot() {
   const [xoxAnnounceVisible, setXoxAnnounceVisible] = useState(false);
   const [copassAnnounceVisible, setCopassAnnounceVisible] = useState(false); // yeni CO-PASS sezonu duyurusu
   const [maintenanceVisible, setMaintenanceVisible] = useState(false); // bakım penceresi
-  const [seasonRewardVisible, setSeasonRewardVisible] = useState(false); // sezon ödülü toplama // XOX duyurusu (her açılışta)
+  const [seasonRewardVisible, setSeasonRewardVisible] = useState(false); // sezon ödülü toplama
+  const [adUpsellVisible, setAdUpsellVisible] = useState(false); // reklam sonrası paket önerisi // XOX duyurusu (her açılışta)
   const updateNudgeShownRef = useRef(false);
   const dailyOfferShownRef = useRef(false);                            // her AÇILIŞTA bir kez
   const [outageGiftClaiming, setOutageGiftClaiming] = useState(false);
@@ -1225,6 +1226,11 @@ function AppRoot() {
       if (maybeShowInterstitial(hasActiveSocialPack(state.profile))) {
         reported = true;
         try { freezeReportRef.current('jank', 'AD|GOSTERILDI', 0); } catch { /* önemsiz */ }
+        // REKLAM SONRASI PAKET ÖNERİSİ (kullanıcı isteği 2026-09-01): reklamı
+        // yeni izlemiş oyuncu, reklamsızlığın değerini TAM O ANDA hissediyor —
+        // teklifin en anlamlı olduğu an burası. Reklam native pencere olduğu
+        // için kapanışını beklemek şart (yoksa iOS iki pencereyi kilitler).
+        setTimeout(() => setAdUpsellVisible(true), 1200);
         clearInterval(timer);
       }
     }, 700);
@@ -1675,6 +1681,7 @@ function AppRoot() {
     copassAnnounceVisible ||
     maintenanceVisible ||
     seasonRewardVisible ||
+    adUpsellVisible ||
     Boolean(state.supportMessage) ||
     Boolean(state.tournamentReady) ||
     Boolean(state.tournamentOver) ||
@@ -3221,6 +3228,31 @@ function AppRoot() {
         })() : (
           <Text style={{ color: theme.muted, fontFamily: 'Poppins-SemiBold', fontSize: 13, textAlign: 'center' }}>{t('store.loading')}</Text>
         )}
+      </GameModal>
+
+      {/* REKLAM SONRASI SOSYAL PAKET ÖNERİSİ — yalnız paketi OLMAYANA. */}
+      <GameModal
+        visible={adUpsellVisible}
+        onClose={() => setAdUpsellVisible(false)}
+        title="REKLAMSIZ OYNA"
+        icon="sparkles"
+        coach
+      >
+        <View style={{ alignItems: 'center', gap: 12 }}>
+          <Text style={{ fontSize: 40 }}>✨</Text>
+          <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
+            Sosyal Paket ile reklam görmezsin ve tüm özel modlar açılır.
+          </Text>
+          <View style={{ alignSelf: 'stretch', gap: 7 }}>
+            {['🚫  Reklam yok', '🇹🇷  Ülke-Takım', '🔤  Harf-Takım', '⭕  Futbol XOX'].map((satir) => (
+              <View key={satir} style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: withAlpha(theme.text, 0.055), borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }}>
+                <Text style={{ color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold' }}>{satir}</Text>
+              </View>
+            ))}
+          </View>
+          <Btn big kind="primary" icon="sparkles" label="SOSYAL PAKET AL" onPress={() => { setAdUpsellVisible(false); setStoreSection('socialPack'); goToTab(0); }} />
+          <Btn kind="ghost" label="Şimdi değil" onPress={() => setAdUpsellVisible(false)} />
+        </View>
       </GameModal>
 
       {/* SEZON ÖDÜLÜ — "ÖDÜLLERİ TOPLA". Ödül sunucuda BEKLER; düğmeye

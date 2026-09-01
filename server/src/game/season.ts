@@ -186,6 +186,15 @@ export async function claimSeasonReward(
   if (!rowCount) return { ok: false, error: 'Bu ödül zaten toplandı' };
 
   const o = bekleyen.reward;
+  // ÇİFT ÖDÜL KORUMASI (2026-09-01 kullanıcı isteği: "herkes popup'ı 1 kez daha
+  // görsün ama şu an aldıysa 2.'ye vermesin"): sezon rozeti zaten hesaptaysa
+  // ödül DAHA ÖNCE tanımlanmıştır. Kayıt 'toplandı' işaretlenir, pencere
+  // kapanır, oyuncu ne kazandığını görür — ama elmas/güç İKİNCİ KEZ verilmez.
+  const { rows: sahip } = await pool.query<{ var: boolean }>(
+    `SELECT $2 = ANY(owned_avatars) AS var FROM users WHERE id = $1`, [userId, o.avatarId],
+  );
+  if (sahip[0]?.var) return { ok: true, seasonId: bekleyen.seasonId, reward: { ...o, diamonds: 0, specialPower: null } };
+
   const sets: string[] = [
     `diamonds = diamonds + $2`,
     `owned_avatars = (SELECT ARRAY(SELECT DISTINCT a FROM unnest(owned_avatars || $3::text[]) AS a))`,

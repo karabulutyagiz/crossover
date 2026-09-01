@@ -147,25 +147,24 @@ const NICK_HANDLES = [
   // 'BLOODSUCKER y4gzz dltnlarsehirde gibi').
   'BLOODSUCKER', 'NIGHTMARE', 'PHANTOM', 'REAPER67', 'VENOM', 'GHOSTx', 'KINGKONG',
   'y4gzz', 'm3rt', 'br4k', 's4rp', 'k4an1907', 'x_emre_x', 'l3vent',
-  'dltnlarsehirde', 'geceninkrali', 'sahaninpatronu', 'topustasi06', 'formaninhakki',
-  'kramponcu53', 'onbirdeoyna', 'derbininadami', 'sonvurus', 'kaleyekilit',
+  'dltnlarsehirde', 'geceninkrali', 
+  'kramponcu53', 'sonvurus', 
   'DARKKNIGHT', 'SHADOW61', 'THUNDER', 'BEASTMODE', 'SNIPER10', 'WOLF1905', 'TITAN',
-  'gecceninefendisi', 'toplakonusan', 'ayaktateknik', 'penaltinokta', 'ofsayttuzagi',
+  'penaltinokta', 'ofsayttuzagi',
   'krl_emre', 'ByArda_', 'xSarpx', 'the_baran', 'mrt_official', 'kaan__07',
   'z0mbi', 'k4rakartal', 'y1ldiz', 'g0lcu', 'r3is', 'c4navar', 'p4tron',
   'legend34', 'efsane1907', 'kartal58', 'aslan1905', 'kanarya', 'timsah61',
   // Birleşik-cümle / yaratıcı rumuzlar (kullanıcı 2026-08-28: 'dltnlarsehirde
   // gibi daha fazla olsun'). Türkçe futbol kültürü + mahalle/sokak dili.
-  'sokaktanyetisme', 'toplabuyudum', 'ayaklarakonusur', 'gecesahaci', 'formacisi',
-  'tribunlerinsesi', 'onikinciadam', 'derbicanavari', 'golcrali', 'pasmakinesi',
-  'sahakartali', 'kramponefendi', 'kalecikabusu', 'ortasahabeyni',
-  'sondakikaci', 'nizamiçalim', 'topbenim', 'gecemezsin', 'rabonaci',
-  'catladikoptu', 'yikilmayanadam', 'mahalleyildizi', 'asfaltinkralı',
-  'benoynarsın', 'gollegelirim', 'driplinustasi', 'sahayahukmeder',
-  'kaptanadam', 'efsanevari', 'tekgeçerim', 'bitmeyenenerji', 'golkralı61',
-  'dltnlarsehirde', 'geceyarisigol', 'topucuoglu', 'sahaninsahibi',
-  'kaleyisallar', 'çalimatarım', 'panenkaci', 'volecikralı', 'aşiretgolcüsü',
-  'kramponcuemmi', 'topsevdalısı', 'yeşilsahaci', 'gollüsaniye', 'rövaşatacı',
+  'gecesahaci', 'formacisi',
+  'onikinciadam', 'derbicanavari', 'golcrali', 'pasmakinesi',
+  'sahakartali', 'kramponefendi', 
+  'sondakikaci', 'rabonaci',
+  'driplinustasi', 
+  'kaptanadam', 'golkralı61',
+  'dltnlarsehirde', 
+  'panenkaci', 'volecikralı', 
+  'kramponcuemmi', 'yeşilsahaci', 'rövaşatacı',
 ];
 const NAME_JERSEY_YEARS = ['1907', '1905', '1903', '1453', '58', '61', '34', '06', '10', '7', '9', '99'];
 
