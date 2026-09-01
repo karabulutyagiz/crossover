@@ -15086,6 +15086,16 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
       .catch(() => setAdClaimState('error'));
   }, lostFinal);
   const showPostLossAd = lostFinal && adClaimState !== 'done' && adClaimState !== 'error';
+  // ÖLÇÜM (2026-09-01): ödüllü reklam haftada 5 kez izlenmiş (ad_rewards).
+  // "Kimse istemiyor" ile "kimse görmüyor" bambaşka sorunlar ve elimizdeki veri
+  // ikisini ayırmıyordu. Teklifin KAÇ KEZ ÇIKTIĞI da sayılıyor; oran düşükse
+  // ödül küçük, gösterim sıfırsa tetikleyici bozuk demektir.
+  const postLossSeenRef = useRef(false);
+  useEffect(() => {
+    if (!showPostLossAd || postLossSeenRef.current) return;
+    postLossSeenRef.current = true;
+    try { actions.reportFreeze('jank', 'AD5|teklif', 0); } catch { /* tanı — oyunu etkilemez */ }
+  }, [showPostLossAd]);
 
   const { icon, color, headline } = useMemo(() => {
     if (r.reason === 'same_team')
@@ -15228,7 +15238,11 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
                 compact kind="accent" icon="videocam"
                 label={postLossAd.adLoading || adClaimState === 'busy' ? t('ads.loading') : t('ads.postLossCta')}
                 feedback={GameFeedbackEvent.UI_TAP}
-                onPress={() => { if (!postLossAd.adLoading && adClaimState === 'idle') void postLossAd.watchAd(); }}
+                onPress={() => {
+                  if (postLossAd.adLoading || adClaimState !== 'idle') return;
+                  try { actions.reportFreeze('jank', 'AD5|basildi', 0); } catch { /* tanı */ }
+                  void postLossAd.watchAd();
+                }}
               />
             </View>
           ) : null}

@@ -1245,7 +1245,13 @@ function AppRoot() {
         // pencere reklam HÂLÂ EKRANDAYKEN açılıyordu — iOS'ta iki native sunum
         // üst üste binince uygulama donuyor (oyuncu raporu, 16 Pro Max).
         // Artık SDK'nın CLOSED olayına bağlı; 400ms native kapanışın bitmesi için.
-        setTimeout(() => setAdUpsellVisible(true), 400);
+        setTimeout(() => {
+          setAdUpsellVisible(true);
+          // Paket önerisi GERÇEKTEN açılıyor mu: reklamdan önce kör zamanlayıcı
+          // yüzünden reklamın üstüne açılıyor ve donduruyordu, yani pratikte hiç
+          // görünmemiş olabilir. Artık açılışı sayıyoruz.
+          try { freezeReportRef.current('jank', 'SPU|acildi', 0); } catch { /* tanı */ }
+        }, 400);
       })) {
         reported = true;
         try { freezeReportRef.current('jank', `AD|${interstitialDiagnostics().adsLastReason}`.slice(0, 40), 0); } catch { /* önemsiz */ }
