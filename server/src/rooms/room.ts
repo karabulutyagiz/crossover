@@ -1219,10 +1219,14 @@ export class Room {
 
   private shouldLockUsedForRound(result: RoundResult): boolean {
     if (this.gameMode === 'player-player') return false;
-    // Only a direct double-pass on a truly empty crossover stays reusable.
-    if (result.reason !== 'passed') return true;
+    // Kilitle YALNIZ tur gerçekten OYNANDIYSA: biri DOĞRU bildi ya da en az bir YANLIŞ
+    // deneme yapıldı. ATLANAN turlar takım/ülkeyi KİLİTLEMEZ → sonraki turlarda tekrar
+    // seçilebilir (kullanıcı kuralı 2026-09-02): aynı takım seçilip atlandı, seçilen
+    // takımlarda ortak oyuncu yok, ya da kimse cevap vermeden pas/süre doldu.
+    // (Harf-takım'da harf zaten hiç kilitlenmez; team-team + country-team burada kapsanır.)
+    if (result.correct) return true;
     if ((this.round?.wrongAttempts?.size ?? 0) > 0) return true;
-    return result.commonPlayers.length > 0;
+    return false;
   }
 
   // Reveal için gereken TÜM pick'ler yerinde mi? (beginReveal'in non-null erişimleri
