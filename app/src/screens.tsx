@@ -46,7 +46,7 @@ import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, Lin
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState, FriendInfo, LeaderboardEntry } from './useCrossover';
 import { initialState } from './useCrossover';
-import type { BlockedUserView, ClubRef, CosmeticLoadoutView, CosmeticType, DailyCareerStateView, DailyCrossoverStateView, DailyQuestsView, SeasonStateView, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, ScopeOption, SpellInfo, StoreCatalogItem } from './protocol';
+import type { BlockedUserView, ClubRef, CosmeticLoadoutView, CosmeticType, DailyCareerStateView, DailyCrossoverStateView, DailyQuestsView, SeasonStateView, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, ScopeOption, SpellInfo, StoreCatalogItem, StoreCatalogView } from './protocol';
 import {
   EmoteCallout,
   EmoteSticker,
@@ -11315,9 +11315,7 @@ function CosmeticsLoadoutPanel({ state, actions }: Props) {
                         // Arena çerçevesi selected_frame'e, mağaza çerçevesi
                         // equipped_frame_id'ye yazar; görünen değer equipped ??
                         // selected olduğu için öteki sütun da temizlenir.
-                        if (tile.kind === 'arena') { actions.equipCosmetic('frame', null); actions.setFrame(tile.id); }
-                        else if (tile.kind === 'store') { actions.setFrame(null); actions.equipCosmetic('frame', tile.id); }
-                        else { actions.equipCosmetic('frame', null); actions.setFrame(null); }
+                        wearProfileFrame(actions, profile, tile.id);
                       } else {
                         actions.equipCosmetic(meta.type, tile.id);
                       }
@@ -13525,7 +13523,8 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
     setQuestsOpen(true);
   }, [actions]);
 
-  const [framePrev, setFramePrev] = useState<{ tier: LevelTier; unlocked: boolean } | null>(null);
+  const [framePrev, setFramePrev] = useState<{ tier: FrameTierLike; unlocked: boolean } | null>(null);
+  const frameTiles = ownedFrameTiles(p, state.storeCatalog);
   const [pendingAvatarId, setPendingAvatarId] = useState<string | null>(null);
   const [confirmAvatarId, setConfirmAvatarId] = useState<string | null>(null);
   const [showAvatarPage, setShowAvatarPage] = useState(() => state.avatarPagePending);
@@ -13877,7 +13876,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
             MAĞAZA çerçeveleri de burada (kullanıcı raporu 2026-08-27: satın alınan
             çerçeve profilde görünmüyordu — şerit yalnız seviye kademelerini
             listeliyordu). Mağaza çerçevesine dokunmak DOĞRUDAN kuşanır/çıkarır. */}
-        {(LEVEL_TIERS.some((tr) => ownsFrame(p, tr.key)) || (p.ownedCosmetics ?? []).some((id) => id.endsWith('_frame'))) ? (
+        {frameTiles.length > 0 ? (
           <View style={{ marginTop: 10 }}>
             <GamePanel compact accentStripe={levelTier(lvl)?.c ?? theme.primary} bodyStyle={{ paddingVertical: 10, paddingHorizontal: 12 }}>
               <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 1.2, marginBottom: 6 }}>{t('profile.frames').toLocaleUpperCase(currentLang())}</Text>
@@ -13885,6 +13884,9 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
                   olan oyuncuda gerisi ekran dışında kalıyordu ve yatay sürükleme
                   pager'a kaçıp sekme değiştiriyordu (kullanıcı raporu 2026-09-01).
                   directionalLockEnabled + nestedScrollEnabled: hareket burada kalır. */}
+              {/* TEK LİSTE (2026-09-02): seviye + sezon/arena + mağaza çerçeveleri
+                  aynı karodan çizilir ve HEPSİ aynı önizleme popup'ını (KULLAN /
+                  KALDIR) açar — eskiden yalnız seviye çerçeveleri açıyordu. */}
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -13892,44 +13894,12 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
                 nestedScrollEnabled
                 contentContainerStyle={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6, paddingHorizontal: 3, paddingRight: 8 }}
               >
-                {LEVEL_TIERS.filter((tr) => ownsFrame(p, tr.key)).map((tr) => {
-                  const worn = p.selectedFrame === tr.key;
+                {frameTiles.map((tile) => {
+                  const worn = p.selectedFrame === tile.key;
                   return (
-                    <Pressable key={tr.key} onPress={() => setFramePrev({ tier: tr, unlocked: true })} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
-                      <View style={worn ? { borderRadius: 56 * 0.28 + 2, borderWidth: 2, borderColor: tr.c, margin: -2 } : undefined}>
-                        <FrameArt tierKey={tr.key} size={56} well />
-                      </View>
-                      {worn ? (
-                        <View style={{ position: 'absolute', right: -5, top: -5, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
-                          <Ionicons name="checkmark" size={11} color={theme.ink} />
-                        </View>
-                      ) : null}
-                    </Pressable>
-                  );
-                })}
-                {/* Arena çerçeveleri — envanterde görünüp burada görünmüyordu
-                    (kullanıcı raporu 2026-08-28: 'profilde sadece pass'tekiler') */}
-                {(p.ownedFrames ?? []).filter((id) => !LEVEL_TIERS.some((tr) => tr.key === id)).map((id) => {
-                  const worn = p.selectedFrame === id;
-                  return (
-                    <Pressable key={`af-${id}`} onPress={() => { triggerFeedback(worn ? GameFeedbackEvent.UI_TOGGLE_OFF : GameFeedbackEvent.UI_TOGGLE_ON); actions.equipCosmetic('frame', null); actions.setFrame(worn ? null : id); }} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
-                      <View style={worn ? { borderRadius: 56 * 0.28 + 2, borderWidth: 2, borderColor: theme.primary, margin: -2 } : undefined}>
-                        <FrameArt tierKey={id} size={56} well />
-                      </View>
-                      {worn ? (
-                        <View style={{ position: 'absolute', right: -5, top: -5, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
-                          <Ionicons name="checkmark" size={11} color={theme.ink} />
-                        </View>
-                      ) : null}
-                    </Pressable>
-                  );
-                })}
-                {(p.ownedCosmetics ?? []).filter((id) => id.endsWith('_frame')).map((id) => {
-                  const worn = p.selectedFrame === id;
-                  return (
-                    <Pressable key={id} onPress={() => { triggerFeedback(worn ? GameFeedbackEvent.UI_TOGGLE_OFF : GameFeedbackEvent.UI_TOGGLE_ON); actions.setFrame(null); actions.equipCosmetic('frame', worn ? null : id); }} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
-                      <View style={worn ? { borderRadius: 56 * 0.28 + 2, borderWidth: 2, borderColor: theme.primary, margin: -2 } : undefined}>
-                        <FrameArt tierKey={id} size={56} well />
+                    <Pressable key={tile.key} onPress={() => setFramePrev({ tier: tile, unlocked: true })} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
+                      <View style={worn ? { borderRadius: 56 * 0.28 + 2, borderWidth: 2, borderColor: tile.c, margin: -2 } : undefined}>
+                        <FrameArt tierKey={tile.key} size={56} well />
                       </View>
                       {worn ? (
                         <View style={{ position: 'absolute', right: -5, top: -5, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
@@ -13974,7 +13944,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
         visible={framePrev != null}
         onClose={() => setFramePrev(null)}
         equipped={framePrev != null && p.selectedFrame === framePrev.tier.key}
-        onEquip={(frameId) => { actions.setFrame(frameId); setFramePrev(null); }}
+        onEquip={(frameId) => { wearProfileFrame(actions, p, frameId); setFramePrev(null); }}
       />
     </Screen>
   );
@@ -15728,6 +15698,41 @@ export function levelTier(level: number): LevelTier | null {
   return cur;
 }
 
+// ---- Profil çerçeve şeridi: TEK liste, TEK popup, TEK takma yolu -------------
+// (kullanıcı raporu 2026-09-02: seviye çerçeveleri popup açıyordu, sezon/arena ve
+// mağaza çerçeveleri — buz, GOAT — dokununca doğrudan tak-çıkar yapıyor, KULLAN
+// popup'ı çıkmıyordu; yeni alınan çerçeve de ayrı bir daldan geliyordu.)
+// FrameTierLike: LevelTier'ın üst kümesi — popup ve şerit yalnız bunu tanır.
+export type FrameTierLike = { key: string; c: string; min: number; nameKey?: MessageKey; label?: string };
+
+/** Profilin sahip olduğu TÜM çerçeveler, şerit sırasıyla: seviye → sezon/arena → mağaza. */
+export function ownedFrameTiles(p: ProfileView | null | undefined, catalog: StoreCatalogView | null | undefined): FrameTierLike[] {
+  if (!p) return [];
+  const level: FrameTierLike[] = LEVEL_TIERS.filter((tr) => ownsFrame(p, tr.key));
+  const extra: FrameTierLike[] = (p.ownedFrames ?? [])
+    .filter((id) => !LEVEL_TIERS.some((tr) => tr.key === id))
+    .map((id) => ({ key: id, c: theme.gold, min: 0, label: cosmeticFallbackName(id) }));
+  // Mağaza çerçevesi: katalog 'frame' der; katalog henüz gelmediyse '_frame' soneki yeter.
+  const store: FrameTierLike[] = (p.ownedCosmetics ?? [])
+    .filter((id) => catalog?.items.some((it) => it.id === id && it.type === 'frame') || (!catalog && id.endsWith('_frame')))
+    .map((id) => {
+      const it = catalog?.items.find((x) => x.id === id);
+      return { key: id, c: RARITY_COLOR[it?.rarity ?? 'rare'] ?? theme.primary, min: 0, label: it ? cosmeticDisplayName(it) : cosmeticFallbackName(id) };
+    });
+  const seen = new Set<string>();
+  return [...level, ...extra, ...store].filter((tile) => (seen.has(tile.key) ? false : (seen.add(tile.key), true)));
+}
+
+/** Çerçeve tak/çıkar — HER türden çerçeve için tek yol. Mağaza çerçevesi
+ *  equip_cosmetic, seviye/sezon çerçevesi set_frame ucuyla gider; öteki sütun
+ *  temizlenir ki görünen değer (equipped ?? selected) tutarlı kalsın. */
+export function wearProfileFrame(actions: Pick<Actions, 'setFrame' | 'equipCosmetic'>, p: ProfileView | null | undefined, frameId: string | null): void {
+  if (frameId == null) { actions.equipCosmetic('frame', null); actions.setFrame(null); return; }
+  const isStore = (p?.ownedCosmetics ?? []).includes(frameId) && !(p?.ownedFrames ?? []).includes(frameId);
+  if (isStore) { actions.setFrame(null); actions.equipCosmetic('frame', frameId); }
+  else { actions.equipCosmetic('frame', null); actions.setFrame(frameId); }
+}
+
 // 5'in katlarında açılan özel ifadeler (sunucudaki LEVEL_EMOTES ile birebir).
 // Çerçeve sahipliği KALICIDIR (sezonlar arası): yeni alan ownedFrames esas,
 // eski sunucuya karşı claimedLevels'tan türetme yedeği korunur.
@@ -15966,17 +15971,19 @@ export function FrameArt({ tierKey, size, locked = false, well = false }: { tier
 // Dokununca açılan büyük çerçeve önizlemesi — kademe adı + açılma durumu.
 // onEquip verilirse (profil Çerçeveler şeridi) KULLAN/KALDIR butonu da çizilir.
 export function FramePreviewModal({ tier, unlocked, visible, onClose, equipped, onEquip }: {
-  tier: LevelTier | null; unlocked: boolean; visible: boolean; onClose: () => void;
+  tier: FrameTierLike | null; unlocked: boolean; visible: boolean; onClose: () => void;
   equipped?: boolean; onEquip?: (frameId: string | null) => void;
 }) {
   if (!visible || !tier) return null;
   const big = Math.min(SCREEN_W * 0.8, 330);
+  // Seviye kademesi i18n anahtarından, diğer çerçeveler (sezon/mağaza) hazır etiketten.
+  const frameLabel = tier.label ?? (tier.nameKey ? t(tier.nameKey) : tier.key);
   return (
     <SafeModal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim, alignItems: 'center', justifyContent: 'center', padding: 24 }]} onPress={onClose}>
         <FrameArt tierKey={tier.key} size={big} locked={!unlocked} />
         <Text style={{ color: tier.c, fontSize: 24, fontFamily: 'Poppins-Black', letterSpacing: 1.2, marginTop: 6, ...engrave('lg') }}>
-          {t(tier.nameKey).toLocaleUpperCase(currentLang())}
+          {frameLabel.toLocaleUpperCase(currentLang())}
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, backgroundColor: unlocked ? withAlpha(theme.primary, 0.16) : theme.panelInnerFill, borderRadius: 999, borderWidth: 1.5, borderColor: unlocked ? theme.primary : theme.border, paddingHorizontal: 14, paddingVertical: 6 }}>
           <Ionicons name={unlocked ? 'checkmark-circle' : 'lock-closed'} size={15} color={unlocked ? theme.primary : theme.muted} />
