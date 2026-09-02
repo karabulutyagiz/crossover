@@ -1,4 +1,13 @@
-# CANLIYA ALINACAKLAR — Deploy Sırası (güncel: 2026-08-29 gece)
+# CANLIYA ALINACAKLAR — Deploy Sırası (güncel: 2026-09-02 gece)
+
+## ✅ 2026-09-02 21:43 — OTA (runtime 1.0.3, iOS+Android)
+Grup `b21a1578-db17-481c-aa0c-0d6e99e232ae`, commit `a301700`. 30 Ağustos'tan bu yana
+biriken 44 istemci commit'i: popup COFA alınlığı (madalyon → alınlık → üst çizgi),
+Çöz Kazan modu, CO-PASS 50 seviye, "ÖDÜLLERİ TOPLA", hesap seviyesi ayrımı,
+reklam düzeltmeleri (3'te 1 kuralı, donma), XOX klavye + tek hücre, mağaza profil
+fotoğrafları, monetizasyon (kayıp sonrası 5💎 teklifi kalktı). Sunucu zaten canlıdaydı
+(bugün basılmış, migration 0020). Website de senkron (kulüp genişlemesi 2, 786 sayfa).
+OTA hesabı: `ygzkrblt` (yagizkarabulutmedya@gmail.com) — ygzkrblt1 oturumu yetkisiz.
 
 ## ✅ 2026-08-29 — TAM YAYIN (sunucu + OTA, iOS & Android)
 OTA grubu `c25cb779-05e4-4be9-a781-f9460186f00b` (runtime 1.0.3, android+ios).
