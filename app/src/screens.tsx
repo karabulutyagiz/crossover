@@ -963,7 +963,11 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
             </Pressable>
             </View>
             {crest ? (
-              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'center', zIndex: 30 }}>
+              // top: -(CREST_H-6) — alınlık kartın ÜST ÇİZGİSİNİN ÜSTÜNDE durur,
+              // yalnız 6px'i renkli bileziğe temas eder (kullanıcı düzeltmesi
+              // 2026-09-02: top:0 alınlığı kartın İÇİNE koyup başlık yazısını
+              // örtüyordu — 'yazılar okunmuyor').
+              <View pointerEvents="none" style={{ position: 'absolute', top: -(CREST_H - 6), left: 0, right: 0, alignItems: 'center', zIndex: 30 }}>
                 <ModalCrest ring={strip} />
               </View>
             ) : null}
