@@ -14996,10 +14996,13 @@ function TrophyFly({ target, onDone, count = 9 }: { target: { x: number; y: numb
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // Rendered in a Modal so absoluteFill maps to the whole window — the same
-  // coordinate space measureInWindow / Dimensions gave us for origin and target.
+  // ARTIK MODAL DEĞİL (2026-09-02, oyuncu raporu: 'devam et'e 2-3 kez basmak
+  // gerekiyor'): bu salt-görsel uçuşlar native Modal içinde çiziliyordu; modal
+  // penceresi TÜM dokunuşları yutar (içteki pointerEvents:none alttaki uygulamaya
+  // geçirmez) ve tek-modal kuyruğunu da meşgul ediyordu. Düz overlay + yüksek
+  // zIndex: dokunuş engellemez, koordinatlar measureInWindow ile aynı kalır.
   return (
-    <SafeModal visible transparent animationType="none" statusBarTranslucent>
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 80, elevation: 80 }]}>
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {parts.map((g, i) => (
           <Animated.View key={i} style={{ position: 'absolute', left: -15, top: -15, opacity: g.o, transform: [{ translateX: g.x }, { translateY: g.y }, { scale: g.s }] }}>
@@ -15007,7 +15010,7 @@ function TrophyFly({ target, onDone, count = 9 }: { target: { x: number; y: numb
           </Animated.View>
         ))}
       </View>
-    </SafeModal>
+    </View>
   );
 }
 
@@ -15621,7 +15624,7 @@ function XpOrbFly({ gained, target, onDone, onOrbLand }: { gained: number; targe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <SafeModal visible transparent animationType="none" statusBarTranslucent>
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 80, elevation: 80 }]}>
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {/* +N XP çipi */}
         <Animated.View style={{
@@ -15645,7 +15648,7 @@ function XpOrbFly({ gained, target, onDone, onOrbLand }: { gained: number; targe
           </Animated.View>
         ))}
       </View>
-    </SafeModal>
+    </View>
   );
 }
 
@@ -15700,7 +15703,7 @@ export function GemOrbFly({ amount, onDone }: { amount: number; onDone: () => vo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <SafeModal visible transparent animationType="none" statusBarTranslucent>
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 80, elevation: 80 }]}>
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {/* +N elmas çipi */}
         <Animated.View style={{
@@ -15724,7 +15727,7 @@ export function GemOrbFly({ amount, onDone }: { amount: number; onDone: () => vo
           </Animated.View>
         ))}
       </View>
-    </SafeModal>
+    </View>
   );
 }
 

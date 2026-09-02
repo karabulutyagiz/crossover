@@ -611,8 +611,10 @@ export class Room {
             ledgerMetadata: { forfeitReason: reason },
           });
           await recordOpponentHistory({ matchId: this.matchId, playerId: p.userId!, opponentType: 'BOT', winnerId: null, won: false, trophyDelta: leaverRes.delta, durationSecs: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0 });
-          // Dereceli maçtan ayrılan gerçek maç mağlubiyet XP'si alır (bot dolgusu olsa da).
-          const xpRes = await awardMatchXp(p.userId!, false, false);
+          // HÜKMEN ÇIKAN XP ALMAZ (kullanıcı kararı 2026-09-02): eski kural
+          // ayrılana mağlubiyet XP'si yazıyordu — hem 'quit attım, XP geldi'
+          // tuhaflığı hem çık-çık XP farmı kapısıydı. Kupa cezası aynen kalır.
+
           await updateSkillAfterMatch(p.userId!, p.trophies ?? leaverRes.profile.trophies, {
             opponentType: 'BOT',
             opponentSkillMean: botSkill.skillMean,
@@ -624,7 +626,6 @@ export class Room {
           }).catch((err) => log.warn('skill_update_failed', { matchId: this.matchId, userId: p.userId, error: err instanceof Error ? err.message : String(err) }));
           try {
             p.transport.send({ type: 'trophy_update', matchId: this.matchId, trophies: leaverRes.profile.trophies, delta: leaverRes.delta, arena: leaverRes.profile.arena, diamonds: leaverRes.profile.diamonds, highestArenaRewarded: leaverRes.profile.highestArenaRewarded, shielded: leaverRes.shielded, winStreak: leaverRes.profile.winStreak, bestStreak: leaverRes.profile.bestStreak, lostStreak: leaverRes.profile.lostStreak });
-            if (xpRes) p.transport.send({ type: 'xp_update', ...xpRes });
           } catch { /* socket may already be gone */ }
           recordTelemetry({
             eventName: 'match_finished',
@@ -747,7 +748,7 @@ export class Room {
               ledgerMetadata: { forfeitReason: reason },
             });
             await recordOpponentHistory({ matchId: this.matchId, playerId: p.userId, opponentId: winner.userId ?? null, opponentType: 'HUMAN', winnerId: winner.userId ?? null, won: false, trophyDelta: leaverRes.delta, durationSecs: this.matchStartedAt ? Math.round((Date.now() - this.matchStartedAt) / 1000) : 0 });
-            await awardMatchXp(p.userId, false, false); // ayrılan: mağlubiyet XP'si
+            // HÜKMEN ÇIKAN XP ALMAZ (kullanıcı kararı 2026-09-02) — kupa cezası kalır.
             await updateSkillAfterMatch(p.userId, p.trophies ?? leaverRes.profile.trophies, {
               opponentType: 'HUMAN',
               opponentSkillMean: winnerSkill.skillMean,
