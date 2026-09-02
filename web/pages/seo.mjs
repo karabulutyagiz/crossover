@@ -141,6 +141,10 @@ export function futbolcuBilmeOyunu() {
       '<p>Ölçüt “ne kadar ezber gerektirdiği” ise ortak futbolcu formatı öndedir: tek bir oyuncuyu değil, iki kulübün tüm kadro geçmişinin kesişimini hatırlaman gerekir. Fotoğraf tabanlı oyunlarda yüz tanıma yeterken burada transfer bilgisi şart.</p>',
     ],
     [
+      'Futbolcu bulma oyunu ile futbolcu bilme oyunu aynı şey mi?',
+      '<p>Aynı oyun ailesinin iki adı. “Bulma” denince genelde ipuçlarından oyuncuyu <strong>bulmak</strong> (ortak kulüp, harf, kariyer), “bilme” denince ismi <strong>bilmek</strong> kastedilir — pratikte ikisi de aynı şeydir. CrossOver Football’daki tüm modlar iki aramanın da karşılığıdır.</p>',
+    ],
+    [
       'İki kişi karşılıklı oynanabilen futbolcu oyunu var mı?',
       '<p>Var. CrossOver Football’ın tamamı karşılıklı oynanır: canlı rakiple 1v1 eşleşirsin, arkadaşınla oda kodundan özel maç kurarsın ya da bota karşı çalışırsın.</p>',
     ],
@@ -155,7 +159,7 @@ ${crumbs([
 ${head({
   eyebrow: 'Ücretsiz · iOS',
   title: 'Futbolcu bilme oyunu',
-  lede: 'Fotoğraftan tahmin, kariyerden tahmin, harften tahmin, ortak kulüpten tahmin… Formatlar farklı, ölçtükleri şey aynı değil. Hangisi sana göre?',
+  lede: 'Futbolcu bulma oyunu diye de aranır — fotoğraftan tahmin, kariyerden tahmin, harften tahmin, ortak kulüpten bulma… Formatlar farklı, ölçtükleri şey aynı değil. Hangisi sana göre?',
   tag: 'h1',
 })}
 </section>
@@ -224,9 +228,9 @@ ${band('tr', {
   return page({
     lang: 'tr',
     path: '/futbolcu-bilme-oyunu/',
-    title: 'Futbolcu Bilme Oyunu — Ücretsiz Oyna, Gerçek Rakiple 1v1',
+    title: 'Futbolcu Bilme ve Bulma Oyunu — Ücretsiz Oyna, Canlı 1v1',
     description:
-      'Futbolcu bilme oyununu gerçek rakiplere karşı ücretsiz oyna: ortak futbolcu, harf-takım, ülke-takım ve kariyer modları. iOS’ta indir, hemen başla.',
+      'Futbolcu bilme (bulma) oyununu gerçek rakiplere karşı ücretsiz oyna: ortak futbolcu, harf-takım, ülke-takım ve kariyer modları. iOS’ta indir, hemen başla.',
     body,
     jsonld: [
       ldBreadcrumb([
@@ -385,7 +389,7 @@ ${duel({ ...heroPairs[0], hint: 'Gerçek bir tur: cevap kariyer arşivinden doğ
 <div class="wrap wrap-narrow">
 <div class="panel pad-lg prose reveal">
 <h2 style="margin-top:0">Videodaki oyun, elinde</h2>
-<p>3-2-1 formatını yarışma programlarından ve kısa videolardan biliyorsun: iki takım, üç saniye, bir isim. Sohbette oynarken iki sorun çıkar — süreyi kimse dürüst tutmaz ve cevabın doğruluğu tartışmaya kalır. CrossOver Football ikisini de çözer: süre sunucuda işler, cevap <a href="/ortak-futbolcu/">iki takımda da oynayan futbolcular arşivinden</a> doğrulanır.</p>
+<p>3-2-1 formatını yarışma programlarından ve kısa videolardan biliyorsun: iki takım, üç saniye, bir isim. Özünde bir <a href="/futbolcu-bilme-oyunu/">futbolcu bulma oyunudur</a>. Sohbette oynarken iki sorun çıkar — süreyi kimse dürüst tutmaz ve cevabın doğruluğu tartışmaya kalır. CrossOver Football ikisini de çözer: süre sunucuda işler, cevap <a href="/ortak-futbolcu/">iki takımda da oynayan futbolcular arşivinden</a> doğrulanır.</p>
 <p>Isınmak istersen <a href="/ortak-futbolcu-bulucu/">ortak futbolcu bulucu</a> ile herhangi iki takımın kesişimini görebilir, <a href="/ortak-futbolcu-oyunu/">ortak futbolcu oyununun kurallarına</a> bakabilirsin.</p>
 </div>
 </div>
