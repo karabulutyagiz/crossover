@@ -59,7 +59,12 @@ import type {
   PickRole,
   Difficulty,
   CosmeticLoadoutView,
+  GwRow,
+  GwReveal,
 } from '../protocol.ts';
+import {
+  pickGuessWhoTarget, getCard, guessWhoPoolList, compareToTarget, type GuessWhoCard,
+} from '../game/guessWho.ts';
 
 const COUNTDOWN_FROM = 3;
 const PICK_MS = 10_000;
@@ -79,6 +84,13 @@ function intEnv(name: string, fallback: number): number {
 // kaybolmaz (süre kısalınca oyuncu hızlanır) ama gerçek bir risktir; bu yüzden
 // ROUND_GUESS_MS ile 18-20 sn'ye çıkarmak tek ayar değişikliğidir.
 const GUESS_MS = intEnv('ROUND_GUESS_MS', 15_000);
+
+// ---- "Ben Kimim?" ayarları ----
+const GW_TOTAL_GUESSES = intEnv('GW_TOTAL_GUESSES', 10);   // ORTAK tahmin havuzu (tek tur)
+const GW_TURN_MS = intEnv('GW_TURN_MS', 30_000);           // sıra süresi (isim düşünme+yazma)
+const GW_BLUR_MAX = 10;                                    // başlangıç bulanıklık seviyesi
+const GW_BLUR_MIN_PLAY = 2;                                // oyun İÇİNDE asla tam netleşmez
+const GW_STALL_TIMEOUTS = 4;                               // üst üste bu kadar pas → berabere
 
 // AĞ GECİKMESİ TOLERANSI — 30 sn'de görünmeyen, 15 sn'de KRİTİK olan sorun:
 // oyuncu son saniyede gönderdiğinde paket sunucuya birkaç yüz ms sonra ulaşır
@@ -317,6 +329,20 @@ export class Room {
     hints: Map<string, Set<number>>; // playerId → bu turda açılan harf POZİSYONLARI (rastgele)
   } | null = null;
 
+  // ── "Ben Kimim?" — bulanık foto + sırayla tahmin, ortak 10 hak, tek tur ─────
+  private guessWho: {
+    target: GuessWhoCard;
+    guesses: GwRow[];                // her tahmin satırı (iki taraf da görür)
+    guessedIds: Set<number>;         // aynı oyuncu iki kez tahmin edilmesin
+    guessesLeft: number;             // ORTAK havuz (10'dan iner) — gerçek tahminde azalır
+    wrongCount: number;              // blur seviyesi + yanlış sayısı
+    turnId: string | null;
+    turnEndsAt: number;
+    consecutiveTimeouts: number;     // ikisi de birkaç tur pas geçerse berabere (stall koruması)
+    poolSentTo: Set<string>;         // havuz listesi kime yollandı (bir kez)
+    timer: NodeJS.Timeout | null;
+  } | null = null;
+
   constructor(code: string, onEmpty: (code: string) => void) {
     this.code = code;
     this.onEmpty = onEmpty;
@@ -545,6 +571,7 @@ export class Room {
       // XOX: grid + sıra + sayaç sunucudan aynen geri gelir.
       if (this.gameMode === 'xox' && this.xox) this.sendXoxStateTo(p.id);
       else if (this.gameMode === 'cozkazan' && this.cozkazan) this.sendCozKazanStateTo(p.id);
+      else if (this.gameMode === 'guess-who' && this.guessWho) { void this.sendGuessWhoPoolTo(p.id); this.sendGuessWhoStateTo(p.id); }
       return { ok: true, id: p.id };
     }
     return { ok: false, error: 'Maça geri dönülemedi' };
@@ -862,6 +889,8 @@ export class Room {
         return void this.handleCozKazanSubmit(playerId, msg.text);
       case 'cozkazan_hint':
         return void this.handleCozKazanHint(playerId);
+      case 'guesswho_submit':
+        return void this.handleGuessWhoSubmit(playerId, msg.playerId);
       default:
         this.sendTo(playerId, { type: 'error', message: 'Unexpected message' });
     }
@@ -953,6 +982,7 @@ export class Room {
         clearInterval(tick);
         if (this.gameMode === 'xox') void this.beginXox();
         else if (this.gameMode === 'cozkazan') void this.beginCozKazan();
+        else if (this.gameMode === 'guess-who') void this.beginGuessWho();
         else this.beginPick();
       }
     }, 1000);
@@ -2386,6 +2416,164 @@ export class Room {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // "BEN KİMİM?" — bulanık fotolu futbolcuyu sırayla bilme; ORTAK 10 hak; TEK TUR.
+  // Doğru bilen kazanır; 10 hak biterse ya da ikisi de sürekli pas geçerse berabere.
+  // ══════════════════════════════════════════════════════════════════════════
+  private async beginGuessWho(): Promise<void> {
+    const matchId = this.matchId;
+    const target = await pickGuessWhoTarget().catch(() => null);
+    if (!target || !target.imageUrl) {
+      log.error('guesswho_target_failed', { room: this.code, matchId });
+      this.broadcast({ type: 'error', message: 'Ben Kimim? kurulamadı, tekrar dene' });
+      return this.bailRound('guesswho_no_target');
+    }
+    const ids = [...this.players.keys()];
+    this.status = 'guesswho';
+    this.guessWho = {
+      target, guesses: [], guessedIds: new Set(), guessesLeft: GW_TOTAL_GUESSES, wrongCount: 0,
+      turnId: ids[Math.floor(Math.random() * ids.length)] ?? ids[0]!,
+      turnEndsAt: Date.now() + GW_TURN_MS, consecutiveTimeouts: 0, poolSentTo: new Set(), timer: null,
+    };
+    for (const pl of this.players.values()) pl.score = 0;
+    for (const id of ids) await this.sendGuessWhoPoolTo(id);
+    this.broadcastState();
+    this.broadcastGuessWhoState();
+    this.armGuessWhoTimer();
+    log.info('guesswho_started', { room: this.code, matchId, target: target.name });
+  }
+
+  private gwBlurLevel(): number {
+    const g = this.guessWho; if (!g) return GW_BLUR_MAX;
+    return Math.max(GW_BLUR_MIN_PLAY, Math.min(GW_BLUR_MAX, GW_BLUR_MAX - g.wrongCount));
+  }
+
+  private async sendGuessWhoPoolTo(playerId: string): Promise<void> {
+    const g = this.guessWho; if (!g) return;
+    const p = this.players.get(playerId);
+    if (!p || p.transport.isBot || g.poolSentTo.has(playerId)) return;
+    g.poolSentTo.add(playerId);
+    try { this.sendTo(playerId, { type: 'guesswho_pool', players: await guessWhoPoolList() }); }
+    catch { g.poolSentTo.delete(playerId); }
+  }
+
+  private guessWhoReveal(): GwReveal {
+    const t = this.guessWho!.target;
+    return { playerId: t.playerId, name: t.name, imageUrl: t.imageUrl, clubName: t.clubName, clubLogo: t.clubLogo, nationality: t.nationality, age: t.age, jersey: t.jersey, position: t.position, league: t.league };
+  }
+
+  private guessWhoStateMsg(over = false, reveal: GwReveal | null = null, winner: Player | null = null, lastById?: string): Extract<ServerMsg, { type: 'guesswho_state' }> | null {
+    const g = this.guessWho; if (!g) return null;
+    return {
+      type: 'guesswho_state', targetImageUrl: g.target.imageUrl, blurLevel: over ? 0 : this.gwBlurLevel(),
+      guessesLeft: g.guessesLeft, turnId: over ? null : g.turnId, turnEndsAt: g.turnEndsAt, guesses: g.guesses,
+      over, winnerId: winner?.id ?? null, winnerName: winner?.name ?? null, reveal,
+      ...(lastById ? { lastGuessById: lastById } : {}),
+    };
+  }
+  private broadcastGuessWhoState(lastById?: string): void { const m = this.guessWhoStateMsg(false, null, null, lastById); if (m) this.broadcast(m); }
+  private sendGuessWhoStateTo(playerId: string): void { const m = this.guessWhoStateMsg(); if (m) this.sendTo(playerId, m); }
+
+  private armGuessWhoTimer(): void {
+    const g = this.guessWho; if (!g) return;
+    if (g.timer) clearTimeout(g.timer);
+    g.timer = setTimeout(() => this.onGuessWhoTimeout(), Math.max(500, g.turnEndsAt - Date.now()));
+  }
+  private onGuessWhoTimeout(): void {
+    const g = this.guessWho; if (!g || this.matchOver) return;
+    g.consecutiveTimeouts += 1;
+    if (g.consecutiveTimeouts >= GW_STALL_TIMEOUTS) { void this.finishGuessWhoDraw('stall'); return; }
+    this.advanceGuessWhoTurn();
+  }
+  private advanceGuessWhoTurn(lastById?: string): void {
+    const g = this.guessWho; if (!g) return;
+    const ids = [...this.players.keys()];
+    g.turnId = ids.find((id) => id !== g.turnId) ?? g.turnId;
+    g.turnEndsAt = Date.now() + GW_TURN_MS;
+    this.armGuessWhoTimer();
+    this.broadcastGuessWhoState(lastById);
+  }
+
+  private async handleGuessWhoSubmit(playerId: string, guessedId: number): Promise<void> {
+    const g = this.guessWho;
+    const pl = this.players.get(playerId);
+    if (!g || !pl || this.status !== 'guesswho' || this.matchOver) return;
+    if (g.turnId !== playerId) return void pl.transport.send({ type: 'guesswho_denied', reason: 'not_turn' });
+    if (g.guessedIds.has(guessedId)) return void pl.transport.send({ type: 'guesswho_denied', reason: 'already' });
+    const card = await getCard(guessedId).catch(() => null);
+    if (!card) return void pl.transport.send({ type: 'guesswho_denied', reason: 'not_pool' });
+    if (this.guessWho !== g || this.matchOver || g.turnId !== playerId) return; // async sırasında değişti
+    const row = compareToTarget(card, g.target);
+    g.guesses.push(row);
+    g.guessedIds.add(guessedId);
+    g.guessesLeft = Math.max(0, g.guessesLeft - 1);
+    g.consecutiveTimeouts = 0;
+    if (row.correct) { this.clearTimers(); return this.finishGuessWho(pl); }
+    g.wrongCount += 1;
+    if (g.guessesLeft <= 0) { this.clearTimers(); return this.finishGuessWhoDraw('exhausted'); }
+    this.advanceGuessWhoTurn(playerId);
+  }
+
+  private async finishGuessWho(winner: Player): Promise<void> {
+    const g = this.guessWho; if (!g || this.matchOver) return;
+    this.matchOver = true; this.clearTimers(); this.status = 'result'; winner.score = 1;
+    const msg = this.guessWhoStateMsg(true, this.guessWhoReveal(), winner);
+    if (msg) this.broadcast(msg);
+    this.broadcastState();
+    const hasBot = [...this.players.values()].some((pl) => pl.transport.isBot);
+    recordTelemetry({ eventName: 'match_finished', matchId: this.matchId, roomCode: this.code, playerId: winner.userId ?? null, opponentType: hasBot ? 'BOT' : 'HUMAN', payload: { gameMode: 'guess-who', guesses: g.guesses.length } });
+    log.info('guesswho_finished', { room: this.code, matchId: this.matchId, winner: winner.name, target: g.target.name, guesses: g.guesses.length });
+    if (!hasBot || this.rankedBotRewards) {
+      if (this.ranked) void this.settleMatch(winner, hasBot ? 'bot_match_complete' : 'match_complete');
+    } else {
+      void (async () => { for (const pl of this.players.values()) { if (pl.transport.isBot || !pl.userId) continue; try { const xpRes = await awardMatchXp(pl.userId, pl.id === winner.id, true); if (xpRes) pl.transport.send({ type: 'xp_update', ...xpRes }); } catch { /* sessiz */ } } })();
+    }
+    void this.saveHistory();
+  }
+
+  private async finishGuessWhoDraw(reason: 'exhausted' | 'stall'): Promise<void> {
+    const g = this.guessWho; if (!g || this.matchOver) return;
+    this.matchOver = true; this.clearTimers(); this.status = 'result';
+    const msg = this.guessWhoStateMsg(true, this.guessWhoReveal(), null);
+    if (msg) this.broadcast(msg);
+    this.broadcastState();
+    const hasBot = [...this.players.values()].some((pl) => pl.transport.isBot);
+    recordTelemetry({ eventName: 'match_finished', matchId: this.matchId, roomCode: this.code, playerId: null, opponentType: hasBot ? 'BOT' : 'HUMAN', payload: { gameMode: 'guess-who', gwReason: reason, guesses: g.guesses.length } });
+    log.info('guesswho_finished', { room: this.code, matchId: this.matchId, winner: null, reason, target: g.target.name });
+    if (this.ranked && (await this.claimSettlement('guesswho_draw'))) {
+      for (const pl of this.players.values()) {
+        if (pl.transport.isBot || !pl.userId) continue;
+        try {
+          const { rows } = await pool.query<{ trophies: number }>('UPDATE users SET trophies = trophies + 5 WHERE id = $1 RETURNING trophies', [pl.userId]);
+          const trophies = rows[0]?.trophies ?? 0;
+          this.lastTrophyDeltaByUser.set(pl.userId, 5);
+          pl.transport.send({ type: 'trophy_update', matchId: this.matchId, trophies, delta: 5, arena: getArena(trophies), shielded: false });
+          const xpRes = await awardMatchXp(pl.userId, false, false);
+          if (xpRes) pl.transport.send({ type: 'xp_update', ...xpRes });
+        } catch (err) { log.warn('guesswho_draw_settle_failed', { matchId: this.matchId, userId: pl.userId, error: err instanceof Error ? err.message : String(err) }); }
+      }
+    }
+    void this.saveHistory();
+  }
+
+  /** Bot için: doğru bilmek istiyorsa hedefi, değilse henüz tahmin edilmemiş rastgele
+   * havuz oyuncusunu döner (bot "bilme"yi zorluğuna göre simüle eder — cheat değil,
+   * XOX/Çöz Kazan botlarıyla aynı desen). */
+  async guessWhoBotChoose(wantCorrect: boolean): Promise<number | null> {
+    const g = this.guessWho; if (!g) return null;
+    if (wantCorrect && !g.guessedIds.has(g.target.playerId)) return g.target.playerId;
+    const { rows } = await pool.query(
+      `SELECT g.player_id AS id FROM guess_who_pool g JOIN players p ON p.id = g.player_id
+        WHERE p.image_url IS NOT NULL AND g.player_id <> ALL($1::bigint[]) ORDER BY random() LIMIT 1`,
+      [[...g.guessedIds, g.target.playerId]],
+    );
+    return rows[0] ? Number(rows[0].id) : null;
+  }
+  guessWhoSnapshotForBot(): { turnId: string | null; guessesLeft: number; over: boolean } | null {
+    const g = this.guessWho; if (!g) return null;
+    return { turnId: g.turnId, guessesLeft: g.guessesLeft, over: this.matchOver };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // MAÇ İÇİ ÖZEL GÜÇLER — sunucu-otoriter çekirdek.
   // ANA KURAL: maç başına TOPLAM 1 manuel güç; hiçbir satın alma/paket/VIP bunu
   // artıramaz. Meta korumalar (Kupa Kalkanı / Seri) bu limitin DIŞINDADIR.
@@ -3346,6 +3534,7 @@ export class Room {
   private clearTimers(): void {
     for (const t of this.timers) clearTimeout(t);
     this.timers = [];
+    if (this.guessWho?.timer) { clearTimeout(this.guessWho.timer); this.guessWho.timer = null; }
   }
 
   private clearDisconnectTimers(): void {

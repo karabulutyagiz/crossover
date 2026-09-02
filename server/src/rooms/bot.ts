@@ -169,6 +169,9 @@ export class BotPlayer implements Transport {
   // ---- Çöz Kazan: çözme zamanlayıcısı + tur kilidi ----
   private cozTimer: NodeJS.Timeout | null = null;
   private cozActedRound = 0;
+  // ---- Ben Kimim?: tahmin zamanlayıcısı + tur kilidi (guesses.length ile) ----
+  private gwTimer: NodeJS.Timeout | null = null;
+  private gwActedLen = -1;
   // İlk maç tiyatrosu: bot bir kez kolay soruda görünür yanlış yapar (bir kez, asla tekrar).
   private theaterMistakeDone = false;
   // Son biten maçı bot mu kazandı? (rövanş kabul olasılığı için)
@@ -303,6 +306,10 @@ export class BotPlayer implements Transport {
       case 'cozkazan_over': {
         if (this.cozTimer) { clearTimeout(this.cozTimer); this.cozTimer = null; }
         this.cozActedRound = 0;
+        break;
+      }
+      case 'guesswho_state': {
+        this.handleGuessWhoState(msg as Extract<ServerMsg, { type: 'guesswho_state' }>);
         break;
       }
       case 'rematch_requested':
@@ -850,6 +857,30 @@ export class BotPlayer implements Transport {
     const delay = clamp(minD * 0.5 + Math.random() * (maxD * 0.6), 2500, 15_500);
     const answer = snap.shownForm;
     this.cozTimer = setTimeout(() => { this.act({ type: 'cozkazan_submit', text: answer }); }, delay);
+  }
+
+  // ── Ben Kimim? botu ──────────────────────────────────────────────────────
+  // Sırası gelince HER ZAMAN bir tahmin yapar (ortak havuz ilerlesin); zorluk +
+  // biriken ipucu sayısına göre p olasılıkla DOĞRU (hedef), değilse mantıklı YANLIŞ.
+  // Doğru bilme şansı ipuçları arttıkça yükselir (tümdengelim simülasyonu).
+  private handleGuessWhoState(msg: Extract<ServerMsg, { type: 'guesswho_state' }>): void {
+    if (this.gwTimer) { clearTimeout(this.gwTimer); this.gwTimer = null; }
+    if (msg.over) { this.gwActedLen = -1; return; }
+    if (msg.turnId !== this.id) return;
+    if (msg.guesses.length === this.gwActedLen) return; // bu tahmin-sayısında karar verildi
+    this.gwActedLen = msg.guesses.length;
+    const d = DIFFICULTY[this.difficulty];
+    const pCorrect = clamp(d.knowBase * (0.45 + 0.11 * msg.guesses.length), 0.02, 0.9);
+    const wantCorrect = Math.random() < pCorrect;
+    const [minD, maxD] = d.delayMs;
+    const delay = clamp(minD * 0.5 + Math.random() * (maxD * 0.6), 3000, 16_000);
+    const room = this.room;
+    if (!room) return;
+    this.gwTimer = setTimeout(() => {
+      void room.guessWhoBotChoose(wantCorrect).then((pid) => {
+        if (pid != null) this.act({ type: 'guesswho_submit', playerId: pid });
+      }).catch(() => { /* sessiz */ });
+    }, delay);
   }
 
   /** Güç ateşleme kararı: tur başında, karar motorunun ürettiği bağlama göre

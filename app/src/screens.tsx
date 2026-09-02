@@ -183,6 +183,7 @@ type Actions = {
   xoxSubmit: (cell: number, text: string) => void;
   cozkazanSubmit: (text: string) => void;
   cozkazanHint: () => void;
+  guessWhoSubmit: (playerId: number) => void;
   usePower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => void; // envanterdeki tek kullanımlık gücü etkinleştir
   loadMyStats: () => void; // profil istatistiklerini iste (my_stats yanıtı)
   verifyPurchase: (receipt: string, opts?: { productId?: string; isSubscription?: boolean }) => Promise<void>;
@@ -2739,7 +2740,7 @@ function NetworkErrorBeacon({ visible }: { visible: boolean }) {
 }
 
 export function MODE_LABEL(m: GameMode): string {
-  return { 'team-team': t('mode.teamTeam'), 'country-team': t('mode.countryTeam'), 'letter-team': t('mode.letterTeam'), 'player-player': t('mode.playerPlayer'), xox: t('mode.xox'), cozkazan: t('mode.cozkazan') }[m];
+  return { 'team-team': t('mode.teamTeam'), 'country-team': t('mode.countryTeam'), 'letter-team': t('mode.letterTeam'), 'player-player': t('mode.playerPlayer'), xox: t('mode.xox'), cozkazan: t('mode.cozkazan'), 'guess-who': t('mode.guessWho') }[m];
 }
 
 function normalizeCountryKey(value: string): string {
@@ -2790,6 +2791,7 @@ const MODE_ICON: Record<GameMode, IoniconName> = {
   'player-player': 'people',
   xox: 'grid',
   cozkazan: 'shuffle',
+  'guess-who': 'help-circle',
 };
 
 // Transfermarkt competition code → league display name. The server's /scopes
@@ -4669,8 +4671,8 @@ const HOME_DESIGN_BODY_MIN_H = 407;
 const HOME_DESIGN_BODY_RANGE_H = 204;
 // Room codes are always exactly this long — server/src/rooms/manager.ts:5 (CODE_LEN).
 const ROOM_CODE_LEN = 6;
-const HOME_MODES: GameMode[] = ['cozkazan', 'xox', 'country-team', 'letter-team'];
-const PACK_MODES: GameMode[] = ['country-team', 'letter-team', 'xox', 'cozkazan'];
+const HOME_MODES: GameMode[] = ['guess-who', 'cozkazan', 'xox', 'country-team', 'letter-team'];
+const PACK_MODES: GameMode[] = ['country-team', 'letter-team', 'xox', 'cozkazan', 'guess-who'];
 
 // "Mücadele Modu" kartının yüzü hiçbir props/state okumaz (tema + modül-scope
 // RivalryArt + sabit renkler) — her HomeScreen render'ında (tuş vuruşu, popup
@@ -5648,7 +5650,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               locked={locked}
               sublabel={locked ? t('socialPack.lockedBadge') : undefined}
               // YENİ kurdelesi: en yeni modlar (Çöz Kazan 2026-09-01, XOX 2026-08-27).
-              right={m === 'cozkazan' || m === 'xox' ? <Ribbon label={t('store.badgeNew')} color={theme.danger} /> : undefined}
+              right={m === 'guess-who' || m === 'cozkazan' || m === 'xox' ? <Ribbon label={t('store.badgeNew')} color={theme.danger} /> : undefined}
               chevron={!locked}
               onPress={() => startMode(m)}
             />
@@ -5730,7 +5732,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
                 <ModalBackBtn onPress={() => setBotPage({ key: 'bot', dir: -1 })} />
               </View>
-              {(['team-team', 'cozkazan', 'xox', 'country-team', 'letter-team'] as GameMode[]).map((m) => {
+              {(['team-team', 'guess-who', 'cozkazan', 'xox', 'country-team', 'letter-team'] as GameMode[]).map((m) => {
                 // Bota karşı da paket kilidi: yalnız team-team serbest; diğer modlar
                 // (cozkazan dahil, 2026-09-01) Sosyal Paket ister. Kilitliyse seçtirmeyip
                 // modalı kapatıp upsell'e devret.
@@ -8031,6 +8033,184 @@ export function CozKazanScreen({ state, actions }: Props) {
             // döngüsü menüye hiç dönmediği için reklamı süresiz atlatıyordu.
             // Paketliler bu kapıya hiç takılmaz (isInterstitialDue false döner).
             null
+          ) : (
+            <Btn big label={t('result.playAgain')} kind="accent" icon="refresh" feedback={GameFeedbackEvent.UI_PLAY} onPress={actions.playAgain} />
+          )}
+          <Btn label={t('result.leave')} kind="ghost" icon="home" onPress={actions.leave} />
+        </View>
+      ) : null}
+
+      <View style={{ height: 8 }} />
+      <LeaveConfirmModal visible={showLeaveConfirm} kind={leaveKind} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
+      <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} />
+    </Screen>
+  );
+}
+
+// ── BEN KİMİM? ekranı — bulanık fotolu futbolcuyu niteliklerinden bil (sırayla) ──
+const GW_POS_LABEL: Record<string, string> = { GK: 'KL', CB: 'STP', RB: 'SĞB', LB: 'SLB', MF: 'OS', LW: 'SLK', RW: 'SĞK', ST: 'SF' };
+const GW_LEAGUE_LABEL: Record<string, string> = { GB1: 'İNG', ES1: 'İSP', IT1: 'İTA', L1: 'ALM', FR1: 'FRA', TR1: 'TÜR' };
+
+// Tek nitelik hücresi: eşleşince yeşil, değilse kırmızı; sayısalda ok (↑ hedef büyük).
+function GwCell({ cmp, kind }: { cmp: import('./protocol').GwCmp; kind: 'text' | 'num' | 'flag' | 'pos' | 'league' }) {
+  const bg = cmp.match ? withAlpha(theme.primary, 0.9) : withAlpha(theme.danger, 0.82);
+  let label = '';
+  if (cmp.value == null) label = '–';
+  else if (kind === 'flag') label = countryFlagFor(String(cmp.value)) ?? String(cmp.value).slice(0, 3).toUpperCase();
+  else if (kind === 'pos') label = GW_POS_LABEL[String(cmp.value)] ?? String(cmp.value);
+  else if (kind === 'league') label = GW_LEAGUE_LABEL[String(cmp.value)] ?? String(cmp.value);
+  else label = String(cmp.value);
+  return (
+    <View style={{ flex: 1, height: 42, borderRadius: 7, backgroundColor: bg, alignItems: 'center', justifyContent: 'center', marginHorizontal: 1.5, flexDirection: 'row', gap: 1 }}>
+      <Text numberOfLines={1} style={{ color: '#fff', fontSize: kind === 'flag' ? 16 : 11.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{label}</Text>
+      {cmp.dir ? <Ionicons name={cmp.dir === 'up' ? 'arrow-up' : 'arrow-down'} size={12} color="#fff" /> : null}
+    </View>
+  );
+}
+
+const GW_COLS: { key: string; label: string }[] = [
+  { key: 'club', label: 'gw.col.club' }, { key: 'nat', label: 'gw.col.nat' }, { key: 'age', label: 'gw.col.age' },
+  { key: 'no', label: 'gw.col.no' }, { key: 'pos', label: 'gw.col.pos' }, { key: 'league', label: 'gw.col.league' },
+];
+
+export function GuessWhoScreen({ state, actions }: Props) {
+  const gw = state.guessWho;
+  const pool = state.guessWhoPool ?? [];
+  const room = state.room;
+  const youId = room?.youId ?? '';
+  const opp = room?.players.find((p) => p.id !== youId);
+  const [query, setQuery] = useState('');
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [emoteOpen, setEmoteOpen] = useState(false);
+  const [, setTick] = useState(0);
+  const win = useWindow();
+  useEffect(() => { if (gw?.over) return undefined; const id = setInterval(() => setTick((v) => v + 1), 400); return () => clearInterval(id); }, [gw?.over]);
+
+  if (!gw || !room) return <Screen><Text style={styles.muted}>{t('store.loading')}</Text></Screen>;
+
+  const over = gw.over;
+  const myTurn = !over && gw.turnId === youId;
+  const secs = Math.max(0, Math.ceil((gw.turnEndsAt - Date.now()) / 1000));
+  const reveal = gw.reveal;
+  const alreadyGuessed = new Set(gw.guesses.map((g) => g.playerId));
+  const q = query.trim().toLocaleLowerCase('tr');
+  const matches = q.length >= 2
+    ? pool.filter((p) => p.name.toLocaleLowerCase('tr').includes(q) && !alreadyGuessed.has(p.id)).slice(0, 7)
+    : [];
+  const submit = (playerId: number) => {
+    if (!myTurn || alreadyGuessed.has(playerId)) return;
+    actions.guessWhoSubmit(playerId);
+    setQuery('');
+    dismissActiveInput();
+  };
+  const blurRadius = over ? 0 : Math.round(gw.blurLevel * 4.5);
+  const photoUri = over && reveal ? reveal.imageUrl : gw.targetImageUrl;
+  const photoSize = Math.min(150, Math.round(win.width * 0.38));
+  const leaveKind = state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
+
+  const rows = [...gw.guesses].reverse(); // en yeni üstte
+
+  return (
+    <Screen scroll contentCenter={false} bg={<MatchCosmeticBackdrop backgroundId={matchBackgroundIdForState(state)} />}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <MatchExitButton onPress={() => (state.matchOver ? actions.leave() : setShowLeaveConfirm(true))} />
+        <PlayerBar state={state} onEmotePress={() => setEmoteOpen(true)} />
+      </View>
+
+      {/* Bulanık hedef fotoğrafı */}
+      <View style={{ alignItems: 'center', marginBottom: 8 }}>
+        <View style={{ borderRadius: 18, borderWidth: 3, borderColor: over ? theme.gold : withAlpha(theme.primary, 0.5), overflow: 'hidden', backgroundColor: theme.well }}>
+          {photoUri ? (
+            <ExpoImage source={{ uri: photoUri }} {...({ blurRadius } as any)} style={{ width: photoSize, height: photoSize }} contentFit="cover" transition={200} />
+          ) : <View style={{ width: photoSize, height: photoSize }} />}
+        </View>
+        {over && reveal ? (
+          <Text style={{ color: theme.gold, fontSize: 18, fontFamily: 'Poppins-Black', marginTop: 6, ...engrave('sm') }}>{reveal.name}</Text>
+        ) : (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+            <Text style={{ color: myTurn ? theme.primary : theme.muted, fontSize: 14, fontFamily: 'Poppins-Black', ...engrave('sm') }}>
+              {myTurn ? t('guesswho.yourTurn') : t('guesswho.oppTurn', { name: opp?.name ?? '' })}
+            </Text>
+            <Text style={{ color: secs <= 5 ? theme.danger : theme.text, fontSize: 15, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{secs}</Text>
+          </View>
+        )}
+        {!over ? (
+          <Text style={{ color: theme.textSub, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', marginTop: 2 }}>{t('guesswho.left', { n: String(gw.guessesLeft) })}</Text>
+        ) : null}
+      </View>
+
+      {/* Tahmin girişi (senin sıran) */}
+      {myTurn ? (
+        <View style={{ marginBottom: 8, zIndex: 20 }}>
+          <GameInput placeholder={t('guesswho.placeholder')} value={query} onChangeText={setQuery} autoCorrect={false} returnKeyType="search" />
+          {matches.length ? (
+            <View style={{ backgroundColor: theme.surface2, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginTop: 4, overflow: 'hidden' }}>
+              {matches.map((m) => (
+                <Pressable key={m.id} onPress={() => submit(m.id)} style={({ pressed }) => ({ paddingVertical: 10, paddingHorizontal: 12, backgroundColor: pressed ? withAlpha(theme.primary, 0.18) : 'transparent', borderBottomWidth: 1, borderBottomColor: withAlpha(theme.border, 0.5) })}>
+                  <Text style={{ color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-SemiBold' }}>{m.name}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* Sütun başlıkları */}
+      {gw.guesses.length ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 3, paddingHorizontal: 2 }}>
+          <View style={{ width: 34 }} />
+          {GW_COLS.map((c) => (
+            <View key={c.key} style={{ flex: 1, alignItems: 'center', marginHorizontal: 1.5 }}>
+              <Text style={{ color: theme.muted, fontSize: 8.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.2 }}>{t(c.label as MessageKey)}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {/* Tahmin satırları (en yeni üstte) */}
+      {rows.map((g, i) => (
+        <View key={`${g.playerId}-${i}`} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+          <View style={{ width: 34, alignItems: 'center' }}>
+            <PlayerPhoto uri={g.imageUrl} size={30} />
+          </View>
+          <View style={{ flex: 1, height: 42, borderRadius: 7, backgroundColor: g.club.match ? withAlpha(theme.primary, 0.9) : withAlpha(theme.danger, 0.82), alignItems: 'center', justifyContent: 'center', marginHorizontal: 1.5, overflow: 'hidden' }}>
+            {g.club.logo ? <CachedImage uri={g.club.logo} style={{ width: 22, height: 22 }} contentFit="contain" /> : <Text numberOfLines={1} style={{ color: '#fff', fontSize: 9, fontFamily: 'Poppins-Bold' }}>{g.club.value ?? '–'}</Text>}
+          </View>
+          <GwCell cmp={g.nationality} kind="flag" />
+          <GwCell cmp={g.age} kind="num" />
+          <GwCell cmp={g.jersey} kind="num" />
+          <GwCell cmp={g.position} kind="pos" />
+          <GwCell cmp={g.league} kind="league" />
+        </View>
+      ))}
+      {/* isim satırı (küçük, foto altında değil — tahmin edilen oyuncu adı) */}
+      {rows.length ? (
+        <Text style={{ color: theme.muted, fontSize: 9.5, fontFamily: 'Poppins-SemiBold', marginTop: 1, marginBottom: 6, paddingHorizontal: 2 }} numberOfLines={1}>
+          {t('guesswho.lastGuess', { name: rows[0]!.name })}
+        </Text>
+      ) : null}
+
+      {/* Maç sonu */}
+      {over ? (
+        <View style={{ alignItems: 'center', gap: 10, marginTop: 10 }}>
+          <Text style={{ color: gw.winnerId === youId ? theme.primary : gw.winnerId == null ? theme.gold : theme.danger, fontSize: 24, fontFamily: 'Poppins-Black', letterSpacing: 1, ...engrave('lg') }}>
+            {gw.winnerId === youId ? t('guesswho.youWon') : gw.winnerId == null ? t('guesswho.draw') : t('guesswho.youLost')}
+          </Text>
+          {reveal ? (
+            <Text style={{ color: theme.muted, fontSize: 12.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center' }}>
+              {t('guesswho.answerWas', { name: reveal.name, club: reveal.clubName ?? '', no: reveal.jersey != null ? String(reveal.jersey) : '–' })}
+            </Text>
+          ) : null}
+          {state.rematchState === 'incoming' ? (
+            <>
+              <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>{t('result.rematchIncoming', { name: state.rematchByName ?? '' })}</Text>
+              <View style={{ flexDirection: 'row', gap: 10, alignSelf: 'stretch' }}>
+                <View style={{ flex: 1 }}><Btn label={t('result.accept')} kind="accent" icon="checkmark-circle" onPress={actions.acceptRematch} /></View>
+                <View style={{ flex: 1 }}><Btn label={t('result.decline')} kind="ghost" icon="close" onPress={actions.declineRematch} /></View>
+              </View>
+            </>
+          ) : state.rematchState === 'waiting' ? (
+            <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold' }}>{t('result.rematchWaiting')}</Text>
           ) : (
             <Btn big label={t('result.playAgain')} kind="accent" icon="refresh" feedback={GameFeedbackEvent.UI_PLAY} onPress={actions.playAgain} />
           )}

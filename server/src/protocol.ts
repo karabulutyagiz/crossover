@@ -102,12 +102,29 @@ export interface SeasonStateView {
   last: { seasonId: string; peakTrophies: number; peakArenaName: string; wins: number; losses: number } | null;
 }
 
-export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox' | 'cozkazan';
+export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox' | 'cozkazan' | 'guesswho';
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
 // Game mode: determines what each player picks and how the guess is verified.
-export type GameMode = 'team-team' | 'country-team' | 'letter-team' | 'player-player' | 'xox' | 'cozkazan';
+export type GameMode = 'team-team' | 'country-team' | 'letter-team' | 'player-player' | 'xox' | 'cozkazan' | 'guess-who';
+
+// ── "Ben Kimim?" modu tipleri ──────────────────────────────────────────────
+// Bir tahmin niteliği: değer + eşleşti mi (yeşil/kırmızı) + sayısalsa ok yönü
+// (hedef DAHA BÜYÜKSE 'up' ↑, daha küçükse 'down' ↓).
+export interface GwCmp { value: string | number | null; match: boolean; dir?: 'up' | 'down' }
+// Bir tahmin satırı: tahmin edilen oyuncu + her niteliğin hedefle kıyası.
+export interface GwRow {
+  playerId: number; name: string; imageUrl: string | null; correct: boolean;
+  club: GwCmp & { logo: string | null };
+  nationality: GwCmp; age: GwCmp; jersey: GwCmp; position: GwCmp; league: GwCmp;
+}
+// Maç sonu hedefin açığa çıkan kartı.
+export interface GwReveal {
+  playerId: number; name: string; imageUrl: string | null;
+  clubName: string | null; clubLogo: string | null; nationality: string | null;
+  age: number | null; jersey: number | null; position: string | null; league: string | null;
+}
 
 // What a player should pick during the pick phase.
 export type PickRole = 'team' | 'country' | 'letter' | 'player';
@@ -346,7 +363,8 @@ export type ClientMsg =
   | { type: 'xox_submit'; cell: number; text: string }
   // ---- Çöz Kazan (anagram yarışı): karışık harfli oyuncuyu ilk bilen kazanır ----
   | { type: 'cozkazan_submit'; text: string }
-  | { type: 'cozkazan_hint' }; // elmas karşılığı bir sonraki doğru harfi aç
+  | { type: 'cozkazan_hint' } // elmas karşılığı bir sonraki doğru harfi aç
+  | { type: 'guesswho_submit'; playerId: number }; // "Ben Kimim?": havuzdan seçilen oyuncuyu tahmin et
 
 // ---- Server -> Client ----
 export interface RoundResult {
@@ -419,6 +437,13 @@ export type ServerMsg =
   | { type: 'cozkazan_over'; winnerId: string | null; winnerName: string | null; reason: 'points' | 'sudden_death' | 'draw'; scores: { id: string; name: string; score: number }[] }
   | { type: 'cozkazan_hint_result'; round: number; position: number; letter: string; diamonds: number } // özel: sadece isteyene
   | { type: 'cozkazan_hint_error'; reason: 'insufficient' | 'unavailable' }
+  // ── "Ben Kimim?" ──
+  // Havuz listesi (otomatik-tamamlama için) — maç başında bir kez yollanır.
+  | { type: 'guesswho_pool'; players: { id: number; name: string }[] }
+  // Tam durum: bulanık hedef foto + blur seviyesi + ortak kalan hak + sıra + tahmin
+  // satırları (iki taraf da görür). Bittiğinde reveal ile hedef açığa çıkar.
+  | { type: 'guesswho_state'; targetImageUrl: string | null; blurLevel: number; guessesLeft: number; turnId: string | null; turnEndsAt: number; guesses: GwRow[]; over: boolean; winnerId: string | null; winnerName: string | null; reveal: GwReveal | null; lastGuessById?: string }
+  | { type: 'guesswho_denied'; reason: 'not_turn' | 'not_pool' | 'already' | 'over' } // özel: sadece gönderene
   // matchOver: a player reached `target` wins → the match is over (offer rematch).
   | {
       type: 'result';
