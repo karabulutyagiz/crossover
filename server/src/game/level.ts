@@ -66,6 +66,27 @@ export function xpForNext(level: number): number {
   return 280 + 60 * (level - 50);
 }
 
+// ---- SEZON (CO-PASS) eğrisi — hesap eğrisinden AYRI (2026-09-02) ---------------
+// Kullanıcı: "CO-PASS'te seviye çok kolay kasılıyor, 2 maç → seviye; kasan
+// oyuncu 15 günde bitirmeli". Eski 9.460 XP'lik yolu yoğun oyuncu (~30 gerçek
+// maç/gün, %60 galibiyet ≈ 900 XP + günün ilk galibiyeti 50 + görevler ~230 ≈
+// 1.180 XP/gün) 8 günde bitiriyordu. Yeni toplam 19.040 XP → ~16 gün.
+// İlk 5 seviye AYNI kaldı (ilk gün 3-4 seviye atlama hissi korunur), sonrası
+// bant bant ağırlaşır. Düzenli oyuncu (~500 XP/gün) ay sonunda ~L38-40 görür —
+// pass'i yalnız kasan bitirir (Brawl Stars/CR kalıbı).
+// HESAP seviyesi xpForNext ile hesaplanmaya devam eder: total_xp eğrisi
+// değişseydi herkesin hesap seviyesi bir gecede düşerdi.
+export function seasonXpForNext(level: number): number {
+  if (level <= 1) return 40;
+  if (level === 2) return 60;
+  if (level <= 5) return 80;
+  if (level <= 10) return 180;
+  if (level <= 20) return 300;
+  if (level <= 30) return 420;
+  if (level <= 40) return 520;
+  return 600; // 41..50 (sezon tavanı)
+}
+
 // Özel güçler — Seviye Yolu'ndan kazanılan TEK KULLANIMLIK, stoklanabilir
 // tüketilebilirler (elmasla SATILMAZ). Çerçeve olmayan ×5 seviyelerinde
 // dönüşümlü dağıtılır.
@@ -246,14 +267,14 @@ export async function applyRawXp(userId: string, rawXp: number): Promise<XpAward
   let level = u.level ?? 1;
   let xp = (u.xp ?? 0) + rawXp;
   const leveledUp: LevelUpReward[] = [];
-  while (level < LEVEL_CAP && xp >= xpForNext(level)) {
-    xp -= xpForNext(level);
+  while (level < LEVEL_CAP && xp >= seasonXpForNext(level)) {
+    xp -= seasonXpForNext(level);
     level += 1;
     leveledUp.push({ level, diamonds: levelRewardDiamonds(level), powerId: LEVEL_POWERS[level] });
   }
-  if (level >= LEVEL_CAP) xp = Math.min(xp, xpForNext(LEVEL_CAP));
+  if (level >= LEVEL_CAP) xp = Math.min(xp, seasonXpForNext(LEVEL_CAP));
   await pool.query(`UPDATE users SET xp = $2, level = $3, total_xp = total_xp + $4 WHERE id = $1`, [userId, xp, level, rawXp]);
-  return { xp, level, xpForNext: xpForNext(level), gained: rawXp, leveledUp };
+  return { xp, level, xpForNext: seasonXpForNext(level), gained: rawXp, leveledUp };
 }
 
 export async function awardMatchXp(userId: string, won: boolean, vsBot: boolean): Promise<XpAward | null> {

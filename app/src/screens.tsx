@@ -15667,19 +15667,23 @@ export function GemOrbFly({ amount, onDone }: { amount: number; onDone: () => vo
 }
 
 export const LEVEL_CAP = 50;
-// SUNUCUYLA AYNI kademeli bantlar (server/src/game/level.ts xpForNext) —
-// aylık sezona ayarlı, toplam 9.460 XP. İkisi birlikte değişmeli.
+// SUNUCUYLA AYNI kademeli bantlar (server/src/game/level.ts seasonXpForNext) —
+// SEZON (CO-PASS) eğrisi, toplam 19.040 XP (2026-09-02: eski 9.460 XP'lik yolu
+// kasan oyuncu 8 günde bitiriyordu — "2 maç, 1 seviye"; hedef ~15 gün).
+// İlk 5 seviye aynı (ilk gün hissi), sonrası bant bant ağırlaşır. İkisi birlikte
+// değişmeli. Hesap seviyesi (51+) bu fonksiyonu KULLANMAZ — sunucu accountXpInto/
+// accountXpNext gönderir (eski xpForNext eğrisi, kimsenin hesap seviyesi düşmez).
 export const xpForNextLevel = (level: number): number => {
   if (level <= 1) return 40;
   if (level === 2) return 60;
   if (level <= 5) return 80;
-  if (level <= 10) return 120;
-  if (level <= 20) return 160;
-  if (level <= 30) return 200;
-  if (level <= 40) return 240;
-  if (level <= 50) return 280; // sezon yolu eğrisi burada biter
-  // 51+ yalnız HESAP seviyesi (sunucudaki xpForNext ile birebir): her seviye
-  // 60 XP pahalılaşır — L51=340, L100=3280. Düz 280 kalsa sayı anlamsızlaşırdı.
+  if (level <= 10) return 180;
+  if (level <= 20) return 300;
+  if (level <= 30) return 420;
+  if (level <= 40) return 520;
+  if (level <= 50) return 600; // sezon yolu eğrisi burada biter
+  // 51+ yalnız HESAP seviyesi (sunucudaki xpForNext ile birebir; yedek — sunucu
+  // alanı yoksa): her seviye 60 XP pahalılaşır — L51=340, L100=3280.
   return 280 + 60 * (level - 50);
 };
 
