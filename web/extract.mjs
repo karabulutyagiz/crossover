@@ -116,6 +116,44 @@ const CLUBS = [
   { id: 720, slug: 'porto', name: 'Porto', short: 'Porto', country: 'Portekiz', tier: 2, loc: 'da' },
   { id: 294, slug: 'benfica', name: 'Benfica', short: 'Benfica', country: 'Portekiz', tier: 2, loc: 'da' },
   { id: 336, slug: 'sporting', name: 'Sporting', short: 'Sporting', country: 'Portekiz', tier: 3, loc: 'de' },
+  // Genişleme 2 (2026-09-02): Türk arayıcının en çok sorduğu eksikler.
+  // Fransa — PSG yokluğu büyük açıktı
+  { id: 583, slug: 'psg', name: 'Paris Saint-Germain', short: 'PSG', country: 'Fransa', tier: 1, loc: 'de' },
+  { id: 162, slug: 'monaco', name: 'Monaco', short: 'Monaco', country: 'Fransa', tier: 2, loc: 'da' },
+  { id: 1082, slug: 'lille', name: 'Lille', short: 'Lille', country: 'Fransa', tier: 3, loc: 'de' },
+  { id: 417, slug: 'nice', name: 'Nice', short: 'Nice', country: 'Fransa', tier: 3, loc: 'ta' },
+  { id: 273, slug: 'rennes', name: 'Rennes', short: 'Rennes', country: 'Fransa', tier: 3, loc: 'te' },
+  // Almanya — gurbetçi kulüpleri: TR aramasında ağırlıkları büyüktür
+  { id: 24, slug: 'eintracht-frankfurt', name: 'Eintracht Frankfurt', short: 'Frankfurt', country: 'Almanya', tier: 2, loc: 'ta' },
+  { id: 79, slug: 'stuttgart', name: 'Stuttgart', short: 'Stuttgart', country: 'Almanya', tier: 2, loc: 'ta' },
+  { id: 533, slug: 'hoffenheim', name: 'Hoffenheim', short: 'Hoffenheim', country: 'Almanya', tier: 3, loc: 'da' },
+  { id: 18, slug: 'monchengladbach', name: 'Mönchengladbach', short: 'Gladbach', country: 'Almanya', tier: 3, loc: 'ta' },
+  { id: 3, slug: 'koln', name: '1. FC Köln', short: 'Köln', country: 'Almanya', tier: 3, loc: 'de' },
+  { id: 41, slug: 'hamburg', name: 'Hamburg', short: 'Hamburg', country: 'Almanya', tier: 3, loc: 'ta' },
+  { id: 86, slug: 'werder-bremen', name: 'Werder Bremen', short: 'Bremen', country: 'Almanya', tier: 3, loc: 'de' },
+  { id: 44, slug: 'hertha-berlin', name: 'Hertha Berlin', short: 'Hertha', country: 'Almanya', tier: 3, loc: 'de' },
+  { id: 39, slug: 'mainz', name: 'Mainz 05', short: 'Mainz', country: 'Almanya', tier: 3, loc: 'te' },
+  // İngiltere — ikinci kuşak
+  { id: 399, slug: 'leeds', name: 'Leeds United', short: 'Leeds', country: 'İngiltere', tier: 3, loc: 'te' },
+  { id: 931, slug: 'fulham', name: 'Fulham', short: 'Fulham', country: 'İngiltere', tier: 3, loc: 'da' },
+  { id: 1237, slug: 'brighton', name: 'Brighton', short: 'Brighton', country: 'İngiltere', tier: 3, loc: 'da' },
+  { id: 873, slug: 'crystal-palace', name: 'Crystal Palace', short: 'C. Palace', country: 'İngiltere', tier: 3, loc: 'te' },
+  { id: 180, slug: 'southampton', name: 'Southampton', short: 'Southampton', country: 'İngiltere', tier: 3, loc: 'da' },
+  { id: 703, slug: 'nottingham-forest', name: 'Nottingham Forest', short: 'Nottingham', country: 'İngiltere', tier: 3, loc: 'te' },
+  // İspanya ek
+  { id: 681, slug: 'real-sociedad', name: 'Real Sociedad', short: 'R. Sociedad', country: 'İspanya', tier: 3, loc: 'da' },
+  { id: 150, slug: 'real-betis', name: 'Real Betis', short: 'Betis', country: 'İspanya', tier: 3, loc: 'te' },
+  { id: 3709, slug: 'getafe', name: 'Getafe', short: 'Getafe', country: 'İspanya', tier: 3, loc: 'de' },
+  // Yunanistan / İskoçya / Belçika — TR rekabet komşuları
+  { id: 683, slug: 'olympiakos', name: 'Olympiakos', short: 'Olympiakos', country: 'Yunanistan', tier: 3, loc: 'ta' },
+  { id: 1091, slug: 'paok', name: 'PAOK', short: 'PAOK', country: 'Yunanistan', tier: 3, loc: 'ta' },
+  { id: 371, slug: 'celtic', name: 'Celtic', short: 'Celtic', country: 'İskoçya', tier: 3, loc: 'te' },
+  { id: 124, slug: 'rangers', name: 'Rangers', short: 'Rangers', country: 'İskoçya', tier: 3, loc: 'ta' },
+  { id: 2282, slug: 'club-brugge', name: 'Club Brugge', short: 'Brugge', country: 'Belçika', tier: 3, loc: 'de' },
+  { id: 157, slug: 'gent', name: 'Gent', short: 'Gent', country: 'Belçika', tier: 3, loc: 'te' },
+  // Suudi Arabistan — Ronaldo/CR etkisiyle arama hacmi yüksek
+  { id: 18544, slug: 'al-nassr', name: 'Al-Nassr', short: 'Al-Nassr', country: 'S. Arabistan', tier: 3, loc: 'da' },
+  { id: 1114, slug: 'al-hilal', name: 'Al-Hilal', short: 'Al-Hilal', country: 'S. Arabistan', tier: 3, loc: 'de' },
 ];
 
 const byId = new Map(CLUBS.map((c) => [c.id, c]));

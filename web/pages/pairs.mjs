@@ -257,7 +257,7 @@ ${band('tr', {
     lang: 'tr',
     path,
     title: 'İki Takımda da Oynayan Futbolcular — Ortak Futbolcu Arşivi',
-    description: `İki takımda da oynayan futbolcular: ${pairs.length} kulüp eşleşmesinin tam ortak futbolcu listesi. Galatasaray, Fenerbahçe, Beşiktaş ve Avrupa devlerinden isimler, sezonlarıyla.`,
+    description: `İki takımda da oynayan futbolcular (ortak oyuncular): ${pairs.length} kulüp eşleşmesinin tam listesi. Galatasaray, Fenerbahçe ve Avrupa devlerinden isimler, sezonlarıyla.`,
     body,
     jsonld: [
       ldBreadcrumb([
