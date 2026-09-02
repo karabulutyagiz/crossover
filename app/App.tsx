@@ -1197,7 +1197,16 @@ function AppRoot() {
     if (state.xoxOver && !prevXoxOver) recordMatchEnd();
     const MENU_PHASES = ['home', 'tournaments', 'arenas', 'leaderboard', 'matchHistory', 'profile'];
     const leavingFinishedMatch = (prevPhase === 'result' || (prevPhase === 'xox' && !!prevXoxOver)) && MENU_PHASES.includes(state.phase);
-    if (!leavingFinishedMatch) return;
+    // MAÇ ORTASINDA ÇIKAN DA SAYILIR (oyuncu raporu 2026-09-02: 'paketim bitti
+    // ama gir-çık yapınca reklam çıkmıyor'): çık butonuyla terk eden oyuncu
+    // sonuç ekranına hiç uğramadığı için ne sayaç artıyordu ne deneme
+    // yapılıyordu — maç ortası ayrılış reklam sistemine görünmezdi. Terk edilen
+    // maç da bir maçtır ve menüye dönüş doğal bir moladır: sayaca yazılır ve
+    // reklam denenir (hükmen popup'ı açıksa bekleyiş zaten kapanmasını bekler).
+    const IN_MATCH_PHASES = ['lobby', 'matchup', 'countdown', 'pick', 'reveal', 'guess', 'xox', 'cozkazan'];
+    const leavingAbandonedMatch = IN_MATCH_PHASES.includes(prevPhase) && !leavingFinishedMatch && MENU_PHASES.includes(state.phase);
+    if (leavingAbandonedMatch && prevPhase !== 'lobby' && prevPhase !== 'matchup' && prevPhase !== 'countdown') recordMatchEnd();
+    if (!leavingFinishedMatch && !leavingAbandonedMatch) return;
     // DONMA KORUMASI (2026-08-29): iOS aynı anda TEK native sunum kaldırır —
     // reklam, açık/açılmakta olan bir popup'ın (post-maç teklifi, kupa/seviye
     // penceresi, güncelleme dürtmesi) üstüne binerse donma sınıfı hata doğar.
