@@ -1184,6 +1184,12 @@ function AppRoot() {
   // hasActiveSocialPack(null)=false olduğu için Sosyal Paketli oyuncuya show()
   // çağrıldı (oyuncu raporu: "reklam çıkmadı ama sesi geldi"). Karar artık her
   // tikte ref üzerinden GÜNCEL profille verilir; profil o an yoksa gösterilmez.
+  // PAKET ÖNERİSİ RİTMİ (kullanıcı kararı 2026-09-02): pencere HER reklamda
+  // değil — 1. reklamda çıkar, sonrakinde susar, ondan sonrakinde tekrar (her
+  // iki reklamda bir). 15+ dk ara ya da uygulamadan çıkış ritmi sıfırlar:
+  // dönüşteki İLK reklamda yine çıkar. Tetikleyici DAİMA reklam kapanışıdır.
+  const upsellPrevAdAtRef = useRef(0);
+  const upsellSkippedRef = useRef(0);
   const adProfileRef = useRef(state.profile);
   adProfileRef.current = state.profile;
   const adPrevPhaseRef = useRef(state.phase);
@@ -1261,17 +1267,23 @@ function AppRoot() {
       const guncelProfil = adProfileRef.current;
       if (!guncelProfil) return;                    // profil belirsizken reklam riske girmez
       if (maybeShowInterstitial(hasActiveSocialPack(guncelProfil), () => {
-        // REKLAM KAPANINCA (2026-09-01): eskiden kör 1200ms zamanlayıcıydı ve
-        // pencere reklam HÂLÂ EKRANDAYKEN açılıyordu — iOS'ta iki native sunum
-        // üst üste binince uygulama donuyor (oyuncu raporu, 16 Pro Max).
-        // Artık SDK'nın CLOSED olayına bağlı; 400ms native kapanışın bitmesi için.
-        setTimeout(() => {
-          setAdUpsellVisible(true);
-          // Paket önerisi GERÇEKTEN açılıyor mu: reklamdan önce kör zamanlayıcı
-          // yüzünden reklamın üstüne açılıyor ve donduruyordu, yani pratikte hiç
-          // görünmemiş olabilir. Artık açılışı sayıyoruz.
-          try { freezeReportRef.current('jank', 'SPU|acildi', 0); } catch { /* tanı */ }
-        }, 400);
+        // REKLAM KAPANINCA (2026-09-01): SDK'nın CLOSED olayına bağlı — kör
+        // zamanlayıcı reklamın üstüne pencere açıp donduruyordu (16 Pro Max).
+        // RİTİM (2026-09-02): ilk reklamda göster; sonra bir sustur, bir göster.
+        // 15+ dk aradan (ya da yeniden açılıştan — ref'ler sıfır başlar)
+        // sonraki ilk reklamda ritim başa döner.
+        const simdi = Date.now();
+        const uzunAra = upsellPrevAdAtRef.current === 0 || simdi - upsellPrevAdAtRef.current >= 15 * 60_000;
+        upsellPrevAdAtRef.current = simdi;
+        if (uzunAra || upsellSkippedRef.current >= 1) {
+          upsellSkippedRef.current = 0;
+          setTimeout(() => {
+            setAdUpsellVisible(true);
+            try { freezeReportRef.current('jank', 'SPU|acildi', 0); } catch { /* tanı */ }
+          }, 400);
+        } else {
+          upsellSkippedRef.current += 1;
+        }
       })) {
         reported = true;
         try { freezeReportRef.current('jank', `AD|${interstitialDiagnostics().adsLastReason}`.slice(0, 40), 0); } catch { /* önemsiz */ }

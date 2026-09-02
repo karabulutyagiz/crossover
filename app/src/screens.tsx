@@ -15133,31 +15133,10 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
   const leaveKind = state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
   const handleLeave = () => (matchOver || tutorial) ? actions.leave() : setShowLeaveConfirm(true);
 
-  // KAYIP SONRASI ÖDÜLLÜ REKLAM (kullanıcı onayı 2026-08-29): maç bitti ve
-  // kaybettiysen "reklam izle → elmas" teselli teklifi. Ödül sunucu-onaylı
-  // (grant_ad_reward: günlük tavan + hız sınırı sunucuda) — istemci yalnız
-  // izletir; miktar sunucudan döner, başarıda buton "+N elmas" onayına dönüşür.
-  const [adClaimState, setAdClaimState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle');
-  const [adClaimGranted, setAdClaimGranted] = useState(0);
-  const lostFinal = matchOver && state.matchWinnerId != null && state.matchWinnerId !== room.youId
-    && getMonetizationConfig().ads.rewardedPostLoss;
-  const postLossAd = useAdState(() => {
-    setAdClaimState('busy');
-    actions.grantAdReward()
-      .then((granted) => { track('ad_reward_granted', { granted, source: 'post_loss' }); setAdClaimGranted(granted); setAdClaimState(granted > 0 ? 'done' : 'error'); if (granted > 0) triggerFeedback(GameFeedbackEvent.UI_PURCHASE); })
-      .catch(() => setAdClaimState('error'));
-  }, lostFinal);
-  const showPostLossAd = lostFinal && adClaimState !== 'done' && adClaimState !== 'error';
-  // ÖLÇÜM (2026-09-01): ödüllü reklam haftada 5 kez izlenmiş (ad_rewards).
-  // "Kimse istemiyor" ile "kimse görmüyor" bambaşka sorunlar ve elimizdeki veri
-  // ikisini ayırmıyordu. Teklifin KAÇ KEZ ÇIKTIĞI da sayılıyor; oran düşükse
-  // ödül küçük, gösterim sıfırsa tetikleyici bozuk demektir.
-  const postLossSeenRef = useRef(false);
-  useEffect(() => {
-    if (!showPostLossAd || postLossSeenRef.current) return;
-    postLossSeenRef.current = true;
-    try { actions.reportFreeze('jank', 'AD5|teklif', 0); } catch { /* tanı — oyunu etkilemez */ }
-  }, [showPostLossAd]);
+  // KAYIP SONRASI ÖDÜLLÜ REKLAM KALDIRILDI (kullanıcı kararı 2026-09-02):
+  // 24 saatlik ölçüm 372 gösterime karşı 1 tıklama saydı — teklif görülüyor ve
+  // istenmiyordu; sonuç ekranında ekran kirliliğiydi. Mağazadaki "Video İzle,
+  // Elmas Kazan" kartı ve elmas-açığı teklifi DURUYOR; yalnız bu yüzey gitti.
 
   const { icon, color, headline } = useMemo(() => {
     if (r.reason === 'same_team')
@@ -15293,24 +15272,6 @@ export function ResultScreen({ state, actions, tutorial }: Props) {
               </View>
             );
           })() : null}
-          {/* 🎬 Kayıp tesellisi: reklam izle → elmas (yalnız maç sonu + kaybeden) */}
-          {showPostLossAd ? (
-            <View style={{ alignItems: 'center', marginTop: 10 }}>
-              <Btn
-                compact kind="accent" icon="videocam"
-                label={postLossAd.adLoading || adClaimState === 'busy' ? t('ads.loading') : t('ads.postLossCta')}
-                feedback={GameFeedbackEvent.UI_TAP}
-                onPress={() => {
-                  if (postLossAd.adLoading || adClaimState !== 'idle') return;
-                  try { actions.reportFreeze('jank', 'AD5|basildi', 0); } catch { /* tanı */ }
-                  void postLossAd.watchAd();
-                }}
-              />
-            </View>
-          ) : null}
-          {adClaimState === 'done' ? (
-            <Text style={{ color: theme.gemText, fontFamily: 'Poppins-Black', fontSize: 13, textAlign: 'center', marginTop: 10 }}>{t('ads.rewardGranted', { n: String(adClaimGranted) })}</Text>
-          ) : null}
           {/* "Ben de doğru yazmıştım" hissinin ilacı: kaybeden tarafa hızı açıkça söyle */}
           {r.correct && r.answeredById != null && r.answeredById !== room.youId ? (
             <Text style={[styles.muted, { marginTop: 2 }]}>{t('result.faster', { name: r.answeredByName ?? '' })}</Text>
