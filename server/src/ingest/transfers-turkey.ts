@@ -71,14 +71,22 @@ async function resolvePlayerSafe(
 ): Promise<number | null> {
   const norm = normalize(apiName);
   if (!norm || knownClubIds.length === 0) return null;
-  const { rows } = await pool.query<{ id: string }>(
-    `SELECT p.id FROM players p
-      WHERE word_similarity($1, p.name_norm) >= 0.35
+  // FULL-NAME eşleşmesi zorunlu (kullanıcı raporu 2026-09-02: "Djibril Cissé Beşiktaş'ta
+  // oynamadı ama gösteriyor"). Eski eşik yalnız word_similarity>=0.35 idi: bu, ortak SOYAD
+  // (Cissé) + tek ortak kulüp (Marsilya) olunca "Édouard Cissé"nin Beşiktaş transferini
+  // yanlışlıkla "Djibril Cissé"ye yapıştırıyordu. Çözüm: TÜM ad benzerliği (similarity(),
+  // pencere değil tam-string) >= 0.55 → farklı ÖN-ad (edouard≠djibril) artık reddedilir.
+  // Ayrıca ORDER BY'da tam benzerlik önce gelir; berabere kalırsa kariyer büyüklüğü.
+  const { rows } = await pool.query<{ id: string; fsim: number }>(
+    `SELECT p.id, similarity($1, p.name_norm) AS fsim FROM players p
+      WHERE word_similarity($1, p.name_norm) >= 0.5
+        AND similarity($1, p.name_norm) >= 0.55
         AND EXISTS (
           SELECT 1 FROM player_clubs pc
           WHERE pc.player_id = p.id AND pc.club_id = ANY($2::bigint[])
         )
-      ORDER BY word_similarity($1, p.name_norm) DESC,
+      ORDER BY similarity($1, p.name_norm) DESC,
+               word_similarity($1, p.name_norm) DESC,
                (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC
       LIMIT 1`,
     [norm, knownClubIds],

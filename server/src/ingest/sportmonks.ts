@@ -104,14 +104,18 @@ async function resolvePlayerSafe(name: string, knownClubIds: number[]): Promise<
   if (exact.rows.length === 1) return Number(exact.rows[0]!.id);
 
   if (knownClubIds.length === 0) return null;
+  // FULL-NAME eşleşmesi zorunlu (kullanıcı raporu 2026-09-02): word_similarity yalnız
+  // ORTAK SOYAD (ör. "Cissé") + tek ortak kulüp olunca farklı ön-adlı oyuncuyu (Djibril↔
+  // Édouard) karıştırıyordu. similarity() (tam-string) >= 0.55 farklı ön-adı reddeder.
   const { rows } = await pool.query<{ id: string }>(
     `SELECT p.id FROM players p
       WHERE word_similarity($1, p.name_norm) >= 0.5
+        AND similarity($1, p.name_norm) >= 0.55
         AND EXISTS (
           SELECT 1 FROM player_clubs pc
           WHERE pc.player_id = p.id AND pc.club_id = ANY($2::bigint[])
         )
-      ORDER BY word_similarity($1, p.name_norm) DESC
+      ORDER BY similarity($1, p.name_norm) DESC, word_similarity($1, p.name_norm) DESC
       LIMIT 1`,
     [norm, knownClubIds],
   );
