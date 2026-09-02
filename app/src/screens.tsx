@@ -782,28 +782,30 @@ function SafeModal({ visible = true, children, onRequestClose, ...rest }: ModalP
   );
 }
 
-// COFA MÜHRÜ (2026-09-01): her pencerenin tam üst-ortasında, kartın üst
-// kenarına yarı yarıya binen top madalyonu. Clash Royale'in taç amblemi gibi
-// tek bir imza — pencereler artık "bir kutu" değil, oyunun kendi penceresi.
-// Kart bir sarmalayıcının içinde: mühür SARMALAYICININ sınırları içinde durur,
-// yoksa Android taşan çocuğu kırpardı. Kart 18px aşağı iner (mührün 46'sının
-// 28'i başlık şeridine biner) — tam yarı taşma uzun pencereleri ekrandan
-// taşırıyordu, bu oran hem imzayı verir hem yüksekliği zorlamaz.
-const MODAL_CREST = 46;
+// COFA ALINLIĞI (2026-09-02, kullanıcının verdiği mockup'tan): eski hâli havada
+// asılı koyu bir madalyondu ("koyduğun top çok kötü") — örnekte top, kartın üst
+// kenarından yükselen ve kartla AYNI rengi taşıyan bir alınlığın yuvasında
+// oturuyor; kanatlar topun iki yanından kartın köşelerine süzülüyor. Renk ve
+// kontur pencereden pencereye değişir: dolgu = şerit rengi, kontur = şeridin
+// koyusu (kartın dış konturuyla aynı) — kırmızı uyarıda kırmızı, altında altın.
+const CREST_H = 50;       // alınlık yüksekliği; top yuvası 4px kartın içine taşar
+const CREST_BALL = 34;
 function ModalCrest({ ring }: { ring: string }) {
+  const koyu = darken(ring, 0.5);
+  const yuva = 52;        // top yuvasının dış çapı (bilezik dahil)
   return (
-    <View
-      pointerEvents="none"
-      style={{
-        width: MODAL_CREST, height: MODAL_CREST, borderRadius: MODAL_CREST / 2,
-        backgroundColor: '#0B1428', padding: 3.5,
-        borderTopWidth: 1.5, borderTopColor: withAlpha('#FFFFFF', 0.24),
-        alignItems: 'center', justifyContent: 'center',
-        shadowColor: '#050B18', shadowOpacity: 0.55, shadowRadius: 7, shadowOffset: { width: 0, height: 3 }, elevation: 7,
-      }}
-    >
-      <View style={{ width: MODAL_CREST - 7, height: MODAL_CREST - 7, borderRadius: (MODAL_CREST - 7) / 2, backgroundColor: darken(ring, 0.45), alignItems: 'center', justifyContent: 'center' }}>
-        <Ball size={MODAL_CREST - 15} face="#F4F7FF" faceDark="#94A3C4" ink="#0B1428" />
+    <View pointerEvents="none" style={{ width: '100%', height: CREST_H, alignItems: 'center' }}>
+      {/* Kanatlar: genişliğe esner (preserveAspectRatio none); daire ayrı View —
+          esneyen SVG'de daire yamulurdu. Alt kenar çizgisiz: kartla kaynaşır. */}
+      <Svg width="100%" height={CREST_H} viewBox="0 0 360 50" preserveAspectRatio="none" style={{ position: 'absolute', bottom: 0 }}>
+        <Path d="M 0 50 C 90 34 140 28 180 28 C 220 28 270 34 360 50 Z" fill={ring} />
+        <Path d="M 0 50 C 90 34 140 28 180 28 C 220 28 270 34 360 50" fill="none" stroke={koyu} strokeWidth={3} />
+        <Path d="M 14 47 C 100 33 142 30 180 30 C 218 30 260 33 346 47" fill="none" stroke={lighten(ring, 0.22)} strokeWidth={1.5} opacity={0.7} />
+      </Svg>
+      <View style={{ position: 'absolute', top: 0, width: yuva, height: yuva, borderRadius: yuva / 2, backgroundColor: ring, borderWidth: 3, borderColor: koyu, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: yuva - 12, height: yuva - 12, borderRadius: (yuva - 12) / 2, backgroundColor: darken(ring, 0.32), alignItems: 'center', justifyContent: 'center' }}>
+          <Ball size={CREST_BALL} face="#F4F7FF" faceDark="#94A3C4" ink="#0B1428" />
+        </View>
       </View>
     </View>
   );
@@ -888,8 +890,11 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
   const strip = danger ? theme.danger : coach ? theme.primary : theme.accent;
   // Düğme setinden ölçülen tonlar: dış kontur #79380C sınıfı koyu kahve-siyah,
   // alt dudak sıcak turuncu (#AF773C), üst kenar açık.
-  const FRAME = '#0B1428';
-  const LIP = darken(strip, 0.35);
+  // KART ÇERÇEVESİ PENCERENİN RENGİNDE (2026-09-02, mockup): dıştaki ince
+  // kontur şeridin koyusu, onun içindeki kalın bilezik şeridin kendisi —
+  // uyarıda kırmızı çerçeveli kart, varsayılanda altın. Alınlıkla aynı boya.
+  const FRAME = darken(strip, 0.5);
+  const LIP = strip;
   return (
     <SafeModal visible transparent animationType="none" onRequestClose={handleClose} onShow={handleShow}>
       {/* Karartma KENDİ değeriyle (scrim) sürülür: 140ms'de oturur ve kartın
@@ -918,12 +923,13 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
               // eskiden ince hairline'dı, bu yüzden yan yana yamalı duruyordu.
               // Mühür kartın üst kenarına biner: kart yarısı kadar aşağı iner,
               // mühür sarmalayıcının tepesinde durur (Android kırpma korumalı).
-              marginTop: crest ? 18 : 0,
-              backgroundColor: FRAME, borderRadius: 28, padding: 3.5, paddingBottom: 6,
+              // Alınlık kartın üstünde durur; yuva 4-6px içeri taşar (CREST_H-44)
+              marginTop: crest ? 44 : 0,
+              backgroundColor: FRAME, borderRadius: 28, padding: 2.5, paddingBottom: 4,
               ...shadowModal,
             }}
           >
-            <View style={{ backgroundColor: LIP, borderRadius: 24, padding: 2.5, paddingBottom: 4 }}>
+            <View style={{ backgroundColor: LIP, borderRadius: 25, padding: 4.5, paddingBottom: 5.5 }}>
             {/* clip (mood band + corners) lives HERE, not on the shadow-casting
                 face above — iOS masksToBounds would kill the modal drop shadow */}
             <Pressable onPress={() => {}} style={{ backgroundColor: theme.modalFace, borderRadius: 21, overflow: 'hidden' }}>
