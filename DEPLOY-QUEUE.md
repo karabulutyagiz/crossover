@@ -79,10 +79,12 @@ cd server && npx tsc --noEmit && npx tsx src/cli/xox-test.ts && npx tsx src/cli/
 rsync -az --delete --exclude node_modules --exclude .env server/ root@168.222.180.190:/opt/crossover/server/
 
 # 3) rooms=0 kapısı İÇERİDE olacak şekilde bas (canlı maç düşürme!)
-ssh root@168.222.180.190 'cd /opt/crossover && while [ "$(curl -s localhost:8080/health | grep -o "\"rooms\":[0-9]*" | cut -d: -f2)" != "0" ]; do sleep 20; done && docker compose up -d --build app'
+# DİKKAT (2026-09-02): host'ta localhost:8080 crossover DEĞİL (404 döner) → eski kapı hiç açılmıyordu.
+# Sağlık ucu domain üzerinden okunur; boş cevap da "0 değil" sayılır (kapı güvenli tarafta kalır).
+ssh root@168.222.180.190 'cd /opt/crossover && while [ "$(curl -s -m 8 https://api.crossoverfootball.com/health | grep -o "\"rooms\":[0-9]*" | cut -d: -f2)" != "0" ]; do sleep 20; done && docker compose up -d --build app'
 
 # 4) KANIT — sembol + config + sağlık (bunlarsız "deploy oldu" DEME)
-ssh root@168.222.180.190 'curl -s localhost:8080/health; docker exec crossover-app-1 grep -c sameArenaPair src/matchmaking/policy.ts; docker exec crossover-app-1 grep -c etaSeconds src/ws/server.ts; docker exec crossover-app-1 grep -c "finishXoxDraw" src/rooms/room.ts'
+ssh root@168.222.180.190 'curl -s https://api.crossoverfootball.com/health; docker exec crossover-app-1 grep -c sameArenaPair src/matchmaking/policy.ts; docker exec crossover-app-1 grep -c etaSeconds src/ws/server.ts; docker exec crossover-app-1 grep -c "finishXoxDraw" src/rooms/room.ts'
 ```
 
 ## SIRA 2 — OTA (sunucu basıldı; ŞİMDİ basılabilir — token komutu kullanıcıda)
