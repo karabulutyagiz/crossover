@@ -1041,8 +1041,9 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, passedBy: state.passedBy.includes(action.byId) ? state.passedBy : [...state.passedBy, action.byId] };
     case 'xox_state': {
       const a = action as Extract<ServerMsg, { type: 'xox_state' }>;
-      // Tam durum her olayda gelir — desync imkânsız; faz 'xox'a oturur.
-      return { ...state, phase: 'xox', xox: a, xoxOver: state.matchOver ? state.xoxOver : null, result: null };
+      // Tam durum her olayda gelir — desync imkânsız; faz 'xox'a oturur. error:null →
+      // "bu futbolcu zaten tabloda" reddi bir sonraki geçerli hamlede/tur geçişinde silinir.
+      return { ...state, phase: 'xox', xox: a, xoxOver: state.matchOver ? state.xoxOver : null, result: null, error: null };
     }
     case 'xox_over': {
       const a = action as Extract<ServerMsg, { type: 'xox_over' }>;

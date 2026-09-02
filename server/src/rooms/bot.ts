@@ -802,10 +802,18 @@ export class BotPlayer implements Transport {
     const abundance = clamp(ranked.length / 6, 0, 1);
     let knowP = clamp(D.fameBaseTeam + famous * 0.34 + abundance * 0.18, 0.06, 0.94);
     if (sudden) knowP = clamp(knowP + 0.10, 0.06, 0.96); // altın hücrede herkes asılır
-    const knows = ranked.length > 0 && Math.random() < knowP;
+    // AYNI FUTBOLCU YALNIZ BİR HÜCREDE (kullanıcı kuralı 2026-09-02): tabloda zaten
+    // kullanılmış oyuncuları aday listesinden çıkar — bot tekrar veremez (verse sunucu
+    // reddeder, turu boşa harcardı). İsimler her iki tarafta da kanonik DB adı olduğundan
+    // düz karşılaştırma yeter. Hepsi kullanılmışsa bot "bilemedi" gibi davranır.
+    const usedNames = new Set(
+      msg.cells.filter((c) => c.owner != null && c.playerName).map((c) => c.playerName!.trim().toLocaleLowerCase('tr')),
+    );
+    const avail = ranked.filter((p) => !usedNames.has(p.name.trim().toLocaleLowerCase('tr')));
+    const knows = avail.length > 0 && Math.random() < knowP;
     if (knows) {
       // Ünlüler önde ama tekdüze değil: ortak pickFamous ile (0.62 en ünlü, kalan ilk 3).
-      const chosen = pickFamous(mathRandom, ranked);
+      const chosen = pickFamous(mathRandom, avail);
       const text = chosen ? this.humanizeKnownAnswer(chosen.name) : null;
       if (text) this.act({ type: 'xox_submit', cell, text });
       return;

@@ -7216,6 +7216,7 @@ export function XoxScreen({ state, actions }: Props) {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [emoteOpen, setEmoteOpen] = useState(false);
   const [showEmpties, setShowEmpties] = useState(false); // "Kalan boş kutucukları gör" basıldı mı
+  const [reuseWarn, setReuseWarn] = useState(false);     // aynı futbolcuyu ikinci kez yazma uyarısı
   const [, setTick] = useState(0);
   const win = useWindow();
   // SABİT EKRAN (kullanıcı kararı 2026-08-27): XOX kaydırılmaz. Tahta, orta
@@ -7248,6 +7249,7 @@ export function XoxScreen({ state, actions }: Props) {
       setSelCell(xox.suddenDeath && xox.suddenCell != null ? xox.suddenCell : null);
       guessRef.current = '';
       setGuessText('');
+      setReuseWarn(false);
     }
   }, [xox?.turnNumber, xox?.suddenDeath]);
   const laSeq = useRef<string>('');
@@ -7298,10 +7300,18 @@ export function XoxScreen({ state, actions }: Props) {
   const submit = () => {
     const text = guessRef.current.trim();
     if (!text || selCell == null) return;
+    // AYNI FUTBOLCU YALNIZ BİR HÜCREDE (kullanıcı kuralı 2026-09-02): tabloda GÖRÜNEN
+    // bir oyuncunun adını aynen yazdıysa istemci anında engeller (yerelleştirilmiş
+    // uyarı, sunucuya gitmez). Farklı yazımda (ör. "Ronaldo" vs "Cristiano Ronaldo")
+    // sunucu oyuncu-id'siyle yakalar — yetkili kapı odur.
+    const norm = (s: string) => s.trim().toLocaleLowerCase('tr').replace(/\s+/g, ' ');
+    const used = new Set((xox?.cells ?? []).filter((c) => c.owner != null && c.playerName).map((c) => norm(c.playerName!)));
+    if (used.has(norm(text))) { setReuseWarn(true); return; }
     dismissActiveInput();
     actions.xoxSubmit(selCell, text);
     guessRef.current = '';
     setGuessText('');
+    setReuseWarn(false);
   };
   const la = xox.lastAction;
   const laText = la
@@ -7475,11 +7485,16 @@ export function XoxScreen({ state, actions }: Props) {
           <GameInput
             placeholder={t('guess.placeholder')}
             value={guessText}
-            onChangeText={(v: string) => { guessRef.current = v; setGuessText(v); }}
+            onChangeText={(v: string) => { guessRef.current = v; setGuessText(v); if (reuseWarn) setReuseWarn(false); }}
             autoFocus
             returnKeyType="send"
             onSubmitEditing={submit}
           />
+          {reuseWarn ? (
+            <Text style={{ color: theme.danger, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('xox.reuse')}</Text>
+          ) : (!isNetworkErrorMessage(state.error) && state.error) ? (
+            <Text style={{ color: theme.danger, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{state.error}</Text>
+          ) : null}
           <Btn label={t('guess.send')} icon="send" feedback={GameFeedbackEvent.ANSWER_SUBMIT} onPress={submit} disabled={!guessText.trim()} />
         </View>
       ) : !over && myTurn ? (

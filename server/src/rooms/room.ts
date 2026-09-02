@@ -20,7 +20,7 @@ import {
   commonClubs,
   hasCommonClubs,
   verifyXoxCellGuess,
-  topPlayerForXoxCell,
+  xoxCellValidPlayers,
   toXoxCellAxis,
   type XoxCellAxis,
 } from '../game/verify.ts';
@@ -287,8 +287,11 @@ export class Room {
   private xox: {
     rows: ClubRef[];
     cols: ClubRef[];
-    cells: { owner: string | null; playerName: string | null; playerImageUrl: string | null }[];
+    cells: { owner: string | null; playerName: string | null; playerImageUrl: string | null; playerId: number | null }[];
     counts: number[];              // hücre başına geçerli cevap sayısı
+    // AYNI FUTBOLCU YALNIZ BİR HÜCREDE (kullanıcı kuralı 2026-09-02): tabloda
+    // kullanılmış oyuncu id'leri; başka hücrede tekrar verilemez.
+    usedPlayerIds: Set<number>;
     turnId: string | null;         // null = ani ölüm (iki taraf da yarışır)
     turnEndsAt: number;
     turnNumber: number;            // 1 tabanlı
@@ -1874,8 +1877,9 @@ export class Room {
     this.xox = {
       rows: grid.rows,
       cols: grid.cols,
-      cells: Array.from({ length: 9 }, () => ({ owner: null, playerName: null, playerImageUrl: null })),
+      cells: Array.from({ length: 9 }, () => ({ owner: null, playerName: null, playerImageUrl: null, playerId: null })),
       counts: grid.cellAnswerCounts,
+      usedPlayerIds: new Set<number>(),
       // İlk hamle avantajlıdır — rastgele taraf başlar (rövanşta yeniden atılır).
       turnId: ids[Math.floor(Math.random() * ids.length)] ?? ids[0]!,
       turnEndsAt: Date.now() + XOX_TURN_MS,
@@ -1899,7 +1903,7 @@ export class Room {
       type: 'xox_state',
       rows: this.xox.rows,
       cols: this.xox.cols,
-      cells: this.xox.cells.map((c) => ({ ...c })),
+      cells: this.xox.cells.map((c) => ({ owner: c.owner, playerName: c.playerName, playerImageUrl: c.playerImageUrl })),
       turnId: this.xox.turnId,
       turnEndsAt: this.xox.turnEndsAt,
       turnNumber: this.xox.turnNumber,
@@ -1960,13 +1964,18 @@ export class Room {
     const x = this.xox;
     if (!x) return [];
     const out: { cell: number; playerName: string; playerImageUrl: string | null }[] = [];
+    // AYNI FUTBOLCU BİR HÜCREDE (kullanıcı kuralı 2026-09-02): boş hücre önerileri de
+    // birbirinden FARKLI + tabloda kullanılmamış oyuncular olsun — her hücre için ilk
+    // "henüz görülmemiş" geçerli oyuncuyu seç (tekilliğe uygun tutarlı öneri).
+    const seen = new Set<number>(x.usedPlayerIds);
     for (let i = 0; i < 9; i++) {
       if (x.cells[i]!.owner != null) continue; // dolu — atla
       const row = x.rows[Math.floor(i / 3)]!;
       const col = x.cols[i % 3]!;
       try {
-        const top = await topPlayerForXoxCell(xoxCellAxis(row), xoxCellAxis(col));
-        if (top) out.push({ cell: i, playerName: top.name, playerImageUrl: top.imageUrl });
+        const cands = await xoxCellValidPlayers(xoxCellAxis(row), xoxCellAxis(col), 8);
+        const pick = cands.find((c) => !seen.has(c.playerId));
+        if (pick) { seen.add(pick.playerId); out.push({ cell: i, playerName: pick.canonicalName, playerImageUrl: pick.imageUrl }); }
       } catch (err) {
         log.warn('xox_empty_reveal_failed', { room: this.code, cell: i, error: err instanceof Error ? err.message : String(err) });
       }
@@ -2005,11 +2014,22 @@ export class Room {
     x.pending = false;
 
     if (v?.correct) {
+      // AYNI FUTBOLCU YALNIZ BİR HÜCREDE (kullanıcı kuralı 2026-09-02): cevap doğru
+      // ama bu futbolcu tabloda BAŞKA bir hücrede zaten kullanıldıysa hücreyi ALMAZ,
+      // sıra da GEÇMEZ — yalnız gönderene özel uyarı gider, başka oyuncu denesin
+      // (kendi tur süresini harcar). Bot da kullanılmışları elemek üzere ayarlandı.
+      const fbId = v.matchedPlayer?.id ?? null;
+      if (fbId != null && x.usedPlayerIds.has(fbId)) {
+        try { pl.transport.send({ type: 'error', message: 'Bu futbolcu zaten tabloda — başka bir oyuncu seç' }); } catch { /* ignore */ }
+        return;
+      }
       x.cells[cell] = {
         owner: playerId,
         playerName: v.matchedPlayer?.name ?? text.trim(),
         playerImageUrl: v.matchedPlayer?.imageUrl ?? null,
+        playerId: fbId,
       };
+      if (fbId != null) x.usedPlayerIds.add(fbId);
       pl.score = this.xoxCellCount(playerId);
       // Maç geçmişi: her alınan hücre bir "tur" satırı (takım × takım + cevap).
       this.matchRounds.push({
