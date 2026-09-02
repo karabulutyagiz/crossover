@@ -2556,8 +2556,12 @@ function AppRoot() {
   // GEÇMEK ('background') = ANINDA hükmen mağlubiyet — kupa kesilir, galibiyet
   // ve kupa rakibe yazılır (sunucu explicitLeave('cheat') hattı; sonuç popup'ı
   // KOPYA ÇEKME ALGILANDI bandıyla gelir). 'inactive' (bildirim çekmecesi,
-  // kontrol merkezi, gelen arama, ekran görüntüsü) MAÇTAN ATMAZ — dönüşte
-  // yalnız uyarı basılır; telefonun normal kullanımı cezalandırılmaz.
+  // kontrol merkezi, gelen arama, ekran görüntüsü) MAÇTAN ATMAZ.
+  // 'inactive' UYARI DA BASMAZ (oyuncu raporu 2026-09-02): görüntülü konuşma
+  // sırasında iOS, aramanın küçük penceresi / Dynamic Island hareketleriyle
+  // uygulamayı sürekli inactive↔active gezdiriyor; her maç sonunda masum
+  // oyuncuya "kopya çekme algılandı" basılıyordu. Başka uygulamaya geçmeden
+  // 'inactive' olunur ama kopya çekilemez; uyarı yalnız 'background' dönüşünde.
   // ANINDA CEZA KALDIRILDI (oyuncu raporu 2026-08-29): oyun donunca oyuncu
   // uygulamayı kapatmaya çalışıyor, arka plana geçer geçmez hükmen yenilgi
   // gönderiliyor ve MASUM oyuncu kupa kaybediyordu — geri dönme şansı bile
@@ -2588,9 +2592,6 @@ function AppRoot() {
         cheatWatchRef.current.dipped = true;
         return;
       }
-      if (st === 'inactive' && cheatWatchRef.current.eligible) {
-        cheatWatchRef.current.dipped = true;
-      }
       if (st === 'active' && cheatWatchRef.current.dipped) {
         const awayMs = cheatWatchRef.current.bgAt ? Date.now() - cheatWatchRef.current.bgAt : 0;
         cheatWatchRef.current.dipped = false;
@@ -2601,7 +2602,8 @@ function AppRoot() {
           cheatForfeitRef.current();
           return;
         }
-        // Kısa kesinti: donma, bildirim, gelen arama… ceza yok, yalnız uyarı.
+        // Kısa ARKA PLAN kesintisi: donma, açılan arama, bildirime dokunma…
+        // ceza yok, yalnız uyarı. (Salt 'inactive' buraya hiç düşmez.)
         setCheatWarnSeq((n) => n + 1);
       }
     });
