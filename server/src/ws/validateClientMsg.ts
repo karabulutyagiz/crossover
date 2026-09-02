@@ -6,6 +6,7 @@ const MODES = new Set(['team-team', 'country-team', 'letter-team', 'player-playe
 const DIFFICULTIES = new Set(['easy', 'medium', 'hard']);
 const PROVIDERS = new Set(['apple', 'google', 'facebook']);
 const POWER_IDS = new Set(['xp2x', 'shield', 'streak', 'training', 'socialtoken']);
+const SHIELD_REFUND_VIAS = new Set(['inventory', 'ad', 'pack']);
 const SPECIAL_POWER_IDS = new Set(['freeze', 'reveal', 'skip', 'extratime', 'secondchance']);
 const REWARD_TRACKS = new Set(['free', 'premium']);
 const PLATFORMS = new Set(['ios', 'android']);
@@ -253,6 +254,9 @@ export function validateClientMsg(value: unknown): ValidationResult {
     case 'claim_level_reward':
       if (!hasInteger(value, 'level', 1, 1000)) return invalid('claim_level_reward.level must be a positive integer');
       if (value.track !== undefined && (typeof value.track !== 'string' || !REWARD_TRACKS.has(value.track))) return invalid('claim_level_reward.track is invalid');
+      break;
+    case 'shield_refund':
+      if (typeof value.via !== 'string' || !SHIELD_REFUND_VIAS.has(value.via)) return invalid('shield_refund.via is invalid');
       break;
     case 'buy_power':
     case 'use_power':

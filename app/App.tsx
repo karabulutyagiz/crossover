@@ -145,6 +145,7 @@ import {
   type OfferEngineContext,
   type PowerId,
 } from './src/monetization';
+import { showRewardedAd } from './src/rewardedAd';
 import { setPendingShortfall } from './src/shortfall';
 import { startOfferActivity, endOfferActivity } from './src/liveActivity';
 import {
@@ -2297,6 +2298,26 @@ function AppRoot() {
       goToTab(0);
       return;
     }
+    // KUPA KALKANI — SON KAYBI GERİ AL (2026-09-02): elmas harcanmaz, o yüzden
+    // aşağıdaki "popup'tan doğrudan kullanma yok" kuralının dışındadır. Envanter
+    // kalkanı / Sosyal Paket hediyesi anında; reklam yolu önce ödüllü reklamı
+    // oynatır, yalnız EARNED gelince sunucuya gider (sunucu tavanları uygular).
+    if (offer.product === 'shield' && offer.shieldRefundVia) {
+      const via = offer.shieldRefundVia;
+      setContextualOfferVisible(false);
+      track('engagement_primary_clicked', { kind: activeEngagement?.kind, offer_id: offer.offerId, trigger: offer.trigger, product: 'shield', offerType: offer.offerType, screen: state.phase, appSessionId, currentDiamonds: profile.diamonds, trophyDelta: offer.analyticsMetadata?.trophy_delta, action: `shield_refund_${via}` });
+      const claim = () => actions.shieldRefund(via)
+        .then((n) => { track('shield_refund_granted', { via, refunded: n, appSessionId }); })
+        .catch((e: Error) => { track('shield_refund_failed', { via, error: e.message, appSessionId }); actions.showNotice(e.message === 'timeout' || e.message === 'disconnected' ? t('monetization.adUnavailable') : e.message); });
+      if (via !== 'ad') { void claim(); return; }
+      void showRewardedAd().then((outcome) => {
+        track('shield_refund_ad', { outcome, appSessionId });
+        if (outcome === 'earned') return claim();
+        if (outcome === 'closed') return; // izlemedi — sessiz
+        actions.showNotice(t('monetization.adUnavailable'));
+      });
+      return;
+    }
     if (offer.offerType !== 'power' || !offer.product) return;
     const powerId = offer.product;
     setContextualOfferVisible(false);
@@ -2307,7 +2328,7 @@ function AppRoot() {
     track('engagement_primary_clicked', { kind: activeEngagement?.kind, offer_id: offer.offerId, trigger: offer.trigger, product: powerId, offerType: offer.offerType, screen: state.phase, appSessionId, currentDiamonds: profile.diamonds, trophyDelta: offer.analyticsMetadata?.trophyDelta ?? offer.analyticsMetadata?.trophy_delta, action: 'navigate_to_store_powers' });
     setStoreSection('powers');
     goToTab(0);
-  }, [contextualOffer, state.profile, goToTab, state.phase, updateEngagement, activeEngagement, appSessionId]);
+  }, [contextualOffer, state.profile, goToTab, state.phase, updateEngagement, activeEngagement, appSessionId, actions]);
 
   const useSocialTokenFromLockedMode = useCallback(() => {
     const rawMode = activeEngagement?.metadata?.mode;
@@ -3686,12 +3707,14 @@ function AppRoot() {
           <View style={{ alignItems: 'center', gap: 10 }}>
             <PowerArt powerId={contextualOffer.product} size={88} />
             <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
-              {t(contextualOffer.bodyKey as any)}
+              {t(contextualOffer.bodyKey as any, contextualOffer.bodyParams)}
             </Text>
             <Text style={{ color: theme.text, fontSize: 12, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>
-              {powerCount(state.profile, contextualOffer.product) > 0 ? t('monetization.inInventory') : t('monetization.powerPrice', { n: String(POWER_PRICES[contextualOffer.product]) })}
+              {contextualOffer.shieldRefundVia === 'ad' ? t('monetization.shieldLineAd')
+                : contextualOffer.shieldRefundVia === 'pack' ? t('monetization.shieldLinePack')
+                : powerCount(state.profile, contextualOffer.product) > 0 ? t('monetization.inInventory') : t('monetization.powerPrice', { n: String(POWER_PRICES[contextualOffer.product]) })}
             </Text>
-            <Btn big kind="accent" icon={POWERS[contextualOffer.product].icon} label={t(contextualOffer.ctaKey as any)} onPress={acceptContextualOffer} />
+            <Btn big kind="accent" icon={contextualOffer.shieldRefundVia === 'ad' ? 'play-circle' : POWERS[contextualOffer.product].icon} label={t(contextualOffer.ctaKey as any)} onPress={acceptContextualOffer} />
             <Btn kind="ghost" label={t(contextualOffer.secondaryKey as any)} onPress={dismissContextualOffer} />
           </View>
         ) : contextualOffer?.offerType === 'social_pack' ? (

@@ -187,6 +187,7 @@ type Actions = {
   loadMyStats: () => void; // profil istatistiklerini iste (my_stats yanıtı)
   verifyPurchase: (receipt: string, opts?: { productId?: string; isSubscription?: boolean }) => Promise<void>;
   grantAdReward: () => Promise<number>;
+  shieldRefund: (via: 'inventory' | 'ad' | 'pack') => Promise<number>; // Kupa Kalkanı: son kaybı geri al → iade edilen kupa
   loadFriends: () => void;
   sendFriendRequest: (targetCode?: string, targetUsername?: string) => void;
   respondFriendRequest: (requestId: string, accept: boolean) => void;
@@ -198,6 +199,7 @@ type Actions = {
   getUserProfile: (userId: string) => void;
   closeUserProfile: () => void;
   clearNotice: () => void;
+  showNotice: (text: string) => void; // geçici toast (ana ekran)
   clearFriendNotice: () => void;
   dismissMatchInvite: () => void;
   findMatchAgain: () => void;
@@ -9270,13 +9272,8 @@ const AD_STORAGE_KEY = '@crossover_ad_state';
 // AdMob Rewarded Ad Unit IDs: test IDs during development (__DEV__), production IDs in release builds.
 // Google test rewarded IDs always serve test ads instantly with no AdMob setup needed.
 // Production IDs serve real ads and generate revenue.
-const REWARDED_AD_IOS = __DEV__
-  ? 'ca-app-pub-3940256099942544/1712485313'
-  : 'ca-app-pub-5118403349234305/6758433311';
-const REWARDED_AD_ANDROID = __DEV__
-  ? 'ca-app-pub-3940256099942544/5224354917'
-  : 'ca-app-pub-5118403349234305/3118571202';
-const REWARDED_AD_UNIT = Platform.OS === 'ios' ? REWARDED_AD_IOS : REWARDED_AD_ANDROID;
+// Reklam birimi kimlikleri TEK kaynaktan (rewardedAd.ts) — popup akışlarıyla aynı birim.
+import { REWARDED_AD_UNIT } from './rewardedAd';
 
 // Load AdMob SDK — native module, absent in Expo Go.
 let RewardedAd: any = null;

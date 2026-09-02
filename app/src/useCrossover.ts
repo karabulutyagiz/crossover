@@ -577,6 +577,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, viewProfile: null };
     case '_clear_notice' as any:
       return { ...state, notice: null };
+    case '_show_notice' as any:
+      return { ...state, notice: (action as any).text ?? null };
     case '_friend_notice' as any:
       return { ...state, friendNotice: { text: (action as any).text, kind: (action as any).kind } };
     case '_clear_friend_notice' as any:
@@ -935,6 +937,12 @@ function reducer(state: GameState, action: Action): GameState {
       // celebration/alert itself (state.notice isn't rendered on that tab).
       const a = action as { ok?: boolean; profile?: ProfileView };
       return a.ok && a.profile ? { ...state, profile: a.profile } : state;
+    }
+    case 'shield_refund_result': {
+      // Kupa geri geldi: taze profil + ana ekran toast'u (+N kupa).
+      const a = action as { ok?: boolean; refunded?: number; profile?: ProfileView };
+      if (!a.ok || !a.profile) return state;
+      return { ...state, profile: a.profile, notice: t('monetization.shieldRefunded', { n: String(a.refunded ?? 0) }) };
     }
 
     case 'room_state': {
@@ -1307,6 +1315,7 @@ export function useCrossover() {
   // A pending rewarded-ad grant — its own channel (ad_reward_result) so it can never
   // resolve an in-flight IAP verification by sharing the diamonds_granted message.
   const pendingAdReward = useRef<{ resolve: (granted: number) => void; reject: (e: Error) => void } | null>(null);
+  const pendingShieldRefund = useRef<{ resolve: (refunded: number) => void; reject: (e: Error) => void } | null>(null);
   const seenTrophyUpdates = useRef<Set<string>>(new Set());
 
   const clearStoreCatalogTimeout = () => {
@@ -1475,6 +1484,13 @@ export function useCrossover() {
             if (r.ok) pendingAdReward.current?.resolve(r.granted ?? 0);
             else pendingAdReward.current?.reject(new Error(r.error ?? 'Ödül verilemedi'));
             pendingAdReward.current = null;
+          }
+          // Kupa Kalkanı iadesi — kendi kanalı (reklam ödülüyle karışmaz).
+          if (mt === 'shield_refund_result') {
+            const r = m as { ok?: boolean; refunded?: number; error?: string };
+            if (r.ok) pendingShieldRefund.current?.resolve(r.refunded ?? 0);
+            else pendingShieldRefund.current?.reject(new Error(r.error ?? 'Kalkan kullanılamadı'));
+            pendingShieldRefund.current = null;
           }
           // A friend request just arrived in real time — pull the authoritative
           // list so it shows with a real requestId (accept/reject works instantly).
@@ -1772,6 +1788,16 @@ export function useCrossover() {
           if (pendingAdReward.current) { pendingAdReward.current.reject(new Error('timeout')); pendingAdReward.current = null; }
         }, 15000);
       }),
+      // Kupa Kalkanı: son kaybı geri al — iade edilen kupayla çözülür.
+      shieldRefund: (via: 'inventory' | 'ad' | 'pack') => new Promise<number>((resolve, reject) => {
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) { reject(new Error('disconnected')); return; }
+        pendingShieldRefund.current = { resolve, reject };
+        ws.send(JSON.stringify({ type: 'shield_refund', via }));
+        setTimeout(() => {
+          if (pendingShieldRefund.current) { pendingShieldRefund.current.reject(new Error('timeout')); pendingShieldRefund.current = null; }
+        }, 15000);
+      }),
       openLeaderboard: () => {
         const userId = stateRef.current.profile?.userId;
         const path = userId ? `/leaderboard?userId=${encodeURIComponent(userId)}` : '/leaderboard';
@@ -2040,6 +2066,7 @@ export function useCrossover() {
       getUserProfile: (userId: string) => send({ type: 'get_user_profile', userId }),
       closeUserProfile: () => dispatch({ type: '_close_profile' }),
       clearNotice: () => dispatch({ type: '_clear_notice' }),
+      showNotice: (text: string) => dispatch({ type: '_show_notice', text } as any),
       clearFriendNotice: () => dispatch({ type: '_clear_friend_notice' } as any),
       clearBanner: () => dispatch({ type: '_clear_banner' }),
       dismissMatchInvite: () => dispatch({ type: '_dismiss_invite' }),
