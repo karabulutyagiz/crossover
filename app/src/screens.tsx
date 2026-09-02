@@ -7217,6 +7217,7 @@ export function XoxScreen({ state, actions }: Props) {
   const [emoteOpen, setEmoteOpen] = useState(false);
   const [showEmpties, setShowEmpties] = useState(false); // "Kalan boş kutucukları gör" basıldı mı
   const [reuseWarn, setReuseWarn] = useState(false);     // aynı futbolcuyu ikinci kez yazma uyarısı
+  const [kbOpen, setKbOpen] = useState(false);           // klavye açık mı → tahta/çerçeve kompaktlaşır
   const [, setTick] = useState(0);
   const win = useWindow();
   // SABİT EKRAN (kullanıcı kararı 2026-08-27): XOX kaydırılmaz. Tahta, orta
@@ -7239,6 +7240,14 @@ export function XoxScreen({ state, actions }: Props) {
     const id = setInterval(() => setTick((v) => v + 1), 500);
     return () => clearInterval(id);
   }, [over]);
+  // Klavye açık/kapalı: açıkken tahta ÖLÇÜLEN alana göre küçülür + üst çerçeve
+  // (sıra bandı, cevap paneli boşlukları) daralır → tablo üstü KIRPILMAZ, hiçbir
+  // şey üst üste binmez (oyuncu raporu 2026-09-02).
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setKbOpen(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKbOpen(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
   // Sıra/ani-ölüm değişince seçim sıfırlanır; sunum sesleri lastAction'dan.
   const lastSeq = useRef<string>('');
   useEffect(() => {
@@ -7289,12 +7298,20 @@ export function XoxScreen({ state, actions }: Props) {
   const gridMaxW = Math.min((boardBox.w || win.width - 32), 430);
   // Yatay sabit maliyet: padding 6×2=12 + satır-içi 3 gap×6=18 + çerçeve 2×boardBorder + kenar 2×boardMargin.
   const widthCell = Math.floor((gridMaxW - headerW - 30 - boardBorder * 2 - boardMargin * 2) / 3);
-  // SABİT TAHTA (kullanıcı isteği 2026-08-28): yükseklik bütçesi, cevap paneli/klavye
-  // açılınca DARALAN ölçülen alandan (boardBox.h) DEĞİL, SABİT ekran yüksekliğinden
-  // türetilir → hücre seçip cevap yazarken tahta KÜÇÜLMEZ/BÜYÜMEZ, her zaman aynı.
-  // Bütçe, klavye + cevap paneli açıkken de sığacak şekilde ekranın ~%40'ı ayrılır.
-  const heightCell = Math.floor((win.height * 0.34 - 84 - boardBorder * 2) / 3);
-  const cellSize = Math.max(40, Math.min(widthCell, heightCell, 122));
+  // TAHTA YÜKSEKLİĞİ — klavyeye duyarlı (oyuncu raporu 2026-09-02: "klavye açılınca
+  // tablonun ÜSTÜ kırpılıyor"). Ekran KAYDIRMASIZ; orta bölge flex:1 olduğundan klavye
+  // açılınca (iOS KAV padding / Android adjustResize) ÖLÇÜLEN alan (boardBox.h) daralır
+  // ve tahta ONA sığacak kadar küçülür → üst kısım asla kırpılmaz, hiçbir şey binmez.
+  // Klavye KAPALIYKEN eski sabit görünüm için ekranın ~%40'ı kullanılır (ölçüm gelene
+  // dek de bu yedek). minHücre klavye açıkken 34'e iner ki dar alanda taşma olmasın.
+  // Klavye açıkken: ÖLÇÜLEN bölge (boardBox.h) — ama klavye daha yeni açılmışsa
+  // boardBox.h bir kare ESKİ (büyük) kalabilir; ~%35 ile sınırlayıp o karelik taşma
+  // parlamasını da engelliyoruz. min(ölçüm, %35) her zaman ≤ bölge → tahta asla taşmaz.
+  const boardBudgetH = kbOpen
+    ? Math.min(boardBox.h > 0 ? boardBox.h : win.height * 0.3, win.height * 0.35)
+    : win.height * 0.34;
+  const heightCell = Math.floor((boardBudgetH - 84 - boardBorder * 2) / 3);
+  const cellSize = Math.max(kbOpen ? 34 : 40, Math.min(widthCell, heightCell, 122));
   const gridW = headerW + cellSize * 3 + 30 + boardBorder * 2; // padding+gap+çerçeve; floor artığı sızmasın
   const winLine = over?.line ?? null;
   const submit = () => {
@@ -7377,34 +7394,34 @@ export function XoxScreen({ state, actions }: Props) {
     );
   };
 
-  // KLAVYE VE XOX TABLOSU (oyuncu raporu 2026-09-01: "bir yere basıp klavye
-  // açılınca tablonun ÜSTÜNDE açılıyor"). Ekran kaydırmasız moddaydı, bu yüzden
-  // KeyboardAvoidingView tüm içeriği yukarı itiyor ve tablo klavyenin altında
-  // kalıyordu. Kaydırma moduna alındı: ScrollView klavye yüksekliğini kendi iç
-  // boşluğuna ekleyip ODAKLI alanı yukarı taşıyor — tablo KÜÇÜLMÜYOR, yalnız
-  // gerektiği kadar kayıyor ve klavye kapanınca yerine dönüyor.
-  // keyboardShouldPersistTaps: klavye açıkken hücreye dokunuş yutulmasın (ilk
-  // dokunuş yalnız klavyeyi kapatsaydı oyuncu iki kez basmak zorunda kalırdı).
+  // KLAVYE VE XOX TABLOSU (oyuncu raporları: 2026-09-01 "tablo klavyenin altında
+  // kalıyor" → kaydırma denendi; 2026-09-02 "kaydırınca tablonun ÜSTÜ kırpılıyor").
+  // ÇÖZÜM: ekran KAYDIRMASIZ + orta bölge flex:1 → klavye açılınca KAV/adjustResize
+  // alanı daraltır, ÖLÇÜLEN boardBox.h küçülür ve tahta ONA sığacak kadar küçülür.
+  // Böylece ne tablo klavyenin altında kalır, ne üstü kırpılır — hiçbir şey binmez.
   return (
-    <Screen scroll keyboardShouldPersistTaps="always" contentCenter={false} bg={<MatchCosmeticBackdrop backgroundId={matchBackgroundIdForState(state)} />}>
+    // Oyun sırasında KAYDIRMASIZ (klavye tahtayı esnek orta bölgede küçültür); maç
+    // BİTİNCE kaydırmalı (sonuç paneli + "kim gelirdi" ızgarası uzun olabilir, klavye yok).
+    <Screen scroll={!!over} keyboardShouldPersistTaps="always" contentCenter={false} bg={<MatchCosmeticBackdrop backgroundId={matchBackgroundIdForState(state)} />}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         <MatchExitButton onPress={() => (state.matchOver ? actions.leave() : setShowLeaveConfirm(true))} />
         <PlayerBar state={state} onEmotePress={() => setEmoteOpen(true)} />
       </View>
 
-      {/* Sıra bandı + sayaç */}
+      {/* Sıra bandı + sayaç — klavye açıkken kompakt (yer kazanılır; başlık gizlenir,
+          sayaç kalır). Yazan oyuncu zaten sırasının kendisinde olduğunu bilir. */}
       {!over ? (
-        <View style={{ alignItems: 'center', gap: 3, marginBottom: 8 }}>
+        <View style={{ alignItems: 'center', gap: kbOpen ? 0 : 3, marginBottom: kbOpen ? 2 : 8 }}>
           {xox.suddenDeath ? (
             <>
-              <Text style={{ color: theme.gold, fontSize: 17, fontFamily: 'Poppins-Black', letterSpacing: 1, ...engrave('sm') }}>⚡ {t('xox.suddenTitle')}</Text>
-              <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold' }}>{t('xox.suddenBody')}</Text>
+              <Text style={{ color: theme.gold, fontSize: kbOpen ? 13 : 17, fontFamily: 'Poppins-Black', letterSpacing: 1, ...engrave('sm') }}>⚡ {t('xox.suddenTitle')}</Text>
+              {!kbOpen ? <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold' }}>{t('xox.suddenBody')}</Text> : null}
             </>
-          ) : (
+          ) : !kbOpen ? (
             <Text style={{ color: myTurn ? theme.primary : theme.muted, fontSize: 16, fontFamily: 'Poppins-Black', letterSpacing: 0.8, ...engrave('sm') }}>
               {myTurn ? t('xox.yourTurn') : t('xox.oppTurn', { name: opp?.name ?? '' })}
             </Text>
-          )}
+          ) : null}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Text style={{ color: secs <= 5 ? theme.danger : theme.text, fontSize: 19, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{secs}</Text>
             <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold' }}>{t('xox.turnOf', { n: String(Math.min(xox.turnNumber, xox.turnCap)), cap: String(xox.turnCap) })}</Text>
@@ -7478,8 +7495,8 @@ export function XoxScreen({ state, actions }: Props) {
 
       {/* Cevap paneli */}
       {!over && canAnswer && selCell != null && xox.cells[selCell]!.owner == null ? (
-        <View style={{ marginTop: 10, gap: 8 }}>
-          <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>
+        <View style={{ marginTop: kbOpen ? 4 : 10, gap: kbOpen ? 5 : 8 }}>
+          <Text numberOfLines={1} style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>
             {xox.rows[Math.floor(selCell / 3)]!.name}  ×  {xox.cols[selCell % 3]!.name}
           </Text>
           <GameInput
