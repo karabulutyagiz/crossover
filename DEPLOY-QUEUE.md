@@ -9,6 +9,20 @@ fotoğrafları, monetizasyon (kayıp sonrası 5💎 teklifi kalktı). Sunucu zat
 (bugün basılmış, migration 0020). Website de senkron (kulüp genişlemesi 2, 786 sayfa).
 OTA hesabı: `ygzkrblt` (yagizkarabulutmedya@gmail.com) — ygzkrblt1 oturumu yetkisiz.
 
+## ⏳ BEKLEYEN (2026-09-02 gece) — SUNUCU önce, sonra OTA (ikisi de kullanıcı onayı bekliyor)
+SUNUCU (`build-113` HEAD, tsc temiz; special-powers-test'teki ExtraTime hatası HEAD'de de var, ilgisiz):
+- Vitrin +7 gün (`4f637be`): hafta 3 Eylül yerine 10 Eylül'de döner — 03:00 TR'den ÖNCE basılmalı
+- `set_frame` tek kapı (`66858b1`): sezon/mağaza çerçeveleri de aynı uçtan
+- CO-PASS eğrisi (`b0609cd`): 19.040 XP, seasonXpForNext; hesap seviyesi değişmez
+- Kupa Kalkanı iadesi (`f6955bf`): `shield_refund` ucu; env: SHIELD_REFUND_AD_DAILY_CAP=2,
+  SHIELD_REFUND_PACK_DAILY_CAP=1, SHIELD_REFUND_WINDOW_MIN=15 (varsayılanlar, .env'e yazmak şart değil)
+- Migration gerekmiyor (trophy_ledger reason='shield_refund' mevcut şemaya yazar)
+OTA (runtime 1.0.3, native değişiklik yok):
+- Anticheat yanlış uyarısı (`9a22db6`), profil çerçeve şeridi tek liste (`45242b2`),
+  CO-PASS eğrisi aynası + Kupa Kalkanı popup akışı (`b0609cd`, `f6955bf`)
+- SIRA: sunucu basılmadan OTA çıkarsa kalkan popup'ı "Kalkan kullanılamadı" der (sunucu ucu yok) —
+  önce sunucu.
+
 ## ✅ 2026-08-29 — TAM YAYIN (sunucu + OTA, iOS & Android)
 OTA grubu `c25cb779-05e4-4be9-a781-f9460186f00b` (runtime 1.0.3, android+ios).
 Sunucu basıldı (rooms=0 anına denk geldi, kimse düşmedi); migration 0015/0016/0017 uygulandı.
