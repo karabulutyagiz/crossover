@@ -116,12 +116,13 @@ export interface GwCmp { value: string | number | null; match: boolean; dir?: 'u
 export interface GwRow {
   playerId: number; name: string; imageUrl: string | null; correct: boolean;
   club: GwCmp & { logo: string | null };
-  nationality: GwCmp; age: GwCmp; jersey: GwCmp; position: GwCmp; league: GwCmp;
+  nationality: GwCmp; age: GwCmp; jersey: GwCmp; position: GwCmp;
+  league: GwCmp & { logo: string | null };
 }
 export interface GwReveal {
   playerId: number; name: string; imageUrl: string | null;
   clubName: string | null; clubLogo: string | null; nationality: string | null;
-  age: number | null; jersey: number | null; position: string | null; league: string | null;
+  age: number | null; jersey: number | null; position: string | null; league: string | null; leagueLogo: string | null;
 }
 
 export type PickRole = 'team' | 'country' | 'letter' | 'player';

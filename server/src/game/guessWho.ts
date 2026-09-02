@@ -1,6 +1,7 @@
 // "Ben Kimim?" modu çekirdeği: hedef seçimi, oyuncu KARTI (foto/kulüp/uyruk/yaş/forma/
 // mevki/lig) ve tahmin↔hedef KARŞILAŞTIRMA motoru. Havuz = guess_who_pool (aktif oyuncular).
 import { pool } from '../db/pool.ts';
+import { leagueLogoUrl } from './verify.ts';
 
 // Mevki 8-kodu → geniş grup (adil eşleşme: aynı grup yeşil). GK|CB|RB|LB|MF|LW|RW|ST
 const POS_GROUP: Record<string, string> = {
@@ -97,7 +98,73 @@ export interface GuessWhoRow {
   age: Cmp;
   jersey: Cmp;
   position: Cmp;   // value = 8-kod (istemci yerelleştirir); grup eşleşince yeşil
-  league: Cmp;
+  league: Cmp & { logo: string | null };   // lig LOGOSU (kullanıcı isteği 2026-09-02: kod yerine logo)
+}
+
+// ── Bot tümdengelimi (kullanıcı kuralı 2026-09-02: "bot gerçek insan gibi") ──
+// Bot HEDEFİ BİLMEZ; yalnız tabloda biriken ipuçlarından (yeşil/kırmızı/ok) mantık
+// yürütür: kısıtları sağlayan adaylar havuzdan süzülür, insan gibi ÜNLÜLERDEN
+// başlanarak seçilir. Kısıtlar hedef hakkında hep DOĞRU olduğundan aday kümesi
+// daralır ve hedef doğal olarak "bulunur" — asla kör şansla ilk tahminde değil.
+export interface GwDeduction {
+  excludeIds: number[];                     // tahmin edilmişler (+ ilk tahminde hedef)
+  clubEq?: number | null; clubNe: number[];
+  natEq?: string | null; natNe: string[];
+  leagueEq?: string | null; leagueNe: string[];
+  posGroupEq?: string | null; posGroupNe: string[];   // GK|DEF|MID|FWD
+  ageEq?: number | null; ageMin?: number | null; ageMax?: number | null;
+  jerseyEq?: number | null; jerseyMin?: number | null; jerseyMax?: number | null;
+}
+
+const POS_CODES_BY_GROUP: Record<string, string[]> = {
+  GK: ['GK'], DEF: ['CB', 'RB', 'LB'], MID: ['MF'], FWD: ['LW', 'RW', 'ST'],
+};
+
+/** İpucu kısıtlarını sağlayan havuz adayları, ün sırasıyla (insanlar ünlüden düşünür). */
+export async function deduceGuessWhoCandidates(d: GwDeduction, limit = 60): Promise<{ playerId: number; fame: number }[]> {
+  const params: unknown[] = [];
+  const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
+  const where: string[] = [
+    'p.image_url IS NOT NULL', 'g.current_club_id IS NOT NULL',
+    'g.birth_date IS NOT NULL', 'g.position IS NOT NULL',
+  ];
+  if (d.excludeIds.length) where.push(`g.player_id <> ALL(${p(d.excludeIds)}::bigint[])`);
+  if (d.clubEq != null) where.push(`g.current_club_id = ${p(d.clubEq)}`);
+  else if (d.clubNe.length) where.push(`g.current_club_id <> ALL(${p(d.clubNe)}::bigint[])`);
+  if (d.natEq != null) where.push(`p.nationality = ${p(d.natEq)}`);
+  else if (d.natNe.length) where.push(`(p.nationality IS NULL OR p.nationality <> ALL(${p(d.natNe)}::text[]))`);
+  if (d.leagueEq != null) where.push(`c.league = ${p(d.leagueEq)}`);
+  else if (d.leagueNe.length) where.push(`(c.league IS NULL OR c.league <> ALL(${p(d.leagueNe)}::text[]))`);
+  if (d.posGroupEq != null) where.push(`g.position = ANY(${p(POS_CODES_BY_GROUP[d.posGroupEq] ?? [])}::text[])`);
+  else if (d.posGroupNe.length) {
+    const ne = d.posGroupNe.flatMap((grp) => POS_CODES_BY_GROUP[grp] ?? []);
+    if (ne.length) where.push(`NOT (g.position = ANY(${p(ne)}::text[]))`);
+  }
+  const ageExpr = `EXTRACT(YEAR FROM age(current_date, g.birth_date))::int`;
+  if (d.ageEq != null) where.push(`${ageExpr} = ${p(d.ageEq)}`);
+  else {
+    if (d.ageMin != null) where.push(`${ageExpr} >= ${p(d.ageMin)}`);
+    if (d.ageMax != null) where.push(`${ageExpr} <= ${p(d.ageMax)}`);
+  }
+  if (d.jerseyEq != null) where.push(`g.jersey_number = ${p(d.jerseyEq)}`);
+  else {
+    if (d.jerseyMin != null) where.push(`g.jersey_number >= ${p(d.jerseyMin)}`);
+    if (d.jerseyMax != null) where.push(`g.jersey_number <= ${p(d.jerseyMax)}`);
+  }
+  // forma kısıtı varsa numarasız adaylar elenir (insan da bilinen numaralı düşünür)
+  if (d.jerseyEq != null || d.jerseyMin != null || d.jerseyMax != null) where.push('g.jersey_number IS NOT NULL');
+  params.push(limit);
+  const { rows } = await pool.query(
+    `SELECT g.player_id, COALESCE(p.fame, 0) AS fame
+       FROM guess_who_pool g
+       JOIN players p ON p.id = g.player_id
+       LEFT JOIN clubs c ON c.id = g.current_club_id
+      WHERE ${where.join(' AND ')}
+      ORDER BY p.fame DESC NULLS LAST
+      LIMIT $${params.length}`,
+    params,
+  );
+  return rows.map((r: any) => ({ playerId: Number(r.player_id), fame: Number(r.fame) }));
 }
 
 const numCmp = (guess: number | null, target: number | null): Cmp => {
@@ -120,6 +187,6 @@ export function compareToTarget(guess: GuessWhoCard, target: GuessWhoCard): Gues
     jersey: numCmp(guess.jersey, target.jersey),
     // Mevki: geniş grup eşleşince yeşil (kaleci/defans/orta/forvet) — daha adil.
     position: { value: guess.position, match: !!guess.position && posGroup(guess.position) === posGroup(target.position) },
-    league: { value: guess.league, match: !!guess.league && guess.league === target.league },
+    league: { value: guess.league, logo: guess.league ? leagueLogoUrl(guess.league) : null, match: !!guess.league && guess.league === target.league },
   };
 }

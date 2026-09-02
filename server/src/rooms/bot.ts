@@ -860,26 +860,34 @@ export class BotPlayer implements Transport {
   }
 
   // ── Ben Kimim? botu ──────────────────────────────────────────────────────
-  // Sırası gelince HER ZAMAN bir tahmin yapar (ortak havuz ilerlesin); zorluk +
-  // biriken ipucu sayısına göre p olasılıkla DOĞRU (hedef), değilse mantıklı YANLIŞ.
-  // Doğru bilme şansı ipuçları arttıkça yükselir (tümdengelim simülasyonu).
+  // GERÇEK İNSAN GİBİ (kullanıcı kuralı 2026-09-02): bot hedefi bilmez; tablodaki
+  // ipuçlarından TÜMDENGELİM yapar (oda tarafında guessWhoBotDeduce — kısıt süzme +
+  // ün-ağırlıklı insan seçimi). İlk tahminde kör bilme İMKÂNSIZ (hedef aday değil).
+  // Zorluk yalnız seçim keskinliğini + düşünme süresini etkiler.
   private handleGuessWhoState(msg: Extract<ServerMsg, { type: 'guesswho_state' }>): void {
     if (this.gwTimer) { clearTimeout(this.gwTimer); this.gwTimer = null; }
     if (msg.over) { this.gwActedLen = -1; return; }
     if (msg.turnId !== this.id) return;
     if (msg.guesses.length === this.gwActedLen) return; // bu tahmin-sayısında karar verildi
+    const prevActed = this.gwActedLen;
     this.gwActedLen = msg.guesses.length;
     const d = DIFFICULTY[this.difficulty];
-    const pCorrect = clamp(d.knowBase * (0.45 + 0.11 * msg.guesses.length), 0.02, 0.9);
-    const wantCorrect = Math.random() < pCorrect;
     const [minD, maxD] = d.delayMs;
-    const delay = clamp(minD * 0.5 + Math.random() * (maxD * 0.6), 3000, 16_000);
+    // İnsan gibi düşünme payı; ipucu arttıkça (küme daraldıkça) biraz hızlanır.
+    // 20 sn'lik sıraya sığmalı (GW_TURN_MS, 2026-09-03): üst sınır 14 sn — en yavaş
+    // bot bile süresi dolmadan tahminini basar.
+    const speedup = clamp(1 - msg.guesses.length * 0.07, 0.6, 1);
+    const delay = clamp((minD * 0.45 + Math.random() * (maxD * 0.5)) * speedup, 2500, 14_000);
     const room = this.room;
     if (!room) return;
     this.gwTimer = setTimeout(() => {
-      void room.guessWhoBotChoose(wantCorrect).then((pid) => {
+      void room.guessWhoBotDeduce(this.difficulty).then((pid) => {
         if (pid != null) this.act({ type: 'guesswho_submit', playerId: pid });
-      }).catch(() => { /* sessiz */ });
+        // Deneme SONUÇSUZ kaldıysa (geçici DB hatası → aday yok) kilidi GERİ AL:
+        // bir dahaki kendi sırasında (aynı tahmin-sayısında bile) yeniden denesin —
+        // tek seferlik hata botu kalıcı pasife çevirmesin (review bulgusu 2026-09-02).
+        else this.gwActedLen = prevActed;
+      }).catch(() => { this.gwActedLen = prevActed; });
     }, delay);
   }
 
