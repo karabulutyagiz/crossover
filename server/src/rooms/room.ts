@@ -1219,14 +1219,14 @@ export class Room {
 
   private shouldLockUsedForRound(result: RoundResult): boolean {
     if (this.gameMode === 'player-player') return false;
-    // Kilitle YALNIZ tur gerçekten OYNANDIYSA: biri DOĞRU bildi ya da en az bir YANLIŞ
-    // deneme yapıldı. ATLANAN turlar takım/ülkeyi KİLİTLEMEZ → sonraki turlarda tekrar
-    // seçilebilir (kullanıcı kuralı 2026-09-02): aynı takım seçilip atlandı, seçilen
-    // takımlarda ortak oyuncu yok, ya da kimse cevap vermeden pas/süre doldu.
+    // YALNIZ GEÇERSİZ atlanan turlar kilitlemez → takım/ülke sonraki turlarda tekrar
+    // seçilebilir (kullanıcı kuralı 2026-09-02): aynı takım seçildi (same_team) veya
+    // seçilen takımlarda ortak oyuncu yok (no_common). Bunlar geçerli bir crossover
+    // değildi. DİĞER her durum kilitler — pas geçilse/süre dolsa bile: geçerli bir
+    // crossover'da kimse cevap vermedi = takım kullanıldı sayılır (kullanıcı düzeltmesi).
     // (Harf-takım'da harf zaten hiç kilitlenmez; team-team + country-team burada kapsanır.)
-    if (result.correct) return true;
-    if ((this.round?.wrongAttempts?.size ?? 0) > 0) return true;
-    return false;
+    if (result.reason === 'same_team' || result.reason === 'no_common') return false;
+    return true;
   }
 
   // Reveal için gereken TÜM pick'ler yerinde mi? (beginReveal'in non-null erişimleri
