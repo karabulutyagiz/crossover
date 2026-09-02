@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { COSMETIC_ITEMS } from './cosmetics.ts';
 import { pool } from '../db/pool.ts';
 import { seasonRewardFor, seasonRewardsEnabled, seasonTrophyReset } from './season.ts';
 import { milestoneFor } from './specialPowers.ts';
@@ -1015,12 +1016,19 @@ export async function setSelectedFrame(
 ): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
   if (!userId) return { ok: false, error: 'Önce giriş yap' };
   if (frameId !== null) {
-    const min = FRAME_MIN_LEVEL[frameId];
-    if (!min) return { ok: false, error: 'Geçersiz çerçeve' };
     const user = await getUser(userId);
     if (!user) return { ok: false, error: 'Kullanıcı bulunamadı' };
+    // TEK KAPI (2026-09-02): seviye çerçeveleri, sezon/arena çerçeveleri (owned_frames)
+    // ve mağaza çerçeveleri (owned_cosmetics + katalogda type 'frame') aynı uçtan
+    // takılır. Eskiden yalnız FRAME_MIN_LEVEL'daki 5 seviye çerçevesi kabul ediliyordu:
+    // sezon ödülü 'season1' "Geçersiz çerçeve" alıyor, mağaza çerçeveleri ayrı uca
+    // mecbur kalıyordu.
+    const storeFrame = COSMETIC_ITEMS.find((it) => it.id === frameId && it.type === 'frame');
+    const known = Boolean(FRAME_MIN_LEVEL[frameId]) || storeFrame != null || user.ownedFrames.includes(frameId);
+    if (!known) return { ok: false, error: 'Geçersiz çerçeve' };
     // Sahiplik KALICIDIR (owned_frames) — sezon sıfırlansa da kazanılmış çerçeve takılabilir
-    if (!user.ownedFrames.includes(frameId)) return { ok: false, error: 'Önce Seviye Yolu\'ndan bu çerçevenin ödülünü topla' };
+    const owned = user.ownedFrames.includes(frameId) || (storeFrame != null && user.ownedCosmetics.includes(frameId));
+    if (!owned) return { ok: false, error: storeFrame ? 'Önce bu çerçeveyi satın al' : 'Önce Seviye Yolu\'ndan bu çerçevenin ödülünü topla' };
   }
   const { rows } = await pool.query<DbUser>(
     `UPDATE users SET selected_frame = $2, equipped_frame_id = $2 WHERE id = $1 RETURNING *`,
