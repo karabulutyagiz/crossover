@@ -9,6 +9,18 @@ fotoğrafları, monetizasyon (kayıp sonrası 5💎 teklifi kalktı). Sunucu zat
 (bugün basılmış, migration 0020). Website de senkron (kulüp genişlemesi 2, 786 sayfa).
 OTA hesabı: `ygzkrblt` (yagizkarabulutmedya@gmail.com) — ygzkrblt1 oturumu yetkisiz.
 
+## 🔴 ACİL — OTA (2026-09-03): REKLAM DONMASI DÜZELTMESİ
+`5aac7c2` — oyuncu raporu (Rufo, iOS 1.0.3 b151): "reklam gelince reklamdan çıkamıyorum,
+oyun donuyor". Prod tanısı: 40 saatte 1609 gösterimin 177'si (%11) 20 sn sonra hâlâ açık.
+Kök sebep: reklam, ekranda bir pencere AÇIKKEN sunuluyordu (holdModalSlotForNativeAd
+doluluğa bakmıyor; App.tsx modalBlocked yalnız 17 pencereyi biliyor, ekranlardaki 53'ü
+bilmiyor) → iOS sunum zinciri kilitleniyor, kapatma düğmesi dokunuş almıyor, CLOSED
+gelmediği için slot 180 sn tutulu kalıp uygulamayı da donduruyor.
+Düzeltme: slot gerçekten boşsa sunum + kapanış animasyonu payı + show() try/catch +
+50 dk'dan eski reklamın atılması; ödüllü reklam yollarında da aynı kapı.
+İstemci-yalnız, native değişiklik yok → OTA. Sunucu gerekmez, migration gerekmez.
+BU DÜZELTME SIRANIN BAŞINDA — bekleyen diğer OTA kalemleriyle birlikte tek grup basılabilir.
+
 ## ⏳ BEKLEYEN (2026-09-02 gece) — SUNUCU önce, sonra OTA (ikisi de kullanıcı onayı bekliyor)
 SUNUCU (`build-113` HEAD, tsc temiz; special-powers-test'teki ExtraTime hatası HEAD'de de var, ilgisiz):
 - Vitrin +7 gün (`4f637be`): hafta 3 Eylül yerine 10 Eylül'de döner — 03:00 TR'den ÖNCE basılmalı
@@ -18,8 +30,11 @@ SUNUCU (`build-113` HEAD, tsc temiz; special-powers-test'teki ExtraTime hatası 
   SHIELD_REFUND_PACK_DAILY_CAP=1, SHIELD_REFUND_WINDOW_MIN=15 (varsayılanlar, .env'e yazmak şart değil)
 - Migration gerekmiyor (trophy_ledger reason='shield_refund' mevcut şemaya yazar)
 OTA (runtime 1.0.3, native değişiklik yok):
+- REKLAM DONMASI (`5aac7c2`) — yukarıdaki acil kalem, aynı OTA grubuna girer
 - Anticheat yanlış uyarısı (`9a22db6`), profil çerçeve şeridi tek liste (`45242b2`),
   CO-PASS eğrisi aynası + Kupa Kalkanı popup akışı (`b0609cd`, `f6955bf`)
+- COF UI Foundation (`222fce0`) — yalnız yeni dosyalar + tema köprüsü; hiçbir ekran
+  bunları henüz kullanmıyor, görsel etkisi YOK (OTA'ya girmesi zararsız)
 - SIRA: sunucu basılmadan OTA çıkarsa kalkan popup'ı "Kalkan kullanılamadı" der (sunucu ucu yok) —
   önce sunucu.
 
