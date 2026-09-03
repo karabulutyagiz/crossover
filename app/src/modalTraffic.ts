@@ -19,6 +19,8 @@ const waiters = new Set<() => void>();
 const DISMISS_ANIM_MS = 340; // sistem animasyonlu kapanış (slide/fade ~300ms)
 const DISMISS_NONE_MS = 100; // animationType="none": anlık kapanış + küçük pay
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let lastDismissAt = 0;
+let lastDismissGuardMs = 0;
 
 /**
  * Bir modal sunuldu. Dönen fonksiyon çağrılınca slot serbest kalır.
@@ -32,6 +34,13 @@ export function acquireModalSlot(animatedDismiss = true): () => void {
     if (released) return;
     released = true;
     presented = Math.max(0, presented - 1);
+    // KAPANIŞ PENCERESİ (2026-09-03): sırada kimse yoksa flushTimer kurulmuyor,
+    // dolayısıyla slot native kapanış animasyonu SÜRERKEN "boş" görünüyordu.
+    // Pencere→pencere devri bundan etkilenmemeli (o akış hızlı kalsın), ama
+    // REKLAM sunumu bu pencerede yapılmamalı: yarı kapanmış bir modal'ın
+    // üstüne AdMob tam ekranı sunulunca iOS sunum zinciri kilitleniyor.
+    lastDismissAt = Date.now();
+    lastDismissGuardMs = animatedDismiss ? DISMISS_ANIM_MS : DISMISS_NONE_MS;
     if (presented === 0 && waiters.size > 0) {
       // KAPANIŞ ANİMASYONU: React bileşeni kaldırınca native modal HEMEN yok
       // olmayabilir; kapanış tamamlanmadan sıradakini sunmak donma bugunu
@@ -59,6 +68,36 @@ export function acquireModalSlot(animatedDismiss = true): () => void {
 let adRelease: (() => void) | null = null;
 let adWatchdog: ReturnType<typeof setTimeout> | null = null;
 const AD_SLOT_WATCHDOG_MS = 180_000;
+
+/**
+ * Şu anda sunulmuş (ya da sunulmak üzere sıraya girmiş) bir native pencere var mı?
+ * SafeModal'ın TAMAMI bu sayaçtan geçtiği için bu, uygulamadaki her GameModal'ı
+ * kapsar — App.tsx'teki `modalBlocked` yalnız kendi 17 penceresini biliyordu,
+ * ekranların içindeki 53 pencereyi (Diğer Modlar, Günlük Görevler, Günün
+ * Kariyeri, profil onayları, mağaza diyalogları…) bilmiyordu.
+ */
+export function isModalSlotFree(): boolean {
+  if (presented !== 0 || waiters.size !== 0 || flushTimer !== null) return false;
+  // Son pencere kapandıktan sonra native kapanış animasyonu bitene dek slot
+  // REKLAM için boş sayılmaz (whenModalSlotFree bu payı BEKLEMEZ — pencereler
+  // arası devir hızlı kalır; yalnız reklam yolu bu kadar temkinlidir).
+  return Date.now() - lastDismissAt >= lastDismissGuardMs;
+}
+
+/**
+ * REKLAM İÇİN GÜVENLİ TUTMA (2026-09-03, oyuncu raporu "reklamdan çıkamıyorum,
+ * oyun donuyor"): slot BOŞSA tutar ve true döner; bir pencere sunulmuşsa hiç
+ * dokunmaz ve false döner. Eskiden reklam yolu doğrudan holdModalSlotForNativeAd()
+ * çağırıyordu — o yalnız sayacı ARTIRIR, doluluğa BAKMAZ. Ekranda bir RN modal
+ * varken AdMob tam ekran reklamı aynı view controller'dan sunuluyor, iOS sunum
+ * zinciri kilitleniyor ve reklamın kapatma düğmesi dokunuş almıyordu.
+ */
+export function tryHoldModalSlotForNativeAd(): boolean {
+  if (adRelease) return true;         // reklam zaten tutuyor
+  if (!isModalSlotFree()) return false;
+  holdModalSlotForNativeAd();
+  return true;
+}
 
 export function holdModalSlotForNativeAd(): void {
   if (adRelease) return;              // zaten tutuluyor (çift show koruması)

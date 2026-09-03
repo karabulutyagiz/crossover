@@ -34,7 +34,7 @@ import { GOOGLE_ANDROID_CLIENT_ID, GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } 
 import { submitPlayerFeedback, type PlayerFeedbackCategory } from './feedbackSubmit';
 import { isInterstitialDue, testInterstitialNow } from './interstitial';
 import { GemIcon, GEM_COLOR } from './GemIcon';
-import { holdModalSlotForNativeAd, releaseModalSlotForNativeAd, whenModalSlotFree } from './modalTraffic';
+import { releaseModalSlotForNativeAd, tryHoldModalSlotForNativeAd, whenModalSlotFree } from './modalTraffic';
 import { dismissActiveInput } from './keyboardLifecycle';
 import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget, trophyTarget, setTrophyTarget, setTrophyRemeasure, remeasureTrophyTarget } from './gemTarget';
 import { Avatar } from './Avatar';
@@ -9360,10 +9360,12 @@ function useAdState(onReward?: () => void, enabled = true) {
         setAdError({ code: String(error?.code ?? '?'), message: error?.message ?? '' });
         preloadNext();
       });
-      // Ödüllü reklam çoğu zaman AÇIK bir pencereden başlatılır: reklam
-      // ekrandayken ikinci bir pencere açılırsa iOS sunum zinciri kilitlenir.
-      holdModalSlotForNativeAd();
-      pre.ad.show();
+      // Ödüllü reklam çoğu zaman AÇIK bir pencereden başlatılır. Pencere
+      // ekrandayken AdMob tam ekranı sunulursa iOS sunum zinciri kilitlenir ve
+      // reklamın kapatma düğmesi dokunuş almaz (oyuncu raporu 2026-09-03).
+      // Slot boş değilse gösterme; hazır kopya İADE edilir, boşa gitmez.
+      if (!tryHoldModalSlotForNativeAd()) { preloadedRef.current = pre; setAdError({ code: 'busy', message: '' }); return; }
+      try { pre.ad.show(); } catch { releaseModalSlotForNativeAd(); setAdError({ code: 'show', message: '' }); }
       return;
     }
 
@@ -9377,8 +9379,8 @@ function useAdState(onReward?: () => void, enabled = true) {
     unsubs.push(ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, grantReward));
 
     unsubs.push(ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
-      holdModalSlotForNativeAd();
-      ad.show();
+      if (!tryHoldModalSlotForNativeAd()) { cleanup(); setAdError({ code: 'busy', message: '' }); return; }
+      try { ad.show(); } catch { releaseModalSlotForNativeAd(); cleanup(); setAdError({ code: 'show', message: '' }); }
     }));
 
     unsubs.push(ad.addAdEventListener(AdEventType.ERROR, (error?: { code?: number; message?: string }) => {
