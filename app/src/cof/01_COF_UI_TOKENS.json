@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "name": "CrossOver Football UI Foundation",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "platform": "React Native",
   "principles": {
     "identity": "competitive football knowledge game",
@@ -41,7 +41,8 @@
       "subtle": "rgba(121, 148, 211, 0.22)",
       "default": "#344C83",
       "strong": "#08122F",
-      "focus": "#25D596"
+      "focus": "#25D596",
+      "control": "#7089C5"
     },
     "brand": {
       "primary": "#20C98B",
@@ -75,8 +76,15 @@
       "tertiary": "#7F8DB5",
       "inverse": "#091630",
       "disabled": "#64729B",
-      "onPrimary": "#FFFFFF",
-      "onGold": "#18203E"
+      "onPrimary": "#091630",
+      "onSecondary": "#F8FAFF",
+      "onGold": "#18203E",
+      "onPremium": "#091630",
+      "onSuccess": "#091630",
+      "onWarning": "#091630",
+      "onError": "#091630",
+      "onInfo": "#091630",
+      "onStreak": "#091630"
     }
   },
   "spacing": {
@@ -167,8 +175,18 @@
         "lineHeight": 34,
         "weight": 800,
         "letterSpacing": -0.3,
-        "tabularNumbers": true
+        "tabularNumbers": false
       }
+    },
+    "numberBehavior": {
+      "preferred": "tabular",
+      "currentFontSupport": false,
+      "fallback": "Use a stable-width numeric container for counters that update in place; ordinary static numbers use normal proportional glyphs.",
+      "rules": [
+        "Do not claim tabular digits when the bundled font lacks tnum support.",
+        "Do not replace the bundled font during foundation work.",
+        "Use fixed-width layout only where changing digit width causes visible movement."
+      ]
     }
   },
   "size": {
@@ -235,12 +253,22 @@
     "button": {
       "variants": ["primary", "secondary", "reward", "ghost", "danger"],
       "rules": [
-        "Use white text on primary buttons.",
+        "Use dark navy text on bright primary, reward, premium and semantic-color buttons; use light text on dark secondary, ghost and danger surfaces.",
         "Never mix cyan-magenta extrusion with emerald primary buttons.",
         "Only interactive controls receive a visible extrusion.",
         "Do not bake text into button artwork.",
-        "Disabled buttons must remain readable and must not resemble inactive tabs."
-      ]
+        "Disabled buttons must remain readable and must not resemble inactive tabs.",
+        "Primary action labels stay on one line at their defined size and are never auto-shrunk; use concise copy or a wider/full-width layout.",
+        "Long secondary actions may use the compact text style or a documented two-line layout. Generic auto-shrink may not go below 0.90."
+      ],
+      "foregroundByVariant": {
+        "primary": "text.onPrimary",
+        "secondary": "text.onSecondary",
+        "reward": "text.onGold",
+        "ghost": "text.primary",
+        "danger": "text.onSecondary"
+      },
+      "secondaryBorder": "stroke.control"
     },
     "card": {
       "variants": ["base", "interactive", "selected", "reward", "premium", "disabled"],

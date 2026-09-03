@@ -1,5 +1,7 @@
 # CrossOver Football — UI Foundation 01
 
+Sürüm: **1.0.1**
+
 ## Amaç
 
 Bu belge, CrossOver Football arayüzünün bütün ekranlarında kullanılacak tek görsel sistemi tanımlar. Bu aşamanın görevi ekranları yeniden tasarlamak değil; daha sonra yapılacak her ekran düzenlemesinin aynı renk, ölçü, kart, buton, tipografi, animasyon ve asset dilini kullanmasını garanti etmektir.
@@ -57,6 +59,7 @@ Renkler yalnızca dekor değildir. Bir renk farklı ekranlarda farklı anlamlard
 - Ana CTA, başlık ve sayılarda belirgin ağırlık; açıklamalarda daha sakin ağırlık kullanılır.
 - Uzun açıklamalar kalıcı ekran metni yerine ilk kullanım ipucu veya bilgi paneline taşınır.
 - Ana butonlarda italik yazı kullanılmaz.
+- Paket içindeki Poppins fontlarında gerçek tabular rakam desteği bulunmadığı için statik sayılar orantılı kalır; yalnız değişirken genişlik sıçraması yapan sayaçlar sabit genişlikli bir kapsayıcı kullanır.
 - Birincil metin, fiyat ve kritik aksiyonlar üç noktayla kesilemez.
 - Sayılar `tr-TR` biçiminde gösterilir: `135.480`.
 
@@ -74,7 +77,7 @@ Renkler yalnızca dekor değildir. Bir renk farklı ekranlarda farklı anlamlard
 
 Beş varyant vardır:
 
-1. **Primary:** Zümrüt, beyaz yazı, lacivert/zümrüt koyu alt derinlik
+1. **Primary:** Zümrüt, koyu lacivert yazı, lacivert/zümrüt koyu alt derinlik
 2. **Secondary:** Koyu mavi, açık sınır, beyaz yazı
 3. **Reward:** Altın, koyu lacivert yazı; yalnız ödül ve ilerleme aksiyonları
 4. **Ghost:** Düşük önem taşıyan geri/iptal/yardım aksiyonları
@@ -87,6 +90,17 @@ Kurallar:
 - Devre dışı buton okunabilir kalır; seçili olmayan sekmeyle aynı görünmez.
 - Ana CTA en az 58 dp, diğer normal butonlar en az 50 dp yüksekliğindedir.
 - Bütün dokunma alanları en az 44×44 dp'dir.
+- Ana CTA etiketi küçültülmez ve tek satırda kalır; gerekirse daha kısa metin veya tam genişlik kullanılır.
+- Uzun ikincil aksiyonlar kompakt yazı stilini veya belgelenmiş iki satırlı düzeni kullanabilir. Genel otomatik küçültme 0.90 altına inemez.
+- Açık ikincil kontrol sınırı `stroke.control` rengini kullanır; dekoratif kart sınırları için bu kontrast şartı uygulanmaz.
+
+## Kontrast kararı — 1.0.1
+
+İlk token sürümündeki beyaz metin/zümrüt yüzey eşleşmesi 2.15:1 olduğu için kaldırılmıştır. Parlak zümrüt ana yüzey korunur ve üzerinde `#091630` koyu lacivert metin kullanılır; kontrast 8.37:1'dir. Böylece COF'un enerjik yeşili karartılmadan okunabilirlik sağlanır.
+
+İkincil buton sınırı için `stroke.control = #7089C5` eklenmiştir. `#1A2D5F` yükseltilmiş yüzey üzerindeki kontrastı 3.83:1'dir. Eski `stroke.default` dekoratif ve düşük önemdeki kart sınırlarında kalır.
+
+Başarı, uyarı, hata, bilgi ve seri gibi parlak semantik yüzeylerde de koyu lacivert ön plan tokenları kullanılır. Koyu tehlike varyantı oluşturulmuşsa açık metin kullanılabilir; yüzey/metin çifti en az 4.5:1 doğrulanmadan eşleştirme yapılmaz.
 
 ## Kart sistemi
 
@@ -220,4 +234,3 @@ Bu aşamada yapılmayacaklar:
 10. Turnuvalar ve empty state
 11. Asset standardizasyonu
 12. Motion, haptic, ses ve son cihaz QA
-

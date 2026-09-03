@@ -13,6 +13,7 @@
 import { Platform } from 'react-native';
 import type { TextStyle, ViewStyle } from 'react-native';
 import tokens from './01_COF_UI_TOKENS.json';
+import { LABEL_MIN_FIT_SCALE as LABEL_MIN_FIT_SCALE_VALUE, CONTROL_BORDER_COLOR, NUMBER_BEHAVIOR } from './policy';
 
 export type CofTokens = typeof tokens;
 export const cofTokens: CofTokens = tokens;
@@ -43,14 +44,13 @@ export const cofBorder = tokens.border;
 export const cofSize = tokens.size;
 export const cofMotion = tokens.motion;
 
-// ---- BELGELENMİŞ TÜREVLER (token'da karşılığı olmayan tek tük değerler) -------
-// Spec iki kuralı AYNI ANDA ister: (a) "Kritik aksiyonlar/fiyat kesilmez",
-// (b) "responsive katmanlar ve tokenlarla Türkçe etiketler sığar". Türkçe CTA
-// metinleri (ör. "REKLAM İZLE, KUPAN GERİ GELSİN") 360 dp'de 18 dp/800 ile
-// sığmaz; üç nokta yasak olduğu için etiket KÜÇÜLEREK sığar. Alt sınır burada
-// tek yerde tanımlıdır ki ekranlar kendi rastgele oranını uydurmasın.
-// 0.85: 18 dp → 15.3 dp (= body token boyutu) — okunurluk tabanı korunur.
-export const COF_MIN_FIT_SCALE = 0.85;
+// ---- ETİKET SIĞDIRMA (v1.0.1 sözleşmesi) ------------------------------------
+// Ana CTA küçültülmez ve tek satırda kalır; uzun ikincil aksiyon kompakt stil ya
+// da iki satır kullanır; genel otomatik küçültme TABANI 0.90'ın altına inemez.
+// Kural motoru saf `policy.ts` içinde (test edilebilir); burada yalnız yeniden
+// dışa aktarılır — Aşama 01'in COF_MIN_FIT_SCALE adı geriye uyum için korunur.
+export { LABEL_MIN_FIT_SCALE, labelFitPolicy } from './policy';
+export const COF_MIN_FIT_SCALE = LABEL_MIN_FIT_SCALE_VALUE;
 // Buton "dudağı" (extrusion) gölge değil KATI renktir: token elevation.button
 // blur 0 / opacity 1 / offsetY 5 ile tam olarak bunu tarif eder, rengi de orada.
 export const COF_LIP_COLOR = tokens.elevation.button.color;
@@ -71,10 +71,12 @@ export function cofTypeStyle(variant: CofTypeVariant): TextStyle {
     lineHeight: tk.lineHeight,
     letterSpacing: tk.letterSpacing,
   };
-  // tabularNumbers: token yalnız numberLarge'da ister. Uyarı: paketteki Poppins
-  // dosyalarında `tnum` OpenType özelliği yoktur; bu bayrak zararsızdır ama
-  // rakam genişliğini eşitlemez — canlı sayaçlarda sabit genişlikli hücre
-  // gerekir (asset aşamasında tnum'lu font ya da hücre çözümü).
+  // tabularNumbers: v1.0.1'de HİÇBİR stilde açık değil (numberBehavior.
+  // currentFontSupport=false). Paketteki Poppins dosyalarında `tnum` OpenType
+  // özelliği ÖLÇÜMLE yok ve rakam genişlikleri farklı, dolayısıyla gerçek
+  // tabular rakam VAAT EDİLMEZ. Yerinde değişen sayaçlar CofNumber'ın sabit
+  // genişlikli hücresini kullanır (bkz. policy.DIGIT_CELL_RATIO). Bayrak ileride
+  // tnum'lu bir font gelirse diye eşlenmeye devam eder.
   if (tk.tabularNumbers) style.fontVariant = ['tabular-nums'];
   return style;
 }
@@ -122,6 +124,8 @@ export const cof = {
   type: cofType,
   font: COF_FONT_FILES,
   lipColor: COF_LIP_COLOR,
+  controlBorder: CONTROL_BORDER_COLOR,   // açık ikincil kontrol sınırı (stroke.control)
+  numberBehavior: NUMBER_BEHAVIOR,       // tabular yok → sabit genişlikli kapsayıcı
   minFitScale: COF_MIN_FIT_SCALE,
   elevation: cofElevation,
   scrollBottomPadding: cofScrollBottomPadding,

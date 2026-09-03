@@ -14,7 +14,9 @@ import {
   type LayoutChangeEvent, type StyleProp, type TextProps, type TextStyle, type ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { cof, cofType, cofTypeIsUppercase, COF_LIP_COLOR, COF_MIN_FIT_SCALE, type CofTypeVariant } from './theme';
+import { cof, cofType, cofTypeIsUppercase, COF_LIP_COLOR, type CofTypeVariant } from './theme';
+import { BADGE_SURFACE, BUTTON_SURFACE, badgeForeground, buttonForeground, CONTROL_BORDER_COLOR, DIGIT_CELL_RATIO, labelFitPolicy, LABEL_MIN_FIT_SCALE, type CofBadgeVariant, type CofButtonSize, type CofButtonVariant } from './policy';
+import { formatNumber } from './format';
 import { cofUpper } from './format';
 import { t } from '../i18n';
 
@@ -177,24 +179,27 @@ export const CofCard = CofSurface;
 // ---- CofButton --------------------------------------------------------------------
 // Geometri SABİT: dudak (extrusion) her durumda yer ayırır — loading/disabled
 // açılıp kapandığında altındaki içerik zıplamaz. Basınca yüz dudağın üstüne iner.
-export type CofButtonVariant = 'primary' | 'secondary' | 'reward' | 'ghost' | 'danger';
-export type CofButtonSize = 'primary' | 'secondary' | 'compact';
+// Ön plan rengi ve ikincil sınır TOKEN SÖZLEŞMESİNDEN gelir (policy.ts):
+// parlak yüzeyde koyu lacivert metin, açık metin yalnız 4.5:1 doğrulanmışsa.
 const BUTTON: Record<CofButtonVariant, { face: string; pressedFace?: string; lip: string | null; text: string; stroke?: string; highlight?: string }> = {
-  // Dudak rengi token'ın kendi "extrusion" tanımından (elevation.button.color),
-  // marka gölgesi ise primary'nin kendi koyu tonundan gelir.
-  primary:   { face: C.brand.primary, pressedFace: C.brand.primaryPressed, lip: C.brand.primaryShadow, text: C.text.onPrimary, highlight: C.brand.primaryHighlight },
-  secondary: { face: C.surface.strong,                                     lip: COF_LIP_COLOR,        text: C.text.primary,   stroke: C.stroke.default },
-  reward:    { face: C.reward.gold,                                        lip: C.reward.goldShadow,  text: C.text.onGold,    highlight: C.reward.goldHighlight },
-  ghost:     { face: 'transparent',                                        lip: null,                 text: C.text.secondary },
-  danger:    { face: C.semantic.error,                                     lip: COF_LIP_COLOR,        text: C.text.onPrimary },
+  primary:   { face: BUTTON_SURFACE.primary,   pressedFace: C.brand.primaryPressed, lip: C.brand.primaryShadow, text: buttonForeground('primary'),   highlight: C.brand.primaryHighlight },
+  // İkincil kontrol sınırı stroke.control (#7089C5) — dekoratif kart sınırları
+  // stroke.subtle/default'ta KALIR (spec 1.0.1: kart sınırları parlatılmaz).
+  secondary: { face: BUTTON_SURFACE.secondary,                                      lip: COF_LIP_COLOR,        text: buttonForeground('secondary'), stroke: CONTROL_BORDER_COLOR },
+  reward:    { face: BUTTON_SURFACE.reward,                                         lip: C.reward.goldShadow,  text: buttonForeground('reward'),    highlight: C.reward.goldHighlight },
+  ghost:     { face: 'transparent',                                                 lip: null,                 text: buttonForeground('ghost') },
+  danger:    { face: BUTTON_SURFACE.danger,                                         lip: COF_LIP_COLOR,        text: buttonForeground('danger') },
 };
+
 const BUTTON_HEIGHT: Record<CofButtonSize, number> = { primary: Z.button.primaryHeight, secondary: Z.button.secondaryHeight, compact: Z.button.compactHeight };
 
 export function CofButton({
   label, onPress, variant = 'primary', size, icon, disabled = false, locked = false, loading = false, fullWidth = true,
-  accessibilityLabel, accessibilityHint, style,
+  allowTwoLines = false, accessibilityLabel, accessibilityHint, style,
 }: {
   label: string; onPress: () => void; variant?: CofButtonVariant; size?: CofButtonSize; icon?: IoniconName;
+  /** Uzun ikincil aksiyon için belgelenmiş iki satırlı düzen (ana CTA'da yok sayılır). */
+  allowTwoLines?: boolean;
   disabled?: boolean;
   /** Kilitli: içerik henüz açılmadı (kilit ikonu). Devre dışı ≠ kilitli (spec). */
   locked?: boolean;
@@ -214,6 +219,7 @@ export function CofButton({
   const { v, scale, pressed, onPressIn, onPressOut, reduced } = useCofPress(inert);
   const sink = reduced || inert || !extrusion ? 0 : v.interpolate({ inputRange: [0, 1], outputRange: [0, extrusion] });
   const labelStyle: TextStyle = sz === 'compact' ? cofType.body : cofType.button;
+  const fit = labelFitPolicy(sz, allowTwoLines);
   // 44 dp: compact 42 → hitSlop ile tamamlanır (hitSlop ebeveyn sınırını aşabilir).
   const slop = Math.max(0, Math.ceil((Z.minimumTouchTarget - h) / 2));
   const liveFace = off ? C.surface.disabled : pressed && spec.pressedFace ? spec.pressedFace : spec.face;
@@ -245,9 +251,22 @@ export function CofButton({
         {locked ? <Ionicons name="lock-closed" size={Z.icon.small} color={text} />
           : loading ? <Ionicons name="time-outline" size={sz === 'compact' ? Z.icon.small : Z.icon.medium} color={text} />
           : icon ? <Ionicons name={icon} size={sz === 'compact' ? Z.icon.small : Z.icon.medium} color={text} /> : null}
-        {/* Canlı metin: PNG'ye gömülmez. Üç nokta yasak → uzun Türkçe etiket
-            belgelenmiş alt ölçekle (COF_MIN_FIT_SCALE) küçülerek sığar. */}
-        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={COF_MIN_FIT_SCALE} style={[labelStyle, { color: text, flexShrink: 1, textAlign: 'center' }]}>
+        {/* Canlı metin: PNG'ye gömülmez. Sığdırma politikası v1.0.1:
+            ana CTA küçülmez ve tek satırdır (metin/düzen sığmak ZORUNDA);
+            ikincil/kompakt en fazla 0.90'a küçülür ya da iki satıra iner. */}
+        <Text
+          {...fit}
+          onTextLayout={__DEV__ ? (e) => {
+            // Geliştirmede sessiz kırpılmayı yakala: "kopya sığmalı" kuralı
+            // ancak görünürse işe yarar. Sürümde hiçbir maliyeti yok.
+            const lines = e.nativeEvent.lines;
+            const last = lines[lines.length - 1];
+            if (lines.length > (fit.numberOfLines ?? 1) || (last && typeof last.text === 'string' && last.text.includes('\u2026'))) {
+              console.warn(`[COF] Buton etiketi sığmadı ve kırpıldı: "${label}" (${sz}). Kopyayı kısalt, tam genişlik kullan ya da allowTwoLines ver.`);
+            }
+          } : undefined}
+          style={[labelStyle, { color: text, flexShrink: 1, textAlign: 'center' }]}
+        >
           {label}
         </Text>
       </Animated.View>
@@ -322,7 +341,7 @@ export function CofSegmentedTabs<K extends string>({ tabs, active, onChange, sty
                 etiket her seçimde yeniden akardı). Kilitli sekmede kilit. */}
             {dis ? <Ionicons name="lock-closed" size={Z.icon.small} color={color} {...DECORATIVE} />
               : tb.icon ? <Ionicons name={tb.icon} size={Z.icon.small} color={color} {...DECORATIVE} /> : null}
-            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={COF_MIN_FIT_SCALE} style={[cofType.caption, { color, flexShrink: 1 }]}>{tb.label}</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={LABEL_MIN_FIT_SCALE} style={[cofType.caption, { color, flexShrink: 1 }]}>{tb.label}</Text>
             {count ? <CofBadge variant="count" count={count} /> : null}
           </Pressable>
         );
@@ -332,16 +351,18 @@ export function CofSegmentedTabs<K extends string>({ tabs, active, onChange, sty
 }
 
 // ---- CofBadge ---------------------------------------------------------------------
-export type CofBadgeVariant = 'count' | 'new' | 'reward' | 'premium' | 'info' | 'success' | 'warning' | 'error';
+// Rozet ön planı: parlak dolu yüzeyde OTOMATİK BEYAZ YOK — her varyant kendi
+// text.on* tokenını kullanır (policy.ts doğrular).
 const BADGE: Record<CofBadgeVariant, { bg: string; fg: string; icon?: IoniconName }> = {
-  count:   { bg: C.semantic.error,   fg: C.text.onPrimary },
-  new:     { bg: C.semantic.error,   fg: C.text.onPrimary, icon: 'sparkles' },
-  reward:  { bg: C.reward.gold,      fg: C.text.onGold,    icon: 'trophy' },
-  premium: { bg: C.premium.gem,      fg: C.text.onPrimary, icon: 'diamond' },
-  info:    { bg: C.semantic.info,    fg: C.text.onPrimary, icon: 'information-circle' },
-  success: { bg: C.semantic.success, fg: C.text.inverse,   icon: 'checkmark-circle' },
-  warning: { bg: C.semantic.warning, fg: C.text.inverse,   icon: 'alert-circle' },
-  error:   { bg: C.semantic.error,   fg: C.text.onPrimary, icon: 'close-circle' },
+  count:   { bg: BADGE_SURFACE.count,   fg: badgeForeground('count') },
+  new:     { bg: BADGE_SURFACE.new,     fg: badgeForeground('new'),     icon: 'sparkles' },
+  reward:  { bg: BADGE_SURFACE.reward,  fg: badgeForeground('reward'),  icon: 'trophy' },
+  premium: { bg: BADGE_SURFACE.premium, fg: badgeForeground('premium'), icon: 'diamond' },
+  info:    { bg: BADGE_SURFACE.info,    fg: badgeForeground('info'),    icon: 'information-circle' },
+  success: { bg: BADGE_SURFACE.success, fg: badgeForeground('success'), icon: 'checkmark-circle' },
+  warning: { bg: BADGE_SURFACE.warning, fg: badgeForeground('warning'), icon: 'alert-circle' },
+  error:   { bg: BADGE_SURFACE.error,   fg: badgeForeground('error'),   icon: 'close-circle' },
+  streak:  { bg: BADGE_SURFACE.streak,  fg: badgeForeground('streak'),  icon: 'flame' },
 };
 export function CofBadge({ variant = 'info', label, count, icon, accessibilityLabel, style }: {
   variant?: CofBadgeVariant; label?: string; count?: number; icon?: IoniconName | null; accessibilityLabel?: string; style?: StyleProp<ViewStyle>;
@@ -359,6 +380,37 @@ export function CofBadge({ variant = 'info', label, count, icon, accessibilityLa
     >
       {ic ? <Ionicons name={ic} size={Z.icon.small} color={b.fg} /> : null}
       {text ? <CofText variant="caption" color={b.fg} numberOfLines={1}>{text}</CofText> : null}
+    </View>
+  );
+}
+
+// ---- CofNumber — yerinde değişen sayaçlar için SABİT GENİŞLİKLİ kapsayıcı ----
+// Paketteki Poppins'te gerçek tabular rakam YOK (ölçüldü: tnum özelliği yok,
+// rakam genişlikleri 387..691/1000 em). Token numberBehavior bunu böyle beyan
+// eder ve çözümü tarif eder: yalnız DEĞİŞİRKEN genişlik sıçratan sayaçlar sabit
+// genişlikli hücre kullanır; durağan sayılar orantılı kalır (varsayılan).
+// Hücre genişliği = yazı boyu × en geniş rakam oranı (policy.DIGIT_CELL_RATIO).
+export function CofNumber({ value, variant = 'numberLarge', tone = 'primary', color, stableWidth = false, style, accessibilityLabel }: {
+  value: number | string;
+  variant?: CofTypeVariant;
+  tone?: CofTextTone;
+  color?: string;
+  /** true: her rakam sabit genişlikli hücreye oturur (canlı sayaç). */
+  stableWidth?: boolean;
+  style?: StyleProp<TextStyle>;
+  accessibilityLabel?: string;
+}) {
+  const text = typeof value === 'number' ? formatNumber(value) : value;
+  if (!stableWidth) return <CofText variant={variant} tone={tone} color={color} style={style}>{text}</CofText>;
+  const size = (cofType[variant].fontSize as number | undefined) ?? 0;
+  const family = (cofType[variant].fontFamily === cof.font.COFDisplay ? 'COFDisplay' : 'COFUI') as 'COFDisplay' | 'COFUI';
+  const cell = Math.ceil(size * DIGIT_CELL_RATIO[family]);
+  return (
+    // Ekran okuyucu sayıyı BÜTÜN olarak okur, rakam rakam değil.
+    <View accessible accessibilityLabel={accessibilityLabel ?? text} style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
+      {Array.from(text).map((ch, i) => (
+        <CofText key={`${i}-${ch}`} variant={variant} tone={tone} color={color} style={[style, /[0-9]/.test(ch) ? { width: cell, textAlign: 'center' } : null]}>{ch}</CofText>
+      ))}
     </View>
   );
 }
