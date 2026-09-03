@@ -25,7 +25,7 @@ export const ARENAS: Arena[] = [
   { name: 'Amatör Lig',        minTrophies: 200,  icon: '⚽' },
   { name: 'Profesyonel Lig',   minTrophies: 500,  icon: '🥉' },
   { name: 'Şampiyonlar Ligi',  minTrophies: 1000, icon: '🥈' },
-  { name: 'Efsaneler Arası',   minTrophies: 2000, icon: '🥇' },
+  { name: 'Efsaneler Arenası',   minTrophies: 2000, icon: '🥇' },
   { name: 'Dünya Klasmanı',    minTrophies: 3500, icon: '🏆' },
   { name: 'GOAT',              minTrophies: 5000, icon: '🐐' },
 ];
@@ -44,7 +44,7 @@ const TROPHY_TABLE: [number, number][] = [
   [+28, -14],   // Amatör Lig         — still forgiving
   [+25, -18],   // Profesyonel Lig    — balanced
   [+22, -22],   // Şampiyonlar Ligi   — win/loss equal, grind starts
-  [+20, -26],   // Efsaneler Arası    — losses hurt more
+  [+20, -26],   // Efsaneler Arenası    — losses hurt more
   [+18, -30],   // Dünya Kupası       — punishing, every loss stings
   [+15, -35],   // GOAT               — brutal, only the best stay
 ];

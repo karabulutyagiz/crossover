@@ -87,6 +87,7 @@ import {
   XoxScreen,
   CozKazanScreen,
   GuessWhoScreen,
+  BenKimimTutorial,
   ResultScreen,
   OpponentForfeitModal,
   LeaderboardModal,
@@ -1056,7 +1057,7 @@ function AppRoot() {
   const [dailyConfirm, setDailyConfirm] = useState(false);           // "SATIN AL" öncesi Evet/Hayır onay adımı
   const reopenDailyOfferRef = useRef(false);                         // elmas almaya gidildi → dönüp yeterli olunca teklifi GERİ aç
   const [updateNudgeVisible, setUpdateNudgeVisible] = useState(false); // mağazaya yeni sürüm düşünce (yumuşak)
-  const [xoxAnnounceVisible, setXoxAnnounceVisible] = useState(false);
+  const [modeAnnounceVisible, setModeAnnounceVisible] = useState(false);
   const [copassAnnounceVisible, setCopassAnnounceVisible] = useState(false); // yeni CO-PASS sezonu duyurusu
   const [maintenanceVisible, setMaintenanceVisible] = useState(false); // bakım penceresi
   const [seasonRewardVisible, setSeasonRewardVisible] = useState(false); // sezon ödülü toplama
@@ -1752,7 +1753,7 @@ function AppRoot() {
     outageGiftVisible ||
     dailyOfferVisible ||
     updateNudgeVisible ||
-    xoxAnnounceVisible ||
+    modeAnnounceVisible ||
     copassAnnounceVisible ||
     maintenanceVisible ||
     seasonRewardVisible ||
@@ -1861,9 +1862,17 @@ function AppRoot() {
     setSeasonRewardVisible(true);
   }, [seasonPending, loaded, splash, modalBlocked, state.phase]);
 
-  const xoxAnnounceShownRef = useRef(false);
+  // ── YENİ MOD duyurusu: BEN KİMİM? (2026-09-03) ───────────────────────────
+  // En yeni mod (Ben Kimim?) — tıpkı önceki modlarda olduğu gibi, çıkış tarihinden
+  // itibaren BİR SÜRE boyunca HER açılışta tanıtım penceresi çıkar (üstünde kısa,
+  // döngülü, oyun-içi görünümlü öğretici animasyon). Çöz Kazan/XOX slotunun yerini
+  // alır (çift "YENİ MOD" penceresi olmaz). Süre dolunca kendiliğinden susar.
+  // Görüldü işareti YOK — kasıtlı: pencere kapanış tarihine kadar her girişte gelir.
+  const BENKIMIM_ANNOUNCE_UNTIL = Date.parse('2026-10-01T00:00:00+03:00'); // ~4 hafta
+  const modeAnnounceShownRef = useRef(false);
   useEffect(() => {
-    if (xoxAnnounceShownRef.current) return;
+    if (modeAnnounceShownRef.current) return;
+    if (Date.now() >= BENKIMIM_ANNOUNCE_UNTIL) return; // tanıtım penceresi kapandı
     if (!loaded || splash || state.phase !== 'home' || !state.profile?.usernameSet || modalBlocked) return;
     let alive = true;
     // GECİKME KALDIRILDI (kullanıcı isteği 2026-08-30: "kapat'a bastıktan sonra
@@ -1876,9 +1885,9 @@ function AppRoot() {
     // modalBlocked false olduğu an, önceki pencere gerçekten kapanmış demektir —
     // bu effect o anda yeniden çalışır ve pencereyi ANINDA açar. iOS'un tek
     // native modal kuralı da böylece beklemeye gerek kalmadan korunur.
-    if (alive && !xoxAnnounceShownRef.current && !modalBlockedRef.current) {
-      xoxAnnounceShownRef.current = true;
-      setXoxAnnounceVisible(true);
+    if (alive && !modeAnnounceShownRef.current && !modalBlockedRef.current) {
+      modeAnnounceShownRef.current = true;
+      setModeAnnounceVisible(true);
     }
     return () => { alive = false; };
   }, [loaded, splash, state.phase, state.profile?.usernameSet, modalBlocked]);
@@ -3573,25 +3582,24 @@ function AppRoot() {
         ) : null}
       </GameModal>
 
-      {/* Her açılışta YENİ MOD duyurusu — artık Çöz Kazan (kullanıcı 2026-09-01) */}
-      <GameModal visible={xoxAnnounceVisible} onClose={() => setXoxAnnounceVisible(false)} title={t('cozAnnounce.title')} icon="shuffle" coach>
+      {/* Her açılışta YENİ MOD duyurusu — artık BEN KİMİM? (kullanıcı 2026-09-03):
+          üstte kısa, döngülü, oyun-içi görünümlü öğretici animasyon. */}
+      <GameModal visible={modeAnnounceVisible} onClose={() => setModeAnnounceVisible(false)} title={t('bkAnnounce.title')} icon="help-circle" coach>
         <View style={{ alignItems: 'center', gap: 12 }}>
-          {/* Dikkat çekici sahne: altın YENİ MOD şeridi + karışık-harf teaser'ı */}
+          {/* altın YENİ MOD şeridi */}
           <View style={{ backgroundColor: theme.gold, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4 }}>
-            <Text style={{ color: '#231A00', fontSize: 11, fontFamily: 'Poppins-Black', letterSpacing: 1.2 }}>{t('cozAnnounce.ribbon')}</Text>
+            <Text style={{ color: '#231A00', fontSize: 11, fontFamily: 'Poppins-Black', letterSpacing: 1.2 }}>{t('bkAnnounce.ribbon')}</Text>
           </View>
-          <View style={{ backgroundColor: withAlpha('#16B27A', 0.16), borderRadius: 20, paddingHorizontal: 24, paddingVertical: 14, borderWidth: 2, borderColor: withAlpha('#16B27A', 0.5), alignItems: 'center', gap: 6 }}>
-            <Text style={{ fontSize: 30, letterSpacing: 5, fontFamily: 'Poppins-Black', color: theme.text }}>R A M Y E N</Text>
-            <Text style={{ fontSize: 13, fontFamily: 'Poppins-ExtraBold', color: theme.gold, letterSpacing: 1 }}>= NEYMAR ✓</Text>
-          </View>
-          <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>{t('cozAnnounce.body')}</Text>
+          {/* THE tanıtım — gerçek oyun bileşenleriyle kurulmuş döngülü ekran kaydı */}
+          {modeAnnounceVisible ? <BenKimimTutorial /> : null}
+          <Text style={{ color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 19 }}>{t('bkAnnounce.body')}</Text>
           <PulseView>
-            {/* Sadece 'Anladım' — eşleşme/ödeme başlatmaz, popup'ı kapatır (duyuru yüzeyi). */}
+            {/* Sadece 'Anladım' — eşleşme/ödeme başlatmaz, pencereyi kapatır. */}
             <Btn
               big kind="accent" icon="checkmark-circle"
-              label={t('cozAnnounce.cta')}
+              label={t('bkAnnounce.cta')}
               feedback={GameFeedbackEvent.UI_CONFIRM}
-              onPress={() => setXoxAnnounceVisible(false)}
+              onPress={() => setModeAnnounceVisible(false)}
             />
           </PulseView>
         </View>

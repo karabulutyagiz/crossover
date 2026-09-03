@@ -826,14 +826,16 @@ export function AdBlockMark({ size = 22, color }: { size?: number; color?: strin
   );
 }
 
-export function GameModal({ visible, onClose, onExited, onShown, title, icon, danger = false, coach = false, dismissible = true, crest = true, children }: {
+export function GameModal({ visible, onClose, onExited, onShown, title, icon, danger = false, coach = false, dismissible = true, crest = false, children }: {
   // onShown: native sunum GERÇEKTEN tamamlandığında (RN Modal onShow) çağrılır.
   // "Bu pencere sunulduktan SONRA sunulmalı" el sıkışmaları (ör. StoreKit
   // sayfası) kör zamanlayıcı yerine bu olaya bağlanır — modalTraffic pencereyi
   // sıraya alsa bile olay sunumdan önce asla gelmez.
   // dismissible=false: zorunlu pencere — çarpı yok, karartmaya dokunmak ve
   // Android geri tuşu kapatmaz. Tek çıkış içerideki eylem düğmesidir (ör. "Al").
-  // crest=false: mühürsüz pencere (tam ekran içerik taşıyan seyrek durumlar).
+  // crest: üstteki altın top rozeti + tepe/kanat. VARSAYILAN KAPALI (kullanıcı isteği
+  // 2026-09-03: rozet başlık yazısını kapatıyordu — tüm popup'larda kaldırıldı). İstenirse
+  // crest={true} ile açılabilir.
   visible: boolean; onClose: () => void; onExited?: () => void; onShown?: () => void; title?: string; icon?: IoniconName; danger?: boolean; coach?: boolean; dismissible?: boolean; crest?: boolean; children: ReactNode;
 }) {
   const a = useRef(new Animated.Value(0)).current;
@@ -8259,6 +8261,36 @@ const GW_COLS: { key: string; icon: ComponentProps<typeof Ionicons>['name']; lab
   { key: 'league', icon: 'trophy', label: 'gw.col.league' },
 ];
 
+// Aksan/özel-harf KATLAMA (kullanıcı isteği 2026-09-03: "é yazınca é'li oyuncu da çıksın").
+// Sunucu normalize.ts NFD + \p{M} kullanır ama bunlar Hermes'te garanti değil → açık
+// harita ile (é/š/ç/ñ/ü… → ASCII taban) her cihazda çalışır. Yalnız istemci autocomplete
+// süzgeci içindir (tahmin ID ile gönderilir; sunucu eşleşmesi etkilenmez).
+const BK_FOLD: Record<string, string> = {
+  à: 'a', á: 'a', â: 'a', ã: 'a', ä: 'a', å: 'a', ā: 'a', ă: 'a', ą: 'a', ª: 'a',
+  ç: 'c', ć: 'c', ĉ: 'c', ċ: 'c', č: 'c',
+  ð: 'd', ď: 'd', đ: 'd',
+  è: 'e', é: 'e', ê: 'e', ë: 'e', ē: 'e', ĕ: 'e', ė: 'e', ę: 'e', ě: 'e',
+  ĝ: 'g', ğ: 'g', ġ: 'g', ģ: 'g',
+  ĥ: 'h', ħ: 'h',
+  ì: 'i', í: 'i', î: 'i', ï: 'i', ĩ: 'i', ī: 'i', ĭ: 'i', į: 'i', ı: 'i',
+  ĵ: 'j', ķ: 'k',
+  ĺ: 'l', ļ: 'l', ľ: 'l', ł: 'l',
+  ñ: 'n', ń: 'n', ņ: 'n', ň: 'n', ŉ: 'n',
+  ò: 'o', ó: 'o', ô: 'o', õ: 'o', ö: 'o', ø: 'o', ō: 'o', ŏ: 'o', ő: 'o', º: 'o',
+  ŕ: 'r', ŗ: 'r', ř: 'r',
+  ś: 's', ŝ: 's', ş: 's', š: 's', ș: 's',
+  ţ: 't', ť: 't', ŧ: 't', ț: 't',
+  ù: 'u', ú: 'u', û: 'u', ü: 'u', ũ: 'u', ū: 'u', ŭ: 'u', ů: 'u', ű: 'u', ų: 'u',
+  ŵ: 'w', ý: 'y', ÿ: 'y', ŷ: 'y',
+  ź: 'z', ż: 'z', ž: 'z',
+  ß: 'ss', æ: 'ae', œ: 'oe', þ: 'th',
+};
+/** Adı aksansız, ASCII küçük harfe indirger; harf/rakam dışı her şeyi atar (boşluk dahil)
+ *  → "Théo Hernández" ⇒ "theohernandez", sorgu "hernandez" eşleşir. */
+function bkFold(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, (ch) => BK_FOLD[ch] ?? '');
+}
+
 export function GuessWhoScreen({ state, actions }: Props) {
   const gw = state.guessWho;
   const pool = state.guessWhoPool ?? [];
@@ -8315,9 +8347,10 @@ export function GuessWhoScreen({ state, actions }: Props) {
   const secs = Math.max(0, Math.ceil((gw.turnEndsAt - Date.now()) / 1000));
   const reveal = gw.reveal;
   const alreadyGuessed = new Set(gw.guesses.map((g) => g.playerId));
-  const q = query.trim().toLocaleLowerCase('tr');
+  // Aksan-duyarsız arama: hem sorgu hem ad ASCII tabana katlanır (é↔e, ş↔s, ü↔u…).
+  const q = bkFold(query.trim());
   const matches = myTurn && q.length >= 2
-    ? pool.filter((p) => p.name.toLocaleLowerCase('tr').includes(q) && !alreadyGuessed.has(p.id)).slice(0, kbOpen ? 4 : 5)
+    ? pool.filter((p) => bkFold(p.name).includes(q) && !alreadyGuessed.has(p.id)).slice(0, kbOpen ? 4 : 5)
     : [];
   const submit = (playerId: number) => {
     if (!myTurn || alreadyGuessed.has(playerId)) return;
@@ -8533,6 +8566,325 @@ export function GuessWhoScreen({ state, actions }: Props) {
   );
 }
 const gwChipTxt = { color: theme.text, fontSize: 12, fontFamily: 'Poppins-ExtraBold' } as const;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BEN KİMİM? — "YENİ MOD" popup'ının tanıtım animasyonu (2026-09-03).
+// Kısa (9 sn) DÖNGÜLÜ, native (Animated + Svg + ExpoImage) bir "ekran kaydı":
+//   1) Diğer Modlar kartına dokunulur → 2) Ben Kimim? modu seçilir →
+//   3) maç başlar, RAKİP ilk tahmini yapar (yanlış-karışık ipuçları) →
+//   4) SIRA SENDE, ikinci tahmin DOĞRU → gizli oyuncu (Yamal) açığa çıkar.
+// GERÇEK oyun bileşenleri (GwGuessRow / GwPips / GwTimerRing) birebir yeniden
+// kullanılır → "farksız oyun içi görüntü". Video/asset yok: her cihazda net.
+// ═══════════════════════════════════════════════════════════════════════════
+const BK_DUR = 9000;
+const BK_YAMAL_IMG = 'https://media.api-sports.io/football/players/386828.png';
+const BK_RAPHINHA_IMG = 'https://media.api-sports.io/football/players/1496.png'; // stabil api-sports CDN (Yamal ile aynı)
+const BK_BARCA_LOGO = 'https://tmssl.akamaized.net//images/wappen/big/131.png';
+const BK_LALIGA_LOGO = 'https://media.api-sports.io/football/leagues/140.png';
+// Rakibin YANLIŞ tahmini: Raphinha — aynı kulüp/lig/mevki (3 yeşil) ama Brezilyalı,
+// daha yaşlı (28↓) ve daha yüksek numara (11↓) → hedefi genç İspanyol #10'a daraltır.
+const BK_ROW_OPP: import('./protocol').GwRow = {
+  playerId: 411295, name: 'Raphinha', imageUrl: BK_RAPHINHA_IMG, correct: false,
+  club: { value: 'Barcelona', logo: BK_BARCA_LOGO, match: true },
+  nationality: { value: 'Brazil', match: false },
+  age: { value: 28, match: false, dir: 'down' },
+  jersey: { value: 11, match: false, dir: 'down' },
+  position: { value: 'LW', match: true },
+  league: { value: 'ES1', logo: BK_LALIGA_LOGO, match: true },
+};
+// DOĞRU tahmin: Lamine Yamal — altı nitelik de yeşil.
+const BK_ROW_YOU: import('./protocol').GwRow = {
+  playerId: 386828, name: 'Lamine Yamal', imageUrl: BK_YAMAL_IMG, correct: true,
+  club: { value: 'Barcelona', logo: BK_BARCA_LOGO, match: true },
+  nationality: { value: 'Spain', match: true },
+  age: { value: 18, match: true },
+  jersey: { value: 10, match: true },
+  position: { value: 'RW', match: true },
+  league: { value: 'ES1', logo: BK_LALIGA_LOGO, match: true },
+};
+
+/** Karanlık stadyum arka planı — GuessWhoStage ile aynı reçete, tanıtım kadrajına ölçekli. */
+function BkMiniStage() {
+  return (
+    <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} viewBox="0 0 100 78" preserveAspectRatio="xMidYMid slice">
+      <Defs>
+        <SvgGradient id="bkNight" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#0B1234" /><Stop offset="0.55" stopColor="#080E26" /><Stop offset="1" stopColor="#04081A" />
+        </SvgGradient>
+        <RadialGradient id="bkSpot" cx="50%" cy="10%" rx="55%" ry="42%">
+          <Stop offset="0" stopColor="#FFE9B0" stopOpacity="0.22" /><Stop offset="0.55" stopColor="#FFE9B0" stopOpacity="0.07" /><Stop offset="1" stopColor="#FFE9B0" stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id="bkVig" cx="50%" cy="44%" rx="80%" ry="70%">
+          <Stop offset="0.5" stopColor="#02040E" stopOpacity="0" /><Stop offset="1" stopColor="#01030A" stopOpacity="0.82" />
+        </RadialGradient>
+      </Defs>
+      <Rect x="0" y="0" width="100" height="78" fill="url(#bkNight)" />
+      <Polygon points="40,0 60,0 82,40 18,40" fill="#F4E7C3" opacity="0.05" />
+      <Polygon points="45,0 55,0 70,34 30,34" fill="#FFFFFF" opacity="0.055" />
+      {[[8, 12], [18, 6], [30, 10], [70, 7], [84, 11], [92, 5], [62, 4], [38, 4]].map(([x, y], i) => (
+        <Circle key={i} cx={x} cy={y} r={0.5} fill="#DCE6FF" opacity={0.18} />
+      ))}
+      <Ellipse cx="50" cy="72" rx="44" ry="9" fill="none" stroke="#8FA5E8" strokeWidth="0.35" opacity="0.12" />
+      <Rect x="0" y="0" width="100" height="78" fill="url(#bkSpot)" />
+      <Rect x="0" y="0" width="100" height="78" fill="url(#bkVig)" />
+    </Svg>
+  );
+}
+
+/** Tanıtımdaki "Diğer Modlar" mini kartı — gerçek amber ArtCard dilinde. */
+function BkModesCard({ pressed }: { pressed: Animated.AnimatedInterpolation<number> }) {
+  return (
+    <Animated.View style={{ width: 148, transform: [{ scale: pressed }] }}>
+      <View style={{ backgroundColor: '#291706', borderRadius: 16, paddingBottom: 3 }}>
+        <View style={{ height: 96, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderBottomLeftRadius: 13, borderBottomRightRadius: 13, backgroundColor: '#D08528', overflow: 'hidden' }}>
+          <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} viewBox="0 0 100 100" preserveAspectRatio="none">
+            <Defs>
+              <RadialGradient id="bkModes" cx="50%" cy="6%" rx="118%" ry="118%">
+                <Stop offset="0" stopColor="#D9973B" /><Stop offset="0.52" stopColor="#B7762A" /><Stop offset="1" stopColor="#6B3A0D" />
+              </RadialGradient>
+              <RadialGradient id="bkModesGlow" cx="50%" cy="22%" rx="78%" ry="78%">
+                <Stop offset="0" stopColor="#E3B67E" stopOpacity="0.9" /><Stop offset="0.5" stopColor="#D69442" stopOpacity="0.28" /><Stop offset="1" stopColor="#D08528" stopOpacity="0" />
+              </RadialGradient>
+            </Defs>
+            <Rect x="0" y="0" width="100" height="100" fill="url(#bkModes)" />
+            <Rect x="0" y="0" width="100" height="100" fill="url(#bkModesGlow)" />
+          </Svg>
+          {/* iki futbol topu + altın VS madalyonu (kartın kimliği) */}
+          <View style={{ position: 'absolute', left: 14, top: 22, width: 34, height: 34, borderRadius: 17, backgroundColor: '#EDEFF3', borderWidth: 2, borderColor: '#0B1020' }} />
+          <View style={{ position: 'absolute', right: 14, top: 24, width: 34, height: 34, borderRadius: 17, backgroundColor: '#2B6CE0', borderWidth: 2, borderColor: '#0B1020' }} />
+          <View style={{ position: 'absolute', alignSelf: 'center', top: 30, left: 0, right: 0, alignItems: 'center' }}>
+            <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: theme.accent, borderWidth: 2, borderColor: darken(theme.accent, 0.4), alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: theme.ink, fontFamily: 'Poppins-Black', fontSize: 11, ...engrave('sm') }}>VS</Text>
+            </View>
+          </View>
+          {/* alt etiket bandı */}
+          <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#3A2109', paddingHorizontal: 10, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text numberOfLines={1} style={{ flex: 1, color: '#FFFFFF', fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>Diğer Modlar</Text>
+            <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.34)', alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="arrow-forward" size={12} color="rgba(255,255,255,0.9)" />
+            </View>
+          </View>
+        </View>
+      </View>
+      {/* YENİ kurdelesi */}
+      <View style={{ position: 'absolute', top: -7, right: -5, backgroundColor: theme.danger, borderRadius: 8, paddingHorizontal: 7, paddingTop: 3, paddingBottom: 4, ...shadowRow }}>
+        <Text style={{ color: '#fff', fontSize: 8.5, fontFamily: 'Poppins-Black', letterSpacing: 1 }}>YENİ</Text>
+      </View>
+    </Animated.View>
+  );
+}
+
+/** Tanıtımdaki mod-seçici satırı — gerçek GameRow dilinde. */
+function BkModeRow({ icon, label, tint, active, pressed, yeni }: { icon: IoniconName; label: string; tint: string; active?: boolean; pressed?: Animated.AnimatedInterpolation<number>; yeni?: boolean }) {
+  const face = active ? theme.surface3 : theme.surface2;
+  return (
+    <Animated.View style={{ backgroundColor: face, borderRadius: 12, marginVertical: 3, overflow: 'hidden', ...shadowRow, transform: pressed ? [{ scale: pressed }] : undefined }}>
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.06 }} />
+      <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3.5, backgroundColor: tint }} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, paddingHorizontal: 11 }}>
+        <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: theme.well, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name={icon} size={16} color={tint} />
+        </View>
+        <Text style={{ flex: 1, color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{label}</Text>
+        {yeni ? (
+          <View style={{ backgroundColor: theme.danger, borderRadius: 7, paddingHorizontal: 6, paddingTop: 2.5, paddingBottom: 3 }}>
+            <Text style={{ color: '#fff', fontSize: 8, fontFamily: 'Poppins-Black', letterSpacing: 0.8 }}>YENİ</Text>
+          </View>
+        ) : <Ionicons name="chevron-forward" size={15} color={theme.muted} />}
+      </View>
+    </Animated.View>
+  );
+}
+
+/** Bulanık→net geçişli mini gizem kartı (iki foto üst üste; net olan reveal'de belirir). */
+function BkMysteryCard({ sharpOp, chromeOp, size = 66 }: { sharpOp: Animated.AnimatedInterpolation<number>; chromeOp: Animated.AnimatedInterpolation<number>; size?: number }) {
+  const r = 12;
+  return (
+    <View style={{ padding: 3, borderRadius: r + 6, backgroundColor: 'rgba(255,233,176,0.16)', shadowColor: '#FFE9B0', shadowOpacity: 0.4, shadowRadius: 14, shadowOffset: { width: 0, height: 0 } }}>
+      <View style={{ borderRadius: r + 3, borderWidth: 2, borderColor: withAlpha(theme.gold, 0.6), overflow: 'hidden', backgroundColor: '#0A1230' }}>
+        <ExpoImage source={{ uri: BK_YAMAL_IMG }} {...({ blurRadius: 14 } as any)} style={{ width: size, height: size, transform: [{ scale: 1.12 }] }} contentFit="cover" transition={0} />
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity: sharpOp }]}>
+          <ExpoImage source={{ uri: BK_YAMAL_IMG }} style={{ width: size, height: size, transform: [{ scale: 1.12 }] }} contentFit="cover" transition={0} />
+        </Animated.View>
+        {/* GİZLİ OYUNCU şeridi + "?" rozeti — reveal'de solar */}
+        <Animated.View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 16, backgroundColor: 'rgba(3,7,20,0.62)', alignItems: 'center', justifyContent: 'center', opacity: chromeOp }}>
+          <Text style={{ color: 'rgba(255,240,200,0.92)', fontSize: 6.5, fontFamily: 'Poppins-Black', letterSpacing: 2 }}>GİZLİ OYUNCU</Text>
+        </Animated.View>
+        <Animated.View style={{ position: 'absolute', top: 4, right: 4, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.gold, alignItems: 'center', justifyContent: 'center', opacity: chromeOp }}>
+          <Text style={{ color: '#132', fontSize: 11, fontFamily: 'Poppins-Black' }}>?</Text>
+        </Animated.View>
+      </View>
+    </View>
+  );
+}
+
+/** THE tanıtım animasyonu — popup'ın üstündeki döngülü ekran kaydı. */
+export function BenKimimTutorial() {
+  const [w, setW] = useState(0);
+  const H = 244;
+  const clock = useRef(new Animated.Value(0)).current;
+  const startRef = useRef(0);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    startRef.current = Date.now();
+    const anim = Animated.loop(Animated.timing(clock, { toValue: BK_DUR, duration: BK_DUR, easing: Easing.linear, useNativeDriver: true }));
+    anim.start();
+    const id = setInterval(() => setTick((t) => t + 1), 120);
+    // Fotoğraf + logoları önceden getir → tanıtım ilk kareden net oynasın.
+    [BK_YAMAL_IMG, BK_RAPHINHA_IMG, BK_BARCA_LOGO, BK_LALIGA_LOGO].forEach((u) => { try { (ExpoImage as unknown as { prefetch?: (u: string) => Promise<unknown> }).prefetch?.(u); } catch { /* yut */ } });
+    return () => { anim.stop(); clearInterval(id); };
+  }, [clock]);
+
+  // Statik ağır çocukları sabitler (tik yalnız sayaç/pip'i tazelesin, satırları değil).
+  const oppRowEl = useMemo(() => <GwGuessRow row={BK_ROW_OPP} />, []);
+  const youRowEl = useMemo(() => <GwGuessRow row={BK_ROW_YOU} />, []);
+
+  // Tüm sürekli hareket TEK native clock'tan türetilir (w değişince yeniden hesap).
+  const A = useMemo(() => {
+    const op = (pts: [number, number][]) => clock.interpolate({ inputRange: pts.map((p) => p[0]), outputRange: pts.map((p) => p[1]), extrapolate: 'clamp' });
+    return {
+      // sahne opaklıkları
+      homeOp: op([[0, 0], [320, 1], [1650, 1], [1900, 0]]),
+      pickOp: op([[1800, 0], [2100, 1], [3250, 1], [3500, 0]]),
+      matchOp: op([[3400, 0], [3800, 1], [8550, 1], [8950, 0]]),
+      // Diğer Modlar kartı basılma (clamp son değeri tutar — yinelenen nokta YOK)
+      cardPress: op([[900, 1], [1010, 0.955], [1160, 1]]),
+      // mod-seçici satır basılma
+      rowPress: op([[2500, 1], [2600, 0.955], [2760, 1]]),
+      pickSlide: op([[1800, 26], [2100, 0]]),
+      // parmak — S2'de "Ben Kimim?" satırının SAĞINA dokunur (etiket görünür kalsın)
+      fingerX: op([[700, 0.80], [1000, 0.52], [1250, 0.52], [2350, 0.60], [2600, 0.74], [2900, 0.74]]),
+      fingerY: op([[700, 0.92], [1000, 0.56], [1250, 0.56], [2350, 0.62], [2600, 0.32], [2900, 0.32]]),
+      fingerScale: op([[900, 1], [1000, 0.78], [1150, 1], [1250, 1], [2500, 1], [2600, 0.78], [2750, 1]]),
+      fingerOp: op([[700, 0], [800, 1], [1330, 1], [1480, 0], [2340, 0], [2440, 1], [2960, 1], [3120, 0]]),
+      // dokunuş dalgaları
+      ripple1S: op([[980, 0.3], [1320, 1.9]]),
+      ripple1O: op([[980, 0.5], [1320, 0]]),
+      ripple2S: op([[2580, 0.3], [2920, 1.9]]),
+      ripple2O: op([[2580, 0.5], [2920, 0]]),
+      // maç içi
+      oppRowY: op([[4200, -12], [4620, 0]]),
+      oppRowOp: op([[4200, 0], [4520, 1]]),
+      youRowY: op([[5400, -12], [5820, 0]]),
+      youRowOp: op([[5400, 0], [5720, 1]]),
+      bannerOppOp: op([[3800, 0], [4000, 1], [4600, 1], [4780, 0]]),
+      // "SIRA SENDE" reveal başlayınca söner (tur kazanıldı) → "BİLDİN!" rozetiyle çakışmaz
+      bannerYouOp: op([[4700, 0], [4880, 1], [5900, 1], [6150, 0]]),
+      revealSharp: op([[5900, 0], [6400, 1], [8500, 1], [8850, 0]]),
+      revealChrome: op([[5900, 1], [6250, 0]]),
+      nameOp: op([[6100, 0], [6500, 1], [8450, 1], [8800, 0]]),
+      badgeOp: op([[6450, 0], [6650, 1], [8450, 1], [8750, 0]]),
+      badgeScale: op([[6450, 0.7], [6650, 1.08], [6800, 1]]),
+    };
+  }, [clock, w]);
+
+  // Ayrık (sayı/metin) durumlar — 120ms tik ile; ağır motion native clock'ta.
+  const el = startRef.current ? (Date.now() - startRef.current) % BK_DUR : 0;
+  const bannerOpp = el >= 3800 && el < 4780;
+  const secs = bannerOpp ? Math.max(15, 20 - Math.floor((el - 3800) / 320)) : Math.max(17, 20 - Math.floor(Math.max(0, el - 4880) / 520));
+  const pipsUsed = el < 4300 ? 0 : el < 5500 ? 1 : 2;
+  const winnerPip = el >= 5900;
+  const sceneIdx = el < 1900 ? 0 : el < 3500 ? 1 : el < 5900 ? 2 : 3;
+
+  const finger = w > 0 ? (
+    <Animated.View pointerEvents="none" style={{ position: 'absolute', left: -17, top: -17, opacity: A.fingerOp, transform: [{ translateX: Animated.multiply(A.fingerX, w) }, { translateY: Animated.multiply(A.fingerY, H) }, { scale: A.fingerScale }] }}>
+      <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.26)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.7)', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.92)' }} />
+      </View>
+    </Animated.View>
+  ) : null;
+
+  return (
+    <View style={{ alignSelf: 'stretch', borderRadius: 20, backgroundColor: '#05091A', padding: 4, ...shadowModal }}>
+      <View
+        onLayout={(e) => setW(e.nativeEvent.layout.width)}
+        style={{ height: H, borderRadius: 16, overflow: 'hidden', backgroundColor: '#04081A', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' }}
+      >
+        {/* ── SAHNE 1: Home — Diğer Modlar kartına dokun ── */}
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: A.homeOp, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0A1230' }]}>
+          <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} viewBox="0 0 100 100" preserveAspectRatio="none">
+            <Defs><SvgGradient id="bkHome" x1="0" y1="0" x2="0" y2="1"><Stop offset="0" stopColor="#0E1740" /><Stop offset="1" stopColor="#070D28" /></SvgGradient></Defs>
+            <Rect x="0" y="0" width="100" height="100" fill="url(#bkHome)" />
+          </Svg>
+          <Text style={{ color: withAlpha(theme.textSub, 0.8), fontSize: 10, fontFamily: 'Poppins-ExtraBold', letterSpacing: 1.5, marginBottom: 12 }}>DİĞER MODLAR</Text>
+          <BkModesCard pressed={A.cardPress} />
+        </Animated.View>
+
+        {/* ── SAHNE 2: Mod seçici — Ben Kimim? seç ── */}
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: A.pickOp, paddingHorizontal: 14, paddingTop: 12, backgroundColor: 'rgba(4,7,20,0.9)' }]}>
+          <Animated.View style={{ transform: [{ translateY: A.pickSlide }] }}>
+            <View style={{ backgroundColor: theme.accent, paddingVertical: 7, paddingHorizontal: 12, borderTopLeftRadius: 12, borderTopRightRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="football" size={14} color={theme.ink} />
+              <Text style={{ color: theme.ink, fontFamily: 'Poppins-ExtraBold', fontSize: 12, letterSpacing: 0.8 }}>DİĞER MODLAR</Text>
+            </View>
+            <View style={{ backgroundColor: theme.modalFace, borderBottomLeftRadius: 12, borderBottomRightRadius: 12, padding: 8, paddingTop: 6 }}>
+              <BkModeRow icon="help-circle" label="Ben Kimim?" tint={theme.purple} active pressed={A.rowPress} yeni />
+              <BkModeRow icon="shuffle" label="Çöz Kazan" tint="#16B27A" />
+              <BkModeRow icon="grid" label="Futbol XOX" tint={theme.gold} />
+            </View>
+          </Animated.View>
+        </Animated.View>
+
+        {/* ── SAHNE 3-4: Maç — rakip yanlış, sen doğru, reveal ── */}
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity: A.matchOp }]}>
+          <BkMiniStage />
+          <View style={{ flex: 1, paddingHorizontal: 12, paddingTop: 10, alignItems: 'stretch' }}>
+            {/* üst: mini gizem kartı + sıra/halka/pip */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <BkMysteryCard sharpOp={A.revealSharp} chromeOp={A.revealChrome} />
+              <View style={{ flex: 1, gap: 5 }}>
+                <View style={{ height: 18, justifyContent: 'center' }}>
+                  <Animated.Text numberOfLines={1} style={{ position: 'absolute', color: theme.textSub, fontSize: 11, fontFamily: 'Poppins-Black', letterSpacing: 0.3, opacity: A.bannerOppOp, ...engrave('sm') }}>Rakip tahmin ediyor…</Animated.Text>
+                  <Animated.Text numberOfLines={1} style={{ position: 'absolute', color: theme.primary, fontSize: 11.5, fontFamily: 'Poppins-Black', letterSpacing: 0.5, opacity: A.bannerYouOp, ...engrave('sm') }}>SIRA SENDE</Animated.Text>
+                </View>
+                <GwPips total={7} used={pipsUsed} winner={winnerPip} />
+                <Animated.Text numberOfLines={1} style={{ color: theme.gold, fontSize: 13, fontFamily: 'Poppins-Black', letterSpacing: 0.4, opacity: A.nameOp, ...engrave('sm') }}>LAMİNE YAMAL</Animated.Text>
+              </View>
+              <GwTimerRing secs={secs} />
+            </View>
+            {/* tahmin satırları (en yeni üstte) */}
+            <Animated.View style={{ opacity: A.youRowOp, transform: [{ translateY: A.youRowY }] }}>{youRowEl}</Animated.View>
+            <Animated.View style={{ opacity: A.oppRowOp, transform: [{ translateY: A.oppRowY }] }}>{oppRowEl}</Animated.View>
+          </View>
+          {/* "BİLDİN!" rozeti */}
+          <Animated.View style={{ position: 'absolute', top: 8, alignSelf: 'center', opacity: A.badgeOp, transform: [{ scale: A.badgeScale }], backgroundColor: withAlpha(theme.primary, 0.2), borderColor: theme.primary, borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            <Ionicons name="checkmark-circle" size={14} color={theme.primary} />
+            <Text style={{ color: lighten(theme.primary, 0.2), fontFamily: 'Poppins-Black', fontSize: 12, letterSpacing: 0.5 }}>BİLDİN!</Text>
+          </Animated.View>
+        </Animated.View>
+
+        {/* dokunuş dalgaları */}
+        {w > 0 ? (
+          <>
+            <Animated.View pointerEvents="none" style={{ position: 'absolute', left: -22, top: -22, opacity: A.ripple1O, transform: [{ translateX: Animated.multiply(A.fingerX, w) }, { translateY: Animated.multiply(A.fingerY, H) }, { scale: A.ripple1S }] }}>
+              <View style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: 'rgba(255,255,255,0.8)' }} />
+            </Animated.View>
+            <Animated.View pointerEvents="none" style={{ position: 'absolute', left: -22, top: -22, opacity: A.ripple2O, transform: [{ translateX: Animated.multiply(A.fingerX, w) }, { translateY: Animated.multiply(A.fingerY, H) }, { scale: A.ripple2S }] }}>
+              <View style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: withAlpha(theme.purple, 0.9) }} />
+            </Animated.View>
+          </>
+        ) : null}
+
+        {finger}
+
+        {/* alt ilerleme çubuğu + adım noktaları — "kısa video" hissi */}
+        <View style={{ position: 'absolute', left: 10, right: 10, bottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flex: 1, height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
+            {/* İlerleme JS yüzdesiyle (native driver 'width'i animasyona izin vermez);
+                120ms tik ince çubuk için yeterince akıcı. */}
+            <View style={{ height: 3, borderRadius: 2, backgroundColor: withAlpha(theme.gold, 0.9), width: (`${Math.round((el / BK_DUR) * 100)}%` as `${number}%`) }} />
+          </View>
+          <View style={{ flexDirection: 'row', gap: 4 }}>
+            {[0, 1, 2, 3].map((i) => (
+              <View key={i} style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: i === sceneIdx ? theme.gold : 'rgba(255,255,255,0.22)' }} />
+            ))}
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
 
 export function GuessScreen({ state, actions, tutorial, prefill }: Props & { prefill?: string }) {
   // Tutorial: the answer arrives PRE-FILLED and locked — the player only taps
@@ -14526,7 +14878,7 @@ function AvatarTile({ avatarId, owned, selected, price, isNew = false, seasonOnl
 const ARENA_DATA = [
   { name: 'GOAT', min: 5000, max: 99999, color: theme.flame, icon: 'flame' as IoniconName, img: require('../assets/arenas/goat.png'), win: '+15', loss: '-35', reward: 1000, desc: 'Efsanelerin zirvesi. Sadece en iyiler ayakta kalır.' },
   { name: 'Dünya Klasmanı', min: 3500, max: 4999, color: theme.purple, icon: 'trophy' as IoniconName, img: require('../assets/arenas/dunya.png'), win: '+18', loss: '-30', reward: 500, desc: 'Dünya sahnesinde mücadele. Her hata çok ağır.' },
-  { name: 'Efsaneler Arası', min: 2000, max: 3499, color: theme.blue, icon: 'ribbon' as IoniconName, img: require('../assets/arenas/efsaneler.png'), win: '+20', loss: '-26', reward: 300, desc: 'Efsaneler burada. Kayıplar acıtıyor.' },
+  { name: 'Efsaneler Arenası', min: 2000, max: 3499, color: theme.blue, icon: 'ribbon' as IoniconName, img: require('../assets/arenas/efsaneler.png'), win: '+20', loss: '-26', reward: 300, desc: 'Efsaneler burada. Kayıplar acıtıyor.' },
   { name: 'Şampiyonlar Ligi', min: 1000, max: 1999, color: theme.primary, icon: 'medal' as IoniconName, img: require('../assets/arenas/sampiyonlar.png'), win: '+22', loss: '-22', reward: 200, desc: 'Avrupa\'nın en prestijli arenası. Dengeli mücadele.' },
   { name: 'Profesyonel Lig', min: 500, max: 999, color: theme.gold, icon: 'shield' as IoniconName, img: require('../assets/arenas/profesyonel.png'), win: '+25', loss: '-18', reward: 150, desc: 'Profesyonel seviye. Artık gerçek bir rakipsin.' },
   { name: 'Amatör Lig', min: 200, max: 499, color: theme.silver, icon: 'shield-half' as IoniconName, img: require('../assets/arenas/amator.png'), win: '+28', loss: '-14', reward: 100, desc: 'İlk adımları attın. Yükselmeye devam!' },
@@ -15001,7 +15353,7 @@ function arenaKeyFromName(name: string): 'mahalle' | 'amator' | 'profesyonel' | 
     case 'Amatör Lig': return 'amator';
     case 'Profesyonel Lig': return 'profesyonel';
     case 'Şampiyonlar Ligi': return 'sampiyonlar';
-    case 'Efsaneler Arası': return 'efsaneler';
+    case 'Efsaneler Arenası': return 'efsaneler';
     case 'Dünya Klasmanı': return 'dunya';
     case 'GOAT': return 'goat';
     default: return null;
@@ -15091,6 +15443,12 @@ const MatchHistoryCard = memo(function MatchHistoryCard({ match: m, myName }: { 
   const tint = m.won ? theme.primary : theme.danger;
   const delta = (m.playerTrophies ?? 0) - (m.opponentTrophies ?? 0); // gösterim amaçlı fark
   const oArena = arenaForTrophies(m.opponentTrophies);
+  // Çöz Kazan (anagram) tur ayrıntısında üst "ipucu" satırı (harf çipi + '+' + logo)
+  // anlamsız — takım/ülke/harf ipucu yok, oyuncu adı harflerden çözülür. Bu modda
+  // YALNIZ bilinen oyuncunun fotoğrafı + adı gösterilir (kullanıcı isteği 2026-09-03).
+  // Kapı MAÇ moduna dayanır: tur bazlı r.mode Çöz Kazan'da 'letter-team' olabiliyor
+  // (harf çipi bu yüzden çıkıyordu); diğer tüm modlar iki satırlı düzeni korur.
+  const isCozKazan = (m.gameMode as GameMode) === 'cozkazan';
 
   const roundChip = (r: MatchHistoryView['rounds'][number], mine: boolean, key: number) => (
     <View
@@ -15101,11 +15459,13 @@ const MatchHistoryCard = memo(function MatchHistoryCard({ match: m, myName }: { 
       }}
     >
       <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-        <MatchHistoryLeadBadge mode={(r.mode as GameMode) ?? (m.gameMode as GameMode) ?? 'team-team'} country={r.country} letter={r.letter} teamA={r.teamA} teamALogo={r.teamALogo} size={18} />
-        <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold' }}>+</Text>
-        <ClubLogo uri={r.teamBLogo} name={r.teamB} size={18} />
-      </View>
+      {isCozKazan ? null : (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+          <MatchHistoryLeadBadge mode={(r.mode as GameMode) ?? (m.gameMode as GameMode) ?? 'team-team'} country={r.country} letter={r.letter} teamA={r.teamA} teamALogo={r.teamALogo} size={18} />
+          <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold' }}>+</Text>
+          <ClubLogo uri={r.teamBLogo} name={r.teamB} size={18} />
+        </View>
+      )}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
         <PlayerPhoto uri={r.playerImageUrl} size={22} />
         <Text style={{ color: mine ? theme.primary : theme.danger, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', flex: 1 }} numberOfLines={1}>{r.player}</Text>
@@ -15550,11 +15910,16 @@ export function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong
         </View>
       ) : null}
 
-      {/* Ringed trophy medallion (image slightly overscanned so its ring meets the circle) */}
+      {/* Ringed trophy medallion (image slightly overscanned so its ring meets the circle).
+          Kayıp PNG'sinin çemberi kanvasta ~8px SOLA kaçık çizilmiş; kazançla aynı -9
+          yatay ofset onu kapta sola dayayıp sağda koyu boşluk bırakıyordu. Kayıpta
+          marginLeft -1 → çember tam ortalanır (piksel ölçümüyle sol/sağ boşluk eşit;
+          kullanıcı isteği 2026-09-03: "kırık kupanın yuvarlağını tam ortala"). Dikey
+          zaten ortalı, marginTop iki asset için de -9 kalır. */}
       <View style={{ width: 132, height: 132, borderRadius: 66, overflow: 'hidden', marginBottom: 14 }}>
         <Image
           source={youWon ? TROPHY_MEDALLION_WIN : TROPHY_MEDALLION_LOSS}
-          style={{ width: 150, height: 150, marginLeft: -9, marginTop: -9 }}
+          style={{ width: 150, height: 150, marginLeft: youWon ? -9 : -1, marginTop: -9 }}
           resizeMode="cover"
         />
       </View>
