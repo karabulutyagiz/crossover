@@ -99,3 +99,10 @@ export const engrave = (size: 'lg' | 'sm' = 'lg') => ({
   textShadowOffset: { width: 0, height: 1 },
   textShadowRadius: size === 'lg' ? 2 : 1,
 });
+
+// ── COF UI Foundation (Aşama 01, 2026-09-02) ─────────────────────────────────
+// Tek semantik kaynak: src/cof/01_COF_UI_TOKENS.json → src/cof/theme.ts adaptörü.
+// Yukarıdaki `theme` (Broadcast Prestige) aşamalı geçiş boyunca AYNEN kalır;
+// yeni/elden geçen yüzeyler `cof`u okur. Kural: yeni ham hex/dp/ms eklenmez —
+// değer JSON'da yoksa önce token eklenir (bkz. docs/ui/01_COF_UI_FOUNDATION_SPEC.md).
+export { cof } from './cof/theme';

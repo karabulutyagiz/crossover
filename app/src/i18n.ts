@@ -869,6 +869,7 @@ const tr = {
   'collection.equip': 'Kuşan',
   'collection.equipped': 'Kuşanıldı',
   'collection.use': 'Kullan',
+  'cof.selected': 'Seçili', // COF yüzeyi seçili durum rozeti (renk + ikon + etiket)
   'collection.remove': 'Kaldır',
   'collection.slotsFull': 'Yuvalar dolu',
   'level.roadTitle': 'Seviye Yolu',
@@ -1815,6 +1816,7 @@ const en: typeof tr = {
   'collection.equip': 'Equip',
   'collection.equipped': 'Equipped',
   'collection.use': 'Use',
+  'cof.selected': 'Selected',
   'collection.remove': 'Remove',
   'collection.slotsFull': 'Slots full',
   'level.roadTitle': 'Level Road',

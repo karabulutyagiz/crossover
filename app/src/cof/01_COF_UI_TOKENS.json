@@ -1,0 +1,367 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "CrossOver Football UI Foundation",
+  "version": "1.0.0",
+  "platform": "React Native",
+  "principles": {
+    "identity": "competitive football knowledge game",
+    "tone": [
+      "premium",
+      "energetic",
+      "tactile",
+      "clear",
+      "friendly-competitive"
+    ],
+    "avoid": [
+      "generic AI-generated texture",
+      "mixed cyber-neon and cartoon button languages",
+      "excessive gloss",
+      "glow on ordinary interface elements",
+      "color-only state communication",
+      "unintentional clipping",
+      "platform-specific visual drift"
+    ]
+  },
+  "color": {
+    "background": {
+      "canvas": "#0E193A",
+      "canvasDeep": "#09122D",
+      "pattern": "#263B70",
+      "patternOpacity": 0.18,
+      "scrim": "rgba(4, 9, 27, 0.72)"
+    },
+    "surface": {
+      "base": "#14234B",
+      "raised": "#1A2D5F",
+      "strong": "#21386F",
+      "sunken": "#0F1D42",
+      "disabled": "#17244A"
+    },
+    "stroke": {
+      "subtle": "rgba(121, 148, 211, 0.22)",
+      "default": "#344C83",
+      "strong": "#08122F",
+      "focus": "#25D596"
+    },
+    "brand": {
+      "primary": "#20C98B",
+      "primaryHighlight": "#49E6AF",
+      "primaryPressed": "#16A874",
+      "primaryShadow": "#0B7652",
+      "primaryTint": "rgba(32, 201, 139, 0.14)"
+    },
+    "reward": {
+      "gold": "#FFD447",
+      "goldHighlight": "#FFF19A",
+      "goldShadow": "#9E6812",
+      "goldTint": "rgba(255, 212, 71, 0.14)"
+    },
+    "premium": {
+      "gem": "#A967F7",
+      "gemHighlight": "#D5A8FF",
+      "gemShadow": "#6335A7",
+      "gemTint": "rgba(169, 103, 247, 0.14)"
+    },
+    "semantic": {
+      "success": "#2BD28F",
+      "warning": "#FFB547",
+      "error": "#FF5D72",
+      "info": "#4FA9FF",
+      "streak": "#FF824D"
+    },
+    "text": {
+      "primary": "#F8FAFF",
+      "secondary": "#AAB7D8",
+      "tertiary": "#7F8DB5",
+      "inverse": "#091630",
+      "disabled": "#64729B",
+      "onPrimary": "#FFFFFF",
+      "onGold": "#18203E"
+    }
+  },
+  "spacing": {
+    "0": 0,
+    "1": 4,
+    "2": 8,
+    "3": 12,
+    "4": 16,
+    "5": 20,
+    "6": 24,
+    "7": 28,
+    "8": 32,
+    "10": 40,
+    "12": 48,
+    "screenHorizontal": 20,
+    "cardGap": 12,
+    "sectionGap": 28,
+    "contentTop": 16,
+    "contentBottomExtra": 24
+  },
+  "radius": {
+    "small": 10,
+    "control": 14,
+    "card": 18,
+    "cardLarge": 22,
+    "pill": 999
+  },
+  "border": {
+    "hairline": 1,
+    "default": 1.5,
+    "selected": 2,
+    "interactiveOuter": 2
+  },
+  "typography": {
+    "fontPolicy": {
+      "displayAlias": "COFDisplay",
+      "uiAlias": "COFUI",
+      "implementation": "Map these aliases to fonts already bundled in the project during step 01. Do not download or silently substitute a new font.",
+      "maxFamilies": 2,
+      "allowedWeights": [500, 600, 700, 800]
+    },
+    "styles": {
+      "hero": {
+        "size": 34,
+        "lineHeight": 38,
+        "weight": 800,
+        "letterSpacing": -0.5
+      },
+      "screenTitle": {
+        "size": 24,
+        "lineHeight": 29,
+        "weight": 800,
+        "letterSpacing": 0.2
+      },
+      "sectionTitle": {
+        "size": 14,
+        "lineHeight": 18,
+        "weight": 800,
+        "letterSpacing": 1.8,
+        "transform": "uppercase"
+      },
+      "cardTitle": {
+        "size": 18,
+        "lineHeight": 22,
+        "weight": 700,
+        "letterSpacing": 0
+      },
+      "button": {
+        "size": 18,
+        "lineHeight": 22,
+        "weight": 800,
+        "letterSpacing": 0.1
+      },
+      "body": {
+        "size": 15,
+        "lineHeight": 21,
+        "weight": 600,
+        "letterSpacing": 0
+      },
+      "caption": {
+        "size": 12,
+        "lineHeight": 16,
+        "weight": 600,
+        "letterSpacing": 0.1
+      },
+      "numberLarge": {
+        "size": 30,
+        "lineHeight": 34,
+        "weight": 800,
+        "letterSpacing": -0.3,
+        "tabularNumbers": true
+      }
+    }
+  },
+  "size": {
+    "minimumTouchTarget": 44,
+    "button": {
+      "primaryHeight": 58,
+      "secondaryHeight": 50,
+      "compactHeight": 42,
+      "horizontalPadding": 20,
+      "iconGap": 8,
+      "extrusion": 5
+    },
+    "card": {
+      "minimumHeight": 88,
+      "contentPadding": 16
+    },
+    "icon": {
+      "small": 16,
+      "medium": 22,
+      "large": 28,
+      "navigation": 26
+    },
+    "rootHeader": {
+      "resourceRowHeight": 48,
+      "titleRowHeight": 56
+    },
+    "bottomNavigation": {
+      "barHeightExcludingSafeArea": 76,
+      "centerControl": 64,
+      "centerRise": 22,
+      "activeRailHeight": 3,
+      "labelSize": 12
+    }
+  },
+  "elevation": {
+    "flat": {
+      "offsetY": 0,
+      "blur": 0,
+      "opacity": 0
+    },
+    "card": {
+      "color": "#03081C",
+      "offsetY": 4,
+      "blur": 10,
+      "opacity": 0.28,
+      "androidElevation": 4
+    },
+    "raised": {
+      "color": "#03081C",
+      "offsetY": 7,
+      "blur": 16,
+      "opacity": 0.34,
+      "androidElevation": 7
+    },
+    "button": {
+      "color": "#06102C",
+      "offsetY": 5,
+      "blur": 0,
+      "opacity": 1,
+      "androidElevation": 5
+    }
+  },
+  "component": {
+    "button": {
+      "variants": ["primary", "secondary", "reward", "ghost", "danger"],
+      "rules": [
+        "Use white text on primary buttons.",
+        "Never mix cyan-magenta extrusion with emerald primary buttons.",
+        "Only interactive controls receive a visible extrusion.",
+        "Do not bake text into button artwork.",
+        "Disabled buttons must remain readable and must not resemble inactive tabs."
+      ]
+    },
+    "card": {
+      "variants": ["base", "interactive", "selected", "reward", "premium", "disabled"],
+      "rules": [
+        "Information cards use subtle borders, not heavy black outlines.",
+        "Selected cards require both color and a check/state icon.",
+        "Glow is reserved for rewards, rarity and short feedback moments."
+      ]
+    },
+    "tabs": {
+      "rules": [
+        "All segmented tabs use the same selected-state construction.",
+        "Unselected is not the same as disabled.",
+        "Animate the selected indicator rather than flashing the whole control."
+      ]
+    },
+    "bottomNavigation": {
+      "rules": [
+        "Only the current destination may use the primary green active state.",
+        "The center Play control becomes neutral when Play is not the current destination.",
+        "Every scroll container must include bar height, safe-area inset and 24 dp extra bottom padding."
+      ]
+    },
+    "horizontalCarousel": {
+      "gap": 12,
+      "nextItemPeekRatio": 0.11,
+      "snap": true,
+      "rules": [
+        "The first item is fully aligned at rest.",
+        "The last item has the same outer padding as the first.",
+        "A partial next item is intentional discovery affordance, never arbitrary clipping."
+      ]
+    }
+  },
+  "motion": {
+    "durationMs": {
+      "instant": 90,
+      "fast": 120,
+      "base": 180,
+      "panel": 240,
+      "reward": 420
+    },
+    "press": {
+      "scale": 0.97,
+      "downDurationMs": 90,
+      "releaseDurationMs": 180,
+      "extrusionCollapse": true
+    },
+    "screenTransition": {
+      "durationMs": 220,
+      "translateDp": 12,
+      "fade": true
+    },
+    "rules": [
+      "Prefer transform and opacity animations.",
+      "Keep ordinary navigation restrained; reserve celebration for rewards and wins.",
+      "Respect reduced-motion settings.",
+      "Sustain 60 FPS on supported devices."
+    ]
+  },
+  "assetContract": {
+    "rasterArt": {
+      "format": "PNG",
+      "colorSpace": "sRGB",
+      "background": "transparent",
+      "masterSize": "1024x1024 unless the asset specification says otherwise",
+      "exportScales": ["1x", "2x", "3x"],
+      "rules": [
+        "Keep all collectible icons inside an 84% safe area.",
+        "Use one top-left key light and one soft lower-right rim light.",
+        "Do not include text, price, count or state inside art assets.",
+        "Do not add generic particles outside the safe area."
+      ]
+    },
+    "interfaceIcons": {
+      "preferredFormat": "SVG through the project's existing SVG pipeline",
+      "fallbackFormat": "transparent PNG at 1x, 2x and 3x",
+      "rules": [
+        "Use one optical stroke weight.",
+        "Use rounded joins and consistent optical bounds.",
+        "Do not mix emoji, photo assets and UI glyphs."
+      ]
+    },
+    "resizableControls": {
+      "format": "code-native component",
+      "rules": [
+        "Buttons, tabs, cards, badges and input fields must not be fixed-size PNG screenshots.",
+        "Use responsive layers and tokens so Turkish labels and all supported phones fit."
+      ]
+    }
+  },
+  "accessibility": {
+    "minimumBodyContrast": 4.5,
+    "minimumLargeTextContrast": 3,
+    "neverColorOnly": true,
+    "minimumTouchTarget": 44,
+    "rules": [
+      "Provide icon or label reinforcement for selected, success, error and locked states.",
+      "Critical actions and prices must never truncate.",
+      "Support screen-reader labels for icon-only controls."
+    ]
+  },
+  "localization": {
+    "locale": "tr-TR",
+    "numberExample": "135.480",
+    "dateExample": "3 Eyl 2026",
+    "rules": [
+      "Use Turkish labels consistently; do not mix English item categories into Turkish UI.",
+      "Format numbers and dates through locale-aware helpers.",
+      "Do not encode visible strings inside image assets."
+    ]
+  },
+  "responsiveQA": {
+    "requiredViewportWidthsDp": [360, 375, 390, 393, 412, 430],
+    "requiredChecks": [
+      "No clipped primary text",
+      "No content permanently hidden beneath fixed navigation",
+      "No first carousel card clipped at rest",
+      "Identical semantic colors and asset files on iOS and Android",
+      "Safe-area correctness on notched and non-notched devices",
+      "Touch targets remain at least 44 dp"
+    ]
+  }
+}
