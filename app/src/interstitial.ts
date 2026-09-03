@@ -278,7 +278,9 @@ export function maybeShowInterstitial(hasSocialPack: boolean, onClosed?: () => v
   // 2) EKRANDA PENCERE VARSA REKLAM YOK (asıl donma sebebi — oyuncu raporu
   //    2026-09-03). Sayaçlara DOKUNULMAZ: çağıran 700 ms'de bir tekrar dener,
   //    pencere kapanır kapanmaz reklam çıkar.
-  if (!tryHoldModalSlotForNativeAd()) { lastReason = 'pencere-acik'; return false; }
+  // Bekçiye ölçüt ver: OPENED geldi ve CLOSED gelmediyse reklam HÂLÂ ekranda —
+  // slot bırakılırsa bekleyen pencere reklamın üstüne sunulur (donma geri gelir).
+  if (!tryHoldModalSlotForNativeAd(() => openedAt > 0 && closedAt < openedAt)) { lastReason = 'pencere-acik'; return false; }
   preloaded = null;
   sinceAd = 0;
   void persist();

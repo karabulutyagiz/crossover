@@ -170,6 +170,7 @@ import {
   type EngagementRuntimeState,
 } from './src/engagement';
 import { requestNativeReview } from './src/ReviewService';
+import { isModalSlotFree } from './src/modalTraffic';
 import { resolveMatchBackground } from './src/cosmetics';
 import type { PlayerFeedbackCategory } from './src/feedbackSubmit';
 
@@ -1263,6 +1264,11 @@ function AppRoot() {
         }
         return;
       }
+      // FAZ KAPISI (2026-09-03): bu döngü 20 sn boyunca yaşıyor ve tik başında
+      // fazı sormuyordu — oyuncu bu arada eşleşmeye/maça girdiyse reklam maçın
+      // üstüne açılabiliyordu. Modülün kendi sözleşmesi zaten "rövanşa/yeni maça
+      // girerken asla" diyor. Ana ekranda değilsek bu tur pas geçilir.
+      if (phaseRef.current !== 'home') return;
       if (modalBlockedRef.current) return;          // pencere kapanınca tekrar denenir
       if (Date.now() - modalClearedAtRef.current < 500) return; // native kapanış bitsin
       const guncelProfil = adProfileRef.current;
@@ -1934,8 +1940,16 @@ function AppRoot() {
       // sonra YENİDEN denenir (engagement.ts ratingCooldownMs + ratingMaxAsks).
       // Yeniden çağırmak zararsızdır: Apple değerse gösterir, değmezse hiçbir
       // şey olmaz — oyuncu rahatsız edilmez.
-      track('rating_request_attempted', { source: next.source, appSessionId });
-      requestNativeReview().catch(() => {});
+      // NATIVE YÜZEY ÇAKIŞMASI (2026-09-03): SKStoreReviewController da sunulmuş
+      // bir yüzeydir; ekranda reklam ya da pencere varken istemek aynı UIKit
+      // sunum kilidini doğurur. Slot doluysa bu tur atlanır — istem zaten
+      // birkaç gün sonra yeniden denenir (engagement.ts ratingCooldownMs).
+      if (isModalSlotFree()) {
+        track('rating_request_attempted', { source: next.source, appSessionId });
+        requestNativeReview().catch(() => {});
+      } else {
+        track('rating_request_skipped', { source: next.source, reason: 'native_surface_busy', appSessionId });
+      }
       updateEngagement((s2) => closeEngagement(s2, next, false));
       setActiveEngagement(null);
     }

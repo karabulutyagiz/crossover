@@ -67,6 +67,7 @@ export function acquireModalSlot(animatedDismiss = true): () => void {
 // Reklam artık slotu TUTAR; kapanana kadar sıradaki pencere sunulmaz.
 let adRelease: (() => void) | null = null;
 let adWatchdog: ReturnType<typeof setTimeout> | null = null;
+let adStillOpen: (() => boolean) | null = null;
 const AD_SLOT_WATCHDOG_MS = 180_000;
 
 /**
@@ -92,25 +93,40 @@ export function isModalSlotFree(): boolean {
  * varken AdMob tam ekran reklamı aynı view controller'dan sunuluyor, iOS sunum
  * zinciri kilitleniyor ve reklamın kapatma düğmesi dokunuş almıyordu.
  */
-export function tryHoldModalSlotForNativeAd(): boolean {
-  if (adRelease) return true;         // reklam zaten tutuyor
+export function tryHoldModalSlotForNativeAd(isStillOpen?: () => boolean): boolean {
+  // Reklam ZATEN tutuyorsa ikinci reklam sunulmaz: reklam da sunulmuş bir
+  // yüzeydir ve üst üste binerse birincinin CLOSED'ı ikincinin slotunu bırakır.
+  if (adRelease) return false;
   if (!isModalSlotFree()) return false;
-  holdModalSlotForNativeAd();
+  holdModalSlotForNativeAd(isStillOpen);
   return true;
 }
 
-export function holdModalSlotForNativeAd(): void {
+export function holdModalSlotForNativeAd(isStillOpen?: () => boolean): void {
   if (adRelease) return;              // zaten tutuluyor (çift show koruması)
   adRelease = acquireModalSlot(true);
-  // BEKÇİ: CLOSED hiç gelmezse (SDK hatası, uygulama arka plana atılıp
-  // öldürülürse) slot sonsuza dek tutulur ve TÜM pencereler ölür — donmayı
-  // düzeltirken daha kötüsünü yaratmamak için üst sınır şart.
+  adStillOpen = isStillOpen ?? null;
+  armAdWatchdog();
+}
+
+// BEKÇİ: CLOSED hiç gelmezse (SDK hatası, uygulama arka plana atılıp
+// öldürülürse) slot sonsuza dek tutulur ve TÜM pencereler ölür — donmayı
+// düzeltirken daha kötüsünü yaratmamak için üst sınır şart. AMA reklam HÂLÂ
+// ekrandaysa slotu bırakmak, bekleyen pencereyi reklamın üstüne sunar; yani
+// düzelttiğimiz donmayı geri getirir. Bu yüzden bekçi, çağıranın "hâlâ açık"
+// yanıtı olduğu sürece kendini yeniler.
+function armAdWatchdog(): void {
   if (adWatchdog) clearTimeout(adWatchdog);
-  adWatchdog = setTimeout(() => releaseModalSlotForNativeAd(), AD_SLOT_WATCHDOG_MS);
+  adWatchdog = setTimeout(() => {
+    adWatchdog = null;
+    if (adRelease && adStillOpen?.()) { armAdWatchdog(); return; }
+    releaseModalSlotForNativeAd();
+  }, AD_SLOT_WATCHDOG_MS);
 }
 
 export function releaseModalSlotForNativeAd(): void {
   if (adWatchdog) { clearTimeout(adWatchdog); adWatchdog = null; }
+  adStillOpen = null;
   const r = adRelease;
   adRelease = null;
   if (r) { try { r(); } catch { /* slot zaten serbest */ } }
