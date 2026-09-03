@@ -171,6 +171,12 @@ import {
 } from './src/engagement';
 import { requestNativeReview } from './src/ReviewService';
 import { isModalSlotFree } from './src/modalTraffic';
+// GERİ BUTONLU DETAY SAYFALARI: hepsinin kendi ScreenHeader'ı ve geri düğmesi
+// var → alt navigasyon gizlenir ("aynı anda hem geri butonu hem ana alt
+// navigasyon gösterilmez"). Route adları ve geri davranışı DEĞİŞMEDİ.
+import { CofBottomNav, DetailScreenShell, RootScreenShell, type CofNavItem } from './src/cof/shell';
+import { isCofDetailPhase } from './src/cof/navPolicy';
+import { formatNumber } from './src/cof/format';
 import { resolveMatchBackground } from './src/cosmetics';
 import type { PlayerFeedbackCategory } from './src/feedbackSubmit';
 
@@ -298,6 +304,7 @@ function CosmeticMatchBackground({ id }: { id: string }) {
 // gösterilmez — oyuncunun maçı bakım yüzünden bölünmez.
 const MAINTENANCE_MENU_PHASES = new Set(['home', 'arenas', 'leaderboard', 'matchHistory', 'profile', 'tournaments']);
 
+
 const MATCH_BG_PHASES = new Set(['lobby', 'matchup', 'countdown', 'pick', 'reveal', 'guess', 'result', 'xox']);
 
 // Phases that show the main tab bar (non-game screens)
@@ -336,7 +343,7 @@ const DiamondPill = memo(function DiamondPill({ countAnim, fillAnim, pulseAnim, 
             <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 999, backgroundColor: theme.gem, opacity: pulseGlow }]} />
             <Animated.View pointerEvents="none" style={[s.diamondFill, { transform: [{ scaleX: fillAnim }] }]} />
             <GemIcon size={20} />
-            <Text style={s.diamondText}>{count}</Text>
+            <Text style={s.diamondText}>{formatNumber(count)}</Text>
             <View style={s.diamondPlus}>
               <Ionicons name="add" size={12} color={theme.ink} />
             </View>
@@ -2911,7 +2918,7 @@ function AppRoot() {
           <View style={s.hudPillShadow}>
             <View style={[s.hudPill, { paddingHorizontal: 24, paddingVertical: 8 }, pressed && s.hudPillPressed]}>
               <Ionicons name="trophy" size={18} color={theme.accent} />
-              <Text style={s.trophyText}>{state.profile?.trophies ?? 0}</Text>
+              <Text style={s.trophyText}>{formatNumber(state.profile?.trophies ?? 0)}</Text>
             </View>
           </View>
         )}
@@ -2934,6 +2941,44 @@ function AppRoot() {
   // gizlenir (yukarıdaki süpürme efekti state'i de temizler).
   const serverProfile = state.viewProfile && state.viewProfile.userId === requestedProfileRef.current ? state.viewProfile : null;
   const shownProfile = serverProfile ?? entryProfile;
+
+  // Sekme basma mantığı ESKİ bar'dan aynen taşındı (davranış değişmedi):
+  // Turnuvalar'da taze liste, aktif Oyun'a tekrar dokunma → Arenalar / ana ekran,
+  // aktif Mağaza'ya tekrar dokunma → elmas paketlerine/başa kaydır.
+  const handleTabPress = useCallback((idx: number) => {
+    dismissActiveInput();
+    if (idx === 4) actions.listTournaments();
+    if (idx === 2 && activeTab === 2) {
+      if (state.phase === 'home') { actions.openArenas(); return; }
+      resetHomePhase(); return;
+    }
+    if (idx === 0 && activeTab === 0) {
+      const target = storeAtDiamondsRef.current ? 'top' : 'diamonds';
+      storeAtDiamondsRef.current = !storeAtDiamondsRef.current;
+      setStoreSection(null);
+      setTimeout(() => setStoreSection(target), 30);
+      setTimeout(() => setStoreSection(null), 900);
+      return;
+    }
+    goToTab(idx);
+  }, [actions, activeTab, state.phase, resetHomePhase, goToTab]);
+
+  // OYUN yuvası kabuğu: geri butonlu alt sayfalarda (Profil, Arenalar, Liderlik,
+  // Maç Geçmişi) DetailScreenShell — alt navigasyon gizlenir ve alt içerik boşluğu
+  // navigasyon payını içermez; ana ekranda RootScreenShell.
+  const HomeSlotShell = isCofDetailPhase(state.phase) ? DetailScreenShell : RootScreenShell;
+
+  // Rozet kaynakları ESKİ bar ile birebir: Arkadaşlar = okunmamış + bekleyen
+  // istek; Koleksiyon = görülmemiş eşya sayısı. Sıra, ikonlar ve etiketler AYNI.
+  const collectionUnseen = state.unseenCollection.emotes.length + state.unseenCollection.cosmetics.length + state.unseenCollection.powers.length + state.unseenCollection.frames.length;
+  const COF_NAV_ITEMS: CofNavItem[] = TAB_DEFS.map((tab) => ({
+    key: tab.key,
+    label: t(tab.labelKey),
+    icon: tab.icon,
+    activeIcon: tab.activeIcon,
+    center: tab.key === 'home',
+    badge: tab.key === 'friends' ? (badgeTotal || null) : tab.key === 'collection' ? (collectionUnseen || null) : null,
+  }));
 
   return (
     <View key={`app-${langKey}`} style={[s.root, { paddingTop: insets.top }]}>
@@ -2979,89 +3024,60 @@ function AppRoot() {
             slides with it. Home shows its own bar (phase 'home'); on Arenas/Profile
             the shared bar is shown here instead. */}
         <View style={{ width: SCREEN_W, flex: 1 }}>
-          {state.profile ? renderResourceBar(activeTab === 0) : null}
+          <RootScreenShell header={state.profile ? renderResourceBar(activeTab === 0) : null}>
           <TabFreeze active={activeTab === 0} warmDelay={400}>
             <StoreScreen {...props} storeActive={activeTab === 0} scrollToSection={storeSection} onDiamondCelebration={(c) => setGemCelebration({ kind: 'purchase', amount: c.amount, img: c.img })} />
           </TabFreeze>
+          </RootScreenShell>
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
-          {state.profile ? renderResourceBar(activeTab === 1) : null}
+          <RootScreenShell header={state.profile ? renderResourceBar(activeTab === 1) : null}>
           <TabFreeze active={activeTab === 1} warmDelay={700}>
             <CollectionScreen {...props} isActive={activeTab === 1} />
           </TabFreeze>
+          </RootScreenShell>
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
-          {state.phase !== 'home' && state.profile ? renderResourceBar(activeTab === 2) : null}
+          {/* OYUN yuvası: ana ekran kök kabuğu, geri butonlu alt sayfalar (Profil,
+              Arenalar, Liderlik, Maç Geçmişi) detay kabuğu kullanır — detayda alt
+              navigasyon GİZLENİR (CofBottomNav hidden). Bu ekranlar kendi
+              ScreenHeader'larını çizdiği için kabuk ikinci bir başlık koymaz. */}
+          <HomeSlotShell header={state.phase !== 'home' && state.profile ? renderResourceBar(activeTab === 2) : null}>
           {/* Ana yuva da donar — önceden 4 sayfadan tek çıplak olan buydu ve HER ws
               dispatch'i (mesaj, typing, satın alma onayı, liderlik cevabı) en ağır
               ekranı (HomeScreen) perde arkasında boşa yeniden çizdiriyordu. */}
           <TabFreeze active={activeTab === 2} freshOnDeactivate freezeKey={state.phase} warmDelay={550}>
             {homeContent}
           </TabFreeze>
+          </HomeSlotShell>
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
-          {state.profile ? renderResourceBar(activeTab === 3) : null}
+          <RootScreenShell header={state.profile ? renderResourceBar(activeTab === 3) : null}>
           <TabFreeze active={activeTab === 3} warmDelay={1000}>
             <FriendsScreen {...props} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} onLockedSocialMode={enqueueLockedSocialMode} focusAddFriendSeq={friendsAddSeq} />
           </TabFreeze>
+          </RootScreenShell>
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
-          {state.profile ? renderResourceBar(activeTab === 4) : null}
+          {/* Turnuvalar diğer kök ekranlarla AYNI üst kaynak alanını ve aynı
+              safe-area başlangıcını kullanır (spec: üst alan hizalaması). */}
+          <RootScreenShell header={state.profile ? renderResourceBar(activeTab === 4) : null}>
           <TabFreeze active={activeTab === 4} warmDelay={1200}>
             <TournamentsScreen {...props} />
           </TabFreeze>
+          </RootScreenShell>
         </View>
       </Animated.ScrollView>
 
-      {/* Bottom Tab Bar */}
-      <View style={[s.tabBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        {TABS.map((tab, idx) => {
-          const onPress = () => {
-            dismissActiveInput();
-            if (idx === 4) actions.listTournaments(); // sekmeye her girişte taze liste
-            if (idx === 2 && activeTab === 2) {
-              // Re-tapping the active Oyna tab opens Arenas (Clash Royale style);
-              // from any other home-slot sub-screen (Profile, Arenas) it returns
-              // to the main home screen instead of staying put.
-              if (state.phase === 'home') { actions.openArenas(); return; }
-              resetHomePhase(); return;
-            }
-            if (idx === 0 && activeTab === 0) {
-              // Re-tapping the active Store tab TOGGLES (Clash Royale style):
-              // first re-tap scrolls to the diamond packs, the next one back to
-              // the top. null→value retriggers the scroll effect even for repeat
-              // targets; the trailing reset un-parks it for later gem-pill jumps.
-              const target = storeAtDiamondsRef.current ? 'top' : 'diamonds';
-              storeAtDiamondsRef.current = !storeAtDiamondsRef.current;
-              setStoreSection(null);
-              setTimeout(() => setStoreSection(target), 30);
-              setTimeout(() => setStoreSection(null), 900);
-              return;
-            }
-            goToTab(idx);
-          };
-          // The mockup's centre tab is a raised ball, not a flat icon.
-          if (idx === 2) return <PlayTab key={tab.key} active={activeTab === 2} label={t(tab.labelKey)} onPress={onPress} />;
-          return (
-            <TabButton
-              key={tab.key}
-              active={idx === activeTab}
-              icon={tab.icon}
-              activeIcon={tab.activeIcon}
-              label={t(tab.labelKey)}
-              // Friends is the only tab with an honest badge source: unread messages +
-              // pending requests, and it clears itself. (The mockup also badges
-              // Collection, but every un-owned emote there is grant-only — that badge
-              // could never be cleared, so it is deliberately not rendered.)
-              badge={tab.key === 'friends' ? (badgeTotal || null) : tab.key === 'collection' ? ((state.unseenCollection.emotes.length + state.unseenCollection.cosmetics.length + state.unseenCollection.powers.length + state.unseenCollection.frames.length) || null) : null}
-              onPress={onPress}
-            />
-          );
-        })}
-        {/* Eski kilitli 'Turnuvalar (yakında)' placeholder'ı KALDIRILDI (2026-08-28):
-            gerçek Turnuvalar sekmesi artık TAB_DEFS'te — ikisi birden 6 buton
-            yapıyordu. ComingSoonBadge de onunla gitti. */}
-      </View>
+      {/* Alt navigasyon — TEK örnek, overlay (Aşama 02 kabuğu).
+          İçerik onun altında kalmaz: her kaydırıcı 76 + safeArea + 24 dp alt
+          boşluğu ortak yardımcıdan alır (src/cof/shell.tsx). */}
+      <CofBottomNav
+        items={COF_NAV_ITEMS}
+        activeKey={TAB_DEFS[activeTab]?.key ?? 'home'}
+        onSelect={(_key, idx) => handleTabPress(idx)}
+        hidden={isCofDetailPhase(state.phase)}
+      />
 
       {__DEV__ && state.phase === 'home' ? (
         <View style={{ position: 'absolute', left: 12, right: 12, bottom: Math.max(insets.bottom, 12) + 78, gap: 6, alignItems: 'center', zIndex: 30 }} pointerEvents="box-none">

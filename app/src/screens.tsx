@@ -36,6 +36,8 @@ import { isInterstitialDue, testInterstitialNow } from './interstitial';
 import { GemIcon, GEM_COLOR } from './GemIcon';
 import { releaseModalSlotForNativeAd, tryHoldModalSlotForNativeAd, whenModalSlotFree } from './modalTraffic';
 import { dismissActiveInput } from './keyboardLifecycle';
+import { useCofContentInset } from './cof/shell';
+import { cofNavTotalHeight } from './cof/navPolicy';
 import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget, trophyTarget, setTrophyTarget, setTrophyRemeasure, remeasureTrophyTarget } from './gemTarget';
 import { Avatar } from './Avatar';
 import { useIsTablet, useWindow, useContentMaxWidth, canvasSizeFor } from './layout';
@@ -1359,6 +1361,11 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
   // content genuinely fits the viewport, so small phones keep scrolling.
   const [vpH, setVpH] = useState(0);
   const [contentH, setContentH] = useState(0);
+  // ALT İÇERİK BOŞLUĞU — TEK KAYNAK (Aşama 02): RootScreenShell 76 + safeArea
+  // + 24 verir, DetailScreenShell safeArea + 24; kabuk dışındaki ekranlar 0
+  // alır (maç ekranlarının davranışı değişmez). Ekranlar kendi tab-bar
+  // boşluklarını EKLEMEZ — çift boşluk yasak.
+  const cofInset = useCofContentInset();
   useEffect(() => () => dismissActiveInput(), []);
   // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
   return (
@@ -1411,7 +1418,8 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
           // ancak directionalLockEnabled engeller — parmak hafif yana kaysa bile
           // hareket TEK eksende kilitlenir ve sekme değişmez.
           directionalLockEnabled
-          contentContainerStyle={{ flexGrow: 1, justifyContent: contentCenter ? 'center' : 'flex-start' }}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: contentCenter ? 'center' : 'flex-start', paddingBottom: cofInset.paddingBottom }}
+          scrollIndicatorInsets={cofInset.scrollIndicatorInsets}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps={keyboardShouldPersistTaps}
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
@@ -1420,7 +1428,13 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
           {maxW ? <View style={{ width: '100%', maxWidth: maxW, alignSelf: 'center' }}>{children}</View> : children}
         </ScrollView>
       ) : (
-        maxW ? <View style={{ flex: 1, width: '100%', maxWidth: maxW, alignSelf: 'center' }}>{children}</View> : children
+        // Kaydırılmayan ekran: içerik header ile navigasyon arasındaki alanı
+        // flex ile alır; cihaz yüksekliği varsayılmaz, alt boşluk kabuktan gelir.
+        // Kaydırılmayan yol: alt boşluk EKLENMEZ. Bu daldaki kök ekranların
+        // (Mağaza/Koleksiyon/Arkadaşlar) İÇ kaydırıcıları payı kendileri alır;
+        // Ana ekran ise sabit düzeni için kendi navigasyon rezervini hesaplar.
+        // İkisini birden uygulamak çift boşluk olurdu.
+        <View style={{ flex: 1, width: '100%', maxWidth: maxW, alignSelf: 'center' }}>{children}</View>
       )}
     </KeyboardAvoidingView>
   );
@@ -4669,7 +4683,10 @@ const CAROUSEL_GAP = 8;
 // starving the profile pill, so the pack shortcut (duplicated in the Store tab) steps out.
 const TOPBAR_ROOMY_W = 360;
 const HOME_SCREEN_PAD = 16;
-const HOME_TAB_BAR_BASE_H = 66;
+// ESKİ: elle ölçülmüş 66 dp. Aşama 02'de tek kaynağa bağlandı — gerçek bar
+// gövdesi token'da 76 dp (size.bottomNavigation.barHeightExcludingSafeArea) ve
+// alt navigasyon artık overlay olduğu için rezerv TAM bar yüksekliğidir.
+// Bir daha "yeniden ölçüp" 66'ya döndürme: değer token dosyasından gelir.
 const HOME_HEADER_ROW_H = 46;
 const HOME_DESIGN_BODY_MIN_H = 407;
 const HOME_DESIGN_BODY_RANGE_H = 204;
@@ -5115,7 +5132,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
     : 0;
   const claimTopPad = unclaimedLevelCount(profile) > 0 ? 18 : 0;
   const homeTopPad = Math.max(8, frameTopPad, claimTopPad);
-  const tabReserveH = HOME_TAB_BAR_BASE_H + Math.max(insets.bottom, 12);
+  const tabReserveH = cofNavTotalHeight(insets.bottom);
   const homeViewportH = Math.max(0, win.height - insets.top - tabReserveH);
   const bodyBudgetH = Math.max(0, homeViewportH - HOME_SCREEN_PAD * 2 - homeTopPad - HOME_HEADER_ROW_H);
   const homeScale = Math.max(0.18, Math.min(1, (bodyBudgetH - HOME_DESIGN_BODY_MIN_H) / HOME_DESIGN_BODY_RANGE_H));
@@ -5555,7 +5572,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       {/* ── 5. CAROUSEL ── */}
       {/* marginBottom clears the tab bar's raised centre ball, which breaks ~18pt above
           the bar and would otherwise sit on this strip's captions. */}
-      <View onLayout={(e) => setRailW(e.nativeEvent.layout.width)} style={{ marginTop: gapSm, marginBottom: Math.max(3, Math.round(8 * homeScale)) }}>
+      <View onLayout={(e) => setRailW(e.nativeEvent.layout.width)} style={{ marginTop: gapSm }}>
         {cardW > 0 ? (
           <View style={{ flexDirection: 'row', gap: CAROUSEL_GAP }}>
             <View style={{ width: cardW }}>
@@ -7211,7 +7228,8 @@ export function TournamentsScreen({ state, actions }: Props) {
           <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginTop: 8 }}>{t('tour.prize', { p1: String(tour.prizeFirst), p2: String(tour.prizeSecond) })}</Text>
         </View>
       ) : null}
-      <View style={{ height: 24 }} />
+      {/* Eski 24 dp tab-bar dolgusu KALDIRILDI (Aşama 02): alt boşluk artık
+          Screen sarmalayıcısının paylaşılan kabuk insetinden gelir. */}
     </Screen>
   );
 }
@@ -9592,6 +9610,8 @@ function recordShortfall(missing: number): void {
 // `actions` kimliğinin sabit olması useCrossover'daki actions-useMemo'suna
 // dayanır (sabit değilse memo zararsız bir no-op'a düşer — eski davranış).
 export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToSection, onDiamondCelebration, storeActive = true }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | 'top' | 'powers' | null; storeActive?: boolean }) {
+  // Alt navigasyon payı TEK kaynaktan (Aşama 02 kabuğu): 76 + safeArea + 24.
+  const cofInset = useCofContentInset();
   const [storeAvatarId, setStoreAvatarId] = useState<string | null>(null); // mağazadan alınacak profil fotoğrafı
   const profile = state.profile;
   const catalog = state.storeCatalog;
@@ -9959,7 +9979,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
           pager'ın eksen kilidi yalnız iOS'ta çalışıyor — bu olmadan dikey
           sürükleme pager'a kaçıyor, mağaza kaymak yerine Koleksiyon'a atıyordu
           (oyuncu raporu 2026-08-29). */}
-      <ScrollView ref={storeScrollRef} style={{ flex: 1 }} nestedScrollEnabled directionalLockEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={storeScrollRef} style={{ flex: 1 }} nestedScrollEnabled directionalLockEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: cofInset.paddingBottom }} scrollIndicatorInsets={cofInset.scrollIndicatorInsets} keyboardShouldPersistTaps="handled">
         <ScreenHeader title={t('store.title')} icon="storefront" />
 
         {/* Sosyal Paket — hero panel (gold frame + gloss), corner ribbon status */}
@@ -11367,6 +11387,8 @@ function CosmeticsLoadoutPanel({ state, actions }: Props) {
 // eklersen aşağıdaki karşılaştırıcıya da eklemek ZORUNDASIN. `actions` sabitliği
 // useCrossover'daki actions-useMemo'suna dayanır (değilse memo no-op'a düşer).
 export const CollectionScreen = memo(function CollectionScreen({ state, actions, isActive = true }: Props & { isActive?: boolean }) {
+  // Alt navigasyon payı TEK kaynaktan (Aşama 02 kabuğu): 76 + safeArea + 24.
+  const cofInset = useCofContentInset();
   const { width: winW } = useWindow();
   const profile = state.profile;
   const equipped = profile?.equippedEmotes ?? [];
@@ -11524,7 +11546,7 @@ export const CollectionScreen = memo(function CollectionScreen({ state, actions,
   return (
     <Screen>
       <View ref={rootRef} collapsable={false} style={{ flex: 1 }}>
-      <ScrollView style={{ flex: 1 }} scrollEnabled={flights.length === 0} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+      <ScrollView style={{ flex: 1 }} scrollEnabled={flights.length === 0} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: cofInset.paddingBottom }} scrollIndicatorInsets={cofInset.scrollIndicatorInsets}>
         <ScreenHeader
           title={t('tab.collection')}
           icon="albums"
@@ -12172,6 +12194,8 @@ const ConversationRow = memo(function ConversationRow({ userId, displayName, onl
 });
 
 export function FriendsScreen({ state, actions, onGoToStore, onLockedSocialMode, focusAddFriendSeq }: Props) {
+  // Alt navigasyon payı TEK kaynaktan (Aşama 02 kabuğu): 76 + safeArea + 24.
+  const cofInset = useCofContentInset();
   const [addInput, setAddInput] = useState('');
   const [searchMode, setSearchMode] = useState<'code' | 'username'>('code');
   const [friendTab, setFriendTab] = useState<'friends' | 'requests' | 'messages'>('friends');
@@ -12289,7 +12313,7 @@ export function FriendsScreen({ state, actions, onGoToStore, onLockedSocialMode,
 
   return (
     <Screen>
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} automaticallyAdjustKeyboardInsets>
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: cofInset.paddingBottom }} scrollIndicatorInsets={cofInset.scrollIndicatorInsets} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} automaticallyAdjustKeyboardInsets>
         <ScreenHeader title={t('friends.title')} icon="people" />
 
         {/* Your code — recessed trough (engraved code) + mini beveled copy button + copied pill */}

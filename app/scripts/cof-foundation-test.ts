@@ -27,7 +27,7 @@ const atLeast = (name: string, got: number, min: number) => {
 };
 
 console.log('--- kanonik dosya ---');
-eq('token sürümü', tokens.version, '1.0.1');
+eq('token sürümü', tokens.version, '1.0.2');
 eq('numberLarge.tabularNumbers', tokens.typography.styles.numberLarge.tabularNumbers, false);
 eq('numberBehavior.currentFontSupport', tokens.typography.numberBehavior.currentFontSupport, false);
 eq('stroke.control tanımlı', tokens.color.stroke.control, '#7089C5');
@@ -50,11 +50,16 @@ const BTN_EXPECT: Record<CofButtonVariant, string> = {
   eq(`buton ${v} ön plan`, buttonForeground(v), BTN_EXPECT[v]);
   atLeast(`buton ${v} kontrast`, contrastRatio(buttonForeground(v), BUTTON_SURFACE[v]), tokens.accessibility.minimumBodyContrast);
 });
+// v1.0.2: kanonik harita DÜZELTİLDİ — danger doğrudan text.onError.
 const d = buttonForegroundDetail('danger');
-eq('danger token haritası (beyan)', d.declared, 'text.onSecondary');
-eq('danger beyan REDDEDİLDİ (4.5:1 tutmadı)', d.usedFallback, true);
-atLeast('danger beyan edilen açık metin ÖLÇÜMÜ', contrastRatio(resolveColorToken('text.onSecondary')!, BUTTON_SURFACE.danger), 0);
-console.log(`     not: text.onSecondary/#FF5D72 = ${contrastRatio(resolveColorToken('text.onSecondary')!, BUTTON_SURFACE.danger).toFixed(2)}:1 (4.5 altı → text.onError'a düşüldü)`);
+eq('danger token haritası (beyan) v1.0.2', d.declared, 'text.onError');
+eq('danger beyan KABUL EDİLDİ (yedeğe düşmedi)', d.usedFallback, false);
+atLeast('danger beyan edilen renk kontrastı', d.ratio, tokens.accessibility.minimumBodyContrast);
+// EMNİYET AĞI HÂLÂ DURUYOR: 4.5:1 tutmayan bir eşleşme beyan edilse reddedilirdi.
+// v1.0.1'in hatalı eşleşmesi (açık metin / hata yüzeyi) ölçülerek gösterilir.
+const lightOnError = contrastRatio(resolveColorToken('text.onSecondary')!, BUTTON_SURFACE.danger);
+eq('emniyet ağı: açık metin/hata yüzeyi 4.5 ALTINDA', lightOnError < tokens.accessibility.minimumBodyContrast, true);
+console.log(`     not: text.onSecondary/#FF5D72 = ${lightOnError.toFixed(2)}:1 — beyan edilseydi doğrulama reddederdi`);
 
 console.log('\n--- rozet ön planı (otomatik beyaz YOK) ---');
 const BADGE_EXPECT: Record<CofBadgeVariant, string> = {
