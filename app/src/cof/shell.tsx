@@ -42,15 +42,19 @@ const NAV_RAIL_W = '46%';                      // aktif çizgi genişliği
 // TEK kaynak: RootScreenShell 76 + safeArea.bottom + 24 verir, DetailScreenShell
 // alt navigasyon çizmediği için safeArea.bottom + 24 verir. Kabuğun dışındaki
 // ekranlar (maç ekranları) 0 alır ve davranışları değişmez.
-const CofContentInsetContext = createContext(0);
+const CofContentInsetContext = createContext<{ bottom: number; inShell: boolean }>({ bottom: 0, inShell: false });
 
 /** Kaydırma kapları için hazır değerler. Ekran kendi alt boşluğunu EKLEMEZ. */
 export function useCofContentInset(): { paddingBottom: number; scrollIndicatorInsets: { bottom: number } } {
-  const bottom = useContext(CofContentInsetContext);
+  const { bottom } = useContext(CofContentInsetContext);
   return useMemo(() => ({ paddingBottom: bottom, scrollIndicatorInsets: { bottom } }), [bottom]);
 }
 export function useCofContentInsetValue(): number {
-  return useContext(CofContentInsetContext);
+  return useContext(CofContentInsetContext).bottom;
+}
+/** Bu ağaç bir COF kabuğunun içinde mi? Screen eski 22 dp'yi buna göre sıfırlar. */
+export function useCofInShell(): boolean {
+  return useContext(CofContentInsetContext).inShell;
 }
 
 /** Spec formülleri saf politika modülünde (test edilebilir) — burada yeniden dışa aktarılır. */
@@ -239,7 +243,7 @@ export function RootScreenShell({ header, children, style }: {
   const insets = useSafeAreaInsets();
   const inset = rootInset(insets.bottom);
   return (
-    <CofContentInsetContext.Provider value={inset}>
+    <CofContentInsetContext.Provider value={{ bottom: inset, inShell: true }}>
       <View style={[{ flex: 1 }, style]}>
         {header}
         <View style={{ flex: 1 }}>{children}</View>
@@ -265,7 +269,7 @@ export function DetailScreenShell({ title, onBack, header, children, style }: {
   const insets = useSafeAreaInsets();
   const inset = detailInset(insets.bottom);
   return (
-    <CofContentInsetContext.Provider value={inset}>
+    <CofContentInsetContext.Provider value={{ bottom: inset, inShell: true }}>
       <View style={[{ flex: 1 }, style]}>
         {onBack ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: S[2], paddingHorizontal: S.screenHorizontal, minHeight: Z.rootHeader.titleRowHeight }}>

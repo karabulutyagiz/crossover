@@ -13,7 +13,13 @@ const C = tokens.color;
 const MIN_BODY = tokens.accessibility.minimumBodyContrast;
 
 export type CofButtonVariant = 'primary' | 'secondary' | 'reward' | 'ghost' | 'danger';
-export type CofBadgeVariant = 'count' | 'new' | 'reward' | 'premium' | 'info' | 'success' | 'warning' | 'error' | 'streak';
+// Adım 03 semantik rozet türleri. 'count'/'reward'/'success'/'warning' Adım 01.1'den
+// geriye uyum için AYNEN korunur ('count' = bildirim sayacı, kırmızı).
+// YENİ: 'quantity' nötr envanter sayısı, 'notification' açık adıyla bildirim.
+export type CofBadgeVariant =
+  | 'quantity' | 'count' | 'notification' | 'new' | 'owned' | 'active'
+  | 'rarity' | 'premium' | 'info' | 'error' | 'streak'
+  | 'reward' | 'success' | 'warning';
 
 /** 'text.onPrimary' → '#091630'. Token dosyası tek kaynak; kod yol adını taşır. */
 export function resolveColorToken(path: string): string | null {
@@ -36,15 +42,20 @@ export const BUTTON_SURFACE: Record<CofButtonVariant, string> = {
 };
 
 export const BADGE_SURFACE: Record<CofBadgeVariant, string> = {
-  count: C.semantic.error,
+  quantity: C.surface.strong,      // nötr adet (envanter sayısı) — semantik renk harcanmaz
+  count: C.semantic.error,         // GERİYE UYUM: Adım 01.1'den beri bildirim sayacı
+  notification: C.semantic.error,  // dikkat çeken okunmamış sayacı
   new: C.semantic.error,
-  reward: C.reward.gold,
+  owned: C.semantic.success,
+  active: C.brand.primary,
+  rarity: C.premium.gem,
   premium: C.premium.gem,
   info: C.semantic.info,
-  success: C.semantic.success,
-  warning: C.semantic.warning,
   error: C.semantic.error,
   streak: C.semantic.streak,
+  reward: C.reward.gold,
+  success: C.semantic.success,
+  warning: C.semantic.warning,
 };
 
 // Token dosyasında beyan edilen eşleşme 4.5:1'i tutmazsa düşülecek SEMANTİK
@@ -59,15 +70,20 @@ const ON_COLOR_FALLBACK: Record<CofButtonVariant, string> = {
 };
 
 const BADGE_ON_COLOR: Record<CofBadgeVariant, string> = {
-  count: 'text.onError',
+  quantity: 'text.onSecondary',    // surface.strong üstünde açık metin (10.81:1)
+  count: 'text.onError',           // GERİYE UYUM: kırmızı bildirim sayacı
+  notification: 'text.onError',
   new: 'text.onError',
-  reward: 'text.onGold',
+  owned: 'text.onSuccess',
+  active: 'text.onPrimary',
+  rarity: 'text.onPremium',
   premium: 'text.onPremium',
   info: 'text.onInfo',
-  success: 'text.onSuccess',
-  warning: 'text.onWarning',
   error: 'text.onError',
   streak: 'text.onStreak',
+  reward: 'text.onGold',
+  success: 'text.onSuccess',
+  warning: 'text.onWarning',
 };
 
 function pickAccessible(surface: string, preferredPath: string | undefined, fallbackPath: string): { color: string; ratio: number; usedFallback: boolean } {
@@ -122,3 +138,87 @@ export const DIGIT_CELL_RATIO: Record<'COFDisplay' | 'COFUI', number> = {
   COFUI: 0.661,      // Poppins-SemiBold  '4' = 661/1000 em
 };
 export const NUMBER_BEHAVIOR = tokens.typography.numberBehavior;
+
+// ---- CofInput durum sözleşmesi (saf; test edilebilir) ------------------------
+export type CofInputState = 'default' | 'focused' | 'filled' | 'error' | 'disabled';
+export type CofInputAppearance = {
+  surface: string;
+  border: string;
+  borderWidth: number;
+  text: string;
+  placeholder: string;
+  label: string;
+  /** Yardımcı/hata satırı rengi. */
+  help: string;
+};
+
+/**
+ * Focus YALNIZ renkle anlatılmaz: kenarlık KALINLIĞI da değişir (1.5 → 2 dp).
+ * Error hem semantik renk hem yardımcı metinle görünür. Disabled okunur kalır.
+ */
+export function cofInputAppearance(state: CofInputState): CofInputAppearance {
+  switch (state) {
+    case 'focused':
+      return { surface: C.surface.sunken, border: C.stroke.focus, borderWidth: tokens.border.selected, text: C.text.primary, placeholder: C.text.tertiary, label: C.brand.primary, help: C.text.secondary };
+    case 'filled':
+      return { surface: C.surface.sunken, border: C.stroke.control, borderWidth: tokens.border.default, text: C.text.primary, placeholder: C.text.tertiary, label: C.text.secondary, help: C.text.secondary };
+    case 'error':
+      return { surface: C.surface.sunken, border: C.semantic.error, borderWidth: tokens.border.selected, text: C.text.primary, placeholder: C.text.tertiary, label: C.semantic.error, help: C.semantic.error };
+    case 'disabled':
+      return { surface: C.surface.disabled, border: C.stroke.subtle, borderWidth: tokens.border.hairline, text: C.text.disabled, placeholder: C.text.disabled, label: C.text.disabled, help: C.text.disabled };
+    default:
+      return { surface: C.surface.sunken, border: C.stroke.default, borderWidth: tokens.border.default, text: C.text.primary, placeholder: C.text.tertiary, label: C.text.secondary, help: C.text.secondary };
+  }
+}
+
+/** Girişin görsel yüksekliği: bağlama göre 48-52 dp (spec 5.5). */
+export const COF_INPUT_HEIGHT = { compact: 48, default: 52 } as const;
+
+// ---- Segmented tab görünümü (spec 5.3) ---------------------------------------
+export type CofTabState = 'selected' | 'inactive' | 'disabled';
+export function cofTabAppearance(state: CofTabState): { surface: string | null; border: string | null; text: string; showsSecondCue: boolean } {
+  if (state === 'selected') return { surface: C.brand.primaryTint, border: C.brand.primary, text: C.brand.primary, showsSecondCue: true };
+  if (state === 'disabled') return { surface: C.surface.disabled, border: C.stroke.subtle, text: C.text.disabled, showsSecondCue: true };
+  return { surface: null, border: null, text: C.text.secondary, showsSecondCue: false };
+}
+
+// ---- Dokunma hedefi ----------------------------------------------------------
+export const MIN_TOUCH = tokens.size.minimumTouchTarget;
+/** Görsel boyu küçük bir kontrolü 44 dp'ye tamamlayan hitSlop payı. */
+export function touchSlopFor(visualSize: number): number {
+  return Math.max(0, Math.ceil((MIN_TOUCH - visualSize) / 2));
+}
+
+// ---- Buton geometrisi (saf; "loading/disabled'da zıplama yok" testi buna bakar) ----
+export const BUTTON_HEIGHT: Record<CofButtonSize, number> = {
+  primary: tokens.size.button.primaryHeight,
+  secondary: tokens.size.button.secondaryHeight,
+  compact: tokens.size.button.compactHeight,
+};
+/** Ekstrüzyon YALNIZ dudağı olan varyantlarda; ghost'ta yok. */
+export function buttonExtrusion(variant: CofButtonVariant): number {
+  return variant === 'ghost' ? 0 : tokens.size.button.extrusion;
+}
+export function buttonGeometry(size: CofButtonSize, variant: CofButtonVariant, opts?: { loading?: boolean; disabled?: boolean; locked?: boolean; fullWidth?: boolean; icon?: boolean }) {
+  const height = BUTTON_HEIGHT[size];
+  const extrusion = buttonExtrusion(variant);
+  const fullWidth = opts?.fullWidth ?? true;
+  const hasIcon = Boolean(opts?.icon);
+  // Dudak HER durumda yer ayırır; ön ikon slotu fullWidth olmayan butonda her
+  // zaman ayrılır → normal ↔ loading ↔ disabled geçişleri ölçüyü değiştirmez.
+  return {
+    height,
+    extrusion,
+    totalHeight: height + extrusion,
+    reserveLeading: hasIcon || Boolean(opts?.loading) || Boolean(opts?.locked) || !fullWidth,
+    touchTarget: Math.max(tokens.size.minimumTouchTarget, height + touchSlopFor(height) * 2),
+  };
+}
+
+// ---- Kart varyantının İKİNCİ işareti (yalnız renk yasak) ---------------------
+export type CofSurfaceVariantName = 'base' | 'interactive' | 'selected' | 'reward' | 'premium' | 'disabled';
+export function surfaceSecondCue(variant: CofSurfaceVariantName): { icon: string | null; label: boolean } {
+  if (variant === 'selected') return { icon: 'checkmark-circle', label: true };
+  if (variant === 'disabled') return { icon: 'lock-closed', label: false };
+  return { icon: null, label: false };
+}

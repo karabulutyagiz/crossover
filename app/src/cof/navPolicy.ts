@@ -84,3 +84,25 @@ export function cofNavStates(activeKey: string): { key: CofNavKey; active: boole
     return { key, active, center, appearance: cofNavAppearance(active, center) };
   });
 }
+
+// ---- Adım 03 kapısı: kök ekranlarda TAM 24 dp dinlenme boşluğu ----------------
+// Screen sarmalayıcısının eski `paddingBottom: 22` değeri kaydırma görünümünün
+// DIŞINDA duruyor; kabuk insetiyle birlikte kök sekmelerde 46 dp'lik bir
+// dinlenme boşluğu bırakıyordu. Kabuk İÇİNDE bu 22 sıfırlanır (tek hesap),
+// kabuk DIŞINDA (maç, soru, sonuç, oyun içi ekranlar) aynen korunur.
+export const LEGACY_SCREEN_BOTTOM_PAD = 22;
+
+/** Screen sarmalayıcısının alt boşluğu. Kabuk içindeyse 0 — hesap tek yerde. */
+export function screenBottomPadding(inShell: boolean): number {
+  return inShell ? 0 : LEGACY_SCREEN_BOTTOM_PAD;
+}
+
+/** Kök sekmede son içeriğin alt navigasyonla arasında kalan gerçek boşluk. */
+export function cofRootRestingSpace(safeAreaBottom: number): number {
+  return cofRootContentInset(safeAreaBottom) - cofNavTotalHeight(safeAreaBottom) + screenBottomPadding(true);
+}
+
+/** Detay sayfasında (alt navigasyon yok) alt dinlenme boşluğu. */
+export function cofDetailRestingSpace(safeAreaBottom: number): number {
+  return cofDetailContentInset(safeAreaBottom) - Math.max(0, safeAreaBottom) + screenBottomPadding(true);
+}

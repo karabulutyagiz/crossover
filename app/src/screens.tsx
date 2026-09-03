@@ -36,8 +36,9 @@ import { isInterstitialDue, testInterstitialNow } from './interstitial';
 import { GemIcon, GEM_COLOR } from './GemIcon';
 import { releaseModalSlotForNativeAd, tryHoldModalSlotForNativeAd, whenModalSlotFree } from './modalTraffic';
 import { dismissActiveInput } from './keyboardLifecycle';
-import { useCofContentInset } from './cof/shell';
-import { cofNavTotalHeight } from './cof/navPolicy';
+import { useCofContentInset, useCofInShell } from './cof/shell';
+import { CofSegmentedTabs } from './cof/primitives';
+import { cofNavTotalHeight, screenBottomPadding } from './cof/navPolicy';
 import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget, trophyTarget, setTrophyTarget, setTrophyRemeasure, remeasureTrophyTarget } from './gemTarget';
 import { Avatar } from './Avatar';
 import { useIsTablet, useWindow, useContentMaxWidth, canvasSizeFor } from './layout';
@@ -1366,11 +1367,16 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
   // alır (maç ekranlarının davranışı değişmez). Ekranlar kendi tab-bar
   // boşluklarını EKLEMEZ — çift boşluk yasak.
   const cofInset = useCofContentInset();
+  // ADIM 03 KAPISI: kök/detay kabuğu içindeyken styles.screen'in eski 22 dp alt
+  // şeridi sıfırlanır — dinlenme boşluğu TAM 24 dp olur (kabuk insetiyle çift
+  // sayılmaz). Kabuk DIŞINDAKİ maç/soru/sonuç ekranları 22'yi aynen korur.
+  const inShell = useCofInShell();
+  const screenPadBottom = screenBottomPadding(inShell);
   useEffect(() => () => dismissActiveInput(), []);
   // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
   return (
     <KeyboardAvoidingView
-      style={[styles.screen, !contentCenter && { justifyContent: 'flex-start' }, pad !== undefined && { padding: pad }]}
+      style={[styles.screen, { paddingBottom: screenPadBottom }, !contentCenter && { justifyContent: 'flex-start' }, pad !== undefined && { padding: pad }]}
       // Scroll screens let the ScrollView's `automaticallyAdjustKeyboardInsets` do the
       // work (it insets AND scrolls the focused input above the keyboard); only fixed
       // (non-scroll) screens need the KAV to pad. Running both double-shifts the layout
@@ -5521,6 +5527,9 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               disabled={!codeReady}
               onPressIn={() => { if (codeReady) triggerFeedback(GameFeedbackEvent.UI_PRIMARY); }}
               onPress={() => { dismissActiveInput(); actions.joinRoom(joinCode, playerName); setJoinCode(''); }}
+              // 34 dp çizim + 5 dp pay = 44 dp dokunma hedefi (Adım 03 kuralı).
+              // Görsel boyut ve geri bildirim çağrısı DEĞİŞMEDİ.
+              hitSlop={5}
               style={({ pressed }) => ({
                 width: 34, height: 34, borderRadius: 17,
                 backgroundColor: codeReady ? theme.primary : theme.navyWell,
@@ -12400,7 +12409,11 @@ export function FriendsScreen({ state, actions, onGoToStore, onLockedSocialMode,
         {/* Add friend — search mode as a segmented control (same trough voice as the tab bar) */}
         <Text style={styles.sectionLabel}>{t('friends.addSection')}</Text>
         <View style={{ marginBottom: 6 }}>
-          <SegmentedTabs
+          {/* ADIM 03 GÖÇÜ (tek düşük riskli çağrı): anahtarlar, sıra, ikonlar ve
+              callback AYNI; setSearchMode düz bir setter olduğu için "aktif
+              sekmeye tekrar dokunma onChange çağırmaz" farkı davranışsızdır.
+              Bu bileşende ses/haptic çağrısı yok (eskisinde de yoktu). */}
+          <CofSegmentedTabs
             tabs={[
               { key: 'code', icon: 'key-outline', label: t('friends.byCode') },
               { key: 'username', icon: 'person-outline', label: t('friends.byName') },

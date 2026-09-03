@@ -52,6 +52,9 @@ const DEV_SHOT_MODE = false;
 const DEV_SHOT_LANG = 'tr';
 // Dev-only: force the tutorial (antrenman) flow to inspect its layout. NEVER ships true.
 const FORCE_TUTORIAL_DEV = false;
+// Dev-only: COF bileşen galerisi (Adım 03). Üretim navigasyonuna BAĞLI DEĞİL,
+// menüde görünmez; yalnız bu bayrakla açılır. NEVER ships true.
+const COF_GALLERY_MODE = false;
 import { BASE_H, uiScaleFor, canvasSizeFor } from './src/layout';
 import { setGemTarget } from './src/gemTarget';
 import { addNotificationTapListener, getPushPermissionGranted, setBadge } from './src/notifications';
@@ -176,6 +179,7 @@ import { isModalSlotFree } from './src/modalTraffic';
 // navigasyon gösterilmez"). Route adları ve geri davranışı DEĞİŞMEDİ.
 import { CofBottomNav, DetailScreenShell, RootScreenShell, type CofNavItem } from './src/cof/shell';
 import { isCofDetailPhase } from './src/cof/navPolicy';
+import { CofGallery } from './src/cof/gallery';
 import { formatNumber } from './src/cof/format';
 import { resolveMatchBackground } from './src/cosmetics';
 import type { PlayerFeedbackCategory } from './src/feedbackSubmit';
@@ -667,7 +671,8 @@ function TopBanner({
           <Text style={s.inviteSub} numberOfLines={1}>{sub}</Text>
         </View>
       </Pressable>
-      <Pressable onPress={onClose} hitSlop={8} style={({ pressed }) => ({ paddingHorizontal: 4, transform: [{ translateY: pressed ? 1 : 0 }], opacity: pressed ? 0.7 : 1 })}>
+      {/* 18 dp ikon + 13 dp pay = 44 dp dikey hedef (Adım 03). Görsel ölçü aynı. */}
+      <Pressable onPress={onClose} hitSlop={13} style={({ pressed }) => ({ paddingHorizontal: 4, transform: [{ translateY: pressed ? 1 : 0 }], opacity: pressed ? 0.7 : 1 })}>
         <Ionicons name="close" size={18} color={theme.muted} />
       </Pressable>
     </Animated.View>
@@ -762,7 +767,8 @@ function OutgoingInviteBanner({ invite, onCancel, offsetY = 0 }: {
         <Text style={s.inviteSub} numberOfLines={1}>{t('friends.inviteSent')}</Text>
       </View>
       <Text style={{ color: urgent ? theme.danger : theme.accent, fontFamily: 'Poppins-Black', fontSize: 22, fontVariant: ['tabular-nums'] }}>{secs}</Text>
-      <Pressable onPress={onCancel} hitSlop={8} style={({ pressed }) => ({ paddingHorizontal: 4, opacity: pressed ? 0.7 : 1 })}>
+      {/* 18 dp ikon + 13 dp pay = 44 dp dikey hedef (Adım 03). Görsel ölçü aynı. */}
+      <Pressable onPress={onCancel} hitSlop={13} style={({ pressed }) => ({ paddingHorizontal: 4, opacity: pressed ? 0.7 : 1 })}>
         <Ionicons name="close" size={18} color={theme.muted} />
       </Pressable>
     </Animated.View>
@@ -2698,6 +2704,9 @@ function AppRoot() {
   const DEV_SHOT = DEV_SHOT_MODE;
   if (DEV_SHOT) setLanguage(DEV_SHOT_LANG);
   if (DEV_SHOT) return <View style={{ flex: 1 }}><StatusBar style="light" /><DevShotScreen /></View>;
+
+  // COF BİLEŞEN GALERİSİ (dev-only, Adım 03): aynı DEV_SHOT kalıbı.
+  if (COF_GALLERY_MODE) return <View style={{ flex: 1, paddingTop: insets.top }}><StatusBar style="light" /><CofGallery /></View>;
 
   // Splash screen: cinematic brand opening; dismisses itself via onDone.
   if (splash || !fontsReady) {

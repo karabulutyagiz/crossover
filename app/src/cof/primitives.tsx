@@ -10,12 +10,12 @@
 // ══════════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import {
-  AccessibilityInfo, Animated, Easing, Pressable, Text, View,
-  type LayoutChangeEvent, type StyleProp, type TextProps, type TextStyle, type ViewStyle,
+  AccessibilityInfo, Animated, Easing, Pressable, Text, TextInput, View,
+  type LayoutChangeEvent, type StyleProp, type TextInputProps, type TextProps, type TextStyle, type ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { cof, cofType, cofTypeIsUppercase, COF_LIP_COLOR, type CofTypeVariant } from './theme';
-import { BADGE_SURFACE, BUTTON_SURFACE, badgeForeground, buttonForeground, CONTROL_BORDER_COLOR, DIGIT_CELL_RATIO, labelFitPolicy, LABEL_MIN_FIT_SCALE, type CofBadgeVariant, type CofButtonSize, type CofButtonVariant } from './policy';
+import { BADGE_SURFACE, BUTTON_SURFACE, badgeForeground, buttonForeground, buttonGeometry, cofInputAppearance, cofTabAppearance, COF_INPUT_HEIGHT, CONTROL_BORDER_COLOR, DIGIT_CELL_RATIO, labelFitPolicy, LABEL_MIN_FIT_SCALE, touchSlopFor, type CofBadgeVariant, type CofButtonSize, type CofButtonVariant, type CofInputState } from './policy';
 import { formatNumber } from './format';
 import { cofUpper } from './format';
 import { t } from '../i18n';
@@ -191,7 +191,7 @@ const BUTTON: Record<CofButtonVariant, { face: string; pressedFace?: string; lip
   danger:    { face: BUTTON_SURFACE.danger,                                         lip: COF_LIP_COLOR,        text: buttonForeground('danger') },
 };
 
-const BUTTON_HEIGHT: Record<CofButtonSize, number> = { primary: Z.button.primaryHeight, secondary: Z.button.secondaryHeight, compact: Z.button.compactHeight };
+
 
 export function CofButton({
   label, onPress, variant = 'primary', size, icon, disabled = false, locked = false, loading = false, fullWidth = true,
@@ -207,21 +207,28 @@ export function CofButton({
   accessibilityLabel?: string; accessibilityHint?: string; style?: StyleProp<ViewStyle>;
 }) {
   const sz: CofButtonSize = size ?? (variant === 'primary' ? 'primary' : 'secondary');
-  const h = BUTTON_HEIGHT[sz];
+  const geom = buttonGeometry(sz, variant, { loading, disabled, locked, fullWidth, icon: Boolean(icon) });
+  const h = geom.height;
   const off = disabled || locked;
   const inert = off || loading;
   const spec = BUTTON[variant];
   // Devre dışı: okunur kalır (token yüzeyi + token metni), kenarlıkla ayrışır.
   const text = off ? C.text.disabled : spec.text;
   // Dudak HER ZAMAN yer ayırır (yükseklik sabit); rengi duruma göre değişir.
-  const extrusion = spec.lip ? Z.button.extrusion : 0;
+  const extrusion = geom.extrusion;
   const lipColor = spec.lip ? (off ? C.stroke.strong : spec.lip) : null;
   const { v, scale, pressed, onPressIn, onPressOut, reduced } = useCofPress(inert);
   const sink = reduced || inert || !extrusion ? 0 : v.interpolate({ inputRange: [0, 1], outputRange: [0, extrusion] });
   const labelStyle: TextStyle = sz === 'compact' ? cofType.body : cofType.button;
   const fit = labelFitPolicy(sz, allowTwoLines);
   // 44 dp: compact 42 → hitSlop ile tamamlanır (hitSlop ebeveyn sınırını aşabilir).
-  const slop = Math.max(0, Math.ceil((Z.minimumTouchTarget - h) / 2));
+  const slop = touchSlopFor(h);
+  // SABİT GEOMETRİ: loading/locked ikonu sonradan eklenince genişlik değişmesin.
+  // fullWidth butonda genişliği ebeveyn verir; fullWidth OLMAYAN butonda ön slot
+  // HER DURUMDA ayrılır, böylece normal↔loading geçişi hiçbir şeyi kaydırmaz.
+  const leadingIcon: IoniconName | null = locked ? 'lock-closed' : loading ? 'time-outline' : icon ?? null;
+  const reserveLeading = geom.reserveLeading;
+  const leadingSize = sz === 'compact' ? Z.icon.small : Z.icon.medium;
   const liveFace = off ? C.surface.disabled : pressed && spec.pressedFace ? spec.pressedFace : spec.face;
   return (
     <Pressable
@@ -247,10 +254,13 @@ export function CofButton({
         }}
       >
         {spec.highlight && !off ? <View pointerEvents="none" {...DECORATIVE} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: B.hairline, backgroundColor: spec.highlight, borderTopLeftRadius: R.control, borderTopRightRadius: R.control }} /> : null}
-        {/* Kilitli ≠ devre dışı: kilit ikonu YALNIZ locked'da. Loading'de saat. */}
-        {locked ? <Ionicons name="lock-closed" size={Z.icon.small} color={text} />
-          : loading ? <Ionicons name="time-outline" size={sz === 'compact' ? Z.icon.small : Z.icon.medium} color={text} />
-          : icon ? <Ionicons name={icon} size={sz === 'compact' ? Z.icon.small : Z.icon.medium} color={text} /> : null}
+        {/* Kilitli ≠ devre dışı: kilit ikonu YALNIZ locked'da. Loading'de saat.
+            Slot boşken bile yer tutar (yukarıdaki reserveLeading) → zıplama yok. */}
+        {reserveLeading ? (
+          <View style={{ width: leadingSize, height: leadingSize, alignItems: 'center', justifyContent: 'center' }}>
+            {leadingIcon ? <Ionicons name={leadingIcon} size={leadingSize} color={text} /> : null}
+          </View>
+        ) : null}
         {/* Canlı metin: PNG'ye gömülmez. Sığdırma politikası v1.0.1:
             ana CTA küçülmez ve tek satırdır (metin/düzen sığmak ZORUNDA);
             ikincil/kompakt en fazla 0.90'a küçülür ya da iki satıra iner. */}
@@ -316,15 +326,19 @@ export function CofSegmentedTabs<K extends string>({ tabs, active, onChange, sty
     Animated.timing(x, { toValue: to, duration: M.durationMs.base, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, [idx, segW, width, x, reduced]);
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
+  const selectedLook = cofTabAppearance('selected');
   return (
     <View accessibilityRole="tablist" onLayout={onLayout} style={[{ flexDirection: 'row', backgroundColor: C.surface.sunken, borderRadius: R.control, padding: pad, borderWidth: B.hairline, borderColor: C.stroke.subtle }, style]}>
       {width > 0 && found >= 0 ? (
-        <Animated.View pointerEvents="none" style={{ position: 'absolute', top: pad, bottom: pad, left: pad, width: segW, borderRadius: R.small, backgroundColor: C.brand.primary, transform: [{ translateX: x }] }} />
+        // Seçili gösterge KAYAR (tüm kontrol yanıp sönmez). Görünüm spec 5.3:
+        // brand.primaryTint zemin + brand.primary kenarlık; metin de primary.
+        <Animated.View pointerEvents="none" style={{ position: 'absolute', top: pad, bottom: pad, left: pad, width: segW, borderRadius: R.small, backgroundColor: selectedLook.surface ?? C.brand.primaryTint, borderWidth: B.selected, borderColor: selectedLook.border ?? C.brand.primary, transform: [{ translateX: x }] }} />
       ) : null}
       {tabs.map((tb) => {
         const sel = tb.key === active;
         const dis = Boolean(tb.disabled);
-        const color = sel ? C.text.onPrimary : dis ? C.text.disabled : C.text.secondary;
+        const look = cofTabAppearance(sel ? 'selected' : dis ? 'disabled' : 'inactive');
+        const color = look.text;
         const count = tb.badge && tb.badge > 0 ? tb.badge : 0;
         return (
           <Pressable
@@ -335,12 +349,15 @@ export function CofSegmentedTabs<K extends string>({ tabs, active, onChange, sty
             // Rozet sayısı etikete katılır: aksi halde ekran okuyucu görmezdi.
             accessibilityLabel={count ? `${tb.accessibilityLabel ?? tb.label}, ${count}` : (tb.accessibilityLabel ?? tb.label)}
             accessibilityState={{ selected: sel, disabled: dis }}
-            style={{ flex: 1, minHeight: Z.minimumTouchTarget, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: S[1], paddingHorizontal: S[1] }}
+            style={{ flex: 1, minHeight: Z.minimumTouchTarget, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: S[1], paddingHorizontal: S[1], borderRadius: R.small, backgroundColor: dis ? (look.surface ?? 'transparent') : 'transparent' }}
           >
             {/* İkon yalnız verilmişse çizilir (seçilince ikon ENJEKTE EDİLMEZ:
                 etiket her seçimde yeniden akardı). Kilitli sekmede kilit. */}
+            {/* İkinci işaret zorunlu: seçili sekme renkle YETİNMEZ — ikon (yoksa
+                onay ikonu) + tint zemin + kenarlık birlikte anlatır. */}
             {dis ? <Ionicons name="lock-closed" size={Z.icon.small} color={color} {...DECORATIVE} />
-              : tb.icon ? <Ionicons name={tb.icon} size={Z.icon.small} color={color} {...DECORATIVE} /> : null}
+              : tb.icon ? <Ionicons name={tb.icon} size={Z.icon.small} color={color} {...DECORATIVE} />
+              : sel ? <Ionicons name="checkmark-circle" size={Z.icon.small} color={color} {...DECORATIVE} /> : null}
             <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={LABEL_MIN_FIT_SCALE} style={[cofType.caption, { color, flexShrink: 1 }]}>{tb.label}</Text>
             {count ? <CofBadge variant="count" count={count} /> : null}
           </Pressable>
@@ -354,23 +371,31 @@ export function CofSegmentedTabs<K extends string>({ tabs, active, onChange, sty
 // Rozet ön planı: parlak dolu yüzeyde OTOMATİK BEYAZ YOK — her varyant kendi
 // text.on* tokenını kullanır (policy.ts doğrular).
 const BADGE: Record<CofBadgeVariant, { bg: string; fg: string; icon?: IoniconName }> = {
-  count:   { bg: BADGE_SURFACE.count,   fg: badgeForeground('count') },
-  new:     { bg: BADGE_SURFACE.new,     fg: badgeForeground('new'),     icon: 'sparkles' },
-  reward:  { bg: BADGE_SURFACE.reward,  fg: badgeForeground('reward'),  icon: 'trophy' },
-  premium: { bg: BADGE_SURFACE.premium, fg: badgeForeground('premium'), icon: 'diamond' },
-  info:    { bg: BADGE_SURFACE.info,    fg: badgeForeground('info'),    icon: 'information-circle' },
-  success: { bg: BADGE_SURFACE.success, fg: badgeForeground('success'), icon: 'checkmark-circle' },
-  warning: { bg: BADGE_SURFACE.warning, fg: badgeForeground('warning'), icon: 'alert-circle' },
-  error:   { bg: BADGE_SURFACE.error,   fg: badgeForeground('error'),   icon: 'close-circle' },
-  streak:  { bg: BADGE_SURFACE.streak,  fg: badgeForeground('streak'),  icon: 'flame' },
+  quantity:     { bg: BADGE_SURFACE.quantity,     fg: badgeForeground('quantity') },
+  count:        { bg: BADGE_SURFACE.count,        fg: badgeForeground('count') },
+  notification: { bg: BADGE_SURFACE.notification, fg: badgeForeground('notification') },
+  new:          { bg: BADGE_SURFACE.new,          fg: badgeForeground('new'),     icon: 'sparkles' },
+  owned:        { bg: BADGE_SURFACE.owned,        fg: badgeForeground('owned'),   icon: 'checkmark-circle' },
+  active:       { bg: BADGE_SURFACE.active,       fg: badgeForeground('active'),  icon: 'radio-button-on' },
+  rarity:       { bg: BADGE_SURFACE.rarity,       fg: badgeForeground('rarity'),  icon: 'diamond' },
+  premium:      { bg: BADGE_SURFACE.premium,      fg: badgeForeground('premium'), icon: 'diamond' },
+  info:         { bg: BADGE_SURFACE.info,         fg: badgeForeground('info'),    icon: 'information-circle' },
+  error:        { bg: BADGE_SURFACE.error,        fg: badgeForeground('error'),   icon: 'close-circle' },
+  streak:       { bg: BADGE_SURFACE.streak,       fg: badgeForeground('streak'),  icon: 'flame' },
+  reward:       { bg: BADGE_SURFACE.reward,       fg: badgeForeground('reward'),  icon: 'trophy' },
+  success:      { bg: BADGE_SURFACE.success,      fg: badgeForeground('success'), icon: 'checkmark-circle' },
+  warning:      { bg: BADGE_SURFACE.warning,      fg: badgeForeground('warning'), icon: 'alert-circle' },
 };
+
+// Sayı taşıyan türler: değer yerel biçimde yazılır ve rozet sayı olmadan çizilmez.
+const NUMERIC_BADGES = new Set<CofBadgeVariant>(['quantity', 'count', 'notification']);
 export function CofBadge({ variant = 'info', label, count, icon, accessibilityLabel, style }: {
   variant?: CofBadgeVariant; label?: string; count?: number; icon?: IoniconName | null; accessibilityLabel?: string; style?: StyleProp<ViewStyle>;
 }) {
   const b = BADGE[variant];
-  const text = variant === 'count' ? (count != null && count > 99 ? '99+' : String(count ?? 0)) : label ?? '';
+  const text = NUMERIC_BADGES.has(variant) ? (count != null && count > 99 ? '99+' : formatNumber(count ?? 0)) : label ?? '';
   const ic = icon === null ? undefined : icon ?? b.icon;
-  if (variant === 'count' && (count == null || count <= 0)) return null;
+  if (NUMERIC_BADGES.has(variant) && (count == null || count <= 0)) return null;
   return (
     <View
       accessible={accessibilityLabel ? true : undefined}
@@ -412,5 +437,130 @@ export function CofNumber({ value, variant = 'numberLarge', tone = 'primary', co
         <CofText key={`${i}-${ch}`} variant={variant} tone={tone} color={color} style={[style, /[0-9]/.test(ch) ? { width: cell, textAlign: 'center' } : null]}>{ch}</CofText>
       ))}
     </View>
+  );
+}
+
+// ---- CofInput — tek metin girişi sözleşmesi (Adım 03, spec 5.5) --------------
+// Durumlar: default / focused / filled / error / disabled. Focus YALNIZ renkle
+// değil kenarlık kalınlığıyla da görünür. Hata satırı için yer ÖNCEDEN ayrılır
+// (helperSpace) → hata belirince yerleşim zıplamaz. Klavye tipi, submit
+// davranışı, otomatik düzeltme ve tüm callback'ler ÇAĞIRANDAN geçer; bu bileşen
+// hiçbir iş mantığı içermez.
+export function CofInput({
+  value, onChangeText, label, placeholder, helperText, errorText, disabled = false,
+  size = 'default', leadingIcon, trailingIcon, onTrailingIconPress, trailingIconLabel,
+  reserveHelperSpace = true, style, inputStyle, testID, accessibilityLabel, ...rest
+}: Omit<TextInputProps, 'style' | 'editable' | 'value' | 'onChangeText'> & {
+  value: string;
+  onChangeText: (text: string) => void;
+  label?: string;
+  placeholder?: string;
+  helperText?: string;
+  /** Doluysa alan `error` durumuna geçer ve metin hata renginde yazılır. */
+  errorText?: string | null;
+  disabled?: boolean;
+  size?: keyof typeof COF_INPUT_HEIGHT;
+  leadingIcon?: IoniconName;
+  trailingIcon?: IoniconName;
+  onTrailingIconPress?: () => void;
+  trailingIconLabel?: string;
+  /** Hata/yardım satırı için yer her zaman ayrılsın mı (zıplama önleme). */
+  reserveHelperSpace?: boolean;
+  style?: StyleProp<ViewStyle>;
+  inputStyle?: StyleProp<TextStyle>;
+  testID?: string;
+  accessibilityLabel?: string;
+}) {
+  const [focused, setFocused] = useState(false);
+  const state: CofInputState = disabled ? 'disabled' : errorText ? 'error' : focused ? 'focused' : value ? 'filled' : 'default';
+  const look = cofInputAppearance(state);
+  const h = COF_INPUT_HEIGHT[size];
+  const help = errorText ?? helperText ?? '';
+  return (
+    <View style={[{ alignSelf: 'stretch', gap: S[1] }, style]}>
+      {label ? <CofText variant="caption" color={look.label}>{label}</CofText> : null}
+      <View
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: S[2],
+          height: h, minHeight: Z.minimumTouchTarget,
+          paddingHorizontal: S[4],
+          borderRadius: R.control,
+          backgroundColor: look.surface,
+          borderWidth: look.borderWidth, borderColor: look.border,
+        }}
+      >
+        {leadingIcon ? <Ionicons name={leadingIcon} size={Z.icon.medium} color={look.label} {...DECORATIVE} /> : null}
+        <TextInput
+          {...rest}
+          value={value}
+          onChangeText={onChangeText}
+          editable={!disabled}
+          placeholder={placeholder}
+          placeholderTextColor={look.placeholder}
+          onFocus={(e) => { setFocused(true); rest.onFocus?.(e); }}
+          onBlur={(e) => { setFocused(false); rest.onBlur?.(e); }}
+          testID={testID}
+          accessibilityLabel={accessibilityLabel ?? label}
+          accessibilityState={{ disabled }}
+          style={[cofType.body, { flex: 1, color: look.text, paddingVertical: 0 }, inputStyle]}
+        />
+        {trailingIcon ? (
+          onTrailingIconPress
+            ? <CofIconButton icon={trailingIcon} onPress={onTrailingIconPress} accessibilityLabel={trailingIconLabel ?? ''} color={look.label} disabled={disabled} />
+            : <Ionicons name={trailingIcon} size={Z.icon.medium} color={look.label} {...DECORATIVE} />
+        ) : null}
+      </View>
+      {/* Yardım/hata satırı: yer ÖNCEDEN ayrılır, metin gelince hiçbir şey kaymaz. */}
+      {help || reserveHelperSpace ? (
+        <View style={{ minHeight: cofType.caption.lineHeight as number }}>
+          {help ? (
+            <CofText
+              variant="caption"
+              color={look.help}
+              accessibilityLiveRegion={errorText ? 'polite' : 'none'}
+            >
+              {help}
+            </CofText>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// ---- CofIconButton — ikon kontrolü, hedef HER ZAMAN ≥ 44 dp ------------------
+// İkon çizimi küçük kalabilir; kapsayıcı + hitSlop hedefi tamamlar. Etiketsiz
+// ikon kontrolü erişilebilir DEĞİLDİR: accessibilityLabel zorunludur.
+export function CofIconButton({
+  icon, onPress, accessibilityLabel, size = Z.icon.medium, color, disabled = false, style,
+}: {
+  icon: IoniconName;
+  onPress: () => void;
+  /** Ekran okuyucu etiketi — ikon-only kontrolde zorunlu. */
+  accessibilityLabel: string;
+  size?: number;
+  color?: string;
+  disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { scale, onPressIn, onPressOut } = useCofPress(disabled);
+  const box = Math.max(Z.minimumTouchTarget, size + S[4]);
+  const slop = touchSlopFor(box);
+  return (
+    <Pressable
+      onPress={disabled ? undefined : onPress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      disabled={disabled}
+      hitSlop={slop ? { top: slop, bottom: slop, left: slop, right: slop } : undefined}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled }}
+      style={[{ width: box, height: box, alignItems: 'center', justifyContent: 'center' }, style]}
+    >
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <Ionicons name={icon} size={size} color={disabled ? C.text.disabled : color ?? C.text.primary} />
+      </Animated.View>
+    </Pressable>
   );
 }
