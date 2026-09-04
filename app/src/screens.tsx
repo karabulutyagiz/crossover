@@ -15910,16 +15910,20 @@ export function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong
         </View>
       ) : null}
 
-      {/* Ringed trophy medallion (image slightly overscanned so its ring meets the circle).
-          Kayıp PNG'sinin çemberi kanvasta ~8px SOLA kaçık çizilmiş; kazançla aynı -9
-          yatay ofset onu kapta sola dayayıp sağda koyu boşluk bırakıyordu. Kayıpta
-          marginLeft -1 → çember tam ortalanır (piksel ölçümüyle sol/sağ boşluk eşit;
-          kullanıcı isteği 2026-09-03: "kırık kupanın yuvarlağını tam ortala"). Dikey
-          zaten ortalı, marginTop iki asset için de -9 kalır. */}
+      {/* Ringed trophy medallion. Kazançta PNG'nin altın halkası kupayla EŞ-MERKEZLİ →
+          150px/-9 ile ortalanır. KAYIPTA PNG'nin mor halkası kupayla eş-merkezli DEĞİL
+          (kupa sağa, halka sola kaçık): halkayı ortalayınca kupa sağda, kupayı ortalayınca
+          halka solda parlak bir "hilal" bırakıyordu (kullanıcı 3× rapor, 2026-09-03).
+          Çözüm: kayıpta resmi 152px'e ZOOM'layıp HALKAYI tümden KIRP → yalnız kupa + düz
+          iç mor kalır (hilal yok, kazançla aynı temiz görünüm), marginLeft/Top kupayı
+          ORTALAR (kupa merkezi PNG≈145,136). 152 seçildi: kupanın GÖRÜNEN boyutu kazanç
+          kupasıyla BİREBİR (kullanıcı "180'de çok büyük" dedi, 2026-09-03). Yeni asset yok. */}
       <View style={{ width: 132, height: 132, borderRadius: 66, overflow: 'hidden', marginBottom: 14 }}>
         <Image
           source={youWon ? TROPHY_MEDALLION_WIN : TROPHY_MEDALLION_LOSS}
-          style={{ width: 150, height: 150, marginLeft: youWon ? -9 : -1, marginTop: -9 }}
+          style={youWon
+            ? { width: 150, height: 150, marginLeft: -9, marginTop: -9 }
+            : { width: 152, height: 152, marginLeft: -15, marginTop: -10 }}
           resizeMode="cover"
         />
       </View>
