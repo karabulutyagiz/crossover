@@ -130,7 +130,7 @@ let directRequestPurchase: any = null;
 try { directRequestPurchase = require('react-native-iap').requestPurchase; } catch { /* Expo Go */ }
 import { isRonaldoAnswer, triggerDiamondCollectTick, triggerFeedback } from './src/feedback/GameFeedback';
 import { loadFeedbackPreferences } from './src/feedback/preferences';
-import { configureInterstitial, interstitialDiagnostics, interstitialPresentation, maybeShowInterstitial, recordMatchEnd } from './src/interstitial';
+import { configureInterstitial, interstitialDiagnostics, interstitialPresentation, maybeShowInterstitial, recordMatchEnd, setInterstitialPhase } from './src/interstitial';
 import { markCleanExit, setFreezeScreen, startFreezeWatch } from './src/freezeWatch';
 import {
   evaluateMonetizationOffer,
@@ -1187,7 +1187,9 @@ function AppRoot() {
   // DONMA ÖLÇÜMÜ (2026-08-29): hangi ekranda donduğunu tahmin etmek yerine
   // ölçüyoruz — JS thread'i bloklanırsa ya da oyuncu donan uygulamayı kill
   // ederse rapor sunucuya düşer. Oyun akışına hiç dokunmaz.
-  useEffect(() => { setFreezeScreen(state.phase); }, [state.phase]);
+  // Faz reklam modülüne de eşitlenir: geçiş reklamı kararı artık modülün
+  // içinde verilir (bkz. interstitial.ts MAÇ KAPISI) — ana menü dışında asla.
+  useEffect(() => { setFreezeScreen(state.phase); setInterstitialPhase(state.phase); }, [state.phase]);
   const freezeReportRef = useRef(actions.reportFreeze);
   freezeReportRef.current = actions.reportFreeze;
   useEffect(() => {

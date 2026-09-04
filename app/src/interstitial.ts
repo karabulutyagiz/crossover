@@ -109,6 +109,28 @@ function preloadNext(): void {
   ad.load();
 }
 
+// ── MAÇ KAPISI (2026-09-05, kullanıcı kuralı — pazarlıksız) ──────────────────
+// Geçiş reklamı YALNIZ ana menüdeyken sunulur. Maç içinde, eşleşme aranırken,
+// odada beklerken, sonuç ekranında ASLA: senkron PvP'de bir taraf reklam
+// izlerken öbür tarafta süre akıyor, takımlar seçiliyordu (oyuncu raporu).
+// App.tsx'teki 700 ms'lik döngü fazı soruyordu ama React state'ini bir render
+// GECİKMESİYLE görür: oyuncu "Hemen Oyna"ya dokunduktan sonra faz henüz
+// 'searching' olmadan gelen tik reklamı açabiliyordu. Karar artık BURADA,
+// modülün kendi içinde ve iki kaynaktan verilir; ikisi de tutmadan show() yok:
+//   1) setInterstitialPhase(): render'da eşitlenen faz — 'home' değilse ret.
+//   2) noteMatchIntent(): oyuncu maça giden bir mesaj GÖNDERDİĞİ an senkron
+//      damgalanır (find_match / create_room / create_solo / join_room / rövanş
+//      kabulü / davet kabulü / turnuva hazır) — render beklenmez. Damgadan
+//      sonraki 8 sn içinde reklam sunulmaz.
+let uiPhase = 'home';
+let matchIntentAt = 0;
+const MATCH_INTENT_BLOCK_MS = 8_000;
+export function setInterstitialPhase(phase: string): void { uiPhase = phase; }
+export function noteMatchIntent(): void { matchIntentAt = Date.now(); }
+export function isInterstitialAllowedNow(): boolean {
+  return uiPhase === 'home' && Date.now() - matchIntentAt > MATCH_INTENT_BLOCK_MS;
+}
+
 /** App açılışında ve /monetization-config geldiğinde çağrılır. */
 export function configureInterstitial(remote: AdsRemoteConfig | null | undefined): void {
   cfg = remote ?? null;
@@ -226,6 +248,8 @@ export function interstitialDiagnostics(): Record<string, string | number | bool
     adsSinceAd: sinceAd,
     adsSessionMatches: sessionMatches,
     adsSlotFree: isModalSlotFree(),
+    adsPhase: uiPhase,
+    adsAllowedNow: isInterstitialAllowedNow(),
     adsLastReason: lastReason,
     adsPresentation: interstitialPresentation(),
   };
@@ -253,6 +277,8 @@ export function isInterstitialDue(hasSocialPack: boolean): boolean {
 
 export function maybeShowInterstitial(hasSocialPack: boolean, onClosed?: () => void): boolean {
   if (hasSocialPack) { lastReason = 'paket'; return false; }
+  // MAÇ KAPISI: ana menü dışında ya da maça giden bir istek tazeyken ASLA.
+  if (!isInterstitialAllowedNow()) { lastReason = uiPhase !== 'home' ? `faz:${uiPhase}`.slice(0, 22) : 'mac-niyeti'; return false; }
   if (!InterstitialAd) { lastReason = 'modulyok'; return false; }
   if (!cfg) { lastReason = 'cfgyok'; return false; }
   if (!cfg.interstitialEnabled) { lastReason = 'kapali'; return false; }

@@ -1,4 +1,51 @@
-# CANLIYA ALINACAKLAR — Deploy Sırası (güncel: 2026-09-04)
+# CANLIYA ALINACAKLAR — Deploy Sırası (güncel: 2026-09-05)
+
+## 🔴 2026-09-05 — KÖK SEBEP: OTA'LAR MAĞAZA KULLANICILARINA HİÇ ULAŞMIYOR
+
+**Bulgu (doğrulandı, Expo manifest ucundan):** mağazadaki ve TestFlight'taki
+derlemeler (148–151, hepsi 27 Ağustos Xcode arşivi) `u.expo.dev/a4d757a9-…`
+(ESKİ proje, hesap `ygzkrblt1`) adresine bakıyor. OTA'lar ise `fff58543-…`
+(YENİ proje, hesap `ygzkrblt`) adresine basılıyor. İki adres birbirini görmez.
+
+| Proje | Kim bakıyor | Sunulan son güncelleme |
+|---|---|---|
+| ESKİ `a4d757a9` | mağaza + TestFlight cihazları | **2 Eylül 15:52 UTC** (18:52 TR) |
+| YENİ `fff58543` | hiçbir dağıtılmış derleme | 4 Eylül 20:12 UTC (grup `1063e057`) |
+
+Yani telefonlar 2 Eylül akşamındaki paketle donmuş: reklam donması düzeltmesi
+(`5aac7c2`), faz kapısı, alınlık düzeltmesi (`a301700`), Ben Kimim, 4 Eylül
+OTA'sının tamamı cihazlara HİÇ inmedi. "Kapa-aç yaptım gelmiyor" raporunun
+sebebi bu; cihaz ya da expo-updates sorunu değil.
+
+**`ygzkrblt` hesabının eski projeye erişimi YOK** (`Entity not authorized:
+AppEntity[a4d757a9]`). Eski projeye yayın için `ygzkrblt1` şart.
+
+### KURAL (yeni mağaza derlemesi çıkana kadar)
+Her OTA **İKİ projeye** basılır; önce yeni, sonra eski:
+```bash
+# 1) yeni proje (ygzkrblt oturumu) — hızlı diskteki klondan, iCloud'dan DEĞİL
+cd app && NODE_OPTIONS=--dns-result-order=ipv4first npx eas-cli update \
+  --channel production --environment production -m "mesaj" --non-interactive > /tmp/ota-yeni.log 2>&1
+# 2) eski proje — ygzkrblt1 ile: ya `npx eas login`, ya da EXPO_TOKEN=<ygzkrblt1 token>
+EXPO_TOKEN=... ./eski-projeye-yayin.sh "mesaj"        # app.json'ı geçici çevirir, trap ile geri alır
+# 3) doğrula (giriş gerekmez):
+#    curl -s -H 'expo-protocol-version: 1' -H 'expo-platform: ios' -H 'expo-runtime-version: 1.0.3' \
+#      -H 'expo-channel-name: production' -H 'accept: multipart/mixed' https://u.expo.dev/a4d757a9-39bc-4806-a64a-0d671b946bbe | grep -o '"createdAt":"[^"]*"'
+```
+**Kalıcı çözüm:** bir sonraki mağaza derlemesi `app.json`'daki `fff58543` ile
+çıkar; o derleme yayıldığında (MIN_IOS_BUILD ile eskiler zorlanınca) eski proje
+ve `eski-projeye-yayin.sh` emekliye ayrılır.
+
+### Bu paketle giden düzeltmeler (dal `ota-fix`, taban `04844fa`)
+- **Reklam maç içinde ASLA** (kullanıcı kuralı): karar `interstitial.ts` içine
+  taşındı — faz `home` değilse ya da son 8 sn içinde maça giden bir mesaj
+  (find_match / create_room / create_solo / join_room / rövanş / davet / turnuva)
+  gönderildiyse `show()` çağrılmaz. App.tsx döngüsü React fazını bir render
+  gecikmesiyle görüyordu; damga senkron olduğu için bu delik kapandı.
+- **Popup alınlığı**: sarmalayıcı yüksekliği yuva çapına (52) eşitlendi, `top:
+  -CREST_H`, `marginTop: CREST_H` — topun altı kartın üst çizgisine tam değer,
+  kartın içine girmez, yazı örtülmez; kanatlar pencere şerit renginde.
+
 
 ## ✅ 2026-09-04 — SUNUCU ×2 + OTA + BİRLEŞTİRME (hepsi doğrulandı)
 

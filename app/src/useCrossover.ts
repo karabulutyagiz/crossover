@@ -10,6 +10,7 @@ import { getPushToken, requestPushPermission } from './notifications';
 import { initOfflineDB } from './offline/db';
 import { startMediaPrefetch, setMediaPrefetchMatchActive } from './mediaPrefetch';
 import { captureError, track } from './telemetry';
+import { noteMatchIntent } from './interstitial';
 import type {
   ArenaView,
   ClientMsg,
@@ -1381,6 +1382,15 @@ export function useCrossover() {
   // create_solo/join_room) listede DEĞİLKEN taze maç soketleri caps'siz kalıyor
   // ve kural dereceli maçlarda hiç açılmıyordu — kasıtlı yanlış cevapla tur
   // kilitleme istismarı bu yüzden sahada sürüyordu.
+  // MAÇ NİYETİ DAMGASI (2026-09-05): oyuncu maça giden bir mesaj gönderdiği AN
+  // geçiş reklamı modülüne haber verilir — render beklenmez, reklam o andan
+  // itibaren kilitlenir. Bkz. interstitial.ts MAÇ KAPISI.
+  const stampMatchIntent = (msg: ClientMsg): void => {
+    if (msg.type === 'find_match' || msg.type === 'create_room' || msg.type === 'create_solo' || msg.type === 'join_room'
+      || msg.type === 'play_again' || msg.type === 'tournament_ready'
+      || (msg.type === 'rematch_response' && msg.accept) || (msg.type === 'respond_match_invite' && msg.accept)) noteMatchIntent();
+  };
+
   const withCaps = (msg: ClientMsg): ClientMsg =>
     msg.type === 'register' || msg.type === 'guest' || msg.type === 'auth' || msg.type === 'resume_room'
     || msg.type === 'find_match' || msg.type === 'create_room' || msg.type === 'create_solo' || msg.type === 'join_room'
@@ -1388,6 +1398,7 @@ export function useCrossover() {
       : msg;
 
   const connectAndSend = useCallback((first: ClientMsg, opts?: { silent?: boolean }) => {
+    stampMatchIntent(first);
     // Detach the previous socket's handlers BEFORE closing it. Otherwise its
     // onclose fires a tick later (after we've already created the new socket) and
     // clobbers the shared connectingSince timestamp — defeating the stuck-CONNECTING
@@ -1550,6 +1561,7 @@ export function useCrossover() {
   // her çağrı o anki fazı/odayı/profili görür (davranış aynı), ama kimlik hiç
   // değişmediği için actions useMemo'su ve alttaki memo sınırları bozulmaz.
   const send = useCallback((msg: ClientMsg) => {
+    stampMatchIntent(msg);
     const ws = wsRef.current;
     const canReconnectWithoutRoom = ['home', 'tournaments', 'arenas', 'leaderboard', 'matchHistory', 'profile'].includes(stateRef.current.phase);
     const canResumeRoom = Boolean(stateRef.current.room?.code && stateRef.current.profile?.userId && !canReconnectWithoutRoom);

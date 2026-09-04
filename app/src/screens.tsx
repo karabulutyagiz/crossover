@@ -808,7 +808,12 @@ function SafeModal({ visible = true, children, onRequestClose, ...rest }: ModalP
 // oturuyor; kanatlar topun iki yanından kartın köşelerine süzülüyor. Renk ve
 // kontur pencereden pencereye değişir: dolgu = şerit rengi, kontur = şeridin
 // koyusu (kartın dış konturuyla aynı) — kırmızı uyarıda kırmızı, altında altın.
-const CREST_H = 50;       // alınlık yüksekliği; top yuvası 4px kartın içine taşar
+// GEOMETRİ (kullanıcı kuralı 2026-09-05): alınlık kartın TAMAMEN üstünde durur —
+// yazıyı hiçbir zaman örtmez; ama karttan ayrı da durmaz: top yuvasının ALTI
+// kartın en üst çizgisine tam değer. Bunun için sarmalayıcı yüksekliği yuva
+// çapına eşittir (top yuvasının altı = sarmalayıcının altı = kartın üst kenarı)
+// ve kanatlar (renk = pencerenin şerit rengi) aynı çizgide biter.
+const CREST_H = 52;       // = yuva çapı; sarmalayıcının altı kartın üst çizgisi
 const CREST_BALL = 34;
 function ModalCrest({ ring }: { ring: string }) {
   const koyu = darken(ring, 0.5);
@@ -945,8 +950,9 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
               // eskiden ince hairline'dı, bu yüzden yan yana yamalı duruyordu.
               // Mühür kartın üst kenarına biner: kart yarısı kadar aşağı iner,
               // mühür sarmalayıcının tepesinde durur (Android kırpma korumalı).
-              // Alınlık kartın üstünde durur; yuva 4-6px içeri taşar (CREST_H-44)
-              marginTop: crest ? 44 : 0,
+              // Alınlık kartın TAMAMEN üstünde durur; yer tam CREST_H kadar ayrılır
+              // (Android kırpma korumalı). İçeri taşma yok — yazı örtülmez.
+              marginTop: crest ? CREST_H : 0,
               backgroundColor: FRAME, borderRadius: 28, padding: 2.5, paddingBottom: 4,
               ...shadowModal,
             }}
@@ -985,11 +991,10 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
             </Pressable>
             </View>
             {crest ? (
-              // top: -(CREST_H-6) — alınlık kartın ÜST ÇİZGİSİNİN ÜSTÜNDE durur,
-              // yalnız 6px'i renkli bileziğe temas eder (kullanıcı düzeltmesi
-              // 2026-09-02: top:0 alınlığı kartın İÇİNE koyup başlık yazısını
-              // örtüyordu — 'yazılar okunmuyor').
-              <View pointerEvents="none" style={{ position: 'absolute', top: -(CREST_H - 6), left: 0, right: 0, alignItems: 'center', zIndex: 30 }}>
+              // top: -CREST_H — sarmalayıcının altı kartın üst çizgisiyle çakışır:
+              // topun altı çizgiye DEĞER, kartın içine girmez, yazı örtülmez
+              // (kullanıcı kuralı 2026-09-05; 2 Eylül'deki 6px taşma da kalktı).
+              <View pointerEvents="none" style={{ position: 'absolute', top: -CREST_H, left: 0, right: 0, alignItems: 'center', zIndex: 30 }}>
                 <ModalCrest ring={strip} />
               </View>
             ) : null}
