@@ -36,6 +36,13 @@ EXPO_TOKEN=... ./eski-projeye-yayin.sh "mesaj"        # app.json'ı geçici çev
 çıkar; o derleme yayıldığında (MIN_IOS_BUILD ile eskiler zorlanınca) eski proje
 ve `eski-projeye-yayin.sh` emekliye ayrılır.
 
+### ✅ 2026-09-05 01:26–01:40 TR — İKİ PROJEYE DE BASILDI (commit `d5bbf37`, doğrulandı)
+| Proje | Grup | Hesap |
+|---|---|---|
+| YENİ `fff58543` | `b357019d-b826-4f16-8733-d331ceceb0bc` | ygzkrblt |
+| ESKİ `a4d757a9` (mağaza/TestFlight cihazları) | `ee4052dd-70d5-4ae2-8a03-1fe2fbe5b093` | ygzkrblt1, `eski-projeye-yayin.sh` |
+Manifest ucu her iki projede de yeni `createdAt` döndürdü. Hızlı diskteki klondan basıldı.
+
 ### Bu paketle giden düzeltmeler (dal `ota-fix`, taban `04844fa`)
 - **Reklam maç içinde ASLA** (kullanıcı kuralı): karar `interstitial.ts` içine
   taşındı — faz `home` değilse ya da son 8 sn içinde maça giden bir mesaj
