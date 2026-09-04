@@ -306,6 +306,7 @@ export type ClientMsg =
   | { type: 'get_my_stats' } // profil istatistikleri: seri rekoru + mod bazlı K/M
   | { type: 'verify_purchase'; receipt: string; platform?: 'ios' | 'android'; productId?: string; isSubscription?: boolean } // Apple JWS ya da Google purchaseToken → hak/elmas ver
   | { type: 'grant_ad_reward' } // watched a rewarded ad → credit a few diamonds (capped server-side)
+  | { type: 'shield_refund'; via: 'inventory' | 'ad' | 'pack' } // Kupa Kalkanı: SON maçın kupa kaybını geri al (envanter kalkanı / ödüllü reklam / Sosyal Paket günlük hediyesi) — sunucu tavanlı
   | { type: 'search_clubs'; reqId: string; q: string }
   | { type: 'pick_player'; playerId: number }
   | { type: 'search_players'; q: string }
@@ -495,6 +496,7 @@ export type ServerMsg =
   | { type: 'cosmetic_equipped'; profile: ProfileView; itemId: string | null; cosmeticType: string }
   | { type: 'diamonds_granted'; profile: ProfileView; granted: number } // IAP validated → diamonds added
   | { type: 'ad_reward_result'; ok: boolean; granted?: number; profile?: ProfileView; error?: string } // rewarded-ad grant (separate from IAP)
+  | { type: 'shield_refund_result'; ok: boolean; refunded?: number; via?: 'inventory' | 'ad' | 'pack'; profile?: ProfileView; error?: string } // son kaybın kupası geri geldi (shield_refund yanıtı)
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
   | { type: 'player_results'; players: PlayerRef[] }
   | { type: 'searching'; etaSeconds?: number } // tahmini eşleşme süresi (dürüst: fallback zamanından türetilir)

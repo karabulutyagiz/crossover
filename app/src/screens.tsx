@@ -17,7 +17,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Animated, AppState, Easing, PanResponder, Platform, Dimensions, Linking, LayoutAnimation, Share } from 'react-native';
+import { Animated, AppState, Easing, PanResponder, PixelRatio, Platform, Dimensions, Linking, LayoutAnimation, Share } from 'react-native';
 import { State } from 'react-native-gesture-handler/lib/commonjs/State';
 import { PanGestureHandler } from 'react-native-gesture-handler/lib/commonjs/handlers/PanGestureHandler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,8 +34,19 @@ import { GOOGLE_ANDROID_CLIENT_ID, GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } 
 import { submitPlayerFeedback, type PlayerFeedbackCategory } from './feedbackSubmit';
 import { isInterstitialDue, testInterstitialNow } from './interstitial';
 import { GemIcon, GEM_COLOR } from './GemIcon';
-import { holdModalSlotForNativeAd, releaseModalSlotForNativeAd, whenModalSlotFree } from './modalTraffic';
+import { releaseModalSlotForNativeAd, tryHoldModalSlotForNativeAd, whenModalSlotFree } from './modalTraffic';
 import { dismissActiveInput } from './keyboardLifecycle';
+import { useCofContentInset, useCofInShell } from './cof/shell';
+import { CofBadge, CofButton, CofInput, CofNumber, CofSectionHeader, CofSegmentedTabs, CofSurface, CofText } from './cof/primitives';
+import { cof } from './cof/theme';
+import { cofUpper, formatNumber } from './cof/format';
+import {
+  HOME_AVATAR_DIAMETER, HOME_CARD_PADDING, HOME_DAILY_BODY_LINES, HOME_DAILY_TITLE_LINES,
+  HOME_SCREEN_HORIZONTAL, HOME_SECTION_GAP, homeArenaProgress, homeDailyCardWidth,
+  homeHeroHeight, homeMatchOptionCardWidth, homeMatchOptionColumns,
+} from './cof/homePolicy';
+import type { CofBadgeVariant } from './cof/policy';
+import { cofNavTotalHeight, screenBottomPadding } from './cof/navPolicy';
 import { gemTarget, setGemTarget, xpTarget, setXpTarget, setXpRemeasure, remeasureXpTarget, trophyTarget, setTrophyTarget, setTrophyRemeasure, remeasureTrophyTarget } from './gemTarget';
 import { Avatar } from './Avatar';
 import { useIsTablet, useWindow, useContentMaxWidth, canvasSizeFor } from './layout';
@@ -46,7 +57,7 @@ import Svg, { Rect, Circle, Line, Polygon, Path, G, Ellipse, ClipPath, Defs, Lin
 WebBrowser.maybeCompleteAuthSession();
 import type { GameState, FriendInfo, LeaderboardEntry } from './useCrossover';
 import { initialState } from './useCrossover';
-import type { BlockedUserView, ClubRef, CosmeticLoadoutView, CosmeticType, DailyCareerStateView, DailyCrossoverStateView, DailyQuestsView, SeasonStateView, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, ScopeOption, SpellInfo, StoreCatalogItem } from './protocol';
+import type { BlockedUserView, ClubRef, CosmeticLoadoutView, CosmeticType, DailyCareerStateView, DailyCrossoverStateView, DailyQuestsView, SeasonStateView, Difficulty, GameMode, GameOptions, MatchHistoryView, PlayerRef, ProfileView, PublicProfile, RoomView, Scope, ScopeOption, SpellInfo, StoreCatalogItem, StoreCatalogView } from './protocol';
 import {
   EmoteCallout,
   EmoteSticker,
@@ -188,6 +199,7 @@ type Actions = {
   loadMyStats: () => void; // profil istatistiklerini iste (my_stats yanıtı)
   verifyPurchase: (receipt: string, opts?: { productId?: string; isSubscription?: boolean }) => Promise<void>;
   grantAdReward: () => Promise<number>;
+  shieldRefund: (via: 'inventory' | 'ad' | 'pack') => Promise<number>; // Kupa Kalkanı: son kaybı geri al → iade edilen kupa
   loadFriends: () => void;
   sendFriendRequest: (targetCode?: string, targetUsername?: string) => void;
   respondFriendRequest: (requestId: string, accept: boolean) => void;
@@ -199,6 +211,7 @@ type Actions = {
   getUserProfile: (userId: string) => void;
   closeUserProfile: () => void;
   clearNotice: () => void;
+  showNotice: (text: string) => void; // geçici toast (ana ekran)
   clearFriendNotice: () => void;
   dismissMatchInvite: () => void;
   findMatchAgain: () => void;
@@ -230,6 +243,12 @@ interface Props {
   onLanguageChange?: () => void;
   onOpenLeaderboard?: () => void; // open the centered leaderboard popup (App-level overlay)
   onOpenMatchHistory?: () => void; // open the centered match-history popup (App-level overlay)
+  // YALNIZ GELİŞTİRME (Adım 04 §13): çekim harness'ı klavye açık durumu
+  // kanıtlarken oda kodu alanına odaklanır. Üretimde HİÇBİR yerden verilmez.
+  devFocusRoomCode?: boolean;
+  // YALNIZ GELİŞTİRME: harness'ın "aşağı kaydırılmış" kanıtı üretebilmesi için
+  // kaydırıcı referansı dışarı verilir. Üretim çağrılarında verilmez.
+  shotScrollRef?: Ref<ScrollView>;
   onOpenLevelRoad?: () => void; // Seviye Yolu tam ekranını aç (App-level modal)
   onLockedSocialMode?: (mode: GameMode) => void; // Social Pack-gated mode tapped; App-level engagement owns the upsell
   overlayBusy?: boolean; // App-katmanı popup zinciri sürüyor mu (XP yağmuru bekler)
@@ -966,7 +985,11 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
             </Pressable>
             </View>
             {crest ? (
-              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'center', zIndex: 30 }}>
+              // top: -(CREST_H-6) — alınlık kartın ÜST ÇİZGİSİNİN ÜSTÜNDE durur,
+              // yalnız 6px'i renkli bileziğe temas eder (kullanıcı düzeltmesi
+              // 2026-09-02: top:0 alınlığı kartın İÇİNE koyup başlık yazısını
+              // örtüyordu — 'yazılar okunmuyor').
+              <View pointerEvents="none" style={{ position: 'absolute', top: -(CREST_H - 6), left: 0, right: 0, alignItems: 'center', zIndex: 30 }}>
                 <ModalCrest ring={strip} />
               </View>
             ) : null}
@@ -1356,11 +1379,21 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
   // content genuinely fits the viewport, so small phones keep scrolling.
   const [vpH, setVpH] = useState(0);
   const [contentH, setContentH] = useState(0);
+  // ALT İÇERİK BOŞLUĞU — TEK KAYNAK (Aşama 02): RootScreenShell 76 + safeArea
+  // + 24 verir, DetailScreenShell safeArea + 24; kabuk dışındaki ekranlar 0
+  // alır (maç ekranlarının davranışı değişmez). Ekranlar kendi tab-bar
+  // boşluklarını EKLEMEZ — çift boşluk yasak.
+  const cofInset = useCofContentInset();
+  // ADIM 03 KAPISI: kök/detay kabuğu içindeyken styles.screen'in eski 22 dp alt
+  // şeridi sıfırlanır — dinlenme boşluğu TAM 24 dp olur (kabuk insetiyle çift
+  // sayılmaz). Kabuk DIŞINDAKİ maç/soru/sonuç ekranları 22'yi aynen korur.
+  const inShell = useCofInShell();
+  const screenPadBottom = screenBottomPadding(inShell);
   useEffect(() => () => dismissActiveInput(), []);
   // Keyboard-aware by default so inputs/buttons never get covered by the keyboard.
   return (
     <KeyboardAvoidingView
-      style={[styles.screen, !contentCenter && { justifyContent: 'flex-start' }, pad !== undefined && { padding: pad }]}
+      style={[styles.screen, { paddingBottom: screenPadBottom }, !contentCenter && { justifyContent: 'flex-start' }, pad !== undefined && { padding: pad }]}
       // Scroll screens let the ScrollView's `automaticallyAdjustKeyboardInsets` do the
       // work (it insets AND scrolls the focused input above the keyboard); only fixed
       // (non-scroll) screens need the KAV to pad. Running both double-shifts the layout
@@ -1408,7 +1441,8 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
           // ancak directionalLockEnabled engeller — parmak hafif yana kaysa bile
           // hareket TEK eksende kilitlenir ve sekme değişmez.
           directionalLockEnabled
-          contentContainerStyle={{ flexGrow: 1, justifyContent: contentCenter ? 'center' : 'flex-start' }}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: contentCenter ? 'center' : 'flex-start', paddingBottom: cofInset.paddingBottom }}
+          scrollIndicatorInsets={cofInset.scrollIndicatorInsets}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps={keyboardShouldPersistTaps}
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
@@ -1417,7 +1451,13 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
           {maxW ? <View style={{ width: '100%', maxWidth: maxW, alignSelf: 'center' }}>{children}</View> : children}
         </ScrollView>
       ) : (
-        maxW ? <View style={{ flex: 1, width: '100%', maxWidth: maxW, alignSelf: 'center' }}>{children}</View> : children
+        // Kaydırılmayan ekran: içerik header ile navigasyon arasındaki alanı
+        // flex ile alır; cihaz yüksekliği varsayılmaz, alt boşluk kabuktan gelir.
+        // Kaydırılmayan yol: alt boşluk EKLENMEZ. Bu daldaki kök ekranların
+        // (Mağaza/Koleksiyon/Arkadaşlar) İÇ kaydırıcıları payı kendileri alır;
+        // Ana ekran ise sabit düzeni için kendi navigasyon rezervini hesaplar.
+        // İkisini birden uygulamak çift boşluk olurdu.
+        <View style={{ flex: 1, width: '100%', maxWidth: maxW, alignSelf: 'center' }}>{children}</View>
       )}
     </KeyboardAvoidingView>
   );
@@ -2254,6 +2294,65 @@ export function DevShotScreen() {
         : kind === 'friends' ? <FriendsScreen state={st} actions={acts} />
         : <ArenasScreen state={st} actions={acts} />}
     </View>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ADIM 04 GÖRSEL KANIT HARNESS'I — YALNIZ GELİŞTİRME (App.tsx COF_HOME_SHOT).
+// Spec §13: kanıt GERÇEK HomeScreen bileşeninden, gerçek store sözleşmesiyle
+// alınır; fixture YALNIZ veri katmanını besler. Üretim hesabına hiçbir şey
+// yazılmaz — `actions` her çağrıyı yutan bir Proxy'dir ve ağ açılmaz.
+// Durumlar 7 saniyede bir döner; ekran görüntüleri zamanlamayla alınır.
+// ══════════════════════════════════════════════════════════════════════════
+const HOME_SHOT_STATES = ['normal', 'kaydirilmis', 'arayan', 'uzunIsim', 'bosGunluk', 'odaKodu'] as const;
+export type HomeShotState = (typeof HOME_SHOT_STATES)[number];
+
+export function HomeShotScreen({ only }: { only?: HomeShotState }) {
+  const [ix, setIx] = useState(0);
+  useEffect(() => {
+    if (only) return;
+    const id = setInterval(() => setIx((i) => (i + 1) % HOME_SHOT_STATES.length), 7000);
+    return () => clearInterval(id);
+  }, [only]);
+  const kind: HomeShotState = only ?? HOME_SHOT_STATES[ix]!;
+  const scrollRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    // "Aşağı kaydırılmış" kanıtı: GERÇEK ScrollView programatik kaydırılır —
+    // sahte offset ya da negatif margin değil.
+    const id = setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: kind === 'kaydirilmis' ? 620 : 0, animated: false });
+    }, 320);
+    return () => clearTimeout(id);
+  }, [kind]);
+
+  const profile = {
+    ...SHOT_PROFILE,
+    displayName: kind === 'uzunIsim' ? 'Abdurrahmanoğlu Yağızhan' : 'Yağız',
+    trophies: 274,
+    diamonds: 135480,
+    arena: { name: 'Amatör Lig', icon: '🏟️', minTrophies: 200 },
+    winStreak: 3,
+    accountLevel: 12, accountXpInto: 340, accountXpNext: 800,
+    socialPackUntil: kind === 'bosGunluk' ? null : new Date(Date.now() + 86_400_000).toISOString(),
+  } as unknown as GameState['profile'];
+
+  const st: GameState = {
+    ...initialState,
+    connected: true,
+    phase: kind === 'arayan' ? 'searching' : 'home',
+    profile,
+    leaderboard: [{ userId: 'you', rank: 594, name: 'Yağız', trophies: 274 }] as unknown as GameState['leaderboard'],
+    dailyCx: kind === 'bosGunluk' ? null : ({ day: 12, played: false, streak: 4, reward: 10 } as unknown as GameState['dailyCx']),
+  };
+  const acts = new Proxy({}, { get: () => () => {} }) as unknown as Actions;
+  return (
+    <HomeScreen
+      state={st}
+      actions={acts}
+      heroAnimsActive={false}
+      shotScrollRef={scrollRef}
+      devFocusRoomCode={kind === 'odaKodu'}
+    />
   );
 }
 
@@ -4257,6 +4356,95 @@ const RailBadge = memo(function RailBadge({ icon, iconColor, ringColor, value, o
   );
 });
 
+// ADIM 04 §6 — kupa ve sıra artık hero'nun üstünde YÜZEN iki daire değil,
+// logonun ALTINDA duran iki kompakt bilgi chip'i. Buton gibi parlamaz (sakin
+// yüzey + ince kenarlık), 44 dp hedef ve yön göstergesi taşır.
+// RailBadge'in ÖDÜL SÖZLEŞMESİ birebir korunur: countAnim sayacı sürer,
+// fillAnim altın dolumu süpürür, innerRef kupa uçuşunun ölçüm hedefidir.
+const HomeStatChip = memo(function HomeStatChip({ icon, iconColor, value, onPress, accessibilityLabel, countAnim, fillAnim, innerRef }: {
+  icon: IoniconName; iconColor: string; value: string; onPress: () => void; accessibilityLabel: string;
+  countAnim?: Animated.Value; fillAnim?: Animated.Value; innerRef?: Ref<View>;
+}) {
+  const { scale, onIn, onOut } = usePressScale(0.96, GameFeedbackEvent.UI_CARD);
+  const [animVal, setAnimVal] = useState(value);
+  useEffect(() => {
+    if (!countAnim) return;
+    const id = countAnim.addListener(({ value: v }) => setAnimVal(formatNumber(Math.max(0, Math.round(v)))));
+    return () => countAnim.removeListener(id);
+  }, [countAnim]);
+  const shown = countAnim ? animVal : value;
+  return (
+    <Pressable
+      ref={innerRef}
+      onPress={onPress}
+      onPressIn={onIn}
+      onPressOut={onOut}
+      accessibilityRole="button"
+      accessibilityLabel={`${accessibilityLabel}: ${shown}`}
+      style={{ flex: 1, minHeight: cof.size.minimumTouchTarget, justifyContent: 'center' }}
+    >
+      <Animated.View style={{
+        transform: [{ scale }],
+        flexDirection: 'row', alignItems: 'center', gap: cof.spacing[2],
+        minHeight: cof.size.minimumTouchTarget,
+        paddingHorizontal: cof.spacing[3],
+        borderRadius: cof.radius.control,
+        backgroundColor: cof.color.surface.raised,
+        borderWidth: cof.border.hairline, borderColor: cof.color.stroke.subtle,
+        overflow: 'hidden',
+      }}>
+        {fillAnim ? (
+          <Animated.View
+            pointerEvents="none"
+            style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '100%', backgroundColor: withAlpha(cof.color.reward.gold, 0.4), transformOrigin: 'bottom', transform: [{ scaleY: fillAnim }] }}
+          />
+        ) : null}
+        <Ionicons name={icon} size={cof.size.icon.medium} color={iconColor} />
+        <CofText variant="cardTitle" style={{ flexShrink: 1 }} numberOfLines={1}>{shown}</CofText>
+        <View style={{ flex: 1 }} />
+        <Ionicons name="chevron-forward" size={cof.size.icon.small} color={cof.color.text.tertiary} />
+      </Animated.View>
+    </Pressable>
+  );
+});
+
+// ADIM 04 §9 — günlük alanın ÜÇ kartı artık TEK bileşenden çıkar: aynı radius,
+// aynı iç boşluk, aynı başlık stili, aynı yön göstergesi. Durum badge'i ÜSTTE,
+// açıklama/ödül satırı ALTTA — ikisi aynı alanda yarışmaz. Eski düzen üç kartı
+// tek satıra zorluyor ve başlığı "GÜNÜN SO..." diye kırpıyordu.
+const HomeDailyCard = memo(function HomeDailyCard({ width, title, body, art, icon, badge, badgeLabel, onPress }: {
+  width: number; title: string; body?: string; art?: ImageSourcePropType; icon?: IoniconName;
+  badge?: CofBadgeVariant; badgeLabel?: string; onPress: () => void;
+}) {
+  return (
+    <CofSurface
+      variant="interactive"
+      onPress={onPress}
+      onPressIn={() => triggerFeedback(GameFeedbackEvent.UI_CARD)}
+      accessibilityLabel={body ? `${title}. ${body}` : title}
+      padding={HOME_CARD_PADDING}
+      minHeight={0}
+      style={{ width }}
+    >
+      <View style={{ minHeight: 128, gap: cof.spacing[2] }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: cof.spacing[2], minHeight: 40 }}>
+          <View style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+            {art
+              ? <Image source={art} resizeMode="contain" style={{ width: 40, height: 40 }} />
+              : icon ? <Ionicons name={icon} size={cof.size.icon.large} color={cof.color.reward.gold} /> : null}
+          </View>
+          {badge ? <View style={{ marginLeft: 'auto' }}><CofBadge variant={badge} label={badgeLabel} /></View> : null}
+        </View>
+        <CofText variant="cardTitle" numberOfLines={HOME_DAILY_TITLE_LINES}>{title}</CofText>
+        {body ? <CofText variant="caption" tone="secondary" numberOfLines={HOME_DAILY_BODY_LINES}>{body}</CofText> : null}
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 'auto' }}>
+          <Ionicons name="chevron-forward" size={cof.size.icon.small} color={cof.color.text.tertiary} />
+        </View>
+      </View>
+    </CofSurface>
+  );
+});
+
 // ---- top bar --------------------------------------------------------------
 
 // Raised round button — the mockup's pack / bell / gear trio.
@@ -4667,7 +4855,10 @@ const CAROUSEL_GAP = 8;
 // starving the profile pill, so the pack shortcut (duplicated in the Store tab) steps out.
 const TOPBAR_ROOMY_W = 360;
 const HOME_SCREEN_PAD = 16;
-const HOME_TAB_BAR_BASE_H = 66;
+// ESKİ: elle ölçülmüş 66 dp. Aşama 02'de tek kaynağa bağlandı — gerçek bar
+// gövdesi token'da 76 dp (size.bottomNavigation.barHeightExcludingSafeArea) ve
+// alt navigasyon artık overlay olduğu için rezerv TAM bar yüksekliğidir.
+// Bir daha "yeniden ölçüp" 66'ya döndürme: değer token dosyasından gelir.
 const HOME_HEADER_ROW_H = 46;
 const HOME_DESIGN_BODY_MIN_H = 407;
 const HOME_DESIGN_BODY_RANGE_H = 204;
@@ -5019,7 +5210,7 @@ function DailyCrossoverModal({ visible, cx, wrong, reward, onGuess, onClose }: {
   );
 }
 
-export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, onOpenLevelRoad, onLockedSocialMode, overlayBusy, gemCountAnimOverride, gemFillAnimOverride, trophyLand, trophyHold, monetizationDiagnostics, heroAnimsActive = true }: Props) {
+export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOpenLeaderboard, onOpenMatchHistory, onGoToFriends, onOpenLevelRoad, onLockedSocialMode, overlayBusy, gemCountAnimOverride, gemFillAnimOverride, trophyLand, trophyHold, monetizationDiagnostics, heroAnimsActive = true, devFocusRoomCode = false, shotScrollRef }: Props) {
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [scope, setScope] = useState<Scope>({ type: 'all' });
   const [mode, setMode] = useState<GameMode>('team-team');
@@ -5101,7 +5292,6 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const [joinCode, setJoinCode] = useState('');
   const roomCodeInputFocus = useInputFocusLifecycle();
   const [hero, setHero] = useState({ w: 0, h: 0 });
-  const [railW, setRailW] = useState(0);
 
   const opts: GameOptions = { scope, mode };
   const profile = state.profile;
@@ -5113,20 +5303,25 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
     : 0;
   const claimTopPad = unclaimedLevelCount(profile) > 0 ? 18 : 0;
   const homeTopPad = Math.max(8, frameTopPad, claimTopPad);
-  const tabReserveH = HOME_TAB_BAR_BASE_H + Math.max(insets.bottom, 12);
-  const homeViewportH = Math.max(0, win.height - insets.top - tabReserveH);
-  const bodyBudgetH = Math.max(0, homeViewportH - HOME_SCREEN_PAD * 2 - homeTopPad - HOME_HEADER_ROW_H);
-  const homeScale = Math.max(0.18, Math.min(1, (bodyBudgetH - HOME_DESIGN_BODY_MIN_H) / HOME_DESIGN_BODY_RANGE_H));
   const myLeaderboardEntry = state.leaderboard.find((e) => e.userId === profile?.userId);
   const myRank = myLeaderboardEntry?.rank;
   const leaderboardRankFetchKeyRef = useRef<string | null>(null);
-  const heroBoxH = Math.round(88 + 46 * homeScale);
-  const playH = Math.round(48 + 16 * homeScale);
-  const primaryCardH = Math.round(112 + 28 * homeScale);
-  const secondaryCardH = Math.round(72 + 22 * homeScale);
-  const carouselCardH = Math.round(82 + 38 * homeScale);
-  const gapSm = Math.round(2 + 4 * homeScale);
-  const gapMd = Math.round(5 + 5 * homeScale);
+  // ── ADIM 04 ÖLÇÜLERİ ──────────────────────────────────────────────────────
+  // Eski `homeScale`/`bodyBudgetH` KALDIRILDI: ekranı tek viewport'a sıkıştırıp
+  // her kartı küçültüyordu (spec §3.6, §15). Artık doğal kaydırma var, ölçüler
+  // yalnız GENİŞLİKTEN türer ve kararlar saf `homePolicy`de test edilir.
+  // İçerik genişliği ÖLÇÜLÜR (tablette Screen içeriği maxWidth ile ortalar),
+  // ölçülene kadar pencere genişliğinden tahmin edilir → ilk kare zıplamaz.
+  const [bodyW, setBodyW] = useState(0);
+  const contentW = bodyW > 0 ? bodyW : Math.max(0, win.width - HOME_SCREEN_HORIZONTAL * 2);
+  const heroH = homeHeroHeight(win.width);
+  // OS yazı ölçeği: uygulama metni ÖLÇEKLEMİYOR (nativeTextDefaults,
+  // allowFontScaling:false — iOS/Android parite kararı), ama %120 ayarında
+  // DÜZEN yine de gevşetilir: iki kart alt alta iner, sıkışma olmaz (spec §11).
+  const osFontScale = PixelRatio.getFontScale();
+  const optionCols = homeMatchOptionColumns(contentW + HOME_SCREEN_HORIZONTAL * 2, osFontScale);
+  const optionCardW = homeMatchOptionCardWidth(contentW, optionCols);
+  const dailyCardW = homeDailyCardWidth(contentW);
 
   // HUD counters: the gem pill and trophy badge are driven by these anim values
   // (RailBadge/GemPill read them via listener), kept in lock-step with the profile.
@@ -5198,6 +5393,10 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   const tierNo = ARENA_DATA.length - curIdx;
   const arenaPct = nextTier ? Math.min(1, Math.max(0, (trophies - curTier.min) / (nextTier.min - curTier.min))) : 1;
   const arenaC = arenaColor(profile?.arena.name ?? '');
+  // Spec §8: arena adı ve AÇIK METİN kupa ilerlemesi. Sonraki eşik yoksa
+  // (en üst arena) uydurulmaz — homeArenaProgress dolu döner, satır çizilmez.
+  const arenaName = arenaLabel(profile?.arena.name ?? '') + (profile?.arena.name === 'GOAT' ? goatStageLabel(profile?.trophies) : '');
+  const arenaProg = homeArenaProgress(trophies, curTier.min, nextTier ? nextTier.min : curTier.max);
   // Profil hapı: köşe rozeti = HESAP seviyesi (ömürlük, sezonla sıfırlanmaz —
   // kullanıcı kararı 2026-09-02: 'copassin seviyesi ayrı, oyun leveli ayrı').
   // Eski sunucu accountLevel göndermiyorsa sezonluğa düşülür.
@@ -5304,7 +5503,6 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   }, []);
   const openStoreDiamonds = useCallback(() => { dismissActiveInput(); navRef.current.onGoToStore?.('diamonds'); }, []);
   const openStoreSocial = useCallback(() => { dismissActiveInput(); navRef.current.onGoToStore?.('socialPack'); }, []);
-  const openHistory = useCallback(() => { dismissActiveInput(); navRef.current.onOpenMatchHistory?.(); }, []);
   const openBoard = useCallback(() => { dismissActiveInput(); navRef.current.onOpenLeaderboard?.(); }, []);
   const openRoad = useCallback(() => { dismissActiveInput(); navRef.current.onOpenLevelRoad?.(); }, []);
   // setState setter'ları zaten sabit — [] deps güvenli.
@@ -5314,64 +5512,23 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
   // Zil ve "Yenilikler" kartı aynı davranışı paylaşır (feed açılır, pip söner).
   const openNews = useCallback(() => { dismissActiveInput(); setNewsOpen(true); setNewsUnread(false); AsyncStorage.setItem(NEWS_READ_KEY, LATEST_NEWS_ID).catch(() => {}); }, []);
 
-  // Three across, as the mockup — the row is (3 cards + 2 gaps) wide.
-  const cardW = railW > 0 ? (railW - 2 * CAROUSEL_GAP) / 3 : 0;
   const codeReady = joinCode.length === ROOM_CODE_LEN;
-
-  // Kart sanatları: inline eleman her render'da yeni kimlik alır ve
-  // memo(ArtCard)'ı boşa çıkarırdı. Arena sanatı yalnız kupa sayısının
-  // fonksiyonu (curTier/nextTier/arenaPct hepsi trophies'ten türer); carousel
-  // sanatları tamamen statik — t() çıktıları dil değişiminde App'in langKey
-  // remount'u ile tazelendiğinden [] deps güvenli.
-  const arenaArt = useMemo(() => (
-    <View style={StyleSheet.absoluteFill}>
-      {/* Arena render fills the frame as a horizontal strip. The isometric stadium
-          is diamond-shaped, so its PNG has transparent top corners; the render is
-          scaled up past the box so the stadium body covers them instead of leaving
-          the card colour showing through. Clipped by the box's overflow:hidden. */}
-      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 30, overflow: 'hidden' }}>
-        <Image source={curTier.img} resizeMode="cover" style={{ width: '100%', height: '100%', transform: [{ scale: 1.5 }, { translateY: 6 }] }} />
-      </View>
-      <View style={{ position: 'absolute', right: 12, top: 7, flexDirection: 'row', gap: 2 }}>
-        {Array.from({ length: 3 }, (_, i) => (
-          <Ionicons key={i} name="star" size={12} color={i < Math.ceil(arenaPct * 3) ? theme.gold : 'rgba(255,255,255,0.22)'} />
-        ))}
-      </View>
-      {nextTier ? (
-        <View style={{ position: 'absolute', left: 11, top: 9, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-          <Text style={{ color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }} numberOfLines={1}>{`${trophies}/${nextTier.min}`}</Text>
-          <Ionicons name="trophy" size={11} color={theme.accent} />
-        </View>
-      ) : (
-        <Text style={{ position: 'absolute', left: 11, top: 9, color: theme.accent, fontSize: 11, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }} numberOfLines={1}>{t('home.topArena')}</Text>
-      )}
-    </View>
-  ), [trophies, curTier, nextTier, arenaPct]);
-  const socialArt = useMemo(() => (
-    <View style={StyleSheet.absoluteFill}>
-      {/* Mockup placement: players sit right-of-centre, feet on the pill. */}
-      <Image source={EMOTE_ART.squad} resizeMode="contain" style={{ position: 'absolute', right: 0, bottom: 44, width: '68%', height: '58%' }} />
-      <Text style={{ position: 'absolute', left: 11, top: 10, color: theme.text, fontSize: 11, fontFamily: 'Poppins-SemiBold', width: '58%', ...engrave('sm') }} numberOfLines={3}>
-        {t('home.socialPackShort')}
-      </Text>
-    </View>
-  ), []);
-  const roadArt = useMemo(() => (
-    <View style={StyleSheet.absoluteFill}>
-      {/* Mockup placement: the medal floats right-of-centre, above the pill. */}
-      <Image source={XP_STAR} resizeMode="contain" style={{ position: 'absolute', right: 0, top: '14%', width: '54%', height: '58%' }} />
-      <Text style={{ position: 'absolute', left: 11, top: 10, color: theme.text, fontSize: 11, fontFamily: 'Poppins-SemiBold', width: '58%', ...engrave('sm') }} numberOfLines={3}>
-        {t('home.levelRoadHint')}
-      </Text>
-    </View>
-  ), []);
 
   return (
     <Screen
-      pad={HOME_SCREEN_PAD} contentCenter={false} fillTablet
-      // ── 1. TOP BAR ── fixed lobby header. It reserves the full visual overhang
-      // of the selected frame / gift herald, so no decorative pixel can bleed back
-      // into the device safe area while the body still compacts below it.
+      // ADIM 04 §11 + §15: ekran ARTIK tek viewport'a zorlanmıyor. Eski düzen
+      // `homeScale` ile her kartı küçültüyordu (okunabilirlik ve premium his
+      // kaybı, spec §3.6). Yerine DOĞAL dikey kaydırma: alt içerik rezervi kök
+      // kabuk politikasından gelir, ekran fazladan sabit boşluk EKLEMEZ.
+      scroll
+      scrollRef={shotScrollRef}
+      pad={HOME_SCREEN_HORIZONTAL} contentCenter={false} fillTablet
+      // ── BÖLGE 1: OYUNCU BAŞLIĞI ── sabit lobi başlığı. Takılı çerçevenin /
+      // ödül habercisinin görsel taşmasını TAMAMEN rezerve eder, böylece hiçbir
+      // dekoratif piksel cihazın güvenli alanına sızmaz.
+      // Spec §5.2: aynı anda EN FAZLA İKİ yardımcı ikon. Maç geçmişi saati
+      // buradan kaldırıldı; işlev KAYBOLMADI — Profil ekranı aynı popup'ı
+      // onOpenMatchHistory ile açıyor (App.tsx), yeni route uydurulmadı.
       header={
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: homeTopPad, minHeight: homeTopPad + HOME_HEADER_ROW_H, overflow: 'visible' }}>
           <ProfilePill
@@ -5391,9 +5548,6 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
             boosted={Boolean(profile?.xpBoostUntil && new Date(profile.xpBoostUntil).getTime() > Date.now())}
           />
           <GemPill count={profile?.diamonds ?? 0} onPress={openStoreDiamonds} countAnim={gemCountAnim} fillAnim={gemFillAnim} innerRef={gemPillRef} />
-          {win.width >= TOPBAR_ROOMY_W ? (
-            <RoundIconBtn icon="time" onPress={openHistory} />
-          ) : null}
           <RoundIconBtn icon="notifications" dot={newsUnread} onPress={openNews} />
           <RoundIconBtn icon="settings-sharp" onPress={openMenu} />
         </View>
@@ -5404,206 +5558,256 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
         <XpOrbFly gained={xpFly} target={{ x: xpTarget.x, y: xpTarget.y }} onOrbLand={onXpOrbLand} onDone={() => { xpFlyPlanRef.current = null; setXpFly(null); actions.markXpSeen(); }} />
       ) : null}
 
-      {/* ── 2. HERO ── */}
-      <View
-        onLayout={(e) => setHero({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
-        // minHeight must clear the absolutely-positioned rail: top(2) + 2 badges (44 circle
-        // + 14.5 chip overlap) + 12 gap = 131. Anything less and the rail spills onto the CTA.
-        style={{ alignItems: 'center', justifyContent: 'center', marginTop: gapSm, marginBottom: 0, minHeight: heroBoxH }}
-      >
-        {/* w excludes the right badge rail (44px RailBadge circles at right:0 + 12px
-            margin): pieces falling BEHIND the translucent badge faces read as artifacts —
-            a white ribbon as a gray slab over the trophy cup, a purple piece as a notch
-            poking out of the ring's right edge. */}
-        <HeroConfetti w={Math.max(0, hero.w - 56)} h={hero.h} visible={heroAnimsActive} />
-        {/* The hero unit — the two balls + the CROSSOVER lettering lifted WHOLE
-            from the Top.jpeg mockup as one image (feathered edges melt into the
-            night sky), so it is pixel-for-pixel the photo composition. */}
-        <Image
-          source={HERO_ART}
-          style={{ width: win.width * (0.55 + 0.102 * homeScale), height: win.width * (0.55 + 0.102 * homeScale) * (320 / 708) }}
-          resizeMode="contain"
-        />
-        <View style={{ position: 'absolute', right: 0, top: 2, gap: 12 }}>
-          <RailBadge icon="trophy" iconColor={theme.gold} ringColor={theme.purple} value={String(trophies)} onPress={openArenas} countAnim={trophyCountAnim} fillAnim={trophyFillAnim} innerRef={trophyBadgeRef} />
-          <RailBadge icon="podium" iconColor={theme.accent} ringColor={theme.accentDark} value={myRank ? `#${myRank}` : '—'} onPress={openBoard} />
-        </View>
-      </View>
+      <View onLayout={(e) => setBodyW(e.nativeEvent.layout.width)} style={{ gap: HOME_SECTION_GAP }}>
 
-      {!isNetworkErrorMessage(state.error) && state.error ? <ErrorBanner message={state.error} /> : null}
-
-      {/* ── 3. CTA ── */}
-      <View>
-        {/* Galibiyet serisi — 2+ üst üste dereceli galibiyette CTA'nın üstünde alevli rozet */}
-        {(profile?.winStreak ?? 0) >= 2 ? (
-          <View pointerEvents="none" style={{ position: 'absolute', top: -13, left: 0, right: 0, alignItems: 'center', zIndex: 5 }}>
-            <View style={{
-              flexDirection: 'row', alignItems: 'center', gap: 4,
-              backgroundColor: theme.flame, borderRadius: 999,
-              borderWidth: 2, borderColor: lighten(theme.flame, 0.3),
-              paddingHorizontal: 11, paddingVertical: 3.5,
-              shadowColor: theme.flame, shadowOpacity: 0.8, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 10,
-            }}>
-              <Ionicons name="flame" size={13} color="#FFF3D6" />
-              <Text style={{ color: '#FFF9EC', fontSize: 11.5, fontFamily: 'Poppins-Black', letterSpacing: 0.6, ...engrave('sm') }}>
-                {t('streak.chip', { n: String(profile?.winStreak ?? 0) }).toLocaleUpperCase(currentLang())}
-              </Text>
-            </View>
-          </View>
-        ) : null}
-        <HeroPlayBtn label={t('home.quickMatch')} onPress={startQuickMatch} height={playH} />
-      </View>
-
-      {/* ── 4. GRID ── */}
-      <View style={{ flexDirection: 'row', gap: gapMd, marginTop: gapSm }}>
-        <View style={{ flex: 1 }}>
-          <ArtCard
-            title={t('home.modesTitle')}
-            tint={theme.amber}
-            grade={MODES_CARD_GRADE}
-            strip="#3A2109"
-            arrow
-            height={primaryCardH}
-            onPress={openModes}
-            art={MODES_CARD_ART}
-          />
-          {/* Kalıcı YENİ kurdelesi (kullanıcı kararı 2026-08-28: '1' yerine
-              kartın sağ üstünde YENİ yazsın — açınca kaybolmaz). */}
-          <View pointerEvents="none" style={{ position: 'absolute', top: -7, right: -5, zIndex: 10 }}>
-            <Ribbon label={t('store.badgeNew')} color={theme.danger} />
-          </View>
-        </View>
-        {/* Özel Mod — the private-room flow. createRoom/joinRoom have existed in
-            useCrossover (797/826) with a working LobbyScreen, but nothing in the UI
-            had called them; this panel is their entry point. */}
-        <GhostPanel title={t('home.specialMode')} ghost="key" height={primaryCardH}>
-          <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', marginTop: 9 }} numberOfLines={1}>{t('home.roomCodeLabel')}</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 }}>
-            <TextInput
-              value={joinCode}
-              onChangeText={(v) => setJoinCode(v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, ROOM_CODE_LEN))}
-              onSubmitEditing={() => { if (codeReady) { dismissActiveInput(); actions.joinRoom(joinCode, playerName); setJoinCode(''); } }}
-              placeholder={t('home.codePlaceholder')}
-              placeholderTextColor={withAlpha(theme.muted, 0.5)}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              returnKeyType="go"
-              rejectResponderTermination={false}
-              {...roomCodeInputFocus}
-              onFocus={(e) => { triggerFeedback(GameFeedbackEvent.UI_TAP); roomCodeInputFocus.onFocus(e); }}
-              style={{
-                flex: 1, height: 34, borderRadius: 11, backgroundColor: theme.well,
-                borderTopWidth: 2, borderTopColor: theme.shadowInk,
-                color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 12.5, letterSpacing: 1.2,
-                paddingHorizontal: 8, textAlign: 'center',
-              }}
-            />
-            <Pressable
-              disabled={!codeReady}
-              onPressIn={() => { if (codeReady) triggerFeedback(GameFeedbackEvent.UI_PRIMARY); }}
-              onPress={() => { dismissActiveInput(); actions.joinRoom(joinCode, playerName); setJoinCode(''); }}
-              style={({ pressed }) => ({
-                width: 34, height: 34, borderRadius: 17,
-                backgroundColor: codeReady ? theme.primary : theme.navyWell,
-                borderBottomWidth: 2, borderBottomColor: codeReady ? theme.primaryDark : theme.panelInk,
-                alignItems: 'center', justifyContent: 'center',
-                transform: [{ translateY: pressed ? 2 : 0 }],
-              })}
-            >
-              <Ionicons name="arrow-forward" size={16} color={codeReady ? theme.ink : theme.muted} />
-            </Pressable>
-          </View>
-          <Pressable
-            onPressIn={() => triggerFeedback(GameFeedbackEvent.UI_CARD)}
-            onPress={() => { dismissActiveInput(); actions.createRoom(playerName, opts); }}
-            style={({ pressed }) => ({
-              marginTop: 8, height: 32, borderRadius: 11,
-              backgroundColor: withAlpha(theme.blue, 0.22),
-              borderWidth: 1.5, borderColor: withAlpha(theme.blue, 0.6),
-              flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-              transform: [{ translateY: pressed ? 2 : 0 }],
-            })}
+        {/* ══ BÖLGE 2: OYUN ODAĞI ══ logo · kupa/sıra chip'leri · TEK baskın CTA */}
+        <View style={{ gap: cof.spacing[4] }}>
+          <View
+            onLayout={(e) => setHero({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+            // Spec §6: logo yüksekliği 112–132 dp bandına KELEPÇELİ (homePolicy).
+            // Rozet rayı kalktığı için hero artık taşma payı ayırmıyor.
+            style={{ alignItems: 'center', justifyContent: 'center', height: heroH }}
           >
-            <Ionicons name="add-circle" size={14} color={theme.blue} />
-            <Text style={{ color: theme.text, fontSize: 11, fontFamily: 'Poppins-ExtraBold' }} numberOfLines={1}>{t('home.createRoom')}</Text>
-          </Pressable>
-        </GhostPanel>
-      </View>
-
-      <View style={{ flexDirection: 'row', gap: gapMd, marginTop: gapSm, alignItems: 'flex-end' }}>
-        <ArtCard
-          title={arenaLabel(profile?.arena.name ?? '') + (profile?.arena.name === 'GOAT' ? goatStageLabel(profile?.trophies) : '')}
-          tint={theme.card}
-          height={secondaryCardH}
-          onPress={openArenas}
-          art={arenaArt}
-        />
-        <GhostPanel
-          title={t('home.solo')}
-          icon="people"
-          ghost="game-controller"
-          height={secondaryCardH}
-          tone={darken(theme.primary, 0.74)}
-          onPress={openBot}
-        >
-          <Text style={{ color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold', marginTop: 6 }} numberOfLines={2}>{t('home.soloShort')}</Text>
-        </GhostPanel>
-      </View>
-
-      {/* ── 5. CAROUSEL ── */}
-      {/* marginBottom clears the tab bar's raised centre ball, which breaks ~18pt above
-          the bar and would otherwise sit on this strip's captions. */}
-      <View onLayout={(e) => setRailW(e.nativeEvent.layout.width)} style={{ marginTop: gapSm, marginBottom: Math.max(3, Math.round(8 * homeScale)) }}>
-        {cardW > 0 ? (
-          <View style={{ flexDirection: 'row', gap: CAROUSEL_GAP }}>
-            <View style={{ width: cardW }}>
-              <ArtCard
-                title={hasPack ? t('store.badgeActive') : t('store.socialPackTitle')}
-                tint={theme.purple}
-                grade={SOCIAL_CARD_GRADE}
-                pillBar={SOCIAL_CARD_PILL}
-                height={carouselCardH}
-                onPress={openStoreSocial}
-                art={socialArt}
-              />
-            </View>
-            <View style={{ width: cardW }}>
-              {/* Seviye Yolu kartı (eskiden müsabaka geçmişi kartıydı — geçmiş artık
-                  yalnız Profil ekranından erişiliyor; bu carousel slotu artık
-                  seviye ilerlemesini gösteriyor ve Seviye Yolu'nu açıyor). */}
-              <ArtCard
-                title={t('level.roadTitle')}
-                tint={theme.blue}
-                grade={ROAD_CARD_GRADE}
-                pillBar={ROAD_CARD_PILL}
-                height={carouselCardH}
-                onPress={openRoad}
-                art={roadArt}
-              />
-            </View>
-            {/* Günün Crossover'ı — bu slot eskiden haber kartıydı; duyurular üst
-                bardaki zilden aynı NewsModal'a zaten açılıyor (yedeklilik kalktı). */}
-            <View style={{ width: cardW }}>
-              <GhostPanel
-                title={'GÜNÜN SORUSU'}
-                icon="calendar"
-                ghost="football"
-                height={carouselCardH}
-                tone={darken(theme.gold, 0.72)}
-                onPress={openDailyCx}
-              >
-                {state.dailyCx && !state.dailyCx.played ? (
-                  <View pointerEvents="none" style={{ position: 'absolute', top: 10, right: 10, width: 10, height: 10, borderRadius: 5, backgroundColor: theme.danger }} />
-                ) : null}
-                <Text style={{ color: theme.muted, fontSize: 11.5, lineHeight: 17, fontFamily: 'Poppins-SemiBold', marginTop: 9 }} numberOfLines={3}>
-                  {state.dailyCx?.played
-                    ? (state.dailyCx.result?.correct ? `✓ Bildin!${state.dailyCx.streak > 0 ? ` 🔥 ${state.dailyCx.streak} gün` : ''}` : 'Yarın yenisi!')
-                    : `#${state.dailyCx?.day ?? '…'} · bilene ${state.dailyCx?.reward ?? 10} 💎`}
-                </Text>
-              </GhostPanel>
-            </View>
+            <HeroConfetti w={hero.w} h={hero.h} visible={heroAnimsActive} />
+            {/* İki top + CROSSOVER wordmark AYNEN korunur; yeni glow/partikül yok. */}
+            <Image
+              source={HERO_ART}
+              style={{ height: heroH, width: heroH * (708 / 320), maxWidth: '100%' }}
+              resizeMode="contain"
+            />
           </View>
-        ) : null}
+
+          {/* Spec §6: kupa ve sıra artık iki YÜZEN daire değil, logonun altında
+              iki kompakt bilgi chip'i. Kupa uçuşunun ölçüm hedefi ve altın dolum
+              animasyonu chip'e taşındı — ödül akışı davranışı değişmedi. */}
+          <View style={{ flexDirection: 'row', gap: cof.spacing[3] }}>
+            <HomeStatChip
+              icon="trophy"
+              iconColor={cof.color.reward.gold}
+              value={formatNumber(trophies)}
+              accessibilityLabel={t('home.trophiesLabel')}
+              onPress={openArenas}
+              countAnim={trophyCountAnim}
+              fillAnim={trophyFillAnim}
+              innerRef={trophyBadgeRef}
+            />
+            <HomeStatChip
+              icon="podium"
+              iconColor={cof.color.brand.primary}
+              value={myRank ? `#${formatNumber(myRank)}` : '—'}
+              accessibilityLabel={t('home.rankLabel')}
+              onPress={openBoard}
+            />
+          </View>
+
+          {!isNetworkErrorMessage(state.error) && state.error ? <ErrorBanner message={state.error} /> : null}
+
+          {/* Spec §6 + §14: ekrandaki TEK baskın zümrüt eylem. Matchmaking
+              callback'i, bakım kapısı ve UI_PLAY geri bildirimi BİREBİR korunur. */}
+          <View>
+            {/* Galibiyet serisi — 2+ üst üste dereceli galibiyette CTA'nın üstünde alevli rozet */}
+            {(profile?.winStreak ?? 0) >= 2 ? (
+              <View pointerEvents="none" style={{ position: 'absolute', top: -13, left: 0, right: 0, alignItems: 'center', zIndex: 5 }}>
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 4,
+                  backgroundColor: theme.flame, borderRadius: 999,
+                  borderWidth: 2, borderColor: lighten(theme.flame, 0.3),
+                  paddingHorizontal: 11, paddingVertical: 3.5,
+                  shadowColor: theme.flame, shadowOpacity: 0.8, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 10,
+                }}>
+                  <Ionicons name="flame" size={13} color="#FFF3D6" />
+                  <Text style={{ color: '#FFF9EC', fontSize: 11.5, fontFamily: 'Poppins-Black', letterSpacing: 0.6, ...engrave('sm') }}>
+                    {t('streak.chip', { n: String(profile?.winStreak ?? 0) }).toLocaleUpperCase(currentLang())}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+            <CofButton
+              label={t('home.quickMatch')}
+              onPress={startQuickMatch}
+              onPressIn={() => triggerFeedback(GameFeedbackEvent.UI_PLAY)}
+              // Yükleniyor durumu MEVCUT state'in yansımasıdır: findMatch anında
+              // faz 'searching' olur. Yeni mantık eklenmedi; geometri değişmez.
+              loading={state.phase === 'searching'}
+            />
+          </View>
+        </View>
+
+        {/* ══ BÖLGE 3: MAÇ SEÇENEKLERİ ══ */}
+        <View>
+          <CofSectionHeader label={t('home.matchOptionsTitle')} icon="game-controller" />
+
+          {/* Diğer Modlar — ilk ve en geniş ikincil kart. Kartın TAMAMI tek
+              dokunma hedefi; içeride ikinci sahte buton yok, ok yalnız yön
+              göstergesi. YENİ rozeti içerikle çakışmadan sağ üstte durur. */}
+          <CofSurface
+            variant="interactive"
+            onPress={openModes}
+            onPressIn={() => triggerFeedback(GameFeedbackEvent.UI_CARD)}
+            accessibilityLabel={t('home.modesTitle')}
+            padding={HOME_CARD_PADDING}
+            minHeight={92}
+            style={{ marginBottom: cof.spacing.cardGap }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: cof.spacing[3], minHeight: 96 }}>
+              <View style={{ flex: 1, gap: cof.spacing[2] }}>
+                {/* YENİ rozeti başlığın YANINDA: sağ üstte dursaydı iki top
+                    sanatının üstüne binerdi (spec §7.1 çakışma yasağı). */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: cof.spacing[2] }}>
+                  {/* Başlık TAMAMEN görünür — kırpma yok. */}
+                  <CofText variant="cardTitle" numberOfLines={2} style={{ flexShrink: 1 }}>{t('home.modesTitle')}</CofText>
+                  <CofBadge variant="new" label={t('store.badgeNew')} />
+                </View>
+                {/* Ok YALNIZ yön göstergesi; ikinci bir sahte buton değil. */}
+                <Ionicons name="chevron-forward" size={cof.size.icon.medium} color={cof.color.text.tertiary} />
+              </View>
+              {/* Mevcut "karşılıklı iki top" sanatı aynen kullanılır; yeni asset yok. */}
+              <View pointerEvents="none" style={{ width: 150, height: 96, overflow: 'hidden' }}>
+                <RivalryArt />
+              </View>
+            </View>
+          </CofSurface>
+
+          {/* Özel Oda + Bot Maçı — 390/430'da yan yana, 360 dp'de ya da büyük
+              font ölçeğinde SIKIŞTIRMAK YERİNE alt alta (homePolicy). */}
+          <View style={{ flexDirection: optionCols === 2 ? 'row' : 'column', gap: cof.spacing.cardGap }}>
+
+            {/* Özel Oda: iki eylem NET ayrılır — koda katıl · oda kur. */}
+            <CofSurface variant="base" padding={HOME_CARD_PADDING} minHeight={0} style={{ width: optionCardW }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: cof.spacing[2], marginBottom: cof.spacing[2] }}>
+                <Ionicons name="key" size={cof.size.icon.medium} color={cof.color.semantic.info} />
+                <CofText variant="cardTitle" numberOfLines={1} style={{ flexShrink: 1 }}>{t('home.specialMode')}</CofText>
+              </View>
+              {/* CofInput'un İLK ÜRETİM TÜKETİCİSİ (spec §7.2). Klavye tipi,
+                  submit, büyük harf dönüşümü ve tüm callback'ler AYNEN korunur;
+                  ok artık input'un kendi 44 dp'lik trailing kontrolü. */}
+              <CofInput
+                value={joinCode}
+                onChangeText={(v) => setJoinCode(v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, ROOM_CODE_LEN))}
+                onSubmitEditing={() => { if (codeReady) { dismissActiveInput(); actions.joinRoom(joinCode, playerName); setJoinCode(''); } }}
+                label={t('home.roomCodeLabel')}
+                placeholder={t('home.codePlaceholder')}
+                autoFocus={devFocusRoomCode}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                returnKeyType="go"
+                maxLength={ROOM_CODE_LEN}
+                rejectResponderTermination={false}
+                {...roomCodeInputFocus}
+                onFocus={(e) => { triggerFeedback(GameFeedbackEvent.UI_TAP); roomCodeInputFocus.onFocus(e); }}
+                // Ok HER ZAMAN çizilir (geometri sabit, zıplama yok); kod
+                // tamamlanmadan basmak eskisi gibi hiçbir şey yapmaz.
+                trailingIcon="arrow-forward"
+                trailingIconLabel={t('home.roomCodeLabel')}
+                onTrailingIconPress={() => { if (!codeReady) return; triggerFeedback(GameFeedbackEvent.UI_PRIMARY); dismissActiveInput(); actions.joinRoom(joinCode, playerName); setJoinCode(''); }}
+                reserveHelperSpace={false}
+                inputStyle={{ letterSpacing: 1.2, textAlign: 'center' }}
+              />
+              {/* "Oda Kur" ikincil — ana CTA ile yarışmaz. */}
+              <CofButton
+                variant="secondary"
+                size="compact"
+                icon="add-circle"
+                label={t('home.createRoom')}
+                onPress={() => { dismissActiveInput(); actions.createRoom(playerName, opts); }}
+                onPressIn={() => triggerFeedback(GameFeedbackEvent.UI_CARD)}
+                style={{ marginTop: cof.spacing[2] }}
+              />
+            </CofSurface>
+
+            {/* Bot Maçı — açıkken interactive. Kilitli ≠ devre dışı (Adım 03). */}
+            <CofSurface
+              variant="interactive"
+              onPress={openBot}
+              onPressIn={() => triggerFeedback(GameFeedbackEvent.UI_CARD)}
+              accessibilityLabel={t('home.solo')}
+              padding={HOME_CARD_PADDING}
+              minHeight={0}
+              style={{ width: optionCardW }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: cof.spacing[2], marginBottom: cof.spacing[2] }}>
+                <Ionicons name="game-controller" size={cof.size.icon.medium} color={cof.color.brand.primary} />
+                <CofText variant="cardTitle" numberOfLines={1} style={{ flexShrink: 1 }}>{t('home.solo')}</CofText>
+              </View>
+              <CofText variant="caption" tone="secondary" numberOfLines={2}>{t('home.soloShort')}</CofText>
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: cof.spacing[2] }}>
+                <Ionicons name="chevron-forward" size={cof.size.icon.medium} color={cof.color.text.tertiary} />
+              </View>
+            </CofSurface>
+          </View>
+        </View>
+
+        {/* ══ BÖLGE 4: İLERLEME ══ arena artık küçük kutu değil, tam genişlikli
+            ilerleme modülü: sol görsel · ad · AÇIK METİN kupa ilerlemesi · çubuk. */}
+        <View>
+          <CofSectionHeader label={t('home.progressTitle')} icon="trending-up" />
+          <CofSurface
+            variant="interactive"
+            onPress={openArenas}
+            onPressIn={() => triggerFeedback(GameFeedbackEvent.UI_CARD)}
+            accessibilityLabel={`${arenaName} · ${arenaProg.label}`}
+            padding={HOME_CARD_PADDING}
+            minHeight={0}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: cof.spacing[3] }}>
+              <View style={{ width: 84, height: 60, borderRadius: cof.radius.small, overflow: 'hidden', backgroundColor: cof.color.surface.sunken }}>
+                <Image source={curTier.img} resizeMode="cover" style={{ width: '100%', height: '100%' }} />
+              </View>
+              <View style={{ flex: 1, gap: cof.spacing[1] }}>
+                <CofText variant="cardTitle" numberOfLines={1}>{arenaName}</CofText>
+                {/* Spec §8: ilerleme AÇIK METİN + çubuk. Çubuk ALTIN — CTA
+                    zümrüdünü taklit etmez. */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: cof.spacing[2] }}>
+                  <Ionicons name="trophy" size={cof.size.icon.small} color={cof.color.reward.gold} />
+                  <CofText variant="caption" tone="secondary">{arenaProg.label}</CofText>
+                </View>
+                <View style={{ height: 8, borderRadius: 4, backgroundColor: cof.color.surface.sunken, overflow: 'hidden' }}>
+                  <View style={{ width: `${Math.round(arenaProg.pct * 100)}%`, height: '100%', backgroundColor: cof.color.reward.gold }} />
+                </View>
+                {/* Veri yoksa UYDURULMAZ: sonraki arena yoksa satır çizilmez. */}
+                {nextTier ? (
+                  <CofText variant="caption" tone="tertiary" numberOfLines={1}>{t('home.arenaNext', { arena: arenaLabel(nextTier.name) })}</CofText>
+                ) : null}
+              </View>
+              <Ionicons name="chevron-forward" size={cof.size.icon.medium} color={cof.color.text.tertiary} />
+            </View>
+          </CofSurface>
+        </View>
+
+        {/* ══ BÖLGE 5: GÜNLÜK ALAN ══ üç kart TEK tutarlı grid: aynı radius,
+            padding, başlık stili ve yön göstergesi; durum badge'i üstte. */}
+        <View>
+          <CofSectionHeader label={t('home.dailyTitle')} icon="today" />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: cof.spacing.cardGap }}>
+            <HomeDailyCard
+              width={dailyCardW}
+              title={hasPack ? t('store.badgeActive') : t('store.socialPackTitle')}
+              body={t('home.socialPackShort')}
+              art={EMOTE_ART.squad}
+              badge={hasPack ? 'active' : 'premium'}
+              badgeLabel={hasPack ? t('store.badgeActive') : t('store.badgeNew')}
+              onPress={openStoreSocial}
+            />
+            <HomeDailyCard
+              width={dailyCardW}
+              title={t('level.roadTitle')}
+              body={t('home.levelRoadHint')}
+              art={XP_STAR}
+              onPress={openRoad}
+            />
+            <HomeDailyCard
+              width={dailyCardW}
+              title={t('home.dailyQuestion')}
+              body={state.dailyCx?.played
+                ? (state.dailyCx.result?.correct ? `✓ Bildin!${state.dailyCx.streak > 0 ? ` 🔥 ${state.dailyCx.streak} gün` : ''}` : 'Yarın yenisi!')
+                : `#${state.dailyCx?.day ?? '…'} · bilene ${state.dailyCx?.reward ?? 10} 💎`}
+              icon="calendar"
+              badge={state.dailyCx && !state.dailyCx.played ? 'new' : undefined}
+              badgeLabel={t('store.badgeNew')}
+              onPress={openDailyCx}
+            />
+          </View>
+        </View>
       </View>
 
       <NetworkErrorBeacon visible={isNetworkErrorMessage(state.error)} />
@@ -7209,7 +7413,8 @@ export function TournamentsScreen({ state, actions }: Props) {
           <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', marginTop: 8 }}>{t('tour.prize', { p1: String(tour.prizeFirst), p2: String(tour.prizeSecond) })}</Text>
         </View>
       ) : null}
-      <View style={{ height: 24 }} />
+      {/* Eski 24 dp tab-bar dolgusu KALDIRILDI (Aşama 02): alt boşluk artık
+          Screen sarmalayıcısının paylaşılan kabuk insetinden gelir. */}
     </Screen>
   );
 }
@@ -10107,13 +10312,8 @@ const AD_STORAGE_KEY = '@crossover_ad_state';
 // AdMob Rewarded Ad Unit IDs: test IDs during development (__DEV__), production IDs in release builds.
 // Google test rewarded IDs always serve test ads instantly with no AdMob setup needed.
 // Production IDs serve real ads and generate revenue.
-const REWARDED_AD_IOS = __DEV__
-  ? 'ca-app-pub-3940256099942544/1712485313'
-  : 'ca-app-pub-5118403349234305/6758433311';
-const REWARDED_AD_ANDROID = __DEV__
-  ? 'ca-app-pub-3940256099942544/5224354917'
-  : 'ca-app-pub-5118403349234305/3118571202';
-const REWARDED_AD_UNIT = Platform.OS === 'ios' ? REWARDED_AD_IOS : REWARDED_AD_ANDROID;
+// Reklam birimi kimlikleri TEK kaynaktan (rewardedAd.ts) — popup akışlarıyla aynı birim.
+import { REWARDED_AD_UNIT } from './rewardedAd';
 
 // Load AdMob SDK — native module, absent in Expo Go.
 let RewardedAd: any = null;
@@ -10200,10 +10400,12 @@ function useAdState(onReward?: () => void, enabled = true) {
         setAdError({ code: String(error?.code ?? '?'), message: error?.message ?? '' });
         preloadNext();
       });
-      // Ödüllü reklam çoğu zaman AÇIK bir pencereden başlatılır: reklam
-      // ekrandayken ikinci bir pencere açılırsa iOS sunum zinciri kilitlenir.
-      holdModalSlotForNativeAd();
-      pre.ad.show();
+      // Ödüllü reklam çoğu zaman AÇIK bir pencereden başlatılır. Pencere
+      // ekrandayken AdMob tam ekranı sunulursa iOS sunum zinciri kilitlenir ve
+      // reklamın kapatma düğmesi dokunuş almaz (oyuncu raporu 2026-09-03).
+      // Slot boş değilse gösterme; hazır kopya İADE edilir, boşa gitmez.
+      if (!tryHoldModalSlotForNativeAd()) { preloadedRef.current = pre; setAdError({ code: 'busy', message: '' }); return; }
+      try { pre.ad.show(); } catch { releaseModalSlotForNativeAd(); setAdError({ code: 'show', message: '' }); }
       return;
     }
 
@@ -10217,8 +10419,8 @@ function useAdState(onReward?: () => void, enabled = true) {
     unsubs.push(ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, grantReward));
 
     unsubs.push(ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
-      holdModalSlotForNativeAd();
-      ad.show();
+      if (!tryHoldModalSlotForNativeAd()) { cleanup(); setAdError({ code: 'busy', message: '' }); return; }
+      try { ad.show(); } catch { releaseModalSlotForNativeAd(); cleanup(); setAdError({ code: 'show', message: '' }); }
     }));
 
     unsubs.push(ad.addAdEventListener(AdEventType.ERROR, (error?: { code?: number; message?: string }) => {
@@ -10430,6 +10632,8 @@ function recordShortfall(missing: number): void {
 // `actions` kimliğinin sabit olması useCrossover'daki actions-useMemo'suna
 // dayanır (sabit değilse memo zararsız bir no-op'a düşer — eski davranış).
 export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToSection, onDiamondCelebration, storeActive = true }: Props & { scrollToSection?: 'socialPack' | 'diamonds' | 'top' | 'powers' | null; storeActive?: boolean }) {
+  // Alt navigasyon payı TEK kaynaktan (Aşama 02 kabuğu): 76 + safeArea + 24.
+  const cofInset = useCofContentInset();
   const [storeAvatarId, setStoreAvatarId] = useState<string | null>(null); // mağazadan alınacak profil fotoğrafı
   const profile = state.profile;
   const catalog = state.storeCatalog;
@@ -10797,7 +11001,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
           pager'ın eksen kilidi yalnız iOS'ta çalışıyor — bu olmadan dikey
           sürükleme pager'a kaçıyor, mağaza kaymak yerine Koleksiyon'a atıyordu
           (oyuncu raporu 2026-08-29). */}
-      <ScrollView ref={storeScrollRef} style={{ flex: 1 }} nestedScrollEnabled directionalLockEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={storeScrollRef} style={{ flex: 1 }} nestedScrollEnabled directionalLockEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: cofInset.paddingBottom }} scrollIndicatorInsets={cofInset.scrollIndicatorInsets} keyboardShouldPersistTaps="handled">
         <ScreenHeader title={t('store.title')} icon="storefront" />
 
         {/* Sosyal Paket — hero panel (gold frame + gloss), corner ribbon status */}
@@ -12152,9 +12356,7 @@ function CosmeticsLoadoutPanel({ state, actions }: Props) {
                         // Arena çerçevesi selected_frame'e, mağaza çerçevesi
                         // equipped_frame_id'ye yazar; görünen değer equipped ??
                         // selected olduğu için öteki sütun da temizlenir.
-                        if (tile.kind === 'arena') { actions.equipCosmetic('frame', null); actions.setFrame(tile.id); }
-                        else if (tile.kind === 'store') { actions.setFrame(null); actions.equipCosmetic('frame', tile.id); }
-                        else { actions.equipCosmetic('frame', null); actions.setFrame(null); }
+                        wearProfileFrame(actions, profile, tile.id);
                       } else {
                         actions.equipCosmetic(meta.type, tile.id);
                       }
@@ -12207,6 +12409,8 @@ function CosmeticsLoadoutPanel({ state, actions }: Props) {
 // eklersen aşağıdaki karşılaştırıcıya da eklemek ZORUNDASIN. `actions` sabitliği
 // useCrossover'daki actions-useMemo'suna dayanır (değilse memo no-op'a düşer).
 export const CollectionScreen = memo(function CollectionScreen({ state, actions, isActive = true }: Props & { isActive?: boolean }) {
+  // Alt navigasyon payı TEK kaynaktan (Aşama 02 kabuğu): 76 + safeArea + 24.
+  const cofInset = useCofContentInset();
   const { width: winW } = useWindow();
   const profile = state.profile;
   const equipped = profile?.equippedEmotes ?? [];
@@ -12364,7 +12568,7 @@ export const CollectionScreen = memo(function CollectionScreen({ state, actions,
   return (
     <Screen>
       <View ref={rootRef} collapsable={false} style={{ flex: 1 }}>
-      <ScrollView style={{ flex: 1 }} scrollEnabled={flights.length === 0} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+      <ScrollView style={{ flex: 1 }} scrollEnabled={flights.length === 0} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: cofInset.paddingBottom }} scrollIndicatorInsets={cofInset.scrollIndicatorInsets}>
         <ScreenHeader
           title={t('tab.collection')}
           icon="albums"
@@ -13012,6 +13216,8 @@ const ConversationRow = memo(function ConversationRow({ userId, displayName, onl
 });
 
 export function FriendsScreen({ state, actions, onGoToStore, onLockedSocialMode, focusAddFriendSeq }: Props) {
+  // Alt navigasyon payı TEK kaynaktan (Aşama 02 kabuğu): 76 + safeArea + 24.
+  const cofInset = useCofContentInset();
   const [addInput, setAddInput] = useState('');
   const [searchMode, setSearchMode] = useState<'code' | 'username'>('code');
   const [friendTab, setFriendTab] = useState<'friends' | 'requests' | 'messages'>('friends');
@@ -13129,7 +13335,7 @@ export function FriendsScreen({ state, actions, onGoToStore, onLockedSocialMode,
 
   return (
     <Screen>
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} automaticallyAdjustKeyboardInsets>
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: cofInset.paddingBottom }} scrollIndicatorInsets={cofInset.scrollIndicatorInsets} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} automaticallyAdjustKeyboardInsets>
         <ScreenHeader title={t('friends.title')} icon="people" />
 
         {/* Your code — recessed trough (engraved code) + mini beveled copy button + copied pill */}
@@ -13216,7 +13422,11 @@ export function FriendsScreen({ state, actions, onGoToStore, onLockedSocialMode,
         {/* Add friend — search mode as a segmented control (same trough voice as the tab bar) */}
         <Text style={styles.sectionLabel}>{t('friends.addSection')}</Text>
         <View style={{ marginBottom: 6 }}>
-          <SegmentedTabs
+          {/* ADIM 03 GÖÇÜ (tek düşük riskli çağrı): anahtarlar, sıra, ikonlar ve
+              callback AYNI; setSearchMode düz bir setter olduğu için "aktif
+              sekmeye tekrar dokunma onChange çağırmaz" farkı davranışsızdır.
+              Bu bileşende ses/haptic çağrısı yok (eskisinde de yoktu). */}
+          <CofSegmentedTabs
             tabs={[
               { key: 'code', icon: 'key-outline', label: t('friends.byCode') },
               { key: 'username', icon: 'person-outline', label: t('friends.byName') },
@@ -14362,7 +14572,8 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
     setQuestsOpen(true);
   }, [actions]);
 
-  const [framePrev, setFramePrev] = useState<{ tier: LevelTier; unlocked: boolean } | null>(null);
+  const [framePrev, setFramePrev] = useState<{ tier: FrameTierLike; unlocked: boolean } | null>(null);
+  const frameTiles = ownedFrameTiles(p, state.storeCatalog);
   const [pendingAvatarId, setPendingAvatarId] = useState<string | null>(null);
   const [confirmAvatarId, setConfirmAvatarId] = useState<string | null>(null);
   const [showAvatarPage, setShowAvatarPage] = useState(() => state.avatarPagePending);
@@ -14714,7 +14925,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
             MAĞAZA çerçeveleri de burada (kullanıcı raporu 2026-08-27: satın alınan
             çerçeve profilde görünmüyordu — şerit yalnız seviye kademelerini
             listeliyordu). Mağaza çerçevesine dokunmak DOĞRUDAN kuşanır/çıkarır. */}
-        {(LEVEL_TIERS.some((tr) => ownsFrame(p, tr.key)) || (p.ownedCosmetics ?? []).some((id) => id.endsWith('_frame'))) ? (
+        {frameTiles.length > 0 ? (
           <View style={{ marginTop: 10 }}>
             <GamePanel compact accentStripe={levelTier(lvl)?.c ?? theme.primary} bodyStyle={{ paddingVertical: 10, paddingHorizontal: 12 }}>
               <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 1.2, marginBottom: 6 }}>{t('profile.frames').toLocaleUpperCase(currentLang())}</Text>
@@ -14722,6 +14933,9 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
                   olan oyuncuda gerisi ekran dışında kalıyordu ve yatay sürükleme
                   pager'a kaçıp sekme değiştiriyordu (kullanıcı raporu 2026-09-01).
                   directionalLockEnabled + nestedScrollEnabled: hareket burada kalır. */}
+              {/* TEK LİSTE (2026-09-02): seviye + sezon/arena + mağaza çerçeveleri
+                  aynı karodan çizilir ve HEPSİ aynı önizleme popup'ını (KULLAN /
+                  KALDIR) açar — eskiden yalnız seviye çerçeveleri açıyordu. */}
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -14729,44 +14943,12 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
                 nestedScrollEnabled
                 contentContainerStyle={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6, paddingHorizontal: 3, paddingRight: 8 }}
               >
-                {LEVEL_TIERS.filter((tr) => ownsFrame(p, tr.key)).map((tr) => {
-                  const worn = p.selectedFrame === tr.key;
+                {frameTiles.map((tile) => {
+                  const worn = p.selectedFrame === tile.key;
                   return (
-                    <Pressable key={tr.key} onPress={() => setFramePrev({ tier: tr, unlocked: true })} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
-                      <View style={worn ? { borderRadius: 56 * 0.28 + 2, borderWidth: 2, borderColor: tr.c, margin: -2 } : undefined}>
-                        <FrameArt tierKey={tr.key} size={56} well />
-                      </View>
-                      {worn ? (
-                        <View style={{ position: 'absolute', right: -5, top: -5, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
-                          <Ionicons name="checkmark" size={11} color={theme.ink} />
-                        </View>
-                      ) : null}
-                    </Pressable>
-                  );
-                })}
-                {/* Arena çerçeveleri — envanterde görünüp burada görünmüyordu
-                    (kullanıcı raporu 2026-08-28: 'profilde sadece pass'tekiler') */}
-                {(p.ownedFrames ?? []).filter((id) => !LEVEL_TIERS.some((tr) => tr.key === id)).map((id) => {
-                  const worn = p.selectedFrame === id;
-                  return (
-                    <Pressable key={`af-${id}`} onPress={() => { triggerFeedback(worn ? GameFeedbackEvent.UI_TOGGLE_OFF : GameFeedbackEvent.UI_TOGGLE_ON); actions.equipCosmetic('frame', null); actions.setFrame(worn ? null : id); }} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
-                      <View style={worn ? { borderRadius: 56 * 0.28 + 2, borderWidth: 2, borderColor: theme.primary, margin: -2 } : undefined}>
-                        <FrameArt tierKey={id} size={56} well />
-                      </View>
-                      {worn ? (
-                        <View style={{ position: 'absolute', right: -5, top: -5, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
-                          <Ionicons name="checkmark" size={11} color={theme.ink} />
-                        </View>
-                      ) : null}
-                    </Pressable>
-                  );
-                })}
-                {(p.ownedCosmetics ?? []).filter((id) => id.endsWith('_frame')).map((id) => {
-                  const worn = p.selectedFrame === id;
-                  return (
-                    <Pressable key={id} onPress={() => { triggerFeedback(worn ? GameFeedbackEvent.UI_TOGGLE_OFF : GameFeedbackEvent.UI_TOGGLE_ON); actions.setFrame(null); actions.equipCosmetic('frame', worn ? null : id); }} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
-                      <View style={worn ? { borderRadius: 56 * 0.28 + 2, borderWidth: 2, borderColor: theme.primary, margin: -2 } : undefined}>
-                        <FrameArt tierKey={id} size={56} well />
+                    <Pressable key={tile.key} onPress={() => setFramePrev({ tier: tile, unlocked: true })} hitSlop={4} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.94 : 1 }] })}>
+                      <View style={worn ? { borderRadius: 56 * 0.28 + 2, borderWidth: 2, borderColor: tile.c, margin: -2 } : undefined}>
+                        <FrameArt tierKey={tile.key} size={56} well />
                       </View>
                       {worn ? (
                         <View style={{ position: 'absolute', right: -5, top: -5, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
@@ -14811,7 +14993,7 @@ export function ProfileScreen({ state, actions, onOpenMatchHistory, onGoToStore,
         visible={framePrev != null}
         onClose={() => setFramePrev(null)}
         equipped={framePrev != null && p.selectedFrame === framePrev.tier.key}
-        onEquip={(frameId) => { actions.setFrame(frameId); setFramePrev(null); }}
+        onEquip={(frameId) => { wearProfileFrame(actions, p, frameId); setFramePrev(null); }}
       />
     </Screen>
   );
@@ -16551,19 +16733,23 @@ export function GemOrbFly({ amount, onDone }: { amount: number; onDone: () => vo
 }
 
 export const LEVEL_CAP = 50;
-// SUNUCUYLA AYNI kademeli bantlar (server/src/game/level.ts xpForNext) —
-// aylık sezona ayarlı, toplam 9.460 XP. İkisi birlikte değişmeli.
+// SUNUCUYLA AYNI kademeli bantlar (server/src/game/level.ts seasonXpForNext) —
+// SEZON (CO-PASS) eğrisi, toplam 19.040 XP (2026-09-02: eski 9.460 XP'lik yolu
+// kasan oyuncu 8 günde bitiriyordu — "2 maç, 1 seviye"; hedef ~15 gün).
+// İlk 5 seviye aynı (ilk gün hissi), sonrası bant bant ağırlaşır. İkisi birlikte
+// değişmeli. Hesap seviyesi (51+) bu fonksiyonu KULLANMAZ — sunucu accountXpInto/
+// accountXpNext gönderir (eski xpForNext eğrisi, kimsenin hesap seviyesi düşmez).
 export const xpForNextLevel = (level: number): number => {
   if (level <= 1) return 40;
   if (level === 2) return 60;
   if (level <= 5) return 80;
-  if (level <= 10) return 120;
-  if (level <= 20) return 160;
-  if (level <= 30) return 200;
-  if (level <= 40) return 240;
-  if (level <= 50) return 280; // sezon yolu eğrisi burada biter
-  // 51+ yalnız HESAP seviyesi (sunucudaki xpForNext ile birebir): her seviye
-  // 60 XP pahalılaşır — L51=340, L100=3280. Düz 280 kalsa sayı anlamsızlaşırdı.
+  if (level <= 10) return 180;
+  if (level <= 20) return 300;
+  if (level <= 30) return 420;
+  if (level <= 40) return 520;
+  if (level <= 50) return 600; // sezon yolu eğrisi burada biter
+  // 51+ yalnız HESAP seviyesi (sunucudaki xpForNext ile birebir; yedek — sunucu
+  // alanı yoksa): her seviye 60 XP pahalılaşır — L51=340, L100=3280.
   return 280 + 60 * (level - 50);
 };
 
@@ -16580,6 +16766,41 @@ export function levelTier(level: number): LevelTier | null {
   let cur: LevelTier | null = null;
   for (const t of LEVEL_TIERS) if (level >= t.min) cur = t;
   return cur;
+}
+
+// ---- Profil çerçeve şeridi: TEK liste, TEK popup, TEK takma yolu -------------
+// (kullanıcı raporu 2026-09-02: seviye çerçeveleri popup açıyordu, sezon/arena ve
+// mağaza çerçeveleri — buz, GOAT — dokununca doğrudan tak-çıkar yapıyor, KULLAN
+// popup'ı çıkmıyordu; yeni alınan çerçeve de ayrı bir daldan geliyordu.)
+// FrameTierLike: LevelTier'ın üst kümesi — popup ve şerit yalnız bunu tanır.
+export type FrameTierLike = { key: string; c: string; min: number; nameKey?: MessageKey; label?: string };
+
+/** Profilin sahip olduğu TÜM çerçeveler, şerit sırasıyla: seviye → sezon/arena → mağaza. */
+export function ownedFrameTiles(p: ProfileView | null | undefined, catalog: StoreCatalogView | null | undefined): FrameTierLike[] {
+  if (!p) return [];
+  const level: FrameTierLike[] = LEVEL_TIERS.filter((tr) => ownsFrame(p, tr.key));
+  const extra: FrameTierLike[] = (p.ownedFrames ?? [])
+    .filter((id) => !LEVEL_TIERS.some((tr) => tr.key === id))
+    .map((id) => ({ key: id, c: theme.gold, min: 0, label: cosmeticFallbackName(id) }));
+  // Mağaza çerçevesi: katalog 'frame' der; katalog henüz gelmediyse '_frame' soneki yeter.
+  const store: FrameTierLike[] = (p.ownedCosmetics ?? [])
+    .filter((id) => catalog?.items.some((it) => it.id === id && it.type === 'frame') || (!catalog && id.endsWith('_frame')))
+    .map((id) => {
+      const it = catalog?.items.find((x) => x.id === id);
+      return { key: id, c: RARITY_COLOR[it?.rarity ?? 'rare'] ?? theme.primary, min: 0, label: it ? cosmeticDisplayName(it) : cosmeticFallbackName(id) };
+    });
+  const seen = new Set<string>();
+  return [...level, ...extra, ...store].filter((tile) => (seen.has(tile.key) ? false : (seen.add(tile.key), true)));
+}
+
+/** Çerçeve tak/çıkar — HER türden çerçeve için tek yol. Mağaza çerçevesi
+ *  equip_cosmetic, seviye/sezon çerçevesi set_frame ucuyla gider; öteki sütun
+ *  temizlenir ki görünen değer (equipped ?? selected) tutarlı kalsın. */
+export function wearProfileFrame(actions: Pick<Actions, 'setFrame' | 'equipCosmetic'>, p: ProfileView | null | undefined, frameId: string | null): void {
+  if (frameId == null) { actions.equipCosmetic('frame', null); actions.setFrame(null); return; }
+  const isStore = (p?.ownedCosmetics ?? []).includes(frameId) && !(p?.ownedFrames ?? []).includes(frameId);
+  if (isStore) { actions.setFrame(null); actions.equipCosmetic('frame', frameId); }
+  else { actions.equipCosmetic('frame', null); actions.setFrame(frameId); }
 }
 
 // 5'in katlarında açılan özel ifadeler (sunucudaki LEVEL_EMOTES ile birebir).
@@ -16820,17 +17041,19 @@ export function FrameArt({ tierKey, size, locked = false, well = false }: { tier
 // Dokununca açılan büyük çerçeve önizlemesi — kademe adı + açılma durumu.
 // onEquip verilirse (profil Çerçeveler şeridi) KULLAN/KALDIR butonu da çizilir.
 export function FramePreviewModal({ tier, unlocked, visible, onClose, equipped, onEquip }: {
-  tier: LevelTier | null; unlocked: boolean; visible: boolean; onClose: () => void;
+  tier: FrameTierLike | null; unlocked: boolean; visible: boolean; onClose: () => void;
   equipped?: boolean; onEquip?: (frameId: string | null) => void;
 }) {
   if (!visible || !tier) return null;
   const big = Math.min(SCREEN_W * 0.8, 330);
+  // Seviye kademesi i18n anahtarından, diğer çerçeveler (sezon/mağaza) hazır etiketten.
+  const frameLabel = tier.label ?? (tier.nameKey ? t(tier.nameKey) : tier.key);
   return (
     <SafeModal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim, alignItems: 'center', justifyContent: 'center', padding: 24 }]} onPress={onClose}>
         <FrameArt tierKey={tier.key} size={big} locked={!unlocked} />
         <Text style={{ color: tier.c, fontSize: 24, fontFamily: 'Poppins-Black', letterSpacing: 1.2, marginTop: 6, ...engrave('lg') }}>
-          {t(tier.nameKey).toLocaleUpperCase(currentLang())}
+          {frameLabel.toLocaleUpperCase(currentLang())}
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, backgroundColor: unlocked ? withAlpha(theme.primary, 0.16) : theme.panelInnerFill, borderRadius: 999, borderWidth: 1.5, borderColor: unlocked ? theme.primary : theme.border, paddingHorizontal: 14, paddingVertical: 6 }}>
           <Ionicons name={unlocked ? 'checkmark-circle' : 'lock-closed'} size={15} color={unlocked ? theme.primary : theme.muted} />

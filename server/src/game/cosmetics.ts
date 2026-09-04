@@ -125,14 +125,30 @@ export function isFreeDefaultCosmetic(item: CosmeticItem): boolean {
 // bir, Pazartesi 00:00 UTC'de döner. Epoch günü 0 Perşembe olduğundan +3
 // kaydırma hafta sınırlarını Pazartesi'ye oturtur — istemcideki sayaç da
 // Pazartesi'ye sayar, ikisi aynı anda sıfırlanır.
+// TEK SEFERLİK UZATMA (kullanıcı kararı 2026-09-02, "weekly shop süresine +7"):
+// 27 Ağustos'ta açılan vitrin haftası 3 Eylül yerine 10 Eylül 00:00 UTC'de döner.
+// Sınır ve sonraki tüm hafta sınırları 7 gün kayar; Perşembe çapası korunur,
+// bu tarihten önceki haftaların indeksi/kasa ürünü değişmez, mevcut haftanın
+// indeksi (dolayısıyla kasa ürünü) uzatma boyunca AYNI kalır.
+// PENCERE KAÇTI (2026-09-04): yukarıdaki uzatma 3 Eylül 00:00 UTC'den ÖNCE
+// canlıya alınmalıydı; alınamadı ve vitrin prod'da normal biçimde 3 Eylül'de
+// döndü. Şimdi days:7 ile basmak uzatma DEĞİL GERİ SARMA olurdu: oyuncuların
+// bir gündür gördüğü hafta kaybolur, önceki hafta (ve kasa ürünü) geri gelirdi.
+// Bu yüzden etkisiz bırakıldı. Mekanizma duruyor — yeni bir uzatma istenirse
+// fromEpochDay GELECEKTEKİ bir Perşembe'ye alınıp days tekrar 7 yapılır.
+const STORE_WEEK_SHIFT = { fromEpochDay: 20_699 /* 2026-09-03 UTC, Perşembe */, days: 0 };
+
 export function storeWeek(now = new Date()): { weekIndex: number; resetAt: Date } {
-  const epochDay = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) / 86_400_000);
+  const rawDay = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) / 86_400_000);
   // PERŞEMBE çapası (kullanıcı kararı 2026-08-27): beyaz-listeli vitrin o gün
   // yayına girdi — hafta TAM 7 gün sürer, sayaç ilk günden 7'den geri sayar.
   // (Epoch günü 0 zaten Perşembe; ofset yok.) Eski Pazartesi çapası (+3),
   // vitrini yarı haftayla açtırıyordu ("süre 7 gün değil" şikâyeti).
+  const epochDay = rawDay >= STORE_WEEK_SHIFT.fromEpochDay ? rawDay - STORE_WEEK_SHIFT.days : rawDay;
   const weekIndex = Math.floor(epochDay / 7);
-  return { weekIndex, resetAt: new Date((weekIndex + 1) * 7 * 86_400_000) };
+  let resetDay = (weekIndex + 1) * 7;
+  if (resetDay >= STORE_WEEK_SHIFT.fromEpochDay) resetDay += STORE_WEEK_SHIFT.days;
+  return { weekIndex, resetAt: new Date(resetDay * 86_400_000) };
 }
 
 // ══════════════════════════════════════════════════════════════════════════

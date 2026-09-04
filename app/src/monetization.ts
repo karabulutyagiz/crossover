@@ -38,7 +38,14 @@ export type MonetizationOffer = {
   secondaryKey: string;
   analyticsMetadata?: Record<string, string | number | boolean | null | undefined>;
   autoUseAfterPurchase?: boolean;
+  /** Metin yer tutucuları (ör. {n} kupa) — popup t(bodyKey, bodyParams) ile çizer. */
+  bodyParams?: Record<string, string>;
+  /** Kupa Kalkanı iadesi: kayıptan sonra BU maçın kaybı geri alınır (kuşanma değil). */
+  shieldRefundVia?: ShieldRefundVia;
+  refundTrophies?: number;
 };
+
+export type ShieldRefundVia = 'inventory' | 'ad' | 'pack';
 
 export type DiamondIntent = {
   source: MonetizationTrigger | 'store' | 'collection' | 'level_road';
@@ -382,19 +389,31 @@ export function evaluateMonetizationOffer(ctx: OfferEngineContext, caps: OfferCa
     });
   }
 
-  if (cfg.offers.trophyShield && trophyDelta <= -cfg.largeTrophyLoss && !ctx.shielded && !p.shieldArmed) {
+  // KUPA KALKANI — SON KAYBI GERİ AL (kullanıcı kararı 2026-09-02). Eski teklif
+  // "sıradaki kaybı koru, kalkanı KUŞAN" idi ve popup mağazaya atıyordu; mantıksızdı.
+  // Şimdi: kayıptan hemen sonra "kalkan hediye — BU maçın kaybı geri gelsin":
+  //   envanterde kalkan varsa → KALKANI KULLAN (1 adet düşer)
+  //   yoksa ve paket yoksa   → REKLAM İZLE, KUPAN GERİ GELSİN (sunucu: günde 2)
+  //   yoksa ve paket varsa   → Sosyal Paket hediyesi, günde 1 (paket reklam görmez)
+  // Popup elmas harcamaz; "popup'tan doğrudan satın alma yok" kuralı korunur.
+  if (cfg.offers.trophyShield && trophyDelta <= -cfg.largeTrophyLoss && !ctx.shielded) {
+    const via: ShieldRefundVia = (p.powerShield ?? 0) > 0 ? 'inventory' : hasActiveSocialPack(p) ? 'pack' : 'ad';
+    const n = String(Math.abs(trophyDelta));
     candidates.push({
       offerId: 'trophy_shield_post_loss',
       offerType: 'power',
       trigger: 'post_match_loss',
       priority: 80,
       product: 'shield',
-      titleKey: 'monetization.shieldLossTitle',
-      bodyKey: 'monetization.shieldLossBody',
-      ctaKey: (p.powerShield ?? 0) > 0 ? 'monetization.armShieldCta' : 'monetization.buyShieldCta',
+      titleKey: 'monetization.shieldGiftTitle',
+      bodyKey: via === 'inventory' ? 'monetization.shieldUseBody' : via === 'pack' ? 'monetization.shieldPackBody' : 'monetization.shieldGiftAdBody',
+      bodyParams: { n },
+      ctaKey: via === 'ad' ? 'monetization.shieldGiftAdCta' : 'monetization.shieldUseCta',
       secondaryKey: 'common.continue',
-      autoUseAfterPurchase: true,
-      analyticsMetadata: { trophy_delta: trophyDelta, diamond_balance: p.diamonds },
+      autoUseAfterPurchase: false,
+      shieldRefundVia: via,
+      refundTrophies: Math.abs(trophyDelta),
+      analyticsMetadata: { trophy_delta: trophyDelta, diamond_balance: p.diamonds, shield_via: via },
     });
   }
 

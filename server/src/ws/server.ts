@@ -10,7 +10,7 @@ import { listScopes, listNationalities } from '../game/verify.ts';
 import {
   findOrCreateUser, findOrCreateUserByProvider, createGuestUser, getUser, changeDisplayName,
   grantDevEmotesIfNeeded, claimOutageGift,
-  setUsername, buyEmote, setEquippedEmotes, setAvatar, setSelectedFrame, buyAvatar, touchLastSeen, getLeaderboard, grantAdReward, usePower, getModeStats, getRankedProfileStats, buyPremiumRoad, buyPower, getLeaderboardBotProfile, getBotPressureProfile,
+  setUsername, buyEmote, setEquippedEmotes, setAvatar, setSelectedFrame, buyAvatar, touchLastSeen, getLeaderboard, grantAdReward, refundLossWithShield, usePower, getModeStats, getRankedProfileStats, buyPremiumRoad, buyPower, getLeaderboardBotProfile, getBotPressureProfile,
   listFriends, listFriendRequests, sendFriendRequest, respondFriendRequest,
   removeFriend, searchUsers, getMatchHistory, deleteAccount, recordPlaySession, getArena,
   type UserProfile,
@@ -1904,6 +1904,26 @@ export function startServer(port: number): Server {
       }
 
       // Özel güç etkinleştirme: 2x XP jetonu (1 saat) ya da Kupa Kalkanı kuşan.
+      // KUPA KALKANI — SON KAYBI GERİ AL (2026-09-02): envanter / ödüllü reklam /
+      // Sosyal Paket hediyesi. Tavanlar ve "yalnız son maç" kuralı rank.ts'te.
+      if (msg.type === 'shield_refund') {
+        if (!userProfile) return transport.send({ type: 'shield_refund_result', ok: false, error: 'Önce giriş yap' });
+        void (async () => {
+          try {
+            const result = await refundLossWithShield(userProfile!.id, msg.via);
+            if (!result.ok) return transport.send({ type: 'shield_refund_result', ok: false, error: result.error });
+            userProfile = result.profile;
+            transport.send({ type: 'shield_refund_result', ok: true, refunded: result.refunded, via: msg.via, profile: toProfileView(result.profile) });
+            // Kupa değişti — arkadaş listelerindeki kupa anında tazelensin.
+            const friends = await listFriends(userProfile!.id);
+            for (const f of friends) sendToUser(f.userId, await getFriendsData(f.userId));
+          } catch (err) {
+            console.error('[shield_refund] failed:', err instanceof Error ? err.message : err);
+            transport.send({ type: 'shield_refund_result', ok: false, error: 'Kalkan kullanılamadı' });
+          }
+        })();
+        return;
+      }
       if (msg.type === 'use_power') {
         if (!userProfile) return transport.send({ type: 'error', message: 'Önce giriş yap' });
         void (async () => {

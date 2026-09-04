@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { COSMETIC_ITEMS } from './cosmetics.ts';
 import { pool } from '../db/pool.ts';
 import { seasonRewardFor, seasonRewardsEnabled, seasonTrophyReset } from './season.ts';
 import { milestoneFor } from './specialPowers.ts';
@@ -1015,12 +1016,19 @@ export async function setSelectedFrame(
 ): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
   if (!userId) return { ok: false, error: 'Önce giriş yap' };
   if (frameId !== null) {
-    const min = FRAME_MIN_LEVEL[frameId];
-    if (!min) return { ok: false, error: 'Geçersiz çerçeve' };
     const user = await getUser(userId);
     if (!user) return { ok: false, error: 'Kullanıcı bulunamadı' };
+    // TEK KAPI (2026-09-02): seviye çerçeveleri, sezon/arena çerçeveleri (owned_frames)
+    // ve mağaza çerçeveleri (owned_cosmetics + katalogda type 'frame') aynı uçtan
+    // takılır. Eskiden yalnız FRAME_MIN_LEVEL'daki 5 seviye çerçevesi kabul ediliyordu:
+    // sezon ödülü 'season1' "Geçersiz çerçeve" alıyor, mağaza çerçeveleri ayrı uca
+    // mecbur kalıyordu.
+    const storeFrame = COSMETIC_ITEMS.find((it) => it.id === frameId && it.type === 'frame');
+    const known = Boolean(FRAME_MIN_LEVEL[frameId]) || storeFrame != null || user.ownedFrames.includes(frameId);
+    if (!known) return { ok: false, error: 'Geçersiz çerçeve' };
     // Sahiplik KALICIDIR (owned_frames) — sezon sıfırlansa da kazanılmış çerçeve takılabilir
-    if (!user.ownedFrames.includes(frameId)) return { ok: false, error: 'Önce Seviye Yolu\'ndan bu çerçevenin ödülünü topla' };
+    const owned = user.ownedFrames.includes(frameId) || (storeFrame != null && user.ownedCosmetics.includes(frameId));
+    if (!owned) return { ok: false, error: storeFrame ? 'Önce bu çerçeveyi satın al' : 'Önce Seviye Yolu\'ndan bu çerçevenin ödülünü topla' };
   }
   const { rows } = await pool.query<DbUser>(
     `UPDATE users SET selected_frame = $2, equipped_frame_id = $2 WHERE id = $1 RETURNING *`,
@@ -1068,6 +1076,91 @@ export async function grantAdReward(
   pool.query(`INSERT INTO ad_rewards (user_id) VALUES ($1)`, [userId]).catch(() => {});
   void recordDiamondLedger({ userId, amount: AD_REWARD, balanceAfter: Number(rows[0].diamonds), reason: 'AD_REWARD' });
   return { ok: true, profile: toProfile(rows[0]), granted: AD_REWARD };
+}
+
+// ---- KUPA KALKANI: SON KAYBI GERİ AL (2026-09-02, kullanıcı kararı) ---------------
+// Eski akış "sıradaki kaybı koru" (kalkanı KUŞAN) idi; maç sonrası popup'ta
+// mantıksız kalıyordu ve popup'tan kullanılamayıp mağazaya atıyordu. Yeni akış:
+// kayıptan hemen sonra kalkan BU maçın kaybını geri getirir. Üç kaynak:
+//   inventory: envanterdeki kalkan (1 adet düşer) — sınırsız, oyuncu ödedi
+//   ad       : ödüllü reklam izlendi — günde SHIELD_REFUND_AD_DAILY_CAP (2)
+//   pack     : Sosyal Paket günlük hediyesi — günde 1 (paket reklam görmez)
+// Kurallar (hepsi sunucuda): yalnız SON maç, yalnız gerçek kayıp (forfeit/hükmen
+// değil, kalkanla emilmiş değil), SHIELD_REFUND_WINDOW_MIN içinde, maç başına 1
+// kez (trophy_ledger (match_id, player_id, reason) tekilliği idempotency kilidi).
+export type ShieldRefundVia = 'inventory' | 'ad' | 'pack';
+const SHIELD_REFUND_WINDOW_MIN = Number(process.env.SHIELD_REFUND_WINDOW_MIN ?? '15');
+const SHIELD_REFUND_AD_DAILY_CAP = Number(process.env.SHIELD_REFUND_AD_DAILY_CAP ?? '2');
+const SHIELD_REFUND_PACK_DAILY_CAP = Number(process.env.SHIELD_REFUND_PACK_DAILY_CAP ?? '1');
+
+export async function refundLossWithShield(
+  userId: string,
+  via: ShieldRefundVia,
+): Promise<{ ok: true; profile: UserProfile; refunded: number; matchId: string | null } | { ok: false; error: string }> {
+  if (!userId) return { ok: false, error: 'Önce giriş yap' };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: urows } = await client.query<DbUser>(`SELECT * FROM users WHERE id = $1 FOR UPDATE`, [userId]);
+    const u = urows[0];
+    if (!u) { await client.query('ROLLBACK'); return { ok: false, error: 'Kullanıcı bulunamadı' }; }
+
+    // Son maç yerleşimi: en yeni settlement satırı. Kayıp değilse (ya da pencere
+    // dışındaysa) geri alınacak bir şey yok — "yalnız son maç" kuralı.
+    const { rows: last } = await client.query<{ match_id: string | null; delta: number; created_at: string }>(
+      `SELECT match_id, delta, created_at FROM trophy_ledger
+        WHERE player_id = $1 AND reason = 'match_settlement'
+        ORDER BY created_at DESC LIMIT 1`,
+      [userId],
+    );
+    const loss = last[0];
+    if (!loss || loss.delta >= 0) { await client.query('ROLLBACK'); return { ok: false, error: 'Geri alınacak bir kupa kaybı yok' }; }
+    if (Date.now() - new Date(loss.created_at).getTime() > SHIELD_REFUND_WINDOW_MIN * 60_000) {
+      await client.query('ROLLBACK'); return { ok: false, error: 'Kalkan yalnız maçtan hemen sonra kullanılabilir' };
+    }
+    if (!loss.match_id) { await client.query('ROLLBACK'); return { ok: false, error: 'Bu maçın kaybı geri alınamaz' }; }
+
+    const startOfDay = `date_trunc('day', now())`;
+    if (via === 'inventory') {
+      const { rowCount } = await client.query(
+        `UPDATE users SET power_shield = power_shield - 1 WHERE id = $1 AND power_shield > 0`, [userId],
+      );
+      if (!rowCount) { await client.query('ROLLBACK'); return { ok: false, error: 'Kullanılabilir Kupa Kalkanın yok' }; }
+    } else if (via === 'ad') {
+      const { rows } = await client.query<{ c: number }>(
+        `SELECT count(*)::int AS c FROM trophy_ledger WHERE player_id = $1 AND reason = 'shield_refund' AND source = 'SHIELD_AD' AND created_at >= ${startOfDay}`,
+        [userId],
+      );
+      if ((rows[0]?.c ?? 0) >= SHIELD_REFUND_AD_DAILY_CAP) { await client.query('ROLLBACK'); return { ok: false, error: 'Bugünlük reklam kalkanı hakkın bitti' }; }
+    } else {
+      if (!isFutureIso(u.social_pack_until)) { await client.query('ROLLBACK'); return { ok: false, error: 'Bu hediye Sosyal Paket sahiplerine özel' }; }
+      const { rows } = await client.query<{ c: number }>(
+        `SELECT count(*)::int AS c FROM trophy_ledger WHERE player_id = $1 AND reason = 'shield_refund' AND source = 'SHIELD_PACK' AND created_at >= ${startOfDay}`,
+        [userId],
+      );
+      if ((rows[0]?.c ?? 0) >= SHIELD_REFUND_PACK_DAILY_CAP) { await client.query('ROLLBACK'); return { ok: false, error: 'Bugünkü paket kalkanını kullandın' }; }
+    }
+
+    const refund = Math.abs(loss.delta);
+    const source = via === 'inventory' ? 'SHIELD_INVENTORY' : via === 'ad' ? 'SHIELD_AD' : 'SHIELD_PACK';
+    // Idempotency: aynı maç için ikinci iade tekil indekse takılır → rowCount 0 → geri al.
+    const ins = await client.query(
+      `INSERT INTO trophy_ledger
+         (match_id, player_id, before_trophies, delta, after_trophies, opponent_type, source, reason, metadata)
+       VALUES ($1, $2, $3, $4, $5, 'SYSTEM', $6, 'shield_refund', $7::jsonb)
+       ON CONFLICT (match_id, player_id, reason) DO NOTHING`,
+      [loss.match_id, userId, u.trophies ?? 0, refund, (u.trophies ?? 0) + refund, source, JSON.stringify({ via, refundedMatchDelta: loss.delta })],
+    );
+    if (!ins.rowCount) { await client.query('ROLLBACK'); return { ok: false, error: 'Bu maçın kaybı zaten geri alındı' }; }
+    const { rows } = await client.query<DbUser>(`UPDATE users SET trophies = trophies + $2 WHERE id = $1 RETURNING *`, [userId, refund]);
+    await client.query('COMMIT');
+    return { ok: true, profile: toProfile(rows[0]!), refunded: refund, matchId: loss.match_id };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // Buy a premium emote: charge diamonds once and append it to owned_emotes.

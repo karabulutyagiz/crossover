@@ -52,12 +52,19 @@ const DEV_SHOT_MODE = false;
 const DEV_SHOT_LANG = 'tr';
 // Dev-only: force the tutorial (antrenman) flow to inspect its layout. NEVER ships true.
 const FORCE_TUTORIAL_DEV = false;
+// Dev-only: COF bileşen galerisi (Adım 03). Üretim navigasyonuna BAĞLI DEĞİL,
+// menüde görünmez; yalnız bu bayrakla açılır. NEVER ships true.
+const COF_GALLERY_MODE = false; // Adım 03 galerisi (dev-only çekim kipi)
+// ADIM 04 çekim kipi: GERÇEK ana ekranı fixture veriyle çizer (spec §13).
+// GEÇİCİ olarak true yapılır, commit'ten ÖNCE false'a döner.
+const COF_HOME_SHOT_MODE = true;
 import { BASE_H, uiScaleFor, canvasSizeFor } from './src/layout';
 import { setGemTarget } from './src/gemTarget';
 import { addNotificationTapListener, getPushPermissionGranted, setBadge } from './src/notifications';
 import { APP_BUILD_NUMBER, APP_VERSION, fetchApi } from './src/config';
 import {
   DevShotScreen,
+  HomeShotScreen,
   TrophyFlight,
   SplashScreen,
   LoadingScreen,
@@ -147,6 +154,7 @@ import {
   type OfferEngineContext,
   type PowerId,
 } from './src/monetization';
+import { showRewardedAd } from './src/rewardedAd';
 import { setPendingShortfall } from './src/shortfall';
 import { startOfferActivity, endOfferActivity } from './src/liveActivity';
 import {
@@ -171,6 +179,14 @@ import {
   type EngagementRuntimeState,
 } from './src/engagement';
 import { requestNativeReview } from './src/ReviewService';
+import { isModalSlotFree } from './src/modalTraffic';
+// GERİ BUTONLU DETAY SAYFALARI: hepsinin kendi ScreenHeader'ı ve geri düğmesi
+// var → alt navigasyon gizlenir ("aynı anda hem geri butonu hem ana alt
+// navigasyon gösterilmez"). Route adları ve geri davranışı DEĞİŞMEDİ.
+import { CofBottomNav, DetailScreenShell, RootScreenShell, type CofNavItem } from './src/cof/shell';
+import { isCofDetailPhase } from './src/cof/navPolicy';
+import { CofGallery } from './src/cof/gallery';
+import { formatNumber } from './src/cof/format';
 import { resolveMatchBackground } from './src/cosmetics';
 import type { PlayerFeedbackCategory } from './src/feedbackSubmit';
 
@@ -298,6 +314,7 @@ function CosmeticMatchBackground({ id }: { id: string }) {
 // gösterilmez — oyuncunun maçı bakım yüzünden bölünmez.
 const MAINTENANCE_MENU_PHASES = new Set(['home', 'arenas', 'leaderboard', 'matchHistory', 'profile', 'tournaments']);
 
+
 const MATCH_BG_PHASES = new Set(['lobby', 'matchup', 'countdown', 'pick', 'reveal', 'guess', 'result', 'xox']);
 
 // Phases that show the main tab bar (non-game screens)
@@ -336,7 +353,7 @@ const DiamondPill = memo(function DiamondPill({ countAnim, fillAnim, pulseAnim, 
             <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 999, backgroundColor: theme.gem, opacity: pulseGlow }]} />
             <Animated.View pointerEvents="none" style={[s.diamondFill, { transform: [{ scaleX: fillAnim }] }]} />
             <GemIcon size={20} />
-            <Text style={s.diamondText}>{count}</Text>
+            <Text style={s.diamondText}>{formatNumber(count)}</Text>
             <View style={s.diamondPlus}>
               <Ionicons name="add" size={12} color={theme.ink} />
             </View>
@@ -660,7 +677,8 @@ function TopBanner({
           <Text style={s.inviteSub} numberOfLines={1}>{sub}</Text>
         </View>
       </Pressable>
-      <Pressable onPress={onClose} hitSlop={8} style={({ pressed }) => ({ paddingHorizontal: 4, transform: [{ translateY: pressed ? 1 : 0 }], opacity: pressed ? 0.7 : 1 })}>
+      {/* 18 dp ikon + 13 dp pay = 44 dp dikey hedef (Adım 03). Görsel ölçü aynı. */}
+      <Pressable onPress={onClose} hitSlop={13} style={({ pressed }) => ({ paddingHorizontal: 4, transform: [{ translateY: pressed ? 1 : 0 }], opacity: pressed ? 0.7 : 1 })}>
         <Ionicons name="close" size={18} color={theme.muted} />
       </Pressable>
     </Animated.View>
@@ -755,7 +773,8 @@ function OutgoingInviteBanner({ invite, onCancel, offsetY = 0 }: {
         <Text style={s.inviteSub} numberOfLines={1}>{t('friends.inviteSent')}</Text>
       </View>
       <Text style={{ color: urgent ? theme.danger : theme.accent, fontFamily: 'Poppins-Black', fontSize: 22, fontVariant: ['tabular-nums'] }}>{secs}</Text>
-      <Pressable onPress={onCancel} hitSlop={8} style={({ pressed }) => ({ paddingHorizontal: 4, opacity: pressed ? 0.7 : 1 })}>
+      {/* 18 dp ikon + 13 dp pay = 44 dp dikey hedef (Adım 03). Görsel ölçü aynı. */}
+      <Pressable onPress={onCancel} hitSlop={13} style={({ pressed }) => ({ paddingHorizontal: 4, opacity: pressed ? 0.7 : 1 })}>
         <Ionicons name="close" size={18} color={theme.muted} />
       </Pressable>
     </Animated.View>
@@ -1264,6 +1283,11 @@ function AppRoot() {
         }
         return;
       }
+      // FAZ KAPISI (2026-09-03): bu döngü 20 sn boyunca yaşıyor ve tik başında
+      // fazı sormuyordu — oyuncu bu arada eşleşmeye/maça girdiyse reklam maçın
+      // üstüne açılabiliyordu. Modülün kendi sözleşmesi zaten "rövanşa/yeni maça
+      // girerken asla" diyor. Ana ekranda değilsek bu tur pas geçilir.
+      if (phaseRef.current !== 'home') return;
       if (modalBlockedRef.current) return;          // pencere kapanınca tekrar denenir
       if (Date.now() - modalClearedAtRef.current < 500) return; // native kapanış bitsin
       const guncelProfil = adProfileRef.current;
@@ -1353,11 +1377,23 @@ function AppRoot() {
   const [langKey, setLangKey] = useState(0); // increment to force full remount after language change
   const TABS = TAB_DEFS.map((tab) => ({ ...tab, label: t(tab.labelKey) }));
 
+  // FAZ REF'İ RENDER'DA GÜNCELLENİR (2026-09-04 — oyuncu raporu: "maçta 2.
+  // rounddayken reklam girdi, arkada adam takım seçiyor, sayı akıyor"). Bu ref
+  // eskiden YALNIZ aşağıdaki effect'te güncelleniyordu; effect commit'ten SONRA
+  // çalıştığı için ref bir kare geride kalıyordu. Reklam bekleyişi ise React'ten
+  // bağımsız, kendi 700 ms'lik setInterval'inde dönüyor (bkz. FAZ KAPISI) — maç
+  // başlarken oluşan o pencerede tik atarsa fazı hâlâ 'home' sanıp maçın ÜSTÜNE
+  // reklam açabiliyordu. Karar anında ref'in güncel olması şart: atama artık
+  // render sırasında (adProfileRef/modalBlockedRef ile aynı kalıp).
+  // dismissActiveInput() bir yan etki olduğu için effect'te kalır ve kendi takip
+  // ref'ini kullanır — yoksa phaseRef zaten eşitlendiği için değişimi hiç göremezdi.
   const phaseRef = useRef(state.phase);
+  phaseRef.current = state.phase;
+  const dismissedPhaseRef = useRef(state.phase);
   useEffect(() => {
-    if (phaseRef.current !== state.phase) {
+    if (dismissedPhaseRef.current !== state.phase) {
       dismissActiveInput();
-      phaseRef.current = state.phase;
+      dismissedPhaseRef.current = state.phase;
     }
   }, [state.phase]);
 
@@ -1943,8 +1979,16 @@ function AppRoot() {
       // sonra YENİDEN denenir (engagement.ts ratingCooldownMs + ratingMaxAsks).
       // Yeniden çağırmak zararsızdır: Apple değerse gösterir, değmezse hiçbir
       // şey olmaz — oyuncu rahatsız edilmez.
-      track('rating_request_attempted', { source: next.source, appSessionId });
-      requestNativeReview().catch(() => {});
+      // NATIVE YÜZEY ÇAKIŞMASI (2026-09-03): SKStoreReviewController da sunulmuş
+      // bir yüzeydir; ekranda reklam ya da pencere varken istemek aynı UIKit
+      // sunum kilidini doğurur. Slot doluysa bu tur atlanır — istem zaten
+      // birkaç gün sonra yeniden denenir (engagement.ts ratingCooldownMs).
+      if (isModalSlotFree()) {
+        track('rating_request_attempted', { source: next.source, appSessionId });
+        requestNativeReview().catch(() => {});
+      } else {
+        track('rating_request_skipped', { source: next.source, reason: 'native_surface_busy', appSessionId });
+      }
       updateEngagement((s2) => closeEngagement(s2, next, false));
       setActiveEngagement(null);
     }
@@ -2307,6 +2351,26 @@ function AppRoot() {
       goToTab(0);
       return;
     }
+    // KUPA KALKANI — SON KAYBI GERİ AL (2026-09-02): elmas harcanmaz, o yüzden
+    // aşağıdaki "popup'tan doğrudan kullanma yok" kuralının dışındadır. Envanter
+    // kalkanı / Sosyal Paket hediyesi anında; reklam yolu önce ödüllü reklamı
+    // oynatır, yalnız EARNED gelince sunucuya gider (sunucu tavanları uygular).
+    if (offer.product === 'shield' && offer.shieldRefundVia) {
+      const via = offer.shieldRefundVia;
+      setContextualOfferVisible(false);
+      track('engagement_primary_clicked', { kind: activeEngagement?.kind, offer_id: offer.offerId, trigger: offer.trigger, product: 'shield', offerType: offer.offerType, screen: state.phase, appSessionId, currentDiamonds: profile.diamonds, trophyDelta: offer.analyticsMetadata?.trophy_delta, action: `shield_refund_${via}` });
+      const claim = () => actions.shieldRefund(via)
+        .then((n) => { track('shield_refund_granted', { via, refunded: n, appSessionId }); })
+        .catch((e: Error) => { track('shield_refund_failed', { via, error: e.message, appSessionId }); actions.showNotice(e.message === 'timeout' || e.message === 'disconnected' ? t('monetization.adUnavailable') : e.message); });
+      if (via !== 'ad') { void claim(); return; }
+      void showRewardedAd().then((outcome) => {
+        track('shield_refund_ad', { outcome, appSessionId });
+        if (outcome === 'earned') return claim();
+        if (outcome === 'closed') return; // izlemedi — sessiz
+        actions.showNotice(t('monetization.adUnavailable'));
+      });
+      return;
+    }
     if (offer.offerType !== 'power' || !offer.product) return;
     const powerId = offer.product;
     setContextualOfferVisible(false);
@@ -2317,7 +2381,7 @@ function AppRoot() {
     track('engagement_primary_clicked', { kind: activeEngagement?.kind, offer_id: offer.offerId, trigger: offer.trigger, product: powerId, offerType: offer.offerType, screen: state.phase, appSessionId, currentDiamonds: profile.diamonds, trophyDelta: offer.analyticsMetadata?.trophyDelta ?? offer.analyticsMetadata?.trophy_delta, action: 'navigate_to_store_powers' });
     setStoreSection('powers');
     goToTab(0);
-  }, [contextualOffer, state.profile, goToTab, state.phase, updateEngagement, activeEngagement, appSessionId]);
+  }, [contextualOffer, state.profile, goToTab, state.phase, updateEngagement, activeEngagement, appSessionId, actions]);
 
   const useSocialTokenFromLockedMode = useCallback(() => {
     const rawMode = activeEngagement?.metadata?.mode;
@@ -2566,8 +2630,12 @@ function AppRoot() {
   // GEÇMEK ('background') = ANINDA hükmen mağlubiyet — kupa kesilir, galibiyet
   // ve kupa rakibe yazılır (sunucu explicitLeave('cheat') hattı; sonuç popup'ı
   // KOPYA ÇEKME ALGILANDI bandıyla gelir). 'inactive' (bildirim çekmecesi,
-  // kontrol merkezi, gelen arama, ekran görüntüsü) MAÇTAN ATMAZ — dönüşte
-  // yalnız uyarı basılır; telefonun normal kullanımı cezalandırılmaz.
+  // kontrol merkezi, gelen arama, ekran görüntüsü) MAÇTAN ATMAZ.
+  // 'inactive' UYARI DA BASMAZ (oyuncu raporu 2026-09-02): görüntülü konuşma
+  // sırasında iOS, aramanın küçük penceresi / Dynamic Island hareketleriyle
+  // uygulamayı sürekli inactive↔active gezdiriyor; her maç sonunda masum
+  // oyuncuya "kopya çekme algılandı" basılıyordu. Başka uygulamaya geçmeden
+  // 'inactive' olunur ama kopya çekilemez; uyarı yalnız 'background' dönüşünde.
   // ANINDA CEZA KALDIRILDI (oyuncu raporu 2026-08-29): oyun donunca oyuncu
   // uygulamayı kapatmaya çalışıyor, arka plana geçer geçmez hükmen yenilgi
   // gönderiliyor ve MASUM oyuncu kupa kaybediyordu — geri dönme şansı bile
@@ -2598,9 +2666,6 @@ function AppRoot() {
         cheatWatchRef.current.dipped = true;
         return;
       }
-      if (st === 'inactive' && cheatWatchRef.current.eligible) {
-        cheatWatchRef.current.dipped = true;
-      }
       if (st === 'active' && cheatWatchRef.current.dipped) {
         const awayMs = cheatWatchRef.current.bgAt ? Date.now() - cheatWatchRef.current.bgAt : 0;
         cheatWatchRef.current.dipped = false;
@@ -2611,7 +2676,8 @@ function AppRoot() {
           cheatForfeitRef.current();
           return;
         }
-        // Kısa kesinti: donma, bildirim, gelen arama… ceza yok, yalnız uyarı.
+        // Kısa ARKA PLAN kesintisi: donma, açılan arama, bildirime dokunma…
+        // ceza yok, yalnız uyarı. (Salt 'inactive' buraya hiç düşmez.)
         setCheatWarnSeq((n) => n + 1);
       }
     });
@@ -2664,6 +2730,27 @@ function AppRoot() {
   const DEV_SHOT = DEV_SHOT_MODE;
   if (DEV_SHOT) setLanguage(DEV_SHOT_LANG);
   if (DEV_SHOT) return <View style={{ flex: 1 }}><StatusBar style="light" /><DevShotScreen /></View>;
+
+  // COF BİLEŞEN GALERİSİ (dev-only, Adım 03): aynı DEV_SHOT kalıbı.
+  if (COF_HOME_SHOT_MODE) {
+    // Font kapısı: galeri dalıyla aynı gerekçe — fontlar yüklenmeden çizersek
+    // etiketler sistem fontuyla ölçülür ve sahte kırpılma görünür.
+    if (!fontsReady) return <View style={{ flex: 1, backgroundColor: BG_TOP }} />;
+    void NativeSplash.hideAsync().catch(() => {});
+    return <View style={{ flex: 1, paddingTop: insets.top }}><StatusBar style="light" /><HomeShotScreen /></View>;
+  }
+
+  if (COF_GALLERY_MODE) {
+    // FONT KAPISI: galeri, üretimin `!fontsReady` kapısının ÖNÜNDE döner. Kapı
+    // olmadan etiketler sistem fontuyla ÖLÇÜLÜR, fontlar gelince Poppins ile
+    // BOYANIR; kutu dar kaldığı için sahte "…" kırpılması görünür (simülatörde
+    // 2026-09-03'te yakalandı). Üretimdeki kapının aynısını galeriye de uygula.
+    if (!fontsReady) return <View style={{ flex: 1, backgroundColor: BG_TOP }} />;
+    // Galeri normal açılış akışının ÖNÜNDE döndüğü için native splash'i kendisi
+    // kapatır (dev-only dal; üretim akışı etkilenmez).
+    void NativeSplash.hideAsync().catch(() => {});
+    return <View style={{ flex: 1, paddingTop: insets.top }}><StatusBar style="light" /><CofGallery /></View>;
+  }
 
   // Splash screen: cinematic brand opening; dismisses itself via onDone.
   if (splash || !fontsReady) {
@@ -2887,7 +2974,7 @@ function AppRoot() {
           <View style={s.hudPillShadow}>
             <View style={[s.hudPill, { paddingHorizontal: 24, paddingVertical: 8 }, pressed && s.hudPillPressed]}>
               <Ionicons name="trophy" size={18} color={theme.accent} />
-              <Text style={s.trophyText}>{state.profile?.trophies ?? 0}</Text>
+              <Text style={s.trophyText}>{formatNumber(state.profile?.trophies ?? 0)}</Text>
             </View>
           </View>
         )}
@@ -2910,6 +2997,44 @@ function AppRoot() {
   // gizlenir (yukarıdaki süpürme efekti state'i de temizler).
   const serverProfile = state.viewProfile && state.viewProfile.userId === requestedProfileRef.current ? state.viewProfile : null;
   const shownProfile = serverProfile ?? entryProfile;
+
+  // Sekme basma mantığı ESKİ bar'dan aynen taşındı (davranış değişmedi):
+  // Turnuvalar'da taze liste, aktif Oyun'a tekrar dokunma → Arenalar / ana ekran,
+  // aktif Mağaza'ya tekrar dokunma → elmas paketlerine/başa kaydır.
+  const handleTabPress = useCallback((idx: number) => {
+    dismissActiveInput();
+    if (idx === 4) actions.listTournaments();
+    if (idx === 2 && activeTab === 2) {
+      if (state.phase === 'home') { actions.openArenas(); return; }
+      resetHomePhase(); return;
+    }
+    if (idx === 0 && activeTab === 0) {
+      const target = storeAtDiamondsRef.current ? 'top' : 'diamonds';
+      storeAtDiamondsRef.current = !storeAtDiamondsRef.current;
+      setStoreSection(null);
+      setTimeout(() => setStoreSection(target), 30);
+      setTimeout(() => setStoreSection(null), 900);
+      return;
+    }
+    goToTab(idx);
+  }, [actions, activeTab, state.phase, resetHomePhase, goToTab]);
+
+  // OYUN yuvası kabuğu: geri butonlu alt sayfalarda (Profil, Arenalar, Liderlik,
+  // Maç Geçmişi) DetailScreenShell — alt navigasyon gizlenir ve alt içerik boşluğu
+  // navigasyon payını içermez; ana ekranda RootScreenShell.
+  const HomeSlotShell = isCofDetailPhase(state.phase) ? DetailScreenShell : RootScreenShell;
+
+  // Rozet kaynakları ESKİ bar ile birebir: Arkadaşlar = okunmamış + bekleyen
+  // istek; Koleksiyon = görülmemiş eşya sayısı. Sıra, ikonlar ve etiketler AYNI.
+  const collectionUnseen = state.unseenCollection.emotes.length + state.unseenCollection.cosmetics.length + state.unseenCollection.powers.length + state.unseenCollection.frames.length;
+  const COF_NAV_ITEMS: CofNavItem[] = TAB_DEFS.map((tab) => ({
+    key: tab.key,
+    label: t(tab.labelKey),
+    icon: tab.icon,
+    activeIcon: tab.activeIcon,
+    center: tab.key === 'home',
+    badge: tab.key === 'friends' ? (badgeTotal || null) : tab.key === 'collection' ? (collectionUnseen || null) : null,
+  }));
 
   return (
     <View key={`app-${langKey}`} style={[s.root, { paddingTop: insets.top }]}>
@@ -2955,89 +3080,60 @@ function AppRoot() {
             slides with it. Home shows its own bar (phase 'home'); on Arenas/Profile
             the shared bar is shown here instead. */}
         <View style={{ width: SCREEN_W, flex: 1 }}>
-          {state.profile ? renderResourceBar(activeTab === 0) : null}
+          <RootScreenShell header={state.profile ? renderResourceBar(activeTab === 0) : null}>
           <TabFreeze active={activeTab === 0} warmDelay={400}>
             <StoreScreen {...props} storeActive={activeTab === 0} scrollToSection={storeSection} onDiamondCelebration={(c) => setGemCelebration({ kind: 'purchase', amount: c.amount, img: c.img })} />
           </TabFreeze>
+          </RootScreenShell>
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
-          {state.profile ? renderResourceBar(activeTab === 1) : null}
+          <RootScreenShell header={state.profile ? renderResourceBar(activeTab === 1) : null}>
           <TabFreeze active={activeTab === 1} warmDelay={700}>
             <CollectionScreen {...props} isActive={activeTab === 1} />
           </TabFreeze>
+          </RootScreenShell>
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
-          {state.phase !== 'home' && state.profile ? renderResourceBar(activeTab === 2) : null}
+          {/* OYUN yuvası: ana ekran kök kabuğu, geri butonlu alt sayfalar (Profil,
+              Arenalar, Liderlik, Maç Geçmişi) detay kabuğu kullanır — detayda alt
+              navigasyon GİZLENİR (CofBottomNav hidden). Bu ekranlar kendi
+              ScreenHeader'larını çizdiği için kabuk ikinci bir başlık koymaz. */}
+          <HomeSlotShell header={state.phase !== 'home' && state.profile ? renderResourceBar(activeTab === 2) : null}>
           {/* Ana yuva da donar — önceden 4 sayfadan tek çıplak olan buydu ve HER ws
               dispatch'i (mesaj, typing, satın alma onayı, liderlik cevabı) en ağır
               ekranı (HomeScreen) perde arkasında boşa yeniden çizdiriyordu. */}
           <TabFreeze active={activeTab === 2} freshOnDeactivate freezeKey={state.phase} warmDelay={550}>
             {homeContent}
           </TabFreeze>
+          </HomeSlotShell>
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
-          {state.profile ? renderResourceBar(activeTab === 3) : null}
+          <RootScreenShell header={state.profile ? renderResourceBar(activeTab === 3) : null}>
           <TabFreeze active={activeTab === 3} warmDelay={1000}>
             <FriendsScreen {...props} onGoToStore={(section) => { setStoreSection(section ?? null); goToTab(0); }} onLockedSocialMode={enqueueLockedSocialMode} focusAddFriendSeq={friendsAddSeq} />
           </TabFreeze>
+          </RootScreenShell>
         </View>
         <View style={{ width: SCREEN_W, flex: 1 }}>
-          {state.profile ? renderResourceBar(activeTab === 4) : null}
+          {/* Turnuvalar diğer kök ekranlarla AYNI üst kaynak alanını ve aynı
+              safe-area başlangıcını kullanır (spec: üst alan hizalaması). */}
+          <RootScreenShell header={state.profile ? renderResourceBar(activeTab === 4) : null}>
           <TabFreeze active={activeTab === 4} warmDelay={1200}>
             <TournamentsScreen {...props} />
           </TabFreeze>
+          </RootScreenShell>
         </View>
       </Animated.ScrollView>
 
-      {/* Bottom Tab Bar */}
-      <View style={[s.tabBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        {TABS.map((tab, idx) => {
-          const onPress = () => {
-            dismissActiveInput();
-            if (idx === 4) actions.listTournaments(); // sekmeye her girişte taze liste
-            if (idx === 2 && activeTab === 2) {
-              // Re-tapping the active Oyna tab opens Arenas (Clash Royale style);
-              // from any other home-slot sub-screen (Profile, Arenas) it returns
-              // to the main home screen instead of staying put.
-              if (state.phase === 'home') { actions.openArenas(); return; }
-              resetHomePhase(); return;
-            }
-            if (idx === 0 && activeTab === 0) {
-              // Re-tapping the active Store tab TOGGLES (Clash Royale style):
-              // first re-tap scrolls to the diamond packs, the next one back to
-              // the top. null→value retriggers the scroll effect even for repeat
-              // targets; the trailing reset un-parks it for later gem-pill jumps.
-              const target = storeAtDiamondsRef.current ? 'top' : 'diamonds';
-              storeAtDiamondsRef.current = !storeAtDiamondsRef.current;
-              setStoreSection(null);
-              setTimeout(() => setStoreSection(target), 30);
-              setTimeout(() => setStoreSection(null), 900);
-              return;
-            }
-            goToTab(idx);
-          };
-          // The mockup's centre tab is a raised ball, not a flat icon.
-          if (idx === 2) return <PlayTab key={tab.key} active={activeTab === 2} label={t(tab.labelKey)} onPress={onPress} />;
-          return (
-            <TabButton
-              key={tab.key}
-              active={idx === activeTab}
-              icon={tab.icon}
-              activeIcon={tab.activeIcon}
-              label={t(tab.labelKey)}
-              // Friends is the only tab with an honest badge source: unread messages +
-              // pending requests, and it clears itself. (The mockup also badges
-              // Collection, but every un-owned emote there is grant-only — that badge
-              // could never be cleared, so it is deliberately not rendered.)
-              badge={tab.key === 'friends' ? (badgeTotal || null) : tab.key === 'collection' ? ((state.unseenCollection.emotes.length + state.unseenCollection.cosmetics.length + state.unseenCollection.powers.length + state.unseenCollection.frames.length) || null) : null}
-              onPress={onPress}
-            />
-          );
-        })}
-        {/* Eski kilitli 'Turnuvalar (yakında)' placeholder'ı KALDIRILDI (2026-08-28):
-            gerçek Turnuvalar sekmesi artık TAB_DEFS'te — ikisi birden 6 buton
-            yapıyordu. ComingSoonBadge de onunla gitti. */}
-      </View>
+      {/* Alt navigasyon — TEK örnek, overlay (Aşama 02 kabuğu).
+          İçerik onun altında kalmaz: her kaydırıcı 76 + safeArea + 24 dp alt
+          boşluğu ortak yardımcıdan alır (src/cof/shell.tsx). */}
+      <CofBottomNav
+        items={COF_NAV_ITEMS}
+        activeKey={TAB_DEFS[activeTab]?.key ?? 'home'}
+        onSelect={(_key, idx) => handleTabPress(idx)}
+        hidden={isCofDetailPhase(state.phase)}
+      />
 
       {__DEV__ && state.phase === 'home' ? (
         <View style={{ position: 'absolute', left: 12, right: 12, bottom: Math.max(insets.bottom, 12) + 78, gap: 6, alignItems: 'center', zIndex: 30 }} pointerEvents="box-none">
@@ -3696,12 +3792,14 @@ function AppRoot() {
           <View style={{ alignItems: 'center', gap: 10 }}>
             <PowerArt powerId={contextualOffer.product} size={88} />
             <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
-              {t(contextualOffer.bodyKey as any)}
+              {t(contextualOffer.bodyKey as any, contextualOffer.bodyParams)}
             </Text>
             <Text style={{ color: theme.text, fontSize: 12, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>
-              {powerCount(state.profile, contextualOffer.product) > 0 ? t('monetization.inInventory') : t('monetization.powerPrice', { n: String(POWER_PRICES[contextualOffer.product]) })}
+              {contextualOffer.shieldRefundVia === 'ad' ? t('monetization.shieldLineAd')
+                : contextualOffer.shieldRefundVia === 'pack' ? t('monetization.shieldLinePack')
+                : powerCount(state.profile, contextualOffer.product) > 0 ? t('monetization.inInventory') : t('monetization.powerPrice', { n: String(POWER_PRICES[contextualOffer.product]) })}
             </Text>
-            <Btn big kind="accent" icon={POWERS[contextualOffer.product].icon} label={t(contextualOffer.ctaKey as any)} onPress={acceptContextualOffer} />
+            <Btn big kind="accent" icon={contextualOffer.shieldRefundVia === 'ad' ? 'play-circle' : POWERS[contextualOffer.product].icon} label={t(contextualOffer.ctaKey as any)} onPress={acceptContextualOffer} />
             <Btn kind="ghost" label={t(contextualOffer.secondaryKey as any)} onPress={dismissContextualOffer} />
           </View>
         ) : contextualOffer?.offerType === 'social_pack' ? (

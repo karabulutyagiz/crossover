@@ -388,6 +388,7 @@ export type ClientMsg =
   | { type: 'get_my_stats' } // profil istatistikleri: seri rekoru + mod bazlı K/M
   | { type: 'verify_purchase'; receipt: string; platform?: 'ios' | 'android'; productId?: string; isSubscription?: boolean }
   | { type: 'grant_ad_reward' }
+  | { type: 'shield_refund'; via: 'inventory' | 'ad' | 'pack' } // Kupa Kalkanı: SON maçın kupa kaybını geri al (envanter / ödüllü reklam / Sosyal Paket günlük hediyesi) — sunucu tavanlı
   | { type: 'search_clubs'; reqId: string; q: string }
   | { type: 'pick_player'; playerId: number }
   | { type: 'search_players'; q: string }
@@ -529,6 +530,7 @@ export type ServerMsg =
   | { type: 'cosmetic_equipped'; profile: ProfileView; itemId: string | null; cosmeticType: string }
   | { type: 'diamonds_granted'; profile: ProfileView; granted: number }
   | { type: 'ad_reward_result'; ok: boolean; granted?: number; profile?: ProfileView; error?: string }
+  | { type: 'shield_refund_result'; ok: boolean; refunded?: number; via?: 'inventory' | 'ad' | 'pack'; profile?: ProfileView; error?: string } // son kaybın kupası geri geldi
   | { type: 'club_results'; reqId: string; clubs: ClubRef[] }
   | { type: 'player_results'; players: PlayerRef[] }
   | { type: 'searching'; etaSeconds?: number } // tahmini eşleşme süresi (dürüst: fallback zamanından türetilir)
