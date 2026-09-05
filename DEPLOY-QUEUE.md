@@ -20,6 +20,21 @@ kalkan). Sunucu: `power_socialtoken` sütunu migration `0021_remove_social_pack_
 ile HERKESTEN düşer (schema.sql'deki ADD COLUMN da silindi). Eski istemcinin
 `use_power socialtoken` isteği artık validasyondan döner.
 
+**🔴 KAZA (2026-09-05 23:05 TR) + DÜZELTME — eski istemcide "1 GÜNLÜK SOSYAL PAKET" popup'ı:**
+OTA 20:05/20:11 UTC iki projeye çıktı, sunucu 20:16 UTC yenilendi. Sunucu hediyeyi ESKİ
+`outageGiftAvailable` alanıyla açtı; OTA'yı henüz almamış istemciler o alanı Ağustos'taki
+"KESİNTİ İÇİN ÖZÜR — herkese 1 GÜNLÜK SOSYAL PAKET / AL" penceresine bağlıydı → yanlış
+metinli popup göründü (kullanıcı: "ciromu sikeceksin"). Sunucu gerçekte yalnız `diamonds + 150`
+yazıyor, `social_pack_until`'a dokunmuyor — kimseye paket tanımlanMADI; ama oyuncunun gördüğü
+metin "bedava paket"ti ve AL'a basan 150 elmas alıp "paket tanımlandı" metnini okudu.
+DÜZELTME: wire alanları yeniden adlandırıldı → `apologyGiftAt` / `apologyGiftAvailable`
+(server protocol.ts + profileView.ts, client protocol.ts + App.tsx). Eski istemci bu adları
+tanımaz → hiçbir şey göstermez; yalnız yeni popup'lı istemci okur. `claim_outage_gift` /
+`outage_gift_claimed` adları aynı kaldı (popup'sız eski istemci hiç göndermez; gönderse de
+ödül aynı 150 elmas). SIRA BU KEZ: önce SUNUCU (eski cihazlarda popup anında kesilir),
+sonra OTA iki projeye (20:05 OTA'sını almış istemci de yeni alanı okumak için OTA'yı bekler;
+kısa bir "popup görünmez" boşluğu olur, kabul). Ders: [[wire-field-rename-not-deploy-order]].
+
 **+ GEÇİŞ REKLAMI "3 GİR-ÇIK'TA ÇIKMIYOR" DÜZELTMESİ (kullanıcı 2026-09-05 22:05 TR):**
 Kök sebep (App.tsx): reklam bekleyişi yalnız maçtan çıkış anında kuruluyor, 20 sn
 yaşıyor ve o sürede gelen 2./3. çıkış `adPendingRef` yüzünden yutuluyordu; 3. çıkış

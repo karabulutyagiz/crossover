@@ -175,8 +175,11 @@ export interface ProfileView {
   equippedEmotes: string[];
   usernameSet: boolean;
   socialPackUntil: string | null;
-  outageGiftAt?: string | null;   // 5 Eylül bakım telafisi alındı damgası (ISO) ya da null
-  outageGiftAvailable?: boolean;  // true → tek seferlik 150 elmas popup'ı
+  // YENİ ALAN ADLARI (2026-09-05): eski istemci `outageGiftAvailable` görünce
+  // Ağustos'taki "1 GÜNLÜK SOSYAL PAKET" penceresini açıyordu; sunucu artık yalnız
+  // bu adları gönderir, eski istemci tanımaz ve hiçbir şey göstermez.
+  apologyGiftAt?: string | null;   // 5 Eylül bakım telafisi alındı damgası (ISO) ya da null
+  apologyGiftAvailable?: boolean;  // true → tek seferlik 150 elmas popup'ı
   arena: ArenaView;
   avatar: string | null;
   xp: number;    // mevcut seviye içindeki ilerleme (SEZONLUK)

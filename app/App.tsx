@@ -2148,7 +2148,7 @@ function AppRoot() {
   // Kesinti telafisi. Hediye KENDİLİĞİNDEN tanımlanmaz: sunucu yalnızca
   // "bu hesap henüz almadı ve kampanya açık" bilgisini (outageGiftAvailable)
   // gönderir, paket ancak "AL"a basılınca tanımlanır (tek seferlik).
-  const outageGiftAvailable = state.profile?.outageGiftAvailable === true;
+  const outageGiftAvailable = state.profile?.apologyGiftAvailable === true; // yeni alan adı — eski istemci bunu görmez
   useEffect(() => {
     if (outageGiftAvailable) setOutageGiftVisible(true);
   }, [outageGiftAvailable]);
