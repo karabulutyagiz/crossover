@@ -277,7 +277,7 @@
       <div class="nav-sep">Canlı</div>
       <div class="nav-item active" data-sec="overview"><span class="ico">📊</span> Genel Bakış</div>
       <div class="nav-sep">Analiz</div>
-      <div class="nav-item" data-sec="revenue"><span class="ico">💰</span> Gelir</div>
+      <div class="nav-item" data-sec="revenue"><span class="ico">💰</span> Gelir <span class="nav-badge hidden" id="nav_rev">0</span></div>
       <div class="nav-item" data-sec="ads"><span class="ico">📺</span> Reklam</div>
       <div class="nav-item" data-sec="users"><span class="ico">👥</span> Kullanıcılar</div>
       <div class="nav-item" data-sec="game"><span class="ico">🎮</span> Oyun</div>
@@ -651,13 +651,23 @@
 
   // ── Feedback ──
   var FB_CATS = { bug:'HATA', suggestion:'ÖNERİ', support:'DESTEK', other:'DİĞER' };
+  // Menü kırmızı rozeti: görülmemiş öğe sayısı (0 → gizli).
+  function updateNavBadge(id,count){ var b=$(id); if(!b) return; if(count>0){ b.textContent=count>99?"99+":String(count); b.classList.remove("hidden"); } else b.classList.add("hidden"); }
   function loadFeedback(){
     apiGet("/admin/api/feedback").then(function(data){ LASTFB=(data&&data.items)||[]; renderFeedback(); }).catch(function(){});
   }
   function renderFeedback(){
     var q=(($("fb_search")&&$("fb_search").value)||"").trim().toLowerCase();
     var items=LASTFB.filter(function(f){ if(!q) return true; return (String(f.message||"")+" "+String(f.display_name||"")+" "+String(f.category||"")).toLowerCase().indexOf(q)>=0; });
-    var badge=$("nav_fb"); if(badge){ if(LASTFB.length){ badge.textContent=LASTFB.length>99?"99+":String(LASTFB.length); badge.classList.remove("hidden"); } else badge.classList.add("hidden"); }
+    // ── Görülmemiş "yeni" sayacı: kayıtlı görüldü-id'sinden büyük id'ler.
+    // İlk açılışta mevcut yığın görülmüş sayılır (eski birikim rozette çıkmaz);
+    // bölüm açıkken de görülmüş kalır; bölümü açınca sıfırlanır.
+    var fbMaxId = LASTFB.reduce(function(m,f){ return Math.max(m, Number(f.id)||0); }, 0);
+    var fbActive = $("sec-feedback") && $("sec-feedback").classList.contains("active");
+    var fbStored = localStorage.getItem("cx_fb_seen_id");
+    if(fbMaxId>0 && (fbStored===null || fbActive)){ localStorage.setItem("cx_fb_seen_id", String(fbMaxId)); fbStored=String(fbMaxId); }
+    var fbSeen = Number(fbStored)||0;
+    updateNavBadge("nav_fb", LASTFB.filter(function(f){ return (Number(f.id)||0) > fbSeen; }).length);
     var list=$("fb_list"); list.innerHTML="";
     if(!items.length){ list.innerHTML="<div class='empty'>"+(q?"Aramayla eşleşen mesaj yok.":"Henüz mesaj yok.")+"</div>"; return; }
     items.forEach(function(f){
@@ -823,6 +833,15 @@
   // ── Satın alımlar (aranabilir) ──
   function renderPurchases(){
     if(!LAST||!LAST.revenue) return;
+    // ── Yeni satın alım sayacı (görülmemiş = kayıtlı 'at'ten sonrakiler) ──
+    // İlk açılışta mevcut alımlar görülmüş sayılır; Gelir açıkken görülmüş kalır; açınca sıfırlanır.
+    var pAll = LAST.revenue.purchases||[];
+    var pMaxAt = pAll.reduce(function(m,p){ var t=new Date(p.at).getTime(); return (isFinite(t)&&t>m)?t:m; }, 0);
+    var pActive = $("sec-revenue") && $("sec-revenue").classList.contains("active");
+    var pStored = localStorage.getItem("cx_pur_seen_at");
+    if(pMaxAt>0 && (pStored===null || pActive)){ localStorage.setItem("cx_pur_seen_at", String(pMaxAt)); pStored=String(pMaxAt); }
+    var pSeen = Number(pStored)||0;
+    updateNavBadge("nav_rev", pAll.filter(function(p){ var t=new Date(p.at).getTime(); return isFinite(t)&&t>pSeen; }).length);
     var q=(($("p_search")&&$("p_search").value)||"").trim().toLowerCase();
     var list=(LAST.revenue.purchases||[]).filter(function(p){ if(!q) return true; return ((p.user||"")+" "+(p.label||"")+" "+(p.productId||"")+" "+(p.userId||"")).toLowerCase().indexOf(q)>=0; });
     $("p_rows").innerHTML=list.map(function(p){
@@ -957,6 +976,8 @@
     if(sec==="matchmaking") loadMatchmaking(false);
     if(sec==="maintenance") loadMaintenance();
     if(sec==="search") setTimeout(function(){ $("us_query").focus(); },50);
+    if(sec==="feedback") renderFeedback();   // açılınca görülmemiş rozetini sıfırla
+    if(sec==="revenue") renderPurchases();    // açılınca yeni-alım rozetini sıfırla
     document.body.classList.remove("nav-open");
     window.scrollTo(0,0);
   }
