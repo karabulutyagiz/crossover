@@ -1,4 +1,49 @@
-# CANLIYA ALINACAKLAR — Deploy Sırası (güncel: 2026-09-05)
+# CANLIYA ALINACAKLAR — Deploy Sırası (güncel: 2026-09-05 21:40 TR)
+
+## ⏳ 2026-09-05 — 150 ELMAS BAKIM ÖZRÜ: HAZIR, YAYIN + SUNUCU DEPLOY BEKLİYOR
+
+**Kullanıcı kararı (16:56 UTC):** "bakım ve kesintiler için özür" popup'ı, 150 elmas,
+çarpısız, TOPLA zorunlu; yalnız o ana kadar yüklemiş olanlara (sunucu cutoff
+`2026-09-05T17:42:43Z`, 1.699 hesap), yeni indirenlere HİÇ (tek seferlik).
+
+**Bugün olan:** 16:50 UTC eski projeye OTA grubu `756047e1` (Ben Kimim + maç dışı
+reklam kapısı, a301700 tabanı; a301700'ün dirty ağacından). Hediye popup'ı BU
+PAKETTE YOK (istek sonra geldi). Yeni proje hâlâ 4 Eylül 22:48 UTC (`b357019d`).
+
+**Dallar** (hızlı disk klonu `/var/folders/…/T/opencode/crossover-gift-release`):
+- `ota-gift-20260905` — istemci + sunucu, a301700 tabanı (yeni ana sayfa/nav
+  DIŞARIDA). **OTA buradan basılır.** app tsc + ad-slot-test temiz.
+- `server-gift-20260905` (`52aa288`) = canlı `f00c279` + YALNIZ hediye hunk'ları
+  (worktree `…/crossover-server-gift`). **Sunucu buradan basılır.** a301700
+  tabanından sunucu basmak Kupa Kalkanı / CO-PASS 19.040 / set_frame tek kapı /
+  vitrin kaydırmayı geri alırdı. server tsc temiz.
+
+**SIRA (OTA önce, sunucu sonra):**
+1. Eski proje (hesap `ygzkrblt1`): `cd app && NODE_OPTIONS=--dns-result-order=ipv4first
+   ./eski-projeye-yayin.sh "bakim ozru: 150 elmas hediye popup'i + Ben Kimim + mac disi reklam kapisi"`
+2. `npx eas login` → `ygzkrblt`; yeni proje: `EAS_SKIP_AUTO_FINGERPRINT=1
+   NODE_OPTIONS=--dns-result-order=ipv4first npx eas update --branch production
+   --environment production -m "…" --non-interactive`; manifest `createdAt` ile doğrula.
+3. Sunucu, `server-gift-20260905` ağacından: `rsync -az --delete --exclude node_modules
+   --exclude 'node_modules*' --exclude .env --exclude .git --exclude .cache server/
+   root@168.222.180.190:/opt/crossover/server/` → `docker compose up -d --build app`
+   (kullanıcı 15:36 UTC: "oynarken atarız, düşerler geri girerler" — yine de rooms=0
+   dene). Kanıt: `docker exec crossover-app-1 grep -c apology_gift_20260905
+   src/game/rank.ts` ≥ 1; log'da `Migration applied: 0022_apology_gift_20260905.sql`.
+
+**DİKKAT:**
+- Prod diskinde repo dışı `server/src/db/migrations/0021_remove_social_pack_token.sql`
+  duruyor (başka oturumun socialtoken kaldırması; kodu prod'a basılmadı, konteyner
+  19 saattir aynı, son boot "Versioned migrations applied: 0"). `f00c279` kodu
+  `power_socialtoken` sütununu kullanır → bu dosya uygulanırsa sunucu kırılır.
+  `--delete` rsync onu siler; **silinmeden compose ÇALIŞTIRMA.**
+- Prod `docker-compose.yml` repo sürümünden farklı (md5 `a8a88d82` ≠ f00c279
+  `80dfeb3b`); dokunulmadı, `APOLOGY_GIFT_*` env satırları eklenmedi — kod
+  varsayılanları (açık / cutoff / 150) yeterli. Kapatmak için compose environment'a
+  `APOLOGY_GIFT_20260905_ENABLED: "0"` ekle + yeniden başlat.
+- Sunucu OTA'dan önce açılırsa güncellenmemiş istemciler eski "1 GÜNLÜK SOSYAL
+  PAKET / AL" metinli popup'ı görür (ödül yine 150 elmas). OTA iki açılışta iner.
+- İki dal henüz push'lanmadı, `build-113` ile birleştirilmedi (merge-base `a8f51cf`).
 
 ## 🔴 2026-09-05 — KÖK SEBEP: OTA'LAR MAĞAZA KULLANICILARINA HİÇ ULAŞMIYOR
 
