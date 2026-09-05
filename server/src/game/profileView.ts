@@ -39,7 +39,6 @@ export function toProfileView(p: UserProfile): ProfileView {
     lostStreak: p.lostStreak,
     powerTraining: p.powerTraining,
     trainingBoostUntil: p.trainingBoostUntil,
-    powerSocialToken: p.powerSocialToken,
     premiumRoad: p.premiumRoad,
     copassV2: copassV2Enabled(),
     claimedPremium: p.claimedPremium,

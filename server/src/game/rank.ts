@@ -119,7 +119,6 @@ export interface UserProfile {
   equippedAnswerEffectId: string | null;
   powerTraining: number;       // envanterdeki Antrenman Bileti adedi
   trainingBoostUntil: string | null; // aktif Antrenman Bileti penceresinin bitişi (ISO) ya da null
-  powerSocialToken: number;    // envanterdeki Sosyal Paket Jetonu adedi
   highestArenaRewarded: number; // ulaşılıp açılmış/ödülü işlenmiş en yüksek arena index'i
   bannedAt: string | null;     // kural ihlali askısı — doluysa bağlantı katmanı girişi reddeder
   // Maç içi Özel Güç envanteri (maç başına 1 kullanım — room.ts uygular)
@@ -830,7 +829,7 @@ export async function applyMatchResult(
 // dokunuş ikinci jetonu yakmaz, aktifken yeniden basmak stok eritmez.
 export async function usePower(
   userId: string,
-  powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken',
+  powerId: 'xp2x' | 'shield' | 'streak' | 'training',
 ): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
   if (!userId) return { ok: false, error: 'Önce giriş yap' };
   if (powerId === 'xp2x') {
@@ -889,41 +888,27 @@ export async function usePower(
     if (u?.trainingBoostUntil) return { ok: false, error: 'Antrenman Bileti zaten aktif' };
     return { ok: false, error: 'Kullanılabilir Antrenman Biletin yok' };
   }
-  if (powerId === 'socialtoken') {
-    // Sosyal Paket Jetonu: süreye +24 saat ekler. Aktif bir paketin ÜSTÜNE eklenir
-    // (GREATEST ile mevcut bitiş ya da şu an, hangisi ileriyse, esas alınır).
-    const { rows } = await pool.query<DbUser>(
-      `UPDATE users SET power_socialtoken = power_socialtoken - 1,
-         social_pack_until = GREATEST(COALESCE(social_pack_until, now()), now()) + interval '24 hours'
-       WHERE id = $1 AND power_socialtoken > 0
-       RETURNING *`,
-      [userId],
-    );
-    if (rows[0]) return { ok: true, profile: toProfile(rows[0]) };
-    return { ok: false, error: 'Kullanılabilir Sosyal Paket Jetonun yok' };
-  }
   return { ok: false, error: 'Bilinmeyen güç' };
 }
 
 // ---- Güç satın alma (mağaza) ----
 // Güçler Seviye Yolu'ndan kazanılır AMA mağazadan elmasla da alınabilir.
 // Atomik: bakiye denetimi + düşüm + envanter artışı tek UPDATE'te.
-export const POWER_PRICES: Record<'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken', number> = {
+export const POWER_PRICES: Record<'xp2x' | 'shield' | 'streak' | 'training', number> = {
   xp2x: 150,
   shield: 250,
   streak: 300,
   training: 250,
-  socialtoken: 350,
 };
 
 export async function buyPower(
   userId: string,
-  powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken',
+  powerId: 'xp2x' | 'shield' | 'streak' | 'training',
 ): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
   if (!userId) return { ok: false, error: 'Önce giriş yap' };
   const price = POWER_PRICES[powerId];
   if (!price) return { ok: false, error: 'Bilinmeyen güç' };
-  const col = powerId === 'xp2x' ? 'power_xp2x' : powerId === 'shield' ? 'power_shield' : powerId === 'streak' ? 'power_streak' : powerId === 'training' ? 'power_training' : 'power_socialtoken';
+  const col = powerId === 'xp2x' ? 'power_xp2x' : powerId === 'shield' ? 'power_shield' : powerId === 'streak' ? 'power_streak' : 'power_training';
   const { rows } = await pool.query<DbUser>(
     `UPDATE users SET diamonds = diamonds - $2, ${col} = ${col} + 1
      WHERE id = $1 AND diamonds >= $2
@@ -1561,7 +1546,6 @@ interface DbUser {
   power_training: number | null;
   training_boost_day: string | null;
   training_boost_until: string | null;
-  power_socialtoken: number | null;
   banned_at: string | null;
   // Maç içi Özel Güçler (specialPowers.ts) — meta güçlerden AYRI envanter.
   sp_freeze: number | null;
@@ -1624,7 +1608,6 @@ function toProfile(row: DbUser): UserProfile {
     equippedAnswerEffectId: row.equipped_answer_effect_id ?? null,
     powerTraining: row.power_training ?? 0,
     trainingBoostUntil: isFutureIso(row.training_boost_until) ? row.training_boost_until : null,
-    powerSocialToken: row.power_socialtoken ?? 0,
     highestArenaRewarded: Math.max(0, Math.min(ARENAS.length - 1, row.highest_arena_rewarded ?? 0)),
     bannedAt: row.banned_at ?? null,
     spFreeze: row.sp_freeze ?? 0,

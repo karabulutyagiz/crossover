@@ -189,7 +189,6 @@ export interface ProfileView {
   lostStreak?: number;      // son mağlubiyette kırılan seri (geri yüklenebilir)
   powerTraining?: number;       // envanterdeki Antrenman Bileti adedi
   trainingBoostUntil?: string | null; // aktif Antrenman Bileti penceresinin bitişi (ISO)
-  powerSocialToken?: number;    // envanterdeki Sosyal Paket Jetonu adedi
   premiumRoad?: boolean;    // Premium Seviye Yolu açık mı (sezonluk)
   copassV2?: boolean;       // CO-PASS v2 açık mı (50 seviyenin HER BİRİNDE ödül).
                             // İstemci ödül ızgarasını buna göre çizer; bayrak
@@ -288,8 +287,8 @@ export type ClientMsg =
   | { type: 'claim_season_reward' } // sezon ödülünü topla
   | { type: 'claim_level_reward'; level: number; track?: 'free' | 'premium' } // Seviye Yolu kartına dokunarak ödül topla (şerit seçimiyle)
   | { type: 'buy_premium_road' } // Premium Seviye Yolu'nu 1000 elmasla aç
-  | { type: 'buy_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken' } // mağazadan güç satın al
-  | { type: 'use_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken' } // envanterdeki tek kullanımlık gücü etkinleştir
+  | { type: 'buy_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' } // mağazadan güç satın al
+  | { type: 'use_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' } // envanterdeki tek kullanımlık gücü etkinleştir
   | { type: 'claim_outage_gift' } // 5 Eylül bakım telafisi: 150 elması topla
   | { type: 'get_daily_offer' } // kişiye özel 12 saatlik fırsatı iste
   | { type: 'buy_daily_offer'; key: string } // fırsatı satın al (key pencereyle doğrulanır)
@@ -485,8 +484,8 @@ export type ServerMsg =
   | { type: 'daily_career_result'; state: DailyCareerStateView; correct: boolean; rewardGranted: number; profile?: ProfileView }
   | { type: 'daily_crossover_wrong'; guess: string; suggestion: string | null; attemptsLeft: number }
   | { type: 'daily_crossover_done'; state: DailyCrossoverStateView; rewardGranted: number; profile?: ProfileView }
-  | { type: 'daily_offer'; offer: { key: string; kind: 'cosmetic' | 'power_bundle' | 'socialtoken'; itemId: string; qty: number; originalPrice: number; price: number; expiresAt: string } | null } // null → bu pencerede alınmış
-  | { type: 'daily_offer_purchased'; profile: ProfileView; offer: { key: string; kind: 'cosmetic' | 'power_bundle' | 'socialtoken'; itemId: string; qty: number; originalPrice: number; price: number; expiresAt: string } }
+  | { type: 'daily_offer'; offer: { key: string; kind: 'cosmetic' | 'power_bundle'; itemId: string; qty: number; originalPrice: number; price: number; expiresAt: string } | null } // null → bu pencerede alınmış
+  | { type: 'daily_offer_purchased'; profile: ProfileView; offer: { key: string; kind: 'cosmetic' | 'power_bundle'; itemId: string; qty: number; originalPrice: number; price: number; expiresAt: string } }
   | { type: 'my_stats'; winStreak: number; bestStreak: number; wins: number; losses: number; modes: { mode: string; wins: number; losses: number }[] } // profil istatistikleri
   | { type: 'emote'; fromId: string; emoteId: string } // a player in the room sent an emote
   | { type: 'emote_purchased'; profile: ProfileView; emoteId: string } // store purchase succeeded

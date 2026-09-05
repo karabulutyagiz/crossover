@@ -388,9 +388,6 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS power_training INT NOT NULL DEFAULT 0
 ALTER TABLE users ADD COLUMN IF NOT EXISTS training_boost_day TEXT; -- (eski, artık kullanılmıyor)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS training_boost_until TIMESTAMPTZ; -- aktif Antrenman Bileti penceresinin bitişi (1 saat)
 
--- Sosyal Paket Jetonu: kullanıldığında Sosyal Paket süresine +24 saat ekler
-ALTER TABLE users ADD COLUMN IF NOT EXISTS power_socialtoken INT NOT NULL DEFAULT 0;
-
 -- ---------------------------------------------------------------------------
 -- Kullanıcı içeriği güvenliği (App Store Guideline 1.2)
 -- Apple, anonim içerik üretilebilen uygulamalarda engelleme, şikâyet, kendi

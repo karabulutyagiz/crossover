@@ -12,8 +12,6 @@ export const OFFER_WINDOW_MS = 12 * 60 * 60 * 1000;
 
 export interface DailyOfferView {
   key: string;                 // `${windowIdx}:${slug}` — satın almada doğrulanır
-  // 'socialtoken' türü havuzdan çıkarıldığından (2026-08-27) union'dan da
-  // kaldırıldı — protokoldeki geniş union eski istemciler için aynen durur.
   kind: 'cosmetic' | 'power_bundle';
   itemId: string;              // kozmetik id / güç id
   qty: number;

@@ -94,14 +94,13 @@ export function seasonXpForNext(level: number): number {
 //   shield: kuşanılır; sıradaki dereceli maçta tüketilir, mağlubiyette kupa kaybını emer
 //   streak: son mağlubiyette kırılan galibiyet serisini geri yükler (anında)
 //   training: 1 saat boyunca bot maçlarındaki günlük 60 XP tavanı kalkar
-//   socialtoken: Sosyal Paket süresine +24 saat ekler (yoksa şimdiden başlar, varsa üstüne eklenir)
-export type PowerId = 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken';
+export type PowerId = 'xp2x' | 'shield' | 'streak' | 'training';
 export const LEVEL_POWERS: Record<number, PowerId> = {
   5: 'xp2x',
   15: 'shield',
   25: 'streak',
   35: 'training',
-  45: 'socialtoken',
+  45: 'xp2x',
 };
 
 // ---- PREMIUM Seviye Yolu ----
@@ -109,14 +108,11 @@ export const LEVEL_POWERS: Record<number, PowerId> = {
 // Ücretsiz yolun YANINDA
 // akan ikinci şerit: HER ×5 seviyesinde bir güç + daha dolgun elmas (×5: 200,
 // ×10: 300, zirve 50: 400 → toplam 2600💎 + 10 güç). Dağıtım İKİ kurala göre
-// tasarlandı: (1) her güç premium şeritte TAM 2 kez çıkar — hiçbiri diğerinden
-// şanslı değil; (2) ücretsiz şeritle ORTAK seviyelerde (5/15/25/35/45) premium
-// ödülü ÜCRETSİZ ödülüyle ASLA aynı değildir — aynı satırda iki kart aynı
-// gücü göstermez.
+// tasarlandı: dört aktif tüketilebilir güç şerit boyunca dengeli dağıtılır.
 export const PREMIUM_ROAD_PRICE = 2000;
 export const PREMIUM_LEVEL_POWERS: Record<number, PowerId> = {
-  5: 'shield', 10: 'streak', 15: 'xp2x', 20: 'socialtoken', 25: 'training',
-  30: 'shield', 35: 'socialtoken', 40: 'xp2x', 45: 'streak', 50: 'training',
+  5: 'shield', 10: 'streak', 15: 'xp2x', 20: 'xp2x', 25: 'training',
+  30: 'shield', 35: 'shield', 40: 'xp2x', 45: 'streak', 50: 'training',
 };
 
 export function premiumRewardDiamonds(level: number): number {
@@ -184,10 +180,10 @@ export const PASS_V2_FREE: Record<number, PassReward> = {
   30: { specialPower: 'reveal', diamonds: 100 },
   31: D(15), 32: SP('extratime'),    33: D(15), 34: RP('training'),
   35: { roadPower: 'training', diamonds: 50 },
-  36: { diamonds: 15, specialPower: 'extratime' }, 37: SP('skip'),         38: D(15), 39: RP('socialtoken'),
+  36: { diamonds: 15, specialPower: 'extratime' }, 37: SP('skip'),         38: D(15), 39: RP('streak'),
   40: { specialPower: 'freeze', diamonds: 100 },
   41: D(15), 42: SP('freeze'),       43: D(15), 44: { cosmeticId: 'ice_name' },
-  45: { roadPower: 'socialtoken', diamonds: 50 },
+  45: { roadPower: 'shield', diamonds: 50 },
   46: { diamonds: 15, specialPower: 'skip' }, 47: SP('extratime'),    48: D(15), 49: RP('xp2x'),
   50: { frameTier: 'goat', specialPower: 'reveal', diamonds: 150 }, // zirve: GOAT çerçevesi
 };
@@ -200,13 +196,13 @@ export const PASS_V2_PREMIUM: Record<number, PassReward> = {
   11: D(25), 12: SP('skip'),         13: D(25), 14: { cosmeticId: 'ice_name' },
   15: { roadPower: 'xp2x', diamonds: 200 },
   16: D(25), 17: SP('freeze'),       18: D(25), 19: SP('reveal'),
-  20: { roadPower: 'socialtoken', diamonds: 300 },
+  20: { roadPower: 'training', diamonds: 300 },
   21: { diamonds: 25, specialPower: 'freeze' }, 22: SP('skip'),         23: D(25), 24: SP('secondchance'),
   25: { roadPower: 'training', diamonds: 200 },
   26: D(25), 27: { cosmeticId: 'night_stadium' }, 28: D(25), 29: SP('freeze'),
   30: { roadPower: 'shield', diamonds: 300 },
   31: D(25), 32: SP('reveal'),       33: D(25), 34: SP('skip'),
-  35: { roadPower: 'socialtoken', diamonds: 200 },
+  35: { roadPower: 'shield', diamonds: 200 },
   36: D(25), 37: SP('freeze'),       38: { cosmeticId: 'lightning_victory' }, 39: SP('extratime'),
   40: { roadPower: 'xp2x', diamonds: 300 },
   41: { diamonds: 25, specialPower: 'reveal' }, 42: SP('reveal'),       43: D(25), 44: SP('secondchance'),
@@ -483,7 +479,7 @@ export function roadLeftovers(
 
 const ROAD_POWER_COLUMN: Record<PowerId, string> = {
   xp2x: 'power_xp2x', shield: 'power_shield', streak: 'power_streak',
-  training: 'power_training', socialtoken: 'power_socialtoken',
+  training: 'power_training',
 };
 const SPECIAL_POWER_COLUMN: Record<SpecialPowerId, string> = {
   freeze: 'sp_freeze', reveal: 'sp_reveal', skip: 'sp_skip',
@@ -524,7 +520,7 @@ export async function claimLevelReward(
   // Güç/claim sütunları kendi sabit haritalarımızdan gelir (kullanıcı girdisi
   // değil); tek claim garantisi UPDATE'in kendi denetiminde. Premium şerit
   // yalnız premium_road açıkken toplanabilir.
-  const powerCol = powerId === 'xp2x' ? 'power_xp2x' : powerId === 'shield' ? 'power_shield' : powerId === 'streak' ? 'power_streak' : powerId === 'training' ? 'power_training' : powerId === 'socialtoken' ? 'power_socialtoken' : null;
+  const powerCol = powerId === 'xp2x' ? 'power_xp2x' : powerId === 'shield' ? 'power_shield' : powerId === 'streak' ? 'power_streak' : powerId === 'training' ? 'power_training' : null;
   const claimedCol = premium ? 'claimed_premium' : 'claimed_levels';
   // Çerçeve sahipliği KALICI kayda da işlenir (owned_frames) — sezon sıfırlansa
   // bile kazanılmış çerçeve takılabilir kalır.

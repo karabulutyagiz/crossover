@@ -5,7 +5,7 @@
 // EN FAZLA 3 FARKLI güç kuşanır; her biri o maçta 1 kez, toplam 3 kullanım.
 // Bu limit satın alma / premium / VIP ile ARTIRILAMAZ (maxPerMatch config).
 // Kupa Kalkanı ve Seri Geri Yükleme gibi meta-koruma
-// eşyaları (rank.ts'teki xp2x/shield/streak/training/socialtoken) bu limitten
+// eşyaları (rank.ts'teki xp2x/shield/streak/training) bu limitten
 // AYRIDIR ve bu modüle taşınmaz.
 //
 // Kaynak-of-truth SUNUCUDUR: istemci yalnız arayüz çizer. Tüketim atomiktir

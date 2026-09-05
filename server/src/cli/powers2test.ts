@@ -1,10 +1,7 @@
-// End-to-end test for the SECOND wave of Seviye Yolu powers (Seviye Yolu güçleri):
-//   training (Antrenman Bileti, seviye 35): kullanıldığı gün bot XP günlük tavanını kaldırır
-//   socialtoken (Sosyal Paket Jetonu, seviye 45): Sosyal Paket süresine +24 saat ekler
-// Doğrulanan akış: claim (level 35 → training, level 45 → socialtoken) → use (atomic,
-// double-use blocked) → bot maçı kazanılır ve günlük 60 XP tavanı training aktifken
-// delinmemiş görünür (gained tam 15, tavana takılmaz) → socialtoken kullanımı Sosyal
-// Paket süresini +24 saat uzatır → mağazadan her iki güç de elmasla satın alınabilir.
+// End-to-end test for the later Seviye Yolu powers:
+// training (level 35) removes the bot XP cap; level 45 now grants xp2x.
+// Flow: claim both rewards, verify atomic training use and bot-cap bypass, then use
+// the replacement level-45 xp2x reward and buy training from the store.
 // Needs a running server (WS_URL) + direct DB access (DATABASE_URL) to seed state.
 // Usage: WS_URL=ws://localhost:8084 npx tsx src/cli/powers2test.ts
 import { WebSocket } from 'ws';
@@ -166,17 +163,17 @@ async function main() {
   const prof = (await A.wait('profile')).profile;
   const userId = prof.userId;
 
-  // ---- SEED: seviye 45, envanterde 2'şer training/socialtoken, bol elmas, bot XP
+  // ---- SEED: seviye 45, envanterde 2'şer training/xp2x, bol elmas, bot XP
   // tavanına 5 kalmış (bot_xp_today=55, tavan 60) ----
   const today = new Date().toISOString().slice(0, 10);
   await pool.query(
-    `UPDATE users SET level = 45, power_training = 2, power_socialtoken = 2,
+    `UPDATE users SET level = 45, power_training = 2, power_xp2x = 2,
        diamonds = 2000, bot_xp_day = $2, bot_xp_today = 55
      WHERE id = $1`,
     [userId, today],
   );
 
-  // ---- CLAIM: level 35 → training, level 45 → socialtoken ----
+  // ---- CLAIM: level 35 → training, level 45 → xp2x ----
   A.send({ type: 'claim_level_reward', level: 35 });
   const c35 = await A.wait('level_reward_claimed');
   check(c35.powerId === 'training' && c35.diamonds === 50, `level 35 claim grants training +50💎 — got ${c35.powerId}/${c35.diamonds}`);
@@ -185,9 +182,9 @@ async function main() {
 
   A.send({ type: 'claim_level_reward', level: 45 });
   const c45 = await A.wait('level_reward_claimed');
-  check(c45.powerId === 'socialtoken' && c45.diamonds === 50, `level 45 claim grants socialtoken +50💎 — got ${c45.powerId}/${c45.diamonds}`);
-  const socialtokenAfterClaim = c45.profile.powerSocialToken ?? -1;
-  check(socialtokenAfterClaim === 3, `inventory socialtoken = 3 (2 seed + 1 claim) — got ${socialtokenAfterClaim}`);
+  check(c45.powerId === 'xp2x' && c45.diamonds === 50, `level 45 claim grants xp2x +50💎 — got ${c45.powerId}/${c45.diamonds}`);
+  const xp2xAfterClaim = c45.profile.powerXp2x ?? -1;
+  check(xp2xAfterClaim === 3, `inventory xp2x = 3 (2 seed + 1 claim) — got ${xp2xAfterClaim}`);
 
   // ---- USE: training ----
   A.send({ type: 'use_power', powerId: 'training' });
@@ -215,25 +212,20 @@ async function main() {
   const xpWin = await A.wait('xp_update');
   check(xpWin.gained === 15, `bot win XP = 15, daily cap bypassed by training boost — got ${xpWin.gained}`);
 
-  // ---- USE: socialtoken ----
-  A.send({ type: 'use_power', powerId: 'socialtoken' });
+  // ---- USE: replacement level-45 xp2x ----
+  A.send({ type: 'use_power', powerId: 'xp2x' });
   const u2 = await A.wait('power_used');
-  check((u2.profile.powerSocialToken ?? -1) === socialtokenAfterClaim - 1, `inventory socialtoken back to ${socialtokenAfterClaim - 1} — got ${u2.profile.powerSocialToken}`);
-  const untilMs = u2.profile.socialPackUntil ? new Date(u2.profile.socialPackUntil).getTime() : 0;
-  const expectedMs = Date.now() + 24 * 60 * 60 * 1000;
+  check((u2.profile.powerXp2x ?? -1) === xp2xAfterClaim - 1, `inventory xp2x back to ${xp2xAfterClaim - 1} — got ${u2.profile.powerXp2x}`);
+  const untilMs = u2.profile.xpBoostUntil ? new Date(u2.profile.xpBoostUntil).getTime() : 0;
+  const expectedMs = Date.now() + 60 * 60 * 1000;
   const driftMs = Math.abs(untilMs - expectedMs);
-  check(driftMs <= 5 * 60 * 1000, `socialPackUntil ≈ now+24h (drift ${Math.round(driftMs / 1000)}s) — got ${u2.profile.socialPackUntil}`);
+  check(driftMs <= 5 * 60 * 1000, `xpBoostUntil ≈ now+1h (drift ${Math.round(driftMs / 1000)}s) — got ${u2.profile.xpBoostUntil}`);
 
   // ---- MAĞAZADAN SATIN ALMA ----
   A.send({ type: 'buy_power', powerId: 'training' });
   const pb1 = await A.wait('power_purchased');
   check(pb1.powerId === 'training' && pb1.profile.diamonds === u2.profile.diamonds - 250, `store buy training → -250💎, kalan ${pb1.profile.diamonds}`);
   check((pb1.profile.powerTraining ?? -1) === (u1.profile.powerTraining ?? 0) + 1, `inventory training +1 after purchase — got ${pb1.profile.powerTraining}`);
-
-  A.send({ type: 'buy_power', powerId: 'socialtoken' });
-  const pb2 = await A.wait('power_purchased');
-  check(pb2.powerId === 'socialtoken' && pb2.profile.diamonds === pb1.profile.diamonds - 350, `store buy socialtoken → -350💎, kalan ${pb2.profile.diamonds}`);
-  check((pb2.profile.powerSocialToken ?? -1) === (u2.profile.powerSocialToken ?? 0) + 1, `inventory socialtoken +1 after purchase — got ${pb2.profile.powerSocialToken}`);
 
   A.close();
   await sleep(200);

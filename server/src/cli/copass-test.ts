@@ -13,7 +13,7 @@ function check(cond: unknown, label: string): void {
   else { failed += 1; console.error(`FAIL ${label}`); }
 }
 
-const ROAD_POWERS = ['xp2x', 'shield', 'streak', 'training', 'socialtoken'];
+const ROAD_POWERS = ['xp2x', 'shield', 'streak', 'training'];
 const FRAME_TIERS = ['bronze', 'silver', 'gold', 'diamond', 'goat'];
 // Çizili (satılabilir) kozmetikler — beyaz listenin tek doğrulama kaynağı.
 const sellable = new Set(featuredCosmetics().map((c) => c.id));
