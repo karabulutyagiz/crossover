@@ -121,7 +121,7 @@ function WebLoadingScreen({ pct }: { pct: number }) {
 const ARENAS = [
   { name: 'GOAT', min: 5000, img: require('../app/assets/arenas/goat.png') },
   { name: 'Dünya Klasmanı', min: 3500, img: require('../app/assets/arenas/dunya.png') },
-  { name: 'Efsaneler Arası', min: 2000, img: require('../app/assets/arenas/efsaneler.png') },
+  { name: 'Efsaneler Arenası', min: 2000, img: require('../app/assets/arenas/efsaneler.png') },
   { name: 'Şampiyonlar Ligi', min: 1000, img: require('../app/assets/arenas/sampiyonlar.png') },
   { name: 'Profesyonel Lig', min: 500, img: require('../app/assets/arenas/profesyonel.png') },
   { name: 'Amatör Lig', min: 200, img: require('../app/assets/arenas/amator.png') },

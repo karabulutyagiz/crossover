@@ -174,7 +174,7 @@ function isSocialPackMode(mode: GameMode | undefined): boolean {
   // ve katılım (join_room) canUseMode üzerinden bunu kontrol eder — paketi olmayan
   // dereceli XOX oynayamaz (kullanıcı kararı 2026-08-28). Arkadaş daveti zaten ayrıca gated.
   // Çöz Kazan da Sosyal Paket ister (kullanıcı kararı 2026-09-01).
-  return mode === 'country-team' || mode === 'letter-team' || mode === 'xox' || mode === 'cozkazan';
+  return mode === 'country-team' || mode === 'letter-team' || mode === 'xox' || mode === 'cozkazan' || mode === 'guess-who';
 }
 
 function hasActiveSocialPack(profile: UserProfile | undefined): boolean {

@@ -439,7 +439,7 @@ export interface ScopeOption {
 // dev DB clubs.league=TM kodu (ES1…), prod isim ('La Liga') olabilir — ikisi de
 // çalışsın diye kod anahtarları da eklendi (2026-08-29, lig ekseni + scope logosu).
 const LEAGUE_LOGOS: Record<string, number> = {
-  ES1: 140, GB1: 39, L1: 78, IT1: 135, TR1: 203, FR1: 61, // TM kodları (büyük ligler)
+  ES1: 140, GB1: 39, L1: 78, IT1: 135, TR1: 203, FR1: 61, NL1: 88, PO1: 94, // TM kodları (guess-who ligleri)
   'Premier League': 39, Championship: 40, 'La Liga': 140, LaLiga: 140, 'La Liga 2': 141,
   'Serie A': 135, 'Serie B': 136, Bundesliga: 78, 'Bundesliga 2': 79,
   'Ligue 1': 61, 'Ligue 2': 62, Eredivisie: 88, 'Primeira Liga': 94, 'Liga Portugal': 94,
@@ -457,7 +457,7 @@ const LEAGUE_LOGOS: Record<string, number> = {
   'Qatar Stars League': 305, 'UAE Pro League': 301,
 };
 
-function leagueLogoUrl(name: string): string | null {
+export function leagueLogoUrl(name: string): string | null {
   const id = LEAGUE_LOGOS[name];
   return id ? `https://media.api-sports.io/football/leagues/${id}.png` : null;
 }

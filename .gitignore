@@ -29,3 +29,5 @@ node_modules.nosync/
 __pycache__/
 server/node_modules
 marketing/clips/
+# guesswho API-Football ingest çalışma durumu (bekleyen profiller + çekilen kadrolar)
+server/.cache/

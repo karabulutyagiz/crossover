@@ -13,7 +13,7 @@
 // reklam gösterme kararı tamamen istemci deneyimi meselesidir.
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { holdModalSlotForNativeAd, releaseModalSlotForNativeAd } from './modalTraffic';
+import { isModalSlotFree, releaseModalSlotForNativeAd, tryHoldModalSlotForNativeAd } from './modalTraffic';
 
 type AdsRemoteConfig = {
   interstitialEnabled: boolean;
@@ -50,7 +50,7 @@ let sinceAd = 0;
 let sessionMatches = 0;
 const SESSION_MIN_MATCHES = 2;
 let hydrated = false;
-let preloaded: { ad: any; loaded: boolean } | null = null;
+let preloaded: { ad: any; loaded: boolean; loadedAt: number } | null = null;
 
 function unitId(): string | null {
   if (__DEV__) return TEST_INTERSTITIAL;
@@ -79,13 +79,20 @@ function preloadAfterIdle(): void {
   setTimeout(() => preloadNext(), PRELOAD_IDLE_MS);
 }
 
+// BAYATLAMA (2026-09-03): AdMob reklamları yüklendikten ~1 saat sonra geçersiz
+// olur. Bizim hazır kopyamız oturum boyunca (uygulama arka planda beklerken
+// saatlerce) duruyor ve sonra gösteriliyordu; süresi geçmiş reklam iOS'ta ya
+// hiç açılmıyor ya da kapatılamayan boş bir tam ekran olarak beliriyor.
+const AD_MAX_AGE_MS = 50 * 60_000;
+
 function preloadNext(): void {
   if (!active() || preloaded) return;
   const ad = InterstitialAd.createForAdRequest(unitId());
-  const entry = { ad, loaded: false };
+  const entry = { ad, loaded: false, loadedAt: 0 };
   preloaded = entry;
   ad.addAdEventListener(AdEventType.LOADED, () => {
     entry.loaded = true;
+    entry.loadedAt = Date.now();
     retryDelayMs = 30_000; // başarı: geri çekilme sıfırlanır
   });
   ad.addAdEventListener(AdEventType.ERROR, (err: unknown) => {
@@ -100,6 +107,28 @@ function preloadNext(): void {
     retryDelayMs = Math.min(retryDelayMs * 2, 10 * 60_000);
   });
   ad.load();
+}
+
+// ── MAÇ KAPISI (2026-09-05, kullanıcı kuralı — pazarlıksız) ──────────────────
+// Geçiş reklamı YALNIZ ana menüdeyken sunulur. Maç içinde, eşleşme aranırken,
+// odada beklerken, sonuç ekranında ASLA: senkron PvP'de bir taraf reklam
+// izlerken öbür tarafta süre akıyor, takımlar seçiliyordu (oyuncu raporu).
+// App.tsx'teki 700 ms'lik döngü fazı soruyordu ama React state'ini bir render
+// GECİKMESİYLE görür: oyuncu "Hemen Oyna"ya dokunduktan sonra faz henüz
+// 'searching' olmadan gelen tik reklamı açabiliyordu. Karar artık BURADA,
+// modülün kendi içinde ve iki kaynaktan verilir; ikisi de tutmadan show() yok:
+//   1) setInterstitialPhase(): render'da eşitlenen faz — 'home' değilse ret.
+//   2) noteMatchIntent(): oyuncu maça giden bir mesaj GÖNDERDİĞİ an senkron
+//      damgalanır (find_match / create_room / create_solo / join_room / rövanş
+//      kabulü / davet kabulü / turnuva hazır) — render beklenmez. Damgadan
+//      sonraki 8 sn içinde reklam sunulmaz.
+let uiPhase = 'home';
+let matchIntentAt = 0;
+const MATCH_INTENT_BLOCK_MS = 8_000;
+export function setInterstitialPhase(phase: string): void { uiPhase = phase; }
+export function noteMatchIntent(): void { matchIntentAt = Date.now(); }
+export function isInterstitialAllowedNow(): boolean {
+  return uiPhase === 'home' && Date.now() - matchIntentAt > MATCH_INTENT_BLOCK_MS;
 }
 
 /** App açılışında ve /monetization-config geldiğinde çağrılır. */
@@ -218,6 +247,9 @@ export function interstitialDiagnostics(): Record<string, string | number | bool
     adsTotalMatches: totalMatches,
     adsSinceAd: sinceAd,
     adsSessionMatches: sessionMatches,
+    adsSlotFree: isModalSlotFree(),
+    adsPhase: uiPhase,
+    adsAllowedNow: isInterstitialAllowedNow(),
     adsLastReason: lastReason,
     adsPresentation: interstitialPresentation(),
   };
@@ -245,6 +277,8 @@ export function isInterstitialDue(hasSocialPack: boolean): boolean {
 
 export function maybeShowInterstitial(hasSocialPack: boolean, onClosed?: () => void): boolean {
   if (hasSocialPack) { lastReason = 'paket'; return false; }
+  // MAÇ KAPISI: ana menü dışında ya da maça giden bir istek tazeyken ASLA.
+  if (!isInterstitialAllowedNow()) { lastReason = uiPhase !== 'home' ? `faz:${uiPhase}`.slice(0, 22) : 'mac-niyeti'; return false; }
   if (!InterstitialAd) { lastReason = 'modulyok'; return false; }
   if (!cfg) { lastReason = 'cfgyok'; return false; }
   if (!cfg.interstitialEnabled) { lastReason = 'kapali'; return false; }
@@ -260,6 +294,19 @@ export function maybeShowInterstitial(hasSocialPack: boolean, onClosed?: () => v
   }
   const pre = preloaded;
   if (!pre?.loaded) { lastReason = 'yuklenmedi'; preloadNext(); return false; }
+  // 1) BAYAT REKLAM GÖSTERİLMEZ: at, yenisini hazırla, bu turu pas geç.
+  if (pre.loadedAt && Date.now() - pre.loadedAt > AD_MAX_AGE_MS) {
+    lastReason = 'bayat';
+    preloaded = null;
+    preloadNext();
+    return false;
+  }
+  // 2) EKRANDA PENCERE VARSA REKLAM YOK (asıl donma sebebi — oyuncu raporu
+  //    2026-09-03). Sayaçlara DOKUNULMAZ: çağıran 700 ms'de bir tekrar dener,
+  //    pencere kapanır kapanmaz reklam çıkar.
+  // Bekçiye ölçüt ver: OPENED geldi ve CLOSED gelmediyse reklam HÂLÂ ekranda —
+  // slot bırakılırsa bekleyen pencere reklamın üstüne sunulur (donma geri gelir).
+  if (!tryHoldModalSlotForNativeAd(() => openedAt > 0 && closedAt < openedAt)) { lastReason = 'pencere-acik'; return false; }
   preloaded = null;
   sinceAd = 0;
   void persist();
@@ -276,10 +323,19 @@ export function maybeShowInterstitial(hasSocialPack: boolean, onClosed?: () => v
   openedAt = 0;
   paidAt = 0;
   closedAt = 0;
-  // Slot reklam SUNULMADAN önce tutulur: aradaki karede açılacak bir pencere
-  // bile kilitlenmeye yeter.
-  holdModalSlotForNativeAd();
-  pre.ad.show();
+  // Slot yukarıda (koşullar tutunca) ZATEN tutuldu — sunumdan önce tutulması
+  // şart: aradaki karede açılacak bir pencere bile kilitlenmeye yeter.
+  // show() YÜKLÜ DEĞİLSE FIRLATIR (SDK MobileAd.show): istisna 700 ms'lik
+  // tetikleyici döngüye sızıyor, clearInterval hiç çalışmıyor ve slot 180 sn
+  // tutulu kalıyordu — uygulama üç dakika hiçbir pencere açamıyordu.
+  try {
+    pre.ad.show();
+  } catch (e) {
+    lastReason = `show-hata:${String(e).slice(0, 18)}`;
+    releaseModalSlotForNativeAd();
+    preloadAfterIdle();
+    return false;
+  }
   // SUNUM BEKÇİSİ (2026-09-01): show() çağrılıp OPENED hiç gelmezse sunum
   // native tarafta başarısız olmuştur (oyuncu raporu: "reklam çıkmadı ama sesi
   // ana ekranda geldi"). CLOSED da gelmeyeceği için slot 180sn bekçisine kadar

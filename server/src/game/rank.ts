@@ -25,7 +25,7 @@ export const ARENAS: Arena[] = [
   { name: 'Amatör Lig',        minTrophies: 200,  icon: '⚽' },
   { name: 'Profesyonel Lig',   minTrophies: 500,  icon: '🥉' },
   { name: 'Şampiyonlar Ligi',  minTrophies: 1000, icon: '🥈' },
-  { name: 'Efsaneler Arası',   minTrophies: 2000, icon: '🥇' },
+  { name: 'Efsaneler Arenası',   minTrophies: 2000, icon: '🥇' },
   { name: 'Dünya Klasmanı',    minTrophies: 3500, icon: '🏆' },
   { name: 'GOAT',              minTrophies: 5000, icon: '🐐' },
 ];
@@ -44,7 +44,7 @@ const TROPHY_TABLE: [number, number][] = [
   [+28, -14],   // Amatör Lig         — still forgiving
   [+25, -18],   // Profesyonel Lig    — balanced
   [+22, -22],   // Şampiyonlar Ligi   — win/loss equal, grind starts
-  [+20, -26],   // Efsaneler Arası    — losses hurt more
+  [+20, -26],   // Efsaneler Arenası    — losses hurt more
   [+18, -30],   // Dünya Kupası       — punishing, every loss stings
   [+15, -35],   // GOAT               — brutal, only the best stay
 ];
@@ -442,35 +442,52 @@ export async function grantDevEmotesIfNeeded(profile: UserProfile): Promise<User
   return rows[0] ? toProfile(rows[0]) : profile;
 }
 
-// ---- Kesinti telafisi (2026-08-25) ----
-// Zorunlu güncelleme kapısı yüzünden oyuna girilemeyen kesinti için tek seferlik
-// Sosyal Paket telafisi. Hediye KENDİLİĞİNDEN tanımlanmaz — oyuncu özür
-// penceresindeki "AL" düğmesine bastığında bu fonksiyon çağrılır.
+// ---- Bakım telafisi (2026-09-05) ----
 export function outageGiftWindowOpen(): boolean {
-  if (!config.outageGift.enabled) return false;
-  const until = Date.parse(config.outageGift.until);
-  return !Number.isFinite(until) || Date.now() <= until;
+  return config.outageGift.enabled;
 }
 
-// GREATEST, aktif bir paket varsa süreyi onun ÜSTÜNE bindirir (yoksa şu andan
-// başlatır). `outage_gift_at IS NULL` koşulu UPDATE'in kendisinde olduğu için
-// aynı anda iki kez basılsa bile ikinci istek 0 satır günceller — hediye tek
-// seferliktir, çift veremez.
+function outageGiftEligible(row: Pick<DbUser, 'created_at' | 'apology_gift_20260905_at'>): boolean {
+  const cutoff = Date.parse(config.outageGift.eligibleBefore);
+  const createdAt = Date.parse(row.created_at);
+  return outageGiftWindowOpen()
+    && !row.apology_gift_20260905_at
+    && Number.isFinite(cutoff)
+    && Number.isFinite(createdAt)
+    && createdAt <= cutoff;
+}
+
+// Cutoff ve tek-kullanim kosulu UPDATE'in icindedir. Ayni anda iki claim gelse
+// bile yalniz biri satiri gunceller ve 150 elmas sadece bir kez verilir.
 export async function claimOutageGift(
   userId: string,
 ): Promise<{ ok: true; profile: UserProfile; granted: boolean } | { ok: false; error: string }> {
   if (!userId) return { ok: false, error: 'Önce giriş yap' };
-  if (!outageGiftWindowOpen()) return { ok: false, error: 'Kampanya sona erdi' };
+  if (!outageGiftWindowOpen()) return { ok: false, error: 'Kampanya kapalı' };
+  const cutoff = Date.parse(config.outageGift.eligibleBefore);
+  if (!Number.isFinite(cutoff)) return { ok: false, error: 'Kampanya ayarı geçersiz' };
+  const diamonds = Math.max(0, config.outageGift.diamonds);
   const { rows } = await pool.query<DbUser>(
     `UPDATE users
-     SET social_pack_until = GREATEST(COALESCE(social_pack_until, now()), now())
-                             + make_interval(hours => $2::int),
-         outage_gift_at = now()
-     WHERE id = $1 AND outage_gift_at IS NULL
+     SET diamonds = diamonds + $2,
+         apology_gift_20260905_at = now()
+     WHERE id = $1
+       AND apology_gift_20260905_at IS NULL
+       AND created_at <= $3
      RETURNING *`,
-    [userId, config.outageGift.hours],
+    [userId, diamonds, new Date(cutoff).toISOString()],
   );
-  if (rows[0]) return { ok: true, profile: toProfile(rows[0]), granted: true };
+  if (rows[0]) {
+    void recordDiamondLedger({
+      userId,
+      amount: diamonds,
+      balanceAfter: rows[0].diamonds,
+      reason: 'APOLOGY_GIFT_20260905',
+      idempotencyKey: `apology-gift-20260905:${userId}`,
+      metadata: { eligibleBefore: config.outageGift.eligibleBefore },
+    });
+    return { ok: true, profile: toProfile(rows[0]), granted: true };
+  }
   // 0 satır: hediye bu hesaba zaten tanımlanmış. Hata değil — güncel profili
   // döndür ki istemci pencereyi kapatsın.
   const current = await getUser(userId);
@@ -1415,6 +1432,7 @@ interface DbUser {
   username_set: boolean | null;
   social_pack_until: string | null;
   outage_gift_at: string | null;
+  apology_gift_20260905_at: string | null;
   avatar: string | null;
   last_seen: string | null;
   highest_arena_rewarded: number | null;
@@ -1483,8 +1501,8 @@ function toProfile(row: DbUser): UserProfile {
     equippedEmotes: row.equipped_emotes ?? [],
     usernameSet: row.username_set ?? false,
     socialPackUntil: isFutureIso(row.social_pack_until) ? row.social_pack_until : null,
-    outageGiftAt: row.outage_gift_at ?? null,
-    outageGiftAvailable: !row.outage_gift_at && outageGiftWindowOpen(),
+    outageGiftAt: row.apology_gift_20260905_at ?? null,
+    outageGiftAvailable: outageGiftEligible(row),
     arena: getArena(row.trophies),
     avatar: row.avatar ?? row.selected_avatar ?? null,
     xp: row.xp ?? 0,

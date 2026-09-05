@@ -1,4 +1,141 @@
-# CANLIYA ALINACAKLAR — Deploy Sırası (güncel: 2026-08-29 gece)
+# CANLIYA ALINACAKLAR — Deploy Sırası (güncel: 2026-09-05)
+
+## 🔴 2026-09-05 — KÖK SEBEP: OTA'LAR MAĞAZA KULLANICILARINA HİÇ ULAŞMIYOR
+
+**Bulgu (doğrulandı, Expo manifest ucundan):** mağazadaki ve TestFlight'taki
+derlemeler (148–151, hepsi 27 Ağustos Xcode arşivi) `u.expo.dev/a4d757a9-…`
+(ESKİ proje, hesap `ygzkrblt1`) adresine bakıyor. OTA'lar ise `fff58543-…`
+(YENİ proje, hesap `ygzkrblt`) adresine basılıyor. İki adres birbirini görmez.
+
+| Proje | Kim bakıyor | Sunulan son güncelleme |
+|---|---|---|
+| ESKİ `a4d757a9` | mağaza + TestFlight cihazları | **2 Eylül 15:52 UTC** (18:52 TR) |
+| YENİ `fff58543` | hiçbir dağıtılmış derleme | 4 Eylül 20:12 UTC (grup `1063e057`) |
+
+Yani telefonlar 2 Eylül akşamındaki paketle donmuş: reklam donması düzeltmesi
+(`5aac7c2`), faz kapısı, alınlık düzeltmesi (`a301700`), Ben Kimim, 4 Eylül
+OTA'sının tamamı cihazlara HİÇ inmedi. "Kapa-aç yaptım gelmiyor" raporunun
+sebebi bu; cihaz ya da expo-updates sorunu değil.
+
+**`ygzkrblt` hesabının eski projeye erişimi YOK** (`Entity not authorized:
+AppEntity[a4d757a9]`). Eski projeye yayın için `ygzkrblt1` şart.
+
+### KURAL (yeni mağaza derlemesi çıkana kadar)
+Her OTA **İKİ projeye** basılır; önce yeni, sonra eski:
+```bash
+# 1) yeni proje (ygzkrblt oturumu) — hızlı diskteki klondan, iCloud'dan DEĞİL
+cd app && NODE_OPTIONS=--dns-result-order=ipv4first npx eas-cli update \
+  --channel production --environment production -m "mesaj" --non-interactive > /tmp/ota-yeni.log 2>&1
+# 2) eski proje — ygzkrblt1 ile: ya `npx eas login`, ya da EXPO_TOKEN=<ygzkrblt1 token>
+EXPO_TOKEN=... ./eski-projeye-yayin.sh "mesaj"        # app.json'ı geçici çevirir, trap ile geri alır
+# 3) doğrula (giriş gerekmez):
+#    curl -s -H 'expo-protocol-version: 1' -H 'expo-platform: ios' -H 'expo-runtime-version: 1.0.3' \
+#      -H 'expo-channel-name: production' -H 'accept: multipart/mixed' https://u.expo.dev/a4d757a9-39bc-4806-a64a-0d671b946bbe | grep -o '"createdAt":"[^"]*"'
+```
+**Kalıcı çözüm:** bir sonraki mağaza derlemesi `app.json`'daki `fff58543` ile
+çıkar; o derleme yayıldığında (MIN_IOS_BUILD ile eskiler zorlanınca) eski proje
+ve `eski-projeye-yayin.sh` emekliye ayrılır.
+
+### Bu paketle giden düzeltmeler (dal `ota-fix`, taban `04844fa`)
+- **Reklam maç içinde ASLA** (kullanıcı kuralı): karar `interstitial.ts` içine
+  taşındı — faz `home` değilse ya da son 8 sn içinde maça giden bir mesaj
+  (find_match / create_room / create_solo / join_room / rövanş / davet / turnuva)
+  gönderildiyse `show()` çağrılmaz. App.tsx döngüsü React fazını bir render
+  gecikmesiyle görüyordu; damga senkron olduğu için bu delik kapandı.
+- **Popup alınlığı**: sarmalayıcı yüksekliği yuva çapına (52) eşitlendi, `top:
+  -CREST_H`, `marginTop: CREST_H` — topun altı kartın üst çizgisine tam değer,
+  kartın içine girmez, yazı örtülmez; kanatlar pencere şerit renginde.
+
+
+## ✅ 2026-09-04 — SUNUCU ×2 + OTA + BİRLEŞTİRME (hepsi doğrulandı)
+
+**OTA grubu `1063e057-3de5-4298-a407-5266c62f484e`** (runtime 1.0.3, ios+android),
+commit `7b52243`. İçerik: reklam donması (`5aac7c2`), kalan dört açık (`94a0342`),
+maç içi faz kapısı düzeltmesi, anticheat, profil çerçevesi, CO-PASS aynası,
+Kupa Kalkanı popup'ı, Ben Kimim istemcisi, COF UI 01-04.
+
+**Sunucu (iki kez basıldı):** `set_frame` tek kapı, CO-PASS 19.040 XP eğrisi,
+Kupa Kalkanı iadesi ucu; ardından **Ben Kimim + migration `0021`** (20:07 UTC'de
+uygulandı, guess-who tablosu oluştu).
+
+**Birleştirme:** iki dal 2 Eylül'de `a8f51cf`'te ayrılmıştı. Baturalp'ın Ben Kimim'i
+origin'deydi ama prod'a hiç çıkmamıştı; bizim 18 commit'imiz hiç push'lanmamıştı.
+`7b52243` ile birleşti ve `build-113`'e push'landı. 9 çakışan dosyanın hepsi temiz
+birleşti; onun `guess-who` satırlarının tamamı doğrulandı.
+
+**Vitrin `4f637be` ETKİSİZ BIRAKILDI** (`days: 7 → 0`): penceresi 3 Eylül'de kaçtı,
+basmak uzatma değil bir hafta GERİ SARMA olurdu. Yeni uzatma istenirse
+`fromEpochDay`'i gelecek bir Perşembe'ye alıp `days: 7` yap.
+
+### İZLENECEK
+- `ADX|...|acik` oranı: 4 Eylül'de 24 saatte 1181 ölçümün 335'i (%28) 20 sn sonra
+  hâlâ açıktı. Düzeltme işe yaradıysa bu oran düşmeli — düzeltmenin tek gerçek kanıtı.
+  Komut: `docker logs --since 24h crossover-app-1 | grep -c "ADX|ACILDI+ODENMEDI|acik"`
+- Ben Kimim'in canlıda gerçekten çalıştığı (ilk kez yayında).
+
+### ⚠️ OTA KOMUTU — BUGÜN ÖĞRENİLENLER (saatler kaybettirdi)
+1. **iCloud'daki dizinden BASILAMAZ.** Metro 5 dk paketleyip
+   `SyntaxError: [BABEL] ETIMEDOUT: connection timed out, read` ile ölüyor.
+   Aynı iCloud okuma hatası git'i, yedeklemeyi ve `expo config`'i de vuruyor.
+   Çözüm: repoyu iCloud dışına taşı, ya da hızlı diskte klondan bas.
+2. **Çıktıyı boruya (`| tee`) verme.** eas-cli TTY görmeyince kendini
+   non-interactive sayar ve `--environment` ister; hata mesajı yanıltıcı olur.
+   Log istiyorsan `> dosya 2>&1` kullan.
+3. Çalışan biçim (TTY yokken): `--channel production --environment production --non-interactive`.
+
+```bash
+cd app && NODE_OPTIONS=--dns-result-order=ipv4first npx eas-cli update \
+  --channel production --environment production -m "mesaj" --non-interactive > /tmp/ota.log 2>&1
+npx eas-cli update:list --branch production --limit 1   # doğrula
+```
+
+### ⚠️ REPO KONUMU
+Repo iCloud Desktop'ta olduğu sürece bu duvara tekrar çarpılacak. 4 Eylül'de:
+`git fetch` 92 dk asılı, `git status` 4 kez kilitlendi, `.git`'te 5 bozuk index
+yedeği, yedekleme `mmap: Operation timed out` ile öldü, OTA 4 kez düştü.
+Aynı makinede hızlı diskte: klon saniyeler, `npm install` 16 saniye.
+Öneri: `mv ~/Desktop/projects/crossover ~/crossover`.
+
+
+## ✅ 2026-09-02 21:43 — OTA (runtime 1.0.3, iOS+Android)
+Grup `b21a1578-db17-481c-aa0c-0d6e99e232ae`, commit `a301700`. 30 Ağustos'tan bu yana
+biriken 44 istemci commit'i: popup COFA alınlığı (madalyon → alınlık → üst çizgi),
+Çöz Kazan modu, CO-PASS 50 seviye, "ÖDÜLLERİ TOPLA", hesap seviyesi ayrımı,
+reklam düzeltmeleri (3'te 1 kuralı, donma), XOX klavye + tek hücre, mağaza profil
+fotoğrafları, monetizasyon (kayıp sonrası 5💎 teklifi kalktı). Sunucu zaten canlıdaydı
+(bugün basılmış, migration 0020). Website de senkron (kulüp genişlemesi 2, 786 sayfa).
+OTA hesabı: `ygzkrblt` (yagizkarabulutmedya@gmail.com) — ygzkrblt1 oturumu yetkisiz.
+
+## ✅ TAMAMLANDI (2026-09-04, grup 1063e057) — OTA: REKLAM DONMASI DÜZELTMESİ
+`5aac7c2` — oyuncu raporu (Rufo, iOS 1.0.3 b151): "reklam gelince reklamdan çıkamıyorum,
+oyun donuyor". Prod tanısı: 40 saatte 1609 gösterimin 177'si (%11) 20 sn sonra hâlâ açık.
+Kök sebep: reklam, ekranda bir pencere AÇIKKEN sunuluyordu (holdModalSlotForNativeAd
+doluluğa bakmıyor; App.tsx modalBlocked yalnız 17 pencereyi biliyor, ekranlardaki 53'ü
+bilmiyor) → iOS sunum zinciri kilitleniyor, kapatma düğmesi dokunuş almıyor, CLOSED
+gelmediği için slot 180 sn tutulu kalıp uygulamayı da donduruyor.
+Düzeltme: slot gerçekten boşsa sunum + kapanış animasyonu payı + show() try/catch +
+50 dk'dan eski reklamın atılması; ödüllü reklam yollarında da aynı kapı.
+İstemci-yalnız, native değişiklik yok → OTA. Sunucu gerekmez, migration gerekmez.
+BU DÜZELTME SIRANIN BAŞINDA — bekleyen diğer OTA kalemleriyle birlikte tek grup basılabilir.
+
+## ✅ TAMAMLANDI (2026-09-04) — bu bölümdeki SUNUCU ve OTA kalemlerinin hepsi canlıya alındı
+> Tek istisna: vitrin `4f637be` bilerek ETKİSİZ bırakıldı (penceresi kaçmıştı, bkz. en üst).
+> Tarihsel kayıt için bırakıldı, iş listesi DEĞİL.
+SUNUCU (`build-113` HEAD, tsc temiz; special-powers-test'teki ExtraTime hatası HEAD'de de var, ilgisiz):
+- Vitrin +7 gün (`4f637be`): hafta 3 Eylül yerine 10 Eylül'de döner — 03:00 TR'den ÖNCE basılmalı
+- `set_frame` tek kapı (`66858b1`): sezon/mağaza çerçeveleri de aynı uçtan
+- CO-PASS eğrisi (`b0609cd`): 19.040 XP, seasonXpForNext; hesap seviyesi değişmez
+- Kupa Kalkanı iadesi (`f6955bf`): `shield_refund` ucu; env: SHIELD_REFUND_AD_DAILY_CAP=2,
+  SHIELD_REFUND_PACK_DAILY_CAP=1, SHIELD_REFUND_WINDOW_MIN=15 (varsayılanlar, .env'e yazmak şart değil)
+- Migration gerekmiyor (trophy_ledger reason='shield_refund' mevcut şemaya yazar)
+OTA (runtime 1.0.3, native değişiklik yok):
+- REKLAM DONMASI (`5aac7c2`) — yukarıdaki acil kalem, aynı OTA grubuna girer
+- Anticheat yanlış uyarısı (`9a22db6`), profil çerçeve şeridi tek liste (`45242b2`),
+  CO-PASS eğrisi aynası + Kupa Kalkanı popup akışı (`b0609cd`, `f6955bf`)
+- COF UI Foundation (`222fce0`) — yalnız yeni dosyalar + tema köprüsü; hiçbir ekran
+  bunları henüz kullanmıyor, görsel etkisi YOK (OTA'ya girmesi zararsız)
+- SIRA: sunucu basılmadan OTA çıkarsa kalkan popup'ı "Kalkan kullanılamadı" der (sunucu ucu yok) —
+  önce sunucu.
 
 ## ✅ 2026-08-29 — TAM YAYIN (sunucu + OTA, iOS & Android)
 OTA grubu `c25cb779-05e4-4be9-a781-f9460186f00b` (runtime 1.0.3, android+ios).

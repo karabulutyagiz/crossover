@@ -77,15 +77,12 @@ export const config = {
     googlePlayClientEmail: process.env.GOOGLE_PLAY_CLIENT_EMAIL ?? '',
     googlePlayPrivateKey: process.env.GOOGLE_PLAY_PRIVATE_KEY ?? '',
   },
-  // Kesinti telafisi: pencere açıkken oyuna giren her hesaba bir kereye mahsus
-  // Sosyal Paket süresi eklenir. Pencere kapanınca kod kendiliğinden susar.
+  // 5 Eylül bakım telafisi: yalnız cutoff öncesinde var olan hesaplara tek seferlik.
+  // Yeni hesaplar istemciyi değiştirseler bile sunucu tarafındaki cutoff'u geçemez.
   outageGift: {
-    // KAPALI (kullanıcı kararı 2026-08-27): kesinti telafisi 1 günlük Sosyal
-    // Paket hediyesi kaldırıldı — yeni girenler artık almaz. Gerekirse env'den
-    // OUTAGE_GIFT_ENABLED=true ile geçici açılabilir.
-    enabled: boolEnv('OUTAGE_GIFT_ENABLED', false),
-    until: process.env.OUTAGE_GIFT_UNTIL ?? '2026-09-01T21:00:00Z',
-    hours: intEnv('OUTAGE_GIFT_HOURS', 24),
+    enabled: boolEnv('APOLOGY_GIFT_20260905_ENABLED', true),
+    eligibleBefore: process.env.APOLOGY_GIFT_20260905_CUTOFF ?? '2026-09-05T17:42:43Z',
+    diamonds: intEnv('APOLOGY_GIFT_20260905_DIAMONDS', 150),
   },
   // Admin paneli bearer anahtarı — /admin/api/* uçlarını korur. Boşsa admin API
   // tamamen kapalıdır (her istek 401 döner), yani anahtar tanımlanmadan veri sızmaz.
