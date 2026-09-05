@@ -134,6 +134,9 @@ CREATE TABLE IF NOT EXISTS daily_offer_claims (
 -- ikinci kez verilemez (grantOutageGiftIfNeeded bu sutuna bakar).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS outage_gift_at TIMESTAMPTZ;
 
+-- 5 Eylul 2026 bakim telafisi, onceki kesinti kampanyasindan bagimsizdir.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS apology_gift_20260905_at TIMESTAMPTZ;
+
 -- Chosen profile-picture id (e.g. 'pp7'); null = default person icon.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT;
 

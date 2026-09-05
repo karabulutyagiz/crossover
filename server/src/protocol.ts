@@ -167,8 +167,8 @@ export interface ProfileView {
   equippedEmotes: string[];
   usernameSet: boolean;
   socialPackUntil: string | null; // ISO date or null
-  outageGiftAt?: string | null;      // kesinti telafisi alındı damgası (ISO) ya da null
-  outageGiftAvailable?: boolean;     // true → istemci kesinti özür penceresini gösterir ("AL" ile tanımlanır)
+  outageGiftAt?: string | null;      // 5 Eylül bakım telafisi alındı damgası (ISO) ya da null
+  outageGiftAvailable?: boolean;     // cutoff öncesi hesap + henüz alınmadı → 150 elmas popup'ı
   arena: ArenaView;
   avatar: string | null; // chosen profile-picture id (e.g. 'pp7') or null
   xp: number;    // mevcut seviye içindeki ilerleme (SEZONLUK)
@@ -290,7 +290,7 @@ export type ClientMsg =
   | { type: 'buy_premium_road' } // Premium Seviye Yolu'nu 1000 elmasla aç
   | { type: 'buy_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken' } // mağazadan güç satın al
   | { type: 'use_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken' } // envanterdeki tek kullanımlık gücü etkinleştir
-  | { type: 'claim_outage_gift' } // kesinti telafisi: özür penceresindeki "AL"
+  | { type: 'claim_outage_gift' } // 5 Eylül bakım telafisi: 150 elması topla
   | { type: 'get_daily_offer' } // kişiye özel 12 saatlik fırsatı iste
   | { type: 'buy_daily_offer'; key: string } // fırsatı satın al (key pencereyle doğrulanır)
   | { type: 'redeem_referral'; code: string } // davet kodu gir (yeni hesap; ikisi de 💎 kazanır)
