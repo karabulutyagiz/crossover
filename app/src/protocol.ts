@@ -197,7 +197,6 @@ export interface ProfileView {
   lostStreak?: number;      // son mağlubiyette kırılan seri (geri yüklenebilir)
   powerTraining?: number;       // envanterdeki Antrenman Bileti adedi
   trainingBoostUntil?: string | null; // aktif Antrenman Bileti penceresinin bitişi (ISO)
-  powerSocialToken?: number;    // envanterdeki Sosyal Paket Jetonu adedi
   premiumRoad?: boolean;
   copassV2?: boolean;       // CO-PASS v2: 50 seviyenin HER BİRİNDE ödül    // Premium Seviye Yolu açık mı (sezonluk)
   claimedPremium?: number[]; // Premium şeritte toplanmış ödül seviyeleri
@@ -236,7 +235,7 @@ export type CosmeticType = 'frame' | 'name_effect' | 'match_background' | 'ball'
 export type CosmeticRarity = 'common' | 'rare' | 'epic' | 'legendary' | 'mythic';
 export interface DailyOfferView {
   key: string;
-  kind: 'cosmetic' | 'power_bundle' | 'socialtoken';
+  kind: 'cosmetic' | 'power_bundle';
   itemId: string;
   qty: number;
   originalPrice: number;
@@ -370,8 +369,8 @@ export type ClientMsg =
   | { type: 'claim_season_reward' }
   | { type: 'claim_level_reward'; level: number; track?: 'free' | 'premium' } // Seviye Yolu kartına dokunarak ödül topla (şerit seçimiyle)
   | { type: 'buy_premium_road' } // Premium Seviye Yolu'nu 1000 elmasla aç
-  | { type: 'buy_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken' } // mağazadan güç satın al
-  | { type: 'use_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken' } // envanterdeki tek kullanımlık gücü etkinleştir
+  | { type: 'buy_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' } // mağazadan güç satın al
+  | { type: 'use_power'; powerId: 'xp2x' | 'shield' | 'streak' | 'training' } // envanterdeki tek kullanımlık gücü etkinleştir
   | { type: 'claim_outage_gift' } // kesinti telafisi: özür penceresindeki "AL"
   | { type: 'get_daily_offer' } // kişiye özel 12 saatlik fırsat
   | { type: 'buy_daily_offer'; key: string }

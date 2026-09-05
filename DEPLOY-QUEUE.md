@@ -10,6 +10,16 @@
 reklam kapısı, a301700 tabanı; a301700'ün dirty ağacından). Hediye popup'ı BU
 PAKETTE YOK (istek sonra geldi). Yeni proje hâlâ 4 Eylül 22:48 UTC (`b357019d`).
 
+**+ SOSYAL JETON KALDIRILDI (kullanıcı 2026-09-05 21:45 TR):** "kilitli moda basınca
+jeton kullan popup'ı çıkıyor… bu sistemi kaldırmıştık, olanlardan da gidecekti".
+İki ağaçta da: `socialtoken` güç kimliği, mağaza kartı, kilitli mod popup'ındaki
+"Jeton Kullan" dalı (tek buton: Sosyal Paketi Aç), envanter sayacı, asset silindi;
+ödül tabloları peer tasarımıyla aynı (seviye 45 → xp2x; premium 20 → xp2x, 35 →
+kalkan; CO-PASS ücretsiz 39 → seri, 45 → kalkan; premium 20 → antrenman, 35 →
+kalkan). Sunucu: `power_socialtoken` sütunu migration `0021_remove_social_pack_token`
+ile HERKESTEN düşer (schema.sql'deki ADD COLUMN da silindi). Eski istemcinin
+`use_power socialtoken` isteği artık validasyondan döner.
+
 **Dallar** (hızlı disk klonu `/var/folders/…/T/opencode/crossover-gift-release`):
 - `ota-gift-20260905` — istemci + sunucu, a301700 tabanı (yeni ana sayfa/nav
   DIŞARIDA). **OTA buradan basılır.** app tsc + ad-slot-test temiz.
@@ -33,10 +43,11 @@ PAKETTE YOK (istek sonra geldi). Yeni proje hâlâ 4 Eylül 22:48 UTC (`b357019d
 
 **DİKKAT:**
 - Prod diskinde repo dışı `server/src/db/migrations/0021_remove_social_pack_token.sql`
-  duruyor (başka oturumun socialtoken kaldırması; kodu prod'a basılmadı, konteyner
-  19 saattir aynı, son boot "Versioned migrations applied: 0"). `f00c279` kodu
-  `power_socialtoken` sütununu kullanır → bu dosya uygulanırsa sunucu kırılır.
-  `--delete` rsync onu siler; **silinmeden compose ÇALIŞTIRMA.**
+  duruyordu (başka oturumun socialtoken kaldırması; kodu prod'a basılmadı, konteyner
+  19 saattir aynı, son boot "Versioned migrations applied: 0"). Artık AYNI adla ve
+  aynı içerikle `server-gift-20260905` dalında; kod da sütunu kullanmıyor → rsync
+  sonrası konteyner açılışında 0021_remove + 0022 birlikte uygulanır. Ana repodaki
+  (build-113 çalışma ağacı) peer kopyası birleştirmede çakışmaz (aynı ad, aynı içerik).
 - Prod `docker-compose.yml` repo sürümünden farklı (md5 `a8a88d82` ≠ f00c279
   `80dfeb3b`); dokunulmadı, `APOLOGY_GIFT_*` env satırları eklenmedi — kod
   varsayılanları (açık / cutoff / 150) yeterli. Kapatmak için compose environment'a

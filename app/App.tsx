@@ -207,7 +207,7 @@ function powerCount(profile: GameState['profile'], powerId: PowerId): number {
   if (powerId === 'shield') return profile.powerShield ?? 0;
   if (powerId === 'streak') return profile.powerStreak ?? 0;
   if (powerId === 'training') return profile.powerTraining ?? 0;
-  return profile.powerSocialToken ?? 0;
+  return 0;
 }
 
 // AdMob must be initialized once at startup or no ad (incl. rewarded) will ever
@@ -2299,7 +2299,7 @@ function AppRoot() {
     setActiveEngagement(null);
     if (offer.offerType === 'social_pack') {
       setContextualOfferVisible(false);
-      track('engagement_primary_clicked', { kind: activeEngagement?.kind, offer_id: offer.offerId, trigger: offer.trigger, screen: state.phase, appSessionId, currentDiamonds: profile.diamonds, social_token_count: profile.powerSocialToken ?? 0 });
+      track('engagement_primary_clicked', { kind: activeEngagement?.kind, offer_id: offer.offerId, trigger: offer.trigger, screen: state.phase, appSessionId, currentDiamonds: profile.diamonds });
       track('social_pack_paywall_open', { source: offer.trigger, offer_id: offer.offerId, appSessionId });
       track('social_pack_purchase_started', { offer_id: offer.offerId, screen: state.phase, appSessionId });
       // DOĞRUDAN ÖDEME (kullanıcı kararı 2026-08-29): mağazaya yönlendirmek
@@ -2334,17 +2334,6 @@ function AppRoot() {
     setStoreSection('powers');
     goToTab(0);
   }, [contextualOffer, state.profile, goToTab, state.phase, updateEngagement, activeEngagement, appSessionId]);
-
-  const useSocialTokenFromLockedMode = useCallback(() => {
-    const rawMode = activeEngagement?.metadata?.mode;
-    const mode = typeof rawMode === 'string' ? rawMode : undefined;
-    setContextualOfferVisible(false);
-    updateEngagement((s) => closeEngagement(s, activeEngagement, false));
-    track('engagement_primary_clicked', { kind: activeEngagement?.kind, action: 'use_token', mode, appSessionId, screen: state.phase });
-    track('premium_mode_preview_completed', { mode, action: 'use_token' });
-    actions.usePower('socialtoken');
-    setActiveEngagement(null);
-  }, [actions, activeEngagement, appSessionId, state.phase, updateEngagement]);
 
   const dismissFeedbackPrompt = useCallback(() => {
     setFeedbackPromptVisible(false);
@@ -2413,7 +2402,7 @@ function AppRoot() {
   const openDiamondStore = useCallback(() => { setStoreSection('diamonds'); goToTab(0); }, [goToTab]);
   const enqueueLockedSocialMode = useCallback((mode: GameMode, copy?: { titleKey?: string; bodyKey?: string; ctaKey?: string }) => {
     const profile = state.profile;
-    const metadata = { mode, currentDiamonds: profile?.diamonds ?? 0, social_token_count: profile?.powerSocialToken ?? 0 };
+    const metadata = { mode, currentDiamonds: profile?.diamonds ?? 0 };
     const offer: MonetizationOffer = {
       offerId: `social_pack_locked_${mode}`,
       offerType: 'social_pack',
@@ -3736,11 +3725,7 @@ function AppRoot() {
             <Text style={{ color: theme.muted, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
               {t(contextualOffer.bodyKey as any)}
             </Text>
-            {activeEngagement?.kind === 'SOCIAL_PACK_LOCKED_MODE' && (state.profile?.powerSocialToken ?? 0) > 0 ? (
-              <Btn big kind="accent" icon="ticket" label={t('socialPack.useTokenCta')} onPress={useSocialTokenFromLockedMode} />
-            ) : (
-              <Btn big kind="accent" icon="people" label={t(contextualOffer.ctaKey as any)} onPress={acceptContextualOffer} />
-            )}
+            <Btn big kind="accent" icon="people" label={t(contextualOffer.ctaKey as any)} onPress={acceptContextualOffer} />
             <Btn kind="ghost" label={t(contextualOffer.secondaryKey as any)} onPress={dismissContextualOffer} />
           </View>
         ) : null}

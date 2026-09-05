@@ -160,7 +160,7 @@ type Actions = {
   setFrame: (frameId: string | null) => void; // profil çerçevesi tak/kaldır
   claimLevelReward: (level: number, track?: 'free' | 'premium') => void; // Seviye Yolu kartından ödül topla
   buyPremiumRoad: () => void; // Premium Yol'u 1000 elmasla aç
-  buyPower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => void; // mağazadan güç satın al
+  buyPower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training') => void; // mağazadan güç satın al
   // ---- Maç içi Özel Güçler ----
   useSpecialPower: (powerId: string) => void;       // maçta etkinleştir (requestId'yi aksiyon üretir)
   equipSpecialPower: (powerId: string | null) => void; // maça hangi güçle çıkılacağını seç
@@ -184,7 +184,7 @@ type Actions = {
   cozkazanSubmit: (text: string) => void;
   cozkazanHint: () => void;
   guessWhoSubmit: (playerId: number) => void;
-  usePower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => void; // envanterdeki tek kullanımlık gücü etkinleştir
+  usePower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training') => void; // envanterdeki tek kullanımlık gücü etkinleştir
   loadMyStats: () => void; // profil istatistiklerini iste (my_stats yanıtı)
   verifyPurchase: (receipt: string, opts?: { productId?: string; isSubscription?: boolean }) => Promise<void>;
   grantAdReward: () => Promise<number>;
@@ -5281,8 +5281,8 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
       setLockedModePreview(m);
       socialUpsellOnExit.current = true; // hand off AFTER modes modal dismisses (onExited)
       setModesOpen(false);
-      track('premium_mode_locked_clicked', { mode: m, social_token_count: profile?.powerSocialToken ?? 0 });
-      track('premium_mode_preview_viewed', { mode: m, social_token_count: profile?.powerSocialToken ?? 0 });
+      track('premium_mode_locked_clicked', { mode: m });
+      track('premium_mode_preview_viewed', { mode: m });
       return;
     }
     setModesOpen(false);
@@ -10418,7 +10418,7 @@ function EmoteShopTile({ emote, owned, width, onPress }: {
 
 // Mağaza + koleksiyonda listelenen güç kimlikleri — render başına yeni dizi
 // kurmamak için modül sabiti (sıra, iki listede de aynen bu).
-const POWER_ID_LIST: PowerId[] = ['xp2x', 'shield', 'streak', 'training', 'socialtoken'];
+const POWER_ID_LIST: PowerId[] = ['xp2x', 'shield', 'streak', 'training'];
 
 // Kıtlık kaydı ↔ dilim-memo el sıkışması: StoreScreen artık memo'lu (aşağıdaki
 // karşılaştırıcı) ve take-once kıtlık yuvasını tüketen depsiz efekt RENDER'a
@@ -11115,7 +11115,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
           <SectionHeader label={t('store.powers')} icon="flash" />
           {POWER_ID_LIST.map((pid) => {
             const price = POWER_PRICES[pid];
-            const count = pid === 'xp2x' ? (profile?.powerXp2x ?? 0) : pid === 'shield' ? (profile?.powerShield ?? 0) : pid === 'streak' ? (profile?.powerStreak ?? 0) : pid === 'training' ? (profile?.powerTraining ?? 0) : (profile?.powerSocialToken ?? 0);
+            const count = pid === 'xp2x' ? (profile?.powerXp2x ?? 0) : pid === 'shield' ? (profile?.powerShield ?? 0) : pid === 'streak' ? (profile?.powerStreak ?? 0) : (profile?.powerTraining ?? 0);
             return (
               <View key={pid} style={styles.storeEmoteCard}>
                 <View>
@@ -11903,9 +11903,8 @@ function PowersPanel({ profile, onUse, onToggleSpecial }: { profile: ProfileView
     shield: profile?.powerShield ?? 0,
     streak: profile?.powerStreak ?? 0,
     training: profile?.powerTraining ?? 0,
-    socialtoken: profile?.powerSocialToken ?? 0,
   };
-  const anyOwnedOrActive = counts.xp2x > 0 || counts.shield > 0 || counts.streak > 0 || counts.training > 0 || counts.socialtoken > 0 || boostActive || armed || trainingActive;
+  const anyOwnedOrActive = counts.xp2x > 0 || counts.shield > 0 || counts.streak > 0 || counts.training > 0 || boostActive || armed || trainingActive;
   // Koleksiyonda YALNIZ sahip olunan (adet>0) ya da AKTİF (kuşanılı kalkan /
   // süren 2xXP·Antrenman) güçler görünür — sahip olunmayan hiçbir şekilde gösterilmez.
   const isActive = (id: PowerId) => (id === 'xp2x' ? boostActive : id === 'shield' ? armed : id === 'training' ? trainingActive : false);
@@ -13491,8 +13490,8 @@ export function FriendsScreen({ state, actions, onGoToStore, onLockedSocialMode,
                   onPress={() => {
                     if (locked) {
                       matchExitAction.current = { kind: 'social', mode: m }; // upsell fires in onExited
-                      track('premium_mode_locked_clicked', { mode: m, source: 'friendly_match', social_token_count: profile?.powerSocialToken ?? 0 });
-                      track('premium_mode_preview_viewed', { mode: m, source: 'friendly_match', social_token_count: profile?.powerSocialToken ?? 0 });
+                      track('premium_mode_locked_clicked', { mode: m, source: 'friendly_match' });
+                      track('premium_mode_preview_viewed', { mode: m, source: 'friendly_match' });
                       setMatchModal(null);
                       return;
                     }
@@ -16620,7 +16619,7 @@ export function unclaimedLevelCount(p: ProfileView | null): number {
 // ---- Özel güçler — Seviye Yolu'ndan kazanılan TEK KULLANIMLIK tüketilebilirler.
 // Elmasla satılmaz; kullanılmadıkça envanterde birikir (sunucudaki LEVEL_POWERS
 // ve powers kataloglarıyla birebir aynı kimlikler/seviyeler).
-export type PowerId = 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken';
+export type PowerId = 'xp2x' | 'shield' | 'streak' | 'training';
 export const POWERS: Record<PowerId, {
   icon: ComponentProps<typeof Ionicons>['name'];
   color: string;
@@ -16634,24 +16633,22 @@ export const POWERS: Record<PowerId, {
   shield: { icon: 'shield', color: theme.blue, kind: 'blue', badgeIcon: 'refresh', nameKey: 'power.shieldName', descKey: 'power.shieldDesc', confirmKey: 'power.confirmShield' },
   streak: { icon: 'flame', color: theme.primary, kind: 'primary', badgeIcon: 'refresh', nameKey: 'power.streakName', descKey: 'power.streakDesc', confirmKey: 'power.confirmStreak' },
   training: { icon: 'barbell', color: theme.purple, kind: 'purple', badgeIcon: 'barbell', nameKey: 'power.trainingName', descKey: 'power.trainingDesc', confirmKey: 'power.confirmTraining' },
-  socialtoken: { icon: 'people', color: theme.flame, kind: 'flame', badgeIcon: 'people', nameKey: 'power.socialtokenName', descKey: 'power.socialtokenDesc', confirmKey: 'power.confirmSocialtoken' },
 };
 export const LEVEL_POWER_UNLOCKS: Record<number, PowerId> = {
   5: 'xp2x',
   15: 'shield',
   25: 'streak',
   35: 'training',
-  45: 'socialtoken',
+  45: 'xp2x',
 };
 
 // ---- PREMIUM Seviye Yolu (sunucudaki PREMIUM_* sabitleriyle birebir) ----
 // 2000 elmasla (ya da ₺350 IAP ile) açılır; her ×5 seviyesinde EKSTRA güç + daha dolgun elmas.
-// Dağıtım: her güç şeritte TAM 2 kez + ücretsiz şeritle ORTAK seviyelerde
-// (5/15/25/35/45) asla aynı güç değil (aynı satırda iki kart hiç aynı olmaz).
+// Dağıtım: dört aktif tüketilebilir güç şerit boyunca dengeli dağıtılır.
 export const PREMIUM_ROAD_PRICE = 2000;
 export const PREMIUM_LEVEL_POWERS: Record<number, PowerId> = {
-  5: 'shield', 10: 'streak', 15: 'xp2x', 20: 'socialtoken', 25: 'training',
-  30: 'shield', 35: 'socialtoken', 40: 'xp2x', 45: 'streak', 50: 'training',
+  5: 'shield', 10: 'streak', 15: 'xp2x', 20: 'xp2x', 25: 'training',
+  30: 'shield', 35: 'shield', 40: 'xp2x', 45: 'streak', 50: 'training',
 };
 // ── CO-PASS v2 ÖDÜL TABLOSU (2026-09-01) ─────────────────────────────────────
 // SUNUCUDAKİ level.ts PASS_V2_FREE / PASS_V2_PREMIUM ile BİREBİR aynı olmalıdır.
@@ -16685,10 +16682,10 @@ export const PASS_V2_FREE: Record<number, PassRewardView> = {
   30: { specialPower: 'reveal', diamonds: 100 },
   31: D(15), 32: SP('extratime'), 33: D(15), 34: RP('training'),
   35: { roadPower: 'training', diamonds: 50 },
-  36: { diamonds: 15, specialPower: 'extratime' }, 37: SP('skip'), 38: D(15), 39: RP('socialtoken'),
+  36: { diamonds: 15, specialPower: 'extratime' }, 37: SP('skip'), 38: D(15), 39: RP('streak'),
   40: { specialPower: 'freeze', diamonds: 100 },
   41: D(15), 42: SP('freeze'), 43: D(15), 44: { cosmeticId: 'ice_name' },
-  45: { roadPower: 'socialtoken', diamonds: 50 },
+  45: { roadPower: 'shield', diamonds: 50 },
   46: { diamonds: 15, specialPower: 'skip' }, 47: SP('extratime'), 48: D(15), 49: RP('xp2x'),
   50: { frameTier: 'goat', specialPower: 'reveal', diamonds: 150 }, // zirve: GOAT çerçevesi
 };
@@ -16701,13 +16698,13 @@ export const PASS_V2_PREMIUM: Record<number, PassRewardView> = {
   11: D(25), 12: SP('skip'), 13: D(25), 14: { cosmeticId: 'ice_name' },
   15: { roadPower: 'xp2x', diamonds: 200 },
   16: D(25), 17: SP('freeze'), 18: D(25), 19: SP('reveal'),
-  20: { roadPower: 'socialtoken', diamonds: 300 },
+  20: { roadPower: 'training', diamonds: 300 },
   21: { diamonds: 25, specialPower: 'freeze' }, 22: SP('skip'), 23: D(25), 24: SP('secondchance'),
   25: { roadPower: 'training', diamonds: 200 },
   26: D(25), 27: { cosmeticId: 'night_stadium' }, 28: D(25), 29: SP('freeze'),
   30: { roadPower: 'shield', diamonds: 300 },
   31: D(25), 32: SP('reveal'), 33: D(25), 34: SP('skip'),
-  35: { roadPower: 'socialtoken', diamonds: 200 },
+  35: { roadPower: 'shield', diamonds: 200 },
   36: D(25), 37: SP('freeze'), 38: { cosmeticId: 'lightning_victory' }, 39: SP('extratime'),
   40: { roadPower: 'xp2x', diamonds: 300 },
   41: { diamonds: 25, specialPower: 'reveal' }, 42: SP('reveal'), 43: D(25), 44: SP('secondchance'),
@@ -16721,7 +16718,7 @@ export function passRewardView(level: number, track: 'free' | 'premium'): PassRe
 }
 
 // Mağaza güç fiyatları (sunucudaki POWER_PRICES ile birebir)
-export const POWER_PRICES: Record<PowerId, number> = { xp2x: 150, shield: 250, streak: 300, training: 250, socialtoken: 350 };
+export const POWER_PRICES: Record<PowerId, number> = { xp2x: 150, shield: 250, streak: 300, training: 250 };
 
 export function premiumRewardGems(n: number): number {
   if (n % 5 !== 0) return 0;
@@ -16736,7 +16733,6 @@ const POWER_ART: Partial<Record<PowerId, number>> = {
   shield: require('../assets/power-shield.png'),
   streak: require('../assets/power-streak.png'), // seri.jpeg'ten birebir
   training: require('../assets/power-training.png'), // özellik2.jpeg'ten birebir
-  socialtoken: require('../assets/power-socialtoken.png'), // özellik2.jpeg'ten birebir
 };
 export function PowerArt({ powerId, size, locked, well = false }: { powerId: PowerId; size: number; locked?: boolean; well?: boolean }) {
   const art = POWER_ART[powerId];

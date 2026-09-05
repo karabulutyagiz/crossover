@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { ProfileView } from './protocol';
 
-export type PowerId = 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken';
+export type PowerId = 'xp2x' | 'shield' | 'streak' | 'training';
 
 export type MonetizationTrigger =
   | 'post_match_loss'
@@ -454,6 +454,6 @@ export function evaluateSocialPackDiscovery(profile: ProfileView | null, caps: O
     bodyKey: 'socialPack.startupBody',
     ctaKey: 'socialPack.startupCta',
     secondaryKey: 'common.close',
-    analyticsMetadata: { diamond_balance: profile.diamonds, social_token_count: profile.powerSocialToken ?? 0 },
+    analyticsMetadata: { diamond_balance: profile.diamonds },
   };
 }
