@@ -20,6 +20,20 @@ kalkan). Sunucu: `power_socialtoken` sütunu migration `0021_remove_social_pack_
 ile HERKESTEN düşer (schema.sql'deki ADD COLUMN da silindi). Eski istemcinin
 `use_power socialtoken` isteği artık validasyondan döner.
 
+**+ GEÇİŞ REKLAMI "3 GİR-ÇIK'TA ÇIKMIYOR" DÜZELTMESİ (kullanıcı 2026-09-05 22:05 TR):**
+Kök sebep (App.tsx): reklam bekleyişi yalnız maçtan çıkış anında kuruluyor, 20 sn
+yaşıyor ve o sürede gelen 2./3. çıkış `adPendingRef` yüzünden yutuluyordu; 3. çıkış
+ilk pencerenin son saniyelerine düşünce 8 sn'lik maç-niyeti kilidi kalan süreyi yiyor,
+pencere reklamsız kapanıyor ve menüde oturulsa da bir daha denenmiyordu. Düzeltme:
+tek döngü ama her tetikte son tarih 30 sn ileri alınır; ana menüye her giriş ve her
+pencere kapanışı borç varsa (`isInterstitialDue`) bekleyişi yeniden kurar. Gösterim
+kapısı DEĞİŞMEDİ: yalnız ana menü, maç niyeti taze değilken, pencere yokken — maç/round
+içinde asla. Reklam kapanınca "REKLAMSIZ OYNA → SOSYAL PAKET AL" penceresi artık HER
+reklamdan sonra (2026-09-02 "iki reklamda bir" ritmi kaldırıldı).
+Not: reklam yine de çıkmıyorsa Ayarlar > Monetization Diagnostics `adsLastReason`
+bakılır — `paket` (hesapta Sosyal Paket aktif: jeton/abonelik), `muaf n/5` (yeni kurulum,
+ilk 5 maç), `oturum 1/2` (oturumun ilk maçı), `yuklenmedi` (AdMob dolum yok).
+
 **Dallar** (hızlı disk klonu `/var/folders/…/T/opencode/crossover-gift-release`):
 - `ota-gift-20260905` — istemci + sunucu, a301700 tabanı (yeni ana sayfa/nav
   DIŞARIDA). **OTA buradan basılır.** app tsc + ad-slot-test temiz.

@@ -123,7 +123,7 @@ let directRequestPurchase: any = null;
 try { directRequestPurchase = require('react-native-iap').requestPurchase; } catch { /* Expo Go */ }
 import { isRonaldoAnswer, triggerDiamondCollectTick, triggerFeedback } from './src/feedback/GameFeedback';
 import { loadFeedbackPreferences } from './src/feedback/preferences';
-import { configureInterstitial, interstitialDiagnostics, interstitialPresentation, maybeShowInterstitial, recordMatchEnd, setInterstitialPhase } from './src/interstitial';
+import { configureInterstitial, interstitialDiagnostics, interstitialPresentation, isInterstitialDue, maybeShowInterstitial, recordMatchEnd, setInterstitialPhase } from './src/interstitial';
 import { markCleanExit, setFreezeScreen, startFreezeWatch } from './src/freezeWatch';
 import {
   evaluateMonetizationOffer,
@@ -1189,14 +1189,66 @@ function AppRoot() {
   // hasActiveSocialPack(null)=false olduğu için Sosyal Paketli oyuncuya show()
   // çağrıldı (oyuncu raporu: "reklam çıkmadı ama sesi geldi"). Karar artık her
   // tikte ref üzerinden GÜNCEL profille verilir; profil o an yoksa gösterilmez.
-  // PAKET ÖNERİSİ RİTMİ (kullanıcı kararı 2026-09-02): pencere HER reklamda
-  // değil — 1. reklamda çıkar, sonrakinde susar, ondan sonrakinde tekrar (her
-  // iki reklamda bir). 15+ dk ara ya da uygulamadan çıkış ritmi sıfırlar:
-  // dönüşteki İLK reklamda yine çıkar. Tetikleyici DAİMA reklam kapanışıdır.
-  const upsellPrevAdAtRef = useRef(0);
-  const upsellSkippedRef = useRef(0);
+  // REKLAM BEKLEYİŞİ (2026-09-05, kullanıcı raporu "3 kere maça gir-çık yaptım,
+  // reklam çıkmadı"): eskiden bekleyiş YALNIZ maçtan çıkış anında kuruluyor,
+  // 20 sn yaşıyor ve o süre içinde gelen ikinci/üçüncü çıkış "zaten bekliyor"
+  // diye YUTULUYORDU. Hızlı gir-çık'ta üçüncü çıkış ilk pencerenin son
+  // saniyelerine düşüyor, maç niyeti kilidi (8 sn) o saniyeleri yiyor ve
+  // pencere reklam gösterilmeden kapanıyordu — oyuncu menüde otursa da bir
+  // daha denenmiyordu. Artık: her tetikte SÜRE UZATILIR (tek döngü, yeni son
+  // tarih); ana menüye her girişte ve her pencere kapanışında borç varsa
+  // yeniden kurulur. Gösterim koşulları DEĞİŞMEDİ: yalnız ana menü, maç niyeti
+  // taze değilken, pencere yokken (interstitial.ts MAÇ KAPISI) — maç/round
+  // içinde asla.
+  // REKLAM SONRASI PENCERE (kullanıcı kararı 2026-09-05): HER reklamdan sonra
+  // "reklamsız oyna + tüm modlara tam erişim → Sosyal Paket" penceresi çıkar;
+  // 2026-09-02'deki "iki reklamda bir" ritmi kaldırıldı.
+  const AD_WAIT_WINDOW_MS = 30_000;
+  const adDeadlineRef = useRef(0);
   const adProfileRef = useRef(state.profile);
   adProfileRef.current = state.profile;
+  const armInterstitialWait = useCallback(() => {
+    adDeadlineRef.current = Date.now() + AD_WAIT_WINDOW_MS;
+    if (adPendingRef.current) return; // döngü zaten yaşıyor — yalnız süresi uzatıldı
+    adPendingRef.current = true;
+    let reported = false;
+    const timer = setInterval(() => {
+      if (Date.now() > adDeadlineRef.current) {
+        adPendingRef.current = false;
+        clearInterval(timer);
+        // TANI (2026-08-30): reklam neden çıkmadı — freeze_report kanalıyla
+        // kısa kod olarak sunucuya (40 karakter sınırı).
+        if (!reported) {
+          const d = interstitialDiagnostics();
+          const özet = `AD|${d.adsLastReason}|y${d.adsPreloaded ? 1 : 0}a${d.adsEnabled ? 1 : 0}m${d.adsTotalMatches}s${d.adsSinceAd}`.slice(0, 40);
+          try { freezeReportRef.current('jank', özet, 0); } catch { /* tanı gönderilemedi — oyun etkilenmez */ }
+        }
+        return;
+      }
+      if (phaseRef.current !== 'home') return;        // ana menü dışında ASLA
+      if (modalBlockedRef.current) return;             // pencere kapanınca tekrar denenir
+      if (Date.now() - modalClearedAtRef.current < 500) return; // native kapanış bitsin
+      const guncelProfil = adProfileRef.current;
+      if (!guncelProfil) return;                       // profil belirsizken reklam riske girmez
+      if (maybeShowInterstitial(hasActiveSocialPack(guncelProfil), () => {
+        // SDK'nın CLOSED olayına bağlı — reklam ekrandayken pencere açmak iOS'ta
+        // sunum zincirini kilitler (16 Pro Max raporu); 400 ms pay kapanış animasyonu.
+        setTimeout(() => {
+          setAdUpsellVisible(true);
+          try { freezeReportRef.current('jank', 'SPU|acildi', 0); } catch { /* tanı */ }
+        }, 400);
+      })) {
+        reported = true;
+        try { freezeReportRef.current('jank', `AD|${interstitialDiagnostics().adsLastReason}`.slice(0, 40), 0); } catch { /* önemsiz */ }
+        // SDK olayları: OPENED (belirdi) / PAID (ücretlendirildi) — 20 sn sonra.
+        setTimeout(() => {
+          try { freezeReportRef.current('jank', `ADX|${interstitialPresentation()}`.slice(0, 40), 0); } catch { /* önemsiz */ }
+        }, 20_000);
+        adPendingRef.current = false;
+        clearInterval(timer);
+      }
+    }, 700);
+  }, []);
   const adPrevPhaseRef = useRef(state.phase);
   const adPrevXoxOverRef = useRef(state.xoxOver);
   useEffect(() => {
@@ -1217,109 +1269,11 @@ function AppRoot() {
     const IN_MATCH_PHASES = ['lobby', 'matchup', 'countdown', 'pick', 'reveal', 'guess', 'xox', 'cozkazan'];
     const leavingAbandonedMatch = IN_MATCH_PHASES.includes(prevPhase) && !leavingFinishedMatch && MENU_PHASES.includes(state.phase);
     if (leavingAbandonedMatch && prevPhase !== 'lobby' && prevPhase !== 'matchup' && prevPhase !== 'countdown') recordMatchEnd();
-    if (!leavingFinishedMatch && !leavingAbandonedMatch) return;
-    // DONMA KORUMASI (2026-08-29): iOS aynı anda TEK native sunum kaldırır —
-    // reklam, açık/açılmakta olan bir popup'ın (post-maç teklifi, kupa/seviye
-    // penceresi, güncelleme dürtmesi) üstüne binerse donma sınıfı hata doğar.
-    // Bu yüzden kısa bir gecikmeyle bakılır ve O ANDA popup varsa reklam
-    // ATLANIR (sayaç korunur; bir sonraki maç sonunda yeniden denenir).
-    // TEK ATIŞ YETMİYORDU (2026-08-30): eskiden 700ms sonra BİR kez bakılıyor,
-    // o an bir pencere açıksa reklam tamamen atlanıyordu. Maç sonunda kupa
-    // uçuşu / seviye atlama / elmas kutlaması / teklif penceresi neredeyse HER
-    // ZAMAN açık olduğu için reklam pratikte hiç gösterilemiyordu (oyuncu
-    // raporu: "ödüllü çıkıyor ama geçiş çıkmıyor" — ödüllüyü oyuncu kendisi,
-    // pencere yokken açıyor). Artık pencereler kapanana kadar beklenir; ana
-    // ekrandan çıkılırsa ya da süre dolarsa sessizce vazgeçilir.
-    // ZAMANLAYICI EFFECT'TEN BAĞIMSIZ (2026-09-01 — kritik hata):
-    // Bu effect [state.profile] dinliyor ve maç sonunda profil ARKA ARKAYA
-    // güncelleniyor (kupa, XP, seviye). Her güncellemede effect yeniden
-    // çalışıp cleanup ile zamanlayıcıyı öldürüyordu; yeni çalışmada ise
-    // prevPhase artık 'home' olduğu için "maçtan yeni çıktı" koşulu tutmuyor
-    // ve zamanlayıcı BİR DAHA kurulmuyordu. Sonuç: reklam penceresi daha
-    // açılmadan kapanıyor, 3 maçta 1 kuralı fiilen işlemiyordu (AdMob'da
-    // gösterim düşük kalıyor, tanı raporu hiç gelmiyordu).
-    //
-    // Çözüm: bekleyen istek REF'te tutulur; zaten çalışan bir bekleyiş varsa
-    // yenisi kurulmaz, cleanup da onu öldürmez.
-    if (adPendingRef.current) return;
-    adPendingRef.current = true;
-    const deadline = Date.now() + 20_000;
-    let reported = false;
-    const timer = setInterval(() => {
-      if (Date.now() > deadline) {
-        adPendingRef.current = false;
-        clearInterval(timer);
-        // GEÇİCİ TANI KANALI (2026-08-30): reklam neden çıkmadığını cihazdan
-        // öğrenemiyoruz — istemcide telemetri sunucuya akmıyor. Kalıcı çözüm
-        // ayrı bir olay tipi, ama o SUNUCU DAĞITIMI ister ve şu an canlı maç
-        // var. Mevcut freeze_report kanalı serbest metin taşıdığı için sebep
-        // oraya 'AD|...' önekiyle yazılıyor; sunucuda client_freeze olarak
-        // loglanır. Sebep bulunup düzeltilince bu blok KALDIRILACAK.
-        if (!reported) {
-          // 40 KARAKTER SINIRI (2026-08-30): sunucu freeze_report.screen alanını
-          // hasString(...,40) ile doğruluyor; ilk sürümde ~85 karakter metin
-          // gönderiliyordu ve HER rapor sessizce reddediliyordu (6 saat boyunca
-          // tek veri gelmemesinin sebebi buydu). Artık kısa kodlar + tek harfli
-          // bayraklar kullanılıyor ve gönderim öncesi kırpılıyor.
-          const d = interstitialDiagnostics();
-          const özet = `AD|${d.adsLastReason}|y${d.adsPreloaded ? 1 : 0}a${d.adsEnabled ? 1 : 0}m${d.adsTotalMatches}s${d.adsSinceAd}`.slice(0, 40);
-          try { freezeReportRef.current('jank', özet, 0); } catch { /* tanı gönderilemedi — oyun etkilenmez */ }
-        }
-        return;
-      }
-      // FAZ KAPISI (2026-09-03): bu döngü 20 sn boyunca yaşıyor ve tik başında
-      // fazı sormuyordu — oyuncu bu arada eşleşmeye/maça girdiyse reklam maçın
-      // üstüne açılabiliyordu. Modülün kendi sözleşmesi zaten "rövanşa/yeni maça
-      // girerken asla" diyor. Ana ekranda değilsek bu tur pas geçilir.
-      if (phaseRef.current !== 'home') return;
-      if (modalBlockedRef.current) return;          // pencere kapanınca tekrar denenir
-      if (Date.now() - modalClearedAtRef.current < 500) return; // native kapanış bitsin
-      const guncelProfil = adProfileRef.current;
-      if (!guncelProfil) return;                    // profil belirsizken reklam riske girmez
-      if (maybeShowInterstitial(hasActiveSocialPack(guncelProfil), () => {
-        // REKLAM KAPANINCA (2026-09-01): SDK'nın CLOSED olayına bağlı — kör
-        // zamanlayıcı reklamın üstüne pencere açıp donduruyordu (16 Pro Max).
-        // RİTİM (2026-09-02): ilk reklamda göster; sonra bir sustur, bir göster.
-        // 15+ dk aradan (ya da yeniden açılıştan — ref'ler sıfır başlar)
-        // sonraki ilk reklamda ritim başa döner.
-        const simdi = Date.now();
-        const uzunAra = upsellPrevAdAtRef.current === 0 || simdi - upsellPrevAdAtRef.current >= 15 * 60_000;
-        upsellPrevAdAtRef.current = simdi;
-        if (uzunAra || upsellSkippedRef.current >= 1) {
-          upsellSkippedRef.current = 0;
-          setTimeout(() => {
-            setAdUpsellVisible(true);
-            try { freezeReportRef.current('jank', 'SPU|acildi', 0); } catch { /* tanı */ }
-          }, 400);
-        } else {
-          upsellSkippedRef.current += 1;
-        }
-      })) {
-        reported = true;
-        try { freezeReportRef.current('jank', `AD|${interstitialDiagnostics().adsLastReason}`.slice(0, 40), 0); } catch { /* önemsiz */ }
-        // İKİNCİ RAPOR (2026-09-01): yukarıdaki satır yalnız show()'u ÇAĞIRDIĞIMIZI
-        // söyler. Bu rapor SDK'nın kendi olaylarını söyler — reklam gerçekten
-        // belirdi mi (OPENED) ve AdMob ücretlendirdi mi (PAID). "AdMob'da veri
-        // yok" sorusunun cevabı bu iki bayrağın arasında.
-        setTimeout(() => {
-          try { freezeReportRef.current('jank', `ADX|${interstitialPresentation()}`.slice(0, 40), 0); } catch { /* önemsiz */ }
-          // 20sn: PAID olayı gösterimle birlikte gelir ama SDK bazen kapanış
-          // sonrasına bırakır — 6sn'lik ilk ölçüm "ödenmedi"yi erken damgalama
-          // riski taşıyordu. Geçiş reklamı zaten en fazla ~15sn ekranda durur.
-        }, 20_000);
-        // REKLAM SONRASI PAKET ÖNERİSİ (kullanıcı isteği 2026-09-01): reklamı
-        // yeni izlemiş oyuncu, reklamsızlığın değerini TAM O ANDA hissediyor —
-        // teklifin en anlamlı olduğu an burası. Reklam native pencere olduğu
-        // için kapanışını beklemek şart (yoksa iOS iki pencereyi kilitler).
-        adPendingRef.current = false;
-        clearInterval(timer);
-      }
-    }, 700);
-    // NOT: cleanup zamanlayıcıyı TEMİZLEMEZ — effect maç sonunda defalarca
-    // yeniden çalıştığı için temizlemek bekleyişi öldürürdü. Zamanlayıcı kendi
-    // içinde (gösterim ya da 20 sn sınırı) sonlanır.
-    return undefined;
-  }, [state.phase, state.xoxOver, state.profile]);
+    // Tetik: maçtan (bitmiş ya da terk edilmiş) menüye dönüş — ya da borç
+    // varken ana menüye herhangi bir yerden giriş (ör. profil sekmesinden).
+    const enteringHome = state.phase === 'home' && prevPhase !== 'home';
+    if (leavingFinishedMatch || leavingAbandonedMatch || (enteringHome && isInterstitialDue(hasActiveSocialPack(state.profile)))) armInterstitialWait();
+  }, [state.phase, state.xoxOver, state.profile, armInterstitialWait]);
 
   useEffect(() => {
     setMonetizationDiagnostics((current) => ({
@@ -1794,7 +1748,12 @@ function AppRoot() {
   // ikisini birden kilitler (reklam açılır açılmaz kapanır, ekran donar).
   // Bayrağın ne zaman temizlendiğini damgalayıp reklamı ondan sonra açıyoruz.
   const modalClearedAtRef = useRef(0);
-  useEffect(() => { if (!modalBlocked) modalClearedAtRef.current = Date.now(); }, [modalBlocked]);
+  useEffect(() => {
+    if (modalBlocked) return;
+    modalClearedAtRef.current = Date.now();
+    // Pencere kapandı, ana menüdeyiz ve reklam borcu var → bekleyiş (yeniden) kurulur.
+    if (phaseRef.current === 'home' && isInterstitialDue(hasActiveSocialPack(adProfileRef.current))) armInterstitialWait();
+  }, [modalBlocked, armInterstitialWait]);
   // ── YENİ CO-PASS SEZONU DUYURUSU (2026-08-30) ────────────────────────────
   // Sezon her ay 1'inde döner (rank.ts ensureSeason). Yeni sezonun İLK 3 GÜNÜ
   // boyunca, sezon başına BİR kez duyuru penceresi açılır: "yeni CO-PASS
