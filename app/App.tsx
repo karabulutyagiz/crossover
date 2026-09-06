@@ -1174,10 +1174,9 @@ function AppRoot() {
     return () => { alive = false; };
   }, []);
 
-  // GEÇİŞ REKLAMI KANCASI (2026-08-29): maç bitişlerini say (klasik 'result'
-  // girişi + XOX'ta xoxOver'ın dolması) ve YALNIZ sonuçtan menüye dönüşte
-  // göster — rövanşa/yeni maça girerken asla (rakip bekletilmez). Paketliye
-  // gösterim maybeShowInterstitial içinde zaten engelli.
+  // GEÇİŞ REKLAMI KANCASI (2026-08-29): maç bitişlerini say ve YALNIZ sonuçtan
+  // menüye dönüşte göster — rövanşa/yeni maça girerken asla (rakip
+  // bekletilmez). Paketliye gösterim maybeShowInterstitial içinde zaten engelli.
   // DONMA ÖLÇÜMÜ (2026-08-29): hangi ekranda donduğunu tahmin etmek yerine
   // ölçüyoruz — JS thread'i bloklanırsa ya da oyuncu donan uygulamayı kill
   // ederse rapor sunucuya düşer. Oyun akışına hiç dokunmaz.
@@ -1209,24 +1208,40 @@ function AppRoot() {
   adProfileRef.current = state.profile;
   const adPrevPhaseRef = useRef(state.phase);
   const adPrevXoxOverRef = useRef(state.xoxOver);
+  const adMatchCountedRef = useRef(false); // bu maç sayaca yazıldı mı (maç başına TEK artış)
   useEffect(() => {
     const prevPhase = adPrevPhaseRef.current;
     const prevXoxOver = adPrevXoxOverRef.current;
     adPrevPhaseRef.current = state.phase;
     adPrevXoxOverRef.current = state.xoxOver;
-    if (state.phase === 'result' && prevPhase !== 'result') recordMatchEnd();
-    if (state.xoxOver && !prevXoxOver) recordMatchEnd();
+    // SAYAÇ = GERÇEK MAÇ (2026-09-06, kullanıcı raporu: "her maçta reklam
+    // çıkıyor"): eskiden her 'result' GİRİŞİ sayılıyordu — o ekran her TURDA
+    // gelir, maç ise 3 tur kazanana kadar sürer. 3+ turluk her maç sayacı tek
+    // başına 3'e taşıyıp "3 maçta 1" kuralını "her maçta 1"e çeviriyor, 5 maçlık
+    // muafiyet de 1-2 maçta bitiyordu. Artık bir maç TEK kez sayılır: klasik
+    // modlarda matchOver, XOX'ta xoxOver, Çöz Kazan'da cozkazanOver (eskiden hiç
+    // sayılmıyordu) ya da hükmen/terkle maçtan ayrılış. Kupa ±'sına BAĞLANMADI:
+    // dostluk, antrenman ve turnuva maçlarında kupa yok, kalkanlı kayıpta delta 0.
+    const IN_MATCH_PHASES = ['lobby', 'matchup', 'countdown', 'pick', 'reveal', 'guess', 'xox', 'cozkazan'];
+    const PRE_GAME_PHASES = ['lobby', 'matchup', 'countdown']; // maç başlamadan çıkış sayılmaz
+    // Her maç (rövanş dahil) countdown ile açılır; reducer orada matchOver/xoxOver/
+    // cozkazanOver'ı sıfırlar — sayım bayrağı da orada sıfırlanır. countdown her
+    // turda da gelir ama bayrak yalnız maç bitince dolduğu için tur arası etkisiz.
+    if (state.phase === 'countdown' && prevPhase !== 'countdown') adMatchCountedRef.current = false;
+    const matchFinished = (state.phase === 'result' && state.matchOver) || !!state.xoxOver || !!state.cozkazanOver;
+    // MAÇ ORTASINDA ÇIKAN DA SAYILIR (oyuncu raporu 2026-09-02: 'paketim bitti
+    // ama gir-çık yapınca reklam çıkmıyor'): terk edilen maç da bir maçtır.
+    // Menüye ya da yeni aramaya ('searching') fark etmez — maç bitmiştir.
+    const leftMatch = IN_MATCH_PHASES.includes(prevPhase) && !IN_MATCH_PHASES.includes(state.phase) && !PRE_GAME_PHASES.includes(prevPhase);
+    if ((matchFinished || leftMatch) && !adMatchCountedRef.current) {
+      adMatchCountedRef.current = true;
+      recordMatchEnd();
+    }
     const MENU_PHASES = ['home', 'tournaments', 'arenas', 'leaderboard', 'matchHistory', 'profile'];
     const leavingFinishedMatch = (prevPhase === 'result' || (prevPhase === 'xox' && !!prevXoxOver)) && MENU_PHASES.includes(state.phase);
-    // MAÇ ORTASINDA ÇIKAN DA SAYILIR (oyuncu raporu 2026-09-02: 'paketim bitti
-    // ama gir-çık yapınca reklam çıkmıyor'): çık butonuyla terk eden oyuncu
-    // sonuç ekranına hiç uğramadığı için ne sayaç artıyordu ne deneme
-    // yapılıyordu — maç ortası ayrılış reklam sistemine görünmezdi. Terk edilen
-    // maç da bir maçtır ve menüye dönüş doğal bir moladır: sayaca yazılır ve
-    // reklam denenir (hükmen popup'ı açıksa bekleyiş zaten kapanmasını bekler).
-    const IN_MATCH_PHASES = ['lobby', 'matchup', 'countdown', 'pick', 'reveal', 'guess', 'xox', 'cozkazan'];
+    // Menüye dönüş doğal bir moladır: reklam burada denenir (hükmen popup'ı
+    // açıksa bekleyiş zaten kapanmasını bekler). Gösterim koşulu DEĞİŞMEDİ.
     const leavingAbandonedMatch = IN_MATCH_PHASES.includes(prevPhase) && !leavingFinishedMatch && MENU_PHASES.includes(state.phase);
-    if (leavingAbandonedMatch && prevPhase !== 'lobby' && prevPhase !== 'matchup' && prevPhase !== 'countdown') recordMatchEnd();
     if (!leavingFinishedMatch && !leavingAbandonedMatch) return;
     // DONMA KORUMASI (2026-08-29): iOS aynı anda TEK native sunum kaldırır —
     // reklam, açık/açılmakta olan bir popup'ın (post-maç teklifi, kupa/seviye
@@ -1329,7 +1344,7 @@ function AppRoot() {
     // yeniden çalıştığı için temizlemek bekleyişi öldürürdü. Zamanlayıcı kendi
     // içinde (gösterim ya da 20 sn sınırı) sonlanır.
     return undefined;
-  }, [state.phase, state.xoxOver, state.profile]);
+  }, [state.phase, state.matchOver, state.xoxOver, state.cozkazanOver, state.profile]);
 
   useEffect(() => {
     setMonetizationDiagnostics((current) => ({
