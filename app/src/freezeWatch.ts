@@ -18,6 +18,7 @@
 // Maliyet bilinçli olarak çok düşük: saniyede bir Date.now() karşılaştırması ve
 // yalnız EŞİK AŞILDIĞINDA yazma. Telemetrinin kendisi donmaya sebep olmamalı.
 // ============================================================================
+import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { track } from './telemetry';
 
@@ -30,6 +31,11 @@ type Report = { kind: 'jank' | 'dirty_exit'; screen: string; stalledMs: number; 
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let lastBeat = 0;
+// ARKA PLAN AYRIMI (2026-09-06): uygulama arka plana gidince JS zamanlayıcısı
+// durur; dönüşteki ilk atış uzak kalınan süreyi "jank" diye yazıyordu (canlı
+// veride home ekranında 58 dakikalık "donma"lar bundan). Arka plana geçiş
+// olayı ASKIYA ALINMADAN ÖNCE gelir → damgalanır; sonraki ilk atış ölçülmez.
+let bgAt = 0;
 let currentScreen = 'unknown';
 let reporter: ((r: Report) => void) | null = null;
 
@@ -67,11 +73,16 @@ export function startFreezeWatch(onReport?: (r: Report) => void): () => void {
   }).catch(() => {});
 
   lastBeat = Date.now();
+  const appStateSub = AppState.addEventListener('change', (st) => {
+    if (st === 'active') { lastBeat = Date.now(); bgAt = 0; }
+    else bgAt = Date.now(); // 'inactive' da sayılır: kontrol merkezi/bildirim çekmecesi donma değildir
+  });
   if (timer) clearInterval(timer);
   timer = setInterval(() => {
     const now = Date.now();
     const drift = now - lastBeat - HEARTBEAT_MS;
     lastBeat = now;
+    if (bgAt) { bgAt = 0; return; } // arka plan/inactive sonrası ilk atış: uzak kalınan süre, donma değil
     if (drift >= JANK_THRESHOLD_MS) {
       // JS thread bu kadar süre bloklandı — donmanın ölçülmüş hâli.
       const report: Report = { kind: 'jank', screen: currentScreen, stalledMs: drift, at: now };
@@ -80,5 +91,5 @@ export function startFreezeWatch(onReport?: (r: Report) => void): () => void {
     }
   }, HEARTBEAT_MS);
 
-  return () => { if (timer) clearInterval(timer); timer = null; };
+  return () => { if (timer) clearInterval(timer); timer = null; appStateSub.remove(); };
 }
