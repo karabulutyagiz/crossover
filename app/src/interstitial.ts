@@ -149,7 +149,12 @@ export function configureInterstitial(remote: AdsRemoteConfig | null | undefined
   preloadNext();
 }
 
-/** Her maç sonucu ekranına girişte BİR kez çağrılır (kazan/kaybet fark etmez). */
+/**
+ * Her MAÇ bitişinde BİR kez çağrılır (kazan/kaybet fark etmez): klasik modlarda
+ * matchOver, XOX/Çöz Kazan'da *_over, ya da hükmen/terkle ayrılış. Tur sonucu
+ * ekranı DEĞİL — o her turda gelir ve 2026-09-06'ya dek sayacı tur başına
+ * artırıp "3 maçta 1"i "her maçta 1"e çeviriyordu (App.tsx'teki kanca).
+ */
 export function recordMatchEnd(): void {
   totalMatches += 1;
   sinceAd += 1;
