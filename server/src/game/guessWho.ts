@@ -59,14 +59,19 @@ function rowToCard(r: any): GuessWhoCard {
   };
 }
 
-/** Hedef oyuncu: tanınırlık için fame eşiği üstünden rastgele (foto + tam nitelik şart). */
-export async function pickGuessWhoTarget(minFame = 120): Promise<GuessWhoCard | null> {
+/** Hedef oyuncu: foto + tam nitelik şart. Havuz eşiği DÜŞÜK (kullanıcı isteği
+ * 2026-09-06: kapasiteyi arttır — çok popüler ama fame metriği düşük puanladığı
+ * için çıkmayan yıldızlar da girsin; ör. Osimhen/L. Martínez ~89, Ferran Torres
+ * ~118 hepsi 120 eşiğinin altındaydı). Seçim FAME-AĞIRLIKLI (A-Res): tanınmışlar
+ * daha sık çıkar ama tüm havuz mümkün → hem çeşitlilik hem tanınırlık. */
+export async function pickGuessWhoTarget(minFame = 60): Promise<GuessWhoCard | null> {
   const { rows } = await pool.query(
     `${CARD_SELECT}
       WHERE p.image_url IS NOT NULL AND g.current_club_id IS NOT NULL
         AND g.birth_date IS NOT NULL AND g.position IS NOT NULL
         AND p.fame >= $1
-      ORDER BY random() LIMIT 1`,
+      ORDER BY power(random(), 1.0 / GREATEST(p.fame, 1)) DESC
+      LIMIT 1`,
     [minFame],
   );
   return rows[0] ? rowToCard(rows[0]) : null;

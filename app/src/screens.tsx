@@ -6949,6 +6949,15 @@ function SpecialPowerHud({ state, actions }: Props) {
   useEffect(() => () => { if (armTimer.current) clearTimeout(armTimer.current); }, []);
   if (!sp?.enabled || !sp.slots.length) return null;
   const totalLeft = sp.maxPerMatch - sp.usedTotal;
+  // "Kullanıldı" çipi yalnız kullanıldığı turda görünür; sonraki turlarda gizlenir
+  // (kullanıcı isteği 2026-09-04: rozet turlara sarkmasın). Kullanılabilir güçler
+  // ve BU turda kullanılan çip görünür kalır. usedAtRound yoksa (eski sunucu) eski
+  // davranış korunur — çip görünür.
+  const visibleSlots = sp.slots.slice(0, 3).filter((sl) =>
+    SPECIAL_POWERS[sl.powerId as SpecialPowerIdView]
+    && !(sl.used && sl.usedAtRound != null && sp.round != null && sl.usedAtRound < sp.round),
+  );
+  if (!visibleSlots.length) return null; // hepsi geçmiş turlarda kullanıldı → HUD boş kalmasın
   const onPress = (powerId: string, used: boolean) => {
     if (used || sp.pending || totalLeft <= 0) { triggerFeedback(GameFeedbackEvent.UI_DISABLED); return; }
     if (armedId !== powerId) {
@@ -6964,7 +6973,7 @@ function SpecialPowerHud({ state, actions }: Props) {
   };
   return (
     <View style={{ flexDirection: 'row', gap: 5 }}>
-      {sp.slots.slice(0, 3).map((sl) => {
+      {visibleSlots.map((sl) => {
         const meta = SPECIAL_POWERS[sl.powerId as SpecialPowerIdView];
         if (!meta) return null;
         const dead = sl.used || totalLeft <= 0;
@@ -7038,7 +7047,10 @@ function SpecialPowerOverlays({ state }: { state: GameState }) {
   };
 
   const ev = state.spEvent;
-  const evSeq = useRef(0);
+  // Mount anında MEVCUT spEvent görülmüş sayılır: yeni turda GuessScreen yeniden
+  // kurulunca (mount) bayat bir spEvent bandrolü YENİDEN oynatmasın (kullanıcı
+  // raporu 2026-09-05). Yalnız mount SONRASI gelen YENİ olay (seq artışı) gösterilir.
+  const evSeq = useRef(state.spEvent?.seq ?? 0);
   useEffect(() => {
     if (!ev || ev.seq === evSeq.current) return;
     evSeq.current = ev.seq;
@@ -8541,8 +8553,10 @@ export function GuessWhoScreen({ state, actions }: Props) {
   useEffect(() => {
     if (!gw?.over || overPlayed.current) return;
     overPlayed.current = true;
-    triggerFeedback(gw.winnerId === youId ? GameFeedbackEvent.MATCH_WIN : gw.winnerId == null ? GameFeedbackEvent.MATCH_DRAW : GameFeedbackEvent.MATCH_LOSE);
-  }, [gw?.over, gw?.winnerId, youId]);
+    // Best-of-3: MAÇ sonu tam kutlama; yalnız TUR bittiyse hafif bildirim.
+    if (gw.matchOver ?? true) triggerFeedback(gw.winnerId === youId ? GameFeedbackEvent.MATCH_WIN : gw.winnerId == null ? GameFeedbackEvent.MATCH_DRAW : GameFeedbackEvent.MATCH_LOSE);
+    else triggerFeedback(GameFeedbackEvent.NOTIFICATION);
+  }, [gw?.over, gw?.winnerId, gw?.matchOver, youId]);
   useEffect(() => { if (!gw?.over) overPlayed.current = false; }, [gw?.over]);
   // Maç sonu: foto altın çerçeveyle "pop" yapar.
   const revealScale = useRef(new Animated.Value(1)).current;
@@ -8553,6 +8567,13 @@ export function GuessWhoScreen({ state, actions }: Props) {
   if (!gw || !room) return <Screen><Text style={styles.muted}>{t('store.loading')}</Text></Screen>;
 
   const over = gw.over;
+  // Best-of-3 (first-to-3): sunucu skor gönderirse çok turlu; matchOver yalnız MAÇ
+  // bitince true. Eski sunucuda alan yok → over=maç sonu (tek tur, geriye uyumlu).
+  const bestOf = gw.scores != null;
+  const matchOver = gw.matchOver ?? true;
+  const myScore = gw.scores?.find((s) => s.id === youId)?.score ?? 0;
+  const oppScore = gw.scores?.find((s) => s.id === (opp?.id ?? ''))?.score ?? 0;
+  const roundOver = over && !matchOver; // yalnız TUR bitti (yeni tur otomatik gelecek)
   const myTurn = !over && gw.turnId === youId;
   const secs = Math.max(0, Math.ceil((gw.turnEndsAt - Date.now()) / 1000));
   const reveal = gw.reveal;
@@ -8618,6 +8639,17 @@ export function GuessWhoScreen({ state, actions }: Props) {
         <MatchExitButton onPress={() => (state.matchOver ? actions.leave() : setShowLeaveConfirm(true))} />
         <PlayerBar state={state} onEmotePress={() => setEmoteOpen(true)} />
       </View>
+
+      {/* Best-of-3 skor: SEN — RAKİP tur galibiyeti (ilk 3 kazanır) */}
+      {bestOf ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: kbOpen ? 3 : 6 }}>
+          <Text style={{ color: myScore >= oppScore ? theme.primary : theme.textSub, fontSize: 18, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{myScore}</Text>
+          <View style={{ backgroundColor: 'rgba(8,14,34,0.7)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+            <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-Black', letterSpacing: 1.5 }}>{t('guesswho.firstTo', { n: '3' })}</Text>
+          </View>
+          <Text style={{ color: oppScore > myScore ? theme.danger : theme.textSub, fontSize: 18, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{oppScore}</Text>
+        </View>
+      ) : null}
 
       {kbOpen && !over ? (
         /* ── KOMPAKT ŞERİT (klavye açık): küçük foto + sıra + halka + pip'ler tek satır.
@@ -8730,7 +8762,9 @@ export function GuessWhoScreen({ state, actions }: Props) {
       {over ? (
         <View style={{ alignItems: 'center', gap: 10, marginTop: 8 }}>
           <Text style={{ color: gw.winnerId === youId ? theme.primary : gw.winnerId == null ? theme.gold : theme.danger, fontSize: 26, fontFamily: 'Poppins-Black', letterSpacing: 1.2, ...engrave('lg') }}>
-            {gw.winnerId === youId ? t('guesswho.youWon') : gw.winnerId == null ? t('guesswho.draw') : t('guesswho.youLost')}
+            {matchOver
+              ? (gw.winnerId === youId ? t('guesswho.youWon') : gw.winnerId == null ? t('guesswho.draw') : t('guesswho.youLost'))
+              : (gw.winnerId === youId ? t('guesswho.roundWon') : gw.winnerId == null ? t('guesswho.roundDraw') : t('guesswho.roundLost'))}
           </Text>
           {/* Bilgi çipleri YALNIZ beraberlikte: kazanan varsa doğru tahmin satırı (yeşil)
               takım/yaş/forma vs. zaten gösteriyor — altta tekrarı gereksiz (kullanıcı isteği
@@ -8752,20 +8786,27 @@ export function GuessWhoScreen({ state, actions }: Props) {
               ))}
             </View>
           ) : null}
-          {state.rematchState === 'incoming' ? (
+          {matchOver ? (
             <>
-              <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>{t('result.rematchIncoming', { name: state.rematchByName ?? '' })}</Text>
-              <View style={{ flexDirection: 'row', gap: 10, alignSelf: 'stretch' }}>
-                <View style={{ flex: 1 }}><Btn label={t('result.accept')} kind="accent" icon="checkmark-circle" onPress={actions.acceptRematch} /></View>
-                <View style={{ flex: 1 }}><Btn label={t('result.decline')} kind="ghost" icon="close" onPress={actions.declineRematch} /></View>
-              </View>
+              {state.rematchState === 'incoming' ? (
+                <>
+                  <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>{t('result.rematchIncoming', { name: state.rematchByName ?? '' })}</Text>
+                  <View style={{ flexDirection: 'row', gap: 10, alignSelf: 'stretch' }}>
+                    <View style={{ flex: 1 }}><Btn label={t('result.accept')} kind="accent" icon="checkmark-circle" onPress={actions.acceptRematch} /></View>
+                    <View style={{ flex: 1 }}><Btn label={t('result.decline')} kind="ghost" icon="close" onPress={actions.declineRematch} /></View>
+                  </View>
+                </>
+              ) : state.rematchState === 'waiting' ? (
+                <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold' }}>{t('result.rematchWaiting')}</Text>
+              ) : (
+                <Btn big label={t('result.playAgain')} kind="accent" icon="refresh" feedback={GameFeedbackEvent.UI_PLAY} onPress={actions.playAgain} />
+              )}
+              <Btn label={t('result.leave')} kind="ghost" icon="home" onPress={actions.leave} />
             </>
-          ) : state.rematchState === 'waiting' ? (
-            <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold' }}>{t('result.rematchWaiting')}</Text>
           ) : (
-            <Btn big label={t('result.playAgain')} kind="accent" icon="refresh" feedback={GameFeedbackEvent.UI_PLAY} onPress={actions.playAgain} />
+            /* Yalnız TUR bitti — sonraki tur otomatik geliyor (buton yok). */
+            <Text style={{ color: theme.muted, fontSize: 13, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.3 }}>{t('guesswho.nextRound')}</Text>
           )}
-          <Btn label={t('result.leave')} kind="ghost" icon="home" onPress={actions.leave} />
         </View>
       ) : null}
 
@@ -11918,7 +11959,10 @@ type EmoteFlight = {
   fromSize: number; toSize: number;
 };
 
-function FlyingEmote({ flight, onEnd }: { flight: EmoteFlight; onEnd: (key: number) => void }) {
+function FlyingEmote({ flight, onEnd, render }: { flight: EmoteFlight; onEnd: (key: number) => void; render?: (id: string, size: number) => ReactNode }) {
+  // render — uçan parçanın nasıl çizileceği (varsayılan: ifade çıkartması).
+  // Güçler paneli aynı uçuşu SpecialPowerBadge ile yeniden kullanır.
+  const renderPiece = render ?? ((id: string, size: number) => <EmoteSticker id={id} size={size} play={false} />);
   const p = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(p, { toValue: 1, duration: 620, easing: Easing.inOut(Easing.cubic), useNativeDriver: true })
@@ -11974,7 +12018,7 @@ function FlyingEmote({ flight, onEnd }: { flight: EmoteFlight; onEnd: (key: numb
             ],
           }}
         >
-          <EmoteSticker id={flight.id} size={flight.fromSize} play={false} />
+          {renderPiece(flight.id, flight.fromSize)}
         </Animated.View>
       ))}
       <Animated.View
@@ -11989,7 +12033,7 @@ function FlyingEmote({ flight, onEnd }: { flight: EmoteFlight; onEnd: (key: numb
           ],
         }}
       >
-        <EmoteSticker id={flight.id} size={flight.fromSize} play={false} />
+        {renderPiece(flight.id, flight.fromSize)}
       </Animated.View>
     </>
   );
@@ -12083,6 +12127,9 @@ function fmtTimeLeft(ms: number): string {
 
 function PowersPanel({ profile, onUse, onToggleSpecial }: { profile: ProfileView | null; onUse: (id: PowerId) => void; onToggleSpecial: (id: SpecialPowerIdView) => void }) {
   const [confirmId, setConfirmId] = useState<PowerId | null>(null);
+  // Maç gücü kuşanma İKİ ADIM (kullanıcı isteği 2026-09-05: İfadeler'deki gibi) —
+  // karta dokun: seçilir + altında KULLAN flap'i çıkar; kuşanma YALNIZ flap'e basınca.
+  const [activeSpid, setActiveSpid] = useState<SpecialPowerIdView | null>(null);
   const [noStreakOpen, setNoStreakOpen] = useState(false); // "geri yüklenecek kırık seri yok" bilgi popup'ı (güç TÜKETİLMEZ)
   // 2x XP geri sayımı canlı kalsın — yarım dakikada bir tazele
   const [, setTick] = useState(0);
@@ -12174,52 +12221,179 @@ function PowersPanel({ profile, onUse, onToggleSpecial }: { profile: ProfileView
   const confirmMeta = confirmId ? POWERS[confirmId] : null;
   // MAÇ GÜÇLERİ kuşanma durumu — İfadeler slot kalıbının güç uyarlaması.
   const spEquipped = ((profile?.equippedSpecialPowers ?? (profile?.equippedSpecialPower ? [profile.equippedSpecialPower] : [])) as SpecialPowerIdView[]).filter((id) => SPECIAL_POWERS[id]);
+
+  // ── Karttan yuvaya UÇUŞ (kullanıcı isteği 2026-09-05: İfadeler'deki gibi) ──
+  // KULLAN'a basınca güç rozeti ölçülüp üst katmandan yuvaya süzülür; yuvadayken
+  // üstüne basınca KALDIR flap'i çıkar. İfadelerdeki (EmotesPanel) mekaniğin aynısı.
+  const SP_SLOTS = 3;
+  const spRootRef = useRef<View>(null);
+  const spSlotRefs = useRef<(View | null)[]>([]);
+  const spBadgeRefs = useRef<Record<string, View | null>>({});
+  const [spFlights, setSpFlights] = useState<EmoteFlight[]>([]);
+  const spFlightSeq = useRef(0);
+  const spDoneFlights = useRef<Set<number>>(new Set());
+  const spEquippedRef = useRef(spEquipped);
+  spEquippedRef.current = spEquipped;
+  const [spSlotSel, setSpSlotSel] = useState<number | null>(null);
+  const [spLandedIdx, setSpLandedIdx] = useState<number | null>(null);
+  const spLandFlash = useRef(new Animated.Value(0)).current;
+
+  const spPruneFlight = useCallback((key: number) => {
+    spDoneFlights.current.delete(key);
+    setSpFlights((cur) => cur.filter((f) => f.key !== key));
+  }, []);
+
+  const onSpFlightEnd = useCallback((key: number) => {
+    spDoneFlights.current.add(key);
+    setSpFlights((cur) => {
+      const f = cur.find((x) => x.key === key);
+      if (f) {
+        setSpLandedIdx(f.toIdx);
+        spLandFlash.setValue(1);
+        Animated.timing(spLandFlash, { toValue: 0, duration: 420, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+      }
+      // sunucu kuşanmayı onayladıysa uçan kopyayı hemen bırak (yuva zaten dolu çizilir)
+      if (f && spEquippedRef.current.includes(f.id as SpecialPowerIdView)) return cur.filter((x) => x.key !== key);
+      return cur;
+    });
+  }, [spLandFlash]);
+
+  // Onay inişten SONRA gelirse: onaylanan biten uçuşları burada bırak.
+  useEffect(() => {
+    setSpFlights((cur) => cur.filter((f) => !(spDoneFlights.current.has(f.key) && spEquipped.includes(f.id as SpecialPowerIdView))));
+  }, [spEquipped.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Karttan (from ölçümü) → hedef yuvaya güç uçuşu; sunucu toggle uçuşla eşzamanlı.
+  const spStartFlight = (spid: SpecialPowerIdView, from: FlightRect | null) => {
+    triggerFeedback(GameFeedbackEvent.UI_TOGGLE_ON);
+    const targetIdx = Math.min(SP_SLOTS - 1, spEquipped.length + spFlights.length);
+    const slotNode = spSlotRefs.current[targetIdx];
+    const rootNode = spRootRef.current;
+    if (!from || !slotNode || !rootNode) { onToggleSpecial(spid); return; } // ölçülemedi → animasyonsuz ama daima kuşanır
+    rootNode.measureInWindow((rx, ry) => {
+      slotNode.measureInWindow((sx, sy, sw, sh) => {
+        const fromSize = 50; // karttaki rozet boyu
+        const key = ++spFlightSeq.current;
+        const flight: EmoteFlight = {
+          key, id: spid, toIdx: targetIdx,
+          fromX: from.x + from.w / 2 - fromSize / 2 - rx,
+          fromY: from.y + from.h / 2 - fromSize / 2 - ry,
+          toX: sx + sw / 2 - fromSize / 2 - rx,
+          toY: sy + sh / 2 - fromSize / 2 - ry,
+          fromSize, toSize: 52, // yuvadaki rozet boyu
+        };
+        try { LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity')); } catch {}
+        setSpFlights((cur) => [...cur, flight]);
+        setTimeout(() => spPruneFlight(key), 4000); // güvenlik ağı
+        onToggleSpecial(spid);
+      });
+    });
+  };
+
   return (
-    <>
+    <View ref={spRootRef} collapsable={false}>
       {/* ── MAÇ GÜÇLERİ: 3 slot + tüm güçler (kullanıcı isteği 2026-08-28 —
           İfadeler'deki kuşanma düzeninin aynısı; dondurucu dahil HEPSİ listede,
           elde olmayan silik). Dokun: kuşan/çıkar — sunucu toggle. */}
       <Text style={{ color: theme.primary, fontFamily: 'Poppins-ExtraBold', fontSize: 13, letterSpacing: 0.5, marginBottom: 4, marginLeft: 4 }}>{t('collection.spLoadout')}</Text>
       <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-SemiBold', marginBottom: 10, marginLeft: 4 }}>{t('collection.spLoadoutHint', { n: String(spEquipped.length) })}</Text>
-      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 14 }}>
-        {Array.from({ length: 3 }).map((_, i) => {
+      <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-start', gap: 12, marginBottom: 12, zIndex: spSlotSel != null ? 20 : 0 }}>
+        {Array.from({ length: SP_SLOTS }).map((_, i) => {
           const id = spEquipped[i];
+          // uçuşu süren güç yuvada henüz ÇİZİLMEZ — uçan kopya inince belirir
+          const inFlight = id ? spFlights.some((f) => f.id === id) : false;
+          const shown = Boolean(id) && !inFlight;
+          const sel = spSlotSel === i;
           return (
-            <Pressable
-              key={`sps${i}`}
-              disabled={!id}
-              onPress={() => { if (id) { triggerFeedback(GameFeedbackEvent.UI_TOGGLE_OFF); onToggleSpecial(id); } }}
-              style={({ pressed }) => ({ width: 72, height: 72, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: id ? theme.surface2 : theme.well, ...(id ? { borderWidth: 2, borderColor: theme.primary } : {}), transform: [{ translateY: pressed ? 2 : 0 }] })}
-            >
-              {!id ? <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} /> : null}
-              {id ? <SpecialPowerBadge id={id} size={52} /> : <Ionicons name="add" size={26} color={theme.muted} />}
-            </Pressable>
+            <View key={`sps${i}`} style={{ alignItems: 'center', zIndex: sel ? 30 : 0 }}>
+              <Pressable
+                ref={(n) => { spSlotRefs.current[i] = n as unknown as View; }}
+                disabled={!shown}
+                onPress={() => {
+                  if (!shown) { setSpSlotSel(null); return; }
+                  triggerFeedback(GameFeedbackEvent.UI_TAP);
+                  setActiveSpid(null);
+                  setSpSlotSel((cur) => (cur === i ? null : i));
+                }}
+                style={({ pressed }) => ({
+                  width: 72, height: 72, borderRadius: 18, overflow: 'hidden', alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: shown ? theme.surface2 : theme.well,
+                  ...(sel ? { borderWidth: 2, borderColor: theme.danger } : shown ? { borderWidth: 2, borderColor: theme.primary } : {}),
+                  transform: [{ translateY: pressed ? 2 : 0 }],
+                })}
+              >
+                {!shown ? <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} /> : null}
+                {shown ? <SpecialPowerBadge id={id} size={52} /> : <Ionicons name="add" size={26} color={theme.muted} />}
+                {/* iniş parlaması — yuva bir nefes yeşil ışır */}
+                {spLandedIdx === i ? (
+                  <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 16, backgroundColor: theme.primary, opacity: spLandFlash.interpolate({ inputRange: [0, 1], outputRange: [0, 0.28] }) }]} />
+                ) : null}
+              </Pressable>
+              {/* KALDIR — AKIŞ İÇİ buton. Absolute flap (top:100%) yuvanın hit
+                  alanına takılıp dokunuş almıyordu; akış içi buton her zaman
+                  dokunulabilir. Seçilince belirir, satırı biraz büyütür. */}
+              {sel && shown ? (
+                <Pressable
+                  onPress={() => { if (id) { triggerFeedback(GameFeedbackEvent.UI_TOGGLE_OFF); onToggleSpecial(id); setSpSlotSel(null); } }}
+                  hitSlop={8}
+                  style={({ pressed }) => ({
+                    marginTop: 6, width: 72,
+                    borderRadius: 11,
+                    backgroundColor: pressed ? theme.dangerDark : theme.danger,
+                    alignItems: 'center', paddingVertical: pressed ? 6 : 8,
+                    ...shadowRow,
+                  })}
+                >
+                  <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 11, letterSpacing: 0.5, textShadowColor: 'rgba(4,9,24,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 1 }}>
+                    {t('collection.remove').toLocaleUpperCase(currentLang())}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
           );
         })}
       </View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 20 }}>
-        {SPECIAL_POWER_LIST.map((spid) => {
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 20, zIndex: activeSpid != null ? 20 : 0 }}>
+        {/* Kuşanılan/uçuştaki güçler ızgarada GÖRÜNMEZ — yalnız yuvalarında yaşar
+            (İfadeler kalıbı); çıkarma yuvadaki KALDIR flap'inden yapılır. */}
+        {SPECIAL_POWER_LIST.filter((spid) => !spEquipped.includes(spid) && !spFlights.some((f) => f.id === spid)).map((spid) => {
           const cnt = spInventoryCount(profile, spid);
-          const eq = spEquipped.includes(spid);
           const meta = SPECIAL_POWERS[spid];
+          const owned = cnt > 0;
+          const active = activeSpid === spid;                // seçili → altında KULLAN flap
+          const flapDisabled = spEquipped.length + spFlights.length >= SP_SLOTS; // 3 yuva dolu → kuşanamaz
           return (
-            <Pressable
-              key={spid}
-              disabled={cnt <= 0 && !eq}
-              onPress={() => { triggerFeedback(eq ? GameFeedbackEvent.UI_TOGGLE_OFF : GameFeedbackEvent.UI_TOGGLE_ON); onToggleSpecial(spid); }}
-              style={({ pressed }) => ({ width: 96, borderRadius: 16, padding: 8, alignItems: 'center', gap: 5, backgroundColor: theme.card, borderWidth: 2, borderColor: eq ? theme.primary : withAlpha(theme.border, 0.9), opacity: cnt <= 0 && !eq ? 0.45 : pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}
-            >
-              <View>
-                <SpecialPowerBadge id={spid} size={50} dead={cnt <= 0 && !eq} />
-                {cnt > 0 ? (
-                  <View style={{ position: 'absolute', right: -7, top: -6, minWidth: 19, height: 19, borderRadius: 10, paddingHorizontal: 4, backgroundColor: meta.color, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ color: theme.ink, fontSize: 9.5, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>x{cnt}</Text>
-                  </View>
-                ) : null}
-              </View>
-              <Text numberOfLines={1} style={{ color: eq ? theme.primary : theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 10 }}>{t(meta.nameKey)}</Text>
-              <Text style={{ color: theme.muted, fontSize: 8.5, fontFamily: 'Poppins-Black', letterSpacing: 0.5 }}>{eq ? '✓ ' + t('store.spEquipped') : cnt > 0 ? t('collection.use').toLocaleUpperCase(currentLang()) : t('collection.spNone')}</Text>
-            </Pressable>
+            <View key={spid} style={{ width: 96, zIndex: active ? 30 : 0 }}>
+              <Pressable
+                disabled={!owned}
+                onPress={() => { triggerFeedback(GameFeedbackEvent.UI_TAP); setSpSlotSel(null); setActiveSpid(active ? null : spid); }}
+                style={({ pressed }) => ({ borderRadius: 16, padding: 8, alignItems: 'center', gap: 5, backgroundColor: theme.card, borderWidth: 2, borderColor: active ? withAlpha(theme.primary, 0.55) : withAlpha(theme.border, 0.9), opacity: !owned ? 0.45 : pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}
+              >
+                <View ref={(n) => { spBadgeRefs.current[spid] = n as unknown as View; }} collapsable={false}>
+                  <SpecialPowerBadge id={spid} size={50} dead={!owned} />
+                  {cnt > 0 ? (
+                    <View style={{ position: 'absolute', right: -7, top: -6, minWidth: 19, height: 19, borderRadius: 10, paddingHorizontal: 4, backgroundColor: meta.color, borderWidth: 2, borderColor: theme.card, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ color: theme.ink, fontSize: 9.5, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>x{cnt}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <Text numberOfLines={1} style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 10 }}>{t(meta.nameKey)}</Text>
+                <Text style={{ color: theme.muted, fontSize: 8.5, fontFamily: 'Poppins-Black', letterSpacing: 0.5 }}>{owned ? t('collection.spOwnedShort') : t('collection.spNone')}</Text>
+              </Pressable>
+              {/* İfadelerdeki gibi: KULLAN'a basınca rozet ölçülüp yuvaya UÇAR */}
+              <ActionFlap
+                visible={active && owned}
+                label={(flapDisabled ? t('collection.slotsFull') : t('collection.use')).toLocaleUpperCase(currentLang())}
+                tone="primary"
+                disabled={flapDisabled}
+                onPress={() => {
+                  const node = spBadgeRefs.current[spid];
+                  if (node) node.measureInWindow((x, y, w, h) => spStartFlight(spid, { x, y, w, h }));
+                  else spStartFlight(spid, null); // ölçüm yolu yoksa animasyonsuz kuşan
+                  setActiveSpid(null);
+                }}
+              />
+            </View>
           );
         })}
       </View>
@@ -12276,7 +12450,11 @@ function PowersPanel({ profile, onUse, onToggleSpecial }: { profile: ProfileView
         </Text>
         <Btn big kind="primary" label={t('common.continue')} onPress={() => setNoStreakOpen(false)} />
       </GameModal>
-    </>
+      {/* uçuş katmanı — kart→yuva yolculuğundaki güç rozetleri her şeyin üstünde süzülür */}
+      {spFlights.map((f) => (
+        <FlyingEmote key={f.key} flight={f} onEnd={onSpFlightEnd} render={(id, size) => <SpecialPowerBadge id={id as SpecialPowerIdView} size={size} />} />
+      ))}
+    </View>
   );
 }
 

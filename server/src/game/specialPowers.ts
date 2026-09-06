@@ -129,9 +129,11 @@ export async function getSpecialPowerInventory(userId: string): Promise<SpecialP
   return rows[0] ? inventoryFromRow(rows[0]) : null;
 }
 
-/** Maç loadout anlık görüntüsü: önce kuşanılan liste (stokta olanlar), sonra
- * boş slotlar en çok sahip olunan güçlerle otomatik dolar — güç sahibi oyuncu
- * asla butonsuz kalmaz. En fazla maxPerMatch FARKLI güç, her biri 1 kullanım. */
+/** Maç loadout anlık görüntüsü: YALNIZ oyuncunun SLOTA KUŞANDIĞI güçler (stokta
+ * olanlar). Sahip olunan ama kuşanılmayan güçler maça GİRMEZ (kullanıcı isteği
+ * 2026-09-05: "sahip olunan güçler arasından sadece slotlara eklenen 3 tanesi
+ * maçlarda kullanılır"). Otomatik-doldurma KALDIRILDI. En fazla maxPerMatch farklı
+ * güç, her biri 1 kullanım. equippedList boşsa eski tekil `equipped` alanına düşülür. */
 export function snapshotLoadout(inv: SpecialPowerInventory, maxSlots = specialPowersConfig().maxPerMatch): { powerId: SpecialPowerId; qty: number }[] {
   const slots: { powerId: SpecialPowerId; qty: number }[] = [];
   const seen = new Set<SpecialPowerId>();
@@ -140,10 +142,8 @@ export function snapshotLoadout(inv: SpecialPowerInventory, maxSlots = specialPo
     seen.add(id);
     slots.push({ powerId: id, qty: inv[id] });
   };
-  const preferred = inv.equippedList.length ? inv.equippedList : (inv.equipped ? [inv.equipped] : []);
-  for (const id of preferred) push(id);
-  const rest = SPECIAL_POWER_IDS.filter((id) => !seen.has(id)).sort((a, b) => inv[b] - inv[a]);
-  for (const id of rest) push(id);
+  const equipped = inv.equippedList.length ? inv.equippedList : (inv.equipped ? [inv.equipped] : []);
+  for (const id of equipped) push(id);
   return slots;
 }
 

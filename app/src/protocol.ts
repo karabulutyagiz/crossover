@@ -458,7 +458,7 @@ export type ServerMsg =
   | { type: 'guess_denied'; reason: 'too_late' | 'burned' | 'cooldown' | 'frozen' | 'expired' }
   | { type: 'pass_locked'; byId: string; byName: string }
   // ---- Maç içi Özel Güçler ----
-  | { type: 'special_power_state'; enabled: boolean; you: { powerId: string | null; qty: number; used: boolean; usedPowerId: string | null }; opponentUsedPowerId: string | null; config: { freezeMs: number; extraTimeMs: number }; activeFreezeUntil?: number; yourDeadline?: number; slots?: { powerId: string; qty: number; used: boolean }[]; usedTotal?: number; maxPerMatch?: number }
+  | { type: 'special_power_state'; enabled: boolean; you: { powerId: string | null; qty: number; used: boolean; usedPowerId: string | null }; opponentUsedPowerId: string | null; config: { freezeMs: number; extraTimeMs: number }; activeFreezeUntil?: number; yourDeadline?: number; slots?: { powerId: string; qty: number; used: boolean; usedAtRound?: number | null }[]; usedTotal?: number; maxPerMatch?: number; round?: number }
   | { type: 'special_power_activated'; byId: string; byName: string; powerId: string; roundNumber: number; serverNow: number; effect?: { targetId?: string; freezeUntil?: number; newDeadline?: number } }
   | { type: 'special_power_reveal'; playerName: string; imageUrl: string | null }
   | { type: 'special_power_effect'; kind: 'second_chance_triggered'; byId: string; byName: string }
@@ -478,7 +478,7 @@ export type ServerMsg =
   | { type: 'cozkazan_hint_error'; reason: 'insufficient' | 'unavailable' }
   // ── "Ben Kimim?" (server ile AYNA) ──
   | { type: 'guesswho_pool'; players: { id: number; name: string }[] }
-  | { type: 'guesswho_state'; targetImageUrl: string | null; blurLevel: number; guessesLeft: number; turnId: string | null; turnEndsAt: number; guesses: GwRow[]; over: boolean; winnerId: string | null; winnerName: string | null; reveal: GwReveal | null; lastGuessById?: string }
+  | { type: 'guesswho_state'; targetImageUrl: string | null; blurLevel: number; guessesLeft: number; turnId: string | null; turnEndsAt: number; guesses: GwRow[]; over: boolean; winnerId: string | null; winnerName: string | null; reveal: GwReveal | null; scores?: { id: string; score: number }[]; matchOver?: boolean; roundNo?: number; lastGuessById?: string }
   | { type: 'guesswho_denied'; reason: 'not_turn' | 'not_pool' | 'already' | 'over' }
   | {
       type: 'result';

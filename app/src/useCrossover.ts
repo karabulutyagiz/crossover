@@ -224,9 +224,12 @@ export interface GameState {
     enabled: boolean;
     you: { powerId: string | null; qty: number; used: boolean; usedPowerId: string | null };
     // 3-slot loadout (2026-08-27 revizyonu): her güç 1 kez, toplam maxPerMatch.
-    slots: { powerId: string; qty: number; used: boolean }[];
+    // usedAtRound: gücün kullanıldığı tur (1-tabanlı); GEÇMİŞ turda kullanılan çip
+    // gizlenir → "kullanıldı" rozeti sonraki turlara sarkmaz (kullanıcı isteği 2026-09-04).
+    slots: { powerId: string; qty: number; used: boolean; usedAtRound?: number | null }[];
     usedTotal: number;
     maxPerMatch: number;
+    round: number | null; // mevcut tur (1-tabanlı) — usedAtRound ile kıyaslanır
     opponentUsedPowerId: string | null;
     config: { freezeMs: number; extraTimeMs: number };
     pending: boolean; // istek uçuşta (activated/denied bekleniyor)
@@ -1015,7 +1018,11 @@ function reducer(state: GameState, action: Action): GameState {
         iReady: false,
       };
     case 'pick_phase':
-      return { ...state, phase: 'pick', picked: false, pickEndsAt: action.endsAt, pickRole: (action as any).pickRole ?? 'team', usedClubIds: (action as any).usedClubIds ?? [], usedCountries: (action as any).usedCountries ?? [], teams: null, locked: null, oppWrong: null, youBurned: false, youRetryAt: null, passedBy: [], result: null, clubResults: [] };
+      // spEvent YENİ TURUN İLK aksiyonunda temizlenir: GuessScreen reveal fazında
+      // MOUNT olur; o an spEvent önceki turdan kalmışsa 'güç kullanıldı' bandrolü
+      // yeniden oynuyordu (kullanıcı raporu 2026-09-05). guess_phase'deki temizleme
+      // ÇOK GEÇti (reveal'den sonra). Burada temizleyince mount anında null olur.
+      return { ...state, phase: 'pick', picked: false, pickEndsAt: action.endsAt, pickRole: (action as any).pickRole ?? 'team', usedClubIds: (action as any).usedClubIds ?? [], usedCountries: (action as any).usedCountries ?? [], teams: null, locked: null, oppWrong: null, youBurned: false, youRetryAt: null, passedBy: [], result: null, clubResults: [], spEvent: null, spReveal: null, spFrozenUntil: null, spSkipBy: null };
     case 'reveal_teams':
       return {
         ...state,
@@ -1024,6 +1031,7 @@ function reducer(state: GameState, action: Action): GameState {
         revealMode: (action as any).mode ?? 'team-team',
         revealCountry: (action as any).country ?? null,
         revealLetter: (action as any).letter ?? null,
+        spEvent: null, // reveal'de de temizle (pick'siz başlayan turlara karşı güvenlik ağı)
       };
     case 'guess_phase':
       // Yeni tur: tur-kapsamlı güç görselleri (freeze/reveal/skip nedeni) temizlenir.
@@ -1113,6 +1121,7 @@ function reducer(state: GameState, action: Action): GameState {
           slots: a.slots ?? (a.you.powerId ? [{ powerId: a.you.powerId, qty: a.you.qty, used: a.you.used }] : []),
           usedTotal: a.usedTotal ?? (a.you.used ? 1 : 0),
           maxPerMatch: a.maxPerMatch ?? 1,
+          round: a.round ?? null,
           opponentUsedPowerId: a.opponentUsedPowerId,
           config: a.config,
           pending: false,

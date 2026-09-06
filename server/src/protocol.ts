@@ -411,7 +411,7 @@ export type ServerMsg =
   // Maç başında + reconnect'te gönderilir: SENİN kuşanılmış gücün ve kullanım
   // durumu. Rakibin SEÇTİĞİ güç asla sızmaz (stratejik gizlilik) — yalnız
   // KULLANDIĞI güç, kullanım ANINDA activated ile açıklanır.
-  | { type: 'special_power_state'; enabled: boolean; you: { powerId: string | null; qty: number; used: boolean; usedPowerId: string | null }; opponentUsedPowerId: string | null; config: { freezeMs: number; extraTimeMs: number }; activeFreezeUntil?: number; yourDeadline?: number; slots?: { powerId: string; qty: number; used: boolean }[]; usedTotal?: number; maxPerMatch?: number }
+  | { type: 'special_power_state'; enabled: boolean; you: { powerId: string | null; qty: number; used: boolean; usedPowerId: string | null }; opponentUsedPowerId: string | null; config: { freezeMs: number; extraTimeMs: number }; activeFreezeUntil?: number; yourDeadline?: number; slots?: { powerId: string; qty: number; used: boolean; usedAtRound?: number | null }[]; usedTotal?: number; maxPerMatch?: number; round?: number }
   // İKİ istemciye de aynı olay: kim, hangi güç, hangi tur. effect alanı güce özgü
   // sunucu-zamanı verir (freezeUntil / newDeadline) — istemci saatine güvenilmez.
   | { type: 'special_power_activated'; byId: string; byName: string; powerId: string; roundNumber: number; serverNow: number; effect?: { targetId?: string; freezeUntil?: number; newDeadline?: number } }
@@ -444,7 +444,7 @@ export type ServerMsg =
   | { type: 'guesswho_pool'; players: { id: number; name: string }[] }
   // Tam durum: bulanık hedef foto + blur seviyesi + ortak kalan hak + sıra + tahmin
   // satırları (iki taraf da görür). Bittiğinde reveal ile hedef açığa çıkar.
-  | { type: 'guesswho_state'; targetImageUrl: string | null; blurLevel: number; guessesLeft: number; turnId: string | null; turnEndsAt: number; guesses: GwRow[]; over: boolean; winnerId: string | null; winnerName: string | null; reveal: GwReveal | null; lastGuessById?: string }
+  | { type: 'guesswho_state'; targetImageUrl: string | null; blurLevel: number; guessesLeft: number; turnId: string | null; turnEndsAt: number; guesses: GwRow[]; over: boolean; winnerId: string | null; winnerName: string | null; reveal: GwReveal | null; scores?: { id: string; score: number }[]; matchOver?: boolean; roundNo?: number; lastGuessById?: string }
   | { type: 'guesswho_denied'; reason: 'not_turn' | 'not_pool' | 'already' | 'over' } // özel: sadece gönderene
   // matchOver: a player reached `target` wins → the match is over (offer rematch).
   | {
