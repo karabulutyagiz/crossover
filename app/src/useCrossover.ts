@@ -9,6 +9,7 @@ import { currentLang, t } from './i18n';
 import { getPushToken, requestPushPermission } from './notifications';
 import { initOfflineDB } from './offline/db';
 import { startMediaPrefetch, setMediaPrefetchMatchActive } from './mediaPrefetch';
+import { noteSent, noteServerMsg } from './phaseTiming';
 import { captureError, track } from './telemetry';
 import { noteMatchIntent } from './interstitial';
 import type {
@@ -1470,6 +1471,7 @@ export function useCrossover() {
         try {
           const m = JSON.parse(String(e.data)) as ServerMsg;
           lastSocketActivity.current = Date.now();
+          noteServerMsg(m as unknown as { type: string } & Record<string, unknown>); // faz geçiş ölçeri: yalnız damga
           // Arkadaş işleminden hemen sonra gelen sunucu 'error'ı (zaten arkadaşsınız,
           // kullanıcı bulunamadı vb.) ana oyun ekranında DEĞİL, yalnız Arkadaşlar
           // ekranında görünsün diye friendNotice'a yönlendirilir.
@@ -1947,6 +1949,7 @@ export function useCrossover() {
       },
       start: () => send({ type: 'start' }),
       pickTeam: (clubId: number) => {
+        noteSent('pick');
         send({ type: 'pick_team', clubId });
         dispatch({ type: '_picked' });
       },
@@ -1966,6 +1969,7 @@ export function useCrossover() {
       },
       submitGuess: (text: string) => {
         track('guess_submit', { length: text.trim().length });
+        noteSent('guess');
         send({ type: 'submit_guess', text });
       },
       pass: () => {

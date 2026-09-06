@@ -125,6 +125,7 @@ import { isRonaldoAnswer, triggerDiamondCollectTick, triggerFeedback } from './s
 import { loadFeedbackPreferences } from './src/feedback/preferences';
 import { configureInterstitial, interstitialDiagnostics, interstitialPresentation, isInterstitialDue, maybeShowInterstitial, recordMatchEnd, setInterstitialPhase } from './src/interstitial';
 import { markCleanExit, setFreezeScreen, startFreezeWatch } from './src/freezeWatch';
+import { flushPhaseTiming, notePainted } from './src/phaseTiming';
 import {
   evaluateMonetizationOffer,
   hasActiveSocialPack,
@@ -1186,6 +1187,18 @@ function AppRoot() {
     const sub = AppState.addEventListener('change', (st) => { if (st === 'background') markCleanExit(); });
     return () => { stop(); sub.remove(); };
   }, []);
+  // FAZ GEÇİŞ ÖLÇERİ (2026-09-06): "boyandı" damgaları + maç sonunda tek satır
+  // rapor (PT|…) — freeze_report kanalıyla, sunucu değişikliği gerekmez.
+  // Ayrıntı ve kod sözlüğü: src/phaseTiming.ts.
+  useEffect(() => {
+    if (state.phase === 'pick' && state.clubResults.length > 0) notePainted('grid');
+    else if (state.phase === 'guess') notePainted('guess');
+  }, [state.phase, state.clubResults.length]);
+  useEffect(() => {
+    if (!state.matchOver) return;
+    const code = flushPhaseTiming();
+    if (code) { try { freezeReportRef.current('jank', code, 0); } catch { /* tanı gönderilemedi — oyun etkilenmez */ } }
+  }, [state.matchOver]);
   const adPendingRef = useRef(false); // reklam bekleyişi sürüyor mu (effect yeniden çalışsa da korunur)
   // CANLI PROFİL (2026-09-01 — paketliye reklam hatası): aşağıdaki zamanlayıcı
   // 20 sn yaşar ve kapanışı state.profile'ı KURULDUĞU andaki haliyle hapseder;
