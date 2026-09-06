@@ -702,13 +702,19 @@ function PulseView({ children }: { children: React.ReactNode }) {
   return <Animated.View style={{ alignSelf: 'stretch', transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.045] }) }] }}>{children}</Animated.View>;
 }
 
+// HER MAÇ SONU SAHTE "KOPYA" BANDI (oyuncu raporu 2026-09-06, 9a22db6'dan sonra
+// da sürüyordu): bu bileşen sekme dünyasında ve maç dünyasında AYRI örnek
+// olarak mount edilir; "hangi seq gösterildi" bilgisi bileşen state'indeydi ve
+// her menüye dönüşte sıfırlanıyordu. Oturumda BİR kez bile seq artmışsa (kısa
+// arka plan dalışı ya da ekran görüntüsü) her maç sonunda ana ekrana dönüşte
+// aynı uyarı yeniden çalınıyordu. Bilgi artık modül-yerel: örnekten bağımsız.
+let cheatWarnShownSeq = 0;
 function CheatWarnBanner({ seq }: { seq: number }) {
   const slide = useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
-  const [shownSeq, setShownSeq] = useState(0);
   useEffect(() => {
-    if (!seq || seq === shownSeq) return;
-    setShownSeq(seq);
+    if (!seq || seq === cheatWarnShownSeq) return;
+    cheatWarnShownSeq = seq;
     triggerFeedback(GameFeedbackEvent.UI_ERROR);
     slide.setValue(0);
     Animated.sequence([
@@ -716,7 +722,7 @@ function CheatWarnBanner({ seq }: { seq: number }) {
       Animated.delay(2600),
       Animated.timing(slide, { toValue: 0, duration: 220, easing: Easing.in(Easing.quad), useNativeDriver: true }),
     ]).start();
-  }, [seq, shownSeq, slide]);
+  }, [seq, slide]);
   if (!seq) return null;
   return (
     <Animated.View pointerEvents="none" style={{
@@ -2897,6 +2903,9 @@ function AppRoot() {
             onReject={() => actions.respondMatchInvite(state.matchInvite!.fromId, false)}
           />
         ) : null}
+        {/* Kopya uyarısı OLAYIN ANINDA, maçta görünür — eskiden yalnız sekme
+            dünyasında çizildiği için menüye dönüşe erteleniyordu. */}
+        <CheatWarnBanner seq={cheatWarnSeq} />
         <TopBanner
           banner={state.banner}
           onClose={actions.clearBanner}
