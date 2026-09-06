@@ -59,15 +59,17 @@ function rowToCard(r: any): GuessWhoCard {
   };
 }
 
-/** Hedef oyuncu: tanınırlık için fame eşiği üstünden rastgele (foto + tam nitelik şart). */
-export async function pickGuessWhoTarget(minFame = 120): Promise<GuessWhoCard | null> {
+/** Hedef oyuncu: tanınırlık için fame eşiği üstünden rastgele (foto + tam nitelik şart).
+ * excludeIds: aynı maçın önceki turlarında çıkan hedefler (çok turlu mod) tekrar gelmez. */
+export async function pickGuessWhoTarget(minFame = 120, excludeIds: number[] = []): Promise<GuessWhoCard | null> {
   const { rows } = await pool.query(
     `${CARD_SELECT}
       WHERE p.image_url IS NOT NULL AND g.current_club_id IS NOT NULL
         AND g.birth_date IS NOT NULL AND g.position IS NOT NULL
         AND p.fame >= $1
+        AND NOT (g.player_id = ANY($2::bigint[]))
       ORDER BY random() LIMIT 1`,
-    [minFame],
+    [minFame, excludeIds],
   );
   return rows[0] ? rowToCard(rows[0]) : null;
 }
@@ -75,6 +77,41 @@ export async function pickGuessWhoTarget(minFame = 120): Promise<GuessWhoCard | 
 export async function getCard(playerId: number): Promise<GuessWhoCard | null> {
   const { rows } = await pool.query(`${CARD_SELECT} WHERE g.player_id = $1`, [playerId]);
   return rows[0] ? rowToCard(rows[0]) : null;
+}
+
+/** HAVUZ DIŞI tahmin kartı (kullanıcı kararı 2026-09-06: yazarken TÜM futbolcular
+ * çıksın, hedef hazır havuzdan kalsın). Havuzdaysa tam kart; değilse players +
+ * player_positions + SON kulüp dönemi (player_clubs: bitmemiş ya da en yeni) ile
+ * yaklaşık kart: forma no yok (nötr hücre), yaş doğum YILINDAN (±1). Karşılaştırma
+ * hedefin gerçek kartına karşı yapıldığından bot tümdengelimi hedefi asla elemez. */
+export async function getCardAny(playerId: number): Promise<GuessWhoCard | null> {
+  const inPool = await getCard(playerId);
+  if (inPool) return inPool;
+  const { rows } = await pool.query(
+    `SELECT p.id AS player_id, p.name, p.image_url, p.nationality, p.birth_year, pp.position,
+            lc.club_id AS current_club_id, c.name AS club_name, c.logo_url AS club_logo, c.league
+       FROM players p
+       LEFT JOIN player_positions pp ON pp.player_id = p.id
+       LEFT JOIN LATERAL (
+         SELECT x.club_id
+           FROM player_clubs x JOIN clubs cc ON cc.id = x.club_id AND cc.is_national = false
+          WHERE x.player_id = p.id
+          ORDER BY (x.end_year IS NULL) DESC, x.start_year DESC NULLS LAST, x.end_year DESC NULLS LAST
+          LIMIT 1) lc ON true
+       LEFT JOIN clubs c ON c.id = lc.club_id
+      WHERE p.id = $1`,
+    [playerId],
+  );
+  const r = rows[0];
+  if (!r) return null;
+  const y = r.birth_year != null ? Number(r.birth_year) : null;
+  const age = y ? new Date().getFullYear() - y : null;
+  return {
+    playerId: Number(r.player_id), name: r.name, imageUrl: r.image_url ?? null, nationality: r.nationality ?? null,
+    age: age != null && age >= 10 && age <= 60 ? age : null, jersey: null, position: r.position ?? null,
+    clubId: r.current_club_id != null ? Number(r.current_club_id) : null, clubName: r.club_name ?? null,
+    clubLogo: r.club_logo ?? null, league: r.league ?? null,
+  };
 }
 
 /** İstemci otomatik-tamamlaması için havuz listesi (id + ad). Maç başında bir kez yollanır. */

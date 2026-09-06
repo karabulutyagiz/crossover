@@ -444,7 +444,10 @@ export type ServerMsg =
   | { type: 'guesswho_pool'; players: { id: number; name: string }[] }
   // Tam durum: bulanık hedef foto + blur seviyesi + ortak kalan hak + sıra + tahmin
   // satırları (iki taraf da görür). Bittiğinde reveal ile hedef açığa çıkar.
-  | { type: 'guesswho_state'; targetImageUrl: string | null; blurLevel: number; guessesLeft: number; turnId: string | null; turnEndsAt: number; guesses: GwRow[]; over: boolean; winnerId: string | null; winnerName: string | null; reveal: GwReveal | null; lastGuessById?: string }
+  // ÇOK TURLU Ben Kimim (2026-09-06, yalnız tüm insan istemciler 'gwrounds' bildirirse):
+  // round/target/scores her durumda; roundOver=true → tur kapandı, reveal dolu, turnId null,
+  // nextRoundAt'te yeni tur (over hâlâ false). over=true MAÇ bitti (eski anlam, değişmedi).
+  | { type: 'guesswho_state'; targetImageUrl: string | null; blurLevel: number; guessesLeft: number; turnId: string | null; turnEndsAt: number; guesses: GwRow[]; over: boolean; winnerId: string | null; winnerName: string | null; reveal: GwReveal | null; lastGuessById?: string; round?: number; target?: number; scores?: { id: string; name: string; score: number }[]; roundOver?: boolean; roundWinnerId?: string | null; nextRoundAt?: number | null }
   | { type: 'guesswho_denied'; reason: 'not_turn' | 'not_pool' | 'already' | 'over' } // özel: sadece gönderene
   // matchOver: a player reached `target` wins → the match is over (offer rematch).
   | {
