@@ -6,6 +6,7 @@ import {
   Animated,
   Alert,
   AppState,
+  BackHandler,
   Dimensions,
   Easing,
   Image,
@@ -1198,6 +1199,64 @@ function AppRoot() {
     });
     const sub = AppState.addEventListener('change', (st) => { if (st === 'background') markCleanExit(); });
     return () => { stop(); sub.remove(); };
+  }, []);
+
+  // ANDROID DONANIM GERİ TUŞU (2026-09-06 — Play çıkışı öncesi): kodda hiç
+  // BackHandler yoktu; tek-Activity uygulamada geri tuşu HER ekrandan uygulamayı
+  // kapatıyor, maç ortasındaysa onay çıkmadan hükmen mağlup ediyordu (iOS'ta
+  // donanım geri yok, o yüzden fark edilmemişti). Artık faza göre yönlendirir:
+  // menü/detay sekmeleri → ana ekran, arama → iptal, maç → ekrandaki çık
+  // butonuyla AYNI onay (matchOver ise onaysız), sonuç → ana ekran, ana ekran →
+  // varsayılan (uygulamadan çık). Açık RN Modal'lar kendi onRequestClose'unu
+  // tetikler (LIFO) ve buraya hiç gelmez, o yüzden modal durumu izlenmez.
+  const backStateRef = useRef(state);
+  backStateRef.current = state;
+  const backActionsRef = useRef(actionsForScreens);
+  backActionsRef.current = actionsForScreens;
+  const backConfirmOpenRef = useRef(false);
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const onHardwareBack = () => {
+      const s = backStateRef.current;
+      const a = backActionsRef.current;
+      switch (s.phase) {
+        case 'tournaments': a.closeTournaments?.(); return true;
+        case 'arenas': a.closeArenas?.(); return true;
+        case 'leaderboard': a.closeLeaderboard?.(); return true;
+        case 'matchHistory': a.closeMatchHistory?.(); return true;
+        case 'profile': a.closeProfile?.(); return true;
+        case 'searching': a.cancelSearch?.(); return true;
+        case 'result': a.leave?.(); return true; // maç bitti → ana ekran
+        case 'lobby':
+        case 'matchup':
+        case 'countdown':
+        case 'pick':
+        case 'reveal':
+        case 'guess':
+        case 'xox':
+        case 'cozkazan':
+        case 'guesswho': {
+          if (s.matchOver) { a.leave?.(); return true; } // bitmiş maç → onaysız çık
+          if (backConfirmOpenRef.current) return true;    // onay zaten açık
+          backConfirmOpenRef.current = true;
+          Alert.alert(
+            t('leave.confirmTitle'),
+            t('leave.confirmBody'),
+            [
+              { text: t('leave.cancel'), style: 'cancel', onPress: () => { backConfirmOpenRef.current = false; } },
+              { text: t('leave.confirm'), style: 'destructive', onPress: () => { backConfirmOpenRef.current = false; a.leave?.(); } },
+            ],
+            { cancelable: true, onDismiss: () => { backConfirmOpenRef.current = false; } },
+          );
+          return true;
+        }
+        case 'home':
+        default:
+          return false; // ana ekran → Android varsayılanı (uygulamadan çık)
+      }
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
+    return () => sub.remove();
   }, []);
   const adPendingRef = useRef(false); // reklam bekleyişi sürüyor mu (effect yeniden çalışsa da korunur)
   // CANLI PROFİL (2026-09-01 — paketliye reklam hatası): aşağıdaki zamanlayıcı
@@ -3614,7 +3673,7 @@ function AppRoot() {
       >
         <View style={{ gap: 12 }}>
           <Text style={{ color: theme.text, fontSize: 14, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 20 }}>
-            {t('update.nudgeBody', { version: state.updateAvailableVersion ?? '' })}
+            {t(Platform.OS === 'android' ? 'update.nudgeBodyAndroid' : 'update.nudgeBody', { version: state.updateAvailableVersion ?? '' })}
           </Text>
           <Btn big kind="accent" icon="download" label={t('update.nudgeCta')} onPress={() => { void openRequiredUpdateStore(); }} />
           <Btn big kind="ghost" label={t('update.nudgeLater')} onPress={() => setUpdateNudgeVisible(false)} />

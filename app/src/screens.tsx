@@ -7631,7 +7631,7 @@ export function XoxScreen({ state, actions }: Props) {
             <>
               {/* Boş kaldı — buraya gelecek EN POPÜLER ortak oyuncu (sönük). */}
               <PlayerPhoto uri={rv.playerImageUrl} size={Math.round(cellSize * 0.42)} />
-              <Text numberOfLines={2} style={{ color: theme.muted, fontSize: 8, fontFamily: 'Poppins-Bold', textAlign: 'center', lineHeight: 10, marginTop: 2 }}>{rv.playerName}</Text>
+              <Text numberOfLines={2} style={{ color: theme.muted, fontSize: 8, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', lineHeight: 10, marginTop: 2 }}>{rv.playerName}</Text>
             </>
           )
           : golden ? <Ionicons name="flash" size={26} color={theme.gold} />
@@ -11149,7 +11149,7 @@ export const StoreScreen = memo(function StoreScreen({ state, actions, scrollToS
                       ))}
                     </View>
                     <Text style={{ color: theme.muted, fontSize: 10, lineHeight: 15, fontFamily: 'Poppins-SemiBold' }}>
-                      {t('store.autoRenewNote')}
+                      {t(Platform.OS === 'android' ? 'store.autoRenewNoteAndroid' : 'store.autoRenewNote')}
                     </Text>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                       <Pressable style={({ pressed }) => [linkChip(pressed), { flex: 1 }]} onPress={() => openLink(INFO_LINKS.terms)}>
