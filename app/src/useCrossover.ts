@@ -96,6 +96,8 @@ export interface GameState {
   passedBy: string[]; // player ids who passed this round
   result: RoundResult | null;
   clubResults: ClubRef[];
+  // Popüler takım listesi (boş sorgu): geri sayımda ön-yüklenir, pick fazı ızgarayı bununla AÇAR.
+  popularClubs: ClubRef[];
   playerResults: PlayerRef[];
   scopes: ScopesList | null;
   profile: ProfileView | null;
@@ -311,6 +313,7 @@ export const initialState: GameState = {
   passedBy: [],
   result: null,
   clubResults: [],
+  popularClubs: [],
   playerResults: [],
   scopes: null,
   profile: null,
@@ -969,6 +972,8 @@ function reducer(state: GameState, action: Action): GameState {
         // serinin birikmiş net kupasını temizle. Rematch odası pre-game'den GELMEZ
         // (phase 'result'/'countdown'), dolayısıyla birikim korunur.
         trophyDelta: preGame ? null : state.trophyDelta,
+        // Yeni oda = farklı kapsam olabilir (lig/ülke): eski popüler liste taşınmaz.
+        popularClubs: preGame ? [] : state.popularClubs,
       };
     }
     case 'countdown':
@@ -1006,8 +1011,12 @@ function reducer(state: GameState, action: Action): GameState {
         readyCountdownEndsAt: null,
         iReady: false,
       };
+    // Izgara BOŞ AÇILMAZ (2026-09-06, oyuncu raporu "takımlar geç yükleniyor"):
+    // eskiden clubResults: [] ile açılıp PickTeamScreen'in isteği dönene dek
+    // (RTT + sorgu + armalar) boş kalıyordu. Şimdi geri sayımda ön-yüklenen
+    // popüler liste anında çizilir; ekranın kendi isteği yalnız tazeler.
     case 'pick_phase':
-      return { ...state, phase: 'pick', picked: false, pickEndsAt: action.endsAt, pickRole: (action as any).pickRole ?? 'team', usedClubIds: (action as any).usedClubIds ?? [], usedCountries: (action as any).usedCountries ?? [], teams: null, locked: null, oppWrong: null, youBurned: false, youRetryAt: null, passedBy: [], result: null, clubResults: [] };
+      return { ...state, phase: 'pick', picked: false, pickEndsAt: action.endsAt, pickRole: (action as any).pickRole ?? 'team', usedClubIds: (action as any).usedClubIds ?? [], usedCountries: (action as any).usedCountries ?? [], teams: null, locked: null, oppWrong: null, youBurned: false, youRetryAt: null, passedBy: [], result: null, clubResults: state.popularClubs };
     case 'reveal_teams':
       return {
         ...state,
@@ -1161,6 +1170,13 @@ function reducer(state: GameState, action: Action): GameState {
     case 'rematch_declined':
       return { ...state, rematchState: 'declined' };
     case 'club_results':
+      // reqId 'pop' = geri sayımdaki popüler-liste ön-yüklemesi: hafızaya alınır;
+      // pick fazı açık ve ızgara hâlâ boşsa doğrudan doldurur. Oyuncu yazmaya
+      // başladıysa (ızgara dolu) geç gelen 'pop' yazdığı sonuçları EZMEZ.
+      if (action.reqId === 'pop') {
+        const fill = state.phase === 'pick' && state.clubResults.length === 0;
+        return { ...state, popularClubs: action.clubs, clubResults: fill ? action.clubs : state.clubResults };
+      }
       return { ...state, clubResults: action.clubs };
     case 'player_results':
       return { ...state, playerResults: (action as any).players ?? [] };
@@ -1470,6 +1486,20 @@ export function useCrossover() {
             const queue = pendingAfterResume.current;
             pendingAfterResume.current = [];
             for (const pending of queue) ws.send(JSON.stringify(withCaps(pending)));
+          }
+          // POPÜLER TAKIM ÖN-YÜKLEMESİ (2026-09-06, oyuncu raporu: "takım seçme
+          // ekranında takımlar geç yükleniyor"): ızgara eskiden pick fazı AÇILINCA
+          // isteniyordu — her turda RTT + sorgu + 24 arma kadar boş ekran. İstek
+          // artık geri sayımın İLK tikinde gider (3 sn erken); pick_phase ızgarayı
+          // popularClubs ile açar. stateRef henüz eski fazı gösterir (render
+          // olmadı) → 'countdown'a GEÇİŞ yakalanır, 2./3. tikte tekrar gitmez.
+          // Maçta bir kez yeter (sonraki turlar aynı listeyi kullanır); kulüp
+          // seçimi olmayan modlarda (oyuncu-oyuncu, XOX, Çöz Kazan) hiç gitmez.
+          if (mt === 'countdown' && stateRef.current.phase !== 'countdown' && stateRef.current.popularClubs.length === 0 && ws.readyState === WebSocket.OPEN) {
+            const mode = stateRef.current.lastGameOptions?.mode ?? stateRef.current.revealMode ?? null;
+            if (mode !== 'player-player' && mode !== 'xox' && mode !== 'cozkazan') {
+              ws.send(JSON.stringify({ type: 'search_clubs', reqId: 'pop', q: '' }));
+            }
           }
           // Resolve the OLDEST pending IAP verification (FIFO — a concurrent verify
           // used to clobber the single slot and orphan the first promise, leaving
