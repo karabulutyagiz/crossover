@@ -8302,7 +8302,6 @@ function bkFold(s: string): string {
 
 export function GuessWhoScreen({ state, actions }: Props) {
   const gw = state.guessWho;
-  const pool = state.guessWhoPool ?? [];
   const room = state.room;
   const youId = room?.youId ?? '';
   const opp = room?.players.find((p) => p.id !== youId);
@@ -8343,6 +8342,27 @@ export function GuessWhoScreen({ state, actions }: Props) {
     triggerFeedback(gw.winnerId === youId ? GameFeedbackEvent.MATCH_WIN : gw.winnerId == null ? GameFeedbackEvent.MATCH_DRAW : GameFeedbackEvent.MATCH_LOSE);
   }, [gw?.over, gw?.winnerId, youId]);
   useEffect(() => { if (!gw?.over) overPlayed.current = false; }, [gw?.over]);
+  // Tur sonu sesi (çok turlu): tur bende → doğru cevap; rakipte → rakip bildi; iptal → bildirim.
+  const roundPlayed = useRef(false);
+  useEffect(() => {
+    if (!gw?.roundOver || gw.over) { roundPlayed.current = false; return; }
+    if (roundPlayed.current) return;
+    roundPlayed.current = true;
+    triggerFeedback(gw.roundWinnerId === youId ? GameFeedbackEvent.ANSWER_CORRECT : gw.roundWinnerId == null ? GameFeedbackEvent.NOTIFICATION : GameFeedbackEvent.OPPONENT_CORRECT);
+  }, [gw?.roundOver, gw?.over, gw?.roundWinnerId, youId]);
+  // TÜM FUTBOLCULAR (kullanıcı kararı 2026-09-06): yazarken 179'luk havuz süzgeci
+  // değil, takım-takım modundaki gibi veritabanındaki HER futbolcu (sunucu
+  // search_players: fotoğraflı, aksan-duyarsız). Hedef yine hazır havuzdan seçilir.
+  const canSearch = !!gw && !gw.over && !gw.roundOver && gw.turnId === youId;
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    const q = query.trim();
+    if (!canSearch || q.length < 2) return undefined;
+    searchTimer.current = setTimeout(() => actions.searchPlayers(q), 140);
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, canSearch]);
   // Maç sonu: foto altın çerçeveyle "pop" yapar.
   const revealScale = useRef(new Animated.Value(1)).current;
   useEffect(() => {
@@ -8352,14 +8372,15 @@ export function GuessWhoScreen({ state, actions }: Props) {
   if (!gw || !room) return <Screen><Text style={styles.muted}>{t('store.loading')}</Text></Screen>;
 
   const over = gw.over;
-  const myTurn = !over && gw.turnId === youId;
+  const roundOver = !!gw.roundOver && !over; // çok turlu: tur kapandı, cevap gösteriliyor, yeni tur bekleniyor
+  const showReveal = over || roundOver;
+  const myTurn = !showReveal && gw.turnId === youId;
   const secs = Math.max(0, Math.ceil((gw.turnEndsAt - Date.now()) / 1000));
   const reveal = gw.reveal;
   const alreadyGuessed = new Set(gw.guesses.map((g) => g.playerId));
-  // Aksan-duyarsız arama: hem sorgu hem ad ASCII tabana katlanır (é↔e, ş↔s, ü↔u…).
-  const q = bkFold(query.trim());
+  const q = query.trim();
   const matches = myTurn && q.length >= 2
-    ? pool.filter((p) => bkFold(p.name).includes(q) && !alreadyGuessed.has(p.id)).slice(0, kbOpen ? 4 : 5)
+    ? state.playerResults.filter((p) => !alreadyGuessed.has(p.id)).slice(0, kbOpen ? 4 : 5)
     : [];
   const submit = (playerId: number) => {
     if (!myTurn || alreadyGuessed.has(playerId)) return;
@@ -8367,8 +8388,8 @@ export function GuessWhoScreen({ state, actions }: Props) {
     setQuery('');
     dismissActiveInput();
   };
-  const blurRadius = over ? 0 : Math.round(gw.blurLevel * 4.5);
-  const photoUri = over && reveal ? reveal.imageUrl : gw.targetImageUrl;
+  const blurRadius = showReveal ? 0 : Math.round(gw.blurLevel * 4.5);
+  const photoUri = showReveal && reveal ? reveal.imageUrl : gw.targetImageUrl;
   const photoSize = Math.min(158, Math.round(win.width * 0.4));
   const totalGuesses = gw.guessesLeft + gw.guesses.length; // sunucu ayarına dayanıklı
   const leaveKind = state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
@@ -8383,22 +8404,22 @@ export function GuessWhoScreen({ state, actions }: Props) {
     return (
     <View style={{
       padding: 3, borderRadius: radius + 6,
-      backgroundColor: over ? withAlpha(theme.gold, 0.4) : 'rgba(255,233,176,0.14)',
-      shadowColor: over ? theme.gold : '#FFE9B0', shadowOpacity: over ? 0.7 : 0.35, shadowRadius: 18, shadowOffset: { width: 0, height: 0 }, elevation: 10,
+      backgroundColor: showReveal ? withAlpha(theme.gold, 0.4) : 'rgba(255,233,176,0.14)',
+      shadowColor: showReveal ? theme.gold : '#FFE9B0', shadowOpacity: showReveal ? 0.7 : 0.35, shadowRadius: 18, shadowOffset: { width: 0, height: 0 }, elevation: 10,
     }}>
-      <View style={{ borderRadius: radius + 3, borderWidth: 2, borderColor: over ? theme.gold : withAlpha(theme.gold, 0.55), overflow: 'hidden', backgroundColor: '#0A1230' }}>
+      <View style={{ borderRadius: radius + 3, borderWidth: 2, borderColor: showReveal ? theme.gold : withAlpha(theme.gold, 0.55), overflow: 'hidden', backgroundColor: '#0A1230' }}>
         {photoUri ? (
           <ExpoImage source={{ uri: photoUri }} {...({ blurRadius: sizedBlur } as any)} style={{ width: size, height: size, transform: [{ scale: 1.12 }] }} contentFit="cover" transition={250} />
         ) : <View style={{ width: size, height: size }} />}
         {/* alt karartma + GİZLİ OYUNCU şeridi (yalnız oyun sırasında + büyük kartta) */}
-        {!over && size > 100 ? (
+        {!showReveal && size > 100 ? (
           <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 24, backgroundColor: 'rgba(3,7,20,0.62)', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ color: 'rgba(255,240,200,0.92)', fontSize: 8.5, fontFamily: 'Poppins-Black', letterSpacing: 2.6 }}>{t('guesswho.mystery')}</Text>
           </View>
         ) : null}
         {/* köşe "?" rozeti — kart İÇİNDE (taşma/binme yok); kompakt 44px kartta fotoyu
             kapatmasın diye yalnız BÜYÜK kartta gösterilir */}
-        {!over && size > 100 ? (
+        {!showReveal && size > 100 ? (
           <View style={{ position: 'absolute', top: 5, right: 5, width: 22, height: 22, borderRadius: 11, backgroundColor: theme.gold, alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ color: '#132', fontSize: 13, fontFamily: 'Poppins-Black' }}>?</Text>
           </View>
@@ -8418,7 +8439,7 @@ export function GuessWhoScreen({ state, actions }: Props) {
         <PlayerBar state={state} onEmotePress={() => setEmoteOpen(true)} />
       </View>
 
-      {kbOpen && !over ? (
+      {kbOpen && !showReveal ? (
         /* ── KOMPAKT ŞERİT (klavye açık): küçük foto + sıra + halka + pip'ler tek satır.
             Küçük fotoya dokununca klavye kapanır → büyük sahne geri gelir (kullanıcı isteği 2026-09-03). ── */
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6, backgroundColor: 'rgba(8,14,34,0.7)', borderRadius: 14, padding: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }}>
@@ -8431,12 +8452,25 @@ export function GuessWhoScreen({ state, actions }: Props) {
         </View>
       ) : (
         /* ── BÜYÜK SAHNE (klavye kapalı): spot altındaki gizem kartı ── */
-        <View style={{ alignItems: 'center', marginBottom: over ? 4 : 8 }}>
+        <View style={{ alignItems: 'center', marginBottom: showReveal ? 4 : 8 }}>
           <Animated.View style={{ transform: [{ scale: revealScale }] }}>
             {photoFrame(photoSize, 18)}
           </Animated.View>
-          {over && reveal ? (
-            <Text style={{ color: theme.gold, fontSize: 21, fontFamily: 'Poppins-Black', marginTop: 8, letterSpacing: 0.5, ...engrave('lg') }}>{reveal.name.toLocaleUpperCase('tr')}</Text>
+          {showReveal && reveal ? (
+            <>
+              <Text style={{ color: theme.gold, fontSize: 21, fontFamily: 'Poppins-Black', marginTop: 8, letterSpacing: 0.5, ...engrave('lg') }}>{reveal.name.toLocaleUpperCase('tr')}</Text>
+              {roundOver ? (
+                /* ── TUR SONU (çok turlu): kim aldı + skor hedefi + yeni tur geri sayımı ── */
+                <View style={{ alignItems: 'center', gap: 3, marginTop: 6 }}>
+                  <Text style={{ color: gw.roundWinnerId === youId ? theme.primary : gw.roundWinnerId == null ? theme.gold : theme.danger, fontSize: 16, fontFamily: 'Poppins-Black', letterSpacing: 0.8, ...engrave('sm') }}>
+                    {gw.roundWinnerId === youId ? t('guesswho.roundYou') : gw.roundWinnerId == null ? t('guesswho.roundVoid') : t('guesswho.roundOpp', { name: gw.winnerName ?? '' })}
+                  </Text>
+                  <Text style={{ color: theme.textSub, fontSize: 11.5, fontFamily: 'Poppins-SemiBold' }}>
+                    {t('guesswho.firstTo', { n: String(gw.target ?? 3) })} · {t('guesswho.nextRound', { s: String(Math.max(0, Math.ceil(((gw.nextRoundAt ?? Date.now()) - Date.now()) / 1000))) })}
+                  </Text>
+                </View>
+              ) : null}
+            </>
           ) : (
             <>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8, backgroundColor: 'rgba(8,14,34,0.72)', borderRadius: 999, paddingLeft: 14, paddingRight: 6, paddingVertical: 4, borderWidth: 1, borderColor: myTurn ? withAlpha(theme.primary, 0.5) : 'rgba(255,255,255,0.08)' }}>
@@ -8446,13 +8480,16 @@ export function GuessWhoScreen({ state, actions }: Props) {
               <View style={{ marginTop: 7 }}>
                 <GwPips total={totalGuesses} used={gw.guesses.length} winner={false} />
               </View>
+              {gw.target ? (
+                <Text style={{ color: withAlpha(theme.textSub, 0.7), fontSize: 10.5, fontFamily: 'Poppins-SemiBold', marginTop: 4 }}>{t('guesswho.firstTo', { n: String(gw.target) })}</Text>
+              ) : null}
             </>
           )}
         </View>
       )}
 
       {/* ── Tahmin girişi — her zaman yerinde (sıra rakipteyken soluk/kilitli) ── */}
-      {!over ? (
+      {!showReveal ? (
         <View style={{ marginBottom: 6 }}>
           <GameInput
             icon="search"
@@ -8477,9 +8514,13 @@ export function GuessWhoScreen({ state, actions }: Props) {
                     borderBottomWidth: mi < matches.length - 1 ? 1 : 0, borderBottomColor: 'rgba(255,255,255,0.06)',
                   })}
                 >
-                  <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: withAlpha(theme.blue, 0.25), alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ color: theme.blue, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>{m.name.charAt(0).toLocaleUpperCase('tr')}</Text>
-                  </View>
+                  {m.imageUrl ? (
+                    <ExpoImage source={{ uri: m.imageUrl }} style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: '#0A1230' }} contentFit="cover" />
+                  ) : (
+                    <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: withAlpha(theme.blue, 0.25), alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ color: theme.blue, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>{m.name.charAt(0).toLocaleUpperCase('tr')}</Text>
+                    </View>
+                  )}
                   <Text numberOfLines={1} style={{ flex: 1, color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-SemiBold' }}>{m.name}</Text>
                   <Ionicons name="arrow-forward-circle" size={18} color={withAlpha(theme.primary, 0.8)} />
                 </Pressable>
@@ -8499,7 +8540,7 @@ export function GuessWhoScreen({ state, actions }: Props) {
             </View>
           ))}
         </View>
-      ) : !over ? (
+      ) : !showReveal ? (
         <View style={{ alignItems: 'center', marginTop: 6, paddingHorizontal: 20 }}>
           <Text style={{ color: withAlpha(theme.textSub, 0.75), fontSize: 11.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 17 }}>{t('guesswho.hint')}</Text>
         </View>

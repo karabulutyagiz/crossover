@@ -64,7 +64,7 @@ import type {
   GwReveal,
 } from '../protocol.ts';
 import {
-  pickGuessWhoTarget, getCard, guessWhoPoolList, compareToTarget,
+  pickGuessWhoTarget, getCardAny, guessWhoPoolList, compareToTarget,
   deduceGuessWhoCandidates, posGroup, type GuessWhoCard, type GwDeduction,
 } from '../game/guessWho.ts';
 
@@ -93,6 +93,7 @@ const GW_TURN_MS = intEnv('GW_TURN_MS', 20_000);           // sıra süresi (kul
 const GW_BLUR_MAX = 10;                                    // başlangıç bulanıklık seviyesi
 const GW_BLUR_MIN_PLAY = 2;                                // oyun İÇİNDE asla tam netleşmez
 const GW_STALL_TIMEOUTS = 4;                               // üst üste bu kadar pas → berabere
+const GW_INTER_ROUND_MS = intEnv('GW_INTER_ROUND_MS', 4500); // çok turlu: tur arası cevap gösterimi
 
 // AĞ GECİKMESİ TOLERANSI — 30 sn'de görünmeyen, 15 sn'de KRİTİK olan sorun:
 // oyuncu son saniyede gönderdiğinde paket sunucuya birkaç yüz ms sonra ulaşır
@@ -331,7 +332,16 @@ export class Room {
     hints: Map<string, Set<number>>; // playerId → bu turda açılan harf POZİSYONLARI (rastgele)
   } | null = null;
 
-  // ── "Ben Kimim?" — bulanık foto + sırayla tahmin, ortak 10 hak, tek tur ─────
+  // ── "Ben Kimim?" — bulanık foto + sırayla tahmin, ortak 7 hak ──────────────
+  // ÇOK TURLU MOD (kullanıcı kararı 2026-09-06): takım-takım gibi İLK 3 turu alan
+  // kazanır. Yalnız tüm insan istemciler 'gwrounds' yeteneğini bildirdiyse — eski
+  // istemci "over=false + reveal dolu" durumu anlamaz, o odalarda TEK TUR sürer.
+  private gwRounds = false;
+  private gwRound = 0;
+  private gwVoidStreak = 0;                 // üst üste kimsenin bilemediği tur; 2 olursa maç berabere
+  private gwUsedTargets = new Set<number>(); // aynı maçta aynı hedef iki kez gelmesin
+  private gwLastRoundWinnerId: string | null = null; // sonraki turu KAYBEDEN başlatır
+  private gwNextRoundAt = 0;
   private guessWho: {
     target: GuessWhoCard;
     guesses: GwRow[];                // her tahmin satırı (iki taraf da görür)
@@ -344,6 +354,7 @@ export class Room {
     consecutiveTimeouts: number;     // ikisi de birkaç tur pas geçerse berabere (stall koruması)
     poolSentTo: Set<string>;         // havuz listesi kime yollandı (bir kez)
     timer: NodeJS.Timeout | null;
+    closed?: boolean;                // çok turlu: tur kapandı, yeni tur bekleniyor (submit reddedilir)
   } | null = null;
 
   constructor(code: string, onEmpty: (code: string) => void) {
@@ -2427,26 +2438,41 @@ export class Room {
   // Doğru bilen kazanır; 10 hak biterse ya da ikisi de sürekli pas geçerse berabere.
   // ══════════════════════════════════════════════════════════════════════════
   private async beginGuessWho(): Promise<void> {
+    const humans = [...this.players.values()].filter((p) => !p.transport.isBot);
+    this.gwRounds = humans.length > 0 && humans.every((p) => !!p.transport.caps?.includes('gwrounds'));
+    this.gwRound = 0; this.gwVoidStreak = 0; this.gwUsedTargets = new Set(); this.gwLastRoundWinnerId = null;
+    for (const pl of this.players.values()) pl.score = 0;
+    await this.startGuessWhoRound();
+  }
+
+  /** Bir tur başlat (ilk tur ve çok turlu modda sonraki turlar). */
+  private async startGuessWhoRound(): Promise<void> {
     const matchId = this.matchId;
-    const target = await pickGuessWhoTarget().catch(() => null);
+    const target = await pickGuessWhoTarget(120, [...this.gwUsedTargets]).catch(() => null);
     if (!target || !target.imageUrl) {
-      log.error('guesswho_target_failed', { room: this.code, matchId });
+      log.error('guesswho_target_failed', { room: this.code, matchId, round: this.gwRound + 1 });
       this.broadcast({ type: 'error', message: 'Ben Kimim? kurulamadı, tekrar dene' });
       return this.bailRound('guesswho_no_target');
     }
+    if (this.matchOver) return; // tur arası beklemede maç bitti (terk/hükmen)
     const ids = [...this.players.keys()];
+    const prev = this.guessWho;
+    this.gwRound += 1;
+    this.gwUsedTargets.add(target.playerId);
     this.status = 'guesswho';
     this.guessWho = {
       target, guesses: [], guessedCards: [], guessedIds: new Set(), guessesLeft: GW_TOTAL_GUESSES, wrongCount: 0,
-      turnId: ids[Math.floor(Math.random() * ids.length)] ?? ids[0]!,
-      turnEndsAt: Date.now() + GW_TURN_MS, consecutiveTimeouts: 0, poolSentTo: new Set(), timer: null,
+      // İlk tur rastgele; sonraki turlarda önceki turu KAYBEDEN başlar (iptal turda rastgele).
+      turnId: (prev && this.gwLastRoundWinnerId)
+        ? (ids.find((id) => id !== this.gwLastRoundWinnerId) ?? ids[0]!)
+        : (ids[Math.floor(Math.random() * ids.length)] ?? ids[0]!),
+      turnEndsAt: Date.now() + GW_TURN_MS, consecutiveTimeouts: 0, poolSentTo: prev?.poolSentTo ?? new Set(), timer: null,
     };
-    for (const pl of this.players.values()) pl.score = 0;
     for (const id of ids) await this.sendGuessWhoPoolTo(id);
     this.broadcastState();
     this.broadcastGuessWhoState();
     this.armGuessWhoTimer();
-    log.info('guesswho_started', { room: this.code, matchId, target: target.name });
+    log.info('guesswho_started', { room: this.code, matchId, round: this.gwRound, rounds: this.gwRounds, target: target.name });
   }
 
   private gwBlurLevel(): number {
@@ -2471,17 +2497,30 @@ export class Room {
     return { playerId: t.playerId, name: t.name, imageUrl: t.imageUrl, clubName: t.clubName, clubLogo: t.clubLogo, nationality: t.nationality, age: t.age, jersey: t.jersey, position: t.position, league: t.league, leagueLogo: t.league ? leagueLogoUrl(t.league) : null };
   }
 
-  private guessWhoStateMsg(over = false, reveal: GwReveal | null = null, winner: Player | null = null, lastById?: string): Extract<ServerMsg, { type: 'guesswho_state' }> | null {
+  private guessWhoStateMsg(over = false, reveal: GwReveal | null = null, winner: Player | null = null, lastById?: string, roundOver = false): Extract<ServerMsg, { type: 'guesswho_state' }> | null {
     const g = this.guessWho; if (!g) return null;
+    const closed = over || roundOver;
     return {
-      type: 'guesswho_state', targetImageUrl: g.target.imageUrl, blurLevel: over ? 0 : this.gwBlurLevel(),
-      guessesLeft: g.guessesLeft, turnId: over ? null : g.turnId, turnEndsAt: g.turnEndsAt, guesses: g.guesses,
+      type: 'guesswho_state', targetImageUrl: g.target.imageUrl, blurLevel: closed ? 0 : this.gwBlurLevel(),
+      guessesLeft: g.guessesLeft, turnId: closed ? null : g.turnId, turnEndsAt: g.turnEndsAt, guesses: g.guesses,
       over, winnerId: winner?.id ?? null, winnerName: winner?.name ?? null, reveal,
       ...(lastById ? { lastGuessById: lastById } : {}),
+      // Çok turlu alanlar yalnız o odalarda (eski istemci hiç görmez).
+      ...(this.gwRounds ? {
+        round: this.gwRound, target: WIN_TARGET,
+        scores: [...this.players.values()].map((p) => ({ id: p.id, name: p.name, score: p.score })),
+        roundOver, roundWinnerId: roundOver ? (winner?.id ?? null) : null, nextRoundAt: roundOver ? this.gwNextRoundAt : null,
+      } : {}),
     };
   }
   private broadcastGuessWhoState(lastById?: string): void { const m = this.guessWhoStateMsg(false, null, null, lastById); if (m) this.broadcast(m); }
-  private sendGuessWhoStateTo(playerId: string): void { const m = this.guessWhoStateMsg(); if (m) this.sendTo(playerId, m); }
+  private sendGuessWhoStateTo(playerId: string): void {
+    // Tur arasında (kapalı tur) yeniden bağlanan da cevabı ve geri sayımı görsün.
+    const g = this.guessWho;
+    const w = g?.closed && this.gwLastRoundWinnerId ? (this.players.get(this.gwLastRoundWinnerId) ?? null) : null;
+    const m = g?.closed ? this.guessWhoStateMsg(false, this.guessWhoReveal(), w, undefined, true) : this.guessWhoStateMsg();
+    if (m) this.sendTo(playerId, m);
+  }
 
   private armGuessWhoTimer(): void {
     const g = this.guessWho; if (!g) return;
@@ -2507,9 +2546,12 @@ export class Room {
     const g = this.guessWho;
     const pl = this.players.get(playerId);
     if (!g || !pl || this.status !== 'guesswho' || this.matchOver) return;
+    if (g.closed) return void pl.transport.send({ type: 'guesswho_denied', reason: 'over' }); // tur arası
     if (g.turnId !== playerId) return void pl.transport.send({ type: 'guesswho_denied', reason: 'not_turn' });
     if (g.guessedIds.has(guessedId)) return void pl.transport.send({ type: 'guesswho_denied', reason: 'already' });
-    const card = await getCard(guessedId).catch(() => null);
+    // Havuz DIŞI oyuncu da tahmin edilebilir (kullanıcı kararı 2026-09-06); yalnız
+    // veritabanında hiç olmayan id reddedilir ('not_pool' → istemcide "oyuncu bulunamadı").
+    const card = await getCardAny(guessedId).catch(() => null);
     if (!card) return void pl.transport.send({ type: 'guesswho_denied', reason: 'not_pool' });
     if (this.guessWho !== g || this.matchOver || g.turnId !== playerId) return; // async sırasında değişti
     const row = compareToTarget(card, g.target);
@@ -2524,9 +2566,30 @@ export class Room {
     this.advanceGuessWhoTurn(playerId);
   }
 
+  /** Çok turlu: turu kapat (cevap gösterilir, skor yayınlanır), GW_INTER_ROUND_MS sonra yeni tur. */
+  private endGuessWhoRound(winner: Player | null, reason: 'solved' | 'exhausted' | 'stall'): void {
+    const g = this.guessWho; if (!g) return;
+    this.clearTimers();
+    g.closed = true;
+    this.gwLastRoundWinnerId = winner?.id ?? null;
+    this.gwNextRoundAt = Date.now() + GW_INTER_ROUND_MS;
+    const msg = this.guessWhoStateMsg(false, this.guessWhoReveal(), winner, undefined, true);
+    if (msg) this.broadcast(msg);
+    this.broadcastState(); // skorlar room_state ile de gider (PlayerBar)
+    log.info('guesswho_round_over', { room: this.code, matchId: this.matchId, round: this.gwRound, winner: winner?.name ?? null, reason, target: g.target.name });
+    this.timers.push(setTimeout(() => { void this.startGuessWhoRound(); }, GW_INTER_ROUND_MS));
+  }
+
   private async finishGuessWho(winner: Player): Promise<void> {
     const g = this.guessWho; if (!g || this.matchOver) return;
-    this.matchOver = true; this.clearTimers(); this.status = 'result'; winner.score = 1;
+    if (this.gwRounds) {
+      winner.score += 1;
+      this.gwVoidStreak = 0;
+      if (winner.score < WIN_TARGET) return this.endGuessWhoRound(winner, 'solved');
+    } else {
+      winner.score = 1;
+    }
+    this.matchOver = true; this.clearTimers(); this.status = 'result';
     const msg = this.guessWhoStateMsg(true, this.guessWhoReveal(), winner);
     if (msg) this.broadcast(msg);
     this.broadcastState();
@@ -2543,6 +2606,12 @@ export class Room {
 
   private async finishGuessWhoDraw(reason: 'exhausted' | 'stall'): Promise<void> {
     const g = this.guessWho; if (!g || this.matchOver) return;
+    if (this.gwRounds) {
+      // Kimse bilemedi → tur İPTAL (puan yok), yeni hedefle devam. İki tur üst üste
+      // iptal (ikisi de pas geçiyor / bilemiyor) → maç berabere (eski akış).
+      this.gwVoidStreak += 1;
+      if (this.gwVoidStreak < 2) return this.endGuessWhoRound(null, reason);
+    }
     this.matchOver = true; this.clearTimers(); this.status = 'result';
     const msg = this.guessWhoStateMsg(true, this.guessWhoReveal(), null);
     if (msg) this.broadcast(msg);
@@ -2622,7 +2691,7 @@ export class Room {
   }
   guessWhoSnapshotForBot(): { turnId: string | null; guessesLeft: number; over: boolean } | null {
     const g = this.guessWho; if (!g) return null;
-    return { turnId: g.turnId, guessesLeft: g.guessesLeft, over: this.matchOver };
+    return { turnId: g.closed ? null : g.turnId, guessesLeft: g.guessesLeft, over: this.matchOver };
   }
 
   // ══════════════════════════════════════════════════════════════════════════

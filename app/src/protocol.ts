@@ -479,7 +479,10 @@ export type ServerMsg =
   | { type: 'cozkazan_hint_error'; reason: 'insufficient' | 'unavailable' }
   // ── "Ben Kimim?" (server ile AYNA) ──
   | { type: 'guesswho_pool'; players: { id: number; name: string }[] }
-  | { type: 'guesswho_state'; targetImageUrl: string | null; blurLevel: number; guessesLeft: number; turnId: string | null; turnEndsAt: number; guesses: GwRow[]; over: boolean; winnerId: string | null; winnerName: string | null; reveal: GwReveal | null; lastGuessById?: string }
+  // ÇOK TURLU Ben Kimim (2026-09-06, yalnız tüm insan istemciler 'gwrounds' bildirirse):
+  // round/target/scores her durumda; roundOver=true → tur kapandı, reveal dolu, turnId null,
+  // nextRoundAt'te yeni tur (over hâlâ false). over=true MAÇ bitti (eski anlam, değişmedi).
+  | { type: 'guesswho_state'; targetImageUrl: string | null; blurLevel: number; guessesLeft: number; turnId: string | null; turnEndsAt: number; guesses: GwRow[]; over: boolean; winnerId: string | null; winnerName: string | null; reveal: GwReveal | null; lastGuessById?: string; round?: number; target?: number; scores?: { id: string; name: string; score: number }[]; roundOver?: boolean; roundWinnerId?: string | null; nextRoundAt?: number | null }
   | { type: 'guesswho_denied'; reason: 'not_turn' | 'not_pool' | 'already' | 'over' }
   | {
       type: 'result';
