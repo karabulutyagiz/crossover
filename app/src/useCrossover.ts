@@ -1394,7 +1394,7 @@ export function useCrossover() {
   const withCaps = (msg: ClientMsg): ClientMsg =>
     msg.type === 'register' || msg.type === 'guest' || msg.type === 'auth' || msg.type === 'resume_room'
     || msg.type === 'find_match' || msg.type === 'create_room' || msg.type === 'create_solo' || msg.type === 'join_room'
-      ? ({ ...msg, caps: ['wrongopen', 'wrongretry', 'specialpowers', 'xox'] } as ClientMsg)
+      ? ({ ...msg, caps: ['wrongopen', 'wrongretry', 'specialpowers', 'xox', 'gwrounds'] } as ClientMsg) // gwrounds: çok turlu Ben Kimim (roundOver anlaşılır)
       : msg;
 
   const connectAndSend = useCallback((first: ClientMsg, opts?: { silent?: boolean }) => {

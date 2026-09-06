@@ -172,6 +172,7 @@ export class BotPlayer implements Transport {
   // ---- Ben Kimim?: tahmin zamanlayıcısı + tur kilidi (guesses.length ile) ----
   private gwTimer: NodeJS.Timeout | null = null;
   private gwActedLen = -1;
+  private gwRound = 0; // çok turlu Ben Kimim: tur değişince karar kilidi sıfırlanır
   // İlk maç tiyatrosu: bot bir kez kolay soruda görünür yanlış yapar (bir kez, asla tekrar).
   private theaterMistakeDone = false;
   // Son biten maçı bot mu kazandı? (rövanş kabul olasılığı için)
@@ -866,7 +867,10 @@ export class BotPlayer implements Transport {
   // Zorluk yalnız seçim keskinliğini + düşünme süresini etkiler.
   private handleGuessWhoState(msg: Extract<ServerMsg, { type: 'guesswho_state' }>): void {
     if (this.gwTimer) { clearTimeout(this.gwTimer); this.gwTimer = null; }
-    if (msg.over) { this.gwActedLen = -1; return; }
+    // Çok turlu mod: tur kapanınca (roundOver) ya da tur numarası değişince karar
+    // kilidi sıfırlanır — yeni turun ilk tahmini (guesses=0) yine yapılabilsin.
+    if (msg.over || msg.roundOver) { this.gwActedLen = -1; return; }
+    if (msg.round != null && msg.round !== this.gwRound) { this.gwRound = msg.round; this.gwActedLen = -1; }
     if (msg.turnId !== this.id) return;
     if (msg.guesses.length === this.gwActedLen) return; // bu tahmin-sayısında karar verildi
     const prevActed = this.gwActedLen;
