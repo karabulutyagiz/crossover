@@ -136,18 +136,14 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
         </View>
       </Section>
 
-      {/* ── SAHADA FARK YARAT banner'ı: sanat mock'tan (metinsiz), etiket + başlık + açıklama canlı; taç kartı vektör ── */}
+      {/* ── SAHADA FARK YARAT banner'ı: kullanıcının sanatı (kartlar + top sağda), etiket/başlık/açıklama CANLI ── */}
       <View style={{ marginHorizontal: SIDE, marginTop: mk(26) }}>
-        <BannerImage source={UI2.banner_cosm} ratio={884 / 234}>
-          <Ribbon label={t('ui2.cosmTag')} color="#7C3AED" size={mk(22)} style={{ position: 'absolute', left: '2.5%', top: '4%', paddingHorizontal: mk(16) }} />
-          <View style={{ position: 'absolute', left: '3%', top: '58%', width: '56%', height: '36%', justifyContent: 'center' }}>
-            <Text numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.black, fontSize: mk(22), lineHeight: mk(26), textAlign: 'center' }}>{t('ui2.cosmDesc')}</Text>
-          </View>
-          <View style={{ position: 'absolute', left: '59.5%', top: '14%', width: mk(78), height: mk(78), transform: [{ rotate: '-12deg' }], backgroundColor: '#2F7BFF', borderRadius: mk(16), borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}>
-            <View style={{ position: 'absolute', left: mk(6), right: mk(6), top: mk(4), height: mk(12), borderRadius: mk(6), backgroundColor: 'rgba(255,255,255,0.28)' }} />
-            <IcCrown size={mk(50)} />
-          </View>
+        <BannerImage source={UI2.banner_cosm} ratio={2.5}>
+          <Ribbon label={t('ui2.cosmTag')} color="#7C3AED" size={mk(22)} style={{ position: 'absolute', left: '3%', top: '5%', paddingHorizontal: mk(16) }} />
           <CosmTitle />
+          <View style={{ position: 'absolute', left: '3.5%', top: '63%', width: '42%', height: '31%', justifyContent: 'center' }}>
+            <Text numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.black, fontSize: mk(19), lineHeight: mk(23) }}>{t('ui2.cosmDesc')}</Text>
+          </View>
         </BannerImage>
       </View>
 
@@ -168,14 +164,14 @@ function BannerFeature({ top, icon, text }: { top: DimensionValue; icon: React.R
     </View>
   );
 }
-// "SAHADA FARK YARAT!" — iki renkli başlık; uzun dillerde punto düşer (taç kartına taşmaz).
+// "SAHADA FARK YARAT!" — iki satır üst üste (beyaz / altın); uzun dillerde punto düşer, sol sütunu aşmaz.
 function CosmTitle() {
   const a = t('ui2.cosmTitle1'); const b = t('ui2.cosmTitle2');
-  const total = a.length + b.length + 1; const size = mk(56) * Math.min(1, 18 / total);
+  const size = fitSize(mk(50), a.length >= b.length ? a : b, 11);
   return (
-    <View style={{ position: 'absolute', left: '5.5%', top: '21%', width: '64%', height: '26%', flexDirection: 'row', alignItems: 'center', gap: mk(12) }}>
+    <View style={{ position: 'absolute', left: '3.5%', top: '22%', width: '43%', height: '40%', justifyContent: 'center' }}>
       <OutlinedText size={size} width={mk(4)} align="left" numberOfLines={1}>{a}</OutlinedText>
-      <OutlinedText size={size} width={mk(4)} color={C.gold} align="left" numberOfLines={1}>{b}</OutlinedText>
+      <OutlinedText size={size} width={mk(4)} color={C.gold} align="left" numberOfLines={1} style={{ marginTop: -mk(6) }}>{b}</OutlinedText>
     </View>
   );
 }

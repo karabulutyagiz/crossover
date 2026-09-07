@@ -5,7 +5,7 @@ import { Avatar } from '../Avatar';
 import { track } from '../telemetry';
 import type { Actions, GameState } from './types';
 import { UI2 } from './assets';
-import { Bar, BannerImage, ChunkyButton, GemAmount, IconSlot, OutlinedText, Plate, SectionHeader, fmt } from './primitives';
+import { Bar, BannerImage, ChunkyButton, GemAmount, IconSlot, OutlinedText, Plate, SectionHeader, fitSize, fmt } from './primitives';
 import { IcAddFriend, IcArrowRight, IcCheckBadge, IcGift, IcInviteCode, IcNavFriends, IcRequests, IcSuggest, IcTrophy } from './icons-ui';
 import { Hud } from './Shell';
 import { t } from '../i18n';
@@ -33,21 +33,21 @@ export function FriendsTab({ state, actions, onOpenSettings, onOpenProfile, onOp
         data={{ name: p?.displayName ?? '', avatarId: p?.avatar ?? null, frameId: p?.selectedFrame ?? null, level: p?.level ?? 1, xp: p?.xp ?? 0, xpNext: (p as any)?.xpForNext ?? 1000, trophies: p?.trophies ?? 0, diamonds: p?.diamonds ?? 0 }}
         actions={{ onAvatar: onOpenProfile, onSettings: onOpenSettings, onTrophies: onOpenArenas }} />
 
-      {/* ── ARKADAŞINI DAVET ET banner'ı: sanat mock'tan (metinsiz arka plan), başlık/açıklama/ödül/buton CANLI (21 dil) ── */}
+      {/* ── ARKADAŞINI DAVET ET banner'ı: kullanıcının sanatı (iki karakter + elmaslar sağda), başlık/açıklama/ödül/buton CANLI (21 dil) ── */}
       <View style={{ marginHorizontal: SIDE, marginTop: mk(4) }}>
-        <BannerImage source={UI2.banner_invite} ratio={884 / 218}>
-          <View style={{ position: 'absolute', left: '3%', top: '5%', width: '57%', height: '32%', flexDirection: 'row', alignItems: 'center', gap: mk(10) }}>
-            <OutlinedText size={mk(44)} width={mk(4)} color="#E9C8FF" align="left" numberOfLines={1} fit>{S.inviteTitle}</OutlinedText>
-            <OutlinedText size={mk(44)} width={mk(4)} color={C.gold} align="left" numberOfLines={1} fit>{S.inviteTitle2}</OutlinedText>
+        <BannerImage source={UI2.banner_invite} ratio={2.5}>
+          <View style={{ position: 'absolute', left: '3.5%', top: '7%', width: '41%', height: '40%', justifyContent: 'center' }}>
+            <OutlinedText size={fitSize(mk(46), S.inviteTitle.length >= S.inviteTitle2.length ? S.inviteTitle : S.inviteTitle2, 11)} width={mk(4)} color="#E9C8FF" align="left" numberOfLines={1}>{S.inviteTitle}</OutlinedText>
+            <OutlinedText size={fitSize(mk(46), S.inviteTitle.length >= S.inviteTitle2.length ? S.inviteTitle : S.inviteTitle2, 11)} width={mk(4)} color={C.gold} align="left" numberOfLines={1} style={{ marginTop: -mk(6) }}>{S.inviteTitle2}</OutlinedText>
           </View>
-          <View style={{ position: 'absolute', left: '3%', top: '40%', width: '41%', height: '55%', justifyContent: 'center' }}>
-            <Text numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.bold, fontSize: mk(20), lineHeight: mk(26) }}>{S.inviteDesc}</Text>
+          <View style={{ position: 'absolute', left: '3.5%', top: '48%', width: '41%', height: '28%', justifyContent: 'center' }}>
+            <Text numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.bold, fontSize: mk(18), lineHeight: mk(23) }}>{S.inviteDesc}</Text>
           </View>
-          <View style={{ position: 'absolute', left: '44%', top: '70%', width: '23%', height: '25%', backgroundColor: '#0C1E5C', borderRadius: mk(14), borderWidth: mk(3), borderColor: C.navy, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
-            <OutlinedText size={mk(24)} width={mk(2)} numberOfLines={1} fit>{S.gemsN(REFERRAL_REWARD)}</OutlinedText>
+          <View style={{ position: 'absolute', left: '3.5%', top: '79%', width: '22%', height: '16%', backgroundColor: '#0C1E5C', borderRadius: mk(14), borderWidth: mk(3), borderColor: C.navy, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
+            <OutlinedText size={mk(22)} width={mk(2)} numberOfLines={1} fit>{S.gemsN(REFERRAL_REWARD)}</OutlinedText>
           </View>
-          <View style={{ position: 'absolute', left: '71.5%', top: '59%', width: '28%', height: '35%' }}>
-            <ChunkyButton kind="green" label={S.inviteBtn} height={mk(70)} size={mk(28)} onPress={share} style={{ flex: 1 }} />
+          <View style={{ position: 'absolute', left: '69%', top: '72%', width: '28%', height: '23%' }}>
+            <ChunkyButton kind="green" label={S.inviteBtn} height={mk(80)} size={mk(28)} onPress={share} style={{ flex: 1 }} />
           </View>
         </BannerImage>
       </View>
