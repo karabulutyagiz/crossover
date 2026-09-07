@@ -1,4 +1,26 @@
-# CANLIYA ALINACAKLAR — Deploy Sırası (güncel: 2026-09-05 21:40 TR)
+# CANLIYA ALINACAKLAR — Deploy Sırası (güncel: 2026-09-07 15:40 TR)
+
+## ✅ 2026-09-07 — BEN KİMİM v2 + 4 İSTEMCİ DÜZELTMESİ (sunucu + OTA iki projeye, doğrulandı)
+
+**Sunucu** (`ship-20260906-server` = canlı `server-gift-20260905` + Ben Kimim v2): rsync 01:51Z,
+kapılı `docker compose up -d --build app` **01:56:30Z'de rooms=0 anında** çalıştı (kimse düşmedi).
+Kanıt: konteynerde `getCardAny=1 gwRounds=6 apologyGiftAvailable=1`; 11 saatte 9 çok-turlu tur,
+6 tur kapanışı, 7 tek-tur (eski istemci), 0 uncaught. Migration yok.
+
+**OTA** (`ship-20260906-ota` = canlı `ota-gift-20260905` + Ben Kimim v2 + 4 düzeltme; commit `4906990`):
+ESKİ proje grup `fa3dfeb1` (01:51Z, köprü betiği, ygzkrblt1) · YENİ proje grup `b3d5bd71` (12:32Z,
+ygzkrblt). runtime 1.0.3, iOS+Android. İçerik: Ben Kimim yazarken TÜM futbolcular (search_players,
+`getCardAny`) + İLK 3 TURU ALAN KAZANIR (`gwrounds` caps kapılı; eski istemci tek tur) · geçiş reklamı
+sayacı turu değil MAÇI sayar · her maç sonu sahte "KOPYA ÇEKME ALGILANDI" bandı · takım ızgarası
+geri sayımda ön-yüklenir · `PT|n|g|t|r|s|k` faz ölçeri (ilk 11 saatte 333 rapor; sözlük
+`app/src/phaseTiming.ts`) + freezeWatch arka plan ayrımı.
+
+**AÇIK İŞ — birleştirme:** `origin/build-113`'teki `fd29dc99` (Baturalp, 06-09 12:38: "havuz
+genişletme + first-to-3") aynı özelliğin İKİNCİ uygulaması — canlıda DEĞİL, caps kapısı yok, arama
+hâlâ havuz; `build-113` canlıdaki hediye/jeton-kaldırma commit'lerini de içermiyor. Canlı = bu iki
+ship dalı. build-113'e birleştirirken `fd29dc99`'un Ben Kimim hunk'ları düşürülmeli ("havuz
+genişletme" kısmı ayrıca değerlendirilir); Desktop'taki COF tasarım zinciri tasarım bitince gelir.
+
 
 ## ⏳ 2026-09-05 — 150 ELMAS BAKIM ÖZRÜ: HAZIR, YAYIN + SUNUCU DEPLOY BEKLİYOR
 
