@@ -11,7 +11,7 @@ const profile = {
   arena: { name: 'Şampiyonlar Ligi', icon: '🏟️', minTrophies: 1000 }, avatar: 'pp3', xp: 420, level: 12, xpForNext: 1000, selectedFrame: null, claimedLevels: [], ownedCosmetics: ['night_stadium'], premiumRoad: false,
 };
 const state = {
-  phase: 'home', profile, error: null, storeCatalogStatus: 'success', userSearchResults: [],
+  phase: 'home', profile, error: null, storeCatalogStatus: 'success', userSearchResults: [], room: null, league: null,
   friendRequests: [{ requestId: 'r1', fromId: 'x', fromName: 'Kerem', createdAt: '' }, { requestId: 'r2', fromId: 'y', fromName: 'Ali', createdAt: '' }],
   friends: [
     { userId: 'f1', displayName: 'Mert', selectedAvatar: 'pp1', avatar: 'pp1', trophies: 3120, arena: { name: 'Dünya Klasmanı', icon: '', minTrophies: 3500 }, online: true },
@@ -39,7 +39,7 @@ const actions = new Proxy({}, { get: (_t, k) => (...a: unknown[]) => { console.l
 
 export default function Ui2Preview() {
   const qs = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-  const initial = Number(qs?.get('tab') ?? '2'); const sy = Number(qs?.get('sy') ?? '0');
+  const initial = Number(qs?.get('tab') ?? '2'); const sy = Number(qs?.get('sy') ?? '0'); const dlg = (qs?.get('dlg') ?? null) as any;
   const [tab, setTab] = useState(Number.isFinite(initial) ? initial : 2);
   const [fontsLoaded] = useFonts({
     'Poppins-Black': require('../../assets/fonts/Poppins-Black.ttf'), 'Poppins-ExtraBold': require('../../assets/fonts/Poppins-ExtraBold.ttf'), 'Poppins-SemiBold': require('../../assets/fonts/Poppins-SemiBold.ttf'), 'LilitaOne-Regular': require('../../assets/fonts/LilitaOne-Regular.ttf'),
@@ -48,7 +48,7 @@ export default function Ui2Preview() {
   return (
     <SafeAreaProvider>
       <View style={{ width: 430, height: 932, alignSelf: 'center', overflow: 'hidden', backgroundColor: '#000' }}>
-        <Ui2Tabs state={state} actions={actions} activeTab={tab} goToTab={setTab} onOpenLevelRoad={() => console.log('level road')} onOpenSettings={() => console.log('settings')} initialScrollY={sy} />
+        <Ui2Tabs state={state} actions={actions} activeTab={tab} goToTab={setTab} onOpenLevelRoad={() => console.log('level road')} initialScrollY={sy} initialDialog={dlg} />
       </View>
     </SafeAreaProvider>
   );

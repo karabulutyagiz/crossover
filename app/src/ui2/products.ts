@@ -19,6 +19,8 @@ export const SOCIAL_PACK = [
 export const SOCIAL_PACK_IDS: string[] = SOCIAL_PACK.map((s) => s.productId);
 export const PREMIUM_ROAD_PRICE = 2000; // CO PASS — elmasla (sunucu buy_premium_road)
 export const LEVEL_CAP = 50;
+// Sosyal Paket gerektiren modlar (screens.tsx PACK_MODES ile birebir).
+export const PACK_MODES: string[] = ['country-team', 'letter-team', 'xox', 'cozkazan', 'guess-who'];
 
 export type PowerId = 'xp2x' | 'shield' | 'streak' | 'training';
 // Fiyatlar sunucudaki POWER_PRICES ile birebir (screens.tsx'teki eski tabloyla aynı kaynak).

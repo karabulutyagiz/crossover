@@ -9,11 +9,11 @@ import { C, F, LIP, OUTLINE, SIDE, mh, mk } from './tokens';
 
 export type HomeTabProps = {
   state: GameState; actions: Actions;
-  onOpenLevelRoad: () => void; onOpenQuests: () => void; onOpenModes: () => void; onOpenFriendPlay: () => void;
+  onOpenLevelRoad: () => void; onOpenQuests: () => void; onOpenModes: () => void; onOpenBot: () => void;
   onOpenStore: () => void; onOpenSettings: () => void; onOpenProfile: () => void; onOpenArenas: () => void;
 };
 
-export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenModes, onOpenFriendPlay, onOpenStore, onOpenSettings, onOpenProfile, onOpenArenas }: HomeTabProps) {
+export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenModes, onOpenBot, onOpenStore, onOpenSettings, onOpenProfile, onOpenArenas }: HomeTabProps) {
   const p = state.profile;
   const level = p?.level ?? 1;
   const trophies = p?.trophies ?? 0;
@@ -76,7 +76,7 @@ export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenM
       </View>
       {/* Oyun Modları / Arkadaşla Oyna */}
       <View style={{ flexDirection: 'row', marginHorizontal: SIDE, marginTop: mh(26), gap: mh(20) }}>
-        {([{ label: 'Oyun Modları', art: UI2.home_modes_art, on: onOpenModes }, { label: 'Arkadaşla Oyna', art: UI2.home_friends_art, on: onOpenFriendPlay }] as const).map((c) => (
+        {([{ label: 'Oyun Modları', art: UI2.home_modes_art, on: onOpenModes }, { label: 'Bot Maçı', art: UI2.md_bot, on: onOpenBot }] as const).map((c) => (
           <Pressable key={c.label} onPress={c.on} style={{ flex: 1 }}>
             <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={mh(26)} inner={{ height: mh(220) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: mh(10) }}>
               <Image source={c.art} style={{ width: '88%', height: mh(140), marginBottom: mh(4) }} resizeMode="contain" />

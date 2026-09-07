@@ -37,7 +37,21 @@ for y0_ in range(H):
                     if not comp[j] and px[nx, ny][3] != 0: comp[j] = cid; st.append((nx, ny))
         sizes[cid] = n
 if sizes:
-    big = max(sizes.values()); keep = {c for c, n in sizes.items() if n >= max(30, big*0.06)}
+    big = max(sizes.values())
+    # bileşen kutuları: çok ince (≤3 px yükseklik/genişlik) şeritler komşu panel çizgisidir → at
+    box = {}
+    for y in range(H):
+        for x in range(W):
+            c = comp[y*W + x]
+            if c:
+                b = box.get(c)
+                box[c] = (min(b[0], x), min(b[1], y), max(b[2], x), max(b[3], y)) if b else (x, y, x, y)
+    keep = set()
+    for c, n in sizes.items():
+        bx0, by0, bx1, by1 = box[c]; bw, bh = bx1-bx0+1, by1-by0+1
+        thin = bh <= 3 or bw <= 3 or (n < bw*bh*0.25 and (bh <= 6 or bw <= 6))
+        if n >= max(30, big*0.12) and not thin: keep.add(c)
+        elif c == max(sizes, key=sizes.get): keep.add(c)
     for y in range(H):
         for x in range(W):
             c = comp[y*W + x]
