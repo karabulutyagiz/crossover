@@ -44,10 +44,10 @@ export function Dialog({ title, onClose, children, accent = false, wide = false 
 // art: kullanıcının mod rozeti (indirilenler, 2026-09-07); yoksa vektör ikon.
 type ModeDef = { id: GameMode; nameKey: MessageKey; descKey: MessageKey; Icon: (p: { size?: number }) => ReactNode; art?: ImageSourcePropType; face: string; top: string; lip: string };
 const MODE_DEFS: ModeDef[] = [
-  { id: 'team-team', nameKey: 'mode.teamTeam', descKey: 'ui2.md.teamTeam', Icon: IcModeTeamTeam, face: '#1E7BFF', top: '#7DB8FF', lip: '#0E4FB8' },
-  { id: 'country-team', nameKey: 'mode.countryTeam', descKey: 'ui2.md.countryTeam', Icon: IcModeCountryTeam, face: '#E8443A', top: '#FF9C8F', lip: '#9E2118' },
-  { id: 'letter-team', nameKey: 'mode.letterTeam', descKey: 'ui2.md.letterTeam', Icon: IcModeLetterTeam, face: '#E8B400', top: '#FFE98A', lip: '#A67900' },
-  { id: 'xox', nameKey: 'mode.xox', descKey: 'ui2.md.xox', Icon: IcModeXox, face: '#22C55E', top: '#86EFAC', lip: '#15803D' },
+  { id: 'team-team', nameKey: 'mode.teamTeam', descKey: 'ui2.md.teamTeam', Icon: IcModeTeamTeam, art: UI2.mode_team_team, face: '#1E7BFF', top: '#7DB8FF', lip: '#0E4FB8' },
+  { id: 'country-team', nameKey: 'mode.countryTeam', descKey: 'ui2.md.countryTeam', Icon: IcModeCountryTeam, art: UI2.mode_country_team, face: '#E8443A', top: '#FF9C8F', lip: '#9E2118' },
+  { id: 'letter-team', nameKey: 'mode.letterTeam', descKey: 'ui2.md.letterTeam', Icon: IcModeLetterTeam, art: UI2.mode_letter_team, face: '#E8B400', top: '#FFE98A', lip: '#A67900' },
+  { id: 'xox', nameKey: 'mode.xox', descKey: 'ui2.md.xox', Icon: IcModeXox, art: UI2.mode_xox, face: '#22C55E', top: '#86EFAC', lip: '#15803D' },
   { id: 'cozkazan', nameKey: 'mode.cozkazan', descKey: 'ui2.md.cozkazan', Icon: IcModeCozKazan, art: UI2.mode_cozkazan, face: '#8E2BEA', top: '#C58BFF', lip: '#4B0F9E' },
   { id: 'guess-who', nameKey: 'mode.guessWho', descKey: 'ui2.md.guessWho', Icon: IcModeGuessWho, art: UI2.mode_guess_who, face: '#FF7A1A', top: '#FFB472', lip: '#C24E00' },
 ];
@@ -71,8 +71,8 @@ export function ModeMenuDialog({ state, actions, onClose, bot = false, onLocked 
           const on = mode === m.id; const lk = PACK_MODES.includes(m.id) && !hasPack;
           return (
             <Pressable key={m.id} onPress={() => setMode(m.id)} style={{ width: '48.5%' }}>
-              <Plate face={m.face} top={m.top} lip={m.lip} outline={on ? C.gold : C.navy} outlineWidth={on ? mk(7) : OUTLINE} radius={mk(22)} inner={{ height: mk(236) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(10), paddingTop: mk(6) }}>
-                {m.art ? <Image source={m.art} style={{ width: mk(150), height: mk(150) }} resizeMode="contain" /> : <m.Icon size={mk(110)} />}
+              <Plate face={m.face} top={m.top} lip={m.lip} outline={on ? C.gold : C.navy} outlineWidth={on ? mk(7) : OUTLINE} radius={mk(22)} inner={{ height: mk(252) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(10), paddingTop: mk(6) }}>
+                {m.art ? <Image source={m.art} style={{ width: mk(142), height: mk(142) }} resizeMode="contain" /> : <m.Icon size={mk(110)} />}
                 <OutlinedText size={mk(26)} width={mk(2)} numberOfLines={1} style={{ marginTop: mk(4) }}>{t(m.nameKey)}</OutlinedText>
                 <Text numberOfLines={2} style={{ color: C.white, fontFamily: F.semi, fontSize: mk(15), textAlign: 'center', lineHeight: mk(19), marginTop: mk(2) }}>{t(m.descKey)}</Text>
               </Plate>
