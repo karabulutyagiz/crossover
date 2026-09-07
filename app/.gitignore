@@ -42,3 +42,7 @@ yarn-error.*
 
 node_modules.nosync/
 play-service-account.json
+
+# yerel EAS kimlik bilgileri (2026-09-08)
+credentials.json
+credentials/

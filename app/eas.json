@@ -26,7 +26,8 @@
       "autoIncrement": false,
       "env": {
         "EXPO_PUBLIC_UI2": "1"
-      }
+      },
+      "credentialsSource": "local"
     }
   },
   "submit": {
