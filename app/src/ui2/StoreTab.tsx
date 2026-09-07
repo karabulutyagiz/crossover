@@ -11,7 +11,7 @@ import type { StoreCatalogItem } from '../protocol';
 import { EmoteSticker, PREMIUM_EMOTES } from '../emotes';
 import { CosmeticPreview } from '../screens';
 import { UI2 } from './assets';
-import { Bar, BannerImage, ChunkyButton, GemAmount, OutlinedText, Plate, Ribbon, SectionHeader, Sticker, fmt } from './primitives';
+import { Bar, BannerImage, ChunkyButton, GemAmount, OutlinedText, Plate, Ribbon, SectionHeader, Sticker, fitSize, fmt } from './primitives';
 import { Hud } from './Shell';
 import { ACCOUNT_POWERS, DIAMOND_PACKS, PREMIUM_ROAD_PRICE, SOCIAL_PACK } from './products';
 import type { useStorePurchases } from './useStorePurchases';
@@ -49,7 +49,7 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
         <BannerImage source={UI2.banner_socialpack} ratio={886 / 348}>
           <Ribbon label={t('ui2.specialOffer')} color={C.red} size={mk(24)} style={{ position: 'absolute', left: -mk(4), top: -mk(4), borderTopLeftRadius: mk(22), borderTopRightRadius: 0, borderBottomLeftRadius: 0, paddingHorizontal: mk(22), paddingVertical: mk(6) }} />
           <View style={{ position: 'absolute', left: '5.5%', top: '12%', width: '57%', height: '19%', justifyContent: 'center' }}>
-            <OutlinedText size={mk(64)} width={mk(4)} color={C.gold} align="left" numberOfLines={1} fit>{t('store.socialPackSection')}</OutlinedText>
+            <OutlinedText size={fitSize(mk(64), up(t('store.socialPackSection')), 13)} width={mk(4)} color={C.gold} align="left" numberOfLines={1} fit>{up(t('store.socialPackSection'))}</OutlinedText>
           </View>
           <BannerFeature top="35.5%" icon={<IcLock size={mk(44)} />} text={t('ui2.spFeat1')} />
           <BannerFeature top="53%" icon={<IcNoAds size={mk(44)} />} text={t('ui2.spFeat2')} />
@@ -71,8 +71,8 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
       {/* ── CO PASS banner'ı: sanat mock'tan (bilet, taç, "CO PASS" markası), satır + çıkartma + fiyat canlı ── */}
       <View style={{ marginHorizontal: SIDE, marginTop: mk(22) }}>
         <BannerImage source={UI2.banner_copass} ratio={886 / 212}>
-          <View style={{ position: 'absolute', left: '33%', top: '36%', width: '37%', height: '21%', justifyContent: 'center' }}>
-            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.black, fontSize: mk(25) }}>{t('ui2.cpLine')}</Text>
+          <View style={{ position: 'absolute', left: '33%', top: '36%', width: '38%', height: '21%', justifyContent: 'center' }}>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.black, fontSize: fitSize(mk(25), t('ui2.cpLine'), 22) }}>{t('ui2.cpLine')}</Text>
           </View>
           <View style={{ position: 'absolute', left: '31.2%', top: '57%', width: '33.5%', height: '34%' }}>
             <ChunkyButton kind="green" gem label={p?.premiumRoad ? t('store.badgeActive') : up(t('store.diamonds', { n: fmt(PREMIUM_ROAD_PRICE) }))} height={mk(74)} size={mk(28)} disabled={!!p?.premiumRoad}
@@ -204,7 +204,7 @@ function ProductCard({ width, height, title, subtitle, art, artNode, artScale = 
           {artNode ?? (art ? <Image source={art} style={{ width: `${86 * artScale}%`, height: '92%' }} resizeMode="contain" /> : null)}
           {ribbon ? <Ribbon label={ribbon.label} color={ribbon.color === 'red' ? C.red : C.gold} style={{ position: 'absolute', bottom: -mk(2), transform: [{ rotate: '-3deg' }] }} size={mk(13)} /> : null}
         </View>
-        {desc ? <Text numberOfLines={2} style={{ color: C.white, fontFamily: F.black, fontSize: mk(14), textAlign: 'center', lineHeight: mk(17), marginTop: mk(2) }}>{desc}</Text> : null}
+        {desc ? <Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7} style={{ color: C.white, fontFamily: F.black, fontSize: mk(14), textAlign: 'center', lineHeight: mk(17), marginTop: mk(2) }}>{desc}</Text> : null}
         <View style={{ width: '100%', marginTop: mk(6), marginBottom: mk(8) }}>
           <ChunkyButton kind="green" gem={button.gem} label={button.label} height={mk(52)} size={mk(24)} onPress={button.onPress} disabled={button.disabled} />
         </View>

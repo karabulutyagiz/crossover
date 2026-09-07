@@ -4,7 +4,7 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View, type ImageSourceP
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '../Avatar';
 import { t, type MessageKey } from '../i18n';
-import { Bar, CheckerBg, IconSlot, OutlinedText, Plate, fmt } from './primitives';
+import { Bar, CheckerBg, IconSlot, OutlinedText, Plate, fitSize, fmt } from './primitives';
 import { IcGear, IcGem, IcNavCollection, IcNavFriends, IcNavPlay, IcNavStore, IcPlus, IcTrophy } from './icons-ui';
 import { C, F, LIP, OUTLINE, R, SIDE, mk } from './tokens';
 
@@ -106,7 +106,7 @@ export function BottomNav({ active, onPress, labels, badges }: { active: NavKey;
             <Plate face={on ? C.navActive : C.navTile} top={on ? '#8CC4FF' : C.navTileTop} lip={on ? C.gold : '#082F80'} outline={on ? C.gold : C.navy} radius={R.tile} outlineWidth={on ? mk(7) : OUTLINE} lipHeight={mk(14)}
               inner={{ height: (on ? NAV_H + mk(12) : NAV_H) - mk(14) - OUTLINE * 2, alignItems: 'center', justifyContent: 'center', paddingTop: mk(6) }}>
               <View style={{ height: mk(78), justifyContent: 'center' }}><n.Icon size={mk(74)} /></View>
-              <OutlinedText size={mk(30)} width={mk(3)} family={F.title} style={{ marginTop: mk(2) }} numberOfLines={1}>{labels?.[n.key] ?? t(n.labelKey)}</OutlinedText>
+              <OutlinedText size={fitSize(mk(30), labels?.[n.key] ?? t(n.labelKey), 10)} width={mk(3)} family={F.title} style={{ marginTop: mk(2) }} numberOfLines={1} fit>{labels?.[n.key] ?? t(n.labelKey)}</OutlinedText>
             </Plate>
             {badge ? (
               <View style={{ position: 'absolute', top: -mk(8), right: mk(6), minWidth: mk(44), height: mk(44), borderRadius: mk(22), backgroundColor: C.red, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>

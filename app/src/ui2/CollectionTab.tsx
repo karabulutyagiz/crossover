@@ -102,7 +102,7 @@ function PowerCard({ width, name, art, face, badge, line, button, dim }: { width
     <View style={{ width, opacity: dim ? 0.72 : 1 }}>
       <Plate face={face[0]} top={face[1]} lip={face[2]} radius={R.card} inner={{ height: mk(250) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(8), paddingHorizontal: mk(6) }}>
         <View style={{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center' }}>{isValidElement(art) ? <IconSlot icon={art} width={width * 0.7} height={width * 0.7} size={width * 0.62} /> : <Image source={art as ImageSourcePropType} style={{ width: '84%', height: '90%' }} resizeMode="contain" />}</View>
-        <OutlinedText size={mk(22)} width={mk(2)} numberOfLines={1}>{up(name)}</OutlinedText>
+        <OutlinedText size={mk(22)} width={mk(2)} numberOfLines={1} fit>{up(name)}</OutlinedText>
         <View style={{ backgroundColor: 'rgba(255,255,255,0.28)', borderRadius: mk(10), paddingHorizontal: mk(12), paddingVertical: mk(2), marginTop: mk(3) }}><Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(15) }}>{line}</Text></View>
         <View style={{ width: '100%', marginTop: mk(6), marginBottom: mk(8) }}><ChunkyButton kind={button.kind} label={button.label} height={mk(46)} size={mk(20)} onPress={button.on} /></View>
       </Plate>
@@ -142,7 +142,7 @@ function FrameCard({ width, name, equipped, onPress, children }: { width: number
     <View style={{ width }}>
       <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={equipped ? C.gold : C.navy} radius={R.card} inner={{ height: mk(250) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(8), paddingHorizontal: mk(6) }}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>{children}</View>
-        <OutlinedText size={mk(20)} width={mk(2)} numberOfLines={1}>{up(name)}</OutlinedText>
+        <OutlinedText size={mk(20)} width={mk(2)} numberOfLines={1} fit>{up(name)}</OutlinedText>
         <View style={{ width: '100%', marginTop: mk(6), marginBottom: mk(8) }}><ChunkyButton kind={equipped ? 'blue' : 'green'} label={equipped ? t('store.spEquipped') : t('store.spEquip')} height={mk(46)} size={mk(20)} onPress={onPress} /></View>
       </Plate>
     </View>

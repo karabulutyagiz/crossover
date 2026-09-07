@@ -105,7 +105,7 @@ export function SectionHeader({ icon, title, subtitle, onMore, style }: { icon: 
       {subtitle ? (
         <Pressable onPress={onMore} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: mk(10), flexShrink: 1, minWidth: 0, marginLeft: mk(8) }}>
           <View style={{ width: mk(30), height: 2, backgroundColor: C.textSub, opacity: 0.6 }} />
-          <Text numberOfLines={2} style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(18), letterSpacing: 0.2, flexShrink: 1, textAlign: 'right', lineHeight: mk(21) }}>{subtitle}</Text>
+          <Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(18), letterSpacing: 0.2, flexShrink: 1, textAlign: 'right', lineHeight: mk(21) }}>{subtitle}</Text>
           {onMore ? <Text style={{ color: C.textSub, fontFamily: F.black, fontSize: mk(30), marginTop: -2 }}>›</Text> : null}
         </Pressable>
       ) : null}
@@ -169,4 +169,11 @@ export function Sticker({ left, top, width, height, rotate, face, border, childr
       {children}
     </View>
   );
+}
+
+// ── Uzunluğa göre punto: `latin` Latin karakter (ya da `cjk` CJK karakter) sığıyorsa taban punto, fazlası orantılı küçülür ──
+const CJK = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\u0e00-\u0e7f]/;
+export function fitSize(base: number, text: string, latin: number, cjk = Math.round(latin * 0.55)): number {
+  const n = Array.from(text).length; const cap = CJK.test(text) ? cjk : latin;
+  return n <= cap ? base : Math.max(base * 0.5, base * cap / n);
 }
