@@ -255,7 +255,7 @@ export function RequestsDialog({ state, actions, onClose }: { state: GameState; 
       {state.friendRequests.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(20), textAlign: 'center', padding: mk(12) }}>{t('friends.noPendingRequests')}</Text> : null}
       {state.friendRequests.map((r) => (
         <Plate key={r.requestId} face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginBottom: mk(10) }} inner={{ height: mk(96) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(12), gap: mk(10) }}>
-          <OutlinedText size={mk(26)} width={mk(2)} align="left" numberOfLines={1} style={{ flex: 1 }}>{up(r.fromName)}</OutlinedText>
+          <View style={{ flex: 1, minWidth: 0 }}><OutlinedText size={mk(26)} width={mk(2)} align="left" numberOfLines={1}>{up(r.fromName)}</OutlinedText></View>
           <ChunkyButton kind="green" label={t('ui2.accept')} height={mk(58)} size={mk(20)} style={{ width: mk(120) }} onPress={() => actions.respondFriendRequest(r.requestId, true)} />
           <ChunkyButton kind="red" label={t('ui2.decline')} height={mk(58)} size={mk(20)} style={{ width: mk(120) }} onPress={() => actions.respondFriendRequest(r.requestId, false)} />
         </Plate>

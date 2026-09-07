@@ -23,12 +23,12 @@ const EMOTE_SLOTS = 8;
 const INNER_W = 430 - SIDE * 2 - OUTLINE * 2 - mk(14) * 2;
 const COL_W = Math.floor((INNER_W - GAP * 3) / 4);
 
-export type CollectionTabProps = { state: GameState; actions: Actions; onOpenSettings: () => void; onOpenProfile: () => void; onOpenArenas: () => void; onOpenStore: () => void; onNotice: (title: string, body: string) => void };
+export type CollectionTabProps = { state: GameState; actions: Actions; onOpenSettings: () => void; onOpenProfile: () => void; onOpenArenas: () => void; onOpenStore: () => void; onNotice: (title: string, body: string) => void; initialSub?: Sub };
 type Sub = 'powers' | 'cosmetics' | 'emotes';
 
-export function CollectionTab({ state, actions, onOpenSettings, onOpenProfile, onOpenArenas, onOpenStore, onNotice }: CollectionTabProps) {
+export function CollectionTab({ state, actions, onOpenSettings, onOpenProfile, onOpenArenas, onOpenStore, onNotice, initialSub }: CollectionTabProps) {
   const p = state.profile;
-  const [sub, setSub] = useState<Sub>('powers');
+  const [sub, setSub] = useState<Sub>(initialSub ?? 'powers');
   const catalog = state.storeCatalog;
   useEffect(() => { if (!catalog) actions.loadStoreCatalog(); }, [catalog, actions]);
   const spEquipped = ((p?.equippedSpecialPowers ?? (p?.equippedSpecialPower ? [p.equippedSpecialPower] : [])) as SpId[]);

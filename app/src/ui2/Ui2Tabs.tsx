@@ -21,9 +21,9 @@ const KEYS: NavKey[] = ['store', 'collection', 'play', 'friends', 'tournaments']
 type Confirm = { title: string; body: string; price?: number; priceText?: string; onYes: () => void };
 export type Ui2DialogKey = 'mode' | 'bot' | 'quests' | 'settings' | 'language' | 'room' | 'requests' | 'league' | null;
 
-export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, onLanguageChange, onDiamondCelebration, initialScrollY = 0, initialDialog = null }: {
+export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, onLanguageChange, onDiamondCelebration, initialScrollY = 0, initialDialog = null, initialCollectionSub }: {
   state: GameState; actions: Actions; activeTab: number; goToTab: (i: number) => void;
-  onOpenLevelRoad: () => void; onLanguageChange?: () => void; onDiamondCelebration?: (c: { amount: number }) => void; initialScrollY?: number; initialDialog?: Ui2DialogKey;
+  onOpenLevelRoad: () => void; onLanguageChange?: () => void; onDiamondCelebration?: (c: { amount: number }) => void; initialScrollY?: number; initialDialog?: Ui2DialogKey; initialCollectionSub?: 'powers' | 'cosmetics' | 'emotes';
 }) {
   const insets = useSafeAreaInsets();
   const store = useStorePurchases(state, actions, onDiamondCelebration);
@@ -40,7 +40,7 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
   else if (active === 'play') body = <HomeTab {...common} onOpenLevelRoad={onOpenLevelRoad} onOpenStore={() => goToTab(0)} onOpenQuests={() => { actions.getDailyQuests(); setDlg('quests'); }} onOpenModes={() => setDlg('mode')} onOpenBot={() => setDlg('bot')} />;
   else if (active === 'friends') body = <FriendsTab {...common} onOpenRequests={() => setDlg('requests')} onOpenAddFriend={() => say(t('friends.addSection'), t('ui2.addFriendHint'))} onNotice={say} />;
   else if (active === 'tournaments') body = <TournamentsTab {...common} onOpenLevelRoad={onOpenLevelRoad} onOpenLeague={() => { actions.getLeague(); setDlg('league'); }} onOpenTournament={(id) => { actions.getTournament(id); say(t('ui2.tournament'), t('ui2.bracketSoon')); }} onNotice={say} />;
-  else body = <CollectionTab {...common} onOpenStore={() => goToTab(0)} onNotice={say} />;
+  else body = <CollectionTab {...common} onOpenStore={() => goToTab(0)} onNotice={say} initialSub={initialCollectionSub} />;
 
   const closeDlg = () => setDlg(null);
   return (

@@ -57,12 +57,8 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
             <Text numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.ink, fontFamily: F.black, fontSize: mk(20), lineHeight: mk(23), textAlign: 'center' }}>{t('ui2.spSticker')}</Text>
           </Sticker>
           {SOCIAL_PACK.map((sp, i) => (
-            <View key={sp.id} style={{ position: 'absolute', left: `${i === 0 ? 2.8 : 32.6}%`, top: '67.5%', width: '27.4%', height: '25%' }}>
-              <ChunkyButton kind="green" label={store.priceFor(sp.productId, sp.fallback)} sub={undefined} height={mk(86)} size={mk(30)} onPress={() => store.buy(sp.productId)} disabled={!!store.buying}
-                style={{ flex: 1 }} />
-              <View pointerEvents="none" style={{ position: 'absolute', top: mk(4), left: 0, right: 0, alignItems: 'center' }}>
-                <OutlinedText size={mk(20)} width={1.5} outline="#0E5A1C" numberOfLines={1} fit>{store.activeSubId === sp.productId ? t('store.badgeActive') : t(sp.labelKey)}</OutlinedText>
-              </View>
+            <View key={sp.id} style={{ position: 'absolute', left: `${i === 0 ? 2.0 : 33.2}%`, top: '66.5%', width: `${i === 0 ? 31.0 : 28.6}%`, height: '31.5%' }}>
+              <ChunkyButton kind="green" label={store.priceFor(sp.productId, sp.fallback)} over={store.activeSubId === sp.productId ? t('store.badgeActive') : t(sp.labelKey)} height={mk(110)} size={mk(32)} onPress={() => store.buy(sp.productId)} disabled={!!store.buying} style={{ flex: 1 }} />
             </View>
           ))}
         </BannerImage>
@@ -74,8 +70,8 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
           <View style={{ position: 'absolute', left: '33%', top: '36%', width: '38%', height: '21%', justifyContent: 'center' }}>
             <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.black, fontSize: fitSize(mk(25), t('ui2.cpLine'), 22) }}>{t('ui2.cpLine')}</Text>
           </View>
-          <View style={{ position: 'absolute', left: '31.2%', top: '57%', width: '33.5%', height: '34%' }}>
-            <ChunkyButton kind="green" gem label={p?.premiumRoad ? t('store.badgeActive') : up(t('store.diamonds', { n: fmt(PREMIUM_ROAD_PRICE) }))} height={mk(74)} size={mk(28)} disabled={!!p?.premiumRoad}
+          <View style={{ position: 'absolute', left: '29.6%', top: '55%', width: '36.4%', height: '38%' }}>
+            <ChunkyButton kind="green" gem label={p?.premiumRoad ? t('store.badgeActive') : up(t('store.diamonds', { n: fmt(PREMIUM_ROAD_PRICE) }))} height={mk(81)} size={mk(28)} disabled={!!p?.premiumRoad}
               onPress={() => gemBuy('CO PASS', PREMIUM_ROAD_PRICE, () => actions.buyPremiumRoad())} style={{ flex: 1 }} />
           </View>
           <Sticker left="76%" top="52%" width="26%" height="44%" rotate="-5deg" face="#1E4FD6" border="#5FE0FF">

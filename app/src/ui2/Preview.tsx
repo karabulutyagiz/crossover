@@ -40,7 +40,7 @@ const actions = new Proxy({}, { get: (_t, k) => (...a: unknown[]) => { console.l
 
 export default function Ui2Preview() {
   const qs = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-  const initial = Number(qs?.get('tab') ?? '2'); const sy = Number(qs?.get('sy') ?? '0'); const dlg = (qs?.get('dlg') ?? null) as any;
+  const initial = Number(qs?.get('tab') ?? '2'); const sy = Number(qs?.get('sy') ?? '0'); const dlg = (qs?.get('dlg') ?? null) as any; const sub = (qs?.get('sub') ?? undefined) as any;
   // ?lang=de → o dilde çiz (21 dil kontrolü için); render öncesi tek sefer
   const lang = qs?.get('lang'); if (lang && currentLang() !== lang) setLanguage(lang);
   const [tab, setTab] = useState(Number.isFinite(initial) ? initial : 2);
@@ -51,7 +51,7 @@ export default function Ui2Preview() {
   return (
     <SafeAreaProvider>
       <View style={{ width: 430, height: 932, alignSelf: 'center', overflow: 'hidden', backgroundColor: '#000' }}>
-        <Ui2Tabs state={state} actions={actions} activeTab={tab} goToTab={setTab} onOpenLevelRoad={() => console.log('level road')} initialScrollY={sy} initialDialog={dlg} />
+        <Ui2Tabs state={state} actions={actions} activeTab={tab} goToTab={setTab} onOpenLevelRoad={() => console.log('level road')} initialScrollY={sy} initialDialog={dlg} initialCollectionSub={sub} />
       </View>
     </SafeAreaProvider>
   );

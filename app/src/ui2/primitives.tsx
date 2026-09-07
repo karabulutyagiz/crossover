@@ -74,8 +74,8 @@ const BTN: Record<'green' | 'gold' | 'blue' | 'gray' | 'red', { face: string; to
   gray: { face: C.gray, top: '#C4CDE3', lip: C.grayDark, textOutline: '#2E3A57' },
   red: { face: C.red, top: '#FF8FA3', lip: C.redDark, textOutline: '#5A0A18' },
 };
-export function ChunkyButton({ kind = 'green', label, sub, onPress, height = mk(92), size = mk(38), style, icon, gem, disabled, radius = R.button, subSize }: {
-  kind?: keyof typeof BTN; label: string; sub?: string; onPress?: () => void; height?: number; size?: number;
+export function ChunkyButton({ kind = 'green', label, sub, over, onPress, height = mk(92), size = mk(38), style, icon, gem, disabled, radius = R.button, subSize }: {
+  kind?: keyof typeof BTN; label: string; sub?: string; /** küçük üst satır (ör. abonelik süresi) */ over?: string; onPress?: () => void; height?: number; size?: number;
   style?: StyleProp<ViewStyle>; icon?: ImageSourcePropType; gem?: boolean; disabled?: boolean; radius?: number; subSize?: number;
 }) {
   const k = BTN[kind];
@@ -85,6 +85,7 @@ export function ChunkyButton({ kind = 'green', label, sub, onPress, height = mk(
       <Plate face={k.face} top={k.top} lip={k.lip} radius={radius} inner={{ height: height - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: mk(10), paddingHorizontal: mk(18) }}>
         {iconSrc ? <Image source={iconSrc} style={{ width: size * 1.05, height: size * 1.05 }} resizeMode="contain" /> : null}
         <View style={{ alignItems: 'center' }}>
+          {over ? <OutlinedText size={size * 0.62} outline={k.textOutline} width={mk(3)} numberOfLines={1} fit style={{ marginBottom: -mk(3) }}>{over}</OutlinedText> : null}
           <OutlinedText size={size} outline={k.textOutline} width={mk(4)}>{label}</OutlinedText>
           {sub ? <OutlinedText size={subSize ?? size * 0.55} outline={k.textOutline} width={mk(3)} style={{ marginTop: -mk(4) }}>{sub}</OutlinedText> : null}
         </View>
