@@ -19,6 +19,14 @@
     "production": {
       "autoIncrement": false,
       "channel": "production"
+    },
+    "tfui2": {
+      "distribution": "store",
+      "channel": "preview",
+      "autoIncrement": false,
+      "env": {
+        "EXPO_PUBLIC_UI2": "1"
+      }
     }
   },
   "submit": {
