@@ -1,0 +1,151 @@
+// UI2 — ARKADAŞLAR sekmesi. Mock: refs/friends.png (941 px, mk()). Veri: state.friends/friendRequests/userSearchResults.
+import { useEffect, useState } from 'react';
+import { Image, Pressable, Share, Text, TextInput, View, type ImageSourcePropType } from 'react-native';
+import { Avatar } from '../Avatar';
+import { track } from '../telemetry';
+import type { Actions, GameState } from './types';
+import { UI2 } from './assets';
+import { Bar, ChunkyButton, GemAmount, OutlinedText, Plate, SectionHeader, fmt } from './primitives';
+import { Hud } from './Shell';
+import { S } from './strings';
+import { C, F, GAP, LIP, OUTLINE, R, SIDE, mk } from './tokens';
+
+const REFERRAL_REWARD = 100; // sunucu kuralı: davet kodunu giren ve davet eden 100 💎
+export type FriendsTabProps = { state: GameState; actions: Actions; onOpenSettings: () => void; onOpenProfile: () => void; onOpenArenas: () => void; onOpenRequests: () => void; onOpenAddFriend: () => void; onNotice: (title: string, body: string) => void };
+
+export function FriendsTab({ state, actions, onOpenSettings, onOpenProfile, onOpenArenas, onOpenRequests, onOpenAddFriend, onNotice }: FriendsTabProps) {
+  const p = state.profile;
+  const code = p?.userId?.slice(0, 8).toUpperCase() ?? '…';
+  const friends = state.friends;
+  const onlineCount = friends.filter((f) => f.online).length;
+  const [q, setQ] = useState('');
+  useEffect(() => { actions.loadFriends(); }, [actions]);
+  const share = () => {
+    track('referral_share', {});
+    void Share.share({ message: `CrossOver Football'da bana karşı oyna! ⚽ Davet kodum: ${code} — uygulamada girersen İKİMİZ de ${REFERRAL_REWARD}💎 kazanırız.\nhttps://crossoverfootball.com/indir` }).catch(() => {});
+  };
+  const W = 430 - SIDE * 2;
+  return (
+    <View style={{ flex: 1 }}>
+      <Hud title={S.friends} titleIcon={UI2.title_friends}
+        data={{ name: p?.displayName ?? '', avatarId: p?.avatar ?? null, frameId: p?.selectedFrame ?? null, level: p?.level ?? 1, xp: p?.xp ?? 0, xpNext: (p as any)?.xpForNext ?? 1000, trophies: p?.trophies ?? 0, diamonds: p?.diamonds ?? 0 }}
+        actions={{ onAvatar: onOpenProfile, onSettings: onOpenSettings, onTrophies: onOpenArenas }} />
+
+      {/* ── ARKADAŞINI DAVET ET banner'ı (canlı metin; sanat mock'tan) ── */}
+      <View style={{ marginHorizontal: SIDE, marginTop: mk(4) }}>
+        <Plate face="#1D4FD0" top="#4C8DFF" lip="#0B2F92" radius={mk(26)} inner={{ height: mk(214) - OUTLINE * 2 - LIP, overflow: 'hidden' }}>
+          <Image source={UI2.inv_heroes} style={{ position: 'absolute', right: -mk(6), top: mk(6), width: mk(290), height: mk(132) }} resizeMode="cover" />
+          <View style={{ position: 'absolute', left: mk(22), top: mk(22) }}>
+            <View style={{ flexDirection: 'row', gap: mk(10) }}>
+              <OutlinedText size={mk(44)} width={mk(4)} color="#E9C8FF" align="left">{S.inviteTitle}</OutlinedText>
+              <OutlinedText size={mk(44)} width={mk(4)} color={C.gold} align="left">{S.inviteTitle2}</OutlinedText>
+            </View>
+            <Text style={{ color: C.white, fontFamily: F.bold, fontSize: mk(21), lineHeight: mk(28), marginTop: mk(8), width: mk(360) }}>{S.inviteDesc}</Text>
+          </View>
+          <View style={{ position: 'absolute', left: mk(400), top: mk(56), alignItems: 'center' }}>
+            <Image source={UI2.inv_gems} style={{ width: mk(190), height: mk(96) }} resizeMode="contain" />
+            <View style={{ backgroundColor: C.panelInk, borderRadius: mk(14), borderWidth: mk(3), borderColor: C.navy, paddingHorizontal: mk(18), paddingVertical: mk(3), marginTop: -mk(4) }}>
+              <OutlinedText size={mk(26)} width={mk(2)}>{S.gemsN(REFERRAL_REWARD)}</OutlinedText>
+            </View>
+          </View>
+          <View style={{ position: 'absolute', right: mk(24), bottom: mk(10), width: mk(240) }}>
+            <ChunkyButton kind="green" label={S.inviteBtn} height={mk(64)} size={mk(28)} onPress={share} />
+          </View>
+        </Plate>
+      </View>
+
+      {/* ── Üç eylem kutusu ── */}
+      <View style={{ flexDirection: 'row', marginHorizontal: SIDE, marginTop: mk(22), gap: mk(16) }}>
+        {([
+          { icon: UI2.ic_addfriend, title: S.addFriend, sub: S.addFriendSub, on: onOpenAddFriend, badge: 0 },
+          { icon: UI2.ic_invitecode, title: S.inviteCode, sub: S.inviteCodeSub, on: share, badge: 0 },
+          { icon: UI2.ic_requests, title: S.requests, sub: S.requestsSub, on: onOpenRequests, badge: state.friendRequests.length },
+        ] as { icon: ImageSourcePropType; title: string; sub: string; on: () => void; badge: number }[]).map((a) => (
+          <Pressable key={a.title} onPress={a.on} style={{ flex: 1 }}>
+            <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={mk(22)} inner={{ height: mk(116) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(8), gap: mk(6) }}>
+              <Image source={a.icon} style={{ width: mk(84), height: mk(84) }} resizeMode="contain" />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <OutlinedText size={mk(21)} width={mk(2)} align="left" numberOfLines={1}>{a.title}</OutlinedText>
+                <Text numberOfLines={1} style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(14) }}>{a.sub}</Text>
+              </View>
+            </Plate>
+            {a.badge ? <View style={{ position: 'absolute', top: -mk(10), right: -mk(6), minWidth: mk(44), height: mk(44), borderRadius: mk(22), backgroundColor: C.red, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(24)} width={1}>{String(a.badge)}</OutlinedText></View> : null}
+          </Pressable>
+        ))}
+      </View>
+
+      {/* ── ÇEVRİMİÇİ ARKADAŞLAR ── */}
+      <Panel>
+        <View style={{ flexDirection: 'row', alignItems: 'center', height: mk(78), paddingHorizontal: mk(8) }}>
+          <View style={{ width: mk(40), height: mk(40), borderRadius: mk(20), backgroundColor: C.green, borderWidth: mk(3), borderColor: C.navy }} />
+          <OutlinedText size={mk(40)} width={mk(4)} align="left" style={{ marginLeft: mk(14) }}>{S.onlineFriends}</OutlinedText>
+          <View style={{ flex: 1 }} />
+          <OutlinedText size={mk(30)} width={mk(3)}>{`${onlineCount} / ${friends.length}`}</OutlinedText>
+        </View>
+        {friends.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(22), textAlign: 'center', paddingVertical: mk(20) }}>{S.noFriends}</Text> : null}
+        {[...friends].sort((a, b) => Number(b.online) - Number(a.online) || b.trophies - a.trophies).slice(0, 8).map((f) => {
+          const mins = f.lastSeen ? Math.max(0, Math.round((Date.now() - new Date(f.lastSeen).getTime()) / 60000)) : null;
+          return (
+            <Plate key={f.userId} face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginTop: mk(10) }} inner={{ height: mk(74) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(8), gap: mk(10) }}>
+              <Pressable onPress={() => actions.getUserProfile(f.userId)}><View style={{ width: mk(60), height: mk(60), borderRadius: mk(12), borderWidth: mk(3), borderColor: '#7DB8FF', backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' }}><Avatar avatar={f.avatar ?? f.selectedAvatar} name={f.displayName} size={mk(50)} /></View></Pressable>
+              <OutlinedText size={mk(28)} width={mk(2)} align="left" numberOfLines={1} style={{ width: mk(150) }}>{f.displayName.toLocaleUpperCase('tr')}</OutlinedText>
+              <Image source={UI2.hud_trophy} style={{ width: mk(36), height: mk(36) }} resizeMode="contain" />
+              <Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(22), width: mk(70) }}>{fmt(f.trophies)}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(6), flex: 1, minWidth: 0 }}>
+                <View style={{ width: mk(22), height: mk(22), borderRadius: mk(11), backgroundColor: f.online ? C.green : C.gray, borderWidth: 1.5, borderColor: C.navy }} />
+                <Text numberOfLines={1} style={{ color: f.online ? '#9BFFA7' : C.textMuted, fontFamily: F.bold, fontSize: mk(18) }}>{f.online ? S.online : mins == null ? S.offline : S.minAgo(mins)}</Text>
+              </View>
+              <ChunkyButton kind={f.online ? 'green' : 'gray'} label={S.inviteRow} height={mk(58)} size={mk(24)} style={{ width: mk(200) }} disabled={!f.online} onPress={() => actions.inviteFriendMatch(f.userId, f.displayName)} />
+            </Plate>
+          );
+        })}
+      </Panel>
+
+      {/* ── SOSYAL ÖDÜLLER (arkadaş sayısına bağlı yol; ödül teslimi sunucu tarafında henüz yok → YAKINDA) ── */}
+      <SectionHeader icon={UI2.sec_gift} title={S.socialRewards} subtitle={S.socialRewardsSub} style={{ marginHorizontal: SIDE, marginTop: mk(20) }} />
+      <View style={{ flexDirection: 'row', marginHorizontal: SIDE, alignItems: 'center', gap: mk(6) }}>
+        {([{ n: 1, art: UI2.rw_gems, label: S.gemsN(50) }, { n: 3, art: UI2.rw_emote, label: S.specialEmote }, { n: 5, art: UI2.rw_frame, label: S.specialFrame }] as const).map((r, i) => {
+          const done = friends.length >= r.n;
+          return (
+            <View key={r.n} style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+              <Plate face={i === 0 ? '#6A21E6' : C.card} top={i === 0 ? '#B57BFF' : C.cardTop} lip={i === 0 ? '#3E0E9A' : C.cardDark} radius={mk(22)} style={{ flex: 1 }} inner={{ height: mk(236) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(8), paddingHorizontal: mk(6) }}>
+                <OutlinedText size={mk(24)} width={mk(2)}>{S.friendsN(r.n)}</OutlinedText>
+                <Image source={r.art} style={{ width: '90%', height: mk(96), marginTop: mk(4) }} resizeMode="contain" />
+                <OutlinedText size={mk(21)} width={1.5} style={{ marginTop: mk(2) }}>{r.label}</OutlinedText>
+                <View style={{ flex: 1 }} />
+                {done ? <Image source={UI2.rw_check} style={{ width: mk(52), height: mk(52), marginBottom: mk(6) }} resizeMode="contain" />
+                  : <View style={{ width: '92%', marginBottom: mk(10), flexDirection: 'row', alignItems: 'center', gap: mk(6) }}><Bar value={friends.length} max={r.n} color={C.gold} track="#04163F" height={mk(22)} radius={mk(7)} style={{ flex: 1 }} /><Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(18) }}>{`${Math.min(friends.length, r.n)}/${r.n}`}</Text></View>}
+              </Plate>
+              {i < 2 ? <Image source={UI2.rw_arrow} style={{ width: mk(30), height: mk(40), marginHorizontal: mk(2) }} resizeMode="contain" /> : null}
+            </View>
+          );
+        })}
+      </View>
+
+      {/* ── ARKADAŞ ÖNERİLERİ → kullanıcı arama ── */}
+      <SectionHeader icon={UI2.sec_suggest} title={S.suggestions} subtitle={S.suggestionsSub} style={{ marginHorizontal: SIDE, marginTop: mk(20) }} />
+      <View style={{ marginHorizontal: SIDE }}>
+        <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} inner={{ height: mk(74) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(14), gap: mk(10) }}>
+          <TextInput value={q} onChangeText={setQ} placeholder={S.searchPlaceholder} placeholderTextColor={C.textMuted} autoCapitalize="none" autoCorrect={false} returnKeyType="search" onSubmitEditing={() => q.trim() && actions.searchUsers(q.trim())} style={{ flex: 1, color: C.white, fontFamily: F.bold, fontSize: mk(22), padding: 0 }} />
+          <ChunkyButton kind="blue" label={S.search} height={mk(52)} size={mk(22)} style={{ width: mk(120) }} onPress={() => q.trim() && actions.searchUsers(q.trim())} />
+        </Plate>
+        {state.userSearchResults.map((u) => (
+          <Plate key={u.userId} face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginTop: mk(10) }} inner={{ height: mk(74) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(10), gap: mk(10) }}>
+            <View style={{ width: mk(60), height: mk(60), borderRadius: mk(12), borderWidth: mk(3), borderColor: '#7DB8FF', backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' }}><Avatar avatar={null} name={u.displayName} size={mk(50)} /></View>
+            <OutlinedText size={mk(28)} width={mk(2)} align="left" numberOfLines={1} style={{ flex: 1 }}>{u.displayName.toLocaleUpperCase('tr')}</OutlinedText>
+            <ChunkyButton kind="blue" label={S.add} height={mk(58)} size={mk(24)} style={{ width: mk(160) }} onPress={() => { actions.sendFriendRequest(undefined, u.displayName); onNotice(S.addFriend, `${u.displayName}: ${S.add} ✓`); }} />
+          </Plate>
+        ))}
+      </View>
+      <View style={{ height: mk(30) }} />
+    </View>
+  );
+}
+function Panel({ children }: { children: React.ReactNode }) {
+  return (
+    <View style={{ marginHorizontal: SIDE, marginTop: mk(20) }}>
+      <Plate face={C.panel} top={C.panelTop} lip={C.panelDark} radius={R.plate} inner={{ paddingHorizontal: mk(12), paddingBottom: mk(14) }}>{children}</Plate>
+    </View>
+  );
+}
+export { GemAmount, GAP };

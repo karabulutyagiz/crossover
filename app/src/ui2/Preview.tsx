@@ -11,7 +11,21 @@ const profile = {
   arena: { name: 'Şampiyonlar Ligi', icon: '🏟️', minTrophies: 1000 }, avatar: 'pp3', xp: 420, level: 12, xpForNext: 1000, selectedFrame: null, claimedLevels: [], ownedCosmetics: ['night_stadium'], premiumRoad: false,
 };
 const state = {
-  phase: 'home', profile, error: null, friendRequests: [], friends: [], storeCatalogStatus: 'success',
+  phase: 'home', profile, error: null, storeCatalogStatus: 'success', userSearchResults: [],
+  friendRequests: [{ requestId: 'r1', fromId: 'x', fromName: 'Kerem', createdAt: '' }, { requestId: 'r2', fromId: 'y', fromName: 'Ali', createdAt: '' }],
+  friends: [
+    { userId: 'f1', displayName: 'Mert', selectedAvatar: 'pp1', avatar: 'pp1', trophies: 3120, arena: { name: 'Dünya Klasmanı', icon: '', minTrophies: 3500 }, online: true },
+    { userId: 'f2', displayName: 'Efe', selectedAvatar: 'pp2', avatar: 'pp2', trophies: 2980, arena: { name: 'Efsaneler Arenası', icon: '', minTrophies: 2000 }, online: true },
+    { userId: 'f3', displayName: 'Emir', selectedAvatar: 'pp4', avatar: 'pp4', trophies: 2760, arena: { name: 'Efsaneler Arenası', icon: '', minTrophies: 2000 }, online: true },
+    { userId: 'f4', displayName: 'Can', selectedAvatar: 'pp5', avatar: 'pp5', trophies: 2410, arena: { name: 'Efsaneler Arenası', icon: '', minTrophies: 2000 }, online: false, lastSeen: new Date(Date.now() - 60000).toISOString() },
+    { userId: 'f5', displayName: 'Deniz', selectedAvatar: 'pp6', avatar: 'pp6', trophies: 1950, arena: { name: 'Şampiyonlar Ligi', icon: '', minTrophies: 1000 }, online: false, lastSeen: new Date(Date.now() - 12 * 60000).toISOString() },
+  ],
+  tournaments: [
+    { id: 't1', name: 'Şampiyonlar Kupası', size: 16, joined: 9, youJoined: false, status: 'registration', prizeFirst: 1000, prizeSecond: 300, entryFee: 0 },
+    { id: 't2', name: 'Haftalık Kupa', size: 16, joined: 16, youJoined: true, status: 'live', prizeFirst: 300, prizeSecond: 100, entryFee: 0 },
+    { id: 't3', name: 'Süper Lig Turnuvası', size: 32, joined: 20, youJoined: false, status: 'registration', prizeFirst: 500, prizeSecond: 150, entryFee: 50 },
+    { id: 't4', name: 'Dostluk Kupası', size: 8, joined: 3, youJoined: false, status: 'registration', prizeFirst: 200, prizeSecond: 50, entryFee: 0 },
+  ],
   storeCatalog: { version: 1, serverTime: '', dailyResetAt: '', weeklyResetAt: '', featured: [], items: [
     { id: 'neon_pitch', type: 'match_background', name: 'Neon Saha', description: '', rarity: 'epic', diamondPrice: 650 },
     { id: 'night_stadium', type: 'match_background', name: 'Gece Stadyumu', description: '', rarity: 'rare', diamondPrice: 400 },

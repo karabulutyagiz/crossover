@@ -100,9 +100,9 @@ export function SectionHeader({ icon, title, subtitle, onMore, style }: { icon: 
       </View>
       <View style={{ flex: 1 }} />
       {subtitle ? (
-        <Pressable onPress={onMore} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: mk(12) }}>
-          <View style={{ width: mk(40), height: 2, backgroundColor: C.textSub, opacity: 0.6 }} />
-          <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(21), letterSpacing: 0.3 }}>{subtitle}</Text>
+        <Pressable onPress={onMore} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: mk(10), flexShrink: 1, minWidth: 0, marginLeft: mk(8) }}>
+          <View style={{ width: mk(30), height: 2, backgroundColor: C.textSub, opacity: 0.6 }} />
+          <Text numberOfLines={2} style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(18), letterSpacing: 0.2, flexShrink: 1, textAlign: 'right', lineHeight: mk(21) }}>{subtitle}</Text>
           {onMore ? <Text style={{ color: C.textSub, fontFamily: F.black, fontSize: mk(30), marginTop: -2 }}>›</Text> : null}
         </Pressable>
       ) : null}

@@ -8,6 +8,8 @@ import { BottomNav, type NavKey } from './Shell';
 import { CheckerBg, ChunkyButton, GemAmount, OutlinedText, Plate } from './primitives';
 import { HomeTab } from './HomeTab';
 import { StoreTab } from './StoreTab';
+import { FriendsTab } from './FriendsTab';
+import { TournamentsTab } from './TournamentsTab';
 import { useStorePurchases } from './useStorePurchases';
 import { C, F, LIP, OUTLINE, SIDE, mk } from './tokens';
 
@@ -30,7 +32,9 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
   let body: ReactNode;
   if (active === 'store') body = <StoreTab {...common} store={store} onConfirm={openConfirm} />;
   else if (active === 'play') body = <HomeTab {...common} onOpenLevelRoad={onOpenLevelRoad} onOpenStore={() => goToTab(0)} onOpenQuests={() => { actions.getDailyQuests(); setNotice({ title: 'GÖREVLER', body: 'Görev penceresi yeni tasarımda hazırlanıyor.' }); }} onOpenModes={() => setNotice({ title: 'OYUN MODLARI', body: 'Mod seçici yeni tasarımda hazırlanıyor.' })} onOpenFriendPlay={() => setNotice({ title: 'ARKADAŞLA OYNA', body: 'Özel oda penceresi yeni tasarımda hazırlanıyor.' })} />;
-  else body = <Placeholder label={active === 'collection' ? 'KOLEKSİYON' : active === 'friends' ? 'ARKADAŞLAR' : 'TURNUVALAR'} />;
+  else if (active === 'friends') body = <FriendsTab {...common} onOpenRequests={() => setNotice({ title: 'İSTEKLER', body: `${state.friendRequests.length} bekleyen istek — pencere yeni tasarımda hazırlanıyor.` })} onOpenAddFriend={() => setNotice({ title: 'ARKADAŞ EKLE', body: 'Aşağıdaki arama kutusundan oyuncu adıyla ara.' })} onNotice={(title, body) => setNotice({ title, body })} />;
+  else if (active === 'tournaments') body = <TournamentsTab {...common} onOpenLevelRoad={onOpenLevelRoad} onOpenLeague={() => { actions.getLeague(); setNotice({ title: 'HAFTALIK LİG', body: 'Lig tablosu penceresi yeni tasarımda hazırlanıyor.' }); }} onOpenTournament={(id) => { actions.getTournament(id); setNotice({ title: 'TURNUVA', body: 'Eşleşme ağacı penceresi yeni tasarımda hazırlanıyor.' }); }} onNotice={(title, body) => setNotice({ title, body })} />;
+  else body = <Placeholder label="KOLEKSİYON" />;
 
   return (
     <View style={{ flex: 1 }}>
