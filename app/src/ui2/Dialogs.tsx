@@ -40,6 +40,7 @@ export function Dialog({ title, onClose, children, accent = false, wide = false 
 }
 
 // ── Mod seçici — BÜYÜK pencere, gerçek oyun modları (kullanıcı 2026-09-07). bot=true: Bot Maçı ──
+// Çevrimiçi listede Takım-Takım YOK: HEMEN OYNA zaten yalnız Takım-Takım eşleştirir (kullanıcı 2026-09-07); bot maçında kalır.
 // art: kullanıcının mod rozeti (indirilenler, 2026-09-07); yoksa vektör ikon.
 type ModeDef = { id: GameMode; nameKey: MessageKey; descKey: MessageKey; Icon: (p: { size?: number }) => ReactNode; art?: ImageSourcePropType; face: string; top: string; lip: string };
 const MODE_DEFS: ModeDef[] = [
@@ -51,7 +52,8 @@ const MODE_DEFS: ModeDef[] = [
   { id: 'guess-who', nameKey: 'mode.guessWho', descKey: 'ui2.md.guessWho', Icon: IcModeGuessWho, art: UI2.mode_guess_who, face: '#FF7A1A', top: '#FFB472', lip: '#C24E00' },
 ];
 export function ModeMenuDialog({ state, actions, onClose, bot = false, onLocked }: { state: GameState; actions: Actions; onClose: () => void; bot?: boolean; onLocked: (mode: GameMode) => void }) {
-  const [mode, setMode] = useState<GameMode>('team-team');
+  const defs = bot ? MODE_DEFS : MODE_DEFS.filter((m) => m.id !== 'team-team');
+  const [mode, setMode] = useState<GameMode>(bot ? 'team-team' : 'country-team');
   const [diff, setDiff] = useState<'easy' | 'medium' | 'hard'>('medium');
   const hasPack = hasActiveSocialPack(state.profile);
   const name = state.profile?.displayName ?? t('ui2.player');
@@ -64,8 +66,8 @@ export function ModeMenuDialog({ state, actions, onClose, bot = false, onLocked 
   return (
     <Dialog title={up(bot ? t('home.solo') : t('ui2.gameModes'))} onClose={onClose} wide>
       <Text style={{ color: C.white, fontFamily: F.bold, fontSize: mk(22), textAlign: 'center', marginBottom: mk(12) }}>{bot ? t('ui2.pickModeBot') : t('ui2.pickMode')}</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: mk(12), justifyContent: 'space-between' }}>
-        {MODE_DEFS.map((m) => {
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: mk(12), justifyContent: 'center' }}>
+        {defs.map((m) => {
           const on = mode === m.id; const lk = PACK_MODES.includes(m.id) && !hasPack;
           return (
             <Pressable key={m.id} onPress={() => setMode(m.id)} style={{ width: '48.5%' }}>
