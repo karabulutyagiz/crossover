@@ -61,3 +61,6 @@ android/**
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+# EAS arşivi: node_modules SEMBOLİK BAĞ (git .gitignore node_modules/ eşlemez → 288 MB arşiv, 2026-09-07)
+AuthKey_*.p8
+*.log
