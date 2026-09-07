@@ -10,7 +10,7 @@ import type { GameMode } from '../protocol';
 import type { Actions, GameState } from './types';
 import { UI2 } from './assets';
 import { Bar, ChunkyButton, GemAmount, OutlinedText, Plate, fmt } from './primitives';
-import { S } from './strings';
+import { S, up } from './strings';
 import { hasActiveSocialPack } from '../monetization';
 import { PACK_MODES } from './products';
 import { IcBell, IcCheck, IcChevron, IcClose, IcCopy, IcGlobe, IcLock, IcModeCountryTeam, IcModeCozKazan, IcModeGuessWho, IcModeLetterTeam, IcModeTeamTeam, IcModeXox, IcMusic, IcSound, IcVibrate } from './icons';
@@ -39,20 +39,21 @@ export function Dialog({ title, onClose, children, accent = false, wide = false 
 }
 
 // ── Mod seçici — BÜYÜK pencere, gerçek oyun modları (kullanıcı 2026-09-07). bot=true: Bot Maçı ──
-type ModeDef = { id: GameMode; nameKey: MessageKey; desc: string; Icon: (p: { size?: number }) => ReactNode; face: string; top: string; lip: string };
+// art: kullanıcının mod rozeti (indirilenler, 2026-09-07); yoksa vektör ikon.
+type ModeDef = { id: GameMode; nameKey: MessageKey; descKey: MessageKey; Icon: (p: { size?: number }) => ReactNode; art?: ImageSourcePropType; face: string; top: string; lip: string };
 const MODE_DEFS: ModeDef[] = [
-  { id: 'team-team', nameKey: 'mode.teamTeam', desc: 'İki takımda da oynamış futbolcuyu ilk sen yaz', Icon: IcModeTeamTeam, face: '#1E7BFF', top: '#7DB8FF', lip: '#0E4FB8' },
-  { id: 'country-team', nameKey: 'mode.countryTeam', desc: 'Ülke + takım: o milliyetten, o takımda oynamış', Icon: IcModeCountryTeam, face: '#E8443A', top: '#FF9C8F', lip: '#9E2118' },
-  { id: 'letter-team', nameKey: 'mode.letterTeam', desc: 'Adı o harfle başlayan, o takımda oynamış', Icon: IcModeLetterTeam, face: '#E8B400', top: '#FFE98A', lip: '#A67900' },
-  { id: 'xox', nameKey: 'mode.xox', desc: 'Tiki-Taka-Toe: 3×3 tabloda satır–sütun eşleşmesi', Icon: IcModeXox, face: '#22C55E', top: '#86EFAC', lip: '#15803D' },
-  { id: 'cozkazan', nameKey: 'mode.cozkazan', desc: 'Karışık harflerdeki futbolcuyu ilk çöz', Icon: IcModeCozKazan, face: '#8E2BEA', top: '#C58BFF', lip: '#4B0F9E' },
-  { id: 'guess-who', nameKey: 'mode.guessWho', desc: 'Bulanık fotoğraftaki futbolcuyu ipuçlarıyla bil', Icon: IcModeGuessWho, face: '#FF7A1A', top: '#FFB472', lip: '#C24E00' },
+  { id: 'team-team', nameKey: 'mode.teamTeam', descKey: 'ui2.md.teamTeam', Icon: IcModeTeamTeam, face: '#1E7BFF', top: '#7DB8FF', lip: '#0E4FB8' },
+  { id: 'country-team', nameKey: 'mode.countryTeam', descKey: 'ui2.md.countryTeam', Icon: IcModeCountryTeam, face: '#E8443A', top: '#FF9C8F', lip: '#9E2118' },
+  { id: 'letter-team', nameKey: 'mode.letterTeam', descKey: 'ui2.md.letterTeam', Icon: IcModeLetterTeam, face: '#E8B400', top: '#FFE98A', lip: '#A67900' },
+  { id: 'xox', nameKey: 'mode.xox', descKey: 'ui2.md.xox', Icon: IcModeXox, face: '#22C55E', top: '#86EFAC', lip: '#15803D' },
+  { id: 'cozkazan', nameKey: 'mode.cozkazan', descKey: 'ui2.md.cozkazan', Icon: IcModeCozKazan, art: UI2.mode_cozkazan, face: '#8E2BEA', top: '#C58BFF', lip: '#4B0F9E' },
+  { id: 'guess-who', nameKey: 'mode.guessWho', descKey: 'ui2.md.guessWho', Icon: IcModeGuessWho, art: UI2.mode_guess_who, face: '#FF7A1A', top: '#FFB472', lip: '#C24E00' },
 ];
 export function ModeMenuDialog({ state, actions, onClose, bot = false, onLocked }: { state: GameState; actions: Actions; onClose: () => void; bot?: boolean; onLocked: (mode: GameMode) => void }) {
   const [mode, setMode] = useState<GameMode>('team-team');
   const [diff, setDiff] = useState<'easy' | 'medium' | 'hard'>('medium');
   const hasPack = hasActiveSocialPack(state.profile);
-  const name = state.profile?.displayName ?? 'Oyuncu';
+  const name = state.profile?.displayName ?? t('ui2.player');
   const locked = PACK_MODES.includes(mode) && !hasPack;
   const play = () => {
     if (locked) { onClose(); onLocked(mode); return; }
@@ -60,25 +61,25 @@ export function ModeMenuDialog({ state, actions, onClose, bot = false, onLocked 
     if (bot) actions.createSolo(name, { mode, difficulty: diff }); else actions.findMatch({ mode });
   };
   return (
-    <Dialog title={bot ? 'BOT MAÇI' : 'OYUN MODLARI'} onClose={onClose} wide>
-      <Text style={{ color: C.white, fontFamily: F.bold, fontSize: mk(22), textAlign: 'center', marginBottom: mk(12) }}>{bot ? 'Bota karşı hangi modda oynamak istersin?' : 'Hangi modda oynamak istersin?'}</Text>
+    <Dialog title={up(bot ? t('home.solo') : t('ui2.gameModes'))} onClose={onClose} wide>
+      <Text style={{ color: C.white, fontFamily: F.bold, fontSize: mk(22), textAlign: 'center', marginBottom: mk(12) }}>{bot ? t('ui2.pickModeBot') : t('ui2.pickMode')}</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: mk(12), justifyContent: 'space-between' }}>
         {MODE_DEFS.map((m) => {
           const on = mode === m.id; const lk = PACK_MODES.includes(m.id) && !hasPack;
           return (
             <Pressable key={m.id} onPress={() => setMode(m.id)} style={{ width: '48.5%' }}>
               <Plate face={m.face} top={m.top} lip={m.lip} outline={on ? C.gold : C.navy} outlineWidth={on ? mk(7) : OUTLINE} radius={mk(22)} inner={{ height: mk(236) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(10), paddingTop: mk(6) }}>
-                <m.Icon size={mk(110)} />
+                {m.art ? <Image source={m.art} style={{ width: mk(150), height: mk(150) }} resizeMode="contain" /> : <m.Icon size={mk(110)} />}
                 <OutlinedText size={mk(26)} width={mk(2)} numberOfLines={1} style={{ marginTop: mk(4) }}>{t(m.nameKey)}</OutlinedText>
-                <Text numberOfLines={2} style={{ color: C.white, fontFamily: F.semi, fontSize: mk(15), textAlign: 'center', lineHeight: mk(19), marginTop: mk(2) }}>{m.desc}</Text>
+                <Text numberOfLines={2} style={{ color: C.white, fontFamily: F.semi, fontSize: mk(15), textAlign: 'center', lineHeight: mk(19), marginTop: mk(2) }}>{t(m.descKey)}</Text>
               </Plate>
               {lk ? <View style={{ position: 'absolute', top: -mk(6), right: -mk(4), width: mk(52), height: mk(52), borderRadius: mk(26), backgroundColor: C.panelInk, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><IcLock size={mk(32)} /></View> : null}
             </Pressable>
           );
         })}
       </View>
-      {bot ? <View style={{ flexDirection: 'row', gap: mk(8), marginTop: mk(14), justifyContent: 'center' }}>{(['easy', 'medium', 'hard'] as const).map((d) => <Chip key={d} label={d === 'easy' ? 'Kolay' : d === 'medium' ? 'Orta' : 'Zor'} on={diff === d} onPress={() => setDiff(d)} />)}</View> : null}
-      <View style={{ marginTop: mk(16) }}><ChunkyButton kind={locked ? 'gold' : 'green'} label={locked ? 'SOSYAL PAKET GEREKLİ' : 'OYNA'} height={mk(88)} size={locked ? mk(28) : mk(36)} onPress={play} /></View>
+      {bot ? <View style={{ flexDirection: 'row', gap: mk(8), marginTop: mk(14), justifyContent: 'center' }}>{(['easy', 'medium', 'hard'] as const).map((d) => <Chip key={d} label={t(`difficulty.${d}` as MessageKey)} on={diff === d} onPress={() => setDiff(d)} />)}</View> : null}
+      <View style={{ marginTop: mk(16) }}><ChunkyButton kind={locked ? 'gold' : 'green'} label={locked ? t('friends.inviteNeedsPackTitle') : t('ui2.playBtn')} height={mk(88)} size={locked ? mk(28) : mk(36)} onPress={play} /></View>
     </Dialog>
   );
 }
@@ -94,7 +95,7 @@ function Chip({ label, on, onPress }: { label: string; on: boolean; onPress: () 
 export function LanguageDialog({ onClose, onPick }: { onClose: () => void; onPick: (code: string) => void }) {
   const cur = currentLang();
   return (
-    <Dialog title="DİL" onClose={onClose}>
+    <Dialog title={up(t('settings.language'))} onClose={onClose}>
       {LANGUAGES.map((l) => {
         const on = l.code === cur;
         return (
@@ -116,9 +117,9 @@ export function QuestsDialog({ state, actions, onClose, onGo }: { state: GameSta
   const done = q.filter((x) => x.claimed).length;
   const totalXp = q.reduce((a, x) => a + x.xp, 0);
   return (
-    <Dialog title="GÖREVLER" onClose={onClose}>
+    <Dialog title={t('ui2.quests')} onClose={onClose}>
       <View style={{ flexDirection: 'row', gap: mk(8), marginBottom: mk(12) }}>
-        {['Günlük', 'Haftalık', 'Sezonluk'].map((l, i) => <View key={l} style={{ flex: 1, backgroundColor: i === 0 ? C.gold : C.panelInk, borderRadius: mk(12), borderWidth: mk(3), borderColor: i === 0 ? C.goldDark : C.navy, alignItems: 'center', paddingVertical: mk(6), opacity: i === 0 ? 1 : 0.5 }}><Text style={{ color: i === 0 ? C.ink : C.white, fontFamily: F.black, fontSize: mk(19) }}>{l}</Text></View>)}
+        {[t('ui2.q.daily'), t('store.weekly'), t('ui2.q.season')].map((l, i) => <View key={l} style={{ flex: 1, backgroundColor: i === 0 ? C.gold : C.panelInk, borderRadius: mk(12), borderWidth: mk(3), borderColor: i === 0 ? C.goldDark : C.navy, alignItems: 'center', paddingVertical: mk(6), opacity: i === 0 ? 1 : 0.5 }}><Text style={{ color: i === 0 ? C.ink : C.white, fontFamily: F.black, fontSize: mk(19) }}>{l}</Text></View>)}
       </View>
       {q.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(20), textAlign: 'center', padding: mk(10) }}>{S.loading}</Text> : null}
       {q.map((x, i) => (
@@ -130,13 +131,13 @@ export function QuestsDialog({ state, actions, onClose, onGo }: { state: GameSta
           </View>
           <View style={{ alignItems: 'center', width: mk(70) }}><Image source={UI2.sec_star} style={{ width: mk(40), height: mk(40) }} resizeMode="contain" /><Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(15) }}>{`+${x.xp} XP`}</Text></View>
           {x.claimed ? <Image source={UI2.rw_check} style={{ width: mk(56), height: mk(56) }} resizeMode="contain" />
-            : <ChunkyButton kind={x.done ? 'green' : 'blue'} label={x.done ? S.claim : 'Git'} height={mk(56)} size={mk(22)} style={{ width: mk(100) }} onPress={() => (x.done ? actions.claimQuest(x.id) : (onClose(), onGo()))} />}
+            : <ChunkyButton kind={x.done ? 'green' : 'blue'} label={x.done ? S.claim : t('ui2.q.go')} height={mk(56)} size={mk(22)} style={{ width: mk(100) }} onPress={() => (x.done ? actions.claimQuest(x.id) : (onClose(), onGo()))} />}
         </Plate>
       ))}
       {q.length ? (
         <Plate face={C.gold} top={C.goldLight} lip={C.goldDark} radius={mk(18)} inner={{ height: mk(100) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(10), gap: mk(10) }}>
           <Image source={UI2.qs_chest} style={{ width: mk(80), height: mk(70) }} resizeMode="contain" />
-          <View style={{ flex: 1 }}><Text style={{ color: C.ink, fontFamily: F.black, fontSize: mk(19) }}>Tüm görevleri tamamla</Text><View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(8), marginTop: mk(4) }}><Bar value={done} max={q.length} color={C.green} track="#6B4B00" height={mk(20)} radius={mk(6)} style={{ flex: 1 }} /><Text style={{ color: C.ink, fontFamily: F.black, fontSize: mk(16) }}>{`${done} / ${q.length}`}</Text></View></View>
+          <View style={{ flex: 1 }}><Text style={{ color: C.ink, fontFamily: F.black, fontSize: mk(19) }}>{t('ui2.q.completeAll')}</Text><View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(8), marginTop: mk(4) }}><Bar value={done} max={q.length} color={C.green} track="#6B4B00" height={mk(20)} radius={mk(6)} style={{ flex: 1 }} /><Text style={{ color: C.ink, fontFamily: F.black, fontSize: mk(16) }}>{`${done} / ${q.length}`}</Text></View></View>
           <View style={{ backgroundColor: '#1A1200', borderRadius: mk(12), paddingHorizontal: mk(12), paddingVertical: mk(6) }}><Text style={{ color: C.gold, fontFamily: F.black, fontSize: mk(20) }}>{`+${totalXp} XP`}</Text></View>
         </Plate>
       ) : null}
@@ -156,17 +157,17 @@ export function SettingsDialog({ actions, onClose, onOpenLanguage, onDeleteAccou
     </Plate>
   );
   return (
-    <Dialog title="AYARLAR" onClose={onClose}>
-      <Row icon={<IcMusic size={mk(60)} />} label="Müzik" right={<Toggle on={prefs.music} onChange={(v) => setPreference('music', v)} />} />
-      <Row icon={<IcSound size={mk(60)} />} label="Ses" right={<Toggle on={prefs.sfx} onChange={(v) => setPreference('sfx', v)} />} />
-      <Row icon={<IcVibrate size={mk(60)} />} label="Titreşim" right={<Toggle on={prefs.haptics} onChange={(v) => setPreference('haptics', v)} />} />
-      <Row icon={<IcBell size={mk(60)} />} label="Bildirimler" right={<Toggle on={!!push} onChange={async (v) => { if (v) { const ok = await requestPushPermission().catch(() => false); setPush(ok); if (!ok) Linking.openSettings().catch(() => {}); } else Linking.openSettings().catch(() => {}); }} />} />
-      <Row icon={<IcGlobe size={mk(60)} />} label="Dil" right={<Pressable onPress={onOpenLanguage} style={{ backgroundColor: '#0A2B78', borderRadius: mk(12), borderWidth: mk(3), borderColor: C.navy, paddingHorizontal: mk(14), paddingVertical: mk(6), flexDirection: 'row', alignItems: 'center', gap: mk(10) }}><Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(20) }}>{lang}</Text><IcChevron size={mk(26)} /></Pressable>} />
+    <Dialog title={up(t('settings.title'))} onClose={onClose}>
+      <Row icon={<IcMusic size={mk(60)} />} label={t('settings.music')} right={<Toggle on={prefs.music} onChange={(v) => setPreference('music', v)} />} />
+      <Row icon={<IcSound size={mk(60)} />} label={t('settings.sfx')} right={<Toggle on={prefs.sfx} onChange={(v) => setPreference('sfx', v)} />} />
+      <Row icon={<IcVibrate size={mk(60)} />} label={t('settings.haptics')} right={<Toggle on={prefs.haptics} onChange={(v) => setPreference('haptics', v)} />} />
+      <Row icon={<IcBell size={mk(60)} />} label={t('ui2.notifications')} right={<Toggle on={!!push} onChange={async (v) => { if (v) { const ok = await requestPushPermission().catch(() => false); setPush(ok); if (!ok) Linking.openSettings().catch(() => {}); } else Linking.openSettings().catch(() => {}); }} />} />
+      <Row icon={<IcGlobe size={mk(60)} />} label={t('settings.language')} right={<Pressable onPress={onOpenLanguage} style={{ backgroundColor: '#0A2B78', borderRadius: mk(12), borderWidth: mk(3), borderColor: C.navy, paddingHorizontal: mk(14), paddingVertical: mk(6), flexDirection: 'row', alignItems: 'center', gap: mk(10) }}><Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(20) }}>{lang}</Text><IcChevron size={mk(26)} /></Pressable>} />
       <View style={{ flexDirection: 'row', gap: mk(12), marginTop: mk(6) }}>
-        <ChunkyButton kind="blue" label="Varsayılanlara Dön" height={mk(76)} size={mk(20)} style={{ flex: 1 }} onPress={() => { setPreference('music', true); setPreference('sfx', true); setPreference('haptics', true); }} />
-        <ChunkyButton kind="red" label="Çıkış Yap" height={mk(76)} size={mk(24)} style={{ flex: 1 }} onPress={() => { onClose(); actions.logout(); }} />
+        <ChunkyButton kind="blue" label={t('ui2.resetDefaults')} height={mk(76)} size={mk(20)} style={{ flex: 1 }} onPress={() => { setPreference('music', true); setPreference('sfx', true); setPreference('haptics', true); }} />
+        <ChunkyButton kind="red" label={t('profile.logout')} height={mk(76)} size={mk(24)} style={{ flex: 1 }} onPress={() => { onClose(); actions.logout(); }} />
       </View>
-      <Pressable onPress={onDeleteAccount} style={{ alignSelf: 'center', marginTop: mk(14), padding: mk(6) }}><Text style={{ color: C.textMuted, fontFamily: F.semi, fontSize: mk(17), textDecorationLine: 'underline' }}>Hesabımı sil</Text></Pressable>
+      <Pressable onPress={onDeleteAccount} style={{ alignSelf: 'center', marginTop: mk(14), padding: mk(6) }}><Text style={{ color: C.textMuted, fontFamily: F.semi, fontSize: mk(17), textDecorationLine: 'underline' }}>{t('ui2.deleteMyAccount')}</Text></Pressable>
     </Dialog>
   );
 }
@@ -176,7 +177,7 @@ export function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) =
       <View style={{ width: mk(96), height: mk(50), borderRadius: mk(25), backgroundColor: on ? C.green : C.gray, borderWidth: mk(4), borderColor: C.navy, justifyContent: 'center', paddingHorizontal: mk(4) }}>
         <View style={{ width: mk(36), height: mk(36), borderRadius: mk(18), backgroundColor: C.white, alignSelf: on ? 'flex-end' : 'flex-start' }} />
       </View>
-      <Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(17), width: mk(92) }} numberOfLines={1}>{on ? 'AÇIK' : 'KAPALI'}</Text>
+      <Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(17), width: mk(92) }} numberOfLines={1}>{on ? t('ui2.on') : t('ui2.off')}</Text>
     </Pressable>
   );
 }
@@ -186,36 +187,36 @@ export function PrivateRoomDialog({ state, actions, onClose }: { state: GameStat
   const [tab, setTab] = useState<'create' | 'join'>('create');
   const [code, setCode] = useState('');
   const [copied, setCopied] = useState(false);
-  const name = state.profile?.displayName ?? 'Oyuncu';
+  const name = state.profile?.displayName ?? t('ui2.player');
   const roomCode = state.room?.code ?? null;
   return (
-    <Dialog title="ÖZEL ODA" onClose={onClose}>
-      <Text style={{ color: C.white, fontFamily: F.semi, fontSize: mk(19), textAlign: 'center', lineHeight: mk(25), marginBottom: mk(12) }}>Arkadaşlarınla oynamak için özel oda oluştur veya mevcut bir odaya katıl.</Text>
+    <Dialog title={t('ui2.privateRoom')} onClose={onClose}>
+      <Text style={{ color: C.white, fontFamily: F.semi, fontSize: mk(19), textAlign: 'center', lineHeight: mk(25), marginBottom: mk(12) }}>{t('ui2.roomIntro')}</Text>
       <View style={{ flexDirection: 'row', gap: mk(8), marginBottom: mk(14) }}>
-        {(['create', 'join'] as const).map((k) => <Pressable key={k} onPress={() => setTab(k)} style={{ flex: 1, backgroundColor: tab === k ? C.gold : C.panelInk, borderRadius: mk(12), borderWidth: mk(3), borderColor: tab === k ? C.goldDark : C.navy, alignItems: 'center', paddingVertical: mk(8) }}><Text style={{ color: tab === k ? C.ink : C.white, fontFamily: F.black, fontSize: mk(20) }}>{k === 'create' ? 'Kod Oluştur' : 'Koda Katıl'}</Text></Pressable>)}
+        {(['create', 'join'] as const).map((k) => <Pressable key={k} onPress={() => setTab(k)} style={{ flex: 1, backgroundColor: tab === k ? C.gold : C.panelInk, borderRadius: mk(12), borderWidth: mk(3), borderColor: tab === k ? C.goldDark : C.navy, alignItems: 'center', paddingVertical: mk(8) }}><Text style={{ color: tab === k ? C.ink : C.white, fontFamily: F.black, fontSize: mk(20) }}>{k === 'create' ? t('ui2.createCode') : t('ui2.joinCode')}</Text></Pressable>)}
       </View>
       {tab === 'create' ? (
         <>
           <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} inner={{ alignItems: 'center', paddingVertical: mk(14) }}>
-            <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(18) }}>Oda kodun:</Text>
+            <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(18) }}>{t('ui2.yourRoomCode')}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(12), marginTop: mk(6) }}>
               <View style={{ backgroundColor: '#03123A', borderRadius: mk(12), paddingHorizontal: mk(24), paddingVertical: mk(6) }}><OutlinedText size={mk(52)} width={mk(3)} color={C.gold} style={{ letterSpacing: 3 }}>{roomCode ?? '——————'}</OutlinedText></View>
               {roomCode ? <Pressable onPress={async () => { await Clipboard.setStringAsync(roomCode).catch(() => {}); setCopied(true); }} style={{ width: mk(66), height: mk(66), borderRadius: mk(14), backgroundColor: C.blue, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><IcCopy size={mk(36)} /></Pressable> : null}
             </View>
-            <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(16), marginTop: mk(6) }}>{copied ? 'Kopyalandı ✓' : 'Bu kodu arkadaşlarınla paylaş.'}</Text>
+            <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(16), marginTop: mk(6) }}>{copied ? `${t('friends.copied')} ✓` : t('ui2.shareCodeHint')}</Text>
           </Plate>
           <View style={{ marginTop: mk(14) }}>
-            {roomCode ? <ChunkyButton kind="green" label="Kodu Paylaş" height={mk(78)} size={mk(28)} onPress={() => { void Share.share({ message: `CrossOver Football'da özel odama katıl! Oda kodu: ${roomCode}` }).catch(() => {}); }} />
-              : <ChunkyButton kind="green" label="Oda Oluştur" height={mk(78)} size={mk(28)} onPress={() => actions.createRoom(name)} />}
+            {roomCode ? <ChunkyButton kind="green" label={t('ui2.shareCode')} height={mk(78)} size={mk(28)} onPress={() => { void Share.share({ message: t('ui2.roomShareMsg', { code: roomCode }) }).catch(() => {}); }} />
+              : <ChunkyButton kind="green" label={t('home.createRoom')} height={mk(78)} size={mk(28)} onPress={() => actions.createRoom(name)} />}
           </View>
         </>
       ) : (
         <>
           <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} inner={{ alignItems: 'center', paddingVertical: mk(14), paddingHorizontal: mk(14) }}>
-            <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(18) }}>Oda kodu:</Text>
+            <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(18) }}>{t('ui2.roomCode')}</Text>
             <TextInput value={code} onChangeText={(v) => setCode(v.toUpperCase().slice(0, 6))} placeholder="AB12CD" placeholderTextColor={C.textMuted} autoCapitalize="characters" autoCorrect={false} maxLength={6} style={{ color: C.gold, fontFamily: F.title, fontSize: mk(50), letterSpacing: 4, textAlign: 'center', backgroundColor: '#03123A', borderRadius: mk(12), paddingHorizontal: mk(24), paddingVertical: mk(4), minWidth: mk(340), marginTop: mk(6) }} />
           </Plate>
-          <View style={{ marginTop: mk(14) }}><ChunkyButton kind="green" label="Odaya Katıl" height={mk(78)} size={mk(28)} disabled={code.length < 4} onPress={() => { onClose(); actions.joinRoom(code.trim(), name); }} /></View>
+          <View style={{ marginTop: mk(14) }}><ChunkyButton kind="green" label={t('home.joinRoom')} height={mk(78)} size={mk(28)} disabled={code.length < 4} onPress={() => { onClose(); actions.joinRoom(code.trim(), name); }} /></View>
         </>
       )}
     </Dialog>
@@ -225,7 +226,7 @@ export function PrivateRoomDialog({ state, actions, onClose }: { state: GameStat
 // ── Satın alma onayı ──────────────────────────────────────────────────────────
 export function ConfirmDialog({ title, body, price, priceText, art, onYes, onClose }: { title: string; body: string; price?: number; priceText?: string; art?: ImageSourcePropType; onYes: () => void; onClose: () => void }) {
   return (
-    <Dialog title="SATIN ALMA ONAYI" onClose={onClose}>
+    <Dialog title={t('ui2.purchaseConfirm')} onClose={onClose}>
       <View style={{ flexDirection: 'row', gap: mk(14) }}>
         <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={mk(20)} style={{ flex: 1 }} inner={{ height: mk(250) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(8) }}>
           <Image source={art ?? UI2.gem_250} style={{ width: '80%', height: mk(120) }} resizeMode="contain" />
@@ -237,8 +238,8 @@ export function ConfirmDialog({ title, body, price, priceText, art, onYes, onClo
         </Plate>
       </View>
       <View style={{ flexDirection: 'row', gap: mk(14), marginTop: mk(16) }}>
-        <ChunkyButton kind="red" label="İptal" height={mk(80)} size={mk(28)} style={{ flex: 1 }} onPress={onClose} />
-        <ChunkyButton kind="green" label="Satın Al" height={mk(80)} size={mk(28)} style={{ flex: 1 }} onPress={onYes} />
+        <ChunkyButton kind="red" label={t('settings.cancel')} height={mk(80)} size={mk(28)} style={{ flex: 1 }} onPress={onClose} />
+        <ChunkyButton kind="green" label={t('profile.buyTitle')} height={mk(80)} size={mk(28)} style={{ flex: 1 }} onPress={onYes} />
       </View>
     </Dialog>
   );
@@ -247,13 +248,13 @@ export function ConfirmDialog({ title, body, price, priceText, art, onYes, onClo
 // ── Arkadaşlık istekleri ──────────────────────────────────────────────────────
 export function RequestsDialog({ state, actions, onClose }: { state: GameState; actions: Actions; onClose: () => void }) {
   return (
-    <Dialog title="İSTEKLER" onClose={onClose}>
+    <Dialog title={up(t('friends.tabRequests'))} onClose={onClose}>
       {state.friendRequests.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(20), textAlign: 'center', padding: mk(12) }}>{t('friends.noPendingRequests')}</Text> : null}
       {state.friendRequests.map((r) => (
         <Plate key={r.requestId} face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginBottom: mk(10) }} inner={{ height: mk(96) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(12), gap: mk(10) }}>
-          <OutlinedText size={mk(26)} width={mk(2)} align="left" numberOfLines={1} style={{ flex: 1 }}>{r.fromName.toLocaleUpperCase('tr')}</OutlinedText>
-          <ChunkyButton kind="green" label="Kabul" height={mk(58)} size={mk(20)} style={{ width: mk(120) }} onPress={() => actions.respondFriendRequest(r.requestId, true)} />
-          <ChunkyButton kind="red" label="Reddet" height={mk(58)} size={mk(20)} style={{ width: mk(120) }} onPress={() => actions.respondFriendRequest(r.requestId, false)} />
+          <OutlinedText size={mk(26)} width={mk(2)} align="left" numberOfLines={1} style={{ flex: 1 }}>{up(r.fromName)}</OutlinedText>
+          <ChunkyButton kind="green" label={t('ui2.accept')} height={mk(58)} size={mk(20)} style={{ width: mk(120) }} onPress={() => actions.respondFriendRequest(r.requestId, true)} />
+          <ChunkyButton kind="red" label={t('ui2.decline')} height={mk(58)} size={mk(20)} style={{ width: mk(120) }} onPress={() => actions.respondFriendRequest(r.requestId, false)} />
         </Plate>
       ))}
     </Dialog>
@@ -264,10 +265,10 @@ export function RequestsDialog({ state, actions, onClose }: { state: GameState; 
 export function LeagueDialog({ state, onClose }: { state: GameState; onClose: () => void }) {
   const lg = state.league;
   return (
-    <Dialog title="HAFTALIK LİG" onClose={onClose} accent>
+    <Dialog title={t('league.tab')} onClose={onClose} accent>
       {!lg ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(20), textAlign: 'center', padding: mk(12) }}>{S.loading}</Text> : (
         <>
-          <Text style={{ color: C.white, fontFamily: F.bold, fontSize: mk(20), textAlign: 'center', marginBottom: mk(10) }}>{`${lg.tierName} • Sıran: ${lg.yourRank} • ${fmt(lg.yourPoints)} puan`}</Text>
+          <Text style={{ color: C.white, fontFamily: F.bold, fontSize: mk(20), textAlign: 'center', marginBottom: mk(10) }}>{t('ui2.leagueLine', { tier: lg.tierName, rank: lg.yourRank, points: fmt(lg.yourPoints) })}</Text>
           {lg.rows.map((r) => (
             <View key={`${r.rank}-${r.name}`} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: r.isYou ? '#1B5AE0' : C.panelInk, borderRadius: mk(12), borderWidth: mk(3), borderColor: r.zone === 'promote' ? C.green : r.zone === 'demote' ? C.red : C.navy, paddingHorizontal: mk(12), paddingVertical: mk(6), marginBottom: mk(6), gap: mk(10) }}>
               <Text style={{ color: C.gold, fontFamily: F.black, fontSize: mk(20), width: mk(40) }}>{r.rank}</Text>

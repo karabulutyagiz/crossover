@@ -6,6 +6,7 @@ import type { Actions, GameState } from './types';
 import { UI2 } from './assets';
 import { Bar, ChunkyButton, GemAmount, OutlinedText, Plate, SectionHeader, fmt } from './primitives';
 import { Hud } from './Shell';
+import { t } from '../i18n';
 import { S } from './strings';
 import { C, F, LIP, OUTLINE, R, SIDE, mk } from './tokens';
 
@@ -153,7 +154,7 @@ function TRow({ icon, name, meta, status, live, prize, button, compact }: { icon
       </View>
       <View style={{ backgroundColor: '#0A2B78', borderRadius: mk(12), paddingHorizontal: mk(10), paddingVertical: mk(6), borderWidth: mk(3), borderColor: C.navy }}>
         <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(15) }}>{S.prize}</Text>
-        <GemAmount amount={`${fmt(prize)} Elmas`} size={mk(20)} family={F.black} />
+        <GemAmount amount={t('store.diamonds', { n: fmt(prize) })} size={mk(20)} family={F.black} />
       </View>
       <ChunkyButton kind={button.kind} label={button.label} height={mk(66)} size={mk(26)} style={{ width: mk(170) }} onPress={button.on} />
     </Plate>

@@ -1,4 +1,4 @@
-// OTOMATİK ÜRETİLDİ — docs/design/ui2/tools (cuts.txt) kesimleri; elle düzenleme.
+// OTOMATİK ÜRETİLDİ — docs/design/ui2/tools/gen_assets.py (kaynaklar: cuts.txt kesimleri + kullanıcı sanatı); elle düzenleme.
 // Kaynak: kullanıcının referans mock'ları (docs/design/ui2/refs). Sayılar/fiyatlar sanatın DIŞINDA, canlı metindir.
 export const UI2 = {
   ac_laurel: require('../../assets/ui2/ac-laurel.png'),
@@ -55,6 +55,8 @@ export const UI2 = {
   md_1v1: require('../../assets/ui2/md-1v1.png'),
   md_bot: require('../../assets/ui2/md-bot.png'),
   md_tournament: require('../../assets/ui2/md-tournament.png'),
+  mode_cozkazan: require('../../assets/ui2/mode-cozkazan.png'),
+  mode_guess_who: require('../../assets/ui2/mode-guess-who.png'),
   nav_collection: require('../../assets/ui2/nav-collection.png'),
   nav_friends: require('../../assets/ui2/nav-friends.png'),
   nav_play: require('../../assets/ui2/nav-play.png'),

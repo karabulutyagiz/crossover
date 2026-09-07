@@ -73,3 +73,11 @@ export function IcModeGuessWho({ size = 64 }: P) {
 export function IcModeBot({ size = 64 }: P) {
   return <Svg width={size} height={size} viewBox="0 0 64 64"><Line x1="32" y1="6" x2="32" y2="14" stroke={OUT} strokeWidth={SW + 1} /><Circle cx="32" cy="6" r="3" fill="#FF3352" stroke={OUT} strokeWidth={2} /><Rect x="12" y="14" width="40" height="30" rx="9" fill="#FFFFFF" stroke={OUT} strokeWidth={SW} /><Rect x="18" y="20" width="28" height="14" rx="6" fill="#1E7BFF" stroke={OUT} strokeWidth={2} /><Circle cx="26" cy="27" r="3" fill="#FFFFFF" /><Circle cx="38" cy="27" r="3" fill="#FFFFFF" /><Path d="M25 39 Q32 43 39 39" stroke={OUT} strokeWidth={2.5} strokeLinecap="round" fill="none" /><Rect x="20" y="44" width="24" height="12" rx="4" fill="#1E7BFF" stroke={OUT} strokeWidth={SW} /></Svg>;
 }
+
+// ── Banner ikonları (Sosyal Paket / Kozmetik) ──
+export function IcNoAds({ size = 28 }: P) {
+  return <Svg width={size} height={size} viewBox="0 0 32 32"><Circle cx="16" cy="16" r="13" fill="#E8443A" stroke={OUT} strokeWidth={SW} /><SvgText x="16" y="20" fontSize="9.5" fontWeight="900" fill="#FFFFFF" textAnchor="middle" fontFamily="Helvetica">ADS</SvgText><Line x1="6.5" y1="25.5" x2="25.5" y2="6.5" stroke={OUT} strokeWidth={SW + 2.6} strokeLinecap="round" /><Line x1="6.5" y1="25.5" x2="25.5" y2="6.5" stroke="#FFFFFF" strokeWidth={SW} strokeLinecap="round" /></Svg>;
+}
+export function IcCrown({ size = 28, color = '#FFD21A' }: P) {
+  return <Svg width={size} height={size} viewBox="0 0 32 32"><Path d="M4 25 L4 10 L11 16 L16 5 L21 16 L28 10 L28 25 Z" fill={color} stroke={OUT} strokeWidth={SW} strokeLinejoin="round" /><Rect x="4" y="22" width="24" height="5" rx="1.5" fill="#E0A800" stroke={OUT} strokeWidth={SW} /><Circle cx="16" cy="5.5" r="2.2" fill="#FFF3B0" stroke={OUT} strokeWidth={1.6} /></Svg>;
+}

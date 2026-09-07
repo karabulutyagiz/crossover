@@ -11,7 +11,7 @@ import { UI2 } from './assets';
 import { ChunkyButton, OutlinedText, Plate, SectionHeader } from './primitives';
 import { Hud } from './Shell';
 import { ACCOUNT_POWERS, type PowerId } from './products';
-import { S } from './strings';
+import { S, up } from './strings';
 import { C, F, GAP, LIP, OUTLINE, R, SIDE, mk } from './tokens';
 
 type SpId = 'freeze' | 'reveal' | 'skip' | 'extratime' | 'secondchance';
@@ -38,7 +38,7 @@ export function CollectionTab({ state, actions, onOpenSettings, onOpenProfile, o
         actions={{ onAvatar: onOpenProfile, onSettings: onOpenSettings, onTrophies: onOpenArenas }} />
       {/* ── Alt sekmeler (mock: sol altın aktif, diğerleri mavi) ── */}
       <View style={{ flexDirection: 'row', marginHorizontal: SIDE, marginTop: mk(4), gap: mk(10) }}>
-        {([['powers', 'GÜÇLER'], ['cosmetics', 'KOZMETİK'], ['emotes', 'İFADELER']] as [Sub, string][]).map(([k, label]) => {
+        {([['powers', up(t('collection.tabPowers'))], ['cosmetics', t('collection.tabCosmetics')], ['emotes', up(t('collection.tabEmotes'))]] as [Sub, string][]).map(([k, label]) => {
           const on = sub === k;
           return (
             <Pressable key={k} onPress={() => setSub(k)} style={{ flex: 1 }}>
@@ -66,31 +66,31 @@ function Powers({ p, actions, spEquipped, onOpenStore, onNotice }: { p: GameStat
       <View style={{ marginHorizontal: SIDE, marginTop: mk(14) }}>
         <Plate face={C.panel} top={C.panelTop} lip={C.panelDark} radius={R.plate} inner={{ paddingHorizontal: mk(14), paddingBottom: mk(16) }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', height: mk(84) }}>
-            <OutlinedText size={mk(40)} width={mk(4)} align="left">AKTİF GÜÇ SETİM</OutlinedText>
+            <OutlinedText size={mk(40)} width={mk(4)} align="left">{t('ui2.myPowerSet')}</OutlinedText>
             <View style={{ flex: 1 }} />
-            <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(17), textAlign: 'right', flexShrink: 1 }}>Maçlarda yanında olacak 3 gücü seç.</Text>
+            <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(17), textAlign: 'right', flexShrink: 1 }}>{t('ui2.myPowerSetHint')}</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: GAP }}>
             {[0, 1, 2].map((i) => {
               const id = spEquipped[i];
-              return id ? <PowerCard key={id} width={COL_W} name={t(SPECIAL_POWERS[id].nameKey)} art={SP_ART[id]} face={SP_FACE[id]} badge={RARITY_N[SPECIAL_POWERS[id].rarity]} line={`${count(id)} adet`} button={{ label: 'ÇIKAR', kind: 'blue', on: () => actions.equipSpecialPower(id) }} />
+              return id ? <PowerCard key={id} width={COL_W} name={t(SPECIAL_POWERS[id].nameKey)} art={SP_ART[id]} face={SP_FACE[id]} badge={RARITY_N[SPECIAL_POWERS[id].rarity]} line={t('ui2.count', { n: count(id) })} button={{ label: up(t('collection.remove')), kind: 'blue', on: () => actions.equipSpecialPower(id) }} />
                 : <Plate key={i} face="#0B3A96" top="#2F63C8" lip="#041A4E" radius={R.card} style={{ width: COL_W }} inner={{ height: mk(250) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(60)} width={mk(3)} color={C.textMuted}>+</OutlinedText><Text style={{ color: C.textMuted, fontFamily: F.bold, fontSize: mk(15) }}>Boş yuva</Text></Plate>;
             })}
             <View style={{ width: COL_W }} />
           </View>
         </Plate>
       </View>
-      <SectionHeader icon={UI2.sec_power} title="TÜM GÜÇLER" subtitle="Envanterindeki güçler" style={{ marginHorizontal: SIDE, marginTop: mk(14) }} />
+      <SectionHeader icon={UI2.sec_power} title={t('ui2.allPowers')} subtitle={t('ui2.allPowersSub')} style={{ marginHorizontal: SIDE, marginTop: mk(14) }} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, marginHorizontal: SIDE }}>
         {specials.map((id) => {
           const n = count(id); const on = spEquipped.includes(id);
-          return <PowerCard key={id} width={COL_W} name={t(SPECIAL_POWERS[id].nameKey)} art={SP_ART[id]} face={SP_FACE[id]} badge={RARITY_N[SPECIAL_POWERS[id].rarity]} line={`${n} adet`} dim={n === 0 && !on}
-            button={n === 0 && !on ? { label: 'MAĞAZA', kind: 'gold', on: onOpenStore } : { label: on ? 'ÇIKAR' : 'KUŞAN', kind: on ? 'blue' : 'green', on: () => { if (!on && spEquipped.length >= 3) { onNotice('GÜÇ SETİ DOLU', '3 yuva dolu — önce birini çıkar.'); return; } actions.equipSpecialPower(id); } }} />;
+          return <PowerCard key={id} width={COL_W} name={t(SPECIAL_POWERS[id].nameKey)} art={SP_ART[id]} face={SP_FACE[id]} badge={RARITY_N[SPECIAL_POWERS[id].rarity]} line={t('ui2.count', { n })} dim={n === 0 && !on}
+            button={n === 0 && !on ? { label: S.store, kind: 'gold', on: onOpenStore } : { label: on ? up(t('collection.remove')) : t('store.spEquip'), kind: on ? 'blue' : 'green', on: () => { if (!on && spEquipped.length >= 3) { onNotice(t('ui2.powerSetFull'), t('ui2.powerSetFullBody')); return; } actions.equipSpecialPower(id); } }} />;
         })}
         {ACCOUNT_POWERS.map((pw) => {
           const n = accCount[pw.id];
-          return <PowerCard key={pw.id} width={COL_W} name={pw.title} art={UI2[pw.art]} face={[pw.face, pw.top, pw.lip]} badge={n} line={`${n} adet`} dim={n === 0}
-            button={n === 0 ? { label: 'MAĞAZA', kind: 'gold', on: onOpenStore } : { label: 'KULLAN', kind: 'green', on: () => { actions.usePower(pw.id); onNotice(pw.title, 'Güç etkinleştirildi.'); } }} />;
+          return <PowerCard key={pw.id} width={COL_W} name={t(pw.titleKey)} art={UI2[pw.art]} face={[pw.face, pw.top, pw.lip]} badge={n} line={t('ui2.count', { n })} dim={n === 0}
+            button={n === 0 ? { label: S.store, kind: 'gold', on: onOpenStore } : { label: up(t('collection.use')), kind: 'green', on: () => { actions.usePower(pw.id); onNotice(t(pw.titleKey), t('ui2.powerActivated')); } }} />;
         })}
       </View>
     </>
@@ -101,7 +101,7 @@ function PowerCard({ width, name, art, face, badge, line, button, dim }: { width
     <View style={{ width, opacity: dim ? 0.72 : 1 }}>
       <Plate face={face[0]} top={face[1]} lip={face[2]} radius={R.card} inner={{ height: mk(250) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(8), paddingHorizontal: mk(6) }}>
         <View style={{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center' }}><Image source={art} style={{ width: '84%', height: '90%' }} resizeMode="contain" /></View>
-        <OutlinedText size={mk(22)} width={mk(2)} numberOfLines={1}>{name.toLocaleUpperCase('tr')}</OutlinedText>
+        <OutlinedText size={mk(22)} width={mk(2)} numberOfLines={1}>{up(name)}</OutlinedText>
         <View style={{ backgroundColor: 'rgba(255,255,255,0.28)', borderRadius: mk(10), paddingHorizontal: mk(12), paddingVertical: mk(2), marginTop: mk(3) }}><Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(15) }}>{line}</Text></View>
         <View style={{ width: '100%', marginTop: mk(6), marginBottom: mk(8) }}><ChunkyButton kind={button.kind} label={button.label} height={mk(46)} size={mk(20)} onPress={button.on} /></View>
       </Plate>
@@ -119,19 +119,19 @@ function Cosmetics({ p, actions, catalog }: { p: GameState['profile']; actions: 
   const COL3 = Math.floor((430 - SIDE * 2 - GAP * 2) / 3);
   return (
     <>
-      <SectionHeader icon={UI2.frame_laurel} title="ÇERÇEVELER" subtitle="Profilinde görünür" style={{ marginHorizontal: SIDE, marginTop: mk(10) }} />
+      <SectionHeader icon={UI2.frame_laurel} title={up(t('profile.frames'))} subtitle={t('ui2.framesSub')} style={{ marginHorizontal: SIDE, marginTop: mk(10) }} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, marginHorizontal: SIDE }}>
         {tierFrames.map((tier) => <FrameCard key={tier.key} width={COL3} name={t(tier.nameKey)} equipped={p?.selectedFrame === tier.key} onPress={() => actions.setFrame(p?.selectedFrame === tier.key ? null : tier.key)}><FrameArt tierKey={tier.key} size={mk(120)} /></FrameCard>)}
         {storeFrames.map((it) => <FrameCard key={it.id} width={COL3} name={it.name} equipped={p?.selectedFrame === it.id} onPress={() => actions.setFrame(p?.selectedFrame === it.id ? null : it.id)}><CosmeticPreview item={it} size={mk(120)} /></FrameCard>)}
-        {tierFrames.length + storeFrames.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(20), padding: mk(10) }}>Henüz çerçeven yok — seviye atla ya da mağazaya bak.</Text> : null}
+        {tierFrames.length + storeFrames.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(20), padding: mk(10) }}>{t('ui2.noFrames')}</Text> : null}
       </View>
-      <SectionHeader icon={UI2.sec_star} title="KOZMETİKLER" subtitle="Maçta görünür" style={{ marginHorizontal: SIDE, marginTop: mk(14) }} />
+      <SectionHeader icon={UI2.sec_star} title={t('ui2.cosmetics')} subtitle={t('ui2.cosmeticsSub')} style={{ marginHorizontal: SIDE, marginTop: mk(14) }} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, marginHorizontal: SIDE }}>
         {items.map((it) => {
           const on = equippedOf(it.type) === it.id;
           return <FrameCard key={it.id} width={COL3} name={it.name} equipped={on} onPress={() => actions.equipCosmetic(it.type as any, on ? null : it.id)}><CosmeticPreview item={it} size={mk(120)} /></FrameCard>;
         })}
-        {items.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(20), padding: mk(10) }}>Henüz kozmetiğin yok.</Text> : null}
+        {items.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(20), padding: mk(10) }}>{t('ui2.noCosmetics')}</Text> : null}
       </View>
     </>
   );
@@ -141,8 +141,8 @@ function FrameCard({ width, name, equipped, onPress, children }: { width: number
     <View style={{ width }}>
       <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={equipped ? C.gold : C.navy} radius={R.card} inner={{ height: mk(250) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(8), paddingHorizontal: mk(6) }}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>{children}</View>
-        <OutlinedText size={mk(20)} width={mk(2)} numberOfLines={1}>{name.toLocaleUpperCase('tr')}</OutlinedText>
-        <View style={{ width: '100%', marginTop: mk(6), marginBottom: mk(8) }}><ChunkyButton kind={equipped ? 'blue' : 'green'} label={equipped ? 'TAKILI' : 'KUŞAN'} height={mk(46)} size={mk(20)} onPress={onPress} /></View>
+        <OutlinedText size={mk(20)} width={mk(2)} numberOfLines={1}>{up(name)}</OutlinedText>
+        <View style={{ width: '100%', marginTop: mk(6), marginBottom: mk(8) }}><ChunkyButton kind={equipped ? 'blue' : 'green'} label={equipped ? t('store.spEquipped') : t('store.spEquip')} height={mk(46)} size={mk(20)} onPress={onPress} /></View>
       </Plate>
     </View>
   );
@@ -154,7 +154,7 @@ function Emotes({ p, actions, onNotice }: { p: GameState['profile']; actions: Ac
   const all = [...FREE_EMOTES, ...ownedPremium];
   const toggle = (id: string) => {
     if (equipped.includes(id)) actions.equipEmotes(equipped.filter((x) => x !== id));
-    else if (equipped.length >= EMOTE_SLOTS) onNotice('YUVALAR DOLU', `${EMOTE_SLOTS} yuva dolu — önce birini çıkar.`);
+    else if (equipped.length >= EMOTE_SLOTS) onNotice(up(t('collection.slotsFull')), t('ui2.slotsFullBody', { n: EMOTE_SLOTS }));
     else actions.equipEmotes([...equipped, id]);
   };
   return (
@@ -162,7 +162,7 @@ function Emotes({ p, actions, onNotice }: { p: GameState['profile']; actions: Ac
       <View style={{ marginHorizontal: SIDE, marginTop: mk(14) }}>
         <Plate face={C.panel} top={C.panelTop} lip={C.panelDark} radius={R.plate} inner={{ paddingHorizontal: mk(14), paddingBottom: mk(16) }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', height: mk(84) }}>
-            <OutlinedText size={mk(40)} width={mk(4)} align="left">MAÇ İFADELERİM</OutlinedText>
+            <OutlinedText size={mk(40)} width={mk(4)} align="left">{t('ui2.myEmotes')}</OutlinedText>
             <View style={{ flex: 1 }} />
             <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(17) }}>{`${equipped.length} / ${EMOTE_SLOTS}`}</Text>
           </View>
@@ -177,7 +177,7 @@ function Emotes({ p, actions, onNotice }: { p: GameState['profile']; actions: Ac
           </View>
         </Plate>
       </View>
-      <SectionHeader icon={UI2.sec_emote} title="TÜM İFADELER" subtitle="Dokun: yuvaya ekle / çıkar" style={{ marginHorizontal: SIDE, marginTop: mk(14) }} />
+      <SectionHeader icon={UI2.sec_emote} title={t('ui2.allEmotes')} subtitle={t('ui2.allEmotesSub')} style={{ marginHorizontal: SIDE, marginTop: mk(14) }} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, marginHorizontal: SIDE }}>
         {all.map((e) => {
           const on = equipped.includes(e.id);
@@ -185,7 +185,7 @@ function Emotes({ p, actions, onNotice }: { p: GameState['profile']; actions: Ac
             <Pressable key={e.id} onPress={() => toggle(e.id)} style={{ width: COL_W }}>
               <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={on ? C.gold : C.navy} radius={R.card} inner={{ height: mk(200) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
                 <EmoteSticker id={e.id} size={mk(110)} play={false} />
-                <OutlinedText size={mk(18)} width={1.5} numberOfLines={1} style={{ marginTop: mk(4) }}>{(e.premium?.name ?? (e.phraseKey ? t(e.phraseKey as MessageKey) : e.id)).toLocaleUpperCase('tr')}</OutlinedText>
+                <OutlinedText size={mk(18)} width={1.5} numberOfLines={1} style={{ marginTop: mk(4) }}>{up((e.premium?.name ?? (e.phraseKey ? t(e.phraseKey as MessageKey) : e.id)))}</OutlinedText>
               </Plate>
               {on ? <View style={{ position: 'absolute', top: -mk(6), right: -mk(4), width: mk(40), height: mk(40), borderRadius: mk(20), backgroundColor: C.green, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(20)} width={1}>✓</OutlinedText></View> : null}
             </Pressable>

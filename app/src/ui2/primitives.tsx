@@ -25,9 +25,11 @@ export function CheckerBg({ style }: { style?: StyleProp<ViewStyle> }) {
 }
 
 // ── Konturlu yazı: 8 yönlü kopya (RN'de stroke yok). Başlıklar/CTA/fiyatlar. ────
-export function OutlinedText({ children, size, color = C.white, outline = C.ink, width = 2, family = F.title, style, align = 'center', numberOfLines }: {
+export function OutlinedText({ children, size, color = C.white, outline = C.ink, width = 2, family = F.title, style, align = 'center', numberOfLines, fit = false }: {
   children: ReactNode; size: number; color?: string; outline?: string; width?: number; family?: string;
   style?: StyleProp<TextStyle>; align?: 'left' | 'center' | 'right'; numberOfLines?: number;
+  /** Uzun dillerde sığdır: adjustsFontSizeToFit (kopyalar aynı metin+genişlik → aynı ölçeği bulur). */
+  fit?: boolean;
 }) {
   const base: TextStyle = { fontFamily: family, fontSize: size, color, textAlign: align, includeFontPadding: false };
   const offsets = useMemo(() => {
@@ -38,9 +40,9 @@ export function OutlinedText({ children, size, color = C.white, outline = C.ink,
   return (
     <View style={{ alignSelf: align === 'center' ? 'center' : 'stretch', flexShrink: 0 }}>
       {offsets.map(([dx, dy]) => (
-        <Text key={`${dx}_${dy}`} numberOfLines={numberOfLines} style={[base, style, { position: 'absolute', left: dx, right: -dx, top: dy, color: outline }]} accessible={false} importantForAccessibility="no">{children}</Text>
+        <Text key={`${dx}_${dy}`} numberOfLines={numberOfLines} adjustsFontSizeToFit={fit} minimumFontScale={0.5} style={[base, style, { position: 'absolute', left: dx, right: -dx, top: dy, color: outline }]} accessible={false} importantForAccessibility="no">{children}</Text>
       ))}
-      <Text numberOfLines={numberOfLines} style={[base, style]}>{children}</Text>
+      <Text numberOfLines={numberOfLines} adjustsFontSizeToFit={fit} minimumFontScale={0.5} style={[base, style]}>{children}</Text>
     </View>
   );
 }

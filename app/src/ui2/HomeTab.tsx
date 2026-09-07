@@ -1,6 +1,9 @@
 // UI2 — OYNA sekmesi. Mock: docs/design/ui2/refs/home.png (853 px, mh()).
 import { Image, Pressable, Text, View } from 'react-native';
+import { t } from '../i18n';
+import { arenaLabel } from '../screens';
 import type { Actions, GameState } from './types';
+import { up } from './strings';
 import { UI2 } from './assets';
 import { Bar, ChunkyButton, OutlinedText, Plate, fmt } from './primitives';
 import { Hud } from './Shell';
@@ -18,7 +21,7 @@ export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenM
   const level = p?.level ?? 1;
   const trophies = p?.trophies ?? 0;
   const nextMin = nextArenaMin(trophies);
-  const arenaName = (p?.arena?.name ?? 'Mahalle Sahası').toLocaleUpperCase('tr');
+  const arenaName = up(arenaLabel(p?.arena?.name ?? 'Mahalle Sahası'));
   const questsReady = state.dailyQuests?.quests.filter((q) => q.done && !q.claimed).length ?? 0;
   const W = 430 - SIDE * 2;
   return (
@@ -32,7 +35,7 @@ export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenM
         <Plate face={C.gold} top={C.goldLight} lip={C.goldDark} radius={mh(22)} inner={{ height: mh(112) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mh(16) }}>
           <Image source={UI2.home_crown} style={{ width: mh(78), height: mh(70) }} resizeMode="contain" />
           <View style={{ flex: 1, marginLeft: mh(14), justifyContent: 'center' }}>
-            <OutlinedText size={mh(30)} width={mk(3)} align="left" family={F.title}>SEZON ÖDÜLLERİ</OutlinedText>
+            <OutlinedText size={mh(30)} width={mk(3)} align="left" family={F.title}>{t('ui2.seasonRewards')}</OutlinedText>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: mh(6) }}>
               <Bar value={level} max={LEVEL_CAP} color={C.gold} track="#3B2C00" height={mh(26)} radius={mh(8)} style={{ flex: 1 }} />
               <OutlinedText size={mh(30)} width={mk(3)} style={{ marginLeft: mh(14) }} numberOfLines={1}>{`${level} / ${LEVEL_CAP}`}</OutlinedText>
@@ -72,12 +75,12 @@ export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenM
       </View>
       {/* HEMEN OYNA */}
       <View style={{ marginHorizontal: SIDE + mh(10), marginTop: mh(24) }}>
-        <ChunkyButton kind="gold" label="HEMEN OYNA" sub="1v1 Çevrimiçi" height={mh(180)} size={mh(76)} subSize={mh(34)} radius={mh(30)} onPress={() => actions.findMatch()} />
+        <ChunkyButton kind="gold" label={up(t('home.quickMatch'))} sub={t('ui2.online1v1')} height={mh(180)} size={mh(76)} subSize={mh(34)} radius={mh(30)} onPress={() => actions.findMatch()} />
       </View>
       {/* Oyun Modları / Arkadaşla Oyna */}
       <View style={{ flexDirection: 'row', marginHorizontal: SIDE, marginTop: mh(26), gap: mh(20) }}>
-        {([{ label: 'Oyun Modları', art: UI2.home_modes_art, on: onOpenModes }, { label: 'Bot Maçı', art: UI2.md_bot, on: onOpenBot }] as const).map((c) => (
-          <Pressable key={c.label} onPress={c.on} style={{ flex: 1 }}>
+        {([{ key: 'modes', label: t('ui2.gameModes'), art: UI2.home_modes_art, on: onOpenModes }, { key: 'bot', label: t('home.solo'), art: UI2.md_bot, on: onOpenBot }] as const).map((c) => (
+          <Pressable key={c.key} onPress={c.on} style={{ flex: 1 }}>
             <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={mh(26)} inner={{ height: mh(220) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: mh(10) }}>
               <Image source={c.art} style={{ width: '88%', height: mh(140), marginBottom: mh(4) }} resizeMode="contain" />
               <OutlinedText size={mh(34)} width={mk(3)}>{c.label}</OutlinedText>

@@ -3,6 +3,7 @@ import { type ReactNode } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '../Avatar';
+import { t, type MessageKey } from '../i18n';
 import { UI2 } from './assets';
 import { Bar, CheckerBg, OutlinedText, Plate, fmt } from './primitives';
 import { C, F, LIP, OUTLINE, R, SIDE, mk } from './tokens';
@@ -86,12 +87,12 @@ function LevelShield({ level }: { level: number }) {
 
 // ── Alt navigasyon: 5 plaka; aktif olan altın çerçeveli + açık mavi yüz, yukarı taşar ──
 export type NavKey = 'store' | 'collection' | 'play' | 'friends' | 'tournaments';
-const NAV: { key: NavKey; icon: ImageSourcePropType; label: string }[] = [
-  { key: 'store', icon: UI2.nav_store, label: 'Mağaza' },
-  { key: 'collection', icon: UI2.nav_collection, label: 'Koleksiyon' },
-  { key: 'play', icon: UI2.nav_play, label: 'Oyna' },
-  { key: 'friends', icon: UI2.nav_friends, label: 'Arkadaşlar' },
-  { key: 'tournaments', icon: UI2.nav_tournaments, label: 'Turnuvalar' },
+const NAV: { key: NavKey; icon: ImageSourcePropType; labelKey: MessageKey }[] = [
+  { key: 'store', icon: UI2.nav_store, labelKey: 'tab.store' as MessageKey },
+  { key: 'collection', icon: UI2.nav_collection, labelKey: 'tab.collection' as MessageKey },
+  { key: 'play', icon: UI2.nav_play, labelKey: 'ui2.play' as MessageKey },
+  { key: 'friends', icon: UI2.nav_friends, labelKey: 'tab.friends' as MessageKey },
+  { key: 'tournaments', icon: UI2.nav_tournaments, labelKey: 'tab.tournaments' as MessageKey },
 ];
 export const NAV_H = mk(150);
 export function BottomNav({ active, onPress, labels, badges }: { active: NavKey; onPress: (k: NavKey) => void; labels?: Partial<Record<NavKey, string>>; badges?: Partial<Record<NavKey, number>> }) {
@@ -105,7 +106,7 @@ export function BottomNav({ active, onPress, labels, badges }: { active: NavKey;
             <Plate face={on ? C.navActive : C.navTile} top={on ? '#8CC4FF' : C.navTileTop} lip={on ? C.gold : '#082F80'} outline={on ? C.gold : C.navy} radius={R.tile} outlineWidth={on ? mk(7) : OUTLINE} lipHeight={mk(14)}
               inner={{ height: (on ? NAV_H + mk(12) : NAV_H) - mk(14) - OUTLINE * 2, alignItems: 'center', justifyContent: 'center', paddingTop: mk(6) }}>
               <Image source={n.icon} style={{ width: mk(100), height: mk(78) }} resizeMode="contain" />
-              <OutlinedText size={mk(30)} width={mk(3)} family={F.title} style={{ marginTop: mk(2) }} numberOfLines={1}>{labels?.[n.key] ?? n.label}</OutlinedText>
+              <OutlinedText size={mk(30)} width={mk(3)} family={F.title} style={{ marginTop: mk(2) }} numberOfLines={1}>{labels?.[n.key] ?? t(n.labelKey)}</OutlinedText>
             </Plate>
             {badge ? (
               <View style={{ position: 'absolute', top: -mk(8), right: mk(6), minWidth: mk(44), height: mk(44), borderRadius: mk(22), backgroundColor: C.red, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>

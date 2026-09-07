@@ -15410,7 +15410,7 @@ function arenaKeyFromName(name: string): 'mahalle' | 'amator' | 'profesyonel' | 
     default: return null;
   }
 }
-function arenaLabel(name: string): string {
+export function arenaLabel(name: string): string {
   const k = arenaKeyFromName(name);
   return k ? t(`arena.${k}` as MessageKey) : name;
 }

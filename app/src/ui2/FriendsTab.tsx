@@ -7,6 +7,7 @@ import type { Actions, GameState } from './types';
 import { UI2 } from './assets';
 import { Bar, ChunkyButton, GemAmount, OutlinedText, Plate, SectionHeader, fmt } from './primitives';
 import { Hud } from './Shell';
+import { t } from '../i18n';
 import { S } from './strings';
 import { C, F, GAP, LIP, OUTLINE, R, SIDE, mk } from './tokens';
 
@@ -22,7 +23,7 @@ export function FriendsTab({ state, actions, onOpenSettings, onOpenProfile, onOp
   useEffect(() => { actions.loadFriends(); }, [actions]);
   const share = () => {
     track('referral_share', {});
-    void Share.share({ message: `CrossOver Football'da bana karşı oyna! ⚽ Davet kodum: ${code} — uygulamada girersen İKİMİZ de ${REFERRAL_REWARD}💎 kazanırız.\nhttps://crossoverfootball.com/indir` }).catch(() => {});
+    void Share.share({ message: t('ui2.inviteShareMsg', { code, n: REFERRAL_REWARD, url: 'https://crossoverfootball.com/indir' }) }).catch(() => {});
   };
   const W = 430 - SIDE * 2;
   return (

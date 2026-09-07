@@ -1,8 +1,11 @@
 // UI2 — MAĞAZA sekmesi. Mock: refs/store-top.png + refs/store-bottom.png (941 px, mk()).
 // Görünüm birebir mock; ürünler/fiyatlar GERÇEK (products.ts + StoreKit displayPrice + sunucu kataloğu).
 import { useEffect, useMemo } from 'react';
-import { Image, Pressable, Text, View, type ImageSourcePropType } from 'react-native';
+import { Image, Pressable, Text, View, type DimensionValue, type ImageSourcePropType } from 'react-native';
+import { t } from '../i18n';
 import type { Actions, GameState } from './types';
+import { IcCrown, IcLock, IcNoAds } from './icons';
+import { S, up } from './strings';
 import type { StoreCatalogItem } from '../protocol';
 import { PREMIUM_EMOTES } from '../emotes';
 import { CosmeticPreview } from '../screens';
@@ -36,57 +39,72 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
 
   return (
     <View style={{ flex: 1 }}>
-      <Hud title="MAĞAZA" titleIcon={UI2.title_store}
+      <Hud title={S.store} titleIcon={UI2.title_store}
         data={{ name: p?.displayName ?? '', avatarId: p?.avatar ?? null, frameId: p?.selectedFrame ?? null, level: p?.level ?? 1, xp: p?.xp ?? 0, xpNext: (p as any)?.xpForNext ?? 1000, trophies: p?.trophies ?? 0, diamonds }}
         actions={{ onAvatar: onOpenProfile, onSettings: onOpenSettings, onTrophies: onOpenArenas }} />
 
-      {/* ── SOSYAL PAKET banner'ı: mock'un kendi sanatı (opak), fiyat butonları CANLI ── */}
+      {/* ── SOSYAL PAKET banner'ı: sanat mock'tan (metinsiz arka plan), TÜM metin canlı (21 dil) ── */}
       <View style={{ marginHorizontal: SIDE, marginTop: mk(6) }}>
         <BannerImage source={UI2.banner_socialpack} ratio={886 / 348}>
+          <Ribbon label={t('ui2.specialOffer')} color={C.red} size={mk(24)} style={{ position: 'absolute', left: -mk(4), top: -mk(4), borderTopLeftRadius: mk(22), borderTopRightRadius: 0, borderBottomLeftRadius: 0, paddingHorizontal: mk(22), paddingVertical: mk(6) }} />
+          <View style={{ position: 'absolute', left: '5.5%', top: '12%', width: '57%', height: '19%', justifyContent: 'center' }}>
+            <OutlinedText size={mk(64)} width={mk(4)} color={C.gold} align="left" numberOfLines={1} fit>{t('store.socialPackSection')}</OutlinedText>
+          </View>
+          <BannerFeature top="35.5%" icon={<IcLock size={mk(50)} />} text={t('ui2.spFeat1')} />
+          <BannerFeature top="53%" icon={<IcNoAds size={mk(50)} />} text={t('ui2.spFeat2')} />
+          <Sticker left="81%" top="63%" width="28%" height="34%" rotate="-7deg" face={C.gold} border={C.navy}>
+            <Text numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.ink, fontFamily: F.black, fontSize: mk(23), lineHeight: mk(27), textAlign: 'center' }}>{t('ui2.spSticker')}</Text>
+          </Sticker>
           {SOCIAL_PACK.map((sp, i) => (
             <View key={sp.id} style={{ position: 'absolute', left: `${i === 0 ? 2.8 : 32.6}%`, top: '67.5%', width: '27.4%', height: '25%' }}>
               <ChunkyButton kind="green" label={store.priceFor(sp.productId, sp.fallback)} sub={undefined} height={mk(86)} size={mk(30)} onPress={() => store.buy(sp.productId)} disabled={!!store.buying}
                 style={{ flex: 1 }} />
               <View pointerEvents="none" style={{ position: 'absolute', top: mk(4), left: 0, right: 0, alignItems: 'center' }}>
-                <OutlinedText size={mk(20)} width={1.5} outline="#0E5A1C">{store.activeSubId === sp.productId ? 'AKTİF' : sp.labelKey}</OutlinedText>
+                <OutlinedText size={mk(20)} width={1.5} outline="#0E5A1C" numberOfLines={1} fit>{store.activeSubId === sp.productId ? t('store.badgeActive') : t(sp.labelKey)}</OutlinedText>
               </View>
             </View>
           ))}
         </BannerImage>
       </View>
 
-      {/* ── CO PASS banner'ı: opak sanat + canlı elmas fiyatı ── */}
+      {/* ── CO PASS banner'ı: sanat mock'tan (bilet, taç, "CO PASS" markası), satır + çıkartma + fiyat canlı ── */}
       <View style={{ marginHorizontal: SIDE, marginTop: mk(22) }}>
         <BannerImage source={UI2.banner_copass} ratio={886 / 212}>
+          <View style={{ position: 'absolute', left: '33%', top: '36%', width: '33%', height: '21%', justifyContent: 'center' }}>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.black, fontSize: mk(29) }}>{t('ui2.cpLine')}</Text>
+          </View>
           <View style={{ position: 'absolute', left: '31.2%', top: '57%', width: '33.5%', height: '34%' }}>
-            <ChunkyButton kind="green" gem label={p?.premiumRoad ? 'AKTİF' : `${fmt(PREMIUM_ROAD_PRICE)} ELMAS`} height={mk(74)} size={mk(28)} disabled={!!p?.premiumRoad}
+            <ChunkyButton kind="green" gem label={p?.premiumRoad ? t('store.badgeActive') : up(t('store.diamonds', { n: fmt(PREMIUM_ROAD_PRICE) }))} height={mk(74)} size={mk(28)} disabled={!!p?.premiumRoad}
               onPress={() => gemBuy('CO PASS', PREMIUM_ROAD_PRICE, () => actions.buyPremiumRoad())} style={{ flex: 1 }} />
           </View>
+          <Sticker left="77%" top="52%" width="28%" height="44%" rotate="-5deg" face="#1E4FD6" border="#5FE0FF">
+            <OutlinedText size={mk(24)} width={1.5} numberOfLines={2} fit style={{ lineHeight: mk(28) }}>{t('ui2.cpSticker')}</OutlinedText>
+          </Sticker>
         </BannerImage>
       </View>
 
       {/* ── ELMASLAR ── */}
-      <Section icon={UI2.sec_gems} title="ELMASLAR" subtitle="OYUNDA DAHA HIZLI İLERLE!">
+      <Section icon={UI2.sec_gems} title={t('ui2.gemsTitle')} subtitle={t('ui2.gemsSub')}>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
           {DIAMOND_PACKS.map((pk) => (
-            <ProductCard key={pk.id} width={COL_W} height={mk(250)} title={fmt(pk.amount)} subtitle="ELMAS" art={pk.art} artScale={pk.artW} ribbon={pk.ribbon}
+            <ProductCard key={pk.id} width={COL_W} height={mk(250)} title={fmt(pk.amount)} subtitle={t('ui2.gem')} art={pk.art} artScale={pk.artW} ribbon={pk.ribbon ? { label: t(pk.ribbon.labelKey), color: pk.ribbon.color } : null}
               button={{ label: store.priceFor(pk.productId, pk.fallback), onPress: () => store.buy(pk.productId), disabled: !!store.buying }} />
           ))}
         </View>
       </Section>
 
       {/* ── GÜÇLER (hesap güçleri) ── */}
-      <Section icon={UI2.sec_power} title="GÜÇLER" subtitle="MAÇLARDA AVANTAJ SENİNLE!">
+      <Section icon={UI2.sec_power} title={up(t('collection.tabPowers'))} subtitle={t('ui2.powersSub')}>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
           {ACCOUNT_POWERS.map((pw) => (
-            <ProductCard key={pw.id} width={COL_W} height={mk(250)} title={pw.title} art={UI2[pw.art]} face={pw.face} lip={pw.lip} top={pw.top} desc={pw.desc} small
-              button={{ gem: true, label: String(pw.price), onPress: () => gemBuy(pw.title, pw.price, () => actions.buyPower(pw.id)), disabled: diamonds < pw.price }} />
+            <ProductCard key={pw.id} width={COL_W} height={mk(250)} title={t(pw.titleKey)} art={UI2[pw.art]} face={pw.face} lip={pw.lip} top={pw.top} desc={t(pw.descKey)} small
+              button={{ gem: true, label: String(pw.price), onPress: () => gemBuy(t(pw.titleKey), pw.price, () => actions.buyPower(pw.id)), disabled: diamonds < pw.price }} />
           ))}
         </View>
       </Section>
 
       {/* ── KOZMETİK (maç arka planları — sunucu kataloğu, satılabilir olanlar) ── */}
-      <Section icon={UI2.sec_star} title="KOZMETİK" subtitle="SAHADA TARZINI YANSIT!">
+      <Section icon={UI2.sec_star} title={t('collection.tabCosmetics')} subtitle={t('ui2.cosmSub')}>
         {cosmetics.length === 0 ? <LoadingRow /> : (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
             {cosmetics.map((item) => (
@@ -104,31 +122,69 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
       </Section>
 
       {/* ── İFADELER (premium emote'lar) ── */}
-      <Section icon={UI2.sec_emote} title="İFADELER" subtitle="MAÇLARDA KENDİNİ İFADE ET!">
+      <Section icon={UI2.sec_emote} title={t('store.emotes')} subtitle={t('ui2.emotesSub')}>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
           {PREMIUM_EMOTES.filter((e) => e.premium).map((e) => {
             const own = (p?.ownedEmotes ?? []).includes(e.id);
             return (
               <ProductCard key={e.id} width={COL_W} height={mk(250)} title={e.premium!.name} art={(e as { still?: ImageSourcePropType }).still} artScale={1.05} small
-                button={own ? { label: 'SAHİPSİN', disabled: true } : { gem: true, label: String(e.premium!.price), onPress: () => gemBuy(e.premium!.name, e.premium!.price, () => actions.buyEmote(e.id)), disabled: diamonds < e.premium!.price }} />
+                button={own ? { label: S.owned, disabled: true } : { gem: true, label: String(e.premium!.price), onPress: () => gemBuy(e.premium!.name, e.premium!.price, () => actions.buyEmote(e.id)), disabled: diamonds < e.premium!.price }} />
             );
           })}
         </View>
       </Section>
 
-      {/* ── SAHADA FARK YARAT banner'ı (dekoratif) ── */}
+      {/* ── SAHADA FARK YARAT banner'ı: sanat mock'tan (metinsiz), etiket + başlık + açıklama canlı; taç kartı vektör ── */}
       <View style={{ marginHorizontal: SIDE, marginTop: mk(26) }}>
-        <BannerImage source={UI2.banner_cosm} ratio={884 / 234} />
+        <BannerImage source={UI2.banner_cosm} ratio={884 / 234}>
+          <Ribbon label={t('ui2.cosmTag')} color="#7C3AED" size={mk(22)} style={{ position: 'absolute', left: '2.5%', top: '4%', paddingHorizontal: mk(16) }} />
+          <CosmTitle />
+          <View style={{ position: 'absolute', left: '3%', top: '58%', width: '55%', height: '36%', justifyContent: 'center' }}>
+            <Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.black, fontSize: mk(25), lineHeight: mk(30), textAlign: 'center' }}>{t('ui2.cosmDesc')}</Text>
+          </View>
+          <View style={{ position: 'absolute', left: '59.5%', top: '14%', width: mk(78), height: mk(78), transform: [{ rotate: '-12deg' }], backgroundColor: '#2F7BFF', borderRadius: mk(16), borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ position: 'absolute', left: mk(6), right: mk(6), top: mk(4), height: mk(12), borderRadius: mk(6), backgroundColor: 'rgba(255,255,255,0.28)' }} />
+            <IcCrown size={mk(50)} />
+          </View>
+        </BannerImage>
       </View>
 
       <Pressable onPress={() => { void store.restorePurchases(); }} disabled={store.restoring} style={{ alignSelf: 'center', marginTop: mk(30), padding: mk(10) }}>
-        <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(24), textDecorationLine: 'underline' }}>{store.restoring ? 'Geri yükleniyor…' : 'Satın alımları geri yükle'}</Text>
+        <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(24), textDecorationLine: 'underline' }}>{store.restoring ? t('ui2.restoring') : t('store.restore')}</Text>
       </Pressable>
     </View>
   );
 }
 
 // ── Yardımcı yüzeyler ────────────────────────────────────────────────────────────
+// Banner üstü canlı özellik satırı (ikon + metin), mock'taki kilit/ADS satırları.
+function BannerFeature({ top, icon, text }: { top: DimensionValue; icon: React.ReactNode; text: string }) {
+  return (
+    <View style={{ position: 'absolute', left: '6%', top, width: '48%', height: '15%', flexDirection: 'row', alignItems: 'center', gap: mk(12) }}>
+      {icon}
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.black, fontSize: mk(29), flex: 1 }}>{text}</Text>
+    </View>
+  );
+}
+// Eğik çıkartma (sarı/mavi) — banner'ın sağ altında, taşan kısmı banner kırpar (mock'taki gibi).
+function Sticker({ left, top, width, height, rotate, face, border, children }: { left: DimensionValue; top: DimensionValue; width: DimensionValue; height: DimensionValue; rotate: string; face: string; border: string; children: React.ReactNode }) {
+  return (
+    <View style={{ position: 'absolute', left, top, width, height, transform: [{ rotate }], backgroundColor: face, borderWidth: mk(4), borderColor: border, borderRadius: mk(10), alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(8) }}>
+      {children}
+    </View>
+  );
+}
+// "SAHADA FARK YARAT!" — iki renkli başlık; uzun dillerde punto düşer (taç kartına taşmaz).
+function CosmTitle() {
+  const a = t('ui2.cosmTitle1'); const b = t('ui2.cosmTitle2');
+  const total = a.length + b.length + 1; const size = mk(58) * Math.min(1, 17 / total);
+  return (
+    <View style={{ position: 'absolute', left: '5.5%', top: '21%', width: '53%', height: '26%', flexDirection: 'row', alignItems: 'center', gap: mk(12) }}>
+      <OutlinedText size={size} width={mk(4)} align="left" numberOfLines={1}>{a}</OutlinedText>
+      <OutlinedText size={size} width={mk(4)} color={C.gold} align="left" numberOfLines={1}>{b}</OutlinedText>
+    </View>
+  );
+}
 function BannerImage({ source, ratio, children }: { source: ImageSourcePropType; ratio: number; children?: React.ReactNode }) {
   const w = 430 - SIDE * 2; const h = w / ratio;
   return (
@@ -182,7 +238,7 @@ function CosmeticCard({ item, width, owned, onBuy, disabled }: { item: StoreCata
         </View>
         <View style={{ flex: 1 }} />
         <View style={{ width: '100%', marginBottom: mk(12) }}>
-          <ChunkyButton kind="green" gem={!owned} label={owned ? 'SAHİPSİN' : String(item.diamondPrice)} height={mk(74)} size={mk(30)} onPress={onBuy} disabled={owned || disabled} />
+          <ChunkyButton kind="green" gem={!owned} label={owned ? S.owned : String(item.diamondPrice)} height={mk(74)} size={mk(30)} onPress={onBuy} disabled={owned || disabled} />
         </View>
       </Plate>
     </View>
@@ -195,7 +251,7 @@ function FrameCard({ item, owned, onBuy, disabled }: { item: StoreCatalogItem; o
         <View style={{ width: mk(130), height: mk(130), alignItems: 'center', justifyContent: 'center' }}><CosmeticPreview item={item} size={mk(120)} /></View>
         <View style={{ flex: 1 }}>
           <OutlinedText size={mk(24)} width={mk(2)} align="left" numberOfLines={1}>{item.name.toLocaleUpperCase('tr')}</OutlinedText>
-          <ChunkyButton kind="green" gem={!owned} label={owned ? 'SAHİPSİN' : String(item.diamondPrice)} height={mk(66)} size={mk(28)} onPress={onBuy} disabled={owned || disabled} style={{ marginTop: mk(8) }} />
+          <ChunkyButton kind="green" gem={!owned} label={owned ? S.owned : String(item.diamondPrice)} height={mk(66)} size={mk(28)} onPress={onBuy} disabled={owned || disabled} style={{ marginTop: mk(8) }} />
         </View>
       </Plate>
     </View>

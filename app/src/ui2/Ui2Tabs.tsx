@@ -12,7 +12,8 @@ import { FriendsTab } from './FriendsTab';
 import { TournamentsTab } from './TournamentsTab';
 import { CollectionTab } from './CollectionTab';
 import { ConfirmDialog, LanguageDialog, LeagueDialog, ModeMenuDialog, PrivateRoomDialog, QuestsDialog, RequestsDialog, SettingsDialog } from './Dialogs';
-import { setLanguage } from '../i18n';
+import { setLanguage, t } from '../i18n';
+import { S, up } from './strings';
 import { useStorePurchases } from './useStorePurchases';
 import { C, F, LIP, OUTLINE, SIDE, mk } from './tokens';
 
@@ -37,8 +38,8 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
   let body: ReactNode;
   if (active === 'store') body = <StoreTab {...common} store={store} onConfirm={(c) => setConfirm(c)} />;
   else if (active === 'play') body = <HomeTab {...common} onOpenLevelRoad={onOpenLevelRoad} onOpenStore={() => goToTab(0)} onOpenQuests={() => { actions.getDailyQuests(); setDlg('quests'); }} onOpenModes={() => setDlg('mode')} onOpenBot={() => setDlg('bot')} />;
-  else if (active === 'friends') body = <FriendsTab {...common} onOpenRequests={() => setDlg('requests')} onOpenAddFriend={() => say('ARKADAŞ EKLE', 'Aşağıdaki arama kutusundan oyuncu adıyla ara.')} onNotice={say} />;
-  else if (active === 'tournaments') body = <TournamentsTab {...common} onOpenLevelRoad={onOpenLevelRoad} onOpenLeague={() => { actions.getLeague(); setDlg('league'); }} onOpenTournament={(id) => { actions.getTournament(id); say('TURNUVA', 'Eşleşme ağacı penceresi hazırlanıyor.'); }} onNotice={say} />;
+  else if (active === 'friends') body = <FriendsTab {...common} onOpenRequests={() => setDlg('requests')} onOpenAddFriend={() => say(t('friends.addSection'), t('ui2.addFriendHint'))} onNotice={say} />;
+  else if (active === 'tournaments') body = <TournamentsTab {...common} onOpenLevelRoad={onOpenLevelRoad} onOpenLeague={() => { actions.getLeague(); setDlg('league'); }} onOpenTournament={(id) => { actions.getTournament(id); say(t('ui2.tournament'), t('ui2.bracketSoon')); }} onNotice={say} />;
   else body = <CollectionTab {...common} onOpenStore={() => goToTab(0)} onNotice={say} />;
 
   const closeDlg = () => setDlg(null);
@@ -51,10 +52,10 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
       <BottomNav active={active} onPress={(k) => { setDlg(null); goToTab(KEYS.indexOf(k)); }} badges={{ friends: state.friendRequests.length || undefined }} />
 
       {/* ── pencereler ── */}
-      {dlg === 'mode' || dlg === 'bot' ? <ModeMenuDialog state={state} actions={actions} bot={dlg === 'bot'} onClose={closeDlg} onLocked={() => setNotice({ title: 'SOSYAL PAKET GEREKLİ', body: 'Bu mod Sosyal Paket ile açılır: tüm modlar + reklamsız oyun.', yesLabel: 'MAĞAZA', onYes: () => goToTab(0) })} /> : null}
+      {dlg === 'mode' || dlg === 'bot' ? <ModeMenuDialog state={state} actions={actions} bot={dlg === 'bot'} onClose={closeDlg} onLocked={() => setNotice({ title: t('friends.inviteNeedsPackTitle'), body: t('ui2.packLockedBody'), yesLabel: S.store, onYes: () => goToTab(0) })} /> : null}
       {dlg === 'language' ? <LanguageDialog onClose={() => setDlg('settings')} onPick={(code) => { setLanguage(code); setDlg(null); onLanguageChange?.(); }} /> : null}
       {dlg === 'quests' ? <QuestsDialog state={state} actions={actions} onClose={closeDlg} onGo={() => goToTab(2)} /> : null}
-      {dlg === 'settings' ? <SettingsDialog actions={actions} onClose={closeDlg} onOpenLanguage={() => setDlg('language')} onDeleteAccount={() => { setDlg(null); setNotice({ title: 'HESABI SİL', body: 'Hesabın ve tüm verilerin KALICI olarak silinecek. Emin misin?', yesLabel: 'SİL', onYes: () => actions.deleteAccount() }); }} /> : null}
+      {dlg === 'settings' ? <SettingsDialog actions={actions} onClose={closeDlg} onOpenLanguage={() => setDlg('language')} onDeleteAccount={() => { setDlg(null); setNotice({ title: up(t('profile.deleteAccount')), body: t('profile.deleteAccountConfirm'), yesLabel: t('ui2.delete'), onYes: () => actions.deleteAccount() }); }} /> : null}
       {dlg === 'room' ? <PrivateRoomDialog state={state} actions={actions} onClose={closeDlg} /> : null}
       {dlg === 'requests' ? <RequestsDialog state={state} actions={actions} onClose={closeDlg} /> : null}
       {dlg === 'league' ? <LeagueDialog state={state} onClose={closeDlg} /> : null}
@@ -67,10 +68,10 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
             <View style={{ flexDirection: 'row', gap: mk(16), marginTop: mk(26), alignSelf: 'stretch' }}>
               {notice?.onYes ? (
                 <>
-                  <ChunkyButton kind="gray" label="VAZGEÇ" height={mk(80)} size={mk(28)} style={{ flex: 1 }} onPress={() => setNotice(null)} />
-                  <ChunkyButton kind="red" label={notice.yesLabel ?? 'EVET'} height={mk(80)} size={mk(28)} style={{ flex: 1 }} onPress={() => { const n = notice; setNotice(null); n.onYes?.(); }} />
+                  <ChunkyButton kind="gray" label={up(t('searching.cancel'))} height={mk(80)} size={mk(28)} style={{ flex: 1 }} onPress={() => setNotice(null)} />
+                  <ChunkyButton kind="red" label={notice.yesLabel ?? up(t('common.yes'))} height={mk(80)} size={mk(28)} style={{ flex: 1 }} onPress={() => { const n = notice; setNotice(null); n.onYes?.(); }} />
                 </>
-              ) : <ChunkyButton kind="gold" label="TAMAM" height={mk(80)} size={mk(28)} style={{ flex: 1 }} onPress={() => { setNotice(null); store.closeDialog(); }} />}
+              ) : <ChunkyButton kind="gold" label={up(t('settings.confirm'))} height={mk(80)} size={mk(28)} style={{ flex: 1 }} onPress={() => { setNotice(null); store.closeDialog(); }} />}
             </View>
           </Plate>
         </View>
