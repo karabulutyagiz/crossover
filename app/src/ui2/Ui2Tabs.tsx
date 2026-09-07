@@ -11,7 +11,7 @@ import { StoreTab } from './StoreTab';
 import { FriendsTab } from './FriendsTab';
 import { TournamentsTab } from './TournamentsTab';
 import { CollectionTab } from './CollectionTab';
-import { ConfirmDialog, LanguageDialog, LeagueDialog, ModeMenuDialog, PrivateRoomDialog, QuestsDialog, RequestsDialog, SettingsDialog } from './Dialogs';
+import { ConfirmDialog, LanguageDialog, LeagueDialog, ModeMenuDialog, PrivateRoomDialog, QuestsDialog, RequestsDialog, SettingsDialog, TournamentDialog } from './Dialogs';
 import { setLanguage, t } from '../i18n';
 import { S, up } from './strings';
 import { useStorePurchases } from './useStorePurchases';
@@ -19,7 +19,7 @@ import { C, F, LIP, OUTLINE, SIDE, mk } from './tokens';
 
 const KEYS: NavKey[] = ['store', 'collection', 'play', 'friends', 'tournaments'];
 type Confirm = { title: string; body: string; price?: number; priceText?: string; onYes: () => void };
-export type Ui2DialogKey = 'mode' | 'bot' | 'quests' | 'settings' | 'language' | 'room' | 'requests' | 'league' | null;
+export type Ui2DialogKey = 'mode' | 'bot' | 'quests' | 'settings' | 'language' | 'room' | 'requests' | 'league' | 'tournament' | null;
 
 export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, onLanguageChange, onDiamondCelebration, initialScrollY = 0, initialDialog = null, initialCollectionSub }: {
   state: GameState; actions: Actions; activeTab: number; goToTab: (i: number) => void;
@@ -30,6 +30,7 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [notice, setNotice] = useState<{ title: string; body: string; onYes?: () => void; yesLabel?: string } | null>(null);
   const [dlg, setDlg] = useState<Ui2DialogKey>(initialDialog);
+  const [tourId, setTourId] = useState<string | null>(initialDialog === 'tournament' ? 't2' : null);
   const scrollRef = useRef<ScrollView>(null);
   useEffect(() => { if (initialScrollY) setTimeout(() => scrollRef.current?.scrollTo({ y: initialScrollY, animated: false }), 50); }, [initialScrollY, activeTab]);
   const active = KEYS[activeTab] ?? 'play';
@@ -39,7 +40,7 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
   if (active === 'store') body = <StoreTab {...common} store={store} onConfirm={(c) => setConfirm(c)} />;
   else if (active === 'play') body = <HomeTab {...common} onOpenLevelRoad={onOpenLevelRoad} onOpenStore={() => goToTab(0)} onOpenQuests={() => { actions.getDailyQuests(); setDlg('quests'); }} onOpenModes={() => setDlg('mode')} onOpenBot={() => setDlg('bot')} />;
   else if (active === 'friends') body = <FriendsTab {...common} onOpenRequests={() => setDlg('requests')} onOpenAddFriend={() => say(t('friends.addSection'), t('ui2.addFriendHint'))} onNotice={say} />;
-  else if (active === 'tournaments') body = <TournamentsTab {...common} onOpenLevelRoad={onOpenLevelRoad} onOpenLeague={() => { actions.getLeague(); setDlg('league'); }} onOpenTournament={(id) => { actions.getTournament(id); say(t('ui2.tournament'), t('ui2.bracketSoon')); }} onNotice={say} />;
+  else if (active === 'tournaments') body = <TournamentsTab {...common} onOpenLevelRoad={onOpenLevelRoad} onOpenLeague={() => { actions.getLeague(); setDlg('league'); }} onOpenTournament={(id) => { actions.getTournament(id); setTourId(id); setDlg('tournament'); }} onNotice={say} />;
   else body = <CollectionTab {...common} onOpenStore={() => goToTab(0)} onNotice={say} initialSub={initialCollectionSub} />;
 
   const closeDlg = () => setDlg(null);
@@ -59,6 +60,7 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
       {dlg === 'room' ? <PrivateRoomDialog state={state} actions={actions} onClose={closeDlg} /> : null}
       {dlg === 'requests' ? <RequestsDialog state={state} actions={actions} onClose={closeDlg} /> : null}
       {dlg === 'league' ? <LeagueDialog state={state} onClose={closeDlg} /> : null}
+      {dlg === 'tournament' && tourId ? <TournamentDialog state={state} actions={actions} id={tourId} onClose={closeDlg} /> : null}
       {confirm ? <ConfirmDialog title={confirm.title} body={confirm.body} price={confirm.price} priceText={confirm.priceText} onClose={() => setConfirm(null)} onYes={() => { const c = confirm; setConfirm(null); c.onYes(); }} /> : null}
       {(notice || (store.dialogOpen && store.dialog)) ? (
         <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(2,10,40,0.72)', alignItems: 'center', justifyContent: 'center', padding: SIDE }}>

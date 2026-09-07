@@ -11,6 +11,14 @@ const profile = {
   userId: 'u1', displayName: 'Yağız', trophies: 2450, diamonds: 250, wins: 120, losses: 80, selectedAvatar: 'pp3', ownedAvatars: ['pp3'], ownedEmotes: ['footballer'], equippedEmotes: [], usernameSet: true, socialPackUntil: null,
   arena: { name: 'Şampiyonlar Ligi', icon: '🏟️', minTrophies: 1000 }, avatar: 'pp3', xp: 420, level: 12, xpForNext: 1000, selectedFrame: null, claimedLevels: [], ownedCosmetics: ['night_stadium'], premiumRoad: false,
 };
+const P = ['Yağız', 'Mert', 'Efe', 'Emir', 'Can', 'Deniz', 'Kerem', 'Ali'].map((n, i) => ({ userId: i === 0 ? 'u1' : `p${i}`, name: n }));
+const FAKE_TOUR = { id: 't2', name: 'Haftalık Kupa', size: 8, status: 'live' as const, prizeFirst: 300, prizeSecond: 100, entryFee: 0, joined: 8, youJoined: true, players: P, winnerName: null,
+  matches: [
+    { id: 'm1', round: 1, slot: 0, aId: 'u1', aName: 'Yağız', bId: 'p1', bName: 'Mert', winnerId: 'u1', status: 'done' }, { id: 'm2', round: 1, slot: 1, aId: 'p2', aName: 'Efe', bId: 'p3', bName: 'Emir', winnerId: 'p3', status: 'done' },
+    { id: 'm3', round: 1, slot: 2, aId: 'p4', aName: 'Can', bId: 'p5', bName: 'Deniz', winnerId: 'p4', status: 'done' }, { id: 'm4', round: 1, slot: 3, aId: 'p6', aName: 'Kerem', bId: 'p7', bName: 'Ali', winnerId: 'p7', status: 'done' },
+    { id: 'm5', round: 2, slot: 0, aId: 'u1', aName: 'Yağız', bId: 'p3', bName: 'Emir', winnerId: null, status: 'playing' }, { id: 'm6', round: 2, slot: 1, aId: 'p4', aName: 'Can', bId: 'p7', bName: 'Ali', winnerId: null, status: 'pending' },
+    { id: 'm7', round: 3, slot: 0, aId: null, aName: null, bId: null, bName: null, winnerId: null, status: 'pending' },
+  ] };
 const state = {
   phase: 'home', profile, error: null, storeCatalogStatus: 'success', userSearchResults: [], room: null, league: null,
   friendRequests: [{ requestId: 'r1', fromId: 'x', fromName: 'Kerem', createdAt: '' }, { requestId: 'r2', fromId: 'y', fromName: 'Ali', createdAt: '' }],
@@ -21,6 +29,7 @@ const state = {
     { userId: 'f4', displayName: 'Can', selectedAvatar: 'pp5', avatar: 'pp5', trophies: 2410, arena: { name: 'Efsaneler Arenası', icon: '', minTrophies: 2000 }, online: false, lastSeen: new Date(Date.now() - 60000).toISOString() },
     { userId: 'f5', displayName: 'Deniz', selectedAvatar: 'pp6', avatar: 'pp6', trophies: 1950, arena: { name: 'Şampiyonlar Ligi', icon: '', minTrophies: 1000 }, online: false, lastSeen: new Date(Date.now() - 12 * 60000).toISOString() },
   ],
+  tournament: FAKE_TOUR,
   tournaments: [
     { id: 't1', name: 'Şampiyonlar Kupası', size: 16, joined: 9, youJoined: false, status: 'registration', prizeFirst: 1000, prizeSecond: 300, entryFee: 0 },
     { id: 't2', name: 'Haftalık Kupa', size: 16, joined: 16, youJoined: true, status: 'live', prizeFirst: 300, prizeSecond: 100, entryFee: 0 },

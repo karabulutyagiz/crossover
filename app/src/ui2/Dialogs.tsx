@@ -9,7 +9,7 @@ import { getPushPermissionGranted, requestPushPermission } from '../notification
 import type { GameMode } from '../protocol';
 import type { Actions, GameState } from './types';
 import { UI2 } from './assets';
-import { Bar, ChunkyButton, GemAmount, OutlinedText, Plate, fmt } from './primitives';
+import { Bar, ChunkyButton, GemAmount, OutlinedText, Plate, Ribbon, fmt } from './primitives';
 import { S, up } from './strings';
 import { hasActiveSocialPack } from '../monetization';
 import { PACK_MODES } from './products';
@@ -282,5 +282,108 @@ export function LeagueDialog({ state, onClose }: { state: GameState; onClose: ()
         </>
       )}
     </Dialog>
+  );
+}
+
+// ── Turnuva: durum + katıl/ayrıl + ELEME AĞACI (sunucu tournament_state; klasik bracket geometrisi) ──
+const TB_W = mk(236); const TB_H = mk(108); const TB_GAP = mk(16);
+type TourMatch = { id: string; round: number; slot: number; aId: string | null; aName: string | null; bId: string | null; bName: string | null; winnerId: string | null; status: string };
+export function TournamentDialog({ state, actions, id, onClose }: { state: GameState; actions: Actions; id: string; onClose: () => void }) {
+  const tour = state.tournament && state.tournament.id === id ? state.tournament : null;
+  const item = (state.tournaments ?? []).find((x) => x.id === id) ?? null;
+  const youId = state.profile?.userId ?? null;
+  const name = tour?.name ?? item?.name ?? '';
+  const status = tour?.status ?? item?.status ?? 'registration';
+  const size = tour?.size ?? item?.size ?? 0; const joined = tour?.joined ?? item?.joined ?? 0; const youJoined = tour?.youJoined ?? item?.youJoined ?? false;
+  const p1 = tour?.prizeFirst ?? item?.prizeFirst ?? 0; const p2 = tour?.prizeSecond ?? item?.prizeSecond ?? 0; const fee = tour?.entryFee ?? item?.entryFee ?? 0;
+  const matches: TourMatch[] = tour?.matches ?? [];
+  const rounds = matches.length ? Math.max(...matches.map((m) => m.round)) : 0;
+  const roundLabel = (r: number) => { const fromEnd = rounds - r; return t(fromEnd === 0 ? 'tour.round.3' : fromEnd === 1 ? 'tour.round.2' : 'tour.round.1'); };
+  const statusKey = status === 'live' ? 'tour.live' : status === 'finished' ? 'tour.finished' : 'tour.registration';
+  const statusColor = status === 'live' ? C.red : status === 'finished' ? C.gray : C.green;
+  return (
+    <Dialog title={up(name || t('ui2.tournament'))} onClose={onClose} wide accent={status === 'live'}>
+      {/* durum satırı */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(10), marginBottom: mk(10), flexWrap: 'wrap' }}>
+        <Ribbon label={t(statusKey as MessageKey)} color={statusColor} size={mk(17)} />
+        <Text style={{ color: C.white, fontFamily: F.bold, fontSize: mk(19) }}>{t('tour.joined', { n: joined, size })}</Text>
+        <View style={{ flex: 1 }} />
+        <Text style={{ color: fee > 0 ? C.gold : C.textSub, fontFamily: F.black, fontSize: mk(17) }}>{fee > 0 ? t('tour.entryFee', { fee }) : t('tour.freeEntry')}</Text>
+      </View>
+      <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} inner={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(14), paddingVertical: mk(10), gap: mk(12) }}>
+        <GemAmount amount={p1} size={mk(34)} color={C.gold} />
+        <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(17), flex: 1 }}>{t('tour.prize', { p1, p2 })}</Text>
+      </Plate>
+      {tour?.winnerName || item?.winnerName ? (
+        <Plate face={C.gold} top={C.goldLight} lip={C.goldDark} radius={mk(18)} style={{ marginTop: mk(10) }} inner={{ alignItems: 'center', paddingVertical: mk(8), flexDirection: 'row', justifyContent: 'center', gap: mk(10) }}>
+          <IcTrophy size={mk(40)} /><OutlinedText size={mk(26)} width={mk(2)} color={C.ink} outline="#FFF6C7">{t('tour.champion', { name: tour?.winnerName ?? item?.winnerName ?? '' })}</OutlinedText>
+        </Plate>
+      ) : null}
+      {/* kayıt: katıl / ayrıl */}
+      {status === 'registration' ? (
+        <View style={{ marginTop: mk(12) }}>
+          {youJoined ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(12) }}>
+              <Text style={{ color: C.green, fontFamily: F.black, fontSize: mk(19), flex: 1 }}>{`✓ ${t('tour.waiting')}`}</Text>
+              <ChunkyButton kind="gray" label={up(t('tour.leave'))} height={mk(64)} size={mk(22)} style={{ width: mk(170) }} onPress={() => actions.leaveTournament(id)} />
+            </View>
+          ) : (
+            <ChunkyButton kind="green" gem={fee > 0} label={fee > 0 ? t('tour.joinFee', { fee }) : t('tour.join')} height={mk(80)} size={mk(30)} onPress={() => actions.joinTournament(id)} />
+          )}
+        </View>
+      ) : null}
+      {/* eleme ağacı */}
+      {matches.length ? (
+        <View style={{ marginTop: mk(14) }}>
+          <OutlinedText size={mk(30)} width={mk(3)} align="left">{t('tour.bracket')}</OutlinedText>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: mk(8), paddingRight: mk(16) }}>
+            {Array.from({ length: rounds }, (_, i) => i + 1).map((r) => {
+              const ms = matches.filter((m) => m.round === r).sort((a, b) => a.slot - b.slot);
+              const stride = (TB_H + TB_GAP) * Math.pow(2, r - 1); const offset = (stride - TB_H) / 2;   // her tur önceki iki kutunun ORTASINA
+              return (
+                <View key={r} style={{ marginRight: mk(30) }}>
+                  <Text style={{ color: C.textSub, fontFamily: F.black, fontSize: mk(15), letterSpacing: 0.6, textAlign: 'center', marginBottom: mk(8) }}>{roundLabel(r)}</Text>
+                  <View>
+                    {ms.map((m, i) => (
+                      <View key={m.id} style={{ marginTop: i === 0 ? offset : stride - TB_H }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <TourBox m={m} youId={youId} />
+                          {r < rounds ? (
+                            <>
+                              <View pointerEvents="none" style={{ width: mk(14), height: mk(3), backgroundColor: '#5A7BC0' }} />
+                              <View pointerEvents="none" style={{ position: 'absolute', left: TB_W + mk(12), width: mk(3), height: stride / 2 + mk(2), backgroundColor: '#5A7BC0', top: i % 2 === 0 ? TB_H / 2 - 1 : undefined, bottom: i % 2 === 1 ? TB_H / 2 - 1 : undefined }} />
+                            </>
+                          ) : null}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : tour == null ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(20), textAlign: 'center', padding: mk(12) }}>{S.loading}</Text> : null}
+    </Dialog>
+  );
+}
+function TourBox({ m, youId }: { m: TourMatch; youId: string | null }) {
+  const decided = m.winnerId != null; const live = m.status === 'playing';
+  const row = (nm: string | null, pid: string | null) => {
+    const you = youId != null && pid === youId; const win = decided && m.winnerId === pid; const lost = decided && !win && pid != null;
+    return (
+      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(10), gap: mk(6) }}>
+        <Text numberOfLines={1} style={{ flex: 1, color: lost ? C.textMuted : you ? C.gold : C.white, fontFamily: you || win ? F.black : F.bold, fontSize: mk(17) }}>{nm ?? '—'}</Text>
+        {win ? <IcCheckBadge size={mk(20)} /> : null}
+      </View>
+    );
+  };
+  return (
+    <View style={{ width: TB_W, height: TB_H, backgroundColor: C.panelInk, borderRadius: mk(14), borderWidth: mk(3), borderColor: live ? C.gold : (youId != null && (m.aId === youId || m.bId === youId)) ? '#8CC4FF' : C.navy, overflow: 'hidden' }}>
+      {row(m.aName, m.aId)}
+      <View style={{ height: mk(2), backgroundColor: C.navy }} />
+      {row(m.bName, m.bId)}
+      {live ? <View pointerEvents="none" style={{ position: 'absolute', right: mk(6), top: mk(6), width: mk(10), height: mk(10), borderRadius: mk(5), backgroundColor: C.gold }} /> : null}
+    </View>
   );
 }
