@@ -3,10 +3,10 @@
 export const UI2 = {
   ac_laurel: require('../../assets/ui2/ac-laurel.png'),
   ac_stadium: require('../../assets/ui2/ac-stadium.png'),
-  banner_copass: require('../../assets/ui2/banner-copass.png'),
+  banner_copass: require('../../assets/ui2/banner-copass.jpg'),
   banner_cosm: require('../../assets/ui2/banner-cosm.png'),
   banner_invite: require('../../assets/ui2/banner-invite.png'),
-  banner_socialpack: require('../../assets/ui2/banner-socialpack.png'),
+  banner_socialpack: require('../../assets/ui2/banner-socialpack.jpg'),
   frame_laurel: require('../../assets/ui2/frame-laurel.png'),
   gem_1400: require('../../assets/ui2/gem-1400.png'),
   gem_250: require('../../assets/ui2/gem-250.png'),

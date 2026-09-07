@@ -5,7 +5,7 @@ import { Image, Pressable, Text, View, type DimensionValue, type ImageSourceProp
 import { t } from '../i18n';
 import type { Actions, GameState } from './types';
 import { IcCrown, IcLock, IcNoAds } from './icons';
-import { IcBolt, IcFace, IcGems3, IcNavStore, IcStar } from './icons-ui';
+import { IcBolt, IcCrownBig, IcFace, IcGems3, IcNavStore, IcStar } from './icons-ui';
 import { S, up } from './strings';
 import type { StoreCatalogItem } from '../protocol';
 import { EmoteSticker, PREMIUM_EMOTES } from '../emotes';
@@ -44,38 +44,43 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
         data={{ name: p?.displayName ?? '', avatarId: p?.avatar ?? null, frameId: p?.selectedFrame ?? null, level: p?.level ?? 1, xp: p?.xp ?? 0, xpNext: (p as any)?.xpForNext ?? 1000, trophies: p?.trophies ?? 0, diamonds }}
         actions={{ onAvatar: onOpenProfile, onSettings: onOpenSettings, onTrophies: onOpenArenas }} />
 
-      {/* ── SOSYAL PAKET banner'ı: sanat mock'tan (metinsiz arka plan), TÜM metin canlı (21 dil) ── */}
+      {/* ── SOSYAL PAKET banner'ı: kullanıcının yazısız/butonsuz sanatı (3:1) — etiket, başlık, satırlar, fiyat butonları, çıkartma CANLI ── */}
       <View style={{ marginHorizontal: SIDE, marginTop: mk(6) }}>
-        <BannerImage source={UI2.banner_socialpack} ratio={886 / 348}>
-          <Ribbon label={t('ui2.specialOffer')} color={C.red} size={mk(24)} style={{ position: 'absolute', left: -mk(4), top: -mk(4), borderTopLeftRadius: mk(22), borderTopRightRadius: 0, borderBottomLeftRadius: 0, paddingHorizontal: mk(22), paddingVertical: mk(6) }} />
-          <View style={{ position: 'absolute', left: '5.5%', top: '12%', width: '57%', height: '19%', justifyContent: 'center' }}>
-            <OutlinedText size={fitSize(mk(64), up(t('store.socialPackSection')), 13)} width={mk(4)} color={C.gold} align="left" numberOfLines={1} fit>{up(t('store.socialPackSection'))}</OutlinedText>
+        <BannerImage source={UI2.banner_socialpack} ratio={3}>
+          <Ribbon label={t('ui2.specialOffer')} color={C.red} size={mk(22)} style={{ position: 'absolute', left: -mk(4), top: -mk(4), borderTopLeftRadius: mk(22), borderTopRightRadius: 0, borderBottomLeftRadius: 0, paddingHorizontal: mk(20), paddingVertical: mk(5) }} />
+          <View style={{ position: 'absolute', left: '4%', top: '15%', width: '45%', height: '26%', justifyContent: 'center' }}>
+            <OutlinedText size={fitSize(mk(54), up(t('store.socialPackSection')), 12)} width={mk(4)} color={C.gold} align="left" numberOfLines={1} fit>{up(t('store.socialPackSection'))}</OutlinedText>
           </View>
-          <BannerFeature top="35.5%" icon={<IcLock size={mk(44)} />} text={t('ui2.spFeat1')} />
-          <BannerFeature top="53%" icon={<IcNoAds size={mk(44)} />} text={t('ui2.spFeat2')} />
-          <Sticker left="79%" top="63%" width="24%" height="34%" rotate="-7deg" face={C.gold} border={C.navy}>
-            <Text numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.ink, fontFamily: F.black, fontSize: mk(20), lineHeight: mk(23), textAlign: 'center' }}>{t('ui2.spSticker')}</Text>
-          </Sticker>
+          <BannerFeature top="43%" icon={<IcLock size={mk(38)} />} text={t('ui2.spFeat1')} />
+          <BannerFeature top="59%" icon={<IcNoAds size={mk(38)} />} text={t('ui2.spFeat2')} />
           {SOCIAL_PACK.map((sp, i) => (
-            <View key={sp.id} style={{ position: 'absolute', left: `${i === 0 ? 2.0 : 33.2}%`, top: '66.5%', width: `${i === 0 ? 31.0 : 28.6}%`, height: '31.5%' }}>
-              <ChunkyButton kind="green" label={store.priceFor(sp.productId, sp.fallback)} over={store.activeSubId === sp.productId ? t('store.badgeActive') : t(sp.labelKey)} height={mk(110)} size={mk(32)} onPress={() => store.buy(sp.productId)} disabled={!!store.buying} style={{ flex: 1 }} />
+            <View key={sp.id} style={{ position: 'absolute', left: `${i === 0 ? 3 : 27}%`, top: '73%', width: '23%', height: '24%' }}>
+              <ChunkyButton kind="green" label={store.priceFor(sp.productId, sp.fallback)} over={store.activeSubId === sp.productId ? t('store.badgeActive') : t(sp.labelKey)} height={mk(70)} size={mk(25)} onPress={() => store.buy(sp.productId)} disabled={!!store.buying} style={{ flex: 1 }} />
             </View>
           ))}
+          <Sticker left="78%" top="63%" width="25%" height="33%" rotate="-7deg" face={C.gold} border={C.navy}>
+            <Text numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.ink, fontFamily: F.black, fontSize: mk(18), lineHeight: mk(21), textAlign: 'center' }}>{t('ui2.spSticker')}</Text>
+          </Sticker>
         </BannerImage>
       </View>
 
-      {/* ── CO PASS banner'ı: sanat mock'tan (bilet, taç, "CO PASS" markası), satır + çıkartma + fiyat canlı ── */}
+      {/* ── CO PASS banner'ı: kullanıcının sanatı (bilet solda, kartlar/karakter sağda, 3:1) — taç+başlık, satır, elmas butonu, çıkartma CANLI ── */}
       <View style={{ marginHorizontal: SIDE, marginTop: mk(22) }}>
-        <BannerImage source={UI2.banner_copass} ratio={886 / 212}>
-          <View style={{ position: 'absolute', left: '33%', top: '36%', width: '38%', height: '21%', justifyContent: 'center' }}>
-            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.black, fontSize: fitSize(mk(25), t('ui2.cpLine'), 22) }}>{t('ui2.cpLine')}</Text>
+        <BannerImage source={UI2.banner_copass} ratio={3}>
+          <View style={{ position: 'absolute', left: '23.5%', top: '7%', width: '30%', height: '31%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: mk(6) }}>
+            <IcCrownBig size={mk(46)} />
+            <OutlinedText size={mk(50)} width={mk(4)} color={C.gold} numberOfLines={1} fit>CO PASS</OutlinedText>
           </View>
-          <View style={{ position: 'absolute', left: '29.6%', top: '55%', width: '36.4%', height: '38%' }}>
-            <ChunkyButton kind="green" gem label={p?.premiumRoad ? t('store.badgeActive') : up(t('store.diamonds', { n: fmt(PREMIUM_ROAD_PRICE) }))} height={mk(81)} size={mk(28)} disabled={!!p?.premiumRoad}
+          <View style={{ position: 'absolute', left: '23.5%', top: '40%', width: '30%', height: '16%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: mk(6) }}>
+            <IcStar size={mk(22)} />
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.black, fontSize: fitSize(mk(19), t('ui2.cpLine'), 22), flexShrink: 1 }}>{t('ui2.cpLine')}</Text>
+          </View>
+          <View style={{ position: 'absolute', left: '23.5%', top: '60%', width: '30%', height: '27%' }}>
+            <ChunkyButton kind="green" gem label={p?.premiumRoad ? t('store.badgeActive') : up(t('store.diamonds', { n: fmt(PREMIUM_ROAD_PRICE) }))} height={mk(78)} size={mk(24)} disabled={!!p?.premiumRoad}
               onPress={() => gemBuy('CO PASS', PREMIUM_ROAD_PRICE, () => actions.buyPremiumRoad())} style={{ flex: 1 }} />
           </View>
-          <Sticker left="76%" top="52%" width="26%" height="44%" rotate="-5deg" face="#1E4FD6" border="#5FE0FF">
-            <OutlinedText size={mk(22)} width={1.5} numberOfLines={2} fit style={{ lineHeight: mk(26) }}>{t('ui2.cpSticker')}</OutlinedText>
+          <Sticker left="75%" top="66%" width="27%" height="30%" rotate="-5deg" face="#1E4FD6" border="#5FE0FF">
+            <OutlinedText size={mk(19)} width={1.5} numberOfLines={2} fit style={{ lineHeight: mk(22) }}>{t('ui2.cpSticker')}</OutlinedText>
           </Sticker>
         </BannerImage>
       </View>
