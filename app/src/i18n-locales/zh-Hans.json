@@ -217,8 +217,8 @@
   "arena.efsaneler.desc": "传奇齐聚于此，每场失利都令人心痛。",
   "arena.dunya.desc": "在世界舞台上竞技，每个失误都代价惨重。",
   "arena.goat.desc": "传奇之巅，唯有最强者方能立足。",
-  "stats.wins": "胜场",
-  "stats.losses": "败场",
+  "stats.wins": "胜",
+  "stats.losses": "负",
   "stats.winRate": "胜率 %",
   "stats.winRateShort": "胜率",
   "stats.trophies": "奖杯",
@@ -507,5 +507,11 @@
   "level.tierGoat": "GOAT",
   "level.frameLockedAt": "第 {n} 级解锁",
   "arenas.here": "你在这里",
-  "arenas.passed": "已通过"
+  "arenas.passed": "已通过",
+  "profile.pictures": "头像",
+  "profile.inUse": "使用中",
+  "profile.buyConfirm": "花 {price} 钻石购买这个头像？",
+  "profile.notEnoughTitle": "钻石不足",
+  "profile.notEnoughGemsBody": "钻石不够买这个头像。看看钻石礼包吧！",
+  "stats.bestStreak": "最高连胜"
 }

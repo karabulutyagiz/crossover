@@ -220,7 +220,7 @@
   "stats.wins": "Voitot",
   "stats.losses": "Tappiot",
   "stats.winRate": "Voitto-%",
-  "stats.winRateShort": "Voittosuhde",
+  "stats.winRateShort": "Voitto%",
   "stats.trophies": "Pokaalit",
   "stats.diamonds": "Timantit",
   "collection.loadout": "VARUSTUS",
@@ -507,5 +507,11 @@
   "level.tierGoat": "GOAT",
   "level.frameLockedAt": "Avautuu tasolla {n}",
   "arenas.here": "OLET TÄSSÄ",
-  "arenas.passed": "LÄPÄISTY"
+  "arenas.passed": "LÄPÄISTY",
+  "profile.pictures": "Profiilikuvat",
+  "profile.inUse": "Käytössä",
+  "profile.buyConfirm": "Ostetaanko tämä profiilikuva {price} timantilla?",
+  "profile.notEnoughTitle": "Ei tarpeeksi timantteja",
+  "profile.notEnoughGemsBody": "Timantit eivät riitä tähän kuvaan. Katso timanttipaketit!",
+  "stats.bestStreak": "Paras putki"
 }

@@ -507,5 +507,11 @@
   "level.tierGoat": "GOAT",
   "level.frameLockedAt": "ปลดล็อกที่เลเวล {n}",
   "arenas.here": "คุณอยู่ที่นี่",
-  "arenas.passed": "ผ่านแล้ว"
+  "arenas.passed": "ผ่านแล้ว",
+  "profile.pictures": "รูปโปรไฟล์",
+  "profile.inUse": "ใช้อยู่",
+  "profile.buyConfirm": "ซื้อรูปโปรไฟล์นี้ด้วย {price} เพชร?",
+  "profile.notEnoughTitle": "เพชรไม่พอ",
+  "profile.notEnoughGemsBody": "เพชรไม่พอสำหรับรูปนี้ ลองดูแพ็กเพชร!",
+  "stats.bestStreak": "สตรีคสูงสุด"
 }

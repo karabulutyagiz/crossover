@@ -1,12 +1,15 @@
 // UI2 pencereleri — mock: refs/popups.png (mavi çerçeve, başlık plakası, kırmızı X, altın vurgu).
 // Yerleşik katman (native Modal değil). Mod seçici, görevler, ayarlar, özel oda, satın alma onayı, istekler, lig.
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Image, Linking, Platform, Pressable, ScrollView, Share, Text, TextInput, View, type ImageSourcePropType } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useFeedbackPreferences } from '../feedback/useFeedbackPreferences';
 import { LANGUAGES, currentLang, setLanguage, t, type MessageKey } from '../i18n';
 import { getPushPermissionGranted, requestPushPermission } from '../notifications';
 import type { GameMode } from '../protocol';
+import { Avatar, AVATARS } from '../Avatar';
+import { avatarPrice } from '../avatars';
+import { arenaLabel } from '../screens';
 import type { Actions, GameState } from './types';
 import { UI2 } from './assets';
 import { Bar, ChunkyButton, GemAmount, OutlinedText, Plate, Ribbon, fmt } from './primitives';
@@ -510,6 +513,67 @@ export function ArenasDialog({ state, onClose }: { state: GameState; onClose: ()
           </Plate>
         );
       })}
+    </Dialog>
+  );
+}
+
+// ── Profil: avatar + çerçeve + seviye + arena, istatistikler, profil fotoğrafları (kullan / satın al) ──
+const PP_COL = Math.floor((430 - mk(20) * 2 - OUTLINE * 2 - mk(18) * 2 - mk(10) * 3) / 4);
+export function ProfileDialog({ state, actions, onClose, onConfirm, onNotice, onOpenStore, onOpenCollection }: { state: GameState; actions: Actions; onClose: () => void; onConfirm: (d: { title: string; body: string; price?: number; onYes: () => void }) => void; onNotice: (title: string, body: string) => void; onOpenStore: () => void; onOpenCollection: () => void }) {
+  const p = state.profile; if (!p) return null;
+  useEffect(() => { actions.loadMyStats(); }, [actions]);
+  const avatarId = p.avatar ?? p.selectedAvatar ?? null; const owned = new Set(p.ownedAvatars ?? []);
+  const wins = state.myStats?.wins ?? p.wins ?? 0; const losses = state.myStats?.losses ?? p.losses ?? 0; const total = wins + losses;
+  const rate = total > 0 ? Math.round((wins / total) * 100) : 0;
+  const ids = Object.keys(AVATARS);
+  const pick = (id: string) => {
+    if (owned.has(id) || avatarPrice(id) === 0) { actions.setAvatar(id); return; }
+    const price = avatarPrice(id);
+    if ((p.diamonds ?? 0) < price) { onNotice(t('profile.notEnoughTitle'), t('profile.notEnoughGemsBody')); return; }
+    onConfirm({ title: t('profile.buyTitle'), body: t('profile.buyConfirm', { price }), price, onYes: () => actions.buyAvatar(id) });
+  };
+  return (
+    <Dialog title={up(t('profile.title'))} onClose={onClose} wide>
+      <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(20)} inner={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(14), paddingVertical: mk(12), gap: mk(14) }}>
+        <View style={{ width: mk(150), height: mk(150), alignItems: 'center', justifyContent: 'center' }}>
+          <Avatar avatar={avatarId} name={p.displayName} size={mk(136)} frameId={p.selectedFrame ?? null} />
+          <View style={{ position: 'absolute', right: -mk(4), bottom: -mk(2), width: mk(52), height: mk(52), borderRadius: mk(26), backgroundColor: '#2F8CFF', borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(24)} width={mk(2)}>{String(p.level ?? 1)}</OutlinedText></View>
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <OutlinedText size={mk(34)} width={mk(3)} align="left" numberOfLines={1} fit>{up(p.displayName ?? '')}</OutlinedText>
+          <Text numberOfLines={1} style={{ color: C.textSub, fontFamily: F.black, fontSize: mk(17), marginTop: mk(2) }}>{arenaLabel(p.arena?.name ?? '')}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(6), marginTop: mk(6) }}><IcTrophy size={mk(30)} /><OutlinedText size={mk(26)} width={mk(2)} color={C.gold}>{fmt(p.trophies ?? 0)}</OutlinedText></View>
+        </View>
+      </Plate>
+      <View style={{ flexDirection: 'row', gap: mk(8), marginTop: mk(10) }}>
+        {([[t('stats.wins'), String(wins), C.green], [t('stats.losses'), String(losses), C.red], [t('stats.winRateShort'), `%${rate}`, C.gold], [t('stats.bestStreak'), state.myStats ? String(state.myStats.bestStreak) : '—', '#8CE0FF']] as [string, string, string][]).map(([k, v, c]) => (
+          <Plate key={k} face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(14)} style={{ flex: 1 }} inner={{ alignItems: 'center', paddingVertical: mk(8), paddingHorizontal: mk(4) }}>
+            <OutlinedText size={mk(26)} width={mk(2)} color={c}>{v}</OutlinedText>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(13) }}>{k}</Text>
+          </Plate>
+        ))}
+      </View>
+      <View style={{ flexDirection: 'row', gap: mk(10), marginTop: mk(10) }}>
+        <ChunkyButton kind="blue" label={t('collection.tabCosmetics')} height={mk(62)} size={mk(20)} style={{ flex: 1 }} onPress={() => { onClose(); onOpenCollection(); }} />
+        <ChunkyButton kind="blue" label={up(t('home.matchHistoryHint'))} height={mk(62)} size={mk(18)} style={{ flex: 1 }} onPress={() => { onClose(); actions.openMatchHistory(); }} />
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: mk(14), marginBottom: mk(8) }}>
+        <OutlinedText size={mk(28)} width={mk(3)} align="left">{up(t('profile.pictures'))}</OutlinedText>
+        <View style={{ flex: 1 }} /><GemAmount amount={p.diamonds ?? 0} size={mk(22)} />
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: mk(10) }}>
+        {ids.map((id) => {
+          const inUse = id === avatarId; const has = owned.has(id) || avatarPrice(id) === 0; const price = avatarPrice(id);
+          return (
+            <Pressable key={id} onPress={() => pick(id)} style={{ width: PP_COL }}>
+              <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={inUse ? C.gold : C.navy} radius={mk(16)} inner={{ alignItems: 'center', paddingTop: mk(8), paddingBottom: mk(6), gap: mk(4) }}>
+                <Avatar avatar={id} size={PP_COL - mk(30)} />
+                {inUse ? <Ribbon label={t('profile.inUse')} color={C.gold} size={mk(11)} /> : has ? <IcCheckBadge size={mk(24)} /> : <GemAmount amount={price} size={mk(16)} />}
+              </Plate>
+            </Pressable>
+          );
+        })}
+      </View>
     </Dialog>
   );
 }

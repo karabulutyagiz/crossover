@@ -220,7 +220,7 @@
   "stats.wins": "Thắng",
   "stats.losses": "Thua",
   "stats.winRate": "Tỉ lệ thắng %",
-  "stats.winRateShort": "Tỉ lệ thắng",
+  "stats.winRateShort": "Tỷ lệ thắng",
   "stats.trophies": "Cúp",
   "stats.diamonds": "Kim cương",
   "collection.loadout": "TRANG BỊ",
@@ -507,5 +507,11 @@
   "level.tierGoat": "GOAT",
   "level.frameLockedAt": "Mở ở cấp {n}",
   "arenas.here": "BẠN Ở ĐÂY",
-  "arenas.passed": "ĐÃ QUA"
+  "arenas.passed": "ĐÃ QUA",
+  "profile.pictures": "Ảnh đại diện",
+  "profile.inUse": "Đang dùng",
+  "profile.buyConfirm": "Mua ảnh đại diện này với {price} kim cương?",
+  "profile.notEnoughTitle": "Không đủ kim cương",
+  "profile.notEnoughGemsBody": "Không đủ kim cương cho ảnh này. Xem các gói kim cương nhé!",
+  "stats.bestStreak": "Chuỗi tốt nhất"
 }

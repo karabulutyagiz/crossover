@@ -220,7 +220,7 @@
   "stats.wins": "برد",
   "stats.losses": "باخت",
   "stats.winRate": "٪ برد",
-  "stats.winRateShort": "نرخ برد",
+  "stats.winRateShort": "درصد برد",
   "stats.trophies": "جام",
   "stats.diamonds": "الماس",
   "collection.loadout": "تجهیزات",
@@ -507,5 +507,11 @@
   "level.tierGoat": "GOAT",
   "level.frameLockedAt": "در سطح {n} باز می‌شود",
   "arenas.here": "اینجایی",
-  "arenas.passed": "تمام شد"
+  "arenas.passed": "تمام شد",
+  "profile.pictures": "عکس‌های پروفایل",
+  "profile.inUse": "در حال استفاده",
+  "profile.buyConfirm": "این عکس پروفایل را با {price} الماس بخری؟",
+  "profile.notEnoughTitle": "الماس کافی نیست",
+  "profile.notEnoughGemsBody": "الماست برای این عکس کافی نیست. بسته‌های الماس را ببین!",
+  "stats.bestStreak": "بهترین سری"
 }

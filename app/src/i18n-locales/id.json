@@ -220,7 +220,7 @@
   "stats.wins": "Menang",
   "stats.losses": "Kalah",
   "stats.winRate": "Menang %",
-  "stats.winRateShort": "Rasio Menang",
+  "stats.winRateShort": "% Menang",
   "stats.trophies": "Trofi",
   "stats.diamonds": "Berlian",
   "collection.loadout": "PERLENGKAPAN",
@@ -507,5 +507,11 @@
   "level.tierGoat": "GOAT",
   "level.frameLockedAt": "Terbuka di level {n}",
   "arenas.here": "KAMU DI SINI",
-  "arenas.passed": "SELESAI"
+  "arenas.passed": "SELESAI",
+  "profile.pictures": "Foto Profil",
+  "profile.inUse": "Dipakai",
+  "profile.buyConfirm": "Beli foto profil ini dengan {price} berlian?",
+  "profile.notEnoughTitle": "Berlian Kurang",
+  "profile.notEnoughGemsBody": "Berlianmu tidak cukup untuk foto ini. Lihat paket berlian!",
+  "stats.bestStreak": "Streak Terbaik"
 }

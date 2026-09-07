@@ -217,10 +217,10 @@
   "arena.efsaneler.desc": "Hier komen legendes samen. Verliezen doet pijn.",
   "arena.dunya.desc": "Strijd op het wereldtoneel. Elke fout kost je duur.",
   "arena.goat.desc": "De top van de legendes. Alleen de besten overleven.",
-  "stats.wins": "Overwinningen",
-  "stats.losses": "Nederlagen",
+  "stats.wins": "Gewonnen",
+  "stats.losses": "Verloren",
   "stats.winRate": "Win %",
-  "stats.winRateShort": "Winratio",
+  "stats.winRateShort": "Winst%",
   "stats.trophies": "Trofeeën",
   "stats.diamonds": "Diamanten",
   "collection.loadout": "UITRUSTING",
@@ -507,5 +507,11 @@
   "level.tierGoat": "GOAT",
   "level.frameLockedAt": "Vanaf level {n}",
   "arenas.here": "JE BENT HIER",
-  "arenas.passed": "GEHAALD"
+  "arenas.passed": "GEHAALD",
+  "profile.pictures": "Profielfoto’s",
+  "profile.inUse": "In gebruik",
+  "profile.buyConfirm": "Deze profielfoto kopen voor {price} diamanten?",
+  "profile.notEnoughTitle": "Niet genoeg diamanten",
+  "profile.notEnoughGemsBody": "Niet genoeg diamanten voor deze foto. Bekijk de diamantpakketten!",
+  "stats.bestStreak": "Beste reeks"
 }

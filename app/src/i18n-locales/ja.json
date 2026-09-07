@@ -507,5 +507,11 @@
   "level.tierGoat": "GOAT",
   "level.frameLockedAt": "レベル {n} で解放",
   "arenas.here": "現在地",
-  "arenas.passed": "クリア"
+  "arenas.passed": "クリア",
+  "profile.pictures": "プロフィール画像",
+  "profile.inUse": "使用中",
+  "profile.buyConfirm": "この画像をダイヤ {price} で購入しますか？",
+  "profile.notEnoughTitle": "ダイヤ不足",
+  "profile.notEnoughGemsBody": "この画像にはダイヤが足りません。ダイヤパックをチェック！",
+  "stats.bestStreak": "最高連勝"
 }

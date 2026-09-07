@@ -220,7 +220,7 @@
   "stats.wins": "Seire",
   "stats.losses": "Tap",
   "stats.winRate": "Seier %",
-  "stats.winRateShort": "Seiersprosent",
+  "stats.winRateShort": "Seier%",
   "stats.trophies": "Trofeer",
   "stats.diamonds": "Diamanter",
   "collection.loadout": "UTSTYR",
@@ -507,5 +507,11 @@
   "level.tierGoat": "GOAT",
   "level.frameLockedAt": "Fra nivå {n}",
   "arenas.here": "DU ER HER",
-  "arenas.passed": "FULLFØRT"
+  "arenas.passed": "FULLFØRT",
+  "profile.pictures": "Profilbilder",
+  "profile.inUse": "I bruk",
+  "profile.buyConfirm": "Kjøpe dette profilbildet for {price} diamanter?",
+  "profile.notEnoughTitle": "Ikke nok diamanter",
+  "profile.notEnoughGemsBody": "Ikke nok diamanter til dette bildet. Sjekk diamantpakkene!",
+  "stats.bestStreak": "Beste rekke"
 }

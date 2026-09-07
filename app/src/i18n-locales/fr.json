@@ -507,5 +507,11 @@
   "level.tierGoat": "GOAT",
   "level.frameLockedAt": "Dès le niveau {n}",
   "arenas.here": "TU ES ICI",
-  "arenas.passed": "TERMINÉE"
+  "arenas.passed": "TERMINÉE",
+  "profile.pictures": "Photos de profil",
+  "profile.inUse": "Utilisée",
+  "profile.buyConfirm": "Acheter cette photo de profil pour {price} diamants ?",
+  "profile.notEnoughTitle": "Pas assez de diamants",
+  "profile.notEnoughGemsBody": "Pas assez de diamants pour cette photo. Regarde les packs de diamants !",
+  "stats.bestStreak": "Meilleure série"
 }

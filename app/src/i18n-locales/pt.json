@@ -220,7 +220,7 @@
   "stats.wins": "Vitórias",
   "stats.losses": "Derrotas",
   "stats.winRate": "Vitórias %",
-  "stats.winRateShort": "Taxa de Vitórias",
+  "stats.winRateShort": "% vitórias",
   "stats.trophies": "Troféus",
   "stats.diamonds": "Diamantes",
   "collection.loadout": "EQUIPADOS",
@@ -507,5 +507,11 @@
   "level.tierGoat": "GOAT",
   "level.frameLockedAt": "Abre no nível {n}",
   "arenas.here": "VOCÊ ESTÁ AQUI",
-  "arenas.passed": "CONCLUÍDA"
+  "arenas.passed": "CONCLUÍDA",
+  "profile.pictures": "Fotos de perfil",
+  "profile.inUse": "Em uso",
+  "profile.buyConfirm": "Comprar esta foto de perfil por {price} diamantes?",
+  "profile.notEnoughTitle": "Diamantes insuficientes",
+  "profile.notEnoughGemsBody": "Diamantes insuficientes para esta foto. Veja os pacotes de diamantes!",
+  "stats.bestStreak": "Melhor sequência"
 }

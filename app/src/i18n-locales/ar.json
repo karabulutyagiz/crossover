@@ -217,8 +217,8 @@
   "arena.efsaneler.desc": "هنا تجتمع الأساطير. الخسائر موجعة.",
   "arena.dunya.desc": "نافس على المسرح العالمي. كل خطأ مكلف.",
   "arena.goat.desc": "قمة الأساطير. الأفضل فقط من يصمد.",
-  "stats.wins": "انتصارات",
-  "stats.losses": "هزائم",
+  "stats.wins": "الانتصارات",
+  "stats.losses": "الهزائم",
   "stats.winRate": "٪ الفوز",
   "stats.winRateShort": "نسبة الفوز",
   "stats.trophies": "كؤوس",
@@ -507,5 +507,11 @@
   "level.tierGoat": "GOAT",
   "level.frameLockedAt": "يُفتح عند المستوى {n}",
   "arenas.here": "أنت هنا",
-  "arenas.passed": "مكتملة"
+  "arenas.passed": "مكتملة",
+  "profile.pictures": "صور الملف",
+  "profile.inUse": "مستخدمة",
+  "profile.buyConfirm": "شراء صورة الملف هذه مقابل {price} ماسة؟",
+  "profile.notEnoughTitle": "الألماس غير كافٍ",
+  "profile.notEnoughGemsBody": "ألماسك لا يكفي لهذه الصورة. ألقِ نظرة على حزم الألماس!",
+  "stats.bestStreak": "أفضل سلسلة"
 }

@@ -217,8 +217,8 @@
   "arena.efsaneler.desc": "傳奇齊聚於此，輸了會很痛。",
   "arena.dunya.desc": "在世界舞台上較量，每個失誤都代價高昂。",
   "arena.goat.desc": "傳奇的巔峰，只有最強者能存活。",
-  "stats.wins": "勝場",
-  "stats.losses": "敗場",
+  "stats.wins": "勝",
+  "stats.losses": "負",
   "stats.winRate": "勝率 %",
   "stats.winRateShort": "勝率",
   "stats.trophies": "獎盃",
@@ -234,7 +234,7 @@
   "common.comingSoon": "即將推出",
   "common.online": "線上",
   "common.offline": "離線",
-  "profile.title": "個人檔案",
+  "profile.title": "個人資料",
   "chat.placeholder": "輸入訊息...",
   "chat.typing": "輸入中...",
   "profile.choosePicture": "個人頭像",
@@ -507,5 +507,11 @@
   "level.tierGoat": "GOAT",
   "level.frameLockedAt": "第 {n} 級解鎖",
   "arenas.here": "你在這裡",
-  "arenas.passed": "已通過"
+  "arenas.passed": "已通過",
+  "profile.pictures": "頭像",
+  "profile.inUse": "使用中",
+  "profile.buyConfirm": "花 {price} 鑽石購買這個頭像？",
+  "profile.notEnoughTitle": "鑽石不足",
+  "profile.notEnoughGemsBody": "鑽石不夠買這個頭像。看看鑽石禮包吧！",
+  "stats.bestStreak": "最高連勝"
 }

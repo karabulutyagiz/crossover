@@ -220,7 +220,7 @@
   "stats.wins": "Победы",
   "stats.losses": "Поражения",
   "stats.winRate": "% побед",
-  "stats.winRateShort": "Процент побед",
+  "stats.winRateShort": "% побед",
   "stats.trophies": "Трофеи",
   "stats.diamonds": "Алмазы",
   "collection.loadout": "СНАРЯЖЕНИЕ",
@@ -507,5 +507,11 @@
   "level.tierGoat": "GOAT",
   "level.frameLockedAt": "С уровня {n}",
   "arenas.here": "ТЫ ЗДЕСЬ",
-  "arenas.passed": "ПРОЙДЕНА"
+  "arenas.passed": "ПРОЙДЕНА",
+  "profile.pictures": "Фото профиля",
+  "profile.inUse": "Используется",
+  "profile.buyConfirm": "Купить это фото профиля за {price} алмазов?",
+  "profile.notEnoughTitle": "Не хватает алмазов",
+  "profile.notEnoughGemsBody": "На это фото не хватает алмазов. Посмотри наборы алмазов!",
+  "stats.bestStreak": "Лучшая серия"
 }

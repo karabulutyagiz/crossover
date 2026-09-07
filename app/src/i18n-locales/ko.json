@@ -217,8 +217,8 @@
   "arena.efsaneler.desc": "레전드들이 모이는 곳. 패배가 뼈아파요.",
   "arena.dunya.desc": "세계 무대에서 겨뤄요. 실수 하나가 치명적이죠.",
   "arena.goat.desc": "레전드의 정점. 최강자만 살아남아요.",
-  "stats.wins": "승리",
-  "stats.losses": "패배",
+  "stats.wins": "승",
+  "stats.losses": "패",
   "stats.winRate": "승률 %",
   "stats.winRateShort": "승률",
   "stats.trophies": "트로피",
@@ -507,5 +507,11 @@
   "level.tierGoat": "GOAT",
   "level.frameLockedAt": "레벨 {n}에 해제",
   "arenas.here": "현재 위치",
-  "arenas.passed": "통과"
+  "arenas.passed": "통과",
+  "profile.pictures": "프로필 사진",
+  "profile.inUse": "사용 중",
+  "profile.buyConfirm": "이 프로필 사진을 다이아 {price}개로 구매할까요?",
+  "profile.notEnoughTitle": "다이아 부족",
+  "profile.notEnoughGemsBody": "이 사진을 사기엔 다이아가 부족해요. 다이아 팩을 확인하세요!",
+  "stats.bestStreak": "최고 연승"
 }
