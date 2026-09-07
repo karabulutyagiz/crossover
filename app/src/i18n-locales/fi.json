@@ -380,5 +380,7 @@
   "ui2.upcoming": "TULEVAT TURNAUKSET",
   "ui2.upcomingSub": "Älä missaa! Seuraa tulevia turnauksia.",
   "ui2.noTournaments": "Ei avoimia turnauksia juuri nyt",
-  "ui2.moreTournaments": "Lisää turnauksia odottaa sinua!"
+  "ui2.moreTournaments": "Lisää turnauksia odottaa sinua!",
+  "ui2.emptySlot": "Tyhjä paikka",
+  "ui2.questsLabel": "Tehtävät"
 }

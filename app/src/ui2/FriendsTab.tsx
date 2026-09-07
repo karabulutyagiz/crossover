@@ -5,7 +5,8 @@ import { Avatar } from '../Avatar';
 import { track } from '../telemetry';
 import type { Actions, GameState } from './types';
 import { UI2 } from './assets';
-import { Bar, ChunkyButton, GemAmount, OutlinedText, Plate, SectionHeader, fmt } from './primitives';
+import { Bar, BannerImage, ChunkyButton, GemAmount, IconSlot, OutlinedText, Plate, SectionHeader, fmt } from './primitives';
+import { IcAddFriend, IcArrowRight, IcCheckBadge, IcGift, IcInviteCode, IcNavFriends, IcRequests, IcSuggest, IcTrophy } from './icons-ui';
 import { Hud } from './Shell';
 import { t } from '../i18n';
 import { S } from './strings';
@@ -28,43 +29,39 @@ export function FriendsTab({ state, actions, onOpenSettings, onOpenProfile, onOp
   const W = 430 - SIDE * 2;
   return (
     <View style={{ flex: 1 }}>
-      <Hud title={S.friends} titleIcon={UI2.title_friends}
+      <Hud title={S.friends} titleIcon={<IcNavFriends />}
         data={{ name: p?.displayName ?? '', avatarId: p?.avatar ?? null, frameId: p?.selectedFrame ?? null, level: p?.level ?? 1, xp: p?.xp ?? 0, xpNext: (p as any)?.xpForNext ?? 1000, trophies: p?.trophies ?? 0, diamonds: p?.diamonds ?? 0 }}
         actions={{ onAvatar: onOpenProfile, onSettings: onOpenSettings, onTrophies: onOpenArenas }} />
 
-      {/* ── ARKADAŞINI DAVET ET banner'ı (canlı metin; sanat mock'tan) ── */}
+      {/* ── ARKADAŞINI DAVET ET banner'ı: sanat mock'tan (metinsiz arka plan), başlık/açıklama/ödül/buton CANLI (21 dil) ── */}
       <View style={{ marginHorizontal: SIDE, marginTop: mk(4) }}>
-        <Plate face="#1D4FD0" top="#4C8DFF" lip="#0B2F92" radius={mk(26)} inner={{ height: mk(214) - OUTLINE * 2 - LIP, overflow: 'hidden' }}>
-          <Image source={UI2.inv_heroes} style={{ position: 'absolute', right: -mk(6), top: mk(6), width: mk(290), height: mk(132) }} resizeMode="cover" />
-          <View style={{ position: 'absolute', left: mk(22), top: mk(22) }}>
-            <View style={{ flexDirection: 'row', gap: mk(10) }}>
-              <OutlinedText size={mk(44)} width={mk(4)} color="#E9C8FF" align="left">{S.inviteTitle}</OutlinedText>
-              <OutlinedText size={mk(44)} width={mk(4)} color={C.gold} align="left">{S.inviteTitle2}</OutlinedText>
-            </View>
-            <Text style={{ color: C.white, fontFamily: F.bold, fontSize: mk(21), lineHeight: mk(28), marginTop: mk(8), width: mk(360) }}>{S.inviteDesc}</Text>
+        <BannerImage source={UI2.banner_invite} ratio={884 / 218}>
+          <View style={{ position: 'absolute', left: '3%', top: '5%', width: '57%', height: '32%', flexDirection: 'row', alignItems: 'center', gap: mk(10) }}>
+            <OutlinedText size={mk(44)} width={mk(4)} color="#E9C8FF" align="left" numberOfLines={1} fit>{S.inviteTitle}</OutlinedText>
+            <OutlinedText size={mk(44)} width={mk(4)} color={C.gold} align="left" numberOfLines={1} fit>{S.inviteTitle2}</OutlinedText>
           </View>
-          <View style={{ position: 'absolute', left: mk(400), top: mk(56), alignItems: 'center' }}>
-            <Image source={UI2.inv_gems} style={{ width: mk(190), height: mk(96) }} resizeMode="contain" />
-            <View style={{ backgroundColor: C.panelInk, borderRadius: mk(14), borderWidth: mk(3), borderColor: C.navy, paddingHorizontal: mk(18), paddingVertical: mk(3), marginTop: -mk(4) }}>
-              <OutlinedText size={mk(26)} width={mk(2)}>{S.gemsN(REFERRAL_REWARD)}</OutlinedText>
-            </View>
+          <View style={{ position: 'absolute', left: '3%', top: '40%', width: '41%', height: '55%', justifyContent: 'center' }}>
+            <Text numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.bold, fontSize: mk(20), lineHeight: mk(26) }}>{S.inviteDesc}</Text>
           </View>
-          <View style={{ position: 'absolute', right: mk(24), bottom: mk(10), width: mk(240) }}>
-            <ChunkyButton kind="green" label={S.inviteBtn} height={mk(64)} size={mk(28)} onPress={share} />
+          <View style={{ position: 'absolute', left: '44%', top: '70%', width: '23%', height: '25%', backgroundColor: '#0C1E5C', borderRadius: mk(14), borderWidth: mk(3), borderColor: C.navy, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
+            <OutlinedText size={mk(24)} width={mk(2)} numberOfLines={1} fit>{S.gemsN(REFERRAL_REWARD)}</OutlinedText>
           </View>
-        </Plate>
+          <View style={{ position: 'absolute', left: '71.5%', top: '59%', width: '28%', height: '35%' }}>
+            <ChunkyButton kind="green" label={S.inviteBtn} height={mk(70)} size={mk(28)} onPress={share} style={{ flex: 1 }} />
+          </View>
+        </BannerImage>
       </View>
 
       {/* ── Üç eylem kutusu ── */}
       <View style={{ flexDirection: 'row', marginHorizontal: SIDE, marginTop: mk(22), gap: mk(16) }}>
         {([
-          { icon: UI2.ic_addfriend, title: S.addFriend, sub: S.addFriendSub, on: onOpenAddFriend, badge: 0 },
-          { icon: UI2.ic_invitecode, title: S.inviteCode, sub: S.inviteCodeSub, on: share, badge: 0 },
-          { icon: UI2.ic_requests, title: S.requests, sub: S.requestsSub, on: onOpenRequests, badge: state.friendRequests.length },
-        ] as { icon: ImageSourcePropType; title: string; sub: string; on: () => void; badge: number }[]).map((a) => (
+          { icon: <IcAddFriend />, title: S.addFriend, sub: S.addFriendSub, on: onOpenAddFriend, badge: 0 },
+          { icon: <IcInviteCode />, title: S.inviteCode, sub: S.inviteCodeSub, on: share, badge: 0 },
+          { icon: <IcRequests />, title: S.requests, sub: S.requestsSub, on: onOpenRequests, badge: state.friendRequests.length },
+        ] as { icon: React.ReactNode; title: string; sub: string; on: () => void; badge: number }[]).map((a) => (
           <Pressable key={a.title} onPress={a.on} style={{ flex: 1 }}>
             <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={mk(22)} inner={{ height: mk(116) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(8), gap: mk(6) }}>
-              <Image source={a.icon} style={{ width: mk(84), height: mk(84) }} resizeMode="contain" />
+              <IconSlot icon={a.icon} width={mk(84)} height={mk(84)} size={mk(84)} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <OutlinedText size={mk(21)} width={mk(2)} align="left" numberOfLines={1}>{a.title}</OutlinedText>
                 <Text numberOfLines={1} style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(14) }}>{a.sub}</Text>
@@ -90,7 +87,7 @@ export function FriendsTab({ state, actions, onOpenSettings, onOpenProfile, onOp
             <Plate key={f.userId} face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginTop: mk(10) }} inner={{ height: mk(74) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(8), gap: mk(10) }}>
               <Pressable onPress={() => actions.getUserProfile(f.userId)}><View style={{ width: mk(60), height: mk(60), borderRadius: mk(12), borderWidth: mk(3), borderColor: '#7DB8FF', backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' }}><Avatar avatar={f.avatar ?? f.selectedAvatar} name={f.displayName} size={mk(50)} /></View></Pressable>
               <OutlinedText size={mk(28)} width={mk(2)} align="left" numberOfLines={1} style={{ width: mk(150) }}>{f.displayName.toLocaleUpperCase('tr')}</OutlinedText>
-              <Image source={UI2.hud_trophy} style={{ width: mk(36), height: mk(36) }} resizeMode="contain" />
+              <IcTrophy size={mk(36)} />
               <Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(22), width: mk(70) }}>{fmt(f.trophies)}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(6), flex: 1, minWidth: 0 }}>
                 <View style={{ width: mk(22), height: mk(22), borderRadius: mk(11), backgroundColor: f.online ? C.green : C.gray, borderWidth: 1.5, borderColor: C.navy }} />
@@ -103,7 +100,7 @@ export function FriendsTab({ state, actions, onOpenSettings, onOpenProfile, onOp
       </Panel>
 
       {/* ── SOSYAL ÖDÜLLER (arkadaş sayısına bağlı yol; ödül teslimi sunucu tarafında henüz yok → YAKINDA) ── */}
-      <SectionHeader icon={UI2.sec_gift} title={S.socialRewards} subtitle={S.socialRewardsSub} style={{ marginHorizontal: SIDE, marginTop: mk(20) }} />
+      <SectionHeader icon={<IcGift />} title={S.socialRewards} subtitle={S.socialRewardsSub} style={{ marginHorizontal: SIDE, marginTop: mk(20) }} />
       <View style={{ flexDirection: 'row', marginHorizontal: SIDE, alignItems: 'center', gap: mk(6) }}>
         {([{ n: 1, art: UI2.rw_gems, label: S.gemsN(50) }, { n: 3, art: UI2.rw_emote, label: S.specialEmote }, { n: 5, art: UI2.rw_frame, label: S.specialFrame }] as const).map((r, i) => {
           const done = friends.length >= r.n;
@@ -114,17 +111,17 @@ export function FriendsTab({ state, actions, onOpenSettings, onOpenProfile, onOp
                 <Image source={r.art} style={{ width: '90%', height: mk(96), marginTop: mk(4) }} resizeMode="contain" />
                 <OutlinedText size={mk(21)} width={1.5} style={{ marginTop: mk(2) }}>{r.label}</OutlinedText>
                 <View style={{ flex: 1 }} />
-                {done ? <Image source={UI2.rw_check} style={{ width: mk(52), height: mk(52), marginBottom: mk(6) }} resizeMode="contain" />
+                {done ? <View style={{ marginBottom: mk(6) }}><IcCheckBadge size={mk(50)} /></View>
                   : <View style={{ width: '92%', marginBottom: mk(10), flexDirection: 'row', alignItems: 'center', gap: mk(6) }}><Bar value={friends.length} max={r.n} color={C.gold} track="#04163F" height={mk(22)} radius={mk(7)} style={{ flex: 1 }} /><Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(18) }}>{`${Math.min(friends.length, r.n)}/${r.n}`}</Text></View>}
               </Plate>
-              {i < 2 ? <Image source={UI2.rw_arrow} style={{ width: mk(30), height: mk(40), marginHorizontal: mk(2) }} resizeMode="contain" /> : null}
+              {i < 2 ? <View style={{ marginHorizontal: mk(2) }}><IcArrowRight size={mk(36)} /></View> : null}
             </View>
           );
         })}
       </View>
 
       {/* ── ARKADAŞ ÖNERİLERİ → kullanıcı arama ── */}
-      <SectionHeader icon={UI2.sec_suggest} title={S.suggestions} subtitle={S.suggestionsSub} style={{ marginHorizontal: SIDE, marginTop: mk(20) }} />
+      <SectionHeader icon={<IcSuggest />} title={S.suggestions} subtitle={S.suggestionsSub} style={{ marginHorizontal: SIDE, marginTop: mk(20) }} />
       <View style={{ marginHorizontal: SIDE }}>
         <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} inner={{ height: mk(74) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(14), gap: mk(10) }}>
           <TextInput value={q} onChangeText={setQ} placeholder={S.searchPlaceholder} placeholderTextColor={C.textMuted} autoCapitalize="none" autoCorrect={false} returnKeyType="search" onSubmitEditing={() => q.trim() && actions.searchUsers(q.trim())} style={{ flex: 1, color: C.white, fontFamily: F.bold, fontSize: mk(22), padding: 0 }} />

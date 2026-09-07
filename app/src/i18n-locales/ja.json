@@ -380,5 +380,7 @@
   "ui2.upcoming": "今後のトーナメント",
   "ui2.upcomingSub": "見逃すな！今後のトーナメントをチェック。",
   "ui2.noTournaments": "現在受付中のトーナメントはありません",
-  "ui2.moreTournaments": "まだまだトーナメントが待っている！"
+  "ui2.moreTournaments": "まだまだトーナメントが待っている！",
+  "ui2.emptySlot": "空きスロット",
+  "ui2.questsLabel": "クエスト"
 }

@@ -380,5 +380,7 @@
   "ui2.upcoming": "예정된 토너먼트",
   "ui2.upcomingSub": "놓치지 마세요! 예정된 토너먼트를 확인하세요.",
   "ui2.noTournaments": "지금은 열린 토너먼트가 없어요",
-  "ui2.moreTournaments": "더 많은 토너먼트가 기다려요!"
+  "ui2.moreTournaments": "더 많은 토너먼트가 기다려요!",
+  "ui2.emptySlot": "빈 슬롯",
+  "ui2.questsLabel": "퀘스트"
 }

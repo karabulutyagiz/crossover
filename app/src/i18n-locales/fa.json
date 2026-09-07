@@ -380,5 +380,7 @@
   "ui2.upcoming": "تورنمنت‌های پیش رو",
   "ui2.upcomingSub": "از دستش نده! تورنمنت‌های پیش رو را دنبال کن.",
   "ui2.noTournaments": "فعلاً تورنمنت بازی نیست",
-  "ui2.moreTournaments": "تورنمنت‌های بیشتری منتظر توست!"
+  "ui2.moreTournaments": "تورنمنت‌های بیشتری منتظر توست!",
+  "ui2.emptySlot": "جایگاه خالی",
+  "ui2.questsLabel": "مأموریت‌ها"
 }

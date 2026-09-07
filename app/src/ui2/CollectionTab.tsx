@@ -1,6 +1,6 @@
 // UI2 — KOLEKSİYON sekmesi. Mock: refs/collection.png. Gerçek içerik: özel güç yuvaları/envanter,
 // hesap güçleri, sahip olunan kozmetikler (sunucu kataloğu + seviye çerçeveleri), ifade yuvaları.
-import { useEffect, useState } from 'react';
+import { isValidElement, useEffect, useState, type ReactNode } from 'react';
 import { Image, Pressable, Text, View, type ImageSourcePropType } from 'react-native';
 import { t, type MessageKey } from '../i18n';
 import { CosmeticPreview, FrameArt, LEVEL_TIERS, SPECIAL_POWERS, ownsFrame, spInventoryCount } from '../screens';
@@ -8,14 +8,15 @@ import { EmoteSticker, FREE_EMOTES, PREMIUM_EMOTES } from '../emotes';
 import type { StoreCatalogItem } from '../protocol';
 import type { Actions, GameState } from './types';
 import { UI2 } from './assets';
-import { ChunkyButton, OutlinedText, Plate, SectionHeader } from './primitives';
+import { ChunkyButton, IconSlot, OutlinedText, Plate, SectionHeader } from './primitives';
+import { IcBolt, IcClock, IcFace, IcNavCollection, IcStar } from './icons-ui';
 import { Hud } from './Shell';
 import { ACCOUNT_POWERS, type PowerId } from './products';
 import { S, up } from './strings';
 import { C, F, GAP, LIP, OUTLINE, R, SIDE, mk } from './tokens';
 
 type SpId = 'freeze' | 'reveal' | 'skip' | 'extratime' | 'secondchance';
-const SP_ART: Record<SpId, ImageSourcePropType> = { freeze: UI2.sp_freeze2, reveal: UI2.sp_goal, skip: UI2.sp_speed, extratime: UI2.ic_clock_live, secondchance: UI2.sp_social };
+const SP_ART: Record<SpId, ImageSourcePropType | ReactNode> = { freeze: UI2.sp_freeze2, reveal: UI2.sp_goal, skip: UI2.sp_speed, extratime: <IcClock />, secondchance: UI2.sp_social };
 const SP_FACE: Record<SpId, [string, string, string]> = { freeze: ['#1BA7F0', '#8CE0FF', '#0E6CA8'], reveal: ['#E8B400', '#FFE98A', '#A67900'], skip: ['#8E2BEA', '#C58BFF', '#4B0F9E'], extratime: ['#22C55E', '#86EFAC', '#15803D'], secondchance: ['#FF4B7A', '#FFA6C0', '#B01E48'] };
 const RARITY_N: Record<string, number> = { common: 2, rare: 3, epic: 4, legendary: 5, mythic: 5 };
 const EMOTE_SLOTS = 8;
@@ -33,7 +34,7 @@ export function CollectionTab({ state, actions, onOpenSettings, onOpenProfile, o
   const spEquipped = ((p?.equippedSpecialPowers ?? (p?.equippedSpecialPower ? [p.equippedSpecialPower] : [])) as SpId[]);
   return (
     <View style={{ flex: 1 }}>
-      <Hud title={S.collection} titleIcon={UI2.title_collection}
+      <Hud title={S.collection} titleIcon={<IcNavCollection />}
         data={{ name: p?.displayName ?? '', avatarId: p?.avatar ?? null, frameId: p?.selectedFrame ?? null, level: p?.level ?? 1, xp: p?.xp ?? 0, xpNext: (p as any)?.xpForNext ?? 1000, trophies: p?.trophies ?? 0, diamonds: p?.diamonds ?? 0 }}
         actions={{ onAvatar: onOpenProfile, onSettings: onOpenSettings, onTrophies: onOpenArenas }} />
       {/* ── Alt sekmeler (mock: sol altın aktif, diğerleri mavi) ── */}
@@ -74,13 +75,13 @@ function Powers({ p, actions, spEquipped, onOpenStore, onNotice }: { p: GameStat
             {[0, 1, 2].map((i) => {
               const id = spEquipped[i];
               return id ? <PowerCard key={id} width={COL_W} name={t(SPECIAL_POWERS[id].nameKey)} art={SP_ART[id]} face={SP_FACE[id]} badge={RARITY_N[SPECIAL_POWERS[id].rarity]} line={t('ui2.count', { n: count(id) })} button={{ label: up(t('collection.remove')), kind: 'blue', on: () => actions.equipSpecialPower(id) }} />
-                : <Plate key={i} face="#0B3A96" top="#2F63C8" lip="#041A4E" radius={R.card} style={{ width: COL_W }} inner={{ height: mk(250) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(60)} width={mk(3)} color={C.textMuted}>+</OutlinedText><Text style={{ color: C.textMuted, fontFamily: F.bold, fontSize: mk(15) }}>Boş yuva</Text></Plate>;
+                : <Plate key={i} face="#0B3A96" top="#2F63C8" lip="#041A4E" radius={R.card} style={{ width: COL_W }} inner={{ height: mk(250) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(60)} width={mk(3)} color={C.textMuted}>+</OutlinedText><Text style={{ color: C.textMuted, fontFamily: F.bold, fontSize: mk(15) }}>{t('ui2.emptySlot')}</Text></Plate>;
             })}
             <View style={{ width: COL_W }} />
           </View>
         </Plate>
       </View>
-      <SectionHeader icon={UI2.sec_power} title={t('ui2.allPowers')} subtitle={t('ui2.allPowersSub')} style={{ marginHorizontal: SIDE, marginTop: mk(14) }} />
+      <SectionHeader icon={<IcBolt />} title={t('ui2.allPowers')} subtitle={t('ui2.allPowersSub')} style={{ marginHorizontal: SIDE, marginTop: mk(14) }} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, marginHorizontal: SIDE }}>
         {specials.map((id) => {
           const n = count(id); const on = spEquipped.includes(id);
@@ -96,11 +97,11 @@ function Powers({ p, actions, spEquipped, onOpenStore, onNotice }: { p: GameStat
     </>
   );
 }
-function PowerCard({ width, name, art, face, badge, line, button, dim }: { width: number; name: string; art: ImageSourcePropType; face: [string, string, string]; badge: number; line: string; button: { label: string; kind: 'green' | 'blue' | 'gold'; on: () => void }; dim?: boolean }) {
+function PowerCard({ width, name, art, face, badge, line, button, dim }: { width: number; name: string; art: ImageSourcePropType | ReactNode; face: [string, string, string]; badge: number; line: string; button: { label: string; kind: 'green' | 'blue' | 'gold'; on: () => void }; dim?: boolean }) {
   return (
     <View style={{ width, opacity: dim ? 0.72 : 1 }}>
       <Plate face={face[0]} top={face[1]} lip={face[2]} radius={R.card} inner={{ height: mk(250) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(8), paddingHorizontal: mk(6) }}>
-        <View style={{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center' }}><Image source={art} style={{ width: '84%', height: '90%' }} resizeMode="contain" /></View>
+        <View style={{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center' }}>{isValidElement(art) ? <IconSlot icon={art} width={width * 0.7} height={width * 0.7} size={width * 0.62} /> : <Image source={art as ImageSourcePropType} style={{ width: '84%', height: '90%' }} resizeMode="contain" />}</View>
         <OutlinedText size={mk(22)} width={mk(2)} numberOfLines={1}>{up(name)}</OutlinedText>
         <View style={{ backgroundColor: 'rgba(255,255,255,0.28)', borderRadius: mk(10), paddingHorizontal: mk(12), paddingVertical: mk(2), marginTop: mk(3) }}><Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(15) }}>{line}</Text></View>
         <View style={{ width: '100%', marginTop: mk(6), marginBottom: mk(8) }}><ChunkyButton kind={button.kind} label={button.label} height={mk(46)} size={mk(20)} onPress={button.on} /></View>
@@ -125,7 +126,7 @@ function Cosmetics({ p, actions, catalog }: { p: GameState['profile']; actions: 
         {storeFrames.map((it) => <FrameCard key={it.id} width={COL3} name={it.name} equipped={p?.selectedFrame === it.id} onPress={() => actions.setFrame(p?.selectedFrame === it.id ? null : it.id)}><CosmeticPreview item={it} size={mk(120)} /></FrameCard>)}
         {tierFrames.length + storeFrames.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(20), padding: mk(10) }}>{t('ui2.noFrames')}</Text> : null}
       </View>
-      <SectionHeader icon={UI2.sec_star} title={t('ui2.cosmetics')} subtitle={t('ui2.cosmeticsSub')} style={{ marginHorizontal: SIDE, marginTop: mk(14) }} />
+      <SectionHeader icon={<IcStar />} title={t('ui2.cosmetics')} subtitle={t('ui2.cosmeticsSub')} style={{ marginHorizontal: SIDE, marginTop: mk(14) }} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, marginHorizontal: SIDE }}>
         {items.map((it) => {
           const on = equippedOf(it.type) === it.id;
@@ -177,7 +178,7 @@ function Emotes({ p, actions, onNotice }: { p: GameState['profile']; actions: Ac
           </View>
         </Plate>
       </View>
-      <SectionHeader icon={UI2.sec_emote} title={t('ui2.allEmotes')} subtitle={t('ui2.allEmotesSub')} style={{ marginHorizontal: SIDE, marginTop: mk(14) }} />
+      <SectionHeader icon={<IcFace />} title={t('ui2.allEmotes')} subtitle={t('ui2.allEmotesSub')} style={{ marginHorizontal: SIDE, marginTop: mk(14) }} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, marginHorizontal: SIDE }}>
         {all.map((e) => {
           const on = equipped.includes(e.id);

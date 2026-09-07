@@ -380,5 +380,7 @@
   "ui2.upcoming": "KOMMENDE TURNERINGER",
   "ui2.upcomingSub": "Ikke gå glipp av det! Følg med på kommende turneringer.",
   "ui2.noTournaments": "Ingen åpne turneringer akkurat nå",
-  "ui2.moreTournaments": "Flere turneringer venter på deg!"
+  "ui2.moreTournaments": "Flere turneringer venter på deg!",
+  "ui2.emptySlot": "Tom plass",
+  "ui2.questsLabel": "Oppdrag"
 }

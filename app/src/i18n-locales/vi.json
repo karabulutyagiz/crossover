@@ -380,5 +380,7 @@
   "ui2.upcoming": "GIẢI SẮP DIỄN RA",
   "ui2.upcomingSub": "Đừng bỏ lỡ! Theo dõi các giải sắp tới.",
   "ui2.noTournaments": "Hiện chưa có giải nào mở",
-  "ui2.moreTournaments": "Nhiều giải đấu nữa đang chờ bạn!"
+  "ui2.moreTournaments": "Nhiều giải đấu nữa đang chờ bạn!",
+  "ui2.emptySlot": "Ô trống",
+  "ui2.questsLabel": "Nhiệm vụ"
 }

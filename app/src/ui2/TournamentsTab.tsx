@@ -4,10 +4,11 @@ import { Image, Text, View, type ImageSourcePropType } from 'react-native';
 import { LEVEL_TIERS, levelRewardGems, passRewardView } from '../screens';
 import type { Actions, GameState } from './types';
 import { UI2 } from './assets';
-import { Bar, ChunkyButton, GemAmount, OutlinedText, Plate, SectionHeader, fmt } from './primitives';
+import { Bar, ChunkyButton, GemAmount, OutlinedText, Plate, SectionHeader, fmt, IconSlot } from './primitives';
 import { Hud } from './Shell';
 import { t } from '../i18n';
 import { S } from './strings';
+import { IcArrowRight, IcCalendar, IcCheckBadge, IcClock, IcCrownBig, IcDaily, IcGift, IcLeague, IcRewards, IcTrophy } from './icons-ui';
 import { C, F, LIP, OUTLINE, R, SIDE, mk } from './tokens';
 
 type TItem = NonNullable<GameState['tournaments']>[number];
@@ -42,7 +43,7 @@ export function TournamentsTab({ state, actions, onOpenSettings, onOpenProfile, 
     : { kind, label: S.join, on: () => { actions.joinTournament(t.id); onNotice(t.name, `${S.join} → ${S.joined}`); } };
   return (
     <View style={{ flex: 1 }}>
-      <Hud title={S.tournaments} titleIcon={UI2.title_trophy}
+      <Hud title={S.tournaments} titleIcon={<IcTrophy />}
         data={{ name: p?.displayName ?? '', avatarId: p?.avatar ?? null, frameId: p?.selectedFrame ?? null, level, xp: p?.xp ?? 0, xpNext: (p as any)?.xpForNext ?? 1000, trophies: p?.trophies ?? 0, diamonds: p?.diamonds ?? 0 }}
         actions={{ onAvatar: onOpenProfile, onSettings: onOpenSettings, onTrophies: onOpenArenas }} />
 
@@ -52,7 +53,7 @@ export function TournamentsTab({ state, actions, onOpenSettings, onOpenProfile, 
           <View style={{ height: mk(250) }}>
             <Image source={UI2.tn_banner_art} style={{ position: 'absolute', right: 0, top: 0, width: mk(450), height: mk(250) }} resizeMode="cover" />
             <View style={{ position: 'absolute', right: mk(14), top: mk(12), backgroundColor: C.panelInk, borderRadius: mk(14), borderWidth: mk(3), borderColor: C.navy, paddingHorizontal: mk(12), paddingVertical: mk(4), flexDirection: 'row', alignItems: 'center', gap: mk(6) }}>
-              <Image source={UI2.ic_clock_live} style={{ width: mk(30), height: mk(30) }} resizeMode="contain" />
+              <IcClock size={mk(30)} />
               <OutlinedText size={mk(20)} width={1.2}>{featured?.status === 'live' ? S.ongoing : featured ? `${featured.joined}/${featured.size}` : '—'}</OutlinedText>
             </View>
             <View style={{ position: 'absolute', left: mk(20), top: mk(14) }}>
@@ -78,12 +79,12 @@ export function TournamentsTab({ state, actions, onOpenSettings, onOpenProfile, 
       {/* ── Üç hızlı kutu ── */}
       <View style={{ flexDirection: 'row', marginHorizontal: SIDE, marginTop: mk(20), gap: mk(16) }}>
         {([
-          { icon: UI2.ic_daily, title: S.daily, sub: S.dailySub, on: () => onNotice(S.daily, S.noTournaments) },
-          { icon: UI2.ic_league, title: S.leagueCup, sub: S.leagueCupSub, on: onOpenLeague },
-          { icon: UI2.ic_rewards, title: S.rewards, sub: S.rewardsSub, on: onOpenLevelRoad },
-        ] as { icon: ImageSourcePropType; title: string; sub: string; on: () => void }[]).map((a) => (
+          { icon: <IcDaily />, title: S.daily, sub: S.dailySub, on: () => onNotice(S.daily, S.noTournaments) },
+          { icon: <IcLeague />, title: S.leagueCup, sub: S.leagueCupSub, on: onOpenLeague },
+          { icon: <IcRewards />, title: S.rewards, sub: S.rewardsSub, on: onOpenLevelRoad },
+        ] as { icon: React.ReactNode; title: string; sub: string; on: () => void }[]).map((a) => (
           <Plate key={a.title} face={C.card} top={C.cardTop} lip={C.cardDark} radius={mk(22)} style={{ flex: 1 }} inner={{ height: mk(116) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(8), gap: mk(6) }}>
-            <Image source={a.icon} style={{ width: mk(84), height: mk(84) }} resizeMode="contain" />
+            <IconSlot icon={a.icon} width={mk(84)} height={mk(84)} size={mk(84)} />
             <View style={{ flex: 1, minWidth: 0 }}>
               <OutlinedText size={mk(20)} width={mk(2)} align="left" numberOfLines={1}>{a.title}</OutlinedText>
               <Text numberOfLines={1} style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(14) }}>{a.sub}</Text>
@@ -94,7 +95,7 @@ export function TournamentsTab({ state, actions, onOpenSettings, onOpenProfile, 
       </View>
 
       {/* ── AKTİF TURNUVALAR ── */}
-      <SectionHeader icon={UI2.hud_trophy} title={S.activeTournaments} subtitle={S.activeSub} style={{ marginHorizontal: SIDE, marginTop: mk(18) }} />
+      <SectionHeader icon={<IcTrophy />} title={S.activeTournaments} subtitle={S.activeSub} style={{ marginHorizontal: SIDE, marginTop: mk(18) }} />
       <View style={{ marginHorizontal: SIDE, gap: mk(12) }}>
         {active.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(22), textAlign: 'center', paddingVertical: mk(10) }}>{items.length ? '' : S.noTournaments}</Text> : null}
         {active.map((t, i) => (
@@ -103,7 +104,7 @@ export function TournamentsTab({ state, actions, onOpenSettings, onOpenProfile, 
       </View>
 
       {/* ── ÖDÜL YOLU (Seviye Yolu — gerçek ödüller) ── */}
-      <SectionHeader icon={UI2.sec_gift} title={S.rewardRoad} subtitle={S.rewardRoadSub} style={{ marginHorizontal: SIDE, marginTop: mk(20) }} />
+      <SectionHeader icon={<IcGift />} title={S.rewardRoad} subtitle={S.rewardRoadSub} style={{ marginHorizontal: SIDE, marginTop: mk(20) }} />
       <View style={{ flexDirection: 'row', marginHorizontal: SIDE, alignItems: 'center', gap: mk(6) }}>
         {roadLevels.map((n, i) => {
           const rw = rewardAt(n)!; const label = rw.label; const art = rw.art;
@@ -115,11 +116,11 @@ export function TournamentsTab({ state, actions, onOpenSettings, onOpenProfile, 
                 <Image source={art} style={{ width: '90%', height: mk(92), marginTop: mk(4) }} resizeMode="contain" />
                 <OutlinedText size={mk(21)} width={1.5} numberOfLines={1}>{label}</OutlinedText>
                 <View style={{ flex: 1 }} />
-                {done ? <Image source={UI2.rw_check} style={{ width: mk(52), height: mk(52), marginBottom: mk(6) }} resizeMode="contain" />
+                {done ? <View style={{ marginBottom: mk(6) }}><IcCheckBadge size={mk(50)} /></View>
                   : canClaim ? <ChunkyButton kind="green" label={S.claim} height={mk(50)} size={mk(22)} style={{ width: '90%', marginBottom: mk(8) }} onPress={() => actions.claimLevelReward(n)} />
                   : <View style={{ width: '92%', marginBottom: mk(10), flexDirection: 'row', alignItems: 'center', gap: mk(6) }}><Bar value={level} max={n} color={C.gold} track="#04163F" height={mk(22)} radius={mk(7)} style={{ flex: 1 }} /><Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(18) }}>{`${level}/${n}`}</Text></View>}
               </Plate>
-              {i < roadLevels.length - 1 ? <Image source={UI2.rw_arrow} style={{ width: mk(30), height: mk(40), marginHorizontal: mk(2) }} resizeMode="contain" /> : null}
+              {i < roadLevels.length - 1 ? <View style={{ marginHorizontal: mk(2) }}><IcArrowRight size={mk(36)} /></View> : null}
             </View>
           );
         })}
@@ -128,10 +129,10 @@ export function TournamentsTab({ state, actions, onOpenSettings, onOpenProfile, 
       {/* ── YAKLAŞAN TURNUVALAR ── */}
       {upcoming.length ? (
         <>
-          <SectionHeader icon={UI2.sec_calendar} title={S.upcoming} subtitle={S.upcomingSub} style={{ marginHorizontal: SIDE, marginTop: mk(20) }} />
+          <SectionHeader icon={<IcCalendar />} title={S.upcoming} subtitle={S.upcomingSub} style={{ marginHorizontal: SIDE, marginTop: mk(20) }} />
           <View style={{ marginHorizontal: SIDE, gap: mk(12) }}>
             {upcoming.map((t, i) => (
-              <TRow key={t.id} icon={i % 2 === 0 ? UI2.up_handshake : UI2.up_crown} name={t.name} meta={`${S.registration} • ${t.joined}/${t.size}`} status="" live={false} prize={t.prizeFirst} button={{ kind: 'blue', label: S.join, on: () => actions.joinTournament(t.id) }} compact />
+              <TRow key={t.id} icon={i % 2 === 0 ? UI2.up_handshake : <IcCrownBig />} name={t.name} meta={`${S.registration} • ${t.joined}/${t.size}`} status="" live={false} prize={t.prizeFirst} button={{ kind: 'blue', label: S.join, on: () => actions.joinTournament(t.id) }} compact />
             ))}
           </View>
           <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(20), textAlign: 'center', marginTop: mk(16) }}>⌄  {S.moreTournaments}  ⌄</Text>
@@ -141,10 +142,10 @@ export function TournamentsTab({ state, actions, onOpenSettings, onOpenProfile, 
     </View>
   );
 }
-function TRow({ icon, name, meta, status, live, prize, button, compact }: { icon: ImageSourcePropType; name: string; meta: string; status: string; live: boolean; prize: number; button: { kind: 'green' | 'gold' | 'blue'; label: string; on: () => void }; compact?: boolean }) {
+function TRow({ icon, name, meta, status, live, prize, button, compact }: { icon: ImageSourcePropType | React.ReactNode; name: string; meta: string; status: string; live: boolean; prize: number; button: { kind: 'green' | 'gold' | 'blue'; label: string; on: () => void }; compact?: boolean }) {
   return (
     <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(20)} inner={{ height: (compact ? mk(96) : mk(110)) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(10), gap: mk(10) }}>
-      <View style={{ width: mk(120), height: mk(90), alignItems: 'center', justifyContent: 'center' }}><Image source={icon} style={{ width: mk(116), height: mk(86) }} resizeMode="contain" /></View>
+      <View style={{ width: mk(120), height: mk(90), alignItems: 'center', justifyContent: 'center' }}><IconSlot icon={icon} width={mk(116)} height={mk(86)} size={mk(84)} /></View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <OutlinedText size={mk(28)} width={mk(2)} align="left" numberOfLines={1}>{name}</OutlinedText>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(6), marginTop: mk(2) }}>

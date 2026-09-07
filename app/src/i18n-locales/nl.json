@@ -380,5 +380,7 @@
   "ui2.upcoming": "KOMENDE TOERNOOIEN",
   "ui2.upcomingSub": "Mis niets! Volg de komende toernooien.",
   "ui2.noTournaments": "Momenteel geen open toernooi",
-  "ui2.moreTournaments": "Meer toernooien wachten op je!"
+  "ui2.moreTournaments": "Meer toernooien wachten op je!",
+  "ui2.emptySlot": "Leeg vak",
+  "ui2.questsLabel": "Opdrachten"
 }

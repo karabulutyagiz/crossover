@@ -380,5 +380,7 @@
   "ui2.upcoming": "TURNAMEN MENDATANG",
   "ui2.upcomingSub": "Jangan lewatkan! Ikuti turnamen mendatang.",
   "ui2.noTournaments": "Belum ada turnamen terbuka saat ini",
-  "ui2.moreTournaments": "Lebih banyak turnamen menantimu!"
+  "ui2.moreTournaments": "Lebih banyak turnamen menantimu!",
+  "ui2.emptySlot": "Slot kosong",
+  "ui2.questsLabel": "Misi"
 }

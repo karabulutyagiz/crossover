@@ -380,5 +380,7 @@
   "ui2.upcoming": "PROSSIMI TORNEI",
   "ui2.upcomingSub": "Non perderteli! Segui i prossimi tornei.",
   "ui2.noTournaments": "Nessun torneo aperto al momento",
-  "ui2.moreTournaments": "Altri tornei ti aspettano!"
+  "ui2.moreTournaments": "Altri tornei ti aspettano!",
+  "ui2.emptySlot": "Slot vuoto",
+  "ui2.questsLabel": "Missioni"
 }

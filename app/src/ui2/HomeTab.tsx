@@ -6,6 +6,7 @@ import type { Actions, GameState } from './types';
 import { up } from './strings';
 import { UI2 } from './assets';
 import { Bar, ChunkyButton, OutlinedText, Plate, fmt } from './primitives';
+import { IcChevronGold, IcClipboard, IcCrownBig, IcTrophy } from './icons-ui';
 import { Hud } from './Shell';
 import { LEVEL_CAP, nextArenaMin } from './products';
 import { C, F, LIP, OUTLINE, SIDE, mh, mk } from './tokens';
@@ -33,7 +34,7 @@ export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenM
       {/* SEZON ÖDÜLLERİ şeridi (altın) */}
       <Pressable onPress={onOpenLevelRoad} style={{ marginHorizontal: SIDE, marginTop: mh(14) }}>
         <Plate face={C.gold} top={C.goldLight} lip={C.goldDark} radius={mh(22)} inner={{ height: mh(112) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mh(16) }}>
-          <Image source={UI2.home_crown} style={{ width: mh(78), height: mh(70) }} resizeMode="contain" />
+          <IcCrownBig size={mh(72)} />
           <View style={{ flex: 1, marginLeft: mh(14), justifyContent: 'center' }}>
             <OutlinedText size={mh(30)} width={mk(3)} align="left" family={F.title}>{t('ui2.seasonRewards')}</OutlinedText>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: mh(6) }}>
@@ -41,12 +42,12 @@ export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenM
               <OutlinedText size={mh(30)} width={mk(3)} style={{ marginLeft: mh(14) }} numberOfLines={1}>{`${level} / ${LEVEL_CAP}`}</OutlinedText>
             </View>
           </View>
-          <Image source={UI2.home_arrow} style={{ width: mh(40), height: mh(52), marginLeft: mh(12) }} resizeMode="contain" />
+          <View style={{ marginLeft: mh(8) }}><IcChevronGold size={mh(52)} /></View>
         </Plate>
       </Pressable>
       {/* Arena başlığı */}
       <View style={{ alignItems: 'center', marginTop: mh(16) }}>
-        <Image source={UI2.home_title_crown} style={{ width: mh(70), height: mh(46) }} resizeMode="contain" />
+        <IcCrownBig size={mh(56)} color="#FFFFFF" base="#DCE6FF" />
         <View style={{ flexDirection: 'row', alignItems: 'center', width: W, justifyContent: 'center' }}>
           <OutlinedText size={mh(64)} width={mk(6)} style={{ letterSpacing: 0.5 }} numberOfLines={1}>{arenaName}</OutlinedText>
         </View>
@@ -55,7 +56,7 @@ export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenM
       <View style={{ height: mh(560), marginTop: -mh(10) }}>
         <Image source={UI2.home_arena} style={{ position: 'absolute', left: mh(10), right: mh(10), top: mh(20), width: W + mh(36), height: mh(540), alignSelf: 'center' }} resizeMode="contain" />
         <Pressable onPress={onOpenQuests} style={{ position: 'absolute', right: SIDE - mh(6), top: mh(48), width: mh(140), height: mh(150) }}>
-          <Image source={UI2.home_quests} style={{ width: mh(140), height: mh(150) }} resizeMode="contain" />
+          <View style={{ alignItems: 'center' }}><IcClipboard size={mh(104)} /><OutlinedText size={mh(30)} width={mk(3)}>{t('ui2.questsLabel')}</OutlinedText></View>
           {questsReady > 0 ? (
             <View style={{ position: 'absolute', top: -mh(10), right: -mh(6), width: mh(46), height: mh(46), borderRadius: mh(23), backgroundColor: C.red, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}>
               <OutlinedText size={mh(26)} width={1}>{String(questsReady)}</OutlinedText>
@@ -66,7 +67,7 @@ export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenM
       {/* Kupa ilerlemesi */}
       <View style={{ alignItems: 'center', marginTop: -mh(6) }}>
         <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mh(22)} inner={{ width: mh(470) - OUTLINE * 2, height: mh(100) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mh(18) }}>
-          <Image source={UI2.hud_trophy} style={{ width: mh(70), height: mh(70) }} resizeMode="contain" />
+          <IcTrophy size={mh(66)} />
           <View style={{ flex: 1, marginLeft: mh(14) }}>
             <OutlinedText size={mh(34)} width={mk(3)} align="left">{`${fmt(trophies)} / ${fmt(nextMin)}`}</OutlinedText>
             <Bar value={trophies} max={nextMin} color={C.gold} track="#04163F" height={mh(22)} radius={mh(6)} style={{ marginTop: mh(4) }} />

@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { useFonts } from 'expo-font';
+import { currentLang, setLanguage } from '../i18n';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Actions, GameState } from './types';
 import { Ui2Tabs } from './Ui2Tabs';
@@ -40,6 +41,8 @@ const actions = new Proxy({}, { get: (_t, k) => (...a: unknown[]) => { console.l
 export default function Ui2Preview() {
   const qs = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
   const initial = Number(qs?.get('tab') ?? '2'); const sy = Number(qs?.get('sy') ?? '0'); const dlg = (qs?.get('dlg') ?? null) as any;
+  // ?lang=de → o dilde çiz (21 dil kontrolü için); render öncesi tek sefer
+  const lang = qs?.get('lang'); if (lang && currentLang() !== lang) setLanguage(lang);
   const [tab, setTab] = useState(Number.isFinite(initial) ? initial : 2);
   const [fontsLoaded] = useFonts({
     'Poppins-Black': require('../../assets/fonts/Poppins-Black.ttf'), 'Poppins-ExtraBold': require('../../assets/fonts/Poppins-ExtraBold.ttf'), 'Poppins-SemiBold': require('../../assets/fonts/Poppins-SemiBold.ttf'), 'LilitaOne-Regular': require('../../assets/fonts/LilitaOne-Regular.ttf'),

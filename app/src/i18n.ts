@@ -1169,6 +1169,8 @@ const tr = {
   "ui2.noTournaments": "Şu an açık turnuva yok",
   "ui2.moreTournaments": "Daha fazla turnuva seni bekliyor!",
 
+  "ui2.emptySlot": "Boş yuva",
+  "ui2.questsLabel": "Görevler",
 };
 
 // ---- English (fallback) ----
@@ -2276,6 +2278,8 @@ const en: typeof tr = {
   "ui2.noTournaments": "No open tournaments right now",
   "ui2.moreTournaments": "More tournaments await you!",
 
+  "ui2.emptySlot": "Empty slot",
+  "ui2.questsLabel": "Quests",
 };
 
 export type MessageKey = keyof typeof tr;

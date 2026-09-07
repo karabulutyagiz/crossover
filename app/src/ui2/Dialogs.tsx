@@ -13,6 +13,7 @@ import { Bar, ChunkyButton, GemAmount, OutlinedText, Plate, fmt } from './primit
 import { S, up } from './strings';
 import { hasActiveSocialPack } from '../monetization';
 import { PACK_MODES } from './products';
+import { IcCheckBadge, IcNavFriends, IcNavPlay, IcStar, IcTrophy } from './icons-ui';
 import { IcBell, IcCheck, IcChevron, IcClose, IcCopy, IcGlobe, IcLock, IcModeCountryTeam, IcModeCozKazan, IcModeGuessWho, IcModeLetterTeam, IcModeTeamTeam, IcModeXox, IcMusic, IcSound, IcVibrate } from './icons';
 import { C, F, LIP, OUTLINE, SIDE, mk } from './tokens';
 
@@ -124,13 +125,13 @@ export function QuestsDialog({ state, actions, onClose, onGo }: { state: GameSta
       {q.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(20), textAlign: 'center', padding: mk(10) }}>{S.loading}</Text> : null}
       {q.map((x, i) => (
         <Plate key={x.id} face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginBottom: mk(10) }} inner={{ height: mk(112) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(10), gap: mk(10) }}>
-          <Image source={i % 3 === 0 ? UI2.nav_play : i % 3 === 1 ? UI2.hud_trophy : UI2.title_friends} style={{ width: mk(64), height: mk(64) }} resizeMode="contain" />
+          <View style={{ width: mk(64), alignItems: 'center' }}>{i % 3 === 0 ? <IcNavPlay size={mk(58)} /> : i % 3 === 1 ? <IcTrophy size={mk(58)} /> : <IcNavFriends size={mk(58)} />}</View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text numberOfLines={1} style={{ color: C.white, fontFamily: F.bold, fontSize: mk(20) }}>{t(x.titleKey as MessageKey, { n: String(x.target) } as any)}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(8), marginTop: mk(4) }}><Bar value={x.progress} max={x.target} color={C.green} track="#04163F" height={mk(20)} radius={mk(6)} style={{ flex: 1 }} /><Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(16) }}>{`${Math.min(x.progress, x.target)} / ${x.target}`}</Text></View>
           </View>
-          <View style={{ alignItems: 'center', width: mk(70) }}><Image source={UI2.sec_star} style={{ width: mk(40), height: mk(40) }} resizeMode="contain" /><Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(15) }}>{`+${x.xp} XP`}</Text></View>
-          {x.claimed ? <Image source={UI2.rw_check} style={{ width: mk(56), height: mk(56) }} resizeMode="contain" />
+          <View style={{ alignItems: 'center', width: mk(70) }}><IcStar size={mk(40)} /><Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(15) }}>{`+${x.xp} XP`}</Text></View>
+          {x.claimed ? <IcCheckBadge size={mk(52)} />
             : <ChunkyButton kind={x.done ? 'green' : 'blue'} label={x.done ? S.claim : t('ui2.q.go')} height={mk(56)} size={mk(22)} style={{ width: mk(100) }} onPress={() => (x.done ? actions.claimQuest(x.id) : (onClose(), onGo()))} />}
         </Plate>
       ))}

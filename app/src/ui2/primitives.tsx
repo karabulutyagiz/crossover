@@ -1,10 +1,11 @@
 // UI2 primitifleri — mock'taki yüzey ailesi: koyu lacivert dış kontur, ana renk yüzü,
 // dar üst parlama, alt dilim (gölge). Hepsi View katmanı; PNG buton yok, ölçek bağımsız.
-import { type ReactNode, useMemo } from 'react';
-import { Image, Pressable, StyleSheet, Text, View, type ImageSourcePropType, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { cloneElement, isValidElement, type ReactElement, type ReactNode, useMemo } from 'react';
+import { Image, Pressable, StyleSheet, Text, View, type DimensionValue, type ImageSourcePropType, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import Svg, { Defs, Pattern, Polygon, Rect } from 'react-native-svg';
-import { C, F, LIP, OUTLINE, R, mk } from './tokens';
+import { C, F, LIP, OUTLINE, R, SIDE, mk } from './tokens';
 import { UI2 } from './assets';
+import { IcGem } from './icons-ui';
 
 // ── Damalı royal blue zemin (mock: ~120 px'lik iki tonlu elmaslar) ─────────────
 export function CheckerBg({ style }: { style?: StyleProp<ViewStyle> }) {
@@ -93,10 +94,10 @@ export function ChunkyButton({ kind = 'green', label, sub, onPress, height = mk(
 }
 
 // ── Bölüm başlığı: ikon + konturlu başlık + sağda alt başlık ve ok ─────────────
-export function SectionHeader({ icon, title, subtitle, onMore, style }: { icon: ImageSourcePropType; title: string; subtitle?: string; onMore?: () => void; style?: StyleProp<ViewStyle> }) {
+export function SectionHeader({ icon, title, subtitle, onMore, style }: { icon: ImageSourcePropType | ReactNode; title: string; subtitle?: string; onMore?: () => void; style?: StyleProp<ViewStyle> }) {
   return (
     <View style={[{ flexDirection: 'row', alignItems: 'center', height: mk(96), paddingHorizontal: mk(6) }, style]}>
-      <Image source={icon} style={{ width: mk(92), height: mk(80) }} resizeMode="contain" />
+      <IconSlot icon={icon} width={mk(92)} height={mk(80)} size={mk(78)} />
       <View style={{ marginLeft: mk(10) }}>
         <OutlinedText size={mk(54)} width={mk(5)} align="left">{title}</OutlinedText>
       </View>
@@ -138,10 +139,34 @@ export function Bar({ value, max, color = C.cyan, track = '#062B75', height = mk
 export function GemAmount({ amount, size = mk(34), color = C.white, family = F.title }: { amount: number | string; size?: number; color?: string; family?: string }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(8) }}>
-      <Image source={UI2.hud_gem} style={{ width: size * 1.1, height: size * 1.1 }} resizeMode="contain" />
+      <IcGem size={size * 1.1} />
       <OutlinedText size={size} color={color} width={mk(4)} family={family}>{typeof amount === 'number' ? amount.toLocaleString('tr-TR') : amount}</OutlinedText>
     </View>
   );
 }
 
 export const fmt = (n: number): string => n.toLocaleString('tr-TR');
+
+// ── İkon yuvası: raster görsel (require) ya da vektör düğüm — çağıran ne verirse ──
+export function IconSlot({ icon, width, height, size }: { icon: ImageSourcePropType | ReactNode; width: number; height: number; size?: number }) {
+  if (isValidElement(icon)) return <View style={{ width, height, alignItems: 'center', justifyContent: 'center' }}>{size ? cloneElement(icon as ReactElement<{ size?: number }>, { size }) : icon}</View>;
+  return <Image source={icon as ImageSourcePropType} style={{ width, height }} resizeMode="contain" />;
+}
+// ── Banner: opak sanat + üstüne canlı katman (mağaza/arkadaşlar banner'ları) ──
+export function BannerImage({ source, ratio, children }: { source: ImageSourcePropType; ratio: number; children?: ReactNode }) {
+  const w = 430 - SIDE * 2; const h = w / ratio;
+  return (
+    <View style={{ width: w, height: h, borderRadius: mk(24), overflow: 'hidden', borderWidth: mk(4), borderColor: C.navy }}>
+      <Image source={source} style={{ width: w, height: h }} resizeMode="cover" />
+      {children}
+    </View>
+  );
+}
+// ── Eğik çıkartma — banner'ın köşesinde, taşan kısmı banner kırpar (mock'taki gibi) ──
+export function Sticker({ left, top, width, height, rotate, face, border, children }: { left: DimensionValue; top: DimensionValue; width: DimensionValue; height: DimensionValue; rotate: string; face: string; border: string; children: ReactNode }) {
+  return (
+    <View style={{ position: 'absolute', left, top, width, height, transform: [{ rotate }], backgroundColor: face, borderWidth: mk(4), borderColor: border, borderRadius: mk(10), alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(8) }}>
+      {children}
+    </View>
+  );
+}

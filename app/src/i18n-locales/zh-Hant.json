@@ -380,5 +380,7 @@
   "ui2.upcoming": "即將開始的錦標賽",
   "ui2.upcomingSub": "別錯過！關注即將開始的錦標賽。",
   "ui2.noTournaments": "目前沒有開放的錦標賽",
-  "ui2.moreTournaments": "更多錦標賽在等你！"
+  "ui2.moreTournaments": "更多錦標賽在等你！",
+  "ui2.emptySlot": "空欄位",
+  "ui2.questsLabel": "任務"
 }

@@ -4,8 +4,8 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View, type ImageSourceP
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '../Avatar';
 import { t, type MessageKey } from '../i18n';
-import { UI2 } from './assets';
-import { Bar, CheckerBg, OutlinedText, Plate, fmt } from './primitives';
+import { Bar, CheckerBg, IconSlot, OutlinedText, Plate, fmt } from './primitives';
+import { IcGear, IcGem, IcNavCollection, IcNavFriends, IcNavPlay, IcNavStore, IcPlus, IcTrophy } from './icons-ui';
 import { C, F, LIP, OUTLINE, R, SIDE, mk } from './tokens';
 
 export type HudData = {
@@ -15,7 +15,7 @@ export type HudData = {
 export type HudActions = { onAvatar?: () => void; onGems?: () => void; onPlus?: () => void; onSettings?: () => void; onTrophies?: () => void };
 
 // ── HUD: mock üst bant (avatar kutusu 130 px, ad, XP çubuğu, seviye kalkanı; sağda elmas pill + artı + dişli; altta kupa pill) ──
-export function Hud({ data, actions, title, titleIcon }: { data: HudData; actions?: HudActions; title?: string; titleIcon?: ImageSourcePropType }) {
+export function Hud({ data, actions, title, titleIcon }: { data: HudData; actions?: HudActions; title?: string; titleIcon?: ImageSourcePropType | ReactNode }) {
   const avatarBox = mk(128);
   return (
     <View style={{ paddingHorizontal: SIDE, paddingTop: mk(22) }}>
@@ -41,15 +41,15 @@ export function Hud({ data, actions, title, titleIcon }: { data: HudData; action
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: mk(8) }}>
           <Pressable onPress={actions?.onGems}>
             <Plate face={C.panelInk} top="#2F63C8" lip="#051D52" radius={R.pill} inner={{ height: mk(66) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingLeft: mk(8), paddingRight: mk(18), gap: mk(6) }}>
-              <Image source={UI2.hud_gem} style={{ width: mk(52), height: mk(52), marginTop: -mk(4) }} resizeMode="contain" />
+              <View style={{ marginTop: -mk(4) }}><IcGem size={mk(50)} /></View>
               <OutlinedText size={mk(36)} width={mk(3)}>{fmt(data.diamonds)}</OutlinedText>
             </Plate>
           </Pressable>
           <Pressable onPress={actions?.onPlus ?? actions?.onGems} style={{ marginLeft: -mk(14), marginTop: -mk(2) }}>
-            <Image source={UI2.hud_plus} style={{ width: mk(58), height: mk(58) }} resizeMode="contain" />
+            <IcPlus size={mk(56)} />
           </Pressable>
           <Pressable onPress={actions?.onSettings} style={{ marginLeft: mk(10) }}>
-            <Image source={UI2.hud_gear} style={{ width: mk(86), height: mk(86) }} resizeMode="contain" />
+            <IcGear size={mk(78)} />
           </Pressable>
         </View>
       </View>
@@ -57,13 +57,13 @@ export function Hud({ data, actions, title, titleIcon }: { data: HudData; action
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: mk(8), height: mk(96) }}>
         <Pressable onPress={actions?.onTrophies}>
           <Plate face={C.panelInk} top="#2F63C8" lip="#051D52" radius={R.pill} inner={{ height: mk(64) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingLeft: mk(8), paddingRight: mk(20), gap: mk(6) }}>
-            <Image source={UI2.hud_trophy} style={{ width: mk(60), height: mk(60), marginTop: -mk(6) }} resizeMode="contain" />
+            <View style={{ marginTop: -mk(4) }}><IcTrophy size={mk(56)} /></View>
             <OutlinedText size={mk(36)} width={mk(3)}>{fmt(data.trophies)}</OutlinedText>
           </Plate>
         </Pressable>
         {title ? (
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginLeft: -mk(20) }}>
-            {titleIcon ? <Image source={titleIcon} style={{ width: mk(140), height: mk(110), marginRight: mk(4) }} resizeMode="contain" /> : null}
+            {titleIcon ? <IconSlot icon={titleIcon} width={mk(130)} height={mk(110)} size={mk(104)} /> : null}
             <OutlinedText size={mk(80)} width={mk(6)} style={{ letterSpacing: 1 }}>{title}</OutlinedText>
           </View>
         ) : <View style={{ flex: 1 }} />}
@@ -87,12 +87,12 @@ function LevelShield({ level }: { level: number }) {
 
 // ── Alt navigasyon: 5 plaka; aktif olan altın çerçeveli + açık mavi yüz, yukarı taşar ──
 export type NavKey = 'store' | 'collection' | 'play' | 'friends' | 'tournaments';
-const NAV: { key: NavKey; icon: ImageSourcePropType; labelKey: MessageKey }[] = [
-  { key: 'store', icon: UI2.nav_store, labelKey: 'tab.store' as MessageKey },
-  { key: 'collection', icon: UI2.nav_collection, labelKey: 'tab.collection' as MessageKey },
-  { key: 'play', icon: UI2.nav_play, labelKey: 'ui2.play' as MessageKey },
-  { key: 'friends', icon: UI2.nav_friends, labelKey: 'tab.friends' as MessageKey },
-  { key: 'tournaments', icon: UI2.nav_tournaments, labelKey: 'tab.tournaments' as MessageKey },
+const NAV: { key: NavKey; Icon: (p: { size?: number }) => ReactNode; labelKey: MessageKey }[] = [
+  { key: 'store', Icon: IcNavStore, labelKey: 'tab.store' as MessageKey },
+  { key: 'collection', Icon: IcNavCollection, labelKey: 'tab.collection' as MessageKey },
+  { key: 'play', Icon: IcNavPlay, labelKey: 'ui2.play' as MessageKey },
+  { key: 'friends', Icon: IcNavFriends, labelKey: 'tab.friends' as MessageKey },
+  { key: 'tournaments', Icon: IcTrophy, labelKey: 'tab.tournaments' as MessageKey },
 ];
 export const NAV_H = mk(150);
 export function BottomNav({ active, onPress, labels, badges }: { active: NavKey; onPress: (k: NavKey) => void; labels?: Partial<Record<NavKey, string>>; badges?: Partial<Record<NavKey, number>> }) {
@@ -105,7 +105,7 @@ export function BottomNav({ active, onPress, labels, badges }: { active: NavKey;
           <Pressable key={n.key} onPress={() => onPress(n.key)} style={{ flex: 1, minWidth: 0, marginTop: on ? -mk(22) : 0 }}>
             <Plate face={on ? C.navActive : C.navTile} top={on ? '#8CC4FF' : C.navTileTop} lip={on ? C.gold : '#082F80'} outline={on ? C.gold : C.navy} radius={R.tile} outlineWidth={on ? mk(7) : OUTLINE} lipHeight={mk(14)}
               inner={{ height: (on ? NAV_H + mk(12) : NAV_H) - mk(14) - OUTLINE * 2, alignItems: 'center', justifyContent: 'center', paddingTop: mk(6) }}>
-              <Image source={n.icon} style={{ width: mk(100), height: mk(78) }} resizeMode="contain" />
+              <View style={{ height: mk(78), justifyContent: 'center' }}><n.Icon size={mk(74)} /></View>
               <OutlinedText size={mk(30)} width={mk(3)} family={F.title} style={{ marginTop: mk(2) }} numberOfLines={1}>{labels?.[n.key] ?? t(n.labelKey)}</OutlinedText>
             </Plate>
             {badge ? (

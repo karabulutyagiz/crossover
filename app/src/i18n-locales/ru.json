@@ -380,5 +380,7 @@
   "ui2.upcoming": "БЛИЖАЙШИЕ ТУРНИРЫ",
   "ui2.upcomingSub": "Не пропусти! Следи за ближайшими турнирами.",
   "ui2.noTournaments": "Сейчас нет открытых турниров",
-  "ui2.moreTournaments": "Тебя ждут новые турниры!"
+  "ui2.moreTournaments": "Тебя ждут новые турниры!",
+  "ui2.emptySlot": "Пустая ячейка",
+  "ui2.questsLabel": "Задания"
 }

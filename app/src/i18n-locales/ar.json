@@ -380,5 +380,7 @@
   "ui2.upcoming": "البطولات القادمة",
   "ui2.upcomingSub": "لا تفوّتها! تابع البطولات القادمة.",
   "ui2.noTournaments": "لا بطولات مفتوحة حاليًا",
-  "ui2.moreTournaments": "مزيد من البطولات بانتظارك!"
+  "ui2.moreTournaments": "مزيد من البطولات بانتظارك!",
+  "ui2.emptySlot": "خانة فارغة",
+  "ui2.questsLabel": "المهام"
 }
