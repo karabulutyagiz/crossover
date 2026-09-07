@@ -488,5 +488,6 @@
   "tour.readyBody": "{t} — vastustaja: {opp}",
   "tour.readyBtn": "PELAA",
   "tour.readyWaiting": "Odotetaan vastustajan valmiutta…",
-  "tour.empty": "Ei avoimia turnauksia nyt — uusia pian!"
+  "tour.empty": "Ei avoimia turnauksia nyt — uusia pian!",
+  "tour.oppReady": "Vastustaja on valmis — paina PELAA!"
 }

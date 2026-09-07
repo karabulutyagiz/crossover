@@ -488,5 +488,6 @@
   "tour.readyBody": "{t} — 상대: {opp}",
   "tour.readyBtn": "플레이",
   "tour.readyWaiting": "상대의 준비를 기다리는 중…",
-  "tour.empty": "지금 열린 토너먼트가 없어요 — 곧 새로 열려요!"
+  "tour.empty": "지금 열린 토너먼트가 없어요 — 곧 새로 열려요!",
+  "tour.oppReady": "상대가 준비됐어요 — 플레이를 누르세요!"
 }

@@ -488,5 +488,6 @@
   "tour.readyBody": "{t} — 相手：{opp}",
   "tour.readyBtn": "プレイ",
   "tour.readyWaiting": "相手の準備を待っています…",
-  "tour.empty": "現在受付中の大会はありません — 近日開催！"
+  "tour.empty": "現在受付中の大会はありません — 近日開催！",
+  "tour.oppReady": "相手の準備完了 — プレイを押そう！"
 }

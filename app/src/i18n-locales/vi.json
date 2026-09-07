@@ -488,5 +488,6 @@
   "tour.readyBody": "{t} — đối thủ: {opp}",
   "tour.readyBtn": "CHƠI",
   "tour.readyWaiting": "Đang chờ đối thủ sẵn sàng…",
-  "tour.empty": "Hiện chưa có giải nào mở — sắp có!"
+  "tour.empty": "Hiện chưa có giải nào mở — sắp có!",
+  "tour.oppReady": "Đối thủ đã sẵn sàng — nhấn CHƠI!"
 }

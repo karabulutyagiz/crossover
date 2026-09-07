@@ -488,5 +488,6 @@
   "tour.readyBody": "{t} — avversario: {opp}",
   "tour.readyBtn": "GIOCA",
   "tour.readyWaiting": "In attesa che l’avversario sia pronto…",
-  "tour.empty": "Nessun torneo aperto al momento — presto nuovi!"
+  "tour.empty": "Nessun torneo aperto al momento — presto nuovi!",
+  "tour.oppReady": "L’avversario è pronto — premi GIOCA!"
 }

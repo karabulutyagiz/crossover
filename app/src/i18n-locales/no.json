@@ -488,5 +488,6 @@
   "tour.readyBody": "{t} — motstander: {opp}",
   "tour.readyBtn": "SPILL",
   "tour.readyWaiting": "Venter på at motstanderen blir klar…",
-  "tour.empty": "Ingen åpne turneringer nå — nye kommer snart!"
+  "tour.empty": "Ingen åpne turneringer nå — nye kommer snart!",
+  "tour.oppReady": "Motstanderen er klar — trykk SPILL!"
 }

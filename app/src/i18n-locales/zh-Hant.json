@@ -488,5 +488,6 @@
   "tour.readyBody": "{t} — 對手：{opp}",
   "tour.readyBtn": "開始",
   "tour.readyWaiting": "等待對手準備…",
-  "tour.empty": "目前沒有開放的錦標賽——敬請期待！"
+  "tour.empty": "目前沒有開放的錦標賽——敬請期待！",
+  "tour.oppReady": "對手已就緒——點擊開始！"
 }

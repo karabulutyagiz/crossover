@@ -3546,7 +3546,7 @@ function AppRoot() {
 
       {/* Turnuva: maçın hazır — OYNA (iki taraf da basınca oda kurulur) */}
       <GameModal
-        visible={Boolean(state.tournamentReady)}
+        visible={!UI2_ON && Boolean(state.tournamentReady)}
         onClose={actions.clearTournamentReady}
         title={t('tour.readyTitle')}
         icon="trophy"

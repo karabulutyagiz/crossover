@@ -488,5 +488,6 @@
   "tour.readyBody": "{t} — lawan: {opp}",
   "tour.readyBtn": "MAIN",
   "tour.readyWaiting": "Menunggu lawan siap…",
-  "tour.empty": "Belum ada turnamen terbuka — segera hadir!"
+  "tour.empty": "Belum ada turnamen terbuka — segera hadir!",
+  "tour.oppReady": "Lawan siap — tekan MAIN!"
 }

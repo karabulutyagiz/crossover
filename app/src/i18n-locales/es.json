@@ -488,5 +488,6 @@
   "tour.readyBody": "{t} — rival: {opp}",
   "tour.readyBtn": "JUGAR",
   "tour.readyWaiting": "Esperando a que el rival esté listo…",
-  "tour.empty": "No hay torneos abiertos ahora — ¡pronto habrá!"
+  "tour.empty": "No hay torneos abiertos ahora — ¡pronto habrá!",
+  "tour.oppReady": "El rival está listo — ¡pulsa JUGAR!"
 }

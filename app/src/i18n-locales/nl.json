@@ -488,5 +488,6 @@
   "tour.readyBody": "{t} — tegenstander: {opp}",
   "tour.readyBtn": "SPELEN",
   "tour.readyWaiting": "Wachten tot de tegenstander klaar is…",
-  "tour.empty": "Momenteel geen open toernooi — binnenkort nieuwe!"
+  "tour.empty": "Momenteel geen open toernooi — binnenkort nieuwe!",
+  "tour.oppReady": "Tegenstander is klaar — tik op SPELEN!"
 }

@@ -387,3 +387,24 @@ function TourBox({ m, youId }: { m: TourMatch; youId: string | null }) {
     </View>
   );
 }
+
+// ── Turnuva maçın hazır: OYNA (iki taraf da basınca oda kurulur) ──
+export function TournamentReadyDialog({ state, actions }: { state: GameState; actions: Actions }) {
+  const r = state.tournamentReady; if (!r) return null;
+  return (
+    <Dialog title={t('tour.readyTitle')} onClose={() => actions.clearTournamentReady()} accent>
+      <View style={{ alignItems: 'center', gap: mk(12) }}>
+        <IcTrophy size={mk(120)} />
+        <Text style={{ color: C.white, fontFamily: F.bold, fontSize: mk(22), textAlign: 'center', lineHeight: mk(29) }}>{t('tour.readyBody', { t: r.tournamentName, opp: r.opponentName })}</Text>
+        {r.youReady ? (
+          <Text style={{ color: C.textSub, fontFamily: F.black, fontSize: mk(19), textAlign: 'center' }}>{t('tour.readyWaiting')}</Text>
+        ) : (
+          <>
+            {r.oppReady ? <Text style={{ color: C.green, fontFamily: F.black, fontSize: mk(19) }}>{t('tour.oppReady')}</Text> : null}
+            <ChunkyButton kind="green" label={t('tour.readyBtn')} height={mk(88)} size={mk(36)} style={{ alignSelf: 'stretch' }} onPress={() => actions.tournamentReady(r.matchId)} />
+          </>
+        )}
+      </View>
+    </Dialog>
+  );
+}

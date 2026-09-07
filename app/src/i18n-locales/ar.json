@@ -488,5 +488,6 @@
   "tour.readyBody": "{t} — الخصم: {opp}",
   "tour.readyBtn": "العب",
   "tour.readyWaiting": "بانتظار جاهزية الخصم…",
-  "tour.empty": "لا بطولات مفتوحة حاليًا — قريبًا!"
+  "tour.empty": "لا بطولات مفتوحة حاليًا — قريبًا!",
+  "tour.oppReady": "الخصم جاهز — اضغط العب!"
 }
