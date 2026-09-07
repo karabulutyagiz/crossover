@@ -80,14 +80,15 @@ export function ChunkyButton({ kind = 'green', label, sub, over, onPress, height
 }) {
   const k = BTN[kind];
   const iconSrc = gem ? UI2.hud_gem : icon;
+  const ow = Math.min(mk(4), Math.max(0.9, size * 0.085)); // kontur: puntonun ~%8.5'i (11 pt → 0.9, 17 pt → 1.5)
   return (
     <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [{ opacity: disabled ? 0.55 : 1, transform: [{ translateY: pressed ? 2 : 0 }] }, style]}>
       <Plate face={k.face} top={k.top} lip={k.lip} radius={radius} inner={{ height: height - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: mk(10), paddingHorizontal: mk(18) }}>
         {iconSrc ? <Image source={iconSrc} style={{ width: size * 1.05, height: size * 1.05 }} resizeMode="contain" /> : null}
         <View style={{ alignItems: 'center' }}>
-          {over ? <OutlinedText size={size * 0.62} outline={k.textOutline} width={mk(3)} numberOfLines={1} fit style={{ marginBottom: -mk(3) }}>{over}</OutlinedText> : null}
-          <OutlinedText size={size} outline={k.textOutline} width={mk(4)}>{label}</OutlinedText>
-          {sub ? <OutlinedText size={subSize ?? size * 0.55} outline={k.textOutline} width={mk(3)} style={{ marginTop: -mk(4) }}>{sub}</OutlinedText> : null}
+          {over ? <OutlinedText size={size * 0.62} outline={k.textOutline} width={ow * 0.8} numberOfLines={1} fit style={{ marginBottom: -mk(3) }}>{over}</OutlinedText> : null}
+          <OutlinedText size={size} outline={k.textOutline} width={ow}>{label}</OutlinedText>
+          {sub ? <OutlinedText size={subSize ?? size * 0.55} outline={k.textOutline} width={ow * 0.8} style={{ marginTop: -mk(4) }}>{sub}</OutlinedText> : null}
         </View>
       </Plate>
     </Pressable>

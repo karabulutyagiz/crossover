@@ -207,7 +207,7 @@ function ProductCard({ width, height, title, subtitle, art, artNode, artScale = 
         </View>
         {desc ? <Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7} style={{ color: C.white, fontFamily: F.black, fontSize: mk(14), textAlign: 'center', lineHeight: mk(17), marginTop: mk(2) }}>{desc}</Text> : null}
         <View style={{ width: '100%', marginTop: mk(6), marginBottom: mk(8) }}>
-          <ChunkyButton kind="green" gem={button.gem} label={button.label} height={mk(52)} size={mk(24)} onPress={button.onPress} disabled={button.disabled} />
+          <ChunkyButton kind="green" gem={button.gem} label={button.label} height={mk(58)} size={mk(29)} onPress={button.onPress} disabled={button.disabled} />
         </View>
       </Plate>
     </View>
@@ -223,7 +223,7 @@ function CosmeticCard({ item, width, owned, onBuy, disabled }: { item: StoreCata
         </View>
         <View style={{ flex: 1 }} />
         <View style={{ width: '100%', marginBottom: mk(12) }}>
-          <ChunkyButton kind="green" gem={!owned} label={owned ? S.owned : String(item.diamondPrice)} height={mk(74)} size={mk(30)} onPress={onBuy} disabled={owned || disabled} />
+          <ChunkyButton kind="green" gem={!owned} label={owned ? S.owned : String(item.diamondPrice)} height={mk(74)} size={mk(32)} onPress={onBuy} disabled={owned || disabled} />
         </View>
       </Plate>
     </View>
@@ -236,7 +236,7 @@ function FrameCard({ item, owned, onBuy, disabled }: { item: StoreCatalogItem; o
         <View style={{ width: mk(130), height: mk(130), alignItems: 'center', justifyContent: 'center' }}><CosmeticPreview item={item} size={mk(120)} /></View>
         <View style={{ flex: 1 }}>
           <OutlinedText size={mk(24)} width={mk(2)} align="left" numberOfLines={1}>{item.name.toLocaleUpperCase('tr')}</OutlinedText>
-          <ChunkyButton kind="green" gem={!owned} label={owned ? S.owned : String(item.diamondPrice)} height={mk(66)} size={mk(28)} onPress={onBuy} disabled={owned || disabled} style={{ marginTop: mk(8) }} />
+          <ChunkyButton kind="green" gem={!owned} label={owned ? S.owned : String(item.diamondPrice)} height={mk(66)} size={mk(30)} onPress={onBuy} disabled={owned || disabled} style={{ marginTop: mk(8) }} />
         </View>
       </Plate>
     </View>
