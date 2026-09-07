@@ -10180,7 +10180,7 @@ try {
 
 // enabled=false: ön-yükleme yapılmaz (boş AdMob isteği atılmaz) — ResultScreen
 // yalnız "kayıp + maç sonu" durumunda true geçer (istek şişmesi düzeltmesi 2026-08-29).
-function useAdState(onReward?: () => void, enabled = true) {
+export function useAdState(onReward?: () => void, enabled = true) {
   const [adsWatched, setAdsWatched] = useState(0);
   const [adLoading, setAdLoading] = useState(false);
   // Ad failures surface as state so the caller renders a skinned GameModal (no native Alert).

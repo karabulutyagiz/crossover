@@ -26,6 +26,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCrossover, type GameState } from './src/useCrossover';
 import type { GameMode } from './src/protocol';
 import { t, setLanguage } from './src/i18n';
+import { Ui2Tabs } from './src/ui2/Ui2Tabs';
 
 // ── AÇILIŞTAKİ BEYAZ KARE (kullanıcı raporu 2026-08-13) ────────────────────
 // Native splash, RN kök görünümü bağlanır bağlanmaz KENDİLİĞİNDEN kapanıyordu;
@@ -52,6 +53,12 @@ const DEV_SHOT_MODE = false;
 const DEV_SHOT_LANG = 'tr';
 // Dev-only: force the tutorial (antrenman) flow to inspect its layout. NEVER ships true.
 const FORCE_TUTORIAL_DEV = false;
+// UI2 (2026-09-07): referans mock'lardan sıfırdan yazılan sekme arayüzü. Tamamlanana
+// dek env bayrağıyla açılır (EXPO_PUBLIC_UI2=1); OTA'ya bayraksız gitmez.
+const UI2_ON = process.env.EXPO_PUBLIC_UI2 === '1';
+// UI2 web önizlemesi: EXPO_PUBLIC_UI2_PREVIEW=1 npx expo start --web — ağ/IAP yok, sahte state.
+const UI2_PREVIEW = __DEV__ && Platform.OS === 'web' && process.env.EXPO_PUBLIC_UI2_PREVIEW === '1';
+const Ui2Preview = UI2_PREVIEW ? require('./src/ui2/Preview').default : null;
 import { BASE_H, uiScaleFor, canvasSizeFor } from './src/layout';
 import { setGemTarget } from './src/gemTarget';
 import { addNotificationTapListener, getPushPermissionGranted, setBadge } from './src/notifications';
@@ -773,6 +780,7 @@ function OutgoingInviteBanner({ invite, onCancel, offsetY = 0 }: {
 // Safe-area context must wrap everything that calls useSafeAreaInsets (screens,
 // banners, tab bar) — the provider lives in the default export, the app in AppRoot.
 export default function App() {
+  if (Ui2Preview) return <Ui2Preview />;
   return (
     <SafeAreaProvider>
       <ScaledRoot />
@@ -1345,6 +1353,7 @@ function AppRoot() {
     'Poppins-Black': require('./assets/fonts/Poppins-Black.ttf'),
     'Poppins-ExtraBold': require('./assets/fonts/Poppins-ExtraBold.ttf'),
     'Poppins-SemiBold': require('./assets/fonts/Poppins-SemiBold.ttf'),
+    'LilitaOne-Regular': require('./assets/fonts/LilitaOne-Regular.ttf'), // UI2 başlık fontu (mock'taki tombul oyun yazısı)
   });
   const fontsReady = fontsLoaded || !!fontError; // don't get stuck if a font fails
   const [langKey, setLangKey] = useState(0); // increment to force full remount after language change
@@ -2933,6 +2942,9 @@ function AppRoot() {
         </Animated.View>
       ) : null}
 
+      {UI2_ON ? (
+        <Ui2Tabs state={state} actions={actions} activeTab={activeTab} goToTab={goToTab} onOpenLevelRoad={() => setLevelRoadOpen(true)} onDiamondCelebration={(c) => setGemCelebration({ kind: 'purchase', amount: c.amount })} />
+      ) : (<>
       <Animated.ScrollView
         ref={scrollRef}
         horizontal
@@ -3040,6 +3052,7 @@ function AppRoot() {
             gerçek Turnuvalar sekmesi artık TAB_DEFS'te — ikisi birden 6 buton
             yapıyordu. ComingSoonBadge de onunla gitti. */}
       </View>
+      </>)}
 
       {__DEV__ && state.phase === 'home' ? (
         <View style={{ position: 'absolute', left: 12, right: 12, bottom: Math.max(insets.bottom, 12) + 78, gap: 6, alignItems: 'center', zIndex: 30 }} pointerEvents="box-none">
