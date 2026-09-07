@@ -489,5 +489,9 @@
   "tour.readyBtn": "بازی",
   "tour.readyWaiting": "در انتظار آماده شدن حریف…",
   "tour.empty": "فعلاً تورنمنت بازی نیست — به‌زودی!",
-  "tour.oppReady": "حریف آماده است — بازی را بزن!"
+  "tour.oppReady": "حریف آماده است — بازی را بزن!",
+  "tour.wonTitle": "قهرمان! 🏆",
+  "tour.wonBody": "{t} را بردی! جایزه اضافه شد: +{p} 💎",
+  "tour.secondTitle": "فینالیست! 🥈",
+  "tour.secondBody": "دوم شدی در {t}! جایزه اضافه شد: +{p} 💎"
 }

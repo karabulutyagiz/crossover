@@ -489,5 +489,9 @@
   "tour.readyBtn": "เล่น",
   "tour.readyWaiting": "รอคู่แข่งพร้อม…",
   "tour.empty": "ตอนนี้ยังไม่มีทัวร์นาเมนต์ที่เปิดอยู่ — เร็วๆ นี้!",
-  "tour.oppReady": "คู่แข่งพร้อมแล้ว — กดเล่น!"
+  "tour.oppReady": "คู่แข่งพร้อมแล้ว — กดเล่น!",
+  "tour.wonTitle": "แชมป์! 🏆",
+  "tour.wonBody": "คุณชนะ {t}! รับรางวัลแล้ว: +{p} 💎",
+  "tour.secondTitle": "รองแชมป์! 🥈",
+  "tour.secondBody": "ที่สองใน {t}! รับรางวัลแล้ว: +{p} 💎"
 }

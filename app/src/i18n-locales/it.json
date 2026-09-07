@@ -489,5 +489,9 @@
   "tour.readyBtn": "GIOCA",
   "tour.readyWaiting": "In attesa che l’avversario sia pronto…",
   "tour.empty": "Nessun torneo aperto al momento — presto nuovi!",
-  "tour.oppReady": "L’avversario è pronto — premi GIOCA!"
+  "tour.oppReady": "L’avversario è pronto — premi GIOCA!",
+  "tour.wonTitle": "CAMPIONE! 🏆",
+  "tour.wonBody": "Hai vinto {t}! Premio accreditato: +{p} 💎",
+  "tour.secondTitle": "FINALISTA! 🥈",
+  "tour.secondBody": "Secondo posto in {t}! Premio accreditato: +{p} 💎"
 }

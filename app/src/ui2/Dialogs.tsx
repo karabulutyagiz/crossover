@@ -13,7 +13,7 @@ import { Bar, ChunkyButton, GemAmount, OutlinedText, Plate, Ribbon, fmt } from '
 import { S, up } from './strings';
 import { hasActiveSocialPack } from '../monetization';
 import { PACK_MODES } from './products';
-import { IcCheckBadge, IcNavFriends, IcNavPlay, IcStar, IcTrophy } from './icons-ui';
+import { IcCheckBadge, IcCrownBig, IcNavFriends, IcNavPlay, IcStar, IcTrophy } from './icons-ui';
 import { IcBell, IcCheck, IcChevron, IcClose, IcCopy, IcGlobe, IcLock, IcModeCountryTeam, IcModeCozKazan, IcModeGuessWho, IcModeLetterTeam, IcModeTeamTeam, IcModeXox, IcMusic, IcSound, IcVibrate } from './icons';
 import { C, F, LIP, OUTLINE, SIDE, mk } from './tokens';
 
@@ -404,6 +404,21 @@ export function TournamentReadyDialog({ state, actions }: { state: GameState; ac
             <ChunkyButton kind="green" label={t('tour.readyBtn')} height={mk(88)} size={mk(36)} style={{ alignSelf: 'stretch' }} onPress={() => actions.tournamentReady(r.matchId)} />
           </>
         )}
+      </View>
+    </Dialog>
+  );
+}
+
+// ── Turnuva bitti: şampiyon / finalist ödülü ──
+export function TournamentOverDialog({ state, actions }: { state: GameState; actions: Actions }) {
+  const o = state.tournamentOver; if (!o) return null;
+  return (
+    <Dialog title={t(o.youWon ? 'tour.wonTitle' : 'tour.secondTitle')} onClose={() => actions.clearTournamentOver()} accent>
+      <View style={{ alignItems: 'center', gap: mk(12) }}>
+        {o.youWon ? <IcTrophy size={mk(150)} /> : <IcCrownBig size={mk(130)} color="#D7DCE6" base="#9AA3B5" />}
+        <Text style={{ color: C.white, fontFamily: F.bold, fontSize: mk(22), textAlign: 'center', lineHeight: mk(29) }}>{t(o.youWon ? 'tour.wonBody' : 'tour.secondBody', { t: o.tournamentName, p: o.prize })}</Text>
+        {o.prize > 0 ? <GemAmount amount={`+${fmt(o.prize)}`} size={mk(40)} color={C.gold} /> : null}
+        <ChunkyButton kind="gold" label={up(t('common.continue'))} height={mk(84)} size={mk(32)} style={{ alignSelf: 'stretch' }} onPress={() => actions.clearTournamentOver()} />
       </View>
     </Dialog>
   );

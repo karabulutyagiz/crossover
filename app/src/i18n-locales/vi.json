@@ -489,5 +489,9 @@
   "tour.readyBtn": "CHƠI",
   "tour.readyWaiting": "Đang chờ đối thủ sẵn sàng…",
   "tour.empty": "Hiện chưa có giải nào mở — sắp có!",
-  "tour.oppReady": "Đối thủ đã sẵn sàng — nhấn CHƠI!"
+  "tour.oppReady": "Đối thủ đã sẵn sàng — nhấn CHƠI!",
+  "tour.wonTitle": "VÔ ĐỊCH! 🏆",
+  "tour.wonBody": "Bạn đã thắng {t}! Đã cộng thưởng: +{p} 💎",
+  "tour.secondTitle": "Á QUÂN! 🥈",
+  "tour.secondBody": "Hạng nhì tại {t}! Đã cộng thưởng: +{p} 💎"
 }

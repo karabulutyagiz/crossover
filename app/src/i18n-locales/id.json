@@ -489,5 +489,9 @@
   "tour.readyBtn": "MAIN",
   "tour.readyWaiting": "Menunggu lawan siap…",
   "tour.empty": "Belum ada turnamen terbuka — segera hadir!",
-  "tour.oppReady": "Lawan siap — tekan MAIN!"
+  "tour.oppReady": "Lawan siap — tekan MAIN!",
+  "tour.wonTitle": "JUARA! 🏆",
+  "tour.wonBody": "Kamu memenangkan {t}! Hadiah masuk: +{p} 💎",
+  "tour.secondTitle": "FINALIS! 🥈",
+  "tour.secondBody": "Peringkat kedua di {t}! Hadiah masuk: +{p} 💎"
 }

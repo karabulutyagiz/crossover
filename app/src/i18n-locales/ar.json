@@ -489,5 +489,9 @@
   "tour.readyBtn": "العب",
   "tour.readyWaiting": "بانتظار جاهزية الخصم…",
   "tour.empty": "لا بطولات مفتوحة حاليًا — قريبًا!",
-  "tour.oppReady": "الخصم جاهز — اضغط العب!"
+  "tour.oppReady": "الخصم جاهز — اضغط العب!",
+  "tour.wonTitle": "البطل! 🏆",
+  "tour.wonBody": "فزت ببطولة {t}! أُضيفت الجائزة: +{p} 💎",
+  "tour.secondTitle": "الوصيف! 🥈",
+  "tour.secondBody": "المركز الثاني في {t}! أُضيفت الجائزة: +{p} 💎"
 }

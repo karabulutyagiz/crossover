@@ -489,5 +489,9 @@
   "tour.readyBtn": "SPELEN",
   "tour.readyWaiting": "Wachten tot de tegenstander klaar is…",
   "tour.empty": "Momenteel geen open toernooi — binnenkort nieuwe!",
-  "tour.oppReady": "Tegenstander is klaar — tik op SPELEN!"
+  "tour.oppReady": "Tegenstander is klaar — tik op SPELEN!",
+  "tour.wonTitle": "KAMPIOEN! 🏆",
+  "tour.wonBody": "Je hebt {t} gewonnen! Prijs toegevoegd: +{p} 💎",
+  "tour.secondTitle": "FINALIST! 🥈",
+  "tour.secondBody": "Tweede plaats in {t}! Prijs toegevoegd: +{p} 💎"
 }

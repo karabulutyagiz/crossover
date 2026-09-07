@@ -3573,8 +3573,8 @@ function AppRoot() {
 
       {/* Turnuva bitti: şampiyon / finalist ödül popup'ı */}
       <GameModal
-        visible={Boolean(state.tournamentOver)}
         onClose={actions.clearTournamentOver}
+        visible={!UI2_ON && Boolean(state.tournamentOver)}
         title={state.tournamentOver?.youWon ? t('tour.wonTitle') : t('tour.secondTitle')}
         icon="trophy"
         coach

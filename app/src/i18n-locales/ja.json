@@ -489,5 +489,9 @@
   "tour.readyBtn": "プレイ",
   "tour.readyWaiting": "相手の準備を待っています…",
   "tour.empty": "現在受付中の大会はありません — 近日開催！",
-  "tour.oppReady": "相手の準備完了 — プレイを押そう！"
+  "tour.oppReady": "相手の準備完了 — プレイを押そう！",
+  "tour.wonTitle": "優勝！🏆",
+  "tour.wonBody": "{t}で優勝！賞品を獲得：+{p} 💎",
+  "tour.secondTitle": "準優勝！🥈",
+  "tour.secondBody": "{t}で2位！賞品を獲得：+{p} 💎"
 }

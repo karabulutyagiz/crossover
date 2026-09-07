@@ -489,5 +489,9 @@
   "tour.readyBtn": "PELAA",
   "tour.readyWaiting": "Odotetaan vastustajan valmiutta…",
   "tour.empty": "Ei avoimia turnauksia nyt — uusia pian!",
-  "tour.oppReady": "Vastustaja on valmis — paina PELAA!"
+  "tour.oppReady": "Vastustaja on valmis — paina PELAA!",
+  "tour.wonTitle": "MESTARI! 🏆",
+  "tour.wonBody": "Voitit turnauksen {t}! Palkinto lisätty: +{p} 💎",
+  "tour.secondTitle": "FINALISTI! 🥈",
+  "tour.secondBody": "Toinen sija turnauksessa {t}! Palkinto lisätty: +{p} 💎"
 }

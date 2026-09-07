@@ -30,6 +30,7 @@ const state = {
     { userId: 'f5', displayName: 'Deniz', selectedAvatar: 'pp6', avatar: 'pp6', trophies: 1950, arena: { name: 'Şampiyonlar Ligi', icon: '', minTrophies: 1000 }, online: false, lastSeen: new Date(Date.now() - 12 * 60000).toISOString() },
   ],
   tournament: FAKE_TOUR,
+  tournamentOver: (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dlg') === 'tover') ? { type: 'tournament_over' as const, tournamentId: 't2', youWon: true, placement: 1, prize: 300, tournamentName: 'Haftalık Kupa' } : null,
   tournamentReady: (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dlg') === 'tready') ? { type: 'tournament_match_ready' as const, tournamentId: 't2', matchId: 'm5', opponentName: 'Emir', tournamentName: 'Haftalık Kupa', youReady: false, oppReady: true } : null,
   tournaments: [
     { id: 't1', name: 'Şampiyonlar Kupası', size: 16, joined: 9, youJoined: false, status: 'registration', prizeFirst: 1000, prizeSecond: 300, entryFee: 0 },

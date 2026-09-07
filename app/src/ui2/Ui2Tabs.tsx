@@ -11,7 +11,7 @@ import { StoreTab } from './StoreTab';
 import { FriendsTab } from './FriendsTab';
 import { TournamentsTab } from './TournamentsTab';
 import { CollectionTab } from './CollectionTab';
-import { ConfirmDialog, LanguageDialog, LeagueDialog, ModeMenuDialog, PrivateRoomDialog, QuestsDialog, RequestsDialog, SettingsDialog, TournamentDialog, TournamentReadyDialog } from './Dialogs';
+import { ConfirmDialog, LanguageDialog, LeagueDialog, ModeMenuDialog, PrivateRoomDialog, QuestsDialog, RequestsDialog, SettingsDialog, TournamentDialog, TournamentOverDialog, TournamentReadyDialog } from './Dialogs';
 import { setLanguage, t } from '../i18n';
 import { S, up } from './strings';
 import { useStorePurchases } from './useStorePurchases';
@@ -62,6 +62,7 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
       {dlg === 'league' ? <LeagueDialog state={state} onClose={closeDlg} /> : null}
       {dlg === 'tournament' && tourId ? <TournamentDialog state={state} actions={actions} id={tourId} onClose={closeDlg} /> : null}
       {state.tournamentReady ? <TournamentReadyDialog state={state} actions={actions} /> : null}
+      {state.tournamentOver ? <TournamentOverDialog state={state} actions={actions} /> : null}
       {confirm ? <ConfirmDialog title={confirm.title} body={confirm.body} price={confirm.price} priceText={confirm.priceText} onClose={() => setConfirm(null)} onYes={() => { const c = confirm; setConfirm(null); c.onYes(); }} /> : null}
       {(notice || (store.dialogOpen && store.dialog)) ? (
         <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(2,10,40,0.72)', alignItems: 'center', justifyContent: 'center', padding: SIDE }}>

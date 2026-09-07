@@ -489,5 +489,9 @@
   "tour.readyBtn": "플레이",
   "tour.readyWaiting": "상대의 준비를 기다리는 중…",
   "tour.empty": "지금 열린 토너먼트가 없어요 — 곧 새로 열려요!",
-  "tour.oppReady": "상대가 준비됐어요 — 플레이를 누르세요!"
+  "tour.oppReady": "상대가 준비됐어요 — 플레이를 누르세요!",
+  "tour.wonTitle": "챔피언! 🏆",
+  "tour.wonBody": "{t}에서 우승했어요! 상금 지급: +{p} 💎",
+  "tour.secondTitle": "준우승! 🥈",
+  "tour.secondBody": "{t}에서 2위! 상금 지급: +{p} 💎"
 }

@@ -489,5 +489,9 @@
   "tour.readyBtn": "開始",
   "tour.readyWaiting": "等待對手準備…",
   "tour.empty": "目前沒有開放的錦標賽——敬請期待！",
-  "tour.oppReady": "對手已就緒——點擊開始！"
+  "tour.oppReady": "對手已就緒——點擊開始！",
+  "tour.wonTitle": "冠軍！🏆",
+  "tour.wonBody": "你贏得了{t}！獎勵已入帳：+{p} 💎",
+  "tour.secondTitle": "亞軍！🥈",
+  "tour.secondBody": "{t} 第二名！獎勵已入帳：+{p} 💎"
 }

@@ -489,5 +489,9 @@
   "tour.readyBtn": "SPILL",
   "tour.readyWaiting": "Venter på at motstanderen blir klar…",
   "tour.empty": "Ingen åpne turneringer nå — nye kommer snart!",
-  "tour.oppReady": "Motstanderen er klar — trykk SPILL!"
+  "tour.oppReady": "Motstanderen er klar — trykk SPILL!",
+  "tour.wonTitle": "MESTER! 🏆",
+  "tour.wonBody": "Du vant {t}! Premie lagt til: +{p} 💎",
+  "tour.secondTitle": "FINALIST! 🥈",
+  "tour.secondBody": "Andreplass i {t}! Premie lagt til: +{p} 💎"
 }

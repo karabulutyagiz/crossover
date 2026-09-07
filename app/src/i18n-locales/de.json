@@ -489,5 +489,9 @@
   "tour.readyBtn": "SPIELEN",
   "tour.readyWaiting": "Warten, bis der Gegner bereit ist…",
   "tour.empty": "Derzeit kein offenes Turnier — bald neue!",
-  "tour.oppReady": "Gegner ist bereit — tipp auf SPIELEN!"
+  "tour.oppReady": "Gegner ist bereit — tipp auf SPIELEN!",
+  "tour.wonTitle": "CHAMPION! 🏆",
+  "tour.wonBody": "Du hast {t} gewonnen! Preis gutgeschrieben: +{p} 💎",
+  "tour.secondTitle": "FINALIST! 🥈",
+  "tour.secondBody": "Zweiter Platz bei {t}! Preis gutgeschrieben: +{p} 💎"
 }

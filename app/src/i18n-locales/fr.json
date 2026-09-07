@@ -489,5 +489,9 @@
   "tour.readyBtn": "JOUER",
   "tour.readyWaiting": "En attente que l’adversaire soit prêt…",
   "tour.empty": "Aucun tournoi ouvert pour l’instant — bientôt !",
-  "tour.oppReady": "L’adversaire est prêt — appuie sur JOUER !"
+  "tour.oppReady": "L’adversaire est prêt — appuie sur JOUER !",
+  "tour.wonTitle": "CHAMPION ! 🏆",
+  "tour.wonBody": "Tu as remporté {t} ! Prix ajouté : +{p} 💎",
+  "tour.secondTitle": "FINALISTE ! 🥈",
+  "tour.secondBody": "Deuxième place à {t} ! Prix ajouté : +{p} 💎"
 }
