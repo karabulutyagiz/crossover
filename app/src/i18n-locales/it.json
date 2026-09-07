@@ -493,5 +493,19 @@
   "tour.wonTitle": "CAMPIONE! 🏆",
   "tour.wonBody": "Hai vinto {t}! Premio accreditato: +{p} 💎",
   "tour.secondTitle": "FINALISTA! 🥈",
-  "tour.secondBody": "Secondo posto in {t}! Premio accreditato: +{p} 💎"
+  "tour.secondBody": "Secondo posto in {t}! Premio accreditato: +{p} 💎",
+  "level.roadTitle": "Strada dei livelli",
+  "level.levelN": "Livello {n}",
+  "level.claimShort": "Ritira",
+  "level.frameOwned": "Sbloccato",
+  "level.toNext": "{n} XP al prossimo livello",
+  "level.maxed": "Livello massimo — GOAT!",
+  "level.tierBronze": "Bronzo",
+  "level.tierSilver": "Argento",
+  "level.tierGold": "Oro",
+  "level.tierDiamond": "Diamante",
+  "level.tierGoat": "GOAT",
+  "level.frameLockedAt": "Dal livello {n}",
+  "arenas.here": "SEI QUI",
+  "arenas.passed": "SUPERATA"
 }

@@ -493,5 +493,19 @@
   "tour.wonTitle": "MESTARI! 🏆",
   "tour.wonBody": "Voitit turnauksen {t}! Palkinto lisätty: +{p} 💎",
   "tour.secondTitle": "FINALISTI! 🥈",
-  "tour.secondBody": "Toinen sija turnauksessa {t}! Palkinto lisätty: +{p} 💎"
+  "tour.secondBody": "Toinen sija turnauksessa {t}! Palkinto lisätty: +{p} 💎",
+  "level.roadTitle": "Tasopolku",
+  "level.levelN": "Taso {n}",
+  "level.claimShort": "Lunasta",
+  "level.frameOwned": "Avattu",
+  "level.toNext": "{n} XP seuraavaan tasoon",
+  "level.maxed": "Korkein taso saavutettu — GOAT!",
+  "level.tierBronze": "Pronssi",
+  "level.tierSilver": "Hopea",
+  "level.tierGold": "Kulta",
+  "level.tierDiamond": "Timantti",
+  "level.tierGoat": "GOAT",
+  "level.frameLockedAt": "Avautuu tasolla {n}",
+  "arenas.here": "OLET TÄSSÄ",
+  "arenas.passed": "LÄPÄISTY"
 }

@@ -11,7 +11,7 @@ import { StoreTab } from './StoreTab';
 import { FriendsTab } from './FriendsTab';
 import { TournamentsTab } from './TournamentsTab';
 import { CollectionTab } from './CollectionTab';
-import { ConfirmDialog, LanguageDialog, LeagueDialog, ModeMenuDialog, PrivateRoomDialog, QuestsDialog, RequestsDialog, SettingsDialog, TournamentDialog, TournamentOverDialog, TournamentReadyDialog } from './Dialogs';
+import { ConfirmDialog, LanguageDialog, LeagueDialog, ModeMenuDialog, PrivateRoomDialog, QuestsDialog, RequestsDialog, SettingsDialog, ArenasDialog, LevelRoadDialog, TournamentDialog, TournamentOverDialog, TournamentReadyDialog } from './Dialogs';
 import { setLanguage, t } from '../i18n';
 import { S, up } from './strings';
 import { useStorePurchases } from './useStorePurchases';
@@ -19,7 +19,7 @@ import { C, F, LIP, OUTLINE, SIDE, mk } from './tokens';
 
 const KEYS: NavKey[] = ['store', 'collection', 'play', 'friends', 'tournaments'];
 type Confirm = { title: string; body: string; price?: number; priceText?: string; onYes: () => void };
-export type Ui2DialogKey = 'mode' | 'bot' | 'quests' | 'settings' | 'language' | 'room' | 'requests' | 'league' | 'tournament' | null;
+export type Ui2DialogKey = 'mode' | 'bot' | 'quests' | 'settings' | 'language' | 'room' | 'requests' | 'league' | 'tournament' | 'road' | 'arenas' | null;
 
 export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, onLanguageChange, onDiamondCelebration, initialScrollY = 0, initialDialog = null, initialCollectionSub }: {
   state: GameState; actions: Actions; activeTab: number; goToTab: (i: number) => void;
@@ -35,12 +35,12 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
   useEffect(() => { if (initialScrollY) setTimeout(() => scrollRef.current?.scrollTo({ y: initialScrollY, animated: false }), 50); }, [initialScrollY, activeTab]);
   const active = KEYS[activeTab] ?? 'play';
   const say = useCallback((title: string, body: string) => setNotice({ title, body }), []);
-  const common = { state, actions, onOpenSettings: () => setDlg('settings'), onOpenProfile: () => actions.openProfile(), onOpenArenas: () => actions.openArenas() };
+  const common = { state, actions, onOpenSettings: () => setDlg('settings'), onOpenProfile: () => actions.openProfile(), onOpenArenas: () => setDlg('arenas') };
   let body: ReactNode;
   if (active === 'store') body = <StoreTab {...common} store={store} onConfirm={(c) => setConfirm(c)} />;
-  else if (active === 'play') body = <HomeTab {...common} onOpenLevelRoad={onOpenLevelRoad} onOpenStore={() => goToTab(0)} onOpenQuests={() => { actions.getDailyQuests(); setDlg('quests'); }} onOpenModes={() => setDlg('mode')} onOpenBot={() => setDlg('bot')} />;
+  else if (active === 'play') body = <HomeTab {...common} onOpenLevelRoad={() => setDlg('road')} onOpenStore={() => goToTab(0)} onOpenQuests={() => { actions.getDailyQuests(); setDlg('quests'); }} onOpenModes={() => setDlg('mode')} onOpenBot={() => setDlg('bot')} />;
   else if (active === 'friends') body = <FriendsTab {...common} onOpenRequests={() => setDlg('requests')} onOpenAddFriend={() => say(t('friends.addSection'), t('ui2.addFriendHint'))} onNotice={say} />;
-  else if (active === 'tournaments') body = <TournamentsTab {...common} onOpenLevelRoad={onOpenLevelRoad} onOpenLeague={() => { actions.getLeague(); setDlg('league'); }} onOpenTournament={(id) => { actions.getTournament(id); setTourId(id); setDlg('tournament'); }} onNotice={say} />;
+  else if (active === 'tournaments') body = <TournamentsTab {...common} onOpenLevelRoad={() => setDlg('road')} onOpenLeague={() => { actions.getLeague(); setDlg('league'); }} onOpenTournament={(id) => { actions.getTournament(id); setTourId(id); setDlg('tournament'); }} onNotice={say} />;
   else body = <CollectionTab {...common} onOpenStore={() => goToTab(0)} onNotice={say} initialSub={initialCollectionSub} />;
 
   const closeDlg = () => setDlg(null);
@@ -61,6 +61,8 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
       {dlg === 'requests' ? <RequestsDialog state={state} actions={actions} onClose={closeDlg} /> : null}
       {dlg === 'league' ? <LeagueDialog state={state} onClose={closeDlg} /> : null}
       {dlg === 'tournament' && tourId ? <TournamentDialog state={state} actions={actions} id={tourId} onClose={closeDlg} /> : null}
+      {dlg === 'road' ? <LevelRoadDialog state={state} actions={actions} onOpenStore={() => goToTab(0)} onClose={closeDlg} /> : null}
+      {dlg === 'arenas' ? <ArenasDialog state={state} onClose={closeDlg} /> : null}
       {state.tournamentReady ? <TournamentReadyDialog state={state} actions={actions} /> : null}
       {state.tournamentOver ? <TournamentOverDialog state={state} actions={actions} /> : null}
       {confirm ? <ConfirmDialog title={confirm.title} body={confirm.body} price={confirm.price} priceText={confirm.priceText} onClose={() => setConfirm(null)} onYes={() => { const c = confirm; setConfirm(null); c.onYes(); }} /> : null}

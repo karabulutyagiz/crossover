@@ -493,5 +493,19 @@
   "tour.wonTitle": "البطل! 🏆",
   "tour.wonBody": "فزت ببطولة {t}! أُضيفت الجائزة: +{p} 💎",
   "tour.secondTitle": "الوصيف! 🥈",
-  "tour.secondBody": "المركز الثاني في {t}! أُضيفت الجائزة: +{p} 💎"
+  "tour.secondBody": "المركز الثاني في {t}! أُضيفت الجائزة: +{p} 💎",
+  "level.roadTitle": "طريق المستويات",
+  "level.levelN": "المستوى {n}",
+  "level.claimShort": "استلام",
+  "level.frameOwned": "مفتوح",
+  "level.toNext": "{n} XP حتى المستوى التالي",
+  "level.maxed": "بلغت أعلى مستوى — GOAT!",
+  "level.tierBronze": "برونزي",
+  "level.tierSilver": "فضي",
+  "level.tierGold": "ذهبي",
+  "level.tierDiamond": "ماسي",
+  "level.tierGoat": "GOAT",
+  "level.frameLockedAt": "يُفتح عند المستوى {n}",
+  "arenas.here": "أنت هنا",
+  "arenas.passed": "مكتملة"
 }

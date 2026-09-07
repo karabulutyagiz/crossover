@@ -493,5 +493,19 @@
   "tour.wonTitle": "JUARA! 🏆",
   "tour.wonBody": "Anda memenangi {t}! Hadiah dimasukkan: +{p} 💎",
   "tour.secondTitle": "FINALIS! 🥈",
-  "tour.secondBody": "Tempat kedua dalam {t}! Hadiah dimasukkan: +{p} 💎"
+  "tour.secondBody": "Tempat kedua dalam {t}! Hadiah dimasukkan: +{p} 💎",
+  "level.roadTitle": "Laluan Tahap",
+  "level.levelN": "Tahap {n}",
+  "level.claimShort": "Tuntut",
+  "level.frameOwned": "Dibuka",
+  "level.toNext": "{n} XP ke tahap seterusnya",
+  "level.maxed": "Tahap tertinggi — GOAT!",
+  "level.tierBronze": "Gangsa",
+  "level.tierSilver": "Perak",
+  "level.tierGold": "Emas",
+  "level.tierDiamond": "Berlian",
+  "level.tierGoat": "GOAT",
+  "level.frameLockedAt": "Dibuka pada tahap {n}",
+  "arenas.here": "ANDA DI SINI",
+  "arenas.passed": "SELESAI"
 }

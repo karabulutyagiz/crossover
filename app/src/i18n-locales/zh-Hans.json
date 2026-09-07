@@ -493,5 +493,19 @@
   "tour.wonTitle": "冠军！🏆",
   "tour.wonBody": "你赢得了{t}！奖励已到账：+{p} 💎",
   "tour.secondTitle": "亚军！🥈",
-  "tour.secondBody": "{t} 第二名！奖励已到账：+{p} 💎"
+  "tour.secondBody": "{t} 第二名！奖励已到账：+{p} 💎",
+  "level.roadTitle": "等级之路",
+  "level.levelN": "第 {n} 级",
+  "level.claimShort": "领取",
+  "level.frameOwned": "已解锁",
+  "level.toNext": "距下一级还差 {n} XP",
+  "level.maxed": "已达最高等级——GOAT！",
+  "level.tierBronze": "青铜",
+  "level.tierSilver": "白银",
+  "level.tierGold": "黄金",
+  "level.tierDiamond": "钻石",
+  "level.tierGoat": "GOAT",
+  "level.frameLockedAt": "第 {n} 级解锁",
+  "arenas.here": "你在这里",
+  "arenas.passed": "已通过"
 }

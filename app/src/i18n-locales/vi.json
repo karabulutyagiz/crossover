@@ -493,5 +493,19 @@
   "tour.wonTitle": "VÔ ĐỊCH! 🏆",
   "tour.wonBody": "Bạn đã thắng {t}! Đã cộng thưởng: +{p} 💎",
   "tour.secondTitle": "Á QUÂN! 🥈",
-  "tour.secondBody": "Hạng nhì tại {t}! Đã cộng thưởng: +{p} 💎"
+  "tour.secondBody": "Hạng nhì tại {t}! Đã cộng thưởng: +{p} 💎",
+  "level.roadTitle": "Đường cấp độ",
+  "level.levelN": "Cấp {n}",
+  "level.claimShort": "Nhận",
+  "level.frameOwned": "Đã mở",
+  "level.toNext": "Còn {n} XP đến cấp tiếp theo",
+  "level.maxed": "Đã đạt cấp cao nhất — GOAT!",
+  "level.tierBronze": "Đồng",
+  "level.tierSilver": "Bạc",
+  "level.tierGold": "Vàng",
+  "level.tierDiamond": "Kim cương",
+  "level.tierGoat": "GOAT",
+  "level.frameLockedAt": "Mở ở cấp {n}",
+  "arenas.here": "BẠN Ở ĐÂY",
+  "arenas.passed": "ĐÃ QUA"
 }

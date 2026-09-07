@@ -493,5 +493,19 @@
   "tour.wonTitle": "MESTER! 🏆",
   "tour.wonBody": "Du vant {t}! Premie lagt til: +{p} 💎",
   "tour.secondTitle": "FINALIST! 🥈",
-  "tour.secondBody": "Andreplass i {t}! Premie lagt til: +{p} 💎"
+  "tour.secondBody": "Andreplass i {t}! Premie lagt til: +{p} 💎",
+  "level.roadTitle": "Nivåveien",
+  "level.levelN": "Nivå {n}",
+  "level.claimShort": "Hent",
+  "level.frameOwned": "Låst opp",
+  "level.toNext": "{n} XP til neste nivå",
+  "level.maxed": "Høyeste nivå nådd — GOAT!",
+  "level.tierBronze": "Bronse",
+  "level.tierSilver": "Sølv",
+  "level.tierGold": "Gull",
+  "level.tierDiamond": "Diamant",
+  "level.tierGoat": "GOAT",
+  "level.frameLockedAt": "Fra nivå {n}",
+  "arenas.here": "DU ER HER",
+  "arenas.passed": "FULLFØRT"
 }

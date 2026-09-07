@@ -1,6 +1,6 @@
 // UI2 pencereleri — mock: refs/popups.png (mavi çerçeve, başlık plakası, kırmızı X, altın vurgu).
 // Yerleşik katman (native Modal değil). Mod seçici, görevler, ayarlar, özel oda, satın alma onayı, istekler, lig.
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Image, Linking, Platform, Pressable, ScrollView, Share, Text, TextInput, View, type ImageSourcePropType } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useFeedbackPreferences } from '../feedback/useFeedbackPreferences';
@@ -12,13 +12,15 @@ import { UI2 } from './assets';
 import { Bar, ChunkyButton, GemAmount, OutlinedText, Plate, Ribbon, fmt } from './primitives';
 import { S, up } from './strings';
 import { hasActiveSocialPack } from '../monetization';
-import { PACK_MODES } from './products';
+import { ARENA_STEPS, LEVEL_CAP, PACK_MODES, PREMIUM_ROAD_PRICE } from './products';
+import { roadReward, type RoadReward } from './rewards';
 import { IcCheckBadge, IcCrownBig, IcNavFriends, IcNavPlay, IcStar, IcTrophy } from './icons-ui';
 import { IcBell, IcCheck, IcChevron, IcClose, IcCopy, IcGlobe, IcLock, IcModeCountryTeam, IcModeCozKazan, IcModeGuessWho, IcModeLetterTeam, IcModeTeamTeam, IcModeXox, IcMusic, IcSound, IcVibrate } from './icons';
 import { C, F, LIP, OUTLINE, SIDE, mk } from './tokens';
 
 // ── Kabuk ──────────────────────────────────────────────────────────────────────
-export function Dialog({ title, onClose, children, accent = false, wide = false }: { title: string; onClose: () => void; children: ReactNode; accent?: boolean; wide?: boolean }) {
+export function Dialog({ title, onClose, children, accent = false, wide = false, initialScrollY = 0 }: { title: string; onClose: () => void; children: ReactNode; accent?: boolean; wide?: boolean; initialScrollY?: number }) {
+  const scrollRef = useRef<ScrollView>(null);
   return (
     <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(2,10,40,0.74)', alignItems: 'center', justifyContent: 'center', padding: wide ? mk(20) : SIDE }}>
       <Pressable style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} onPress={onClose} />
@@ -29,7 +31,7 @@ export function Dialog({ title, onClose, children, accent = false, wide = false 
               <OutlinedText size={mk(36)} width={mk(3)} color={accent ? C.ink : C.white} outline={accent ? '#FFF6C7' : C.ink}>{title}</OutlinedText>
             </Plate>
           </View>
-          <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ paddingBottom: mk(4) }} keyboardShouldPersistTaps="handled">{children}</ScrollView>
+          <ScrollView ref={scrollRef} style={{ flexGrow: 0 }} contentContainerStyle={{ paddingBottom: mk(4) }} keyboardShouldPersistTaps="handled" onLayout={() => { if (initialScrollY > 0) scrollRef.current?.scrollTo({ y: initialScrollY, animated: false }); }}>{children}</ScrollView>
         </Plate>
         <Pressable onPress={onClose} hitSlop={10} style={{ position: 'absolute', top: -mk(6), right: -mk(6), width: mk(74), height: mk(74), borderRadius: mk(37), backgroundColor: C.red, borderWidth: mk(5), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}>
           <IcClose size={mk(46)} />
@@ -420,6 +422,94 @@ export function TournamentOverDialog({ state, actions }: { state: GameState; act
         {o.prize > 0 ? <GemAmount amount={`+${fmt(o.prize)}`} size={mk(40)} color={C.gold} /> : null}
         <ChunkyButton kind="gold" label={up(t('common.continue'))} height={mk(84)} size={mk(32)} style={{ alignSelf: 'stretch' }} onPress={() => actions.clearTournamentOver()} />
       </View>
+    </Dialog>
+  );
+}
+
+// ── Seviye Yolu: 50 seviye, ücretsiz + CO PASS şeridi, TOPLA ──
+const ROAD_ROW = mk(150);
+export function LevelRoadDialog({ state, actions, onOpenStore, onClose }: { state: GameState; actions: Actions; onOpenStore: () => void; onClose: () => void }) {
+  const p = state.profile; const level = p?.level ?? 1; const xp = p?.xp ?? 0; const xpNext = (p as any)?.xpForNext ?? 1000;
+  const claimed = new Set(p?.claimedLevels ?? []); const claimedP = new Set(p?.claimedPremium ?? []); const prem = !!p?.premiumRoad;
+  const rows = Array.from({ length: LEVEL_CAP }, (_, i) => i + 1).map((n) => ({ n, free: roadReward(p, n, 'free'), premium: roadReward(p, n, 'premium') })).filter((r) => r.free || r.premium);
+  const curIdx = Math.max(0, rows.findIndex((r) => r.n >= level)); const scrollY = Math.max(0, (curIdx - 1) * (ROAD_ROW + mk(10)) + mk(150));
+  return (
+    <Dialog title={up(t('level.roadTitle'))} onClose={onClose} wide accent initialScrollY={scrollY}>
+      {/* seviye + XP */}
+      <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} inner={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(14), paddingVertical: mk(10), gap: mk(12) }}>
+        <View style={{ width: mk(64), height: mk(64), borderRadius: mk(32), backgroundColor: '#2F8CFF', borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(30)} width={mk(3)}>{String(level)}</OutlinedText></View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(20) }}>{t('level.levelN', { n: level })}</Text>
+          <Bar value={xp} max={xpNext} height={mk(22)} style={{ marginTop: mk(4) }} />
+          <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(15), marginTop: mk(3) }}>{level >= LEVEL_CAP ? t('level.maxed') : t('level.toNext', { n: fmt(Math.max(0, xpNext - xp)) })}</Text>
+        </View>
+      </Plate>
+      {/* CO PASS durumu */}
+      <Plate face={prem ? C.gold : C.panelInk} top={prem ? C.goldLight : '#2F63C8'} lip={prem ? C.goldDark : '#041A4E'} radius={mk(18)} style={{ marginTop: mk(10) }} inner={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(14), paddingVertical: mk(8), gap: mk(10) }}>
+        <IcCrownBig size={mk(44)} />
+        <OutlinedText size={mk(26)} width={mk(2)} color={prem ? C.ink : C.gold} outline={prem ? '#FFF6C7' : C.ink} align="left" style={{ flex: 1 }}>{prem ? `CO PASS · ${t('store.badgeActive')}` : 'CO PASS'}</OutlinedText>
+        {!prem ? <ChunkyButton kind="green" gem label={String(PREMIUM_ROAD_PRICE)} height={mk(56)} size={mk(22)} style={{ width: mk(150) }} onPress={() => { onClose(); onOpenStore(); }} /> : null}
+      </Plate>
+      {/* şerit başlıkları */}
+      <View style={{ flexDirection: 'row', marginTop: mk(12), marginBottom: mk(6), paddingLeft: mk(70) }}>
+        <Text style={{ flex: 1, color: C.textSub, fontFamily: F.black, fontSize: mk(14), textAlign: 'center', letterSpacing: 0.6 }}>{up(t('ui2.free'))}</Text>
+        <Text style={{ flex: 1, color: C.gold, fontFamily: F.black, fontSize: mk(14), textAlign: 'center', letterSpacing: 0.6 }}>CO PASS</Text>
+      </View>
+      {rows.map((r) => {
+        const reached = r.n <= level; const cur = r.n === level;
+        return (
+          <View key={r.n} style={{ flexDirection: 'row', alignItems: 'center', gap: mk(8), marginBottom: mk(10), height: ROAD_ROW }}>
+            <View style={{ width: mk(60), alignItems: 'center' }}>
+              <View style={{ width: mk(52), height: mk(52), borderRadius: mk(26), backgroundColor: cur ? C.gold : reached ? C.green : C.panelInk, borderWidth: mk(4), borderColor: cur ? C.goldDark : C.navy, alignItems: 'center', justifyContent: 'center' }}>
+                <OutlinedText size={mk(22)} width={mk(2)} color={cur ? C.ink : C.white} outline={cur ? '#FFF6C7' : C.ink}>{String(r.n)}</OutlinedText>
+              </View>
+            </View>
+            <RoadCard reward={r.free} reached={reached} claimed={claimed.has(r.n)} locked={false} premium={false} onClaim={() => actions.claimLevelReward(r.n, 'free')} />
+            <RoadCard reward={r.premium} reached={reached} claimed={claimedP.has(r.n)} locked={!prem} premium onClaim={() => actions.claimLevelReward(r.n, 'premium')} onLocked={() => { onClose(); onOpenStore(); }} />
+          </View>
+        );
+      })}
+    </Dialog>
+  );
+}
+function RoadCard({ reward, reached, claimed, locked, premium, onClaim, onLocked }: { reward: RoadReward | null; reached: boolean; claimed: boolean; locked: boolean; premium: boolean; onClaim: () => void; onLocked?: () => void }) {
+  if (!reward) return <View style={{ flex: 1 }} />;
+  const claimable = reached && !claimed && !locked; const dim = !reached || claimed || locked;
+  return (
+    <Pressable style={{ flex: 1 }} onPress={locked ? onLocked : claimable ? onClaim : undefined}>
+      <Plate face={premium ? '#3B1A7A' : C.card} top={premium ? '#7A45D9' : C.cardTop} lip={premium ? '#220A4E' : C.cardDark} outline={claimable ? C.green : premium ? C.gold : C.navy} radius={mk(18)} style={{ opacity: dim && !claimable ? 0.62 : 1 }} inner={{ height: ROAD_ROW - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
+        <Image source={reward.art} style={{ width: '78%', height: mk(70) }} resizeMode="contain" />
+        <OutlinedText size={mk(16)} width={1.2} numberOfLines={1} fit style={{ marginTop: mk(2) }}>{reward.label}</OutlinedText>
+        {claimable ? <View style={{ width: '92%', marginTop: mk(4) }}><ChunkyButton kind="green" label={up(t('level.claimShort'))} height={mk(40)} size={mk(17)} onPress={onClaim} /></View> : null}
+      </Plate>
+      {claimed ? <View style={{ position: 'absolute', top: -mk(6), right: -mk(4) }}><IcCheckBadge size={mk(36)} /></View> : null}
+      {locked ? <View style={{ position: 'absolute', top: -mk(6), right: -mk(4), width: mk(36), height: mk(36), borderRadius: mk(18), backgroundColor: C.panelInk, borderWidth: mk(3), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><IcLock size={mk(20)} /></View> : null}
+    </Pressable>
+  );
+}
+
+// ── Arenalar: 7 arena, kupa eşikleri, bulunduğun yer ──
+const ARENA_KEYS = ['mahalle', 'amator', 'profesyonel', 'sampiyonlar', 'efsaneler', 'dunya', 'goat'] as const;
+const ARENA_COLORS = ['#25D93C', '#3D8BFF', '#8E2BEA', '#1E7BFF', '#FF7A1A', '#FF3352', '#FFD21A'];
+export function ArenasDialog({ state, onClose }: { state: GameState; onClose: () => void }) {
+  const trophies = state.profile?.trophies ?? 0;
+  const curIdx = ARENA_STEPS.reduce((acc, a, i) => (trophies >= a.min ? i : acc), 0);
+  return (
+    <Dialog title={up(t('arenas.title'))} onClose={onClose} wide initialScrollY={Math.max(0, curIdx - 1) * (mk(126) + mk(10))}>
+      {ARENA_STEPS.map((a, i) => {
+        const key = ARENA_KEYS[i]!; const cur = i === curIdx; const passed = i < curIdx; const locked = i > curIdx;
+        return (
+          <Plate key={key} face={cur ? '#1B5AE0' : C.panelInk} top={cur ? '#5A9BFF' : '#2F63C8'} lip={cur ? '#0B3A9E' : '#041A4E'} outline={cur ? C.gold : C.navy} radius={mk(18)} style={{ marginBottom: mk(10), opacity: locked ? 0.7 : 1 }} inner={{ height: mk(126) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(12), gap: mk(12) }}>
+            <View style={{ width: mk(70), height: mk(70), borderRadius: mk(18), backgroundColor: ARENA_COLORS[i], borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}>{i === 6 ? <IcCrownBig size={mk(46)} /> : <IcTrophy size={mk(46)} />}</View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <OutlinedText size={mk(24)} width={mk(2)} align="left" numberOfLines={1} fit>{up(t(`arena.${key}` as MessageKey))}</OutlinedText>
+              <Text numberOfLines={2} style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(15), lineHeight: mk(19) }}>{t(`arena.${key}.desc` as MessageKey)}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(6), marginTop: mk(3) }}><IcTrophy size={mk(22)} /><Text style={{ color: C.gold, fontFamily: F.black, fontSize: mk(15) }}>{`${fmt(a.min)}+`}</Text></View>
+            </View>
+            {cur ? <Ribbon label={t('arenas.here')} color={C.gold} size={mk(14)} /> : passed ? <IcCheckBadge size={mk(40)} /> : <IcLock size={mk(30)} />}
+          </Plate>
+        );
+      })}
     </Dialog>
   );
 }

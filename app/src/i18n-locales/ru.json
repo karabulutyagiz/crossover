@@ -493,5 +493,19 @@
   "tour.wonTitle": "ЧЕМПИОН! 🏆",
   "tour.wonBody": "Ты выиграл {t}! Приз зачислен: +{p} 💎",
   "tour.secondTitle": "ФИНАЛИСТ! 🥈",
-  "tour.secondBody": "Второе место в {t}! Приз зачислен: +{p} 💎"
+  "tour.secondBody": "Второе место в {t}! Приз зачислен: +{p} 💎",
+  "level.roadTitle": "Дорога уровней",
+  "level.levelN": "Уровень {n}",
+  "level.claimShort": "Забрать",
+  "level.frameOwned": "Открыто",
+  "level.toNext": "{n} XP до следующего уровня",
+  "level.maxed": "Максимальный уровень — GOAT!",
+  "level.tierBronze": "Бронза",
+  "level.tierSilver": "Серебро",
+  "level.tierGold": "Золото",
+  "level.tierDiamond": "Алмаз",
+  "level.tierGoat": "GOAT",
+  "level.frameLockedAt": "С уровня {n}",
+  "arenas.here": "ТЫ ЗДЕСЬ",
+  "arenas.passed": "ПРОЙДЕНА"
 }

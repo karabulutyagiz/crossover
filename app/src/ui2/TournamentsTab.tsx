@@ -8,6 +8,7 @@ import { Bar, ChunkyButton, GemAmount, OutlinedText, Plate, SectionHeader, fmt, 
 import { Hud } from './Shell';
 import { t } from '../i18n';
 import { S } from './strings';
+import { roadReward } from './rewards';
 import { IcArrowRight, IcCalendar, IcCheckBadge, IcClock, IcCrownBig, IcDaily, IcGift, IcLeague, IcRewards, IcTrophy } from './icons-ui';
 import { C, F, LIP, OUTLINE, R, SIDE, mk } from './tokens';
 
@@ -22,21 +23,7 @@ export function TournamentsTab({ state, actions, onOpenSettings, onOpenProfile, 
   const active = items.filter((t) => t.status !== 'finished' && t !== featured);
   const upcoming = items.filter((t) => t.status === 'registration' && !t.youJoined && t !== featured);
   const level = p?.level ?? 1; const claimed = new Set(p?.claimedLevels ?? []);
-  // Seviye Yolu ödülü: CO-PASS v2 açıksa her seviyede (passRewardView), değilse eski düzen
-  // (her 5. seviye elmas, 10/20/30/40/50 çerçeve). Sonraki 3 ödüllü seviye gösterilir.
-  const POWER_ART: Record<string, ImageSourcePropType> = { xp2x: UI2.pw_xp, shield: UI2.pw_shield, streak: UI2.pw_streak, training: UI2.pw_training, freeze: UI2.pw_freeze };
-  const rewardAt = (n: number): { label: string; art: ImageSourcePropType } | null => {
-    if (p?.copassV2) {
-      const r = passRewardView(n, 'free'); if (!r) return null;
-      if (r.frameTier) return { label: S.specialFrame, art: UI2.rw_frame };
-      if (r.cosmeticId) return { label: 'Kozmetik', art: UI2.rw_frame };
-      if (r.specialPower || r.roadPower) { const id = (r.specialPower ?? r.roadPower) as string; return { label: 'Güç', art: POWER_ART[id] ?? UI2.sec_power }; }
-      if (r.diamonds) return { label: S.gemsN(r.diamonds), art: UI2.rw_gems };
-      return null;
-    }
-    if (LEVEL_TIERS.some((t) => t.min === n)) return { label: S.specialFrame, art: UI2.rw_frame };
-    const g = levelRewardGems(n); return g ? { label: S.gemsN(g), art: UI2.rw_gems } : null;
-  };
+  const rewardAt = (n: number) => roadReward(p, n, 'free');
   const roadLevels: number[] = []; for (let n = level; n <= 50 && roadLevels.length < 3; n++) if (rewardAt(n)) roadLevels.push(n);
   const joinBtn = (t: TItem, kind: 'green' | 'gold' = 'green') => t.youJoined
     ? { kind: 'blue' as const, label: t.status === 'live' ? S.view : S.joined, on: () => onOpenTournament(t.id) }

@@ -493,5 +493,19 @@
   "tour.wonTitle": "챔피언! 🏆",
   "tour.wonBody": "{t}에서 우승했어요! 상금 지급: +{p} 💎",
   "tour.secondTitle": "준우승! 🥈",
-  "tour.secondBody": "{t}에서 2위! 상금 지급: +{p} 💎"
+  "tour.secondBody": "{t}에서 2위! 상금 지급: +{p} 💎",
+  "level.roadTitle": "레벨 로드",
+  "level.levelN": "레벨 {n}",
+  "level.claimShort": "받기",
+  "level.frameOwned": "해제됨",
+  "level.toNext": "다음 레벨까지 {n} XP",
+  "level.maxed": "최고 레벨 달성 — GOAT!",
+  "level.tierBronze": "브론즈",
+  "level.tierSilver": "실버",
+  "level.tierGold": "골드",
+  "level.tierDiamond": "다이아",
+  "level.tierGoat": "GOAT",
+  "level.frameLockedAt": "레벨 {n}에 해제",
+  "arenas.here": "현재 위치",
+  "arenas.passed": "통과"
 }

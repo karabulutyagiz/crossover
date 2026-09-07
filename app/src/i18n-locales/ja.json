@@ -493,5 +493,19 @@
   "tour.wonTitle": "優勝！🏆",
   "tour.wonBody": "{t}で優勝！賞品を獲得：+{p} 💎",
   "tour.secondTitle": "準優勝！🥈",
-  "tour.secondBody": "{t}で2位！賞品を獲得：+{p} 💎"
+  "tour.secondBody": "{t}で2位！賞品を獲得：+{p} 💎",
+  "level.roadTitle": "レベルロード",
+  "level.levelN": "レベル {n}",
+  "level.claimShort": "受け取る",
+  "level.frameOwned": "解放済み",
+  "level.toNext": "次のレベルまで {n} XP",
+  "level.maxed": "最高レベル到達 — GOAT！",
+  "level.tierBronze": "ブロンズ",
+  "level.tierSilver": "シルバー",
+  "level.tierGold": "ゴールド",
+  "level.tierDiamond": "ダイヤ",
+  "level.tierGoat": "GOAT",
+  "level.frameLockedAt": "レベル {n} で解放",
+  "arenas.here": "現在地",
+  "arenas.passed": "クリア"
 }
