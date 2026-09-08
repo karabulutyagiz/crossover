@@ -18,7 +18,10 @@
     },
     "production": {
       "autoIncrement": false,
-      "channel": "production"
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_UI2": "1"
+      }
     },
     "tfui2": {
       "distribution": "store",
