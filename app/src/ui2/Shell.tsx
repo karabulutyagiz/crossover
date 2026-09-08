@@ -140,7 +140,9 @@ export function BottomNav({ active, onPress, labels, badges }: { active: NavKey;
         return (
           <Pressable key={n.key} onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.create(240, 'easeInEaseOut', 'opacity')); onPress(n.key); }} style={{ flex: on ? 2 : 1, minWidth: 0, height: NAV_H + Math.max(insets.bottom, mk(8)), paddingBottom: Math.max(insets.bottom, mk(8)), alignItems: 'center', justifyContent: 'center', borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: '#2A3140' }}>
             {on ? <NavFill from="#6385A6" to="#6E92B4" fromOpacity={0.08} corner={corner} /> : play ? <NavFill from="#D9AF5A" to="#E8C56A" corner={corner} /> : null}
-            {on ? <><NavArrow dir="left" /><NavArrow dir="right" /></> : null}
+            {/* oklar yalnız gidilebilecek yöne: en solda sağ ok, en sağda sol ok (CR) */}
+            {on && i > 0 ? <NavArrow dir="left" /> : null}
+            {on && i < NAV.length - 1 ? <NavArrow dir="right" /> : null}
             <View style={{ alignItems: 'center', marginTop: on ? -mk(8) : 0 }}>
               <n.Icon size={on ? mk(114) : mk(106)} />
               {on ? <OutlinedText size={fitSize(mk(30), label, 12)} width={mk(3)} family={F.title} style={{ marginTop: -mk(4) }} numberOfLines={1} fit>{label}</OutlinedText> : null}
