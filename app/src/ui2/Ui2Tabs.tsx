@@ -1,7 +1,7 @@
 // UI2 sekme konteyneri: damalı zemin + sekme gövdesi + alt nav + yerleşik pencere katmanı
 // (native Modal DEĞİL: reklam slotu / iOS sunum zinciriyle çakışmaz).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ScrollView, Text, useWindowDimensions, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { Animated, ScrollView, Text, useWindowDimensions, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Actions, GameState } from './types';
 import { BottomNav, type NavKey } from './Shell';
@@ -57,6 +57,11 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
     const i = Math.round(e.nativeEvent.contentOffset.x / Math.max(1, pageW));
     if (i >= 0 && i < KEYS.length) setNavIdx((prev) => (prev === i ? prev : i));
   }, [pageW]);
+  const scrollX = useRef(new Animated.Value(activeTab * pageW)).current;
+  const onPagerScroll = useMemo(
+    () => Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: false, listener: (e) => onScrollLive(e as NativeSyntheticEvent<NativeScrollEvent>) }),
+    [scrollX, onScrollLive],
+  );
   const onPageSettled = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const i = Math.round(e.nativeEvent.contentOffset.x / Math.max(1, pageW));
     if (i !== lastIdx.current && i >= 0 && i < KEYS.length) { lastIdx.current = i; setDlg(null); goToTab(i); }
@@ -77,7 +82,7 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
     <View style={{ flex: 1 }}>
       <CheckerBg />
       <ScrollView ref={pagerRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false} bounces={false}
-        contentOffset={{ x: activeTab * pageW, y: 0 }} onMomentumScrollEnd={onPageSettled} onScroll={onScrollLive} scrollEventThrottle={16}
+        contentOffset={{ x: activeTab * pageW, y: 0 }} onMomentumScrollEnd={onPageSettled} onScroll={onPagerScroll} scrollEventThrottle={16}
         removeClippedSubviews decelerationRate="fast" directionalLockEnabled
         keyboardShouldPersistTaps="handled" style={{ flex: 1 }}>
         {KEYS.map((k, i) => (
@@ -96,7 +101,7 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
           </View>
         ))}
       </ScrollView>
-      <BottomNav active={KEYS[navIdx] ?? active} onPress={(k) => { setDlg(null); goToTab(KEYS.indexOf(k)); }} badges={{ friends: state.friendRequests.length || undefined }} />
+      <BottomNav scrollX={scrollX} pageW={pageW} active={KEYS[navIdx] ?? active} onPress={(k) => { setDlg(null); goToTab(KEYS.indexOf(k)); }} badges={{ friends: state.friendRequests.length || undefined }} />
 
       {/* ── pencereler ── */}
       {dlg === 'mode' || dlg === 'bot' ? <ModeMenuDialog state={state} actions={actions} bot={dlg === 'bot'} onClose={closeDlg} onLocked={() => setNotice({ title: t('friends.inviteNeedsPackTitle'), body: t('ui2.packLockedBody'), yesLabel: S.store, onYes: () => goToTab(0) })} /> : null}
