@@ -24,12 +24,10 @@ export function Hud({ data, actions, title, titleIcon }: { data: HudData; action
       {/* Üst bant tek eksende hizalı: avatar kutusu, ad+XP bloğu, elmas hapı ve dişli dikeyde ORTALI (kullanıcı 2026-09-08) */}
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         {/* avatar kutusu + seviye kalkanı */}
-        {/* Kare çerçeve + içine TAM oturan fotoğraf: kutu eskiden dikdörtgendi (dilim kadar alçak) ve
-            Pressable daha genişti → fotoğraf sola/sağa kayıyor, kenarlarda boşluk kalıyordu. */}
-        <Pressable onPress={actions?.onAvatar} style={{ width: avatarBox, height: avatarBox + mk(16) }}>
-          <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={mk(26)} inner={{ width: avatarBox - OUTLINE * 2, height: avatarBox - OUTLINE * 2, alignItems: 'center', justifyContent: 'center' }}>
-            <Avatar avatar={data.avatarId} name={data.name} size={avatarBox - OUTLINE * 2 - mk(8)} frameId={data.frameId ?? null} />
-          </Plate>
+        {/* ÇERÇEVE YOK: kare plaka hem fotoğrafı hem takılı elmas/kozmetik çerçeveyi bozuyordu
+            (kullanıcı 2026-09-08). Yalnız fotoğraf + seviye kalkanı. */}
+        <Pressable onPress={actions?.onAvatar} style={{ width: avatarBox, height: avatarBox + mk(16), alignItems: 'center', justifyContent: 'flex-start' }}>
+          <Avatar avatar={data.avatarId} name={data.name} size={avatarBox} frameId={data.frameId ?? null} />
           <View style={{ position: 'absolute', right: -mk(6), bottom: 0, width: mk(60), height: mk(66), alignItems: 'center', justifyContent: 'center' }}>
             <LevelShield level={data.level} />
           </View>
