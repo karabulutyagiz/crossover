@@ -3,6 +3,7 @@
 export const UI2 = {
   ac_laurel: require('../../assets/ui2/ac-laurel.png'),
   ac_stadium: require('../../assets/ui2/ac-stadium.png'),
+  arena_mahalle: require('../../assets/ui2/arena-mahalle.png'),
   banner_copass: require('../../assets/ui2/banner-copass.jpg'),
   banner_cosm: require('../../assets/ui2/banner-cosm.jpg'),
   banner_invite: require('../../assets/ui2/banner-invite.jpg'),
@@ -12,7 +13,6 @@ export const UI2 = {
   gem_250: require('../../assets/ui2/gem-250.png'),
   gem_650: require('../../assets/ui2/gem-650.png'),
   gem_80: require('../../assets/ui2/gem-80.png'),
-  home_arena: require('../../assets/ui2/home-arena.png'),
   home_modes_art: require('../../assets/ui2/home-modes-art.png'),
   hud_gem: require('../../assets/ui2/hud-gem.png'),
   md_bot: require('../../assets/ui2/md-bot.png'),

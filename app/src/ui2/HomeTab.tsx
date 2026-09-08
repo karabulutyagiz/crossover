@@ -9,7 +9,7 @@ import { UI2 } from './assets';
 import { Bar, ChunkyButton, OutlinedText, Plate, fmt } from './primitives';
 import { IcChevronGold, IcClipboard, IcCrownBig, IcTrophy } from './icons-ui';
 import { Hud } from './Shell';
-import { LEVEL_CAP, nextArenaMin } from './products';
+import { arenaArt, arenaIndexFor, ARENAS, LEVEL_CAP, nextArenaMin } from './products';
 import { C, F, LIP, mh, mk, OUTLINE, SIDE, SW } from './tokens';
 
 export type HomeTabProps = {
@@ -24,6 +24,8 @@ export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenM
   const trophies = p?.trophies ?? 0;
   const nextMin = nextArenaMin(trophies);
   const arenaName = up(arenaLabel(p?.arena?.name ?? 'Mahalle Sahası'));
+  // Sahne = BULUNDUĞUN arenanın görseli (Arenalar penceresiyle aynı kaynak)
+  const arenaScene = arenaArt(ARENAS[arenaIndexFor(trophies)]!.key);
   const questsReady = state.dailyQuests?.quests.filter((q) => q.done && !q.claimed).length ?? 0;
   const W = SW - SIDE * 2;
   const [sceneH, setSceneH] = useState(0);
@@ -59,7 +61,7 @@ export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenM
       </Pressable>
       {/* Arena sahnesi + Görevler */}
       <Pressable onPress={onOpenArenas} style={{ flex: 1, minHeight: mh(240), marginTop: -mh(12) }} onLayout={(e) => setSceneH(Math.round(e.nativeEvent.layout.height))}>
-        {sceneH > 0 ? <Image source={UI2.home_arena} style={{ position: 'absolute', left: -mh(8), top: 0, width: sceneW, height: sceneImgH }} resizeMode="contain" /> : null}
+        {sceneH > 0 ? <Image source={arenaScene} style={{ position: 'absolute', left: -mh(8), top: 0, width: sceneW, height: sceneImgH }} resizeMode="contain" /> : null}
         <Pressable onPress={onOpenQuests} style={{ position: 'absolute', right: SIDE - mh(6), top: mh(48), width: mh(140), height: mh(150) }}>
           <View style={{ alignItems: 'center' }}><IcClipboard size={mh(104)} /><OutlinedText size={mh(30)} width={mk(3)}>{t('ui2.questsLabel')}</OutlinedText></View>
           {questsReady > 0 ? (

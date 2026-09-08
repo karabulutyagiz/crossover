@@ -58,6 +58,17 @@ export const ARENAS: { key: string; min: number; max: number; win: number; loss:
   { key: 'dunya', min: 3500, max: 4999, win: 18, loss: 30, reward: 500, art: require('../../assets/arenas/dunya.png') },
   { key: 'goat', min: 5000, max: 99999, win: 15, loss: 35, reward: 1000, art: require('../../assets/arenas/goat.png') },
 ];
+// Ana ekranda gösterilen büyük arena sahnesi. KURAL: dosya adı assets/ui2/arena-<key>.png, 1200×900 saydam PNG.
+// Çizilmemiş arenalar için liste sanatına (assets/arenas) düşer — ana ekran ve Arenalar penceresi HEP aynı görseli kullanır.
+const ARENA_SCENE: Record<string, ImageSourcePropType | undefined> = {
+  mahalle: UI2.arena_mahalle,
+};
+export function arenaArt(key: string): ImageSourcePropType {
+  return ARENA_SCENE[key] ?? ARENAS.find((a) => a.key === key)?.art ?? ARENAS[0]!.art;
+}
+export function arenaIndexFor(trophies: number): number {
+  return ARENAS.reduce((acc, a, i) => (trophies >= a.min ? i : acc), 0);
+}
 // Yardım & bilgi bağlantıları (screens.tsx INFO_LINKS ile aynı; canlı sayfalar)
 export const INFO_LINKS = { help: 'https://crossoverfootball.com/destek/', privacy: 'https://crossoverfootball.com/gizlilik/', parents: 'https://crossoverfootball.com/ebeveyn/', terms: 'https://crossoverfootball.com/kosullar/', founders: 'https://crossoverfootball.com/' } as const;
 export function nextArenaMin(trophies: number): number {

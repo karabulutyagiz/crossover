@@ -15,7 +15,7 @@ import { UI2 } from './assets';
 import { Bar, ChunkyButton, GemAmount, OutlinedText, Plate, Ribbon, fmt } from './primitives';
 import { S, up } from './strings';
 import { hasActiveSocialPack } from '../monetization';
-import { ARENAS, ARENA_STEPS, INFO_LINKS, LEVEL_CAP, PACK_MODES, PREMIUM_ROAD_PRICE } from './products';
+import { arenaArt, ARENAS, ARENA_STEPS, INFO_LINKS, LEVEL_CAP, PACK_MODES, PREMIUM_ROAD_PRICE } from './products';
 import { roadReward, type RoadReward } from './rewards';
 import { IcCheckBadge, IcClipboard, IcCrownBig, IcGem, IcLeague, IcNavFriends, IcNavPlay, IcStar, IcSuggest, IcTrophy } from './icons-ui';
 import { IcBell, IcCheck, IcChevron, IcClose, IcCopy, IcGlobe, IcLock, IcModeCountryTeam, IcModeCozKazan, IcModeGuessWho, IcModeLetterTeam, IcModeTeamTeam, IcModeXox, IcMusic, IcSound, IcVibrate } from './icons';
@@ -554,7 +554,7 @@ export function ArenasDialog({ state, onClose }: { state: GameState; onClose: ()
         return (
           <Plate key={key} face={cur ? '#1B5AE0' : locked ? '#0A2B78' : C.panelInk} top={cur ? '#5A9BFF' : '#2F63C8'} lip={cur ? '#0B3A9E' : '#041A4E'} outline={cur ? C.gold : C.navy} radius={mk(22)} style={{ marginBottom: mk(10) }} inner={{ minHeight: ARENA_CARD_H - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(8), paddingVertical: mk(10), gap: mk(8) }}>
             <View style={{ width: mk(300), height: mk(230), alignItems: 'center', justifyContent: 'center' }}>
-              <Image source={a.art} style={{ width: mk(300), height: mk(230), opacity: locked ? 0.45 : 1 }} resizeMode="contain" />
+              <Image source={arenaArt(key)} style={{ width: mk(300), height: mk(230), opacity: locked ? 0.45 : 1 }} resizeMode="contain" />
               {locked ? <View style={{ position: 'absolute', width: mk(64), height: mk(64), borderRadius: mk(32), backgroundColor: C.panelInk, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><IcLock size={mk(32)} /></View> : null}
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
