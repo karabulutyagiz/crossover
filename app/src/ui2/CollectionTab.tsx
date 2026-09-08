@@ -74,7 +74,7 @@ function Powers({ p, actions, spEquipped, onOpenStore, onNotice }: { p: GameStat
             {[0, 1, 2].map((i) => {
               const id = spEquipped[i];
               return id ? <PowerCard key={id} width={PW_IN_W} name={t(SPECIAL_POWERS[id].nameKey)} art={SP_ART[id]} face={SP_FACE[id]} badge={RARITY_N[SPECIAL_POWERS[id].rarity]} line={t('ui2.count', { n: count(id) })} button={{ label: up(t('collection.remove')), kind: 'blue', on: () => actions.equipSpecialPower(id) }} />
-                : <Plate key={i} face="#0B3A96" top="#2F63C8" lip="#041A4E" radius={R.card} style={{ width: PW_IN_W }} inner={{ height: mk(330) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(60)} width={mk(3)} color={C.textMuted}>+</OutlinedText><Text style={{ color: C.textMuted, fontFamily: F.bold, fontSize: fz(16) }}>{t('ui2.emptySlot')}</Text></Plate>;
+                : <Plate key={i} face="#0B3A96" top="#2F63C8" lip="#041A4E" radius={R.card} style={{ width: PW_IN_W }} inner={{ minHeight: mk(340) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(60)} width={mk(3)} color={C.textMuted}>+</OutlinedText><Text style={{ color: C.textMuted, fontFamily: F.bold, fontSize: fz(16) }}>{t('ui2.emptySlot')}</Text></Plate>;
             })}
           </View>
         </Plate>
@@ -98,7 +98,7 @@ function Powers({ p, actions, spEquipped, onOpenStore, onNotice }: { p: GameStat
 function PowerCard({ width, name, art, face, badge, line, button, dim }: { width: number; name: string; art: ImageSourcePropType | ReactNode; face: [string, string, string]; badge: number; line: string; button: { label: string; kind: 'green' | 'blue' | 'gold'; on: () => void }; dim?: boolean }) {
   return (
     <View style={{ width, opacity: dim ? 0.72 : 1 }}>
-      <Plate face={face[0]} top={face[1]} lip={face[2]} radius={R.card} inner={{ height: mk(330) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(12), paddingHorizontal: mk(6) }}>
+      <Plate face={face[0]} top={face[1]} lip={face[2]} radius={R.card} inner={{ minHeight: mk(340) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(12), paddingHorizontal: mk(6) }}>
         <View style={{ height: mk(140), width: '100%', alignItems: 'center', justifyContent: 'center' }}>{isValidElement(art) ? <IconSlot icon={art} width={mk(140)} height={mk(140)} size={mk(120)} /> : <Image source={art as ImageSourcePropType} style={{ width: mk(140), height: mk(140) }} resizeMode="contain" />}</View>
         <View style={{ flex: 1 }} />
         <OutlinedText size={mk(26)} width={mk(2.5)} numberOfLines={1} fit>{up(name)}</OutlinedText>
@@ -139,7 +139,7 @@ function Cosmetics({ p, actions, catalog }: { p: GameState['profile']; actions: 
 function FrameCard({ width, name, equipped, onPress, children }: { width: number; name: string; equipped: boolean; onPress: () => void; children: React.ReactNode }) {
   return (
     <View style={{ width }}>
-      <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={equipped ? C.gold : C.navy} radius={R.card} inner={{ height: mk(330) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(10), paddingHorizontal: mk(6) }}>
+      <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={equipped ? C.gold : C.navy} radius={R.card} inner={{ minHeight: mk(340) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(10), paddingHorizontal: mk(6) }}>
         <View style={{ height: mk(150), width: '100%', alignItems: 'center', justifyContent: 'center' }}>{children}</View>
         <View style={{ flex: 1 }} />
         <OutlinedText size={mk(26)} width={mk(2.5)} numberOfLines={1} fit>{up(name)}</OutlinedText>
@@ -170,7 +170,7 @@ function Emotes({ p, actions, onNotice }: { p: GameState['profile']; actions: Ac
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
             {Array.from({ length: EMOTE_SLOTS }, (_, i) => equipped[i]).map((id, i) => (
               <Pressable key={i} onPress={() => id && toggle(id)} style={{ width: COL_W }}>
-                <Plate face={id ? C.card : '#0B3A96'} top={id ? C.cardTop : '#2F63C8'} lip={id ? C.cardDark : '#041A4E'} radius={R.card} inner={{ height: mk(170) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}>
+                <Plate face={id ? C.card : '#0B3A96'} top={id ? C.cardTop : '#2F63C8'} lip={id ? C.cardDark : '#041A4E'} radius={R.card} inner={{ minHeight: mk(180) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}>
                   {id ? <EmoteSticker id={id} size={mk(130)} play={false} /> : <OutlinedText size={mk(50)} width={mk(3)} color={C.textMuted}>+</OutlinedText>}
                 </Plate>
               </Pressable>
@@ -184,7 +184,7 @@ function Emotes({ p, actions, onNotice }: { p: GameState['profile']; actions: Ac
           const on = equipped.includes(e.id);
           return (
             <Pressable key={e.id} onPress={() => toggle(e.id)} style={{ width: PW_W }}>
-              <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={on ? C.gold : C.navy} radius={R.card} inner={{ height: mk(330) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(10), paddingHorizontal: mk(6) }}>
+              <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={on ? C.gold : C.navy} radius={R.card} inner={{ minHeight: mk(340) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(10), paddingHorizontal: mk(6) }}>
                 <View style={{ height: mk(150), alignItems: 'center', justifyContent: 'center' }}><EmoteSticker id={e.id} size={mk(140)} play={false} /></View>
                 <View style={{ flex: 1 }} />
                 <OutlinedText size={mk(24)} width={mk(2)} numberOfLines={1} fit>{up((e.premium?.name ?? (e.phraseKey ? t(e.phraseKey as MessageKey) : e.id)))}</OutlinedText>

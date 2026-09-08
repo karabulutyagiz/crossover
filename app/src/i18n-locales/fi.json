@@ -528,5 +528,6 @@
   "ui2.toNextArena": "{n} pokaalia seuraavaan areenaan",
   "ui2.rewardTaken": "Palkinto lunastettu",
   "ui2.winLoss": "Voitto {w} / Tappio {l}",
-  "ui2.yourRank": "Sijoituksesi"
+  "ui2.yourRank": "Sijoituksesi",
+  "ui2.everySevenDays": "Uusiutuu 7 päivän välein"
 }

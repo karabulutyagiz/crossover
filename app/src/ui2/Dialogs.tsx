@@ -200,7 +200,7 @@ export function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) =
       <View style={{ width: mk(96), height: mk(50), borderRadius: mk(25), backgroundColor: on ? C.green : C.gray, borderWidth: mk(4), borderColor: C.navy, justifyContent: 'center', paddingHorizontal: mk(4) }}>
         <View style={{ width: mk(36), height: mk(36), borderRadius: mk(18), backgroundColor: C.white, alignSelf: on ? 'flex-end' : 'flex-start' }} />
       </View>
-      <Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(17), width: mk(92) }} numberOfLines={1}>{on ? t('ui2.on') : t('ui2.off')}</Text>
+      <Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(17), width: mk(130) }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{on ? t('ui2.on') : t('ui2.off')}</Text>
     </Pressable>
   );
 }
@@ -493,9 +493,10 @@ export function LevelRoadDialog({ state, actions, onOpenStore, onClose }: { stat
       </Plate>
       {/* CO PASS durumu */}
       <Plate face={prem ? C.gold : C.panelInk} top={prem ? C.goldLight : '#2F63C8'} lip={prem ? C.goldDark : '#041A4E'} radius={mk(18)} style={{ marginTop: mk(10) }} inner={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(14), paddingVertical: mk(8), gap: mk(10) }}>
-        <IcCrownBig size={mk(44)} />
-        <OutlinedText size={mk(26)} width={mk(2)} color={prem ? C.ink : C.gold} outline={prem ? '#FFF6C7' : C.ink} align="left" style={{ flex: 1 }}>{prem ? `CO PASS · ${t('store.badgeActive')}` : 'CO PASS'}</OutlinedText>
-        {!prem ? <ChunkyButton kind="green" gem label={String(PREMIUM_ROAD_PRICE)} height={mk(56)} size={mk(22)} style={{ width: mk(150) }} onPress={() => { onClose(); onOpenStore(); }} /> : null}
+        <IcCrownBig size={mk(52)} />
+        <OutlinedText size={mk(30)} width={mk(2.5)} color={prem ? C.ink : C.gold} outline={prem ? '#FFF6C7' : C.ink} align="left" style={{ flex: 1 }}>{prem ? `CO PASS · ${t('store.badgeActive')}` : 'CO PASS'}</OutlinedText>
+        {/* Satın alma butonu göze girsin: geniş + yüksek + altın (kullanıcı 2026-09-08) */}
+        {!prem ? <ChunkyButton kind="gold" gem label={up(t('store.diamonds', { n: fmt(PREMIUM_ROAD_PRICE) }))} height={mk(96)} size={mk(30)} style={{ width: mk(330) }} onPress={() => { onClose(); onOpenStore(); }} /> : null}
       </Plate>
       {/* şerit başlıkları */}
       <View style={{ flexDirection: 'row', marginTop: mk(12), marginBottom: mk(6), paddingLeft: mk(70) }}>
@@ -584,7 +585,7 @@ export function ArenasDialog({ state, onClose }: { state: GameState; onClose: ()
 
 // ── Profil: avatar + çerçeve + seviye + arena, istatistikler, profil fotoğrafları (kullan / satın al) ──
 const PP_COL = Math.floor((SW - mk(20) * 2 - OUTLINE * 2 - mk(18) * 2 - mk(10) * 3) / 4);
-export function ProfileDialog({ state, actions, onClose, onConfirm, onNotice, onOpenStore, onOpenCollection }: { state: GameState; actions: Actions; onClose: () => void; onConfirm: (d: { title: string; body: string; price?: number; onYes: () => void }) => void; onNotice: (title: string, body: string) => void; onOpenStore: () => void; onOpenCollection: () => void }) {
+export function ProfileDialog({ state, actions, onClose, onConfirm, onNotice, onOpenStore, onOpenCollection, onOpenMatchHistory }: { state: GameState; actions: Actions; onClose: () => void; onOpenMatchHistory?: () => void; onConfirm: (d: { title: string; body: string; price?: number; onYes: () => void }) => void; onNotice: (title: string, body: string) => void; onOpenStore: () => void; onOpenCollection: () => void }) {
   const p = state.profile; if (!p) return null;
   useEffect(() => { actions.loadMyStats(); }, [actions]);
   const avatarId = p.avatar ?? p.selectedAvatar ?? null; const owned = new Set(p.ownedAvatars ?? []);
@@ -620,7 +621,7 @@ export function ProfileDialog({ state, actions, onClose, onConfirm, onNotice, on
       </View>
       <View style={{ flexDirection: 'row', gap: mk(10), marginTop: mk(10) }}>
         <ChunkyButton kind="blue" label={t('collection.tabCosmetics')} height={mk(62)} size={mk(20)} style={{ flex: 1 }} onPress={() => { onClose(); onOpenCollection(); }} />
-        <ChunkyButton kind="blue" label={up(t('home.matchHistoryHint'))} height={mk(62)} size={mk(18)} style={{ flex: 1 }} onPress={() => { onClose(); actions.openMatchHistory(); }} />
+        <ChunkyButton kind="blue" label={up(t('home.matchHistoryHint'))} height={mk(76)} size={mk(22)} style={{ flex: 1 }} onPress={() => { onClose(); if (onOpenMatchHistory) onOpenMatchHistory(); else actions.openMatchHistory(); }} />
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: mk(14), marginBottom: mk(8) }}>
         <OutlinedText size={mk(28)} width={mk(3)} align="left">{up(t('profile.pictures'))}</OutlinedText>

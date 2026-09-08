@@ -71,7 +71,7 @@ export function TournamentsTab({ state, actions, onOpenSettings, onOpenProfile, 
           { icon: <IcRewards />, title: S.rewards, sub: S.rewardsSub, on: onOpenLevelRoad },
         ] as { icon: React.ReactNode; title: string; sub: string; on: () => void }[]).map((a) => (
           <Pressable key={a.title} onPress={a.on} style={{ flex: 1 }}>
-            <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={mk(24)} inner={{ height: mk(236) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(10), paddingHorizontal: mk(8) }}>
+            <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={mk(24)} inner={{ minHeight: mk(244) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(10), paddingHorizontal: mk(8) }}>
               <IconSlot icon={a.icon} width={mk(110)} height={mk(110)} size={mk(104)} />
               <OutlinedText size={mk(24)} width={mk(2.5)} numberOfLines={1} fit style={{ marginTop: mk(4) }}>{a.title}</OutlinedText>
               <Text numberOfLines={2} style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(15), lineHeight: fz(18), textAlign: 'center', marginTop: mk(2) }}>{a.sub}</Text>

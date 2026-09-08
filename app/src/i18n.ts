@@ -1186,6 +1186,7 @@ const tr = {
   "ui2.rewardTaken": "Ödül alındı",
   "ui2.winLoss": "Galibiyet {w} / Mağlubiyet {l}",
   "ui2.yourRank": "Sıran",
+  "ui2.everySevenDays": "7 günde bir yenilenir",
 };
 
 // ---- English (fallback) ----
@@ -2310,6 +2311,7 @@ const en: typeof tr = {
   "ui2.rewardTaken": "Reward claimed",
   "ui2.winLoss": "Win {w} / Loss {l}",
   "ui2.yourRank": "Your rank",
+  "ui2.everySevenDays": "Refreshes every 7 days",
 };
 
 export type MessageKey = keyof typeof tr;

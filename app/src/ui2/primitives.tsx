@@ -103,14 +103,20 @@ export function ChunkyButton({ kind = 'green', label, sub, over, onPress, height
   const iconSrc = gem ? UI2.hud_gem : icon;
   height = compact ? height : Math.max(height, MIN_TAP);
   const ow = Math.min(mk(4), Math.max(0.9, size * 0.085)); // kontur: puntonun ~%8.5'i (11 pt → 0.9, 17 pt → 1.5)
+  // Alt dilim ve dış kontur BUTON YÜKSEKLİĞİYLE ORANTILI: sabit LIP/OUTLINE ince butonlarda
+  // "altı ayrı renkte kesilmiş" gibi duruyordu (kullanıcı 2026-09-08).
+  const lipH = Math.max(mk(4), Math.min(LIP, height * 0.10));
+  const outW = Math.max(mk(3.5), Math.min(OUTLINE, height * 0.085));
   return (
     <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [{ opacity: disabled ? 0.55 : 1, transform: [{ translateY: pressed ? 2 : 0 }] }, style]}>
-      <Plate face={k.face} top={k.top} lip={k.lip} radius={radius} inner={{ height: height - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: mk(10), paddingHorizontal: mk(18) }}>
+      <Plate face={k.face} top={k.top} lip={k.lip} radius={radius} lipHeight={lipH} outlineWidth={outW}
+        inner={{ height: height - outW * 2 - lipH, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: mk(8), paddingHorizontal: mk(12) }}>
         {iconSrc ? <Image source={iconSrc} style={{ width: size * 1.05, height: size * 1.05 }} resizeMode="contain" /> : null}
-        <View style={{ alignItems: 'center' }}>
+        {/* flex:1 → etiket kesin bir genişlik alır, fit tek satıra sığdırır (SAHİPSİN alt satıra kaymaz) */}
+        <View style={{ alignItems: 'center', flex: 1, minWidth: 0 }}>
           {over ? <OutlinedText size={size * 0.62} outline={k.textOutline} width={ow * 0.8} numberOfLines={1} fit style={{ marginBottom: -mk(3) }}>{over}</OutlinedText> : null}
-          <OutlinedText size={size} outline={k.textOutline} width={ow}>{label}</OutlinedText>
-          {sub ? <OutlinedText size={subSize ?? size * 0.55} outline={k.textOutline} width={ow * 0.8} style={{ marginTop: -mk(4) }}>{sub}</OutlinedText> : null}
+          <OutlinedText size={size} outline={k.textOutline} width={ow} numberOfLines={1} fit>{label}</OutlinedText>
+          {sub ? <OutlinedText size={subSize ?? size * 0.55} outline={k.textOutline} width={ow * 0.8} numberOfLines={1} fit style={{ marginTop: -mk(4) }}>{sub}</OutlinedText> : null}
         </View>
       </Plate>
     </Pressable>

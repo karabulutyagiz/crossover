@@ -528,5 +528,6 @@
   "ui2.toNextArena": "อีก {n} ถ้วยถึงอารีน่าถัดไป",
   "ui2.rewardTaken": "รับรางวัลแล้ว",
   "ui2.winLoss": "ชนะ {w} / แพ้ {l}",
-  "ui2.yourRank": "อันดับของคุณ"
+  "ui2.yourRank": "อันดับของคุณ",
+  "ui2.everySevenDays": "รีเฟรชทุก 7 วัน"
 }

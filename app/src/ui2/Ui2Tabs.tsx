@@ -21,9 +21,9 @@ const KEYS: NavKey[] = ['store', 'collection', 'play', 'friends', 'tournaments']
 type Confirm = { title: string; body: string; price?: number; priceText?: string; onYes: () => void };
 export type Ui2DialogKey = 'mode' | 'bot' | 'quests' | 'settings' | 'language' | 'room' | 'requests' | 'league' | 'tournament' | 'road' | 'arenas' | 'profile' | null;
 
-export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, onLanguageChange, onDiamondCelebration, onOpenFeedback, initialScrollY = 0, initialDialog = null, initialCollectionSub }: {
+export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, onLanguageChange, onDiamondCelebration, onOpenFeedback, onOpenMatchHistory, initialScrollY = 0, initialDialog = null, initialCollectionSub }: {
   state: GameState; actions: Actions; activeTab: number; goToTab: (i: number) => void;
-  onOpenLevelRoad: () => void; onLanguageChange?: () => void; onDiamondCelebration?: (c: { amount: number }) => void; onOpenFeedback?: (category?: 'sponsorship') => void; initialScrollY?: number; initialDialog?: Ui2DialogKey; initialCollectionSub?: 'powers' | 'cosmetics' | 'emotes';
+  onOpenLevelRoad: () => void; onLanguageChange?: () => void; onDiamondCelebration?: (c: { amount: number }) => void; onOpenFeedback?: (category?: 'sponsorship') => void; onOpenMatchHistory?: () => void; initialScrollY?: number; initialDialog?: Ui2DialogKey; initialCollectionSub?: 'powers' | 'cosmetics' | 'emotes';
 }) {
   const insets = useSafeAreaInsets();
   const store = useStorePurchases(state, actions, onDiamondCelebration);
@@ -80,7 +80,7 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
       {dlg === 'tournament' && tourId ? <TournamentDialog state={state} actions={actions} id={tourId} onClose={closeDlg} /> : null}
       {dlg === 'road' ? <LevelRoadDialog state={state} actions={actions} onOpenStore={() => goToTab(0)} onClose={closeDlg} /> : null}
       {dlg === 'arenas' ? <ArenasDialog state={state} onClose={closeDlg} /> : null}
-      {dlg === 'profile' ? <ProfileDialog state={state} actions={actions} onClose={closeDlg} onConfirm={(c) => setConfirm(c)} onNotice={say} onOpenStore={() => goToTab(0)} onOpenCollection={() => goToTab(1)} /> : null}
+      {dlg === 'profile' ? <ProfileDialog state={state} actions={actions} onOpenMatchHistory={onOpenMatchHistory} onClose={closeDlg} onConfirm={(c) => setConfirm(c)} onNotice={say} onOpenStore={() => goToTab(0)} onOpenCollection={() => goToTab(1)} /> : null}
       {state.tournamentReady ? <TournamentReadyDialog state={state} actions={actions} /> : null}
       {state.tournamentOver ? <TournamentOverDialog state={state} actions={actions} /> : null}
       {confirm ? <ConfirmDialog title={confirm.title} body={confirm.body} price={confirm.price} priceText={confirm.priceText} onClose={() => setConfirm(null)} onYes={() => { const c = confirm; setConfirm(null); c.onYes(); }} /> : null}

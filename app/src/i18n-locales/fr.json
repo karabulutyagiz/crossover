@@ -528,5 +528,6 @@
   "ui2.toNextArena": "{n} trophées avant la prochaine arène",
   "ui2.rewardTaken": "Récompense reçue",
   "ui2.winLoss": "Victoire {w} / Défaite {l}",
-  "ui2.yourRank": "Ton rang"
+  "ui2.yourRank": "Ton rang",
+  "ui2.everySevenDays": "Renouvelé tous les 7 jours"
 }

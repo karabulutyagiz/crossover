@@ -528,5 +528,6 @@
   "ui2.toNextArena": "Còn {n} cúp đến đấu trường tiếp theo",
   "ui2.rewardTaken": "Đã nhận thưởng",
   "ui2.winLoss": "Thắng {w} / Thua {l}",
-  "ui2.yourRank": "Hạng của bạn"
+  "ui2.yourRank": "Hạng của bạn",
+  "ui2.everySevenDays": "Làm mới mỗi 7 ngày"
 }

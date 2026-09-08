@@ -528,5 +528,6 @@
   "ui2.toNextArena": "{n} جام تا آرنای بعدی",
   "ui2.rewardTaken": "پاداش دریافت شد",
   "ui2.winLoss": "برد {w} / باخت {l}",
-  "ui2.yourRank": "رتبه شما"
+  "ui2.yourRank": "رتبه شما",
+  "ui2.everySevenDays": "هر ۷ روز تازه می‌شود"
 }

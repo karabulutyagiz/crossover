@@ -23,9 +23,11 @@ export function Hud({ data, actions, title, titleIcon }: { data: HudData; action
     <View style={{ paddingHorizontal: SIDE, paddingTop: mk(22) }}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
         {/* avatar kutusu + seviye kalkanı */}
-        <Pressable onPress={actions?.onAvatar} style={{ width: avatarBox + mk(14), height: avatarBox + mk(20) }}>
-          <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={mk(26)} inner={{ width: avatarBox - OUTLINE * 2, height: avatarBox - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}>
-            <Avatar avatar={data.avatarId} name={data.name} size={avatarBox - mk(30)} frameId={data.frameId ?? null} />
+        {/* Kare çerçeve + içine TAM oturan fotoğraf: kutu eskiden dikdörtgendi (dilim kadar alçak) ve
+            Pressable daha genişti → fotoğraf sola/sağa kayıyor, kenarlarda boşluk kalıyordu. */}
+        <Pressable onPress={actions?.onAvatar} style={{ width: avatarBox, height: avatarBox + mk(16) }}>
+          <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={mk(26)} inner={{ width: avatarBox - OUTLINE * 2, height: avatarBox - OUTLINE * 2, alignItems: 'center', justifyContent: 'center' }}>
+            <Avatar avatar={data.avatarId} name={data.name} size={avatarBox - OUTLINE * 2 - mk(8)} frameId={data.frameId ?? null} />
           </Plate>
           <View style={{ position: 'absolute', right: -mk(6), bottom: 0, width: mk(60), height: mk(66), alignItems: 'center', justifyContent: 'center' }}>
             <LevelShield level={data.level} />

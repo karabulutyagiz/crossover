@@ -9,7 +9,7 @@ import { IcBolt, IcClock, IcCrownBig, IcFace, IcGems3, IcNavStore, IcStar } from
 import { S, up } from './strings';
 import type { StoreCatalogItem } from '../protocol';
 import { EmoteSticker, PREMIUM_EMOTES } from '../emotes';
-import { CosmeticArt, SPECIAL_POWERS, SPECIAL_POWER_PRICE_FALLBACK } from '../screens';
+import { CosmeticArt, CosmeticPreview, SPECIAL_POWERS, SPECIAL_POWER_PRICE_FALLBACK } from '../screens';
 import { UI2 } from './assets';
 import { Bar, BannerImage, ChunkyButton, GemAmount, OutlinedText, Plate, Ribbon, SectionHeader, Sticker, fitSize, fmt } from './primitives';
 import { Hud } from './Shell';
@@ -53,14 +53,14 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
       <View style={{ marginHorizontal: SIDE, marginTop: mk(6) }}>
         <BannerImage source={UI2.banner_socialpack} ratio={3}>
           <Ribbon label={t('ui2.specialOffer')} color={C.red} size={mk(22)} style={{ position: 'absolute', left: -mk(4), top: -mk(4), borderTopLeftRadius: mk(22), borderTopRightRadius: 0, borderBottomLeftRadius: 0, paddingHorizontal: mk(20), paddingVertical: mk(5) }} />
-          <View style={{ position: 'absolute', left: '4%', top: '15%', width: '45%', height: '26%', justifyContent: 'center' }}>
+          <View style={{ position: 'absolute', left: '4%', top: '8%', width: '45%', height: '25%', justifyContent: 'center' }}>
             <OutlinedText size={fitSize(mk(54), up(t('store.socialPackSection')), 12)} width={mk(4)} color={C.gold} align="left" numberOfLines={1} fit>{up(t('store.socialPackSection'))}</OutlinedText>
           </View>
-          <BannerFeature top="43%" icon={<IcLock size={mk(38)} />} text={t('ui2.spFeat1')} />
-          <BannerFeature top="59%" icon={<IcNoAds size={mk(38)} />} text={t('ui2.spFeat2')} />
+          <BannerFeature top="35%" icon={<IcLock size={mk(38)} />} text={t('ui2.spFeat1')} />
+          <BannerFeature top="50%" icon={<IcNoAds size={mk(38)} />} text={t('ui2.spFeat2')} />
           {SOCIAL_PACK.map((sp, i) => (
-            <View key={sp.id} style={{ position: 'absolute', left: `${i === 0 ? 3 : 27}%`, top: '73%', width: '23%', height: '24%' }}>
-              <ChunkyButton kind="green" label={store.priceFor(sp.productId, sp.fallback)} over={store.activeSubId === sp.productId ? t('store.badgeActive') : t(sp.labelKey)} height={mk(70)} size={mk(25)} onPress={() => store.buy(sp.productId)} disabled={!!store.buying} style={{ flex: 1 }} />
+            <View key={sp.id} style={{ position: 'absolute', left: `${i === 0 ? 3 : 33}%`, top: '68%', width: '29%', height: '30%' }}>
+              <ChunkyButton kind="green" label={store.priceFor(sp.productId, sp.fallback)} over={store.activeSubId === sp.productId ? t('store.badgeActive') : t(sp.labelKey)} height={mk(92)} size={mk(30)} onPress={() => store.buy(sp.productId)} disabled={!!store.buying} style={{ flex: 1 }} />
             </View>
           ))}
           <Sticker left="78%" top="63%" width="25%" height="33%" rotate="-7deg" face={C.gold} border={C.navy}>
@@ -80,8 +80,8 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
             <IcStar size={mk(22)} />
             <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.black, fontSize: fitSize(mk(23), t('ui2.cpLine'), 22), flexShrink: 1 }}>{t('ui2.cpLine')}</Text>
           </View>
-          <View style={{ position: 'absolute', left: '23.5%', top: '60%', width: '30%', height: '27%' }}>
-            <ChunkyButton kind="green" gem label={p?.premiumRoad ? t('store.badgeActive') : up(t('store.diamonds', { n: fmt(PREMIUM_ROAD_PRICE) }))} height={mk(78)} size={mk(24)} disabled={!!p?.premiumRoad}
+          <View style={{ position: 'absolute', left: '21%', top: '58%', width: '37%', height: '32%' }}>
+            <ChunkyButton kind="green" gem label={p?.premiumRoad ? t('store.badgeActive') : up(t('store.diamonds', { n: fmt(PREMIUM_ROAD_PRICE) }))} height={mk(96)} size={mk(30)} disabled={!!p?.premiumRoad}
               onPress={() => gemBuy('CO PASS', PREMIUM_ROAD_PRICE, () => actions.buyPremiumRoad())} style={{ flex: 1 }} />
           </View>
           <Sticker left="75%" top="66%" width="27%" height="30%" rotate="-5deg" face="#1E4FD6" border="#5FE0FF">
@@ -211,7 +211,7 @@ function ProductCard({ width, height, artH, title, subtitle, art, artNode, artSc
   const artW = Math.round((width - mk(16)) * 0.9 * artScale);
   return (
     <View style={{ width }}>
-      <Plate face={face} top={top} lip={lip} radius={R.card} inner={{ height: height - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(10), paddingHorizontal: mk(8) }}>
+      <Plate face={face} top={top} lip={lip} radius={R.card} inner={{ minHeight: height - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(10), paddingHorizontal: mk(8) }}>
         <OutlinedText size={small ? mk(24) : mk(34)} width={mk(3)} numberOfLines={1} fit style={{ lineHeight: fz(small ? 28 : 38) }}>{title}</OutlinedText>
         {subtitle ? <OutlinedText size={mk(19)} width={1.5} style={{ marginTop: -mk(4), lineHeight: fz(22) }}>{subtitle}</OutlinedText> : null}
         <View style={{ flex: 1 }} />
@@ -222,7 +222,7 @@ function ProductCard({ width, height, artH, title, subtitle, art, artNode, artSc
         <View style={{ flex: 1 }} />
         {desc ? <View style={{ height: fz(19) * 2 + mk(4), justifyContent: 'center' }}><Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: C.white, fontFamily: F.black, fontSize: fz(16), textAlign: 'center', lineHeight: fz(19) }}>{desc}</Text></View> : null}
         <View style={{ width: '100%', marginTop: mk(6), marginBottom: mk(10) }}>
-          <ChunkyButton kind="green" gem={button.gem} label={button.label} height={mk(60)} size={mk(29)} onPress={button.onPress} disabled={button.disabled} />
+          <ChunkyButton kind="green" gem={button.gem} label={button.label} height={mk(80)} size={mk(34)} onPress={button.onPress} disabled={button.disabled} />
         </View>
       </Plate>
     </View>
@@ -231,18 +231,30 @@ function ProductCard({ width, height, artH, title, subtitle, art, artNode, artSc
 function CosmeticCard({ item, width, owned, vault, onBuy, disabled }: { item: StoreCatalogItem; width: number; owned: boolean; vault?: boolean; onBuy: () => void; disabled: boolean }) {
   return (
     <View style={{ width }}>
-      <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={vault ? C.gold : C.navy} radius={R.card} inner={{ height: mk(300) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(6), paddingHorizontal: mk(8) }}>
+      <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={vault ? C.gold : C.navy} radius={R.card} inner={{ minHeight: mk(340) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(6), paddingHorizontal: mk(8) }}>
         <View style={{ height: fz(30) * 2, justifyContent: 'center' }}><OutlinedText size={mk(26)} width={mk(3)} numberOfLines={2} fit style={{ lineHeight: fz(30) }}>{item.name.toLocaleUpperCase('tr')}</OutlinedText></View>
         <View style={{ width: '100%', height: mk(124), borderRadius: mk(12), overflow: 'hidden', marginTop: mk(2), borderWidth: mk(3), borderColor: C.navy, backgroundColor: '#061A45', alignItems: 'center', justifyContent: 'center' }}>
-          <CosmeticArt id={item.id} type={item.type} size={item.type === 'frame' ? mk(210) : mk(232)} accent={vault ? C.gold : C.cyan} />
+          {/* çerçeve/top/arena kendi sanatını çizer; giriş-zafer-kutlama efektleri çıplak ikon → halkalı önizleme */}
+          {item.type === 'frame' || item.type === 'ball' || item.type === 'match_background'
+            ? <CosmeticArt id={item.id} type={item.type} size={cosmeticArtSize(item.type)} accent={vault ? C.gold : C.cyan} />
+            : <CosmeticPreview item={item} size={mk(210)} />}
         </View>
         <View style={{ flex: 1 }} />
         <View style={{ width: '100%', marginBottom: mk(10) }}>
-          <ChunkyButton kind="green" gem={!owned} label={owned ? S.owned : String(item.diamondPrice)} height={mk(64)} size={mk(30)} onPress={onBuy} disabled={owned || disabled} />
+          <ChunkyButton kind="green" gem={!owned} label={owned ? S.owned : String(item.diamondPrice)} height={mk(80)} size={mk(34)} onPress={onBuy} disabled={owned || disabled} />
         </View>
       </Plate>
     </View>
   );
+}
+// CosmeticArt tür başına farklı oranda çiziyor (çerçeve %52, arena %78, top %66, isim %18) →
+// kartlarda hepsi AYNI büyüklükte görünsün diye tür başına ölçek.
+function cosmeticArtSize(type: string): number {
+  if (type === 'frame') return mk(230);
+  if (type === 'match_background') return mk(300);
+  if (type === 'ball') return mk(340);
+  if (type === 'name_effect') return mk(560);
+  return mk(300);
 }
 // Haftalık dükkân geri sayımı: sunucu weeklyResetAt (yoksa gelecek Pazartesi 00:00 yerel), dakikada bir tazelenir.
 function WeeklyCountdown({ until }: { until?: string | null }) {
@@ -255,6 +267,8 @@ function WeeklyCountdown({ until }: { until?: string | null }) {
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(8), alignSelf: 'flex-start', backgroundColor: C.panelInk, borderRadius: mk(14), borderWidth: mk(3), borderColor: C.navy, paddingHorizontal: mk(12), paddingVertical: mk(5), marginTop: -mk(4), marginBottom: mk(12) }}>
       <IcClock size={mk(28)} />
       <Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(17) }}>{t('ui2.resetsIn', { t: txt })}</Text>
+      <View style={{ width: mk(3), height: mk(26), backgroundColor: C.navy, marginHorizontal: mk(4) }} />
+      <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: fz(15) }}>{t('ui2.everySevenDays')}</Text>
     </View>
   );
 }
