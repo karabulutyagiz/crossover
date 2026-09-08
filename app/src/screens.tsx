@@ -75,7 +75,7 @@ import { stopSplashStinger } from './feedback/AudioService';
 import { triggerFeedback } from './feedback/GameFeedback';
 import { useFeedbackPreferences } from './feedback/useFeedbackPreferences';
 // UI2 derisi: eski popup kabuğu (GameModal) ve Btn, UI2 açıkken yeni dilde çizilir — içerik aynı kalır.
-import { ChunkyButton as Ui2Button, OutlinedText as Ui2Text, Plate as Ui2Plate } from './ui2/primitives';
+import { CheckerBg as Ui2Checker, ChunkyButton as Ui2Button, OutlinedText as Ui2Text, Plate as Ui2Plate } from './ui2/primitives';
 import { IcClock as Ui2IcClock } from './ui2/icons-ui';
 import { C as UI2C, mk as ui2mk } from './ui2/tokens';
 const UI2_ON = process.env.EXPO_PUBLIC_UI2 === '1';
@@ -9798,6 +9798,9 @@ function localBallIdForState(state: GameState): string {
 
 function MatchCosmeticBackdrop({ backgroundId }: { backgroundId?: string | null }) {
   const id = backgroundId || DEFAULT_MATCH_BACKGROUND_ID;
+  // UI2 + VARSAYILAN zemin: menülerdeki damalı royal-blue zemin (eski koyu saha zemini yerine).
+  // SATIN ALINAN arena arka planları (Neon Pitch, Night Stadium, GOAT Arena…) AYNEN çizilir — ürünü bozmaz.
+  const ui2Default = UI2_ON && id === DEFAULT_MATCH_BACKGROUND_ID;
   const look = MATCH_BACKGROUND_LOOK[id] ?? MATCH_BACKGROUND_LOOK[DEFAULT_MATCH_BACKGROUND_ID]!;
   // Uygulama kökü safe-area ile içeri alınmış durumda; arka plan çentik/home-bar
   // altına da uzansın diye insets kadar negatif taşırılır (yoksa üstte siyah bant).
@@ -9814,6 +9817,21 @@ function MatchCosmeticBackdrop({ backgroundId }: { backgroundId?: string | null 
   }, [pulse, id]);
   const hot = id.includes('fire') || id.includes('goat');
   // Çizilmiş arena fotoğrafı olan kozmetikler: fotoğraf + okunabilirlik örtüsü.
+  if (ui2Default) {
+    return (
+      <View pointerEvents="none" style={bleed}>
+        <Ui2Checker />
+        {/* Maç zemini menüden BİR TON KOYU: kartlar/rozetler damalı desenin üstünde öne çıksın */}
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(2,12,44,0.34)' }]} />
+        {/* Maçı menüden ayıran ince saha izi — damalı zeminin üstünde çok hafif */}
+        <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} opacity={0.22}>
+          <Rect x="6%" y="4%" width="88%" height="92%" rx="18" fill="none" stroke="#FFFFFF" strokeWidth={3} />
+          <Line x1="6%" y1="50%" x2="94%" y2="50%" stroke="#FFFFFF" strokeWidth={3} />
+          <Circle cx="50%" cy="50%" r="12%" fill="none" stroke="#FFFFFF" strokeWidth={3} />
+        </Svg>
+      </View>
+    );
+  }
   const bgImage = id === 'neon_pitch' ? COSMETIC_ART.neonPitchBg : id === 'night_stadium' ? COSMETIC_ART.nightStadiumBg : id === 'goat_arena' ? COSMETIC_ART.goatArenaBg : id === 'season1_arena' ? COSMETIC_ART.season1Bg : null;
   if (bgImage) {
     return (
