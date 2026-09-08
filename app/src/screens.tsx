@@ -1395,7 +1395,12 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
   const isTablet = useIsTablet();
   const maxW = useContentMaxWidth();
   // UI2: kendi zemini olmayan ekranlar (Rakip Aranıyor, panolar…) menülerdeki damalı zemini kullanır.
-  const ui2Bg = UI2_ON && !bg ? <Ui2Checker /> : null;
+  // Uygulama kökü safe-area ile içeri alınmış: zemin çentik/ana ekran çubuğu ALTINA da taşmalı,
+  // yoksa üstte farklı renkte bir bant kalıyor (kullanıcı 2026-09-08).
+  const screenInsets = useSafeAreaInsets();
+  const ui2Bg = UI2_ON && !bg
+    ? <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: -screenInsets.top, bottom: -screenInsets.bottom }}><Ui2Checker /></View>
+    : null;
   // lockWhenFits: measured, not assumed — scrolling turns off only when the
   // content genuinely fits the viewport, so small phones keep scrolling.
   const [vpH, setVpH] = useState(0);
