@@ -492,11 +492,21 @@ export function LevelRoadDialog({ state, actions, onOpenStore, onClose }: { stat
         </View>
       </Plate>
       {/* CO PASS durumu */}
-      <Plate face={prem ? C.gold : C.panelInk} top={prem ? C.goldLight : '#2F63C8'} lip={prem ? C.goldDark : '#041A4E'} radius={mk(18)} style={{ marginTop: mk(10) }} inner={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(14), paddingVertical: mk(8), gap: mk(10) }}>
-        <IcCrownBig size={mk(52)} />
-        <OutlinedText size={mk(30)} width={mk(2.5)} color={prem ? C.ink : C.gold} outline={prem ? '#FFF6C7' : C.ink} align="left" style={{ flex: 1 }}>{prem ? `CO PASS · ${t('store.badgeActive')}` : 'CO PASS'}</OutlinedText>
-        {/* Satın alma butonu göze girsin: geniş + yüksek + altın (kullanıcı 2026-09-08) */}
-        {!prem ? <ChunkyButton kind="gold" gem label={up(t('store.diamonds', { n: fmt(PREMIUM_ROAD_PRICE) }))} height={mk(96)} size={mk(30)} style={{ width: mk(330) }} onPress={() => { onClose(); onOpenStore(); }} /> : null}
+      {/* CO PASS TEKLİF KARTI: mor/altın çerçeve, taç ile başlık aynı hizada, TAM GENİŞLİK altın satın alma butonu.
+          Eskiden satırın ucunda küçük bir butondu; kullanıcı "göze batmıyor, alıcı olmuyor" dedi (2026-09-08). */}
+      <Plate face={prem ? C.gold : '#3B1A7A'} top={prem ? C.goldLight : '#7A45D9'} lip={prem ? C.goldDark : '#220A4E'} outline={C.gold} radius={mk(22)} style={{ marginTop: mk(12) }} inner={{ paddingHorizontal: mk(14), paddingVertical: mk(12) }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(12) }}>
+          <IcCrownBig size={mk(78)} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <OutlinedText size={mk(46)} width={mk(4)} color={prem ? C.ink : C.gold} outline={prem ? '#FFF6C7' : C.ink} align="left" numberOfLines={1} fit>{prem ? `CO PASS · ${t('store.badgeActive')}` : 'CO PASS'}</OutlinedText>
+            <Text numberOfLines={2} style={{ color: prem ? C.ink : C.white, fontFamily: F.bold, fontSize: fz(18), lineHeight: fz(22) }}>{t('ui2.cpLine')}</Text>
+          </View>
+        </View>
+        {!prem ? (
+          <View style={{ marginTop: mk(12) }}>
+            <ChunkyButton kind="gold" gem label={up(t('store.diamonds', { n: fmt(PREMIUM_ROAD_PRICE) }))} sub={up(t('ui2.unlockAllRewards'))} height={mk(130)} size={mk(40)} subSize={mk(22)} onPress={() => { onClose(); onOpenStore(); }} />
+          </View>
+        ) : null}
       </Plate>
       {/* şerit başlıkları */}
       <View style={{ flexDirection: 'row', marginTop: mk(12), marginBottom: mk(6), paddingLeft: mk(70) }}>

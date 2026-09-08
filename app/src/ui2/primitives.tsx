@@ -26,11 +26,13 @@ export function CheckerBg({ style }: { style?: StyleProp<ViewStyle> }) {
 }
 
 // ── Konturlu yazı: 8 yönlü kopya (RN'de stroke yok). Başlıklar/CTA/fiyatlar. ────
-export function OutlinedText({ children, size, color = C.white, outline = C.ink, width = 2, family = F.title, style, align = 'center', numberOfLines, fit = false }: {
+export function OutlinedText({ children, size, color = C.white, outline = C.ink, width = 2, family = F.title, style, align = 'center', numberOfLines, fit = false, fitWidth }: {
   children: ReactNode; size: number; color?: string; outline?: string; width?: number; family?: string;
   style?: StyleProp<TextStyle>; align?: 'left' | 'center' | 'right'; numberOfLines?: number;
-  /** Uzun dillerde sığdır: adjustsFontSizeToFit (kopyalar aynı metin+genişlik → aynı ölçeği bulur). */
+  /** Uzun dillerde sığdır: metnin doğal genişliği / kullanılabilir genişlik oranıyla deterministik punto. */
   fit?: boolean;
+  /** Kullanılabilir genişlik dışarıdan ölçüldüyse (içerik boyutlu sarmalayıcıda kendi ölçümü küçülme döngüsü yapar). */
+  fitWidth?: number;
 }) {
   // fit: NATİVE adjustsFontSizeToFit KULLANILMAZ — 9 kopya farklı ölçek buluyordu (dolgu minik, kontur büyük).
   // Deterministik: görünmez bir ölçüm kopyası metnin doğal genişliğini (taban punto) verir, sarmalayıcı kullanılabilir
@@ -41,8 +43,9 @@ export function OutlinedText({ children, size, color = C.white, outline = C.ink,
   const text = typeof children === 'string' || typeof children === 'number' ? String(children) : null;
   const base0 = Math.max(Math.round(size * FONT_SCALE * 2) / 2, 12); // telefon tabanı (tokens.fz ile aynı kural)
   const lines = numberOfLines ?? 1;
-  const fs = fit && text && availW > 0 && natW > 0
-    ? Math.max(11, Math.min(base0, Math.floor(base0 * ((availW - 2 * width - 1) * (lines > 1 ? lines * 0.9 : 1)) / natW * 2) / 2))
+  const useW = fitWidth ?? availW;
+  const fs = fit && text && useW > 0 && natW > 0
+    ? Math.max(11, Math.min(base0, Math.floor(base0 * ((useW - 2 * width - 1) * (lines > 1 ? lines * 0.9 : 1)) / natW * 2) / 2))
     : base0;
   const base: TextStyle = { fontFamily: family, fontSize: fs, color, textAlign: align, includeFontPadding: false };
   const offsets = useMemo(() => {
@@ -51,7 +54,7 @@ export function OutlinedText({ children, size, color = C.white, outline = C.ink,
     return o;
   }, [width]);
   return (
-    <View onLayout={fit ? (e) => { const w = Math.round(e.nativeEvent.layout.width); if (w !== availW) setAvailW(w); } : undefined}
+    <View onLayout={fit && fitWidth == null ? (e) => { const w = Math.round(e.nativeEvent.layout.width); if (w !== availW) setAvailW(w); } : undefined}
       style={fit ? { alignSelf: 'stretch', flexShrink: 0, minWidth: 0 } : { alignSelf: align === 'center' ? 'center' : 'stretch', flexShrink: 0 }}>
       {fit && text ? (
         <Text numberOfLines={1} accessible={false} importantForAccessibility="no" pointerEvents="none"
@@ -67,17 +70,18 @@ export function OutlinedText({ children, size, color = C.white, outline = C.ink,
 }
 
 // ── Plaka: kontur + yüz + üst parlama + alt dilim ───────────────────────────────
-export function Plate({ children, face = C.panel, top = C.panelTop, lip = C.panelDark, outline = C.navy, radius = R.plate, style, inner, lipHeight = LIP, outlineWidth = OUTLINE, shrink = false }: {
+export function Plate({ children, face = C.panel, top = C.panelTop, lip = C.panelDark, outline = C.navy, radius = R.plate, style, inner, lipHeight = LIP, outlineWidth = OUTLINE, shrink = false, onInnerLayout }: {
   children?: ReactNode; face?: string; top?: string; lip?: string; outline?: string; radius?: number;
   style?: StyleProp<ViewStyle>; inner?: StyleProp<ViewStyle>; lipHeight?: number; outlineWidth?: number;
   /** Üç katman da ebeveynin maxHeight'ına uysun (RN'de flexShrink varsayılanı 0 → taşar); içindeki ScrollView kaydırır. */ shrink?: boolean;
+  /** İç yüzeyin ölçülen genişliği (buton etiketini sığdırmak için). */ onInnerLayout?: (w: number) => void;
 }) {
   const ir = Math.max(2, radius - outlineWidth);
   const sh: ViewStyle = shrink ? { flexShrink: 1, minHeight: 0 } : {};
   return (
     <View style={[{ backgroundColor: outline, borderRadius: radius, padding: outlineWidth }, sh, style]}>
       <View style={[{ backgroundColor: lip, borderRadius: ir, paddingBottom: lipHeight }, sh]}>
-        <View style={[{ backgroundColor: face, borderRadius: ir, overflow: 'hidden' }, sh, inner]}>
+        <View onLayout={onInnerLayout ? (e) => onInnerLayout(Math.round(e.nativeEvent.layout.width)) : undefined} style={[{ backgroundColor: face, borderRadius: ir, overflow: 'hidden' }, sh, inner]}>
           <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: mk(7), backgroundColor: top, opacity: 0.85 }} />
           {children}
         </View>
@@ -105,17 +109,25 @@ export function ChunkyButton({ kind = 'green', label, sub, over, onPress, height
   const ow = Math.min(mk(4), Math.max(0.9, size * 0.085)); // kontur: puntonun ~%8.5'i (11 pt → 0.9, 17 pt → 1.5)
   // Alt dilim ve dış kontur BUTON YÜKSEKLİĞİYLE ORANTILI: sabit LIP/OUTLINE ince butonlarda
   // "altı ayrı renkte kesilmiş" gibi duruyordu (kullanıcı 2026-09-08).
+  const [innerW, setInnerW] = useState(0);
   const lipH = Math.max(mk(4), Math.min(LIP, height * 0.10));
+  const labelW = innerW > 0 ? Math.max(mk(40), innerW - (gem || icon ? size * 1.05 + mk(8) : 0)) : undefined;
   const outW = Math.max(mk(3.5), Math.min(OUTLINE, height * 0.085));
   return (
     <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [{ opacity: disabled ? 0.55 : 1, transform: [{ translateY: pressed ? 2 : 0 }] }, style]}>
       <Plate face={k.face} top={k.top} lip={k.lip} radius={radius} lipHeight={lipH} outlineWidth={outW}
-        inner={{ height: height - outW * 2 - lipH, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: mk(8), paddingHorizontal: mk(12) }}>
-        {iconSrc ? <Image source={iconSrc} style={{ width: size * 1.05, height: size * 1.05 }} resizeMode="contain" /> : null}
-        {/* flex:1 → etiket kesin bir genişlik alır, fit tek satıra sığdırır (SAHİPSİN alt satıra kaymaz) */}
+        inner={{ height: height - outW * 2 - lipH, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: mk(8), paddingHorizontal: mk(12) }}
+        onInnerLayout={(w) => { if (w !== innerW) setInnerW(w); }}>
+        {/* İkon + fiyat TEK GRUP olarak ortalanır (geniş butonda ikon kenarda yalnız kalmasın).
+            Etiket flexShrink ile kesin genişlik alır → fit tek satıra sığdırır. */}
         <View style={{ alignItems: 'center', flex: 1, minWidth: 0 }}>
           {over ? <OutlinedText size={size * 0.62} outline={k.textOutline} width={ow * 0.8} numberOfLines={1} fit style={{ marginBottom: -mk(3) }}>{over}</OutlinedText> : null}
-          <OutlinedText size={size} outline={k.textOutline} width={ow} numberOfLines={1} fit>{label}</OutlinedText>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: mk(8), alignSelf: 'stretch' }}>
+            {iconSrc ? <Image source={iconSrc} style={{ width: size * 1.05, height: size * 1.05 }} resizeMode="contain" /> : null}
+            <View style={{ flexShrink: 1, minWidth: 0 }}>
+              <OutlinedText size={size} outline={k.textOutline} width={ow} numberOfLines={1} fit fitWidth={labelW}>{label}</OutlinedText>
+            </View>
+          </View>
           {sub ? <OutlinedText size={subSize ?? size * 0.55} outline={k.textOutline} width={ow * 0.8} numberOfLines={1} fit style={{ marginTop: -mk(4) }}>{sub}</OutlinedText> : null}
         </View>
       </Plate>

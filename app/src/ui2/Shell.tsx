@@ -36,33 +36,36 @@ export function Hud({ data, actions, title, titleIcon }: { data: HudData; action
         {/* ad + XP */}
         <View style={{ flex: 1, minWidth: 0, marginLeft: mk(18), marginTop: mk(6), overflow: 'hidden' }}>
           <OutlinedText size={mk(40)} width={mk(4)} align="left" numberOfLines={1}>{data.name.toLocaleUpperCase('tr')}</OutlinedText>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: mk(10) }}>
-            <Bar value={data.xp} max={data.xpNext} style={{ width: mk(185) }} height={mk(30)} />
-            <Text numberOfLines={1} style={{ color: C.white, fontFamily: F.bold, fontSize: fz(21), marginLeft: mk(10) }}>{fmt(data.xp)} / {fmt(data.xpNext)}</Text>
+          {/* XP: kalın çubuk, sayı ÇUBUĞUN İÇİNDE (yanına yazınca boş hap gibi duruyordu) */}
+          <View style={{ marginTop: mk(10), justifyContent: 'center' }}>
+            <Bar value={data.xp} max={data.xpNext} height={mk(44)} radius={mk(14)} />
+            <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, alignItems: 'center' }}>
+              <OutlinedText size={mk(26)} width={mk(2)} numberOfLines={1}>{`${fmt(data.xp)} / ${fmt(data.xpNext)}`}</OutlinedText>
+            </View>
           </View>
         </View>
         {/* elmas pill + artı + dişli */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: mk(8) }}>
           <Pressable onPress={actions?.onGems}>
-            <Plate face={C.panelInk} top="#2F63C8" lip="#051D52" radius={R.pill} inner={{ height: mk(66) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingLeft: mk(8), paddingRight: mk(18), gap: mk(6) }}>
-              <View style={{ marginTop: -mk(4) }}><IcGem size={mk(50)} /></View>
-              <OutlinedText size={mk(36)} width={mk(3)}>{fmt(data.diamonds)}</OutlinedText>
+            <Plate face={C.panelInk} top="#2F63C8" lip="#051D52" radius={R.pill} inner={{ height: mk(84) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingLeft: mk(10), paddingRight: mk(22), gap: mk(8) }}>
+              <View style={{ marginTop: -mk(4) }}><IcGem size={mk(62)} /></View>
+              <OutlinedText size={mk(44)} width={mk(3.5)}>{fmt(data.diamonds)}</OutlinedText>
             </Plate>
           </Pressable>
-          <Pressable onPress={actions?.onPlus ?? actions?.onGems} style={{ marginLeft: -mk(14), marginTop: -mk(2) }}>
-            <IcPlus size={mk(56)} />
+          <Pressable onPress={actions?.onPlus ?? actions?.onGems} style={{ marginLeft: -mk(18), marginTop: -mk(2) }}>
+            <IcPlus size={mk(68)} />
           </Pressable>
           <Pressable onPress={actions?.onSettings} style={{ marginLeft: mk(10) }}>
-            <IcGear size={mk(78)} />
+            <IcGear size={mk(86)} />
           </Pressable>
         </View>
       </View>
       {/* kupa pill + sayfa başlığı */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: mk(6), height: titleIcon ? mk(96) : mk(74) }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: mk(8), height: titleIcon ? mk(104) : mk(92) }}>
         <Pressable onPress={actions?.onTrophies}>
-          <Plate face={C.panelInk} top="#2F63C8" lip="#051D52" radius={R.pill} inner={{ height: mk(64) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingLeft: mk(8), paddingRight: mk(20), gap: mk(6) }}>
-            <View style={{ marginTop: -mk(4) }}><IcTrophy size={mk(56)} /></View>
-            <OutlinedText size={mk(36)} width={mk(3)}>{fmt(data.trophies)}</OutlinedText>
+          <Plate face={C.panelInk} top="#2F63C8" lip="#051D52" radius={R.pill} inner={{ height: mk(84) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingLeft: mk(10), paddingRight: mk(24), gap: mk(8) }}>
+            <View style={{ marginTop: -mk(4) }}><IcTrophy size={mk(66)} /></View>
+            <OutlinedText size={mk(44)} width={mk(3.5)}>{fmt(data.trophies)}</OutlinedText>
           </Plate>
         </Pressable>
         {title ? (

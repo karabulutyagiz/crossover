@@ -529,5 +529,6 @@
   "ui2.rewardTaken": "Beloning ontvangen",
   "ui2.winLoss": "Winst {w} / Verlies {l}",
   "ui2.yourRank": "Jouw rang",
-  "ui2.everySevenDays": "Elke 7 dagen nieuw"
+  "ui2.everySevenDays": "Elke 7 dagen nieuw",
+  "ui2.unlockAllRewards": "Ontgrendel alle beloningen"
 }

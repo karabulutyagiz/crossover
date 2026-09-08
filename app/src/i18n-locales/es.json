@@ -529,5 +529,6 @@
   "ui2.rewardTaken": "Recompensa obtenida",
   "ui2.winLoss": "Victoria {w} / Derrota {l}",
   "ui2.yourRank": "Tu puesto",
-  "ui2.everySevenDays": "Se renueva cada 7 días"
+  "ui2.everySevenDays": "Se renueva cada 7 días",
+  "ui2.unlockAllRewards": "Desbloquea todas las recompensas"
 }

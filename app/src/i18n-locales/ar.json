@@ -529,5 +529,6 @@
   "ui2.rewardTaken": "تم استلام المكافأة",
   "ui2.winLoss": "فوز {w} / خسارة {l}",
   "ui2.yourRank": "ترتيبك",
-  "ui2.everySevenDays": "يتجدد كل 7 أيام"
+  "ui2.everySevenDays": "يتجدد كل 7 أيام",
+  "ui2.unlockAllRewards": "افتح كل المكافآت"
 }

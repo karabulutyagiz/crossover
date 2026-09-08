@@ -529,5 +529,6 @@
   "ui2.rewardTaken": "Награда получена",
   "ui2.winLoss": "Победа {w} / Поражение {l}",
   "ui2.yourRank": "Твоё место",
-  "ui2.everySevenDays": "Обновляется каждые 7 дней"
+  "ui2.everySevenDays": "Обновляется каждые 7 дней",
+  "ui2.unlockAllRewards": "Открой все награды"
 }

@@ -529,5 +529,6 @@
   "ui2.rewardTaken": "보상 수령 완료",
   "ui2.winLoss": "승리 {w} / 패배 {l}",
   "ui2.yourRank": "내 순위",
-  "ui2.everySevenDays": "7일마다 갱신"
+  "ui2.everySevenDays": "7일마다 갱신",
+  "ui2.unlockAllRewards": "모든 보상 해제"
 }

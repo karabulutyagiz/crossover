@@ -529,5 +529,6 @@
   "ui2.rewardTaken": "Belønning hentet",
   "ui2.winLoss": "Seier {w} / Tap {l}",
   "ui2.yourRank": "Din plassering",
-  "ui2.everySevenDays": "Fornyes hver 7. dag"
+  "ui2.everySevenDays": "Fornyes hver 7. dag",
+  "ui2.unlockAllRewards": "Lås opp alle belønninger"
 }

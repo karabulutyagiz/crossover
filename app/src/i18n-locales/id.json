@@ -529,5 +529,6 @@
   "ui2.rewardTaken": "Hadiah diterima",
   "ui2.winLoss": "Menang {w} / Kalah {l}",
   "ui2.yourRank": "Peringkatmu",
-  "ui2.everySevenDays": "Diperbarui setiap 7 hari"
+  "ui2.everySevenDays": "Diperbarui setiap 7 hari",
+  "ui2.unlockAllRewards": "Buka semua hadiah"
 }

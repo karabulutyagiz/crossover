@@ -529,5 +529,6 @@
   "ui2.rewardTaken": "پاداش دریافت شد",
   "ui2.winLoss": "برد {w} / باخت {l}",
   "ui2.yourRank": "رتبه شما",
-  "ui2.everySevenDays": "هر ۷ روز تازه می‌شود"
+  "ui2.everySevenDays": "هر ۷ روز تازه می‌شود",
+  "ui2.unlockAllRewards": "همه پاداش‌ها را باز کن"
 }
