@@ -3,6 +3,7 @@
 export const UI2 = {
   ac_laurel: require('../../assets/ui2/ac-laurel.png'),
   ac_stadium: require('../../assets/ui2/ac-stadium.png'),
+  arena_amator: require('../../assets/ui2/arena-amator.png'),
   arena_dunya: require('../../assets/ui2/arena-dunya.png'),
   arena_efsaneler: require('../../assets/ui2/arena-efsaneler.png'),
   arena_goat: require('../../assets/ui2/arena-goat.png'),

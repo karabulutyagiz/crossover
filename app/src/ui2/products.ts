@@ -62,12 +62,12 @@ export const ARENAS: { key: string; min: number; max: number; win: number; loss:
 // Çizilmemiş arenalar için liste sanatına (assets/arenas) düşer — ana ekran ve Arenalar penceresi HEP aynı görseli kullanır.
 const ARENA_SCENE: Record<string, ImageSourcePropType | undefined> = {
   mahalle: UI2.arena_mahalle,
+  amator: UI2.arena_amator,
   profesyonel: UI2.arena_profesyonel,
   sampiyonlar: UI2.arena_sampiyonlar,
   efsaneler: UI2.arena_efsaneler,
   dunya: UI2.arena_dunya,
   goat: UI2.arena_goat,
-  // amator: çizim henüz gelmedi → eski liste sanatına düşer
 };
 export function arenaArt(key: string): ImageSourcePropType {
   return ARENA_SCENE[key] ?? ARENAS.find((a) => a.key === key)?.art ?? ARENAS[0]!.art;
