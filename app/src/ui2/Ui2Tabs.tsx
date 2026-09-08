@@ -5,6 +5,7 @@ import { ScrollView, Text, useWindowDimensions, View, type NativeScrollEvent, ty
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Actions, GameState } from './types';
 import { BottomNav, type NavKey } from './Shell';
+import { TabFreeze } from './TabFreeze';
 import { CheckerBg, ChunkyButton, GemAmount, OutlinedText, Plate } from './primitives';
 import { HomeTab } from './HomeTab';
 import { StoreTab } from './StoreTab';
@@ -39,10 +40,8 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
   const { width: pageW } = useWindowDimensions();
   const pagerRef = useRef<ScrollView>(null);
   const pageRefs = useRef<(ScrollView | null)[]>([]);
-  const [visited, setVisited] = useState<number[]>([activeTab]);
   const lastIdx = useRef(activeTab);
   useEffect(() => {
-    setVisited((v) => (v.includes(activeTab) ? v : [...v, activeTab]));
     if (lastIdx.current !== activeTab) {
       pagerRef.current?.scrollTo({ x: activeTab * pageW, animated: true });
       lastIdx.current = activeTab;
@@ -69,17 +68,21 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
       <CheckerBg />
       <ScrollView ref={pagerRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false} bounces={false}
         contentOffset={{ x: activeTab * pageW, y: 0 }} onMomentumScrollEnd={onPageSettled} scrollEventThrottle={16}
+        removeClippedSubviews decelerationRate="fast" directionalLockEnabled
         keyboardShouldPersistTaps="handled" style={{ flex: 1 }}>
         {KEYS.map((k, i) => (
           <View key={k} style={{ width: pageW }}>
-            {!visited.includes(i) ? null : k === 'play' ? (
-              <View style={{ flex: 1, paddingTop: insets.top }}>{pageFor(i)}</View>
-            ) : (
-              <ScrollView ref={(r) => { pageRefs.current[i] = r; }} style={{ flex: 1 }} contentContainerStyle={{ paddingTop: insets.top, paddingBottom: mk(40) }}
-                showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                {pageFor(i)}
-              </ScrollView>
-            )}
+            {/* Pasif sekme DONDURULUR: mount'ta kalır ama yeniden çizilmez (beş ağacı birden çizmek yerine bir tane) */}
+            <TabFreeze active={activeTab === i} warmDelay={220 + i * 120}>
+              {k === 'play' ? (
+                <View style={{ flex: 1, paddingTop: insets.top }}>{pageFor(i)}</View>
+              ) : (
+                <ScrollView ref={(r) => { pageRefs.current[i] = r; }} style={{ flex: 1 }} contentContainerStyle={{ paddingTop: insets.top, paddingBottom: mk(40) }}
+                  showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                  {pageFor(i)}
+                </ScrollView>
+              )}
+            </TabFreeze>
           </View>
         ))}
       </ScrollView>
