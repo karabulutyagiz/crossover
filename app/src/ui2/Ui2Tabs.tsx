@@ -1,7 +1,7 @@
 // UI2 sekme konteyneri: damalı zemin + sekme gövdesi + alt nav + yerleşik pencere katmanı
 // (native Modal DEĞİL: reklam slotu / iOS sunum zinciriyle çakışmaz).
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState, type ReactNode, useLayoutEffect } from 'react';
+import { ScrollView, Text, View, Animated, Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Actions, GameState } from './types';
 import { BottomNav, type NavKey } from './Shell';
@@ -15,7 +15,7 @@ import { ConfirmDialog, LanguageDialog, LeagueDialog, ModeMenuDialog, PrivateRoo
 import { setLanguage, t } from '../i18n';
 import { S, up } from './strings';
 import { useStorePurchases } from './useStorePurchases';
-import { C, F, fz, LIP, mk, OUTLINE, SIDE } from './tokens';
+import { C, F, fz, LIP, mk, OUTLINE, SIDE, SW } from './tokens';
 
 const KEYS: NavKey[] = ['store', 'collection', 'play', 'friends', 'tournaments'];
 type Confirm = { title: string; body: string; price?: number; priceText?: string; onYes: () => void };
@@ -34,6 +34,17 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
   const scrollRef = useRef<ScrollView>(null);
   useEffect(() => { if (initialScrollY) setTimeout(() => scrollRef.current?.scrollTo({ y: initialScrollY, animated: false }), 50); }, [initialScrollY, activeTab]);
   const active = KEYS[activeTab] ?? 'play';
+  // Sekme geçişi: gövde yönlü kayar + belirir (CR sayfa kaydırma hissi); nav genişlemesi LayoutAnimation ile.
+  const slide = useRef(new Animated.Value(0)).current; const fade = useRef(new Animated.Value(1)).current; const prevTab = useRef(activeTab);
+  useLayoutEffect(() => {
+    const dir = activeTab > prevTab.current ? 1 : activeTab < prevTab.current ? -1 : 0; prevTab.current = activeTab;
+    if (!dir) return;
+    slide.setValue(dir * SW * 0.22); fade.setValue(0);
+    Animated.parallel([
+      Animated.timing(slide, { toValue: 0, duration: 280, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(fade, { toValue: 1, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+    ]).start();
+  }, [activeTab, slide, fade]);
   const say = useCallback((title: string, body: string) => setNotice({ title, body }), []);
   const common = { state, actions, onOpenSettings: () => setDlg('settings'), onOpenProfile: () => setDlg('profile'), onOpenArenas: () => setDlg('arenas') };
   let body: ReactNode;
@@ -47,6 +58,7 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
   return (
     <View style={{ flex: 1 }}>
       <CheckerBg />
+      <Animated.View style={{ flex: 1, opacity: fade, transform: [{ translateX: slide }] }}>
       {active === 'play' ? (
         <View style={{ flex: 1, paddingTop: insets.top }}>{body}</View>
       ) : (
@@ -54,6 +66,7 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
           {body}
         </ScrollView>
       )}
+      </Animated.View>
       <BottomNav active={active} onPress={(k) => { setDlg(null); goToTab(KEYS.indexOf(k)); }} badges={{ friends: state.friendRequests.length || undefined }} />
 
       {/* ── pencereler ── */}

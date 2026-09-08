@@ -1,7 +1,8 @@
 // UI2 kabuğu: üst HUD + alt navigasyon + damalı zemin. Mock: docs/design/ui2/refs/*.png
 import { type ReactNode } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
+import { Image, LayoutAnimation, Pressable, ScrollView, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Polygon, Rect, Stop } from 'react-native-svg';
 import { Avatar } from '../Avatar';
 import { t, type MessageKey } from '../i18n';
 import { Bar, CheckerBg, IconSlot, OutlinedText, Plate, fitSize, fmt } from './primitives';
@@ -94,29 +95,54 @@ const NAV: { key: NavKey; Icon: (p: { size?: number }) => ReactNode; labelKey: M
   { key: 'friends', Icon: IcNavFriends, labelKey: 'tab.friends' as MessageKey },
   { key: 'tournaments', Icon: IcTrophy, labelKey: 'tab.tournaments' as MessageKey },
 ];
-export const NAV_H = mk(156);
-// Clash Royale alt çubuğu: tek parça pahlı panel (üstte açık kenar ışığı, koyu kontur), içinde 5 geniş plaka
-// (kenardan kenara, dar boşluk), plakalar KESİLMEZ — ana ekran çubuğunun üstünde tam görünür; panel yüzü
-// altındaki güvenli alanı doldurur. Aktif plaka daha açık yüzlü, altın çerçeveli ve panelin üstüne taşar.
+export const NAV_H = mk(152);
+// Clash Royale alt çubuğu — kullanıcının CR ekran görüntülerinden birebir (2026-09-08):
+// koyu kurşuni bar (#3F4757), sekmeler arasında ince çizgiler, yalnız ikon; AKTİF sekme 2 kat geniş,
+// üstten açık maviye geçişli zemin (#86C3DC → #5F7FA1), yanlarda açık mavi ok uçları, altında sekme adı.
+// OYNA sekmesi (CR'deki Savaş) her zaman altın zeminli.
+const NAV_BAR = '#3F4757';
+// Zemin: CR'de aktif sekmenin rengi ALTTA yoğun, yukarı doğru sönümlenir (üstte neredeyse bar rengi);
+// kenardaki sekmelerde dış alt köşe telefon köşesi gibi yuvarlanır.
+function NavFill({ from, to, fromOpacity = 1, corner }: { from: string; to: string; fromOpacity?: number; corner?: 'left' | 'right' }) {
+  const r = mk(120);
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { overflow: 'hidden', borderBottomLeftRadius: corner === 'left' ? r : 0, borderBottomRightRadius: corner === 'right' ? r : 0 }]}>
+      <Svg width="100%" height="100%">
+        <Defs><SvgLinearGradient id={`navg_${from.replace(/[^a-z0-9]/gi, '')}`} x1="0" y1="0" x2="0" y2="1"><Stop offset="0" stopColor={from} stopOpacity={fromOpacity} /><Stop offset="1" stopColor={to} stopOpacity={1} /></SvgLinearGradient></Defs>
+        <Rect width="100%" height="100%" fill={`url(#navg_${from.replace(/[^a-z0-9]/gi, '')})`} />
+      </Svg>
+    </View>
+  );
+}
+function NavArrow({ dir }: { dir: 'left' | 'right' }) {
+  const w = mk(16); const h = mk(26);
+  return (
+    <Svg width={w} height={h} viewBox="0 0 16 26" style={{ position: 'absolute', top: '50%', marginTop: -h / 2, [dir]: mk(6) }} pointerEvents="none">
+      <Polygon points={dir === 'left' ? '16,0 0,13 16,26' : '0,0 16,13 0,26'} fill="#A4E2FC" />
+    </Svg>
+  );
+}
 export function BottomNav({ active, onPress, labels, badges }: { active: NavKey; onPress: (k: NavKey) => void; labels?: Partial<Record<NavKey, string>>; badges?: Partial<Record<NavKey, number>> }) {
   const insets = useSafeAreaInsets();
   return (
-    <View style={{ backgroundColor: '#0A3B95', paddingTop: mk(10), paddingBottom: Math.max(insets.bottom, mk(10)), paddingHorizontal: mk(6), flexDirection: 'row', alignItems: 'flex-end', gap: mk(5) }}>
-      {/* pah: koyu kontur + açık kenar ışığı (Plate diliyle aynı) */}
-      <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: mk(4), backgroundColor: C.navy }} />
-      <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: mk(4), height: mk(3), backgroundColor: '#4F93FF', opacity: 0.8 }} />
-      {NAV.map((n) => {
-        const on = n.key === active; const badge = badges?.[n.key];
+    <View style={{ backgroundColor: NAV_BAR, flexDirection: 'row', borderTopWidth: 1.5, borderTopColor: '#6E7C94' }}>
+      {/* barın kendisi de hafif geçişli: üstte biraz açık, altta koyu (CR) */}
+      <NavFill from="#525E73" to="#3A4252" />
+      {NAV.map((n, i) => {
+        const on = n.key === active; const play = n.key === 'play'; const badge = badges?.[n.key];
+        const label = labels?.[n.key] ?? t(n.labelKey);
+        const corner = i === 0 ? 'left' : i === NAV.length - 1 ? 'right' : undefined;
         return (
-          <Pressable key={n.key} onPress={() => onPress(n.key)} style={{ flex: 1, minWidth: 0 }}>
-            <Plate face={on ? C.navActive : '#1150C4'} top={on ? '#8CC4FF' : '#3E8BFF'} lip={on ? C.gold : '#062A70'} outline={on ? C.gold : C.navy} radius={R.tile} outlineWidth={on ? mk(7) : mk(5)} lipHeight={mk(12)}
-              inner={{ height: (on ? NAV_H + mk(20) : NAV_H) - mk(12) - OUTLINE * 2, alignItems: 'center', justifyContent: 'center', paddingTop: mk(2) }}>
-              <View style={{ height: mk(84), justifyContent: 'center' }}><n.Icon size={on ? mk(84) : mk(74)} /></View>
-              <OutlinedText size={fitSize(mk(30), labels?.[n.key] ?? t(n.labelKey), 10)} width={mk(3)} family={F.title} style={{ marginTop: mk(1) }} numberOfLines={1} fit>{labels?.[n.key] ?? t(n.labelKey)}</OutlinedText>
-            </Plate>
+          <Pressable key={n.key} onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.create(240, 'easeInEaseOut', 'opacity')); onPress(n.key); }} style={{ flex: on ? 2 : 1, minWidth: 0, height: NAV_H + Math.max(insets.bottom, mk(8)), paddingBottom: Math.max(insets.bottom, mk(8)), alignItems: 'center', justifyContent: 'center', borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: '#2A3140' }}>
+            {on ? <NavFill from="#6385A6" to="#6E92B4" fromOpacity={0.08} corner={corner} /> : play ? <NavFill from="#D9AF5A" to="#E8C56A" corner={corner} /> : null}
+            {on ? <><NavArrow dir="left" /><NavArrow dir="right" /></> : null}
+            <View style={{ alignItems: 'center', marginTop: on ? -mk(8) : 0 }}>
+              <n.Icon size={on ? mk(100) : mk(96)} />
+              {on ? <OutlinedText size={fitSize(mk(30), label, 12)} width={mk(3)} family={F.title} style={{ marginTop: -mk(4) }} numberOfLines={1} fit>{label}</OutlinedText> : null}
+            </View>
             {badge ? (
-              <View style={{ position: 'absolute', top: -mk(8), right: mk(6), minWidth: mk(44), height: mk(44), borderRadius: mk(22), backgroundColor: C.red, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
-                <OutlinedText size={mk(24)} width={1}>{String(badge)}</OutlinedText>
+              <View style={{ position: 'absolute', top: mk(8), right: on ? '28%' : mk(10), minWidth: mk(40), height: mk(40), borderRadius: mk(10), backgroundColor: C.red, borderWidth: mk(3), borderColor: '#7A1020', alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
+                <OutlinedText size={mk(22)} width={1}>{String(badge)}</OutlinedText>
               </View>
             ) : null}
           </Pressable>
