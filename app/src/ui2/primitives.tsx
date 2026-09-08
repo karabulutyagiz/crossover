@@ -1,9 +1,9 @@
 // UI2 primitifleri — mock'taki yüzey ailesi: koyu lacivert dış kontur, ana renk yüzü,
 // dar üst parlama, alt dilim (gölge). Hepsi View katmanı; PNG buton yok, ölçek bağımsız.
-import { cloneElement, isValidElement, type ReactElement, type ReactNode, useMemo } from 'react';
+import { cloneElement, isValidElement, type ReactElement, type ReactNode, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View, type DimensionValue, type ImageSourcePropType, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import Svg, { Defs, Pattern, Polygon, Rect } from 'react-native-svg';
-import { C, F, LIP, OUTLINE, R, SIDE, mk } from './tokens';
+import { C, F, fz, LIP, mk, OUTLINE, R, SIDE, SW, FONT_SCALE, MIN_TAP } from './tokens';
 import { UI2 } from './assets';
 import { IcGem } from './icons-ui';
 
@@ -32,32 +32,52 @@ export function OutlinedText({ children, size, color = C.white, outline = C.ink,
   /** Uzun dillerde sığdır: adjustsFontSizeToFit (kopyalar aynı metin+genişlik → aynı ölçeği bulur). */
   fit?: boolean;
 }) {
-  const base: TextStyle = { fontFamily: family, fontSize: size, color, textAlign: align, includeFontPadding: false };
+  // fit: NATİVE adjustsFontSizeToFit KULLANILMAZ — 9 kopya farklı ölçek buluyordu (dolgu minik, kontur büyük).
+  // Deterministik: görünmez bir ölçüm kopyası metnin doğal genişliğini (taban punto) verir, sarmalayıcı kullanılabilir
+  // genişliği verir; punto = taban × (kullanılabilir / doğal). Kopyaların hepsi aynı puntoyu alır.
+  // KURAL: fit için ebeveyn belirli bir genişlik vermeli (sütun içinde stretch; satır içinde flex:1'li View'a sar).
+  const [availW, setAvailW] = useState(0);
+  const [natW, setNatW] = useState(0);
+  const text = typeof children === 'string' || typeof children === 'number' ? String(children) : null;
+  const base0 = Math.max(Math.round(size * FONT_SCALE * 2) / 2, 10); // telefon tabanı (tokens.fz ile aynı kural)
+  const lines = numberOfLines ?? 1;
+  const fs = fit && text && availW > 0 && natW > 0
+    ? Math.max(10, Math.min(base0, Math.floor(base0 * ((availW - 2 * width - 1) * (lines > 1 ? lines * 0.9 : 1)) / natW * 2) / 2))
+    : base0;
+  const base: TextStyle = { fontFamily: family, fontSize: fs, color, textAlign: align, includeFontPadding: false };
   const offsets = useMemo(() => {
     const w = width; const o: [number, number][] = [];
     for (const dx of [-w, 0, w]) for (const dy of [-w, 0, w]) if (dx || dy) o.push([dx, dy]);
     return o;
   }, [width]);
   return (
-    <View style={{ alignSelf: align === 'center' ? 'center' : 'stretch', flexShrink: 0 }}>
+    <View onLayout={fit ? (e) => { const w = Math.round(e.nativeEvent.layout.width); if (w !== availW) setAvailW(w); } : undefined}
+      style={fit ? { alignSelf: 'stretch', flexShrink: 0, minWidth: 0 } : { alignSelf: align === 'center' ? 'center' : 'stretch', flexShrink: 0 }}>
+      {fit && text ? (
+        <Text numberOfLines={1} accessible={false} importantForAccessibility="no" pointerEvents="none"
+          onTextLayout={(e) => { const w = e.nativeEvent.lines?.[0]?.width ?? 0; if (w > 0 && Math.ceil(w) !== natW) setNatW(Math.ceil(w)); }}
+          style={[base, style, { position: 'absolute', left: 0, top: 0, width: 4000, opacity: 0, fontSize: base0, textAlign: 'left' }]}>{children}</Text>
+      ) : null}
       {offsets.map(([dx, dy]) => (
-        <Text key={`${dx}_${dy}`} numberOfLines={numberOfLines} adjustsFontSizeToFit={fit} minimumFontScale={0.5} style={[base, style, { position: 'absolute', left: dx, right: -dx, top: dy, color: outline }]} accessible={false} importantForAccessibility="no">{children}</Text>
+        <Text key={`${dx}_${dy}`} numberOfLines={numberOfLines} style={[base, style, { position: 'absolute', left: dx, right: -dx, top: dy, color: outline }]} accessible={false} importantForAccessibility="no">{children}</Text>
       ))}
-      <Text numberOfLines={numberOfLines} adjustsFontSizeToFit={fit} minimumFontScale={0.5} style={[base, style]}>{children}</Text>
+      <Text numberOfLines={numberOfLines} style={[base, style]}>{children}</Text>
     </View>
   );
 }
 
 // ── Plaka: kontur + yüz + üst parlama + alt dilim ───────────────────────────────
-export function Plate({ children, face = C.panel, top = C.panelTop, lip = C.panelDark, outline = C.navy, radius = R.plate, style, inner, lipHeight = LIP, outlineWidth = OUTLINE }: {
+export function Plate({ children, face = C.panel, top = C.panelTop, lip = C.panelDark, outline = C.navy, radius = R.plate, style, inner, lipHeight = LIP, outlineWidth = OUTLINE, shrink = false }: {
   children?: ReactNode; face?: string; top?: string; lip?: string; outline?: string; radius?: number;
   style?: StyleProp<ViewStyle>; inner?: StyleProp<ViewStyle>; lipHeight?: number; outlineWidth?: number;
+  /** Üç katman da ebeveynin maxHeight'ına uysun (RN'de flexShrink varsayılanı 0 → taşar); içindeki ScrollView kaydırır. */ shrink?: boolean;
 }) {
   const ir = Math.max(2, radius - outlineWidth);
+  const sh: ViewStyle = shrink ? { flexShrink: 1, minHeight: 0 } : {};
   return (
-    <View style={[{ backgroundColor: outline, borderRadius: radius, padding: outlineWidth }, style]}>
-      <View style={{ backgroundColor: lip, borderRadius: ir, paddingBottom: lipHeight }}>
-        <View style={[{ backgroundColor: face, borderRadius: ir, overflow: 'hidden' }, inner]}>
+    <View style={[{ backgroundColor: outline, borderRadius: radius, padding: outlineWidth }, sh, style]}>
+      <View style={[{ backgroundColor: lip, borderRadius: ir, paddingBottom: lipHeight }, sh]}>
+        <View style={[{ backgroundColor: face, borderRadius: ir, overflow: 'hidden' }, sh, inner]}>
           <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: mk(7), backgroundColor: top, opacity: 0.85 }} />
           {children}
         </View>
@@ -74,12 +94,14 @@ const BTN: Record<'green' | 'gold' | 'blue' | 'gray' | 'red', { face: string; to
   gray: { face: C.gray, top: '#C4CDE3', lip: C.grayDark, textOutline: '#2E3A57' },
   red: { face: C.red, top: '#FF8FA3', lip: C.redDark, textOutline: '#5A0A18' },
 };
-export function ChunkyButton({ kind = 'green', label, sub, over, onPress, height = mk(92), size = mk(38), style, icon, gem, disabled, radius = R.button, subSize }: {
+export function ChunkyButton({ kind = 'green', label, sub, over, onPress, height = mk(92), size = mk(38), style, icon, gem, disabled, radius = R.button, subSize, compact }: {
   kind?: keyof typeof BTN; label: string; sub?: string; /** küçük üst satır (ör. abonelik süresi) */ over?: string; onPress?: () => void; height?: number; size?: number;
   style?: StyleProp<ViewStyle>; icon?: ImageSourcePropType; gem?: boolean; disabled?: boolean; radius?: number; subSize?: number;
+  /** 40 pt dokunma tabanını uygulama — yalnız kartın tamamı zaten dokunulabilirken (görsel buton) */ compact?: boolean;
 }) {
   const k = BTN[kind];
   const iconSrc = gem ? UI2.hud_gem : icon;
+  height = compact ? height : Math.max(height, MIN_TAP);
   const ow = Math.min(mk(4), Math.max(0.9, size * 0.085)); // kontur: puntonun ~%8.5'i (11 pt → 0.9, 17 pt → 1.5)
   return (
     <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [{ opacity: disabled ? 0.55 : 1, transform: [{ translateY: pressed ? 2 : 0 }] }, style]}>
@@ -100,15 +122,14 @@ export function SectionHeader({ icon, title, subtitle, onMore, style }: { icon: 
   return (
     <View style={[{ flexDirection: 'row', alignItems: 'center', height: mk(96), paddingHorizontal: mk(6) }, style]}>
       <IconSlot icon={icon} width={mk(92)} height={mk(80)} size={mk(78)} />
-      <View style={{ marginLeft: mk(10) }}>
-        <OutlinedText size={mk(54)} width={mk(5)} align="left">{title}</OutlinedText>
+      <View style={{ marginLeft: mk(10), flex: 1, minWidth: 0 }}>
+        <OutlinedText size={mk(54)} width={mk(5)} align="left" numberOfLines={1} fit>{title}</OutlinedText>
       </View>
-      <View style={{ flex: 1 }} />
       {subtitle ? (
-        <Pressable onPress={onMore} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: mk(10), flexShrink: 1, minWidth: 0, marginLeft: mk(8) }}>
-          <View style={{ width: mk(30), height: 2, backgroundColor: C.textSub, opacity: 0.6 }} />
-          <Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(18), letterSpacing: 0.2, flexShrink: 1, textAlign: 'right', lineHeight: mk(21) }}>{subtitle}</Text>
-          {onMore ? <Text style={{ color: C.textSub, fontFamily: F.black, fontSize: mk(30), marginTop: -2 }}>›</Text> : null}
+        <Pressable onPress={onMore} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: mk(8), flexShrink: 0, width: '36%', marginLeft: mk(8), justifyContent: 'flex-end' }}>
+          <View style={{ width: mk(24), height: 2, backgroundColor: C.textSub, opacity: 0.6 }} />
+          <Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.85} style={{ color: C.textSub, fontFamily: F.bold, fontSize: fz(20), letterSpacing: 0.2, flexShrink: 1, textAlign: 'right', lineHeight: fz(23) }}>{subtitle}</Text>
+          {onMore ? <Text style={{ color: C.textSub, fontFamily: F.black, fontSize: fz(30), marginTop: -2 }}>›</Text> : null}
         </Pressable>
       ) : null}
     </View>
@@ -156,7 +177,7 @@ export function IconSlot({ icon, width, height, size }: { icon: ImageSourcePropT
 }
 // ── Banner: opak sanat + üstüne canlı katman (mağaza/arkadaşlar banner'ları) ──
 export function BannerImage({ source, ratio, children }: { source: ImageSourcePropType; ratio: number; children?: ReactNode }) {
-  const w = 430 - SIDE * 2; const h = w / ratio;
+  const w = SW - SIDE * 2; const h = w / ratio;
   return (
     <View style={{ width: w, height: h, borderRadius: mk(24), overflow: 'hidden', borderWidth: mk(4), borderColor: C.navy }}>
       <Image source={source} style={{ width: w, height: h }} resizeMode="cover" />

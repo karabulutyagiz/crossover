@@ -19,22 +19,24 @@ import { ARENA_STEPS, LEVEL_CAP, PACK_MODES, PREMIUM_ROAD_PRICE } from './produc
 import { roadReward, type RoadReward } from './rewards';
 import { IcCheckBadge, IcCrownBig, IcNavFriends, IcNavPlay, IcStar, IcTrophy } from './icons-ui';
 import { IcBell, IcCheck, IcChevron, IcClose, IcCopy, IcGlobe, IcLock, IcModeCountryTeam, IcModeCozKazan, IcModeGuessWho, IcModeLetterTeam, IcModeTeamTeam, IcModeXox, IcMusic, IcSound, IcVibrate } from './icons';
-import { C, F, LIP, OUTLINE, SIDE, mk } from './tokens';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { C, F, fz, LIP, mk, OUTLINE, SH, SIDE, SW } from './tokens';
 
 // ── Kabuk ──────────────────────────────────────────────────────────────────────
 export function Dialog({ title, onClose, children, accent = false, wide = false, initialScrollY = 0 }: { title: string; onClose: () => void; children: ReactNode; accent?: boolean; wide?: boolean; initialScrollY?: number }) {
   const scrollRef = useRef<ScrollView>(null);
+  const insets = useSafeAreaInsets(); // Dynamic Island / ana ekran çubuğu: pencere güvenli alanın içinde kalır
   return (
-    <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(2,10,40,0.74)', alignItems: 'center', justifyContent: 'center', padding: wide ? mk(20) : SIDE }}>
+    <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(2,10,40,0.74)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: wide ? mk(20) : SIDE, paddingTop: insets.top + mk(8), paddingBottom: Math.max(insets.bottom, mk(20)) }}>
       <Pressable style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} onPress={onClose} />
-      <View style={{ width: '100%', maxHeight: '92%' }}>
-        <Plate face={C.panel} top={C.panelTop} lip={C.panelDark} radius={mk(30)} inner={{ paddingHorizontal: mk(18), paddingBottom: mk(18), paddingTop: mk(14) }}>
+      <View style={{ width: '100%', maxHeight: SH - insets.top - Math.max(insets.bottom, mk(20)) - mk(8) }}>
+        <Plate shrink face={C.panel} top={C.panelTop} lip={C.panelDark} radius={mk(30)} inner={{ paddingHorizontal: mk(18), paddingBottom: mk(18), paddingTop: mk(14) }}>
           <View style={{ alignItems: 'center', marginBottom: mk(12) }}>
-            <Plate face={accent ? C.gold : '#1B5AE0'} top={accent ? C.goldLight : '#5A9BFF'} lip={accent ? C.goldDark : '#0B3A9E'} radius={mk(18)} style={{ alignSelf: 'stretch', marginRight: mk(30) }} inner={{ height: mk(72) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}>
+            <Plate face={accent ? C.gold : '#1B5AE0'} top={accent ? C.goldLight : '#5A9BFF'} lip={accent ? C.goldDark : '#0B3A9E'} radius={mk(18)} style={{ alignSelf: 'stretch', marginRight: mk(30) }} inner={{ minHeight: mk(72) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}>
               <OutlinedText size={mk(36)} width={mk(3)} color={accent ? C.ink : C.white} outline={accent ? '#FFF6C7' : C.ink}>{title}</OutlinedText>
             </Plate>
           </View>
-          <ScrollView ref={scrollRef} style={{ flexGrow: 0 }} contentContainerStyle={{ paddingBottom: mk(4) }} keyboardShouldPersistTaps="handled" onLayout={() => { if (initialScrollY > 0) scrollRef.current?.scrollTo({ y: initialScrollY, animated: false }); }}>{children}</ScrollView>
+          <ScrollView ref={scrollRef} style={{ flexGrow: 0, flexShrink: 1 }} contentContainerStyle={{ paddingBottom: mk(4) }} keyboardShouldPersistTaps="handled" onLayout={() => { if (initialScrollY > 0) scrollRef.current?.scrollTo({ y: initialScrollY, animated: false }); }}>{children}</ScrollView>
         </Plate>
         <Pressable onPress={onClose} hitSlop={10} style={{ position: 'absolute', top: -mk(6), right: -mk(6), width: mk(74), height: mk(74), borderRadius: mk(37), backgroundColor: C.red, borderWidth: mk(5), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}>
           <IcClose size={mk(46)} />
@@ -70,16 +72,16 @@ export function ModeMenuDialog({ state, actions, onClose, bot = false, onLocked 
   };
   return (
     <Dialog title={up(bot ? t('home.solo') : t('ui2.gameModes'))} onClose={onClose} wide>
-      <Text style={{ color: C.white, fontFamily: F.bold, fontSize: mk(22), textAlign: 'center', marginBottom: mk(12) }}>{bot ? t('ui2.pickModeBot') : t('ui2.pickMode')}</Text>
+      <Text style={{ color: C.white, fontFamily: F.bold, fontSize: fz(22), textAlign: 'center', marginBottom: mk(12) }}>{bot ? t('ui2.pickModeBot') : t('ui2.pickMode')}</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: mk(12), justifyContent: 'center' }}>
         {defs.map((m) => {
           const on = mode === m.id; const lk = PACK_MODES.includes(m.id) && !hasPack;
           return (
             <Pressable key={m.id} onPress={() => setMode(m.id)} style={{ width: '48.5%' }}>
-              <Plate face={m.face} top={m.top} lip={m.lip} outline={on ? C.gold : C.navy} outlineWidth={on ? mk(7) : OUTLINE} radius={mk(22)} inner={{ height: mk(252) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(10), paddingTop: mk(6) }}>
+              <Plate face={m.face} top={m.top} lip={m.lip} outline={on ? C.gold : C.navy} outlineWidth={on ? mk(7) : OUTLINE} radius={mk(22)} inner={{ minHeight: mk(252) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(10), paddingTop: mk(6) }}>
                 {m.art ? <Image source={m.art} style={{ width: mk(142), height: mk(142) }} resizeMode="contain" /> : <m.Icon size={mk(110)} />}
                 <OutlinedText size={mk(26)} width={mk(2)} numberOfLines={1} style={{ marginTop: mk(4) }}>{t(m.nameKey)}</OutlinedText>
-                <Text numberOfLines={2} style={{ color: C.white, fontFamily: F.semi, fontSize: mk(15), textAlign: 'center', lineHeight: mk(19), marginTop: mk(2) }}>{t(m.descKey)}</Text>
+                <Text numberOfLines={2} style={{ color: C.white, fontFamily: F.semi, fontSize: fz(15), textAlign: 'center', lineHeight: fz(19), marginTop: mk(2) }}>{t(m.descKey)}</Text>
               </Plate>
               {lk ? <View style={{ position: 'absolute', top: -mk(6), right: -mk(4), width: mk(52), height: mk(52), borderRadius: mk(26), backgroundColor: C.panelInk, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><IcLock size={mk(32)} /></View> : null}
             </Pressable>
@@ -94,7 +96,7 @@ export function ModeMenuDialog({ state, actions, onClose, bot = false, onLocked 
 function Chip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={{ backgroundColor: on ? C.gold : C.panelInk, borderRadius: mk(14), borderWidth: mk(3), borderColor: on ? C.goldDark : C.navy, paddingHorizontal: mk(16), paddingVertical: mk(7) }}>
-      <Text style={{ color: on ? C.ink : C.white, fontFamily: F.black, fontSize: mk(19) }}>{label}</Text>
+      <Text style={{ color: on ? C.ink : C.white, fontFamily: F.black, fontSize: fz(19) }}>{label}</Text>
     </Pressable>
   );
 }
@@ -108,8 +110,8 @@ export function LanguageDialog({ onClose, onPick }: { onClose: () => void; onPic
         const on = l.code === cur;
         return (
           <Pressable key={l.code} onPress={() => onPick(l.code)}>
-            <Plate face={on ? '#1B5AE0' : C.panelInk} top={on ? '#5A9BFF' : '#2F63C8'} lip={on ? '#0B3A9E' : '#041A4E'} outline={on ? C.gold : C.navy} radius={mk(16)} style={{ marginBottom: mk(8) }} inner={{ height: mk(76) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(16), gap: mk(12) }}>
-              <Text style={{ color: C.white, fontFamily: F.bold, fontSize: mk(23), flex: 1 }}>{l.name}</Text>
+            <Plate face={on ? '#1B5AE0' : C.panelInk} top={on ? '#5A9BFF' : '#2F63C8'} lip={on ? '#0B3A9E' : '#041A4E'} outline={on ? C.gold : C.navy} radius={mk(16)} style={{ marginBottom: mk(8) }} inner={{ minHeight: mk(76) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(16), gap: mk(12) }}>
+              <Text style={{ color: C.white, fontFamily: F.bold, fontSize: fz(23), flex: 1 }}>{l.name}</Text>
               {on ? <IcCheck size={mk(40)} /> : <View style={{ width: mk(36), height: mk(36), borderRadius: mk(18), borderWidth: mk(3), borderColor: '#5A7BC0' }} />}
             </Plate>
           </Pressable>
@@ -127,26 +129,26 @@ export function QuestsDialog({ state, actions, onClose, onGo }: { state: GameSta
   return (
     <Dialog title={t('ui2.quests')} onClose={onClose}>
       <View style={{ flexDirection: 'row', gap: mk(8), marginBottom: mk(12) }}>
-        {[t('ui2.q.daily'), t('store.weekly'), t('ui2.q.season')].map((l, i) => <View key={l} style={{ flex: 1, backgroundColor: i === 0 ? C.gold : C.panelInk, borderRadius: mk(12), borderWidth: mk(3), borderColor: i === 0 ? C.goldDark : C.navy, alignItems: 'center', paddingVertical: mk(6), opacity: i === 0 ? 1 : 0.5 }}><Text style={{ color: i === 0 ? C.ink : C.white, fontFamily: F.black, fontSize: mk(19) }}>{l}</Text></View>)}
+        {[t('ui2.q.daily'), t('store.weekly'), t('ui2.q.season')].map((l, i) => <View key={l} style={{ flex: 1, backgroundColor: i === 0 ? C.gold : C.panelInk, borderRadius: mk(12), borderWidth: mk(3), borderColor: i === 0 ? C.goldDark : C.navy, alignItems: 'center', paddingVertical: mk(6), opacity: i === 0 ? 1 : 0.5 }}><Text style={{ color: i === 0 ? C.ink : C.white, fontFamily: F.black, fontSize: fz(19) }}>{l}</Text></View>)}
       </View>
-      {q.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(20), textAlign: 'center', padding: mk(10) }}>{S.loading}</Text> : null}
+      {q.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(20), textAlign: 'center', padding: mk(10) }}>{S.loading}</Text> : null}
       {q.map((x, i) => (
-        <Plate key={x.id} face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginBottom: mk(10) }} inner={{ height: mk(112) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(10), gap: mk(10) }}>
+        <Plate key={x.id} face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginBottom: mk(10) }} inner={{ minHeight: mk(112) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(10), gap: mk(10) }}>
           <View style={{ width: mk(64), alignItems: 'center' }}>{i % 3 === 0 ? <IcNavPlay size={mk(58)} /> : i % 3 === 1 ? <IcTrophy size={mk(58)} /> : <IcNavFriends size={mk(58)} />}</View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text numberOfLines={1} style={{ color: C.white, fontFamily: F.bold, fontSize: mk(20) }}>{t(x.titleKey as MessageKey, { n: String(x.target) } as any)}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(8), marginTop: mk(4) }}><Bar value={x.progress} max={x.target} color={C.green} track="#04163F" height={mk(20)} radius={mk(6)} style={{ flex: 1 }} /><Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(16) }}>{`${Math.min(x.progress, x.target)} / ${x.target}`}</Text></View>
+            <Text numberOfLines={1} style={{ color: C.white, fontFamily: F.bold, fontSize: fz(20) }}>{t(x.titleKey as MessageKey, { n: String(x.target) } as any)}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(8), marginTop: mk(4) }}><Bar value={x.progress} max={x.target} color={C.green} track="#04163F" height={mk(20)} radius={mk(6)} style={{ flex: 1 }} /><Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(16) }}>{`${Math.min(x.progress, x.target)} / ${x.target}`}</Text></View>
           </View>
-          <View style={{ alignItems: 'center', width: mk(70) }}><IcStar size={mk(40)} /><Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(15) }}>{`+${x.xp} XP`}</Text></View>
+          <View style={{ alignItems: 'center', width: mk(70) }}><IcStar size={mk(40)} /><Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(15) }}>{`+${x.xp} XP`}</Text></View>
           {x.claimed ? <IcCheckBadge size={mk(52)} />
             : <ChunkyButton kind={x.done ? 'green' : 'blue'} label={x.done ? S.claim : t('ui2.q.go')} height={mk(56)} size={mk(22)} style={{ width: mk(100) }} onPress={() => (x.done ? actions.claimQuest(x.id) : (onClose(), onGo()))} />}
         </Plate>
       ))}
       {q.length ? (
-        <Plate face={C.gold} top={C.goldLight} lip={C.goldDark} radius={mk(18)} inner={{ height: mk(100) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(10), gap: mk(10) }}>
+        <Plate face={C.gold} top={C.goldLight} lip={C.goldDark} radius={mk(18)} inner={{ minHeight: mk(100) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(10), gap: mk(10) }}>
           <Image source={UI2.qs_chest} style={{ width: mk(80), height: mk(70) }} resizeMode="contain" />
-          <View style={{ flex: 1 }}><Text style={{ color: C.ink, fontFamily: F.black, fontSize: mk(19) }}>{t('ui2.q.completeAll')}</Text><View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(8), marginTop: mk(4) }}><Bar value={done} max={q.length} color={C.green} track="#6B4B00" height={mk(20)} radius={mk(6)} style={{ flex: 1 }} /><Text style={{ color: C.ink, fontFamily: F.black, fontSize: mk(16) }}>{`${done} / ${q.length}`}</Text></View></View>
-          <View style={{ backgroundColor: '#1A1200', borderRadius: mk(12), paddingHorizontal: mk(12), paddingVertical: mk(6) }}><Text style={{ color: C.gold, fontFamily: F.black, fontSize: mk(20) }}>{`+${totalXp} XP`}</Text></View>
+          <View style={{ flex: 1 }}><Text style={{ color: C.ink, fontFamily: F.black, fontSize: fz(19) }}>{t('ui2.q.completeAll')}</Text><View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(8), marginTop: mk(4) }}><Bar value={done} max={q.length} color={C.green} track="#6B4B00" height={mk(20)} radius={mk(6)} style={{ flex: 1 }} /><Text style={{ color: C.ink, fontFamily: F.black, fontSize: fz(16) }}>{`${done} / ${q.length}`}</Text></View></View>
+          <View style={{ backgroundColor: '#1A1200', borderRadius: mk(12), paddingHorizontal: mk(12), paddingVertical: mk(6) }}><Text style={{ color: C.gold, fontFamily: F.black, fontSize: fz(20) }}>{`+${totalXp} XP`}</Text></View>
         </Plate>
       ) : null}
     </Dialog>
@@ -160,8 +162,8 @@ export function SettingsDialog({ actions, onClose, onOpenLanguage, onDeleteAccou
   if (push === null) getPushPermissionGranted().then(setPush).catch(() => setPush(false));
   const lang = LANGUAGES.find((l) => l.code === currentLang())?.name ?? currentLang();
   const Row = ({ icon, label, right }: { icon: ReactNode; label: string; right: ReactNode }) => (
-    <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginBottom: mk(10) }} inner={{ height: mk(92) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(16), gap: mk(14) }}>
-      <View style={{ width: mk(56), alignItems: 'center' }}>{icon}</View><Text style={{ color: C.white, fontFamily: F.bold, fontSize: mk(24), flex: 1 }}>{label}</Text>{right}
+    <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginBottom: mk(10) }} inner={{ minHeight: mk(92) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(16), gap: mk(14) }}>
+      <View style={{ width: mk(56), alignItems: 'center' }}>{icon}</View><Text style={{ color: C.white, fontFamily: F.bold, fontSize: fz(24), flex: 1 }}>{label}</Text>{right}
     </Plate>
   );
   return (
@@ -170,12 +172,12 @@ export function SettingsDialog({ actions, onClose, onOpenLanguage, onDeleteAccou
       <Row icon={<IcSound size={mk(60)} />} label={t('settings.sfx')} right={<Toggle on={prefs.sfx} onChange={(v) => setPreference('sfx', v)} />} />
       <Row icon={<IcVibrate size={mk(60)} />} label={t('settings.haptics')} right={<Toggle on={prefs.haptics} onChange={(v) => setPreference('haptics', v)} />} />
       <Row icon={<IcBell size={mk(60)} />} label={t('ui2.notifications')} right={<Toggle on={!!push} onChange={async (v) => { if (v) { const ok = await requestPushPermission().catch(() => false); setPush(ok); if (!ok) Linking.openSettings().catch(() => {}); } else Linking.openSettings().catch(() => {}); }} />} />
-      <Row icon={<IcGlobe size={mk(60)} />} label={t('settings.language')} right={<Pressable onPress={onOpenLanguage} style={{ backgroundColor: '#0A2B78', borderRadius: mk(12), borderWidth: mk(3), borderColor: C.navy, paddingHorizontal: mk(14), paddingVertical: mk(6), flexDirection: 'row', alignItems: 'center', gap: mk(10) }}><Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(20) }}>{lang}</Text><IcChevron size={mk(26)} /></Pressable>} />
+      <Row icon={<IcGlobe size={mk(60)} />} label={t('settings.language')} right={<Pressable onPress={onOpenLanguage} style={{ backgroundColor: '#0A2B78', borderRadius: mk(12), borderWidth: mk(3), borderColor: C.navy, paddingHorizontal: mk(14), paddingVertical: mk(6), flexDirection: 'row', alignItems: 'center', gap: mk(10) }}><Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(20) }}>{lang}</Text><IcChevron size={mk(26)} /></Pressable>} />
       <View style={{ flexDirection: 'row', gap: mk(12), marginTop: mk(6) }}>
         <ChunkyButton kind="blue" label={t('ui2.resetDefaults')} height={mk(76)} size={mk(20)} style={{ flex: 1 }} onPress={() => { setPreference('music', true); setPreference('sfx', true); setPreference('haptics', true); }} />
         <ChunkyButton kind="red" label={t('profile.logout')} height={mk(76)} size={mk(24)} style={{ flex: 1 }} onPress={() => { onClose(); actions.logout(); }} />
       </View>
-      <Pressable onPress={onDeleteAccount} style={{ alignSelf: 'center', marginTop: mk(14), padding: mk(6) }}><Text style={{ color: C.textMuted, fontFamily: F.semi, fontSize: mk(17), textDecorationLine: 'underline' }}>{t('ui2.deleteMyAccount')}</Text></Pressable>
+      <Pressable onPress={onDeleteAccount} style={{ alignSelf: 'center', marginTop: mk(14), padding: mk(6) }}><Text style={{ color: C.textMuted, fontFamily: F.semi, fontSize: fz(17), textDecorationLine: 'underline' }}>{t('ui2.deleteMyAccount')}</Text></Pressable>
     </Dialog>
   );
 }
@@ -185,7 +187,7 @@ export function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) =
       <View style={{ width: mk(96), height: mk(50), borderRadius: mk(25), backgroundColor: on ? C.green : C.gray, borderWidth: mk(4), borderColor: C.navy, justifyContent: 'center', paddingHorizontal: mk(4) }}>
         <View style={{ width: mk(36), height: mk(36), borderRadius: mk(18), backgroundColor: C.white, alignSelf: on ? 'flex-end' : 'flex-start' }} />
       </View>
-      <Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(17), width: mk(92) }} numberOfLines={1}>{on ? t('ui2.on') : t('ui2.off')}</Text>
+      <Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(17), width: mk(92) }} numberOfLines={1}>{on ? t('ui2.on') : t('ui2.off')}</Text>
     </Pressable>
   );
 }
@@ -199,19 +201,19 @@ export function PrivateRoomDialog({ state, actions, onClose }: { state: GameStat
   const roomCode = state.room?.code ?? null;
   return (
     <Dialog title={t('ui2.privateRoom')} onClose={onClose}>
-      <Text style={{ color: C.white, fontFamily: F.semi, fontSize: mk(19), textAlign: 'center', lineHeight: mk(25), marginBottom: mk(12) }}>{t('ui2.roomIntro')}</Text>
+      <Text style={{ color: C.white, fontFamily: F.semi, fontSize: fz(19), textAlign: 'center', lineHeight: fz(25), marginBottom: mk(12) }}>{t('ui2.roomIntro')}</Text>
       <View style={{ flexDirection: 'row', gap: mk(8), marginBottom: mk(14) }}>
-        {(['create', 'join'] as const).map((k) => <Pressable key={k} onPress={() => setTab(k)} style={{ flex: 1, backgroundColor: tab === k ? C.gold : C.panelInk, borderRadius: mk(12), borderWidth: mk(3), borderColor: tab === k ? C.goldDark : C.navy, alignItems: 'center', paddingVertical: mk(8) }}><Text style={{ color: tab === k ? C.ink : C.white, fontFamily: F.black, fontSize: mk(20) }}>{k === 'create' ? t('ui2.createCode') : t('ui2.joinCode')}</Text></Pressable>)}
+        {(['create', 'join'] as const).map((k) => <Pressable key={k} onPress={() => setTab(k)} style={{ flex: 1, backgroundColor: tab === k ? C.gold : C.panelInk, borderRadius: mk(12), borderWidth: mk(3), borderColor: tab === k ? C.goldDark : C.navy, alignItems: 'center', paddingVertical: mk(8) }}><Text style={{ color: tab === k ? C.ink : C.white, fontFamily: F.black, fontSize: fz(20) }}>{k === 'create' ? t('ui2.createCode') : t('ui2.joinCode')}</Text></Pressable>)}
       </View>
       {tab === 'create' ? (
         <>
           <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} inner={{ alignItems: 'center', paddingVertical: mk(14) }}>
-            <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(18) }}>{t('ui2.yourRoomCode')}</Text>
+            <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: fz(18) }}>{t('ui2.yourRoomCode')}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(12), marginTop: mk(6) }}>
               <View style={{ backgroundColor: '#03123A', borderRadius: mk(12), paddingHorizontal: mk(24), paddingVertical: mk(6) }}><OutlinedText size={mk(52)} width={mk(3)} color={C.gold} style={{ letterSpacing: 3 }}>{roomCode ?? '——————'}</OutlinedText></View>
               {roomCode ? <Pressable onPress={async () => { await Clipboard.setStringAsync(roomCode).catch(() => {}); setCopied(true); }} style={{ width: mk(66), height: mk(66), borderRadius: mk(14), backgroundColor: C.blue, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><IcCopy size={mk(36)} /></Pressable> : null}
             </View>
-            <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(16), marginTop: mk(6) }}>{copied ? `${t('friends.copied')} ✓` : t('ui2.shareCodeHint')}</Text>
+            <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(16), marginTop: mk(6) }}>{copied ? `${t('friends.copied')} ✓` : t('ui2.shareCodeHint')}</Text>
           </Plate>
           <View style={{ marginTop: mk(14) }}>
             {roomCode ? <ChunkyButton kind="green" label={t('ui2.shareCode')} height={mk(78)} size={mk(28)} onPress={() => { void Share.share({ message: t('ui2.roomShareMsg', { code: roomCode }) }).catch(() => {}); }} />
@@ -221,8 +223,8 @@ export function PrivateRoomDialog({ state, actions, onClose }: { state: GameStat
       ) : (
         <>
           <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} inner={{ alignItems: 'center', paddingVertical: mk(14), paddingHorizontal: mk(14) }}>
-            <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(18) }}>{t('ui2.roomCode')}</Text>
-            <TextInput value={code} onChangeText={(v) => setCode(v.toUpperCase().slice(0, 6))} placeholder="AB12CD" placeholderTextColor={C.textMuted} autoCapitalize="characters" autoCorrect={false} maxLength={6} style={{ color: C.gold, fontFamily: F.title, fontSize: mk(50), letterSpacing: 4, textAlign: 'center', backgroundColor: '#03123A', borderRadius: mk(12), paddingHorizontal: mk(24), paddingVertical: mk(4), minWidth: mk(340), marginTop: mk(6) }} />
+            <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: fz(18) }}>{t('ui2.roomCode')}</Text>
+            <TextInput value={code} onChangeText={(v) => setCode(v.toUpperCase().slice(0, 6))} placeholder="AB12CD" placeholderTextColor={C.textMuted} autoCapitalize="characters" autoCorrect={false} maxLength={6} style={{ color: C.gold, fontFamily: F.title, fontSize: fz(50), letterSpacing: 4, textAlign: 'center', backgroundColor: '#03123A', borderRadius: mk(12), paddingHorizontal: mk(24), paddingVertical: mk(4), minWidth: mk(340), marginTop: mk(6) }} />
           </Plate>
           <View style={{ marginTop: mk(14) }}><ChunkyButton kind="green" label={t('home.joinRoom')} height={mk(78)} size={mk(28)} disabled={code.length < 4} onPress={() => { onClose(); actions.joinRoom(code.trim(), name); }} /></View>
         </>
@@ -236,12 +238,12 @@ export function ConfirmDialog({ title, body, price, priceText, art, onYes, onClo
   return (
     <Dialog title={t('ui2.purchaseConfirm')} onClose={onClose}>
       <View style={{ flexDirection: 'row', gap: mk(14) }}>
-        <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={mk(20)} style={{ flex: 1 }} inner={{ height: mk(250) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(8) }}>
+        <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={mk(20)} style={{ flex: 1 }} inner={{ minHeight: mk(250) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(8) }}>
           <Image source={art ?? UI2.gem_250} style={{ width: '80%', height: mk(120) }} resizeMode="contain" />
           <OutlinedText size={mk(24)} width={mk(2)} numberOfLines={2} style={{ marginTop: mk(6) }}>{title}</OutlinedText>
         </Plate>
-        <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(20)} style={{ flex: 1 }} inner={{ height: mk(250) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(10) }}>
-          <Text style={{ color: C.white, fontFamily: F.bold, fontSize: mk(19), textAlign: 'center', lineHeight: mk(25) }}>{body}</Text>
+        <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(20)} style={{ flex: 1 }} inner={{ minHeight: mk(250) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(10) }}>
+          <Text style={{ color: C.white, fontFamily: F.bold, fontSize: fz(19), textAlign: 'center', lineHeight: fz(25) }}>{body}</Text>
           <View style={{ marginTop: mk(14) }}>{price != null ? <GemAmount amount={price} size={mk(40)} color={C.gold} /> : <OutlinedText size={mk(40)} width={mk(3)} color={C.gold}>{priceText ?? ''}</OutlinedText>}</View>
         </Plate>
       </View>
@@ -257,9 +259,9 @@ export function ConfirmDialog({ title, body, price, priceText, art, onYes, onClo
 export function RequestsDialog({ state, actions, onClose }: { state: GameState; actions: Actions; onClose: () => void }) {
   return (
     <Dialog title={up(t('friends.tabRequests'))} onClose={onClose}>
-      {state.friendRequests.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(20), textAlign: 'center', padding: mk(12) }}>{t('friends.noPendingRequests')}</Text> : null}
+      {state.friendRequests.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(20), textAlign: 'center', padding: mk(12) }}>{t('friends.noPendingRequests')}</Text> : null}
       {state.friendRequests.map((r) => (
-        <Plate key={r.requestId} face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginBottom: mk(10) }} inner={{ height: mk(96) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(12), gap: mk(10) }}>
+        <Plate key={r.requestId} face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginBottom: mk(10) }} inner={{ minHeight: mk(96) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(12), gap: mk(10) }}>
           <View style={{ flex: 1, minWidth: 0 }}><OutlinedText size={mk(26)} width={mk(2)} align="left" numberOfLines={1}>{up(r.fromName)}</OutlinedText></View>
           <ChunkyButton kind="green" label={t('ui2.accept')} height={mk(58)} size={mk(20)} style={{ width: mk(120) }} onPress={() => actions.respondFriendRequest(r.requestId, true)} />
           <ChunkyButton kind="red" label={t('ui2.decline')} height={mk(58)} size={mk(20)} style={{ width: mk(120) }} onPress={() => actions.respondFriendRequest(r.requestId, false)} />
@@ -274,14 +276,14 @@ export function LeagueDialog({ state, onClose }: { state: GameState; onClose: ()
   const lg = state.league;
   return (
     <Dialog title={t('league.tab')} onClose={onClose} accent>
-      {!lg ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(20), textAlign: 'center', padding: mk(12) }}>{S.loading}</Text> : (
+      {!lg ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(20), textAlign: 'center', padding: mk(12) }}>{S.loading}</Text> : (
         <>
-          <Text style={{ color: C.white, fontFamily: F.bold, fontSize: mk(20), textAlign: 'center', marginBottom: mk(10) }}>{t('ui2.leagueLine', { tier: lg.tierName, rank: lg.yourRank, points: fmt(lg.yourPoints) })}</Text>
+          <Text style={{ color: C.white, fontFamily: F.bold, fontSize: fz(20), textAlign: 'center', marginBottom: mk(10) }}>{t('ui2.leagueLine', { tier: lg.tierName, rank: lg.yourRank, points: fmt(lg.yourPoints) })}</Text>
           {lg.rows.map((r) => (
             <View key={`${r.rank}-${r.name}`} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: r.isYou ? '#1B5AE0' : C.panelInk, borderRadius: mk(12), borderWidth: mk(3), borderColor: r.zone === 'promote' ? C.green : r.zone === 'demote' ? C.red : C.navy, paddingHorizontal: mk(12), paddingVertical: mk(6), marginBottom: mk(6), gap: mk(10) }}>
-              <Text style={{ color: C.gold, fontFamily: F.black, fontSize: mk(20), width: mk(40) }}>{r.rank}</Text>
-              <Text numberOfLines={1} style={{ color: C.white, fontFamily: F.bold, fontSize: mk(20), flex: 1 }}>{r.name}</Text>
-              <Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(20) }}>{fmt(r.points)}</Text>
+              <Text style={{ color: C.gold, fontFamily: F.black, fontSize: fz(20), width: mk(40) }}>{r.rank}</Text>
+              <Text numberOfLines={1} style={{ color: C.white, fontFamily: F.bold, fontSize: fz(20), flex: 1 }}>{r.name}</Text>
+              <Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(20) }}>{fmt(r.points)}</Text>
             </View>
           ))}
         </>
@@ -311,13 +313,13 @@ export function TournamentDialog({ state, actions, id, onClose }: { state: GameS
       {/* durum satırı */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(10), marginBottom: mk(10), flexWrap: 'wrap' }}>
         <Ribbon label={t(statusKey as MessageKey)} color={statusColor} size={mk(17)} />
-        <Text style={{ color: C.white, fontFamily: F.bold, fontSize: mk(19) }}>{t('tour.joined', { n: joined, size })}</Text>
+        <Text style={{ color: C.white, fontFamily: F.bold, fontSize: fz(19) }}>{t('tour.joined', { n: joined, size })}</Text>
         <View style={{ flex: 1 }} />
-        <Text style={{ color: fee > 0 ? C.gold : C.textSub, fontFamily: F.black, fontSize: mk(17) }}>{fee > 0 ? t('tour.entryFee', { fee }) : t('tour.freeEntry')}</Text>
+        <Text style={{ color: fee > 0 ? C.gold : C.textSub, fontFamily: F.black, fontSize: fz(17) }}>{fee > 0 ? t('tour.entryFee', { fee }) : t('tour.freeEntry')}</Text>
       </View>
       <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} inner={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(14), paddingVertical: mk(10), gap: mk(12) }}>
         <GemAmount amount={p1} size={mk(34)} color={C.gold} />
-        <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(17), flex: 1 }}>{t('tour.prize', { p1, p2 })}</Text>
+        <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: fz(17), flex: 1 }}>{t('tour.prize', { p1, p2 })}</Text>
       </Plate>
       {tour?.winnerName || item?.winnerName ? (
         <Plate face={C.gold} top={C.goldLight} lip={C.goldDark} radius={mk(18)} style={{ marginTop: mk(10) }} inner={{ alignItems: 'center', paddingVertical: mk(8), flexDirection: 'row', justifyContent: 'center', gap: mk(10) }}>
@@ -329,7 +331,7 @@ export function TournamentDialog({ state, actions, id, onClose }: { state: GameS
         <View style={{ marginTop: mk(12) }}>
           {youJoined ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(12) }}>
-              <Text style={{ color: C.green, fontFamily: F.black, fontSize: mk(19), flex: 1 }}>{`✓ ${t('tour.waiting')}`}</Text>
+              <Text style={{ color: C.green, fontFamily: F.black, fontSize: fz(19), flex: 1 }}>{`✓ ${t('tour.waiting')}`}</Text>
               <ChunkyButton kind="gray" label={up(t('tour.leave'))} height={mk(64)} size={mk(22)} style={{ width: mk(170) }} onPress={() => actions.leaveTournament(id)} />
             </View>
           ) : (
@@ -347,7 +349,7 @@ export function TournamentDialog({ state, actions, id, onClose }: { state: GameS
               const stride = (TB_H + TB_GAP) * Math.pow(2, r - 1); const offset = (stride - TB_H) / 2;   // her tur önceki iki kutunun ORTASINA
               return (
                 <View key={r} style={{ marginRight: mk(30) }}>
-                  <Text style={{ color: C.textSub, fontFamily: F.black, fontSize: mk(15), letterSpacing: 0.6, textAlign: 'center', marginBottom: mk(8) }}>{roundLabel(r)}</Text>
+                  <Text style={{ color: C.textSub, fontFamily: F.black, fontSize: fz(15), letterSpacing: 0.6, textAlign: 'center', marginBottom: mk(8) }}>{roundLabel(r)}</Text>
                   <View>
                     {ms.map((m, i) => (
                       <View key={m.id} style={{ marginTop: i === 0 ? offset : stride - TB_H }}>
@@ -368,7 +370,7 @@ export function TournamentDialog({ state, actions, id, onClose }: { state: GameS
             })}
           </ScrollView>
         </View>
-      ) : tour == null ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(20), textAlign: 'center', padding: mk(12) }}>{S.loading}</Text> : null}
+      ) : tour == null ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(20), textAlign: 'center', padding: mk(12) }}>{S.loading}</Text> : null}
     </Dialog>
   );
 }
@@ -378,7 +380,7 @@ function TourBox({ m, youId }: { m: TourMatch; youId: string | null }) {
     const you = youId != null && pid === youId; const win = decided && m.winnerId === pid; const lost = decided && !win && pid != null;
     return (
       <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(10), gap: mk(6) }}>
-        <Text numberOfLines={1} style={{ flex: 1, color: lost ? C.textMuted : you ? C.gold : C.white, fontFamily: you || win ? F.black : F.bold, fontSize: mk(17) }}>{nm ?? '—'}</Text>
+        <Text numberOfLines={1} style={{ flex: 1, color: lost ? C.textMuted : you ? C.gold : C.white, fontFamily: you || win ? F.black : F.bold, fontSize: fz(17) }}>{nm ?? '—'}</Text>
         {win ? <IcCheckBadge size={mk(20)} /> : null}
       </View>
     );
@@ -400,12 +402,12 @@ export function TournamentReadyDialog({ state, actions }: { state: GameState; ac
     <Dialog title={t('tour.readyTitle')} onClose={() => actions.clearTournamentReady()} accent>
       <View style={{ alignItems: 'center', gap: mk(12) }}>
         <IcTrophy size={mk(120)} />
-        <Text style={{ color: C.white, fontFamily: F.bold, fontSize: mk(22), textAlign: 'center', lineHeight: mk(29) }}>{t('tour.readyBody', { t: r.tournamentName, opp: r.opponentName })}</Text>
+        <Text style={{ color: C.white, fontFamily: F.bold, fontSize: fz(22), textAlign: 'center', lineHeight: fz(29) }}>{t('tour.readyBody', { t: r.tournamentName, opp: r.opponentName })}</Text>
         {r.youReady ? (
-          <Text style={{ color: C.textSub, fontFamily: F.black, fontSize: mk(19), textAlign: 'center' }}>{t('tour.readyWaiting')}</Text>
+          <Text style={{ color: C.textSub, fontFamily: F.black, fontSize: fz(19), textAlign: 'center' }}>{t('tour.readyWaiting')}</Text>
         ) : (
           <>
-            {r.oppReady ? <Text style={{ color: C.green, fontFamily: F.black, fontSize: mk(19) }}>{t('tour.oppReady')}</Text> : null}
+            {r.oppReady ? <Text style={{ color: C.green, fontFamily: F.black, fontSize: fz(19) }}>{t('tour.oppReady')}</Text> : null}
             <ChunkyButton kind="green" label={t('tour.readyBtn')} height={mk(88)} size={mk(36)} style={{ alignSelf: 'stretch' }} onPress={() => actions.tournamentReady(r.matchId)} />
           </>
         )}
@@ -421,7 +423,7 @@ export function TournamentOverDialog({ state, actions }: { state: GameState; act
     <Dialog title={t(o.youWon ? 'tour.wonTitle' : 'tour.secondTitle')} onClose={() => actions.clearTournamentOver()} accent>
       <View style={{ alignItems: 'center', gap: mk(12) }}>
         {o.youWon ? <IcTrophy size={mk(150)} /> : <IcCrownBig size={mk(130)} color="#D7DCE6" base="#9AA3B5" />}
-        <Text style={{ color: C.white, fontFamily: F.bold, fontSize: mk(22), textAlign: 'center', lineHeight: mk(29) }}>{t(o.youWon ? 'tour.wonBody' : 'tour.secondBody', { t: o.tournamentName, p: o.prize })}</Text>
+        <Text style={{ color: C.white, fontFamily: F.bold, fontSize: fz(22), textAlign: 'center', lineHeight: fz(29) }}>{t(o.youWon ? 'tour.wonBody' : 'tour.secondBody', { t: o.tournamentName, p: o.prize })}</Text>
         {o.prize > 0 ? <GemAmount amount={`+${fmt(o.prize)}`} size={mk(40)} color={C.gold} /> : null}
         <ChunkyButton kind="gold" label={up(t('common.continue'))} height={mk(84)} size={mk(32)} style={{ alignSelf: 'stretch' }} onPress={() => actions.clearTournamentOver()} />
       </View>
@@ -442,9 +444,9 @@ export function LevelRoadDialog({ state, actions, onOpenStore, onClose }: { stat
       <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} inner={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(14), paddingVertical: mk(10), gap: mk(12) }}>
         <View style={{ width: mk(64), height: mk(64), borderRadius: mk(32), backgroundColor: '#2F8CFF', borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(30)} width={mk(3)}>{String(level)}</OutlinedText></View>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(20) }}>{t('level.levelN', { n: level })}</Text>
+          <Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(20) }}>{t('level.levelN', { n: level })}</Text>
           <Bar value={xp} max={xpNext} height={mk(22)} style={{ marginTop: mk(4) }} />
-          <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(15), marginTop: mk(3) }}>{level >= LEVEL_CAP ? t('level.maxed') : t('level.toNext', { n: fmt(Math.max(0, xpNext - xp)) })}</Text>
+          <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: fz(15), marginTop: mk(3) }}>{level >= LEVEL_CAP ? t('level.maxed') : t('level.toNext', { n: fmt(Math.max(0, xpNext - xp)) })}</Text>
         </View>
       </Plate>
       {/* CO PASS durumu */}
@@ -455,13 +457,13 @@ export function LevelRoadDialog({ state, actions, onOpenStore, onClose }: { stat
       </Plate>
       {/* şerit başlıkları */}
       <View style={{ flexDirection: 'row', marginTop: mk(12), marginBottom: mk(6), paddingLeft: mk(70) }}>
-        <Text style={{ flex: 1, color: C.textSub, fontFamily: F.black, fontSize: mk(14), textAlign: 'center', letterSpacing: 0.6 }}>{up(t('ui2.free'))}</Text>
-        <Text style={{ flex: 1, color: C.gold, fontFamily: F.black, fontSize: mk(14), textAlign: 'center', letterSpacing: 0.6 }}>CO PASS</Text>
+        <Text style={{ flex: 1, color: C.textSub, fontFamily: F.black, fontSize: fz(14), textAlign: 'center', letterSpacing: 0.6 }}>{up(t('ui2.free'))}</Text>
+        <Text style={{ flex: 1, color: C.gold, fontFamily: F.black, fontSize: fz(14), textAlign: 'center', letterSpacing: 0.6 }}>CO PASS</Text>
       </View>
       {rows.map((r) => {
         const reached = r.n <= level; const cur = r.n === level;
         return (
-          <View key={r.n} style={{ flexDirection: 'row', alignItems: 'center', gap: mk(8), marginBottom: mk(10), height: ROAD_ROW }}>
+          <View key={r.n} style={{ flexDirection: 'row', alignItems: 'center', gap: mk(8), marginBottom: mk(10), minHeight: ROAD_ROW }}>
             <View style={{ width: mk(60), alignItems: 'center' }}>
               <View style={{ width: mk(52), height: mk(52), borderRadius: mk(26), backgroundColor: cur ? C.gold : reached ? C.green : C.panelInk, borderWidth: mk(4), borderColor: cur ? C.goldDark : C.navy, alignItems: 'center', justifyContent: 'center' }}>
                 <OutlinedText size={mk(22)} width={mk(2)} color={cur ? C.ink : C.white} outline={cur ? '#FFF6C7' : C.ink}>{String(r.n)}</OutlinedText>
@@ -480,10 +482,10 @@ function RoadCard({ reward, reached, claimed, locked, premium, onClaim, onLocked
   const claimable = reached && !claimed && !locked; const dim = !reached || claimed || locked;
   return (
     <Pressable style={{ flex: 1 }} onPress={locked ? onLocked : claimable ? onClaim : undefined}>
-      <Plate face={premium ? '#3B1A7A' : C.card} top={premium ? '#7A45D9' : C.cardTop} lip={premium ? '#220A4E' : C.cardDark} outline={claimable ? C.green : premium ? C.gold : C.navy} radius={mk(18)} style={{ opacity: dim && !claimable ? 0.62 : 1 }} inner={{ height: ROAD_ROW - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
-        <Image source={reward.art} style={{ width: '78%', height: mk(70) }} resizeMode="contain" />
+      <Plate face={premium ? '#3B1A7A' : C.card} top={premium ? '#7A45D9' : C.cardTop} lip={premium ? '#220A4E' : C.cardDark} outline={claimable ? C.green : premium ? C.gold : C.navy} radius={mk(18)} style={{ opacity: dim && !claimable ? 0.62 : 1 }} inner={{ minHeight: ROAD_ROW - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
+        <Image source={reward.art} style={{ width: mk(120), height: claimable ? mk(56) : mk(70), marginTop: claimable ? mk(6) : 0 }} resizeMode="contain" />
         <OutlinedText size={mk(16)} width={1.2} numberOfLines={1} fit style={{ marginTop: mk(2) }}>{reward.label}</OutlinedText>
-        {claimable ? <View style={{ width: '92%', marginTop: mk(4) }}><ChunkyButton kind="green" label={up(t('level.claimShort'))} height={mk(40)} size={mk(17)} onPress={onClaim} /></View> : null}
+        {claimable ? <View style={{ width: '92%', marginTop: mk(4), marginBottom: mk(6) }}><ChunkyButton kind="green" label={up(t('level.claimShort'))} height={mk(66)} size={mk(19)} onPress={onClaim} compact /></View> : null}
       </Plate>
       {claimed ? <View style={{ position: 'absolute', top: -mk(6), right: -mk(4) }}><IcCheckBadge size={mk(36)} /></View> : null}
       {locked ? <View style={{ position: 'absolute', top: -mk(6), right: -mk(4), width: mk(36), height: mk(36), borderRadius: mk(18), backgroundColor: C.panelInk, borderWidth: mk(3), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><IcLock size={mk(20)} /></View> : null}
@@ -502,12 +504,12 @@ export function ArenasDialog({ state, onClose }: { state: GameState; onClose: ()
       {ARENA_STEPS.map((a, i) => {
         const key = ARENA_KEYS[i]!; const cur = i === curIdx; const passed = i < curIdx; const locked = i > curIdx;
         return (
-          <Plate key={key} face={cur ? '#1B5AE0' : C.panelInk} top={cur ? '#5A9BFF' : '#2F63C8'} lip={cur ? '#0B3A9E' : '#041A4E'} outline={cur ? C.gold : C.navy} radius={mk(18)} style={{ marginBottom: mk(10), opacity: locked ? 0.7 : 1 }} inner={{ height: mk(126) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(12), gap: mk(12) }}>
+          <Plate key={key} face={cur ? '#1B5AE0' : C.panelInk} top={cur ? '#5A9BFF' : '#2F63C8'} lip={cur ? '#0B3A9E' : '#041A4E'} outline={cur ? C.gold : C.navy} radius={mk(18)} style={{ marginBottom: mk(10), opacity: locked ? 0.7 : 1 }} inner={{ minHeight: mk(126) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(12), gap: mk(12) }}>
             <View style={{ width: mk(70), height: mk(70), borderRadius: mk(18), backgroundColor: ARENA_COLORS[i], borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}>{i === 6 ? <IcCrownBig size={mk(46)} /> : <IcTrophy size={mk(46)} />}</View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <OutlinedText size={mk(24)} width={mk(2)} align="left" numberOfLines={1} fit>{up(t(`arena.${key}` as MessageKey))}</OutlinedText>
-              <Text numberOfLines={2} style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(15), lineHeight: mk(19) }}>{t(`arena.${key}.desc` as MessageKey)}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(6), marginTop: mk(3) }}><IcTrophy size={mk(22)} /><Text style={{ color: C.gold, fontFamily: F.black, fontSize: mk(15) }}>{`${fmt(a.min)}+`}</Text></View>
+              <Text numberOfLines={2} style={{ color: C.textSub, fontFamily: F.bold, fontSize: fz(15), lineHeight: fz(19) }}>{t(`arena.${key}.desc` as MessageKey)}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(6), marginTop: mk(3) }}><IcTrophy size={mk(22)} /><Text style={{ color: C.gold, fontFamily: F.black, fontSize: fz(15) }}>{`${fmt(a.min)}+`}</Text></View>
             </View>
             {cur ? <Ribbon label={t('arenas.here')} color={C.gold} size={mk(14)} /> : passed ? <IcCheckBadge size={mk(40)} /> : <IcLock size={mk(30)} />}
           </Plate>
@@ -518,7 +520,7 @@ export function ArenasDialog({ state, onClose }: { state: GameState; onClose: ()
 }
 
 // ── Profil: avatar + çerçeve + seviye + arena, istatistikler, profil fotoğrafları (kullan / satın al) ──
-const PP_COL = Math.floor((430 - mk(20) * 2 - OUTLINE * 2 - mk(18) * 2 - mk(10) * 3) / 4);
+const PP_COL = Math.floor((SW - mk(20) * 2 - OUTLINE * 2 - mk(18) * 2 - mk(10) * 3) / 4);
 export function ProfileDialog({ state, actions, onClose, onConfirm, onNotice, onOpenStore, onOpenCollection }: { state: GameState; actions: Actions; onClose: () => void; onConfirm: (d: { title: string; body: string; price?: number; onYes: () => void }) => void; onNotice: (title: string, body: string) => void; onOpenStore: () => void; onOpenCollection: () => void }) {
   const p = state.profile; if (!p) return null;
   useEffect(() => { actions.loadMyStats(); }, [actions]);
@@ -541,7 +543,7 @@ export function ProfileDialog({ state, actions, onClose, onConfirm, onNotice, on
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <OutlinedText size={mk(34)} width={mk(3)} align="left" numberOfLines={1} fit>{up(p.displayName ?? '')}</OutlinedText>
-          <Text numberOfLines={1} style={{ color: C.textSub, fontFamily: F.black, fontSize: mk(17), marginTop: mk(2) }}>{arenaLabel(p.arena?.name ?? '')}</Text>
+          <Text numberOfLines={1} style={{ color: C.textSub, fontFamily: F.black, fontSize: fz(17), marginTop: mk(2) }}>{arenaLabel(p.arena?.name ?? '')}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(6), marginTop: mk(6) }}><IcTrophy size={mk(30)} /><OutlinedText size={mk(26)} width={mk(2)} color={C.gold}>{fmt(p.trophies ?? 0)}</OutlinedText></View>
         </View>
       </Plate>
@@ -549,7 +551,7 @@ export function ProfileDialog({ state, actions, onClose, onConfirm, onNotice, on
         {([[t('stats.wins'), String(wins), C.green], [t('stats.losses'), String(losses), C.red], [t('stats.winRateShort'), `%${rate}`, C.gold], [t('stats.bestStreak'), state.myStats ? String(state.myStats.bestStreak) : '—', '#8CE0FF']] as [string, string, string][]).map(([k, v, c]) => (
           <Plate key={k} face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(14)} style={{ flex: 1 }} inner={{ alignItems: 'center', paddingVertical: mk(8), paddingHorizontal: mk(4) }}>
             <OutlinedText size={mk(26)} width={mk(2)} color={c}>{v}</OutlinedText>
-            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(13) }}>{k}</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} style={{ color: C.textSub, fontFamily: F.bold, fontSize: fz(13) }}>{k}</Text>
           </Plate>
         ))}
       </View>

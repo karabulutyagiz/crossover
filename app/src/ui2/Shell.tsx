@@ -6,7 +6,7 @@ import { Avatar } from '../Avatar';
 import { t, type MessageKey } from '../i18n';
 import { Bar, CheckerBg, IconSlot, OutlinedText, Plate, fitSize, fmt } from './primitives';
 import { IcGear, IcGem, IcNavCollection, IcNavFriends, IcNavPlay, IcNavStore, IcPlus, IcTrophy } from './icons-ui';
-import { C, F, LIP, OUTLINE, R, SIDE, mk } from './tokens';
+import { C, F, fz, LIP, mk, OUTLINE, R, SIDE } from './tokens';
 
 export type HudData = {
   name: string; avatarId: string | null; frameId?: string | null; level: number; xp: number; xpNext: number;
@@ -34,7 +34,7 @@ export function Hud({ data, actions, title, titleIcon }: { data: HudData; action
           <OutlinedText size={mk(40)} width={mk(4)} align="left" numberOfLines={1}>{data.name.toLocaleUpperCase('tr')}</OutlinedText>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: mk(10) }}>
             <Bar value={data.xp} max={data.xpNext} style={{ width: mk(185) }} height={mk(30)} />
-            <Text numberOfLines={1} style={{ color: C.white, fontFamily: F.bold, fontSize: mk(21), marginLeft: mk(10) }}>{fmt(data.xp)} / {fmt(data.xpNext)}</Text>
+            <Text numberOfLines={1} style={{ color: C.white, fontFamily: F.bold, fontSize: fz(21), marginLeft: mk(10) }}>{fmt(data.xp)} / {fmt(data.xpNext)}</Text>
           </View>
         </View>
         {/* elmas pill + artı + dişli */}
@@ -54,7 +54,7 @@ export function Hud({ data, actions, title, titleIcon }: { data: HudData; action
         </View>
       </View>
       {/* kupa pill + sayfa başlığı */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: mk(8), height: mk(96) }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: mk(6), height: titleIcon ? mk(96) : mk(74) }}>
         <Pressable onPress={actions?.onTrophies}>
           <Plate face={C.panelInk} top="#2F63C8" lip="#051D52" radius={R.pill} inner={{ height: mk(64) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingLeft: mk(8), paddingRight: mk(20), gap: mk(6) }}>
             <View style={{ marginTop: -mk(4) }}><IcTrophy size={mk(56)} /></View>

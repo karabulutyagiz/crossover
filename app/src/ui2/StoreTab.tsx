@@ -1,7 +1,7 @@
 // UI2 — MAĞAZA sekmesi. Mock: refs/store-top.png + refs/store-bottom.png (941 px, mk()).
 // Görünüm birebir mock; ürünler/fiyatlar GERÇEK (products.ts + StoreKit displayPrice + sunucu kataloğu).
 import { useEffect, useMemo } from 'react';
-import { Image, Pressable, Text, View, type DimensionValue, type ImageSourcePropType } from 'react-native';
+import { Image, Pressable, ScrollView, Text, View, type DimensionValue, type ImageSourcePropType } from 'react-native';
 import { t } from '../i18n';
 import type { Actions, GameState } from './types';
 import { IcCrown, IcLock, IcNoAds } from './icons';
@@ -9,13 +9,13 @@ import { IcBolt, IcCrownBig, IcFace, IcGems3, IcNavStore, IcStar } from './icons
 import { S, up } from './strings';
 import type { StoreCatalogItem } from '../protocol';
 import { EmoteSticker, PREMIUM_EMOTES } from '../emotes';
-import { CosmeticPreview } from '../screens';
+import { CosmeticArt } from '../screens';
 import { UI2 } from './assets';
 import { Bar, BannerImage, ChunkyButton, GemAmount, OutlinedText, Plate, Ribbon, SectionHeader, Sticker, fitSize, fmt } from './primitives';
 import { Hud } from './Shell';
 import { ACCOUNT_POWERS, DIAMOND_PACKS, PREMIUM_ROAD_PRICE, SOCIAL_PACK } from './products';
 import type { useStorePurchases } from './useStorePurchases';
-import { C, F, GAP, LIP, OUTLINE, R, SIDE, mk } from './tokens';
+import { C, F, fz, GAP, LIP, mk, OUTLINE, R, SIDE, SW } from './tokens';
 
 type Store = ReturnType<typeof useStorePurchases>;
 export type StoreTabProps = {
@@ -24,9 +24,11 @@ export type StoreTabProps = {
   onConfirm: (d: { title: string; body: string; price?: number; onYes: () => void }) => void;
 };
 
-const INNER_W = 430 - SIDE * 2 - OUTLINE * 2 - mk(14) * 2; // Section plakasının iç genişliği
+const INNER_W = SW - SIDE * 2 - OUTLINE * 2 - mk(14) * 2; // Section plakasının iç genişliği
 const COL_W = Math.floor((INNER_W - GAP * 3) / 4);   // 4 sütun (elmas/güç/ifade)
-const COL3_W = Math.floor((INNER_W - GAP * 2) / 3);  // 3 sütun (kozmetik)
+const COL3_W = Math.floor((INNER_W - GAP * 2) / 3);  // 3 sütun (elmas/kozmetik)
+const COL2_W = Math.floor((INNER_W - GAP) / 2);      // 2 sütun (güçler — telefonda okunur)
+const FRAME_W = mk(230);                             // çerçeve şeridi kartı
 
 export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile, onOpenArenas, onConfirm }: StoreTabProps) {
   const p = state.profile;
@@ -59,7 +61,7 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
             </View>
           ))}
           <Sticker left="78%" top="63%" width="25%" height="33%" rotate="-7deg" face={C.gold} border={C.navy}>
-            <Text numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.ink, fontFamily: F.black, fontSize: mk(18), lineHeight: mk(21), textAlign: 'center' }}>{t('ui2.spSticker')}</Text>
+            <Text numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.ink, fontFamily: F.black, fontSize: fz(18), lineHeight: fz(21), textAlign: 'center' }}>{t('ui2.spSticker')}</Text>
           </Sticker>
         </BannerImage>
       </View>
@@ -69,18 +71,18 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
         <BannerImage source={UI2.banner_copass} ratio={3}>
           <View style={{ position: 'absolute', left: '23.5%', top: '7%', width: '30%', height: '31%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: mk(6) }}>
             <IcCrownBig size={mk(46)} />
-            <OutlinedText size={mk(50)} width={mk(4)} color={C.gold} numberOfLines={1} fit>CO PASS</OutlinedText>
+            <View style={{ flex: 1 }}><OutlinedText size={mk(50)} width={mk(4)} color={C.gold} numberOfLines={1} fit>CO PASS</OutlinedText></View>
           </View>
           <View style={{ position: 'absolute', left: '23.5%', top: '40%', width: '30%', height: '16%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: mk(6) }}>
             <IcStar size={mk(22)} />
-            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.black, fontSize: fitSize(mk(19), t('ui2.cpLine'), 22), flexShrink: 1 }}>{t('ui2.cpLine')}</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.black, fontSize: fitSize(mk(23), t('ui2.cpLine'), 22), flexShrink: 1 }}>{t('ui2.cpLine')}</Text>
           </View>
           <View style={{ position: 'absolute', left: '23.5%', top: '60%', width: '30%', height: '27%' }}>
             <ChunkyButton kind="green" gem label={p?.premiumRoad ? t('store.badgeActive') : up(t('store.diamonds', { n: fmt(PREMIUM_ROAD_PRICE) }))} height={mk(78)} size={mk(24)} disabled={!!p?.premiumRoad}
               onPress={() => gemBuy('CO PASS', PREMIUM_ROAD_PRICE, () => actions.buyPremiumRoad())} style={{ flex: 1 }} />
           </View>
           <Sticker left="75%" top="66%" width="27%" height="30%" rotate="-5deg" face="#1E4FD6" border="#5FE0FF">
-            <OutlinedText size={mk(19)} width={1.5} numberOfLines={2} fit style={{ lineHeight: mk(22) }}>{t('ui2.cpSticker')}</OutlinedText>
+            <OutlinedText size={mk(19)} width={1.5} numberOfLines={2} fit style={{ lineHeight: fz(22) }}>{t('ui2.cpSticker')}</OutlinedText>
           </Sticker>
         </BannerImage>
       </View>
@@ -89,7 +91,7 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
       <Section icon={<IcGems3 />} title={t('ui2.gemsTitle')} subtitle={t('ui2.gemsSub')}>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
           {DIAMOND_PACKS.map((pk) => (
-            <ProductCard key={pk.id} width={COL_W} height={mk(250)} title={fmt(pk.amount)} subtitle={t('ui2.gem')} art={pk.art} artScale={pk.artW} ribbon={pk.ribbon ? { label: t(pk.ribbon.labelKey), color: pk.ribbon.color } : null}
+            <ProductCard key={pk.id} width={COL3_W} height={mk(330)} artH={mk(140)} title={fmt(pk.amount)} subtitle={t('ui2.gem')} art={pk.art} artScale={pk.artW} ribbon={pk.ribbon ? { label: t(pk.ribbon.labelKey), color: pk.ribbon.color } : null}
               button={{ label: store.priceFor(pk.productId, pk.fallback), onPress: () => store.buy(pk.productId), disabled: !!store.buying }} />
           ))}
         </View>
@@ -99,7 +101,7 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
       <Section icon={<IcBolt />} title={up(t('collection.tabPowers'))} subtitle={t('ui2.powersSub')}>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
           {ACCOUNT_POWERS.map((pw) => (
-            <ProductCard key={pw.id} width={COL_W} height={mk(250)} title={t(pw.titleKey)} art={UI2[pw.art]} face={pw.face} lip={pw.lip} top={pw.top} desc={t(pw.descKey)} small
+            <ProductCard key={pw.id} width={COL2_W} height={mk(360)} artH={mk(150)} title={t(pw.titleKey)} art={UI2[pw.art]} face={pw.face} lip={pw.lip} top={pw.top} desc={t(pw.descKey)}
               button={{ gem: true, label: String(pw.price), onPress: () => gemBuy(t(pw.titleKey), pw.price, () => actions.buyPower(pw.id)), disabled: diamonds < pw.price }} />
           ))}
         </View>
@@ -115,11 +117,13 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
           </View>
         )}
         {frames.length ? (
-          <View style={{ flexDirection: 'row', gap: GAP, marginTop: GAP }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: GAP, marginHorizontal: -mk(14) }} contentContainerStyle={{ paddingHorizontal: mk(14), gap: GAP }}>
             {frames.map((item) => (
-              <FrameCard key={item.id} item={item} owned={owned.has(item.id)} onBuy={() => gemBuy(item.name, item.diamondPrice, () => actions.buyCosmetic(item.id))} disabled={diamonds < item.diamondPrice} />
+              <View key={item.id} style={{ width: FRAME_W }}>
+                <FrameCard item={item} owned={owned.has(item.id)} onBuy={() => gemBuy(item.name, item.diamondPrice, () => actions.buyCosmetic(item.id))} disabled={diamonds < item.diamondPrice} />
+              </View>
             ))}
-          </View>
+          </ScrollView>
         ) : null}
       </Section>
 
@@ -129,7 +133,7 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
           {PREMIUM_EMOTES.filter((e) => e.premium).map((e) => {
             const own = (p?.ownedEmotes ?? []).includes(e.id);
             return (
-              <ProductCard key={e.id} width={COL_W} height={mk(250)} title={e.premium!.name} art={(e as { still?: ImageSourcePropType }).still} artNode={(e as { still?: ImageSourcePropType }).still ? undefined : <EmoteSticker id={e.id} size={mk(120)} play={false} />} artScale={1.05} small
+              <ProductCard key={e.id} width={COL_W} height={mk(270)} artH={mk(120)} title={e.premium!.name} art={(e as { still?: ImageSourcePropType }).still} artNode={(e as { still?: ImageSourcePropType }).still ? undefined : <EmoteSticker id={e.id} size={mk(116)} play={false} />} artScale={1.05} small
                 button={own ? { label: S.owned, disabled: true } : { gem: true, label: String(e.premium!.price), onPress: () => gemBuy(e.premium!.name, e.premium!.price, () => actions.buyEmote(e.id)), disabled: diamonds < e.premium!.price }} />
             );
           })}
@@ -142,13 +146,13 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
           <Ribbon label={t('ui2.cosmTag')} color="#7C3AED" size={mk(22)} style={{ position: 'absolute', left: '3%', top: '5%', paddingHorizontal: mk(16) }} />
           <CosmTitle />
           <View style={{ position: 'absolute', left: '3.5%', top: '63%', width: '42%', height: '31%', justifyContent: 'center' }}>
-            <Text numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.black, fontSize: mk(19), lineHeight: mk(23) }}>{t('ui2.cosmDesc')}</Text>
+            <Text numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.black, fontSize: fz(19), lineHeight: fz(23) }}>{t('ui2.cosmDesc')}</Text>
           </View>
         </BannerImage>
       </View>
 
       <Pressable onPress={() => { void store.restorePurchases(); }} disabled={store.restoring} style={{ alignSelf: 'center', marginTop: mk(30), padding: mk(10) }}>
-        <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(24), textDecorationLine: 'underline' }}>{store.restoring ? t('ui2.restoring') : t('store.restore')}</Text>
+        <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(24), textDecorationLine: 'underline' }}>{store.restoring ? t('ui2.restoring') : t('store.restore')}</Text>
       </Pressable>
     </View>
   );
@@ -158,9 +162,9 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
 // Banner üstü canlı özellik satırı (ikon + metin), mock'taki kilit/ADS satırları.
 function BannerFeature({ top, icon, text }: { top: DimensionValue; icon: React.ReactNode; text: string }) {
   return (
-    <View style={{ position: 'absolute', left: '6%', top, width: '57%', height: '15%', flexDirection: 'row', alignItems: 'center', gap: mk(12) }}>
+    <View style={{ position: 'absolute', left: '6%', top, width: '46%', height: '15%', flexDirection: 'row', alignItems: 'center', gap: mk(10) }}>
       {icon}
-      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.black, fontSize: mk(24), flex: 1 }}>{text}</Text>
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.white, fontFamily: F.black, fontSize: fz(24), flex: 1 }}>{text}</Text>
     </View>
   );
 }
@@ -186,24 +190,29 @@ function Section({ icon, title, subtitle, children }: { icon: ImageSourcePropTyp
   );
 }
 function LoadingRow() {
-  return <View style={{ height: mk(120), alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(24) }}>Yükleniyor…</Text></View>;
+  return <View style={{ height: mk(120), alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(24) }}>Yükleniyor…</Text></View>;
 }
-function ProductCard({ width, height, title, subtitle, art, artNode, artScale = 1, ribbon, desc, face = C.card, top = C.cardTop, lip = C.cardDark, button, small }: {
-  width: number; height: number; title: string; subtitle?: string; art?: ImageSourcePropType; artNode?: React.ReactNode; artScale?: number; ribbon?: { label: string; color: 'red' | 'gold' } | null; desc?: string;
+// Ürün kartı — NATİVE KURAL: Image'a yüzde yükseklik verme (içerik boyutlu kutuda sıfırlanır/doğal boyut alır); sanat kutusu ve resim piksel boyutlu.
+// Bir ızgaradaki kartlar aynı yükseklikte olsun diye başlık 1 satır (fit), açıklama sabit 2 satırlık kutu, buton sabit.
+function ProductCard({ width, height, artH, title, subtitle, art, artNode, artScale = 1, ribbon, desc, face = C.card, top = C.cardTop, lip = C.cardDark, button, small }: {
+  width: number; height: number; artH: number; title: string; subtitle?: string; art?: ImageSourcePropType; artNode?: React.ReactNode; artScale?: number; ribbon?: { label: string; color: 'red' | 'gold' } | null; desc?: string;
   face?: string; top?: string; lip?: string; button: { label: string; gem?: boolean; onPress?: () => void; disabled?: boolean }; small?: boolean;
 }) {
+  const artW = Math.round((width - mk(16)) * 0.9 * artScale);
   return (
     <View style={{ width }}>
       <Plate face={face} top={top} lip={lip} radius={R.card} inner={{ height: height - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(10), paddingHorizontal: mk(8) }}>
-        <OutlinedText size={small ? mk(24) : mk(34)} width={mk(3)} numberOfLines={1} style={{ lineHeight: small ? mk(28) : mk(38) }}>{title}</OutlinedText>
-        {subtitle ? <OutlinedText size={mk(19)} width={1.5} style={{ marginTop: -mk(6), lineHeight: mk(21) }}>{subtitle}</OutlinedText> : null}
-        <View style={{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
-          {artNode ?? (art ? <Image source={art} style={{ width: `${86 * artScale}%`, height: '92%' }} resizeMode="contain" /> : null)}
-          {ribbon ? <Ribbon label={ribbon.label} color={ribbon.color === 'red' ? C.red : C.gold} style={{ position: 'absolute', bottom: -mk(2), transform: [{ rotate: '-3deg' }] }} size={mk(13)} /> : null}
+        <OutlinedText size={small ? mk(24) : mk(34)} width={mk(3)} numberOfLines={1} fit style={{ lineHeight: fz(small ? 28 : 38) }}>{title}</OutlinedText>
+        {subtitle ? <OutlinedText size={mk(19)} width={1.5} style={{ marginTop: -mk(4), lineHeight: fz(22) }}>{subtitle}</OutlinedText> : null}
+        <View style={{ flex: 1 }} />
+        <View style={{ height: artH, width: '100%', alignItems: 'center', justifyContent: 'center' }}>
+          {artNode ?? (art ? <Image source={art} style={{ width: artW, height: artH }} resizeMode="contain" /> : null)}
+          {ribbon ? <Ribbon label={ribbon.label} color={ribbon.color === 'red' ? C.red : C.gold} style={{ position: 'absolute', bottom: -mk(6), transform: [{ rotate: '-3deg' }] }} size={mk(15)} /> : null}
         </View>
-        {desc ? <Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7} style={{ color: C.white, fontFamily: F.black, fontSize: mk(14), textAlign: 'center', lineHeight: mk(17), marginTop: mk(2) }}>{desc}</Text> : null}
-        <View style={{ width: '100%', marginTop: mk(6), marginBottom: mk(8) }}>
-          <ChunkyButton kind="green" gem={button.gem} label={button.label} height={mk(58)} size={mk(29)} onPress={button.onPress} disabled={button.disabled} />
+        <View style={{ flex: 1 }} />
+        {desc ? <View style={{ height: fz(19) * 2 + mk(4), justifyContent: 'center' }}><Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: C.white, fontFamily: F.black, fontSize: fz(16), textAlign: 'center', lineHeight: fz(19) }}>{desc}</Text></View> : null}
+        <View style={{ width: '100%', marginTop: mk(6), marginBottom: mk(10) }}>
+          <ChunkyButton kind="green" gem={button.gem} label={button.label} height={mk(60)} size={mk(29)} onPress={button.onPress} disabled={button.disabled} />
         </View>
       </Plate>
     </View>
@@ -212,14 +221,14 @@ function ProductCard({ width, height, title, subtitle, art, artNode, artScale = 
 function CosmeticCard({ item, width, owned, onBuy, disabled }: { item: StoreCatalogItem; width: number; owned: boolean; onBuy: () => void; disabled: boolean }) {
   return (
     <View style={{ width }}>
-      <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={R.card} inner={{ height: mk(230) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(8), paddingHorizontal: mk(8) }}>
-        <OutlinedText size={mk(28)} width={mk(3)} numberOfLines={2} style={{ lineHeight: mk(32) }}>{item.name.toLocaleUpperCase('tr')}</OutlinedText>
-        <View style={{ width: '100%', height: mk(118), borderRadius: mk(12), overflow: 'hidden', marginTop: mk(4), borderWidth: mk(3), borderColor: C.navy, backgroundColor: '#061A45', alignItems: 'center', justifyContent: 'center' }}>
-          <CosmeticPreview item={item} size={COL3_W - mk(30)} />
+      <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={R.card} inner={{ height: mk(300) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(6), paddingHorizontal: mk(8) }}>
+        <View style={{ height: fz(30) * 2, justifyContent: 'center' }}><OutlinedText size={mk(26)} width={mk(3)} numberOfLines={2} fit style={{ lineHeight: fz(30) }}>{item.name.toLocaleUpperCase('tr')}</OutlinedText></View>
+        <View style={{ width: '100%', height: mk(124), borderRadius: mk(12), overflow: 'hidden', marginTop: mk(2), borderWidth: mk(3), borderColor: C.navy, backgroundColor: '#061A45', alignItems: 'center', justifyContent: 'center' }}>
+          <CosmeticArt id={item.id} type={item.type} size={mk(232)} accent={C.cyan} />
         </View>
         <View style={{ flex: 1 }} />
-        <View style={{ width: '100%', marginBottom: mk(12) }}>
-          <ChunkyButton kind="green" gem={!owned} label={owned ? S.owned : String(item.diamondPrice)} height={mk(74)} size={mk(32)} onPress={onBuy} disabled={owned || disabled} />
+        <View style={{ width: '100%', marginBottom: mk(10) }}>
+          <ChunkyButton kind="green" gem={!owned} label={owned ? S.owned : String(item.diamondPrice)} height={mk(64)} size={mk(30)} onPress={onBuy} disabled={owned || disabled} />
         </View>
       </Plate>
     </View>
@@ -227,12 +236,13 @@ function CosmeticCard({ item, width, owned, onBuy, disabled }: { item: StoreCata
 }
 function FrameCard({ item, owned, onBuy, disabled }: { item: StoreCatalogItem; owned: boolean; onBuy: () => void; disabled: boolean }) {
   return (
-    <View style={{ flex: 1 }}>
-      <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={R.card} inner={{ height: mk(150) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(10), gap: mk(10) }}>
-        <View style={{ width: mk(130), height: mk(130), alignItems: 'center', justifyContent: 'center' }}><CosmeticPreview item={item} size={mk(120)} /></View>
-        <View style={{ flex: 1 }}>
-          <OutlinedText size={mk(24)} width={mk(2)} align="left" numberOfLines={1}>{item.name.toLocaleUpperCase('tr')}</OutlinedText>
-          <ChunkyButton kind="green" gem={!owned} label={owned ? S.owned : String(item.diamondPrice)} height={mk(66)} size={mk(30)} onPress={onBuy} disabled={owned || disabled} style={{ marginTop: mk(8) }} />
+    <View style={{ width: FRAME_W }}>
+      <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={R.card} inner={{ height: mk(300) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(6), paddingHorizontal: mk(8) }}>
+        <View style={{ height: fz(30) * 2, justifyContent: 'center', zIndex: 2 }}><OutlinedText size={mk(24)} width={mk(2)} numberOfLines={2} fit style={{ lineHeight: fz(30) }}>{item.name.toLocaleUpperCase('tr')}</OutlinedText></View>
+        <View style={{ height: mk(130), alignItems: 'center', justifyContent: 'center', zIndex: 1 }}><CosmeticArt id={item.id} type={item.type} size={mk(210)} accent={C.gold} /></View>
+        <View style={{ flex: 1 }} />
+        <View style={{ width: '100%', marginBottom: mk(10) }}>
+          <ChunkyButton kind="green" gem={!owned} label={owned ? S.owned : String(item.diamondPrice)} height={mk(64)} size={mk(30)} onPress={onBuy} disabled={owned || disabled} />
         </View>
       </Plate>
     </View>

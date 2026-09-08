@@ -15,7 +15,7 @@ import { ConfirmDialog, LanguageDialog, LeagueDialog, ModeMenuDialog, PrivateRoo
 import { setLanguage, t } from '../i18n';
 import { S, up } from './strings';
 import { useStorePurchases } from './useStorePurchases';
-import { C, F, LIP, OUTLINE, SIDE, mk } from './tokens';
+import { C, F, fz, LIP, mk, OUTLINE, SIDE } from './tokens';
 
 const KEYS: NavKey[] = ['store', 'collection', 'play', 'friends', 'tournaments'];
 type Confirm = { title: string; body: string; price?: number; priceText?: string; onYes: () => void };
@@ -47,9 +47,13 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
   return (
     <View style={{ flex: 1 }}>
       <CheckerBg />
-      <ScrollView key={active} ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingTop: insets.top, paddingBottom: mk(40) }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        {body}
-      </ScrollView>
+      {active === 'play' ? (
+        <View style={{ flex: 1, paddingTop: insets.top }}>{body}</View>
+      ) : (
+        <ScrollView key={active} ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingTop: insets.top, paddingBottom: mk(40) }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          {body}
+        </ScrollView>
+      )}
       <BottomNav active={active} onPress={(k) => { setDlg(null); goToTab(KEYS.indexOf(k)); }} badges={{ friends: state.friendRequests.length || undefined }} />
 
       {/* ── pencereler ── */}
@@ -71,7 +75,7 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
         <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(2,10,40,0.72)', alignItems: 'center', justifyContent: 'center', padding: SIDE }}>
           <Plate face={C.panel} top={C.panelTop} lip={C.panelDark} radius={mk(30)} style={{ width: '100%' }} inner={{ padding: mk(28), alignItems: 'center' }}>
             <OutlinedText size={mk(40)} width={mk(4)}>{notice?.title ?? store.dialog?.title ?? ''}</OutlinedText>
-            <Text style={{ color: C.white, fontFamily: F.semi, fontSize: mk(24), textAlign: 'center', lineHeight: mk(32), marginTop: mk(14) }}>{notice?.body ?? store.dialog?.body ?? ''}</Text>
+            <Text style={{ color: C.white, fontFamily: F.semi, fontSize: fz(24), textAlign: 'center', lineHeight: fz(32), marginTop: mk(14) }}>{notice?.body ?? store.dialog?.body ?? ''}</Text>
             <View style={{ flexDirection: 'row', gap: mk(16), marginTop: mk(26), alignSelf: 'stretch' }}>
               {notice?.onYes ? (
                 <>

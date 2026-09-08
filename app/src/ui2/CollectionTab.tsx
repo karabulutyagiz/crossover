@@ -3,7 +3,7 @@
 import { isValidElement, useEffect, useState, type ReactNode } from 'react';
 import { Image, Pressable, Text, View, type ImageSourcePropType } from 'react-native';
 import { t, type MessageKey } from '../i18n';
-import { CosmeticPreview, FrameArt, LEVEL_TIERS, SPECIAL_POWERS, ownsFrame, spInventoryCount } from '../screens';
+import { CosmeticArt, FrameArt, LEVEL_TIERS, SPECIAL_POWERS, ownsFrame, spInventoryCount } from '../screens';
 import { EmoteSticker, FREE_EMOTES, PREMIUM_EMOTES } from '../emotes';
 import type { StoreCatalogItem } from '../protocol';
 import type { Actions, GameState } from './types';
@@ -13,14 +13,14 @@ import { IcBolt, IcClock, IcFace, IcNavCollection, IcStar } from './icons-ui';
 import { Hud } from './Shell';
 import { ACCOUNT_POWERS, type PowerId } from './products';
 import { S, up } from './strings';
-import { C, F, GAP, LIP, OUTLINE, R, SIDE, mk } from './tokens';
+import { C, F, fz, GAP, LIP, mk, OUTLINE, R, SIDE, SW } from './tokens';
 
 type SpId = 'freeze' | 'reveal' | 'skip' | 'extratime' | 'secondchance';
 const SP_ART: Record<SpId, ImageSourcePropType | ReactNode> = { freeze: UI2.sp_freeze2, reveal: UI2.sp_goal, skip: UI2.sp_speed, extratime: <IcClock />, secondchance: UI2.sp_social };
 const SP_FACE: Record<SpId, [string, string, string]> = { freeze: ['#1BA7F0', '#8CE0FF', '#0E6CA8'], reveal: ['#E8B400', '#FFE98A', '#A67900'], skip: ['#8E2BEA', '#C58BFF', '#4B0F9E'], extratime: ['#22C55E', '#86EFAC', '#15803D'], secondchance: ['#FF4B7A', '#FFA6C0', '#B01E48'] };
 const RARITY_N: Record<string, number> = { common: 2, rare: 3, epic: 4, legendary: 5, mythic: 5 };
 const EMOTE_SLOTS = 8;
-const INNER_W = 430 - SIDE * 2 - OUTLINE * 2 - mk(14) * 2;
+const INNER_W = SW - SIDE * 2 - OUTLINE * 2 - mk(14) * 2;
 const COL_W = Math.floor((INNER_W - GAP * 3) / 4);
 
 export type CollectionTabProps = { state: GameState; actions: Actions; onOpenSettings: () => void; onOpenProfile: () => void; onOpenArenas: () => void; onOpenStore: () => void; onNotice: (title: string, body: string) => void; initialSub?: Sub };
@@ -43,7 +43,7 @@ export function CollectionTab({ state, actions, onOpenSettings, onOpenProfile, o
           const on = sub === k;
           return (
             <Pressable key={k} onPress={() => setSub(k)} style={{ flex: 1 }}>
-              <Plate face={on ? C.gold : C.card} top={on ? C.goldLight : C.cardTop} lip={on ? C.goldDark : C.cardDark} radius={mk(20)} inner={{ height: mk(84) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}>
+              <Plate face={on ? C.gold : C.card} top={on ? C.goldLight : C.cardTop} lip={on ? C.goldDark : C.cardDark} radius={mk(20)} inner={{ minHeight: mk(84) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}>
                 <OutlinedText size={mk(30)} width={mk(3)} color={on ? C.ink : C.white} outline={on ? '#FFF6C7' : C.ink}>{label}</OutlinedText>
               </Plate>
             </Pressable>
@@ -69,13 +69,13 @@ function Powers({ p, actions, spEquipped, onOpenStore, onNotice }: { p: GameStat
           <View style={{ flexDirection: 'row', alignItems: 'center', height: mk(84) }}>
             <OutlinedText size={mk(40)} width={mk(4)} align="left">{t('ui2.myPowerSet')}</OutlinedText>
             <View style={{ flex: 1 }} />
-            <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(17), textAlign: 'right', flexShrink: 1 }}>{t('ui2.myPowerSetHint')}</Text>
+            <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: fz(17), textAlign: 'right', flexShrink: 1 }}>{t('ui2.myPowerSetHint')}</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: GAP }}>
             {[0, 1, 2].map((i) => {
               const id = spEquipped[i];
               return id ? <PowerCard key={id} width={COL_W} name={t(SPECIAL_POWERS[id].nameKey)} art={SP_ART[id]} face={SP_FACE[id]} badge={RARITY_N[SPECIAL_POWERS[id].rarity]} line={t('ui2.count', { n: count(id) })} button={{ label: up(t('collection.remove')), kind: 'blue', on: () => actions.equipSpecialPower(id) }} />
-                : <Plate key={i} face="#0B3A96" top="#2F63C8" lip="#041A4E" radius={R.card} style={{ width: COL_W }} inner={{ height: mk(250) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(60)} width={mk(3)} color={C.textMuted}>+</OutlinedText><Text style={{ color: C.textMuted, fontFamily: F.bold, fontSize: mk(15) }}>{t('ui2.emptySlot')}</Text></Plate>;
+                : <Plate key={i} face="#0B3A96" top="#2F63C8" lip="#041A4E" radius={R.card} style={{ width: COL_W }} inner={{ height: mk(300) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(60)} width={mk(3)} color={C.textMuted}>+</OutlinedText><Text style={{ color: C.textMuted, fontFamily: F.bold, fontSize: fz(15) }}>{t('ui2.emptySlot')}</Text></Plate>;
             })}
             <View style={{ width: COL_W }} />
           </View>
@@ -100,10 +100,11 @@ function Powers({ p, actions, spEquipped, onOpenStore, onNotice }: { p: GameStat
 function PowerCard({ width, name, art, face, badge, line, button, dim }: { width: number; name: string; art: ImageSourcePropType | ReactNode; face: [string, string, string]; badge: number; line: string; button: { label: string; kind: 'green' | 'blue' | 'gold'; on: () => void }; dim?: boolean }) {
   return (
     <View style={{ width, opacity: dim ? 0.72 : 1 }}>
-      <Plate face={face[0]} top={face[1]} lip={face[2]} radius={R.card} inner={{ height: mk(250) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(8), paddingHorizontal: mk(6) }}>
-        <View style={{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center' }}>{isValidElement(art) ? <IconSlot icon={art} width={width * 0.7} height={width * 0.7} size={width * 0.62} /> : <Image source={art as ImageSourcePropType} style={{ width: '84%', height: '90%' }} resizeMode="contain" />}</View>
+      <Plate face={face[0]} top={face[1]} lip={face[2]} radius={R.card} inner={{ height: mk(300) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(10), paddingHorizontal: mk(6) }}>
+        <View style={{ height: mk(110), width: '100%', alignItems: 'center', justifyContent: 'center' }}>{isValidElement(art) ? <IconSlot icon={art} width={mk(110)} height={mk(110)} size={mk(96)} /> : <Image source={art as ImageSourcePropType} style={{ width: Math.round(width * 0.86), height: mk(110) }} resizeMode="contain" />}</View>
+        <View style={{ flex: 1 }} />
         <OutlinedText size={mk(22)} width={mk(2)} numberOfLines={1} fit>{up(name)}</OutlinedText>
-        <View style={{ backgroundColor: 'rgba(255,255,255,0.28)', borderRadius: mk(10), paddingHorizontal: mk(12), paddingVertical: mk(2), marginTop: mk(3) }}><Text style={{ color: C.white, fontFamily: F.black, fontSize: mk(15) }}>{line}</Text></View>
+        <View style={{ backgroundColor: 'rgba(255,255,255,0.28)', borderRadius: mk(10), paddingHorizontal: mk(12), paddingVertical: mk(2), marginTop: mk(3) }}><Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(15) }}>{line}</Text></View>
         <View style={{ width: '100%', marginTop: mk(6), marginBottom: mk(8) }}><ChunkyButton kind={button.kind} label={button.label} height={mk(46)} size={mk(20)} onPress={button.on} /></View>
       </Plate>
       <View style={{ position: 'absolute', top: -mk(8), left: -mk(4), width: mk(50), height: mk(50), borderRadius: mk(25), backgroundColor: '#8E2BEA', borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(24)} width={1.2}>{String(badge)}</OutlinedText></View>
@@ -117,22 +118,22 @@ function Cosmetics({ p, actions, catalog }: { p: GameState['profile']; actions: 
   const equippedOf = (type: string): string | null => type === 'match_background' ? p?.equippedMatchBackgroundId ?? null : type === 'ball' ? p?.equippedBallId ?? null : type === 'name_effect' ? p?.equippedNameEffectId ?? null : type === 'intro' ? p?.equippedIntroId ?? null : type === 'victory_effect' ? p?.equippedVictoryEffectId ?? null : type === 'answer_effect' ? p?.equippedAnswerEffectId ?? null : null;
   const tierFrames = LEVEL_TIERS.filter((tier) => ownsFrame(p ?? null, tier.key));
   const storeFrames = catalog.filter((i) => i.type === 'frame' && owned.has(i.id));
-  const COL3 = Math.floor((430 - SIDE * 2 - GAP * 2) / 3);
+  const COL3 = Math.floor((SW - SIDE * 2 - GAP * 2) / 3);
   return (
     <>
       <SectionHeader icon={UI2.frame_laurel} title={up(t('profile.frames'))} subtitle={t('ui2.framesSub')} style={{ marginHorizontal: SIDE, marginTop: mk(10) }} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, marginHorizontal: SIDE }}>
         {tierFrames.map((tier) => <FrameCard key={tier.key} width={COL3} name={t(tier.nameKey)} equipped={p?.selectedFrame === tier.key} onPress={() => actions.setFrame(p?.selectedFrame === tier.key ? null : tier.key)}><FrameArt tierKey={tier.key} size={mk(120)} /></FrameCard>)}
-        {storeFrames.map((it) => <FrameCard key={it.id} width={COL3} name={it.name} equipped={p?.selectedFrame === it.id} onPress={() => actions.setFrame(p?.selectedFrame === it.id ? null : it.id)}><CosmeticPreview item={it} size={mk(120)} /></FrameCard>)}
-        {tierFrames.length + storeFrames.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(20), padding: mk(10) }}>{t('ui2.noFrames')}</Text> : null}
+        {storeFrames.map((it) => <FrameCard key={it.id} width={COL3} name={it.name} equipped={p?.selectedFrame === it.id} onPress={() => actions.setFrame(p?.selectedFrame === it.id ? null : it.id)}><CosmeticArt id={it.id} type={it.type} size={mk(210)} accent={C.gold} /></FrameCard>)}
+        {tierFrames.length + storeFrames.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(20), padding: mk(10) }}>{t('ui2.noFrames')}</Text> : null}
       </View>
       <SectionHeader icon={<IcStar />} title={t('ui2.cosmetics')} subtitle={t('ui2.cosmeticsSub')} style={{ marginHorizontal: SIDE, marginTop: mk(14) }} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, marginHorizontal: SIDE }}>
         {items.map((it) => {
           const on = equippedOf(it.type) === it.id;
-          return <FrameCard key={it.id} width={COL3} name={it.name} equipped={on} onPress={() => actions.equipCosmetic(it.type as any, on ? null : it.id)}><CosmeticPreview item={it} size={mk(120)} /></FrameCard>;
+          return <FrameCard key={it.id} width={COL3} name={it.name} equipped={on} onPress={() => actions.equipCosmetic(it.type as any, on ? null : it.id)}><CosmeticArt id={it.id} type={it.type} size={mk(170)} accent={C.cyan} /></FrameCard>;
         })}
-        {items.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: mk(20), padding: mk(10) }}>{t('ui2.noCosmetics')}</Text> : null}
+        {items.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(20), padding: mk(10) }}>{t('ui2.noCosmetics')}</Text> : null}
       </View>
     </>
   );
@@ -140,8 +141,9 @@ function Cosmetics({ p, actions, catalog }: { p: GameState['profile']; actions: 
 function FrameCard({ width, name, equipped, onPress, children }: { width: number; name: string; equipped: boolean; onPress: () => void; children: React.ReactNode }) {
   return (
     <View style={{ width }}>
-      <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={equipped ? C.gold : C.navy} radius={R.card} inner={{ height: mk(250) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(8), paddingHorizontal: mk(6) }}>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>{children}</View>
+      <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={equipped ? C.gold : C.navy} radius={R.card} inner={{ height: mk(300) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(8), paddingHorizontal: mk(6) }}>
+        <View style={{ height: mk(134), alignItems: 'center', justifyContent: 'center' }}>{children}</View>
+        <View style={{ flex: 1 }} />
         <OutlinedText size={mk(20)} width={mk(2)} numberOfLines={1} fit>{up(name)}</OutlinedText>
         <View style={{ width: '100%', marginTop: mk(6), marginBottom: mk(8) }}><ChunkyButton kind={equipped ? 'blue' : 'green'} label={equipped ? t('store.spEquipped') : t('store.spEquip')} height={mk(46)} size={mk(20)} onPress={onPress} /></View>
       </Plate>
@@ -165,12 +167,12 @@ function Emotes({ p, actions, onNotice }: { p: GameState['profile']; actions: Ac
           <View style={{ flexDirection: 'row', alignItems: 'center', height: mk(84) }}>
             <OutlinedText size={mk(40)} width={mk(4)} align="left">{t('ui2.myEmotes')}</OutlinedText>
             <View style={{ flex: 1 }} />
-            <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: mk(17) }}>{`${equipped.length} / ${EMOTE_SLOTS}`}</Text>
+            <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: fz(17) }}>{`${equipped.length} / ${EMOTE_SLOTS}`}</Text>
           </View>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
             {Array.from({ length: EMOTE_SLOTS }, (_, i) => equipped[i]).map((id, i) => (
               <Pressable key={i} onPress={() => id && toggle(id)} style={{ width: COL_W }}>
-                <Plate face={id ? C.card : '#0B3A96'} top={id ? C.cardTop : '#2F63C8'} lip={id ? C.cardDark : '#041A4E'} radius={R.card} inner={{ height: mk(150) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}>
+                <Plate face={id ? C.card : '#0B3A96'} top={id ? C.cardTop : '#2F63C8'} lip={id ? C.cardDark : '#041A4E'} radius={R.card} inner={{ minHeight: mk(150) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}>
                   {id ? <EmoteSticker id={id} size={mk(110)} play={false} /> : <OutlinedText size={mk(50)} width={mk(3)} color={C.textMuted}>+</OutlinedText>}
                 </Plate>
               </Pressable>
@@ -184,7 +186,7 @@ function Emotes({ p, actions, onNotice }: { p: GameState['profile']; actions: Ac
           const on = equipped.includes(e.id);
           return (
             <Pressable key={e.id} onPress={() => toggle(e.id)} style={{ width: COL_W }}>
-              <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={on ? C.gold : C.navy} radius={R.card} inner={{ height: mk(200) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
+              <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={on ? C.gold : C.navy} radius={R.card} inner={{ minHeight: mk(200) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
                 <EmoteSticker id={e.id} size={mk(110)} play={false} />
                 <OutlinedText size={mk(18)} width={1.5} numberOfLines={1} style={{ marginTop: mk(4) }}>{up((e.premium?.name ?? (e.phraseKey ? t(e.phraseKey as MessageKey) : e.id)))}</OutlinedText>
               </Plate>

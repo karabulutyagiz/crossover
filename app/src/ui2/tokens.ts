@@ -7,12 +7,22 @@
 // Her ölçü mock pikselinden `mk()` ile çevrilir — "göz kararı" değil, ölçüm.
 // Ana ekran referansı 853 px → `mh()`.
 // ═══════════════════════════════════════════════════════════════════════════
-import { BASE_W } from '../layout';
+import { Dimensions } from 'react-native';
 
+// GERÇEK EKRAN (2026-09-08, cihaz QA): tuval 430 pt sabit değil — telefonun genişliği (tablet 480 ile kapatılır).
+// Böylece her ölçü telefona göre ölçeklenir; sağdan kesilme yok.
+const win = Dimensions.get('window');
+export const SW = Math.min(win.width, 480);
+export const SH = win.height;
 export const MOCK_W = 941;
 export const HOME_MOCK_W = 853;
-export const mk = (px: number): number => Math.round((px * BASE_W) / MOCK_W * 2) / 2;
-export const mh = (px: number): number => Math.round((px * BASE_W) / HOME_MOCK_W * 2) / 2;
+export const mk = (px: number): number => Math.round((px * SW) / MOCK_W * 2) / 2;
+export const mh = (px: number): number => Math.round((px * SW) / HOME_MOCK_W * 2) / 2;
+// YAZI: mock piksel oranı telefonda çok küçük kalıyor (24 px → 10 pt). Telefon tabanı: ×1.18, en az 10 pt.
+export const FONT_SCALE = 1.18;
+export const fz = (px: number): number => Math.max(Math.round(mk(px) * FONT_SCALE * 2) / 2, 10);
+// Dokunma hedefi tabanı (Apple HIG 44 pt; yoğun kartlarda 40)
+export const MIN_TAP = 40;
 
 // Renkler: mock'lardan örneklenip düz alanlarda doğrulandı; metin/kenar karışan
 // örnekler görsel kalibrasyonla düzeltildi.

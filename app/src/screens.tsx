@@ -9891,7 +9891,7 @@ function CosmeticEffectIcon({ id, type, size, accent }: { id: string; type: stri
   );
 }
 
-function CosmeticArt({ id, type, size, accent, empty = false }: { id: string | null | undefined; type: string; size: number; accent: string; empty?: boolean }) {
+export function CosmeticArt({ id, type, size, accent, empty = false }: { id: string | null | undefined; type: string; size: number; accent: string; empty?: boolean }) {
   if (empty || !id) {
     const visual = cosmeticVisual({ id: `${type}_empty`, type, name: '', description: '', rarity: 'common', diamondPrice: 0 } as StoreCatalogItem);
     return <Ionicons name={visual.icon as IoniconName} size={Math.round(size * 0.4)} color={withAlpha(accent, 0.7)} />;

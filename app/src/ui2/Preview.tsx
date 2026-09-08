@@ -61,7 +61,7 @@ export default function Ui2Preview() {
   if (!fontsLoaded) return <Text>fonts…</Text>;
   return (
     <SafeAreaProvider>
-      <View style={{ width: 430, height: 932, alignSelf: 'center', overflow: 'hidden', backgroundColor: '#000' }}>
+      <View style={{ flex: 1, alignSelf: 'stretch', overflow: 'hidden', backgroundColor: '#000' }}>
         <Ui2Tabs state={state} actions={actions} activeTab={tab} goToTab={setTab} onOpenLevelRoad={() => console.log('level road')} initialScrollY={sy} initialDialog={dlg} initialCollectionSub={sub} />
       </View>
     </SafeAreaProvider>

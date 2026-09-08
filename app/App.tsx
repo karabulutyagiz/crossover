@@ -17,8 +17,7 @@ import {
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
-} from 'react-native';
+  useWindowDimensions, LogBox } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
@@ -56,6 +55,9 @@ const FORCE_TUTORIAL_DEV = false;
 // UI2 (2026-09-07): referans mock'lardan sıfırdan yazılan sekme arayüzü. Tamamlanana
 // dek env bayrağıyla açılır (EXPO_PUBLIC_UI2=1); OTA'ya bayraksız gitmez.
 const UI2_ON = process.env.EXPO_PUBLIC_UI2 === '1';
+// Yalnız geliştirme: simülatörde UI2 sekmelerini incelerken açılıştaki eski tarz popup'ları sustur (EXPO_PUBLIC_UI2_QUIET=1).
+const UI2_QUIET = __DEV__ && process.env.EXPO_PUBLIC_UI2_QUIET === '1';
+if (UI2_QUIET) LogBox.ignoreAllLogs(true);
 // UI2 web önizlemesi: EXPO_PUBLIC_UI2_PREVIEW=1 npx expo start --web — ağ/IAP yok, sahte state.
 const UI2_PREVIEW = __DEV__ && Platform.OS === 'web' && process.env.EXPO_PUBLIC_UI2_PREVIEW === '1';
 const Ui2Preview = UI2_PREVIEW ? require('./src/ui2/Preview').default : null;
@@ -2923,15 +2925,15 @@ function AppRoot() {
   const shownProfile = serverProfile ?? entryProfile;
 
   return (
-    <View key={`app-${langKey}`} style={[s.root, { paddingTop: insets.top }]}>
+    <View key={`app-${langKey}`} style={[s.root, { paddingTop: UI2_ON ? 0 : insets.top }]}>
       <StatusBar style="light" />
       {/* Backdrop: calm navy menu weave base on every tab. On the home (Oyna) tab a
           CLEAN green-pitch overlay fades in at the bottom. The old stadium photo's
           blurry floodlit sky and the grainy noise band (the "karıncalı" strip behind
           Hemen Oyna) were cut — bg-home-pitch.png keeps only the tidy pitch: transparent
           above, soft-faded into the navy, no dark scrim. */}
-      <ScreenBg variant="menu" />
-      {state.phase === 'home' ? (
+      {!UI2_ON ? <ScreenBg variant="menu" /> : null}
+      {!UI2_ON && state.phase === 'home' ? (
         <Animated.View
           pointerEvents="none"
           style={[StyleSheet.absoluteFill, {
@@ -3054,7 +3056,7 @@ function AppRoot() {
       </View>
       </>)}
 
-      {__DEV__ && state.phase === 'home' ? (
+      {__DEV__ && !UI2_ON && state.phase === 'home' ? (
         <View style={{ position: 'absolute', left: 12, right: 12, bottom: Math.max(insets.bottom, 12) + 78, gap: 6, alignItems: 'center', zIndex: 30 }} pointerEvents="box-none">
           <Text style={{ color: theme.muted, fontFamily: 'Poppins-ExtraBold', fontSize: 8.5 }}>
             ENG {Math.round(engagementState.activeSessionSeconds)}s q:{engagementState.queuedEngagements.length} active:{activeEngagement?.kind ?? '-'}
@@ -3259,7 +3261,7 @@ function AppRoot() {
 
       {/* Kişiye özel Günlük Fırsat — 12 saat sabit, pencere başına tek alım. */}
       <GameModal
-        visible={dailyOfferVisible}
+        visible={dailyOfferVisible && !UI2_QUIET}
         onClose={() => setDailyOfferVisible(false)}
         title={t('offer.title')}
         icon={dailyOfferIcon}
@@ -3450,7 +3452,7 @@ function AppRoot() {
 
       {/* YENİ CO-PASS SEZONU — sezon başında 3 gün, sezon başına bir kez. */}
       <GameModal
-        visible={copassAnnounceVisible}
+        visible={copassAnnounceVisible && !UI2_QUIET}
         onClose={() => setCopassAnnounceVisible(false)}
         title="YENİ CO-PASS SEZONU"
         icon="trophy"
@@ -3592,7 +3594,7 @@ function AppRoot() {
 
       {/* Her açılışta YENİ MOD duyurusu — artık BEN KİMİM? (kullanıcı 2026-09-03):
           üstte kısa, döngülü, oyun-içi görünümlü öğretici animasyon. */}
-      <GameModal visible={modeAnnounceVisible} onClose={() => setModeAnnounceVisible(false)} title={t('bkAnnounce.title')} icon="help-circle" coach>
+      <GameModal visible={modeAnnounceVisible && !UI2_QUIET} onClose={() => setModeAnnounceVisible(false)} title={t('bkAnnounce.title')} icon="help-circle" coach>
         <View style={{ alignItems: 'center', gap: 12 }}>
           {/* altın YENİ MOD şeridi */}
           <View style={{ backgroundColor: theme.gold, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4 }}>
@@ -3614,7 +3616,7 @@ function AppRoot() {
       </GameModal>
 
       <GameModal
-        visible={socialPackCampaignVisible}
+        visible={socialPackCampaignVisible && !UI2_QUIET}
         onClose={dismissSocialPackCampaign}
         title={t('socialPack.startupTitle')}
         icon="people"
@@ -3693,7 +3695,7 @@ function AppRoot() {
       </GameModal>
 
       <GameModal
-        visible={contextualOfferVisible}
+        visible={contextualOfferVisible && !UI2_QUIET}
         onClose={dismissContextualOffer}
         onExited={() => { if (!contextualOfferVisible) setContextualOffer(null); }}
         title={contextualOffer ? t(contextualOffer.titleKey as any) : ''}
@@ -3742,7 +3744,7 @@ function AppRoot() {
       </GameModal>
 
       <GameModal
-        visible={feedbackPromptVisible}
+        visible={feedbackPromptVisible && !UI2_QUIET}
         onClose={dismissFeedbackPrompt}
         onExited={() => {
           const pend = feedbackCenterOnExit.current;
@@ -3772,7 +3774,7 @@ function AppRoot() {
 
       {/* Push permission prompt — once per install, coach-framed. */}
       <GameModal
-        visible={pushPrompt}
+        visible={pushPrompt && !UI2_QUIET}
         onClose={() => setPushPrompt(false)}
         title={t('push.promptTitle')}
         icon="notifications"
