@@ -1195,6 +1195,7 @@ const tr = {
   "ui2.noUsersFound": "Bu isimde kimse bulunamadı",
   "ui2.requestSent": "İstek gönderildi",
   "ui2.noConversations": "Henüz sohbet yok",
+  "ui2.friendActions": "Ne yapmak istersin?",
 };
 
 // ---- English (fallback) ----
@@ -2328,6 +2329,7 @@ const en: typeof tr = {
   "ui2.noUsersFound": "No player found with that name",
   "ui2.requestSent": "Request sent",
   "ui2.noConversations": "No chats yet",
+  "ui2.friendActions": "What do you want to do?",
 };
 
 export type MessageKey = keyof typeof tr;

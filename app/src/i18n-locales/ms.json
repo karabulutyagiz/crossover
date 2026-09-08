@@ -537,5 +537,6 @@
   "ui2.searchByName": "Cari mengikut nama",
   "ui2.noUsersFound": "Tiada pemain ditemui",
   "ui2.requestSent": "Permintaan dihantar",
-  "ui2.noConversations": "Belum ada sembang"
+  "ui2.noConversations": "Belum ada sembang",
+  "ui2.friendActions": "Apa yang anda mahu buat?"
 }

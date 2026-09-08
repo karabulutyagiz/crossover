@@ -59,6 +59,7 @@ const UI2_ON = process.env.EXPO_PUBLIC_UI2 === '1';
 const UI2_QUIET = __DEV__ && process.env.EXPO_PUBLIC_UI2_QUIET === '1';
 if (UI2_QUIET) LogBox.ignoreAllLogs(true);
 import { UI2 } from './src/ui2/assets';
+import { C as UI2C } from './src/ui2/tokens';
 // UI2 web önizlemesi: EXPO_PUBLIC_UI2_PREVIEW=1 npx expo start --web — ağ/IAP yok, sahte state.
 const UI2_PREVIEW = __DEV__ && Platform.OS === 'web' && process.env.EXPO_PUBLIC_UI2_PREVIEW === '1';
 const Ui2Preview = UI2_PREVIEW ? require('./src/ui2/Preview').default : null;
@@ -765,7 +766,7 @@ function OutgoingInviteBanner({ invite, onCancel, offsetY = 0 }: {
   const urgent = secs <= 5;
   return (
     <Animated.View style={[s.topBanner, { top: insets.top + 6 + offsetY, transform: [{ translateY: y }] }]}>
-      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.accent }}>
+      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: UI2_ON ? UI2C.panelInk : theme.bg2, alignItems: 'center', justifyContent: 'center', borderWidth: UI2_ON ? 3 : 2, borderColor: UI2_ON ? UI2C.navy : theme.accent }}>
         <Ionicons name="notifications" size={20} color={theme.accent} />
       </View>
       <View style={{ flex: 1 }}>
@@ -3921,15 +3922,26 @@ const s = StyleSheet.create({
     borderTopWidth: 2, borderTopColor: theme.primary, // green identity kept as an accent strip, not a frame
     ...shadowModal,
   },
-  topBanner: {
+  topBanner: UI2_ON
+    ? {
+      position: 'absolute' as const, left: 10, right: 10, zIndex: 110,
+      flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10,
+      backgroundColor: UI2C.card, borderRadius: 22, paddingVertical: 10, paddingHorizontal: 12,
+      borderWidth: 3, borderBottomWidth: 7, borderColor: UI2C.navy,
+    }
+    : {
     position: 'absolute', left: 10, right: 10, zIndex: 110, // top comes from the safe-area inset
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: theme.modalFace, borderRadius: 16, paddingVertical: 10, paddingHorizontal: 12,
     borderTopWidth: 2, borderTopColor: theme.primary,
     ...shadowModal,
   },
-  inviteName: { color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15, ...engrave('sm') },
-  inviteSub: { color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold' },
+  inviteName: UI2_ON
+    ? { color: '#FFFFFF', fontFamily: 'LilitaOne-Regular', fontSize: 18, textShadowColor: UI2C.ink, textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 0 }
+    : { color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 15, ...engrave('sm') },
+  inviteSub: UI2_ON
+    ? { color: '#C3D8FF', fontSize: 13, fontFamily: 'Poppins-ExtraBold' }
+    : { color: theme.muted, fontSize: 11.5, fontFamily: 'Poppins-SemiBold' },
   resourceBar: {
     // In-flow at the top of each tab page (like Home's own bar) — no absolute, no
     // toggle: it slides with the page and never resizes the pager or leaves a gap.

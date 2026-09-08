@@ -537,5 +537,6 @@
   "ui2.searchByName": "Zoek op naam",
   "ui2.noUsersFound": "Geen speler gevonden",
   "ui2.requestSent": "Verzoek verstuurd",
-  "ui2.noConversations": "Nog geen chats"
+  "ui2.noConversations": "Nog geen chats",
+  "ui2.friendActions": "Wat wil je doen?"
 }

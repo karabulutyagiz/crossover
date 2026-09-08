@@ -537,5 +537,6 @@
   "ui2.searchByName": "名前で検索",
   "ui2.noUsersFound": "その名前の選手はいません",
   "ui2.requestSent": "リクエストを送信",
-  "ui2.noConversations": "まだチャットがありません"
+  "ui2.noConversations": "まだチャットがありません",
+  "ui2.friendActions": "何をしますか？"
 }

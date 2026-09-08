@@ -537,5 +537,6 @@
   "ui2.searchByName": "Søk på navn",
   "ui2.noUsersFound": "Ingen spiller funnet",
   "ui2.requestSent": "Forespørsel sendt",
-  "ui2.noConversations": "Ingen chatter ennå"
+  "ui2.noConversations": "Ingen chatter ennå",
+  "ui2.friendActions": "Hva vil du gjøre?"
 }

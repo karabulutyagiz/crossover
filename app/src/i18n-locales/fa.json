@@ -537,5 +537,6 @@
   "ui2.searchByName": "جست‌وجو با نام",
   "ui2.noUsersFound": "بازیکنی با این نام نیست",
   "ui2.requestSent": "درخواست ارسال شد",
-  "ui2.noConversations": "هنوز گفت‌وگویی نیست"
+  "ui2.noConversations": "هنوز گفت‌وگویی نیست",
+  "ui2.friendActions": "می‌خواهی چه کنی؟"
 }

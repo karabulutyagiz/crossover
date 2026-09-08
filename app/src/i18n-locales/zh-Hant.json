@@ -537,5 +537,6 @@
   "ui2.searchByName": "依名稱搜尋",
   "ui2.noUsersFound": "找不到該玩家",
   "ui2.requestSent": "請求已送出",
-  "ui2.noConversations": "還沒有聊天"
+  "ui2.noConversations": "還沒有聊天",
+  "ui2.friendActions": "你想做什麼？"
 }

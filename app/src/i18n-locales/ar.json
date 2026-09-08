@@ -537,5 +537,6 @@
   "ui2.searchByName": "ابحث بالاسم",
   "ui2.noUsersFound": "لا يوجد لاعب بهذا الاسم",
   "ui2.requestSent": "تم إرسال الطلب",
-  "ui2.noConversations": "لا توجد محادثات بعد"
+  "ui2.noConversations": "لا توجد محادثات بعد",
+  "ui2.friendActions": "ماذا تريد أن تفعل؟"
 }

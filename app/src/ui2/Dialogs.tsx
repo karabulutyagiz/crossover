@@ -58,9 +58,9 @@ const MODE_DEFS: ModeDef[] = [
   { id: 'cozkazan', nameKey: 'mode.cozkazan', descKey: 'ui2.md.cozkazan', Icon: IcModeCozKazan, art: UI2.mode_cozkazan, face: '#8E2BEA', top: '#C58BFF', lip: '#4B0F9E' },
   { id: 'guess-who', nameKey: 'mode.guessWho', descKey: 'ui2.md.guessWho', Icon: IcModeGuessWho, art: UI2.mode_guess_who, face: '#FF7A1A', top: '#FFB472', lip: '#C24E00' },
 ];
-export function ModeMenuDialog({ state, actions, onClose, bot = false, onLocked }: { state: GameState; actions: Actions; onClose: () => void; bot?: boolean; onLocked: (mode: GameMode) => void }) {
-  const defs = bot ? MODE_DEFS : MODE_DEFS.filter((m) => m.id !== 'team-team');
-  const [mode, setMode] = useState<GameMode>(bot ? 'team-team' : 'country-team');
+export function ModeMenuDialog({ state, actions, onClose, bot = false, onLocked, invite }: { state: GameState; actions: Actions; onClose: () => void; bot?: boolean; onLocked: (mode: GameMode) => void; /** dolu ise: mod seçilince bu arkadaşa DOSTLUK MAÇI daveti gider */ invite?: { userId: string; name: string } }) {
+  const defs = (bot || invite) ? MODE_DEFS : MODE_DEFS.filter((m) => m.id !== 'team-team');
+  const [mode, setMode] = useState<GameMode>((bot || invite) ? 'team-team' : 'country-team');
   const [diff, setDiff] = useState<'easy' | 'medium' | 'hard'>('medium');
   const hasPack = hasActiveSocialPack(state.profile);
   const name = state.profile?.displayName ?? t('ui2.player');
@@ -68,11 +68,12 @@ export function ModeMenuDialog({ state, actions, onClose, bot = false, onLocked 
   const play = () => {
     if (locked) { onClose(); onLocked(mode); return; }
     onClose();
-    if (bot) actions.createSolo(name, { mode, difficulty: diff }); else actions.findMatch({ mode });
+    if (invite) actions.inviteFriendMatch(invite.userId, invite.name, { mode });
+    else if (bot) actions.createSolo(name, { mode, difficulty: diff }); else actions.findMatch({ mode });
   };
   return (
-    <Dialog title={up(bot ? t('home.solo') : t('ui2.gameModes'))} onClose={onClose} wide>
-      <Text style={{ color: C.white, fontFamily: F.bold, fontSize: fz(22), textAlign: 'center', marginBottom: mk(12) }}>{bot ? t('ui2.pickModeBot') : t('ui2.pickMode')}</Text>
+    <Dialog title={up(invite ? t('friends.friendlyMatch') : bot ? t('home.solo') : t('ui2.gameModes'))} onClose={onClose} wide>
+      <Text style={{ color: C.white, fontFamily: F.bold, fontSize: fz(22), textAlign: 'center', marginBottom: mk(12) }}>{invite ? `${invite.name} • ${t('friends.matchModeTitle')}` : bot ? t('ui2.pickModeBot') : t('ui2.pickMode')}</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: mk(12), justifyContent: 'center' }}>
         {defs.map((m) => {
           const on = mode === m.id; const lk = PACK_MODES.includes(m.id) && !hasPack;
@@ -96,7 +97,7 @@ export function ModeMenuDialog({ state, actions, onClose, bot = false, onLocked 
         })}
       </View>
       {bot ? <View style={{ flexDirection: 'row', gap: mk(8), marginTop: mk(14), justifyContent: 'center' }}>{(['easy', 'medium', 'hard'] as const).map((d) => <Chip key={d} label={t(`difficulty.${d}` as MessageKey)} on={diff === d} onPress={() => setDiff(d)} />)}</View> : null}
-      <View style={{ marginTop: mk(16) }}><ChunkyButton kind={locked ? 'gold' : 'green'} label={locked ? t('friends.inviteNeedsPackTitle') : t('ui2.playBtn')} height={mk(88)} size={locked ? mk(28) : mk(36)} onPress={play} /></View>
+      <View style={{ marginTop: mk(16) }}><ChunkyButton kind={locked ? 'gold' : 'green'} label={locked ? t('friends.inviteNeedsPackTitle') : invite ? t('friends.sendRequest') : t('ui2.playBtn')} height={mk(88)} size={locked ? mk(28) : mk(36)} onPress={play} /></View>
     </Dialog>
   );
 }
@@ -585,6 +586,25 @@ export function AddFriendDialog({ state, actions, onClose, onNotice }: { state: 
   );
 }
 
+// ── Arkadaşa dokununca: dostluk maçı / mesaj / profil / arkadaşlıktan çıkar (eski akışın UI2 karşılığı) ──
+export function FriendActionsDialog({ friend, actions, onClose, onFriendlyMatch, onOpenMessages }: {
+  friend: { userId: string; displayName: string }; actions: Actions; onClose: () => void;
+  onFriendlyMatch: () => void; onOpenMessages: () => void;
+}) {
+  const Row = ({ label, kind, on }: { label: string; kind: 'green' | 'blue' | 'gold' | 'red'; on: () => void }) => (
+    <View style={{ marginBottom: mk(10) }}><ChunkyButton kind={kind} label={up(label)} height={mk(96)} size={mk(28)} onPress={on} /></View>
+  );
+  return (
+    <Dialog title={up(friend.displayName)} onClose={onClose}>
+      <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: fz(19), textAlign: 'center', marginBottom: mk(12) }}>{t('ui2.friendActions')}</Text>
+      <Row label={t('friends.friendlyMatch')} kind="green" on={onFriendlyMatch} />
+      <Row label={t('friends.sendMessage')} kind="blue" on={() => { onClose(); actions.openChat(friend.userId); onOpenMessages(); }} />
+      <Row label={t('friends.viewProfile')} kind="gold" on={() => { onClose(); actions.getUserProfile(friend.userId); }} />
+      <Row label={t('friends.removeFriend')} kind="red" on={() => { onClose(); actions.removeFriend(friend.userId); }} />
+    </Dialog>
+  );
+}
+
 // ── Mesajlar: sohbet listesi; dokununca eski sohbet ekranı açılır (akış aynı) ──
 export function MessagesDialog({ state, actions, onClose }: { state: GameState; actions: Actions; onClose: () => void }) {
   const rows = state.conversations;
@@ -641,7 +661,6 @@ export function ArenasDialog({ state, onClose }: { state: GameState; onClose: ()
               <OutlinedText size={mk(28)} width={mk(2.5)} align="left" numberOfLines={2} fit>{up(t(`arena.${key}` as MessageKey))}</OutlinedText>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(6), marginTop: mk(2) }}><IcTrophy size={mk(24)} /><Text style={{ color: C.gold, fontFamily: F.black, fontSize: fz(17) }}>{a.max >= 99999 ? `${fmt(a.min)}+` : `${fmt(a.min)} – ${fmt(a.max)}`}</Text></View>
               <Text numberOfLines={2} style={{ color: C.textSub, fontFamily: F.bold, fontSize: fz(15), lineHeight: fz(19), marginTop: mk(2) }}>{t(`arena.${key}.desc` as MessageKey)}</Text>
-              <Text style={{ color: C.white, fontFamily: F.bold, fontSize: fz(14), marginTop: mk(2) }}>{t('ui2.winLoss', { w: `+${a.win}`, l: `-${a.loss}` })}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(6), marginTop: mk(4), opacity: claimed ? 0.55 : 1 }}>
                 <IcGem size={mk(26)} /><Text style={{ color: claimed ? C.textMuted : C.white, fontFamily: F.black, fontSize: fz(16) }}>{claimed ? t('ui2.rewardTaken') : `${t('ui2.arenaReward')}: +${a.reward}`}</Text>
               </View>

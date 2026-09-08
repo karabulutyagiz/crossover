@@ -537,5 +537,6 @@
   "ui2.searchByName": "Поиск по имени",
   "ui2.noUsersFound": "Игрок не найден",
   "ui2.requestSent": "Запрос отправлен",
-  "ui2.noConversations": "Пока нет чатов"
+  "ui2.noConversations": "Пока нет чатов",
+  "ui2.friendActions": "Что хочешь сделать?"
 }

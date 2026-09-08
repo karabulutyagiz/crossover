@@ -537,5 +537,6 @@
   "ui2.searchByName": "이름으로 검색",
   "ui2.noUsersFound": "해당 이름의 플레이어 없음",
   "ui2.requestSent": "요청을 보냈습니다",
-  "ui2.noConversations": "아직 채팅이 없습니다"
+  "ui2.noConversations": "아직 채팅이 없습니다",
+  "ui2.friendActions": "무엇을 할까요?"
 }

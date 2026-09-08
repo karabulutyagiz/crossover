@@ -537,5 +537,6 @@
   "ui2.searchByName": "Cari berdasarkan nama",
   "ui2.noUsersFound": "Pemain tidak ditemukan",
   "ui2.requestSent": "Permintaan terkirim",
-  "ui2.noConversations": "Belum ada obrolan"
+  "ui2.noConversations": "Belum ada obrolan",
+  "ui2.friendActions": "Mau melakukan apa?"
 }

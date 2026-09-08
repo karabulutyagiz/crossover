@@ -537,5 +537,6 @@
   "ui2.searchByName": "ค้นหาด้วยชื่อ",
   "ui2.noUsersFound": "ไม่พบผู้เล่นชื่อนี้",
   "ui2.requestSent": "ส่งคำขอแล้ว",
-  "ui2.noConversations": "ยังไม่มีแชท"
+  "ui2.noConversations": "ยังไม่มีแชท",
+  "ui2.friendActions": "ต้องการทำอะไร?"
 }

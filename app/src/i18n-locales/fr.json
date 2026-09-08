@@ -537,5 +537,6 @@
   "ui2.searchByName": "Rechercher par nom",
   "ui2.noUsersFound": "Aucun joueur trouvé",
   "ui2.requestSent": "Demande envoyée",
-  "ui2.noConversations": "Aucune discussion"
+  "ui2.noConversations": "Aucune discussion",
+  "ui2.friendActions": "Que veux-tu faire ?"
 }

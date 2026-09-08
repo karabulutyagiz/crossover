@@ -80,7 +80,7 @@ function OutlinedTextBase({ children, size, color = C.white, outline = C.ink, wi
   const lines = numberOfLines ?? 1;
   const useW = fitWidth ?? availW;
   const fs = fit && text && useW > 0 && natW > 0
-    ? Math.max(11, Math.min(base0, Math.floor(base0 * ((useW - 2 * width - 1) * (lines > 1 ? lines * 0.9 : 1)) / natW * 2) / 2))
+    ? Math.max(9, Math.min(base0, Math.floor(base0 * ((useW - 2 * width - 1) * (lines > 1 ? lines * 0.9 : 1)) / natW * 2) / 2))
     : base0;
   const base: TextStyle = { fontFamily: family, fontSize: fs, color, textAlign: align, includeFontPadding: false };
   const offsets = useMemo(() => {
@@ -218,9 +218,9 @@ export function Bar({ value, max, color = C.cyan, track = '#062B75', height = mk
 // ── Elmas ikonu + sayı (canlı metin) ────────────────────────────────────────────
 export function GemAmount({ amount, size = mk(34), color = C.white, family = F.title }: { amount: number | string; size?: number; color?: string; family?: string }) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(8) }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(8), flexShrink: 1, minWidth: 0 }}>
       <IcGem size={size * 1.1} />
-      <OutlinedText size={size} color={color} width={mk(4)} family={family}>{typeof amount === 'number' ? amount.toLocaleString('tr-TR') : amount}</OutlinedText>
+      <View style={{ flexShrink: 1, minWidth: 0 }}><OutlinedText size={size} color={color} width={mk(4)} family={family} numberOfLines={1} fit>{typeof amount === 'number' ? amount.toLocaleString('tr-TR') : amount}</OutlinedText></View>
     </View>
   );
 }

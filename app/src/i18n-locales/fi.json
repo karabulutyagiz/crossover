@@ -537,5 +537,6 @@
   "ui2.searchByName": "Hae nimellä",
   "ui2.noUsersFound": "Pelaajaa ei löytynyt",
   "ui2.requestSent": "Pyyntö lähetetty",
-  "ui2.noConversations": "Ei vielä keskusteluja"
+  "ui2.noConversations": "Ei vielä keskusteluja",
+  "ui2.friendActions": "Mitä haluat tehdä?"
 }

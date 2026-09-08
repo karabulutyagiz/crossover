@@ -73,8 +73,8 @@ export function Hud({ data, actions, title, titleIcon }: { data: HudData; action
         </Pressable>
         {title ? (
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginLeft: -mk(20) }}>
-            {titleIcon ? <IconSlot icon={titleIcon} width={mk(130)} height={mk(110)} size={mk(104)} /> : null}
-            <OutlinedText size={mk(80)} width={mk(6)} style={{ letterSpacing: 1 }}>{title}</OutlinedText>
+            {titleIcon ? <IconSlot icon={titleIcon} width={mk(110)} height={mk(96)} size={mk(92)} /> : null}
+            <OutlinedText size={mk(62)} width={mk(5)} numberOfLines={1} style={{ letterSpacing: 0.5 }}>{title}</OutlinedText>
           </View>
         ) : <View style={{ flex: 1 }} />}
       </View>

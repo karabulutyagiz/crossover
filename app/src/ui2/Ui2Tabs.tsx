@@ -13,7 +13,7 @@ import { FriendsTab } from './FriendsTab';
 import { TournamentsTab } from './TournamentsTab';
 import { CollectionTab } from './CollectionTab';
 import { ChatOverlay, DailyCrossoverModal } from '../screens';
-import { AddFriendDialog, ConfirmDialog, LanguageDialog, LeagueDialog, MessagesDialog, ModeMenuDialog, PrivateRoomDialog, QuestsDialog, RequestsDialog, SettingsDialog, ArenasDialog, LevelRoadDialog, ProfileDialog, TournamentDialog, TournamentOverDialog, TournamentReadyDialog } from './Dialogs';
+import { AddFriendDialog, ConfirmDialog, FriendActionsDialog, LanguageDialog, LeagueDialog, MessagesDialog, ModeMenuDialog, PrivateRoomDialog, QuestsDialog, RequestsDialog, SettingsDialog, ArenasDialog, LevelRoadDialog, ProfileDialog, TournamentDialog, TournamentOverDialog, TournamentReadyDialog } from './Dialogs';
 import { setLanguage, t } from '../i18n';
 import { S, up } from './strings';
 import { useStorePurchases } from './useStorePurchases';
@@ -21,7 +21,7 @@ import { C, F, fz, LIP, mk, OUTLINE, SIDE, SW } from './tokens';
 
 const KEYS: NavKey[] = ['store', 'collection', 'play', 'friends', 'tournaments'];
 type Confirm = { title: string; body: string; price?: number; priceText?: string; onYes: () => void };
-export type Ui2DialogKey = 'mode' | 'bot' | 'quests' | 'settings' | 'language' | 'room' | 'requests' | 'league' | 'tournament' | 'road' | 'arenas' | 'profile' | 'dailycx' | 'addfriend' | 'messages' | null;
+export type Ui2DialogKey = 'mode' | 'bot' | 'quests' | 'settings' | 'language' | 'room' | 'requests' | 'league' | 'tournament' | 'road' | 'arenas' | 'profile' | 'dailycx' | 'addfriend' | 'messages' | 'friend' | 'friendmatch' | null;
 
 export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, onLanguageChange, onDiamondCelebration, onOpenFeedback, onOpenMatchHistory, initialScrollY = 0, initialDialog = null, initialCollectionSub }: {
   state: GameState; actions: Actions; activeTab: number; goToTab: (i: number) => void;
@@ -33,6 +33,7 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
   const [notice, setNotice] = useState<{ title: string; body: string; onYes?: () => void; yesLabel?: string } | null>(null);
   const [dlg, setDlg] = useState<Ui2DialogKey>(initialDialog);
   const [tourId, setTourId] = useState<string | null>(initialDialog === 'tournament' ? 't2' : null);
+  const [friend, setFriend] = useState<{ userId: string; displayName: string } | null>(null);
   useEffect(() => { if (initialScrollY) setTimeout(() => pageRefs.current[activeTab]?.scrollTo({ y: initialScrollY, animated: false }), 60); }, [initialScrollY, activeTab]);
   const active = KEYS[activeTab] ?? 'play';
   // ── CLASH ROYALE SAYFA ÇEVİRİCİ: sekmeler yan yana; parmakla kaydırılır, nav'a dokununca kayar. ──
@@ -58,7 +59,7 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
     if (k === 'store') return <StoreTab {...common} store={store} onConfirm={(c) => setConfirm(c)} />;
     if (k === 'collection') return <CollectionTab {...common} onOpenStore={() => goToTab(0)} onNotice={say} initialSub={initialCollectionSub} />;
     if (k === 'play') return <HomeTab {...common} onOpenLevelRoad={() => setDlg('road')} onOpenStore={() => goToTab(0)} onOpenQuests={() => { actions.getDailyQuests(); setDlg('quests'); }} onOpenModes={() => setDlg('mode')} onOpenBot={() => setDlg('bot')} onOpenDailyQuestion={() => { actions.startDailyCrossover(); setDlg('dailycx'); }} />;
-    if (k === 'friends') return <FriendsTab {...common} onOpenRequests={() => setDlg('requests')} onOpenAddFriend={() => { actions.searchUsers(''); setDlg('addfriend'); }} onOpenMessages={() => setDlg('messages')} onNotice={say} />;
+    if (k === 'friends') return <FriendsTab {...common} onOpenRequests={() => setDlg('requests')} onOpenAddFriend={() => { actions.searchUsers(''); setDlg('addfriend'); }} onOpenMessages={() => setDlg('messages')} onOpenFriend={(f) => { setFriend(f); setDlg('friend'); }} onNotice={say} />;
     return <TournamentsTab {...common} onOpenLevelRoad={() => setDlg('road')} onOpenLeague={() => { actions.getLeague(); setDlg('league'); }} onOpenTournament={(id) => { actions.getTournament(id); setTourId(id); setDlg('tournament'); }} onNotice={say} />;
   };
 
@@ -104,6 +105,8 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
       {dlg === 'arenas' ? <ArenasDialog state={state} onClose={closeDlg} /> : null}
       {dlg === 'addfriend' ? <AddFriendDialog state={state} actions={actions} onClose={closeDlg} onNotice={say} /> : null}
       {dlg === 'messages' ? <MessagesDialog state={state} actions={actions} onClose={closeDlg} /> : null}
+      {dlg === 'friend' && friend ? <FriendActionsDialog friend={friend} actions={actions} onClose={closeDlg} onFriendlyMatch={() => setDlg('friendmatch')} onOpenMessages={() => {}} /> : null}
+      {dlg === 'friendmatch' && friend ? <ModeMenuDialog state={state} actions={actions} invite={{ userId: friend.userId, name: friend.displayName }} onClose={closeDlg} onLocked={() => setNotice({ title: t('friends.inviteNeedsPackTitle'), body: t('friends.socialPackRequiredBody') })} /> : null}
       {/* Sohbet ekranı: UI2 kabuğunda her zaman mount — state.chatWith dolunca açılır */}
       <ChatOverlay state={state} actions={actions} />
       {dlg === 'profile' ? <ProfileDialog state={state} actions={actions} onOpenMatchHistory={onOpenMatchHistory} onClose={closeDlg} onConfirm={(c) => setConfirm(c)} onNotice={say} onOpenStore={() => goToTab(0)} onOpenCollection={() => goToTab(1)} /> : null}

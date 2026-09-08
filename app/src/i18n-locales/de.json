@@ -537,5 +537,6 @@
   "ui2.searchByName": "Nach Namen suchen",
   "ui2.noUsersFound": "Kein Spieler mit diesem Namen",
   "ui2.requestSent": "Anfrage gesendet",
-  "ui2.noConversations": "Noch keine Chats"
+  "ui2.noConversations": "Noch keine Chats",
+  "ui2.friendActions": "Was möchtest du tun?"
 }

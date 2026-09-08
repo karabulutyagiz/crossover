@@ -8,7 +8,7 @@ import { EmoteSticker, FREE_EMOTES, PREMIUM_EMOTES } from '../emotes';
 import type { StoreCatalogItem } from '../protocol';
 import type { Actions, GameState } from './types';
 import { UI2 } from './assets';
-import { ArtWell, ChunkyButton, IconSlot, OutlinedText, Plate, RarityPips, SectionHeader } from './primitives';
+import { ArtWell, ChunkyButton, IconSlot, OutlinedText, Plate, SectionHeader } from './primitives';
 import { IcBolt, IcFace, IcNavCollection, IcStar } from './icons-ui';
 import { Hud } from './Shell';
 import { ACCOUNT_POWERS, SP_ART, SP_FACE, SP_LIST, type PowerId, type SpId } from './products';
@@ -70,7 +70,8 @@ function Powers({ p, actions, spEquipped, onOpenStore, onNotice }: { p: GameStat
             <View style={{ flex: 1 }} />
             <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: fz(17), textAlign: 'right', flexShrink: 1 }}>{t('ui2.myPowerSetHint')}</Text>
           </View>
-          <View style={{ flexDirection: 'row', gap: GAP }}>
+          {/* alignItems stretch: bir yuva dolunca boş yuvalar üste kaymasın, hepsi aynı yükseklikte kalsın */}
+          <View style={{ flexDirection: 'row', gap: GAP, alignItems: 'stretch' }}>
             {[0, 1, 2].map((i) => {
               const id = spEquipped[i];
               return id ? <PowerCard key={id} width={PW_IN_W} name={t(SPECIAL_POWERS[id].nameKey)} art={SP_ART[id]} face={SP_FACE[id]} badge={RARITY_N[SPECIAL_POWERS[id].rarity]} line={t('ui2.count', { n: count(id) })} button={{ label: up(t('collection.remove')), kind: 'blue', on: () => actions.equipSpecialPower(id) }} />
@@ -105,7 +106,6 @@ function PowerCard({ width, name, art, face, badge, line, button, dim }: { width
         {/* sahip olunmayanda YALNIZ sanat soluk; kart ve buton net kalır (soluk buton okunmuyordu) */}
         <ArtWell accent={accent} height={mk(150)} style={{ alignSelf: 'stretch', marginHorizontal: mk(2), opacity: dim ? 0.82 : 1 }}>
           {isValidElement(art) ? <IconSlot icon={art} width={mk(132)} height={mk(132)} size={mk(116)} /> : <Image source={art as ImageSourcePropType} style={{ width: mk(132), height: mk(132) }} resizeMode="contain" />}
-          <View style={{ position: 'absolute', bottom: mk(6) }}><RarityPips n={badge} color={accent} /></View>
         </ArtWell>
         <View style={{ flex: 1 }} />
         <OutlinedText size={mk(26)} width={mk(2.5)} numberOfLines={1} fit>{up(name)}</OutlinedText>
@@ -193,7 +193,6 @@ function Emotes({ p, actions, onNotice }: { p: GameState['profile']; actions: Ac
               <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={on ? C.gold : C.navy} radius={R.card} inner={{ minHeight: mk(340) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(10), paddingHorizontal: mk(6) }}>
                 <View style={{ height: mk(150), alignItems: 'center', justifyContent: 'center' }}><EmoteSticker id={e.id} size={mk(140)} play={false} /></View>
                 <View style={{ flex: 1 }} />
-                <OutlinedText size={mk(24)} width={mk(2)} numberOfLines={1} fit>{up((e.premium?.name ?? (e.phraseKey ? t(e.phraseKey as MessageKey) : e.id)))}</OutlinedText>
                 <View style={{ width: '100%', marginTop: mk(8), marginBottom: mk(10) }}><ChunkyButton kind={on ? 'blue' : 'green'} label={on ? up(t('collection.remove')) : t('store.spEquip')} height={mk(60)} size={mk(24)} onPress={() => toggle(e.id)} /></View>
               </Plate>
               {on ? <View style={{ position: 'absolute', top: -mk(6), right: -mk(4), width: mk(40), height: mk(40), borderRadius: mk(20), backgroundColor: C.green, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(20)} width={1}>✓</OutlinedText></View> : null}

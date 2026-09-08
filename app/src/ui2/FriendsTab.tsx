@@ -13,9 +13,9 @@ import { S } from './strings';
 import { C, F, fz, GAP, LIP, mk, OUTLINE, R, SIDE, SW } from './tokens';
 
 const REFERRAL_REWARD = 100; // sunucu kuralı: davet kodunu giren ve davet eden 100 💎
-export type FriendsTabProps = { state: GameState; actions: Actions; onOpenSettings: () => void; onOpenProfile: () => void; onOpenArenas: () => void; onOpenRequests: () => void; onOpenAddFriend: () => void; onOpenMessages: () => void; onNotice: (title: string, body: string) => void };
+export type FriendsTabProps = { state: GameState; actions: Actions; onOpenSettings: () => void; onOpenProfile: () => void; onOpenArenas: () => void; onOpenRequests: () => void; onOpenAddFriend: () => void; onOpenMessages: () => void; onOpenFriend: (f: { userId: string; displayName: string }) => void; onNotice: (title: string, body: string) => void };
 
-export function FriendsTab({ state, actions, onOpenSettings, onOpenProfile, onOpenArenas, onOpenRequests, onOpenAddFriend, onOpenMessages, onNotice }: FriendsTabProps) {
+export function FriendsTab({ state, actions, onOpenSettings, onOpenProfile, onOpenArenas, onOpenRequests, onOpenAddFriend, onOpenMessages, onOpenFriend, onNotice }: FriendsTabProps) {
   const p = state.profile;
   const code = p?.userId?.slice(0, 8).toUpperCase() ?? '…';
   const friends = state.friends;
@@ -81,8 +81,9 @@ export function FriendsTab({ state, actions, onOpenSettings, onOpenProfile, onOp
         {[...friends].sort((a, b) => Number(b.online) - Number(a.online) || b.trophies - a.trophies).slice(0, 8).map((f) => {
           const mins = f.lastSeen ? Math.max(0, Math.round((Date.now() - new Date(f.lastSeen).getTime()) / 60000)) : null;
           return (
-            <Plate key={f.userId} face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginTop: mk(10) }} inner={{ minHeight: mk(74) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(8), gap: mk(10) }}>
-              <Pressable onPress={() => actions.getUserProfile(f.userId)}><View style={{ width: mk(60), height: mk(60), borderRadius: mk(12), borderWidth: mk(3), borderColor: '#7DB8FF', backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' }}><Avatar avatar={f.avatar ?? f.selectedAvatar} name={f.displayName} size={mk(50)} /></View></Pressable>
+            <Pressable key={f.userId} onPress={() => onOpenFriend({ userId: f.userId, displayName: f.displayName })}>
+            <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginTop: mk(10) }} inner={{ minHeight: mk(74) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(8), gap: mk(10) }}>
+              <Pressable onPress={() => onOpenFriend({ userId: f.userId, displayName: f.displayName })}><View style={{ width: mk(60), height: mk(60), borderRadius: mk(12), borderWidth: mk(3), borderColor: '#7DB8FF', backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' }}><Avatar avatar={f.avatar ?? f.selectedAvatar} name={f.displayName} size={mk(50)} /></View></Pressable>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <OutlinedText size={mk(28)} width={mk(2)} align="left" numberOfLines={1}>{f.displayName.toLocaleUpperCase('tr')}</OutlinedText>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(6), marginTop: mk(2) }}>
@@ -92,8 +93,9 @@ export function FriendsTab({ state, actions, onOpenSettings, onOpenProfile, onOp
                   <Text numberOfLines={1} style={{ color: f.online ? '#9BFFA7' : C.textMuted, fontFamily: F.bold, fontSize: fz(17), flexShrink: 1 }}>{f.online ? S.online : mins == null ? S.offline : S.minAgo(mins)}</Text>
                 </View>
               </View>
-              <ChunkyButton kind={f.online ? 'green' : 'gray'} label={S.inviteRow} height={mk(58)} size={mk(24)} style={{ width: mk(180) }} disabled={!f.online} onPress={() => actions.inviteFriendMatch(f.userId, f.displayName)} />
+              <ChunkyButton kind={f.online ? 'green' : 'gray'} label={S.inviteRow} height={mk(58)} size={mk(24)} style={{ width: mk(180) }} disabled={!f.online} onPress={() => onOpenFriend({ userId: f.userId, displayName: f.displayName })} />
             </Plate>
+            </Pressable>
           );
         })}
       </Panel>

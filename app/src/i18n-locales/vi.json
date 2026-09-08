@@ -537,5 +537,6 @@
   "ui2.searchByName": "Tìm theo tên",
   "ui2.noUsersFound": "Không tìm thấy người chơi",
   "ui2.requestSent": "Đã gửi lời mời",
-  "ui2.noConversations": "Chưa có cuộc trò chuyện"
+  "ui2.noConversations": "Chưa có cuộc trò chuyện",
+  "ui2.friendActions": "Bạn muốn làm gì?"
 }
