@@ -194,10 +194,10 @@ export function IconSlot({ icon, width, height, size }: { icon: ImageSourcePropT
   return <Image source={icon as ImageSourcePropType} style={{ width, height }} resizeMode="contain" />;
 }
 // ── Banner: opak sanat + üstüne canlı katman (mağaza/arkadaşlar banner'ları) ──
-export function BannerImage({ source, ratio, children }: { source: ImageSourcePropType; ratio: number; children?: ReactNode }) {
-  const w = SW - SIDE * 2; const h = w / ratio;
+export function BannerImage({ source, ratio, children, width, bare = false }: { source: ImageSourcePropType; ratio: number; children?: ReactNode; width?: number; /** teklif kartının içindeyken kendi çerçevesini çizme (çift çerçeve olmasın) */ bare?: boolean }) {
+  const w = width ?? SW - SIDE * 2; const h = w / ratio;
   return (
-    <View style={{ width: w, height: h, borderRadius: mk(24), overflow: 'hidden', borderWidth: mk(4), borderColor: C.navy }}>
+    <View style={{ width: w, height: h, borderRadius: mk(bare ? 16 : 24), overflow: 'hidden', borderWidth: bare ? 0 : mk(4), borderColor: C.navy }}>
       <Image source={source} style={{ width: w, height: h }} resizeMode="cover" />
       {children}
     </View>
