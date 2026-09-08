@@ -1,6 +1,6 @@
 // UI2 primitifleri — mock'taki yüzey ailesi: koyu lacivert dış kontur, ana renk yüzü,
 // dar üst parlama, alt dilim (gölge). Hepsi View katmanı; PNG buton yok, ölçek bağımsız.
-import { cloneElement, isValidElement, type ReactElement, type ReactNode, useMemo, useState } from 'react';
+import { cloneElement, isValidElement, memo, type ReactElement, type ReactNode, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View, type DimensionValue, type ImageSourcePropType, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import Svg, { Defs, Pattern, Polygon, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { C, F, fz, LIP, mk, OUTLINE, R, SIDE, SW, FONT_SCALE, MIN_TAP } from './tokens';
@@ -8,7 +8,7 @@ import { UI2 } from './assets';
 import { IcGem } from './icons-ui';
 
 // ── Damalı royal blue zemin (mock: ~120 px'lik iki tonlu elmaslar) ─────────────
-export function CheckerBg({ style }: { style?: StyleProp<ViewStyle> }) {
+function CheckerBgBase({ style }: { style?: StyleProp<ViewStyle> }) {
   const s = mk(120);
   return (
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: C.bgA }, style]}>
@@ -58,8 +58,10 @@ export function RarityPips({ n, color, size = mk(15) }: { n: number; color: stri
   );
 }
 
+export const CheckerBg = memo(CheckerBgBase);
+
 // ── Konturlu yazı: 8 yönlü kopya (RN'de stroke yok). Başlıklar/CTA/fiyatlar. ────
-export function OutlinedText({ children, size, color = C.white, outline = C.ink, width = 2, family = F.title, style, align = 'center', numberOfLines, fit = false, fitWidth }: {
+function OutlinedTextBase({ children, size, color = C.white, outline = C.ink, width = 2, family = F.title, style, align = 'center', numberOfLines, fit = false, fitWidth }: {
   children: ReactNode; size: number; color?: string; outline?: string; width?: number; family?: string;
   style?: StyleProp<TextStyle>; align?: 'left' | 'center' | 'right'; numberOfLines?: number;
   /** Uzun dillerde sığdır: metnin doğal genişliği / kullanılabilir genişlik oranıyla deterministik punto. */
@@ -101,6 +103,10 @@ export function OutlinedText({ children, size, color = C.white, outline = C.ink,
     </View>
   );
 }
+
+// Konturlu yazı ETİKET BAŞINA 9 Text düğümü çiziyor; ebeveyn her render'da hepsini yeniden
+// kurmasın diye memo (akıcılık paketi 2026-09-08).
+export const OutlinedText = memo(OutlinedTextBase);
 
 // ── Plaka: kontur + yüz + üst parlama + alt dilim ───────────────────────────────
 export function Plate({ children, face = C.panel, top = C.panelTop, lip = C.panelDark, outline = C.navy, radius = R.plate, style, inner, lipHeight = LIP, outlineWidth = OUTLINE, shrink = false, onInnerLayout }: {

@@ -1,7 +1,7 @@
 // UI2 sekme konteyneri: damalı zemin + sekme gövdesi + alt nav + yerleşik pencere katmanı
 // (native Modal DEĞİL: reklam slotu / iOS sunum zinciriyle çakışmaz).
-import { useCallback, useEffect, useRef, useState, type ReactNode, useLayoutEffect } from 'react';
-import { ScrollView, Text, View, Animated, Easing } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ScrollView, Text, useWindowDimensions, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Actions, GameState } from './types';
 import { BottomNav, type NavKey } from './Shell';
@@ -32,42 +32,57 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
   const [notice, setNotice] = useState<{ title: string; body: string; onYes?: () => void; yesLabel?: string } | null>(null);
   const [dlg, setDlg] = useState<Ui2DialogKey>(initialDialog);
   const [tourId, setTourId] = useState<string | null>(initialDialog === 'tournament' ? 't2' : null);
-  const scrollRef = useRef<ScrollView>(null);
-  useEffect(() => { if (initialScrollY) setTimeout(() => scrollRef.current?.scrollTo({ y: initialScrollY, animated: false }), 50); }, [initialScrollY, activeTab]);
+  useEffect(() => { if (initialScrollY) setTimeout(() => pageRefs.current[activeTab]?.scrollTo({ y: initialScrollY, animated: false }), 60); }, [initialScrollY, activeTab]);
   const active = KEYS[activeTab] ?? 'play';
-  // Sekme geçişi: gövde yönlü kayar + belirir (CR sayfa kaydırma hissi); nav genişlemesi LayoutAnimation ile.
-  const slide = useRef(new Animated.Value(0)).current; const fade = useRef(new Animated.Value(1)).current; const prevTab = useRef(activeTab);
-  useLayoutEffect(() => {
-    const dir = activeTab > prevTab.current ? 1 : activeTab < prevTab.current ? -1 : 0; prevTab.current = activeTab;
-    if (!dir) return;
-    slide.setValue(dir * SW * 0.22); fade.setValue(0);
-    Animated.parallel([
-      Animated.timing(slide, { toValue: 0, duration: 280, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      Animated.timing(fade, { toValue: 1, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-    ]).start();
-  }, [activeTab, slide, fade]);
+  // ── CLASH ROYALE SAYFA ÇEVİRİCİ: sekmeler yan yana; parmakla kaydırılır, nav'a dokununca kayar. ──
+  // Sekmeler bir kez ziyaret edilince MOUNT'TA KALIR: geçişte yeniden kurulum yok (eski 'glitch' buydu).
+  const { width: pageW } = useWindowDimensions();
+  const pagerRef = useRef<ScrollView>(null);
+  const pageRefs = useRef<(ScrollView | null)[]>([]);
+  const [visited, setVisited] = useState<number[]>([activeTab]);
+  const lastIdx = useRef(activeTab);
+  useEffect(() => {
+    setVisited((v) => (v.includes(activeTab) ? v : [...v, activeTab]));
+    if (lastIdx.current !== activeTab) {
+      pagerRef.current?.scrollTo({ x: activeTab * pageW, animated: true });
+      lastIdx.current = activeTab;
+    }
+  }, [activeTab, pageW]);
+  const onPageSettled = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const i = Math.round(e.nativeEvent.contentOffset.x / Math.max(1, pageW));
+    if (i !== lastIdx.current && i >= 0 && i < KEYS.length) { lastIdx.current = i; setDlg(null); goToTab(i); }
+  }, [goToTab, pageW]);
   const say = useCallback((title: string, body: string) => setNotice({ title, body }), []);
-  const common = { state, actions, onOpenSettings: () => setDlg('settings'), onOpenProfile: () => setDlg('profile'), onOpenArenas: () => setDlg('arenas') };
-  let body: ReactNode;
-  if (active === 'store') body = <StoreTab {...common} store={store} onConfirm={(c) => setConfirm(c)} />;
-  else if (active === 'play') body = <HomeTab {...common} onOpenLevelRoad={() => setDlg('road')} onOpenStore={() => goToTab(0)} onOpenQuests={() => { actions.getDailyQuests(); setDlg('quests'); }} onOpenModes={() => setDlg('mode')} onOpenBot={() => setDlg('bot')} onOpenDailyQuestion={() => { actions.startDailyCrossover(); setDlg('dailycx'); }} />;
-  else if (active === 'friends') body = <FriendsTab {...common} onOpenRequests={() => setDlg('requests')} onOpenAddFriend={() => { actions.searchUsers(''); setDlg('addfriend'); }} onOpenMessages={() => setDlg('messages')} onNotice={say} />;
-  else if (active === 'tournaments') body = <TournamentsTab {...common} onOpenLevelRoad={() => setDlg('road')} onOpenLeague={() => { actions.getLeague(); setDlg('league'); }} onOpenTournament={(id) => { actions.getTournament(id); setTourId(id); setDlg('tournament'); }} onNotice={say} />;
-  else body = <CollectionTab {...common} onOpenStore={() => goToTab(0)} onNotice={say} initialSub={initialCollectionSub} />;
+  const common = useMemo(() => ({ state, actions, onOpenSettings: () => setDlg('settings'), onOpenProfile: () => setDlg('profile'), onOpenArenas: () => setDlg('arenas') }), [state, actions]);
+  const pageFor = (i: number): ReactNode => {
+    const k = KEYS[i];
+    if (k === 'store') return <StoreTab {...common} store={store} onConfirm={(c) => setConfirm(c)} />;
+    if (k === 'collection') return <CollectionTab {...common} onOpenStore={() => goToTab(0)} onNotice={say} initialSub={initialCollectionSub} />;
+    if (k === 'play') return <HomeTab {...common} onOpenLevelRoad={() => setDlg('road')} onOpenStore={() => goToTab(0)} onOpenQuests={() => { actions.getDailyQuests(); setDlg('quests'); }} onOpenModes={() => setDlg('mode')} onOpenBot={() => setDlg('bot')} onOpenDailyQuestion={() => { actions.startDailyCrossover(); setDlg('dailycx'); }} />;
+    if (k === 'friends') return <FriendsTab {...common} onOpenRequests={() => setDlg('requests')} onOpenAddFriend={() => { actions.searchUsers(''); setDlg('addfriend'); }} onOpenMessages={() => setDlg('messages')} onNotice={say} />;
+    return <TournamentsTab {...common} onOpenLevelRoad={() => setDlg('road')} onOpenLeague={() => { actions.getLeague(); setDlg('league'); }} onOpenTournament={(id) => { actions.getTournament(id); setTourId(id); setDlg('tournament'); }} onNotice={say} />;
+  };
 
   const closeDlg = () => setDlg(null);
   return (
     <View style={{ flex: 1 }}>
       <CheckerBg />
-      <Animated.View style={{ flex: 1, opacity: fade, transform: [{ translateX: slide }] }}>
-      {active === 'play' ? (
-        <View style={{ flex: 1, paddingTop: insets.top }}>{body}</View>
-      ) : (
-        <ScrollView key={active} ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingTop: insets.top, paddingBottom: mk(40) }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {body}
-        </ScrollView>
-      )}
-      </Animated.View>
+      <ScrollView ref={pagerRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false} bounces={false}
+        contentOffset={{ x: activeTab * pageW, y: 0 }} onMomentumScrollEnd={onPageSettled} scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled" style={{ flex: 1 }}>
+        {KEYS.map((k, i) => (
+          <View key={k} style={{ width: pageW }}>
+            {!visited.includes(i) ? null : k === 'play' ? (
+              <View style={{ flex: 1, paddingTop: insets.top }}>{pageFor(i)}</View>
+            ) : (
+              <ScrollView ref={(r) => { pageRefs.current[i] = r; }} style={{ flex: 1 }} contentContainerStyle={{ paddingTop: insets.top, paddingBottom: mk(40) }}
+                showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                {pageFor(i)}
+              </ScrollView>
+            )}
+          </View>
+        ))}
+      </ScrollView>
       <BottomNav active={active} onPress={(k) => { setDlg(null); goToTab(KEYS.indexOf(k)); }} badges={{ friends: state.friendRequests.length || undefined }} />
 
       {/* ── pencereler ── */}
