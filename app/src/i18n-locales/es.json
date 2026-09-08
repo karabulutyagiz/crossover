@@ -531,5 +531,11 @@
   "ui2.yourRank": "Tu puesto",
   "ui2.everySevenDays": "Se renueva cada 7 días",
   "ui2.unlockAllRewards": "Desbloquea todas las recompensas",
-  "ui2.dailyQuestion": "Pregunta diaria"
+  "ui2.dailyQuestion": "Pregunta diaria",
+  "ui2.messages": "Mensajes",
+  "ui2.messagesSub": "Chatea con amigos",
+  "ui2.searchByName": "Buscar por nombre",
+  "ui2.noUsersFound": "No se encontró ningún jugador",
+  "ui2.requestSent": "Solicitud enviada",
+  "ui2.noConversations": "Aún no hay chats"
 }

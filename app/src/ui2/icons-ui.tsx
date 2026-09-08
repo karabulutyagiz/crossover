@@ -218,6 +218,12 @@ export function IcDailyQuestion({ size = 40 }: P) {
     <Circle cx="32" cy="50" r="3.6" fill="#FFFFFF" stroke={OUT} strokeWidth={2.5} />
   </Box>;
 }
+export function IcChat({ size = 40 }: P) {
+  return <Box size={size}>
+    <Path d="M8 18 a8 8 0 0 1 8-8 h32 a8 8 0 0 1 8 8 v20 a8 8 0 0 1-8 8 H30 l-12 10 v-10 h-2 a8 8 0 0 1-8-8 Z" fill="#2F7BFF" stroke={OUT} strokeWidth={SW} strokeLinejoin="round" />
+    <Circle cx="22" cy="28" r="3.6" fill="#FFFFFF" /><Circle cx="32" cy="28" r="3.6" fill="#FFFFFF" /><Circle cx="42" cy="28" r="3.6" fill="#FFFFFF" />
+  </Box>;
+}
 export function IcCheckBadge({ size = 40 }: P) {
   return <Box size={size}><Circle cx="32" cy="32" r="26" fill="#25D93C" stroke={OUT} strokeWidth={SW} /><Path d="M18 33 L28 43 L46 23" fill="none" stroke={OUT} strokeWidth={9} strokeLinecap="round" strokeLinejoin="round" /><Path d="M18 33 L28 43 L46 23" fill="none" stroke="#FFFFFF" strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" /><Gloss cx={24} cy={17} rx={8} ry={3} /></Box>;
 }

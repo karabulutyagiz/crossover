@@ -531,5 +531,11 @@
   "ui2.yourRank": "내 순위",
   "ui2.everySevenDays": "7일마다 갱신",
   "ui2.unlockAllRewards": "모든 보상 해제",
-  "ui2.dailyQuestion": "오늘의 문제"
+  "ui2.dailyQuestion": "오늘의 문제",
+  "ui2.messages": "메시지",
+  "ui2.messagesSub": "친구와 채팅",
+  "ui2.searchByName": "이름으로 검색",
+  "ui2.noUsersFound": "해당 이름의 플레이어 없음",
+  "ui2.requestSent": "요청을 보냈습니다",
+  "ui2.noConversations": "아직 채팅이 없습니다"
 }

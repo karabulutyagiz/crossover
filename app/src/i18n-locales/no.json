@@ -531,5 +531,11 @@
   "ui2.yourRank": "Din plassering",
   "ui2.everySevenDays": "Fornyes hver 7. dag",
   "ui2.unlockAllRewards": "Lås opp alle belønninger",
-  "ui2.dailyQuestion": "Dagens spørsmål"
+  "ui2.dailyQuestion": "Dagens spørsmål",
+  "ui2.messages": "Meldinger",
+  "ui2.messagesSub": "Chat med venner",
+  "ui2.searchByName": "Søk på navn",
+  "ui2.noUsersFound": "Ingen spiller funnet",
+  "ui2.requestSent": "Forespørsel sendt",
+  "ui2.noConversations": "Ingen chatter ennå"
 }

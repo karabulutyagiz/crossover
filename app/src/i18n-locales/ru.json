@@ -531,5 +531,11 @@
   "ui2.yourRank": "Твоё место",
   "ui2.everySevenDays": "Обновляется каждые 7 дней",
   "ui2.unlockAllRewards": "Открой все награды",
-  "ui2.dailyQuestion": "Вопрос дня"
+  "ui2.dailyQuestion": "Вопрос дня",
+  "ui2.messages": "Сообщения",
+  "ui2.messagesSub": "Общайся с друзьями",
+  "ui2.searchByName": "Поиск по имени",
+  "ui2.noUsersFound": "Игрок не найден",
+  "ui2.requestSent": "Запрос отправлен",
+  "ui2.noConversations": "Пока нет чатов"
 }

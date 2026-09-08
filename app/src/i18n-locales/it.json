@@ -531,5 +531,11 @@
   "ui2.yourRank": "La tua posizione",
   "ui2.everySevenDays": "Si rinnova ogni 7 giorni",
   "ui2.unlockAllRewards": "Sblocca tutte le ricompense",
-  "ui2.dailyQuestion": "Domanda del giorno"
+  "ui2.dailyQuestion": "Domanda del giorno",
+  "ui2.messages": "Messaggi",
+  "ui2.messagesSub": "Chatta con gli amici",
+  "ui2.searchByName": "Cerca per nome",
+  "ui2.noUsersFound": "Nessun giocatore trovato",
+  "ui2.requestSent": "Richiesta inviata",
+  "ui2.noConversations": "Nessuna chat"
 }

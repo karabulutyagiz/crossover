@@ -531,5 +531,11 @@
   "ui2.yourRank": "Sijoituksesi",
   "ui2.everySevenDays": "Uusiutuu 7 päivän välein",
   "ui2.unlockAllRewards": "Avaa kaikki palkinnot",
-  "ui2.dailyQuestion": "Päivän kysymys"
+  "ui2.dailyQuestion": "Päivän kysymys",
+  "ui2.messages": "Viestit",
+  "ui2.messagesSub": "Juttele kavereille",
+  "ui2.searchByName": "Hae nimellä",
+  "ui2.noUsersFound": "Pelaajaa ei löytynyt",
+  "ui2.requestSent": "Pyyntö lähetetty",
+  "ui2.noConversations": "Ei vielä keskusteluja"
 }

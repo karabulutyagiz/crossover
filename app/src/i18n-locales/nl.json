@@ -531,5 +531,11 @@
   "ui2.yourRank": "Jouw rang",
   "ui2.everySevenDays": "Elke 7 dagen nieuw",
   "ui2.unlockAllRewards": "Ontgrendel alle beloningen",
-  "ui2.dailyQuestion": "Dagvraag"
+  "ui2.dailyQuestion": "Dagvraag",
+  "ui2.messages": "Berichten",
+  "ui2.messagesSub": "Chat met vrienden",
+  "ui2.searchByName": "Zoek op naam",
+  "ui2.noUsersFound": "Geen speler gevonden",
+  "ui2.requestSent": "Verzoek verstuurd",
+  "ui2.noConversations": "Nog geen chats"
 }

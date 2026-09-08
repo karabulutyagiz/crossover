@@ -1189,6 +1189,12 @@ const tr = {
   "ui2.everySevenDays": "7 günde bir yenilenir",
   "ui2.unlockAllRewards": "Tüm ödülleri aç",
   "ui2.dailyQuestion": "Günlük Soru",
+  "ui2.messages": "Mesajlar",
+  "ui2.messagesSub": "Arkadaşlarınla yaz",
+  "ui2.searchByName": "İsimle ara",
+  "ui2.noUsersFound": "Bu isimde kimse bulunamadı",
+  "ui2.requestSent": "İstek gönderildi",
+  "ui2.noConversations": "Henüz sohbet yok",
 };
 
 // ---- English (fallback) ----
@@ -2316,6 +2322,12 @@ const en: typeof tr = {
   "ui2.everySevenDays": "Refreshes every 7 days",
   "ui2.unlockAllRewards": "Unlock every reward",
   "ui2.dailyQuestion": "Daily Question",
+  "ui2.messages": "Messages",
+  "ui2.messagesSub": "Chat with friends",
+  "ui2.searchByName": "Search by name",
+  "ui2.noUsersFound": "No player found with that name",
+  "ui2.requestSent": "Request sent",
+  "ui2.noConversations": "No chats yet",
 };
 
 export type MessageKey = keyof typeof tr;

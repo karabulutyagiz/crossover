@@ -546,6 +546,68 @@ function RoadCard({ reward, reached, claimed, locked, premium, onClaim, onLocked
   );
 }
 
+// ── Arkadaş Ekle: İSİMLE ARA → çıkan oyuncuları listeden ekle (kullanıcı 2026-09-08) ──
+export function AddFriendDialog({ state, actions, onClose, onNotice }: { state: GameState; actions: Actions; onClose: () => void; onNotice: (t: string, b: string) => void }) {
+  const [q, setQ] = useState('');
+  const [sent, setSent] = useState<string[]>([]);
+  const search = () => { const v = q.trim(); if (v) actions.searchUsers(v); };
+  const results = state.userSearchResults;
+  return (
+    <Dialog title={up(t('friends.addSection'))} onClose={onClose} wide>
+      <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} inner={{ minHeight: mk(84) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(14), gap: mk(10) }}>
+        <TextInput value={q} onChangeText={setQ} placeholder={t('ui2.searchByName')} placeholderTextColor={C.textMuted}
+          autoCapitalize="none" autoCorrect={false} autoFocus returnKeyType="search" onSubmitEditing={search}
+          style={{ flex: 1, color: C.white, fontFamily: F.bold, fontSize: fz(22), padding: 0 }} />
+        <ChunkyButton kind="blue" label={S.search} height={mk(64)} size={mk(24)} style={{ width: mk(150) }} onPress={search} />
+      </Plate>
+      {results.length === 0 && q.trim() ? (
+        <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(19), textAlign: 'center', paddingVertical: mk(20) }}>{t('ui2.noUsersFound')}</Text>
+      ) : null}
+      {results.map((u) => {
+        const done = sent.includes(u.userId);
+        return (
+          <Plate key={u.userId} face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginTop: mk(10) }} inner={{ minHeight: mk(88) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(10), gap: mk(10) }}>
+            <View style={{ width: mk(62), height: mk(62), borderRadius: mk(14), borderWidth: mk(3), borderColor: '#7DB8FF', backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' }}><Avatar avatar={null} name={u.displayName} size={mk(52)} /></View>
+            <View style={{ flex: 1, minWidth: 0 }}><OutlinedText size={mk(28)} width={mk(2)} align="left" numberOfLines={1} fit>{u.displayName.toLocaleUpperCase('tr')}</OutlinedText></View>
+            <ChunkyButton kind={done ? 'gray' : 'green'} label={done ? t('ui2.requestSent') : S.add} height={mk(64)} size={mk(24)} style={{ width: mk(190) }} disabled={done}
+              onPress={() => { actions.sendFriendRequest(undefined, u.displayName); setSent((s) => [...s, u.userId]); onNotice(t('friends.addSection'), `${u.displayName}: ${t('ui2.requestSent')}`); }} />
+          </Plate>
+        );
+      })}
+    </Dialog>
+  );
+}
+
+// ── Mesajlar: sohbet listesi; dokununca eski sohbet ekranı açılır (akış aynı) ──
+export function MessagesDialog({ state, actions, onClose }: { state: GameState; actions: Actions; onClose: () => void }) {
+  const rows = state.conversations;
+  return (
+    <Dialog title={up(t('ui2.messages'))} onClose={onClose} wide>
+      {rows.length === 0 ? (
+        <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(19), textAlign: 'center', paddingVertical: mk(24) }}>{t('ui2.noConversations')}</Text>
+      ) : null}
+      {rows.map((c) => (
+        <Pressable key={c.userId} onPress={() => { onClose(); actions.openChat(c.userId); }}>
+          <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginBottom: mk(10) }} inner={{ minHeight: mk(96) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(10), gap: mk(10) }}>
+            <View style={{ width: mk(66), height: mk(66), borderRadius: mk(14), borderWidth: mk(3), borderColor: '#7DB8FF', backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' }}>
+              <Avatar avatar={c.avatar ?? c.selectedAvatar ?? null} name={c.displayName} size={mk(56)} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <OutlinedText size={mk(28)} width={mk(2)} align="left" numberOfLines={1}>{c.displayName.toLocaleUpperCase('tr')}</OutlinedText>
+              <Text numberOfLines={1} style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(17) }}>{c.lastMessage}</Text>
+            </View>
+            {c.unreadCount > 0 ? (
+              <View style={{ minWidth: mk(46), height: mk(46), borderRadius: mk(23), backgroundColor: C.red, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
+                <OutlinedText size={mk(24)} width={1}>{String(c.unreadCount)}</OutlinedText>
+              </View>
+            ) : <IcChevron size={mk(30)} />}
+          </Plate>
+        </Pressable>
+      ))}
+    </Dialog>
+  );
+}
+
 // ── Arenalar (Clash Royale düzeni): en üstte en yüksek arena; büyük arena sanatı, kupa aralığı, maç başı kupa, ulaşma ödülü;
 //    bulunduğun arena altın çerçeveli + ilerleme çubuğu; kilitliler soluk + gerekli kupa; geçilenler onaylı ──
 const ARENA_KEYS = ['mahalle', 'amator', 'profesyonel', 'sampiyonlar', 'efsaneler', 'dunya', 'goat'] as const;

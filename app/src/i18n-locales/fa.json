@@ -531,5 +531,11 @@
   "ui2.yourRank": "رتبه شما",
   "ui2.everySevenDays": "هر ۷ روز تازه می‌شود",
   "ui2.unlockAllRewards": "همه پاداش‌ها را باز کن",
-  "ui2.dailyQuestion": "پرسش روز"
+  "ui2.dailyQuestion": "پرسش روز",
+  "ui2.messages": "پیام‌ها",
+  "ui2.messagesSub": "با دوستان گپ بزن",
+  "ui2.searchByName": "جست‌وجو با نام",
+  "ui2.noUsersFound": "بازیکنی با این نام نیست",
+  "ui2.requestSent": "درخواست ارسال شد",
+  "ui2.noConversations": "هنوز گفت‌وگویی نیست"
 }

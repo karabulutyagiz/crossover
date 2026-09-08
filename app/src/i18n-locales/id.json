@@ -531,5 +531,11 @@
   "ui2.yourRank": "Peringkatmu",
   "ui2.everySevenDays": "Diperbarui setiap 7 hari",
   "ui2.unlockAllRewards": "Buka semua hadiah",
-  "ui2.dailyQuestion": "Soal Harian"
+  "ui2.dailyQuestion": "Soal Harian",
+  "ui2.messages": "Pesan",
+  "ui2.messagesSub": "Ngobrol dengan teman",
+  "ui2.searchByName": "Cari berdasarkan nama",
+  "ui2.noUsersFound": "Pemain tidak ditemukan",
+  "ui2.requestSent": "Permintaan terkirim",
+  "ui2.noConversations": "Belum ada obrolan"
 }

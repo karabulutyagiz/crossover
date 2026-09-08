@@ -531,5 +531,11 @@
   "ui2.yourRank": "あなたの順位",
   "ui2.everySevenDays": "7日ごとに更新",
   "ui2.unlockAllRewards": "すべての報酬を解放",
-  "ui2.dailyQuestion": "デイリー問題"
+  "ui2.dailyQuestion": "デイリー問題",
+  "ui2.messages": "メッセージ",
+  "ui2.messagesSub": "フレンドとチャット",
+  "ui2.searchByName": "名前で検索",
+  "ui2.noUsersFound": "その名前の選手はいません",
+  "ui2.requestSent": "リクエストを送信",
+  "ui2.noConversations": "まだチャットがありません"
 }

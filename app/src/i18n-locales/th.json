@@ -531,5 +531,11 @@
   "ui2.yourRank": "อันดับของคุณ",
   "ui2.everySevenDays": "รีเฟรชทุก 7 วัน",
   "ui2.unlockAllRewards": "ปลดล็อกรางวัลทั้งหมด",
-  "ui2.dailyQuestion": "คำถามประจำวัน"
+  "ui2.dailyQuestion": "คำถามประจำวัน",
+  "ui2.messages": "ข้อความ",
+  "ui2.messagesSub": "แชทกับเพื่อน",
+  "ui2.searchByName": "ค้นหาด้วยชื่อ",
+  "ui2.noUsersFound": "ไม่พบผู้เล่นชื่อนี้",
+  "ui2.requestSent": "ส่งคำขอแล้ว",
+  "ui2.noConversations": "ยังไม่มีแชท"
 }

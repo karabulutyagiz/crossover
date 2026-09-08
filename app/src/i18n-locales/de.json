@@ -531,5 +531,11 @@
   "ui2.yourRank": "Dein Rang",
   "ui2.everySevenDays": "Alle 7 Tage neu",
   "ui2.unlockAllRewards": "Alle Belohnungen freischalten",
-  "ui2.dailyQuestion": "Tagesfrage"
+  "ui2.dailyQuestion": "Tagesfrage",
+  "ui2.messages": "Nachrichten",
+  "ui2.messagesSub": "Mit Freunden chatten",
+  "ui2.searchByName": "Nach Namen suchen",
+  "ui2.noUsersFound": "Kein Spieler mit diesem Namen",
+  "ui2.requestSent": "Anfrage gesendet",
+  "ui2.noConversations": "Noch keine Chats"
 }

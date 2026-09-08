@@ -531,5 +531,11 @@
   "ui2.yourRank": "你的排名",
   "ui2.everySevenDays": "每 7 天刷新",
   "ui2.unlockAllRewards": "解锁全部奖励",
-  "ui2.dailyQuestion": "每日问题"
+  "ui2.dailyQuestion": "每日问题",
+  "ui2.messages": "消息",
+  "ui2.messagesSub": "和好友聊天",
+  "ui2.searchByName": "按名称搜索",
+  "ui2.noUsersFound": "未找到该玩家",
+  "ui2.requestSent": "请求已发送",
+  "ui2.noConversations": "还没有聊天"
 }

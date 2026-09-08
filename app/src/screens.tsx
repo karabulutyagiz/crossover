@@ -13932,6 +13932,18 @@ function ReportReasonModal({ visible, onClose, onExited, onPick }: {
   );
 }
 
+// UI2 kabuğu için sohbet katmanı: eski Arkadaşlar ekranı UI2'de çizilmediğinden sohbet ulaşılamaz kalmıştı
+// (kullanıcı 2026-09-08 "mesajlaşmamız nereye gitti"). Aynı ChatScreen, aynı akış — yalnız mount yeri değişti.
+export function ChatOverlay({ state, actions }: Props) {
+  return (
+    <SafeModal visible={state.chatWith !== null} transparent animationType="none" presentationStyle="overFullScreen" onRequestClose={actions.closeChat}>
+      <SwipeBackWrap onBack={actions.closeChat}>
+        {(softBack) => <ChatScreen state={state} actions={actions} onBack={softBack} />}
+      </SwipeBackWrap>
+    </SafeModal>
+  );
+}
+
 function ChatScreen({ state, actions, onBack }: Props & { onBack?: () => void }) {
   const [text, setText] = useState('');
   // Guideline 1.2 moderation surfaces, all reachable from the conversation.

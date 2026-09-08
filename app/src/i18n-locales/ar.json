@@ -531,5 +531,11 @@
   "ui2.yourRank": "ترتيبك",
   "ui2.everySevenDays": "يتجدد كل 7 أيام",
   "ui2.unlockAllRewards": "افتح كل المكافآت",
-  "ui2.dailyQuestion": "سؤال اليوم"
+  "ui2.dailyQuestion": "سؤال اليوم",
+  "ui2.messages": "الرسائل",
+  "ui2.messagesSub": "دردش مع أصدقائك",
+  "ui2.searchByName": "ابحث بالاسم",
+  "ui2.noUsersFound": "لا يوجد لاعب بهذا الاسم",
+  "ui2.requestSent": "تم إرسال الطلب",
+  "ui2.noConversations": "لا توجد محادثات بعد"
 }

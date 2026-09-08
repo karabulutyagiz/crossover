@@ -1,26 +1,25 @@
 // UI2 — ARKADAŞLAR sekmesi. Mock: refs/friends.png (941 px, mk()). Veri: state.friends/friendRequests/userSearchResults.
-import { useEffect, useState } from 'react';
-import { Image, Pressable, Share, Text, TextInput, View, type ImageSourcePropType } from 'react-native';
+import { useEffect } from 'react';
+import { Image, Pressable, Share, Text, View, type ImageSourcePropType } from 'react-native';
 import { Avatar } from '../Avatar';
 import { track } from '../telemetry';
 import type { Actions, GameState } from './types';
 import { UI2 } from './assets';
 import { Bar, BannerImage, ChunkyButton, GemAmount, IconSlot, OutlinedText, Plate, SectionHeader, fitSize, fmt } from './primitives';
-import { IcAddFriend, IcArrowRight, IcCheckBadge, IcGift, IcInviteCode, IcNavFriends, IcRequests, IcSuggest, IcTrophy } from './icons-ui';
+import { IcAddFriend, IcArrowRight, IcChat, IcCheckBadge, IcGift, IcNavFriends, IcRequests, IcTrophy } from './icons-ui';
 import { Hud } from './Shell';
 import { t } from '../i18n';
 import { S } from './strings';
 import { C, F, fz, GAP, LIP, mk, OUTLINE, R, SIDE, SW } from './tokens';
 
 const REFERRAL_REWARD = 100; // sunucu kuralı: davet kodunu giren ve davet eden 100 💎
-export type FriendsTabProps = { state: GameState; actions: Actions; onOpenSettings: () => void; onOpenProfile: () => void; onOpenArenas: () => void; onOpenRequests: () => void; onOpenAddFriend: () => void; onNotice: (title: string, body: string) => void };
+export type FriendsTabProps = { state: GameState; actions: Actions; onOpenSettings: () => void; onOpenProfile: () => void; onOpenArenas: () => void; onOpenRequests: () => void; onOpenAddFriend: () => void; onOpenMessages: () => void; onNotice: (title: string, body: string) => void };
 
-export function FriendsTab({ state, actions, onOpenSettings, onOpenProfile, onOpenArenas, onOpenRequests, onOpenAddFriend, onNotice }: FriendsTabProps) {
+export function FriendsTab({ state, actions, onOpenSettings, onOpenProfile, onOpenArenas, onOpenRequests, onOpenAddFriend, onOpenMessages, onNotice }: FriendsTabProps) {
   const p = state.profile;
   const code = p?.userId?.slice(0, 8).toUpperCase() ?? '…';
   const friends = state.friends;
   const onlineCount = friends.filter((f) => f.online).length;
-  const [q, setQ] = useState('');
   useEffect(() => { actions.loadFriends(); }, [actions]);
   const share = () => {
     track('referral_share', {});
@@ -56,7 +55,7 @@ export function FriendsTab({ state, actions, onOpenSettings, onOpenProfile, onOp
       <View style={{ flexDirection: 'row', marginHorizontal: SIDE, marginTop: mk(22), gap: mk(16) }}>
         {([
           { icon: <IcAddFriend />, title: S.addFriend, sub: S.addFriendSub, on: onOpenAddFriend, badge: 0 },
-          { icon: <IcInviteCode />, title: S.inviteCode, sub: S.inviteCodeSub, on: share, badge: 0 },
+          { icon: <IcChat />, title: t('ui2.messages'), sub: t('ui2.messagesSub'), on: onOpenMessages, badge: state.totalUnread || 0 },
           { icon: <IcRequests />, title: S.requests, sub: S.requestsSub, on: onOpenRequests, badge: state.friendRequests.length },
         ] as { icon: React.ReactNode; title: string; sub: string; on: () => void; badge: number }[]).map((a) => (
           <Pressable key={a.title} onPress={a.on} style={{ flex: 1 }}>
@@ -120,21 +119,7 @@ export function FriendsTab({ state, actions, onOpenSettings, onOpenProfile, onOp
         })}
       </View>
 
-      {/* ── ARKADAŞ ÖNERİLERİ → kullanıcı arama ── */}
-      <SectionHeader icon={<IcSuggest />} title={S.suggestions} subtitle={S.suggestionsSub} style={{ marginHorizontal: SIDE, marginTop: mk(20) }} />
-      <View style={{ marginHorizontal: SIDE }}>
-        <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} inner={{ minHeight: mk(74) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(14), gap: mk(10) }}>
-          <TextInput value={q} onChangeText={setQ} placeholder={S.searchPlaceholder} placeholderTextColor={C.textMuted} autoCapitalize="none" autoCorrect={false} returnKeyType="search" onSubmitEditing={() => q.trim() && actions.searchUsers(q.trim())} style={{ flex: 1, color: C.white, fontFamily: F.bold, fontSize: fz(22), padding: 0 }} />
-          <ChunkyButton kind="blue" label={S.search} height={mk(52)} size={mk(22)} style={{ width: mk(120) }} onPress={() => q.trim() && actions.searchUsers(q.trim())} />
-        </Plate>
-        {state.userSearchResults.map((u) => (
-          <Plate key={u.userId} face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginTop: mk(10) }} inner={{ minHeight: mk(74) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(10), gap: mk(10) }}>
-            <View style={{ width: mk(60), height: mk(60), borderRadius: mk(12), borderWidth: mk(3), borderColor: '#7DB8FF', backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' }}><Avatar avatar={null} name={u.displayName} size={mk(50)} /></View>
-            <OutlinedText size={mk(28)} width={mk(2)} align="left" numberOfLines={1} style={{ flex: 1 }}>{u.displayName.toLocaleUpperCase('tr')}</OutlinedText>
-            <ChunkyButton kind="blue" label={S.add} height={mk(58)} size={mk(24)} style={{ width: mk(160) }} onPress={() => { actions.sendFriendRequest(undefined, u.displayName); onNotice(S.addFriend, `${u.displayName}: ${S.add} ✓`); }} />
-          </Plate>
-        ))}
-      </View>
+      {/* Kullanıcı arama ARKADAŞ EKLE penceresine taşındı (kullanıcı 2026-09-08): isimle ara → çıkanları ekle. */}
       <View style={{ height: mk(30) }} />
     </View>
   );

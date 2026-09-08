@@ -531,5 +531,11 @@
   "ui2.yourRank": "Hạng của bạn",
   "ui2.everySevenDays": "Làm mới mỗi 7 ngày",
   "ui2.unlockAllRewards": "Mở khóa mọi phần thưởng",
-  "ui2.dailyQuestion": "Câu hỏi hằng ngày"
+  "ui2.dailyQuestion": "Câu hỏi hằng ngày",
+  "ui2.messages": "Tin nhắn",
+  "ui2.messagesSub": "Trò chuyện với bạn bè",
+  "ui2.searchByName": "Tìm theo tên",
+  "ui2.noUsersFound": "Không tìm thấy người chơi",
+  "ui2.requestSent": "Đã gửi lời mời",
+  "ui2.noConversations": "Chưa có cuộc trò chuyện"
 }
