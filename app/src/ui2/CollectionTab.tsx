@@ -95,17 +95,22 @@ function Powers({ p, actions, spEquipped, onOpenStore, onNotice }: { p: GameStat
     </>
   );
 }
+// Kart TEK ÇERÇEVE (lacivert): gücün kimlik rengi yalnız sanatın arkasındaki ince yuvada — kartın tamamı
+// renkliyken vitrin rengârenk ve amatör duruyordu (kullanıcı 2026-09-08).
 function PowerCard({ width, name, art, face, badge, line, button, dim }: { width: number; name: string; art: ImageSourcePropType | ReactNode; face: [string, string, string]; badge: number; line: string; button: { label: string; kind: 'green' | 'blue' | 'gold'; on: () => void }; dim?: boolean }) {
+  const accent = face[0];
   return (
-    <View style={{ width, opacity: dim ? 0.72 : 1 }}>
-      <Plate face={face[0]} top={face[1]} lip={face[2]} radius={R.card} inner={{ minHeight: mk(340) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(12), paddingHorizontal: mk(6) }}>
-        <View style={{ height: mk(140), width: '100%', alignItems: 'center', justifyContent: 'center' }}>{isValidElement(art) ? <IconSlot icon={art} width={mk(140)} height={mk(140)} size={mk(120)} /> : <Image source={art as ImageSourcePropType} style={{ width: mk(140), height: mk(140) }} resizeMode="contain" />}</View>
+    <View style={{ width }}>
+      <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={R.card} inner={{ minHeight: mk(340) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(12), paddingHorizontal: mk(6) }}>
+        {/* sahip olunmayanda YALNIZ sanat soluk; kart ve buton net kalır (soluk buton okunmuyordu) */}
+        <View style={{ height: mk(140), width: '100%', alignItems: 'center', justifyContent: 'center', opacity: dim ? 0.78 : 1 }}>
+          <View pointerEvents="none" style={{ position: 'absolute', left: mk(6), right: mk(6), top: 0, bottom: 0, borderRadius: mk(18), backgroundColor: `${accent}2E`, borderWidth: mk(3), borderColor: `${accent}88` }} />{isValidElement(art) ? <IconSlot icon={art} width={mk(140)} height={mk(140)} size={mk(120)} /> : <Image source={art as ImageSourcePropType} style={{ width: mk(140), height: mk(140) }} resizeMode="contain" />}</View>
         <View style={{ flex: 1 }} />
         <OutlinedText size={mk(26)} width={mk(2.5)} numberOfLines={1} fit>{up(name)}</OutlinedText>
-        <View style={{ backgroundColor: 'rgba(255,255,255,0.28)', borderRadius: mk(10), paddingHorizontal: mk(12), paddingVertical: mk(2), marginTop: mk(4) }}><Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(16) }}>{line}</Text></View>
+        <View style={{ backgroundColor: `${accent}3D`, borderRadius: mk(10), borderWidth: 1.5, borderColor: `${accent}88`, paddingHorizontal: mk(12), paddingVertical: mk(2), marginTop: mk(4) }}><Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(16) }}>{line}</Text></View>
         <View style={{ width: '100%', marginTop: mk(8), marginBottom: mk(10) }}><ChunkyButton kind={button.kind} label={button.label} height={mk(60)} size={mk(24)} onPress={button.on} /></View>
       </Plate>
-      <View style={{ position: 'absolute', top: -mk(8), left: -mk(4), width: mk(50), height: mk(50), borderRadius: mk(25), backgroundColor: '#8E2BEA', borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(24)} width={1.2}>{String(badge)}</OutlinedText></View>
+      <View style={{ position: 'absolute', top: -mk(8), left: -mk(4), width: mk(50), height: mk(50), borderRadius: mk(25), backgroundColor: accent, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(24)} width={1.2}>{String(badge)}</OutlinedText></View>
     </View>
   );
 }

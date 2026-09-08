@@ -119,7 +119,7 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
           {SP_LIST.map((id) => {
             const meta = SPECIAL_POWERS[id]; const price = catalog?.specialPowers?.find((x) => x.id === id)?.price ?? SPECIAL_POWER_PRICE_FALLBACK[id];
             return (
-              <ProductCard key={id} width={COL3_W} height={mk(370)} artH={mk(140)} title={t(meta.nameKey)} art={SP_ART[id]} face={SP_FACE[id][0]} top={SP_FACE[id][1]} lip={SP_FACE[id][2]} desc={t(meta.descKey)} small
+              <ProductCard key={id} width={COL3_W} height={mk(370)} artH={mk(140)} title={t(meta.nameKey)} art={SP_ART[id]} accent={SP_FACE[id][0]} desc={t(meta.descKey)} small
                 ribbon={{ label: `×${SP_PACK}`, color: 'gold' }}
                 button={{ gem: true, label: String(price), onPress: () => gemBuy(`${t(meta.nameKey)} ×${SP_PACK}`, price, () => actions.buySpecialPower(id)), disabled: diamonds < price }} />
             );
@@ -131,7 +131,7 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
       <Section icon={<IcBolt />} title={up(t('collection.tabPowers'))} subtitle={t('ui2.powersSub')}>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
           {ACCOUNT_POWERS.map((pw) => (
-            <ProductCard key={pw.id} width={COL3_W} height={mk(370)} artH={mk(140)} title={t(pw.titleKey)} art={UI2[pw.art]} face={pw.face} lip={pw.lip} top={pw.top} desc={t(pw.descKey)} small
+            <ProductCard key={pw.id} width={COL3_W} height={mk(370)} artH={mk(140)} title={t(pw.titleKey)} art={UI2[pw.art]} accent={pw.face} desc={t(pw.descKey)} small
               button={{ gem: true, label: String(pw.price), onPress: () => gemBuy(t(pw.titleKey), pw.price, () => actions.buyPower(pw.id)), disabled: diamonds < pw.price }} />
           ))}
         </View>
@@ -216,9 +216,10 @@ function LoadingRow() {
 }
 // Ürün kartı — NATİVE KURAL: Image'a yüzde yükseklik verme (içerik boyutlu kutuda sıfırlanır/doğal boyut alır); sanat kutusu ve resim piksel boyutlu.
 // Bir ızgaradaki kartlar aynı yükseklikte olsun diye başlık 1 satır (fit), açıklama sabit 2 satırlık kutu, buton sabit.
-function ProductCard({ width, height, artH, title, subtitle, art, artNode, artScale = 1, ribbon, desc, face = C.card, top = C.cardTop, lip = C.cardDark, button, small }: {
+function ProductCard({ width, height, artH, title, subtitle, art, artNode, artScale = 1, ribbon, desc, face = C.card, top = C.cardTop, lip = C.cardDark, accent, button, small }: {
   width: number; height: number; artH: number; title: string; subtitle?: string; art?: ImageSourcePropType; artNode?: React.ReactNode; artScale?: number; ribbon?: { label: string; color: 'red' | 'gold' } | null; desc?: string;
-  face?: string; top?: string; lip?: string; button: { label: string; gem?: boolean; onPress?: () => void; disabled?: boolean }; small?: boolean;
+  face?: string; top?: string; lip?: string; /** kimlik rengi: kartın TAMAMINI boyamak yerine sanatın arkasında ince bir yuva (premium duruş) */ accent?: string;
+  button: { label: string; gem?: boolean; onPress?: () => void; disabled?: boolean }; small?: boolean;
 }) {
   const artW = Math.round((width - mk(16)) * 0.9 * artScale);
   return (
@@ -228,6 +229,7 @@ function ProductCard({ width, height, artH, title, subtitle, art, artNode, artSc
         {subtitle ? <OutlinedText size={mk(19)} width={1.5} style={{ marginTop: -mk(4), lineHeight: fz(22) }}>{subtitle}</OutlinedText> : null}
         <View style={{ flex: 1 }} />
         <View style={{ height: artH, width: '100%', alignItems: 'center', justifyContent: 'center' }}>
+          {accent ? <View pointerEvents="none" style={{ position: 'absolute', left: mk(6), right: mk(6), top: 0, bottom: 0, borderRadius: mk(18), backgroundColor: `${accent}2E`, borderWidth: mk(3), borderColor: `${accent}88` }} /> : null}
           {artNode ?? (art ? <Image source={art} style={{ width: artW, height: artH }} resizeMode="contain" /> : null)}
           {ribbon ? <Ribbon label={ribbon.label} color={ribbon.color === 'red' ? C.red : C.gold} style={{ position: 'absolute', bottom: -mk(6), transform: [{ rotate: '-3deg' }] }} size={mk(15)} /> : null}
         </View>
