@@ -520,5 +520,13 @@
   "ui2.dh": "{d}j {h}h",
   "ui2.hm": "{h}h {m}min",
   "ui2.vault": "COFFRE",
-  "ui2.matchPowersSub": "Renverse le match !"
+  "ui2.matchPowersSub": "Renverse le match !",
+  "ui2.feedback": "Envoyer un avis",
+  "ui2.partnership": "Sponsoring et partenariats",
+  "ui2.arenaReward": "Récompense d’arène",
+  "ui2.trophiesN": "{n} trophées",
+  "ui2.toNextArena": "{n} trophées avant la prochaine arène",
+  "ui2.rewardTaken": "Récompense reçue",
+  "ui2.winLoss": "Victoire {w} / Défaite {l}",
+  "ui2.yourRank": "Ton rang"
 }

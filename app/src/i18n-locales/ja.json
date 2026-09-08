@@ -520,5 +520,13 @@
   "ui2.dh": "{d}日{h}時間",
   "ui2.hm": "{h}時間{m}分",
   "ui2.vault": "金庫",
-  "ui2.matchPowersSub": "試合をひっくり返せ！"
+  "ui2.matchPowersSub": "試合をひっくり返せ！",
+  "ui2.feedback": "フィードバックを送る",
+  "ui2.partnership": "スポンサー・提携",
+  "ui2.arenaReward": "アリーナ報酬",
+  "ui2.trophiesN": "{n} トロフィー",
+  "ui2.toNextArena": "次のアリーナまで{n}トロフィー",
+  "ui2.rewardTaken": "報酬受け取り済み",
+  "ui2.winLoss": "勝利 {w} / 敗北 {l}",
+  "ui2.yourRank": "あなたの順位"
 }

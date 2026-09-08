@@ -48,6 +48,18 @@ export const ARENA_STEPS: { name: string; min: number }[] = [
   { name: 'Mahalle Sahası', min: 0 }, { name: 'Amatör Lig', min: 200 }, { name: 'Profesyonel Lig', min: 500 },
   { name: 'Şampiyonlar Ligi', min: 1000 }, { name: 'Efsaneler Arenası', min: 2000 }, { name: 'Dünya Klasmanı', min: 3500 }, { name: 'GOAT', min: 5000 },
 ];
+// Arena sanatı + kupa aralığı + maç başı kupa + ulaşma ödülü (screens.tsx ARENA_DATA ile birebir; artan sıra)
+export const ARENAS: { key: string; min: number; max: number; win: number; loss: number; reward: number; art: ImageSourcePropType }[] = [
+  { key: 'mahalle', min: 0, max: 199, win: 30, loss: 10, reward: 50, art: require('../../assets/arenas/mahalle.png') },
+  { key: 'amator', min: 200, max: 499, win: 28, loss: 14, reward: 100, art: require('../../assets/arenas/amator.png') },
+  { key: 'profesyonel', min: 500, max: 999, win: 25, loss: 18, reward: 150, art: require('../../assets/arenas/profesyonel.png') },
+  { key: 'sampiyonlar', min: 1000, max: 1999, win: 22, loss: 22, reward: 200, art: require('../../assets/arenas/sampiyonlar.png') },
+  { key: 'efsaneler', min: 2000, max: 3499, win: 20, loss: 26, reward: 300, art: require('../../assets/arenas/efsaneler.png') },
+  { key: 'dunya', min: 3500, max: 4999, win: 18, loss: 30, reward: 500, art: require('../../assets/arenas/dunya.png') },
+  { key: 'goat', min: 5000, max: 99999, win: 15, loss: 35, reward: 1000, art: require('../../assets/arenas/goat.png') },
+];
+// Yardım & bilgi bağlantıları (screens.tsx INFO_LINKS ile aynı; canlı sayfalar)
+export const INFO_LINKS = { help: 'https://crossoverfootball.com/destek/', privacy: 'https://crossoverfootball.com/gizlilik/', parents: 'https://crossoverfootball.com/ebeveyn/', terms: 'https://crossoverfootball.com/kosullar/', founders: 'https://crossoverfootball.com/' } as const;
 export function nextArenaMin(trophies: number): number {
   const next = ARENA_STEPS.find((a) => a.min > trophies);
   return next ? next.min : ARENA_STEPS[ARENA_STEPS.length - 1]!.min;

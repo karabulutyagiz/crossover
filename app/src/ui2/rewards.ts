@@ -5,9 +5,11 @@ import { t } from '../i18n';
 import { LEVEL_TIERS, levelRewardGems, passRewardView, PREMIUM_LEVEL_POWERS, premiumRewardGems } from '../screens';
 import type { GameState } from './types';
 import { UI2 } from './assets';
+import { SP_ART } from './products';
 
 export type RoadReward = { kind: 'gems' | 'frame' | 'power' | 'cosmetic'; label: string; art: ImageSourcePropType; amount?: number };
-const POWER_ART: Record<string, ImageSourcePropType> = { xp2x: UI2.pw_xp, shield: UI2.pw_shield, streak: UI2.pw_streak, training: UI2.pw_training, freeze: UI2.pw_freeze };
+// Hesap güçleri UI2 sanatı; maç içi özel güçler kullanıcının çizdirdiği rozetler (mağaza/koleksiyonla aynı kimlik)
+const POWER_ART: Record<string, ImageSourcePropType> = { xp2x: UI2.pw_xp, shield: UI2.pw_shield, streak: UI2.pw_streak, training: UI2.pw_training, ...SP_ART };
 const POWER_NAME: Record<string, string> = { xp2x: 'ui2.pw.xp', shield: 'ui2.pw.shield', streak: 'ui2.pw.streak', training: 'ui2.pw.training', freeze: 'sp.freeze.name', reveal: 'sp.reveal.name', skip: 'sp.skip.name', extratime: 'sp.extratime.name', secondchance: 'sp.secondchance.name' };
 export function roadReward(p: GameState['profile'], n: number, track: 'free' | 'premium'): RoadReward | null {
   if (p?.copassV2) {

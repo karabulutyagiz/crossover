@@ -1178,6 +1178,14 @@ const tr = {
   "ui2.hm": "{h}s {m}d",
   "ui2.vault": "KASA",
   "ui2.matchPowersSub": "Maçta fark yarat!",
+  "ui2.feedback": "Görüş ve Öneri Bildir",
+  "ui2.partnership": "Sponsorluk & İş Birlikleri",
+  "ui2.arenaReward": "Arena ödülü",
+  "ui2.trophiesN": "{n} kupa",
+  "ui2.toNextArena": "Sonraki arenaya {n} kupa",
+  "ui2.rewardTaken": "Ödül alındı",
+  "ui2.winLoss": "Galibiyet {w} / Mağlubiyet {l}",
+  "ui2.yourRank": "Sıran",
 };
 
 // ---- English (fallback) ----
@@ -2294,6 +2302,14 @@ const en: typeof tr = {
   "ui2.hm": "{h}h {m}m",
   "ui2.vault": "VAULT",
   "ui2.matchPowersSub": "Turn the match around!",
+  "ui2.feedback": "Send Feedback",
+  "ui2.partnership": "Sponsorship & Partnerships",
+  "ui2.arenaReward": "Arena reward",
+  "ui2.trophiesN": "{n} trophies",
+  "ui2.toNextArena": "{n} trophies to next arena",
+  "ui2.rewardTaken": "Reward claimed",
+  "ui2.winLoss": "Win {w} / Loss {l}",
+  "ui2.yourRank": "Your rank",
 };
 
 export type MessageKey = keyof typeof tr;

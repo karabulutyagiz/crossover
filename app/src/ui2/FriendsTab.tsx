@@ -60,12 +60,10 @@ export function FriendsTab({ state, actions, onOpenSettings, onOpenProfile, onOp
           { icon: <IcRequests />, title: S.requests, sub: S.requestsSub, on: onOpenRequests, badge: state.friendRequests.length },
         ] as { icon: React.ReactNode; title: string; sub: string; on: () => void; badge: number }[]).map((a) => (
           <Pressable key={a.title} onPress={a.on} style={{ flex: 1 }}>
-            <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={mk(22)} inner={{ height: mk(130) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(8), gap: mk(6) }}>
-              <IconSlot icon={a.icon} width={mk(80)} height={mk(80)} size={mk(80)} />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <OutlinedText size={mk(21)} width={mk(2)} align="left" numberOfLines={1} fit>{a.title}</OutlinedText>
-                <Text numberOfLines={2} style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(15), lineHeight: fz(18) }}>{a.sub}</Text>
-              </View>
+            <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={mk(24)} inner={{ height: mk(236) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(10), paddingHorizontal: mk(8) }}>
+              <IconSlot icon={a.icon} width={mk(110)} height={mk(110)} size={mk(104)} />
+              <OutlinedText size={mk(24)} width={mk(2.5)} numberOfLines={1} fit style={{ marginTop: mk(4) }}>{a.title}</OutlinedText>
+              <Text numberOfLines={2} style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(15), lineHeight: fz(18), textAlign: 'center', marginTop: mk(2) }}>{a.sub}</Text>
             </Plate>
             {a.badge ? <View style={{ position: 'absolute', top: -mk(10), right: -mk(6), minWidth: mk(44), height: mk(44), borderRadius: mk(22), backgroundColor: C.red, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(24)} width={1}>{String(a.badge)}</OutlinedText></View> : null}
           </Pressable>

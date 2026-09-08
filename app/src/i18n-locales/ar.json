@@ -520,5 +520,13 @@
   "ui2.dh": "{d}ي {h}س",
   "ui2.hm": "{h}س {m}د",
   "ui2.vault": "الخزنة",
-  "ui2.matchPowersSub": "اقلب المباراة!"
+  "ui2.matchPowersSub": "اقلب المباراة!",
+  "ui2.feedback": "إرسال ملاحظات",
+  "ui2.partnership": "الرعاية والشراكات",
+  "ui2.arenaReward": "مكافأة الساحة",
+  "ui2.trophiesN": "{n} كأس",
+  "ui2.toNextArena": "{n} كأس للساحة التالية",
+  "ui2.rewardTaken": "تم استلام المكافأة",
+  "ui2.winLoss": "فوز {w} / خسارة {l}",
+  "ui2.yourRank": "ترتيبك"
 }

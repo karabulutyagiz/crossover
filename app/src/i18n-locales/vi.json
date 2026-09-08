@@ -520,5 +520,13 @@
   "ui2.dh": "{d}ng {h}g",
   "ui2.hm": "{h}g {m}p",
   "ui2.vault": "KHO BÁU",
-  "ui2.matchPowersSub": "Lật ngược trận đấu!"
+  "ui2.matchPowersSub": "Lật ngược trận đấu!",
+  "ui2.feedback": "Gửi góp ý",
+  "ui2.partnership": "Tài trợ & Hợp tác",
+  "ui2.arenaReward": "Phần thưởng đấu trường",
+  "ui2.trophiesN": "{n} cúp",
+  "ui2.toNextArena": "Còn {n} cúp đến đấu trường tiếp theo",
+  "ui2.rewardTaken": "Đã nhận thưởng",
+  "ui2.winLoss": "Thắng {w} / Thua {l}",
+  "ui2.yourRank": "Hạng của bạn"
 }

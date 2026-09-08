@@ -2946,7 +2946,7 @@ function AppRoot() {
       ) : null}
 
       {UI2_ON ? (
-        <Ui2Tabs state={state} actions={actions} activeTab={activeTab} goToTab={goToTab} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLanguageChange={() => { dismissActiveInput(); setOverlay(null); setStoreSection(null); setActiveTab(2); setLoaded(false); setLangKey((k) => k + 1); actions.closeArenas(); }} onDiamondCelebration={(c) => setGemCelebration({ kind: 'purchase', amount: c.amount })} />
+        <Ui2Tabs state={state} actions={actions} activeTab={activeTab} goToTab={goToTab} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLanguageChange={() => { dismissActiveInput(); setOverlay(null); setStoreSection(null); setActiveTab(2); setLoaded(false); setLangKey((k) => k + 1); actions.closeArenas(); }} onDiamondCelebration={(c) => setGemCelebration({ kind: 'purchase', amount: c.amount })} onOpenFeedback={(category) => { setFeedbackInitialCategory(category); setFeedbackCenterVisible(true); }} />
       ) : (<>
       <Animated.ScrollView
         ref={scrollRef}

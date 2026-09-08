@@ -520,5 +520,13 @@
   "ui2.dh": "{d}д {h}ч",
   "ui2.hm": "{h}ч {m}м",
   "ui2.vault": "СЕЙФ",
-  "ui2.matchPowersSub": "Переломи матч!"
+  "ui2.matchPowersSub": "Переломи матч!",
+  "ui2.feedback": "Оставить отзыв",
+  "ui2.partnership": "Спонсорство и партнёрство",
+  "ui2.arenaReward": "Награда арены",
+  "ui2.trophiesN": "{n} трофеев",
+  "ui2.toNextArena": "До следующей арены {n} трофеев",
+  "ui2.rewardTaken": "Награда получена",
+  "ui2.winLoss": "Победа {w} / Поражение {l}",
+  "ui2.yourRank": "Твоё место"
 }

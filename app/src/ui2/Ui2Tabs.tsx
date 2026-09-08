@@ -21,9 +21,9 @@ const KEYS: NavKey[] = ['store', 'collection', 'play', 'friends', 'tournaments']
 type Confirm = { title: string; body: string; price?: number; priceText?: string; onYes: () => void };
 export type Ui2DialogKey = 'mode' | 'bot' | 'quests' | 'settings' | 'language' | 'room' | 'requests' | 'league' | 'tournament' | 'road' | 'arenas' | 'profile' | null;
 
-export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, onLanguageChange, onDiamondCelebration, initialScrollY = 0, initialDialog = null, initialCollectionSub }: {
+export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, onLanguageChange, onDiamondCelebration, onOpenFeedback, initialScrollY = 0, initialDialog = null, initialCollectionSub }: {
   state: GameState; actions: Actions; activeTab: number; goToTab: (i: number) => void;
-  onOpenLevelRoad: () => void; onLanguageChange?: () => void; onDiamondCelebration?: (c: { amount: number }) => void; initialScrollY?: number; initialDialog?: Ui2DialogKey; initialCollectionSub?: 'powers' | 'cosmetics' | 'emotes';
+  onOpenLevelRoad: () => void; onLanguageChange?: () => void; onDiamondCelebration?: (c: { amount: number }) => void; onOpenFeedback?: (category?: 'sponsorship') => void; initialScrollY?: number; initialDialog?: Ui2DialogKey; initialCollectionSub?: 'powers' | 'cosmetics' | 'emotes';
 }) {
   const insets = useSafeAreaInsets();
   const store = useStorePurchases(state, actions, onDiamondCelebration);
@@ -73,7 +73,7 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
       {dlg === 'mode' || dlg === 'bot' ? <ModeMenuDialog state={state} actions={actions} bot={dlg === 'bot'} onClose={closeDlg} onLocked={() => setNotice({ title: t('friends.inviteNeedsPackTitle'), body: t('ui2.packLockedBody'), yesLabel: S.store, onYes: () => goToTab(0) })} /> : null}
       {dlg === 'language' ? <LanguageDialog onClose={() => setDlg('settings')} onPick={(code) => { setLanguage(code); setDlg(null); onLanguageChange?.(); }} /> : null}
       {dlg === 'quests' ? <QuestsDialog state={state} actions={actions} onClose={closeDlg} onGo={() => goToTab(2)} /> : null}
-      {dlg === 'settings' ? <SettingsDialog actions={actions} onClose={closeDlg} onOpenLanguage={() => setDlg('language')} onDeleteAccount={() => { setDlg(null); setNotice({ title: up(t('profile.deleteAccount')), body: t('profile.deleteAccountConfirm'), yesLabel: t('ui2.delete'), onYes: () => actions.deleteAccount() }); }} /> : null}
+      {dlg === 'settings' ? <SettingsDialog actions={actions} onClose={closeDlg} onOpenFeedback={onOpenFeedback} onOpenLanguage={() => setDlg('language')} onDeleteAccount={() => { setDlg(null); setNotice({ title: up(t('profile.deleteAccount')), body: t('profile.deleteAccountConfirm'), yesLabel: t('ui2.delete'), onYes: () => actions.deleteAccount() }); }} /> : null}
       {dlg === 'room' ? <PrivateRoomDialog state={state} actions={actions} onClose={closeDlg} /> : null}
       {dlg === 'requests' ? <RequestsDialog state={state} actions={actions} onClose={closeDlg} /> : null}
       {dlg === 'league' ? <LeagueDialog state={state} onClose={closeDlg} /> : null}

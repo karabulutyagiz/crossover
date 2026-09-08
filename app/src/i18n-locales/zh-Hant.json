@@ -520,5 +520,13 @@
   "ui2.dh": "{d}天{h}小時",
   "ui2.hm": "{h}小時{m}分",
   "ui2.vault": "寶庫",
-  "ui2.matchPowersSub": "扭轉比賽！"
+  "ui2.matchPowersSub": "扭轉比賽！",
+  "ui2.feedback": "意見回饋",
+  "ui2.partnership": "贊助與合作",
+  "ui2.arenaReward": "競技場獎勵",
+  "ui2.trophiesN": "{n} 獎盃",
+  "ui2.toNextArena": "距下一競技場還需 {n} 獎盃",
+  "ui2.rewardTaken": "已領取獎勵",
+  "ui2.winLoss": "勝 {w} / 負 {l}",
+  "ui2.yourRank": "你的排名"
 }

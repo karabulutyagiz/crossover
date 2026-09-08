@@ -520,5 +520,13 @@
   "ui2.dh": "{d}pv {h}t",
   "ui2.hm": "{h}t {m}min",
   "ui2.vault": "HOLVI",
-  "ui2.matchPowersSub": "Käännä ottelu!"
+  "ui2.matchPowersSub": "Käännä ottelu!",
+  "ui2.feedback": "Lähetä palautetta",
+  "ui2.partnership": "Sponsorointi ja yhteistyö",
+  "ui2.arenaReward": "Areenapalkinto",
+  "ui2.trophiesN": "{n} pokaalia",
+  "ui2.toNextArena": "{n} pokaalia seuraavaan areenaan",
+  "ui2.rewardTaken": "Palkinto lunastettu",
+  "ui2.winLoss": "Voitto {w} / Tappio {l}",
+  "ui2.yourRank": "Sijoituksesi"
 }

@@ -520,5 +520,13 @@
   "ui2.dh": "{d}روز {h}ساعت",
   "ui2.hm": "{h}ساعت {m}دقیقه",
   "ui2.vault": "گاوصندوق",
-  "ui2.matchPowersSub": "بازی را برگردان!"
+  "ui2.matchPowersSub": "بازی را برگردان!",
+  "ui2.feedback": "ارسال بازخورد",
+  "ui2.partnership": "اسپانسری و همکاری",
+  "ui2.arenaReward": "پاداش آرنا",
+  "ui2.trophiesN": "{n} جام",
+  "ui2.toNextArena": "{n} جام تا آرنای بعدی",
+  "ui2.rewardTaken": "پاداش دریافت شد",
+  "ui2.winLoss": "برد {w} / باخت {l}",
+  "ui2.yourRank": "رتبه شما"
 }

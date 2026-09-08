@@ -121,15 +121,15 @@ function Cosmetics({ p, actions, catalog }: { p: GameState['profile']; actions: 
     <>
       <SectionHeader icon={UI2.frame_laurel} title={up(t('profile.frames'))} subtitle={t('ui2.framesSub')} style={{ marginHorizontal: SIDE, marginTop: mk(10) }} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, marginHorizontal: SIDE }}>
-        {tierFrames.map((tier) => <FrameCard key={tier.key} width={COL3} name={t(tier.nameKey)} equipped={p?.selectedFrame === tier.key} onPress={() => actions.setFrame(p?.selectedFrame === tier.key ? null : tier.key)}><FrameArt tierKey={tier.key} size={mk(120)} /></FrameCard>)}
-        {storeFrames.map((it) => <FrameCard key={it.id} width={COL3} name={it.name} equipped={p?.selectedFrame === it.id} onPress={() => actions.setFrame(p?.selectedFrame === it.id ? null : it.id)}><CosmeticArt id={it.id} type={it.type} size={mk(210)} accent={C.gold} /></FrameCard>)}
+        {tierFrames.map((tier) => <FrameCard key={tier.key} width={COL3} name={t(tier.nameKey)} equipped={p?.selectedFrame === tier.key} onPress={() => actions.setFrame(p?.selectedFrame === tier.key ? null : tier.key)}><FrameArt tierKey={tier.key} size={mk(140)} /></FrameCard>)}
+        {storeFrames.map((it) => <FrameCard key={it.id} width={COL3} name={it.name} equipped={p?.selectedFrame === it.id} onPress={() => actions.setFrame(p?.selectedFrame === it.id ? null : it.id)}><CosmeticArt id={it.id} type={it.type} size={mk(250)} accent={C.gold} /></FrameCard>)}
         {tierFrames.length + storeFrames.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(20), padding: mk(10) }}>{t('ui2.noFrames')}</Text> : null}
       </View>
       <SectionHeader icon={<IcStar />} title={t('ui2.cosmetics')} subtitle={t('ui2.cosmeticsSub')} style={{ marginHorizontal: SIDE, marginTop: mk(14) }} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, marginHorizontal: SIDE }}>
         {items.map((it) => {
           const on = equippedOf(it.type) === it.id;
-          return <FrameCard key={it.id} width={COL3} name={it.name} equipped={on} onPress={() => actions.equipCosmetic(it.type as any, on ? null : it.id)}><CosmeticArt id={it.id} type={it.type} size={mk(170)} accent={C.cyan} /></FrameCard>;
+          return <FrameCard key={it.id} width={COL3} name={it.name} equipped={on} onPress={() => actions.equipCosmetic(it.type as any, on ? null : it.id)}><CosmeticArt id={it.id} type={it.type} size={mk(240)} accent={C.cyan} /></FrameCard>;
         })}
         {items.length === 0 ? <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(20), padding: mk(10) }}>{t('ui2.noCosmetics')}</Text> : null}
       </View>
@@ -139,11 +139,11 @@ function Cosmetics({ p, actions, catalog }: { p: GameState['profile']; actions: 
 function FrameCard({ width, name, equipped, onPress, children }: { width: number; name: string; equipped: boolean; onPress: () => void; children: React.ReactNode }) {
   return (
     <View style={{ width }}>
-      <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={equipped ? C.gold : C.navy} radius={R.card} inner={{ height: mk(300) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(8), paddingHorizontal: mk(6) }}>
-        <View style={{ height: mk(134), alignItems: 'center', justifyContent: 'center' }}>{children}</View>
+      <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={equipped ? C.gold : C.navy} radius={R.card} inner={{ height: mk(330) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(10), paddingHorizontal: mk(6) }}>
+        <View style={{ height: mk(150), width: '100%', alignItems: 'center', justifyContent: 'center' }}>{children}</View>
         <View style={{ flex: 1 }} />
-        <OutlinedText size={mk(20)} width={mk(2)} numberOfLines={1} fit>{up(name)}</OutlinedText>
-        <View style={{ width: '100%', marginTop: mk(6), marginBottom: mk(8) }}><ChunkyButton kind={equipped ? 'blue' : 'green'} label={equipped ? t('store.spEquipped') : t('store.spEquip')} height={mk(46)} size={mk(20)} onPress={onPress} /></View>
+        <OutlinedText size={mk(26)} width={mk(2.5)} numberOfLines={1} fit>{up(name)}</OutlinedText>
+        <View style={{ width: '100%', marginTop: mk(8), marginBottom: mk(10) }}><ChunkyButton kind={equipped ? 'blue' : 'green'} label={equipped ? t('store.spEquipped') : t('store.spEquip')} height={mk(60)} size={mk(24)} onPress={onPress} /></View>
       </Plate>
     </View>
   );
@@ -170,8 +170,8 @@ function Emotes({ p, actions, onNotice }: { p: GameState['profile']; actions: Ac
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
             {Array.from({ length: EMOTE_SLOTS }, (_, i) => equipped[i]).map((id, i) => (
               <Pressable key={i} onPress={() => id && toggle(id)} style={{ width: COL_W }}>
-                <Plate face={id ? C.card : '#0B3A96'} top={id ? C.cardTop : '#2F63C8'} lip={id ? C.cardDark : '#041A4E'} radius={R.card} inner={{ minHeight: mk(150) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}>
-                  {id ? <EmoteSticker id={id} size={mk(110)} play={false} /> : <OutlinedText size={mk(50)} width={mk(3)} color={C.textMuted}>+</OutlinedText>}
+                <Plate face={id ? C.card : '#0B3A96'} top={id ? C.cardTop : '#2F63C8'} lip={id ? C.cardDark : '#041A4E'} radius={R.card} inner={{ height: mk(170) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}>
+                  {id ? <EmoteSticker id={id} size={mk(130)} play={false} /> : <OutlinedText size={mk(50)} width={mk(3)} color={C.textMuted}>+</OutlinedText>}
                 </Plate>
               </Pressable>
             ))}
@@ -183,10 +183,12 @@ function Emotes({ p, actions, onNotice }: { p: GameState['profile']; actions: Ac
         {all.map((e) => {
           const on = equipped.includes(e.id);
           return (
-            <Pressable key={e.id} onPress={() => toggle(e.id)} style={{ width: COL_W }}>
-              <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={on ? C.gold : C.navy} radius={R.card} inner={{ minHeight: mk(200) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
-                <EmoteSticker id={e.id} size={mk(110)} play={false} />
-                <OutlinedText size={mk(18)} width={1.5} numberOfLines={1} style={{ marginTop: mk(4) }}>{up((e.premium?.name ?? (e.phraseKey ? t(e.phraseKey as MessageKey) : e.id)))}</OutlinedText>
+            <Pressable key={e.id} onPress={() => toggle(e.id)} style={{ width: PW_W }}>
+              <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={on ? C.gold : C.navy} radius={R.card} inner={{ height: mk(330) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(10), paddingHorizontal: mk(6) }}>
+                <View style={{ height: mk(150), alignItems: 'center', justifyContent: 'center' }}><EmoteSticker id={e.id} size={mk(140)} play={false} /></View>
+                <View style={{ flex: 1 }} />
+                <OutlinedText size={mk(24)} width={mk(2)} numberOfLines={1} fit>{up((e.premium?.name ?? (e.phraseKey ? t(e.phraseKey as MessageKey) : e.id)))}</OutlinedText>
+                <View style={{ width: '100%', marginTop: mk(8), marginBottom: mk(10) }}><ChunkyButton kind={on ? 'blue' : 'green'} label={on ? up(t('collection.remove')) : t('store.spEquip')} height={mk(60)} size={mk(24)} onPress={() => toggle(e.id)} /></View>
               </Plate>
               {on ? <View style={{ position: 'absolute', top: -mk(6), right: -mk(4), width: mk(40), height: mk(40), borderRadius: mk(20), backgroundColor: C.green, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(20)} width={1}>✓</OutlinedText></View> : null}
             </Pressable>

@@ -520,5 +520,13 @@
   "ui2.dh": "{d}g {h}h",
   "ui2.hm": "{h}h {m}min",
   "ui2.vault": "CAVEAU",
-  "ui2.matchPowersSub": "Ribalta la partita!"
+  "ui2.matchPowersSub": "Ribalta la partita!",
+  "ui2.feedback": "Invia feedback",
+  "ui2.partnership": "Sponsorizzazioni e partnership",
+  "ui2.arenaReward": "Ricompensa arena",
+  "ui2.trophiesN": "{n} trofei",
+  "ui2.toNextArena": "{n} trofei alla prossima arena",
+  "ui2.rewardTaken": "Ricompensa ottenuta",
+  "ui2.winLoss": "Vittoria {w} / Sconfitta {l}",
+  "ui2.yourRank": "La tua posizione"
 }

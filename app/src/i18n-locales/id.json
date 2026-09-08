@@ -520,5 +520,13 @@
   "ui2.dh": "{d}h {h}j",
   "ui2.hm": "{h}j {m}m",
   "ui2.vault": "BRANKAS",
-  "ui2.matchPowersSub": "Balikkan pertandingan!"
+  "ui2.matchPowersSub": "Balikkan pertandingan!",
+  "ui2.feedback": "Kirim masukan",
+  "ui2.partnership": "Sponsor & Kerja Sama",
+  "ui2.arenaReward": "Hadiah arena",
+  "ui2.trophiesN": "{n} trofi",
+  "ui2.toNextArena": "{n} trofi ke arena berikutnya",
+  "ui2.rewardTaken": "Hadiah diterima",
+  "ui2.winLoss": "Menang {w} / Kalah {l}",
+  "ui2.yourRank": "Peringkatmu"
 }

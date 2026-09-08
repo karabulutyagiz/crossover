@@ -1,6 +1,6 @@
 // UI2 — TURNUVALAR sekmesi. Mock: refs/tournaments.png. Veri: state.tournaments (sunucu), Seviye Yolu ödülleri (gerçek).
 import { useEffect } from 'react';
-import { Image, Text, View, type ImageSourcePropType } from 'react-native';
+import { Image, Pressable, Text, View, type ImageSourcePropType } from 'react-native';
 import { LEVEL_TIERS, levelRewardGems, passRewardView } from '../screens';
 import type { Actions, GameState } from './types';
 import { UI2 } from './assets';
@@ -70,14 +70,13 @@ export function TournamentsTab({ state, actions, onOpenSettings, onOpenProfile, 
           { icon: <IcLeague />, title: S.leagueCup, sub: S.leagueCupSub, on: onOpenLeague },
           { icon: <IcRewards />, title: S.rewards, sub: S.rewardsSub, on: onOpenLevelRoad },
         ] as { icon: React.ReactNode; title: string; sub: string; on: () => void }[]).map((a) => (
-          <Plate key={a.title} face={C.card} top={C.cardTop} lip={C.cardDark} radius={mk(22)} style={{ flex: 1 }} inner={{ height: mk(130) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(8), gap: mk(6) }}>
-            <IconSlot icon={a.icon} width={mk(80)} height={mk(80)} size={mk(80)} />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <OutlinedText size={mk(20)} width={mk(2)} align="left" numberOfLines={1} fit>{a.title}</OutlinedText>
-              <Text numberOfLines={2} style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(15), lineHeight: fz(18) }}>{a.sub}</Text>
-            </View>
-            <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} pointerEvents="box-only" onTouchEnd={a.on} />
-          </Plate>
+          <Pressable key={a.title} onPress={a.on} style={{ flex: 1 }}>
+            <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={mk(24)} inner={{ height: mk(236) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(10), paddingHorizontal: mk(8) }}>
+              <IconSlot icon={a.icon} width={mk(110)} height={mk(110)} size={mk(104)} />
+              <OutlinedText size={mk(24)} width={mk(2.5)} numberOfLines={1} fit style={{ marginTop: mk(4) }}>{a.title}</OutlinedText>
+              <Text numberOfLines={2} style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(15), lineHeight: fz(18), textAlign: 'center', marginTop: mk(2) }}>{a.sub}</Text>
+            </Plate>
+          </Pressable>
         ))}
       </View>
 

@@ -520,5 +520,13 @@
   "ui2.dh": "{d}ว {h}ชม",
   "ui2.hm": "{h}ชม {m}น",
   "ui2.vault": "ห้องนิรภัย",
-  "ui2.matchPowersSub": "พลิกเกม!"
+  "ui2.matchPowersSub": "พลิกเกม!",
+  "ui2.feedback": "ส่งความคิดเห็น",
+  "ui2.partnership": "สปอนเซอร์และความร่วมมือ",
+  "ui2.arenaReward": "รางวัลอารีน่า",
+  "ui2.trophiesN": "{n} ถ้วยรางวัล",
+  "ui2.toNextArena": "อีก {n} ถ้วยถึงอารีน่าถัดไป",
+  "ui2.rewardTaken": "รับรางวัลแล้ว",
+  "ui2.winLoss": "ชนะ {w} / แพ้ {l}",
+  "ui2.yourRank": "อันดับของคุณ"
 }
