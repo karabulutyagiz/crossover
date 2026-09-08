@@ -46,14 +46,15 @@ export function Hud({ data, actions, title, titleIcon }: { data: HudData; action
         </View>
         {/* elmas pill + artı + dişli */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: mk(8) }}>
+          {/* Artı hapın İÇİNDE: dışarıda dururken 'bardan fırlamış' gibi görünüyordu (kullanıcı 2026-09-08) */}
           <Pressable onPress={actions?.onGems}>
-            <Plate face={C.panelInk} top="#2F63C8" lip="#051D52" radius={R.pill} inner={{ height: mk(84) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingLeft: mk(10), paddingRight: mk(22), gap: mk(8) }}>
+            <Plate face={C.panelInk} top="#2F63C8" lip="#051D52" radius={R.pill} inner={{ height: mk(84) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingLeft: mk(10), paddingRight: mk(8), gap: mk(8) }}>
               <View style={{ marginTop: -mk(4) }}><IcGem size={mk(62)} /></View>
               <OutlinedText size={mk(44)} width={mk(3.5)}>{fmt(data.diamonds)}</OutlinedText>
+              <Pressable onPress={actions?.onPlus ?? actions?.onGems} hitSlop={8} style={{ marginLeft: mk(2) }}>
+                <IcPlus size={mk(56)} />
+              </Pressable>
             </Plate>
-          </Pressable>
-          <Pressable onPress={actions?.onPlus ?? actions?.onGems} style={{ marginLeft: -mk(18), marginTop: -mk(2) }}>
-            <IcPlus size={mk(68)} />
           </Pressable>
           <Pressable onPress={actions?.onSettings} style={{ marginLeft: mk(10) }}>
             <IcGear size={mk(86)} />
