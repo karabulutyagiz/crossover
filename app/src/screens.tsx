@@ -1394,6 +1394,8 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
   void fillTablet;
   const isTablet = useIsTablet();
   const maxW = useContentMaxWidth();
+  // UI2: kendi zemini olmayan ekranlar (Rakip Aranıyor, panolar…) menülerdeki damalı zemini kullanır.
+  const ui2Bg = UI2_ON && !bg ? <Ui2Checker /> : null;
   // lockWhenFits: measured, not assumed — scrolling turns off only when the
   // content genuinely fits the viewport, so small phones keep scrolling.
   const [vpH, setVpH] = useState(0);
@@ -1417,7 +1419,7 @@ function Screen({ children, scroll, bg, pad, contentCenter = true, fillTablet = 
     >
       {/* Optional fixed backdrop BEHIND the scroll content (covers the app's default
           ScreenBg). Rendered outside the ScrollView so it never scrolls. */}
-      {bg ? <View pointerEvents="none" style={StyleSheet.absoluteFill}>{bg}</View> : null}
+      {bg ? <View pointerEvents="none" style={StyleSheet.absoluteFill}>{bg}</View> : ui2Bg}
       {/* Keyboard dismiss: a backdrop Pressable BEHIND the content. It never wraps the
           children (so no layout shift) and sits under the ScrollViews (so it never
           intercepts scroll); tapping empty background area still dismisses. Scroll-area
@@ -2590,15 +2592,15 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
           <Animated.View style={{ transform: [{ translateY: sheetA.interpolate({ inputRange: [0, 1], outputRange: [440, 0] }) }] }}>
             {/* Prestige bottom-sheet: surface1 edge → modalFace body, depth from a
                 1px top-light + the soft navy shadow (no drawn gold frame) */}
-            <View style={{ backgroundColor: theme.surface1, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingTop: 3, ...shadowModal }}>
+            <View style={{ backgroundColor: UI2_ON ? UI2C.navy : theme.surface1, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingTop: UI2_ON ? ui2mk(12) : 3, ...shadowModal }}>
               <View
                 style={{
-                  backgroundColor: theme.modalFace, borderTopLeftRadius: 26, borderTopRightRadius: 26,
-                  borderTopWidth: 1, borderTopColor: theme.topLight,
+                  backgroundColor: UI2_ON ? UI2C.panel : theme.modalFace, borderTopLeftRadius: 26, borderTopRightRadius: 26,
+                  borderTopWidth: UI2_ON ? ui2mk(6) : 1, borderTopColor: UI2_ON ? UI2C.panelTop : theme.topLight,
                   paddingTop: 10, paddingHorizontal: 18, paddingBottom: Math.max(insets.bottom, 16) + 12,
                 }}
               >
-                <View style={{ width: 42, height: 4, borderRadius: 2, backgroundColor: theme.hairline, alignSelf: 'center', marginBottom: 16 }} />
+                <View style={{ width: 42, height: 4, borderRadius: 2, backgroundColor: UI2_ON ? UI2C.navy : theme.hairline, alignSelf: 'center', marginBottom: 16 }} />
 
                 {/* Quick-chat text messages (no emoji — just text, Clash-Royale style) */}
                 <Text style={{ color: theme.muted, fontSize: 11, fontFamily: 'Poppins-ExtraBold', letterSpacing: 1.5, marginBottom: 9, marginLeft: 2 }}>{t('emote.quickChat')}</Text>
@@ -2608,15 +2610,19 @@ function EmoteLayer({ state, actions, fab = 'top-right', hideFab, externalOpen, 
                       key={e.id}
                       onPress={() => { actions.sendEmote(e.id); setOpen(false); }}
                       style={({ pressed }) => ({
-                        flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.surface2,
-                        borderRadius: 22, paddingVertical: 11, paddingHorizontal: 16,
-                        borderTopWidth: 1, borderTopColor: theme.topLight,
+                        flexDirection: 'row', alignItems: 'center', gap: 7,
+                        backgroundColor: UI2_ON ? UI2C.card : theme.surface2,
+                        borderRadius: UI2_ON ? ui2mk(26) : 22, paddingVertical: 11, paddingHorizontal: 16,
+                        ...(UI2_ON
+                          ? { borderWidth: ui2mk(5), borderBottomWidth: ui2mk(11), borderColor: UI2C.navy }
+                          : { borderTopWidth: 1, borderTopColor: theme.topLight, ...shadowRow }),
                         transform: [{ scale: pressed ? 0.97 : 1 }],
-                        ...shadowRow,
                       })}
                     >
-                      <Ionicons name="chatbubble-ellipses" size={14} color={theme.primary} />
-                      <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13.5 }}>{emotePhrase(e)}</Text>
+                      <Ionicons name="chatbubble-ellipses" size={14} color={UI2_ON ? '#8CE0FF' : theme.primary} />
+                      <Text style={UI2_ON
+                        ? { color: '#FFFFFF', fontFamily: 'LilitaOne-Regular', fontSize: 16, textShadowColor: UI2C.ink, textShadowOffset: { width: 0, height: 1.5 }, textShadowRadius: 0 }
+                        : { color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 13.5 }}>{emotePhrase(e)}</Text>
                     </Pressable>
                   ))}
                 </View>
@@ -5952,6 +5958,12 @@ function LeaveConfirmModal({ visible, kind = 'ranked', onCancel, onConfirm }: {
           {t(kind === 'ranked' ? 'leave.confirmBody' : 'leave.confirmBodyForfeit')}
         </Text>
       ) : null}
+      {UI2_ON ? (
+        <View style={{ flexDirection: 'row', gap: 12, alignSelf: 'stretch', marginTop: 2 }}>
+          <View style={{ flex: 1 }}><Ui2Button kind="blue" label={t('leave.cancel')} height={ui2mk(96)} size={ui2mk(28)} onPress={() => { triggerFeedback(GameFeedbackEvent.UI_NEGATIVE); onCancel(); }} /></View>
+          <View style={{ flex: 1.12 }}><Ui2Button kind="red" label={t('leave.confirm')} height={ui2mk(96)} size={ui2mk(28)} onPress={() => { triggerFeedback(GameFeedbackEvent.UI_DESTRUCTIVE); onConfirm(); }} /></View>
+        </View>
+      ) : (
       <View style={{ flexDirection: 'row', gap: 12, alignSelf: 'stretch', marginTop: 2, borderTopWidth: 0, borderBottomWidth: 0 }}>
         <Pressable onPress={onCancel} onPressIn={() => triggerFeedback(GameFeedbackEvent.UI_NEGATIVE)} style={({ pressed }) => ({ flex: 1, height: 50, borderRadius: 16, borderWidth: 0, backgroundColor: pressed ? withAlpha(theme.text, 0.08) : withAlpha(theme.text, 0.04), alignItems: 'center', justifyContent: 'center', transform: [{ scale: pressed ? 0.985 : 1 }] })}>
           <Text style={{ color: theme.text, fontFamily: 'Poppins-ExtraBold', fontSize: 14, ...engrave('sm') }}>{t('leave.cancel')}</Text>
@@ -5960,6 +5972,7 @@ function LeaveConfirmModal({ visible, kind = 'ranked', onCancel, onConfirm }: {
           <Text style={{ color: '#fff', fontFamily: 'Poppins-Black', fontSize: 14, letterSpacing: 0.2, ...engrave('sm') }}>{t('leave.confirm')}</Text>
         </Pressable>
       </View>
+      )}
     </GameModal>
   );
 }
