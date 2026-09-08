@@ -58,6 +58,7 @@ const UI2_ON = process.env.EXPO_PUBLIC_UI2 === '1';
 // Yalnız geliştirme: simülatörde UI2 sekmelerini incelerken açılıştaki eski tarz popup'ları sustur (EXPO_PUBLIC_UI2_QUIET=1).
 const UI2_QUIET = __DEV__ && process.env.EXPO_PUBLIC_UI2_QUIET === '1';
 if (UI2_QUIET) LogBox.ignoreAllLogs(true);
+import { UI2 } from './src/ui2/assets';
 // UI2 web önizlemesi: EXPO_PUBLIC_UI2_PREVIEW=1 npx expo start --web — ağ/IAP yok, sahte state.
 const UI2_PREVIEW = __DEV__ && Platform.OS === 'web' && process.env.EXPO_PUBLIC_UI2_PREVIEW === '1';
 const Ui2Preview = UI2_PREVIEW ? require('./src/ui2/Preview').default : null;
@@ -3625,19 +3626,19 @@ function AppRoot() {
         <View style={{ alignItems: 'center', gap: 12 }}>
           <View style={{ flexDirection: 'row', gap: 8, alignSelf: 'stretch' }}>
             <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.blue, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.blue, 0.45) }}>
-              <Text style={{ fontSize: 23 }}>🇹🇷</Text>
+              {UI2_ON ? <Image source={UI2.mode_country_team} style={{ width: 46, height: 46 }} resizeMode="contain" /> : <Text style={{ fontSize: 23 }}>🇹🇷</Text>}
               <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.countryTeamLabel')}</Text>
             </View>
             <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.purple, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.purple, 0.45) }}>
-              <Text style={{ fontSize: 24 }}>🔤</Text>
+              {UI2_ON ? <Image source={UI2.mode_letter_team} style={{ width: 46, height: 46 }} resizeMode="contain" /> : <Text style={{ fontSize: 24 }}>🔤</Text>}
               <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.letterTeamLabel')}</Text>
             </View>
             <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.primary, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.primary, 0.45) }}>
-              <Text style={{ fontSize: 23 }}>❌⭕</Text>
+              {UI2_ON ? <Image source={UI2.mode_xox} style={{ width: 46, height: 46 }} resizeMode="contain" /> : <Text style={{ fontSize: 23 }}>❌⭕</Text>}
               <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('socialPack.xoxLabel')}</Text>
             </View>
             <View style={{ flex: 1, alignItems: 'center', backgroundColor: withAlpha(theme.accent, 0.16), borderRadius: 16, padding: 10, borderWidth: 1, borderColor: withAlpha(theme.accent, 0.45) }}>
-              <Text style={{ fontSize: 23 }}>🔀</Text>
+              {UI2_ON ? <Image source={UI2.mode_cozkazan} style={{ width: 46, height: 46 }} resizeMode="contain" /> : <Text style={{ fontSize: 23 }}>🔀</Text>}
               <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('mode.cozkazan')}</Text>
             </View>
           </View>

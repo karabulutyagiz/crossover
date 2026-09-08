@@ -74,6 +74,10 @@ import { playHaptic } from './feedback/HapticsService';
 import { stopSplashStinger } from './feedback/AudioService';
 import { triggerFeedback } from './feedback/GameFeedback';
 import { useFeedbackPreferences } from './feedback/useFeedbackPreferences';
+// UI2 derisi: eski popup kabuğu (GameModal) ve Btn, UI2 açıkken yeni dilde çizilir — içerik aynı kalır.
+import { ChunkyButton as Ui2Button, OutlinedText as Ui2Text } from './ui2/primitives';
+import { C as UI2C, mk as ui2mk } from './ui2/tokens';
+const UI2_ON = process.env.EXPO_PUBLIC_UI2 === '1';
 // react-native-iap v15 (StoreKit2) — native module, absent in Expo Go. Wrap the require
 // in try/catch so the app still loads in Expo Go (Store shows "coming soon"); the real
 // module is present in dev/prod builds. v15 is the version compatible with RN's prebuilt-
@@ -533,6 +537,17 @@ export function Btn({
     </>
   );
   const feedbackEvent = feedback ?? (kind === 'danger' ? GameFeedbackEvent.UI_DESTRUCTIVE : gem ? GameFeedbackEvent.UI_PURCHASE : kind === 'ghost' ? GameFeedbackEvent.UI_SECONDARY : big ? GameFeedbackEvent.UI_PRIMARY : GameFeedbackEvent.UI_TAP);
+  if (UI2_ON) {
+    // UI2: tombul buton (Plate + konturlu yazı). Tür eşlemesi: primary→yeşil, accent→altın, blue/purple/ghost→mavi, danger/flame→kırmızı.
+    const kind2 = kind === 'primary' ? 'green' : kind === 'accent' ? 'gold' : kind === 'danger' || kind === 'flame' ? 'red' : 'blue';
+    const h = big ? ui2mk(92) : compact ? ui2mk(64) : ui2mk(78);
+    const fs = big ? ui2mk(34) : compact ? ui2mk(24) : ui2mk(29);
+    return (
+      <View style={{ marginVertical: 6, alignSelf: 'stretch' }}>
+        <Ui2Button kind={kind2} gem={gem} label={badge != null ? `${label}  ${badge}` : label} height={h} size={fs} disabled={inert} onPress={() => { triggerFeedback(feedbackEvent); onPress(); }} />
+      </View>
+    );
+  }
   return (
     <Pressable
       disabled={inert}
@@ -901,8 +916,9 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
   // KART ÇERÇEVESİ PENCERENİN RENGİNDE (2026-09-02, mockup): dıştaki ince
   // kontur şeridin koyusu, onun içindeki kalın bilezik şeridin kendisi —
   // uyarıda kırmızı çerçeveli kart, varsayılanda altın. Alınlıkla aynı boya.
-  const FRAME = darken(strip, 0.5);
-  const LIP = strip;
+  const FRAME = UI2_ON ? UI2C.navy : darken(strip, 0.5);
+  const LIP = UI2_ON ? UI2C.panelDark : strip;
+  const bandColor = UI2_ON ? (danger ? UI2C.red : coach ? '#1B5AE0' : '#1B5AE0') : strip;
   return (
     <SafeModal visible transparent animationType="none" onRequestClose={handleClose} onShow={handleShow}>
       {/* Karartma KENDİ değeriyle (scrim) sürülür: 140ms'de oturur ve kartın
@@ -941,14 +957,18 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
             <View style={{ backgroundColor: LIP, borderRadius: 25, padding: 4.5, paddingBottom: 5.5 }}>
             {/* clip (mood band + corners) lives HERE, not on the shadow-casting
                 face above — iOS masksToBounds would kill the modal drop shadow */}
-            <Pressable onPress={() => {}} style={{ backgroundColor: theme.modalFace, borderRadius: 21, overflow: 'hidden' }}>
+            <Pressable onPress={() => {}} style={{ backgroundColor: UI2_ON ? UI2C.panel : theme.modalFace, borderRadius: 21, overflow: 'hidden' }}>
               {!danger ? <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.16, zIndex: 6 }} /> : null}
               {title ? (
-                <View style={{ backgroundColor: strip, paddingLeft: 18, paddingRight: dismissible ? 54 : 18, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 9, overflow: 'hidden' }}>
+                <View style={{ backgroundColor: bandColor, paddingLeft: 18, paddingRight: dismissible ? 54 : 18, paddingVertical: UI2_ON ? 9 : 11, flexDirection: 'row', alignItems: 'center', gap: 9, overflow: 'hidden' }}>
                   <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.34 }} />
-                  <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2.5, backgroundColor: darken(strip, 0.42) }} />
+                  <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2.5, backgroundColor: darken(bandColor, 0.42) }} />
+                  {UI2_ON ? (
+                    <View style={{ flex: 1, minWidth: 0 }}><Ui2Text size={ui2mk(34)} width={ui2mk(3)} align="left" numberOfLines={1} fit>{(title ?? '').toLocaleUpperCase('tr')}</Ui2Text></View>
+                  ) : (<>
                   {icon ? <Ionicons name={icon} size={17} color={SKIN_LABEL_COLOR} /> : null}
                   <Text numberOfLines={1} style={{ color: SKIN_LABEL_COLOR, fontFamily: 'Poppins-ExtraBold', fontSize: 15, letterSpacing: 1, textTransform: 'uppercase', flexShrink: 1, ...SKIN_LABEL_SHADOW }}>{title}</Text>
+                  </>)}
                 </View>
               ) : null}
               <View style={{ padding: 20, paddingTop: title ? 16 : 20, gap: 12 }}>{children}</View>
@@ -959,14 +979,15 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
                 hitSlop={8}
                 style={({ pressed }) => ({
                   position: 'absolute', top: title ? 7 : 12, right: 12, width: 32, height: 32, borderRadius: 16,
-                  backgroundColor: title ? darken(strip, 0.3) : theme.well,
-                  borderTopWidth: 1.5, borderTopColor: 'rgba(255,255,255,0.3)',
+                  backgroundColor: UI2_ON ? UI2C.red : title ? darken(strip, 0.3) : theme.well,
+                  borderWidth: UI2_ON ? 2.5 : 0, borderColor: UI2C.navy,
+                  borderTopWidth: UI2_ON ? 2.5 : 1.5, borderTopColor: UI2_ON ? UI2C.navy : 'rgba(255,255,255,0.3)',
                   alignItems: 'center', justifyContent: 'center', zIndex: 5,
                   transform: [{ scale: pressed ? 0.9 : 1 }],
                   opacity: pressed ? 0.8 : 1,
                 })}
               >
-                <Ionicons name="close" size={16} color={title ? SKIN_LABEL_COLOR : theme.textSub} />
+                <Ionicons name="close" size={16} color={UI2_ON ? '#FFFFFF' : title ? SKIN_LABEL_COLOR : theme.textSub} />
               </Pressable>
               ) : null}
             </Pressable>
