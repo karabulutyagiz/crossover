@@ -8,7 +8,7 @@ import { EmoteSticker, FREE_EMOTES, PREMIUM_EMOTES } from '../emotes';
 import type { StoreCatalogItem } from '../protocol';
 import type { Actions, GameState } from './types';
 import { UI2 } from './assets';
-import { ChunkyButton, IconSlot, OutlinedText, Plate, SectionHeader } from './primitives';
+import { ArtWell, ChunkyButton, IconSlot, OutlinedText, Plate, RarityPips, SectionHeader } from './primitives';
 import { IcBolt, IcFace, IcNavCollection, IcStar } from './icons-ui';
 import { Hud } from './Shell';
 import { ACCOUNT_POWERS, SP_ART, SP_FACE, SP_LIST, type PowerId, type SpId } from './products';
@@ -103,14 +103,15 @@ function PowerCard({ width, name, art, face, badge, line, button, dim }: { width
     <View style={{ width }}>
       <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={R.card} inner={{ minHeight: mk(340) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(12), paddingHorizontal: mk(6) }}>
         {/* sahip olunmayanda YALNIZ sanat soluk; kart ve buton net kalır (soluk buton okunmuyordu) */}
-        <View style={{ height: mk(140), width: '100%', alignItems: 'center', justifyContent: 'center', opacity: dim ? 0.78 : 1 }}>
-          <View pointerEvents="none" style={{ position: 'absolute', left: mk(6), right: mk(6), top: 0, bottom: 0, borderRadius: mk(18), backgroundColor: `${accent}2E`, borderWidth: mk(3), borderColor: `${accent}88` }} />{isValidElement(art) ? <IconSlot icon={art} width={mk(140)} height={mk(140)} size={mk(120)} /> : <Image source={art as ImageSourcePropType} style={{ width: mk(140), height: mk(140) }} resizeMode="contain" />}</View>
+        <ArtWell accent={accent} height={mk(150)} style={{ alignSelf: 'stretch', marginHorizontal: mk(2), opacity: dim ? 0.82 : 1 }}>
+          {isValidElement(art) ? <IconSlot icon={art} width={mk(132)} height={mk(132)} size={mk(116)} /> : <Image source={art as ImageSourcePropType} style={{ width: mk(132), height: mk(132) }} resizeMode="contain" />}
+          <View style={{ position: 'absolute', bottom: mk(6) }}><RarityPips n={badge} color={accent} /></View>
+        </ArtWell>
         <View style={{ flex: 1 }} />
         <OutlinedText size={mk(26)} width={mk(2.5)} numberOfLines={1} fit>{up(name)}</OutlinedText>
-        <View style={{ backgroundColor: `${accent}3D`, borderRadius: mk(10), borderWidth: 1.5, borderColor: `${accent}88`, paddingHorizontal: mk(12), paddingVertical: mk(2), marginTop: mk(4) }}><Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(16) }}>{line}</Text></View>
+        <View style={{ backgroundColor: C.panelInk, borderRadius: mk(10), borderWidth: mk(2.5), borderColor: C.navy, paddingHorizontal: mk(12), paddingVertical: mk(2), marginTop: mk(4) }}><Text style={{ color: C.textSub, fontFamily: F.black, fontSize: fz(16) }}>{line}</Text></View>
         <View style={{ width: '100%', marginTop: mk(8), marginBottom: mk(10) }}><ChunkyButton kind={button.kind} label={button.label} height={mk(60)} size={mk(24)} onPress={button.on} /></View>
       </Plate>
-      <View style={{ position: 'absolute', top: -mk(8), left: -mk(4), width: mk(50), height: mk(50), borderRadius: mk(25), backgroundColor: accent, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(24)} width={1.2}>{String(badge)}</OutlinedText></View>
     </View>
   );
 }

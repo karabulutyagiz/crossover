@@ -2,7 +2,7 @@
 // dar üst parlama, alt dilim (gölge). Hepsi View katmanı; PNG buton yok, ölçek bağımsız.
 import { cloneElement, isValidElement, type ReactElement, type ReactNode, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View, type DimensionValue, type ImageSourcePropType, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
-import Svg, { Defs, Pattern, Polygon, Rect } from 'react-native-svg';
+import Svg, { Defs, Pattern, Polygon, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { C, F, fz, LIP, mk, OUTLINE, R, SIDE, SW, FONT_SCALE, MIN_TAP } from './tokens';
 import { UI2 } from './assets';
 import { IcGem } from './icons-ui';
@@ -21,6 +21,39 @@ export function CheckerBg({ style }: { style?: StyleProp<ViewStyle> }) {
         </Defs>
         <Rect width="100%" height="100%" fill="url(#ui2checker)" />
       </Svg>
+    </View>
+  );
+}
+
+// ── Sanat yuvası: ÇUKUR lacivert panel + ürünün kimlik renginde YUMUŞAK ışıma.
+// Sert renkli çerçeve/dolgu yerine bu kullanılır: kartlar tek dilde kalır, renk yalnız ışıkta hissedilir.
+export function ArtWell({ accent, height, radius = mk(18), children, style }: { accent: string; height?: number; radius?: number; children?: ReactNode; style?: StyleProp<ViewStyle> }) {
+  const gid = `well${accent.replace(/[^a-z0-9]/gi, '')}`;
+  return (
+    <View style={[{ height, borderRadius: radius, backgroundColor: '#071F52', borderWidth: mk(3), borderColor: '#04143A', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }, style]}>
+      <Svg pointerEvents="none" width="100%" height="100%" style={StyleSheet.absoluteFill}>
+        <Defs>
+          <RadialGradient id={gid} cx="50%" cy="46%" rx="62%" ry="62%">
+            <Stop offset="0" stopColor={accent} stopOpacity={0.5} />
+            <Stop offset="0.62" stopColor={accent} stopOpacity={0.16} />
+            <Stop offset="1" stopColor={accent} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill={`url(#${gid})`} />
+      </Svg>
+      <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: mk(4), backgroundColor: '#FFFFFF', opacity: 0.10 }} />
+      {children}
+    </View>
+  );
+}
+
+// ── Nadirlik göstergesi: küçük eğik elmaslar (sayı rozeti yerine — vitrin sakin kalır) ──
+export function RarityPips({ n, color, size = mk(15) }: { n: number; color: string; size?: number }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: size * 0.42 }}>
+      {Array.from({ length: Math.max(1, n) }, (_, i) => (
+        <View key={i} style={{ width: size, height: size, backgroundColor: color, borderWidth: 1, borderColor: '#04143A', transform: [{ rotate: '45deg' }] }} />
+      ))}
     </View>
   );
 }

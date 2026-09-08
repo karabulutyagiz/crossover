@@ -11,7 +11,7 @@ import type { StoreCatalogItem } from '../protocol';
 import { EmoteSticker, PREMIUM_EMOTES } from '../emotes';
 import { CosmeticArt, CosmeticPreview, SPECIAL_POWERS, SPECIAL_POWER_PRICE_FALLBACK } from '../screens';
 import { UI2 } from './assets';
-import { Bar, BannerImage, ChunkyButton, GemAmount, OutlinedText, Plate, Ribbon, SectionHeader, Sticker, fitSize, fmt } from './primitives';
+import { ArtWell, Bar, BannerImage, ChunkyButton, GemAmount, OutlinedText, Plate, Ribbon, SectionHeader, Sticker, fitSize, fmt } from './primitives';
 import { Hud } from './Shell';
 import { ACCOUNT_POWERS, DIAMOND_PACKS, PREMIUM_ROAD_PRICE, SOCIAL_PACK, SP_ART, SP_FACE, SP_LIST, SP_PACK } from './products';
 import type { useStorePurchases } from './useStorePurchases';
@@ -228,11 +228,17 @@ function ProductCard({ width, height, artH, title, subtitle, art, artNode, artSc
         <OutlinedText size={small ? mk(24) : mk(34)} width={mk(3)} numberOfLines={1} fit style={{ lineHeight: fz(small ? 28 : 38) }}>{title}</OutlinedText>
         {subtitle ? <OutlinedText size={mk(19)} width={1.5} style={{ marginTop: -mk(4), lineHeight: fz(22) }}>{subtitle}</OutlinedText> : null}
         <View style={{ flex: 1 }} />
-        <View style={{ height: artH, width: '100%', alignItems: 'center', justifyContent: 'center' }}>
-          {accent ? <View pointerEvents="none" style={{ position: 'absolute', left: mk(6), right: mk(6), top: 0, bottom: 0, borderRadius: mk(18), backgroundColor: `${accent}2E`, borderWidth: mk(3), borderColor: `${accent}88` }} /> : null}
-          {artNode ?? (art ? <Image source={art} style={{ width: artW, height: artH }} resizeMode="contain" /> : null)}
-          {ribbon ? <Ribbon label={ribbon.label} color={ribbon.color === 'red' ? C.red : C.gold} style={{ position: 'absolute', bottom: -mk(6), transform: [{ rotate: '-3deg' }] }} size={mk(15)} /> : null}
-        </View>
+        {accent ? (
+          <ArtWell accent={accent} height={artH} style={{ alignSelf: 'stretch', marginHorizontal: mk(2) }}>
+            {artNode ?? (art ? <Image source={art} style={{ width: artW, height: artH - mk(10) }} resizeMode="contain" /> : null)}
+            {ribbon ? <Ribbon label={ribbon.label} color={C.gold} style={{ position: 'absolute', right: mk(6), top: mk(6) }} size={mk(14)} /> : null}
+          </ArtWell>
+        ) : (
+          <View style={{ height: artH, width: '100%', alignItems: 'center', justifyContent: 'center' }}>
+            {artNode ?? (art ? <Image source={art} style={{ width: artW, height: artH }} resizeMode="contain" /> : null)}
+            {ribbon ? <Ribbon label={ribbon.label} color={ribbon.color === 'red' ? C.red : C.gold} style={{ position: 'absolute', bottom: -mk(6), transform: [{ rotate: '-3deg' }] }} size={mk(15)} /> : null}
+          </View>
+        )}
         <View style={{ flex: 1 }} />
         {desc ? <View style={{ height: fz(19) * 2 + mk(4), justifyContent: 'center' }}><Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: C.white, fontFamily: F.black, fontSize: fz(16), textAlign: 'center', lineHeight: fz(19) }}>{desc}</Text></View> : null}
         <View style={{ width: '100%', marginTop: mk(6), marginBottom: mk(10) }}>
