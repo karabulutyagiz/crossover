@@ -1,5 +1,6 @@
 // UI2 ürün verisi — GERÇEK ürünlerimiz (sunucu iap.ts + ASC ile birebir). Mock'taki
 // sahte adet/fiyatlar kullanılmaz; fiyat StoreKit'ten (displayPrice) gelir, burası yedek.
+import type { ImageSourcePropType } from 'react-native';
 import type { MessageKey } from '../i18n';
 import { UI2 } from './assets';
 
@@ -29,8 +30,18 @@ export const ACCOUNT_POWERS: { id: PowerId; titleKey: MessageKey; descKey: Messa
   { id: 'xp2x', titleKey: 'ui2.pw.xp', descKey: 'ui2.pw.xpDesc', price: 150, art: 'pw_xp', face: '#8E2BEA', lip: '#4B0F9E', top: '#C58BFF' },
   { id: 'shield', titleKey: 'ui2.pw.shield', descKey: 'ui2.pw.shieldDesc', price: 250, art: 'pw_shield', face: '#1E7BFF', lip: '#0E4FB8', top: '#7DB8FF' },
   { id: 'streak', titleKey: 'ui2.pw.streak', descKey: 'ui2.pw.streakDesc', price: 300, art: 'pw_streak', face: '#FF7A1A', lip: '#C24E00', top: '#FFB472' },
-  { id: 'training', titleKey: 'ui2.pw.training', descKey: 'ui2.pw.trainingDesc', price: 250, art: 'pw_training', face: '#22C55E', lip: '#15803D', top: '#86EFAC' },
+  // 'training' (Antrenman Bileti) UI2'de SATILMAZ/GÖSTERİLMEZ — kullanıcı kararı 2026-09-08 ("antrenman diye bir güç yok").
 ];
+
+// ── Maç içi Özel Güçler (mağaza + koleksiyon) — sanat: kullanıcının çizdirdiği rozetler (assets/powers, eski uygulamayla aynı kimlik) ──
+export type SpId = 'freeze' | 'reveal' | 'skip' | 'extratime' | 'secondchance';
+export const SP_LIST: SpId[] = ['freeze', 'reveal', 'skip', 'extratime', 'secondchance'];
+export const SP_ART: Record<SpId, ImageSourcePropType> = {
+  freeze: require('../../assets/powers/sp-freeze.png'), reveal: require('../../assets/powers/sp-reveal.png'), skip: require('../../assets/powers/sp-skip.png'),
+  extratime: require('../../assets/powers/sp-extratime.png'), secondchance: require('../../assets/powers/sp-secondchance.png'),
+};
+export const SP_FACE: Record<SpId, [string, string, string]> = { freeze: ['#1BA7F0', '#8CE0FF', '#0E6CA8'], reveal: ['#E8B400', '#FFE98A', '#A67900'], skip: ['#8E2BEA', '#C58BFF', '#4B0F9E'], extratime: ['#22C55E', '#86EFAC', '#15803D'], secondchance: ['#FF4B7A', '#FFA6C0', '#B01E48'] };
+export const SP_PACK = 3; // sunucu specialPowers cfg.packSize: 1 alım = 3 adet, fiyat paket fiyatı
 
 // Arena eşikleri (screens.tsx ARENA_DATA ile birebir) — kupa ilerleme çubuğu için.
 export const ARENA_STEPS: { name: string; min: number }[] = [

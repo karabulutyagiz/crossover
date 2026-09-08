@@ -1171,6 +1171,13 @@ const tr = {
 
   "ui2.emptySlot": "Boş yuva",
   "ui2.questsLabel": "Görevler",
+  "ui2.weeklyShop": "HAFTALIK DÜKKÂN",
+  "ui2.weeklyShopSub": "Bu haftaya özel ürünler!",
+  "ui2.resetsIn": "Yenilenme: {t}",
+  "ui2.dh": "{d}g {h}s",
+  "ui2.hm": "{h}s {m}d",
+  "ui2.vault": "KASA",
+  "ui2.matchPowersSub": "Maçta fark yarat!",
 };
 
 // ---- English (fallback) ----
@@ -2280,6 +2287,13 @@ const en: typeof tr = {
 
   "ui2.emptySlot": "Empty slot",
   "ui2.questsLabel": "Quests",
+  "ui2.weeklyShop": "WEEKLY SHOP",
+  "ui2.weeklyShopSub": "This week's exclusive items!",
+  "ui2.resetsIn": "Resets in {t}",
+  "ui2.dh": "{d}d {h}h",
+  "ui2.hm": "{h}h {m}m",
+  "ui2.vault": "VAULT",
+  "ui2.matchPowersSub": "Turn the match around!",
 };
 
 export type MessageKey = keyof typeof tr;

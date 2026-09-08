@@ -513,5 +513,12 @@
   "profile.buyConfirm": "Deze profielfoto kopen voor {price} diamanten?",
   "profile.notEnoughTitle": "Niet genoeg diamanten",
   "profile.notEnoughGemsBody": "Niet genoeg diamanten voor deze foto. Bekijk de diamantpakketten!",
-  "stats.bestStreak": "Beste reeks"
+  "stats.bestStreak": "Beste reeks",
+  "ui2.weeklyShop": "WEEKWINKEL",
+  "ui2.weeklyShopSub": "Exclusieve items van deze week!",
+  "ui2.resetsIn": "Vernieuwt over {t}",
+  "ui2.dh": "{d}d {h}u",
+  "ui2.hm": "{h}u {m}m",
+  "ui2.vault": "KLUIS",
+  "ui2.matchPowersSub": "Draai de wedstrijd om!"
 }

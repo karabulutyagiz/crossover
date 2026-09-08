@@ -513,5 +513,12 @@
   "profile.buyConfirm": "花 {price} 钻石购买这个头像？",
   "profile.notEnoughTitle": "钻石不足",
   "profile.notEnoughGemsBody": "钻石不够买这个头像。看看钻石礼包吧！",
-  "stats.bestStreak": "最高连胜"
+  "stats.bestStreak": "最高连胜",
+  "ui2.weeklyShop": "每周商店",
+  "ui2.weeklyShopSub": "本周限定商品！",
+  "ui2.resetsIn": "{t}后刷新",
+  "ui2.dh": "{d}天{h}小时",
+  "ui2.hm": "{h}小时{m}分",
+  "ui2.vault": "宝库",
+  "ui2.matchPowersSub": "扭转比赛！"
 }

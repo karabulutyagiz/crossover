@@ -513,5 +513,12 @@
   "profile.buyConfirm": "این عکس پروفایل را با {price} الماس بخری؟",
   "profile.notEnoughTitle": "الماس کافی نیست",
   "profile.notEnoughGemsBody": "الماست برای این عکس کافی نیست. بسته‌های الماس را ببین!",
-  "stats.bestStreak": "بهترین سری"
+  "stats.bestStreak": "بهترین سری",
+  "ui2.weeklyShop": "فروشگاه هفتگی",
+  "ui2.weeklyShopSub": "آیتم‌های ویژه این هفته!",
+  "ui2.resetsIn": "تازه‌سازی در {t}",
+  "ui2.dh": "{d}روز {h}ساعت",
+  "ui2.hm": "{h}ساعت {m}دقیقه",
+  "ui2.vault": "گاوصندوق",
+  "ui2.matchPowersSub": "بازی را برگردان!"
 }

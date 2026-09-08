@@ -513,5 +513,12 @@
   "profile.buyConfirm": "شراء صورة الملف هذه مقابل {price} ماسة؟",
   "profile.notEnoughTitle": "الألماس غير كافٍ",
   "profile.notEnoughGemsBody": "ألماسك لا يكفي لهذه الصورة. ألقِ نظرة على حزم الألماس!",
-  "stats.bestStreak": "أفضل سلسلة"
+  "stats.bestStreak": "أفضل سلسلة",
+  "ui2.weeklyShop": "متجر الأسبوع",
+  "ui2.weeklyShopSub": "عناصر حصرية لهذا الأسبوع!",
+  "ui2.resetsIn": "يتجدد خلال {t}",
+  "ui2.dh": "{d}ي {h}س",
+  "ui2.hm": "{h}س {m}د",
+  "ui2.vault": "الخزنة",
+  "ui2.matchPowersSub": "اقلب المباراة!"
 }

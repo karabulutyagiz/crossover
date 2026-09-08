@@ -513,5 +513,12 @@
   "profile.buyConfirm": "Acquistare questa foto profilo per {price} diamanti?",
   "profile.notEnoughTitle": "Diamanti insufficienti",
   "profile.notEnoughGemsBody": "Non hai abbastanza diamanti per questa foto. Dai un’occhiata ai pacchetti!",
-  "stats.bestStreak": "Miglior serie"
+  "stats.bestStreak": "Miglior serie",
+  "ui2.weeklyShop": "NEGOZIO SETTIMANALE",
+  "ui2.weeklyShopSub": "Articoli esclusivi della settimana!",
+  "ui2.resetsIn": "Si rinnova tra {t}",
+  "ui2.dh": "{d}g {h}h",
+  "ui2.hm": "{h}h {m}min",
+  "ui2.vault": "CAVEAU",
+  "ui2.matchPowersSub": "Ribalta la partita!"
 }

@@ -513,5 +513,12 @@
   "profile.buyConfirm": "Acheter cette photo de profil pour {price} diamants ?",
   "profile.notEnoughTitle": "Pas assez de diamants",
   "profile.notEnoughGemsBody": "Pas assez de diamants pour cette photo. Regarde les packs de diamants !",
-  "stats.bestStreak": "Meilleure série"
+  "stats.bestStreak": "Meilleure série",
+  "ui2.weeklyShop": "BOUTIQUE DE LA SEMAINE",
+  "ui2.weeklyShopSub": "Articles exclusifs de la semaine !",
+  "ui2.resetsIn": "Renouvelé dans {t}",
+  "ui2.dh": "{d}j {h}h",
+  "ui2.hm": "{h}h {m}min",
+  "ui2.vault": "COFFRE",
+  "ui2.matchPowersSub": "Renverse le match !"
 }

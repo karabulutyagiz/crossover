@@ -513,5 +513,12 @@
   "profile.buyConfirm": "Kjøpe dette profilbildet for {price} diamanter?",
   "profile.notEnoughTitle": "Ikke nok diamanter",
   "profile.notEnoughGemsBody": "Ikke nok diamanter til dette bildet. Sjekk diamantpakkene!",
-  "stats.bestStreak": "Beste rekke"
+  "stats.bestStreak": "Beste rekke",
+  "ui2.weeklyShop": "UKESBUTIKK",
+  "ui2.weeklyShopSub": "Ukens eksklusive varer!",
+  "ui2.resetsIn": "Fornyes om {t}",
+  "ui2.dh": "{d}d {h}t",
+  "ui2.hm": "{h}t {m}m",
+  "ui2.vault": "HVELV",
+  "ui2.matchPowersSub": "Snu kampen!"
 }

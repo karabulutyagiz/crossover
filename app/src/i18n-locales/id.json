@@ -513,5 +513,12 @@
   "profile.buyConfirm": "Beli foto profil ini dengan {price} berlian?",
   "profile.notEnoughTitle": "Berlian Kurang",
   "profile.notEnoughGemsBody": "Berlianmu tidak cukup untuk foto ini. Lihat paket berlian!",
-  "stats.bestStreak": "Streak Terbaik"
+  "stats.bestStreak": "Streak Terbaik",
+  "ui2.weeklyShop": "TOKO MINGGUAN",
+  "ui2.weeklyShopSub": "Item eksklusif minggu ini!",
+  "ui2.resetsIn": "Diperbarui dalam {t}",
+  "ui2.dh": "{d}h {h}j",
+  "ui2.hm": "{h}j {m}m",
+  "ui2.vault": "BRANKAS",
+  "ui2.matchPowersSub": "Balikkan pertandingan!"
 }

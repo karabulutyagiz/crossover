@@ -513,5 +513,12 @@
   "profile.buyConfirm": "Dieses Profilbild für {price} Diamanten kaufen?",
   "profile.notEnoughTitle": "Nicht genug Diamanten",
   "profile.notEnoughGemsBody": "Für dieses Profilbild reichen deine Diamanten nicht. Schau dir die Diamantpakete an!",
-  "stats.bestStreak": "Beste Serie"
+  "stats.bestStreak": "Beste Serie",
+  "ui2.weeklyShop": "WOCHENSHOP",
+  "ui2.weeklyShopSub": "Exklusive Artikel dieser Woche!",
+  "ui2.resetsIn": "Neu in {t}",
+  "ui2.dh": "{d}T {h}Std",
+  "ui2.hm": "{h}Std {m}Min",
+  "ui2.vault": "TRESOR",
+  "ui2.matchPowersSub": "Dreh das Spiel!"
 }

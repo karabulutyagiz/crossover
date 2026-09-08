@@ -1,19 +1,19 @@
 // UI2 — MAĞAZA sekmesi. Mock: refs/store-top.png + refs/store-bottom.png (941 px, mk()).
 // Görünüm birebir mock; ürünler/fiyatlar GERÇEK (products.ts + StoreKit displayPrice + sunucu kataloğu).
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, Text, View, type DimensionValue, type ImageSourcePropType } from 'react-native';
 import { t } from '../i18n';
 import type { Actions, GameState } from './types';
 import { IcCrown, IcLock, IcNoAds } from './icons';
-import { IcBolt, IcCrownBig, IcFace, IcGems3, IcNavStore, IcStar } from './icons-ui';
+import { IcBolt, IcClock, IcCrownBig, IcFace, IcGems3, IcNavStore, IcStar } from './icons-ui';
 import { S, up } from './strings';
 import type { StoreCatalogItem } from '../protocol';
 import { EmoteSticker, PREMIUM_EMOTES } from '../emotes';
-import { CosmeticArt } from '../screens';
+import { CosmeticArt, SPECIAL_POWERS, SPECIAL_POWER_PRICE_FALLBACK } from '../screens';
 import { UI2 } from './assets';
 import { Bar, BannerImage, ChunkyButton, GemAmount, OutlinedText, Plate, Ribbon, SectionHeader, Sticker, fitSize, fmt } from './primitives';
 import { Hud } from './Shell';
-import { ACCOUNT_POWERS, DIAMOND_PACKS, PREMIUM_ROAD_PRICE, SOCIAL_PACK } from './products';
+import { ACCOUNT_POWERS, DIAMOND_PACKS, PREMIUM_ROAD_PRICE, SOCIAL_PACK, SP_ART, SP_FACE, SP_LIST, SP_PACK } from './products';
 import type { useStorePurchases } from './useStorePurchases';
 import { C, F, fz, GAP, LIP, mk, OUTLINE, R, SIDE, SW } from './tokens';
 
@@ -27,15 +27,18 @@ export type StoreTabProps = {
 const INNER_W = SW - SIDE * 2 - OUTLINE * 2 - mk(14) * 2; // Section plakasının iç genişliği
 const COL_W = Math.floor((INNER_W - GAP * 3) / 4);   // 4 sütun (elmas/güç/ifade)
 const COL3_W = Math.floor((INNER_W - GAP * 2) / 3);  // 3 sütun (elmas/kozmetik)
-const COL2_W = Math.floor((INNER_W - GAP) / 2);      // 2 sütun (güçler — telefonda okunur)
-const FRAME_W = mk(230);                             // çerçeve şeridi kartı
 
 export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile, onOpenArenas, onConfirm }: StoreTabProps) {
   const p = state.profile;
   const catalog = state.storeCatalog;
   useEffect(() => { if (!catalog) actions.loadStoreCatalog(); }, [catalog, actions]);
-  const cosmetics = useMemo(() => (catalog?.items ?? []).filter((i) => i.type === 'match_background'), [catalog]);
-  const frames = useMemo(() => (catalog?.items ?? []).filter((i) => i.type === 'frame'), [catalog]);
+  // HAFTALIK DÜKKÂN: yalnız sunucunun bu hafta öne çıkardığı ürünler (catalog.featured) — eski mağazayla aynı kural
+  // (featured boşsa fiyatlı ilk 8). Katalogun tamamı burada SATILMAZ (kullanıcı kararı 2026-09-08).
+  const featured = useMemo(() => {
+    const items = catalog?.items ?? []; const byId = new Map(items.map((i) => [i.id, i]));
+    const picked = (catalog?.featured ?? []).map((id) => byId.get(id)).filter((i): i is StoreCatalogItem => Boolean(i));
+    return picked.length ? picked : items.filter((i) => i.diamondPrice > 0).slice(0, 8);
+  }, [catalog]);
   const owned = new Set(p?.ownedCosmetics ?? []);
   const diamonds = p?.diamonds ?? 0;
   const gemBuy = (title: string, price: number, onYes: () => void) => onConfirm({ title, body: `${fmt(price)} elmas karşılığında satın alınsın mı?`, price, onYes });
@@ -97,34 +100,41 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
         </View>
       </Section>
 
-      {/* ── GÜÇLER (hesap güçleri) ── */}
+      {/* ── MAÇ GÜÇLERİ (maç içi Özel Güçler; fiyat store_catalog.specialPowers, yoksa yedek; 1 alım = 3'lü paket) ── */}
+      <Section icon={<IcBolt />} title={t('store.specialPowers')} subtitle={t('ui2.matchPowersSub')}>
+        <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(17), lineHeight: fz(21), marginTop: -mk(6), marginBottom: mk(10), paddingHorizontal: mk(4) }}>{t('store.spDisclosure')}</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
+          {SP_LIST.map((id) => {
+            const meta = SPECIAL_POWERS[id]; const price = catalog?.specialPowers?.find((x) => x.id === id)?.price ?? SPECIAL_POWER_PRICE_FALLBACK[id];
+            return (
+              <ProductCard key={id} width={COL3_W} height={mk(370)} artH={mk(140)} title={t(meta.nameKey)} art={SP_ART[id]} face={SP_FACE[id][0]} top={SP_FACE[id][1]} lip={SP_FACE[id][2]} desc={t(meta.descKey)} small
+                ribbon={{ label: `×${SP_PACK}`, color: 'gold' }}
+                button={{ gem: true, label: String(price), onPress: () => gemBuy(`${t(meta.nameKey)} ×${SP_PACK}`, price, () => actions.buySpecialPower(id)), disabled: diamonds < price }} />
+            );
+          })}
+        </View>
+      </Section>
+
+      {/* ── GÜÇLER (hesap güçleri: 2X XP, Kupa Kalkanı, Seri Koruma) ── */}
       <Section icon={<IcBolt />} title={up(t('collection.tabPowers'))} subtitle={t('ui2.powersSub')}>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
           {ACCOUNT_POWERS.map((pw) => (
-            <ProductCard key={pw.id} width={COL2_W} height={mk(360)} artH={mk(150)} title={t(pw.titleKey)} art={UI2[pw.art]} face={pw.face} lip={pw.lip} top={pw.top} desc={t(pw.descKey)}
+            <ProductCard key={pw.id} width={COL3_W} height={mk(370)} artH={mk(140)} title={t(pw.titleKey)} art={UI2[pw.art]} face={pw.face} lip={pw.lip} top={pw.top} desc={t(pw.descKey)} small
               button={{ gem: true, label: String(pw.price), onPress: () => gemBuy(t(pw.titleKey), pw.price, () => actions.buyPower(pw.id)), disabled: diamonds < pw.price }} />
           ))}
         </View>
       </Section>
 
-      {/* ── KOZMETİK (maç arka planları — sunucu kataloğu, satılabilir olanlar) ── */}
-      <Section icon={<IcStar />} title={t('collection.tabCosmetics')} subtitle={t('ui2.cosmSub')}>
-        {cosmetics.length === 0 ? <LoadingRow /> : (
+      {/* ── HAFTALIK DÜKKÂN: yalnız bu haftanın süreli ürünleri (featured) + geri sayım; KASA ürünü altın çerçeveli ── */}
+      <Section icon={<IcStar />} title={t('ui2.weeklyShop')} subtitle={t('ui2.weeklyShopSub')}>
+        <WeeklyCountdown until={catalog?.weeklyResetAt} />
+        {!catalog ? <LoadingRow /> : (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
-            {cosmetics.map((item) => (
-              <CosmeticCard key={item.id} item={item} width={COL3_W} owned={owned.has(item.id)} onBuy={() => gemBuy(item.name, item.diamondPrice, () => actions.buyCosmetic(item.id))} disabled={diamonds < item.diamondPrice} />
+            {featured.map((item) => (
+              <CosmeticCard key={item.id} item={item} width={COL3_W} owned={owned.has(item.id)} vault={item.id === catalog?.vaultItemId} onBuy={() => gemBuy(item.name, item.diamondPrice, () => actions.buyCosmetic(item.id))} disabled={diamonds < item.diamondPrice} />
             ))}
           </View>
         )}
-        {frames.length ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: GAP, marginHorizontal: -mk(14) }} contentContainerStyle={{ paddingHorizontal: mk(14), gap: GAP }}>
-            {frames.map((item) => (
-              <View key={item.id} style={{ width: FRAME_W }}>
-                <FrameCard item={item} owned={owned.has(item.id)} onBuy={() => gemBuy(item.name, item.diamondPrice, () => actions.buyCosmetic(item.id))} disabled={diamonds < item.diamondPrice} />
-              </View>
-            ))}
-          </ScrollView>
-        ) : null}
       </Section>
 
       {/* ── İFADELER (premium emote'lar) ── */}
@@ -218,13 +228,14 @@ function ProductCard({ width, height, artH, title, subtitle, art, artNode, artSc
     </View>
   );
 }
-function CosmeticCard({ item, width, owned, onBuy, disabled }: { item: StoreCatalogItem; width: number; owned: boolean; onBuy: () => void; disabled: boolean }) {
+function CosmeticCard({ item, width, owned, vault, onBuy, disabled }: { item: StoreCatalogItem; width: number; owned: boolean; vault?: boolean; onBuy: () => void; disabled: boolean }) {
   return (
     <View style={{ width }}>
-      <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={R.card} inner={{ height: mk(300) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(6), paddingHorizontal: mk(8) }}>
+      <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={vault ? C.gold : C.navy} radius={R.card} inner={{ height: mk(300) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(6), paddingHorizontal: mk(8) }}>
         <View style={{ height: fz(30) * 2, justifyContent: 'center' }}><OutlinedText size={mk(26)} width={mk(3)} numberOfLines={2} fit style={{ lineHeight: fz(30) }}>{item.name.toLocaleUpperCase('tr')}</OutlinedText></View>
         <View style={{ width: '100%', height: mk(124), borderRadius: mk(12), overflow: 'hidden', marginTop: mk(2), borderWidth: mk(3), borderColor: C.navy, backgroundColor: '#061A45', alignItems: 'center', justifyContent: 'center' }}>
-          <CosmeticArt id={item.id} type={item.type} size={mk(232)} accent={C.cyan} />
+          <CosmeticArt id={item.id} type={item.type} size={item.type === 'frame' ? mk(210) : mk(232)} accent={vault ? C.gold : C.cyan} />
+          {vault ? <Ribbon label={t('ui2.vault')} color={C.gold} size={mk(14)} style={{ position: 'absolute', top: mk(4), left: mk(4), paddingHorizontal: mk(8) }} /> : null}
         </View>
         <View style={{ flex: 1 }} />
         <View style={{ width: '100%', marginBottom: mk(10) }}>
@@ -234,17 +245,17 @@ function CosmeticCard({ item, width, owned, onBuy, disabled }: { item: StoreCata
     </View>
   );
 }
-function FrameCard({ item, owned, onBuy, disabled }: { item: StoreCatalogItem; owned: boolean; onBuy: () => void; disabled: boolean }) {
+// Haftalık dükkân geri sayımı: sunucu weeklyResetAt (yoksa gelecek Pazartesi 00:00 yerel), dakikada bir tazelenir.
+function WeeklyCountdown({ until }: { until?: string | null }) {
+  const target = useMemo(() => { const t0 = until ? new Date(until).getTime() : NaN; if (Number.isFinite(t0)) return t0; const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); return d.getTime(); }, [until]);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 60_000); return () => clearInterval(id); }, []);
+  const ms = Math.max(0, target - now); const d = Math.floor(ms / 86_400_000); const h = Math.floor((ms % 86_400_000) / 3_600_000); const m = Math.max(1, Math.ceil((ms % 3_600_000) / 60_000));
+  const txt = d > 0 ? t('ui2.dh', { d: String(d), h: String(h) }) : t('ui2.hm', { h: String(h), m: String(m) });
   return (
-    <View style={{ width: FRAME_W }}>
-      <Plate face={C.card} top={C.cardTop} lip={C.cardDark} radius={R.card} inner={{ height: mk(300) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(6), paddingHorizontal: mk(8) }}>
-        <View style={{ height: fz(30) * 2, justifyContent: 'center', zIndex: 2 }}><OutlinedText size={mk(24)} width={mk(2)} numberOfLines={2} fit style={{ lineHeight: fz(30) }}>{item.name.toLocaleUpperCase('tr')}</OutlinedText></View>
-        <View style={{ height: mk(130), alignItems: 'center', justifyContent: 'center', zIndex: 1 }}><CosmeticArt id={item.id} type={item.type} size={mk(210)} accent={C.gold} /></View>
-        <View style={{ flex: 1 }} />
-        <View style={{ width: '100%', marginBottom: mk(10) }}>
-          <ChunkyButton kind="green" gem={!owned} label={owned ? S.owned : String(item.diamondPrice)} height={mk(64)} size={mk(30)} onPress={onBuy} disabled={owned || disabled} />
-        </View>
-      </Plate>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(8), alignSelf: 'flex-start', backgroundColor: C.panelInk, borderRadius: mk(14), borderWidth: mk(3), borderColor: C.navy, paddingHorizontal: mk(12), paddingVertical: mk(5), marginTop: -mk(4), marginBottom: mk(12) }}>
+      <IcClock size={mk(28)} />
+      <Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(17) }}>{t('ui2.resetsIn', { t: txt })}</Text>
     </View>
   );
 }

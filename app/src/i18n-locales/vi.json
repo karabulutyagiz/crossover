@@ -513,5 +513,12 @@
   "profile.buyConfirm": "Mua ảnh đại diện này với {price} kim cương?",
   "profile.notEnoughTitle": "Không đủ kim cương",
   "profile.notEnoughGemsBody": "Không đủ kim cương cho ảnh này. Xem các gói kim cương nhé!",
-  "stats.bestStreak": "Chuỗi tốt nhất"
+  "stats.bestStreak": "Chuỗi tốt nhất",
+  "ui2.weeklyShop": "CỬA HÀNG TUẦN",
+  "ui2.weeklyShopSub": "Vật phẩm độc quyền tuần này!",
+  "ui2.resetsIn": "Làm mới sau {t}",
+  "ui2.dh": "{d}ng {h}g",
+  "ui2.hm": "{h}g {m}p",
+  "ui2.vault": "KHO BÁU",
+  "ui2.matchPowersSub": "Lật ngược trận đấu!"
 }

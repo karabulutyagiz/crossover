@@ -513,5 +513,12 @@
   "profile.buyConfirm": "Ostetaanko tämä profiilikuva {price} timantilla?",
   "profile.notEnoughTitle": "Ei tarpeeksi timantteja",
   "profile.notEnoughGemsBody": "Timantit eivät riitä tähän kuvaan. Katso timanttipaketit!",
-  "stats.bestStreak": "Paras putki"
+  "stats.bestStreak": "Paras putki",
+  "ui2.weeklyShop": "VIIKKOKAUPPA",
+  "ui2.weeklyShopSub": "Tämän viikon erikoistuotteet!",
+  "ui2.resetsIn": "Uusiutuu: {t}",
+  "ui2.dh": "{d}pv {h}t",
+  "ui2.hm": "{h}t {m}min",
+  "ui2.vault": "HOLVI",
+  "ui2.matchPowersSub": "Käännä ottelu!"
 }

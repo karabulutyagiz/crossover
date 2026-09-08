@@ -513,5 +513,12 @@
   "profile.buyConfirm": "この画像をダイヤ {price} で購入しますか？",
   "profile.notEnoughTitle": "ダイヤ不足",
   "profile.notEnoughGemsBody": "この画像にはダイヤが足りません。ダイヤパックをチェック！",
-  "stats.bestStreak": "最高連勝"
+  "stats.bestStreak": "最高連勝",
+  "ui2.weeklyShop": "ウィークリーショップ",
+  "ui2.weeklyShopSub": "今週限定アイテム！",
+  "ui2.resetsIn": "あと{t}で更新",
+  "ui2.dh": "{d}日{h}時間",
+  "ui2.hm": "{h}時間{m}分",
+  "ui2.vault": "金庫",
+  "ui2.matchPowersSub": "試合をひっくり返せ！"
 }

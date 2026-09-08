@@ -9,19 +9,18 @@ import type { StoreCatalogItem } from '../protocol';
 import type { Actions, GameState } from './types';
 import { UI2 } from './assets';
 import { ChunkyButton, IconSlot, OutlinedText, Plate, SectionHeader } from './primitives';
-import { IcBolt, IcClock, IcFace, IcNavCollection, IcStar } from './icons-ui';
+import { IcBolt, IcFace, IcNavCollection, IcStar } from './icons-ui';
 import { Hud } from './Shell';
-import { ACCOUNT_POWERS, type PowerId } from './products';
+import { ACCOUNT_POWERS, SP_ART, SP_FACE, SP_LIST, type PowerId, type SpId } from './products';
 import { S, up } from './strings';
 import { C, F, fz, GAP, LIP, mk, OUTLINE, R, SIDE, SW } from './tokens';
 
-type SpId = 'freeze' | 'reveal' | 'skip' | 'extratime' | 'secondchance';
-const SP_ART: Record<SpId, ImageSourcePropType | ReactNode> = { freeze: UI2.sp_freeze2, reveal: UI2.sp_goal, skip: UI2.sp_speed, extratime: <IcClock />, secondchance: UI2.sp_social };
-const SP_FACE: Record<SpId, [string, string, string]> = { freeze: ['#1BA7F0', '#8CE0FF', '#0E6CA8'], reveal: ['#E8B400', '#FFE98A', '#A67900'], skip: ['#8E2BEA', '#C58BFF', '#4B0F9E'], extratime: ['#22C55E', '#86EFAC', '#15803D'], secondchance: ['#FF4B7A', '#FFA6C0', '#B01E48'] };
 const RARITY_N: Record<string, number> = { common: 2, rare: 3, epic: 4, legendary: 5, mythic: 5 };
 const EMOTE_SLOTS = 8;
 const INNER_W = SW - SIDE * 2 - OUTLINE * 2 - mk(14) * 2;
-const COL_W = Math.floor((INNER_W - GAP * 3) / 4);
+const COL_W = Math.floor((INNER_W - GAP * 3) / 4);   // ifade yuvaları (4 sütun)
+const PW_IN_W = Math.floor((INNER_W - GAP * 2) / 3);  // güç seti yuvaları (3 sütun, panel içi)
+const PW_W = Math.floor((SW - SIDE * 2 - GAP * 2) / 3); // tüm güçler (3 sütun, telefonda okunur)
 
 export type CollectionTabProps = { state: GameState; actions: Actions; onOpenSettings: () => void; onOpenProfile: () => void; onOpenArenas: () => void; onOpenStore: () => void; onNotice: (title: string, body: string) => void; initialSub?: Sub };
 type Sub = 'powers' | 'cosmetics' | 'emotes';
@@ -59,7 +58,7 @@ export function CollectionTab({ state, actions, onOpenSettings, onOpenProfile, o
 }
 
 function Powers({ p, actions, spEquipped, onOpenStore, onNotice }: { p: GameState['profile']; actions: Actions; spEquipped: SpId[]; onOpenStore: () => void; onNotice: (a: string, b: string) => void }) {
-  const specials = Object.keys(SPECIAL_POWERS) as SpId[];
+  const specials = SP_LIST;
   const count = (id: SpId) => spInventoryCount(p, id);
   const accCount: Record<PowerId, number> = { xp2x: p?.powerXp2x ?? 0, shield: p?.powerShield ?? 0, streak: p?.powerStreak ?? 0, training: p?.powerTraining ?? 0 };
   return (
@@ -74,10 +73,9 @@ function Powers({ p, actions, spEquipped, onOpenStore, onNotice }: { p: GameStat
           <View style={{ flexDirection: 'row', gap: GAP }}>
             {[0, 1, 2].map((i) => {
               const id = spEquipped[i];
-              return id ? <PowerCard key={id} width={COL_W} name={t(SPECIAL_POWERS[id].nameKey)} art={SP_ART[id]} face={SP_FACE[id]} badge={RARITY_N[SPECIAL_POWERS[id].rarity]} line={t('ui2.count', { n: count(id) })} button={{ label: up(t('collection.remove')), kind: 'blue', on: () => actions.equipSpecialPower(id) }} />
-                : <Plate key={i} face="#0B3A96" top="#2F63C8" lip="#041A4E" radius={R.card} style={{ width: COL_W }} inner={{ height: mk(300) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(60)} width={mk(3)} color={C.textMuted}>+</OutlinedText><Text style={{ color: C.textMuted, fontFamily: F.bold, fontSize: fz(15) }}>{t('ui2.emptySlot')}</Text></Plate>;
+              return id ? <PowerCard key={id} width={PW_IN_W} name={t(SPECIAL_POWERS[id].nameKey)} art={SP_ART[id]} face={SP_FACE[id]} badge={RARITY_N[SPECIAL_POWERS[id].rarity]} line={t('ui2.count', { n: count(id) })} button={{ label: up(t('collection.remove')), kind: 'blue', on: () => actions.equipSpecialPower(id) }} />
+                : <Plate key={i} face="#0B3A96" top="#2F63C8" lip="#041A4E" radius={R.card} style={{ width: PW_IN_W }} inner={{ height: mk(330) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(60)} width={mk(3)} color={C.textMuted}>+</OutlinedText><Text style={{ color: C.textMuted, fontFamily: F.bold, fontSize: fz(16) }}>{t('ui2.emptySlot')}</Text></Plate>;
             })}
-            <View style={{ width: COL_W }} />
           </View>
         </Plate>
       </View>
@@ -85,12 +83,12 @@ function Powers({ p, actions, spEquipped, onOpenStore, onNotice }: { p: GameStat
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, marginHorizontal: SIDE }}>
         {specials.map((id) => {
           const n = count(id); const on = spEquipped.includes(id);
-          return <PowerCard key={id} width={COL_W} name={t(SPECIAL_POWERS[id].nameKey)} art={SP_ART[id]} face={SP_FACE[id]} badge={RARITY_N[SPECIAL_POWERS[id].rarity]} line={t('ui2.count', { n })} dim={n === 0 && !on}
+          return <PowerCard key={id} width={PW_W} name={t(SPECIAL_POWERS[id].nameKey)} art={SP_ART[id]} face={SP_FACE[id]} badge={RARITY_N[SPECIAL_POWERS[id].rarity]} line={t('ui2.count', { n })} dim={n === 0 && !on}
             button={n === 0 && !on ? { label: S.store, kind: 'gold', on: onOpenStore } : { label: on ? up(t('collection.remove')) : t('store.spEquip'), kind: on ? 'blue' : 'green', on: () => { if (!on && spEquipped.length >= 3) { onNotice(t('ui2.powerSetFull'), t('ui2.powerSetFullBody')); return; } actions.equipSpecialPower(id); } }} />;
         })}
         {ACCOUNT_POWERS.map((pw) => {
           const n = accCount[pw.id];
-          return <PowerCard key={pw.id} width={COL_W} name={t(pw.titleKey)} art={UI2[pw.art]} face={[pw.face, pw.top, pw.lip]} badge={n} line={t('ui2.count', { n })} dim={n === 0}
+          return <PowerCard key={pw.id} width={PW_W} name={t(pw.titleKey)} art={UI2[pw.art]} face={[pw.face, pw.top, pw.lip]} badge={n} line={t('ui2.count', { n })} dim={n === 0}
             button={n === 0 ? { label: S.store, kind: 'gold', on: onOpenStore } : { label: up(t('collection.use')), kind: 'green', on: () => { actions.usePower(pw.id); onNotice(t(pw.titleKey), t('ui2.powerActivated')); } }} />;
         })}
       </View>
@@ -100,12 +98,12 @@ function Powers({ p, actions, spEquipped, onOpenStore, onNotice }: { p: GameStat
 function PowerCard({ width, name, art, face, badge, line, button, dim }: { width: number; name: string; art: ImageSourcePropType | ReactNode; face: [string, string, string]; badge: number; line: string; button: { label: string; kind: 'green' | 'blue' | 'gold'; on: () => void }; dim?: boolean }) {
   return (
     <View style={{ width, opacity: dim ? 0.72 : 1 }}>
-      <Plate face={face[0]} top={face[1]} lip={face[2]} radius={R.card} inner={{ height: mk(300) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(10), paddingHorizontal: mk(6) }}>
-        <View style={{ height: mk(110), width: '100%', alignItems: 'center', justifyContent: 'center' }}>{isValidElement(art) ? <IconSlot icon={art} width={mk(110)} height={mk(110)} size={mk(96)} /> : <Image source={art as ImageSourcePropType} style={{ width: Math.round(width * 0.86), height: mk(110) }} resizeMode="contain" />}</View>
+      <Plate face={face[0]} top={face[1]} lip={face[2]} radius={R.card} inner={{ height: mk(330) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(12), paddingHorizontal: mk(6) }}>
+        <View style={{ height: mk(140), width: '100%', alignItems: 'center', justifyContent: 'center' }}>{isValidElement(art) ? <IconSlot icon={art} width={mk(140)} height={mk(140)} size={mk(120)} /> : <Image source={art as ImageSourcePropType} style={{ width: mk(140), height: mk(140) }} resizeMode="contain" />}</View>
         <View style={{ flex: 1 }} />
-        <OutlinedText size={mk(22)} width={mk(2)} numberOfLines={1} fit>{up(name)}</OutlinedText>
-        <View style={{ backgroundColor: 'rgba(255,255,255,0.28)', borderRadius: mk(10), paddingHorizontal: mk(12), paddingVertical: mk(2), marginTop: mk(3) }}><Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(15) }}>{line}</Text></View>
-        <View style={{ width: '100%', marginTop: mk(6), marginBottom: mk(8) }}><ChunkyButton kind={button.kind} label={button.label} height={mk(46)} size={mk(20)} onPress={button.on} /></View>
+        <OutlinedText size={mk(26)} width={mk(2.5)} numberOfLines={1} fit>{up(name)}</OutlinedText>
+        <View style={{ backgroundColor: 'rgba(255,255,255,0.28)', borderRadius: mk(10), paddingHorizontal: mk(12), paddingVertical: mk(2), marginTop: mk(4) }}><Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(16) }}>{line}</Text></View>
+        <View style={{ width: '100%', marginTop: mk(8), marginBottom: mk(10) }}><ChunkyButton kind={button.kind} label={button.label} height={mk(60)} size={mk(24)} onPress={button.on} /></View>
       </Plate>
       <View style={{ position: 'absolute', top: -mk(8), left: -mk(4), width: mk(50), height: mk(50), borderRadius: mk(25), backgroundColor: '#8E2BEA', borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(24)} width={1.2}>{String(badge)}</OutlinedText></View>
     </View>

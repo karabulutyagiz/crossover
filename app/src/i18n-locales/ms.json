@@ -513,5 +513,12 @@
   "profile.buyConfirm": "Beli gambar profil ini dengan {price} berlian?",
   "profile.notEnoughTitle": "Berlian Tidak Cukup",
   "profile.notEnoughGemsBody": "Berlian tidak cukup untuk gambar ini. Lihat pek berlian!",
-  "stats.bestStreak": "Rentetan Terbaik"
+  "stats.bestStreak": "Rentetan Terbaik",
+  "ui2.weeklyShop": "KEDAI MINGGUAN",
+  "ui2.weeklyShopSub": "Item eksklusif minggu ini!",
+  "ui2.resetsIn": "Diperbaharui dalam {t}",
+  "ui2.dh": "{d}h {h}j",
+  "ui2.hm": "{h}j {m}m",
+  "ui2.vault": "PETI",
+  "ui2.matchPowersSub": "Ubah perlawanan!"
 }

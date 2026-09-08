@@ -513,5 +513,12 @@
   "profile.buyConfirm": "花 {price} 鑽石購買這個頭像？",
   "profile.notEnoughTitle": "鑽石不足",
   "profile.notEnoughGemsBody": "鑽石不夠買這個頭像。看看鑽石禮包吧！",
-  "stats.bestStreak": "最高連勝"
+  "stats.bestStreak": "最高連勝",
+  "ui2.weeklyShop": "每週商店",
+  "ui2.weeklyShopSub": "本週限定商品！",
+  "ui2.resetsIn": "{t}後刷新",
+  "ui2.dh": "{d}天{h}小時",
+  "ui2.hm": "{h}小時{m}分",
+  "ui2.vault": "寶庫",
+  "ui2.matchPowersSub": "扭轉比賽！"
 }

@@ -513,5 +513,12 @@
   "profile.buyConfirm": "Купить это фото профиля за {price} алмазов?",
   "profile.notEnoughTitle": "Не хватает алмазов",
   "profile.notEnoughGemsBody": "На это фото не хватает алмазов. Посмотри наборы алмазов!",
-  "stats.bestStreak": "Лучшая серия"
+  "stats.bestStreak": "Лучшая серия",
+  "ui2.weeklyShop": "МАГАЗИН НЕДЕЛИ",
+  "ui2.weeklyShopSub": "Эксклюзив этой недели!",
+  "ui2.resetsIn": "Обновится через {t}",
+  "ui2.dh": "{d}д {h}ч",
+  "ui2.hm": "{h}ч {m}м",
+  "ui2.vault": "СЕЙФ",
+  "ui2.matchPowersSub": "Переломи матч!"
 }

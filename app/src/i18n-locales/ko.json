@@ -513,5 +513,12 @@
   "profile.buyConfirm": "이 프로필 사진을 다이아 {price}개로 구매할까요?",
   "profile.notEnoughTitle": "다이아 부족",
   "profile.notEnoughGemsBody": "이 사진을 사기엔 다이아가 부족해요. 다이아 팩을 확인하세요!",
-  "stats.bestStreak": "최고 연승"
+  "stats.bestStreak": "최고 연승",
+  "ui2.weeklyShop": "주간 상점",
+  "ui2.weeklyShopSub": "이번 주 한정 아이템!",
+  "ui2.resetsIn": "{t} 후 갱신",
+  "ui2.dh": "{d}일 {h}시간",
+  "ui2.hm": "{h}시간 {m}분",
+  "ui2.vault": "금고",
+  "ui2.matchPowersSub": "경기를 뒤집어라!"
 }

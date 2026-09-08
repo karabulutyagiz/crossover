@@ -513,5 +513,12 @@
   "profile.buyConfirm": "ซื้อรูปโปรไฟล์นี้ด้วย {price} เพชร?",
   "profile.notEnoughTitle": "เพชรไม่พอ",
   "profile.notEnoughGemsBody": "เพชรไม่พอสำหรับรูปนี้ ลองดูแพ็กเพชร!",
-  "stats.bestStreak": "สตรีคสูงสุด"
+  "stats.bestStreak": "สตรีคสูงสุด",
+  "ui2.weeklyShop": "ร้านค้าประจำสัปดาห์",
+  "ui2.weeklyShopSub": "ไอเทมพิเศษประจำสัปดาห์นี้!",
+  "ui2.resetsIn": "รีเซ็ตใน {t}",
+  "ui2.dh": "{d}ว {h}ชม",
+  "ui2.hm": "{h}ชม {m}น",
+  "ui2.vault": "ห้องนิรภัย",
+  "ui2.matchPowersSub": "พลิกเกม!"
 }
