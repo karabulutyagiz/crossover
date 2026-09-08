@@ -21,7 +21,8 @@ export function Hud({ data, actions, title, titleIcon }: { data: HudData; action
   const avatarBox = mk(128);
   return (
     <View style={{ paddingHorizontal: SIDE, paddingTop: mk(22) }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+      {/* Üst bant tek eksende hizalı: avatar kutusu, ad+XP bloğu, elmas hapı ve dişli dikeyde ORTALI (kullanıcı 2026-09-08) */}
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         {/* avatar kutusu + seviye kalkanı */}
         {/* Kare çerçeve + içine TAM oturan fotoğraf: kutu eskiden dikdörtgendi (dilim kadar alçak) ve
             Pressable daha genişti → fotoğraf sola/sağa kayıyor, kenarlarda boşluk kalıyordu. */}
@@ -34,10 +35,10 @@ export function Hud({ data, actions, title, titleIcon }: { data: HudData; action
           </View>
         </Pressable>
         {/* ad + XP */}
-        <View style={{ flex: 1, minWidth: 0, marginLeft: mk(18), marginTop: mk(6), overflow: 'hidden' }}>
+        <View style={{ flex: 1, minWidth: 0, marginLeft: mk(16), marginRight: mk(12), overflow: 'hidden' }}>
           <OutlinedText size={mk(40)} width={mk(4)} align="left" numberOfLines={1}>{data.name.toLocaleUpperCase('tr')}</OutlinedText>
           {/* XP: kalın çubuk, sayı ÇUBUĞUN İÇİNDE (yanına yazınca boş hap gibi duruyordu) */}
-          <View style={{ marginTop: mk(10), justifyContent: 'center' }}>
+          <View style={{ marginTop: mk(8), justifyContent: 'center' }}>
             <Bar value={data.xp} max={data.xpNext} height={mk(44)} radius={mk(14)} />
             <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, alignItems: 'center' }}>
               <OutlinedText size={mk(26)} width={mk(2)} numberOfLines={1}>{`${fmt(data.xp)} / ${fmt(data.xpNext)}`}</OutlinedText>
@@ -45,7 +46,7 @@ export function Hud({ data, actions, title, titleIcon }: { data: HudData; action
           </View>
         </View>
         {/* elmas pill + artı + dişli */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: mk(8) }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           {/* Artı hapın İÇİNDE: dışarıda dururken 'bardan fırlamış' gibi görünüyordu (kullanıcı 2026-09-08) */}
           <Pressable onPress={actions?.onGems}>
             <Plate face={C.panelInk} top="#2F63C8" lip="#051D52" radius={R.pill} inner={{ height: mk(84) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingLeft: mk(10), paddingRight: mk(8), gap: mk(8) }}>
@@ -56,13 +57,16 @@ export function Hud({ data, actions, title, titleIcon }: { data: HudData; action
               </Pressable>
             </Plate>
           </Pressable>
+          {/* Dişli de elmas hapıyla AYNI yükseklikte yuvarlak buton — çıplak ikonken boşlukta duruyordu */}
           <Pressable onPress={actions?.onSettings} style={{ marginLeft: mk(10) }}>
-            <IcGear size={mk(86)} />
+            <Plate face={C.panelInk} top="#2F63C8" lip="#051D52" radius={R.pill} inner={{ width: mk(84) - OUTLINE * 2, height: mk(84) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}>
+              <IcGear size={mk(58)} />
+            </Plate>
           </Pressable>
         </View>
       </View>
       {/* kupa pill + sayfa başlığı */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: mk(8), height: titleIcon ? mk(104) : mk(92) }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: mk(10), height: titleIcon ? mk(104) : mk(94) }}>
         <Pressable onPress={actions?.onTrophies}>
           <Plate face={C.panelInk} top="#2F63C8" lip="#051D52" radius={R.pill} inner={{ height: mk(84) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingLeft: mk(10), paddingRight: mk(24), gap: mk(8) }}>
             <View style={{ marginTop: -mk(4) }}><IcTrophy size={mk(66)} /></View>
