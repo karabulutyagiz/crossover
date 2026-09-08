@@ -75,7 +75,8 @@ import { stopSplashStinger } from './feedback/AudioService';
 import { triggerFeedback } from './feedback/GameFeedback';
 import { useFeedbackPreferences } from './feedback/useFeedbackPreferences';
 // UI2 derisi: eski popup kabuğu (GameModal) ve Btn, UI2 açıkken yeni dilde çizilir — içerik aynı kalır.
-import { ChunkyButton as Ui2Button, OutlinedText as Ui2Text } from './ui2/primitives';
+import { ChunkyButton as Ui2Button, OutlinedText as Ui2Text, Plate as Ui2Plate } from './ui2/primitives';
+import { IcClock as Ui2IcClock } from './ui2/icons-ui';
 import { C as UI2C, mk as ui2mk } from './ui2/tokens';
 const UI2_ON = process.env.EXPO_PUBLIC_UI2 === '1';
 // react-native-iap v15 (StoreKit2) — native module, absent in Expo Go. Wrap the require
@@ -709,6 +710,17 @@ function GamePanel({ children, hero = false, tint, accentStripe, compact = false
   const face = hero ? theme.surface3 : theme.surface2;
   const sh = hero ? shadowRaised : compact ? shadowRow : shadowSoft;
   const stripe = accentStripe ?? tint;
+  if (UI2_ON) {
+    // UI2: maç yüzeyleri de sekmelerdeki plaka dilinde — lacivert kontur, alt dilim, üst parlama.
+    return (
+      <Ui2Plate face={hero ? '#1B5AE0' : UI2C.card} top={hero ? '#5A9BFF' : UI2C.cardTop} lip={hero ? '#0B3A9E' : UI2C.cardDark} outline={UI2C.navy}
+        radius={ui2mk(compact ? 20 : 26)} lipHeight={ui2mk(compact ? 8 : 12)} outlineWidth={ui2mk(compact ? 5 : 6)}
+        style={style} inner={[{ padding: 12 }, bodyStyle]}>
+        {stripe ? <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: ui2mk(10), backgroundColor: stripe }} /> : null}
+        {children}
+      </Ui2Plate>
+    );
+  }
   return (
     // Düğmelerle AYNI anatomi: koyu dış kontur → yüz. Paneller eskiden konturusuz
     // düz yüzeylerdi; parlak/kalın düğmelerin yanında şekil dili tutmuyordu.
@@ -6218,7 +6230,7 @@ export function CountdownScreen({ state }: Props) {
       <View style={styles.center}>
         {/* Halka TAMAMEN yeşil kaplar: alt kenar da theme.primary (eskiden primaryDark
             koyu arka planda "kesik" görünüyordu). Üstte yalnız ince bir parlaklık kalır. */}
-        <View style={{ width: 172, height: 172, borderRadius: 86, borderWidth: 5, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.panelInk, shadowColor: theme.primary, shadowOpacity: 0.65, shadowRadius: 28, shadowOffset: { width: 0, height: 0 }, elevation: 18 }}>
+        <View style={{ width: 172, height: 172, borderRadius: 86, borderWidth: UI2_ON ? 8 : 5, borderColor: UI2_ON ? UI2C.gold : theme.primary, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.panelInk, shadowColor: theme.primary, shadowOpacity: 0.65, shadowRadius: 28, shadowOffset: { width: 0, height: 0 }, elevation: 18 }}>
           <View style={{ width: 140, height: 140, borderRadius: 70, backgroundColor: theme.card, borderWidth: 2, borderColor: withAlpha(theme.primary, 0.33), alignItems: 'center', justifyContent: 'center' }}>
             <Animated.Text style={{ color: theme.text, fontSize: n > 0 ? 88 : 50, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], transform: [{ scale }], opacity: a, ...engrave('lg') }}>
               {n > 0 ? n : 'GO!'}
@@ -6274,6 +6286,18 @@ function MatchTimer({ endsAt, urgentAt = 5, fallbackSecs, style }: {
   }, [urgent, pulse]);
   if (shown === null) return null;
   const color = urgent ? theme.danger : theme.accent;
+  if (UI2_ON) {
+    return (
+      <Animated.View style={[{ alignSelf: 'center', transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.09] }) }] }, style]}>
+        <Ui2Plate face={urgent ? UI2C.red : UI2C.panelInk} top={urgent ? '#FF8FA3' : '#2F63C8'} lip={urgent ? UI2C.redDark : '#051D52'} outline={UI2C.navy}
+          radius={ui2mk(40)} lipHeight={ui2mk(8)} outlineWidth={ui2mk(5)}
+          inner={{ flexDirection: 'row', alignItems: 'center', gap: ui2mk(10), paddingHorizontal: ui2mk(22), paddingVertical: ui2mk(4) }}>
+          <Ui2IcClock size={ui2mk(40)} />
+          <Ui2Text size={ui2mk(48)} width={ui2mk(4)} color={urgent ? '#FFFFFF' : UI2C.gold}>{String(shown)}</Ui2Text>
+        </Ui2Plate>
+      </Animated.View>
+    );
+  }
   return (
     <Animated.View
       style={[{
@@ -6371,16 +6395,19 @@ export function PickTeamScreen({ state, actions, tutorial }: Props) {
           onPress={() => { setLastPick({ kind: 'team', label: c.name, logoUrl: c.logoUrl ?? null }); actions.pickTeam(c.id); }}
           style={({ pressed }) => ({
             width: '31.5%' as const, alignItems: 'center' as const, gap: 7,
-            backgroundColor: theme.surface2, borderRadius: 14,
-            borderTopWidth: 1, borderTopColor: theme.topLight,
+            backgroundColor: UI2_ON ? UI2C.card : theme.surface2, borderRadius: UI2_ON ? ui2mk(22) : 14,
+            ...(UI2_ON
+              ? { borderWidth: ui2mk(5), borderBottomWidth: ui2mk(11), borderColor: UI2C.navy }
+              : { borderTopWidth: 1, borderTopColor: theme.topLight, ...shadowRow }),
               paddingVertical: 12, paddingHorizontal: 4,
             opacity: used ? 0.38 : 1,
-            ...shadowRow,
             transform: [{ translateY: used ? 0 : pressed ? 2 : 0 }],
           })}
         >
           <ClubBadge name={c.name} size={46} logoUrl={c.logoUrl} />
-          <Text style={{ color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }} numberOfLines={2}>
+          <Text style={UI2_ON
+            ? { color: '#FFFFFF', fontSize: 13, fontFamily: 'LilitaOne-Regular', textAlign: 'center', textShadowColor: UI2C.ink, textShadowOffset: { width: 0, height: 1.5 }, textShadowRadius: 0 }
+            : { color: theme.text, fontSize: 10.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }} numberOfLines={2}>
             {c.name}
           </Text>
           {used ? (
@@ -14909,7 +14936,7 @@ function AvatarTile({ avatarId, owned, selected, price, isNew = false, seasonOnl
   return (
     <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut} style={{ width: '31%', minWidth: 96 }}>
       <View style={{ backgroundColor: theme.shadowInk, borderRadius: 17, ...shadowRow }}>
-        <Animated.View style={{ transform: [{ translateY: ty }], backgroundColor: selected ? theme.surface3 : theme.surface2, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 8, overflow: 'hidden', ...(selected ? { borderWidth: 2, borderColor: theme.primary } : {}), alignItems: 'center' }}>
+        <Animated.View style={{ transform: [{ translateY: ty }], backgroundColor: selected ? '#1B5AE0' : (UI2_ON ? UI2C.card : theme.surface2), borderRadius: UI2_ON ? ui2mk(24) : 16, paddingVertical: 12, paddingHorizontal: 8, overflow: 'hidden', ...(UI2_ON ? { borderWidth: ui2mk(5), borderBottomWidth: ui2mk(11), borderColor: selected ? UI2C.gold : UI2C.navy } : selected ? { borderWidth: 2, borderColor: theme.primary } : {}), alignItems: 'center' }}>
           <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.08 }} />
           <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.28 }} />
           <AvatarBadge avatarId={avatarId} size={58} locked={!owned} dimmed={!owned} ringColor={selected ? theme.primary : undefined} />
@@ -17976,12 +18003,16 @@ const styles = StyleSheet.create({
   // ("üstte çok boşluk"). Sides/bottom keep the original breathing room.
   screen: { flex: 1, backgroundColor: 'transparent', paddingHorizontal: 22, paddingTop: 10, paddingBottom: 22, justifyContent: 'center' },
   center: { alignItems: 'center', gap: 6 },
-  h1: { color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginVertical: 6, letterSpacing: 0.5, ...engrave('lg') },
+  h1: UI2_ON
+    ? { color: '#FFFFFF', fontSize: 24, fontFamily: 'LilitaOne-Regular', textAlign: 'center', marginVertical: 8, letterSpacing: 0.5, textShadowColor: UI2C.ink, textShadowOffset: { width: 0, height: 2.5 }, textShadowRadius: 0 }
+    : { color: theme.text, fontSize: 18, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', marginVertical: 6, letterSpacing: 0.5, ...engrave('lg') },
   label: { color: theme.muted, fontSize: 10, letterSpacing: 2, textAlign: 'center', fontFamily: 'Poppins-SemiBold' },
   sectionLabel: { color: theme.muted, fontSize: 10, letterSpacing: 2, marginTop: 12, marginBottom: 4, fontFamily: 'Poppins-ExtraBold' },
   code: { color: theme.accent, fontSize: 32, fontFamily: 'Poppins-Black', textAlign: 'center', letterSpacing: 4 },
   muted: { color: theme.muted, textAlign: 'center', fontSize: 12, fontFamily: 'Poppins-SemiBold' },
-  input: {
+  input: UI2_ON
+    ? { backgroundColor: '#071F52', color: '#FFFFFF', borderWidth: ui2mk(5), borderColor: UI2C.navy, borderRadius: ui2mk(20), paddingHorizontal: 16, paddingVertical: 15, fontSize: 16, fontFamily: 'Poppins-ExtraBold', marginVertical: 8 }
+    : {
     backgroundColor: theme.well, // recessed inner well
     color: theme.text,
     borderTopWidth: 2,
@@ -17997,8 +18028,12 @@ const styles = StyleSheet.create({
   // Recessed waiting chip (lobby waiting / wait-host states)
   lobbyWaitChip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, alignSelf: 'center', backgroundColor: theme.well, borderRadius: 14, borderTopWidth: 2, borderTopColor: theme.shadowInk, paddingVertical: 10, paddingHorizontal: 16 },
   teamsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
-  teamCard: { flex: 1, backgroundColor: theme.surface2, borderRadius: 16, padding: 14, alignItems: 'center', gap: 8, borderTopWidth: 1, borderTopColor: theme.topLight, ...shadowRow },
-  teamName: { color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') },
+  teamCard: UI2_ON
+    ? { flex: 1, backgroundColor: UI2C.card, borderRadius: ui2mk(26), padding: 12, alignItems: 'center', gap: 8, borderWidth: ui2mk(6), borderBottomWidth: ui2mk(14), borderColor: UI2C.navy }
+    : { flex: 1, backgroundColor: theme.surface2, borderRadius: 16, padding: 14, alignItems: 'center', gap: 8, borderTopWidth: 1, borderTopColor: theme.topLight, ...shadowRow },
+  teamName: UI2_ON
+    ? { color: '#FFFFFF', fontSize: 17, fontFamily: 'LilitaOne-Regular', textAlign: 'center', textShadowColor: UI2C.ink, textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 0 }
+    : { color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') },
   plus: { color: theme.accent, fontSize: 22, fontFamily: 'Poppins-Black', ...engrave('sm') },
   passHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: withAlpha(theme.accent, 0.12), borderRadius: 12, paddingVertical: 7, paddingHorizontal: 12, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: theme.accent },
   passHintText: { color: theme.accent, fontSize: 12, fontFamily: 'Poppins-SemiBold', flexShrink: 1 },
@@ -18009,7 +18044,9 @@ const styles = StyleSheet.create({
   fixRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   fixText: { color: theme.accent, fontSize: 12, fontFamily: 'Poppins-SemiBold' },
   teamResultRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  teamResult: { flex: 1, backgroundColor: theme.surface2, borderRadius: 16, borderTopWidth: 1, borderTopColor: theme.topLight, padding: 12, alignItems: 'center', gap: 6, ...shadowRow },
+  teamResult: UI2_ON
+    ? { flex: 1, backgroundColor: UI2C.card, borderRadius: ui2mk(24), borderWidth: ui2mk(6), borderBottomWidth: ui2mk(13), borderColor: UI2C.navy, padding: 12, alignItems: 'center', gap: 6 }
+    : { flex: 1, backgroundColor: theme.surface2, borderRadius: 16, borderTopWidth: 1, borderTopColor: theme.topLight, padding: 12, alignItems: 'center', gap: 6, ...shadowRow },
   teamResultName: { color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center', ...engrave('sm') },
   teamResultYears: { color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold', textAlign: 'center' },
   careerList: { alignSelf: 'stretch', maxHeight: 220 },
