@@ -95,16 +95,22 @@ const NAV: { key: NavKey; Icon: (p: { size?: number }) => ReactNode; labelKey: M
   { key: 'tournaments', Icon: IcTrophy, labelKey: 'tab.tournaments' as MessageKey },
 ];
 export const NAV_H = mk(150);
+// Mock: nav bandı sayfanın damalı zemininin KOYULTULMUŞ hâli (ayrı renk değil), üstte sert çizgi yok;
+// plakalar ekranın alt kenarına kadar iner (alt köşe/dudak ekran dışında), aktif plaka altın çerçeveyle yukarı taşar.
 export function BottomNav({ active, onPress, labels, badges }: { active: NavKey; onPress: (k: NavKey) => void; labels?: Partial<Record<NavKey, string>>; badges?: Partial<Record<NavKey, number>> }) {
   const insets = useSafeAreaInsets();
+  const below = Math.max(insets.bottom, mk(10)); // ana ekran çubuğu alanı — plakanın yüzü buraya kadar iner
+  const bandH = mk(12) + NAV_H + below;
   return (
-    <View style={{ backgroundColor: C.navBar, paddingBottom: Math.max(insets.bottom, mk(10)), paddingTop: mk(14), paddingHorizontal: mk(10), flexDirection: 'row', alignItems: 'flex-end', gap: mk(8), borderTopWidth: mk(5), borderTopColor: C.navy }}>
+    <View style={{ height: bandH, backgroundColor: 'rgba(1,14,58,0.42)', paddingTop: mk(12), paddingHorizontal: mk(8), flexDirection: 'row', alignItems: 'flex-start', gap: mk(8), overflow: 'hidden' }}>
+      <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: mk(3), backgroundColor: C.navy, opacity: 0.7 }} />
       {NAV.map((n) => {
         const on = n.key === active; const badge = badges?.[n.key];
+        const tileH = NAV_H + below + mk(30); // alt köşeler + dudak bandın dışında kalır (kırpılır)
         return (
           <Pressable key={n.key} onPress={() => onPress(n.key)} style={{ flex: 1, minWidth: 0, marginTop: on ? -mk(22) : 0 }}>
             <Plate face={on ? C.navActive : C.navTile} top={on ? '#8CC4FF' : C.navTileTop} lip={on ? C.gold : '#082F80'} outline={on ? C.gold : C.navy} radius={R.tile} outlineWidth={on ? mk(7) : OUTLINE} lipHeight={mk(14)}
-              inner={{ height: (on ? NAV_H + mk(12) : NAV_H) - mk(14) - OUTLINE * 2, alignItems: 'center', justifyContent: 'center', paddingTop: mk(6) }}>
+              inner={{ height: tileH - mk(14) - OUTLINE * 2, alignItems: 'center', justifyContent: 'flex-start', paddingTop: on ? mk(18) : mk(8) }}>
               <View style={{ height: mk(78), justifyContent: 'center' }}><n.Icon size={mk(74)} /></View>
               <OutlinedText size={fitSize(mk(30), labels?.[n.key] ?? t(n.labelKey), 10)} width={mk(3)} family={F.title} style={{ marginTop: mk(2) }} numberOfLines={1} fit>{labels?.[n.key] ?? t(n.labelKey)}</OutlinedText>
             </Plate>
