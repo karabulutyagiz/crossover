@@ -530,5 +530,6 @@
   "ui2.winLoss": "Victoire {w} / Défaite {l}",
   "ui2.yourRank": "Ton rang",
   "ui2.everySevenDays": "Renouvelé tous les 7 jours",
-  "ui2.unlockAllRewards": "Débloque toutes les récompenses"
+  "ui2.unlockAllRewards": "Débloque toutes les récompenses",
+  "ui2.dailyQuestion": "Question du jour"
 }

@@ -530,5 +530,6 @@
   "ui2.winLoss": "勝利 {w} / 敗北 {l}",
   "ui2.yourRank": "あなたの順位",
   "ui2.everySevenDays": "7日ごとに更新",
-  "ui2.unlockAllRewards": "すべての報酬を解放"
+  "ui2.unlockAllRewards": "すべての報酬を解放",
+  "ui2.dailyQuestion": "デイリー問題"
 }

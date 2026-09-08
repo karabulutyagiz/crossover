@@ -11,6 +11,7 @@ import { StoreTab } from './StoreTab';
 import { FriendsTab } from './FriendsTab';
 import { TournamentsTab } from './TournamentsTab';
 import { CollectionTab } from './CollectionTab';
+import { DailyCrossoverModal } from '../screens';
 import { ConfirmDialog, LanguageDialog, LeagueDialog, ModeMenuDialog, PrivateRoomDialog, QuestsDialog, RequestsDialog, SettingsDialog, ArenasDialog, LevelRoadDialog, ProfileDialog, TournamentDialog, TournamentOverDialog, TournamentReadyDialog } from './Dialogs';
 import { setLanguage, t } from '../i18n';
 import { S, up } from './strings';
@@ -19,7 +20,7 @@ import { C, F, fz, LIP, mk, OUTLINE, SIDE, SW } from './tokens';
 
 const KEYS: NavKey[] = ['store', 'collection', 'play', 'friends', 'tournaments'];
 type Confirm = { title: string; body: string; price?: number; priceText?: string; onYes: () => void };
-export type Ui2DialogKey = 'mode' | 'bot' | 'quests' | 'settings' | 'language' | 'room' | 'requests' | 'league' | 'tournament' | 'road' | 'arenas' | 'profile' | null;
+export type Ui2DialogKey = 'mode' | 'bot' | 'quests' | 'settings' | 'language' | 'room' | 'requests' | 'league' | 'tournament' | 'road' | 'arenas' | 'profile' | 'dailycx' | null;
 
 export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, onLanguageChange, onDiamondCelebration, onOpenFeedback, onOpenMatchHistory, initialScrollY = 0, initialDialog = null, initialCollectionSub }: {
   state: GameState; actions: Actions; activeTab: number; goToTab: (i: number) => void;
@@ -49,7 +50,7 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
   const common = { state, actions, onOpenSettings: () => setDlg('settings'), onOpenProfile: () => setDlg('profile'), onOpenArenas: () => setDlg('arenas') };
   let body: ReactNode;
   if (active === 'store') body = <StoreTab {...common} store={store} onConfirm={(c) => setConfirm(c)} />;
-  else if (active === 'play') body = <HomeTab {...common} onOpenLevelRoad={() => setDlg('road')} onOpenStore={() => goToTab(0)} onOpenQuests={() => { actions.getDailyQuests(); setDlg('quests'); }} onOpenModes={() => setDlg('mode')} onOpenBot={() => setDlg('bot')} />;
+  else if (active === 'play') body = <HomeTab {...common} onOpenLevelRoad={() => setDlg('road')} onOpenStore={() => goToTab(0)} onOpenQuests={() => { actions.getDailyQuests(); setDlg('quests'); }} onOpenModes={() => setDlg('mode')} onOpenBot={() => setDlg('bot')} onOpenDailyQuestion={() => { actions.startDailyCrossover(); setDlg('dailycx'); }} />;
   else if (active === 'friends') body = <FriendsTab {...common} onOpenRequests={() => setDlg('requests')} onOpenAddFriend={() => say(t('friends.addSection'), t('ui2.addFriendHint'))} onNotice={say} />;
   else if (active === 'tournaments') body = <TournamentsTab {...common} onOpenLevelRoad={() => setDlg('road')} onOpenLeague={() => { actions.getLeague(); setDlg('league'); }} onOpenTournament={(id) => { actions.getTournament(id); setTourId(id); setDlg('tournament'); }} onNotice={say} />;
   else body = <CollectionTab {...common} onOpenStore={() => goToTab(0)} onNotice={say} initialSub={initialCollectionSub} />;
@@ -78,6 +79,9 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
       {dlg === 'requests' ? <RequestsDialog state={state} actions={actions} onClose={closeDlg} /> : null}
       {dlg === 'league' ? <LeagueDialog state={state} onClose={closeDlg} /> : null}
       {dlg === 'tournament' && tourId ? <TournamentDialog state={state} actions={actions} id={tourId} onClose={closeDlg} /> : null}
+      {/* Günün Crossover'ı — eski pencere bileşeni, UI2 derisiyle (GameModal) çiziliyor */}
+      <DailyCrossoverModal visible={dlg === 'dailycx'} cx={state.dailyCx} wrong={state.dailyCxWrong} reward={state.dailyCxReward}
+        onGuess={actions.guessDailyCrossover} onClose={() => { setDlg(null); actions.clearDailyCxReward(); }} />
       {dlg === 'road' ? <LevelRoadDialog state={state} actions={actions} onOpenStore={() => goToTab(0)} onClose={closeDlg} /> : null}
       {dlg === 'arenas' ? <ArenasDialog state={state} onClose={closeDlg} /> : null}
       {dlg === 'profile' ? <ProfileDialog state={state} actions={actions} onOpenMatchHistory={onOpenMatchHistory} onClose={closeDlg} onConfirm={(c) => setConfirm(c)} onNotice={say} onOpenStore={() => goToTab(0)} onOpenCollection={() => goToTab(1)} /> : null}

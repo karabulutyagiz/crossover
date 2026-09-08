@@ -7,7 +7,7 @@ import type { Actions, GameState } from './types';
 import { up } from './strings';
 import { UI2 } from './assets';
 import { Bar, ChunkyButton, OutlinedText, Plate, fmt } from './primitives';
-import { IcChevronGold, IcClipboard, IcCrownBig, IcTrophy } from './icons-ui';
+import { IcChevronGold, IcClipboard, IcCrownBig, IcDailyQuestion, IcTrophy } from './icons-ui';
 import { Hud } from './Shell';
 import { arenaArt, arenaIndexFor, ARENAS, LEVEL_CAP, nextArenaMin } from './products';
 import { C, F, LIP, mh, mk, OUTLINE, SIDE, SW } from './tokens';
@@ -16,9 +16,10 @@ export type HomeTabProps = {
   state: GameState; actions: Actions;
   onOpenLevelRoad: () => void; onOpenQuests: () => void; onOpenModes: () => void; onOpenBot: () => void;
   onOpenStore: () => void; onOpenSettings: () => void; onOpenProfile: () => void; onOpenArenas: () => void;
+  onOpenDailyQuestion: () => void;
 };
 
-export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenModes, onOpenBot, onOpenStore, onOpenSettings, onOpenProfile, onOpenArenas }: HomeTabProps) {
+export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenModes, onOpenBot, onOpenStore, onOpenSettings, onOpenProfile, onOpenArenas, onOpenDailyQuestion }: HomeTabProps) {
   const p = state.profile;
   const level = p?.level ?? 1;
   const trophies = p?.trophies ?? 0;
@@ -62,14 +63,25 @@ export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenM
       {/* Arena sahnesi + Görevler */}
       <Pressable onPress={onOpenArenas} style={{ flex: 1, minHeight: mh(240), marginTop: -mh(12) }} onLayout={(e) => setSceneH(Math.round(e.nativeEvent.layout.height))}>
         {sceneH > 0 ? <Image source={arenaScene} style={{ position: 'absolute', left: -mh(8), top: 0, width: sceneW, height: sceneImgH }} resizeMode="contain" /> : null}
-        <Pressable onPress={onOpenQuests} style={{ position: 'absolute', right: SIDE - mh(6), top: mh(48), width: mh(140), height: mh(150) }}>
-          <View style={{ alignItems: 'center' }}><IcClipboard size={mh(104)} /><OutlinedText size={mh(30)} width={mk(3)}>{t('ui2.questsLabel')}</OutlinedText></View>
-          {questsReady > 0 ? (
-            <View style={{ position: 'absolute', top: -mh(10), right: -mh(6), width: mh(46), height: mh(46), borderRadius: mh(23), backgroundColor: C.red, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}>
-              <OutlinedText size={mh(26)} width={1}>{String(questsReady)}</OutlinedText>
-            </View>
-          ) : null}
-        </Pressable>
+        {/* Sağ sütun: Görevler + Günlük Soru (aynı dil, aynı punto) */}
+        <View style={{ position: 'absolute', right: SIDE - mh(6), top: mh(40), width: mh(150), gap: mh(14) }}>
+          <Pressable onPress={onOpenQuests} style={{ alignItems: 'center' }}>
+            <IcClipboard size={mh(104)} />
+            <OutlinedText size={mh(30)} width={mk(3)} numberOfLines={1} fit>{t('ui2.questsLabel')}</OutlinedText>
+            {questsReady > 0 ? (
+              <View style={{ position: 'absolute', top: -mh(10), right: mh(4), width: mh(46), height: mh(46), borderRadius: mh(23), backgroundColor: C.red, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}>
+                <OutlinedText size={mh(26)} width={1}>{String(questsReady)}</OutlinedText>
+              </View>
+            ) : null}
+          </Pressable>
+          <Pressable onPress={onOpenDailyQuestion} style={{ alignItems: 'center' }}>
+            <IcDailyQuestion size={mh(104)} />
+            <OutlinedText size={mh(30)} width={mk(3)} numberOfLines={1} fit>{t('ui2.dailyQuestion')}</OutlinedText>
+            {state.dailyCx && !state.dailyCx.played ? (
+              <View style={{ position: 'absolute', top: -mh(10), right: mh(4), width: mh(34), height: mh(34), borderRadius: mh(17), backgroundColor: C.red, borderWidth: mk(4), borderColor: C.navy }} />
+            ) : null}
+          </Pressable>
+        </View>
       </Pressable>
       {/* Kupa ilerlemesi */}
       <View style={{ alignItems: 'center', marginTop: 0 }}>

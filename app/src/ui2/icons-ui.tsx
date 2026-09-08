@@ -209,6 +209,15 @@ export function IcClipboard({ size = 40 }: P) {
     <Path d="M22 46 L30 53 L44 38" fill="none" stroke={OUT} strokeWidth={7} strokeLinecap="round" strokeLinejoin="round" /><Path d="M22 46 L30 53 L44 38" fill="none" stroke="#25D93C" strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" />
   </Box>;
 }
+export function IcDailyQuestion({ size = 40 }: P) {
+  return <Box size={size}>
+    <Rect x="10" y="12" width="44" height="44" rx="10" fill="#2F7BFF" stroke={OUT} strokeWidth={SW} />
+    <Rect x="10" y="12" width="44" height="12" rx="6" fill="#8CE0FF" stroke={OUT} strokeWidth={SW} />
+    <Path d="M24 33 a8 8 0 1 1 8 8 v4" fill="none" stroke={OUT} strokeWidth={9} strokeLinecap="round" />
+    <Path d="M24 33 a8 8 0 1 1 8 8 v4" fill="none" stroke="#FFFFFF" strokeWidth={5} strokeLinecap="round" />
+    <Circle cx="32" cy="50" r="3.6" fill="#FFFFFF" stroke={OUT} strokeWidth={2.5} />
+  </Box>;
+}
 export function IcCheckBadge({ size = 40 }: P) {
   return <Box size={size}><Circle cx="32" cy="32" r="26" fill="#25D93C" stroke={OUT} strokeWidth={SW} /><Path d="M18 33 L28 43 L46 23" fill="none" stroke={OUT} strokeWidth={9} strokeLinecap="round" strokeLinejoin="round" /><Path d="M18 33 L28 43 L46 23" fill="none" stroke="#FFFFFF" strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" /><Gloss cx={24} cy={17} rx={8} ry={3} /></Box>;
 }

@@ -530,5 +530,6 @@
   "ui2.winLoss": "胜 {w} / 负 {l}",
   "ui2.yourRank": "你的排名",
   "ui2.everySevenDays": "每 7 天刷新",
-  "ui2.unlockAllRewards": "解锁全部奖励"
+  "ui2.unlockAllRewards": "解锁全部奖励",
+  "ui2.dailyQuestion": "每日问题"
 }

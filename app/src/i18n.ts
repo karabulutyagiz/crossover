@@ -1188,6 +1188,7 @@ const tr = {
   "ui2.yourRank": "Sıran",
   "ui2.everySevenDays": "7 günde bir yenilenir",
   "ui2.unlockAllRewards": "Tüm ödülleri aç",
+  "ui2.dailyQuestion": "Günlük Soru",
 };
 
 // ---- English (fallback) ----
@@ -2314,6 +2315,7 @@ const en: typeof tr = {
   "ui2.yourRank": "Your rank",
   "ui2.everySevenDays": "Refreshes every 7 days",
   "ui2.unlockAllRewards": "Unlock every reward",
+  "ui2.dailyQuestion": "Daily Question",
 };
 
 export type MessageKey = keyof typeof tr;

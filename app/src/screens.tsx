@@ -4926,7 +4926,7 @@ function DailyCareerModal({ visible, career, reward, onGuess, onClose }: {
   );
 }
 
-function DailyCrossoverModal({ visible, cx, wrong, reward, onGuess, onClose }: {
+export function DailyCrossoverModal({ visible, cx, wrong, reward, onGuess, onClose }: {
   visible: boolean;
   cx: DailyCrossoverStateView | null;
   wrong: { guess: string; suggestion: string | null; attemptsLeft: number; seq: number } | null;

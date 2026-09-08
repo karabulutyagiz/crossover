@@ -530,5 +530,6 @@
   "ui2.winLoss": "Thắng {w} / Thua {l}",
   "ui2.yourRank": "Hạng của bạn",
   "ui2.everySevenDays": "Làm mới mỗi 7 ngày",
-  "ui2.unlockAllRewards": "Mở khóa mọi phần thưởng"
+  "ui2.unlockAllRewards": "Mở khóa mọi phần thưởng",
+  "ui2.dailyQuestion": "Câu hỏi hằng ngày"
 }

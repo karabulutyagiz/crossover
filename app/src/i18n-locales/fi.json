@@ -530,5 +530,6 @@
   "ui2.winLoss": "Voitto {w} / Tappio {l}",
   "ui2.yourRank": "Sijoituksesi",
   "ui2.everySevenDays": "Uusiutuu 7 päivän välein",
-  "ui2.unlockAllRewards": "Avaa kaikki palkinnot"
+  "ui2.unlockAllRewards": "Avaa kaikki palkinnot",
+  "ui2.dailyQuestion": "Päivän kysymys"
 }

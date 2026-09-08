@@ -530,5 +530,6 @@
   "ui2.winLoss": "Sieg {w} / Niederlage {l}",
   "ui2.yourRank": "Dein Rang",
   "ui2.everySevenDays": "Alle 7 Tage neu",
-  "ui2.unlockAllRewards": "Alle Belohnungen freischalten"
+  "ui2.unlockAllRewards": "Alle Belohnungen freischalten",
+  "ui2.dailyQuestion": "Tagesfrage"
 }
