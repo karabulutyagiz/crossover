@@ -94,21 +94,25 @@ const NAV: { key: NavKey; Icon: (p: { size?: number }) => ReactNode; labelKey: M
   { key: 'friends', Icon: IcNavFriends, labelKey: 'tab.friends' as MessageKey },
   { key: 'tournaments', Icon: IcTrophy, labelKey: 'tab.tournaments' as MessageKey },
 ];
-export const NAV_H = mk(150);
-// Clash Royale alt sekme çubuğu: ARKADA BAND YOK (damalı zemin devam eder), 5 kompakt plaka ana ekran
-// çubuğunun üstünde durur; aktif plaka altın çerçeveli, daha açık yüzlü ve biraz yukarı taşar.
+export const NAV_H = mk(156);
+// Clash Royale alt çubuğu: tek parça pahlı panel (üstte açık kenar ışığı, koyu kontur), içinde 5 geniş plaka
+// (kenardan kenara, dar boşluk), plakalar KESİLMEZ — ana ekran çubuğunun üstünde tam görünür; panel yüzü
+// altındaki güvenli alanı doldurur. Aktif plaka daha açık yüzlü, altın çerçeveli ve panelin üstüne taşar.
 export function BottomNav({ active, onPress, labels, badges }: { active: NavKey; onPress: (k: NavKey) => void; labels?: Partial<Record<NavKey, string>>; badges?: Partial<Record<NavKey, number>> }) {
   const insets = useSafeAreaInsets();
   return (
-    <View style={{ paddingTop: mk(10), paddingBottom: Math.max(insets.bottom, mk(10)), paddingHorizontal: mk(8), flexDirection: 'row', alignItems: 'flex-end', gap: mk(6) }}>
+    <View style={{ backgroundColor: '#0A3B95', paddingTop: mk(10), paddingBottom: Math.max(insets.bottom, mk(10)), paddingHorizontal: mk(6), flexDirection: 'row', alignItems: 'flex-end', gap: mk(5) }}>
+      {/* pah: koyu kontur + açık kenar ışığı (Plate diliyle aynı) */}
+      <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: mk(4), backgroundColor: C.navy }} />
+      <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: mk(4), height: mk(3), backgroundColor: '#4F93FF', opacity: 0.8 }} />
       {NAV.map((n) => {
         const on = n.key === active; const badge = badges?.[n.key];
         return (
           <Pressable key={n.key} onPress={() => onPress(n.key)} style={{ flex: 1, minWidth: 0 }}>
-            <Plate face={on ? C.navActive : C.navTile} top={on ? '#8CC4FF' : C.navTileTop} lip={on ? C.gold : '#082F80'} outline={on ? C.gold : C.navy} radius={R.tile} outlineWidth={on ? mk(7) : OUTLINE} lipHeight={mk(12)}
-              inner={{ height: (on ? NAV_H + mk(16) : NAV_H) - mk(12) - OUTLINE * 2, alignItems: 'center', justifyContent: 'center', paddingTop: mk(4) }}>
-              <View style={{ height: mk(78), justifyContent: 'center' }}><n.Icon size={on ? mk(80) : mk(72)} /></View>
-              <OutlinedText size={fitSize(mk(30), labels?.[n.key] ?? t(n.labelKey), 10)} width={mk(3)} family={F.title} style={{ marginTop: mk(2) }} numberOfLines={1} fit>{labels?.[n.key] ?? t(n.labelKey)}</OutlinedText>
+            <Plate face={on ? C.navActive : '#1150C4'} top={on ? '#8CC4FF' : '#3E8BFF'} lip={on ? C.gold : '#062A70'} outline={on ? C.gold : C.navy} radius={R.tile} outlineWidth={on ? mk(7) : mk(5)} lipHeight={mk(12)}
+              inner={{ height: (on ? NAV_H + mk(20) : NAV_H) - mk(12) - OUTLINE * 2, alignItems: 'center', justifyContent: 'center', paddingTop: mk(2) }}>
+              <View style={{ height: mk(84), justifyContent: 'center' }}><n.Icon size={on ? mk(84) : mk(74)} /></View>
+              <OutlinedText size={fitSize(mk(30), labels?.[n.key] ?? t(n.labelKey), 10)} width={mk(3)} family={F.title} style={{ marginTop: mk(1) }} numberOfLines={1} fit>{labels?.[n.key] ?? t(n.labelKey)}</OutlinedText>
             </Plate>
             {badge ? (
               <View style={{ position: 'absolute', top: -mk(8), right: mk(6), minWidth: mk(44), height: mk(44), borderRadius: mk(22), backgroundColor: C.red, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
