@@ -89,12 +89,12 @@ function LevelShield({ level }: { level: number }) {
 
 // ── Alt navigasyon: 5 plaka; aktif olan altın çerçeveli + açık mavi yüz, yukarı taşar ──
 export type NavKey = 'store' | 'collection' | 'play' | 'friends' | 'tournaments';
-// Alt çubuk ikonları: kullanıcının çizdirdiği rozetler (assets/ui2/nav-*.png; 2026-09-08). Mağaza için çizim gelmedi → vektör.
+// Alt çubuk ikonları: kullanıcının çizdirdiği 5 rozet (assets/ui2/nav-*.png; 2026-09-08).
 function NavImg({ source, size = mk(96) }: { source: ImageSourcePropType; size?: number }) {
   return <Image source={source} style={{ width: size, height: size }} resizeMode="contain" />;
 }
 const NAV: { key: NavKey; Icon: (p: { size?: number }) => ReactNode; labelKey: MessageKey }[] = [
-  { key: 'store', Icon: IcNavStore, labelKey: 'tab.store' as MessageKey },
+  { key: 'store', Icon: (p) => <NavImg source={UI2.nav_store} size={p.size} />, labelKey: 'tab.store' as MessageKey },
   { key: 'collection', Icon: (p) => <NavImg source={UI2.nav_collection} size={p.size} />, labelKey: 'tab.collection' as MessageKey },
   { key: 'play', Icon: (p) => <NavImg source={UI2.nav_play} size={p.size} />, labelKey: 'ui2.play' as MessageKey },
   { key: 'friends', Icon: (p) => <NavImg source={UI2.nav_friends} size={p.size} />, labelKey: 'tab.friends' as MessageKey },

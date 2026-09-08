@@ -33,7 +33,7 @@ export function Dialog({ title, onClose, children, accent = false, wide = false,
         <Plate shrink face={C.panel} top={C.panelTop} lip={C.panelDark} radius={mk(30)} inner={{ paddingHorizontal: mk(18), paddingBottom: mk(18), paddingTop: mk(14) }}>
           <View style={{ alignItems: 'center', marginBottom: mk(12) }}>
             <Plate face={accent ? C.gold : '#1B5AE0'} top={accent ? C.goldLight : '#5A9BFF'} lip={accent ? C.goldDark : '#0B3A9E'} radius={mk(18)} style={{ alignSelf: 'stretch', marginRight: mk(30) }} inner={{ minHeight: mk(72) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}>
-              <OutlinedText size={mk(36)} width={mk(3)} color={accent ? C.ink : C.white} outline={accent ? '#FFF6C7' : C.ink}>{title}</OutlinedText>
+              <OutlinedText size={mk(40)} width={mk(3)} color={accent ? C.ink : C.white} outline={accent ? '#FFF6C7' : C.ink}>{title}</OutlinedText>
             </Plate>
           </View>
           <ScrollView ref={scrollRef} style={{ flexGrow: 0, flexShrink: 1 }} contentContainerStyle={{ paddingBottom: mk(4) }} keyboardShouldPersistTaps="handled" onLayout={() => { if (initialScrollY > 0) scrollRef.current?.scrollTo({ y: initialScrollY, animated: false }); }}>{children}</ScrollView>
@@ -81,7 +81,7 @@ export function ModeMenuDialog({ state, actions, onClose, bot = false, onLocked 
               <Plate face={m.face} top={m.top} lip={m.lip} outline={on ? C.gold : C.navy} outlineWidth={on ? mk(7) : OUTLINE} radius={mk(22)} inner={{ minHeight: mk(252) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(10), paddingTop: mk(6) }}>
                 {m.art ? <Image source={m.art} style={{ width: mk(142), height: mk(142) }} resizeMode="contain" /> : <m.Icon size={mk(110)} />}
                 <OutlinedText size={mk(26)} width={mk(2)} numberOfLines={1} style={{ marginTop: mk(4) }}>{t(m.nameKey)}</OutlinedText>
-                <Text numberOfLines={2} style={{ color: C.white, fontFamily: F.semi, fontSize: fz(15), textAlign: 'center', lineHeight: fz(19), marginTop: mk(2) }}>{t(m.descKey)}</Text>
+                <Text numberOfLines={3} style={{ color: C.white, fontFamily: F.semi, fontSize: fz(15), textAlign: 'center', lineHeight: fz(19), marginTop: mk(2) }}>{t(m.descKey)}</Text>
               </Plate>
               {lk ? <View style={{ position: 'absolute', top: -mk(6), right: -mk(4), width: mk(52), height: mk(52), borderRadius: mk(26), backgroundColor: C.panelInk, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><IcLock size={mk(32)} /></View> : null}
             </Pressable>

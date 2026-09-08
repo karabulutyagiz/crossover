@@ -25,6 +25,7 @@ export const UI2 = {
   nav_collection: require('../../assets/ui2/nav-collection.png'),
   nav_friends: require('../../assets/ui2/nav-friends.png'),
   nav_play: require('../../assets/ui2/nav-play.png'),
+  nav_store: require('../../assets/ui2/nav-store.png'),
   nav_tournaments: require('../../assets/ui2/nav-tournaments.png'),
   pw_freeze: require('../../assets/ui2/pw-freeze.png'),
   pw_shield: require('../../assets/ui2/pw-shield.png'),

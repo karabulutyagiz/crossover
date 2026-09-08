@@ -19,10 +19,10 @@ export const HOME_MOCK_W = 853;
 export const mk = (px: number): number => Math.round((px * SW) / MOCK_W * 2) / 2;
 export const mh = (px: number): number => Math.round((px * SW) / HOME_MOCK_W * 2) / 2;
 // YAZI: mock piksel oranı telefonda çok küçük kalıyor (24 px → 10 pt). Telefon tabanı: ×1.18, en az 10 pt.
-export const FONT_SCALE = 1.18;
-export const fz = (px: number): number => Math.max(Math.round(mk(px) * FONT_SCALE * 2) / 2, 10);
+export const FONT_SCALE = 1.26; // telefon: mock puntosu ×1.26 (kullanıcı 2026-09-08: 'isimler küçük/ince, biraz büyüt')
+export const fz = (px: number): number => Math.max(Math.round(mk(px) * FONT_SCALE * 2) / 2, 12); // en küçük yazı 12 pt
 // Dokunma hedefi tabanı (Apple HIG 44 pt; yoğun kartlarda 40)
-export const MIN_TAP = 40;
+export const MIN_TAP = 44;
 
 // Renkler: mock'lardan örneklenip düz alanlarda doğrulandı; metin/kenar karışan
 // örnekler görsel kalibrasyonla düzeltildi.
@@ -74,7 +74,7 @@ export const F = {
   title: 'LilitaOne-Regular', // mock'taki tombul oyun yazısı (başlıklar, CTA, fiyat)
   black: 'Poppins-Black',
   bold: 'Poppins-ExtraBold',
-  semi: 'Poppins-SemiBold',
+  semi: 'Poppins-ExtraBold', // ince görünüyordu → küçük açıklama metinleri de kalın (Poppins-Bold yüklü değil)
 } as const;
 
 export const R = { plate: mk(28), card: mk(24), button: mk(22), pill: mk(40), tile: mk(20) } as const;

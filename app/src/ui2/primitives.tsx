@@ -39,10 +39,10 @@ export function OutlinedText({ children, size, color = C.white, outline = C.ink,
   const [availW, setAvailW] = useState(0);
   const [natW, setNatW] = useState(0);
   const text = typeof children === 'string' || typeof children === 'number' ? String(children) : null;
-  const base0 = Math.max(Math.round(size * FONT_SCALE * 2) / 2, 10); // telefon tabanı (tokens.fz ile aynı kural)
+  const base0 = Math.max(Math.round(size * FONT_SCALE * 2) / 2, 12); // telefon tabanı (tokens.fz ile aynı kural)
   const lines = numberOfLines ?? 1;
   const fs = fit && text && availW > 0 && natW > 0
-    ? Math.max(10, Math.min(base0, Math.floor(base0 * ((availW - 2 * width - 1) * (lines > 1 ? lines * 0.9 : 1)) / natW * 2) / 2))
+    ? Math.max(11, Math.min(base0, Math.floor(base0 * ((availW - 2 * width - 1) * (lines > 1 ? lines * 0.9 : 1)) / natW * 2) / 2))
     : base0;
   const base: TextStyle = { fontFamily: family, fontSize: fs, color, textAlign: align, includeFontPadding: false };
   const offsets = useMemo(() => {
