@@ -131,7 +131,9 @@
             "backgroundColor": "#0B1838"
           },
           "android": {
-            "backgroundColor": "#0B1838"
+            "backgroundColor": "#0B1838",
+            "image": "./assets/splash-icon.png",
+            "imageWidth": 220
           }
         }
       ],
