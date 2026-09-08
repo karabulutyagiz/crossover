@@ -235,7 +235,6 @@ function CosmeticCard({ item, width, owned, vault, onBuy, disabled }: { item: St
         <View style={{ height: fz(30) * 2, justifyContent: 'center' }}><OutlinedText size={mk(26)} width={mk(3)} numberOfLines={2} fit style={{ lineHeight: fz(30) }}>{item.name.toLocaleUpperCase('tr')}</OutlinedText></View>
         <View style={{ width: '100%', height: mk(124), borderRadius: mk(12), overflow: 'hidden', marginTop: mk(2), borderWidth: mk(3), borderColor: C.navy, backgroundColor: '#061A45', alignItems: 'center', justifyContent: 'center' }}>
           <CosmeticArt id={item.id} type={item.type} size={item.type === 'frame' ? mk(210) : mk(232)} accent={vault ? C.gold : C.cyan} />
-          {vault ? <Ribbon label={t('ui2.vault')} color={C.gold} size={mk(14)} style={{ position: 'absolute', top: mk(4), left: mk(4), paddingHorizontal: mk(8) }} /> : null}
         </View>
         <View style={{ flex: 1 }} />
         <View style={{ width: '100%', marginBottom: mk(10) }}>
