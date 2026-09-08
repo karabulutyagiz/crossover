@@ -147,8 +147,10 @@ export function BottomNav({ active, onPress, labels, badges, scrollX, pageW }: {
   const activeness = (i: number) => scrollX
     ? scrollX.interpolate({ inputRange: [(i - 1) * W, i * W, (i + 1) * W], outputRange: [0, 1, 0], extrapolate: 'clamp' })
     : new Animated.Value(i === idx ? 1 : 0);
+  const pad = Math.max(insets.bottom, mk(8));   // ana ekran çubuğu payı — YALNIZ karo içinde uygulanır
+  const labelH = mk(44);                        // ad yazısı için her karoda AYRILAN yükseklik (ikonlar hizalı kalsın)
   return (
-    <View style={{ backgroundColor: NAV_BAR, paddingBottom: Math.max(insets.bottom, mk(8)), flexDirection: 'row', borderTopWidth: 1.5, borderTopColor: '#6E7C94' }}>
+    <View style={{ backgroundColor: NAV_BAR, height: NAV_H + pad, flexDirection: 'row', borderTopWidth: 1.5, borderTopColor: '#6E7C94' }}>
       <NavFill from="#525E73" to="#3A4252" />
       {NAV.map((n, i) => {
         const play = n.key === 'play'; const badge = badges?.[n.key];
@@ -156,24 +158,28 @@ export function BottomNav({ active, onPress, labels, badges, scrollX, pageW }: {
         const corner = i === 0 ? 'left' : i === NAV.length - 1 ? 'right' : undefined;
         const t01 = activeness(i);
         return (
-          <Animated.View key={n.key} style={{ flex: Animated.add(new Animated.Value(1), t01) as unknown as number, minWidth: 0, height: NAV_H + Math.max(insets.bottom, mk(8)) }}>
-            <Pressable onPress={() => onPress(n.key)} style={{ flex: 1, paddingBottom: Math.max(insets.bottom, mk(8)), alignItems: 'center', justifyContent: 'center', borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: '#2A3140' }}>
+          <Animated.View key={n.key} style={{ flex: Animated.add(new Animated.Value(1), t01) as unknown as number, minWidth: 0 }}>
+            <Pressable onPress={() => onPress(n.key)} style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: pad + mk(4), borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: '#2A3140' }}>
               {/* OYNA altın zemini: sekme aktifleştikçe mavi zemine devreder */}
               {play ? <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: t01.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}><NavFill from="#D9AF5A" to="#E8C56A" corner={corner} /></Animated.View> : null}
-              {/* aktif zemin + oklar kaydırmayla AKAR (opaklık scrollX'e bağlı) */}
+              {/* aktif zemin + oklar kaydırmayla AKAR */}
               <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: t01 }]}>
                 <NavFill from="#6385A6" to="#6E92B4" fromOpacity={0.08} corner={corner} />
                 {i > 0 ? <NavArrow dir="left" /> : null}
                 {i < NAV.length - 1 ? <NavArrow dir="right" /> : null}
               </Animated.View>
-              <Animated.View style={{ alignItems: 'center', transform: [{ translateY: t01.interpolate({ inputRange: [0, 1], outputRange: [0, -mk(14)] }) }, { scale: t01.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.06] }) }] }}>
-                <n.Icon size={mk(100)} />
-              </Animated.View>
-              <Animated.View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: Math.max(insets.bottom, mk(8)) + mk(6), alignItems: 'center', opacity: t01 }}>
-                <OutlinedText size={fitSize(mk(30), label, 11)} width={mk(3)} family={F.title} numberOfLines={1}>{label}</OutlinedText>
+              {/* ikon SABİT yükseklikte kutuda: büyüme yalnız görsel, yazının yerini kaydırmaz */}
+              <View style={{ height: mk(96), alignItems: 'center', justifyContent: 'center' }}>
+                <Animated.View style={{ transform: [{ scale: t01.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.04] }) }] }}>
+                  <n.Icon size={mk(82)} />
+                </Animated.View>
+              </View>
+              {/* ad yazısı: yer HER KAROda ayrılı, yalnız opaklık akar → ikonlar aynı hizada kalır */}
+              <Animated.View pointerEvents="none" style={{ height: labelH, justifyContent: 'center', opacity: t01 }}>
+                <OutlinedText size={fitSize(mk(27), label, 11)} width={mk(3)} family={F.title} numberOfLines={1}>{label}</OutlinedText>
               </Animated.View>
               {badge ? (
-                <View style={{ position: 'absolute', top: mk(8), right: mk(10), minWidth: mk(40), height: mk(40), borderRadius: mk(10), backgroundColor: C.red, borderWidth: mk(3), borderColor: '#7A1020', alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
+                <View style={{ position: 'absolute', top: mk(10), right: mk(10), minWidth: mk(40), height: mk(40), borderRadius: mk(10), backgroundColor: C.red, borderWidth: mk(3), borderColor: '#7A1020', alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
                   <OutlinedText size={mk(22)} width={1}>{String(badge)}</OutlinedText>
                 </View>
               ) : null}
