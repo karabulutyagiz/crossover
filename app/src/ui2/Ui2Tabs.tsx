@@ -48,6 +48,15 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
       lastIdx.current = activeTab;
     }
   }, [activeTab, pageW]);
+  // Alt çubuk kaydırmayla ANINDA senkron: parmak sayfanın yarısını geçtiği an vurgulanan sekme değişir
+  // (eskiden yalnız momentum bitince güncelleniyordu, geriden geliyordu — kullanıcı 2026-09-08).
+  // Ağır olan sayfa çizimi yerinde kalır: TabFreeze hâlâ activeTab'a bakar, kaydırma ortasında ağaç kurulmaz.
+  const [navIdx, setNavIdx] = useState(activeTab);
+  useEffect(() => { setNavIdx(activeTab); }, [activeTab]);
+  const onScrollLive = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const i = Math.round(e.nativeEvent.contentOffset.x / Math.max(1, pageW));
+    if (i >= 0 && i < KEYS.length) setNavIdx((prev) => (prev === i ? prev : i));
+  }, [pageW]);
   const onPageSettled = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const i = Math.round(e.nativeEvent.contentOffset.x / Math.max(1, pageW));
     if (i !== lastIdx.current && i >= 0 && i < KEYS.length) { lastIdx.current = i; setDlg(null); goToTab(i); }
@@ -68,7 +77,7 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
     <View style={{ flex: 1 }}>
       <CheckerBg />
       <ScrollView ref={pagerRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false} bounces={false}
-        contentOffset={{ x: activeTab * pageW, y: 0 }} onMomentumScrollEnd={onPageSettled} scrollEventThrottle={16}
+        contentOffset={{ x: activeTab * pageW, y: 0 }} onMomentumScrollEnd={onPageSettled} onScroll={onScrollLive} scrollEventThrottle={16}
         removeClippedSubviews decelerationRate="fast" directionalLockEnabled
         keyboardShouldPersistTaps="handled" style={{ flex: 1 }}>
         {KEYS.map((k, i) => (
@@ -87,7 +96,7 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
           </View>
         ))}
       </ScrollView>
-      <BottomNav active={active} onPress={(k) => { setDlg(null); goToTab(KEYS.indexOf(k)); }} badges={{ friends: state.friendRequests.length || undefined }} />
+      <BottomNav active={KEYS[navIdx] ?? active} onPress={(k) => { setDlg(null); goToTab(KEYS.indexOf(k)); }} badges={{ friends: state.friendRequests.length || undefined }} />
 
       {/* ── pencereler ── */}
       {dlg === 'mode' || dlg === 'bot' ? <ModeMenuDialog state={state} actions={actions} bot={dlg === 'bot'} onClose={closeDlg} onLocked={() => setNotice({ title: t('friends.inviteNeedsPackTitle'), body: t('ui2.packLockedBody'), yesLabel: S.store, onYes: () => goToTab(0) })} /> : null}
