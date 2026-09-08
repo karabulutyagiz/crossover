@@ -9825,8 +9825,8 @@ function MatchCosmeticBackdrop({ backgroundId }: { backgroundId?: string | null 
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(2,12,44,0.34)' }]} />
         {/* Maçı menüden ayıran ince saha izi — damalı zeminin üstünde çok hafif */}
         <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} opacity={0.22}>
-          <Rect x="6%" y="4%" width="88%" height="92%" rx="18" fill="none" stroke="#FFFFFF" strokeWidth={3} />
-          <Line x1="6%" y1="50%" x2="94%" y2="50%" stroke="#FFFFFF" strokeWidth={3} />
+          {/* Dış saha çizgisi YOK (kale arkası + yan çizgiler) — kullanıcı 2026-09-08; yalnız orta saha izi kalır */}
+          <Line x1="0%" y1="50%" x2="100%" y2="50%" stroke="#FFFFFF" strokeWidth={3} />
           <Circle cx="50%" cy="50%" r="12%" fill="none" stroke="#FFFFFF" strokeWidth={3} />
         </Svg>
       </View>
