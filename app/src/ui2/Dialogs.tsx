@@ -12,7 +12,7 @@ import { avatarPrice } from '../avatars';
 import { arenaLabel } from '../screens';
 import type { Actions, GameState } from './types';
 import { UI2 } from './assets';
-import { Bar, ChunkyButton, GemAmount, OutlinedText, Plate, Ribbon, fmt } from './primitives';
+import { ArtWell, Bar, ChunkyButton, GemAmount, OutlinedText, Plate, Ribbon, fmt } from './primitives';
 import { S, up } from './strings';
 import { hasActiveSocialPack } from '../monetization';
 import { arenaArt, ARENAS, ARENA_STEPS, INFO_LINKS, LEVEL_CAP, PACK_MODES, PREMIUM_ROAD_PRICE } from './products';
@@ -78,8 +78,12 @@ export function ModeMenuDialog({ state, actions, onClose, bot = false, onLocked 
           const on = mode === m.id; const lk = PACK_MODES.includes(m.id) && !hasPack;
           return (
             <Pressable key={m.id} onPress={() => setMode(m.id)} style={{ width: '48.5%' }}>
-              <Plate face={m.face} top={m.top} lip={m.lip} outline={on ? C.gold : C.navy} outlineWidth={on ? mk(7) : OUTLINE} radius={mk(22)} inner={{ minHeight: mk(252) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(10), paddingTop: mk(6) }}>
-                {m.art ? <Image source={m.art} style={{ width: mk(142), height: mk(142) }} resizeMode="contain" /> : <m.Icon size={mk(110)} />}
+              {/* TEK KART DİLİ: kart lacivert; modun kimlik rengi yalnız sanatın arkasındaki çukur yuvada
+                  ışık olarak durur (kullanıcı 2026-09-08: 'rengarenk, amatörce'). */}
+              <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={on ? C.gold : C.navy} outlineWidth={on ? mk(7) : OUTLINE} radius={mk(22)} inner={{ minHeight: mk(252) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(10), paddingTop: mk(6) }}>
+                <ArtWell accent={m.face} height={mk(150)} style={{ alignSelf: 'stretch' }}>
+                {m.art ? <Image source={m.art} style={{ width: mk(140), height: mk(140) }} resizeMode="contain" /> : <m.Icon size={mk(110)} />}
+                </ArtWell>
                 <OutlinedText size={mk(26)} width={mk(2)} numberOfLines={1} style={{ marginTop: mk(4) }}>{t(m.nameKey)}</OutlinedText>
                 <Text numberOfLines={3} style={{ color: C.white, fontFamily: F.semi, fontSize: fz(15), textAlign: 'center', lineHeight: fz(19), marginTop: mk(2) }}>{t(m.descKey)}</Text>
               </Plate>
