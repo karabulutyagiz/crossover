@@ -3,7 +3,12 @@
 export const UI2 = {
   ac_laurel: require('../../assets/ui2/ac-laurel.png'),
   ac_stadium: require('../../assets/ui2/ac-stadium.png'),
+  arena_dunya: require('../../assets/ui2/arena-dunya.png'),
+  arena_efsaneler: require('../../assets/ui2/arena-efsaneler.png'),
+  arena_goat: require('../../assets/ui2/arena-goat.png'),
   arena_mahalle: require('../../assets/ui2/arena-mahalle.png'),
+  arena_profesyonel: require('../../assets/ui2/arena-profesyonel.png'),
+  arena_sampiyonlar: require('../../assets/ui2/arena-sampiyonlar.png'),
   banner_copass: require('../../assets/ui2/banner-copass.jpg'),
   banner_cosm: require('../../assets/ui2/banner-cosm.jpg'),
   banner_invite: require('../../assets/ui2/banner-invite.jpg'),
