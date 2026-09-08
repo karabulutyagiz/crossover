@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Polygon, Rect, Stop } from 'react-native-svg';
 import { Avatar } from '../Avatar';
 import { t, type MessageKey } from '../i18n';
+import { UI2 } from './assets';
 import { Bar, CheckerBg, IconSlot, OutlinedText, Plate, fitSize, fmt } from './primitives';
 import { IcGear, IcGem, IcNavCollection, IcNavFriends, IcNavPlay, IcNavStore, IcPlus, IcTrophy } from './icons-ui';
 import { C, F, fz, LIP, mk, OUTLINE, R, SIDE } from './tokens';
@@ -88,12 +89,16 @@ function LevelShield({ level }: { level: number }) {
 
 // ── Alt navigasyon: 5 plaka; aktif olan altın çerçeveli + açık mavi yüz, yukarı taşar ──
 export type NavKey = 'store' | 'collection' | 'play' | 'friends' | 'tournaments';
+// Alt çubuk ikonları: kullanıcının çizdirdiği rozetler (assets/ui2/nav-*.png; 2026-09-08). Mağaza için çizim gelmedi → vektör.
+function NavImg({ source, size = mk(96) }: { source: ImageSourcePropType; size?: number }) {
+  return <Image source={source} style={{ width: size, height: size }} resizeMode="contain" />;
+}
 const NAV: { key: NavKey; Icon: (p: { size?: number }) => ReactNode; labelKey: MessageKey }[] = [
   { key: 'store', Icon: IcNavStore, labelKey: 'tab.store' as MessageKey },
-  { key: 'collection', Icon: IcNavCollection, labelKey: 'tab.collection' as MessageKey },
-  { key: 'play', Icon: IcNavPlay, labelKey: 'ui2.play' as MessageKey },
-  { key: 'friends', Icon: IcNavFriends, labelKey: 'tab.friends' as MessageKey },
-  { key: 'tournaments', Icon: IcTrophy, labelKey: 'tab.tournaments' as MessageKey },
+  { key: 'collection', Icon: (p) => <NavImg source={UI2.nav_collection} size={p.size} />, labelKey: 'tab.collection' as MessageKey },
+  { key: 'play', Icon: (p) => <NavImg source={UI2.nav_play} size={p.size} />, labelKey: 'ui2.play' as MessageKey },
+  { key: 'friends', Icon: (p) => <NavImg source={UI2.nav_friends} size={p.size} />, labelKey: 'tab.friends' as MessageKey },
+  { key: 'tournaments', Icon: (p) => <NavImg source={UI2.nav_tournaments} size={p.size} />, labelKey: 'tab.tournaments' as MessageKey },
 ];
 export const NAV_H = mk(152);
 // Clash Royale alt çubuğu — kullanıcının CR ekran görüntülerinden birebir (2026-09-08):
@@ -137,7 +142,7 @@ export function BottomNav({ active, onPress, labels, badges }: { active: NavKey;
             {on ? <NavFill from="#6385A6" to="#6E92B4" fromOpacity={0.08} corner={corner} /> : play ? <NavFill from="#D9AF5A" to="#E8C56A" corner={corner} /> : null}
             {on ? <><NavArrow dir="left" /><NavArrow dir="right" /></> : null}
             <View style={{ alignItems: 'center', marginTop: on ? -mk(8) : 0 }}>
-              <n.Icon size={on ? mk(100) : mk(96)} />
+              <n.Icon size={on ? mk(114) : mk(106)} />
               {on ? <OutlinedText size={fitSize(mk(30), label, 12)} width={mk(3)} family={F.title} style={{ marginTop: -mk(4) }} numberOfLines={1} fit>{label}</OutlinedText> : null}
             </View>
             {badge ? (
