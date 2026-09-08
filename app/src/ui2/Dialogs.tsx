@@ -84,8 +84,11 @@ export function ModeMenuDialog({ state, actions, onClose, bot = false, onLocked 
                 <ArtWell accent={m.face} height={mk(150)} style={{ alignSelf: 'stretch' }}>
                 {m.art ? <Image source={m.art} style={{ width: mk(140), height: mk(140) }} resizeMode="contain" /> : <m.Icon size={mk(110)} />}
                 </ArtWell>
-                <OutlinedText size={mk(26)} width={mk(2)} numberOfLines={1} style={{ marginTop: mk(4) }}>{t(m.nameKey)}</OutlinedText>
-                <Text numberOfLines={3} style={{ color: C.white, fontFamily: F.semi, fontSize: fz(15), textAlign: 'center', lineHeight: fz(19), marginTop: mk(2) }}>{t(m.descKey)}</Text>
+                {/* Ad 1 satır, açıklama SABİT 3 satırlık kutu → tüm mod kartları AYNI yükseklikte (kullanıcı 2026-09-08) */}
+                <OutlinedText size={mk(26)} width={mk(2)} numberOfLines={1} fit style={{ marginTop: mk(6) }}>{t(m.nameKey)}</OutlinedText>
+                <View style={{ height: fz(19) * 3, justifyContent: 'flex-start', alignSelf: 'stretch', marginTop: mk(2) }}>
+                  <Text numberOfLines={3} style={{ color: C.white, fontFamily: F.semi, fontSize: fz(15), textAlign: 'center', lineHeight: fz(19) }}>{t(m.descKey)}</Text>
+                </View>
               </Plate>
               {lk ? <View style={{ position: 'absolute', top: -mk(6), right: -mk(4), width: mk(52), height: mk(52), borderRadius: mk(26), backgroundColor: C.panelInk, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><IcLock size={mk(32)} /></View> : null}
             </Pressable>
