@@ -39,7 +39,9 @@ check(live.killSwitches.botMatchmakingEnabled === true || live.killSwitches.botM
 check(progressionSegment(0, 0) === 'NEW_PLAYER' && progressionSegment(3600, 100) === 'ELITE', 'progression segments follow arena thresholds');
 check(dynamicMmrWindow(0) < dynamicMmrWindow(live.matchmaking.maxSearchMs), 'dynamic mmr window expands over time');
 check(orchestrator.compatibleHumans({ trophies: 500, skillMean: 1000, skillUncertainty: 120, elapsedMs: 100 }, { trophies: 560, skillMean: 1090, skillUncertainty: 120, elapsedMs: 100 }), 'real compatible humans preferred by orchestrator');
-check(!orchestrator.compatibleHumans({ trophies: 500, skillMean: 1000, skillUncertainty: 70, elapsedMs: 100 }, { trophies: 700, skillMean: 1500, skillUncertainty: 70, elapsedMs: 100 }), 'far skill humans not paired too early');
+// The arena-only human policy replaced the old early MMR exclusion on 2026-08-27.
+check(orchestrator.compatibleHumans({ trophies: 500, skillMean: 1000, skillUncertainty: 70, elapsedMs: 100 }, { trophies: 700, skillMean: 1500, skillUncertainty: 70, elapsedMs: 100 }), 'same-arena humans remain eligible despite skill gap');
+check(!orchestrator.compatibleHumans({ trophies: 499, skillMean: 1000, skillUncertainty: 70, elapsedMs: 100 }, { trophies: 500, skillMean: 1000, skillUncertainty: 70, elapsedMs: 100 }), 'cross-arena humans are never paired even with equal skill');
 for (let i = 0; i < 50; i++) {
   const d = randomBotFallbackDelayMs(cfg, 1);
   check(d >= 2800 && d <= 4500, 'AI fallback delay stays configured');

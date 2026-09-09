@@ -41,7 +41,7 @@ import { getTrophyVelocity } from '../matchmaking/trophyIntegrity.ts';
 import { getOpponentKpis, recordTelemetry } from '../matchmaking/telemetry.ts';
 import { liveOpsConfig, progressionSegment } from '../matchmaking/liveOpsConfig.ts';
 import { candidateScore, estimateQueueHealth, type QueueHealth } from '../matchmaking/queueHealth.ts';
-import { assessFarmRisk, recordBotExposure } from '../matchmaking/antiFarm.ts';
+import { assessFarmRisk, assessHumanCandidateRisks, recordBotExposure } from '../matchmaking/antiFarm.ts';
 import { botAvailabilityMultiplier, getTrophyEconomyState } from '../matchmaking/trophyEconomy.ts';
 import { recordDecisionTrace } from '../matchmaking/decisionTrace.ts';
 import { botProfileSnapshot, recordBotMatchProfile } from '../matchmaking/botTelemetry.ts';
@@ -59,6 +59,9 @@ import { getLeagueState } from '../game/weeklyLeague.ts';
 import { getDailyCareer, guessDailyCareer } from '../game/dailyCareer.ts';
 import { claimQuest, getDailyQuests } from '../game/dailyQuests.ts';
 import { getSeasonState } from '../game/season.ts';
+import { HeartbeatState } from './socketHealth.ts';
+import { sendSocketData, socketSendStats } from './send.ts';
+import { createRuntimeMetrics } from '../observability/runtime.ts';
 
 // Guideline 1.2: no anonymous posting. Any path that creates content another
 // user sees requires a verified Apple/Google/Facebook identity — a guest can
@@ -96,7 +99,7 @@ function wsTransport(ws: WebSocket): Transport {
   return {
     isBot: false,
     send: (msg: ServerMsg) => {
-      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+      sendSocketData(ws, JSON.stringify(msg));
     },
   };
 }
@@ -210,7 +213,7 @@ function broadcastMaintenance(): void {
   const payload = JSON.stringify({ type: 'maintenance_state', active: st.active, message: st.message, startedAt: st.startedAt });
   for (const sockets of onlineUsers.values()) {
     for (const ws of sockets) {
-      if (ws.readyState === ws.OPEN) { try { ws.send(payload); } catch { /* kapanan sokete yazılamaz — sorun değil */ } }
+      sendSocketData(ws, payload);
     }
   }
 }
@@ -275,7 +278,7 @@ function sendToUser(userId: string, msg: ServerMsg): void {
   if (!set) return;
   const data = JSON.stringify(msg);
   for (const ws of set) {
-    if (ws.readyState === ws.OPEN) ws.send(data);
+    sendSocketData(ws, data);
   }
 }
 
@@ -427,18 +430,18 @@ export function startServer(port: number): Server {
   function entrySkillMean(e: QueueEntry): number | undefined { return e.skillProfile?.skillMean; }
   function entrySkillUncertainty(e: QueueEntry): number | undefined { return e.skillProfile?.skillUncertainty; }
 
-  async function farmRiskBetween(entry: QueueEntry, candidate: QueueEntry): Promise<number> {
-    if (!entry.userProfile?.id || !candidate.userProfile?.id) return 0;
-    try {
-      const risk = await assessFarmRisk({ playerId: entry.userProfile.id, opponentId: candidate.userProfile.id, opponentType: 'HUMAN' });
-      return risk.score;
-    } catch (err) {
-      log.warn('farm_risk_lookup_failed', { requestId: entry.requestId, error: err instanceof Error ? err.message : String(err) });
-      return 0;
-    }
+  // Retry timers must share one pending lookup instead of stacking DB work.
+  const partnerLookups = new WeakMap<QueueEntry, Promise<QueueEntry | undefined>>();
+  function findHumanPartner(entry: QueueEntry): Promise<QueueEntry | undefined> {
+    const pending = partnerLookups.get(entry);
+    if (pending) return pending;
+    const lookup = findHumanPartnerOnce(entry).finally(() => partnerLookups.delete(entry));
+    partnerLookups.set(entry, lookup);
+    return lookup;
   }
 
-  async function findHumanPartner(entry: QueueEntry): Promise<QueueEntry | undefined> {
+  async function findHumanPartnerOnce(entry: QueueEntry): Promise<QueueEntry | undefined> {
+    if (entry.assigned || entry.ws.readyState !== entry.ws.OPEN) return undefined;
     if (config.matchmaking.debug.simulateNoOnlinePlayers || config.matchmaking.debug.forceBot) return undefined;
     const now = Date.now();
     const candidates: QueueEntry[] = [];
@@ -462,8 +465,18 @@ export function startServer(port: number): Server {
     entry.lastQueueHealth = health;
     let best: QueueEntry | undefined;
     let bestScore = -Infinity;
+    let farmRisks = new Map<string, number>();
+    if (entry.userProfile?.id) {
+      try {
+        farmRisks = await assessHumanCandidateRisks(entry.userProfile.id, candidates.flatMap((e) => e.userProfile?.id ? [e.userProfile.id] : []));
+      } catch (err) {
+        log.warn('farm_risk_lookup_failed', { requestId: entry.requestId, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    if (entry.assigned || entry.ws.readyState !== entry.ws.OPEN) return undefined;
     for (const e of candidates) {
-      const farmRisk = await farmRiskBetween(entry, e);
+      if (e.assigned || e.ws.readyState !== e.ws.OPEN) continue;
+      const farmRisk = e.userProfile?.id ? farmRisks.get(e.userProfile.id) ?? 0 : 0;
       const score = candidateScore(
         { trophies: entryTrophies(entry), skillMean: entrySkillMean(entry), skillUncertainty: entrySkillUncertainty(entry), elapsedMs: now - entry.since },
         { trophies: entryTrophies(e), skillMean: entrySkillMean(e), skillUncertainty: entrySkillUncertainty(e), elapsedMs: now - e.since, farmRisk },
@@ -1100,6 +1113,21 @@ export function startServer(port: number): Server {
         });
       return;
     }
+    if (path === '/admin/api/performance') {
+      const auth = req.headers.authorization ?? '';
+      if (!verifyToken(auth.startsWith('Bearer ') ? auth.slice(7) : '')) {
+        res.writeHead(401, cors);
+        res.end(JSON.stringify({ error: 'unauthorized' }));
+        return;
+      }
+      res.writeHead(200, cors);
+      res.end(JSON.stringify({
+        ...runtimeMetrics.snapshot(), sockets: wss.clients.size, rooms: manager.count,
+        matchmakingQueue: matchQueue.length, sends: socketSendStats,
+        databasePool: { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount },
+      }));
+      return;
+    }
     if (req.url === '/scopes') {
       Promise.all([listScopes(), listNationalities()])
         .then(([scopes, nationalities]) => {
@@ -1300,7 +1328,11 @@ export function startServer(port: number): Server {
     log.error('http_server_error', { error: err.message, stack: err.stack });
   });
 
-  const wss = new WebSocketServer({ server: http });
+  // Small real-time frames do not benefit from per-connection zlib state.
+  // Bound inbound frame allocation before JSON parsing (includes IAP receipts).
+  const wss = new WebSocketServer({ server: http, maxPayload: 1024 * 1024, perMessageDeflate: false });
+  const runtimeMetrics = createRuntimeMetrics();
+  http.once('close', () => runtimeMetrics.dispose());
 
   wss.on('error', (err) => {
     log.error('ws_server_error', { error: err.message, stack: err.stack });
@@ -1326,26 +1358,23 @@ export function startServer(port: number): Server {
     // Ping sıklığı korunur (4 sn — WiFi güç tasarrufu tamponunu çözen şey odur),
     // yalnız SONLANDIRMA eşiği 6 kaçırmaya (~24 sn) çıkarılır. Gerçekten ölmüş
     // bağlantı yine temizlenir, geçici sarsıntı artık maç bitirmez.
-    const MAX_MISSED_PONGS = 6;
-    let missedPongs = 0;
-    ws.on('pong', () => { missedPongs = 0; });
+    const heartbeatState = new HeartbeatState();
+    ws.on('pong', () => { heartbeatState.pong(); });
     const heartbeat = setInterval(() => {
       if (ws.readyState !== ws.OPEN) return;
-      if (missedPongs >= MAX_MISSED_PONGS) {
-        log.warn('ws_dead_connection', { ip, userId: userProfile?.id, missedPongs });
+      const tick = heartbeatState.tick();
+      if (tick.terminate) {
+        log.warn('ws_dead_connection', { ip, userId: userProfile?.id, missedPongs: heartbeatState.missedPongs });
         try { ws.terminate(); } catch { /* yut */ }
         return;
       }
-      missedPongs += 1;
       try { ws.ping(); } catch { /* yut */ }
       // UYGULAMA SEVİYESİ HEARTBEAT: protokol PING'i React Native'de JS'e
       // GÖRÜNMEZ (onmessage tetiklemez), bu yüzden istemci sağlıklı bir soketi
       // 'bayat' sayıp 2 dakikada bir gereksiz yere yeniden bağlanıyordu (canlı
       // logda tek oyuncudan 30 dakikada 26 bağlantı). 20 saniyede bir görünür
       // bir çerçeve göndeririz; istemci bunu alınca soketi taze sayar.
-      if (missedPongs % 5 === 0) {
-        try { ws.send(JSON.stringify({ type: 'heartbeat' })); } catch { /* yut */ }
-      }
+      if (tick.applicationHeartbeat) sendSocketData(ws, '{"type":"heartbeat"}');
     }, 4000);
     let ctx: ConnCtx | null = null;
     let userProfile: UserProfile | undefined;

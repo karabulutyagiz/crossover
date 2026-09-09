@@ -1,7 +1,8 @@
 // UI2 pencereleri — mock: refs/popups.png (mavi çerçeve, başlık plakası, kırmızı X, altın vurgu).
 // Yerleşik katman (native Modal değil). Mod seçici, görevler, ayarlar, özel oda, satın alma onayı, istekler, lig.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Image, Linking, Platform, Pressable, ScrollView, Share, Text, TextInput, View, type ImageSourcePropType } from 'react-native';
+import { Animated, Image, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View, type ImageSourcePropType } from 'react-native';
+import { useMenuMotion } from './useMenuMotion';
 import * as Clipboard from 'expo-clipboard';
 import { useFeedbackPreferences } from '../feedback/useFeedbackPreferences';
 import { LANGUAGES, currentLang, setLanguage, t, type MessageKey } from '../i18n';
@@ -15,7 +16,7 @@ import { UI2 } from './assets';
 import { ArtWell, Bar, ChunkyButton, GemAmount, OutlinedText, Plate, Ribbon, fmt } from './primitives';
 import { S, up } from './strings';
 import { hasActiveSocialPack } from '../monetization';
-import { arenaArt, ARENAS, ARENA_STEPS, INFO_LINKS, LEVEL_CAP, PACK_MODES, PREMIUM_ROAD_PRICE } from './products';
+import { ARENA_STEPS, INFO_LINKS, LEVEL_CAP, PACK_MODES, PREMIUM_ROAD_PRICE } from './products';
 import { roadReward, type RoadReward } from './rewards';
 import { IcCheckBadge, IcClipboard, IcCrownBig, IcGem, IcLeague, IcNavFriends, IcNavPlay, IcStar, IcSuggest, IcTrophy } from './icons-ui';
 import { IcBell, IcCheck, IcChevron, IcClose, IcCopy, IcGlobe, IcLock, IcModeCountryTeam, IcModeCozKazan, IcModeGuessWho, IcModeLetterTeam, IcModeTeamTeam, IcModeXox, IcMusic, IcSound, IcVibrate } from './icons';
@@ -25,11 +26,12 @@ import { C, F, fz, LIP, mk, OUTLINE, SH, SIDE, SW } from './tokens';
 // ── Kabuk ──────────────────────────────────────────────────────────────────────
 export function Dialog({ title, onClose, children, accent = false, wide = false, initialScrollY = 0 }: { title: string; onClose: () => void; children: ReactNode; accent?: boolean; wide?: boolean; initialScrollY?: number }) {
   const scrollRef = useRef<ScrollView>(null);
+  const { progress, close, reduced } = useMenuMotion(onClose);
   const insets = useSafeAreaInsets(); // Dynamic Island / ana ekran çubuğu: pencere güvenli alanın içinde kalır
   return (
-    <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(2,10,40,0.74)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: wide ? mk(20) : SIDE, paddingTop: insets.top + mk(8), paddingBottom: Math.max(insets.bottom, mk(20)) }}>
-      <Pressable style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} onPress={onClose} />
-      <View style={{ width: '100%', maxHeight: SH - insets.top - Math.max(insets.bottom, mk(20)) - mk(8) }}>
+    <View accessibilityViewIsModal onAccessibilityEscape={close} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: wide ? mk(20) : SIDE, paddingTop: insets.top + mk(8), paddingBottom: Math.max(insets.bottom, mk(20)) }}>
+      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(2,10,40,0.74)', opacity: progress }]}><Pressable style={StyleSheet.absoluteFill} onPress={close} /></Animated.View>
+      <Animated.View style={{ opacity: progress, transform: [{ translateY: reduced ? 0 : progress.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }], width: '100%', maxHeight: SH - insets.top - Math.max(insets.bottom, mk(20)) - mk(8) }}>
         <Plate shrink face={C.panel} top={C.panelTop} lip={C.panelDark} radius={mk(30)} inner={{ paddingHorizontal: mk(18), paddingBottom: mk(18), paddingTop: mk(14) }}>
           <View style={{ alignItems: 'center', marginBottom: mk(12) }}>
             <Plate face={accent ? C.gold : '#1B5AE0'} top={accent ? C.goldLight : '#5A9BFF'} lip={accent ? C.goldDark : '#0B3A9E'} radius={mk(18)} style={{ alignSelf: 'stretch', marginRight: mk(30) }} inner={{ minHeight: mk(72) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}>
@@ -38,10 +40,10 @@ export function Dialog({ title, onClose, children, accent = false, wide = false,
           </View>
           <ScrollView ref={scrollRef} style={{ flexGrow: 0, flexShrink: 1 }} contentContainerStyle={{ paddingBottom: mk(4) }} keyboardShouldPersistTaps="handled" onLayout={() => { if (initialScrollY > 0) scrollRef.current?.scrollTo({ y: initialScrollY, animated: false }); }}>{children}</ScrollView>
         </Plate>
-        <Pressable onPress={onClose} hitSlop={10} style={{ position: 'absolute', top: -mk(6), right: -mk(6), width: mk(74), height: mk(74), borderRadius: mk(37), backgroundColor: C.red, borderWidth: mk(5), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}>
+        <Pressable onPress={close} hitSlop={10} style={{ position: 'absolute', top: -mk(6), right: -mk(6), width: mk(74), height: mk(74), borderRadius: mk(37), backgroundColor: C.red, borderWidth: mk(5), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}>
           <IcClose size={mk(46)} />
         </Pressable>
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -164,32 +166,44 @@ export function QuestsDialog({ state, actions, onClose, onGo }: { state: GameSta
 }
 
 // ── Ayarlar ────────────────────────────────────────────────────────────────────
+const settingsStyles = StyleSheet.create({
+  group: { backgroundColor: '#07327D', borderRadius: 12, borderCurve: 'continuous', paddingHorizontal: 12, marginBottom: 10 },
+  row: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#3465A1', paddingVertical: 3 },
+  icon: { width: 30, height: 32, alignItems: 'center', justifyContent: 'center' },
+  label: { color: C.white, fontFamily: F.semi, fontSize: 14, flex: 1 },
+  link: { minHeight: 44, paddingHorizontal: 10, justifyContent: 'center' },
+});
+function SettingsRow({ icon, label, right }: { icon: ReactNode; label: string; right: ReactNode }) {
+  return <View style={settingsStyles.row}><View style={settingsStyles.icon}>{icon}</View><Text style={settingsStyles.label}>{label}</Text>{right}</View>;
+}
 export function SettingsDialog({ actions, onClose, onOpenLanguage, onDeleteAccount, onOpenFeedback }: { actions: Actions; onClose: () => void; onOpenLanguage: () => void; onDeleteAccount: () => void; onOpenFeedback?: (category?: 'sponsorship') => void }) {
   const { prefs, setPreference } = useFeedbackPreferences();
   const [push, setPush] = useState<boolean | null>(null);
-  if (push === null) getPushPermissionGranted().then(setPush).catch(() => setPush(false));
+  useEffect(() => {
+    let alive = true;
+    getPushPermissionGranted().then((granted) => { if (alive) setPush(granted); }).catch(() => { if (alive) setPush(false); });
+    return () => { alive = false; };
+  }, []);
   const lang = LANGUAGES.find((l) => l.code === currentLang())?.name ?? currentLang();
-  const Row = ({ icon, label, right }: { icon: ReactNode; label: string; right: ReactNode }) => (
-    <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginBottom: mk(10) }} inner={{ minHeight: mk(92) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(16), gap: mk(14) }}>
-      <View style={{ width: mk(56), alignItems: 'center' }}>{icon}</View><Text style={{ color: C.white, fontFamily: F.bold, fontSize: fz(24), flex: 1 }}>{label}</Text>{right}
-    </Plate>
-  );
+  const Row = SettingsRow;
   return (
     <Dialog title={up(t('settings.title'))} onClose={onClose}>
-      <Row icon={<IcMusic size={mk(60)} />} label={t('settings.music')} right={<Toggle on={prefs.music} onChange={(v) => setPreference('music', v)} />} />
-      <Row icon={<IcSound size={mk(60)} />} label={t('settings.sfx')} right={<Toggle on={prefs.sfx} onChange={(v) => setPreference('sfx', v)} />} />
-      <Row icon={<IcVibrate size={mk(60)} />} label={t('settings.haptics')} right={<Toggle on={prefs.haptics} onChange={(v) => setPreference('haptics', v)} />} />
-      <Row icon={<IcBell size={mk(60)} />} label={t('ui2.notifications')} right={<Toggle on={!!push} onChange={async (v) => { if (v) { const ok = await requestPushPermission().catch(() => false); setPush(ok); if (!ok) Linking.openSettings().catch(() => {}); } else Linking.openSettings().catch(() => {}); }} />} />
-      <Row icon={<IcGlobe size={mk(60)} />} label={t('settings.language')} right={<Pressable onPress={onOpenLanguage} style={{ backgroundColor: '#0A2B78', borderRadius: mk(12), borderWidth: mk(3), borderColor: C.navy, paddingHorizontal: mk(14), paddingVertical: mk(6), flexDirection: 'row', alignItems: 'center', gap: mk(10) }}><Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(20) }}>{lang}</Text><IcChevron size={mk(26)} /></Pressable>} />
+      <View style={settingsStyles.group}>
+      <Row icon={<IcMusic size={mk(60)} />} label={t('settings.music')} right={<Toggle label={t('settings.music')} on={prefs.music} onChange={(v) => setPreference('music', v)} />} />
+      <Row icon={<IcSound size={mk(60)} />} label={t('settings.sfx')} right={<Toggle label={t('settings.sfx')} on={prefs.sfx} onChange={(v) => setPreference('sfx', v)} />} />
+      <Row icon={<IcVibrate size={mk(60)} />} label={t('settings.haptics')} right={<Toggle label={t('settings.haptics')} on={prefs.haptics} onChange={(v) => setPreference('haptics', v)} />} />
+      <Row icon={<IcBell size={mk(60)} />} label={t('ui2.notifications')} right={<Toggle label={t('ui2.notifications')} on={!!push} onChange={async (v) => { if (v) { const ok = await requestPushPermission().catch(() => false); setPush(ok); if (!ok) Linking.openSettings().catch(() => {}); } else Linking.openSettings().catch(() => {}); }} />} />
+      <Pressable accessibilityRole="button" onPress={onOpenLanguage}><Row icon={<IcGlobe size={mk(60)} />} label={t('settings.language')} right={<View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: 13 }}>{lang}</Text><IcChevron size={16} dir="right" /></View>} /></Pressable>
+      </View>
       {/* Görüş & öneri, sponsorluk (geri bildirim merkezi) */}
-      {onOpenFeedback ? (<>
+      {onOpenFeedback ? (<View style={settingsStyles.group}>
         <Pressable onPress={() => { onClose(); onOpenFeedback(); }}><Row icon={<IcSuggest size={mk(60)} />} label={t('ui2.feedback')} right={<IcChevron size={mk(30)} />} /></Pressable>
         <Pressable onPress={() => { onClose(); onOpenFeedback('sponsorship'); }}><Row icon={<IcClipboard size={mk(60)} />} label={t('ui2.partnership')} right={<IcChevron size={mk(30)} />} /></Pressable>
-      </>) : null}
+      </View>) : null}
       {/* Yardım & bilgi bağlantıları */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: mk(8), marginTop: mk(12), justifyContent: 'center' }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8, justifyContent: 'center' }}>
         {([['help', INFO_LINKS.help], ['privacy', INFO_LINKS.privacy], ['parents', INFO_LINKS.parents], ['terms', INFO_LINKS.terms], ['founders', INFO_LINKS.founders]] as const).map(([k, url]) => (
-          <Pressable key={k} onPress={() => Linking.openURL(url).catch(() => {})} style={{ backgroundColor: '#0A2B78', borderRadius: mk(12), borderWidth: mk(3), borderColor: C.navy, paddingHorizontal: mk(14), paddingVertical: mk(8) }}>
+          <Pressable accessibilityRole="link" key={k} onPress={() => Linking.openURL(url).catch(() => {})} style={settingsStyles.link}>
             <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: fz(17) }}>{t(`settings.${k}` as MessageKey)}</Text>
           </Pressable>
         ))}
@@ -198,17 +212,16 @@ export function SettingsDialog({ actions, onClose, onOpenLanguage, onDeleteAccou
         <ChunkyButton kind="blue" label={t('ui2.resetDefaults')} height={mk(76)} size={mk(20)} style={{ flex: 1 }} onPress={() => { setPreference('music', true); setPreference('sfx', true); setPreference('haptics', true); }} />
         <ChunkyButton kind="red" label={t('profile.logout')} height={mk(76)} size={mk(24)} style={{ flex: 1 }} onPress={() => { onClose(); actions.logout(); }} />
       </View>
-      <Pressable onPress={onDeleteAccount} style={{ alignSelf: 'center', marginTop: mk(14), padding: mk(6) }}><Text style={{ color: C.textMuted, fontFamily: F.semi, fontSize: fz(17), textDecorationLine: 'underline' }}>{t('ui2.deleteMyAccount')}</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={onDeleteAccount} style={[settingsStyles.link, { alignSelf: 'center', marginTop: 6 }]}><Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: 12, textDecorationLine: 'underline' }}>{t('ui2.deleteMyAccount')}</Text></Pressable>
     </Dialog>
   );
 }
-export function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+export function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label?: string }) {
   return (
-    <Pressable onPress={() => onChange(!on)} style={{ flexDirection: 'row', alignItems: 'center', gap: mk(10) }}>
-      <View style={{ width: mk(96), height: mk(50), borderRadius: mk(25), backgroundColor: on ? C.green : C.gray, borderWidth: mk(4), borderColor: C.navy, justifyContent: 'center', paddingHorizontal: mk(4) }}>
-        <View style={{ width: mk(36), height: mk(36), borderRadius: mk(18), backgroundColor: C.white, alignSelf: on ? 'flex-end' : 'flex-start' }} />
+    <Pressable accessibilityRole="switch" accessibilityState={{ checked: on }} accessibilityLabel={label ?? (on ? t('ui2.on') : t('ui2.off'))} onPress={() => onChange(!on)} style={{ minHeight: 44, minWidth: 50, justifyContent: 'center' }}>
+      <View style={{ width: 46, height: 26, borderRadius: 13, borderCurve: 'continuous', backgroundColor: on ? '#2BBF62' : '#526C99', borderWidth: 1, borderColor: '#052458', justifyContent: 'center', paddingHorizontal: 3 }}>
+        <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: C.white, alignSelf: on ? 'flex-end' : 'flex-start' }} />
       </View>
-      <Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(17), width: mk(130) }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{on ? t('ui2.on') : t('ui2.off')}</Text>
     </Pressable>
   );
 }
@@ -635,51 +648,7 @@ export function MessagesDialog({ state, actions, onClose }: { state: GameState; 
   );
 }
 
-// ── Arenalar (Clash Royale düzeni): en üstte en yüksek arena; büyük arena sanatı, kupa aralığı, maç başı kupa, ulaşma ödülü;
-//    bulunduğun arena altın çerçeveli + ilerleme çubuğu; kilitliler soluk + gerekli kupa; geçilenler onaylı ──
-const ARENA_KEYS = ['mahalle', 'amator', 'profesyonel', 'sampiyonlar', 'efsaneler', 'dunya', 'goat'] as const;
-const ARENA_CARD_H = mk(250);
-export function ArenasDialog({ state, onClose }: { state: GameState; onClose: () => void }) {
-  const p = state.profile; const trophies = p?.trophies ?? 0;
-  const curIdx = ARENAS.reduce((acc, a, i) => (trophies >= a.min ? i : acc), 0);
-  const rewarded = p?.highestArenaRewarded ?? 0;
-  const scrollY = Math.max(0, (ARENAS.length - 1 - curIdx) * (ARENA_CARD_H + mk(10)) - mk(40));
-  return (
-    <Dialog title={up(t('arenas.title'))} onClose={onClose} wide initialScrollY={scrollY}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: mk(8), marginBottom: mk(10) }}><IcTrophy size={mk(40)} /><OutlinedText size={mk(34)} width={mk(3)} color={C.gold}>{fmt(trophies)}</OutlinedText></View>
-      {[...ARENAS].map((a, i) => ({ ...a, i })).reverse().map((a) => {
-        const cur = a.i === curIdx; const passed = a.i < curIdx; const locked = a.i > curIdx; const key = ARENA_KEYS[a.i]!;
-        const next = ARENAS[a.i + 1]; const pct = cur && next ? Math.max(0, Math.min(1, (trophies - a.min) / (next.min - a.min))) : 1;
-        const claimed = a.i <= rewarded;
-        return (
-          <Plate key={key} face={cur ? '#1B5AE0' : locked ? '#0A2B78' : C.panelInk} top={cur ? '#5A9BFF' : '#2F63C8'} lip={cur ? '#0B3A9E' : '#041A4E'} outline={cur ? C.gold : C.navy} radius={mk(22)} style={{ marginBottom: mk(10) }} inner={{ minHeight: ARENA_CARD_H - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(8), paddingVertical: mk(10), gap: mk(8) }}>
-            <View style={{ width: mk(300), height: mk(230), alignItems: 'center', justifyContent: 'center' }}>
-              <Image source={arenaArt(key)} style={{ width: mk(300), height: mk(230), opacity: locked ? 0.45 : 1 }} resizeMode="contain" />
-              {locked ? <View style={{ position: 'absolute', width: mk(64), height: mk(64), borderRadius: mk(32), backgroundColor: C.panelInk, borderWidth: mk(4), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><IcLock size={mk(32)} /></View> : null}
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <OutlinedText size={mk(28)} width={mk(2.5)} align="left" numberOfLines={2} fit>{up(t(`arena.${key}` as MessageKey))}</OutlinedText>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(6), marginTop: mk(2) }}><IcTrophy size={mk(24)} /><Text style={{ color: C.gold, fontFamily: F.black, fontSize: fz(17) }}>{a.max >= 99999 ? `${fmt(a.min)}+` : `${fmt(a.min)} – ${fmt(a.max)}`}</Text></View>
-              <Text numberOfLines={2} style={{ color: C.textSub, fontFamily: F.bold, fontSize: fz(15), lineHeight: fz(19), marginTop: mk(2) }}>{t(`arena.${key}.desc` as MessageKey)}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(6), marginTop: mk(4), opacity: claimed ? 0.55 : 1 }}>
-                <IcGem size={mk(26)} /><Text style={{ color: claimed ? C.textMuted : C.white, fontFamily: F.black, fontSize: fz(16) }}>{claimed ? t('ui2.rewardTaken') : `${t('ui2.arenaReward')}: +${a.reward}`}</Text>
-              </View>
-              {cur ? (
-                <View style={{ marginTop: mk(6) }}>
-                  <Bar value={pct} max={1} color={C.gold} track="#04163F" height={mk(20)} radius={mk(6)} />
-                  <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: fz(14), marginTop: mk(2) }}>{next ? t('ui2.toNextArena', { n: fmt(Math.max(0, next.min - trophies)) }) : t('level.maxed')}</Text>
-                </View>
-              ) : null}
-            </View>
-            <View style={{ position: 'absolute', top: mk(8), right: mk(8) }}>
-              {cur ? <Ribbon label={t('arenas.here')} color={C.gold} size={mk(13)} /> : passed ? <IcCheckBadge size={mk(40)} /> : <Ribbon label={t('ui2.trophiesN', { n: fmt(a.min) })} color={C.gray} size={mk(12)} />}
-            </View>
-          </Plate>
-        );
-      })}
-    </Dialog>
-  );
-}
+export { ArenaRoad as ArenasDialog } from './ArenaRoad';
 
 // ── Profil: avatar + çerçeve + seviye + arena, istatistikler, profil fotoğrafları (kullan / satın al) ──
 const PP_COL = Math.floor((SW - mk(20) * 2 - OUTLINE * 2 - mk(18) * 2 - mk(10) * 3) / 4);

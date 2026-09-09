@@ -49,6 +49,8 @@ try {
 // Marketing-capture mode: DevShotScreen + forced language. NEVER ships true —
 // see appstore/upload-screenshots.py for the capture pipeline.
 const DEV_SHOT_MODE = false;
+// Native-only design fixture: no matchmaking request. Keep disabled for normal use.
+const SEARCH_DESIGN_PREVIEW = __DEV__ && false;
 const DEV_SHOT_LANG = 'tr';
 // Dev-only: force the tutorial (antrenman) flow to inspect its layout. NEVER ships true.
 const FORCE_TUTORIAL_DEV = false;
@@ -784,6 +786,11 @@ function OutgoingInviteBanner({ invite, onCancel, offsetY = 0 }: {
 // Safe-area context must wrap everything that calls useSafeAreaInsets (screens,
 // banners, tab bar) — the provider lives in the default export, the app in AppRoot.
 export default function App() {
+  const [searchPreview, setSearchPreview] = useState(SEARCH_DESIGN_PREVIEW);
+  if (searchPreview) {
+    const SearchPreview = require('./src/matchmaking/SearchPreview').default;
+    return <SearchPreview onExit={() => setSearchPreview(false)} />;
+  }
   if (Ui2Preview) return <Ui2Preview />;
   return (
     <SafeAreaProvider>
@@ -2684,7 +2691,9 @@ function AppRoot() {
       // rengi bulunsun (devir fontsReady effect'inde yapılır, bkz. yukarısı).
       <View style={{ flex: 1, backgroundColor: BG_TOP }}>
         <StatusBar style="light" />
-        <SplashScreen onDone={() => setSplash(false)} fontsReady={fontsReady} onFirstFrameReady={markIntroFrameReady} />
+        <SplashScreen onDone={() => { setSplash(false); if (state.profile?.usernameSet) setLoaded(true); }}
+          fontsReady={fontsReady} bootReady={state.updateCheckComplete}
+          tipIndex={state.profile?.trophies ?? 0} onFirstFrameReady={markIntroFrameReady} />
       </View>
     );
   }
@@ -2790,7 +2799,8 @@ function AppRoot() {
     );
   }
 
-  const showTabs = TAB_PHASES.has(state.phase);
+  // Keep the SAME UI2/HomeTab/arena tree mounted while searching and cancelling.
+  const showTabs = TAB_PHASES.has(state.phase) || (UI2_ON && state.phase === 'searching');
 
   // Game screens (no tab bar)
   if (!showTabs) {
@@ -2834,9 +2844,9 @@ function AppRoot() {
         screen = <HomeScreen {...props} overlayBusy={Boolean(matchOverPopup || pendingLevelUp || gemCelebration)} gemCountAnimOverride={diamondCountAnim} gemFillAnimOverride={diamondFillAnim} trophyLand={trophyLand} trophyHold={trophyFlight?.delta ?? null} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLockedSocialMode={enqueueLockedSocialMode} monetizationDiagnostics={monetizationDiagnostics} />;
     }
     return (
-      <View style={[s.root, { paddingTop: insets.top }]}>
+      <View style={[s.root, { paddingTop: state.phase === 'searching' ? 0 : insets.top }]}>
         <StatusBar style="light" />
-        <ScreenBg variant="match" />
+        {state.phase !== 'searching' ? <ScreenBg variant="match" /> : null}
         {/* KOZMETİK MAÇ ARKA PLANI YALNIZ MAÇTA (2026-08-31): bu katman
             switch'in default dalında olduğu için ANA EKRAN, Arkadaşlar,
             Turnuvalar — kısacası TÜM ekranlarda çiziliyordu. Oyuncu raporu:

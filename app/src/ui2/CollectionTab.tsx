@@ -65,10 +65,9 @@ function Powers({ p, actions, spEquipped, onOpenStore, onNotice }: { p: GameStat
     <>
       <View style={{ marginHorizontal: SIDE, marginTop: mk(14) }}>
         <Plate face={C.panel} top={C.panelTop} lip={C.panelDark} radius={R.plate} inner={{ paddingHorizontal: mk(14), paddingBottom: mk(16) }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', height: mk(84) }}>
+          <View style={{ gap: 3, paddingVertical: 9 }}>
             <OutlinedText size={mk(40)} width={mk(4)} align="left">{t('ui2.myPowerSet')}</OutlinedText>
-            <View style={{ flex: 1 }} />
-            <Text style={{ color: C.textSub, fontFamily: F.bold, fontSize: fz(17), textAlign: 'right', flexShrink: 1 }}>{t('ui2.myPowerSetHint')}</Text>
+            <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(17) }}>{t('ui2.myPowerSetHint')}</Text>
           </View>
           {/* alignItems stretch: bir yuva dolunca boş yuvalar üste kaymasın, hepsi aynı yükseklikte kalsın */}
           <View style={{ flexDirection: 'row', gap: GAP, alignItems: 'stretch' }}>

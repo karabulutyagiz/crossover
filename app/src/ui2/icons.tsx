@@ -8,7 +8,7 @@ type P = { size?: number; color?: string };
 const OUT = C.navy; const SW = 2.4;
 
 function IcMusicBase({ size = 28, color = '#FFFFFF' }: P) {
-  return <Svg width={size} height={size} viewBox="0 0 32 32"><Path d="M12 6 L26 3 V22" stroke={OUT} strokeWidth={SW + 2} strokeLinecap="round" strokeLinejoin="round" fill="none" /><Path d="M12 6 L26 3 V22" stroke={color} strokeWidth={SW} strokeLinecap="round" strokeLinejoin="round" fill="none" /><Circle cx="8.5" cy="24" r="5" fill={color} stroke={OUT} strokeWidth={SW} /><Circle cx="22.5" cy="21.5" r="5" fill={color} stroke={OUT} strokeWidth={SW} /></Svg>;
+  return <Svg width={size} height={size} viewBox="-2 -2 36 36"><Path d="M12 24 V6 L26 3 V22" stroke={OUT} strokeWidth={SW + 2} strokeLinecap="round" strokeLinejoin="round" fill="none" /><Path d="M12 24 V6 L26 3 V22" stroke={color} strokeWidth={SW} strokeLinecap="round" strokeLinejoin="round" fill="none" /><Circle cx="8.5" cy="24" r="5" fill={color} stroke={OUT} strokeWidth={SW} /><Circle cx="22.5" cy="21.5" r="5" fill={color} stroke={OUT} strokeWidth={SW} /></Svg>;
 }
 function IcSoundBase({ size = 28, color = '#FFFFFF' }: P) {
   return <Svg width={size} height={size} viewBox="0 0 32 32"><Path d="M4 12 H10 L17 6 V26 L10 20 H4 Z" fill={color} stroke={OUT} strokeWidth={SW} strokeLinejoin="round" /><Path d="M21 11 Q25 16 21 21 M24 7 Q30 16 24 25" stroke={OUT} strokeWidth={SW + 2} strokeLinecap="round" fill="none" /><Path d="M21 11 Q25 16 21 21 M24 7 Q30 16 24 25" stroke={color} strokeWidth={SW} strokeLinecap="round" fill="none" /></Svg>;

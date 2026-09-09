@@ -37,19 +37,19 @@ export function TournamentsTab({ state, actions, onOpenSettings, onOpenProfile, 
       {/* ── CANLI ETKİNLİK banner'ı ── */}
       <View style={{ marginHorizontal: SIDE, marginTop: mk(4) }}>
         <Plate face="#0B2F8C" top="#3A7BFF" lip="#061B52" radius={mk(26)} inner={{ overflow: 'hidden' }}>
-          <View style={{ height: mk(270) }}>
-            <Image source={UI2.tn_banner_art} style={{ position: 'absolute', right: 0, top: 0, width: mk(420), height: mk(270) }} resizeMode="cover" />
+          <View style={{ minHeight: 130 }}>
+            <Image source={UI2.tn_banner_art} style={{ position: 'absolute', right: 0, top: 0, width: mk(420), height: '100%' }} resizeMode="cover" />
             <View style={{ position: 'absolute', right: mk(14), top: mk(12), backgroundColor: C.panelInk, borderRadius: mk(14), borderWidth: mk(3), borderColor: C.navy, paddingHorizontal: mk(12), paddingVertical: mk(4), flexDirection: 'row', alignItems: 'center', gap: mk(6) }}>
               <IcClock size={mk(30)} />
               <OutlinedText size={mk(20)} width={1.2}>{featured?.status === 'live' ? S.ongoing : featured ? `${featured.joined}/${featured.size}` : '—'}</OutlinedText>
             </View>
-            <View style={{ position: 'absolute', left: mk(20), top: mk(14) }}>
+            <View style={{ width: '54%', paddingLeft: mk(20), paddingTop: mk(14), paddingBottom: 10 }}>
               <View style={{ backgroundColor: C.red, borderRadius: mk(10), borderWidth: mk(3), borderColor: C.navy, paddingHorizontal: mk(14), paddingVertical: mk(2), flexDirection: 'row', alignItems: 'center', gap: mk(8), alignSelf: 'flex-start' }}>
                 <View style={{ width: mk(16), height: mk(16), borderRadius: mk(8), backgroundColor: C.white }} />
                 <OutlinedText size={mk(20)} width={1.2}>{S.liveEvent}</OutlinedText>
               </View>
-              <OutlinedText size={mk(46)} width={mk(5)} align="left" numberOfLines={2} fit style={{ marginTop: mk(10), width: mk(430), lineHeight: fz(50) }}>{(featured?.name ?? 'Şampiyonlar Kupası').toLocaleUpperCase('tr')}</OutlinedText>
-              <Text numberOfLines={3} style={{ color: C.white, fontFamily: F.semi, fontSize: fz(19), lineHeight: fz(23), marginTop: mk(6), width: mk(430) }}>{S.tournamentDesc}</Text>
+              <OutlinedText size={mk(42)} width={mk(3)} align="left" numberOfLines={2} fit style={{ marginTop: mk(10), lineHeight: fz(46) }}>{(featured?.name ?? 'Şampiyonlar Kupası').toLocaleUpperCase('tr')}</OutlinedText>
+              <Text style={{ color: C.white, fontFamily: F.semi, fontSize: 12, lineHeight: 15, marginTop: 5 }}>{S.tournamentDesc}</Text>
             </View>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: C.panelInk, paddingHorizontal: mk(14), paddingVertical: mk(10), gap: mk(10) }}>
@@ -130,7 +130,7 @@ export function TournamentsTab({ state, actions, onOpenSettings, onOpenProfile, 
 }
 function TRow({ icon, name, meta, status, live, prize, button, compact }: { icon: ImageSourcePropType | React.ReactNode; name: string; meta: string; status: string; live: boolean; prize: number; button: { kind: 'green' | 'gold' | 'blue'; label: string; on: () => void }; compact?: boolean }) {
   return (
-    <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(20)} inner={{ height: (compact ? mk(96) : mk(110)) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(10), gap: mk(10) }}>
+    <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(20)} inner={{ minHeight: Math.max(48, (compact ? mk(96) : mk(110)) - OUTLINE * 2 - LIP), flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(10), gap: mk(10) }}>
       <View style={{ width: mk(120), height: mk(90), alignItems: 'center', justifyContent: 'center' }}><IconSlot icon={icon} width={mk(116)} height={mk(86)} size={mk(84)} /></View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <OutlinedText size={mk(28)} width={mk(2)} align="left" numberOfLines={1}>{name}</OutlinedText>

@@ -1,11 +1,13 @@
 // UI2 primitifleri — mock'taki yüzey ailesi: koyu lacivert dış kontur, ana renk yüzü,
 // dar üst parlama, alt dilim (gölge). Hepsi View katmanı; PNG buton yok, ölçek bağımsız.
 import { cloneElement, isValidElement, memo, type ReactElement, type ReactNode, useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View, type DimensionValue, type ImageSourcePropType, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { Animated, Image, Pressable, StyleSheet, Text, View, type DimensionValue, type ImageSourcePropType, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { useButtonMotion } from './useMenuMotion';
 import Svg, { Defs, Pattern, Polygon, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { C, F, fz, LIP, mk, OUTLINE, R, SIDE, SW, FONT_SCALE, MIN_TAP } from './tokens';
 import { UI2 } from './assets';
 import { IcGem } from './icons-ui';
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 // ── Damalı royal blue zemin (mock: ~120 px'lik iki tonlu elmaslar) ─────────────
 function CheckerBgBase({ style }: { style?: StyleProp<ViewStyle> }) {
@@ -143,6 +145,7 @@ export function ChunkyButton({ kind = 'green', label, sub, over, onPress, height
   /** 40 pt dokunma tabanını uygulama — yalnız kartın tamamı zaten dokunulabilirken (görsel buton) */ compact?: boolean;
 }) {
   const k = BTN[kind];
+  const { press, pressIn, pressOut } = useButtonMotion();
   const iconSrc = gem ? UI2.hud_gem : icon;
   height = compact ? height : Math.max(height, MIN_TAP);
   const ow = Math.min(mk(4), Math.max(0.9, size * 0.085)); // kontur: puntonun ~%8.5'i (11 pt → 0.9, 17 pt → 1.5)
@@ -153,7 +156,7 @@ export function ChunkyButton({ kind = 'green', label, sub, over, onPress, height
   const labelW = innerW > 0 ? Math.max(mk(40), innerW - (gem || icon ? size * 1.05 + mk(8) : 0)) : undefined;
   const outW = Math.max(mk(3.5), Math.min(OUTLINE, height * 0.085));
   return (
-    <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [{ opacity: disabled ? 0.55 : 1, transform: [{ translateY: pressed ? 2 : 0 }] }, style]}>
+    <AnimatedPressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} onPressIn={pressIn} onPressOut={pressOut} style={[{ opacity: disabled ? 0.55 : 1, transform: [{ translateY: press.interpolate({ inputRange: [0, 1], outputRange: [0, 2] }) }] }, style]}>
       <Plate face={k.face} top={k.top} lip={k.lip} radius={radius} lipHeight={lipH} outlineWidth={outW}
         inner={{ height: height - outW * 2 - lipH, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: mk(8), paddingHorizontal: mk(12) }}
         onInnerLayout={(w) => { if (w !== innerW) setInnerW(w); }}>
@@ -170,7 +173,7 @@ export function ChunkyButton({ kind = 'green', label, sub, over, onPress, height
           {sub ? <OutlinedText size={subSize ?? size * 0.55} outline={k.textOutline} width={ow * 0.8} numberOfLines={1} fit style={{ marginTop: -mk(4) }}>{sub}</OutlinedText> : null}
         </View>
       </Plate>
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 

@@ -3,14 +3,15 @@
 //  1) TEMBEL KURULUM: sekme ilk kez aktif olana (ya da etkileşimler bitip ısınma süresi dolana) dek çizilmez.
 //  2) DONDURMA: pasif sekme YENİDEN ÇİZİLMEZ — karşılaştırıcı hedef pasifse render'ı atlar. Sayfa çeviricide
 //     beş sekme birden mount kaldığı için, bu olmadan her sunucu mesajı beş ağacı birden çizdirirdi.
-import { InteractionManager } from 'react-native';
 import { memo, startTransition, useEffect, useState, type ReactNode } from 'react';
 
 export const TabFreeze = memo(
-  function TabFreeze({ active, warmDelay = 0, children }: {
+  function TabFreeze({ active, warmDelay = 0, canWarm, children }: {
     active: boolean;
     /** pasif sekmeyi etkileşimler bittikten kaç ms sonra arka planda kur */
     warmDelay?: number;
+    /** Native navigation may be moving while the JS thread appears idle. */
+    canWarm?: () => boolean;
     /** değişince dondurma DELİNİR: pasifken de bir kez çizilmesi gereken durumlar için */
     freezeKey?: unknown;
     children: ReactNode;
@@ -19,15 +20,18 @@ export const TabFreeze = memo(
     if (active && !everActive) setEverActive(true); // aktivasyonla AYNI commit'te kurul
     useEffect(() => {
       if (everActive) return;
-      let clearWarm: (() => void) | undefined;
-      const h = InteractionManager.runAfterInteractions(() => {
-        const id = setTimeout(() => startTransition(() => setEverActive(true)), warmDelay);
-        clearWarm = () => clearTimeout(id);
-      });
-      return () => { h.cancel(); clearWarm?.(); };
-      // everActive tek yönlü (false→true), warmDelay sabit
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+      let idle: ReturnType<typeof requestIdleCallback> | undefined;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const warm = () => {
+        if (canWarm && !canWarm()) { timer = setTimeout(warm, 100); return; }
+        idle = requestIdleCallback(() => {
+          if (canWarm && !canWarm()) { timer = setTimeout(warm, 100); return; }
+          startTransition(() => setEverActive(true));
+        }, { timeout: 1500 });
+      };
+      timer = setTimeout(warm, warmDelay);
+      return () => { clearTimeout(timer); if (idle !== undefined) cancelIdleCallback(idle); };
+    }, [everActive, warmDelay, canWarm]);
     return <>{everActive ? children : null}</>;
   },
   (prev, next) => !next.active && prev.freezeKey === next.freezeKey,

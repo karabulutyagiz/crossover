@@ -1,6 +1,6 @@
 // UI2 — OYNA sekmesi. Mock: docs/design/ui2/refs/home.png (853 px, mh()).
-import { useState } from 'react';
-import { Image, Pressable, Text, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Animated, Image, Pressable, Text, View } from 'react-native';
 import { t } from '../i18n';
 import { arenaLabel } from '../screens';
 import type { Actions, GameState } from './types';
@@ -17,9 +17,14 @@ export type HomeTabProps = {
   onOpenLevelRoad: () => void; onOpenQuests: () => void; onOpenModes: () => void; onOpenBot: () => void;
   onOpenStore: () => void; onOpenSettings: () => void; onOpenProfile: () => void; onOpenArenas: () => void;
   onOpenDailyQuestion: () => void;
+  searchMotion?: Animated.Value;
+  searchLocked?: boolean;
 };
 
-export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenModes, onOpenBot, onOpenStore, onOpenSettings, onOpenProfile, onOpenArenas, onOpenDailyQuestion }: HomeTabProps) {
+export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenModes, onOpenBot, onOpenStore, onOpenSettings, onOpenProfile, onOpenArenas, onOpenDailyQuestion, searchMotion, searchLocked = false }: HomeTabProps) {
+  const idleMotion = useRef(new Animated.Value(0)).current;
+  const motion = searchMotion ?? idleMotion;
+  const chromeOpacity = motion.interpolate({ inputRange: [0, 0.7, 1], outputRange: [1, 0, 0] });
   const p = state.profile;
   const level = p?.level ?? 1;
   const trophies = p?.trophies ?? 0;
@@ -31,10 +36,11 @@ export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenM
   const W = SW - SIDE * 2;
   const [sceneH, setSceneH] = useState(0);
   // Arena sahnesi: RN iOS'ta stil boyutu verilmeyen Image kaynağın doğal boyutunu (1200×900 pt) alır → açık genişlik/yükseklik şart.
-  const sceneW = SW + mh(16);
+  const sceneW = SW * 0.88;
   const sceneImgH = sceneH + mh(40);
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1 }} pointerEvents={searchLocked ? 'none' : 'auto'} accessibilityElementsHidden={searchLocked} importantForAccessibility={searchLocked ? 'no-hide-descendants' : 'auto'}>
+      <Animated.View style={{ opacity: chromeOpacity, transform: [{ translateY: motion.interpolate({ inputRange: [0, 1], outputRange: [0, -mh(620)] }) }] }}>
       <Hud
         data={{ name: p?.displayName ?? '', avatarId: p?.avatar ?? null, frameId: p?.selectedFrame ?? null, level, xp: p?.xp ?? 0, xpNext: (p as any)?.xpForNext ?? 1000, trophies, diamonds: p?.diamonds ?? 0 }}
         actions={{ onAvatar: onOpenProfile, onGems: onOpenStore, onSettings: onOpenSettings, onTrophies: onOpenArenas }}
@@ -61,10 +67,11 @@ export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenM
         </View>
       </Pressable>
       {/* Arena sahnesi + Görevler */}
+      </Animated.View>
       <Pressable onPress={onOpenArenas} style={{ flex: 1, minHeight: mh(240), marginTop: -mh(12) }} onLayout={(e) => setSceneH(Math.round(e.nativeEvent.layout.height))}>
-        {sceneH > 0 ? <Image source={arenaScene} style={{ position: 'absolute', left: -mh(8), top: 0, width: sceneW, height: sceneImgH }} resizeMode="contain" /> : null}
+        {sceneH > 0 ? <Animated.Image testID="home-arena-scene" source={arenaScene} style={{ position: 'absolute', left: (SW - sceneW) / 2, top: 0, width: sceneW, height: sceneImgH, transform: [{ translateY: motion.interpolate({ inputRange: [0, 1], outputRange: [0, -mh(42)] }) }, { scale: motion.interpolate({ inputRange: [0, 1], outputRange: [1, 1.045] }) }] }} resizeMode="contain" /> : null}
         {/* Sağ sütun: Görevler + Günlük Soru (aynı dil, aynı punto) */}
-        <View style={{ position: 'absolute', right: SIDE - mh(6), top: mh(40), width: mh(150), gap: mh(14) }}>
+        <Animated.View style={{ position: 'absolute', right: SIDE - mh(6), top: mh(40), width: mh(150), gap: mh(14), opacity: chromeOpacity, transform: [{ translateX: motion.interpolate({ inputRange: [0, 1], outputRange: [0, mh(300)] }) }] }}>
           <Pressable onPress={onOpenQuests} style={{ alignItems: 'center' }}>
             <IcClipboard size={mh(104)} />
             <OutlinedText size={mh(30)} width={mk(3)} numberOfLines={1} fit>{t('ui2.questsLabel')}</OutlinedText>
@@ -81,9 +88,10 @@ export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenM
               <View style={{ position: 'absolute', top: -mh(10), right: mh(4), width: mh(34), height: mh(34), borderRadius: mh(17), backgroundColor: C.red, borderWidth: mk(4), borderColor: C.navy }} />
             ) : null}
           </Pressable>
-        </View>
+        </Animated.View>
       </Pressable>
       {/* Kupa ilerlemesi */}
+      <Animated.View style={{ opacity: chromeOpacity, transform: [{ translateY: motion.interpolate({ inputRange: [0, 1], outputRange: [0, mh(540)] }) }] }}>
       <View style={{ alignItems: 'center', marginTop: 0 }}>
         <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mh(22)} inner={{ width: mh(470) - OUTLINE * 2, height: mh(96) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mh(18) }}>
           <IcTrophy size={mh(66)} />
@@ -95,7 +103,7 @@ export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenM
       </View>
       {/* HEMEN OYNA */}
       <View style={{ marginHorizontal: SIDE + mh(10), marginTop: mh(16) }}>
-        <ChunkyButton kind="gold" label={up(t('home.quickMatch'))} sub={t('ui2.online1v1')} height={mh(180)} size={mh(76)} subSize={mh(34)} radius={mh(30)} onPress={() => actions.findMatch()} />
+        <ChunkyButton kind="gold" label={up(t('home.quickMatch'))} sub={t('ui2.online1v1')} height={mh(158)} size={mh(64)} subSize={mh(30)} radius={mh(26)} onPress={() => actions.findMatch()} />
       </View>
       {/* Oyun Modları / Arkadaşla Oyna */}
       <View style={{ flexDirection: 'row', marginHorizontal: SIDE, marginTop: mh(16), gap: mh(20) }}>
@@ -110,6 +118,7 @@ export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenM
       </View>
       <View style={{ height: mh(8) }} />
       {state.error ? <Text style={{ color: '#FFD7DE', textAlign: 'center', fontFamily: F.semi, fontSize: 12, marginTop: 6 }}>{state.error}</Text> : null}
+      </Animated.View>
     </View>
   );
 }

@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Crossover game server — data layer, Transfermarkt ingest, player verification",
   "scripts": {
+    "test:realtime-performance": "tsx --test src/cli/realtime-performance-test.ts",
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "migrate": "tsx src/db/migrate.ts",

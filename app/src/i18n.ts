@@ -767,6 +767,7 @@ const tr = {
   'opponent.goHome': 'Ana Sayfaya Dön',
 
   // connection errors (client-side)
+  'arenas.imageLoadError': 'Arena görseli yüklenemedi. Lütfen tekrar açmayı dene.',
   'error.connect': 'Sunucuya bağlanılamadı',
   'error.disconnected': 'Bağlantı koptu',
   'error.opponentLeft': 'Rakip ayrıldı',
@@ -1907,6 +1908,7 @@ const en: typeof tr = {
   'opponent.findNew': 'Find New Opponent',
   'opponent.goHome': 'Go Home',
 
+  'arenas.imageLoadError': 'The arena image could not load. Please try opening it again.',
   'error.connect': 'Could not connect to the server',
   'error.disconnected': 'Connection lost',
   'error.opponentLeft': 'Opponent left',

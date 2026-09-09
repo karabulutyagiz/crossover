@@ -1,6 +1,6 @@
 // UI2 kabuğu: üst HUD + alt navigasyon + damalı zemin. Mock: docs/design/ui2/refs/*.png
-import { type ReactNode } from 'react';
-import { Animated, Image, Pressable, ScrollView, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
+import { useMemo, type ReactNode } from 'react';
+import { Animated, Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View, type ImageSourcePropType } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Polygon, Rect, Stop } from 'react-native-svg';
 import { Avatar } from '../Avatar';
@@ -9,6 +9,7 @@ import { UI2 } from './assets';
 import { Bar, CheckerBg, IconSlot, OutlinedText, Plate, fitSize, fmt } from './primitives';
 import { IcGear, IcGem, IcNavCollection, IcNavFriends, IcNavPlay, IcNavStore, IcPlus, IcTrophy } from './icons-ui';
 import { C, F, fz, LIP, mk, OUTLINE, R, SIDE } from './tokens';
+import { navFrameAt } from './navMotion';
 
 export type HudData = {
   name: string; avatarId: string | null; frameId?: string | null; level: number; xp: number; xpNext: number;
@@ -56,7 +57,7 @@ export function Hud({ data, actions, title, titleIcon }: { data: HudData; action
             </Plate>
           </Pressable>
           {/* Dişli de elmas hapıyla AYNI yükseklikte yuvarlak buton — çıplak ikonken boşlukta duruyordu */}
-          <Pressable onPress={actions?.onSettings} style={{ marginLeft: mk(10) }}>
+          <Pressable accessibilityRole="button" accessibilityLabel={t('settings.title')} testID="hud-settings" onPress={actions?.onSettings} style={{ marginLeft: mk(4), minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
             <Plate face={C.panelInk} top="#2F63C8" lip="#051D52" radius={R.pill} inner={{ width: mk(84) - OUTLINE * 2, height: mk(84) - OUTLINE * 2 - LIP, alignItems: 'center', justifyContent: 'center' }}>
               <IcGear size={mk(58)} />
             </Plate>
@@ -95,7 +96,7 @@ function LevelShield({ level }: { level: number }) {
   );
 }
 
-// ── Alt navigasyon: 5 plaka; aktif olan altın çerçeveli + açık mavi yüz, yukarı taşar ──
+// ── Alt navigasyon: 5 plaka; aktif sekme genişler, mavi ışık ve ikon sayfayla birlikte akar ──
 export type NavKey = 'store' | 'collection' | 'play' | 'friends' | 'tournaments';
 // Alt çubuk ikonları: kullanıcının çizdirdiği 5 rozet (assets/ui2/nav-*.png; 2026-09-08).
 function NavImg({ source, size = mk(96) }: { source: ImageSourcePropType; size?: number }) {
@@ -109,11 +110,9 @@ const NAV: { key: NavKey; Icon: (p: { size?: number }) => ReactNode; labelKey: M
   { key: 'tournaments', Icon: (p) => <NavImg source={UI2.nav_tournaments} size={p.size} />, labelKey: 'tab.tournaments' as MessageKey },
 ];
 export const NAV_H = mk(152);
-// Clash Royale alt çubuğu — kullanıcının CR ekran görüntülerinden birebir (2026-09-08):
-// koyu kurşuni bar (#3F4757), sekmeler arasında ince çizgiler, yalnız ikon; AKTİF sekme 2 kat geniş,
-// üstten açık maviye geçişli zemin (#86C3DC → #5F7FA1), yanlarda açık mavi ok uçları, altında sekme adı.
-// OYNA sekmesi (CR'deki Savaş) her zaman altın zeminli.
-const NAV_BAR = '#3F4757';
+// Aktif sekme iki birim, diğerleri bir birim. Tüm hareket sayfanın gerçek
+// konumundan türetilir; JS thread'de flex/width animasyonu yapılmaz.
+const NAV_BAR = '#062864';
 // Zemin: CR'de aktif sekmenin rengi ALTTA yoğun, yukarı doğru sönümlenir (üstte neredeyse bar rengi);
 // kenardaki sekmelerde dış alt köşe telefon köşesi gibi yuvarlanır.
 function NavFill({ from, to, fromOpacity = 1, corner }: { from: string; to: string; fromOpacity?: number; corner?: 'left' | 'right' }) {
@@ -141,48 +140,70 @@ export function BottomNav({ active, onPress, labels, badges, scrollX, pageW }: {
   scrollX?: Animated.Value; pageW?: number;
 }) {
   const insets = useSafeAreaInsets();
+  const { width: windowW } = useWindowDimensions();
   const pad = Math.max(insets.bottom, mk(8));
   const idx = Math.max(0, NAV.findIndex((n) => n.key === active));
-  const W = pageW && pageW > 0 ? pageW : 1;
-  // 0 = tamamen pasif, 1 = tamamen aktif. Kaydırma konumu yoksa sabit değerlere düşer.
-  const act = (i: number) => scrollX
-    ? scrollX.interpolate({ inputRange: [(i - 1) * W, i * W, (i + 1) * W], outputRange: [0, 1, 0], extrapolate: 'clamp' })
-    : new Animated.Value(i === idx ? 1 : 0);
+  const W = pageW && pageW > 0 ? pageW : windowW;
+  const unit = W / (NAV.length + 1);
+  // Keep the native graph attached while selection labels or server state update.
+  const fallbackIdx = scrollX ? 0 : idx;
+  const motion = useMemo(() => NAV.map((_, i) => {
+    const a = scrollX
+      ? scrollX.interpolate({ inputRange: [(i - 1) * W, i * W, (i + 1) * W], outputRange: [0, 1, 0], extrapolate: 'clamp' })
+      : new Animated.Value(i === fallbackIdx ? 1 : 0);
+    const stretch = Animated.add(1, a);
+    return {
+      a, stretch, unscale: Animated.divide(1, stretch),
+      shift: scrollX ? scrollX.interpolate({
+        inputRange: NAV.map((_, page) => page * W),
+        outputRange: NAV.map((_, page) => navFrameAt(page, i, W).translateX),
+        extrapolate: 'clamp',
+      }) : navFrameAt(fallbackIdx, i, W).translateX,
+      inactive: a.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+      lift: a.interpolate({ inputRange: [0, 1], outputRange: [0, -mk(12)] }),
+      iconScale: a.interpolate({ inputRange: [0, 1], outputRange: [0.964, 1.036] }),
+      labelLift: a.interpolate({ inputRange: [0, 1], outputRange: [mk(10), 0] }),
+    };
+  }), [scrollX, W, fallbackIdx]);
   const ICON = mk(110);
   return (
-    <View style={{ backgroundColor: NAV_BAR, flexDirection: 'row', borderTopWidth: 1.5, borderTopColor: '#6E7C94' }}>
-      {/* barın kendisi de hafif geçişli: üstte biraz açık, altta koyu (CR) */}
-      <NavFill from="#525E73" to="#3A4252" />
+    <View style={{ height: NAV_H + pad, backgroundColor: NAV_BAR, borderTopWidth: 1.5, borderTopColor: '#559EDA' }}>
+      <NavFill from="#164A86" to="#082B62" />
       {NAV.map((n, i) => {
         const play = n.key === 'play'; const badge = badges?.[n.key];
         const label = labels?.[n.key] ?? t(n.labelKey);
         const corner = i === 0 ? 'left' : i === NAV.length - 1 ? 'right' : undefined;
-        const a = act(i);
+        const { a, stretch, shift, unscale, inactive, lift, iconScale, labelLift } = motion[i];
         return (
-          <Animated.View key={n.key} style={{ flex: Animated.add(new Animated.Value(1), a) as unknown as number, minWidth: 0 }}>
-            <Pressable onPress={() => onPress(n.key)} style={{ height: NAV_H + pad, paddingBottom: pad, alignItems: 'center', justifyContent: 'center', borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: '#2A3140' }}>
+          <Animated.View key={n.key} style={{ position: 'absolute', top: 0, bottom: 0, left: i * unit, width: unit, transform: [{ translateX: shift }, { scaleX: stretch }] }}>
+            <Pressable accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: idx === i }} testID={`bottom-tab-${n.key}`} onPress={() => onPress(n.key)} style={{ flex: 1, paddingBottom: pad, alignItems: 'center', justifyContent: 'center', borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: '#07234C' }}>
               {/* OYNA altın zemini aktifleştikçe mavi zemine devreder */}
-              {play ? <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: a.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}><NavFill from="#D9AF5A" to="#E8C56A" corner={corner} /></Animated.View> : null}
+              {play ? <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: inactive }]}><NavFill from="#D9AF5A" to="#E8C56A" corner={corner} /></Animated.View> : null}
               <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: a }]}>
-                <NavFill from="#6385A6" to="#6E92B4" fromOpacity={0.08} corner={corner} />
-                {/* oklar yalnız gidilebilecek yöne: en solda sağ ok, en sağda sol ok (CR) */}
-                {i > 0 ? <NavArrow dir="left" /> : null}
-                {i < NAV.length - 1 ? <NavArrow dir="right" /> : null}
+                <NavFill from="#3482C1" to="#72C9F2" fromOpacity={0.12} />
+                <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: '#A4E2FC' }} />
               </Animated.View>
-              <Animated.View style={{ alignItems: 'center', transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [0, -mk(8)] }) }] }}>
-                <Animated.View style={{ transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.964, 1.036] }) }] }}>
-                  <n.Icon size={ICON} />
+              {/* Ters ölçek ikon ve yazıyı esnetmez; dokunma alanı plaka ile büyür. */}
+              <Animated.View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ alignItems: 'center', justifyContent: 'center', width: unit, height: NAV_H, transform: [{ scaleX: unscale }] }}>
+                <Animated.View style={{ position: 'absolute', width: unit * 2, height: NAV_H, opacity: a }}>
+                  {i > 0 ? <NavArrow dir="left" /> : null}
+                  {i < NAV.length - 1 ? <NavArrow dir="right" /> : null}
                 </Animated.View>
-                {/* ad yazısı MUTLAK: pasif karonun düzenini değiştirmez (ikon eskisi gibi ortada kalır) */}
-                <Animated.View pointerEvents="none" style={{ position: 'absolute', top: ICON - mk(6), opacity: a }}>
-                  <OutlinedText size={fitSize(mk(30), label, 12)} width={mk(3)} family={F.title} numberOfLines={1}>{label}</OutlinedText>
+                <Animated.View style={{ alignItems: 'center', transform: [{ translateY: lift }] }}>
+                  <Animated.View style={{ transform: [{ scale: iconScale }] }}>
+                    <n.Icon size={ICON} />
+                  </Animated.View>
+                  {/* Label overlays the slot without changing its layout. */}
+                  <Animated.View pointerEvents="none" style={{ position: 'absolute', width: unit * 2 - mk(24), top: ICON - mk(6), opacity: a, transform: [{ translateY: labelLift }] }}>
+                    <OutlinedText size={fitSize(mk(30), label, 12)} width={mk(3)} family={F.title} numberOfLines={1}>{label}</OutlinedText>
+                  </Animated.View>
                 </Animated.View>
+                {badge ? (
+                  <View style={{ position: 'absolute', top: mk(8), right: mk(10), minWidth: mk(40), height: mk(40), borderRadius: mk(10), backgroundColor: C.red, borderWidth: mk(3), borderColor: '#7A1020', alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
+                    <OutlinedText size={mk(22)} width={1}>{String(badge)}</OutlinedText>
+                  </View>
+                ) : null}
               </Animated.View>
-              {badge ? (
-                <View style={{ position: 'absolute', top: mk(8), right: mk(10), minWidth: mk(40), height: mk(40), borderRadius: mk(10), backgroundColor: C.red, borderWidth: mk(3), borderColor: '#7A1020', alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
-                  <OutlinedText size={mk(22)} width={1}>{String(badge)}</OutlinedText>
-                </View>
-              ) : null}
             </Pressable>
           </Animated.View>
         );

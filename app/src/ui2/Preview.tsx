@@ -1,11 +1,19 @@
 // UI2 web önizleme fixture'ı: ağ/IAP yok, sahte state ile sekmeleri çizer (yalnız __DEV__ + web).
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { Platform, Text, View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { currentLang, setLanguage } from '../i18n';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Actions, GameState } from './types';
 import { Ui2Tabs } from './Ui2Tabs';
+
+// Metro Fast Refresh may evaluate this module on iOS even when the web preview
+// is not rendered. React Native defines window, but not window.location.
+function previewParams() {
+  return Platform.OS === 'web' && typeof window !== 'undefined'
+    ? new URLSearchParams(window.location?.search ?? '')
+    : null;
+}
 
 const profile = {
   userId: 'u1', displayName: 'Yağız', trophies: 2450, diamonds: 250, wins: 120, losses: 80, selectedAvatar: 'pp3', ownedAvatars: ['pp3'], ownedEmotes: ['footballer'], equippedEmotes: [], usernameSet: true, socialPackUntil: null,
@@ -30,8 +38,8 @@ const state = {
     { userId: 'f5', displayName: 'Deniz', selectedAvatar: 'pp6', avatar: 'pp6', trophies: 1950, arena: { name: 'Şampiyonlar Ligi', icon: '', minTrophies: 1000 }, online: false, lastSeen: new Date(Date.now() - 12 * 60000).toISOString() },
   ],
   tournament: FAKE_TOUR,
-  tournamentOver: (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dlg') === 'tover') ? { type: 'tournament_over' as const, tournamentId: 't2', youWon: true, placement: 1, prize: 300, tournamentName: 'Haftalık Kupa' } : null,
-  tournamentReady: (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dlg') === 'tready') ? { type: 'tournament_match_ready' as const, tournamentId: 't2', matchId: 'm5', opponentName: 'Emir', tournamentName: 'Haftalık Kupa', youReady: false, oppReady: true } : null,
+  tournamentOver: previewParams()?.get('dlg') === 'tover' ? { type: 'tournament_over' as const, tournamentId: 't2', youWon: true, placement: 1, prize: 300, tournamentName: 'Haftalık Kupa' } : null,
+  tournamentReady: previewParams()?.get('dlg') === 'tready' ? { type: 'tournament_match_ready' as const, tournamentId: 't2', matchId: 'm5', opponentName: 'Emir', tournamentName: 'Haftalık Kupa', youReady: false, oppReady: true } : null,
   tournaments: [
     { id: 't1', name: 'Şampiyonlar Kupası', size: 16, joined: 9, youJoined: false, status: 'registration', prizeFirst: 1000, prizeSecond: 300, entryFee: 0 },
     { id: 't2', name: 'Haftalık Kupa', size: 16, joined: 16, youJoined: true, status: 'live', prizeFirst: 300, prizeSecond: 100, entryFee: 0 },
@@ -50,7 +58,7 @@ const state = {
 const actions = new Proxy({}, { get: (_t, k) => (...a: unknown[]) => { console.log('[ui2 preview] action', String(k), a); return Promise.resolve(); } }) as unknown as Actions;
 
 export default function Ui2Preview() {
-  const qs = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const qs = previewParams();
   const initial = Number(qs?.get('tab') ?? '2'); const sy = Number(qs?.get('sy') ?? '0'); const dlg = (qs?.get('dlg') ?? null) as any; const sub = (qs?.get('sub') ?? undefined) as any;
   // ?lang=de → o dilde çiz (21 dil kontrolü için); render öncesi tek sefer
   const lang = qs?.get('lang'); if (lang && currentLang() !== lang) setLanguage(lang);

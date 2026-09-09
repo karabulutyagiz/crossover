@@ -39,8 +39,8 @@ export function FriendsTab({ state, actions, onOpenSettings, onOpenProfile, onOp
             <OutlinedText size={fitSize(mk(46), S.inviteTitle.length >= S.inviteTitle2.length ? S.inviteTitle : S.inviteTitle2, 11)} width={mk(4)} color="#E9C8FF" align="left" numberOfLines={1}>{S.inviteTitle}</OutlinedText>
             <OutlinedText size={fitSize(mk(46), S.inviteTitle.length >= S.inviteTitle2.length ? S.inviteTitle : S.inviteTitle2, 11)} width={mk(4)} color={C.gold} align="left" numberOfLines={1} style={{ marginTop: -mk(6) }}>{S.inviteTitle2}</OutlinedText>
           </View>
-          <View style={{ position: 'absolute', left: '3.5%', top: '46%', width: '42%', height: '32%', justifyContent: 'center' }}>
-            <Text numberOfLines={3} style={{ color: C.white, fontFamily: F.bold, fontSize: fitSize(fz(19), S.inviteDesc, 78), lineHeight: fitSize(fz(19), S.inviteDesc, 78) * 1.18 }}>{S.inviteDesc}</Text>
+          <View style={{ position: 'absolute', left: '3.5%', top: '43%', width: '44%', height: '36%', justifyContent: 'center' }}>
+            <Text numberOfLines={4} style={{ color: C.white, fontFamily: F.semi, fontSize: 12, lineHeight: 13 }}>{S.inviteDesc.replace(/\n/g, ' ')}</Text>
           </View>
           <View style={{ position: 'absolute', left: '3.5%', top: '79%', width: '22%', height: '16%', backgroundColor: '#0C1E5C', borderRadius: mk(14), borderWidth: mk(3), borderColor: C.navy, alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
             <OutlinedText size={mk(22)} width={mk(2)} numberOfLines={1} fit>{S.gemsN(REFERRAL_REWARD)}</OutlinedText>

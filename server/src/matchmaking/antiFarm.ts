@@ -66,6 +66,41 @@ export async function assessFarmRisk(args: {
   };
 }
 
+/** Same human-pair score as assessFarmRisk, fetched in one query per search.
+ * Settlement still reads fresh risk; this is not a reward/anti-farm cache.
+ */
+export async function assessHumanCandidateRisks(
+  playerId: string,
+  opponentIds: readonly string[],
+  db: Pick<typeof pool, 'query'> = pool,
+): Promise<Map<string, number>> {
+  const scores = new Map<string, number>();
+  const cfg = liveOpsConfig();
+  if (!cfg.killSwitches.antiFarmEnabled || opponentIds.length === 0) return scores;
+  const keys = [...new Set(opponentIds.map((id) => pairKeyFor(playerId, id)))];
+  try {
+    const { rows } = await db.query<{ pair_key: string; matches_24h: number; one_way: number }>(
+      `SELECT pair_key, count(*)::int AS matches_24h,
+              count(*) FILTER (WHERE winner_id = $2)::int AS one_way
+         FROM opponent_history
+        WHERE pair_key = ANY($1::text[]) AND created_at >= now() - interval '24 hours'
+        GROUP BY pair_key`,
+      [keys, playerId],
+    );
+    const byPair = new Map(rows.map((row) => [row.pair_key, row]));
+    for (const id of opponentIds) {
+      const row = byPair.get(pairKeyFor(playerId, id));
+      const pairPressure = Math.max(0, Number(row?.matches_24h ?? 0) - cfg.antiFarm.pairDecayStart + 1) * 0.14;
+      const wins = Number(row?.one_way ?? 0);
+      const oneWayPressure = wins >= 3 ? 0.18 + Math.min(0.22, wins * 0.025) : 0;
+      scores.set(id, Number(Math.max(0, Math.min(1, pairPressure + oneWayPressure)).toFixed(4)));
+    }
+  } catch (err) {
+    if ((err as { code?: string }).code !== '42P01') throw err;
+  }
+  return scores;
+}
+
 export async function recordOpponentHistory(args: {
   matchId: string;
   playerId: string;
