@@ -44,10 +44,13 @@ e = d['expo']
 e['owner'] = eski_owner
 e.setdefault('extra', {}).setdefault('eas', {})['projectId'] = eski_id
 e.setdefault('updates', {})['url'] = f'https://u.expo.dev/{eski_id}'
+# runtime policy appVersion → mağazadaki CANLI sürüm neyse o olmalı; ağaç 1.0.4'e çıktığı için
+# köprü yayınında sürüm CANLI değere (1.0.3) çekilir, yoksa güncelleme kimseye ulaşmaz (2026-09-09).
+e['version'] = '1.0.3'
 json.dump(d, open('app.json', 'w'), indent=2, ensure_ascii=False)
 print('app.json geçici olarak ESKİ projeye çevrildi:', eski_id)
 PY
 
-EAS_SKIP_AUTO_FINGERPRINT=1 npx eas update \
+EAS_NO_VCS=1 EAS_SKIP_AUTO_FINGERPRINT=1 EXPO_PUBLIC_UI2=1 NODE_OPTIONS=--dns-result-order=ipv4first npx eas update \
   --branch production --environment production \
   --message "$MESAJ" --non-interactive
