@@ -58,7 +58,14 @@ function unitId(): string | null {
   return Platform.OS === 'ios' ? cfg.interstitialUnitIos : cfg.interstitialUnitAndroid;
 }
 
+// GEÇİŞ REKLAMI KAPALI (kullanıcı kararı 2026-09-09): "3 maçta 1 çıkan geçiş reklamını kaldırmak istiyorum".
+// İstemci tarafında kapatıldı → OTA ile herkese anında gider, sunucu deploy'u gerekmez
+// (sunucudaki ADS_INTERSTITIAL_ENABLED değeri ne olursa olsun gösterilmez).
+// Geri açmak için: bu sabiti true yap + sunucuda ADS_INTERSTITIAL_ENABLED=1.
+const INTERSTITIAL_ENABLED = false;
+
 function active(): boolean {
+  if (!INTERSTITIAL_ENABLED) return false;
   return !!(InterstitialAd && cfg?.interstitialEnabled && unitId());
 }
 
