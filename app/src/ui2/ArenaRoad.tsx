@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Animated, BackHandler, FlatList, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useMenuMotion } from './useMenuMotion';
 import { Image, useImage } from 'expo-image';
-import Svg, { Defs, Ellipse, LinearGradient, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
+import Svg, { Defs, Ellipse, G, LinearGradient, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { t, type MessageKey } from '../i18n';
 import type { GameState } from './types';
@@ -14,7 +14,38 @@ import { C, F } from './tokens';
 
 const ROAD = ARENAS.map((arena, index) => ({ ...arena, index })).reverse();
 const BACKDROP = require('../../assets/ui2/arena-road-backdrop-v2.png');
-const ROW_H = 450;
+const ROW_H = 530;
+const STAIR_OFFSETS = [-20, -32, -18, 18, 32, 20];
+
+// Decorative links between arena gates, never intermediate reward stops.
+// Keep them inside each fixed-height row so centering and rail progress agree.
+const ArenaStairs = memo(function ArenaStairs({ reached }: { reached: boolean }) {
+  return <Svg pointerEvents="none" accessible={false} width={220} height={110} viewBox="0 0 220 110" style={styles.stairs} testID="arena-link-stairs">
+    <Defs><LinearGradient id="stair-top" x1="0" y1="0" x2="0" y2="1">
+      <Stop offset="0" stopColor={reached ? '#C6ECFF' : '#B4CADA'} />
+      <Stop offset=".18" stopColor={reached ? '#9AD7FF' : '#96B0C6'} />
+      <Stop offset="1" stopColor={reached ? '#64B4E8' : '#7192AF'} />
+    </LinearGradient>
+    <LinearGradient id="stair-face" x1="0" y1="0" x2="0" y2="1">
+      <Stop offset="0" stopColor={reached ? '#387CAA' : '#496A87'} />
+      <Stop offset="1" stopColor={reached ? '#1C4B78' : '#2A455F'} />
+    </LinearGradient></Defs>
+    {STAIR_OFFSETS.map((offset, step) => {
+      // Broad overlapping treads form one winding flight, not floating tiles.
+      const center = 110 + offset;
+      const halfWidth = 41 + step * 2;
+      const left = center - halfWidth;
+      const right = center + halfWidth;
+      const y = 3 + step * 17;
+      return <G key={step}>
+        <Path d={`M${left + 2} ${y + 15} H${right + 2} V${y + 21} H${left + 2} Z`} fill="#061C36" opacity={.45} />
+        <Path d={`M${left} ${y + 12} H${right} V${y + 19} L${left} ${y + 19} Z`} fill="url(#stair-face)" stroke="#18354F" strokeWidth={1.2} />
+        <Path d={`M${left + 7} ${y} H${right - 7} L${right} ${y + 12} H${left} Z`} fill="url(#stair-top)" stroke="#3D607F" strokeWidth={1.2} strokeLinejoin="round" />
+        <Path d={`M${left + 8} ${y + 1.5} H${right - 8} M${left + 2} ${y + 12} H${right - 2}`} fill="none" stroke={reached ? '#D7F3FF' : '#D3E1EC'} strokeOpacity={.75} strokeWidth={1.2} />
+      </G>;
+    })}
+  </Svg>;
+});
 
 function TrophyRail({ height, fillStart }: { height: number; fillStart: number }) {
   return <Svg pointerEvents="none" width={19} height={height} style={styles.rail} testID="arena-trophy-rail">
@@ -94,6 +125,7 @@ const ArenaGate = memo(function ArenaGate({ index, current, rewarded, trophies, 
       <Bar value={Math.max(0, trophies - arena.min)} max={next.min - arena.min} height={8} color={C.gold} />
       <Text style={styles.remaining}>{t('ui2.toNextArena', { n: fmt(Math.max(0, next.min - trophies)) })}</Text>
     </View> : null}
+    {index > 0 ? <ArenaStairs reached={!locked} /> : null}
   </View>;
 });
 
@@ -155,7 +187,7 @@ export function ArenaRoad({ state, onClose, visible = true }: { state: GameState
     <ArenaGate index={item.index} current={current} rewarded={rewarded} trophies={trophies} width={width} />,
   [current, rewarded, trophies, width]);
   return <Animated.View pointerEvents={visible ? 'auto' : 'none'} accessibilityElementsHidden={!presented} importantForAccessibility={presented ? 'auto' : 'no-hide-descendants'} accessibilityViewIsModal={presented} onAccessibilityEscape={close} testID="arena-road"
-    style={[styles.root, { opacity: presented ? 1 : 0, transform: [{ translateX: reduced ? 0 : enter.interpolate({ inputRange: [0, 1], outputRange: [screenWidth, 0] }) }] }]}>
+    style={[styles.root, { opacity: presented ? 1 : 0, transform: [{ translateY: reduced ? 0 : enter.interpolate({ inputRange: [0, 1], outputRange: [screenHeight, 0] }) }] }]}>
     <Image source={backdrop} contentFit="cover" transition={0} accessible={false} style={{ position: 'absolute', width: screenWidth, height: screenHeight }} />
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(2,16,40,.16)' }]} />
     <View style={{ flex: 1 }}>
@@ -191,6 +223,7 @@ const styles = StyleSheet.create({
   balance: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 3 },
   balanceText: { color: '#FFE27E', fontFamily: F.black, fontSize: 18 },
   gate: { height: ROW_H, overflow: 'hidden', alignItems: 'center' },
+  stairs: { position: 'absolute', bottom: 8, alignSelf: 'center' },
   rail: { position: 'absolute', left: 0, top: 0 },
   railMilestone: { position: 'absolute', left: 0, top: 282, flexDirection: 'row', alignItems: 'center', gap: 5 },
   railTick: { width: 19, height: 1, backgroundColor: '#AACBE9', opacity: .6 },

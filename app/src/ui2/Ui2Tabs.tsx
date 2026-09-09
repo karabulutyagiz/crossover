@@ -27,9 +27,9 @@ const KEYS: NavKey[] = ['store', 'collection', 'play', 'friends', 'tournaments']
 type Confirm = { title: string; body: string; price?: number; priceText?: string; onYes: () => void };
 export type Ui2DialogKey = 'mode' | 'bot' | 'quests' | 'settings' | 'language' | 'room' | 'requests' | 'league' | 'tournament' | 'road' | 'arenas' | 'profile' | 'dailycx' | 'addfriend' | 'messages' | 'friend' | 'friendmatch' | null;
 
-export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, onLanguageChange, onDiamondCelebration, onOpenFeedback, onOpenMatchHistory, initialScrollY = 0, initialDialog = null, initialCollectionSub }: {
+export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, onLanguageChange, onDiamondCelebration, onOpenFeedback, onOpenMatchHistory, onOpenLeaderboard, initialScrollY = 0, initialDialog = null, initialCollectionSub }: {
   state: GameState; actions: Actions; activeTab: number; goToTab: (i: number) => void;
-  onOpenLevelRoad: () => void; onLanguageChange?: () => void; onDiamondCelebration?: (c: { amount: number }) => void; onOpenFeedback?: (category?: 'sponsorship') => void; onOpenMatchHistory?: () => void; initialScrollY?: number; initialDialog?: Ui2DialogKey; initialCollectionSub?: 'powers' | 'cosmetics' | 'emotes';
+  onOpenLevelRoad: () => void; onLanguageChange?: () => void; onDiamondCelebration?: (c: { amount: number }) => void; onOpenFeedback?: (category?: 'sponsorship') => void; onOpenMatchHistory?: () => void; onOpenLeaderboard?: () => void; initialScrollY?: number; initialDialog?: Ui2DialogKey; initialCollectionSub?: 'powers' | 'cosmetics' | 'emotes';
 }) {
   const insets = useSafeAreaInsets();
   useMenuMotionPreference();
@@ -149,7 +149,7 @@ export function Ui2Tabs({ state, actions, activeTab, goToTab, onOpenLevelRoad, o
     const k = KEYS[i];
     if (k === 'store') return <StoreTab {...common} store={store} onConfirm={(c) => setConfirm(c)} />;
     if (k === 'collection') return <CollectionTab {...common} onOpenStore={() => goToTab(0)} onNotice={say} initialSub={initialCollectionSub} />;
-    if (k === 'play') return <HomeTab {...common} searchMotion={search.progress} searchLocked={search.locked} onOpenLevelRoad={() => setDlg('road')} onOpenStore={() => goToTab(0)} onOpenQuests={() => { actions.getDailyQuests(); setDlg('quests'); }} onOpenModes={() => setDlg('mode')} onOpenBot={() => setDlg('bot')} onOpenDailyQuestion={() => { actions.startDailyCrossover(); setDlg('dailycx'); }} />;
+    if (k === 'play') return <HomeTab {...common} onOpenLeaderboard={onOpenLeaderboard} searchMotion={search.progress} searchLocked={search.locked} onOpenLevelRoad={() => setDlg('road')} onOpenStore={() => goToTab(0)} onOpenQuests={() => { actions.getDailyQuests(); setDlg('quests'); }} onOpenModes={() => setDlg('mode')} onOpenBot={() => setDlg('bot')} onOpenDailyQuestion={() => { actions.startDailyCrossover(); setDlg('dailycx'); }} />;
     if (k === 'friends') return <FriendsTab {...common} onOpenRequests={() => setDlg('requests')} onOpenAddFriend={() => { actions.searchUsers(''); setDlg('addfriend'); }} onOpenMessages={() => setDlg('messages')} onOpenFriend={(f) => { setFriend(f); setDlg('friend'); }} onNotice={say} />;
     return <TournamentsTab {...common} onOpenLevelRoad={() => setDlg('road')} onOpenLeague={() => { actions.getLeague(); setDlg('league'); }} onOpenTournament={(id) => { actions.getTournament(id); setTourId(id); setDlg('tournament'); }} onNotice={say} />;
   };

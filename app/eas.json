@@ -49,6 +49,13 @@
         "track": "alpha",
         "releaseStatus": "completed"
       }
+    },
+    "alpha135": {
+      "android": {
+        "serviceAccountKeyPath": "/Users/yagizkarabulut/Desktop/projects/crossover/app/play-service-account.json",
+        "track": "alpha",
+        "releaseStatus": "completed"
+      }
     }
   }
 }

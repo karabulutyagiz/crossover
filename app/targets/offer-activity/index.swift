@@ -1,8 +1,4 @@
-// Günlük Fırsat Live Activity — kilit ekranı + Dynamic Island.
-// Geri sayım Text(timerInterval:)'la SİSTEM tarafından akar: push/güncelleme
-// gerekmez; süre dolunca staleDate ile aktivite bayatlar ve kapatılır.
-// DİKKAT: CofOfferAttributes, uygulama hedefindeki (modules/cof-live-activity)
-// kopyayla BİREBİR aynı olmalı — ActivityKit tip adı + alanlarla eşleştirir.
+// Keep the ActivityKit attributes identical to the app module.
 import ActivityKit
 import SwiftUI
 import WidgetKit
@@ -18,97 +14,219 @@ struct CofOfferAttributes: ActivityAttributes {
 
 @main
 struct CofOfferActivityBundle: WidgetBundle {
-  var body: some Widget {
-    CofOfferLiveActivity()
+  var body: some Widget { CofOfferLiveActivity() }
+}
+
+private let cofNavy = Color(red: 0.025, green: 0.065, blue: 0.16)
+private let cofBlue = Color(red: 0.06, green: 0.30, blue: 0.69)
+private let cofCyan = Color(red: 0.40, green: 0.84, blue: 1)
+private let cofGold = Color(red: 1, green: 0.83, blue: 0.33)
+private let cofLilac = Color(red: 0.83, green: 0.69, blue: 1)
+
+private struct ActivityCopy {
+  let turkish = Locale.preferredLanguages.first?.hasPrefix("tr") ?? true
+  var offer: String { turkish ? "SANA ÖZEL FIRSAT" : "YOUR SPECIAL OFFER" }
+  var remaining: String { turkish ? "KALAN SÜRE" : "TIME LEFT" }
+  var expired: String { turkish ? "SÜRE DOLDU" : "OFFER ENDED" }
+  var open: String { turkish ? "Fırsatı oyunda incele" : "View offer in game" }
+  var ended: String { turkish ? "Yeni fırsatlar için oyuna dön" : "Return to the game for new offers" }
+}
+
+private struct CrestShape: Shape {
+  func path(in r: CGRect) -> Path {
+    var p = Path()
+    p.move(to: CGPoint(x: r.width * 0.08, y: 0))
+    p.addLine(to: CGPoint(x: r.width * 0.92, y: 0))
+    p.addLine(to: CGPoint(x: r.width, y: r.height * 0.16))
+    p.addLine(to: CGPoint(x: r.width * 0.92, y: r.height * 0.73))
+    p.addQuadCurve(to: CGPoint(x: r.midX, y: r.maxY), control: CGPoint(x: r.width * 0.75, y: r.height * 0.92))
+    p.addQuadCurve(to: CGPoint(x: r.width * 0.08, y: r.height * 0.73), control: CGPoint(x: r.width * 0.25, y: r.height * 0.92))
+    p.addLine(to: CGPoint(x: 0, y: r.height * 0.16))
+    p.closeSubpath()
+    return p
   }
 }
 
-// Marka renkleri (theme.ts ile uyumlu — koyu lacivert zemin + altın vurgu).
-private let cofNavy = Color(red: 0.043, green: 0.094, blue: 0.22)     // #0B1838
-private let cofGold = Color(red: 1.0, green: 0.808, blue: 0.227)      // #FFCE3A
-private let cofGem = Color(red: 0.659, green: 0.333, blue: 0.969)     // #A855F7
+private struct CofCrest: View {
+  var size: CGFloat = 48
+  var body: some View {
+    ZStack {
+      CrestShape().fill(LinearGradient(colors: [cofCyan, cofBlue, cofNavy], startPoint: .topLeading, endPoint: .bottomTrailing))
+      CrestShape().stroke(cofGold, style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
+      VStack(spacing: 0) {
+        Image(systemName: "soccerball").font(.system(size: size * 0.20, weight: .bold)).foregroundColor(.white)
+        Text("COF").font(.system(size: size * 0.32, weight: .black, design: .rounded))
+          .tracking(-size * 0.02).foregroundColor(.white)
+          .shadow(color: cofNavy, radius: 0, y: 1)
+      }.offset(y: -size * 0.035)
+    }
+    .frame(width: size, height: size * 1.10)
+    .accessibilityLabel("Crossover")
+  }
+}
 
-private func timerText(_ state: CofOfferAttributes.ContentState) -> some View {
-  Text(timerInterval: Date.now...max(Date.now, state.endsAt), countsDown: true)
-    .monospacedDigit()
-    .multilineTextAlignment(.trailing)
+// Pitch markings are decorative, not a fake progress indicator.
+private struct PitchBackdrop: View {
+  var body: some View {
+    GeometryReader { g in
+      Path { p in
+        let r = CGRect(x: g.size.width * 0.54, y: -20, width: g.size.width * 0.42, height: g.size.height + 40)
+        p.addRoundedRect(in: r, cornerSize: CGSize(width: 8, height: 8))
+        p.move(to: CGPoint(x: r.minX, y: r.midY))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.midY))
+        p.addEllipse(in: CGRect(x: r.midX - 29, y: r.midY - 29, width: 58, height: 58))
+      }.stroke(cofCyan.opacity(0.10), lineWidth: 1)
+    }.clipped().accessibilityHidden(true)
+  }
+}
+
+private struct OfferClock: View {
+  let state: CofOfferAttributes.ContentState
+  var expired: Bool = false
+  var compact: Bool = false
+  var body: some View {
+    Group {
+      if expired {
+        Text(compact ? "—" : ActivityCopy().expired)
+      } else {
+        Text(timerInterval: Date.now...max(Date.now, state.endsAt), countsDown: true).monospacedDigit()
+      }
+    }
+    .font(.system(size: compact ? 12 : 21, weight: .heavy, design: .rounded))
+    .foregroundColor(expired ? .white.opacity(0.65) : cofGold)
+    .lineLimit(1).minimumScaleFactor(0.75).multilineTextAlignment(.trailing)
+  }
+}
+
+private struct OfferDetails: View {
+  let state: CofOfferAttributes.ContentState
+  var expired = false
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text(state.title).font(.system(size: 16, weight: .bold, design: .rounded))
+        .foregroundColor(.white).lineLimit(2).minimumScaleFactor(0.85)
+        .fixedSize(horizontal: false, vertical: true)
+      if !expired {
+        HStack(spacing: 5) {
+          Image(systemName: "diamond.fill").font(.system(size: 10, weight: .bold)).accessibilityHidden(true)
+          Text(state.priceText).font(.system(size: 13, weight: .bold, design: .rounded)).lineLimit(1).minimumScaleFactor(0.8)
+        }.foregroundColor(cofLilac)
+      }
+    }
+  }
+}
+
+// The camera gap belongs to iOS. Give each available wing a complete,
+// readable visual instead of stretching plain text across the island.
+private struct CompactBrand: View {
+  var body: some View {
+    Text("COF")
+      .font(.system(size: 11, weight: .black, design: .rounded))
+      .foregroundColor(cofNavy)
+      .padding(.horizontal, 5).padding(.vertical, 3)
+      .background(RoundedRectangle(cornerRadius: 5).fill(LinearGradient(colors: [cofCyan, Color.white], startPoint: .bottomLeading, endPoint: .topTrailing)))
+      .accessibilityLabel("Crossover")
+  }
+}
+
+private struct ExpandedOfferCard: View {
+  let state: CofOfferAttributes.ContentState
+  let expired: Bool
+  var body: some View {
+    HStack(spacing: 12) {
+      CofCrest(size: 48)
+      VStack(alignment: .leading, spacing: 8) {
+        OfferDetails(state: state, expired: expired)
+        HStack(spacing: 5) {
+          Text(expired ? ActivityCopy().ended : ActivityCopy().open)
+          Image(systemName: "chevron.right")
+        }.font(.system(size: 10, weight: .semibold)).foregroundColor(cofCyan)
+      }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(12)
+    .background {
+      RoundedRectangle(cornerRadius: 18).fill(LinearGradient(colors: [cofBlue, cofNavy], startPoint: .topLeading, endPoint: .bottomTrailing))
+      PitchBackdrop().clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+    .overlay(RoundedRectangle(cornerRadius: 18).stroke(cofCyan.opacity(0.35), lineWidth: 1))
+  }
+}
+
+private struct OfferLockScreen: View {
+  let state: CofOfferAttributes.ContentState
+  let expired: Bool
+  private let copy = ActivityCopy()
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(spacing: 10) {
+        CofCrest(size: 30)
+        VStack(alignment: .leading, spacing: 3) {
+          Text("CROSSOVER").font(.system(size: 13, weight: .black, design: .rounded)).tracking(1.4).foregroundColor(.white)
+          Text(expired ? copy.expired : copy.offer).font(.system(size: 9, weight: .heavy)).tracking(1).foregroundColor(cofCyan)
+        }
+        Spacer(minLength: 6)
+        Image(systemName: "soccerball").font(.system(size: 30, weight: .light)).foregroundColor(cofCyan.opacity(0.45)).accessibilityHidden(true)
+      }
+      Rectangle().fill(.white.opacity(0.12)).frame(height: 1).accessibilityHidden(true)
+      HStack(alignment: .center, spacing: 12) {
+        OfferDetails(state: state, expired: expired).frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .trailing, spacing: 5) {
+          Text(expired ? copy.expired : copy.remaining).font(.system(size: 8, weight: .heavy)).tracking(1).foregroundColor(.white.opacity(0.75))
+          OfferClock(state: state, expired: expired).frame(width: 100)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 9)
+        .background(RoundedRectangle(cornerRadius: 12).fill(cofNavy.opacity(0.60)))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(cofCyan.opacity(0.22), lineWidth: 1))
+      }
+      HStack(spacing: 5) {
+        Text(expired ? copy.ended : copy.open).font(.system(size: 10, weight: .semibold))
+        Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold))
+      }.foregroundColor(.white.opacity(0.75))
+    }
+    .padding(12)
+    .background {
+      LinearGradient(colors: [cofBlue, cofNavy], startPoint: .topLeading, endPoint: .bottomTrailing)
+      PitchBackdrop()
+    }
+    .activityBackgroundTint(cofNavy)
+    .activitySystemActionForegroundColor(cofGold)
+  }
 }
 
 struct CofOfferLiveActivity: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: CofOfferAttributes.self) { context in
-      // ── Kilit ekranı / banner ──
-      HStack(spacing: 12) {
-        Text("💎")
-          .font(.system(size: 28))
-        VStack(alignment: .leading, spacing: 2) {
-          Text("SANA ÖZEL FIRSAT")
-            .font(.system(size: 11, weight: .heavy))
-            .foregroundColor(cofGold)
-          Text(context.state.title)
-            .font(.system(size: 15, weight: .bold))
-            .foregroundColor(.white)
-            .lineLimit(1)
-          Text(context.state.priceText)
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundColor(cofGem)
-        }
-        Spacer()
-        VStack(alignment: .trailing, spacing: 2) {
-          Text("KALAN")
-            .font(.system(size: 10, weight: .heavy))
-            .foregroundColor(.white.opacity(0.55))
-          timerText(context.state)
-            .font(.system(size: 20, weight: .heavy))
-            .foregroundColor(.white)
-            .frame(maxWidth: 84)
-        }
-      }
-      .padding(14)
-      .activityBackgroundTint(cofNavy)
-      .activitySystemActionForegroundColor(cofGold)
+      OfferLockScreen(state: context.state, expired: context.isStale || context.state.endsAt <= Date.now)
     } dynamicIsland: { context in
-      DynamicIsland {
-        // ── Genişletilmiş ada ──
+      let expired = context.isStale || context.state.endsAt <= Date.now
+      return DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
-          Text("💎")
-            .font(.system(size: 26))
-            .padding(.leading, 4)
-        }
-        DynamicIslandExpandedRegion(.center) {
-          VStack(spacing: 2) {
-            Text(context.state.title)
-              .font(.system(size: 14, weight: .bold))
-              .foregroundColor(.white)
-              .lineLimit(1)
-            Text(context.state.priceText)
-              .font(.system(size: 12, weight: .semibold))
-              .foregroundColor(cofGem)
-          }
+          VStack(alignment: .leading, spacing: 4) {
+            Text("CROSSOVER").font(.system(size: 12, weight: .black, design: .rounded)).foregroundColor(.white)
+            Text(ActivityCopy().offer).font(.system(size: 8, weight: .bold)).foregroundColor(cofCyan).lineLimit(1)
+          }.padding(.leading, 4).padding(.top, 5)
         }
         DynamicIslandExpandedRegion(.trailing) {
-          timerText(context.state)
-            .font(.system(size: 17, weight: .heavy))
-            .foregroundColor(cofGold)
-            .frame(maxWidth: 70)
-            .padding(.trailing, 4)
+          VStack(alignment: .trailing, spacing: 4) {
+            Text(expired ? ActivityCopy().expired : ActivityCopy().remaining)
+              .font(.system(size: 8, weight: .heavy)).foregroundColor(.white.opacity(0.7))
+            OfferClock(state: context.state, expired: expired).frame(width: 104)
+          }.padding(.top, 5)
         }
         DynamicIslandExpandedRegion(.bottom) {
-          Text("Fırsat süresi dolmadan mağazaya göz at")
-            .font(.system(size: 11, weight: .medium))
-            .foregroundColor(.white.opacity(0.6))
+          ExpandedOfferCard(state: context.state, expired: expired).padding(.top, 8)
         }
       } compactLeading: {
-        Text("💎")
+        CompactBrand()
       } compactTrailing: {
-        timerText(context.state)
-          .font(.system(size: 12, weight: .heavy))
-          .foregroundColor(cofGold)
-          .frame(maxWidth: 52)
+        HStack(spacing: 3) {
+          Image(systemName: expired ? "checkmark.circle.fill" : "timer").font(.system(size: 10, weight: .bold)).foregroundColor(cofGold)
+          OfferClock(state: context.state, expired: expired, compact: true).frame(width: 58)
+        }
       } minimal: {
-        Text("💎")
+        CofCrest(size: 22)
       }
-      .keylineTint(cofGold)
+      .keylineTint(cofCyan)
     }
   }
 }

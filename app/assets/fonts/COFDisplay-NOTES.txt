@@ -1,0 +1,9 @@
+COF Display Regular — modified font under SIL OFL 1.1.
+Original: Lilita One by Juan Montoreano, copyright 2011.
+See OFL-LilitaOne.txt and FONTLOG-LilitaOne.txt.
+
+N: Crossover UI team
+D: 2026-09-09 — Flattened five composite glyphs without changing their outlines
+or advance widths to avoid iOS composite-accent positioning differences.
+Renamed derivative family/PostScript names to COF Display / COFDisplay-Regular.
+Reproducible build: scripts/build-display-font.py (fontTools required).

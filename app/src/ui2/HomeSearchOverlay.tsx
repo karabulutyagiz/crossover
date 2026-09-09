@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, Ellipse, G, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
@@ -52,21 +52,24 @@ const EtaLabel = memo(function EtaLabel({ eta }: { eta: NonNullable<Eta> }) {
 const Tip = memo(function Tip({ moving }: { moving: boolean }) {
   const [index, setIndex] = useState(() => Math.floor(Math.random() * TIPS.length));
   const fade = useRef(new Animated.Value(1)).current;
+  const nextTip = useCallback(() => {
+    // Every tap advances once, including rapid taps; only the visual fade restarts.
+    fade.stopAnimation();
+    setIndex((value) => (value + 1) % TIPS.length);
+    fade.setValue(moving ? 0.35 : 1);
+    if (moving) Animated.timing(fade, { toValue: 1, duration: 220, useNativeDriver: true, isInteraction: false }).start();
+  }, [fade, moving]);
   useEffect(() => {
     if (!moving) { fade.setValue(1); return; }
-    const id = setInterval(() => {
-      Animated.timing(fade, { toValue: 0, duration: 160, useNativeDriver: true, isInteraction: false }).start(({ finished }) => {
-        if (!finished) return;
-        setIndex((value) => (value + 1) % TIPS.length);
-        Animated.timing(fade, { toValue: 1, duration: 220, useNativeDriver: true, isInteraction: false }).start();
-      });
-    }, 6500);
-    return () => { clearInterval(id); fade.stopAnimation(); };
-  }, [moving, fade]);
-  return <View style={s.tip}>
+    // A manual advance gives the new fact a full reading interval.
+    const id = setTimeout(nextTip, 6500);
+    return () => clearTimeout(id);
+  }, [moving, fade, nextTip, index]);
+  useEffect(() => () => fade.stopAnimation(), [fade]);
+  return <Pressable testID="search-next-fact" accessibilityRole="button" accessibilityLabel={`${t('searching.didYouKnow')}. ${t(TIPS[index]!)}`} accessibilityHint={t('searching.nextFact')} onPress={nextTip} style={s.tip}>
     <Text style={s.tipTitle}>{t('searching.didYouKnow')}</Text>
     <Animated.Text style={[s.tipBody, { opacity: fade }]}>{t(TIPS[index]!)}</Animated.Text>
-  </View>;
+  </Pressable>;
 });
 
 export function HomeSearchOverlay({ searching, progress, moving, eta, onCancel }: {

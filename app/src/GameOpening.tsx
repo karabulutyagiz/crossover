@@ -7,6 +7,7 @@ import { t, type MessageKey } from './i18n';
 import { openingProgress } from './openingState';
 import { warmOpeningAssets } from './openingAssets';
 
+const STUDIO_LOGO = require('../assets/opening/miav-studio-logo.png');
 const ART = require('../assets/opening/crossover-arena-v1.png');
 const TIPS: MessageKey[] = ['loading.tip1', 'loading.tip2', 'loading.tip3', 'loading.tip4'];
 const NATIVE_COLOR = '#0B1838';
@@ -30,6 +31,7 @@ export function GameOpening({ onDone, fontsReady = true, bootReady = true, onFir
   const [handedOff, setHandedOff] = useState(false);
   const [reduceMotion, setReduceMotion] = useState<boolean | null>(null);
   const [artReady, setArtReady] = useState(false);
+  const [studioReady, setStudioReady] = useState(!showStudio);
   const [homeArtReady, setHomeArtReady] = useState(false);
   const [artFailed, setArtFailed] = useState(false);
   const [arenaVisible, setArenaVisible] = useState(!showStudio);
@@ -75,7 +77,14 @@ export function GameOpening({ onDone, fontsReady = true, bootReady = true, onFir
   }, []);
 
   useEffect(() => {
-    if (!laidOut || !fontsReady || firstFrameSent.current) return;
+    if (studioReady) return;
+    // A missing image callback must never leave native LaunchScreen stuck.
+    const timer = setTimeout(() => setStudioReady(true), 4500);
+    return () => clearTimeout(timer);
+  }, [studioReady]);
+
+  useEffect(() => {
+    if (!laidOut || !fontsReady || !studioReady || firstFrameSent.current) return;
     let secondFrame = 0;
     const firstFrame = requestAnimationFrame(() => {
       secondFrame = requestAnimationFrame(() => {
@@ -85,7 +94,7 @@ export function GameOpening({ onDone, fontsReady = true, bootReady = true, onFir
       });
     });
     return () => { cancelAnimationFrame(firstFrame); cancelAnimationFrame(secondFrame); };
-  }, [fontsReady, laidOut]);
+  }, [fontsReady, laidOut, studioReady]);
 
   useEffect(() => {
     if (!arenaVisible || artReady || artFailed) return;
@@ -154,8 +163,7 @@ export function GameOpening({ onDone, fontsReady = true, bootReady = true, onFir
             setArtFailed(true);
           }} accessible={false} />
         <View style={[styles.creditBlock, { top: creditTop }]} accessible accessibilityLabel="Developed by Miav Studios">
-          <Text style={styles.developedBy}>DEVELOPED BY</Text>
-          <Text style={styles.credit}>MIAV STUDIOS</Text>
+          <Text style={styles.credit}>Developed by Miav Studios</Text>
         </View>
       </Animated.View>
       {artFailed && !artReady ? <View style={styles.fallback}><Text style={styles.fallbackTitle}>CROSSOVER</Text></View> : null}
@@ -186,27 +194,9 @@ export function GameOpening({ onDone, fontsReady = true, bootReady = true, onFir
         accessibilityElementsHidden={arenaVisible} importantForAccessibility={arenaVisible ? 'no-hide-descendants' : 'auto'}
         style={[StyleSheet.absoluteFill, styles.studio, { opacity: studioOpacity }]} testID="miav-studio-opening">
         <Animated.View style={[styles.studioLockup, { transform: [{ scale: reduceMotion ? 1 : signature.interpolate({ inputRange: [0, 0.13, 0.29, 0.46, 1], outputRange: [1, 0.97, 1.045, 1, 1] }) }] }]} accessible accessibilityLabel="Miav Studios">
-          <Text style={styles.studioName}>MIAV</Text>
-          <View style={styles.ruleStage}>
-            <Animated.View style={[styles.studioRule, { transform: [{ scaleX: reduceMotion ? 1 : signature.interpolate({ inputRange: [0, 0.16, 0.34, 0.6, 1], outputRange: [1, 1, 3.4, 2.6, 2.6] }) }] }]} />
-            {!reduceMotion ? ([-1, 1] as const).map(side => <Animated.View key={side} style={[styles.signatureLight, {
-              backgroundColor: side < 0 ? '#57CFFF' : '#FFD76C',
-              opacity: signature.interpolate({ inputRange: [0, 0.05, 0.24, 0.38, 1], outputRange: [0, 0.9, 1, 0, 0] }),
-              transform: [
-                { translateX: signature.interpolate({ inputRange: [0, 0.26, 0.4, 1], outputRange: [side * 125, 0, -side * 18, -side * 18] }) },
-                { scaleX: signature.interpolate({ inputRange: [0, 0.2, 0.3, 1], outputRange: [0.35, 1.6, 0.25, 0.25] }) },
-              ],
-            }]} />) : null}
-          </View>
-          <Text style={styles.studioSubtitle}>S T U D I O S</Text>
-          <Animated.Text style={[styles.studioPromise, {
-            opacity: signature.interpolate({ inputRange: [0, 0.57, 0.78, 1], outputRange: [0, 0, 1, 1] }),
-            transform: [{ translateY: reduceMotion ? 0 : signature.interpolate({ inputRange: [0, 0.57, 0.78, 1], outputRange: [5, 5, 0, 0] }) }],
-          }]}>Good Games. Brighter Days.</Animated.Text>
-          <Animated.View pointerEvents="none" style={[styles.signatureDiamond, {
-            opacity: reduceMotion ? 0 : signature.interpolate({ inputRange: [0, 0.23, 0.3, 0.62, 1], outputRange: [0, 0, 1, 0, 0] }),
-            transform: [{ rotate: '45deg' }, { scale: signature.interpolate({ inputRange: [0, 0.24, 0.36, 1], outputRange: [0.4, 0.4, 1.3, 0.6] }) }],
-          }]} />
+          <Image source={STUDIO_LOGO} contentFit="contain" transition={0} priority="high" accessible={false}
+            onDisplay={() => setStudioReady(true)} onError={() => setStudioReady(true)}
+            style={{ width: Math.min(width - 64, 320), height: Math.min(width - 64, 320) * 742 / 2120 }} />
         </Animated.View>
       </Animated.View> : null}
     </View>
@@ -216,14 +206,7 @@ export function GameOpening({ onDone, fontsReady = true, bootReady = true, onFir
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: NATIVE_COLOR, overflow: 'hidden', alignItems: 'center' },
   studio: { backgroundColor: NATIVE_COLOR, alignItems: 'center', justifyContent: 'center' },
-  studioLockup: { alignItems: 'center', width: 260, height: 144, justifyContent: 'center' },
-  studioName: { color: '#FFFFFF', fontSize: 68, lineHeight: 80, fontWeight: '900', includeFontPadding: false },
-  ruleStage: { width: 260, height: 3, marginTop: 9, marginBottom: 15, alignItems: 'center', justifyContent: 'center' },
-  studioRule: { width: 40, height: 3, backgroundColor: '#F5C451' },
-  signatureLight: { position: 'absolute', width: 38, height: 3, borderRadius: 2, shadowColor: '#FFD76C', shadowOpacity: 0.8, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } },
-  signatureDiamond: { position: 'absolute', top: 94, width: 9, height: 9, backgroundColor: '#FFF0BD', borderRadius: 1 },
-  studioSubtitle: { color: '#FFFFFF', fontSize: 16, lineHeight: 20, fontWeight: '700', includeFontPadding: false },
-  studioPromise: { position: 'absolute', top: 166, color: '#B6C4DD', fontSize: 11, fontWeight: '500', letterSpacing: 0.5 },
+  studioLockup: { alignItems: 'center', justifyContent: 'center' },
   loadingKit: { position: 'absolute', alignItems: 'center' },
   loadingLabel: { color: '#FFFFFF', fontFamily: 'Poppins-ExtraBold', fontSize: 15, textAlign: 'center', marginBottom: 10, textShadowColor: '#031027', textShadowRadius: 2, textShadowOffset: { width: 0, height: 2 } },
   barFrame: { height: 31, borderRadius: 8, padding: 3, borderWidth: 2, borderColor: '#03122F', backgroundColor: '#6883AB', shadowColor: '#000000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.65, shadowRadius: 0 },
@@ -232,9 +215,8 @@ const styles = StyleSheet.create({
   fillHighlight: { position: 'absolute', top: 1, left: 2, right: 2, height: 2, backgroundColor: '#FFFAC6', opacity: 0.8 },
   fillLip: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, backgroundColor: '#C37A05' },
   tip: { color: '#DEE9FB', fontFamily: 'Poppins-SemiBold', fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 17, minHeight: 54, paddingHorizontal: 10 },
-  creditBlock: { position: 'absolute', alignSelf: 'center', alignItems: 'center', gap: 4, paddingHorizontal: 20, paddingVertical: 9, borderRadius: 10, backgroundColor: 'rgba(5, 23, 55, 0.72)' },
-  developedBy: { color: '#DCE9FB', fontSize: 8, fontWeight: '600', letterSpacing: 2.4 },
-  credit: { color: '#FFFFFF', fontSize: 11, fontWeight: '800', letterSpacing: 3 },
+  creditBlock: { position: 'absolute', alignSelf: 'center', alignItems: 'center' },
+  credit: { color: '#FFFFFF', fontSize: 10, fontWeight: '500', letterSpacing: 0.4, textShadowColor: '#16304F', textShadowRadius: 2, textShadowOffset: { width: 0, height: 1 } },
   fallback: { ...StyleSheet.absoluteFillObject, backgroundColor: NATIVE_COLOR, alignItems: 'center', justifyContent: 'center' },
   fallbackTitle: { color: '#FFFFFF', fontFamily: 'Poppins-Black', fontSize: 36 },
   brandAccessibility: { position: 'absolute', top: '25%', width: 1, height: 1 },

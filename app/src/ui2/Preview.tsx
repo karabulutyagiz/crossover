@@ -64,7 +64,7 @@ export default function Ui2Preview() {
   const lang = qs?.get('lang'); if (lang && currentLang() !== lang) setLanguage(lang);
   const [tab, setTab] = useState(Number.isFinite(initial) ? initial : 2);
   const [fontsLoaded] = useFonts({
-    'Poppins-Black': require('../../assets/fonts/Poppins-Black.ttf'), 'Poppins-ExtraBold': require('../../assets/fonts/Poppins-ExtraBold.ttf'), 'Poppins-SemiBold': require('../../assets/fonts/Poppins-SemiBold.ttf'), 'LilitaOne-Regular': require('../../assets/fonts/LilitaOne-Regular.ttf'),
+    'Poppins-Black': require('../../assets/fonts/Poppins-Black.ttf'), 'Poppins-ExtraBold': require('../../assets/fonts/Poppins-ExtraBold.ttf'), 'Poppins-SemiBold': require('../../assets/fonts/Poppins-SemiBold.ttf'), 'LilitaOne-Regular': require('../../assets/fonts/COFDisplay-Regular.ttf'),
   });
   if (!fontsLoaded) return <Text>fonts…</Text>;
   return (

@@ -72,6 +72,7 @@ function OutlinedTextBase({ children, size, color = C.white, outline = C.ink, wi
   fitWidth?: number;
 }) {
   // fit: NATİVE adjustsFontSizeToFit KULLANILMAZ — 9 kopya farklı ölçek buluyordu (dolgu minik, kontur büyük).
+  if (typeof children === 'string') children = children.normalize('NFC');
   // Deterministik: görünmez bir ölçüm kopyası metnin doğal genişliğini (taban punto) verir, sarmalayıcı kullanılabilir
   // genişliği verir; punto = taban × (kullanılabilir / doğal). Kopyaların hepsi aynı puntoyu alır.
   // KURAL: fit için ebeveyn belirli bir genişlik vermeli (sütun içinde stretch; satır içinde flex:1'li View'a sar).

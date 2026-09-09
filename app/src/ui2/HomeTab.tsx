@@ -17,11 +17,12 @@ export type HomeTabProps = {
   onOpenLevelRoad: () => void; onOpenQuests: () => void; onOpenModes: () => void; onOpenBot: () => void;
   onOpenStore: () => void; onOpenSettings: () => void; onOpenProfile: () => void; onOpenArenas: () => void;
   onOpenDailyQuestion: () => void;
+  onOpenLeaderboard?: () => void;
   searchMotion?: Animated.Value;
   searchLocked?: boolean;
 };
 
-export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenModes, onOpenBot, onOpenStore, onOpenSettings, onOpenProfile, onOpenArenas, onOpenDailyQuestion, searchMotion, searchLocked = false }: HomeTabProps) {
+export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenModes, onOpenBot, onOpenStore, onOpenSettings, onOpenProfile, onOpenArenas, onOpenDailyQuestion, onOpenLeaderboard, searchMotion, searchLocked = false }: HomeTabProps) {
   const idleMotion = useRef(new Animated.Value(0)).current;
   const motion = searchMotion ?? idleMotion;
   const chromeOpacity = motion.interpolate({ inputRange: [0, 0.7, 1], outputRange: [1, 0, 0] });
@@ -68,9 +69,9 @@ export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenM
       </Pressable>
       {/* Arena sahnesi + Görevler */}
       </Animated.View>
-      <Pressable onPress={onOpenArenas} style={{ flex: 1, minHeight: mh(240), marginTop: -mh(12) }} onLayout={(e) => setSceneH(Math.round(e.nativeEvent.layout.height))}>
+      <Pressable accessible={false} onPress={onOpenArenas} style={{ flex: 1, minHeight: mh(240), marginTop: -mh(12) }} onLayout={(e) => setSceneH(Math.round(e.nativeEvent.layout.height))}>
         {sceneH > 0 ? <Animated.Image testID="home-arena-scene" source={arenaScene} style={{ position: 'absolute', left: (SW - sceneW) / 2, top: 0, width: sceneW, height: sceneImgH, transform: [{ translateY: motion.interpolate({ inputRange: [0, 1], outputRange: [0, -mh(42)] }) }, { scale: motion.interpolate({ inputRange: [0, 1], outputRange: [1, 1.045] }) }] }} resizeMode="contain" /> : null}
-        {/* Sağ sütun: Görevler + Günlük Soru (aynı dil, aynı punto) */}
+        {/* Sağ sütun: Görevler → Günlük Soru → Lider Tablosu */}
         <Animated.View style={{ position: 'absolute', right: SIDE - mh(6), top: mh(40), width: mh(150), gap: mh(14), opacity: chromeOpacity, transform: [{ translateX: motion.interpolate({ inputRange: [0, 1], outputRange: [0, mh(300)] }) }] }}>
           <Pressable onPress={onOpenQuests} style={{ alignItems: 'center' }}>
             <IcClipboard size={mh(104)} />
@@ -88,6 +89,10 @@ export function HomeTab({ state, actions, onOpenLevelRoad, onOpenQuests, onOpenM
               <View style={{ position: 'absolute', top: -mh(10), right: mh(4), width: mh(34), height: mh(34), borderRadius: mh(17), backgroundColor: C.red, borderWidth: mk(4), borderColor: C.navy }} />
             ) : null}
           </Pressable>
+          {onOpenLeaderboard ? <Pressable testID="home-leaderboard" accessibilityRole="button" accessibilityLabel={t('home.leaderboard')} onPress={(event) => { event.stopPropagation(); onOpenLeaderboard(); }} style={({ pressed }) => ({ alignItems: 'center', minHeight: 44, transform: [{ translateY: pressed ? 2 : 0 }] })}>
+            <IcTrophy size={mh(104)} />
+            <OutlinedText size={mh(30)} width={mk(3)} numberOfLines={2} fit>{t('home.leaderboard')}</OutlinedText>
+          </Pressable> : null}
         </Animated.View>
       </Pressable>
       {/* Kupa ilerlemesi */}

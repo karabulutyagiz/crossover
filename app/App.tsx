@@ -1364,7 +1364,7 @@ function AppRoot() {
     'Poppins-Black': require('./assets/fonts/Poppins-Black.ttf'),
     'Poppins-ExtraBold': require('./assets/fonts/Poppins-ExtraBold.ttf'),
     'Poppins-SemiBold': require('./assets/fonts/Poppins-SemiBold.ttf'),
-    'LilitaOne-Regular': require('./assets/fonts/LilitaOne-Regular.ttf'), // UI2 başlık fontu (mock'taki tombul oyun yazısı)
+    'LilitaOne-Regular': require('./assets/fonts/COFDisplay-Regular.ttf'), // UI2 başlık fontu (mock'taki tombul oyun yazısı)
   });
   const fontsReady = fontsLoaded || !!fontError; // don't get stuck if a font fails
   const [langKey, setLangKey] = useState(0); // increment to force full remount after language change
@@ -2957,7 +2957,7 @@ function AppRoot() {
       ) : null}
 
       {UI2_ON ? (
-        <Ui2Tabs state={state} actions={actions} activeTab={activeTab} goToTab={goToTab} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLanguageChange={() => { dismissActiveInput(); setOverlay(null); setStoreSection(null); setActiveTab(2); setLoaded(false); setLangKey((k) => k + 1); actions.closeArenas(); }} onDiamondCelebration={(c) => setGemCelebration({ kind: 'purchase', amount: c.amount })} onOpenFeedback={(category) => { setFeedbackInitialCategory(category); setFeedbackCenterVisible(true); }} onOpenMatchHistory={openMatchHistory} />
+        <Ui2Tabs onOpenLeaderboard={openLeaderboard} state={state} actions={actions} activeTab={activeTab} goToTab={goToTab} onOpenLevelRoad={() => setLevelRoadOpen(true)} onLanguageChange={() => { dismissActiveInput(); setOverlay(null); setStoreSection(null); setActiveTab(2); setLoaded(false); setLangKey((k) => k + 1); actions.closeArenas(); }} onDiamondCelebration={(c) => setGemCelebration({ kind: 'purchase', amount: c.amount })} onOpenFeedback={(category) => { setFeedbackInitialCategory(category); setFeedbackCenterVisible(true); }} onOpenMatchHistory={openMatchHistory} />
       ) : (<>
       <Animated.ScrollView
         ref={scrollRef}

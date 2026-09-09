@@ -3469,8 +3469,8 @@ function ModeStatsGrid({ stats }: { stats?: { mode: string; wins: number; losses
 // Centered "letter" popup shell — gold-framed card, title + top-right X, scrollable
 // body. Everything that used to open fullscreen (leaderboard, match history) now uses
 // this so it pops in the middle of the screen instead of taking it over.
-function PopupCard({ visible, title, icon, onClose, children }: {
-  visible: boolean; title: string; icon: IoniconName; onClose: () => void; children: ReactNode;
+function PopupCard({ visible, title, icon, onClose, children, gameSkin = false }: {
+  visible: boolean; title: string; icon: IoniconName; onClose: () => void; children: ReactNode; gameSkin?: boolean;
 }) {
   // Kart 200ms kuyruksuz eğriyle (0.92→1) oturur; karartma AYRI değerle 140ms'de
   // biter — GameModal ile aynı dil (bkz. oradaki gerekçe, 2026-08-11).
@@ -3497,6 +3497,23 @@ function PopupCard({ visible, title, icon, onClose, children }: {
   }, [visible, a, scrim]);
   if (!mounted) return null;
   const clamped = a.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' });
+  if (gameSkin && UI2_ON) return (
+    <SafeModal visible transparent animationType="none" onRequestClose={onClose}>
+      <View accessibilityViewIsModal style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 18 }}>
+        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(2,10,40,0.74)', opacity: scrim }]}><Pressable style={StyleSheet.absoluteFill} onPress={onClose} /></Animated.View>
+        <Animated.View style={{ maxHeight: '82%', opacity: clamped, transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }] }}>
+          <Ui2Plate shrink face={UI2C.panel} top={UI2C.panelTop} lip={UI2C.panelDark} radius={16} inner={{ paddingTop: 10, paddingBottom: 10 }}>
+            <Ui2Plate face={UI2C.card} top={UI2C.cardTop} lip={UI2C.cardDark} radius={10} style={{ marginHorizontal: 10, marginBottom: 6 }} inner={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, gap: 8 }}>
+              <Ionicons name={icon} size={22} color={UI2C.gold} />
+              <Ui2Text size={22} width={1.5} numberOfLines={1}>{title}</Ui2Text>
+            </Ui2Plate>
+            {children}
+            <View style={{ alignSelf: 'center', width: 150, marginTop: 4 }}><Ui2Button kind="blue" label={t('settings.confirm')} height={44} size={18} onPress={onClose} /></View>
+          </Ui2Plate>
+        </Animated.View>
+      </View>
+    </SafeModal>
+  );
   return (
     <SafeModal visible transparent animationType="none" onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 18 }}>
@@ -3658,7 +3675,7 @@ export function NewsModal({ visible, onClose, seenIds }: { visible: boolean; onC
 function MyLeaderboardRank({ rank }: { rank?: number }) {
   if (!rank) return null;
   return (
-    <View style={{ marginHorizontal: 14, marginTop: 2, marginBottom: 10, borderRadius: 14, backgroundColor: theme.well, borderWidth: 1, borderColor: theme.hairline, paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+    <View style={{ marginHorizontal: 14, marginTop: 2, marginBottom: 10, borderRadius: 10, backgroundColor: UI2_ON ? UI2C.panelInk : theme.well, borderWidth: 1, borderColor: UI2_ON ? UI2C.panelTop : theme.hairline, paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
       <Ionicons name="podium" size={13} color={theme.accent} />
       <Text style={{ color: theme.text, fontSize: 12, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{t('leaderboard.myRank', { rank: `#${rank}` })}</Text>
     </View>
@@ -3684,7 +3701,7 @@ export function LeaderboardModal({ visible, entries, myUserId, onClose, onViewPr
   const onView = useCallback((id: string) => vpRef.current?.(id), []);
   const myRank = entries.find((e) => e.userId === myUserId)?.rank;
   return (
-    <PopupCard visible={visible} title={t('menu.leaderboard')} icon="podium" onClose={onClose}>
+    <PopupCard gameSkin visible={visible} title={t('menu.leaderboard')} icon="podium" onClose={onClose}>
       {/* FlatList (2026-08-10): düz ScrollView 50 satırı (~750 view) popup yayı
           çalışırken TEK commit'te basıyordu; görünür alan ~6 satır. Aynı
           maxHeight/padding — pikseller aynı, ekran dışı satırlar tembel basar.
@@ -14934,6 +14951,22 @@ const RANK_COLORS = [theme.gold, theme.silver, theme.bronze];
 // _leaderboard yanıtında değişir → sığ karşılaştırma tutar. onPress yerine
 // SABİT onView(userId) alınır; satır İÇİNDEKİ closure memo'yu bozmaz.
 const LeaderboardRow = memo(function LeaderboardRow({ entry, onView }: { entry: LeaderboardEntry; onView?: (userId: string) => void }) {
+  if (UI2_ON) return <Pressable accessibilityRole="button" accessibilityLabel={`${entry.rank}. ${entry.displayName}, ${entry.trophies}`} onPress={onView ? () => onView(entry.userId) : undefined} disabled={!onView}
+    style={({ pressed }) => ({ marginVertical: 4, transform: [{ translateY: pressed ? 2 : 0 }] })}>
+    <Ui2Plate face={entry.rank <= 3 ? UI2C.card : UI2C.panelInk} top={UI2C.cardTop} lip={UI2C.panelDark} radius={9} inner={{ flexDirection: 'row', alignItems: 'center', minHeight: 64, paddingHorizontal: 8, gap: 5 }}>
+      <View style={{ width: 23, alignItems: 'center' }}><RankBadge rank={entry.rank} size={23} /></View>
+      <View style={{ width: 60, height: 60, alignItems: 'center', justifyContent: 'center' }}><Avatar avatar={entry.avatar} name={entry.displayName} size={28} ring={UI2C.cyan} ringWidth={1} frameId={entry.frame} trophies={entry.trophies} /></View>
+      <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+        <Text numberOfLines={1} style={{ color: UI2C.white, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>{entry.displayName}</Text>
+        <Text numberOfLines={1} style={{ color: UI2C.textSub, fontSize: 9, fontFamily: 'Poppins-SemiBold' }}>{arenaLabel(entry.arena.name)}</Text>
+        {entry.isBot ? <Text style={{ color: UI2C.gold, fontSize: 8, fontFamily: 'Poppins-SemiBold' }}>BOT</Text> : null}
+      </View>
+      <View style={{ alignItems: 'flex-end', gap: 4 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}><Ionicons name="trophy" size={12} color={UI2C.gold} /><Text style={{ color: UI2C.gold, fontSize: 12, fontFamily: 'Poppins-ExtraBold', fontVariant: ['tabular-nums'] }}>{entry.trophies}</Text></View>
+        <Text style={{ color: UI2C.textSub, fontSize: 9, fontFamily: 'Poppins-SemiBold' }}>{t('stats.record', { wins: entry.wins, losses: entry.losses })}</Text>
+      </View>
+    </Ui2Plate>
+  </Pressable>;
   return (
     <Pressable
       onPress={onView ? () => onView(entry.userId) : undefined}

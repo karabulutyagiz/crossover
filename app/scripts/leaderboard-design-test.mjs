@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const home = readFileSync(new URL('../src/ui2/HomeTab.tsx', import.meta.url), 'utf8');
+const screens = readFileSync(new URL('../src/screens.tsx', import.meta.url), 'utf8');
+assert.equal((home.match(/testID="home-leaderboard"/g) ?? []).length, 1);
+assert(home.indexOf('testID="home-leaderboard"') > home.indexOf('<Pressable onPress={onOpenDailyQuestion}'));
+assert(screens.includes('<PopupCard gameSkin visible={visible} title={t(\'menu.leaderboard\')}'));
+assert(screens.includes("label={t('settings.confirm')}"));
+assert(screens.includes('windowSize={5}'), 'leaderboard virtualization stays enabled');
+assert(screens.includes('onView(entry.userId)'), 'profile navigation remains connected');
+console.log('PASS: one leaderboard below daily question, game skin, dismissal and virtualized profile rows');
