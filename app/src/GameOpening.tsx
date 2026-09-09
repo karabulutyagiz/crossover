@@ -109,8 +109,10 @@ export function GameOpening({ onDone, fontsReady = true, bootReady = true, onFir
     signature.setValue(0);
     const intro = Animated.sequence([
       Animated.delay(180),
-      Animated.timing(signature, { toValue: 1, duration: reduceMotion ? 0 : 2250, easing: Easing.linear, useNativeDriver: true }),
-      Animated.delay(reduceMotion ? 1500 : 450),
+      // Stüdyo imzası 1,5 sn kısaltıldı (2250+450 -> 1100+100): yükleme ekranına geçiş
+      // gereğinden uzun hissettiriyordu. İmza hâlâ tam çiziliyor, sadece daha çevik.
+      Animated.timing(signature, { toValue: 1, duration: reduceMotion ? 0 : 1100, easing: Easing.linear, useNativeDriver: true }),
+      Animated.delay(reduceMotion ? 1000 : 100),
     ]);
     intro.start(({ finished }) => { if (finished) setArenaVisible(true); });
     return () => intro.stop();
