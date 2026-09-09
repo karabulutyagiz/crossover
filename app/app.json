@@ -11,12 +11,12 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.crossover.football",
-      "buildNumber": "157",
+      "buildNumber": "158",
       "usesAppleSignIn": true,
       "infoPlist": {
         "CADisableMinimumFrameDurationOnPhone": true,
         "ITSAppUsesNonExemptEncryption": false,
-        "NSUserTrackingUsageDescription": "Reklam deneyimini ki\u015fiselle\u015ftirmek i\u00e7in izin istiyoruz.",
+        "NSUserTrackingUsageDescription": "Reklam deneyimini kişiselleştirmek için izin istiyoruz.",
         "SKAdNetworkItems": [
           {
             "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork"
@@ -100,7 +100,7 @@
     },
     "android": {
       "package": "com.crossover.football",
-      "versionCode": 135,
+      "versionCode": 136,
       "blockedPermissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
@@ -113,8 +113,7 @@
       "adaptiveIcon": {
         "backgroundColor": "#0B1838",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundImage": "./assets/android-icon-background.png"
       },
       "predictiveBackGestureEnabled": false
     },
@@ -165,7 +164,7 @@
         {
           "androidAppId": "ca-app-pub-5118403349234305~5744734548",
           "iosAppId": "ca-app-pub-5118403349234305~1206723737",
-          "userTrackingUsageDescription": "Reklam deneyimini ki\u015fiselle\u015ftirmek i\u00e7in izin istiyoruz."
+          "userTrackingUsageDescription": "Reklam deneyimini kişiselleştirmek için izin istiyoruz."
         }
       ],
       [
