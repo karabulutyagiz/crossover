@@ -4,7 +4,7 @@ import { Animated, Image, Pressable, ScrollView, StyleSheet, Text, useWindowDime
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Polygon, Rect, Stop } from 'react-native-svg';
 import { Avatar } from '../Avatar';
-import { t, type MessageKey } from '../i18n';
+import { currentLang, t, type MessageKey } from '../i18n';
 import { UI2 } from './assets';
 import { Bar, CheckerBg, IconSlot, OutlinedText, Plate, fitSize, fmt } from './primitives';
 import { IcGear, IcGem, IcNavCollection, IcNavFriends, IcNavPlay, IcNavStore, IcPlus, IcTrophy } from './icons-ui';
@@ -35,7 +35,7 @@ export function Hud({ data, actions, title, titleIcon }: { data: HudData; action
         </Pressable>
         {/* ad + XP */}
         <View style={{ flex: 1, minWidth: 0, marginLeft: mk(16), marginRight: mk(12), overflow: 'hidden' }}>
-          <OutlinedText size={mk(40)} width={mk(4)} align="left" numberOfLines={1}>{data.name.toLocaleUpperCase('tr')}</OutlinedText>
+          <OutlinedText size={mk(40)} width={mk(4)} align="left" numberOfLines={1}>{data.name.toLocaleUpperCase(currentLang())}</OutlinedText>
           {/* XP: kalın çubuk, sayı ÇUBUĞUN İÇİNDE (yanına yazınca boş hap gibi duruyordu) */}
           <View style={{ marginTop: mk(8), justifyContent: 'center' }}>
             <Bar value={data.xp} max={data.xpNext} height={mk(44)} radius={mk(14)} />

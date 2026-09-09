@@ -3,7 +3,12 @@
 import { currentLang, t } from '../i18n';
 
 /** Yerel ayara göre BÜYÜK HARF (tr: i→İ, ı→I). Başlık fontu için. */
-export function up(s: string): string { return s.normalize('NFC').toLocaleUpperCase(currentLang() === 'tr' ? 'tr-TR' : undefined).normalize('NFC'); }
+export function up(s: string): string {
+  // undefined GECME: iOS'ta varsayilan yerel ayar CIHAZIN dilidir, uygulamaninki degil.
+  // Cihaz Turkce iken Ingilizce arayuzde 'COLLECTION' -> 'COLLECTİON' oluyordu.
+  const l = currentLang();
+  return s.normalize('NFC').toLocaleUpperCase(l === 'tr' ? 'tr-TR' : (l || 'en')).normalize('NFC');
+}
 
 export const S = {
   get store() { return up(t('store.title')); }, get collection() { return up(t('tab.collection')); }, get play() { return t('ui2.play'); },

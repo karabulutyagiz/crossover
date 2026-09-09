@@ -8,7 +8,7 @@ import { UI2 } from './assets';
 import { Bar, BannerImage, ChunkyButton, GemAmount, IconSlot, OutlinedText, Plate, SectionHeader, fitSize, fmt } from './primitives';
 import { IcAddFriend, IcArrowRight, IcChat, IcCheckBadge, IcGift, IcNavFriends, IcRequests, IcTrophy } from './icons-ui';
 import { Hud } from './Shell';
-import { t } from '../i18n';
+import { currentLang, t } from '../i18n';
 import { S } from './strings';
 import { C, F, fz, GAP, LIP, mk, OUTLINE, R, SIDE, SW } from './tokens';
 
@@ -85,7 +85,7 @@ export function FriendsTab({ state, actions, onOpenSettings, onOpenProfile, onOp
             <Plate face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginTop: mk(10) }} inner={{ minHeight: mk(74) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(8), gap: mk(10) }}>
               <Pressable onPress={() => onOpenFriend({ userId: f.userId, displayName: f.displayName })}><View style={{ width: mk(60), height: mk(60), borderRadius: mk(12), borderWidth: mk(3), borderColor: '#7DB8FF', backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' }}><Avatar avatar={f.avatar ?? f.selectedAvatar} name={f.displayName} size={mk(50)} /></View></Pressable>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <OutlinedText size={mk(28)} width={mk(2)} align="left" numberOfLines={1}>{f.displayName.toLocaleUpperCase('tr')}</OutlinedText>
+                <OutlinedText size={mk(28)} width={mk(2)} align="left" numberOfLines={1}>{f.displayName.toLocaleUpperCase(currentLang())}</OutlinedText>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: mk(6), marginTop: mk(2) }}>
                   <IcTrophy size={mk(30)} />
                   <Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(19) }}>{fmt(f.trophies)}</Text>

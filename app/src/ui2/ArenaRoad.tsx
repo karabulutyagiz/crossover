@@ -1,3 +1,4 @@
+import { up } from './strings';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Animated, BackHandler, FlatList, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useMenuMotion } from './useMenuMotion';
@@ -102,7 +103,7 @@ const ArenaGate = memo(function ArenaGate({ index, current, rewarded, trophies, 
     </Svg>
     <View style={styles.heading}>
       <Text style={styles.number}>ARENA {index + 1}</Text>
-      <OutlinedText size={25} width={2} numberOfLines={1} fit>{t(`arena.${arena.key}` as MessageKey).toLocaleUpperCase()}</OutlinedText>
+      <OutlinedText size={25} width={2} numberOfLines={1} fit>{up(t(`arena.${arena.key}` as MessageKey))}</OutlinedText>
     </View>
     <Image source={arenaArt(arena.key)} contentFit="contain" transition={0} accessible={false}
       style={{ position: 'absolute', top: 62, left: (width - Math.min(width * .86, 380)) / 2, width: Math.min(width * .86, 380), height: 224, opacity: locked ? .9 : 1 }} />
@@ -193,7 +194,7 @@ export function ArenaRoad({ state, onClose, visible = true }: { state: GameState
     <View style={{ flex: 1 }}>
     <View style={[styles.header, { height: insets.top + 78, paddingTop: insets.top + 10 }]}>
       <View style={styles.headerRow}>
-        <View style={{ flex: 1 }}><OutlinedText size={28} width={2} align="left">{t('arenas.title').toLocaleUpperCase()}</OutlinedText>
+        <View style={{ flex: 1 }}><OutlinedText size={28} width={2} align="left">{up(t('arenas.title'))}</OutlinedText>
           <View style={styles.balance}><IcTrophy size={24} /><Text style={styles.balanceText}>{fmt(trophies)}</Text></View>
         </View>
       </View>

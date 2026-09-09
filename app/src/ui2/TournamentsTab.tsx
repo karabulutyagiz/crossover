@@ -6,7 +6,7 @@ import type { Actions, GameState } from './types';
 import { UI2 } from './assets';
 import { Bar, ChunkyButton, GemAmount, OutlinedText, Plate, SectionHeader, fmt, IconSlot } from './primitives';
 import { Hud } from './Shell';
-import { t } from '../i18n';
+import { currentLang, t } from '../i18n';
 import { S } from './strings';
 import { roadReward } from './rewards';
 import { IcArrowRight, IcCalendar, IcCheckBadge, IcClock, IcCrownBig, IcDaily, IcGift, IcLeague, IcRewards, IcTrophy } from './icons-ui';
@@ -48,7 +48,7 @@ export function TournamentsTab({ state, actions, onOpenSettings, onOpenProfile, 
                 <View style={{ width: mk(16), height: mk(16), borderRadius: mk(8), backgroundColor: C.white }} />
                 <OutlinedText size={mk(20)} width={1.2}>{S.liveEvent}</OutlinedText>
               </View>
-              <OutlinedText size={mk(42)} width={mk(3)} align="left" numberOfLines={2} fit style={{ marginTop: mk(10), lineHeight: fz(46) }}>{(featured?.name ?? 'Şampiyonlar Kupası').toLocaleUpperCase('tr')}</OutlinedText>
+              <OutlinedText size={mk(42)} width={mk(3)} align="left" numberOfLines={2} fit style={{ marginTop: mk(10), lineHeight: fz(46) }}>{(featured?.name ?? 'Şampiyonlar Kupası').toLocaleUpperCase(currentLang())}</OutlinedText>
               <Text style={{ color: C.white, fontFamily: F.semi, fontSize: 12, lineHeight: 15, marginTop: 5 }}>{S.tournamentDesc}</Text>
             </View>
           </View>

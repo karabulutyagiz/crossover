@@ -335,7 +335,7 @@ export function LeagueDialog({ state, onClose }: { state: GameState; onClose: ()
                 <Plate face={r.isYou ? '#1B5AE0' : r.zone === 'promote' ? '#0E4A2A' : r.zone === 'demote' ? '#5A1020' : C.panelInk} top={r.isYou ? '#5A9BFF' : '#2F63C8'} lip={r.isYou ? '#0B3A9E' : '#041A4E'} outline={r.isYou ? C.gold : C.navy} radius={mk(16)} style={{ marginBottom: mk(6) }} inner={{ height: mk(84) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(10), gap: mk(10) }}>
                   <View style={{ width: mk(44), height: mk(44), borderRadius: mk(22), backgroundColor: medal ?? '#0A2B78', borderWidth: mk(3), borderColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><OutlinedText size={mk(20)} width={1.5} color={medal ? C.ink : C.white} outline={medal ? '#FFF6C7' : C.ink}>{String(r.rank)}</OutlinedText></View>
                   <View style={{ width: mk(56), height: mk(56), borderRadius: mk(12), borderWidth: mk(3), borderColor: '#7DB8FF', backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' }}><Avatar avatar={r.avatar} name={r.name} size={mk(46)} /></View>
-                  <View style={{ flex: 1, minWidth: 0 }}><OutlinedText size={mk(24)} width={mk(2)} align="left" numberOfLines={1}>{r.name.toLocaleUpperCase('tr')}</OutlinedText></View>
+                  <View style={{ flex: 1, minWidth: 0 }}><OutlinedText size={mk(24)} width={mk(2)} align="left" numberOfLines={1}>{r.name.toLocaleUpperCase(currentLang())}</OutlinedText></View>
                   <IcTrophy size={mk(30)} /><Text style={{ color: C.white, fontFamily: F.black, fontSize: fz(20) }}>{fmt(r.points)}</Text>
                 </Plate>
               </View>
@@ -589,7 +589,7 @@ export function AddFriendDialog({ state, actions, onClose, onNotice }: { state: 
         return (
           <Plate key={u.userId} face={C.panelInk} top="#2F63C8" lip="#041A4E" radius={mk(18)} style={{ marginTop: mk(10) }} inner={{ minHeight: mk(88) - OUTLINE * 2 - LIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: mk(10), gap: mk(10) }}>
             <View style={{ width: mk(62), height: mk(62), borderRadius: mk(14), borderWidth: mk(3), borderColor: '#7DB8FF', backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' }}><Avatar avatar={null} name={u.displayName} size={mk(52)} /></View>
-            <View style={{ flex: 1, minWidth: 0 }}><OutlinedText size={mk(28)} width={mk(2)} align="left" numberOfLines={1} fit>{u.displayName.toLocaleUpperCase('tr')}</OutlinedText></View>
+            <View style={{ flex: 1, minWidth: 0 }}><OutlinedText size={mk(28)} width={mk(2)} align="left" numberOfLines={1} fit>{u.displayName.toLocaleUpperCase(currentLang())}</OutlinedText></View>
             <ChunkyButton kind={done ? 'gray' : 'green'} label={done ? t('ui2.requestSent') : S.add} height={mk(64)} size={mk(24)} style={{ width: mk(190) }} disabled={done}
               onPress={() => { actions.sendFriendRequest(undefined, u.displayName); setSent((s) => [...s, u.userId]); onNotice(t('friends.addSection'), `${u.displayName}: ${t('ui2.requestSent')}`); }} />
           </Plate>
@@ -633,7 +633,7 @@ export function MessagesDialog({ state, actions, onClose }: { state: GameState; 
               <Avatar avatar={c.avatar ?? c.selectedAvatar ?? null} name={c.displayName} size={mk(56)} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <OutlinedText size={mk(28)} width={mk(2)} align="left" numberOfLines={1}>{c.displayName.toLocaleUpperCase('tr')}</OutlinedText>
+              <OutlinedText size={mk(28)} width={mk(2)} align="left" numberOfLines={1}>{c.displayName.toLocaleUpperCase(currentLang())}</OutlinedText>
               <Text numberOfLines={1} style={{ color: C.textSub, fontFamily: F.semi, fontSize: fz(17) }}>{c.lastMessage}</Text>
             </View>
             {c.unreadCount > 0 ? (

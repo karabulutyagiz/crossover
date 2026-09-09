@@ -2,7 +2,7 @@
 // Görünüm birebir mock; ürünler/fiyatlar GERÇEK (products.ts + StoreKit displayPrice + sunucu kataloğu).
 import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, Text, View, type DimensionValue, type ImageSourcePropType } from 'react-native';
-import { t } from '../i18n';
+import { currentLang, t } from '../i18n';
 import type { Actions, GameState } from './types';
 import { IcCrown, IcLock, IcNoAds } from './icons';
 import { IcBolt, IcClock, IcCrownBig, IcFace, IcGems3, IcNavStore, IcStar } from './icons-ui';
@@ -252,7 +252,7 @@ function CosmeticCard({ item, width, owned, vault, onBuy, disabled }: { item: St
   return (
     <View style={{ width }}>
       <Plate face={C.card} top={C.cardTop} lip={C.cardDark} outline={vault ? C.gold : C.navy} radius={R.card} inner={{ minHeight: mk(340) - OUTLINE * 2 - LIP, alignItems: 'center', paddingTop: mk(6), paddingHorizontal: mk(8) }}>
-        <View style={{ height: fz(30) * 2, justifyContent: 'center' }}><OutlinedText size={mk(26)} width={mk(3)} numberOfLines={2} fit style={{ lineHeight: fz(30) }}>{item.name.toLocaleUpperCase('tr')}</OutlinedText></View>
+        <View style={{ height: fz(30) * 2, justifyContent: 'center' }}><OutlinedText size={mk(26)} width={mk(3)} numberOfLines={2} fit style={{ lineHeight: fz(30) }}>{item.name.toLocaleUpperCase(currentLang())}</OutlinedText></View>
         <View style={{ width: '100%', height: mk(124), borderRadius: mk(12), overflow: 'hidden', marginTop: mk(2), borderWidth: mk(3), borderColor: C.navy, backgroundColor: '#061A45', alignItems: 'center', justifyContent: 'center' }}>
           {/* çerçeve/top/arena kendi sanatını çizer; giriş-zafer-kutlama efektleri çıplak ikon → halkalı önizleme */}
           {item.type === 'frame' || item.type === 'ball' || item.type === 'match_background'

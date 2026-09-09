@@ -978,7 +978,7 @@ export function GameModal({ visible, onClose, onExited, onShown, title, icon, da
                   <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: '#FFFFFF', opacity: 0.34 }} />
                   <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2.5, backgroundColor: darken(bandColor, 0.42) }} />
                   {UI2_ON ? (
-                    <View style={{ flex: 1, minWidth: 0 }}><Ui2Text size={ui2mk(34)} width={ui2mk(3)} align="left" numberOfLines={1} fit>{(title ?? '').toLocaleUpperCase('tr')}</Ui2Text></View>
+                    <View style={{ flex: 1, minWidth: 0 }}><Ui2Text size={ui2mk(34)} width={ui2mk(3)} align="left" numberOfLines={1} fit>{(title ?? '').toLocaleUpperCase(currentLang())}</Ui2Text></View>
                   ) : (<>
                   {icon ? <Ionicons name={icon} size={17} color={SKIN_LABEL_COLOR} /> : null}
                   <Text numberOfLines={1} style={{ color: SKIN_LABEL_COLOR, fontFamily: 'Poppins-ExtraBold', fontSize: 15, letterSpacing: 1, textTransform: 'uppercase', flexShrink: 1, ...SKIN_LABEL_SHADOW }}>{title}</Text>
@@ -7744,7 +7744,7 @@ export function CozKazanScreen({ state, actions }: Props) {
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 6 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: isSudden ? withAlpha(theme.gold, 0.18) : 'rgba(6,14,30,0.6)', borderColor: isSudden ? withAlpha(theme.gold, 0.6) : 'rgba(255,255,255,0.12)', borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 4.5, ...shadowRow }}>
             <Text style={{ color: isSudden ? theme.gold : theme.textSub, fontSize: 12.5, fontFamily: 'Poppins-Black', letterSpacing: 1.1 }}>
-              {isSudden ? `⚡ ${t('coz.sudden').toLocaleUpperCase('tr')}` : t('coz.round', { n: String(c.round), cap: String(c.totalRounds) }).toLocaleUpperCase('tr')}
+              {isSudden ? `⚡ ${t('coz.sudden').toLocaleUpperCase(currentLang())}` : t('coz.round', { n: String(c.round), cap: String(c.totalRounds) }).toLocaleUpperCase(currentLang())}
             </Text>
           </View>
           {!inReveal ? <CozTimer secs={secs} /> : null}
@@ -8032,7 +8032,7 @@ function GwGuessRow({ row }: { row: import('./protocol').GwRow }) {
       </View>
       <View style={{ flex: 1 }}>
         <Text numberOfLines={1} style={{ color: row.correct ? theme.gold : theme.textSub, fontSize: 10, fontFamily: 'Poppins-ExtraBold', marginLeft: 4, marginBottom: 2.5, letterSpacing: 0.2 }}>
-          {row.name.toLocaleUpperCase('tr')}
+          {row.name.toLocaleUpperCase(currentLang())}
         </Text>
         <View style={{ flexDirection: 'row' }}>
           <GwTile kind="logo" cmp={row.club} />
@@ -8244,7 +8244,7 @@ export function GuessWhoScreen({ state, actions }: Props) {
           </Animated.View>
           {showReveal && reveal ? (
             <>
-              <Text style={{ color: theme.gold, fontSize: 21, fontFamily: 'Poppins-Black', marginTop: 8, letterSpacing: 0.5, ...engrave('lg') }}>{reveal.name.toLocaleUpperCase('tr')}</Text>
+              <Text style={{ color: theme.gold, fontSize: 21, fontFamily: 'Poppins-Black', marginTop: 8, letterSpacing: 0.5, ...engrave('lg') }}>{reveal.name.toLocaleUpperCase(currentLang())}</Text>
               {roundOver ? (
                 /* ── TUR SONU (çok turlu): kim aldı + skor hedefi + yeni tur geri sayımı ── */
                 <View style={{ alignItems: 'center', gap: 3, marginTop: 6 }}>
@@ -8304,7 +8304,7 @@ export function GuessWhoScreen({ state, actions }: Props) {
                     <ExpoImage source={{ uri: m.imageUrl }} style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: '#0A1230' }} contentFit="cover" />
                   ) : (
                     <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: withAlpha(theme.blue, 0.25), alignItems: 'center', justifyContent: 'center' }}>
-                      <Text style={{ color: theme.blue, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>{m.name.charAt(0).toLocaleUpperCase('tr')}</Text>
+                      <Text style={{ color: theme.blue, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>{m.name.charAt(0).toLocaleUpperCase(currentLang())}</Text>
                     </View>
                   )}
                   <Text numberOfLines={1} style={{ flex: 1, color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-SemiBold' }}>{m.name}</Text>
