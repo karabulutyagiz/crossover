@@ -198,6 +198,11 @@ export function BottomNav({ active, onPress, labels, badges, scrollX, pageW }: {
                     <OutlinedText size={fitSize(mk(30), label, 12)} width={mk(3)} family={F.title} numberOfLines={1}>{label}</OutlinedText>
                   </Animated.View>
                 </Animated.View>
+                {n.key === 'store' ? (
+                  <View testID="store-promo-badge" style={salesStyles.storeBadge}>
+                    <Text style={salesStyles.storeBadgeText}>!</Text>
+                  </View>
+                ) : null}
                 {badge ? (
                   <View style={{ position: 'absolute', top: mk(8), right: mk(10), minWidth: mk(40), height: mk(40), borderRadius: mk(10), backgroundColor: C.red, borderWidth: mk(3), borderColor: '#7A1020', alignItems: 'center', justifyContent: 'center', paddingHorizontal: mk(6) }}>
                     <OutlinedText size={mk(22)} width={1}>{String(badge)}</OutlinedText>
@@ -213,6 +218,10 @@ export function BottomNav({ active, onPress, labels, badges, scrollX, pageW }: {
 }
 
 // ── Ekran çerçevesi: zemin + safe area + kaydırılabilir gövde ────────────────────
+const salesStyles = StyleSheet.create({
+  storeBadge: { position: 'absolute', top: mk(4), right: mk(5), width: 22, height: 22, borderRadius: 11, borderCurve: 'continuous', backgroundColor: '#F52242', borderColor: '#FFFFFF', borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  storeBadgeText: { color: '#FFFFFF', fontFamily: F.black, fontSize: 15, lineHeight: 18 },
+});
 export function Frame({ children, scroll = true, bottomPad = mk(40) }: { children: ReactNode; scroll?: boolean; bottomPad?: number }) {
   const insets = useSafeAreaInsets();
   return (

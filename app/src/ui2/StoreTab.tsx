@@ -13,7 +13,7 @@ import { CosmeticArt, CosmeticPreview, SPECIAL_POWERS, SPECIAL_POWER_PRICE_FALLB
 import { UI2 } from './assets';
 import { ArtWell, Bar, BannerImage, ChunkyButton, GemAmount, OutlinedText, Plate, Ribbon, SectionHeader, Sticker, fitSize, fmt } from './primitives';
 import { Hud } from './Shell';
-import { ACCOUNT_POWERS, DIAMOND_PACKS, PREMIUM_ROAD_PRICE, SOCIAL_PACK, SP_ART, SP_FACE, SP_LIST, SP_PACK } from './products';
+import { ACCOUNT_POWERS, DIAMOND_PACKS, PACK_MODES, PREMIUM_ROAD_PRICE, SOCIAL_PACK, SP_ART, SP_FACE, SP_LIST, SP_PACK } from './products';
 import type { useStorePurchases } from './useStorePurchases';
 import { C, F, fz, GAP, LIP, mk, OUTLINE, R, SIDE, SW } from './tokens';
 
@@ -42,6 +42,8 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
   }, [catalog]);
   const owned = new Set(p?.ownedCosmetics ?? []);
   const diamonds = p?.diamonds ?? 0;
+  const hasActivePack = !!(p?.socialPackUntil && new Date(p.socialPackUntil).getTime() > Date.now());
+  const modeKeys = { 'country-team': 'mode.countryTeam', 'letter-team': 'mode.letterTeam', xox: 'mode.xox', cozkazan: 'mode.cozkazan', 'guess-who': 'mode.guessWho' } as const;
   const gemBuy = (title: string, price: number, onYes: () => void) => onConfirm({ title, body: `${fmt(price)} elmas karşılığında satın alınsın mı?`, price, onYes });
 
   return (
@@ -52,10 +54,13 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
 
       {/* ── SOSYAL PAKET TEKLİF KARTI: altın çerçeve + kullanıcının sanatı + ALTINDA iki büyük fiyat butonu.
              Butonlar sanatın içindeyken küçük kalıyor ve satın alımı vurgulamıyordu (kullanıcı 2026-09-08). ── */}
-      <View style={{ marginHorizontal: SIDE, marginTop: mk(6) }}>
-        <Plate face={C.panel} top={C.panelTop} lip={C.panelDark} outline={C.gold} radius={mk(26)} inner={{ padding: mk(8) }}>
+      <View testID="social-pack-sales-card" style={{ marginHorizontal: SIDE, marginTop: mk(6) }}>
+        <Plate face="#32206F" top="#9D5CFF" lip="#1E104A" outline={C.gold} radius={mk(26)} inner={{ padding: mk(8) }}>
+          <View style={{ backgroundColor: C.redDark, paddingVertical: mk(12), borderRadius: mk(12), borderCurve: 'continuous', marginBottom: mk(8) }}>
+            <OutlinedText size={mk(32)} width={mk(2)} numberOfLines={1} fit>{t('ui2.salesUnlock', { n: PACK_MODES.length })}</OutlinedText>
+          </View>
           <BannerImage source={UI2.banner_socialpack} ratio={3} width={OFFER_W} bare>
-            <Ribbon label={t('ui2.specialOffer')} color={C.red} size={mk(22)} style={{ position: 'absolute', left: 0, top: 0, borderTopLeftRadius: mk(16), borderTopRightRadius: 0, borderBottomLeftRadius: 0, paddingHorizontal: mk(20), paddingVertical: mk(5) }} />
+            <Ribbon label={t('ui2.salesPack')} color={C.red} size={mk(22)} style={{ position: 'absolute', left: 0, top: 0, borderTopLeftRadius: mk(16), borderTopRightRadius: 0, borderBottomLeftRadius: 0, paddingHorizontal: mk(20), paddingVertical: mk(5) }} />
             <View style={{ position: 'absolute', left: '4%', top: '14%', width: '48%', height: '26%', justifyContent: 'center' }}>
               <OutlinedText size={fitSize(mk(54), up(t('store.socialPackSection')), 12)} width={mk(4)} color={C.gold} align="left" numberOfLines={1} fit>{up(t('store.socialPackSection'))}</OutlinedText>
             </View>
@@ -65,14 +70,21 @@ export function StoreTab({ state, actions, store, onOpenSettings, onOpenProfile,
               <Text numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: C.ink, fontFamily: F.black, fontSize: fz(18), lineHeight: fz(21), textAlign: 'center' }}>{t('ui2.spSticker')}</Text>
             </Sticker>
           </BannerImage>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: mk(8), marginTop: mk(10) }}>
+            {PACK_MODES.map(mode => <View key={mode} style={{ minWidth: '30%', flexGrow: 1, backgroundColor: '#102755', borderColor: '#E3BE4A', borderWidth: 1, borderRadius: mk(10), borderCurve: 'continuous', paddingHorizontal: mk(8), paddingVertical: mk(9), alignItems: 'center' }}>
+              <Text numberOfLines={1} style={{ color: C.white, fontFamily: F.black, fontSize: 11 }}>{t(modeKeys[mode as keyof typeof modeKeys])}</Text>
+            </View>)}
+          </View>
           <View style={{ flexDirection: 'row', gap: mk(12), marginTop: mk(10) }}>
             {SOCIAL_PACK.map((sp) => (
-              <ChunkyButton key={sp.id} kind="green" style={{ flex: 1 }} height={mk(126)} size={mk(40)} subSize={mk(22)}
-                label={store.priceFor(sp.productId, sp.fallback)}
-                over={store.activeSubId === sp.productId ? t('store.badgeActive') : up(t(sp.labelKey))}
-                onPress={() => store.buy(sp.productId)} disabled={!!store.buying} />
+              <ChunkyButton key={sp.id} kind={sp.id === 'monthly' ? 'gold' : 'green'} style={{ flex: 1 }} height={mk(150)} size={mk(40)} subSize={mk(25)}
+                label={hasActivePack ? t('store.badgeActive') : store.priceFor(sp.productId, t('common.loading'))}
+                over={up(t(sp.labelKey))}
+                sub={hasActivePack ? undefined : t('ui2.salesBuy')}
+                onPress={() => store.buy(sp.productId)} disabled={hasActivePack || !!store.buying || !store.priceFor(sp.productId, '').trim()} />
             ))}
           </View>
+          <Text style={{ color: C.textSub, fontFamily: F.semi, fontSize: 10, lineHeight: 14, textAlign: 'center', marginTop: mk(10) }}>{t('ui2.salesTerms')}</Text>
         </Plate>
       </View>
 
