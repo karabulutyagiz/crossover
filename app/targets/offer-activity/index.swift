@@ -8,6 +8,8 @@ struct CofOfferAttributes: ActivityAttributes {
     var endsAt: Date
     var title: String
     var priceText: String
+    /// Sosyal Paket vurgusu. Bos string = gosterme (paket zaten aktifse).
+    var packPitch: String = ""
   }
   var offerId: String
 }
@@ -25,11 +27,11 @@ private let cofLilac = Color(red: 0.83, green: 0.69, blue: 1)
 
 private struct ActivityCopy {
   let turkish = Locale.preferredLanguages.first?.hasPrefix("tr") ?? true
-  var offer: String { turkish ? "SANA ÖZEL FIRSAT" : "YOUR SPECIAL OFFER" }
+  var offer: String { turkish ? "OYUNA DÖN" : "BACK TO THE GAME" }
   var remaining: String { turkish ? "KALAN SÜRE" : "TIME LEFT" }
-  var expired: String { turkish ? "SÜRE DOLDU" : "OFFER ENDED" }
-  var open: String { turkish ? "Fırsatı oyunda incele" : "View offer in game" }
-  var ended: String { turkish ? "Yeni fırsatlar için oyuna dön" : "Return to the game for new offers" }
+  var expired: String { turkish ? "SENİ BEKLİYORUZ" : "WE'RE WAITING" }
+  var open: String { turkish ? "Oyuna dön" : "Back to the game" }
+  var ended: String { turkish ? "Oyuna dön" : "Back to the game" }
 }
 
 private struct CrestShape: Shape {
@@ -112,22 +114,21 @@ private struct OfferDetails: View {
           Text(state.priceText).font(.system(size: 13, weight: .bold, design: .rounded)).lineLimit(1).minimumScaleFactor(0.8)
         }.foregroundColor(cofLilac)
       }
+      // Sosyal Paket vurgusu — yalniz paketi olmayanlara gonderilir.
+      if !state.packPitch.isEmpty {
+        HStack(spacing: 4) {
+          Image(systemName: "lock.open.fill").font(.system(size: 9, weight: .bold)).accessibilityHidden(true)
+          Text(state.packPitch).font(.system(size: 11, weight: .heavy, design: .rounded))
+            .lineLimit(1).minimumScaleFactor(0.75)
+        }
+        .foregroundColor(cofNavy)
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(Capsule().fill(cofGold))
+      }
     }
   }
 }
 
-// The camera gap belongs to iOS. Give each available wing a complete,
-// readable visual instead of stretching plain text across the island.
-private struct CompactBrand: View {
-  var body: some View {
-    Text("COF")
-      .font(.system(size: 11, weight: .black, design: .rounded))
-      .foregroundColor(cofNavy)
-      .padding(.horizontal, 5).padding(.vertical, 3)
-      .background(RoundedRectangle(cornerRadius: 5).fill(LinearGradient(colors: [cofCyan, Color.white], startPoint: .bottomLeading, endPoint: .topTrailing)))
-      .accessibilityLabel("Crossover")
-  }
-}
 
 private struct ExpandedOfferCard: View {
   let state: CofOfferAttributes.ContentState
@@ -217,12 +218,11 @@ struct CofOfferLiveActivity: Widget {
           ExpandedOfferCard(state: context.state, expired: expired).padding(.top, 8)
         }
       } compactLeading: {
-        CompactBrand()
+        // Centigi kaplamasin (kullanici karari 2026-09-11): marka rozeti yerine
+        // kucuk arma, sagda ikonsuz dar saat.
+        CofCrest(size: 16)
       } compactTrailing: {
-        HStack(spacing: 3) {
-          Image(systemName: expired ? "checkmark.circle.fill" : "timer").font(.system(size: 10, weight: .bold)).foregroundColor(cofGold)
-          OfferClock(state: context.state, expired: expired, compact: true).frame(width: 58)
-        }
+        OfferClock(state: context.state, expired: expired, compact: true).frame(width: 42)
       } minimal: {
         CofCrest(size: 22)
       }

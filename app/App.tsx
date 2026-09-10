@@ -2569,11 +2569,21 @@ function AppRoot() {
       : `${powerMeta ? t(powerMeta.nameKey) : offer.itemId}${offer.qty > 1 ? ` ×${offer.qty}` : ''}`;
     laOfferRef.current = { key: offer.key, price: offer.price, expiresAt: offer.expiresAt, itemName };
   }, [state.dailyOffer, state.storeCatalog]);
+  // Sosyal Paketi OLMAYANA adada paket vurgusu düşer; olana düşmez.
+  const laHasPackRef = useRef(true);
   useEffect(() => {
+    const until = state.profile?.socialPackUntil;
+    laHasPackRef.current = !!(until && new Date(until).getTime() > Date.now());
+  }, [state.profile?.socialPackUntil]);
+  useEffect(() => {
+    // AÇILIŞTA TEMİZLE: oyun kapatılınca iOS aktiviteyi kendiliğinden silmiyor;
+    // 'active' olayı soğuk açılışta tetiklenmediği için burada elle siliyoruz.
+    // Böylece kart yalnız oyun ARKA PLANDAYKEN duruyor (kullanıcı kararı 2026-09-11).
+    void endOfferActivity();
     const sub = AppState.addEventListener('change', (st) => {
       if (st === 'background') {
         const offer = laOfferRef.current;
-        if (offer) void startOfferActivity(offer);
+        if (offer) void startOfferActivity(offer, laHasPackRef.current);
       } else if (st === 'active') {
         void endOfferActivity();
       }
