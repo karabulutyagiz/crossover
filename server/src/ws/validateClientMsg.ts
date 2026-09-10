@@ -79,6 +79,9 @@ export function validateClientMsg(value: unknown): ValidationResult {
   if (!isString(value.type, 64)) return invalid('message type is missing');
 
   switch (value.type) {
+    case 'app_state':
+      if (value.state !== 'active' && value.state !== 'background') return invalid('app_state.state must be active or background');
+      break;
     case 'create_room':
     case 'create_solo':
       if (!hasString(value, 'name', 80)) return invalid(`${value.type}.name must be a string`);

@@ -251,6 +251,7 @@ export interface RoomView {
 
 // ---- Client -> Server ----
 export type ClientMsg =
+  | { type: 'app_state'; state: 'active' | 'background' }
   | { type: 'create_room'; name: string; userId?: string; options?: GameOptions; caps?: string[] }
   | { type: 'create_solo'; name: string; userId?: string; options?: GameOptions; caps?: string[] }
   | { type: 'join_room'; code: string; name: string; userId?: string; caps?: string[] }

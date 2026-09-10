@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { pool } from '../db/pool.ts';
 import {
   verifyGuess,
+  prepareTeamPair,
+  verificationCacheEnabled,
+  type PreparedTeamPair,
   verifyCountryTeamGuess,
   verifyLetterTeamGuess,
   searchClubs,
@@ -182,6 +185,7 @@ interface Player {
 }
 
 interface Round {
+  preparedTeamPair?: PreparedTeamPair;
   picks: Map<string, ClubRef>;
   // For country-team / letter-team: the non-team pick value
   countryPick?: string;   // the nationality picked (country-team)
@@ -1381,13 +1385,21 @@ export class Room {
       this.timers.push(t);
       return;
     }
+    const round = this.round;
     const common = await commonPlayersDetailed(a.id, b.id, 5);
-    if (!this.round || this.round.finished || this.status !== 'reveal') return;
+    if (this.round !== round || round.finished || this.status !== 'reveal') return;
     if (common.length === 0) {
       const t = setTimeout(() => this.skipNoCommon(), 800);
       this.timers.push(t);
     } else {
-      const t = setTimeout(() => this.beginGuess(), 500);
+      // Start the clock only after preparation; SQL wait must not consume either player's time.
+      try { if (verificationCacheEnabled) round.preparedTeamPair = await prepareTeamPair(a.id, b.id); }
+      catch (error) {
+        log.warn('pair_prepare_failed', { room: this.code, message: String(error) });
+        // The original verification path remains available if a preload fails.
+      }
+      if (this.round !== round || round.finished || this.status !== 'reveal') return;
+      const t = setTimeout(() => { if (this.round === round) this.beginGuess(); }, 500);
       this.timers.push(t);
     }
   }
@@ -1807,7 +1819,7 @@ export class Room {
       v = await verifyLetterTeamGuess(this.round.teamB.id, this.round.letterPick, text);
       common = await commonPlayersLetterTeam(this.round.teamB.id, this.round.letterPick, 5);
     } else {
-      v = await verifyGuess(this.round.teamA.id, this.round.teamB.id, text);
+      v = await verifyGuess(this.round.teamA.id, this.round.teamB.id, text, round.preparedTeamPair);
       common = await commonPlayersDetailed(this.round.teamA.id, this.round.teamB.id, 5);
     }
 

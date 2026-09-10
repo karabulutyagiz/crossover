@@ -5944,14 +5944,9 @@ export function CountdownScreen({ state }: Props) {
   // Sayı PAYLAŞILAN endsAt'ten hesaplanır (2026-08-28): iki istemci de aynı
   // mutlak ana sayar — geç geçen taraf da doğru rakamı görür. endsAt yoksa
   // (eski sunucu) sunucunun gönderdiği n'e düşülür.
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    if (state.countdownEndsAt == null) return;
-    const id = setInterval(() => setTick((v) => v + 1), 200);
-    return () => clearInterval(id);
-  }, [state.countdownEndsAt]);
+  const countdownSeconds = useDeadline(state.countdownEndsAt);
   const n = state.countdownEndsAt != null
-    ? Math.max(0, Math.ceil((state.countdownEndsAt - Date.now()) / 1000))
+    ? countdownSeconds
     : (state.countdown ?? 0);
   const a = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -5994,14 +5989,8 @@ const PICK_LETTERS = 'ABCDEFGHIJKLMNOPRSTUVYZ'.split('');
 function MatchTimer({ endsAt, urgentAt = 5, fallbackSecs, style }: {
   endsAt: number | null; urgentAt?: number; fallbackSecs?: number; style?: any;
 }) {
-  const [secs, setSecs] = useState<number | null>(null);
-  useEffect(() => {
-    if (!endsAt) { setSecs(null); return; }
-    const tick = () => setSecs(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)));
-    tick();
-    const id = setInterval(tick, 250);
-    return () => clearInterval(id);
-  }, [endsAt]);
+  const remaining = useDeadline(endsAt);
+  const secs = endsAt == null ? null : remaining;
   const shown = secs ?? fallbackSecs ?? null;
   const urgent = endsAt != null && secs !== null && secs <= urgentAt;
   const lastShownRef = useRef<number | null>(null);
@@ -6577,12 +6566,7 @@ function SpecialPowerHud({ state, actions }: Props) {
 /** ❄ SEN dondun: giriş yerine buz paneli + geri sayım. Yalnız gameplay girişi
  * kilitli — uygulama/soket/sayaç akmaya devam eder (kural sunucuda da var). */
 function FrozenPanel({ until }: { until: number }) {
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTick((v) => v + 1), 200);
-    return () => clearInterval(id);
-  }, []);
-  const secs = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+  const secs = useDeadline(until);
   return (
     <View style={{ alignItems: 'center', gap: 5, backgroundColor: withAlpha(theme.blue, 0.13), borderRadius: 18, borderWidth: 1.5, borderColor: withAlpha(theme.blue, 0.55), paddingVertical: 16, marginTop: 6 }}>
       <Ionicons name="snow" size={32} color={theme.blue} />
@@ -7041,6 +7025,11 @@ function useKeyboardOpen(): [boolean, { onFocus: () => void; onBlur: () => void 
   return [focusOpen || evtOpen, inputProps];
 }
 
+const XoxCountdown = memo(function XoxCountdown({ endsAt }: { endsAt: number }) {
+  const secs = useDeadline(endsAt);
+  return <Text style={{ color: secs <= 5 ? theme.danger : theme.text, fontSize: 19, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{secs}</Text>;
+});
+
 export function XoxScreen({ state, actions }: Props) {
   const xox = state.xox;
   const room = state.room;
@@ -7055,7 +7044,6 @@ export function XoxScreen({ state, actions }: Props) {
   const [showEmpties, setShowEmpties] = useState(false); // "Kalan boş kutucukları gör" basıldı mı
   const [reuseWarn, setReuseWarn] = useState(false);     // aynı futbolcuyu ikinci kez yazma uyarısı
   const [kbOpen, kbInputProps] = useKeyboardOpen();      // klavye açık mı → tahta/çerçeve kompaktlaşır
-  const [, setTick] = useState(0);
   const win = useWindow();
   // SABİT EKRAN (kullanıcı kararı 2026-08-27): XOX kaydırılmaz. Tahta, orta
   // bölgenin ÖLÇÜLMÜŞ boyuna göre ölçeklenir — küçük telefonda, cevap paneli
@@ -7071,12 +7059,6 @@ export function XoxScreen({ state, actions }: Props) {
       Animated.timing(strikeAnim, { toValue: 1, duration: 480, delay: 180, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
     }
   }, [over?.line, strikeAnim]);
-  // Sunucu sayacı: 500ms tikle yeniden çiz (yalnız aktif maçta).
-  useEffect(() => {
-    if (over) return undefined;
-    const id = setInterval(() => setTick((v) => v + 1), 500);
-    return () => clearInterval(id);
-  }, [over]);
   // Sıra/ani-ölüm değişince seçim sıfırlanır; sunum sesleri lastAction'dan.
   const lastSeq = useRef<string>('');
   useEffect(() => {
@@ -7113,7 +7095,6 @@ export function XoxScreen({ state, actions }: Props) {
 
   const myTurn = !over && !xox.suddenDeath && xox.turnId === youId;
   const canAnswer = myTurn || (!over && xox.suddenDeath && xox.suddenCell != null);
-  const secs = Math.max(0, Math.ceil((xox.turnEndsAt - Date.now()) / 1000));
   const headerW = 58;
   // Sabit maliyetler: container padding 6×2 + satır içi 3 gap×6 = 30 (genişlik);
   // sütun başlığı ~54 + dikey 3 gap + padding = 84 (yükseklik). Hücre iki
@@ -7253,7 +7234,7 @@ export function XoxScreen({ state, actions }: Props) {
             </Text>
           ) : null}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={{ color: secs <= 5 ? theme.danger : theme.text, fontSize: 19, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{secs}</Text>
+            <XoxCountdown endsAt={xox.turnEndsAt} />
             <Text style={{ color: theme.muted, fontSize: 10.5, fontFamily: 'Poppins-SemiBold' }}>{t('xox.turnOf', { n: String(Math.min(xox.turnNumber, xox.turnCap)), cap: String(xox.turnCap) })}</Text>
           </View>
         </View>
@@ -7599,7 +7580,8 @@ function CozHintBubble({ cost, disabled, onPress }: { cost: number; disabled: bo
 const COZ_ROUND_SECS = 20; // sunucu COZ_ROUND_MS ile aynı (halka görsel dolgusu için)
 
 /** Dairesel geri sayım halkası — premium, 5sn altında kırmızı. */
-function CozTimer({ secs }: { secs: number }) {
+function CozTimer({ endsAt }: { endsAt: number }) {
+  const secs = useDeadline(endsAt);
   const size = 56, sw = 4.5, r = (size - sw) / 2, C = 2 * Math.PI * r;
   const frac = Math.max(0, Math.min(1, secs / COZ_ROUND_SECS));
   const danger = secs <= 5;
@@ -7618,6 +7600,11 @@ function CozTimer({ secs }: { secs: number }) {
 }
 
 // ── ÇÖZ KAZAN ekranı — karışık harfli oyuncuyu ilk bilen kazanır (yarış) ──────
+function CozLockCountdown({ until }: { until: number }) {
+  const secs = useDeadline(until);
+  return <Text style={{ color: theme.danger, fontSize: 13, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>⏳ {t('coz.locked', { s: String(secs) })}</Text>;
+}
+
 export function CozKazanScreen({ state, actions }: Props) {
   const c = state.cozkazan;
   const room = state.room;
@@ -7632,10 +7619,11 @@ export function CozKazanScreen({ state, actions }: Props) {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [emoteOpen, setEmoteOpen] = useState(false);
   const [kbOpen, kbInputProps] = useKeyboardOpen();         // klavye açık mı → düzen kompaktlaşır
-  const [, setTick] = useState(0);
   const win = useWindow();
-
-  useEffect(() => { if (over) return undefined; const id = setInterval(() => setTick((v) => v + 1), 300); return () => clearInterval(id); }, [over]);
+  const myLockUntil = !over && !c?.reveal ? c?.locks.find((l) => l.id === youId)?.until : null;
+  // Only the input's locked/unlocked transition belongs to the whole screen.
+  // Countdown digits update in their own small component.
+  const locked = useDeadline(myLockUntil, 'expiry') > 0;
   // Yeni turda giriş + ipuçları temizlenir
   const lastRound = useRef(-1);
   useEffect(() => {
@@ -7680,11 +7668,6 @@ export function CozKazanScreen({ state, actions }: Props) {
 
   if (!c || !room) return <Screen><Text style={styles.muted}>{t('store.loading')}</Text></Screen>;
 
-  const now = Date.now();
-  const myLock = c.locks.find((l) => l.id === youId);
-  const lockedSecs = myLock ? Math.max(0, Math.ceil((myLock.until - now) / 1000)) : 0;
-  const locked = lockedSecs > 0;
-  const secs = Math.max(0, Math.ceil((c.roundEndsAt - now) / 1000));
   const reveal = c.reveal;
   const inReveal = !!reveal;
   const isSudden = c.round > c.totalRounds;
@@ -7747,7 +7730,7 @@ export function CozKazanScreen({ state, actions }: Props) {
               {isSudden ? `⚡ ${t('coz.sudden').toLocaleUpperCase('tr')}` : t('coz.round', { n: String(c.round), cap: String(c.totalRounds) }).toLocaleUpperCase('tr')}
             </Text>
           </View>
-          {!inReveal ? <CozTimer secs={secs} /> : null}
+          {!inReveal ? <CozTimer endsAt={c.roundEndsAt} /> : null}
         </View>
       ) : null}
 
@@ -7789,7 +7772,7 @@ export function CozKazanScreen({ state, actions }: Props) {
       {/* Cevap kutucukları + yazım + harf alma (yarış) */}
       {!over && !inReveal ? (
         <View style={{ marginTop: kbOpen ? 4 : 8, gap: kbOpen ? 6 : 8 }}>
-          {locked ? <Text style={{ color: theme.danger, fontSize: 13, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>⏳ {t('coz.locked', { s: String(lockedSecs) })}</Text> : null}
+          {locked && myLockUntil != null ? <CozLockCountdown until={myLockUntil} /> : null}
           {hintErr ? <Text style={{ color: theme.gold, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{hintErr}</Text> : null}
           {/* Kutucuklar — dokun, klavye açılır */}
           <Pressable onPress={() => answerInputRef.current?.focus()}>
@@ -7946,6 +7929,17 @@ function GwTimerRing({ secs }: { secs: number }) {
   );
 }
 
+function GwDeadlineRing({ endsAt }: { endsAt: number }) {
+  return <GwTimerRing secs={useDeadline(endsAt)} />;
+}
+
+function GwNextRoundCountdown({ endsAt, target }: { endsAt: number | null | undefined; target: number }) {
+  const secs = useDeadline(endsAt);
+  return <Text style={{ color: theme.textSub, fontSize: 11.5, fontFamily: 'Poppins-SemiBold' }}>
+    {t('guesswho.firstTo', { n: String(target) })} · {t('guesswho.nextRound', { s: String(secs) })}
+  </Text>;
+}
+
 /** Tahmin hakkı pip'leri — 7 elmas: boş=çizgili, harcanan=kırmızı, kazanan=altın. */
 function GwPips({ total, used, winner }: { total: number; used: number; winner: boolean }) {
   return (
@@ -8098,9 +8092,7 @@ export function GuessWhoScreen({ state, actions }: Props) {
   // açılınca foto+sıra tek kompakt şeride iner, satır listesi flex ile daralıp KENDİ
   // içinde kayar → hiçbir şey üst üste binmez, hiçbir şey görünmez yerde kalmaz.
   const [kbOpen, kbInputProps] = useKeyboardOpen();
-  const [, setTick] = useState(0);
   const win = useWindow();
-  useEffect(() => { if (gw?.over) return undefined; const id = setInterval(() => setTick((v) => v + 1), 400); return () => clearInterval(id); }, [gw?.over]);
   // Yeni tahmin satırı: yaylı giriş animasyonu (en üstteki satır).
   const rowAnim = useRef(new Animated.Value(1)).current;
   const lastLen = useRef(0);
@@ -8161,7 +8153,6 @@ export function GuessWhoScreen({ state, actions }: Props) {
   const roundOver = !!gw.roundOver && !over; // çok turlu: tur kapandı, cevap gösteriliyor, yeni tur bekleniyor
   const showReveal = over || roundOver;
   const myTurn = !showReveal && gw.turnId === youId;
-  const secs = Math.max(0, Math.ceil((gw.turnEndsAt - Date.now()) / 1000));
   const reveal = gw.reveal;
   const alreadyGuessed = new Set(gw.guesses.map((g) => g.playerId));
   const q = query.trim();
@@ -8234,7 +8225,7 @@ export function GuessWhoScreen({ state, actions }: Props) {
             <Text numberOfLines={1} style={{ color: turnColor, fontSize: 12, fontFamily: 'Poppins-Black', letterSpacing: 0.4 }}>{turnText}</Text>
             <GwPips total={totalGuesses} used={gw.guesses.length} winner={false} />
           </View>
-          <GwTimerRing secs={secs} />
+          <GwDeadlineRing endsAt={gw.turnEndsAt} />
         </View>
       ) : (
         /* ── BÜYÜK SAHNE (klavye kapalı): spot altındaki gizem kartı ── */
@@ -8251,9 +8242,7 @@ export function GuessWhoScreen({ state, actions }: Props) {
                   <Text style={{ color: gw.roundWinnerId === youId ? theme.primary : gw.roundWinnerId == null ? theme.gold : theme.danger, fontSize: 16, fontFamily: 'Poppins-Black', letterSpacing: 0.8, ...engrave('sm') }}>
                     {gw.roundWinnerId === youId ? t('guesswho.roundYou') : gw.roundWinnerId == null ? t('guesswho.roundVoid') : t('guesswho.roundOpp', { name: gw.winnerName ?? '' })}
                   </Text>
-                  <Text style={{ color: theme.textSub, fontSize: 11.5, fontFamily: 'Poppins-SemiBold' }}>
-                    {t('guesswho.firstTo', { n: String(gw.target ?? 3) })} · {t('guesswho.nextRound', { s: String(Math.max(0, Math.ceil(((gw.nextRoundAt ?? Date.now()) - Date.now()) / 1000))) })}
-                  </Text>
+                  <GwNextRoundCountdown endsAt={gw.nextRoundAt} target={gw.target ?? 3} />
                 </View>
               ) : null}
             </>
@@ -8261,7 +8250,7 @@ export function GuessWhoScreen({ state, actions }: Props) {
             <>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8, backgroundColor: 'rgba(8,14,34,0.72)', borderRadius: 999, paddingLeft: 14, paddingRight: 6, paddingVertical: 4, borderWidth: 1, borderColor: myTurn ? withAlpha(theme.primary, 0.5) : 'rgba(255,255,255,0.08)' }}>
                 <Text style={{ color: turnColor, fontSize: 13.5, fontFamily: 'Poppins-Black', letterSpacing: 0.6, ...engrave('sm') }}>{turnText}</Text>
-                <GwTimerRing secs={secs} />
+                <GwDeadlineRing endsAt={gw.turnEndsAt} />
               </View>
               <View style={{ marginTop: 7 }}>
                 <GwPips total={totalGuesses} used={gw.guesses.length} winner={false} />

@@ -21,4 +21,4 @@ process.on('unhandledRejection', (reason) => {
 });
 
 const port = Number(process.env.PORT ?? '8080');
-startServer(port);
+startServer(port, process.env.LISTEN_HOST);

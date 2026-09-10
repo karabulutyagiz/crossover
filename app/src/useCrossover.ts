@@ -8,6 +8,8 @@ import { SERVER_URLS, setActiveServerUrl, fetchApi, APP_ANDROID_VERSION_CODE, AP
 import { currentLang, t } from './i18n';
 import { getPushToken, requestPushPermission } from './notifications';
 import { initOfflineDB } from './offline/db';
+import { LocalSearchCache } from './performance/localSearchCache';
+import { BACKGROUND_SESSION_MS, backgroundSessionExpired } from './performance/backgroundSession';
 import { startMediaPrefetch, setMediaPrefetchMatchActive } from './mediaPrefetch';
 import { noteSent, noteServerMsg } from './phaseTiming';
 import { captureError, track } from './telemetry';
@@ -1230,7 +1232,7 @@ function saveProfile(profile: ProfileView): void {
   AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(profile)).catch(() => {});
 }
 
-export function useCrossover() {
+export function useCrossover(onSessionExpired?: () => void) {
   const [state, dispatch] = useReducer(reducer, initialState);
   // Kırmızı 1 sayaçları: açılışta yükle, her değişimde yaz (cihazda kalıcı).
   useEffect(() => {
@@ -1250,6 +1252,20 @@ export function useCrossover() {
   const stateRef = useRef(state);
   stateRef.current = state;
   const wsRef = useRef<WebSocket | null>(null);
+  const mounted = useRef(true);
+  const backgroundSince = useRef<number | null>(null);
+  const backgroundExpired = useRef(false);
+  const sessionRestartRequested = useRef(false);
+  const restartSessionRef = useRef(onSessionExpired);
+  restartSessionRef.current = onSessionExpired;
+  const clubSearchSequence = useRef(0);
+  const localClubSearch = useRef(new LocalSearchCache<ClubRef[]>());
+  const pendingClubSearch = useRef<{ reqId: string; context: string; query: string } | null>(null);
+  const clubSearchContext = () => {
+    const room = stateRef.current.room;
+    // Scope is fixed by the server when a room is created; never reuse across rooms.
+    return JSON.stringify([room?.code ?? null]);
+  };
   const connectingSince = useRef(0); // when the current socket started CONNECTING (0 = not connecting)
   const connectKind = useRef(''); // first-message type of the in-flight connect ('register'/'resume_room'/…)
   const lastSocketActivity = useRef(0);
@@ -1365,6 +1381,16 @@ export function useCrossover() {
   useEffect(() => () => clearStoreCatalogTimeout(), []);
 
   const dispatchServerMessage = (m: ServerMsg): boolean => {
+    // SQL requests may finish out of order. A delayed result for "ga" must
+    // never replace the newer "gal" results, especially under server load.
+    if (m.type === 'club_results' && m.reqId.startsWith('q:') && m.reqId !== `q:${clubSearchSequence.current}`) return false;
+    if (m.type === 'club_results' && m.reqId.startsWith('q:')) {
+      const pending = pendingClubSearch.current;
+      if (pending?.reqId === m.reqId) {
+        if (pending.context !== clubSearchContext()) return false;
+        localClubSearch.current.put(pending.context, pending.query, m.clubs.map(club => ({ ...club })));
+      }
+    }
     if (m.type === 'error' && isInternalServerError(m)) {
       captureError(new Error(m.message), { where: 'ws_internal_error', code: m.code, public: m.public });
       if (storeCatalogPending.current) {
@@ -1402,10 +1428,11 @@ export function useCrossover() {
   const withCaps = (msg: ClientMsg): ClientMsg =>
     msg.type === 'register' || msg.type === 'guest' || msg.type === 'auth' || msg.type === 'resume_room'
     || msg.type === 'find_match' || msg.type === 'create_room' || msg.type === 'create_solo' || msg.type === 'join_room'
-      ? ({ ...msg, caps: ['wrongopen', 'wrongretry', 'specialpowers', 'xox', 'gwrounds'] } as ClientMsg) // gwrounds: çok turlu Ben Kimim (roundOver anlaşılır)
+      ? ({ ...msg, caps: ['wrongopen', 'wrongretry', 'specialpowers', 'xox', 'gwrounds', 'bglease'] } as ClientMsg) // bglease: foreground JS renews presence, native pongs alone do not
       : msg;
 
   const connectAndSend = useCallback((first: ClientMsg, opts?: { silent?: boolean }) => {
+    if (!mounted.current || backgroundExpired.current || backgroundSessionExpired(backgroundSince.current) || AppState.currentState === 'background') return;
     stampMatchIntent(first);
     // Detach the previous socket's handlers BEFORE closing it. Otherwise its
     // onclose fires a tick later (after we've already created the new socket) and
@@ -1426,6 +1453,7 @@ export function useCrossover() {
     // onerror fires. So each candidate gets its own deadline, and only when the
     // whole list is exhausted do we tell the user we couldn't connect.
     const attempt = (step: number) => {
+      if (!mounted.current || backgroundExpired.current || AppState.currentState === 'background') return;
       if (step >= SERVER_URLS.length) {
         wsRef.current = null;
         connectingSince.current = 0;
@@ -1435,6 +1463,7 @@ export function useCrossover() {
       }
       const url = SERVER_URLS[(preferredEndpoint.current + step) % SERVER_URLS.length]!;
       const ws = new WebSocket(url);
+      localClubSearch.current.clear();
       wsRef.current = ws;
       let opened = false;  // the handshake completed on THIS socket
       let settled = false; // this attempt has been decided (opened, or moved on)
@@ -1457,6 +1486,10 @@ export function useCrossover() {
         settled = true;
         clearWatchdog();
         if (wsRef.current !== ws) return; // superseded by a newer socket
+        if (!mounted.current || backgroundExpired.current || AppState.currentState === 'background') {
+          try { ws.close(); } catch { /* ignore */ }
+          return;
+        }
         connectingSince.current = 0;
         lastSocketActivity.current = Date.now();
         // Remember which host this network actually allows: every later connect
@@ -1470,6 +1503,10 @@ export function useCrossover() {
       ws.onmessage = (e) => {
         try {
           const m = JSON.parse(String(e.data)) as ServerMsg;
+          if (m.type === 'heartbeat' && AppState.currentState !== 'background' && !backgroundExpired.current
+              && !backgroundSessionExpired(backgroundSince.current) && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'app_state', state: 'active' }));
+          }
           lastSocketActivity.current = Date.now();
           noteServerMsg(m as unknown as { type: string } & Record<string, unknown>); // faz geçiş ölçeri: yalnız damga
           // Arkadaş işleminden hemen sonra gelen sunucu 'error'ı (zaten arkadaşsınız,
@@ -1577,6 +1614,7 @@ export function useCrossover() {
   // her çağrı o anki fazı/odayı/profili görür (davranış aynı), ama kimlik hiç
   // değişmediği için actions useMemo'su ve alttaki memo sınırları bozulmaz.
   const send = useCallback((msg: ClientMsg) => {
+    if (!mounted.current || backgroundExpired.current || backgroundSessionExpired(backgroundSince.current) || AppState.currentState === 'background') return;
     stampMatchIntent(msg);
     const ws = wsRef.current;
     const canReconnectWithoutRoom = ['home', 'tournaments', 'arenas', 'leaderboard', 'matchHistory', 'profile'].includes(stateRef.current.phase);
@@ -1643,6 +1681,65 @@ export function useCrossover() {
     return () => clearTimeout(tm);
   }, [state.phase, state.matchupAutoStart, state.room, send]);
 
+  // Background lease: no reconnection while away; after five minutes the next
+  // foreground mounts a fresh game tree (including its normal React splash).
+  // Identity stays in storage; this is not logout or an account deletion.
+  useEffect(() => {
+    mounted.current = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const closeSessionSocket = () => {
+      const ws = wsRef.current;
+      wsRef.current = null;
+      connectingSince.current = 0;
+      pendingAfterAuth.current = [];
+      pendingAfterResume.current = [];
+      localClubSearch.current.clear();
+      if (ws) {
+        ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null;
+        try { ws.close(); } catch { /* ignore */ }
+      }
+    };
+    const expire = () => { backgroundExpired.current = true; closeSessionSocket(); };
+    const notifyServer = (state: 'active' | 'background') => {
+      const ws = wsRef.current;
+      if (ws?.readyState === WebSocket.OPEN) {
+        try { ws.send(JSON.stringify({ type: 'app_state', state })); } catch { /* heartbeat handles a lost connection */ }
+      }
+    };
+    const onState = (state: AppStateStatus) => {
+      if (state === 'background') {
+        if (backgroundSince.current === null) backgroundSince.current = Date.now();
+        notifyServer('background');
+        // Do not let a delayed auth handshake establish presence while suspended.
+        if (wsRef.current?.readyState === WebSocket.CONNECTING) closeSessionSocket();
+        clearTimeout(timer);
+        const remaining = Math.max(0, BACKGROUND_SESSION_MS - (Date.now() - backgroundSince.current));
+        timer = setTimeout(expire, remaining);
+      } else if (state === 'active') {
+        clearTimeout(timer);
+        if (backgroundExpired.current || backgroundSessionExpired(backgroundSince.current)) {
+          expire();
+          if (!sessionRestartRequested.current) {
+            sessionRestartRequested.current = true;
+            restartSessionRef.current?.();
+          }
+          return;
+        }
+        backgroundSince.current = null;
+        notifyServer('active');
+      }
+      // 'inactive' (notification center/call transition) is not a background session.
+    };
+    const subscription = AppState.addEventListener('change', onState);
+    if (AppState.currentState === 'background') onState('background');
+    return () => {
+      mounted.current = false;
+      clearTimeout(timer);
+      subscription.remove();
+      closeSessionSocket();
+    };
+  }, []);
+
   // Presence: keep an authenticated socket open whenever signed in (cold start +
   // after matches) so friend requests arrive in real time. Reconnects if dropped.
   useEffect(() => {
@@ -1650,6 +1747,7 @@ export function useCrossover() {
     const name = state.profile?.displayName;
     if (!uid || !name) return;
     const ensure = () => {
+      if (!mounted.current || AppState.currentState === 'background' || backgroundExpired.current || backgroundSessionExpired(backgroundSince.current)) return;
       const ws = wsRef.current;
       const st = stateRef.current;
       const inMatchNow = !!st.room?.code && MATCH_PHASES.has(st.phase);
@@ -1961,7 +2059,14 @@ export function useCrossover() {
         send({ type: 'pick_letter', letter });
         dispatch({ type: '_picked' });
       },
-      searchClubs: (q: string) => send({ type: 'search_clubs', reqId: 'q', q }),
+      searchClubs: (q: string) => {
+        const reqId = `q:${++clubSearchSequence.current}`;
+        const context = clubSearchContext();
+        pendingClubSearch.current = { reqId, context, query: q };
+        const clubs = localClubSearch.current.get(context, q);
+        if (clubs !== undefined) { dispatch({ type: 'club_results', reqId, clubs: clubs.map(club => ({ ...club })) }); return; }
+        send({ type: 'search_clubs', reqId, q });
+      },
       searchPlayers: (q: string) => send({ type: 'search_players', q }),
       pickPlayer: (playerId: number) => {
         send({ type: 'pick_player', playerId });
@@ -2186,7 +2291,9 @@ export function useCrossover() {
       // ANTI-CHEAT: the app went to the BACKGROUND mid-match — "başka uygulamaya
       // girip cevaba bakıyor". Same exit as leave() (socket close = forfeit for
       // the opponent), plus a toast so the player knows exactly why they lost.
-      forfeitFromBackground: () => { forfeitCurrentMatch('cheat'); },
+      forfeitFromBackground: () => {
+        if (!backgroundExpired.current && !backgroundSessionExpired(backgroundSince.current)) forfeitCurrentMatch('cheat');
+      },
       logout: async () => {
         const lastUserId = stateRef.current.profile?.userId ?? lastUserIdRef.current;
         const ws = wsRef.current;

@@ -1,9 +1,65 @@
-import { pool } from '../db/pool.ts';
+import { footballReadPool as pool, nameIndexFloor } from '../db/pool.ts';
 import { config } from '../config.ts';
 import { normalize } from './normalize.ts';
 import { BOT_POOLS } from './botpools.ts';
 import { createMatchClubSelectionState, selectBotTeamForMatchup } from './matchupSelection.ts';
 import type { Scope, PlayerRef } from '../protocol.ts';
+import { ReadCache } from '../performance/readCache.ts';
+import { randomUUID } from 'node:crypto';
+
+let footballRevision = randomUUID();
+export const verificationCacheEnabled = process.env.FOOTBALL_VERIFICATION_CACHE !== '0';
+const clubDataCache = new ReadCache<ClubHit | null>(4096, 30_000);
+const careerCache = new ReadCache<SpellInfo[]>(2048, 30_000);
+const commonDisplayCache = new ReadCache<CommonPlayerInfo[]>(1024, 30_000);
+type NameCandidate = { id: string; name: string; name_norm: string; sim: number; image_url: string | null };
+type Membership = { player_id: string; in_a: boolean; in_b: boolean; fame: string };
+type PairAnswer = { id: string; name: string; name_norm: string; image_url: string | null; fame: string };
+const candidateCache = new ReadCache<NameCandidate[]>(1024, 30_000);
+const membershipCache = new ReadCache<Membership[]>(2048, 30_000);
+const pairAnswerCache = new ReadCache<PairAnswer[]>(1024, 30_000);
+type FootballFacts = ReadonlyMap<number, { clubIds: readonly number[]; fame: string }>;
+const footballFactsCache = new ReadCache<FootballFacts>(1, 30_000);
+const preparedFacts = new WeakMap<PreparedTeamPair, FootballFacts>();
+
+async function footballFacts(): Promise<FootballFacts> {
+  return footballFactsCache.get('facts', async () => {
+    // Count each club's career rows ONCE, not in a correlated subquery for every guess.
+    const { rows } = await pool.query<{ player_id: string; club_ids: string[]; fame: string }>(`
+      WITH club_counts AS (SELECT club_id, count(*) AS n FROM player_clubs GROUP BY club_id)
+      SELECT pc.player_id, array_agg(DISTINCT pc.club_id) AS club_ids,
+             MAX(GREATEST(COALESCE(c.popularity, 0), cc.n)) AS fame
+        FROM player_clubs pc JOIN clubs c ON c.id = pc.club_id
+        JOIN club_counts cc ON cc.club_id = pc.club_id GROUP BY pc.player_id`);
+    return new Map(rows.map(row => [Number(row.player_id),
+      Object.freeze({ clubIds: Object.freeze(row.club_ids.map(Number)), fame: row.fame })]));
+  });
+}
+function verificationRead<T>(cache: ReadCache<T>, key: string, load: () => Promise<T>): Promise<T> {
+  return verificationCacheEnabled ? cache.get(key, load) : load();
+}
+
+export function invalidateFootballReadCaches(): string {
+  footballRevision = randomUUID();
+  for (const cache of [clubDataCache, careerCache, commonDisplayCache, candidateCache, membershipCache,
+    pairAnswerCache, footballFactsCache, clubSearchCache, playerSearchCache, scopeCache, nationalityCache, poolCache]) cache.clear();
+  return footballRevision;
+}
+
+const clubSearchCache = new ReadCache<ClubHit[]>(512, 30_000);
+const playerSearchCache = new ReadCache<PlayerRef[]>(512, 30_000);
+const scopeCache = new ReadCache<{ leagues: ScopeOption[]; countries: ScopeOption[] }>(1, 60_000);
+const nationalityCache = new ReadCache<{ value: string; count: number }[]>(8, 60_000);
+const poolCache = new ReadCache<Record<'easy' | 'medium' | 'hard', number[]>>(1, 300_000);
+
+export function footballReadCacheStats() {
+  return { revision: footballRevision, verificationCacheEnabled,
+    footballFacts: footballFactsCache.snapshot(),
+    clubData: clubDataCache.snapshot(), careers: careerCache.snapshot(), commonDisplay: commonDisplayCache.snapshot(),
+    candidates: candidateCache.snapshot(), memberships: membershipCache.snapshot(), pairAnswers: pairAnswerCache.snapshot(),
+    clubs: clubSearchCache.snapshot(), players: playerSearchCache.snapshot(),
+    scopes: scopeCache.snapshot(), nationalities: nationalityCache.snapshot(), botPools: poolCache.snapshot() };
+}
 
 // Build a scope WHERE-fragment + push its param. Returns '' for 'all'.
 function scopeClause(scope: Scope, params: unknown[]): string {
@@ -99,6 +155,13 @@ export async function searchClubs(
   scope: Scope = { type: 'all' },
   limit = 24,
 ): Promise<ClubHit[]> {
+  const norm = normalize(query);
+  const key = JSON.stringify([norm, scope.type, scope.type === 'all' ? null : scope.value, limit]);
+  const hits = await clubSearchCache.get(key, () => searchClubsUncached(norm, scope, limit));
+  return hits.map(hit => ({ ...hit }));
+}
+
+async function searchClubsUncached(query: string, scope: Scope, limit: number): Promise<ClubHit[]> {
   const norm = normalize(query);
   if (norm.startsWith('atletico')) {
     const atletico = await canonicalClubHit(13);
@@ -360,28 +423,35 @@ export async function randomClub(
   return r ? clubHitFromRow(r) : null;
 }
 
-// Resolve the fixed difficulty pools to club ids once (cached for the process).
-let cachedPools: Record<'easy' | 'medium' | 'hard', number[]> | null = null;
-async function resolvedPools(): Promise<Record<'easy' | 'medium' | 'hard', number[]>> {
-  if (cachedPools) return cachedPools;
+// A cold login burst shares one lookup, including across differently scoped searches.
+// One SQL round trip resolves all configured names while preserving the old ranking.
+function resolvedPools(): Promise<Record<'easy' | 'medium' | 'hard', number[]>> {
+  return poolCache.get('pools', resolvePoolsUncached);
+}
+
+async function resolvePoolsUncached(): Promise<Record<'easy' | 'medium' | 'hard', number[]>> {
   const out: Record<'easy' | 'medium' | 'hard', number[]> = { easy: [], medium: [], hard: [] };
-  for (const level of ['easy', 'medium', 'hard'] as const) {
-    for (const t of BOT_POOLS[level]) {
-      const { rows } = await pool.query<{ id: string }>(
-        `SELECT c.id FROM clubs c
+  const requested = (['easy', 'medium', 'hard'] as const).flatMap(level =>
+    BOT_POOLS[level].map(t => ({ level, norm: normalize(t.q) })));
+  const { rows } = await pool.query<{ ordinal: string; id: string | null }>(
+    `SELECT requested.ordinal, hit.id
+       FROM unnest($1::text[]) WITH ORDINALITY AS requested(norm, ordinal)
+       LEFT JOIN LATERAL (
+         SELECT c.id FROM clubs c
           WHERE c.is_national = false AND c.logo_url IS NOT NULL
             AND EXISTS (SELECT 1 FROM player_clubs pc WHERE pc.club_id = c.id)
             ${A_TEAM_ONLY}
-            AND (c.name_norm = $1 OR c.name_norm % $1 OR c.name_norm LIKE '%' || $1 || '%')
-          ORDER BY (c.name_norm = $1) DESC, (c.league IS NOT NULL) DESC, similarity(c.name_norm, $1) DESC,
+            AND (c.name_norm = requested.norm OR c.name_norm % requested.norm OR c.name_norm LIKE '%' || requested.norm || '%')
+          ORDER BY (c.name_norm = requested.norm) DESC, (c.league IS NOT NULL) DESC, similarity(c.name_norm, requested.norm) DESC,
                    (SELECT COUNT(*) FROM player_clubs pc2 WHERE pc2.club_id = c.id) DESC, length(c.name) ASC
-          LIMIT 1`,
-        [normalize(t.q)],
-      );
-      if (rows[0]) out[level].push(Number(rows[0].id));
-    }
+          LIMIT 1
+       ) hit ON true ORDER BY requested.ordinal`,
+    [requested.map(t => t.norm)],
+  );
+  for (const row of rows) {
+    const item = requested[Number(row.ordinal) - 1];
+    if (item && row.id != null) out[item.level].push(Number(row.id));
   }
-  cachedPools = out;
   return out;
 }
 
@@ -513,6 +583,10 @@ const COUNTRY_NAME_TR: Record<string, string> = {
 
 /** Available leagues and countries (for the scope picker). All leagues in the DB. */
 export async function listScopes(): Promise<{ leagues: ScopeOption[]; countries: ScopeOption[] }> {
+  return scopeCache.get('scopes', listScopesUncached);
+}
+
+async function listScopesUncached(): Promise<{ leagues: ScopeOption[]; countries: ScopeOption[] }> {
   const leagues = await pool.query<{ value: string; count: string }>(
     `SELECT league AS value, count(*) AS count FROM clubs
       WHERE league IS NOT NULL
@@ -600,6 +674,12 @@ export async function commonPlayersDetailed(
   teamBId: number,
   limit = 5,
 ): Promise<CommonPlayerInfo[]> {
+  const hits = await verificationRead(commonDisplayCache, JSON.stringify([teamAId, teamBId, limit]),
+    () => commonPlayersDetailedUncached(teamAId, teamBId, limit));
+  return hits.map(hit => ({ ...hit }));
+}
+
+async function commonPlayersDetailedUncached(teamAId: number, teamBId: number, limit: number): Promise<CommonPlayerInfo[]> {
   const { rows } = await pool.query<{ name: string; image_url: string | null }>(
     `SELECT p.name, p.image_url
        FROM players p
@@ -1956,6 +2036,10 @@ export async function verifyLetterTeamGuess(
 
 /** Available nationalities for the country picker (countries with enough players). */
 export async function listNationalities(minPlayers = 10): Promise<{ value: string; count: number }[]> {
+  return nationalityCache.get(String(minPlayers), () => listNationalitiesUncached(minPlayers));
+}
+
+async function listNationalitiesUncached(minPlayers: number): Promise<{ value: string; count: number }[]> {
   const { rows } = await pool.query<{ nationality: string; count: string }>(
     `SELECT p.nationality, count(DISTINCT p.id) AS count
        FROM players p
@@ -1970,6 +2054,11 @@ export async function listNationalities(minPlayers = 10): Promise<{ value: strin
 }
 
 async function getClub(id: number): Promise<ClubHit | null> {
+  const hit = await verificationRead(clubDataCache, String(id), () => getClubUncached(id));
+  return hit ? { ...hit } : null;
+}
+
+async function getClubUncached(id: number): Promise<ClubHit | null> {
   const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
     'SELECT id, name, logo_url FROM clubs WHERE id = $1',
     [id],
@@ -1979,6 +2068,11 @@ async function getClub(id: number): Promise<ClubHit | null> {
 }
 
 async function getPlayerSpells(playerId: number): Promise<SpellInfo[]> {
+  const hits = await verificationRead(careerCache, String(playerId), () => getPlayerSpellsUncached(playerId));
+  return hits.map(hit => ({ ...hit }));
+}
+
+async function getPlayerSpellsUncached(playerId: number): Promise<SpellInfo[]> {
   const { rows } = await pool.query<{
     club_id: string;
     club_name: string;
@@ -2012,12 +2106,56 @@ async function getPlayerSpells(playerId: number): Promise<SpellInfo[]> {
  * teams the guess is correct; otherwise we surface the best-matching player so
  * the UI can show "you meant X — here are X's actual clubs".
  */
+export interface PreparedTeamPair {
+  readonly revision: string;
+  readonly teamA: ClubHit;
+  readonly teamB: ClubHit;
+  readonly answers: readonly PairAnswer[];
+}
+
+async function pairAnswers(teamAId: number, teamBId: number): Promise<PairAnswer[]> {
+  return verificationRead(pairAnswerCache, JSON.stringify([teamAId, teamBId]), async () => {
+    const { rows: allBothRows } = await pool.query<{ id: string; name: string; name_norm: string; image_url: string | null; fame: string }>(
+      `SELECT p.id, p.name, p.name_norm, p.image_url,
+              MAX(GREATEST(COALESCE(c.popularity, 0),
+                           (SELECT count(*) FROM player_clubs x WHERE x.club_id = pc.club_id))) AS fame
+         FROM players p
+         JOIN player_clubs a ON a.player_id = p.id AND a.club_id = $1
+         JOIN player_clubs b ON b.player_id = p.id AND b.club_id = $2
+         JOIN player_clubs pc ON pc.player_id = p.id
+         JOIN clubs c ON c.id = pc.club_id
+        GROUP BY p.id, p.name, p.name_norm, p.image_url
+        ORDER BY (p.image_url IS NOT NULL) DESC, fame DESC
+        LIMIT 300`,
+      [teamAId, teamBId],
+    );
+    return allBothRows;
+  });
+}
+
+/** Server-only round preparation. Never sent to a client or used for settlement. */
+export async function prepareTeamPair(teamAId: number, teamBId: number): Promise<PreparedTeamPair> {
+  const revision = footballRevision;
+  const [teamA, teamB, answers, facts] = await Promise.all([getClub(teamAId), getClub(teamBId), pairAnswers(teamAId, teamBId),
+    verificationCacheEnabled ? footballFacts() : Promise.resolve(undefined)]);
+  if (!teamA || !teamB) throw new Error('Unknown team id(s)');
+  if (revision !== footballRevision) return prepareTeamPair(teamAId, teamBId);
+  const prepared = Object.freeze({ revision, teamA: Object.freeze(teamA), teamB: Object.freeze(teamB),
+    answers: Object.freeze(answers.map(row => Object.freeze({ ...row }))) });
+  if (facts) preparedFacts.set(prepared, facts);
+  return prepared;
+}
+
 export async function verifyGuess(
   teamAId: number,
   teamBId: number,
   guess: string,
+  prepared?: PreparedTeamPair,
 ): Promise<VerifyResult> {
-  const [teamA, teamB] = await Promise.all([getClub(teamAId), getClub(teamBId)]);
+  const revision = footballRevision;
+  const validPrepared = prepared?.revision === footballRevision && prepared.teamA.id === teamAId && prepared.teamB.id === teamBId;
+  const [teamA, teamB] = validPrepared ? [{ ...prepared.teamA }, { ...prepared.teamB }]
+    : await Promise.all([getClub(teamAId), getClub(teamBId)]);
   if (!teamA || !teamB) {
     throw new Error('Unknown team id(s)');
   }
@@ -2038,16 +2176,20 @@ export async function verifyGuess(
   // 1) Fuzzy candidates by name. word_similarity lets "Sneijder" match
   // "Wesley Sneijder". When similarity scores are equal, prefer the most
   // notable player (more clubs = bigger career, has photo = Wikipedia-notable).
-  const { rows: cands } = await pool.query<{ id: string; name: string; name_norm: string; sim: number; image_url: string | null }>(
-    `SELECT p.id, p.name, p.name_norm, p.image_url, word_similarity($1, p.name_norm) AS sim
-       FROM players p
-      WHERE word_similarity($1, p.name_norm) >= $2
-      ORDER BY sim DESC,
-               (p.image_url IS NOT NULL) DESC,
-               (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC
-      LIMIT 25`,
-    [norm, config.verifyMatchThreshold],
-  );
+  const cands = await verificationRead(candidateCache, norm, async () => {
+    const { rows: cands } = await pool.query<{ id: string; name: string; name_norm: string; sim: number; image_url: string | null }>(
+      `SELECT p.id, p.name, p.name_norm, p.image_url, word_similarity($1, p.name_norm) AS sim
+         FROM players p
+        WHERE word_similarity($1, p.name_norm) >= $2
+          ${config.verifyMatchThreshold > nameIndexFloor ? 'AND p.name_norm %> $1' : ''}
+        ORDER BY sim DESC,
+                 (p.image_url IS NOT NULL) DESC,
+                 (SELECT count(*) FROM player_clubs pc WHERE pc.player_id = p.id) DESC
+        LIMIT 25`,
+      [norm, config.verifyMatchThreshold],
+    );
+    return cands;
+  });
 
   const eligible = cands.map((c) => ({ id: Number(c.id), name: c.name, nameNorm: c.name_norm, sim: Number(c.sim), imageUrl: c.image_url }));
 
@@ -2060,23 +2202,35 @@ export async function verifyGuess(
   // club, by market value where filled, else by squad size — the same
   // recognizability proxy botCommonPlayersRanked uses.
   const ids = eligible.map((c) => c.id);
-  const { rows: membership } = await pool.query<{
-    player_id: string;
-    in_a: boolean;
-    in_b: boolean;
-    fame: string;
-  }>(
-    `SELECT pc.player_id,
-            bool_or(pc.club_id = $2) AS in_a,
-            bool_or(pc.club_id = $3) AS in_b,
-            MAX(GREATEST(COALESCE(c.popularity, 0),
-                         (SELECT count(*) FROM player_clubs x WHERE x.club_id = pc.club_id))) AS fame
-       FROM player_clubs pc
-       JOIN clubs c ON c.id = pc.club_id
-      WHERE pc.player_id = ANY($1::bigint[])
-      GROUP BY pc.player_id`,
-    [ids, teamAId, teamBId],
-  );
+  const membership = await verificationRead(membershipCache, JSON.stringify([teamAId, teamBId, ids]), async () => {
+    if (verificationCacheEnabled) {
+      const facts = (validPrepared ? preparedFacts.get(prepared) : undefined) ?? await footballFacts();
+      return ids.flatMap(id => {
+        const fact = facts.get(id);
+        return fact ? [{ player_id: String(id), in_a: fact.clubIds.includes(teamAId),
+          in_b: fact.clubIds.includes(teamBId), fame: fact.fame }] : [];
+      });
+    }
+    const { rows: membership } = await pool.query<{
+      player_id: string;
+      in_a: boolean;
+      in_b: boolean;
+      fame: string;
+    }>(
+      `SELECT pc.player_id,
+              bool_or(pc.club_id = $2) AS in_a,
+              bool_or(pc.club_id = $3) AS in_b,
+              MAX(GREATEST(COALESCE(c.popularity, 0),
+                           (SELECT count(*) FROM player_clubs x WHERE x.club_id = pc.club_id))) AS fame
+         FROM player_clubs pc
+         JOIN clubs c ON c.id = pc.club_id
+        WHERE pc.player_id = ANY($1::bigint[])
+        GROUP BY pc.player_id`,
+      [ids, teamAId, teamBId],
+    );
+    return membership;
+  });
+
   const memberBy = new Map<number, { inA: boolean; inB: boolean; fame: number }>(
     membership.map((m) => [Number(m.player_id), { inA: m.in_a, inB: m.in_b, fame: Number(m.fame) }]),
   );
@@ -2088,20 +2242,8 @@ export async function verifyGuess(
   type Cand = (typeof eligible)[number];
   const mostFamous = (cs: Cand[]): Cand => cs.reduce((best, c) => (fameOf(c.id) > fameOf(best.id) ? c : best));
 
-  const { rows: allBothRows } = await pool.query<{ id: string; name: string; name_norm: string; image_url: string | null; fame: string }>(
-    `SELECT p.id, p.name, p.name_norm, p.image_url,
-            MAX(GREATEST(COALESCE(c.popularity, 0),
-                         (SELECT count(*) FROM player_clubs x WHERE x.club_id = pc.club_id))) AS fame
-       FROM players p
-       JOIN player_clubs a ON a.player_id = p.id AND a.club_id = $1
-       JOIN player_clubs b ON b.player_id = p.id AND b.club_id = $2
-       JOIN player_clubs pc ON pc.player_id = p.id
-       JOIN clubs c ON c.id = pc.club_id
-      GROUP BY p.id, p.name, p.name_norm, p.image_url
-      ORDER BY (p.image_url IS NOT NULL) DESC, fame DESC
-      LIMIT 300`,
-    [teamAId, teamBId],
-  );
+  const allBothRows = validPrepared ? prepared.answers : await pairAnswers(teamAId, teamBId);
+
   const validNameMatches = allBothRows
     .map((r) => ({
       id: Number(r.id),
@@ -2201,6 +2343,7 @@ export async function verifyGuess(
   const spellsA = allClubs.filter((s) => s.clubId === teamAId);
   const spellsB = allClubs.filter((s) => s.clubId === teamBId);
 
+  if (revision !== footballRevision) return verifyGuess(teamAId, teamBId, guess);
   return {
     correct,
     reason: correct ? 'both' : 'not_both',
@@ -2219,12 +2362,19 @@ export async function verifyGuess(
 /** Fuzzy search for players by name. */
 export async function searchPlayers(query: string, limit = 30): Promise<PlayerRef[]> {
   const norm = normalize(query);
+  const hits = await playerSearchCache.get(JSON.stringify([norm, limit]), () => searchPlayersUncached(norm, limit));
+  return hits.map(hit => ({ ...hit }));
+}
+
+async function searchPlayersUncached(query: string, limit: number): Promise<PlayerRef[]> {
+  const norm = normalize(query);
   if (!norm) return [];
   const { rows } = await pool.query<{ id: string; name: string; image_url: string | null; sim: number }>(
     `SELECT p.id, p.name, p.image_url,
             word_similarity($1, p.name_norm) AS sim
      FROM players p
      WHERE word_similarity($1, p.name_norm) >= 0.25
+       AND p.name_norm %> $1
      ORDER BY sim DESC, (p.image_url IS NOT NULL) DESC
      LIMIT $2`,
     [norm, limit],

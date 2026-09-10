@@ -786,6 +786,8 @@ function OutgoingInviteBanner({ invite, onCancel, offsetY = 0 }: {
 // Safe-area context must wrap everything that calls useSafeAreaInsets (screens,
 // banners, tab bar) — the provider lives in the default export, the app in AppRoot.
 export default function App() {
+  const [sessionKey, setSessionKey] = useState(0);
+  const restartSession = useCallback(() => setSessionKey(key => key + 1), []);
   const [searchPreview, setSearchPreview] = useState(SEARCH_DESIGN_PREVIEW);
   if (searchPreview) {
     const SearchPreview = require('./src/matchmaking/SearchPreview').default;
@@ -794,7 +796,7 @@ export default function App() {
   if (Ui2Preview) return <Ui2Preview />;
   return (
     <SafeAreaProvider>
-      <ScaledRoot />
+      <ScaledRoot key={sessionKey} onSessionExpired={restartSession} />
     </SafeAreaProvider>
   );
 }
@@ -803,10 +805,10 @@ export default function App() {
 // Arayüz her zaman BASE_W×BASE_H telefon tuvalinde çizilir; tablette tek bir
 // transform ile ekrana oturana kadar büyütülür. Böylece kart/yazı/boşluk
 // oranları telefondakiyle BİREBİR aynı kalır — iPad'e özel yayılmış düzen yok.
-function ScaledRoot() {
+function ScaledRoot({ onSessionExpired }: { onSessionExpired: () => void }) {
   const { width, height } = useWindowDimensions();
   const k = uiScaleFor(width, height);
-  if (k === 1) return <AppRoot />;
+  if (k === 1) return <AppRoot onSessionExpired={onSessionExpired} />;
   // Tuval ekranı TAM doldurur (genişlik canvasSizeFor'dan gelir, yükseklik
   // BASE_H) ve tek transform ile büyütülür: kenarda bant YOK, arka plan/saha
   // kenardan kenara akar; içerik Screen primitive'inde 430pt telefon kolonunda
@@ -819,7 +821,7 @@ function ScaledRoot() {
     // doldurur (genişlik = canvasSizeFor, yükseklik = BASE_H, ikisi de ×k).
     <View style={{ flex: 1, backgroundColor: BG_TOP, overflow: 'hidden' }}>
       <View style={{ width: canvas.width, height: canvas.height, transform: [{ scale: k }], transformOrigin: 'top left' }}>
-        <AppRoot />
+        <AppRoot onSessionExpired={onSessionExpired} />
       </View>
     </View>
   );
@@ -973,9 +975,9 @@ function VictoryCelebrationOverlay({ effectId }: { effectId?: string | null }) {
   return null;
 }
 
-function AppRoot() {
+function AppRoot({ onSessionExpired }: { onSessionExpired: () => void }) {
   const insets = useSafeAreaInsets();
-  const { state, actions } = useCrossover();
+  const { state, actions } = useCrossover(onSessionExpired);
   // Profil isteği nöbetçisi: pencere yalnız SON İSTENEN kullanıcının cevabını
   // gösterir. Eski "son kapatılan" nöbetçisi herhangi bir cevapla düşüyordu —
   // A'ya bak/kapat, B'ye bak: A'nın geç cevabı B'nin kartına A'nın kimliğini

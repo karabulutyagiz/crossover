@@ -336,6 +336,7 @@ export interface RoundResult {
 }
 
 export type ClientMsg =
+  | { type: 'app_state'; state: 'active' | 'background' }
   // caps bağlantı-kuran DÖRT maç mesajında da taşınır (create_room/create_solo/
   // join_room/find_match): maç soketleri taze açılır, register buradan geçmez —
   // caps yalnız kayıt mesajlarında kalınca wrongopen dereceli maçta hiç açılmıyordu.

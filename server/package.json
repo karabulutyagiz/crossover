@@ -5,6 +5,9 @@
   "type": "module",
   "description": "Crossover game server — data layer, Transfermarkt ingest, player verification",
   "scripts": {
+    "test:background-session": "tsx --test src/cli/background-session-test.ts",
+    "test:read-cache": "tsx --test src/cli/read-cache-test.ts",
+    "test:capacity-local": "node src/cli/capacity-local.mjs",
     "test:realtime-performance": "tsx --test src/cli/realtime-performance-test.ts",
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",

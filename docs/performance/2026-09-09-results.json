@@ -1,0 +1,928 @@
+{
+  "date": "2026-09-09",
+  "limitations": "Synthetic localhost workload, one mode and repeated search key; not production capacity or internet ping.",
+  "reports": [
+    {
+      "label": "baseline20_initial",
+      "artifacts": "/var/folders/p8/cfgw9b1n67z24tvcfgptr72h0000gn/T/cof-capacity-raJtpX",
+      "report": {
+        "scope": "local real ranked games with synthetic data; NOT production capacity or mobile network latency",
+        "source": "/private/tmp/cof-ship-20260906/ui2",
+        "clients": 20,
+        "completedMatches": 10,
+        "completedRounds": 30,
+        "elapsedMs": 20301,
+        "maximumSockets": 20,
+        "maximumRooms": 10,
+        "maximumDbWaiting": 0,
+        "timings": {
+          "login": {
+            "samples": 20,
+            "p50Ms": 64.03,
+            "p95Ms": 75.56,
+            "p99Ms": 75.56,
+            "maxMs": 78.26
+          },
+          "search": {
+            "samples": 20,
+            "p50Ms": 10375.6,
+            "p95Ms": 10474.74,
+            "p99Ms": 10474.74,
+            "maxMs": 10504.92
+          },
+          "answer": {
+            "samples": 30,
+            "p50Ms": 357.72,
+            "p95Ms": 1301.08,
+            "p99Ms": 1304.96,
+            "maxMs": 1317.17
+          },
+          "matchmaking": {
+            "samples": 20,
+            "p50Ms": 30.2,
+            "p95Ms": 33.16,
+            "p99Ms": 33.16,
+            "maxMs": 33.18
+          }
+        },
+        "runtime": {
+          "uptimeSeconds": 20.901223833,
+          "eventLoop": {
+            "p50Ms": 21.053439,
+            "p95Ms": 21.233663,
+            "p99Ms": 22.003711,
+            "maxMs": 32.014335,
+            "utilization": 0.020586902161321904
+          },
+          "memoryBytes": {
+            "rss": 101744640,
+            "heapTotal": 78577664,
+            "heapUsed": 48392128,
+            "external": 9003675,
+            "arrayBuffers": 5065629
+          },
+          "windowMs": 10000,
+          "sockets": 20,
+          "rooms": 10,
+          "matchmakingQueue": 0,
+          "sends": {
+            "sent": 1146,
+            "sendErrors": 0,
+            "slowConsumerDisconnects": 0
+          },
+          "databasePool": {
+            "total": 30,
+            "idle": 12,
+            "waiting": 0
+          }
+        },
+        "eventLoopP99MaxMs": 22.544383,
+        "peakServerRssMB": 143,
+        "settlements": 10,
+        "ledgerEntries": 20
+      }
+    },
+    {
+      "label": "cache20_initial",
+      "artifacts": "/var/folders/p8/cfgw9b1n67z24tvcfgptr72h0000gn/T/cof-capacity-AzZo4i",
+      "report": {
+        "scope": "local real ranked games with synthetic data; NOT production capacity or mobile network latency",
+        "source": "/private/tmp/cof-performance-NjUhki",
+        "clients": 20,
+        "completedMatches": 10,
+        "completedRounds": 30,
+        "elapsedMs": 14605,
+        "maximumSockets": 20,
+        "maximumRooms": 10,
+        "maximumDbWaiting": 0,
+        "timings": {
+          "login": {
+            "samples": 20,
+            "p50Ms": 902.14,
+            "p95Ms": 1053.5,
+            "p99Ms": 1053.5,
+            "maxMs": 1053.94
+          },
+          "search": {
+            "samples": 20,
+            "p50Ms": 380.12,
+            "p95Ms": 380.51,
+            "p99Ms": 380.51,
+            "maxMs": 380.57
+          },
+          "answer": {
+            "samples": 30,
+            "p50Ms": 168.64,
+            "p95Ms": 234.14,
+            "p99Ms": 234.27,
+            "maxMs": 251.48
+          },
+          "matchmaking": {
+            "samples": 20,
+            "p50Ms": 192.89,
+            "p95Ms": 194.49,
+            "p99Ms": 194.49,
+            "maxMs": 194.63
+          }
+        },
+        "runtime": {
+          "uptimeSeconds": 15.238715708,
+          "eventLoop": {
+            "p50Ms": 21.053439,
+            "p95Ms": 21.233663,
+            "p99Ms": 21.577727,
+            "maxMs": 24.166399,
+            "utilization": 0.022850808610600123
+          },
+          "memoryBytes": {
+            "rss": 126042112,
+            "heapTotal": 60768256,
+            "heapUsed": 30390792,
+            "external": 10164856,
+            "arrayBuffers": 6226754
+          },
+          "windowMs": 10000,
+          "sockets": 20,
+          "rooms": 10,
+          "footballReadCaches": {
+            "clubs": {
+              "entries": 1,
+              "capacity": 512,
+              "ttlMs": 30000,
+              "hits": 19,
+              "misses": 1,
+              "coalesced": 19,
+              "failures": 0
+            },
+            "players": {
+              "entries": 0,
+              "capacity": 512,
+              "ttlMs": 30000,
+              "hits": 0,
+              "misses": 0,
+              "coalesced": 0,
+              "failures": 0
+            },
+            "scopes": {
+              "entries": 0,
+              "capacity": 1,
+              "ttlMs": 60000,
+              "hits": 0,
+              "misses": 0,
+              "coalesced": 0,
+              "failures": 0
+            },
+            "nationalities": {
+              "entries": 0,
+              "capacity": 8,
+              "ttlMs": 60000,
+              "hits": 0,
+              "misses": 0,
+              "coalesced": 0,
+              "failures": 0
+            },
+            "botPools": {
+              "entries": 1,
+              "capacity": 1,
+              "ttlMs": 300000,
+              "hits": 0,
+              "misses": 1,
+              "coalesced": 0,
+              "failures": 0
+            }
+          },
+          "matchmakingQueue": 0,
+          "sends": {
+            "sent": 1129,
+            "sendErrors": 0,
+            "slowConsumerDisconnects": 0
+          },
+          "databasePool": {
+            "total": 30,
+            "idle": 28,
+            "waiting": 0
+          }
+        },
+        "eventLoopP99MaxMs": 21.577727,
+        "peakServerRssMB": 136,
+        "settlements": 10,
+        "ledgerEntries": 20
+      }
+    },
+    {
+      "label": "cache100_before_index",
+      "artifacts": "/var/folders/p8/cfgw9b1n67z24tvcfgptr72h0000gn/T/cof-capacity-5puj0d",
+      "report": {
+        "scope": "local real ranked games with synthetic data; NOT production capacity or mobile network latency",
+        "source": "/private/tmp/cof-performance-NjUhki",
+        "clients": 100,
+        "completedMatches": 50,
+        "completedRounds": 150,
+        "elapsedMs": 16018,
+        "maximumSockets": 100,
+        "maximumRooms": 50,
+        "maximumDbWaiting": 71,
+        "timings": {
+          "login": {
+            "samples": 100,
+            "p50Ms": 40.23,
+            "p95Ms": 159.96,
+            "p99Ms": 166.21,
+            "maxMs": 166.81
+          },
+          "search": {
+            "samples": 100,
+            "p50Ms": 254.61,
+            "p95Ms": 255.37,
+            "p99Ms": 255.5,
+            "maxMs": 255.54
+          },
+          "answer": {
+            "samples": 150,
+            "p50Ms": 867.69,
+            "p95Ms": 1281.36,
+            "p99Ms": 1292.05,
+            "maxMs": 1293.62
+          },
+          "matchmaking": {
+            "samples": 100,
+            "p50Ms": 72.04,
+            "p95Ms": 88.51,
+            "p99Ms": 90.3,
+            "maxMs": 90.6
+          }
+        },
+        "runtime": {
+          "uptimeSeconds": 16.613492959,
+          "eventLoop": {
+            "p50Ms": 21.053439,
+            "p95Ms": 21.250047,
+            "p99Ms": 22.495231,
+            "maxMs": 29.540351,
+            "utilization": 0.058029300421608594
+          },
+          "memoryBytes": {
+            "rss": 136265728,
+            "heapTotal": 77152256,
+            "heapUsed": 46543536,
+            "external": 8853649,
+            "arrayBuffers": 4915467
+          },
+          "windowMs": 10000,
+          "sockets": 100,
+          "rooms": 50,
+          "footballReadCaches": {
+            "clubs": {
+              "entries": 1,
+              "capacity": 512,
+              "ttlMs": 30000,
+              "hits": 99,
+              "misses": 1,
+              "coalesced": 99,
+              "failures": 0
+            },
+            "players": {
+              "entries": 0,
+              "capacity": 512,
+              "ttlMs": 30000,
+              "hits": 0,
+              "misses": 0,
+              "coalesced": 0,
+              "failures": 0
+            },
+            "scopes": {
+              "entries": 0,
+              "capacity": 1,
+              "ttlMs": 60000,
+              "hits": 0,
+              "misses": 0,
+              "coalesced": 0,
+              "failures": 0
+            },
+            "nationalities": {
+              "entries": 0,
+              "capacity": 8,
+              "ttlMs": 60000,
+              "hits": 0,
+              "misses": 0,
+              "coalesced": 0,
+              "failures": 0
+            },
+            "botPools": {
+              "entries": 1,
+              "capacity": 1,
+              "ttlMs": 300000,
+              "hits": 0,
+              "misses": 1,
+              "coalesced": 0,
+              "failures": 0
+            }
+          },
+          "matchmakingQueue": 0,
+          "sends": {
+            "sent": 5647,
+            "sendErrors": 0,
+            "slowConsumerDisconnects": 0
+          },
+          "databasePool": {
+            "total": 30,
+            "idle": 23,
+            "waiting": 0
+          }
+        },
+        "eventLoopP99MaxMs": 22.495231,
+        "peakServerRssMB": 130,
+        "settlements": 50,
+        "ledgerEntries": 100
+      }
+    },
+    {
+      "label": "index100",
+      "artifacts": "/var/folders/p8/cfgw9b1n67z24tvcfgptr72h0000gn/T/cof-capacity-dOUnKx",
+      "report": {
+        "scope": "local real ranked games with synthetic data; NOT production capacity or mobile network latency",
+        "source": "/private/tmp/cof-performance-NjUhki",
+        "clients": 100,
+        "completedMatches": 50,
+        "completedRounds": 150,
+        "elapsedMs": 13297,
+        "maximumSockets": 100,
+        "maximumRooms": 50,
+        "maximumDbWaiting": 53,
+        "timings": {
+          "login": {
+            "samples": 100,
+            "p50Ms": 58.7,
+            "p95Ms": 185.35,
+            "p99Ms": 190.1,
+            "maxMs": 190.32
+          },
+          "search": {
+            "samples": 100,
+            "p50Ms": 171.16,
+            "p95Ms": 171.67,
+            "p99Ms": 171.73,
+            "maxMs": 171.74
+          },
+          "answer": {
+            "samples": 150,
+            "p50Ms": 62.88,
+            "p95Ms": 99.4,
+            "p99Ms": 104.78,
+            "maxMs": 114.54
+          },
+          "matchmaking": {
+            "samples": 100,
+            "p50Ms": 75.9,
+            "p95Ms": 89.93,
+            "p99Ms": 91.65,
+            "maxMs": 91.68
+          }
+        },
+        "runtime": {
+          "uptimeSeconds": 13.99665725,
+          "eventLoop": {
+            "p50Ms": 21.053439,
+            "p95Ms": 21.135359,
+            "p99Ms": 21.643263,
+            "maxMs": 28.983295,
+            "utilization": 0.05366378153256324
+          },
+          "memoryBytes": {
+            "rss": 152272896,
+            "heapTotal": 87113728,
+            "heapUsed": 35944728,
+            "external": 7799059,
+            "arrayBuffers": 3860885
+          },
+          "windowMs": 10000,
+          "sockets": 100,
+          "rooms": 50,
+          "footballReadCaches": {
+            "clubs": {
+              "entries": 1,
+              "capacity": 512,
+              "ttlMs": 30000,
+              "hits": 99,
+              "misses": 1,
+              "coalesced": 99,
+              "failures": 0
+            },
+            "players": {
+              "entries": 0,
+              "capacity": 512,
+              "ttlMs": 30000,
+              "hits": 0,
+              "misses": 0,
+              "coalesced": 0,
+              "failures": 0
+            },
+            "scopes": {
+              "entries": 0,
+              "capacity": 1,
+              "ttlMs": 60000,
+              "hits": 0,
+              "misses": 0,
+              "coalesced": 0,
+              "failures": 0
+            },
+            "nationalities": {
+              "entries": 0,
+              "capacity": 8,
+              "ttlMs": 60000,
+              "hits": 0,
+              "misses": 0,
+              "coalesced": 0,
+              "failures": 0
+            },
+            "botPools": {
+              "entries": 1,
+              "capacity": 1,
+              "ttlMs": 300000,
+              "hits": 0,
+              "misses": 1,
+              "coalesced": 0,
+              "failures": 0
+            }
+          },
+          "matchmakingQueue": 0,
+          "sends": {
+            "sent": 5630,
+            "sendErrors": 0,
+            "slowConsumerDisconnects": 0
+          },
+          "databasePool": {
+            "total": 30,
+            "idle": 0,
+            "waiting": 20
+          }
+        },
+        "eventLoopP99MaxMs": 21.643263,
+        "peakServerRssMB": 145,
+        "settlements": 50,
+        "ledgerEntries": 100
+      }
+    },
+    {
+      "label": "index1000_first",
+      "artifacts": "/var/folders/p8/cfgw9b1n67z24tvcfgptr72h0000gn/T/cof-capacity-apE7Sd",
+      "report": {
+        "scope": "local real ranked games with synthetic data; NOT production capacity or mobile network latency",
+        "source": "/private/tmp/cof-performance-NjUhki",
+        "clients": 1000,
+        "completedMatches": 500,
+        "completedRounds": 1500,
+        "elapsedMs": 18528,
+        "maximumSockets": 1000,
+        "maximumRooms": 500,
+        "maximumDbWaiting": 1842,
+        "timings": {
+          "login": {
+            "samples": 1000,
+            "p50Ms": 34.07,
+            "p95Ms": 71.38,
+            "p99Ms": 239.19,
+            "maxMs": 251.13
+          },
+          "search": {
+            "samples": 1000,
+            "p50Ms": 286.08,
+            "p95Ms": 291.86,
+            "p99Ms": 293.45,
+            "maxMs": 293.54
+          },
+          "answer": {
+            "samples": 1500,
+            "p50Ms": 407.65,
+            "p95Ms": 1183.96,
+            "p99Ms": 1292.15,
+            "maxMs": 1340.05
+          },
+          "matchmaking": {
+            "samples": 1000,
+            "p50Ms": 962.91,
+            "p95Ms": 1288.15,
+            "p99Ms": 1319.08,
+            "maxMs": 1327.66
+          }
+        },
+        "runtime": {
+          "uptimeSeconds": 19.201742292,
+          "eventLoop": {
+            "p50Ms": 20.398079,
+            "p95Ms": 24.985599,
+            "p99Ms": 32.030719,
+            "maxMs": 40.697855,
+            "utilization": 0.35822724952369445
+          },
+          "memoryBytes": {
+            "rss": 269418496,
+            "heapTotal": 248070144,
+            "heapUsed": 80720112,
+            "external": 12349694,
+            "arrayBuffers": 8411512
+          },
+          "windowMs": 10000,
+          "sockets": 1000,
+          "rooms": 500,
+          "footballReadCaches": {
+            "clubs": {
+              "entries": 1,
+              "capacity": 512,
+              "ttlMs": 30000,
+              "hits": 999,
+              "misses": 1,
+              "coalesced": 999,
+              "failures": 0
+            },
+            "players": {
+              "entries": 0,
+              "capacity": 512,
+              "ttlMs": 30000,
+              "hits": 0,
+              "misses": 0,
+              "coalesced": 0,
+              "failures": 0
+            },
+            "scopes": {
+              "entries": 0,
+              "capacity": 1,
+              "ttlMs": 60000,
+              "hits": 0,
+              "misses": 0,
+              "coalesced": 0,
+              "failures": 0
+            },
+            "nationalities": {
+              "entries": 0,
+              "capacity": 8,
+              "ttlMs": 60000,
+              "hits": 0,
+              "misses": 0,
+              "coalesced": 0,
+              "failures": 0
+            },
+            "botPools": {
+              "entries": 1,
+              "capacity": 1,
+              "ttlMs": 300000,
+              "hits": 0,
+              "misses": 1,
+              "coalesced": 0,
+              "failures": 0
+            }
+          },
+          "matchmakingQueue": 0,
+          "sends": {
+            "sent": 56496,
+            "sendErrors": 0,
+            "slowConsumerDisconnects": 0
+          },
+          "databasePool": {
+            "total": 30,
+            "idle": 0,
+            "waiting": 176
+          }
+        },
+        "eventLoopP99MaxMs": 32.030719,
+        "peakServerRssMB": 399,
+        "settlements": 500,
+        "ledgerEntries": 1000
+      }
+    },
+    {
+      "label": "index1000_repeated_after_fixture_vacuum",
+      "artifacts": "/var/folders/p8/cfgw9b1n67z24tvcfgptr72h0000gn/T/cof-capacity-nMLzpo",
+      "report": {
+        "scope": "local real ranked games with synthetic data; NOT production capacity or mobile network latency",
+        "source": "/Users/yagizkarabulut/crossover-performance",
+        "clients": 1000,
+        "completedMatches": 500,
+        "completedRounds": 1500,
+        "elapsedMs": 17392,
+        "maximumSockets": 1000,
+        "maximumRooms": 500,
+        "maximumDbWaiting": 1412,
+        "timings": {
+          "login": {
+            "samples": 1000,
+            "p50Ms": 21.35,
+            "p95Ms": 49.92,
+            "p99Ms": 174.98,
+            "maxMs": 182.71
+          },
+          "search": {
+            "samples": 1000,
+            "p50Ms": 273.76,
+            "p95Ms": 280.23,
+            "p99Ms": 280.84,
+            "maxMs": 280.98
+          },
+          "answer": {
+            "samples": 1500,
+            "p50Ms": 347.2,
+            "p95Ms": 862.26,
+            "p99Ms": 913.82,
+            "maxMs": 1034.11
+          },
+          "matchmaking": {
+            "samples": 1000,
+            "p50Ms": 838.17,
+            "p95Ms": 1082.21,
+            "p99Ms": 1109.07,
+            "maxMs": 1114.29
+          }
+        },
+        "runtime": {
+          "uptimeSeconds": 18.198664333,
+          "eventLoop": {
+            "p50Ms": 20.479999,
+            "p95Ms": 24.985599,
+            "p99Ms": 35.520511,
+            "maxMs": 40.337407,
+            "utilization": 0.29529760438601194
+          },
+          "memoryBytes": {
+            "rss": 280526848,
+            "heapTotal": 339427328,
+            "heapUsed": 209484400,
+            "external": 8845674,
+            "arrayBuffers": 4907540
+          },
+          "windowMs": 10000,
+          "sockets": 1000,
+          "rooms": 500,
+          "footballReadCaches": {
+            "clubs": {
+              "entries": 1,
+              "capacity": 512,
+              "ttlMs": 30000,
+              "hits": 999,
+              "misses": 1,
+              "coalesced": 999,
+              "failures": 0
+            },
+            "players": {
+              "entries": 0,
+              "capacity": 512,
+              "ttlMs": 30000,
+              "hits": 0,
+              "misses": 0,
+              "coalesced": 0,
+              "failures": 0
+            },
+            "scopes": {
+              "entries": 0,
+              "capacity": 1,
+              "ttlMs": 60000,
+              "hits": 0,
+              "misses": 0,
+              "coalesced": 0,
+              "failures": 0
+            },
+            "nationalities": {
+              "entries": 0,
+              "capacity": 8,
+              "ttlMs": 60000,
+              "hits": 0,
+              "misses": 0,
+              "coalesced": 0,
+              "failures": 0
+            },
+            "botPools": {
+              "entries": 1,
+              "capacity": 1,
+              "ttlMs": 300000,
+              "hits": 0,
+              "misses": 1,
+              "coalesced": 0,
+              "failures": 0
+            }
+          },
+          "matchmakingQueue": 0,
+          "sends": {
+            "sent": 56499,
+            "sendErrors": 0,
+            "slowConsumerDisconnects": 0
+          },
+          "databasePool": {
+            "total": 30,
+            "idle": 28,
+            "waiting": 0
+          }
+        },
+        "eventLoopP99MaxMs": 35.520511,
+        "peakServerRssMB": 390,
+        "settlements": 500,
+        "ledgerEntries": 1000
+      }
+    },
+    {
+      "label": "baseline20_final_comparison",
+      "artifacts": "/var/folders/p8/cfgw9b1n67z24tvcfgptr72h0000gn/T/cof-capacity-d1CrYh",
+      "report": {
+        "scope": "local real ranked games with synthetic data; NOT production capacity or mobile network latency",
+        "source": "/private/tmp/cof-ship-20260906/ui2",
+        "clients": 20,
+        "completedMatches": 10,
+        "completedRounds": 30,
+        "elapsedMs": 22228,
+        "maximumSockets": 20,
+        "maximumRooms": 10,
+        "maximumDbWaiting": 0,
+        "timings": {
+          "login": {
+            "samples": 20,
+            "p50Ms": 62,
+            "p95Ms": 78.05,
+            "p99Ms": 78.05,
+            "maxMs": 78.56
+          },
+          "search": {
+            "samples": 20,
+            "p50Ms": 13727.56,
+            "p95Ms": 13873.2,
+            "p99Ms": 13873.2,
+            "maxMs": 13882.95
+          },
+          "answer": {
+            "samples": 30,
+            "p50Ms": 115.26,
+            "p95Ms": 411.69,
+            "p99Ms": 413.03,
+            "maxMs": 414.99
+          },
+          "matchmaking": {
+            "samples": 20,
+            "p50Ms": 17.18,
+            "p95Ms": 21.53,
+            "p99Ms": 21.53,
+            "maxMs": 21.61
+          }
+        },
+        "runtime": {
+          "uptimeSeconds": 22.750556625,
+          "eventLoop": {
+            "p50Ms": 21.053439,
+            "p95Ms": 21.266431,
+            "p99Ms": 21.676031,
+            "maxMs": 22.347775,
+            "utilization": 0.020483884758271908
+          },
+          "memoryBytes": {
+            "rss": 101990400,
+            "heapTotal": 34406400,
+            "heapUsed": 28963344,
+            "external": 7211486,
+            "arrayBuffers": 3273304
+          },
+          "windowMs": 10000,
+          "sockets": 20,
+          "rooms": 10,
+          "matchmakingQueue": 0,
+          "sends": {
+            "sent": 1149,
+            "sendErrors": 0,
+            "slowConsumerDisconnects": 0
+          },
+          "databasePool": {
+            "total": 30,
+            "idle": 27,
+            "waiting": 0
+          }
+        },
+        "eventLoopP99MaxMs": 21.692415,
+        "peakServerRssMB": 119,
+        "settlements": 10,
+        "ledgerEntries": 20
+      }
+    },
+    {
+      "label": "optimized20_final_comparison",
+      "artifacts": "/var/folders/p8/cfgw9b1n67z24tvcfgptr72h0000gn/T/cof-capacity-vyGolE",
+      "report": {
+        "scope": "local real ranked games with synthetic data; NOT production capacity or mobile network latency",
+        "source": "/Users/yagizkarabulut/crossover-performance",
+        "clients": 20,
+        "completedMatches": 10,
+        "completedRounds": 30,
+        "elapsedMs": 12901,
+        "maximumSockets": 20,
+        "maximumRooms": 10,
+        "maximumDbWaiting": 0,
+        "timings": {
+          "login": {
+            "samples": 20,
+            "p50Ms": 60.62,
+            "p95Ms": 70.72,
+            "p99Ms": 70.72,
+            "maxMs": 72.14
+          },
+          "search": {
+            "samples": 20,
+            "p50Ms": 135.82,
+            "p95Ms": 135.92,
+            "p99Ms": 135.92,
+            "maxMs": 135.93
+          },
+          "answer": {
+            "samples": 30,
+            "p50Ms": 34.01,
+            "p95Ms": 40.23,
+            "p99Ms": 44.37,
+            "maxMs": 44.49
+          },
+          "matchmaking": {
+            "samples": 20,
+            "p50Ms": 19.16,
+            "p95Ms": 21.01,
+            "p99Ms": 21.01,
+            "maxMs": 21.03
+          }
+        },
+        "runtime": {
+          "uptimeSeconds": 13.421742416,
+          "eventLoop": {
+            "p50Ms": 21.053439,
+            "p95Ms": 21.135359,
+            "p99Ms": 21.594111,
+            "maxMs": 25.640959,
+            "utilization": 0.020606993346264636
+          },
+          "memoryBytes": {
+            "rss": 126173184,
+            "heapTotal": 58277888,
+            "heapUsed": 38127088,
+            "external": 8143067,
+            "arrayBuffers": 4204885
+          },
+          "windowMs": 10000,
+          "sockets": 20,
+          "rooms": 10,
+          "footballReadCaches": {
+            "clubs": {
+              "entries": 1,
+              "capacity": 512,
+              "ttlMs": 30000,
+              "hits": 19,
+              "misses": 1,
+              "coalesced": 19,
+              "failures": 0
+            },
+            "players": {
+              "entries": 0,
+              "capacity": 512,
+              "ttlMs": 30000,
+              "hits": 0,
+              "misses": 0,
+              "coalesced": 0,
+              "failures": 0
+            },
+            "scopes": {
+              "entries": 0,
+              "capacity": 1,
+              "ttlMs": 60000,
+              "hits": 0,
+              "misses": 0,
+              "coalesced": 0,
+              "failures": 0
+            },
+            "nationalities": {
+              "entries": 0,
+              "capacity": 8,
+              "ttlMs": 60000,
+              "hits": 0,
+              "misses": 0,
+              "coalesced": 0,
+              "failures": 0
+            },
+            "botPools": {
+              "entries": 1,
+              "capacity": 1,
+              "ttlMs": 300000,
+              "hits": 0,
+              "misses": 1,
+              "coalesced": 0,
+              "failures": 0
+            }
+          },
+          "matchmakingQueue": 0,
+          "sends": {
+            "sent": 1128,
+            "sendErrors": 0,
+            "slowConsumerDisconnects": 0
+          },
+          "databasePool": {
+            "total": 30,
+            "idle": 21,
+            "waiting": 0
+          }
+        },
+        "eventLoopP99MaxMs": 21.594111,
+        "peakServerRssMB": 120,
+        "settlements": 10,
+        "ledgerEntries": 20
+      }
+    }
+  ]
+}

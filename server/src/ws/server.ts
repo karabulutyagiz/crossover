@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomManager } from '../rooms/manager.ts';
 import { BotPlayer } from '../rooms/bot.ts';
-import { listScopes, listNationalities } from '../game/verify.ts';
+import { listScopes, listNationalities, footballReadCacheStats, invalidateFootballReadCaches } from '../game/verify.ts';
 import {
   findOrCreateUser, findOrCreateUserByProvider, createGuestUser, getUser, changeDisplayName,
   grantDevEmotesIfNeeded, claimOutageGift,
@@ -30,10 +30,11 @@ import { buyCosmetic, equipCosmetic, storeCatalog, toCosmeticLoadout } from '../
 import { getAdminStats } from '../game/admin.ts';
 import { checkLogin, issueToken, verifyToken } from '../game/adminAuth.ts';
 import { registerPushToken, sendPushToUsers, startPushCrons } from '../game/push.ts';
-import { pool } from '../db/pool.ts';
+import { pool, footballReadPool, footballReadBudget } from '../db/pool.ts';
 import { log } from '../logger.ts';
 import { config } from '../config.ts';
 import { validateClientMsg } from './validateClientMsg.ts';
+import { BackgroundLease } from './backgroundLease.ts';
 import { MatchmakingOrchestrator, randomBotFallbackDelayMs, shouldUseBotFallback, type HybridMatchmakingConfig, type MatchmakingState } from '../matchmaking/policy.ts';
 import { selectBotProfileForSkill, type BotProfile } from '../matchmaking/botProfiles.ts';
 import { defaultSkillProfile, getOrCreateSkillProfile, type SkillProfile } from '../matchmaking/skillRating.ts';
@@ -260,6 +261,8 @@ async function sendPendingSupportMessages(userId: string, transport: { send: (m:
 }
 
 function addOnline(userId: string, ws: WebSocket): void {
+  // Auth/database work can finish after the background lease closed this socket.
+  if (ws.readyState !== ws.OPEN) return;
   let set = onlineUsers.get(userId);
   if (!set) { set = new Set(); onlineUsers.set(userId, set); }
   set.add(ws);
@@ -316,7 +319,7 @@ async function getFriendsData(userId: string): Promise<ServerMsg & { type: 'frie
   return { type: 'friends_list', friends, requests };
 }
 
-export function startServer(port: number): Server {
+export function startServer(port: number, host?: string): Server {
   const manager = new RoomManager();
   startPushCrons();
   const matchQueue: QueueEntry[] = [];
@@ -1113,6 +1116,17 @@ export function startServer(port: number): Server {
         });
       return;
     }
+    if (path === '/admin/api/football-cache/invalidate') {
+      const auth = req.headers.authorization ?? '';
+      if (!verifyToken(auth.startsWith('Bearer ') ? auth.slice(7) : '')) {
+        res.writeHead(401, cors); res.end(JSON.stringify({ error: 'unauthorized' })); return;
+      }
+      if (req.method !== 'POST') {
+        res.writeHead(405, { ...cors, allow: 'POST' }); res.end(JSON.stringify({ error: 'method' })); return;
+      }
+      const revision = invalidateFootballReadCaches();
+      res.writeHead(200, cors); res.end(JSON.stringify({ revision })); return;
+    }
     if (path === '/admin/api/performance') {
       const auth = req.headers.authorization ?? '';
       if (!verifyToken(auth.startsWith('Bearer ') ? auth.slice(7) : '')) {
@@ -1123,8 +1137,11 @@ export function startServer(port: number): Server {
       res.writeHead(200, cors);
       res.end(JSON.stringify({
         ...runtimeMetrics.snapshot(), sockets: wss.clients.size, rooms: manager.count,
+        footballReadCaches: footballReadCacheStats(),
         matchmakingQueue: matchQueue.length, sends: socketSendStats,
         databasePool: { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount },
+        footballDatabasePool: { reserved: footballReadBudget, total: footballReadPool.totalCount,
+          idle: footballReadPool.idleCount, waiting: footballReadPool.waitingCount },
       }));
       return;
     }
@@ -1386,6 +1403,11 @@ export function startServer(port: number): Server {
     let messageCount = 0;
     let typingCount = 0;
     log.info('ws_connect', { ip });
+    const backgroundLease = new BackgroundLease(() => {
+      log.info('ws_background_expired', { userId: userProfile?.id });
+      if (userProfile) removeOnline(userProfile.id, ws);
+      try { ws.terminate(); } catch { /* close handler handles room/queue cleanup */ }
+    });
 
     const reportSocketTaskFailure = (task: string, err: unknown): void => {
       log.error('ws_task_failed', {
@@ -1439,6 +1461,12 @@ export function startServer(port: number): Server {
       }
       const msg = validated.msg;
       currentType = msg.type;
+      if (backgroundLease.check()) return;
+      if (msg.type === 'app_state') {
+        if (msg.state === 'background') backgroundLease.background();
+        else backgroundLease.active();
+        return;
+      }
 
       // İstemci yetenek bayrakları: kayıt sınıfı VE bağlantı-kuran maç
       // mesajlarıyla gelir, transport'a işlenir; oda kuralları (ör. wrongopen)
@@ -1448,6 +1476,7 @@ export function startServer(port: number): Server {
            || msg.type === 'find_match' || msg.type === 'create_room' || msg.type === 'create_solo' || msg.type === 'join_room')
           && Array.isArray(msg.caps)) {
         transport.caps = msg.caps.filter((c): c is string => typeof c === 'string').slice(0, 8);
+        if (transport.caps.includes('bglease')) backgroundLease.enableForegroundLease();
       }
 
       // Register creates/loads a user profile (can happen before or without a room).
@@ -2866,6 +2895,7 @@ export function startServer(port: number): Server {
     });
 
     ws.on('close', () => {
+      backgroundLease.dispose();
       clearInterval(heartbeat);
       log.info('ws_close', { ip, userId: userProfile?.id, room: ctx?.room.code });
       recordTelemetry({
@@ -2915,7 +2945,7 @@ export function startServer(port: number): Server {
     });
   });
 
-  http.listen(port, () => {
+  http.listen({ port, host }, () => {
     console.log(`Crossover server listening on :${port} (ws + /health)`);
   });
   return http;
