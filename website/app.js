@@ -95,7 +95,16 @@
         link_url: el.getAttribute('href') || '',
         page_path: location.pathname,
       });
-      track('outbound_store_click', { page_path: location.pathname });
+      var href = el.getAttribute('href') || '';
+      var storeHost = href.match(/^https:\/\/(apps\.apple\.com|play\.google\.com)\//);
+      if (storeHost) {
+        track('outbound_store_click', {
+          page_path: location.pathname,
+          store: storeHost[1] === 'apps.apple.com' ? 'apple' : 'google',
+          placement: el.dataset.ev,
+          language: document.documentElement.lang,
+        });
+      }
     },
     { passive: true }
   );
