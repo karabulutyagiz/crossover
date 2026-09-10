@@ -105,25 +105,11 @@ export interface SeasonStateView {
   last: { seasonId: string; peakTrophies: number; peakArenaName: string; wins: number; losses: number } | null;
 }
 
-export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox' | 'cozkazan' | 'guesswho';
+export type RoomStatus = 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox' | 'cozkazan';
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
-export type GameMode = 'team-team' | 'country-team' | 'letter-team' | 'player-player' | 'xox' | 'cozkazan' | 'guess-who';
-
-// ── "Ben Kimim?" modu tipleri (server/src/protocol.ts ile AYNA) ────────────
-export interface GwCmp { value: string | number | null; match: boolean; dir?: 'up' | 'down' }
-export interface GwRow {
-  playerId: number; name: string; imageUrl: string | null; correct: boolean;
-  club: GwCmp & { logo: string | null };
-  nationality: GwCmp; age: GwCmp; jersey: GwCmp; position: GwCmp;
-  league: GwCmp & { logo: string | null };
-}
-export interface GwReveal {
-  playerId: number; name: string; imageUrl: string | null;
-  clubName: string | null; clubLogo: string | null; nationality: string | null;
-  age: number | null; jersey: number | null; position: string | null; league: string | null; leagueLogo: string | null;
-}
+export type GameMode = 'team-team' | 'country-team' | 'letter-team' | 'player-player' | 'xox' | 'cozkazan';
 
 export type PickRole = 'team' | 'country' | 'letter' | 'player';
 
@@ -437,8 +423,7 @@ export type ClientMsg =
   // Ani ölümde (suddenDeath) cell = suddenCell olmalı; iki taraf da yarışır.
   | { type: 'xox_submit'; cell: number; text: string }
   | { type: 'cozkazan_submit'; text: string }
-  | { type: 'cozkazan_hint' } // elmas karşılığı bir sonraki doğru harfi aç
-  | { type: 'guesswho_submit'; playerId: number }; // "Ben Kimim?"
+  | { type: 'cozkazan_hint' }; // elmas karşılığı bir sonraki doğru harfi aç
 
 export type ServerMsg =
   | { type: 'room_state'; room: RoomView }
@@ -476,10 +461,6 @@ export type ServerMsg =
   | { type: 'cozkazan_over'; winnerId: string | null; winnerName: string | null; reason: 'points' | 'sudden_death' | 'draw'; scores: { id: string; name: string; score: number }[] }
   | { type: 'cozkazan_hint_result'; round: number; position: number; letter: string; diamonds: number } // özel: sadece isteyene
   | { type: 'cozkazan_hint_error'; reason: 'insufficient' | 'unavailable' }
-  // ── "Ben Kimim?" (server ile AYNA) ──
-  | { type: 'guesswho_pool'; players: { id: number; name: string }[] }
-  | { type: 'guesswho_state'; targetImageUrl: string | null; blurLevel: number; guessesLeft: number; turnId: string | null; turnEndsAt: number; guesses: GwRow[]; over: boolean; winnerId: string | null; winnerName: string | null; reveal: GwReveal | null; lastGuessById?: string }
-  | { type: 'guesswho_denied'; reason: 'not_turn' | 'not_pool' | 'already' | 'over' }
   | {
       type: 'result';
       result: RoundResult;

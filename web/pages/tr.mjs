@@ -384,7 +384,7 @@ ${device('/img/screens/tr-result.webp', 'Sonuç ekranı: doğru cevap ve futbolc
 <li><strong>Amatör Lig</strong> — ilk ciddi rakipler.</li>
 <li><strong>Profesyonel Lig</strong> — transfer hafızası gerekmeye başlar.</li>
 <li><strong>Şampiyonlar Ligi</strong> — dengeli ve hızlı.</li>
-<li><strong>Efsaneler Arenası</strong> — kayıplar acıtır.</li>
+<li><strong>Efsaneler Arası</strong> — kayıplar acıtır.</li>
 <li><strong>Dünya Klasmanı</strong> — her hata pahalı.</li>
 <li><strong>GOAT</strong> — sadece en iyiler kalır.</li>
 </ol>

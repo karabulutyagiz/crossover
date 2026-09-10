@@ -29,6 +29,10 @@ export function ortakFutbolcuOyunu({ featured, clubs, heroPairs, totals }) {
       '<p>Üç yol işe yarar: <strong>transfer yolunu takip et</strong> (bir kulüpten çıkan oyuncu genelde aynı ligin ya da aynı seviyedeki bir kulübün kapısını çalar), <strong>kiralıkları hatırla</strong> (kısa dönemler en çok unutulanlardır) ve <strong>kariyer sonu duraklarını düşün</strong> (Süper Lig, birçok Avrupalı ismin son durağıdır).</p>',
     ],
     [
+      'Ortak oyuncu oyunu, iki takımda da oynamış oyuncuyu bulma oyunu… hepsi aynı oyun mu?',
+      '<p>Evet — aynı oyunun ağızdan ağıza değişen adları. Kimi “ortak oyuncu”, kimi “ortak futbolcu”, kimi “iki takımda da oynamış oyuncuyu bulma” der; kural hep aynıdır: iki takım söylenir, ikisinde de forma giymiş oyuncuyu ilk bulan kazanır.</p>',
+    ],
+    [
       'Kaç kişiyle oynanır?',
       '<p>Klasik hâli iki kişiliktir. CrossOver Football’da canlı rakiple 1v1, arkadaşınla oda kodu üzerinden özel maç ya da tek başına bota karşı oynayabilirsin.</p>',
     ],
@@ -48,7 +52,7 @@ ${crumbs([
 <div>
 <span class="eyebrow reveal">Ücretsiz · iOS</span>
 <h1 class="reveal d1" style="margin:14px 0 18px">Ortak futbolcu oyunu</h1>
-<p class="reveal d1" style="margin:-8px 0 12px;color:var(--muted,#8FA5C8);font-weight:600">İki takımda oynayan futbolcular oyunu — <a href="/3-2-1-oyunu/">3-2-1 oyunu</a> diye de bilinir.</p>
+<p class="reveal d1" style="margin:-8px 0 12px;color:var(--muted,#8FA5C8);font-weight:600">İki takımda da oynamış oyuncuyu bulma oyunu — ortak oyuncu oyunu ya da <a href="/3-2-1-oyunu/">3-2-1 oyunu</a> diye de bilinir.</p>
 <p class="lede reveal d2">İki kulüp söylenir, ikisinde de oynamış futbolcuyu ilk bulan kazanır. Otobüste, kahvede ve grup sohbetlerinde yıllardır oynanan oyunun kurallı hâli — cevapları tartışmaya bırakmayan bir hakemle.</p>
 <div class="reveal d3" style="margin-top:24px">${storeButtons('tr', { ev: 'clusterA_install' })}</div>
 </div>
@@ -289,7 +293,7 @@ ${head({
 <tbody>
 <tr><td><strong>Mahalle Sahası</strong></td><td>Büyük kulüplerin yıldız isimlerini biliyorsun.</td></tr>
 <tr><td><strong>Profesyonel Lig</strong></td><td>Orta sıra kulüplerin kadro geçmişini de takip ediyorsun.</td></tr>
-<tr><td><strong>Efsaneler Arenası</strong></td><td>Kısa kiralıkları ve 2000’ler öncesini hatırlıyorsun.</td></tr>
+<tr><td><strong>Efsaneler Arası</strong></td><td>Kısa kiralıkları ve 2000’ler öncesini hatırlıyorsun.</td></tr>
 <tr><td><strong>GOAT</strong></td><td>Hem biliyorsun hem saniyeler içinde erişiyorsun.</td></tr>
 </tbody>
 </table>

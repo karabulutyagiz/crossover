@@ -33,7 +33,7 @@ import type {
   StoreCatalogView,
 } from './protocol';
 
-export type Phase = 'home' | 'tournaments' | 'arenas' | 'leaderboard' | 'matchHistory' | 'profile' | 'searching' | 'matchup' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox' | 'cozkazan' | 'guesswho';
+export type Phase = 'home' | 'tournaments' | 'arenas' | 'leaderboard' | 'matchHistory' | 'profile' | 'searching' | 'matchup' | 'lobby' | 'countdown' | 'pick' | 'reveal' | 'guess' | 'result' | 'xox' | 'cozkazan';
 export type StoreCatalogStatus = 'idle' | 'loading' | 'success' | 'empty' | 'error';
 
 const STORE_CATALOG_TIMEOUT_MS = 10000;
@@ -253,9 +253,6 @@ export interface GameState {
   cozkazanOver: { winnerId: string | null; winnerName: string | null; reason: string; scores: { id: string; name: string; score: number }[] } | null;
   cozHint: { round: number; position: number; letter: string; seq: number } | null; // harf-alma sonucu
   cozHintError: { reason: string; seq: number } | null;
-  // ── Ben Kimim? — tek guesswho_state her şeyi taşır (over+reveal dahil) ──
-  guessWho: Extract<ServerMsg, { type: 'guesswho_state' }> | null;
-  guessWhoPool: { id: number; name: string }[] | null; // otomatik-tamamlama havuzu (bir kez)
 }
 
 // --- Messaging helpers: stable ordering + de-dupe, so live pushes and (possibly
@@ -403,8 +400,6 @@ export const initialState: GameState = {
   cozkazanOver: null,
   cozHint: null,
   cozHintError: null,
-  guessWho: null,
-  guessWhoPool: null,
   storeCatalogError: null,
 };
 
@@ -993,8 +988,6 @@ function reducer(state: GameState, action: Action): GameState {
         cozkazanOver: null,
         cozHint: null,
         cozHintError: null,
-        guessWho: null,
-        guessWhoPool: null,
         spReveal: null,
         spSkipBy: null,
         spFrozenUntil: null,
@@ -1083,23 +1076,6 @@ function reducer(state: GameState, action: Action): GameState {
     case 'cozkazan_hint_error': {
       const a = action as Extract<ServerMsg, { type: 'cozkazan_hint_error' }>;
       return { ...state, cozHintError: { reason: a.reason, seq: (state.cozHintError?.seq ?? 0) + 1 } };
-    }
-    case 'guesswho_pool': {
-      const a = action as Extract<ServerMsg, { type: 'guesswho_pool' }>;
-      return { ...state, guessWhoPool: a.players };
-    }
-    case 'guesswho_state': {
-      const a = action as Extract<ServerMsg, { type: 'guesswho_state' }>;
-      // over=true olduğunda matchOver + kazanan burada oturur (ayrı over mesajı yok).
-      return {
-        ...state, phase: 'guesswho', guessWho: a, result: null, error: null,
-        ...(a.over ? { matchOver: true, matchWinnerId: a.winnerId, matchWinnerName: a.winnerName, rematchState: 'idle' as const, rematchByName: null } : {}),
-      };
-    }
-    case 'guesswho_denied': {
-      const a = action as Extract<ServerMsg, { type: 'guesswho_denied' }>;
-      const msg = a.reason === 'not_turn' ? t('guesswho.notTurn') : a.reason === 'already' ? t('guesswho.already') : a.reason === 'not_pool' ? t('guesswho.notPool') : t('guesswho.over');
-      return { ...state, error: msg };
     }
     case 'special_power_state': {
       const a = action as Extract<ServerMsg, { type: 'special_power_state' }>;
@@ -2008,10 +1984,6 @@ export function useCrossover() {
       cozkazanHint: () => {
         track('cozkazan_hint');
         send({ type: 'cozkazan_hint' });
-      },
-      guessWhoSubmit: (playerId: number) => {
-        track('guesswho_submit', { player_id: playerId });
-        send({ type: 'guesswho_submit', playerId });
       },
       clearEmote: (playerId: string) => dispatch({ type: '_clear_emote', playerId }),
       buyEmote: (emoteId: string) => send({ type: 'buy_emote', emoteId }),

@@ -55,7 +55,7 @@ const PRODUCT_LABEL: Record<string, string> = {
 
 const ARENA_NAMES = [
   'Mahalle Sahası', 'Amatör Lig', 'Profesyonel Lig', 'Şampiyonlar Ligi',
-  'Efsaneler Arenası', 'Dünya Klasmanı', 'GOAT',
+  'Efsaneler Arası', 'Dünya Klasmanı', 'GOAT',
 ];
 
 const priceOf = (pid: string) => PRICE_TRY[pid] ?? 0;

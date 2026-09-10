@@ -2,7 +2,7 @@ import type { ClientMsg } from '../protocol.ts';
 
 type ValidationResult = { ok: true; msg: ClientMsg } | { ok: false; error: string };
 
-const MODES = new Set(['team-team', 'country-team', 'letter-team', 'player-player', 'xox', 'cozkazan', 'guess-who']);
+const MODES = new Set(['team-team', 'country-team', 'letter-team', 'player-player', 'xox', 'cozkazan']);
 const DIFFICULTIES = new Set(['easy', 'medium', 'hard']);
 const PROVIDERS = new Set(['apple', 'google', 'facebook']);
 const POWER_IDS = new Set(['xp2x', 'shield', 'streak', 'training', 'socialtoken']);
@@ -183,9 +183,6 @@ export function validateClientMsg(value: unknown): ValidationResult {
       break;
     case 'cozkazan_submit':
       if (!hasString(value, 'text', 200)) return invalid('cozkazan_submit.text must be a string');
-      break;
-    case 'guesswho_submit':
-      if (!hasInteger(value, 'playerId', 1, 2_000_000_000)) return invalid('guesswho_submit.playerId must be a positive integer');
       break;
     case 'use_special_power':
       if (typeof value.powerId !== 'string' || !SPECIAL_POWER_IDS.has(value.powerId)) return invalid('use_special_power.powerId is invalid');

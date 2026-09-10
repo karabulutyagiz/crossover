@@ -194,7 +194,6 @@ type Actions = {
   xoxSubmit: (cell: number, text: string) => void;
   cozkazanSubmit: (text: string) => void;
   cozkazanHint: () => void;
-  guessWhoSubmit: (playerId: number) => void;
   usePower: (powerId: 'xp2x' | 'shield' | 'streak' | 'training' | 'socialtoken') => void; // envanterdeki tek kullanımlık gücü etkinleştir
   loadMyStats: () => void; // profil istatistiklerini iste (my_stats yanıtı)
   verifyPurchase: (receipt: string, opts?: { productId?: string; isSubscription?: boolean }) => Promise<void>;
@@ -845,16 +844,14 @@ export function AdBlockMark({ size = 22, color }: { size?: number; color?: strin
   );
 }
 
-export function GameModal({ visible, onClose, onExited, onShown, title, icon, danger = false, coach = false, dismissible = true, crest = false, children }: {
+export function GameModal({ visible, onClose, onExited, onShown, title, icon, danger = false, coach = false, dismissible = true, crest = true, children }: {
   // onShown: native sunum GERÇEKTEN tamamlandığında (RN Modal onShow) çağrılır.
   // "Bu pencere sunulduktan SONRA sunulmalı" el sıkışmaları (ör. StoreKit
   // sayfası) kör zamanlayıcı yerine bu olaya bağlanır — modalTraffic pencereyi
   // sıraya alsa bile olay sunumdan önce asla gelmez.
   // dismissible=false: zorunlu pencere — çarpı yok, karartmaya dokunmak ve
   // Android geri tuşu kapatmaz. Tek çıkış içerideki eylem düğmesidir (ör. "Al").
-  // crest: üstteki altın top rozeti + tepe/kanat. VARSAYILAN KAPALI (kullanıcı isteği
-  // 2026-09-03: rozet başlık yazısını kapatıyordu — tüm popup'larda kaldırıldı). İstenirse
-  // crest={true} ile açılabilir.
+  // crest=false: mühürsüz pencere (tam ekran içerik taşıyan seyrek durumlar).
   visible: boolean; onClose: () => void; onExited?: () => void; onShown?: () => void; title?: string; icon?: IoniconName; danger?: boolean; coach?: boolean; dismissible?: boolean; crest?: boolean; children: ReactNode;
 }) {
   const a = useRef(new Animated.Value(0)).current;
@@ -2841,7 +2838,7 @@ function NetworkErrorBeacon({ visible }: { visible: boolean }) {
 }
 
 export function MODE_LABEL(m: GameMode): string {
-  return { 'team-team': t('mode.teamTeam'), 'country-team': t('mode.countryTeam'), 'letter-team': t('mode.letterTeam'), 'player-player': t('mode.playerPlayer'), xox: t('mode.xox'), cozkazan: t('mode.cozkazan'), 'guess-who': t('mode.guessWho') }[m];
+  return { 'team-team': t('mode.teamTeam'), 'country-team': t('mode.countryTeam'), 'letter-team': t('mode.letterTeam'), 'player-player': t('mode.playerPlayer'), xox: t('mode.xox'), cozkazan: t('mode.cozkazan') }[m];
 }
 
 function normalizeCountryKey(value: string): string {
@@ -2892,7 +2889,6 @@ const MODE_ICON: Record<GameMode, IoniconName> = {
   'player-player': 'people',
   xox: 'grid',
   cozkazan: 'shuffle',
-  'guess-who': 'help-circle',
 };
 
 // Transfermarkt competition code → league display name. The server's /scopes
@@ -4864,8 +4860,8 @@ const HOME_DESIGN_BODY_MIN_H = 407;
 const HOME_DESIGN_BODY_RANGE_H = 204;
 // Room codes are always exactly this long — server/src/rooms/manager.ts:5 (CODE_LEN).
 const ROOM_CODE_LEN = 6;
-const HOME_MODES: GameMode[] = ['guess-who', 'cozkazan', 'xox', 'country-team', 'letter-team'];
-const PACK_MODES: GameMode[] = ['country-team', 'letter-team', 'xox', 'cozkazan', 'guess-who'];
+const HOME_MODES: GameMode[] = ['cozkazan', 'xox', 'country-team', 'letter-team'];
+const PACK_MODES: GameMode[] = ['country-team', 'letter-team', 'xox', 'cozkazan'];
 
 // "Mücadele Modu" kartının yüzü hiçbir props/state okumaz (tema + modül-scope
 // RivalryArt + sabit renkler) — her HomeScreen render'ında (tuş vuruşu, popup
@@ -5856,7 +5852,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               locked={locked}
               sublabel={locked ? t('socialPack.lockedBadge') : undefined}
               // YENİ kurdelesi: en yeni modlar (Çöz Kazan 2026-09-01, XOX 2026-08-27).
-              right={m === 'guess-who' || m === 'cozkazan' || m === 'xox' ? <Ribbon label={t('store.badgeNew')} color={theme.danger} /> : undefined}
+              right={m === 'cozkazan' || m === 'xox' ? <Ribbon label={t('store.badgeNew')} color={theme.danger} /> : undefined}
               chevron={!locked}
               onPress={() => startMode(m)}
             />
@@ -5938,7 +5934,7 @@ export function HomeScreen({ actions, state, onLanguageChange, onGoToStore, onOp
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
                 <ModalBackBtn onPress={() => setBotPage({ key: 'bot', dir: -1 })} />
               </View>
-              {(['team-team', 'guess-who', 'cozkazan', 'xox', 'country-team', 'letter-team'] as GameMode[]).map((m) => {
+              {(['team-team', 'cozkazan', 'xox', 'country-team', 'letter-team'] as GameMode[]).map((m) => {
                 // Bota karşı da paket kilidi: yalnız team-team serbest; diğer modlar
                 // (cozkazan dahil, 2026-09-01) Sosyal Paket ister. Kilitliyse seçtirmeyip
                 // modalı kapatıp upsell'e devret.
@@ -7419,38 +7415,6 @@ export function TournamentsScreen({ state, actions }: Props) {
   );
 }
 
-/** Klavye açık mı? — KURŞUN GEÇİRMEZ algı (2026-09-02, emülatörde kanıtlandı):
- * Android edge-to-edge'de (RN 0.83 + edgeToEdgeEnabled) pencere KÜÇÜLMEZ ve
- * keyboardDidShow/metrics güvenilmez → tek sağlam sinyal INPUT ODAĞI: bu üç maç
- * ekranında (XOX / Çöz Kazan / Ben Kimim?) klavye YALNIZ kendi girişimizle açılır,
- * dolayısıyla odak ⇔ klavye. Odak sinyali + Did olayları birlikte kullanılır
- * (iOS'ta olaylar da doğru çalışır; hangisi önce gelirse). Dönen inputProps
- * ekranın TextInput'una yayılır. */
-function useKeyboardOpen(): [boolean, { onFocus: () => void; onBlur: () => void }] {
-  const [focusOpen, setFocusOpen] = useState(false);
-  const [evtOpen, setEvtOpen] = useState(false);
-  useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', () => setEvtOpen(true));
-    const hide = Keyboard.addListener('keyboardDidHide', () => setEvtOpen(false));
-    const h = Keyboard.metrics?.()?.height ?? 0; // mount anında zaten açıksa
-    if (h > 0) setEvtOpen(true);
-    return () => { show.remove(); hide.remove(); };
-  }, []);
-  // Güvenlik ağı: input UNMOUNT olursa onBlur gelmeyebilir → odak anketi takılmayı çözer.
-  useEffect(() => {
-    const id = setInterval(() => {
-      const st = (TextInput as unknown as { State?: { currentlyFocusedInput?: () => unknown; currentlyFocusedField?: () => unknown } }).State;
-      // currentlyFocusedInput odak yokken null döner — ?? ile zincirlemek her 400ms'de
-      // deprecated currentlyFocusedField'ı çağırıp ERROR banner'ı basıyordu (2026-09-02).
-      const focused = st?.currentlyFocusedInput ? st.currentlyFocusedInput() : st?.currentlyFocusedField?.();
-      if (!focused) setFocusOpen(false);
-    }, 400);
-    return () => clearInterval(id);
-  }, []);
-  const inputProps = useRef({ onFocus: () => setFocusOpen(true), onBlur: () => setFocusOpen(false) }).current;
-  return [focusOpen || evtOpen, inputProps];
-}
-
 export function XoxScreen({ state, actions }: Props) {
   const xox = state.xox;
   const room = state.room;
@@ -7464,7 +7428,7 @@ export function XoxScreen({ state, actions }: Props) {
   const [emoteOpen, setEmoteOpen] = useState(false);
   const [showEmpties, setShowEmpties] = useState(false); // "Kalan boş kutucukları gör" basıldı mı
   const [reuseWarn, setReuseWarn] = useState(false);     // aynı futbolcuyu ikinci kez yazma uyarısı
-  const [kbOpen, kbInputProps] = useKeyboardOpen();      // klavye açık mı → tahta/çerçeve kompaktlaşır
+  const [kbOpen, setKbOpen] = useState(false);           // klavye açık mı → tahta/çerçeve kompaktlaşır
   const [, setTick] = useState(0);
   const win = useWindow();
   // SABİT EKRAN (kullanıcı kararı 2026-08-27): XOX kaydırılmaz. Tahta, orta
@@ -7487,6 +7451,14 @@ export function XoxScreen({ state, actions }: Props) {
     const id = setInterval(() => setTick((v) => v + 1), 500);
     return () => clearInterval(id);
   }, [over]);
+  // Klavye açık/kapalı: açıkken tahta ÖLÇÜLEN alana göre küçülür + üst çerçeve
+  // (sıra bandı, cevap paneli boşlukları) daralır → tablo üstü KIRPILMAZ, hiçbir
+  // şey üst üste binmez (oyuncu raporu 2026-09-02).
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setKbOpen(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKbOpen(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
   // Sıra/ani-ölüm değişince seçim sıfırlanır; sunum sesleri lastAction'dan.
   const lastSeq = useRef<string>('');
   useEffect(() => {
@@ -7543,12 +7515,11 @@ export function XoxScreen({ state, actions }: Props) {
   // ve tahta ONA sığacak kadar küçülür → üst kısım asla kırpılmaz, hiçbir şey binmez.
   // Klavye KAPALIYKEN eski sabit görünüm için ekranın ~%40'ı kullanılır (ölçüm gelene
   // dek de bu yedek). minHücre klavye açıkken 34'e iner ki dar alanda taşma olmasın.
-  // Klavye açıkken: Android edge-to-edge'de pencere KÜÇÜLMEZ (2026-09-02 emülatör
-  // bulgusu) → ölçülen bölgeye güvenilmez; tahta ekranın ~%22'sine sabitlenir ki
-  // tahta + cevap paneli klavyenin ÜSTÜNDE kalsın. iOS'ta (KAV pencereyi küçültür)
-  // ölçüm daha küçükse o kazanır — iki platformda da taşma/örtüşme imkânsız.
+  // Klavye açıkken: ÖLÇÜLEN bölge (boardBox.h) — ama klavye daha yeni açılmışsa
+  // boardBox.h bir kare ESKİ (büyük) kalabilir; ~%35 ile sınırlayıp o karelik taşma
+  // parlamasını da engelliyoruz. min(ölçüm, %35) her zaman ≤ bölge → tahta asla taşmaz.
   const boardBudgetH = kbOpen
-    ? Math.min(boardBox.h > 0 ? boardBox.h : win.height * 0.22, win.height * 0.22)
+    ? Math.min(boardBox.h > 0 ? boardBox.h : win.height * 0.3, win.height * 0.35)
     : win.height * 0.34;
   const heightCell = Math.floor((boardBudgetH - 84 - boardBorder * 2) / 3);
   const cellSize = Math.max(kbOpen ? 34 : 40, Math.min(widthCell, heightCell, 122));
@@ -7746,7 +7717,6 @@ export function XoxScreen({ state, actions }: Props) {
             autoFocus
             returnKeyType="send"
             onSubmitEditing={submit}
-            {...kbInputProps}
           />
           {reuseWarn ? (
             <Text style={{ color: theme.danger, fontSize: 11.5, fontFamily: 'Poppins-ExtraBold', textAlign: 'center' }}>{t('xox.reuse')}</Text>
@@ -8041,11 +8011,18 @@ export function CozKazanScreen({ state, actions }: Props) {
   const answerInputRef = useRef<TextInput>(null);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [emoteOpen, setEmoteOpen] = useState(false);
-  const [kbOpen, kbInputProps] = useKeyboardOpen();         // klavye açık mı → düzen kompaktlaşır
+  const [kbOpen, setKbOpen] = useState(false);              // klavye açık mı → düzen kompaktlaşır
   const [, setTick] = useState(0);
   const win = useWindow();
 
   useEffect(() => { if (over) return undefined; const id = setInterval(() => setTick((v) => v + 1), 300); return () => clearInterval(id); }, [over]);
+  // Klavye açılınca kutucuklar/tile'lar küçülür + boşluklar daralır → hiçbir şey
+  // üst üste binmez (kullanıcı isteği 2026-09-01). Kapanınca eski büyük düzen döner.
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setKbOpen(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKbOpen(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
   // Yeni turda giriş + ipuçları temizlenir
   const lastRound = useRef(-1);
   useEffect(() => {
@@ -8161,10 +8138,8 @@ export function CozKazanScreen({ state, actions }: Props) {
         </View>
       ) : null}
 
-      {/* Orta bölge: karışık harfler ya da tur açılışı. Klavye açıkken flex:0 —
-          Android edge-to-edge'de pencere küçülmediği için içerik ÜSTTE toplanır ki
-          kutucuklar + Gönder + Harf Al klavyenin üstünde kalsın (2026-09-02). */}
-      <View style={{ flex: kbOpen ? 0 : 1, minHeight: 0, justifyContent: 'center', alignItems: 'center', gap: kbOpen ? 8 : 14, marginTop: kbOpen ? 2 : 0 }}>
+      {/* Orta bölge: karışık harfler ya da tur açılışı */}
+      <View style={{ flex: 1, minHeight: 0, justifyContent: 'center', alignItems: 'center', gap: kbOpen ? 8 : 14 }}>
         {reveal ? (() => {
           const solveCol = reveal.solvedById === youId ? theme.primary : reveal.solvedById ? theme.danger : theme.gold;
           return (
@@ -8227,7 +8202,6 @@ export function CozKazanScreen({ state, actions }: Props) {
             onSubmitEditing={submit}
             editable={!locked}
             style={{ position: 'absolute', opacity: 0, height: 1, width: 1 }}
-            {...kbInputProps}
           />
           {/* Gönder (esner) + Harf Al (sağda) — AKIŞ İÇİNDE, absolute DEĞİL → klavye
               açılınca hiçbir şeyin üstüne binmez (kullanıcı isteği 2026-09-01). */}
@@ -8273,821 +8247,6 @@ export function CozKazanScreen({ state, actions }: Props) {
       <LeaveConfirmModal visible={showLeaveConfirm} kind={leaveKind} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
       <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} />
     </Screen>
-  );
-}
-
-// ── BEN KİMİM? ekranı — bulanık fotolu futbolcuyu niteliklerinden bil (sırayla) ──
-// ═══════════════════════════════════════════════════════════════════════════
-// BEN KİMİM? — "GİZLİ OYUNCU" sahnesi (premium yeniden-tasarım, 2026-09-02).
-// Konsept: karanlık stadyumda tek spot ışığı altında gizemli oyuncu kartı;
-// tahminler Wordle-esintili parlayan kutucuk satırları olarak birikir.
-// ═══════════════════════════════════════════════════════════════════════════
-const GW_POS_LABEL: Record<string, string> = { GK: 'KL', CB: 'STP', RB: 'SĞB', LB: 'SLB', MF: 'OS', LW: 'SLK', RW: 'SĞK', ST: 'SF' };
-const GW_LEAGUE_LABEL: Record<string, string> = { GB1: 'İNG', ES1: 'İSP', IT1: 'İTA', L1: 'ALM', FR1: 'FRA', TR1: 'TÜR', NL1: 'HOL', PO1: 'POR' };
-const GW_TURN_TOTAL_S = 20;            // sunucu GW_TURN_MS ile aynı (halka oranı için; 2026-09-03: 15 az geldi → 20)
-const GW_GREEN = '#0FA873';            // eşleşme kutusu — dolgun zümrüt
-const GW_RED = '#B3283F';              // uyuşmazlık kutusu — koyu/yumuşak kırmızı (yeşiller öne çıksın)
-
-/** Karanlık stadyum + tek spot ışığı arka planı — gizem sahnesi. */
-function GuessWhoStage() {
-  const insets = useSafeAreaInsets();
-  const bleed = { position: 'absolute' as const, left: 0, right: 0, top: -insets.top, bottom: -insets.bottom };
-  const pulse = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const anim = Animated.loop(Animated.sequence([
-      Animated.timing(pulse, { toValue: 1, duration: 3200, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      Animated.timing(pulse, { toValue: 0, duration: 3200, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-    ]));
-    anim.start();
-    return () => anim.stop();
-  }, [pulse]);
-  return (
-    <View pointerEvents="none" style={bleed}>
-      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} viewBox="0 0 100 190" preserveAspectRatio="xMidYMid slice">
-        <Defs>
-          <SvgGradient id="gwNight" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#0B1234" />
-            <Stop offset="0.55" stopColor="#080E26" />
-            <Stop offset="1" stopColor="#04081A" />
-          </SvgGradient>
-          <RadialGradient id="gwSpot" cx="50%" cy="15%" rx="52%" ry="34%">
-            <Stop offset="0" stopColor="#FFE9B0" stopOpacity="0.20" />
-            <Stop offset="0.55" stopColor="#FFE9B0" stopOpacity="0.07" />
-            <Stop offset="1" stopColor="#FFE9B0" stopOpacity="0" />
-          </RadialGradient>
-          <RadialGradient id="gwVignette" cx="50%" cy="42%" rx="78%" ry="64%">
-            <Stop offset="0.5" stopColor="#02040E" stopOpacity="0" />
-            <Stop offset="1" stopColor="#01030A" stopOpacity="0.85" />
-          </RadialGradient>
-        </Defs>
-        <Rect x="0" y="0" width="100" height="190" fill="url(#gwNight)" />
-        {/* çapraz spot huzmeleri — sahne ışığı */}
-        <Polygon points="38,0 62,0 84,62 16,62" fill="#F4E7C3" opacity="0.045" />
-        <Polygon points="44,0 56,0 72,52 28,52" fill="#FFFFFF" opacity="0.05" />
-        {/* tribün noktaları (uzak flaşlar) */}
-        {[[8, 22], [16, 9], [27, 17], [73, 12], [84, 20], [92, 8], [64, 6], [37, 6]].map(([x, y], i) => (
-          <Circle key={i} cx={x} cy={y} r={0.55} fill="#DCE6FF" opacity={0.16} />
-        ))}
-        {/* zemine yansıyan çember (saha imâsı) */}
-        <Ellipse cx="50" cy="176" rx="46" ry="15" fill="none" stroke="#8FA5E8" strokeWidth="0.35" opacity="0.12" />
-        <Ellipse cx="50" cy="176" rx="24" ry="7.6" fill="none" stroke="#8FA5E8" strokeWidth="0.3" opacity="0.10" />
-        <Rect x="0" y="0" width="100" height="190" fill="url(#gwSpot)" />
-        <Rect x="0" y="0" width="100" height="190" fill="url(#gwVignette)" />
-      </Svg>
-      {/* spot nefesi — sahne canlı hissi */}
-      <Animated.View style={{ position: 'absolute', left: -30, right: -30, top: -insets.top, height: SCREEN_H * 0.4, backgroundColor: 'rgba(255,233,176,0.05)', opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] }) }} />
-    </View>
-  );
-}
-
-/** Sıra süresi halkası — SVG dairesel ilerleme + saniye. */
-function GwTimerRing({ secs }: { secs: number }) {
-  const frac = Math.max(0, Math.min(1, secs / GW_TURN_TOTAL_S));
-  const R = 11.5; const C = 2 * Math.PI * R;
-  const col = secs <= 5 ? theme.danger : secs <= 10 ? theme.gold : theme.primary;
-  return (
-    <View style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
-      <Svg width={32} height={32} style={{ position: 'absolute', transform: [{ rotate: '-90deg' }] }}>
-        <Circle cx={16} cy={16} r={R} stroke="rgba(255,255,255,0.13)" strokeWidth={3} fill="none" />
-        <Circle cx={16} cy={16} r={R} stroke={col} strokeWidth={3} fill="none" strokeDasharray={`${C}`} strokeDashoffset={C * (1 - frac)} strokeLinecap="round" />
-      </Svg>
-      <Text style={{ color: col, fontSize: 10.5, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'] }}>{secs}</Text>
-    </View>
-  );
-}
-
-/** Tahmin hakkı pip'leri — 7 elmas: boş=çizgili, harcanan=kırmızı, kazanan=altın. */
-function GwPips({ total, used, winner }: { total: number; used: number; winner: boolean }) {
-  return (
-    <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-      {Array.from({ length: total }).map((_, i) => {
-        const isUsed = i < used;
-        const isWin = winner && i === used - 1;
-        return (
-          <View
-            key={i}
-            style={{
-              width: 9, height: 9, borderRadius: 2.5, transform: [{ rotate: '45deg' }],
-              backgroundColor: isWin ? theme.gold : isUsed ? withAlpha(theme.danger, 0.92) : 'rgba(255,255,255,0.07)',
-              borderWidth: isUsed ? 0 : 1, borderColor: 'rgba(255,255,255,0.30)',
-              ...(isWin ? { shadowColor: theme.gold, shadowOpacity: 0.8, shadowRadius: 5, shadowOffset: { width: 0, height: 0 }, elevation: 3 } : null),
-            }}
-          />
-        );
-      })}
-    </View>
-  );
-}
-
-/** Beyaz logo çipi — kırmızı zeminde kırmızı logolar da NET görünür (kullanıcı isteği). */
-function GwLogoChip({ uri, size = 25, fallback }: { uri: string | null; size?: number; fallback?: string }) {
-  return (
-    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: 'rgba(255,255,255,0.95)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(0,0,0,0.14)' }}>
-      {uri
-        ? <CachedImage uri={uri} style={{ width: size * 0.74, height: size * 0.74 }} contentFit="contain" />
-        : <Text numberOfLines={1} style={{ color: '#0A1230', fontSize: size * 0.32, fontFamily: 'Poppins-ExtraBold' }}>{fallback ?? '–'}</Text>}
-    </View>
-  );
-}
-
-/** Tek nitelik kutusu — eşleşme yeşil (parlar), uyuşmazlık koyu kırmızı; sayısalda yön oku. */
-function GwTile({ cmp, kind }: { cmp: import('./protocol').GwCmp & { logo?: string | null }; kind: 'logo' | 'flag' | 'num' | 'pos' }) {
-  const match = cmp.match;
-  let content: ReactNode;
-  if (kind === 'logo') {
-    const fb = cmp.value != null ? (GW_LEAGUE_LABEL[String(cmp.value)] ?? String(cmp.value).slice(0, 3).toUpperCase()) : '–';
-    content = <GwLogoChip uri={cmp.logo ?? null} fallback={fb} />;
-  } else if (kind === 'flag') {
-    const flag = cmp.value != null ? countryFlagFor(String(cmp.value)) : null;
-    content = flag
-      ? <Text style={{ fontSize: 16 }}>{flag}</Text>
-      : <Text numberOfLines={1} style={{ color: '#fff', fontSize: 9.5, fontFamily: 'Poppins-ExtraBold' }}>{cmp.value != null ? String(cmp.value).slice(0, 3).toUpperCase() : '–'}</Text>;
-  } else if (kind === 'pos') {
-    content = <Text numberOfLines={1} style={{ color: '#fff', fontSize: 11, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{cmp.value != null ? (GW_POS_LABEL[String(cmp.value)] ?? String(cmp.value)) : '–'}</Text>;
-  } else {
-    content = (
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Text style={{ color: '#fff', fontSize: 12.5, fontFamily: 'Poppins-Black', fontVariant: ['tabular-nums'], ...engrave('sm') }}>{cmp.value ?? '–'}</Text>
-        {cmp.dir ? <Ionicons name={cmp.dir === 'up' ? 'caret-up' : 'caret-down'} size={13} color="#FFE9B0" style={{ marginLeft: 1 }} /> : null}
-      </View>
-    );
-  }
-  return (
-    <View style={{
-      flex: 1, height: 36, borderRadius: 9, marginHorizontal: 1.5,
-      backgroundColor: match ? GW_GREEN : GW_RED,
-      alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-      ...(match ? { shadowColor: theme.primary, shadowOpacity: 0.6, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 4 } : null),
-    }}>
-      {/* üst parlaklık — kutu 3B hissi */}
-      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 13, backgroundColor: 'rgba(255,255,255,0.13)' }} />
-      {content}
-    </View>
-  );
-}
-
-/** Bir tahmin satırı — mini kart: soldan foto, üstte ad, altında 6 nitelik kutusu. */
-function GwGuessRow({ row }: { row: import('./protocol').GwRow }) {
-  return (
-    <View style={{
-      flexDirection: 'row', alignItems: 'center', marginBottom: 6,
-      backgroundColor: 'rgba(8,14,34,0.88)', borderRadius: 14, paddingVertical: 6, paddingLeft: 6, paddingRight: 4,
-      borderWidth: 1, borderColor: row.correct ? withAlpha(theme.gold, 0.7) : 'rgba(255,255,255,0.06)',
-      ...shadowRow,
-    }}>
-      <View style={{ width: 42, alignItems: 'center' }}>
-        <View style={{ borderWidth: 1.5, borderColor: row.correct ? theme.gold : 'rgba(255,255,255,0.22)', borderRadius: 18, padding: 1.5 }}>
-          <PlayerPhoto uri={row.imageUrl} size={30} />
-        </View>
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text numberOfLines={1} style={{ color: row.correct ? theme.gold : theme.textSub, fontSize: 10, fontFamily: 'Poppins-ExtraBold', marginLeft: 4, marginBottom: 2.5, letterSpacing: 0.2 }}>
-          {row.name.toLocaleUpperCase('tr')}
-        </Text>
-        <View style={{ flexDirection: 'row' }}>
-          <GwTile kind="logo" cmp={row.club} />
-          <GwTile kind="flag" cmp={row.nationality} />
-          <GwTile kind="num" cmp={row.age} />
-          <GwTile kind="num" cmp={row.jersey} />
-          <GwTile kind="pos" cmp={row.position} />
-          <GwTile kind="logo" cmp={row.league} />
-        </View>
-      </View>
-    </View>
-  );
-}
-
-const GW_COLS: { key: string; icon: ComponentProps<typeof Ionicons>['name']; label: string }[] = [
-  { key: 'club', icon: 'shield', label: 'gw.col.club' },
-  { key: 'nat', icon: 'flag', label: 'gw.col.nat' },
-  { key: 'age', icon: 'hourglass', label: 'gw.col.age' },
-  { key: 'no', icon: 'shirt', label: 'gw.col.no' },
-  { key: 'pos', icon: 'locate', label: 'gw.col.pos' },
-  { key: 'league', icon: 'trophy', label: 'gw.col.league' },
-];
-
-// Aksan/özel-harf KATLAMA (kullanıcı isteği 2026-09-03: "é yazınca é'li oyuncu da çıksın").
-// Sunucu normalize.ts NFD + \p{M} kullanır ama bunlar Hermes'te garanti değil → açık
-// harita ile (é/š/ç/ñ/ü… → ASCII taban) her cihazda çalışır. Yalnız istemci autocomplete
-// süzgeci içindir (tahmin ID ile gönderilir; sunucu eşleşmesi etkilenmez).
-const BK_FOLD: Record<string, string> = {
-  à: 'a', á: 'a', â: 'a', ã: 'a', ä: 'a', å: 'a', ā: 'a', ă: 'a', ą: 'a', ª: 'a',
-  ç: 'c', ć: 'c', ĉ: 'c', ċ: 'c', č: 'c',
-  ð: 'd', ď: 'd', đ: 'd',
-  è: 'e', é: 'e', ê: 'e', ë: 'e', ē: 'e', ĕ: 'e', ė: 'e', ę: 'e', ě: 'e',
-  ĝ: 'g', ğ: 'g', ġ: 'g', ģ: 'g',
-  ĥ: 'h', ħ: 'h',
-  ì: 'i', í: 'i', î: 'i', ï: 'i', ĩ: 'i', ī: 'i', ĭ: 'i', į: 'i', ı: 'i',
-  ĵ: 'j', ķ: 'k',
-  ĺ: 'l', ļ: 'l', ľ: 'l', ł: 'l',
-  ñ: 'n', ń: 'n', ņ: 'n', ň: 'n', ŉ: 'n',
-  ò: 'o', ó: 'o', ô: 'o', õ: 'o', ö: 'o', ø: 'o', ō: 'o', ŏ: 'o', ő: 'o', º: 'o',
-  ŕ: 'r', ŗ: 'r', ř: 'r',
-  ś: 's', ŝ: 's', ş: 's', š: 's', ș: 's',
-  ţ: 't', ť: 't', ŧ: 't', ț: 't',
-  ù: 'u', ú: 'u', û: 'u', ü: 'u', ũ: 'u', ū: 'u', ŭ: 'u', ů: 'u', ű: 'u', ų: 'u',
-  ŵ: 'w', ý: 'y', ÿ: 'y', ŷ: 'y',
-  ź: 'z', ż: 'z', ž: 'z',
-  ß: 'ss', æ: 'ae', œ: 'oe', þ: 'th',
-};
-/** Adı aksansız, ASCII küçük harfe indirger; harf/rakam dışı her şeyi atar (boşluk dahil)
- *  → "Théo Hernández" ⇒ "theohernandez", sorgu "hernandez" eşleşir. */
-function bkFold(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, (ch) => BK_FOLD[ch] ?? '');
-}
-
-export function GuessWhoScreen({ state, actions }: Props) {
-  const gw = state.guessWho;
-  const pool = state.guessWhoPool ?? [];
-  const room = state.room;
-  const youId = room?.youId ?? '';
-  const opp = room?.players.find((p) => p.id !== youId);
-  const [query, setQuery] = useState('');
-  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
-  const [emoteOpen, setEmoteOpen] = useState(false);
-  // KLAVYE GÜVENLİĞİ (kullanıcı kuralı 2026-09-02): kaydırmasız esnek sütun; klavye
-  // açılınca foto+sıra tek kompakt şeride iner, satır listesi flex ile daralıp KENDİ
-  // içinde kayar → hiçbir şey üst üste binmez, hiçbir şey görünmez yerde kalmaz.
-  const [kbOpen, kbInputProps] = useKeyboardOpen();
-  const [, setTick] = useState(0);
-  const win = useWindow();
-  useEffect(() => { if (gw?.over) return undefined; const id = setInterval(() => setTick((v) => v + 1), 400); return () => clearInterval(id); }, [gw?.over]);
-  // Yeni tahmin satırı: yaylı giriş animasyonu (en üstteki satır).
-  const rowAnim = useRef(new Animated.Value(1)).current;
-  const lastLen = useRef(0);
-  useEffect(() => {
-    const len = gw?.guesses.length ?? 0;
-    if (len > lastLen.current) {
-      rowAnim.setValue(0);
-      Animated.spring(rowAnim, { toValue: 1, tension: 70, friction: 9, useNativeDriver: true }).start();
-    }
-    lastLen.current = len;
-  }, [gw?.guesses.length, rowAnim]);
-  // Ses/haptik: yanlış tahmin (benim/rakip) + maç sonu (diğer modlarla aynı dil).
-  const fbLen = useRef(0);
-  useEffect(() => {
-    const len = gw?.guesses.length ?? 0;
-    if (!gw || len === 0 || len === fbLen.current) return;
-    fbLen.current = len;
-    const last = gw.guesses[len - 1];
-    if (last && !last.correct) triggerFeedback(gw.lastGuessById === youId ? GameFeedbackEvent.ANSWER_WRONG : GameFeedbackEvent.NOTIFICATION);
-  }, [gw?.guesses.length, gw?.lastGuessById, youId]);
-  const overPlayed = useRef(false);
-  useEffect(() => {
-    if (!gw?.over || overPlayed.current) return;
-    overPlayed.current = true;
-    triggerFeedback(gw.winnerId === youId ? GameFeedbackEvent.MATCH_WIN : gw.winnerId == null ? GameFeedbackEvent.MATCH_DRAW : GameFeedbackEvent.MATCH_LOSE);
-  }, [gw?.over, gw?.winnerId, youId]);
-  useEffect(() => { if (!gw?.over) overPlayed.current = false; }, [gw?.over]);
-  // Maç sonu: foto altın çerçeveyle "pop" yapar.
-  const revealScale = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    if (gw?.over) { revealScale.setValue(0.9); Animated.spring(revealScale, { toValue: 1, tension: 60, friction: 7, useNativeDriver: true }).start(); }
-  }, [gw?.over, revealScale]);
-
-  if (!gw || !room) return <Screen><Text style={styles.muted}>{t('store.loading')}</Text></Screen>;
-
-  const over = gw.over;
-  const myTurn = !over && gw.turnId === youId;
-  const secs = Math.max(0, Math.ceil((gw.turnEndsAt - Date.now()) / 1000));
-  const reveal = gw.reveal;
-  const alreadyGuessed = new Set(gw.guesses.map((g) => g.playerId));
-  // Aksan-duyarsız arama: hem sorgu hem ad ASCII tabana katlanır (é↔e, ş↔s, ü↔u…).
-  const q = bkFold(query.trim());
-  const matches = myTurn && q.length >= 2
-    ? pool.filter((p) => bkFold(p.name).includes(q) && !alreadyGuessed.has(p.id)).slice(0, kbOpen ? 4 : 5)
-    : [];
-  const submit = (playerId: number) => {
-    if (!myTurn || alreadyGuessed.has(playerId)) return;
-    actions.guessWhoSubmit(playerId);
-    setQuery('');
-    dismissActiveInput();
-  };
-  const blurRadius = over ? 0 : Math.round(gw.blurLevel * 4.5);
-  const photoUri = over && reveal ? reveal.imageUrl : gw.targetImageUrl;
-  const photoSize = Math.min(158, Math.round(win.width * 0.4));
-  const totalGuesses = gw.guessesLeft + gw.guesses.length; // sunucu ayarına dayanıklı
-  const leaveKind = state.isQuickMatch ? ('ranked' as const) : ('forfeit' as const);
-  const rows = [...gw.guesses].reverse(); // en yeni üstte
-
-  // Foto çerçevesi — altın halkalı gizem kartı (reveal'de parlar).
-  // Blur, RENDER BOYUTUNA oranlanır: küçük (44px) kart aynı yarıçapla büyükten daha
-  // NET görünüyordu (küçük görüntü algıda keskinleşir) — yarıçap büyük/küçük oranıyla
-  // çarpılır ki iki boyutta da tanınmazlık AYNI kalsın (kullanıcı isteği 2026-09-03).
-  const photoFrame = (size: number, radius: number) => {
-    const sizedBlur = size < photoSize ? Math.min(100, Math.round(blurRadius * (photoSize / size))) : blurRadius;
-    return (
-    <View style={{
-      padding: 3, borderRadius: radius + 6,
-      backgroundColor: over ? withAlpha(theme.gold, 0.4) : 'rgba(255,233,176,0.14)',
-      shadowColor: over ? theme.gold : '#FFE9B0', shadowOpacity: over ? 0.7 : 0.35, shadowRadius: 18, shadowOffset: { width: 0, height: 0 }, elevation: 10,
-    }}>
-      <View style={{ borderRadius: radius + 3, borderWidth: 2, borderColor: over ? theme.gold : withAlpha(theme.gold, 0.55), overflow: 'hidden', backgroundColor: '#0A1230' }}>
-        {photoUri ? (
-          <ExpoImage source={{ uri: photoUri }} {...({ blurRadius: sizedBlur } as any)} style={{ width: size, height: size, transform: [{ scale: 1.12 }] }} contentFit="cover" transition={250} />
-        ) : <View style={{ width: size, height: size }} />}
-        {/* alt karartma + GİZLİ OYUNCU şeridi (yalnız oyun sırasında + büyük kartta) */}
-        {!over && size > 100 ? (
-          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 24, backgroundColor: 'rgba(3,7,20,0.62)', alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: 'rgba(255,240,200,0.92)', fontSize: 8.5, fontFamily: 'Poppins-Black', letterSpacing: 2.6 }}>{t('guesswho.mystery')}</Text>
-          </View>
-        ) : null}
-        {/* köşe "?" rozeti — kart İÇİNDE (taşma/binme yok); kompakt 44px kartta fotoyu
-            kapatmasın diye yalnız BÜYÜK kartta gösterilir */}
-        {!over && size > 100 ? (
-          <View style={{ position: 'absolute', top: 5, right: 5, width: 22, height: 22, borderRadius: 11, backgroundColor: theme.gold, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: '#132', fontSize: 13, fontFamily: 'Poppins-Black' }}>?</Text>
-          </View>
-        ) : null}
-      </View>
-    </View>
-    );
-  };
-
-  const turnText = myTurn ? t('guesswho.yourTurn') : t('guesswho.oppTurn', { name: opp?.name ?? '' });
-  const turnColor = myTurn ? theme.primary : theme.textSub;
-
-  return (
-    <Screen scroll={!!over} keyboardShouldPersistTaps="always" contentCenter={false} bg={<GuessWhoStage />}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: kbOpen ? 4 : 8 }}>
-        <MatchExitButton onPress={() => (state.matchOver ? actions.leave() : setShowLeaveConfirm(true))} />
-        <PlayerBar state={state} onEmotePress={() => setEmoteOpen(true)} />
-      </View>
-
-      {kbOpen && !over ? (
-        /* ── KOMPAKT ŞERİT (klavye açık): küçük foto + sıra + halka + pip'ler tek satır.
-            Küçük fotoya dokununca klavye kapanır → büyük sahne geri gelir (kullanıcı isteği 2026-09-03). ── */
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6, backgroundColor: 'rgba(8,14,34,0.7)', borderRadius: 14, padding: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }}>
-          <Pressable onPress={dismissActiveInput} hitSlop={8}>{photoFrame(44, 10)}</Pressable>
-          <View style={{ flex: 1, gap: 4 }}>
-            <Text numberOfLines={1} style={{ color: turnColor, fontSize: 12, fontFamily: 'Poppins-Black', letterSpacing: 0.4 }}>{turnText}</Text>
-            <GwPips total={totalGuesses} used={gw.guesses.length} winner={false} />
-          </View>
-          <GwTimerRing secs={secs} />
-        </View>
-      ) : (
-        /* ── BÜYÜK SAHNE (klavye kapalı): spot altındaki gizem kartı ── */
-        <View style={{ alignItems: 'center', marginBottom: over ? 4 : 8 }}>
-          <Animated.View style={{ transform: [{ scale: revealScale }] }}>
-            {photoFrame(photoSize, 18)}
-          </Animated.View>
-          {over && reveal ? (
-            <Text style={{ color: theme.gold, fontSize: 21, fontFamily: 'Poppins-Black', marginTop: 8, letterSpacing: 0.5, ...engrave('lg') }}>{reveal.name.toLocaleUpperCase('tr')}</Text>
-          ) : (
-            <>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8, backgroundColor: 'rgba(8,14,34,0.72)', borderRadius: 999, paddingLeft: 14, paddingRight: 6, paddingVertical: 4, borderWidth: 1, borderColor: myTurn ? withAlpha(theme.primary, 0.5) : 'rgba(255,255,255,0.08)' }}>
-                <Text style={{ color: turnColor, fontSize: 13.5, fontFamily: 'Poppins-Black', letterSpacing: 0.6, ...engrave('sm') }}>{turnText}</Text>
-                <GwTimerRing secs={secs} />
-              </View>
-              <View style={{ marginTop: 7 }}>
-                <GwPips total={totalGuesses} used={gw.guesses.length} winner={false} />
-              </View>
-            </>
-          )}
-        </View>
-      )}
-
-      {/* ── Tahmin girişi — her zaman yerinde (sıra rakipteyken soluk/kilitli) ── */}
-      {!over ? (
-        <View style={{ marginBottom: 6 }}>
-          <GameInput
-            icon="search"
-            placeholder={myTurn ? t('guesswho.placeholder') : t('guesswho.oppTurn', { name: opp?.name ?? '' })}
-            value={query}
-            onChangeText={setQuery}
-            autoCorrect={false}
-            returnKeyType="search"
-            editable={myTurn}
-            containerStyle={{ opacity: myTurn ? 1 : 0.5 }}
-            {...kbInputProps}
-          />
-          {matches.length ? (
-            <View style={{ marginTop: 5, backgroundColor: 'rgba(13,21,46,0.97)', borderRadius: 14, borderWidth: 1, borderColor: withAlpha(theme.primary, 0.35), overflow: 'hidden', ...shadowRow }}>
-              {matches.map((m, mi) => (
-                <Pressable
-                  key={m.id}
-                  onPress={() => submit(m.id)}
-                  style={({ pressed }) => ({
-                    flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 12,
-                    backgroundColor: pressed ? withAlpha(theme.primary, 0.22) : 'transparent',
-                    borderBottomWidth: mi < matches.length - 1 ? 1 : 0, borderBottomColor: 'rgba(255,255,255,0.06)',
-                  })}
-                >
-                  <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: withAlpha(theme.blue, 0.25), alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ color: theme.blue, fontSize: 12, fontFamily: 'Poppins-ExtraBold' }}>{m.name.charAt(0).toLocaleUpperCase('tr')}</Text>
-                  </View>
-                  <Text numberOfLines={1} style={{ flex: 1, color: theme.text, fontSize: 13.5, fontFamily: 'Poppins-SemiBold' }}>{m.name}</Text>
-                  <Ionicons name="arrow-forward-circle" size={18} color={withAlpha(theme.primary, 0.8)} />
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-        </View>
-      ) : null}
-
-      {/* ── Sütun başlıkları (ikonlu) ── */}
-      {gw.guesses.length ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4, paddingLeft: 48, paddingRight: 6 }}>
-          {GW_COLS.map((c) => (
-            <View key={c.key} style={{ flex: 1, alignItems: 'center', marginHorizontal: 1.5, flexDirection: 'row', justifyContent: 'center', gap: 2 }}>
-              <Ionicons name={c.icon} size={8.5} color={withAlpha(theme.gold, 0.75)} />
-              <Text style={{ color: withAlpha(theme.gold, 0.85), fontSize: 7.5, fontFamily: 'Poppins-ExtraBold', letterSpacing: 0.4 }}>{t(c.label as MessageKey)}</Text>
-            </View>
-          ))}
-        </View>
-      ) : !over ? (
-        <View style={{ alignItems: 'center', marginTop: 6, paddingHorizontal: 20 }}>
-          <Text style={{ color: withAlpha(theme.textSub, 0.75), fontSize: 11.5, fontFamily: 'Poppins-SemiBold', textAlign: 'center', lineHeight: 17 }}>{t('guesswho.hint')}</Text>
-        </View>
-      ) : null}
-
-      {/* ── Tahmin satırları (en yeni üstte; oyun içinde kendi içinde kayar) ── */}
-      {over ? (
-        <View>{rows.map((g, i) => <GwGuessRow key={`${g.playerId}-${i}`} row={g} />)}</View>
-      ) : (
-        <ScrollView
-          style={{ flex: 1, minHeight: 0 }}
-          // Android edge-to-edge'de pencere klavyeyle KÜÇÜLMEZ → satırların klavye
-          // arkasında kalan kısmına kaydırarak erişilebilsin diye alt pay bırakılır.
-          contentContainerStyle={{ paddingBottom: kbOpen ? Math.round(win.height * 0.42) : 0 }}
-          keyboardShouldPersistTaps="always"
-          showsVerticalScrollIndicator={false}
-        >
-          {rows.map((g, i) => i === 0 ? (
-            <Animated.View key={`${g.playerId}-${i}`} style={{ opacity: rowAnim, transform: [{ translateY: rowAnim.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] }) }] }}>
-              <GwGuessRow row={g} />
-            </Animated.View>
-          ) : <GwGuessRow key={`${g.playerId}-${i}`} row={g} />)}
-        </ScrollView>
-      )}
-
-      {/* ── Maç sonu paneli ── */}
-      {over ? (
-        <View style={{ alignItems: 'center', gap: 10, marginTop: 8 }}>
-          <Text style={{ color: gw.winnerId === youId ? theme.primary : gw.winnerId == null ? theme.gold : theme.danger, fontSize: 26, fontFamily: 'Poppins-Black', letterSpacing: 1.2, ...engrave('lg') }}>
-            {gw.winnerId === youId ? t('guesswho.youWon') : gw.winnerId == null ? t('guesswho.draw') : t('guesswho.youLost')}
-          </Text>
-          {/* Bilgi çipleri YALNIZ beraberlikte: kazanan varsa doğru tahmin satırı (yeşil)
-              takım/yaş/forma vs. zaten gösteriyor — altta tekrarı gereksiz (kullanıcı isteği
-              2026-09-03). Beraberlikte hedef hiç tahmin edilmediğinden yeşil satır yok →
-              bilgiyi tek gösteren yer bu çipler, onlar kalır. */}
-          {reveal && gw.winnerId == null ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6 }}>
-              {([
-                reveal.clubName ? { key: 'club', el: <><GwLogoChip uri={reveal.clubLogo} size={20} /><Text style={gwChipTxt}>{reveal.clubName}</Text></> } : null,
-                reveal.nationality ? { key: 'nat', el: <Text style={gwChipTxt}>{(countryFlagFor(reveal.nationality) ?? '') + ' ' + reveal.nationality}</Text> } : null,
-                reveal.jersey != null ? { key: 'no', el: <Text style={gwChipTxt}>#{reveal.jersey}</Text> } : null,
-                reveal.age != null ? { key: 'age', el: <Text style={gwChipTxt}>{t('guesswho.ageChip', { n: String(reveal.age) })}</Text> } : null,
-                reveal.position ? { key: 'pos', el: <Text style={gwChipTxt}>{GW_POS_LABEL[reveal.position] ?? reveal.position}</Text> } : null,
-                reveal.leagueLogo ? { key: 'lg', el: <GwLogoChip uri={reveal.leagueLogo} size={20} /> } : null,
-              ].filter(Boolean) as { key: string; el: ReactNode }[]).map((c) => (
-                <View key={c.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.09)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)' }}>
-                  {c.el}
-                </View>
-              ))}
-            </View>
-          ) : null}
-          {state.rematchState === 'incoming' ? (
-            <>
-              <Text style={{ color: theme.text, fontSize: 13, fontFamily: 'Poppins-ExtraBold' }}>{t('result.rematchIncoming', { name: state.rematchByName ?? '' })}</Text>
-              <View style={{ flexDirection: 'row', gap: 10, alignSelf: 'stretch' }}>
-                <View style={{ flex: 1 }}><Btn label={t('result.accept')} kind="accent" icon="checkmark-circle" onPress={actions.acceptRematch} /></View>
-                <View style={{ flex: 1 }}><Btn label={t('result.decline')} kind="ghost" icon="close" onPress={actions.declineRematch} /></View>
-              </View>
-            </>
-          ) : state.rematchState === 'waiting' ? (
-            <Text style={{ color: theme.muted, fontSize: 12, fontFamily: 'Poppins-SemiBold' }}>{t('result.rematchWaiting')}</Text>
-          ) : (
-            <Btn big label={t('result.playAgain')} kind="accent" icon="refresh" feedback={GameFeedbackEvent.UI_PLAY} onPress={actions.playAgain} />
-          )}
-          <Btn label={t('result.leave')} kind="ghost" icon="home" onPress={actions.leave} />
-        </View>
-      ) : null}
-
-      <View style={{ height: 6 }} />
-      <LeaveConfirmModal visible={showLeaveConfirm} kind={leaveKind} onCancel={() => setShowLeaveConfirm(false)} onConfirm={actions.leave} />
-      <EmoteLayer state={state} actions={actions} hideFab externalOpen={emoteOpen} onOpenChange={setEmoteOpen} />
-    </Screen>
-  );
-}
-const gwChipTxt = { color: theme.text, fontSize: 12, fontFamily: 'Poppins-ExtraBold' } as const;
-
-// ═══════════════════════════════════════════════════════════════════════════
-// BEN KİMİM? — "YENİ MOD" popup'ının tanıtım animasyonu (2026-09-03).
-// Kısa (9 sn) DÖNGÜLÜ, native (Animated + Svg + ExpoImage) bir "ekran kaydı":
-//   1) Diğer Modlar kartına dokunulur → 2) Ben Kimim? modu seçilir →
-//   3) maç başlar, RAKİP ilk tahmini yapar (yanlış-karışık ipuçları) →
-//   4) SIRA SENDE, ikinci tahmin DOĞRU → gizli oyuncu (Yamal) açığa çıkar.
-// GERÇEK oyun bileşenleri (GwGuessRow / GwPips / GwTimerRing) birebir yeniden
-// kullanılır → "farksız oyun içi görüntü". Video/asset yok: her cihazda net.
-// ═══════════════════════════════════════════════════════════════════════════
-const BK_DUR = 9000;
-const BK_YAMAL_IMG = 'https://media.api-sports.io/football/players/386828.png';
-const BK_RAPHINHA_IMG = 'https://media.api-sports.io/football/players/1496.png'; // stabil api-sports CDN (Yamal ile aynı)
-const BK_BARCA_LOGO = 'https://tmssl.akamaized.net//images/wappen/big/131.png';
-const BK_LALIGA_LOGO = 'https://media.api-sports.io/football/leagues/140.png';
-// Rakibin YANLIŞ tahmini: Raphinha — aynı kulüp/lig/mevki (3 yeşil) ama Brezilyalı,
-// daha yaşlı (28↓) ve daha yüksek numara (11↓) → hedefi genç İspanyol #10'a daraltır.
-const BK_ROW_OPP: import('./protocol').GwRow = {
-  playerId: 411295, name: 'Raphinha', imageUrl: BK_RAPHINHA_IMG, correct: false,
-  club: { value: 'Barcelona', logo: BK_BARCA_LOGO, match: true },
-  nationality: { value: 'Brazil', match: false },
-  age: { value: 28, match: false, dir: 'down' },
-  jersey: { value: 11, match: false, dir: 'down' },
-  position: { value: 'LW', match: true },
-  league: { value: 'ES1', logo: BK_LALIGA_LOGO, match: true },
-};
-// DOĞRU tahmin: Lamine Yamal — altı nitelik de yeşil.
-const BK_ROW_YOU: import('./protocol').GwRow = {
-  playerId: 386828, name: 'Lamine Yamal', imageUrl: BK_YAMAL_IMG, correct: true,
-  club: { value: 'Barcelona', logo: BK_BARCA_LOGO, match: true },
-  nationality: { value: 'Spain', match: true },
-  age: { value: 18, match: true },
-  jersey: { value: 10, match: true },
-  position: { value: 'RW', match: true },
-  league: { value: 'ES1', logo: BK_LALIGA_LOGO, match: true },
-};
-
-/** Karanlık stadyum arka planı — GuessWhoStage ile aynı reçete, tanıtım kadrajına ölçekli. */
-function BkMiniStage() {
-  return (
-    <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} viewBox="0 0 100 78" preserveAspectRatio="xMidYMid slice">
-      <Defs>
-        <SvgGradient id="bkNight" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor="#0B1234" /><Stop offset="0.55" stopColor="#080E26" /><Stop offset="1" stopColor="#04081A" />
-        </SvgGradient>
-        <RadialGradient id="bkSpot" cx="50%" cy="10%" rx="55%" ry="42%">
-          <Stop offset="0" stopColor="#FFE9B0" stopOpacity="0.22" /><Stop offset="0.55" stopColor="#FFE9B0" stopOpacity="0.07" /><Stop offset="1" stopColor="#FFE9B0" stopOpacity="0" />
-        </RadialGradient>
-        <RadialGradient id="bkVig" cx="50%" cy="44%" rx="80%" ry="70%">
-          <Stop offset="0.5" stopColor="#02040E" stopOpacity="0" /><Stop offset="1" stopColor="#01030A" stopOpacity="0.82" />
-        </RadialGradient>
-      </Defs>
-      <Rect x="0" y="0" width="100" height="78" fill="url(#bkNight)" />
-      <Polygon points="40,0 60,0 82,40 18,40" fill="#F4E7C3" opacity="0.05" />
-      <Polygon points="45,0 55,0 70,34 30,34" fill="#FFFFFF" opacity="0.055" />
-      {[[8, 12], [18, 6], [30, 10], [70, 7], [84, 11], [92, 5], [62, 4], [38, 4]].map(([x, y], i) => (
-        <Circle key={i} cx={x} cy={y} r={0.5} fill="#DCE6FF" opacity={0.18} />
-      ))}
-      <Ellipse cx="50" cy="72" rx="44" ry="9" fill="none" stroke="#8FA5E8" strokeWidth="0.35" opacity="0.12" />
-      <Rect x="0" y="0" width="100" height="78" fill="url(#bkSpot)" />
-      <Rect x="0" y="0" width="100" height="78" fill="url(#bkVig)" />
-    </Svg>
-  );
-}
-
-/** Tanıtımdaki "Diğer Modlar" mini kartı — gerçek amber ArtCard dilinde. */
-function BkModesCard({ pressed }: { pressed: Animated.AnimatedInterpolation<number> }) {
-  return (
-    <Animated.View style={{ width: 148, transform: [{ scale: pressed }] }}>
-      <View style={{ backgroundColor: '#291706', borderRadius: 16, paddingBottom: 3 }}>
-        <View style={{ height: 96, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderBottomLeftRadius: 13, borderBottomRightRadius: 13, backgroundColor: '#D08528', overflow: 'hidden' }}>
-          <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} viewBox="0 0 100 100" preserveAspectRatio="none">
-            <Defs>
-              <RadialGradient id="bkModes" cx="50%" cy="6%" rx="118%" ry="118%">
-                <Stop offset="0" stopColor="#D9973B" /><Stop offset="0.52" stopColor="#B7762A" /><Stop offset="1" stopColor="#6B3A0D" />
-              </RadialGradient>
-              <RadialGradient id="bkModesGlow" cx="50%" cy="22%" rx="78%" ry="78%">
-                <Stop offset="0" stopColor="#E3B67E" stopOpacity="0.9" /><Stop offset="0.5" stopColor="#D69442" stopOpacity="0.28" /><Stop offset="1" stopColor="#D08528" stopOpacity="0" />
-              </RadialGradient>
-            </Defs>
-            <Rect x="0" y="0" width="100" height="100" fill="url(#bkModes)" />
-            <Rect x="0" y="0" width="100" height="100" fill="url(#bkModesGlow)" />
-          </Svg>
-          {/* iki futbol topu + altın VS madalyonu (kartın kimliği) */}
-          <View style={{ position: 'absolute', left: 14, top: 22, width: 34, height: 34, borderRadius: 17, backgroundColor: '#EDEFF3', borderWidth: 2, borderColor: '#0B1020' }} />
-          <View style={{ position: 'absolute', right: 14, top: 24, width: 34, height: 34, borderRadius: 17, backgroundColor: '#2B6CE0', borderWidth: 2, borderColor: '#0B1020' }} />
-          <View style={{ position: 'absolute', alignSelf: 'center', top: 30, left: 0, right: 0, alignItems: 'center' }}>
-            <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: theme.accent, borderWidth: 2, borderColor: darken(theme.accent, 0.4), alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color: theme.ink, fontFamily: 'Poppins-Black', fontSize: 11, ...engrave('sm') }}>VS</Text>
-            </View>
-          </View>
-          {/* alt etiket bandı */}
-          <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#3A2109', paddingHorizontal: 10, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text numberOfLines={1} style={{ flex: 1, color: '#FFFFFF', fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>Diğer Modlar</Text>
-            <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.34)', alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="arrow-forward" size={12} color="rgba(255,255,255,0.9)" />
-            </View>
-          </View>
-        </View>
-      </View>
-      {/* YENİ kurdelesi */}
-      <View style={{ position: 'absolute', top: -7, right: -5, backgroundColor: theme.danger, borderRadius: 8, paddingHorizontal: 7, paddingTop: 3, paddingBottom: 4, ...shadowRow }}>
-        <Text style={{ color: '#fff', fontSize: 8.5, fontFamily: 'Poppins-Black', letterSpacing: 1 }}>YENİ</Text>
-      </View>
-    </Animated.View>
-  );
-}
-
-/** Tanıtımdaki mod-seçici satırı — gerçek GameRow dilinde. */
-function BkModeRow({ icon, label, tint, active, pressed, yeni }: { icon: IoniconName; label: string; tint: string; active?: boolean; pressed?: Animated.AnimatedInterpolation<number>; yeni?: boolean }) {
-  const face = active ? theme.surface3 : theme.surface2;
-  return (
-    <Animated.View style={{ backgroundColor: face, borderRadius: 12, marginVertical: 3, overflow: 'hidden', ...shadowRow, transform: pressed ? [{ scale: pressed }] : undefined }}>
-      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: '#FFFFFF', opacity: 0.06 }} />
-      <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3.5, backgroundColor: tint }} />
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, paddingHorizontal: 11 }}>
-        <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: theme.well, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name={icon} size={16} color={tint} />
-        </View>
-        <Text style={{ flex: 1, color: theme.text, fontSize: 12.5, fontFamily: 'Poppins-ExtraBold', ...engrave('sm') }}>{label}</Text>
-        {yeni ? (
-          <View style={{ backgroundColor: theme.danger, borderRadius: 7, paddingHorizontal: 6, paddingTop: 2.5, paddingBottom: 3 }}>
-            <Text style={{ color: '#fff', fontSize: 8, fontFamily: 'Poppins-Black', letterSpacing: 0.8 }}>YENİ</Text>
-          </View>
-        ) : <Ionicons name="chevron-forward" size={15} color={theme.muted} />}
-      </View>
-    </Animated.View>
-  );
-}
-
-/** Bulanık→net geçişli mini gizem kartı (iki foto üst üste; net olan reveal'de belirir). */
-function BkMysteryCard({ sharpOp, chromeOp, size = 66 }: { sharpOp: Animated.AnimatedInterpolation<number>; chromeOp: Animated.AnimatedInterpolation<number>; size?: number }) {
-  const r = 12;
-  return (
-    <View style={{ padding: 3, borderRadius: r + 6, backgroundColor: 'rgba(255,233,176,0.16)', shadowColor: '#FFE9B0', shadowOpacity: 0.4, shadowRadius: 14, shadowOffset: { width: 0, height: 0 } }}>
-      <View style={{ borderRadius: r + 3, borderWidth: 2, borderColor: withAlpha(theme.gold, 0.6), overflow: 'hidden', backgroundColor: '#0A1230' }}>
-        <ExpoImage source={{ uri: BK_YAMAL_IMG }} {...({ blurRadius: 14 } as any)} style={{ width: size, height: size, transform: [{ scale: 1.12 }] }} contentFit="cover" transition={0} />
-        <Animated.View style={[StyleSheet.absoluteFill, { opacity: sharpOp }]}>
-          <ExpoImage source={{ uri: BK_YAMAL_IMG }} style={{ width: size, height: size, transform: [{ scale: 1.12 }] }} contentFit="cover" transition={0} />
-        </Animated.View>
-        {/* GİZLİ OYUNCU şeridi + "?" rozeti — reveal'de solar */}
-        <Animated.View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 16, backgroundColor: 'rgba(3,7,20,0.62)', alignItems: 'center', justifyContent: 'center', opacity: chromeOp }}>
-          <Text style={{ color: 'rgba(255,240,200,0.92)', fontSize: 6.5, fontFamily: 'Poppins-Black', letterSpacing: 2 }}>GİZLİ OYUNCU</Text>
-        </Animated.View>
-        <Animated.View style={{ position: 'absolute', top: 4, right: 4, width: 18, height: 18, borderRadius: 9, backgroundColor: theme.gold, alignItems: 'center', justifyContent: 'center', opacity: chromeOp }}>
-          <Text style={{ color: '#132', fontSize: 11, fontFamily: 'Poppins-Black' }}>?</Text>
-        </Animated.View>
-      </View>
-    </View>
-  );
-}
-
-/** THE tanıtım animasyonu — popup'ın üstündeki döngülü ekran kaydı. */
-export function BenKimimTutorial() {
-  const [w, setW] = useState(0);
-  const H = 244;
-  const clock = useRef(new Animated.Value(0)).current;
-  const startRef = useRef(0);
-  const [, setTick] = useState(0);
-
-  useEffect(() => {
-    startRef.current = Date.now();
-    const anim = Animated.loop(Animated.timing(clock, { toValue: BK_DUR, duration: BK_DUR, easing: Easing.linear, useNativeDriver: true }));
-    anim.start();
-    const id = setInterval(() => setTick((t) => t + 1), 120);
-    // Fotoğraf + logoları önceden getir → tanıtım ilk kareden net oynasın.
-    [BK_YAMAL_IMG, BK_RAPHINHA_IMG, BK_BARCA_LOGO, BK_LALIGA_LOGO].forEach((u) => { try { (ExpoImage as unknown as { prefetch?: (u: string) => Promise<unknown> }).prefetch?.(u); } catch { /* yut */ } });
-    return () => { anim.stop(); clearInterval(id); };
-  }, [clock]);
-
-  // Statik ağır çocukları sabitler (tik yalnız sayaç/pip'i tazelesin, satırları değil).
-  const oppRowEl = useMemo(() => <GwGuessRow row={BK_ROW_OPP} />, []);
-  const youRowEl = useMemo(() => <GwGuessRow row={BK_ROW_YOU} />, []);
-
-  // Tüm sürekli hareket TEK native clock'tan türetilir (w değişince yeniden hesap).
-  const A = useMemo(() => {
-    const op = (pts: [number, number][]) => clock.interpolate({ inputRange: pts.map((p) => p[0]), outputRange: pts.map((p) => p[1]), extrapolate: 'clamp' });
-    return {
-      // sahne opaklıkları
-      homeOp: op([[0, 0], [320, 1], [1650, 1], [1900, 0]]),
-      pickOp: op([[1800, 0], [2100, 1], [3250, 1], [3500, 0]]),
-      matchOp: op([[3400, 0], [3800, 1], [8550, 1], [8950, 0]]),
-      // Diğer Modlar kartı basılma (clamp son değeri tutar — yinelenen nokta YOK)
-      cardPress: op([[900, 1], [1010, 0.955], [1160, 1]]),
-      // mod-seçici satır basılma
-      rowPress: op([[2500, 1], [2600, 0.955], [2760, 1]]),
-      pickSlide: op([[1800, 26], [2100, 0]]),
-      // parmak — S2'de "Ben Kimim?" satırının SAĞINA dokunur (etiket görünür kalsın)
-      fingerX: op([[700, 0.80], [1000, 0.52], [1250, 0.52], [2350, 0.60], [2600, 0.74], [2900, 0.74]]),
-      fingerY: op([[700, 0.92], [1000, 0.56], [1250, 0.56], [2350, 0.62], [2600, 0.32], [2900, 0.32]]),
-      fingerScale: op([[900, 1], [1000, 0.78], [1150, 1], [1250, 1], [2500, 1], [2600, 0.78], [2750, 1]]),
-      fingerOp: op([[700, 0], [800, 1], [1330, 1], [1480, 0], [2340, 0], [2440, 1], [2960, 1], [3120, 0]]),
-      // dokunuş dalgaları
-      ripple1S: op([[980, 0.3], [1320, 1.9]]),
-      ripple1O: op([[980, 0.5], [1320, 0]]),
-      ripple2S: op([[2580, 0.3], [2920, 1.9]]),
-      ripple2O: op([[2580, 0.5], [2920, 0]]),
-      // maç içi
-      oppRowY: op([[4200, -12], [4620, 0]]),
-      oppRowOp: op([[4200, 0], [4520, 1]]),
-      youRowY: op([[5400, -12], [5820, 0]]),
-      youRowOp: op([[5400, 0], [5720, 1]]),
-      bannerOppOp: op([[3800, 0], [4000, 1], [4600, 1], [4780, 0]]),
-      // "SIRA SENDE" reveal başlayınca söner (tur kazanıldı) → "BİLDİN!" rozetiyle çakışmaz
-      bannerYouOp: op([[4700, 0], [4880, 1], [5900, 1], [6150, 0]]),
-      revealSharp: op([[5900, 0], [6400, 1], [8500, 1], [8850, 0]]),
-      revealChrome: op([[5900, 1], [6250, 0]]),
-      nameOp: op([[6100, 0], [6500, 1], [8450, 1], [8800, 0]]),
-      badgeOp: op([[6450, 0], [6650, 1], [8450, 1], [8750, 0]]),
-      badgeScale: op([[6450, 0.7], [6650, 1.08], [6800, 1]]),
-    };
-  }, [clock, w]);
-
-  // Ayrık (sayı/metin) durumlar — 120ms tik ile; ağır motion native clock'ta.
-  const el = startRef.current ? (Date.now() - startRef.current) % BK_DUR : 0;
-  const bannerOpp = el >= 3800 && el < 4780;
-  const secs = bannerOpp ? Math.max(15, 20 - Math.floor((el - 3800) / 320)) : Math.max(17, 20 - Math.floor(Math.max(0, el - 4880) / 520));
-  const pipsUsed = el < 4300 ? 0 : el < 5500 ? 1 : 2;
-  const winnerPip = el >= 5900;
-  const sceneIdx = el < 1900 ? 0 : el < 3500 ? 1 : el < 5900 ? 2 : 3;
-
-  const finger = w > 0 ? (
-    <Animated.View pointerEvents="none" style={{ position: 'absolute', left: -17, top: -17, opacity: A.fingerOp, transform: [{ translateX: Animated.multiply(A.fingerX, w) }, { translateY: Animated.multiply(A.fingerY, H) }, { scale: A.fingerScale }] }}>
-      <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.26)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.7)', alignItems: 'center', justifyContent: 'center' }}>
-        <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.92)' }} />
-      </View>
-    </Animated.View>
-  ) : null;
-
-  return (
-    <View style={{ alignSelf: 'stretch', borderRadius: 20, backgroundColor: '#05091A', padding: 4, ...shadowModal }}>
-      <View
-        onLayout={(e) => setW(e.nativeEvent.layout.width)}
-        style={{ height: H, borderRadius: 16, overflow: 'hidden', backgroundColor: '#04081A', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' }}
-      >
-        {/* ── SAHNE 1: Home — Diğer Modlar kartına dokun ── */}
-        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: A.homeOp, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0A1230' }]}>
-          <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} viewBox="0 0 100 100" preserveAspectRatio="none">
-            <Defs><SvgGradient id="bkHome" x1="0" y1="0" x2="0" y2="1"><Stop offset="0" stopColor="#0E1740" /><Stop offset="1" stopColor="#070D28" /></SvgGradient></Defs>
-            <Rect x="0" y="0" width="100" height="100" fill="url(#bkHome)" />
-          </Svg>
-          <Text style={{ color: withAlpha(theme.textSub, 0.8), fontSize: 10, fontFamily: 'Poppins-ExtraBold', letterSpacing: 1.5, marginBottom: 12 }}>DİĞER MODLAR</Text>
-          <BkModesCard pressed={A.cardPress} />
-        </Animated.View>
-
-        {/* ── SAHNE 2: Mod seçici — Ben Kimim? seç ── */}
-        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: A.pickOp, paddingHorizontal: 14, paddingTop: 12, backgroundColor: 'rgba(4,7,20,0.9)' }]}>
-          <Animated.View style={{ transform: [{ translateY: A.pickSlide }] }}>
-            <View style={{ backgroundColor: theme.accent, paddingVertical: 7, paddingHorizontal: 12, borderTopLeftRadius: 12, borderTopRightRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Ionicons name="football" size={14} color={theme.ink} />
-              <Text style={{ color: theme.ink, fontFamily: 'Poppins-ExtraBold', fontSize: 12, letterSpacing: 0.8 }}>DİĞER MODLAR</Text>
-            </View>
-            <View style={{ backgroundColor: theme.modalFace, borderBottomLeftRadius: 12, borderBottomRightRadius: 12, padding: 8, paddingTop: 6 }}>
-              <BkModeRow icon="help-circle" label="Ben Kimim?" tint={theme.purple} active pressed={A.rowPress} yeni />
-              <BkModeRow icon="shuffle" label="Çöz Kazan" tint="#16B27A" />
-              <BkModeRow icon="grid" label="Futbol XOX" tint={theme.gold} />
-            </View>
-          </Animated.View>
-        </Animated.View>
-
-        {/* ── SAHNE 3-4: Maç — rakip yanlış, sen doğru, reveal ── */}
-        <Animated.View style={[StyleSheet.absoluteFill, { opacity: A.matchOp }]}>
-          <BkMiniStage />
-          <View style={{ flex: 1, paddingHorizontal: 12, paddingTop: 10, alignItems: 'stretch' }}>
-            {/* üst: mini gizem kartı + sıra/halka/pip */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-              <BkMysteryCard sharpOp={A.revealSharp} chromeOp={A.revealChrome} />
-              <View style={{ flex: 1, gap: 5 }}>
-                <View style={{ height: 18, justifyContent: 'center' }}>
-                  <Animated.Text numberOfLines={1} style={{ position: 'absolute', color: theme.textSub, fontSize: 11, fontFamily: 'Poppins-Black', letterSpacing: 0.3, opacity: A.bannerOppOp, ...engrave('sm') }}>Rakip tahmin ediyor…</Animated.Text>
-                  <Animated.Text numberOfLines={1} style={{ position: 'absolute', color: theme.primary, fontSize: 11.5, fontFamily: 'Poppins-Black', letterSpacing: 0.5, opacity: A.bannerYouOp, ...engrave('sm') }}>SIRA SENDE</Animated.Text>
-                </View>
-                <GwPips total={7} used={pipsUsed} winner={winnerPip} />
-                <Animated.Text numberOfLines={1} style={{ color: theme.gold, fontSize: 13, fontFamily: 'Poppins-Black', letterSpacing: 0.4, opacity: A.nameOp, ...engrave('sm') }}>LAMİNE YAMAL</Animated.Text>
-              </View>
-              <GwTimerRing secs={secs} />
-            </View>
-            {/* tahmin satırları (en yeni üstte) */}
-            <Animated.View style={{ opacity: A.youRowOp, transform: [{ translateY: A.youRowY }] }}>{youRowEl}</Animated.View>
-            <Animated.View style={{ opacity: A.oppRowOp, transform: [{ translateY: A.oppRowY }] }}>{oppRowEl}</Animated.View>
-          </View>
-          {/* "BİLDİN!" rozeti */}
-          <Animated.View style={{ position: 'absolute', top: 8, alignSelf: 'center', opacity: A.badgeOp, transform: [{ scale: A.badgeScale }], backgroundColor: withAlpha(theme.primary, 0.2), borderColor: theme.primary, borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <Ionicons name="checkmark-circle" size={14} color={theme.primary} />
-            <Text style={{ color: lighten(theme.primary, 0.2), fontFamily: 'Poppins-Black', fontSize: 12, letterSpacing: 0.5 }}>BİLDİN!</Text>
-          </Animated.View>
-        </Animated.View>
-
-        {/* dokunuş dalgaları */}
-        {w > 0 ? (
-          <>
-            <Animated.View pointerEvents="none" style={{ position: 'absolute', left: -22, top: -22, opacity: A.ripple1O, transform: [{ translateX: Animated.multiply(A.fingerX, w) }, { translateY: Animated.multiply(A.fingerY, H) }, { scale: A.ripple1S }] }}>
-              <View style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: 'rgba(255,255,255,0.8)' }} />
-            </Animated.View>
-            <Animated.View pointerEvents="none" style={{ position: 'absolute', left: -22, top: -22, opacity: A.ripple2O, transform: [{ translateX: Animated.multiply(A.fingerX, w) }, { translateY: Animated.multiply(A.fingerY, H) }, { scale: A.ripple2S }] }}>
-              <View style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: withAlpha(theme.purple, 0.9) }} />
-            </Animated.View>
-          </>
-        ) : null}
-
-        {finger}
-
-        {/* alt ilerleme çubuğu + adım noktaları — "kısa video" hissi */}
-        <View style={{ position: 'absolute', left: 10, right: 10, bottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <View style={{ flex: 1, height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
-            {/* İlerleme JS yüzdesiyle (native driver 'width'i animasyona izin vermez);
-                120ms tik ince çubuk için yeterince akıcı. */}
-            <View style={{ height: 3, borderRadius: 2, backgroundColor: withAlpha(theme.gold, 0.9), width: (`${Math.round((el / BK_DUR) * 100)}%` as `${number}%`) }} />
-          </View>
-          <View style={{ flexDirection: 'row', gap: 4 }}>
-            {[0, 1, 2, 3].map((i) => (
-              <View key={i} style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: i === sceneIdx ? theme.gold : 'rgba(255,255,255,0.22)' }} />
-            ))}
-          </View>
-        </View>
-      </View>
-    </View>
   );
 }
 
@@ -15060,7 +14219,7 @@ function AvatarTile({ avatarId, owned, selected, price, isNew = false, seasonOnl
 const ARENA_DATA = [
   { name: 'GOAT', min: 5000, max: 99999, color: theme.flame, icon: 'flame' as IoniconName, img: require('../assets/arenas/goat.png'), win: '+15', loss: '-35', reward: 1000, desc: 'Efsanelerin zirvesi. Sadece en iyiler ayakta kalır.' },
   { name: 'Dünya Klasmanı', min: 3500, max: 4999, color: theme.purple, icon: 'trophy' as IoniconName, img: require('../assets/arenas/dunya.png'), win: '+18', loss: '-30', reward: 500, desc: 'Dünya sahnesinde mücadele. Her hata çok ağır.' },
-  { name: 'Efsaneler Arenası', min: 2000, max: 3499, color: theme.blue, icon: 'ribbon' as IoniconName, img: require('../assets/arenas/efsaneler.png'), win: '+20', loss: '-26', reward: 300, desc: 'Efsaneler burada. Kayıplar acıtıyor.' },
+  { name: 'Efsaneler Arası', min: 2000, max: 3499, color: theme.blue, icon: 'ribbon' as IoniconName, img: require('../assets/arenas/efsaneler.png'), win: '+20', loss: '-26', reward: 300, desc: 'Efsaneler burada. Kayıplar acıtıyor.' },
   { name: 'Şampiyonlar Ligi', min: 1000, max: 1999, color: theme.primary, icon: 'medal' as IoniconName, img: require('../assets/arenas/sampiyonlar.png'), win: '+22', loss: '-22', reward: 200, desc: 'Avrupa\'nın en prestijli arenası. Dengeli mücadele.' },
   { name: 'Profesyonel Lig', min: 500, max: 999, color: theme.gold, icon: 'shield' as IoniconName, img: require('../assets/arenas/profesyonel.png'), win: '+25', loss: '-18', reward: 150, desc: 'Profesyonel seviye. Artık gerçek bir rakipsin.' },
   { name: 'Amatör Lig', min: 200, max: 499, color: theme.silver, icon: 'shield-half' as IoniconName, img: require('../assets/arenas/amator.png'), win: '+28', loss: '-14', reward: 100, desc: 'İlk adımları attın. Yükselmeye devam!' },
@@ -15535,7 +14694,7 @@ function arenaKeyFromName(name: string): 'mahalle' | 'amator' | 'profesyonel' | 
     case 'Amatör Lig': return 'amator';
     case 'Profesyonel Lig': return 'profesyonel';
     case 'Şampiyonlar Ligi': return 'sampiyonlar';
-    case 'Efsaneler Arenası': return 'efsaneler';
+    case 'Efsaneler Arası': return 'efsaneler';
     case 'Dünya Klasmanı': return 'dunya';
     case 'GOAT': return 'goat';
     default: return null;
@@ -15625,12 +14784,6 @@ const MatchHistoryCard = memo(function MatchHistoryCard({ match: m, myName }: { 
   const tint = m.won ? theme.primary : theme.danger;
   const delta = (m.playerTrophies ?? 0) - (m.opponentTrophies ?? 0); // gösterim amaçlı fark
   const oArena = arenaForTrophies(m.opponentTrophies);
-  // Çöz Kazan (anagram) tur ayrıntısında üst "ipucu" satırı (harf çipi + '+' + logo)
-  // anlamsız — takım/ülke/harf ipucu yok, oyuncu adı harflerden çözülür. Bu modda
-  // YALNIZ bilinen oyuncunun fotoğrafı + adı gösterilir (kullanıcı isteği 2026-09-03).
-  // Kapı MAÇ moduna dayanır: tur bazlı r.mode Çöz Kazan'da 'letter-team' olabiliyor
-  // (harf çipi bu yüzden çıkıyordu); diğer tüm modlar iki satırlı düzeni korur.
-  const isCozKazan = (m.gameMode as GameMode) === 'cozkazan';
 
   const roundChip = (r: MatchHistoryView['rounds'][number], mine: boolean, key: number) => (
     <View
@@ -15641,13 +14794,11 @@ const MatchHistoryCard = memo(function MatchHistoryCard({ match: m, myName }: { 
       }}
     >
       <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: theme.shadowInk, opacity: 0.4 }} />
-      {isCozKazan ? null : (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-          <MatchHistoryLeadBadge mode={(r.mode as GameMode) ?? (m.gameMode as GameMode) ?? 'team-team'} country={r.country} letter={r.letter} teamA={r.teamA} teamALogo={r.teamALogo} size={18} />
-          <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold' }}>+</Text>
-          <ClubLogo uri={r.teamBLogo} name={r.teamB} size={18} />
-        </View>
-      )}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+        <MatchHistoryLeadBadge mode={(r.mode as GameMode) ?? (m.gameMode as GameMode) ?? 'team-team'} country={r.country} letter={r.letter} teamA={r.teamA} teamALogo={r.teamALogo} size={18} />
+        <Text style={{ color: theme.muted, fontSize: 10, fontFamily: 'Poppins-SemiBold' }}>+</Text>
+        <ClubLogo uri={r.teamBLogo} name={r.teamB} size={18} />
+      </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
         <PlayerPhoto uri={r.playerImageUrl} size={22} />
         <Text style={{ color: mine ? theme.primary : theme.danger, fontSize: 10.5, fontFamily: 'Poppins-SemiBold', flex: 1 }} numberOfLines={1}>{r.player}</Text>
@@ -16092,20 +15243,11 @@ export function MatchOverBanner({ youWon, youScore, oppScore, youWrong, oppWrong
         </View>
       ) : null}
 
-      {/* Ringed trophy medallion. Kazançta PNG'nin altın halkası kupayla EŞ-MERKEZLİ →
-          150px/-9 ile ortalanır. KAYIPTA PNG'nin mor halkası kupayla eş-merkezli DEĞİL
-          (kupa sağa, halka sola kaçık): halkayı ortalayınca kupa sağda, kupayı ortalayınca
-          halka solda parlak bir "hilal" bırakıyordu (kullanıcı 3× rapor, 2026-09-03).
-          Çözüm: kayıpta resmi 152px'e ZOOM'layıp HALKAYI tümden KIRP → yalnız kupa + düz
-          iç mor kalır (hilal yok, kazançla aynı temiz görünüm), marginLeft/Top kupayı
-          ORTALAR (kupa merkezi PNG≈145,136). 152 seçildi: kupanın GÖRÜNEN boyutu kazanç
-          kupasıyla BİREBİR (kullanıcı "180'de çok büyük" dedi, 2026-09-03). Yeni asset yok. */}
+      {/* Ringed trophy medallion (image slightly overscanned so its ring meets the circle) */}
       <View style={{ width: 132, height: 132, borderRadius: 66, overflow: 'hidden', marginBottom: 14 }}>
         <Image
           source={youWon ? TROPHY_MEDALLION_WIN : TROPHY_MEDALLION_LOSS}
-          style={youWon
-            ? { width: 150, height: 150, marginLeft: -9, marginTop: -9 }
-            : { width: 152, height: 152, marginLeft: -15, marginTop: -10 }}
+          style={{ width: 150, height: 150, marginLeft: -9, marginTop: -9 }}
           resizeMode="cover"
         />
       </View>

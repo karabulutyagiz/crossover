@@ -169,9 +169,6 @@ export class BotPlayer implements Transport {
   // ---- Çöz Kazan: çözme zamanlayıcısı + tur kilidi ----
   private cozTimer: NodeJS.Timeout | null = null;
   private cozActedRound = 0;
-  // ---- Ben Kimim?: tahmin zamanlayıcısı + tur kilidi (guesses.length ile) ----
-  private gwTimer: NodeJS.Timeout | null = null;
-  private gwActedLen = -1;
   // İlk maç tiyatrosu: bot bir kez kolay soruda görünür yanlış yapar (bir kez, asla tekrar).
   private theaterMistakeDone = false;
   // Son biten maçı bot mu kazandı? (rövanş kabul olasılığı için)
@@ -306,10 +303,6 @@ export class BotPlayer implements Transport {
       case 'cozkazan_over': {
         if (this.cozTimer) { clearTimeout(this.cozTimer); this.cozTimer = null; }
         this.cozActedRound = 0;
-        break;
-      }
-      case 'guesswho_state': {
-        this.handleGuessWhoState(msg as Extract<ServerMsg, { type: 'guesswho_state' }>);
         break;
       }
       case 'rematch_requested':
@@ -857,38 +850,6 @@ export class BotPlayer implements Transport {
     const delay = clamp(minD * 0.5 + Math.random() * (maxD * 0.6), 2500, 15_500);
     const answer = snap.shownForm;
     this.cozTimer = setTimeout(() => { this.act({ type: 'cozkazan_submit', text: answer }); }, delay);
-  }
-
-  // ── Ben Kimim? botu ──────────────────────────────────────────────────────
-  // GERÇEK İNSAN GİBİ (kullanıcı kuralı 2026-09-02): bot hedefi bilmez; tablodaki
-  // ipuçlarından TÜMDENGELİM yapar (oda tarafında guessWhoBotDeduce — kısıt süzme +
-  // ün-ağırlıklı insan seçimi). İlk tahminde kör bilme İMKÂNSIZ (hedef aday değil).
-  // Zorluk yalnız seçim keskinliğini + düşünme süresini etkiler.
-  private handleGuessWhoState(msg: Extract<ServerMsg, { type: 'guesswho_state' }>): void {
-    if (this.gwTimer) { clearTimeout(this.gwTimer); this.gwTimer = null; }
-    if (msg.over) { this.gwActedLen = -1; return; }
-    if (msg.turnId !== this.id) return;
-    if (msg.guesses.length === this.gwActedLen) return; // bu tahmin-sayısında karar verildi
-    const prevActed = this.gwActedLen;
-    this.gwActedLen = msg.guesses.length;
-    const d = DIFFICULTY[this.difficulty];
-    const [minD, maxD] = d.delayMs;
-    // İnsan gibi düşünme payı; ipucu arttıkça (küme daraldıkça) biraz hızlanır.
-    // 20 sn'lik sıraya sığmalı (GW_TURN_MS, 2026-09-03): üst sınır 14 sn — en yavaş
-    // bot bile süresi dolmadan tahminini basar.
-    const speedup = clamp(1 - msg.guesses.length * 0.07, 0.6, 1);
-    const delay = clamp((minD * 0.45 + Math.random() * (maxD * 0.5)) * speedup, 2500, 14_000);
-    const room = this.room;
-    if (!room) return;
-    this.gwTimer = setTimeout(() => {
-      void room.guessWhoBotDeduce(this.difficulty).then((pid) => {
-        if (pid != null) this.act({ type: 'guesswho_submit', playerId: pid });
-        // Deneme SONUÇSUZ kaldıysa (geçici DB hatası → aday yok) kilidi GERİ AL:
-        // bir dahaki kendi sırasında (aynı tahmin-sayısında bile) yeniden denesin —
-        // tek seferlik hata botu kalıcı pasife çevirmesin (review bulgusu 2026-09-02).
-        else this.gwActedLen = prevActed;
-      }).catch(() => { this.gwActedLen = prevActed; });
-    }, delay);
   }
 
   /** Güç ateşleme kararı: tur başında, karar motorunun ürettiği bağlama göre

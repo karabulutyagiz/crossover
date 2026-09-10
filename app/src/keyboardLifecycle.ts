@@ -14,12 +14,9 @@ function textInputState(): TextInputStateShape | undefined {
 export function dismissActiveInput(): void {
   const state = textInputState();
   try {
-    // currentlyFocusedField YALNIZ yeni API hiç yoksa denenir: currentlyFocusedInput
-    // odak yokken null döner ve her çağrıda deprecated'a düşmek ERROR banner'ı
-    // basıyordu (2026-09-02, RN 0.83).
-    if (state?.currentlyFocusedInput) {
-      const focusedInput = state.currentlyFocusedInput();
-      if (focusedInput && typeof focusedInput.blur === 'function') focusedInput.blur();
+    const focusedInput = state?.currentlyFocusedInput?.();
+    if (focusedInput && typeof focusedInput.blur === 'function') {
+      focusedInput.blur();
     } else {
       const focusedField = state?.currentlyFocusedField?.();
       if (focusedField != null) state?.blurTextInput?.(focusedField);
